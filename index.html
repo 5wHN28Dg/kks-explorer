@@ -130,7 +130,7 @@ dt{color:var(--muted)} dd{margin:0}
 <div id="lightbox"><img id="lbimg" alt=""></div>
 <script>
 const $=s=>document.querySelector(s);
-let SHEETS=[],TAGS=[],PROCS=[],KKS={},STATE={equipment:{},reviews:{},photos:[],links:[]};
+let SHEETS=[],TAGS=[],PROCS=[],KKS={},LOC={},STATE={equipment:{},reviews:{},photos:[],links:[]};
 let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='';
 const api=(u,b)=>fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{}).then(r=>r.json());
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -147,9 +147,35 @@ const full=t=>(t.kks||'')+(t.suffix||'');
 const tagsOf=sid=>TAGS.filter(t=>t.sheet===sid).map(eff).filter(Boolean);
 const eq=k=>STATE.equipment[k]||{};
 
+// location list (data/locations.json from 'KKS LOCATION HRSG.pdf'): keyed by KKS without the unit number and suffix
+const lvlName=l=>{ const m=(l||'').match(/^(\d+(?:\.\d+)?)\s*m$/i); return m?(+m[1])+' m':/out/i.test(l||'')?'Outside HRSG':(l||'') };
+function refLoc(b){ // one value per field, or '' when the list contradicts itself
+  const L=LOC[b]||[], one=f=>{ const v=[...new Set(L.map(f).filter(Boolean))]; return v.length===1?v[0]:'' };
+  return {rows:L, floor:one(e=>lvlName(e.level)), cabinet:one(e=>e.cabinet)};
+}
+const bodyOf=t=>(t.kks||'').slice(2);
+const floorOf=t=>(eq(full(t)).floor||'').trim()||refLoc(bodyOf(t)).floor;
+function locSec(b,sfx){
+  const L=LOC[b]||[]; if(!L.length) return '';
+  const conflict=new Set(L.map(r=>[r.level,r.cabinet,r.desc,r.direction].join('|'))).size>1;
+  return `<div class="sec"><h3>Location list${sfx?` <span style="font-weight:400">(listed as ${esc(b)}, without suffix ${esc(sfx)})</span>`:''}</h3>
+    ${conflict?`<div class="warn">Listed ${L.length} times with different values — check on site.</div>`:''}
+    ${L.map(r=>`<dl style="margin-bottom:6px"><dt>Level</dt><dd>${esc(lvlName(r.level))}</dd>
+      ${r.cabinet?`<dt>Cabinet</dt><dd class="mono">${esc(r.cabinet)}</dd>`:''}${r.desc?`<dt>Description</dt><dd>${esc(r.desc)}</dd>`:''}
+      ${r.direction?`<dt>Direction</dt><dd>${esc(r.direction)}</dd>`:''}<dt>Source</dt><dd class="sub">KKS LOCATION HRSG.pdf, page ${r.page}</dd></dl>`).join('')}</div>`;
+}
+function selectLoc(b){
+  selId=null; drawTags();
+  $('#panelBody').innerHTML=`<div class="phead"><div style="flex:1"><div class="kks">${esc(b)}</div><div class="sub">${esc(KKS.components[b.slice(5,7)]||'')}</div></div><button class="x" onclick="closePanel()">×</button></div>
+    <div class="sec"><div class="warn">In the location list but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.</div></div>`+locSec(b);
+  $('#panel').classList.add('open'); $('#panel').scrollTop=0;
+}
+
 async function load(){
   [SHEETS,TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>r.json())));
   STATE=await api('/api/state');
+  const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
+  for(const e of lj.entries)(LOC[e.kks]??=[]).push(e);
   $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   refreshFloors(); refreshReviewCount(); renderProcs();
   const saved=localStorage.getItem('sheet'); openSheet(SHEETS.find(s=>s.id===saved)?saved:SHEETS[0].id);
@@ -191,7 +217,7 @@ function drawTags(){
   for(const t of tagsOf(cur.id)){
     const d=document.createElement('div'), b=t.bbox, k=full(t);
     d.className='hs'+(t.status==='review'?' review':'')+(t.id===selId?' sel':'')+(k&&hl.has(k)?' hl':'');
-    if(floor){ const f=(eq(k).floor||'').trim(); d.classList.add(f.toLowerCase()===floor.toLowerCase()?'floor':'dim') }
+    if(floor){ const f=floorOf(t); d.classList.add(f.toLowerCase()===floor.toLowerCase()?'floor':'dim') }
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`;
     d.title=k||'unreadable tag'; d.onclick=e=>{e.stopPropagation(); tagClick(t)}; L.appendChild(d);
   }
@@ -255,6 +281,7 @@ function select(t){
       ${t.flag?`<dt>Flag</dt><dd style="color:var(--review)">${esc(t.flag)}</dd>`:''}
     </dl></div>`;
   }
+  h+=locSec(bodyOf(t),t.suffix);
   if(where.length){
     h+=`<div class="sec"><h3>Appears on</h3>${where.map(x=>`<span class="chip" onclick="goTo('${x.id}')">${esc(sheetName(x.sheet))}</span>`).join('')}</div>`;
   }
@@ -262,11 +289,11 @@ function select(t){
     h+=`<div class="sec"><h3>Used in procedures</h3>${procs.map(p=>{const pr=PROCS.find(x=>x.id===p);return `<span class="chip" onclick="openProc('${p}')">${esc(p)} ${esc(pr?pr.title:'')}</span>`}).join('')}</div>`;
   }
   if(k){
-    const cf=e.custom||[];
+    const cf=e.custom||[], R=refLoc(bodyOf(t)), ph=v=>v?esc(v)+' (location list)':'';
     h+=`<div class="sec"><h3>Location</h3>
       <div class="row2"><div class="field"><label>Building / area</label><input id="f_area" value="${esc(e.area||'')}"></div>
-      <div class="field"><label>Floor</label><input id="f_floor" list="floors" value="${esc(e.floor||'')}" placeholder="e.g. Ground, 0 m, +7.5 m"></div></div>
-      <div class="row2"><div class="field"><label>Elevation / level</label><input id="f_elev" value="${esc(e.elev||'')}"></div>
+      <div class="field"><label>Floor</label><input id="f_floor" list="floors" value="${esc(e.floor||'')}" placeholder="${ph(R.floor)||'e.g. 0 m, 3 m'}"></div></div>
+      <div class="row2"><div class="field"><label>Elevation / level</label><input id="f_elev" value="${esc(e.elev||'')}" placeholder="${ph(R.floor)}"></div>
       <div class="field"><label>Near / landmark</label><input id="f_near" value="${esc(e.near||'')}"></div></div>
       <div class="field"><label>How to find it</label><textarea id="f_loc" rows="2">${esc(e.loc||'')}</textarea></div></div>
       <div class="sec"><h3>Notes & custom fields</h3>
@@ -316,30 +343,37 @@ $('#q').addEventListener('input',()=>{
   if(q.length<2){R.style.display='none';return}
   const seen=new Set(); hits=[];
   for(const t0 of TAGS){ const t=eff(t0); if(!t)continue; const k=full(t); const e=eq(k);
-    const text=[e.area,e.floor,e.loc,e.near,e.notes,...(e.custom||[]).map(c=>c.k+' '+c.v)].join(' ').toLowerCase();
+    const text=[e.area,e.floor,e.loc,e.near,e.notes,...(e.custom||[]).map(c=>c.k+' '+c.v),
+      ...(LOC[bodyOf(t)]||[]).map(r=>[r.cabinet,r.desc,r.direction,lvlName(r.level)].join(' '))].join(' ').toLowerCase();
     let score=0;
     if(k&&k===q)score=100; else if(k&&k.startsWith(q))score=80; else if(k&&k.includes(q))score=60; else if(t.isa&&t.isa===q)score=30; else if(qr.length>2&&text.includes(qr))score=40;
     if(!score&&t.status==='review'&&(t.read.join('').includes(q)))score=10;
     if(score){ hits.push({t,score,k}) } }
+  const drawn=new Set(TAGS.map(eff).filter(Boolean).map(bodyOf)), qb=q.replace(/^\d{2}(?=[A-Z])/,'');
+  for(const b in LOC){ if(drawn.has(b))continue; const text=LOC[b].map(r=>[r.cabinet,r.desc,r.direction].join(' ')).join(' ').toLowerCase();
+    const score=b===qb?90:b.startsWith(qb)?70:b.includes(qb)?50:qr.length>2&&text.includes(qr)?35:0; if(score)hits.push({loc:b,score,k:b}) }
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
   const sn=id=>SHEETS.find(s=>s.id===id).name;
-  R.innerHTML=hits.length?hits.map((h,i)=>{const e=eq(h.k);return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.k||h.t.read.join(' / '))}${h.t.isa?' <span class="m">'+esc(h.t.isa)+'</span>':''}${h.t.status==='review'?' <span class="m" style="color:var(--review)">unverified</span>':''}</div><div class="m">${esc(sn(h.t.sheet))} · ${esc(kindName(h.t))}${e.floor?' · floor '+esc(e.floor):''}${e.area?' · '+esc(e.area):''}</div></div>`}).join(''):'<div class="res m">No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.</div>';
+  R.innerHTML=hits.length?hits.map((h,i)=>{ if(h.loc){const r=refLoc(h.loc);return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.loc)} <span class="m" style="color:var(--review)">location list only</span></div><div class="m">${esc(r.floor||'level varies')}${r.cabinet?' · '+esc(r.cabinet):''}${r.rows[0].desc?' · '+esc(r.rows[0].desc):''}</div></div>`}
+    const e=eq(h.k), fl=floorOf(h.t), cab=refLoc(bodyOf(h.t)).cabinet;return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.k||h.t.read.join(' / '))}${h.t.isa?' <span class="m">'+esc(h.t.isa)+'</span>':''}${h.t.status==='review'?' <span class="m" style="color:var(--review)">unverified</span>':''}</div><div class="m">${esc(sn(h.t.sheet))} · ${esc(kindName(h.t))}${fl?' · '+esc(fl):''}${cab?' · '+esc(cab):''}${e.area?' · '+esc(e.area):''}</div></div>`}).join(''):'<div class="res m">No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.</div>';
   R.style.display='block';
 });
 $('#q').addEventListener('keydown',e=>{ const R=$('#results');
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){ hi=Math.max(0,Math.min(hits.length-1,hi+(e.key==='ArrowDown'?1:-1))); [...R.children].forEach((c,i)=>c.classList.toggle('on',i===hi)); e.preventDefault() }
   if(e.key==='Enter'&&hits.length) pick(hi); if(e.key==='Escape') R.style.display='none'; });
-function pick(i){ $('#results').style.display='none'; $('#q').blur(); goTo(hits[i].t.id) }
+function pick(i){ $('#results').style.display='none'; $('#q').blur(); hits[i].loc?selectLoc(hits[i].loc):goTo(hits[i].t.id) }
 document.addEventListener('click',e=>{ if(!e.target.closest('.search')) $('#results').style.display='none' });
 
 // ---------- floors ----------
 function refreshFloors(){
-  const fl=[...new Set(Object.values(STATE.equipment).map(e=>(e.floor||'').trim()).filter(Boolean))].sort();
+  const num=f=>{const n=parseFloat(f); return isNaN(n)?1e9:n};
+  const fl=[...new Set([...Object.values(STATE.equipment).map(e=>(e.floor||'').trim()),...Object.values(LOC).flat().map(e=>lvlName(e.level))].filter(Boolean))]
+    .sort((a,b)=>num(a)-num(b)||a.localeCompare(b));
   $('#floorSel').innerHTML='<option value="">All floors</option>'+fl.map(f=>`<option ${f===floor?'selected':''}>${esc(f)}</option>`).join('');
   let dl=$('#floors'); if(!dl){dl=document.createElement('datalist');dl.id='floors';document.body.appendChild(dl)} dl.innerHTML=fl.map(f=>`<option value="${esc(f)}">`).join('');
 }
 $('#floorSel').onchange=e=>{ floor=e.target.value; drawTags();
-  if(floor){ const n=TAGS.map(eff).filter(t=>t&&(eq(full(t)).floor||'').trim().toLowerCase()===floor.toLowerCase()); const here=n.filter(t=>t.sheet===cur.id).length;
+  if(floor){ const n=TAGS.map(eff).filter(t=>t&&floorOf(t).toLowerCase()===floor.toLowerCase()); const here=n.filter(t=>t.sheet===cur.id).length;
     toast(`${n.length} tagged on “${floor}” (${here} on this sheet)`) } };
 
 // ---------- procedures ----------

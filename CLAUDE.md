@@ -25,6 +25,11 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
   in plant.db `reviews` and override tags.json at runtime (`eff()` in index.html). Equipment data is keyed by full KKS
   (kks+suffix), so the same item on several sheets shares data.
 - `data/procedures.json` — 77 procedures parsed from the HRSG Operation Manual (English steps, parent path, page).
+- `data/locations.json` — 360 rows from `source/KKS LOCATION HRSG.pdf` (level/elevation, cabinet, description, direction),
+  built by `tools/parse_locations.py`. The list has no unit prefix → matched on KKS without the 2-digit unit, and on the
+  base KKS for suffixed tags (R/K/D). Used as a fallback under the user's own equipment data; never written to plant.db.
+  295/354 unique KKS match a drawing tag. Known list issues: LBB80CT5101–5103 (typo, likely CT101–103); conflicting rows
+  for LBA90CT101/102 (10 m vs 32 m), LBA70AA001 (14 m vs 0 m), LBA10AA402 (0 m vs outside HRSG).
 - `data/kks.json` — decode tables: system codes (from the legend printed on the P&IDs), component codes, ISA letters, unit prefixes.
 - `extractor/` — the tag reader (see below). `fontlib.pkl` = labeled glyph library (~13.8k glyphs).
 - `tools/` — manual parser and the calibration scripts used to build the glyph library (written for a scratch
