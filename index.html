@@ -180,7 +180,7 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
     if(pts.size===2&&pinch){const [a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y),r=el.getBoundingClientRect();
       zoomAt(d/pinch.d,(a.x+b.x)/2-r.left,(a.y+b.y)/2-r.top); pinch.d=d; moved=true; return}
     if(last){const dx=e.clientX-last.x,dy=e.clientY-last.y; if(Math.abs(dx)+Math.abs(dy)>3)moved=true; view.x+=dx; view.y+=dy; last={x:e.clientX,y:e.clientY}; apply()} });
-  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2)pinch=null; if(!pts.size){last=null; el.classList.remove('drag')} };
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2)pinch=null; if(pts.size===1)last={...[...pts.values()][0]}; if(!pts.size){last=null; el.classList.remove('drag')} };
   el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
   el.addEventListener('click',e=>{ if(moved){e.stopPropagation();e.preventDefault()} },true);
 })();
@@ -199,7 +199,8 @@ function drawTags(){
 function tagClick(t){
   if(linkTarget){
     const k=full(t); if(!k){toast('This tag has no KKS yet — review it first');return}
-    api('/api/links',{proc:linkTarget.proc,step:linkTarget.step,kks:k}).then(async()=>{STATE=await api('/api/state'); toast(`Linked ${k} to step ${linkTarget.step}`); drawTags(); renderProcDetail(linkTarget.proc)});
+    const lt=linkTarget;
+    api('/api/links',{proc:lt.proc,step:lt.step,kks:k}).then(async()=>{STATE=await api('/api/state'); toast(`Linked ${k} to step ${lt.step}`); drawTags(); renderProcDetail(lt.proc)});
     return;
   }
   select(t);

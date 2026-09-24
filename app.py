@@ -32,7 +32,7 @@ class H(BaseHTTPRequestHandler):
         if p in('/','/index.html'): return self.file(os.path.join(BASE,'index.html'))
         if p.startswith('/data/') or p.startswith('/photos/'):
             full=os.path.normpath(os.path.join(BASE,p.lstrip('/')))
-            if not full.startswith(BASE): return self.send({'error':'bad path'},400)
+            if not any(full.startswith(os.path.join(BASE,d)+os.sep) for d in('data','photos')): return self.send({'error':'bad path'},400)
             return self.file(full)
         if p=='/api/state':
             c=db(); out={'equipment':{r['kks']:json.loads(r['data']) for r in c.execute('SELECT * FROM equipment')},
@@ -42,7 +42,10 @@ class H(BaseHTTPRequestHandler):
             c.close(); return self.send(out)
         self.send({'error':'not found'},404)
     def do_POST(self):
-        p=unquote(urlparse(self.path).path); d=self.body(); c=db(); now=int(time.time())
+        p=unquote(urlparse(self.path).path)
+        try: d=self.body()
+        except ValueError: return self.send({'error':'bad json'},400)
+        c=db(); now=int(time.time())
         try:
             if p.startswith('/api/equipment/'):
                 k=p.split('/')[-1]; c.execute('INSERT OR REPLACE INTO equipment VALUES(?,?,?)',(k,json.dumps(d),now))
@@ -64,6 +67,7 @@ class H(BaseHTTPRequestHandler):
                 c.execute('DELETE FROM photos WHERE id=?',(pid,))
             else: return self.send({'error':'not found'},404)
             c.commit(); self.send({'ok':True})
+        except (KeyError,TypeError,ValueError) as e: self.send({'error':f'bad request: {e}'},400)
         finally: c.close()
 def lan_ip():
     try:
