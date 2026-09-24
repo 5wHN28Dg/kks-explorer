@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Manage — KKS Explorer</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#243440"><link rel="icon" href="/icon.svg">
+<style>
+:root{
+  --chrome:#1c2730; --chrome2:#243440; --chrome3:#2f4352; --line:#3a5061;
+  --ink:#e9eef2; --muted:#94a6b4; --accent:#ff7a1a; --review:#f2b705; --ok:#4f9cff; --bad:#ff5a5a;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sans: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--chrome);color:var(--ink);font:14px/1.45 var(--sans)}
+button,input,select,textarea{font:inherit;color:inherit}
+header{display:flex;gap:8px;align-items:center;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top,0px));background:var(--chrome2);border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:0;z-index:5}
+.brand{font-weight:650;margin-right:auto}
+.btn,select{padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--chrome);cursor:pointer;text-decoration:none;color:inherit}
+.btn:hover{border-color:var(--muted)} .btn.on{border-color:var(--accent);color:var(--accent)}
+.sync{font-size:12.5px;color:var(--muted);white-space:nowrap}
+nav{display:flex;gap:6px;flex-wrap:wrap;padding:10px;border-bottom:1px solid var(--line)}
+main{padding:10px 12px 40px;max-width:1100px;margin:0 auto}
+.count{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--review);color:#1c2730;font-size:12px;font-weight:700;text-align:center;margin-left:4px}
+.card{background:var(--chrome2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}
+.card h3{margin:0 0 6px;font-size:14px;font-family:var(--mono)}
+.sub{color:var(--muted);font-size:12.5px}
+.mono{font-family:var(--mono)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.primary{background:var(--accent);color:#1c2730;border:0;border-radius:6px;padding:7px 12px;font-weight:650;cursor:pointer}
+.ghost{background:none;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+.danger{background:none;border:1px solid var(--bad);color:var(--bad);border-radius:6px;padding:6px 10px;cursor:pointer}
+.warn{border-left:3px solid var(--review);padding:6px 10px;background:rgba(242,183,5,.08);margin:6px 0;border-radius:0 4px 4px 0}
+.bad{border-left-color:var(--bad);background:rgba(255,90,90,.08)}
+table{border-collapse:collapse;width:100%}
+td,th{padding:5px 8px;border-bottom:1px solid var(--chrome3);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+.badge{font-size:11.5px;padding:1px 7px;border-radius:8px;background:var(--chrome3);white-space:nowrap}
+.badge.conflict,.badge.rejected{color:var(--bad)} .badge.pending{color:var(--review)} .badge.approved{color:var(--ok)}
+.photos{display:flex;gap:10px;flex-wrap:wrap}
+.photos figure{margin:0;width:220px;background:var(--chrome);border:1px solid var(--line);border-radius:6px;padding:6px}
+.photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:zoom-in}
+input,select,textarea{padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)}
+form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.del{color:var(--bad)} .add{color:var(--ok)}
+.linkbox{font-family:var(--mono);font-size:12.5px;word-break:break-all;background:var(--chrome);padding:6px 8px;border-radius:5px;border:1px solid var(--line);margin:6px 0}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chrome3);padding:8px 14px;border-radius:6px;display:none;z-index:40;max-width:92%}
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:100}
+#lightbox img{max-width:96%;max-height:92%}
+</style>
+</head>
+<body>
+<header>
+  <a class="btn" href="/">← Drawings</a>
+  <div class="brand">Manage</div>
+  <span class="sync" id="syncStatus"></span>
+  <span id="who" class="sub"></span>
+  <button class="btn" onclick="K.logout()">Log out</button>
+</header>
+<nav id="tabs"></nav>
+<main id="main"></main>
+<div id="toast"></div>
+<div id="lightbox" onclick="this.style.display='none'"><img id="lbimg" alt=""></div>
+<script src="common.js"></script>
+<script>
+const $=s=>document.querySelector(s), esc=K.esc;
+let ME=null, tab=null;
+const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.user.role==='manager';
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
+const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
+const lightbox=src=>{$('#lbimg').src=src;$('#lightbox').style.display='flex'};
+async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
+
+const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['history','History',isAdmin],['account','Account',()=>true]];
+async function init(){
+  ME=await K.start(); K.toast=toast;
+  $('#who').textContent=`${ME.user.username} · ${ME.user.role}`;
+  const t=location.hash.slice(1); show(TABS.some(x=>x[0]===t&&x[2]())?t:isAdmin()?'queue':'mine');
+}
+async function show(t){
+  tab=t; history.replaceState(null,'','#'+t);
+  $('#tabs').innerHTML=TABS.filter(x=>x[2]()).map(([id,label])=>`<button class="btn${id===t?' on':''}" onclick="show('${id}')">${label}${id==='queue'?'<span class="count" id="qn" style="display:none"></span>':''}${id==='account'&&ME.transfer_offer?'<span class="count">!</span>':''}</button>`).join('');
+  if(!K.online&&t!=='account'){ $('#main').innerHTML='<div class="warn">You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.</div>'; return }
+  try{ await VIEWS[t]() }catch(e){ if(e.status===401) return location.reload(); $('#main').innerHTML=`<div class="warn bad">${esc(K.isNetErr(e)?'Cannot reach the server.':e.message)}</div>` }
+}
+K.onChange(why=>{ if(why==='synced') show(tab) });
+addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
+
+// ---------- rendering a submission ----------
+const val=v=>v==null||v===''?'<span class="sub">(empty)</span>':Array.isArray(v)?esc(v.map(c=>c.k+': '+c.v).join('; ')||'(none)'):typeof v==='object'?`<span class="mono">${esc(JSON.stringify(v))}</span>`:esc(v);
+function detail(s){
+  const p=s.payload;
+  if(s.kind==='equipment'){
+    const live=(s.live?.[0]?.value)||{}, cf=new Set((s.conflicts||[]).map(c=>c.field));
+    return `<table><tr><th>Field</th><th>Now</th><th>Proposed</th>${cf.size?'<th>Submitter saw</th>':''}</tr>${Object.entries(p.changes).map(([f,v])=>
+      `<tr${cf.has(f)?' style="background:rgba(255,90,90,.08)"':''}><td>${esc(f)}</td><td>${val(live[f])}</td><td>${val(v)}</td>${cf.size?`<td>${cf.has(f)?val(p.base[f]):''}</td>`:''}</tr>`).join('')}</table>`;
+  }
+  if(s.kind==='review') return `<div>${esc(K.describe(s.kind,p))}</div>${s.live?`<div class="sub">Now: ${val(s.live[0].value)}</div>`:''}`;
+  if(s.kind==='photo_delete') return `<div class="del">Delete this photo</div>${s.live?.[0]?.value?`<div class="photos"><figure><img src="photos/${esc(s.live[0].value.file)}" onclick="lightbox(this.src)" alt=""></figure></div>`:'<div class="sub">(already gone)</div>'}`;
+  return `<div class="${s.kind==='link'&&p.on===false?'del':'add'}">${esc(K.describe(s.kind,p))}</div>`;
+}
+const badge=s=>{ const st=s.conflicts?.length?'conflict':s.status; return `<span class="badge ${st}">${st}</span>` };
+
+// ---------- views ----------
+const VIEWS={
+  async queue(){
+    const subs=(await K.api('/api/submissions?status=open')).submissions.reverse();
+    const qn=$('#qn'); if(qn){qn.textContent=subs.length; qn.style.display=subs.length?'':'none'}
+    if(!subs.length){ $('#main').innerHTML='<p class="sub">Nothing waiting for approval.</p>'; return }
+    const groups={}; for(const s of subs)(groups[s.target]??=[]).push(s);
+    let h='<p class="sub">Oldest first. Approving applies the change and records it in History, where it can be reverted.</p>';
+    for(const [target,L] of Object.entries(groups)){
+      if(L[0].kind==='photo'){
+        const kks=L[0].payload.kks;
+        h+=`<div class="card"><h3>Photo proposals · ${esc(kks)}</h3>${L.length>1?'<div class="sub">Several photos proposed. “Use this one” approves it and rejects the others. Votes are only a hint.</div>':''}
+          <div class="photos">${L.map(s=>`<figure><img src="photos/${esc(s.payload.file)}" onclick="lightbox(this.src)" alt="">
+          <div class="sub">${esc(s.by)} · ${when(s.created)} · ${s.votes} vote${s.votes===1?'':'s'}</div>${s.payload.caption?`<div>${esc(s.payload.caption)}</div>`:''}
+          <div class="row" style="margin-top:6px">${L.length>1?`<button class="primary" onclick="decide(${s.id},'pick')">Use this one</button><button class="ghost" onclick="decide(${s.id},'approve')">Add</button>`:`<button class="primary" onclick="decide(${s.id},'approve')">Approve</button>`}
+          <button class="danger" onclick="decide(${s.id},'reject')">Reject</button></div></figure>`).join('')}</div></div>`;
+        continue;
+      }
+      h+=`<div class="card"><h3>${esc(target)}</h3>${L.map(s=>`<div style="margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)">
+        <div class="row">${badge(s)}<span class="sub">#${s.id} · ${esc(s.by)} · ${when(s.created)}</span></div>
+        ${s.conflicts?.length?`<div class="warn bad">Conflict: ${s.kind==='equipment'?'highlighted field(s) changed after this was submitted':'this changed after it was submitted'}. Approving overwrites the current value.</div>`:''}
+        ${detail(s)}
+        <div class="row" style="margin-top:6px">${s.conflicts?.length?`<button class="primary" onclick="decide(${s.id},'approve',true)">Overwrite with proposal</button>`:`<button class="primary" onclick="decide(${s.id},'approve')">Approve</button>`}
+        <button class="danger" onclick="decide(${s.id},'reject')">Reject</button></div></div>`).join('')}</div>`;
+    }
+    $('#main').innerHTML=h;
+  },
+  async mine(){
+    const all=(await K.api('/api/submissions?status=all&limit=300')).submissions;
+    const mine=all.filter(s=>s.mine), vote=all.filter(s=>!s.mine&&s.kind==='photo'&&['pending','conflict'].includes(s.status));
+    let h='';
+    if(K.outbox.length) h+=`<div class="card"><h3>Queued on this device (${K.outbox.length})</h3><div class="sub">Sent automatically when the server is reachable.</div>${K.outbox.map(i=>`<div>${esc(K.describe(i.kind,i.payload))}</div>`).join('')}</div>`;
+    if(vote.length) h+=`<div class="card"><h3>Photo proposals from others</h3><div class="sub">Vote for the photo that shows the equipment best. An admin makes the final choice.</div><div class="photos">${vote.map(s=>`<figure><img src="photos/${esc(s.payload.file)}" onclick="lightbox(this.src)" alt=""><div class="sub">${esc(s.payload.kks)} · ${esc(s.by)} · ${s.votes} vote${s.votes===1?'':'s'}</div><button class="${s.voted?'primary':'ghost'}" onclick="vote(${s.id})">${s.voted?'Voted ✓':'Vote'}</button></figure>`).join('')}</div></div>`;
+    h+=`<table><tr><th>#</th><th>Status</th><th>Change</th><th>Sent</th><th>Decision</th><th></th></tr>${mine.map(s=>`<tr><td class="sub">${s.id}</td><td>${badge(s)}</td><td>${esc(K.describe(s.kind,s.payload))}</td><td class="sub">${when(s.created)}</td>
+      <td class="sub">${s.status==='conflict'?'waiting for an admin (clashes with a newer change)':esc(s.note&&!s.note.startsWith('[')?s.note:'')}</td><td>${['pending','conflict'].includes(s.status)?`<button class="ghost" onclick="withdraw(${s.id})">Withdraw</button>`:''}</td></tr>`).join('')}</table>`;
+    $('#main').innerHTML=h||'<p class="sub">No submissions yet.</p>';
+    if(!mine.length) $('#main').insertAdjacentHTML('beforeend','<p class="sub">You haven\'t submitted anything yet.</p>');
+  },
+  async users(){
+    const U=(await K.api('/api/users')).users;
+    const canEdit=u=>u.role==='user'||(u.role==='admin'&&isManager());
+    $('#main').innerHTML=`<div class="card"><h3>Add an account</h3>
+      <form class="inline" onsubmit="event.preventDefault();createUser(this)"><input name="username" placeholder="username" required maxlength="40">
+      <select name="role"><option value="user">user</option>${isManager()?'<option value="admin">admin</option>':''}</select><button class="primary">Create and get link</button></form>
+      <div class="sub">There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.</div><div id="newlink"></div></div>
+      <table><tr><th>User</th><th>Role</th><th>Status</th><th></th></tr>${U.map(u=>`<tr><td>${esc(u.username)}${u.id===ME.user.id?' <span class="sub">(you)</span>':''}</td>
+      <td>${u.role}</td><td>${u.active?(u.has_password?'active':'<span class="sub">link not used yet</span>'):'<span class="del">deactivated</span>'}</td>
+      <td class="row">${canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="setUser(${u.id},{active:${!u.active}})">${u.active?'Deactivate':'Activate'}</button>
+        ${isManager()?`<button class="ghost" onclick="setUser(${u.id},{role:'${u.role==='admin'?'user':'admin'}'})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}
+        <button class="ghost" onclick="resetLink(${u.id},'${esc(u.username)}')">Password link</button>`:''}</td></tr>`).join('')}</table>
+      <p class="sub">Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).</p>`;
+  },
+  async history(before){
+    const R=(await K.api('/api/revisions'+(before?`?before=${before}`:''))).revisions;
+    const summary=r=>{ const a=r.after?JSON.parse(r.after):null, b=r.before?JSON.parse(r.before):null;
+      if(r.entity==='user') return esc(r.note);
+      if(r.entity==='link'){ const [p,s,k]=JSON.parse(r.key); return `${a?'<span class="add">linked</span>':'<span class="del">unlinked</span>'} ${esc(k)} · proc ${esc(p)} step ${s}` }
+      if(r.entity==='photo') return a?`<span class="add">photo added</span> ${esc(a.kks)}`:`<span class="del">photo removed</span> ${esc(b?.kks||'')}`;
+      if(r.entity==='equipment'){ const keys=[...new Set([...Object.keys(a||{}),...Object.keys(b||{})])].filter(k=>JSON.stringify((a||{})[k])!==JSON.stringify((b||{})[k]));
+        return `${esc(r.key)}: `+keys.map(k=>`${esc(k)} ${val((b||{})[k])} → ${val((a||{})[k])}`).join(' · ') }
+      return `${esc(r.entity)} ${esc(r.key)}: ${val(b)} → ${val(a)}` };
+    $('#main').innerHTML=`<p class="sub">Every applied change, newest first. <b>Revert</b> undoes one change. <b>Restore to here</b> puts all data (notes, locations, photos, links, reviews) back to how it was right after that change. Both are new entries themselves, so they can be undone too. Accounts are not affected.</p>
+      <table><tr><th>Rev</th><th>When</th><th>By</th><th>Change</th><th></th></tr>${R.map(r=>`<tr><td class="mono">${r.rev}</td><td class="sub">${when(r.ts)}</td><td>${esc(r.username||'server console')}</td>
+      <td>${summary(r)}${r.note&&r.entity!=='user'?` <span class="sub">(${esc(r.note)})</span>`:''}</td>
+      <td class="row">${r.entity!=='user'?`<button class="ghost" onclick="revert(${r.rev})">Revert</button><button class="ghost" onclick="restoreTo(${r.rev})">Restore to here</button>`:''}</td></tr>`).join('')}</table>
+      ${R.length?`<div class="row" style="margin-top:10px">${R.length===100?`<button class="ghost" onclick="VIEWS.history(${R[R.length-1].rev})">Older →</button>`:''}${isAdmin()?`<button class="danger" onclick="restoreTo(0)">Restore to before any logged change</button>`:''}</div>`:'<p class="sub">No changes yet.</p>'}`;
+  },
+  async account(){
+    if(K.online){ try{ ME=await K.api('/api/me') }catch(e){} }
+    const sw=!!navigator.serviceWorker?.controller, secure=window.isSecureContext;
+    const lease=await K.idb.get('me');
+    let h=`<div class="card"><h3>${esc(ME.user.username)} · ${ME.user.role}</h3>
+      <form class="inline" onsubmit="event.preventDefault();changePw(this)"><input type="password" name="old" placeholder="current password" autocomplete="current-password" required>
+      <input type="password" name="new" placeholder="new password (10+)" autocomplete="new-password" required minlength="10"><button class="primary">Change password</button></form></div>`;
+    if(ME.transfer_offer) h+=`<div class="card"><h3>The manager wants to hand the manager role to you</h3><div class="sub">You would become the single top account. The current manager becomes an admin.</div>
+      <div class="row" style="margin-top:8px"><button class="primary" onclick="mgr('accept')">Accept</button><button class="ghost" onclick="mgr('decline')">Decline</button></div></div>`;
+    if(isManager()){
+      const t=ME.transfer_pending;
+      h+=`<div class="card"><h3>Hand over the manager role</h3>${t?`<div>Offered to <b>${esc(t.to_name)}</b>, waiting for them to accept (until ${when(t.expires)}). <button class="ghost" onclick="mgr('cancel')">Cancel offer</button></div>`:
+        `<div class="sub">Only to an existing admin. They must accept; you then become an admin. If the manager account is ever lost, whoever runs the server can use <span class="mono">python3 app.py reset-manager --user NAME</span>.</div>
+        <form class="inline" onsubmit="event.preventDefault();mgr('transfer',{username:this.username.value,password:this.password.value})"><input name="username" placeholder="admin username" required>
+        <input type="password" name="password" placeholder="your password" autocomplete="current-password" required><button class="primary">Offer role</button></form>`}</div>`;
+    }
+    h+=`<div class="card"><h3>This device</h3><table>
+      <tr><td>Offline app</td><td>${sw?'installed: drawings and data you have opened work without the server':secure?'installing… reload once':'<span class="del">not available</span>: needs HTTPS (or localhost). Over plain http on the LAN the page works only while connected.'}</td></tr>
+      <tr><td>Offline access until</td><td>${lease?new Date(lease.lease_until).toLocaleString():'-'} <span class="sub">(renewed each time you connect; ${ME.offline_days} days)</span></td></tr>
+      <tr><td>Queued changes</td><td>${K.outbox.length}</td></tr></table>
+      <div class="row" style="margin-top:8px"><button class="ghost" onclick="K.flush()">Sync now</button><button class="danger" onclick="K.logout()">Log out and remove plant data from this device</button></div></div>`;
+    $('#main').innerHTML=h;
+  },
+};
+
+// ---------- actions ----------
+async function decide(id,action,force){
+  let note='';
+  if(action==='reject'){ note=prompt('Reason (optional, shown to the submitter):',''); if(note===null) return }
+  if(force&&!confirm('Overwrite the current value with this proposal?')) return;
+  await act(()=>K.api(`/api/submissions/${id}/${action}`,{force:!!force,note}),{approve:'Approved',pick:'Photo chosen, others rejected',reject:'Rejected'}[action]);
+}
+const vote=id=>act(()=>K.api(`/api/submissions/${id}/vote`,{}));
+const withdraw=id=>confirm('Withdraw this submission?')&&act(()=>K.api(`/api/submissions/${id}/withdraw`,{}),'Withdrawn');
+async function createUser(f){
+  const r=await act(()=>K.api('/api/users',{username:f.username.value.trim(),role:f.role.value}),'Account created');
+  if(r) $('#newlink').innerHTML=`<div class="warn">Give this link to <b>${esc(f.username.value)}</b> (valid ${r.expires_days} days, works once):<div class="linkbox">${esc(r.link)}</div></div>`;
+}
+const setUser=(id,d)=>act(()=>K.api(`/api/users/${id}`,d),'Updated');
+async function resetLink(id,name){
+  if(!confirm(`Create a new password link for ${name}? Their current password keeps working until they use it.`)) return;
+  const r=await act(()=>K.api(`/api/users/${id}/reset`,{}));
+  if(r) $('#main').insertAdjacentHTML('afterbegin',`<div class="warn">Password link for <b>${esc(name)}</b> (valid ${r.expires_days} days, works once):<div class="linkbox">${esc(r.link)}</div></div>`);
+}
+async function revert(rev,force){
+  try{ await K.api(`/api/revisions/${rev}/revert`,{force:!!force}); toast('Reverted'); show('history') }
+  catch(e){ if(e.status===409&&confirm('This item was changed again after that revision. Revert anyway (discarding the later change)?')) return revert(rev,true); if(e.status!==409) toast(e.message) }
+}
+const restoreTo=rev=>confirm(rev?`Put all plant data back to how it was right after revision ${rev}? Later changes stay in History and can be re-applied.`:'Put all plant data back to how it was before the first logged change?')&&act(()=>K.api('/api/restore',{rev}),'Restored');
+async function changePw(f){ if(await act(()=>K.api('/api/password',{old:f.old.value,new:f.new.value}),'Password changed. Other devices are signed out.')) f.reset() }
+const mgr=(a,d={})=>(a!=='accept'||confirm('Become the manager?'))&&act(()=>K.api('/api/manager/'+a,d),{transfer:'Offer sent',accept:'You are now the manager',decline:'Declined',cancel:'Offer cancelled'}[a]).then(r=>{ if(r&&a==='accept') location.reload() });
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# /etc/systemd/system/kks-explorer.service — see docs/REMOTE_ACCESS.md
+# Code in /opt/kks-explorer (read-only to the service), state in /var/lib/kks-explorer, settings in /etc/kks-explorer.
+[Unit]
+Description=KKS Explorer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=kks
+Group=kks
+Environment=KKS_CONFIG=/etc/kks-explorer/config.json
+WorkingDirectory=/opt/kks-explorer
+ExecStart=/usr/bin/python3 /opt/kks-explorer/app.py
+# SIGINT = Ctrl+C: the app takes a snapshot before exiting
+KillSignal=SIGINT
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=5
+StateDirectory=kks-explorer
+StateDirectoryMode=0750
+UMask=0027
+
+# hardening: the process can only write its state directory
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Plant P&amp;ID / KKS Explorer</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#243440"><link rel="icon" href="/icon.svg"><link rel="apple-touch-icon" href="/icon-192.png">
 <style>
 :root{
   --chrome:#1c2730; --chrome2:#243440; --chrome3:#2f4352; --line:#3a5061;
@@ -28,6 +29,10 @@ header{display:flex;gap:8px;align-items:center;padding:8px 10px;padding-top:calc
 select,.btn{padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--chrome);cursor:pointer}
 .btn:hover{border-color:var(--muted)}
 .btn.on{border-color:var(--accent);color:var(--accent)}
+.sync{font-size:12.5px;color:var(--muted);white-space:nowrap}
+a.btn{text-decoration:none;color:inherit;white-space:nowrap}
+.pend{padding:4px 0}.pend img{display:block;max-width:140px;margin-top:4px;border-radius:4px}
+.badge{font-size:11.5px;padding:1px 7px;border-radius:8px;background:var(--chrome3);white-space:nowrap}.badge.conflict{color:var(--bad)}.badge.queued{color:var(--review)}
 .count{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--review);color:#1c2730;font-size:12px;font-weight:700;text-align:center;margin-left:4px}
 main{position:relative;flex:1;min-height:0;overflow:hidden}
 #viewer{position:absolute;inset:0;overflow:hidden;background:#5d6b75;touch-action:none;cursor:grab}
@@ -104,13 +109,15 @@ dt{color:var(--muted)} dd{margin:0}
 <body>
 <div id="app">
 <header>
-  <div class="brand">KKS Explorer <small>· HRSG P&amp;IDs</small></div>
+  <div class="brand">KKS Explorer <small id="plantName"></small></div>
   <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false"><div id="results"></div></div>
   <select id="sheetSel" title="Drawing"></select>
   <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
   <button class="btn" id="procBtn">Procedures</button>
   <button class="btn" id="revBtn">Review<span class="count" id="revCount">0</span></button>
   <button class="btn" id="notesBtn">Sheet notes</button>
+  <span class="sync" id="syncStatus"></span>
+  <a class="btn" id="manageBtn" href="admin.html" title="Your account, approvals, users, history"><span id="who">Account</span><span class="count" id="queueCount" style="display:none"></span></a>
 </header>
 <main>
   <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"><div id="layer"></div></div></div>
@@ -128,11 +135,12 @@ dt{color:var(--muted)} dd{margin:0}
 </main>
 </div>
 <div id="lightbox"><img id="lbimg" alt=""></div>
+<script src="common.js"></script>
 <script>
 const $=s=>document.querySelector(s);
-let SHEETS=[],TAGS=[],PROCS=[],KKS={},LOC={},STATE={equipment:{},reviews:{},photos:[],links:[]};
+let SHEETS=[],TAGS=[],PROCS=[],KKS={},LOC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
 let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='';
-const api=(u,b)=>fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{}).then(r=>r.json());
+const api=u=>K.api(u);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2200)}
 
@@ -162,7 +170,7 @@ function locSec(b,sfx){
     ${conflict?`<div class="warn">Listed ${L.length} times with different values — check on site.</div>`:''}
     ${L.map(r=>`<dl style="margin-bottom:6px"><dt>Level</dt><dd>${esc(lvlName(r.level))}</dd>
       ${r.cabinet?`<dt>Cabinet</dt><dd class="mono">${esc(r.cabinet)}</dd>`:''}${r.desc?`<dt>Description</dt><dd>${esc(r.desc)}</dd>`:''}
-      ${r.direction?`<dt>Direction</dt><dd>${esc(r.direction)}</dd>`:''}<dt>Source</dt><dd class="sub">KKS LOCATION HRSG.pdf, page ${r.page}</dd></dl>`).join('')}</div>`;
+      ${r.direction?`<dt>Direction</dt><dd>${esc(r.direction)}</dd>`:''}<dt>Source</dt><dd class="sub">${esc(LOCSRC)}, page ${r.page}</dd></dl>`).join('')}</div>`;
 }
 function selectLoc(b){
   selId=null; drawTags();
@@ -172,14 +180,50 @@ function selectLoc(b){
 }
 
 async function load(){
-  [SHEETS,TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>r.json())));
-  STATE=await api('/api/state');
+  const me=await K.start(); K.toast=toast;
+  $('#who').textContent=me.user.username; $('#plantName').textContent=K.cfg?'· '+K.cfg.plant_name:'';
+  try{
+    [SHEETS,TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error(u+': '+r.status);return r.json()})));
+  }catch(e){ K.overlay(`<div class="box"><h1>Plant data not available</h1><p>${K.online?esc(e.message):'You are offline and this device has no saved copy of the plant data. Offline copies need the app opened over HTTPS (or localhost) at least once while online.'}</p><button onclick="location.reload()">Retry</button></div>`); return }
+  try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); toast('Offline: no saved copy of notes/photos on this device yet') }
   const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
-  for(const e of lj.entries)(LOC[e.kks]??=[]).push(e);
+  for(const e of lj.entries)(LOC[e.kks]??=[]).push(e); if(lj.source) LOCSRC=lj.source;
+  K.onChange(why=>{ if(why==='synced') refreshState(); else updatePending() });
+  updateQueueBadge(); setTimeout(cacheSheets,3000);
   $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   refreshFloors(); refreshReviewCount(); renderProcs();
   const saved=localStorage.getItem('sheet'); openSheet(SHEETS.find(s=>s.id===saved)?saved:SHEETS[0].id);
 }
+
+// ---------- saving: every edit is a submission (applied at once for admins, otherwise queued for approval) ----------
+async function refreshState(){
+  try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); if(K.isNetErr(e)) K.setOnline(false) }
+  refreshFloors(); refreshReviewCount(); drawTags(); updateQueueBadge(); updatePending();
+}
+async function send(kind,payload,what){
+  let r; try{ r=await K.submit(kind,payload) }catch(e){ toast('Not saved: '+e.message); return null }
+  toast({approved:'Saved: ',pending:'Sent for approval: ',conflict:'Clashes with a newer change, an admin will decide: ',queued:K.reauth?'Queued until you sign in again: ':'Offline, queued: '}[r.status]+what);
+  if(r.status!=='queued') await refreshState(); else updatePending();
+  return r;
+}
+function updateQueueBadge(){ const n=STATE.queue||0, b=$('#queueCount'); b.textContent=n; b.style.display=n?'':'none'; b.title=n+' change(s) waiting for approval' }
+// your own submissions that aren't live yet (server-side pending/conflict + offline outbox), shown in the panel
+function myPendingEq(k){ // your not-yet-approved equipment edits for k, oldest first
+  const L=[...(STATE.mine||[]).filter(s=>s.kind==='equipment').map(s=>s.payload),...K.outbox.filter(i=>i.kind==='equipment').map(i=>i.payload)];
+  return Object.assign({},...L.filter(p=>p.kks===k).map(p=>p.changes));
+}
+function pendingFor(t){
+  const k=full(t), rel=(kind,p)=>kind==='review'?p.tag_id===t.id:kind==='photo_delete'?STATE.photos.some(x=>x.id===p.photo_id&&x.kks===k):!!k&&p.kks===k;
+  return [...(STATE.mine||[]).map(s=>({kind:s.kind,p:s.payload,status:s.status})),...K.outbox.map(i=>({kind:i.kind,p:i.payload,status:'queued'}))].filter(x=>rel(x.kind,x.p));
+}
+function pendingHtml(t){
+  const L=pendingFor(t); if(!L.length) return '';
+  const label={pending:'awaiting approval',conflict:'conflict: admin decides',queued:'queued offline'};
+  return `<div class="sec"><h3>Your changes, not live yet</h3>${L.map(x=>`<div class="pend"><span class="badge ${x.status}">${label[x.status]}</span> ${esc(K.describe(x.kind,x.p))}${x.kind==='photo'?`<img src="${esc(x.p.file?'photos/'+x.p.file:x.p.dataUrl)}" alt="">`:''}</div>`).join('')}</div>`;
+}
+function updatePending(){ const el=$('#pendingSec'); if(el&&selTag&&$('#panel').classList.contains('open')) el.innerHTML=pendingHtml(selTag) }
+// with a service worker, fetching each sheet once stores it for offline use
+async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return; for(const s of SHEETS){ try{ await fetch(s.file) }catch(e){ return } } }
 
 // ---------- viewer ----------
 function openSheet(id,then){
@@ -226,7 +270,7 @@ function tagClick(t){
   if(linkTarget){
     const k=full(t); if(!k){toast('This tag has no KKS yet — review it first');return}
     const lt=linkTarget;
-    api('/api/links',{proc:lt.proc,step:lt.step,kks:k}).then(async()=>{STATE=await api('/api/state'); toast(`Linked ${k} to step ${lt.step}`); drawTags(); renderProcDetail(lt.proc)});
+    send('link',{proc:lt.proc,step:lt.step,kks:k,on:true},`${k} → step ${lt.step}`).then(()=>{ drawTags(); renderProcDetail(lt.proc) });
     return;
   }
   select(t);
@@ -249,15 +293,16 @@ function decode(t){
 function kindName(t){ const d=decode(t); if(!d) return t.kind; return KKS.components[d.comp]||('Component code '+d.comp) }
 
 // ---------- equipment panel ----------
+let selTag=null, panelEq=null;
 function select(t){
-  selId=t.id; drawTags();
-  const k=full(t), d=decode(t), e=eq(k), P=$('#panelBody');
+  selId=t.id; selTag=t; drawTags();
+  const k=full(t), d=decode(t), e={...eq(k),...myPendingEq(k)}, P=$('#panelBody');
   const where=TAGS.map(eff).filter(x=>x&&full(x)===k&&k).map(x=>x);
   const procs=[...new Set(STATE.links.filter(l=>l.kks===k).map(l=>l.proc))];
   const photos=STATE.photos.filter(p=>p.kks===k);
   const sheetName=id=>SHEETS.find(s=>s.id===id)?.name||id;
   let h=`<div class="phead"><div style="flex:1"><div class="kks">${k?esc(t.kks)+(t.suffix?`<span class="sfx">${esc(t.suffix)}</span>`:''):'<span style="color:var(--review)">Unread tag</span>'}</div>
-    <div class="sub">${esc(t.isa?t.isa+' · ':'')}${esc(kindName(t))}</div></div><button class="x" onclick="closePanel()">×</button></div>`;
+    <div class="sub">${esc(t.isa?t.isa+' · ':'')}${esc(kindName(t))}</div></div><button class="x" onclick="closePanel()">×</button></div><div id="pendingSec">${pendingHtml(t)}</div>`;
   if(t.status==='review'){
     const s=t.suggestion||{};
     h+=`<div class="sec"><h3>Check this tag</h3>
@@ -289,6 +334,7 @@ function select(t){
     h+=`<div class="sec"><h3>Used in procedures</h3>${procs.map(p=>{const pr=PROCS.find(x=>x.id===p);return `<span class="chip" onclick="openProc('${p}')">${esc(p)} ${esc(pr?pr.title:'')}</span>`}).join('')}</div>`;
   }
   if(k){
+    panelEq={k,live:JSON.parse(JSON.stringify(eq(k))),shown:JSON.parse(JSON.stringify(e))};
     const cf=e.custom||[], R=refLoc(bodyOf(t)), ph=v=>v?esc(v)+' (location list)':'';
     h+=`<div class="sec"><h3>Location</h3>
       <div class="row2"><div class="field"><label>Building / area</label><input id="f_area" value="${esc(e.area||'')}"></div>
@@ -307,32 +353,39 @@ function select(t){
   P.innerHTML=h; $('#panel').classList.add('open'); $('#panel').scrollTop=0;
 }
 function cfRow(k,v){return `<div class="cf"><input placeholder="Field" value="${esc(k)}"><input placeholder="Value" value="${esc(v)}"><button class="x" onclick="this.parentNode.remove()">×</button></div>`}
-function closePanel(){ $('#panel').classList.remove('open'); selId=null; drawTags() }
+function closePanel(){ $('#panel').classList.remove('open'); selId=null; selTag=null; drawTags() }
 function cropStyle(t){ const b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
   return `background-image:url(${SHEETS.find(s=>s.id===t.sheet).file});background-size:${SHEETS.find(s=>s.id===t.sheet).w*sc}px auto;background-position:${-(b[0]-10)*sc}px ${-(b[1]-10)*sc}px;width:${Math.min(360,w*sc)}px` }
 async function saveEq(k){
   const v=id=>document.getElementById(id).value.trim();
   const custom=[...document.querySelectorAll('#cfs .cf')].map(r=>({k:r.children[0].value.trim(),v:r.children[1].value.trim()})).filter(c=>c.k||c.v);
-  await api('/api/equipment/'+encodeURIComponent(k),{area:v('f_area'),floor:v('f_floor'),elev:v('f_elev'),near:v('f_near'),loc:v('f_loc'),notes:v('f_notes'),custom});
-  STATE=await api('/api/state'); refreshFloors(); drawTags(); toast('Saved '+k);
+  const now={area:v('f_area'),floor:v('f_floor'),elev:v('f_elev'),near:v('f_near'),loc:v('f_loc'),notes:v('f_notes'),custom};
+  // send only fields changed in the form (which shows your own pending values), each with the live value you saw,
+  // so the server can merge edits to different fields and flag real clashes
+  const P=panelEq?.k===k?panelEq:{live:eq(k),shown:{...eq(k),...myPendingEq(k)}}, def=f=>f==='custom'?[]:'', changes={}, was={};
+  for(const f in now) if(JSON.stringify(now[f])!==JSON.stringify(P.shown[f]??def(f))){ changes[f]=now[f]; was[f]=P.live[f]??def(f) }
+  if(!Object.keys(changes).length){ toast('Nothing changed'); return }
+  const r=await send('equipment',{kks:k,changes,base:was},k);
+  if(r) panelEq={k,live:r.status==='approved'?{...P.live,...changes}:P.live,shown:{...P.shown,...changes}};
 }
 async function review(id,status){
   const kv=($('#rvK')?.value||'').trim().toUpperCase().replace(/\s/g,''), iv=($('#rvI')?.value||'').trim().toUpperCase();
   let d={status};
   if(status==='confirmed'){ const m=kv.match(/^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]*)$/); if(!m){toast('That is not a valid KKS (e.g. 11LAB70AA501)');return}
     d={status,kks:m[1],suffix:m[2],isa:iv||null} }
-  await api('/api/review/'+encodeURIComponent(id),d); STATE=await api('/api/state'); refreshReviewCount(); renderReview();
-  const t=TAGS.find(x=>x.id===id); if(status==='confirmed') select(eff(t)); else closePanel(); drawTags(); toast(status==='confirmed'?'Confirmed':'Removed');
+  const r=await send('review',{tag_id:id,data:d,base:STATE.reviews[id]||null},status==='confirmed'?`${d.kks}${d.suffix}`:'not a tag'); if(!r) return;
+  renderReview(); const t=TAGS.find(x=>x.id===id);
+  if(r.status==='approved'){ if(status==='confirmed') select(eff(t)); else closePanel() }
 }
 function addPhoto(input,k,tid){
   const f=input.files[0]; if(!f)return; const img=new Image(), rd=new FileReader();
   rd.onload=()=>{ img.onload=async()=>{ const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
     c.width=img.width*s; c.height=img.height*s; c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    await api('/api/photos/'+encodeURIComponent(k),{dataUrl:c.toDataURL('image/jpeg',0.85)}); STATE=await api('/api/state');
-    select(eff(TAGS.find(x=>x.id===tid))); toast('Photo added') }; img.src=rd.result };
+    const r=await send('photo',{kks:k,dataUrl:c.toDataURL('image/jpeg',0.85)},'photo for '+k);
+    if(r) select(eff(TAGS.find(x=>x.id===tid))) }; img.src=rd.result };
   rd.readAsDataURL(f);
 }
-async function delPhoto(pid,tid){ if(!confirm('Delete this photo?'))return; await api('/api/photos-delete/'+pid,{}); STATE=await api('/api/state'); select(eff(TAGS.find(x=>x.id===tid))) }
+async function delPhoto(pid,tid){ if(!confirm('Delete this photo?'))return; if(await send('photo_delete',{photo_id:pid},'delete photo')) select(eff(TAGS.find(x=>x.id===tid))) }
 function lightbox(src){ $('#lbimg').src=src; $('#lightbox').style.display='flex' }
 $('#lightbox').onclick=()=>$('#lightbox').style.display='none';
 
@@ -407,7 +460,7 @@ function renderProcDetail(id){
 function startLink(proc,step){ linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
   if(innerWidth<=720) $('#procDrawer').classList.remove('open') }
 $('#bannerDone').onclick=()=>{ const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
-async function unlink(proc,step,kks){ await api('/api/links/delete',{proc,step,kks}); STATE=await api('/api/state'); renderProcDetail(proc); drawTags() }
+async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags() }
 
 // ---------- review queue ----------
 function pending(){ return TAGS.filter(t=>t.status==='review'&&!STATE.reviews[t.id]) }

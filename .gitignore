@@ -1,4 +1,11 @@
+# field data and server state: never commit
 plant.db
+plant.db-wal
+plant.db-shm
+restored-*.db
 photos/
+backups/
+config.json
 __pycache__/
 source/
+to-do.md

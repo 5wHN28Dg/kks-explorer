@@ -1,0 +1,13 @@
+{
+  "_comment": "Settings for running behind Cloudflare Tunnel + Access. Copy to /etc/kks-explorer/config.json.",
+  "plant_name": "Example CCPP — HRSG",
+  "host": "127.0.0.1",
+  "port": 8420,
+  "public_url": "https://kks.example.com",
+  "secure_cookies": true,
+  "data_dir": "/var/lib/kks-explorer/data",
+  "db": "/var/lib/kks-explorer/plant.db",
+  "photos_dir": "/var/lib/kks-explorer/photos",
+  "backup_dir": "/var/lib/kks-explorer/backups",
+  "offline_days": 7
+}

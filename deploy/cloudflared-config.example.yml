@@ -1,0 +1,17 @@
+# /etc/cloudflared/config.yml — Cloudflare Tunnel for KKS Explorer. See docs/REMOTE_ACCESS.md.
+# The tunnel only connects outward (to Cloudflare, port 7844); nothing listens on the internet.
+tunnel: TUNNEL-UUID                                   # from `cloudflared tunnel create kks`
+credentials-file: /etc/cloudflared/TUNNEL-UUID.json
+
+ingress:
+  - hostname: kks.example.com                         # must match public_url in the app's config.json
+    service: http://127.0.0.1:8420                    # the app listens on loopback only
+    originRequest:
+      # cloudflared itself refuses any request without a valid Cloudflare Access token for this application,
+      # so a mistake in the Access policy in the dashboard can't expose the app. Keep this block.
+      access:
+        required: true
+        teamName: YOUR-TEAM                           # YOUR-TEAM.cloudflareaccess.com
+        audTag:
+          - ACCESS-APPLICATION-AUD-TAG                # Access → Applications → KKS Explorer → Overview
+  - service: http_status:404                          # everything else

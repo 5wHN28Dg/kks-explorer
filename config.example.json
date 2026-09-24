@@ -1,0 +1,20 @@
+{
+  "_comment": "Copy to config.json and edit. Every key is optional; defaults are in server/config.py. Relative paths are relative to this file.",
+  "plant_name": "Example CCPP — HRSG",
+  "host": "0.0.0.0",
+  "port": 8420,
+  "public_url": "",
+  "data_dir": "data",
+  "db": "plant.db",
+  "photos_dir": "photos",
+  "backup_dir": "backups",
+  "tls_cert": "",
+  "tls_key": "",
+  "secure_cookies": false,
+  "session_days": 30,
+  "offline_days": 7,
+  "admins_apply_directly": true,
+  "snapshot_every": 200,
+  "snapshot_keep": 30,
+  "max_upload_mb": 15
+}
