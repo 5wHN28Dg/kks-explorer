@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plant P&amp;ID / KKS Explorer</title>
+<style>
+:root{
+  --chrome:#1c2730; --chrome2:#243440; --chrome3:#2f4352; --line:#3a5061;
+  --ink:#e9eef2; --muted:#94a6b4; --accent:#ff7a1a; --review:#f2b705; --ok:#4f9cff; --bad:#ff5a5a;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sans: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--chrome);color:var(--ink);font:14px/1.45 var(--sans)}
+button,input,select,textarea{font:inherit;color:inherit}
+#app{display:flex;flex-direction:column;height:100%}
+header{display:flex;gap:8px;align-items:center;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top,0px));background:var(--chrome2);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{font-weight:650;letter-spacing:.2px;margin-right:4px;white-space:nowrap}
+.brand small{color:var(--muted);font-weight:400}
+.search{position:relative;flex:1 1 260px;min-width:180px}
+.search input{width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--line);background:var(--chrome);font-family:var(--mono)}
+#results{position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--chrome2);border:1px solid var(--line);border-radius:6px;max-height:60vh;overflow:auto;display:none;margin-top:4px}
+.res{padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--chrome3)}
+.res:hover,.res.on{background:var(--chrome3)}
+.res .k{font-family:var(--mono);color:var(--ink)}
+.res .m{color:var(--muted);font-size:12px}
+select,.btn{padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--chrome);cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.on{border-color:var(--accent);color:var(--accent)}
+.count{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--review);color:#1c2730;font-size:12px;font-weight:700;text-align:center;margin-left:4px}
+main{position:relative;flex:1;min-height:0;overflow:hidden}
+#viewer{position:absolute;inset:0;overflow:hidden;background:#5d6b75;touch-action:none;cursor:grab}
+#viewer.drag{cursor:grabbing}
+#stage{position:absolute;left:0;top:0;transform-origin:0 0}
+#sheetimg{display:block;background:#fff;user-select:none;-webkit-user-drag:none}
+.hs{position:absolute;border-radius:3px;cursor:pointer;background:rgba(79,156,255,.07);outline:1px solid rgba(79,156,255,.0)}
+.hs:hover{background:rgba(79,156,255,.18);outline:2px solid var(--ok)}
+.hs.review{outline:2px dashed var(--review);background:rgba(242,183,5,.12)}
+.hs.sel{outline:4px solid var(--accent);background:rgba(255,122,26,.18)}
+.hs.hl{background:rgba(255,122,26,.35);outline:3px solid var(--accent)}
+.hs.floor{background:rgba(79,156,255,.35);outline:3px solid var(--ok)}
+.hs.dim{opacity:.15}
+body.hide-review .hs.review{display:none}
+.zoom{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;z-index:5}
+.zoom button{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:var(--chrome2);font-size:19px;cursor:pointer}
+#banner{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:30;background:var(--accent);color:#1c2730;font-weight:600;padding:8px 12px;border-radius:6px;display:none;gap:10px;align-items:center;max-width:92%}
+#banner button{background:#1c2730;color:var(--ink);border:0;border-radius:4px;padding:4px 10px;cursor:pointer}
+#toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chrome3);padding:8px 14px;border-radius:6px;display:none;z-index:40}
+/* side drawers + equipment panel */
+.drawer{position:absolute;top:0;bottom:0;left:0;width:390px;max-width:100%;background:var(--chrome2);border-right:1px solid var(--line);z-index:20;display:none;flex-direction:column}
+.drawer.open{display:flex}
+.drawer .head{display:flex;gap:8px;align-items:center;padding:10px;border-bottom:1px solid var(--line)}
+.drawer .head h2{font-size:15px;margin:0;flex:1}
+.drawer .body{overflow:auto;flex:1;padding:6px 10px 20px}
+.x{background:none;border:0;font-size:20px;cursor:pointer;color:var(--muted);padding:0 4px}
+#panel{position:absolute;top:12px;right:12px;width:410px;max-height:calc(100% - 24px);overflow:auto;background:var(--chrome2);border:1px solid var(--line);border-radius:10px;z-index:25;display:none;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+#panel.open{display:block}
+.grip{display:none}
+.phead{position:sticky;top:0;background:var(--chrome2);padding:12px 14px 8px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:flex-start;z-index:2}
+.kks{font-family:var(--mono);font-size:21px;font-weight:600;letter-spacing:.5px;word-break:break-all}
+.kks .sfx{color:var(--accent)}
+.sub{color:var(--muted);font-size:13px}
+.sec{padding:10px 14px;border-bottom:1px solid var(--chrome3)}
+.sec h3{font-size:13px;margin:0 0 6px;color:var(--muted);font-weight:600}
+dl{display:grid;grid-template-columns:118px 1fr;gap:3px 10px;margin:0}
+dt{color:var(--muted)} dd{margin:0}
+.mono{font-family:var(--mono)}
+.chip{display:inline-block;padding:2px 8px;margin:2px 4px 2px 0;border-radius:12px;background:var(--chrome3);cursor:pointer;font-size:12.5px}
+.chip:hover{background:var(--line)}
+.chip.mono{font-family:var(--mono)}
+.field{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+.field label{font-size:12px;color:var(--muted)}
+.field input,.field textarea,.cf input{padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome);width:100%}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cf{display:grid;grid-template-columns:1fr 1.4fr 28px;gap:6px;margin-bottom:6px}
+.primary{background:var(--accent);color:#1c2730;border:0;border-radius:6px;padding:8px 14px;font-weight:650;cursor:pointer}
+.ghost{background:none;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+.warn{border-left:3px solid var(--review);padding:6px 10px;background:rgba(242,183,5,.08);margin:6px 0;border-radius:0 4px 4px 0}
+.photos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.photos figure{margin:0;position:relative}
+.photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px;cursor:zoom-in}
+.photos button{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);border:0;border-radius:3px;cursor:pointer;font-size:12px}
+.crop{height:64px;border:1px solid var(--line);border-radius:4px;background-color:#fff;background-repeat:no-repeat;margin-bottom:6px}
+.proc{padding:8px 6px;border-bottom:1px solid var(--chrome3);cursor:pointer}
+.proc:hover{background:var(--chrome3)}
+.proc .id{font-family:var(--mono);color:var(--muted);font-size:12px;margin-right:6px}
+.proc .path{color:var(--muted);font-size:12px}
+.chapter{margin:14px 0 4px;color:var(--accent);font-size:13px;font-weight:600}
+.step{padding:8px 0;border-bottom:1px solid var(--chrome3)}
+.step .n{font-family:var(--mono);color:var(--accent);margin-right:6px}
+.revitem{padding:8px 0;border-bottom:1px solid var(--chrome3);cursor:pointer}
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:100}
+#lightbox img{max-width:96%;max-height:92%}
+@media (max-width:720px){
+  .brand small{display:none}
+  header{gap:6px}
+  #panel{top:auto;bottom:0;left:0;right:0;width:auto;max-height:72%;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
+  .grip{display:block;width:44px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 0}
+  .drawer{width:100%}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="brand">KKS Explorer <small>· HRSG P&amp;IDs</small></div>
+  <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false"><div id="results"></div></div>
+  <select id="sheetSel" title="Drawing"></select>
+  <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
+  <button class="btn" id="procBtn">Procedures</button>
+  <button class="btn" id="revBtn">Review<span class="count" id="revCount">0</span></button>
+  <button class="btn" id="notesBtn">Sheet notes</button>
+</header>
+<main>
+  <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"><div id="layer"></div></div></div>
+  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button></div>
+  <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
+  <div id="toast"></div>
+  <aside class="drawer" id="procDrawer"><div class="head"><h2>Operation manual procedures</h2><button class="x" data-close="procDrawer">×</button></div>
+    <div style="padding:8px 10px 0"><input id="procQ" placeholder="Filter procedures…" style="width:100%;padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)"></div>
+    <div class="body" id="procBody"></div></aside>
+  <aside class="drawer" id="revDrawer"><div class="head"><h2>Needs review</h2><button class="x" data-close="revDrawer">×</button></div>
+    <div style="padding:8px 10px 0" class="sub">Tags the reader wasn't sure about. Check against the drawing, then confirm or mark “not a tag”. <label style="display:block;margin-top:6px"><input type="checkbox" id="hideRev"> Hide unreviewed tags on drawings</label></div>
+    <div class="body" id="revBody"></div></aside>
+  <aside class="drawer" id="notesDrawer"><div class="head"><h2>Markups on this sheet</h2><button class="x" data-close="notesDrawer">×</button></div><div class="body" id="notesBody"></div></aside>
+  <aside id="panel"><div class="grip"></div><div id="panelBody"></div></aside>
+</main>
+</div>
+<div id="lightbox"><img id="lbimg" alt=""></div>
+<script>
+const $=s=>document.querySelector(s);
+let SHEETS=[],TAGS=[],PROCS=[],KKS={},STATE={equipment:{},reviews:{},photos:[],links:[]};
+let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='';
+const api=(u,b)=>fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{}).then(r=>r.json());
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2200)}
+
+// effective tag = extracted tag + your review decision
+function eff(t){
+  const r=STATE.reviews[t.id];
+  if(r){ if(r.status==='rejected') return null; return {...t,kks:r.kks,isa:r.isa||null,suffix:r.suffix||'',status:'confirmed'} }
+  if(t.status==='review') return {...t,kks:t.kks||null};
+  return t;
+}
+const full=t=>(t.kks||'')+(t.suffix||'');
+const tagsOf=sid=>TAGS.filter(t=>t.sheet===sid).map(eff).filter(Boolean);
+const eq=k=>STATE.equipment[k]||{};
+
+async function load(){
+  [SHEETS,TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>r.json())));
+  STATE=await api('/api/state');
+  $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  refreshFloors(); refreshReviewCount(); renderProcs();
+  const saved=localStorage.getItem('sheet'); openSheet(SHEETS.find(s=>s.id===saved)?saved:SHEETS[0].id);
+}
+
+// ---------- viewer ----------
+function openSheet(id,then){
+  cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
+  const img=$('#sheetimg'); img.onload=()=>{ fit(); drawTags(); then&&then(); }; img.src=cur.file;
+  img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
+  renderNotes();
+}
+function apply(){ $('#stage').style.transform=`translate(${view.x}px,${view.y}px) scale(${view.s})` }
+function fit(){ const v=$('#viewer').getBoundingClientRect(); view.s=Math.min(v.width/cur.w,v.height/cur.h)*0.98; view.x=(v.width-cur.w*view.s)/2; view.y=(v.height-cur.h*view.s)/2; apply() }
+function zoomAt(f,cx,cy){ const v=$('#viewer').getBoundingClientRect(); cx??=v.width/2; cy??=v.height/2;
+  const ns=Math.max(0.05,Math.min(4,view.s*f)); view.x=cx-(cx-view.x)*ns/view.s; view.y=cy-(cy-view.y)*ns/view.s; view.s=ns; apply() }
+function centerOn(b,scale=0.9){ const v=$('#viewer').getBoundingClientRect(); view.s=scale;
+  const mobile=innerWidth<=720, pw=mobile?0:430, ph=mobile?v.height*0.62:0;
+  view.x=(v.width-pw)/2-((b[0]+b[2])/2)*view.s; view.y=(v.height-ph)/2-((b[1]+b[3])/2)*view.s; apply() }
+$('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfit').onclick=fit;
+(function pan(){
+  const el=$('#viewer'), pts=new Map(); let last=null, pinch=null, moved=false;
+  el.addEventListener('wheel',e=>{e.preventDefault(); const r=el.getBoundingClientRect(); zoomAt(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top)},{passive:false});
+  el.addEventListener('pointerdown',e=>{ pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); moved=false;
+    if(pts.size===1){last={x:e.clientX,y:e.clientY}; el.classList.add('drag')}
+    if(pts.size===2){const [a,b]=[...pts.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y)}} });
+  el.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId))return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===2&&pinch){const [a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y),r=el.getBoundingClientRect();
+      zoomAt(d/pinch.d,(a.x+b.x)/2-r.left,(a.y+b.y)/2-r.top); pinch.d=d; moved=true; return}
+    if(last){const dx=e.clientX-last.x,dy=e.clientY-last.y; if(Math.abs(dx)+Math.abs(dy)>3)moved=true; view.x+=dx; view.y+=dy; last={x:e.clientX,y:e.clientY}; apply()} });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2)pinch=null; if(!pts.size){last=null; el.classList.remove('drag')} };
+  el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
+  el.addEventListener('click',e=>{ if(moved){e.stopPropagation();e.preventDefault()} },true);
+})();
+
+function drawTags(){
+  const L=$('#layer'); L.innerHTML='';
+  const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
+  for(const t of tagsOf(cur.id)){
+    const d=document.createElement('div'), b=t.bbox, k=full(t);
+    d.className='hs'+(t.status==='review'?' review':'')+(t.id===selId?' sel':'')+(k&&hl.has(k)?' hl':'');
+    if(floor){ const f=(eq(k).floor||'').trim(); d.classList.add(f.toLowerCase()===floor.toLowerCase()?'floor':'dim') }
+    d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`;
+    d.title=k||'unreadable tag'; d.onclick=e=>{e.stopPropagation(); tagClick(t)}; L.appendChild(d);
+  }
+}
+function tagClick(t){
+  if(linkTarget){
+    const k=full(t); if(!k){toast('This tag has no KKS yet — review it first');return}
+    api('/api/links',{proc:linkTarget.proc,step:linkTarget.step,kks:k}).then(async()=>{STATE=await api('/api/state'); toast(`Linked ${k} to step ${linkTarget.step}`); drawTags(); renderProcDetail(linkTarget.proc)});
+    return;
+  }
+  select(t);
+}
+function goTo(tagId){
+  const t=TAGS.find(x=>x.id===tagId); if(!t)return;
+  const go=()=>{ const e=eff(t)||t; centerOn(e.bbox); select(e) };
+  if(cur.id!==t.sheet) openSheet(t.sheet,go); else go();
+}
+
+// ---------- KKS decoding ----------
+function decode(t){
+  const k=t.kks||''; const m=k.match(/^(\d{2})([A-Z]{3})(\d{2})([A-Z]{2})(\d{3})$/); if(!m) return null;
+  const [,blk,sys,fn,comp,num]=m;
+  let isa='';
+  if(t.isa){ let s=t.isa, first=s.startsWith('PD')?'PD':s[0], rest=s.slice(first.length);
+    isa=(KKS.isa_first[first]||first)+' — '+[...rest].map(c=>KKS.isa_next[c]||c).join(', '); }
+  return {blk,sys,fn,comp,num,isa};
+}
+function kindName(t){ const d=decode(t); if(!d) return t.kind; return KKS.components[d.comp]||('Component code '+d.comp) }
+
+// ---------- equipment panel ----------
+function select(t){
+  selId=t.id; drawTags();
+  const k=full(t), d=decode(t), e=eq(k), P=$('#panelBody');
+  const where=TAGS.map(eff).filter(x=>x&&full(x)===k&&k).map(x=>x);
+  const procs=[...new Set(STATE.links.filter(l=>l.kks===k).map(l=>l.proc))];
+  const photos=STATE.photos.filter(p=>p.kks===k);
+  const sheetName=id=>SHEETS.find(s=>s.id===id)?.name||id;
+  let h=`<div class="phead"><div style="flex:1"><div class="kks">${k?esc(t.kks)+(t.suffix?`<span class="sfx">${esc(t.suffix)}</span>`:''):'<span style="color:var(--review)">Unread tag</span>'}</div>
+    <div class="sub">${esc(t.isa?t.isa+' · ':'')}${esc(kindName(t))}</div></div><button class="x" onclick="closePanel()">×</button></div>`;
+  if(t.status==='review'){
+    const s=t.suggestion||{};
+    h+=`<div class="sec"><h3>Check this tag</h3>
+      <div class="crop" style="${cropStyle(t)}"></div>
+      <div class="sub">Reader saw: <span class="mono">${esc(t.read[0])} / ${esc(t.read[1])}</span> · confidence ${Math.round(t.conf*100)}%</div>
+      ${t.note?`<div class="warn">${esc(t.note)}</div>`:''}${s.note?`<div class="warn">${esc(s.note)}</div>`:''}
+      <div class="row2" style="margin-top:8px"><div class="field"><label>KKS (with suffix)</label><input id="rvK" class="mono" value="${esc((s.kks)||((t.kks||'')+(t.suffix||'')))}"></div>
+      <div class="field"><label>Function letters (instruments)</label><input id="rvI" class="mono" value="${esc(s.isa||t.isa||'')}"></div></div>
+      <button class="primary" onclick="review('${t.id}','confirmed')">Confirm</button> <button class="ghost" onclick="review('${t.id}','rejected')">Not a tag</button>
+      ${s.kks?'<div class="sub" style="margin-top:6px">Pre-filled value was checked visually during extraction.</div>':''}</div>`;
+  }
+  if(d){
+    h+=`<div class="sec"><h3>From the drawing</h3><dl>
+      <dt>Plant unit</dt><dd><span class="mono">${d.blk}</span> ${esc(KKS.blocks[d.blk]||'')}</dd>
+      <dt>System</dt><dd><span class="mono">${d.sys}</span> ${esc(KKS.systems[d.sys]||'not in legend')}</dd>
+      <dt>Subsystem no.</dt><dd class="mono">${d.fn}</dd>
+      <dt>Component</dt><dd><span class="mono">${d.comp}</span> ${esc(KKS.components[d.comp]||'')}</dd>
+      <dt>Number</dt><dd class="mono">${d.num}</dd>
+      ${d.isa?`<dt>Instrument</dt><dd>${esc(d.isa)}</dd>`:''}
+      <dt>Reading</dt><dd>${t.status==='confirmed'?'confirmed by you':t.status==='verified'?'checked by eye against the drawing':'automatic, '+Math.round(t.conf*100)+'% confidence'}</dd>
+      ${t.flag?`<dt>Flag</dt><dd style="color:var(--review)">${esc(t.flag)}</dd>`:''}
+    </dl></div>`;
+  }
+  if(where.length){
+    h+=`<div class="sec"><h3>Appears on</h3>${where.map(x=>`<span class="chip" onclick="goTo('${x.id}')">${esc(sheetName(x.sheet))}</span>`).join('')}</div>`;
+  }
+  if(procs.length){
+    h+=`<div class="sec"><h3>Used in procedures</h3>${procs.map(p=>{const pr=PROCS.find(x=>x.id===p);return `<span class="chip" onclick="openProc('${p}')">${esc(p)} ${esc(pr?pr.title:'')}</span>`}).join('')}</div>`;
+  }
+  if(k){
+    const cf=e.custom||[];
+    h+=`<div class="sec"><h3>Location</h3>
+      <div class="row2"><div class="field"><label>Building / area</label><input id="f_area" value="${esc(e.area||'')}"></div>
+      <div class="field"><label>Floor</label><input id="f_floor" list="floors" value="${esc(e.floor||'')}" placeholder="e.g. Ground, 0 m, +7.5 m"></div></div>
+      <div class="row2"><div class="field"><label>Elevation / level</label><input id="f_elev" value="${esc(e.elev||'')}"></div>
+      <div class="field"><label>Near / landmark</label><input id="f_near" value="${esc(e.near||'')}"></div></div>
+      <div class="field"><label>How to find it</label><textarea id="f_loc" rows="2">${esc(e.loc||'')}</textarea></div></div>
+      <div class="sec"><h3>Notes & custom fields</h3>
+      <div class="field"><textarea id="f_notes" rows="2" placeholder="Anything worth remembering">${esc(e.notes||'')}</textarea></div>
+      <div id="cfs">${cf.map((c,i)=>cfRow(c.k,c.v)).join('')}</div>
+      <button class="ghost" onclick="document.getElementById('cfs').insertAdjacentHTML('beforeend',cfRow('',''))">+ Custom field</button>
+      <div style="margin-top:10px"><button class="primary" onclick="saveEq('${k}')">Save</button></div></div>
+      <div class="sec"><h3>Photos</h3><div class="photos">${photos.map(p=>`<figure><img src="photos/${p.file}" onclick="lightbox(this.src)" alt=""><button onclick="delPhoto('${p.id}','${t.id}')">✕</button></figure>`).join('')}</div>
+      <label class="ghost" style="display:inline-block;margin-top:8px;cursor:pointer">+ Add photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'${k}','${t.id}')"></label></div>`;
+  }
+  P.innerHTML=h; $('#panel').classList.add('open'); $('#panel').scrollTop=0;
+}
+function cfRow(k,v){return `<div class="cf"><input placeholder="Field" value="${esc(k)}"><input placeholder="Value" value="${esc(v)}"><button class="x" onclick="this.parentNode.remove()">×</button></div>`}
+function closePanel(){ $('#panel').classList.remove('open'); selId=null; drawTags() }
+function cropStyle(t){ const b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
+  return `background-image:url(${SHEETS.find(s=>s.id===t.sheet).file});background-size:${SHEETS.find(s=>s.id===t.sheet).w*sc}px auto;background-position:${-(b[0]-10)*sc}px ${-(b[1]-10)*sc}px;width:${Math.min(360,w*sc)}px` }
+async function saveEq(k){
+  const v=id=>document.getElementById(id).value.trim();
+  const custom=[...document.querySelectorAll('#cfs .cf')].map(r=>({k:r.children[0].value.trim(),v:r.children[1].value.trim()})).filter(c=>c.k||c.v);
+  await api('/api/equipment/'+encodeURIComponent(k),{area:v('f_area'),floor:v('f_floor'),elev:v('f_elev'),near:v('f_near'),loc:v('f_loc'),notes:v('f_notes'),custom});
+  STATE=await api('/api/state'); refreshFloors(); drawTags(); toast('Saved '+k);
+}
+async function review(id,status){
+  const kv=($('#rvK')?.value||'').trim().toUpperCase().replace(/\s/g,''), iv=($('#rvI')?.value||'').trim().toUpperCase();
+  let d={status};
+  if(status==='confirmed'){ const m=kv.match(/^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]*)$/); if(!m){toast('That is not a valid KKS (e.g. 11LAB70AA501)');return}
+    d={status,kks:m[1],suffix:m[2],isa:iv||null} }
+  await api('/api/review/'+encodeURIComponent(id),d); STATE=await api('/api/state'); refreshReviewCount(); renderReview();
+  const t=TAGS.find(x=>x.id===id); if(status==='confirmed') select(eff(t)); else closePanel(); drawTags(); toast(status==='confirmed'?'Confirmed':'Removed');
+}
+function addPhoto(input,k,tid){
+  const f=input.files[0]; if(!f)return; const img=new Image(), rd=new FileReader();
+  rd.onload=()=>{ img.onload=async()=>{ const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
+    c.width=img.width*s; c.height=img.height*s; c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    await api('/api/photos/'+encodeURIComponent(k),{dataUrl:c.toDataURL('image/jpeg',0.85)}); STATE=await api('/api/state');
+    select(eff(TAGS.find(x=>x.id===tid))); toast('Photo added') }; img.src=rd.result };
+  rd.readAsDataURL(f);
+}
+async function delPhoto(pid,tid){ if(!confirm('Delete this photo?'))return; await api('/api/photos-delete/'+pid,{}); STATE=await api('/api/state'); select(eff(TAGS.find(x=>x.id===tid))) }
+function lightbox(src){ $('#lbimg').src=src; $('#lightbox').style.display='flex' }
+$('#lightbox').onclick=()=>$('#lightbox').style.display='none';
+
+// ---------- search ----------
+let hits=[],hi=0;
+$('#q').addEventListener('input',()=>{
+  const q=$('#q').value.trim().toUpperCase().replace(/\s+/g,''), qr=$('#q').value.trim().toLowerCase(), R=$('#results');
+  if(q.length<2){R.style.display='none';return}
+  const seen=new Set(); hits=[];
+  for(const t0 of TAGS){ const t=eff(t0); if(!t)continue; const k=full(t); const e=eq(k);
+    const text=[e.area,e.floor,e.loc,e.near,e.notes,...(e.custom||[]).map(c=>c.k+' '+c.v)].join(' ').toLowerCase();
+    let score=0;
+    if(k&&k===q)score=100; else if(k&&k.startsWith(q))score=80; else if(k&&k.includes(q))score=60; else if(t.isa&&t.isa===q)score=30; else if(qr.length>2&&text.includes(qr))score=40;
+    if(!score&&t.status==='review'&&(t.read.join('').includes(q)))score=10;
+    if(score){ hits.push({t,score,k}) } }
+  hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
+  const sn=id=>SHEETS.find(s=>s.id===id).name;
+  R.innerHTML=hits.length?hits.map((h,i)=>{const e=eq(h.k);return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.k||h.t.read.join(' / '))}${h.t.isa?' <span class="m">'+esc(h.t.isa)+'</span>':''}${h.t.status==='review'?' <span class="m" style="color:var(--review)">unverified</span>':''}</div><div class="m">${esc(sn(h.t.sheet))} · ${esc(kindName(h.t))}${e.floor?' · floor '+esc(e.floor):''}${e.area?' · '+esc(e.area):''}</div></div>`}).join(''):'<div class="res m">No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.</div>';
+  R.style.display='block';
+});
+$('#q').addEventListener('keydown',e=>{ const R=$('#results');
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ hi=Math.max(0,Math.min(hits.length-1,hi+(e.key==='ArrowDown'?1:-1))); [...R.children].forEach((c,i)=>c.classList.toggle('on',i===hi)); e.preventDefault() }
+  if(e.key==='Enter'&&hits.length) pick(hi); if(e.key==='Escape') R.style.display='none'; });
+function pick(i){ $('#results').style.display='none'; $('#q').blur(); goTo(hits[i].t.id) }
+document.addEventListener('click',e=>{ if(!e.target.closest('.search')) $('#results').style.display='none' });
+
+// ---------- floors ----------
+function refreshFloors(){
+  const fl=[...new Set(Object.values(STATE.equipment).map(e=>(e.floor||'').trim()).filter(Boolean))].sort();
+  $('#floorSel').innerHTML='<option value="">All floors</option>'+fl.map(f=>`<option ${f===floor?'selected':''}>${esc(f)}</option>`).join('');
+  let dl=$('#floors'); if(!dl){dl=document.createElement('datalist');dl.id='floors';document.body.appendChild(dl)} dl.innerHTML=fl.map(f=>`<option value="${esc(f)}">`).join('');
+}
+$('#floorSel').onchange=e=>{ floor=e.target.value; drawTags();
+  if(floor){ const n=TAGS.map(eff).filter(t=>t&&(eq(full(t)).floor||'').trim().toLowerCase()===floor.toLowerCase()); const here=n.filter(t=>t.sheet===cur.id).length;
+    toast(`${n.length} tagged on “${floor}” (${here} on this sheet)`) } };
+
+// ---------- procedures ----------
+function renderProcs(){
+  const q=$('#procQ').value.trim().toLowerCase(); let last='', h='';
+  for(const p of PROCS){
+    const txt=(p.id+' '+p.title+' '+p.path.join(' ')+' '+p.steps.map(s=>s.text).join(' ')).toLowerCase(); if(q&&!txt.includes(q))continue;
+    const ch=p.path[0]||p.title; if(ch!==last){h+=`<div class="chapter">${esc(ch)}</div>`; last=ch}
+    const n=STATE.links.filter(l=>l.proc===p.id).length;
+    h+=`<div class="proc" onclick="openProc('${p.id}')"><span class="id">${esc(p.id)}</span>${esc(p.title)} <span class="path">· ${p.steps.length} steps${n?` · ${n} linked`:''}</span></div>`;
+  }
+  $('#procBody').innerHTML=h||'<div class="sub">No procedure matches.</div>';
+}
+$('#procQ').oninput=renderProcs;
+function openProc(id){ openDrawer('procDrawer'); activeProc=id; renderProcDetail(id); drawTags() }
+function renderProcDetail(id){
+  const p=PROCS.find(x=>x.id===id); const L=STATE.links.filter(l=>l.proc===id);
+  const byKks=k=>TAGS.map(eff).filter(t=>t&&full(t)===k);
+  const counts={}; for(const l of L) for(const t of byKks(l.kks)) counts[t.sheet]=(counts[t.sheet]||0)+1;
+  let h=`<button class="ghost" onclick="activeProc=null;renderProcs();drawTags()">← All procedures</button>
+    <h3 style="margin:12px 0 2px">${esc(p.id)} ${esc(p.title)}</h3><div class="sub">${esc(p.path.join(' › '))} · manual page ${p.page}</div>`;
+  if(Object.keys(counts).length) h+=`<div style="margin:8px 0">Linked equipment on: ${Object.entries(counts).map(([s,n])=>`<span class="chip" onclick="openSheet('${s}')">${esc(SHEETS.find(x=>x.id===s).name)} (${n})</span>`).join('')}</div>`;
+  else h+=`<div class="warn">No equipment linked yet. The manual names equipment by description, not KKS — tap “Link equipment” on a step, then tap the matching tags on the drawing. You do this once per step.</div>`;
+  for(const s of p.steps){
+    const ls=L.filter(l=>l.step===s.n);
+    h+=`<div class="step"><span class="n">${s.n})</span>${esc(s.text)}<div style="margin-top:5px">${ls.map(l=>{const t=byKks(l.kks)[0];return `<span class="chip mono" onclick="${t?`goTo('${t.id}')`:''}">${esc(l.kks)}</span><button class="x" style="font-size:14px" title="Unlink" onclick="unlink('${id}',${s.n},'${l.kks}')">×</button>`}).join('')}
+      <button class="ghost" style="font-size:12.5px;padding:3px 8px" onclick="startLink('${id}',${s.n})">+ Link equipment</button></div></div>`;
+  }
+  $('#procBody').innerHTML=h;
+}
+function startLink(proc,step){ linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
+  if(innerWidth<=720) $('#procDrawer').classList.remove('open') }
+$('#bannerDone').onclick=()=>{ const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
+async function unlink(proc,step,kks){ await api('/api/links/delete',{proc,step,kks}); STATE=await api('/api/state'); renderProcDetail(proc); drawTags() }
+
+// ---------- review queue ----------
+function pending(){ return TAGS.filter(t=>t.status==='review'&&!STATE.reviews[t.id]) }
+function refreshReviewCount(){ $('#revCount').textContent=pending().length }
+function renderReview(){
+  const P=pending(), sn=id=>SHEETS.find(s=>s.id===id).name; let h='', last='';
+  const sorted=[...P].sort((a,b)=>(a.sheet===cur.id?0:1)-(b.sheet===cur.id?0:1)||a.sheet.localeCompare(b.sheet)||(b.suggestion?1:0)-(a.suggestion?1:0));
+  for(const t of sorted.slice(0,250)){ if(t.sheet!==last){h+=`<div class="chapter">${esc(sn(t.sheet))} (${P.filter(x=>x.sheet===t.sheet).length})</div>`; last=t.sheet}
+    h+=`<div class="revitem" onclick="goTo('${t.id}')"><div class="crop" style="${cropStyle(t)}"></div><span class="mono">${esc(t.read[0])} / ${esc(t.read[1])}</span>${t.suggestion?` → <span class="mono" style="color:var(--accent)">${esc(t.suggestion.kks)}</span>`:''}</div>` }
+  $('#revBody').innerHTML=h||'<div class="sub">Nothing left to review.</div>';
+}
+$('#hideRev').onchange=e=>document.body.classList.toggle('hide-review',e.target.checked);
+
+// ---------- notes ----------
+function renderNotes(){ const n=cur.notes||[]; $('#notesBody').innerHTML=n.length?'<div class="sub">Text added to this PDF by markup (not part of the CAD drawing).</div>'+n.map(x=>`<div class="step">${esc(x)}</div>`).join(''):'<div class="sub">No markups on this sheet.</div>' }
+
+// ---------- drawers ----------
+function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id)) }
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ $('#'+b.dataset.close).classList.remove('open'); if(b.dataset.close==='procDrawer'){activeProc=null;drawTags()} });
+$('#procBtn').onclick=()=>{ if($('#procDrawer').classList.contains('open')){$('#procDrawer').classList.remove('open');activeProc=null;drawTags()} else {openDrawer('procDrawer'); activeProc?renderProcDetail(activeProc):renderProcs()} };
+$('#revBtn').onclick=()=>{ if($('#revDrawer').classList.contains('open'))$('#revDrawer').classList.remove('open'); else {openDrawer('revDrawer'); renderReview()} };
+$('#notesBtn').onclick=()=>{ if($('#notesDrawer').classList.contains('open'))$('#notesDrawer').classList.remove('open'); else openDrawer('notesDrawer') };
+$('#sheetSel').onchange=e=>{ closePanel(); openSheet(e.target.value) };
+addEventListener('resize',()=>{});
+load();
+</script>
+</body>
+</html>

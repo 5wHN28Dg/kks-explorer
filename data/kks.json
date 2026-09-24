@@ -1,0 +1,20 @@
+{
+ "systems": {
+  "LAA":"Deaerator (deoxidation) system","LAB":"Feed water piping system","LBA":"Main steam piping system","LBB":"HT (hot) reheat piping system",
+  "LBC":"LT (cold) reheat piping system","LBG":"Auxiliary steam piping system","LCA":"Main condensate piping system","LCC":"Condensate heating system",
+  "HAC":"Economizer system","LCQ":"Boiler blowdown system","QCA":"Hydrazine supply system","QCC":"Phosphate supply system","QCD":"Ammonia supply system",
+  "QJF":"Nitrogen protection system","QUA":"Sampling system for feedwater","QUB":"Sampling system for steam","HAH":"Superheater (SH) system",
+  "HAJ":"Reheater (RH) system","HAD":"Evaporator (EVP) system","HAN":"Pressure system draining & venting","HNA":"Gas duct system","HNE":"Stack system",
+  "LAW":"Closed cycle cooling water system","LAX":"Industrial cooling water system","LAE":"HP spray desuperheating system","LAF":"IP spray desuperheating system",
+  "MAA":"HP turbine","MAB":"IP turbine","MAC":"LP turbine","MAP":"LP turbine bypass"
+ },
+ "systems_source": "System-code legend printed on the P&IDs; MAA/MAB/MAC/MAP from Block 1 steam piping notes.",
+ "components": {
+  "AA":"Valve / damper (incl. actuator)","AB":"Isolating element","AC":"Heat exchanger","AP":"Pump","AT":"Cleaning / filtering / separation equipment",
+  "BB":"Vessel / tank","BR":"Piping / duct section","HA":"Main machine assembly (turbine casing)",
+  "CF":"Flow measurement","CL":"Level measurement","CP":"Pressure measurement","CT":"Temperature measurement","CQ":"Analysis measurement","CG":"Position measurement","CE":"Electrical measurement"
+ },
+ "isa_first": {"P":"Pressure","PD":"Differential pressure","T":"Temperature","F":"Flow","L":"Level","A":"Analysis","G":"Gauging / position"},
+ "isa_next": {"I":"Indicate","A":"Alarm","C":"Control","S":"Switch","T":"Transmit","R":"Record","Q":"Totalize","E":"Element"},
+ "blocks": {"11":"Block 1, HRSG #1","12":"Block 1, HRSG #2","21":"Block 2, HRSG #1","22":"Block 2, HRSG #2","23":"Block 2, HRSG #3","10":"Block 1, common (STG)"}
+}
