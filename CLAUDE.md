@@ -118,6 +118,13 @@ Lessons (don't repeat):
 - `data/` (P&IDs etc.) is still committed in this repo. The repo is private, but for sharing the app with other plants
   the plant data should move out of the repo (`data_dir` in config.json) and history be cleaned.
 
+## Plan B (no company server)
+
+`docs/PLAN_B_P2P.md`: design notes only, not built. The app hasn't been presented to the company yet (2026-09-25);
+if hosting is refused and no money goes to a server/domain: B0 intermittent laptop server (works today, needs own-CA
+HTTPS for phones), B1 file export/import sync, B2 full P2P (signed per-author logs, manager root key, LAN/Syncthing).
+Section 0 there: first find out whether the "no" is about hosting or about plant data on personal devices.
+
 ## Backlog (rough priority)
 
 1. Fix dropped suffix letters on instrument bubbles.
