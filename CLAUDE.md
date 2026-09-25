@@ -15,7 +15,17 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - Tests: `python3 -m unittest discover -s tests` (server end-to-end over HTTP). The UI was verified with Playwright
   in a throwaway venv (not committed): setup, invite, user proposal, offline queue + offline reload via the service
   worker, sync, approve/pick/force, revert, lease expiry, deactivation wipe.
-- `python3 import_sheet.py drawing.pdf "Name" [id]` adds a sheet. Needs `pymupdf opencv-python-headless numpy`.
+- Adding sheets: `python3 app.py setup-importer` once (creates `.venv` from `requirements-import.txt`; the server stays
+  stdlib and runs the importer as a subprocess with `.venv`'s python, or `import_python` in config). Then Manage →
+  Drawings (upload, live log, preview, re-import with rotation, remove) or
+  `.venv/bin/python import_sheet.py drawing.pdf "Name" [id] [--rotate …] [--replace] [--data-dir D]`.
+  `server/sheets.py`: one job at a time; backs up sheets.json/tags.json (+ the sheet image) to
+  `backups/sheets-<time>-<why>-<id>/` and restores them on failure; uploaded PDFs kept in `backups/sheet-sources/`.
+  Sheet changes are logged in revisions as entity `sheet` (log only, not revertible). Sheet image URLs carry `?v=`
+  so re-imports bypass the service worker's cache-first image cache.
+  Auto rotation: text-line score picks among 0/90/180/270; if <25% of found tags auto-read, retry +180° and keep the
+  better (upside-down text reads as garbage: Reheat forced to 270° read 0/101, at 90° 73/141). Verified: fresh LP
+  import reproduces all 188 unique auto KKS of the existing LP sheet exactly.
 
 ## Layout
 
@@ -75,27 +85,43 @@ glyphs split into several paths, box edges are zero-height paths. Pipeline:
    with most horizontal text lines. Score can't reliably tell upright from upside-down → check visually for new sheets.
 2. Detect tag containers (`reader2.detect`): render 200 dpi, contour holes = box halves / instrument-bubble halves; pair
    stacked cells. Threshold <215 (thin line weights) and size window H 4–24pt, W 15–110pt (Block 1 sheets use bigger text).
-3. Read each half (`reader3`): re-render at 600 dpi, trim border blobs with the contour mask, split characters by column
+2. Read each half (`reader3`): re-render at 600 dpi, trim border blobs with the contour mask, split characters by column
    projection (wide blobs split at ink minima), classify each glyph by kNN against `fontlib.pkl`, then family rules
    C/G (lower-right ink), B/8 (left edge straight), 0/D/Q (tail + straight left edge).
-4. KKS grammar (`fontlib.interpret`): `DDLLLDD` over `LLDDD[L]` = equipment; ISA letters over `DDLLLDDLLDDD[suffix]` =
+3. KKS grammar (`fontlib.interpret`): `DDLLLDD` over `LLDDD[L]` = equipment; ISA letters over `DDLLLDDLLDDD[suffix]` =
    instrument. I→1 / O→0 only in digit slots (KKS never uses letters I or O). Confidence = min char confidence.
-5. Second pass for open-ended instrument bubbles: long vector text lines not inside a container, read with the same reader.
+4. Second pass for open-ended instrument bubbles: long vector text lines not inside a container, read with the same reader.
 
 Lessons (don't repeat):
 
 - Tesseract/general OCR on this condensed SHX font produced confident wrong KKS after grammar coercion. Removed entirely.
 - Per-glyph geometric rules tuned on one font break another (a mid-height 0/8 rule turned Q→B, then B→D, 0→8).
   Prefer adding labeled samples to the library over new rules. Always re-check the LP sheet after any reader change:
-  it has a fully verified reference (1 known error: dropped `R` suffix on 11HAD70CT101R).
+  it has a verified reference, but that reference was itself wrong about suffixes (see Accuracy status).
+- Test reader changes with a harness that pins the OLD behaviour in the script itself; importing the edited module as
+  "old" silently compares new with new (happened once, 2026-09-25). Compare every tag cell old vs new on all sheets
+  and look at every changed crop.
 
 ## Accuracy status
 
+- Dropped suffix letters FIXED 2026-09-25 (`reader3.cell_image`: mask = convex hull of the cell contour; a letter touching
+  the border was part of the outline blob, so the traced hole cut it out). Regression over all 11 sheets: 146 cell
+  readings changed, 97 confident ones gained a suffix (R/K/A), 24 became readable (mostly a leading 1 against a box
+  edge), 0 confident readings got worse. Applied to existing sheets with `tools/reread_tags.py` (keeps ids and
+  hand-verified tags): 70 suffixes added (LP 6, IP 8, HP 7, FW 32, RH 6, flue 11) + 2 stored `I` suffixes corrected
+  to K (ip:154, rh:42). The LP "verified reference" had only 11HAD70CT101R; in fact CT101–106 all carry R.
+- Remaining known reader weaknesses: C/G at full confidence (hp:95 reads 11HAD90GT108K; stored value hand-verified),
+  M/H and 2/8 at low confidence (b1cond), last digit of panel bubbles squeezed against the arc (conf 0 → review).
 - LP sheet: 189 auto tags, 1 wrong (suffix). Verified reference existed in the original workspace.
 - Other sheets: not fully verified. Spot check of 40 auto tags on HP found 1 error (11LAE92 read as 11LAE90; fixed).
   Bold font confusions to watch: B/E, 0/2, 0/8.
-- Review queue triaged by eye: 448 non-tags removed, 144 verified, 1 left (HP sheet, LI 11HAD90CL50?, last digit unclear).
-- Known bug: suffix letters (R, K) touching a bubble's arc can be dropped silently.
+- Review queue triaged by eye: 448 non-tags removed, 144 verified; hp:ob1305 = LI 11HAD90CL501 (2026-09-25).
+  Review queue is empty across all sheets as of 2026-09-25.
+- b1cond (Block 1 condensate, added 2026-09-25, re-imported after the suffix fix): 79 review tags triaged by eye
+  (61 verified, 18 non-tags removed: title-block cells, "DESUPERHEAT WATER"); all 27 auto tags with conf < 0.7 checked
+  by eye (2 wrong: 10HAC05AA151→10MAC05AA151, 10LCE18AA101→10LCE12AA101); a random 30 of the rest were all right.
+  Two boxes are printed with the lines swapped (10MAW80AC001, 10LCE18AA003). Undecoded codes there: systems LCW,
+  MAL, MAW, LEA; components GH, GF (no document defines them yet).
 - Flue Gas and Intermittent/CBD sheets extract poorly (unusual layouts, open bubbles).
 
 ## Findings on the drawings (flagged in app)
@@ -113,8 +139,7 @@ Lessons (don't repeat):
 - Offline copies can't be revoked from a device that never reconnects (lease only locks the UI; data isn't encrypted,
   since the key would sit on the same device).
 - Rejected/withdrawn photo files stay in `photos/` (no cleanup command yet).
-- Sheet images are cached cache-first by the service worker; a re-rendered sheet with the same filename isn't picked
-  up until logout (or a new filename).
+- Sheets imported before 2026-09-25 have image URLs without `?v=`; re-importing one gives it a version.
 - `data/` (P&IDs etc.) is still committed in this repo. The repo is private, but for sharing the app with other plants
   the plant data should move out of the repo (`data_dir` in config.json) and history be cleaned.
 
@@ -127,10 +152,9 @@ Section 0 there: first find out whether the "no" is about hosting or about plant
 
 ## Backlog (rough priority)
 
-1. Fix dropped suffix letters on instrument bubbles.
-2. Verify a random sample of auto tags per new sheet; build per-sheet verified references like LP.
-3. Valve type from symbols (gate/globe/check/motorized/safety) — template-match the legend symbols near each tag.
-4. Extract instrument descriptions from the FW/LP junction-box panels (English text next to each instrument).
-5. Suggest procedure→equipment links (system code + description matching), user confirms.
-6. Attach PDF markup annotations to nearby tags instead of sheet-level notes.
-7. Calibration UI in the app for new fonts (label unknown glyph clusters instead of doing it by hand).
+1. Verify a random sample of auto tags per new sheet; build per-sheet verified references like LP.
+2. Valve type from symbols (gate/globe/check/motorized/safety) — template-match the legend symbols near each tag.
+3. Extract instrument descriptions from the FW/LP junction-box panels (English text next to each instrument).
+4. Suggest procedure→equipment links (system code + description matching), user confirms.
+5. Attach PDF markup annotations to nearby tags instead of sheet-level notes.
+6. Calibration UI in the app for new fonts (label unknown glyph clusters instead of doing it by hand).

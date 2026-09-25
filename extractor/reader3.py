@@ -9,7 +9,10 @@ def cell_image(page,k,cell,orient):
     im=np.frombuffer(pix.samples,np.uint8).reshape(pix.height,pix.width).copy()
     s=DPI_READ/72
     pts=((poly-np.array([r.x0,r.y0]))*s).astype(np.int32)
-    mask=np.zeros_like(im); cv2.fillPoly(mask,[pts],255)
+    # Convex hull, not the traced contour: a character touching the border (suffix R against a bubble arc, a leading
+    # 1 against a box edge) is part of the outline blob, so the traced hole goes around it and would cut it out.
+    # Cells are convex (boxes, bubble halves), so the hull restores those notches and still excludes the outline.
+    mask=np.zeros_like(im); cv2.fillPoly(mask,[cv2.convexHull(pts)],255)
     mask=cv2.erode(mask,np.ones((3,3),np.uint8),iterations=3)
     if orient=='v': im=cv2.rotate(im,cv2.ROTATE_90_CLOCKWISE); mask=cv2.rotate(mask,cv2.ROTATE_90_CLOCKWISE)
     P=30

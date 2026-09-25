@@ -60,7 +60,9 @@ sudo cloudflared service install && sudo systemctl enable --now cloudflared
 ```bash
 sudo useradd --system --home /var/lib/kks-explorer --shell /usr/sbin/nologin kks
 sudo mkdir -p /opt/kks-explorer /etc/kks-explorer
-sudo cp -r app.py server index.html admin.html common.js sw.js manifest.webmanifest icon* /opt/kks-explorer/
+sudo cp -r app.py server index.html admin.html common.js sw.js manifest.webmanifest icon* \
+  import_sheet.py extractor requirements-import.txt /opt/kks-explorer/
+cd /opt/kks-explorer && sudo python3 app.py setup-importer && cd -   # .venv for Manage → Drawings
 sudo cp deploy/config.remote.example.json /etc/kks-explorer/config.json
 sudoedit /etc/kks-explorer/config.json           # public_url = https://kks.example.com, plant_name
 sudo cp deploy/kks-explorer.service /etc/systemd/system/

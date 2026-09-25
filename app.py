@@ -8,6 +8,7 @@
   python3 app.py backup                   take a full snapshot now
   python3 app.py restore [--seq N] [--out FILE]   rebuild the DB from backups into a NEW file
   python3 app.py check                    audit the deployment (remote access, cookies, backups); exit 1 on FAIL
+  python3 app.py setup-importer           create .venv with the P&ID importer's packages (for Manage → Drawings)
 
 The app shell (index.html, admin.html, *.js) is public. Plant data (/data, /photos, /api) needs a login."""
 import argparse, json, mimetypes, os, re, socket, ssl, time
@@ -20,6 +21,7 @@ from server.store import Store, restore
 from server.auth import Auth, hash_password, password_problem, public_user, rank
 from server import changes as ch
 from server import check as check_mod
+from server import sheets as sheets_mod
 
 BASE = config_mod.BASE
 SHELL = {'/': 'index.html', '/index.html': 'index.html', '/admin.html': 'admin.html', '/common.js': 'common.js',
@@ -35,6 +37,19 @@ class HTTPError(Exception):
 
 
 def make_handler(cfg, store, auth):
+    importer = sheets_mod.Importer(cfg)
+    importer_state = {'at': 0, 'status': None}
+
+    def importer_status():  # starting the venv's Python to check imports takes ~1 s: cache it
+        if time.time() - importer_state['at'] > 60 or not importer_state['status']['available']:
+            importer_state.update(at=time.time(), status=sheets_mod.importer_status(cfg))
+        return importer_state['status']
+
+    def log_sheet(actor_id, sid, note):  # sheet changes live in data/*.json, not the DB: log them for History only
+        with store.write():
+            store.put('revisions', {'ts': int(time.time()), 'actor': actor_id, 'entity': 'sheet', 'key': sid,
+                                    'before': None, 'after': None, 'submission_id': None, 'note': note})
+
     def link(path):
         return (cfg['public_url'] or f'http://localhost:{cfg["port"]}').rstrip('/') + path
 
@@ -134,7 +149,10 @@ def make_handler(cfg, store, auth):
             allowed = {self.headers.get('Host'), self.headers.get('X-Forwarded-Host'), urlparse(cfg['public_url']).netloc} - {None, ''}
             if origin and urlparse(origin).netloc not in allowed:
                 return self.send({'error': 'cross-origin request refused'}, 403)
-            if not (self.headers.get('Content-Type') or '').startswith('application/json'):
+            ctype = self.headers.get('Content-Type') or ''
+            if urlparse(self.path).path == '/api/sheets/import' and ctype.startswith('application/pdf'):
+                return self.handle_errors(self.post_pdf)  # raw PDF body; not a type a cross-site form can send
+            if not ctype.startswith('application/json'):
                 return self.send({'error': 'JSON only'}, 415)
             self.handle_errors(self.post)
 
@@ -206,6 +224,13 @@ def make_handler(cfg, store, auth):
                     rows = c.execute(f"SELECT * FROM submissions WHERE {where} AND (user_id=? OR (kind='photo' AND "
                                      f"status IN ('pending','conflict'))) ORDER BY id DESC LIMIT ?", (me['id'], limit))
                 return self.send({'submissions': [self.sub_out(r, me, c, live=True) for r in rows.fetchall()]})
+            if p == '/api/sheets':
+                self.need(me, 'admin')
+                return self.send({'sheets': sheets_mod.sheet_summary(cfg), 'importer': importer_status(),
+                                  'job': importer.job})
+            if p == '/api/sheets/job':
+                self.need(me, 'admin')
+                return self.send({'job': importer.job})
             if p == '/api/users':
                 self.need(me, 'admin')
                 return self.send({'users': [public_user(r) for r in c.execute('SELECT * FROM users ORDER BY role DESC, username')]})
@@ -304,6 +329,18 @@ def make_handler(cfg, store, auth):
             m = re.fullmatch(r'/api/submissions/(\d+)/(vote|withdraw|approve|reject|pick)', p)
             if m:
                 return self.submission_action(me, int(m[1]), m[2], d)
+            if p == '/api/sheets/reimport':  # same stored PDF, e.g. with a different rotation
+                self.need(me, 'admin')
+                return self.start_import(me, d.get('id'), d.get('name'), str(d.get('rotate', 'auto')), True, None)
+            m = re.fullmatch(r'/api/sheets/([a-z0-9-]+)/remove', p)
+            if m:
+                self.need(me, 'admin')
+                try:
+                    r = importer.remove(m[1])
+                except ValueError as e:
+                    raise HTTPError(400, str(e))
+                log_sheet(me['id'], m[1], f'sheet removed ({r["tags"]} tags); backup in {os.path.basename(r["backup"])}')
+                return self.send({'ok': True, **r})
             if p == '/api/users':
                 return self.create_user(me, d)
             m = re.fullmatch(r'/api/users/(\d+)(/reset)?', p)
@@ -325,6 +362,27 @@ def make_handler(cfg, store, auth):
             if p.startswith('/api/manager/'):
                 return self.manager_action(me, p.rsplit('/', 1)[1], d)
             raise HTTPError(404, 'not found')
+
+        def post_pdf(self):
+            me = self.user('admin')
+            q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+            n = int(self.headers.get('Content-Length') or 0)
+            if n > cfg['max_pdf_mb'] * 1024 * 1024:
+                raise HTTPError(413, f'PDF larger than {cfg["max_pdf_mb"]} MB (max_pdf_mb in config.json)')
+            data = self.rfile.read(n)
+            return self.start_import(me, q.get('id'), q.get('name'), q.get('rotate', 'auto'), q.get('replace') == '1', data)
+
+        def start_import(self, me, sid, name, rotate, replace, data):
+            def done(job):
+                if job['state'] == 'done':
+                    r = job['result']
+                    log_sheet(me['id'], job['sheet'], f'sheet {"re-imported" if replace else "added"}: "{r["name"]}", '
+                                                      f'{r["auto"]} tags auto-read, {r["review"]} to review, rotation {r["rotation"]}°')
+            try:
+                job = importer.start(me, (sid or '').strip(), name, rotate, replace, data, on_done=done)
+            except ValueError as e:
+                raise HTTPError(400, str(e))
+            return self.send({'ok': True, 'job': job})
 
         def log_user(self, c, actor, uid, note):
             u = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
@@ -481,7 +539,7 @@ def cli_log(store, c, uid, note):
 def main(argv=None):
     ap = argparse.ArgumentParser(description='KKS Explorer server')
     ap.add_argument('cmd', nargs='?', default='serve',
-                    choices=['serve', 'users', 'reset-manager', 'reset-password', 'backup', 'restore', 'check'])
+                    choices=['serve', 'users', 'reset-manager', 'reset-password', 'backup', 'restore', 'check', 'setup-importer'])
     ap.add_argument('--user')
     ap.add_argument('--seq', type=int)
     ap.add_argument('--out')
@@ -494,6 +552,9 @@ def main(argv=None):
               f'To use it: stop the server, move {cfg["db"]} (and its -wal/-shm files) aside, rename this file to it, start.')
         return
     os.makedirs(cfg['photos_dir'], exist_ok=True)
+    if a.cmd == 'setup-importer':
+        sheets_mod.setup_importer()
+        return
     store = Store(cfg)
     auth = Auth(store, cfg)
     if a.cmd == 'users':

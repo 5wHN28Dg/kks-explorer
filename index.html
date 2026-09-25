@@ -192,7 +192,8 @@ async function load(){
   updateQueueBadge(); setTimeout(cacheSheets,3000);
   $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   refreshFloors(); refreshReviewCount(); renderProcs();
-  const saved=localStorage.getItem('sheet'); openSheet(SHEETS.find(s=>s.id===saved)?saved:SHEETS[0].id);
+  const want=new URLSearchParams(location.search).get('sheet')||localStorage.getItem('sheet');  // ?sheet=id from Manage → Drawings
+  openSheet(SHEETS.find(s=>s.id===want)?want:SHEETS[0].id);
 }
 
 // ---------- saving: every edit is a submission (applied at once for admins, otherwise queued for approval) ----------

@@ -18,8 +18,10 @@ DEFAULTS = {
     'snapshot_every': 200,             # full DB snapshot after this many journaled writes
     'snapshot_keep': 30,
     'max_upload_mb': 15,
+    'max_pdf_mb': 80,                  # P&ID PDF upload limit (Manage → Drawings)
+    'import_python': '',               # interpreter with pymupdf/opencv/numpy; empty = .venv next to the app
 }
-PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key')
+PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python')
 
 
 def load(path=None):

@@ -37,7 +37,7 @@ class Client:
     def post(self, p, b=None, **kw): return self.req('POST', p, b if b is not None else {}, **kw)
 
 
-class ServerTest(unittest.TestCase):
+class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         data = os.path.join(self.tmp, 'data')
@@ -81,6 +81,7 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(s, 200, r)
         return u
 
+class ServerTest(Base):
     # ---------- access ----------
     def test_public_vs_private(self):
         self.assertEqual(self.anon.get('/')[0], 200)
@@ -274,3 +275,76 @@ class ServerTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+VENV_PY = None
+try:
+    from server import sheets as _sheets
+    VENV_PY = _sheets.venv_python({})
+except Exception:  # noqa: BLE001
+    pass
+
+
+@unittest.skipUnless(VENV_PY, 'importer venv not set up (python3 app.py setup-importer)')
+class SheetImportTest(Base):
+    """Manage → Drawings, using the real importer in .venv on a small generated PDF."""
+
+    def pdf(self):
+        out = os.path.join(self.tmp, 'drawing.pdf')
+        import subprocess
+        subprocess.run([VENV_PY, '-c', 'import pymupdf,sys; d=pymupdf.open(); p=d.new_page(width=842,height=595); '
+                        'p.draw_rect(pymupdf.Rect(100,100,200,140)); p.insert_text((110,125),"11LAB70AA501"); d.save(sys.argv[1])', out],
+                       check=True)
+        return open(out, 'rb').read()
+
+    def upload(self, client, data, **q):
+        from urllib.parse import urlencode
+        c = http.client.HTTPConnection('127.0.0.1', self.cfg['port'], timeout=30)
+        c.request('POST', '/api/sheets/import?' + urlencode(q), data,
+                  {'Content-Type': 'application/pdf', 'Cookie': client.cookie or ''})
+        r = c.getresponse(); body = json.loads(r.read()); c.close()
+        return r.status, body
+
+    def wait(self, client):
+        import time
+        for _ in range(240):
+            job = client.get('/api/sheets/job')[1]['job']
+            if job['state'] != 'running':
+                return job
+            time.sleep(0.5)
+        self.fail('import did not finish')
+
+    def test_import_remove_and_failure(self):
+        m = self.setup_manager()
+        u = self.invite(m, 'usr')
+        self.assertTrue(m.get('/api/sheets')[1]['importer']['available'])
+        self.assertEqual(self.upload(u, self.pdf(), id='t1', name='Test')[0], 403)
+        self.assertEqual(self.upload(m, b'not a pdf', id='t1', name='Test')[0], 400)
+        s, r = self.upload(m, self.pdf(), id='t1', name='Test sheet')
+        self.assertEqual(s, 200, r)
+        self.assertEqual(self.upload(m, self.pdf(), id='t2', name='x')[0], 400)  # one import at a time
+        job = self.wait(m)
+        self.assertEqual(job['state'], 'done', job['log'])
+        sheets = {x['id']: x for x in m.get('/data/sheets.json')[1]}
+        self.assertIn('t1', sheets)
+        self.assertEqual(m.get('/' + sheets['t1']['file'])[0], 200)  # image served (the ?v= is ignored)
+        self.assertEqual(self.upload(m, self.pdf(), id='t1', name='again')[0], 400)  # exists, replace not set
+        # a PDF the importer can't read: job fails and sheets.json/tags.json are put back exactly
+        before = (open(os.path.join(self.cfg['data_dir'], 'sheets.json')).read(),
+                  open(os.path.join(self.cfg['data_dir'], 'tags.json')).read())
+        self.assertEqual(self.upload(m, b'%PDF-1.4 garbage', id='bad', name='Bad')[0], 200)
+        self.assertEqual(self.wait(m)['state'], 'failed')
+        after = (open(os.path.join(self.cfg['data_dir'], 'sheets.json')).read(),
+                 open(os.path.join(self.cfg['data_dir'], 'tags.json')).read())
+        self.assertEqual(before, after)
+        # re-import from the stored PDF with forced rotation, then remove
+        self.assertEqual(m.post('/api/sheets/reimport', {'id': 't1', 'rotate': '180'})[0], 200)
+        job = self.wait(m)
+        self.assertEqual((job['state'], job['result']['rotation'], job['result']['name']), ('done', 180, 'Test sheet'))
+        s, r = m.post('/api/sheets/t1/remove')
+        self.assertEqual(s, 400); self.assertIn('only sheet', r['error'])  # never leave the app with no drawings
+        self.upload(m, self.pdf(), id='keep', name='Keep'); self.assertEqual(self.wait(m)['state'], 'done')
+        self.assertEqual(m.post('/api/sheets/t1/remove')[0], 200)
+        self.assertNotIn('t1', {x['id'] for x in m.get('/data/sheets.json')[1]})
+        notes = [r['note'] for r in m.get('/api/revisions')[1]['revisions'] if r['entity'] == 'sheet']
+        self.assertEqual(len(notes), 4, notes)  # t1 added, re-imported, keep added, t1 removed (failure not logged)

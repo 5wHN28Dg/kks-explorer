@@ -6,15 +6,17 @@
   "QJF":"Nitrogen protection system","QUA":"Sampling system for feedwater","QUB":"Sampling system for steam","HAH":"Superheater (SH) system",
   "HAJ":"Reheater (RH) system","HAD":"Evaporator (EVP) system","HAN":"Pressure system draining & venting","HNA":"Gas duct system","HNE":"Stack system",
   "LAW":"Closed cycle cooling water system","LAX":"Industrial cooling water system","LAE":"HP spray desuperheating system","LAF":"IP spray desuperheating system",
-  "MAA":"HP turbine","MAB":"IP turbine","MAC":"LP turbine","MAP":"LP turbine bypass"
+  "MAA":"HP turbine","MAB":"IP turbine","MAC":"LP turbine","MAP":"LP turbine bypass",
+  "LCB":"Main condensate pump system","LCE":"Condensate desuperheat spray system","LCP":"Standby condensate system","MAG":"Condensing system"
  },
- "systems_source": "System-code legend printed on the P&IDs; MAA/MAB/MAC/MAP from Block 1 steam piping notes.",
+ "systems_source": "System-code legend printed on the P&IDs; MAA/MAB/MAC/MAP from Block 1 steam piping notes; LCB/LCE/LCP/MAG from the notes on DOCUMENT (Block 1 condensate P&ID).",
  "components": {
   "AA":"Valve / damper (incl. actuator)","AB":"Isolating element","AC":"Heat exchanger","AP":"Pump","AT":"Cleaning / filtering / separation equipment",
   "BB":"Vessel / tank","BR":"Piping / duct section","HA":"Main machine assembly (turbine casing)",
-  "CF":"Flow measurement","CL":"Level measurement","CP":"Pressure measurement","CT":"Temperature measurement","CQ":"Analysis measurement","CG":"Position measurement","CE":"Electrical measurement"
+  "CF":"Flow measurement","CL":"Level measurement","CP":"Pressure measurement","CT":"Temperature measurement","CY":"Vibration measurement","CS":"Speed measurement","CQ":"Analysis measurement","CG":"Position measurement","CE":"Electrical measurement"
  },
- "isa_first": {"P":"Pressure","PD":"Differential pressure","T":"Temperature","F":"Flow","L":"Level","A":"Analysis","G":"Gauging / position"},
+ "isa_first": {"P":"Pressure","PD":"Differential pressure","T":"Temperature","F":"Flow","L":"Level","A":"Analysis","G":"Gauging / position","S":"Speed or frequency","Y":"Vibration"},
  "isa_next": {"I":"Indicate","A":"Alarm","C":"Control","S":"Switch","T":"Transmit","R":"Record","Q":"Totalize","E":"Element"},
+ "isa_source": "S, Y (first letter) and CY/CS from the Siemens Legend of Symbols A-002337-930000 sheet 6. G as a later letter (TIAG, PIAG) is not defined there.",
  "blocks": {"11":"Block 1, HRSG #1","12":"Block 1, HRSG #2","21":"Block 2, HRSG #1","22":"Block 2, HRSG #2","23":"Block 2, HRSG #3","10":"Block 1, common (STG)"}
 }

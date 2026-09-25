@@ -88,10 +88,21 @@ Field data lives in `plant.db` and `photos/`, history and backups in `backups/`.
 Updating the app later: replace everything except `plant.db`, `photos/`, `backups/` and `config.json`.
 
 ## Adding a new P&ID
+One-time setup on the server (creates `.venv` in the app folder; nothing is installed system-wide, and the server
+itself keeps running on plain `python3`):
 ```
-pip install pymupdf opencv-python-headless numpy
-python3 import_sheet.py path/to/drawing.pdf "Condensate System"
+python3 app.py setup-importer
 ```
-Works on vector PDFs plotted from AutoCAD (all of yours are). Scanned drawings won't work.
-It fixes rotation, reads tags with the character library in `extractor/fontlib.pkl`, and adds the sheet.
-Characters the library hasn't seen get low confidence and land in the review queue rather than being guessed.
+Then **Manage → Drawings** (admins): choose the PDF, check the name and id, Import. About a minute per sheet; progress
+shows live. Afterwards check the preview is upright. If not, use the re-import button (the PDF is kept, so no
+re-upload). Re-import and Remove are in the sheet list; every change backs up `sheets.json`/`tags.json` first,
+a failed import puts them back, and History logs who added or removed what.
+
+From the command line instead:
+```
+.venv/bin/python import_sheet.py path/to/drawing.pdf "Condensate System" [sheet_id] [--rotate auto|0|90|180|270] [--replace]
+```
+Works on vector PDFs plotted from AutoCAD (all of yours are). Scanned drawings won't work. Only page 1 is read.
+It picks the rotation with the most horizontal text and, if almost no tags read, retries upside down and keeps the
+better result. Tags are read with the character library in `extractor/fontlib.pkl`; characters it hasn't seen get
+low confidence and land in the review queue rather than being guessed.

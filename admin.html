@@ -72,7 +72,7 @@ const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>{$('#lbimg').src=src;$('#lightbox').style.display='flex'};
 async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
 
-const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['history','History',isAdmin],['account','Account',()=>true]];
+const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['drawings','Drawings',isAdmin],['history','History',isAdmin],['account','Account',()=>true]];
 async function init(){
   ME=await K.start(); K.toast=toast;
   $('#who').textContent=`${ME.user.username} · ${ME.user.role}`;
@@ -158,6 +158,7 @@ const VIEWS={
     const R=(await K.api('/api/revisions'+(before?`?before=${before}`:''))).revisions;
     const summary=r=>{ const a=r.after?JSON.parse(r.after):null, b=r.before?JSON.parse(r.before):null;
       if(r.entity==='user') return esc(r.note);
+      if(r.entity==='sheet') return `<span class="mono">${esc(r.key)}</span> ${esc(r.note)}`;
       if(r.entity==='link'){ const [p,s,k]=JSON.parse(r.key); return `${a?'<span class="add">linked</span>':'<span class="del">unlinked</span>'} ${esc(k)} · proc ${esc(p)} step ${s}` }
       if(r.entity==='photo') return a?`<span class="add">photo added</span> ${esc(a.kks)}`:`<span class="del">photo removed</span> ${esc(b?.kks||'')}`;
       if(r.entity==='equipment'){ const keys=[...new Set([...Object.keys(a||{}),...Object.keys(b||{})])].filter(k=>JSON.stringify((a||{})[k])!==JSON.stringify((b||{})[k]));
@@ -165,9 +166,33 @@ const VIEWS={
       return `${esc(r.entity)} ${esc(r.key)}: ${val(b)} → ${val(a)}` };
     $('#main').innerHTML=`<p class="sub">Every applied change, newest first. <b>Revert</b> undoes one change. <b>Restore to here</b> puts all data (notes, locations, photos, links, reviews) back to how it was right after that change. Both are new entries themselves, so they can be undone too. Accounts are not affected.</p>
       <table><tr><th>Rev</th><th>When</th><th>By</th><th>Change</th><th></th></tr>${R.map(r=>`<tr><td class="mono">${r.rev}</td><td class="sub">${when(r.ts)}</td><td>${esc(r.username||'server console')}</td>
-      <td>${summary(r)}${r.note&&r.entity!=='user'?` <span class="sub">(${esc(r.note)})</span>`:''}</td>
-      <td class="row">${r.entity!=='user'?`<button class="ghost" onclick="revert(${r.rev})">Revert</button><button class="ghost" onclick="restoreTo(${r.rev})">Restore to here</button>`:''}</td></tr>`).join('')}</table>
+      <td>${summary(r)}${r.note&&!['user','sheet'].includes(r.entity)?` <span class="sub">(${esc(r.note)})</span>`:''}</td>
+      <td class="row">${!['user','sheet'].includes(r.entity)?`<button class="ghost" onclick="revert(${r.rev})">Revert</button><button class="ghost" onclick="restoreTo(${r.rev})">Restore to here</button>`:''}</td></tr>`).join('')}</table>
       ${R.length?`<div class="row" style="margin-top:10px">${R.length===100?`<button class="ghost" onclick="VIEWS.history(${R[R.length-1].rev})">Older →</button>`:''}${isAdmin()?`<button class="danger" onclick="restoreTo(0)">Restore to before any logged change</button>`:''}</div>`:'<p class="sub">No changes yet.</p>'}`;
+  },
+  async drawings(){
+    const D=await K.api('/api/sheets'), imp=D.importer, job=D.job;
+    const busy=job?.state==='running', ids=new Set(D.sheets.map(s=>s.id));
+    let h=`<div class="card"><h3>Add a drawing</h3>`;
+    if(!imp.available) h+=`<div class="warn bad">The importer isn't set up on the server: ${esc(imp.error)}</div>
+      <div class="sub">On the server, in the app folder: <span class="mono">python3 app.py setup-importer</span> (creates <span class="mono">.venv</span>; nothing is installed system-wide). Then reload this page.</div>`;
+    else h+=`<form id="impForm" onsubmit="event.preventDefault();startImport(this)">
+      <div class="row"><input type="file" name="pdf" accept="application/pdf,.pdf" required onchange="impFile(this)">
+      <input name="name" placeholder="Name, e.g. Condensate System" required maxlength="80" style="flex:1;min-width:200px" oninput="impName(this)">
+      <input name="id" placeholder="sheet id" required maxlength="24" style="width:150px" class="mono" oninput="impId(this)"></div>
+      <div class="row" style="margin-top:8px"><label>Orientation <select name="rotate"><option value="auto">Auto</option><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
+      <label id="impReplace" style="display:none"><input type="checkbox" name="replace"> Replace the existing sheet with this id</label>
+      <button class="primary" ${busy?'disabled':''}>Import</button></div>
+      <div class="sub" style="margin-top:6px">Vector PDFs plotted from AutoCAD only (scans won't work); page 1 is read. Takes about a minute. The tag list is backed up first and put back if the import fails.</div></form>`;
+    h+='</div><div id="job"></div>';
+    h+=`<table><tr><th>Drawing</th><th>Id</th><th>Tags</th><th></th></tr>${D.sheets.map(s=>`<tr><td>${esc(s.name)}<div class="sub">${s.w}×${s.h} px${s.notes?.length?` · ${s.notes.length} markup note(s)`:''}</div></td>
+      <td class="mono">${esc(s.id)}</td><td class="sub">${s.tags.auto||0} auto · ${s.tags.verified||0} verified · ${s.tags.review||0} to review</td>
+      <td class="row"><a class="ghost" href="/?sheet=${encodeURIComponent(s.id)}" style="text-decoration:none;color:inherit">Open</a>
+      ${s.has_source&&imp.available?`<select id="rot-${esc(s.id)}"><option value="auto">auto</option><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select><button class="ghost" ${busy?'disabled':''} onclick="reimport('${esc(s.id)}',document.getElementById('rot-${esc(s.id)}').value)">Re-import</button>`:''}
+      <button class="danger" ${busy?'disabled':''} onclick="removeSheet('${esc(s.id)}','${esc(s.name).replace(/'/g,'&#39;')}')">Remove</button></td></tr>`).join('')}</table>
+      <p class="sub">Remove takes the sheet and its tags out of the app. The image, tag list and uploaded PDF stay in the server's backups folder. Notes, photos and procedure links are stored per KKS, so they come back if the sheet is imported again.</p>`;
+    $('#main').innerHTML=h; window._sheetIds=ids; renderJob(job);
+    if(busy) pollJob();
   },
   async account(){
     if(K.online){ try{ ME=await K.api('/api/me') }catch(e){} }
@@ -193,6 +218,49 @@ const VIEWS={
     $('#main').innerHTML=h;
   },
 };
+
+// ---------- drawings ----------
+const slug=v=>v.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,24);
+let idTouched=false;
+function impFile(inp){ const f=inp.files[0], F=inp.form; if(!f) return; if(!F.name.value) F.name.value=f.name.replace(/\.pdf$/i,'').replace(/[_]+/g,' ').trim(); if(!idTouched){ F.id.value=slug(F.name.value); impId(F.id,true) } }
+function impName(inp){ if(!idTouched){ inp.form.id.value=slug(inp.value); impId(inp.form.id,true) } }
+function impId(inp,auto){ if(!auto) idTouched=true; $('#impReplace').style.display=window._sheetIds?.has(inp.value)?'':'none' }
+async function startImport(F){
+  const f=F.pdf.files[0]; if(!f) return;
+  const q=new URLSearchParams({id:F.id.value.trim(),name:F.name.value.trim(),rotate:F.rotate.value,replace:F.replace.checked?'1':'0'});
+  if(F.replace.checked&&!confirm(`Replace sheet "${F.id.value}"? Its tags are re-read from this PDF (the current ones are backed up).`)) return;
+  toast('Uploading…');
+  try{
+    const r=await fetch('/api/sheets/import?'+q,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/pdf'},body:f});
+    const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||r.statusText);
+    idTouched=false; await show('drawings');
+  }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message) }
+}
+async function reimport(id,rotate){
+  if(!confirm(`Re-read sheet "${id}" from its stored PDF (orientation: ${rotate})? The current tags are backed up.`)) return;
+  await act(()=>K.api('/api/sheets/reimport',{id,rotate}),'Import started');
+}
+function removeSheet(id,name){ confirm(`Remove "${name}" (${id}) from the app?`)&&act(()=>K.api(`/api/sheets/${id}/remove`,{}),'Sheet removed') }
+function renderJob(job){
+  const el=$('#job'); if(!el||!job) return;
+  const r=job.result, head={running:'Importing…',done:'Import finished',failed:'Import failed'}[job.state];
+  let h=`<div class="card"><h3>${head} · ${esc(job.name)} (${esc(job.sheet)})</h3><div class="sub">by ${esc(job.by)} · orientation ${esc(job.rotate)}${job.state==='running'?' · this page updates by itself':''}</div>
+    <pre class="linkbox" style="max-height:220px;overflow:auto;white-space:pre-wrap">${esc(job.log.join('\n'))}</pre>`;
+  if(job.state==='done'&&r){
+    const back=(r.rotation+180)%360;
+    h+=`<div><b>${r.auto}</b> tags read automatically, <b>${r.review}</b> in the review queue${r.notes?`, ${r.notes} markup note(s)`:''}.</div>
+      <div class="sub" style="margin:6px 0">Check the preview is upright. Auto orientation retries sheets that read badly, but it isn't guaranteed.</div>
+      <img src="data/sheets/${esc(r.id)}.png?v=${job.finished}" alt="" style="width:100%;max-height:420px;object-fit:contain;background:#fff;border-radius:4px" onclick="lightbox(this.src)">
+      <div class="row" style="margin-top:8px"><a class="primary" href="/?sheet=${encodeURIComponent(r.id)}" style="text-decoration:none">Open in viewer</a>
+      <button class="ghost" onclick="reimport('${esc(r.id)}','${back}')">Upside down? Re-import rotated to ${back}°</button></div>`;
+  }
+  el.innerHTML=h+'</div>';
+}
+let pollT=null;
+function pollJob(){ clearTimeout(pollT); pollT=setTimeout(async()=>{
+  if(tab!=='drawings') return;
+  try{ const {job}=await K.api('/api/sheets/job'); if(job?.state==='running'){ renderJob(job); pollJob() } else show('drawings') }catch(e){ pollJob() }
+},1500) }
 
 // ---------- actions ----------
 async function decide(id,action,force){

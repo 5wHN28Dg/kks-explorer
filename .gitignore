@@ -9,3 +9,4 @@ config.json
 __pycache__/
 source/
 to-do.md
+.venv/
