@@ -11,7 +11,7 @@
   python3 app.py setup-importer           create .venv with the P&ID importer's packages (for Manage → Drawings)
 
 The app shell (index.html, admin.html, *.js) is public. Plant data (/data, /photos, /api) needs a login."""
-import argparse, json, mimetypes, os, re, socket, ssl, time
+import argparse, gzip, json, mimetypes, os, re, socket, ssl, time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote, parse_qs
@@ -80,13 +80,24 @@ def make_handler(cfg, store, auth):
             self.wfile.write(b)
 
         def file(self, path, cache):
-            if not os.path.isfile(path):
+            extra = [('Cache-Control', cache)]
+            if not os.path.isfile(path) and os.path.isfile(path + '.gz'):
+                # sheet vectors are stored gzipped (data/sheets/<id>.svg.gz): send as-is to browsers that accept it
+                with open(path + '.gz', 'rb') as f:
+                    data = f.read()
+                extra.append(('Vary', 'Accept-Encoding'))
+                if 'gzip' in (self.headers.get('Accept-Encoding') or ''):
+                    extra.append(('Content-Encoding', 'gzip'))
+                else:
+                    data = gzip.decompress(data)
+            elif os.path.isfile(path):
+                with open(path, 'rb') as f:
+                    data = f.read()
+            else:
                 raise HTTPError(404, 'not found')
-            with open(path, 'rb') as f:
-                data = f.read()
             ctype = 'application/manifest+json' if path.endswith('.webmanifest') else \
                 mimetypes.guess_type(path)[0] or 'application/octet-stream'
-            self._headers(200, ctype, len(data), [('Cache-Control', cache)])
+            self._headers(200, ctype, len(data), extra)
             self.wfile.write(data)
 
         def cookie(self, raw, max_age):

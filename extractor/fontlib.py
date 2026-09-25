@@ -106,7 +106,15 @@ def interpret(top,bottom):
     top=_fix_kks(top) if re.match(r'^[\dI]{2}[A-Z]{3}',top or '') else top
     bottom=_fix_kks(bottom)
     m=FULL.match(bottom)
-    if m and ISA.match(top): return dict(kind='instrument',kks=m.group(1),suffix=m.group(2),isa=top)
+    if m and ISA.match(top):
+        kks=m.group(1)
+        # C/G is this font's weakest pair, misread even at full confidence. A KKS measuring point is C + the measured
+        # variable, which is also the instrument's first ISA letter (PI -> CP, FIAC -> CF, TIA -> CT, PDA -> CP), so
+        # 'G' followed by that letter can only be a misread C.
+        v='P' if top.startswith('PD') else top[0]
+        top=top[0]+top[1:].replace('G','C')   # no later function letter G exists on these drawings: TIAG/PIAG were TIAC/PIAC
+        if kks[7]=='G' and kks[8]==v: kks=kks[:7]+'C'+kks[8:]
+        return dict(kind='instrument',kks=kks,suffix=m.group(2),isa=top)
     if SYS.match(top) and COMP.match(bottom): return dict(kind='equipment',kks=top+bottom,suffix='')
     if SYS.match(top) and re.match(r'^[A-Z0-9]{3,6}$',bottom):
         return dict(kind='suspect',kks=None,note=f'component code "{bottom}" does not fit KKS format (drawing error?)')

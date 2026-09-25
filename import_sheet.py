@@ -72,9 +72,14 @@ def main():
     log('Rendering the sheet image...')
     w, h = render_image(pdf, os.path.join(a.data_dir, 'sheets', f'{sid}.png'), zoom=Z)
     notes = [t for t in ((an.info.get('content') or '').strip() for an in src[0].annots()) if t]
+    log('Writing the vector version (sharp zoom)...')
+    from extractor.svgopt import sheet_svg
+    sheet_svg(pdf, os.path.join(a.data_dir, 'sheets', f'{sid}.svg.gz'))
 
     # ?v= changes on every import, so browsers and the offline cache fetch a re-imported image
-    sheet = dict(id=sid, name=a.name, file=f'data/sheets/{sid}.png?v={int(time.time())}', w=w, h=h, notes=notes)
+    v = int(time.time())
+    sheet = dict(id=sid, name=a.name, file=f'data/sheets/{sid}.png?v={v}', vector=f'data/sheets/{sid}.svg?v={v}', rot=rot,
+                 w=w, h=h, notes=notes)
     sheets = [s for s in sheets if s['id'] != sid]; sheets.append(sheet)
     tags = [t for t in tags if t['sheet'] != sid]
     n = {'auto': 0, 'review': 0}

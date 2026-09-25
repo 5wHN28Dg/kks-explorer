@@ -17,6 +17,6 @@
  },
  "isa_first": {"P":"Pressure","PD":"Differential pressure","T":"Temperature","F":"Flow","L":"Level","A":"Analysis","G":"Gauging / position","S":"Speed or frequency","Y":"Vibration"},
  "isa_next": {"I":"Indicate","A":"Alarm","C":"Control","S":"Switch","T":"Transmit","R":"Record","Q":"Totalize","E":"Element"},
- "isa_source": "S, Y (first letter) and CY/CS from the Siemens Legend of Symbols A-002337-930000 sheet 6. G as a later letter (TIAG, PIAG) is not defined there.",
+ "isa_source": "S, Y (first letter) and CY/CS from the Siemens Legend of Symbols A-002337-930000 sheet 6. The TIAG/PIAG tags that seemed to need a later letter G were misread TIAC/PIAC (checked 2026-09-25).",
  "blocks": {"11":"Block 1, HRSG #1","12":"Block 1, HRSG #2","21":"Block 2, HRSG #1","22":"Block 2, HRSG #2","23":"Block 2, HRSG #3","10":"Block 1, common (STG)"}
 }

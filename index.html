@@ -37,7 +37,8 @@ a.btn{text-decoration:none;color:inherit;white-space:nowrap}
 main{position:relative;flex:1;min-height:0;overflow:hidden}
 #viewer{position:absolute;inset:0;overflow:hidden;background:#5d6b75;touch-action:none;cursor:grab}
 #viewer.drag{cursor:grabbing}
-#stage{position:absolute;left:0;top:0;transform-origin:0 0}
+#stage,#stage2{position:absolute;left:0;top:0;transform-origin:0 0}
+#sharp{position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none;display:none}
 #sheetimg{display:block;background:#fff;user-select:none;-webkit-user-drag:none}
 .hs{position:absolute;border-radius:3px;cursor:pointer;background:rgba(79,156,255,.07);outline:1px solid rgba(79,156,255,.0)}
 .hs:hover{background:rgba(79,156,255,.18);outline:2px solid var(--ok)}
@@ -120,7 +121,7 @@ dt{color:var(--muted)} dd{margin:0}
   <a class="btn" id="manageBtn" href="admin.html" title="Your account, approvals, users, history"><span id="who">Account</span><span class="count" id="queueCount" style="display:none"></span></a>
 </header>
 <main>
-  <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"><div id="layer"></div></div></div>
+  <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"></div><canvas id="sharp"></canvas><div id="stage2"><div id="layer"></div></div></div>
   <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button></div>
   <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
   <div id="toast"></div>
@@ -224,19 +225,46 @@ function pendingHtml(t){
 }
 function updatePending(){ const el=$('#pendingSec'); if(el&&selTag&&$('#panel').classList.contains('open')) el.innerHTML=pendingHtml(selTag) }
 // with a service worker, fetching each sheet once stores it for offline use
-async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return; for(const s of SHEETS){ try{ await fetch(s.file) }catch(e){ return } } }
+async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return; for(const s of SHEETS) for(const u of [s.file,s.vector].filter(Boolean)){ try{ await fetch(u) }catch(e){ return } } }
 
 // ---------- viewer ----------
 function openSheet(id,then){
   cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
-  const img=$('#sheetimg'); img.onload=()=>{ fit(); drawTags(); then&&then(); }; img.src=cur.file;
+  const img=$('#sheetimg'); img.onload=()=>{ fit(); drawTags(); then&&then(); }; img.src=cur.file; loadVector();
   img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
   renderNotes();
 }
-function apply(){ $('#stage').style.transform=`translate(${view.x}px,${view.y}px) scale(${view.s})` }
+function apply(){ const t=`translate(${view.x}px,${view.y}px) scale(${view.s})`; $('#stage').style.transform=t; $('#stage2').style.transform=t; followSharp() }
+
+// ---------- sharp layer: the sheet's vector drawing, redrawn for the visible area once the view stops moving ----------
+// The PNG is a fixed-resolution bitmap; beyond ~1:1 it gets blocky. The canvas draws the vector file (the PDF's own
+// drawing) at the screen's real resolution. While panning/zooming, the last drawing is moved along with CSS (and the
+// PNG shows at the edges); ~150 ms after the view settles it is redrawn sharp.
+const sharp={img:null,at:null,timer:null};
+function loadVector(){
+  sharp.img=null; sharp.at=null; $('#sharp').style.display='none'; if(!cur.vector) return;
+  const im=new Image(), s=cur; im.onload=()=>{ if(cur===s){ sharp.img=im; drawSharp() } }; im.src=cur.vector;
+}
+function drawSharp(){
+  const c=$('#sharp'), v=$('#viewer').getBoundingClientRect(), d=devicePixelRatio||1;
+  if(!sharp.img||view.s*d<0.7){ c.style.display='none'; sharp.at=null; return }  // zoomed out: the PNG is as sharp
+  const W=Math.round(v.width*d), H=Math.round(v.height*d);
+  if(c.width!==W||c.height!==H){ c.width=W; c.height=H; c.style.width=v.width+'px'; c.style.height=v.height+'px' }
+  const x=c.getContext('2d'); x.setTransform(1,0,0,1,0,0); x.clearRect(0,0,W,H);
+  x.setTransform(d*view.s,0,0,d*view.s,d*view.x,d*view.y); x.fillStyle='#fff'; x.fillRect(0,0,cur.w,cur.h);
+  x.drawImage(sharp.img,0,0,cur.w,cur.h);
+  sharp.at={...view}; c.style.transform=''; c.style.display='block';
+}
+function followSharp(){
+  const a=sharp.at, c=$('#sharp');
+  if(a){ const k=view.s/a.s; c.style.transform=`translate(${view.x-k*a.x}px,${view.y-k*a.y}px) scale(${k})` }
+  clearTimeout(sharp.timer); if(sharp.img) sharp.timer=setTimeout(drawSharp,150);
+}
+addEventListener('resize',()=>{ clearTimeout(sharp.timer); sharp.timer=setTimeout(drawSharp,150) });
 function fit(){ const v=$('#viewer').getBoundingClientRect(); view.s=Math.min(v.width/cur.w,v.height/cur.h)*0.98; view.x=(v.width-cur.w*view.s)/2; view.y=(v.height-cur.h*view.s)/2; apply() }
+// max zoom 16x when the sheet has a vector file (it stays sharp), 4x otherwise
 function zoomAt(f,cx,cy){ const v=$('#viewer').getBoundingClientRect(); cx??=v.width/2; cy??=v.height/2;
-  const ns=Math.max(0.05,Math.min(4,view.s*f)); view.x=cx-(cx-view.x)*ns/view.s; view.y=cy-(cy-view.y)*ns/view.s; view.s=ns; apply() }
+  const ns=Math.max(0.05,Math.min(cur.vector?16:4,view.s*f)); view.x=cx-(cx-view.x)*ns/view.s; view.y=cy-(cy-view.y)*ns/view.s; view.s=ns; apply() }
 function centerOn(b,scale=0.9){ const v=$('#viewer').getBoundingClientRect(); view.s=scale;
   const mobile=innerWidth<=720, pw=mobile?0:430, ph=mobile?v.height*0.62:0;
   view.x=(v.width-pw)/2-((b[0]+b[2])/2)*view.s; view.y=(v.height-ph)/2-((b[1]+b[3])/2)*view.s; apply() }

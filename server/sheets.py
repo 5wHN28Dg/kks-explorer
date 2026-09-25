@@ -75,15 +75,15 @@ class Importer:
         os.makedirs(d, exist_ok=True)
         for f in ('sheets.json', 'tags.json'):
             shutil.copy2(os.path.join(self.cfg['data_dir'], f), d)
-        img = os.path.join(self.cfg['data_dir'], 'sheets', sid + '.png')
-        if os.path.exists(img):  # a replace re-renders the image; keep the old one to match the old tags
-            shutil.copy2(img, d)
+        for f in (sid + '.png', sid + '.svg.gz'):  # a replace re-renders these; keep the old ones to match the old tags
+            if os.path.exists(os.path.join(self.cfg['data_dir'], 'sheets', f)):
+                shutil.copy2(os.path.join(self.cfg['data_dir'], 'sheets', f), d)
         return d
 
     def _restore(self, d, sid):
-        for f in ('sheets.json', 'tags.json', sid + '.png'):
+        for f in ('sheets.json', 'tags.json', sid + '.png', sid + '.svg.gz'):
             src = os.path.join(d, f)
-            dst = os.path.join(self.cfg['data_dir'], 'sheets' if f.endswith('.png') else '', f)
+            dst = os.path.join(self.cfg['data_dir'], '' if f.endswith('.json') else 'sheets', f)
             if os.path.exists(src):
                 shutil.copy2(src, dst + '.tmp')
                 os.replace(dst + '.tmp', dst)
@@ -161,10 +161,10 @@ class Importer:
                 raise ValueError('No such sheet.')
             if len(sheets) == 1:
                 raise ValueError('That is the only sheet; add another before removing it.')
-            backup = self._backup('remove', sid)  # includes the image
-            img = os.path.join(self.cfg['data_dir'], 'sheets', sid + '.png')
-            if os.path.exists(img):
-                os.remove(img)
+            backup = self._backup('remove', sid)  # includes the image and vector file
+            for f in (sid + '.png', sid + '.svg.gz'):
+                if os.path.exists(os.path.join(self.cfg['data_dir'], 'sheets', f)):
+                    os.remove(os.path.join(self.cfg['data_dir'], 'sheets', f))
             n = sum(1 for t in tags if t['sheet'] == sid)
             for path, obj, kw in ((tags_p, [t for t in tags if t['sheet'] != sid], {}),
                                   (sheets_p, [s for s in sheets if s['id'] != sid], {'indent': 1})):

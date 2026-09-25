@@ -56,7 +56,14 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - `admin.html` — Approvals (grouped by target, photo pick), My submissions (+ voting), Users, History, Account.
 - `index.html` — whole front end, vanilla JS, no build step. Pan/zoom viewer, hotspots, panel (floating on desktop,
   bottom sheet ≤720px), search, floor filter, procedures drawer + step↔equipment linking, review queue, sheet notes.
-- `data/sheets.json` — `{id,name,file,w,h,notes[]}`; images in `data/sheets/*.png` (grayscale, ≤6400px).
+- `data/sheets.json` — `{id,name,file,vector,rot,w,h,notes[]}`; images in `data/sheets/*.png` (grayscale, ≤6400px),
+  vectors in `data/sheets/<id>.svg.gz` (served as `<id>.svg` with Content-Encoding gzip). `rot` = rotation applied to
+  the source PDF. Sharp zoom (2026-09-25): `extractor/svgopt.py` bakes per-path transforms and merges all black paths
+  per style (PyMuPDF SVG: 40k–140k paths → 13–134; pixel-identical in Chromium 1×–125×). index.html draws it on
+  `#sharp` canvas (between `#stage` PNG and `#stage2` hotspots) ~150 ms after the view settles, only when
+  view.s·dpr ≥ 0.7; CSS-transforms the old drawing while panning. Max zoom 16× with a vector, 4× without.
+  `tools/make_vectors.py ID source.pdf` makes one for an existing sheet: picks the rotation matching the PNG and
+  checks alignment by phase correlation (all 11 sheets within 0.9 px). Firefox redraw ~250 ms on desktop.
 - `data/tags.json` — one entry per tag occurrence:
   `{id:"sheet:n", sheet, kks, suffix, isa, kind:equipment|instrument, status, conf, bbox:[x0,y0,x1,y1] (image px),
     orient:h|v, read:[top,bottom] (raw reader output), note, flag, suggestion}`.
@@ -110,6 +117,19 @@ Lessons (don't repeat):
   edge), 0 confident readings got worse. Applied to existing sheets with `tools/reread_tags.py` (keeps ids and
   hand-verified tags): 70 suffixes added (LP 6, IP 8, HP 7, FW 32, RH 6, flue 11) + 2 stored `I` suffixes corrected
   to K (ip:154, rh:42). The LP "verified reference" had only 11HAD70CT101R; in fact CT101–106 all carry R.
+- Missed tags FIXED at the root 2026-09-25 (found via user report "dozens missing on HP/IP"): (1) bubbles drawn without
+  the divider line are one closed cell, never paired → `reader3.read_single` splits unpaired cells ≥10 pt at the widest
+  empty row band (mask outside the cell first: a whole bubble's rounded ends lie inside the crop); (2) `reader2.detect`
+  area test used the traced hole, which a letter touching the border notches below 75% → hull area; (3) `pair()`
+  required equal widths, but text touching both ends of a half shrinks its hole → overlap-based `_fits`; (4) vertical
+  text also runs top-to-bottom (function letters in the right cell) → vertical cells are read both ways, keeping the one
+  that interprets as a tag. `fontlib.interpret`: G followed by the ISA variable letter in the component code → C
+  (11LAB90GP102 → CP102), later ISA letters G → C (TIAG/PIAG were all TIAC/PIAC; no later G exists).
+  `tools/add_missed.py ID source.pdf [--apply]` adds only non-overlapping new tags (ids `<sheet>:x<n>`), keeps
+  existing ids. Added 57, all checked by eye: HP 21 (2 by hand: 11HAH90CT103K, 11HAD90CL503XB31), IP 12, FW 7, RH 1,
+  b1cond 16; corrected hp:19/28/87 (TIAG/PIAG→TIAC/PIAC), hp:ob1531 (T→LE). Regression: new extractor vs stored tags on
+  LP/IP/HP/FW: 0 auto tags change; the differences are all hand-verified tags the reader still misreads (HP 69: bold font).
+  Most misses were local indicators (PI/TI/FE/LI …501) and vibration probes, which are drawn without a divider.
 - Remaining known reader weaknesses: C/G at full confidence (hp:95 reads 11HAD90GT108K; stored value hand-verified),
   M/H and 2/8 at low confidence (b1cond), last digit of panel bubbles squeezed against the arc (conf 0 → review).
 - LP sheet: 189 auto tags, 1 wrong (suffix). Verified reference existed in the original workspace.

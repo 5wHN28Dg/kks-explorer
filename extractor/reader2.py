@@ -13,17 +13,24 @@ def detect(pdf):
         if hier[0][i][3]==-1: continue
         x,y,w,h=cv2.boundingRect(c); W,H=w/k,h/k
         if not ((4<H<24 and 15<W<110) or (4<W<24 and 15<H<110)): continue
-        if cv2.contourArea(c)<0.75*w*h: continue
+        # hull, not the traced contour: a letter touching the border (suffix K/R against a bubble arc) carves a notch
+        # into the traced hole and made real tag halves fail this test (2026-09-25)
+        if cv2.contourArea(cv2.convexHull(c))<0.75*w*h: continue
         cells.append(((x,y,w,h), c.reshape(-1,2).astype(np.float32)/k))  # contour in PDF points
     return page,k,cells
+def _fits(p,pw,q,qw):
+    ov=min(p+pw,q+qw)-max(p,q)
+    return ov>=0.85*min(pw,qw) and min(pw,qw)>=0.7*max(pw,qw)
 def pair(cells):
     cells=sorted(cells,key=lambda c:(c[0][0],c[0][1])); pairs=[];used=set()
     for i,(a,ca) in enumerate(cells):
         if i in used: continue
         for j,(b,cb) in enumerate(cells):
             if i==j or j in used: continue
-            if abs(a[0]-b[0])<8 and abs(a[2]-b[2])<12 and 0<=b[1]-(a[1]+a[3])<8: pairs.append(('h',(a,ca),(b,cb))); used|={i,j}; break
-            if abs(a[1]-b[1])<8 and abs(a[3]-b[3])<12 and 0<=b[0]-(a[0]+a[2])<8: pairs.append(('v',(a,ca),(b,cb))); used|={i,j}; break
+            # halves stacked edge to edge; one may be narrower (text touching both ends of a bubble half cuts into its
+            # traced hole), so require overlap rather than equal width (2026-09-25)
+            if 0<=b[1]-(a[1]+a[3])<8 and _fits(a[0],a[2],b[0],b[2]): pairs.append(('h',(a,ca),(b,cb))); used|={i,j}; break
+            if 0<=b[0]-(a[0]+a[2])<8 and _fits(a[1],a[3],b[1],b[3]): pairs.append(('v',(a,ca),(b,cb))); used|={i,j}; break
     return pairs
 def cell_image(page,k,cell,orient):
     (x,y,w,h),poly=cell

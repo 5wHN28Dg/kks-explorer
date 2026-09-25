@@ -18,6 +18,8 @@ The server needs **no extra packages**. Only the importer does. Tests: `python3 
 
 ## Using it
 - **Search** any KKS (full or partial: `11LAB70AA501`, `LBA80`, `CP101`), or text you've entered (location, notes).
+- **Zoom** as far as you like: once you stop moving, the sheet is redrawn from the PDF's own vector drawing, so
+  tags stay sharp at any zoom (up to 16×). Works offline once a sheet has been opened.
 - **Tap a tag** on a drawing → panel with the decoded KKS (unit, system, component), which sheets it appears on,
   linked procedures, location fields, notes, custom fields and photos. Press **Save** after editing. Your changes
   that aren't live yet (awaiting approval, or queued offline) are listed at the top of the panel.
