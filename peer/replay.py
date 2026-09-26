@@ -69,7 +69,7 @@ def _text(v, lo=0, hi=4000):
 
 
 def _match(regex, v):
-    return isinstance(v, str) and regex.match(v) is not None
+    return isinstance(v, str) and regex.fullmatch(v) is not None   # (re.match + $ would also accept a trailing newline)
 
 
 def _keys(obj, keys):
@@ -82,7 +82,7 @@ def sign_statement(root_key, stmt):
 
 
 def check_statement(root_pub, stmt, sig):
-    _need(isinstance(stmt, dict) and stmt.get('kind') in STMT)
+    _need(isinstance(stmt, dict) and isinstance(stmt.get('kind'), str) and stmt['kind'] in STMT)
     _keys(stmt, STMT[stmt['kind']])
     _need(_match(B64U_RE, sig))
     try:
@@ -184,6 +184,8 @@ class _Run:
                 getattr(self, 't_' + e['type'])(e, eid, dev['person'], self.role(dev['person']))
             except Ignore as why:
                 self.ignored[eid] = str(why)
+            except (KeyError, TypeError, AttributeError, ValueError):   # a body the checks above missed: never crash
+                self.ignored[eid] = 'bad_body'
         return self
 
     def _revoke(self, rank, e, eid, device, last_seq):
@@ -221,10 +223,10 @@ class _Run:
         check_statement(self.root, stmt, e['body']['root_sig'])
         kind = stmt['kind']
         if kind == 'manager':
-            _need(stmt['person'] in self.persons)
+            _need(_match(ID_RE, stmt['person']) and stmt['person'] in self.persons)
             self.manager = stmt['person']
         elif kind == 'device':
-            _need(_match(PEER_RE, stmt['device']) and stmt['person'] in self.persons)
+            _need(_match(PEER_RE, stmt['device']) and _match(ID_RE, stmt['person']) and stmt['person'] in self.persons)
             _need(self.devices.get(stmt['device'], {}).get('person', stmt['person']) == stmt['person'], 'not_allowed')
             self.devices.setdefault(stmt['device'], {'person': stmt['person'], 'label': ''})
         elif kind == 'rotate':
@@ -255,7 +257,8 @@ class _Run:
 
     def t_device_cert(self, e, eid, author, role):
         b = e['body']
-        _need(_match(PEER_RE, b['device']) and b['person'] in self.persons and _text(b['label'], 0, 80))
+        _need(_match(PEER_RE, b['device']) and _match(ID_RE, b['person']) and b['person'] in self.persons
+              and _text(b['label'], 0, 80))
         _need(self.devices.get(b['device'], {}).get('person', b['person']) == b['person'], 'not_allowed')
         _need(role == 'manager' or author == b['person'] or (role == 'admin' and self.role(b['person']) == 'user'),
               'not_allowed')
@@ -263,7 +266,7 @@ class _Run:
 
     def t_revoke(self, e, eid, author, role):
         b = e['body']
-        target = self.devices.get(b['device'])
+        target = self.devices.get(b['device']) if _match(PEER_RE, b['device']) else None
         _need(target is not None and type(b['last_seq']) is int and b['last_seq'] >= 0)
         _need(role == 'manager' or author == target['person'] or (role == 'admin' and self.role(target['person']) == 'user'),
               'not_allowed')
@@ -480,7 +483,7 @@ def _check_data(t, b):
 def _state_keys(v):
     if isinstance(v, dict):
         for k, x in v.items():
-            if not STATE_KEY_RE.match(k):
+            if not STATE_KEY_RE.fullmatch(k):
                 raise P.ProtocolError('bad_encoding', f'state key {k!r}')
             _state_keys(x)
     elif isinstance(v, list):

@@ -257,6 +257,23 @@ close → clean stop + snapshot, installer + desktop-file-validate. NOT verified
 itself (needs a run on GitHub), Python 3.12 (CI's version), unsigned-exe/firewall prompts on real Windows. `withdraw`, `vote`, review `data:null` were added to the protocol
 for it (v2-replay.json regenerated before anything depended on it; freeze it once the Kotlin port starts). Next: M2.
 
+## M3 Android (Kotlin core; min Android 10 / API 29; decided 2026-09-26)
+
+`android/`: Gradle 8.13 + Kotlin 2.0.21 (cached versions; AGP 8.13.2 for the app module later), run with
+`JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 ./gradlew :core:test` (Gradle 8.13 does not run on JDK 25). Android SDK
+at ~/Android/Sdk (platform 36, emulator + KVM; AVDs Pixel_9_Pro_XL). `core` = plain Kotlin/JVM library (so JUnit
+runs without an emulator): Json.kt (own parser: numbers the protocol can't carry → JNumber → bad_encoding;
+`pyEquals` = Python equality incl. True == 1; `cmpCodePoints`), Canonical.kt, Crypto.kt (BouncyCastle 1.79
+lightweight API: Android 10 lacks Ed25519/X25519 in platform crypto), Proto.kt, Replay.kt (check-for-check port of
+peer/replay.py incl. history/decisions side output), Noise.kt, Sync.kt (Node interface), MemoryNode.kt (the node
+rules of server/engine.py: vv with head ids, entriesFor, ingest with trial replay + fork evidence, blobs).
+M3a done 2026-09-26: 16 JUnit tests: all vector files + Kotlin↔Kotlin + Kotlin↔Python (`tools/interop_node.py`,
+needs `.venv`) both directions, states byte-identical. Found while porting and fixed in Python: `re.match` + `$`
+accepted a trailing newline (now fullmatch), and three bodies (revoke/device_cert with a list, root with a list
+`kind`) crashed the Python replay (unhashable dict key) → type checks first + a `bad_body` safety net; new frozen
+`peer/vectors/v4-malformed.json` (1947 entries) checks both implementations never diverge on garbage.
+Next: M3b (Android node: SQLite storage, engine, local API served to the WebView by request interception, no open port).
+
 ## Backlog (rough priority)
 
 1. When users have marked missed tags (`app.py added-tags`), find why the extractor missed them and fix the cause.

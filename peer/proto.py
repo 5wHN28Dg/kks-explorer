@@ -45,7 +45,7 @@ def _check(v, where='value'):
         return
     if isinstance(v, dict):
         for k, x in v.items():
-            if not isinstance(k, str) or not KEY_RE.match(k):
+            if not isinstance(k, str) or not KEY_RE.fullmatch(k):
                 raise ProtocolError('bad_encoding', f'bad key {k!r} at {where}')
             _check(x, f'{where}.{k}')
         return
@@ -113,7 +113,7 @@ def check_fields(e, signed=True):
     h = e['hlc']
     if not (isinstance(h, list) and len(h) == 2 and all(type(x) is int and x >= 0 for x in h)):
         raise ProtocolError('bad_fields', 'hlc')
-    if not (isinstance(e['type'], str) and KEY_RE.match(e['type'])):
+    if not (isinstance(e['type'], str) and KEY_RE.fullmatch(e['type'])):
         raise ProtocolError('bad_fields', 'type')
     if not isinstance(e['body'], dict):
         raise ProtocolError('bad_fields', 'body')

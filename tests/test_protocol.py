@@ -205,3 +205,16 @@ class Replay(unittest.TestCase):
         self.assertEqual(list(st['votes'].values()), [[make_replay_vectors.pid('dana')]])
         self.assertEqual(st['reviews'], {})
         self.assertEqual(sorted(st['ignored'].values()), ['already_decided', 'not_allowed'])
+
+
+@unittest.skipUnless(P, 'needs the cryptography package (use .venv/bin/python)')
+class Malformed(unittest.TestCase):
+    """peer/vectors/v4-malformed.json: every kind of wrong value in every field; nothing may crash the replay."""
+    def test_frozen_and_reproduced(self):
+        from peer import make_malformed_vectors as MV
+        path = os.path.join(ROOT, 'peer', 'vectors', 'v4-malformed.json')
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+        self.assertEqual(text, make_vectors.dump(MV.build()))
+        s = json.loads(text)['scenarios'][0]
+        self.assertEqual(R.state_bytes(R.replay(s['entries'], s['root'])), R.state_bytes(s['state']))

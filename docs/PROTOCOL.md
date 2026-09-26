@@ -4,6 +4,11 @@ Status: **M0a + M0b written 2026-09-26.** §1–7 (encoding, keys, entries, chai
 vectors `peer/vectors/v1.json`. §8–14 (entry bodies, identity, authority, replay, merge, private entries):
 `peer/replay.py`, vectors `peer/vectors/v2-replay.json` (`withdraw`, `vote` and review removal added 2026-09-26 for the
 server on the log, M1, before anything depended on the file).
+`peer/vectors/v4-malformed.json` (2026-09-26): every entry type with every field replaced by every kind of wrong value;
+nothing may crash a replay (three such bodies crashed the Python replay before; a value is now type-checked before it
+is used as a key, and anything a check still missed counts as `bad_body`). Implementations: Python (`peer/`) and
+Kotlin (`android/core`, M3a), both pass all vector files; `tools/interop_node.py` lets the Kotlin tests sync with the
+real Python engine over TCP.
 Any implementation (Python, Kotlin) must reproduce every vector exactly; the vectors, not the prose, are the tiebreaker.
 
 Design background: `docs/ARCHITECTURE.md`.

@@ -18,3 +18,9 @@ FILE
 !tests/fixtures/v1/photos/
 dist/
 build/
+# Android build output
+android/.gradle/
+android/build/
+android/*/build/
+android/local.properties
+android/.kotlin/
