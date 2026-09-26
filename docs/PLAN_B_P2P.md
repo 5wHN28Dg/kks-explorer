@@ -1,5 +1,7 @@
 # Plan B: running without a company server
 
+> **Superseded 2026-09-26 by [ARCHITECTURE.md](ARCHITECTURE.md)** (server mode + P2P, decided). Kept for background.
+
 Status: **design notes only, nothing built.** Written 2026-09-25, before the app was presented to the company.
 Use this if the answer to "can it run on a plant server?" is no, and paying for a server or domain is not an option.
 

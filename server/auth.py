@@ -41,7 +41,19 @@ def password_problem(pw):
 
 def public_user(u):
     return {'id': u['id'], 'username': u['username'], 'role': u['role'], 'active': bool(u['active']),
-            'has_password': bool(u['pw']), 'created': u['created']}
+            'has_password': bool(u['pw']), 'created': u['created'],
+            'full_name': u['full_name'] or '', 'position': u['position'] or ''}
+
+
+def person(d, required=True):
+    """Validated (full_name, position) from a request. Full name identifies who an account belongs to."""
+    name = ' '.join(str(d.get('full_name') or '').split())
+    pos = ' '.join(str(d.get('position') or '').split())
+    if required and len(name) < 2:
+        raise ValueError('Enter the full name (so everyone knows whose account this is).')
+    if len(name) > 80 or len(pos) > 80:
+        raise ValueError('Full name and position: up to 80 characters each.')
+    return name or None, pos or None
 
 
 class Auth:

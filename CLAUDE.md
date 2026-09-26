@@ -12,7 +12,10 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - `python3 app.py` → http://localhost:8420 (phone: printed LAN URL, same Wi-Fi). Stdlib only. First run prints a
   one-time setup link to create the manager. CLI: `users`, `reset-manager --user X`, `reset-password --user X`,
   `backup`, `restore [--seq N] [--out F]`. Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `python3 -m unittest discover -s tests` (server end-to-end over HTTP). The UI was verified with Playwright
+- Tests: `python3 -m unittest discover -s tests` (server end-to-end over HTTP). Protocol tests need `cryptography`:
+  `.venv/bin/python -m unittest discover -s tests` runs everything (system python skips them).
+  `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
+  `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
   in a throwaway venv (not committed): setup, invite, user proposal, offline queue + offline reload via the service
   worker, sync, approve/pick/force, revert, lease expiry, deactivation wipe.
 - Adding sheets: `python3 app.py setup-importer` once (creates `.venv` from `requirements-import.txt`; the server stays
@@ -38,6 +41,10 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
   `client_id` for offline replay). Admin/manager submissions apply at once. Applying = plan (conflict check against the
   `base` values the client saw) → set_state per entity → one revision each. Photos files are never deleted (row only),
   so revert/restore is lossless. All journaled tables must be written via `store.put/delete` inside `store.write()`.
+- Accounts carry `full_name` (required for new accounts, setup and Users → Add) and `position` (optional), 2026-09-26.
+  Existing DBs get the columns on startup (`store.migrate`, also run on restored snapshots before journal replay).
+  Self-service: Account → Your details (`POST /api/profile`); admins edit users' details (`POST /api/users/<id>`,
+  same who-manages-whom rule). Submissions carry `by_name`; History shows full names; `app.py users` lists them.
 - One manager, enforced by a partial unique index. Only created by the console setup token, an accepted transfer, or the
   `reset-manager` CLI. Admins manage users only; the manager manages admins.
 - Public: `index.html`, `admin.html`, `common.js`, `sw.js`, manifest, icons, `/api/config`, login/setup/password-link
@@ -177,12 +184,22 @@ Lessons (don't repeat):
 - `data/` (P&IDs etc.) is still committed in this repo. The repo is private, but for sharing the app with other plants
   the plant data should move out of the repo (`data_dir` in config.json) and history be cleaned.
 
-## Plan B (no company server)
+## v2: server mode + P2P (decided 2026-09-26)
 
-`docs/PLAN_B_P2P.md`: design notes only, not built. The app hasn't been presented to the company yet (2026-09-25);
-if hosting is refused and no money goes to a server/domain: B0 intermittent laptop server (works today, needs own-CA
-HTTPS for phones), B1 file export/import sync, B2 full P2P (signed per-author logs, manager root key, LAN/Syncthing).
-Section 0 there: first find out whether the "no" is about hosting or about plant data on personal devices.
+`docs/ARCHITECTURE.md` is the plan of record (supersedes `docs/PLAN_B_P2P.md`). Key decisions: every device runs a
+local peer; signed per-device append-only logs + deterministic replay/merge (no host, no election; the server is an
+always-on peer); same-Wi-Fi + file/QR sync first, internet P2P later (M5); Android = Material 3 native shell + the
+existing web P&ID viewer in a WebView; Windows/Linux = this Python app packaged (double-click, opens browser; the
+stdlib-only rule ends for the package: cryptography + zeroconf); one person may have several devices (device keys +
+certificates). Build order M0 protocol spec + Python reference + test vectors → M1 server on the log → M2 desktop
+package + LAN/file sync → M3 Android → M4 Learning (3 HTML courses, not yet in the repo) → M5 internet.
+Answered 2026-09-26: plant Wi-Fi allows device-to-device traffic; courses in `source/courses/` (3 single-file HTML,
+localStorage progress, Google Fonts to vendor); quiz progress private (encrypted to the person's devices); photos
+on-demand or all, per device, stored as JPEG XL with JPEG fallback for browsers without JXL; manager key: no second
+holder (self-held backup recommended). M0 done: `docs/PROTOCOL.md` §1–7 `peer/proto.py` + `peer/vectors/v1.json` (M0a); §8–14 `peer/replay.py` +
+`peer/vectors/v2-replay.json` (M0b: identity, authority, revocation by priority, approvals, merge, private entries;
+generator `peer/make_replay_vectors.py`, 3 scenarios). Both vector files frozen; tests in `tests/test_protocol.py`.
+Root key: laptop + backup, not the phone (PROTOCOL.md §10: only a root-signed revoke settles a stolen same-person device).
 
 ## Backlog (rough priority)
 

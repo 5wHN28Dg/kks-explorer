@@ -19,7 +19,7 @@ from urllib.parse import urlparse, unquote, parse_qs
 
 from server import config as config_mod
 from server.store import Store, restore
-from server.auth import Auth, hash_password, password_problem, public_user, rank
+from server.auth import Auth, hash_password, password_problem, public_user, rank, person
 from server import changes as ch
 from server import check as check_mod
 from server import sheets as sheets_mod
@@ -250,7 +250,7 @@ def make_handler(cfg, store, auth):
             if p == '/api/revisions':
                 self.need(me, 'admin')
                 before = int(q.get('before') or 2 ** 62)
-                rows = c.execute('SELECT r.*, u.username FROM revisions r LEFT JOIN users u ON u.id=r.actor '
+                rows = c.execute('SELECT r.*, u.username, u.full_name FROM revisions r LEFT JOIN users u ON u.id=r.actor '
                                  'WHERE rev<? ORDER BY rev DESC LIMIT ?', (before, min(int(q.get('limit', 100)), 500)))
                 return self.send({'revisions': [dict(r) for r in rows]})
             raise HTTPError(404, 'not found')
@@ -262,8 +262,9 @@ def make_handler(cfg, store, auth):
         def sub_out(self, r, me, c, live=False):
             d = {k: r[k] for k in ('id', 'client_id', 'kind', 'target', 'status', 'created', 'decided_at', 'note')}
             d['payload'] = json.loads(r['payload'])
-            u = c.execute('SELECT username FROM users WHERE id=?', (r['user_id'],)).fetchone()
+            u = c.execute('SELECT username, full_name FROM users WHERE id=?', (r['user_id'],)).fetchone()
             d['by'], d['mine'] = (u['username'] if u else '?'), r['user_id'] == me['id']
+            d['by_name'] = (u['full_name'] if u else None) or d['by']
             if r['kind'] == 'photo':
                 d['votes'] = c.execute('SELECT COUNT(*) FROM votes WHERE submission_id=?', (r['id'],)).fetchone()[0]
                 d['voted'] = bool(c.execute('SELECT 1 FROM votes WHERE submission_id=? AND user_id=?', (r['id'], me['id'])).fetchone())
@@ -294,6 +295,10 @@ def make_handler(cfg, store, auth):
                     raise HTTPError(400, 'Username: 2-40 letters, digits, . _ - @')
                 if password_problem(pw):
                     raise HTTPError(400, password_problem(pw))
+                try:
+                    full_name, position = person(d)
+                except ValueError as e:
+                    raise HTTPError(400, str(e))
                 with store.write() as c:
                     t = auth.peek_token('setup', d.get('token'), c)
                     if not t or auth.manager(c):
@@ -302,7 +307,7 @@ def make_handler(cfg, store, auth):
                     if c.execute('SELECT 1 FROM users WHERE username=?', (name,)).fetchone():
                         raise HTTPError(409, 'That username exists.')
                     uid = store.put('users', {'username': name, 'pw': hash_password(pw), 'role': 'manager', 'active': 1,
-                                              'created': int(time.time())})
+                                              'created': int(time.time()), 'full_name': full_name, 'position': position})
                     auth.consume_token(d['token'])
                     self.log_user(c, uid, uid, 'created as manager (setup)')
                 raw = auth.create_session(uid)
@@ -337,6 +342,16 @@ def make_handler(cfg, store, auth):
                     self.log_user(c, me['id'], me['id'], 'changed password')
                 raw = auth.create_session(me['id'])
                 return self.send({'ok': True}, extra=[self.cookie(raw, cfg['session_days'] * 86400)])
+            if p == '/api/profile':  # your own full name and position
+                try:
+                    fn, pos = person(d)
+                except ValueError as e:
+                    raise HTTPError(400, str(e))
+                with store.write() as c:
+                    if (fn, pos) != (me['full_name'], me['position']):
+                        store.put('users', {**dict(me), 'full_name': fn, 'position': pos})
+                        self.log_user(c, me['id'], me['id'], f'details → {fn}' + (f', {pos}' if pos else ''))
+                return self.send({'ok': True})
             if p == '/api/submit':
                 return self.send(ch.submit(store, cfg, me, d.get('kind'), d.get('payload'), d.get('client_id')))
             m = re.fullmatch(r'/api/submissions/(\d+)/(vote|withdraw|approve|reject|pick)', p)
@@ -399,7 +414,8 @@ def make_handler(cfg, store, auth):
 
         def log_user(self, c, actor, uid, note):
             u = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
-            after = {'username': u['username'], 'role': u['role'], 'active': bool(u['active'])} if u else None
+            after = {'username': u['username'], 'full_name': u['full_name'], 'position': u['position'], 'role': u['role'],
+                     'active': bool(u['active'])} if u else None
             store.put('revisions', {'ts': int(time.time()), 'actor': actor, 'entity': 'user', 'key': str(uid),
                                     'before': None, 'after': json.dumps(after), 'submission_id': None, 'note': note})
 
@@ -452,10 +468,15 @@ def make_handler(cfg, store, auth):
                 raise HTTPError(400, 'role must be user or admin')
             if role == 'admin' and me['role'] != 'manager':
                 raise HTTPError(403, 'only the manager can create admins')
+            try:
+                full_name, position = person(d)
+            except ValueError as e:
+                raise HTTPError(400, str(e))
             with store.write() as c:
                 if c.execute('SELECT 1 FROM users WHERE username=?', (name,)).fetchone():
                     raise HTTPError(409, 'That username exists.')
-                uid = store.put('users', {'username': name, 'pw': None, 'role': role, 'active': 1, 'created': int(time.time())})
+                uid = store.put('users', {'username': name, 'pw': None, 'role': role, 'active': 1, 'created': int(time.time()),
+                                          'full_name': full_name, 'position': position})
                 self.log_user(c, me['id'], uid, f'created as {role}')
             raw = auth.make_token('reset', uid, 7 * 86400)
             return self.send({'ok': True, 'id': uid, 'link': link(f'/#reset={raw}'), 'expires_days': 7})
@@ -477,6 +498,13 @@ def make_handler(cfg, store, auth):
                         if me['role'] != 'manager' or d['role'] not in ('user', 'admin'):
                             raise HTTPError(403, 'only the manager can promote or demote admins')
                         row['role'] = d['role']; notes.append(f'role → {d["role"]}')
+                    if 'full_name' in d or 'position' in d:
+                        try:
+                            fn, pos = person({'full_name': d.get('full_name', u['full_name']), 'position': d.get('position', u['position'])})
+                        except ValueError as e:
+                            raise HTTPError(400, str(e))
+                        if (fn, pos) != (u['full_name'], u['position']):
+                            row.update(full_name=fn, position=pos); notes.append(f'details → {fn}' + (f', {pos}' if pos else ''))
                     if 'active' in d and bool(d['active']) != bool(u['active']):
                         row['active'] = 1 if d['active'] else 0; notes.append('activated' if d['active'] else 'deactivated')
                     if notes:
@@ -578,7 +606,8 @@ def main(argv=None):
     auth = Auth(store, cfg)
     if a.cmd == 'users':
         for u in list_users(store):
-            print(f'{u["username"]:<24} {u["role"]:<8} {"active" if u["active"] else "inactive":<9}'
+            print(f'{u["username"]:<20} {u["full_name"] or "(no name)":<26} {u["position"] or "":<22} {u["role"]:<8} '
+                  f'{"active" if u["active"] else "inactive":<9}'
                   f'{"" if u["pw"] else "(no password set)"}')
         return
     if a.cmd == 'check':

@@ -75,7 +75,7 @@ async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show
 const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['drawings','Drawings',isAdmin],['history','History',isAdmin],['account','Account',()=>true]];
 async function init(){
   ME=await K.start(); K.toast=toast;
-  $('#who').textContent=`${ME.user.username} · ${ME.user.role}`;
+  $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`;
   const t=location.hash.slice(1); show(TABS.some(x=>x[0]===t&&x[2]())?t:isAdmin()?'queue':'mine');
 }
 async function show(t){
@@ -112,6 +112,7 @@ function detail(s){
   if(s.kind==='photo_delete') return `<div class="del">Delete this photo</div>${s.live?.[0]?.value?`<div class="photos"><figure><img src="photos/${esc(s.live[0].value.file)}" onclick="lightbox(this.src)" alt=""></figure></div>`:'<div class="sub">(already gone)</div>'}`;
   return `<div class="${s.kind==='link'&&p.on===false?'del':'add'}">${esc(K.describe(s.kind,p))}</div>`;
 }
+const who=s=>s.by_name&&s.by_name!==s.by?`${esc(s.by_name)} <span class="mono">(${esc(s.by)})</span>`:esc(s.by);  // full name + username
 const badge=s=>{ const st=s.conflicts?.length?'conflict':s.status; return `<span class="badge ${st}">${st}</span>` };
 
 // ---------- views ----------
@@ -128,13 +129,13 @@ const VIEWS={
         const kks=L[0].payload.kks;
         h+=`<div class="card"><h3>Photo proposals · ${esc(kks)}</h3>${L.length>1?'<div class="sub">Several photos proposed. “Use this one” approves it and rejects the others. Votes are only a hint.</div>':''}
           <div class="photos">${L.map(s=>`<figure><img src="photos/${esc(s.payload.file)}" onclick="lightbox(this.src)" alt="">
-          <div class="sub">${esc(s.by)} · ${when(s.created)} · ${s.votes} vote${s.votes===1?'':'s'}</div>${s.payload.caption?`<div>${esc(s.payload.caption)}</div>`:''}
+          <div class="sub">${who(s)} · ${when(s.created)} · ${s.votes} vote${s.votes===1?'':'s'}</div>${s.payload.caption?`<div>${esc(s.payload.caption)}</div>`:''}
           <div class="row" style="margin-top:6px">${L.length>1?`<button class="primary" onclick="decide(${s.id},'pick')">Use this one</button><button class="ghost" onclick="decide(${s.id},'approve')">Add</button>`:`<button class="primary" onclick="decide(${s.id},'approve')">Approve</button>`}
           <button class="danger" onclick="decide(${s.id},'reject')">Reject</button></div></figure>`).join('')}</div></div>`;
         continue;
       }
       h+=`<div class="card"><h3>${esc(target)}</h3>${L.map(s=>`<div style="margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)">
-        <div class="row">${badge(s)}<span class="sub">#${s.id} · ${esc(s.by)} · ${when(s.created)}</span></div>
+        <div class="row">${badge(s)}<span class="sub">#${s.id} · ${who(s)} · ${when(s.created)}</span></div>
         ${s.conflicts?.length?`<div class="warn bad">Conflict: ${s.kind==='equipment'?'highlighted field(s) changed after this was submitted':'this changed after it was submitted'}. Approving overwrites the current value.</div>`:''}
         ${detail(s)}
         <div class="row" style="margin-top:6px">${s.conflicts?.length?`<button class="primary" onclick="decide(${s.id},'approve',true)">Overwrite with proposal</button>`:`<button class="primary" onclick="decide(${s.id},'approve')">Approve</button>`}
@@ -157,14 +158,17 @@ const VIEWS={
     const U=(await K.api('/api/users')).users;
     const canEdit=u=>u.role==='user'||(u.role==='admin'&&isManager());
     $('#main').innerHTML=`<div class="card"><h3>Add an account</h3>
-      <form class="inline" onsubmit="event.preventDefault();createUser(this)"><input name="username" placeholder="username" required maxlength="40">
+      <form class="inline" onsubmit="event.preventDefault();createUser(this)"><input name="full_name" placeholder="Full name" required maxlength="80" style="min-width:200px">
+      <input name="position" placeholder="Position (optional)" maxlength="80"><input name="username" placeholder="username" required maxlength="40">
       <select name="role"><option value="user">user</option>${isManager()?'<option value="admin">admin</option>':''}</select><button class="primary">Create and get link</button></form>
       <div class="sub">There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.</div><div id="newlink"></div></div>
-      <table><tr><th>User</th><th>Role</th><th>Status</th><th></th></tr>${U.map(u=>`<tr><td>${esc(u.username)}${u.id===ME.user.id?' <span class="sub">(you)</span>':''}</td>
+      <table><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th></th></tr>${U.map(u=>`<tr><td>${u.full_name?esc(u.full_name):'<span class="del">no name yet</span>'}${u.position?`<div class="sub">${esc(u.position)}</div>`:''}</td>
+      <td class="mono">${esc(u.username)}${u.id===ME.user.id?' <span class="sub">(you)</span>':''}</td>
       <td>${u.role}</td><td>${u.active?(u.has_password?'active':'<span class="sub">link not used yet</span>'):'<span class="del">deactivated</span>'}</td>
       <td class="row">${canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="setUser(${u.id},{active:${!u.active}})">${u.active?'Deactivate':'Activate'}</button>
         ${isManager()?`<button class="ghost" onclick="setUser(${u.id},{role:'${u.role==='admin'?'user':'admin'}'})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}
-        <button class="ghost" onclick="resetLink(${u.id},'${esc(u.username)}')">Password link</button>`:''}</td></tr>`).join('')}</table>
+        <button class="ghost" onclick="resetLink(${u.id},'${esc(u.username)}')">Password link</button>`:''}
+        ${canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="editDetails(${u.id},'${esc(u.full_name).replace(/'/g,'&#39;')}','${esc(u.position).replace(/'/g,'&#39;')}')">Edit details</button>`:''}</td></tr>`).join('')}</table>
       <p class="sub">Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).</p>`;
   },
   async history(before){
@@ -179,7 +183,7 @@ const VIEWS={
         return `${esc(r.key)}: `+keys.map(k=>`${esc(k)} ${val((b||{})[k])} → ${val((a||{})[k])}`).join(' · ') }
       return `${esc(r.entity)} ${esc(r.key)}: ${val(b)} → ${val(a)}` };
     $('#main').innerHTML=`<p class="sub">Every applied change, newest first. <b>Revert</b> undoes one change. <b>Restore to here</b> puts all data (notes, locations, photos, links, reviews) back to how it was right after that change. Both are new entries themselves, so they can be undone too. Accounts are not affected.</p>
-      <table><tr><th>Rev</th><th>When</th><th>By</th><th>Change</th><th></th></tr>${R.map(r=>`<tr><td class="mono">${r.rev}</td><td class="sub">${when(r.ts)}</td><td>${esc(r.username||'server console')}</td>
+      <table><tr><th>Rev</th><th>When</th><th>By</th><th>Change</th><th></th></tr>${R.map(r=>`<tr><td class="mono">${r.rev}</td><td class="sub">${when(r.ts)}</td><td>${esc(r.full_name||r.username||'server console')}</td>
       <td>${summary(r)}${r.note&&!['user','sheet'].includes(r.entity)?` <span class="sub">(${esc(r.note)})</span>`:''}</td>
       <td class="row">${!['user','sheet'].includes(r.entity)?`<button class="ghost" onclick="revert(${r.rev})">Revert</button><button class="ghost" onclick="restoreTo(${r.rev})">Restore to here</button>`:''}</td></tr>`).join('')}</table>
       ${R.length?`<div class="row" style="margin-top:10px">${R.length===100?`<button class="ghost" onclick="VIEWS.history(${R[R.length-1].rev})">Older →</button>`:''}${isAdmin()?`<button class="danger" onclick="restoreTo(0)">Restore to before any logged change</button>`:''}</div>`:'<p class="sub">No changes yet.</p>'}`;
@@ -212,7 +216,11 @@ const VIEWS={
     if(K.online){ try{ ME=await K.api('/api/me') }catch(e){} }
     const sw=!!navigator.serviceWorker?.controller, secure=window.isSecureContext;
     const lease=await K.idb.get('me');
-    let h=`<div class="card"><h3>${esc(ME.user.username)} · ${ME.user.role}</h3>
+    let h=`<div class="card"><h3>Your details</h3>${ME.user.full_name?'':'<div class="warn">Add your full name, so others can tell whose account this is.</div>'}
+      <form class="inline" onsubmit="event.preventDefault();saveDetails(this)"><input name="full_name" placeholder="Full name" value="${esc(ME.user.full_name)}" required maxlength="80" style="min-width:220px">
+      <input name="position" placeholder="Position (optional)" value="${esc(ME.user.position)}" maxlength="80"><button class="primary">Save</button></form>
+      <div class="sub">Username <span class="mono">${esc(ME.user.username)}</span> · ${ME.user.role}</div></div>
+      <div class="card"><h3>Password</h3>
       <form class="inline" onsubmit="event.preventDefault();changePw(this)"><input type="password" name="old" placeholder="current password" autocomplete="current-password" required>
       <input type="password" name="new" placeholder="new password (10+)" autocomplete="new-password" required minlength="10"><button class="primary">Change password</button></form></div>`;
     if(ME.transfer_offer) h+=`<div class="card"><h3>The manager wants to hand the manager role to you</h3><div class="sub">You would become the single top account. The current manager becomes an admin.</div>
@@ -288,7 +296,7 @@ async function decide(id,action,force){
 const vote=id=>act(()=>K.api(`/api/submissions/${id}/vote`,{}));
 const withdraw=id=>confirm('Withdraw this submission?')&&act(()=>K.api(`/api/submissions/${id}/withdraw`,{}),'Withdrawn');
 async function createUser(f){
-  const r=await act(()=>K.api('/api/users',{username:f.username.value.trim(),role:f.role.value}),'Account created');
+  const r=await act(()=>K.api('/api/users',{username:f.username.value.trim(),role:f.role.value,full_name:f.full_name.value,position:f.position.value}),'Account created');
   if(r) $('#newlink').innerHTML=`<div class="warn">Give this link to <b>${esc(f.username.value)}</b> (valid ${r.expires_days} days, works once):<div class="linkbox">${esc(r.link)}</div></div>`;
 }
 const setUser=(id,d)=>act(()=>K.api(`/api/users/${id}`,d),'Updated');
@@ -302,6 +310,11 @@ async function revert(rev,force){
   catch(e){ if(e.status===409&&confirm('This item was changed again after that revision. Revert anyway (discarding the later change)?')) return revert(rev,true); if(e.status!==409) toast(e.message) }
 }
 const restoreTo=rev=>confirm(rev?`Put all plant data back to how it was right after revision ${rev}? Later changes stay in History and can be re-applied.`:'Put all plant data back to how it was before the first logged change?')&&act(()=>K.api('/api/restore',{rev}),'Restored');
+async function saveDetails(f){ if(await act(()=>K.api('/api/profile',{full_name:f.full_name.value,position:f.position.value}),'Saved')){ ME=await K.api('/api/me'); $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`; show('account') } }
+async function editDetails(id,name,pos){
+  const n=prompt('Full name:',name); if(n===null) return; const p=prompt('Position (optional):',pos); if(p===null) return;
+  await act(()=>K.api(`/api/users/${id}`,{full_name:n,position:p}),'Details updated');
+}
 async function changePw(f){ if(await act(()=>K.api('/api/password',{old:f.old.value,new:f.new.value}),'Password changed. Other devices are signed out.')) f.reset() }
 const mgr=(a,d={})=>(a!=='accept'||confirm('Become the manager?'))&&act(()=>K.api('/api/manager/'+a,d),{transfer:'Offer sent',accept:'You are now the manager',decline:'Declined',cancel:'Offer cancelled'}[a]).then(r=>{ if(r&&a==='accept') location.reload() });
 init();

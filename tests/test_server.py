@@ -68,12 +68,12 @@ class Base(unittest.TestCase):
     def setup_manager(self):
         tok = self.auth.make_token('setup', None, 3600)
         m = self.client()
-        s, r = m.post('/api/setup', {'token': tok, 'username': 'boss', 'password': 'correct horse'})
+        s, r = m.post('/api/setup', {'token': tok, 'username': 'boss', 'password': 'correct horse', 'full_name': 'Hashim Boss'})
         self.assertEqual(s, 200, r)
         return m
 
     def invite(self, by, name, role='user'):
-        s, r = by.post('/api/users', {'username': name, 'role': role})
+        s, r = by.post('/api/users', {'username': name, 'role': role, 'full_name': name.title() + ' Person'})
         self.assertEqual(s, 200, r)
         tok = r['link'].split('#reset=')[1]
         u = self.client()
@@ -96,10 +96,11 @@ class ServerTest(Base):
     def test_setup_token_single_use_and_one_manager(self):
         tok = self.auth.make_token('setup', None, 3600)
         a, b = self.client(), self.client()
-        self.assertEqual(a.post('/api/setup', {'token': tok, 'username': 'a1', 'password': 'x' * 12})[0], 200)
-        self.assertEqual(b.post('/api/setup', {'token': tok, 'username': 'b1', 'password': 'x' * 12})[0], 403)
+        self.assertEqual(a.post('/api/setup', {'token': tok, 'username': 'a1', 'password': 'x' * 12})[0], 400)  # full name required
+        self.assertEqual(a.post('/api/setup', {'token': tok, 'username': 'a1', 'password': 'x' * 12, 'full_name': 'A One'})[0], 200)
+        self.assertEqual(b.post('/api/setup', {'token': tok, 'username': 'b1', 'password': 'x' * 12, 'full_name': 'B One'})[0], 403)
         tok2 = self.auth.make_token('setup', None, 3600)  # even a fresh token can't make a second manager
-        self.assertEqual(b.post('/api/setup', {'token': tok2, 'username': 'b1', 'password': 'x' * 12})[0], 403)
+        self.assertEqual(b.post('/api/setup', {'token': tok2, 'username': 'b1', 'password': 'x' * 12, 'full_name': 'B Two'})[0], 403)
 
     def test_csrf_and_content_type(self):
         m = self.setup_manager()
@@ -109,7 +110,7 @@ class ServerTest(Base):
     def test_proxy_origin(self):
         m = self.setup_manager()
         self.cfg['public_url'] = 'https://kks.example.ts.net'
-        self.assertEqual(m.post('/api/users', {'username': 'p1'}, headers={'Origin': 'https://kks.example.ts.net'})[0], 200)
+        self.assertEqual(m.post('/api/users', {'username': 'p1', 'full_name': 'Proxy User'}, headers={'Origin': 'https://kks.example.ts.net'})[0], 200)
 
     def test_hsts_only_with_https_public_url(self):
         def hsts():
@@ -155,6 +156,51 @@ class ServerTest(Base):
         # deactivating logs the user out immediately
         self.assertEqual(adm.post(f'/api/users/{users["usr"]["id"]}', {'active': False})[0], 200)
         self.assertEqual(usr.get('/api/state')[0], 401)
+
+    def test_full_name_and_position(self):
+        m = self.setup_manager()
+        self.assertEqual(m.post('/api/users', {'username': 'noname'})[0], 400)  # full name is required
+        s, r = m.post('/api/users', {'username': 'ali', 'full_name': '  Ali   Hassan ', 'position': 'I&C Technician'})
+        self.assertEqual(s, 200, r)
+        adm = self.invite(m, 'adm', 'admin')
+        users = {u['username']: u for u in m.get('/api/users')[1]['users']}
+        self.assertEqual((users['ali']['full_name'], users['ali']['position']), ('Ali Hassan', 'I&C Technician'))
+        self.assertEqual(users['boss']['full_name'], 'Hashim Boss')
+        # everyone edits their own details; admins edit users' details, not the manager's
+        self.assertEqual(adm.post('/api/profile', {'full_name': 'Adm Person', 'position': 'Shift supervisor'})[0], 200)
+        self.assertEqual(adm.get('/api/me')[1]['user']['position'], 'Shift supervisor')
+        self.assertEqual(adm.post('/api/profile', {'full_name': ''})[0], 400)
+        self.assertEqual(adm.post(f'/api/users/{users["ali"]["id"]}', {'position': 'Senior technician'})[0], 200)
+        self.assertEqual(adm.post(f'/api/users/{users["boss"]["id"]}', {'full_name': 'X'})[0], 403)
+        users = {u['username']: u for u in m.get('/api/users')[1]['users']}
+        self.assertEqual((users['ali']['full_name'], users['ali']['position']), ('Ali Hassan', 'Senior technician'))
+        # submissions and history show the person's name
+        adm.post('/api/submit', {'kind': 'link', 'payload': {'proc': 'p', 'step': 1, 'kks': '11AAA10AA001'}})
+        self.assertEqual(m.get('/api/submissions?status=all')[1]['submissions'][0]['by_name'], 'Adm Person')
+        self.assertIn('Adm Person', [r['full_name'] for r in m.get('/api/revisions')[1]['revisions']])
+
+    def test_old_database_gets_new_columns(self):
+        import sqlite3
+        from server import store as store_mod
+        old = os.path.join(self.tmp, 'old.db')
+        c = sqlite3.connect(old)
+        c.execute('CREATE TABLE users(id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, pw TEXT, '
+                  "role TEXT NOT NULL CHECK(role IN ('manager','admin','user')), active INTEGER NOT NULL DEFAULT 1, created INTEGER)")
+        c.execute("INSERT INTO users(username, role) VALUES ('kept', 'user')"); c.commit(); c.close()
+        cfg = dict(self.cfg, db=old, backup_dir=os.path.join(self.tmp, 'b2'))
+        st = store_mod.Store(cfg); c = st.conn()
+        self.assertEqual(c.execute("SELECT username, full_name FROM users").fetchall()[0][:], ('kept', None))
+        c.close()
+        # restore: a snapshot from before the upgrade + journal rows that carry the new columns
+        with st.write():
+            st.put('users', {'username': 'new', 'role': 'user', 'active': 1, 'full_name': 'New Person', 'position': None})
+        snaps = st.snapshots()
+        oldest = snaps[0][1]
+        c = sqlite3.connect(oldest); c.execute('CREATE TABLE u2 AS SELECT id,username,pw,role,active,created FROM users')
+        c.execute('DROP TABLE users'); c.execute('ALTER TABLE u2 RENAME TO users'); c.commit(); c.close()
+        out = os.path.join(self.tmp, 'r.db'); store_mod.restore(cfg, out)
+        c = sqlite3.connect(out)
+        self.assertIn(('new', 'New Person'), c.execute('SELECT username, full_name FROM users').fetchall()); c.close()
 
     def test_manager_transfer(self):
         m = self.setup_manager()

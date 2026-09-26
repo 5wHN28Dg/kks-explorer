@@ -186,7 +186,7 @@ function selectLoc(b){
 
 async function load(){
   const me=await K.start(); K.toast=toast;
-  $('#who').textContent=me.user.username; $('#plantName').textContent=K.cfg?'· '+K.cfg.plant_name:'';
+  $('#who').textContent=me.user.full_name||me.user.username; $('#plantName').textContent=K.cfg?'· '+K.cfg.plant_name:'';
   try{
     [SHEETS,BASE_TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error(u+': '+r.status);return r.json()})));
   }catch(e){ K.overlay(`<div class="box"><h1>Plant data not available</h1><p>${K.online?esc(e.message):'You are offline and this device has no saved copy of the plant data. Offline copies need the app opened over HTTPS (or localhost) at least once while online.'}</p><button onclick="location.reload()">Retry</button></div>`); return }

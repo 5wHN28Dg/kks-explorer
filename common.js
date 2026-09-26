@@ -65,7 +65,7 @@ K.overlay = html => {
 };
 K.form = (title, sub, fields, button, onsubmit) => {
   const o = K.overlay(`<form autocomplete="on"><h1>${K.esc(title)}</h1>${sub ? `<p>${sub}</p>` : ''}
-    ${fields.map(f => `<input name="${f.name}" type="${f.type || 'text'}" placeholder="${K.esc(f.label)}" autocomplete="${f.ac || 'off'}" ${f.value ? `value="${K.esc(f.value)}" readonly` : ''} required>`).join('')}
+    ${fields.map(f => `<input name="${f.name}" type="${f.type || 'text'}" placeholder="${K.esc(f.label)}" autocomplete="${f.ac || 'off'}" ${f.value ? `value="${K.esc(f.value)}" readonly` : ''} ${f.optional ? '' : 'required'}>`).join('')}
     <div class="err"></div><button>${K.esc(button)}</button></form>`);
   const f = o.querySelector('form'); f.querySelector('input:not([readonly])')?.focus();
   f.onsubmit = async e => { e.preventDefault(); const v = Object.fromEntries(new FormData(f)); f.querySelector('.err').textContent = '';
@@ -83,8 +83,9 @@ K.start = async () => {
   const cfg = K.cfg = await K.api('/api/config').catch(() => null);
   if (cfg) document.title = cfg.plant_name + ' — KKS Explorer';
   if (h.get('setup')) return new Promise(() => K.form('Create the manager account', 'One-time link from the server console. The manager is the top account: it promotes admins and can hand the role over later.',
-    [{name: 'username', label: 'Username', ac: 'username'}, ...pwFields], 'Create manager', async v => {
-      samePw(v); await K.api('/api/setup', {token: h.get('setup'), username: v.username, password: v.password}); done() }));
+    [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position at the company (optional)', ac: 'organization-title', optional: true},
+     {name: 'username', label: 'Username', ac: 'username'}, ...pwFields], 'Create manager', async v => {
+      samePw(v); await K.api('/api/setup', {token: h.get('setup'), username: v.username, password: v.password, full_name: v.full_name, position: v.position}); done() }));
   if (h.get('reset')) {
     const info = await K.api(`/api/token-info?kind=reset&token=${encodeURIComponent(h.get('reset'))}`).catch(e => ({error: e.message}));
     if (info.error) { K.overlay(`<div class="box"><h1>Link not valid</h1><p>${K.esc(info.error)} Ask an admin for a new one.</p></div>`); return new Promise(() => {}) }

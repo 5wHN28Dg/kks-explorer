@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS reviews(tag_id TEXT PRIMARY KEY, data TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS links(proc TEXT, step INTEGER, kks TEXT, PRIMARY KEY(proc,step,kks));
 CREATE TABLE IF NOT EXISTS added_tags(id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, pw TEXT,
-  role TEXT NOT NULL CHECK(role IN ('manager','admin','user')), active INTEGER NOT NULL DEFAULT 1, created INTEGER);
+  role TEXT NOT NULL CHECK(role IN ('manager','admin','user')), active INTEGER NOT NULL DEFAULT 1, created INTEGER,
+  full_name TEXT, position TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS one_manager ON users(role) WHERE role='manager';
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created INTEGER, expires INTEGER);
 CREATE TABLE IF NOT EXISTS tokens(token TEXT PRIMARY KEY, kind TEXT NOT NULL, user_id INTEGER, expires INTEGER);
@@ -34,6 +35,15 @@ KEYS = {  # primary-key columns of every journaled table
     'revisions': ('rev',), 'meta': ('k',),
 }
 NOT_JOURNALED = {'sessions'}
+COLUMNS_ADDED = [('users', 'full_name', 'TEXT'), ('users', 'position', 'TEXT')]  # 2026-09-26
+
+
+def migrate(c):
+    """Add columns introduced after a database was created. Also run on restored snapshots before the journal
+    replay, since newer journal rows carry these columns."""
+    for table, col, typ in COLUMNS_ADDED:
+        if col not in [r[1] for r in c.execute(f'PRAGMA table_info({table})')]:
+            c.execute(f'ALTER TABLE {table} ADD COLUMN {col} {typ}')
 
 
 def connect(path):
@@ -52,6 +62,7 @@ class Store:
         c = connect(self.path)
         c.execute('PRAGMA journal_mode=WAL')
         c.executescript(SCHEMA)
+        migrate(c)
         c.close()
         self._since_snapshot = 0
         # If the process died between a commit and its journal append, the journal has a gap: snapshot to cover it.
@@ -197,6 +208,7 @@ def restore(cfg, out, to_seq=None):
     base_seq, snap = snaps[-1]
     src, dst = sqlite3.connect(snap), sqlite3.connect(out)
     src.backup(dst); src.close()
+    migrate(dst)
     dst.row_factory = sqlite3.Row
     last = base_seq
     for p in sorted(glob.glob(os.path.join(bdir, 'journal-*.jsonl')), key=lambda p: int(re.search(r'journal-(\d+)', p)[1])):
