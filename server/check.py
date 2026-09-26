@@ -31,6 +31,10 @@ def run(cfg, store, auth):
     elif https:
         add('OK', 'session cookie is Secure; HSTS is sent.')
 
+    if cfg.get('sync_port'):
+        add('INFO', f'peer sync listens on {cfg["host"]}:{cfg["sync_port"]} (encrypted, device-key authenticated; only '
+                    'certified devices receive data). Set "sync_port": 0 to turn it off.')
+
     # ---- cloudflared ----
     found = [p for p in CLOUDFLARED_CONFIGS if os.path.exists(p)]
     for p in found:

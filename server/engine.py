@@ -59,7 +59,7 @@ class Engine:
             for r in c.execute('SELECT sha, file FROM blobs'):
                 self.blob_files[r['sha']] = r['file']
             have = set(self.entries)
-            for r in c.execute('SELECT id, data FROM entries'):
+            for r in c.execute('SELECT id, data FROM entries UNION ALL SELECT id, data FROM evidence'):
                 if r['id'] not in have:
                     self.entries[r['id']] = json.loads(r['data'])
         finally:
@@ -79,7 +79,7 @@ class Engine:
         with self.lock:
             c = self.store.conn()
             try:
-                n = c.execute('SELECT COUNT(*) FROM entries').fetchone()[0]
+                n = c.execute('SELECT (SELECT COUNT(*) FROM entries) + (SELECT COUNT(*) FROM evidence)').fetchone()[0]
             finally:
                 c.close()
             if n != len(self.entries):
@@ -219,6 +219,177 @@ class Engine:
         fd = os.open(self.root_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w') as f:
             f.write(seed.hex() + '\n')
+
+    # ---------- as a sync node (peer/sync.py, docs/PROTOCOL.md §15) ----------
+    def identity(self):
+        """The key this node proves itself with: the manager's custodial device if it's here, else an admin's,
+        else any valid one. It only authenticates connections; it signs no entries by itself."""
+        with self.lock:
+            c = self.store.conn()
+            try:
+                rows = c.execute("SELECT device, role FROM users WHERE device IS NOT NULL AND active=1 "
+                                 "ORDER BY role='manager' DESC, role='admin' DESC, id").fetchall()
+            finally:
+                c.close()
+            for r in rows:
+                if r['device'] in self.keys and r['device'] in self.run.devices and r['device'] not in self.run.cuts:
+                    return self.keys[r['device']]
+            for dev, key in self.keys.items():   # e.g. a new device not certified yet: the other side decides
+                if dev not in (self.run.cuts if self.run else {}):
+                    return key
+        raise NoRootKey('this node has no usable device key to connect with')
+
+    def root(self):
+        return self.anchor
+
+    def adopt(self, root):
+        with self.lock:
+            if self.anchor is not None:
+                raise ValueError('this node already belongs to a plant')
+            with self.store.write():
+                self.store.put('meta', {'k': 'root_pub', 'v': json.dumps(root)})
+            self.anchor = root
+            self.rebuild()
+
+    def vv(self):
+        """{device: [last seq, ID of that entry]}: the ID lets two copies of one key be told apart (§15)."""
+        c = self.store.conn()
+        try:
+            return {r[0]: [r[1], r[2]] for r in c.execute(
+                'SELECT e.peer, e.seq, e.id FROM entries e JOIN (SELECT peer, MAX(seq) AS s FROM entries GROUP BY peer) m '
+                'ON e.peer=m.peer AND e.seq=m.s')}
+        finally:
+            c.close()
+
+    def entries_for(self, vv):
+        """What the other side lacks by its version vector; the whole chain of a device whose entry at their last seq
+        differs from ours (a fork: they will find where it splits); all fork evidence."""
+        c = self.store.conn()
+        try:
+            ids = {(r[0], r[1]): r[2] for r in c.execute('SELECT peer, seq, id FROM entries')}
+            out = []
+            for r in c.execute('SELECT peer, seq, data FROM entries ORDER BY peer, seq'):
+                have = vv.get(r['peer'])
+                seq, head = (have if isinstance(have, list) and len(have) == 2 else (0, None))
+                if not isinstance(seq, int) or r['seq'] > seq or ids.get((r['peer'], seq), head) != head:
+                    out.append(json.loads(r['data']))
+            out += [json.loads(r['data']) for r in c.execute('SELECT data FROM evidence')]
+            return out
+        finally:
+            c.close()
+
+    def may_read(self, peer):
+        """Only a certified, unrevoked device of a known person receives plant data."""
+        with self.lock:
+            d = self.run.devices.get(peer) if self.run else None
+            return bool(d) and peer not in self.run.cuts and d['person'] in self.run.persons
+
+    def ingest(self, entries):
+        """Store entries from another peer: signature checked, each device's chain continued in order (entries whose
+        predecessor we lack are skipped: the next sync brings them), a second different entry for a (peer, seq) we
+        hold is kept as fork evidence. Then replay. -> number of new entries."""
+        good = {}
+        for e in entries if isinstance(entries, list) else []:
+            try:
+                P.verify_entry(e)
+            except P.ProtocolError:
+                continue
+            good.setdefault(e['peer'], []).append((e['seq'], P.entry_id(e), e))
+        with self.lock:
+            # only devices certified once this batch is counted get stored (a stranger's entries are not kept); a
+            # device's cert may arrive in the same batch as its entries, so relaying still works
+            trial, _ = R.replay_run(None, self.anchor, trusted={**self.entries, **{eid: e for lst in good.values() for _, eid, e in lst}})
+            good = {peer: lst for peer, lst in good.items() if peer in trial.devices}
+            new = []
+            with self.store.write() as c:
+                for peer, lst in good.items():
+                    last = c.execute('SELECT id, seq FROM entries WHERE peer=? ORDER BY seq DESC LIMIT 1', (peer,)).fetchone()
+                    last_seq, last_id = (last['seq'], last['id']) if last else (0, None)
+                    for seq, eid, e in sorted(lst, key=lambda x: x[0]):
+                        if eid in self.entries:
+                            continue
+                        row = {'id': eid, 'peer': peer, 'seq': seq, 'data': P.canonical(e).decode()}
+                        if seq <= last_seq:   # we hold a different entry there: a fork
+                            self.store.put('evidence', row)
+                        elif seq == last_seq + 1 and e['prev'] == last_id:
+                            self.store.put('entries', {**row, 'hlc0': e['hlc'][0], 'hlc1': e['hlc'][1],
+                                                       'type': e['type'], 'received': int(time.time())})
+                            last_seq, last_id = seq, eid
+                        else:
+                            continue
+                        new.append((eid, e))
+            if not new:
+                return 0
+            wall = int(time.time() * 1000)
+            for eid, e in new:
+                self.entries[eid] = e
+                self.clock.recv(e['hlc'], wall)
+            self.rebuild()
+            self._after_ingest()
+            return len(new)
+
+    def _after_ingest(self):
+        """Keep the server-local tables in step with what arrived: a submission row for every proposal (so it shows
+        in Approvals), and the account mirror (role, deactivated) for people changed on another device."""
+        run = self.run
+        with self.store.write() as c:
+            known = {r[0] for r in c.execute('SELECT entry FROM subs WHERE entry IS NOT NULL')}
+            by_person = {r['person']: r for r in c.execute('SELECT * FROM users WHERE person IS NOT NULL')}
+            for eid in run.proposals:
+                if eid not in known:
+                    e = self.entries[eid]
+                    person = run.authors.get(eid)
+                    u = by_person.get(person)
+                    self.store.put('subs', {'entry': eid, 'user_id': u['id'] if u else None, 'person': person,
+                                            'kind': e['type'], 'created': e['hlc'][0] // 1000})
+            want = {}
+            for pid, u in by_person.items():
+                if pid not in run.persons:
+                    continue
+                role = 'manager' if run.manager == pid else run.persons[pid]['role']
+                active = 1 if u['active'] and u['device'] not in run.cuts else 0
+                p = run.persons[pid]
+                if (role, active, p['full_name'], p['position']) != (u['role'], u['active'], u['full_name'], u['position']):
+                    want[pid] = {**dict(u), 'role': role, 'active': active, 'full_name': p['full_name'], 'position': p['position']}
+            for row in sorted(want.values(), key=lambda r: r['role'] == 'manager'):   # demote before promoting
+                self.store.put('users', row)
+                if not row['active'] or row['role'] != by_person[row['person']]['role']:
+                    self.store.delete('sessions', user_id=row['id'])
+
+    def blob_wants(self):
+        with self.lock:
+            shas = {v['blob'] for v in self.run.photos.values()}
+            shas |= {self.entries[e]['body']['blob'] for e, st in self.run.proposals.items()
+                     if st == 'pending' and self.entries[e]['type'] == 'photo'}
+            return sorted(shas - set(self.blob_files))
+
+    def blob_get(self, sha):
+        f = self.blob_files.get(sha)
+        if not f:
+            return None
+        try:
+            with open(os.path.join(self.cfg['photos_dir'], f), 'rb') as fh:
+                return fh.read()
+        except OSError:
+            return None
+
+    def blob_put(self, sha, data):
+        """Accept only blobs we asked for (referenced by the log) whose bytes match their hash."""
+        if not isinstance(sha, str) or sha not in self.blob_wants() or hashlib.sha256(data).hexdigest() != sha:
+            return False
+        ext = next((x for sig, x in ((b'\xff\xd8\xff', 'jpg'), (b'\x89PNG', 'png'), (b'RIFF', 'webp'),
+                                     (b'\xff\x0a', 'jxl'), (b'\x00\x00\x00\x0cJXL', 'jxl')) if data.startswith(sig)), 'bin')
+        name = f'{sha}.{ext}'
+        path = os.path.join(self.cfg['photos_dir'], name)
+        os.makedirs(self.cfg['photos_dir'], exist_ok=True)
+        with open(path + '.part', 'wb') as f:
+            f.write(data)
+        os.replace(path + '.part', path)
+        with self.lock:
+            with self.store.write():
+                self.store.put('blobs', {'sha': sha, 'file': name, 'size': len(data)})
+            self.blob_files[sha] = name
+        return True
 
     # ---------- reading ----------
     def entry(self, eid):

@@ -221,7 +221,16 @@ holder (self-held backup recommended). M0 done: `docs/PROTOCOL.md` §1–7 `peer
 `peer/vectors/v2-replay.json` (M0b: identity, authority, revocation by priority, approvals, merge, private entries;
 generator `peer/make_replay_vectors.py`, 3 scenarios). Both vector files frozen; tests in `tests/test_protocol.py`.
 Root key: laptop + backup, not the phone (PROTOCOL.md §10: only a root-signed revoke settles a stolen same-person device).
-M1 done 2026-09-26 (server on the log, see Layout). `withdraw`, `vote`, review `data:null` were added to the protocol
+M1 done 2026-09-26 (server on the log, see Layout). M2a done 2026-09-26: sync (PROTOCOL.md §15): `peer/noise.py`
+(Noise_XX_25519_ChaChaPoly_SHA256, own implementation, matches the cacophony vector `peer/vectors/noise-xx.json`),
+`peer/sync.py` (handshake with Ed25519-signed static key, hello with vv {device: [seq, head id]}, entries, want/blobs,
+bye), Engine node methods (identity, vv, entries_for, may_read, ingest with trial replay: only entries of devices
+certified after the batch are stored; fork evidence table `evidence`; `_after_ingest` adds `subs` rows for proposals
+that came by sync + mirrors roles into `users`), blob_put only for referenced hashes. Server listens on `sync_port`
+(8421, 0 = off); `app.py sync HOST[:PORT]`. Vectors `peer/vectors/v3-sync.json`. Verified: tests/test_sync.py (real
+TCP between separate DBs: join, relay, stranger, other plant, photo, revoke, cloned key) + two app.py processes
+(propose on one, approve over HTTP on the other, sync back). History rows carry a stable `hid` (entry-based);
+revert/restore use it, numbers are display-only. `withdraw`, `vote`, review `data:null` were added to the protocol
 for it (v2-replay.json regenerated before anything depended on it; freeze it once the Kotlin port starts). Next: M2.
 
 ## Backlog (rough priority)

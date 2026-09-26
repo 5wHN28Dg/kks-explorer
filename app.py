@@ -12,9 +12,10 @@
   python3 app.py added-tags               print the tags users marked by hand on the drawings (JSON)
   python3 app.py export-root-key --out F  write the plant root key, encrypted with a passphrase, to F (keep it safe)
   python3 app.py import-root-key --file F put a root key backup back (e.g. on a new server)
+  python3 app.py sync HOST[:PORT]          sync with another device now (it must be listening, default port 8421)
 
 The app shell (index.html, admin.html, *.js) is public. Plant data (/data, /photos, /api) needs a login."""
-import argparse, getpass, gzip, json, mimetypes, os, re, secrets, socket, ssl, sys, time, traceback
+import argparse, getpass, gzip, json, mimetypes, os, re, secrets, socket, ssl, sys, threading, time, traceback
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote, parse_qs
@@ -34,6 +35,7 @@ from server.store import Store, restore
 from server.auth import Auth, hash_password, password_problem, public_user, rank, person
 from server import changes as ch
 from server.engine import Engine, NoRootKey, tag_out
+from peer import sync as sync_mod
 from server import check as check_mod
 from server import sheets as sheets_mod
 
@@ -424,18 +426,19 @@ def make_handler(cfg, store, auth, engine=None):
             m = re.fullmatch(r'/api/users/(\d+)(/reset)?', p)
             if m:
                 return self.update_user(me, int(m[1]), d, bool(m[2]))
-            m = re.fullmatch(r'/api/revisions/(\d+)/revert', p)
+            m = re.fullmatch(r'/api/revisions/([\w-]+)/revert', p)
             if m:
                 self.need(me, 'admin')
                 with E.tx() as c:
-                    n = ch.revert(E, c, me, int(m[1]), bool(d.get('force')))
+                    n = ch.revert(E, c, me, int(m[1]) if m[1].isdigit() else m[1], bool(d.get('force')))
                 return self.send({'ok': True, 'changed': n})
             if p == '/api/restore':
                 self.need(me, 'admin')
-                if not isinstance(d.get('rev'), int) or d['rev'] < 0:
-                    raise HTTPError(400, 'rev (0 or a revision number) is required')
+                ref = d.get('hid', d.get('rev'))
+                if not (ref == 0 or isinstance(ref, str) or isinstance(ref, int) and ref > 0) or isinstance(ref, bool):
+                    raise HTTPError(400, 'hid (a History row) or rev 0 is required')
                 with E.tx() as c:
-                    n = ch.restore_to(E, c, me, d['rev'])
+                    n = ch.restore_to(E, c, me, ref)
                 return self.send({'ok': True, 'changed': n})
             if p.startswith('/api/manager/'):
                 return self.manager_action(me, p.rsplit('/', 1)[1], d)
@@ -613,7 +616,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description='KKS Explorer server')
     ap.add_argument('cmd', nargs='?', default='serve',
                     choices=['serve', 'users', 'reset-manager', 'reset-password', 'backup', 'restore', 'check', 'setup-importer',
-                             'added-tags', 'export-root-key', 'import-root-key'])
+                             'added-tags', 'export-root-key', 'import-root-key', 'sync'])
+    ap.add_argument('target', nargs='?', help='for sync: HOST[:PORT]')
     ap.add_argument('--user')
     ap.add_argument('--file')
     ap.add_argument('--seq', type=int)
@@ -658,6 +662,19 @@ def main(argv=None):
             raise SystemExit(str(e))
         except (ValueError, KeyError):
             raise SystemExit('Wrong passphrase or not a root key backup.')
+        return
+    if a.cmd == 'sync':
+        if not a.target:
+            raise SystemExit('usage: python3 app.py sync HOST[:PORT]')
+        host, _, port = a.target.partition(':')
+        try:
+            remote, st = sync_mod.sync_with(E, host, int(port or 8421))
+        except (sync_mod.SyncError, OSError, NoRootKey) as e:
+            raise SystemExit(f'sync failed: {e}')
+        print(f'synced with {remote[:12]}…: sent {st["sent"]} entries, received {st["received"]}, '
+              f'photos {st["blobs_sent"]} sent / {st["blobs_received"]} received'
+              + ('; the other device does not know this one (not certified there yet), so it sent nothing'
+                 if st['they_denied'] else ''))
         return
     if a.cmd == 'users':
         for u in list_users(store):
@@ -719,6 +736,8 @@ def main(argv=None):
     if os.path.exists(E.root_path) and not store.meta('root_backed_up'):
         print(f'  The plant root key is only in {E.root_path}. Back it up: python3 app.py export-root-key --out FILE')
     httpd = ThreadingHTTPServer((cfg['host'], cfg['port']), make_handler(cfg, store, auth, E))
+    if cfg['sync_port']:
+        start_sync_listener(E, cfg['host'], cfg['sync_port'])
     scheme = 'http'
     if cfg['tls_cert']:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -732,6 +751,35 @@ def main(argv=None):
     except KeyboardInterrupt:
         print('\nStopping; taking a snapshot.')
         store.snapshot()
+
+
+def start_sync_listener(E, host, port, max_sessions=8):
+    """Accept sync connections from other devices (docs/PROTOCOL.md §15) in background threads. Every connection is
+    authenticated by device key; only certified devices receive anything."""
+    srv = socket.create_server((host, port))
+    slots = threading.BoundedSemaphore(max_sessions)
+
+    def one(sock):
+        try:
+            remote, st = sync_mod.serve_one(E, sock)
+            if st['received'] or st['sent'] or st['denied']:
+                print(f'  sync {remote[:12]}…: received {st["received"]}, sent {st["sent"]}'
+                      + (' (unknown device: sent nothing)' if st['denied'] else ''))
+        except (sync_mod.SyncError, OSError, NoRootKey) as e:
+            print(f'  sync from a device failed: {e}')
+        finally:
+            slots.release()
+
+    def loop():
+        while True:
+            sock, _ = srv.accept()
+            if not slots.acquire(blocking=False):
+                sock.close()
+                continue
+            threading.Thread(target=one, args=(sock,), daemon=True).start()
+    threading.Thread(target=loop, daemon=True).start()
+    print(f'  Sync: listening on {host}:{port}')
+    return srv
 
 
 def lan_ip():

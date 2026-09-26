@@ -249,7 +249,7 @@ def sub_out(E, r, me, users, live=False):
     """One submission as the UI expects it. `users` = {user id: row, person: row}. Call with E.lock held."""
     kind, body = sub_kind_body(E, r)
     status, note, decided_at, decider, conflicts = sub_status(E, r)
-    u = users.get(r['user_id'])
+    u = users.get(r['user_id']) or (E.run.persons.get(r['person']) if r['person'] else None)   # (by sync: no account here)
     d = {'id': r['id'], 'client_id': r['client_id'], 'kind': kind, 'target': target_of(kind, body), 'status': status,
          'created': r['created'], 'decided_at': decided_at, 'note': note, 'payload': body_to_payload(E, kind, body),
          'by': u['username'] if u else '?', 'mine': r['user_id'] == me['id']}
@@ -365,19 +365,22 @@ def _decide_reject(E, c, me, r, note):
 
 # ---------- History (log changes + local account/sheet notes), revert, restore ----------
 def history(E, c):
-    """All changes, oldest first, numbered from 1: [(rev, dict)]. Call with E.lock held."""
+    """All changes, oldest first, numbered from 1: [(rev, dict)]. Call with E.lock held. The numbers are for reading
+    only: entries from other devices with older clocks can arrive and shift them; `hid` (entry ID + position within
+    that entry, or n<local rev>) stays the same and is what revert/restore use."""
     notes = {r['entry']: r['note'] for r in c.execute('SELECT * FROM entry_notes')}
     subs = {r['entry']: r['id'] for r in c.execute('SELECT id, entry FROM subs WHERE entry IS NOT NULL')}
-    items = []
+    items, per_entry = [], {}
     for i, h in enumerate(E.run.history):
         at = E.entry(h['at'])
-        items.append(((at['hlc'][0] // 1000, 0, i), {
+        k = per_entry[h['at']] = per_entry.get(h['at'], -1) + 1
+        items.append(((at['hlc'][0] // 1000, 0, i), {'hid': f'{h["at"][:24]}-{k}',
             'ts': at['hlc'][0] // 1000, 'person': E.person_of(at['peer']), 'entity': h['entity'],
             'key': json.dumps(h['key']) if h['entity'] == 'link' else h['key'],
             'before': h['before'], 'after': h['after'], 'raw_key': h['key'],
             'submission_id': subs.get(h['source']), 'note': notes.get(h['at']) or notes.get(h['source']) or ''}))
     for r in c.execute("SELECT * FROM revisions WHERE entity IN ('user','sheet') ORDER BY rev"):
-        items.append(((r['ts'], 1, r['rev']), {'ts': r['ts'], 'actor': r['actor'], 'entity': r['entity'],
+        items.append(((r['ts'], 1, r['rev']), {'hid': f'n{r["rev"]}', 'ts': r['ts'], 'actor': r['actor'], 'entity': r['entity'],
                                                'key': r['key'], 'before': None, 'after': None, 'raw_key': None,
                                                'submission_id': None, 'note': r['note']}))
     items.sort(key=lambda x: x[0])
@@ -389,7 +392,7 @@ def history_out(E, rows, users):
     for rev, it in rows:
         u = users.get(it['person']) if it.get('person') else users.get(it.get('actor'))
         log = it['entity'] in ENTITIES
-        out.append({'rev': rev, 'ts': it['ts'], 'actor': u['id'] if u else None,
+        out.append({'rev': rev, 'hid': it['hid'], 'ts': it['ts'], 'actor': u['id'] if u else None,
                     'username': u['username'] if u else None, 'full_name': u['full_name'] if u else None,
                     'entity': it['entity'], 'key': it['key'],
                     'before': json.dumps(value_out(E, it['entity'], it['raw_key'], it['before'])) if log and it['before'] is not None else None,
@@ -416,11 +419,20 @@ def _put_back(E, c, me, targets, note):
     return len(todo)
 
 
-def revert(E, c, me, rev, force=False):
+def _find(rows, ref):
+    """A History row by its hid (or, for scripts, its current number). -> index into rows"""
+    for i, (rev, it) in enumerate(rows):
+        if it['hid'] == ref or (isinstance(ref, int) and rev == ref):
+            return i
+    raise Bad('no such revision')
+
+
+def revert(E, c, me, ref, force=False):
     rows = history(E, c)
-    if not 1 <= rev <= len(rows) or rows[rev - 1][1]['entity'] not in ENTITIES:
-        raise Bad('no such revision')
-    it = rows[rev - 1][1]
+    i = _find(rows, ref)
+    rev, it = rows[i]
+    if it['entity'] not in ENTITIES:
+        raise Bad('only data changes can be reverted')
     key = tuple(it['raw_key']) if it['entity'] == 'link' else it['raw_key']
     live = E.get(it['entity'], key)
     if live != it['after'] and not force:
@@ -429,11 +441,14 @@ def revert(E, c, me, rev, force=False):
     return _put_back(E, c, me, [(it['entity'], key, it['before'])], f'revert of rev {rev}')
 
 
-def restore_to(E, c, me, rev):
-    """Put every data entity back to its state right after revision `rev` (0 = before any logged change)."""
+def restore_to(E, c, me, ref):
+    """Put every data entity back to its state right after History row `ref` (hid, or 0 = before any logged change)."""
+    rows = history(E, c)
+    start = 0 if ref == 0 else _find(rows, ref) + 1
+    rev = rows[start - 1][0] if start else 0
     first = {}
-    for n, it in history(E, c):
-        if n > rev and it['entity'] in ENTITIES:
+    for n, it in rows[start:]:
+        if it['entity'] in ENTITIES:
             key = tuple(it['raw_key']) if it['entity'] == 'link' else it['raw_key']
             first.setdefault((it['entity'], key), it['before'])
     return _put_back(E, c, me, [(e, k, v) for (e, k), v in first.items()], f'restore to rev {rev}')

@@ -243,3 +243,49 @@ valid seq or null; label `""` for genesis/root-certified devices) · `equipment 
 **State encoding** = §1 canonical JSON, except that object keys may be any printable ASCII string of 1–64 characters
 (the state is keyed by KKS codes, peer IDs and entry IDs; §9a keeps every such key ASCII). Two implementations given
 the same entries, in any order, must produce the same state bytes.
+
+## 15. Sync between two devices
+
+Written 2026-09-26 (M2a). Python: `peer/noise.py`, `peer/sync.py`, node side in `server/engine.py`. Vectors:
+`peer/vectors/noise-xx.json` (the published Noise vector), `peer/vectors/v3-sync.json` (key derivation, identity
+proof, a handshake with fixed ephemeral keys).
+
+**Connection.** Any byte stream (TCP on the same Wi-Fi for now). Every message on the wire is a 2-byte big-endian
+length followed by that many bytes. First a **Noise handshake**, `Noise_XX_25519_ChaChaPoly_SHA256` exactly as in the
+Noise specification (revision 34), prologue ASCII `kks-sync-v1`, the connecting side is the initiator:
+
+- Each device's Noise static key is X25519 with private key = HMAC-SHA256(key = its Ed25519 seed, data = ASCII
+  `kks-noise-static-v1`). Nothing extra to store; the Ed25519 key stays the only secret.
+- Payload of message 1: empty. Payloads of messages 2 (responder) and 3 (initiator): canonical JSON
+  `{"peer": <peer ID>, "sig": <base64url Ed25519 signature over ASCII "kks-noise-static-v1\n" + the 32-byte X25519
+  static public key>}`. The receiver checks the signature against the static key the handshake authenticated, so a
+  session is bound to a device key. (The same construction as libp2p-noise.)
+- Afterwards, transport messages as in Noise (nonce counts up from 0 per direction). An **application message** is
+  UTF-8 JSON, split into pieces of at most 65 000 bytes; each piece is sent as one transport message whose plaintext
+  is one flag byte (`0x01` more pieces follow, `0x00` last piece) + the piece. At most 64 MiB per application message.
+
+**Exchange.** Every application message is an object with `t`. The initiator speaks first at every step; the
+responder answers. `{"t":"error","why":...}` may be sent instead of any message, then the connection closes.
+
+1. `hello` both ways: `{"t":"hello", "v":1, "root": <trust anchor or null>, "vv": {<device>: [<last seq>, <entry ID of
+   that entry>]}}`. Different non-null roots: stop (different plants). A device with no plant yet (`root` null)
+   continues only if the other side's root is the one it was told to join (from the join invitation, M2b).
+2. `entries`: `{"t":"entries", "entries":[...], "denied": true?}`. The initiator sends first; the responder decides
+   what to send only after taking in the initiator's entries (the initiator's own certificate may be among them).
+   What to send: every stored entry with seq above the other side's `vv` for its device; for a device whose entry at
+   the other side's last seq has a different ID than ours, that device's whole chain (two copies of one key: the
+   receiver finds where they split); all fork evidence held. **Nothing** (`denied`) unless the other side is a
+   certified, unrevoked device of a known person in our own replay.
+3. Taking entries in: verify each (§3); replay with the batch to see which devices are certified by then, and keep
+   only entries of those devices (a stranger's entries are not stored); per device, continue the stored chain in
+   seq order (skip entries whose predecessor is missing: a later sync brings it); a valid entry for a (device, seq)
+   we already hold with a different ID is **fork evidence**: stored apart and replayed (§4 cuts the device).
+4. `want` both ways: `{"t":"want", "blobs":[<sha256 hex>...]}`: blobs referenced by the log (photos, and photos of
+   pending proposals) that the sender lacks.
+5. Blobs, initiator first: `{"t":"blob", "sha":..., "data": <standard base64>}` per wanted blob held, then
+   `{"t":"blobs_end"}`. Again nothing unless the other side may read. A receiver accepts a blob only if its log
+   references that hash and the bytes hash to it.
+6. `bye` both ways.
+
+Relaying is automatic: a device sends every entry it holds, not only its own, so an edit reaches a device that never
+met its author.

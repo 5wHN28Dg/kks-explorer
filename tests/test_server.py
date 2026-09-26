@@ -391,6 +391,15 @@ class ServerTest(Base):
         self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3 m')
         self.assertEqual(m.post('/api/restore', {'rev': 0})[0], 200)
         self.assertEqual(m.get('/api/state')[1]['equipment'], {})
+        # the UI uses stable row IDs (numbers can shift when older entries arrive by sync)
+        rows = [r for r in m.get('/api/revisions')[1]['revisions'] if r['entity'] == 'equipment']
+        three = next(r for r in rows if r['after'] and json.loads(r['after']).get('floor') == '3 m')
+        self.assertEqual(m.post('/api/restore', {'hid': three['hid']})[0], 200)
+        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3 m')
+        last = next(r for r in m.get('/api/revisions')[1]['revisions'] if r['entity'] == 'equipment')
+        self.assertEqual(m.post(f'/api/revisions/{last["hid"]}/revert')[0], 200)
+        self.assertEqual(m.get('/api/state')[1]['equipment'], {})
+        self.assertEqual(m.post('/api/revisions/nosuch-0/revert')[0], 400)
 
     def test_backup_restore_roundtrip(self):
         m = self.setup_manager()

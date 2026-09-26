@@ -39,16 +39,20 @@ CREATE TABLE IF NOT EXISTS subs(id INTEGER PRIMARY KEY, client_id TEXT UNIQUE, e
 CREATE INDEX IF NOT EXISTS subs_entry ON subs(entry);
 CREATE TABLE IF NOT EXISTS blobs(sha TEXT PRIMARY KEY, file TEXT NOT NULL, size INTEGER);
 CREATE TABLE IF NOT EXISTS entry_notes(entry TEXT PRIMARY KEY, note TEXT);
+-- M2: a second, different entry for a (peer, seq) we already hold = proof of a cloned/misbehaving key (§4)
+CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, peer TEXT NOT NULL, seq INTEGER NOT NULL, data TEXT NOT NULL);
 """
 KEYS = {  # primary-key columns of every journaled table
     'equipment': ('kks',), 'photos': ('id',), 'reviews': ('tag_id',), 'links': ('proc', 'step', 'kks'), 'added_tags': ('id',),
     'users': ('id',), 'tokens': ('token',), 'submissions': ('id',), 'votes': ('submission_id', 'user_id'),
     'revisions': ('rev',), 'meta': ('k',),
     'entries': ('id',), 'custodial': ('device',), 'subs': ('id',), 'blobs': ('sha',), 'entry_notes': ('entry',),
+    'evidence': ('id',),
 }
 NOT_JOURNALED = {'sessions'}
 COLUMNS_ADDED = [('users', 'full_name', 'TEXT'), ('users', 'position', 'TEXT'),  # 2026-09-26
-                 ('users', 'person', 'TEXT'), ('users', 'device', 'TEXT')]    # v2 log: person ID, custodial device
+                 ('users', 'person', 'TEXT'), ('users', 'device', 'TEXT'),    # v2 log: person ID, custodial device
+                 ('subs', 'person', 'TEXT')]                                  # M2: proposals that came by sync
 
 
 def migrate(c):

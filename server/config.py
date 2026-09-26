@@ -21,6 +21,7 @@ DEFAULTS = {
     'max_pdf_mb': 80,                  # P&ID PDF upload limit (Manage → Drawings)
     'import_python': '',               # interpreter with pymupdf/opencv/numpy; empty = .venv next to the app
     'root_key': '',                    # plant root key file (docs/PROTOCOL.md §8); empty = root.key next to the db
+    'sync_port': 8421,                 # peer-to-peer sync listener (docs/PROTOCOL.md §15) on `host`; 0 = off
 }
 PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python', 'root_key')
 
