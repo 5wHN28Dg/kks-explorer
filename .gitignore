@@ -16,3 +16,5 @@ FILE
 # test fixture written by the old server (tools/make_v1_fixture.py): no real field data
 !tests/fixtures/v1/plant.db
 !tests/fixtures/v1/photos/
+dist/
+build/

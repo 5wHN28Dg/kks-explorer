@@ -866,6 +866,9 @@ def cli_log(store, c, uid, note):
                             'after': None, 'submission_id': None, 'note': note + ' (server console)'})
 
 
+ON_READY = None   # set by desktop.py: called with the HTTP server once it listens
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description='KKS Explorer server')
     ap.add_argument('cmd', nargs='?', default='serve',
@@ -995,9 +998,12 @@ def main(argv=None):
     svc = SyncService(E, cfg)
     httpd = ThreadingHTTPServer((cfg['host'], cfg['port']), make_handler(cfg, store, auth, E, svc))
     if cfg['sync_port']:
-        svc.listen(cfg['sync_host'] if peer else cfg['host'], cfg['sync_port'])
-        svc.start_discovery()
-        print(f'  Devices on this Wi-Fi: discovery {svc.discovery}')
+        try:
+            svc.listen(cfg['sync_host'] if peer else cfg['host'], cfg['sync_port'])
+            svc.start_discovery()
+            print(f'  Devices on this Wi-Fi: discovery {svc.discovery}')
+        except OSError as e:   # e.g. another copy of the app already holds the port: work on, just without sync
+            print(f'  WARNING: sync is off: port {cfg["sync_port"]} is not free ({e.strerror}).')
     scheme = 'http'
     if cfg['tls_cert']:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -1008,11 +1014,14 @@ def main(argv=None):
     print(f'  {cfg["plant_name"]}{"  (this computer is a device: open it here only)" if peer else ""}\n'
           f'  Laptop: {scheme}://localhost:{cfg["port"]}\n{lan}'
           f'  Data: {cfg["db"]}, {cfg["photos_dir"]}/   Backups: {cfg["backup_dir"]}/\n  Ctrl+C to stop.\n')
+    if ON_READY:   # the desktop launcher: it stops the server itself (Quit), then we take the snapshot below
+        ON_READY(httpd)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print('\nStopping; taking a snapshot.')
-        store.snapshot()
+        print('\nStopping.')
+    print('Taking a snapshot.')
+    store.snapshot()
 
 
 def lan_ip():

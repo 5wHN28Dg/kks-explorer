@@ -67,6 +67,17 @@ nothing.
   password link. This works only from the server's console, never over the network. `reset-password --user NAME`
   prints a link for anyone. `python3 app.py users` lists accounts.
 
+## Desktop app (double-click)
+Packaged builds for Windows and Linux: GitHub → Actions → **Desktop packages** → Run workflow (or push a tag `v…`); the
+zip/tar files appear under the run's Artifacts. What users do with them: `packaging/README-desktop.txt` (ships as
+"READ ME FIRST"). It starts in peer mode (below), keeps data in `%APPDATA%\KKS Explorer` or
+`~/.local/share/kks-explorer`, opens the browser and shows a small Open / Quit window. Build locally:
+`.venv/bin/pip install -r requirements-desktop.txt pyinstaller pillow`, then
+`.venv/bin/pyinstaller --noconfirm packaging/kks-explorer.spec` → `dist/KKS Explorer/`; check it with
+`"dist/KKS Explorer/KKS Explorer" --self-test`. From source: `python3 desktop.py`.
+Not signed: Windows shows "Windows protected your PC" once (More info → Run anyway). The P&ID importer is not in the
+package (adding sheets stays a server job).
+
 ## Your own laptop as a device (peer mode)
 Set `"mode": "peer"` in `config.json` (the app is then only reachable on that laptop, without a password: it is your
 device). On first start it asks how to set it up:

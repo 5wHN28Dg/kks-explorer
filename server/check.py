@@ -87,8 +87,11 @@ def run(cfg, store, auth):
                         '(python3 app.py import-root-key --file BACKUP).')
         else:
             mode = os.stat(rk).st_mode & 0o777
-            add('OK' if mode == 0o600 else 'FAIL', f'root key {rk} permissions {oct(mode)}' +
-                ('' if mode == 0o600 else ': chmod 600 it (only the server user may read it).'))
+            if os.name == 'nt':   # no Unix modes: the user's own profile folder is private by default
+                add('INFO', f'root key {rk}: keep it inside your user profile (not a shared folder).')
+            else:
+                add('OK' if mode == 0o600 else 'FAIL', f'root key {rk} permissions {oct(mode)}' +
+                    ('' if mode == 0o600 else ': chmod 600 it (only the server user may read it).'))
             if os.path.realpath(rk).startswith(os.path.realpath(cfg['backup_dir']) + os.sep):
                 add('WARN', 'root key lies inside backup_dir: backups copied elsewhere would carry it unencrypted.')
             if not store.meta('root_backed_up'):

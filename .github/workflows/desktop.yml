@@ -1,0 +1,58 @@
+# Desktop packages (docs/ARCHITECTURE.md M2c). Runs when you start it by hand (Actions → Desktop packages → Run
+# workflow) or push a tag like v2.0.0. The results are zip/tar files under the run's "Artifacts".
+name: Desktop packages
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            archive: KKS-Explorer-windows.zip
+          - os: ubuntu-22.04          # older glibc: the build then runs on more Linux versions
+            archive: KKS-Explorer-linux.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -r requirements-desktop.txt pyinstaller pillow
+      - name: Tests (Linux)
+        if: runner.os == 'Linux'
+        run: python -m unittest discover -s tests
+      - name: Build
+        run: pyinstaller --noconfirm packaging/kks-explorer.spec
+      - name: Self-test the built program (Linux)
+        if: runner.os == 'Linux'
+        run: '"dist/KKS Explorer/KKS Explorer" --self-test'
+      - name: Self-test the built program (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # a window program: start it and wait for its exit code explicitly
+          $p = Start-Process -FilePath "dist/KKS Explorer/KKS Explorer.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "self-test failed ($($p.ExitCode))"; exit 1 }
+          Write-Output "self-test OK"
+      - name: Pack (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item packaging/README-desktop.txt "dist/READ ME FIRST.txt"
+          Compress-Archive -Path "dist/KKS Explorer", "dist/READ ME FIRST.txt" -DestinationPath ${{ matrix.archive }}
+      - name: Pack (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp packaging/install-linux.sh packaging/README-desktop.txt dist/
+          tar -czf ${{ matrix.archive }} -C dist "KKS Explorer" install-linux.sh README-desktop.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+          retention-days: 30

@@ -235,7 +235,8 @@ class ServerTest(Base):
         with self.assertRaises(Exception):
             self.E.import_root(text, 'wrong passphrase!')
         self.E.import_root(text, 'a long passphrase')
-        self.assertEqual(oct(os.stat(self.E.root_path).st_mode & 0o777), '0o600')
+        if os.name != 'nt':
+            self.assertEqual(oct(os.stat(self.E.root_path).st_mode & 0o777), '0o600')
         self.E.root_key()
 
     def test_deactivate_revokes_the_key(self):

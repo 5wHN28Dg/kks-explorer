@@ -174,5 +174,14 @@ class PeerTest(unittest.TestCase):
         self.assertIn(lap.E.node_device(), srv.E.run.cuts)
 
 
+class Desktop(unittest.TestCase):
+    def test_launcher_self_test(self):
+        # the double-click entry point, from source: its own temporary folder, page + API + a new plant, then stops
+        import subprocess
+        r = subprocess.run([sys.executable, os.path.join(ROOT, 'desktop.py'), '--self-test'], capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('self-test OK', r.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -245,7 +245,16 @@ devices; `/api/persons/<pid>` manages people with no account here. Bug found by 
 migrate_v1 ran on a joined laptop (no log_version) and made a second genesis → now only on DBs with no entries,
 log_version set on genesis/adopt, genesis refuses a node that has a plant. Verified: tests/test_peer.py, 2-3 real
 processes with mDNS on one machine (two-way auto sync ~6 s, restart), Playwright (join screen, Devices, request →
-bundle, Users). Not verified: two different machines on the plant Wi-Fi. `withdraw`, `vote`, review `data:null` were added to the protocol
+bundle, Users). Not verified: two different machines on the plant Wi-Fi.
+M2c done 2026-09-26: `desktop.py` (entry point: config in the user folder, `data_dir` = the program's bundled data,
+free port fallback, second start only opens the browser, Tk window Open/Quit → `app.ON_READY` hands over httpd,
+shutdown + snapshot; log file when windowed; `--self-test` in a temp folder, deleted after). `packaging/kks-explorer.spec`
+(PyInstaller 6.22 one-folder, console=False, no UPX, importer libs excluded; 71 MB with 18 MB data),
+`packaging/install-linux.sh` (~/.local/opt + .desktop), `packaging/README-desktop.txt`, `requirements-desktop.txt`,
+`.github/workflows/desktop.yml` (windows-latest + ubuntu-22.04, Python 3.12, tests on Linux, frozen self-test, artifacts).
+Verified here (Linux, Python 3.14): frozen self-test, normal start with mDNS on, second start exits in 0.3 s, window
+close → clean stop + snapshot, installer + desktop-file-validate. NOT verified: the Windows build and the workflow
+itself (needs a run on GitHub), Python 3.12 (CI's version), unsigned-exe/firewall prompts on real Windows. `withdraw`, `vote`, review `data:null` were added to the protocol
 for it (v2-replay.json regenerated before anything depended on it; freeze it once the Kotlin port starts). Next: M2.
 
 ## Backlog (rough priority)

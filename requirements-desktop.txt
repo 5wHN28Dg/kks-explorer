@@ -1,0 +1,3 @@
+# The desktop app and the server (not the P&ID importer: see requirements-import.txt)
+cryptography
+zeroconf
