@@ -48,6 +48,7 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chrome3);padding:8px 14px;border-radius:6px;display:none;z-index:40;max-width:92%}
 #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:100}
 #lightbox img{max-width:96%;max-height:92%}
+.peer .server-only{display:none}
 </style>
 </head>
 <body>
@@ -56,7 +57,7 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
   <div class="brand">Manage</div>
   <span class="sync" id="syncStatus"></span>
   <span id="who" class="sub"></span>
-  <button class="btn" onclick="K.logout()">Log out</button>
+  <button class="btn server-only" onclick="K.logout()">Log out</button>
 </header>
 <nav id="tabs"></nav>
 <main id="main"></main>
@@ -72,7 +73,7 @@ const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>{$('#lbimg').src=src;$('#lightbox').style.display='flex'};
 async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
 
-const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['drawings','Drawings',isAdmin],['history','History',isAdmin],['account','Account',()=>true]];
+const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',isAdmin],['history','History',isAdmin],['account','Account',()=>true]];
 async function init(){
   ME=await K.start(); K.toast=toast;
   $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`;
@@ -157,19 +158,41 @@ const VIEWS={
   async users(){
     const U=(await K.api('/api/users')).users;
     const canEdit=u=>u.role==='user'||(u.role==='admin'&&isManager());
-    $('#main').innerHTML=`<div class="card"><h3>Add an account</h3>
+    $('#main').innerHTML=`<div class="card server-only"><h3>Add an account</h3>
       <form class="inline" onsubmit="event.preventDefault();createUser(this)"><input name="full_name" placeholder="Full name" required maxlength="80" style="min-width:200px">
       <input name="position" placeholder="Position (optional)" maxlength="80"><input name="username" placeholder="username" required maxlength="40">
       <select name="role"><option value="user">user</option>${isManager()?'<option value="admin">admin</option>':''}</select><button class="primary">Create and get link</button></form>
       <div class="sub">There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.</div><div id="newlink"></div></div>
       <table><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th></th></tr>${U.map(u=>`<tr><td>${u.full_name?esc(u.full_name):'<span class="del">no name yet</span>'}${u.position?`<div class="sub">${esc(u.position)}</div>`:''}</td>
       <td class="mono">${esc(u.username)}${u.id===ME.user.id?' <span class="sub">(you)</span>':''}</td>
-      <td>${u.role}</td><td>${u.active?(u.has_password?'active':'<span class="sub">link not used yet</span>'):'<span class="del">deactivated</span>'}</td>
-      <td class="row">${canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="setUser(${u.id},{active:${!u.active}})">${u.active?'Deactivate':'Activate'}</button>
+      <td>${u.role}</td><td>${u.no_account?(u.active?`own device${u.devices===1?'':'s'} <span class="sub">(${u.devices})</span>`:'<span class="del">all devices removed</span>'):u.active?(u.has_password?'active':'<span class="sub">link not used yet</span>'):'<span class="del">deactivated</span>'}</td>
+      <td class="row">${u.no_account?(canEdit(u)?`${u.active?`<button class="ghost" onclick="confirm('Remove all devices of ${esc(u.username)}? They stop syncing.')&&setPerson('${u.person}',{active:false})">Remove devices</button>`:''}
+        ${isManager()?`<button class="ghost" onclick="setPerson('${u.person}',{role:'${u.role==='admin'?'user':'admin'}'})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}`:''):canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="setUser(${u.id},{active:${!u.active}})">${u.active?'Deactivate':'Activate'}</button>
         ${isManager()?`<button class="ghost" onclick="setUser(${u.id},{role:'${u.role==='admin'?'user':'admin'}'})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}
         <button class="ghost" onclick="resetLink(${u.id},'${esc(u.username)}')">Password link</button>`:''}
-        ${canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="editDetails(${u.id},'${esc(u.full_name).replace(/'/g,'&#39;')}','${esc(u.position).replace(/'/g,'&#39;')}')">Edit details</button>`:''}</td></tr>`).join('')}</table>
+        ${canEdit(u)&&u.id!==ME.user.id&&!u.no_account?`<button class="ghost" onclick="editDetails(${u.id},'${esc(u.full_name).replace(/'/g,'&#39;')}','${esc(u.position).replace(/'/g,'&#39;')}')">Edit details</button>`:''}</td></tr>`).join('')}</table>
       <p class="sub">Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).</p>`;
+  },
+  async devices(){
+    const D=await K.api('/api/devices'), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
+    const devRow=(d,mine)=>`<tr><td>${esc(d.label||'device')}${d.this_computer?' <span class="sub">(this one)</span>':''}${mine?'':`<div class="sub">${esc(d.username)}</div>`}</td>
+      <td class="mono sub">${esc(d.device.slice(0,12))}…</td><td>${d.revoked?'<span class="del">removed</span>':'active'}</td>
+      <td>${!d.revoked&&!d.this_computer?`<button class="ghost" onclick="confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:'${d.device}'}),'Device removed')">Remove</button>`:''}</td></tr>`;
+    let h=`<div class="card"><h3>Your devices</h3><table>${D.mine.map(d=>devRow(d,true)).join('')}</table>
+      <div class="sub">A lost or stolen phone or laptop: remove it here from any of your other devices (or ask an admin). Its changes made after that don't count anywhere.</div></div>
+      <div class="card"><h3>Syncing</h3><div class="sub">This ${D.mode==='peer'?'computer':'server'}: <span class="mono">${esc((D.node||'').slice(0,12))}…</span> · sync port ${D.sync_port||'off'} · finding devices on this Wi-Fi: ${esc(S.discovery)}</div>
+      <table><tr><th>Device</th><th>Address</th><th>Last sync</th><th></th></tr>${Object.values(S.syncs).map(s=>`<tr><td>${esc(s.name||(s.peer?s.peer.slice(0,12)+'…':'unknown device'))}</td><td class="mono sub">${esc(s.address||'')}</td>
+        <td>${ago(s.at)} ${s.ok?`<span class="sub">received ${s.result.received}, sent ${s.result.sent}${s.result.they_denied?' · it does not know this device yet':''}${s.result.denied?' · not certified here: sent nothing':''}</span>`:`<span class="del">${esc(s.error||'failed')}</span>`}</td><td></td></tr>`).join('')||'<tr><td colspan="4" class="sub">No syncs yet.</td></tr>'}</table>
+      ${S.found.length?`<div class="sub" style="margin-top:6px">Found on this Wi-Fi: ${S.found.map(f=>esc(f.name||f.host)).join(', ')}</div>`:''}
+      <form class="inline" onsubmit="event.preventDefault();syncNow(this.address.value)"><button class="primary" type="button" onclick="syncNow('')">Sync now</button>
+      <input name="address" placeholder="or an address, e.g. 192.168.1.20" style="min-width:220px"><button class="ghost">Sync with it</button></form></div>
+      <div class="card"><h3>Bundle files</h3><div class="sub">A bundle carries the plant log (optionally with photos) by USB or messaging, where Wi-Fi sync can't reach. It is not encrypted: treat it like a copy of the database.</div>
+      <div class="row" style="margin-top:8px">${isAdmin()?`<a class="ghost" href="/api/bundle" style="text-decoration:none;color:inherit">Export bundle</a><a class="ghost" href="/api/bundle?photos=1" style="text-decoration:none;color:inherit">Export with photos</a>`:''}
+      <label class="ghost" style="cursor:pointer">Import a bundle<input type="file" accept=".kksbundle" hidden onchange="importBundle(this)"></label></div></div>`;
+    if(isAdmin()) h+=`<div class="card"><h3>Add a computer from a join request</h3><div class="sub">Someone set up the app on their laptop and gave you a <span class="mono">.kksjoin</span> file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.</div>
+      <label class="primary" style="display:inline-block;margin-top:8px;cursor:pointer">Import join request<input type="file" accept=".kksjoin,.json" hidden onchange="importJoin(this)"></label></div>
+      <div class="card"><h3>All devices</h3><table>${D.all.map(d=>devRow(d,false)).join('')}</table></div>`;
+    $('#main').innerHTML=h;
   },
   async history(before){
     const R=(await K.api('/api/revisions'+(before?`?before=${before}`:''))).revisions;
@@ -220,19 +243,19 @@ const VIEWS={
       <form class="inline" onsubmit="event.preventDefault();saveDetails(this)"><input name="full_name" placeholder="Full name" value="${esc(ME.user.full_name)}" required maxlength="80" style="min-width:220px">
       <input name="position" placeholder="Position (optional)" value="${esc(ME.user.position)}" maxlength="80"><button class="primary">Save</button></form>
       <div class="sub">Username <span class="mono">${esc(ME.user.username)}</span> · ${ME.user.role}</div></div>
-      <div class="card"><h3>Password</h3>
+      <div class="card server-only"><h3>Password</h3>
       <form class="inline" onsubmit="event.preventDefault();changePw(this)"><input type="password" name="old" placeholder="current password" autocomplete="current-password" required>
       <input type="password" name="new" placeholder="new password (10+)" autocomplete="new-password" required minlength="10"><button class="primary">Change password</button></form></div>`;
     if(ME.transfer_offer) h+=`<div class="card"><h3>The manager wants to hand the manager role to you</h3><div class="sub">You would become the single top account. The current manager becomes an admin.</div>
       <div class="row" style="margin-top:8px"><button class="primary" onclick="mgr('accept')">Accept</button><button class="ghost" onclick="mgr('decline')">Decline</button></div></div>`;
     if(isManager()){
       const t=ME.transfer_pending;
-      h+=`<div class="card"><h3>Hand over the manager role</h3>${t?`<div>Offered to <b>${esc(t.to_name)}</b>, waiting for them to accept (until ${when(t.expires)}). <button class="ghost" onclick="mgr('cancel')">Cancel offer</button></div>`:
+      h+=`<div class="card server-only"><h3>Hand over the manager role</h3>${t?`<div>Offered to <b>${esc(t.to_name)}</b>, waiting for them to accept (until ${when(t.expires)}). <button class="ghost" onclick="mgr('cancel')">Cancel offer</button></div>`:
         `<div class="sub">Only to an existing admin. They must accept; you then become an admin. If the manager account is ever lost, whoever runs the server can use <span class="mono">python3 app.py reset-manager --user NAME</span>.</div>
         <form class="inline" onsubmit="event.preventDefault();mgr('transfer',{username:this.username.value,password:this.password.value})"><input name="username" placeholder="admin username" required>
         <input type="password" name="password" placeholder="your password" autocomplete="current-password" required><button class="primary">Offer role</button></form>`}</div>`;
     }
-    h+=`<div class="card"><h3>This device</h3><table>
+    h+=`<div class="card server-only"><h3>This device</h3><table>
       <tr><td>Offline app</td><td>${sw?'installed: drawings and data you have opened work without the server':secure?'installing… reload once':'<span class="del">not available</span>: needs HTTPS (or localhost). Over plain http on the LAN the page works only while connected.'}</td></tr>
       <tr><td>Offline access until</td><td>${lease?new Date(lease.lease_until).toLocaleString():'-'} <span class="sub">(renewed each time you connect; ${ME.offline_days} days)</span></td></tr>
       <tr><td>Queued changes</td><td>${K.outbox.length}</td></tr></table>
@@ -300,6 +323,16 @@ async function createUser(f){
   if(r) $('#newlink').innerHTML=`<div class="warn">Give this link to <b>${esc(f.username.value)}</b> (valid ${r.expires_days} days, works once):<div class="linkbox">${esc(r.link)}</div></div>`;
 }
 const setUser=(id,d)=>act(()=>K.api(`/api/users/${id}`,d),'Updated');
+const setPerson=(pid,d)=>act(()=>K.api(`/api/persons/${pid}`,d),'Updated');
+const syncNow=address=>act(()=>K.api('/api/sync/now',{address}),'Synced');
+async function importBundle(inp){ const f=inp.files[0]; if(!f) return; try{ const r=await K.importBundle(f); toast(`Imported ${r.entries} entries, ${r.photos} photos`); show('devices') }catch(e){ toast(e.message) } }
+async function importJoin(inp,existing_ok){
+  const f=inp.files?inp.files[0]:null, request=inp.request||JSON.parse(await f.text());
+  try{ const r=await K.api('/api/devices/import-request',{request,existing_ok:!!existing_ok}); toast(`Certified a device for ${r.username}. Now give them a bundle.`); show('devices') }
+  catch(e){ if(e.status===409&&e.data?.existing){ const x=e.data.existing;
+      if(confirm(`${x.full_name} (${x.username}, ${x.role}) already exists. Add this computer as another device of theirs? Only if you know it is them.`)) return importJoin({request},true) }
+    else toast(e.message) }
+}
 async function resetLink(id,name){
   if(!confirm(`Create a new password link for ${name}? Their current password keeps working until they use it.`)) return;
   const r=await act(()=>K.api(`/api/users/${id}/reset`,{}));

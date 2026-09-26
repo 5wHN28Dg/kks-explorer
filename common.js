@@ -82,6 +82,8 @@ K.start = async () => {
   const h = new URLSearchParams(location.hash.slice(1));
   const cfg = K.cfg = await K.api('/api/config').catch(() => null);
   if (cfg) document.title = cfg.plant_name + ' — KKS Explorer';
+  if (cfg?.mode === 'peer') document.documentElement.classList.add('peer');
+  if (cfg?.mode === 'peer' && !cfg.node.joined) return new Promise(() => K.joinScreen(cfg));
   if (h.get('setup')) return new Promise(() => K.form('Create the manager account', 'One-time link from the server console. The manager is the top account: it promotes admins and can hand the role over later.',
     [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position at the company (optional)', ac: 'organization-title', optional: true},
      {name: 'username', label: 'Username', ac: 'username'}, ...pwFields], 'Create manager', async v => {
@@ -114,6 +116,53 @@ K.start = async () => {
     K.overlay(`<div class="box"><h1>Offline</h1><p>${c ? `Offline access on this device expired (it lasts ${c.offline_days} days after the last sign-in check). Connect to the server to continue.` : 'Cannot reach the server, and this device has no offline copy yet.'}</p><button onclick="location.reload()">Retry</button></div>`);
     return new Promise(() => {});
   }
+};
+
+// ---------- peer mode: this computer is one person's device; set it up before first use ----------
+K.download = (data, name, type = 'application/json') => {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], {type})); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000);
+};
+K.importBundle = async file => {
+  const r = await fetch('/api/bundle/import', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/octet-stream'}, body: file});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+};
+K.joinScreen = (cfg, note = '') => {
+  const o = K.overlay(`<div class="box"><h1>Set up this computer</h1>
+    <p>This computer keeps its own copy of the plant data and syncs with the other devices on the same Wi-Fi.</p>
+    ${cfg.node.has_plant ? '<p>It already holds a plant\'s data but is not certified in it yet: import the bundle an admin gave you, or join through the server.</p>' : ''}
+    <button data-a="server">Join through the plant server</button>
+    <button data-a="request">Join through an admin (no server)</button>
+    <button data-a="bundle">Import a bundle an admin gave you</button>
+    ${cfg.node.has_plant ? '' : '<button data-a="new" style="background:none;border:1px solid var(--line,#3a5061);color:inherit">Start a new plant (you become its manager)</button>'}
+    <input type="file" accept=".kksbundle" hidden><div class="err">${K.esc(note)}</div>
+    <p style="font-size:12px;opacity:.7">Device ${K.esc((cfg.node.device || 'not created yet').slice(0, 12))}…</p></div>`);
+  const back = n => K.joinScreen(cfg, n);
+  const file = o.querySelector('input[type=file]');
+  file.onchange = async () => {
+    try { const r = await K.importBundle(file.files[0]); if (r.joined) return location.reload();
+      back(`Imported ${r.entries} entries, but this computer is not certified in that bundle. Ask the admin to import your join request first.`) }
+    catch (e) { back(e.message) }
+  };
+  o.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => ({
+    bundle: () => file.click(),
+    server: () => K.form('Join through the plant server', 'Your normal account on the plant server. The server certifies this computer as yours; afterwards it syncs by itself on the same Wi-Fi.',
+      [{name: 'url', label: 'Server address, e.g. http://192.168.1.20:8420'}, {name: 'username', label: 'Username', ac: 'username'},
+       {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Join',
+      async v => { await K.api('/api/node/join-server', v); location.reload() }),
+    request: () => K.form('Join through an admin', 'You get a small file to give an admin (USB, WhatsApp, email). They certify this computer and give you a bundle file back; import it here.',
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+       {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'}], 'Make the request file',
+      async v => { const r = await K.api('/api/node/join-request', v);
+        K.download(JSON.stringify(r.request, null, 1), `join-${v.username}.kksjoin`);
+        cfg.node.device = r.request.device; back('Request file saved. When the admin gives you a bundle, choose "Import a bundle".') }),
+    new: () => K.form('Start a new plant', 'Only if no plant exists yet. This computer creates the plant\'s root key and you become the manager. Back the key up afterwards (Manage → Devices).',
+      [{name: 'plant', label: 'Plant name'}, {name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+       {name: 'username', label: 'Username', ac: 'username'}], 'Create the plant',
+      async v => { await K.api('/api/node/new-plant', v); location.reload() }),
+  })[b.dataset.a]());
 };
 
 // Remove plant data from this device (logout, account revoked, session expired). Queued changes are kept per user.

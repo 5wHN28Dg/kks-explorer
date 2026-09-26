@@ -43,6 +43,7 @@ class Engine:
         self.clock = P.HLC()
         self.anchor = None
         self.run, self.chain_ignored, self.last = None, {}, None
+        self.listeners = []   # called after new entries (own or received): auto-sync, UI
         with self.lock:
             self._load()
             from server import migrate_v1
@@ -119,6 +120,7 @@ class Engine:
                 fn()
             if new:
                 self._absorb(new)
+                self._changed('local')
 
     def append(self, c, device, type_, body, wall_ms=None):
         """Sign and store one entry by a custodial device. Returns its entry ID."""
@@ -180,12 +182,16 @@ class Engine:
         self._undo.append(lambda: os.path.exists(tmp) and os.remove(tmp))
         return P.key_from_seed(seed)
 
-    def genesis(self, c, person, username, full_name, position, plant, wall_ms=None):
-        """First entry of a new plant: creates the root key and the manager's custodial device."""
+    def genesis(self, c, person, username, full_name, position, plant, wall_ms=None, device=None):
+        """First entry of a new plant: creates the root key and the manager's device (a new custodial key, or
+        `device`: this laptop's own key in peer mode)."""
+        if self.anchor is not None or self.entries:
+            raise ValueError('this node already belongs to a plant; a second genesis would split it off')
         root = self.create_root()
         self.anchor = P.peer_id(root)
         self.store.put('meta', {'k': 'root_pub', 'v': json.dumps(self.anchor)})
-        dev = self.new_device(c, person)
+        self.store.put('meta', {'k': 'log_version', 'v': '1'})
+        dev = device or self.new_device(c, person)
         sm = {'kind': 'manager', 'person': person}
         sd = {'kind': 'device', 'device': dev, 'person': person}
         self.append(c, dev, 'genesis', {
@@ -220,10 +226,113 @@ class Engine:
         with os.fdopen(fd, 'w') as f:
             f.write(seed.hex() + '\n')
 
+    def _changed(self, why):
+        for fn in list(self.listeners):
+            try:
+                fn(why)
+            except Exception:   # a listener must never break a write
+                pass
+
+    # ---------- this node's own device (peer mode: the laptop owner's key) ----------
+    def node_device(self):
+        return self.store.meta('node_device')
+
+    def ensure_node_device(self):
+        """The key this laptop signs with, created on first use (before it belongs to any plant)."""
+        with self.lock:
+            dev = self.node_device()
+            if dev:
+                return dev
+            with self.store.write():
+                seed = secrets.token_bytes(32)
+                dev = P.peer_id(P.key_from_seed(seed))
+                self.store.put('custodial', {'device': dev, 'person': '', 'seed': seed.hex(), 'created': int(time.time())})
+                self.store.put('meta', {'k': 'node_device', 'v': json.dumps(dev)})
+            self.keys[dev] = P.key_from_seed(seed)
+            return dev
+
+    def owner(self):
+        """Peer mode: the account row of this laptop's owner, created/updated from the log once the node's device is
+        certified (by a server enrolment, a bundle or a sync). None while the laptop has not joined a plant."""
+        dev = self.node_device()
+        with self.lock:
+            d = self.run.devices.get(dev) if dev and self.run else None
+            if not d or dev in self.run.cuts or d['person'] not in self.run.persons:
+                return None
+            p = self.run.persons[d['person']]
+            role = 'manager' if self.run.manager == d['person'] else p['role']
+            c = self.store.conn()
+            try:
+                u = c.execute('SELECT * FROM users WHERE device=?', (dev,)).fetchone()
+            finally:
+                c.close()
+            row = {'username': p['username'], 'pw': None, 'role': role, 'active': 1, 'full_name': p['full_name'],
+                   'position': p['position'], 'person': d['person'], 'device': dev}
+            if u is None or any(u[k] != v for k, v in row.items()):
+                with self.store.write() as c:
+                    if role == 'manager':   # one manager row: someone else's stale row gives way
+                        c.execute("UPDATE users SET role='admin' WHERE role='manager' AND device<>?", (dev,))
+                    if u is None:
+                        c.execute('DELETE FROM users WHERE username=? COLLATE NOCASE', (p['username'],))
+                    self.store.put('users', {**(dict(u) if u else {'created': int(time.time())}), **row})
+                    self.store.put('custodial', {'device': dev, 'person': d['person'], 'seed': c.execute(
+                        'SELECT seed FROM custodial WHERE device=?', (dev,)).fetchone()[0], 'created': int(time.time())})
+                c = self.store.conn()
+                try:
+                    u = c.execute('SELECT * FROM users WHERE device=?', (dev,)).fetchone()
+                finally:
+                    c.close()
+            return u
+
+    # ---------- bundles: the log (+ photos) in one file, for USB / messaging / joining ----------
+    def bundle(self, photos=False):
+        """gzip'd JSON of every entry (+ photo bytes if asked). Holds plant data unencrypted: admins only."""
+        import base64, gzip
+        with self.lock:
+            out = {'kks_bundle': 1, 'root': self.anchor, 'plant': self.run.settings.get('plant') if self.run else None,
+                   'created': int(time.time()), 'entries': self.entries_for({})}
+            if photos:
+                out['blobs'] = {}
+                for sha in sorted({v['blob'] for v in self.run.photos.values()}):
+                    data = self.blob_get(sha)
+                    if data is not None:
+                        out['blobs'][sha] = base64.b64encode(data).decode()
+        return gzip.compress(json.dumps(out, separators=(',', ':')).encode(), 6)
+
+    def import_bundle(self, raw):
+        """-> {'entries': new, 'photos': new, 'adopted': bool}. A node with no plant yet takes the bundle's plant:
+        whoever imports a file has chosen to trust whoever gave it to them."""
+        import base64, gzip
+        try:
+            d = json.loads(gzip.decompress(raw))
+            assert isinstance(d, dict) and d.get('kks_bundle') == 1 and isinstance(d.get('entries'), list)
+        except Exception:
+            raise ValueError('not a KKS Explorer bundle')
+        adopted = False
+        if self.anchor is None:
+            if not isinstance(d.get('root'), str) or len(d['root']) != 43:
+                raise ValueError('the bundle names no plant')
+            self.adopt(d['root'])
+            adopted = True
+        elif d.get('root') != self.anchor:
+            raise ValueError('this bundle is from a different plant')
+        n = self.ingest(d['entries'])
+        got = 0
+        for sha, b64 in (d.get('blobs') or {}).items():
+            try:
+                if self.blob_put(sha, base64.b64decode(b64, validate=True)):
+                    got += 1
+            except (ValueError, TypeError):
+                pass
+        return {'entries': n, 'photos': got, 'adopted': adopted}
+
     # ---------- as a sync node (peer/sync.py, docs/PROTOCOL.md §15) ----------
     def identity(self):
         """The key this node proves itself with: the manager's custodial device if it's here, else an admin's,
         else any valid one. It only authenticates connections; it signs no entries by itself."""
+        dev = self.node_device()
+        if dev and dev in self.keys:   # peer mode: always this laptop's own key
+            return self.keys[dev]
         with self.lock:
             c = self.store.conn()
             try:
@@ -248,6 +357,7 @@ class Engine:
                 raise ValueError('this node already belongs to a plant')
             with self.store.write():
                 self.store.put('meta', {'k': 'root_pub', 'v': json.dumps(root)})
+                self.store.put('meta', {'k': 'log_version', 'v': '1'})
             self.anchor = root
             self.rebuild()
 
@@ -326,7 +436,8 @@ class Engine:
                 self.clock.recv(e['hlc'], wall)
             self.rebuild()
             self._after_ingest()
-            return len(new)
+        self._changed('received')
+        return len(new)
 
     def _after_ingest(self):
         """Keep the server-local tables in step with what arrived: a submission row for every proposal (so it shows

@@ -67,6 +67,20 @@ nothing.
   password link. This works only from the server's console, never over the network. `reset-password --user NAME`
   prints a link for anyone. `python3 app.py users` lists accounts.
 
+## Your own laptop as a device (peer mode)
+Set `"mode": "peer"` in `config.json` (the app is then only reachable on that laptop, without a password: it is your
+device). On first start it asks how to set it up:
+- **Join through the plant server:** server address + your normal account. The server certifies the laptop as yours.
+- **Join through an admin (no server):** it saves a small `.kksjoin` file; an admin imports it in Manage → Devices and
+  gives you a bundle file back (Export bundle); import that here.
+- **Start a new plant:** only if none exists; you become the manager.
+
+Devices of the same plant find each other on the same Wi-Fi and sync every 2 minutes and a few seconds after each
+change (Manage → Devices shows who was found and the last syncs; "Sync with it" takes an address). Needs the
+`zeroconf` package for finding (in `.venv`); syncing by address works without it. The server takes part too (sync port
+8421). A lost laptop or phone: Manage → Devices → Remove, from another device of yours or by an admin. Bundles
+(Export bundle, admins only) carry the plant data **unencrypted**: treat them like a copy of the database.
+
 ## History, restore and backups
 - **Manage → History** lists every applied change. *Revert* undoes one; *Restore to here* puts all plant data back to
   that point. Both are logged too, so they can be undone.

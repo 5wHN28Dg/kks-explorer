@@ -35,7 +35,9 @@ from server.store import Store, restore
 from server.auth import Auth, hash_password, password_problem, public_user, rank, person
 from server import changes as ch
 from server.engine import Engine, NoRootKey, tag_out
-from peer import sync as sync_mod
+from peer import proto as proto_mod, sync as sync_mod
+from server import node as node_mod
+from server.syncsvc import SyncService
 from server import check as check_mod
 from server import sheets as sheets_mod
 
@@ -51,6 +53,14 @@ class HTTPError(Exception):
     def __init__(self, code, msg, extra=None):
         super().__init__(msg)
         self.code, self.msg, self.extra = code, msg, extra or {}
+
+
+def P_id(E):
+    """This node's device ID (what other devices see when it connects), or None before it has one."""
+    try:
+        return proto_mod.peer_id(E.identity())
+    except Exception:
+        return None
 
 
 def users_map(c):
@@ -69,8 +79,11 @@ def person_body(E, pid, **upd):
             'position': upd.get('position', cur['position']), 'role': upd.get('role', cur['role'])}
 
 
-def make_handler(cfg, store, auth, engine=None):
+def make_handler(cfg, store, auth, engine=None, svc=None):
     E = engine or Engine(store, cfg)
+    svc = svc or SyncService(E, cfg, log=lambda *a: None)
+    PEER = cfg['mode'] == 'peer'
+    LOCAL_HOSTS = {'localhost', '127.0.0.1', '[::1]', '::1'}
     importer = sheets_mod.Importer(cfg)
     importer_state = {'at': 0, 'status': None}
 
@@ -144,7 +157,7 @@ def make_handler(cfg, store, auth, engine=None):
             return c[COOKIE].value if COOKIE in c else None
 
         def user(self, need=None):
-            u = auth.user_for_session(self.session_raw())
+            u = E.owner() if PEER else auth.user_for_session(self.session_raw())
             if not u:
                 raise HTTPError(401, 'login required')
             if need and rank(u['role']) < rank(need):
@@ -196,10 +209,24 @@ def make_handler(cfg, store, auth, engine=None):
                 traceback.print_exc()
                 self.send({'error': 'internal error (see the server console)'}, 500)
 
+        def local_ok(self):
+            """Peer mode has no password: only this machine may use it. The Host check stops DNS rebinding (a web
+            page whose own name points at 127.0.0.1 would otherwise count as same-origin)."""
+            if not PEER:
+                return True
+            host = (self.headers.get('Host') or '').rsplit(':', 1)[0]
+            if self.client_address[0] in ('127.0.0.1', '::1') and host in LOCAL_HOSTS:
+                return True
+            self.send({'error': 'this app only answers on this computer'}, 403)
+            return False
+
         def do_GET(self):
-            self.handle_errors(self.get)
+            if self.local_ok():
+                self.handle_errors(self.get)
 
         def do_POST(self):
+            if not self.local_ok():
+                return
             # JSON-only API + same-origin check: a form on another site can't post here with the session cookie.
             origin = self.headers.get('Origin')
             allowed = {self.headers.get('Host'), self.headers.get('X-Forwarded-Host'), urlparse(cfg['public_url']).netloc} - {None, ''}
@@ -208,6 +235,8 @@ def make_handler(cfg, store, auth, engine=None):
             ctype = self.headers.get('Content-Type') or ''
             if urlparse(self.path).path == '/api/sheets/import' and ctype.startswith('application/pdf'):
                 return self.handle_errors(self.post_pdf)  # raw PDF body; not a type a cross-site form can send
+            if urlparse(self.path).path == '/api/bundle/import' and ctype.startswith(('application/gzip', 'application/octet-stream')):
+                return self.handle_errors(self.post_bundle)
             if not ctype.startswith('application/json'):
                 return self.send({'error': 'JSON only'}, 415)
             self.handle_errors(self.post)
@@ -223,8 +252,15 @@ def make_handler(cfg, store, auth, engine=None):
                     has_manager = bool(auth.manager(c))
                 finally:
                     c.close()
-                return self.send({'plant_name': cfg['plant_name'], 'offline_days': cfg['offline_days'],
-                                  'setup_needed': not has_manager})
+                out = {'plant_name': cfg['plant_name'], 'offline_days': cfg['offline_days'], 'mode': cfg['mode'],
+                       'setup_needed': not has_manager and not PEER}
+                if PEER:
+                    owner = E.owner()
+                    out['node'] = {'joined': bool(owner), 'device': E.node_device(), 'has_plant': E.anchor is not None,
+                                   'plant': E.run.settings.get('plant') if E.run else None}
+                    if E.run and E.run.settings.get('plant'):
+                        out['plant_name'] = E.run.settings['plant']
+                return self.send(out)
             if p == '/api/token-info':
                 c = store.conn()
                 try:
@@ -291,7 +327,45 @@ def make_handler(cfg, store, auth, engine=None):
                 return self.send({'job': importer.job})
             if p == '/api/users':
                 self.need(me, 'admin')
-                return self.send({'users': [public_user(r) for r in c.execute('SELECT * FROM users ORDER BY role DESC, username')]})
+                rows = [public_user(r) for r in c.execute('SELECT * FROM users ORDER BY role DESC, username')]
+                with E.lock:   # people who joined with their own devices and have no account on this server
+                    have = {r['person'] for r in c.execute('SELECT person FROM users WHERE person IS NOT NULL')}
+                    for pid, pr in sorted(E.run.persons.items(), key=lambda x: x[1]['username'].lower()):
+                        if pid in have:
+                            continue
+                        devs = [d for d, v in E.run.devices.items() if v['person'] == pid]
+                        rows.append({'id': None, 'person': pid, 'username': pr['username'], 'full_name': pr['full_name'],
+                                     'position': pr['position'] or '', 'no_account': True, 'has_password': False,
+                                     'role': 'manager' if E.run.manager == pid else pr['role'], 'created': None,
+                                     'active': any(d not in E.run.cuts for d in devs), 'devices': len(devs)})
+                return self.send({'users': rows})
+            if p == '/api/devices':
+                with E.lock:
+                    run = E.run
+                    def dev_out(d, v):
+                        pr = run.persons.get(v['person'], {})
+                        return {'device': d, 'label': v['label'], 'person': v['person'], 'username': pr.get('username'),
+                                'revoked': d in run.cuts, 'this_computer': d == E.node_device() or (not PEER and d in E.keys)}
+                    mine = [dev_out(d, v) for d, v in run.devices.items() if v['person'] == me['person']]
+                    everyone = [dev_out(d, v) for d, v in run.devices.items()] if rank(me['role']) >= rank('admin') else None
+                    names = {d: f'{run.persons.get(v["person"], {}).get("username", "?")} · {v["label"] or "device"}'
+                             for d, v in run.devices.items()}
+                snap = svc.snapshot()
+                for st in snap['syncs'].values():
+                    st['name'] = names.get(st.get('peer'))
+                for f in snap['found']:
+                    f['name'] = names.get(f.get('peer'))
+                return self.send({'mine': mine, 'all': everyone, 'node': P_id(E), 'mode': cfg['mode'], 'sync': snap,
+                                  'sync_port': cfg['sync_port']})
+            if p == '/api/bundle':
+                self.need(me, 'admin')
+                data = E.bundle(photos=q.get('photos') == '1')
+                name = re.sub(r'[^\w.-]+', '-', (E.run.settings.get('plant') or 'plant'))[:40]
+                self._headers(200, 'application/gzip', len(data), [
+                    ('Cache-Control', 'no-store'),
+                    ('Content-Disposition', f'attachment; filename="{name}-{time.strftime("%Y%m%d-%H%M")}.kksbundle"')])
+                self.wfile.write(data)
+                return
             if p == '/api/revisions':
                 self.need(me, 'admin')
                 before = int(q.get('before') or 2 ** 62)
@@ -380,6 +454,30 @@ def make_handler(cfg, store, auth, engine=None):
                 raw = auth.create_session(u['id'])
                 return self.send({'ok': True}, extra=[self.cookie(raw, cfg['session_days'] * 86400)])
 
+            if p == '/api/devices/enroll':   # a laptop joining with its owner's account (server mode)
+                if PEER:
+                    raise HTTPError(404, 'not found')
+                if auth.throttled('ip:' + self.ip()):
+                    raise HTTPError(429, 'Too many attempts.')
+                u, err = auth.login(d.get('username'), d.get('password'), self.ip())
+                if not u:
+                    raise HTTPError(401, err)
+                dev, lab = d.get('device'), str(d.get('label') or 'laptop')[:80]
+                if not isinstance(dev, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', dev):
+                    raise HTTPError(400, 'bad device ID')
+                with E.tx() as c:
+                    have = E.run.devices.get(dev)
+                    if have and have['person'] != u['person']:
+                        raise HTTPError(409, 'That device belongs to someone else.')
+                    if dev in E.run.cuts:
+                        raise HTTPError(403, 'That device was removed; make a new one (reset the app on the laptop).')
+                    if not have:
+                        E.append(c, u['device'], 'device_cert', {'device': dev, 'person': u['person'], 'label': lab})
+                        self.log_user(c, u['id'], u['id'], f'added a device: {lab}')
+                return self.send({'root': E.anchor, 'plant': E.run.settings.get('plant'), 'sync_port': cfg['sync_port']})
+            if PEER and not E.owner() and p.startswith('/api/node/'):
+                return self.node_action(p.rsplit('/', 1)[1], d)
+
             me = self.user()
             E.refresh()
             if p == '/api/password':
@@ -442,7 +540,161 @@ def make_handler(cfg, store, auth, engine=None):
                 return self.send({'ok': True, 'changed': n})
             if p.startswith('/api/manager/'):
                 return self.manager_action(me, p.rsplit('/', 1)[1], d)
+            if p == '/api/devices/import-request':
+                return self.import_request(me, d)
+            if p == '/api/devices/revoke':
+                return self.revoke_device(me, d.get('device'))
+            if p == '/api/sync/now':
+                addr = (d.get('address') or '').strip()
+                if addr:
+                    host, _, port = addr.rpartition(':') if ':' in addr else (addr, '', '')
+                    try:
+                        _, st = svc.sync_one(host or addr, int(port or 8421))
+                    except (ValueError, sync_mod.SyncError, OSError, NoRootKey) as e:
+                        raise HTTPError(502, f'sync with {addr} failed: {e}')
+                    return self.send({'ok': True, 'result': st})
+                svc.sync_all()
+                return self.send({'ok': True, 'sync': svc.snapshot()})
+            m = re.fullmatch(r'/api/persons/([0-9a-f]{32})', p)
+            if m:
+                return self.update_person(me, m[1], d)
             raise HTTPError(404, 'not found')
+
+        def post_bundle(self):
+            n = int(self.headers.get('Content-Length') or 0)
+            if n > 2 * 1024 ** 3:
+                raise HTTPError(413, 'bundle too large')
+            if not (PEER and not E.owner()):   # joining laptops may import without an account; everyone else signs in
+                self.user()
+            try:
+                r = E.import_bundle(self.rfile.read(n))
+            except ValueError as e:
+                raise HTTPError(400, str(e))
+            if PEER and E.owner():
+                svc.joined()
+            return self.send({'ok': True, **r, 'joined': bool(E.owner()) if PEER else None})
+
+        def node_action(self, action, d):
+            """Peer mode, before this laptop belongs to a plant: start one, or join one."""
+            if action == 'new-plant':
+                name = (d.get('username') or '').strip()
+                if not USERNAME_RE.fullmatch(name):
+                    raise HTTPError(400, 'Username: 2-40 letters (a-z), digits, . _ - @')
+                try:
+                    fn, pos = person(d)
+                except ValueError as e:
+                    raise HTTPError(400, str(e))
+                if E.anchor is not None:
+                    raise HTTPError(409, 'This laptop already holds a plant\'s data; it can only join that plant.')
+                dev = E.ensure_node_device()
+                with E.tx() as c:
+                    E.genesis(c, secrets.token_hex(16), name, fn, pos, (d.get('plant') or cfg['plant_name'])[:80], device=dev)
+                    store.put('meta', {'k': 'log_version', 'v': '1'})
+                E.owner(); svc.joined()
+                return self.send({'ok': True})
+            if action == 'join-server':
+                try:
+                    node_mod.join_via_server(E, svc, (d.get('url') or '').strip(), d.get('username'), d.get('password'))
+                except node_mod.JoinError as e:
+                    raise HTTPError(400, str(e))
+                return self.send({'ok': True})
+            if action == 'join-request':
+                name = (d.get('username') or '').strip()
+                if not USERNAME_RE.fullmatch(name):
+                    raise HTTPError(400, 'Username: 2-40 letters (a-z), digits, . _ - @')
+                try:
+                    fn, pos = person(d)
+                except ValueError as e:
+                    raise HTTPError(400, str(e))
+                return self.send({'ok': True, 'request': node_mod.join_request(E, name, fn, pos)})
+            raise HTTPError(404, 'not found')
+
+        def import_request(self, me, d):
+            """An admin certifies a laptop from its join request file (for a new person, or, confirmed, an existing one)."""
+            self.need(me, 'admin')
+            try:
+                req = node_mod.check_join_request(d.get('request'))
+            except node_mod.JoinError as e:
+                raise HTTPError(400, str(e))
+            name = str(req.get('username') or '')
+            if not USERNAME_RE.fullmatch(name):
+                raise HTTPError(400, 'the request has an invalid username')
+            try:
+                fn, pos = person(req)
+            except ValueError as e:
+                raise HTTPError(400, str(e))
+            with E.tx() as c:
+                run = E.run
+                have = run.devices.get(req['device'])
+                pid = next((k for k, v in run.persons.items() if v['username'].lower() == name.lower()), None)
+                if have and have['person'] != pid:
+                    raise HTTPError(409, 'That laptop is already certified for someone else.')
+                if pid and not d.get('existing_ok'):
+                    pr = run.persons[pid]
+                    raise HTTPError(409, 'existing person', {'existing': {'username': pr['username'], 'full_name': pr['full_name'],
+                                                                          'role': 'manager' if run.manager == pid else pr['role']}})
+                if pid:
+                    target = 'manager' if run.manager == pid else run.persons[pid]['role']
+                    if not (me['role'] == 'manager' or pid == me['person'] or target == 'user'):
+                        raise HTTPError(403, 'Only the manager can add devices for admins.')
+                else:
+                    if c.execute('SELECT 1 FROM users WHERE username=?', (name,)).fetchone():
+                        raise HTTPError(409, 'That username exists.')
+                    pid = secrets.token_hex(16)
+                    E.append(c, me['device'], 'person', {'person': pid, 'username': name, 'full_name': fn, 'position': pos, 'role': 'user'})
+                if not have:
+                    E.append(c, me['device'], 'device_cert', {'device': req['device'], 'person': pid, 'label': str(req.get('label') or '')[:80]})
+                store.put('revisions', {'ts': int(time.time()), 'actor': me['id'], 'entity': 'user', 'key': pid, 'before': None,
+                                        'after': None, 'submission_id': None, 'note': f'certified a device for {name}: {req.get("label")}'})
+            return self.send({'ok': True, 'username': name, 'person': pid})
+
+        def revoke_device(self, me, dev):
+            with E.tx() as c:
+                v = E.run.devices.get(dev) if isinstance(dev, str) else None
+                if not v:
+                    raise HTTPError(404, 'no such device')
+                target = 'manager' if E.run.manager == v['person'] else E.run.persons.get(v['person'], {}).get('role')
+                if not (me['role'] == 'manager' or v['person'] == me['person'] or (me['role'] == 'admin' and target == 'user')):
+                    raise HTTPError(403, 'not allowed for that device')
+                if dev == me['device']:
+                    raise HTTPError(400, 'This is the device you are using; remove it from another one.')
+                if dev in E.run.cuts:
+                    return self.send({'ok': True})
+                last = c.execute('SELECT MAX(seq) FROM entries WHERE peer=?', (dev,)).fetchone()[0] or 0
+                E.append(c, me['device'], 'revoke', {'device': dev, 'last_seq': last})
+            return self.send({'ok': True})
+
+        def update_person(self, me, pid, d):
+            """Someone without an account here (joined with their own device): role, details, or remove all devices."""
+            self.need(me, 'admin')
+            with E.tx() as c:
+                pr = E.run.persons.get(pid)
+                if not pr:
+                    raise HTTPError(404, 'no such person')
+                target = 'manager' if E.run.manager == pid else pr['role']
+                if target == 'manager' or (target == 'admin' and me['role'] != 'manager'):
+                    raise HTTPError(403, 'not allowed for this person')
+                upd = {}
+                if 'role' in d and d['role'] != pr['role']:
+                    if me['role'] != 'manager' or d['role'] not in ('user', 'admin'):
+                        raise HTTPError(403, 'only the manager can promote or demote admins')
+                    upd['role'] = d['role']
+                if 'full_name' in d or 'position' in d:
+                    try:
+                        fn, pos = person({'full_name': d.get('full_name', pr['full_name']), 'position': d.get('position', pr['position'])})
+                    except ValueError as e:
+                        raise HTTPError(400, str(e))
+                    upd.update(full_name=fn, position=pos)
+                if upd:
+                    E.append(c, me['device'], 'person', person_body(E, pid, **upd))
+                if d.get('active') is False:
+                    for dev, v in list(E.run.devices.items()):
+                        if v['person'] == pid and dev not in E.run.cuts:
+                            last = c.execute('SELECT MAX(seq) FROM entries WHERE peer=?', (dev,)).fetchone()[0] or 0
+                            E.append(c, me['device'], 'revoke', {'device': dev, 'last_seq': last})
+                elif d.get('active') is True:
+                    raise HTTPError(400, 'To come back they join again with a new join request.')
+            return self.send({'ok': True})
 
         def post_pdf(self):
             me = self.user('admin')
@@ -530,9 +782,11 @@ def make_handler(cfg, store, auth, engine=None):
                         if (row['role'], row['full_name'], row['position']) != (u['role'], u['full_name'], u['position']):
                             E.append(c, me['device'], 'person', person_body(E, u['person'], full_name=row['full_name'],
                                                                             position=row['position'], role=row['role']))
-                        if u['active'] and not row['active']:   # the account's key stops here
-                            last = c.execute('SELECT MAX(seq) FROM entries WHERE peer=?', (u['device'],)).fetchone()[0] or 0
-                            E.append(c, me['device'], 'revoke', {'device': u['device'], 'last_seq': last})
+                        if u['active'] and not row['active']:   # all their keys stop here: this server's and their laptops'
+                            for dev, v in list(E.run.devices.items()):
+                                if v['person'] == u['person'] and dev not in E.run.cuts:
+                                    last = c.execute('SELECT MAX(seq) FROM entries WHERE peer=?', (dev,)).fetchone()[0] or 0
+                                    E.append(c, me['device'], 'revoke', {'device': dev, 'last_seq': last})
                         elif row['active'] and not u['active']:   # a new key; the old one stays cut
                             row['device'] = E.new_device(c, u['person'])
                             E.append(c, me['device'], 'device_cert', {'device': row['device'], 'person': u['person'], 'label': 'server'})
@@ -729,57 +983,36 @@ def main(argv=None):
     for level, msg in check_mod.run(cfg, store, auth):
         if level == 'FAIL' and 'manager' not in msg:
             print(f'  WARNING: {msg}')
-    if not auth.manager():
+    peer = cfg['mode'] == 'peer'
+    if peer:
+        cfg['host'] = '127.0.0.1'   # no password in peer mode: the web UI is for this computer only
+    elif not auth.manager():
         raw = auth.make_token('setup', None, 86400)
         print(f'\n  No manager account yet. Open this one-time link to create it (valid 24 h, until used):\n'
               f'  {base_url(cfg)}/#setup={raw}\n')
     if os.path.exists(E.root_path) and not store.meta('root_backed_up'):
         print(f'  The plant root key is only in {E.root_path}. Back it up: python3 app.py export-root-key --out FILE')
-    httpd = ThreadingHTTPServer((cfg['host'], cfg['port']), make_handler(cfg, store, auth, E))
+    svc = SyncService(E, cfg)
+    httpd = ThreadingHTTPServer((cfg['host'], cfg['port']), make_handler(cfg, store, auth, E, svc))
     if cfg['sync_port']:
-        start_sync_listener(E, cfg['host'], cfg['sync_port'])
+        svc.listen(cfg['sync_host'] if peer else cfg['host'], cfg['sync_port'])
+        svc.start_discovery()
+        print(f'  Devices on this Wi-Fi: discovery {svc.discovery}')
     scheme = 'http'
     if cfg['tls_cert']:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(cfg['tls_cert'], cfg['tls_key'] or None)
         httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
         scheme = 'https'
-    print(f'  {cfg["plant_name"]}\n  Laptop: {scheme}://localhost:{cfg["port"]}\n  LAN:    {scheme}://{lan_ip()}:{cfg["port"]}\n'
+    lan = '' if peer else f'  LAN:    {scheme}://{lan_ip()}:{cfg["port"]}\n'
+    print(f'  {cfg["plant_name"]}{"  (this computer is a device: open it here only)" if peer else ""}\n'
+          f'  Laptop: {scheme}://localhost:{cfg["port"]}\n{lan}'
           f'  Data: {cfg["db"]}, {cfg["photos_dir"]}/   Backups: {cfg["backup_dir"]}/\n  Ctrl+C to stop.\n')
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print('\nStopping; taking a snapshot.')
         store.snapshot()
-
-
-def start_sync_listener(E, host, port, max_sessions=8):
-    """Accept sync connections from other devices (docs/PROTOCOL.md §15) in background threads. Every connection is
-    authenticated by device key; only certified devices receive anything."""
-    srv = socket.create_server((host, port))
-    slots = threading.BoundedSemaphore(max_sessions)
-
-    def one(sock):
-        try:
-            remote, st = sync_mod.serve_one(E, sock)
-            if st['received'] or st['sent'] or st['denied']:
-                print(f'  sync {remote[:12]}…: received {st["received"]}, sent {st["sent"]}'
-                      + (' (unknown device: sent nothing)' if st['denied'] else ''))
-        except (sync_mod.SyncError, OSError, NoRootKey) as e:
-            print(f'  sync from a device failed: {e}')
-        finally:
-            slots.release()
-
-    def loop():
-        while True:
-            sock, _ = srv.accept()
-            if not slots.acquire(blocking=False):
-                sock.close()
-                continue
-            threading.Thread(target=one, args=(sock,), daemon=True).start()
-    threading.Thread(target=loop, daemon=True).start()
-    print(f'  Sync: listening on {host}:{port}')
-    return srv
 
 
 def lan_ip():

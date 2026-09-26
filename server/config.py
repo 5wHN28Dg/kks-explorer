@@ -22,6 +22,12 @@ DEFAULTS = {
     'import_python': '',               # interpreter with pymupdf/opencv/numpy; empty = .venv next to the app
     'root_key': '',                    # plant root key file (docs/PROTOCOL.md §8); empty = root.key next to the db
     'sync_port': 8421,                 # peer-to-peer sync listener (docs/PROTOCOL.md §15) on `host`; 0 = off
+    'mode': 'server',                  # 'server': accounts + passwords, browsers of many people.
+                                       # 'peer': this laptop is one person's device; web UI only from this machine,
+                                       # no password; sync listener on sync_host
+    'sync_host': '0.0.0.0',            # where the sync listener binds in peer mode (the LAN)
+    'discovery': True,                 # find other devices on the same Wi-Fi (mDNS, needs the zeroconf package)
+    'sync_interval': 120,              # seconds between automatic syncs with devices found on the Wi-Fi
 }
 PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python', 'root_key')
 

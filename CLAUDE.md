@@ -230,7 +230,22 @@ that came by sync + mirrors roles into `users`), blob_put only for referenced ha
 (8421, 0 = off); `app.py sync HOST[:PORT]`. Vectors `peer/vectors/v3-sync.json`. Verified: tests/test_sync.py (real
 TCP between separate DBs: join, relay, stranger, other plant, photo, revoke, cloned key) + two app.py processes
 (propose on one, approve over HTTP on the other, sync back). History rows carry a stable `hid` (entry-based);
-revert/restore use it, numbers are display-only. `withdraw`, `vote`, review `data:null` were added to the protocol
+revert/restore use it, numbers are display-only.
+M2b done 2026-09-26 (decided: no password on your own laptop; both join ways; auto sync; admin-only unencrypted
+bundles, encryption later). `mode: 'peer'` in config: HTTP bound to 127.0.0.1 + Host check (DNS rebinding) + loopback
+client; `user()` = `E.owner()` (users row made from the log for the node's own device, meta `node_device`, key in
+`custodial`). First screen (common.js `K.joinScreen`): join via server (`server/node.py` → server
+`/api/devices/enroll` = password check + device_cert by the person's custodial key, then sync), join request
+(`.kksjoin`, signed by the device key; admin imports in Manage → Devices → `/api/devices/import-request`, 409
+`existing` needs existing_ok) + bundle (`/api/bundle` admin GET, `/api/bundle/import` raw gzip; a node without a
+plant adopts the bundle's root), or a new plant (genesis with `device=` node key). `server/syncsvc.py`: listener,
+zeroconf `_kks._tcp` (TXT peer, root[:16]; re-announced when identity/plant changes, serialized), auto sync every
+`sync_interval` and 5 s after local changes, status for `/api/devices`. Deactivating an account revokes ALL its
+devices; `/api/persons/<pid>` manages people with no account here. Bug found by a restart test and fixed:
+migrate_v1 ran on a joined laptop (no log_version) and made a second genesis → now only on DBs with no entries,
+log_version set on genesis/adopt, genesis refuses a node that has a plant. Verified: tests/test_peer.py, 2-3 real
+processes with mDNS on one machine (two-way auto sync ~6 s, restart), Playwright (join screen, Devices, request →
+bundle, Users). Not verified: two different machines on the plant Wi-Fi. `withdraw`, `vote`, review `data:null` were added to the protocol
 for it (v2-replay.json regenerated before anything depended on it; freeze it once the Kotlin port starts). Next: M2.
 
 ## Backlog (rough priority)

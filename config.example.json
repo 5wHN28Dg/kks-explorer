@@ -16,5 +16,9 @@
   "admins_apply_directly": true,
   "snapshot_every": 200,
   "snapshot_keep": 30,
-  "max_upload_mb": 15
+  "max_upload_mb": 15,
+  "mode": "server",
+  "sync_port": 8421,
+  "discovery": true,
+  "sync_interval": 120
 }

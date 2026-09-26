@@ -2,3 +2,4 @@ pymupdf
 opencv-python-headless
 numpy
 cryptography
+zeroconf

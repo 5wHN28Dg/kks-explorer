@@ -24,10 +24,14 @@ class MigrationError(SystemExit):
 
 
 def needed(E):
+    """Only a database from before the log: accounts, but no log entries at all. (A node that got its plant by
+    joining has log entries; it must never be "migrated" into a plant of its own.)"""
     if E.store.meta('log_version') is not None:
         return False
     c = E.store.conn()
     try:
+        if c.execute('SELECT COUNT(*) FROM entries').fetchone()[0] or E.anchor is not None:
+            return False
         return c.execute('SELECT COUNT(*) FROM users').fetchone()[0] > 0
     finally:
         c.close()
