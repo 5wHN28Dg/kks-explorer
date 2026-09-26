@@ -26,6 +26,7 @@ object Canonical {
             is Long -> if (v < -MAX_INT || v > MAX_INT) throw ProtocolError("bad_encoding", "integer out of range at $where")
             is Int -> {}
             is JNumber -> throw ProtocolError("bad_encoding", "number ${v.text} at $where")
+            is Double -> throw ProtocolError("bad_encoding", "float at $where")
             is String -> checkString(v, where)
             is List<*> -> v.forEachIndexed { i, x -> check(x, "$where[$i]", keys) }
             is Map<*, *> -> for ((k, x) in v) {
@@ -56,6 +57,7 @@ object Canonical {
             null -> sb.append("null")
             is Boolean -> sb.append(if (v) "true" else "false")
             is Long, is Int -> sb.append(v.toString())
+            is Double -> sb.append(v.toString())   // API output only (tag boxes in px); never in canonical bytes (check rejects)
             is JNumber -> sb.append(v.text)
             is String -> string(v, sb)
             is List<*> -> {

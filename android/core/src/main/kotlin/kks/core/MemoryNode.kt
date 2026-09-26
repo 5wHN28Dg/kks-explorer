@@ -4,7 +4,7 @@ package kks.core
  * A device's log with the sync-node rules of docs/PROTOCOL.md §15 (twin of the node side of server/engine.py), kept in
  * memory. The Android node (M3b) stores the same things in SQLite; the rules live here once.
  */
-open class MemoryNode(private val key: SigningKey, anchor: String? = null) : Node {
+open class MemoryNode(protected val key: SigningKey, anchor: String? = null) : Node {
     var anchor: String? = anchor
         protected set
     val entries = LinkedHashMap<String, Map<String, Any?>>()      // entry id → entry (each device's chain)
@@ -29,13 +29,30 @@ open class MemoryNode(private val key: SigningKey, anchor: String? = null) : Nod
         heads.getOrPut(e["peer"] as String) { java.util.TreeMap() }[e["seq"] as Long] = eid
     }
 
+    /** Persistence hooks (LocalNode): called for every entry / fork evidence / blob / adopted root kept. */
+    protected open fun saved(eid: String, e: Map<String, Any?>, isEvidence: Boolean) {}
+    protected open fun savedRoot(root: String) {}
+
+    /** Put back what a store holds (no hooks called). */
+    fun load(stored: Map<String, Map<String, Any?>>, forks: Map<String, Map<String, Any?>>) {
+        for ((eid, e) in stored) store(eid, e)
+        evidence.putAll(forks)
+        for (e in stored.values) if (e["peer"] == key.peerId) {
+            @Suppress("UNCHECKED_CAST") val h = e["hlc"] as List<Long>
+            if (h[0] > clock.l || (h[0] == clock.l && h[1] > clock.c)) { clock.l = h[0]; clock.c = h[1] }
+        }
+        rebuild()
+    }
+
     /** Write an entry signed by this device. -> its entry ID. */
+    @Synchronized
     fun append(type: String, body: Map<String, Any?>, wallMs: Long = System.currentTimeMillis()): String {
         val mine = heads[key.peerId]
         val last = mine?.lastEntry()
         val e = Proto.makeEntry(key, (last?.key ?: 0L) + 1, last?.value, clock.now(wallMs), type, body)
         val eid = Proto.entryId(e)
         store(eid, e)
+        saved(eid, e, false)
         rebuild()
         return eid
     }
@@ -44,14 +61,18 @@ open class MemoryNode(private val key: SigningKey, anchor: String? = null) : Nod
     override fun identity() = key
     override fun root() = anchor
 
+    @Synchronized
     override fun adopt(root: String) {
         check(anchor == null) { "this node already belongs to a plant" }
         anchor = root
+        savedRoot(root)
         rebuild()
     }
 
+    @Synchronized
     override fun vv(): Map<String, List<Any>> = heads.mapValues { (_, m) -> listOf<Any>(m.lastKey(), m.lastEntry().value) }
 
+    @Synchronized
     override fun entriesFor(vv: Map<*, *>): List<Map<String, Any?>> {
         val out = ArrayList<Map<String, Any?>>()
         for ((peer, m) in heads.toSortedMap()) {
@@ -68,12 +89,14 @@ open class MemoryNode(private val key: SigningKey, anchor: String? = null) : Nod
         return out
     }
 
+    @Synchronized
     override fun mayRead(peer: String): Boolean {
         val d = run.devices[peer] ?: return false
         return peer !in run.cuts && d["person"] in run.persons
     }
 
     @Suppress("UNCHECKED_CAST")
+    @Synchronized
     override fun ingest(entries: List<Any?>): Int {
         val good = LinkedHashMap<String, MutableList<Triple<Long, String, Map<String, Any?>>>>()
         for (raw in entries) {
@@ -92,8 +115,8 @@ open class MemoryNode(private val key: SigningKey, anchor: String? = null) : Nod
             var lastId = m?.lastEntry()?.value
             for ((seq, eid, e) in list.sortedBy { it.first }) {
                 if (eid in this.entries || eid in evidence) continue
-                if (seq <= lastSeq) { evidence[eid] = e; n++; taken.add(e) }        // we hold a different entry there: a fork
-                else if (seq == lastSeq + 1 && e["prev"] == lastId) { store(eid, e); lastSeq = seq; lastId = eid; n++; taken.add(e) }
+                if (seq <= lastSeq) { evidence[eid] = e; saved(eid, e, true); n++; taken.add(e) }   // a different entry there: a fork
+                else if (seq == lastSeq + 1 && e["prev"] == lastId) { store(eid, e); saved(eid, e, false); lastSeq = seq; lastId = eid; n++; taken.add(e) }
             }
         }
         if (n > 0) {
@@ -104,23 +127,30 @@ open class MemoryNode(private val key: SigningKey, anchor: String? = null) : Nod
         return n
     }
 
+    @Synchronized
     override fun blobWants(): List<String> {
         val shas = run.photos.values.map { it["blob"] as String }.toMutableSet()
         for ((eid, st) in run.proposals) {
             val e = entries[eid] ?: continue
             if (st == "pending" && e["type"] == "photo") shas.add((e["body"] as Map<*, *>)["blob"] as String)
         }
-        return (shas - blobs.keys).sorted()
+        return shas.filter { !haveBlob(it) }.sorted()
     }
+
+    /** Blob storage (LocalNode keeps them as files instead of in memory). */
+    open fun haveBlob(sha: String): Boolean = sha in blobs
+    protected open fun keepBlob(sha: String, data: ByteArray) { blobs[sha] = data }
 
     override fun blobGet(sha: String): ByteArray? = blobs[sha]
 
+    @Synchronized
     override fun blobPut(sha: String, data: ByteArray): Boolean {
         if (sha !in blobWants() || sha256(data).hex() != sha) return false
-        blobs[sha] = data
+        keepBlob(sha, data)
         return true
     }
 
+    @Synchronized
     fun state(): Map<String, Any?> {
         val st = run.state().toMutableMap()
         st["ignored"] = (chainIgnored + run.ignored).toSortedMap()

@@ -187,7 +187,7 @@ const VIEWS={
       <form class="inline" onsubmit="event.preventDefault();syncNow(this.address.value)"><button class="primary" type="button" onclick="syncNow('')">Sync now</button>
       <input name="address" placeholder="or an address, e.g. 192.168.1.20" style="min-width:220px"><button class="ghost">Sync with it</button></form></div>
       <div class="card"><h3>Bundle files</h3><div class="sub">A bundle carries the plant log (optionally with photos) by USB or messaging, where Wi-Fi sync can't reach. It is not encrypted: treat it like a copy of the database.</div>
-      <div class="row" style="margin-top:8px">${isAdmin()?`<a class="ghost" href="/api/bundle" style="text-decoration:none;color:inherit">Export bundle</a><a class="ghost" href="/api/bundle?photos=1" style="text-decoration:none;color:inherit">Export with photos</a>`:''}
+      <div class="row" style="margin-top:8px">${isAdmin()?`<a class="ghost" href="/api/bundle" onclick="return exportBundle(0)" style="text-decoration:none;color:inherit">Export bundle</a><a class="ghost" href="/api/bundle?photos=1" onclick="return exportBundle(1)" style="text-decoration:none;color:inherit">Export with photos</a>`:''}
       <label class="ghost" style="cursor:pointer">Import a bundle<input type="file" accept=".kksbundle" hidden onchange="importBundle(this)"></label></div></div>`;
     if(isAdmin()) h+=`<div class="card"><h3>Add a computer from a join request</h3><div class="sub">Someone set up the app on their laptop and gave you a <span class="mono">.kksjoin</span> file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.</div>
       <label class="primary" style="display:inline-block;margin-top:8px;cursor:pointer">Import join request<input type="file" accept=".kksjoin,.json" hidden onchange="importJoin(this)"></label></div>
@@ -323,6 +323,7 @@ async function createUser(f){
   if(r) $('#newlink').innerHTML=`<div class="warn">Give this link to <b>${esc(f.username.value)}</b> (valid ${r.expires_days} days, works once):<div class="linkbox">${esc(r.link)}</div></div>`;
 }
 const setUser=(id,d)=>act(()=>K.api(`/api/users/${id}`,d),'Updated');
+const exportBundle=photos=>{ if(!K.native) return true; K.native.saveApi('plant.kksbundle','/api/bundle'+(photos?'?photos=1':'')); return false };
 const setPerson=(pid,d)=>act(()=>K.api(`/api/persons/${pid}`,d),'Updated');
 const syncNow=address=>act(()=>K.api('/api/sync/now',{address}),'Synced');
 async function importBundle(inp){ const f=inp.files[0]; if(!f) return; try{ const r=await K.importBundle(f); toast(`Imported ${r.entries} entries, ${r.photos} photos`); show('devices') }catch(e){ toast(e.message) } }

@@ -5,7 +5,24 @@
 'use strict';
 const K = {me: null, online: true, reauth: false, outbox: [], listeners: []};
 
+// Inside the Android app (window.KKSNative): API calls go to the app's own node through the bridge (the WebView can't
+// hand POST bodies to the app); replies arrive via K.nativeReply. Everything else is the same as in a browser.
+K.native = window.KKSNative || null;
+K.nativeCalls = new Map(); K.nativeSeq = 0;
+K.nativeReply = (id, status, text) => { const f = K.nativeCalls.get(id); K.nativeCalls.delete(id); if (f) f([status, text]) };
+K.nativeCall = (method, url, body, base64) => new Promise(res => {
+  const id = String(++K.nativeSeq); K.nativeCalls.set(id, res);
+  if (base64 !== undefined) K.native.requestBytes(id, url, base64);
+  else K.native.request(id, method, url, body === undefined ? null : JSON.stringify(body));
+});
+K.nativeResult = ([status, text]) => {
+  let d = null; try { d = JSON.parse(text) } catch (e) {}
+  if (status >= 400) { const e = new Error(d?.error || 'error ' + status); e.status = status; e.data = d; throw e }
+  return d;
+};
+
 K.api = async (url, body) => {
+  if (K.native && url.startsWith('/api/')) return K.nativeResult(await K.nativeCall(body === undefined ? 'GET' : 'POST', url, body));
   let r;
   try {
     r = await fetch(url, body === undefined ? {credentials: 'same-origin'} :
@@ -122,23 +139,29 @@ K.start = async () => {
 
 // ---------- peer mode: this computer is one person's device; set it up before first use ----------
 K.download = (data, name, type = 'application/json') => {
+  if (K.native) return K.native.saveFile(name, type, data);   // Android: its own "save as" dialog
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], {type})); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000);
 };
 K.importBundle = async file => {
+  if (K.native) {
+    const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result.split(',')[1] || ''); fr.onerror = rej; fr.readAsDataURL(file) });
+    return K.nativeResult(await K.nativeCall('POST', '/api/bundle/import', undefined, b64));
+  }
   const r = await fetch('/api/bundle/import', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/octet-stream'}, body: file});
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || r.statusText);
   return d;
 };
 K.joinScreen = (cfg, note = '') => {
-  const o = K.overlay(`<div class="box"><h1>Set up this computer</h1>
-    <p>This computer keeps its own copy of the plant data and syncs with the other devices on the same Wi-Fi.</p>
+  const dev = cfg.app ? 'phone' : 'computer';
+  const o = K.overlay(`<div class="box"><h1>Set up this ${dev}</h1>
+    <p>This ${dev} keeps its own copy of the plant data and syncs with the other devices on the same Wi-Fi.</p>
     ${cfg.node.has_plant ? '<p>It already holds a plant\'s data but is not certified in it yet: import the bundle an admin gave you, or join through the server.</p>' : ''}
     <button data-a="server">Join through the plant server</button>
     <button data-a="request">Join through an admin (no server)</button>
     <button data-a="bundle">Import a bundle an admin gave you</button>
-    ${cfg.node.has_plant ? '' : '<button data-a="new" style="background:none;border:1px solid var(--line,#3a5061);color:inherit">Start a new plant (you become its manager)</button>'}
+    ${cfg.node.has_plant || cfg.node.can_create === false ? '' : '<button data-a="new" style="background:none;border:1px solid var(--line,#3a5061);color:inherit">Start a new plant (you become its manager)</button>'}
     <input type="file" accept=".kksbundle" hidden><div class="err">${K.esc(note)}</div>
     <p style="font-size:12px;opacity:.7">Device ${K.esc((cfg.node.device || 'not created yet').slice(0, 12))}…</p></div>`);
   const back = n => K.joinScreen(cfg, n);
@@ -148,16 +171,16 @@ K.joinScreen = (cfg, note = '') => {
   const file = o.querySelector('input[type=file]');
   file.onchange = async () => {
     try { const r = await K.importBundle(file.files[0]); if (r.joined) return location.reload();
-      back(`Imported ${r.entries} entries, but this computer is not certified in that bundle. Ask the admin to import your join request first.`) }
+      back(`Imported ${r.entries} entries, but this ${dev} is not certified in that bundle. Ask the admin to import your join request first.`) }
     catch (e) { back(e.message) }
   };
   o.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => ({
     bundle: () => file.click(),
-    server: () => sub('Join through the plant server', 'Your normal account on the plant server. The server certifies this computer as yours; afterwards it syncs by itself on the same Wi-Fi.',
+    server: () => sub('Join through the plant server', `Your normal account on the plant server. The server certifies this ${dev} as yours; afterwards it syncs by itself on the same Wi-Fi.`,
       [{name: 'url', label: 'Server address, e.g. http://192.168.1.20:8420'}, {name: 'username', label: 'Username', ac: 'username'},
        {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Join',
       async v => { await K.api('/api/node/join-server', v); location.reload() }),
-    request: () => sub('Join through an admin', 'You get a small file to give an admin (USB, WhatsApp, email). They certify this computer and give you a bundle file back; import it here.',
+    request: () => sub('Join through an admin', `You get a small file to give an admin (USB, WhatsApp, email). They certify this ${dev} and give you a bundle file back; import it here.`,
       [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'}], 'Make the request file',
       async v => { const r = await K.api('/api/node/join-request', v);
@@ -244,4 +267,4 @@ K.describe = (kind, p) => ({
   tag_remove: () => `remove hand-added tag ${p.id.slice(0, 8)}`,
 }[kind] || (() => kind))();
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
+if ('serviceWorker' in navigator && !K.native) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));

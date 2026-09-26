@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The plant server on the LAN usually speaks plain http (http://192.168.x.x:8420). Joining it sends the account's
+     password over that connection, as signing in to its web page does. Sync itself is encrypted (Noise) either way. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

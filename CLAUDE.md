@@ -272,7 +272,25 @@ needs `.venv`) both directions, states byte-identical. Found while porting and f
 accepted a trailing newline (now fullmatch), and three bodies (revoke/device_cert with a list, root with a list
 `kind`) crashed the Python replay (unhashable dict key) → type checks first + a `bad_body` safety net; new frozen
 `peer/vectors/v4-malformed.json` (1947 entries) checks both implementations never diverge on garbage.
-Next: M3b (Android node: SQLite storage, engine, local API served to the WebView by request interception, no open port).
+M3b done 2026-09-26. core: `LocalNode.kt` (NodeStore interface + MemStore; persistence hooks in MemoryNode; owner,
+statusOf, plan, restoreBody, bundles, afterIngest subs rows), `Payloads.kt` (normalize/tagPayload/body↔payload, same
+messages as changes.py), `LocalApi.kt` (peer-mode routes of app.py/changes.py: config (app:true, can_create:false: no
+new plants on phones = no root key on phones), me, state, submissions + vote/withdraw/approve/pick/reject with held
+admin conflicts, revisions by hid, revert/restore, users/persons, devices/revoke/import-request, bundle GET/import,
+sync/now, node join-request/join-server via HTTP enroll). Two Kotlin-vs-Python differences found by tests: Java
+`putIfAbsent` treats a null value as absent (restore-to lost "didn't exist" befores), JSON numbers round-trip as
+Double. MemoryNode methods are @Synchronized (sync threads vs API). app (`android/app`, AGP 8.13.2, minSdk 29,
+targetSdk 36, no AndroidX yet): `SqliteStore` (seed AES-GCM under Keystore alias kks-device-seed; photos as files),
+`PhoneSync` (listener 8421, sync by address, remembers addresses; no NSD yet), `MainActivity` (WebView on
+https://kks.app, shouldInterceptRequest serves assets/data/photos and GET /api (bundle download), `KKSNative` bridge:
+request/requestBytes/saveFile/saveApi/platform; file chooser; CREATE_DOCUMENT saves; window insets padded on a frame,
+since a WebView ignores its own padding). Assets copied from the repo by the `copyWeb` Gradle task. common.js: K.api /
+K.importBundle / K.download use the bridge when `window.KKSNative` exists; no service worker in the app. Build:
+`cd android && echo sdk.dir=$HOME/Android/Sdk > local.properties && JAVA_HOME=…temurin-21… ./gradlew :app:assembleDebug`
+(APK 29.5 MB). Verified on the Pixel_9_Pro_XL AVD (Android 16, headless, `-gpu swiftshader_indirect`), driven over
+the WebView's DevTools socket with raw CDP (Playwright's connect_over_cdp can't attach to Android WebViews): join via
+the Python server at 10.0.2.2, data incl. non-ASCII, proposal → server Approvals → approval back, viewer with 11
+sheets / 207 hotspots, restart keeps everything. Not yet: camera capture (file picker only), background sync, NSD.
 
 ## Backlog (rough priority)
 
