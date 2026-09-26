@@ -1,16 +1,26 @@
 # KKS Explorer — HRSG P&IDs
 
-Multi-user, works offline, standard-library Python server. Plant data is only served to signed-in users.
+Multi-user, works offline, Python server. Plant data is only served to signed-in users. Every change is a signed
+entry in an append-only log (docs/PROTOCOL.md); what the app shows is replayed from it.
 
 ## Start
-1. Install Python 3 (already on most laptops).
+1. Install Python 3 (already on most laptops) and its `cryptography` package
+   (Debian/Ubuntu: `sudo apt install python3-cryptography`; or `python3 app.py setup-importer` and run with `.venv/bin/python`).
 2. Optional: `cp config.example.json config.json` and edit (plant name, port, paths, HTTPS). Defaults work.
 3. In this folder: `python3 app.py`
 4. **First run:** the console prints a one-time **setup link**. Open it and create the **manager** account
-   (valid 24 h; a new link is printed on every start until a manager exists).
+   (valid 24 h; a new link is printed on every start until a manager exists). This also creates the plant **root key**
+   (`root.key` next to `plant.db`). Back it up right away: `python3 app.py export-root-key --out FILE` (passphrase-
+   encrypted; keep it offline). It is needed to hand over the manager role; it is not in the database or `backups/`.
 5. Laptop: http://localhost:8420 — Phone: the LAN URL it prints (same Wi-Fi).
 
-The server needs **no extra packages**. Only the importer does. Tests: `python3 -m unittest discover -s tests`.
+The server needs only `cryptography` (Ed25519 signatures). The importer needs more (see below).
+Tests: `.venv/bin/python -m unittest discover -s tests`.
+
+**Upgrading from a version before the signed log (2026-09-26):** the first start moves `plant.db` onto the log by
+itself: accounts, passwords, data, history, open submissions and votes carry over; a copy of the old database is kept
+as `backups/plant-v1-<time>.db`. If the replayed log would differ from the old data in any way, it stops and changes
+nothing.
 
 ## What's loaded
 10 sheets: LP, IP, HP, Feedwater, Reheat, Intermittent/CBD, Flue Gas, Block 1 HP/IP/LP steam piping.
@@ -49,7 +59,8 @@ The server needs **no extra packages**. Only the importer does. Tests: `python3 
 - **Every change is a proposal.** A user's edits (location, notes, photos, procedure links, review decisions) wait in
   Manage → Approvals. Admin/manager edits apply at once (`admins_apply_directly`), and are still logged.
 - **Conflicts:** edits to different fields of the same item merge automatically. If a field changed after someone
-  proposed a new value for it, the proposal is flagged and an admin chooses (overwrite or reject).
+  proposed a new value for it, the proposal is flagged and an admin chooses (overwrite or reject). A value the
+  manager set or approved can only be overwritten by the manager.
 - **Photos:** several proposed photos for one item appear side by side. Users can vote; votes are only a hint.
   An admin picks one (“Use this one” rejects the rest) or adds several.
 - **Lost manager** (left, forgot password): on the server, `python3 app.py reset-manager --user NAME`. It prints a
@@ -66,6 +77,8 @@ The server needs **no extra packages**. Only the importer does. Tests: `python3 
 - **Not covered by that:** `backups/` sits on the same disk as the live data, and photos are separate files. Copy
   `backups/` and `photos/` to another machine regularly (restic, rsync, or at least a USB drive). Photo files are never
   deleted by the app, so an incremental copy is enough. Do a test restore now and then.
+- **Root key:** `root.key` is deliberately not in `backups/`. Keep the `export-root-key` file somewhere else (USB stick,
+  printed); `import-root-key --file F` puts it back on a new server.
 
 ## Offline
 - The app installs as a PWA ("Add to home screen"). Drawings and data you have opened keep working without the server,
@@ -89,8 +102,9 @@ files and set `plant_name`. Run one server per plant. Build the data with `impor
 `tools/parse_locations.py` (location list) and `tools/manual_parse.py` (procedures).
 
 ## Your data
-Field data lives in `plant.db` and `photos/`, history and backups in `backups/`. None of them go in git.
-Updating the app later: replace everything except `plant.db`, `photos/`, `backups/` and `config.json`.
+Field data lives in `plant.db` (the signed log) and `photos/`, backups in `backups/`, the plant root key in `root.key`.
+None of them go in git. Updating the app later: replace everything except `plant.db`, `photos/`, `backups/`,
+`root.key` and `config.json`.
 
 ## Adding a new P&ID
 One-time setup on the server (creates `.venv` in the app folder; nothing is installed system-wide, and the server

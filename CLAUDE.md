@@ -9,11 +9,13 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 
 ## Run
 
-- `python3 app.py` → http://localhost:8420 (phone: printed LAN URL, same Wi-Fi). Stdlib only. First run prints a
-  one-time setup link to create the manager. CLI: `users`, `reset-manager --user X`, `reset-password --user X`,
-  `backup`, `restore [--seq N] [--out F]`. Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `python3 -m unittest discover -s tests` (server end-to-end over HTTP). Protocol tests need `cryptography`:
-  `.venv/bin/python -m unittest discover -s tests` runs everything (system python skips them).
+- `python3 app.py` → http://localhost:8420 (phone: printed LAN URL, same Wi-Fi). Stdlib + `cryptography` (since M1,
+  2026-09-26; system python here has it, else `.venv/bin/python app.py`). First run prints a one-time setup link to
+  create the manager (also creates `root.key`). CLI: `users`, `reset-manager --user X`, `reset-password --user X`,
+  `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`.
+  Settings: `config.json` (see `config.example.json`, `server/config.py`).
+- Tests: `.venv/bin/python -m unittest discover -s tests` (47: server end-to-end over HTTP, protocol vectors,
+  migration). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
   `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
   `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
   in a throwaway venv (not committed): setup, invite, user proposal, offline queue + offline reload via the service
@@ -33,14 +35,32 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 ## Layout
 
 - `app.py` — HTTP handler + CLI. `server/`: `config.py` (settings), `store.py` (SQLite, journaled writes, snapshots,
-  restore), `auth.py` (scrypt passwords, hashed session/one-time tokens, login throttling), `changes.py` (submissions,
-  3-way field merge, apply, revision log, revert, restore-to).
-  Live data tables: equipment(kks→json), photos, reviews(tag_id→json), links(proc,step,kks). Also users, sessions,
-  tokens, submissions, votes, revisions(before/after per change), meta.
-- Multi-user model: users never write live data; every edit is a submission (`POST /api/submit`, idempotent by
-  `client_id` for offline replay). Admin/manager submissions apply at once. Applying = plan (conflict check against the
-  `base` values the client saw) → set_state per entity → one revision each. Photos files are never deleted (row only),
-  so revert/restore is lossless. All journaled tables must be written via `store.put/delete` inside `store.write()`.
+  restore), `auth.py` (scrypt passwords, hashed session/one-time tokens, login throttling), `engine.py` (the signed
+  log: `entries` table, custodial device keys per account in `custodial`, root key file, in-memory replay via
+  `peer/replay.replay_run`, advanced per entry; `revoke`/`root` entries or entries from another process (CLI; seen by
+  `refresh()` = entry count) → full replay, trusted=own DB so no re-verification: 20k entries 0.18 s),
+  `changes.py` (submissions, conflicts, approve/pick/reject/withdraw/vote, History, revert, restore-to, all as log
+  entries), `migrate_v1.py` (one-time move of a pre-log DB, see below).
+- Plant data = the log (M1, 2026-09-26). Tables: `entries` (journaled), `custodial`, `subs` (submission number ↔
+  entry, `client_id` idempotency; *held* admin changes that conflict or wait live only here, not in the log),
+  `blobs` (photo sha → file; photos stored as `photos/<sha256>.<ext>`), `entry_notes` (History notes), `users` (+
+  `person`, `device` columns; `role` mirrors the log), sessions, tokens, meta (`root_pub`, `log_version`), `revisions`
+  (now only local `user`/`sheet` notes). The old live tables (equipment, photos, reviews, links, added_tags,
+  submissions, votes) stay in the schema only for migration/old snapshots. Write via `with E.tx() as c:` +
+  `E.append(c, device, type, body)`; journaled tables still via `store.put/delete`. API shapes unchanged (payloads ↔
+  bodies in `engine.py`: tag bbox tenths ↔ px, photo_id/id ↔ photo/tag). History = replay's `run.history` + local
+  notes, numbered 1..N in time order (numbers shift only if entries with older clocks arrive: M2).
+- Rules on top of the protocol: a value set/approved by the manager can't be overwritten by an admin (403, not a
+  silent no-op); forced approvals of held admin changes are rebased on the live value (no conflict record);
+  deactivating revokes the account's custodial device at its last seq, reactivating certifies a new device;
+  manager handover = root `manager` statement (needs `root.key`, checked when offering); `reset-manager` also uses it.
+- Migration (`migrate_v1.py`): first start on a DB with users but no `log_version`. Copies the DB to
+  `backups/plant-v1-<time>.db`, rebuilds history from the revision log with original times/people (user proposal +
+  admin approve, admin entries, rejects/withdraws, votes, revoke for inactive accounts), keeps submission ids and
+  client_ids, replays before committing and aborts on any difference (root.key only written after commit).
+  Fixture `tests/fixtures/v1` was written by the OLD code (`tools/make_v1_fixture.py` runs commit 2d5fbdc).
+  Real plant.db dry run (copy, 2026-09-26): 8 entries, 7 marked tags identical. The live plant.db is migrated on the
+  next server start (not done yet).
 - Accounts carry `full_name` (required for new accounts, setup and Users → Add) and `position` (optional), 2026-09-26.
   Existing DBs get the columns on startup (`store.migrate`, also run on restored snapshots before journal replay).
   Self-service: Account → Your details (`POST /api/profile`); admins edit users' details (`POST /api/users/<id>`,
@@ -93,7 +113,8 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - `extractor/` — the tag reader (see below). `fontlib.pkl` = labeled glyph library (~13.8k glyphs).
 - `tools/` — manual parser and the calibration scripts used to build the glyph library (written for a scratch
   workspace; paths like `norm/`, `calib/`, `ext/` need adapting).
-- NEVER commit or overwrite `plant.db` / `photos/` / `backups/` / `config.json`: field data and server state.
+- NEVER commit or overwrite `plant.db` / `photos/` / `backups/` / `config.json` / `root.key`: field data, server
+  state and the plant root key.
   (`plant.db` was committed once in 7c840ac, empty; it has been untracked since.)
 
 ## How extraction works (and why)
@@ -200,6 +221,8 @@ holder (self-held backup recommended). M0 done: `docs/PROTOCOL.md` §1–7 `peer
 `peer/vectors/v2-replay.json` (M0b: identity, authority, revocation by priority, approvals, merge, private entries;
 generator `peer/make_replay_vectors.py`, 3 scenarios). Both vector files frozen; tests in `tests/test_protocol.py`.
 Root key: laptop + backup, not the phone (PROTOCOL.md §10: only a root-signed revoke settles a stolen same-person device).
+M1 done 2026-09-26 (server on the log, see Layout). `withdraw`, `vote`, review `data:null` were added to the protocol
+for it (v2-replay.json regenerated before anything depended on it; freeze it once the Kotlin port starts). Next: M2.
 
 ## Backlog (rough priority)
 

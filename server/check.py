@@ -74,6 +74,22 @@ def run(cfg, store, auth):
     if not os.access(cfg['photos_dir'], os.W_OK):
         add('FAIL', f'photos_dir {cfg["photos_dir"]} is not writable.')
 
+    # ---- plant root key (signs who the manager is; not in the DB or the backups) ----
+    from server.engine import root_path
+    rk = root_path(cfg)
+    if store.meta('root_pub'):
+        if not os.path.exists(rk):
+            add('WARN', f'root key {rk} not on this machine: handing over the manager role needs it '
+                        '(python3 app.py import-root-key --file BACKUP).')
+        else:
+            mode = os.stat(rk).st_mode & 0o777
+            add('OK' if mode == 0o600 else 'FAIL', f'root key {rk} permissions {oct(mode)}' +
+                ('' if mode == 0o600 else ': chmod 600 it (only the server user may read it).'))
+            if os.path.realpath(rk).startswith(os.path.realpath(cfg['backup_dir']) + os.sep):
+                add('WARN', 'root key lies inside backup_dir: backups copied elsewhere would carry it unencrypted.')
+            if not store.meta('root_backed_up'):
+                add('WARN', 'root key never exported: python3 app.py export-root-key --out FILE, keep it offline.')
+
     # ---- backups ----
     snaps = store.snapshots()
     if not snaps:

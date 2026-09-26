@@ -1,26 +1,44 @@
-"""Submissions (proposed changes), approval, and the append-only revision log.
+"""Submissions (proposed changes), approvals, History, revert and restore, on the signed log (server/engine.py).
 
-Users never edit live data: every change is a submission. Admin/manager submissions apply immediately when
-`admins_apply_directly` is on; user submissions wait for an admin. Applying a submission writes the live tables and
-appends one revision per changed entity (before/after), so every change is a restore point.
+Users never edit plant data directly: every change is a log entry. A user's entry is a *proposal* that counts once an
+admin/manager approves it (docs/PROTOCOL.md §11). An admin/manager's own change counts at once
+(`admins_apply_directly`); if it would overwrite something that moved since the client saw it, or when
+`admins_apply_directly` is off, it is *held* on the server (table `subs`, not in the log) until an admin confirms it.
 
-Conflicts: equipment edits carry the values the client saw (`base`) for the fields it changed. On apply, a field
-whose live value moved away from `base` since then (and differs from the proposal) is a conflict; fields that don't
-overlap merge automatically. Link add/remove, photo add and photo delete are idempotent and never conflict. A
-conflicting submission stays in the queue flagged `conflict` until an admin forces or rejects it."""
-import base64, json, re, time, uuid
+Conflicts: equipment edits carry the values the client saw (`base`). A field whose live value moved away from `base`
+since then (and differs from the proposal) is a conflict; fields that don't overlap merge automatically. An admin
+approving over a conflict must say so (`force`). A value set by the manager can only be overwritten by the manager
+(replay keeps it otherwise, §12), so admins are told instead of silently losing.
+
+The table `subs` maps submission numbers (what the UI shows) and `client_id`s (offline replay) to entries."""
+import base64, hashlib, json, os, re, time, uuid
+
+from peer import replay as R
+from server.engine import ENTITIES, body_to_payload, default, payload_to_body, value_out
 
 EQ_FIELDS = ('area', 'floor', 'elev', 'near', 'loc', 'notes', 'custom')
 KINDS = ('equipment', 'review', 'link', 'photo', 'photo_delete', 'tag_add', 'tag_remove')
-ENTITIES = ('equipment', 'review', 'link', 'photo', 'added_tag')
 SHEET_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,23}$')
 TAG_RE = re.compile(r'^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]{0,4})$')
 KKS_RE = re.compile(r'^[0-9A-Z/]{3,24}$')
 IMG_RE = re.compile(r'^data:image/(jpeg|jpg|png|webp);base64,(.+)$', re.S)
+OPEN = ('pending', 'conflict')
 
 
 class Bad(Exception):
     """Invalid request (→ 400)."""
+
+
+class Denied(Exception):
+    """Not allowed (→ 403)."""
+
+
+class Gone(Exception):
+    """Already decided / no longer possible (→ 409)."""
+
+
+class NotFound(Exception):
+    """(→ 404)"""
 
 
 class Conflict(Exception):
@@ -28,66 +46,6 @@ class Conflict(Exception):
     def __init__(self, detail):
         super().__init__(detail)
         self.detail = detail
-
-
-def _j(v):
-    return None if v is None else json.dumps(v, sort_keys=True)
-
-
-def _default(field):
-    return [] if field == 'custom' else ''
-
-
-# ---------- live state per entity ----------
-def get_state(c, entity, key):
-    if entity == 'equipment':
-        r = c.execute('SELECT data FROM equipment WHERE kks=?', (key,)).fetchone()
-        return json.loads(r['data']) if r else None
-    if entity == 'review':
-        r = c.execute('SELECT data FROM reviews WHERE tag_id=?', (key,)).fetchone()
-        return json.loads(r['data']) if r else None
-    if entity == 'link':
-        proc, step, kks = json.loads(key)
-        r = c.execute('SELECT 1 FROM links WHERE proc=? AND step=? AND kks=?', (proc, step, kks)).fetchone()
-        return True if r else None
-    if entity == 'added_tag':
-        r = c.execute('SELECT data FROM added_tags WHERE id=?', (key,)).fetchone()
-        return json.loads(r['data']) if r else None
-    if entity == 'photo':
-        r = c.execute('SELECT * FROM photos WHERE id=?', (key,)).fetchone()
-        return {k: r[k] for k in ('kks', 'file', 'caption', 'created')} if r else None
-    raise Bad(f'unknown entity {entity}')
-
-
-def _write_state(store, entity, key, value):
-    now = int(time.time())
-    if entity == 'equipment':
-        if value is None: store.delete('equipment', kks=key)
-        else: store.put('equipment', {'kks': key, 'data': json.dumps(value), 'updated': now})
-    elif entity == 'review':
-        if value is None: store.delete('reviews', tag_id=key)
-        else: store.put('reviews', {'tag_id': key, 'data': json.dumps(value), 'updated': now})
-    elif entity == 'link':
-        proc, step, kks = json.loads(key)
-        if value is None: store.delete('links', proc=proc, step=step, kks=kks)
-        else: store.put('links', {'proc': proc, 'step': step, 'kks': kks})
-    elif entity == 'added_tag':
-        if value is None: store.delete('added_tags', id=key)
-        else: store.put('added_tags', {'id': key, 'data': json.dumps(value)})
-    elif entity == 'photo':
-        # Photo files are never deleted from disk, so removing and restoring a photo row is lossless.
-        if value is None: store.delete('photos', id=key)
-        else: store.put('photos', {'id': key, **value})
-
-
-def set_state(store, c, entity, key, value, actor, submission_id=None, note=''):
-    """Write live state and append a revision. No-op (returns None) when nothing changes."""
-    before = get_state(c, entity, key)
-    if _j(before) == _j(value):
-        return None
-    _write_state(store, entity, key, value)
-    return store.put('revisions', {'ts': int(time.time()), 'actor': actor, 'entity': entity, 'key': key,
-                                   'before': _j(before), 'after': _j(value), 'submission_id': submission_id, 'note': note})
 
 
 # ---------- validating a submission ----------
@@ -121,7 +79,7 @@ def normalize(kind, p, photos_dir, max_bytes):
         k = kks(p.get('kks'))
         changes, base = fields(p.get('changes') or {}), fields(p.get('base') or {})
         if not changes: raise Bad('no changes')
-        return f'equipment:{k}', {'kks': k, 'changes': changes, 'base': {f: base.get(f, _default(f)) for f in changes}}
+        return f'equipment:{k}', {'kks': k, 'changes': changes, 'base': {f: base.get(f, default(f)) for f in changes}}
     if kind == 'review':
         tag = text(p.get('tag_id'), 64)
         d = p.get('data') or {}
@@ -146,10 +104,14 @@ def normalize(kind, p, photos_dir, max_bytes):
         magic = {b'\xff\xd8\xff': 'jpg', b'\x89PNG': 'png', b'RIFF': 'webp'}
         ext = next((e for sig, e in magic.items() if raw.startswith(sig)), None)
         if not ext: raise Bad('not an image')
-        pid = uuid.uuid4().hex
-        with open(f'{photos_dir}/{pid}.{ext}', 'wb') as f:
-            f.write(raw)
-        return f'photo:{k}', {'kks': k, 'photo_id': pid, 'file': f'{pid}.{ext}', 'caption': text(p.get('caption'), 500)}
+        sha = hashlib.sha256(raw).hexdigest()   # stored by content: the log refers to photos by this hash
+        path = f'{photos_dir}/{sha}.{ext}'
+        if not os.path.exists(path):
+            with open(path + '.part', 'wb') as f:
+                f.write(raw)
+            os.replace(path + '.part', path)
+        return f'photo:{k}', {'kks': k, 'photo_id': uuid.uuid4().hex, 'file': f'{sha}.{ext}', 'blob': sha,
+                              'size': len(raw), 'caption': text(p.get('caption'), 500)}
     if kind == 'tag_add':  # a tag the extractor missed, marked by hand on the drawing
         return f'tag_add:{p.get("sheet")}', tag_payload(p, text)
     if kind == 'tag_remove':
@@ -185,114 +147,293 @@ def tag_payload(p, text=None, keep_id=None):
             'note': text(p.get('note'), 500)}
 
 
-# ---------- planning / applying ----------
-def plan(c, kind, p, force=False):
-    """Returns (ops, conflicts). ops = [(entity, key, new_value)]. Conflicts listed even when forced."""
+
+
+# ---------- submissions ----------
+def _conflicts_out(conflicts):
+    return [{k: c[k] for k in ('field', 'base', 'live', 'proposed')} for c in conflicts]
+
+
+def _manager_check(E, me, conflicts):
+    if me['role'] != 'manager' and any(c['manager'] for c in conflicts):
+        raise Denied('The value there was set or approved by the manager; only the manager can overwrite it.')
+
+
+def _rebase(kind, body, E):
+    """A forced change: its base becomes what is live now, so it overwrites knowingly and records no conflict."""
     if kind == 'equipment':
-        cur = get_state(c, 'equipment', p['kks']) or {}
-        conflicts, new = [], dict(cur)
-        for f, v in p['changes'].items():
-            live, base = cur.get(f, _default(f)), p['base'].get(f, _default(f))
-            if _j(live) == _j(v):
-                continue  # already has the proposed value
-            if _j(live) != _j(base):
-                conflicts.append({'field': f, 'base': base, 'live': live, 'proposed': v})
-                if not force: continue
-            new[f] = v
-        new = {f: v for f, v in new.items() if v not in ('', [])} or None
-        return [('equipment', p['kks'], new)], conflicts
+        cur = E.run.equipment.get(body['kks'], {})
+        return {**body, 'base': {f: cur.get(f, default(f)) for f in body['changes']}}
     if kind == 'review':
-        cur = get_state(c, 'review', p['tag_id'])
-        conflicts = []
-        if _j(cur) != _j(p['base']) and _j(cur) != _j(p['data']):
-            conflicts.append({'field': 'review', 'base': p['base'], 'live': cur, 'proposed': p['data']})
-        return ([] if conflicts and not force else [('review', p['tag_id'], p['data'])]), conflicts
-    if kind == 'link':
-        key = json.dumps([p['proc'], p['step'], p['kks']])
-        return [('link', key, True if p['on'] else None)], []
-    if kind == 'photo':
-        return [('photo', p['photo_id'], {'kks': p['kks'], 'file': p['file'], 'caption': p['caption'],
-                                          'created': int(time.time())})], []
-    if kind == 'photo_delete':
-        return [('photo', p['photo_id'], None)], []
-    if kind == 'tag_add':
-        return [('added_tag', p['id'], {k: v for k, v in p.items() if k != 'id'})], []
-    if kind == 'tag_remove':
-        return [('added_tag', p['id'], None)], []
-    raise Bad('bad kind')
+        return {**body, 'base': E.run.reviews.get(body['tag_id'])}
+    return body
 
 
-def apply(store, c, sub, actor, force=False):
-    """Apply a stored submission (row). Raises Conflict unless forced. Returns list of new revision numbers."""
-    p = json.loads(sub['payload'])
-    ops, conflicts = plan(c, sub['kind'], p, force)
-    if conflicts and not force:
-        raise Conflict(conflicts)
-    note = 'forced over conflicting change' if conflicts else ''
-    revs = [r for r in (set_state(store, c, e, k, v, actor, sub['id'], note) for e, k, v in ops) if r]
-    return revs
-
-
-def decide(store, c, sub, actor, status, note=''):
-    row = dict(sub)
-    row.update(status=status, decided_by=actor, decided_at=int(time.time()), note=note)
-    store.put('submissions', row)
-
-
-def submit(store, cfg, user, kind, payload, client_id):
-    """Store a submission; apply it right away for admins. Returns dict for the client."""
+def submit(E, cfg, user, kind, payload, client_id):
+    """Store a submission as a log entry (or a held draft). Returns the dict the client expects."""
     if client_id is not None and (not isinstance(client_id, str) or not re.fullmatch(r'[\w-]{8,64}', client_id)):
         raise Bad('bad client_id')
-    c0 = store.conn()
+    if client_id:
+        c0 = E.store.conn()
+        try:
+            old = c0.execute('SELECT id FROM subs WHERE client_id=?', (client_id,)).fetchone()
+        finally:
+            c0.close()
+        if old:  # offline replay of something already received
+            with E.lock:
+                r = sub_row(E, old['id'])
+                st, note = sub_status(E, r)[:2]
+            return {'id': old['id'], 'status': st, 'note': note, 'duplicate': True}
+    _, p = normalize(kind, payload, cfg['photos_dir'], cfg['max_upload_mb'] * 1024 * 1024)
+    body = payload_to_body(kind, p)
     try:
-        if client_id:
-            old = c0.execute('SELECT id,status,note FROM submissions WHERE client_id=?', (client_id,)).fetchone()
-            if old:  # offline replay of something already received
-                return {'id': old['id'], 'status': old['status'], 'note': old['note'], 'duplicate': True}
+        R._check_data(kind, body)
+    except R.Ignore:
+        raise Bad('invalid change')
+    admin = user['role'] in ('admin', 'manager')
+    now = int(time.time())
+    with E.tx() as c:
+        if kind == 'photo':
+            E.store.put('blobs', {'sha': p['blob'], 'file': p['file'], 'size': p['size']})
+            E.blob_files[p['blob']] = p['file']
+        _, conflicts = E.plan(kind, body)
+        row = {'client_id': client_id, 'user_id': user['id'], 'kind': kind, 'created': now}
+        if admin and (conflicts or not cfg['admins_apply_directly']):
+            status = 'conflict' if conflicts else 'pending'
+            sid = E.store.put('subs', {**row, 'held': json.dumps({'kind': kind, 'body': body}), 'status': status,
+                                       'note': json.dumps(_conflicts_out(conflicts)) if conflicts else ''})
+            return {'id': sid, 'status': status, **({'conflicts': _conflicts_out(conflicts)} if conflicts else {})}
+        eid = E.append(c, user['device'], kind, body)
+        sid = E.store.put('subs', {**row, 'entry': eid})
+    if admin:
+        return {'id': sid, 'status': 'approved'}
+    return {'id': sid, 'status': 'conflict', 'conflicts': _conflicts_out(conflicts)} if conflicts else \
+        {'id': sid, 'status': 'pending'}
+
+
+def sub_row(E, sid):
+    c = E.store.conn()
+    try:
+        return c.execute('SELECT * FROM subs WHERE id=?', (sid,)).fetchone()
     finally:
-        c0.close()
-    target, p = normalize(kind, payload, cfg['photos_dir'], cfg['max_upload_mb'] * 1024 * 1024)
-    with store.write() as c:
-        sid = store.put('submissions', {'client_id': client_id, 'user_id': user['id'], 'kind': kind, 'target': target,
-                                        'payload': json.dumps(p), 'status': 'pending', 'created': int(time.time())})
-        sub = c.execute('SELECT * FROM submissions WHERE id=?', (sid,)).fetchone()
-        if user['role'] in ('admin', 'manager') and cfg['admins_apply_directly']:
-            try:
-                apply(store, c, sub, user['id'])
-                decide(store, c, sub, user['id'], 'approved', 'applied directly')
-                return {'id': sid, 'status': 'approved'}
-            except Conflict as e:
-                decide(store, c, sub, None, 'conflict', json.dumps(e.detail))
-                return {'id': sid, 'status': 'conflict', 'conflicts': e.detail}
-        _, conflicts = plan(c, kind, p)
-        if conflicts:
-            decide(store, c, sub, None, 'conflict', json.dumps(conflicts))
-            return {'id': sid, 'status': 'conflict', 'conflicts': conflicts}
-        return {'id': sid, 'status': 'pending'}
+        c.close()
 
 
-# ---------- revert / restore ----------
-def revert(store, c, rev, actor, force=False):
-    r = c.execute('SELECT * FROM revisions WHERE rev=?', (rev,)).fetchone()
-    if not r or r['entity'] not in ENTITIES:
+def sub_kind_body(E, r):
+    if r['entry'] is None:
+        h = json.loads(r['held'])
+        return h['kind'], h['body']
+    e = E.entry(r['entry'])
+    return e['type'], e['body']
+
+
+def sub_status(E, r):
+    """-> (status, note, decided_at, decider person or None, conflicts). Call with E.lock held."""
+    kind, body = sub_kind_body(E, r)
+    if r['entry'] is None:
+        conflicts = E.plan(kind, body)[1] if r['status'] in OPEN else []
+        status = ('conflict' if conflicts else 'pending') if r['status'] in OPEN else r['status']
+        return status, r['note'] or '', r['decided_at'], None, conflicts
+    status, dec, note = E.status_of(r['entry'])
+    conflicts = []
+    if status == 'pending':
+        conflicts = E.plan(kind, body)[1]
+        status = 'conflict' if conflicts else 'pending'
+    decider = E.person_of(E.entry(dec)['peer']) if dec else None
+    if not note and dec:
+        note = E.note_of(dec)
+    return status, note, E.ts(dec) if dec else (E.ts(r['entry']) if status == 'approved' else None), decider, conflicts
+
+
+def sub_out(E, r, me, users, live=False):
+    """One submission as the UI expects it. `users` = {user id: row, person: row}. Call with E.lock held."""
+    kind, body = sub_kind_body(E, r)
+    status, note, decided_at, decider, conflicts = sub_status(E, r)
+    u = users.get(r['user_id'])
+    d = {'id': r['id'], 'client_id': r['client_id'], 'kind': kind, 'target': target_of(kind, body), 'status': status,
+         'created': r['created'], 'decided_at': decided_at, 'note': note, 'payload': body_to_payload(E, kind, body),
+         'by': u['username'] if u else '?', 'mine': r['user_id'] == me['id']}
+    d['by_name'] = (u['full_name'] if u else None) or d['by']
+    if kind == 'photo' and r['entry']:
+        voters = E.run.votes.get(r['entry'], set())
+        d['votes'], d['voted'] = len(voters), me['person'] in voters
+    elif kind == 'photo':
+        d['votes'], d['voted'] = 0, False
+    if live and status in OPEN and me['role'] in ('admin', 'manager'):
+        d['conflicts'] = _conflicts_out(conflicts)
+        d['live'] = [{'entity': e, 'key': json.dumps(list(k)) if e == 'link' else k,
+                      'value': value_out(E, e, k, E.get(e, k))} for e, k in E.plan(kind, body)[0]]
+    return d
+
+
+def target_of(kind, b):
+    if kind == 'equipment': return f'equipment:{b["kks"]}'
+    if kind == 'review': return f'review:{b["tag_id"]}'
+    if kind == 'link': return f'link:{b["proc"]}|{b["step"]}|{b["kks"]}'
+    if kind == 'photo': return f'photo:{b["kks"]}'
+    if kind == 'photo_delete': return f'photo_delete:{b["photo"]}'
+    if kind == 'tag_add': return f'tag_add:{b["sheet"]}'
+    return f'tag_remove:{b["tag"]}'
+
+
+def list_subs(E, me, users, status_filter, limit):
+    """Newest first. Users see their own plus open photo proposals (to vote on them)."""
+    admin = me['role'] in ('admin', 'manager')
+    c = E.store.conn()
+    try:
+        rows = c.execute('SELECT * FROM subs ORDER BY id DESC').fetchall()
+    finally:
+        c.close()
+    out = []
+    with E.lock:
+        for r in rows:
+            st = sub_status(E, r)[0]
+            if status_filter == 'open' and st not in OPEN: continue
+            if status_filter == 'decided' and st in OPEN: continue
+            if not admin and r['user_id'] != me['id'] and not (r['kind'] == 'photo' and st in OPEN): continue
+            out.append(sub_out(E, r, me, users, live=True))
+            if len(out) >= limit: break
+    return out
+
+
+def act(E, cfg, me, sid, action, d):
+    """vote / withdraw / approve / pick / reject on submission `sid`."""
+    with E.tx() as c:
+        r = c.execute('SELECT * FROM subs WHERE id=?', (sid,)).fetchone()
+        if not r:
+            raise NotFound('no such submission')
+        kind, body = sub_kind_body(E, r)
+        status = sub_status(E, r)[0]
+        open_ = status in OPEN
+        if action == 'vote':
+            if kind != 'photo' or not open_ or not r['entry']:
+                raise Bad('only open photo proposals take votes')
+            E.append(c, me['device'], 'vote', {'entry': r['entry'], 'on': me['person'] not in E.run.votes.get(r['entry'], set())})
+            return {'ok': True}
+        if action == 'withdraw':
+            if r['user_id'] != me['id'] or not open_:
+                raise Denied('can only withdraw your own open submission')
+            if r['entry']:
+                E.append(c, me['device'], 'withdraw', {'entry': r['entry']})
+            else:
+                E.store.put('subs', {**dict(r), 'status': 'withdrawn', 'decided_at': int(time.time()), 'decided_by': me['id']})
+            return {'ok': True}
+        if me['role'] not in ('admin', 'manager'):
+            raise Denied('admin only')
+        if not open_:
+            raise Gone(f'already {status}')
+        if action == 'reject':
+            _decide_reject(E, c, me, r, (d.get('note') or '')[:500])
+            return {'ok': True}
+        edit = None
+        if kind == 'tag_add' and isinstance(d.get('edit'), dict):  # admin corrects the code while approving
+            fixed = tag_payload({**body_to_payload(E, kind, body), **{k: d['edit'].get(k) for k in ('kks', 'isa')}},
+                                keep_id=body['tag'])
+            edit = {'kks': fixed['kks'], 'suffix': fixed['suffix'], 'isa': fixed['isa']}
+            body = {**body, **edit}
+        _, conflicts = E.plan(kind, body)
+        _manager_check(E, me, conflicts)
+        if conflicts and not d.get('force'):
+            raise Conflict(_conflicts_out(conflicts))
+        note = 'forced over conflicting change' if conflicts else ''
+        if r['entry']:
+            eid = E.append(c, me['device'], 'approve', {'entry': r['entry'], 'edit': edit})
+        else:   # a held admin change: now it goes into the log, by the admin who confirms it
+            eid = E.append(c, me['device'], kind, _rebase(kind, body, E))
+            E.store.put('subs', {**dict(r), 'entry': eid, 'held': None, 'status': None})
+            u = c.execute('SELECT username FROM users WHERE id=?', (r['user_id'],)).fetchone()
+            if r['user_id'] != me['id']:
+                note = (note + '; ' if note else '') + f'proposed by {u["username"] if u else "?"}'
+        E.note(eid, note)
+        rejected = 0
+        if action == 'pick':  # choose this photo, discard the other open photos for the same equipment
+            for o in c.execute("SELECT * FROM subs WHERE kind='photo' AND id<>?", (sid,)).fetchall():
+                ok, ob = sub_kind_body(E, o)
+                if ob.get('kks') == body['kks'] and sub_status(E, o)[0] in OPEN:
+                    _decide_reject(E, c, me, o, f'another photo was chosen (#{sid})')
+                    rejected += 1
+        return {'ok': True, 'rejected': rejected}
+
+
+def _decide_reject(E, c, me, r, note):
+    if r['entry']:
+        E.append(c, me['device'], 'reject', {'entry': r['entry'], 'note': note})
+    else:
+        E.store.put('subs', {**dict(r), 'status': 'rejected', 'note': note, 'decided_at': int(time.time()),
+                             'decided_by': me['id']})
+
+
+# ---------- History (log changes + local account/sheet notes), revert, restore ----------
+def history(E, c):
+    """All changes, oldest first, numbered from 1: [(rev, dict)]. Call with E.lock held."""
+    notes = {r['entry']: r['note'] for r in c.execute('SELECT * FROM entry_notes')}
+    subs = {r['entry']: r['id'] for r in c.execute('SELECT id, entry FROM subs WHERE entry IS NOT NULL')}
+    items = []
+    for i, h in enumerate(E.run.history):
+        at = E.entry(h['at'])
+        items.append(((at['hlc'][0] // 1000, 0, i), {
+            'ts': at['hlc'][0] // 1000, 'person': E.person_of(at['peer']), 'entity': h['entity'],
+            'key': json.dumps(h['key']) if h['entity'] == 'link' else h['key'],
+            'before': h['before'], 'after': h['after'], 'raw_key': h['key'],
+            'submission_id': subs.get(h['source']), 'note': notes.get(h['at']) or notes.get(h['source']) or ''}))
+    for r in c.execute("SELECT * FROM revisions WHERE entity IN ('user','sheet') ORDER BY rev"):
+        items.append(((r['ts'], 1, r['rev']), {'ts': r['ts'], 'actor': r['actor'], 'entity': r['entity'],
+                                               'key': r['key'], 'before': None, 'after': None, 'raw_key': None,
+                                               'submission_id': None, 'note': r['note']}))
+    items.sort(key=lambda x: x[0])
+    return [(n + 1, it) for n, (_, it) in enumerate(items)]
+
+
+def history_out(E, rows, users):
+    out = []
+    for rev, it in rows:
+        u = users.get(it['person']) if it.get('person') else users.get(it.get('actor'))
+        log = it['entity'] in ENTITIES
+        out.append({'rev': rev, 'ts': it['ts'], 'actor': u['id'] if u else None,
+                    'username': u['username'] if u else None, 'full_name': u['full_name'] if u else None,
+                    'entity': it['entity'], 'key': it['key'],
+                    'before': json.dumps(value_out(E, it['entity'], it['raw_key'], it['before'])) if log and it['before'] is not None else None,
+                    'after': json.dumps(value_out(E, it['entity'], it['raw_key'], it['after'])) if log and it['after'] is not None else None,
+                    'submission_id': it['submission_id'], 'note': it['note']})
+    return out
+
+
+def _put_back(E, c, me, targets, note):
+    """Write entries setting each (entity, key) to its value. Checks everything before writing anything."""
+    todo = []
+    for entity, key, value in targets:
+        tb = E.restore_body(entity, key, value)
+        if not tb:
+            continue
+        kind, body = tb
+        if me['role'] != 'manager':
+            if kind == 'equipment' and any(E.manager_owned('equipment', key, f) for f in body['changes']) or \
+                    kind == 'review' and E.manager_owned('review', key):
+                raise Denied(f'{key}: set or approved by the manager; only the manager can change it back.')
+        todo.append((kind, body))
+    for kind, body in todo:
+        E.note(E.append(c, me['device'], kind, body), note)
+    return len(todo)
+
+
+def revert(E, c, me, rev, force=False):
+    rows = history(E, c)
+    if not 1 <= rev <= len(rows) or rows[rev - 1][1]['entity'] not in ENTITIES:
         raise Bad('no such revision')
-    live = get_state(c, r['entity'], r['key'])
-    if _j(live) != r['after'] and not force:
-        raise Conflict([{'field': r['entity'], 'live': live, 'proposed': json.loads(r['before']) if r['before'] else None,
-                         'note': 'changed again after this revision'}])
-    return set_state(store, c, r['entity'], r['key'], json.loads(r['before']) if r['before'] else None, actor,
-                     note=f'revert of rev {rev}')
+    it = rows[rev - 1][1]
+    key = tuple(it['raw_key']) if it['entity'] == 'link' else it['raw_key']
+    live = E.get(it['entity'], key)
+    if live != it['after'] and not force:
+        raise Conflict([{'field': it['entity'], 'live': value_out(E, it['entity'], key, live),
+                         'proposed': value_out(E, it['entity'], key, it['before']), 'note': 'changed again after this revision'}])
+    return _put_back(E, c, me, [(it['entity'], key, it['before'])], f'revert of rev {rev}')
 
 
-def restore_to(store, c, rev, actor):
+def restore_to(E, c, me, rev):
     """Put every data entity back to its state right after revision `rev` (0 = before any logged change)."""
-    rows = c.execute('SELECT entity,key,before FROM revisions WHERE rev>? AND entity IN (%s) ORDER BY rev'
-                     % ','.join('?' * len(ENTITIES)), (rev, *ENTITIES)).fetchall()
     first = {}
-    for r in rows:
-        first.setdefault((r['entity'], r['key']), r['before'])
-    n = 0
-    for (entity, key), before in first.items():
-        if set_state(store, c, entity, key, json.loads(before) if before else None, actor, note=f'restore to rev {rev}'):
-            n += 1
-    return n
+    for n, it in history(E, c):
+        if n > rev and it['entity'] in ENTITIES:
+            key = tuple(it['raw_key']) if it['entity'] == 'link' else it['raw_key']
+            first.setdefault((it['entity'], key), it['before'])
+    return _put_back(E, c, me, [(e, k, v) for (e, k), v in first.items()], f'restore to rev {rev}')

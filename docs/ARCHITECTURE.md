@@ -169,7 +169,7 @@ implementations of a sync protocol drift apart silently.
 | M | What | Rough effort* | Result |
 |---|---|---|---|
 | M0 | `docs/PROTOCOL.md` + Python reference of log/encoding/signatures/HLC/replay + test vectors. **Done 2026-09-26.** M0a (encoding, keys, entries, chains, HLC, order: `peer/proto.py`, `peer/vectors/v1.json`); M0b (entry bodies, identity, authority, revocation, approvals, merge, private entries: `peer/replay.py`, `peer/vectors/v2-replay.json`) | 1–2 weeks | the rules exist in one testable place |
-| M1 | Server rebuilt on the log: `plant.db` becomes a cache of the replay; current data migrated into entries (current accounts become person records + custodial keys) | 2–3 weeks | today's app, same behaviour, now log-based |
+| M1 | Server rebuilt on the log: `plant.db` becomes a cache of the replay; current data migrated into entries (current accounts become person records + custodial keys). **Done 2026-09-26:** `server/engine.py` (log, custodial keys, root key, in-memory replay), `server/changes.py` (submissions/History on the log), `server/migrate_v1.py` (+ fixture written by the old code), same API | 2–3 weeks | today's app, same behaviour, now log-based |
 | M2 | Desktop package (double-click) + same-Wi-Fi sync between desktops + file/QR bundles + client-isolation test tool | 2–3 weeks | P2P works on laptops; server optional |
 | M3 | Android: Kotlin core passing the vectors, local API, WebView viewer, M3 shell with the 3 tabs, same-Wi-Fi + file sync, multi-device pairing | 2–3 months | phones are full peers |
 | M4 | Learning tab (course bundles, progress) | 1–2 weeks after seeing the courses | |

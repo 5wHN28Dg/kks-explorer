@@ -45,6 +45,8 @@ BODY = {
     'tag_remove': ('tag',),
     'approve': ('entry', 'edit'),
     'reject': ('entry', 'note'),
+    'withdraw': ('entry',),
+    'vote': ('entry', 'on'),
     'private': ('person', 'nonce', 'ct'),
 }
 STMT = {'manager': ('kind', 'person'), 'device': ('kind', 'device', 'person'), 'rotate': ('kind', 'root'),
@@ -104,19 +106,22 @@ def private_open(secret, body):
 
 
 # ---------- §4 chains, across devices ----------
-def _chains(entries):
-    """Keep each device's unbroken chain from seq 1. -> (usable entries, {entry id: code}, {device: fork cut})."""
+def _chains(entries, trusted=None):
+    """Keep each device's unbroken chain from seq 1. -> (usable entries, {entry id: code}, {device: fork cut}).
+    `trusted` = {entry id: entry} already verified when they were stored (a host's own database): not re-checked."""
     ignored, by_peer, forks = {}, {}, {}
-    for e in entries:
-        try:
-            P.verify_entry(e)
-        except P.ProtocolError as err:
+    for eid, e in (trusted.items() if trusted is not None else ((None, e) for e in entries)):
+        if eid is None:
             try:
-                ignored[P.entry_id(e)] = err.code
-            except (P.ProtocolError, TypeError, AttributeError):
-                pass   # can't even be hashed: nothing to report it under
-            continue
-        by_peer.setdefault(e['peer'], {}).setdefault(e['seq'], {})[P.entry_id(e)] = e
+                P.verify_entry(e)
+                eid = P.entry_id(e)
+            except P.ProtocolError as err:
+                try:
+                    ignored[P.entry_id(e)] = err.code
+                except (P.ProtocolError, TypeError, AttributeError):
+                    pass   # can't even be hashed: nothing to report it under
+                continue
+        by_peer.setdefault(e['peer'], {}).setdefault(e['seq'], {})[eid] = e
     usable = []
     for peer, seqs in by_peer.items():
         prev, why = None, None
@@ -144,15 +149,18 @@ def _chains(entries):
 
 # ---------- §10–12 one pass in total order ----------
 class _Run:
-    def __init__(self, root, cuts, accepted=None):
+    def __init__(self, root, cuts, accepted=None, ids=None):
         self.root, self.cuts, self.accepted = root, cuts, accepted
+        self._ids = ids or {}   # id(entry) → entry ID, computed once per replay
         self.manager = None
         self.persons, self.devices, self.settings = {}, {}, {}
         self.equipment, self.eq_by, self.reviews, self.review_by = {}, {}, {}, {}
         self.links, self.photos, self.tags = set(), {}, {}
-        self.proposals, self.pending, self.waiting = {}, {}, {}
+        self.proposals, self.pending, self.waiting, self.votes = {}, {}, {}, {}
         self.conflicts, self.private, self.ignored = [], {}, {}
         self.revokes = []   # (rank, order key, author peer, author seq, entry id, device, last_seq)
+        # side output for hosts (not part of the state bytes): who decided what, and every applied change
+        self.authors, self.decisions, self.history, self.at = {}, {}, [], None
 
     def role(self, person):
         if person == self.manager:
@@ -161,7 +169,7 @@ class _Run:
 
     def run(self, ordered):
         for e in ordered:
-            eid = P.entry_id(e)
+            eid = self._ids.get(id(e)) or P.entry_id(e)
             try:
                 if e['seq'] > self.cuts.get(e['peer'], P.MAX_INT):
                     raise Ignore('revoked')
@@ -172,6 +180,7 @@ class _Run:
                 _need(dev is not None, 'not_certified')
                 _need(e['type'] in BODY, 'unknown_type')
                 _keys(e['body'], BODY[e['type']])
+                self.at = eid
                 getattr(self, 't_' + e['type'])(e, eid, dev['person'], self.role(dev['person']))
             except Ignore as why:
                 self.ignored[eid] = str(why)
@@ -280,8 +289,14 @@ class _Run:
             return
         self.proposals[eid] = 'pending'
         self.pending[eid] = e
-        if eid in self.waiting:   # decided before it came in the order: takes effect here
-            self.decide(eid, *self.waiting.pop(eid))
+        self.authors[eid] = author
+        for d in self.waiting.pop(eid, []):   # decided before it came in the order: takes effect here, first valid wins
+            try:
+                _need(self.proposals[eid] == 'pending', 'already_decided')
+                _need(d['verdict'] != 'withdrawn' or d['person'] == author, 'not_allowed')
+                self.decide(eid, d)
+            except Ignore as why:
+                self.ignored[d['eid']] = str(why)
 
     t_equipment = t_review = t_link = t_photo = t_photo_delete = t_tag_add = t_tag_remove = _data
 
@@ -289,37 +304,52 @@ class _Run:
         edit = e['body']['edit']
         if edit is not None:
             _keys(edit, ('kks', 'suffix', 'isa'))
-        self._decision(e, ('approved', role == 'manager', edit), role)
+        self._decision(e, eid, {'verdict': 'approved', 'manager': role == 'manager', 'edit': edit, 'note': ''}, role)
 
     def t_reject(self, e, eid, author, role):
         _need(_text(e['body']['note'], 0, 500))
-        self._decision(e, ('rejected', role == 'manager', None), role)
+        self._decision(e, eid, {'verdict': 'rejected', 'manager': role == 'manager', 'edit': None,
+                                'note': e['body']['note']}, role)
 
-    def _decision(self, e, decision, role):
+    def t_withdraw(self, e, eid, author, role):
+        self._decision(e, eid, {'verdict': 'withdrawn', 'manager': False, 'edit': None, 'note': '', 'person': author}, None)
+
+    def t_vote(self, e, eid, author, role):
+        _need(_match(HEX64_RE, e['body']['entry']) and isinstance(e['body']['on'], bool))
+        voters = self.votes.setdefault(e['body']['entry'], set())
+        if e['body']['on']:
+            voters.add(author)
+        else:
+            voters.discard(author)
+
+    def _decision(self, e, eid, d, role):
         target = e['body']['entry']
         _need(_match(HEX64_RE, target))
-        _need(role in ('admin', 'manager'), 'not_allowed')
+        if d['verdict'] != 'withdrawn':
+            _need(role in ('admin', 'manager'), 'not_allowed')
+        d['eid'] = eid
         state = self.proposals.get(target)
         if state is None:
-            _need(target not in self.waiting, 'already_decided')
-            self.waiting[target] = decision
+            self.waiting.setdefault(target, []).append(d)
             return
         _need(state == 'pending', 'already_decided')
-        self.decide(target, *decision)
+        _need(d['verdict'] != 'withdrawn' or d['person'] == self.authors[target], 'not_allowed')
+        self.decide(target, d)
 
-    def decide(self, target, verdict, by_manager, edit):
+    def decide(self, target, d):
         e = self.pending.pop(target)
-        body = e['body']
-        if edit is not None:   # only for tag_add, and the edited tag must still be valid; else it counts as rejected
-            body = {**body, **edit}
+        body, verdict = e['body'], d['verdict']
+        if d['edit'] is not None:   # only for tag_add, and the edited tag must still be valid; else it counts as rejected
+            body = {**body, **d['edit']}
             try:
                 _need(e['type'] == 'tag_add')
                 _check_data('tag_add', body)
             except Ignore:
                 verdict = 'rejected'
         self.proposals[target] = verdict
+        self.decisions[target] = {'status': verdict, 'by': d['eid'], 'note': d['note']}
         if verdict == 'approved':
-            self.apply(e['type'], body, target, by_manager)
+            self.apply(e['type'], body, target, d['manager'])
 
     # ----- §12 merge -----
     def _merge(self, entity, key, field, live, base, new, owner, by, by_manager):
@@ -335,7 +365,31 @@ class _Run:
                                'kept_by': by, 'lost_by': owner_id})
         return True
 
+    def _get(self, entity, key):
+        if entity == 'equipment':
+            v = self.equipment.get(key)
+            return dict(v) if v else None
+        if entity == 'review':
+            return self.reviews.get(key)
+        if entity == 'link':
+            return True if key in self.links else None
+        if entity == 'photo':
+            return self.photos.get(key)
+        return self.tags.get(key)
+
     def apply(self, t, b, by, by_manager):
+        entity, key = {'equipment': ('equipment', b.get('kks')), 'review': ('review', b.get('tag_id')),
+                       'link': ('link', (b.get('proc'), b.get('step'), b.get('kks'))),
+                       'photo': ('photo', b.get('photo')), 'photo_delete': ('photo', b.get('photo')),
+                       'tag_add': ('added_tag', b.get('tag')), 'tag_remove': ('added_tag', b.get('tag'))}[t]
+        before = self._get(entity, key)
+        self._apply(t, b, by, by_manager)
+        after = self._get(entity, key)
+        if before != after:
+            self.history.append({'at': self.at, 'source': by, 'entity': entity,
+                                 'key': list(key) if entity == 'link' else key, 'before': before, 'after': after})
+
+    def _apply(self, t, b, by, by_manager):
         if t == 'equipment':
             k = b['kks']
             cur = self.equipment.setdefault(k, {})
@@ -354,7 +408,10 @@ class _Run:
             k = b['tag_id']
             if self._merge('review', k, None, self.reviews.get(k), b['base'], b['data'],
                            self.review_by.get(k, (False, None)), by, by_manager):
-                self.reviews[k] = b['data']
+                if b['data'] is None:
+                    self.reviews.pop(k, None)
+                else:
+                    self.reviews[k] = b['data']
                 self.review_by[k] = (by_manager, by)
         elif t == 'link':
             item = (b['proc'], b['step'], b['kks'])
@@ -379,6 +436,7 @@ class _Run:
             'links': [list(x) for x in sorted(self.links)],
             'photos': self.photos, 'added_tags': self.tags,
             'proposals': self.proposals, 'conflicts': self.conflicts,
+            'votes': {k: sorted(v) for k, v in self.votes.items() if v and k in self.proposals},
             'private': self.private, 'ignored': self.ignored,
         }
 
@@ -398,7 +456,7 @@ def _check_data(t, b):
                 else:
                     _need(_text(v))
     elif t == 'review':
-        _need(_match(TAGID_RE, b['tag_id']) and isinstance(b['data'], dict) and (b['base'] is None or isinstance(b['base'], dict)))
+        _need(_match(TAGID_RE, b['tag_id']) and (b['data'] is None or isinstance(b['data'], dict)) and (b['base'] is None or isinstance(b['base'], dict)))
     elif t == 'link':
         _need(_text(b['proc'], 1, 32) and type(b['step']) is int and b['step'] >= 0)
         _need(_match(KKS_RE, b['kks']) and isinstance(b['on'], bool))
@@ -438,13 +496,13 @@ def state_bytes(state):
 
 
 # ---------- §10 revocation cuts, then the final pass ----------
-def _cuts(ordered, root, forks):
+def _cuts(ordered, root, forks, ids=None):
     """Rounds: replay with the current cuts and collect the authorized revocations; accept them by priority
     (root statement, manager, admin, user; then total order), skipping one whose own entry is cut by a revocation
     accepted before it. Repeat until nothing changes, at most MAX_ROUNDS."""
     cuts, accepted = dict(forks), set()
     for _ in range(MAX_ROUNDS):
-        run = _Run(root, cuts).run(ordered)
+        run = _Run(root, cuts, ids=ids).run(ordered)
         new, acc = dict(forks), set()
         for rank, key, peer, seq, eid, device, last in sorted(run.revokes):
             if seq > new.get(peer, P.MAX_INT):
@@ -457,12 +515,20 @@ def _cuts(ordered, root, forks):
     return cuts, accepted
 
 
+def replay_run(entries, root, trusted=None):
+    """For hosts: -> (run, ignored by chain checks). The run holds the state plus side output (history, decisions,
+    authors) and can take further entries with run.run([...]) as long as they sort after everything replayed and
+    change no cuts (no `revoke`, no `root`). `trusted`: see _chains (then `entries` is not used)."""
+    usable, chain_ignored, forks = _chains(entries, trusted)
+    ids = {id(e): eid for eid, e in trusted.items()} if trusted is not None else {id(e): P.entry_id(e) for e in usable}
+    ordered = sorted(usable, key=P.order_key)
+    cuts, accepted = _cuts(ordered, root, forks, ids)
+    return _Run(root, cuts, accepted, ids).run(ordered), chain_ignored
+
+
 def replay(entries, root):
     """Replay `entries` (any order, any devices) from the trust anchor `root` (root public key, base64url). -> state."""
-    usable, chain_ignored, forks = _chains(entries)
-    ordered = sorted(usable, key=P.order_key)
-    cuts, accepted = _cuts(ordered, root, forks)
-    run = _Run(root, cuts, accepted).run(ordered)
+    run, chain_ignored = replay_run(entries, root)
     state = run.state()
     state['ignored'] = dict(sorted({**chain_ignored, **run.ignored}.items()))
     return state

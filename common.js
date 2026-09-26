@@ -181,7 +181,7 @@ K.renderStatus = () => {
 // Human summary of a submission payload.
 K.describe = (kind, p) => ({
   equipment: () => Object.entries(p.changes).map(([f, v]) => `${f} → ${f === 'custom' ? v.map(c => c.k + ': ' + c.v).join('; ') || '(none)' : v || '(empty)'}`).join(' · '),
-  review: () => p.data.status === 'rejected' ? `tag ${p.tag_id}: not a tag` : `tag ${p.tag_id}: confirm as ${p.data.kks}${p.data.suffix || ''}${p.data.isa ? ' (' + p.data.isa + ')' : ''}`,
+  review: () => !p.data ? `tag ${p.tag_id}: clear the review decision` : p.data.status === 'rejected' ? `tag ${p.tag_id}: not a tag` : `tag ${p.tag_id}: confirm as ${p.data.kks}${p.data.suffix || ''}${p.data.isa ? ' (' + p.data.isa + ')' : ''}`,
   link: () => `${p.on === false ? 'unlink' : 'link'} ${p.kks} ${p.on === false ? 'from' : 'to'} procedure ${p.proc} step ${p.step}`,
   photo: () => `new photo for ${p.kks}${p.caption ? ': ' + p.caption : ''}`,
   photo_delete: () => `delete photo ${p.photo_id.slice(0, 8)}`,

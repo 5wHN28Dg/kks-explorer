@@ -20,8 +20,9 @@ DEFAULTS = {
     'max_upload_mb': 15,
     'max_pdf_mb': 80,                  # P&ID PDF upload limit (Manage → Drawings)
     'import_python': '',               # interpreter with pymupdf/opencv/numpy; empty = .venv next to the app
+    'root_key': '',                    # plant root key file (docs/PROTOCOL.md §8); empty = root.key next to the db
 }
-PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python')
+PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python', 'root_key')
 
 
 def load(path=None):

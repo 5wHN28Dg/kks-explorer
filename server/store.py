@@ -28,14 +28,27 @@ CREATE TABLE IF NOT EXISTS revisions(rev INTEGER PRIMARY KEY AUTOINCREMENT, ts I
   key TEXT, before TEXT, after TEXT, submission_id INTEGER, note TEXT);
 CREATE INDEX IF NOT EXISTS rev_key ON revisions(entity, key);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+-- v2 (M1, 2026-09-26): plant data lives in signed log entries (docs/PROTOCOL.md); the tables above that held live
+-- data (equipment, photos, reviews, links, added_tags, submissions, votes, data revisions) are only read once, to
+-- migrate an older database. `revisions` keeps the local account/sheet notes.
+CREATE TABLE IF NOT EXISTS entries(id TEXT PRIMARY KEY, peer TEXT NOT NULL, seq INTEGER NOT NULL, hlc0 INTEGER,
+  hlc1 INTEGER, type TEXT, data TEXT NOT NULL, received INTEGER, UNIQUE(peer, seq));
+CREATE TABLE IF NOT EXISTS custodial(device TEXT PRIMARY KEY, person TEXT NOT NULL, seed TEXT NOT NULL, created INTEGER);
+CREATE TABLE IF NOT EXISTS subs(id INTEGER PRIMARY KEY, client_id TEXT UNIQUE, entry TEXT, user_id INTEGER,
+  kind TEXT, held TEXT, status TEXT, note TEXT, created INTEGER, decided_at INTEGER, decided_by INTEGER);
+CREATE INDEX IF NOT EXISTS subs_entry ON subs(entry);
+CREATE TABLE IF NOT EXISTS blobs(sha TEXT PRIMARY KEY, file TEXT NOT NULL, size INTEGER);
+CREATE TABLE IF NOT EXISTS entry_notes(entry TEXT PRIMARY KEY, note TEXT);
 """
 KEYS = {  # primary-key columns of every journaled table
     'equipment': ('kks',), 'photos': ('id',), 'reviews': ('tag_id',), 'links': ('proc', 'step', 'kks'), 'added_tags': ('id',),
     'users': ('id',), 'tokens': ('token',), 'submissions': ('id',), 'votes': ('submission_id', 'user_id'),
     'revisions': ('rev',), 'meta': ('k',),
+    'entries': ('id',), 'custodial': ('device',), 'subs': ('id',), 'blobs': ('sha',), 'entry_notes': ('entry',),
 }
 NOT_JOURNALED = {'sessions'}
-COLUMNS_ADDED = [('users', 'full_name', 'TEXT'), ('users', 'position', 'TEXT')]  # 2026-09-26
+COLUMNS_ADDED = [('users', 'full_name', 'TEXT'), ('users', 'position', 'TEXT'),  # 2026-09-26
+                 ('users', 'person', 'TEXT'), ('users', 'device', 'TEXT')]    # v2 log: person ID, custodial device
 
 
 def migrate(c):
@@ -117,7 +130,7 @@ class Store:
                               [row[k] for k in cols])
         if table not in NOT_JOURNALED:
             full = dict(row)
-            if table in ('submissions', 'revisions', 'users') and KEYS[table][0] not in full:
+            if table in ('submissions', 'revisions', 'users', 'subs') and KEYS[table][0] not in full:
                 full[KEYS[table][0]] = cur.lastrowid
             self._pending.append({'seq': self._next_seq(), 't': table, 'row': full})
         return cur.lastrowid
@@ -208,6 +221,7 @@ def restore(cfg, out, to_seq=None):
     base_seq, snap = snaps[-1]
     src, dst = sqlite3.connect(snap), sqlite3.connect(out)
     src.backup(dst); src.close()
+    dst.executescript(SCHEMA)  # snapshots from before a table existed
     migrate(dst)
     dst.row_factory = sqlite3.Row
     last = base_seq

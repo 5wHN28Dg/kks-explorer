@@ -7,6 +7,7 @@ import app
 from server import config as config_mod
 from server.store import Store, restore
 from server.auth import Auth
+from server.engine import Engine
 
 JPEG = base64.b64encode(b'\xff\xd8\xff\xe0' + b'0' * 100).decode()
 
@@ -53,13 +54,18 @@ class Base(unittest.TestCase):
         os.makedirs(self.cfg['photos_dir'])
         self.store = Store(self.cfg)
         self.auth = Auth(self.store, self.cfg)
-        self.httpd = ThreadingHTTPServer(('127.0.0.1', 0), app.make_handler(self.cfg, self.store, self.auth))
+        self.E = Engine(self.store, self.cfg)
+        self.httpd = ThreadingHTTPServer(('127.0.0.1', 0), app.make_handler(self.cfg, self.store, self.auth, self.E))
         self.cfg['port'] = self.httpd.server_address[1]
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.anon = Client(self.cfg['port'])
 
     def tearDown(self):
         self.httpd.shutdown(); self.httpd.server_close()
+        # the server never writes an entry the replay would ignore, and a fresh replay gives the same state
+        self.E.refresh()
+        self.assertEqual(self.E.run.ignored, {})
+        self.assertEqual(Engine(self.store, self.cfg).run.state(), self.E.run.state())
         shutil.rmtree(self.tmp)
 
     def client(self):
@@ -211,6 +217,64 @@ class ServerTest(Base):
         self.assertEqual(adm.post('/api/manager/accept')[0], 200)
         roles = {u['username']: u['role'] for u in adm.get('/api/users')[1]['users']}
         self.assertEqual(roles, {'boss': 'admin', 'adm': 'manager'})
+        self.assertEqual(self.E.run.persons[self.E.run.manager]['username'], 'adm')   # signed by the root key
+
+    def test_transfer_needs_root_key(self):
+        m = self.setup_manager()
+        self.invite(m, 'adm', 'admin')
+        os.rename(self.E.root_path, self.E.root_path + '.away')
+        s, r = m.post('/api/manager/transfer', {'username': 'adm', 'password': 'correct horse'})
+        self.assertEqual(s, 409); self.assertIn('root key', r['error'])
+        os.rename(self.E.root_path + '.away', self.E.root_path)
+
+    def test_root_key_backup(self):
+        self.setup_manager()
+        text = self.E.export_root('a long passphrase')
+        self.assertNotIn(open(self.E.root_path).read().strip(), text)
+        os.remove(self.E.root_path)
+        with self.assertRaises(Exception):
+            self.E.import_root(text, 'wrong passphrase!')
+        self.E.import_root(text, 'a long passphrase')
+        self.assertEqual(oct(os.stat(self.E.root_path).st_mode & 0o777), '0o600')
+        self.E.root_key()
+
+    def test_deactivate_revokes_the_key(self):
+        m = self.setup_manager()
+        u = self.invite(m, 'usr')
+        s, r = u.post('/api/submit', {'kind': 'link', 'payload': {'proc': 'p', 'step': 1, 'kks': '11AAA10AA001'}})
+        uid = next(x['id'] for x in m.get('/api/users')[1]['users'] if x['username'] == 'usr')
+        old_dev = self.store.conn().execute('SELECT device FROM users WHERE id=?', (uid,)).fetchone()[0]
+        self.assertEqual(m.post(f'/api/users/{uid}', {'active': False})[0], 200)
+        self.assertEqual(self.E.run.cuts[old_dev], 1)            # entries up to the proposal still count
+        self.assertEqual(u.get('/api/state')[0], 401)
+        self.assertEqual(m.post(f'/api/submissions/{r["id"]}/approve')[0], 200)
+        self.assertEqual(m.post(f'/api/users/{uid}', {'active': True})[0], 200)
+        new_dev = self.store.conn().execute('SELECT device FROM users WHERE id=?', (uid,)).fetchone()[0]
+        self.assertNotEqual(new_dev, old_dev)
+        self.assertNotIn(new_dev, self.E.run.cuts)
+
+    def test_manager_value_beats_admin(self):
+        m = self.setup_manager()
+        adm, usr = self.invite(m, 'adm', 'admin'), self.invite(m, 'usr')
+        k = '11LAB70AA501'
+        usr.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '3 m'}, 'base': {}}})
+        m.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '6 m'}, 'base': {}}})
+        sid = adm.get('/api/submissions')[1]['submissions'][0]['id']
+        s, r = adm.post(f'/api/submissions/{sid}/approve', {'force': True})
+        self.assertEqual(s, 403); self.assertIn('manager', r['error'])
+        self.assertEqual(m.post(f'/api/submissions/{sid}/approve', {'force': True})[0], 200)   # the manager may
+        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3 m')
+
+    def test_withdraw_and_vote_toggle(self):
+        m = self.setup_manager()
+        u1, u2 = self.invite(m, 'u1'), self.invite(m, 'u2')
+        r = u1.post('/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'dataUrl': 'data:image/jpeg;base64,' + JPEG}})[1]
+        for n in (1, 0, 1):
+            u2.post(f'/api/submissions/{r["id"]}/vote')
+            self.assertEqual({s['id']: s for s in u2.get('/api/submissions')[1]['submissions']}[r['id']]['votes'], n)
+        self.assertEqual(u2.post(f'/api/submissions/{r["id"]}/withdraw')[0], 403)
+        self.assertEqual(u1.post(f'/api/submissions/{r["id"]}/withdraw')[0], 200)
+        self.assertEqual(m.post(f'/api/submissions/{r["id"]}/approve')[0], 409)
 
     def test_cli_reset_manager(self):
         m = self.setup_manager()
@@ -337,8 +401,11 @@ class ServerTest(Base):
         out = os.path.join(self.tmp, 'restored.db')
         restore(self.cfg, out)
         import sqlite3
-        c = sqlite3.connect(out)
-        self.assertEqual(sorted(r[0] for r in c.execute('SELECT step FROM links')), live)
+        c = sqlite3.connect(out)   # plant data is the signed log: replaying the restored entries gives the same links
+        from peer import replay as R
+        root = json.loads(c.execute("SELECT v FROM meta WHERE k='root_pub'").fetchone()[0])
+        run, _ = R.replay_run([json.loads(r[0]) for r in c.execute('SELECT data FROM entries')], root)
+        self.assertEqual(sorted(step for _, step, _ in run.links), live)
         self.assertEqual(c.execute('SELECT COUNT(*) FROM users').fetchone()[0], 1)
         c.close()
         with self.assertRaises(SystemExit):

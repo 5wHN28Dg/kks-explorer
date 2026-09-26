@@ -1219,7 +1219,8 @@
       ],
       "text": "ÜML ☃"
      }
-    }
+    },
+    "votes": {}
    },
    "why": "one plant: identity, proposals, approvals, merge, revocation, rotation"
   },
@@ -1407,7 +1408,8 @@
     "settings": {
      "photo_mode": "on_open",
      "plant": "Al-Rumailah"
-    }
+    },
+    "votes": {}
    },
    "why": "stolen manager phone: a root-signed revoke outranks device revokes"
   },
@@ -1649,9 +1651,460 @@
     "root": "h5E0_KrBXssougiyLs8kusozPsLprD2-HJlexAf6Xtc",
     "settings": {
      "plant": "Al-Rumailah"
-    }
+    },
+    "votes": {}
    },
    "why": "fork, gap, bad signature"
+  },
+  {
+   "devices": {
+    "bob-laptop": "s947MaN3mjgDc6ZS8021SiBBt4CCzmv0vrroBtzrw9E",
+    "bob-phone": "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ",
+    "dana-phone": "K35iPt5f2Jjv2qyqFmuBYccJTSRjsQfzA3CquOn7gMc",
+    "mgr-phone": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA"
+   },
+   "entries": [
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p1",
+      "step": 1
+     },
+     "hlc": [
+      1790000002100,
+      0
+     ],
+     "peer": "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ",
+     "prev": "fa661350c1edb9d5671f5bb0e5112bd0eba7b79fbfc262cf1c9bf3d8bbab1d19",
+     "seq": 6,
+     "sig": "Tu1O-FziSxZV-D-eD4O8_7Chmew9HIxMr11XFuZl6PkShgrKxYbnuQC_vQ3TO0_XAc1d-kaw4W-h7EFnhYorCw",
+     "type": "link",
+     "v": 1
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "45f42db1dceb66e572353c7fdde1d16d26011e8f5cd5415e665b75b879493f6e"
+     },
+     "hlc": [
+      1790000001520,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "34b1f0222fe1e7da92ef491023c04a42a7c8a7de4675b055819a7d76adb655b8",
+     "seq": 6,
+     "sig": "5K1VFjiI2Fm-42wRa0XCgy3iknscl2u_-Zyw-JlOASw2N9TW2hm9TQEzEwFIuJk7qe6jSYluq4_KLdUvl5RcDQ",
+     "type": "approve",
+     "v": 1
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "b2adfa6a66700427f3f5b7f95ad25bcc1d29a593a614f22b2c273f3c6c2d870a"
+     },
+     "hlc": [
+      1790000001600,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "181cda8d6a0e35376b81347690253aa61eaa0741691b3282f6ca0523dcfcf7b2",
+     "seq": 7,
+     "sig": "UsyunPqSp3Ks85lxtoLYrcgAKRX4uG96q3vZthsAxQPYpNE_6Cx9jgPzTnw32KMElh3oMNo_CVP5nJOQjfYZDQ",
+     "type": "approve",
+     "v": 1
+    },
+    {
+     "body": {
+      "entry": "45f42db1dceb66e572353c7fdde1d16d26011e8f5cd5415e665b75b879493f6e"
+     },
+     "hlc": [
+      1790000001510,
+      0
+     ],
+     "peer": "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ",
+     "prev": "bc2a87d852352c50208e62acdb6ab385642bf8c444f89d6a376b40f36cf3f30f",
+     "seq": 4,
+     "sig": "oCnMe4udMihAckX381LnzlkiGRWu8LiuolhG9JMOKQt7vv7o0EA6yZ4wxkd-lmLtlFf0gSJIfVzmvFJcw5VbAA",
+     "type": "withdraw",
+     "v": 1
+    },
+    {
+     "body": {
+      "entry": "b2adfa6a66700427f3f5b7f95ad25bcc1d29a593a614f22b2c273f3c6c2d870a",
+      "on": true
+     },
+     "hlc": [
+      1790000001410,
+      0
+     ],
+     "peer": "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ",
+     "prev": "45f42db1dceb66e572353c7fdde1d16d26011e8f5cd5415e665b75b879493f6e",
+     "seq": 2,
+     "sig": "UVq-RCXXqxoFPuLvUxLkxHwiTf4BYHaO3m1wg7ofg3wcQvhMEMf-UiAJpRY96ZjvUJ7Q0QXXdIuMTj0rQs41AQ",
+     "type": "vote",
+     "v": 1
+    },
+    {
+     "body": {
+      "entry": "175fc9ea0dd7ef33823f65d6878e6c3e5981c7aa7c06f5a27daeb62d7481aa85"
+     },
+     "hlc": [
+      1790000002000,
+      0
+     ],
+     "peer": "s947MaN3mjgDc6ZS8021SiBBt4CCzmv0vrroBtzrw9E",
+     "prev": null,
+     "seq": 1,
+     "sig": "fwymvt0bmTwP7Ol36zHmU1tzQZ7RHl_j9sOaapf4O1F29iDYJAv8jRgCaS1KEPir_t-5yKlZ1qwQkXLM7YqHDg",
+     "type": "withdraw",
+     "v": 1
+    },
+    {
+     "body": {
+      "device": "K35iPt5f2Jjv2qyqFmuBYccJTSRjsQfzA3CquOn7gMc",
+      "label": "",
+      "person": "e01d406ed95cc6ab47fe436a13466646"
+     },
+     "hlc": [
+      1790000001210,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "d9dc7c1f7505b62d9a840206c79cedcfb56f74bedd278d5630d79ca4cd658511",
+     "seq": 5,
+     "sig": "qZBkHdh8Q6esyxbgIRmGIOz0fYBN_9MespX7AVOtcRlOpfr88Yz2NvJ2TAM2y6WbvK-igTWHawHV9Oe9HEScBQ",
+     "type": "device_cert",
+     "v": 1
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "fa661350c1edb9d5671f5bb0e5112bd0eba7b79fbfc262cf1c9bf3d8bbab1d19"
+     },
+     "hlc": [
+      1790000001900,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "ecdbccb570200a7e3f3e68721625269136581a434622b6e759bf545f7c13b877",
+     "seq": 9,
+     "sig": "kZBlH0U2stef8-nJdwHQenTG-188rLgXs6t2R21wN2HaY1JdEob3spmf495KN2blexwwA38na3eKxMYsVK_DAQ",
+     "type": "approve",
+     "v": 1
+    },
+    {
+     "body": {
+      "blob": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+      "caption": "",
+      "kks": "11LAB70AA501",
+      "photo": "746f0fdda809ff078506b8aa95f29ea3"
+     },
+     "hlc": [
+      1790000001300,
+      0
+     ],
+     "peer": "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ",
+     "prev": null,
+     "seq": 1,
+     "sig": "Ttr9CnLyALpjtlZDKSGLkkggYGvhYQibh-HYk1ykgVKRP33oEuiu8VZU4B2lOVUQHIf2mDxd8LYJcsKlvr6dAA",
+     "type": "photo",
+     "v": 1
+    },
+    {
+     "body": {
+      "entry": "45f42db1dceb66e572353c7fdde1d16d26011e8f5cd5415e665b75b879493f6e"
+     },
+     "hlc": [
+      1790000001500,
+      0
+     ],
+     "peer": "K35iPt5f2Jjv2qyqFmuBYccJTSRjsQfzA3CquOn7gMc",
+     "prev": "8c92d0ee11543d1b71633c4e92a5b4082945dc8a6bfaf1a8e239668a23bc963f",
+     "seq": 3,
+     "sig": "BrpBjkyrMsu-LrYuOwBC59yvpvFDNvOxU4ppltkL9QOOnmk5jml-om8LErZEpg_xc9z0GebWJ5ZvnULvnlgiBQ",
+     "type": "withdraw",
+     "v": 1
+    },
+    {
+     "body": {
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Al-Rumailah",
+      "root": "h5E0_KrBXssougiyLs8kusozPsLprD2-HJlexAf6Xtc",
+      "sig_device": "hMhBHK7Kv9BsPAp3KQ714sI25YxEYsBgFvAqIo4RbKtdr0mYN71qzGBCOgSirxn56OXCYksPcwKwbuz0Kv_SBA",
+      "sig_manager": "wpSUoiBv0ziY4W2KGSxyufngp9bsmrVXywQIlK4DhKnHrWAznkZMTvtGUeecEsRZgRCXB5k6_-EDmsuf6OTEDg",
+      "stmt_device": {
+       "device": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": null,
+     "seq": 1,
+     "sig": "AaY3gDxVoWS_-ZS0Zk5dVZkQiur4uvB_R7wzU5q4cORJVR6u-7joI_b9eZJ_ur4QqnEXde2cn1t-OPDzcKP3DQ",
+     "type": "genesis",
+     "v": 1
+    },
+    {
+     "body": {
+      "entry": "45f42db1dceb66e572353c7fdde1d16d26011e8f5cd5415e665b75b879493f6e",
+      "on": true
+     },
+     "hlc": [
+      1790000001400,
+      0
+     ],
+     "peer": "K35iPt5f2Jjv2qyqFmuBYccJTSRjsQfzA3CquOn7gMc",
+     "prev": "b2adfa6a66700427f3f5b7f95ad25bcc1d29a593a614f22b2c273f3c6c2d870a",
+     "seq": 2,
+     "sig": "Q5dPRXHXMAe3Ty4bczlFH04CgX8d4ND6kl6dA6H_AYZd8hucvzRx6vDttLO57XUT83WuUtmlq1Y-lfjeCtkNAw",
+     "type": "vote",
+     "v": 1
+    },
+    {
+     "body": {
+      "blob": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+      "caption": "",
+      "kks": "11LAB70AA501",
+      "photo": "73005fe702ee13768f3295d2745aba52"
+     },
+     "hlc": [
+      1790000001310,
+      0
+     ],
+     "peer": "K35iPt5f2Jjv2qyqFmuBYccJTSRjsQfzA3CquOn7gMc",
+     "prev": null,
+     "seq": 1,
+     "sig": "8EYa342pLjJIjD3KXmLOxUNj69WJZ1VDLpd9wTEMHKpdh6F2ASzexWe7BGIBF0m2pqgzh2c6ZVz1IrhqdD3SCw",
+     "type": "photo",
+     "v": 1
+    },
+    {
+     "body": {
+      "entry": "b2adfa6a66700427f3f5b7f95ad25bcc1d29a593a614f22b2c273f3c6c2d870a",
+      "on": false
+     },
+     "hlc": [
+      1790000001420,
+      0
+     ],
+     "peer": "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ",
+     "prev": "2618972df18c797c8bbd8ed80ac45c720739b6d551a1c2315d4bc62d633dbff2",
+     "seq": 3,
+     "sig": "uquSIrHZWmjjCp98AcBs7gR-8H91Aee21G_IrdGXzZZxxGjrelz4xgLVGF6aDh7si7a4_LLQ9jsLOg3nXLoxCQ",
+     "type": "vote",
+     "v": 1
+    },
+    {
+     "body": {
+      "full_name": "Dana User",
+      "person": "e01d406ed95cc6ab47fe436a13466646",
+      "position": null,
+      "role": "user",
+      "username": "dana"
+     },
+     "hlc": [
+      1790000001110,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "f15e47195c98f1a26b9bae422ed789bf9448760dd8d4ded886f0e08986c3e434",
+     "seq": 3,
+     "sig": "ufnx_Gb-SsbKuMeb5eZoTrQzLjuFwvRkXgugkbXBEXOP15Sg0aMtHyNO7AgPqVcIdq-lFsuRxprd6LO4eSQkBA",
+     "type": "person",
+     "v": 1
+    },
+    {
+     "body": {
+      "device": "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ",
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001200,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "c292455d70caf8909d59dd5a7aecbf309d2a3732400150d08ffbceddbf394ff7",
+     "seq": 4,
+     "sig": "dNeNOtvJPRMn_Lwmo6zdjkhI-1K7tGrNMKpsTRFEjcYAHbmGg5WR07S3zZkMrAPJUAWZbidaPJvBlPlV7W23CQ",
+     "type": "device_cert",
+     "v": 1
+    },
+    {
+     "body": {
+      "device": "s947MaN3mjgDc6ZS8021SiBBt4CCzmv0vrroBtzrw9E",
+      "label": "laptop",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001950,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "3c6f5788dbaab423a38b392cfc78a458d1f2ce8f76f755cfc4bfce83221f3ac6",
+     "seq": 10,
+     "sig": "2z_Ut2AgNIpD5wpjHrKldLo9pXvCJ-dX-QlSowKN3TbzLB1yUVtUqw3VOqV86rup67Z8HomxhTIfa2UPm0xBBw",
+     "type": "device_cert",
+     "v": 1
+    },
+    {
+     "body": {
+      "base": null,
+      "data": {
+       "status": "rejected"
+      },
+      "tag_id": "lp:7"
+     },
+     "hlc": [
+      1790000001700,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "1e10c1d78028e98ef31659cc046af0d9fe8c6496ef24db16263d06425513c015",
+     "seq": 8,
+     "sig": "pVJ5KHtnNMBNCDIAqTr3aAgkXEBms2rxUr5aoaBtseGppmbFDxdSd0SpsTFruqquSI-EF8Y-VNkWO-fBnOLBDg",
+     "type": "review",
+     "v": 1
+    },
+    {
+     "body": {
+      "full_name": "Bob User",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA",
+     "prev": "7d0feb16bd325f33a18ae3b9951bbe480e51f503756c2a3df0c783ad8287d57d",
+     "seq": 2,
+     "sig": "l3Wd3XuBYVOTdN3r3RvUf1vVQadSYtsAbRggWdiM3YU450BCQe-cK74R3k_BmCr7hhCX8NpcEaGA30CDpSk_Dw",
+     "type": "person",
+     "v": 1
+    },
+    {
+     "body": {
+      "base": {
+       "status": "rejected"
+      },
+      "data": null,
+      "tag_id": "lp:7"
+     },
+     "hlc": [
+      1790000001800,
+      0
+     ],
+     "peer": "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ",
+     "prev": "203962981748474735e5ce580f158cc23a4da0b0f65d34bc560a851b7ee822ac",
+     "seq": 5,
+     "sig": "iQHCke5isQklIePbZ_YB48pUNIic5izZrnhT1baDVPkDp4EyyM7-18HOrTf1Ibl9qaZ3slWhCzCXVugTZTBtDQ",
+     "type": "review",
+     "v": 1
+    }
+   ],
+   "expect": [
+    "photo a withdrawn by its author (another user can't); a later approve is already_decided",
+    "votes: dana on a; bob's vote on b switched off again → votes {a: [dana]} only",
+    "an approved user proposal with data null removes the review",
+    "a withdraw from the author's other device, earlier in the order, waits and applies"
+   ],
+   "root": "h5E0_KrBXssougiyLs8kusozPsLprD2-HJlexAf6Xtc",
+   "state": {
+    "added_tags": {},
+    "conflicts": [],
+    "devices": {
+     "I-b4jOcExwjLr1FFkwnAogQiWIpwkVQh6PCfglmZ_EQ": {
+      "cut": null,
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "K35iPt5f2Jjv2qyqFmuBYccJTSRjsQfzA3CquOn7gMc": {
+      "cut": null,
+      "label": "",
+      "person": "e01d406ed95cc6ab47fe436a13466646"
+     },
+     "TzgdOhhkwLEqUr7HMzeHEfoQWDUsrMQMEg2ayr0H6fA": {
+      "cut": null,
+      "label": "",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "s947MaN3mjgDc6ZS8021SiBBt4CCzmv0vrroBtzrw9E": {
+      "cut": null,
+      "label": "laptop",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     }
+    },
+    "equipment": {},
+    "ignored": {
+     "181cda8d6a0e35376b81347690253aa61eaa0741691b3282f6ca0523dcfcf7b2": "already_decided",
+     "720adc71c34bb027e48ea77fc32bddfbf5fef3410f01574edbb73456e9274136": "not_allowed"
+    },
+    "links": [],
+    "manager": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+    "persons": {
+     "c90a82a8a9acbbdedd93d07387bfaf83": {
+      "full_name": "Bob User",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "e01d406ed95cc6ab47fe436a13466646": {
+      "full_name": "Dana User",
+      "position": null,
+      "role": "user",
+      "username": "dana"
+     },
+     "f03d20e6a3f5f704d6f48ae6fe55a6b3": {
+      "full_name": "Hashim M",
+      "position": null,
+      "role": "admin",
+      "username": "hashim"
+     }
+    },
+    "photos": {
+     "73005fe702ee13768f3295d2745aba52": {
+      "blob": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+      "caption": "",
+      "kks": "11LAB70AA501"
+     }
+    },
+    "private": {},
+    "proposals": {
+     "175fc9ea0dd7ef33823f65d6878e6c3e5981c7aa7c06f5a27daeb62d7481aa85": "withdrawn",
+     "45f42db1dceb66e572353c7fdde1d16d26011e8f5cd5415e665b75b879493f6e": "withdrawn",
+     "b2adfa6a66700427f3f5b7f95ad25bcc1d29a593a614f22b2c273f3c6c2d870a": "approved",
+     "fa661350c1edb9d5671f5bb0e5112bd0eba7b79fbfc262cf1c9bf3d8bbab1d19": "approved"
+    },
+    "reviews": {},
+    "root": "h5E0_KrBXssougiyLs8kusozPsLprD2-HJlexAf6Xtc",
+    "settings": {
+     "plant": "Al-Rumailah"
+    },
+    "votes": {
+     "45f42db1dceb66e572353c7fdde1d16d26011e8f5cd5415e665b75b879493f6e": [
+      "e01d406ed95cc6ab47fe436a13466646"
+     ]
+    }
+   },
+   "why": "withdraw, votes, review removal"
   }
  ],
  "statement": {

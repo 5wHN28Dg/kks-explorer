@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plant P&ID / KKS Explorer - server. Standard library only.
+"""Plant P&ID / KKS Explorer - server. Standard library + `cryptography` (the signed log, docs/PROTOCOL.md).
 
   python3 app.py                          run the server (settings: config.json, see config.example.json)
   python3 app.py users                    list accounts
@@ -10,17 +10,30 @@
   python3 app.py check                    audit the deployment (remote access, cookies, backups); exit 1 on FAIL
   python3 app.py setup-importer           create .venv with the P&ID importer's packages (for Manage → Drawings)
   python3 app.py added-tags               print the tags users marked by hand on the drawings (JSON)
+  python3 app.py export-root-key --out F  write the plant root key, encrypted with a passphrase, to F (keep it safe)
+  python3 app.py import-root-key --file F put a root key backup back (e.g. on a new server)
 
 The app shell (index.html, admin.html, *.js) is public. Plant data (/data, /photos, /api) needs a login."""
-import argparse, gzip, json, mimetypes, os, re, socket, ssl, time
+import argparse, getpass, gzip, json, mimetypes, os, re, secrets, socket, ssl, sys, time, traceback
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote, parse_qs
 
+try:
+    import cryptography  # noqa: F401  (the signed log needs Ed25519)
+except ImportError:
+    if __name__ == '__main__' and sys.argv[1:2] == ['setup-importer']:   # the command that installs it
+        from server import sheets as _sheets
+        _sheets.setup_importer()
+        raise SystemExit(0)
+    raise SystemExit('The server needs the "cryptography" package.\n'
+                     '  Debian/Ubuntu: sudo apt install python3-cryptography\n'
+                     '  or: python3 app.py setup-importer, then run the server with .venv/bin/python app.py')
 from server import config as config_mod
 from server.store import Store, restore
 from server.auth import Auth, hash_password, password_problem, public_user, rank, person
 from server import changes as ch
+from server.engine import Engine, NoRootKey, tag_out
 from server import check as check_mod
 from server import sheets as sheets_mod
 
@@ -29,6 +42,7 @@ SHELL = {'/': 'index.html', '/index.html': 'index.html', '/admin.html': 'admin.h
          '/sw.js': 'sw.js', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg',
          '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png'}
 COOKIE = 'kks_session'
+USERNAME_RE = re.compile(r'[A-Za-z0-9_.@-]{2,40}')  # ASCII: usernames go into the signed log (PROTOCOL.md §9a)
 
 
 class HTTPError(Exception):
@@ -37,7 +51,24 @@ class HTTPError(Exception):
         self.code, self.msg, self.extra = code, msg, extra or {}
 
 
-def make_handler(cfg, store, auth):
+def users_map(c):
+    """{user id: row, person ID: row}"""
+    m = {}
+    for r in c.execute('SELECT * FROM users'):
+        m[r['id']] = r
+        if r['person']:
+            m[r['person']] = r
+    return m
+
+
+def person_body(E, pid, **upd):
+    cur = E.run.persons[pid]
+    return {'person': pid, 'username': cur['username'], 'full_name': upd.get('full_name', cur['full_name']),
+            'position': upd.get('position', cur['position']), 'role': upd.get('role', cur['role'])}
+
+
+def make_handler(cfg, store, auth, engine=None):
+    E = engine or Engine(store, cfg)
     importer = sheets_mod.Importer(cfg)
     importer_state = {'at': 0, 'status': None}
 
@@ -149,8 +180,19 @@ def make_handler(cfg, store, auth):
                 self.send({'error': 'conflict', 'conflicts': e.detail}, 409)
             except ch.Bad as e:
                 self.send({'error': str(e)}, 400)
+            except ch.Denied as e:
+                self.send({'error': str(e)}, 403)
+            except ch.Gone as e:
+                self.send({'error': str(e)}, 409)
+            except ch.NotFound as e:
+                self.send({'error': str(e)}, 404)
+            except NoRootKey as e:
+                self.send({'error': str(e)}, 409)
             except (BrokenPipeError, ConnectionResetError):
                 pass
+            except Exception:   # a bug: say so in the console, don't just drop the connection
+                traceback.print_exc()
+                self.send({'error': 'internal error (see the server console)'}, 500)
 
         def do_GET(self):
             self.handle_errors(self.get)
@@ -193,6 +235,7 @@ def make_handler(cfg, store, auth):
                     c.close()
 
             me = self.user()
+            E.refresh()
             for prefix, root in (('/data/', cfg['data_dir']), ('/photos/', cfg['photos_dir'])):
                 if p.startswith(prefix):
                     full = os.path.realpath(os.path.join(root, p[len(prefix):]))
@@ -212,31 +255,31 @@ def make_handler(cfg, store, auth):
                                   'transfer_offer': bool(t and t['to'] == me['id'] and t['expires'] > time.time()),
                                   'transfer_pending': t if (t and me['role'] == 'manager' and t['expires'] > time.time()) else None})
             if p == '/api/state':
-                out = {'equipment': {r['kks']: json.loads(r['data']) for r in c.execute('SELECT * FROM equipment')},
-                       'reviews': {r['tag_id']: json.loads(r['data']) for r in c.execute('SELECT * FROM reviews')},
-                       'photos': [dict(r) for r in c.execute('SELECT * FROM photos ORDER BY created')],
-                       'links': [dict(r) for r in c.execute('SELECT * FROM links')],
-                       'added_tags': [{'id': r['id'], **json.loads(r['data'])} for r in c.execute('SELECT * FROM added_tags')],
-                       'rev': c.execute('SELECT COALESCE(MAX(rev),0) FROM revisions').fetchone()[0],
-                       'mine': [self.sub_out(r, me, c) for r in c.execute(
-                           "SELECT * FROM submissions WHERE user_id=? AND status IN ('pending','conflict') ORDER BY id",
-                           (me['id'],))]}
+                users = users_map(c)
+                with E.lock:
+                    run, created = E.run, {}
+                    for h in run.history:
+                        if h['entity'] == 'photo' and h['before'] is None and h['after'] is not None:
+                            created[h['key']] = E.ts(h['at'])
+                    out = {'equipment': run.equipment, 'reviews': run.reviews,
+                           'photos': sorted([{'id': k, 'kks': v['kks'], 'file': E.blob_files.get(v['blob']),
+                                              'caption': v['caption'], 'created': created.get(k)} for k, v in run.photos.items()],
+                                            key=lambda x: (x['created'] or 0, x['id'])),
+                           'links': [{'proc': a, 'step': b, 'kks': k} for a, b, k in sorted(run.links)],
+                           'added_tags': [tag_out(k, v) for k, v in run.tags.items()],
+                           'rev': len(run.history)}
+                    out = json.loads(json.dumps(out))   # a copy: the replay moves on after the lock is released
+                opn = ch.list_subs(E, me, users, 'open', 10 ** 6)
+                out['mine'] = [x for x in opn if x['mine']]
                 if rank(me['role']) >= rank('admin'):
-                    out['queue'] = c.execute("SELECT COUNT(*) FROM submissions WHERE status IN ('pending','conflict')").fetchone()[0]
+                    out['queue'] = len(opn)
                 return self.send(out)
             if p == '/api/submissions':
                 status = q.get('status', 'open')
-                where = {'open': "status IN ('pending','conflict')", 'decided': "status IN ('approved','rejected','withdrawn')",
-                         'all': '1'}.get(status)
-                if not where:
+                if status not in ('open', 'decided', 'all'):
                     raise HTTPError(400, 'bad status')
                 limit = min(int(q.get('limit', 200)), 1000)
-                if rank(me['role']) >= rank('admin'):
-                    rows = c.execute(f'SELECT * FROM submissions WHERE {where} ORDER BY id DESC LIMIT ?', (limit,))
-                else:  # own submissions + open photo proposals (so users can vote on them)
-                    rows = c.execute(f"SELECT * FROM submissions WHERE {where} AND (user_id=? OR (kind='photo' AND "
-                                     f"status IN ('pending','conflict'))) ORDER BY id DESC LIMIT ?", (me['id'], limit))
-                return self.send({'submissions': [self.sub_out(r, me, c, live=True) for r in rows.fetchall()]})
+                return self.send({'submissions': ch.list_subs(E, me, users_map(c), status, limit)})
             if p == '/api/sheets':
                 self.need(me, 'admin')
                 return self.send({'sheets': sheets_mod.sheet_summary(cfg), 'importer': importer_status(),
@@ -250,9 +293,10 @@ def make_handler(cfg, store, auth):
             if p == '/api/revisions':
                 self.need(me, 'admin')
                 before = int(q.get('before') or 2 ** 62)
-                rows = c.execute('SELECT r.*, u.username, u.full_name FROM revisions r LEFT JOIN users u ON u.id=r.actor '
-                                 'WHERE rev<? ORDER BY rev DESC LIMIT ?', (before, min(int(q.get('limit', 100)), 500)))
-                return self.send({'revisions': [dict(r) for r in rows]})
+                limit = min(int(q.get('limit', 100)), 500)
+                with E.lock:
+                    rows = [x for x in ch.history(E, c) if x[0] < before][-limit:][::-1]
+                    return self.send({'revisions': ch.history_out(E, rows, users_map(c))})
             raise HTTPError(404, 'not found')
 
         def need(self, me, role):
@@ -291,23 +335,27 @@ def make_handler(cfg, store, auth):
                 if auth.throttled('ip:' + self.ip()):
                     raise HTTPError(429, 'Too many attempts.')
                 name, pw = (d.get('username') or '').strip(), d.get('password')
-                if not re.fullmatch(r'[\w.@-]{2,40}', name):
-                    raise HTTPError(400, 'Username: 2-40 letters, digits, . _ - @')
+                if not USERNAME_RE.fullmatch(name):
+                    raise HTTPError(400, 'Username: 2-40 letters (a-z), digits, . _ - @')
                 if password_problem(pw):
                     raise HTTPError(400, password_problem(pw))
                 try:
                     full_name, position = person(d)
                 except ValueError as e:
                     raise HTTPError(400, str(e))
-                with store.write() as c:
+                with E.tx() as c:
                     t = auth.peek_token('setup', d.get('token'), c)
                     if not t or auth.manager(c):
                         auth.record(False, 'ip:' + self.ip())
                         raise HTTPError(403, 'This setup link is invalid or already used.')
                     if c.execute('SELECT 1 FROM users WHERE username=?', (name,)).fetchone():
                         raise HTTPError(409, 'That username exists.')
+                    pid = secrets.token_hex(16)
+                    dev = E.genesis(c, pid, name, full_name, position, cfg['plant_name'])
                     uid = store.put('users', {'username': name, 'pw': hash_password(pw), 'role': 'manager', 'active': 1,
-                                              'created': int(time.time()), 'full_name': full_name, 'position': position})
+                                              'created': int(time.time()), 'full_name': full_name, 'position': position,
+                                              'person': pid, 'device': dev})
+                    store.put('meta', {'k': 'log_version', 'v': '1'})
                     auth.consume_token(d['token'])
                     self.log_user(c, uid, uid, 'created as manager (setup)')
                 raw = auth.create_session(uid)
@@ -331,6 +379,7 @@ def make_handler(cfg, store, auth):
                 return self.send({'ok': True}, extra=[self.cookie(raw, cfg['session_days'] * 86400)])
 
             me = self.user()
+            E.refresh()
             if p == '/api/password':
                 if not auth.login(me['username'], d.get('old'), self.ip())[0]:
                     raise HTTPError(403, 'Current password is wrong.')
@@ -347,16 +396,17 @@ def make_handler(cfg, store, auth):
                     fn, pos = person(d)
                 except ValueError as e:
                     raise HTTPError(400, str(e))
-                with store.write() as c:
+                with E.tx() as c:
                     if (fn, pos) != (me['full_name'], me['position']):
+                        E.append(c, me['device'], 'person', person_body(E, me['person'], full_name=fn, position=pos))
                         store.put('users', {**dict(me), 'full_name': fn, 'position': pos})
                         self.log_user(c, me['id'], me['id'], f'details → {fn}' + (f', {pos}' if pos else ''))
                 return self.send({'ok': True})
             if p == '/api/submit':
-                return self.send(ch.submit(store, cfg, me, d.get('kind'), d.get('payload'), d.get('client_id')))
+                return self.send(ch.submit(E, cfg, me, d.get('kind'), d.get('payload'), d.get('client_id')))
             m = re.fullmatch(r'/api/submissions/(\d+)/(vote|withdraw|approve|reject|pick)', p)
             if m:
-                return self.submission_action(me, int(m[1]), m[2], d)
+                return self.send(ch.act(E, cfg, me, int(m[1]), m[2], d))
             if p == '/api/sheets/reimport':  # same stored PDF, e.g. with a different rotation
                 self.need(me, 'admin')
                 return self.start_import(me, d.get('id'), d.get('name'), str(d.get('rotate', 'auto')), True, None)
@@ -377,15 +427,15 @@ def make_handler(cfg, store, auth):
             m = re.fullmatch(r'/api/revisions/(\d+)/revert', p)
             if m:
                 self.need(me, 'admin')
-                with store.write() as c:
-                    rev = ch.revert(store, c, int(m[1]), me['id'], bool(d.get('force')))
-                return self.send({'ok': True, 'rev': rev})
+                with E.tx() as c:
+                    n = ch.revert(E, c, me, int(m[1]), bool(d.get('force')))
+                return self.send({'ok': True, 'changed': n})
             if p == '/api/restore':
                 self.need(me, 'admin')
-                with store.write() as c:
-                    if not isinstance(d.get('rev'), int) or d['rev'] < 0:
-                        raise HTTPError(400, 'rev (0 or a revision number) is required')
-                    n = ch.restore_to(store, c, d['rev'], me['id'])
+                if not isinstance(d.get('rev'), int) or d['rev'] < 0:
+                    raise HTTPError(400, 'rev (0 or a revision number) is required')
+                with E.tx() as c:
+                    n = ch.restore_to(E, c, me, d['rev'])
                 return self.send({'ok': True, 'changed': n})
             if p.startswith('/api/manager/'):
                 return self.manager_action(me, p.rsplit('/', 1)[1], d)
@@ -419,51 +469,11 @@ def make_handler(cfg, store, auth):
             store.put('revisions', {'ts': int(time.time()), 'actor': actor, 'entity': 'user', 'key': str(uid),
                                     'before': None, 'after': json.dumps(after), 'submission_id': None, 'note': note})
 
-        def submission_action(self, me, sid, action, d):
-            with store.write() as c:
-                sub = c.execute('SELECT * FROM submissions WHERE id=?', (sid,)).fetchone()
-                if not sub:
-                    raise HTTPError(404, 'no such submission')
-                open_ = sub['status'] in ('pending', 'conflict')
-                if action == 'vote':
-                    if sub['kind'] != 'photo' or not open_:
-                        raise HTTPError(400, 'only open photo proposals take votes')
-                    if c.execute('SELECT 1 FROM votes WHERE submission_id=? AND user_id=?', (sid, me['id'])).fetchone():
-                        store.delete('votes', submission_id=sid, user_id=me['id'])
-                    else:
-                        store.put('votes', {'submission_id': sid, 'user_id': me['id']})
-                    return self.send({'ok': True})
-                if action == 'withdraw':
-                    if sub['user_id'] != me['id'] or not open_:
-                        raise HTTPError(403, 'can only withdraw your own open submission')
-                    ch.decide(store, c, sub, me['id'], 'withdrawn')
-                    return self.send({'ok': True})
-                self.need(me, 'admin')
-                if not open_:
-                    raise HTTPError(409, f'already {sub["status"]}')
-                if action == 'reject':
-                    ch.decide(store, c, sub, me['id'], 'rejected', (d.get('note') or '')[:500])
-                    return self.send({'ok': True})
-                if sub['kind'] == 'tag_add' and isinstance(d.get('edit'), dict):  # admin corrects the code while approving
-                    old = json.loads(sub['payload'])
-                    fixed = ch.tag_payload({**old, **{k: d['edit'].get(k) for k in ('kks', 'isa')}}, keep_id=old['id'])
-                    store.put('submissions', {**dict(sub), 'payload': json.dumps(fixed)})
-                    sub = c.execute('SELECT * FROM submissions WHERE id=?', (sid,)).fetchone()
-                revs = ch.apply(store, c, sub, me['id'], force=bool(d.get('force')))
-                ch.decide(store, c, sub, me['id'], 'approved', 'forced over conflict' if d.get('force') else '')
-                rejected = 0
-                if action == 'pick':  # choose this photo, discard the other open photos for the same equipment
-                    for o in c.execute("SELECT * FROM submissions WHERE target=? AND id<>? AND status IN ('pending','conflict')",
-                                       (sub['target'], sid)).fetchall():
-                        ch.decide(store, c, o, me['id'], 'rejected', f'another photo was chosen (#{sid})')
-                        rejected += 1
-                return self.send({'ok': True, 'revs': revs, 'rejected': rejected})
-
         def create_user(self, me, d):
             self.need(me, 'admin')
             name, role = (d.get('username') or '').strip(), d.get('role', 'user')
-            if not re.fullmatch(r'[\w.@-]{2,40}', name):
-                raise HTTPError(400, 'Username: 2-40 letters, digits, . _ - @')
+            if not USERNAME_RE.fullmatch(name):
+                raise HTTPError(400, 'Username: 2-40 letters (a-z), digits, . _ - @')
             if role not in ('user', 'admin'):
                 raise HTTPError(400, 'role must be user or admin')
             if role == 'admin' and me['role'] != 'manager':
@@ -472,18 +482,24 @@ def make_handler(cfg, store, auth):
                 full_name, position = person(d)
             except ValueError as e:
                 raise HTTPError(400, str(e))
-            with store.write() as c:
-                if c.execute('SELECT 1 FROM users WHERE username=?', (name,)).fetchone():
+            with E.tx() as c:
+                if c.execute('SELECT 1 FROM users WHERE username=?', (name,)).fetchone() or \
+                        any(x['username'].lower() == name.lower() for x in E.run.persons.values()):
                     raise HTTPError(409, 'That username exists.')
+                pid = secrets.token_hex(16)
+                E.append(c, me['device'], 'person', {'person': pid, 'username': name, 'full_name': full_name,
+                                                     'position': position, 'role': role})
+                dev = E.new_device(c, pid)
+                E.append(c, me['device'], 'device_cert', {'device': dev, 'person': pid, 'label': 'server'})
                 uid = store.put('users', {'username': name, 'pw': None, 'role': role, 'active': 1, 'created': int(time.time()),
-                                          'full_name': full_name, 'position': position})
+                                          'full_name': full_name, 'position': position, 'person': pid, 'device': dev})
                 self.log_user(c, me['id'], uid, f'created as {role}')
             raw = auth.make_token('reset', uid, 7 * 86400)
             return self.send({'ok': True, 'id': uid, 'link': link(f'/#reset={raw}'), 'expires_days': 7})
 
         def update_user(self, me, uid, d, reset):
             self.need(me, 'admin')
-            with store.write() as c:
+            with E.tx() as c:
                 u = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
                 if not u:
                     raise HTTPError(404, 'no such user')
@@ -508,6 +524,15 @@ def make_handler(cfg, store, auth):
                     if 'active' in d and bool(d['active']) != bool(u['active']):
                         row['active'] = 1 if d['active'] else 0; notes.append('activated' if d['active'] else 'deactivated')
                     if notes:
+                        if (row['role'], row['full_name'], row['position']) != (u['role'], u['full_name'], u['position']):
+                            E.append(c, me['device'], 'person', person_body(E, u['person'], full_name=row['full_name'],
+                                                                            position=row['position'], role=row['role']))
+                        if u['active'] and not row['active']:   # the account's key stops here
+                            last = c.execute('SELECT MAX(seq) FROM entries WHERE peer=?', (u['device'],)).fetchone()[0] or 0
+                            E.append(c, me['device'], 'revoke', {'device': u['device'], 'last_seq': last})
+                        elif row['active'] and not u['active']:   # a new key; the old one stays cut
+                            row['device'] = E.new_device(c, u['person'])
+                            E.append(c, me['device'], 'device_cert', {'device': row['device'], 'person': u['person'], 'label': 'server'})
                         store.put('users', row)
                         if not row['active'] or row['role'] != u['role']:
                             c.execute('DELETE FROM sessions WHERE user_id=?', (uid,))
@@ -518,7 +543,7 @@ def make_handler(cfg, store, auth):
             return self.send({'ok': True})
 
         def manager_action(self, me, action, d):
-            with store.write() as c:
+            with E.tx() as c:
                 t = store.meta('transfer', None, c)
                 if action == 'transfer':
                     self.need(me, 'manager')
@@ -528,6 +553,7 @@ def make_handler(cfg, store, auth):
                                    (d.get('username') or '',)).fetchone()
                     if not to:
                         raise HTTPError(400, 'The new manager must be an active admin.')
+                    E.root_key()   # the handover is signed with the plant root key: fail now, not at "accept"
                     offer = {'from': me['id'], 'to': to['id'], 'to_name': to['username'], 'expires': int(time.time()) + 7 * 86400}
                     store.put('meta', {'k': 'transfer', 'v': json.dumps(offer)})
                     self.log_user(c, me['id'], to['id'], 'offered the manager role')
@@ -546,6 +572,7 @@ def make_handler(cfg, store, auth):
                     old = c.execute('SELECT * FROM users WHERE id=?', (t['from'],)).fetchone()
                     if not old or old['role'] != 'manager' or me['role'] != 'admin':
                         raise HTTPError(409, 'The offer is no longer valid.')
+                    E.root_statement(c, me['device'], {'kind': 'manager', 'person': me['person']})
                     store.put('users', {**dict(old), 'role': 'admin'})  # demote first: one-manager index
                     store.put('users', {**dict(me), 'role': 'manager'})
                     self.log_user(c, me['id'], old['id'], 'manager role handed over; now admin')
@@ -586,8 +613,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description='KKS Explorer server')
     ap.add_argument('cmd', nargs='?', default='serve',
                     choices=['serve', 'users', 'reset-manager', 'reset-password', 'backup', 'restore', 'check', 'setup-importer',
-                             'added-tags'])
+                             'added-tags', 'export-root-key', 'import-root-key'])
     ap.add_argument('--user')
+    ap.add_argument('--file')
     ap.add_argument('--seq', type=int)
     ap.add_argument('--out')
     a = ap.parse_args(argv)
@@ -604,6 +632,33 @@ def main(argv=None):
         return
     store = Store(cfg)
     auth = Auth(store, cfg)
+    E = Engine(store, cfg)
+    if a.cmd in ('export-root-key', 'import-root-key'):
+        path = a.out if a.cmd == 'export-root-key' else a.file
+        if not path:
+            raise SystemExit('--out FILE is required' if a.cmd == 'export-root-key' else '--file FILE is required')
+        pw = getpass.getpass('Passphrase: ')
+        try:
+            if a.cmd == 'export-root-key':
+                if len(pw) < 12 or pw != getpass.getpass('Again: '):
+                    raise SystemExit('Passphrases differ or are shorter than 12 characters.')
+                E.root_key()
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, 'w') as f:
+                    f.write(E.export_root(pw) + '\n')
+                with store.write():
+                    store.put('meta', {'k': 'root_backed_up', 'v': json.dumps(int(time.time()))})
+                print(f'Wrote {path}. Keep it offline (USB stick, printed); without it and {E.root_path} nobody can '
+                      f'hand over the manager role or certify devices by root.')
+            else:
+                with open(path) as f:
+                    E.import_root(f.read(), pw)
+                print(f'Root key restored to {E.root_path}.')
+        except NoRootKey as e:
+            raise SystemExit(str(e))
+        except (ValueError, KeyError):
+            raise SystemExit('Wrong passphrase or not a root key backup.')
+        return
     if a.cmd == 'users':
         for u in list_users(store):
             print(f'{u["username"]:<20} {u["full_name"] or "(no name)":<26} {u["position"] or "":<22} {u["role"]:<8} '
@@ -618,10 +673,7 @@ def main(argv=None):
             raise SystemExit(1)
         return
     if a.cmd == 'added-tags':  # tags marked by hand in the app: where the extractor still fails
-        c = store.conn()
-        rows = [{'id': r['id'], **json.loads(r['data'])} for r in c.execute('SELECT * FROM added_tags')]
-        c.close()
-        print(json.dumps(rows, indent=1))
+        print(json.dumps([tag_out(k, v) for k, v in E.run.tags.items()], indent=1))
         return
     if a.cmd == 'backup':
         print(store.snapshot())
@@ -631,12 +683,24 @@ def main(argv=None):
             raise SystemExit('--user is required')
         u = find_user(store, a.user)
         if a.cmd == 'reset-manager':
-            with store.write() as c:
+            try:
+                E.root_key()
+            except NoRootKey as e:
+                raise SystemExit(str(e))
+            with E.tx() as c:
                 old = auth.manager(c)
+                carrier = old['device'] if old else u['device']
+                row = {**dict(u), 'role': 'manager', 'active': 1}
+                if not u['active']:   # its old key was revoked: a new one, certified by the root key
+                    row['device'] = E.new_device(c, u['person'])
+                    E.root_statement(c, carrier, {'kind': 'device', 'device': row['device'], 'person': u['person']})
+                if E.run.persons[u['person']]['role'] == 'user' and old:   # so a later handover leaves them an admin
+                    E.append(c, old['device'], 'person', person_body(E, u['person'], role='admin'))
+                E.root_statement(c, carrier, {'kind': 'manager', 'person': u['person']})
                 if old and old['id'] != u['id']:
                     store.put('users', {**dict(old), 'role': 'admin'})
                     cli_log(store, c, old['id'], 'manager role removed by reset-manager')
-                store.put('users', {**dict(u), 'role': 'manager', 'active': 1})
+                store.put('users', row)
                 store.delete('meta', k='transfer')
                 cli_log(store, c, u['id'], 'made manager by reset-manager')
             print(f'{u["username"]} is now the manager' + (f'; {old["username"]} is now an admin.' if old and old['id'] != u['id'] else '.'))
@@ -652,7 +716,9 @@ def main(argv=None):
         raw = auth.make_token('setup', None, 86400)
         print(f'\n  No manager account yet. Open this one-time link to create it (valid 24 h, until used):\n'
               f'  {base_url(cfg)}/#setup={raw}\n')
-    httpd = ThreadingHTTPServer((cfg['host'], cfg['port']), make_handler(cfg, store, auth))
+    if os.path.exists(E.root_path) and not store.meta('root_backed_up'):
+        print(f'  The plant root key is only in {E.root_path}. Back it up: python3 app.py export-root-key --out FILE')
+    httpd = ThreadingHTTPServer((cfg['host'], cfg['port']), make_handler(cfg, store, auth, E))
     scheme = 'http'
     if cfg['tls_cert']:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

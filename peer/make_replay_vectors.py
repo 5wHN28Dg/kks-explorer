@@ -180,7 +180,7 @@ def fork_and_gaps():
     W.w('mgr-phone', 1200, 'device_cert', {'device': W.peer('bob-phone'), 'person': B, 'label': ''})
     W.w('bob-phone', 1300, 'link', {'proc': 'p1', 'step': 1, 'kks': '11LAB70AA501', 'on': True})
     log = W.logs['bob-phone']
-    a = W.w('bob-phone', 1400, 'link', {'proc': 'p1', 'step': 2, 'kks': '11LAB70AA501', 'on': True})
+    W.w('bob-phone', 1400, 'link', {'proc': 'p1', 'step': 2, 'kks': '11LAB70AA501', 'on': True})
     fork = P.make_entry(W.key('bob-phone'), 2, P.entry_id(log.entries[0]), [T0 + 1400, 0], 'link',
                         {'proc': 'p1', 'step': 9, 'kks': '11LAB70AA501', 'on': True})
     W.w('bob-phone', 1500, 'link', {'proc': 'p1', 'step': 3, 'kks': '11LAB70AA501', 'on': True})
@@ -196,6 +196,41 @@ def fork_and_gaps():
                       extra=[fork, gap, bad])
 
 
+def withdraw_votes():
+    W = World()
+    M, B, D = pid('manager'), pid('bob'), pid('dana')
+    W.genesis('mgr-phone', 1000, M, 'hashim', 'Hashim M')
+    W.w('mgr-phone', 1100, 'person', person(B, 'bob', 'Bob User', 'user'))
+    W.w('mgr-phone', 1110, 'person', person(D, 'dana', 'Dana User', 'user'))
+    W.w('mgr-phone', 1200, 'device_cert', {'device': W.peer('bob-phone'), 'person': B, 'label': ''})
+    W.w('mgr-phone', 1210, 'device_cert', {'device': W.peer('dana-phone'), 'person': D, 'label': ''})
+    ph = lambda n: {'photo': rid(n), 'kks': '11LAB70AA501', 'blob': hashlib.sha256(n.encode()).hexdigest(), 'caption': ''}
+    a = W.w('bob-phone', 1300, 'photo', ph('a'))
+    b = W.w('dana-phone', 1310, 'photo', ph('b'))
+    W.w('dana-phone', 1400, 'vote', {'entry': a, 'on': True})
+    W.w('bob-phone', 1410, 'vote', {'entry': b, 'on': True})
+    W.w('bob-phone', 1420, 'vote', {'entry': b, 'on': False})                              # changed their mind
+    W.w('dana-phone', 1500, 'withdraw', {'entry': a})                                      # not hers: not_allowed
+    W.w('bob-phone', 1510, 'withdraw', {'entry': a})
+    W.w('mgr-phone', 1520, 'approve', {'entry': a, 'edit': None})                          # already_decided
+    W.w('mgr-phone', 1600, 'approve', {'entry': b, 'edit': None})
+    W.w('mgr-phone', 1700, 'review', {'tag_id': 'lp:7', 'data': {'status': 'rejected'}, 'base': None})
+    r = W.w('bob-phone', 1800, 'review', {'tag_id': 'lp:7', 'data': None, 'base': {'status': 'rejected'}})
+    W.w('mgr-phone', 1900, 'approve', {'entry': r, 'edit': None})
+    # a withdraw written before its proposal in the order (other device, clock behind) waits for it
+    W.w('mgr-phone', 1950, 'device_cert', {'device': W.peer('bob-laptop'), 'person': B, 'label': 'laptop'})
+    late = P.make_entry(W.key('bob-phone'), len(W.logs['bob-phone'].entries) + 1,
+                        P.entry_id(W.logs['bob-phone'].entries[-1]), [T0 + 2100, 0], 'link',
+                        {'proc': 'p1', 'step': 1, 'kks': '11LAB70AA501', 'on': True})
+    W.w('bob-laptop', 2000, 'withdraw', {'entry': P.entry_id(late)})
+    assert W.w('bob-phone', 2100, 'link', late['body']) == P.entry_id(late)
+    return W.scenario('withdraw, votes, review removal',
+                      ['photo a withdrawn by its author (another user can\'t); a later approve is already_decided',
+                       'votes: dana on a; bob\'s vote on b switched off again → votes {a: [dana]} only',
+                       'an approved user proposal with data null removes the review',
+                       'a withdraw from the author\'s other device, earlier in the order, waits and applies'])
+
+
 def build():
     V = {'protocol': 1, 'note': 'Replay vectors (docs/PROTOCOL.md §8–14). Reproduce every value exactly.'}
     root = P.key_from_seed(seed('root'))
@@ -208,7 +243,7 @@ def build():
                     'aad_hex': (R.PRIVATE_DOMAIN + pid('bob').encode()).hex(),
                     'body': R.private_body(secret, pid('bob'), 'course_progress', {'course': 'hrsg', 'score': 7},
                                            nonce=bytes(range(12)))}
-    V['scenarios'] = [main_scenario(), stolen_manager_phone(), fork_and_gaps()]
+    V['scenarios'] = [main_scenario(), stolen_manager_phone(), fork_and_gaps(), withdraw_votes()]
     return V
 
 

@@ -2,7 +2,8 @@
 
 Status: **M0a + M0b written 2026-09-26.** §1–7 (encoding, keys, entries, chain, clock, order): `peer/proto.py`,
 vectors `peer/vectors/v1.json`. §8–14 (entry bodies, identity, authority, replay, merge, private entries):
-`peer/replay.py`, vectors `peer/vectors/v2-replay.json`.
+`peer/replay.py`, vectors `peer/vectors/v2-replay.json` (`withdraw`, `vote` and review removal added 2026-09-26 for the
+server on the log, M1, before anything depended on the file).
 Any implementation (Python, Kotlin) must reproduce every vector exactly; the vectors, not the prose, are the tiebreaker.
 
 Design background: `docs/ARCHITECTURE.md`.
@@ -125,6 +126,8 @@ sheet-image pixel. A body must have **exactly** the listed fields.
 | `tag_remove` | `{tag}` | anyone; counts when approved |
 | `approve` | `{entry, edit}`: `edit` is `null` or `{kks, suffix, isa}` (meaningful for `tag_add` only) | admin/manager devices |
 | `reject` | `{entry, note}` | admin/manager devices |
+| `withdraw` | `{entry}`: the author takes back their own proposal | a device of the person who wrote the proposal |
+| `vote` | `{entry, on}`: advisory (photo choice); `on:false` takes the vote back | anyone certified |
 | `private` | `{person, nonce, ct}` (§13) | a device of that person |
 
 ### 9a. Body rules
@@ -138,13 +141,13 @@ replay only accepts or ignores.
   earlier), `last_seq` int ≥ 0. `setting`: `key` matches the §1 key pattern, `value` any JSON.
 - `equipment`: `kks` `[0-9A-Z/]{3,24}`; `changes` non-empty, `base` any size; their fields among `area floor elev near
   loc notes custom`; `custom` = list (≤ 100) of `{k (0–200), v (0–2000)}`, the others strings 0–4000.
-- `review`: `tag_id` `[A-Za-z0-9:_.-]{1,64}`, `data` object, `base` null or object.
+- `review`: `tag_id` `[A-Za-z0-9:_.-]{1,64}`, `data` null (remove the decision) or object, `base` null or object.
 - `link`: `proc` 1–32, `step` int ≥ 0, `kks` as equipment, `on` boolean.
 - `photo`: `photo` ID, `kks` as equipment, `blob` 64 hex, `caption` 0–500. `photo_delete` / `tag_remove`: an ID.
 - `tag_add`: `tag` ID, `sheet` `[a-z0-9][a-z0-9-]{0,23}`, `bbox` 4 ints with 0 ≤ x0 < x1 ≤ 200000 and the same
   for y; `kks` null or `[0-9]{2}[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}`; `suffix` `[A-Z0-9]{0,4}`; `isa` null or
   `[A-Z]{1,6}`; `note` 0–500.
-- `approve`/`reject`: `entry` 64 hex; `note` 0–500.
+- `approve`/`reject`/`withdraw`/`vote`: `entry` 64 hex; `note` 0–500; `on` boolean.
 - `private`: `nonce` 16 base64url characters, `ct` 22–1 400 000 base64url characters.
 
 ## 10. Authority
@@ -186,8 +189,10 @@ State = the result of applying, in the total order, every valid entry:
 - entries by admin/manager devices of the data types (`equipment` … `tag_remove`) apply where they stand
   (self-approved);
 - a user's data entry is a **proposal**. It applies at the first valid `approve` naming it, or never if a valid
-  `reject` naming it comes first. An `approve`/`reject` naming an entry not yet seen in the order waits; when the
-  proposal comes, the decision takes effect there. A second decision on the same entry is `already_decided`.
+  `reject` or `withdraw` naming it comes first. A `withdraw` counts only from a device of the proposal's author
+  (else `not_allowed`). Decisions naming an entry not yet seen in the order wait; when the proposal comes they are
+  taken in order there, the first valid one decides, later ones are `already_decided` (a waiting decision whose
+  proposal never comes is not reported). A decision on an already decided proposal is `already_decided`.
   An approve's `edit` replaces `kks`/`suffix`/`isa` of a `tag_add`; an edit on any other type, or one that makes the
   tag invalid, turns the approval into a rejection.
 - approve/reject naming an entry that never becomes a proposal (an admin's own entry, a revoked one) change nothing.
@@ -206,7 +211,9 @@ device's chain from the first break on gets that break's code). An entry that ca
   a manager-authored or manager-approved entry and the new one is not: then `live` stays and the new value is
   recorded as the loser. A field whose value becomes `""` / `[]` is removed; an equipment item with no fields is
   removed. "Equal" = equal canonical JSON.
-- **review**: the same rule on the whole `data` value against `base` (`live` = null when unset).
+- **review**: the same rule on the whole `data` value against `base` (`live` = null when unset); `data` null
+  removes the review.
+- **vote**: per (entry, person) set/unset, later wins; reported only for entries that are proposals.
 - **link**, **photo** / **photo_delete**, **tag_add** / **tag_remove**: set/unset; the later entry wins, no conflicts.
 - Each conflict record: `{entity, key, field, kept, lost, kept_by, lost_by}`. `*_by` = the ID of the entry whose
   value it is (for an approved proposal, the proposal's ID; null if nobody set it). `field` is null for reviews.
@@ -231,7 +238,7 @@ The state is a JSON object:
 valid seq or null; label `""` for genesis/root-certified devices) · `equipment {kks: {field: value}}` ·
 `reviews {tag_id: data}` · `links [[proc, step, kks]]` (sorted) · `photos {photo: {kks, blob, caption}}` ·
 `added_tags {tag: {sheet, bbox, kks, suffix, isa, note}}` · `proposals {entry: pending|approved|rejected}` ·
-`conflicts [...]` (in the order they happened) · `private {person: [entry IDs in order]}` · `ignored {entry: code}`.
+`conflicts [...]` (in the order they happened) · `votes {entry: [person IDs, sorted]}` (non-empty only) · `private {person: [entry IDs in order]}` · `ignored {entry: code}`.
 
 **State encoding** = §1 canonical JSON, except that object keys may be any printable ASCII string of 1–64 characters
 (the state is keyed by KKS codes, peer IDs and entry IDs; §9a keeps every such key ASCII). Two implementations given

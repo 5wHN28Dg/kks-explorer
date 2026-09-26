@@ -197,3 +197,11 @@ class Replay(unittest.TestCase):
         st = s['state']
         self.assertEqual(st['devices'][s['devices']['bob-phone']]['cut'], 1)
         self.assertEqual(sorted(st['ignored'].values()), ['bad_sig', 'chain_gap', 'fork', 'fork', 'fork'])
+
+    def test_withdraw_votes(self):
+        s = self.S['withdraw, votes, review removal']
+        st = s['state']
+        self.assertEqual(sorted(st['proposals'].values()), ['approved', 'approved', 'withdrawn', 'withdrawn'])
+        self.assertEqual(list(st['votes'].values()), [[make_replay_vectors.pid('dana')]])
+        self.assertEqual(st['reviews'], {})
+        self.assertEqual(sorted(st['ignored'].values()), ['already_decided', 'not_allowed'])
