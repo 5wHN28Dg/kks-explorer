@@ -57,17 +57,19 @@ K.emit = async () => { K.outbox = (await K.idb.all()).filter(i => i.user === K.m
 K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730);color:var(--ink,#e9eef2);display:flex;align-items:center;justify-content:center;font:14px/1.45 system-ui,sans-serif;padding:16px}
 #kov form,#kov .box{background:var(--chrome2,#243440);border:1px solid var(--line,#3a5061);border-radius:10px;padding:20px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}
 #kov h1{font-size:18px;margin:0}#kov p{margin:0;color:var(--muted,#94a6b4)}#kov input{padding:9px 10px;border-radius:6px;border:1px solid var(--line,#3a5061);background:var(--chrome,#1c2730);color:inherit;font:inherit}
-#kov button{background:var(--accent,#ff7a1a);color:#1c2730;border:0;border-radius:6px;padding:9px;font-weight:650;cursor:pointer;font:inherit}#kov .err{color:var(--bad,#ff5a5a);min-height:1em}`;
+#kov button{background:var(--accent,#ff7a1a);color:#1c2730;border:0;border-radius:6px;padding:9px;font-weight:650;cursor:pointer;font:inherit}#kov button.back{background:none;border:1px solid var(--line,#3a5061);color:inherit;font-weight:400}#kov .err{color:var(--bad,#ff5a5a);min-height:1em}`;
 K.overlay = html => {
   if (!document.getElementById('kovcss')) { const s = document.createElement('style'); s.id = 'kovcss'; s.textContent = K.css; document.head.appendChild(s) }
   let o = document.getElementById('kov'); if (!o) { o = document.createElement('div'); o.id = 'kov'; document.body.appendChild(o) }
   o.innerHTML = html; return o;
 };
-K.form = (title, sub, fields, button, onsubmit) => {
+// back: optional; adds "← Back" (also Esc) for forms reached from a choice screen
+K.form = (title, sub, fields, button, onsubmit, back) => {
   const o = K.overlay(`<form autocomplete="on"><h1>${K.esc(title)}</h1>${sub ? `<p>${sub}</p>` : ''}
     ${fields.map(f => `<input name="${f.name}" type="${f.type || 'text'}" placeholder="${K.esc(f.label)}" autocomplete="${f.ac || 'off'}" ${f.value ? `value="${K.esc(f.value)}" readonly` : ''} ${f.optional ? '' : 'required'}>`).join('')}
-    <div class="err"></div><button>${K.esc(button)}</button></form>`);
+    <div class="err"></div><button>${K.esc(button)}</button>${back ? '<button type="button" class="back">← Back</button>' : ''}</form>`);
   const f = o.querySelector('form'); f.querySelector('input:not([readonly])')?.focus();
+  if (back) { f.querySelector('.back').onclick = back; f.onkeydown = e => { if (e.key === 'Escape') back() } }
   f.onsubmit = async e => { e.preventDefault(); const v = Object.fromEntries(new FormData(f)); f.querySelector('.err').textContent = '';
     try { await onsubmit(v) } catch (err) { f.querySelector('.err').textContent = K.isNetErr(err) ? 'Cannot reach the server.' : err.message } };
 };
@@ -140,6 +142,9 @@ K.joinScreen = (cfg, note = '') => {
     <input type="file" accept=".kksbundle" hidden><div class="err">${K.esc(note)}</div>
     <p style="font-size:12px;opacity:.7">Device ${K.esc((cfg.node.device || 'not created yet').slice(0, 12))}…</p></div>`);
   const back = n => K.joinScreen(cfg, n);
+  const choices = () => { if (history.state?.join) history.back(); else back() };   // ← Back = the browser's Back
+  onpopstate = () => { const n = K.joinNote || ''; K.joinNote = ''; back(n) };
+  const sub = (...a) => { history.pushState({join: 1}, ''); K.form(...a, choices) };
   const file = o.querySelector('input[type=file]');
   file.onchange = async () => {
     try { const r = await K.importBundle(file.files[0]); if (r.joined) return location.reload();
@@ -148,17 +153,18 @@ K.joinScreen = (cfg, note = '') => {
   };
   o.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => ({
     bundle: () => file.click(),
-    server: () => K.form('Join through the plant server', 'Your normal account on the plant server. The server certifies this computer as yours; afterwards it syncs by itself on the same Wi-Fi.',
+    server: () => sub('Join through the plant server', 'Your normal account on the plant server. The server certifies this computer as yours; afterwards it syncs by itself on the same Wi-Fi.',
       [{name: 'url', label: 'Server address, e.g. http://192.168.1.20:8420'}, {name: 'username', label: 'Username', ac: 'username'},
        {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Join',
       async v => { await K.api('/api/node/join-server', v); location.reload() }),
-    request: () => K.form('Join through an admin', 'You get a small file to give an admin (USB, WhatsApp, email). They certify this computer and give you a bundle file back; import it here.',
+    request: () => sub('Join through an admin', 'You get a small file to give an admin (USB, WhatsApp, email). They certify this computer and give you a bundle file back; import it here.',
       [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'}], 'Make the request file',
       async v => { const r = await K.api('/api/node/join-request', v);
         K.download(JSON.stringify(r.request, null, 1), `join-${v.username}.kksjoin`);
-        cfg.node.device = r.request.device; back('Request file saved. When the admin gives you a bundle, choose "Import a bundle".') }),
-    new: () => K.form('Start a new plant', 'Only if no plant exists yet. This computer creates the plant\'s root key and you become the manager. Back the key up afterwards (Manage → Devices).',
+        cfg.node.device = r.request.device;
+        K.joinNote = 'Request file saved. When the admin gives you a bundle, choose "Import a bundle".'; history.back() }),
+    new: () => sub('Start a new plant', 'Only if no plant exists yet. This computer creates the plant\'s root key and you become the manager. Back the key up afterwards (Manage → Devices).',
       [{name: 'plant', label: 'Plant name'}, {name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
        {name: 'username', label: 'Username', ac: 'username'}], 'Create the plant',
       async v => { await K.api('/api/node/new-plant', v); location.reload() }),
