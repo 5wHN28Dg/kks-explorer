@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS equipment(kks TEXT PRIMARY KEY, data TEXT NOT NULL, u
 CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY, kks TEXT, file TEXT, caption TEXT, created INTEGER);
 CREATE TABLE IF NOT EXISTS reviews(tag_id TEXT PRIMARY KEY, data TEXT NOT NULL, updated INTEGER);
 CREATE TABLE IF NOT EXISTS links(proc TEXT, step INTEGER, kks TEXT, PRIMARY KEY(proc,step,kks));
+CREATE TABLE IF NOT EXISTS added_tags(id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, pw TEXT,
   role TEXT NOT NULL CHECK(role IN ('manager','admin','user')), active INTEGER NOT NULL DEFAULT 1, created INTEGER);
 CREATE UNIQUE INDEX IF NOT EXISTS one_manager ON users(role) WHERE role='manager';
@@ -28,7 +29,7 @@ CREATE INDEX IF NOT EXISTS rev_key ON revisions(entity, key);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 """
 KEYS = {  # primary-key columns of every journaled table
-    'equipment': ('kks',), 'photos': ('id',), 'reviews': ('tag_id',), 'links': ('proc', 'step', 'kks'),
+    'equipment': ('kks',), 'photos': ('id',), 'reviews': ('tag_id',), 'links': ('proc', 'step', 'kks'), 'added_tags': ('id',),
     'users': ('id',), 'tokens': ('token',), 'submissions': ('id',), 'votes': ('submission_id', 'user_id'),
     'revisions': ('rev',), 'meta': ('k',),
 }

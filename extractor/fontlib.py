@@ -102,10 +102,15 @@ def _fix_kks(s):
             break
     return ''.join(t)
 def interpret(top,bottom):
+    # two thin 1s drawn close together read as one 'U' (CBD sheet: 'ULCQ75' = 11LCQ75); a system part always starts
+    # with the 2-digit unit, and only 11 can merge like that (2026-09-25)
+    if re.fullmatch(r'U[A-Z]{3}\d{2}',top or ''): top='11'+top[1:]
     top=top.replace('1','I') if re.fullmatch(r'[A-Z1]{1,6}',top or '') and not re.match(r'^\d\d',top or '') else top
     top=_fix_kks(top) if re.match(r'^[\dI]{2}[A-Z]{3}',top or '') else top
     bottom=_fix_kks(bottom)
     m=FULL.match(bottom)
+    if m and not (top or '').strip():  # instrument bubble printed without function letters (e.g. 10LCB10GF001)
+        return dict(kind='instrument',kks=m.group(1),suffix=m.group(2),isa=None)
     if m and ISA.match(top):
         kks=m.group(1)
         # C/G is this font's weakest pair, misread even at full confidence. A KKS measuring point is C + the measured

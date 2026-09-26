@@ -47,6 +47,10 @@ main{position:relative;flex:1;min-height:0;overflow:hidden}
 .hs.hl{background:rgba(255,122,26,.35);outline:3px solid var(--accent)}
 .hs.floor{background:rgba(79,156,255,.35);outline:3px solid var(--ok)}
 .hs.dim{opacity:.15}
+.hs.pendmark{outline:2px dashed var(--accent);background:rgba(255,122,26,.10);pointer-events:none}
+#markbox{position:absolute;outline:2px dashed var(--accent);background:rgba(255,122,26,.18);pointer-events:none}
+#viewer.marking,#viewer.marking .hs{cursor:crosshair}
+.zoom button.on{border-color:var(--accent);color:var(--accent)}
 body.hide-review .hs.review{display:none}
 .zoom{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;z-index:5}
 .zoom button{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:var(--chrome2);font-size:19px;cursor:pointer}
@@ -122,7 +126,7 @@ dt{color:var(--muted)} dd{margin:0}
 </header>
 <main>
   <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"></div><canvas id="sharp"></canvas><div id="stage2"><div id="layer"></div></div></div>
-  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button></div>
+  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button></div>
   <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
   <div id="toast"></div>
   <aside class="drawer" id="procDrawer"><div class="head"><h2>Operation manual procedures</h2><button class="x" data-close="procDrawer">×</button></div>
@@ -139,7 +143,7 @@ dt{color:var(--muted)} dd{margin:0}
 <script src="common.js"></script>
 <script>
 const $=s=>document.querySelector(s);
-let SHEETS=[],TAGS=[],PROCS=[],KKS={},LOC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
+let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
 let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='';
 const api=u=>K.api(u);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -184,12 +188,13 @@ async function load(){
   const me=await K.start(); K.toast=toast;
   $('#who').textContent=me.user.username; $('#plantName').textContent=K.cfg?'· '+K.cfg.plant_name:'';
   try{
-    [SHEETS,TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error(u+': '+r.status);return r.json()})));
+    [SHEETS,BASE_TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error(u+': '+r.status);return r.json()})));
   }catch(e){ K.overlay(`<div class="box"><h1>Plant data not available</h1><p>${K.online?esc(e.message):'You are offline and this device has no saved copy of the plant data. Offline copies need the app opened over HTTPS (or localhost) at least once while online.'}</p><button onclick="location.reload()">Retry</button></div>`); return }
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); toast('Offline: no saved copy of notes/photos on this device yet') }
+  mergeTags();
   const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
   for(const e of lj.entries)(LOC[e.kks]??=[]).push(e); if(lj.source) LOCSRC=lj.source;
-  K.onChange(why=>{ if(why==='synced') refreshState(); else updatePending() });
+  K.onChange(why=>{ if(why==='synced') refreshState(); else { updatePending(); if(cur) drawTags() } });
   updateQueueBadge(); setTimeout(cacheSheets,3000);
   $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   refreshFloors(); refreshReviewCount(); renderProcs();
@@ -197,9 +202,51 @@ async function load(){
   openSheet(SHEETS.find(s=>s.id===want)?want:SHEETS[0].id);
 }
 
+// ---------- tags marked by hand (approved ones live in the DB, not tags.json, so they survive re-imports) ----------
+function mergeTags(){
+  TAGS=BASE_TAGS.concat((STATE.added_tags||[]).map(a=>({id:'u:'+a.id, sheet:a.sheet, kks:a.kks, suffix:a.suffix||'', isa:a.isa,
+    kind:a.kind, status:a.kks?'verified':'review', conf:1, bbox:a.bbox, orient:a.orient, read:['',''], note:a.note||'',
+    flag:'', suggestion:null, added:a.id})));
+}
+const mark={on:false,start:null,box:null};
+function markMode(on){
+  mark.on=on; $('#viewer').classList.toggle('marking',on); $('#zmark').classList.toggle('on',on);
+  if(on){ linkTarget=null; closePanel(); $('#bannerText').textContent='Drag a box around the tag the app missed'; $('#bannerDone').textContent='Cancel'; $('#banner').style.display='flex' }
+  else{ $('#banner').style.display='none'; $('#bannerDone').textContent='Done'; $('#markbox')?.remove(); mark.start=null }
+}
+$('#zmark').onclick=()=>markMode(!mark.on);
+function toStage(e){ const r=$('#viewer').getBoundingClientRect(); return {x:(e.clientX-r.left-view.x)/view.s, y:(e.clientY-r.top-view.y)/view.s} }
+function markDraw(e,phase){
+  const p=toStage(e);
+  if(phase==='start'){ mark.start=p; $('#markbox')?.remove(); const b=document.createElement('div'); b.id='markbox'; $('#layer').appendChild(b) }
+  const a=mark.start; if(!a) return;
+  mark.box=[Math.max(0,Math.min(a.x,p.x)),Math.max(0,Math.min(a.y,p.y)),Math.min(cur.w,Math.max(a.x,p.x)),Math.min(cur.h,Math.max(a.y,p.y))];
+  const b=mark.box; $('#markbox').style.cssText=`left:${b[0]}px;top:${b[1]}px;width:${b[2]-b[0]}px;height:${b[3]-b[1]}px`;
+  if(phase==='end'){ mark.start=null; if(b[2]-b[0]<8||b[3]-b[1]<8){ toast('Box too small: drag across the whole tag'); $('#markbox').remove(); return } markForm(b) }
+}
+function markForm(bb){
+  const t={sheet:cur.id,bbox:bb};
+  $('#panelBody').innerHTML=`<div class="phead"><div style="flex:1"><div class="kks" style="font-size:17px">Mark a missing tag</div><div class="sub">${esc(cur.name)}</div></div><button class="x" onclick="markMode(false);closePanel()">×</button></div>
+    <div class="sec"><div class="crop" style="${cropStyle(t)}"></div>
+    <div class="sub">Type the code if you can read it. If not, leave it empty: it goes to the review queue.</div>
+    <div class="row2" style="margin-top:8px"><div class="field"><label>KKS (with suffix)</label><input id="mkK" class="mono" placeholder="e.g. 11LAB90CP501"></div>
+    <div class="field"><label>Function letters (instruments)</label><input id="mkI" class="mono" placeholder="e.g. PI, TIAC"></div></div>
+    <div class="field"><label>Note (optional)</label><input id="mkN" placeholder="e.g. hard to read, second one below it"></div>
+    <button class="primary" onclick="sendMark()">Send</button> <button class="ghost" onclick="markMode(false);closePanel()">Cancel</button></div>`;
+  $('#panel').classList.add('open'); $('#mkK').focus(); mark.pending=bb;
+}
+async function sendMark(){
+  const kks=$('#mkK').value.trim().toUpperCase().replace(/\s/g,''), isa=$('#mkI').value.trim().toUpperCase();
+  if(kks&&!/^\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z0-9]{0,4}$/.test(kks)){ toast('That is not a valid KKS (e.g. 11LAB70AA501); leave it empty if unsure'); return }
+  const r=await send('tag_add',{sheet:cur.id,bbox:mark.pending.map(v=>Math.round(v*10)/10),kks,isa,note:$('#mkN').value.trim()},kks||'marked tag');
+  if(r){ markMode(false); closePanel() }
+}
+async function removeAdded(id,label){ if(!confirm(`Remove the hand-added tag ${label}?`)) return; if(await send('tag_remove',{id},'remove '+label)) closePanel() }
+
 // ---------- saving: every edit is a submission (applied at once for admins, otherwise queued for approval) ----------
 async function refreshState(){
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); if(K.isNetErr(e)) K.setOnline(false) }
+  mergeTags();
   refreshFloors(); refreshReviewCount(); drawTags(); updateQueueBadge(); updatePending();
 }
 async function send(kind,payload,what){
@@ -272,14 +319,15 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 (function pan(){
   const el=$('#viewer'), pts=new Map(); let last=null, pinch=null, moved=false;
   el.addEventListener('wheel',e=>{e.preventDefault(); const r=el.getBoundingClientRect(); zoomAt(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top)},{passive:false});
-  el.addEventListener('pointerdown',e=>{ pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); moved=false;
+  el.addEventListener('pointerdown',e=>{ if(mark.on&&!pts.size&&e.button===0){ e.preventDefault(); el.setPointerCapture?.(e.pointerId); markDraw(e,'start'); moved=true; return }
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); moved=false;
     if(pts.size===1){last={x:e.clientX,y:e.clientY}; el.classList.add('drag')}
     if(pts.size===2){const [a,b]=[...pts.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y)}} });
-  el.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId))return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  el.addEventListener('pointermove',e=>{ if(mark.start){ markDraw(e,'move'); return } if(!pts.has(e.pointerId))return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pts.size===2&&pinch){const [a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y),r=el.getBoundingClientRect();
       zoomAt(d/pinch.d,(a.x+b.x)/2-r.left,(a.y+b.y)/2-r.top); pinch.d=d; moved=true; return}
     if(last){const dx=e.clientX-last.x,dy=e.clientY-last.y; if(Math.abs(dx)+Math.abs(dy)>3)moved=true; view.x+=dx; view.y+=dy; last={x:e.clientX,y:e.clientY}; apply()} });
-  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2)pinch=null; if(pts.size===1)last={...[...pts.values()][0]}; if(!pts.size){last=null; el.classList.remove('drag')} };
+  const up=e=>{ if(mark.start){ markDraw(e,'end'); return } pts.delete(e.pointerId); if(pts.size<2)pinch=null; if(pts.size===1)last={...[...pts.values()][0]}; if(!pts.size){last=null; el.classList.remove('drag')} };
   el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
   el.addEventListener('click',e=>{ if(moved){e.stopPropagation();e.preventDefault()} },true);
 })();
@@ -293,6 +341,11 @@ function drawTags(){
     if(floor){ const f=floorOf(t); d.classList.add(f.toLowerCase()===floor.toLowerCase()?'floor':'dim') }
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`;
     d.title=k||'unreadable tag'; d.onclick=e=>{e.stopPropagation(); tagClick(t)}; L.appendChild(d);
+  }
+  // your marks awaiting approval (sent, or queued offline)
+  for(const p of [...(STATE.mine||[]).filter(s=>s.kind==='tag_add').map(s=>s.payload),...K.outbox.filter(i=>i.kind==='tag_add').map(i=>i.payload)]){
+    if(p.sheet!==cur.id) continue; const b=p.bbox, d=document.createElement('div'); d.className='hs pendmark';
+    d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; d.title='Your mark, awaiting approval'; L.appendChild(d);
   }
 }
 function tagClick(t){
@@ -356,6 +409,8 @@ function select(t){
     </dl></div>`;
   }
   h+=locSec(bodyOf(t),t.suffix);
+  if(t.added) h+=`<div class="sec"><h3>Added by hand</h3><div class="sub">The app's reader missed this tag; someone marked it on the drawing.${t.note?' Note: '+esc(t.note):''}</div>
+    <button class="ghost" style="margin-top:6px" onclick="removeAdded('${t.added}','${esc(k||'this mark')}')">Remove this tag</button></div>`;
   if(where.length){
     h+=`<div class="sec"><h3>Appears on</h3>${where.map(x=>`<span class="chip" onclick="goTo('${x.id}')">${esc(sheetName(x.sheet))}</span>`).join('')}</div>`;
   }
@@ -488,7 +543,7 @@ function renderProcDetail(id){
 }
 function startLink(proc,step){ linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
   if(innerWidth<=720) $('#procDrawer').classList.remove('open') }
-$('#bannerDone').onclick=()=>{ const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
+$('#bannerDone').onclick=()=>{ if(mark.on){ markMode(false); closePanel(); return } const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
 async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags() }
 
 // ---------- review queue ----------

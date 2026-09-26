@@ -53,6 +53,12 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
   `/api/config` with `redirect:'manual'` (opaqueredirect = Access), and sw.js marks cached fallbacks with
   `X-KKS-From-Cache: offline|reauth` so the client shows "Sign in again" vs "Offline". Verified with Playwright against
   a fake Access proxy (redirect to another origin), not against real Cloudflare.
+- Missing-tag marking (2026-09-25): ✎ button → drag a box on the sheet → submission kind `tag_add` {sheet, bbox (sheet
+  px), kks+suffix (optional), isa, note}; `tag_remove` {id}. Approved → table `added_tags` (entity `added_tag`, logged,
+  revertible); `/api/state.added_tags`; index.html `mergeTags()` appends them to TAGS as ids `u:<id>` (status
+  verified, or review when no code), so they survive re-imports and work with photos/notes/links/review like any tag.
+  Pending marks draw dashed (`.pendmark`). Admin approve accepts `edit:{kks,isa}` for tag_add (Approvals shows a crop).
+  `python3 app.py added-tags` dumps them as JSON: feed these back into extractor fixes. Verified with Playwright.
 - `admin.html` — Approvals (grouped by target, photo pick), My submissions (+ voting), Users, History, Account.
 - `index.html` — whole front end, vanilla JS, no build step. Pan/zoom viewer, hotspots, panel (floating on desktop,
   bottom sheet ≤720px), search, floor filter, procedures drawer + step↔equipment linking, review queue, sheet notes.
@@ -130,6 +136,14 @@ Lessons (don't repeat):
   b1cond 16; corrected hp:19/28/87 (TIAG/PIAG→TIAC/PIAC), hp:ob1531 (T→LE). Regression: new extractor vs stored tags on
   LP/IP/HP/FW: 0 auto tags change; the differences are all hand-verified tags the reader still misreads (HP 69: bold font).
   Most misses were local indicators (PI/TI/FE/LI …501) and vibration probes, which are drawn without a divider.
+- From the first user-marked tags (2026-09-25, 7 marks, all correct): (5) pair() now accepts halves that overlap by up to
+  3 px across a hairline divider (CBD 0.12 pt lines); (6) single-row cells and empty-top bubbles = code without
+  function letters (10LCB..GF001 junction boxes; interpret: empty top + full KKS → instrument, isa None);
+  (7) detection renders with `TOOLS.set_graphics_min_line_width(0.5)` so hairline box borders close (reading unchanged,
+  the glyph library was trained on the normal rendering); (8) interpret: top 'U' + LLLDD → '11' (two thin 1s merge).
+  Added 33 more, all checked by eye: CBD 30 (12 → 42 tags + 5 user marks), b1cond 3. Regression after each step:
+  0 stored auto tags changed on all 11 sheets. The user's marks stay in plant.db (not duplicated into tags.json);
+  add_missed skips boxes overlapping them.
 - Remaining known reader weaknesses: C/G at full confidence (hp:95 reads 11HAD90GT108K; stored value hand-verified),
   M/H and 2/8 at low confidence (b1cond), last digit of panel bubbles squeezed against the arc (conf 0 → review).
 - LP sheet: 189 auto tags, 1 wrong (suffix). Verified reference existed in the original workspace.
@@ -142,7 +156,7 @@ Lessons (don't repeat):
   by eye (2 wrong: 10HAC05AA151→10MAC05AA151, 10LCE18AA101→10LCE12AA101); a random 30 of the rest were all right.
   Two boxes are printed with the lines swapped (10MAW80AC001, 10LCE18AA003). Undecoded codes there: systems LCW,
   MAL, MAW, LEA; components GH, GF (no document defines them yet).
-- Flue Gas and Intermittent/CBD sheets extract poorly (unusual layouts, open bubbles).
+- Flue Gas sheet: not checked by eye for misses. CBD: hairline drawing, now read after fixes (5)–(8); checked by eye.
 
 ## Findings on the drawings (flagged in app)
 
@@ -172,9 +186,10 @@ Section 0 there: first find out whether the "no" is about hosting or about plant
 
 ## Backlog (rough priority)
 
-1. Verify a random sample of auto tags per new sheet; build per-sheet verified references like LP.
-2. Valve type from symbols (gate/globe/check/motorized/safety) — template-match the legend symbols near each tag.
-3. Extract instrument descriptions from the FW/LP junction-box panels (English text next to each instrument).
-4. Suggest procedure→equipment links (system code + description matching), user confirms.
-5. Attach PDF markup annotations to nearby tags instead of sheet-level notes.
-6. Calibration UI in the app for new fonts (label unknown glyph clusters instead of doing it by hand).
+1. When users have marked missed tags (`app.py added-tags`), find why the extractor missed them and fix the cause.
+2. Verify a random sample of auto tags per new sheet; build per-sheet verified references like LP.
+3. Valve type from symbols (gate/globe/check/motorized/safety) — template-match the legend symbols near each tag.
+4. Extract instrument descriptions from the FW/LP junction-box panels (English text next to each instrument).
+5. Suggest procedure→equipment links (system code + description matching), user confirms.
+6. Attach PDF markup annotations to nearby tags instead of sheet-level notes.
+7. Calibration UI in the app for new fonts (label unknown glyph clusters instead of doing it by hand).

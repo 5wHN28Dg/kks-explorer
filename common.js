@@ -184,6 +184,8 @@ K.describe = (kind, p) => ({
   link: () => `${p.on === false ? 'unlink' : 'link'} ${p.kks} ${p.on === false ? 'from' : 'to'} procedure ${p.proc} step ${p.step}`,
   photo: () => `new photo for ${p.kks}${p.caption ? ': ' + p.caption : ''}`,
   photo_delete: () => `delete photo ${p.photo_id.slice(0, 8)}`,
+  tag_add: () => `mark a missed tag on ${p.sheet}: ${p.kks ? (p.isa ? p.isa + ' ' : '') + p.kks + (p.suffix || '') : '(code not given)'}`,
+  tag_remove: () => `remove hand-added tag ${p.id.slice(0, 8)}`,
 }[kind] || (() => kind))();
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));

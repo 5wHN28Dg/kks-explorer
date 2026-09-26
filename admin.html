@@ -65,7 +65,7 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 <script src="common.js"></script>
 <script>
 const $=s=>document.querySelector(s), esc=K.esc;
-let ME=null, tab=null;
+let ME=null, tab=null, SHEETS=[];
 const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.user.role==='manager';
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
@@ -96,6 +96,18 @@ function detail(s){
     return `<table><tr><th>Field</th><th>Now</th><th>Proposed</th>${cf.size?'<th>Submitter saw</th>':''}</tr>${Object.entries(p.changes).map(([f,v])=>
       `<tr${cf.has(f)?' style="background:rgba(255,90,90,.08)"':''}><td>${esc(f)}</td><td>${val(live[f])}</td><td>${val(v)}</td>${cf.size?`<td>${cf.has(f)?val(p.base[f]):''}</td>`:''}</tr>`).join('')}</table>`;
   }
+  if(s.kind==='tag_add'){
+    const sh=SHEETS.find(x=>x.id===p.sheet), b=p.bbox;
+    let crop='';
+    if(sh){ const w=b[2]-b[0]+40, h=b[3]-b[1]+40, sc=Math.min(420/w,160/h);
+      crop=`<div style="width:${Math.round(w*sc)}px;height:${Math.round(h*sc)}px;background:#fff url('${esc(sh.file)}') no-repeat;background-size:${sh.w*sc}px auto;background-position:${-(b[0]-20)*sc}px ${-(b[1]-20)*sc}px;border:1px solid var(--line);border-radius:4px;margin:6px 0"></div>` }
+    return `<div>${esc(K.describe(s.kind,p))} <a href="/?sheet=${encodeURIComponent(p.sheet)}" class="sub">open sheet</a></div>${crop}
+      ${p.note?`<div class="sub">Note: ${esc(p.note)}</div>`:''}
+      <div class="row" style="margin-top:4px"><span class="sub">Code as it should be saved:</span>
+      <input id="ek-${s.id}" class="mono" value="${esc((p.kks||'')+(p.suffix||''))}" placeholder="KKS, empty = review queue" style="width:190px">
+      <input id="ei-${s.id}" class="mono" value="${esc(p.isa||'')}" placeholder="letters" style="width:80px"></div>`;
+  }
+  if(s.kind==='tag_remove') return `<div class="del">${esc(K.describe(s.kind,p))}</div>`;
   if(s.kind==='review') return `<div>${esc(K.describe(s.kind,p))}</div>${s.live?`<div class="sub">Now: ${val(s.live[0].value)}</div>`:''}`;
   if(s.kind==='photo_delete') return `<div class="del">Delete this photo</div>${s.live?.[0]?.value?`<div class="photos"><figure><img src="photos/${esc(s.live[0].value.file)}" onclick="lightbox(this.src)" alt=""></figure></div>`:'<div class="sub">(already gone)</div>'}`;
   return `<div class="${s.kind==='link'&&p.on===false?'del':'add'}">${esc(K.describe(s.kind,p))}</div>`;
@@ -105,6 +117,7 @@ const badge=s=>{ const st=s.conflicts?.length?'conflict':s.status; return `<span
 // ---------- views ----------
 const VIEWS={
   async queue(){
+    if(!SHEETS.length) SHEETS=await K.api('/data/sheets.json').catch(()=>[]);
     const subs=(await K.api('/api/submissions?status=open')).submissions.reverse();
     const qn=$('#qn'); if(qn){qn.textContent=subs.length; qn.style.display=subs.length?'':'none'}
     if(!subs.length){ $('#main').innerHTML='<p class="sub">Nothing waiting for approval.</p>'; return }
@@ -160,6 +173,7 @@ const VIEWS={
       if(r.entity==='user') return esc(r.note);
       if(r.entity==='sheet') return `<span class="mono">${esc(r.key)}</span> ${esc(r.note)}`;
       if(r.entity==='link'){ const [p,s,k]=JSON.parse(r.key); return `${a?'<span class="add">linked</span>':'<span class="del">unlinked</span>'} ${esc(k)} · proc ${esc(p)} step ${s}` }
+      if(r.entity==='added_tag'){ const t=a||b; return `${a?'<span class="add">tag marked</span>':'<span class="del">marked tag removed</span>'} ${esc(t.isa||'')} ${esc((t.kks||'(no code)')+(t.suffix||''))} on ${esc(t.sheet)}` }
       if(r.entity==='photo') return a?`<span class="add">photo added</span> ${esc(a.kks)}`:`<span class="del">photo removed</span> ${esc(b?.kks||'')}`;
       if(r.entity==='equipment'){ const keys=[...new Set([...Object.keys(a||{}),...Object.keys(b||{})])].filter(k=>JSON.stringify((a||{})[k])!==JSON.stringify((b||{})[k]));
         return `${esc(r.key)}: `+keys.map(k=>`${esc(k)} ${val((b||{})[k])} → ${val((a||{})[k])}`).join(' · ') }
@@ -267,7 +281,9 @@ async function decide(id,action,force){
   let note='';
   if(action==='reject'){ note=prompt('Reason (optional, shown to the submitter):',''); if(note===null) return }
   if(force&&!confirm('Overwrite the current value with this proposal?')) return;
-  await act(()=>K.api(`/api/submissions/${id}/${action}`,{force:!!force,note}),{approve:'Approved',pick:'Photo chosen, others rejected',reject:'Rejected'}[action]);
+  const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);   // hand-marked tag: approve with the edited code
+  const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
+  await act(()=>K.api(`/api/submissions/${id}/${action}`,{force:!!force,note,edit}),{approve:'Approved',pick:'Photo chosen, others rejected',reject:'Rejected'}[action]);
 }
 const vote=id=>act(()=>K.api(`/api/submissions/${id}/vote`,{}));
 const withdraw=id=>confirm('Withdraw this submission?')&&act(()=>K.api(`/api/submissions/${id}/withdraw`,{}),'Withdrawn');

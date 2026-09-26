@@ -11,8 +11,10 @@ conflicting submission stays in the queue flagged `conflict` until an admin forc
 import base64, json, re, time, uuid
 
 EQ_FIELDS = ('area', 'floor', 'elev', 'near', 'loc', 'notes', 'custom')
-KINDS = ('equipment', 'review', 'link', 'photo', 'photo_delete')
-ENTITIES = ('equipment', 'review', 'link', 'photo')
+KINDS = ('equipment', 'review', 'link', 'photo', 'photo_delete', 'tag_add', 'tag_remove')
+ENTITIES = ('equipment', 'review', 'link', 'photo', 'added_tag')
+SHEET_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,23}$')
+TAG_RE = re.compile(r'^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]{0,4})$')
 KKS_RE = re.compile(r'^[0-9A-Z/]{3,24}$')
 IMG_RE = re.compile(r'^data:image/(jpeg|jpg|png|webp);base64,(.+)$', re.S)
 
@@ -48,6 +50,9 @@ def get_state(c, entity, key):
         proc, step, kks = json.loads(key)
         r = c.execute('SELECT 1 FROM links WHERE proc=? AND step=? AND kks=?', (proc, step, kks)).fetchone()
         return True if r else None
+    if entity == 'added_tag':
+        r = c.execute('SELECT data FROM added_tags WHERE id=?', (key,)).fetchone()
+        return json.loads(r['data']) if r else None
     if entity == 'photo':
         r = c.execute('SELECT * FROM photos WHERE id=?', (key,)).fetchone()
         return {k: r[k] for k in ('kks', 'file', 'caption', 'created')} if r else None
@@ -66,6 +71,9 @@ def _write_state(store, entity, key, value):
         proc, step, kks = json.loads(key)
         if value is None: store.delete('links', proc=proc, step=step, kks=kks)
         else: store.put('links', {'proc': proc, 'step': step, 'kks': kks})
+    elif entity == 'added_tag':
+        if value is None: store.delete('added_tags', id=key)
+        else: store.put('added_tags', {'id': key, 'data': json.dumps(value)})
     elif entity == 'photo':
         # Photo files are never deleted from disk, so removing and restoring a photo row is lossless.
         if value is None: store.delete('photos', id=key)
@@ -142,10 +150,39 @@ def normalize(kind, p, photos_dir, max_bytes):
         with open(f'{photos_dir}/{pid}.{ext}', 'wb') as f:
             f.write(raw)
         return f'photo:{k}', {'kks': k, 'photo_id': pid, 'file': f'{pid}.{ext}', 'caption': text(p.get('caption'), 500)}
+    if kind == 'tag_add':  # a tag the extractor missed, marked by hand on the drawing
+        return f'tag_add:{p.get("sheet")}', tag_payload(p, text)
+    if kind == 'tag_remove':
+        tid = text(p.get('id'), 64)
+        if not re.fullmatch(r'[0-9a-f]{32}', tid): raise Bad('bad tag id')
+        return f'tag_remove:{tid}', {'id': tid}
     if kind == 'photo_delete':
         pid = text(p.get('photo_id'), 64)
         if not re.fullmatch(r'[0-9a-f]{32}', pid): raise Bad('bad photo id')
         return f'photo_delete:{pid}', {'photo_id': pid}
+
+
+def tag_payload(p, text=None, keep_id=None):
+    """Validate a hand-marked tag: sheet, box on the sheet image (px), code if readable (else it goes to review)."""
+    text = text or (lambda v, n=4000: (v or '').strip()[:n])
+    sheet = p.get('sheet')
+    if not isinstance(sheet, str) or not SHEET_RE.match(sheet): raise Bad('bad sheet')
+    bb = p.get('bbox')
+    try:
+        bb = [round(float(v), 1) for v in bb]
+    except (TypeError, ValueError):
+        raise Bad('bad box')
+    if len(bb) != 4 or not (0 <= bb[0] < bb[2] <= 20000 and 0 <= bb[1] < bb[3] <= 20000) or bb[2] - bb[0] < 4 or bb[3] - bb[1] < 4:
+        raise Bad('bad box')
+    code = re.sub(r'\s', '', text(p.get('kks'), 32)).upper()
+    isa = text(p.get('isa'), 12).upper() or None
+    if isa and not re.fullmatch(r'[A-Z]{1,6}', isa): raise Bad('function letters: 1-6 letters, e.g. PI, TIAC')
+    m = TAG_RE.match(code)
+    if code and not m: raise Bad('That is not a valid KKS (e.g. 11LAB70AA501, suffix allowed)')
+    return {'id': keep_id or p.get('id') or uuid.uuid4().hex, 'sheet': sheet, 'bbox': bb,
+            'kks': m[1] if m else None, 'suffix': m[2] if m else '', 'isa': isa if m else isa,
+            'kind': 'instrument' if isa else 'equipment', 'orient': 'v' if bb[3] - bb[1] > bb[2] - bb[0] else 'h',  # vertical tags: box taller than wide
+            'note': text(p.get('note'), 500)}
 
 
 # ---------- planning / applying ----------
@@ -178,6 +215,10 @@ def plan(c, kind, p, force=False):
                                           'created': int(time.time())})], []
     if kind == 'photo_delete':
         return [('photo', p['photo_id'], None)], []
+    if kind == 'tag_add':
+        return [('added_tag', p['id'], {k: v for k, v in p.items() if k != 'id'})], []
+    if kind == 'tag_remove':
+        return [('added_tag', p['id'], None)], []
     raise Bad('bad kind')
 
 

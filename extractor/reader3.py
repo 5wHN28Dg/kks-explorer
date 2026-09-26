@@ -76,7 +76,9 @@ def _read_single(R,page,k,cell,o,ccw):
     for i,e in enumerate(rows[ys[0]:ys[-1]]==0):
         run=run+1 if e else 0
         if run>best[0]: best=(run,ys[0]+i-run//2)
-    if best[1] is None or best[0]<4: return None
+    if best[1] is None or best[0]<4:  # one row of text only: a code printed without function letters
+        u,cu=R.read(im,mask)
+        return o,'',u,cu
     c=best[1]; pad=lambda a,v: cv2.copyMakeBorder(a,30,30,0,0,cv2.BORDER_CONSTANT,value=v)
     t,ct=R.read(pad(im[:c+1],255),pad(mask[:c+1],0)); u,cu=R.read(pad(im[c:],255),pad(mask[c:],0))
     return o,t,u,min(ct,cu)

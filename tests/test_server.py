@@ -238,6 +238,32 @@ class ServerTest(Base):
         self.assertEqual(m.get('/photos/' + st['photos'][0]['file'])[0], 200)
         self.assertEqual(u1.post('/api/submit', {'kind': 'photo', 'payload': {'kks': '11X', 'dataUrl': 'data:image/png;base64,' + base64.b64encode(b'<svg>').decode()}})[0], 400)
 
+    def test_mark_missing_tag(self):
+        m = self.setup_manager()
+        u = self.invite(m, 'usr')
+        box = {'sheet': 'hp', 'bbox': [100, 200, 180, 230], 'kks': '11LAB90CP5O1', 'isa': 'pi'}
+        self.assertEqual(u.post('/api/submit', {'kind': 'tag_add', 'payload': box})[0], 400)  # O is not a digit: invalid KKS
+        self.assertEqual(u.post('/api/submit', {'kind': 'tag_add', 'payload': {**box, 'kks': '', 'bbox': [5, 5, 6, 6]}})[0], 400)
+        s, r = u.post('/api/submit', {'kind': 'tag_add', 'payload': {**box, 'kks': '11LAB90CP502'}})
+        self.assertEqual(r['status'], 'pending')
+        self.assertEqual(u.get('/api/state')[1]['added_tags'], [])
+        sub = m.get('/api/submissions')[1]['submissions'][0]
+        self.assertEqual(sub['kind'], 'tag_add')
+        # the admin sees it is really CP501 and corrects it while approving
+        self.assertEqual(m.post(f'/api/submissions/{sub["id"]}/approve', {'edit': {'kks': '11LAB90CP501', 'isa': 'PI'}})[0], 200)
+        added = u.get('/api/state')[1]['added_tags']
+        self.assertEqual([(t['sheet'], t['kks'], t['isa'], t['kind']) for t in added], [('hp', '11LAB90CP501', 'PI', 'instrument')])
+        # a mark without a code is allowed (it goes to the review queue in the app)
+        self.assertEqual(m.post('/api/submit', {'kind': 'tag_add', 'payload': {**box, 'kks': ''}})[1]['status'], 'approved')
+        self.assertEqual(len(m.get('/api/state')[1]['added_tags']), 2)
+        # removing an added tag is a normal change: logged and revertible
+        tid = added[0]['id']
+        self.assertEqual(m.post('/api/submit', {'kind': 'tag_remove', 'payload': {'id': tid}})[1]['status'], 'approved')
+        self.assertEqual(len(m.get('/api/state')[1]['added_tags']), 1)
+        rev = next(r['rev'] for r in m.get('/api/revisions')[1]['revisions'] if r['entity'] == 'added_tag' and r['after'] is None)
+        self.assertEqual(m.post(f'/api/revisions/{rev}/revert')[0], 200)
+        self.assertIn(tid, [t['id'] for t in m.get('/api/state')[1]['added_tags']])
+
     # ---------- history / backups ----------
     def test_revert_and_restore(self):
         m = self.setup_manager()

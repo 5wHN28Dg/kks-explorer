@@ -9,6 +9,7 @@
   python3 app.py restore [--seq N] [--out FILE]   rebuild the DB from backups into a NEW file
   python3 app.py check                    audit the deployment (remote access, cookies, backups); exit 1 on FAIL
   python3 app.py setup-importer           create .venv with the P&ID importer's packages (for Manage → Drawings)
+  python3 app.py added-tags               print the tags users marked by hand on the drawings (JSON)
 
 The app shell (index.html, admin.html, *.js) is public. Plant data (/data, /photos, /api) needs a login."""
 import argparse, gzip, json, mimetypes, os, re, socket, ssl, time
@@ -215,6 +216,7 @@ def make_handler(cfg, store, auth):
                        'reviews': {r['tag_id']: json.loads(r['data']) for r in c.execute('SELECT * FROM reviews')},
                        'photos': [dict(r) for r in c.execute('SELECT * FROM photos ORDER BY created')],
                        'links': [dict(r) for r in c.execute('SELECT * FROM links')],
+                       'added_tags': [{'id': r['id'], **json.loads(r['data'])} for r in c.execute('SELECT * FROM added_tags')],
                        'rev': c.execute('SELECT COALESCE(MAX(rev),0) FROM revisions').fetchone()[0],
                        'mine': [self.sub_out(r, me, c) for r in c.execute(
                            "SELECT * FROM submissions WHERE user_id=? AND status IN ('pending','conflict') ORDER BY id",
@@ -426,6 +428,11 @@ def make_handler(cfg, store, auth):
                 if action == 'reject':
                     ch.decide(store, c, sub, me['id'], 'rejected', (d.get('note') or '')[:500])
                     return self.send({'ok': True})
+                if sub['kind'] == 'tag_add' and isinstance(d.get('edit'), dict):  # admin corrects the code while approving
+                    old = json.loads(sub['payload'])
+                    fixed = ch.tag_payload({**old, **{k: d['edit'].get(k) for k in ('kks', 'isa')}}, keep_id=old['id'])
+                    store.put('submissions', {**dict(sub), 'payload': json.dumps(fixed)})
+                    sub = c.execute('SELECT * FROM submissions WHERE id=?', (sid,)).fetchone()
                 revs = ch.apply(store, c, sub, me['id'], force=bool(d.get('force')))
                 ch.decide(store, c, sub, me['id'], 'approved', 'forced over conflict' if d.get('force') else '')
                 rejected = 0
@@ -550,7 +557,8 @@ def cli_log(store, c, uid, note):
 def main(argv=None):
     ap = argparse.ArgumentParser(description='KKS Explorer server')
     ap.add_argument('cmd', nargs='?', default='serve',
-                    choices=['serve', 'users', 'reset-manager', 'reset-password', 'backup', 'restore', 'check', 'setup-importer'])
+                    choices=['serve', 'users', 'reset-manager', 'reset-password', 'backup', 'restore', 'check', 'setup-importer',
+                             'added-tags'])
     ap.add_argument('--user')
     ap.add_argument('--seq', type=int)
     ap.add_argument('--out')
@@ -579,6 +587,12 @@ def main(argv=None):
             print(f'{level:<5} {msg}')
         if any(level == 'FAIL' for level, _ in findings):
             raise SystemExit(1)
+        return
+    if a.cmd == 'added-tags':  # tags marked by hand in the app: where the extractor still fails
+        c = store.conn()
+        rows = [{'id': r['id'], **json.loads(r['data'])} for r in c.execute('SELECT * FROM added_tags')]
+        c.close()
+        print(json.dumps(rows, indent=1))
         return
     if a.cmd == 'backup':
         print(store.snapshot())

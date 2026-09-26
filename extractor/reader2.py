@@ -3,7 +3,13 @@ from .fontlib import FontLib, interpret, split_chars
 DPI_DET=200; DPI_READ=600
 def detect(pdf):
     page=pymupdf.open(pdf)[0]
-    pix=page.get_pixmap(dpi=DPI_DET,colorspace=pymupdf.csGRAY)
+    # Hairlines (0.12 pt on the CBD sheet) render as broken faint grey at 200 dpi, so box borders don't close and the
+    # cell is never found. Draw every line at least 0.5 pt wide for detection only, like a PDF viewer does (2026-09-25).
+    pymupdf.TOOLS.set_graphics_min_line_width(0.5)
+    try:
+        pix=page.get_pixmap(dpi=DPI_DET,colorspace=pymupdf.csGRAY)
+    finally:
+        pymupdf.TOOLS.set_graphics_min_line_width(0)
     img=np.frombuffer(pix.samples,np.uint8).reshape(pix.height,pix.width)
     k=DPI_DET/72
     bw=(img<215).astype(np.uint8)*255
@@ -29,8 +35,10 @@ def pair(cells):
             if i==j or j in used: continue
             # halves stacked edge to edge; one may be narrower (text touching both ends of a bubble half cuts into its
             # traced hole), so require overlap rather than equal width (2026-09-25)
-            if 0<=b[1]-(a[1]+a[3])<8 and _fits(a[0],a[2],b[0],b[2]): pairs.append(('h',(a,ca),(b,cb))); used|={i,j}; break
-            if 0<=b[0]-(a[0]+a[2])<8 and _fits(a[1],a[3],b[1],b[3]): pairs.append(('v',(a,ca),(b,cb))); used|={i,j}; break
+            # gap may be slightly negative: with very thin lines (0.12 pt on the CBD sheet) the two halves' holes
+            # touch or overlap by a pixel across the divider (2026-09-25)
+            if -3<=b[1]-(a[1]+a[3])<8 and _fits(a[0],a[2],b[0],b[2]): pairs.append(('h',(a,ca),(b,cb))); used|={i,j}; break
+            if -3<=b[0]-(a[0]+a[2])<8 and _fits(a[1],a[3],b[1],b[3]): pairs.append(('v',(a,ca),(b,cb))); used|={i,j}; break
     return pairs
 def cell_image(page,k,cell,orient):
     (x,y,w,h),poly=cell
