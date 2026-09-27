@@ -290,7 +290,24 @@ K.importBundle / K.download use the bridge when `window.KKSNative` exists; no se
 (APK 29.5 MB). Verified on the Pixel_9_Pro_XL AVD (Android 16, headless, `-gpu swiftshader_indirect`), driven over
 the WebView's DevTools socket with raw CDP (Playwright's connect_over_cdp can't attach to Android WebViews): join via
 the Python server at 10.0.2.2, data incl. non-ASCII, proposal → server Approvals → approval back, viewer with 11
-sheets / 207 hotspots, restart keeps everything. Not yet: camera capture (file picker only), background sync, NSD.
+sheets / 207 hotspots, restart keeps everything.
+M3c done 2026-09-27: Compose (BOM 2024.12.01, material3 1.3.1 + adaptive-navigation-suite, activity-compose 1.9.3,
+core-ktx 1.13.1; `android.useAndroidX=true`; debug APK 50 MB, unshrunk). `App.kt` (node/api/sync singleton),
+`WebHost.kt` (WebView factory: origin serving + KKSNative bridge; `onNavigate` hook), `MainActivity.kt`
+(ComponentActivity, edge-to-edge; `pidWeb` kept across tabs, `manageWeb` for admin.html#section; `ShellState`
+refreshed from LocalApi on node changes/bridge POSTs; camera-or-gallery chooser via FileProvider `kks.explorer.files`
+(cache/camera), no CAMERA permission needed; CREATE_DOCUMENT saves), `Shell.kt` (dark brand scheme; icons as Material
+path strings, not the extended icon lib; not joined → full-screen setup WebView; tabs P&ID / Learning (placeholder,
+M4) / Account (name, Sync now + by address, Manage rows → admin.html sections full screen with native top bar, This
+phone). Back: Manage → closes; other tab → P&ID; else asks the page `K.back()` (setup form → choices; index.html closes
+lightbox/panel/drawer) and leaves only if the page had nothing to close (WebView.canGoBack doesn't see pushState steps).
+Found on the emulator and fixed: AndroidView gives a WebView wrap_content → page 0 px tall, sheet never drawn
+(→ MATCH_PARENT); index.html refits once the viewer gets a real size if it was fitted at 0 (ResizeObserver, never
+resets a user's view); the app hides admin.html's own header and the Drawings tab (`.app` class, cfg.app). Test
+lessons: the emulator's "System UI isn't responding" dialog eats key events (restart it); pick DevTools pages by URL
+(two WebViews); file pickers need a real tap (`adb input tap` at the element's rect × dpr + WebView offset), a JS
+.click() is ignored. Verified on the Pixel_9_Pro_XL AVD: 16 checks (setup, Back, join, tabs, Account, Sync now,
+Approvals with a synced proposal, panel Back, camera chooser). Not yet: NSD discovery, background sync, release build.
 
 ## Backlog (rough priority)
 

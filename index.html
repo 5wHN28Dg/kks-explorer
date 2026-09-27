@@ -309,6 +309,9 @@ function followSharp(){
 }
 addEventListener('resize',()=>{ clearTimeout(sharp.timer); sharp.timer=setTimeout(drawSharp,150) });
 function fit(){ const v=$('#viewer').getBoundingClientRect(); view.s=Math.min(v.width/cur.w,v.height/cur.h)*0.98; view.x=(v.width-cur.w*view.s)/2; view.y=(v.height-cur.h*view.s)/2; apply() }
+// A page loaded while hidden (a background tab; the Android app moving its viewer between layouts) measures the viewer
+// as 0 px and fits the sheet at scale 0. Fit again once it has a real size; a view the person set is never reset.
+new ResizeObserver(()=>{ const v=$('#viewer').getBoundingClientRect(); if(cur&&v.width&&v.height&&!(view.s>0)) fit() }).observe($('#viewer'));
 // max zoom 16x when the sheet has a vector file (it stays sharp), 4x otherwise
 function zoomAt(f,cx,cy){ const v=$('#viewer').getBoundingClientRect(); cx??=v.width/2; cy??=v.height/2;
   const ns=Math.max(0.05,Math.min(cur.vector?16:4,view.s*f)); view.x=cx-(cx-view.x)*ns/view.s; view.y=cy-(cy-view.y)*ns/view.s; view.s=ns; apply() }
@@ -438,6 +441,14 @@ function select(t){
 }
 function cfRow(k,v){return `<div class="cf"><input placeholder="Field" value="${esc(k)}"><input placeholder="Value" value="${esc(v)}"><button class="x" onclick="this.parentNode.remove()">×</button></div>`}
 function closePanel(){ $('#panel').classList.remove('open'); selId=null; selTag=null; drawTags() }
+// The phone's Back button (Android app): close what is open first, one thing at a time; false = nothing left to close.
+K.back = () => {
+  if ($('#lightbox').style.display === 'flex') { $('#lightbox').style.display = 'none'; return true }
+  if ($('#panel').classList.contains('open')) { closePanel(); return true }
+  const d = document.querySelector('.drawer.open');
+  if (d) { d.classList.remove('open'); if (d.id === 'procDrawer') { activeProc = null; drawTags() } return true }
+  return false;
+};
 function cropStyle(t){ const b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
   return `background-image:url(${SHEETS.find(s=>s.id===t.sheet).file});background-size:${SHEETS.find(s=>s.id===t.sheet).w*sc}px auto;background-position:${-(b[0]-10)*sc}px ${-(b[1]-10)*sc}px;width:${Math.min(360,w*sc)}px` }
 async function saveEq(k){

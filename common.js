@@ -102,6 +102,7 @@ K.start = async () => {
   const cfg = K.cfg = await K.api('/api/config').catch(() => null);
   if (cfg) document.title = cfg.plant_name + ' — KKS Explorer';
   if (cfg?.mode === 'peer') document.documentElement.classList.add('peer');
+  if (cfg?.app) document.documentElement.classList.add('app');   // inside the Android app: it has its own header and back
   if (cfg?.mode === 'peer' && !cfg.node.joined) return new Promise(() => K.joinScreen(cfg));
   if (h.get('setup')) return new Promise(() => K.form('Create the manager account', 'One-time link from the server console. The manager is the top account: it promotes admins and can hand the role over later.',
     [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position at the company (optional)', ac: 'organization-title', optional: true},
@@ -167,7 +168,8 @@ K.joinScreen = (cfg, note = '') => {
   const back = n => K.joinScreen(cfg, n);
   const choices = () => { if (history.state?.join) history.back(); else back() };   // ← Back = the browser's Back
   onpopstate = () => { const n = K.joinNote || ''; K.joinNote = ''; back(n) };
-  const sub = (...a) => { history.pushState({join: 1}, ''); K.form(...a, choices) };
+  const sub = (...a) => { history.pushState({join: 1}, ''); K.form(...a, choices); K.back = () => { choices(); return true } };
+  K.back = null;   // on the choices themselves, the phone's Back leaves the app
   const file = o.querySelector('input[type=file]');
   file.onchange = async () => {
     try { const r = await K.importBundle(file.files[0]); if (r.joined) return location.reload();

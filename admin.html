@@ -49,6 +49,7 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:100}
 #lightbox img{max-width:96%;max-height:92%}
 .peer .server-only{display:none}
+.app header{display:none}
 </style>
 </head>
 <body>
@@ -73,7 +74,7 @@ const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>{$('#lbimg').src=src;$('#lightbox').style.display='flex'};
 async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
 
-const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',isAdmin],['history','History',isAdmin],['account','Account',()=>true]];
+const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isAdmin()&&!K.cfg?.app],['history','History',isAdmin],['account','Account',()=>true]];
 async function init(){
   ME=await K.start(); K.toast=toast;
   $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`;
