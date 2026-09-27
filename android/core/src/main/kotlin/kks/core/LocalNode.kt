@@ -28,6 +28,9 @@ interface NodeStore {
     fun notes(): Map<String, String>
     fun putNote(eid: String, note: String)
     fun <T> tx(block: () -> T): T
+    /** Person secrets (§13, M4) as JSON {person: [hex, …]}; the phone's store keeps them encrypted. */
+    fun personSecrets(): String? = meta("person_secrets")
+    fun setPersonSecrets(json: String) = setMeta("person_secrets", json)
 }
 
 class MemStore : NodeStore {
@@ -109,6 +112,16 @@ class LocalNode private constructor(val store: NodeStore, key: SigningKey) : Mem
             store.putSub(mapOf("id" to null, "client_id" to null, "entry" to eid, "person" to run.authors[eid],
                                "kind" to e["type"], "created" to ((e["hlc"] as List<*>)[0] as Long) / 1000))
         }
+    }
+
+    /** §17, the listener's side: only with another device of this node's owner. */
+    override fun secretsOffer(remote: String, msg: Map<String, Any?>): Map<String, Any?> {
+        val none = mapOf("t" to "secrets", "secrets" to emptyList<String>())
+        val o = owner() ?: return none
+        val same = synchronized(this) { run.devices[remote]?.let { it["person"] == o.person && remote !in run.cuts } == true }
+        if (!same || msg["person"] != o.person) return none
+        Progress.addSecrets(this, o.person, Sync.decodeSecrets(msg["secrets"]))
+        return mapOf("t" to "secrets", "secrets" to Progress.secretsOf(this, o.person).map { B64u.encode(it) })
     }
 
     fun owner(): Owner? {

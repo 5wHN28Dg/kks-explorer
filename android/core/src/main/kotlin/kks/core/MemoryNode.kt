@@ -91,8 +91,11 @@ open class MemoryNode(protected val key: SigningKey, anchor: String? = null) : N
 
     /** Join by invite (PROTOCOL.md §16): the invites this device shows; set by the API. */
     @Volatile var invites: Invites? = null
-    override fun joinOffer(remote: String, msg: Map<String, Any?>): Map<String, Any?> =
-        invites?.offer(remote, msg) ?: mapOf("t" to "join_ack", "state" to "unknown")
+    override fun joinOffer(remote: String, msg: Map<String, Any?>): Map<String, Any?> {
+        val ack = invites?.offer(remote, msg) ?: return mapOf("t" to "join_ack", "state" to "unknown")
+        // accepted: the device then syncs, adopting this root (it trusts this device: §16)
+        return if (ack["state"] == "accepted") ack + mapOf("root" to anchor, "plant" to synchronized(this) { run.settings["plant"] }) else ack
+    }
 
     @Synchronized
     override fun mayRead(peer: String): Boolean {

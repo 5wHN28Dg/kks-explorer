@@ -15,8 +15,8 @@ android {
         applicationId = "kks.explorer"
         minSdk = 29                       // Android 10 (decided 2026-09-26)
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.6.0-m3e"
+        versionCode = 3
+        versionName = "0.7.0-m4"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }   // phones (64/32-bit ARM), the emulator
         externalNativeBuild {
             cmake {
@@ -99,7 +99,7 @@ tasks.configureEach { if (name.startsWith("configureCMake") || name.startsWith("
 // The web viewer and the plant data come from the repository, so the app always ships the current ones.
 val copyWeb by tasks.registering(Sync::class) {
     val repo = rootDir.parentFile
-    from(repo) { include("index.html", "admin.html", "common.js", "qrcodegen.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png") }
+    from(repo) { include("index.html", "admin.html", "common.js", "qrcodegen.js", "course-bridge.js", "vendor/fonts/*.css", "vendor/fonts/*.woff2", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png") }
     from(File(repo, "data")) { into("data") }
     into(layout.buildDirectory.dir("web"))
 }

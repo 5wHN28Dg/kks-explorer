@@ -5,15 +5,15 @@
 import os, sys
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, '..'))
-shell = ['index.html', 'admin.html', 'common.js', 'qrcodegen.js', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png']
-datas = [(os.path.join(ROOT, f), '.') for f in shell] + [(os.path.join(ROOT, 'data'), 'data')]
+shell = ['index.html', 'admin.html', 'common.js', 'qrcodegen.js', 'course-bridge.js', 'learning.html', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png']
+datas = [(os.path.join(ROOT, f), '.') for f in shell] + [(os.path.join(ROOT, 'data'), 'data'), (os.path.join(ROOT, 'vendor'), 'vendor')]
 
 a = Analysis(
     [os.path.join(ROOT, 'desktop.py')],
     pathex=[ROOT],
     datas=datas,
     hiddenimports=['app', 'server.engine', 'server.migrate_v1', 'server.syncsvc', 'server.node', 'server.invites',
-                   'server.photos', 'zeroconf', 'pillow_jxl', 'PIL.JpegImagePlugin', 'PIL.PngImagePlugin', 'PIL.WebPImagePlugin'],
+                   'server.photos', 'server.progress', 'zeroconf', 'pillow_jxl', 'PIL.JpegImagePlugin', 'PIL.PngImagePlugin', 'PIL.WebPImagePlugin'],
     excludes=['fitz', 'pymupdf', 'cv2', 'numpy', 'extractor', 'tests', 'pytest', 'PIL.ImageQt', 'PIL.ImageTk'],
     noarchive=False,
 )

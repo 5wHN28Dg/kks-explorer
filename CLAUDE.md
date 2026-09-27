@@ -11,11 +11,12 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 
 - `python3 app.py` → http://localhost:8420 (phone: printed LAN URL, same Wi-Fi). Stdlib + `cryptography` (since M1,
   2026-09-26; system python here has it, else `.venv/bin/python app.py`). Photos as JPEG XL need Pillow +
-  pillow-jxl-plugin (optional; without them photos stay as uploaded, `app.py check` warns). First run prints a one-time setup link to
+  pillow-jxl-plugin (optional; without them photos stay as uploaded, `app.py check` warns). `vendor/` = third-party
+  browser code served publicly (jxl decoder, jsQR), each with README + SHA256SUMS. First run prints a one-time setup link to
   create the manager (also creates `root.key`). CLI: `users`, `reset-manager --user X`, `reset-password --user X`,
   `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`.
   Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `.venv/bin/python -m unittest discover -s tests` (64: server end-to-end over HTTP, protocol vectors,
+- Tests: `.venv/bin/python -m unittest discover -s tests` (65: server end-to-end over HTTP, protocol vectors,
   migration, sync, peer mode, join by invite). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
   `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
   `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
@@ -214,10 +215,11 @@ always-on peer); same-Wi-Fi + file/QR sync first, internet P2P later (M5); Andro
 existing web P&ID viewer in a WebView; Windows/Linux = this Python app packaged (double-click, opens browser; the
 stdlib-only rule ends for the package: cryptography + zeroconf); one person may have several devices (device keys +
 certificates). Build order M0 protocol spec + Python reference + test vectors → M1 server on the log → M2 desktop
-package + LAN/file sync → M3 Android → M4 Learning (3 HTML courses, not yet in the repo) → M5 internet.
+package + LAN/file sync → M3 Android → M4 Learning (3 HTML courses, not yet in the repo) → M5 internet → M6 fully
+native desktop in Nim, no browser (added 2026-09-27; details decided when we get there).
 Answered 2026-09-26: plant Wi-Fi allows device-to-device traffic; courses in `source/courses/` (3 single-file HTML,
 localStorage progress, Google Fonts to vendor); quiz progress private (encrypted to the person's devices); photos
-on-demand or all, per device, stored as JPEG XL with JPEG fallback for browsers without JXL; manager key: no second
+on-demand or all, per device, stored as JPEG XL (no JPEG fallback since 2026-09-27: viewers without JXL decode it with libjxl); manager key: no second
 holder (self-held backup recommended). M0 done: `docs/PROTOCOL.md` §1–7 `peer/proto.py` + `peer/vectors/v1.json` (M0a); §8–14 `peer/replay.py` +
 `peer/vectors/v2-replay.json` (M0b: identity, authority, revocation by priority, approvals, merge, private entries;
 generator `peer/make_replay_vectors.py`, 3 scenarios). Both vector files frozen; tests in `tests/test_protocol.py`.
@@ -334,16 +336,30 @@ Before M3e (2026-09-27, asked by the user), all three verified on the emulator u
   username needs OK), then syncs adopting the root. Python `server/invites.py` + `node.InviteJoin`, Kotlin
   `Invites.kt`; invites in memory only. Bundles don't fit a QR: LAN sync replaces the file there; files stay.
   Verified: Python test, Kotlin tests (phone↔phone, phone↔real app.py), emulator phone joined the Python server
-  over its LAN IP; the QR rendered by admin.html decodes (OpenCV) to the invite. NOT verified: the camera actually
-  decoding a QR (the emulator's virtual scene camera could not be aimed at the poster) — try on a real phone.
-- Photos as JPEG XL at distance 1.0 (`server/photos.py`, `android/app/.../Jxl.kt` + `src/main/cpp` JNI over libjxl
-  v0.12.0 built from pinned, SHA-256-checked sources by the Gradle task `fetchLibjxl`; NDK 27.2.12479018, CMake
+  over its LAN IP; the QR rendered by admin.html decodes (OpenCV) to the invite. NOT verified: the phone camera
+  actually decoding a QR (the emulator's virtual scene camera could not be aimed at the poster) — try on a real phone.
+  After M3e (2026-09-27): computers scan with the webcam (common.js `K.scanQr`: getUserMedia + vendored jsQR 1.4.0,
+  Apache-2.0, `vendor/jsqr`; verified with Chromium's fake camera playing the QR). No camera and no code: "Ask an
+  admin on this Wi-Fi": mDNS TXT now carries `plant`, `label`, `adm` (both announcers; re-announced when they
+  change); `/api/node/nearby` lists admins' devices; the request goes with `token: null` into the answering device's
+  lobby (`Invites.lobby`, 50 max, 15 min), admins see it in Devices → "Waiting to join" (`/api/join-requests`; the
+  phone badges the Account tab) with a 6-digit code (`node.join_code` = `joinCode`, same vectors in both tests);
+  `accepted` carries `root`; the joiner syncs only after its person confirms the code (`confirm`). Verified: Python +
+  Kotlin tests, Playwright with 3 real processes and mDNS (server lobby, codes equal, 401 until confirmed, joined).
+  Bug found on the emulator and fixed: PhoneSync.announce (PhoneSync lock) read the node (node lock) while the API
+  (node lock) asked for snapshot() (PhoneSync lock) → deadlock; announce now reads the node before locking.
+- Photos as JPEG XL, distance 1.9 + effort 9 (the user's choice 2026-09-27, after d1.0 turned out no smaller than the
+  old JPEG q85): `server/photos.py` (pillow-jxl quality 80 = d1.9), `android/app/.../Jxl.kt` + `src/main/cpp` JNI over
+  libjxl v0.12.0 built from pinned, SHA-256-checked sources (Gradle task `fetchLibjxl`; NDK 27.2.12479018, CMake
   3.22.1). The API converts: pages send lossless PNG when local (app, peer laptop), JPEG q0.95 to a server, q0.85 if
-  it can't encode (`/api/config.photo_upload`). Browsers get a cached JPEG (`cache_dir`/photo-jpeg, `Vary: Accept`),
-  the WebView too (cacheDir). Measured (SSIMULACRA2, 8 photos at 1600 px): JPEG q85 1212 KB/79.0, JXL d1.0
-  1187 KB/86.6, JXL q80 (d≈1.9) 680 KB/78.9 → d1.0 gives better quality at the old size, NOT smaller files; the
-  user asked for visually lossless, so d1.0 stays until they decide. Verified: release APK on the emulator encoded a
-  gallery photo to JXL (63 KB), synced to the server, served as JPEG/JXL by Accept; desktop self-test checks it too.
+  it can't encode (`/api/config.photo_upload`). Nothing is ever converted to JPEG: the server sends the JXL as it is
+  (immutable, by hash); a browser without JXL decodes it in common.js (`K.jxl`: MutationObserver on `img[src$=.jxl]`,
+  libjxl in WebAssembly = vendored `@jsquash/jxl` 1.3.0 decoder, Apache-2.0, `vendor/jxl`, 850 KB wasm loaded only
+  then) into a BMP blob; the Android WebView gets `/photos/*.jxl` as a BMP from the app's libjxl (`Jxl.toBmp`).
+  Measured (SSIMULACRA2, 8 photos at 1600 px): JPEG q85 1212 KB/79.0, JXL d1.0 1187 KB/86.6, d1.9 680 KB/78.9; effort
+  9 vs 7: −8% size, ~10× time (4.0 s/photo on a 16-thread desktop; 2.7 s on the x86 emulator; real ARM phones NOT
+  measured, expect more; the page shows "Compressing…"). Verified: Chromium (no native JXL) shows a server JXL at
+  1600×900 through the WASM path; the app loaded its own JXL as a 1600×900 BMP; desktop self-test checks JXL.
 M3e done 2026-09-27: release build with R8 + resource shrinking (`proguard-rules.pro`: JS bridge, JNI, worker),
 signed with the maintainer's own key: `~/.config/kks-explorer/signing/` (kks-release.jks, PKCS12, alias kks, RSA 4096,
 to 2056, + keystore.properties; or `$KKS_SIGNING`), never in the repo or CI — docs/ANDROID_RELEASE.md. Release APK
@@ -351,6 +367,30 @@ to 2056, + keystore.properties; or `$KKS_SIGNING`), never in the repo or CI — 
 release APK as artifacts, libjxl downloads cached. Verified: apksigner (v2, cert SHA-256 1a3a2b53…), release APK
 joined the server, showed the viewer, photo → JXL. NOT verified: the Android workflow itself (needs a GitHub run).
 Scanner orientation follows the phone (manifest override of CaptureActivity).
+
+## M4 Learning (done 2026-09-27)
+
+`tools/build_courses.py [--fonts]`: source/courses/*.html (gitignored) → `data/courses/` (same file names: the
+courses link to each other) with the Google Fonts links → `/vendor/fonts/courses.css` (Latin + Latin Extended woff2,
+OFL) and `<script src="/course-bridge.js" data-course="ppt|fnd|hrsg">` before the course's script; `courses.json`
+(id = localStorage prefix, title, file, question ids from the Q/O/S calls: 88/96/83). Courses store only
+`last`, `skip`, `solved`, `finalBest` (JSON strings) through one `store` helper. `course-bridge.js`: synchronous fill
+(XHR, or `KKSNative.progress` in the app) then wraps `Storage.prototype.setItem` for the prefix, debounced POST,
+pending list in localStorage until saved; no log (server mode: 404) → plain localStorage.
+Progress = `private` entries (PROTOCOL.md §13) `course_progress` {course, items: [[key, string]]} (pairs: canonical
+keys must be `[a-z_]…`, `finalBest` isn't). `server/progress.py` / `Progress.kt`: person secrets (Python table
+`person_secrets`; phone: `NodeStore.personSecrets`, AES-GCM under the Keystore), write with the lowest-SHA secret,
+read trying all, merge objects → union, `…Best` → max, else later. Secrets swap (§17) after a sync with another device
+of the owner (`syncsvc._swap_secrets`, `Progress.swapAfterSync`), responder checks same person. Server mode: no
+secrets, `/api/progress` 404. UI: learning.html (+ "Learning" in index.html, hidden in the app); Android native
+Learning tab (cards with answered/total from `solved` ∩ questions) + course WebView with top bar (Back walks the
+course's own links first). sw.js: courses network-first, /vendor/ network-first into the shell cache.
+Verified: Python test (two laptops + server: server holds the entries, no secret, reads nothing; after the direct swap
+both see the merge), Kotlin test with real app.py server + Python peer laptop + Kotlin phone (swap both ways, merge),
+Chromium (list, vendored fonts loaded, zero requests off localhost, progress back from the log after clearing
+localStorage), emulator (Learning tab, course renders with the fonts, a real tapped answer → "1 of 83" → private
+entry on the server, 0 secrets there), desktop self-test (progress round trip), release APK builds (0.7.0-m4).
+Note: `data/courses/` holds the built courses and is committed with the rest of data/ (source/ is not).
 
 ## Backlog (rough priority)
 

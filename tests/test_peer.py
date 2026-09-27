@@ -44,6 +44,11 @@ class Site:
         self.httpd.shutdown(); self.httpd.server_close(); self.svc.srv.close()
 
 
+def S_peer(site):
+    from peer import proto
+    return proto.peer_id(site.E.identity())
+
+
 class PeerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -229,6 +234,70 @@ class PeerTest(unittest.TestCase):
         st = until(lambda: (lambda x: x if x['state'] == 'failed' else None)(c2.get('/api/node/join-invite')[1]), 'not refused')
         self.assertIn('refused', st['error'])
         self.assertIsNone(lap2.E.owner())
+
+    def test_join_nearby_without_invite(self):
+        """§16 without a token: a laptop asks an admin's device found on the Wi-Fi; both screens show the same code;
+        the admin accepts, the person confirms the code, the laptop syncs."""
+        import time
+        from server import node as node_mod
+        node_mod.InviteJoin.POLL = 0.1
+        srv, m, u = self.server_with_users()
+        lap = self.site('laptop', 'peer')
+        c = lap.client()
+        self.assertEqual(c.get('/api/node/nearby')[1]['devices'], [])            # (discovery is off in tests)
+        server_peer = S_peer(srv)
+        near = {'peer': server_peer, 'host': '127.0.0.1', 'port': srv.cfg['sync_port'], 'plant': 'KKS Explorer'}
+        s, r = c.post('/api/node/join-invite', {'nearby': near, 'username': 'lina', 'full_name': 'Lina Person'})
+        self.assertEqual(s, 200)
+
+        def until(fn, what):
+            for _ in range(100):
+                v = fn()
+                if v:
+                    return v
+                time.sleep(0.05)
+            self.fail(what)
+        reqs = until(lambda: m.get('/api/join-requests')[1]['requests'], 'no request in the lobby')
+        mine = c.get('/api/node/join-invite')[1]
+        self.assertEqual((reqs[0]['request']['username'], reqs[0]['code']), ('lina', mine['code']))
+        self.assertEqual(len(mine['code']), 6)
+        self.assertEqual(u.get('/api/join-requests')[0], 403)                          # admins only
+        self.assertEqual(m.post(f'/api/join-requests/{reqs[0]["device"]}', {'action': 'accept'})[0], 200)
+        until(lambda: c.get('/api/node/join-invite')[1]['state'] == 'confirm', 'not waiting for the code OK')
+        time.sleep(0.3)
+        self.assertIsNone(lap.E.owner())                                               # nothing trusted before the OK
+        self.assertEqual(c.post('/api/node/join-invite', {'confirm': True})[0], 200)
+        until(lambda: c.get('/api/node/join-invite')[1]['state'] == 'joined', 'did not join')
+        self.assertEqual(c.get('/api/me')[1]['user']['username'], 'lina')
+        self.assertEqual(m.get('/api/join-requests')[1]['requests'], [])
+
+    def test_course_progress_is_private_and_follows_the_person(self):
+        """M4: progress = private entries; the server relays them but can't read them; two laptops of one person swap
+        their person secrets directly (§17) and then both see the merged progress."""
+        from server import progress
+        srv, m, u = self.server_with_users()
+        a, b = self.site('lapA', 'peer'), self.site('lapB', 'peer')
+        ca, cb = a.client(), b.client()
+        for c in (ca, cb):
+            self.assertEqual(c.post('/api/node/join-server', {'url': srv.url, 'username': 'usr', 'password': 'usr password!'})[0], 200)
+        self.assertEqual(u.get('/api/progress')[0], 404)                                  # a plant server keeps none
+        self.assertEqual(ca.post('/api/progress', {'course': 'ppt', 'data': {'solved': '{"q1":true}', 'finalBest': '7'}})[0], 200)
+        self.assertEqual(ca.post('/api/progress', {'course': 'PPT!', 'data': {'x': '1'}})[0], 400)
+        self.assertEqual(ca.get('/api/progress?course=ppt')[1]['data'], {'solved': '{"q1":true}', 'finalBest': '7'})
+        a.svc.sync_one('127.0.0.1', srv.cfg['sync_port']); b.svc.sync_one('127.0.0.1', srv.cfg['sync_port'])
+        self.assertEqual(cb.get('/api/progress')[1]['courses'], {})                        # has the entry, not the key
+        person = b.E.owner()['person']
+        self.assertTrue(srv.E.run.private.get(person))                                    # the server holds it...
+        self.assertEqual(progress.load(srv.E, person), {})                                # ...and can't read it
+        self.assertEqual(progress.secrets_of(srv.E, person), [])
+        self.assertEqual(cb.post('/api/progress', {'course': 'ppt', 'data': {'solved': '{"q2":true}', 'finalBest': '5.5'}})[0], 200)
+        b.svc.sync_one('127.0.0.1', a.cfg['sync_port'])                                   # same person: secrets swapped
+        a.svc.sync_one('127.0.0.1', b.cfg['sync_port'])
+        for c in (ca, cb):
+            got = c.get('/api/progress?course=ppt')[1]['data']
+            self.assertEqual((json.loads(got['solved']), got['finalBest']), ({'q1': True, 'q2': True}, '7'))
+        self.assertEqual(len(progress.secrets_of(a.E, person)), 2)
+        self.assertEqual(progress.secrets_of(srv.E, person), [])                          # the server never got one
 
     def test_devices_revoke_rules(self):
         srv, m, u = self.server_with_users()

@@ -1,12 +1,12 @@
-"""Photos are kept as JPEG XL at Butteraugli distance 1.0 (libjxl's "visually lossless", pillow-jxl's quality 90).
+"""Photos are kept as JPEG XL at Butteraugli distance 1.9, effort 9 (decided by the user 2026-09-27).
 Measured 2026-09-27 on 8 photos at 1600 px (SSIMULACRA2, higher = better): the JPEG q85 the pages made before:
-1212 KB, 79.0; JPEG q92: 1838 KB, 84.8; JXL d1.0: 1187 KB, 86.6; JXL quality 80 (d≈1.9): 680 KB, 78.9. So d1.0 costs
-what JPEG q85 did at clearly better quality; saving space at the old quality would mean quality 80. Same setting in
-android/app/.../Jxl.kt. Browsers without JXL support get a JPEG made from it (cached).
+1212 KB, 79.0; JXL d1.0: 1187 KB, 86.6; JXL d1.9: 680 KB, 78.9 → same quality as before at ~56% of the size.
+Effort 9 vs 7 (another 8 photos): 805 vs 877 KB, 4.0 vs 0.43 s per photo on a 16-thread desktop. Same settings in
+android/app/.../Jxl.kt. Nothing is converted back to JPEG: pages without JXL support decode it themselves (common.js,
+libjxl compiled to WebAssembly; the Android app decodes natively).
 
-Needs Pillow + pillow-jxl-plugin (libjxl). Without them photos are stored as uploaded and JXL photos that came from
-other devices are sent as they are (only browsers with JXL support show them); `app.py check` warns."""
-import io, os, threading
+Needs Pillow + pillow-jxl-plugin (libjxl). Without them photos are stored as uploaded; `app.py check` warns."""
+import io
 
 try:
     from PIL import Image, ImageOps
@@ -15,11 +15,9 @@ try:
 except ImportError:
     AVAILABLE = False
 
-DISTANCE_QUALITY = 90      # pillow-jxl-plugin's quality 90 = libjxl distance 1.0 (visually lossless)
-EFFORT = 7                 # libjxl's default
-JPEG_QUALITY = 90          # the fallback for browsers without JXL
+QUALITY = 80               # pillow-jxl-plugin maps quality q to distance 0.1 + (100 - q) * 0.09: 80 → 1.9
+EFFORT = 9
 MAX_SIDE = 4096            # clients send ≤ 1600 px; anything bigger is scaled down here
-_lock = threading.Lock()
 
 
 def magic(raw):
@@ -44,26 +42,5 @@ def to_jxl(raw, ext):
     if max(im.size) > MAX_SIDE:
         im.thumbnail((MAX_SIDE, MAX_SIDE), Image.LANCZOS)
     out = io.BytesIO()
-    im.save(out, format='JXL', quality=DISTANCE_QUALITY, effort=EFFORT, exif=b'', lossless_jpeg=False)
+    im.save(out, format='JXL', quality=QUALITY, effort=EFFORT, exif=b'', lossless_jpeg=False)
     return out.getvalue(), 'jxl'
-
-
-def jpeg_fallback(path, cache_dir):
-    """A JPEG of the JXL photo at `path` (made once, kept in cache_dir). -> its path, or None if it can't be made."""
-    if not AVAILABLE:
-        return None
-    name = os.path.splitext(os.path.basename(path))[0] + '.jpg'
-    out = os.path.join(cache_dir, name)
-    if os.path.isfile(out):
-        return out
-    with _lock:   # one conversion at a time: a page full of photos shouldn't start dozens at once
-        if os.path.isfile(out):
-            return out
-        try:
-            im = Image.open(path).convert('RGB')
-        except Exception:
-            return None
-        os.makedirs(cache_dir, exist_ok=True)
-        im.save(out + '.part', format='JPEG', quality=JPEG_QUALITY, optimize=True)
-        os.replace(out + '.part', out)
-    return out

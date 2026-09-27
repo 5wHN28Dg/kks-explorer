@@ -55,6 +55,12 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         if (method == "GET") when (path) {
             "/api/config" -> return ok(configOut())
             "/api/node/join-invite" -> return ok(joining?.state() ?: mapOf("state" to null))
+            "/api/node/nearby" -> if (node.owner() == null) {      // admins' devices on this Wi-Fi a new device may ask (§16)
+                val snap = sync.snapshot()
+                val found = (snap["found"] as? List<Map<String, Any?>>).orEmpty().filter { it["adm"] == true && it["peer"] != null }
+                return ok(mapOf("devices" to found.map { f -> listOf("peer", "host", "port", "plant", "label").associateWith { f[it] } },
+                                "discovery" to snap["discovery"]))
+            }
         }
         if (method == "POST" && path.startsWith("/api/node/") && node.owner() == null) return nodeAction(path.substringAfterLast('/'), d)
         if (method == "POST" && path == "/api/bundle/import") {
@@ -81,6 +87,17 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             }
             "/api/users" -> { need(me, "admin"); ok(mapOf("users" to usersOut(me))) }
             "/api/devices" -> ok(devicesOut(me))
+            "/api/progress" -> {                               // course progress (M4): private to this person
+                val got = Progress.load(node, me.person)
+                ok(q["course"]?.let { mapOf("data" to (got[it] ?: emptyMap())) } ?: mapOf("courses" to got))
+            }
+            "/api/join-requests" -> {
+                need(me, "admin")
+                ok(mapOf("requests" to invites.lobbyList().map { r ->
+                    r + mapOf("code" to joinCode(r["device"] as String, node.device),
+                              "existing" to existingPerson((r["request"] as Map<String, Any?>)["username"] as? String))
+                }))
+            }
             else -> if (path.startsWith("/api/invites/")) inviteStatus(me, path.removePrefix("/api/invites/")) else null
         } ?: when (path) {
             "/api/sheets" -> {
@@ -109,6 +126,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         }
         Regex("/api/persons/([0-9a-f]{32})").matchEntire(path)?.let { return updatePerson(me, it.groupValues[1], d) }
         Regex("/api/invites/([A-Za-z0-9_-]{16,40})").matchEntire(path)?.let { return inviteAction(me, it.groupValues[1], d) }
+        Regex("/api/join-requests/([A-Za-z0-9_-]{43})").matchEntire(path)?.let { return lobbyAction(me, it.groupValues[1], d) }
         return when (path) {
             "/api/submit" -> ok(submit(me, d["kind"] as? String, d["payload"], d["client_id"]))
             "/api/profile" -> {
@@ -123,6 +141,10 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
                 ok(mapOf("ok" to true, "changed" to restoreTo(me, ref!!).toLong()))
             }
             "/api/devices/import-request" -> importRequest(me, d)
+            "/api/progress" -> {
+                try { Progress.save(node, me, d["course"], d["data"]) } catch (e: IllegalArgumentException) { err(400, e.message ?: "bad progress") }
+                ok()
+            }
             "/api/invites" -> {
                 need(me, "admin")
                 if (sync.port == null) err(409, "Sync is off on this device, so devices cannot join through it.")
@@ -521,12 +543,22 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         need(me, "admin")
         val st = invites.status(token, me.person) ?: err(404, "no such invite")
         val req = st["request"] as Map<String, Any?>?
-        val existing = req?.let { r ->
-            node.run.persons.entries.firstOrNull { (it.value["username"] as String).lowercase() == (r["username"] as? String)?.lowercase() }?.let {
-                mapOf("username" to it.value["username"], "full_name" to it.value["full_name"], "role" to roleOf(it.key))
-            }
+        return ok(st + ("existing" to req?.let { existingPerson(it["username"] as? String) }))
+    }
+
+    private fun existingPerson(username: String?): Map<String, Any?>? =
+        node.run.persons.entries.firstOrNull { (it.value["username"] as String).lowercase() == username?.lowercase() }?.let {
+            mapOf("username" to it.value["username"], "full_name" to it.value["full_name"], "role" to roleOf(it.key))
         }
-        return ok(st + ("existing" to existing))
+
+    private fun lobbyAction(me: Owner, device: String, d: Map<String, Any?>): ApiResponse {
+        need(me, "admin")
+        if (d["action"] !in setOf("accept", "refuse")) err(400, "bad action")
+        val req = invites.lobbyTake(device) ?: err(409, "That device is no longer waiting (it gave up, or was decided already).")
+        if (d["action"] == "refuse") { invites.lobbyDone(device, false); return ok() }
+        val r = certify(me, req, Payloads.truthy(d["existing_ok"]))
+        invites.lobbyDone(device, true)
+        return ok(r)
     }
 
     private fun inviteAction(me: Owner, token: String, d: Map<String, Any?>): ApiResponse {
@@ -556,12 +588,16 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             ok(mapOf("ok" to true, "request" to JoinRequests.make(node.identity(), node.device, name, fn, pos, deviceLabel, now())))
         }
         "join-invite" -> {
-            if (Payloads.truthy(d["cancel"])) { joining?.cancel(); ok() } else {
+            if (Payloads.truthy(d["cancel"]) || Payloads.truthy(d["confirm"])) {
+                if (Payloads.truthy(d["cancel"])) joining?.cancel() else joining?.confirm()
+                ok()
+            } else {
                 val name = ((d["username"] as? String) ?: "").trim()
                 if (!USERNAME.matches(name)) err(400, "Username: 2-40 letters (a-z), digits, . _ - @")
                 val (fn, pos) = person(d)
-                val inv = try { parseInvite(d["invite"]) } catch (e: IllegalArgumentException) { err(400, e.message ?: "bad invite") }
-                if (node.anchor != null && node.anchor != inv["root"]) err(409, "This phone holds another plant's data; that invite is for a different plant.")
+                val inv = try { if (d["nearby"] != null) parseNearby(d["nearby"]) else parseInvite(d["invite"]) }
+                          catch (e: IllegalArgumentException) { err(400, e.message ?: "bad invite") }
+                if (node.anchor != null && inv["root"] != null && node.anchor != inv["root"]) err(409, "This phone holds another plant's data; that invite is for a different plant.")
                 joining?.cancel()
                 val job = InviteJoin(node, sync, inv, JoinRequests.make(node.identity(), node.device, name, fn, pos, deviceLabel, now()), invitePollMs)
                 joining = job; job.start()

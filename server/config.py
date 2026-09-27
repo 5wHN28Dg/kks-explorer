@@ -28,10 +28,8 @@ DEFAULTS = {
     'sync_host': '0.0.0.0',            # where the sync listener binds in peer mode (the LAN)
     'discovery': True,                 # find other devices on the same Wi-Fi (mDNS, needs the zeroconf package)
     'sync_interval': 120,              # seconds between automatic syncs with devices found on the Wi-Fi
-    'cache_dir': '',                   # made files that can be deleted any time (JPEG copies of JXL photos);
-                                       # empty = cache/ next to the db
 }
-PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python', 'root_key', 'cache_dir')
+PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python', 'root_key')
 
 
 def load(path=None):
@@ -48,6 +46,5 @@ def load(path=None):
     for k in PATH_KEYS:
         if cfg[k] and not os.path.isabs(cfg[k]):
             cfg[k] = os.path.normpath(os.path.join(root, cfg[k]))
-    cfg['cache_dir'] = cfg['cache_dir'] or os.path.join(os.path.dirname(cfg['db']), 'cache')
     cfg['config_path'] = path
     return cfg

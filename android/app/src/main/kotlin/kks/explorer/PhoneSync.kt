@@ -2,6 +2,7 @@ package kks.explorer
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.os.Build
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
@@ -40,7 +41,8 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
         private const val TAG = "KKSSync"
     }
 
-    data class Found(val name: String, val host: String, val port: Int, val peer: String?, val root: String)
+    data class Found(val name: String, val host: String, val port: Int, val peer: String?, val root: String,
+                     val plant: String, val label: String, val adm: Boolean)
 
     private val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val cm = context.getSystemService(ConnectivityManager::class.java)
@@ -53,11 +55,12 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
     override val port: Int? get() = srv?.localPort
 
     @Volatile var discovery = "off"; private set
+    @Volatile var onJoinAsked: (() -> Unit)? = null           // a device asked to join (the admin's badge)
     @Volatile private var selfSeen = false
     @Volatile private var active = false                     // discovery + auto sync running (app on screen, or a worker)
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var registration: NsdManager.RegistrationListener? = null
-    private var announced: Pair<String, String>? = null      // (peer, root) currently announced
+    private var announced: Map<String, String>? = null      // the TXT attributes currently announced
     @Volatile private var due = 0L
     @Volatile private var roundRunning = false
 
@@ -86,7 +89,7 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
                     try {
                         val (remote, st) = Sync.serveOne(node, sock)
                         if (st.join == null) record(remote, addr, true, st, "in")      // (a join-by-invite question is not a sync)
-                        else Log.i(TAG, "join by invite from $addr: ${st.join}")
+                        else { Log.i(TAG, "join by invite from $addr: ${st.join}"); onJoinAsked?.invoke() }
                     } catch (e: Exception) {
                         record(null, addr, false, e.message, "in")
                     } finally { slots.release() }
@@ -97,10 +100,14 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
 
     // ---------- discovery (NSD) ----------
     /** Start finding and announcing (the app came on screen, or a background round began). Idempotent. */
-    @Synchronized fun start() {
-        if (active) return
-        active = true
-        announce()
+    fun start() {
+        synchronized(this) { if (active) return; active = true }
+        announce()                                  // (outside the lock: it reads the node)
+        synchronized(this) { startDiscovery() }
+    }
+
+    private fun startDiscovery() {
+        if (!active || discoveryListener != null) return
         val l = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(t: String) { discovery = "on" }
             override fun onDiscoveryStopped(t: String) { if (!active) discovery = "off" }
@@ -144,7 +151,7 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
             val attrs = r.attributes.mapValues { (_, v) -> v?.toString(Charsets.UTF_8) ?: "" }
             @Suppress("DEPRECATION") val host = r.host?.hostAddress ?: continue
             if (attrs["peer"] == node.device) { selfSeen = true; continue }   // our own announcement
-            val f = Found(r.serviceName, host, r.port, attrs["peer"], attrs["root"] ?: "")
+            val f = Found(r.serviceName, host, r.port, attrs["peer"], attrs["root"] ?: "", attrs["plant"] ?: "", attrs["label"] ?: "", attrs["adm"] == "1")
             val isNew = found.put(r.serviceName, f) == null
             Log.i(TAG, "found ${f.peer?.take(12)} at ${f.host}:${f.port} root ${f.root}")
             if (isNew && f.root.isNotEmpty() && f.root == myRoot()) poke(1_000)
@@ -154,15 +161,25 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
     private fun myRoot() = (node.anchor ?: "").take(16)
 
     /** (Re)announce this phone: device ID + start of its plant's root, so others skip other plants. */
-    @Synchronized private fun announce() {
+    private fun announce() {
+        // plant name, who this is and whether an admin can accept a joining device here (§16). Read from the node
+        // BEFORE taking this object's lock: the API thread holds the node's lock while it asks for snapshot()
+        val o = node.owner()
+        val plant = if (node.anchor != null) ((synchronized(node) { node.run.settings["plant"] } as? String) ?: "") else ""
+        val want = mapOf("peer" to node.device, "root" to myRoot(), "v" to "1", "plant" to plant.take(80),
+            "label" to (listOfNotNull(o?.fullName, "${Build.MANUFACTURER} ${Build.MODEL}".trim()).joinToString(" · ")).take(120),
+            "adm" to if (o?.isAdmin() == true) "1" else "")
+        synchronized(this) { register(want) }
+    }
+
+    private fun register(want: Map<String, String>) {
         if (!active) return
         val p = port ?: return
-        val want = node.device to myRoot()
         if (want == announced) return
         registration?.let { runCatching { nsd.unregisterService(it) } }
         val info = NsdServiceInfo().apply {
             serviceName = "kks-${node.device.take(12)}"; serviceType = SERVICE; this.port = p
-            setAttribute("peer", node.device); setAttribute("root", myRoot()); setAttribute("v", "1")
+            want.forEach { (k, v) -> setAttribute(k, v) }
         }
         val l = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(i: NsdServiceInfo) { Log.i(TAG, "announced as ${i.serviceName}") }
@@ -206,6 +223,7 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
         }
         record(remote, "$host:$port", true, st, "out")
         remember("$host:$port")
+        kks.core.Progress.swapAfterSync(node, host, port, remote)     // another device of this person: share the progress key
         return st
     }
 
@@ -242,7 +260,8 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
     @Synchronized override fun snapshot(): Map<String, Any?> = mapOf(
         "discovery" to discovery + (if (discovery == "on" && selfSeen) " (this phone is visible to others)" else ""),
         "port" to port?.toLong(),
-        "found" to found.values.map { mapOf("host" to it.host, "port" to it.port.toLong(), "peer" to it.peer, "root" to it.root) },
+        "found" to found.values.map { mapOf("host" to it.host, "port" to it.port.toLong(), "peer" to it.peer, "root" to it.root,
+                                            "plant" to it.plant, "label" to it.label, "adm" to it.adm) },
         "syncs" to LinkedHashMap(status), "self_seen" to selfSeen,
         "metered_allowed" to meteredAllowed, "paused" to !autoAllowed())
 

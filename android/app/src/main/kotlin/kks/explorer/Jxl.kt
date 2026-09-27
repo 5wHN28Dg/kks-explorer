@@ -4,19 +4,18 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
-import java.io.ByteArrayOutputStream
-import java.io.File
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
- * JPEG XL through libjxl (src/main/cpp): photos are stored as JXL at Butteraugli distance 1.0 (visually lossless, the
- * same setting as server/photos.py); the WebView can't show JXL, so it gets a JPEG made from it (cached).
+ * JPEG XL through libjxl (src/main/cpp): photos are stored as JXL at distance 1.9, effort 9 (the same settings as
+ * server/photos.py). The WebView can't show JXL, so the app decodes it and hands the page the pixels as a BMP (no
+ * lossy re-encoding, nothing cached on disk).
  */
 object Jxl {
-    const val DISTANCE = 1.0f
-    const val EFFORT = 7
+    const val DISTANCE = 1.9f
+    const val EFFORT = 9
     const val MAX_SIDE = 4096          // the page sends ≤ 1600 px; bigger is scaled down
-    const val JPEG_QUALITY = 90
 
     init { System.loadLibrary("kksjxl") }
 
@@ -42,23 +41,21 @@ object Jxl {
         return encodeRgba(buf.array(), bmp.width, bmp.height, DISTANCE, EFFORT) ?: throw IllegalStateException("JPEG XL encoding failed")
     }
 
-    fun toBitmap(jxl: ByteArray): Bitmap? {
+    /** A JXL file -> a 24-bit BMP of its pixels (for the WebView), or null if it can't be decoded. */
+    fun toBmp(jxl: ByteArray): ByteArray? {
         val dims = IntArray(2)
         val px = decodeRgba(jxl, dims) ?: return null
-        return Bitmap.createBitmap(dims[0], dims[1], Bitmap.Config.ARGB_8888).apply { copyPixelsFromBuffer(ByteBuffer.wrap(px)) }
-    }
-
-    /** The JPEG for a JXL photo file, made once into cacheDir. */
-    @Synchronized fun jpegFor(file: File, cacheDir: File): File? {
-        val out = File(cacheDir, "photo-jpeg/${file.nameWithoutExtension}.jpg")
-        if (out.exists()) return out
-        val bmp = toBitmap(file.readBytes()) ?: return null
-        out.parentFile!!.mkdirs()
-        val tmp = File(out.path + ".part")
-        tmp.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
-        tmp.renameTo(out)
+        val (w, h) = dims[0] to dims[1]
+        val row = (w * 3 + 3) and 3.inv()
+        val out = ByteArray(54 + row * h)
+        val b = ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN)
+        b.put('B'.code.toByte()).put('M'.code.toByte()).putInt(out.size).putInt(0).putInt(54)
+        b.putInt(40).putInt(w).putInt(h).putShort(1).putShort(24).putInt(0).putInt(row * h).putInt(2835).putInt(2835).putInt(0).putInt(0)
+        for (y in 0 until h) {                 // bottom-up rows, BGR
+            var o = 54 + (h - 1 - y) * row
+            var s = y * w * 4
+            for (x in 0 until w) { out[o++] = px[s + 2]; out[o++] = px[s + 1]; out[o++] = px[s]; s += 4 }
+        }
         return out
     }
-
-    fun jpegBytes(jxl: ByteArray): ByteArray? = toBitmap(jxl)?.let { b -> ByteArrayOutputStream().also { b.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }.toByteArray() }
 }

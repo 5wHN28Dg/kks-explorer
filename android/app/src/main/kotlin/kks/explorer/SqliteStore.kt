@@ -61,6 +61,21 @@ class SqliteStore(context: Context) : NodeStore {
         setMeta("device_seed", android.util.Base64.encodeToString(c.iv + c.doFinal(seed), android.util.Base64.NO_WRAP))
     }
 
+    /** Person secrets (course progress, §13): encrypted like the device seed, so a copy of the files can't read them. */
+    override fun personSecrets(): String? {
+        val v = meta("person_secrets_enc") ?: return null
+        val raw = android.util.Base64.decode(v, android.util.Base64.NO_WRAP)
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.DECRYPT_MODE, aesKey(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
+        return String(c.doFinal(raw.copyOfRange(12, raw.size)), Charsets.UTF_8)
+    }
+
+    override fun setPersonSecrets(json: String) {
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.ENCRYPT_MODE, aesKey())
+        setMeta("person_secrets_enc", android.util.Base64.encodeToString(c.iv + c.doFinal(json.toByteArray()), android.util.Base64.NO_WRAP))
+    }
+
     // ---------- tables ----------
     override fun meta(k: String): String? = db.rawQuery("SELECT v FROM meta WHERE k=?", arrayOf(k)).use { if (it.moveToFirst()) it.getString(0) else null }
 

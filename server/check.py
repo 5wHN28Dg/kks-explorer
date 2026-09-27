@@ -79,10 +79,9 @@ def run(cfg, store, auth):
         add('FAIL', f'photos_dir {cfg["photos_dir"]} is not writable.')
     from server import photos
     if photos.AVAILABLE:
-        add('OK', 'photos are stored as JPEG XL (browsers without JXL get a JPEG copy).')
+        add('OK', 'photos are stored as JPEG XL.')
     else:
-        add('WARN', 'Pillow / pillow-jxl-plugin not installed: new photos stay JPEG, and JXL photos from phones show only in '
-                    'browsers with JXL support. Install: python3 -m pip install Pillow pillow-jxl-plugin')
+        add('WARN', 'Pillow / pillow-jxl-plugin not installed: new photos stay as uploaded (JPEG). Install: python3 -m pip install Pillow pillow-jxl-plugin')
 
     # ---- plant root key (signs who the manager is; not in the DB or the backups) ----
     from server.engine import root_path

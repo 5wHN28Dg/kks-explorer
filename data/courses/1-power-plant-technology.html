@@ -1,0 +1,1520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rumaila Power Plant Technology</title>
+<link rel="stylesheet" href="/vendor/fonts/courses.css">
+<style>
+:root{
+  --ground:#E9EDEF; --surface:#F8FAFA; --sunk:#DDE3E6; --ink:#16222B; --muted:#56646E; --rule:#C6CFD4;
+  --accent:#1F5F8B; --accent-ink:#FFFFFF; --accent-soft:#D7E5EF;
+  --ok:#2E7A4E; --ok-soft:#DCEDE2; --alarm:#9A6412; --alarm-fill:#E8B04A; --alarm-soft:#F6E7C8;
+  --act:#B3261E; --act-soft:#F6D9D6; --zone-ok:#CFD8DC;
+  --display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Atkinson Hyperlegible","Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#11171B; --surface:#182026; --sunk:#0D1215; --ink:#E2E8EB; --muted:#95A4AD; --rule:#2B363D;
+    --accent:#6DAFDC; --accent-ink:#0B1620; --accent-soft:#1D3342;
+    --ok:#62C08A; --ok-soft:#173226; --alarm:#E4AE45; --alarm-fill:#B9832A; --alarm-soft:#3A2D14;
+    --act:#F0776B; --act-soft:#3E1D1A; --zone-ok:#26323A;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#11171B; --surface:#182026; --sunk:#0D1215; --ink:#E2E8EB; --muted:#95A4AD; --rule:#2B363D;
+  --accent:#6DAFDC; --accent-ink:#0B1620; --accent-soft:#1D3342;
+  --ok:#62C08A; --ok-soft:#173226; --alarm:#E4AE45; --alarm-fill:#B9832A; --alarm-soft:#3A2D14;
+  --act:#F0776B; --act-soft:#3E1D1A; --zone-ok:#26323A;
+}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;padding-inline:16px;padding-block:0 48px}
+.shell{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px minmax(0,1fr);gap:40px}
+header.top{max-width:1180px;margin:0 auto;padding-block:20px 18px;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;border-bottom:1px solid var(--rule);margin-bottom:28px}
+.brand{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.01em;line-height:1.1}
+.brand small{display:block;font-family:var(--body);font-weight:400;font-size:14px;color:var(--muted);letter-spacing:0;margin-top:4px}
+.docid{font-family:var(--mono);font-size:12px;color:var(--muted)}
+nav.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);align-self:start;max-height:calc(100vh - 32px);overflow:auto;padding-bottom:12px}
+.rail h4{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+.rail h4:first-child{margin-top:0}
+.rail button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:28px 1fr 16px;align-items:center;width:100%;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:14.5px;line-height:1.3;color:var(--ink)}
+.rail button:hover{background:var(--sunk)}
+.rail button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rail button[aria-current="true"]{background:var(--surface);box-shadow:inset 0 0 0 1px var(--rule);font-weight:700}
+.rail .n{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.rail .tick{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--rule)}
+.rail .tick.done{background:var(--ok);border-color:var(--ok)}
+.progress{height:4px;background:var(--sunk);border-radius:2px;margin:6px 8px 0;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--ok);width:0}
+.mobile-nav{display:none}
+main{min-width:0;max-width:760px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+h1{font-family:var(--display);font-weight:700;font-size:40px;line-height:1.05;margin:6px 0 14px;text-wrap:balance}
+h2{font-family:var(--display);font-weight:600;font-size:26px;line-height:1.15;margin:40px 0 10px;text-wrap:balance}
+h3{font-family:var(--display);font-weight:600;font-size:20px;margin:26px 0 8px;text-wrap:balance}
+p{margin:0 0 12px;max-width:68ch}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:66ch}
+li{margin-bottom:5px}
+.goal{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:14px 18px;margin:0 0 22px}
+.goal b{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px}
+.goal ul{margin:0}
+.num{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.why{border-left:3px solid var(--rule);padding:2px 0 2px 14px;margin:12px 0 16px;color:var(--ink)}
+.why .tag{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block}
+.flag{background:var(--alarm-soft);border-radius:6px;padding:10px 14px;margin:12px 0 16px;font-size:15px}
+.flag b{color:var(--alarm)}
+.src{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tablewrap{overflow-x:auto;margin:10px 0 18px;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--sunk)}
+td.v{font-family:var(--mono);font-size:13.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.figure{overflow-x:auto;margin:14px 0 20px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px}
+.figure svg{display:block}
+.figcap{font-size:13.5px;color:var(--muted);margin-top:6px}
+/* activity blocks */
+.act{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;margin:16px 0}
+.act .kind{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;display:flex;justify-content:space-between;gap:12px}
+.act .kind .src{letter-spacing:0;text-transform:none;font-weight:400}
+.act .q{font-weight:700;margin-bottom:10px;max-width:68ch}
+.opts{display:grid;gap:8px}
+.opt{all:unset;box-sizing:border-box;display:block;padding:10px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--ground);cursor:pointer;line-height:1.4}
+.opt:hover{border-color:var(--accent)}
+.opt:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.opt.right{border-color:var(--ok);background:var(--ok-soft)}
+.opt.wrong{border-color:var(--act);background:var(--act-soft)}
+.fb{margin-top:10px;padding:10px 14px;border-radius:8px;font-size:15px;max-width:68ch}
+.fb.right{background:var(--ok-soft)}
+.fb.wrong{background:var(--act-soft)}
+.fb b{display:block;margin-bottom:2px}
+.btn{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:14.5px;cursor:pointer}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.btn.ghost{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.btn[disabled]{opacity:.45;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+/* ordering */
+.pool,.seq{display:grid;gap:6px}
+.seq{margin:10px 0;min-height:44px;padding:8px;border:1px dashed var(--rule);border-radius:8px}
+.seq:empty::before{content:"Tap the steps below in the right order";color:var(--muted);font-size:14px;padding:4px 6px}
+.step{all:unset;box-sizing:border-box;display:grid;grid-template-columns:26px 1fr;gap:6px;padding:8px 12px;border:1px solid var(--rule);border-radius:7px;background:var(--ground);cursor:pointer;line-height:1.35;font-size:15px}
+.step:focus-visible{outline:2px solid var(--accent)}
+.step .i{font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:2px}
+.step.right{border-color:var(--ok);background:var(--ok-soft)}
+.step.wrong{border-color:var(--act);background:var(--act-soft)}
+/* worked example */
+.worked{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;margin:16px 0}
+.worked .kind{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.worked .case{font-weight:700;margin-bottom:10px;max-width:68ch}
+.wstep{border-top:1px solid var(--rule);padding:10px 0 4px;max-width:68ch}
+.wstep .lbl{font-family:var(--mono);font-size:12px;color:var(--muted);display:block}
+/* DCS panel */
+.panel{background:var(--sunk);border-radius:8px;padding:10px 12px;margin:4px 0 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px 14px}
+.tag-r{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:4px 0;border-bottom:1px dotted var(--rule)}
+.tag-r span:first-child{color:var(--muted)}
+.tag-r .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13.5px;text-align:right}
+.val.alarm{color:var(--alarm);font-weight:600}
+.val.act{color:var(--act);font-weight:600}
+/* drill */
+.drill-card{background:var(--sunk);border-radius:10px;padding:18px;margin:10px 0 12px;display:grid;gap:4px}
+.drill-card .p{font-size:15px;color:var(--muted)}
+.drill-card .ctx{font-size:14px;color:var(--muted)}
+.drill-card .reading{font-family:var(--mono);font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chip{all:unset;cursor:pointer;font-size:13.5px;padding:4px 10px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--rule);color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.chip:focus-visible{outline:2px solid var(--accent)}
+.judge{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.judge .opt{text-align:center;font-weight:700;font-size:14.5px;padding:12px 8px}
+.judge .opt small{display:block;font-weight:400;font-size:12.5px;color:var(--muted)}
+.stat{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.score{font-family:var(--display);font-size:22px;font-weight:600}
+.pill{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:1px 7px;border-radius:999px;vertical-align:1px}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.alarm{background:var(--alarm-soft);color:var(--alarm)}
+.pill.act{background:var(--act-soft);color:var(--act)}
+.issues li{margin-bottom:12px}
+.issues .sev{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.foot{display:flex;justify-content:space-between;gap:10px;margin-top:40px;padding-top:16px;border-top:1px solid var(--rule)}
+.intro-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 22px}
+.intro-grid div{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;font-size:15px}
+.intro-grid b{font-family:var(--display);font-weight:600;font-size:17px;display:block;margin-bottom:2px}
+@media (max-width:860px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:0}
+  nav.rail{display:none}
+  .mobile-nav{display:block;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ground);padding-block:8px;margin-bottom:10px;border-bottom:1px solid var(--rule)}
+  .mobile-nav select{width:100%;font:inherit;font-size:15px;padding:8px 10px;border-radius:7px;border:1px solid var(--rule);background:var(--surface);color:var(--ink)}
+  h1{font-size:32px}
+  .judge{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:no-preference){ .opt,.step,.btn{transition:background-color .12s,border-color .12s} }
+.term{font-weight:700}
+.railink{display:block;padding:6px 8px;color:var(--accent);font-size:14.5px;text-decoration:none}
+.railink:hover{text-decoration:underline}
+a{color:var(--accent)}
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 16px}
+.chain .link{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:6px 10px;font-size:14.5px}
+.chain .arr{color:var(--muted);font-family:var(--mono)}
+.kks{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0 16px}
+.kks .seg{display:flex;flex-direction:column;align-items:center;padding:6px 10px;border-radius:6px;border-top:3px solid var(--c);background:var(--surface);box-shadow:inset 0 0 0 1px var(--rule)}
+.kks .seg b{font-family:var(--mono);font-size:18px;color:var(--c)}
+.kks .seg small{font-size:11.5px;color:var(--muted);text-align:center}
+.kksin{width:100%;font-family:var(--mono);font-size:20px;padding:10px 12px;border-radius:8px;border:1px solid var(--rule);background:var(--ground);color:var(--ink)}
+.kksin:focus{outline:2px solid var(--accent);outline-offset:1px}
+</style>
+</head>
+<body>
+
+
+<header class="top">
+  <div class="brand">Rumaila Power Plant Technology<small>The Siemens Energy familiarization deck, rebuilt as a course</small></div>
+  <div class="docid">Course 1 of 3 · Al-Rumailah CCPP 730 MW</div>
+</header>
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Course modules"></nav>
+  <div>
+    <div class="mobile-nav"><label for="mnav" class="eyebrow">Go to</label><select id="mnav"></select></div>
+    <main id="main"></main>
+  </div>
+</div>
+
+<script src="/course-bridge.js" data-course="ppt"></script>
+<script>
+/* ---------- storage ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('ppt.'+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('ppt.'+k, JSON.stringify(v)); }catch(e){} }
+};
+let solved = store.get('solved', {});
+function markSolved(id){ if(!solved[id]){ solved[id]=true; store.set('solved', solved); renderRail(); } }
+const HRSG_URL = '3-hrsg-course.html';
+const FND_URL = '2-plant-foundations.html';
+
+/* ---------- helpers ---------- */
+const N = s => `<span class="num">${s}</span>`;
+function Q(id, q, o, src){ return {type:'mcq', id, q, o, src}; }
+function O(id, q, steps, src){ return {type:'order', id, q, steps, src}; }
+function S(id, panel, q, o, src){ return {type:'scn', id, panel, q, o, src}; }
+const why = (t) => `<div class="why"><span class="tag">Why it matters</span>${t}</div>`;
+const plant = (t) => `<div class="why"><span class="tag">At Rumaila</span>${t}</div>`;
+const flag = (t) => `<div class="flag"><b>The deck gets this wrong or unclear.</b> ${t}</div>`;
+const table = (head, rows, numCols=[]) => `<div class="tablewrap"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${numCols.includes(i)?' class="v"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+const chain = (items) => `<div class="chain">${items.map((t,i)=>`<span class="link">${t}</span>${i<items.length-1?'<span class="arr">→</span>':''}`).join('')}</div>`;
+
+/* ---------- figures ---------- */
+const FONT_M = 'JetBrains Mono, monospace', FONT_B = 'Atkinson Hyperlegible, sans-serif', FONT_D = 'Barlow Semi Condensed, sans-serif';
+function axes(W,H,L,R,T,B,xt,yt,xl,yl){
+  let s=`<line x1="${L}" x2="${R}" y1="${B}" y2="${B}" stroke="var(--muted)"/><line x1="${L}" x2="${L}" y1="${T}" y2="${B}" stroke="var(--muted)"/>`;
+  xt.forEach(([v,x])=>{ s+=`<line x1="${x}" x2="${x}" y1="${B}" y2="${B+4}" stroke="var(--muted)"/><text x="${x}" y="${B+17}" text-anchor="middle" font-family="${FONT_M}" font-size="11" fill="var(--muted)">${v}</text>`; });
+  yt.forEach(([v,y])=>{ s+=`<line x1="${L}" x2="${R}" y1="${y}" y2="${y}" stroke="var(--rule)" stroke-dasharray="2 4"/><text x="${L-7}" y="${y+4}" text-anchor="end" font-family="${FONT_M}" font-size="11" fill="var(--muted)">${v}</text>`; });
+  s+=`<text x="${(L+R)/2}" y="${H-6}" text-anchor="middle" font-family="${FONT_B}" font-size="12" fill="var(--muted)">${xl}</text>`;
+  s+=`<text x="14" y="${(T+B)/2}" text-anchor="middle" transform="rotate(-90 14 ${(T+B)/2})" font-family="${FONT_B}" font-size="12" fill="var(--muted)">${yl}</text>`;
+  return s;
+}
+function pumpCurve(){
+  const W=660,H=330,L=56,R=W-24,T=20,B=H-44;
+  const x=q=>L+q/100*(R-L), y=h=>B-h/120*(B-T);
+  const pump=q=>100-0.006*q*q, sys=q=>30+0.0055*q*q, sys2=q=>30+0.011*q*q;
+  const path=f=>{let d='';for(let q=0;q<=100;q+=2){const h=f(q); if(h<0||h>120) continue; d+=(d?'L':'M')+x(q).toFixed(1)+','+y(h).toFixed(1);} return d;};
+  const op=(a,b,c)=>{/* 100-0.006q2 = 30 + c q2 */ const q=Math.sqrt(70/(0.006+c)); return [q,pump(q)];};
+  const [q1,h1]=op(0,0,0.0055), [q2,h2]=op(0,0,0.011);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" style="min-width:540px;width:100%;max-width:${W}px" role="img" aria-label="Pump curve and two system curves; the operating point is where they cross">`;
+  s+=axes(W,H,L,R,T,B,[0,20,40,60,80,100].map(v=>[v,x(v)]),[0,20,40,60,80,100,120].map(v=>[v,y(v)]),'Flow, % of rated','Head, % of shut-off head');
+  s+=`<path d="${path(pump)}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+  s+=`<path d="${path(sys)}" fill="none" stroke="var(--ink)" stroke-width="2"/>`;
+  s+=`<path d="${path(sys2)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-dasharray="6 4"/>`;
+  s+=`<circle cx="${x(q1)}" cy="${y(h1)}" r="6" fill="var(--act)"/><circle cx="${x(q2)}" cy="${y(h2)}" r="6" fill="none" stroke="var(--act)" stroke-width="2"/>`;
+  s+=`<text x="${x(q1)+10}" y="${y(h1)-10}" font-family="${FONT_B}" font-size="12" font-weight="700" fill="var(--act)">operating point</text>`;
+  s+=`<text x="${x(q2)-12}" y="${y(h2)+4}" text-anchor="end" font-family="${FONT_B}" font-size="12" fill="var(--act)">valve throttled</text>`;
+  s+=`<text x="${x(8)}" y="${y(104)}" font-family="${FONT_B}" font-size="12" fill="var(--accent)">pump curve (fixed by the pump)</text>`;
+  s+=`<text x="${x(60)}" y="${y(12)}" font-family="${FONT_B}" font-size="12" fill="var(--ink)">system curve (pipes, valves, height)</text>`;
+  s+=`<text x="${x(2)}" y="${y(24)}" font-family="${FONT_B}" font-size="11" fill="var(--muted)">static head</text>`;
+  s+=`</svg>`;
+  return `<div class="figure">${s}<div class="figcap">Illustrative curves, not a real pump. The pump can only run where its curve crosses the system curve. Throttling a valve steepens the system curve (dashed), so flow falls and pressure rises.</div></div>`;
+}
+function valveChar(){
+  const W=560,H=320,L=56,R=W-24,T=20,B=H-44;
+  const x=v=>L+v*(R-L), y=v=>B-v*(B-T);
+  const curves=[['Quick opening (on/off)',v=>Math.sqrt(v),'var(--act)','0'],['Linear',v=>v,'var(--ink)','6 4'],['Equal percentage',v=>Math.pow(50,v-1),'var(--accent)','0']];
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" style="min-width:480px;width:100%;max-width:${W}px" role="img" aria-label="Valve flow characteristics: quick opening, linear, equal percentage">`;
+  s+=axes(W,H,L,R,T,B,[0,25,50,75,100].map(v=>[v,x(v/100)]),[0,25,50,75,100].map(v=>[v,y(v/100)]),'Valve position, % open','Flow, % of full-open flow');
+  curves.forEach(([n,f,c,d],i)=>{ let p=''; for(let v=0;v<=1.0001;v+=0.02){ p+=(p?'L':'M')+x(v).toFixed(1)+','+y(f(v)).toFixed(1);} s+=`<path d="${p}" fill="none" stroke="${c}" stroke-width="2.5" stroke-dasharray="${d}"/>`; });
+  s+=`<text x="${x(0.1)}" y="${y(0.62)}" font-family="${FONT_B}" font-size="12" font-weight="700" fill="var(--act)">quick opening</text>`;
+  s+=`<text x="${x(0.47)}" y="${y(0.56)}" font-family="${FONT_B}" font-size="12" font-weight="700" fill="var(--ink)">linear</text>`;
+  s+=`<text x="${x(0.62)}" y="${y(0.13)}" font-family="${FONT_B}" font-size="12" font-weight="700" fill="var(--accent)">equal percentage</text>`;
+  s+=`</svg>`;
+  return `<div class="figure">${s}<div class="figcap">Idealised characteristics at constant pressure drop (equal percentage drawn with a rangeability of 50). Gate valves behave like "quick opening": most of the flow change happens in the first part of the stroke.</div></div>`;
+}
+function threePhase(){
+  const W=640,H=250,L=40,R=W-20,mid=110,A=80;
+  const x=t=>L+t/720*(R-L);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" style="min-width:520px;width:100%;max-width:${W}px" role="img" aria-label="Three sine waves 120 degrees apart over two revolutions">`;
+  s+=`<line x1="${L}" x2="${R}" y1="${mid}" y2="${mid}" stroke="var(--muted)"/>`;
+  [0,180,360,540,720].forEach(t=>{ s+=`<line x1="${x(t)}" x2="${x(t)}" y1="${mid-A-6}" y2="${mid+A+6}" stroke="var(--rule)" stroke-dasharray="2 4"/><text x="${x(t)}" y="${mid+A+22}" text-anchor="middle" font-family="${FONT_M}" font-size="11" fill="var(--muted)">${t}°</text>`; });
+  [['L1',0,'var(--accent)'],['L2',120,'var(--act)'],['L3',240,'var(--ok)']].forEach(([n,ph,c])=>{
+    let p=''; for(let t=0;t<=720;t+=4){ p+=(p?'L':'M')+x(t).toFixed(1)+','+(mid-A*Math.sin((t-ph)*Math.PI/180)).toFixed(1);} s+=`<path d="${p}" fill="none" stroke="${c}" stroke-width="2.2"/>`;
+    const tp=ph+90; s+=`<text x="${x(tp)}" y="${mid-A-10}" text-anchor="middle" font-family="${FONT_D}" font-weight="600" font-size="14" fill="${c}">${n}</text>`;
+  });
+  s+=`<text x="${x(360)}" y="${H-8}" text-anchor="middle" font-family="${FONT_B}" font-size="12" fill="var(--muted)">rotor angle (2-pole machine: 360° = one revolution = one cycle)</text>`;
+  s+=`</svg>`;
+  return `<div class="figure">${s}<div class="figcap">Three windings 120° apart give three voltages 120° apart. At 3000 rpm a 2-pole generator makes 50 revolutions, so 50 cycles, every second: 50 Hz.</div></div>`;
+}
+function kksAnatomy(code, parts){
+  return `<div class="kks">${parts.map(([t,l,c])=>`<span class="seg" style="--c:var(${c})"><b>${t}</b><small>${l}</small></span>`).join('')}</div>`;
+}
+
+/* ---------- modules ---------- */
+const M = [];
+
+M.push({id:'start', n:'0', title:'Start here', short:'Start here',
+goal:['Know what this course covers, why it exists and where it sits among the plant courses.'],
+body:()=>`
+<p>This course is built on Siemens Energy's <b>Power Plant Technology: Project Familiarization</b> deck (2020). The deck is made to be presented in a classroom. Most of its 200 slides are photos and cutaway drawings, and the explanation was meant to come from the presenter. On your own, you would have to research almost every slide. This course writes that missing explanation down, replaces the pictures with diagrams that show how things work, and adds questions so you can check yourself.</p>
+<h3>The end task</h3>
+<p>By the end you should be able to stand in front of any major piece of equipment in a combined-cycle plant, or its symbol on a P&amp;ID, and say:</p>
+<ul>
+<li><b>what it is</b> and <b>what it does</b> in the plant;</li>
+<li><b>what physics it relies on</b> (expansion, pressure, boiling, induction, and so on);</li>
+<li><b>what can go wrong</b> with it and what protects against that;</li>
+<li><b>how it is identified</b>: read its KKS code and its P&amp;ID symbol.</li>
+</ul>
+<p>The <b>Final check</b> tests this with mixed questions from the whole course.</p>
+<h3>Where this fits</h3>
+${table(['Order','Course','Purpose'],[
+ ['1','<b>Rumaila Power Plant Technology</b> (this one)','the whole plant: physics, components, generator, turbines, HRSG, chemistry, KKS'],
+ ['2',`<a href="${FND_URL}" target="_blank" rel="noopener">Rumaila Plant Foundations</a>`,'the extra background the HRSG manual assumes; its placement test lets you skip what you learned here'],
+ ['3',`<a href="${HRSG_URL}" target="_blank" rel="noopener">Rumaila HRSG Course</a>`,'operating the HRSG: limits, procedures, faults']
+])}
+<h3>How it works</h3>
+<div class="intro-grid">
+<div><b>Guess first</b>Each module opens with a question before any teaching. Answer it anyway.</div>
+<div><b>Work the examples</b>Worked examples reveal one step at a time. Predict each step first.</div>
+<div><b>Practice until clean</b>Wrong answers explain why. A module's dot turns green when all are solved.</div>
+<div><b>Use the tools</b>The KKS decoder takes apart real codes. The vocabulary drill keeps the terms fresh.</div>
+</div>
+<p>The deck's photos come from plants in Germany, Spain, Turkey and elsewhere, and its numbers are examples from those plants. Where Rumaila's own numbers are known (from the HRSG manual), boxes marked <b>At Rumaila</b> give them. Amber boxes mark places where the deck is wrong or unclear; they are collected under <b>Deck issues</b>.</p>`,
+warm: Q('s0','A guess before you start. Rumaila\'s gas turbines are Siemens SGT5-4000F. What does the "5" tell you?',[
+ ['It is the fifth version.',false,'In Siemens naming, SGT5 machines are the 50 Hz versions and SGT6 machines the 60 Hz versions. Module 6 explains why that matters.'],
+ ['It is built for 50 Hz grids, like Iraq\'s.',true,'Right. SGT5 = 50 Hz (3000 rpm), SGT6 = 60 Hz (3600 rpm). Module 6 explains the link between speed and frequency.'],
+ ['It has five compressor stages.',false,'The compressor has many more stages than that. The 5 refers to grid frequency.']
+],''),
+practice:[]
+});
+
+M.push({id:'energy', n:'1', title:'The power plant and energy', short:'Energy',
+goal:['Follow energy from fuel to the socket and name each conversion.','State the law of conservation of energy and use it to explain losses and efficiency.','Place the gas turbine, steam turbine and generator in the plant\'s energy chain.'],
+body:()=>`
+<h3>What a power plant does</h3>
+<p>A power plant does not make energy. It converts one form into another that people can use: electricity. Energy is the ability to do work, and the <b>law of conservation of energy</b> (Mayer 1842, Joule 1843) says it can be neither created nor destroyed, only converted. Every megawatt that leaves on the grid came in as fuel. What doesn't become electricity leaves as heat.</p>
+<h3>The chain of conversions</h3>
+${chain(['Fuel (chemical energy)','Heat (combustion)','Rotation (turbine)','Electricity (generator)','Grid (transformer)'])}
+<p>Different plants differ only in how they get to <b>rotation</b>, because every large plant ends with a generator:</p>
+${table(['Route to rotation','Examples'],[
+ ['Internal combustion: burn fuel inside the machine','gas turbine, diesel engine'],
+ ['Make steam from heat, expand it through a steam turbine','coal, oil, gas boilers; nuclear; geothermal; solar thermal; the HRSG in a combined cycle'],
+ ['Use moving water or air directly','water turbine, wind turbine'],
+ ['No rotation at all (direct conversion)','photovoltaic, fuel cell']
+])}
+<h3>The steam cycle in one loop</h3>
+<p>In a steam plant, very pure (demineralised) water is pumped into a boiler, turned into high-pressure superheated steam, expanded through a steam turbine that drives a generator, condensed back into water in a condenser, and pumped back. The same water goes round and round. The deck's example plant runs at ${N('125 bar')} and ${N('565 °C')}; Rumaila's HP steam is similar at about ${N('124 bar')} and ${N('561 °C')}.</p>
+${why('Water must be free of salts and gases (O₂, CO₂) because it circulates forever. Anything dissolved in it concentrates in the boiler and attacks the metal. Module 11 covers this.')}
+<h3>Efficiency and losses</h3>
+<p>Efficiency = useful output ÷ energy input. Because energy is conserved, the rest is not "lost" in the sense of disappearing: it leaves as heat, mostly up the stack and into the cooling water. A gas turbine alone converts roughly 40% of its fuel to electricity. Adding an HRSG and steam turbine to use its hot exhaust lifts that to about 58–61%: Siemens set records of ${N('58.4%')} (2002) and ${N('60.7%')} (2011) with combined-cycle plants.</p>
+${plant('Rumaila is a combined-cycle plant: gas turbines, each followed by an HRSG, with the HRSGs feeding steam to the steam turbine. That is the subject of Module 10.')}`,
+warm: Q('e1w','Guess: a combined-cycle plant burns fuel worth 1000 MW of heat and sends out 580 MW of electricity. Where did the other 420 MW go?',[
+ ['It was destroyed in the turbines.',false,'Energy can\'t be destroyed. It was converted to something less useful.'],
+ ['It left as heat, mostly in the stack gas and the cooling water.',true,'Right. Conservation of energy: every MW in comes out somewhere, and most of the loss is low-temperature heat.'],
+ ['It is stored in the steam.',false,'The steam circulates in a closed loop; over time it can\'t store energy indefinitely.']
+],''),
+worked:{case:'Why does adding an HRSG and a steam turbine behind a gas turbine raise plant efficiency so much?',steps:[
+ ['Look at the gas turbine\'s loss','Its exhaust leaves at about 600 °C. The deck calls this "the biggest disadvantage of every gas turbine".'],
+ ['What that heat could do','600 °C gas is hot enough to make high-pressure steam, the same kind a whole coal plant uses.'],
+ ['Add a second conversion','The HRSG turns that exhaust heat into steam; the steam turbine turns the steam into more rotation and more electricity. The gas now leaves the stack at about 100 °C.'],
+ ['Result','Same fuel, extra output, so efficiency rises from about 40% to about 60%.']
+]},
+practice:[
+ Q('e1a','Which conversion does the generator perform?',[
+  ['Rotation into electricity.',true,'Correct.'],
+  ['Heat into rotation.',false,'That is the turbine.'],
+  ['High voltage into low voltage.',false,'That is a transformer.']
+ ],''),
+ Q('e1b','Which of these does NOT need a turbine and generator?',[
+  ['Photovoltaic panels.',true,'They convert light directly to electricity.'],
+  ['A nuclear power station.',false,'Nuclear heat makes steam for a steam turbine.'],
+  ['A geothermal plant.',false,'Geothermal heat also makes steam for a turbine.']
+ ],''),
+ Q('e1c','Why does a combined cycle beat a gas turbine alone on efficiency?',[
+  ['It uses the gas turbine\'s hot exhaust to make steam for a second turbine.',true,'Right.'],
+  ['It burns fuel twice.',false,'The HRSG here has no burner. It only uses exhaust heat.'],
+  ['Its generator is bigger.',false,'Generator size doesn\'t change fuel conversion.']
+ ],''),
+ O('e1d','Order the energy chain.',['Chemical energy in fuel','Heat from combustion','Rotation of a turbine shaft','Electricity from the generator','High voltage on the grid'],'')
+]});
+
+M.push({id:'physics', n:'2', title:'Physics you will meet on site', short:'Site physics',
+goal:['Define temperature and pressure and use their units.','Apply Bernoulli\'s principle and the laws of thermodynamics to plant examples.','Explain what thermal expansion does to trapped gas, trapped water and pipes, and how plants protect against it.','Explain why superheated steam leaks are louder and invisible.','Use Ohm\'s law and tell AC from DC.'],
+body:()=>`
+<h3>Temperature and pressure</h3>
+<p><b>Temperature</b> measures the average kinetic energy of the molecules: how fast they move. Units: kelvin (K), degree Celsius (°C), Fahrenheit (°F). A change of 1 K equals a change of 1 °C; 0 K = −273.15 °C.</p>
+<p><b>Pressure</b> is force per unit area, acting at right angles to the surface. Units: pascal (Pa = N/m²), bar (1 bar = 100 000 Pa ≈ 1 atmosphere), psi. Always ask whether a pressure is <b>absolute</b> (from vacuum) or <b>gauge</b> (from atmosphere).</p>
+<h3>Bernoulli's principle</h3>
+<p>In a flowing liquid, total energy per volume stays constant along the pipe (ignoring friction):</p>
+<p style="font-family:var(--mono);font-size:15px">p + ½ρc² + ρgh = constant</p>
+<p>where p is static pressure, ½ρc² dynamic pressure (ρ density, c velocity) and ρgh the pressure from height. Where the pipe narrows, velocity rises and static pressure falls. This is how an <b>orifice flowmeter</b> works (Module 7), why pressure is lowest at a pump's impeller eye (cavitation, Module 4), and how labyrinth seals and steam turbine nozzles convert pressure into speed.</p>
+${flag('The deck writes the equation as "static pressure + dynamic pressure (c²/2) + geodetic pressure (h)", leaving out density and gravity. The terms only add up in pressure units with ρ and g included.')}
+<h3>The laws of thermodynamics</h3>
+${table(['Law','In plain words','Where you see it'],[
+ ['Zeroth','If A and B are each at the same temperature as C, they are at the same temperature as each other.','why a thermometer works'],
+ ['First','Energy is conserved. Heat in = work out + energy stored.','every energy balance; efficiency'],
+ ['Second','Heat flows by itself only from hot to cold. No heat engine turns all its heat into work.','why every plant needs a condenser and a cold sink'],
+ ['Third','As temperature approaches absolute zero, entropy approaches a minimum.','not important in daily operation']
+])}
+<h3>Thermal expansion: the most common source of damage</h3>
+<p>Almost everything expands when heated. What happens next depends on whether it can move:</p>
+<ul>
+<li><b>Trapped gas</b> (compressible): pressure rises until something gives. The deck's example is a bicycle tyre pumped to 9 bar and left in the sun: it can burst.</li>
+<li><b>Trapped liquid</b> (practically incompressible): pressure rises extremely fast because the liquid can't squeeze. A closed, full water pipe that warms up will start leaking at flanges and joints or burst. So closed water systems get <b>relief valves</b> and <b>expansion tanks</b> (a bladder tank takes water in as the system warms and gives it back as it cools). Any section of pipe that can be isolated full of water and then heated needs a relief valve: pump suction lines, heat exchanger cooling water sides, demin water lines.</li>
+<li><b>Steel</b>: pipes get longer and wider. Rule of thumb from the deck: ordinary steel grows about ${N('1 mm per metre per 100 K')}; stainless steel about 50% more. Pipes are held by <b>fixed points</b> (anchors that set where growth starts) and <b>sliding</b> or <b>spring supports</b> that let them move, plus bends, expansion loops and <b>compensators</b> (bellows) that absorb movement. Frequent heating and cooling with too little room to move cracks welds.</li>
+</ul>
+<p><b>Freezing</b> is expansion in reverse: water expands as it turns to ice and bursts pipes, valves and instrument lines. In cold countries outdoor lines have trace heating.</p>
+<h3>The sound of leaks</h3>
+<p>A bigger leak is louder. Superheated steam and compressed air leaks are louder than wet steam leaks. Silencers are fitted where noise is expected: air intakes, the gas outlet, safety valves, start-up vents and blow-off lines.</p>
+<p><b>Superheated steam is invisible.</b> What you see as "steam" is condensed droplets, which form only once the steam has cooled below its boiling point, some distance from the leak. Right at a superheated leak the jet is clear and extremely dangerous.</p>
+${flag('The deck says "saturated steam is well visible". Even saturated steam is clear gas at the leak; what you see is the fog after it condenses. Treat any steam leak as invisible close to the source.')}
+<h3>Electricity basics</h3>
+<ul>
+<li><b>Current (I)</b>, in amperes: the flow of electric charge. 1 A = 1 coulomb per second.</li>
+<li><b>Voltage (V or U)</b>, in volts: the "electric pressure" that pushes current. 1 V = 1 W per A.</li>
+<li><b>Ohm's law</b>: I = V ÷ R. Resistance R is in ohms (Ω).</li>
+<li><b>Power</b>: P = V × I (for DC or simple loads).</li>
+<li><b>DC</b> flows one way (batteries, control circuits). <b>AC</b> reverses direction many times a second (the grid, most motors).</li>
+</ul>`,
+warm: Q('p2w','Guess: a section of cooling water pipe is isolated full of water by two closed valves and then warms up in the sun. What happens?',[
+ ['Nothing much; water barely expands.',false,'Water expands only a little, but it can\'t be compressed, so even a small expansion drives pressure up very fast.'],
+ ['Pressure rises sharply and the pipe can leak or burst unless there is a relief valve.',true,'Right. That is why isolatable liquid-full sections get relief valves.'],
+ ['The water boils.',false,'Rising pressure prevents boiling; the risk is overpressure.']
+],''),
+worked:{case:'A 30 m steam pipe runs from 20 °C to 540 °C. How much does it grow, and what must the supports allow?',steps:[
+ ['Temperature rise','540 − 20 = 520 K.'],
+ ['Rule of thumb','About 1 mm per metre per 100 K. So 30 m × 5.2 ≈ 156 mm.'],
+ ['What it means','The pipe grows by about 15 cm. One end is held by a fixed point; everything else must slide or flex.'],
+ ['What stops damage','Sliding supports that guide the growth, spring supports that carry weight while moving, and bends or loops that bend a little instead of pushing on equipment. A blocked support forces that 15 cm into a nozzle or weld.']
+]},
+practice:[
+ Q('p2a','Where does Bernoulli\'s principle say the static pressure is lowest in a pipe?',[
+  ['Where the flow is fastest (narrowest section).',true,'Speed up, static pressure down.'],
+  ['Where the pipe is widest.',false,'There velocity is lowest and static pressure highest.'],
+  ['At the pipe wall.',false,'Bernoulli compares sections along the flow.']
+ ],''),
+ Q('p2b','Why does a closed cooling water system have a bladder expansion tank?',[
+  ['It takes in water as the system heats and returns it as it cools, keeping pressure steady.',true,'Right, and it covers small leaks as make-up.'],
+  ['To store spare chemicals.',false,'No.'],
+  ['To remove air bubbles.',false,'That is a vent\'s job.']
+ ],''),
+ Q('p2c','You hear a sharp hiss near a superheated steam line but see nothing. What is the right assumption?',[
+  ['An invisible superheated steam jet; keep clear and report.',true,'Correct.'],
+  ['Compressed air; safe to approach.',false,'Never assume.'],
+  ['Normal valve noise.',false,'Treat it as a leak until proven otherwise.']
+ ],''),
+ Q('p2d','Which law says a power plant must reject heat to something colder?',[
+  ['The second law.',true,'No engine can convert all heat into work; some must flow to a cold sink.'],
+  ['The first law.',false,'The first law only says energy is conserved.'],
+  ['Ohm\'s law.',false,'That is electrical.']
+ ],''),
+ Q('p2e','A 230 V heater draws 10 A. What is its power and resistance?',[
+  ['2300 W and 23 Ω.',true,'P = V × I = 2300 W; R = V ÷ I = 23 Ω.'],
+  ['23 W and 2300 Ω.',false,'Multiply for power, divide for resistance.'],
+  ['240 W and 0.04 Ω.',false,'Check the formulas.']
+ ],'')
+]});
+
+M.push({id:'valves', n:'3', title:'Valves and flow devices', short:'Valves',
+goal:['Name the parts of a valve and what each does.','Choose the right valve type for isolating, controlling, protecting or preventing backflow.','Read a valve characteristic and explain Kv.','Explain angle valves, pressure-reducing stations, attemperators and steam traps.'],
+body:()=>`
+<h3>What valves do</h3>
+<p>A valve is a mechanical device that <b>opens or closes</b> a line, <b>controls</b> flow in a defined way, or <b>restricts</b> it (non-return valves, orifices, steam traps). A valve is specified by system pressure and temperature, required flow, required opening/closing time and where it sits (for example an explosive-atmosphere area). These decide its material, seals, internal design, actuator and settings.</p>
+<h3>Parts of a simple valve</h3>
+${table(['Part','Job'],[
+ ['Casing (body)','holds the pressure and connects to the pipe'],
+ ['Lid (bonnet) and lid seal','closes the top of the body'],
+ ['Seat','the surface the closing element presses on'],
+ ['Shut-off device (disc, plug, gate)','the part that closes the flow'],
+ ['Spindle (stem) and spindle nut','move the shut-off device'],
+ ['Gland seal (packing)','seals where the stem leaves the body; adjusted by the gland bolts'],
+ ['Hand wheel / actuator','operates the stem'],
+ ['Cage (control valves)','shapes the flow path and so the valve\'s characteristic']
+])}
+<h3>Valve types</h3>
+${table(['Type','Best for','Notes'],[
+ ['Gate valve','isolation, fully open or closed','low pressure loss when open; poor for throttling'],
+ ['Globe valve','throttling, isolation, drains, vents','higher pressure loss; good control'],
+ ['Control valve','continuous control from the DCS','cage and plug shaped for a chosen characteristic; air or electric actuator'],
+ ['Butterfly / flap','large low-pressure lines, air and gas ducts','quarter turn; the three-way damper is a large flap'],
+ ['Ball valve','quick isolation','quarter turn; tight shut-off'],
+ ['Check (non-return), swing or spring','stops backflow','opens with forward flow, closes on reversal'],
+ ['Safety valve (spring-loaded)','overpressure protection','pops open at set pressure; see parts below'],
+ ['Needle / angle valve','high pressure drop where liquid may flash','the angle directs flashing flow away from the body walls to limit erosion']
+])}
+<p><b>Spring-loaded safety valve parts:</b> cap, spindle, adjusting screw (sets spring compression, and so set pressure), spring, guide plate, casing, lifting device (for manual test lifts), valve plate (disc) and seat.</p>
+<h3>Valve characteristic and Kv</h3>
+${valveChar()}
+<p><b>Kv</b> is the flow of water (m³/h) through the valve with a 1 bar pressure drop across it. <b>Kvs</b> is Kv fully open; <b>Kv0</b> is Kv at 0% (the leakage or minimum). A valve's <b>characteristic</b> is how Kv changes with position:</p>
+<ul>
+<li><b>Linear:</b> equal steps of opening give equal steps of flow.</li>
+<li><b>Equal percentage:</b> each step of opening increases flow by the same <i>percentage</i>. Fine control at small openings, strong effect near full open. The usual choice for process control.</li>
+<li><b>Quick opening:</b> most flow change early in the stroke. Typical of on/off and gate valves.</li>
+</ul>
+${why('This is why a gate valve that is "10% open" may already pass most of the flow, and why you can\'t judge flow from a control valve\'s position without knowing its characteristic.')}
+<h3>Steam pressure-reducing stations and attemperators</h3>
+<p>A <b>pressure-reducing station</b> lowers steam pressure through a control valve and then sprays water in to lower its temperature too. The turbine <b>bypass stations</b> are exactly this. An <b>attemperator</b> (desuperheater) sprays water through nozzles into the steam; the water evaporates and cools the steam. Some designs use <b>motive steam</b> to atomise the water into fine droplets so it evaporates fully before the next bend.</p>
+<h3>Steam traps</h3>
+<p>A steam trap lets <b>condensate</b> out of a steam line but keeps the <b>steam</b> in. The float type in the deck: a float rises with collected water and opens an orifice; when steam arrives the float drops and closes it. A sight glass shows the level, and a hand vent releases air at startup. Without working traps, water collects in steam lines and causes water hammer when steam is admitted.</p>`,
+warm: Q('v3w','Guess: which valve would you choose to control feedwater flow continuously from the DCS?',[
+ ['A gate valve.',false,'Gate valves are for full open or full closed.'],
+ ['A control valve with an equal-percentage characteristic.',true,'Right: it can sit at any position and gives fine control at small openings.'],
+ ['A swing check valve.',false,'Check valves only stop backflow.']
+],''),
+worked:{case:'A drain line off a hot water header drops from 40 bar to atmospheric. Why does the deck say to use an angle (needle) valve there?',steps:[
+ ['What happens to the water','Hot water at 40 bar is well above 100 °C. As pressure falls through the valve, part of it flashes to steam.'],
+ ['Why that hurts a valve','Flashing makes a fast, erosive mix of steam and droplets. In a straight-through body it hits the walls just after the seat and wears them away.'],
+ ['What the angle does','The angle body sends the flashing jet straight down the outlet pipe instead of into the body wall.'],
+ ['Rule','Where a liquid can flash across a valve, use a valve designed for it: angle bodies, hardened trim.']
+]},
+practice:[
+ Q('v3a','Which part stops leakage along a valve stem?',[
+  ['Gland seal (packing).',true,'Correct. Tightened by the gland bolts.'],
+  ['Seat.',false,'The seat seals the flow path when closed.'],
+  ['Lid seal.',false,'That seals the bonnet to the body.']
+ ],''),
+ Q('v3b','What does Kvs describe?',[
+  ['Flow in m³/h with 1 bar drop when the valve is fully open.',true,'Right.'],
+  ['The spring force of a safety valve.',false,'No.'],
+  ['Valve closing time.',false,'No.']
+ ],''),
+ Q('v3c','What does a steam trap do?',[
+  ['Removes condensate from a steam line while keeping steam in.',true,'Correct.'],
+  ['Stops steam flowing backwards.',false,'That is a check valve.'],
+  ['Reduces steam pressure.',false,'That is a pressure-reducing station.']
+ ],''),
+ Q('v3d','On a safety valve, what sets the opening pressure?',[
+  ['The adjusting screw compressing the spring.',true,'Right.'],
+  ['The cap.',false,'The cap covers the adjusting screw.'],
+  ['The lifting device.',false,'That is for manual test lifts.']
+ ],''),
+ Q('v3e','Why do closed steam lines need drains and traps before they are used?',[
+  ['Condensate that collects would be slammed by the steam, causing water hammer.',true,'Correct.'],
+  ['To keep the pipe cold.',false,'No.'],
+  ['To measure flow.',false,'No.']
+ ],'')
+]});
+
+M.push({id:'pumps', n:'4', title:'Pumps', short:'Pumps',
+goal:['Tell centrifugal from displacement pumps and say where each is used.','Find a pump\'s operating point from its curve and the system curve.','List the conditions for starting and running a centrifugal pump, and explain cavitation.','Explain multistage, barrel and ARC valves.'],
+body:()=>`
+<h3>Two families</h3>
+${table(['','Centrifugal','Displacement'],[
+ ['How it works','a spinning impeller throws liquid outward; speed becomes pressure','traps a fixed volume and pushes it along'],
+ ['Flow','varies with the system; falls as pressure rises','constant at constant speed, whatever the pressure'],
+ ['Protection','minimum flow line against overheating','relief valve against overpressure, always'],
+ ['In the plant','feedwater, condensate, cooling water','piston: high-pressure control oil; gear: control oil conditioning; screw: oil transfer, sewage; vane: lift (jacking) oil; membrane: chemical dosing']
+])}
+<h3>Pump curve, system curve, operating point</h3>
+${pumpCurve()}
+<p>Every centrifugal pump has its own curve, like a fingerprint: at zero flow it gives maximum pressure (shut-off head), and pressure falls as flow rises. The <b>system</b> (pipes, valves, height to lift) has its own curve: it needs a fixed static head plus friction that rises with flow squared. The pump runs where the two meet. To change flow you change one curve: throttle a valve (system curve), or change speed (pump curve), as the hydraulic coupling on Rumaila's HP feed pumps does.</p>
+<h3>Starting and running a centrifugal pump</h3>
+<p>The deck lists what must be true:</p>
+<ul>
+<li><b>Enough NPSH</b> (net positive suction head) at the inlet, before start and during operation, to avoid cavitation.</li>
+<li><b>Vented and filled</b> suction and casing, to avoid pulsation and water hammer.</li>
+<li><b>Discharge closed</b> downstream of the minimum-flow line at start, so the pump doesn't run out to excessive flow (where NPSH required rises and it cavitates).</li>
+<li><b>Minimum-flow line ready</b>, so the pump never runs at "no flow" and overheats.</li>
+<li><b>No reverse rotation</b> of the impeller (a check valve failing can spin a stopped pump backwards).</li>
+<li>During operation, watch the pump's own health: bearing vibration and temperature, motor winding temperature, cooling flow, under-voltage, over-current.</li>
+</ul>
+${why('The discharge is closed "downstream of the minimum-flow line", so the min-flow line is still open. That is consistent with the HRSG manual\'s rule never to run with the outlet closed unless there is a minimum-flow device.')}
+<h3>Cavitation</h3>
+<p>Pressure is lowest at the impeller eye (Bernoulli). If it drops below the liquid's vapour pressure, bubbles form, travel to higher pressure and collapse violently against the vanes. The result: noise like gravel, vibration, falling head, and pitted, eaten-away impellers. Hot liquids near boiling (feedwater from a drum or deaerator) cavitate easily, so their pumps sit far below the tank to get enough head.</p>
+<h3>Forces on a pump</h3>
+<p>The rotor feels its own weight, the pressure at suction and discharge, the momentum change of the water and the drive torque. The difference between discharge and suction pressure pushes the rotor axially. Multistage pumps add up this axial thrust, so they need balancing devices (balance drums or discs) and a thrust bearing.</p>
+<h3>Designs you will meet</h3>
+<ul>
+<li><b>Single-stage</b>: one impeller. Cooling water, circulation pumps.</li>
+<li><b>Multistage horizontal</b>: several impellers in series on one shaft; each adds pressure. Feedwater pumps.</li>
+<li><b>Multistage barrel (vertical)</b>: the stages hang inside a pressurised can sunk below floor level, giving extra suction head. Condensate extraction pumps, which draw water at condenser vacuum and near boiling. Often with a first "booster" stage.</li>
+<li><b>ARC valve</b> (automatic recirculation check valve): on the pump discharge; opens a bypass back to the suction whenever forward flow is low, guaranteeing minimum flow without a separate control loop.</li>
+</ul>`,
+warm: Q('u4w','Guess: a gear pump\'s discharge valve is closed by mistake while it runs. What happens?',[
+ ['Flow just drops to zero and the pump idles.',false,'A displacement pump keeps pushing the same volume every turn.'],
+ ['Pressure climbs until something breaks, unless a relief valve opens.',true,'Right. That is why displacement pumps always have a relief valve.'],
+ ['It cavitates.',false,'Cavitation is a suction-side problem.']
+],''),
+worked:{case:'A cooling water pump delivers less than it used to. The discharge valve is fully open. The pump curve hasn\'t changed. Where do you look?',steps:[
+ ['Operating point','Flow is set where the pump curve and the system curve meet.'],
+ ['What changed','If the pump curve is the same, the system curve must be steeper: more resistance.'],
+ ['Candidates','A fouled heat exchanger, a clogged strainer, a partly shut valve elsewhere, or deposits in the pipe.'],
+ ['If the pump curve did change','Worn impeller or wear rings, air in the suction, cavitation or wrong speed. Check discharge pressure at zero flow against the original curve.']
+]},
+practice:[
+ Q('u4a','What always protects a displacement pump?',[
+  ['A relief (safety) valve.',true,'Its flow doesn\'t drop with pressure, so pressure must be limited.'],
+  ['A minimum-flow line.',false,'That protects centrifugal pumps.'],
+  ['A check valve on suction.',false,'Not the key protection.']
+ ],''),
+ Q('u4b','Where do a pump curve and system curve meet?',[
+  ['At the operating point.',true,'Correct.'],
+  ['At shut-off head.',false,'That is zero flow on the pump curve.'],
+  ['At the NPSH point.',false,'NPSH is separate.']
+ ],''),
+ Q('u4c','Why are condensate extraction pumps often vertical barrel pumps sunk below floor level?',[
+  ['Their water is near boiling at condenser vacuum, so they need extra suction head to avoid cavitation.',true,'Right.'],
+  ['To save floor space only.',false,'The main reason is suction head.'],
+  ['To keep them cool.',false,'No.']
+ ],''),
+ Q('u4d','What does an ARC valve do?',[
+  ['Opens a recirculation path automatically when forward flow is low.',true,'Correct.'],
+  ['Controls discharge pressure.',false,'No.'],
+  ['Prevents reverse rotation.',false,'Its check function helps, but its main job is minimum flow.']
+ ],''),
+ Q('u4e','Which pump type is used for lift (jacking) oil in the deck?',[
+  ['Vane pump.',true,'Right.'],
+  ['Membrane pump.',false,'Those are for chemical dosing.'],
+  ['Centrifugal.',false,'Lift oil needs high pressure at small flow.']
+ ],'')
+]});
+
+M.push({id:'mech', n:'5', title:'Bearings, seals, heat exchangers and vessels', short:'Bearings & vessels',
+goal:['Tell rolling from sliding bearings and explain lift oil and thrust bearings.','Name the seal types and where each is used.','Compare plate and tube-bundle heat exchangers.','List a vessel\'s job, its risks and its protections.'],
+body:()=>`
+<h3>Bearings</h3>
+<p>A bearing positions a rotating part, lets it turn freely, and carries its weight and other forces into the stationary structure.</p>
+${table(['','Rolling bearing','Sliding (plain) bearing'],[
+ ['How','balls, cylinders, needles or cones in a cage between an inner ring (on the shaft) and an outer ring','the shaft turns in a shell, separated by an oil film'],
+ ['Friction','only rolling friction','depends entirely on lubrication'],
+ ['Where','pumps, fans, small motors','turbines, generators, large pumps'],
+ ['Materials','hardened steel','Babbitt (white metal), bronze, copper, tin on a steel shell']
+])}
+<ul>
+<li><b>Lift (jacking) oil:</b> a heavy turbine rotor at rest sits directly on the bearing metal. High-pressure oil is pumped into a pocket under it to lift it before it turns, so the oil film exists from the first rotation.</li>
+<li><b>Thrust bearing:</b> carries axial force (along the shaft) and fixes the rotor's axial position. Radial (journal) bearings carry the weight.</li>
+</ul>
+<h3>Seals and gaskets</h3>
+${table(['Type','Examples','Where'],[
+ ['Static','flat and profile gaskets','flanges, covers'],
+ ['Translatory (sliding back and forth)','packings, piston rings','valve stems, pistons'],
+ ['Rotating, contact','packings in a stuffing box, mechanical seals','pump shafts'],
+ ['Rotating, contactless','labyrinth seals','steam turbine glands, compressors']
+])}
+<p><b>Mechanical seal:</b> a spring presses a rotating sliding ring against a stationary seat; the two polished faces seal against each other with a thin fluid film. <b>Labyrinth seal:</b> a series of sharp fins close to the shaft. At each fin the fluid speeds up (pressure drops), then swirls in the chamber behind it (energy lost as heat), so pressure falls step by step without contact. Turbine labyrinths need <b>seal steam</b> to keep air out at low pressure.</p>
+<h3>Heat exchangers</h3>
+${table(['','Plate type','Tube bundle'],[
+ ['Size','small for a big transfer area','big'],
+ ['Pressure drop','higher','lower'],
+ ['Pressure and temperature','limited','high (HRSG, condenser)'],
+ ['Cleaning','no online cleaning; deposits lodge in gaps and start corrosion','online cleaning possible on the cold side'],
+ ['Repair','easy: replace plates','harder: welding or plugging tubes']
+])}
+<p>The HRSG itself is a very large tube-bundle heat exchanger. So is the condenser.</p>
+<h3>Vessels and tanks</h3>
+<p>Vessels store a medium (raw water, feedwater), separate it (boiler drum, separators), damp pressure (hydraulic accumulators), store pressure (air receivers), store heat, or treat a medium (filters, deaerators). Each function brings its own risks, and each risk its own protection:</p>
+${table(['Vessel','Risks','Protections'],[
+ ['Demin water tank','corrosion; vacuum as level falls; overpressure as it rises; overflow','coated or stainless steel; vacuum breaker or breather; safety valve or breather; overflow pipe'],
+ ['Compressed air receiver','corrosion; overpressure','air dryer upstream; safety valve'],
+ ['Ignition gas tank','explosion; overpressure','explosion-proof design and zone; safety valve'],
+ ['Hydraulic / fuel oil accumulator','explosion; overpressure','explosion-proof design; safety valve'],
+ ['Lube oil tank','explosion (oil mist); overpressure; vacuum; overflow','explosion-proof design; breather; vapour extraction; manual filling with level protection'],
+ ['Boiler drum','overpressure; vacuum; overflow; corrosion','safety valves; design; level protection loops; water chemistry']
+])}
+<p><b>Vessel protection sheets</b> list, for each tank, its normal operating values and its alarm and trip setpoints for level, pressure and temperature. Find the ones for the vessels you work with.</p>`,
+warm: Q('m5w','Guess: why do large turbines pump high-pressure oil under the shaft before it starts turning?',[
+ ['To cool the bearing.',false,'Cooling oil flows all the time; this is something extra.'],
+ ['To lift the heavy rotor so it doesn\'t grind on the bearing metal before an oil film forms.',true,'Right: lift (jacking) oil.'],
+ ['To test the oil pressure.',false,'No.']
+],''),
+worked:{case:'A demin water tank is being emptied fast by the transfer pumps, and its breather is blocked by a bird\'s nest. What happens?',steps:[
+ ['Level falls','Water leaves; something must take its place.'],
+ ['No air can enter','With the breather blocked, pressure inside drops below atmosphere.'],
+ ['Result','A thin-walled atmospheric tank is not built for vacuum. Outside air pressure can crush it inwards.'],
+ ['Protection','The breather and vacuum breaker exist for exactly this. They are on the inspection list for a reason.']
+]},
+practice:[
+ Q('m5a','Which bearing type depends entirely on an oil film?',[
+  ['Sliding (plain) bearing.',true,'Correct.'],
+  ['Ball bearing.',false,'Rolling elements carry the load.'],
+  ['Roller bearing.',false,'Rolling elements again.']
+ ],''),
+ Q('m5b','How does a labyrinth seal cut pressure without touching the shaft?',[
+  ['Fluid speeds up at each fin and loses energy in the chamber behind it, step by step.',true,'Right.'],
+  ['A spring pushes a ring onto the shaft.',false,'That is a mechanical seal.'],
+  ['Packing rings squeeze the shaft.',false,'That is a stuffing box.']
+ ],''),
+ Q('m5c','Which heat exchanger suits high pressure and temperature with low pressure drop?',[
+  ['Tube bundle.',true,'Correct; the HRSG and condenser are tube bundles.'],
+  ['Plate type.',false,'Plate types are compact but limited in pressure and have higher drop.'],
+  ['Neither.',false,'Tube bundle.']
+ ],''),
+ Q('m5d','What protects a compressed air receiver from internal corrosion?',[
+  ['An air dryer upstream, so little water gets in.',true,'Right.'],
+  ['A vacuum breaker.',false,'That protects against vacuum.'],
+  ['An overflow pipe.',false,'That is for liquid tanks.']
+ ],'')
+]});
+
+M.push({id:'gen', n:'6', title:'Generator and transformer', short:'Generator',
+goal:['Explain electromagnetic induction and how a generator makes three-phase AC.','Link speed, poles and frequency (3000 rpm → 50 Hz).','Tell active, reactive and apparent power apart.','Explain why power is transmitted at high voltage and how a transformer changes voltage.'],
+body:()=>`
+<h3>Induction</h3>
+<p>A changing current makes a changing magnetic field; a changing magnetic field through a coil makes a current in it. A generator uses the second half: a rotating magnetic field sweeps past stationary coils and induces voltage in them. A bicycle dynamo does the same thing on a small scale. Werner von Siemens built the first practical dynamo in 1866.</p>
+<h3>Rotor and stator</h3>
+<ul>
+<li><b>Rotor:</b> forged in one piece, carries the field winding. A DC <b>excitation</b> current (about ${N('3000 A')} in the deck's example) makes it an electromagnet. Fans on the shaft blow cooling air through ventilation slots.</li>
+<li><b>Stator:</b> a laminated iron core with copper bars (windings) in slots, inside the frame. Its current can reach ${N('14 000 A')} in the deck's example. Generators are huge: the example weighs about 350 t (stator 270 t, rotor 70 t).</li>
+<li><b>Cooling:</b> by air (e.g. Siemens SGen-1000A, 165–350 MVA), hydrogen or water for bigger machines.</li>
+</ul>
+<h3>Three phases and 50 Hz</h3>
+${threePhase()}
+<p>A power plant generator has three windings 120° apart, so it makes three voltages 120° apart: <b>three-phase</b> AC, labelled L1, L2, L3. With one pair of poles (2-pole), one revolution = one cycle:</p>
+<p style="font-family:var(--mono);font-size:15px">3000 rpm ÷ 60 = 50 rev/s = 50 Hz</p>
+<p>Grids in Europe, Iraq and most of the world run at 50 Hz; North America and parts of other regions at 60 Hz (3600 rpm for 2-pole machines). Siemens names its large gas turbines by frequency: <b>SGT5</b> for 50 Hz, <b>SGT6</b> for 60 Hz. A 4-pole generator turns at half speed (1500 rpm) for the same 50 Hz.</p>
+${why('Because frequency is tied to speed, every generator on a grid spins in step with every other. The turbine controls must hold speed very precisely, and a generator must be synchronised (matched in speed, voltage and phase) before its breaker closes.')}
+<h3>Kinds of power</h3>
+${table(['Power','Unit','Meaning'],[
+ ['Active power (P)','W, kW, MW','does real work; what the turbine supplies'],
+ ['Reactive power (Q)','var, kvar, Mvar','keeps magnetic fields in motors and transformers alive; swaps back and forth; set by excitation'],
+ ['Apparent power (S)','VA, kVA, MVA','the combined load on the windings: S² = P² + Q²; generators and transformers are rated in MVA']
+])}
+<p>The <b>capability curve</b> on a generator's data sheet shows the safe combinations of P and Q: limited by stator current, rotor (field) current and stability, and it differs for inductive (lagging) and capacitive (leading) reactive power.</p>
+<h3>From generator to grid</h3>
+${chain(['Generator (typically 15–21 kV)','Isolated phase bus duct','Generator circuit breaker','Main (step-up) transformer','Transmission grid'])}
+<p>The <b>isolated phase bus duct</b> carries each phase in its own earthed metal tube so a fault can't jump between phases. The <b>generator circuit breaker</b> connects or disconnects the generator. A <b>unit (auxiliary) transformer</b> feeds the plant's own motors.</p>
+<h3>Why high voltage</h3>
+<p>Power = voltage × current, and cable losses = I²R. The deck's example: 1 MW at 230 V needs 4348 A; at 380 kV it needs 2.63 A. Losses go with current squared: (4348 ÷ 2.63)² ≈ ${N('2.7 million')} times more loss at 230 V. The first power plants could only supply customers within about 600 m because the voltage drop in the cables was too great.</p>
+<h3>The transformer</h3>
+<p>Two coils on a shared iron core. AC in the first coil makes a changing field in the core, which induces voltage in the second. The voltage ratio equals the turns ratio: V₁/V₂ = N₁/N₂. Power in ≈ power out, so current changes the opposite way: double the voltage, half the current. Large transformers are oil cooled (with radiators and fans); small indoor ones are dry (resin cast) and air cooled. Transformers only work on AC: DC makes no changing field.</p>
+${plant('Iraq\'s grid runs at 50 Hz, and its main transmission levels are 400 kV and 132 kV. Check your plant\'s single-line diagram for the actual generator and transformer voltages.')}`,
+warm: Q('g6w','Guess: why must a 2-pole generator on a 50 Hz grid turn at exactly 3000 rpm?',[
+ ['That is the turbine\'s most efficient speed.',false,'The speed is forced by the grid frequency, not chosen for efficiency.'],
+ ['Each revolution makes one cycle, and 3000 rpm is 50 revolutions per second, matching 50 Hz.',true,'Right.'],
+ ['To keep the bearings cool.',false,'No.']
+],''),
+worked:{case:'A transformer steps 20 kV up to 400 kV. The generator side carries 10 000 A. Roughly what current flows on the 400 kV side?',steps:[
+ ['Voltage ratio','400 ÷ 20 = 20.'],
+ ['Power is (almost) the same both sides','So current falls by the same factor.'],
+ ['Current','10 000 ÷ 20 = 500 A.'],
+ ['Why it matters','Losses fall with current squared: 400 times lower in the same conductor. That is the whole reason for stepping up.']
+]},
+practice:[
+ Q('g6a','A 4-pole generator on a 50 Hz grid turns at:',[
+  ['1500 rpm.',true,'Two pole pairs → two cycles per revolution → 25 rev/s.'],
+  ['3000 rpm.',false,'That is for 2-pole.'],
+  ['3600 rpm.',false,'That is 2-pole at 60 Hz.']
+ ],''),
+ Q('g6b','What sets a generator\'s reactive power output?',[
+  ['Its excitation (field current).',true,'Correct.'],
+  ['The turbine\'s fuel flow.',false,'Fuel sets active power.'],
+  ['Grid frequency.',false,'No.']
+ ],''),
+ Q('g6c','Why is the generator\'s bus duct built as isolated phases?',[
+  ['Each phase in its own earthed enclosure, so faults can\'t jump between phases.',true,'Right.'],
+  ['To save copper.',false,'No.'],
+  ['To reduce voltage.',false,'No.']
+ ],''),
+ Q('g6d','A transformer has 100 turns on the primary and 400 on the secondary. 100 V in gives:',[
+  ['400 V out.',true,'V₂ = V₁ × N₂/N₁.'],
+  ['25 V out.',false,'That would be step-down.'],
+  ['100 V out.',false,'The turns ratio changes voltage.']
+ ],''),
+ Q('g6e','Generators and transformers are rated in MVA rather than MW because:',[
+  ['Their windings are loaded by total current, including the reactive part.',true,'Correct.'],
+  ['MVA is larger.',false,'Not the reason.'],
+  ['It is a German convention.',false,'It is universal.']
+ ],'')
+]});
+
+M.push({id:'ic', n:'7', title:'Instrumentation and control', short:'I&C',
+goal:['Describe what a plant I&C system does and its main hardware.','Explain thermocouples, resistance thermometers, pressure/DP transmitters, level and flow measurement, and vibration monitoring.','Explain how an electric valve actuator is controlled locally and remotely.'],
+body:()=>`
+<h3>What I&amp;C does</h3>
+<p>The I&amp;C system collects every measurement in the plant, runs the control loops and sequences, protects the equipment, and lets operators see and command everything from the control room. The deck's example (a single-shaft combined cycle plant in Spain) had about 3500 binary inputs, 1800 analog inputs, 580 temperature inputs, 1250 actuators and solenoid valves, 210 control valves, 350 sub-group controls, 315 km of cable and 1500 remote measurements.</p>
+<p><b>Hardware:</b> automation servers (the controllers), I/O modules that connect field signals (including <b>fail-safe</b> I/O for protection functions), dedicated speed measurement systems for turbines, operator stations and engineering stations. <b>Operation</b> is through process graphics: symbols show each device's state, and clicking one opens a <b>faceplate</b> with its details and commands.</p>
+<h3>Measuring temperature</h3>
+${table(['','Thermocouple','Resistance thermometer (RTD, e.g. Pt100)'],[
+ ['Principle','two different metals joined at the tip produce a small voltage that grows with temperature','a platinum resistor\'s resistance rises with temperature'],
+ ['Range','very high (exhaust gas, steam up to 1000+ °C)','moderate (up to about 600 °C), more accurate'],
+ ['Wiring note','needs compensation wire and cold-junction compensation','needs a supply current; 3- or 4-wire connection cancels lead resistance'],
+ ['Installation','both sit in a protective thermowell so they can be changed without opening the process','']
+])}
+<h3>Pressure transmitters (for pressure, flow and level)</h3>
+<p>The same transmitter measures pressure, differential pressure (DP) across a flow element, or DP between the top and bottom of a vessel. Its installation depends on the fluid: for <b>liquids</b> it is mounted below the tapping so the impulse lines stay full and air rises away; for <b>gases</b> above the tapping so condensate drains back. It has a local display and push-buttons for mode, increment and decrement.</p>
+<h3>Level</h3>
+<ul>
+<li><b>By DP:</b> the pressure of the liquid column, compared with a reference. Needs density correction for hot water.</li>
+<li><b>Displacer or float:</b> a body in the liquid moves with level (or feels buoyancy) and moves a pickup.</li>
+<li><b>Bar probe:</b> a rod in the vessel measures level electrically (capacitive or guided radar).</li>
+</ul>
+<h3>Flow by DP</h3>
+<p>An orifice plate or nozzle narrows the pipe; flow speeds up and pressure drops (Bernoulli). DP grows with flow squared, so the transmitter or DCS takes a square root. The transmitter sits below the pipe for liquids and steam (condensate pots keep steam impulse lines full of water) and above for gases.</p>
+<h3>Vibration</h3>
+<p>Turbine, compressor and generator bearings are monitored against alarm and trip limits. Causes include unbalance and blade breakage.</p>
+<ul>
+<li><b>Piezoelectric accelerometers</b> on the bearing housings measure <b>absolute vibration</b> (the housing's movement); a charge amplifier close to the sensor turns the tiny charge into a usable signal, usually reported as velocity (mm/s).</li>
+<li><b>Proximity probes</b> (eddy-current, non-contact) look at the shaft itself and measure <b>relative shaft vibration</b> (µm) and position.</li>
+</ul>
+<h3>Electric valve actuators</h3>
+<p>A motor-operated valve actuator (the deck shows an AUMA) has an electric motor and gearbox, a handwheel for manual operation, and a control unit with <b>limit switches</b> (stop at open/closed) and <b>torque switches</b> (stop if the valve jams or seats hard). A local selector switches between <b>Local</b> (push-buttons at the valve), <b>Off</b> and <b>Remote</b> (commands from the DCS). Positions and faults are sent back to the DCS as feedback.</p>`,
+warm: Q('i7w','Guess: which sensor would you use to measure 580 °C GT exhaust gas?',[
+ ['Thermocouple.',true,'Right: thermocouples handle high temperatures well.'],
+ ['Pt100 resistance thermometer.',false,'RTDs are more accurate but limited to lower temperatures.'],
+ ['Pressure transmitter.',false,'That measures pressure.']
+],''),
+worked:{case:'A steam flow transmitter has been mounted above the pipe. The reading is erratic. Why?',steps:[
+ ['What should be in the impulse lines','For steam, the lines should be full of condensate (water), with condensate pots at the tappings.'],
+ ['What happens mounted above','Condensate drains back into the pipe and the lines partly fill with steam and water that changes over time.'],
+ ['Effect','The two sides see different, changing water columns, so the DP is wrong and unstable.'],
+ ['Fix','Mount the transmitter below the tappings for steam and liquids; above only for gases.']
+]},
+practice:[
+ Q('i7a','A proximity probe measures:',[
+  ['The shaft\'s movement relative to the bearing, without contact.',true,'Correct.'],
+  ['Absolute housing vibration.',false,'That is an accelerometer.'],
+  ['Temperature.',false,'No.']
+ ],''),
+ Q('i7b','Why does a DP flow reading need a square root?',[
+  ['DP rises with flow squared.',true,'Right.'],
+  ['To convert to kg/s.',false,'Units are separate.'],
+  ['To filter noise.',false,'No.']
+ ],''),
+ Q('i7c','On a motor-operated valve, what stops the motor if the valve jams part way?',[
+  ['The torque switch.',true,'Correct.'],
+  ['The limit switch.',false,'Limit switches stop at end positions.'],
+  ['The handwheel.',false,'That is for manual operation.']
+ ],''),
+ Q('i7d','Why is protection I/O often "fail-safe"?',[
+  ['A fault in the I/O itself must drive the plant to a safe state, not hide a trip.',true,'Right.'],
+  ['To save cost.',false,'No.'],
+  ['To speed up the HMI.',false,'No.']
+ ],''),
+ Q('i7e','A thermocouple needs compensation wire because:',[
+  ['Its voltage depends on the temperature at the cold end too, which must be carried and corrected.',true,'Correct.'],
+  ['It needs a power supply.',false,'Thermocouples generate their own voltage.'],
+  ['It measures resistance.',false,'That is an RTD.']
+ ],'')
+]});
+
+M.push({id:'st', n:'8', title:'Steam turbine, condenser and cooling', short:'Steam turbine',
+goal:['Explain how vanes and blades turn steam pressure into rotation.','Explain why HP, IP and LP sections exist and why LP turbines are double-flow.','Explain why the condenser runs at vacuum and what happens without it.','Name the steam turbine auxiliaries and the cooling options.'],
+body:()=>`
+<h3>How a steam turbine turns</h3>
+<p>Steam enters at high pressure and temperature. In the fixed <b>vanes</b> (stationary blades, fitted in the casing) the passage narrows: steam accelerates to about the speed of sound and its pressure and temperature fall. That fast steam hits the <b>moving blades</b> on the rotor, which turn it around; the change of direction pushes the blades and turns the shaft. One vane row plus one blade row is a <b>stage</b>. Pressure and temperature fall stage by stage, so blades get longer towards the exhaust as the steam's volume grows.</p>
+<p>De Laval built the first single-stage turbine in 1893; adding more stages used the leftover energy in the "waste" steam.</p>
+<h3>HP, IP, LP</h3>
+<p>Large turbines are split into sections: <b>HP</b> takes main steam, <b>IP</b> takes reheated steam, <b>LP</b> expands it down to condenser pressure. The deck's large example has HP, IP and three LP sections driving one generator (about 1000 MW). LP turbines are usually <b>double-flow</b>: steam enters in the middle and expands both ways, which balances axial thrust and handles huge volumes. An LP rotor in the deck: about 80 t, 3.5 m diameter, 3000 rpm.</p>
+<p>Precision is extreme: blades are made to ${N('0.01 mm')}, the turbine train is aligned to ${N('0.05 mm')}, and rotors are balanced so finely that the smallest correction weight is 20 g on a 320 t rotor.</p>
+<h3>Why the condenser runs at vacuum</h3>
+<p>Water's boiling point depends on pressure: on Mount Everest (0.32 bar) water boils at 71 °C; in a pressure cooker (2 bar) at 120 °C. The condenser uses this in reverse. It cools exhaust steam with cooling water at about 18–25 °C, so the steam condenses at around 28–33 °C. Condensing steam shrinks enormously in volume, and that creates the vacuum.</p>
+${table(['Condenser pressure (abs.)','Condensing temperature'],[['0.030 bar','24.1 °C'],['0.040 bar','29.0 °C'],['0.050 bar','32.9 °C'],['0.060 bar','36.2 °C'],['0.100 bar','45.8 °C'],['1.013 bar (atmosphere)','100 °C']],[0,1])}
+<p>The lower the condenser pressure, the further the steam can expand in the turbine and the more work it does. Without vacuum, a turbine would have to exhaust at 100 °C and throw away a large part of its output.</p>
+<p><b>The risk:</b> as steam expands to such low temperatures it becomes wet. Too much moisture erodes the last-stage LP blades (the deck shows one run too wet). Steam entering the turbine must be well superheated, and drains must remove water before it gets there.</p>
+<h3>Auxiliary systems</h3>
+${table(['System','Job'],[
+ ['Lube oil and lift oil','lubricate bearings; lift the rotor at low speed'],
+ ['Turning gear','rotates the shaft slowly when stopped, so the hot rotor cools evenly and doesn\'t bow'],
+ ['Control oil / control air','operate the steam valves and actuators'],
+ ['Seal steam (gland steam)','feeds the labyrinth glands so air can\'t leak into the vacuum and steam can\'t leak out'],
+ ['Evacuation (vacuum pumps)','remove air and non-condensable gases from the condenser'],
+ ['Steam bypass','sends steam around the turbine to the condenser at startup, shutdown and trips']
+])}
+<h3>Cooling the condenser</h3>
+${table(['System','How'],[
+ ['Once-through','river or sea water flows through the condenser and back; no tower; best efficiency'],
+ ['Cooling tower (wet)','circulating water is cooled by partly evaporating it in a tower, natural or fan draft; needs make-up water for evaporation, drift and blowdown'],
+ ['Return-flow','river water, cooled in a tower before return when it would be too warm for the environment'],
+ ['Air-cooled condenser (ACC)','steam condenses directly in finned tubes cooled by large fans; no cooling water, lower efficiency on hot days']
+])}
+${plant('Find out which condenser cooling method Rumaila uses and its design cooling water temperature. In Basra\'s summer, cooling performance limits vacuum and so steam turbine output.')}`,
+warm: Q('t8w','Guess: why does the condenser need to be at vacuum rather than atmospheric pressure?',[
+ ['So the steam condenses at a much lower temperature and the turbine can extract more work.',true,'Right. At about 0.04 bar steam condenses near 29 °C instead of 100 °C.'],
+ ['To suck steam out of the boiler.',false,'Steam flows by pressure difference anyway; the gain is more expansion in the turbine.'],
+ ['To stop air getting in.',false,'Vacuum actually makes air in-leakage a problem.']
+],''),
+worked:{case:'Summer afternoon: cooling water inlet rises from 25 °C to 33 °C. What happens to the steam turbine?',steps:[
+ ['Condensing temperature','Steam can only condense a few degrees above the cooling water temperature, so condensing temperature rises by about the same amount.'],
+ ['Condenser pressure','Higher condensing temperature means higher pressure: from about 0.05 bar towards 0.08 bar (see the table).'],
+ ['Turbine','Less expansion is possible, so output falls for the same steam flow.'],
+ ['Protection','If vacuum falls too far, the LP blades overheat and the turbine trips on low vacuum. Operators watch it closely on hot days.']
+]},
+practice:[
+ Q('t8a','What does a steam turbine\'s stationary vane row do?',[
+  ['Accelerates the steam and directs it at the moving blades.',true,'Correct.'],
+  ['Removes water from the steam.',false,'No.'],
+  ['Seals the shaft.',false,'That is the labyrinth gland.']
+ ],''),
+ Q('t8b','Why are LP turbines usually double-flow?',[
+  ['To handle huge steam volumes and balance axial thrust.',true,'Right.'],
+  ['To run in both rotation directions.',false,'No.'],
+  ['For redundancy.',false,'No.']
+ ],''),
+ Q('t8c','What is the turning gear for?',[
+  ['Rotating a stopped hot rotor slowly so it cools evenly and doesn\'t bow.',true,'Correct.'],
+  ['Starting the turbine to full speed.',false,'Steam does that.'],
+  ['Changing gear ratio to the generator.',false,'Turbine and generator are rigidly coupled.']
+ ],''),
+ Q('t8d','What removes air from the condenser?',[
+  ['The evacuation system (vacuum pumps).',true,'Correct.'],
+  ['Seal steam.',false,'Seal steam keeps air out at the glands.'],
+  ['Cooling tower fans.',false,'No.']
+ ],''),
+ Q('t8e','Condenser pressure is 0.10 bar abs. At what temperature does steam condense?',[
+  ['About 46 °C.',true,'From the table: 45.8 °C.'],
+  ['100 °C.',false,'That is at atmospheric pressure.'],
+  ['About 29 °C.',false,'That is at 0.04 bar.']
+ ],'')
+]});
+
+M.push({id:'gt', n:'9', title:'Gas turbine', short:'Gas turbine',
+goal:['Follow air through the compressor, combustor and turbine with typical pressures and temperatures.','Explain compressor stall and surge.','Explain annular combustion, premix vs diffusion burners and heat shields.','Name the gas turbine package auxiliaries.'],
+body:()=>`
+<h3>The Brayton cycle, station by station</h3>
+${table(['Station','Pressure','Temperature','What happens'],[
+ ['Compressor inlet','1 bar','15 °C','ambient air enters through the filter house'],
+ ['Compressor outlet','≈17.5 bar','≈400 °C','air squeezed 13–17 times'],
+ ['Combustor outlet / turbine inlet','≈17 bar','≈1500 °C','fuel burned in the compressed air'],
+ ['Turbine outlet (exhaust)','≈1 bar','≈600 °C','gas has expanded and turned the shaft']
+],[1,2])}
+<p class="src">Round numbers from the deck; Rumaila's exhaust is about 581 °C at 691.5 kg/s per the HRSG manual.</p>
+<p>The turbine drives the compressor and the generator on the same shaft. About half or more of the turbine's work goes back into driving the compressor; the rest is the useful output. At start-up, the shaft is first spun electrically (the generator runs as a motor, fed by a static frequency converter) until the turbine can sustain itself.</p>
+<h3>Compressor</h3>
+<p>Rows of blades on the rotor and vanes on the casing push air to higher pressure. The deck's example compresses about ${N('540 m³ of air per second')}: a cube 8 m on each side, every second.</p>
+${flag('The deck says the air temperature rises "by friction". It rises mainly because work is done compressing it (adiabatic compression), the same reason a bicycle pump gets hot. Friction adds only a little.')}
+<p><b>Stall and surge:</b> each blade meets the air at an angle set by rotor speed and axial air velocity. If axial flow is too low for the speed (for example during run-up), the angle becomes too steep and the airflow separates from the blades: a <b>stall</b>. If stalls spread, the whole compressor can lose its pressure and flow reverses in violent pulses: <b>surge</b>. It can break blades. Protection: <b>blow-off valves</b> that bleed air during start-up and <b>variable inlet guide vanes</b> that adjust the air angle.</p>
+<h3>Combustion chamber</h3>
+<p>Fuel (gas or oil) is burned in the compressed air. Designs are external (silo), or internal: <b>can</b> (several separate cans) or <b>annular</b> (one ring). The SGT5-4000F has an annular chamber with <b>24 burners</b>, lined with <b>ceramic and metallic heat shields</b> to protect the casing from the flame.</p>
+<ul>
+<li><b>Diffusion</b> combustion: fuel and air meet at the flame. Stable, but hot spots make more NOx.</li>
+<li><b>Premix</b> combustion: fuel and air are mixed before the flame. Cooler, cleaner (low NOx), but less stable at low load. Burners switch modes with load.</li>
+</ul>
+<p>The combustion chamber is inspected visually before first ignition and at every outage.</p>
+<h3>Turbine</h3>
+<p>The hot gas expands through vanes and blades. The first rows run red-hot and are cooled with air bled from the compressor through internal passages, and coated. The SGT5-4000F turns at ${N('3000 rpm')}.</p>
+${flag('The deck says the first turbine blades "rotate up to 3600 rpm". That is the speed of 60 Hz (SGT6) machines. Rumaila\'s SGT5-4000F turns at 3000 rpm.')}
+<h3>The package</h3>
+${table(['Auxiliary','Job'],[
+ ['Filter house','cleans intake air'],
+ ['Anti-icing (air preheating)','warms intake air in cold, humid conditions'],
+ ['Compressor blow-off lines','bleed air to avoid surge at start-up'],
+ ['Cooling air system','cools turbine blades and vanes'],
+ ['Fuel module (gas, oil) and optional water module','supply and meter fuel; water injection for NOx control on oil'],
+ ['Lube oil module','bearings of GT and generator'],
+ ['Hydraulic oil and control air supply','operate fuel valves and guide vanes'],
+ ['Exhaust gas diffuser','slows the exhaust and recovers pressure before the HRSG or stack']
+])}
+<p>An aircraft jet engine is the same machine with the output taken as thrust instead of shaft power.</p>`,
+warm: Q('g9w','Guess: the turbine section makes, say, 600 MW of shaft power. Why does the generator get much less?',[
+ ['Friction in the generator.',false,'Generator losses are about 1–2%.'],
+ ['A large share drives the compressor on the same shaft.',true,'Right. The compressor takes roughly half or more of the turbine\'s work.'],
+ ['The HRSG takes it.',false,'The HRSG takes heat from the exhaust, not shaft power.']
+],''),
+worked:{case:'On a hot Basra afternoon a GT loses output compared with a cool morning. Why?',steps:[
+ ['Compressor takes volume','It swallows a roughly fixed volume of air per second at fixed speed.'],
+ ['Hot air is thinner','At 45 °C air is about 10% less dense than at 15 °C, so fewer kilograms per second enter.'],
+ ['Less mass, less power','Less air means less fuel can be burned at the same temperature limit, so output drops.'],
+ ['Knock-on effect','Exhaust flow falls too, so the HRSG makes less steam. Combined-cycle output falls on hot days.']
+]},
+practice:[
+ Q('g9a','Where is the highest temperature in a gas turbine?',[
+  ['Combustor outlet / turbine inlet, about 1500 °C.',true,'Correct.'],
+  ['Compressor outlet, about 400 °C.',false,'That is hot, but far below the flame.'],
+  ['Exhaust, about 600 °C.',false,'Exhaust is after expansion.']
+ ],''),
+ Q('g9b','What protects the compressor against surge during start-up?',[
+  ['Blow-off valves and variable inlet guide vanes.',true,'Right.'],
+  ['Heat shields.',false,'They protect the combustor.'],
+  ['The exhaust diffuser.',false,'No.']
+ ],''),
+ Q('g9c','Premix burners are preferred at load because:',[
+  ['They burn cooler with lower NOx.',true,'Correct.'],
+  ['They are more stable at low load.',false,'Diffusion is more stable at low load.'],
+  ['They need no air.',false,'All burners need air.']
+ ],''),
+ Q('g9d','How is a GT started?',[
+  ['The shaft is spun electrically (generator as motor) until the turbine can sustain itself.',true,'Right.'],
+  ['By steam from the HRSG.',false,'The HRSG needs GT exhaust first.'],
+  ['By a diesel engine on the HRSG.',false,'No.']
+ ],''),
+ O('g9e','Order the air\'s path through the GT.',['Filter house','Compressor','Combustion chamber','Turbine','Exhaust diffuser','HRSG or bypass stack'],'')
+]});
+
+M.push({id:'ccpp', n:'10', title:'Combined cycle and the HRSG', short:'Combined cycle',
+goal:['Explain how the HRSG turns GT exhaust into steam and what each section must never do.','Explain why HRSG modules hang and expand downwards, and what drum internals do.','Explain bypass stacks, diverter and stack dampers, bypass stations and single-shaft vs multi-shaft layouts.'],
+body:()=>`
+<h3>The combined cycle</h3>
+<p>The GT exhaust at about ${N('600 °C')} goes into the <b>HRSG</b> (heat recovery steam generator), a large set of tube-bundle heat exchangers, and leaves the stack at about ${N('100 °C')}. The heat recovered makes steam for a steam turbine, which drives a second generator (or the same one, in a single-shaft design). Cooling water and the condenser close the loop at about 25–30 °C.</p>
+<h3>Inside the HRSG</h3>
+${chain(['Feedwater pump','Economizer (preheater)','Drum','Evaporator','Drum (steam separates)','Superheater','Steam turbine'])}
+<ul>
+<li><b>Economizer:</b> heats feedwater close to boiling. <b>No evaporation allowed</b>: steam bubbles in an economizer disturb flow and cause hammering.</li>
+<li><b>Drum:</b> supplies water to the evaporator and separates the returning steam-water mixture. Inside are <b>cyclone separators</b> at the riser outlets and a <b>dry box</b> (steam dryers) before the steam outlet, plus the feedwater distribution pipe.</li>
+<li><b>Evaporator:</b> turns part of the water into steam. <b>No superheating allowed</b>: evaporator tubes must always be wet inside, or they overheat.</li>
+<li><b>Superheater:</b> raises steam temperature to what the turbine needs. <b>Only up to its design limit</b>, and <b>no water allowed</b> in it.</li>
+</ul>
+<p>Most HRSGs repeat this at two or three pressure levels (HP, IP, LP), sometimes with a reheater and a condensate preheater at the cold end.</p>
+<p>The DCS holds these limits with control valves (feedwater control, attemperator spray) and protections, and with steam line drains and warm-up before steam is sent anywhere.</p>
+<h3>Structure</h3>
+<p>In a horizontal HRSG the gas flows horizontally through vertical tube modules ("harps"). <b>All modules hang from the top</b>, so all thermal expansion goes <b>downwards</b>. Free downward movement must be guaranteed at all times: anything that blocks it stresses the tubes and headers.</p>
+<h3>Dampers and bypasses</h3>
+<ul>
+<li><b>Bypass stack and diverter damper:</b> let the GT run in <b>simple cycle</b> with the HRSG and steam turbine out of service (for example for inspection).</li>
+<li><b>Stack damper:</b> closes the HRSG stack after the GT stops, to keep heat in the HRSG and make the next start faster and gentler.</li>
+<li><b>HP, IP and LP bypass stations:</b> pressure-reducing and desuperheating stations that send HRSG steam around the steam turbine to the condenser at start-up, shutdown and trips.</li>
+</ul>
+<h3>Layouts</h3>
+${table(['Layout','Meaning'],[
+ ['Single-shaft (1+1)','one GT and one ST on one shaft with one generator'],
+ ['Multi-shaft (e.g. 2+1, 3+1)','each GT has its own generator and HRSG; several HRSGs feed one ST with its own generator']
+])}
+<p>The deck's balance-of-plant overview also shows the systems around the HRSG: feedwater pumps, main condensate pumps, deaerator, demin (deionised) water tank, auxiliary boiler (steam for start-up and seals), HRSG drain system, fuel gas preheating with hot water from the HRSG, and the circulating water.</p>
+${plant(`Rumaila's HRSGs are triple pressure with reheat and natural circulation, behind SGT5-4000F gas turbines, with a three-way (diverter) damper and bypass stack, in 2×1 and 3×1 arrangements. The <a href="${HRSG_URL}" target="_blank" rel="noopener">HRSG course</a> teaches how to operate them.`)}`,
+warm: Q('c10w','Guess: why must evaporator tubes never superheat steam?',[
+ ['Superheated steam is too hot for the drum.',false,'The concern is the tube itself.'],
+ ['A tube with only dry steam inside is poorly cooled and overheats.',true,'Right. Boiling water carries heat away much better than steam.'],
+ ['It would reduce steam flow.',false,'The danger is tube damage.']
+],''),
+worked:{case:'During a startup inspection you find a heavy steel beam left jammed under the bottom header of an HRSG module. What is the risk?',steps:[
+ ['How the modules move','They hang from the top and grow downwards as they heat.'],
+ ['What the beam does','It blocks that growth at the bottom.'],
+ ['Result','The tubes and header are pushed from below; stress concentrates at tube-to-header welds, which can crack or bow the module.'],
+ ['Action','Remove it before heating. This is why "free expansion guaranteed at all times" and expansion checks are in every startup list.']
+]},
+practice:[
+ Q('c10a','What is forbidden in an economizer?',[
+  ['Evaporation.',true,'Correct.'],
+  ['Heating.',false,'Heating is its job.'],
+  ['Pressure above drum pressure.',false,'Economizer pressure is above drum pressure by design.']
+ ],''),
+ Q('c10b','What does the stack damper do after a GT shutdown?',[
+  ['Keeps heat in the HRSG for a faster, gentler restart.',true,'Right.'],
+  ['Sends exhaust to the bypass stack.',false,'That is the diverter damper.'],
+  ['Controls steam temperature.',false,'No.']
+ ],''),
+ Q('c10c','What do the cyclones in a drum do?',[
+  ['Separate water from the steam-water mixture coming up from the evaporator.',true,'Correct.'],
+  ['Mix chemicals.',false,'No.'],
+  ['Heat the water.',false,'No.']
+ ],''),
+ Q('c10d','In a 2+1 layout:',[
+  ['Two GTs with their own HRSGs feed one steam turbine.',true,'Correct.'],
+  ['One GT feeds two steam turbines.',false,'Reversed.'],
+  ['Two generators share one shaft.',false,'No.']
+ ],''),
+ Q('c10e','Why do HRSG modules expand downwards?',[
+  ['They hang from supports at the top.',true,'Right.'],
+  ['Hot gas pushes them down.',false,'No.'],
+  ['The drum is at the bottom.',false,'Drums are at the top.']
+ ],'')
+]});
+
+M.push({id:'chem', n:'11', title:'Water chemistry', short:'Chemistry',
+goal:['State what power plant chemistry is for and the damage it prevents.','Explain the four pillars: demineralised water, alkalisation, deaeration, monitoring.','Explain protective oxide layers, the pH–corrosion link, AVT and FAC.'],
+body:()=>`
+<h3>What chemistry is for</h3>
+<ul>
+<li>Minimise metal loss and corrosion.</li>
+<li>Minimise deposits on heat-transfer surfaces.</li>
+<li>Build and keep protective oxide layers in pipes and vessels.</li>
+<li>Monitor all of this by analysis and online measurement.</li>
+<li>Comply with environmental law.</li>
+</ul>
+<h3>The damage it prevents</h3>
+${table(['Damage','Cause','Consequence'],[
+ ['Deposits in boiler tubes','dissolved salts and corrosion products left behind as water boils','insulates the tube, metal overheats and fails'],
+ ['Local overheating failure','deposits or poor circulation','tube bulges and bursts'],
+ ['External corrosion','wet insulation on hot pipes and hangers','hidden wall loss'],
+ ['Pump damage','deposits and wear','loss of performance, failures'],
+ ['Turbine deposits','salts and silica carried with steam','lost output, blade damage']
+])}
+<h3>How corrosion is avoided: four pillars</h3>
+${table(['Pillar','System (KKS)','What it does'],[
+ ['Salt-free water','demin plant (GC)','removes dissolved salts'],
+ ['Alkalisation','dosing systems (QCC, QCD)','raises pH with ammonia, and phosphate in drums'],
+ ['Deaeration','deaerator (LAA), dosing','removes oxygen; oxygen scavenger if used'],
+ ['Monitoring','sampling system (QU)','continuous analysis of water and steam']
+])}
+${flag('One slide lists the dosing systems as "QCC, QCC"; the next names them QCC and QCD.')}
+<h3>pH and corrosion</h3>
+<p>Carbon steel corrodes fast in acidic water and much more slowly in mildly alkaline water. The deck's chart shows relative corrosion against pH at 25 °C: high at low pH, lowest in the alkaline range (around pH 9–10), rising again in strongly alkaline water. Power plant water is kept just alkaline, in that low-corrosion window.</p>
+<h3>Protective layers</h3>
+<p>Steel in hot, clean, alkaline, oxygen-poor water grows a thin, tight black layer of <b>magnetite (Fe₃O₄)</b> that protects the metal underneath. Other iron oxides matter too: <b>hematite (Fe₂O₃)</b>, red, forms with oxygen (rust); <b>wüstite (FeO)</b>, black, is stable only above about 560 °C, in superheater tubes. Good chemistry keeps the magnetite layer intact.</p>
+<h3>Two terms from the deck</h3>
+<ul>
+<li><b>AVT (all-volatile treatment):</b> alkalising only with volatile chemicals (ammonia) that travel with the steam and leave no solids behind. Phosphate, by contrast, is a solid that stays in the drum water.</li>
+<li><b>FAC (flow-accelerated corrosion):</b> fast-flowing water, especially at bends and where water and steam mix, dissolves the magnetite layer faster than it can re-form, and the pipe wall thins. Worst at around 150 °C in carbon steel. A classic cause of feedwater and economizer pipe failures.</li>
+</ul>
+<h3>Rules and guidelines</h3>
+<p>Limits come from standards (VGB R-513, EN 12952) and the turbine maker's steam purity rules (Siemens STIM 11.002, with separate values for normal operation and start-up). Each plant gets a chemistry report covering dosing, lab analysis scope and frequency, circulating water treatment (biocide, chlorine), auxiliary systems and troubleshooting. Ask for your plant's.</p>`,
+warm: Q('h11w','Guess: why is a thin black oxide layer inside boiler tubes a good thing?',[
+ ['It is magnetite, which protects the steel from further corrosion.',true,'Right.'],
+ ['It improves heat transfer.',false,'Oxides don\'t help heat transfer; this one is thin enough not to hurt it.'],
+ ['It is paint.',false,'It grows naturally in the water.']
+],''),
+worked:{case:'An inspection finds a feedwater pipe elbow thinned to half its wall. Chemistry was "in spec". What mechanism fits?',steps:[
+ ['Location','An elbow: high local velocity and turbulence.'],
+ ['Service','Feedwater at moderate temperature (around 150 °C).'],
+ ['Mechanism','Flow-accelerated corrosion: the flow strips the magnetite layer faster than it can re-form.'],
+ ['Response','Wall-thickness monitoring at FAC-prone points; review pH and oxygen regime; consider alloy material at the worst spots.']
+]},
+practice:[
+ Q('h11a','What does the QU system do?',[
+  ['Samples and analyses water and steam.',true,'Correct.'],
+  ['Doses ammonia.',false,'That is QCC/QCD.'],
+  ['Removes oxygen.',false,'That is the deaerator.']
+ ],''),
+ Q('h11b','Why keep feedwater slightly alkaline?',[
+  ['Steel corrodes least in mildly alkaline water.',true,'Right.'],
+  ['To raise conductivity.',false,'Not the goal.'],
+  ['To make it boil faster.',false,'No.']
+ ],''),
+ Q('h11c','What is AVT?',[
+  ['Alkalising only with volatile chemicals such as ammonia.',true,'Correct.'],
+  ['Adding phosphate to drums.',false,'Phosphate is non-volatile.'],
+  ['A turbine vibration test.',false,'No.']
+ ],''),
+ Q('h11d','Where would you look first for FAC?',[
+  ['Bends and fittings in feedwater and economizer piping.',true,'Right.'],
+  ['Superheater outlets.',false,'Dry steam at high temperature isn\'t typical FAC territory.'],
+  ['Cooling tower basin.',false,'No.']
+ ],'')
+]});
+
+M.push({id:'docs', n:'12', title:'P&IDs and KKS', short:'P&ID & KKS',
+goal:['Read a P&ID cover sheet and process sheet.','Break a KKS code into plant, unit, system, equipment and signal parts.','Use KKS number ranges to tell what kind of valve or measurement a code is.'],
+body:()=>`
+<h3>The P&amp;ID cover page</h3>
+<p>Before any process drawing, the cover page tells you: client, vendor, drawing and revision number, system name and its KKS, building KKS, project, revision history and change list, supply responsibility (who provides what), and the design pressure and temperature of each section.</p>
+<h3>The process page</h3>
+<ul>
+<li><b>Clouds</b> mark changes; a <b>triangle</b> gives the change number from the change list.</li>
+<li>Each pipe shows its <b>KKS and insulation</b>, <b>slope</b> and <b>flow direction</b>.</li>
+<li><b>Connectors</b> at the edge name the next P&amp;ID the line continues on.</li>
+<li>Orifices, <b>locked valves</b> (for example a manual globe valve locked open) and notes are marked.</li>
+<li>Instruments carry their KKS (system, component, building) and letters for function: <b>L</b> level, <b>I</b> indicator, <b>S</b> switching, <b>A</b> alarm, <b>Z</b> protection.</li>
+</ul>
+<p>The pictogram overview (legend) at the start of the set defines every symbol. Always check it; symbols differ between suppliers.</p>
+<h3>KKS: three kinds of identification</h3>
+${table(['Kind','Answers','Identifies'],[
+ ['Process-related','what is its purpose?','systems and equipment by function, in mechanical, civil, electrical and I&C'],
+ ['Point of installation','where is it mounted (and fed from)?','electrical and I&C equipment in cabinets, panels, consoles'],
+ ['Location','where do I find it on site?','buildings, floors, rooms']
+])}
+<h3>Anatomy of a process-related code</h3>
+${kksAnatomy('12 MBP 13 AA 001 XB01',[['1','plant','--muted'],['2','unit','--muted'],['MBP','system','--accent'],['13','system number','--accent'],['AA','equipment type','--act'],['001','equipment number','--act'],['XB01','signal','--ok']])}
+${table(['Part','Format','Example','Meaning'],[
+ ['Plant and unit','N N','1 2','which plant and which generating unit'],
+ ['System code','A A A','MBP','M = main machine set; MB = gas turbine; MBP = a GT subsystem (fuel supply)'],
+ ['System number','N N','13','which section of that system'],
+ ['Equipment unit code','A A','AA','valve (AP pump, CP pressure measurement...)'],
+ ['Equipment number','N N N','001','which one; the range tells the kind (below)'],
+ ['Signal code','A A N N','XB01','which signal from that equipment']
+])}
+<p>Function codes can also be written like <span class="num">11MBY10CS901.XQ01</span>: plant/unit 11, system MBY10, equipment CS901 (a speed measurement), signal XQ01 (an analog value).</p>
+${flag('The deck\'s plant/unit slide labels "12" as plant 1, block 2, but its own table right below says code 12 = generating unit 1, gas turbine 2. The meaning of the two digits is set per project. Check Rumaila\'s KKS key.')}
+<h3>System letters</h3>
+${table(['First letter','Main group','Examples'],[
+ ['E','fuel supply and handling',''],
+ ['H','steam generation (boiler, HRSG)','HAD evaporator'],
+ ['L','steam, water, gas cycles','LAA feedwater tank / deaerator, LAB feedwater piping, LBG auxiliary steam'],
+ ['M','main machine sets','MA steam turbine (MAA HP turbine), MB gas turbine (MBD bearings, MBV lube oil), MK generator'],
+ ['G','water supply and treatment','GC demineralisation'],
+ ['Q','auxiliary systems','QCC/QCD chemical dosing, QU sampling']
+])}
+<h3>Equipment codes and number ranges</h3>
+${table(['Code','Is'],[['AA','valve, damper'],['AP','pump'],['BR','pipe'],['CE','electrical measurement'],['CF','flow measurement'],['CL','level measurement'],['CP','pressure measurement'],['CT','temperature measurement'],['EC','sub-group control (SGC)'],['EE','sub-loop control (SLC)']])}
+${table(['AA valve number','Kind'],[['001–100','valves in main pipes'],['101–190','control valves'],['191–199','safety valves'],['301–399','shut-off valves for measurements'],['401–499','drain valves'],['501–599','vent valves'],['601–699','dosing and sampling valves']],[0])}
+${table(['C measurement number','Kind'],[['001–199','binary and analog measurements'],['201–299','for testing automatics'],['401–499','performance test measurements'],['501–599','local measurements'],['901–999','combined (calculated) measurements']],[0])}
+<h3>Signal codes</h3>
+<p>First letter: <b>X</b> origin of the signal, <b>Y</b> use of a signal, <b>Z</b> linked (processed) signal. Examples: <b>XQ</b> analog value; <b>ZQ</b> linked analog; <b>XS</b> functional group step signal; <b>XH</b> binary limit derived from an analog; <b>ZV</b> linked protection or alarm signal; <b>YP</b> supervisory control signal.</p>
+<p>Try the <b>KKS decoder</b> page to take codes apart.</p>`,
+warm: Q('d12w','Guess: a valve is tagged ...LAB20AA402. Before you look it up, what kind of valve is it probably?',[
+ ['A drain valve.',true,'Right: AA 401–499 are drain valves. LAB is feedwater piping.'],
+ ['A control valve.',false,'Control valves are 101–190.'],
+ ['A safety valve.',false,'Safety valves are 191–199.']
+],''),
+worked:{case:'Decode 11 HAD 10 CP 501.',steps:[
+ ['Plant/unit','11: per the deck\'s table, unit 1, gas turbine 1 train (check the project key).'],
+ ['System','HAD 10: H steam generation, HA pressure system, HAD evaporator, section 10.'],
+ ['Equipment','CP = pressure measurement.'],
+ ['Number','501 is in 501–599: a local measurement, meaning a gauge in the field rather than a transmitter to the DCS.'],
+ ['So','A local pressure gauge on an evaporator/drum system of train 1. On site, the building and room codes would tell you where to walk.']
+]},
+practice:[
+ Q('d12a','KKS equipment code AP is a:',[
+  ['Pump.',true,'Correct.'],
+  ['Pressure measurement.',false,'That is CP.'],
+  ['Valve.',false,'That is AA.']
+ ],''),
+ Q('d12b','AA 191–199 are:',[
+  ['Safety valves.',true,'Correct.'],
+  ['Vent valves.',false,'Vents are 501–599.'],
+  ['Control valves.',false,'Those are 101–190.']
+ ],''),
+ Q('d12c','On a P&ID, a cloud with a triangle means:',[
+  ['A change, numbered in the change list.',true,'Right.'],
+  ['A steam cloud hazard.',false,'No.'],
+  ['A vent to atmosphere.',false,'No.']
+ ],''),
+ Q('d12d','Signal code XQ01 means:',[
+  ['An analog value from the equipment.',true,'Correct.'],
+  ['A protection trip.',false,'That would be a Z code like ZV.'],
+  ['A valve command.',false,'No.']
+ ],''),
+ Q('d12e','Which KKS kind answers "where do I find it on site?"',[
+  ['Location identification.',true,'Correct.'],
+  ['Process-related.',false,'That answers "what is its purpose?".'],
+  ['Point of installation.',false,'That covers cabinets and panels.']
+ ],'')
+]});
+
+/* ---------- final ---------- */
+const FINAL = [
+ {m:'energy', q:Q('f1','Where does most of a combined-cycle plant\'s unused fuel energy go?',[['As low-temperature heat, to the stack and cooling water.',true,''],['It is destroyed in the turbines.',false,'Energy is conserved.'],['Into the grid as reactive power.',false,'No.']],'')},
+ {m:'physics', q:Q('f2','A cooling water line is isolated full and heats in the sun. What protects it?',[['A relief valve.',true,''],['A steam trap.',false,'Traps remove condensate from steam lines.'],['A check valve.',false,'Stops backflow only.']],'')},
+ {m:'physics', q:Q('f3','Why is a superheated steam leak especially dangerous?',[['It is invisible near the source.',true,''],['It is cold.',false,'No.'],['It is silent.',false,'It is loud.']],'')},
+ {m:'valves', q:Q('f4','For continuous flow control you choose:',[['A control valve with an equal-percentage characteristic.',true,''],['A gate valve.',false,'Isolation only.'],['A swing check valve.',false,'Backflow only.']],'')},
+ {m:'pumps', q:Q('f5','A centrifugal pump\'s operating point is where:',[['Its curve crosses the system curve.',true,''],['Flow is zero.',false,'That is shut-off.'],['NPSH is highest.',false,'No.']],'')},
+ {m:'pumps', q:Q('f6','Gravel-like noise, vibration and falling head on a hot-water pump suggest:',[['Cavitation.',true,''],['Wrong oil.',false,''],['Surge.',false,'Surge is a compressor phenomenon.']],'')},
+ {m:'mech', q:Q('f7','Lift oil is used to:',[['Lift a heavy rotor onto an oil film before it turns.',true,''],['Cool the generator.',false,''],['Drive valves.',false,'That is control oil.']],'')},
+ {m:'gen', q:Q('f8','A 2-pole generator on Iraq\'s grid turns at:',[['3000 rpm.',true,'50 Hz × 60.'],['3600 rpm.',false,'That is 60 Hz.'],['1500 rpm.',false,'That is 4-pole.']],'')},
+ {m:'gen', q:Q('f9','Why transmit at 400 kV rather than 20 kV?',[['Current is 20 times lower, so I²R losses are 400 times lower.',true,''],['Higher voltage makes more power.',false,'Power is set by the generator.'],['Transformers need it.',false,'No.']],'')},
+ {m:'ic', q:Q('f10','Which sensor measures shaft vibration without contact?',[['Proximity (eddy-current) probe.',true,''],['Piezoelectric accelerometer.',false,'That measures housing vibration.'],['Thermocouple.',false,'Temperature.']],'')},
+ {m:'st', q:Q('f11','Why does the condenser run at vacuum?',[['Steam condenses at low temperature, letting the turbine expand it further.',true,''],['To pull steam from the HRSG.',false,''],['To cool the generator.',false,'']],'')},
+ {m:'st', q:Q('f12','What is the turning gear for?',[['Rotating a stopped hot rotor slowly so it doesn\'t bow.',true,''],['Synchronising.',false,''],['Starting the GT.',false,'']],'')},
+ {m:'gt', q:Q('f13','Compressor surge is prevented at start-up by:',[['Blow-off valves and variable inlet guide vanes.',true,''],['Heat shields.',false,''],['Premix burners.',false,'']],'')},
+ {m:'ccpp', q:Q('f14','Which is forbidden in an HRSG evaporator?',[['Superheating (tubes running dry).',true,''],['Boiling.',false,'That is its job.'],['Pressure.',false,'']],'')},
+ {m:'ccpp', q:Q('f15','What lets a GT run with its HRSG out of service?',[['Bypass stack and diverter damper.',true,''],['Stack damper.',false,'That keeps heat in the HRSG after shutdown.'],['HP bypass station.',false,'That bypasses the steam turbine.']],'')},
+ {m:'chem', q:Q('f16','The protective oxide in boiler tubes is:',[['Magnetite, Fe₃O₄.',true,''],['Hematite, Fe₂O₃.',false,'That is rust.'],['Silica.',false,'']],'')},
+ {m:'docs', q:Q('f17','A KKS code ending in AA 452 is most likely a:',[['Drain valve.',true,'401–499.'],['Vent valve.',false,'501–599.'],['Safety valve.',false,'191–199.']],'')},
+ {m:'docs', q:Q('f18','KKS "CP" is a:',[['Pressure measurement.',true,''],['Control panel.',false,''],['Pump.',false,'That is AP.']],'')}
+];
+
+/* ---------- glossary ---------- */
+const GLOSS = [
+ ['Conservation of energy','energy is only converted, never created or destroyed','energy'],
+ ['Efficiency','useful output divided by energy input','energy'],
+ ['Bernoulli\'s principle','where flow speeds up, static pressure falls','physics'],
+ ['Expansion tank','takes in water as a closed system warms and returns it as it cools','physics'],
+ ['Compensator','bellows that absorbs pipe movement','physics'],
+ ['Fixed point','pipe anchor that sets where thermal growth starts','physics'],
+ ['Trace heating','heating on outdoor lines to prevent freezing','physics'],
+ ['Ohm\'s law','current equals voltage divided by resistance','physics'],
+ ['Gland seal','packing that seals a valve stem','valves'],
+ ['Kvs','flow in m³/h at 1 bar drop through a fully open valve','valves'],
+ ['Equal percentage','valve characteristic where each step of opening adds the same percentage of flow','valves'],
+ ['Angle valve','valve body that sends flashing flow down the outlet to limit erosion','valves'],
+ ['Attemperator','sprays water into steam to lower its temperature','valves'],
+ ['Steam trap','lets condensate out of a steam line but keeps steam in','valves'],
+ ['Pressure-reducing station','lowers steam pressure and temperature, e.g. a bypass station','valves'],
+ ['Displacement pump','moves a fixed volume per stroke; needs a relief valve','pumps'],
+ ['System curve','pressure the piping needs for each flow','pumps'],
+ ['Shut-off head','pressure a centrifugal pump makes at zero flow','pumps'],
+ ['Cavitation','vapour bubbles forming and collapsing inside a pump','pumps'],
+ ['ARC valve','automatic recirculation check valve that guarantees pump minimum flow','pumps'],
+ ['Barrel pump','multistage pump inside a pressurised can below floor level','pumps'],
+ ['Lift oil','high-pressure oil that raises a rotor before it turns','mech'],
+ ['Thrust bearing','carries axial load and fixes rotor position','mech'],
+ ['Babbitt','soft white metal lining of sliding bearings','mech'],
+ ['Mechanical seal','spring-loaded rotating ring sealing against a stationary seat','mech'],
+ ['Labyrinth seal','contactless seal of sharp fins that drop pressure step by step','mech'],
+ ['Breather','lets air in and out of a tank as level changes','mech'],
+ ['Vessel protection sheet','document listing a vessel\'s normal, alarm and trip values','mech'],
+ ['Excitation','DC current in the rotor that creates the magnetic field','gen'],
+ ['Stator','stationary part of a generator carrying the output windings','gen'],
+ ['Reactive power','power that sustains magnetic fields, measured in Mvar','gen'],
+ ['Apparent power','combined active and reactive load, in MVA','gen'],
+ ['Capability curve','chart of safe active and reactive power combinations','gen'],
+ ['Isolated phase bus duct','each generator phase in its own earthed enclosure','gen'],
+ ['Generator circuit breaker','connects the generator to the transformer','gen'],
+ ['Unit transformer','feeds the plant\'s own auxiliaries','gen'],
+ ['Faceplate','pop-up window with a device\'s details and commands','ic'],
+ ['Fail-safe I/O','input/output that goes to a safe state on its own failure','ic'],
+ ['Thermocouple','two metals joined, producing a voltage with temperature','ic'],
+ ['Pt100','platinum resistance thermometer','ic'],
+ ['Proximity probe','contactless sensor for relative shaft vibration','ic'],
+ ['Torque switch','stops a valve actuator if the valve jams','ic'],
+ ['Moving blades','rotor blades turned by the steam or gas','st'],
+ ['Guide vanes','stationary blades that accelerate and direct the flow','st'],
+ ['Double-flow LP turbine','steam enters in the middle and expands both ways','st'],
+ ['Turning gear','slowly rotates a stopped turbine rotor','st'],
+ ['Seal steam','steam fed to turbine glands to keep air out','st'],
+ ['Evacuation system','removes air and non-condensables from the condenser','st'],
+ ['Air-cooled condenser','condenses steam in finned tubes cooled by fans','st'],
+ ['Compressor surge','flow reversal and pressure collapse in a compressor','gt'],
+ ['Blow-off valve','bleeds compressor air at start-up to avoid surge','gt'],
+ ['Annular combustion chamber','single ring-shaped combustor with many burners','gt'],
+ ['Premix combustion','fuel and air mixed before the flame; low NOx','gt'],
+ ['Heat shield','ceramic or metal tiles protecting the combustor wall','gt'],
+ ['Diverter damper','sends GT exhaust to the HRSG or bypass stack','ccpp'],
+ ['Stack damper','closes the HRSG stack to keep heat in after shutdown','ccpp'],
+ ['Cyclone separator','drum internal that separates steam from water','ccpp'],
+ ['Harp','an HRSG tube module hanging from the top','ccpp'],
+ ['Magnetite','protective black iron oxide, Fe₃O₄','chem'],
+ ['AVT','all-volatile treatment: alkalising with ammonia only','chem'],
+ ['FAC','flow-accelerated corrosion: fast flow thinning pipe walls','chem'],
+ ['KKS','power plant identification system','docs'],
+ ['Change cloud','P&ID mark showing a revised area','docs'],
+ ['Signal code XQ','KKS code for an analog signal','docs']
+];
+
+/* ---------- KKS tables for the decoder ---------- */
+const KKS_F1 = {A:'grid and distribution systems',B:'power transmission and auxiliary power supply',C:'instrumentation and control',E:'conventional fuel supply and residues disposal',G:'water supply, disposal and treatment',H:'conventional heat generation (boiler, HRSG)',L:'steam, water, gas cycles',M:'main machine sets',P:'cooling water systems',Q:'auxiliary systems',S:'ancillary systems',U:'structures',X:'heavy machinery (not main machine sets)',Z:'workshop and office equipment'};
+const KKS_SYS = {HA:'HRSG / boiler pressure system',HAC:'economizer system',HAD:'evaporator system',HAH:'superheater system',HAJ:'reheater system',HN:'flue gas exhaust',LA:'feedwater system',LAA:'feedwater tank / deaerator',LAB:'feedwater piping',LAC:'feedwater pumps',LB:'steam system',LBA:'main steam piping',LBG:'auxiliary steam',LC:'condensate system',MA:'steam turbine',MAA:'HP steam turbine',MAW:'steam turbine seal steam',MB:'gas turbine',MBD:'gas turbine bearings',MBP:'gas turbine fuel supply',MBV:'gas turbine lube oil',MBY:'gas turbine control and protection',MK:'generator',GC:'demineralisation',QC:'chemical dosing',QCC:'chemical dosing',QCD:'chemical dosing',QU:'sampling'};
+const KKS_EQ = {AA:'valve, damper',AB:'isolating element (e.g. blind)',AC:'heat exchanger',AN:'fan, compressor',AP:'pump',AT:'filter, strainer',BB:'vessel, tank',BP:'flow restrictor, orifice',BR:'pipe',CE:'electrical measurement',CF:'flow measurement',CG:'position measurement',CL:'level measurement',CP:'pressure measurement',CQ:'analysis (chemistry) measurement',CS:'speed measurement',CT:'temperature measurement',CY:'vibration measurement',EC:'sub-group control',EE:'sub-loop control'};
+function kksRange(eq, n){
+  if(eq==='AA'){ if(n<=100) return 'valve in a main pipe'; if(n<=190) return 'control valve'; if(n<=199) return 'safety valve'; if(n>=301&&n<=399) return 'shut-off valve for a measurement'; if(n>=401&&n<=499) return 'drain valve'; if(n>=501&&n<=599) return 'vent valve'; if(n>=601&&n<=699) return 'dosing or sampling valve'; return 'outside the ranges in the deck'; }
+  if(eq==='BR'){ if(n<=190) return 'main pipe'; if(n<=199) return 'inlet or discharge pipe of a safety valve'; if(n>=301&&n<=399) return 'pipe to a pressure measurement'; if(n>=401&&n<=499) return 'drain line'; if(n>=501&&n<=599) return 'vent line'; if(n>=601&&n<=699) return 'sampling or dosing line'; return 'outside the ranges in the deck'; }
+  if(eq[0]==='C'){ if(n<=199) return 'binary or analog measurement to the I&C'; if(n>=201&&n<=299) return 'measurement for testing automatics'; if(n>=401&&n<=499) return 'performance test measurement'; if(n>=501&&n<=599) return 'local measurement (field gauge)'; if(n>=901) return 'combined (calculated) measurement'; return 'outside the ranges in the deck'; }
+  return '';
+}
+const KKS_SIG1 = {X:'signal origin (comes from the equipment)',Y:'signal use (goes to or is used by something)',Z:'linked or processed signal'};
+const KKS_SIG = {XQ:'analog signal',ZQ:'linked analog signal',XS:'functional group control step signal',XH:'binary limit derived from an analog value',ZV:'linked protection or alarm signal',YP:'supervisory control signal'};
+
+
+/* ---------- rendering ---------- */
+const railEl = document.getElementById('rail'), mainEl = document.getElementById('main'), mnav = document.getElementById('mnav');
+const EXTRA = [{id:'kks',title:'KKS decoder'},{id:'drill',title:'Vocabulary drill'},{id:'final',title:'Final check'},{id:'ref',title:'Glossary'},{id:'issues',title:'Deck issues'}];
+function modQs(m){ return (m.practice||[]); }
+function modDone(m){ const q=modQs(m).length?modQs(m):(m.warm?[m.warm]:[]); return q.length>0 && q.every(x=>solved[x.id]); }
+function renderRail(){
+  const cur = currentId();
+  const total = M.reduce((a,m)=>a+modQs(m).length,0), done = M.reduce((a,m)=>a+modQs(m).filter(x=>solved[x.id]).length,0);
+  const skip = store.get('skip',{});
+  let h = `<h4>Modules</h4>`;
+  M.forEach(m=>{ h += `<button data-go="${m.id}" aria-current="${cur===m.id}"><span class="n">${m.n}</span><span>${m.short}${skip[m.id]?' <span class="stat">· can skip</span>':''}</span><span class="tick${modDone(m)?' done':''}" aria-label="${modDone(m)?'complete':'not complete'}"></span></button>`; });
+  h += `<div class="progress" title="${done} of ${total} items solved"><i style="width:${total?Math.round(done/total*100):0}%"></i></div><div class="stat" style="margin:4px 8px 0">${done}/${total} practice solved</div>`;
+  h += `<h4>Tests & reference</h4>`;
+  EXTRA.forEach(e=>{ h += `<button data-go="${e.id}" aria-current="${cur===e.id}"><span class="n">·</span><span>${e.title}</span><span></span></button>`; });
+  h += `<h4>Next courses</h4><a class="railink" href="${FND_URL}" target="_blank" rel="noopener">2 · Rumaila Plant Foundations ↗</a><a class="railink" href="${HRSG_URL}" target="_blank" rel="noopener">3 · Rumaila HRSG Course ↗</a>`;
+  railEl.innerHTML = h;
+  mnav.innerHTML = M.map(m=>`<option value="${m.id}"${cur===m.id?' selected':''}>${m.n} · ${m.title}${modDone(m)?' ✓':''}</option>`).join('') + EXTRA.map(e=>`<option value="${e.id}"${cur===e.id?' selected':''}>${e.title}</option>`).join('');
+}
+railEl.addEventListener('click', e=>{ const b=e.target.closest('[data-go]'); if(b) go(b.dataset.go); });
+mnav.addEventListener('change', ()=>go(mnav.value));
+function currentId(){ const h=(location.hash||'').replace('#',''); return h || store.get('last','start'); }
+function go(id){ if(location.hash !== '#'+id){ history.replaceState(null,'','#'+id); } store.set('last',id); render(); window.scrollTo(0,0); }
+window.addEventListener('hashchange', render);
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function actHTML(q, label){
+  const src = q.src ? `<span class="src">${q.src}</span>` : '';
+  if(q.type==='order'){
+    return `<div class="act" data-qid="${q.id}"><div class="kind"><span>${label||'Put in order'}</span>${src}</div><div class="q">${q.q}</div><div class="seq"></div><div class="pool"></div><div class="row"><button class="btn" data-check>Check order</button><button class="btn ghost" data-reset>Start again</button></div><div class="fbwrap"></div></div>`;
+  }
+  const panel = q.type==='scn' ? `<div class="panel">${q.panel.map(([t,v,c])=>`<div class="tag-r"><span>${t}</span><span class="val ${c||''}">${v}</span></div>`).join('')}</div>` : '';
+  return `<div class="act" data-qid="${q.id}"><div class="kind"><span>${label|| (q.type==='scn'?'Scenario':'Practice')}</span>${src}</div>${panel}<div class="q">${q.q}</div><div class="opts"></div><div class="fbwrap"></div></div>`;
+}
+function wire(root, q, opts={}){
+  const el = root.querySelector(`[data-qid="${q.id}"]`); if(!el) return;
+  const fbw = el.querySelector('.fbwrap');
+  if(q.type==='order'){
+    const seq = el.querySelector('.seq'), pool = el.querySelector('.pool');
+    let chosen = [];
+    const order = shuffle(q.steps.map((s,i)=>i));
+    function draw(){
+      seq.innerHTML = chosen.map((i,k)=>`<button class="step" data-i="${i}"><span class="i">${k+1}</span><span>${q.steps[i]}</span></button>`).join('');
+      pool.innerHTML = order.filter(i=>!chosen.includes(i)).map(i=>`<button class="step" data-i="${i}"><span class="i">·</span><span>${q.steps[i]}</span></button>`).join('');
+    }
+    pool.addEventListener('click', e=>{ const b=e.target.closest('.step'); if(!b) return; chosen.push(+b.dataset.i); fbw.innerHTML=''; draw(); });
+    seq.addEventListener('click', e=>{ const b=e.target.closest('.step'); if(!b) return; chosen = chosen.filter(i=>i!==+b.dataset.i); fbw.innerHTML=''; draw(); });
+    el.querySelector('[data-reset]').addEventListener('click', ()=>{ chosen=[]; fbw.innerHTML=''; draw(); });
+    el.querySelector('[data-check]').addEventListener('click', ()=>{
+      if(chosen.length < q.steps.length){ fbw.innerHTML = `<div class="fb wrong"><b>Not finished.</b>Place all ${q.steps.length} steps first.</div>`; return; }
+      const good = chosen.map((i,k)=>i===k);
+      [...seq.children].forEach((b,k)=>b.classList.add(good[k]?'right':'wrong'));
+      const n = good.filter(Boolean).length;
+      if(n===q.steps.length){ fbw.innerHTML = `<div class="fb right"><b>All in the right order.</b></div>`; markSolved(q.id); }
+      else { fbw.innerHTML = `<div class="fb wrong"><b>${n} of ${q.steps.length} in the right place.</b>Red steps are out of position. Tap a step to take it back, or start again.</div>`; }
+    });
+    draw(); return;
+  }
+  const box = el.querySelector('.opts');
+  const idx = shuffle(q.o.map((o,i)=>i));
+  box.innerHTML = idx.map(i=>`<button class="opt" data-i="${i}">${q.o[i][0]}</button>`).join('');
+  let first = true;
+  box.addEventListener('click', e=>{
+    const b = e.target.closest('.opt'); if(!b) return;
+    if(opts.lockAfterFirst && !first) return;
+    const [t,ok,fb] = q.o[+b.dataset.i];
+    box.querySelectorAll('.opt').forEach(x=>x.classList.remove('wrong'));
+    b.classList.add(ok?'right':'wrong');
+    fbw.innerHTML = `<div class="fb ${ok?'right':'wrong'}"><b>${ok?'Right.':'Not quite.'}</b>${fb||''}</div>`;
+    if(opts.lockAfterFirst){
+      if(!ok){ const ri = q.o.findIndex(o=>o[1]); box.querySelector(`[data-i="${ri}"]`).classList.add('right'); fbw.innerHTML += `<div class="fb right"><b>Correct answer:</b>${q.o[ri][0]} ${q.o[ri][2]||''}</div>`; }
+      box.querySelectorAll('.opt').forEach(x=>x.style.cursor='default');
+    }
+    if(first){ opts.onAnswer && opts.onAnswer(ok); first=false; }
+    if(ok) markSolved(q.id);
+  });
+}
+function workedHTML(w){ return `<div class="worked" id="worked"><div class="kind">Worked example</div><div class="case">${w.case}</div><div class="wsteps"></div><div class="row"><button class="btn ghost" data-next>Predict the next step, then reveal it</button></div></div>`; }
+function wireWorked(root, w){
+  const el = root.querySelector('#worked'); if(!el) return;
+  const box = el.querySelector('.wsteps'), btn = el.querySelector('[data-next]'); let k=0;
+  btn.addEventListener('click', ()=>{
+    if(k<w.steps.length){ const [l,t]=w.steps[k]; box.insertAdjacentHTML('beforeend', `<div class="wstep"><span class="lbl">Step ${k+1} · ${l}</span>${t}</div>`); k++; }
+    if(k>=w.steps.length){ btn.textContent='All steps shown'; btn.disabled=true; }
+  });
+}
+function recallPool(upto){ const pool=[]; for(const m of M){ if(m.id===upto) break; (m.practice||[]).forEach(q=>{ if(q.type!=='order') pool.push(q); }); } return pool; }
+
+function renderModule(m, idx){
+  const recallQs = shuffle(recallPool(m.id)).slice(0,2).map(q=>Object.assign({},q,{id:q.id+'_r'}));
+  let h = `<div class="eyebrow">Module ${m.n}</div><h1>${m.title}</h1>`;
+  h += `<div class="goal"><b>After this module you can</b><ul>${m.goal.map(g=>`<li>${g}</li>`).join('')}</ul></div>`;
+  if(recallQs.length){ h += `<h2>From earlier modules</h2><p>Two questions from what you have already covered. Answer from memory.</p>` + recallQs.map(q=>actHTML(q,'Recall')).join(''); }
+  if(m.warm){ h += `<h2>Guess first</h2>` + actHTML(m.warm,'Before the lesson'); }
+  h += `<h2>${m.id==='start'?'About this course':'The lesson'}</h2>` + m.body();
+  if(m.worked){ h += `<h2>Worked example</h2>` + workedHTML(m.worked); }
+  if(m.practice && m.practice.length){ h += `<h2>Practice</h2><p>Every wrong answer tells you why. Retry until each is right.</p>` + m.practice.map(q=>actHTML(q)).join(''); }
+  if(m.bridge && m.bridge.length){ h += `<h2>Bridge to the HRSG course</h2><p>These come straight from the HRSG course and manual. If you can answer them, you are ready for the parts of that course that rely on this module.</p>` + m.bridge.map(q=>actHTML(q,'Bridge')).join(''); }
+  const nxt = M[idx+1], prv = M[idx-1];
+  h += `<div class="foot">${prv?`<button class="btn ghost" data-go="${prv.id}">← ${prv.short}</button>`:'<span></span>'}${nxt?`<button class="btn" data-go="${nxt.id}">${nxt.short} →</button>`:`<button class="btn" data-go="final">Final check →</button>`}</div>`;
+  mainEl.innerHTML = h;
+  recallQs.forEach(q=>wire(mainEl,q));
+  if(m.warm) wire(mainEl, m.warm);
+  if(m.worked) wireWorked(mainEl, m.worked);
+  modQs(m).forEach(q=>wire(mainEl,q));
+}
+mainEl.addEventListener('click', e=>{ const b=e.target.closest('.foot [data-go], .gochip[data-go]'); if(b) go(b.dataset.go); });
+
+function modName(id){ const m=M.find(x=>x.id===id); return m ? `${m.n} · ${m.short}` : id; }
+
+function renderDrill(){
+  mainEl.innerHTML = `<div class="eyebrow">Practice</div><h1>Vocabulary drill</h1>
+  <p>A term appears; pick what it does. Terms from every module, drawn at random. Five minutes a day until you get them all without thinking.</p>
+  <div class="act"><div class="kind"><span>What does it do?</span><span class="stat" id="vstat"></span></div>
+  <div class="drill-card"><div class="p" id="vmod"></div><div class="reading" id="vterm" style="font-family:var(--display);font-size:32px"></div></div>
+  <div class="opts" id="vopts"></div><div class="fbwrap" id="vfb"></div>
+  <div class="row"><button class="btn" id="vnext">Next term</button></div></div>`;
+  let st={n:0,ok:0,streak:0}, cur=null, done=false;
+  function pick(){
+    cur = GLOSS[Math.floor(Math.random()*GLOSS.length)]; done=false;
+    const others = shuffle(GLOSS.filter(g=>g!==cur)).slice(0,3);
+    const opts = shuffle([cur,...others]);
+    document.getElementById('vmod').textContent = 'Module ' + modName(cur[2]);
+    document.getElementById('vterm').textContent = cur[0];
+    document.getElementById('vopts').innerHTML = opts.map(o=>`<button class="opt" data-t="${o[0]}">${o[1]}</button>`).join('');
+    document.getElementById('vfb').innerHTML='';
+  }
+  document.getElementById('vopts').addEventListener('click', e=>{
+    const b=e.target.closest('.opt'); if(!b||done) return; done=true;
+    const ok = b.dataset.t===cur[0]; st.n++; if(ok){st.ok++;st.streak++;} else st.streak=0;
+    b.classList.add(ok?'right':'wrong'); if(!ok) document.querySelector(`#vopts [data-t="${cur[0]}"]`).classList.add('right');
+    document.getElementById('vfb').innerHTML = ok ? `<div class="fb right"><b>Right.</b></div>` : `<div class="fb wrong"><b>Not quite.</b>You picked the description of <b>${b.dataset.t}</b>.</div>`;
+    document.getElementById('vstat').textContent = `${st.ok}/${st.n} right · streak ${st.streak}`;
+  });
+  document.getElementById('vnext').addEventListener('click', pick);
+  pick();
+}
+
+function renderFinal(){
+  const items = shuffle(FINAL.map(it=>({m:it.m,q:Object.assign({},it.q,{id:it.q.id+'_f'})})));
+  let score=0, answered=0; const missed=[];
+  mainEl.innerHTML = `<div class="eyebrow">Test</div><h1>Final check</h1>
+  <p>${items.length} mixed questions from every module, one attempt each. Experienced staff can also take it first: the modules it sends you to are the ones worth your time. Score ${Math.ceil(items.length*0.85)} or more and go on to <a href="${FND_URL}" target="_blank" rel="noopener">Rumaila Plant Foundations</a>.</p>
+  ${items.map((it,i)=>actHTML(it.q,`Question ${i+1} of ${items.length}`)).join('')}
+  <div class="act"><div class="kind"><span>Result</span></div><div class="score" id="fscore">0 / ${items.length} answered</div><div id="fmiss" class="stat" style="margin-top:6px"></div></div>`;
+  items.forEach(it=>wire(mainEl,it.q,{lockAfterFirst:true,onAnswer:ok=>{
+    answered++; if(ok) score++; else missed.push(it.m);
+    document.getElementById('fscore').textContent = `${score} / ${answered} right${answered===items.length?' · finished':''}`;
+    if(answered===items.length){
+      const mods=[...new Set(missed)];
+      document.getElementById('fmiss').innerHTML = (score>=Math.ceil(items.length*0.85)?`<p style="color:var(--ok)"><b>Done.</b> Go on to <a href="${FND_URL}" target="_blank" rel="noopener">Rumaila Plant Foundations</a>.</p>`:`<p style="color:var(--act)"><b>Not yet.</b> Revisit the modules below, then try again.</p>`) + (mods.length?'Revisit: '+mods.map(id=>`<button class="chip gochip" data-go="${id}">${modName(id)}</button>`).join(' '):'');
+    }
+  }}));
+}
+
+function renderKKS(){
+  mainEl.innerHTML = `<div class="eyebrow">Tool</div><h1>KKS decoder</h1>
+  <p>Type or paste a process-related KKS code. The decoder splits it into its parts and explains each one using the tables from Module 12 and the standard VGB KKS letters. System names outside those tables are shown as unknown. Always confirm against Rumaila's own KKS key.</p>
+  <div class="act"><label for="kksin" class="kind"><span>KKS code</span></label>
+  <input id="kksin" class="kksin" value="12 MBP 13 AA 001 XB01" autocomplete="off" spellcheck="false">
+  <div class="chips" style="margin-top:8px">${['11HAD10CP501','10LAB20AA402','11MBY10CS901.XQ01','20LAC10AP001','11HAD80AA191','10QUA10CQ001'].map(c=>`<button class="chip" data-ex="${c}">${c}</button>`).join('')}</div>
+  <div id="kksout"></div></div>`;
+  const inp=document.getElementById('kksin'), out=document.getElementById('kksout');
+  function decode(){
+    const raw=inp.value.toUpperCase().replace(/[\s_.\-]/g,'');
+    const m=raw.match(/^(\d)(\d)?([A-Z])([A-Z])([A-Z])(\d{2})([A-Z]{2})(\d{3})(?:([A-Z])([A-Z])(\d{2}))?$/);
+    if(!m){ out.innerHTML=`<div class="fb wrong"><b>Can't read that code.</b>Expected something like 12 MBP 13 AA 001 (plant/unit digits, three system letters, two digits, two equipment letters, three digits), optionally followed by a signal code like XQ01.</div>`; return; }
+    const [,p1,p2,a,b,c,sn,eq,en,s1,s2,sno]=m;
+    const sys3=a+b+c, sys2=a+b, n=+en;
+    const sysName = KKS_SYS[sys3] || (KKS_SYS[sys2] ? KKS_SYS[sys2]+' (subsystem '+sys3+' not in the course tables)' : 'not in the course tables: check the plant KKS key');
+    const rows=[
+     [p1+(p2||''),'Plant / unit', p2?`plant or unit digits. In the deck's table, ${p1}${p2} = generating unit ${p1}${p2==='0'?', common systems':', gas turbine '+p2}. The meaning is fixed per project: check Rumaila's key.`:'single plant/unit digit'],
+     [a,'Main group',KKS_F1[a]||'unknown main group'],
+     [sys3,'System',sysName],
+     [sn,'System number','section '+sn+' of that system (e.g. which train, pump set or pressure level)'],
+     [eq,'Equipment type',KKS_EQ[eq]||'not in the course tables'],
+     [en,'Equipment number',(kksRange(eq,n)?kksRange(eq,n)+' ('+en+')':'item '+en)]
+    ];
+    if(s1){ rows.push([s1+s2+sno,'Signal',(KKS_SIG[s1+s2]||'signal type '+s1+s2)+'; '+(KKS_SIG1[s1]||'')+'; number '+sno]); }
+    out.innerHTML = `<div class="kks" style="margin-top:14px">${rows.map((r,i)=>`<span class="seg" style="--c:var(${i<2?'--muted':i<4?'--accent':i<6?'--act':'--ok'})"><b>${r[0]}</b><small>${r[1]}</small></span>`).join('')}</div>` + table(['Part','Is','Meaning'],rows.map(r=>[`<span class="num">${r[0]}</span>`,r[1],r[2]]));
+  }
+  inp.addEventListener('input',decode);
+  mainEl.querySelector('.chips').addEventListener('click',e=>{ const b=e.target.closest('[data-ex]'); if(!b) return; inp.value=b.dataset.ex; decode(); });
+  decode();
+}
+
+function renderRef(){
+  const groups = M.filter(m=>m.id!=='start').map(m=>({m, rows:GLOSS.filter(g=>g[2]===m.id)})).filter(g=>g.rows.length);
+  mainEl.innerHTML = `<div class="eyebrow">Reference</div><h1>Glossary</h1>
+  <p>Every term from the vocabulary drill, grouped by module. For the manual's translated English, see the table in Module 10.</p>
+  ${groups.map(g=>`<h2>${g.m.n} · ${g.m.title}</h2>`+table(['Term','Meaning'],g.rows.map(r=>[`<b>${r[0]}</b>`,r[1]]))).join('')}`;
+}
+
+function renderIssues(){
+  const items=[
+   ['Medium','Compressor heating','The deck says compressor air heats up "by friction". It heats mainly because work is done compressing it; friction adds little. (Module 9)'],
+   ['Medium','Gas turbine speed','The deck says first-stage blades turn "up to 3600 rpm". That is for 60 Hz machines. Rumaila\'s SGT5-4000F runs at 3000 rpm. (Module 9)'],
+   ['Medium','KKS plant and unit digits','One slide says "12" means plant 1, block 2; the table on the same slide says 12 = generating unit 1, gas turbine 2. The meaning is project-specific: use Rumaila\'s KKS key. (Module 12)'],
+   ['Medium','Steam visibility','The deck says saturated steam is "well visible". At the leak point all steam is clear gas; the visible fog forms after it condenses. Treat every steam leak as invisible near the source. (Module 2)'],
+   ['Low','Bernoulli equation','Written without density and gravity terms, so the units don\'t add up. Correct form: p + ½ρc² + ρgh = constant. (Module 2)'],
+   ['Low','Dosing system codes','Listed as "QCC, QCC" on one slide and QCC, QCD on the next. (Module 11)'],
+   ['Low','Example numbers','Pressures and temperatures in the deck (125 bar/565 °C steam, 270 bar/600 °C, 1500 °C vs 1550 °C combustion, 350 t generator) come from other plants or are rounded. Use Rumaila\'s own data for anything operational.'],
+   ['Low','Protective oxide','The chemistry slide names hematite and wüstite but its text doesn\'t name magnetite, the layer that actually protects boiler steel. (Module 11)']
+  ];
+  mainEl.innerHTML = `<div class="eyebrow">Reference</div><h1>Deck issues</h1>
+  <p>Places where the Siemens Energy familiarization deck (2020) is wrong, unclear or inconsistent, and what the course teaches instead.</p>
+  <ul class="issues">${items.map(([s,t,d])=>`<li><span class="pill ${s==='High'?'act':s==='Medium'?'alarm':'ok'}">${s}</span> <b>${t}.</b> ${d}</li>`).join('')}</ul>
+  <h2>What the deck leaves out</h2>
+  <ul>
+   <li><b>Explanations.</b> About 60 slides are photos or cutaways with only a title. The course writes out what each was meant to teach.</li>
+   <li><b>Anything about Rumaila.</b> The deck is generic; its photos are from German, Spanish, Turkish and other plants. Rumaila details come from the HRSG manual.</li>
+   <li><b>Electrical auxiliaries and protection:</b> switchgear, motors, DC systems, generator protection. These need their own course.</li>
+   <li><b>Operation.</b> The deck explains what equipment is, not how to operate it. That starts in the <a href="${HRSG_URL}" target="_blank" rel="noopener">HRSG course</a>.</li>
+  </ul>`;
+}
+
+function render(){
+  const id = currentId();
+  renderRail();
+  const idx = M.findIndex(m=>m.id===id);
+  if(idx>=0) renderModule(M[idx], idx);
+  else if(id==='kks') renderKKS();
+  else if(id==='drill') renderDrill();
+  else if(id==='final') renderFinal();
+  else if(id==='ref') renderRef();
+  else if(id==='issues') renderIssues();
+  else renderModule(M[0],0);
+  document.title = 'Rumaila Power Plant Technology';
+}
+render();
+
+</script>
+
+</body>
+</html>

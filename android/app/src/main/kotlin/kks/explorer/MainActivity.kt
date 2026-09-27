@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
+import kks.core.Json
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import java.io.File
@@ -31,6 +32,7 @@ class ShellState {
     var role by mutableStateOf("")
     var plant by mutableStateOf("")
     var queue by mutableIntStateOf(0)
+    var waiting by mutableIntStateOf(0)             // devices on the Wi-Fi asking to join (admins)
     var device by mutableStateOf("")
     var syncs by mutableStateOf<List<Map<String, Any?>>>(emptyList())
     var discovery by mutableStateOf("")
@@ -40,15 +42,21 @@ class ShellState {
     var paused by mutableStateOf(false)             // automatic sync paused: metered network, not allowed
     var tab by mutableIntStateOf(0)                 // 0 P&ID, 1 Learning, 2 Account & settings
     var manage by mutableStateOf<String?>(null)     // an admin.html section shown full screen, or null
+    var courses by mutableStateOf<List<Course>>(emptyList())
+    var course by mutableStateOf<Course?>(null)     // the course open full screen, or null
     var busy by mutableStateOf(false)
     var message by mutableStateOf<String?>(null)
 }
+
+/** A course of the Learning tab (data/courses/courses.json) and how far this person got. */
+data class Course(val id: String, val title: String, val file: String, val total: Int, val answered: Int)
 
 class MainActivity : ComponentActivity() {
     val state = ShellState()
     lateinit var host: WebHost
     lateinit var pidWeb: WebView                    // the P&ID viewer: one instance, kept across tab switches
     lateinit var manageWeb: WebView                 // admin.html sections (Approvals, Users, …)
+    lateinit var courseWeb: WebView                 // a course (Learning tab)
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var fileCallback: ValueCallback<Array<Uri>>? = null
@@ -94,8 +102,10 @@ class MainActivity : ComponentActivity() {
         manageWeb = host.make { url ->       // admin.html's "← Drawings" goes back to the P&ID tab
             if (url.path == "/" || url.path == "/index.html") { state.manage = null; state.tab = 0; true } else false
         }
+        courseWeb = host.make { url -> url.path?.startsWith("/data/courses/") != true }   // links between courses stay; others don't
         pidWeb.loadUrl("https://${WebHost.HOST}/")
         App.node.listeners.add(onChange)
+        App.sync.onJoinAsked = { changed() }
         refresh()
         setContent { Shell(this) }
     }
@@ -120,6 +130,17 @@ class MainActivity : ComponentActivity() {
         App.sync.stop()           // the background job takes over (every 15 min on Wi-Fi)
     }
 
+    fun openCourse(c: Course) {
+        state.course = c
+        courseWeb.loadUrl("https://${WebHost.HOST}/data/courses/${Uri.encode(c.file)}")
+    }
+
+    fun closeCourse() {
+        state.course = null
+        courseWeb.loadUrl("about:blank")
+        refresh()                                   // (answered counts)
+    }
+
     fun openManage(section: String) {
         state.manage = section
         manageWeb.loadUrl("https://${WebHost.HOST}/admin.html#$section")
@@ -137,6 +158,14 @@ class MainActivity : ComponentActivity() {
         val me = if (joined) api.handle("GET", "/api/me", emptyMap(), null).json as Map<String, Any?> else null
         val st = if (joined) api.handle("GET", "/api/state", emptyMap(), null).json as Map<String, Any?> else null
         val dev = if (joined) api.handle("GET", "/api/devices", emptyMap(), null).json as Map<String, Any?> else null
+        val list = runCatching { Json.parse(assets.open("data/courses/courses.json").bufferedReader().readText()) as List<Map<String, Any?>> }.getOrDefault(emptyList())
+        val progress = if (joined) (api.handle("GET", "/api/progress", emptyMap(), null).json as Map<String, Any?>)["courses"] as Map<String, Map<String, String>>? else null
+        val courses = list.map { c ->
+            val qs = (c["questions"] as List<*>).map { it as String }
+            val solved = runCatching { Json.parse(progress?.get(c["id"])?.get("solved") ?: "{}") as Map<*, *> }.getOrDefault(emptyMap<String, Any>())
+            Course(c["id"] as String, c["title"] as String, c["file"] as String, qs.size, qs.count { solved[it] == true })
+        }
+        val lobby = if (joined) (api.handle("GET", "/api/join-requests", emptyMap(), null).json as Map<String, Any?>)["requests"] as List<*>? else null
         main.post {
             val wasJoined = state.joined
             state.joined = joined
@@ -146,6 +175,8 @@ class MainActivity : ComponentActivity() {
                 state.fullName = it["full_name"] as String? ?: ""; state.username = it["username"] as String? ?: ""; state.role = it["role"] as String? ?: ""
             }
             state.queue = ((st?.get("queue") as Long?) ?: 0L).toInt()
+            state.waiting = lobby?.size ?: 0
+            state.courses = courses
             (dev?.get("sync") as Map<String, Any?>?)?.let { s ->
                 state.syncs = ((s["syncs"] as Map<String, Map<String, Any?>>?) ?: emptyMap()).values.sortedByDescending { (it["at"] as Long?) ?: 0 }
                 state.discovery = s["discovery"] as String? ?: ""

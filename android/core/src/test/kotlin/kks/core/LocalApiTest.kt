@@ -326,6 +326,91 @@ class LocalApiTest {
         } finally { lis.close() }
     }
 
+    /** §16 without a token: a new phone asks an admin phone found on the Wi-Fi; the codes match; accept; confirm. */
+    @Test fun joinNearbyWithoutInvite() {
+        assertEquals("423442", joinCode("A".repeat(43), "b".repeat(43)))          // same as server/node.join_code
+        assertEquals("865675", joinCode("x", "y"))
+        val pl = Plant("admin")
+        val lis = Listening()
+        try {
+            lis.node.adopt(pl.root.peerId); lis.node.ingest(pl.mgr.entriesFor(emptyMap<String, Any>()))
+            pl.mgr.append("device_cert", mapOf("device" to lis.node.device, "person" to pl.person, "label" to "admin phone"))
+            lis.node.ingest(pl.mgr.entriesFor(lis.node.vv()))
+            val admin = LocalApi(lis.node, lis)
+            fun get(p: String) = admin.handle("GET", p, emptyMap(), null).let { it.status to (it.json as Map<String, Any?>) }
+            fun post(p: String, b: Map<String, Any?>) = admin.handle("POST", p, emptyMap(), b).let { it.status to (it.json as Map<String, Any?>) }
+            val p2 = Phone("laptop-ish").also { it.api.invitePollMs = 50 }
+            val near = mapOf("peer" to lis.node.device, "host" to "127.0.0.1", "port" to lis.port!!.toLong(), "plant" to "Test plant")
+            assertEquals(200, p2.post("/api/node/join-invite", mapOf("nearby" to near, "username" to "lina", "full_name" to "Lina Person")).first)
+            val reqs = waitFor { (get("/api/join-requests").second["requests"] as List<Map<String, Any?>>).takeIf { it.isNotEmpty() } }
+            val code = p2.get("/api/node/join-invite").second["code"]
+            assertEquals(code, reqs[0]["code"])
+            assertEquals(200, post("/api/join-requests/${reqs[0]["device"]}", mapOf("action" to "accept")).first)
+            waitFor { p2.get("/api/node/join-invite").second.takeIf { it["state"] == "confirm" } }
+            assertEquals(null, p2.node.owner())                                     // nothing trusted before the OK
+            assertEquals(200, p2.post("/api/node/join-invite", mapOf("confirm" to true)).first)
+            waitFor { p2.get("/api/node/join-invite").second.takeIf { it["state"] == "joined" } }
+            assertEquals("lina", (p2.get("/api/me").second["user"] as Map<*, *>)["username"])
+        } finally { lis.close() }
+    }
+
+    /** An app.py process (server or peer mode) in a temp folder. */
+    class Py(mode: String) : AutoCloseable {
+        val tmp = kotlin.io.path.createTempDirectory("kks-py").toFile()
+        val port = ServerSocket(0).use { it.localPort }
+        val syncPort = ServerSocket(0).use { it.localPort }
+        var setupToken: String? = null
+        private val proc: Process
+        init {
+            File(tmp, "data").mkdirs()
+            File(tmp, "data/tags.json").writeText("[]"); File(tmp, "data/sheets.json").writeText("[]")
+            File(tmp, "config.json").writeText(Json.write(mapOf("mode" to mode, "host" to "127.0.0.1", "port" to port.toLong(),
+                "sync_port" to syncPort.toLong(), "sync_host" to "127.0.0.1", "discovery" to false, "data_dir" to "data",
+                "db" to "plant.db", "photos_dir" to "photos", "backup_dir" to "backups")))
+            proc = ProcessBuilder(File(repo(), ".venv/bin/python").path, File(repo(), "app.py").path).redirectErrorStream(true)
+                .also { it.environment()["KKS_CONFIG"] = File(tmp, "config.json").path; it.environment()["PYTHONUNBUFFERED"] = "1" }.start()
+            val lines = proc.inputStream.bufferedReader()
+            while (true) {
+                val l = lines.readLine() ?: error("app.py stopped")
+                Regex("#setup=(\\S+)").find(l)?.let { setupToken = it.groupValues[1] }
+                if ("Ctrl+C" in l) break
+            }
+            thread(isDaemon = true) { lines.forEachLine { } }
+        }
+        fun web() = Web("http://127.0.0.1:$port")
+        override fun close() { proc.destroy(); proc.waitFor(); tmp.deleteRecursively() }
+    }
+
+    /** M4 across implementations: a Python laptop and a Kotlin phone of the same person swap person secrets (§17)
+     *  and read each other's course progress; the server between them relays it without being able to read it. */
+    @Test fun courseProgressAcrossPythonAndKotlin() {
+        assumeTrue("needs the repo's .venv", File(repo(), ".venv/bin/python").canExecute())
+        Py("server").use { srv -> Py("peer").use { lap ->
+            val boss = srv.web()
+            assertEquals(200, boss.post("/api/setup", mapOf("token" to srv.setupToken, "username" to "boss", "password" to "correct horse", "full_name" to "Boss Person")).first)
+            val link = boss.post("/api/users", mapOf("username" to "usr", "role" to "user", "full_name" to "Usr Person")).second["link"] as String
+            assertEquals(200, srv.web().post("/api/password-reset", mapOf("token" to link.substringAfter("#reset="), "password" to "usr password!")).first)
+            val join = mapOf("url" to "http://127.0.0.1:${srv.port}", "username" to "usr", "password" to "usr password!")
+            val laptop = lap.web()
+            assertEquals(200, laptop.post("/api/node/join-server", join).first)
+            assertEquals(200, laptop.post("/api/progress", mapOf("course" to "ppt", "data" to mapOf("solved" to "{\"q1\":true}", "finalBest" to "7"))).first)
+            val phone = Phone()
+            assertEquals(200, phone.post("/api/node/join-server", join).first)
+            assertEquals(emptyMap<String, Any>(), phone.get("/api/progress").second["courses"])       // nothing yet
+            val (remote, _) = Sync.syncWith(phone.node, "127.0.0.1", lap.syncPort)                       // straight to the laptop
+            assertEquals(1, Progress.swapAfterSync(phone.node, "127.0.0.1", lap.syncPort, remote))
+            val got = phone.get("/api/progress?course=ppt").second["data"] as Map<*, *>
+            assertEquals("{\"q1\":true}" to "7", got["solved"] to got["finalBest"])
+            assertEquals(200, phone.post("/api/progress", mapOf("course" to "ppt", "data" to mapOf("solved" to "{\"q2\":true}", "finalBest" to "5.5"))).first)
+            Sync.syncWith(phone.node, "127.0.0.1", srv.syncPort)                                         // via the server this time
+            laptop.post("/api/sync/now", mapOf("address" to "127.0.0.1:${srv.syncPort}"))
+            val onLaptop = laptop.get("/api/progress?course=ppt").second["data"] as Map<*, *>
+            assertEquals(mapOf("q1" to true, "q2" to true), Json.parse(onLaptop["solved"] as String))
+            assertEquals("7", onLaptop["finalBest"])
+            assertEquals(404, boss.get("/api/progress").first)                                         // the server keeps none
+        } }
+    }
+
     /** A tiny HTTP client with a cookie, for the Python server. */
     class Web(private val base: String) {
         private var cookie: String? = null

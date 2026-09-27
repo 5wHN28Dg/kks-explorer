@@ -236,6 +236,10 @@ def serve_one(node, sock, timeout=TIMEOUT):
         ses = handshake(sock, node.identity(), False)
         try:
             first = ses.recv()
+            if first['t'] == 'secrets':   # §17: two devices of one person swap their person secrets
+                offer = getattr(node, 'secrets_offer', None)
+                ses.send(offer(ses.remote, first) if offer else {'t': 'secrets', 'secrets': []})
+                return ses.remote, {**_zero(), 'join': 'secrets'}
             if first['t'] == 'join':
                 offer = getattr(node, 'join_offer', None)
                 ack = offer(ses.remote, first) if offer else {'t': 'join_ack', 'state': 'unknown'}
@@ -254,7 +258,8 @@ def serve_one(node, sock, timeout=TIMEOUT):
 
 def join_ask(identity, host, port, expect_peer, token, request, timeout=TIMEOUT):
     """Join by invite (PROTOCOL.md §16): ask the inviting device whether this device's join request was accepted.
-    The other end must be the device named in the invite. -> its answer: waiting | accepted | refused | used | unknown | bad"""
+    The other end must be the device named in the invite (or picked on the Wi-Fi; token None: ask without one).
+    -> (state: waiting | accepted | refused | used | unknown | bad, why, the answer message)"""
     with socket.create_connection((host, port), timeout=timeout) as sock:
         sock.settimeout(timeout)
         ses = handshake(sock, identity, True)
@@ -265,4 +270,25 @@ def join_ask(identity, host, port, expect_peer, token, request, timeout=TIMEOUT)
         state = ack.get('state')
         if state not in ('waiting', 'accepted', 'refused', 'used', 'unknown', 'bad'):
             raise SyncError('bad join answer')
-        return state, str(ack.get('why') or '')[:200]
+        return state, str(ack.get('why') or '')[:200], ack
+
+
+def secrets_swap(identity, host, port, expect_peer, person, mine, timeout=TIMEOUT):
+    """§17: give another device of the same person our person secrets and get theirs. The other end must be that
+    device (checked here) and checks the same about us. -> their secrets (bytes)"""
+    with socket.create_connection((host, port), timeout=timeout) as sock:
+        sock.settimeout(timeout)
+        ses = handshake(sock, identity, True)
+        if ses.remote != expect_peer:
+            raise SyncError('a different device answered')
+        ses.send({'t': 'secrets', 'person': person, 'secrets': [P.b64u(s) for s in mine]})
+        got = ses.expect('secrets').get('secrets')
+        out = []
+        for s in (got if isinstance(got, list) else [])[:16]:
+            try:
+                b = P.unb64u(s)
+            except (P.ProtocolError, TypeError, ValueError):
+                continue
+            if len(b) == 32:
+                out.append(b)
+        return out

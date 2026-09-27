@@ -41,13 +41,15 @@ CREATE TABLE IF NOT EXISTS blobs(sha TEXT PRIMARY KEY, file TEXT NOT NULL, size 
 CREATE TABLE IF NOT EXISTS entry_notes(entry TEXT PRIMARY KEY, note TEXT);
 -- M2: a second, different entry for a (peer, seq) we already hold = proof of a cloned/misbehaving key (§4)
 CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, peer TEXT NOT NULL, seq INTEGER NOT NULL, data TEXT NOT NULL);
+-- M4: person secrets of this device's owner (PROTOCOL.md §13, §17); never in the log
+CREATE TABLE IF NOT EXISTS person_secrets(sha TEXT PRIMARY KEY, person TEXT NOT NULL, secret TEXT NOT NULL, created INTEGER);
 """
 KEYS = {  # primary-key columns of every journaled table
     'equipment': ('kks',), 'photos': ('id',), 'reviews': ('tag_id',), 'links': ('proc', 'step', 'kks'), 'added_tags': ('id',),
     'users': ('id',), 'tokens': ('token',), 'submissions': ('id',), 'votes': ('submission_id', 'user_id'),
     'revisions': ('rev',), 'meta': ('k',),
     'entries': ('id',), 'custodial': ('device',), 'subs': ('id',), 'blobs': ('sha',), 'entry_notes': ('entry',),
-    'evidence': ('id',),
+    'evidence': ('id',), 'person_secrets': ('sha',),
 }
 NOT_JOURNALED = {'sessions'}
 COLUMNS_ADDED = [('users', 'full_name', 'TEXT'), ('users', 'position', 'TEXT'),  # 2026-09-26

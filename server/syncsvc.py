@@ -14,10 +14,11 @@ class SyncService:
         self.E, self.cfg, self.log = E, cfg, log
         self.peers = {}               # mDNS name → {'host', 'port', 'root', 'peer'}
         self.status = {}              # peer ID → {'label', 'address', 'at', 'ok', 'result' | 'error', 'direction'}
+        self.swapped = set()          # (device, our secrets) already swapped with (§17)
         self.lock = threading.Lock()
         self.wake = threading.Event()
         self.zc = self.info = None
-        self.announced = None         # (peer, root) last announced; re-announced when either changes
+        self.announced = None         # the TXT properties last announced; re-announced when they change
         self.announce_lock = threading.Lock()
         self.discovery = 'off'
         self.srv = None
@@ -93,18 +94,27 @@ class SyncService:
             me = __import__('peer.proto', fromlist=['peer_id']).peer_id(self.E.identity())
         except Exception:
             return
-        if (me, self.E.anchor) == self.announced:
+        props = {'peer': me, 'root': (self.E.anchor or '')[:16], 'v': '1', **self._who()}
+        if props == self.announced:
             return
-        props = {'peer': me, 'root': (self.E.anchor or '')[:16], 'v': '1'}
         info = self._ServiceInfo(SERVICE, f'kks-{me[:12]}.{SERVICE}', port=self.port,
                                  addresses=[socket.inet_aton(ip) for ip in _lan_ips()], properties=props)
         try:
             if self.info:
                 self.zc.unregister_service(self.info)
             self.zc.register_service(info, allow_name_change=True)
-            self.info, self.announced = info, (me, self.E.anchor)
+            self.info, self.announced = info, props
         except Exception as e:
             self.log(f'  mDNS: could not announce this device: {e}')
+
+    def _who(self):
+        """For devices that want to join (§16): the plant's name, who this is, and whether an admin can accept here."""
+        plant = (self.E.run.settings.get('plant') or '') if self.E.run and self.E.anchor else ''
+        if self.cfg['mode'] != 'peer':
+            return {'plant': plant[:80], 'label': 'plant server', 'adm': '1' if plant else ''}
+        o = self.E.owner()
+        label = f'{o["full_name"]} · {socket.gethostname()}' if o else socket.gethostname()
+        return {'plant': plant[:80], 'label': label[:120], 'adm': '1' if o and o['role'] in ('admin', 'manager') else ''}
 
     def _resolve(self, name):
         info = self.zc.get_service_info(SERVICE, name, timeout=3000)
@@ -120,7 +130,8 @@ class SyncService:
             return
         with self.lock:
             self.peers[name] = {'host': info.parsed_addresses()[0], 'port': info.port, 'root': props.get('root', ''),
-                                'peer': props.get('peer')}
+                                'peer': props.get('peer'), 'plant': props.get('plant', ''), 'label': props.get('label', ''),
+                                'adm': props.get('adm') == '1'}
         self.wake.set()
 
     # ---------- automatic sync ----------
@@ -165,7 +176,31 @@ class SyncService:
         self._record(remote, f'{host}:{port}', True, st, 'out')
         if adopt_root:
             self._advertise()
+        self._swap_secrets(host, port, remote)
         return remote, st
+
+    def _swap_secrets(self, host, port, remote):
+        """After a sync with another device of this laptop's owner: swap person secrets (§17), so course progress
+        written on either can be read on both. Once per device and set of secrets."""
+        from server import progress
+        o = self.E.owner() if self.cfg['mode'] == 'peer' else None
+        if not o or remote == o['device']:
+            return
+        with self.E.lock:
+            d = self.E.run.devices.get(remote)
+            if not d or d['person'] != o['person'] or remote in self.E.run.cuts:
+                return
+        mine = progress.secrets_of(self.E, o['person'])
+        key = (remote, tuple(sorted(s.hex() for s in mine)))
+        if key in self.swapped:
+            return
+        try:
+            theirs = S.secrets_swap(self.E.identity(), host, port, remote, o['person'], mine, timeout=10)
+        except Exception as e:
+            self.log(f'  secrets swap with {remote[:12]}… failed: {e}')
+            return
+        progress.add_secrets(self.E, o['person'], theirs)
+        self.swapped.add((remote, tuple(sorted(s.hex() for s in progress.secrets_of(self.E, o['person'])))))
 
     def _record(self, remote, address, ok, result, direction):
         key = remote or address

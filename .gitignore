@@ -25,7 +25,6 @@ android/*/build/
 android/local.properties
 android/.kotlin/
 android/*/.cxx/
-cache/
 # Android release signing: the keystore and its passwords live outside the repo (docs/ANDROID_RELEASE.md);
 # these patterns only guard against a copy landing here by mistake
 *.jks

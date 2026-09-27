@@ -44,6 +44,7 @@ class Invites {
     }
 
     private val items = HashMap<String, Item>()
+    private val lobby = HashMap<String, Item>()          // device → a request made without a token (by = "")
     private val rng = SecureRandom()
     private fun now() = System.currentTimeMillis() / 1000
 
@@ -73,9 +74,40 @@ class Invites {
         items[token]?.takeIf { it.state == "asked" }?.state = if (accepted) "accepted" else "refused"
     }
 
-    /** From the sync listener: a device asks. -> the join_ack message. */
+    // ---------- the lobby: asked on the Wi-Fi without a token; any admin here decides ----------
+    @Synchronized fun lobbyList(): List<Map<String, Any?>> = lobby.filter { it.value.state == "asked" && it.value.exp >= now() }
+        .map { (d, v) -> mapOf("device" to d, "request" to v.request, "seen" to v.seen, "exp" to v.exp) }
+
+    @Synchronized fun lobbyTake(device: String): Map<String, Any?>? = lobby[device]?.takeIf { it.state == "asked" && it.exp >= now() }?.full
+
+    @Synchronized fun lobbyDone(device: String, accepted: Boolean) {
+        val v = lobby[device]?.takeIf { it.state == "asked" } ?: return
+        lobby[device] = Item("", now() + TTL).also { it.state = if (accepted) "accepted" else "refused"; it.request = v.request; it.full = v.full; it.device = device }
+    }
+
+    private fun lobbyOffer(remote: String, msg: Map<String, Any?>, ack: (String, String?) -> Map<String, Any?>): Map<String, Any?> {
+        synchronized(this) {
+            lobby.entries.removeIf { it.value.exp < now() }
+            val v = lobby[remote]
+            if (v != null && (v.state == "accepted" || v.state == "refused")) return ack(v.state, null)
+            if (v != null) { v.seen = now(); return ack("waiting", null) }
+            if (lobby.size >= 50) return ack("used", "too many devices are waiting here; try again later")
+        }
+        val req = try { JoinRequests.check(msg["request"]) } catch (e: IllegalArgumentException) { return ack("bad", e.message) }
+        if (req["device"] != remote) return ack("bad", "the join request is not from the device that sent it")
+        synchronized(this) {
+            lobby.getOrPut(remote) { Item("", now() + TTL).also {
+                it.state = "asked"; it.device = remote; it.seen = now(); it.full = req
+                it.request = listOf("device", "username", "full_name", "position", "label").associateWith { k -> req[k] }
+            } }
+        }
+        return ack("waiting", null)
+    }
+
+    /** From the sync listener: a device asks with a token (or none: the lobby). -> the join_ack message. */
     fun offer(remote: String, msg: Map<String, Any?>): Map<String, Any?> {
         fun ack(state: String, why: String? = null) = mapOf("t" to "join_ack", "state" to state) + (if (why != null) mapOf("why" to why) else emptyMap())
+        if (msg["token"] == null) return lobbyOffer(remote, msg, ::ack)
         val token = msg["token"] as? String
         synchronized(this) {
             val v = token?.let { items[it] }
@@ -113,14 +145,37 @@ fun parseInvite(text: Any?): Map<String, Any?> {
     return listOf("kks_invite", "plant", "root", "peer", "addrs", "token", "exp").associateWith { inv[it] }
 }
 
-/** Join by invite, the joining side: ask until the admin decides, then sync. [state] for the UI (polled). */
+/** The 6 digits both screens show when a device asks an admin's device without an invite (§16); = node.join_code. */
+fun joinCode(joiner: String, admin: String): String {
+    val h = java.security.MessageDigest.getInstance("SHA-256").digest("kks-join-code-v1\n$joiner\n$admin".toByteArray())
+    val n = ((h[0].toLong() and 0xff) shl 24) or ((h[1].toLong() and 0xff) shl 16) or ((h[2].toLong() and 0xff) shl 8) or (h[3].toLong() and 0xff)
+    return "%06d".format(n % 1_000_000)
+}
+
+/** A device picked from /api/node/nearby -> an invite without a token (§16: ask the lobby). */
+fun parseNearby(dev: Any?): Map<String, Any?> {
+    val d = dev as? Map<*, *>
+    val port = (d?.get("port") as? Long)
+    if (d == null || d["peer"] !is String || d["host"] !is String || port == null) throw IllegalArgumentException("pick a device from the list")
+    return mapOf("kks_invite" to 1L, "plant" to d["plant"], "root" to null, "peer" to d["peer"], "addrs" to listOf("${d["host"]}:$port"),
+                 "token" to null, "exp" to null)
+}
+
+/** Join by invite, the joining side: ask until the admin decides, then sync. [state] for the UI (polled):
+ *  connecting | waiting | confirm | syncing | joined | failed | cancelled. Without a token (a device picked on the
+ *  Wi-Fi) the person must also confirm that the admin's screen shows the same code ([confirm]) before this device
+ *  trusts that plant. */
 class InviteJoin(private val node: LocalNode, private val sync: SyncControl, private val inv: Map<String, Any?>,
                  private val request: Map<String, Any?>, private val poll: Long = 2000, private val limitMs: Long = 20 * 60_000L) {
-    @Volatile private var st: Map<String, Any?> = mapOf("state" to "connecting", "error" to null, "plant" to inv["plant"], "address" to null)
+    private val nearby = inv["token"] == null
+    @Volatile private var confirmed = !nearby
+    @Volatile private var st: Map<String, Any?> = mapOf("state" to "connecting", "error" to null, "plant" to inv["plant"], "address" to null,
+        "code" to if (nearby) joinCode(node.device, inv["peer"] as String) else null)
     @Volatile private var stop = false
 
     fun state() = st
     fun cancel() { stop = true }
+    fun confirm() { confirmed = true }
     private fun set(vararg kv: Pair<String, Any?>) { st = st + kv }
 
     fun start() = Thread({ run() }, "kks-join").apply { isDaemon = true; start() }
@@ -130,12 +185,12 @@ class InviteJoin(private val node: LocalNode, private val sync: SyncControl, pri
         var lastErr: String? = null
         try {
             while (!stop && System.currentTimeMillis() < deadline) {
-                var answer: Triple<Pair<String, String>, String, Int>? = null
+                var answer: Triple<Triple<String, String, Map<String, Any?>>, String, Int>? = null
                 for (a in inv["addrs"] as List<*>) {
                     val host = (a as String).substringBeforeLast(':')
                     val port = a.substringAfterLast(':').toIntOrNull() ?: continue
                     try {
-                        answer = Triple(Sync.joinAsk(node.identity(), host, port, inv["peer"] as String, inv["token"] as String, request, 8000), host, port)
+                        answer = Triple(Sync.joinAsk(node.identity(), host, port, inv["peer"] as String, inv["token"] as String?, request, 8000), host, port)
                         break
                     } catch (e: Exception) { lastErr = "$a: ${e.message}" }
                 }
@@ -147,8 +202,12 @@ class InviteJoin(private val node: LocalNode, private val sync: SyncControl, pri
                     "accepted" -> {}
                     else -> { set("state" to "failed", "error" to (if (res.first == "refused") "the admin refused this device" else res.second.ifEmpty { res.first })); return }
                 }
+                val root = (inv["root"] ?: res.third["root"]) as? String ?: throw IllegalStateException("the admin's device did not say which plant")
+                set("plant" to (res.third["plant"] ?: inv["plant"]))
+                while (!confirmed && !stop && System.currentTimeMillis() < deadline) { set("state" to "confirm", "error" to null); Thread.sleep(300) }
+                if (!confirmed) break
                 set("state" to "syncing", "error" to null)
-                sync.syncOne(host, port, if (node.anchor == null) inv["root"] as String else null)
+                sync.syncOne(host, port, if (node.anchor == null) root else null)
                 if (node.owner() == null) throw IllegalStateException("synced, but this device is not certified in what came back")
                 sync.joined()
                 set("state" to "joined")

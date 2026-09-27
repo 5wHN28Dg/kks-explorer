@@ -160,6 +160,7 @@ K.joinScreen = (cfg, note = '') => {
     <p>This ${dev} keeps its own copy of the plant data and syncs with the other devices on the same Wi-Fi.</p>
     ${cfg.node.has_plant ? '<p>It already holds a plant\'s data but is not certified in it yet: import the bundle an admin gave you, or join through the server.</p>' : ''}
     <button data-a="qr">Join with a QR code from an admin</button>
+    <button data-a="nearby">Ask an admin on this Wi-Fi (no camera, no files)</button>
     <button data-a="server">Join through the plant server</button>
     <button data-a="request">Join through an admin (no server)</button>
     <button data-a="bundle">Import a bundle an admin gave you</button>
@@ -179,14 +180,20 @@ K.joinScreen = (cfg, note = '') => {
   };
   o.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => ({
     bundle: () => file.click(),
-    qr: () => { const scan = !!(K.native && K.native.scanQr);
+    qr: () => { const cam = K.canScan();
       sub('Join with a QR code', `For when an admin is next to you on the same network: they open Manage → Devices → “Add a device with a QR code”. `
-        + (scan ? 'Fill in your details, then scan their screen.' : `This ${dev} can't scan: ask the admin to copy the code under the QR code and send it to you, then paste it here.`),
+        + (K.native ? 'Fill in your details, then scan their screen.' : cam ? 'Fill in your details, then scan their screen with this computer\'s camera, or paste the code they copied for you.'
+                    : `This ${dev} has no camera: ask the admin to copy the code under the QR code for you and paste it here, or go back and choose “Ask an admin on this Wi-Fi”.`),
       [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'},
-       ...(scan ? [] : [{name: 'invite', label: 'Invite code (starts with {"kks_invite"…)'}])], scan ? 'Scan the QR code' : 'Join',
-      async v => { if (scan) { v.invite = await K.scanQr(); if (!v.invite) return }
+       ...(K.native ? [] : [{name: 'invite', label: cam ? 'Invite code (leave empty to use the camera)' : 'Invite code (starts with {"kks_invite"…)', optional: cam}])],
+      K.native || cam ? 'Scan the QR code' : 'Join',
+      async v => { if (!v.invite) { v.invite = await K.scanQr(); if (!v.invite) return }
         await K.api('/api/node/join-invite', v); K.joinWait(cfg) }) },
+    nearby: () => sub('Ask an admin on this Wi-Fi', `An admin's phone or computer on the same Wi-Fi gets your request; when they accept, the plant data comes over the Wi-Fi by itself.`,
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+       {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'}], 'Find admins on this Wi-Fi',
+      async v => K.pickNearby(cfg, v)),
     server: () => sub('Join through the plant server', `Your normal account on the plant server. The server certifies this ${dev} as yours; afterwards it syncs by itself on the same Wi-Fi.`,
       [{name: 'url', label: 'Server address, e.g. http://192.168.1.20:8420'}, {name: 'username', label: 'Username', ac: 'username'},
        {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Join',
@@ -210,10 +217,64 @@ K.scanQr = () => new Promise(res => {
   const id = String(++K.nativeSeq); K.nativeCalls.set(id, ([status, text]) => res(status === 200 ? text : null));
   K.native.scanQr(id);
 });
+// Scanning an invite without the app: this computer's camera + jsQR (vendor/jsqr). -> the text, or null if cancelled.
+K.canScan = () => !!(K.native ? K.native.scanQr : navigator.mediaDevices?.getUserMedia);
+if (!K.native) K.scanQr = async () => {
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}}) }
+  catch (e) { throw new Error(e.name === 'NotFoundError' ? 'No camera found on this computer. Paste the code instead, or choose “Ask an admin on this Wi-Fi”.'
+                              : 'The camera could not be used: ' + (e.message || e.name)) }
+  if (!window.jsQR) await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = '/vendor/jsqr/jsQR.js'; sc.onload = res; sc.onerror = () => rej(new Error('QR reader not loaded')); document.head.appendChild(sc) });
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;z-index:300;background:#000d;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;font:14px system-ui';
+  box.innerHTML = '<video playsinline muted style="max-width:90vw;max-height:70vh;border-radius:8px"></video><div>Hold the admin\'s QR code in front of the camera</div><button type="button" style="padding:8px 16px">Cancel</button>';
+  document.body.appendChild(box);
+  const video = box.querySelector('video'), cv = document.createElement('canvas'), g = cv.getContext('2d', {willReadFrequently: true});
+  video.srcObject = stream; await video.play();
+  return new Promise(res => {
+    let done = false;
+    const finish = v => { if (done) return; done = true; stream.getTracks().forEach(t => t.stop()); box.remove(); res(v) };
+    box.querySelector('button').onclick = () => finish(null);
+    const tick = () => {
+      if (done) return;
+      if (video.videoWidth) {
+        cv.width = video.videoWidth; cv.height = video.videoHeight; g.drawImage(video, 0, 0);
+        const q = jsQR(g.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, {inversionAttempts: 'dontInvert'});
+        if (q && q.data.includes('kks_invite')) return finish(q.data);
+      }
+      setTimeout(tick, 150);
+    };
+    tick();
+  });
+};
+// Ask an admin on this Wi-Fi: pick one of the admins' devices found by mDNS (the list refreshes itself).
+K.pickNearby = (cfg, who) => {
+  const o = K.overlay(`<div class="box"><h1>Admins on this Wi-Fi</h1><p>Pick the device of the admin who is adding you.</p>
+    <div class="list"><p style="opacity:.7">Looking…</p></div><div class="err"></div><button type="button" class="back">← Back</button></div>`);
+  let stop = false;
+  o.querySelector('.back').onclick = () => { stop = true; history.back() };
+  K.back = () => { stop = true; history.back(); return true };
+  const tick = async () => {
+    if (stop) return;
+    let r; try { r = await K.api('/api/node/nearby') } catch (e) { r = {devices: [], discovery: e.message} }
+    const list = o.querySelector('.list');
+    list.innerHTML = r.devices.length ? r.devices.map((d, i) => `<button type="button" data-i="${i}">${K.esc(d.plant || 'a plant')} — ${K.esc(d.label || d.host)}</button>`).join('')
+      : `<p style="opacity:.7">No admin's device found yet. The admin needs the app open on the same Wi-Fi (finding devices: ${K.esc(r.discovery || '?')}).</p>`;
+    list.querySelectorAll('button').forEach(b => b.onclick = async () => {
+      stop = true;
+      try { await K.api('/api/node/join-invite', {...who, nearby: r.devices[+b.dataset.i]}); K.joinWait(cfg) }
+      catch (e) { o.querySelector('.err').textContent = e.message; stop = false; tick() }
+    });
+    setTimeout(tick, 2000);
+  };
+  tick();
+};
 // Join by invite, after the request went out: wait for the admin to accept, then for the first sync.
 K.joinWait = cfg => {
   const o = K.overlay(`<div class="box"><h1>Joining ${K.esc(cfg.plant_name || 'the plant')}</h1><p class="st">Connecting to the admin's device…</p>
+    <p class="code" style="display:none"></p><button type="button" class="ok" style="display:none">Yes, the admin's screen shows this code</button>
     <div class="err"></div><button type="button" class="back">Cancel</button></div>`);
+  o.querySelector('.ok').onclick = async () => { o.querySelector('.ok').disabled = true; await K.api('/api/node/join-invite', {confirm: true}) };
   let stop = false;
   const cancel = async () => { stop = true; try { await K.api('/api/node/join-invite', {cancel: true}) } catch (e) {} K.joinScreen(cfg) };
   o.querySelector('.back').onclick = cancel; K.back = () => { cancel(); return true };
@@ -222,7 +283,10 @@ K.joinWait = cfg => {
     let st; try { st = await K.api('/api/node/join-invite') } catch (e) { st = {state: 'connecting', error: e.message} }
     if (st.state === 'joined') return location.reload();
     const msg = {connecting: 'Connecting to the admin\'s device…', waiting: 'Waiting for the admin to accept on their screen…',
-                 syncing: 'Accepted. Getting the plant data…'}[st.state];
+                 confirm: 'The admin accepted. Check the code on their screen first:', syncing: 'Accepted. Getting the plant data…'}[st.state];
+    if (st.code) { const c = o.querySelector('.code'); c.style.display = '';
+      c.innerHTML = `Code: <b style="font-size:22px;letter-spacing:3px">${st.code.slice(0, 3)} ${st.code.slice(3)}</b><br><span style="opacity:.7">The admin sees the same code next to your name. Only continue if it matches.</span>`;
+      o.querySelector('.ok').style.display = st.state === 'syncing' ? 'none' : '' }
     if (!msg) { o.querySelector('.st').textContent = st.state === 'cancelled' ? 'Cancelled.' : 'Could not join.';
       o.querySelector('.err').textContent = st.error || ''; o.querySelector('.back').textContent = '← Back'; return }
     o.querySelector('.st').textContent = msg;
@@ -306,3 +370,57 @@ K.describe = (kind, p) => ({
 }[kind] || (() => kind))();
 
 if ('serviceWorker' in navigator && !K.native) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
+
+// ---------- JPEG XL photos ----------
+// Photos are stored as JXL (server/photos.py). A browser that shows JXL itself gets the file as it is; any other
+// decodes it here with libjxl compiled to WebAssembly (vendor/jxl, loaded only then) into a BMP: plain pixels, no
+// lossy re-encoding. (The Android app answers /photos/*.jxl with a BMP from its own libjxl instead.)
+K.jxl = {
+  probe: null, dec: null, done: new Map(),   // photo URL -> Promise of a blob: URL
+  native() {
+    return this.probe ??= new Promise(res => {
+      const i = new Image(); i.onload = () => res(i.width === 1); i.onerror = () => res(false);
+      i.src = 'data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA==';   // 1×1 px
+    });
+  },
+  bmp(d) {   // ImageData -> 24-bit BMP blob (rows bottom-up, BGR, padded to 4 bytes)
+    const w = d.width, h = d.height, row = (w * 3 + 3) & ~3, size = 54 + row * h;
+    const buf = new Uint8Array(size), v = new DataView(buf.buffer);
+    buf[0] = 66; buf[1] = 77; v.setUint32(2, size, true); v.setUint32(10, 54, true); v.setUint32(14, 40, true);
+    v.setInt32(18, w, true); v.setInt32(22, h, true); v.setUint16(26, 1, true); v.setUint16(28, 24, true);
+    v.setUint32(34, row * h, true);
+    const px = d.data;
+    for (let y = 0; y < h; y++) {
+      let o = 54 + (h - 1 - y) * row, s = y * w * 4;
+      for (let x = 0; x < w; x++, s += 4) { buf[o++] = px[s + 2]; buf[o++] = px[s + 1]; buf[o++] = px[s] }
+    }
+    return new Blob([buf], {type: 'image/bmp'});
+  },
+  url(src) {
+    if (!this.done.has(src)) this.done.set(src, (async () => {
+      this.dec ??= import('/vendor/jxl/decode.js');
+      const [{default: decode}, r] = await Promise.all([this.dec, fetch(src, {credentials: 'same-origin'})]);
+      if (!r.ok) throw new Error('photo ' + r.status);
+      return URL.createObjectURL(this.bmp(await decode(await r.arrayBuffer())));
+    })());
+    return this.done.get(src);
+  },
+  async fix(img) {
+    const src = img.getAttribute('src') || '';
+    if (!/\.jxl(\?|$)/.test(src) || img.dataset.jxl === src) return;
+    img.dataset.jxl = src;
+    if (await this.native()) { img.style.visibility = 'visible'; return }
+    try { const u = await this.url(src); if (img.dataset.jxl === src) { img.src = u; img.dataset.jxl = u; img.style.visibility = 'visible' } }
+    catch (e) { console.warn('JXL photo not shown', src, e); img.style.visibility = 'visible'; img.alt = 'photo could not be shown' }
+  },
+  watch() {
+    if (K.native) return;
+    const s = document.createElement('style');   // no broken-image flash while a JXL photo is decoded
+    s.textContent = 'img[src$=".jxl"]{visibility:hidden}'; document.head.appendChild(s);
+    const scan = n => { if (n.tagName === 'IMG') this.fix(n); else n.querySelectorAll?.('img[src$=".jxl"]').forEach(i => this.fix(i)) };
+    new MutationObserver(ms => ms.forEach(m => m.type === 'attributes' ? scan(m.target) : m.addedNodes.forEach(scan)))
+      .observe(document.documentElement, {subtree: true, childList: true, attributes: true, attributeFilter: ['src']});
+    scan(document.documentElement);
+  },
+};
+K.jxl.watch();

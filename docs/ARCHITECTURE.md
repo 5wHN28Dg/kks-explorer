@@ -85,12 +85,12 @@ Supersedes `PLAN_B_P2P.md` (kept for its background and prior-art notes).
 - **History / revert / restore** stay: revert = a new entry setting the old value.
 - **Blobs** (photos, plant-data bundle, course bundles) are stored by SHA-256 and fetched on demand; big ones only on Wi-Fi.
 - **Photos: per-device choice** (decided 2026-09-26): "only when opened" (default on phones) or "all photos"
-  (downloaded on Wi-Fi). **Stored as JPEG XL**, visually lossless (distance ≈ 1.0) after capping the long side (e.g.
-  3000 px), encoded by the device that takes/imports the photo: Android with a bundled libjxl, desktop/server with a
-  bundled Python JXL encoder; browsers without the app upload JPEG and the server converts. **Display:** as of
-  Sept 2026 Chrome/Android WebView and Firefox decode JXL only behind a flag (Safari by default), so the local peer
-  serves `image/jxl` only to clients whose `Accept` header includes it and a cached JPEG copy to everyone else.
-  Measure the real saving on field photos before relying on a number.
+  (downloaded on Wi-Fi) — not built yet. **Stored as JPEG XL**, distance 1.9 / effort 9 (decided 2026-09-27 after
+  measuring: d1.0 was no smaller than the old JPEG q85; d1.9 is the same quality at ~56 % of the size), long side
+  1600 px from the pages, encoded by the device that takes/imports the photo (Android: bundled libjxl; laptops and
+  servers: pillow-jxl-plugin; browsers upload a JPEG and the server converts). **Display without JPEG copies:**
+  browsers without native JXL decode it with libjxl compiled to WebAssembly (vendor/jxl), the Android app hands its
+  WebView the decoded pixels (BMP) from its own libjxl.
 - **Private data** (course progress, §8) is encrypted with a key known only to that person's own devices, so the
   entries can travel through anyone (server, relays) but only that person can read them.
 - **Plant data** (sheets, tags, procedures, locations, KKS tables) is a **bundle signed by the manager** with a version
@@ -140,14 +140,16 @@ The 3 courses (`source/courses/`: 1 Power Plant Technology, 2 Plant Foundations,
 files (118–141 KB, one inline script each, SVG diagrams, MCQs with feedback). They keep progress in `localStorage`
 under a per-course prefix (`ppt.`, `fnd.`, `hrsg.`) and load three Google Fonts; nothing else comes from outside.
 
-- **Course bundle:** the HTML files unchanged + the three fonts vendored (Atkinson Hyperlegible, Barlow Semi Condensed,
-  JetBrains Mono, all SIL Open Font License), signed and versioned like the plant data. The font links are rewritten
-  to the local copies when the bundle is built, so courses work offline and never contact Google.
-- **Progress bridge:** the host injects a small script before the course's own script. It pre-fills the course's
-  `localStorage` keys from the local peer and mirrors every write back, so courses need no edits.
-- **Scores are private** (decided 2026-09-26): the courses are for learning, not assessment. Progress entries are
-  encrypted to the person's own devices (§4); admins and the manager cannot read them. Progress follows the person
-  from phone to laptop.
+- **Courses** (built 2026-09-27, M4): `tools/build_courses.py` copies them to `data/courses/` with the Google Fonts
+  links replaced by vendored fonts (`vendor/fonts`: Atkinson Hyperlegible, Barlow Semi Condensed, JetBrains Mono,
+  Latin + Latin Extended, SIL OFL) and one bridge script added; nothing else changes. They ship with the app like the
+  plant data (not yet a signed, versioned bundle: that comes with the plant-data bundles).
+- **Progress bridge** (`course-bridge.js`): before the course's own script it fills the course's `localStorage`
+  keys from the local peer (synchronously: the course reads them at once) and mirrors every write back.
+- **Scores are private** (decided 2026-09-26): progress is `private` entries encrypted with the person's secret
+  (PROTOCOL.md §13); a person's own devices swap secrets (§17), so progress follows the person from phone to laptop.
+  Admins, the manager and the plant server relay the entries but can't read them. On a plant server's web pages
+  (browser, no app) progress stays in that browser's localStorage.
 
 ## 9. One protocol, two implementations
 
@@ -171,9 +173,10 @@ implementations of a sync protocol drift apart silently.
 | M0 | `docs/PROTOCOL.md` + Python reference of log/encoding/signatures/HLC/replay + test vectors. **Done 2026-09-26.** M0a (encoding, keys, entries, chains, HLC, order: `peer/proto.py`, `peer/vectors/v1.json`); M0b (entry bodies, identity, authority, revocation, approvals, merge, private entries: `peer/replay.py`, `peer/vectors/v2-replay.json`) | 1–2 weeks | the rules exist in one testable place |
 | M1 | Server rebuilt on the log: `plant.db` becomes a cache of the replay; current data migrated into entries (current accounts become person records + custodial keys). **Done 2026-09-26:** `server/engine.py` (log, custodial keys, root key, in-memory replay), `server/changes.py` (submissions/History on the log), `server/migrate_v1.py` (+ fixture written by the old code), same API | 2–3 weeks | today's app, same behaviour, now log-based |
 | M2 | Desktop package (double-click) + same-Wi-Fi sync between desktops + file/QR bundles + client-isolation test tool. **M2a done 2026-09-26:** sync core (Noise XX checked against the published vector, exchange of entries + photos, fork detection, stranger filtering; PROTOCOL.md §15, `peer/noise.py`, `peer/sync.py`, engine as a node, server listener `sync_port` 8421, `app.py sync HOST`). **M2b done 2026-09-26:** peer mode (`mode: peer`, local-only, no password), join via server enrolment or join request + bundle, mDNS discovery + auto sync (`server/syncsvc.py`), Devices tab, admin-only unencrypted bundles, people without a server account in Users. **M2c done 2026-09-26:** `desktop.py` launcher (per-user data folder, peer mode, browser + Tk Open/Quit window, single instance, `--self-test`), PyInstaller one-folder spec `packaging/`, Linux menu installer, GitHub Actions workflow for Windows + Linux (built and checked here: Linux only) | 2–3 weeks | P2P works on laptops; server optional |
-| M3 | Android: Kotlin core passing the vectors, local API, WebView viewer, M3 shell with the 3 tabs, same-Wi-Fi + file sync, multi-device pairing. Decided 2026-09-26: Kotlin core (not embedded Python), minimum Android 10 (API 29). **M3a done 2026-09-26:** `android/core` (JSON/canonical, Ed25519/X25519/ChaCha via BouncyCastle, entries/chains/HLC, replay, Noise, sync, MemoryNode): all vectors (v1, v2-replay, v3-sync, noise-xx, v4-malformed) + two-way TCP sync with the Python engine. **M3b done 2026-09-26:** the phone's node (`LocalNode` + `LocalApi` in core, JUnit-tested incl. joining the real app.py server) and the app (`android/app`: SQLite store, device key under the Android Keystore, WebView at https://kks.app/ served from the app, API through a JS bridge, no open port except the sync listener); verified on an Android 16 emulator end to end. **M3c done 2026-09-27:** Material 3 shell (Compose, NavigationSuiteScaffold: P&ID / Learning placeholder / Account & settings with sync + Manage pages from admin.html), camera or gallery for photos, the phone's Back steps back through the page first; verified on the emulator. **M3d done 2026-09-27:** NSD discovery + announcing (same `_kks._tcp` records as the laptops' zeroconf), auto sync while the app is on screen (2 min, 5 s after a change, new device), background sync every 15 min on unmetered networks (WorkManager); verified on the emulator except phone↔laptop discovery (the emulator's network can't carry multicast to the host). **Before M3e (2026-09-27):** metered-network sync setting, join by invite with a QR code (PROTOCOL.md §16), photos as JPEG XL (libjxl on the phone, pillow-jxl-plugin on laptops/servers, JPEG for viewers without JXL). **M3e done 2026-09-27:** R8 release build signed with a locally held key (docs/ANDROID_RELEASE.md), Android CI (tests, debug + unsigned release APKs). Next: M4 Learning | 2–3 months | phones are full peers |
-| M4 | Learning tab (course bundles, progress) | 1–2 weeks after seeing the courses | |
+| M3 | Android: Kotlin core passing the vectors, local API, WebView viewer, M3 shell with the 3 tabs, same-Wi-Fi + file sync, multi-device pairing. Decided 2026-09-26: Kotlin core (not embedded Python), minimum Android 10 (API 29). **M3a done 2026-09-26:** `android/core` (JSON/canonical, Ed25519/X25519/ChaCha via BouncyCastle, entries/chains/HLC, replay, Noise, sync, MemoryNode): all vectors (v1, v2-replay, v3-sync, noise-xx, v4-malformed) + two-way TCP sync with the Python engine. **M3b done 2026-09-26:** the phone's node (`LocalNode` + `LocalApi` in core, JUnit-tested incl. joining the real app.py server) and the app (`android/app`: SQLite store, device key under the Android Keystore, WebView at https://kks.app/ served from the app, API through a JS bridge, no open port except the sync listener); verified on an Android 16 emulator end to end. **M3c done 2026-09-27:** Material 3 shell (Compose, NavigationSuiteScaffold: P&ID / Learning placeholder / Account & settings with sync + Manage pages from admin.html), camera or gallery for photos, the phone's Back steps back through the page first; verified on the emulator. **M3d done 2026-09-27:** NSD discovery + announcing (same `_kks._tcp` records as the laptops' zeroconf), auto sync while the app is on screen (2 min, 5 s after a change, new device), background sync every 15 min on unmetered networks (WorkManager); verified on the emulator except phone↔laptop discovery (the emulator's network can't carry multicast to the host). **Before M3e (2026-09-27):** metered-network sync setting, join by invite with a QR code (PROTOCOL.md §16), photos as JPEG XL (libjxl on the phone, pillow-jxl-plugin on laptops/servers, JPEG for viewers without JXL). **M3e done 2026-09-27:** R8 release build signed with a locally held key (docs/ANDROID_RELEASE.md), Android CI (tests, debug + unsigned release APKs). **After M3e (2026-09-27):** photos at JXL distance 1.9 / effort 9, never converted to JPEG (browsers without JXL decode it with libjxl in WebAssembly, the app hands the WebView a BMP from its own libjxl); computers scan invites with a webcam; joining without camera or code by asking an admin's device found on the Wi-Fi (6-digit code on both screens). Next: M4 Learning | 2–3 months | phones are full peers |
+| M4 | Learning tab (course bundles, progress). **Done 2026-09-27:** courses with vendored fonts, private progress on the log (PROTOCOL.md §13, §17), native Learning tab on Android, learning.html on computers | 1–2 weeks after seeing the courses | |
 | M5 | Internet P2P (ICE + signaling + TURN; hosting decided then) | 3–5 weeks | HQ ↔ plant without files |
+| M6 | Fully native desktop in Nim: no browser, a native GUI on Linux and Windows (added 2026-09-27 by the user; details to be decided when we reach it). It would speak the same protocol and pass the same frozen vectors as Python and Kotlin | not estimated yet | the desktop app without a browser |
 
 *One person part-time with AI help; order-of-magnitude only.
 

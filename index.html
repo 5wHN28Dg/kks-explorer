@@ -109,6 +109,7 @@ dt{color:var(--muted)} dd{margin:0}
   .grip{display:block;width:44px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 0}
   .drawer{width:100%}
 }
+.app .app-hide{display:none}
 </style>
 </head>
 <body>
@@ -122,6 +123,7 @@ dt{color:var(--muted)} dd{margin:0}
   <button class="btn" id="revBtn">Review<span class="count" id="revCount">0</span></button>
   <button class="btn" id="notesBtn">Sheet notes</button>
   <span class="sync" id="syncStatus"></span>
+  <a class="btn app-hide" href="learning.html" title="The three plant courses">Learning</a>
   <a class="btn" id="manageBtn" href="admin.html" title="Your account, approvals, users, history"><span id="who">Account</span><span class="count" id="queueCount" style="display:none"></span></a>
 </header>
 <main>
@@ -477,6 +479,7 @@ function addPhoto(input,k,tid){
   rd.onload=()=>{ img.onload=async()=>{ const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
     c.width=img.width*s; c.height=img.height*s; c.getContext('2d').drawImage(img,0,0,c.width,c.height);
     const up=K.cfg?.photo_upload||{type:'image/jpeg',q:0.85};   // the server / app turns it into JPEG XL (server/photos.py)
+    K.toast?.('Compressing the photo (JPEG XL)… this can take several seconds');
     const r=await send('photo',{kks:k,dataUrl:c.toDataURL(up.type,up.q)},'photo for '+k);
     if(r) select(eff(TAGS.find(x=>x.id===tid))) }; img.src=rd.result };
   rd.readAsDataURL(f);

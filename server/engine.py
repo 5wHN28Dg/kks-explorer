@@ -389,10 +389,36 @@ class Engine:
         finally:
             c.close()
 
+    def secrets_offer(self, remote, msg):
+        """§17, the listener's side: only between two devices of this node's owner (peer mode)."""
+        from server import progress
+        none = {'t': 'secrets', 'secrets': []}
+        o = self.owner() if self.node_device() else None
+        if not o:
+            return none
+        with self.lock:
+            d = self.run.devices.get(remote)
+            same = bool(d) and remote not in self.run.cuts and d['person'] == o['person'] == msg.get('person')
+        if not same:
+            return none
+        theirs = []
+        for s in (msg.get('secrets') if isinstance(msg.get('secrets'), list) else [])[:16]:
+            try:
+                b = P.unb64u(s)
+            except (P.ProtocolError, TypeError, ValueError):
+                continue
+            if len(b) == 32:
+                theirs.append(b)
+        progress.add_secrets(self, o['person'], theirs)
+        return {'t': 'secrets', 'secrets': [P.b64u(s) for s in progress.secrets_of(self, o['person'])]}
+
     def join_offer(self, remote, msg):
         if not self.invites:
             return {'t': 'join_ack', 'state': 'unknown'}
-        return self.invites.offer(remote, msg)
+        ack = self.invites.offer(remote, msg)
+        if ack['state'] == 'accepted':   # the device then syncs, adopting this root (it trusts this device: §16)
+            ack.update(root=self.anchor, plant=self.run.settings.get('plant') if self.run else None)
+        return ack
 
     def may_read(self, peer):
         """Only a certified, unrevoked device of a known person receives plant data."""

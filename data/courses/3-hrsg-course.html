@@ -1,0 +1,1467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rumaila HRSG Course</title>
+<link rel="stylesheet" href="/vendor/fonts/courses.css">
+<style>
+:root{
+  --ground:#E9EDEF; --surface:#F8FAFA; --sunk:#DDE3E6; --ink:#16222B; --muted:#56646E; --rule:#C6CFD4;
+  --accent:#1F5F8B; --accent-ink:#FFFFFF; --accent-soft:#D7E5EF;
+  --ok:#2E7A4E; --ok-soft:#DCEDE2; --alarm:#9A6412; --alarm-fill:#E8B04A; --alarm-soft:#F6E7C8;
+  --act:#B3261E; --act-soft:#F6D9D6; --zone-ok:#CFD8DC;
+  --display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Atkinson Hyperlegible","Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#11171B; --surface:#182026; --sunk:#0D1215; --ink:#E2E8EB; --muted:#95A4AD; --rule:#2B363D;
+    --accent:#6DAFDC; --accent-ink:#0B1620; --accent-soft:#1D3342;
+    --ok:#62C08A; --ok-soft:#173226; --alarm:#E4AE45; --alarm-fill:#B9832A; --alarm-soft:#3A2D14;
+    --act:#F0776B; --act-soft:#3E1D1A; --zone-ok:#26323A;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#11171B; --surface:#182026; --sunk:#0D1215; --ink:#E2E8EB; --muted:#95A4AD; --rule:#2B363D;
+  --accent:#6DAFDC; --accent-ink:#0B1620; --accent-soft:#1D3342;
+  --ok:#62C08A; --ok-soft:#173226; --alarm:#E4AE45; --alarm-fill:#B9832A; --alarm-soft:#3A2D14;
+  --act:#F0776B; --act-soft:#3E1D1A; --zone-ok:#26323A;
+}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;padding-inline:16px;padding-block:0 48px}
+.shell{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px minmax(0,1fr);gap:40px}
+header.top{max-width:1180px;margin:0 auto;padding-block:20px 18px;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;border-bottom:1px solid var(--rule);margin-bottom:28px}
+.brand{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.01em;line-height:1.1}
+.brand small{display:block;font-family:var(--body);font-weight:400;font-size:14px;color:var(--muted);letter-spacing:0;margin-top:4px}
+.docid{font-family:var(--mono);font-size:12px;color:var(--muted)}
+nav.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);align-self:start;max-height:calc(100vh - 32px);overflow:auto;padding-bottom:12px}
+.rail h4{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+.rail h4:first-child{margin-top:0}
+.rail button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:28px 1fr 16px;align-items:center;width:100%;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:14.5px;line-height:1.3;color:var(--ink)}
+.rail button:hover{background:var(--sunk)}
+.rail button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rail button[aria-current="true"]{background:var(--surface);box-shadow:inset 0 0 0 1px var(--rule);font-weight:700}
+.rail .n{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.rail .tick{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--rule)}
+.rail .tick.done{background:var(--ok);border-color:var(--ok)}
+.progress{height:4px;background:var(--sunk);border-radius:2px;margin:6px 8px 0;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--ok);width:0}
+.mobile-nav{display:none}
+main{min-width:0;max-width:760px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+h1{font-family:var(--display);font-weight:700;font-size:40px;line-height:1.05;margin:6px 0 14px;text-wrap:balance}
+h2{font-family:var(--display);font-weight:600;font-size:26px;line-height:1.15;margin:40px 0 10px;text-wrap:balance}
+h3{font-family:var(--display);font-weight:600;font-size:20px;margin:26px 0 8px;text-wrap:balance}
+p{margin:0 0 12px;max-width:68ch}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:66ch}
+li{margin-bottom:5px}
+.goal{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:14px 18px;margin:0 0 22px}
+.goal b{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px}
+.goal ul{margin:0}
+.num{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.why{border-left:3px solid var(--rule);padding:2px 0 2px 14px;margin:12px 0 16px;color:var(--ink)}
+.why .tag{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block}
+.flag{background:var(--alarm-soft);border-radius:6px;padding:10px 14px;margin:12px 0 16px;font-size:15px}
+.flag b{color:var(--alarm)}
+.src{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tablewrap{overflow-x:auto;margin:10px 0 18px;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--sunk)}
+td.v{font-family:var(--mono);font-size:13.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.figure{overflow-x:auto;margin:14px 0 20px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px}
+.figure svg{display:block}
+.figcap{font-size:13.5px;color:var(--muted);margin-top:6px}
+/* activity blocks */
+.act{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;margin:16px 0}
+.act .kind{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;display:flex;justify-content:space-between;gap:12px}
+.act .kind .src{letter-spacing:0;text-transform:none;font-weight:400}
+.act .q{font-weight:700;margin-bottom:10px;max-width:68ch}
+.opts{display:grid;gap:8px}
+.opt{all:unset;box-sizing:border-box;display:block;padding:10px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--ground);cursor:pointer;line-height:1.4}
+.opt:hover{border-color:var(--accent)}
+.opt:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.opt.right{border-color:var(--ok);background:var(--ok-soft)}
+.opt.wrong{border-color:var(--act);background:var(--act-soft)}
+.fb{margin-top:10px;padding:10px 14px;border-radius:8px;font-size:15px;max-width:68ch}
+.fb.right{background:var(--ok-soft)}
+.fb.wrong{background:var(--act-soft)}
+.fb b{display:block;margin-bottom:2px}
+.btn{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:14.5px;cursor:pointer}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.btn.ghost{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.btn[disabled]{opacity:.45;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+/* ordering */
+.pool,.seq{display:grid;gap:6px}
+.seq{margin:10px 0;min-height:44px;padding:8px;border:1px dashed var(--rule);border-radius:8px}
+.seq:empty::before{content:"Tap the steps below in the right order";color:var(--muted);font-size:14px;padding:4px 6px}
+.step{all:unset;box-sizing:border-box;display:grid;grid-template-columns:26px 1fr;gap:6px;padding:8px 12px;border:1px solid var(--rule);border-radius:7px;background:var(--ground);cursor:pointer;line-height:1.35;font-size:15px}
+.step:focus-visible{outline:2px solid var(--accent)}
+.step .i{font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:2px}
+.step.right{border-color:var(--ok);background:var(--ok-soft)}
+.step.wrong{border-color:var(--act);background:var(--act-soft)}
+/* worked example */
+.worked{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;margin:16px 0}
+.worked .kind{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.worked .case{font-weight:700;margin-bottom:10px;max-width:68ch}
+.wstep{border-top:1px solid var(--rule);padding:10px 0 4px;max-width:68ch}
+.wstep .lbl{font-family:var(--mono);font-size:12px;color:var(--muted);display:block}
+/* DCS panel */
+.panel{background:var(--sunk);border-radius:8px;padding:10px 12px;margin:4px 0 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px 14px}
+.tag-r{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:4px 0;border-bottom:1px dotted var(--rule)}
+.tag-r span:first-child{color:var(--muted)}
+.tag-r .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13.5px;text-align:right}
+.val.alarm{color:var(--alarm);font-weight:600}
+.val.act{color:var(--act);font-weight:600}
+/* drill */
+.drill-card{background:var(--sunk);border-radius:10px;padding:18px;margin:10px 0 12px;display:grid;gap:4px}
+.drill-card .p{font-size:15px;color:var(--muted)}
+.drill-card .ctx{font-size:14px;color:var(--muted)}
+.drill-card .reading{font-family:var(--mono);font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chip{all:unset;cursor:pointer;font-size:13.5px;padding:4px 10px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--rule);color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.chip:focus-visible{outline:2px solid var(--accent)}
+.judge{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.judge .opt{text-align:center;font-weight:700;font-size:14.5px;padding:12px 8px}
+.judge .opt small{display:block;font-weight:400;font-size:12.5px;color:var(--muted)}
+.stat{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.score{font-family:var(--display);font-size:22px;font-weight:600}
+.pill{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:1px 7px;border-radius:999px;vertical-align:1px}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.alarm{background:var(--alarm-soft);color:var(--alarm)}
+.pill.act{background:var(--act-soft);color:var(--act)}
+.issues li{margin-bottom:12px}
+.issues .sev{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.foot{display:flex;justify-content:space-between;gap:10px;margin-top:40px;padding-top:16px;border-top:1px solid var(--rule)}
+.intro-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 22px}
+.intro-grid div{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;font-size:15px}
+.intro-grid b{font-family:var(--display);font-weight:600;font-size:17px;display:block;margin-bottom:2px}
+@media (max-width:860px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:0}
+  nav.rail{display:none}
+  .mobile-nav{display:block;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ground);padding-block:8px;margin-bottom:10px;border-bottom:1px solid var(--rule)}
+  .mobile-nav select{width:100%;font:inherit;font-size:15px;padding:8px 10px;border-radius:7px;border:1px solid var(--rule);background:var(--surface);color:var(--ink)}
+  h1{font-size:32px}
+  .judge{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:no-preference){ .opt,.step,.btn{transition:background-color .12s,border-color .12s} }
+</style>
+</head>
+<body>
+
+
+<header class="top">
+  <div class="brand">Rumaila HRSG Course<small>Operation Manual of HRSG System, rebuilt for learning</small></div>
+  <div class="docid">KEPPT-RUPP-0-SIHY-COM-WIO-0006 · Rev C · 02 Apr 2021</div>
+</header>
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Course modules"></nav>
+  <div>
+    <div class="mobile-nav"><label for="mnav" class="eyebrow">Go to</label><select id="mnav"></select></div>
+    <main id="main"></main>
+  </div>
+</div>
+
+<script src="/course-bridge.js" data-course="hrsg"></script>
+<script>
+/* ---------- storage (per-viewer convenience only) ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('hrsg.'+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('hrsg.'+k, JSON.stringify(v)); }catch(e){} }
+};
+let solved = store.get('solved', {});   // question id -> true once answered correctly
+function markSolved(id){ if(!solved[id]){ solved[id]=true; store.set('solved', solved); renderRail(); } }
+
+/* ---------- helpers ---------- */
+const N = s => `<span class="num">${s}</span>`;
+function Q(id, q, o, src){ return {type:'mcq', id, q, o, src}; }
+function O(id, q, steps, src){ return {type:'order', id, q, steps, src}; }
+function S(id, panel, q, o, src){ return {type:'scn', id, panel, q, o, src}; }
+const why = (t) => `<div class="why"><span class="tag">Why</span>${t}</div>`;
+const whyGen = (t) => `<div class="why"><span class="tag">Why · general boiler practice, not stated in the manual</span>${t}</div>`;
+const flag = (t) => `<div class="flag"><b>Check with the plant.</b> ${t}</div>`;
+const table = (head, rows, numCols=[]) => `<div class="tablewrap"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${numCols.includes(i)?' class="v"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+
+/* ---------- figures ---------- */
+function levelLadder(){
+  const drums = [
+    {name:'HP drum', marks:[[550,'Trip','act'],[450,'Alarm + EDV opens','alarm'],[400,'High alarm','alarm'],[-50,'Normal','ok'],[-250,'Fill level','fill'],[-450,'Low alarm','alarm'],[-550,'Trip','act']], hi:[400,550], lo:[-450,-550]},
+    {name:'IP drum', marks:[[400,'Trip','act'],[300,'Alarm + EDV opens','alarm'],[250,'High alarm','alarm'],[-50,'Normal','ok'],[-200,'Fill level','fill'],[-300,'Low alarm','alarm'],[-350,'Trip','act']], hi:[250,400], lo:[-300,-350]},
+    {name:'LP drum', marks:[[600,'Trip','act'],[550,'Overflow + EDV','alarm'],[500,'High alarm','alarm'],[-50,'Normal','ok'],[-1300,'Low alarm','alarm'],[-1350,'Low-low','alarm'],[-1400,'Trip','act']], hi:[500,600], lo:[-1300,-1400]}
+  ];
+  const top=700, bot=-1500, H=720, pad=26, k=H/(top-bot);
+  const y = mm => pad + (top-mm)*k;
+  const W=710, colW=34, xs=[66,282,498];
+  let s = `<svg viewBox="0 0 ${W} ${H+pad*2}" width="${W}" style="min-width:560px;width:100%;max-width:${W}px" role="img" aria-label="Drum level protection ladder for HP, IP and LP drums on a common millimetre scale">`;
+  for(let mm=600; mm>=-1400; mm-=200){
+    s += `<line x1="46" x2="${W-6}" y1="${y(mm)}" y2="${y(mm)}" stroke="var(--rule)" stroke-width="1" stroke-dasharray="${mm===0?'0':'2 4'}"/>`;
+    s += `<text x="40" y="${y(mm)+4}" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--muted)">${mm>0?'+':''}${mm}</text>`;
+  }
+  s += `<text x="40" y="${pad-10}" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--muted)">mm</text>`;
+  drums.forEach((d,i)=>{
+    const x=xs[i];
+    s += `<rect x="${x}" y="${y(top)}" width="${colW}" height="${y(bot)-y(top)}" fill="var(--zone-ok)"/>`;
+    s += `<rect x="${x}" y="${y(top)}" width="${colW}" height="${y(d.hi[1])-y(top)}" fill="var(--act)" opacity=".75"/>`;
+    s += `<rect x="${x}" y="${y(d.hi[1])}" width="${colW}" height="${y(d.hi[0])-y(d.hi[1])}" fill="var(--alarm-fill)" opacity=".8"/>`;
+    s += `<rect x="${x}" y="${y(d.lo[0])}" width="${colW}" height="${y(d.lo[1])-y(d.lo[0])}" fill="var(--alarm-fill)" opacity=".8"/>`;
+    s += `<rect x="${x}" y="${y(d.lo[1])}" width="${colW}" height="${y(bot)-y(d.lo[1])}" fill="var(--act)" opacity=".75"/>`;
+    s += `<text x="${x+colW/2}" y="${pad-10}" text-anchor="middle" font-family="Barlow Semi Condensed, sans-serif" font-weight="600" font-size="15" fill="var(--ink)">${d.name}</text>`;
+    d.marks.forEach(([mm,lbl,cls])=>{
+      const col = cls==='act'?'var(--act)':cls==='alarm'?'var(--alarm)':cls==='fill'?'var(--accent)':'var(--ink)';
+      const dash = cls==='fill'?' stroke-dasharray="3 3"':'';
+      s += `<line x1="${x-4}" x2="${x+colW+6}" y1="${y(mm)}" y2="${y(mm)}" stroke="${col}" stroke-width="${cls==='ok'?2.5:1.5}"${dash}/>`;
+      s += `<text x="${x+colW+10}" y="${y(mm)+4}" font-family="JetBrains Mono, monospace" font-size="11" fill="${col}">${mm>0?'+':''}${mm}</text>`;
+      s += `<text x="${x+colW+52}" y="${y(mm)+4}" font-family="Atkinson Hyperlegible, sans-serif" font-size="11.5" fill="var(--ink)">${lbl}</text>`;
+    });
+  });
+  s += `</svg>`;
+  return `<div class="figure">${s}<div class="figcap">All three drums on one scale (mm from the level datum). Red = protection trip. Amber = alarm band. Dashed blue = startup fill level. EDV = emergency discharge valve. The LP drum's low side is much deeper because it is the storage drum the HP and IP feed pumps draw from. Source §1.2.1.</div></div>`;
+}
+function pressureLine(name, lo, hi, marks, note){
+  const W=660, L=40, R=W-30, H=132, base=76;
+  const x = v => L + (v-lo)/(hi-lo)*(R-L);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" style="min-width:560px;width:100%;max-width:${W}px" role="img" aria-label="${name} pressure settings">`;
+  s += `<text x="${L}" y="16" font-family="Barlow Semi Condensed, sans-serif" font-weight="600" font-size="15" fill="var(--ink)">${name}</text>`;
+  s += `<line x1="${L}" x2="${R}" y1="${base}" y2="${base}" stroke="var(--muted)" stroke-width="1.5"/>`;
+  const step = (hi-lo)>2 ? 0.5 : (hi-lo)>1 ? 0.25 : 0.1;
+  for(let v=Math.ceil(lo/step)*step; v<=hi+1e-9; v+=step){
+    s += `<line x1="${x(v)}" x2="${x(v)}" y1="${base-3}" y2="${base+3}" stroke="var(--muted)"/>`;
+  }
+  marks.forEach(([v,lbl,cls],i)=>{
+    const col = cls==='act'?'var(--act)':cls==='alarm'?'var(--alarm)':'var(--ok)';
+    const up = i%2===0;
+    const ty = up ? base-24 : base+34;
+    s += `<line x1="${x(v)}" x2="${x(v)}" y1="${base-12}" y2="${base+12}" stroke="${col}" stroke-width="2.5"/>`;
+    const anchor = x(v) > R-70 ? 'end' : x(v) < L+60 ? 'start' : 'middle';
+    s += `<text x="${x(v)}" y="${ty}" text-anchor="${anchor}" font-family="JetBrains Mono, monospace" font-size="11.5" fill="${col}">${v.toFixed(2)}</text>`;
+    s += `<text x="${x(v)}" y="${ty+ (up?-13:13)}" text-anchor="${anchor}" font-family="Atkinson Hyperlegible, sans-serif" font-size="11.5" fill="var(--ink)">${lbl}</text>`;
+  });
+  s += `</svg>`;
+  return `<div class="figure">${s}${note?`<div class="figcap">${note}</div>`:''}</div>`;
+}
+
+/* ---------- modules ---------- */
+const M = [];
+
+M.push({id:'start', n:'0', title:'Start here', short:'Start here',
+goal:['Know what you will be able to do at the end, and how this course is built to get you there.'],
+body:()=>`
+<div class="flag"><b>Before you start.</b> This course assumes you know how a combined-cycle plant works, basic steam physics, the equipment names, and how instruments and a shift work. If any of that is new, take the <a href="2-plant-foundations.html" target="_blank" rel="noopener" style="color:var(--accent)">Rumaila Plant Foundations</a> course first. Its placement test tells you which parts you can skip.</div>
+<p>The original manual is 140 pages of settings, checklists and fault tables. It is a good reference and a poor teacher: it tells you what the numbers are, rarely why, and never checks whether you can use them. This course keeps every number that matters and reorganises it around the jobs you actually do in the plant.</p>
+<h3>The end task</h3>
+<p>By the end you should be able to:</p>
+<ul>
+<li>Look at any HRSG reading on the DCS or a local gauge and say whether it is <span class="pill ok">within limits</span>, <span class="pill alarm">in alarm</span> or <span class="pill act">past an action limit</span>, and what the manual requires next.</li>
+<li>Tell a real process change from an instrument that is lying to you.</li>
+<li>Walk through filling, startup, shutdown and preservation with the rate limits and hold points.</li>
+<li>Diagnose the HRSG faults (full water, water shortage, foaming, water hammer, tube leaks, gauge faults, safety valve faults) from the pattern of readings, and choose between carrying on, a controlled shutdown and an emergency shutdown.</li>
+</ul>
+<p>The <b>Final check</b> tests exactly this. You can open it now to see what you are aiming for.</p>
+<h3>How to use it</h3>
+<div class="intro-grid">
+<div><b>Guess first</b>Each module opens with a question before any teaching. Answer it even if you have no idea. A wrong guess makes the right answer stick better.</div>
+<div><b>Work the examples</b>Worked examples reveal one step at a time. Try to predict each step before you open it.</div>
+<div><b>Practice until clean</b>Wrong answers explain why they are wrong. You can retry. A module's dot turns green when every practice item is solved.</div>
+<div><b>Come back</b>Modules start with questions from earlier modules, and the Reading drill mixes everything. Five minutes a day beats one long session.</div>
+</div>
+<p>Anything marked <b>Why · general boiler practice</b> is explanation I added from standard HRSG engineering. The manual does not state it. Amber boxes mark places where the manual contradicts itself; confirm those with your shift leader or the plant's DCS setpoints before relying on them. They are all collected under <b>Manual issues</b>.</p>
+<p class="src">Plant: Al-Rumailah Combined Cycle 730 MW. HRSG: Dongfang Lingri MHDB-SGT5-4000F-Q1 behind a Siemens SGT5-4000F gas turbine.</p>`,
+warm: Q('s0','Before anything else, a guess. The HP drum level on the DCS slowly climbs while feedwater flow reads higher than steam flow. What is the most likely first thing you should do?',[
+ ['Trip the HRSG immediately.',false,'Tripping is for the protection limits (+550 mm on the HP drum). A slowly rising level is first a control problem. Killing the unit for it costs a start and risks a thermal shock.'],
+ ['Check the level against the local gauge and check drum and feedwater pressures, then take the feed control to manual if the automatic control is wrong.',true,'That is the manual\'s sequence for high level (§7.4.1): confirm the reading is real, then control the feed. You will learn the numbers and the reasoning in Modules 2, 4 and 10.'],
+ ['Open every blowdown valve fully to drop the level fast.',false,'Emergency discharge and continuous blowdown do help (and open automatically at +450 mm), but blowing down hard without knowing whether the reading is real can drop you into a low-level trip.']
+],'§7.4.1'),
+practice:[]
+});
+
+M.push({id:'machine', n:'1', title:'The machine in one picture', short:'The machine',
+goal:['Describe the gas path and the water/steam path through a triple-pressure HRSG.','Explain why natural circulation makes drum level the number that matters most.','Recall the design output of each pressure level.'],
+body:()=>`
+<p>You cannot judge a reading without a picture of what produces it. The manual never gives you that picture, so here it is.</p>
+<h3>What this HRSG is</h3>
+<p>Triple pressure, with reheat, no supplementary firing, horizontal gas flow, natural circulation, outdoors. It takes about ${N('691.5 kg/s')} of gas turbine exhaust at about ${N('581 °C')} and turns it into four steam flows.</p>
+${table(['Steam','Flow t/h (2×1 / 3×1)','Outlet pressure MPa.a','Outlet temp °C'],[
+ ['HP main steam','271.4 / 279.16','12.40 / 12.44','561 / 560.7'],
+ ['Reheat (RH)','314.48 / 316.96','3.01 / 3.85','560.4 / 560.8'],
+ ['IP main steam','52.16 / 44.34','3.11 / 3.98','317.2 / 321.3'],
+ ['LP main steam','52.21 / 50.97','0.44 / 0.44','237.6 / 249.2']
+],[1,2,3])}
+<p class="src">§1.1.2, §1.1.3. "2×1" and "3×1" are two or three gas turbines with their HRSGs feeding one steam turbine.</p>
+<h3>Gas path</h3>
+<p>Exhaust gas enters hot and leaves cool. It meets the surfaces that need the highest temperature first (HP superheater and reheater), then the HP evaporator, then the IP and LP sections, and finally the condensate heater before the stack. The three-way damper in front decides whether gas goes into the HRSG or to the bypass stack.</p>
+${whyGen('This order is the usual layout for a triple-pressure HRSG. Confirm the exact bundle order on the general arrangement drawings in §10.8 of the manual.')}
+<h3>Water and steam path</h3>
+<ul>
+<li>Condensate passes through the <b>condensate heater</b> and into the <b>LP drum</b>. A condensate recirculation pump (${N('99 t/h')}) circulates water through the condensate heater.</li>
+<li>The <b>HP and IP feed pumps</b> take their suction from the LP drum. That is why the manual checks LP drum level before starting them.</li>
+<li>Feedwater goes through each <b>economizer</b> into its <b>drum</b>. From each drum, water falls through downcomers into the <b>evaporator</b> tubes, part of it boils, and the steam-water mixture rises back to the drum. Steam leaves the top of the drum to the <b>superheater</b>.</li>
+<li>Steam that has been through the HP turbine comes back as cold reheat, is reheated to about ${N('560 °C')} and goes to the IP turbine.</li>
+</ul>
+${whyGen('"Natural circulation" means no pump drives water through the evaporator. The flow comes only from the density difference between cold water in the downcomers and the lighter steam-water mixture in the hot tubes. If drum level falls too far, the downcomers stop being fed, circulation weakens and evaporator tubes can run dry and overheat. If level rises too far, water is carried into the superheater and on towards the turbine. Almost every limit in Module 2 protects one of those two failures.')}
+<h3>The drums</h3>
+${table(['Drum','Design / working MPa','Size (OD × length, m)','Wall','Material'],[
+ ['HP','14.11 / 12.44','2.25 × 12.5','125 mm','SA-299B'],
+ ['IP','4.53 / 3.21','1.692 × 4.6','46 mm','SA-516 Gr70'],
+ ['LP','1.10 / 0.67','3.5 × 16.5','30 mm','SA-516 Gr70']
+],[1,2,3])}
+${why('The HP drum wall is 125 mm thick. Thick steel heats from the inside first, so the inner surface expands before the outer one. Heat it too fast and the stress cracks it over many cycles. That single fact explains the heating-rate limits and the 40 °C top-to-bottom limit you will meet in Module 7.')}
+<p class="src">§1.1.1, §1.1.6–1.1.8, §1.1.5 (water volumes: LP drum 146 m³, HP drum 45 m³, total system 580 m³).</p>`,
+warm: Q('m1w','Guess: what moves water through the HP evaporator tubes?',[
+ ['The HP feed pump.',false,'The feed pump pushes water into the drum through the economizer. It does not drive flow around the evaporator loop.'],
+ ['The condensate recirculation pump.',false,'That pump circulates water through the condensate heater, at the cold end of the HRSG.'],
+ ['The density difference between cold water in the downcomers and the steam-water mixture in the heated tubes.',true,'Right. This HRSG uses natural circulation. No pump drives the evaporator loop, which is why keeping the drum level up matters so much.']
+],'§1.1.1'),
+worked:{case:'Why does the manual allow the superheater header to heat at 25 °C/min during a cold start, but the HP drum only 5 °C/min?',steps:[
+ ['Look at what is different between the parts','The HP drum wall is 125 mm thick. Headers and tubes are much thinner.'],
+ ['Think about how thick steel heats','Heat enters at the inside surface. Across a thick wall, the inside gets hot long before the outside, so the inside tries to expand while the outside holds it back.'],
+ ['Link it to damage','That difference creates thermal stress. The thicker the wall, the bigger the temperature difference for the same heating rate, and the bigger the stress.'],
+ ['Conclusion','The thickest part gets the slowest rate (drum under 5 °C/min), thinner parts get more (SH header under 25, others under 30 °C/min). Same logic gives the 40 °C top-to-bottom drum limit.']
+]},
+practice:[
+ Q('m1a','Where do the HP and IP feed pumps take their suction from?',[
+  ['The condenser hotwell directly.',false,'The condensate pumps take from the hotwell. The HP and IP feed pumps are after the LP drum.'],
+  ['The LP drum.',true,'Yes. Before starting either feed pump the manual checks LP drum level is normal (§2.2.4), because a low LP drum starves them.'],
+  ['The IP drum.',false,'The IP drum is fed by the IP feed pump. It is not a suction source.']
+ ],'§2.2.4'),
+ Q('m1b','Which drum has the thickest wall, and what does that mean for operation?',[
+  ['LP, because it is the largest drum, so it needs the slowest filling.',false,'The LP drum is the largest (3.5 m × 16.5 m) but its wall is only 30 mm because it runs at 0.67 MPa.'],
+  ['HP, 125 mm, so it limits how fast the unit can heat up and cool down.',true,'Correct. The 125 mm HP drum sets the 5 °C/min drum heating limit and the 40 °C top-to-bottom limit.'],
+  ['IP, 46 mm, because it has the highest design temperature.',false,'IP is 46 mm. The HP drum is far thicker because it holds 12.44 MPa.']
+ ],'§1.1.6'),
+ Q('m1c','The HP drum level drops very low while the unit is at load. What is the physical danger to the evaporator?',[
+  ['The downcomers are no longer fed properly, circulation weakens and evaporator tubes can overheat.',true,'Yes. With natural circulation, water supply to the tubes depends on the drum level. That is why the low-level trip exists.'],
+  ['Steam pressure rises and lifts the safety valves.',false,'Low level does not by itself raise pressure. The risk is to the tubes that lose their water.'],
+  ['Water is carried over into the superheater.',false,'Carry-over is the danger of HIGH level, not low.']
+ ],'§1.2.1, §7.4.2'),
+ Q('m1d','Gas turbine exhaust is about 581 °C. Which surfaces meet it first?',[
+  ['The condensate heater and LP economizer.',false,'These are at the cold end, just before the stack. They use the last low-temperature heat.'],
+  ['The HP superheater and reheater.',true,'Yes. They need the highest steam temperature (about 560 °C), so they sit where the gas is hottest.'],
+  ['The IP evaporator.',false,'IP sections sit in the middle of the gas path, after the HP sections.']
+ ],'§1.1.3')
+]});
+
+M.push({id:'levels', n:'2', title:'Drum levels: the ladder', short:'Drum levels',
+goal:['Recall the protection ladder for each drum: normal, alarms, emergency discharge, trips, fill level.','Explain why the unit starts with a low level and shuts down with a high one.'],
+body:()=>`
+<p>Every drum has the same ladder. Learn the pattern once, then the HP numbers by heart, and know where the others differ.</p>
+${levelLadder()}
+${table(['Rung','HP','IP','LP'],[
+ ['Trip (HRSG shutdown), high','+550','+400','+600'],
+ ['High alarm + emergency discharge valve opens','+450','+300','+550 (overflow + EDV)'],
+ ['High alarm','+400','+250','+500'],
+ ['Normal water level (NWL)','−50','−50','−50'],
+ ['Startup fill level','−250','−200','NWL ± 50'],
+ ['Low alarm','−450','−300','−1300'],
+ ['Low-low','n/a','n/a','−1350'],
+ ['Trip, low','−550','−350','−1400']
+],[1,2,3])}
+<p class="src">§1.2.1 (mm). The manual gives the IP datum as 180 mm below the IP drum centreline; it does not state the datum for HP and LP.</p>
+<h3>The pattern</h3>
+<ul>
+<li>Going up: <b>alarm</b>, then <b>alarm and the emergency discharge valve opens</b> (the unit starts fixing itself), then <b>trip</b>.</li>
+<li>Going down: <b>alarm</b>, then <b>trip</b>. There is no automatic "add water" rung, so a falling level needs you sooner.</li>
+<li>The LP drum has a huge low-side margin (down to −1400) because it is a 146 m³ storage drum feeding the pumps.</li>
+</ul>
+<h3>Low to start, high to stop</h3>
+<p>Fill for startup to the fill level (HP ${N('−250')}, IP ${N('−200')}; the startup table in §3.3.2 gives HP NWL−250 to NWL−200, IP NWL−200 to NWL−150, LP NWL−50 to NWL+50). At shutdown, 30 minutes after the unit stops, bring all three drums to ${N('NWL+100')}.</p>
+${whyGen('When a cold drum starts to boil, steam bubbles form in the evaporator tubes and push water up into the drum. The level "swells" even though no water was added. Starting low leaves room for that swell so it doesn\'t hit the high trip. At shutdown the opposite happens: bubbles collapse and water contracts as it cools, the level "shrinks", so you start high to keep the tubes covered.')}
+${flag('§3.3.2 also says to keep HP, IP and LP drum level "stable around +50 mm" during filling, which contradicts the −50 mm normal level and the fill levels above. Most likely a sign error. Ask which your DCS uses.')}
+<h3>When the level is off but pressures are normal</h3>
+<p>If automatic feed is on, drum and feedwater pressures are normal, and the level still moves more than ${N('±100 mm')}, the manual tells you to check and calibrate the level meter first (§4.2.2). Module 4 covers how to tell a bad instrument from a real change.</p>`,
+warm: Q('m2w','Guess: the HP drum is being filled for a cold start. Why would the manual want the level well below normal at this point?',[
+ ['So the feed pumps can run at minimum flow.',false,'Minimum flow is handled by the pump\'s minimum flow valve, not by the drum level.'],
+ ['Because the level will rise on its own when the water starts to boil, and the room stops it reaching the high trip.',true,'Right. Swell during heat-up raises the level without any water being added.'],
+ ['To reduce the weight on the drum supports.',false,'The drum and supports are designed for a full drum. Weight is not the reason.']
+],'§3.3.2'),
+worked:{case:'At 85% load the HP drum level reads +430 mm and is rising slowly. Feedwater flow is 12 t/h above steam flow. Drum and feed pressures are steady. What do you conclude and do?',steps:[
+ ['Place it on the ladder','+430 is above the high alarm (+400) and below the point where the emergency discharge valve opens (+450). Trip is +550. You have about 120 mm before a trip.'],
+ ['Is the reading real?','Pressures are steady, so this is not swell from a pressure drop. Compare with the local gauge. Feedwater exceeding steam flow agrees with a real rise, so the level is probably real.'],
+ ['Find the cause','More water in than steam out, with no load change, points at the feed control: the automatic control or the valve is feeding too much (§7.4.1 reasons 1–3).'],
+ ['Act','Take feed control to manual and reduce the valve opening. If flow does not respond, close the manual valve before the control valve locally and feed through the bypass. Confirm the EDV and continuous blowdown open at +450. Call maintenance. Watch superheater outlet temperature for any sudden drop (sign of carry-over).']
+]},
+practice:[
+ Q('m2a','The IP drum level reads −320 mm. Where is it on the ladder?',[
+  ['Within limits.',false,'IP normal is −50 with a low alarm at −300. −320 is past the alarm.'],
+  ['In the low alarm band, 30 mm above the −350 trip.',true,'Correct. IP: low alarm −300, trip −350. This is where you act at once to restore feed.'],
+  ['Past the trip.',false,'The IP low trip is −350. −320 is just above it.']
+ ],'§1.2.1'),
+ Q('m2b','Which drum level setting opens the HP emergency discharge valve?',[
+  ['+400 mm',false,'+400 is the first high alarm only.'],
+  ['+450 mm',true,'Yes. +450 gives a high alarm and opens the emergency discharge valve.'],
+  ['+550 mm',false,'+550 is the HRSG trip.']
+ ],'§1.2.1'),
+ Q('m2c','The LP drum reads −1320 mm. What is the situation?',[
+  ['Normal: the LP drum always runs low.',false,'LP normal is −50 like the others. −1320 is past the −1300 low alarm.'],
+  ['Low alarm, 30 mm from low-low and 80 mm from trip; the feed pumps are at risk.',true,'Right. LP: alarm −1300, low-low −1350, trip −1400. The HP and IP feed pumps take suction from this drum.'],
+  ['Trip already reached.',false,'LP trip is −1400.']
+ ],'§1.2.1'),
+ Q('m2d','Thirty minutes after a normal shutdown, what level do you set in all three drums?',[
+  ['NWL−250',false,'That is close to the HP startup fill level. At shutdown you go high, not low.'],
+  ['NWL',false,'The manual asks for more than normal.'],
+  ['NWL+100',true,'Yes. As the water cools and bubbles collapse, the level shrinks. Starting at NWL+100 keeps the tubes covered.']
+ ],'§5.2.2'),
+ O('m2e','Put the HP drum ladder in order from highest to lowest level.',[
+  '+550 trip','+450 alarm and emergency discharge opens','+400 high alarm','−50 normal','−250 startup fill','−450 low alarm','−550 trip'
+ ],'§1.2.1')
+]});
+
+M.push({id:'press', n:'3', title:'Pressures, temperatures and safety valves', short:'Pressure & temp',
+goal:['Order the pressure settings for HP, IP, RH and LP from normal to design.','Explain why the superheater safety valve lifts before the drum safety valves.','Recall the steam temperature alarms and the 40 °C drum rule.'],
+body:()=>`
+<p>For pressure, think of a staircase from normal operation up to the design pressure. Each step is something that happens automatically. You want to act long before the top.</p>
+${pressureLine('HP system (MPa)',12.0,14.4,[[12.3,'High alarm','alarm'],[12.44,'Drum working','ok'],[12.9,'Relief to atmosphere opens','alarm'],[13.28,'SH outlet SV','act'],[13.85,'Drum SVs ×2','act'],[14.11,'Drum design','act']],'§1.2.3, §1.1.9, §2.4.5, §1.1.6')}
+${pressureLine('IP system (MPa)',3.0,4.7,[[3.21,'Drum working','ok'],[3.7,'High alarm','alarm'],[4.28,'SH outlet SV','act'],[4.49,'Drum SV','act'],[4.53,'Drum design','act']])}
+${pressureLine('Reheat (MPa)',2.8,4.6,[[3.01,'Rated (2×1)','ok'],[3.4,'High alarm','alarm'],[4.05,'Vent opens','alarm'],[4.24,'RH outlet SV','act'],[4.4,'RH inlet SVs ×2','act']])}
+${pressureLine('LP system (MPa)',0.3,1.2,[[0.44,'Normal (gauge)','ok'],[0.67,'Drum working','ok'],[1.01,'SH outlet SV','act'],[1.1,'Drum SV = design','act']])}
+${why('In every system the <b>superheater</b> safety valve is set lower than the <b>drum</b> safety valve (HP 13.28 vs 13.85, IP 4.28 vs 4.49, LP 1.01 vs 1.10). The superheater tubes are cooled only by the steam flowing through them. If the drum valve lifted first, steam would escape before reaching the superheater and the superheater would be left hot with little flow. Lifting the SH valve first keeps steam moving through it.')}
+<h3>The other safety valves</h3>
+<p>There are 13 in total. Besides the ones above: condensate heater inlet ${N('3.80')}, IP economizer inlet relief ${N('9.00')}, continuous blowdown flash tank ${N('1.10')} MPa.</p>
+${flag('The HP high-pressure alarm (12.3 MPa) is lower than the HP drum working pressure (12.44 MPa.a) and rated outlet (12.4 MPa.a). The IP (3.7) and RH (3.4) alarms are also below the 3×1 rated outlet pressures (3.98 and 3.85 MPa.a). The manual mixes absolute and gauge pressure without saying which the alarms use. Take the real alarm setpoints from the DCS.')}
+<h3>Temperatures</h3>
+${table(['Parameter','Normal','Alarm / limit'],[
+ ['HP main steam','560.7 °C','567.5 °C over-temperature alarm'],
+ ['Reheat steam','560.8 °C','567.5 °C high alarm'],
+ ['IP main steam','321.3 °C','none given'],
+ ['LP main steam','249.2 °C','none given'],
+ ['Drum wall, top minus bottom (HP, IP, LP)','','under 40 °C, always']
+],[1,2])}
+<p>Steam temperature is trimmed with desuperheating (spray) water: HP feedwater into the HP superheater between its second and third stages, IP feedwater into the reheater (§1.1.12).</p>
+${flag('§4.2.2 says superheated steam temperature is controlled to "no more than 510 °C", which contradicts the 560.7 °C normal value above. Confirm the actual setpoint.')}
+${why('The top of a drum is in contact with steam and the bottom with water. During heat-up, steam condensing on the top wall heats it faster; during cool-down the two halves cool at different rates. Above 40 °C difference the drum bends slightly and the stress concentrates at nozzles and welds. That is why the 40 °C rule appears in filling, startup, safety valve testing, hot standby and cooling.')}`,
+warm: Q('m3w','Guess: the HP superheater safety valve is set at 13.28 MPa and the HP drum valves at 13.85 MPa. Why is the superheater one lower?',[
+ ['The superheater is weaker than the drum.',false,'Superheater and drum are both designed for their pressure. Strength is not the reason for the order.'],
+ ['So the superheater valve lifts first and steam keeps flowing through the superheater tubes to cool them.',true,'Yes. If the drum valve lifted first, steam would leave before the superheater and the superheater would overheat with no flow.'],
+ ['Pressure drops between drum and superheater outlet, so the numbers are really the same.',false,'There is a pressure drop, but the settings are deliberately staggered, not equal.']
+],'§1.1.9'),
+worked:{case:'After a sudden steam turbine load rejection the HP pressure rises fast: 12.5 … 12.9 … 13.1 MPa. What should happen, and when do you step in?',steps:[
+ ['12.9 MPa','The relief valve to atmosphere at the superheater outlet should open (§1.2.3). Check that it did.'],
+ ['13.28 MPa','If pressure keeps rising, the HP superheater outlet safety valve should lift.'],
+ ['13.85 MPa','Next the two HP drum safety valves. The drum design pressure is 14.11.'],
+ ['What if a valve fails to lift?','§7.4.9: if pressure reaches a safety valve\'s setting and it does not open, carry out an emergency shutdown quickly and open the atmospheric relief valve to bring pressure down.'],
+ ['Level at the same time','A load drop makes pressure rise and the drum level shrink briefly, then recover. Keep feed under control; don\'t chase the level with big feed changes (§7.2.2 item 7).']
+]},
+practice:[
+ Q('m3a','Reheat steam temperature reads 569 °C. What is it?',[
+  ['Within limits; the design is 560.8 °C.',false,'Normal is 560.8. The high alarm is 567.5, so 569 is past it.'],
+  ['High alarm: 567.5 °C was passed.',true,'Correct. Check the reheat spray (IP feedwater) control and switch to manual if auto is not keeping up.'],
+  ['Trip value.',false,'The manual gives no trip value for reheat temperature, only the 567.5 °C alarm.']
+ ],'§1.2.2'),
+ Q('m3b','Which valve should open first as HP pressure rises?',[
+  ['HP drum safety valves at 13.85 MPa.',false,'Those are last in the HP sequence.'],
+  ['HP superheater outlet safety valve at 13.28 MPa.',false,'Before the safety valve, the atmospheric relief opens at 12.90.'],
+  ['Superheater outlet relief to atmosphere at 12.90 MPa.',true,'Yes. Relief first, then SH safety valve, then drum safety valves.']
+ ],'§1.2.3'),
+ Q('m3c','During heat-up the HP drum top wall reads 212 °C and the bottom wall 168 °C. What do you do?',[
+  ['Nothing, both are below saturation.',false,'The issue is the difference: 44 °C, over the 40 °C limit.'],
+  ['Stop raising temperature until the difference is back under 40 °C, then continue.',true,'That is exactly §3.3.4 item 10.'],
+  ['Increase feed flow to cool the top.',false,'The manual\'s action is to hold the temperature rise. Extra feed can also unsettle the level.']
+ ],'§3.3.4'),
+ Q('m3d','Where does the HP superheater spray water come from?',[
+  ['IP feedwater.',false,'IP feedwater is used for the reheat desuperheater.'],
+  ['HP feedwater, injected between the second and third superheater stages.',true,'Right (§1.1.12).'],
+  ['Condensate.',false,'Condensate pressure is far too low to inject into the HP superheater.']
+ ],'§1.1.12'),
+ O('m3e','Order the LP pressure settings from lowest to highest.',['0.44 normal (gauge)','0.67 drum working','1.01 LP superheater safety valve','1.10 LP drum safety valve and design'],'§1.1.8, §1.2.3')
+]});
+
+M.push({id:'instr', n:'4', title:'Is the reading real?', short:'Instruments',
+goal:['Apply four checks that separate a real process change from a lying instrument.','Recognise each level-gauge fault from how it reads.','Know how long you may run on remote level indication when local gauges fail.'],
+body:()=>`
+<p>Many trips and near-misses start with an operator acting on a reading that was wrong. Before you act on a surprising number, run these four checks.</p>
+<h3>Check 1: the local gauge rules</h3>
+<p>Drum level is judged by the <b>local</b> gauge. The electric-contact level meter can be used for control only while it agrees with the local one (§4.2.2). The two local gauges should agree with each other. Before startup, every primary gauge must agree with the DCS within the allowed deviation (§3.2.1). During a hydraulic test, if the remote display and the local gauge disagree, stop pressurising until they are calibrated. Safety valve settings are taken from the local gauge (§2.4.4).</p>
+${whyGen('A local bi-colour gauge shows the water physically. Remote level readings come from a differential-pressure measurement that must be corrected for water and steam density. If the correction or the reference leg is wrong, the DCS shows a plausible but wrong number.')}
+<h3>Check 2: does the mass balance agree?</h3>
+<p>What goes into a drum as feedwater comes out as steam (plus blowdown). Feedwater flow and steam flow should track each other. When they diverge a lot, find out why at once (§4.2.2).</p>
+<ul>
+<li>Level rising and feed > steam: real, too much feed.</li>
+<li>Level falling and feed &lt; steam: real, too little feed.</li>
+<li>Level falling but feed > steam: water is being lost between the two meters. Suspect a leak (Module 10).</li>
+<li>Level moving but the flows are balanced and pressure is steady: suspect the level instrument.</li>
+</ul>
+<h3>Check 3: a real level moves</h3>
+<p>A working drum level always wanders a little. A trace that sits perfectly still through a load change is a blocked gauge (§7.4.5 "indication unmoving"). Likewise, if auto feed is on, pressures are normal and the level swings more than ${N('±100 mm')}, check and calibrate the meter before chasing it.</p>
+<h3>Check 4: where is the leak relative to the meter?</h3>
+<p>For a pipe leak: if it is <b>upstream</b> of a flowmeter, that meter reads <b>lower</b>; if it is <b>downstream</b>, the meter reads <b>higher</b>, because it now also measures the water escaping (§7.4.8).</p>
+<h3>Level gauge faults and how they read</h3>
+${table(['What is wrong','Local gauge reads'],[
+ ['Steam-side connection blocked, or steam valve leaking','a bit high'],
+ ['Water-side connection blocked, or water valve leaking','a bit low'],
+ ['Both connections blocked','high'],
+ ['Blocked','does not move'],
+ ['Any of the above','the two sides disagree; bi-colour, electric-contact and DCS balance-vessel readings differ']
+])}
+<p>Causes: sludge and suspended matter entering the connecting pipes, poor water quality depositing in the valves, gauges not flushed on schedule or flushed wrongly, poor maintenance (§7.4.5).</p>
+<h3>If the local gauges fail</h3>
+${table(['Situation','You may'],[
+ ['All local bi-colour gauges broken; auto feed, high/low alarms and level protection reliable; electric-contact and balance-vessel gauges recently checked against local','run up to <b>2 hours</b> on the remote gauges, load steady, watching feed vs steam flow'],
+ ['All local gauges broken; auto feed and alarms NOT reliable; remote gauges recently checked against local','run <b>15–20 minutes</b> on the balance-vessel gauge'],
+ ['Local gauges broken, auto and alarms unreliable, remote gauges unreliable','<b>shut down immediately</b>']
+])}
+<p>In all these cases: keep load steady, repair a gauge fast, and <b>no blowdown</b>. When one gauge is back, you can restart. A leaking gauge: isolate steam and water sides and call maintenance. A ruptured gauge: cut its lighting first, then isolate.</p>
+<h3>Flushing a bi-colour gauge</h3>
+<p>Stand to the side of the gauge, never in front of it, with long sleeves and gloves. If the glass or a valve is already leaking, do not flush. Never close the steam and water valves at the same moment; the sudden cooling can deform the gauge.</p>`,
+warm: Q('m4w','Guess: HP drum level on the DCS has read exactly −50 mm for 40 minutes while load went from 60% to 90%. Feed and steam flow rose together. What is the best explanation?',[
+ ['The three-impulse control is excellent.',false,'Even perfect control shows small movements, especially during a 30% load change with swell and shrink. A dead-flat line is suspicious.'],
+ ['The level gauge or its connection is blocked.',true,'Yes. "Indication unmoving" is one of the gauge-fault signs in §7.4.5. The flows agreeing means the real level is probably fine, but you don\'t know it until the gauge is checked.'],
+ ['There is a tube leak.',false,'A leak would show feed exceeding steam flow. Here they track each other.']
+],'§7.4.5'),
+worked:{case:'Night shift. The HP drum level on the DCS falls from −60 to −190 mm over 10 minutes. Load is steady. Feedwater flow and steam flow are both 278 t/h. Drum pressure is steady. What is going on?',steps:[
+ ['Mass balance','Feed equals steam and load is steady, so the amount of water in the drum should not be changing. The mass balance says the level is steady.'],
+ ['Pressure','No pressure change, so this is not swell or shrink.'],
+ ['Therefore','The instrument is the prime suspect, not the process. A water-side leak or blockage on the level measurement reads low.'],
+ ['Act','Compare with both local gauges. If they read normal, do not add feed to "correct" the DCS number, because you would overfill the drum. Put feed control on a trusted signal or manual, flush or repair the faulty gauge, and record it.']
+]},
+practice:[
+ Q('m4a','The steam-side valve on a local bi-colour gauge is leaking. How will the gauge read?',[
+  ['A bit high.',true,'Correct. Steam-side blockage or a steam valve leak makes it read high (§7.4.5).'],
+  ['A bit low.',false,'Low comes from the water side: blocked water connection or leaking water valve.'],
+  ['Correctly, it just leaks.',false,'The leak disturbs the gauge; it reads high.']
+ ],'§7.4.5'),
+ Q('m4b','A feedwater pipe leaks downstream of the feedwater flowmeter. What does the flowmeter show?',[
+  ['Lower flow.',false,'That happens when the leak is upstream of the meter.'],
+  ['Higher flow.',true,'Yes. The meter now also measures the water leaking out after it.'],
+  ['No change.',false,'The escaping water passes through the meter first, so it reads more.']
+ ],'§7.4.8'),
+ Q('m4c','All local HP gauges are broken. Auto feed and alarms are unreliable. The balance-vessel gauge was checked against local an hour ago. How long can you run?',[
+  ['2 hours.',false,'2 hours needs auto feed, the alarms and the protection all reliable.'],
+  ['15–20 minutes.',true,'Right, and with steady load, no blowdown and the gauge repair under way.'],
+  ['Not at all; shut down.',false,'Immediate shutdown is for when the remote gauges are also unreliable.']
+ ],'§7.4.5'),
+ Q('m4d','Auto feed is on, drum and feed pressures are normal, yet the level has swung by 130 mm. What does the manual tell you to do first?',[
+  ['Switch feed to manual and correct the level.',false,'Switching to manual is for when auto control has actually failed. First find out whether the level is real.'],
+  ['Check and calibrate the level meter.',true,'Yes. More than ±100 mm with normal pressures points at the meter first (§4.2.2).'],
+  ['Open emergency discharge.',false,'You don\'t yet know the level is high.']
+ ],'§4.2.2'),
+ O('m4e','Put the bi-colour gauge flushing steps in order (§4.2.3).',[
+  'Close the steam and water primary valves, then open each about 1/3 turn',
+  'Open the drain valve to flush the steam-water tubes and mica',
+  'Close the water-side secondary valve to flush the steam side',
+  'Open the water-side secondary, close the steam-side secondary to flush the water side',
+  'Open the steam-side secondary and close the drain valve',
+  'Open the steam and water primary valves fully'
+ ],'§4.2.3')
+]});
+
+M.push({id:'rot', n:'5', title:'Pumps and rotating equipment', short:'Rotating equip.',
+goal:['Recall bearing, winding and vibration limits and what each triggers.','Start the HP feed pump in the right order and say why each precondition exists.','Know when you may not restart a tripped machine.'],
+body:()=>`
+<h3>The numbers</h3>
+${table(['Item','Alarm','Stop / limit'],[
+ ['HP feed pump bearing','> 70 °C','> 85 °C stop manually'],
+ ['HP feed pump motor winding','> 90 °C','> 100 °C stop manually'],
+ ['Condensate circulating pump bearing','> 100 °C','> 120 °C stop manually'],
+ ['Sliding bearing (any machine)','','70 °C'],
+ ['Rolling bearing (machine or motor)','','80 °C'],
+ ['Motor stator core','','110 °C'],
+ ['Pump vibration (feed and circulating pumps)','','> 0.05 mm: do not run'],
+ ['Bearing oil cup level','','between 1/2 and 2/3'],
+ ['Motor insulation before start','','HP feed pump > 6.6 MΩ; IP feed pump and circulating pump > 0.5 MΩ']
+],[1,2])}
+${table(['Speed (r/min)','≤ 700','1000','1500','> 1500'],[['Vibration limit (mm)','0.16','0.13','0.10','0.06']],[1,2,3,4])}
+<p class="src">§1.2.2, Table 2-1, Table 2-2, §2.1.5, §2.2.4.</p>
+${flag('The circulating pump bearing alarm (100 °C) and stop (120 °C) in §1.2.2 are higher than the general rolling-bearing limit of 80 °C in Table 2-1 and the "normal under 85 °C" in the same section. Also, the 0.05 mm pump vibration limit is stricter than the 0.06 mm table value for these 2980 r/min pumps. Until the plant confirms, use the stricter numbers.')}
+${whyGen('Vibration limits fall as speed rises because the same displacement at higher speed means higher velocity and higher forces on bearings and seals.')}
+<h3>Starting the HP feed pump</h3>
+<p>The HP pump (${N('1180 kW, 6.6 kV')}, variable speed through a hydraulic coupling) has more preconditions than the others, and each one protects against something specific:</p>
+${table(['Precondition','What it protects'],[
+ ['LP drum level normal, suction and discharge valves open','the pump running dry or cavitating'],
+ ['Coupling scoop tube at 0 (minimum speed)','starting the motor against full load'],
+ ['Minimum flow valve 100% open','overheating the pump when it has almost no forward flow'],
+ ['Auxiliary oil pump running, oil pressure normal, coolers ready','bearings starting without lubrication'],
+ ['Coupling oil warm: below 50 °C the heater should be working','thick cold oil'],
+ ['Bearing oil 1/2 to 2/3, cooling water flowing','bearing temperature']
+])}
+<p>After it starts: outlet pressure normal and recirculation working, bearing lube pressures normal, then stop the auxiliary oil pump, then raise the scoop tube above ${N('25%')} within one minute until the working-oil pipe stops vibrating. Then check sound, temperature, vibration, current (not above rated) and winding temperature (below ${N('100 °C')}).</p>
+<p>When stopping: auxiliary oil pump running with normal lube pressure, minimum flow valve 100%, scoop tube above 25%.</p>
+<h3>Never run a pump when</h3>
+<ul><li>it would exceed its maximum speed, inlet pressure or temperature;</li><li>it has air inside;</li><li>its safety devices (safety valve, overload protection) are missing;</li><li>its inlet valve is closed;</li><li>its outlet is shut and there is no minimum-flow device (except at start);</li><li>it turns the wrong way;</li><li>motor or pump vibration exceeds 0.05 mm.</li></ul>
+<h3>Trips and restarts</h3>
+<p>If an auxiliary trips, check the standby started automatically; if not, start it by hand. Inspect the tripped machine locally before any restart. <b>Do not restart</b> while the trip cause is unknown, while the fault is not cleared, or by repeated trial starts (§8.1).</p>
+<p>Stop a machine immediately (§8.2) if people are in danger; the motor or driven machine is dangerously damaged; the motor smokes or the terminal box sparks or smells burnt; vibration is far beyond limit; stator current exceeds rated and won't come back or swings widely; bearing temperature exceeds its limit; cooling water to a large water-cooled motor bearing is lost; or a bearing has no oil and smokes.</p>
+<h3>Test runs</h3>
+<p>New machines run at least ${N('8 h')} on load; overhauled ones at least ${N('30 min')}. A motor that can be uncoupled runs alone for at least ${N('2 h')} first, to check direction and the emergency button. On the first start, run up to speed, stop, and check for rubbing before running again. Listen to bearings with a listening rod.</p>`,
+warm: Q('m5w','Guess: why must the HP feed pump\'s minimum flow valve be 100% open before you start it?',[
+ ['To fill the HP drum faster.',false,'Minimum flow recirculates water back; it does not go to the drum.'],
+ ['So the pump always has enough flow through it to carry away heat, even when the discharge is closed or flow is low.',true,'Right. A pump running with almost no flow heats the water inside it and can be damaged.'],
+ ['To vent air from the pump.',false,'Venting is a separate requirement (never run with air inside).']
+],'§2.2.4'),
+worked:{case:'HP feed pump A: bearing temperature 78 °C, rising about 1 °C every 5 minutes. Vibration 0.04 mm. Current normal. Standby pump B is in hot standby. What do you do?',steps:[
+ ['Place it','78 °C is above the 70 °C alarm and below the 85 °C manual stop. Vibration is inside 0.05 mm.'],
+ ['Project it','At 1 °C per 5 minutes, it reaches 85 °C in about 35 minutes. You have time, but not unlimited time.'],
+ ['What the manual says','§8.1: abnormal operation such as high bearing temperature → report to the shift leader, switch to the standby machine and tell maintenance.'],
+ ['Do it','Report, start pump B and confirm it takes load, then stop A. Check A\'s oil level, oil quality and cooling water on the way.']
+]},
+practice:[
+ Q('m5a','HP feed pump motor winding temperature is 96 °C. Where is it?',[
+  ['Within limits.',false,'Winding alarm is 90 °C.'],
+  ['Alarm band: above 90, below the 100 °C manual stop.',true,'Correct.'],
+  ['Stop now.',false,'Manual stop is above 100 °C.']
+ ],'§1.2.2'),
+ Q('m5b','A circulating pump tripped. The standby started. Maintenance can\'t find anything and asks you to "just try it again a few times". What does the manual say?',[
+  ['Fine, as long as the standby is running.',false,'§8.1 forbids starting when the trip cause is not found and forbids frequent trial runs.'],
+  ['Don\'t restart until the trip cause is found and cleared; no repeated trial starts.',true,'Right.'],
+  ['Restart once; if it trips again, stop.',false,'Even one restart without knowing the cause is not allowed.']
+ ],'§8.1'),
+ Q('m5c','The HP feed pump motor insulation measures 4.2 MΩ. Can you start it?',[
+  ['Yes, above 0.5 MΩ.',false,'0.5 MΩ is the limit for the 400 V IP feed pump and circulating pump. The HP pump motor is 6.6 kV.'],
+  ['No, the HP feed pump motor needs more than 6.6 MΩ.',true,'Correct.'],
+  ['Yes, if it is dried out afterwards.',false,'Insulation must be acceptable before starting.']
+ ],'§2.1.5'),
+ Q('m5d','What vibration reading means a feed pump must not run?',[
+  ['Above 0.16 mm.',false,'0.16 mm is the table limit for machines at 700 r/min or less.'],
+  ['Above 0.05 mm.',true,'Yes, for the motor or the pump (§2.2.4).'],
+  ['Above 0.10 mm.',false,'0.10 is the table value at 1500 r/min. These pumps run near 2980 r/min.']
+ ],'§2.2.4'),
+ O('m5e','Order the HP feed pump start (after the checks).',[
+  'Scoop tube at 0 and minimum flow valve 100% open',
+  'Start the HP feed pump',
+  'Check outlet pressure, auto recirculation and bearing lube pressures',
+  'Stop the auxiliary oil pump',
+  'Raise the scoop tube above 25% within 1 minute',
+  'Check sound, temperature, vibration, current and winding temperature'
+ ],'§2.2.4')
+]});
+
+M.push({id:'prestart', n:'6', title:'Before startup: inspections and tests', short:'Before startup',
+goal:['Group the pre-start inspections into six things you are really checking.','Run a hydraulic test: when it is needed, the rates, the hold points and the pass criteria.','Calibrate safety valves in the right order and safely.'],
+body:()=>`
+<h3>Inspections: what you are really checking</h3>
+<p>Sections 2.1 and 3.2 list about sixty items. They collapse into six questions:</p>
+<ol>
+<li><b>Is anything or anyone left inside?</b> No debris in the casing, heating surfaces clean, manholes closed after confirming nobody is inside.</li>
+<li><b>Can it expand freely?</b> Hangers and supports sound, pipes free to move, expansion indicators on drums and headers at zero and recorded.</li>
+<li><b>Can you believe the instruments?</b> Gauges complete and clear, primary and secondary valves open, readings agree with the DCS.</li>
+<li><b>Are the valves where they should be and do they obey?</b> Positions correct, actuators match DCS feedback, control valves have air and follow the DCS demand.</li>
+<li><b>Are the supplies there?</b> Demineralised water, cooling water (tap-water main above ${N('0.3 MPa')}), compressed air (tank above ${N('0.8 MPa')}; at least ${N('0.6 MPa')} at the HRSG), dosing chemicals, power to electric valves.</li>
+<li><b>Is it safe to operate?</b> Safety valves free with springs undamaged, access clear, lighting and emergency lighting working, fire system ready, communications working.</li>
+</ol>
+<p>The unit may start only after (§3.1): chemical cleaning done, feed pumps and other equipment test-run, pipe blowing done, I&amp;C and alarms commissioned, interlocks tested, steam leak test passed, safety valves calibrated, and the gas turbine ready.</p>
+${flag('§2.1.9 requires the air tank above 0.8 MPa; §3.2.1 requires compressed air above 0.6 MPa. §2.1.13 lists the "superheater outlet drain valve" under both "open" and "close". Clarify with the plant\'s valve line-up sheet.')}
+<h3>Hydraulic test</h3>
+<p>Two kinds. A <b>working-pressure test</b> checks tightness after repairs and can be done whenever maintenance needs it. An <b>overpressure test</b> at ${N('1.25 ×')} working pressure is needed only when:</p>
+<ul><li>the HRSG is new or has been relocated;</li><li>it has been out of service for more than a year;</li><li>more than half the evaporator tubes, or a whole superheater or economizer, have been replaced, or the drum or headers have had major repair.</li></ul>
+<p>The overpressure test is directed by the chief engineer and never repeated back-to-back.</p>
+<p><b>Scope:</b> all pressure parts from the feedwater inlet to the main steam electric valve, excluding the level gauges and the safety valves.</p>
+<p><b>Procedure in outline:</b> fill with demineralised water using one feed pump through the bypass; close vents one by one as water comes out; raise pressure at ${N('0.1–0.3 MPa/min')}; <b>hold at 10%</b> of test pressure for a first inspection; continue to working pressure; stop the pump at test pressure. For overpressure, first isolate the level gauges and gag the safety valves, clear everyone from inside the casing, and <b>inspect only after pressure is back down to working pressure</b>.</p>
+<p><b>Pass:</b> pressure drop ${N('≤ 0.1 MPa')} in ${N('5 min')} after closing the feed valve, no leaks, no deformation.</p>
+<p><b>Safety:</b> water at least ${N('20 °C')} (heat it first if the drum wall or water is colder); frost protection below ${N('5 °C')} ambient; at least two test gauges of 0.2 class with a range of 1.5–3 times the test pressure; isolate the turbine so water can't reach it; nobody stands in front of welded plugs; if a leak appears, stop pressurising and move people away; release pressure and stop the test for a serious leak. Drain afterwards through periodic blowdown at ${N('0.1–0.3 MPa/min')}.</p>
+${whyGen('The 20 °C minimum water temperature keeps the drum steel away from the low-temperature region where some steels become brittle and can crack suddenly under test pressure.')}
+<h3>Safety valve calibration</h3>
+<p>Done after an HRSG overhaul, after a safety valve overhaul, or when operations or maintenance ask for it. The shift leader commands; maintenance and I&amp;C set the valves.</p>
+<ul>
+<li>Calibrate the local and remote pressure gauges first. Setting values are read from the <b>local</b> gauge.</li>
+<li>Work from the <b>highest</b> set pressure to the lowest, and gag (tighten with the thimble) the lower-set valves so they don't lift first. Lock valves not being tested.</li>
+<li>Near working pressure, raise pressure slowly, no more than ${N('0.1 MPa/min')}; keep drum top-bottom difference within ${N('40 °C')}.</li>
+<li>Keep drum level on the low side and add water after a valve lifts. Keep superheater steam temperature low.</li>
+<li>After a valve lifts: open the exhaust valve wide and partly close the inlet gas damper. After it reseats, close the superheater electric exhaust valve slightly and raise pressure again. <b>Never fully close the superheater electric valve</b> after its safety valve closes.</li>
+<li>Fails to lift at set pressure: stop and re-adjust. Won't reseat with a serious leak and no fix: shut down for maintenance.</li>
+</ul>`,
+warm: Q('m6w','Guess: why calibrate safety valves from the highest setting down to the lowest?',[
+ ['Because high-pressure valves are more important.',false,'Importance isn\'t the reason. It\'s about which valve lifts during the test.'],
+ ['To raise pressure only once.',false,'Pressure is raised for each valve anyway.'],
+ ['So a lower-set valve (gagged meanwhile) never lifts before the one you are testing.',true,'Right. You test the top one with the others held shut, then work down.']
+],'§2.4.4'),
+worked:{case:'After an IP drum repair you need the overpressure hydraulic test figures for the IP drum.',steps:[
+ ['Working pressure','IP drum working pressure is 3.21 MPa (§1.1.7).'],
+ ['Test pressure','1.25 × 3.21 = 4.01 MPa.'],
+ ['Gauges','At least two, class 0.2, range 1.5–3 × 4.01 = 6.0 to 12.0 MPa. A 0–10 MPa gauge fits.'],
+ ['Rate and holds','Raise at 0.1–0.3 MPa/min. Hold at 10% (about 0.4 MPa) for a first inspection. Continue to 3.21 and inspect. Isolate level gauges, gag safety valves, clear the casing, go to 4.01, stop the pump.'],
+ ['Pass','After closing the feed valve: drop no more than 0.1 MPa in 5 min. Bring pressure back to 3.21 before anyone inspects.'],
+ ['Note','The actual test pressure should match the approved test proposal and the pressure-vessel code. This calculation follows the manual\'s 1.25 × working pressure rule.']
+]},
+practice:[
+ Q('m6a','Which of these requires an overpressure hydraulic test?',[
+  ['Replacing a leaking drain valve.',false,'That needs a working-pressure tightness test at most.'],
+  ['Returning an HRSG to service after 14 months shut down.',true,'Yes. Out of service more than a year.'],
+  ['A routine minor overhaul.',false,'Not on its own.']
+ ],'§2.3.1.4'),
+ Q('m6b','During a hydraulic test, pressure falls 0.15 MPa in the 5 minutes after the feed valve is closed. Result?',[
+  ['Pass.',false,'The limit is 0.1 MPa in 5 minutes.'],
+  ['Fail; find the leak.',true,'Correct.'],
+  ['Pass if no leak is visible.',false,'Both criteria must be met: pressure drop within limit and no leakage.']
+ ],'§2.3.5'),
+ Q('m6c','The drum wall and the demineralised water are both at 16 °C. Can you start pressurising?',[
+  ['Yes.',false,'The manual forbids pressurising below 20 °C.'],
+  ['No; heat the feedwater above 20 °C first.',true,'Right (§2.3.7 item 4).'],
+  ['Yes, at the slow rate of 0.1 MPa/min.',false,'Slow rate doesn\'t remove the 20 °C requirement.']
+ ],'§2.3.7'),
+ Q('m6d','At overpressure, a maintenance fitter wants to look closely at a suspect weld. What do you tell him?',[
+  ['Go ahead, keep to the side.',false,'No inspection is allowed at overpressure.'],
+  ['Wait until pressure is back down to working pressure.',true,'Correct: only then can a thorough inspection be done.'],
+  ['Only with a face shield.',false,'PPE doesn\'t change the rule.']
+ ],'§2.3.4'),
+ Q('m6e','During safety valve calibration, the valve reseats. What must you NOT do?',[
+  ['Slightly close the superheater electric exhaust valve.',false,'That\'s what the manual says to do.'],
+  ['Fully close the superheater electric valve.',true,'Right. The note in §2.4.4 forbids closing it fully.'],
+  ['Raise pressure again for the next check.',false,'That is part of the procedure.']
+ ],'§2.4.4')
+]});
+
+M.push({id:'startup', n:'7', title:'Filling and startup', short:'Startup',
+goal:['Classify a start as cold, warm or hot from drum temperatures.','Fill the HRSG safely.','Hold all cold-start rate limits and know the pressure milestones.','Know the conditions for combining a second or third HRSG.'],
+body:()=>`
+<h3>Which kind of start?</h3>
+${table(['Start','HP drum sat. temp','IP drum','LP drum'],[
+ ['Cold','< 100 °C','< 100 °C','< 100 °C'],
+ ['Warm','100–280 °C','100–190 °C','100–120 °C'],
+ ['Hot','> 280 °C','> 190 °C','> 120 °C']
+],[1,2,3])}
+<h3>Filling</h3>
+<ul>
+<li>Only demineralised water. In a cold state, feedwater no hotter than ${N('90 °C')}. Fill slowly, over at least an hour.</li>
+<li>Keep drum top-bottom difference within ${N('40 °C')}. If it goes over, stop filling, record it, and continue once it is back. If feedwater is close to drum temperature you may fill faster.</li>
+<li>LP first: condensate pump fills the LP drum, auxiliary steam is added to bring it to startup pressure. Vent the recirculation pump inlet and the condensate heater until water comes out, then close.</li>
+<li>Then the feed pumps fill IP and HP to their startup levels. Fill the RH and HP spray lines for one minute each. Open the HP, IP and LP superheater outlet shut-off valves.</li>
+<li>Watch for leaks at drums, valves, flanges and plugs; stop filling to deal with any.</li>
+<li>Record expansion indicators before and after filling.</li>
+<li>Water already in a shut-down HRSG should be below ${N('80 °C')} and checked by chemistry. Drain and refill if it fails.</li>
+</ul>
+<p>Cold flushing: at normal level, run a circulating pump ${N('10–20 min')}, stop, drain, and repeat until chemistry (iron, turbidity) is acceptable.</p>
+<h3>Cold start limits</h3>
+${table(['What','Limit'],[
+ ['Drum temperature rise','< 5 °C/min'],
+ ['Pressure rise','< 0.3 MPa/min'],
+ ['Drum top-bottom difference','≤ 40 °C; stop heating if exceeded'],
+ ['Superheater header temperature rise','< 25 °C/min'],
+ ['Everything else','< 30 °C/min'],
+ ['GT ignition to normal operation','not less than 1 hour']
+],[1])}
+<h3>Pressure milestones (cold start)</h3>
+${table(['Drum pressure (gauge)','Do'],[
+ ['start','Superheater header vents fully open; HRSG outlet gas damper open as the GT starts'],
+ ['0.1–0.2 MPa','Close the vents. Flush the level gauges so they read true'],
+ ['0.2–0.4 MPa','Open superheater outlet exhaust to atmosphere. Hot-tighten flange, manhole and inspection-door bolts. Check expansion of pipes, supports and hangers'],
+ ['above 2.0 MPa','Steam should be above 350 °C. Warm up the lines and roll the turbine; close exhaust and drain valves step by step']
+],[0])}
+<h3>After firing</h3>
+<ul>
+<li>Start hydrazine dosing to the LP drum, and phosphate dosing to HP and IP according to phosphate levels. Flush sampling lines and put analysers in service.</li>
+<li>If steam or water quality fails, <b>do not send steam to the turbine</b>. Blow down and dose until it passes.</li>
+<li>Compare expansion indicators with the pre-start record. Any vibration, tilt or swing of a tube bundle: adjust conditions or stop until fixed.</li>
+</ul>
+<h3>Hot start</h3>
+<p>Main steam must be ${N('80–100 °C')} hotter than the turbine casing, with at least ${N('50 °C')} superheat. Control pressure through GT load and temperature through desuperheating spray. Be careful that drum level is not allowed to fall too low (pump cavitation); open the emergency discharge if too high.</p>
+${flag('§3.3.5 item 1 (hot start) is garbled in the manual and cannot be read. Ask for the original Chinese text or the plant\'s own hot-start procedure.')}
+<h3>Combining a second or third HRSG</h3>
+<p>Before combining, the HRSGs already on line come down to minimum stable GT load. The incoming HRSG may join when its steam, measured before its bypass, is within ${N('15 °C')} of the running header and within:</p>
+${table(['Steam','Pressure difference'],[['HP main steam','≤ 0.5 MPa'],['Reheat','≤ 0.1 MPa'],['LP','≤ 0.05 MPa']],[1])}
+<p>Drain the lines to be joined fully and watch condenser vacuum. Warm pipes through the bypasses of the main steam electric valves, then open the IP and HP main valves. Slowly close the HP bypass while opening the cold reheat valve, keeping HP main steam flow steady and watching drum level. Watch turbine differential expansion, axial shift, vibration and vacuum throughout. Afterwards confirm both HP bypasses are fully closed.</p>`,
+warm: Q('m7w','Guess: a cold start. After an hour the HP drum is at 0.15 MPa (gauge). What should you do at this point?',[
+ ['Open the superheater outlet exhaust and hot-tighten bolts.',false,'That is the 0.2–0.4 MPa step.'],
+ ['Close the vents and flush the level gauges.',true,'Right: at 0.1–0.2 MPa the air is out, vents close, and gauges are flushed so they read true.'],
+ ['Start rolling the turbine.',false,'Rolling comes above 2.0 MPa with steam above 350 °C.']
+],'§3.3.4'),
+worked:{case:'Morning start. HP drum 162 °C, IP drum 141 °C, LP drum 96 °C. Which start is this, and what is the first thing you watch?',steps:[
+ ['Classify each drum','HP 162 is in the warm band (100–280). IP 141 is warm (100–190). LP 96 is below 100, so cold.'],
+ ['Decide','The HP and IP drums set the pace because they are thick and pressurised. Treat it as a warm start and observe cold-start care on the LP side. If in doubt, follow the slower limits.'],
+ ['First thing to watch','Drum top-bottom temperature difference and heating rate as gas arrives. The HP drum still gets under 5 °C/min and ΔT ≤ 40 °C.'],
+ ['Also','Level: expect swell as boiling restarts. Keep the level near the startup fill level so the swell has room.']
+]},
+practice:[
+ Q('m7a','HP drum saturation temperature is 300 °C. Start type?',[
+  ['Warm.',false,'Warm is 100–280 °C for the HP drum.'],
+  ['Hot.',true,'Above 280 °C on the HP drum is hot.'],
+  ['Cold.',false,'Cold is below 100 °C.']
+ ],'§3.3.1'),
+ Q('m7b','During a cold start the HP drum temperature rises 7 °C in one minute. What do you do?',[
+  ['Nothing; 7 is below 25.',false,'25 °C/min is the superheater header limit. The drum limit is 5.'],
+  ['Slow the heating (hold GT load) to get back under 5 °C/min.',true,'Right.'],
+  ['Open the emergency discharge.',false,'That is for high level, not heating rate.']
+ ],'§3.3.4'),
+ Q('m7c','Steam chemistry fails after the HRSG is on line. The turbine is ready to roll. What now?',[
+  ['Roll the turbine; chemistry will improve with flow.',false,'The manual forbids sending steam to the turbine until quality meets the requirement.'],
+  ['Do not supply steam to the turbine; blow down and dose until quality passes.',true,'Correct (§3.3.4 item 17).'],
+  ['Roll at low speed only.',false,'Still sends poor steam to the turbine.']
+ ],'§3.3.4'),
+ Q('m7d','The incoming HRSG\'s reheat steam is 0.14 MPa different from the running reheat header. Can you combine?',[
+  ['Yes, below 0.5 MPa.',false,'0.5 MPa is the HP main steam allowance. Reheat is 0.1 MPa.'],
+  ['No, the reheat allowance is 0.1 MPa.',true,'Correct. Also temperature within 15 °C.'],
+  ['Yes, if temperatures match within 15 °C.',false,'Both conditions must be met.']
+ ],'§3.5.1'),
+ Q('m7e','Hot start: turbine casing at 430 °C. What main steam temperature are you aiming for?',[
+  ['About 430 °C to match the casing.',false,'Steam should be hotter than the casing.'],
+  ['About 510–530 °C, with at least 50 °C superheat.',true,'80–100 °C above the casing, and superheat above 50 °C.'],
+  ['Above 560 °C.',false,'That\'s full-load temperature, not a start target.']
+ ],'§3.3.5'),
+ O('m7f','Put the cold-start pressure milestones in order.',[
+  'Superheater header vents fully open, gas damper open as GT starts',
+  'At 0.1–0.2 MPa: close vents, flush level gauges',
+  'At 0.2–0.4 MPa: open SH outlet exhaust, hot-tighten bolts, check expansion',
+  'Above 2.0 MPa with steam above 350 °C: warm lines, roll turbine, close drains step by step'
+ ],'§3.3.4')
+]});
+
+M.push({id:'normal', n:'8', title:'Normal operation', short:'Normal operation',
+goal:['Explain three-impulse level control and when to leave it.','Control steam temperature and know what upsets it.','Run blowdown and the routine checks on schedule.'],
+body:()=>`
+<h3>What operation is for</h3>
+<p>Stable HRSG conditions and efficiency; rated evaporation to meet load; normal steam temperature and pressure; even feeding and a normal level; steam quality within specification (§4.2.1).</p>
+<h3>Drum level control</h3>
+<p>The LP drum level is held by its own control valve. HP and IP feed use <b>three-impulse</b> control: drum level, steam flow and feedwater flow. If three-impulse becomes unstable during load swings, extraction changes or blowdown, drop to single-impulse (level only) or manual.</p>
+${whyGen('When load rises, drum pressure dips, water flashes and the level briefly swells up even though water is actually being used faster. A level-only controller would cut feed at exactly the wrong moment. Three-impulse control feeds to match steam flow and uses level only as a trim, so it rides through swell and shrink.')}
+<p>Things that make the level move: fast load changes, blowdown, startup and shutdown, emergency shutdown, a safety valve or exhaust valve opening or closing, feed system faults, and heating-surface leaks. When correcting manually, change feed in small steps.</p>
+<p>If the level rises fast in manual mode, close the feed electric valve and look for the cause. If a gauge seems stuck, flush it.</p>
+<h3>Steam temperature</h3>
+<p>Controlled by the desuperheating spray valve. If automatic control can't keep up, go manual at once and report to the shift leader. Temperature is upset by GT load and exhaust temperature changes, big feedwater pressure changes, and large load and level changes.</p>
+<h3>Blowdown</h3>
+<p>Blowdown keeps heating surfaces clean and stops foaming and poor steam quality. Chemistry decides the continuous blowdown rate. While blowing down, watch feed flow and drum level.</p>
+<p>Putting continuous blowdown in service: gauges, level and controls of the flash tank in service; warm the line about 2 minutes with the drain open; close the drain and raise pressure slowly; when flash tank pressure equals LP drum pressure, open its steam outlet; when it has a level, open the drain isolation fully and put level control on auto; close the crossover to periodic blowdown; check the whole system once. After an overhaul or a repair to its safety valve, the flash tank safety valve must be calibrated first.</p>
+<h3>Walkdown</h3>
+<p>Every round: local level, pressure and temperature against DCS; valve positions and leaks; hangers, insulation, pipe vibration; safety valves and exhaust valves for passing; continuous blowdown and emergency discharge for passing (close by hand if badly passing); drum and header expansion; manholes, test points and plugs on the gas duct; periodic blowdown tank valves; running pumps (current, pressures, bearing temperatures, seals, vibration, cooling water); standby pump in hot standby.</p>
+<h3>Routine tasks</h3>
+${table(['Task','When','Who'],[
+ ['Safety valve trial lift','before shutting down for a major or minor overhaul','main operator, shift leader in charge'],
+ ['HRSG interlock test','after a major or minor overhaul','main operator'],
+ ['Emergency acoustic (horn) test','every shift','main operator'],
+ ['Level meter calibration against local','every shift','vice operator'],
+ ['Local drum gauge flushing','every Monday, day shift','vice operator and walk-round inspector'],
+ ['Compressed air tank drain','every Monday, day shift','vice operator'],
+ ['Air compressor changeover','last day shift of the month','vice operator'],
+ ['Air dryer changeover','last day shift of the month','vice operator']
+])}
+${flag('§4.2.2 says to calibrate the electric-contact level meter against local "two times" every shift; the table in §4.3 says once per shift.')}`,
+warm: Q('m8w','Guess: load jumps from 70% to 90%. For about a minute the HP drum level rises even though the unit is now using more water. Why?',[
+ ['The feed valve opened too far.',false,'That would be a real rise from extra feed. This one happens with no extra feed.'],
+ ['Swell: the pressure dip makes water flash to steam, and the bubbles push the level up briefly.',true,'Right. That is why feed is controlled on steam flow as well as level.'],
+ ['A tube leak.',false,'A leak drops the level.']
+],'§4.2.2'),
+worked:{case:'Chemistry asks you to increase HP continuous blowdown. Three-impulse is on auto. What do you watch, and when would you take manual control?',steps:[
+ ['Effect of blowdown','More water leaves the drum without passing the steam flowmeter. Feed will now exceed steam flow by the blowdown amount.'],
+ ['Why that matters for control','Three-impulse compares feed and steam flow. A steady blowdown offset can unsettle it.'],
+ ['Watch','Drum level, feed flow and the difference between feed and steam flow as you open the blowdown in small steps.'],
+ ['Decide','If the level hunts or the controller becomes unstable, switch to single-impulse or manual (§4.2.2), finish the change, then return to three-impulse.']
+]},
+practice:[
+ Q('m8a','Which three signals does three-impulse control use?',[
+  ['Drum level, drum pressure, steam temperature.',false,'Pressure and temperature are not the three impulses.'],
+  ['Drum level, steam flow, feedwater flow.',true,'Correct.'],
+  ['Feedwater flow, feed pressure, pump speed.',false,'These are feed-side measurements only.']
+ ],'§4.2.2'),
+ Q('m8b','Automatic steam temperature control is lagging behind a fast GT load change. What does the manual require?',[
+  ['Wait for auto to catch up.',false,'The manual says switch immediately.'],
+  ['Switch to manual at once and report to the shift leader for maintenance to check it.',true,'Right.'],
+  ['Reduce GT load.',false,'Not the first step for a lagging controller.']
+ ],'§4.2.2'),
+ Q('m8c','When is the local drum gauge flushing routine done?',[
+  ['Every shift.',false,'Every shift is the level meter calibration and the horn test.'],
+  ['Every Monday on day shift.',true,'Correct: vice operator with the walk-round inspector.'],
+  ['At month end.',false,'Month end is air compressor and dryer changeover.']
+ ],'§4.3'),
+ Q('m8d','You find the HP continuous blowdown electric valve passing badly during a walkdown. What do you do?',[
+  ['Log it for the next outage.',false,'The manual says to act if it is serious.'],
+  ['Close the manual valve by hand.',true,'Yes (§4.1.1 item 5) and report it.'],
+  ['Increase feed to compensate.',false,'That hides the loss rather than stopping it.']
+ ],'§4.1.1')
+]});
+
+M.push({id:'shutdown', n:'9', title:'Shutdown and preservation', short:'Shutdown',
+goal:['Run a normal shutdown in order.','Cool and drain within the limits.','Choose and run the right preservation method for the length of the outage.'],
+body:()=>`
+<h3>Principles</h3>
+<p>Shut down only on the shift leader's order. Don't open the steam exhaust valves. The turbine bypass may be used only if the vacuum pump is running and condenser vacuum is above ${N('80 kPa')}. A planned shutdown means reducing GT load until the steam turbine trips.</p>
+${flag('§5.1 says "the steam turbine must be synchronized before the gas turbine". In context this probably means the steam turbine comes off first. Confirm with the plant.')}
+<h3>Before</h3>
+<p>Check everything runs normally; get tools ready; know the purpose and method; record all defects and abnormal trends so maintenance can act; put HP/IP three-impulse and steam temperature controls on auto. If the GT will be washed afterwards, keep the LP drum level high and water above ${N('100 °C')}.</p>
+<h3>Sequence</h3>
+<ol>
+<li>Open HP, IP and LP turbine bypass valves.</li>
+<li>Close HP, IP and LP main steam valves.</li>
+<li>Stop the gas turbine or close the bypass damper.</li>
+<li>Watch drum pressures and temperatures; keep the cooling rate within limits.</li>
+<li>Close the HRSG outlet gas damper.</li>
+<li>Set drum levels to shutdown level; after 30 minutes, bring all three to NWL+100.</li>
+<li>Open the feed control valves to prevent economizer overpressure.</li>
+<li>Close the IP superheater outlet shut-off; open the reheat drain.</li>
+<li>Stop the HP and IP feed pumps, then the recirculation pump.</li>
+<li>Close the superheater outlet shut-offs; open the superheater drains.</li>
+</ol>
+${whyGen('Step 7: with feed stopped and the economizer valves shut, the trapped water in the economizer keeps absorbing heat from the warm casing. Water hardly compresses, so pressure climbs quickly. Leaving the feed control valves open gives it a way out to the drum.')}
+<h3>Hot standby</h3>
+<p>Close all steam, feed, blowdown and discharge valves tightly and keep a high drum level. Keep checking running instruments and rotating equipment, watch gas duct temperatures, look for leaks, and keep drum top-bottom difference within ${N('0–40 °C')}.</p>
+<h3>Cooling and draining</h3>
+<ul>
+<li>For the first ${N('2 h')}, keep steam and water valves tightly closed.</li>
+<li>After 2 h, open the steam vent partly to release pressure, keeping drum difference under ${N('40 °C')}.</li>
+<li>Drain when drum pressure is ${N('0 MPa')} and water is below ${N('80 °C')}, opening drains and air vents everywhere.</li>
+<li>If you must drain under pressure: at ${N('0.3–0.5 MPa')}, with controlled rate.</li>
+</ul>
+<h3>Preservation</h3>
+${table(['Outage','Method','Key numbers'],[
+ ['15–30 days','Residual heat drying','depressurise < 0.3 MPa/min, drum ΔT < 40 °C; drain at 0.3–0.5 MPa and 80 °C; open vents; check dryness with a glass plate, then close'],
+ ['15–30 days','Ammonia solution (wet)','ammonia 500–600 mg/L (condensate or demin water) or 800–1000 mg/L (softened water); salt < 150 mg/L; chloride < 45 mg/L; keep full; keep ammonia out of the turbine'],
+ ['over 30 days','Nitrogen blanket','drain fully, clean, seal; N₂ in through the drum at 0.02–0.05 MPa, purity > 98%'],
+ ['over 30 days','Desiccant (dry)','drain, clean; open trays in drums and headers; CaCl₂ 1–2 kg/m³ or quicklime 2–3 kg/m³; check several times a month, replace spent desiccant']
+],[])}
+${whyGen('All four methods stop the same thing: oxygen plus water on bare steel. Drying removes the water, ammonia raises pH so steel does not corrode, nitrogen at slight positive pressure keeps air out, and desiccant keeps the air inside dry.')}`,
+warm: Q('m9w','Guess: why open the feed control valves after the feed pumps are about to stop at shutdown?',[
+ ['To keep drum level up.',false,'The pumps are stopping, so no water is added this way.'],
+ ['To stop trapped water in the economizer from overpressurising as it keeps absorbing heat.',true,'Right; §5.2.2 item 8 says it is to prevent economizer overpressure.'],
+ ['To cool the economizer faster.',false,'Cooling is not the purpose.']
+],'§5.2.2'),
+worked:{case:'Planned 3-week outage for GT work. Which preservation, and what are the numbers?',steps:[
+ ['Length','Three weeks = 21 days, in the 15–30 day short-term range.'],
+ ['Choose','Residual heat drying suits an outage where nobody needs the HRSG full of water. The ammonia wet method suits a quick return to service.'],
+ ['Residual heat drying numbers','Close air valves and dampers to keep heat in. Depressurise through superheater drains at < 0.3 MPa/min with drum ΔT < 40 °C. At 0.3–0.5 MPa and 80 °C, drain everything. Open vents; when a glass plate held at a vent stays clear, close them.'],
+ ['If it extends past 30 days','Move to nitrogen (0.02–0.05 MPa, > 98%) or desiccant.']
+]},
+practice:[
+ Q('m9a','Condenser vacuum is 72 kPa. Can you use the turbine bypass for the shutdown?',[
+  ['Yes.',false,'Bypass needs the vacuum pump running and vacuum above 80 kPa.'],
+  ['No.',true,'Correct.'],
+  ['Yes, at reduced flow.',false,'The condition is absolute.']
+ ],'§5.1'),
+ Q('m9b','Two hours after shutdown, drum pressure is 0 MPa and water is 92 °C. Can you drain?',[
+  ['Yes, pressure is zero.',false,'Both conditions: 0 MPa and water below 80 °C.'],
+  ['No, wait until the water is below 80 °C.',true,'Right.'],
+  ['Yes, if drum ΔT is below 40 °C.',false,'ΔT is not the condition for draining here.']
+ ],'§5.2.4'),
+ Q('m9c','Outage of 6 weeks. Which preservation methods are right?',[
+  ['Residual heat drying.',false,'That is for 15–30 days.'],
+  ['Nitrogen at 0.02–0.05 MPa and > 98% purity, or desiccant.',true,'Correct: long-term methods for over 30 days.'],
+  ['Ammonia wet method.',false,'Listed under short-term (15–30 days).']
+ ],'§6.2'),
+ Q('m9d','Using quicklime for dry preservation of the HP drum (45 m³). How much?',[
+  ['45–90 kg.',false,'That\'s the calcium chloride range (1–2 kg/m³).'],
+  ['90–135 kg.',true,'Quicklime is 2–3 kg/m³: 2 × 45 = 90, 3 × 45 = 135.'],
+  ['4.5–9 kg.',false,'Off by a factor of ten.']
+ ],'§6.2.2'),
+ O('m9e','Order the first steps of a normal shutdown.',[
+  'Open HP, IP, LP turbine bypass valves',
+  'Close HP, IP, LP main steam valves',
+  'Stop the gas turbine or close the bypass damper',
+  'Close the HRSG outlet gas damper',
+  'Set drum levels; after 30 min bring them to NWL+100',
+  'Stop HP and IP feed pumps, then the recirculation pump'
+ ],'§5.2.2')
+]});
+
+M.push({id:'faults', n:'10', title:'HRSG faults: diagnose from the readings', short:'HRSG faults',
+goal:['Recognise each HRSG fault from its pattern of readings.','Tell the look-alike pairs apart.','Choose between carrying on, a controlled shutdown and an emergency shutdown.'],
+body:()=>`
+<h3>Principles</h3>
+<p>Protect people and equipment first. Find the cause, isolate the fault, and keep healthy equipment running. For a fault not in the manual, act to limit it and report; <b>no hasty, blind operation</b> that widens the problem. Anyone not needed leaves the area. Record parameters during the event and write it up afterwards (§7.1).</p>
+<h3>Three levels of response</h3>
+${table(['Response','When (examples)'],[
+ ['<b>Emergency shutdown</b> (§7.2): cut the gas now','serious water shortage or full water; all level gauges or safety valves disabled; a pipe rupture endangering people or plant; all condensate circulating pumps lost; protection fails to act when trip conditions are met (e.g. overpressure); turbine trip endangering safety'],
+ ['<b>Fault shutdown</b> (§7.3): reduce turbine load first, then shut down normally','a leak you can still keep the level up against; water or steam quality that can\'t be recovered; all level transmitters damaged so only local gauges work; serious leaks on main steam or feed lines; superheater safety valve won\'t reseat or leaks badly'],
+ ['<b>Carry on with close monitoring</b>','a small leak where level holds; record the trend and be ready to escalate']
+])}
+<p><b>Emergency shutdown actions (§7.2.2):</b> tell the GT and HRSG staff; press the emergency button, close the HRSG gas damper; close HP, IP and LP main steam and control valves and open the turbine bypasses; take controls off auto and watch temperature, pressure and level; reset the emergency switch; stop temperatures from dropping too fast; keep the level from running dry or overfilling as load collapses; watch pressure so safety valves don't lift; drain once water is at 80 °C.</p>
+${flag('The emergency shutdown list in §5.3.1 includes "feed water quality deteriorates", while §7.3 puts unrecoverable water quality under the controlled fault shutdown. The lists in §5.3.1 and §7.2.1 also differ in other items. Ask which list the plant uses.')}
+<h3>The fault signatures</h3>
+<p>Most HRSG faults are recognised from six readings: drum level, feedwater flow vs steam flow, drum pressure, superheated steam temperature, gas temperature after the evaporator, and what you see and hear at the casing.</p>
+${table(['Fault','Level','Feed vs steam','Other signs'],[
+ ['Full water','↑ high alarm','feed > steam','SH steam temp drops suddenly; water hammer in steam lines'],
+ ['Water shortage','↓ low alarm','feed < steam','serious: gas temp after evaporator ↑, SH steam flow drops, SH temp ↑'],
+ ['Economizer / evaporator tube leak','↓','feed > steam, rising','circulating flow ↑ (pump current ↑); gas temp after evaporator ↓; white plume in stack gas; hissing; water dripping from duct bottom; drum pressure may fall'],
+ ['Superheater tube leak','','steam < feed','drum pressure ↓ if serious; SH temp ↑; noise near superheater'],
+ ['Foaming','wild swings, may be unreadable','','main steam temp drops suddenly; steam salt content ↑; water hammer if serious'],
+ ['Level gauge fault','reads high, low or frozen','balanced','gauges disagree; pressures steady'],
+ ['Safety valve won\'t reseat','↓','','pressure below reseat value yet valve still blowing']
+])}
+<p class="src">§7.4.1–7.4.9</p>
+<h3>Look-alike pairs</h3>
+<ul>
+<li><b>Water shortage vs tube leak:</b> both drop the level. In a shortage, feed is <i>less</i> than steam (not enough is going in). In a leak, feed is <i>more</i> than steam (plenty goes in but some never becomes steam).</li>
+<li><b>Full water vs foaming:</b> both can cause a sudden drop in steam temperature and water hammer. Full water has a <i>high</i> level with feed exceeding steam. Foaming has a <i>wildly swinging</i> level and rising salt content in steam.</li>
+</ul>
+<h3>What to do, fault by fault</h3>
+<p><b>Full water:</b> confirm pressures and compare with local gauges; confirm emergency discharge and continuous blowdown opened (or open them); feed control to manual; if the valve doesn't respond, close the manual valve before it locally and feed via the bypass; call maintenance; watch SH outlet temperature and listen for water hammer; prepare to shut down if temperature keeps falling.</p>
+<p><b>Water shortage:</b> increase feed and reduce load; close any open blowdown; if the level reaches the limit or you can't feed, shut down immediately. <b>After a serious shortage, do not feed water</b> until the heating surfaces have cooled completely and been inspected, or are confirmed undamaged and cooled to feedwater temperature.</p>
+${whyGen('Cold feedwater on dry, overheated tubes causes thermal shock and can split them.')}
+<p><b>Foaming:</b> tell the shift leader; close down the gas damper to cut load; open continuous blowdown fully; open main steam drains and ask the turbine side to open theirs; have chemistry sample; raise load once water quality improves; record everything. Causes: poor boiler water quality, continuous blowdown too small.</p>
+<p><b>Water hammer:</b> signs are a sudden main steam temperature drop, white steam at valve stems, flanges and glands, rising vibration, thrust bearing and return oil temperature up, axial shift up, knocking, load down, and a growing top-bottom casing temperature difference. Once confirmed: break vacuum, trip the turbine, close drains in the casing and main steam line, record coast-down time and vacuum; restart only if coast-down, thrust bearing and axial position are normal and drainage is complete. Prevent it with thorough drainage and warm-up, careful spray control, and good level control.</p>
+<p><b>Economizer or evaporator tube leak:</b> if small and the level holds with careful feeding, carry on under close watch and record the trend. If the level can't be held, shut down.</p>
+<p><b>Superheater leak:</b> serious and endangering equipment, shut down at once before escaping steam cuts neighbouring tubes. Minor: run short-term, watch its development, and shut down once permission is given.</p>
+<p><b>Steam or feed pipe damage:</b> slight leak, run short-term. Getting worse or endangering people, or a rupture: shut down at once.</p>
+<p><b>Safety valve won't lift</b> at its setting after a load drop: emergency shutdown, open the atmospheric relief. <b>Won't reseat:</b> reduce load and close down the gas damper to lower pressure until it seats; keep level and steam temperature steady; ask for permission to shut down; if pressure and temperature keep falling, emergency shutdown.</p>`,
+warm: S('m10w',[['HP drum level','−310 mm ↓','alarm'],['Feedwater flow','296 t/h ↑',''],['HP steam flow','270 t/h',''],['Gas temp after HP evap.','↓ 9 °C',''],['Circ. pump current','↑','']],'Guess: what is happening?',[
+ ['Water shortage from low feed.',false,'In a shortage, feed is less than steam. Here feed is 26 t/h more than steam.'],
+ ['A tube leak in the economizer or evaporator.',true,'Yes. Feed goes in, less comes out as steam, the level falls, and the leaking water cools the gas.'],
+ ['Level gauge fault.',false,'The flows are unbalanced and the gas temperature changed, so this is a real process event.']
+],'§7.4.6'),
+worked:{case:'Readings over 15 minutes at steady GT load: HP drum level swinging ±180 mm and hard to read on the local gauge; HP main steam temperature fell from 560 to 541 °C; sodium in steam rising on the analyser; feed and steam flows roughly equal.',steps:[
+ ['What the level is doing','Swinging, not rising steadily. That is not the signature of full water.'],
+ ['Flows','Feed and steam roughly equal, so no leak and no feed-control fault.'],
+ ['Temperature and chemistry','Falling steam temperature plus rising salt in steam means water is being carried over with the steam.'],
+ ['Diagnosis','Foaming (§7.4.3): poor boiler water or continuous blowdown too small.'],
+ ['Action','Tell the shift leader; close down the gas damper to cut load; open continuous blowdown fully; open main steam drains and ask the turbine side to drain; chemistry samples; bring load back as water improves; record it.']
+]},
+practice:[
+ S('m10a',[['HP drum level','+470 mm ↑','alarm'],['Feedwater flow','305 t/h',''],['HP steam flow','276 t/h',''],['HP SH outlet temp','548 °C ↓ fast','alarm'],['Main steam line','knocking','']],'Diagnosis?',[
+  ['Foaming.',false,'Foaming shows a swinging level. Here the level is steadily high with feed well above steam.'],
+  ['Full water.',true,'High level, feed > steam, sudden SH temperature drop and water hammer: full water (§7.4.1).'],
+  ['Superheater leak.',false,'A superheater leak raises SH temperature and doesn\'t push the level up.']
+ ],'§7.4.1'),
+ S('m10b',[['HP drum level','−470 mm ↓','alarm'],['Feedwater flow','221 t/h ↓',''],['HP steam flow','274 t/h',''],['HP FWP A','tripped','act'],['HP FWP B','not running','act']],'Diagnosis and first action?',[
+  ['Tube leak; shut down.',false,'In a leak, feed exceeds steam. Here feed is well below steam.'],
+  ['Water shortage from a feed pump trip with no standby auto-start; start pump B by hand, raise feed, cut load, close any blowdown.',true,'Right. §7.4.2 reason: pump trip with standby not interlocked. §8.1: start the standby manually. If the level reaches the limit, shut down.'],
+  ['Instrument fault; flush the gauge.',false,'The flows prove water is really short.']
+ ],'§7.4.2, §8.1'),
+ S('m10c',[['HP steam flow','252 t/h ↓',''],['Feedwater flow','279 t/h',''],['HP drum pressure','11.6 MPa ↓','alarm'],['HP SH outlet temp','571 °C ↑','alarm'],['Local','loud hiss near SH bundle','']],'Diagnosis?',[
+  ['Superheater tube rupture.',true,'Steam flow below feed, pressure falling, SH temperature up, noise at the superheater (§7.4.7). This is serious: shut down.'],
+  ['Economizer leak.',false,'An economizer leak drops the drum level and cools the gas. The noise is at the superheater and SH temperature is up.'],
+  ['Safety valve not reseating.',false,'A passing safety valve would be at a valve, not inside the bundle, and there was no overpressure event.']
+ ],'§7.4.7'),
+ S('m10d',[['HP drum level (DCS)','−50 mm, flat for 45 min',''],['Load','60% → 85%',''],['Feed vs steam','equal, both rising',''],['Local gauge A','−20 mm',''],['Local gauge B','−130 mm','alarm']],'What is the problem?',[
+  ['Water shortage.',false,'Feed equals steam; the drum is not losing water.'],
+  ['Level measurement fault: a frozen DCS signal and two local gauges that disagree.',true,'Right (§7.4.5). Flush the gauges, check the transmitter, keep load steady, no blowdown.'],
+  ['Foaming.',false,'Foaming would show swinging readings and falling steam temperature.']
+ ],'§7.4.5'),
+ S('m10e',[['HP drum pressure','12.1 MPa (after trip at 13.3)',''],['HP SH safety valve','still blowing','act'],['HP drum level','↓ −220 mm',''],['HP steam temp','steady','']],'What does the manual require?',[
+  ['Emergency shutdown immediately.',false,'Only if pressure and temperature keep falling and you can\'t hold normal operation.'],
+  ['Reduce load and close down the gas damper to lower pressure until the valve reseats; keep level and temperature steady; get permission to shut down.',true,'Correct (§7.4.9). If pressure and temperature keep falling, then emergency shutdown.'],
+  ['Increase load to push the valve closed.',false,'Raising pressure keeps the valve open.']
+ ],'§7.4.9'),
+ Q('m10f','After a serious HP water shortage, the unit has tripped. The drum is empty and tubes are hot. When may you feed water?',[
+  ['Right away, slowly.',false,'Feeding hot, dry tubes causes thermal shock.'],
+  ['Only when the heating surfaces are fully cooled and inspected, or confirmed undamaged and cooled to feedwater temperature.',true,'Correct (§7.4.2).'],
+  ['When the drum pressure reaches zero.',false,'Pressure is not the condition; tube temperature and integrity are.']
+ ],'§7.4.2'),
+ Q('m10g','A small economizer leak: level can be held with careful feeding. What is allowed?',[
+  ['Emergency shutdown.',false,'Not required while the level holds.'],
+  ['Continue under close watch, recording the fault parameters, ready to shut down.',true,'Correct (§7.4.6).'],
+  ['Continue normally.',false,'You must strengthen monitoring and record the trend.']
+ ],'§7.4.6')
+]});
+
+M.push({id:'aux', n:'11', title:'Auxiliaries: air, dryer, three-way damper', short:'Auxiliaries',
+goal:['Know normal and alarm values for instrument air and the dryer.','Read a dryer or compressor fault from its symptom.','Operate the three-way damper and its hydraulics, including on loss of power.'],
+body:()=>`
+<h3>Instrument air</h3>
+<p>Normal header pressure ${N('0.80 MPa')}; low alarm ${N('0.40 MPa')}. The compressor delivers ${N('18.6 Nm³/min')} at ${N('0.8 MPa(g)')}, water cooled, ${N('110 kW')}.</p>
+<ul>
+<li><b>First start:</b> check wiring and oil (visible in the sight glass), open cooling water and the vent; bump the motor to check rotation matches the arrow. At full load the oil should sit at ${N('2/3–3/4')} of the sight glass.</li>
+<li><b>High head outlet temperature:</b> not enough cooling air or water, cooling water too hot, low oil, blocked cooler or scaled water side.</li>
+<li><b>Low output or pressure:</b> consumption higher than capacity, blocked air filter, leaks.</li>
+<li><b>No condensate from the separator while loading:</b> blocked drain line or a stuck float valve.</li>
+</ul>
+<h3>Dryer</h3>
+<p>Outlet dew point ${N('≤ −40 °C')}. Regeneration tower pressure must stay ${N('≤ 0.2 bar')}; higher means the silencer is blocked (if the valves are fine). Regeneration heater limits: lower ${N('80 °C')}, upper ${N('120 °C')}.</p>
+${table(['Symptom','Likely causes'],[
+ ['High dew point','air flow above capacity; desiccant worn out or contaminated; inlet pressure low or temperature high; tower changeover cycle too long; regeneration flow too small or too cold'],
+ ['Regeneration tower above 0.2 bar','blocked silencer; regeneration valve not fully open; poor non-return valve seal'],
+ ['Both towers pressurised, no changeover','exhaust valves RA/RB faulty or their solenoid; controller fault; pressure-reducing valve set too low'],
+ ['Lots of air from the silencer','changeover valve or inlet solenoids IA/IB faulty; controller fault; non-return valve problem; regeneration flow too high'],
+ ['Lots of water from the silencer','pre-filter drain poor; regeneration flow too small or too cold'],
+ ['Large pressure drop','blocked filter cartridge, air leak']
+])}
+${flag('The filter regulator outlet is given as about 0.2 MPa (membrane valves) or 0.5 MPa (angle-seat or butterfly valves) in §3.7.1, but 0.4 MPa in §3.7.3. Check the dryer nameplate.')}
+<h3>Three-way damper (T-joint gate valve)</h3>
+<p>Sends GT exhaust to the HRSG or the bypass stack. It is <b>fully open or fully closed only</b>; it does not modulate (Rev C). Normal stroke ${N('60 s')}; emergency close ${N('≤ 30 s')} by hydraulics. Passage ${N('6800 × 6800 mm')}, design ${N('641 °C')}.</p>
+<p><b>Seal air:</b> two fans, one running and one standby. Seal air goes to the side that is shut: damper fully open to the HRSG → bypass-side seal air valve open, boiler-side closed; damper fully closed → boiler-side open, bypass-side closed; damper anywhere in between → both butterfly valves closed and the seal fan stops. The seal fan must be running when the GT starts.</p>
+<p><b>Hydraulics:</b> the accumulator holds ${N('16–20 MPa')}. Below 16 the oil pump starts; at 20 it stops. The emergency button opens a separate circuit that closes the damper fast. On power loss, operate the three-position valve by hand using oil stored in the accumulator. If a solenoid fails, push the manual rod on the directional valve.</p>
+<p><b>Oil:</b> L-HM46 anti-wear hydraulic oil, viscosity ${N('41.4–50.6 mm²/s')} at 40 °C, flash point above 170 °C, pour point below −25 °C. Fill only through the inlet strainer; level between the two marks; change after about 12 months if analysis says so.</p>
+${table(['Symptom','Check'],[
+ ['System pressure low','worn pump plunger or port plate; relief valve loose or stuck; cylinder seal worn; blocked strainer'],
+ ['Pipe vibration','air in the lines; foam entering the pump (low tank level, bad oil, suction leak); oil too thick'],
+ ['Oil overheating','low tank level; worn pump'],
+ ['Cylinder won\'t hold position','stuck solenoid valve spool (push manually); stuck hydraulic check valve']
+])}`,
+warm: Q('m11w','Guess: the three-way damper is fully open, sending all gas to the HRSG. Which side gets seal air?',[
+ ['The boiler (HRSG) side.',false,'The HRSG side is open, with gas flowing through it. Seal air there would do nothing useful.'],
+ ['The bypass side.',true,'Right. Seal air goes to the shut side so gas can\'t leak past into the bypass.'],
+ ['Neither; seal air is off when the damper is fully open.',false,'Seal air is off only while the damper is between positions.']
+],'§9.6.2'),
+worked:{case:'Station power to the damper hydraulic unit is lost while the GT is running and you need to close the damper to the HRSG.',steps:[
+ ['What still works','The accumulator still holds high-pressure oil (normally 16–20 MPa).'],
+ ['How to use it','Operate the three-position four-way directional valve by hand to move the cylinder (§9.7.1 item 3).'],
+ ['If a solenoid is the problem instead','Push the manual rod at the end of the directional valve (§9.7.6).'],
+ ['Afterwards','Check accumulator pressure. Once below 16 MPa, you need the pump (power) back to refill it.']
+]},
+practice:[
+ Q('m11a','Dryer regeneration tower pressure reads 0.35 bar. Most likely cause?',[
+  ['Desiccant worn out.',false,'That shows as a high dew point.'],
+  ['Blocked silencer.',true,'Above 0.2 bar with healthy valves means a blocked silencer; clean or replace it.'],
+  ['Inlet air too hot.',false,'That affects dew point.']
+ ],'§3.7.3'),
+ Q('m11b','Damper accumulator pressure falls to 15.5 MPa. What should happen?',[
+  ['Low-pressure alarm and damper trip.',false,'The system refills itself first.'],
+  ['The oil pump starts automatically and stops at 20 MPa.',true,'Correct.'],
+  ['Nothing until 10 MPa.',false,'16 MPa is the start point.']
+ ],'§9.7.3'),
+ Q('m11c','Instrument air header reads 0.38 MPa. Where is it?',[
+  ['Within limits.',false,'Normal is 0.80.'],
+  ['Below the 0.40 MPa low alarm.',true,'Correct. Air-operated control valves depend on this.'],
+  ['Acceptable at night.',false,'No such allowance.']
+ ],'§1.2.3'),
+ Q('m11d','Can the three-way damper be held at 40% to split gas between HRSG and bypass?',[
+  ['Yes, it modulates.',false,'Rev C removed that: it is fully open or fully closed only.'],
+  ['No, it only goes fully open or fully closed.',true,'Right. In between, seal air stops as well.'],
+  ['Only in local control.',false,'Not in any mode.']
+ ],'§9.2')
+]});
+
+/* ---------- final check ---------- */
+const FINAL = [
+ {m:'levels', q:Q('f1','Steady load. HP drum level +420 mm and rising slowly; feed 10 t/h above steam; pressures normal; local gauges agree. First action?',[
+  ['Emergency shutdown.',false,'Trip is at +550. This is a control problem you can fix.'],
+  ['Feed control to manual, reduce feed; confirm emergency discharge opens at +450; call maintenance.',true,'Correct (§7.4.1).'],
+  ['Increase load to use the water.',false,'Changing load causes swell and makes things worse.']
+ ],'§7.4.1')},
+ {m:'instr', q:Q('f2','DCS HP level falls 150 mm over 10 min. Feed = steam, pressure steady, load steady. What should you suspect first?',[
+  ['Tube leak.',false,'A leak would show feed above steam.'],
+  ['The level measurement.',true,'The mass balance says the level can\'t be changing. Check against local gauges before adding feed.'],
+  ['Water shortage.',false,'Shortage needs feed below steam.']
+ ],'§4.2.2')},
+ {m:'startup', q:Q('f3','Cold start. HP drum rising at 4 °C/min; top-bottom difference 43 °C. What do you do?',[
+  ['Carry on; the rate is under 5 °C/min.',false,'The ΔT limit is independent of the rate limit.'],
+  ['Hold the temperature rise until ΔT is back under 40 °C.',true,'Correct.'],
+  ['Open emergency discharge.',false,'Not relevant to ΔT.']
+ ],'§3.3.4')},
+ {m:'faults', q:S('f4',[['HP drum level','↓ −380 mm','alarm'],['Feed flow','↑ 300 t/h',''],['Steam flow','271 t/h',''],['Stack','white plume','']],'Diagnosis?',[
+  ['Water shortage.',false,'Feed is above steam.'],
+  ['Economizer or evaporator tube leak.',true,'Correct.'],
+  ['Foaming.',false,'Foaming gives swinging level and falling steam temperature.']
+ ],'§7.4.6')},
+ {m:'rot', q:Q('f5','HP feed pump bearing 87 °C. What does the manual say?',[
+  ['Alarm, keep watching.',false,'Above 85 °C means stop by hand.'],
+  ['Stop the pump manually (standby takes over).',true,'Correct.'],
+  ['Normal for a sliding bearing.',false,'Sliding bearings are limited to 70 °C.']
+ ],'§1.2.2')},
+ {m:'press', q:Q('f6','Which lifts first on HP overpressure?',[
+  ['HP drum safety valves.',false,'They are set highest (13.85).'],
+  ['SH outlet safety valve.',false,'Before it, the atmospheric relief opens at 12.90.'],
+  ['Atmospheric relief at 12.90 MPa.',true,'Correct.']
+ ],'§1.2.3')},
+ {m:'prestart', q:Q('f7','Hydraulic test: when do you stop to do the first inspection?',[
+  ['At working pressure.',false,'There is an earlier hold.'],
+  ['At 10% of test pressure.',true,'Correct.'],
+  ['At 1.25 × working pressure.',false,'No inspection is allowed at overpressure.']
+ ],'§2.3.4')},
+ {m:'shutdown', q:Q('f8','Outage expected to last 40 days. Preservation?',[
+  ['Ammonia 500–600 mg/L.',false,'Short-term method.'],
+  ['Nitrogen at 0.02–0.05 MPa, purity above 98%.',true,'Correct (or desiccant).'],
+  ['Residual heat drying only.',false,'Short-term method.']
+ ],'§6.2')},
+ {m:'faults', q:S('f9',[['HP level','swinging ±200 mm',''],['Main steam temp','↓ 18 °C',''],['Steam sodium','↑','alarm'],['Feed vs steam','equal','']],'Diagnosis and action?',[
+  ['Full water: feed to manual.',false,'Level is swinging, not steadily high, and flows are equal.'],
+  ['Foaming: cut load with the damper, open continuous blowdown fully, drain main steam, sample.',true,'Correct (§7.4.3).'],
+  ['Gauge fault: flush gauges.',false,'Steam chemistry and temperature confirm a real carry-over.']
+ ],'§7.4.3')},
+ {m:'startup', q:Q('f10','Combining a second HRSG: HP main steam 12 °C and 0.3 MPa different from the header. Allowed?',[
+  ['Yes.',true,'Within 15 °C and 0.5 MPa for HP main steam.'],
+  ['No, pressure must be within 0.1 MPa.',false,'0.1 MPa is the reheat limit.'],
+  ['No, temperature must be within 10 °C.',false,'The limit is 15 °C.']
+ ],'§3.5.1')},
+ {m:'instr', q:Q('f11','All local HP gauges broken; auto feed, alarms and protection reliable; remote gauges recently checked. How long may you run?',[
+  ['15–20 minutes.',false,'That is when auto and alarms are not reliable.'],
+  ['Up to 2 hours, steady load, no blowdown.',true,'Correct.'],
+  ['Indefinitely.',false,'The limit is 2 hours while the gauge is repaired.']
+ ],'§7.4.5')},
+ {m:'rot', q:Q('f12','A pump tripped. Cause not found. Can you restart it?',[
+  ['Once.',false,'No restart until the cause is found.'],
+  ['No.',true,'Correct (§8.1).'],
+  ['Yes if the standby failed.',false,'Still not allowed; deal with the standby.']
+ ],'§8.1')},
+ {m:'aux', q:Q('f13','Dryer dew point is −31 °C. Where is it?',[
+  ['Fine.',false,'Required ≤ −40 °C.'],
+  ['Out of specification; check flow, desiccant, inlet conditions, cycle time and regeneration.',true,'Correct.'],
+  ['Only a problem above 0 °C.',false,'Spec is −40 °C.']
+ ],'§1.1.20')},
+ {m:'shutdown', q:Q('f14','Why open the feed control valves during shutdown?',[
+  ['To avoid economizer overpressure.',true,'Correct.'],
+  ['To keep the drum full.',false,'Pumps are stopping.'],
+  ['To drain the drums.',false,'Draining comes much later.']
+ ],'§5.2.2')},
+ {m:'faults', q:Q('f15','Pressure reached the HP SH safety valve setting after a load rejection, but the valve did not lift. What now?',[
+  ['Wait for the drum valves.',false,'The manual says act now.'],
+  ['Emergency shutdown and open the atmospheric relief valve.',true,'Correct (§7.4.9).'],
+  ['Increase feed.',false,'Doesn\'t address pressure.']
+ ],'§7.4.9')},
+ {m:'levels', q:Q('f16','Why start with the drum level low?',[
+  ['To leave room for swell when boiling starts.',true,'Correct.'],
+  ['To reduce drum stress.',false,'Level doesn\'t set stress much; heating rate and ΔT do.'],
+  ['To save demineralised water.',false,'Not the reason.']
+ ],'§3.3.2')}
+];
+
+/* ---------- reading drill pool ---------- */
+const DRILL = [
+ {cat:'Levels',p:'HP drum level',u:'mm',ctx:'at load',vals:[-50,-20,120,380,420,470,560,-300,-470,-560],j:v=>v>=550||v<=-550?'act':v>=400||v<=-450?'alarm':'ok',note:'HP: alarm +400 / −450, EDV +450, trip +550 / −550.'},
+ {cat:'Levels',p:'IP drum level',u:'mm',ctx:'at load',vals:[-50,80,240,270,320,420,-280,-320,-370],j:v=>v>=400||v<=-350?'act':v>=250||v<=-300?'alarm':'ok',note:'IP: alarm +250 / −300, EDV +300, trip +400 / −350.'},
+ {cat:'Levels',p:'LP drum level',u:'mm',ctx:'at load',vals:[-50,200,480,520,570,630,-900,-1250,-1320,-1370,-1420],j:v=>v>=600||v<=-1400?'act':v>=500||v<=-1300?'alarm':'ok',note:'LP: alarm +500 / −1300, low-low −1350, trip +600 / −1400.'},
+ {cat:'Rotating',p:'HP feed pump bearing temperature',u:'°C',ctx:'running',vals:[52,64,69,74,82,87,91],j:v=>v>85?'act':v>70?'alarm':'ok',note:'Alarm above 70 °C, stop manually above 85 °C.'},
+ {cat:'Rotating',p:'HP feed pump motor winding temperature',u:'°C',ctx:'running',vals:[70,84,89,93,98,103],j:v=>v>100?'act':v>90?'alarm':'ok',note:'Alarm above 90 °C, stop manually above 100 °C.'},
+ {cat:'Rotating',p:'Feed pump vibration',u:'mm',ctx:'2980 r/min',vals:[0.02,0.03,0.045,0.06,0.08],j:v=>v>0.05?'act':'ok',note:'Do not run above 0.05 mm (§2.2.4).'},
+ {cat:'Rotating',p:'HP feed pump motor insulation',u:'MΩ',ctx:'before start',vals:[3,5.5,8,40,200],j:v=>v<=6.6?'act':'ok',note:'Must be more than 6.6 MΩ to start.'},
+ {cat:'Startup',p:'HP drum top − bottom wall temperature',u:'°C',ctx:'during heat-up',vals:[12,26,37,39,44,51],j:v=>v>40?'act':'ok',note:'Keep ≤ 40 °C; above it, stop the temperature rise.'},
+ {cat:'Startup',p:'HP drum heating rate',u:'°C/min',ctx:'cold start',vals:[2,3.5,4.6,6,8],j:v=>v>=5?'act':'ok',note:'Drum limit: under 5 °C/min.'},
+ {cat:'Startup',p:'Drum pressure rise rate',u:'MPa/min',ctx:'cold start',vals:[0.1,0.2,0.26,0.35,0.5],j:v=>v>=0.3?'act':'ok',note:'Limit: under 0.3 MPa/min.'},
+ {cat:'Startup',p:'Superheater header heating rate',u:'°C/min',ctx:'cold start',vals:[10,18,23,27,34],j:v=>v>=25?'act':'ok',note:'SH header: under 25 °C/min; other parts under 30 °C/min.'},
+ {cat:'Startup',p:'Hydraulic test pressure drop in 5 min',u:'MPa',ctx:'after closing feed valve',vals:[0.02,0.05,0.08,0.12,0.2],j:v=>v>0.1?'act':'ok',note:'Pass: ≤ 0.1 MPa in 5 min.'},
+ {cat:'Temp & pressure',p:'HP main steam temperature',u:'°C',ctx:'at load',vals:[548,556,561,565,568,573],j:v=>v>=567.5?'alarm':'ok',note:'Normal 560.7 °C, over-temperature alarm 567.5 °C.'},
+ {cat:'Temp & pressure',p:'Reheat steam temperature',u:'°C',ctx:'at load',vals:[552,560,564,569,575],j:v=>v>=567.5?'alarm':'ok',note:'Normal 560.8 °C, alarm 567.5 °C.'},
+ {cat:'Temp & pressure',p:'Instrument air header pressure',u:'MPa',ctx:'normal operation',vals:[0.8,0.78,0.72,0.38,0.31],j:v=>v<=0.4?'alarm':'ok',note:'Normal 0.80 MPa, low alarm 0.40 MPa.'},
+ {cat:'Auxiliaries',p:'Dryer outlet dew point',u:'°C',ctx:'running',vals:[-58,-47,-42,-36,-22],j:v=>v>-40?'alarm':'ok',note:'Required ≤ −40 °C.'},
+ {cat:'Auxiliaries',p:'Dryer regeneration tower pressure',u:'bar',ctx:'regenerating',vals:[0.05,0.12,0.18,0.27,0.4],j:v=>v>0.2?'alarm':'ok',note:'Must not exceed 0.2 bar; above it suspect a blocked silencer.'}
+];
+
+/* ---------- rendering ---------- */
+const railEl = document.getElementById('rail'), mainEl = document.getElementById('main'), mnav = document.getElementById('mnav');
+const EXTRA = [{id:'drill',title:'Reading drill'},{id:'final',title:'Final check'},{id:'ref',title:'Quick reference'},{id:'issues',title:'Manual issues'}];
+function modQs(m){ return m.practice || []; }
+function modDone(m){ const q=modQs(m).length?modQs(m):(m.warm?[m.warm]:[]); return q.length>0 && q.every(x=>solved[x.id]); }
+function renderRail(){
+  const cur = currentId();
+  const total = M.reduce((a,m)=>a+modQs(m).length,0), done = M.reduce((a,m)=>a+modQs(m).filter(x=>solved[x.id]).length,0);
+  let h = `<h4>Modules</h4>`;
+  M.forEach(m=>{ h += `<button data-go="${m.id}" aria-current="${cur===m.id}"><span class="n">${m.n}</span><span>${m.short}</span><span class="tick${modDone(m)?' done':''}" aria-label="${modDone(m)?'complete':'not complete'}"></span></button>`; });
+  h += `<div class="progress" title="${done} of ${total} practice items solved"><i style="width:${total?Math.round(done/total*100):0}%"></i></div><div class="stat" style="margin:4px 8px 0">${done}/${total} practice solved</div>`;
+  h += `<h4>Before this course</h4><a href="2-plant-foundations.html" target="_blank" rel="noopener" style="display:block;padding:6px 8px;color:var(--accent);font-size:14.5px;text-decoration:none">Rumaila Plant Foundations ↗</a><h4>Practice & reference</h4>`;
+  EXTRA.forEach(e=>{ h += `<button data-go="${e.id}" aria-current="${cur===e.id}"><span class="n">·</span><span>${e.title}</span><span></span></button>`; });
+  railEl.innerHTML = h;
+  mnav.innerHTML = M.map(m=>`<option value="${m.id}"${cur===m.id?' selected':''}>${m.n} · ${m.title}${modDone(m)?' ✓':''}</option>`).join('') + EXTRA.map(e=>`<option value="${e.id}"${cur===e.id?' selected':''}>${e.title}</option>`).join('');
+}
+railEl.addEventListener('click', e=>{ const b=e.target.closest('[data-go]'); if(b) go(b.dataset.go); });
+mnav.addEventListener('change', ()=>go(mnav.value));
+function currentId(){ const h=(location.hash||'').replace('#',''); return h || store.get('last','start'); }
+function go(id){ if(location.hash !== '#'+id){ history.replaceState(null,'','#'+id); } store.set('last',id); render(); window.scrollTo(0,0); }
+window.addEventListener('hashchange', render);
+
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function actHTML(q, label){
+  const src = q.src ? `<span class="src">${q.src}</span>` : '';
+  if(q.type==='order'){
+    return `<div class="act" data-qid="${q.id}"><div class="kind"><span>${label||'Put in order'}</span>${src}</div><div class="q">${q.q}</div><div class="seq"></div><div class="pool"></div><div class="row"><button class="btn" data-check>Check order</button><button class="btn ghost" data-reset>Start again</button></div><div class="fbwrap"></div></div>`;
+  }
+  const panel = q.type==='scn' ? `<div class="panel">${q.panel.map(([t,v,c])=>`<div class="tag-r"><span>${t}</span><span class="val ${c||''}">${v}</span></div>`).join('')}</div>` : '';
+  return `<div class="act" data-qid="${q.id}"><div class="kind"><span>${label|| (q.type==='scn'?'Scenario':'Practice')}</span>${src}</div>${panel}<div class="q">${q.q}</div><div class="opts"></div><div class="fbwrap"></div></div>`;
+}
+function wire(root, q, opts={}){
+  const el = root.querySelector(`[data-qid="${q.id}"]`); if(!el) return;
+  const fbw = el.querySelector('.fbwrap');
+  if(q.type==='order'){
+    const seq = el.querySelector('.seq'), pool = el.querySelector('.pool');
+    let chosen = [];
+    const order = shuffle(q.steps.map((s,i)=>i));
+    function draw(){
+      seq.innerHTML = chosen.map((i,k)=>`<button class="step" data-i="${i}"><span class="i">${k+1}</span><span>${q.steps[i]}</span></button>`).join('');
+      pool.innerHTML = order.filter(i=>!chosen.includes(i)).map(i=>`<button class="step" data-i="${i}"><span class="i">·</span><span>${q.steps[i]}</span></button>`).join('');
+    }
+    pool.addEventListener('click', e=>{ const b=e.target.closest('.step'); if(!b) return; chosen.push(+b.dataset.i); fbw.innerHTML=''; draw(); });
+    seq.addEventListener('click', e=>{ const b=e.target.closest('.step'); if(!b) return; chosen = chosen.filter(i=>i!==+b.dataset.i); fbw.innerHTML=''; draw(); });
+    el.querySelector('[data-reset]').addEventListener('click', ()=>{ chosen=[]; fbw.innerHTML=''; draw(); });
+    el.querySelector('[data-check]').addEventListener('click', ()=>{
+      if(chosen.length < q.steps.length){ fbw.innerHTML = `<div class="fb wrong"><b>Not finished.</b>Place all ${q.steps.length} steps first.</div>`; return; }
+      const good = chosen.map((i,k)=>i===k);
+      [...seq.children].forEach((b,k)=>b.classList.add(good[k]?'right':'wrong'));
+      const n = good.filter(Boolean).length;
+      if(n===q.steps.length){ fbw.innerHTML = `<div class="fb right"><b>All in the right order.</b></div>`; markSolved(q.id); opts.onAnswer && opts.onAnswer(true); }
+      else { fbw.innerHTML = `<div class="fb wrong"><b>${n} of ${q.steps.length} in the right place.</b>Red steps are out of position. Tap a step to take it back, or start again.</div>`; opts.onAnswer && opts.onAnswer(false); }
+    });
+    draw(); return;
+  }
+  const box = el.querySelector('.opts');
+  const idx = shuffle(q.o.map((o,i)=>i));
+  box.innerHTML = idx.map(i=>`<button class="opt" data-i="${i}">${q.o[i][0]}</button>`).join('');
+  let first = true;
+  box.addEventListener('click', e=>{
+    const b = e.target.closest('.opt'); if(!b) return;
+    if(opts.lockAfterFirst && !first) return;
+    const [t,ok,fb] = q.o[+b.dataset.i];
+    box.querySelectorAll('.opt').forEach(x=>x.classList.remove('wrong'));
+    b.classList.add(ok?'right':'wrong');
+    fbw.innerHTML = `<div class="fb ${ok?'right':'wrong'}"><b>${ok?'Right.':'Not quite.'}</b>${fb}</div>`;
+    if(opts.lockAfterFirst){
+      if(!ok){ const ri = q.o.findIndex(o=>o[1]); box.querySelector(`[data-i="${ri}"]`).classList.add('right'); fbw.innerHTML += `<div class="fb right"><b>Correct answer:</b>${q.o[ri][0]} ${q.o[ri][2]}</div>`; }
+      box.querySelectorAll('.opt').forEach(x=>x.style.cursor='default');
+    }
+    if(first){ opts.onAnswer && opts.onAnswer(ok); first=false; }
+    if(ok) markSolved(q.id);
+  });
+}
+
+function workedHTML(w){
+  return `<div class="worked" id="worked"><div class="kind">Worked example</div><div class="case">${w.case}</div><div class="wsteps"></div><div class="row"><button class="btn ghost" data-next>Predict the next step, then reveal it</button></div></div>`;
+}
+function wireWorked(root, w){
+  const el = root.querySelector('#worked'); if(!el) return;
+  const box = el.querySelector('.wsteps'), btn = el.querySelector('[data-next]');
+  let k=0;
+  btn.addEventListener('click', ()=>{
+    if(k<w.steps.length){ const [l,t]=w.steps[k]; box.insertAdjacentHTML('beforeend', `<div class="wstep"><span class="lbl">Step ${k+1} · ${l}</span>${t}</div>`); k++; }
+    if(k>=w.steps.length){ btn.textContent='All steps shown'; btn.disabled=true; }
+  });
+}
+
+function recallPool(upto){
+  const pool=[]; for(const m of M){ if(m.id===upto) break; (m.practice||[]).forEach(q=>{ if(q.type!=='order') pool.push(q); }); }
+  return pool;
+}
+
+function renderModule(m, idx){
+  const recall = recallPool(m.id);
+  const recallQs = shuffle(recall).slice(0,2).map(q=>Object.assign({},q,{id:q.id+'_r'}));
+  let h = `<div class="eyebrow">Module ${m.n}</div><h1>${m.title}</h1>`;
+  h += `<div class="goal"><b>After this module you can</b><ul>${m.goal.map(g=>`<li>${g}</li>`).join('')}</ul></div>`;
+  if(recallQs.length){ h += `<h2>From earlier modules</h2><p>Two questions from what you have already covered. Answer from memory before you scroll up.</p>` + recallQs.map(q=>actHTML(q,'Recall')).join(''); }
+  if(m.warm){ h += `<h2>Guess first</h2>` + actHTML(m.warm,'Before the lesson'); }
+  h += `<h2>${m.id==='start'?'About this course':'The lesson'}</h2>` + m.body();
+  if(m.worked){ h += `<h2>Worked example</h2>` + workedHTML(m.worked); }
+  if(m.practice && m.practice.length){ h += `<h2>Practice</h2><p>Every wrong answer tells you why. Retry until each is right; the module's dot turns green when all are solved.</p>` + m.practice.map(q=>actHTML(q)).join(''); }
+  const nxt = M[idx+1], prv = M[idx-1];
+  h += `<div class="foot">${prv?`<button class="btn ghost" data-go="${prv.id}">← ${prv.short}</button>`:'<span></span>'}${nxt?`<button class="btn" data-go="${nxt.id}">${nxt.short} →</button>`:`<button class="btn" data-go="final">Final check →</button>`}</div>`;
+  mainEl.innerHTML = h;
+  recallQs.forEach(q=>wire(mainEl,q));
+  if(m.warm) wire(mainEl, m.warm);
+  if(m.worked) wireWorked(mainEl, m.worked);
+  (m.practice||[]).forEach(q=>wire(mainEl,q));
+}
+mainEl.addEventListener('click', e=>{ const b=e.target.closest('.foot [data-go]'); if(b) go(b.dataset.go); });
+
+let drillCats = new Set(DRILL.map(d=>d.cat));
+let drillStats = {n:0, ok:0, streak:0};
+function renderDrill(){
+  const cats = [...new Set(DRILL.map(d=>d.cat))];
+  mainEl.innerHTML = `<div class="eyebrow">Practice</div><h1>Reading drill</h1>
+  <p>A reading appears. Decide, then check. This drill mixes every module, which is the point: in the plant, readings don't arrive sorted by chapter. Five minutes a day is enough.</p>
+  <div class="chips" role="group" aria-label="Topics">${cats.map(c=>`<button class="chip" data-cat="${c}" aria-pressed="${drillCats.has(c)}">${c}</button>`).join('')}</div>
+  <div class="act"><div class="kind"><span>Is this reading OK?</span><span class="stat" id="dstat"></span></div>
+  <div class="drill-card" id="dcard"></div>
+  <div class="judge" id="djudge">
+   <button class="opt" data-a="ok">Within limits<small>no alarm</small></button>
+   <button class="opt" data-a="alarm">Alarm<small>investigate, correct</small></button>
+   <button class="opt" data-a="act">Beyond limit<small>stop, hold, trip, don't start</small></button>
+  </div><div class="fbwrap" id="dfb"></div>
+  <div class="row"><button class="btn" id="dnext">Next reading</button></div></div>`;
+  let cur=null, answered=false;
+  function pick(){
+    const pool = DRILL.filter(d=>drillCats.has(d.cat)); if(!pool.length){ document.getElementById('dcard').innerHTML='<div class="p">Pick at least one topic.</div>'; return; }
+    const d = pool[Math.floor(Math.random()*pool.length)], v = d.vals[Math.floor(Math.random()*d.vals.length)];
+    cur = {d,v,a:d.j(v)}; answered=false;
+    const vs = (v>0 && d.u==='mm' ? '+' : '') + (String(v).replace('-','−'));
+    document.getElementById('dcard').innerHTML = `<div class="p">${d.p}</div><div class="reading">${vs} <span style="font-size:18px">${d.u}</span></div><div class="ctx">${d.ctx}</div>`;
+    document.getElementById('dfb').innerHTML='';
+    document.querySelectorAll('#djudge .opt').forEach(b=>b.classList.remove('right','wrong'));
+    document.getElementById('dstat').textContent = drillStats.n ? `${drillStats.ok}/${drillStats.n} right · streak ${drillStats.streak}` : '';
+  }
+  document.getElementById('djudge').addEventListener('click', e=>{
+    const b=e.target.closest('.opt'); if(!b||!cur||answered) return; answered=true;
+    const ok = b.dataset.a===cur.a; drillStats.n++; if(ok){drillStats.ok++; drillStats.streak++;} else drillStats.streak=0;
+    b.classList.add(ok?'right':'wrong'); if(!ok) document.querySelector(`#djudge [data-a="${cur.a}"]`).classList.add('right');
+    const lbl = {ok:'within limits',alarm:'in alarm',act:'beyond the action limit'}[cur.a];
+    document.getElementById('dfb').innerHTML = `<div class="fb ${ok?'right':'wrong'}"><b>${ok?'Right':'Not quite'}: ${lbl}.</b>${cur.d.note}</div>`;
+    document.getElementById('dstat').textContent = `${drillStats.ok}/${drillStats.n} right · streak ${drillStats.streak}`;
+  });
+  document.getElementById('dnext').addEventListener('click', pick);
+  mainEl.querySelector('.chips').addEventListener('click', e=>{ const c=e.target.closest('.chip'); if(!c) return; const k=c.dataset.cat; drillCats.has(k)?drillCats.delete(k):drillCats.add(k); c.setAttribute('aria-pressed', drillCats.has(k)); pick(); });
+  pick();
+}
+
+function renderFinal(){
+  const items = shuffle(FINAL);
+  let score=0, answered=0; const missed=[];
+  mainEl.innerHTML = `<div class="eyebrow">Assessment</div><h1>Final check</h1>
+  <p>Sixteen mixed questions covering the end task from Module 0. One attempt per question; the correct answer shows after you choose. At the end you get a list of modules to revisit.</p>
+  <div id="fq">${items.map((it,i)=>actHTML(Object.assign({},it.q,{id:it.q.id+'_f'}), `Question ${i+1} of ${items.length}`)).join('')}</div>
+  <div class="act" id="fres"><div class="kind"><span>Result</span></div><div class="score" id="fscore">0 / ${items.length} answered</div><div id="fmiss" class="stat" style="margin-top:6px"></div></div>`;
+  items.forEach(it=>{
+    const q = Object.assign({},it.q,{id:it.q.id+'_f'});
+    wire(mainEl,q,{lockAfterFirst:true,onAnswer:ok=>{
+      answered++; if(ok) score++; else missed.push(it.m);
+      document.getElementById('fscore').textContent = `${score} / ${answered} right${answered===items.length?' · finished':''}`;
+      if(answered===items.length){
+        const mods = [...new Set(missed)].map(id=>M.find(m=>m.id===id)).filter(Boolean);
+        document.getElementById('fmiss').innerHTML = mods.length ? 'Revisit: ' + mods.map(m=>`<button class="chip" data-go="${m.id}">${m.n} · ${m.short}</button>`).join(' ') : 'Nothing to revisit. Keep the Reading drill going to hold on to it.';
+        const best = store.get('finalBest',0); if(score>best) store.set('finalBest',score);
+      }
+    }});
+  });
+  document.getElementById('fmiss').addEventListener('click', e=>{ const b=e.target.closest('[data-go]'); if(b) go(b.dataset.go); });
+}
+
+function renderRef(){
+  mainEl.innerHTML = `<div class="eyebrow">Reference</div><h1>Quick reference</h1>
+  <p>Every number from the course on one page, for lookup after you have learned them. Section numbers point to the original manual.</p>
+  <h2>Drum levels (mm)</h2>
+  ${table(['Setting','HP','IP','LP'],[['Trip high','+550','+400','+600'],['Alarm + EDV','+450','+300','+550'],['High alarm','+400','+250','+500'],['Normal','−50','−50','−50'],['Startup fill','−250','−200','NWL±50'],['Shutdown (after 30 min)','NWL+100','NWL+100','NWL+100'],['Low alarm','−450','−300','−1300'],['Low-low','','','−1350'],['Trip low','−550','−350','−1400']],[1,2,3])}
+  <p class="src">§1.2.1, §3.3.2, §5.2.2. Level meter check: more than ±100 mm with normal pressures → check meter (§4.2.2).</p>
+  <h2>Pressures (MPa)</h2>
+  ${table(['System','Normal / working','Alarm','Relief / vent','SH / outlet SV','Drum / inlet SV','Design'],[
+   ['HP','12.44 (drum)','12.3 (high)','12.90 atmospheric','13.28','13.85 ×2','14.11'],
+   ['IP','3.21 (drum)','3.7 (high)','','4.28','4.49','4.53'],
+   ['RH','3.01–3.85 rated','3.4 (high)','4.05 vent','4.24 outlet','4.40 inlet ×2',''],
+   ['LP','0.44 (gauge) / 0.67 drum','','','1.01','1.10','1.1'],
+   ['Instrument air','0.80','0.40 (low)','','','','']
+  ],[1,2,3,4,5,6])}
+  <p class="src">Other SVs: condensate heater inlet 3.80, IP economizer inlet relief 9.00, CBD flash tank 1.10. §1.1.9, §1.2.3, §2.4.5.</p>
+  <h2>Temperatures</h2>
+  ${table(['Item','Value'],[['HP main steam','normal 560.7 °C, alarm 567.5 °C'],['Reheat','normal 560.8 °C, alarm 567.5 °C'],['IP / LP steam','321.3 °C / 249.2 °C'],['Drum top − bottom','< 40 °C always'],['Fill water (cold state)','≤ 90 °C'],['Hydraulic test water','≥ 20 °C'],['Drain HRSG','< 80 °C and 0 MPa (or 0.3–0.5 MPa controlled)']],[1])}
+  <h2>Startup</h2>
+  ${table(['Item','Value'],[['Cold / warm / hot (HP drum sat.)','< 100 / 100–280 / > 280 °C'],['Warm band IP, LP','100–190, 100–120 °C'],['Drum heating','< 5 °C/min'],['Pressure rise','< 0.3 MPa/min'],['SH header / other parts','< 25 / < 30 °C/min'],['GT ignition to normal','≥ 1 h'],['Close vents','0.1–0.2 MPa(g)'],['SH exhaust open, hot-tighten','0.2–0.4 MPa(g)'],['Above 2.0 MPa','steam > 350 °C'],['Hot start steam','casing + 80–100 °C, superheat > 50 °C'],['Combining steam','ΔT ≤ 15 °C; ΔP HP 0.5, RH 0.1, LP 0.05 MPa']],[1])}
+  <h2>Rotating equipment</h2>
+  ${table(['Item','Value'],[['HP FWP bearing','alarm > 70, stop > 85 °C'],['HP FWP winding','alarm > 90, stop > 100 °C'],['Circ. pump bearing','alarm > 100, stop > 120 °C (see Manual issues)'],['Sliding / rolling bearing','70 / 80 °C'],['Stator core','110 °C'],['Pump vibration','> 0.05 mm do not run'],['Vibration by speed','≤700: 0.16 · 1000: 0.13 · 1500: 0.10 · >1500: 0.06 mm'],['Oil cup','1/2–2/3'],['Insulation','HP FWP > 6.6 MΩ; IP FWP, circ. pump > 0.5 MΩ'],['Test run','new ≥ 8 h, overhauled ≥ 30 min, motor alone ≥ 2 h'],['HP FWP scoop tube after start','> 25% within 1 min'],['Coupling oil heater','on below 50 °C']],[1])}
+  <h2>Tests</h2>
+  ${table(['Item','Value'],[['Overpressure test','1.25 × working pressure'],['Pressurising / depressurising','0.1–0.3 MPa/min'],['First hold','10% of test pressure'],['Pass','≤ 0.1 MPa drop in 5 min, no leak, no deformation'],['Test gauges','≥ 2, class 0.2, range 1.5–3 × test pressure'],['Frost precautions','ambient < 5 °C'],['SV calibration rate','≤ 0.1 MPa/min near working pressure'],['SV order','highest set pressure first, lower ones gagged']],[1])}
+  <h2>Preservation</h2>
+  ${table(['Method','Value'],[['Residual heat drying (15–30 d)','depressurise < 0.3 MPa/min; drain at 0.3–0.5 MPa and 80 °C'],['Ammonia (15–30 d)','500–600 mg/L (demin/condensate), 800–1000 mg/L (soft water); salt < 150, Cl⁻ < 45 mg/L'],['Nitrogen (> 30 d)','0.02–0.05 MPa, purity > 98%'],['Desiccant (> 30 d)','CaCl₂ 1–2 kg/m³, quicklime 2–3 kg/m³']],[1])}
+  <h2>Auxiliaries</h2>
+  ${table(['Item','Value'],[['Compressor','18.6 Nm³/min, 0.8 MPa(g), oil 2/3–3/4 of glass at full load'],['Dryer','dew point ≤ −40 °C; regen tower ≤ 0.2 bar; heater 80–120 °C'],['Damper stroke','60 s normal, ≤ 30 s emergency'],['Damper accumulator','pump starts < 16 MPa, stops at 20 MPa'],['Damper oil','L-HM46, 41.4–50.6 mm²/s at 40 °C']],[1])}
+  <h2>Water chemistry (as printed)</h2>
+  ${table(['Stream','Values given'],[['Feedwater','iron ≤ 30 ppb, copper ≤ 5 ppb, pH > 9.4, SiO₂ < 0.02 mg/L, O₂ < 7 µg/L, hardness ≈ 0, hydrazine 10–15'],['Boiler (drum) water','phosphate 0.5–3 ppm, pH 9.0–10.0, then "≤ 30" and "≤ 2.0" (units unclear)'],['Steam','conductivity ≤ 0.15, Na ≤ 5 ppb, SiO₂ ≤ 20 ppb, iron ≤ 15 ppb (column alignment unclear)']])}
+  <p class="src">§1.1.4. The tables are garbled in the manual; get the chemistry lab's current limits.</p>
+  <h2>Routine</h2>
+  ${table(['Task','When'],[['Horn test, level meter calibration','every shift'],['Local gauge flushing, air tank drain','Monday day shift'],['Compressor and dryer changeover','month-end day shift'],['SV trial lift','before overhaul shutdown'],['Interlock test','after overhaul']])}`;
+}
+
+function renderIssues(){
+  const items = [
+   ['High','Steam temperature setpoint','§4.2.2 says superheated steam is controlled to no more than 510 °C; §1.1.3 and §1.2.2 give 560.7 °C normal and a 567.5 °C alarm.'],
+   ['High','Pressure alarms vs rated pressures','HP high alarm 12.3 MPa is below the 12.44 MPa.a drum working pressure. IP alarm 3.7 and RH alarm 3.4 MPa are below the 3×1 rated outlet pressures 3.98 and 3.85 MPa.a. The manual mixes absolute and gauge without saying which alarms use. Take the real setpoints from the DCS.'],
+   ['High','Emergency vs fault shutdown lists','§5.3.1 makes "feed water quality deteriorates" an immediate shutdown; §7.3 treats unrecoverable water quality as a controlled fault shutdown. §5.3.1 and §7.2.1 also list different conditions.'],
+   ['High','Water and steam quality tables','§1.1.4: units garbled (iron and copper in µmol/L for condensate, "us/℃m"), more columns than values in the drum-water and steam tables, drum-water SiO₂ "≤ 2.0 ppb" is implausible. Get the chemistry lab\'s limits.'],
+   ['Medium','Drum level during filling','§3.3.2 says keep levels "around +50 mm"; normal is −50 mm and the startup fill levels are lower still.'],
+   ['Medium','HP drum temperature','§1.1.6 gives the HP drum a highest temperature of 567.5 °C. A drum runs near saturation (about 327 °C at 12.4 MPa); the figure looks copied from the steam alarm.'],
+   ['Medium','Circulating pump bearing limits','§1.2.2 alarm 100 °C / stop 120 °C vs Table 2-1 rolling bearing 80 °C and "normal under 85 °C" in the same section.'],
+   ['Medium','Pump vibration limit','0.05 mm in §2.2.4 vs 0.06 mm above 1500 r/min in Table 2-2.'],
+   ['Medium','Shutdown order','§5.1 "steam turbine must be synchronized before the gas turbine" probably means the steam turbine is taken off first.'],
+   ['Medium','Hot start text','§3.3.5 item 1 is garbled and unreadable.'],
+   ['Low','Level meter calibration frequency','Twice per shift (§4.2.2) vs once per shift (§4.3).'],
+   ['Low','Compressed air before startup','Tank above 0.8 MPa (§2.1.9) vs above 0.6 MPa (§3.2.1).'],
+   ['Low','Valve line-up','§2.1.13 lists the superheater outlet drain valve under both "open" and "close".'],
+   ['Low','Dryer filter regulator','0.2 / 0.5 MPa (§3.7.1) vs 0.4 MPa (§3.7.3).'],
+   ['Low','Wording','§2.4.4 says drum "differential pressure … no more than 40 °C"; it means temperature difference. §1.1.13–1.1.14 flash tank thickness and weight are blank.'],
+   ['Low','Level datum','Only the IP drum datum is given (180 mm below centreline). HP and LP datums are not stated.']
+  ];
+  mainEl.innerHTML = `<div class="eyebrow">Reference</div><h1>Manual issues</h1>
+  <p>Places where the Rev C manual contradicts itself, is garbled, or leaves something out. None of these are guesses about the plant; each is a disagreement inside the document. Confirm them with the shift leader, the DCS setpoint list or the OEM before relying on either value. "High" means the difference could change an operating decision.</p>
+  <ul class="issues">${items.map(([s,t,d])=>`<li><span class="pill ${s==='High'?'act':s==='Medium'?'alarm':'ok'}">${s}</span> <b>${t}.</b> ${d}</li>`).join('')}</ul>
+  <h2>What the manual doesn't cover</h2>
+  <ul>
+   <li>How the HRSG works: flow paths, why each limit exists, what each alarm protects. Module 1 and the "Why" notes fill part of this.</li>
+   <li>The P&amp;IDs and general arrangement drawings in §10 are images. This course was built from the manual's text, so it does not teach from the drawings. Pair Module 1 with the drawings on pages 127–140.</li>
+   <li>No trip values for HP, IP or LP pressure or for steam temperature, only alarms.</li>
+  </ul>`;
+}
+
+function render(){
+  const id = currentId();
+  renderRail();
+  const idx = M.findIndex(m=>m.id===id);
+  if(idx>=0) renderModule(M[idx], idx);
+  else if(id==='drill') renderDrill();
+  else if(id==='final') renderFinal();
+  else if(id==='ref') renderRef();
+  else if(id==='issues') renderIssues();
+  else renderModule(M[0],0);
+  document.title = 'Rumaila HRSG Course';
+}
+render();
+</script>
+
+</body>
+</html>

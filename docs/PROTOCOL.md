@@ -323,7 +323,38 @@ device. The answer is one `{"t":"join_ack", "state": ..., "why"?: ...}`, then th
 | `bad` | the join request's signature or device doesn't check out |
 
 The new device asks again every 2 s while `waiting`. Once `accepted` it syncs (§15) with the same address, adopting
-the invite's `root`; the log it receives certifies it. The same rules as importing a join request apply on the
+the invite's `root`; the log it receives certifies it. An `accepted` answer also carries `"root"` and `"plant"`.
+
+**Without an invite** (a computer with no camera, no code to paste): devices announce on mDNS (TXT `plant`, `label` =
+who this is, `adm` = "1" if an admin can accept a device here: the plant server, or a device of an admin/manager).
+The new device picks one, asks with `"token": null`, and the request waits in that device's *lobby* (at most 50,
+15 minutes) until any admin there accepts or refuses. Both screens show a 6-digit code: the first 4 bytes of
+SHA-256(`"kks-join-code-v1\n"` + joiner device ID + `"\n"` + answering device ID), big-endian, mod 1 000 000,
+zero-padded. The admin accepts only if it matches the new person's screen; the new device syncs (adopting the
+`root` from the `accepted` answer) only after its person confirmed that the admin's screen shows the same code, so
+neither side can be fooled by another device on the Wi-Fi. The same rules as importing a join request apply on the
 admin's side: an existing username needs the admin's explicit OK (it adds a device for that person), and only the
 manager adds devices for admins. A responder that doesn't know invites answers `unknown`; a listener still reads a
 `hello` first message exactly as before, so §15 is unchanged.
+
+## 17. Person secrets between a person's own devices
+
+The person secret (§13) is created by the first device of the person that needs one (course progress, M4) and never
+goes into the log. Two devices of the same person swap what they hold over the sync port: after a normal sync, the
+initiator opens a new connection, runs the §15 handshake, checks that the other side is the device it synced with, and
+sends `{"t":"secrets", "person": <person ID>, "secrets": [<32 bytes, base64url>, …]}` instead of `hello`. The
+responder answers `{"t":"secrets", "secrets": [...]}` with every secret it holds for that person, and takes the
+initiator's, **only if** it is a device of that person itself (its node's owner), the session's remote device is
+certified to the same person and not revoked, and `person` names that person; otherwise it answers an empty list and
+keeps nothing. At most 16 secrets per message; others than 32 bytes are ignored.
+
+A person may end up with several secrets (two devices made one each before they met). Every device keeps all of them,
+tries each when opening a private entry, and writes with the one whose SHA-256 (hex) sorts first, so they converge.
+A plant server in server mode is nobody's own device: it holds no person secret and answers every request with an
+empty list, so it relays private entries without being able to read them.
+
+Course progress body (inside the encryption): `{"type":"course_progress", "body":{"course": [a-z]{1,16}, "items":
+[[key, value], …]}}`, key `[A-Za-z0-9_.-]{1,64}` (the course's localStorage key without its prefix), value = the
+localStorage string (JSON text; pairs, not an object, because such keys aren't valid canonical keys, §1).
+Reading merges per key in replay order: two JSON objects → union (later keys win); keys ending in `Best` with two
+numbers → the larger; else the later value.

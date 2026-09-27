@@ -1,0 +1,1405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rumaila Plant Foundations</title>
+<link rel="stylesheet" href="/vendor/fonts/courses.css">
+<style>
+:root{
+  --ground:#E9EDEF; --surface:#F8FAFA; --sunk:#DDE3E6; --ink:#16222B; --muted:#56646E; --rule:#C6CFD4;
+  --accent:#1F5F8B; --accent-ink:#FFFFFF; --accent-soft:#D7E5EF;
+  --ok:#2E7A4E; --ok-soft:#DCEDE2; --alarm:#9A6412; --alarm-fill:#E8B04A; --alarm-soft:#F6E7C8;
+  --act:#B3261E; --act-soft:#F6D9D6; --zone-ok:#CFD8DC;
+  --display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Atkinson Hyperlegible","Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#11171B; --surface:#182026; --sunk:#0D1215; --ink:#E2E8EB; --muted:#95A4AD; --rule:#2B363D;
+    --accent:#6DAFDC; --accent-ink:#0B1620; --accent-soft:#1D3342;
+    --ok:#62C08A; --ok-soft:#173226; --alarm:#E4AE45; --alarm-fill:#B9832A; --alarm-soft:#3A2D14;
+    --act:#F0776B; --act-soft:#3E1D1A; --zone-ok:#26323A;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#11171B; --surface:#182026; --sunk:#0D1215; --ink:#E2E8EB; --muted:#95A4AD; --rule:#2B363D;
+  --accent:#6DAFDC; --accent-ink:#0B1620; --accent-soft:#1D3342;
+  --ok:#62C08A; --ok-soft:#173226; --alarm:#E4AE45; --alarm-fill:#B9832A; --alarm-soft:#3A2D14;
+  --act:#F0776B; --act-soft:#3E1D1A; --zone-ok:#26323A;
+}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;padding-inline:16px;padding-block:0 48px}
+.shell{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px minmax(0,1fr);gap:40px}
+header.top{max-width:1180px;margin:0 auto;padding-block:20px 18px;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;border-bottom:1px solid var(--rule);margin-bottom:28px}
+.brand{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.01em;line-height:1.1}
+.brand small{display:block;font-family:var(--body);font-weight:400;font-size:14px;color:var(--muted);letter-spacing:0;margin-top:4px}
+.docid{font-family:var(--mono);font-size:12px;color:var(--muted)}
+nav.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);align-self:start;max-height:calc(100vh - 32px);overflow:auto;padding-bottom:12px}
+.rail h4{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+.rail h4:first-child{margin-top:0}
+.rail button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:28px 1fr 16px;align-items:center;width:100%;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:14.5px;line-height:1.3;color:var(--ink)}
+.rail button:hover{background:var(--sunk)}
+.rail button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rail button[aria-current="true"]{background:var(--surface);box-shadow:inset 0 0 0 1px var(--rule);font-weight:700}
+.rail .n{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.rail .tick{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--rule)}
+.rail .tick.done{background:var(--ok);border-color:var(--ok)}
+.progress{height:4px;background:var(--sunk);border-radius:2px;margin:6px 8px 0;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--ok);width:0}
+.mobile-nav{display:none}
+main{min-width:0;max-width:760px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+h1{font-family:var(--display);font-weight:700;font-size:40px;line-height:1.05;margin:6px 0 14px;text-wrap:balance}
+h2{font-family:var(--display);font-weight:600;font-size:26px;line-height:1.15;margin:40px 0 10px;text-wrap:balance}
+h3{font-family:var(--display);font-weight:600;font-size:20px;margin:26px 0 8px;text-wrap:balance}
+p{margin:0 0 12px;max-width:68ch}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:66ch}
+li{margin-bottom:5px}
+.goal{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:14px 18px;margin:0 0 22px}
+.goal b{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px}
+.goal ul{margin:0}
+.num{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.why{border-left:3px solid var(--rule);padding:2px 0 2px 14px;margin:12px 0 16px;color:var(--ink)}
+.why .tag{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block}
+.flag{background:var(--alarm-soft);border-radius:6px;padding:10px 14px;margin:12px 0 16px;font-size:15px}
+.flag b{color:var(--alarm)}
+.src{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tablewrap{overflow-x:auto;margin:10px 0 18px;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--sunk)}
+td.v{font-family:var(--mono);font-size:13.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.figure{overflow-x:auto;margin:14px 0 20px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px}
+.figure svg{display:block}
+.figcap{font-size:13.5px;color:var(--muted);margin-top:6px}
+/* activity blocks */
+.act{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;margin:16px 0}
+.act .kind{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;display:flex;justify-content:space-between;gap:12px}
+.act .kind .src{letter-spacing:0;text-transform:none;font-weight:400}
+.act .q{font-weight:700;margin-bottom:10px;max-width:68ch}
+.opts{display:grid;gap:8px}
+.opt{all:unset;box-sizing:border-box;display:block;padding:10px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--ground);cursor:pointer;line-height:1.4}
+.opt:hover{border-color:var(--accent)}
+.opt:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.opt.right{border-color:var(--ok);background:var(--ok-soft)}
+.opt.wrong{border-color:var(--act);background:var(--act-soft)}
+.fb{margin-top:10px;padding:10px 14px;border-radius:8px;font-size:15px;max-width:68ch}
+.fb.right{background:var(--ok-soft)}
+.fb.wrong{background:var(--act-soft)}
+.fb b{display:block;margin-bottom:2px}
+.btn{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:14.5px;cursor:pointer}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.btn.ghost{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.btn[disabled]{opacity:.45;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+/* ordering */
+.pool,.seq{display:grid;gap:6px}
+.seq{margin:10px 0;min-height:44px;padding:8px;border:1px dashed var(--rule);border-radius:8px}
+.seq:empty::before{content:"Tap the steps below in the right order";color:var(--muted);font-size:14px;padding:4px 6px}
+.step{all:unset;box-sizing:border-box;display:grid;grid-template-columns:26px 1fr;gap:6px;padding:8px 12px;border:1px solid var(--rule);border-radius:7px;background:var(--ground);cursor:pointer;line-height:1.35;font-size:15px}
+.step:focus-visible{outline:2px solid var(--accent)}
+.step .i{font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:2px}
+.step.right{border-color:var(--ok);background:var(--ok-soft)}
+.step.wrong{border-color:var(--act);background:var(--act-soft)}
+/* worked example */
+.worked{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;margin:16px 0}
+.worked .kind{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.worked .case{font-weight:700;margin-bottom:10px;max-width:68ch}
+.wstep{border-top:1px solid var(--rule);padding:10px 0 4px;max-width:68ch}
+.wstep .lbl{font-family:var(--mono);font-size:12px;color:var(--muted);display:block}
+/* DCS panel */
+.panel{background:var(--sunk);border-radius:8px;padding:10px 12px;margin:4px 0 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px 14px}
+.tag-r{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:4px 0;border-bottom:1px dotted var(--rule)}
+.tag-r span:first-child{color:var(--muted)}
+.tag-r .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13.5px;text-align:right}
+.val.alarm{color:var(--alarm);font-weight:600}
+.val.act{color:var(--act);font-weight:600}
+/* drill */
+.drill-card{background:var(--sunk);border-radius:10px;padding:18px;margin:10px 0 12px;display:grid;gap:4px}
+.drill-card .p{font-size:15px;color:var(--muted)}
+.drill-card .ctx{font-size:14px;color:var(--muted)}
+.drill-card .reading{font-family:var(--mono);font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chip{all:unset;cursor:pointer;font-size:13.5px;padding:4px 10px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--rule);color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.chip:focus-visible{outline:2px solid var(--accent)}
+.judge{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.judge .opt{text-align:center;font-weight:700;font-size:14.5px;padding:12px 8px}
+.judge .opt small{display:block;font-weight:400;font-size:12.5px;color:var(--muted)}
+.stat{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.score{font-family:var(--display);font-size:22px;font-weight:600}
+.pill{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:1px 7px;border-radius:999px;vertical-align:1px}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.alarm{background:var(--alarm-soft);color:var(--alarm)}
+.pill.act{background:var(--act-soft);color:var(--act)}
+.issues li{margin-bottom:12px}
+.issues .sev{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.foot{display:flex;justify-content:space-between;gap:10px;margin-top:40px;padding-top:16px;border-top:1px solid var(--rule)}
+.intro-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 22px}
+.intro-grid div{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;font-size:15px}
+.intro-grid b{font-family:var(--display);font-weight:600;font-size:17px;display:block;margin-bottom:2px}
+@media (max-width:860px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:0}
+  nav.rail{display:none}
+  .mobile-nav{display:block;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ground);padding-block:8px;margin-bottom:10px;border-bottom:1px solid var(--rule)}
+  .mobile-nav select{width:100%;font:inherit;font-size:15px;padding:8px 10px;border-radius:7px;border:1px solid var(--rule);background:var(--surface);color:var(--ink)}
+  h1{font-size:32px}
+  .judge{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:no-preference){ .opt,.step,.btn{transition:background-color .12s,border-color .12s} }
+.term{font-weight:700}
+.railink{display:block;padding:6px 8px;color:var(--accent);font-size:14.5px;text-decoration:none}
+.railink:hover{text-decoration:underline}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+
+<header class="top">
+  <div class="brand">Rumaila Plant Foundations<small>What to know before the HRSG course</small></div>
+  <div class="docid">Prerequisite for the Rumaila HRSG Course · Al-Rumailah CCPP 730 MW</div>
+</header>
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Course modules"></nav>
+  <div>
+    <div class="mobile-nav"><label for="mnav" class="eyebrow">Go to</label><select id="mnav"></select></div>
+    <main id="main"></main>
+  </div>
+</div>
+
+<script src="/course-bridge.js" data-course="fnd"></script>
+<script>
+/* ---------- storage ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('fnd.'+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('fnd.'+k, JSON.stringify(v)); }catch(e){} }
+};
+let solved = store.get('solved', {});
+function markSolved(id){ if(!solved[id]){ solved[id]=true; store.set('solved', solved); renderRail(); } }
+const HRSG_URL = '3-hrsg-course.html';
+const PT_URL = '1-power-plant-technology.html';
+
+/* ---------- helpers ---------- */
+const N = s => `<span class="num">${s}</span>`;
+function Q(id, q, o, src){ return {type:'mcq', id, q, o, src}; }
+function O(id, q, steps, src){ return {type:'order', id, q, steps, src}; }
+function S(id, panel, q, o, src){ return {type:'scn', id, panel, q, o, src}; }
+const why = (t) => `<div class="why"><span class="tag">Why it matters in the HRSG course</span>${t}</div>`;
+const note = (t) => `<div class="flag"><b>Plant-specific.</b> ${t}</div>`;
+const table = (head, rows, numCols=[]) => `<div class="tablewrap"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${numCols.includes(i)?' class="v"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+const T = (t) => `<span class="term">${t}</span>`;
+
+/* ---------- figures ---------- */
+function cycleFig(){
+  const box=(x,y,w,h,t,sub,hot)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="var(--surface)" stroke="${hot?'var(--act)':'var(--ink)'}" stroke-width="1.5"/><text x="${x+w/2}" y="${y+h/2+(sub?-2:4)}" text-anchor="middle" font-family="Barlow Semi Condensed, sans-serif" font-weight="600" font-size="14" fill="var(--ink)">${t}</text>${sub?`<text x="${x+w/2}" y="${y+h/2+14}" text-anchor="middle" font-family="Atkinson Hyperlegible, sans-serif" font-size="11" fill="var(--muted)">${sub}</text>`:''}`;
+  const arrow=(x1,y1,x2,y2,c,dash)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="2"${dash?' stroke-dasharray="5 4"':''} marker-end="url(#ah-${c==='var(--act)'?'r':c==='var(--accent)'?'b':'k'})"/>`;
+  const lbl=(x,y,t,c,a='middle')=>`<text x="${x}" y="${y}" text-anchor="${a}" font-family="Atkinson Hyperlegible, sans-serif" font-size="11.5" fill="${c||'var(--muted)'}">${t}</text>`;
+  let s=`<svg viewBox="0 0 720 330" width="720" style="min-width:600px;width:100%;max-width:720px" role="img" aria-label="Combined cycle: gas turbine exhaust goes to the HRSG or bypass stack; HRSG steam drives the steam turbine; condensate returns">
+  <defs>${['r','b','k'].map(k=>`<marker id="ah-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${k==='r'?'var(--act)':k==='b'?'var(--accent)':'var(--ink)'}"/></marker>`).join('')}</defs>`;
+  s+=lbl(20,48,'AIR','var(--muted)','start');
+  s+=arrow(20,60,58,60,'var(--ink)');
+  s+=box(60,35,100,50,'Compressor','');
+  s+=box(172,35,92,50,'Combustor','fuel gas',true);
+  s+=box(276,35,92,50,'Turbine','drives generator',true);
+  s+=lbl(214,105,'GAS TURBINE (Brayton cycle)','var(--muted)');
+  s+=arrow(160,60,170,60,'var(--ink)');s+=arrow(264,60,274,60,'var(--act)');
+  s+=arrow(368,60,398,60,'var(--act)');
+  s+=lbl(383,50,'≈580 °C','var(--act)');
+  s+=box(400,35,90,50,'Three-way','damper');
+  s+=arrow(445,35,445,12,'var(--act)',true);s+=lbl(453,16,'bypass stack (simple cycle)','var(--muted)','start');
+  s+=arrow(490,60,518,60,'var(--act)');
+  s+=box(520,30,180,60,'HRSG','gas cools, water boils',true);
+  s+=arrow(700,50,712,30,'var(--muted)');s+=lbl(706,106,'stack (cooled gas)','var(--muted)','end');
+  s+=arrow(605,90,605,150,'var(--act)');
+  s+=lbl(597,125,'HP · RH · IP · LP steam','var(--act)','end');
+  s+=box(470,152,230,52,'Steam turbine','HP → IP → LP, drives generator');
+  s+=arrow(585,204,585,236,'var(--accent)');
+  s+=box(470,238,230,46,'Condenser','steam → water at vacuum');
+  s+=arrow(470,261,300,261,'var(--accent)');
+  s+=lbl(385,254,'condensate pump','var(--accent)');
+  s+=box(200,238,100,46,'Condensate','back to HRSG');
+  s+=`<path d="M250,238 L250,150 L540,150 L540,92" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#ah-b)"/>`;
+  s+=lbl(258,170,'feed to LP drum, then HP/IP pumps','var(--accent)','start');
+  s+=lbl(470,315,'Cooling water carries the condenser heat away','var(--muted)','start');
+  s+=`</svg>`;
+  return `<div class="figure">${s}<div class="figcap">Red = hot gas and steam, blue = water. On its own the gas turbine turns roughly 40% of the fuel's energy into electricity; the HRSG and steam turbine recover much of what would go up the stack.</div></div>`;
+}
+function satCurve(){
+  const pts=[[0.1013,100],[0.2,120.2],[0.4,143.6],[0.6,158.8],[0.8,170.4],[1,179.9],[1.5,198.3],[2,212.4],[3,233.9],[4,250.4],[5,263.9],[6,275.6],[7,285.8],[8,295.0],[9,303.3],[10,311.0],[11,318.1],[12,324.7],[13,330.9],[14,336.7]];
+  const W=680,H=340,L=56,R=W-20,Tp=20,B=H-44;
+  const x=p=>L+p/14*(R-L), y=t=>B-(t-80)/(360-80)*(B-Tp);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" style="min-width:560px;width:100%;max-width:${W}px" role="img" aria-label="Water saturation temperature against absolute pressure, 0 to 14 MPa">`;
+  for(let t=100;t<=340;t+=40){ s+=`<line x1="${L}" x2="${R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--rule)" stroke-dasharray="2 4"/><text x="${L-8}" y="${y(t)+4}" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--muted)">${t}</text>`; }
+  for(let p=0;p<=14;p+=2){ s+=`<line x1="${x(p)}" x2="${x(p)}" y1="${B}" y2="${B+4}" stroke="var(--muted)"/><text x="${x(p)}" y="${B+18}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--muted)">${p}</text>`; }
+  s+=`<line x1="${L}" x2="${R}" y1="${B}" y2="${B}" stroke="var(--muted)"/><line x1="${L}" x2="${L}" y1="${Tp}" y2="${B}" stroke="var(--muted)"/>`;
+  s+=`<text x="${(L+R)/2}" y="${H-6}" text-anchor="middle" font-family="Atkinson Hyperlegible, sans-serif" font-size="12" fill="var(--muted)">Pressure, MPa absolute</text>`;
+  s+=`<text x="14" y="${(Tp+B)/2}" text-anchor="middle" transform="rotate(-90 14 ${(Tp+B)/2})" font-family="Atkinson Hyperlegible, sans-serif" font-size="12" fill="var(--muted)">Boiling (saturation) temperature, °C</text>`;
+  s+=`<path d="${pts.map((p,i)=>(i?'L':'M')+x(p[0]).toFixed(1)+','+y(p[1]).toFixed(1)).join(' ')} L${x(14)},${y(80)} L${x(0.1013)},${y(80)} Z" fill="var(--accent-soft)" opacity=".6"/>`;
+  s+=`<path d="${pts.map((p,i)=>(i?'L':'M')+x(p[0]).toFixed(1)+','+y(p[1]).toFixed(1)).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+  s+=`<text x="${x(9)}" y="${y(240)}" font-family="Atkinson Hyperlegible, sans-serif" font-size="12" fill="var(--ink)">below the curve: water is liquid</text>`;
+  s+=`<text x="${x(1.2)}" y="${y(300)}" font-family="Atkinson Hyperlegible, sans-serif" font-size="12" fill="var(--ink)">above the curve: steam (superheated)</text>`;
+  [[0.54,154.8,'LP drum ≈155 °C'],[3.21,237.6,'IP drum ≈238 °C'],[12.44,327.4,'HP drum ≈327 °C']].forEach(([p,t,l])=>{
+    s+=`<circle cx="${x(p)}" cy="${y(t)}" r="5" fill="var(--act)"/><text x="${x(p)+(p>10?-8:10)}" y="${y(t)+(p>1&&p<10?20:-9)}" text-anchor="${p>10?'end':'start'}" font-family="Atkinson Hyperlegible, sans-serif" font-size="12" font-weight="700" fill="var(--act)">${l}</text>`;
+  });
+  s+=`</svg>`;
+  return `<div class="figure">${s}<div class="figcap">Computed from IAPWS-IF97 steam tables. Red dots: the three drums near their working pressures (LP 0.44 MPa gauge ≈ 0.54 MPa absolute).</div></div>`;
+}
+
+/* ---------- modules ---------- */
+const M = [];
+
+M.push({id:'start', n:'0', title:'Start here', short:'Start here',
+goal:['Know what this course is for, who should take it, and how to skip what you already know.'],
+body:()=>`
+<div class="flag"><b>New to power plants?</b> Start with <a href="${PT_URL}" target="_blank" rel="noopener" style="color:var(--accent)">Rumaila Power Plant Technology</a> (course 1), which covers the whole plant. This course is course 2; its placement test will let you skip what course 1 already taught you.</div>\n<p>The <a href="${HRSG_URL}" target="_blank" rel="noopener">HRSG course</a> and the manual it is built on assume you already know how a combined-cycle plant works, what the equipment is called, how instruments measure, and how a shift is run. This course teaches exactly those assumptions and nothing else. It was built by going through the HRSG course line by line and listing every term and idea it uses without explaining. That list is on the <b>What the HRSG course assumes</b> page.</p>
+<h3>The end task</h3>
+<p>By the end you should be able to open the HRSG course and follow every sentence. More concretely, you should be able to:</p>
+<ul>
+<li>Sketch the combined cycle and say where the HRSG, the three-way damper, the condenser and the feed pumps sit.</li>
+<li>Convert between gauge and absolute pressure, t/h and kg/s, and read a drum level in millimetres from a datum.</li>
+<li>Explain boiling, saturation, superheat, flashing, swell and shrink, and natural circulation.</li>
+<li>Explain why thick metal must be heated slowly and why pipes need room to grow.</li>
+<li>Name each HRSG component and valve type and say what it does.</li>
+<li>Explain how level, flow, pressure and temperature are measured, and how a DCS, an interlock and a trip differ.</li>
+<li>Say what each water chemistry parameter protects against.</li>
+<li>Follow a work permit, take and repeat back an order, and read a P&amp;ID, a KKS code and this manual's translated English.</li>
+</ul>
+<p>The <b>Readiness check</b> tests this with questions written in the HRSG course's own language.</p>
+<h3>Who should take what</h3>
+<p>Take the <b>Placement test</b> first. It has two questions per module. Where you get both right, you can skip that module. Mechanical and chemical engineers often skip Modules 3 and 4; electrical and control engineers often skip Module 7; everyone should do Module 10, because the manual's English is unusual.</p>
+<h3>How it works</h3>
+<div class="intro-grid">
+<div><b>Guess first</b>Each module opens with a question before any teaching. Answer it anyway.</div>
+<div><b>Work the examples</b>Worked examples reveal one step at a time. Predict each step first.</div>
+<div><b>Bridge questions</b>Each module ends with questions phrased like the HRSG course, so you know you're ready for it.</div>
+<div><b>Vocabulary drill</b>Short daily drill on the equipment and terms. Five minutes a day.</div>
+</div>
+<p class="src">Plant: Al-Rumailah Combined Cycle 730 MW. The HRSG course covers the Dongfang Lingri MHDB-SGT5-4000F-Q1 HRSG behind a Siemens SGT5-4000F gas turbine.</p>`,
+warm: Q('s0','A guess before you start. The HRSG manual says LP steam pressure is "0.44 MPa (gauge indication)" in one place and "0.44 MPa.a" in another. Does it matter?',[
+ ['No, 0.44 is 0.44.',false,'Gauge pressure is measured from the atmosphere, absolute from a perfect vacuum. They differ by about 0.1 MPa, which is almost 25% here. Module 2 covers this.'],
+ ['Yes, they differ by about 0.1 MPa, roughly a quarter of the value here.',true,'Right. At high pressure the difference hardly matters; at LP it matters a lot. Module 2 covers this.'],
+ ['Only for the safety valves.',false,'It matters for every reading, including the boiling temperature you expect.']
+],'Module 2'),
+practice:[]
+});
+
+M.push({id:'cycle', n:'1', title:'The combined cycle in one picture', short:'Combined cycle',
+goal:['Sketch the flow from air to electricity through GT, HRSG and steam turbine.','Explain why exhaust heat is worth recovering and why there are three pressure levels and a reheat.','Say what "2×1", the bypass stack, turbine bypass and condenser vacuum mean.'],
+body:()=>`
+${cycleFig()}
+<h3>Two engines in series</h3>
+<p>The <b>gas turbine</b> (GT) compresses air, burns fuel gas in it, and expands the hot gas through a turbine that drives a generator. It still throws away gas at about ${N('580 °C')}. The <b>HRSG</b> (heat recovery steam generator) uses that hot exhaust to boil water into steam. The <b>steam turbine</b> (ST) expands the steam to drive a second generator. The <b>condenser</b> turns the used steam back into water, and pumps send that water back to the HRSG. That loop is the steam cycle.</p>
+<p>The HRSG has no burner of its own on this plant ("no supplementary firing"). Every kilowatt it produces comes from GT exhaust, so HRSG output follows GT load.</p>
+<h3>Why three pressures and a reheat</h3>
+<p>Hot gas can boil high-pressure water, but high-pressure water boils at a high temperature (about ${N('327 °C')} at the HP drum's pressure). Once the gas has cooled below that, it can no longer boil HP water. A second, lower-pressure section (IP, boils near ${N('238 °C')}) takes the next slice of heat, and a third (LP, near ${N('155 °C')}) the next. Three levels squeeze more heat out of the gas before it leaves the stack.</p>
+<p><b>Reheat:</b> steam that has done work in the HP turbine comes back ("cold reheat"), goes through the HRSG's <b>reheater</b> to about ${N('560 °C')} again ("hot reheat") and goes to the IP turbine. This raises output and keeps the steam dry for longer in the turbine.</p>
+<h3>Configurations and bypasses</h3>
+<ul>
+<li><b>2×1 / 3×1:</b> two or three gas turbines, each with its own HRSG, feeding one steam turbine through common steam headers. Joining a second HRSG to steam that is already on line is called "combining steam".</li>
+<li><b>Three-way damper and bypass stack:</b> a large flap between GT and HRSG. It sends exhaust either into the HRSG or straight up a bypass stack, letting the GT run alone (simple cycle) with the HRSG isolated.</li>
+<li><b>Turbine bypass:</b> valves that send HRSG steam around the steam turbine straight to the condenser (after cooling it with spray water). Used at startup, shutdown and trips, so the HRSG can make steam when the turbine can't take it.</li>
+<li><b>Condenser vacuum:</b> the condenser runs far below atmospheric pressure. "Vacuum 80 kPa" means 80 kPa below atmosphere, about 21 kPa absolute. Lower pressure means the steam turbine can extract more work, and it is needed before the bypasses can dump steam there.</li>
+</ul>`,
+warm: Q('c1w','Guess: why doesn\'t the plant simply use one very high-pressure boiler section in the HRSG?',[
+ ['High pressure is too dangerous.',false,'The HP section already runs at about 12.4 MPa safely.'],
+ ['Once the gas cools below HP boiling temperature, HP water can\'t take any more heat, so lower-pressure sections recover what\'s left.',true,'Right. That is why there are HP, IP and LP sections, each boiling at a lower temperature.'],
+ ['The steam turbine needs three different steams for balance.',false,'The turbine uses them, but the reason for three levels is heat recovery from the cooling gas.']
+],''),
+worked:{case:'Operators say "the HRSG follows the GT". What does that mean in practice when the GT load drops from 100% to 60%?',steps:[
+ ['Where the heat comes from','No supplementary firing, so all HRSG heat is GT exhaust.'],
+ ['What changes','Less exhaust flow and usually lower exhaust temperature, so less heat reaches the HRSG.'],
+ ['Result','Less steam is produced. Pressures fall (the plant runs "sliding pressure"), steam temperatures may shift, and the spray-water control has to respond.'],
+ ['What an operator watches','Drum levels (a pressure change moves the level, Module 3), steam temperatures and the spray valves. This is why the HRSG course lists "GT load and exhaust temperature variation" as a cause of steam temperature change.']
+]},
+practice:[
+ Q('c1a','What is the three-way damper for?',[
+  ['To control GT exhaust temperature.',false,'It is fully open or fully closed and doesn\'t control temperature.'],
+  ['To send GT exhaust either into the HRSG or up the bypass stack.',true,'Correct. With gas to the bypass stack, the GT runs in simple cycle and the HRSG is isolated.'],
+  ['To mix fresh air with the exhaust.',false,'It does not admit air.']
+ ],''),
+ Q('c1b','What does the turbine bypass do?',[
+  ['Sends HRSG steam around the steam turbine to the condenser.',true,'Right. Used when the turbine can\'t take steam (startup, shutdown, trips).'],
+  ['Sends gas around the HRSG.',false,'That is the three-way damper and bypass stack.'],
+  ['Returns water from the condenser to the HRSG.',false,'That is the condensate system.']
+ ],''),
+ Q('c1c','Where does reheated steam go?',[
+  ['To the HP turbine.',false,'The HP turbine gets HP main steam. Its exhaust is cold reheat.'],
+  ['To the IP turbine.',true,'Correct: cold reheat from the HP turbine is reheated in the HRSG and goes to the IP turbine.'],
+  ['To the condenser.',false,'Only in bypass operation.']
+ ],''),
+ Q('c1d','"Condenser vacuum 85 kPa" means the absolute pressure in the condenser is about:',[
+  ['85 kPa.',false,'Vacuum is measured down from atmospheric (about 101 kPa).'],
+  ['16 kPa.',true,'101 − 85 ≈ 16 kPa absolute.'],
+  ['186 kPa.',false,'Vacuum is below atmospheric, not above.']
+ ],'')
+],
+bridge:[
+ Q('c1x','HRSG course: "The bypass line only can be used when the vacuum pump runs normally and condenser vacuum is more than 80 kPa." Why?',[
+  ['The turbine bypass dumps steam into the condenser, which must be under good vacuum to take it.',true,'Right. Without vacuum the condenser can\'t condense the dumped steam.'],
+  ['The bypass stack needs vacuum to draw gas.',false,'This is the steam turbine bypass, not the gas bypass stack.'],
+  ['Vacuum keeps the drum level stable.',false,'Drum level is not the reason.']
+ ],'HRSG §5.1'),
+ Q('c1y','HRSG course: "Before the second main engine is combined with steam, the first is reduced to the minimum stable combustion load." What is being combined?',[
+  ['Two gas turbines\' fuel supplies.',false,'"Combining steam" is about steam headers.'],
+  ['A second HRSG\'s steam into the header already feeding the steam turbine.',true,'Correct. In a 2×1 or 3×1 plant, each HRSG joins the common steam headers.'],
+  ['The HP and IP steam in one HRSG.',false,'HP and IP stay separate.']
+ ],'HRSG §3.5')
+]});
+
+M.push({id:'units', n:'2', title:'Units and how to read a number', short:'Units',
+goal:['Convert between gauge and absolute pressure, MPa, bar, kPa and mmH₂O.','Convert t/h to kg/s and use rates in °C/min and MPa/min.','Read a drum level in mm from a datum, and read ppm, ppb, µS/cm, MΩ and Nm³/min.'],
+body:()=>`
+<h3>Pressure</h3>
+<p><b>Absolute</b> pressure is measured from a perfect vacuum. <b>Gauge</b> pressure is measured from the surrounding atmosphere, which is about ${N('0.1 MPa')}. So:</p>
+<p style="font-family:var(--mono);font-size:15px">absolute ≈ gauge + 0.1 MPa</p>
+<p>The manual writes "MPa.a" for absolute and "MPa(g)" or "gauge indication" for gauge. Often it writes plain "MPa" and you have to work out which. Local gauges read gauge pressure. At the HP drum (${N('12.44 MPa.a')}) the 0.1 hardly matters; at the LP drum (${N('0.44 MPa g ≈ 0.54 MPa.a')}) it is a quarter of the value.</p>
+${table(['Unit','Equals'],[['1 MPa','10 bar = 1000 kPa'],['1 bar','0.1 MPa ≈ 1 atmosphere'],['1 kPa','1000 Pa'],['100 mmH₂O','≈ 0.98 kPa (used for gas duct and damper pressures)']],[0,1])}
+<h3>Flow</h3>
+<p>Steam and water flows are usually in <b>t/h</b> (tonnes per hour). Gas flow is in <b>kg/s</b>. To convert: ${N('kg/s = t/h ÷ 3.6')}. HP steam 279 t/h = 77.5 kg/s. Air flows use ${N('Nm³/min')}: cubic metres per minute at "normal" conditions (0 °C, 1 atm), so different machines can be compared.</p>
+<h3>Rates</h3>
+<p>Startup limits are rates: ${N('°C/min')} for heating, ${N('MPa/min')} for pressure. To check a rate, divide the change by the time. To plan, divide the total change by the rate: heating a drum from 100 °C to 327 °C at 5 °C/min takes at least ${N('227 ÷ 5 ≈ 45 min')}.</p>
+<h3>Drum level</h3>
+<p>Drum level is in mm from a reference line (the <b>datum</b>), often the drum centreline or a point below it. It is not the depth of water. "−50 mm" means 50 mm below the datum. "NWL+100" means 100 mm above the normal water level.</p>
+<h3>Chemistry and electrical units</h3>
+${table(['Unit','Meaning','Where you meet it'],[
+ ['ppm','parts per million ≈ mg per litre of water','phosphate in drum water'],
+ ['ppb','parts per billion ≈ µg per litre','iron, sodium, silica, oxygen'],
+ ['µS/cm','microsiemens per cm: electrical conductivity, a proxy for dissolved salts','feed, drum water, steam'],
+ ['pH','acidity scale; 7 neutral, above 7 alkaline','feed > 9.4, drum water 9–10'],
+ ['MΩ','megohms: motor insulation resistance, measured with a megger','HP feed pump motor > 6.6 MΩ'],
+ ['mm (vibration)','displacement of the bearing housing','pumps > 0.05 mm: don\'t run'],
+ ['mm²/s','viscosity (how thick an oil is)','damper hydraulic oil'],
+ ['dB(A)','noise level','compressor 76 dB(A)']
+])}`,
+warm: Q('u1w','Guess: a local gauge on the LP drum reads 0.44 MPa. What is the absolute pressure?',[
+ ['0.44 MPa',false,'Local gauges read gauge pressure, relative to the atmosphere.'],
+ ['About 0.54 MPa',true,'Add about 0.1 MPa for the atmosphere.'],
+ ['About 0.34 MPa',false,'You add the atmosphere to gauge pressure, not subtract.']
+],''),
+worked:{case:'The HRSG course flags that the HP high-pressure alarm is 12.3 MPa while the drum working pressure is 12.44 MPa.a. Could both be right?',steps:[
+ ['Check units','12.44 is marked absolute. 12.3 has no mark.'],
+ ['Try gauge','If 12.3 is gauge, then absolute is 12.3 + 0.1 = 12.4 MPa.a.'],
+ ['Compare','12.4 MPa.a is essentially the working pressure, so an alarm there would sound at normal operation.'],
+ ['Conclusion','Unit confusion explains part of the gap but not all of it. The alarm still looks too low, which is why the HRSG course says to get the real setpoint from the DCS. Always ask "gauge or absolute?" before comparing two pressures.']
+]},
+practice:[
+ Q('u1a','Convert 181.5 t/h (HP feed pump rated flow) to kg/s.',[
+  ['50.4 kg/s',true,'181.5 ÷ 3.6 = 50.4.'],
+  ['653 kg/s',false,'That multiplies by 3.6. Divide instead.'],
+  ['18.2 kg/s',false,'Divide by 3.6, not by 10.']
+ ],''),
+ Q('u1b','A drum heats from 150 °C to 250 °C in 25 minutes. The limit is 5 °C/min. Within limit?',[
+  ['Yes, 4 °C/min.',true,'100 ÷ 25 = 4 °C/min.'],
+  ['No, 10 °C/min.',false,'Check the division: 100 °C over 25 min.'],
+  ['Can\'t tell without pressure.',false,'Rate is change ÷ time.']
+ ],''),
+ Q('u1c','Drum level reads "−450 mm". What does that mean?',[
+  ['There is 450 mm of water in the drum.',false,'Level is measured from a datum, not from the bottom.'],
+  ['The water surface is 450 mm below the level datum.',true,'Correct.'],
+  ['The drum is empty.',false,'It is below the datum, not empty.']
+ ],''),
+ Q('u1d','Which unit tells you about dissolved salts in water?',[
+  ['µS/cm (conductivity)',true,'Dissolved salts carry electric current, so conductivity rises with them.'],
+  ['pH',false,'pH is acidity, not total salts.'],
+  ['MΩ',false,'That is motor insulation.']
+ ],''),
+ Q('u1e','3 bar gauge is how many MPa absolute?',[
+  ['0.3 MPa',false,'That is gauge. Add the atmosphere.'],
+  ['0.4 MPa',true,'3 bar = 0.3 MPa gauge; + 0.1 = 0.4 MPa absolute.'],
+  ['3.1 MPa',false,'1 bar = 0.1 MPa.']
+ ],'')
+],
+bridge:[
+ Q('u1x','HRSG course: "Raise pressure at 0.1–0.3 MPa/min." The test pressure is 4.0 MPa. What is the shortest time to reach it from zero?',[
+  ['About 13 minutes.',true,'4.0 ÷ 0.3 ≈ 13.3 minutes at the fastest allowed rate (plus the hold at 10%).'],
+  ['About 40 minutes.',false,'That is at 0.1 MPa/min, the slowest end of the range.'],
+  ['1.2 minutes.',false,'Multiply-versus-divide slip: 4.0 ÷ 0.3.']
+ ],'HRSG §2.3.4'),
+ Q('u1y','HRSG course: HP steam flow 279 t/h, feedwater 305 t/h. How big is the mismatch in kg/s?',[
+  ['About 7.2 kg/s',true,'26 t/h ÷ 3.6 ≈ 7.2 kg/s, a big mismatch that needs explaining.'],
+  ['26 kg/s',false,'26 is in t/h.'],
+  ['94 kg/s',false,'Divide by 3.6.']
+ ],'HRSG M10')
+]});
+
+M.push({id:'steam', n:'3', title:'Water and steam', short:'Water & steam',
+goal:['Use the saturation curve: boiling temperature depends on pressure.','Explain superheat, latent heat, flashing and condensation.','Explain swell and shrink, and how natural circulation works.'],
+body:()=>`
+<h3>Boiling depends on pressure</h3>
+<p>Water boils at 100 °C only at atmospheric pressure. Raise the pressure and it boils hotter; lower it and it boils cooler. The boiling temperature at a given pressure is the <b>saturation temperature</b>. Water at that temperature is <b>saturated</b>; colder water is <b>subcooled</b>; steam hotter than it is <b>superheated</b>.</p>
+${satCurve()}
+${table(['Pressure (abs.)','Saturation temp.','Where'],[['0.1 MPa','100 °C','atmosphere'],['0.54 MPa','155 °C','LP drum'],['1.26 MPa','190 °C','IP "warm/hot" start boundary'],['3.21 MPa','238 °C','IP drum'],['6.4 MPa','280 °C','HP "warm/hot" start boundary'],['12.44 MPa','327 °C','HP drum']],[0,1])}
+<p>So a drum is a pot of boiling water: its temperature is fixed by its pressure. That is why the HRSG course classifies a start by <b>drum saturation temperature</b>: it tells you how hot the thick drum metal is.</p>
+<h3>Superheat</h3>
+<p>Superheat = steam temperature − saturation temperature. HP main steam at 560.7 °C with a drum at 327 °C has about ${N('233 °C')} of superheat. Superheated steam carries no water droplets, which would erode turbine blades or cause water hammer.</p>
+<h3>Latent heat</h3>
+<p>Turning water at its boiling point into steam takes a lot of heat without changing temperature: about ${N('2257 kJ/kg')} at atmospheric pressure, ${N('1160 kJ/kg')} at HP drum pressure. The reverse is <b>condensation</b>: steam touching colder metal gives all that heat back at once. That is why a drum's steam-filled top heats faster than its water-filled bottom during a start.</p>
+<h3>Flashing</h3>
+<p>If the pressure on saturated water drops, the water is suddenly above its new boiling point and part of it boils at once. That is <b>flashing</b>. Flash tanks use it on purpose (blowdown water flashes to steam at lower pressure). In a drum it happens by accident whenever pressure dips.</p>
+<h3>Density</h3>
+<p>Cold water weighs about ${N('998 kg/m³')}. Water at HP drum conditions weighs about ${N('646 kg/m³')}, and HP steam about ${N('74 kg/m³')}. A steam-water mixture is lighter than solid water.</p>
+<h3>Natural circulation</h3>
+<p>From the drum, water falls down unheated pipes (<b>downcomers</b>) into the heated <b>evaporator</b> tubes. There part of it boils. The steam-water mixture is lighter than the water in the downcomers, so it rises back up to the drum. Nothing pumps it; density does the work. If the drum level falls too far, the downcomers stop being fed and the tubes can run dry and overheat.</p>
+<h3>Swell and shrink</h3>
+<ul>
+<li><b>Swell:</b> load rises → steam is drawn faster → drum pressure dips → water flashes → more bubbles in the tubes push water up into the drum → the level <b>rises</b>, even though water is being used faster. Heating a cold drum at startup does the same as bubbles form.</li>
+<li><b>Shrink:</b> load falls → pressure rises → bubbles collapse → the level <b>falls</b>. Cold feedwater added fast also collapses bubbles.</li>
+</ul>
+<p>Both are temporary, and both mislead an operator who reacts only to the level. That is why feed is controlled on steam flow as well as level (three-element control, Module 7).</p>`,
+warm: Q('w1w','Guess: the HP drum pressure is 12.44 MPa absolute. What is the water temperature in it?',[
+ ['About 100 °C.',false,'100 °C is boiling at atmospheric pressure only.'],
+ ['About 327 °C.',true,'At 12.44 MPa water boils at about 327 °C, and a drum is full of boiling water.'],
+ ['About 560 °C.',false,'That is the superheated steam leaving the superheater, not drum water.']
+],''),
+worked:{case:'Morning start: the HP drum local gauge reads 0.38 MPa. Is this a cold, warm or hot start for the HP drum?',steps:[
+ ['Gauge to absolute','0.38 + 0.1 ≈ 0.48 MPa absolute.'],
+ ['Saturation temperature','From the curve or table, water at 0.48 MPa boils at about 150 °C.'],
+ ['Classify','The HRSG course: HP drum cold < 100 °C, warm 100–280 °C, hot > 280 °C. 150 °C is warm.'],
+ ['Why pressure tells you metal temperature','A drum holding pressure is full of saturated water and steam, so its temperature is fixed by its pressure, and the thick wall has settled to about that temperature.']
+]},
+practice:[
+ Q('w1a','Steam leaves the IP superheater at 321 °C. IP drum pressure 3.21 MPa absolute (saturation 238 °C). How much superheat?',[
+  ['About 83 °C',true,'321 − 238 = 83 °C.'],
+  ['321 °C',false,'Superheat is above saturation, not the absolute temperature.'],
+  ['About 560 °C',false,'That is HP and reheat steam temperature.']
+ ],''),
+ Q('w1b','Load rises quickly. For about a minute the drum level goes UP. Why?',[
+  ['Pressure dips, water flashes, bubbles push the level up (swell).',true,'Correct.'],
+  ['Feed control over-reacted.',false,'Swell happens before any feed change.'],
+  ['A tube is leaking.',false,'A leak drops the level.']
+ ],''),
+ Q('w1c','What drives water through the evaporator tubes?',[
+  ['The feed pump.',false,'Feed pumps push water into the drum; they don\'t drive the evaporator loop.'],
+  ['The difference in density between downcomer water and the steam-water mixture in the heated tubes.',true,'That is natural circulation.'],
+  ['The steam turbine\'s suction.',false,'The turbine draws steam from the superheater outlet, not through the evaporator.']
+ ],''),
+ Q('w1d','Why does the steam-filled top of a cold drum heat faster than the water-filled bottom during startup?',[
+  ['Steam condensing on the cold metal releases its latent heat.',true,'Right. Condensation delivers large amounts of heat quickly.'],
+  ['Steam is hotter than the water.',false,'In a drum both are at saturation temperature.'],
+  ['The top is closer to the gas.',false,'Drums sit outside the gas path.']
+ ],''),
+ Q('w1e','Hot water at 0.54 MPa and 155 °C is let into a tank at atmospheric pressure. What happens?',[
+  ['Part of it flashes to steam at once.',true,'155 °C is above 100 °C, the boiling point at atmospheric pressure.'],
+  ['Nothing; it cools slowly.',false,'The pressure drop makes it boil immediately.'],
+  ['It freezes.',false,'No.']
+ ],'')
+],
+bridge:[
+ Q('w1x','HRSG course: at startup, fill the HP drum to about −250 mm, well below normal. Why?',[
+  ['Heating makes bubbles that swell the level, so it needs room to rise.',true,'Right. Swell at first boiling would otherwise push the level towards the high trip.'],
+  ['To save water.',false,'Not the reason.'],
+  ['Because the gauge reads high when cold.',false,'Not the reason given.']
+ ],'HRSG §3.3.2'),
+ Q('w1y','HRSG course: "Full water: superheated steam temperature drops suddenly." Why would a high drum level cool the steam?',[
+  ['Water droplets carried over into the superheater absorb heat as they boil off.',true,'Correct. That is carry-over.'],
+  ['Feedwater is colder than steam.',false,'Feedwater enters the drum, not the superheater.'],
+  ['The drum pressure rises.',false,'The cause is water in the superheater.']
+ ],'HRSG §7.4.1')
+]});
+
+M.push({id:'metal', n:'4', title:'Metal under heat', short:'Metal & heat',
+goal:['Calculate thermal expansion and explain why pipes and drums need room to move.','Explain thermal stress in thick walls, fatigue and creep.','Explain brittle behaviour when cold and thermal shock.'],
+body:()=>`
+<h3>Everything grows</h3>
+<p>Steel expands by about ${N('12 µm per metre per °C')} (${N('12 × 10⁻⁶ /°C')}). The HP drum is 12.5 m long. Heated from 20 °C to 327 °C it grows about:</p>
+<p style="font-family:var(--mono);font-size:15px">12.5 m × 12×10⁻⁶ × 307 °C ≈ 0.046 m ≈ 46 mm</p>
+<p>Superheater tubes at 560 °C grow even more. If anything stops that growth, it bends pipes, cracks welds or tears supports. So pipes hang on <b>hangers</b> and <b>supports</b> that let them slide, and drums and headers carry <b>expansion indicators</b>: pointers that show how far they have moved. At startup you record them cold, then check the movement is what it should be.</p>
+<h3>Thermal stress in thick walls</h3>
+<p>Heat enters a drum from the inside. The inner surface heats first and tries to grow; the cooler outer part holds it back. That restraint is <b>thermal stress</b>. It grows with the temperature difference across the wall, and a thick wall has a bigger difference for the same heating rate. The HP drum wall is ${N('125 mm')}: that is why it gets the slowest rate (under 5 °C/min).</p>
+<p>The same happens top to bottom. If the top of a drum is much hotter than the bottom, the top grows more and the drum bends slightly like a banana. The stress concentrates at nozzles and welds. That is the reason for the ${N('40 °C')} top-bottom limit.</p>
+<h3>Fatigue</h3>
+<p>One start does no visible damage. But each start-stop cycle stresses the same spots, and after enough cycles a crack starts. This is <b>low-cycle fatigue</b>. Rate limits don't prevent it; they slow it down so the drum lasts its design life.</p>
+<h3>Creep</h3>
+<p>At high temperature under stress, steel slowly stretches over years. This is <b>creep</b>. It matters most for the hottest parts: superheater and reheater tubes at about 560 °C. Running just a little too hot for long periods eats creep life fast, which is why steam temperature has a high alarm (567.5 °C) close to normal (560.7 °C). That is also why the hottest sections use alloy steels such as P91/T91 and P22/T22, while cooler sections use carbon steel (SA-106C pipe, SA-210C tube).</p>
+<h3>Cold steel and thermal shock</h3>
+<ul>
+<li>Carbon steel becomes less tough when cold. Under high pressure, cold steel can crack suddenly instead of stretching. That is why hydraulic test water must be at least ${N('20 °C')}.</li>
+<li><b>Thermal shock:</b> cold water hitting very hot metal cools the surface in seconds while the inside stays hot. The surface is pulled in tension and can crack. That is why you never refill an HRSG after a serious water shortage until the tubes have cooled.</li>
+</ul>`,
+warm: Q('m4w','Guess: why does the HP drum (125 mm wall) have a slower heating limit than the superheater header?',[
+ ['The drum is more expensive.',false,'Cost isn\'t the physics.'],
+ ['A thicker wall develops a bigger inside-to-outside temperature difference, and so more stress, at the same heating rate.',true,'Correct.'],
+ ['The drum holds water, which heats slowly.',false,'The limit is set by the metal, not the water.']
+],''),
+worked:{case:'An HP superheater header 8 m long runs at 560 °C. How much does it grow from 20 °C, and why does the manual want you to check hangers during startup?',steps:[
+ ['Temperature rise','560 − 20 = 540 °C.'],
+ ['Growth','8 m × 12×10⁻⁶ × 540 ≈ 0.052 m ≈ 52 mm. (Alloy steels expand a little differently; this is an estimate.)'],
+ ['What that means','The header and its pipes must slide about 5 cm. A seized hanger or a pipe resting on a steel beam blocks it.'],
+ ['Link to the manual','The HRSG course asks you to check expansion of pipes, supports and hangers at 0.2–0.4 MPa and compare indicators with the cold record. A reading that stays at zero while others move means something is stuck.']
+]},
+practice:[
+ Q('m4a','Why do drums carry expansion indicators?',[
+  ['To show how far the drum has moved as it heats, so blocked expansion is spotted.',true,'Right.'],
+  ['To measure drum pressure.',false,'That is a pressure gauge.'],
+  ['To show the water level.',false,'That is a level gauge.']
+ ],''),
+ Q('m4b','A superheater runs 10 °C above design for months. What damage mechanism does this speed up?',[
+  ['Creep.',true,'Creep life at high temperature drops quickly with small temperature increases.'],
+  ['Brittle fracture.',false,'That is a cold-metal problem.'],
+  ['Corrosion from oxygen.',false,'That is a chemistry problem.']
+ ],''),
+ Q('m4c','Why is hydraulic test water required to be at least 20 °C?',[
+  ['Cold carbon steel is less tough and can crack suddenly under test pressure.',true,'Correct.'],
+  ['Cold water is too dense for the pumps.',false,'Not the reason.'],
+  ['To avoid condensation on gauges.',false,'Not the reason.']
+ ],''),
+ Q('m4d','Each startup and shutdown slightly damages the drum even when all limits are respected. What is this damage called?',[
+  ['Fatigue.',true,'Low-cycle fatigue from repeated thermal stress cycles.'],
+  ['Creep.',false,'Creep is slow stretching at steady high temperature.'],
+  ['Erosion.',false,'Erosion is wear by flowing water or particles.']
+ ],'')
+],
+bridge:[
+ Q('m4x','HRSG course: "After serious water shortage, feeding water to the HRSG is forbidden until the heating surface cools off." Why?',[
+  ['Cold feedwater on hot dry tubes would cause thermal shock and could split them.',true,'Correct.'],
+  ['The feed pump can\'t start while tubes are hot.',false,'Pumps aren\'t the issue.'],
+  ['Chemistry must first test the water.',false,'Not the reason given.']
+ ],'HRSG §7.4.2'),
+ Q('m4y','HRSG course: during filling, "if the drum top-bottom temperature difference exceeds 40 °C, stop filling." What damage are you avoiding?',[
+  ['The drum bending and stressing its nozzles and welds.',true,'Right: uneven temperature bends the drum.'],
+  ['Water hammer.',false,'Water hammer is a steam-line problem.'],
+  ['Overpressure.',false,'Temperature difference doesn\'t raise pressure.']
+ ],'HRSG §3.3.2')
+]});
+
+M.push({id:'boiler', n:'5', title:'Boiler and HRSG vocabulary', short:'HRSG parts',
+goal:['Name every HRSG component in the manual and say what it does.','Trace water from the condenser to the turbines through the HRSG.'],
+body:()=>`
+<h3>Heating surfaces (in the gas path)</h3>
+${table(['Part','What it does'],[
+ ['Economizer','Heats feedwater close to boiling before it enters the drum. Recovers low-temperature heat.'],
+ ['Evaporator','Tubes where water boils. Fed by downcomers from the drum; the steam-water mixture returns to the drum through risers.'],
+ ['Superheater (SH)','Heats saturated steam from the drum above its boiling point. HP SH has three stages.'],
+ ['Reheater (RH)','Reheats steam returning from the HP turbine.'],
+ ['Condensate heater','The coldest section, at the stack end: warms condensate before the LP drum.'],
+ ['Fin tubes','All HRSG tubes have fins welded on to pick up more heat from the gas.']
+])}
+<h3>Drums and vessels</h3>
+${table(['Part','What it does'],[
+ ['Drum','Horizontal vessel where boiling water and steam separate. One per pressure level. Internals (separators) dry the steam before it leaves.'],
+ ['Downcomer / riser','Unheated pipes down from the drum; pipes carrying steam-water mixture back up.'],
+ ['Header','A large pipe that collects or distributes flow to many tubes.'],
+ ['Deaerator','Removes dissolved oxygen from feedwater by heating it with steam. On this HRSG it is part of the LP system.'],
+ ['Flash tank (blowdown)','Takes hot blowdown water, lets it flash at lower pressure. Continuous blowdown and periodic blowdown each have one.']
+])}
+<h3>Blowdown, vents and drains</h3>
+${table(['Part','What it does'],[
+ ['Continuous blowdown (CBD)','Steady small bleed of drum water from near the surface, where salts concentrate. Rate set by chemistry.'],
+ ['Periodic (intermittent) blowdown','Short blows from the lowest points to remove sludge. Also used to drain and depressurise.'],
+ ['Emergency discharge valve (EDV)','Dumps drum water fast on high level. Opens automatically at the high-high level.'],
+ ['Vent (air valve)','High-point valve. Lets air out when filling, air in when draining, and steam out at startup.'],
+ ['Drain','Low-point valve. Removes water, especially condensate from steam lines before they are used.'],
+ ['Desuperheater / attemperator','Sprays feedwater into steam to control its temperature.']
+])}
+<h3>Structure</h3>
+${table(['Part','What it does'],[
+ ['Casing, insulation, lagging','The gas-tight box and its heat insulation; outside cladding is the "guard sheath".'],
+ ['Manhole','Bolted opening to get inside a drum or the casing for inspection.'],
+ ['Hangers and supports','Carry pipe weight while letting it expand.'],
+ ['Expansion indicator','Pointer showing how far a drum or header has moved.'],
+ ['Stack','Chimney after the HRSG. The bypass stack is a separate chimney before it.']
+])}
+<h3>Following a drop of water</h3>
+<p>Condenser → condensate pump → condensate heater → LP drum (deaerated) → HP or IP feed pump → economizer → drum → downcomer → evaporator → drum (steam separates) → superheater → main steam valve → turbine.</p>`,
+warm: Q('b1w','Guess: which HRSG part heats water that has not yet boiled?',[
+ ['Superheater.',false,'The superheater heats steam.'],
+ ['Economizer.',true,'Right: economizers heat feedwater close to boiling.'],
+ ['Evaporator.',false,'The evaporator is where water boils.']
+],''),
+worked:{case:'Trace a kilogram of water from the condenser until it reaches the IP turbine as reheated steam.',steps:[
+ ['Condensate','Condenser → condensate pump → condensate heater (coldest end of the HRSG) → LP drum, where it is deaerated.'],
+ ['Feed','HP feed pump takes it from the LP drum and pushes it through the HP economizer into the HP drum.'],
+ ['Boiling','Down the downcomers, up through the HP evaporator, back into the drum as steam.'],
+ ['Superheating','Steam leaves the drum through three HP superheater stages (spray between stages 2 and 3) to about 560 °C.'],
+ ['Work and reheat','HP turbine → back to the HRSG as cold reheat → reheater to about 560 °C → IP turbine.']
+]},
+practice:[
+ Q('b1a','Where does continuous blowdown take water from, and why?',[
+  ['From near the drum water surface, where dissolved salts are most concentrated.',true,'Right.'],
+  ['From the bottom of the drum, to remove sludge.',false,'That is periodic (intermittent) blowdown.'],
+  ['From the superheater drains.',false,'Those are drains, not blowdown.']
+ ],''),
+ Q('b1b','What is a vent used for when filling a drum?',[
+  ['Letting air out so water can fill the space.',true,'Correct. Close it when water comes out.'],
+  ['Controlling steam temperature.',false,'That is the desuperheater.'],
+  ['Removing sludge.',false,'That is periodic blowdown.']
+ ],''),
+ Q('b1c','What does a desuperheater (attemperator) do?',[
+  ['Sprays water into steam to control its temperature.',true,'Right.'],
+  ['Removes oxygen.',false,'That is the deaerator.'],
+  ['Separates water from steam in the drum.',false,'That is the drum internals.']
+ ],''),
+ O('b1d','Put the water path in order.',['Condensate pump','Condensate heater','LP drum','HP feed pump','HP economizer','HP drum','HP evaporator','HP superheater'],'')
+],
+bridge:[
+ Q('b1x','HRSG course: "Check the emergency water discharge valve and continuous blowdown valve are interlocking open." What problem are they fixing?',[
+  ['A high drum level: both remove water from the drum.',true,'Right: this is from the full-water procedure.'],
+  ['High steam temperature.',false,'Spray water handles temperature.'],
+  ['Low pressure.',false,'They remove water, not add pressure.']
+ ],'HRSG §7.4.1'),
+ Q('b1y','HRSG course: during startup, steam line drains stay open and are closed step by step only as the lines warm and the turbine rolls. Why?',[
+  ['To remove condensed water from steam lines so it doesn\'t cause water hammer or reach the turbine.',true,'Correct.'],
+  ['To lower drum level.',false,'Drains on steam lines don\'t touch drum level much.'],
+  ['To cool the superheater.',false,'Not the purpose.']
+ ],'HRSG §3.3.4')
+]});
+
+M.push({id:'mech', n:'6', title:'Valves, pumps and motors', short:'Valves & pumps',
+goal:['Say what each valve type is for and how it is operated.','Explain NPSH, cavitation, minimum flow and why pumps are never run dry.','Explain hydraulic couplings, bearings, lubrication, seals, vibration and insulation tests.'],
+body:()=>`
+<h3>Valves</h3>
+${table(['Type','Use'],[
+ ['Gate valve','Isolation: fully open or fully closed. Not for throttling; partly open, the gate erodes and vibrates.'],
+ ['Globe valve','Throttling and regulation. Also many drains and vents.'],
+ ['Check (non-return) valve','Lets flow go one way only. Stops backflow through a stopped pump.'],
+ ['Butterfly / ball valve','Quarter-turn valves. Butterflies for large low-pressure lines and air ducts.'],
+ ['Control valve','Moves continuously to any position on a signal from the DCS. Usually air-operated with a positioner.'],
+ ['Motor-operated valve (MOV)','An electric actuator opens and closes it, locally or from the DCS. The manual calls these "electric gates" or "electric doors".'],
+ ['Safety valve','Spring-loaded; pops fully open at its set pressure to protect a vessel, reseats a little below.'],
+ ['Relief valve','Opens in proportion to overpressure; used on liquid lines. The manual also calls the electric vent to atmosphere a relief valve.'],
+ ['Bypass valve','Small valve around a large one: used to warm lines and equalise pressure before opening the big valve.'],
+ ['Primary and secondary valves','On instrument lines: the primary (root) valve at the pipe, the secondary at the instrument.']
+])}
+<p><b>Packing and gland:</b> the seal where the stem leaves the valve body. A leaking gland is tightened by the gland bolts; the manual wants "allowance for more tightening". <b>Gag:</b> a clamp that holds a safety valve shut during tests (the manual's "thimble" or "card").</p>
+<h3>Centrifugal pumps</h3>
+<p>An impeller spins the water fast; the casing turns that speed into pressure. Key ideas:</p>
+<ul>
+<li><b>Cavitation:</b> at the impeller eye pressure is lowest. If it falls below the water's saturation pressure, bubbles form and then collapse violently further in, eating the metal and shaking the pump. Hot water is close to boiling, so it cavitates easily.</li>
+<li><b>NPSH</b> (net positive suction head): how much margin above boiling the water has at the pump inlet. The pump needs a minimum (NPSHr); the system must supply more (NPSHa). The HP and IP feed pumps draw near-saturated water from the LP drum, so NPSH comes mostly from height: the LP drum centreline is at about ${N('35 m')} elevation, far above the feed pumps.</li>
+<li><b>Minimum flow:</b> a pump running with almost no flow heats the trapped water until it flashes. A minimum-flow (recirculation) valve always lets some flow back to the suction.</li>
+<li><b>Never run dry or with air inside:</b> the seals and wear rings need water to cool and lubricate them.</li>
+</ul>
+<h3>Hydraulic coupling</h3>
+<p>The HP feed pump motor runs at constant speed. Between motor and pump is a <b>fluid coupling</b>: the more oil in it, the more torque it passes and the faster the pump turns. A <b>scoop tube</b> sets the oil level, so scoop position controls pump speed (here 25–100%). Starting with the scoop at 0 lets the motor start unloaded.</p>
+<h3>Bearings, lubrication, seals</h3>
+<ul>
+<li><b>Sliding (journal) bearings</b> ride on an oil film; <b>rolling bearings</b> use balls or rollers. Both heat up if oil is short, dirty or too much.</li>
+<li>Oil cups with a sight glass: level between ${N('1/2 and 2/3')}. Bearing coolers need cooling water.</li>
+<li>Shaft seals: <b>packing</b> (rings squeezed by a gland, should drip slightly) or <b>mechanical seal</b> (two polished faces, should not leak).</li>
+<li><b>Vibration</b> comes from misalignment, imbalance, worn bearings, cavitation or loose bolts. It is checked with a vibration meter and a listening rod.</li>
+</ul>
+<h3>Motors</h3>
+<ul>
+<li><b>Insulation test (megger):</b> a high DC voltage measures the resistance between windings and earth. Moisture and dirt lower it. Too low and the motor may fail to earth when started.</li>
+<li><b>Rotation check:</b> bump-start the motor alone and confirm it turns the right way before coupling.</li>
+<li><b>Winding temperature:</b> measured by sensors in the stator; limited by the insulation class (here class F).</li>
+<li><b>Standby and interlock:</b> a second pump that starts automatically if the running one trips.</li>
+</ul>`,
+warm: Q('v1w','Guess: why must a pump never run with its suction valve closed?',[
+ ['It would pump too much.',false,'With suction shut it can\'t pump at all.'],
+ ['It runs dry; seals and internals lose their cooling water and are damaged.',true,'Right.'],
+ ['It reverses direction.',false,'No.']
+],''),
+worked:{case:'Why is the HP feed pump so sensitive to a low LP drum level, when the LP drum still holds plenty of water?',steps:[
+ ['What the pump takes','Water from the LP drum at its boiling point (about 155 °C at 0.54 MPa absolute).'],
+ ['Margin above boiling','Water already at its boiling point has no margin from temperature. The only margin is the height of water above the pump (static head).'],
+ ['What low level does','A lower level means less head, so less NPSH available. The pump approaches cavitation.'],
+ ['Link','That is why the HRSG course checks LP drum level before starting feed pumps, and why the LP drum trip is set where it is.']
+]},
+practice:[
+ Q('v1a','Which valve type should not be used half-open to throttle flow?',[
+  ['Gate valve.',true,'Gate valves are for isolation only.'],
+  ['Globe valve.',false,'Globes are made for throttling.'],
+  ['Control valve.',false,'Control valves are made to sit partly open.']
+ ],''),
+ Q('v1b','What is a minimum-flow valve for?',[
+  ['Keeping enough water flowing through the pump to carry away heat when forward flow is low.',true,'Right.'],
+  ['Limiting maximum flow.',false,'It protects at low flow.'],
+  ['Filling the drum slowly.',false,'Not its job.']
+ ],''),
+ Q('v1c','What does moving the scoop tube of a hydraulic coupling do?',[
+  ['Changes the oil level in the coupling and so the pump speed.',true,'Correct.'],
+  ['Changes the motor speed.',false,'The motor runs at constant speed.'],
+  ['Opens the pump discharge.',false,'That is a valve.']
+ ],''),
+ Q('v1d','A motor insulation reading is low after rain got into its terminal box. Likely cause?',[
+  ['Moisture.',true,'Moisture is the most common cause of low insulation resistance.'],
+  ['Low oil.',false,'Oil is for bearings.'],
+  ['Wrong rotation.',false,'Rotation doesn\'t affect insulation.']
+ ],''),
+ Q('v1e','Noise like gravel inside a pump, with vibration and falling discharge pressure. Most likely?',[
+  ['Cavitation.',true,'Collapsing vapour bubbles sound like gravel.'],
+  ['Too much oil.',false,'That heats bearings.'],
+  ['A closed check valve downstream.',false,'That would stop flow, but the gravel sound points to cavitation.']
+ ],'')
+],
+bridge:[
+ Q('v1x','HRSG course: "feed water pump minimum flow valve must be opened 100%, scoop pipe at 0 position" before starting. Why both?',[
+  ['Minimum flow protects the pump from overheating at low flow; scoop at 0 starts the motor unloaded.',true,'Correct.'],
+  ['Both prevent reverse rotation.',false,'Not what they do.'],
+  ['Both speed up filling.',false,'No.']
+ ],'HRSG §2.2.4'),
+ Q('v1y','HRSG course: "Do not fully close the superheater electric valve after the safety valve reseats." What kind of valve is the "electric valve"?',[
+  ['A motor-operated valve.',true,'Right: "electric valve/gate/door" means MOV.'],
+  ['A solenoid safety valve.',false,'It is an MOV on the superheater outlet line.'],
+  ['An electrical switch.',false,'It is a valve.']
+ ],'HRSG §2.4.4')
+]});
+
+M.push({id:'ic', n:'7', title:'Instruments and control', short:'Instruments & DCS',
+goal:['Explain how pressure, temperature, flow and level are measured and how each can mislead.','Explain the DCS, local/remote, auto/manual and forcing.','Tell an alarm from an interlock from a trip, and explain single- vs three-element level control.'],
+body:()=>`
+<h3>The measurement chain</h3>
+<p>A <b>sensor</b> touches the process; a <b>transmitter</b> turns its signal into a standard current, ${N('4–20 mA')}; the <b>DCS</b> converts that to a number on screen. 4 mA is 0% of range and 20 mA is 100%. A reading below about 4 mA usually means a broken wire, which is why the range doesn't start at zero current.</p>
+${table(['Quantity','Usual sensor','How it can mislead'],[
+ ['Pressure','Bourdon-tube gauge (local), pressure transmitter','gauge vs absolute; blocked impulse line; needs calibration'],
+ ['Temperature','Thermocouple or RTD in a thermowell','slow to respond; broken sensor reads off-scale'],
+ ['Flow','Orifice plate: flow makes a pressure drop, DP ∝ flow²','poor accuracy at low flow; blocked tapping'],
+ ['Level (remote)','DP transmitter with a balance vessel (reference leg)','depends on water density, so needs pressure correction; empty reference leg reads wrong'],
+ ['Level (local)','Bi-colour gauge glass: steam shows red, water green','blocked connections or leaks shift it'],
+ ['Level (local/remote)','Electric-contact gauge: probes at steps detect water by conductivity','steps, not continuous'],
+ ['Level (LP)','Magnetic float/flap gauge','float can stick if it is surged']
+])}
+<p><b>Orifice square law:</b> because DP ∝ flow², at 25% flow the DP is only ${N('6%')} of full scale. Small errors in DP become big errors in flow at low flow.</p>
+<p><b>Balance-vessel level:</b> the transmitter compares the weight of the water in the drum with a reference leg full of condensate. Hot drum water is lighter than cold, so the DCS corrects using drum pressure. If pressure, correction or reference leg is wrong, the DCS shows a believable but wrong level. That is why the local gauge is the reference.</p>
+<h3>The DCS</h3>
+<ul>
+<li><b>Operator stations</b> show readings and let you operate valves and pumps.</li>
+<li><b>EWS</b> (engineering workstation) is where I&amp;C changes logic, and where signals can be <b>simulated</b> or <b>forced</b> for testing. Every force must be removed after a test.</li>
+<li><b>Local/remote:</b> a switch at the equipment decides whether the DCS or the local panel controls it.</li>
+<li><b>Auto/manual:</b> in auto, a controller moves the valve; in manual, you set the output yourself.</li>
+<li><b>Feedback:</b> an MOV reports its position back. "Feedback correct" means the DCS shows what the valve is really doing.</li>
+</ul>
+<h3>Control loops</h3>
+<p>A controller compares the measured value (<b>PV</b>) with the target (<b>setpoint</b>) and moves an output (a valve) to close the gap. A PID controller acts on the size of the gap (P), how long it has lasted (I) and how fast it is changing (D).</p>
+<p><b>Drum level control:</b> <b>single-element</b> uses level only. It reacts to swell by cutting feed, which is backwards. <b>Three-element</b> (the manual says "three impulse") uses level, steam flow and feed flow: it feeds to match steam flow and uses level only to trim. It is used at load; single-element is used at low flow where the flowmeters are poor.</p>
+<h3>Alarms, interlocks and trips</h3>
+${table(['Layer','What it does','Example'],[
+ ['Alarm','Tells you something is abnormal. Nothing moves by itself.','HP drum level +400 mm'],
+ ['Interlock','Automatic action that keeps plant safe or running.','standby pump starts when the running pump trips; EDV opens at +450 mm'],
+ ['Protection / trip','Shuts equipment down to prevent damage.','HRSG trip at +550 mm'],
+ ['Permissive','Condition that must be true before an action is allowed.','vacuum > 80 kPa before the turbine bypass may open']
+])}`,
+warm: Q('i1w','Guess: the DCS shows HP drum level −40 mm and the local gauge glass shows −180 mm. Which should you trust first?',[
+ ['The DCS: it is newer technology.',false,'The DCS level is calculated from a DP signal and a density correction.'],
+ ['The local gauge: it shows the water directly.',true,'Right. The local gauge is the reference, as the HRSG course says. Then find out why they disagree.'],
+ ['Average them.',false,'Averaging hides the fault.']
+],''),
+worked:{case:'At 20% load the feedwater flow reading jumps around by ±15 t/h, while at 90% load it is steady. Is the flowmeter broken?',steps:[
+ ['How it measures','An orifice plate: DP rises with the square of flow.'],
+ ['At low flow','At 20% flow the DP is only 4% of full scale. Small noise in DP is a large share of the signal.'],
+ ['Conclusion','Probably not broken: orifice meters are poor at low flow.'],
+ ['Link','This is why level control uses single-element at low load and three-element at higher load, and why the HRSG course lets you drop from three-impulse to single when it becomes unstable.']
+]},
+practice:[
+ Q('i1a','A transmitter output reads 2 mA. Most likely?',[
+  ['Broken wire or failed transmitter.',true,'Below 4 mA is outside the live range.'],
+  ['Process at 0%.',false,'0% is 4 mA.'],
+  ['Process at −12%.',false,'The DCS treats it as a fault.']
+ ],''),
+ Q('i1b','What is three-element level control?',[
+  ['Control using drum level, steam flow and feedwater flow.',true,'Correct.'],
+  ['Three level transmitters voting.',false,'That is redundancy, not three-element control.'],
+  ['Level, pressure and temperature.',false,'No.']
+ ],''),
+ Q('i1c','Which one is an interlock rather than an alarm or trip?',[
+  ['The standby pump starting automatically when the running pump trips.',true,'An automatic action that isn\'t a shutdown.'],
+  ['A horn when level reaches +400 mm.',false,'That is an alarm.'],
+  ['HRSG shutdown at +550 mm.',false,'That is a protection trip.']
+ ],''),
+ Q('i1d','After an interlock test on the EWS, what must never be forgotten?',[
+  ['Removing all forces and simulations.',true,'A forgotten force leaves the protection disabled.'],
+  ['Restarting the DCS.',false,'Not needed.'],
+  ['Changing the setpoint.',false,'No.']
+ ],''),
+ Q('i1e','Why does a DP drum level transmitter need a pressure correction?',[
+  ['Water density falls as temperature rises, and drum temperature depends on pressure.',true,'Right.'],
+  ['Pressure pushes the float.',false,'There is no float in a DP transmitter.'],
+  ['To convert gauge to absolute.',false,'That is not the purpose.']
+ ],'')
+],
+bridge:[
+ Q('i1x','HRSG course: "If three impulse becomes unstable due to load changes or blowdown, change to single impulse or manual." What does "impulse" mean here?',[
+  ['Element: an input signal to the level controller.',true,'Three-impulse = three-element (level, steam flow, feed flow).'],
+  ['A pressure pulse.',false,'It is a translation of "element".'],
+  ['A pump start.',false,'No.']
+ ],'HRSG §4.2.2'),
+ Q('i1y','HRSG course: "DCS signal simulation from EWS … release simulation or force after the test." What is the EWS?',[
+  ['The DCS engineering workstation.',true,'Correct.'],
+  ['The emergency water system.',false,'No.'],
+  ['The electric winch station.',false,'No.']
+ ],'HRSG §2.2.6')
+]});
+
+M.push({id:'chem', n:'8', title:'Water chemistry for operators', short:'Water chemistry',
+goal:['Explain why only demineralised water is used and why salts concentrate in drums.','Say what pH, conductivity, oxygen, silica, sodium, iron, hydrazine, phosphate and ammonia tell you.','Explain foaming, carry-over and why chemistry can stop a start.'],
+body:()=>`
+<h3>Why demineralised water</h3>
+<p>When water boils in a drum, only pure steam leaves. Everything dissolved stays behind and concentrates. Even small amounts of salt in feedwater build up to scale on tubes (which then overheat), corrosion, and foaming. So the plant uses <b>demineralised</b> water, with almost all dissolved salts removed, and bleeds concentrated drum water out as <b>blowdown</b>.</p>
+<h3>What each parameter tells you</h3>
+${table(['Parameter','What it is','Why operators care'],[
+ ['pH','acidity; alkaline (9–10) keeps steel protected','low pH strips the protective magnetite layer and corrodes steel'],
+ ['Conductivity','dissolved ions','rising conductivity = contamination or poor blowdown'],
+ ['Dissolved oxygen','O₂ in feedwater','causes pitting corrosion; removed by the deaerator and hydrazine'],
+ ['Silica (SiO₂)','dissolved silica','at high pressure it goes into the steam and deposits on turbine blades'],
+ ['Sodium (Na) in steam','salt in the steam','sign of carry-over: drum water getting into steam'],
+ ['Iron, copper','corrosion products','show corrosion somewhere in the cycle; deposit on tubes'],
+ ['Hardness','calcium and magnesium','forms hard scale; should be about zero'],
+ ['Phosphate','dosed into HP/IP drums','buffers drum water pH and keeps hardness as soft sludge'],
+ ['Hydrazine','dosed at the LP drum','removes remaining oxygen'],
+ ['Ammonia','dosed into feedwater, or used for wet lay-up','raises pH throughout the cycle; must not reach the turbine in lay-up strength']
+])}
+<h3>Foaming and carry-over</h3>
+<p>Dirty drum water (high dissolved or suspended solids, oil) foams. Foam and high level let water droplets leave with the steam: <b>carry-over</b>. The steam temperature drops as droplets boil off in the superheater, and salts go to the turbine. Signs: rising sodium or conductivity in steam, falling steam temperature, a swinging level.</p>
+<h3>Sampling</h3>
+<p>Samples are taken continuously from feed, drum water and steam through <b>sample coolers</b> (which need cooling water) into analysers. Sampling lines are flushed at startup because stagnant lines give false readings.</p>
+<h3>Why chemistry can stop a startup</h3>
+<p>If steam fails specification, sending it to the turbine deposits silica and salts on the blades. So the HRSG course says: until chemistry passes, no steam to the turbine; blow down and dose instead.</p>
+<h3>Lay-up (preservation)</h3>
+<p>A shut-down HRSG corrodes wherever oxygen and water meet bare steel. Every preservation method removes one of them: dry it, fill it with alkaline (ammonia) water, blanket it with nitrogen, or put desiccant inside.</p>`,
+warm: Q('h1w','Guess: why does salt build up in a drum even if feedwater is almost pure?',[
+ ['Only pure steam leaves, so everything dissolved stays and concentrates.',true,'Right. Blowdown removes the concentrated water.'],
+ ['Salt forms from steam.',false,'No.'],
+ ['The drum walls release salt.',false,'Corrosion releases iron, not the salts meant here.']
+],''),
+worked:{case:'Steam sodium rises from 2 to 9 ppb over an hour. HP drum level has been running near +300 mm. Steam temperature dipped 6 °C. What is going on?',steps:[
+ ['Sodium in steam','Sodium doesn\'t evaporate. Its presence in steam means drum water droplets are getting into the steam.'],
+ ['Level and temperature','High level and a small temperature drop fit carry-over.'],
+ ['Diagnosis','Carry-over from high level (or foaming if water quality is also poor).'],
+ ['Action','Bring the level back to normal, tell chemistry, check drum water conductivity, increase continuous blowdown if they ask. This is the HRSG course\'s full-water and foaming territory.']
+]},
+practice:[
+ Q('h1a','What does hydrazine do?',[
+  ['Removes dissolved oxygen.',true,'It is an oxygen scavenger.'],
+  ['Lowers pH.',false,'It is slightly alkaline, if anything.'],
+  ['Removes silica.',false,'No.']
+ ],''),
+ Q('h1b','Why is silica controlled so tightly?',[
+  ['At high pressure it travels with the steam and deposits on turbine blades.',true,'Correct.'],
+  ['It makes water acidic.',false,'Not the main concern.'],
+  ['It raises conductivity sharply.',false,'Silica is weakly ionised; its main harm is deposits.']
+ ],''),
+ Q('h1c','Rising sodium in steam most likely means:',[
+  ['Carry-over of drum water.',true,'Right.'],
+  ['Too much hydrazine.',false,'No.'],
+  ['Normal startup.',false,'Sodium in steam is a warning.']
+ ],''),
+ Q('h1d','What is the purpose of continuous blowdown?',[
+  ['To remove concentrated drum water and keep dissolved solids down.',true,'Correct.'],
+  ['To lower drum pressure.',false,'Not its purpose.'],
+  ['To heat feedwater.',false,'No.']
+ ],'')
+],
+bridge:[
+ Q('h1x','HRSG course: foaming action includes "full open the continuous blowdown valve". Why does that help?',[
+  ['It removes the concentrated, dirty drum water that is causing foam.',true,'Right.'],
+  ['It raises steam temperature.',false,'Not directly.'],
+  ['It raises drum level.',false,'It lowers it.']
+ ],'HRSG §7.4.3'),
+ Q('h1y','HRSG course: "After HRSG startup, start the LP drum hydrazine dosing pump and the HP/IP phosphate dosing pumps." What does each do?',[
+  ['Hydrazine removes oxygen; phosphate buffers drum water pH and handles hardness.',true,'Correct.'],
+  ['Both remove oxygen.',false,'Only hydrazine does.'],
+  ['Both raise conductivity.',false,'That is not the goal.']
+ ],'HRSG §3.3.4')
+]});
+
+M.push({id:'safe', n:'9', title:'Working safely and shift practice', short:'Safety & shift',
+goal:['Follow the permit-to-work and isolation process.','Recognise the main hazards in the HRSG area.','Take an order, repeat it back, report back, and keep the log.'],
+body:()=>`
+${note('Your plant\'s own safety rules and permit procedure always come first. This module explains the ideas the manual assumes; it does not replace the plant\'s procedures or site induction.')}
+<h3>Permit to work and isolation</h3>
+<p>No one works on plant equipment without a <b>work permit</b>. Before the permit is issued, operations <b>isolates</b> the equipment: closes and locks valves, vents and drains trapped pressure, switches off and racks out the electrical supply, and tags everything. The worker checks the isolation is effective (zero energy) before starting. When work finishes, the permit is <b>signed off</b> ("terminated" in the manual) and the isolation removed. Only then can the equipment be tested or started. That is why every startup checklist in the manual begins with "work permits concluded".</p>
+<p><b>Test position:</b> a breaker racked out to "test" lets the control circuits work without power reaching the motor. Interlock tests are done this way.</p>
+<h3>Hazards around an HRSG</h3>
+<ul>
+<li><b>Steam:</b> superheated steam is invisible at the leak point. A hissing sound near hot pipes: stay away and report. Never walk into a "clear" jet.</li>
+<li><b>Hot surfaces and hot water:</b> drains and vents discharge near-boiling water that flashes.</li>
+<li><b>Stored pressure:</b> vessels and lines hold pressure until vented. Water under hydraulic test pressure can release violently; no one stands in front of plugs during tests.</li>
+<li><b>Gauge glasses:</b> can burst; flush them standing to the side, with gloves and long sleeves.</li>
+<li><b>Confined spaces:</b> drums and the casing. Entry needs a permit, ventilation, gas testing and a standby person; everyone who goes in is counted out before a manhole is closed.</li>
+<li><b>Rotating equipment:</b> guards in place; don't reach near couplings.</li>
+<li><b>Noise:</b> safety valve lifts and blowdowns are loud; wear ear plugs.</li>
+<li><b>Chemicals:</b> hydrazine is toxic; ammonia is irritating and toxic at high concentration.</li>
+</ul>
+<h3>Roles on shift</h3>
+${table(['Role (manual\'s term)','Does'],[
+ ['Shift leader','commands the shift; approves shutdowns, tests and switching'],
+ ['Main operator','runs the unit from the DCS; leads tests'],
+ ['Vice operator','assists; many routine tasks (level meter calibration, air system changeovers)'],
+ ['Walk inspector (field operator)','local rounds, local operations, reports from the plant'],
+ ['Maintenance, I&C, chemistry','repair; instruments and control; water chemistry and sampling']
+])}
+<h3>Orders and communication</h3>
+<p>When you receive an order: listen, <b>repeat it back</b> exactly, ask if anything is unclear, carry it out, then <b>report back</b> to whoever gave it. The manual calls that person the "starter". This closed loop stops misheard orders, which matter most during faults.</p>
+<h3>The logbook and handover</h3>
+<p>Record events, abnormal readings, defects, tests and their results, with times. At handover, pass on the plant state and anything unfinished. If a fault is in progress, handover waits until it is dealt with or the shift leader allows it.</p>`,
+warm: Q('p1w','Guess: why does every startup checklist begin with "all work permits concluded"?',[
+ ['So nobody is still working on equipment that is about to be pressurised or started.',true,'Right: an open permit means someone may be inside or on it.'],
+ ['For the paperwork audit.',false,'It protects people, not just records.'],
+ ['To free up maintenance staff.',false,'Not the reason.']
+],''),
+worked:{case:'The shift leader on the radio: "Open the HP continuous blowdown manual valve two turns." What exactly do you do?',steps:[
+ ['Repeat back','"Open HP continuous blowdown manual valve two turns." Wait for confirmation.'],
+ ['Check','Make sure you are at the right valve: check the KKS tag, not only the location.'],
+ ['Execute','Open two turns. Watch for anything unexpected (noise, leaks).'],
+ ['Report back','"HP continuous blowdown manual valve opened two turns." Note it in the log if required.']
+]},
+practice:[
+ Q('p1a','A hissing sound near an HRSG steam line but you see nothing. What do you assume?',[
+  ['A superheated steam leak: stay clear and report.',true,'Superheated steam is invisible near the leak.'],
+  ['An air leak; ignore it.',false,'Never assume it\'s harmless near hot lines.'],
+  ['Look closely to find it.',false,'Don\'t approach an invisible jet.']
+ ],''),
+ Q('p1b','Before closing an HRSG drum manhole, what must be confirmed?',[
+  ['Nobody is inside and all tools are out.',true,'Count everyone out.'],
+  ['The drum is full.',false,'You close it before filling.'],
+  ['The DCS shows the manhole closed.',false,'There is no DCS indication for that.']
+ ],''),
+ Q('p1c','What is the purpose of repeating back an order?',[
+  ['To make sure it was heard and understood correctly before acting.',true,'Correct.'],
+  ['Politeness.',false,'It is a safety practice.'],
+  ['To record it.',false,'The log is separate.']
+ ],''),
+ Q('p1d','What does racking a breaker to "test" position allow?',[
+  ['Testing control circuits and interlocks without powering the motor.',true,'Right.'],
+  ['Running the motor at low speed.',false,'No.'],
+  ['Megger testing.',false,'Insulation testing is done differently.']
+ ],'')
+],
+bridge:[
+ Q('p1x','HRSG course: "If faults happen during shift exchange, the exchange continues only after eliminating the fault or with the shift leader\'s permission." Why?',[
+  ['A handover during a fault splits attention and loses information when it matters most.',true,'Right.'],
+  ['Because the log must be full.',false,'Not the reason.'],
+  ['Shift pay rules.',false,'No.']
+ ],'HRSG §7.1'),
+ Q('p1y','HRSG course: "switch the standby motor to TEST POSITION" for an interlock test. What happens then?',[
+  ['Its control circuit works, so the interlock can be checked, but the motor can\'t actually start.',true,'Correct.'],
+  ['The motor runs without load.',false,'No power reaches the motor.'],
+  ['The pump is isolated hydraulically.',false,'Test position is electrical.']
+ ],'HRSG §2.2.6')
+]});
+
+M.push({id:'docs', n:'10', title:'Reading plant documents', short:'P&IDs, KKS, manual English',
+goal:['Read the common P&ID symbols and instrument tags.','Break down a KKS code.','Translate the manual\'s unusual English into standard plant terms.'],
+body:()=>`
+<h3>P&amp;ID basics</h3>
+<p>A P&amp;ID (piping and instrumentation diagram) shows every pipe, valve and instrument and how they connect. It is not to scale and doesn't show physical layout; that is the general arrangement (GA) drawing.</p>
+${table(['Symbol','Means'],[
+ ['Two triangles tip to tip (bow tie)','gate/isolation valve'],
+ ['Bow tie with a filled dot in the middle','globe valve'],
+ ['Bow tie with a dome or box on top','actuated valve (pneumatic dome, motor box)'],
+ ['Line with a flag or arrow, or a "Z"-shaped valve','check valve'],
+ ['Angled valve body with a spring zigzag','safety valve'],
+ ['Circle ("bubble") with letters','instrument; a line through it means it is shown on a panel or DCS'],
+ ['Solid line','process pipe'],
+ ['Dashed line','signal line (electrical or pneumatic)']
+])}
+<p>Symbols vary by company. The first sheet of any P&amp;ID set (the legend) is the authority for your plant.</p>
+<p><b>Instrument letters (ISA style):</b> the first letter is what is measured, the rest what the device does.</p>
+${table(['First letter','Measures','Following letters','Function'],[
+ ['P','pressure','T','transmitter'],['T','temperature','I','indicator'],['F','flow','C','controller'],['L','level','S','switch'],['A','analysis (chemistry)','A','alarm (H high, L low)'],['Z','position','V','valve']
+])}
+<p>So LT = level transmitter, PI = pressure indicator, FIC = flow indicating controller, LAHH = level alarm high-high.</p>
+<h3>KKS codes</h3>
+<p>KKS (German <i>Kraftwerk-Kennzeichensystem</i>, power plant identification system) gives every system, piece of equipment and component a unique code. A typical equipment code reads left to right from the big picture to the single item:</p>
+<p style="font-family:var(--mono);font-size:16px">1 &nbsp;LAB 10 &nbsp;AA 001</p>
+${table(['Part','Example','Means'],[
+ ['Unit / block','1','which unit or block'],
+ ['System (3 letters)','LAB','L = steam-water cycle, LA = feedwater, LAB = feedwater piping'],
+ ['System number','10','which train or section of that system'],
+ ['Equipment type (2 letters)','AA','AA = valve, AP = pump, BB = vessel/tank, CP/CT/CF/CL = pressure/temperature/flow/level measurement'],
+ ['Equipment number','001','which one']
+])}
+<p>Common system letters: <b>HA</b> HRSG pressure system (HAC economizer, HAD evaporator, HAH superheater, HAJ reheater), <b>LA</b> feedwater, <b>LB</b> steam, <b>LC</b> condensate, <b>MA</b> steam turbine, <b>MB</b> gas turbine, <b>HN</b> flue gas exhaust.</p>
+${note('These are the standard VGB KKS letters. Your plant may use its own variations. Check the KKS key issued for the plant before relying on a code.')}
+<h3>The manual's English</h3>
+<p>The manual was translated from Chinese. Many phrases are literal translations. This table turns them into standard terms.</p>
+${table(['Manual says','Means'],[
+ ['door, gate, electric door, electric gate','valve; motor-operated valve'],
+ ['air door, exhaust valve (on drums/headers)','vent valve'],
+ ['manual door','hand-operated valve'],
+ ['furnace, pot','the HRSG (boiler), the drum'],
+ ['vaporizer','evaporator'],
+ ['MP, medium-voltage (in steam context)','IP, intermediate pressure (a translation slip)'],
+ ['three impulse / single impulse','three-element / single-element level control'],
+ ['fixed value','setpoint'],
+ ['put into service, put into operation','commission, bring on line'],
+ ['rolling, turbine rolling','turbine run-up from turning gear'],
+ ['combining steam, parallel steam','connecting a second HRSG to the common header'],
+ ['attemperating water, desuperheating water','spray water'],
+ ['emergency water discharge','emergency drain (EDV)'],
+ ['periodical blowdown','intermittent (bottom) blowdown'],
+ ['expansion container','flash tank'],
+ ['thimble, card (on safety valves)','gag'],
+ ['listening stick / listening bar','stethoscope rod'],
+ ['sundries','debris, loose items'],
+ ['walk inspector','field operator'],
+ ['starter (of an order)','the person who gave the order'],
+ ['latch off','trip'],
+ ['coasting operation','coast-down'],
+ ['reignite the HRSG','restart it (the HRSG has no burner)'],
+ ['chromatic cycle','pipe colour bands'],
+ ['work permit terminated','permit signed off']
+])}`,
+warm: Q('d1w','Guess: the manual says "Check that the main steam pipe drain is opened after the medium-voltage electric main gate of the furnace to be combined." What is the "medium-voltage electric main gate"?',[
+ ['A 6.6 kV breaker.',false,'It is a translation slip: the same Chinese word means medium pressure and medium voltage.'],
+ ['The IP main steam motor-operated valve of the incoming HRSG.',true,'Right. "Medium" = IP, "electric main gate" = main MOV, "furnace" = HRSG. The drain after it must be open.'],
+ ['The gas damper.',false,'No.']
+],'HRSG manual §3.5.2'),
+worked:{case:'You are given the tag 1HAD10CL001 on a field sheet. What is it, roughly?',steps:[
+ ['Unit','1: unit or block 1.'],
+ ['System','HAD: H = heat generation, HA = HRSG pressure system, HAD = evaporator system.'],
+ ['Number','10: first section of that system (for example the HP one; check the key).'],
+ ['Equipment','CL = level measurement, 001 = the first one.'],
+ ['So','A drum/evaporator level measurement, number 1. Check the plant\'s KKS key and the P&amp;ID to confirm which drum.']
+]},
+practice:[
+ Q('d1a','What is an "LT" on a P&ID?',[
+  ['Level transmitter.',true,'L = level, T = transmitter.'],
+  ['Low temperature.',false,'T as a first letter would be temperature.'],
+  ['Line tag.',false,'No.']
+ ],''),
+ Q('d1b','In KKS, what does the equipment code "AP" usually mean?',[
+  ['Pump.',true,'AP = pump unit.'],
+  ['Valve.',false,'Valves are AA.'],
+  ['Pressure measurement.',false,'That is CP.']
+ ],''),
+ Q('d1c','The manual says "open the air door of the superheater". What is that?',[
+  ['The superheater vent valve.',true,'"Air door" = vent valve.'],
+  ['An access door.',false,'Access openings are manholes.'],
+  ['The air compressor valve.',false,'No.']
+ ],''),
+ Q('d1d','"Vaporizer piping rupture" in the manual means a leak in the:',[
+  ['Evaporator.',true,'Vaporizer = evaporator.'],
+  ['Superheater.',false,'No.'],
+  ['Deaerator.',false,'No.']
+ ],''),
+ Q('d1e','"The safety valve cannot reseat because the card is not removed." What was left on?',[
+  ['The gag used during testing.',true,'Right: "card" or "thimble" = gag.'],
+  ['A warning tag.',false,'Not what stops it reseating.'],
+  ['The nameplate.',false,'No.']
+ ],'')
+],
+bridge:[
+ Q('d1x','HRSG course: "Check the LP drum even exhaust electric gate and LP drum exhaust electric gate". What are these?',[
+  ['Motor-operated vent valves on the LP drum.',true,'"Exhaust electric gate" = motor-operated vent.'],
+  ['Stack dampers.',false,'No.'],
+  ['Electrical breakers.',false,'No.']
+ ],'HRSG §2.1.4'),
+ Q('d1y','HRSG manual: "The planned shutdown means shutdown by reducing gas turbine load till the steam turbine latch off and shutdown." What happens to the steam turbine?',[
+  ['It trips.',true,'"Latch off" = trip.'],
+  ['It was synchronised.',false,'No.'],
+  ['It was put on turning gear.',false,'That happens later.']
+ ],'HRSG §5.1')
+]});
+
+/* ---------- placement ---------- */
+const PLACE = [
+ ['cycle', Q('p_c1','Where does the reheater send its steam?',[['IP turbine',true,''],['HP turbine',false,''],['Condenser',false,'']],'')],
+ ['cycle', Q('p_c2','What lets a gas turbine run while its HRSG is isolated?',[['The three-way damper and bypass stack',true,''],['The turbine bypass',false,''],['The deaerator',false,'']],'')],
+ ['units', Q('p_u1','0.44 MPa gauge is about how much absolute?',[['0.54 MPa',true,''],['0.34 MPa',false,''],['4.4 MPa',false,'']],'')],
+ ['units', Q('p_u2','279 t/h is about:',[['77.5 kg/s',true,''],['1004 kg/s',false,''],['27.9 kg/s',false,'']],'')],
+ ['steam', Q('p_w1','What sets the water temperature in a working drum?',[['Its pressure',true,''],['The gas temperature',false,''],['Feed flow',false,'']],'')],
+ ['steam', Q('p_w2','Load rises suddenly and the drum level briefly rises. This is:',[['Swell',true,''],['Shrink',false,''],['A tube leak',false,'']],'')],
+ ['metal', Q('p_m1','Why are thick drums heated slowly?',[['To limit thermal stress across the wall',true,''],['To save gas',false,''],['To avoid corrosion',false,'']],'')],
+ ['metal', Q('p_m2','Slow stretching of hot steel under stress over years is:',[['Creep',true,''],['Fatigue',false,''],['Erosion',false,'']],'')],
+ ['boiler', Q('p_b1','The part that heats feedwater before the drum is the:',[['Economizer',true,''],['Superheater',false,''],['Evaporator',false,'']],'')],
+ ['boiler', Q('p_b2','Continuous blowdown removes:',[['Concentrated water from near the drum surface',true,''],['Sludge from the bottom',false,''],['Condensate from steam lines',false,'']],'')],
+ ['mech', Q('p_v1','Collapsing vapour bubbles inside a pump are called:',[['Cavitation',true,''],['Surge',false,''],['Water hammer',false,'']],'')],
+ ['mech', Q('p_v2','A gate valve is used for:',[['Isolation, fully open or closed',true,''],['Throttling',false,''],['Stopping backflow',false,'']],'')],
+ ['ic', Q('p_i1','A 4–20 mA signal at 4 mA means:',[['0% of range',true,''],['Broken wire',false,''],['20% of range',false,'']],'')],
+ ['ic', Q('p_i2','Three-element drum level control uses:',[['Level, steam flow, feed flow',true,''],['Three level transmitters',false,''],['Level, pressure, temperature',false,'']],'')],
+ ['chem', Q('p_h1','Sodium appearing in steam indicates:',[['Carry-over of drum water',true,''],['Oxygen in feed',false,''],['Normal operation',false,'']],'')],
+ ['chem', Q('p_h2','Hydrazine is dosed to:',[['Remove oxygen',true,''],['Remove silica',false,''],['Lower pH',false,'']],'')],
+ ['safe', Q('p_s1','After receiving an order you should first:',[['Repeat it back',true,''],['Carry it out immediately',false,''],['Write it in the log',false,'']],'')],
+ ['safe', Q('p_s2','Before closing a drum manhole you confirm:',[['Nobody and nothing left inside',true,''],['The drum is warm',false,''],['The vent is closed',false,'']],'')],
+ ['docs', Q('p_d1','In this manual, an "electric door" is:',[['A motor-operated valve',true,''],['An access door',false,''],['A breaker',false,'']],'')],
+ ['docs', Q('p_d2','KKS "AA" usually identifies a:',[['Valve',true,''],['Pump',false,''],['Tank',false,'']],'')]
+];
+
+/* ---------- glossary (for the vocabulary drill) ---------- */
+const GLOSS = [
+ ['Economizer','heats feedwater close to boiling before the drum','boiler'],
+ ['Evaporator','tubes where water boils, fed from the drum','boiler'],
+ ['Superheater','heats saturated steam above its boiling point','boiler'],
+ ['Reheater','reheats steam returning from the HP turbine','boiler'],
+ ['Drum','vessel where steam separates from boiling water','boiler'],
+ ['Downcomer','unheated pipe carrying water down from the drum to the evaporator','boiler'],
+ ['Header','large pipe that collects or distributes flow to many tubes','boiler'],
+ ['Deaerator','removes dissolved oxygen from feedwater by heating it','boiler'],
+ ['Desuperheater','sprays water into steam to control its temperature','boiler'],
+ ['Condensate heater','coldest HRSG section, warms condensate before the LP drum','boiler'],
+ ['Continuous blowdown','steady bleed of concentrated water from near the drum surface','boiler'],
+ ['Periodic blowdown','short blows from low points to remove sludge','boiler'],
+ ['Emergency discharge valve','dumps drum water fast on high level','boiler'],
+ ['Flash tank','vessel where hot blowdown water flashes to steam at lower pressure','boiler'],
+ ['Expansion indicator','pointer showing how far a drum or header has moved','boiler'],
+ ['Manhole','bolted opening to get inside a drum or casing','boiler'],
+ ['Three-way damper','sends GT exhaust to the HRSG or to the bypass stack','cycle'],
+ ['Turbine bypass','sends HRSG steam around the turbine to the condenser','cycle'],
+ ['Condenser','turns used steam back into water under vacuum','cycle'],
+ ['Cold reheat','steam leaving the HP turbine on its way back to the reheater','cycle'],
+ ['Saturation temperature','the boiling temperature at a given pressure','steam'],
+ ['Superheat','how far steam temperature is above saturation','steam'],
+ ['Flashing','instant boiling of hot water when its pressure drops','steam'],
+ ['Swell','temporary drum level rise when pressure dips and bubbles form','steam'],
+ ['Shrink','temporary drum level fall when pressure rises and bubbles collapse','steam'],
+ ['Natural circulation','flow through the evaporator driven only by density difference','steam'],
+ ['Latent heat','heat needed to turn boiling water into steam without changing temperature','steam'],
+ ['Carry-over','drum water droplets leaving with the steam','chem'],
+ ['Thermal stress','stress from parts of the metal being at different temperatures','metal'],
+ ['Creep','slow stretching of hot steel under stress over years','metal'],
+ ['Fatigue','cracking after many repeated stress cycles','metal'],
+ ['Thermal shock','sudden surface cooling that cracks hot metal','metal'],
+ ['Gate valve','isolation valve, fully open or fully closed','mech'],
+ ['Globe valve','valve made for throttling','mech'],
+ ['Check valve','lets flow go in one direction only','mech'],
+ ['Control valve','valve positioned continuously by a controller','mech'],
+ ['Safety valve','spring-loaded valve that pops open at a set pressure','mech'],
+ ['Gag','clamp that holds a safety valve shut during tests','mech'],
+ ['Packing gland','seal around a valve stem or pump shaft, tightened by bolts','mech'],
+ ['Cavitation','vapour bubbles forming and collapsing inside a pump','mech'],
+ ['NPSH','margin above boiling at a pump inlet','mech'],
+ ['Minimum-flow valve','keeps some flow through a pump when forward flow is low','mech'],
+ ['Scoop tube','sets oil level in a fluid coupling, and so pump speed','mech'],
+ ['Megger test','insulation resistance test of a motor winding','mech'],
+ ['Transmitter','turns a measurement into a 4–20 mA signal','ic'],
+ ['Orifice plate','flow element whose pressure drop rises with flow squared','ic'],
+ ['Balance vessel','reference leg for a DP drum level measurement','ic'],
+ ['Bi-colour gauge','local level glass showing steam red and water green','ic'],
+ ['Interlock','automatic action such as a standby pump starting','ic'],
+ ['Permissive','condition that must be true before an action is allowed','ic'],
+ ['Setpoint','the target value a controller works towards','ic'],
+ ['EWS','DCS engineering workstation, where signals can be forced','ic'],
+ ['Hydrazine','oxygen scavenger dosed into feedwater','chem'],
+ ['Phosphate','dosed into drum water to buffer pH and handle hardness','chem'],
+ ['Silica','dissolved impurity that deposits on turbine blades','chem'],
+ ['Work permit','written authority to work on isolated equipment','safe'],
+ ['Isolation','closing, locking and de-energising equipment before work','safe'],
+ ['Repeat-back','saying an order back before carrying it out','safe'],
+ ['KKS','power plant identification code for systems and equipment','docs'],
+ ['P&ID','diagram of pipes, valves and instruments and how they connect','docs']
+];
+
+/* ---------- audit: what the HRSG course assumes ---------- */
+const AUDIT = [
+ ['cycle','GT, HRSG, steam turbine, condenser and how they connect; "no supplementary firing"; 2×1 / 3×1; combining steam; turbine HP/IP/LP bypass; three-way damper and bypass stack; cold and hot reheat; condenser vacuum; sliding pressure; GT load as the HRSG\'s heat source'],
+ ['units','MPa.a vs MPa(g) vs plain MPa; bar and kPa; mmH₂O; t/h vs kg/s; Nm³/min; drum level in mm from a datum and NWL±; °C/min and MPa/min; ppm, ppb, µS/cm, pH, MΩ, mm²/s, dB(A); vibration in mm'],
+ ['steam','saturation temperature and its link to pressure; start types by drum saturation temperature; superheat; latent heat; condensation heating; flashing; densities; natural circulation; swell and shrink; carry-over; why steam must be dry for the turbine'],
+ ['metal','thermal expansion and expansion indicators; hangers and supports; thermal stress in thick walls; drum top-bottom ΔT and bowing; fatigue; creep; alloy vs carbon steels (P91, T22, SA-106C); brittle behaviour when cold; thermal shock'],
+ ['boiler','economizer, evaporator, superheater stages, reheater, condensate heater, fin tubes; drum and internals; downcomers, risers, headers; deaerator; continuous vs periodic blowdown; flash tanks; EDV; vents, drains, air valves; desuperheaters; casing, insulation, guard sheath; manholes; stack'],
+ ['mech','gate, globe, check, butterfly, control, motor-operated, safety and relief valves; bypass valves; primary and secondary valves; packing and glands; gags; centrifugal pumps; cavitation and NPSH; minimum flow and recirculation; venting pumps; hydraulic coupling and scoop tube; sliding vs rolling bearings; oil cups; mechanical seals; vibration; listening rod; megger; rotation check; standby auto-start'],
+ ['ic','4–20 mA; transmitters; orifice flow and its low-flow weakness; DP level with balance vessel and density correction; bi-colour, electric-contact, magnetic flap gauges; DCS, EWS, forcing and simulation; local/remote; auto/manual; feedback; PID; single- vs three-element ("impulse") control; alarm vs interlock vs trip vs permissive'],
+ ['chem','demineralised water; concentration in drums; blowdown; pH, conductivity, oxygen, silica, sodium, iron, copper, hardness; hydrazine, phosphate, ammonia dosing; foaming and carry-over; sample coolers and analysers; why chemistry stops a startup; lay-up principles'],
+ ['safe','work permits and their closure; isolation and test position; steam, hot water, stored pressure, gauge glass, confined space, noise and chemical hazards; shift leader, main operator, vice operator, walk inspector; repeat-back and report-back; logbook; handover during faults'],
+ ['docs','P&ID symbols and instrument letters; general arrangement drawings; KKS codes; the manual\'s translated terms: door/gate, air door, furnace, pot, vaporizer, MP/medium-voltage, impulse, fixed value, rolling, combining steam, attemperating water, thimble/card, listening stick, sundries, walk inspector, starter, latch off, coasting, reignite, chromatic cycle']
+];
+
+
+/* ---------- rendering ---------- */
+const railEl = document.getElementById('rail'), mainEl = document.getElementById('main'), mnav = document.getElementById('mnav');
+const EXTRA = [{id:'place',title:'Placement test'},{id:'drill',title:'Vocabulary drill'},{id:'final',title:'Readiness check'},{id:'ref',title:'Glossary'},{id:'audit',title:'What the HRSG course assumes'}];
+function modQs(m){ return (m.practice||[]).concat(m.bridge||[]); }
+function modDone(m){ const q=modQs(m).length?modQs(m):(m.warm?[m.warm]:[]); return q.length>0 && q.every(x=>solved[x.id]); }
+function renderRail(){
+  const cur = currentId();
+  const total = M.reduce((a,m)=>a+modQs(m).length,0), done = M.reduce((a,m)=>a+modQs(m).filter(x=>solved[x.id]).length,0);
+  const skip = store.get('skip',{});
+  let h = `<h4>Modules</h4>`;
+  M.forEach(m=>{ h += `<button data-go="${m.id}" aria-current="${cur===m.id}"><span class="n">${m.n}</span><span>${m.short}${skip[m.id]?' <span class="stat">· can skip</span>':''}</span><span class="tick${modDone(m)?' done':''}" aria-label="${modDone(m)?'complete':'not complete'}"></span></button>`; });
+  h += `<div class="progress" title="${done} of ${total} items solved"><i style="width:${total?Math.round(done/total*100):0}%"></i></div><div class="stat" style="margin:4px 8px 0">${done}/${total} practice and bridge solved</div>`;
+  h += `<h4>Tests & reference</h4>`;
+  EXTRA.forEach(e=>{ h += `<button data-go="${e.id}" aria-current="${cur===e.id}"><span class="n">·</span><span>${e.title}</span><span></span></button>`; });
+  h += `<h4>Before this course</h4><a class="railink" href="${PT_URL}" target="_blank" rel="noopener">1 · Rumaila Power Plant Technology ↗</a><h4>Next course</h4><a class="railink" href="${HRSG_URL}" target="_blank" rel="noopener">Rumaila HRSG Course ↗</a>`;
+  railEl.innerHTML = h;
+  mnav.innerHTML = M.map(m=>`<option value="${m.id}"${cur===m.id?' selected':''}>${m.n} · ${m.title}${modDone(m)?' ✓':''}</option>`).join('') + EXTRA.map(e=>`<option value="${e.id}"${cur===e.id?' selected':''}>${e.title}</option>`).join('');
+}
+railEl.addEventListener('click', e=>{ const b=e.target.closest('[data-go]'); if(b) go(b.dataset.go); });
+mnav.addEventListener('change', ()=>go(mnav.value));
+function currentId(){ const h=(location.hash||'').replace('#',''); return h || store.get('last','start'); }
+function go(id){ if(location.hash !== '#'+id){ history.replaceState(null,'','#'+id); } store.set('last',id); render(); window.scrollTo(0,0); }
+window.addEventListener('hashchange', render);
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function actHTML(q, label){
+  const src = q.src ? `<span class="src">${q.src}</span>` : '';
+  if(q.type==='order'){
+    return `<div class="act" data-qid="${q.id}"><div class="kind"><span>${label||'Put in order'}</span>${src}</div><div class="q">${q.q}</div><div class="seq"></div><div class="pool"></div><div class="row"><button class="btn" data-check>Check order</button><button class="btn ghost" data-reset>Start again</button></div><div class="fbwrap"></div></div>`;
+  }
+  const panel = q.type==='scn' ? `<div class="panel">${q.panel.map(([t,v,c])=>`<div class="tag-r"><span>${t}</span><span class="val ${c||''}">${v}</span></div>`).join('')}</div>` : '';
+  return `<div class="act" data-qid="${q.id}"><div class="kind"><span>${label|| (q.type==='scn'?'Scenario':'Practice')}</span>${src}</div>${panel}<div class="q">${q.q}</div><div class="opts"></div><div class="fbwrap"></div></div>`;
+}
+function wire(root, q, opts={}){
+  const el = root.querySelector(`[data-qid="${q.id}"]`); if(!el) return;
+  const fbw = el.querySelector('.fbwrap');
+  if(q.type==='order'){
+    const seq = el.querySelector('.seq'), pool = el.querySelector('.pool');
+    let chosen = [];
+    const order = shuffle(q.steps.map((s,i)=>i));
+    function draw(){
+      seq.innerHTML = chosen.map((i,k)=>`<button class="step" data-i="${i}"><span class="i">${k+1}</span><span>${q.steps[i]}</span></button>`).join('');
+      pool.innerHTML = order.filter(i=>!chosen.includes(i)).map(i=>`<button class="step" data-i="${i}"><span class="i">·</span><span>${q.steps[i]}</span></button>`).join('');
+    }
+    pool.addEventListener('click', e=>{ const b=e.target.closest('.step'); if(!b) return; chosen.push(+b.dataset.i); fbw.innerHTML=''; draw(); });
+    seq.addEventListener('click', e=>{ const b=e.target.closest('.step'); if(!b) return; chosen = chosen.filter(i=>i!==+b.dataset.i); fbw.innerHTML=''; draw(); });
+    el.querySelector('[data-reset]').addEventListener('click', ()=>{ chosen=[]; fbw.innerHTML=''; draw(); });
+    el.querySelector('[data-check]').addEventListener('click', ()=>{
+      if(chosen.length < q.steps.length){ fbw.innerHTML = `<div class="fb wrong"><b>Not finished.</b>Place all ${q.steps.length} steps first.</div>`; return; }
+      const good = chosen.map((i,k)=>i===k);
+      [...seq.children].forEach((b,k)=>b.classList.add(good[k]?'right':'wrong'));
+      const n = good.filter(Boolean).length;
+      if(n===q.steps.length){ fbw.innerHTML = `<div class="fb right"><b>All in the right order.</b></div>`; markSolved(q.id); }
+      else { fbw.innerHTML = `<div class="fb wrong"><b>${n} of ${q.steps.length} in the right place.</b>Red steps are out of position. Tap a step to take it back, or start again.</div>`; }
+    });
+    draw(); return;
+  }
+  const box = el.querySelector('.opts');
+  const idx = shuffle(q.o.map((o,i)=>i));
+  box.innerHTML = idx.map(i=>`<button class="opt" data-i="${i}">${q.o[i][0]}</button>`).join('');
+  let first = true;
+  box.addEventListener('click', e=>{
+    const b = e.target.closest('.opt'); if(!b) return;
+    if(opts.lockAfterFirst && !first) return;
+    const [t,ok,fb] = q.o[+b.dataset.i];
+    box.querySelectorAll('.opt').forEach(x=>x.classList.remove('wrong'));
+    b.classList.add(ok?'right':'wrong');
+    fbw.innerHTML = `<div class="fb ${ok?'right':'wrong'}"><b>${ok?'Right.':'Not quite.'}</b>${fb||''}</div>`;
+    if(opts.lockAfterFirst){
+      if(!ok){ const ri = q.o.findIndex(o=>o[1]); box.querySelector(`[data-i="${ri}"]`).classList.add('right'); fbw.innerHTML += `<div class="fb right"><b>Correct answer:</b>${q.o[ri][0]} ${q.o[ri][2]||''}</div>`; }
+      box.querySelectorAll('.opt').forEach(x=>x.style.cursor='default');
+    }
+    if(first){ opts.onAnswer && opts.onAnswer(ok); first=false; }
+    if(ok) markSolved(q.id);
+  });
+}
+function workedHTML(w){ return `<div class="worked" id="worked"><div class="kind">Worked example</div><div class="case">${w.case}</div><div class="wsteps"></div><div class="row"><button class="btn ghost" data-next>Predict the next step, then reveal it</button></div></div>`; }
+function wireWorked(root, w){
+  const el = root.querySelector('#worked'); if(!el) return;
+  const box = el.querySelector('.wsteps'), btn = el.querySelector('[data-next]'); let k=0;
+  btn.addEventListener('click', ()=>{
+    if(k<w.steps.length){ const [l,t]=w.steps[k]; box.insertAdjacentHTML('beforeend', `<div class="wstep"><span class="lbl">Step ${k+1} · ${l}</span>${t}</div>`); k++; }
+    if(k>=w.steps.length){ btn.textContent='All steps shown'; btn.disabled=true; }
+  });
+}
+function recallPool(upto){ const pool=[]; for(const m of M){ if(m.id===upto) break; (m.practice||[]).forEach(q=>{ if(q.type!=='order') pool.push(q); }); } return pool; }
+
+function renderModule(m, idx){
+  const recallQs = shuffle(recallPool(m.id)).slice(0,2).map(q=>Object.assign({},q,{id:q.id+'_r'}));
+  let h = `<div class="eyebrow">Module ${m.n}</div><h1>${m.title}</h1>`;
+  h += `<div class="goal"><b>After this module you can</b><ul>${m.goal.map(g=>`<li>${g}</li>`).join('')}</ul></div>`;
+  if(recallQs.length){ h += `<h2>From earlier modules</h2><p>Two questions from what you have already covered. Answer from memory.</p>` + recallQs.map(q=>actHTML(q,'Recall')).join(''); }
+  if(m.warm){ h += `<h2>Guess first</h2>` + actHTML(m.warm,'Before the lesson'); }
+  h += `<h2>${m.id==='start'?'About this course':'The lesson'}</h2>` + m.body();
+  if(m.worked){ h += `<h2>Worked example</h2>` + workedHTML(m.worked); }
+  if(m.practice && m.practice.length){ h += `<h2>Practice</h2><p>Every wrong answer tells you why. Retry until each is right.</p>` + m.practice.map(q=>actHTML(q)).join(''); }
+  if(m.bridge && m.bridge.length){ h += `<h2>Bridge to the HRSG course</h2><p>These come straight from the HRSG course and manual. If you can answer them, you are ready for the parts of that course that rely on this module.</p>` + m.bridge.map(q=>actHTML(q,'Bridge')).join(''); }
+  const nxt = M[idx+1], prv = M[idx-1];
+  h += `<div class="foot">${prv?`<button class="btn ghost" data-go="${prv.id}">← ${prv.short}</button>`:'<span></span>'}${nxt?`<button class="btn" data-go="${nxt.id}">${nxt.short} →</button>`:`<button class="btn" data-go="final">Readiness check →</button>`}</div>`;
+  mainEl.innerHTML = h;
+  recallQs.forEach(q=>wire(mainEl,q));
+  if(m.warm) wire(mainEl, m.warm);
+  if(m.worked) wireWorked(mainEl, m.worked);
+  modQs(m).forEach(q=>wire(mainEl,q));
+}
+mainEl.addEventListener('click', e=>{ const b=e.target.closest('.foot [data-go], .gochip[data-go]'); if(b) go(b.dataset.go); });
+
+function modName(id){ const m=M.find(x=>x.id===id); return m ? `${m.n} · ${m.short}` : id; }
+
+function renderPlacement(){
+  const items = PLACE.map(([m,q])=>({m,q:Object.assign({},q,{id:q.id+'_p'})}));
+  const res = {}; let answered=0;
+  mainEl.innerHTML = `<div class="eyebrow">Test</div><h1>Placement test</h1>
+  <p>Twenty quick questions, two per module, in module order. One attempt each. Where you get both of a module's questions right, you can skip that module. Guessing defeats the purpose, so if you don't know, pick the answer you think is least wrong and let the test send you to the module.</p>
+  ${items.map((it,i)=>actHTML(it.q,`Q${i+1} · ${modName(it.m)}`)).join('')}
+  <div class="act"><div class="kind"><span>Your plan</span></div><div id="pres" class="stat">Answer all twenty to see which modules to take.</div></div>`;
+  items.forEach(it=>wire(mainEl,it.q,{lockAfterFirst:true,onAnswer:ok=>{
+    res[it.m]=res[it.m]||{n:0,ok:0}; res[it.m].n++; if(ok) res[it.m].ok++; answered++;
+    if(answered===items.length){
+      const take=[], skipM={};
+      M.filter(m=>m.id!=='start').forEach(m=>{ const r=res[m.id]; if(r && r.ok===r.n) skipM[m.id]=true; else take.push(m); });
+      if(!skipM.docs && !take.find(m=>m.id==='docs')) take.push(M.find(m=>m.id==='docs'));
+      store.set('skip',skipM); renderRail();
+      document.getElementById('pres').innerHTML = `<p style="color:var(--ink)"><b>Take:</b> ${take.length?take.map(m=>`<button class="chip gochip" data-go="${m.id}">${m.n} · ${m.short}</button>`).join(' '):'none, go straight to the readiness check.'}</p><p style="color:var(--ink)"><b>Can skip:</b> ${Object.keys(skipM).length?Object.keys(skipM).map(modName).join(', '):'none'}. Module 10 is worth reading anyway for the manual\'s translated English.</p>`;
+    }
+  }}));
+}
+
+function renderDrill(){
+  mainEl.innerHTML = `<div class="eyebrow">Practice</div><h1>Vocabulary drill</h1>
+  <p>A term appears; pick what it does. Sixty terms from every module, drawn at random. Five minutes a day until you get them all without thinking.</p>
+  <div class="act"><div class="kind"><span>What does it do?</span><span class="stat" id="vstat"></span></div>
+  <div class="drill-card"><div class="p" id="vmod"></div><div class="reading" id="vterm" style="font-family:var(--display);font-size:32px"></div></div>
+  <div class="opts" id="vopts"></div><div class="fbwrap" id="vfb"></div>
+  <div class="row"><button class="btn" id="vnext">Next term</button></div></div>`;
+  let st={n:0,ok:0,streak:0}, cur=null, done=false;
+  function pick(){
+    cur = GLOSS[Math.floor(Math.random()*GLOSS.length)]; done=false;
+    const others = shuffle(GLOSS.filter(g=>g!==cur)).slice(0,3);
+    const opts = shuffle([cur,...others]);
+    document.getElementById('vmod').textContent = 'Module ' + modName(cur[2]);
+    document.getElementById('vterm').textContent = cur[0];
+    document.getElementById('vopts').innerHTML = opts.map(o=>`<button class="opt" data-t="${o[0]}">${o[1]}</button>`).join('');
+    document.getElementById('vfb').innerHTML='';
+  }
+  document.getElementById('vopts').addEventListener('click', e=>{
+    const b=e.target.closest('.opt'); if(!b||done) return; done=true;
+    const ok = b.dataset.t===cur[0]; st.n++; if(ok){st.ok++;st.streak++;} else st.streak=0;
+    b.classList.add(ok?'right':'wrong'); if(!ok) document.querySelector(`#vopts [data-t="${cur[0]}"]`).classList.add('right');
+    document.getElementById('vfb').innerHTML = ok ? `<div class="fb right"><b>Right.</b></div>` : `<div class="fb wrong"><b>Not quite.</b>You picked the description of <b>${b.dataset.t}</b>.</div>`;
+    document.getElementById('vstat').textContent = `${st.ok}/${st.n} right · streak ${st.streak}`;
+  });
+  document.getElementById('vnext').addEventListener('click', pick);
+  pick();
+}
+
+function renderFinal(){
+  const items = shuffle(M.flatMap(m=>(m.bridge||[]).map(q=>({m:m.id,q:Object.assign({},q,{id:q.id+'_f'})}))));
+  let score=0, answered=0; const missed=[];
+  mainEl.innerHTML = `<div class="eyebrow">Test</div><h1>Readiness check</h1>
+  <p>All twenty bridge questions, shuffled, one attempt each. They are written in the HRSG course's language. Score 17 or more and you are ready to start the <a href="${HRSG_URL}" target="_blank" rel="noopener">HRSG course</a>.</p>
+  ${items.map((it,i)=>actHTML(it.q,`Question ${i+1} of ${items.length}`)).join('')}
+  <div class="act"><div class="kind"><span>Result</span></div><div class="score" id="fscore">0 / ${items.length} answered</div><div id="fmiss" class="stat" style="margin-top:6px"></div></div>`;
+  items.forEach(it=>wire(mainEl,it.q,{lockAfterFirst:true,onAnswer:ok=>{
+    answered++; if(ok) score++; else missed.push(it.m);
+    document.getElementById('fscore').textContent = `${score} / ${answered} right${answered===items.length?' · finished':''}`;
+    if(answered===items.length){
+      const mods=[...new Set(missed)];
+      document.getElementById('fmiss').innerHTML = (score>=17?`<p style="color:var(--ok)"><b>Ready.</b> Go on to the <a href="${HRSG_URL}" target="_blank" rel="noopener">HRSG course</a>.</p>`:`<p style="color:var(--act)"><b>Not yet.</b> Revisit the modules below, then try again.</p>`) + (mods.length?'Revisit: '+mods.map(id=>`<button class="chip gochip" data-go="${id}">${modName(id)}</button>`).join(' '):'');
+    }
+  }}));
+}
+
+function renderRef(){
+  const groups = M.filter(m=>m.id!=='start').map(m=>({m, rows:GLOSS.filter(g=>g[2]===m.id)})).filter(g=>g.rows.length);
+  mainEl.innerHTML = `<div class="eyebrow">Reference</div><h1>Glossary</h1>
+  <p>Every term from the vocabulary drill, grouped by module. For the manual's translated English, see the table in Module 10.</p>
+  ${groups.map(g=>`<h2>${g.m.n} · ${g.m.title}</h2>`+table(['Term','Meaning'],g.rows.map(r=>[`<b>${r[0]}</b>`,r[1]]))).join('')}`;
+}
+
+function renderAudit(){
+  mainEl.innerHTML = `<div class="eyebrow">For trainers</div><h1>What the HRSG course assumes</h1>
+  <p>This is the checklist this course was built from. I went through the HRSG course and the manual line by line and listed every term and idea they use without explaining. Each item is taught in the module shown. If a trainee is stuck on something in the HRSG course that is not on this list, it belongs here too.</p>
+  ${table(['Module','Assumed knowledge taught there'],AUDIT.map(([id,t])=>[`<button class="chip gochip" data-go="${id}">${modName(id)}</button>`,t]))}
+  <h2>Deliberately left out</h2>
+  <p>Thermodynamic cycle calculations, detailed turbine and generator theory, electrical protection, and gas turbine operation. The HRSG course doesn't need them. They belong in the prerequisites for a gas turbine or steam turbine course, which could reuse Modules 1–4 and 6–10 of this one unchanged.</p>`;
+}
+
+function render(){
+  const id = currentId();
+  renderRail();
+  const idx = M.findIndex(m=>m.id===id);
+  if(idx>=0) renderModule(M[idx], idx);
+  else if(id==='place') renderPlacement();
+  else if(id==='drill') renderDrill();
+  else if(id==='final') renderFinal();
+  else if(id==='ref') renderRef();
+  else if(id==='audit') renderAudit();
+  else renderModule(M[0],0);
+  document.title = 'Rumaila Plant Foundations';
+}
+render();
+
+</script>
+
+</body>
+</html>

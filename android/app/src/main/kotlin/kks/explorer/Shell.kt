@@ -34,6 +34,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -86,6 +87,7 @@ fun Shell(a: MainActivity) {
     val s = a.state
     BackHandler {
         when {
+            s.course != null -> if (a.courseWeb.canGoBack() && a.courseWeb.url?.startsWith("about:") != true) a.courseWeb.goBack() else a.closeCourse()
             s.manage != null -> s.manage = null
             s.joined && s.tab != 0 -> s.tab = 0
             // the page first: a setup form goes back to the choices, an open panel or drawer closes; else leave
@@ -95,18 +97,19 @@ fun Shell(a: MainActivity) {
     MaterialTheme(colorScheme = scheme) {
         when {
             !s.joined -> Web(a.pidWeb, Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding())
+            s.course != null -> CourseScreen(a)
             s.manage != null -> Manage(a)
             else -> NavigationSuiteScaffold(navigationSuiteItems = {
                 item(selected = s.tab == 0, onClick = { s.tab = 0 }, icon = { Icon(PID, null) }, label = { Text("P&ID") })
                 item(selected = s.tab == 1, onClick = { s.tab = 1 }, icon = { Icon(SCHOOL, null) }, label = { Text("Learning") })
                 item(selected = s.tab == 2, onClick = { s.tab = 2; a.refresh() }, label = { Text("Account") }, icon = {
-                    BadgedBox(badge = { if (s.queue > 0) Badge { Text("${s.queue}") } }) { Icon(PERSON, null) }
+                    BadgedBox(badge = { if (s.queue + s.waiting > 0) Badge { Text("${s.queue + s.waiting}") } }) { Icon(PERSON, null) }
                 })
             }) {
                 val inset = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 when (s.tab) {
                     0 -> Web(a.pidWeb, inset.imePadding())
-                    1 -> Learning(inset)
+                    1 -> Learning(a, inset)
                     else -> Account(a, inset)
                 }
             }
@@ -136,17 +139,37 @@ private fun Manage(a: MainActivity) {
     }) { pad -> Web(a.manageWeb, Modifier.fillMaxSize().padding(pad).imePadding()) }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Learning(modifier: Modifier) {
-    Box(modifier.padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(max = 480.dp)) {
-            Icon(SCHOOL, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+private fun CourseScreen(a: MainActivity) {
+    val s = a.state
+    Scaffold(topBar = {
+        TopAppBar(title = { Text(s.course?.title ?: "", maxLines = 1) },
+                  navigationIcon = { IconButton(onClick = { a.closeCourse() }) { Icon(BACK, "Back") } })
+    }) { pad -> Web(a.courseWeb, Modifier.fillMaxSize().padding(pad).imePadding()) }
+}
+
+/** The three plant courses; progress is private (only this person's devices can read it) and follows them. */
+@Composable
+private fun Learning(a: MainActivity, modifier: Modifier) {
+    val s = a.state
+    LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Spacer(Modifier.height(4.dp)); Text("Learning", style = MaterialTheme.typography.headlineSmall) }
+        for (c in s.courses) item {
+            Card(Modifier.fillMaxWidth().clickable { a.openCourse(c) },
+                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(c.title, style = MaterialTheme.typography.titleMedium)
+                    Text("${c.answered} of ${c.total} questions answered correctly", style = MaterialTheme.typography.bodyMedium,
+                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LinearProgressIndicator(progress = { if (c.total > 0) c.answered.toFloat() / c.total else 0f }, Modifier.fillMaxWidth())
+                }
+            }
+        }
+        item {
+            Text("Your progress is private: only your own devices can read it, and it follows you between them.",
+                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(16.dp))
-            Text("Learning", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(8.dp))
-            Text("The three courses (Power Plant Technology, Plant Foundations, HRSG) come here in the next update. " +
-                 "Your progress will be private: only your own devices can read it.",
-                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -225,6 +248,7 @@ private fun Account(a: MainActivity, modifier: Modifier) {
                              trailingContent = {
                                  Row(verticalAlignment = Alignment.CenterVertically) {
                                      if (key == "queue" && s.queue > 0) Badge { Text("${s.queue}") }
+                                     if (key == "devices" && s.waiting > 0) Badge { Text("${s.waiting}") }
                                      Icon(NEXT, null)
                                  }
                              },

@@ -25,6 +25,8 @@ interface Node {
     fun blobWants(): List<String>
     fun blobGet(sha: String): ByteArray?
     fun blobPut(sha: String, data: ByteArray): Boolean
+    /** §17: another device of this node's owner offers its person secrets. -> the `secrets` answer. */
+    fun secretsOffer(remote: String, msg: Map<String, Any?>): Map<String, Any?> = mapOf("t" to "secrets", "secrets" to emptyList<String>())
     /** Join by invite (PROTOCOL.md §16): a device asks with a token and its join request. -> the join_ack message. */
     fun joinOffer(remote: String, msg: Map<String, Any?>): Map<String, Any?> = mapOf("t" to "join_ack", "state" to "unknown")
 }
@@ -210,6 +212,10 @@ object Sync {
             val ses = handshake(it.getInputStream(), it.getOutputStream(), node.identity(), false)
             try {
                 val first = ses.recv()
+                if (first["t"] == "secrets") {          // §17: two devices of one person swap their person secrets
+                    ses.send(node.secretsOffer(ses.remote, first))
+                    return ses.remote to SyncStats(join = "secrets")
+                }
                 if (first["t"] == "join") {
                     val ack = node.joinOffer(ses.remote, first)
                     ses.send(ack)
@@ -226,9 +232,9 @@ object Sync {
     val JOIN_STATES = setOf("waiting", "accepted", "refused", "used", "unknown", "bad")
 
     /** Join by invite (§16): ask the inviting device whether our join request was accepted. The other end must be
-     *  the device named in the invite. -> (state, why) */
-    fun joinAsk(identity: SigningKey, host: String, port: Int, expectPeer: String, token: String, request: Map<String, Any?>,
-                timeoutMs: Int = TIMEOUT_MS): Pair<String, String> {
+     *  the device named in the invite (or picked on the Wi-Fi; token null: ask without one). -> (state, why, answer) */
+    fun joinAsk(identity: SigningKey, host: String, port: Int, expectPeer: String, token: String?, request: Map<String, Any?>,
+                timeoutMs: Int = TIMEOUT_MS): Triple<String, String, Map<String, Any?>> {
         Socket().use { sock ->
             sock.connect(InetSocketAddress(host, port), timeoutMs)
             sock.soTimeout = timeoutMs
@@ -238,7 +244,23 @@ object Sync {
             val ack = ses.expect("join_ack")
             val state = ack["state"] as? String
             if (state !in JOIN_STATES) throw SyncError("bad join answer")
-            return state!! to (ack["why"]?.toString() ?: "").take(200)
+            return Triple(state!!, (ack["why"]?.toString() ?: "").take(200), ack)
         }
     }
+
+    /** §17: give another device of the same person our person secrets and get theirs. -> their secrets */
+    fun secretsSwap(identity: SigningKey, host: String, port: Int, expectPeer: String, person: String, mine: List<ByteArray>,
+                    timeoutMs: Int = TIMEOUT_MS): List<ByteArray> {
+        Socket().use { sock ->
+            sock.connect(InetSocketAddress(host, port), timeoutMs)
+            sock.soTimeout = timeoutMs
+            val ses = handshake(sock.getInputStream(), sock.getOutputStream(), identity, true)
+            if (ses.remote != expectPeer) throw SyncError("a different device answered")
+            ses.send(mapOf("t" to "secrets", "person" to person, "secrets" to mine.map { B64u.encode(it) }))
+            return decodeSecrets(ses.expect("secrets")["secrets"])
+        }
+    }
+
+    fun decodeSecrets(v: Any?): List<ByteArray> = (v as? List<*>).orEmpty().take(16)
+        .mapNotNull { s -> runCatching { B64u.decode(s as String) }.getOrNull()?.takeIf { it.size == 32 } }
 }

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Learning — KKS Explorer</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#243440"><link rel="icon" href="/icon.svg">
+<style>
+:root{--chrome:#1c2730;--chrome2:#243440;--line:#3a5061;--ink:#e9eef2;--muted:#94a6b4;--accent:#ff7a1a;--ok:#4f9cff;
+  --sans:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--chrome);color:var(--ink);font:14px/1.45 var(--sans)}
+header{display:flex;gap:8px;align-items:center;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top,0px));background:var(--chrome2);border-bottom:1px solid var(--line)}
+.brand{font-weight:650;margin-right:auto}
+.btn{padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--chrome);cursor:pointer;text-decoration:none;color:inherit}
+main{padding:12px;max-width:760px;margin:0 auto}
+a.course{display:block;background:var(--chrome2);border:1px solid var(--line);border-radius:8px;padding:14px;margin:10px 0;color:inherit;text-decoration:none}
+a.course:hover{border-color:var(--accent)}
+a.course h2{margin:0 0 4px;font-size:17px}
+.sub{color:var(--muted);font-size:12.5px}
+.bar{height:6px;border-radius:3px;background:var(--line);margin-top:10px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.app header{display:none}
+</style>
+</head>
+<body>
+<header><a class="btn" href="/">← Drawings</a><div class="brand">Learning</div><span class="sub" id="syncStatus"></span></header>
+<main id="main"><p class="sub">Loading…</p></main>
+<script src="common.js"></script>
+<script>
+// The three courses (data/courses, built by tools/build_courses.py). Progress = the course's own "solved" key,
+// from this device's log (private, M4) where there is one, else from this browser.
+(async () => {
+  await K.start();
+  const courses = await (await fetch('/data/courses/courses.json', {credentials: 'same-origin'})).json();
+  let saved = null;
+  try { saved = (await K.api('/api/progress')).courses } catch (e) {}
+  const solvedOf = c => {
+    let s = saved ? saved[c.id]?.solved : localStorage.getItem(c.id + '.solved');
+    try { s = JSON.parse(s || '{}') } catch (e) { s = {} }
+    return c.questions.filter(q => s[q]).length;
+  };
+  document.getElementById('main').innerHTML = courses.map(c => {
+    const n = solvedOf(c), t = c.questions.length;
+    return `<a class="course" href="/data/courses/${encodeURIComponent(c.file)}"><h2>${K.esc(c.title)}</h2>
+      <div class="sub">${n} of ${t} questions answered correctly</div><div class="bar"><i style="width:${t ? Math.round(100 * n / t) : 0}%"></i></div></a>`;
+  }).join('') + `<p class="sub">${saved ? 'Your progress is private: only your own devices can read it, and it follows you between them.'
+                                         : 'On the plant server, progress stays in this browser. The app on your own phone or computer keeps it with you across devices.'}</p>`;
+})();
+</script>
+</body>
+</html>

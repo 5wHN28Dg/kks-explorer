@@ -83,6 +83,14 @@ def check_join_request(req):
 
 
 # ---------- join by invite (PROTOCOL.md §16): the joining side ----------
+def join_code(joiner, admin):
+    """The 6 digits both screens show when a device asks an admin's device without an invite (§16)."""
+    import hashlib
+    h = hashlib.sha256(b'kks-join-code-v1\n' + joiner.encode() + b'\n' + admin.encode()).digest()
+    return f'{int.from_bytes(h[:4], "big") % 1000000:06d}'
+
+
+
 INVITE_KEYS = {'kks_invite', 'plant', 'root', 'peer', 'addrs', 'token', 'exp'}
 
 
@@ -101,15 +109,29 @@ def parse_invite(text):
     return {k: inv.get(k) for k in INVITE_KEYS}
 
 
+def parse_nearby(dev):
+    """A device picked from /api/node/nearby -> an invite without a token (§16: ask the lobby)."""
+    ok = isinstance(dev, dict) and isinstance(dev.get('peer'), str) and isinstance(dev.get('host'), str) and isinstance(dev.get('port'), int)
+    if not ok:
+        raise JoinError('pick a device from the list')
+    return {'kks_invite': 1, 'plant': dev.get('plant'), 'root': None, 'peer': dev['peer'],
+            'addrs': [f'{dev["host"]}:{dev["port"]}'], 'token': None, 'exp': None}
+
+
 class InviteJoin:
     """Runs one join in the background: ask the inviting device until the admin decides, then sync. The UI polls
-    `state()`: connecting | waiting | syncing | joined | failed (+ error) | cancelled."""
+    `state()`: connecting | waiting | confirm | syncing | joined | failed (+ error) | cancelled.
+    Without a token (a device picked on the Wi-Fi) the person must also confirm that the admin's screen shows the same
+    code (`confirm()`) before this device trusts that plant (§16)."""
     POLL, LIMIT = 2, 20 * 60
 
-    def __init__(self, E, svc, inv, username, full_name, position, identity=None):
+    def __init__(self, E, svc, inv, username, full_name, position):
         self.E, self.svc, self.inv = E, svc, inv
         self.request = join_request(E, username, full_name, position)
-        self.st = {'state': 'connecting', 'error': None, 'plant': inv.get('plant'), 'address': None}
+        self.nearby = inv.get('token') is None
+        self.confirmed = not self.nearby
+        self.st = {'state': 'connecting', 'error': None, 'plant': inv.get('plant'), 'address': None,
+                   'code': join_code(self.request['device'], inv['peer']) if self.nearby else None}
         self.stop = False
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -118,6 +140,9 @@ class InviteJoin:
 
     def cancel(self):
         self.stop = True
+
+    def confirm(self):
+        self.confirmed = True
 
     def _run(self):
         from peer import sync as S
@@ -128,17 +153,17 @@ class InviteJoin:
                 for a in inv['addrs']:
                     host, _, port = a.rpartition(':')
                     try:
-                        state, why = S.join_ask(self.E.identity(), host, int(port), inv['peer'], inv['token'], self.request, timeout=8)
+                        state, why, ack = S.join_ask(self.E.identity(), host, int(port), inv['peer'], inv['token'], self.request, timeout=8)
                     except (S.SyncError, OSError, ValueError) as e:
                         last_err = f'{a}: {e}'
                         continue
-                    answer = (state, why, host, int(port))
+                    answer = (state, why, ack, host, int(port))
                     break
                 if not answer:
                     self.st.update(state='connecting', error=f'cannot reach the admin\'s device yet ({last_err})')
                     time.sleep(self.POLL)
                     continue
-                state, why, host, port = answer
+                state, why, ack, host, port = answer
                 self.st['address'] = f'{host}:{port}'
                 if state == 'waiting':
                     self.st.update(state='waiting', error=None)
@@ -148,8 +173,17 @@ class InviteJoin:
                     msg = {'refused': 'the admin refused this device'}.get(state) or why or state
                     self.st.update(state='failed', error=msg)
                     return
+                root = inv.get('root') or ack.get('root')
+                if not isinstance(root, str):
+                    raise JoinError('the admin\'s device did not say which plant')
+                self.st.update(plant=ack.get('plant') or inv.get('plant'))
+                while not self.confirmed and not self.stop and time.time() < deadline:
+                    self.st.update(state='confirm', error=None)   # accepted; waiting for this person's OK on the code
+                    time.sleep(0.3)
+                if not self.confirmed:
+                    break
                 self.st.update(state='syncing', error=None)
-                self.svc.sync_one(host, port, adopt_root=None if self.E.anchor else inv['root'])
+                self.svc.sync_one(host, port, adopt_root=None if self.E.anchor else root)
                 if not self.E.owner():
                     raise JoinError('synced, but this device is not certified in what came back')
                 self.svc.joined()
