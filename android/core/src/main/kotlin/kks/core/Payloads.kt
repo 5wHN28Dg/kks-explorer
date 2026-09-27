@@ -12,7 +12,7 @@ object Payloads {
     private val KKS = Regex("[0-9A-Z/]{3,24}")
     private val SHEET = Regex("[a-z0-9][a-z0-9-]{0,23}")
     private val HEX32 = Regex("[0-9a-f]{32}")
-    private val IMG = Regex("data:image/(jpeg|jpg|png|webp);base64,(.+)", RegexOption.DOT_MATCHES_ALL)
+    private val IMG = Regex("data:image/(jpeg|jpg|png|webp|jxl);base64,(.+)", RegexOption.DOT_MATCHES_ALL)
 
     private fun bad(msg: String): Nothing = throw ApiError(400, msg)
 
@@ -63,8 +63,10 @@ object Payloads {
         }
     }
 
-    /** Validate a client payload -> the payload to keep (photos: the image bytes go to `saveBlob`). */
-    fun normalize(kind: String?, p: Any?, maxBytes: Int, saveBlob: (String, ByteArray) -> String): Map<String, Any?> {
+    /** Validate a client payload -> the payload to keep (photos: the image bytes, through `encode` (-> JPEG XL on the
+     *  phone; null = keep as sent), go to `saveBlob`). */
+    fun normalize(kind: String?, p: Any?, maxBytes: Int, encode: ((ByteArray) -> ByteArray)? = null,
+                  saveBlob: (String, ByteArray) -> String): Map<String, Any?> {
         if (kind !in KINDS || p !is Map<*, *>) bad("bad submission kind or payload")
         return when (kind) {
             "equipment" -> {
@@ -94,9 +96,10 @@ object Payloads {
             "photo" -> {
                 val k = kks(p["kks"])
                 val m = IMG.matchEntire((p["dataUrl"] as? String) ?: "") ?: bad("bad image")
-                val raw = try { java.util.Base64.getMimeDecoder().decode(m.groupValues[2]) } catch (e: IllegalArgumentException) { bad("bad image") }
+                var raw = try { java.util.Base64.getMimeDecoder().decode(m.groupValues[2]) } catch (e: IllegalArgumentException) { bad("bad image") }
                 if (raw.size > maxBytes) bad("image too large")
-                if (blobExt(raw) !in setOf("jpg", "png", "webp")) bad("not an image")
+                if (blobExt(raw) !in setOf("jpg", "png", "webp", "jxl")) bad("not an image")
+                if (encode != null && blobExt(raw) != "jxl") raw = try { encode(raw) } catch (e: Exception) { bad("not a readable image (${e.message})") }
                 val sha = sha256(raw).hex()
                 val file = saveBlob(sha, raw)
                 mapOf("kks" to k, "photo_id" to newId(), "file" to file, "blob" to sha, "size" to raw.size.toLong(),

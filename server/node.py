@@ -7,7 +7,7 @@
 - Without a server: the laptop makes a *join request* (its device ID + who it is, signed with the device key); an admin
   imports it (Manage → Devices), which certifies the device, and hands back a bundle file; importing the bundle here
   finishes the join (the bundle names the plant)."""
-import json, socket, time, urllib.error, urllib.request
+import json, socket, threading, time, urllib.error, urllib.request
 from urllib.parse import urlparse
 
 from peer import proto as P
@@ -80,3 +80,81 @@ def check_join_request(req):
     except (KeyError, ValueError, TypeError, InvalidSignature, P.ProtocolError):
         raise JoinError('the join request is damaged or was changed after it was made')
     return body
+
+
+# ---------- join by invite (PROTOCOL.md §16): the joining side ----------
+INVITE_KEYS = {'kks_invite', 'plant', 'root', 'peer', 'addrs', 'token', 'exp'}
+
+
+def parse_invite(text):
+    """The QR code's text (or the copied code) -> the invite dict, or raises JoinError."""
+    try:
+        inv = json.loads(text) if isinstance(text, str) else text
+    except ValueError:
+        inv = None
+    ok = (isinstance(inv, dict) and inv.get('kks_invite') == 1 and all(isinstance(inv.get(k), str) for k in ('root', 'peer', 'token'))
+          and isinstance(inv.get('addrs'), list) and inv['addrs'] and all(isinstance(a, str) and ':' in a for a in inv['addrs']))
+    if not ok:
+        raise JoinError('that is not a KKS Explorer invite')
+    if isinstance(inv.get('exp'), int) and inv['exp'] < time.time() - 120:
+        raise JoinError('this invite has expired; ask the admin for a new one')
+    return {k: inv.get(k) for k in INVITE_KEYS}
+
+
+class InviteJoin:
+    """Runs one join in the background: ask the inviting device until the admin decides, then sync. The UI polls
+    `state()`: connecting | waiting | syncing | joined | failed (+ error) | cancelled."""
+    POLL, LIMIT = 2, 20 * 60
+
+    def __init__(self, E, svc, inv, username, full_name, position, identity=None):
+        self.E, self.svc, self.inv = E, svc, inv
+        self.request = join_request(E, username, full_name, position)
+        self.st = {'state': 'connecting', 'error': None, 'plant': inv.get('plant'), 'address': None}
+        self.stop = False
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def state(self):
+        return dict(self.st)
+
+    def cancel(self):
+        self.stop = True
+
+    def _run(self):
+        from peer import sync as S
+        inv, deadline, last_err = self.inv, time.time() + self.LIMIT, None
+        try:
+            while not self.stop and time.time() < deadline:
+                answer = None
+                for a in inv['addrs']:
+                    host, _, port = a.rpartition(':')
+                    try:
+                        state, why = S.join_ask(self.E.identity(), host, int(port), inv['peer'], inv['token'], self.request, timeout=8)
+                    except (S.SyncError, OSError, ValueError) as e:
+                        last_err = f'{a}: {e}'
+                        continue
+                    answer = (state, why, host, int(port))
+                    break
+                if not answer:
+                    self.st.update(state='connecting', error=f'cannot reach the admin\'s device yet ({last_err})')
+                    time.sleep(self.POLL)
+                    continue
+                state, why, host, port = answer
+                self.st['address'] = f'{host}:{port}'
+                if state == 'waiting':
+                    self.st.update(state='waiting', error=None)
+                    time.sleep(self.POLL)
+                    continue
+                if state != 'accepted':
+                    msg = {'refused': 'the admin refused this device'}.get(state) or why or state
+                    self.st.update(state='failed', error=msg)
+                    return
+                self.st.update(state='syncing', error=None)
+                self.svc.sync_one(host, port, adopt_root=None if self.E.anchor else inv['root'])
+                if not self.E.owner():
+                    raise JoinError('synced, but this device is not certified in what came back')
+                self.svc.joined()
+                self.st.update(state='joined')
+                return
+            self.st.update(state='cancelled' if self.stop else 'failed', error=None if self.stop else 'the invite ran out of time')
+        except Exception as e:
+            self.st.update(state='failed', error=str(e))

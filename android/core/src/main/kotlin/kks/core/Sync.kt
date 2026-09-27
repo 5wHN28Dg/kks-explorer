@@ -25,10 +25,12 @@ interface Node {
     fun blobWants(): List<String>
     fun blobGet(sha: String): ByteArray?
     fun blobPut(sha: String, data: ByteArray): Boolean
+    /** Join by invite (PROTOCOL.md §16): a device asks with a token and its join request. -> the join_ack message. */
+    fun joinOffer(remote: String, msg: Map<String, Any?>): Map<String, Any?> = mapOf("t" to "join_ack", "state" to "unknown")
 }
 
 data class SyncStats(var sent: Int = 0, var received: Int = 0, var blobsSent: Int = 0, var blobsReceived: Int = 0,
-                     var denied: Boolean = false, var theyDenied: Boolean = false)
+                     var denied: Boolean = false, var theyDenied: Boolean = false, var join: String? = null)
 
 object Sync {
     const val VERSION = 1L
@@ -122,9 +124,15 @@ object Sync {
     }
 
     // ---------- the exchange ----------
-    fun exchange(ses: Session, node: Node, initiator: Boolean, adoptRoot: String? = null): SyncStats {
-        fun turn(mine: Map<String, Any?>, t: String): Map<String, Any?> =
-            if (initiator) { ses.send(mine); ses.expect(t) } else ses.expect(t).also { ses.send(mine) }
+    fun exchange(ses: Session, node: Node, initiator: Boolean, adoptRoot: String? = null, first: Map<String, Any?>? = null): SyncStats {
+        var pending = first                          // the initiator's first message, if serveOne already read it
+        fun turn(mine: Map<String, Any?>, t: String): Map<String, Any?> {
+            if (initiator) { ses.send(mine); return ses.expect(t) }
+            val theirs = pending?.also { pending = null } ?: ses.expect(t)
+            if (theirs["t"] != t) throw SyncError("expected $t, got ${theirs["t"]}")
+            ses.send(mine)
+            return theirs
+        }
 
         val root = node.root()
         val hello = turn(mapOf("t" to "hello", "v" to VERSION, "root" to root, "vv" to node.vv()), "hello")
@@ -194,17 +202,43 @@ object Sync {
         }
     }
 
-    /** Handle one incoming connection. -> (remote, stats); errors propagate after telling the other side. */
+    /** Handle one incoming connection. -> (remote, stats); errors propagate after telling the other side.
+     *  A connection may instead carry one join-by-invite question (§16): stats.join = the answer given. */
     fun serveOne(node: Node, sock: Socket, timeoutMs: Int = TIMEOUT_MS): Pair<String, SyncStats> {
         sock.use {
             it.soTimeout = timeoutMs
             val ses = handshake(it.getInputStream(), it.getOutputStream(), node.identity(), false)
             try {
-                return ses.remote to exchange(ses, node, false)
+                val first = ses.recv()
+                if (first["t"] == "join") {
+                    val ack = node.joinOffer(ses.remote, first)
+                    ses.send(ack)
+                    return ses.remote to SyncStats(join = ack["state"] as String?)
+                }
+                return ses.remote to exchange(ses, node, false, first = first)
             } catch (e: SyncError) {
                 runCatching { ses.send(mapOf("t" to "error", "why" to e.message)) }
                 throw e
             }
+        }
+    }
+
+    val JOIN_STATES = setOf("waiting", "accepted", "refused", "used", "unknown", "bad")
+
+    /** Join by invite (§16): ask the inviting device whether our join request was accepted. The other end must be
+     *  the device named in the invite. -> (state, why) */
+    fun joinAsk(identity: SigningKey, host: String, port: Int, expectPeer: String, token: String, request: Map<String, Any?>,
+                timeoutMs: Int = TIMEOUT_MS): Pair<String, String> {
+        Socket().use { sock ->
+            sock.connect(InetSocketAddress(host, port), timeoutMs)
+            sock.soTimeout = timeoutMs
+            val ses = handshake(sock.getInputStream(), sock.getOutputStream(), identity, true)
+            if (ses.remote != expectPeer) throw SyncError("a different device answered at that address (not the one that showed the invite)")
+            ses.send(mapOf("t" to "join", "token" to token, "request" to request))
+            val ack = ses.expect("join_ack")
+            val state = ack["state"] as? String
+            if (state !in JOIN_STATES) throw SyncError("bad join answer")
+            return state!! to (ack["why"]?.toString() ?: "").take(200)
         }
     }
 }

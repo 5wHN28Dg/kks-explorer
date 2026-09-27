@@ -87,11 +87,15 @@ class WebHost(private val act: MainActivity) {
         }
         if (path.startsWith("/photos/")) {
             val f = App.store.photoFile(path.removePrefix("/photos/")) ?: return notFound()
+            if (f.extension == "jxl") {           // the WebView can't show JPEG XL: a JPEG made from it
+                val jpg = runCatching { Jxl.jpegFor(f, act.cacheDir) }.getOrNull() ?: return notFound()
+                return ok("image/jpeg", jpg.readBytes(), "private, max-age=31536000, immutable")
+            }
             return ok(type(f.name), f.readBytes(), "private, max-age=31536000, immutable")
         }
         val file = when (path) {
             "/", "/index.html" -> "index.html"
-            "/admin.html", "/common.js", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png" -> path.removePrefix("/")
+            "/admin.html", "/common.js", "/qrcodegen.js", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png" -> path.removePrefix("/")
             else -> if (path.startsWith("/data/") && ".." !in path) path.removePrefix("/") else return notFound()   // (no sw.js: nothing to cache)
         }
         asset(file)?.let { return ok(type(file), it) }
@@ -134,6 +138,9 @@ class WebHost(private val act: MainActivity) {
             val fname = Regex("filename=\"([^\"]+)\"").find(r.headers["Content-Disposition"] ?: "")?.groupValues?.get(1) ?: name
             main.post { act.save(fname, r.contentType, r.bytes!!, web) }
         }
+
+        /** Scan a QR code; the text comes back as K.nativeReply(id, 200, text), or status 499 if cancelled. */
+        @JavascriptInterface fun scanQr(id: String) = main.post { act.scanQr { text -> reply(id, if (text != null) 200 else 499, text ?: "") } }
 
         @JavascriptInterface fun platform() = "android"
     }

@@ -10,6 +10,8 @@ interface SyncControl {
     fun syncAll()
     fun snapshot(): Map<String, Any?>
     fun joined()
+    /** "ip:port" addresses other devices on the network may reach this one at (for invites). */
+    fun addresses(): List<String> = emptyList()
 }
 
 class ApiResponse(val status: Int, val json: Any? = null, val bytes: ByteArray? = null,
@@ -26,7 +28,8 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
     private val ENTITIES = setOf("equipment", "review", "link", "photo", "added_tag")
     private val USERNAME = Regex("[A-Za-z0-9_.@-]{2,40}")
     private val CLIENT_ID = Regex("[A-Za-z0-9_-]{8,64}")
-    private val JOIN_DOMAIN = "kks-join-v1\n".toByteArray()
+    val invites = Invites().also { node.invites = it }      // join by invite: the QR codes this device shows
+    @Volatile private var joining: InviteJoin? = null       // not joined yet: the join by invite that is running
 
     private fun ok(v: Any? = mapOf("ok" to true)) = ApiResponse(200, v)
     private fun err(status: Int, msg: String): Nothing = throw ApiError(status, msg)
@@ -51,6 +54,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
     private fun route(method: String, path: String, q: Map<String, String>, d: Map<String, Any?>, raw: Any?): ApiResponse {
         if (method == "GET") when (path) {
             "/api/config" -> return ok(configOut())
+            "/api/node/join-invite" -> return ok(joining?.state() ?: mapOf("state" to null))
         }
         if (method == "POST" && path.startsWith("/api/node/") && node.owner() == null) return nodeAction(path.substringAfterLast('/'), d)
         if (method == "POST" && path == "/api/bundle/import") {
@@ -77,6 +81,8 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             }
             "/api/users" -> { need(me, "admin"); ok(mapOf("users" to usersOut(me))) }
             "/api/devices" -> ok(devicesOut(me))
+            else -> if (path.startsWith("/api/invites/")) inviteStatus(me, path.removePrefix("/api/invites/")) else null
+        } ?: when (path) {
             "/api/sheets" -> {
                 need(me, "admin")
                 ok(mapOf("sheets" to emptyList<Any>(), "job" to null,
@@ -102,6 +108,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             return ok(mapOf("ok" to true, "changed" to revert(me, ref, Payloads.truthy(d["force"])).toLong()))
         }
         Regex("/api/persons/([0-9a-f]{32})").matchEntire(path)?.let { return updatePerson(me, it.groupValues[1], d) }
+        Regex("/api/invites/([A-Za-z0-9_-]{16,40})").matchEntire(path)?.let { return inviteAction(me, it.groupValues[1], d) }
         return when (path) {
             "/api/submit" -> ok(submit(me, d["kind"] as? String, d["payload"], d["client_id"]))
             "/api/profile" -> {
@@ -116,6 +123,14 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
                 ok(mapOf("ok" to true, "changed" to restoreTo(me, ref!!).toLong()))
             }
             "/api/devices/import-request" -> importRequest(me, d)
+            "/api/invites" -> {
+                need(me, "admin")
+                if (sync.port == null) err(409, "Sync is off on this device, so devices cannot join through it.")
+                val addrs = sync.addresses()
+                if (addrs.isEmpty()) err(409, "This phone is not on a network other devices could reach (connect to the Wi-Fi, or turn on its hotspot).")
+                val inv = invites.create(me.person, node.anchor, (node.run.settings["plant"] as? String) ?: plantName, node.device, addrs)
+                ok(mapOf("ok" to true, "invite" to inv, "code" to Json.write(inv)))
+            }
             "/api/devices/revoke" -> revokeDevice(me, d["device"])
             "/api/sync/now" -> {
                 val addr = ((d["address"] as? String) ?: "").trim()
@@ -137,6 +152,8 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         val plant = node.run.settings["plant"] as? String
         return mapOf("plant_name" to (plant ?: plantName), "offline_days" to 3650L, "mode" to "peer", "setup_needed" to false,
                      "app" to true,
+                     // photos become JPEG XL here: the page sends lossless PNG (nothing crosses a network)
+                     "photo_upload" to if (photoEncoder != null) mapOf("type" to "image/png") else mapOf("type" to "image/jpeg", "q" to 0.85),
                      "node" to mapOf("joined" to (node.owner() != null), "device" to node.device, "has_plant" to (node.anchor != null),
                                      "plant" to plant, "can_create" to false))
     }
@@ -169,7 +186,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             val (st, note) = subStatus(old)
             return mapOf("id" to old["id"], "status" to st, "note" to note, "duplicate" to true)
         }
-        val p = Payloads.normalize(kind, payload, maxUploadBytes) { sha, data -> node.store.blobName(sha) ?: "$sha.${blobExt(data)}".also { node.store.putBlob(sha, it, data) } }
+        val p = Payloads.normalize(kind, payload, maxUploadBytes, photoEncoder) { sha, data -> node.store.blobName(sha) ?: "$sha.${blobExt(data)}".also { node.store.putBlob(sha, it, data) } }
         val body = Payloads.toBody(kind!!, p)
         try { Replay.checkData(kind, body) } catch (e: Replay.Ignore) { err(400, "invalid change") }
         val (_, conflicts) = node.plan(kind, body)
@@ -469,19 +486,16 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         return ok()
     }
 
-    fun checkJoinRequest(req: Any?): Map<String, Any?> {
-        if (req !is Map<*, *> || req["kks_join"] != 1L) err(400, "not a join request file")
-        val body = (req as Map<String, Any?>).filterKeys { it != "sig" }
-        val ok = try {
-            ed25519Verify(B64u.decode(req["device"] as String), B64u.decode(req["sig"] as String), JOIN_DOMAIN + Canonical.bytes(body))
-        } catch (e: Exception) { false }
-        if (!ok) err(400, "the join request is damaged or was changed after it was made")
-        return body
-    }
+    fun checkJoinRequest(req: Any?): Map<String, Any?> =
+        try { JoinRequests.check(req) } catch (e: IllegalArgumentException) { err(400, e.message ?: "bad join request") }
 
     private fun importRequest(me: Owner, d: Map<String, Any?>): ApiResponse {
         need(me, "admin")
-        val req = checkJoinRequest(d["request"])
+        return ok(certify(me, checkJoinRequest(d["request"]), Payloads.truthy(d["existing_ok"])))
+    }
+
+    /** A checked join request -> device_cert (+ a new person). */
+    private fun certify(me: Owner, req: Map<String, Any?>, existingOk: Boolean): Map<String, Any?> {
         val name = req["username"] as? String ?: ""
         if (!USERNAME.matches(name)) err(400, "the request has an invalid username")
         val (fn, pos) = person(req)
@@ -489,7 +503,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         val have = node.run.devices[dev]
         var pid = node.run.persons.entries.firstOrNull { (it.value["username"] as String).lowercase() == name.lowercase() }?.key
         if (have != null && have["person"] != pid) err(409, "That laptop is already certified for someone else.")
-        if (pid != null && !Payloads.truthy(d["existing_ok"])) {
+        if (pid != null && !existingOk) {
             val p = node.run.persons[pid]!!
             throw ApiError(409, "existing person", mapOf("existing" to mapOf("username" to p["username"], "full_name" to p["full_name"], "role" to roleOf(pid))))
         }
@@ -500,7 +514,33 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             node.write("person", mapOf("person" to pid, "username" to name, "full_name" to fn, "position" to pos, "role" to "user"))
         }
         if (have == null) node.write("device_cert", mapOf("device" to dev, "person" to pid, "label" to ((req["label"] as? String) ?: "").take(80)))
-        return ok(mapOf("ok" to true, "username" to name, "person" to pid))
+        return mapOf("ok" to true, "username" to name, "person" to pid)
+    }
+
+    private fun inviteStatus(me: Owner, token: String): ApiResponse {
+        need(me, "admin")
+        val st = invites.status(token, me.person) ?: err(404, "no such invite")
+        val req = st["request"] as Map<String, Any?>?
+        val existing = req?.let { r ->
+            node.run.persons.entries.firstOrNull { (it.value["username"] as String).lowercase() == (r["username"] as? String)?.lowercase() }?.let {
+                mapOf("username" to it.value["username"], "full_name" to it.value["full_name"], "role" to roleOf(it.key))
+            }
+        }
+        return ok(st + ("existing" to existing))
+    }
+
+    private fun inviteAction(me: Owner, token: String, d: Map<String, Any?>): ApiResponse {
+        need(me, "admin")
+        when (d["action"]) {
+            "cancel" -> { invites.cancel(token, me.person); return ok() }
+            "accept", "refuse" -> {}
+            else -> err(400, "bad action")
+        }
+        val req = invites.take(token, me.person) ?: err(409, "No device is waiting on this invite (it expired, or was decided already).")
+        if (d["action"] == "refuse") { invites.done(token, false); return ok() }
+        val r = certify(me, req, Payloads.truthy(d["existing_ok"]))
+        invites.done(token, true)
+        return ok(r)
     }
 
     private fun statsOut(st: SyncStats) = mapOf("sent" to st.sent.toLong(), "received" to st.received.toLong(), "blobs_sent" to st.blobsSent.toLong(),
@@ -513,16 +553,29 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             val name = ((d["username"] as? String) ?: "").trim()
             if (!USERNAME.matches(name)) err(400, "Username: 2-40 letters (a-z), digits, . _ - @")
             val (fn, pos) = person(d)
-            val req = linkedMapOf<String, Any?>("kks_join" to 1L, "device" to node.device, "username" to name, "full_name" to fn,
-                "position" to pos, "label" to deviceLabel, "created" to now())
-            req["sig"] = B64u.encode(node.identity().sign(JOIN_DOMAIN + Canonical.bytes(req)))
-            ok(mapOf("ok" to true, "request" to req))
+            ok(mapOf("ok" to true, "request" to JoinRequests.make(node.identity(), node.device, name, fn, pos, deviceLabel, now())))
+        }
+        "join-invite" -> {
+            if (Payloads.truthy(d["cancel"])) { joining?.cancel(); ok() } else {
+                val name = ((d["username"] as? String) ?: "").trim()
+                if (!USERNAME.matches(name)) err(400, "Username: 2-40 letters (a-z), digits, . _ - @")
+                val (fn, pos) = person(d)
+                val inv = try { parseInvite(d["invite"]) } catch (e: IllegalArgumentException) { err(400, e.message ?: "bad invite") }
+                if (node.anchor != null && node.anchor != inv["root"]) err(409, "This phone holds another plant's data; that invite is for a different plant.")
+                joining?.cancel()
+                val job = InviteJoin(node, sync, inv, JoinRequests.make(node.identity(), node.device, name, fn, pos, deviceLabel, now()), invitePollMs)
+                joining = job; job.start()
+                ok(mapOf("ok" to true) + job.state())
+            }
         }
         "join-server" -> { joinServer(((d["url"] as? String) ?: "").trim(), d["username"] as? String, d["password"] as? String); ok() }
         else -> err(404, "not found")
     }
 
     var deviceLabel = "phone"
+    /** Turns a photo (PNG/JPEG/WebP bytes) into JPEG XL; the app sets it (libjxl), tests leave it null. */
+    var photoEncoder: ((ByteArray) -> ByteArray)? = null
+    var invitePollMs = 2000L
 
     private fun joinServer(url: String, username: String?, password: String?) {
         val u = try { URI(if ("://" in url) url else "http://$url") } catch (e: Exception) { err(400, "enter the server address, e.g. http://192.168.1.20:8420") }

@@ -44,6 +44,7 @@ class Engine:
         self.anchor = None
         self.run, self.chain_ignored, self.last = None, {}, None
         self.listeners = []   # called after new entries (own or received): auto-sync, UI
+        self.invites = None   # server.invites.Invites, set by the HTTP handler (join by invite, PROTOCOL.md §16)
         with self.lock:
             self._load()
             from server import migrate_v1
@@ -387,6 +388,11 @@ class Engine:
             return out
         finally:
             c.close()
+
+    def join_offer(self, remote, msg):
+        if not self.invites:
+            return {'t': 'join_ack', 'state': 'unknown'}
+        return self.invites.offer(remote, msg)
 
     def may_read(self, peer):
         """Only a certified, unrevoked device of a known person receives plant data."""

@@ -38,6 +38,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -200,6 +201,12 @@ private fun Account(a: MainActivity, modifier: Modifier) {
                                   keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                 TextButton(onClick = { a.syncNow(address.trim()) }, enabled = !s.busy && address.isNotBlank()) { Text("Sync with it") }
                 s.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (s.paused) Text("Automatic sync is paused: this network is metered.", style = MaterialTheme.typography.bodySmall,
+                                   color = MaterialTheme.colorScheme.primary)
+                ListItem(headlineContent = { Text("Sync on metered networks") },
+                         supportingContent = { Text("Mobile data, phone hotspots, Wi-Fi marked as metered. Off: only “Sync now” syncs there.") },
+                         trailingContent = { Switch(s.meteredAllowed, { a.setMetered(it) }) },
+                         colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 Text("Finding devices: " + s.discovery + (s.syncPort?.let { " · this phone listens on port $it" } ?: ""),
                      style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

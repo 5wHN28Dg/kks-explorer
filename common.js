@@ -159,6 +159,7 @@ K.joinScreen = (cfg, note = '') => {
   const o = K.overlay(`<div class="box"><h1>Set up this ${dev}</h1>
     <p>This ${dev} keeps its own copy of the plant data and syncs with the other devices on the same Wi-Fi.</p>
     ${cfg.node.has_plant ? '<p>It already holds a plant\'s data but is not certified in it yet: import the bundle an admin gave you, or join through the server.</p>' : ''}
+    <button data-a="qr">Join with a QR code from an admin</button>
     <button data-a="server">Join through the plant server</button>
     <button data-a="request">Join through an admin (no server)</button>
     <button data-a="bundle">Import a bundle an admin gave you</button>
@@ -178,6 +179,14 @@ K.joinScreen = (cfg, note = '') => {
   };
   o.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => ({
     bundle: () => file.click(),
+    qr: () => { const scan = !!(K.native && K.native.scanQr);
+      sub('Join with a QR code', `For when an admin is next to you on the same network: they open Manage → Devices → “Add a device with a QR code”. `
+        + (scan ? 'Fill in your details, then scan their screen.' : `This ${dev} can't scan: ask the admin to copy the code under the QR code and send it to you, then paste it here.`),
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+       {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'},
+       ...(scan ? [] : [{name: 'invite', label: 'Invite code (starts with {"kks_invite"…)'}])], scan ? 'Scan the QR code' : 'Join',
+      async v => { if (scan) { v.invite = await K.scanQr(); if (!v.invite) return }
+        await K.api('/api/node/join-invite', v); K.joinWait(cfg) }) },
     server: () => sub('Join through the plant server', `Your normal account on the plant server. The server certifies this ${dev} as yours; afterwards it syncs by itself on the same Wi-Fi.`,
       [{name: 'url', label: 'Server address, e.g. http://192.168.1.20:8420'}, {name: 'username', label: 'Username', ac: 'username'},
        {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Join',
@@ -194,6 +203,33 @@ K.joinScreen = (cfg, note = '') => {
        {name: 'username', label: 'Username', ac: 'username'}], 'Create the plant',
       async v => { await K.api('/api/node/new-plant', v); location.reload() }),
   })[b.dataset.a]());
+};
+
+// Scanning a QR code: only the Android app can (native scanner). -> the text, or null if cancelled.
+K.scanQr = () => new Promise(res => {
+  const id = String(++K.nativeSeq); K.nativeCalls.set(id, ([status, text]) => res(status === 200 ? text : null));
+  K.native.scanQr(id);
+});
+// Join by invite, after the request went out: wait for the admin to accept, then for the first sync.
+K.joinWait = cfg => {
+  const o = K.overlay(`<div class="box"><h1>Joining ${K.esc(cfg.plant_name || 'the plant')}</h1><p class="st">Connecting to the admin's device…</p>
+    <div class="err"></div><button type="button" class="back">Cancel</button></div>`);
+  let stop = false;
+  const cancel = async () => { stop = true; try { await K.api('/api/node/join-invite', {cancel: true}) } catch (e) {} K.joinScreen(cfg) };
+  o.querySelector('.back').onclick = cancel; K.back = () => { cancel(); return true };
+  const tick = async () => {
+    if (stop) return;
+    let st; try { st = await K.api('/api/node/join-invite') } catch (e) { st = {state: 'connecting', error: e.message} }
+    if (st.state === 'joined') return location.reload();
+    const msg = {connecting: 'Connecting to the admin\'s device…', waiting: 'Waiting for the admin to accept on their screen…',
+                 syncing: 'Accepted. Getting the plant data…'}[st.state];
+    if (!msg) { o.querySelector('.st').textContent = st.state === 'cancelled' ? 'Cancelled.' : 'Could not join.';
+      o.querySelector('.err').textContent = st.error || ''; o.querySelector('.back').textContent = '← Back'; return }
+    o.querySelector('.st').textContent = msg;
+    o.querySelector('.err').textContent = st.state === 'connecting' ? (st.error || '') : '';
+    setTimeout(tick, 1000);
+  };
+  tick();
 };
 
 // Remove plant data from this device (logout, account revoked, session expired). Queued changes are kept per user.

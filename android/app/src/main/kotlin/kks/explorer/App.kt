@@ -13,12 +13,20 @@ object App {
     lateinit var store: SqliteStore
     @Volatile var visible = false        // an activity is on screen (discovery + auto sync run while it is)
 
+    fun setMeteredAllowed(context: Context, on: Boolean) {
+        sync.meteredAllowed = on
+        SyncWorker.schedule(context.applicationContext, on)
+    }
+
     @Synchronized fun start(context: Context) {
         if (::node.isInitialized) return
         store = SqliteStore(context.applicationContext)
         node = LocalNode.open(store)
         sync = PhoneSync(context.applicationContext, node).also { it.listen() }
-        SyncWorker.schedule(context.applicationContext)
-        api = LocalApi(node, sync).also { it.deviceLabel = "${Build.MANUFACTURER} ${Build.MODEL}".trim().take(80) }
+        SyncWorker.schedule(context.applicationContext, sync.meteredAllowed)
+        api = LocalApi(node, sync).also {
+            it.deviceLabel = "${Build.MANUFACTURER} ${Build.MODEL}".trim().take(80)
+            it.photoEncoder = Jxl::fromImage          // photos are kept as JPEG XL
+        }
     }
 }

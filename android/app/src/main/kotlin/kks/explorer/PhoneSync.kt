@@ -1,6 +1,7 @@
 package kks.explorer
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
@@ -9,7 +10,9 @@ import kks.core.LocalNode
 import kks.core.Sync
 import kks.core.SyncControl
 import kks.core.SyncStats
+import java.net.Inet4Address
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -24,19 +27,23 @@ import java.util.concurrent.Semaphore
  * - automatic syncs while the app is open: every [INTERVAL_MS], [AFTER_CHANGE_MS] after a local change, and as soon
  *   as a new device appears; in the background [SyncWorker] does a short round every 15 minutes;
  * - the addresses of devices it synced with are remembered, for when discovery finds nothing (e.g. Wi-Fi that blocks
- *   multicast) — "Sync now" tries them too.
+ *   multicast) — "Sync now" tries them too;
+ * - automatic syncs skip metered networks (mobile data, hotspots, Wi-Fi marked as metered) unless the person allowed
+ *   them ([METERED_META]); "Sync now" always syncs.
  */
 class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
     companion object {
         const val SERVICE = "_kks._tcp"
         const val INTERVAL_MS = 120_000L
         const val AFTER_CHANGE_MS = 5_000L
+        const val METERED_META = "sync_metered"             // "1": automatic syncs also on metered networks
         private const val TAG = "KKSSync"
     }
 
     data class Found(val name: String, val host: String, val port: Int, val peer: String?, val root: String)
 
     private val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager
+    private val cm = context.getSystemService(ConnectivityManager::class.java)
     private val status = LinkedHashMap<String, Map<String, Any?>>()
     private val found = ConcurrentHashMap<String, Found>()
     private val pool = Executors.newCachedThreadPool()
@@ -78,7 +85,8 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
                     val addr = sock.inetAddress.hostAddress ?: "?"
                     try {
                         val (remote, st) = Sync.serveOne(node, sock)
-                        record(remote, addr, true, st, "in")
+                        if (st.join == null) record(remote, addr, true, st, "in")      // (a join-by-invite question is not a sync)
+                        else Log.i(TAG, "join by invite from $addr: ${st.join}")
                     } catch (e: Exception) {
                         record(null, addr, false, e.message, "in")
                     } finally { slots.release() }
@@ -178,9 +186,16 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
             val wait = if (due == 0L) INTERVAL_MS else due - System.currentTimeMillis()
             if (wait > 0) { synchronized(wake) { wake.wait(minOf(wait, INTERVAL_MS)) }; continue }
             due = System.currentTimeMillis() + INTERVAL_MS
-            if (active && node.anchor != null) runCatching { syncAll() }
+            if (active && node.anchor != null && autoAllowed()) runCatching { syncAll() }
         }
     }
+
+    var meteredAllowed: Boolean
+        get() = node.store.meta(METERED_META) == "1"
+        set(v) { node.store.setMeta(METERED_META, if (v) "1" else null); if (v) poke(1_000) }
+
+    /** Automatic syncs run on unmetered networks, and on metered ones only if allowed. */
+    fun autoAllowed() = meteredAllowed || !cm.isActiveNetworkMetered
 
     // ---------- syncing ----------
     override fun syncOne(host: String, port: Int, adoptRoot: String?): SyncStats {
@@ -228,7 +243,23 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
         "discovery" to discovery + (if (discovery == "on" && selfSeen) " (this phone is visible to others)" else ""),
         "port" to port?.toLong(),
         "found" to found.values.map { mapOf("host" to it.host, "port" to it.port.toLong(), "peer" to it.peer, "root" to it.root) },
-        "syncs" to LinkedHashMap(status), "self_seen" to selfSeen)
+        "syncs" to LinkedHashMap(status), "self_seen" to selfSeen,
+        "metered_allowed" to meteredAllowed, "paused" to !autoAllowed())
+
+    /** This phone's addresses on local networks (Wi-Fi, its own hotspot, Ethernet), for invites. Mobile data and VPN
+     *  interfaces are left out: other phones can't reach those. */
+    override fun addresses(): List<String> {
+        val p = port ?: return emptyList()
+        val out = ArrayList<Pair<String, String>>()
+        runCatching {
+            for (ni in NetworkInterface.getNetworkInterfaces()) {
+                if (!ni.isUp || ni.isLoopback || ni.isVirtual) continue
+                if (ni.name.startsWith("rmnet") || ni.name.startsWith("ccmni") || ni.name.startsWith("tun") || ni.name.startsWith("dummy") || ni.name.startsWith("v4-")) continue
+                for (a in ni.inetAddresses) if (a is Inet4Address && !a.isLoopbackAddress && !a.isLinkLocalAddress) out.add(ni.name to a.hostAddress!!)
+            }
+        }
+        return out.sortedBy { if (it.first.startsWith("wlan")) 0 else 1 }.map { "${it.second}:$p" }
+    }
 
     override fun joined() { pool.execute { announce() }; poke(1_000) }
 }

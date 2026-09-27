@@ -37,15 +37,18 @@ from server import changes as ch
 from server.engine import Engine, NoRootKey, tag_out
 from peer import proto as proto_mod, sync as sync_mod
 from server import node as node_mod
-from server.syncsvc import SyncService
+from server.syncsvc import SyncService, lan_addresses
+from server.invites import Invites
 from server import check as check_mod
 from server import sheets as sheets_mod
+from server import photos as photos_mod
 
 BASE = config_mod.BASE
-SHELL = {'/': 'index.html', '/index.html': 'index.html', '/admin.html': 'admin.html', '/common.js': 'common.js',
+SHELL = {'/': 'index.html', '/index.html': 'index.html', '/admin.html': 'admin.html', '/common.js': 'common.js', '/qrcodegen.js': 'qrcodegen.js',
          '/sw.js': 'sw.js', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg',
          '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png'}
 COOKIE = 'kks_session'
+mimetypes.add_type('image/jxl', '.jxl')
 USERNAME_RE = re.compile(r'[A-Za-z0-9_.@-]{2,40}')  # ASCII: usernames go into the signed log (PROTOCOL.md §9a)
 
 
@@ -82,6 +85,8 @@ def person_body(E, pid, **upd):
 def make_handler(cfg, store, auth, engine=None, svc=None):
     E = engine or Engine(store, cfg)
     svc = svc or SyncService(E, cfg, log=lambda *a: None)
+    invites = E.invites = Invites()   # join by invite: QR codes this node shows (in memory)
+    joining = {}                      # peer mode, not joined yet: the running join by invite ('job')
     PEER = cfg['mode'] == 'peer'
     LOCAL_HOSTS = {'localhost', '127.0.0.1', '[::1]', '::1'}
     importer = sheets_mod.Importer(cfg)
@@ -126,8 +131,8 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
             self._headers(code, 'application/json', len(b), [('Cache-Control', 'no-store'), *extra])
             self.wfile.write(b)
 
-        def file(self, path, cache):
-            extra = [('Cache-Control', cache)]
+        def file(self, path, cache, headers=()):
+            extra = [('Cache-Control', cache), *headers]
             if not os.path.isfile(path) and os.path.isfile(path + '.gz'):
                 # sheet vectors are stored gzipped (data/sheets/<id>.svg.gz): send as-is to browsers that accept it
                 with open(path + '.gz', 'rb') as f:
@@ -253,7 +258,11 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 finally:
                     c.close()
                 out = {'plant_name': cfg['plant_name'], 'offline_days': cfg['offline_days'], 'mode': cfg['mode'],
-                       'setup_needed': not has_manager and not PEER}
+                       'setup_needed': not has_manager and not PEER,
+                       # how to send photos: they become JXL here; a local page sends lossless PNG, a remote one a
+                       # near-lossless JPEG (less to upload); without a JXL encoder the JPEG is what gets kept
+                       'photo_upload': ({'type': 'image/png'} if PEER else {'type': 'image/jpeg', 'q': 0.95})
+                                       if photos_mod.AVAILABLE else {'type': 'image/jpeg', 'q': 0.85}}
                 if PEER:
                     owner = E.owner()
                     out['node'] = {'joined': bool(owner), 'device': E.node_device(), 'has_plant': E.anchor is not None,
@@ -272,6 +281,8 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 finally:
                     c.close()
 
+            if PEER and p == '/api/node/join-invite':   # the join by invite this laptop is running (before and after)
+                return self.send(joining['job'].state() if joining.get('job') else {'state': None})
             me = self.user()
             E.refresh()
             for prefix, root in (('/data/', cfg['data_dir']), ('/photos/', cfg['photos_dir'])):
@@ -279,6 +290,11 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                     full = os.path.realpath(os.path.join(root, p[len(prefix):]))
                     if not full.startswith(os.path.realpath(root) + os.sep):
                         raise HTTPError(400, 'bad path')
+                    if prefix == '/photos/' and full.endswith('.jxl') and os.path.isfile(full):
+                        # JPEG XL for browsers that show it, else a JPEG made from it (server/photos.py)
+                        if 'image/jxl' not in (self.headers.get('Accept') or ''):
+                            full = photos_mod.jpeg_fallback(full, os.path.join(cfg['cache_dir'], 'photo-jpeg')) or full
+                        return self.file(full, 'private, max-age=31536000, immutable', [('Vary', 'Accept')])
                     return self.file(full, 'private, no-cache')
             c = store.conn()
             try:
@@ -357,6 +373,19 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                     f['name'] = names.get(f.get('peer'))
                 return self.send({'mine': mine, 'all': everyone, 'node': P_id(E), 'mode': cfg['mode'], 'sync': snap,
                                   'sync_port': cfg['sync_port']})
+            m = re.fullmatch(r'/api/invites/([A-Za-z0-9_-]{16,40})', p)
+            if m:
+                self.need(me, 'admin')
+                st = invites.status(m[1], me['id'])
+                if not st:
+                    raise HTTPError(404, 'no such invite')
+                if st['request']:   # an existing person with that username: the admin confirms adding a device for them
+                    with E.lock:
+                        pid = next((k for k, v in E.run.persons.items() if v['username'].lower() == str(st['request']['username']).lower()), None)
+                        pr = E.run.persons.get(pid)
+                        st['existing'] = pr and {'username': pr['username'], 'full_name': pr['full_name'],
+                                                 'role': 'manager' if E.run.manager == pid else pr['role']}
+                return self.send(st)
             if p == '/api/bundle':
                 self.need(me, 'admin')
                 data = E.bundle(photos=q.get('photos') == '1')
@@ -542,6 +571,18 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 return self.manager_action(me, p.rsplit('/', 1)[1], d)
             if p == '/api/devices/import-request':
                 return self.import_request(me, d)
+            if p == '/api/invites':   # join by invite: a QR code for a new device on the same network
+                self.need(me, 'admin')
+                if not getattr(svc, 'port', None):
+                    raise HTTPError(409, 'Sync is off on this computer (sync_port 0), so devices cannot join through it.')
+                inv = invites.create(me['id'], E.anchor, E.run.settings.get('plant') or cfg['plant_name'],
+                                     proto_mod.peer_id(E.identity()), lan_addresses(svc.port))
+                if not inv['addrs']:
+                    raise HTTPError(409, 'This computer has no network address other devices could reach.')
+                return self.send({'ok': True, 'invite': inv, 'code': json.dumps(inv, separators=(',', ':'))})
+            m = re.fullmatch(r'/api/invites/([A-Za-z0-9_-]{16,40})', p)
+            if m:
+                return self.invite_action(me, m[1], d)
             if p == '/api/devices/revoke':
                 return self.revoke_device(me, d.get('device'))
             if p == '/api/sync/now':
@@ -598,6 +639,25 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 except node_mod.JoinError as e:
                     raise HTTPError(400, str(e))
                 return self.send({'ok': True})
+            if action == 'join-invite':
+                if d.get('cancel'):
+                    if joining.get('job'):
+                        joining['job'].cancel()
+                    return self.send({'ok': True})
+                name = (d.get('username') or '').strip()
+                if not USERNAME_RE.fullmatch(name):
+                    raise HTTPError(400, 'Username: 2-40 letters (a-z), digits, . _ - @')
+                try:
+                    fn, pos = person(d)
+                    inv = node_mod.parse_invite(d.get('invite'))
+                except (ValueError, node_mod.JoinError) as e:
+                    raise HTTPError(400, str(e))
+                if E.anchor is not None and E.anchor != inv['root']:
+                    raise HTTPError(409, 'This laptop holds another plant\'s data; that invite is for a different plant.')
+                if joining.get('job'):
+                    joining['job'].cancel()
+                joining['job'] = node_mod.InviteJoin(E, svc, inv, name, fn, pos)
+                return self.send({'ok': True, **joining['job'].state()})
             if action == 'join-request':
                 name = (d.get('username') or '').strip()
                 if not USERNAME_RE.fullmatch(name):
@@ -616,6 +676,11 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 req = node_mod.check_join_request(d.get('request'))
             except node_mod.JoinError as e:
                 raise HTTPError(400, str(e))
+            name, pid = self.certify(me, req, d.get('existing_ok'))
+            return self.send({'ok': True, 'username': name, 'person': pid})
+
+        def certify(self, me, req, existing_ok):
+            """A checked join request -> device_cert (+ a new person). -> (username, person)"""
             name = str(req.get('username') or '')
             if not USERNAME_RE.fullmatch(name):
                 raise HTTPError(400, 'the request has an invalid username')
@@ -629,7 +694,7 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 pid = next((k for k, v in run.persons.items() if v['username'].lower() == name.lower()), None)
                 if have and have['person'] != pid:
                     raise HTTPError(409, 'That laptop is already certified for someone else.')
-                if pid and not d.get('existing_ok'):
+                if pid and not existing_ok:
                     pr = run.persons[pid]
                     raise HTTPError(409, 'existing person', {'existing': {'username': pr['username'], 'full_name': pr['full_name'],
                                                                           'role': 'manager' if run.manager == pid else pr['role']}})
@@ -646,6 +711,24 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                     E.append(c, me['device'], 'device_cert', {'device': req['device'], 'person': pid, 'label': str(req.get('label') or '')[:80]})
                 store.put('revisions', {'ts': int(time.time()), 'actor': me['id'], 'entity': 'user', 'key': pid, 'before': None,
                                         'after': None, 'submission_id': None, 'note': f'certified a device for {name}: {req.get("label")}'})
+            return name, pid
+
+        def invite_action(self, me, token, d):
+            """Join by invite, the admin's side: accept (certify the device that asked), refuse, or cancel."""
+            self.need(me, 'admin')
+            action = d.get('action')
+            if action == 'cancel':
+                invites.cancel(token, me['id'])
+                return self.send({'ok': True})
+            if action not in ('accept', 'refuse'):
+                raise HTTPError(400, 'bad action')
+            if not invites.take(token, me['id']):
+                raise HTTPError(409, 'No device is waiting on this invite (it expired, or was decided already).')
+            if action == 'refuse':
+                invites.done(token, False)
+                return self.send({'ok': True})
+            name, pid = self.certify(me, invites.full_request(token), d.get('existing_ok'))
+            invites.done(token, True)
             return self.send({'ok': True, 'username': name, 'person': pid})
 
         def revoke_device(self, me, dev):

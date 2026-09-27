@@ -1,6 +1,6 @@
 """Peer-to-peer sync (docs/PROTOCOL.md §15): Noise against its published vector, then real TCP syncs between
 separate nodes (each its own database), through peer/sync.py and server/engine.py."""
-import hashlib, json, os, secrets, shutil, socket, sys, tempfile, threading, unittest
+import hashlib, json, os, secrets, shutil, socket, sys, tempfile, threading, time, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -136,6 +136,14 @@ class SyncTest(unittest.TestCase):
         n.person, n.dev = person, dev
         return n
 
+    def served(self, node, n):
+        """The listener's n-th result (it records it only after the initiator already returned)."""
+        for _ in range(200):
+            if len(node.results) >= n:
+                return node.results[n - 1]
+            time.sleep(0.01)
+        self.fail('the listener recorded nothing')
+
     def sync(self, frm, to_port, adopt=None):
         return S.sync_with(frm.E, '127.0.0.1', to_port, adopt_root=adopt)
 
@@ -178,7 +186,7 @@ class SyncTest(unittest.TestCase):
         self.write_raw(x, next(iter(x.E.keys)), 'link', {'proc': 'p', 'step': 1, 'kks': '11LAB70AA501', 'on': True})
         _, st = self.sync(x, pa)
         self.assertEqual(st['received'], 0)                       # A sent nothing
-        self.assertTrue(a.results[-1][1]['denied'])
+        self.assertTrue(self.served(a, 2)[1]['denied'])          # (the listener records after the initiator is done)
         self.assertEqual(len(a.E.entries), 1)                    # A kept none of the stranger's entries
         self.nodes.remove(x)                                      # (x's own replay ignores its entry: expected)
 
@@ -218,7 +226,7 @@ class SyncTest(unittest.TestCase):
         with a.E.tx() as c:
             a.E.append(c, self.mdev, 'revoke', {'device': b.dev, 'last_seq': 0})
         _, st = self.sync(b, pa)
-        self.assertTrue(a.results[-1][1]['denied'])
+        self.assertTrue(self.served(a, 2)[1]['denied'])
         self.assertEqual(st['received'], 0)
 
     def test_cloned_key_fork_is_caught(self):

@@ -159,6 +159,11 @@ def self_test():
         get('/api/node/new-plant', {'plant': 'Self test', 'username': 'tester', 'full_name': 'Self Test'})
         assert json.loads(get('/api/me'))['user']['role'] == 'manager'
         assert json.loads(get('/data/sheets.json')) is not None, 'plant data missing'
+        # photos: stored as JPEG XL (libjxl bundled), shown to the browser as JPEG
+        get('/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'dataUrl': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFElEQVR4nGM8UaHBgA0wYRUdtBIAHicBeAYWg8oAAAAASUVORK5CYII='}})
+        photo = json.loads(get('/api/state'))['photos'][0]
+        assert photo['file'].endswith('.jxl'), f'photo kept as {photo["file"]}, not JPEG XL'
+        assert get('/photos/' + photo['file']).startswith(b'\xff\xd8'), 'no JPEG copy of the JXL photo'
         print(f'self-test OK ({home})')
         return 0
     try:

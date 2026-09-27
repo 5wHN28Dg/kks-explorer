@@ -274,7 +274,7 @@ responder answers. `{"t":"error","why":...}` may be sent instead of any message,
 
 1. `hello` both ways: `{"t":"hello", "v":1, "root": <trust anchor or null>, "vv": {<device>: [<last seq>, <entry ID of
    that entry>]}}`. Different non-null roots: stop (different plants). A device with no plant yet (`root` null)
-   continues only if the other side's root is the one it was told to join (from the join invitation, M2b).
+   continues only if the other side's root is the one it was told to join (from the server enrolment or an invite, §16).
 2. `entries`: `{"t":"entries", "entries":[...], "denied": true?}`. The initiator sends first; the responder decides
    what to send only after taking in the initiator's entries (the initiator's own certificate may be among them).
    What to send: every stored entry with seq above the other side's `vv` for its device; for a device whose entry at
@@ -294,3 +294,36 @@ responder answers. `{"t":"error","why":...}` may be sent instead of any message,
 
 Relaying is automatic: a device sends every entry it holds, not only its own, so an edit reaches a device that never
 met its author.
+
+## 16. Join by invite (QR code)
+
+For a new device next to an admin on the same network: no files and no server account. Implemented by
+`server/invites.py` + `server/node.py` (`InviteJoin`) and `android/core/.../Invites.kt`; the wire part in
+`peer/sync.py` / `Sync.kt`.
+
+**Invite.** An admin's device makes `{"kks_invite":1, "plant": <name>, "root": <trust anchor>, "peer": <the device ID
+that answers on the sync port>, "addrs": ["<ip>:<port>", ...], "token": <16 random bytes, base64url>, "exp": <unix
+seconds>}` and shows its compact JSON as a QR code (and as text to copy). It is kept in memory only, is valid for 15
+minutes, and serves one device. The QR code is the trust channel: whoever scans it learns which plant root and which
+device to trust; the token proves to the admin's device that the asker saw the code.
+
+**Asking.** The new device connects to one of `addrs`, runs the §15 handshake, and stops unless the other side's
+device ID equals `peer`. Instead of `hello` it sends `{"t":"join", "token":..., "request": <a signed join request>}`
+(the `.kksjoin` object: `{kks_join:1, device, username, full_name, position, label, created, sig}`, `sig` = Ed25519 by
+`device` over `"kks-join-v1\n"` + canonical bytes of the rest). The request's `device` must be the session's remote
+device. The answer is one `{"t":"join_ack", "state": ..., "why"?: ...}`, then the connection closes:
+
+| state | meaning |
+|---|---|
+| `waiting` | the admin sees the request (name, username, position, device label) and has not decided yet |
+| `accepted` | the admin certified the device (a normal `device_cert`, plus a `person` entry for a new person) |
+| `refused` | the admin refused |
+| `used` | another device already asked with this token |
+| `unknown` | no such invite here (expired, cancelled, or the device restarted) |
+| `bad` | the join request's signature or device doesn't check out |
+
+The new device asks again every 2 s while `waiting`. Once `accepted` it syncs (§15) with the same address, adopting
+the invite's `root`; the log it receives certifies it. The same rules as importing a join request apply on the
+admin's side: an existing username needs the admin's explicit OK (it adds a device for that person), and only the
+manager adds devices for admins. A responder that doesn't know invites answers `unknown`; a listener still reads a
+`hello` first message exactly as before, so §15 is unchanged.

@@ -134,15 +134,19 @@ def handshake(sock, identity, initiator):
 
 
 # ---------- the exchange ----------
-def exchange(ses, node, initiator, adopt_root=None):
+def exchange(ses, node, initiator, adopt_root=None, first=None):
     """Run one sync over an established session. The initiator speaks first at every step.
     adopt_root: a node with no plant yet accepts the other side's plant only if its root equals this value.
+    first: the initiator's first message, if the responder already read it (serve_one).
     -> {'sent', 'received', 'blobs_sent', 'blobs_received', 'denied' (we sent nothing), 'they_denied'}"""
     def turn(mine, t):
+        nonlocal first
         if initiator:
             ses.send(mine)
             return ses.expect(t)
-        theirs = ses.expect(t)
+        theirs, first = (first, None) if first is not None else (ses.expect(t), None)
+        if theirs['t'] != t:
+            raise SyncError(f'expected {t}, got {theirs["t"]}')
         ses.send(mine)
         return theirs
 
@@ -157,7 +161,7 @@ def exchange(ses, node, initiator, adopt_root=None):
         node.adopt(theirs)
     elif theirs is not None and theirs != root:
         raise SyncError('the other device belongs to a different plant')
-    stats = {'sent': 0, 'received': 0, 'blobs_sent': 0, 'blobs_received': 0, 'denied': False, 'they_denied': False}
+    stats = _zero()
     vv = hello.get('vv') if isinstance(hello.get('vv'), dict) else {}
 
     def offer():
@@ -211,6 +215,10 @@ def exchange(ses, node, initiator, adopt_root=None):
     return stats
 
 
+def _zero():
+    return {'sent': 0, 'received': 0, 'blobs_sent': 0, 'blobs_received': 0, 'denied': False, 'they_denied': False}
+
+
 # ---------- TCP ----------
 def sync_with(node, host, port, adopt_root=None, timeout=TIMEOUT):
     """Connect to a peer, sync, close. -> (remote peer ID, stats)"""
@@ -221,12 +229,19 @@ def sync_with(node, host, port, adopt_root=None, timeout=TIMEOUT):
 
 
 def serve_one(node, sock, timeout=TIMEOUT):
-    """Handle one incoming connection (call from the listener's thread). -> (remote, stats); errors propagate."""
+    """Handle one incoming connection (call from the listener's thread). -> (remote, stats); errors propagate.
+    A connection may instead carry one join-by-invite question (PROTOCOL.md §16): stats then has 'join' = the answer."""
     sock.settimeout(timeout)
     try:
         ses = handshake(sock, node.identity(), False)
         try:
-            return ses.remote, exchange(ses, node, False)
+            first = ses.recv()
+            if first['t'] == 'join':
+                offer = getattr(node, 'join_offer', None)
+                ack = offer(ses.remote, first) if offer else {'t': 'join_ack', 'state': 'unknown'}
+                ses.send(ack)
+                return ses.remote, {**_zero(), 'join': ack['state']}
+            return ses.remote, exchange(ses, node, False, first=first)
         except SyncError as e:
             try:
                 ses.send({'t': 'error', 'why': str(e)})
@@ -235,3 +250,19 @@ def serve_one(node, sock, timeout=TIMEOUT):
             raise
     finally:
         sock.close()
+
+
+def join_ask(identity, host, port, expect_peer, token, request, timeout=TIMEOUT):
+    """Join by invite (PROTOCOL.md §16): ask the inviting device whether this device's join request was accepted.
+    The other end must be the device named in the invite. -> its answer: waiting | accepted | refused | used | unknown | bad"""
+    with socket.create_connection((host, port), timeout=timeout) as sock:
+        sock.settimeout(timeout)
+        ses = handshake(sock, identity, True)
+        if ses.remote != expect_peer:
+            raise SyncError('a different device answered at that address (not the one that showed the invite)')
+        ses.send({'t': 'join', 'token': token, 'request': request})
+        ack = ses.expect('join_ack')
+        state = ack.get('state')
+        if state not in ('waiting', 'accepted', 'refused', 'used', 'unknown', 'bad'):
+            raise SyncError('bad join answer')
+        return state, str(ack.get('why') or '')[:200]

@@ -1,3 +1,6 @@
 # The desktop app and the server (not the P&ID importer: see requirements-import.txt)
 cryptography
 zeroconf
+# photos are kept as JPEG XL (server/photos.py); without these two they stay as uploaded
+Pillow
+pillow-jxl-plugin

@@ -476,7 +476,8 @@ function addPhoto(input,k,tid){
   const f=input.files[0]; if(!f)return; const img=new Image(), rd=new FileReader();
   rd.onload=()=>{ img.onload=async()=>{ const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
     c.width=img.width*s; c.height=img.height*s; c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    const r=await send('photo',{kks:k,dataUrl:c.toDataURL('image/jpeg',0.85)},'photo for '+k);
+    const up=K.cfg?.photo_upload||{type:'image/jpeg',q:0.85};   // the server / app turns it into JPEG XL (server/photos.py)
+    const r=await send('photo',{kks:k,dataUrl:c.toDataURL(up.type,up.q)},'photo for '+k);
     if(r) select(eff(TAGS.find(x=>x.id===tid))) }; img.src=rd.result };
   rd.readAsDataURL(f);
 }

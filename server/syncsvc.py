@@ -33,7 +33,8 @@ class SyncService:
         def one(sock, addr):
             try:
                 remote, st = S.serve_one(self.E, sock)
-                self._record(remote, f'{addr[0]}', True, st, 'in')
+                if 'join' not in st:   # (a join-by-invite question is not a sync)
+                    self._record(remote, f'{addr[0]}', True, st, 'in')
             except (S.SyncError, OSError, Exception) as e:
                 self._record(None, addr[0], False, str(e), 'in')
             finally:
@@ -191,7 +192,19 @@ class SyncService:
 
 
 def _lan_ips():
+    """This computer's IPv4 addresses other devices may reach (all interfaces if the zeroconf package's ifaddr is
+    there, else the one with the default route)."""
     ips = set()
+    try:
+        import ifaddr
+        for a in ifaddr.get_adapters():
+            if str(a.name).startswith(('docker', 'br-', 'veth', 'virbr', 'vmnet', 'tailscale', 'lo')):
+                continue   # container/VM bridges and tunnels: not reachable from a phone on the Wi-Fi
+            for ip in a.ips:
+                if isinstance(ip.ip, str) and not ip.ip.startswith(('127.', '169.254.')):
+                    ips.add(ip.ip)
+    except Exception:
+        pass
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))   # no packet is sent: this only picks the outgoing interface
@@ -199,4 +212,20 @@ def _lan_ips():
         s.close()
     except OSError:
         pass
+    ips.discard('0.0.0.0')
     return sorted(ips) or ['127.0.0.1']
+
+
+def lan_addresses(port):
+    """-> ['ip:port', ...], the default-route address first."""
+    first = None
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        first = s.getsockname()[0]
+        s.close()
+    except OSError:
+        pass
+    ips = [ip for ip in _lan_ips() if ip != '127.0.0.1']
+    ips.sort(key=lambda ip: (ip != first, ip))
+    return [f'{ip}:{port}' for ip in ips]

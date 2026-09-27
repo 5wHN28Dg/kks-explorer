@@ -1,0 +1,52 @@
+# Android app (docs/ARCHITECTURE.md M3): protocol/API tests of the Kotlin core (incl. against the Python server),
+# a debug APK and an UNSIGNED release APK. Release signing stays on the maintainer's machine
+# (docs/ANDROID_RELEASE.md): the key is never given to CI.
+name: Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'            # Gradle 8.13 does not run on newer JDKs
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Python server for the interop tests
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements-desktop.txt
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/cache@v6                # the pinned libjxl sources (checked by SHA-256 anyway)
+        with:
+          path: android/app/build/third_party/download
+          key: libjxl-${{ hashFiles('android/app/build.gradle.kts') }}
+      - name: Tests (Kotlin core)
+        working-directory: android
+        run: ./gradlew --no-daemon :core:test
+      - name: Build APKs
+        working-directory: android
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kks-explorer-android
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: test-reports
+          path: android/core/build/reports/tests/

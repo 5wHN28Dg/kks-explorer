@@ -3,8 +3,8 @@
 // - Plant data (/data, /photos, /api/state; needs login): cached as it's fetched. The page deletes the 'kks-data'
 //   cache on logout or when the server rejects the session. Error responses (401 etc.) are never cached.
 // Service workers only run over HTTPS or on localhost.
-const SHELL = 'kks-shell-v3', DATA = 'kks-data';
-const SHELL_FILES = ['/', '/index.html', '/admin.html', '/common.js', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
+const SHELL = 'kks-shell-v4', DATA = 'kks-data';
+const SHELL_FILES = ['/', '/index.html', '/admin.html', '/common.js', '/qrcodegen.js', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES))); self.skipWaiting() });
 self.addEventListener('activate', e => e.waitUntil(caches.keys()

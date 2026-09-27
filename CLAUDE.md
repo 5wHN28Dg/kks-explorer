@@ -10,12 +10,13 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 ## Run
 
 - `python3 app.py` → http://localhost:8420 (phone: printed LAN URL, same Wi-Fi). Stdlib + `cryptography` (since M1,
-  2026-09-26; system python here has it, else `.venv/bin/python app.py`). First run prints a one-time setup link to
+  2026-09-26; system python here has it, else `.venv/bin/python app.py`). Photos as JPEG XL need Pillow +
+  pillow-jxl-plugin (optional; without them photos stay as uploaded, `app.py check` warns). First run prints a one-time setup link to
   create the manager (also creates `root.key`). CLI: `users`, `reset-manager --user X`, `reset-password --user X`,
   `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`.
   Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `.venv/bin/python -m unittest discover -s tests` (47: server end-to-end over HTTP, protocol vectors,
-  migration). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
+- Tests: `.venv/bin/python -m unittest discover -s tests` (64: server end-to-end over HTTP, protocol vectors,
+  migration, sync, peer mode, join by invite). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
   `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
   `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
   in a throwaway venv (not committed): setup, invite, user proposal, offline queue + offline reload via the service
@@ -321,6 +322,35 @@ change reached the server by itself in ~6 s, the worker synced with the app clos
 NOT verifiable on the emulator: phone ↔ laptop discovery (the emulator's NAT carries no multicast to the host) —
 needs real devices on one Wi-Fi. Future: Android's local network permission (opt-in on 16) may become required for
 apps targeting a later SDK.
+Before M3e (2026-09-27, asked by the user), all three verified on the emulator unless noted:
+- Metered networks: Account → Sync → "Sync on metered networks" (meta `sync_metered`). Off: automatic syncs skip
+  metered networks (`PhoneSync.autoAllowed`, "paused" shown) and SyncWorker requires UNMETERED; on: CONNECTED (re-
+  scheduled with ExistingPeriodicWorkPolicy.UPDATE). "Sync now" always syncs. Laptops: no metered detection.
+- Join by invite / QR (PROTOCOL.md §16): admin → Manage → Devices → "Add a device with a QR code" (admin.html, QR via
+  vendored `qrcodegen.js` = Nayuki MIT, compiled from TS) shows {root, peer, addrs, one-time token, 15 min}; the new
+  device (common.js "Join with a QR code": app scans natively with zxing-android-embedded 4.3.0 + zxing core 3.5.4 via
+  `KKSNative.scanQr`; laptops paste the code) sends `{t:join, token, request}` on the sync port instead of `hello`,
+  polls `join_ack` (waiting/accepted/refused/used/unknown/bad), admin accepts (same rules as import-request: existing
+  username needs OK), then syncs adopting the root. Python `server/invites.py` + `node.InviteJoin`, Kotlin
+  `Invites.kt`; invites in memory only. Bundles don't fit a QR: LAN sync replaces the file there; files stay.
+  Verified: Python test, Kotlin tests (phone↔phone, phone↔real app.py), emulator phone joined the Python server
+  over its LAN IP; the QR rendered by admin.html decodes (OpenCV) to the invite. NOT verified: the camera actually
+  decoding a QR (the emulator's virtual scene camera could not be aimed at the poster) — try on a real phone.
+- Photos as JPEG XL at distance 1.0 (`server/photos.py`, `android/app/.../Jxl.kt` + `src/main/cpp` JNI over libjxl
+  v0.12.0 built from pinned, SHA-256-checked sources by the Gradle task `fetchLibjxl`; NDK 27.2.12479018, CMake
+  3.22.1). The API converts: pages send lossless PNG when local (app, peer laptop), JPEG q0.95 to a server, q0.85 if
+  it can't encode (`/api/config.photo_upload`). Browsers get a cached JPEG (`cache_dir`/photo-jpeg, `Vary: Accept`),
+  the WebView too (cacheDir). Measured (SSIMULACRA2, 8 photos at 1600 px): JPEG q85 1212 KB/79.0, JXL d1.0
+  1187 KB/86.6, JXL q80 (d≈1.9) 680 KB/78.9 → d1.0 gives better quality at the old size, NOT smaller files; the
+  user asked for visually lossless, so d1.0 stays until they decide. Verified: release APK on the emulator encoded a
+  gallery photo to JXL (63 KB), synced to the server, served as JPEG/JXL by Accept; desktop self-test checks it too.
+M3e done 2026-09-27: release build with R8 + resource shrinking (`proguard-rules.pro`: JS bridge, JNI, worker),
+signed with the maintainer's own key: `~/.config/kks-explorer/signing/` (kks-release.jks, PKCS12, alias kks, RSA 4096,
+to 2056, + keystore.properties; or `$KKS_SIGNING`), never in the repo or CI — docs/ANDROID_RELEASE.md. Release APK
+35 MB (debug 65). `.github/workflows/android.yml`: core tests (with the Python server from .venv), debug + UNSIGNED
+release APK as artifacts, libjxl downloads cached. Verified: apksigner (v2, cert SHA-256 1a3a2b53…), release APK
+joined the server, showed the viewer, photo → JXL. NOT verified: the Android workflow itself (needs a GitHub run).
+Scanner orientation follows the phone (manifest override of CaptureActivity).
 
 ## Backlog (rough priority)
 

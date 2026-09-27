@@ -162,6 +162,74 @@ class PeerTest(unittest.TestCase):
         self.assertEqual(m.post(f'/api/persons/{nb["person"]}', {'active': False})[0], 200)
         self.assertIn(lap.E.node_device(), srv.E.run.cuts)
 
+    def test_join_by_invite(self):
+        """PROTOCOL.md §16: the admin shows an invite (QR code), the new device asks over the sync port, the admin
+        accepts, the device syncs the plant."""
+        import time
+        from peer import sync as S
+        from server import node as node_mod
+        srv, m, u = self.server_with_users()
+        real, app.lan_addresses = app.lan_addresses, lambda port: [f'127.0.0.1:{port}']   # the listeners are on loopback
+        node_mod.InviteJoin.POLL = 0.1
+        try:
+            self.assertEqual(u.post('/api/invites', {})[0], 403)                                   # admins only
+            s, r = m.post('/api/invites', {})
+        finally:
+            app.lan_addresses = real
+        self.assertEqual(s, 200)
+        inv, tok = r['invite'], r['invite']['token']
+        self.assertEqual((inv['root'], inv['peer'], json.loads(r['code'])), (srv.E.anchor, S.P.peer_id(srv.E.identity()), inv))
+        self.assertEqual(m.get(f'/api/invites/{tok}')[1]['state'], 'open')
+        self.assertEqual(m.post(f'/api/invites/{tok}', {'action': 'accept'})[0], 409)             # nobody asked yet
+        lap = self.site('laptop', 'peer')
+        c = lap.client()
+        self.assertEqual(c.post('/api/node/join-invite', {'invite': '{"x":1}', 'username': 'newbie', 'full_name': 'N P'})[0], 400)
+        s, r = c.post('/api/node/join-invite', {'invite': r['code'], 'username': 'newbie', 'full_name': 'New Person'})
+        self.assertEqual(s, 200)
+
+        def until(fn, what):
+            for _ in range(100):
+                v = fn()
+                if v:
+                    return v
+                time.sleep(0.05)
+            self.fail(what)
+        st = until(lambda: (lambda x: x if x['state'] == 'asked' else None)(m.get(f'/api/invites/{tok}')[1]), 'no request arrived')
+        self.assertEqual((st['request']['username'], st['request']['device'], st['existing']), ('newbie', lap.E.node_device(), None))
+        until(lambda: c.get('/api/node/join-invite')[1]['state'] == 'waiting', 'joiner not waiting')
+        # another device can't use the same invite
+        lap2 = self.site('laptop2', 'peer')
+        req2 = lap2.client().post('/api/node/join-request', {'username': 'other', 'full_name': 'O P'})[1]['request']
+        self.assertEqual(S.join_ask(lap2.E.identity(), '127.0.0.1', srv.cfg['sync_port'], inv['peer'], tok, req2)[0], 'used')
+        # a wrong expected peer is refused by the joiner before it says anything
+        with self.assertRaises(S.SyncError):
+            S.join_ask(lap2.E.identity(), '127.0.0.1', srv.cfg['sync_port'], lap2.E.node_device(), tok, req2)
+        self.assertEqual(S.join_ask(lap2.E.identity(), '127.0.0.1', srv.cfg['sync_port'], inv['peer'], 'x' * 22, req2)[0], 'unknown')
+        self.assertEqual(m.post(f'/api/invites/{tok}', {'action': 'accept'})[0], 200)
+        until(lambda: c.get('/api/node/join-invite')[1]['state'] == 'joined', 'joiner did not join')
+        me = c.get('/api/me')[1]['user']
+        self.assertEqual((me['username'], me['full_name']), ('newbie', 'New Person'))
+        self.assertEqual(lap.E.anchor, srv.E.anchor)
+        self.assertEqual(m.post(f'/api/invites/{tok}', {'action': 'accept'})[0], 409)             # one use
+
+        # refused, and an existing username needs the admin's OK (same rule as a join request file)
+        app.lan_addresses = lambda port: [f'127.0.0.1:{port}']
+        try:
+            code = m.post('/api/invites', {})[1]['code']
+        finally:
+            app.lan_addresses = real
+        tok2 = json.loads(code)['token']
+        c2 = lap2.client()
+        c2.post('/api/node/join-invite', {'invite': code, 'username': 'usr', 'full_name': 'Usr Person'})
+        st = until(lambda: (lambda x: x if x['state'] == 'asked' else None)(m.get(f'/api/invites/{tok2}')[1]), 'no request')
+        self.assertEqual(st['existing']['username'], 'usr')
+        s, r = m.post(f'/api/invites/{tok2}', {'action': 'accept'})
+        self.assertEqual((s, r['existing']['username']), (409, 'usr'))
+        self.assertEqual(m.post(f'/api/invites/{tok2}', {'action': 'refuse'})[0], 200)
+        st = until(lambda: (lambda x: x if x['state'] == 'failed' else None)(c2.get('/api/node/join-invite')[1]), 'not refused')
+        self.assertIn('refused', st['error'])
+        self.assertIsNone(lap2.E.owner())
+
     def test_devices_revoke_rules(self):
         srv, m, u = self.server_with_users()
         lap = self.site('laptop', 'peer')

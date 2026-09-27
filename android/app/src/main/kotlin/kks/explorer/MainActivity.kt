@@ -18,6 +18,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -34,6 +36,8 @@ class ShellState {
     var discovery by mutableStateOf("")
     var found by mutableStateOf<List<String>>(emptyList())
     var syncPort by mutableStateOf<Long?>(null)
+    var meteredAllowed by mutableStateOf(false)
+    var paused by mutableStateOf(false)             // automatic sync paused: metered network, not allowed
     var tab by mutableIntStateOf(0)                 // 0 P&ID, 1 Learning, 2 Account & settings
     var manage by mutableStateOf<String?>(null)     // an admin.html section shown full screen, or null
     var busy by mutableStateOf(false)
@@ -66,6 +70,17 @@ class MainActivity : ComponentActivity() {
             runCatching { contentResolver.openOutputStream(uri)!!.use { it.write(bytes) } }
                 .onSuccess { host.toast(web, "Saved") }.onFailure { host.toast(web, "Could not save: ${it.message}") }
         }
+    }
+
+    private var scanDone: ((String?) -> Unit)? = null
+    private val scan = registerForActivityResult(ScanContract()) { r -> scanDone?.invoke(r.contents); scanDone = null }
+
+    /** Scan a QR code with the camera (join by invite). -> its text, or null if cancelled. */
+    fun scanQr(done: (String?) -> Unit) {
+        scanDone?.invoke(null)
+        scanDone = done
+        scan.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Scan the admin's QR code")
+            .setBeepEnabled(false).setOrientationLocked(false))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -135,10 +150,17 @@ class MainActivity : ComponentActivity() {
                 state.syncs = ((s["syncs"] as Map<String, Map<String, Any?>>?) ?: emptyMap()).values.sortedByDescending { (it["at"] as Long?) ?: 0 }
                 state.discovery = s["discovery"] as String? ?: ""
                 state.found = ((s["found"] as List<Map<String, Any?>>?) ?: emptyList()).map { (it["name"] as String?) ?: "${it["host"]}" }
+                state.meteredAllowed = s["metered_allowed"] == true
+                state.paused = s["paused"] == true
             }
             state.syncPort = dev?.get("sync_port") as Long?
             if (joined && !wasJoined) state.tab = 0
         }
+    }
+
+    fun setMetered(on: Boolean) {
+        state.meteredAllowed = on
+        io.execute { App.setMeteredAllowed(this, on); refresh() }
     }
 
     fun syncNow(address: String?) {

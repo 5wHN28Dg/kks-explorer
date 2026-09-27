@@ -14,6 +14,7 @@ The table `subs` maps submission numbers (what the UI shows) and `client_id`s (o
 import base64, hashlib, json, os, re, time, uuid
 
 from peer import replay as R
+from server import photos as photos_mod
 from server.engine import ENTITIES, body_to_payload, default, payload_to_body, value_out
 
 EQ_FIELDS = ('area', 'floor', 'elev', 'near', 'loc', 'notes', 'custom')
@@ -21,7 +22,7 @@ KINDS = ('equipment', 'review', 'link', 'photo', 'photo_delete', 'tag_add', 'tag
 SHEET_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,23}$')
 TAG_RE = re.compile(r'^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]{0,4})$')
 KKS_RE = re.compile(r'^[0-9A-Z/]{3,24}$')
-IMG_RE = re.compile(r'^data:image/(jpeg|jpg|png|webp);base64,(.+)$', re.S)
+IMG_RE = re.compile(r'^data:image/(jpeg|jpg|png|webp|jxl);base64,(.+)$', re.S)
 OPEN = ('pending', 'conflict')
 
 
@@ -101,9 +102,12 @@ def normalize(kind, p, photos_dir, max_bytes):
         if not m: raise Bad('bad image')
         raw = base64.b64decode(m.group(2), validate=False)
         if len(raw) > max_bytes: raise Bad('image too large')
-        magic = {b'\xff\xd8\xff': 'jpg', b'\x89PNG': 'png', b'RIFF': 'webp'}
-        ext = next((e for sig, e in magic.items() if raw.startswith(sig)), None)
+        ext = photos_mod.magic(raw)
         if not ext: raise Bad('not an image')
+        try:
+            raw, ext = photos_mod.to_jxl(raw, ext)   # kept as JPEG XL (server/photos.py)
+        except ValueError as e:
+            raise Bad(str(e))
         sha = hashlib.sha256(raw).hexdigest()   # stored by content: the log refers to photos by this hash
         path = f'{photos_dir}/{sha}.{ext}'
         if not os.path.exists(path):

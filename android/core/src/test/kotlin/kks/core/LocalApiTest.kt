@@ -245,10 +245,85 @@ class LocalApiTest {
             phone.post("/api/sync/now", mapOf("address" to "127.0.0.1:$syncPort"))
             assertEquals(2, (phone.get("/api/state").second["links"] as List<*>).size)
             assertNotNull(phone.node.owner())
+
+            // join by invite (PROTOCOL.md §16): the server's admin shows a QR code, a new phone asks, the admin accepts
+            val inv = web.post("/api/invites", emptyMap<String, Any?>()).second["invite"] as Map<String, Any?>
+            val code = Json.write(inv + ("addrs" to listOf("127.0.0.1:$syncPort")))    // (the test server listens on loopback only)
+            val p2 = Phone("phone 2").also { it.api.invitePollMs = 100 }
+            assertEquals(200, p2.post("/api/node/join-invite", mapOf("invite" to code, "username" to "newbie", "full_name" to "New Person")).first)
+            val asked = waitFor { web.get("/api/invites/${inv["token"]}").second.takeIf { it["state"] == "asked" } }
+            assertEquals(p2.node.device, (asked["request"] as Map<*, *>)["device"])
+            assertEquals(200, web.post("/api/invites/${inv["token"]}", mapOf("action" to "accept")).first)
+            waitFor { p2.get("/api/node/join-invite").second.takeIf { it["state"] == "joined" } }
+            assertEquals("newbie", (p2.get("/api/me").second["user"] as Map<*, *>)["username"])
+            assertEquals(2, (p2.get("/api/state").second["links"] as List<*>).size)
         } finally {
             proc.destroy(); proc.waitFor()
             tmp.deleteRecursively()
         }
+    }
+
+    private fun <T> waitFor(fn: () -> T?): T {
+        repeat(200) { fn()?.let { return it }; Thread.sleep(50) }
+        error("timed out")
+    }
+
+    /** A phone that listens for sync connections (like PhoneSync), for invites. */
+    class Listening : SyncControl {
+        val node = LocalNode.open(MemStore())
+        private val srv = ServerSocket(0)
+        init { thread(isDaemon = true) { while (!srv.isClosed) { val s = runCatching { srv.accept() }.getOrNull() ?: break; thread(isDaemon = true) { runCatching { Sync.serveOne(node, s) } } } } }
+        override val port: Int? = srv.localPort
+        override fun addresses() = listOf("127.0.0.1:${srv.localPort}")
+        override fun syncOne(host: String, port: Int, adoptRoot: String?) = Sync.syncWith(node, host, port, adoptRoot).second
+        override fun syncAll() {}
+        override fun snapshot() = mapOf<String, Any?>("discovery" to "off", "found" to emptyList<Any>(), "syncs" to emptyMap<String, Any>())
+        override fun joined() {}
+        fun close() = srv.close()
+    }
+
+    /** An admin phone shows an invite; a new phone joins through it; one use; refusing; an existing username. */
+    @Test fun joinByInviteBetweenPhones() {
+        val pl = Plant("admin")
+        val lis = Listening()
+        try {
+            // the admin phone of the plant, now with a listener: move the plant into the listening node
+            lis.node.adopt(pl.root.peerId); lis.node.ingest(pl.mgr.entriesFor(emptyMap<String, Any>()))
+            pl.mgr.append("device_cert", mapOf("device" to lis.node.device, "person" to pl.person, "label" to "admin phone"))
+            lis.node.ingest(pl.mgr.entriesFor(lis.node.vv()))
+            val admin = LocalApi(lis.node, lis)
+            fun get(p: String) = admin.handle("GET", p, emptyMap(), null).let { it.status to (it.json as Map<String, Any?>) }
+            fun post(p: String, b: Map<String, Any?>) = admin.handle("POST", p, emptyMap(), b).let { it.status to (it.json as Map<String, Any?>) }
+            assertEquals(403, Plant("user").phone.post("/api/invites").first)
+            val (s, r) = post("/api/invites", emptyMap())
+            assertEquals(200, s)
+            val inv = r["invite"] as Map<String, Any?>
+            val tok = inv["token"] as String
+            assertEquals(lis.node.device, inv["peer"])
+            assertEquals(400, Phone().post("/api/node/join-invite", mapOf("invite" to "{}", "username" to "x1", "full_name" to "X")).first)
+            val p2 = Phone("phone 2").also { it.api.invitePollMs = 50 }
+            assertEquals(200, p2.post("/api/node/join-invite", mapOf("invite" to r["code"], "username" to "newbie", "full_name" to "New Person")).first)
+            waitFor { get("/api/invites/$tok").second.takeIf { it["state"] == "asked" } }
+            waitFor { p2.get("/api/node/join-invite").second.takeIf { it["state"] == "waiting" } }
+            val other = Phone("phone 3")
+            val req3 = JoinRequests.make(other.node.identity(), other.node.device, "zed", "Zed", null, "x", 1)
+            assertEquals("used", Sync.joinAsk(other.node.identity(), "127.0.0.1", lis.port!!, lis.node.device, tok, req3).first)
+            assertEquals(200, post("/api/invites/$tok", mapOf("action" to "accept")).first)
+            waitFor { p2.get("/api/node/join-invite").second.takeIf { it["state"] == "joined" } }
+            assertEquals("newbie", (p2.get("/api/me").second["user"] as Map<*, *>)["username"])
+            assertEquals(409, post("/api/invites/$tok", mapOf("action" to "accept")).first)
+            // an existing username needs the admin's OK; refusing tells the phone
+            val (_, r2) = post("/api/invites", emptyMap())
+            val tok2 = (r2["invite"] as Map<*, *>)["token"] as String
+            val p3 = Phone("phone 3b").also { it.api.invitePollMs = 50 }
+            p3.post("/api/node/join-invite", mapOf("invite" to r2["code"], "username" to "usr", "full_name" to "Usr Person"))
+            val st = waitFor { get("/api/invites/$tok2").second.takeIf { it["state"] == "asked" } }
+            assertEquals("usr", (st["existing"] as Map<*, *>)["username"])
+            assertEquals(409, post("/api/invites/$tok2", mapOf("action" to "accept")).first)
+            assertEquals(200, post("/api/invites/$tok2", mapOf("action" to "refuse")).first)
+            val f = waitFor { p3.get("/api/node/join-invite").second.takeIf { it["state"] == "failed" } }
+            assertTrue((f["error"] as String).contains("refused"))
+        } finally { lis.close() }
     }
 
     /** A tiny HTTP client with a cookie, for the Python server. */

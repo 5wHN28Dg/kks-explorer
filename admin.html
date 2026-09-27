@@ -65,6 +65,7 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 <div id="toast"></div>
 <div id="lightbox" onclick="this.style.display='none'"><img id="lbimg" alt=""></div>
 <script src="common.js"></script>
+<script src="qrcodegen.js"></script>
 <script>
 const $=s=>document.querySelector(s), esc=K.esc;
 let ME=null, tab=null, SHEETS=[];
@@ -190,7 +191,9 @@ const VIEWS={
       <div class="card"><h3>Bundle files</h3><div class="sub">A bundle carries the plant log (optionally with photos) by USB or messaging, where Wi-Fi sync can't reach. It is not encrypted: treat it like a copy of the database.</div>
       <div class="row" style="margin-top:8px">${isAdmin()?`<a class="ghost" href="/api/bundle" onclick="return exportBundle(0)" style="text-decoration:none;color:inherit">Export bundle</a><a class="ghost" href="/api/bundle?photos=1" onclick="return exportBundle(1)" style="text-decoration:none;color:inherit">Export with photos</a>`:''}
       <label class="ghost" style="cursor:pointer">Import a bundle<input type="file" accept=".kksbundle" hidden onchange="importBundle(this)"></label></div></div>`;
-    if(isAdmin()) h+=`<div class="card"><h3>Add a computer from a join request</h3><div class="sub">Someone set up the app on their laptop and gave you a <span class="mono">.kksjoin</span> file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.</div>
+    if(isAdmin()) h+=`<div class="card"><h3>Add a device with a QR code</h3><div class="sub">For someone next to you on the same network: they choose "Join with a QR code" when they set up the app and scan this. You then see who asks and accept; their device syncs the plant from this ${K.cfg?.app?'phone':D.mode==='peer'?'computer':'server'}. No files needed. The code works once, for 15 minutes.</div>
+      <div id="invite"><button class="primary" style="margin-top:8px" onclick="startInvite()">Show QR code</button></div></div>
+      <div class="card"><h3>Add a computer from a join request</h3><div class="sub">Someone set up the app on their laptop and gave you a <span class="mono">.kksjoin</span> file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.</div>
       <label class="primary" style="display:inline-block;margin-top:8px;cursor:pointer">Import join request<input type="file" accept=".kksjoin,.json" hidden onchange="importJoin(this)"></label></div>
       <div class="card"><h3>All devices</h3><table>${D.all.map(d=>devRow(d,false)).join('')}</table></div>`;
     $('#main').innerHTML=h;
@@ -328,6 +331,41 @@ const exportBundle=photos=>{ if(!K.native) return true; K.native.saveApi('plant.
 const setPerson=(pid,d)=>act(()=>K.api(`/api/persons/${pid}`,d),'Updated');
 const syncNow=address=>act(()=>K.api('/api/sync/now',{address}),'Synced');
 async function importBundle(inp){ const f=inp.files[0]; if(!f) return; try{ const r=await K.importBundle(f); toast(`Imported ${r.entries} entries, ${r.photos} photos`); show('devices') }catch(e){ toast(e.message) } }
+// ---------- join by invite (QR code): PROTOCOL.md §16 ----------
+function qrSvg(text){
+  const q=qrcodegen.QrCode.encodeText(text,qrcodegen.QrCode.Ecc.MEDIUM), b=4, n=q.size+2*b; let d='';
+  for(let y=0;y<q.size;y++) for(let x=0;x<q.size;x++) if(q.getModule(x,y)) d+=`M${x+b},${y+b}h1v1h-1z`;
+  return `<svg viewBox="0 0 ${n} ${n}" width="280" height="280" shape-rendering="crispEdges" style="background:#fff;border-radius:6px;display:block;max-width:100%;height:auto"><path d="${d}" fill="#000"/></svg>`;
+}
+let inviteTimer=null;
+async function startInvite(){
+  clearTimeout(inviteTimer);
+  let r; try{ r=await K.api('/api/invites',{}) }catch(e){ return toast(e.message) }
+  const tok=r.invite.token, box=$('#invite');
+  box.innerHTML=`<div class="row" style="align-items:flex-start;margin-top:8px"><div>${qrSvg(r.code)}</div>
+    <div style="flex:1;min-width:220px"><div class="sub">Plant ${esc(r.invite.plant||'')} · reachable at ${r.invite.addrs.map(esc).join(', ')}</div>
+    <div id="invstate" style="margin:8px 0">Waiting for a device to scan it…</div>
+    <details><summary class="sub" style="cursor:pointer">No camera? Copy the code instead</summary>
+    <textarea readonly rows="4" style="width:100%;font-family:var(--mono);font-size:11px" onclick="this.select()">${esc(r.code)}</textarea>
+    <button class="ghost" onclick="navigator.clipboard.writeText(${esc(JSON.stringify(r.code))}).then(()=>toast('Copied'))">Copy</button></details>
+    <button class="ghost" style="margin-top:8px" onclick="cancelInvite('${tok}')">Cancel</button></div></div>`;
+  pollInvite(tok);
+}
+async function pollInvite(tok){
+  const el=$('#invstate'); if(!el) return;            // left the Devices page
+  let st; try{ st=await K.api(`/api/invites/${tok}`) }catch(e){ el.textContent=e.message; return }
+  const who=q=>`<b>${esc(q.full_name)}</b> (${esc(q.username)}${q.position?', '+esc(q.position):''}) · device “${esc(q.label||'?')}”`;
+  if(st.state==='open') el.innerHTML='Waiting for a device to scan it…';
+  else if(st.state==='asked'){ if(el.dataset.asked!==st.request.device){ el.dataset.asked=st.request.device;
+      el.innerHTML=`${who(st.request)} wants to join.${st.existing?`<div class="sub">${esc(st.existing.full_name)} (${esc(st.existing.username)}, ${esc(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.</div>`:'<div class="sub">A new person (role: user).</div>'}
+        <div class="row" style="margin-top:6px"><button class="primary" onclick="decideInvite('${tok}','accept',${!!st.existing})">Accept</button><button class="ghost" onclick="decideInvite('${tok}','refuse')">Refuse</button></div>` } }
+  else { el.innerHTML={accepted:`Accepted ${who(st.request)}. Their device is syncing the plant now.`,refused:'Refused.',cancelled:'Cancelled.',expired:'Expired. Show a new code if they still need one.'}[st.state]||esc(st.state); return }
+  inviteTimer=setTimeout(()=>pollInvite(tok),1500);
+}
+async function decideInvite(tok,action,existing){
+  try{ await K.api(`/api/invites/${tok}`,{action,existing_ok:!!existing}); clearTimeout(inviteTimer); pollInvite(tok) }catch(e){ toast(e.message) }
+}
+async function cancelInvite(tok){ clearTimeout(inviteTimer); try{ await K.api(`/api/invites/${tok}`,{action:'cancel'}) }catch(e){} $('#invite').innerHTML='<button class="primary" style="margin-top:8px" onclick="startInvite()">Show QR code</button>' }
 async function importJoin(inp,existing_ok){
   const f=inp.files?inp.files[0]:null, request=inp.request||JSON.parse(await f.text());
   try{ const r=await K.api('/api/devices/import-request',{request,existing_ok:!!existing_ok}); toast(`Certified a device for ${r.username}. Now give them a bundle.`); show('devices') }
