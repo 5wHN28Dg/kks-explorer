@@ -11,12 +11,14 @@ object App {
     lateinit var api: LocalApi
     lateinit var sync: PhoneSync
     lateinit var store: SqliteStore
+    @Volatile var visible = false        // an activity is on screen (discovery + auto sync run while it is)
 
     @Synchronized fun start(context: Context) {
         if (::node.isInitialized) return
         store = SqliteStore(context.applicationContext)
         node = LocalNode.open(store)
-        sync = PhoneSync(node).also { it.listen() }
+        sync = PhoneSync(context.applicationContext, node).also { it.listen() }
+        SyncWorker.schedule(context.applicationContext)
         api = LocalApi(node, sync).also { it.deviceLabel = "${Build.MANUFACTURER} ${Build.MODEL}".trim().take(80) }
     }
 }

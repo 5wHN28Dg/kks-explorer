@@ -32,6 +32,7 @@ class ShellState {
     var device by mutableStateOf("")
     var syncs by mutableStateOf<List<Map<String, Any?>>>(emptyList())
     var discovery by mutableStateOf("")
+    var found by mutableStateOf<List<String>>(emptyList())
     var syncPort by mutableStateOf<Long?>(null)
     var tab by mutableIntStateOf(0)                 // 0 P&ID, 1 Learning, 2 Account & settings
     var manage by mutableStateOf<String?>(null)     // an admin.html section shown full screen, or null
@@ -79,9 +80,29 @@ class MainActivity : ComponentActivity() {
             if (url.path == "/" || url.path == "/index.html") { state.manage = null; state.tab = 0; true } else false
         }
         pidWeb.loadUrl("https://${WebHost.HOST}/")
-        App.node.listeners.add { changed() }
+        App.node.listeners.add(onChange)
         refresh()
         setContent { Shell(this) }
+    }
+
+    private val onChange: (String) -> Unit = { changed() }
+
+    override fun onDestroy() {
+        App.node.listeners.remove(onChange)      // (an activity recreated on rotation must not leave its listener behind)
+        super.onDestroy()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        App.visible = true
+        App.sync.start()          // find devices and sync while the app is on screen
+        refresh()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        App.visible = false
+        App.sync.stop()           // the background job takes over (every 15 min on Wi-Fi)
     }
 
     fun openManage(section: String) {
@@ -113,6 +134,7 @@ class MainActivity : ComponentActivity() {
             (dev?.get("sync") as Map<String, Any?>?)?.let { s ->
                 state.syncs = ((s["syncs"] as Map<String, Map<String, Any?>>?) ?: emptyMap()).values.sortedByDescending { (it["at"] as Long?) ?: 0 }
                 state.discovery = s["discovery"] as String? ?: ""
+                state.found = ((s["found"] as List<Map<String, Any?>>?) ?: emptyList()).map { (it["name"] as String?) ?: "${it["host"]}" }
             }
             state.syncPort = dev?.get("sync_port") as Long?
             if (joined && !wasJoined) state.tab = 0

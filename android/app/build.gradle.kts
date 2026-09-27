@@ -12,7 +12,7 @@ android {
         minSdk = 29                       // Android 10 (decided 2026-09-26)
         targetSdk = 36
         versionCode = 1
-        versionName = "0.4.0-m3c"
+        versionName = "0.5.0-m3d"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -42,4 +42,5 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.13.1")          // FileProvider for camera photos
+    implementation("androidx.work:work-runtime-ktx:2.9.1")   // background sync (M3d)
 }

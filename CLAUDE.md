@@ -307,7 +307,20 @@ resets a user's view); the app hides admin.html's own header and the Drawings ta
 lessons: the emulator's "System UI isn't responding" dialog eats key events (restart it); pick DevTools pages by URL
 (two WebViews); file pickers need a real tap (`adb input tap` at the element's rect × dpr + WebView offset), a JS
 .click() is ignored. Verified on the Pixel_9_Pro_XL AVD: 16 checks (setup, Back, join, tabs, Account, Sync now,
-Approvals with a synced proposal, panel Back, camera chooser). Not yet: NSD discovery, background sync, release build.
+Approvals with a synced proposal, panel Back, camera chooser).
+M3d done 2026-09-27: `PhoneSync` (context, node): NSD announce `kks-<device[:12]>` `_kks._tcp` TXT peer/root[:16]/v
+(re-announced when the plant changes), discovery + a serial resolver thread (one resolve at a time), own record =
+`self_seen`, other plants skipped; auto loop like syncsvc.py (INTERVAL 120 s, 5 s after a local change, 1 s after a
+new same-plant device); syncAll = found devices + remembered addresses (`sync_peers` meta). Discovery/auto only while
+an activity is visible (`App.visible`, MainActivity onStart/onStop); `SyncWorker` (WorkManager 2.9.1, periodic 15 min,
+NetworkType.UNMETERED): start → look 8 s → syncAll → stop, skipped when not joined or when the app is on screen.
+Debug builds only: `DebugSyncReceiver` (`adb shell am broadcast -a kks.explorer.DEBUG_SYNC -p kks.explorer`) runs the
+worker once now, because `cmd jobscheduler run -f` doesn't make WorkManager run a periodic job before its period.
+Log tag `KKSSync` (announce, found, every sync). Verified on the emulator: announce + self-discovery via NSD, a phone
+change reached the server by itself in ~6 s, the worker synced with the app closed; the real periodic job ran 27 min after scheduling (Android batches jobs; eligible after 15 min) with the app closed and received a server change.
+NOT verifiable on the emulator: phone ↔ laptop discovery (the emulator's NAT carries no multicast to the host) —
+needs real devices on one Wi-Fi. Future: Android's local network permission (opt-in on 16) may become required for
+apps targeting a later SDK.
 
 ## Backlog (rough priority)
 

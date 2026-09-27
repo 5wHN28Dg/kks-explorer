@@ -182,6 +182,7 @@ private fun Account(a: MainActivity, modifier: Modifier) {
         }
         item {
             Section("Sync") {
+                if (s.found.isNotEmpty()) Text("On this Wi-Fi: " + s.found.joinToString(", "), style = MaterialTheme.typography.bodyMedium)
                 if (s.syncs.isEmpty()) Text("No syncs yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 for (x in s.syncs.take(5)) {
                     @Suppress("UNCHECKED_CAST") val r = x["result"] as Map<String, Any?>?
@@ -199,7 +200,7 @@ private fun Account(a: MainActivity, modifier: Modifier) {
                                   keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                 TextButton(onClick = { a.syncNow(address.trim()) }, enabled = !s.busy && address.isNotBlank()) { Text("Sync with it") }
                 s.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                Text(s.discovery + (s.syncPort?.let { " · this phone listens on port $it" } ?: ""),
+                Text("Finding devices: " + s.discovery + (s.syncPort?.let { " · this phone listens on port $it" } ?: ""),
                      style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
