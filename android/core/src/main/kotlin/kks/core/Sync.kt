@@ -64,8 +64,7 @@ object Sync {
 
     // ---------- framing ----------
     private fun sendFrame(out: OutputStream, data: ByteArray) {
-        out.write(byteArrayOf((data.size shr 8).toByte(), data.size.toByte()))
-        out.write(data)
+        out.write(byteArrayOf((data.size shr 8).toByte(), data.size.toByte()) + data)   // one write: one relay message
         out.flush()
     }
 
@@ -205,18 +204,28 @@ object Sync {
     fun syncWith(node: Node, host: String, port: Int, adoptRoot: String? = null, timeoutMs: Int = TIMEOUT_MS): Pair<String, SyncStats> {
         Socket().use { sock ->
             sock.connect(InetSocketAddress(host, port), timeoutMs)
-            sock.soTimeout = timeoutMs
-            val ses = handshake(sock.getInputStream(), sock.getOutputStream(), node.identity(), true)
-            return ses.remote to exchange(ses, node, true, adoptRoot)
+            return syncOver(node, TcpConn(sock), adoptRoot, timeoutMs = timeoutMs)
         }
+    }
+
+    /** Sync as the initiator over an open connection (TCP, a UDP stream after hole punching, a relay pipe: §18).
+     *  expectPeer: stop unless the other side is that device. -> (remote, stats) */
+    fun syncOver(node: Node, conn: Conn, adoptRoot: String? = null, expectPeer: String? = null, timeoutMs: Int = TIMEOUT_MS): Pair<String, SyncStats> {
+        conn.setTimeout(timeoutMs)
+        val ses = handshake(conn.input, conn.output, node.identity(), true)
+        if (expectPeer != null && ses.remote != expectPeer) throw SyncError("a different device answered")
+        return ses.remote to exchange(ses, node, true, adoptRoot)
     }
 
     /** Handle one incoming connection. -> (remote, stats); errors propagate after telling the other side.
      *  A connection may instead carry one join-by-invite question (§16): stats.join = the answer given. */
-    fun serveOne(node: Node, sock: Socket, timeoutMs: Int = TIMEOUT_MS): Pair<String, SyncStats> {
-        sock.use {
-            it.soTimeout = timeoutMs
-            val ses = handshake(it.getInputStream(), it.getOutputStream(), node.identity(), false)
+    fun serveOne(node: Node, sock: Socket, timeoutMs: Int = TIMEOUT_MS): Pair<String, SyncStats> = serveConn(node, TcpConn(sock), timeoutMs)
+
+    /** Handle one incoming connection of any kind (§15, §16, §17). Closes it. */
+    fun serveConn(node: Node, conn: Conn, timeoutMs: Int = TIMEOUT_MS): Pair<String, SyncStats> {
+        conn.use {
+            it.setTimeout(timeoutMs)
+            val ses = handshake(it.input, it.output, node.identity(), false)
             try {
                 val first = ses.recv()
                 if (first["t"] == "secrets") {          // §17: two devices of one person swap their person secrets
@@ -257,11 +266,10 @@ object Sync {
 
     /** §17: give another device of the same person our person secrets and get theirs. -> their secrets */
     fun secretsSwap(identity: SigningKey, host: String, port: Int, expectPeer: String, person: String, mine: List<ByteArray>,
-                    timeoutMs: Int = TIMEOUT_MS): List<ByteArray> {
-        Socket().use { sock ->
-            sock.connect(InetSocketAddress(host, port), timeoutMs)
-            sock.soTimeout = timeoutMs
-            val ses = handshake(sock.getInputStream(), sock.getOutputStream(), identity, true)
+                    timeoutMs: Int = TIMEOUT_MS, conn: Conn? = null): List<ByteArray> {
+        (conn ?: TcpConn(Socket().apply { connect(InetSocketAddress(host, port), timeoutMs) })).use { c ->
+            c.setTimeout(timeoutMs)
+            val ses = handshake(c.input, c.output, identity, true)
             if (ses.remote != expectPeer) throw SyncError("a different device answered")
             ses.send(mapOf("t" to "secrets", "person" to person, "secrets" to mine.map { B64u.encode(it) }))
             return decodeSecrets(ses.expect("secrets")["secrets"])

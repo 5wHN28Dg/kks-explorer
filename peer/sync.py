@@ -226,9 +226,17 @@ def _zero():
 def sync_with(node, host, port, adopt_root=None, timeout=TIMEOUT):
     """Connect to a peer, sync, close. -> (remote peer ID, stats)"""
     with socket.create_connection((host, port), timeout=timeout) as sock:
-        sock.settimeout(timeout)
-        ses = handshake(sock, node.identity(), True)
-        return ses.remote, exchange(ses, node, True, adopt_root)
+        return sync_over(node, sock, adopt_root, timeout)
+
+
+def sync_over(node, sock, adopt_root=None, timeout=TIMEOUT, expect_peer=None):
+    """Sync as the initiator over an open connection: TCP, a UDP stream after hole punching (peer/rudp.py) or a
+    relay pipe (peer/ws.py). expect_peer: stop unless the other side is that device. -> (remote, stats)"""
+    sock.settimeout(timeout)
+    ses = handshake(sock, node.identity(), True)
+    if expect_peer and ses.remote != expect_peer:
+        raise SyncError('a different device answered')
+    return ses.remote, exchange(ses, node, True, adopt_root)
 
 
 def serve_one(node, sock, timeout=TIMEOUT):
@@ -276,10 +284,12 @@ def join_ask(identity, host, port, expect_peer, token, request, timeout=TIMEOUT)
         return state, str(ack.get('why') or '')[:200], ack
 
 
-def secrets_swap(identity, host, port, expect_peer, person, mine, timeout=TIMEOUT):
+def secrets_swap(identity, host, port, expect_peer, person, mine, timeout=TIMEOUT, sock=None):
     """§17: give another device of the same person our person secrets and get theirs. The other end must be that
-    device (checked here) and checks the same about us. -> their secrets (bytes)"""
-    with socket.create_connection((host, port), timeout=timeout) as sock:
+    device (checked here) and checks the same about us. sock: an open connection to use instead of TCP to host:port.
+    -> their secrets (bytes)"""
+    sock = sock or socket.create_connection((host, port), timeout=timeout)
+    with sock:
         sock.settimeout(timeout)
         ses = handshake(sock, identity, True)
         if ses.remote != expect_peer:

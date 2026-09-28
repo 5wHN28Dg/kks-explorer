@@ -24,6 +24,9 @@ class SyncService:
         self.srv = None
         self._due = time.time() + 2
         E.listeners.append(self._on_change)
+        from peer.internet import Internet   # M5: the plant's relay (manager setting `relay`), when there is one
+        self.net = Internet(E, relay=lambda: (E.run.settings.get('relay') if E.run else None) or None,
+                            record=self._record, log=log, on_change=self.wake.set)
 
     # ---------- listener ----------
     def listen(self, host, port, max_sessions=8):
@@ -62,6 +65,7 @@ class SyncService:
         if self.cfg.get('sync_interval', 120) > 0 and not getattr(self, '_auto_started', False):
             self._auto_started = True
             threading.Thread(target=self._auto, daemon=True).start()
+            self.net.start()   # (idle until the plant has a relay address)
         if not self.cfg.get('discovery'):
             self.discovery = 'turned off in config'
             return
@@ -166,6 +170,7 @@ class SyncService:
     def sync_all(self):
         """One round: every device of this plant found on the Wi-Fi, then addresses synced with before that weren't
         found that way (Wi-Fi that blocks multicast; the server a laptop joined through), as the phone does."""
+        start = int(time.time())
         with self.lock:
             peers = list(self.peers.values())
         root = (self.E.anchor or '')[:16]
@@ -177,7 +182,20 @@ class SyncService:
                 self.sync_one(host, int(port))
             except Exception:
                 pass   # recorded in status; the next device still gets its turn
+        self.sync_internet(start)
 
+    def sync_internet(self, start=None):
+        """Devices of the plant online on the relay that weren't reached on this network in this round (§18), i.e.
+        since `start`."""
+        start = int(time.time()) if start is None else start
+        with self.lock:
+            fresh = {k for k, v in self.status.items() if v.get('ok') and (v.get('last_ok') or 0) >= start}
+        for peer in sorted(self.net.online - fresh):
+            try:
+                self.net.sync(peer)
+                self._swap_secrets(None, None, peer, connect=lambda: self.net.connect(peer)[0])
+            except Exception:
+                pass
     def _known(self):
         v = self.E.store.meta('sync_peers', [])
         return v if isinstance(v, list) else []
@@ -202,7 +220,7 @@ class SyncService:
         self._swap_secrets(host, port, remote)
         return remote, st
 
-    def _swap_secrets(self, host, port, remote):
+    def _swap_secrets(self, host, port, remote, connect=None):
         """After a sync with another device of this laptop's owner: swap person secrets (§17), so course progress
         written on either can be read on both. Once per device and set of secrets."""
         from server import progress
@@ -218,7 +236,8 @@ class SyncService:
         if key in self.swapped:
             return
         try:
-            theirs = S.secrets_swap(self.E.identity(), host, port, remote, o['person'], mine, timeout=10)
+            theirs = S.secrets_swap(self.E.identity(), host, port, remote, o['person'], mine, timeout=10,
+                                    sock=connect() if connect else None)
         except Exception as e:
             self.log(f'  secrets swap with {remote[:12]}… failed: {e}')
             return
@@ -248,6 +267,7 @@ class SyncService:
         with self.lock:
             nearby = {p['peer'] for p in self.peers.values() if root and p['root'] == root and p.get('peer')}
             recent = {k for k, v in self.status.items() if v.get('ok') and now - v.get('at', 0) < window and v.get('peer')}
+            nearby |= set(self.net.online)   # (on the relay: reachable across the internet)
             last = max((v['last_ok'] for v in self.status.values() if v.get('last_ok')), default=None)
         return {'reachable': len(nearby | recent), 'nearby': len(nearby), 'last_sync': last}
 
@@ -256,7 +276,8 @@ class SyncService:
         with self.lock:
             peers = list({p['peer']: dict(p) for p in self.peers.values()}.values())   # one per device
             status = {k: dict(v) for k, v in self.status.items()}
-        return {'discovery': self.discovery, 'port': getattr(self, 'port', None), 'found': peers, 'syncs': status}
+        return {'discovery': self.discovery, 'port': getattr(self, 'port', None), 'found': peers, 'syncs': status,
+                'internet': self.net.snapshot()}
 
     def joined(self):
         """Call after this node joined a plant: announce the new root."""

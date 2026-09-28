@@ -16,6 +16,8 @@ interface SyncControl {
     fun reach(): Map<String, Any?> = emptyMap()
     /** Whether the phone has a working internet connection (null: can't tell). */
     fun internet(): Boolean? = null
+    /** The plant's relay setting changed: reconnect to the new address (M5). */
+    fun relayChanged() {}
 }
 
 class ApiResponse(val status: Int, val json: Any? = null, val bytes: ByteArray? = null,
@@ -156,6 +158,15 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
                 ok(mapOf("ok" to true, "changed" to restoreTo(me, ref!!).toLong()))
             }
             "/api/devices/import-request" -> importRequest(me, d)
+            "/api/settings/relay" -> {                           // M5: the plant's internet relay (manager)
+                need(me, "manager")
+                val url = ((d["url"] as? String) ?: "").trim().trimEnd('/')
+                if (url.isNotEmpty() && !Regex("wss?://[A-Za-z0-9.-]+(:\\d+)?(/[A-Za-z0-9._~/-]*)?").matches(url))
+                    err(400, "The relay address looks like wss://kks-relay.example.workers.dev")
+                node.write("setting", mapOf("key" to "relay", "value" to url.ifEmpty { null }))
+                sync.relayChanged()
+                ok()
+            }
             "/api/progress" -> {
                 try { Progress.save(node, me, d["course"], d["data"]) } catch (e: IllegalArgumentException) { err(400, e.message ?: "bad progress") }
                 ok()
@@ -518,7 +529,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         snap["found"] = (snap["found"] as? List<Map<String, Any?>> ?: emptyList()).map { it + ("name" to names[it["peer"]]) }
         return mapOf("mine" to run.devices.filter { it.value["person"] == me.person }.map { (d, v) -> dev(d, v) },
                      "all" to (if (me.isAdmin()) run.devices.map { (d, v) -> dev(d, v) } else null),
-                     "node" to node.device, "mode" to "peer", "sync" to snap, "sync_port" to sync.port?.toLong())
+                     "node" to node.device, "mode" to "peer", "sync" to snap, "names" to names, "sync_port" to sync.port?.toLong())
     }
 
     private fun revokeDevice(me: Owner, dev: Any?): ApiResponse {

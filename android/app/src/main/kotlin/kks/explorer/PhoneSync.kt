@@ -49,6 +49,10 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
     private val status = LinkedHashMap<String, Map<String, Any?>>()
     private val found = ConcurrentHashMap<String, Found>()
     private val pool = Executors.newCachedThreadPool()
+    /** M5: the plant's internet relay (manager setting `relay`), while this phone is active and allowed to use the
+     *  network it is on (metered setting). */
+    val net = kks.core.Internet(node, relay = { (runCatching { synchronized(node) { node.run.settings["relay"] } }.getOrNull() as? String)?.ifEmpty { null } },
+        record = { r, a, ok, res, d -> record(r, a, ok, res, d) }, allowed = { autoAllowed() }, onChange = { onJoinAsked?.invoke() })
     private val resolveQueue = LinkedBlockingQueue<NsdServiceInfo>()
     private val wake = Object()
     private var srv: ServerSocket? = null
@@ -100,8 +104,11 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
 
     // ---------- discovery (NSD) ----------
     /** Start finding and announcing (the app came on screen, or a background round began). Idempotent. */
+    override fun relayChanged() { if (active) pool.execute { net.stop(); Thread.sleep(300); net.start() } }
+
     fun start() {
         synchronized(this) { if (active) return; active = true }
+        net.start()
         announce()                                  // (outside the lock: it reads the node)
         synchronized(this) { startDiscovery() }
     }
@@ -125,6 +132,7 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
     @Synchronized fun stop() {
         if (!active) return
         active = false
+        net.stop()
         discoveryListener?.let { runCatching { nsd.stopServiceDiscovery(it) } }
         discoveryListener = null
         registration?.let { runCatching { nsd.unregisterService(it) } }
@@ -238,13 +246,24 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
     override fun syncAll() {
         if (roundRunning) return
         roundRunning = true
+        val start = System.currentTimeMillis() / 1000
         try {
             val root = myRoot()
             val targets = LinkedHashSet<String>()
             found.values.filter { it.root.isNotEmpty() && it.root == root }.forEach { targets.add("${it.host}:${it.port}") }
             targets.addAll(known())
             for (a in targets) runCatching { syncOne(a.substringBeforeLast(':'), a.substringAfterLast(':').toInt()) }
+            syncInternet(start)
         } finally { roundRunning = false }
+    }
+
+    /** Devices of the plant online on the relay that weren't reached on this network in this round (§18). */
+    private fun syncInternet(start: Long) {
+        val fresh = synchronized(this) { status.filter { it.value["ok"] == true && ((it.value["last_ok"] as Long?) ?: 0) >= start }.keys }
+        for (peer in net.online.toList() - fresh) runCatching {
+            net.sync(peer)
+            kks.core.Progress.swapAfterSync(node, "", 0, peer) { net.connect(peer).first }
+        }
     }
 
     @Synchronized private fun record(remote: String?, address: String, ok: Boolean, result: Any?, direction: String) {
@@ -265,7 +284,7 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
         "found" to found.values.map { mapOf("host" to it.host, "port" to it.port.toLong(), "peer" to it.peer, "root" to it.root,
                                             "plant" to it.plant, "label" to it.label, "adm" to it.adm) },
         "syncs" to LinkedHashMap(status), "self_seen" to selfSeen,
-        "metered_allowed" to meteredAllowed, "paused" to !autoAllowed())
+        "metered_allowed" to meteredAllowed, "paused" to !autoAllowed(), "internet" to net.snapshot())
 
     /** This phone's addresses on local networks (Wi-Fi, its own hotspot, Ethernet), for invites. Mobile data and VPN
      *  interfaces are left out: other phones can't reach those. */
@@ -284,7 +303,7 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
 
     override fun reach(): Map<String, Any?> {
         val root = myRoot(); val now = System.currentTimeMillis() / 1000
-        val nearby = found.values.filter { root.isNotEmpty() && it.root == root }.mapNotNull { it.peer }.toSet()
+        val nearby = found.values.filter { root.isNotEmpty() && it.root == root }.mapNotNull { it.peer }.toSet() + net.online
         val recent = synchronized(this) { status.values.filter { it["ok"] == true && now - ((it["at"] as Long?) ?: 0) < 180 }.mapNotNull { it["peer"] as String? }.toSet() }
         val last = synchronized(this) { status.values.mapNotNull { it["last_ok"] as Long? }.maxOrNull() }
         return mapOf("reachable" to (nearby + recent).size.toLong(), "nearby" to nearby.size.toLong(), "last_sync" to last)

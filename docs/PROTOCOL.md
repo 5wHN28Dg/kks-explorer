@@ -364,3 +364,66 @@ Course progress body (inside the encryption): `{"type":"course_progress", "body"
 localStorage string (JSON text; pairs, not an object, because such keys aren't valid canonical keys, §1).
 Reading merges per key in replay order: two JSON objects → union (later keys win); keys ending in `Best` with two
 numbers → the larger; else the later value.
+
+## 18. Sync across the internet (relay, hole punching, reliable UDP)
+
+§15 runs unchanged; this section only gives two devices that aren't on one network a byte stream to run it over.
+The Noise handshake still authenticates both sides and encrypts everything, so neither the relay nor anyone on the
+path can read or change plant data. Implementations: `peer/internet.py` + `peer/rudp.py` + `peer/ws.py`,
+`Internet.kt` + `Rudp.kt` + `WsClient.kt`; relay: `relay/src/index.js` (Cloudflare Worker) and its Python twin
+`peer/relay_server.py` (tests, self-hosting).
+
+**Relay address.** A `setting` entry (manager only) with key `relay`, value `ws[s]://host[:port][/path]` without a
+trailing `/`, or null = off. Devices use it only while their automatic sync is allowed (phones: not on a metered
+network unless the person allowed it).
+
+**Room.** One per plant: room = first 32 hex characters of SHA-256(`"kks-relay-room-v1\n"` + root ID). A device
+opens a WebSocket to `<relay>/v1/room/<room>` and sends first
+`{"t":"hello", "peer": <device ID>, "ts": <unix seconds>, "sig": <Ed25519 by the device key over
+"kks-relay-hello-v1\n" + room + "\n" + ts, base64url>}`. The relay checks the signature and |ts − now| ≤ 300 s, then
+answers `{"t":"welcome", "peers": [device IDs in the room]}` and tells the others `{"t":"joined", "peer"}`; when it
+leaves, `{"t":"left", "peer"}`. A second hello for the same device replaces the older socket. Bad hello or more than
+200 devices: `{"t":"error", "why"}` and close. The client sends `{"t":"ping"}` after 25 s of silence (the relay
+answers `{"t":"pong"}`, without waking a Cloudflare Durable Object).
+The relay can't check that a device belongs to the plant (it doesn't know the log). Anyone who knows the root ID can
+join the room and see which device IDs are online, and can ask them to connect; the §15 handshake then refuses
+devices that aren't certified (§15 step 2: `denied`), exactly as for a stranger on the Wi-Fi.
+
+**Signaling** (within the room; the relay adds `from` and forwards to `to`, or answers `{"t":"gone", "id", "peer"}`
+if `to` isn't there):
+- `{"t":"connect", "to", "id": <32 hex, random>, "cand": [addresses]}`: the initiator wants a connection.
+- `{"t":"accept", "to", "id", "cand": [...]}`: the answer. `{"t":"refuse", "to", "id"}` declines (the initiator
+  gives up; current devices never send it).
+- `pipe` is accepted and forwarded but not used yet.
+`cand`: at most 8 strings `"ip:port"`, each at most 64 characters: the UDP socket's public address from STUN
+(RFC 5389 binding request to `stun.cloudflare.com:3478`, else `stun.l.google.com:19302`) and its IPv4 addresses on
+the device's own networks (two devices behind one NAT reach each other directly).
+
+**Direct: hole punching + reliable UDP.** Both sides send from the same UDP socket they asked STUN with. The
+session = the first 8 bytes of `id` (hex-decoded). Datagram = type (1 byte) + session (8 bytes) + body; integers
+big-endian. Datagrams with another session or from another address are ignored.
+- `PUNCH 1`, `PUNCH_ACK 2` (empty body): each side sends PUNCH to every candidate every 100 ms for up to 4 s. The
+  first PUNCH received fixes the other side's address and is answered with PUNCH_ACK; a PUNCH_ACK (or any later
+  datagram type) means the other side heard us: connected.
+- `DATA 3`: seq u32 + payload of at most 1150 bytes (a datagram stays under 1200 bytes, below any path MTU).
+- `ACK 4`: next u32 (every seq below it arrived) + mask u32 (bit i set: seq next+1+i arrived too).
+- `FIN 5`: seq u32; no data after it; acknowledged like DATA. Sent only after all queued data.
+- `PING 6` (empty): sent after 2 s without sending, keeps the NAT mapping open.
+Each side has its own seq space starting at 0. Sender: the window starts at 8 packets, grows by 1 per acknowledged
+packet up to ssthresh, then by 1/window, maximum 256. A packet is resent after the RTO (RFC 6298 from measured round
+trips, Karn's rule; 200 ms to 4 s; doubled per retry, capped at 4 s), or at once when 3 later packets were
+acknowledged past it (at most once per round trip). A loss halves the window (minimum 2), once per window of packets.
+The stream fails when nothing was acknowledged for `dead` seconds (15 s by default) while data is waiting, or nothing
+was heard for that long. This is a transport only: order and completeness, no security.
+
+**Fallback: a pipe through the relay.** If punching fails (both sides behind symmetric NATs, UDP blocked), each side
+opens a WebSocket to `<relay>/v1/pipe/<room>/<id>/<a|b>`, `a` = the initiator. Binary messages from one side are
+passed to the other. What a side sends before the other arrives is held (at most 1 MiB, else the pipe closes). A
+pipe whose other side doesn't come within 30 s is closed, and when one side closes, so does the other. A second
+socket for a taken side is refused (HTTP 409).
+
+**Then** the initiator runs §15 (or §17) over the stream as over TCP, checking that the handshake's remote device is
+the one it asked for; the other side serves it as a listener would (a first `join` or `secrets` message included).
+When to connect: an automatic round first syncs the devices it reaches on the local network, then every device
+online in the relay room that no sync in this round reached. Presence and connections only run while automatic sync
+runs (phones: app on screen or the background job).

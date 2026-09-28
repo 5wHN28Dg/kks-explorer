@@ -188,6 +188,9 @@ const VIEWS={
       ${S.found.length?`<div class="sub" style="margin-top:6px">Found on this Wi-Fi: ${S.found.map(f=>esc(f.name||f.host)).join(', ')}</div>`:''}
       <form class="inline" onsubmit="event.preventDefault();syncNow(this.address.value)"><button class="primary" type="button" onclick="syncNow('')">Sync now</button>
       <input name="address" placeholder="or an address, e.g. 192.168.1.20" style="min-width:220px"><button class="ghost">Sync with it</button></form></div>
+      <div class="card"><h3>Internet</h3>${(()=>{const N=S.internet||{};return `<div class="sub">${N.relay?`Relay <span class="mono">${esc(N.relay)}</span> · ${esc(N.state||'')}${N.online?.length?` · online there: ${N.online.map(p=>esc(D.names?.[p]||p.slice(0,8)+'…')).join(', ')}`:''}`
+        :'No internet relay set: devices sync only on the same network (or with files).'} Everything that passes the relay is end-to-end encrypted between devices: it can't read plant data.</div>
+        ${isManager()?`<form class="inline" style="margin-top:6px" onsubmit="event.preventDefault();setRelay(this.url.value)"><input name="url" value="${esc(N.relay||'')}" placeholder="wss://kks-relay.….workers.dev" style="min-width:280px"><button class="ghost">Save</button></form>`:''}`})()}</div>
       <div class="card"><h3>Bundle files</h3><div class="sub">A bundle carries the plant log (optionally with photos) by USB or messaging, where Wi-Fi sync can't reach. It is not encrypted: treat it like a copy of the database.</div>
       <div class="row" style="margin-top:8px">${isAdmin()?`<a class="ghost" href="/api/bundle" onclick="return exportBundle(0)" style="text-decoration:none;color:inherit">Export bundle</a><a class="ghost" href="/api/bundle?photos=1" onclick="return exportBundle(1)" style="text-decoration:none;color:inherit">Export with photos</a>`:''}
       <label class="ghost" style="cursor:pointer">Import a bundle<input type="file" accept=".kksbundle" hidden onchange="importBundle(this)"></label></div></div>`;
@@ -332,6 +335,7 @@ const setUser=(id,d)=>act(()=>K.api(`/api/users/${id}`,d),'Updated');
 const exportBundle=photos=>{ if(!K.native) return true; K.native.saveApi('plant.kksbundle','/api/bundle'+(photos?'?photos=1':'')); return false };
 const setPerson=(pid,d)=>act(()=>K.api(`/api/persons/${pid}`,d),'Updated');
 const syncNow=address=>act(()=>K.api('/api/sync/now',{address}),'Synced');
+const setRelay=url=>act(()=>K.api('/api/settings/relay',{url}),url?'Relay saved: every device learns it at its next sync':'Relay removed');
 async function importBundle(inp){ const f=inp.files[0]; if(!f) return; try{ const r=await K.importBundle(f); toast(`Imported ${r.entries} entries, ${r.photos} photos`); show('devices') }catch(e){ toast(e.message) } }
 // ---------- join by invite (QR code, or asked on the Wi-Fi without one): PROTOCOL.md §16 ----------
 let lobbyTimer=null, lobbySeen='';

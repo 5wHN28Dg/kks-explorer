@@ -30,3 +30,6 @@ android/*/.cxx/
 *.jks
 *.keystore
 keystore.properties
+# wrangler (relay/): local state and caches
+relay/.wrangler/
+relay/node_modules/

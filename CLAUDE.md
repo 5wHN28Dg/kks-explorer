@@ -16,8 +16,8 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
   create the manager (also creates `root.key`). CLI: `users`, `reset-manager --user X`, `reset-password --user X`,
   `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`.
   Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `.venv/bin/python -m unittest discover -s tests` (68: server end-to-end over HTTP, protocol vectors,
-  migration, sync, peer mode, join by invite). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
+- Tests: `.venv/bin/python -m unittest discover -s tests` (79: server end-to-end over HTTP, protocol vectors,
+  migration, sync, peer mode, join by invite, reliable UDP, internet sync). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
   `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
   `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
   in a throwaway venv (not committed): setup, invite, user proposal, offline queue + offline reload via the service
@@ -215,8 +215,9 @@ always-on peer); same-Wi-Fi + file/QR sync first, internet P2P later (M5); Andro
 existing web P&ID viewer in a WebView; Windows/Linux = this Python app packaged (double-click, opens browser; the
 stdlib-only rule ends for the package: cryptography + zeroconf); one person may have several devices (device keys +
 certificates). Build order M0 protocol spec + Python reference + test vectors → M1 server on the log → M2 desktop
-package + LAN/file sync → M3 Android → M4 Learning (3 HTML courses, not yet in the repo) → M5 internet → M6 fully
-native desktop in Nim, no browser (added 2026-09-27; details decided when we get there).
+package + LAN/file sync → M3 Android → M4 Learning (3 HTML courses, not yet in the repo) → M5 internet → M5b plant data out of the app, public
+repo, self-updates (2026-09-28) → M6 fully native desktop in Nim, no browser (added 2026-09-27; details decided when
+we get there) → M7 research iOS via Pythonista 3 / Pyto / iSH / a-Shell (2026-09-28).
 Answered 2026-09-26: plant Wi-Fi allows device-to-device traffic; courses in `source/courses/` (3 single-file HTML,
 localStorage progress, Google Fonts to vendor); quiz progress private (encrypted to the person's devices); photos
 on-demand or all, per device, stored as JPEG XL (no JPEG fallback since 2026-09-27: viewers without JXL decode it with libjxl); manager key: no second
@@ -423,6 +424,32 @@ Note: `data/courses/` holds the built courses and is committed with the rest of 
 - Request notes: optional "Note for the approver" on equipment edits, photos, photo deletions → `comment` entry
   {entry, text} (PROTOCOL §9, side output `comments`, no state change; frozen vectors unchanged); shown in Approvals and
   My submissions (`request_note`).
+
+## M5 Internet sync (done 2026-09-28; decided: Cloudflare Worker relay, direct first)
+
+PROTOCOL.md §18. The §15 sync runs unchanged over a new byte stream: presence in a per-plant room on the relay
+(room = sha256("kks-relay-room-v1\n"+root)[:32]; hello signed by the device key, ±300 s), `connect`/`accept` swap
+candidates (UDP STUN public address + LAN IPv4s; TCP STUN doesn't exist on public servers, hence UDP), hole punching
+with session = first 8 bytes of the connect id, then `peer/rudp.py` / `Rudp.kt` (own reliable UDP: SACK mask,
+RFC 6298 RTO 0.2–4 s, window 8–256 halved once per round, fast retransmit after 3 later SACKs, PING after 2 s idle);
+else a WebSocket pipe `/v1/pipe/<room>/<id>/<a|b>`. Relay: `relay/` (Worker + SQLite Durable Object, Hibernation
+API, pipe buffer 1 MiB, unpaired pipes closed after 30 s; deploy guide relay/README.md) and its twin
+`peer/relay_server.py` (tests; `python3 -m peer.relay_server PORT`). Clients: `peer/internet.py` + `peer/ws.py`
+(stdlib WebSocket), `Internet.kt` + `WsClient.kt`; Kotlin `Conn` interface (TCP, rudp, pipe) under Sync.kt.
+Relay address = `setting` `relay` (manager: `POST /api/settings/relay`, both platforms; admin.html Devices → Internet
+card). `syncsvc` / `PhoneSync` run it with the auto loop (phones: on screen or the worker; metered setting); a round
+syncs LAN devices first, then relay-online devices no sync reached since the round started (a 60 s "fresh" window
+first used here skipped changes made right after a sync: found on the emulator). Restart-safe presence thread
+(generation counter: stop()+start() used to leave the old thread running). Status line counts relay-online devices
+as reachable.
+Verified: Python tests (tests/test_rudp.py: 3 MB clean, 2 % loss ~9 s, 10 %/20 % loss, Noise over it;
+tests/test_internet.py: presence needs the key, direct, relay pipe when punching fails, setting + auto round, absent
+peer), also against the real Worker under `wrangler dev` (`KKS_RELAY_URL=ws://127.0.0.1:8787`); Kotlin RudpTest (incl.
+Python interop via tools/rudp_peer.py), LocalApiTest internetSyncWithPythonLaptop (direct + pipe) and relaySetting;
+emulator ↔ app.py server through `wrangler dev` (adb reverse 8787): server change reached the phone in 6 s,
+phone proposal reached the server with its LAN path cut, both "internet (direct)".
+NOT verified: a real Cloudflare deployment (needs the user's account), real NATs / mobile data / symmetric NATs,
+two phones over the internet. Going live needs the same IT approval as remote access.
 
 ## Backlog (rough priority)
 

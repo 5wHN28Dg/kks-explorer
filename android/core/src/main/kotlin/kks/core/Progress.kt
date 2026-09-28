@@ -92,7 +92,7 @@ object Progress {
 
     /** After a sync with [remote] at host:port: if it is another device of this node's owner, swap person secrets
      *  (§17), once per device and set of secrets. Failures only mean "next time". -> secrets learned */
-    fun swapAfterSync(node: LocalNode, host: String, port: Int, remote: String): Int {
+    fun swapAfterSync(node: LocalNode, host: String, port: Int, remote: String, connect: (() -> Conn)? = null): Int {
         val o = node.owner() ?: return 0
         if (remote == o.device) return 0
         val same = synchronized(node) { node.run.devices[remote]?.let { it["person"] == o.person && remote !in node.run.cuts } == true }
@@ -100,7 +100,7 @@ object Progress {
         val mine = secretsOf(node, o.person)
         val key = remote + mine.joinToString(",") { sha(it) }
         if (synchronized(swapped) { key in swapped }) return 0
-        val theirs = try { Sync.secretsSwap(node.identity(), host, port, remote, o.person, mine, 10_000) } catch (e: Exception) { return 0 }
+        val theirs = try { Sync.secretsSwap(node.identity(), host, port, remote, o.person, mine, 10_000, connect?.invoke()) } catch (e: Exception) { return 0 }
         val n = addSecrets(node, o.person, theirs)
         synchronized(swapped) { swapped.add(remote + secretsOf(node, o.person).joinToString(",") { sha(it) }) }
         return n

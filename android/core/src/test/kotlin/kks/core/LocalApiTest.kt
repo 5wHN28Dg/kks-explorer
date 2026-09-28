@@ -183,6 +183,21 @@ class LocalApiTest {
         assertEquals("11LAB90CP501", ((a.get("/api/state").second["added_tags"] as List<Map<String, Any?>>).single())["kks"])
     }
 
+    @Test fun relaySetting() {
+        val pl = Plant("admin")
+        assertEquals(403, pl.phone.post("/api/settings/relay", mapOf("url" to "wss://r.example.dev")).first)   // manager only
+        val mp = Phone()                                                       // a phone of the manager
+        pl.mgr.append("device_cert", mapOf("device" to mp.node.device, "person" to pl.m, "label" to "manager phone"))
+        mp.node.adopt(pl.root.peerId); mp.node.ingest(pl.mgr.entriesFor(emptyMap<String, Any>()))
+        assertEquals(400, mp.post("/api/settings/relay", mapOf("url" to "https://r.example.dev")).first)
+        assertEquals(400, mp.post("/api/settings/relay", mapOf("url" to "wss://r.example.dev/a b")).first)
+        assertEquals(200, mp.post("/api/settings/relay", mapOf("url" to "wss://kks-relay.x.workers.dev/")).first)
+        assertEquals("wss://kks-relay.x.workers.dev", mp.node.run.settings["relay"])
+        assertEquals(200, mp.post("/api/settings/relay", mapOf("url" to "")).first)
+        assertEquals(null, mp.node.run.settings["relay"])
+        assertTrue((mp.get("/api/devices").second["names"] as Map<*, *>).containsKey(mp.node.device))
+    }
+
     @Test fun peopleAndDevices() {
         val pl = Plant("admin")
         val a = pl.phone
@@ -494,6 +509,50 @@ class LocalApiTest {
             val cfg = LocalApi(usr.node, usr).handle("GET", "/api/config", emptyMap(), null).json as Map<*, *>
             assertEquals("Me Myself", ((cfg["node"] as Map<*, *>)["removed"] as Map<*, *>)["by"])
         } finally { adm.close(); usr.close() }
+    }
+
+    /** M5: a Kotlin phone and a real Python laptop (app.py, peer mode) sync across the "internet" through the
+     *  relay (peer/relay_server.py, the same protocol as the Cloudflare Worker): directly after hole punching, and
+     *  through a relay pipe when the phone doesn't try direct. The relay address comes from the plant setting. */
+    @Test fun internetSyncWithPythonLaptop() {
+        val py = File(repo(), ".venv/bin/python")
+        assumeTrue("needs the repo's .venv", py.canExecute())
+        val relayPort = ServerSocket(0).use { it.localPort }
+        val relayProc = ProcessBuilder(py.path, "-u", "-m", "peer.relay_server", "$relayPort").directory(repo()).redirectErrorStream(true).start()
+        try {
+            relayProc.inputStream.bufferedReader().readLine()                                   // "relay on port …"
+            val url = "ws://127.0.0.1:$relayPort"
+            Py("server").use { srv -> Py("peer").use { lap ->
+                val boss = srv.web()
+                boss.post("/api/setup", mapOf("token" to srv.setupToken, "username" to "boss", "password" to "correct horse", "full_name" to "Boss Person"))
+                val link = boss.post("/api/users", mapOf("username" to "usr", "role" to "user", "full_name" to "Usr Person")).second["link"] as String
+                srv.web().post("/api/password-reset", mapOf("token" to link.substringAfter("#reset="), "password" to "usr password!"))
+                assertEquals(200, boss.post("/api/settings/relay", mapOf("url" to url)).first)
+                val join = mapOf("url" to "http://127.0.0.1:${srv.port}", "username" to "usr", "password" to "usr password!")
+                val laptop = lap.web()
+                assertEquals(200, laptop.post("/api/node/join-server", join).first)
+                val phone = Phone()
+                assertEquals(200, phone.post("/api/node/join-server", join).first)
+                laptop.post("/api/sync/now", mapOf("address" to "127.0.0.1:${srv.syncPort}"))           // (learns the phone's certificate)
+                assertEquals(url, phone.node.run.settings["relay"])
+                val log = java.util.concurrent.CopyOnWriteArrayList<String>()
+                val net = Internet(phone.node, { phone.node.run.settings["relay"] as String? }, { _, a, ok, _, d -> log.add("$d $a $ok") }, stunServers = emptyList())
+                net.start()
+                val lapDev = (laptop.get("/api/config").second["node"] as Map<*, *>)["device"] as String
+                waitFor { lapDev.takeIf { it in net.online } }                                      // the laptop is on the relay by itself
+                phone.post("/api/submit", mapOf("kind" to "link", "payload" to mapOf("proc" to "3.6.1", "step" to 11, "kks" to "11LAB70AA501")))
+                val (remote, st) = net.sync(lapDev)
+                assertEquals(lapDev to true, remote to (st.sent >= 1))
+                assertTrue(log.toString(), "out internet (direct) true" in log)
+                net.tryDirect = false
+                phone.post("/api/submit", mapOf("kind" to "link", "payload" to mapOf("proc" to "3.6.1", "step" to 12, "kks" to "11LAB70AA501")))
+                net.sync(lapDev)
+                assertTrue(log.toString(), "out internet (relay) true" in log)
+                val steps = (laptop.get("/api/submissions?status=all").second["submissions"] as List<Map<String, Any?>>).map { (it["payload"] as Map<*, *>)["step"] }
+                assertTrue(steps.toString(), 11L in steps && 12L in steps)
+                net.stop()
+            } }
+        } finally { relayProc.destroy() }
     }
 
     /** A tiny HTTP client with a cookie, for the Python server. */

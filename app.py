@@ -381,7 +381,7 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                     st['name'] = names.get(st.get('peer'))
                 for f in snap['found']:
                     f['name'] = names.get(f.get('peer'))
-                return self.send({'mine': mine, 'all': everyone, 'node': P_id(E), 'mode': cfg['mode'], 'sync': snap,
+                return self.send({'mine': mine, 'all': everyone, 'node': P_id(E), 'mode': cfg['mode'], 'sync': snap, 'names': names,
                                   'sync_port': cfg['sync_port']})
             if p == '/api/sync/status':   # polled by every page: reload when rev moves; the status line
                 rev = store.meta('seq', 0, c)   # the write journal's sequence: moves with every stored change
@@ -593,6 +593,15 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 return self.manager_action(me, p.rsplit('/', 1)[1], d)
             if p == '/api/devices/import-request':
                 return self.import_request(me, d)
+            if p == '/api/settings/relay':   # M5: the plant's internet relay (a manager setting every device learns)
+                self.need(me, 'manager')
+                url = (d.get('url') or '').strip().rstrip('/')
+                if url and not re.fullmatch(r'wss?://[A-Za-z0-9.-]+(:\d+)?(/[A-Za-z0-9._~/-]*)?', url):
+                    raise HTTPError(400, 'The relay address looks like wss://kks-relay.example.workers.dev')
+                with E.tx() as c:
+                    E.append(c, me['device'], 'setting', {'key': 'relay', 'value': url or None})
+                svc.net.stop(); svc.net.start()
+                return self.send({'ok': True})
             if p == '/api/progress':
                 if not PEER:
                     raise HTTPError(404, 'Course progress stays in this browser on a server.')
