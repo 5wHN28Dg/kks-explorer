@@ -12,6 +12,10 @@ interface SyncControl {
     fun joined()
     /** "ip:port" addresses other devices on the network may reach this one at (for invites). */
     fun addresses(): List<String> = emptyList()
+    /** For the status line: {reachable, nearby, last_sync} (devices of this plant seen or synced with lately). */
+    fun reach(): Map<String, Any?> = emptyMap()
+    /** Whether the phone has a working internet connection (null: can't tell). */
+    fun internet(): Boolean? = null
 }
 
 class ApiResponse(val status: Int, val json: Any? = null, val bytes: ByteArray? = null,
@@ -34,8 +38,18 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
     private fun ok(v: Any? = mapOf("ok" to true)) = ApiResponse(200, v)
     private fun err(status: Int, msg: String): Nothing = throw ApiError(status, msg)
 
+    /** Routes that talk to other devices: they must not hold the node's lock while waiting on the network, or two
+     *  phones syncing each other at the same moment each wait for the other's lock (until the socket times out). */
+    private val UNLOCKED = setOf("/api/sync/now", "/api/node/join-server")
+
+    /** Moves with every change (log entries by anyone, submission rows here): pages poll it (/api/sync/status). */
+    private val rev = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
+    init { node.listeners.add { rev.incrementAndGet() } }
+
     fun handle(method: String, path: String, query: Map<String, String>, body: Any?): ApiResponse = try {
-        synchronized(node) { route(method, path, query, (body as? Map<String, Any?>) ?: emptyMap(), body) }
+        val d = (body as? Map<String, Any?>) ?: emptyMap()
+        (if (method == "POST" && path in UNLOCKED) route(method, path, query, d, body)
+         else synchronized(node) { route(method, path, query, d, body) }).also { if (method == "POST" && it.status < 400) rev.incrementAndGet() }
     } catch (e: ApiError) {
         ApiResponse(e.status, mapOf("error" to e.message) + e.extra)
     } catch (e: Conflict) {
@@ -55,6 +69,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         if (method == "GET") when (path) {
             "/api/config" -> return ok(configOut())
             "/api/node/join-invite" -> return ok(joining?.state() ?: mapOf("state" to null))
+            "/api/sync/status" -> return ok(mapOf("rev" to rev.get(), "mode" to "peer", "internet" to sync.internet()) + sync.reach())
             "/api/node/nearby" -> if (node.owner() == null) {      // admins' devices on this Wi-Fi a new device may ask (§16)
                 val snap = sync.snapshot()
                 val found = (snap["found"] as? List<Map<String, Any?>>).orEmpty().filter { it["adm"] == true && it["peer"] != null }
@@ -128,7 +143,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         Regex("/api/invites/([A-Za-z0-9_-]{16,40})").matchEntire(path)?.let { return inviteAction(me, it.groupValues[1], d) }
         Regex("/api/join-requests/([A-Za-z0-9_-]{43})").matchEntire(path)?.let { return lobbyAction(me, it.groupValues[1], d) }
         return when (path) {
-            "/api/submit" -> ok(submit(me, d["kind"] as? String, d["payload"], d["client_id"]))
+            "/api/submit" -> ok(submit(me, d["kind"] as? String, d["payload"], d["client_id"], d["note"]))
             "/api/profile" -> {
                 val (fn, pos) = person(d)
                 if (fn != me.fullName || pos != me.position) node.write("person", personBody(me.person, fullName = fn, position = pos))
@@ -175,9 +190,10 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         return mapOf("plant_name" to (plant ?: plantName), "offline_days" to 3650L, "mode" to "peer", "setup_needed" to false,
                      "app" to true,
                      // photos become JPEG XL here: the page sends lossless PNG (nothing crosses a network)
-                     "photo_upload" to if (photoEncoder != null) mapOf("type" to "image/png") else mapOf("type" to "image/jpeg", "q" to 0.85),
+                     "photo_upload" to if (photoEncoder != null) mapOf("type" to "image/png", "ms_per_mp" to photoMsPerMp()) else mapOf("type" to "image/jpeg", "q" to 0.85),
                      "node" to mapOf("joined" to (node.owner() != null), "device" to node.device, "has_plant" to (node.anchor != null),
-                                     "plant" to plant, "can_create" to false))
+                                     "plant" to plant, "can_create" to false,
+                                     "removed" to if (node.owner() == null) node.store.meta("removed")?.let { runCatching { Json.parse(it) }.getOrNull() } else null))
     }
 
     // ---------- /api/state ----------
@@ -202,7 +218,10 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
     // ---------- submissions (server/changes.py) ----------
     private fun conflictsOut(c: List<Map<String, Any?>>) = c.map { it.filterKeys { k -> k in setOf("field", "base", "live", "proposed") } }
 
-    private fun submit(me: Owner, kind: String?, payload: Any?, clientId: Any?): Map<String, Any?> {
+    /** note: optional words for the approver, kept as a `comment` entry on the proposal (as changes.submit). */
+    private fun submit(me: Owner, kind: String?, payload: Any?, clientId: Any?, noteIn: Any? = null): Map<String, Any?> {
+        if (noteIn != null && (noteIn !is String || noteIn.length > 500)) err(400, "note: up to 500 characters")
+        val requestNote = (noteIn as String?)?.trim().orEmpty()
         if (clientId != null && (clientId !is String || !CLIENT_ID.matches(clientId))) err(400, "bad client_id")
         if (clientId is String) node.store.subByClientId(clientId)?.let { old ->
             val (st, note) = subStatus(old)
@@ -219,6 +238,7 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             return mapOf("id" to sid, "status" to "conflict", "conflicts" to conflictsOut(conflicts))
         }
         val eid = node.write(kind, body)
+        if (requestNote.isNotEmpty()) node.write("comment", mapOf("entry" to eid, "text" to requestNote))
         val sid = node.store.putSub(row + ("entry" to eid))
         return when {
             me.isAdmin() -> mapOf("id" to sid, "status" to "approved")
@@ -270,6 +290,8 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
             "status" to s.status, "created" to r["created"], "decided_at" to s.decidedAt, "note" to s.note,
             "payload" to Payloads.toPayload(node, kind, body), "by" to (who?.first ?: "?"), "mine" to (r["person"] == me.person))
         d["by_name"] = who?.second ?: d["by"]
+        val author = (r["entry"] as String?)?.let { node.entries[it]?.get("peer") as String? }?.let { node.run.devices[it]?.get("person") }
+        d["request_note"] = (r["entry"] as String?)?.let { e -> node.run.comments[e]?.firstOrNull { it["person"] == author }?.get("text") } ?: ""
         if (kind == "photo") {
             val voters = (r["entry"] as String?)?.let { node.run.votes[it] } ?: emptySet()
             d["votes"] = voters.size.toLong(); d["voted"] = me.person in voters
@@ -611,6 +633,8 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
     var deviceLabel = "phone"
     /** Turns a photo (PNG/JPEG/WebP bytes) into JPEG XL; the app sets it (libjxl), tests leave it null. */
     var photoEncoder: ((ByteArray) -> ByteArray)? = null
+    /** How long encoding took here lately per megapixel, for the pages' progress bar (the app measures it). */
+    var photoMsPerMp: () -> Long = { 8000L }
     var invitePollMs = 2000L
 
     private fun joinServer(url: String, username: String?, password: String?) {

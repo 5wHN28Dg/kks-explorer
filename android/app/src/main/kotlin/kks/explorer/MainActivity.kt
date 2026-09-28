@@ -103,6 +103,13 @@ class MainActivity : ComponentActivity() {
             if (url.path == "/" || url.path == "/index.html") { state.manage = null; state.tab = 0; true } else false
         }
         courseWeb = host.make { url -> url.path?.startsWith("/data/courses/") != true }   // links between courses stay; others don't
+        if (App.store.meta("removed") != null && App.store.meta("web_cleared") == null) {
+            // removed from the plant: the pages' own copies (course progress, queued changes) go too
+            android.webkit.WebStorage.getInstance().deleteAllData()
+            android.webkit.CookieManager.getInstance().removeAllCookies(null)
+            pidWeb.clearCache(true)
+            App.store.setMeta("web_cleared", "1")
+        }
         pidWeb.loadUrl("https://${WebHost.HOST}/")
         App.node.listeners.add(onChange)
         App.sync.onJoinAsked = { changed() }
@@ -209,20 +216,44 @@ class MainActivity : ComponentActivity() {
     }
 
     // ---------- pickers for the web pages ----------
+    // The app declares CAMERA (the QR scanner needs it), and then Android lets the camera app take a photo for us only
+    // once the person has granted it: ask first, and offer the camera only if they said yes.
+    private var chooserWaiting: WebChromeClient.FileChooserParams? = null
+    private val askCamera = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        chooserWaiting?.let { openChooser(it, granted) }
+        chooserWaiting = null
+    }
+
+    private fun cameraAllowed() = checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
     /** "+ Add photo" and file inputs: the camera or the gallery / files, whichever the person picks. */
     fun chooseFile(cb: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams): Boolean {
         fileCallback?.onReceiveValue(null)
         fileCallback = cb
         cameraUri = null
+        if (params.acceptTypes.any { it.startsWith("image") } && !cameraAllowed()) {
+            chooserWaiting = params
+            askCamera.launch(android.Manifest.permission.CAMERA)
+            return true
+        }
+        return openChooser(params, cameraAllowed())
+    }
+
+    private fun openChooser(params: WebChromeClient.FileChooserParams, camera: Boolean): Boolean {
         val chooser = Intent.createChooser(params.createIntent(), null)
-        if (params.acceptTypes.any { it.startsWith("image") }) {
+        if (camera && params.acceptTypes.any { it.startsWith("image") }) {
             val f = File(cacheDir, "camera/photo-${System.currentTimeMillis()}.jpg").also { it.parentFile!!.mkdirs() }
             cameraUri = FileProvider.getUriForFile(this, "kks.explorer.files", f)
             val cam = Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, cameraUri)
                 .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // Inside a chooser the flags above don't always reach the camera app: then it can't write the file and the
+            // photo is lost. Grant every camera app access to that one file explicitly, and carry it as ClipData too.
+            cam.clipData = android.content.ClipData.newRawUri("photo", cameraUri)
+            for (ri in packageManager.queryIntentActivities(cam, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY))
+                grantUriPermission(ri.activityInfo.packageName, cameraUri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(cam))
         }
-        return try { pick.launch(chooser); true } catch (e: Exception) { fileCallback = null; false }
+        return try { pick.launch(chooser); true } catch (e: Exception) { fileCallback?.onReceiveValue(null); fileCallback = null; false }
     }
 
     fun save(name: String, mime: String, bytes: ByteArray, web: WebView) {

@@ -46,10 +46,9 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .del{color:var(--bad)} .add{color:var(--ok)}
 .linkbox{font-family:var(--mono);font-size:12.5px;word-break:break-all;background:var(--chrome);padding:6px 8px;border-radius:5px;border:1px solid var(--line);margin:6px 0}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chrome3);padding:8px 14px;border-radius:6px;display:none;z-index:40;max-width:92%}
-#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:100}
-#lightbox img{max-width:96%;max-height:92%}
 .peer .server-only{display:none}
 .app header{display:none}
+.rnote{margin:4px 0;padding:4px 8px;border-left:3px solid var(--ok);background:rgba(79,156,255,.08);border-radius:0 4px 4px 0;font-style:italic}
 </style>
 </head>
 <body>
@@ -63,7 +62,7 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 <nav id="tabs"></nav>
 <main id="main"></main>
 <div id="toast"></div>
-<div id="lightbox" onclick="this.style.display='none'"><img id="lbimg" alt=""></div>
+
 <script src="common.js"></script>
 <script src="qrcodegen.js"></script>
 <script>
@@ -72,7 +71,7 @@ let ME=null, tab=null, SHEETS=[];
 const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.user.role==='manager';
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
-const lightbox=src=>{$('#lbimg').src=src;$('#lightbox').style.display='flex'};
+const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
 async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
 
 const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isAdmin()&&!K.cfg?.app],['history','History',isAdmin],['account','Account',()=>true]];
@@ -116,6 +115,7 @@ function detail(s){
   return `<div class="${s.kind==='link'&&p.on===false?'del':'add'}">${esc(K.describe(s.kind,p))}</div>`;
 }
 const who=s=>s.by_name&&s.by_name!==s.by?`${esc(s.by_name)} <span class="mono">(${esc(s.by)})</span>`:esc(s.by);  // full name + username
+const rnote=s=>s.request_note?`<div class="rnote">“${esc(s.request_note)}”</div>`:'';   // the requester's note for the approver
 const badge=s=>{ const st=s.conflicts?.length?'conflict':s.status; return `<span class="badge ${st}">${st}</span>` };
 
 // ---------- views ----------
@@ -132,13 +132,13 @@ const VIEWS={
         const kks=L[0].payload.kks;
         h+=`<div class="card"><h3>Photo proposals · ${esc(kks)}</h3>${L.length>1?'<div class="sub">Several photos proposed. “Use this one” approves it and rejects the others. Votes are only a hint.</div>':''}
           <div class="photos">${L.map(s=>`<figure><img src="photos/${esc(s.payload.file)}" onclick="lightbox(this.src)" alt="">
-          <div class="sub">${who(s)} · ${when(s.created)} · ${s.votes} vote${s.votes===1?'':'s'}</div>${s.payload.caption?`<div>${esc(s.payload.caption)}</div>`:''}
+          <div class="sub">${who(s)} · ${when(s.created)} · ${s.votes} vote${s.votes===1?'':'s'}</div>${s.payload.caption?`<div>${esc(s.payload.caption)}</div>`:''}${rnote(s)}
           <div class="row" style="margin-top:6px">${L.length>1?`<button class="primary" onclick="decide(${s.id},'pick')">Use this one</button><button class="ghost" onclick="decide(${s.id},'approve')">Add</button>`:`<button class="primary" onclick="decide(${s.id},'approve')">Approve</button>`}
           <button class="danger" onclick="decide(${s.id},'reject')">Reject</button></div></figure>`).join('')}</div></div>`;
         continue;
       }
       h+=`<div class="card"><h3>${esc(target)}</h3>${L.map(s=>`<div style="margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)">
-        <div class="row">${badge(s)}<span class="sub">#${s.id} · ${who(s)} · ${when(s.created)}</span></div>
+        <div class="row">${badge(s)}<span class="sub">#${s.id} · ${who(s)} · ${when(s.created)}</span></div>${rnote(s)}
         ${s.conflicts?.length?`<div class="warn bad">Conflict: ${s.kind==='equipment'?'highlighted field(s) changed after this was submitted':'this changed after it was submitted'}. Approving overwrites the current value.</div>`:''}
         ${detail(s)}
         <div class="row" style="margin-top:6px">${s.conflicts?.length?`<button class="primary" onclick="decide(${s.id},'approve',true)">Overwrite with proposal</button>`:`<button class="primary" onclick="decide(${s.id},'approve')">Approve</button>`}
@@ -152,7 +152,7 @@ const VIEWS={
     let h='';
     if(K.outbox.length) h+=`<div class="card"><h3>Queued on this device (${K.outbox.length})</h3><div class="sub">Sent automatically when the server is reachable.</div>${K.outbox.map(i=>`<div>${esc(K.describe(i.kind,i.payload))}</div>`).join('')}</div>`;
     if(vote.length) h+=`<div class="card"><h3>Photo proposals from others</h3><div class="sub">Vote for the photo that shows the equipment best. An admin makes the final choice.</div><div class="photos">${vote.map(s=>`<figure><img src="photos/${esc(s.payload.file)}" onclick="lightbox(this.src)" alt=""><div class="sub">${esc(s.payload.kks)} · ${esc(s.by)} · ${s.votes} vote${s.votes===1?'':'s'}</div><button class="${s.voted?'primary':'ghost'}" onclick="vote(${s.id})">${s.voted?'Voted ✓':'Vote'}</button></figure>`).join('')}</div></div>`;
-    h+=`<table><tr><th>#</th><th>Status</th><th>Change</th><th>Sent</th><th>Decision</th><th></th></tr>${mine.map(s=>`<tr><td class="sub">${s.id}</td><td>${badge(s)}</td><td>${esc(K.describe(s.kind,s.payload))}</td><td class="sub">${when(s.created)}</td>
+    h+=`<table><tr><th>#</th><th>Status</th><th>Change</th><th>Sent</th><th>Decision</th><th></th></tr>${mine.map(s=>`<tr><td class="sub">${s.id}</td><td>${badge(s)}</td><td>${esc(K.describe(s.kind,s.payload))}${rnote(s)}</td><td class="sub">${when(s.created)}</td>
       <td class="sub">${s.status==='conflict'?'waiting for an admin (clashes with a newer change)':esc(s.note&&!s.note.startsWith('[')?s.note:'')}</td><td>${['pending','conflict'].includes(s.status)?`<button class="ghost" onclick="withdraw(${s.id})">Withdraw</button>`:''}</td></tr>`).join('')}</table>`;
     $('#main').innerHTML=h||'<p class="sub">No submissions yet.</p>';
     if(!mine.length) $('#main').insertAdjacentHTML('beforeend','<p class="sub">You haven\'t submitted anything yet.</p>');

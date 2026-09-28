@@ -389,6 +389,71 @@ class Engine:
         finally:
             c.close()
 
+    # ---------- removed devices (§15 `revoked`) ----------
+    def revocation_of(self, device):
+        """The revoke entry that cut `device`, to show it why it gets nothing (it wipes itself, §15). Or None."""
+        with self.lock:
+            if not self.run or device not in self.run.cuts:
+                return None
+            found = [e for e in self.entries.values() if e.get('type') == 'revoke' and isinstance(e.get('body'), dict)
+                     and e['body'].get('device') == device]
+        return max(found, key=lambda e: (e['hlc'][0], e['hlc'][1]), default=None)
+
+    def accept_revocation(self, e):
+        """Another device says this laptop was removed and shows the revoke entry. Believe it only if it checks out
+        against this laptop's own copy of the log: signed, names this device, by an admin/the manager or by one of
+        the owner's own devices. Then delete the plant here (wipe). -> True if wiped."""
+        me = self.node_device()
+        o = self.owner() if me else None
+        if not o or not isinstance(e, dict):
+            return False
+        try:
+            P.verify_entry(e)
+        except P.ProtocolError:
+            return False
+        if e.get('type') != 'revoke' or not isinstance(e.get('body'), dict) or e['body'].get('device') != me:
+            return False
+        with self.lock:
+            d = self.run.devices.get(e['peer'])
+            if not d or e['peer'] in self.run.cuts:
+                return False
+            p = d['person']
+            role = 'manager' if self.run.manager == p else self.run.persons.get(p, {}).get('role')
+            if not (role in ('admin', 'manager') or p == o['person']):
+                return False
+            by = self.run.persons.get(p, {}).get('full_name') or 'an admin'
+        self.wipe({'by': by, 'at': int(time.time()), 'plant': (self.run.settings.get('plant') if self.run else None)})
+        return True
+
+    def wipe(self, note):
+        """Delete this laptop's plant: every table, the photos, the backups (they hold the same data), the device key;
+        in place (open files can't be deleted on Windows). Keeps root.key (never on a removable laptop in practice,
+        and not ours to destroy). `note` is shown on the setup screen."""
+        import glob, shutil
+        with self.lock:
+            with self.store.lock:
+                c = self.store.conn()
+                try:
+                    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+                    for t in tables:
+                        c.execute(f'DELETE FROM "{t}"')
+                    c.execute('INSERT INTO meta VALUES(?,?)', ('removed', json.dumps(note)))
+                    c.commit()
+                    c.execute('VACUUM')                        # (freed pages would still hold the old rows)
+                    c.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+                finally:
+                    c.close()
+                for f in glob.glob(os.path.join(self.cfg['photos_dir'], '*')):
+                    shutil.rmtree(f, ignore_errors=True) if os.path.isdir(f) else os.remove(f)
+                for f in glob.glob(os.path.join(self.store.bdir, '*')):
+                    shutil.rmtree(f, ignore_errors=True) if os.path.isdir(f) else os.remove(f)
+                self.store.snapshot()
+            self.keys, self.entries, self.blob_files = {}, {}, {}
+            self.clock, self.anchor = P.HLC(), None
+            self.run, self.chain_ignored, self.last = None, {}, None
+            self._load()
+        self._changed('wiped')
+
     def secrets_offer(self, remote, msg):
         """§17, the listener's side: only between two devices of this node's owner (peer mode)."""
         from server import progress

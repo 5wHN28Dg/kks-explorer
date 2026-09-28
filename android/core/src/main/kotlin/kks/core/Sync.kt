@@ -25,6 +25,10 @@ interface Node {
     fun blobWants(): List<String>
     fun blobGet(sha: String): ByteArray?
     fun blobPut(sha: String, data: ByteArray): Boolean
+    /** §15: the revoke entry that cut [device] (shown to it as proof), or null. */
+    fun revocationOf(device: String): Map<String, Any?>? = null
+    /** §15: another device says this one was removed and shows [entry]; if it checks out, wipe. -> wiped */
+    fun acceptRevocation(entry: Any?): Boolean = false
     /** §17: another device of this node's owner offers its person secrets. -> the `secrets` answer. */
     fun secretsOffer(remote: String, msg: Map<String, Any?>): Map<String, Any?> = mapOf("t" to "secrets", "secrets" to emptyList<String>())
     /** Join by invite (PROTOCOL.md §16): a device asks with a token and its join request. -> the join_ack message. */
@@ -150,7 +154,8 @@ object Sync {
         fun offer(): Map<String, Any?> {
             if (!node.mayRead(ses.remote)) {
                 st.denied = true
-                return mapOf("t" to "entries", "entries" to emptyList<Any>(), "denied" to true)
+                val why = node.revocationOf(ses.remote)            // a removed device: show it the proof
+                return mapOf("t" to "entries", "entries" to emptyList<Any>(), "denied" to true) + (if (why != null) mapOf("revoked" to why) else emptyMap())
             }
             val out = node.entriesFor(vv)
             st.sent = out.size
@@ -168,6 +173,8 @@ object Sync {
             ses.send(offer())
         }
         st.theyDenied = got["denied"] == true
+        if (got["revoked"] != null && node.acceptRevocation(got["revoked"]))
+            throw SyncError("this device was removed from the plant; its plant data has been deleted here")
         val theirWant = (turn(mapOf("t" to "want", "blobs" to node.blobWants()), "want")["blobs"] as? List<*>) ?: emptyList<Any>()
 
         fun sendBlobs() {

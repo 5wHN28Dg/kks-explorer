@@ -19,6 +19,18 @@ open class MemoryNode(protected val key: SigningKey, anchor: String? = null) : N
 
     init { rebuild() }
 
+    @Synchronized override fun revocationOf(device: String): Map<String, Any?>? {
+        if (device !in run.cuts) return null
+        return entries.values.filter { it["type"] == "revoke" && (it["body"] as? Map<*, *>)?.get("device") == device }
+            .maxWithOrNull(compareBy<Map<String, Any?>>({ ((it["hlc"] as List<*>)[0] as Long) }, { ((it["hlc"] as List<*>)[1] as Long) }))
+    }
+
+    /** Forget everything held (the device was removed from its plant, §15). */
+    @Synchronized protected fun forget() {
+        entries.clear(); evidence.clear(); blobs.clear(); heads.clear(); anchor = null
+        rebuild()
+    }
+
     fun rebuild() {
         val (r, ci) = Replay.replayRun(null, anchor, trusted = entries + evidence)
         run = r; chainIgnored = ci

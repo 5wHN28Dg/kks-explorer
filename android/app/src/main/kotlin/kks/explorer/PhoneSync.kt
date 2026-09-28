@@ -250,9 +250,11 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
     @Synchronized private fun record(remote: String?, address: String, ok: Boolean, result: Any?, direction: String) {
         val key = remote ?: address
         val st = result as? SyncStats
+        if (!ok && remote == null) for ((k, v) in status.entries.toList())   // it didn't answer: whoever was there isn't reachable now
+            if (v["address"] == address && v["ok"] == true) status[k] = v + mapOf("ok" to false, "at" to System.currentTimeMillis() / 1000, "error" to result?.toString())
         Log.i(TAG, "sync $direction $address: " + if (ok && st != null) "received ${st.received}, sent ${st.sent}" else "failed: $result")
         status[key] = (status[key] ?: emptyMap()) + mapOf("peer" to remote, "address" to address, "at" to System.currentTimeMillis() / 1000,
-            "ok" to ok, "direction" to direction) + if (ok && st != null) mapOf("error" to null, "result" to mapOf(
+            "ok" to ok, "direction" to direction, "last_ok" to if (ok) System.currentTimeMillis() / 1000 else status[key]?.get("last_ok")) + if (ok && st != null) mapOf("error" to null, "result" to mapOf(
                 "sent" to st.sent.toLong(), "received" to st.received.toLong(), "denied" to st.denied, "they_denied" to st.theyDenied))
             else mapOf("error" to result?.toString())
     }
@@ -279,6 +281,19 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
         }
         return out.sortedBy { if (it.first.startsWith("wlan")) 0 else 1 }.map { "${it.second}:$p" }
     }
+
+    override fun reach(): Map<String, Any?> {
+        val root = myRoot(); val now = System.currentTimeMillis() / 1000
+        val nearby = found.values.filter { root.isNotEmpty() && it.root == root }.mapNotNull { it.peer }.toSet()
+        val recent = synchronized(this) { status.values.filter { it["ok"] == true && now - ((it["at"] as Long?) ?: 0) < 180 }.mapNotNull { it["peer"] as String? }.toSet() }
+        val last = synchronized(this) { status.values.mapNotNull { it["last_ok"] as Long? }.maxOrNull() }
+        return mapOf("reachable" to (nearby + recent).size.toLong(), "nearby" to nearby.size.toLong(), "last_sync" to last)
+    }
+
+    /** Android's own check: the active network reaches the internet (it probes that itself). */
+    override fun internet(): Boolean? = runCatching {
+        cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    }.getOrNull()
 
     override fun joined() { pool.execute { announce() }; poke(1_000) }
 }

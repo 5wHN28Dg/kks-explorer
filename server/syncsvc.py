@@ -1,7 +1,7 @@
 """Sync as a background service: the listener other devices connect to, finding devices on the same Wi-Fi (mDNS /
 DNS-SD service `_kks._tcp`, needs the `zeroconf` package; without it only syncing by address works), automatic syncs
 every `sync_interval` seconds and a few seconds after each local change, and a status list for the UI."""
-import socket, threading, time
+import json, socket, threading, time
 
 from peer import sync as S
 
@@ -57,6 +57,11 @@ class SyncService:
 
     # ---------- discovery ----------
     def start_discovery(self):
+        """Finding devices (mDNS) and the automatic syncs. Automatic syncs run even without discovery: remembered
+        addresses (the server a laptop joined through) still get synced. `sync_interval: 0` turns them off."""
+        if self.cfg.get('sync_interval', 120) > 0 and not getattr(self, '_auto_started', False):
+            self._auto_started = True
+            threading.Thread(target=self._auto, daemon=True).start()
         if not self.cfg.get('discovery'):
             self.discovery = 'turned off in config'
             return
@@ -80,7 +85,6 @@ class SyncService:
                     svc.peers.pop(name, None)
         self.browser = ServiceBrowser(self.zc, SERVICE, Handler())
         self.discovery = 'on'
-        threading.Thread(target=self._auto, daemon=True).start()
 
     def _advertise(self):
         """(Re)announce this device: its peer ID and the start of its plant's root, so others skip other plants."""
@@ -136,6 +140,10 @@ class SyncService:
 
     # ---------- automatic sync ----------
     def _on_change(self, why):
+        if why == 'wiped':   # this laptop was removed from its plant: forget what it knew about the others
+            with self.lock:
+                self.peers.clear(); self.status.clear()
+            self.swapped.clear()
         if self.zc:   # e.g. the plant was just created: announce it (returns at once when nothing changed)
             threading.Thread(target=self._advertise, daemon=True).start()
         if why == 'local':
@@ -156,15 +164,29 @@ class SyncService:
             return any(p['peer'] not in self.status for p in self.peers.values())
 
     def sync_all(self):
+        """One round: every device of this plant found on the Wi-Fi, then addresses synced with before that weren't
+        found that way (Wi-Fi that blocks multicast; the server a laptop joined through), as the phone does."""
         with self.lock:
             peers = list(self.peers.values())
         root = (self.E.anchor or '')[:16]
-        for p in peers:
-            if root and p['root'] == root:
-                try:
-                    self.sync_one(p['host'], p['port'])
-                except Exception:
-                    pass   # recorded in status; the next device still gets its turn
+        targets = [f"{p['host']}:{p['port']}" for p in peers if root and p['root'] == root]
+        targets += [a for a in self._known() if a not in targets]
+        for a in targets:
+            host, _, port = a.rpartition(':')
+            try:
+                self.sync_one(host, int(port))
+            except Exception:
+                pass   # recorded in status; the next device still gets its turn
+
+    def _known(self):
+        v = self.E.store.meta('sync_peers', [])
+        return v if isinstance(v, list) else []
+
+    def _remember(self, address):
+        known = self._known()
+        if known[:1] != [address]:
+            with self.E.store.write():
+                self.E.store.put('meta', {'k': 'sync_peers', 'v': json.dumps(([address] + [a for a in known if a != address])[:10])})
 
     def sync_one(self, host, port, adopt_root=None):
         """-> (remote, stats); records the outcome; raises on failure."""
@@ -174,6 +196,7 @@ class SyncService:
             self._record(None, f'{host}:{port}', False, str(e), 'out')
             raise
         self._record(remote, f'{host}:{port}', True, st, 'out')
+        self._remember(f'{host}:{port}')
         if adopt_root:
             self._advertise()
         self._swap_secrets(host, port, remote)
@@ -205,13 +228,28 @@ class SyncService:
     def _record(self, remote, address, ok, result, direction):
         key = remote or address
         with self.lock:
+            if not ok and not remote:   # it didn't answer: whatever device was at that address isn't reachable now
+                for v in self.status.values():
+                    if v.get('address') == address and v.get('ok'):
+                        v.update(ok=False, at=int(time.time()), error=result)
             prev = self.status.get(key, {})
             self.status[key] = {**prev, 'peer': remote, 'address': address if direction == 'out' else prev.get('address', address),
                                 'at': int(time.time()), 'ok': ok, 'direction': direction,
+                                'last_ok': int(time.time()) if ok else prev.get('last_ok'),
                                 **({'result': result, 'error': None} if ok else {'error': result})}
         if ok and (result['received'] or result['sent']):
             self.log(f'  sync {"with" if direction == "out" else "from"} {(remote or address)[:12]}…: '
                      f'received {result["received"]}, sent {result["sent"]}')
+
+    def reach(self, window=180):
+        """For the status line: devices of this plant seen on the Wi-Fi or synced with in the last `window` seconds."""
+        root = (self.E.anchor or '')[:16]
+        now = time.time()
+        with self.lock:
+            nearby = {p['peer'] for p in self.peers.values() if root and p['root'] == root and p.get('peer')}
+            recent = {k for k, v in self.status.items() if v.get('ok') and now - v.get('at', 0) < window and v.get('peer')}
+            last = max((v['last_ok'] for v in self.status.values() if v.get('last_ok')), default=None)
+        return {'reachable': len(nearby | recent), 'nearby': len(nearby), 'last_sync': last}
 
     def snapshot(self):
         """For the UI: what this node knows about the devices around it."""

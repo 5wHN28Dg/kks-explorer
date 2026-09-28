@@ -16,7 +16,7 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
   create the manager (also creates `root.key`). CLI: `users`, `reset-manager --user X`, `reset-password --user X`,
   `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`.
   Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `.venv/bin/python -m unittest discover -s tests` (65: server end-to-end over HTTP, protocol vectors,
+- Tests: `.venv/bin/python -m unittest discover -s tests` (68: server end-to-end over HTTP, protocol vectors,
   migration, sync, peer mode, join by invite). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
   `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
   `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
@@ -391,6 +391,38 @@ Chromium (list, vendored fonts loaded, zero requests off localhost, progress bac
 localStorage), emulator (Learning tab, course renders with the fonts, a real tapped answer → "1 of 83" → private
 entry on the server, 0 secrets there), desktop self-test (progress round trip), release APK builds (0.7.0-m4).
 Note: `data/courses/` holds the built courses and is committed with the rest of data/ (source/ is not).
+
+## Field test fixes (2026-09-28, the user's release-build test on two phones; QR join worked)
+
+- Sync failures after a request: `LocalApi.handle` held the node lock across network calls ("Sync now", join-server);
+  two phones syncing each other waited on each other's lock until timeout → those routes run unlocked
+  (`UNLOCKED`); test `simultaneousSyncNowDoesNotDeadlock` fails on the old code.
+- Stale screens: pages poll `/api/sync/status` (`rev` = the store's journal seq in Python, a counter bumped by node
+  changes + POSTs in Kotlin; 3 s on a peer, 15 s on a server) and reload on change (index.html re-renders an open panel
+  unless something is being edited). Status line on peers: devices reachable (mDNS-found + synced OK in 3 min; a
+  failed sync to an address marks that device unreachable), last sync (`last_ok`), internet (Android
+  NET_CAPABILITY_VALIDATED; laptops can't tell, show nothing). Server mode keeps Online/Offline.
+- Laptops never auto-synced without mDNS: `syncsvc` now remembers addresses (meta `sync_peers`, like the phone) and
+  runs the auto loop even with discovery off (`sync_interval: 0` = off; tests use it).
+- Removing a device: a denied `entries` answer carries the revoke entry (§15 `revoked`); the device checks it against
+  its own log (sig, names it, author admin/manager or same person, not revoked) and wipes: Python `Engine.wipe`
+  (all tables, VACUUM, WAL truncate, photos, backups; keeps root.key; in place, Windows-safe), Kotlin `LocalNode.wipe`
+  → `SqliteStore.wipe`, app restarts (new device key), WebView storage cleared; setup screen says who removed it.
+  A stranger's revoke is refused (tests). Verified on the emulator.
+- Camera: the QR library adds CAMERA to the manifest, so ACTION_IMAGE_CAPTURE needs the grant → asked before the
+  chooser; photos taken in the app were lost because URI grants on chooser initial intents don't reach the camera app
+  → explicit `grantUriPermission` to every camera app + ClipData (+ `<queries>` IMAGE_CAPTURE). Verified: prompt,
+  capture, photo saved as JXL.
+- Photos: annotation editor before sending (`K.annotate`: arrow/box/circle, 4 colours, undo; burned into the image;
+  repaint once a frame + end point from pointerup: on the emulator a swipe lost most of its moves), JXL progress bar
+  (`K.progress`: libjxl has no progress callback → estimate from measured ms per megapixel, `photo_upload.ms_per_mp`,
+  capped at 95 % until done), pinch/wheel zoom + drag pan viewer (`K.lightbox`, both pages).
+- Floor: whole number 0–10 (page, `changes.normalize`, `Payloads`); the location list's levels are elevations
+  (`refLoc().elev`, Elevation hint); floor filter = floors in use ("Floor N").
+- Editable tag fields read-only until ✎ (per field; custom fields as a group); Save/Cancel appear when unlocked.
+- Request notes: optional "Note for the approver" on equipment edits, photos, photo deletions → `comment` entry
+  {entry, text} (PROTOCOL §9, side output `comments`, no state change; frozen vectors unchanged); shown in Approvals and
+  My submissions (`request_note`).
 
 ## Backlog (rough priority)
 

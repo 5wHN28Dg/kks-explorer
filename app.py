@@ -269,12 +269,13 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                        'setup_needed': not has_manager and not PEER,
                        # how to send photos: they become JXL here; a local page sends lossless PNG, a remote one a
                        # near-lossless JPEG (less to upload); without a JXL encoder the JPEG is what gets kept
-                       'photo_upload': ({'type': 'image/png'} if PEER else {'type': 'image/jpeg', 'q': 0.95})
+                       'photo_upload': ({'type': 'image/png'} if PEER else {'type': 'image/jpeg', 'q': 0.95}) | {'ms_per_mp': photos_mod.ms_per_mp}
                                        if photos_mod.AVAILABLE else {'type': 'image/jpeg', 'q': 0.85}}
                 if PEER:
                     owner = E.owner()
                     out['node'] = {'joined': bool(owner), 'device': E.node_device(), 'has_plant': E.anchor is not None,
-                                   'plant': E.run.settings.get('plant') if E.run else None}
+                                   'plant': E.run.settings.get('plant') if E.run else None,
+                                   'removed': None if owner else store.meta('removed')}
                     if E.run and E.run.settings.get('plant'):
                         out['plant_name'] = E.run.settings['plant']
                 return self.send(out)
@@ -382,6 +383,9 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                     f['name'] = names.get(f.get('peer'))
                 return self.send({'mine': mine, 'all': everyone, 'node': P_id(E), 'mode': cfg['mode'], 'sync': snap,
                                   'sync_port': cfg['sync_port']})
+            if p == '/api/sync/status':   # polled by every page: reload when rev moves; the status line
+                rev = store.meta('seq', 0, c)   # the write journal's sequence: moves with every stored change
+                return self.send({'rev': rev, 'mode': cfg['mode'], **(svc.reach() if PEER else {}), 'internet': None})
             if p == '/api/progress':   # course progress (M4): private, only on a person's own devices
                 if not PEER:
                     raise HTTPError(404, 'Course progress stays in this browser on a server.')
@@ -550,7 +554,7 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                         self.log_user(c, me['id'], me['id'], f'details → {fn}' + (f', {pos}' if pos else ''))
                 return self.send({'ok': True})
             if p == '/api/submit':
-                return self.send(ch.submit(E, cfg, me, d.get('kind'), d.get('payload'), d.get('client_id')))
+                return self.send(ch.submit(E, cfg, me, d.get('kind'), d.get('payload'), d.get('client_id'), d.get('note')))
             m = re.fullmatch(r'/api/submissions/(\d+)/(vote|withdraw|approve|reject|pick)', p)
             if m:
                 return self.send(ch.act(E, cfg, me, int(m[1]), m[2], d))

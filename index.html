@@ -100,8 +100,6 @@ dt{color:var(--muted)} dd{margin:0}
 .step{padding:8px 0;border-bottom:1px solid var(--chrome3)}
 .step .n{font-family:var(--mono);color:var(--accent);margin-right:6px}
 .revitem{padding:8px 0;border-bottom:1px solid var(--chrome3);cursor:pointer}
-#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:100}
-#lightbox img{max-width:96%;max-height:92%}
 @media (max-width:720px){
   .brand small{display:none}
   header{gap:6px}
@@ -110,6 +108,10 @@ dt{color:var(--muted)} dd{margin:0}
   .drawer{width:100%}
 }
 .app .app-hide{display:none}
+.lk{display:flex;gap:6px;align-items:flex-start}.lk>input,.lk>textarea{flex:1;min-width:0}
+.lock input[readonly],.lock textarea[readonly]{background:transparent;border-color:transparent;padding-left:0;resize:none}
+.pen{flex:none;width:34px;height:34px;border-radius:6px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer;font-size:15px}
+.pen:hover{color:var(--accent);border-color:var(--accent)} .editing .pen{display:none}
 </style>
 </head>
 <body>
@@ -141,7 +143,7 @@ dt{color:var(--muted)} dd{margin:0}
   <aside id="panel"><div class="grip"></div><div id="panelBody"></div></aside>
 </main>
 </div>
-<div id="lightbox"><img id="lbimg" alt=""></div>
+
 <script src="common.js"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -166,10 +168,13 @@ const eq=k=>STATE.equipment[k]||{};
 const lvlName=l=>{ const m=(l||'').match(/^(\d+(?:\.\d+)?)\s*m$/i); return m?(+m[1])+' m':/out/i.test(l||'')?'Outside HRSG':(l||'') };
 function refLoc(b){ // one value per field, or '' when the list contradicts itself
   const L=LOC[b]||[], one=f=>{ const v=[...new Set(L.map(f).filter(Boolean))]; return v.length===1?v[0]:'' };
-  return {rows:L, floor:one(e=>lvlName(e.level)), cabinet:one(e=>e.cabinet)};
+  return {rows:L, elev:one(e=>lvlName(e.level)), cabinet:one(e=>e.cabinet)};
 }
 const bodyOf=t=>(t.kks||'').slice(2);
-const floorOf=t=>(eq(full(t)).floor||'').trim()||refLoc(bodyOf(t)).floor;
+// floors are numbers 0–10 set by people (the location list only knows elevations in metres: see elevOf)
+const floorOf=t=>(eq(full(t)).floor||'').trim();
+const floorName=f=>/^\d+$/.test(f)?'Floor '+f:f;
+const elevOf=t=>(eq(full(t)).elev||'').trim()||refLoc(bodyOf(t)).elev;
 function locSec(b,sfx){
   const L=LOC[b]||[]; if(!L.length) return '';
   const conflict=new Set(L.map(r=>[r.level,r.cabinet,r.desc,r.direction].join('|'))).size>1;
@@ -250,9 +255,15 @@ async function refreshState(){
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); if(K.isNetErr(e)) K.setOnline(false) }
   mergeTags();
   refreshFloors(); refreshReviewCount(); drawTags(); updateQueueBadge(); updatePending();
+  // an open panel shows what changed elsewhere (an approval, a rejection, a new photo), unless you are editing in it
+  const P=$('#panel');
+  if(selId&&P.classList.contains('open')&&!P.contains(document.activeElement)&&!P.querySelector('.editing')){
+    const t=TAGS.find(x=>x.id===selId); if(t){ const sc=P.scrollTop; select(eff(t)); P.scrollTop=sc }
+  }
 }
-async function send(kind,payload,what){
-  let r; try{ r=await K.submit(kind,payload) }catch(e){ toast('Not saved: '+e.message); return null }
+const canApprove=()=>['admin','manager'].includes(K.me?.user?.role);   // their edits apply at once: no note needed
+async function send(kind,payload,what,note){
+  let r; try{ r=await K.submit(kind,payload,note) }catch(e){ toast('Not saved: '+e.message); return null }
   toast({approved:'Saved: ',pending:'Sent for approval: ',conflict:'Clashes with a newer change, an admin will decide: ',queued:K.reauth?'Queued until you sign in again: ':'Offline, queued: '}[r.status]+what);
   if(r.status!=='queued') await refreshState(); else updatePending();
   return r;
@@ -425,27 +436,37 @@ function select(t){
   if(k){
     panelEq={k,live:JSON.parse(JSON.stringify(eq(k))),shown:JSON.parse(JSON.stringify(e))};
     const cf=e.custom||[], R=refLoc(bodyOf(t)), ph=v=>v?esc(v)+' (location list)':'';
+    // read-only until you tap ✎ next to a field (no accidental edits); Save appears once something is unlocked
     h+=`<div class="sec"><h3>Location</h3>
-      <div class="row2"><div class="field"><label>Building / area</label><input id="f_area" value="${esc(e.area||'')}"></div>
-      <div class="field"><label>Floor</label><input id="f_floor" list="floors" value="${esc(e.floor||'')}" placeholder="${ph(R.floor)||'e.g. 0 m, 3 m'}"></div></div>
-      <div class="row2"><div class="field"><label>Elevation / level</label><input id="f_elev" value="${esc(e.elev||'')}" placeholder="${ph(R.floor)}"></div>
-      <div class="field"><label>Near / landmark</label><input id="f_near" value="${esc(e.near||'')}"></div></div>
-      <div class="field"><label>How to find it</label><textarea id="f_loc" rows="2">${esc(e.loc||'')}</textarea></div></div>
+      <div class="row2">${fld('f_area','Building / area',e.area)}${fld('f_floor','Floor',e.floor,{type:'number',ph:'0–10'})}</div>
+      <div class="row2">${fld('f_elev','Elevation',e.elev,{ph:ph(R.elev)||'e.g. 14 m'})}${fld('f_near','Near / landmark',e.near)}</div>
+      ${fld('f_loc','How to find it',e.loc,{area:1})}</div>
       <div class="sec"><h3>Notes & custom fields</h3>
-      <div class="field"><textarea id="f_notes" rows="2" placeholder="Anything worth remembering">${esc(e.notes||'')}</textarea></div>
-      <div id="cfs">${cf.map((c,i)=>cfRow(c.k,c.v)).join('')}</div>
-      <button class="ghost" onclick="document.getElementById('cfs').insertAdjacentHTML('beforeend',cfRow('',''))">+ Custom field</button>
-      <div style="margin-top:10px"><button class="primary" onclick="saveEq('${k}')">Save</button></div></div>
+      ${fld('f_notes','Notes',e.notes,{area:1,ph:'Anything worth remembering'})}
+      <div class="field lock"><label>Custom fields</label><div class="lk"><div id="cfs" style="flex:1">${cf.map(c=>cfRow(c.k,c.v,true)).join('')||'<div class="sub">None</div>'}</div>
+        <button class="pen" onclick="unlockCustom()" title="Edit custom fields" aria-label="Edit custom fields">✎</button></div>
+        <button class="ghost" id="cfAdd" style="display:none" onclick="document.getElementById('cfs').insertAdjacentHTML('beforeend',cfRow('',''))">+ Custom field</button></div>
+      <div id="eqSave" style="margin-top:10px;display:none">${canApprove()?'':'<input id="f_rnote" maxlength="500" placeholder="Note for the approver (optional)" style="width:100%;margin-bottom:8px">'}<button class="primary" onclick="saveEq('${k}')">Save</button>
+        <button class="ghost" onclick="select(eff(selTag))">Cancel</button></div></div>
       <div class="sec"><h3>Photos</h3><div class="photos">${photos.map(p=>`<figure><img src="photos/${p.file}" onclick="lightbox(this.src)" alt=""><button onclick="delPhoto('${p.id}','${t.id}')">✕</button></figure>`).join('')}</div>
       <label class="ghost" style="display:inline-block;margin-top:8px;cursor:pointer">+ Add photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'${k}','${t.id}')"></label></div>`;
   }
   P.innerHTML=h; $('#panel').classList.add('open'); $('#panel').scrollTop=0;
 }
-function cfRow(k,v){return `<div class="cf"><input placeholder="Field" value="${esc(k)}"><input placeholder="Value" value="${esc(v)}"><button class="x" onclick="this.parentNode.remove()">×</button></div>`}
+function cfRow(k,v,ro){return `<div class="cf"><input placeholder="Field" value="${esc(k)}"${ro?' readonly':''}><input placeholder="Value" value="${esc(v)}"${ro?' readonly':''}><button class="x" onclick="this.parentNode.remove()"${ro?' style="display:none"':''}>×</button></div>`}
+function fld(id,label,val,o={}){
+  const a=`id="${id}" readonly placeholder="—" data-ph="${o.ph||''}"`;   // the hint only once it is being edited
+  return `<div class="field lock"><label for="${id}">${label}</label><div class="lk">${o.area?`<textarea ${a} rows="2">${esc(val||'')}</textarea>`
+    :`<input ${a} value="${esc(val||'')}"${o.type==='number'?' type="number" inputmode="numeric" min="0" max="10" step="1"':''}>`}
+    <button class="pen" onclick="unlock('${id}')" title="Edit ${label}" aria-label="Edit ${label}">✎</button></div></div>`;
+}
+function unlock(id){ const el=document.getElementById(id); el.readOnly=false; el.placeholder=el.dataset.ph||''; el.closest('.field').classList.add('editing'); el.focus(); $('#eqSave').style.display='' }
+function unlockCustom(){ const c=$('#cfs'); c.closest('.field').classList.add('editing'); if(!c.querySelector('.cf')) c.innerHTML='';
+  c.querySelectorAll('input').forEach(i=>i.readOnly=false); c.querySelectorAll('.x').forEach(b=>b.style.display=''); $('#cfAdd').style.display=''; $('#eqSave').style.display='' }
 function closePanel(){ $('#panel').classList.remove('open'); selId=null; selTag=null; drawTags() }
 // The phone's Back button (Android app): close what is open first, one thing at a time; false = nothing left to close.
 K.back = () => {
-  if ($('#lightbox').style.display === 'flex') { $('#lightbox').style.display = 'none'; return true }
+  if (K.lightbox.isOpen?.()) { K.lightbox.close(); return true }
   if ($('#panel').classList.contains('open')) { closePanel(); return true }
   const d = document.querySelector('.drawer.open');
   if (d) { d.classList.remove('open'); if (d.id === 'procDrawer') { activeProc = null; drawTags() } return true }
@@ -453,16 +474,18 @@ K.back = () => {
 };
 function cropStyle(t){ const b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
   return `background-image:url(${SHEETS.find(s=>s.id===t.sheet).file});background-size:${SHEETS.find(s=>s.id===t.sheet).w*sc}px auto;background-position:${-(b[0]-10)*sc}px ${-(b[1]-10)*sc}px;width:${Math.min(360,w*sc)}px` }
+const P0=k=>panelEq?.k===k?panelEq.shown:{...eq(k),...myPendingEq(k)};
 async function saveEq(k){
   const v=id=>document.getElementById(id).value.trim();
   const custom=[...document.querySelectorAll('#cfs .cf')].map(r=>({k:r.children[0].value.trim(),v:r.children[1].value.trim()})).filter(c=>c.k||c.v);
   const now={area:v('f_area'),floor:v('f_floor'),elev:v('f_elev'),near:v('f_near'),loc:v('f_loc'),notes:v('f_notes'),custom};
+  if(now.floor!==(P0(k).floor||'')&&!/^(\d|10)$/.test(now.floor)&&now.floor!==''){ toast('Floor: a whole number from 0 to 10 (the height goes in Elevation)'); return }
   // send only fields changed in the form (which shows your own pending values), each with the live value you saw,
   // so the server can merge edits to different fields and flag real clashes
   const P=panelEq?.k===k?panelEq:{live:eq(k),shown:{...eq(k),...myPendingEq(k)}}, def=f=>f==='custom'?[]:'', changes={}, was={};
   for(const f in now) if(JSON.stringify(now[f])!==JSON.stringify(P.shown[f]??def(f))){ changes[f]=now[f]; was[f]=P.live[f]??def(f) }
   if(!Object.keys(changes).length){ toast('Nothing changed'); return }
-  const r=await send('equipment',{kks:k,changes,base:was},k);
+  const r=await send('equipment',{kks:k,changes,base:was},k,document.getElementById('f_rnote')?.value.trim());
   if(r) panelEq={k,live:r.status==='approved'?{...P.live,...changes}:P.live,shown:{...P.shown,...changes}};
 }
 async function review(id,status){
@@ -474,19 +497,26 @@ async function review(id,status){
   renderReview(); const t=TAGS.find(x=>x.id===id);
   if(r.status==='approved'){ if(status==='confirmed') select(eff(t)); else closePanel() }
 }
-function addPhoto(input,k,tid){
-  const f=input.files[0]; if(!f)return; const img=new Image(), rd=new FileReader();
-  rd.onload=()=>{ img.onload=async()=>{ const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
-    c.width=img.width*s; c.height=img.height*s; c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    const up=K.cfg?.photo_upload||{type:'image/jpeg',q:0.85};   // the server / app turns it into JPEG XL (server/photos.py)
-    K.toast?.('Compressing the photo (JPEG XL)… this can take several seconds');
-    const r=await send('photo',{kks:k,dataUrl:c.toDataURL(up.type,up.q)},'photo for '+k);
-    if(r) select(eff(TAGS.find(x=>x.id===tid))) }; img.src=rd.result };
-  rd.readAsDataURL(f);
+async function addPhoto(input,k,tid){
+  const f=input.files[0]; input.value=''; if(!f) return;
+  const img=new Image(), url=URL.createObjectURL(f);
+  try{ await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(new Error('That file could not be read as a picture.'));img.src=url}) }
+  catch(e){ toast(e.message); return } finally{ URL.revokeObjectURL(url) }
+  const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
+  c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  const a=await K.annotate(c.toDataURL('image/png'),!canApprove());   // mark what matters, or just "Use photo"
+  if(!a) return;
+  const up=K.cfg?.photo_upload||{type:'image/jpeg',q:0.85};   // the server / app turns it into JPEG XL (server/photos.py)
+  const mp=a.canvas.width*a.canvas.height/1e6, bar=up.ms_per_mp?K.progress('Converting the photo to JPEG XL…',up.ms_per_mp*mp+(up.type==='image/png'?0:1500)):null;
+  const r=await send('photo',{kks:k,dataUrl:a.canvas.toDataURL(up.type,up.q)},'photo for '+k,a.note);
+  bar?.done();
+  if(r) select(eff(TAGS.find(x=>x.id===tid)));
 }
-async function delPhoto(pid,tid){ if(!confirm('Delete this photo?'))return; if(await send('photo_delete',{photo_id:pid},'delete photo')) select(eff(TAGS.find(x=>x.id===tid))) }
-function lightbox(src){ $('#lbimg').src=src; $('#lightbox').style.display='flex' }
-$('#lightbox').onclick=()=>$('#lightbox').style.display='none';
+async function delPhoto(pid,tid){
+  const a=await K.ask('Delete this photo?',canApprove()?'':'An admin decides.',!canApprove(),'Delete'); if(!a) return;
+  if(await send('photo_delete',{photo_id:pid},'delete photo',a.note)) select(eff(TAGS.find(x=>x.id===tid)));
+}
+const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
 
 // ---------- search ----------
 let hits=[],hi=0;
@@ -506,8 +536,8 @@ $('#q').addEventListener('input',()=>{
     const score=b===qb?90:b.startsWith(qb)?70:b.includes(qb)?50:qr.length>2&&text.includes(qr)?35:0; if(score)hits.push({loc:b,score,k:b}) }
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
   const sn=id=>SHEETS.find(s=>s.id===id).name;
-  R.innerHTML=hits.length?hits.map((h,i)=>{ if(h.loc){const r=refLoc(h.loc);return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.loc)} <span class="m" style="color:var(--review)">location list only</span></div><div class="m">${esc(r.floor||'level varies')}${r.cabinet?' · '+esc(r.cabinet):''}${r.rows[0].desc?' · '+esc(r.rows[0].desc):''}</div></div>`}
-    const e=eq(h.k), fl=floorOf(h.t), cab=refLoc(bodyOf(h.t)).cabinet;return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.k||h.t.read.join(' / '))}${h.t.isa?' <span class="m">'+esc(h.t.isa)+'</span>':''}${h.t.status==='review'?' <span class="m" style="color:var(--review)">unverified</span>':''}</div><div class="m">${esc(sn(h.t.sheet))} · ${esc(kindName(h.t))}${fl?' · '+esc(fl):''}${cab?' · '+esc(cab):''}${e.area?' · '+esc(e.area):''}</div></div>`}).join(''):'<div class="res m">No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.</div>';
+  R.innerHTML=hits.length?hits.map((h,i)=>{ if(h.loc){const r=refLoc(h.loc);return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.loc)} <span class="m" style="color:var(--review)">location list only</span></div><div class="m">${esc(r.elev||'level varies')}${r.cabinet?' · '+esc(r.cabinet):''}${r.rows[0].desc?' · '+esc(r.rows[0].desc):''}</div></div>`}
+    const e=eq(h.k), fl=floorOf(h.t), cab=refLoc(bodyOf(h.t)).cabinet;return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.k||h.t.read.join(' / '))}${h.t.isa?' <span class="m">'+esc(h.t.isa)+'</span>':''}${h.t.status==='review'?' <span class="m" style="color:var(--review)">unverified</span>':''}</div><div class="m">${esc(sn(h.t.sheet))} · ${esc(kindName(h.t))}${fl?' · '+esc(floorName(fl)):''}${cab?' · '+esc(cab):''}${e.area?' · '+esc(e.area):''}</div></div>`}).join(''):'<div class="res m">No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.</div>';
   R.style.display='block';
 });
 $('#q').addEventListener('keydown',e=>{ const R=$('#results');
@@ -519,14 +549,14 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.search')) $('#resu
 // ---------- floors ----------
 function refreshFloors(){
   const num=f=>{const n=parseFloat(f); return isNaN(n)?1e9:n};
-  const fl=[...new Set([...Object.values(STATE.equipment).map(e=>(e.floor||'').trim()),...Object.values(LOC).flat().map(e=>lvlName(e.level))].filter(Boolean))]
+  const fl=[...new Set(Object.values(STATE.equipment).map(e=>(e.floor||'').trim()).filter(Boolean))]
     .sort((a,b)=>num(a)-num(b)||a.localeCompare(b));
-  $('#floorSel').innerHTML='<option value="">All floors</option>'+fl.map(f=>`<option ${f===floor?'selected':''}>${esc(f)}</option>`).join('');
+  $('#floorSel').innerHTML='<option value="">All floors</option>'+fl.map(f=>`<option value="${esc(f)}" ${f===floor?'selected':''}>${esc(floorName(f))}</option>`).join('');
   let dl=$('#floors'); if(!dl){dl=document.createElement('datalist');dl.id='floors';document.body.appendChild(dl)} dl.innerHTML=fl.map(f=>`<option value="${esc(f)}">`).join('');
 }
 $('#floorSel').onchange=e=>{ floor=e.target.value; drawTags();
   if(floor){ const n=TAGS.map(eff).filter(t=>t&&floorOf(t).toLowerCase()===floor.toLowerCase()); const here=n.filter(t=>t.sheet===cur.id).length;
-    toast(`${n.length} tagged on “${floor}” (${here} on this sheet)`) } };
+    toast(`${n.length} tagged on ${floorName(floor)} (${here} on this sheet)`) } };
 
 // ---------- procedures ----------
 function renderProcs(){

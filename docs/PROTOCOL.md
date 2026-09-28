@@ -133,6 +133,7 @@ sheet-image pixel. A body must have **exactly** the listed fields.
 | `reject` | `{entry, note}` | admin/manager devices |
 | `withdraw` | `{entry}`: the author takes back their own proposal | a device of the person who wrote the proposal |
 | `vote` | `{entry, on}`: advisory (photo choice); `on:false` takes the vote back | anyone certified |
+| `comment` | `{entry, text}`: a note on an entry, e.g. the requester's words for the approver (added 2026-09-28); changes no state, replay lists it as side output `comments` | anyone certified |
 | `private` | `{person, nonce, ct}` (§13) | a device of that person |
 
 ### 9a. Body rules
@@ -152,7 +153,7 @@ replay only accepts or ignores.
 - `tag_add`: `tag` ID, `sheet` `[a-z0-9][a-z0-9-]{0,23}`, `bbox` 4 ints with 0 ≤ x0 < x1 ≤ 200000 and the same
   for y; `kks` null or `[0-9]{2}[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}`; `suffix` `[A-Z0-9]{0,4}`; `isa` null or
   `[A-Z]{1,6}`; `note` 0–500.
-- `approve`/`reject`/`withdraw`/`vote`: `entry` 64 hex; `note` 0–500; `on` boolean.
+- `approve`/`reject`/`withdraw`/`vote`/`comment`: `entry` 64 hex; `note` 0–500; `on` boolean; `text` 1–500.
 - `private`: `nonce` 16 base64url characters, `ct` 22–1 400 000 base64url characters.
 
 ## 10. Authority
@@ -281,6 +282,11 @@ responder answers. `{"t":"error","why":...}` may be sent instead of any message,
    the other side's last seq has a different ID than ours, that device's whole chain (two copies of one key: the
    receiver finds where they split); all fork evidence held. **Nothing** (`denied`) unless the other side is a
    certified, unrevoked device of a known person in our own replay.
+   When the other side is denied because it was **revoked**, the message also carries `"revoked": <the revoke entry
+   that cut it>` (added 2026-09-28). The removed device checks that entry against its own log (valid signature, type
+   `revoke`, `body.device` = itself, author certified and not revoked there, author an admin/the manager or a device
+   of the same person) and only then deletes its plant data (log, photos, secrets, device key) and goes back to the
+   setup screen; anything else is ignored, so no device can make another wipe itself.
 3. Taking entries in: verify each (§3); replay with the batch to see which devices are certified by then, and keep
    only entries of those devices (a stranger's entries are not stored); per device, continue the stored chain in
    seq order (skip entries whose predecessor is missing: a later sync brings it); a valid entry for a (device, seq)

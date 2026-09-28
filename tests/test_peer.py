@@ -24,7 +24,7 @@ class Site:
                 f.write('[]')
         with open(os.path.join(d, 'config.json'), 'w') as f:
             json.dump({'mode': mode, 'port': 0, 'data_dir': 'data', 'db': 'plant.db', 'photos_dir': 'photos',
-                       'backup_dir': 'backups', 'discovery': False, 'sync_host': '127.0.0.1'}, f)
+                       'backup_dir': 'backups', 'discovery': False, 'sync_host': '127.0.0.1', 'sync_interval': 0}, f)
         self.cfg = config_mod.load(os.path.join(d, 'config.json'))
         os.makedirs(self.cfg['photos_dir'])
         self.store = Store(self.cfg)
@@ -116,8 +116,11 @@ class PeerTest(unittest.TestCase):
         uid = next(x['id'] for x in m.get('/api/users')[1]['users'] if x['username'] == 'usr')
         self.assertEqual(m.post(f'/api/users/{uid}', {'active': False})[0], 200)
         self.assertIn(lap.E.node_device(), srv.E.run.cuts)
-        _, st = __import__('peer.sync', fromlist=['x']).sync_with(lap.E, '127.0.0.1', srv.cfg['sync_port'])
-        self.assertTrue(st['they_denied'])
+        S = __import__('peer.sync', fromlist=['x'])
+        with self.assertRaises(S.SyncError):                  # it is shown the revoke entry and deletes the plant
+            S.sync_with(lap.E, '127.0.0.1', srv.cfg['sync_port'])
+        self.assertIsNone(lap.E.owner())
+        self.sites.remove(lap); lap.close()
 
     def test_restart_keeps_the_plant(self):
         # regression: a joined laptop restarted once ran the old-database migration and made a plant of its own
@@ -298,6 +301,49 @@ class PeerTest(unittest.TestCase):
             self.assertEqual((json.loads(got['solved']), got['finalBest']), ({'q1': True, 'q2': True}, '7'))
         self.assertEqual(len(progress.secrets_of(a.E, person)), 2)
         self.assertEqual(progress.secrets_of(srv.E, person), [])                          # the server never got one
+
+    def test_removed_laptop_wipes_itself(self):
+        """Field report 2026-09-28: removing a device only stopped its syncs. Now the next sync shows it the signed
+        revoke entry; it checks it against its own log and deletes the plant (§15 `revoked`)."""
+        from peer import sync as S
+        from server import progress
+        srv, m, u = self.server_with_users()
+        lap = self.site('laptop', 'peer')
+        c = lap.client()
+        c.post('/api/node/join-server', {'url': srv.url, 'username': 'usr', 'password': 'usr password!'})
+        c.post('/api/progress', {'course': 'ppt', 'data': {'solved': '{"q1":true}'}})
+        lap.svc.sync_one('127.0.0.1', srv.cfg['sync_port'])
+        dev = lap.E.node_device()
+        # a stranger can't make it wipe: a revoke entry signed by a device the laptop doesn't know
+        from peer import proto as P
+        stranger = P.key_from_seed(os.urandom(32))
+        fake = P.make_entry(stranger, 1, None, [1, 0], 'revoke', {'device': dev, 'last_seq': 0})
+        self.assertFalse(lap.E.accept_revocation(fake))
+        self.assertIsNotNone(lap.E.owner())
+        # the real one: an admin removes it on the server; the laptop's next sync gets the proof and wipes
+        self.assertEqual(m.post('/api/devices/revoke', {'device': dev})[0], 200)
+        with self.assertRaises(S.SyncError):
+            lap.svc.sync_one('127.0.0.1', srv.cfg['sync_port'])
+        self.assertIsNone(lap.E.owner())
+        self.assertEqual((len(lap.E.entries), lap.E.anchor), (0, None))
+        cfg = c.get('/api/config')[1]['node']
+        self.assertEqual((cfg['joined'], cfg['removed']['by']), (False, 'Boss Person'))
+        self.assertEqual(c.get('/api/me')[0], 401)
+        conn = lap.store.conn()
+        try:
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM entries').fetchone()[0], 0)
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM person_secrets').fetchone()[0], 0)
+        finally:
+            conn.close()
+        for root, _, files in os.walk(lap.cfg['backup_dir']):                             # the backups hold nothing old
+            for f in files:
+                with open(os.path.join(root, f), 'rb') as fh:
+                    self.assertNotIn(dev.encode(), fh.read(), f)
+        with open(lap.cfg['db'], 'rb') as fh:
+            self.assertNotIn(dev.encode(), fh.read())                                     # (VACUUM: no freed pages)
+        self.assertNotEqual(lap.E.ensure_node_device(), dev)                               # a new key for a new start
+        self.sites.remove(lap)                                                             # (its replay is empty now)
+        lap.close()
 
     def test_devices_revoke_rules(self):
         srv, m, u = self.server_with_users()

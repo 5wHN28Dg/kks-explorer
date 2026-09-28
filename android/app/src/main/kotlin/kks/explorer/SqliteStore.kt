@@ -76,6 +76,17 @@ class SqliteStore(context: Context) : NodeStore {
         setMeta("person_secrets_enc", android.util.Base64.encodeToString(c.iv + c.doFinal(json.toByteArray()), android.util.Base64.NO_WRAP))
     }
 
+    override fun wipe(note: String) {
+        db.beginTransaction()
+        try {
+            for (t in listOf("meta", "entries", "blobs", "subs", "notes")) db.delete(t, null, null)
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        photos.listFiles()?.forEach { it.deleteRecursively() }
+        runCatching { db.execSQL("VACUUM") }               // (freed pages would still hold the old rows)
+        setMeta("removed", note)
+    }
+
     // ---------- tables ----------
     override fun meta(k: String): String? = db.rawQuery("SELECT v FROM meta WHERE k=?", arrayOf(k)).use { if (it.moveToFirst()) it.getString(0) else null }
 

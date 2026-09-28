@@ -103,7 +103,10 @@ K.start = async () => {
   if (cfg) document.title = cfg.plant_name + ' — KKS Explorer';
   if (cfg?.mode === 'peer') document.documentElement.classList.add('peer');
   if (cfg?.app) document.documentElement.classList.add('app');   // inside the Android app: it has its own header and back
-  if (cfg?.mode === 'peer' && !cfg.node.joined) return new Promise(() => K.joinScreen(cfg));
+  if (cfg?.mode === 'peer' && !cfg.node.joined) {
+    if (cfg.node.removed) await K.wipe();   // removed from the plant: nothing of it stays in this browser either
+    return new Promise(() => K.joinScreen(cfg));
+  }
   if (h.get('setup')) return new Promise(() => K.form('Create the manager account', 'One-time link from the server console. The manager is the top account: it promotes admins and can hand the role over later.',
     [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position at the company (optional)', ac: 'organization-title', optional: true},
      {name: 'username', label: 'Username', ac: 'username'}, ...pwFields], 'Create manager', async v => {
@@ -119,6 +122,7 @@ K.start = async () => {
     K.me = me; K.setOnline(true);
     await K.idb.set('me', {...me, lease_until: Date.now() + me.offline_days * 864e5});
     await K.emit(); K.flushSoon(500);
+    K.watchChanges();
     return me;
   } catch (e) {
     if (e.status === 401) {
@@ -158,6 +162,7 @@ K.joinScreen = (cfg, note = '') => {
   const dev = cfg.app ? 'phone' : 'computer';
   const o = K.overlay(`<div class="box"><h1>Set up this ${dev}</h1>
     <p>This ${dev} keeps its own copy of the plant data and syncs with the other devices on the same Wi-Fi.</p>
+    ${cfg.node.removed ? `<div class="err" style="margin-bottom:10px">This ${dev} was removed from ${K.esc(cfg.node.removed.plant || 'the plant')} by ${K.esc(cfg.node.removed.by || 'an admin')}. Its plant data has been deleted from it. To use it again, join again.</div>` : ''}
     ${cfg.node.has_plant ? '<p>It already holds a plant\'s data but is not certified in it yet: import the bundle an admin gave you, or join through the server.</p>' : ''}
     <button data-a="qr">Join with a QR code from an admin</button>
     <button data-a="nearby">Ask an admin on this Wi-Fi (no camera, no files)</button>
@@ -300,6 +305,9 @@ K.joinWait = cfg => {
 K.wipe = async () => {
   try { await caches.delete('kks-data') } catch (e) {}
   try { await K.idb.clear() } catch (e) {}
+  // a peer (own laptop / the app) that lost its plant: the courses' copies of the progress go too (on a plant server
+  // they are the only copy, so logging out keeps them)
+  if (K.cfg?.mode === 'peer') try { localStorage.clear() } catch (e) {}
 };
 K.logout = async () => {
   if (K.outbox.length && !confirm(`${K.outbox.length} change(s) not sent yet. They stay on this device and are sent the next time you sign in here. Log out?`)) return;
@@ -308,8 +316,8 @@ K.logout = async () => {
 };
 
 // ---------- submissions + outbox ----------
-K.submit = async (kind, payload) => {
-  const item = {client_id: K.uid(), kind, payload};
+K.submit = async (kind, payload, note) => {
+  const item = {client_id: K.uid(), kind, payload, ...(note ? {note} : {})};   // note: words for the approver
   try { const r = await K.api('/api/submit', item); K.setOnline(true); return r }
   catch (e) {
     if (!K.isNetErr(e)) throw e;
@@ -325,7 +333,7 @@ K.flush = async () => {
   try {
     for (const it of (await K.idb.all()).filter(i => i.user === K.me.user.id).sort((a, b) => a.ts - b.ts)) {
       try {
-        const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload});
+        const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload, ...(it.note ? {note: it.note} : {})});
         res[r.status] = (res[r.status] || 0) + 1; await K.idb.unqueue(it.client_id); K.setOnline(true);
       } catch (e) {
         if (K.isNetErr(e)) { K.setOnline(false); break }
@@ -346,9 +354,40 @@ K.setOnline = on => { if (K.online !== on) { K.online = on; K.renderStatus() } }
 addEventListener('online', () => K.flushSoon(500));
 addEventListener('offline', () => K.setOnline(false));
 
+// Changes made elsewhere (another device's edits arriving by sync, an admin's decision) reach an open page by polling
+// /api/sync/status: its `rev` moves with every stored change; the page then reloads its data (K.onChange('synced')).
+// On a peer (own laptop / the app) the same answer feeds the status line: devices reachable, last sync, internet.
+K.watchChanges = () => {
+  if (K.watching) return; K.watching = true;
+  const every = K.cfg?.mode === 'peer' ? 3000 : 15000;
+  const tick = async () => {
+    try {
+      const st = await K.api('/api/sync/status');
+      K.syncStatus = st;
+      if (K.cfg?.mode !== 'peer') K.setOnline(true); else K.renderStatus();
+      if (K.rev != null && st.rev !== K.rev) K.listeners.forEach(f => f('synced'));
+      K.rev = st.rev;
+    } catch (e) { if (e.status === 401) return location.reload(); if (K.isNetErr(e)) K.setOnline(false) }
+  };
+  tick();
+  setInterval(() => { if (!document.hidden) tick() }, every);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick() });
+  addEventListener('online', tick); addEventListener('offline', () => K.renderStatus());
+};
+K.ago = t => { if (!t) return 'never'; const s = Math.max(0, Date.now() / 1000 - t); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago` };
+
 K.renderStatus = () => {
   const el = document.getElementById('syncStatus'); if (!el) return;
   const n = K.outbox.length;
+  if (K.cfg?.mode === 'peer') {   // no server here: what matters is which devices this one can sync with
+    const st = K.syncStatus; if (!st) { el.textContent = ''; return }
+    const r = st.reachable || 0, net = st.internet ?? (navigator.onLine ? null : false);
+    el.innerHTML = `<span style="color:${r ? 'var(--ok)' : 'var(--review)'}">●</span> ${r ? `${r} device${r === 1 ? '' : 's'} reachable` : 'No devices reachable'}`
+      + ` · synced ${K.ago(st.last_sync)}` + (net === true ? ' · Internet ✓' : net === false ? ' · No internet' : '');
+    el.title = `Devices of this plant found on this network or synced with in the last 3 minutes: ${r}. Your changes are kept on this device and go to the others when they are reachable.`
+      + (net == null ? ' (Whether there is internet can\'t be told from here: the browser only knows it is on a network.)' : '');
+    return;
+  }
   if (K.reauth) {  // a top-level load of the page lets Cloudflare Access show its login, then comes back here
     el.innerHTML = `<span style="color:var(--review)">●</span> <a href="${location.pathname}" style="color:var(--accent)">Sign in again</a>${n ? ` · ${n} queued` : ''}`;
     el.title = 'Your remote-access sign-in expired. Working from the copy on this device; changes are queued.';
@@ -424,3 +463,153 @@ K.jxl = {
   },
 };
 K.jxl.watch();
+
+
+// ---------- photo viewer: pinch / wheel to zoom, drag to pan, double tap to zoom in or back ----------
+K.lightbox = src => {
+  let box = document.getElementById('kzoom');
+  if (!box) {
+    box = document.createElement('div'); box.id = 'kzoom';
+    box.style.cssText = 'position:fixed;inset:0;z-index:150;background:rgba(0,0,0,.92);display:none;overflow:hidden;touch-action:none';
+    box.innerHTML = '<img alt="" draggable="false" style="position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;max-width:none">'
+      + '<button type="button" aria-label="Close" style="position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;width:40px;height:40px;border-radius:20px;border:0;background:#000a;color:#fff;font-size:22px;cursor:pointer">×</button>';
+    document.body.appendChild(box);
+    const img = box.querySelector('img'), z = K.lightbox.z = {s: 1, x: 0, y: 0, min: 1};
+    const apply = () => { img.style.transform = `translate(${z.x}px,${z.y}px) scale(${z.s})` };
+    const clamp = () => {   // keep the photo on screen; centred while it is smaller than the screen
+      const W = box.clientWidth, H = box.clientHeight, w = img.naturalWidth * z.s, h = img.naturalHeight * z.s;
+      z.x = w <= W ? (W - w) / 2 : Math.min(0, Math.max(W - w, z.x));
+      z.y = h <= H ? (H - h) / 2 : Math.min(0, Math.max(H - h, z.y));
+    };
+    const zoomAt = (f, cx, cy) => { const s2 = Math.min(Math.max(z.s * f, z.min), z.min * 8); z.x = cx - (cx - z.x) * s2 / z.s; z.y = cy - (cy - z.y) * s2 / z.s; z.s = s2; clamp(); apply() };
+    K.lightbox.fit = () => { const W = box.clientWidth, H = box.clientHeight; z.min = z.s = Math.min(W / img.naturalWidth, H / img.naturalHeight, 1) * 0.96; z.x = z.y = 0; clamp(); apply() };
+    img.onload = () => K.lightbox.fit();
+    const close = () => { box.style.display = 'none'; img.removeAttribute('src') };
+    K.lightbox.close = close;
+    box.querySelector('button').onclick = close;
+    box.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY) }, {passive: false});
+    const pts = new Map(); let moved = false, last = null, lastTap = 0;
+    box.addEventListener('pointerdown', e => { if (e.target.tagName === 'BUTTON') return; box.setPointerCapture(e.pointerId); pts.set(e.pointerId, {x: e.clientX, y: e.clientY}); moved = false; last = null });
+    box.addEventListener('pointermove', e => {
+      if (!pts.has(e.pointerId)) return;
+      const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      if (pts.size === 2) {   // pinch: scale by the change of distance, around the midpoint
+        const [a, b] = [...pts.values()], d0 = Math.hypot(a.x - b.x, a.y - b.y);
+        pts.set(e.pointerId, {x: e.clientX, y: e.clientY});
+        const [c, d] = [...pts.values()], d1 = Math.hypot(c.x - d.x, c.y - d.y);
+        if (d0 > 0) zoomAt(d1 / d0, (c.x + d.x) / 2, (c.y + d.y) / 2);
+        return;
+      }
+      pts.set(e.pointerId, {x: e.clientX, y: e.clientY}); z.x += dx; z.y += dy; clamp(); apply();
+    });
+    const up = e => {
+      if (!pts.delete(e.pointerId) || pts.size || moved) return;
+      const now = Date.now();
+      if (now - lastTap < 300) { lastTap = 0; if (z.s > z.min * 1.1) K.lightbox.fit(); else zoomAt(2.5, e.clientX, e.clientY); return }
+      lastTap = now;
+      if (e.target === box) setTimeout(() => { if (lastTap === now) close() }, 300);   // a single tap beside the photo closes
+    };
+    box.addEventListener('pointerup', up); box.addEventListener('pointercancel', e => pts.delete(e.pointerId));
+    addEventListener('keydown', e => { if (e.key === 'Escape' && box.style.display !== 'none') close() });
+    addEventListener('resize', () => { if (box.style.display !== 'none') K.lightbox.fit() });
+  }
+  box.style.display = 'block';
+  const img = box.querySelector('img'); img.src = src;
+  if (img.complete && img.naturalWidth) K.lightbox.fit();
+};
+K.lightbox.isOpen = () => document.getElementById('kzoom')?.style.display === 'block';
+
+// ---------- marking a photo before it is sent: arrow, rectangle, circle ----------
+// -> Promise of {canvas, note} with the marks drawn in, or null if cancelled. askNote: offer "note for the approver".
+K.annotate = (src, askNote) => new Promise(done => {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;z-index:160;background:#0b1116;display:flex;flex-direction:column;color:#e9eef2;font:14px system-ui,sans-serif;padding-top:env(safe-area-inset-top,0px)';
+  const b = (t, a, extra = '') => `<button type="button" data-a="${a}" style="padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer;${extra}">${t}</button>`;
+  box.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px;align-items:center">${b('↗ Arrow', 'arrow')}${b('▭ Box', 'rect')}${b('◯ Circle', 'circle')}${b('Undo', 'undo')}
+      <span style="display:inline-flex;gap:4px">${['#ff3b30', '#ffcc00', '#34c759', '#ffffff'].map(c => `<button type="button" data-c="${c}" aria-label="Colour" style="width:30px;height:30px;border-radius:15px;border:2px solid #3a5061;background:${c};cursor:pointer"></button>`).join('')}</span>
+      <span style="opacity:.7;font-size:12.5px">Drag on the photo to point at what matters (optional)</span></div>
+    <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px"><canvas style="max-width:100%;max-height:100%;touch-action:none;background:#000"></canvas></div>
+    <div style="display:flex;gap:8px;padding:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));align-items:center;flex-wrap:wrap">
+      ${askNote ? '<input class="note" maxlength="500" placeholder="Note for the approver (optional)" style="flex:1;min-width:180px;padding:8px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit">' : '<span style="flex:1"></span>'}
+      ${b('Cancel', 'cancel')}${b('Use photo', 'ok', 'background:#ff7a1a;color:#1c2730;border:0;font-weight:650')}</div>`;
+  document.body.appendChild(box);
+  const cv = box.querySelector('canvas'), g = cv.getContext('2d'), base = new Image();
+  let tool = 'arrow', color = '#ff3b30', shapes = [], draft = null;
+  const W = () => Math.max(3, Math.round(Math.max(cv.width, cv.height) * 0.006));
+  const draw = (ctx, sh) => {
+    ctx.lineWidth = W(); ctx.strokeStyle = ctx.fillStyle = sh.c; ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = W();
+    const [x0, y0, x1, y1] = sh.p;
+    ctx.beginPath();
+    if (sh.t === 'rect') ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+    else if (sh.t === 'circle') { ctx.ellipse((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, 0, 0, 2 * Math.PI); ctx.stroke() }
+    else {
+      const a = Math.atan2(y1 - y0, x1 - x0), h = W() * 4.5;
+      ctx.moveTo(x0, y0); ctx.lineTo(x1 - Math.cos(a) * h * 0.6, y1 - Math.sin(a) * h * 0.6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - h * Math.cos(a - 0.45), y1 - h * Math.sin(a - 0.45));
+      ctx.lineTo(x1 - h * Math.cos(a + 0.45), y1 - h * Math.sin(a + 0.45)); ctx.closePath(); ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  };
+  const paint = () => { g.drawImage(base, 0, 0); shapes.concat(draft ? [draft] : []).forEach(sh => draw(g, sh)) };
+  const pick = () => box.querySelectorAll('[data-a]').forEach(x => x.style.borderColor = x.dataset.a === tool ? '#ff7a1a' : '#3a5061');
+  const pickC = () => box.querySelectorAll('[data-c]').forEach(x => x.style.borderColor = x.dataset.c === color ? '#ff7a1a' : '#3a5061');
+  base.onload = () => { cv.width = base.naturalWidth; cv.height = base.naturalHeight; paint(); pick(); pickC() };
+  base.src = src;
+  const at = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height] };
+  // repaint at most once a frame: redrawing the whole photo on every move is slow on phones, and then moves pile up
+  let queued = false;
+  const later = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; paint() }) } };
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); const [x, y] = at(e); draft = {t: tool, c: color, p: [x, y, x, y]} });
+  cv.addEventListener('pointermove', e => { if (!draft) return; const [x, y] = at(e); draft.p[2] = x; draft.p[3] = y; later() });
+  cv.addEventListener('pointerup', e => {   // (the end is where the finger left, even if moves were skipped)
+    if (!draft) return;
+    const [x, y] = at(e); draft.p[2] = x; draft.p[3] = y;
+    if (Math.hypot(draft.p[2] - draft.p[0], draft.p[3] - draft.p[1]) > W() * 2) shapes.push(draft);
+    draft = null; paint();
+  });
+  cv.addEventListener('pointercancel', () => { draft = null; paint() });
+  const finish = v => { box.remove(); done(v) };
+  box.querySelectorAll('[data-c]').forEach(x => x.onclick = () => { color = x.dataset.c; pickC() });
+  box.querySelectorAll('[data-a]').forEach(x => x.onclick = () => {
+    const a = x.dataset.a;
+    if (a === 'undo') { shapes.pop(); paint() }
+    else if (a === 'cancel') finish(null);
+    else if (a === 'ok') finish({canvas: cv, note: box.querySelector('.note')?.value.trim() || ''});
+    else { tool = a; pick() }
+  });
+});
+
+// ---------- a progress bar for work the device does without reporting progress (JPEG XL encoding) ----------
+// The encoder gives no progress callback: the bar follows the time the last photos took per megapixel on this
+// device (estimate), stops at 95 % until the work is done, then fills.
+K.progress = (title, estimateMs) => {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:170;background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:12px 14px;min-width:260px;max-width:90vw;font:14px system-ui,sans-serif;box-shadow:0 6px 24px #0008';
+  box.innerHTML = `<div>${K.esc(title)}</div><div style="height:6px;border-radius:3px;background:#3a5061;margin:8px 0 4px;overflow:hidden"><i style="display:block;height:100%;width:0;background:#ff7a1a;transition:width .3s"></i></div><div class="t" style="font-size:12.5px;opacity:.75"></div>`;
+  document.body.appendChild(box);
+  const bar = box.querySelector('i'), t = box.querySelector('.t'), t0 = Date.now();
+  const tick = () => {
+    const el = Date.now() - t0, f = Math.min(0.95, el / Math.max(estimateMs, 500));
+    bar.style.width = (f * 100).toFixed(0) + '%';
+    const left = Math.max(0, (estimateMs - el) / 1000);
+    t.textContent = `${Math.round(f * 100)} %` + (left > 1 ? ` · about ${Math.ceil(left)} s left` : el > estimateMs ? ' · almost done' : '');
+  };
+  tick(); const iv = setInterval(tick, 250);
+  return {done() { clearInterval(iv); bar.style.width = '100%'; t.textContent = '100 %'; setTimeout(() => box.remove(), 500) }};
+};
+
+// Ask a question with an optional note ("Delete this photo?"). -> Promise of {note} or null.
+K.ask = (title, text, askNote, okLabel = 'OK') => new Promise(done => {
+  const o = document.createElement('div');
+  o.style.cssText = 'position:fixed;inset:0;z-index:180;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px;font:14px system-ui,sans-serif';
+  o.innerHTML = `<div style="background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:16px;max-width:420px;width:100%">
+    <div style="font-weight:650;margin-bottom:6px">${K.esc(title)}</div>${text ? `<div style="opacity:.8;margin-bottom:8px">${K.esc(text)}</div>` : ''}
+    ${askNote ? '<input class="note" maxlength="500" placeholder="Note for the approver (optional)" style="width:100%;padding:8px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;margin-bottom:10px">' : ''}
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" data-v="0" style="padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:none;color:inherit;cursor:pointer">Cancel</button>
+    <button type="button" data-v="1" style="padding:8px 12px;border-radius:6px;border:0;background:#ff7a1a;color:#1c2730;font-weight:650;cursor:pointer">${K.esc(okLabel)}</button></div></div>`;
+  document.body.appendChild(o);
+  o.querySelector('.note')?.focus();
+  o.querySelectorAll('button').forEach(x => x.onclick = () => { const v = x.dataset.v === '1' ? {note: o.querySelector('.note')?.value.trim() || ''} : null; o.remove(); done(v) });
+});

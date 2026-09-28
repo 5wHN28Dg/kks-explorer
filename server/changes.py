@@ -80,6 +80,8 @@ def normalize(kind, p, photos_dir, max_bytes):
         k = kks(p.get('kks'))
         changes, base = fields(p.get('changes') or {}), fields(p.get('base') or {})
         if not changes: raise Bad('no changes')
+        if changes.get('floor') and not re.fullmatch(r'\d|10', changes['floor']):   # a height goes in `elev`
+            raise Bad('Floor: a whole number from 0 to 10 (the height goes in Elevation)')
         return f'equipment:{k}', {'kks': k, 'changes': changes, 'base': {f: base.get(f, default(f)) for f in changes}}
     if kind == 'review':
         tag = text(p.get('tag_id'), 64)
@@ -173,8 +175,12 @@ def _rebase(kind, body, E):
     return body
 
 
-def submit(E, cfg, user, kind, payload, client_id):
-    """Store a submission as a log entry (or a held draft). Returns the dict the client expects."""
+def submit(E, cfg, user, kind, payload, client_id, note=None):
+    """Store a submission as a log entry (or a held draft). Returns the dict the client expects.
+    note: optional words for the approver, kept as a `comment` entry on the proposal (PROTOCOL.md §9)."""
+    if note is not None and (not isinstance(note, str) or len(note) > 500):
+        raise Bad('note: up to 500 characters')
+    note = (note or '').strip()
     if client_id is not None and (not isinstance(client_id, str) or not re.fullmatch(r'[\w-]{8,64}', client_id)):
         raise Bad('bad client_id')
     if client_id:
@@ -208,6 +214,8 @@ def submit(E, cfg, user, kind, payload, client_id):
                                        'note': json.dumps(_conflicts_out(conflicts)) if conflicts else ''})
             return {'id': sid, 'status': status, **({'conflicts': _conflicts_out(conflicts)} if conflicts else {})}
         eid = E.append(c, user['device'], kind, body)
+        if note:
+            E.append(c, user['device'], 'comment', {'entry': eid, 'text': note})
         sid = E.store.put('subs', {**row, 'entry': eid})
     if admin:
         return {'id': sid, 'status': 'approved'}
@@ -258,6 +266,8 @@ def sub_out(E, r, me, users, live=False):
          'created': r['created'], 'decided_at': decided_at, 'note': note, 'payload': body_to_payload(E, kind, body),
          'by': u['username'] if u else '?', 'mine': r['user_id'] == me['id']}
     d['by_name'] = (u['full_name'] if u else None) or d['by']
+    author = E.person_of(E.entry(r['entry'])['peer']) if r['entry'] else None   # the requester's own note, if any
+    d['request_note'] = next((x['text'] for x in E.run.comments.get(r['entry'], []) if x['person'] == author), '') if author else ''
     if kind == 'photo' and r['entry']:
         voters = E.run.votes.get(r['entry'], set())
         d['votes'], d['voted'] = len(voters), me['person'] in voters

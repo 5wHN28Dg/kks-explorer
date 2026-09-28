@@ -74,6 +74,8 @@ object Payloads {
                 val changes = fields(p["changes"] ?: emptyMap<String, Any>())
                 val base = fields(p["base"] ?: emptyMap<String, Any>())
                 if (changes.isEmpty()) bad("no changes")
+                (changes["floor"] as? String)?.takeIf { it.isNotEmpty() && !Regex("\\d|10").matches(it) }
+                    ?.let { bad("Floor: a whole number from 0 to 10 (the height goes in Elevation)") }
                 mapOf("kks" to k, "changes" to changes, "base" to changes.keys.associateWith { base[it] ?: LocalNode.default(it) })
             }
             "review" -> {

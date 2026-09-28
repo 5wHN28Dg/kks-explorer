@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android 11+: to find the camera apps that may write the photo file (MainActivity.openChooser) -->
+    <queries><intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent></queries>
     <application
         android:label="KKS Explorer"
         android:icon="@mipmap/ic_launcher"

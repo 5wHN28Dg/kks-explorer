@@ -258,13 +258,16 @@ class ServerTest(Base):
         m = self.setup_manager()
         adm, usr = self.invite(m, 'adm', 'admin'), self.invite(m, 'usr')
         k = '11LAB70AA501'
-        usr.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '3 m'}, 'base': {}}})
-        m.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '6 m'}, 'base': {}}})
+        usr.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '3'}, 'base': {}}})
+        m.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '6'}, 'base': {}}})
         sid = adm.get('/api/submissions')[1]['submissions'][0]['id']
         s, r = adm.post(f'/api/submissions/{sid}/approve', {'force': True})
         self.assertEqual(s, 403); self.assertIn('manager', r['error'])
         self.assertEqual(m.post(f'/api/submissions/{sid}/approve', {'force': True})[0], 200)   # the manager may
-        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3 m')
+        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3')
+        s, r = usr.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '14 m'}, 'base': {}}})
+        self.assertEqual(s, 400); self.assertIn('0 to 10', r['error'])                       # a height isn't a floor
+        self.assertEqual(usr.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '11'}, 'base': {}}})[0], 400)
 
     def test_withdraw_and_vote_toggle(self):
         m = self.setup_manager()
@@ -293,17 +296,17 @@ class ServerTest(Base):
         m = self.setup_manager()
         u = self.invite(m, 'usr')
         s, r = u.post('/api/submit', {'kind': 'equipment', 'client_id': 'c-000001',
-                                      'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '6 m'}, 'base': {}}})
+                                      'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '6'}, 'base': {}}})
         self.assertEqual(r['status'], 'pending')
         self.assertEqual(u.get('/api/state')[1]['equipment'], {})
         self.assertEqual(len(u.get('/api/state')[1]['mine']), 1)
         # offline replay of the same client_id is not duplicated
         self.assertTrue(u.post('/api/submit', {'kind': 'equipment', 'client_id': 'c-000001',
-                                               'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '6 m'}}})[1]['duplicate'])
+                                               'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '6'}}})[1]['duplicate'])
         q = m.get('/api/submissions')[1]['submissions']
         self.assertEqual(len(q), 1)
         self.assertEqual(m.post(f'/api/submissions/{q[0]["id"]}/approve')[0], 200)
-        self.assertEqual(u.get('/api/state')[1]['equipment'], {'11LAB70AA501': {'floor': '6 m'}})
+        self.assertEqual(u.get('/api/state')[1]['equipment'], {'11LAB70AA501': {'floor': '6'}})
         self.assertEqual(m.post(f'/api/submissions/{q[0]["id"]}/approve')[0], 409)  # already decided
 
     def test_admin_applies_directly(self):
@@ -316,20 +319,32 @@ class ServerTest(Base):
         m = self.setup_manager()
         u1, u2 = self.invite(m, 'u1'), self.invite(m, 'u2')
         k = '11LAB70AA501'
-        m.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '6 m', 'notes': 'n'}}})
+        m.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '6', 'notes': 'n'}}})
         # both users saw floor=6 m, notes=n. u1 edits floor, u2 edits notes → no overlap → both merge
-        u1.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '10 m'}, 'base': {'floor': '6 m'}}})
+        u1.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '7'}, 'base': {'floor': '6'}}})
         u2.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'notes': 'm'}, 'base': {'notes': 'n'}}})
         # u2 also changes floor based on the stale value → conflicts after u1's is approved
-        u2.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '14 m'}, 'base': {'floor': '6 m'}}})
+        u2.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': '9'}, 'base': {'floor': '6'}}})
         subs = sorted(m.get('/api/submissions')[1]['submissions'], key=lambda s: s['id'])
         for s in subs[:2]:
             self.assertEqual(m.post(f'/api/submissions/{s["id"]}/approve')[0], 200)
-        self.assertEqual(m.get('/api/state')[1]['equipment'][k], {'floor': '10 m', 'notes': 'm'})
+        self.assertEqual(m.get('/api/state')[1]['equipment'][k], {'floor': '7', 'notes': 'm'})
         s, r = m.post(f'/api/submissions/{subs[2]["id"]}/approve')
-        self.assertEqual(s, 409); self.assertEqual(r['conflicts'][0]['live'], '10 m')
+        self.assertEqual(s, 409); self.assertEqual(r['conflicts'][0]['live'], '7')
         self.assertEqual(m.post(f'/api/submissions/{subs[2]["id"]}/approve', {'force': True})[0], 200)
-        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '14 m')
+        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '9')
+
+    def test_request_note(self):
+        """A user may add a note to a request; the approver sees it (a `comment` entry on the proposal)."""
+        m = self.setup_manager()
+        u = self.invite(m, 'u1')
+        s, r = u.post('/api/submit', {'kind': 'link', 'payload': {'proc': '3.6.1', 'step': 4, 'kks': '11LAB70AA501'},
+                                      'note': 'step 4 names this valve'})
+        self.assertEqual(s, 200)
+        sub = next(x for x in m.get('/api/submissions')[1]['submissions'] if x['id'] == r['id'])
+        self.assertEqual(sub['request_note'], 'step 4 names this valve')
+        self.assertEqual(u.post('/api/submit', {'kind': 'link', 'payload': {'proc': '3.6.1', 'step': 5, 'kks': '11LAB70AA501'},
+                                                'note': 'x' * 501})[0], 400)
 
     def test_photo_votes_and_pick(self):
         m = self.setup_manager()
@@ -379,7 +394,7 @@ class ServerTest(Base):
     def test_revert_and_restore(self):
         m = self.setup_manager()
         k = '11LAB70AA501'
-        for f in ('3 m', '6 m', '10 m'):
+        for f in ('3', '6', '7'):
             m.post('/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': {'floor': f},
                                                                     'base': {'floor': m.get('/api/state')[1]['equipment'].get(k, {}).get('floor', '')}}})
         revs = [r for r in m.get('/api/revisions')[1]['revisions'] if r['entity'] == 'equipment']
@@ -389,14 +404,14 @@ class ServerTest(Base):
         self.assertEqual(m.post(f'/api/revisions/{first}/revert')[0], 409)
         self.assertEqual(m.post('/api/restore', {})[0], 400)  # no silent restore-everything default
         self.assertEqual(m.post('/api/restore', {'rev': first})[0], 200)
-        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3 m')
+        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3')
         self.assertEqual(m.post('/api/restore', {'rev': 0})[0], 200)
         self.assertEqual(m.get('/api/state')[1]['equipment'], {})
         # the UI uses stable row IDs (numbers can shift when older entries arrive by sync)
         rows = [r for r in m.get('/api/revisions')[1]['revisions'] if r['entity'] == 'equipment']
-        three = next(r for r in rows if r['after'] and json.loads(r['after']).get('floor') == '3 m')
+        three = next(r for r in rows if r['after'] and json.loads(r['after']).get('floor') == '3')
         self.assertEqual(m.post('/api/restore', {'hid': three['hid']})[0], 200)
-        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3 m')
+        self.assertEqual(m.get('/api/state')[1]['equipment'][k]['floor'], '3')
         last = next(r for r in m.get('/api/revisions')[1]['revisions'] if r['entity'] == 'equipment')
         self.assertEqual(m.post(f'/api/revisions/{last["hid"]}/revert')[0], 200)
         self.assertEqual(m.get('/api/state')[1]['equipment'], {})

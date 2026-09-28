@@ -6,7 +6,7 @@ android/app/.../Jxl.kt. Nothing is converted back to JPEG: pages without JXL sup
 libjxl compiled to WebAssembly; the Android app decodes natively).
 
 Needs Pillow + pillow-jxl-plugin (libjxl). Without them photos are stored as uploaded; `app.py check` warns."""
-import io
+import io, time
 
 try:
     from PIL import Image, ImageOps
@@ -18,6 +18,7 @@ except ImportError:
 QUALITY = 80               # pillow-jxl-plugin maps quality q to distance 0.1 + (100 - q) * 0.09: 80 → 1.9
 EFFORT = 9
 MAX_SIDE = 4096            # clients send ≤ 1600 px; anything bigger is scaled down here
+ms_per_mp = 3000           # how long encoding took here lately, per megapixel (the pages' progress bar estimate)
 
 
 def magic(raw):
@@ -41,6 +42,9 @@ def to_jxl(raw, ext):
         raise ValueError(f'not a readable image ({e})')
     if max(im.size) > MAX_SIDE:
         im.thumbnail((MAX_SIDE, MAX_SIDE), Image.LANCZOS)
-    out = io.BytesIO()
+    global ms_per_mp
+    out, t0 = io.BytesIO(), time.monotonic()
     im.save(out, format='JXL', quality=QUALITY, effort=EFFORT, exif=b'', lossless_jpeg=False)
+    took = (time.monotonic() - t0) * 1000 / max(im.size[0] * im.size[1] / 1e6, 0.01)
+    ms_per_mp = int(0.5 * ms_per_mp + 0.5 * took)
     return out.getvalue(), 'jxl'

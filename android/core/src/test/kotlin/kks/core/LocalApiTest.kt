@@ -120,17 +120,17 @@ class LocalApiTest {
         val a = pl.phone
         val k = "11LAB70AA501"
         assertEquals("approved", a.post("/api/submit", mapOf("kind" to "equipment", "payload" to mapOf("kks" to k,
-            "changes" to mapOf("floor" to "6 m", "notes" to "n")))).second["status"])
+            "changes" to mapOf("floor" to "6", "notes" to "n")))).second["status"])
         // the user (another device) edits floor from a stale base while the admin changes it
-        val prop = pl.user.let { pl.exchange(it, a.node); it.append("equipment", mapOf("kks" to k, "changes" to mapOf("floor" to "14 m"), "base" to mapOf("floor" to "6 m"))) }
-        a.post("/api/submit", mapOf("kind" to "equipment", "payload" to mapOf("kks" to k, "changes" to mapOf("floor" to "10 m"), "base" to mapOf("floor" to "6 m"))))
+        val prop = pl.user.let { pl.exchange(it, a.node); it.append("equipment", mapOf("kks" to k, "changes" to mapOf("floor" to "9"), "base" to mapOf("floor" to "6"))) }
+        a.post("/api/submit", mapOf("kind" to "equipment", "payload" to mapOf("kks" to k, "changes" to mapOf("floor" to "7"), "base" to mapOf("floor" to "6"))))
         pl.exchange(pl.user, a.node)
         val sub = (a.get("/api/submissions").second["submissions"] as List<Map<String, Any?>>).single()
         assertEquals("conflict", sub["status"])
         val (s, r) = a.post("/api/submissions/${sub["id"]}/approve")
-        assertEquals(409, s); assertEquals("10 m", (r["conflicts"] as List<Map<*, *>>)[0]["live"])
+        assertEquals(409, s); assertEquals("7", (r["conflicts"] as List<Map<*, *>>)[0]["live"])
         assertEquals(200, a.post("/api/submissions/${sub["id"]}/approve", mapOf("force" to true)).first)
-        assertEquals("14 m", ((a.get("/api/state").second["equipment"] as Map<*, *>)[k] as Map<*, *>)["floor"])
+        assertEquals("9", ((a.get("/api/state").second["equipment"] as Map<*, *>)[k] as Map<*, *>)["floor"])
         assertTrue(a.node.run.proposals[prop] == "approved")
         // an admin change that clashes is held, then forced
         val held = a.post("/api/submit", mapOf("kind" to "equipment", "payload" to mapOf("kks" to k, "changes" to mapOf("notes" to "stale"), "base" to mapOf("notes" to "old"))))
@@ -143,7 +143,7 @@ class LocalApiTest {
         val first = revs.last()
         assertEquals(409, a.post("/api/revisions/${first["hid"]}/revert").first)          // changed again since
         assertEquals(200, a.post("/api/restore", mapOf("hid" to first["hid"])).first)
-        assertEquals(mapOf("floor" to "6 m", "notes" to "n"), (a.get("/api/state").second["equipment"] as Map<*, *>)[k])
+        assertEquals(mapOf("floor" to "6", "notes" to "n"), (a.get("/api/state").second["equipment"] as Map<*, *>)[k])
         assertEquals(200, a.post("/api/restore", mapOf("rev" to 0)).first)
         assertEquals(emptyMap<String, Any>(), a.get("/api/state").second["equipment"])
     }
@@ -257,6 +257,13 @@ class LocalApiTest {
             waitFor { p2.get("/api/node/join-invite").second.takeIf { it["state"] == "joined" } }
             assertEquals("newbie", (p2.get("/api/me").second["user"] as Map<*, *>)["username"])
             assertEquals(2, (p2.get("/api/state").second["links"] as List<*>).size)
+            // the Python server removes that phone; its next sync shows it the proof and the phone wipes itself
+            var wiped = false
+            p2.node.onWiped = { wiped = true }
+            assertEquals(200, web.post("/api/devices/revoke", mapOf("device" to p2.node.device)).first)
+            assertTrue(runCatching { Sync.syncWith(p2.node, "127.0.0.1", syncPort) }.exceptionOrNull()?.message?.contains("removed") == true)
+            assertTrue(wiped)
+            assertEquals(401, p2.get("/api/me").first)
         } finally {
             proc.destroy(); proc.waitFor()
             tmp.deleteRecursively()
@@ -409,6 +416,84 @@ class LocalApiTest {
             assertEquals("7", onLaptop["finalBest"])
             assertEquals(404, boss.get("/api/progress").first)                                         // the server keeps none
         } }
+    }
+
+    /** Field report 2026-09-28: a user asks to delete an admin's photo, the admin rejects; both keep syncing and the
+     *  user sees "rejected" (not "waiting") without restarting. Phones = real sync over TCP both ways. */
+    @Test fun photoDeleteRequestRejectedBetweenPhones() {
+        val pl = Plant("admin")
+        val adm = Listening(); val usr = Listening()
+        try {
+            adm.node.adopt(pl.root.peerId); adm.node.ingest(pl.mgr.entriesFor(emptyMap<String, Any>()))
+            pl.mgr.append("device_cert", mapOf("device" to adm.node.device, "person" to pl.person, "label" to "admin phone"))
+            usr.node.adopt(pl.root.peerId)
+            pl.mgr.append("device_cert", mapOf("device" to usr.node.device, "person" to pl.userPerson, "label" to "user phone"))
+            adm.node.ingest(pl.mgr.entriesFor(adm.node.vv())); usr.node.ingest(pl.mgr.entriesFor(usr.node.vv()))
+            val a = LocalApi(adm.node, adm); val u = LocalApi(usr.node, usr)
+            fun call(api: LocalApi, m: String, p: String, b: Any? = null) = api.handle(m, p.substringBefore('?'),
+                p.substringAfter('?', "").split("&").filter { "=" in it }.associate { it.substringBefore("=") to it.substringAfter("=") },
+                b?.let { Json.parse(Json.write(it)) }).let { it.status to (it.json as Map<String, Any?>) }
+            val png = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(ByteArray(0).let {
+                val img = java.awt.image.BufferedImage(4, 4, java.awt.image.BufferedImage.TYPE_INT_RGB)
+                java.io.ByteArrayOutputStream().also { o -> javax.imageio.ImageIO.write(img, "png", o) }.toByteArray() })
+            assertEquals(200, call(a, "POST", "/api/submit", mapOf("kind" to "photo", "payload" to mapOf("kks" to "11LAB70AA501", "dataUrl" to png))).first)
+            fun sync(from: Listening, to: Listening) = Sync.syncWith(from.node, "127.0.0.1", to.port!!).second
+            sync(usr, adm)
+            val photo = (call(u, "GET", "/api/state").second["photos"] as List<Map<String, Any?>>).single()
+            val (s1, r1) = call(u, "POST", "/api/submit", mapOf("kind" to "photo_delete", "payload" to mapOf("photo_id" to photo["id"])))
+            assertEquals(r1.toString(), 200, s1)
+            sync(usr, adm)
+            val sub = (call(a, "GET", "/api/submissions?status=open").second["submissions"] as List<Map<String, Any?>>).single()
+            assertEquals(200, call(a, "POST", "/api/submissions/${sub["id"]}/reject", mapOf("note" to "keep it")).first)
+            sync(usr, adm); sync(adm, usr)                      // both directions keep working
+            val mine = (call(u, "GET", "/api/submissions?status=all").second["submissions"] as List<Map<String, Any?>>).single { it["kind"] == "photo_delete" }
+            assertEquals("rejected", mine["status"])
+        } finally { adm.close(); usr.close() }
+    }
+
+    /** Two phones pressing "Sync now" at each other at the same moment both finish (no lock held across the network). */
+    @Test fun simultaneousSyncNowDoesNotDeadlock() {
+        val pl = Plant("admin")
+        val x = Listening(); val y = Listening()
+        try {
+            for (n in listOf(x, y)) { n.node.adopt(pl.root.peerId); pl.mgr.append("device_cert", mapOf("device" to n.node.device, "person" to pl.person, "label" to "p")) }
+            for (n in listOf(x, y)) n.node.ingest(pl.mgr.entriesFor(n.node.vv()))
+            val ax = LocalApi(x.node, x); val ay = LocalApi(y.node, y)
+            repeat(5) {
+                val t0 = System.currentTimeMillis()
+                val r = listOf(ax to y, ay to x).map { (api, other) -> java.util.concurrent.CompletableFuture.supplyAsync {
+                    api.handle("POST", "/api/sync/now", emptyMap(), mapOf("address" to "127.0.0.1:${other.port}")).status } }.map { it.get() }
+                assertEquals(listOf(200, 200), r)
+                assertTrue("took ${System.currentTimeMillis() - t0} ms", System.currentTimeMillis() - t0 < 5000)
+            }
+        } finally { x.close(); y.close() }
+    }
+
+    /** A removed phone learns it at its next sync (the signed revoke entry as proof) and wipes itself; a revoke
+     *  signed by a stranger is refused. */
+    @Test fun removedPhoneWipesItself() {
+        val pl = Plant("admin")
+        val adm = Listening(); val usr = Listening()
+        try {
+            for (n in listOf(adm, usr)) n.node.adopt(pl.root.peerId)
+            pl.mgr.append("device_cert", mapOf("device" to adm.node.device, "person" to pl.person, "label" to "admin phone"))
+            pl.mgr.append("device_cert", mapOf("device" to usr.node.device, "person" to pl.userPerson, "label" to "user phone"))
+            for (n in listOf(adm, usr)) n.node.ingest(pl.mgr.entriesFor(n.node.vv()))
+            var wiped: Map<String, Any?>? = null
+            usr.node.onWiped = { wiped = it }
+            val stranger = SigningKey.generate()
+            val fake = Proto.makeEntry(stranger, 1, null, listOf(1L, 0L), "revoke", mapOf("device" to usr.node.device, "last_seq" to 0L))
+            assertEquals(false, usr.node.acceptRevocation(fake))
+            val a = LocalApi(adm.node, adm)
+            assertEquals(200, a.handle("POST", "/api/devices/revoke", emptyMap(), mapOf("device" to usr.node.device)).status)
+            val err = runCatching { Sync.syncWith(usr.node, "127.0.0.1", adm.port!!) }.exceptionOrNull()
+            assertTrue(err?.message ?: "no error", err?.message?.contains("removed") == true)
+            assertEquals("Me Myself", wiped?.get("by"))
+            assertEquals(null, usr.node.owner())
+            assertEquals(0, usr.node.entries.size)
+            val cfg = LocalApi(usr.node, usr).handle("GET", "/api/config", emptyMap(), null).json as Map<*, *>
+            assertEquals("Me Myself", ((cfg["node"] as Map<*, *>)["removed"] as Map<*, *>)["by"])
+        } finally { adm.close(); usr.close() }
     }
 
     /** A tiny HTTP client with a cookie, for the Python server. */

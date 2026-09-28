@@ -44,6 +44,7 @@ object Replay {
         "reject" to setOf("entry", "note"),
         "withdraw" to setOf("entry"),
         "vote" to setOf("entry", "on"),
+        "comment" to setOf("entry", "text"),
         "private" to setOf("person", "nonce", "ct"),
     )
     val STMT: Map<String, Set<String>> = mapOf(
@@ -259,6 +260,8 @@ class Run(var root: String?, val cuts: Map<String, Long>, val accepted: Set<Stri
     val authors = HashMap<String, String>()
     val decisions = HashMap<String, Map<String, Any?>>()
     val history = ArrayList<Map<String, Any?>>()
+    /** Side output (not state): entry → [{person, text, id}] in order: a note on a request. */
+    val comments = LinkedHashMap<String, MutableList<Map<String, Any?>>>()
     var at: String? = null
 
     fun role(person: String): String? = if (person == manager) "manager" else persons[person]?.get("role") as String?
@@ -305,6 +308,11 @@ class Run(var root: String?, val cuts: Map<String, Long>, val accepted: Set<Stri
         }
         "withdraw" -> decision(e, eid, Decision("withdrawn", false, null, "", author), null)
         "vote" -> tVote(e, author)
+        "comment" -> {
+            val b = body(e)
+            Replay.need(Replay.match(Replay.HEX64, b["entry"]) && Replay.text(b["text"], 1, 500))
+            comments.getOrPut(b["entry"] as String) { ArrayList() }.add(mapOf("person" to author, "text" to b["text"], "id" to eid))
+        }
         else -> data(e, eid, author, role)
     }
 

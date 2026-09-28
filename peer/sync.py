@@ -167,7 +167,8 @@ def exchange(ses, node, initiator, adopt_root=None, first=None):
     def offer():
         if not node.may_read(ses.remote):
             stats['denied'] = True
-            return {'t': 'entries', 'entries': [], 'denied': True}
+            why = getattr(node, 'revocation_of', lambda d: None)(ses.remote)   # a removed device: show it the proof
+            return {'t': 'entries', 'entries': [], 'denied': True, **({'revoked': why} if why else {})}
         out = node.entries_for(vv)
         stats['sent'] = len(out)
         return {'t': 'entries', 'entries': out}
@@ -182,6 +183,8 @@ def exchange(ses, node, initiator, adopt_root=None, first=None):
         stats['received'] = node.ingest(got.get('entries') or [])
         ses.send(offer())
     stats['they_denied'] = got.get('denied') is True
+    if got.get('revoked') and getattr(node, 'accept_revocation', lambda e: False)(got['revoked']):
+        raise SyncError('this device was removed from the plant; its plant data has been deleted here')
     their_want = turn({'t': 'want', 'blobs': node.blob_wants()}, 'want').get('blobs') or []
 
     def send_blobs():

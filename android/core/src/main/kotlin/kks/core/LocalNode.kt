@@ -31,6 +31,9 @@ interface NodeStore {
     /** Person secrets (§13, M4) as JSON {person: [hex, …]}; the phone's store keeps them encrypted. */
     fun personSecrets(): String? = meta("person_secrets")
     fun setPersonSecrets(json: String) = setMeta("person_secrets", json)
+    /** The device was removed from its plant: delete everything (entries, subs, notes, blobs, meta incl. the device
+     *  seed and person secrets) and keep only `removed` = [note] (JSON) for the setup screen. */
+    fun wipe(note: String)
 }
 
 class MemStore : NodeStore {
@@ -63,6 +66,10 @@ class MemStore : NodeStore {
     override fun notes() = notes
     override fun putNote(eid: String, note: String) { notes[eid] = note }
     @Synchronized override fun <T> tx(block: () -> T): T = block()
+    override fun wipe(note: String) {
+        seed = null; meta.clear(); entries.clear(); evidence.clear(); blobs.clear(); subs.clear(); notes.clear()
+        meta["removed"] = note
+    }
 }
 
 /** The owner of this device, as far as the log says (peer mode: the only account). */
@@ -112,6 +119,34 @@ class LocalNode private constructor(val store: NodeStore, key: SigningKey) : Mem
             store.putSub(mapOf("id" to null, "client_id" to null, "entry" to eid, "person" to run.authors[eid],
                                "kind" to e["type"], "created" to ((e["hlc"] as List<*>)[0] as Long) / 1000))
         }
+    }
+
+    /** Called after a wipe (the app restarts itself: a new device key needs a new node). */
+    @Volatile var onWiped: ((Map<String, Any?>) -> Unit)? = null
+
+    override fun acceptRevocation(entry: Any?): Boolean {
+        val o = owner() ?: return false
+        val e = entry as? Map<String, Any?> ?: return false
+        try { Proto.verifyEntry(e) } catch (x: Exception) { return false }
+        if (e["type"] != "revoke" || (e["body"] as? Map<*, *>)?.get("device") != device) return false
+        val note = synchronized(this) {
+            val d = run.devices[e["peer"] as String] ?: return false
+            if ((e["peer"] as String) in run.cuts) return false
+            val p = d["person"] as String
+            val role = if (run.manager == p) "manager" else run.persons[p]?.get("role")
+            if (!(role == "admin" || role == "manager" || p == o.person)) return false
+            mapOf("by" to (run.persons[p]?.get("full_name") ?: "an admin"), "at" to System.currentTimeMillis() / 1000,
+                  "plant" to run.settings["plant"])
+        }
+        wipe(note)
+        return true
+    }
+
+    /** Delete the plant here: the store (log, photos, secrets, device key) and what is in memory. */
+    fun wipe(note: Map<String, Any?>) {
+        synchronized(this) { store.wipe(Json.write(note)); forget() }
+        changed("wiped")
+        onWiped?.invoke(note)
     }
 
     /** §17, the listener's side: only with another device of this node's owner. */

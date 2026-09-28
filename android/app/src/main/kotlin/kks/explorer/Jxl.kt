@@ -16,6 +16,8 @@ object Jxl {
     const val DISTANCE = 1.9f
     const val EFFORT = 9
     const val MAX_SIDE = 4096          // the page sends ≤ 1600 px; bigger is scaled down
+    /** How long encoding took on this phone lately, per megapixel (the progress bar's estimate); kept across starts. */
+    @Volatile var msPerMp: Long = 8000
 
     init { System.loadLibrary("kksjxl") }
 
@@ -38,7 +40,11 @@ object Jxl {
         if (bmp.config != Bitmap.Config.ARGB_8888) bmp = bmp.copy(Bitmap.Config.ARGB_8888, false)
         val buf = ByteBuffer.allocate(bmp.byteCount)
         bmp.copyPixelsToBuffer(buf)        // memory order R, G, B, A
-        return encodeRgba(buf.array(), bmp.width, bmp.height, DISTANCE, EFFORT) ?: throw IllegalStateException("JPEG XL encoding failed")
+        val t0 = System.nanoTime()
+        val out = encodeRgba(buf.array(), bmp.width, bmp.height, DISTANCE, EFFORT) ?: throw IllegalStateException("JPEG XL encoding failed")
+        val took = (System.nanoTime() - t0) / 1e6 / maxOf(bmp.width.toLong() * bmp.height / 1e6, 0.01)
+        msPerMp = ((msPerMp + took) / 2).toLong()
+        return out
     }
 
     /** A JXL file -> a 24-bit BMP of its pixels (for the WebView), or null if it can't be decoded. */

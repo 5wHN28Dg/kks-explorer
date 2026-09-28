@@ -47,6 +47,7 @@ BODY = {
     'reject': ('entry', 'note'),
     'withdraw': ('entry',),
     'vote': ('entry', 'on'),
+    'comment': ('entry', 'text'),
     'private': ('person', 'nonce', 'ct'),
 }
 STMT = {'manager': ('kind', 'person'), 'device': ('kind', 'device', 'person'), 'rotate': ('kind', 'root'),
@@ -161,6 +162,7 @@ class _Run:
         self.revokes = []   # (rank, order key, author peer, author seq, entry id, device, last_seq)
         # side output for hosts (not part of the state bytes): who decided what, and every applied change
         self.authors, self.decisions, self.history, self.at = {}, {}, [], None
+        self.comments = {}   # side output (not state): entry → [{person, text, id}] in order (a note on a request)
 
     def role(self, person):
         if person == self.manager:
@@ -324,6 +326,10 @@ class _Run:
             voters.add(author)
         else:
             voters.discard(author)
+
+    def t_comment(self, e, eid, author, role):
+        _need(_match(HEX64_RE, e['body']['entry']) and _text(e['body']['text'], 1, 500))
+        self.comments.setdefault(e['body']['entry'], []).append({'person': author, 'text': e['body']['text'], 'id': eid})
 
     def _decision(self, e, eid, d, role):
         target = e['body']['entry']

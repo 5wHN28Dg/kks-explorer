@@ -27,7 +27,8 @@ DEFAULTS = {
                                        # no password; sync listener on sync_host
     'sync_host': '0.0.0.0',            # where the sync listener binds in peer mode (the LAN)
     'discovery': True,                 # find other devices on the same Wi-Fi (mDNS, needs the zeroconf package)
-    'sync_interval': 120,              # seconds between automatic syncs with devices found on the Wi-Fi
+    'sync_interval': 120,              # seconds between automatic syncs (devices found on the Wi-Fi + remembered
+                                       # addresses); 0 = only when asked
 }
 PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python', 'root_key')
 
