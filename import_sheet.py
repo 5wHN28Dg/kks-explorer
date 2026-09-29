@@ -22,7 +22,7 @@ def main():
     ap.add_argument('--rotate', default='auto', choices=['auto', '0', '90', '180', '270'],
                     help='auto picks the orientation with most horizontal text; it cannot tell upright from upside down')
     ap.add_argument('--replace', action='store_true', help='replace an existing sheet with the same id')
-    ap.add_argument('--data-dir', default=os.path.join(HERE, 'data'))
+    ap.add_argument('--data-dir', default=os.path.join(HERE, 'plant-data'))   # the manager's working copy (then: app.py publish-data)
     a = ap.parse_args()
     from extractor.orient import rotated_copy, score
     from extractor.extract_sheet import extract, render_image

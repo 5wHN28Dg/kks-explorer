@@ -427,3 +427,29 @@ the one it asked for; the other side serves it as a listener would (a first `joi
 When to connect: an automatic round first syncs the devices it reaches on the local network, then every device
 online in the relay room that no sync in this round reached. Presence and connections only run while automatic sync
 runs (phones: app on screen or the background job).
+
+## 19. Plant data (drawings, tag lists, procedures, location list)
+
+Plant data travels in the log like everything else, so a new device gets the drawings by sync or bundle and the program
+itself carries none. The replay is unchanged: a version is an ordinary `setting` entry (manager only, §9), key
+`plant_data`, value
+`{"version": <int ≥ 1>, "files": [[<path>, <SHA-256 hex of the file>, <size in bytes>], …]}`, at most 2000 files,
+paths `(sheets/)?[a-z0-9][a-z0-9._-]{0,63}` without `..`, no path twice. A value that breaks any of these is not a
+version (devices act as if there were no `plant_data` setting). The newest setting in replay order is the latest
+version; publishers number versions one above the latest.
+
+Files: `sheets.json`, `tags.json`, `procedures.json`, `locations.json` and `sheets/<id>.png`, `sheets/<id>.svg.gz`
+(formats: CLAUDE.md "Layout"). Each file is a blob (§15 steps 4–5): the latest version's files are among the blobs a
+node wants, and a node accepts a blob only if its log names it (as for photos). Bundles always carry the latest
+version's files.
+
+Serving: a node shows the newest version whose files it holds completely: the latest, or while that is still
+arriving, the last version it had completely. It never mixes files of two versions. `/data/<path>` answers from that
+version; `<path>` = `sheets/<id>.svg` is served from `sheets/<id>.svg.gz`. Paths that are not in the version come from
+the program's own `data/` folder (the KKS decode tables and the courses, which ship with the app).
+
+Publishing (reference: `server/plantdata.py`): the manager's device keeps a working copy (`plant_dir`) that the sheet
+importer writes. A successful import or removal in Manage → Drawings, or `app.py publish-data [--from DIR]`, stores
+the files as blobs and appends the setting; nothing is appended when the files equal the latest version's. Before its
+first import, a manager's device fills the working copy from the version it serves (or, once, from a pre-M5b
+`data/` folder that still holds drawings).

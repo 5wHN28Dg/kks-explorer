@@ -235,11 +235,37 @@ class LocalNode private constructor(val store: NodeStore, key: SigningKey) : Mem
         }
     }
 
+    // ---------- plant data (server/plantdata.py, PROTOCOL.md §19) ----------
+    /** The version to serve: the latest if this device holds all its files, else the last complete one it served. */
+    @Synchronized fun plantActive(): PlantData.Manifest? {
+        val m = PlantData.latest(this)
+        if (m != null && m.files.values.all { haveBlob(it.first) }) {
+            val s = Json.write(mapOf("version" to m.version, "files" to m.plain()))
+            if (store.meta("plant_data_active") != s) store.setMeta("plant_data_active", s)
+            return m
+        }
+        val stored = PlantData.manifest(store.meta("plant_data_active")?.let { runCatching { Json.parse(it) }.getOrNull() })
+        return stored?.takeIf { s -> s.files.values.all { haveBlob(it.first) } }
+    }
+
+    /** The bytes of plant file [path] in the active version, or null. */
+    fun plantFile(path: String): ByteArray? = plantActive()?.files?.get(path)?.let { blobGet(it.first) }
+
+    @Synchronized fun plantStatus(): Map<String, Any?> {
+        val m = PlantData.latest(this); val a = plantActive()
+        val missing = m?.files?.values?.filter { !haveBlob(it.first) }.orEmpty()
+        return mapOf("version" to m?.version, "active" to a?.version, "files" to (m?.files?.size ?: 0).toLong(),
+                     "missing" to missing.map { it.first }.toSet().size.toLong(), "missing_bytes" to missing.distinctBy { it.first }.sumOf { it.second })
+    }
+
     // ---------- bundles (server: Engine.bundle / import_bundle) ----------
     fun bundle(photos: Boolean): ByteArray {
         val out = linkedMapOf<String, Any?>("kks_bundle" to 1L, "root" to anchor, "plant" to run.settings["plant"],
                                              "created" to System.currentTimeMillis() / 1000, "entries" to entriesFor(emptyMap<String, Any>()))
-        if (photos) out["blobs"] = run.photos.values.map { it["blob"] as String }.toSortedSet()
+        // the plant data always (a device joining by file needs the drawings), photos if asked
+        val shas = (PlantData.latest(this)?.files?.values?.map { it.first }.orEmpty() +
+                    (if (photos) run.photos.values.map { it["blob"] as String } else emptyList())).toSortedSet()
+        out["blobs"] = shas
             .mapNotNull { sha -> blobGet(sha)?.let { sha to java.util.Base64.getEncoder().encodeToString(it) } }.toMap()
         return ByteArrayOutputStream().also { b -> GZIPOutputStream(b).use { it.write(Json.write(out).toByteArray()) } }.toByteArray()
     }

@@ -74,7 +74,7 @@ const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
 async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
 
-const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isAdmin()&&!K.cfg?.app],['history','History',isAdmin],['account','Account',()=>true]];
+const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isManager()&&!K.cfg?.app],['history','History',isAdmin],['account','Account',()=>true]];
 async function init(){
   ME=await K.start(); K.toast=toast;
   $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`;
@@ -222,8 +222,8 @@ const VIEWS={
   },
   async drawings(){
     const D=await K.api('/api/sheets'), imp=D.importer, job=D.job;
-    const busy=job?.state==='running', ids=new Set(D.sheets.map(s=>s.id));
-    let h=`<div class="card"><h3>Add a drawing</h3>`;
+    const busy=job?.state==='running', ids=new Set(D.sheets.map(s=>s.id)), pd=D.plant_data||{};
+    let h=`<div class="sub" style="margin-bottom:8px">${pd.version?`Plant data version ${pd.version}`:'No plant data published yet'}: every import or removal publishes a new version, and every device gets it by sync.</div><div class="card"><h3>Add a drawing</h3>`;
     if(!imp.available) h+=`<div class="warn bad">The importer isn't set up on the server: ${esc(imp.error)}</div>
       <div class="sub">On the server, in the app folder: <span class="mono">python3 app.py setup-importer</span> (creates <span class="mono">.venv</span>; nothing is installed system-wide). Then reload this page.</div>`;
     else h+=`<form id="impForm" onsubmit="event.preventDefault();startImport(this)">
@@ -269,7 +269,9 @@ const VIEWS={
       <tr><td>Offline access until</td><td>${lease?new Date(lease.lease_until).toLocaleString():'-'} <span class="sub">(renewed each time you connect; ${ME.offline_days} days)</span></td></tr>
       <tr><td>Queued changes</td><td>${K.outbox.length}</td></tr></table>
       <div class="row" style="margin-top:8px"><button class="ghost" onclick="K.flush()">Sync now</button><button class="danger" onclick="K.logout()">Log out and remove plant data from this device</button></div></div>`;
+    h+='<div id="upd"></div>';
     $('#main').innerHTML=h;
+    if(!K.cfg?.app) renderUpdate();   // (the Android app shows updates in its own Account tab)
   },
 };
 
@@ -302,7 +304,7 @@ function renderJob(job){
     <pre class="linkbox" style="max-height:220px;overflow:auto;white-space:pre-wrap">${esc(job.log.join('\n'))}</pre>`;
   if(job.state==='done'&&r){
     const back=(r.rotation+180)%360;
-    h+=`<div><b>${r.auto}</b> tags read automatically, <b>${r.review}</b> in the review queue${r.notes?`, ${r.notes} markup note(s)`:''}.</div>
+    h+=`<div><b>${r.auto}</b> tags read automatically, <b>${r.review}</b> in the review queue${r.notes?`, ${r.notes} markup note(s)`:''}.${job.version?` Published as plant data version ${job.version}.`:''}</div>
       <div class="sub" style="margin:6px 0">Check the preview is upright. Auto orientation retries sheets that read badly, but it isn't guaranteed.</div>
       <img src="data/sheets/${esc(r.id)}.png?v=${job.finished}" alt="" style="width:100%;max-height:420px;object-fit:contain;background:#fff;border-radius:4px" onclick="lightbox(this.src)">
       <div class="row" style="margin-top:8px"><a class="primary" href="/?sheet=${encodeURIComponent(r.id)}" style="text-decoration:none">Open in viewer</a>
@@ -406,6 +408,28 @@ async function revert(rev,force){
   catch(e){ if(e.status===409&&confirm('This item was changed again after that revision. Revert anyway (discarding the later change)?')) return revert(rev,true); if(e.status!==409) toast(e.message) }
 }
 const restoreTo=(hid,rev)=>confirm(hid?`Put all plant data back to how it was right after revision ${rev}? Later changes stay in History and can be re-applied.`:'Put all plant data back to how it was before the first logged change?')&&act(()=>K.api('/api/restore',hid?{hid}:{rev:0}),'Restored');
+// ---------- updates (M5b): signed GitHub releases, checked daily, installed only when asked ----------
+async function renderUpdate(u){
+  const el=$('#upd'); if(!el) return;
+  try{ u=u||await K.api('/api/update') }catch(e){ el.innerHTML=''; return }   // (server: admins only)
+  const mayAct=K.cfg?.mode==='peer'||isManager();
+  let h=`<div class="card"><h3>Updates</h3><div>This is version <b>${esc(u.current)}</b>.</div>`;
+  if(u.staged) h+=`<div class="warn" style="margin-top:8px">Version ${esc(u.staged)} is installed: close KKS Explorer (Quit) and start it again to use it.</div>`;
+  else if(u.busy) h+=`<div class="sub" style="margin-top:8px">${u.busy==='unpacking'?'Unpacking…':'Downloading…'} this page updates by itself.</div>`;
+  else if(u.available){
+    h+=`<div style="margin-top:8px"><b>Version ${esc(u.latest)} is out.</b> ${u.page?`<a href="${esc(u.page)}" target="_blank" rel="noopener">What's new</a>`:''}</div>`
+      +(u.notes?`<pre class="linkbox" style="max-height:160px;overflow:auto;white-space:pre-wrap">${esc(u.notes)}</pre>`:'')
+      +(u.can_install&&mayAct?`<div class="row" style="margin-top:8px"><button class="primary" onclick="installUpdate()">Download and install</button></div>
+          <div class="sub">Checked against the release's signature before anything is installed; your data stays where it is. It runs from the next start.</div>`
+        :`<div class="sub" style="margin-top:6px">${u.how==='git'?'This copy runs from source: update it with <span class="mono">git pull</span> and restart it.':'There is no package of it for this system.'}</div>`);
+  } else if(u.latest) h+=`<div class="sub" style="margin-top:6px">Up to date.</div>`;
+  if(u.error) h+=`<div class="sub del" style="margin-top:6px">Last check: ${esc(u.error)}</div>`;
+  h+=`<div class="row" style="margin-top:8px">${mayAct?'<button class="ghost" onclick="checkUpdate()">Check now</button>':''}<span class="sub">${u.checked?`Checked ${K.ago(u.checked)}`:'Not checked yet'}${u.auto?' · checks by itself once a day':' · automatic checks are off (update_check)'}</span></div></div>`;
+  el.innerHTML=h;
+  if(u.busy) setTimeout(()=>tab==='account'&&renderUpdate(),1500);
+}
+async function checkUpdate(){ try{ renderUpdate(await K.api('/api/update/check',{})) }catch(e){ toast(e.message) } }
+async function installUpdate(){ try{ renderUpdate(await K.api('/api/update/install',{})) }catch(e){ toast(e.message) } }
 async function saveDetails(f){ if(await act(()=>K.api('/api/profile',{full_name:f.full_name.value,position:f.position.value}),'Saved')){ ME=await K.api('/api/me'); $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`; show('account') } }
 async function editDetails(id,name,pos){
   const n=prompt('Full name:',name); if(n===null) return; const p=prompt('Position (optional):',pos); if(p===null) return;

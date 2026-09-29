@@ -15,7 +15,7 @@ def main():
     import cv2, numpy as np, pymupdf
     from extractor.orient import rotated_copy
     from extractor.extract_sheet import extract
-    data = os.path.join(HERE, 'data'); tags_p = os.path.join(data, 'tags.json')
+    data = os.path.join(HERE, 'plant-data'); tags_p = os.path.join(data, 'tags.json')   # the working copy (then: app.py publish-data)
     sheet = next(s for s in json.load(open(os.path.join(data, 'sheets.json'))) if s['id'] == sid)
     tags = json.load(open(tags_p)); mine = [t for t in tags if t['sheet'] == sid]
     tmp = tempfile.mkdtemp(); pdf = os.path.join(tmp, 'r.pdf'); rotated_copy(src, pdf, sheet.get('rot', 0))

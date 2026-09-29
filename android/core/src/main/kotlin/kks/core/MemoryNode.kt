@@ -154,6 +154,7 @@ open class MemoryNode(protected val key: SigningKey, anchor: String? = null) : N
             val e = entries[eid] ?: continue
             if (st == "pending" && e["type"] == "photo") shas.add((e["body"] as Map<*, *>)["blob"] as String)
         }
+        PlantData.latest(this)?.files?.values?.forEach { shas.add(it.first) }   // the latest plant data version (§19)
         return shas.filter { !haveBlob(it) }.sorted()
     }
 

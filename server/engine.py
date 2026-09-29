@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 from peer import proto as P
 from peer import replay as R
+from server import plantdata
 
 TYPES_FULL_REPLAY = ('revoke', 'root')
 ENTITIES = ('equipment', 'review', 'link', 'photo', 'added_tag')
@@ -292,9 +293,13 @@ class Engine:
         with self.lock:
             out = {'kks_bundle': 1, 'root': self.anchor, 'plant': self.run.settings.get('plant') if self.run else None,
                    'created': int(time.time()), 'entries': self.entries_for({})}
+            out['blobs'] = {}
+            m = plantdata.latest(self)   # the plant data always: a device joining by file needs the drawings
+            shas = {sha for sha, _ in m['files'].values()} if m else set()
             if photos:
-                out['blobs'] = {}
-                for sha in sorted({v['blob'] for v in self.run.photos.values()}):
+                shas |= {v['blob'] for v in self.run.photos.values()}
+            if shas:
+                for sha in sorted(shas):
                     data = self.blob_get(sha)
                     if data is not None:
                         out['blobs'][sha] = base64.b64encode(data).decode()
@@ -569,6 +574,7 @@ class Engine:
             shas = {v['blob'] for v in self.run.photos.values()}
             shas |= {self.entries[e]['body']['blob'] for e, st in self.run.proposals.items()
                      if st == 'pending' and self.entries[e]['type'] == 'photo'}
+            shas |= plantdata.wants(self)   # the latest plant data version's files (M5b, PROTOCOL.md §19)
             return sorted(shas - set(self.blob_files))
 
     def blob_get(self, sha):
@@ -585,6 +591,13 @@ class Engine:
         """Accept only blobs we asked for (referenced by the log) whose bytes match their hash."""
         if not isinstance(sha, str) or sha not in self.blob_wants() or hashlib.sha256(data).hexdigest() != sha:
             return False
+        self.blob_keep(sha, data)
+        return True
+
+    def blob_keep(self, sha, data):
+        """Store a blob this node made itself (a published plant data file), or one blob_put checked."""
+        if sha in self.blob_files:
+            return
         ext = next((x for sig, x in ((b'\xff\xd8\xff', 'jpg'), (b'\x89PNG', 'png'), (b'RIFF', 'webp'),
                                      (b'\xff\x0a', 'jxl'), (b'\x00\x00\x00\x0cJXL', 'jxl')) if data.startswith(sig)), 'bin')
         name = f'{sha}.{ext}'
@@ -597,7 +610,6 @@ class Engine:
             with self.store.write():
                 self.store.put('blobs', {'sha': sha, 'file': name, 'size': len(data)})
             self.blob_files[sha] = name
-        return True
 
     # ---------- reading ----------
     def entry(self, eid):

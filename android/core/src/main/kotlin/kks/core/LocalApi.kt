@@ -71,7 +71,8 @@ class LocalApi(val node: LocalNode, private val sync: SyncControl, private val p
         if (method == "GET") when (path) {
             "/api/config" -> return ok(configOut())
             "/api/node/join-invite" -> return ok(joining?.state() ?: mapOf("state" to null))
-            "/api/sync/status" -> return ok(mapOf("rev" to rev.get(), "mode" to "peer", "internet" to sync.internet()) + sync.reach())
+            "/api/sync/status" -> return ok(mapOf("rev" to rev.get(), "mode" to "peer", "internet" to sync.internet(),
+                                                  "plant_data" to node.plantStatus()) + sync.reach())
             "/api/node/nearby" -> if (node.owner() == null) {      // admins' devices on this Wi-Fi a new device may ask (§16)
                 val snap = sync.snapshot()
                 val found = (snap["found"] as? List<Map<String, Any?>>).orEmpty().filter { it["adm"] == true && it["peer"] != null }

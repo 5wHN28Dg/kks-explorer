@@ -8,7 +8,8 @@ DEFAULTS = {
     'plant_name': 'KKS Explorer',      # shown on the login screen (public)
     'host': '0.0.0.0', 'port': 8420,
     'public_url': '',                  # e.g. https://kks.example.ts.net; used in printed setup/reset links
-    'data_dir': 'data',                # sheets.json, tags.json, procedures.json, kks.json, locations.json, sheets/*.png
+    'data_dir': 'data',                # what ships with the program: kks.json, courses/ (before M5b also the plant files)
+    'plant_dir': 'plant-data',         # the manager's working copy of the plant data (sheet importer; PROTOCOL.md §19)
     'db': 'plant.db', 'photos_dir': 'photos', 'backup_dir': 'backups',
     'tls_cert': '', 'tls_key': '',     # serve HTTPS directly (otherwise put a TLS proxy / Tailscale serve in front)
     'secure_cookies': False,           # set true whenever users reach the app over HTTPS (proxy or tls_cert)
@@ -27,10 +28,11 @@ DEFAULTS = {
                                        # no password; sync listener on sync_host
     'sync_host': '0.0.0.0',            # where the sync listener binds in peer mode (the LAN)
     'discovery': True,                 # find other devices on the same Wi-Fi (mDNS, needs the zeroconf package)
+    'update_check': True,              # look for a new release on GitHub once a day (only asks; M5b)
     'sync_interval': 120,              # seconds between automatic syncs (devices found on the Wi-Fi + remembered
                                        # addresses); 0 = only when asked
 }
-PATH_KEYS = ('data_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python', 'root_key')
+PATH_KEYS = ('data_dir', 'plant_dir', 'db', 'photos_dir', 'backup_dir', 'tls_cert', 'tls_key', 'import_python', 'root_key')
 
 
 def load(path=None):

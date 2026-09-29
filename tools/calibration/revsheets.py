@@ -1,6 +1,7 @@
 import json, cv2, numpy as np, pymupdf, pickle
 tags=json.load(open('app/data/tags.json')); sheets={s['id']:s for s in json.load(open('app/data/sheets.json'))}
-FN={'lp':'HRSG_LOW_PRESSURE_SYSTEM_P_ID','ip':'IP_Circuit','hp':'HP_system_final_revision','fw':'FW_system','rh':'Reheat_system','cbd':'Intermittent___CBD_and_cooling_pool_pump','flue':'DOCUMENT','b1hp':'Block1_HP_MS_piping','b1ip':'Block1_IP_Cylinder','b1lp':'Block1_LP_MS_line'}
+# sheet id -> source PDF file name (without .pdf) in the scratch workspace: fill in your own
+FN={'lp':'LP_system','ip':'IP_system','hp':'HP_system','fw':'FW_system','rh':'Reheat_system','cbd':'CBD_system','flue':'Flue_gas_system'}
 rev=[t for t in tags if t['status']=='review']
 order=[]; pages={}
 for sid in FN:

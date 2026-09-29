@@ -57,15 +57,20 @@ def prepare(home):
     cfg.setdefault('mode', 'peer')
     cfg.setdefault('port', 8420)
     cfg.setdefault('plant_name', APP)
-    for k, v in (('db', 'plant.db'), ('photos_dir', 'photos'), ('backup_dir', 'backups')):
+    for k, v in (('db', 'plant.db'), ('photos_dir', 'photos'), ('backup_dir', 'backups'), ('plant_dir', 'plant-data')):
         cfg.setdefault(k, v)
-    cfg['data_dir'] = os.path.join(program_dir(), 'data')   # drawings and tag lists come with the program version
+    cfg['data_dir'] = os.path.join(program_dir(), 'data')   # KKS tables + courses; the plant data comes by sync (§19)
     with open(path, 'w') as f:
         json.dump(cfg, f, indent=2)
     return path, cfg
 
 
 def run(home, window=True, on_ready=None, log=True):
+    from server import updates
+    if on_ready is None and updates.handoff(home, sys.argv):   # a newer verified version was installed: run that one
+        return 0
+    if FROZEN:
+        updates.cleanup(home)
     path, cfg = prepare(home)
     port = cfg['port']
     if answers(port):   # already running: just show it
@@ -146,7 +151,7 @@ def self_test():
         s.bind(('127.0.0.1', 0))
         port = s.getsockname()[1]
     with open(os.path.join(home, 'config.json'), 'w') as f:
-        json.dump({'port': port, 'sync_port': 0, 'discovery': False}, f)
+        json.dump({'port': port, 'sync_port': 0, 'discovery': False, 'update_check': False}, f)
 
     def check(url):
         def get(p, body=None):
@@ -158,7 +163,10 @@ def self_test():
         assert json.loads(get('/api/config'))['mode'] == 'peer'
         get('/api/node/new-plant', {'plant': 'Self test', 'username': 'tester', 'full_name': 'Self Test'})
         assert json.loads(get('/api/me'))['user']['role'] == 'manager'
-        assert json.loads(get('/data/sheets.json')) is not None, 'plant data missing'
+        assert json.loads(get('/data/kks.json'))['systems'], 'KKS tables missing'
+        # no plant data ships with the program (M5b): a new plant has none until its manager publishes some
+        assert not os.path.exists(os.path.join(program_dir(), 'data', 'sheets.json')), 'plant data bundled with the program'
+        assert json.loads(get('/api/sync/status'))['plant_data']['version'] is None
         # photos: stored as JPEG XL (libjxl bundled), served as they are
         get('/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'dataUrl': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFElEQVR4nGM8UaHBgA0wYRUdtBIAHicBeAYWg8oAAAAASUVORK5CYII='}})
         photo = json.loads(get('/api/state'))['photos'][0]

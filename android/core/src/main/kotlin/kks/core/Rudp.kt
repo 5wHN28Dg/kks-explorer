@@ -139,7 +139,9 @@ object Rudp {
                 if (finSeq < 0 && error == null) {
                     finSeq = nextSeq; unacked[finSeq] = Rec(ByteArray(0)); nextSeq++; sendData(finSeq)
                 }
-                val end2 = now() + 3
+                // a few retransmissions' worth: after heavy loss one RTO can be 4 s, and a FIN sent once and lost leaves
+                // the other side waiting until its stall limit
+                val end2 = now() + minOf(deadMs / 1000.0, maxOf(3.0, 5 * rto))
                 while (unacked.isNotEmpty() && error == null && now() < end2) (lock as Object).wait(100)
                 closed = true; (lock as Object).notifyAll()
             }

@@ -1,7 +1,9 @@
 # KKS Explorer — project context for Claude Code
 
-Personal tool built by an I&C Maintenance Engineer at a combined-cycle power plant.
-Goal: given only a KKS code (e.g. `11LAB70AA501`), find the equipment on the P&IDs and see everything known
+Tool built by an I&C maintenance engineer at a combined-cycle power plant. The repository is meant to become public
+(M5b): no plant name, plant data or plant-specific notes in tracked files. Those live in `plant-data/` (the manager's
+working copy, gitignored) and `CLAUDE.local.md` (gitignored: the plant, reader accuracy per sheet, findings on the
+drawings). Goal: given only a KKS code (e.g. `11LAB70AA501`), find the equipment on the P&IDs and see everything known
 about it: decoded meaning, physical location, photos, notes, and which operation-manual procedures use it.
 Also: pick a procedure ("Preparations for Startup — Air Compressor System") → see its steps and highlighted equipment.
 
@@ -14,10 +16,11 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
   pillow-jxl-plugin (optional; without them photos stay as uploaded, `app.py check` warns). `vendor/` = third-party
   browser code served publicly (jxl decoder, jsQR), each with README + SHA256SUMS. First run prints a one-time setup link to
   create the manager (also creates `root.key`). CLI: `users`, `reset-manager --user X`, `reset-password --user X`,
-  `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`.
+  `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`,
+  `publish-data [--from DIR]`.
   Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `.venv/bin/python -m unittest discover -s tests` (79: server end-to-end over HTTP, protocol vectors,
-  migration, sync, peer mode, join by invite, reliable UDP, internet sync). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
+- Tests: `.venv/bin/python -m unittest discover -s tests` (85: server end-to-end over HTTP, protocol vectors,
+  migration, sync, peer mode, join by invite, reliable UDP, internet sync, plant data, self-updates). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
   `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
   `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
   in a throwaway venv (not committed): setup, invite, user proposal, offline queue + offline reload via the service
@@ -91,27 +94,27 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - `admin.html` — Approvals (grouped by target, photo pick), My submissions (+ voting), Users, History, Account.
 - `index.html` — whole front end, vanilla JS, no build step. Pan/zoom viewer, hotspots, panel (floating on desktop,
   bottom sheet ≤720px), search, floor filter, procedures drawer + step↔equipment linking, review queue, sheet notes.
-- `data/sheets.json` — `{id,name,file,vector,rot,w,h,notes[]}`; images in `data/sheets/*.png` (grayscale, ≤6400px),
-  vectors in `data/sheets/<id>.svg.gz` (served as `<id>.svg` with Content-Encoding gzip). `rot` = rotation applied to
+- Plant data (published by the manager, PROTOCOL.md §19; working copy `plant-data/`, served as `/data/…`):
+  `sheets.json` — `{id,name,file,vector,rot,w,h,notes[]}`; images in `sheets/*.png` (grayscale, ≤6400px),
+  vectors in `sheets/<id>.svg.gz` (served as `<id>.svg` with Content-Encoding gzip). `rot` = rotation applied to
   the source PDF. Sharp zoom (2026-09-25): `extractor/svgopt.py` bakes per-path transforms and merges all black paths
   per style (PyMuPDF SVG: 40k–140k paths → 13–134; pixel-identical in Chromium 1×–125×). index.html draws it on
   `#sharp` canvas (between `#stage` PNG and `#stage2` hotspots) ~150 ms after the view settles, only when
   view.s·dpr ≥ 0.7; CSS-transforms the old drawing while panning. Max zoom 16× with a vector, 4× without.
   `tools/make_vectors.py ID source.pdf` makes one for an existing sheet: picks the rotation matching the PNG and
   checks alignment by phase correlation (all 11 sheets within 0.9 px). Firefox redraw ~250 ms on desktop.
-- `data/tags.json` — one entry per tag occurrence:
+- `tags.json` — one entry per tag occurrence:
   `{id:"sheet:n", sheet, kks, suffix, isa, kind:equipment|instrument, status, conf, bbox:[x0,y0,x1,y1] (image px),
     orient:h|v, read:[top,bottom] (raw reader output), note, flag, suggestion}`.
   status: `auto` (reader, conf ≥0.3) · `verified` (checked by eye) · `review` (needs a human). User decisions live
   in plant.db `reviews` and override tags.json at runtime (`eff()` in index.html). Equipment data is keyed by full KKS
   (kks+suffix), so the same item on several sheets shares data.
-- `data/procedures.json` — 77 procedures parsed from the HRSG Operation Manual (English steps, parent path, page).
-- `data/locations.json` — 360 rows from `source/KKS LOCATION HRSG.pdf` (level/elevation, cabinet, description, direction),
+- `procedures.json` — 77 procedures parsed from the HRSG Operation Manual (English steps, parent path, page).
+- `locations.json` — 360 rows from `source/KKS LOCATION HRSG.pdf` (level/elevation, cabinet, description, direction),
   built by `tools/parse_locations.py`. The list has no unit prefix → matched on KKS without the 2-digit unit, and on the
   base KKS for suffixed tags (R/K/D). Used as a fallback under the user's own equipment data; never written to plant.db.
-  295/354 unique KKS match a drawing tag. Known list issues: LBB80CT5101–5103 (typo, likely CT101–103); conflicting rows
-  for LBA90CT101/102 (10 m vs 32 m), LBA70AA001 (14 m vs 0 m), LBA10AA402 (0 m vs outside HRSG).
-- `data/kks.json` — decode tables: system codes (from the legend printed on the P&IDs), component codes, ISA letters, unit prefixes.
+  Known issues of the plant's list: CLAUDE.local.md.
+- `data/kks.json` (ships with the program, public) — decode tables: system codes (from the legend printed on the P&IDs), component codes, ISA letters, unit prefixes.
 - `extractor/` — the tag reader (see below). `fontlib.pkl` = labeled glyph library (~13.8k glyphs).
 - `tools/` — manual parser and the calibration scripts used to build the glyph library (written for a scratch
   workspace; paths like `norm/`, `calib/`, `ext/` need adapting).
@@ -145,57 +148,6 @@ Lessons (don't repeat):
   "old" silently compares new with new (happened once, 2026-09-25). Compare every tag cell old vs new on all sheets
   and look at every changed crop.
 
-## Accuracy status
-
-- Dropped suffix letters FIXED 2026-09-25 (`reader3.cell_image`: mask = convex hull of the cell contour; a letter touching
-  the border was part of the outline blob, so the traced hole cut it out). Regression over all 11 sheets: 146 cell
-  readings changed, 97 confident ones gained a suffix (R/K/A), 24 became readable (mostly a leading 1 against a box
-  edge), 0 confident readings got worse. Applied to existing sheets with `tools/reread_tags.py` (keeps ids and
-  hand-verified tags): 70 suffixes added (LP 6, IP 8, HP 7, FW 32, RH 6, flue 11) + 2 stored `I` suffixes corrected
-  to K (ip:154, rh:42). The LP "verified reference" had only 11HAD70CT101R; in fact CT101–106 all carry R.
-- Missed tags FIXED at the root 2026-09-25 (found via user report "dozens missing on HP/IP"): (1) bubbles drawn without
-  the divider line are one closed cell, never paired → `reader3.read_single` splits unpaired cells ≥10 pt at the widest
-  empty row band (mask outside the cell first: a whole bubble's rounded ends lie inside the crop); (2) `reader2.detect`
-  area test used the traced hole, which a letter touching the border notches below 75% → hull area; (3) `pair()`
-  required equal widths, but text touching both ends of a half shrinks its hole → overlap-based `_fits`; (4) vertical
-  text also runs top-to-bottom (function letters in the right cell) → vertical cells are read both ways, keeping the one
-  that interprets as a tag. `fontlib.interpret`: G followed by the ISA variable letter in the component code → C
-  (11LAB90GP102 → CP102), later ISA letters G → C (TIAG/PIAG were all TIAC/PIAC; no later G exists).
-  `tools/add_missed.py ID source.pdf [--apply]` adds only non-overlapping new tags (ids `<sheet>:x<n>`), keeps
-  existing ids. Added 57, all checked by eye: HP 21 (2 by hand: 11HAH90CT103K, 11HAD90CL503XB31), IP 12, FW 7, RH 1,
-  b1cond 16; corrected hp:19/28/87 (TIAG/PIAG→TIAC/PIAC), hp:ob1531 (T→LE). Regression: new extractor vs stored tags on
-  LP/IP/HP/FW: 0 auto tags change; the differences are all hand-verified tags the reader still misreads (HP 69: bold font).
-  Most misses were local indicators (PI/TI/FE/LI …501) and vibration probes, which are drawn without a divider.
-- From the first user-marked tags (2026-09-25, 7 marks, all correct): (5) pair() now accepts halves that overlap by up to
-  3 px across a hairline divider (CBD 0.12 pt lines); (6) single-row cells and empty-top bubbles = code without
-  function letters (10LCB..GF001 junction boxes; interpret: empty top + full KKS → instrument, isa None);
-  (7) detection renders with `TOOLS.set_graphics_min_line_width(0.5)` so hairline box borders close (reading unchanged,
-  the glyph library was trained on the normal rendering); (8) interpret: top 'U' + LLLDD → '11' (two thin 1s merge).
-  Added 33 more, all checked by eye: CBD 30 (12 → 42 tags + 5 user marks), b1cond 3. Regression after each step:
-  0 stored auto tags changed on all 11 sheets. The user's marks stay in plant.db (not duplicated into tags.json);
-  add_missed skips boxes overlapping them.
-- Remaining known reader weaknesses: C/G at full confidence (hp:95 reads 11HAD90GT108K; stored value hand-verified),
-  M/H and 2/8 at low confidence (b1cond), last digit of panel bubbles squeezed against the arc (conf 0 → review).
-- LP sheet: 189 auto tags, 1 wrong (suffix). Verified reference existed in the original workspace.
-- Other sheets: not fully verified. Spot check of 40 auto tags on HP found 1 error (11LAE92 read as 11LAE90; fixed).
-  Bold font confusions to watch: B/E, 0/2, 0/8.
-- Review queue triaged by eye: 448 non-tags removed, 144 verified; hp:ob1305 = LI 11HAD90CL501 (2026-09-25).
-  Review queue is empty across all sheets as of 2026-09-25.
-- b1cond (Block 1 condensate, added 2026-09-25, re-imported after the suffix fix): 79 review tags triaged by eye
-  (61 verified, 18 non-tags removed: title-block cells, "DESUPERHEAT WATER"); all 27 auto tags with conf < 0.7 checked
-  by eye (2 wrong: 10HAC05AA151→10MAC05AA151, 10LCE18AA101→10LCE12AA101); a random 30 of the rest were all right.
-  Two boxes are printed with the lines swapped (10MAW80AC001, 10LCE18AA003). Undecoded codes there: systems LCW,
-  MAL, MAW, LEA; components GH, GF (no document defines them yet).
-- Flue Gas sheet: not checked by eye for misses. CBD: hairline drawing, now read after fixes (5)–(8); checked by eye.
-
-## Findings on the drawings (flagged in app)
-
-- Missing-letter tags: `11LCC70/A403` (LP), `11QUB90/A602`, `11HAC90/A403` → likely AA403/AA602/AA403.
-- KKS printed twice: 11LAB90AA301–304 (HP), 11QUA71AA601 (LP), 11/12LBA90CF201 (Block 1 HP piping).
-- Drawings reference I&C code instruction DOCUMENT (explains number ranges) — not yet obtained.
-- The operation manual never uses KKS; procedure steps name equipment by description, so step↔equipment links are made
-  manually in the app. Manual appendix drawings are low-res preliminary versions — useless for extraction.
-
 ## Multi-user: open items
 
 - Remote access is prepared but NOT live: needs written IT/security approval, a domain, a Cloudflare account and an
@@ -204,8 +156,6 @@ Lessons (don't repeat):
   since the key would sit on the same device).
 - Rejected/withdrawn photo files stay in `photos/` (no cleanup command yet).
 - Sheets imported before 2026-09-25 have image URLs without `?v=`; re-importing one gives it a version.
-- `data/` (P&IDs etc.) is still committed in this repo. The repo is private, but for sharing the app with other plants
-  the plant data should move out of the repo (`data_dir` in config.json) and history be cleaned.
 
 ## v2: server mode + P2P (decided 2026-09-26)
 
@@ -391,7 +341,7 @@ both see the merge), Kotlin test with real app.py server + Python peer laptop + 
 Chromium (list, vendored fonts loaded, zero requests off localhost, progress back from the log after clearing
 localStorage), emulator (Learning tab, course renders with the fonts, a real tapped answer → "1 of 83" → private
 entry on the server, 0 secrets there), desktop self-test (progress round trip), release APK builds (0.7.0-m4).
-Note: `data/courses/` holds the built courses and is committed with the rest of data/ (source/ is not).
+Note: `data/courses/` holds the built courses and stays in the repo (public, the user's choice 2026-09-28; they name the plant a few times); source/ is not.
 
 ## Field test fixes (2026-09-28, the user's release-build test on two phones; QR join worked)
 
@@ -450,6 +400,43 @@ emulator ↔ app.py server through `wrangler dev` (adb reverse 8787): server cha
 phone proposal reached the server with its LAN path cut, both "internet (direct)".
 NOT verified: a real Cloudflare deployment (needs the user's account), real NATs / mobile data / symmetric NATs,
 two phones over the internet. Going live needs the same IT approval as remote access.
+
+## M5b Plant data out, public repo, self-updates (2026-09-28/29; history rewrite NOT done yet)
+
+Decided 2026-09-28: rewrite THIS repo's history (git filter-repo) and make it public; public: glyph library, KKS
+tables, the 3 courses; plant name out of docs/config/vectors; updates checked daily, installed only when asked; plant
+data published by the manager only.
+- Plant data (PROTOCOL.md §19, `server/plantdata.py` / `PlantData.kt` + LocalNode.plantActive/plantFile/plantStatus):
+  `setting` `plant_data` {version, files: [[path, sha, size]]}, files are blobs (wanted like photos, always in
+  bundles); a node serves the newest version it holds completely (meta `plant_data_active`), `/data/<path>` from
+  it, else the program's `data/` (kks.json, courses). Drawings is manager-only; imports/removals publish; working copy
+  `plant_dir` (default `plant-data/`, gitignored; first import copies a pre-M5b `data/` once). `app.py publish-data`.
+  `/api/sync/status.plant_data`; pages reload on a new active version; index.html shows "Waiting for the drawings".
+  Bug found by the Kotlin test + a repro and fixed: after the CLI wrote, the sync listener served a stale view (blob
+  list loaded at start; `vv`/`entries_for` read the DB, `blob_get` doesn't) → `peer/sync._fresh` refreshes the
+  engine before every session; test_plantdata publishes v3 with new files then syncs with no web request between.
+- The plant's files moved to `plant-data/` (copied + compared, then `git rm`); the live server needs
+  `python3 app.py publish-data` once (nothing published into the live plant.db by Claude). Plant name removed from
+  tracked files; v2-replay/v4-malformed regenerated with "Test plant" (Python + Kotlin pass); plant notes moved to
+  CLAUDE.local.md (gitignored). tools/manual_parse.py `--skip HEADER` instead of the plant's page header.
+- Self-updates (docs/RELEASES.md): `VERSION` (0.8.0; Android versionCode = a·10000+b·100+c), release.json +
+  release.json.sig (Ed25519 over "kks-release-v1\n"+bytes, key `~/.config/kks-explorer/signing/release-ed25519.key`,
+  public `YBHkaex0…` pinned in server/updates.py + Updates.kt, test checks both equal), `tools/release.py` (sign;
+  `--publish` asks, then gh release create). Python `server/updates.py` (daily check, `update_check`; packaged desktop
+  installs into `<user dir>/versions/<v>/` + ready.json, `desktop.py` hands over on start, cleanup keeps 2; source
+  installs: notice only), admin.html Account → Updates, one-time notice in index.html. Android `AppUpdates`
+  (PackageInstaller session + receiver, REQUEST_INSTALL_PACKAGES), Account tab → Updates; debug-only
+  `DebugUpdateReceiver` points it at a test server.
+  Verified: Python tests (fake GitHub: signature, tamper, older version, install, handoff, cleanup, hash mismatch),
+  Kotlin (Python-signed manifest verifies, redirects, swapped file refused), real PyInstaller build (self-test,
+  package has no plant data, 79 MB; staged 0.9.0 took over from 0.8.0), emulator: 0.8.0 → 0.8.1 through the fake
+  GitHub (allow-source prompt cancels the first session: "Install cancelled", retry → system dialog → installed,
+  still joined, 11 sheets / 1379 tags), and plant data published on the server reached the phone by sync.
+  Also fixed: rudp close() waited 3 s for the FIN's ack but one RTO can be 4 s → up to 5 RTOs (heavy-loss test
+  failed 2/13, then 0/16).
+  NOT verified: a real GitHub release (repo private: the real check gets 404), Windows handoff, the release key
+  backed up (the user must do it).
+- Still to do: history rewrite + force-push (ask first), making the repo public (the user does it).
 
 ## Backlog (rough priority)
 

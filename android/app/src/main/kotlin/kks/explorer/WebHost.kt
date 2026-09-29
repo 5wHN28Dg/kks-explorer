@@ -94,6 +94,11 @@ class WebHost(private val act: MainActivity) {
             }
             return ok(type(f.name), f.readBytes(), "private, max-age=31536000, immutable")
         }
+        if (path.startsWith("/data/")) {         // the plant data version this phone serves (§19), else the app's own data/
+            val rel = path.removePrefix("/data/")
+            App.node.plantFile(rel)?.let { return ok(type(rel), it) }
+            App.node.plantFile("$rel.gz")?.let { gz -> return ok(type(rel), GZIPInputStream(gz.inputStream()).readBytes()) }
+        }
         val file = when (path) {
             "/", "/index.html" -> "index.html"
             "/admin.html", "/common.js", "/qrcodegen.js", "/course-bridge.js", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png" -> path.removePrefix("/")

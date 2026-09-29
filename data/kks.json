@@ -9,7 +9,7 @@
   "MAA":"HP turbine","MAB":"IP turbine","MAC":"LP turbine","MAP":"LP turbine bypass",
   "LCB":"Main condensate pump system","LCE":"Condensate desuperheat spray system","LCP":"Standby condensate system","MAG":"Condensing system"
  },
- "systems_source": "System-code legend printed on the P&IDs; MAA/MAB/MAC/MAP from Block 1 steam piping notes; LCB/LCE/LCP/MAG from the notes on DOCUMENT (Block 1 condensate P&ID).",
+ "systems_source": "System-code legend printed on the P&IDs; MAA/MAB/MAC/MAP from Block 1 steam piping notes; LCB/LCE/LCP/MAG from the notes on the Block 1 condensate P&ID.",
  "components": {
   "AA":"Valve / damper (incl. actuator)","AB":"Isolating element","AC":"Heat exchanger","AP":"Pump","AT":"Cleaning / filtering / separation equipment",
   "BB":"Vessel / tank","BR":"Piping / duct section","HA":"Main machine assembly (turbine casing)",

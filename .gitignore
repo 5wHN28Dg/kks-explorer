@@ -33,3 +33,7 @@ keystore.properties
 # wrangler (relay/): local state and caches
 relay/.wrangler/
 relay/node_modules/
+# the manager's working copy of the plant data (M5b: drawings are published by sync, never committed)
+plant-data/
+# private notes about the plant for Claude Code (plant name, reader accuracy per sheet): never commit
+CLAUDE.local.md

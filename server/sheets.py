@@ -53,8 +53,10 @@ def setup_importer():
 
 
 def sheet_summary(cfg):
-    sheets = json.load(open(os.path.join(cfg['data_dir'], 'sheets.json')))
-    tags = json.load(open(os.path.join(cfg['data_dir'], 'tags.json')))
+    if not os.path.exists(os.path.join(cfg['plant_dir'], 'sheets.json')):
+        return []
+    sheets = json.load(open(os.path.join(cfg['plant_dir'], 'sheets.json')))
+    tags = json.load(open(os.path.join(cfg['plant_dir'], 'tags.json')))
     count = {}
     for t in tags:
         c = count.setdefault(t['sheet'], {'auto': 0, 'verified': 0, 'review': 0})
@@ -74,16 +76,16 @@ class Importer:
         d = os.path.join(self.cfg['backup_dir'], f'sheets-{time.strftime("%Y%m%d-%H%M%S")}-{why}-{sid}')
         os.makedirs(d, exist_ok=True)
         for f in ('sheets.json', 'tags.json'):
-            shutil.copy2(os.path.join(self.cfg['data_dir'], f), d)
+            shutil.copy2(os.path.join(self.cfg['plant_dir'], f), d)
         for f in (sid + '.png', sid + '.svg.gz'):  # a replace re-renders these; keep the old ones to match the old tags
-            if os.path.exists(os.path.join(self.cfg['data_dir'], 'sheets', f)):
-                shutil.copy2(os.path.join(self.cfg['data_dir'], 'sheets', f), d)
+            if os.path.exists(os.path.join(self.cfg['plant_dir'], 'sheets', f)):
+                shutil.copy2(os.path.join(self.cfg['plant_dir'], 'sheets', f), d)
         return d
 
     def _restore(self, d, sid):
         for f in ('sheets.json', 'tags.json', sid + '.png', sid + '.svg.gz'):
             src = os.path.join(d, f)
-            dst = os.path.join(self.cfg['data_dir'], '' if f.endswith('.json') else 'sheets', f)
+            dst = os.path.join(self.cfg['plant_dir'], '' if f.endswith('.json') else 'sheets', f)
             if os.path.exists(src):
                 shutil.copy2(src, dst + '.tmp')
                 os.replace(dst + '.tmp', dst)
@@ -95,7 +97,7 @@ class Importer:
         """Start an import in the background. pdf_bytes=None re-imports from the stored source PDF."""
         if not SHEET_ID.match(sid or ''):
             raise ValueError('Sheet id: 1-24 lowercase letters, digits, dashes (start with a letter or digit).')
-        current = {s['id']: s for s in json.load(open(os.path.join(self.cfg['data_dir'], 'sheets.json')))}
+        current = {s['id']: s for s in json.load(open(os.path.join(self.cfg['plant_dir'], 'sheets.json')))}
         if not (name or '').strip() and replace and sid in current:
             name = current[sid]['name']  # re-import keeps the name
         if not (name or '').strip() or len(name) > 80:
@@ -123,7 +125,7 @@ class Importer:
                         'by': user['username'], 'state': 'running', 'log': [], 'result': None, 'started': int(time.time())}
             job = self.job
         cmd = [py, '-u', os.path.join(BASE, 'import_sheet.py'), src, name.strip(), sid, '--rotate', rotate,
-               '--data-dir', self.cfg['data_dir']] + (['--replace'] if replace else [])
+               '--data-dir', self.cfg['plant_dir']] + (['--replace'] if replace else [])
         threading.Thread(target=self._run, args=(job, cmd, on_done), daemon=True).start()
         return job
 
@@ -155,7 +157,7 @@ class Importer:
         with self.lock:
             if self.busy():
                 raise ValueError('An import is running. Wait for it to finish.')
-            sheets_p, tags_p = (os.path.join(self.cfg['data_dir'], f) for f in ('sheets.json', 'tags.json'))
+            sheets_p, tags_p = (os.path.join(self.cfg['plant_dir'], f) for f in ('sheets.json', 'tags.json'))
             sheets, tags = json.load(open(sheets_p)), json.load(open(tags_p))
             if not any(s['id'] == sid for s in sheets):
                 raise ValueError('No such sheet.')
@@ -163,8 +165,8 @@ class Importer:
                 raise ValueError('That is the only sheet; add another before removing it.')
             backup = self._backup('remove', sid)  # includes the image and vector file
             for f in (sid + '.png', sid + '.svg.gz'):
-                if os.path.exists(os.path.join(self.cfg['data_dir'], 'sheets', f)):
-                    os.remove(os.path.join(self.cfg['data_dir'], 'sheets', f))
+                if os.path.exists(os.path.join(self.cfg['plant_dir'], 'sheets', f)):
+                    os.remove(os.path.join(self.cfg['plant_dir'], 'sheets', f))
             n = sum(1 for t in tags if t['sheet'] == sid)
             for path, obj, kw in ((tags_p, [t for t in tags if t['sheet'] != sid], {}),
                                   (sheets_p, [s for s in sheets if s['id'] != sid], {'indent': 1})):

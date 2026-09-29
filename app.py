@@ -13,6 +13,8 @@
   python3 app.py export-root-key --out F  write the plant root key, encrypted with a passphrase, to F (keep it safe)
   python3 app.py import-root-key --file F put a root key backup back (e.g. on a new server)
   python3 app.py sync HOST[:PORT]          sync with another device now (it must be listening, default port 8421)
+  python3 app.py publish-data [--from DIR] publish the plant data (plant_dir, or DIR copied into it) as a new version
+                                          signed by the manager; every device gets it by sync (PROTOCOL.md §19)
 
 The app shell (index.html, admin.html, *.js) is public. Plant data (/data, /photos, /api) needs a login."""
 import argparse, getpass, gzip, json, mimetypes, os, re, secrets, socket, ssl, sys, threading, time, traceback
@@ -43,6 +45,8 @@ from server import check as check_mod
 from server import sheets as sheets_mod
 from server import photos as photos_mod
 from server import progress as progress_mod
+from server import plantdata
+from server import updates as updates_mod
 
 BASE = config_mod.BASE
 SHELL = {'/': 'index.html', '/index.html': 'index.html', '/admin.html': 'admin.html', '/common.js': 'common.js', '/qrcodegen.js': 'qrcodegen.js', '/course-bridge.js': 'course-bridge.js', '/learning.html': 'learning.html',
@@ -85,9 +89,10 @@ def person_body(E, pid, **upd):
             'position': upd.get('position', cur['position']), 'role': upd.get('role', cur['role'])}
 
 
-def make_handler(cfg, store, auth, engine=None, svc=None):
+def make_handler(cfg, store, auth, engine=None, svc=None, upd=None):
     E = engine or Engine(store, cfg)
     svc = svc or SyncService(E, cfg, log=lambda *a: None)
+    upd = upd or updates_mod.Updater(cfg, store, log=lambda *a: None)   # (not started: tests, CLI)
     invites = E.invites = Invites()   # join by invite: QR codes this node shows (in memory)
     joining = {}                      # peer mode, not joined yet: the running join by invite ('job')
     PEER = cfg['mode'] == 'peer'
@@ -134,11 +139,12 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
             self._headers(code, 'application/json', len(b), [('Cache-Control', 'no-store'), *extra])
             self.wfile.write(b)
 
-        def file(self, path, cache):
+        def file(self, path, cache, name=None, gzipped=False):
+            """name: the file's logical name when `path` is a blob (sha.ext); gzipped: `path` holds name + '.gz'."""
             extra = [('Cache-Control', cache)]
-            if not os.path.isfile(path) and os.path.isfile(path + '.gz'):
+            if gzipped or (not os.path.isfile(path) and os.path.isfile(path + '.gz')):
                 # sheet vectors are stored gzipped (data/sheets/<id>.svg.gz): send as-is to browsers that accept it
-                with open(path + '.gz', 'rb') as f:
+                with open(path if gzipped else path + '.gz', 'rb') as f:
                     data = f.read()
                 extra.append(('Vary', 'Accept-Encoding'))
                 if 'gzip' in (self.headers.get('Accept-Encoding') or ''):
@@ -151,7 +157,7 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
             else:
                 raise HTTPError(404, 'not found')
             ctype = 'application/manifest+json' if path.endswith('.webmanifest') else \
-                mimetypes.guess_type(path)[0] or 'application/octet-stream'
+                mimetypes.guess_type(name or path)[0] or 'application/octet-stream'
             self._headers(200, ctype, len(data), extra)
             self.wfile.write(data)
 
@@ -266,6 +272,7 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 finally:
                     c.close()
                 out = {'plant_name': cfg['plant_name'], 'offline_days': cfg['offline_days'], 'mode': cfg['mode'],
+                       'version': updates_mod.current(),
                        'setup_needed': not has_manager and not PEER,
                        # how to send photos: they become JXL here; a local page sends lossless PNG, a remote one a
                        # near-lossless JPEG (less to upload); without a JXL encoder the JPEG is what gets kept
@@ -298,6 +305,14 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                                   'discovery': svc.discovery})
             me = self.user()
             E.refresh()
+            if p.startswith('/data/'):   # the plant data version this node serves (§19), else the program's data/
+                rel = p[len('/data/'):]
+                full = plantdata.file_for(E, cfg, rel)
+                if full:
+                    return self.file(full, 'private, no-cache', name=rel)
+                gz = plantdata.file_for(E, cfg, rel + '.gz')
+                if gz:
+                    return self.file(gz, 'private, no-cache', name=rel, gzipped=True)
             for prefix, root in (('/data/', cfg['data_dir']), ('/photos/', cfg['photos_dir'])):
                 if p.startswith(prefix):
                     full = os.path.realpath(os.path.join(root, p[len(prefix):]))
@@ -345,11 +360,12 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 limit = min(int(q.get('limit', 200)), 1000)
                 return self.send({'submissions': ch.list_subs(E, me, users_map(c), status, limit)})
             if p == '/api/sheets':
-                self.need(me, 'admin')
+                self.need(me, 'manager')
+                plantdata.ensure_working(E, cfg)
                 return self.send({'sheets': sheets_mod.sheet_summary(cfg), 'importer': importer_status(),
-                                  'job': importer.job})
+                                  'job': importer.job, 'plant_data': plantdata.status(E)})
             if p == '/api/sheets/job':
-                self.need(me, 'admin')
+                self.need(me, 'manager')
                 return self.send({'job': importer.job})
             if p == '/api/users':
                 self.need(me, 'admin')
@@ -383,9 +399,14 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                     f['name'] = names.get(f.get('peer'))
                 return self.send({'mine': mine, 'all': everyone, 'node': P_id(E), 'mode': cfg['mode'], 'sync': snap, 'names': names,
                                   'sync_port': cfg['sync_port']})
+            if p == '/api/update':   # self-updates (M5b): what runs here, what's out, can this copy install it
+                if not PEER:
+                    self.need(me, 'admin')
+                return self.send(upd.status())
             if p == '/api/sync/status':   # polled by every page: reload when rev moves; the status line
                 rev = store.meta('seq', 0, c)   # the write journal's sequence: moves with every stored change
-                return self.send({'rev': rev, 'mode': cfg['mode'], **(svc.reach() if PEER else {}), 'internet': None})
+                return self.send({'rev': rev, 'mode': cfg['mode'], **(svc.reach() if PEER else {}), 'internet': None,
+                                  'plant_data': plantdata.status(E)})
             if p == '/api/progress':   # course progress (M4): private, only on a person's own devices
                 if not PEER:
                     raise HTTPError(404, 'Course progress stays in this browser on a server.')
@@ -559,17 +580,19 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
             if m:
                 return self.send(ch.act(E, cfg, me, int(m[1]), m[2], d))
             if p == '/api/sheets/reimport':  # same stored PDF, e.g. with a different rotation
-                self.need(me, 'admin')
+                self.need(me, 'manager')
                 return self.start_import(me, d.get('id'), d.get('name'), str(d.get('rotate', 'auto')), True, None)
             m = re.fullmatch(r'/api/sheets/([a-z0-9-]+)/remove', p)
             if m:
-                self.need(me, 'admin')
+                self.need(me, 'manager')
+                plantdata.ensure_working(E, cfg)
                 try:
                     r = importer.remove(m[1])
                 except ValueError as e:
                     raise HTTPError(400, str(e))
-                log_sheet(me['id'], m[1], f'sheet removed ({r["tags"]} tags); backup in {os.path.basename(r["backup"])}')
-                return self.send({'ok': True, **r})
+                v = plantdata.publish(E, me['device'], cfg['plant_dir'])
+                log_sheet(me['id'], m[1], f'sheet removed ({r["tags"]} tags), plant data version {v}; backup in {os.path.basename(r["backup"])}')
+                return self.send({'ok': True, 'version': v, **r})
             if p == '/api/users':
                 return self.create_user(me, d)
             m = re.fullmatch(r'/api/users/(\d+)(/reset)?', p)
@@ -593,6 +616,22 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
                 return self.manager_action(me, p.rsplit('/', 1)[1], d)
             if p == '/api/devices/import-request':
                 return self.import_request(me, d)
+            if p in ('/api/update/check', '/api/update/install'):
+                if not PEER:   # a server is updated by whoever runs it (git); its manager may still look
+                    self.need(me, 'manager')
+                if p == '/api/update/check':
+                    return self.send(upd.check())
+                st = upd.status()
+                if not st['can_install']:
+                    raise HTTPError(400, 'No update to install here.' if not st['available'] else
+                                    'This copy runs from source: update it with git (git pull), then restart it.')
+                def run():
+                    try:
+                        upd.install()
+                    except Exception as e:   # noqa: BLE001 - shown on the Account page
+                        upd.error = f'Install failed: {e}'[:300]
+                threading.Thread(target=run, daemon=True).start()
+                return self.send({**st, 'busy': 'downloading'})
             if p == '/api/settings/relay':   # M5: the plant's internet relay (a manager setting every device learns)
                 self.need(me, 'manager')
                 url = (d.get('url') or '').strip().rstrip('/')
@@ -843,7 +882,7 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
             return self.send({'ok': True})
 
         def post_pdf(self):
-            me = self.user('admin')
+            me = self.user('manager')
             q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
             n = int(self.headers.get('Content-Length') or 0)
             if n > cfg['max_pdf_mb'] * 1024 * 1024:
@@ -855,8 +894,14 @@ def make_handler(cfg, store, auth, engine=None, svc=None):
             def done(job):
                 if job['state'] == 'done':
                     r = job['result']
+                    try:   # every device gets the new version by sync (§19)
+                        job['version'] = plantdata.publish(E, me['device'], cfg['plant_dir'])
+                    except Exception as e:   # noqa: BLE001 - the import itself worked: say what didn't
+                        job['log'].append(f'Imported, but publishing failed: {e}')
                     log_sheet(me['id'], job['sheet'], f'sheet {"re-imported" if replace else "added"}: "{r["name"]}", '
-                                                      f'{r["auto"]} tags auto-read, {r["review"]} to review, rotation {r["rotation"]}°')
+                                                      f'{r["auto"]} tags auto-read, {r["review"]} to review, rotation {r["rotation"]}°'
+                                                      f', plant data version {job.get("version")}')
+            plantdata.ensure_working(E, cfg)
             try:
                 job = importer.start(me, (sid or '').strip(), name, rotate, replace, data, on_done=done)
             except ValueError as e:
@@ -1019,12 +1064,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description='KKS Explorer server')
     ap.add_argument('cmd', nargs='?', default='serve',
                     choices=['serve', 'users', 'reset-manager', 'reset-password', 'backup', 'restore', 'check', 'setup-importer',
-                             'added-tags', 'export-root-key', 'import-root-key', 'sync'])
+                             'added-tags', 'export-root-key', 'import-root-key', 'sync', 'publish-data'])
     ap.add_argument('target', nargs='?', help='for sync: HOST[:PORT]')
     ap.add_argument('--user')
     ap.add_argument('--file')
     ap.add_argument('--seq', type=int)
     ap.add_argument('--out')
+    ap.add_argument('--from', dest='src', help='for publish-data: a folder with sheets.json, tags.json, sheets/ ...')
     a = ap.parse_args(argv)
     cfg = config_mod.load()
     if a.cmd == 'restore':  # works on backups only; never touches the live DB
@@ -1078,6 +1124,33 @@ def main(argv=None):
               f'photos {st["blobs_sent"]} sent / {st["blobs_received"]} received'
               + ('; the other device does not know this one (not certified there yet), so it sent nothing'
                  if st['they_denied'] else ''))
+        return
+    if a.cmd == 'publish-data':
+        m = auth.manager()
+        if not m or m['device'] not in E.keys:
+            raise SystemExit('Only the manager publishes plant data: run this on the server, or on the manager\'s laptop.')
+        folder = cfg['plant_dir']
+        if a.src and os.path.realpath(a.src) != os.path.realpath(folder):
+            files = plantdata.scan(a.src)
+            if not any(p == 'sheets.json' for p, _ in files):
+                raise SystemExit(f'{a.src} has no sheets.json')
+            import shutil
+            if os.path.exists(folder):   # the folder becomes exactly DIR's plant files (old copy kept in backups)
+                keep = os.path.join(cfg['backup_dir'], f'plant-data-{time.strftime("%Y%m%d-%H%M%S")}')
+                keep += next(f'-{n}' if n else '' for n in range(1000) if not os.path.exists(keep + (f'-{n}' if n else '')))
+                shutil.copytree(folder, keep)
+                for p, full in plantdata.scan(folder):
+                    os.remove(full)
+            os.makedirs(os.path.join(folder, 'sheets'), exist_ok=True)
+            for p, full in files:
+                shutil.copy2(full, os.path.join(folder, p))
+        try:
+            v = plantdata.publish(E, m['device'], folder)
+        except ValueError as e:
+            raise SystemExit(str(e))
+        n = len(plantdata.scan(folder))
+        print(f'Published plant data version {v} ({n} files from {folder}).' if v else
+              f'Nothing new: {folder} matches the latest version.')
         return
     if a.cmd == 'users':
         for u in list_users(store):
@@ -1142,7 +1215,11 @@ def main(argv=None):
     if os.path.exists(E.root_path) and not store.meta('root_backed_up'):
         print(f'  The plant root key is only in {E.root_path}. Back it up: python3 app.py export-root-key --out FILE')
     svc = SyncService(E, cfg)
-    httpd = ThreadingHTTPServer((cfg['host'], cfg['port']), make_handler(cfg, store, auth, E, svc))
+    # self-updates (M5b): a packaged desktop app installs them into its user folder (where its config.json lives)
+    home = os.path.dirname(os.environ['KKS_CONFIG']) if updates_mod.frozen() and os.environ.get('KKS_CONFIG') else None
+    upd = updates_mod.Updater(cfg, store, home=home)
+    upd.start()
+    httpd = ThreadingHTTPServer((cfg['host'], cfg['port']), make_handler(cfg, store, auth, E, svc, upd))
     if cfg['sync_port']:
         try:
             svc.listen(cfg['sync_host'] if peer else cfg['host'], cfg['sync_port'])

@@ -1,7 +1,7 @@
 """`python3 app.py check`: audit a deployment. Each finding is (level, message); level is OK, INFO, WARN or FAIL.
 Remote access model (see docs/REMOTE_ACCESS.md): the server listens on 127.0.0.1 only, cloudflared forwards to it,
 and Cloudflare Access (plus cloudflared's own token check) stands in front. Anything else weakens that."""
-import os, time
+import sqlite3, os, time
 from urllib.parse import urlparse
 
 LOOPBACK = ('127.0.0.1', '::1', 'localhost')
@@ -72,9 +72,22 @@ def run(cfg, store, auth):
         c.close()
 
     # ---- data ----
-    for f in ('sheets.json', 'tags.json', 'procedures.json', 'kks.json'):
-        if not os.path.exists(os.path.join(cfg['data_dir'], f)):
-            add('FAIL' if f in ('sheets.json', 'tags.json') else 'WARN', f'{cfg["data_dir"]}/{f} missing.')
+    if not os.path.exists(os.path.join(cfg['data_dir'], 'kks.json')):
+        add('WARN', f'{cfg["data_dir"]}/kks.json missing: KKS codes are shown without their meaning.')
+    c = sqlite3.connect(cfg['db'])
+    try:
+        n = c.execute("SELECT COUNT(*) FROM entries WHERE type='setting' AND data LIKE '%\"plant_data\"%'").fetchone()[0]
+    except sqlite3.Error:
+        n = 0
+    finally:
+        c.close()
+    if n:
+        add('OK', 'plant data is published in the log (Manage → Drawings adds versions).')
+    elif os.path.exists(os.path.join(cfg['data_dir'], 'sheets.json')):
+        add('WARN', f'plant data is still read from {cfg["data_dir"]}: publish it once with python3 app.py publish-data '
+                    f'--from {cfg["data_dir"]} so every device gets it by sync.')
+    else:
+        add('WARN', 'no plant data yet: the manager publishes it (python3 app.py publish-data, or Manage → Drawings).')
     if not os.access(cfg['photos_dir'], os.W_OK):
         add('FAIL', f'photos_dir {cfg["photos_dir"]} is not writable.')
     from server import photos

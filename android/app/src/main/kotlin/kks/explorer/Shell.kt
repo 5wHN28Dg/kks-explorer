@@ -258,6 +258,31 @@ private fun Account(a: MainActivity, modifier: Modifier) {
             }
         }
         item {
+            Section("Updates") {
+                Text("This is version ${s.version}.", style = MaterialTheme.typography.bodyMedium)
+                when {
+                    s.updBusy != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Text(s.updBusy!!)
+                    }
+                    s.updAvailable -> {
+                        Text("Version ${s.updLatest} is out.", style = MaterialTheme.typography.titleSmall)
+                        if (s.updNotes.isNotBlank()) Text(s.updNotes.take(600), style = MaterialTheme.typography.bodySmall,
+                                                          color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Button(onClick = { a.installUpdate() }) { Text("Download and install") }
+                        Text("Checked against the release's signature first; Android then asks you to confirm. Your data stays.",
+                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    s.updLatest != null -> Text("Up to date.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                s.updError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { a.checkUpdate() }, enabled = s.updBusy == null) { Text("Check now") }
+                    Text(if (s.updChecked > 0) "checked ${ago(s.updChecked / 1000)} · daily" else "checks once a day",
+                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
             Section("This phone") {
                 Text("Device ${s.device.take(12)}…", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 Text("Its key is protected by the Android Keystore. A lost phone: remove it from another of your devices " +

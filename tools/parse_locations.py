@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Parse 'KKS LOCATION HRSG.pdf' (Word table: KKS | Level (cabinet) | Cabinet | Description | Direction) into
-data/locations.json. Needs poppler's pdftotext. The list has no unit prefix, so entries are keyed by the 9/10-char
+plant-data/locations.json (then: app.py publish-data). Needs poppler's pdftotext. The list has no unit prefix, so entries are keyed by the 9/10-char
 KKS body (e.g. LAB93AA001) and apply to any unit number.
-Usage: python3 tools/parse_locations.py "source/KKS LOCATION HRSG.pdf" [data/locations.json]"""
+Usage: python3 tools/parse_locations.py "source/KKS LOCATION HRSG.pdf" [plant-data/locations.json]"""
 import html, json, re, subprocess, sys
 COLS = [('kks', 0), ('level', 160), ('cabinet', 255), ('desc', 350), ('direction', 445)]  # left edges, PDF points
 KKS = re.compile(r'^[A-Z]{3}\d{2}[A-Z]{2}\d{3,4}$')
@@ -42,7 +42,7 @@ def elevation(level):
     return float(m[1]) if m else None
 
 if __name__ == '__main__':
-    pdf = sys.argv[1]; dst = sys.argv[2] if len(sys.argv) > 2 else 'data/locations.json'
+    pdf = sys.argv[1]; dst = sys.argv[2] if len(sys.argv) > 2 else 'plant-data/locations.json'
     res = parse(pdf)
     for e in res:
         z = elevation(e.get('level'))

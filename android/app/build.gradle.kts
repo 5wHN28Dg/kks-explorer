@@ -8,6 +8,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// One version for every platform: the repository's VERSION file (M5b self-updates compare it with GitHub Releases).
+// versionCode = major·10000 + minor·100 + patch, so every release is higher than the last.
+val appVersion = rootDir.parentFile.resolve("VERSION").readText().trim()
+val appVersionCode = appVersion.split('.').map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
+
 android {
     namespace = "kks.explorer"
     compileSdk = 36
@@ -15,8 +20,8 @@ android {
         applicationId = "kks.explorer"
         minSdk = 29                       // Android 10 (decided 2026-09-26)
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.7.1"
+        versionCode = appVersionCode
+        versionName = appVersion
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }   // phones (64/32-bit ARM), the emulator
         externalNativeBuild {
             cmake {

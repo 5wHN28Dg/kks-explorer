@@ -140,7 +140,9 @@ class Stream:
                 self.unacked[self.fin_seq] = [b'', 0.0, 0, False]
                 self.next_seq += 1
                 self._send_data(self.fin_seq)
-            end = time.monotonic() + 3
+            # a few retransmissions' worth: after heavy loss one RTO can be 4 s, and a FIN sent once and lost leaves the
+            # other side waiting until its stall limit
+            end = time.monotonic() + min(self.dead, max(3.0, 5 * self.rto))
             while self.unacked and not self.error and time.monotonic() < end:
                 self.lock.wait(0.1)
             self.closed = True

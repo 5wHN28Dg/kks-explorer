@@ -46,6 +46,13 @@ class ShellState {
     var course by mutableStateOf<Course?>(null)     // the course open full screen, or null
     var busy by mutableStateOf(false)
     var message by mutableStateOf<String?>(null)
+    var version by mutableStateOf("")                // self-updates (M5b)
+    var updLatest by mutableStateOf<String?>(null)
+    var updNotes by mutableStateOf("")
+    var updAvailable by mutableStateOf(false)
+    var updBusy by mutableStateOf<String?>(null)
+    var updError by mutableStateOf<String?>(null)
+    var updChecked by mutableStateOf(0L)
 }
 
 /** A course of the Learning tab (data/courses/courses.json) and how far this person got. */
@@ -129,6 +136,8 @@ class MainActivity : ComponentActivity() {
         App.visible = true
         App.sync.start()          // find devices and sync while the app is on screen
         refresh()
+        AppUpdates.onChange = { main.post { showUpdate() } }
+        io.execute { AppUpdates.maybeCheck(this) }
     }
 
     override fun onStop() {
@@ -157,6 +166,14 @@ class MainActivity : ComponentActivity() {
     fun changed() = main.post { refresh() }
 
     @Suppress("UNCHECKED_CAST")
+    private fun showUpdate() {
+        val u = AppUpdates
+        state.version = u.current(this); state.updLatest = u.latest?.version; state.updNotes = u.latest?.notes ?: ""
+        state.updAvailable = u.available(this); state.updBusy = u.busy; state.updError = u.error; state.updChecked = u.checked
+    }
+    fun checkUpdate() = io.execute { AppUpdates.check(this) }
+    fun installUpdate() = io.execute { AppUpdates.install(this) }
+
     fun refresh() = io.execute {
         val api = App.api
         val cfg = api.handle("GET", "/api/config", emptyMap(), null).json as Map<String, Any?>

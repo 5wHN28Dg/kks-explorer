@@ -367,6 +367,10 @@ K.watchChanges = () => {
       if (K.cfg?.mode !== 'peer') K.setOnline(true); else K.renderStatus();
       if (K.rev != null && st.rev !== K.rev) K.listeners.forEach(f => f('synced'));
       K.rev = st.rev;
+      // a new plant data version became complete on this device (PROTOCOL.md §19): pages load the drawings again
+      const pa = st.plant_data ? st.plant_data.active : undefined;
+      if (K.plantActive !== undefined && pa !== undefined && pa !== K.plantActive) K.listeners.forEach(f => f('plantdata'));
+      if (pa !== undefined) K.plantActive = pa;
     } catch (e) { if (e.status === 401) return location.reload(); if (K.isNetErr(e)) K.setOnline(false) }
   };
   tick();

@@ -1,6 +1,7 @@
 package kks.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -227,7 +228,7 @@ class LocalApiTest {
         File(tmp, "data").mkdirs()
         File(tmp, "data/tags.json").writeText("[]"); File(tmp, "data/sheets.json").writeText("[]")
         File(tmp, "config.json").writeText(Json.write(mapOf("host" to "127.0.0.1", "port" to port.toLong(), "sync_port" to syncPort.toLong(),
-            "discovery" to false, "data_dir" to "data", "db" to "plant.db", "photos_dir" to "photos", "backup_dir" to "backups")))
+            "discovery" to false, "update_check" to false, "data_dir" to "data", "db" to "plant.db", "photos_dir" to "photos", "backup_dir" to "backups")))
         val proc = ProcessBuilder(py.path, File(repo(), "app.py").path).redirectErrorStream(true)
             .also { it.environment()["KKS_CONFIG"] = File(tmp, "config.json").path; it.environment()["PYTHONUNBUFFERED"] = "1" }.start()
         try {
@@ -387,7 +388,7 @@ class LocalApiTest {
             File(tmp, "data").mkdirs()
             File(tmp, "data/tags.json").writeText("[]"); File(tmp, "data/sheets.json").writeText("[]")
             File(tmp, "config.json").writeText(Json.write(mapOf("mode" to mode, "host" to "127.0.0.1", "port" to port.toLong(),
-                "sync_port" to syncPort.toLong(), "sync_host" to "127.0.0.1", "discovery" to false, "data_dir" to "data",
+                "sync_port" to syncPort.toLong(), "sync_host" to "127.0.0.1", "discovery" to false, "update_check" to false, "data_dir" to "data",
                 "db" to "plant.db", "photos_dir" to "photos", "backup_dir" to "backups")))
             proc = ProcessBuilder(File(repo(), ".venv/bin/python").path, File(repo(), "app.py").path).redirectErrorStream(true)
                 .also { it.environment()["KKS_CONFIG"] = File(tmp, "config.json").path; it.environment()["PYTHONUNBUFFERED"] = "1" }.start()
@@ -401,6 +402,65 @@ class LocalApiTest {
         }
         fun web() = Web("http://127.0.0.1:$port")
         override fun close() { proc.destroy(); proc.waitFor(); tmp.deleteRecursively() }
+    }
+
+    /** M5b (PROTOCOL.md §19): the manager publishes plant data on the Python server with the CLI; a phone that
+     *  joins gets every file by sync and serves the newest complete version; an incomplete one is not served. */
+    @Test fun plantDataFromPythonServer() {
+        assumeTrue("needs the repo's .venv", File(repo(), ".venv/bin/python").canExecute())
+        Py("server").use { srv ->
+            val web = srv.web()
+            assertEquals(200, web.post("/api/setup", mapOf("token" to srv.setupToken, "username" to "boss", "password" to "correct horse", "full_name" to "Boss Person")).first)
+            val link = web.post("/api/users", mapOf("username" to "usr", "role" to "user", "full_name" to "Usr Person")).second["link"] as String
+            assertEquals(200, Web("http://127.0.0.1:${srv.port}").post("/api/password-reset", mapOf("token" to link.substringAfter("#reset="), "password" to "usr password!")).first)
+            val src = File(srv.tmp, "src").also { File(it, "sheets").mkdirs() }
+            File(src, "sheets.json").writeText("""[{"id":"s1","name":"Sheet one","file":"data/sheets/s1.png"}]""")
+            File(src, "tags.json").writeText("""[{"id":"s1:1","sheet":"s1","kks":"11LAB70AA501"}]""")
+            val png = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47) + "pixels".repeat(50).toByteArray()
+            File(src, "sheets/s1.png").writeBytes(png)
+            File(src, "sheets/s1.svg.gz").writeBytes(java.io.ByteArrayOutputStream().also { b -> java.util.zip.GZIPOutputStream(b).use { it.write("<svg/>".toByteArray()) } }.toByteArray())
+            val cli = ProcessBuilder(File(repo(), ".venv/bin/python").path, File(repo(), "app.py").path, "publish-data", "--from", src.path)
+                .redirectErrorStream(true).also { it.environment()["KKS_CONFIG"] = File(srv.tmp, "config.json").path }.start()
+            val out = cli.inputStream.bufferedReader().readText()
+            assertEquals(out, 0, cli.waitFor())
+            val phone = Phone()
+            assertEquals(200, phone.post("/api/node/join-server", mapOf("url" to "http://127.0.0.1:${srv.port}", "username" to "usr", "password" to "usr password!")).first)
+            val st = phone.get("/api/sync/status").second["plant_data"] as Map<*, *>
+            assertEquals(listOf(1L, 1L, 4L, 0L), listOf(st["version"], st["active"], st["files"], st["missing"]))
+            assertTrue(phone.node.plantFile("sheets/s1.png")!!.contentEquals(png))
+            assertEquals("<svg/>", String(java.util.zip.GZIPInputStream(phone.node.plantFile("sheets/s1.svg.gz")!!.inputStream()).readBytes()))
+            assertTrue(String(phone.node.plantFile("sheets.json")!!).contains("Sheet one"))
+            assertEquals(null, phone.node.plantFile("kks.json"))                // not plant data: the app's own copy
+        }
+    }
+
+    @Test fun incompletePlantDataIsNotServed() {
+        val pl = Plant("user")
+        fun publish(version: Long, files: Map<String, ByteArray>) {
+            files.forEach { (_, b) -> pl.mgr.blobs[sha256(b).hex()] = b }
+            pl.mgr.append("setting", mapOf("key" to "plant_data", "value" to mapOf("version" to version,
+                "files" to files.toSortedMap().map { (p, b) -> listOf(p, sha256(b).hex(), b.size.toLong()) })))
+        }
+        val v1 = mapOf("sheets.json" to "[1]".toByteArray(), "sheets/a.png" to "A1".toByteArray())
+        publish(1, v1)
+        val n = pl.phone.node
+        n.ingest(pl.mgr.entriesFor(n.vv()))
+        assertEquals(null, n.plantActive())                                     // nothing complete yet
+        assertEquals(2, n.blobWants().size)
+        v1.values.forEach { assertTrue(n.blobPut(sha256(it).hex(), it)) }
+        assertEquals(1L, n.plantActive()!!.version)
+        publish(2, mapOf("sheets.json" to "[2]".toByteArray(), "sheets/a.png" to "A1".toByteArray()))   // one file changes
+        n.ingest(pl.mgr.entriesFor(n.vv()))
+        val st = n.plantStatus()
+        assertEquals(listOf(2L, 1L, 1L, 3L), listOf(st["version"], st["active"], st["missing"], st["missing_bytes"]))
+        assertEquals("[1]", String(n.plantFile("sheets.json")!!))              // still version 1, whole
+        assertFalse(n.blobPut(sha256("nope".toByteArray()).hex(), "nope".toByteArray()))   // only what the log names
+        assertTrue(n.blobPut(sha256("[2]".toByteArray()).hex(), "[2]".toByteArray()))
+        assertEquals("[2]", String(n.plantFile("sheets.json")!!))
+        // a bundle from this phone carries the drawings
+        val other = Phone()
+        other.node.importBundle(n.bundle(false))
+        assertEquals(2L, other.node.plantActive()!!.version)
     }
 
     /** M4 across implementations: a Python laptop and a Kotlin phone of the same person swap person secrets (§17)

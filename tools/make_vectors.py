@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the sharp-zoom vector file (data/sheets/<id>.svg.gz) for a sheet that is already in the app.
+"""Create the sharp-zoom vector file (plant-data/sheets/<id>.svg.gz) for a sheet that is already in the app (then: app.py publish-data).
 
 The source PDF is tried at 0/90/180/270 degrees; the rotation whose rendering matches the existing sheet image is
 used, so the vector layer lines up exactly with the tag hotspots. Refuses if nothing matches well.
@@ -15,7 +15,7 @@ def main():
     import cv2, numpy as np, pymupdf
     from extractor.orient import rotated_copy
     from extractor.svgopt import sheet_svg
-    data = os.path.join(HERE, 'data'); sp = os.path.join(data, 'sheets.json')
+    data = os.path.join(HERE, 'plant-data'); sp = os.path.join(data, 'sheets.json')   # the working copy (then: app.py publish-data)
     sheets = json.load(open(sp)); sheet = next(s for s in sheets if s['id'] == sid)
     png = cv2.imread(os.path.join(data, 'sheets', f'{sid}.png'), cv2.IMREAD_GRAYSCALE)
     small = lambda im: cv2.resize(im, (800, round(800 * im.shape[0] / im.shape[1])), interpolation=cv2.INTER_AREA)

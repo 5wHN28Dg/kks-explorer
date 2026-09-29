@@ -1,7 +1,14 @@
-# KKS Explorer — HRSG P&IDs
+# KKS Explorer
 
-Multi-user, works offline, Python server. Plant data is only served to signed-in users. Every change is a signed
-entry in an append-only log (docs/PROTOCOL.md); what the app shows is replayed from it.
+Find any KKS code on a power plant's P&IDs and see everything known about it: the decoded code, where it is, photos,
+notes, and which operation-manual steps use it. Reads the tags straight off vector P&ID PDFs (AutoCAD plots).
+Multi-user, works offline, Python server + desktop app + Android app, devices sync with each other directly (same
+Wi-Fi, or across the internet through a relay). Every change is a signed entry in an append-only log
+(docs/PROTOCOL.md); what the app shows is replayed from it.
+
+**No plant data is in this repository.** Drawings, tag lists, procedures and location lists belong to a plant; its
+manager publishes them from their own server or laptop, and every device of that plant gets them by sync
+(docs/PROTOCOL.md §19). The program only ships the KKS decode tables (`data/kks.json`) and the Learning courses.
 
 ## Start
 1. Install Python 3 (already on most laptops) and its `cryptography` package
@@ -13,6 +20,8 @@ entry in an append-only log (docs/PROTOCOL.md); what the app shows is replayed f
    (`root.key` next to `plant.db`). Back it up right away: `python3 app.py export-root-key --out FILE` (passphrase-
    encrypted; keep it offline). It is needed to hand over the manager role; it is not in the database or `backups/`.
 5. Laptop: http://localhost:8420 — Phone: the LAN URL it prints (same Wi-Fi).
+6. **Plant data:** add drawings in Manage → Drawings (below), or publish a folder you already have
+   (`sheets.json`, `tags.json`, `procedures.json`, `locations.json`, `sheets/`): `python3 app.py publish-data --from DIR`.
 
 The server needs only `cryptography` (Ed25519 signatures). The importer needs more (see below).
 Tests: `.venv/bin/python -m unittest discover -s tests`.
@@ -21,10 +30,6 @@ Tests: `.venv/bin/python -m unittest discover -s tests`.
 itself: accounts, passwords, data, history, open submissions and votes carry over; a copy of the old database is kept
 as `backups/plant-v1-<time>.db`. If the replayed log would differ from the old data in any way, it stops and changes
 nothing.
-
-## What's loaded
-10 sheets: LP, IP, HP, Feedwater, Reheat, Intermittent/CBD, Flue Gas, Block 1 HP/IP/LP steam piping.
-~880 tags read automatically, 145 checked by eye, 1 left in the review queue. 77 procedures from the HRSG operation manual.
 
 ## Using it
 - **Search** any KKS (full or partial: `11LAB70AA501`, `LBA80`, `CP101`), or text you've entered (location, notes).
@@ -40,16 +45,13 @@ nothing.
 - **Procedures** → pick one → steps. Use **+ Link equipment** on a step, then tap the tags on the drawing.
   The manual never uses KKS codes, so this linking is done once by you. Linked equipment is highlighted.
 - **Review** → tags the reader wasn't sure about, with a crop of the drawing. Confirm (fix the code if needed) or mark
-  “Not a tag”. On the LP sheet, most have a pre-filled value I checked visually.
+  “Not a tag”.
 - **Sheet notes** → markup text added to the PDFs (e.g. "KKS is wrong, has been revised", set-points).
 
-## Accuracy — read this
-- LP sheet: checked against a fully verified reading: 1 wrong among 189 auto-read tags (a dropped suffix letter).
-- Other sheets: **not fully verified**. Known issue: a suffix letter (R, K) touching an instrument bubble's edge can be
-  dropped. Treat auto-read tags as very likely right, and confirm in the field when it matters.
-- Flue Gas and Intermittent/CBD sheets read poorly (unusual layouts); most of their tags are in the review queue.
-- The drawings reference an I&C code instruction document (DOCUMENT). It would explain what
-  the valve number ranges mean; it isn't loaded.
+## Accuracy
+Tags read automatically are very likely right, not certainly: check a sample of every new sheet by eye, and confirm in
+the field when it matters. Characters the reader hasn't seen before get low confidence and land in the review queue
+instead of being guessed. Sheets with unusual layouts (flue gas ducts, blowdown) read worse than ordinary P&IDs.
 
 ## Accounts and approvals
 - **Manager** (exactly one) > **admins** > **users**. The manager creates admins, promotes/demotes them, and can hand the
@@ -122,14 +124,16 @@ Get written approval from plant IT/security first: P&IDs and KKS indexes are sen
 tokens, backups) and exits non-zero on any FAIL.
 
 ## Another plant
-Code and data are separate: point `data_dir`, `db`, `photos_dir` and `backup_dir` in `config.json` at that plant's
-files and set `plant_name`. Run one server per plant. Build the data with `import_sheet.py` (P&IDs),
-`tools/parse_locations.py` (location list) and `tools/manual_parse.py` (procedures).
+Every plant is its own: its own manager, root key, log and plant data. Start the app with a new database (or a new
+desktop install) and create the manager; then add drawings (Manage → Drawings or `import_sheet.py`), and optionally a
+location list (`tools/parse_locations.py`) and procedures (`tools/manual_parse.py`, written for one HRSG manual's
+layout: expect to adapt it). They are written into the working folder `plant_dir` (default `plant-data/`); Drawings
+publishes by itself, for the command-line tools run `python3 app.py publish-data` afterwards.
 
 ## Your data
-Field data lives in `plant.db` (the signed log) and `photos/`, backups in `backups/`, the plant root key in `root.key`.
-None of them go in git. Updating the app later: replace everything except `plant.db`, `photos/`, `backups/`,
-`root.key` and `config.json`.
+Field data lives in `plant.db` (the signed log) and `photos/` (photos and plant data files, by hash), backups in
+`backups/`, the plant root key in `root.key`, the manager's working copy of the drawings in `plant-data/`. None of them
+go in git. Updating the app later: replace everything except those and `config.json`.
 
 ## Adding a new P&ID
 One-time setup on the server (creates `.venv` in the app folder; nothing is installed system-wide, and the server
@@ -137,16 +141,18 @@ itself keeps running on plain `python3`):
 ```
 python3 app.py setup-importer
 ```
-Then **Manage → Drawings** (admins): choose the PDF, check the name and id, Import. About a minute per sheet; progress
+Then **Manage → Drawings** (the manager): choose the PDF, check the name and id, Import. About a minute per sheet; progress
 shows live. Afterwards check the preview is upright. If not, use the re-import button (the PDF is kept, so no
 re-upload). Re-import and Remove are in the sheet list; every change backs up `sheets.json`/`tags.json` first,
-a failed import puts them back, and History logs who added or removed what.
+a failed import puts them back, and History logs who added or removed what. Each successful change is published as a
+new plant data version, and every device gets it at its next sync.
 
 From the command line instead:
 ```
 .venv/bin/python import_sheet.py path/to/drawing.pdf "Condensate System" [sheet_id] [--rotate auto|0|90|180|270] [--replace]
+python3 app.py publish-data
 ```
-Works on vector PDFs plotted from AutoCAD (all of yours are). Scanned drawings won't work. Only page 1 is read.
+Works on vector PDFs plotted from AutoCAD. Scanned drawings won't work. Only page 1 is read.
 It picks the rotation with the most horizontal text and, if almost no tags read, retries upside down and keeps the
 better result. Tags are read with the character library in `extractor/fontlib.pkl`; characters it hasn't seen get
 low confidence and land in the review queue rather than being guessed.

@@ -229,9 +229,17 @@ def sync_with(node, host, port, adopt_root=None, timeout=TIMEOUT):
         return sync_over(node, sock, adopt_root, timeout)
 
 
+def _fresh(node):
+    """A node whose database another process also writes (server/engine.py: the CLI, e.g. `app.py publish-data`)
+    picks those entries and blobs up before a session, or it would offer a stale view until some web request came."""
+    if hasattr(node, 'refresh'):
+        node.refresh()
+
+
 def sync_over(node, sock, adopt_root=None, timeout=TIMEOUT, expect_peer=None):
     """Sync as the initiator over an open connection: TCP, a UDP stream after hole punching (peer/rudp.py) or a
     relay pipe (peer/ws.py). expect_peer: stop unless the other side is that device. -> (remote, stats)"""
+    _fresh(node)
     sock.settimeout(timeout)
     ses = handshake(sock, node.identity(), True)
     if expect_peer and ses.remote != expect_peer:
@@ -242,6 +250,7 @@ def sync_over(node, sock, adopt_root=None, timeout=TIMEOUT, expect_peer=None):
 def serve_one(node, sock, timeout=TIMEOUT):
     """Handle one incoming connection (call from the listener's thread). -> (remote, stats); errors propagate.
     A connection may instead carry one join-by-invite question (PROTOCOL.md §16): stats then has 'join' = the answer."""
+    _fresh(node)
     sock.settimeout(timeout)
     try:
         ses = handshake(sock, node.identity(), False)

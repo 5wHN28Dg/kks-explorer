@@ -5,5 +5,9 @@
         <receiver android:name=".DebugSyncReceiver" android:exported="true">
             <intent-filter><action android:name="kks.explorer.DEBUG_SYNC" /></intent-filter>
         </receiver>
+        <!-- and point the updater at a test release (DebugUpdateReceiver) -->
+        <receiver android:name=".DebugUpdateReceiver" android:exported="true">
+            <intent-filter><action android:name="kks.explorer.DEBUG_UPDATE" /></intent-filter>
+        </receiver>
     </application>
 </manifest>

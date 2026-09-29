@@ -483,24 +483,30 @@ class SheetImportTest(Base):
         u = self.invite(m, 'usr')
         self.assertTrue(m.get('/api/sheets')[1]['importer']['available'])
         self.assertEqual(self.upload(u, self.pdf(), id='t1', name='Test')[0], 403)
+        a = self.invite(m, 'adm', 'admin')
+        self.assertEqual(a.get('/api/sheets')[0], 403)                         # drawings: the manager only (M5b)
+        self.assertEqual(self.upload(a, self.pdf(), id='t1', name='Test')[0], 403)
         self.assertEqual(self.upload(m, b'not a pdf', id='t1', name='Test')[0], 400)
         s, r = self.upload(m, self.pdf(), id='t1', name='Test sheet')
         self.assertEqual(s, 200, r)
         self.assertEqual(self.upload(m, self.pdf(), id='t2', name='x')[0], 400)  # one import at a time
         job = self.wait(m)
         self.assertEqual(job['state'], 'done', job['log'])
+        self.assertEqual(job['version'], 1)   # published (PROTOCOL.md §19), with the sheets the old data/ held
         sheets = {x['id']: x for x in m.get('/data/sheets.json')[1]}
+        self.assertEqual(set(sheets), {'t1'} | {x['id'] for x in json.load(open(os.path.join(self.cfg['data_dir'], 'sheets.json')))})
         self.assertIn('t1', sheets)
         self.assertEqual(m.get('/' + sheets['t1']['file'])[0], 200)  # image served (the ?v= is ignored)
         self.assertEqual(self.upload(m, self.pdf(), id='t1', name='again')[0], 400)  # exists, replace not set
         # a PDF the importer can't read: job fails and sheets.json/tags.json are put back exactly
-        before = (open(os.path.join(self.cfg['data_dir'], 'sheets.json')).read(),
-                  open(os.path.join(self.cfg['data_dir'], 'tags.json')).read())
+        before = (open(os.path.join(self.cfg['plant_dir'], 'sheets.json')).read(),
+                  open(os.path.join(self.cfg['plant_dir'], 'tags.json')).read())
         self.assertEqual(self.upload(m, b'%PDF-1.4 garbage', id='bad', name='Bad')[0], 200)
         self.assertEqual(self.wait(m)['state'], 'failed')
-        after = (open(os.path.join(self.cfg['data_dir'], 'sheets.json')).read(),
-                 open(os.path.join(self.cfg['data_dir'], 'tags.json')).read())
+        after = (open(os.path.join(self.cfg['plant_dir'], 'sheets.json')).read(),
+                 open(os.path.join(self.cfg['plant_dir'], 'tags.json')).read())
         self.assertEqual(before, after)
+        self.assertEqual(m.get('/api/sync/status')[1]['plant_data']['version'], 1)   # the failure published nothing
         # re-import from the stored PDF with forced rotation, then remove
         self.assertEqual(m.post('/api/sheets/reimport', {'id': 't1', 'rotate': '180'})[0], 200)
         job = self.wait(m)
@@ -510,5 +516,8 @@ class SheetImportTest(Base):
         self.upload(m, self.pdf(), id='keep', name='Keep'); self.assertEqual(self.wait(m)['state'], 'done')
         self.assertEqual(m.post('/api/sheets/t1/remove')[0], 200)
         self.assertNotIn('t1', {x['id'] for x in m.get('/data/sheets.json')[1]})
+        from server import plantdata
+        self.assertEqual(m.get('/api/sync/status')[1]['plant_data'], {'version': 4, 'active': 4, 'missing': 0, 'missing_bytes': 0,
+                                                                     'files': len(plantdata.scan(self.cfg['plant_dir']))})
         notes = [r['note'] for r in m.get('/api/revisions')[1]['revisions'] if r['entity'] == 'sheet']
         self.assertEqual(len(notes), 4, notes)  # t1 added, re-imported, keep added, t1 removed (failure not logged)

@@ -196,13 +196,28 @@ async function load(){
   $('#who').textContent=me.user.full_name||me.user.username; $('#plantName').textContent=K.cfg?'· '+K.cfg.plant_name:'';
   try{
     [SHEETS,BASE_TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error(u+': '+r.status);return r.json()})));
-  }catch(e){ K.overlay(`<div class="box"><h1>Plant data not available</h1><p>${K.online?esc(e.message):'You are offline and this device has no saved copy of the plant data. Offline copies need the app opened over HTTPS (or localhost) at least once while online.'}</p><button onclick="location.reload()">Retry</button></div>`); return }
+  }catch(e){
+    // no drawings here yet: they come by sync once the manager has published them (PROTOCOL.md §19)
+    const pd=await api('/api/sync/status').then(s=>s.plant_data).catch(()=>null);
+    const msg=!K.online?'You are offline and this device has no saved copy of the plant data. Offline copies need the app opened over HTTPS (or localhost) at least once while online.'
+      :pd&&pd.version?`The drawings (version ${pd.version}) are on their way: ${pd.missing} file${pd.missing===1?'':'s'}, ${(pd.missing_bytes/1048576).toFixed(1)} MB left. They arrive with the next sync; this page opens by itself.`
+      :pd?'No drawings yet. The manager publishes them (Manage → Drawings on the server, or python3 app.py publish-data); they reach this device by sync, and this page opens by itself.'
+      :esc(e.message);
+    K.overlay(`<div class="box"><h1>${pd?'Waiting for the drawings':'Plant data not available'}</h1><p>${msg}</p><button onclick="location.reload()">Retry</button></div>`);
+    if(pd){ K.onChange(why=>{ if(why==='plantdata') location.reload() }); K.watchChanges() }
+    return }
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); toast('Offline: no saved copy of notes/photos on this device yet') }
   mergeTags();
   const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
   for(const e of lj.entries)(LOC[e.kks]??=[]).push(e); if(lj.source) LOCSRC=lj.source;
-  K.onChange(why=>{ if(why==='synced') refreshState(); else { updatePending(); if(cur) drawTags() } });
+  K.onChange(why=>{
+    if(why==='plantdata'){   // new drawings/tag lists published: load them, unless the person is typing in the panel
+      const P=$('#panel'); if(P.contains(document.activeElement)||P.querySelector('.editing')) toast('New drawings arrived: they load the next time you open this page'); else location.reload();
+      return }
+    if(why==='synced') refreshState(); else { updatePending(); if(cur) drawTags() } });
   updateQueueBadge(); setTimeout(cacheSheets,3000);
+  if(K.cfg?.mode==='peer'&&!K.cfg?.app) api('/api/update').then(u=>{   // once per new version (M5b)
+    if(u.available&&!u.staged&&localStorage.getItem('updSeen')!==u.latest){ localStorage.setItem('updSeen',u.latest); toast(`KKS Explorer ${u.latest} is out: Manage → Account to install it`) } }).catch(()=>{});
   $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   refreshFloors(); refreshReviewCount(); renderProcs();
   const want=new URLSearchParams(location.search).get('sheet')||localStorage.getItem('sheet');  // ?sheet=id from Manage → Drawings

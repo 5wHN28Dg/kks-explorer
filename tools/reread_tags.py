@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Re-read the tag boxes/bubbles of a sheet that is already in the app with the current reader, and merge the result
-into data/tags.json conservatively, keeping ids, hand-verified statuses and review decisions.
+into plant-data/tags.json conservatively (then: app.py publish-data), keeping ids, hand-verified statuses and review decisions.
 
 Used after a reader fix (e.g. the dropped-suffix fix, 2026-09-25) so existing sheets benefit without a re-import,
 which would re-read everything and send hand-verified tags back to the review queue.
@@ -26,7 +26,7 @@ def main():
     from extractor.reader3 import read_sheet
     from extractor.extract_sheet import load_lib
     import pymupdf
-    data = os.path.join(HERE, 'data')
+    data = os.path.join(HERE, 'plant-data')   # the working copy; publish with app.py publish-data
     tags_p = os.path.join(data, 'tags.json')
     tags = json.load(open(tags_p))
     sheet = next(s for s in json.load(open(os.path.join(data, 'sheets.json'))) if s['id'] == sid)

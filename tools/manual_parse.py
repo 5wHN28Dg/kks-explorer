@@ -4,13 +4,15 @@ WM=re.compile(r'click to buy|docu-track|tracker-software|pdf-xchange|xchange edi
 HEAD=re.compile(r'^(\d{1,2}(?:\.\d{1,2}){1,3})\.?\s+(.*)$')
 STEP=re.compile(r'^(\d{1,2})\s*[)）]\s*(.*)$')
 def en(s): return CJK.sub('',s).strip(' \t:：;；')
+# running page headers/footers to drop: tools/manual_parse.py manual.pdf out.json [--skip "Header text" ...]
+SKIP=[]
 def parse(pdf, first_page=6, last_page=127):
     d=pymupdf.open(pdf); lines=[]
     for pi in range(first_page-1,last_page):
         for l in d[pi].get_text().splitlines():
             l=l.strip()
             if not l or len(l)<=1 or WM.search(l): continue
-            if l.startswith('PLANT HEADER') or l.startswith('Operation Manual of HRSG System'): continue
+            if any(l.startswith(p) for p in SKIP): continue
             lines.append((pi+1,l))
     secs=[]; cur=None; pending_num=None
     i=0
@@ -45,8 +47,10 @@ def parse(pdf, first_page=6, last_page=127):
         s['steps']=out; s['text']=re.sub(r'\s+',' ',' '.join(s['text']))[:1500]
     return secs
 if __name__=='__main__':
-    secs=parse(sys.argv[1])
-    json.dump(secs,open(sys.argv[2],'w'),ensure_ascii=False,indent=1)
+    a=sys.argv[1:]
+    while '--skip' in a: i=a.index('--skip'); SKIP.append(a[i+1]); del a[i:i+2]
+    secs=parse(a[0])
+    json.dump(secs,open(a[1],'w'),ensure_ascii=False,indent=1)
     print(len(secs),'sections;',sum(1 for s in secs if s['steps']),'with steps')
     for s in secs:
         if s['steps']: print(s['id'],s['title'][:70],'|',len(s['steps']),'steps p',s['page'])

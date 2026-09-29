@@ -114,7 +114,7 @@ Both keep the server off the open internet and both give HTTPS. For this use:
 | What users install | nothing, a web address | the Tailscale app on every phone/PC, VPN switched on |
 | Cost for plant use | free up to 50 users (+ a domain) | free plan is non-commercial only; paid is per user per month |
 | HQ laptops | browser only | needs a VPN client; corporate laptops often block that |
-| Latency from the plant / HQ | Cloudflare has data centres in both | direct, or via relay servers abroad when mobile networks block UDP |
+| Latency from the plant / HQ | Cloudflare has data centres near both | direct, or via relay servers abroad when mobile networks block UDP |
 | Who can see the data | Cloudflare's edge decrypts the traffic | end-to-end encrypted; Tailscale can't see it |
 
 ## If IT says no to Cloudflare

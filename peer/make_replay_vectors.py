@@ -48,7 +48,7 @@ class World:
         sm = {'kind': 'manager', 'person': person}
         sd = {'kind': 'device', 'device': self.peer(dev), 'person': person}
         return self.w(dev, t, 'genesis', {
-            'plant': 'Example plant', 'root': P.peer_id(root or self.root),
+            'plant': 'Test plant', 'root': P.peer_id(root or self.root),
             'manager': {'person': person, 'username': username, 'full_name': full_name, 'position': position},
             'stmt_manager': sm, 'stmt_device': sd,
             'sig_manager': R.sign_statement(root or self.root, sm), 'sig_device': R.sign_statement(root or self.root, sd)})
