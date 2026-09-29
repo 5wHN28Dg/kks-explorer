@@ -401,7 +401,7 @@ phone proposal reached the server with its LAN path cut, both "internet (direct)
 NOT verified: a real Cloudflare deployment (needs the user's account), real NATs / mobile data / symmetric NATs,
 two phones over the internet. Going live needs the same IT approval as remote access.
 
-## M5b Plant data out, public repo, self-updates (2026-09-28/29; history rewrite NOT done yet)
+## M5b Plant data out, public repo, self-updates (2026-09-28/29; history rewritten + force-pushed 2026-09-29)
 
 Decided 2026-09-28: rewrite THIS repo's history (git filter-repo) and make it public; public: glyph library, KKS
 tables, the 3 courses; plant name out of docs/config/vectors; updates checked daily, installed only when asked; plant
@@ -436,7 +436,12 @@ data published by the manager only.
   failed 2/13, then 0/16).
   NOT verified: a real GitHub release (repo private: the real check gets 404), Windows handoff, the release key
   backed up (the user must do it).
-- Still to do: history rewrite + force-push (ask first), making the repo public (the user does it).
+- History rewrite done 2026-09-29 (the user chose force-push over the existing GitHub repo): `~/.config/kks-explorer/
+  scrub-history.sh` (outside the repo: it names what it removes) ran git filter-repo (in .venv) on a fresh clone: plant
+  files and plant.db dropped from every commit, names scrubbed from old docs (courses and peer/vectors kept byte for
+  byte); HEAD tree identical before/after; 35 → 11 MB; force-pushed main. The old history is kept privately in
+  `~/kks-explorer-history-before-M5b.bundle` (contains plant data). GitHub may keep old commits reachable by SHA until
+  its support purges them. Still to do: the user makes the repo public; first real release (docs/RELEASES.md).
 
 ## Backlog (rough priority)
 
