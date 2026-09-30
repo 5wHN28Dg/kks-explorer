@@ -1,0 +1,5 @@
+# plant drawings copied in for measuring: never commit
+src/main/assets/
+build/
+.gradle/
+local.properties

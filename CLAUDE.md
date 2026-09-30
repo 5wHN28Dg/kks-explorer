@@ -9,6 +9,44 @@ Also: pick a procedure ("Preparations for Startup — Air Compressor System") �
 
 The user prefers direct, no-fluff communication and honest pushback. Be explicit about what is verified vs not.
 
+## Development policy: evidence-first (in force from 2026-09-30)
+
+Two documents:
+- `docs/evidence-first-platform-engineering.md` governs native code: the Android shell (`android/app`), the desktop
+  package and M6, any iOS work, and the server/peer processes.
+- `docs/evidence-first-web-engineering.md` governs what runs in a browser engine: index.html, admin.html, learning.html,
+  common.js, sw.js, course-bridge.js, the courses, vendor/.
+- The Android app's WebView and the desktop's system browser count as the web platform: the pages ship no engine. The
+  same pages must also work in Safari, since that is the iOS path (docs/IOS_RESEARCH.md).
+
+Rules for this project (solo developer, 3+ targets, long lifespan):
+- **Investigate before implementing or bundling.** For each feature touching the platform, or each new dependency,
+  answer the policy's four questions per target (what the platform provides, optional components and how reliably
+  they're present, what's missing, small custom code vs a well-maintained dependency). Base the answers on evidence:
+  vendor docs with links, or a test on the target. Record the result in `docs/decisions/NNNN-title.md` (one page:
+  question, per-platform findings with sources, choice, when to revisit) before writing the code.
+- **Capability matrix before architecture.** Keep `docs/CAPABILITIES.md` per target platform. Rebuild it when adding
+  a platform or a major feature, and before M6's design. The architecture is an output of the matrix, not an input.
+- **Dependencies** must meet the policy's "well-maintained" test: recent releases, a findable security response
+  history, more than one active maintainer, a compatible license, and survival of a major version change. Say which
+  criteria a dependency fails and why it is still chosen.
+- **Measure on the target** (clean device, no dev tools): installed size, startup time, steady memory, and on phones
+  battery. Each metric gets a baseline and a regression rule, written before measuring.
+- **Never weaken or bypass a platform security mechanism** to drop a dependency or simplify code.
+- **Keep business logic platform-independent** (`peer/`, `android/core`): platform code stays a thin adapter, tested
+  on the platform.
+- Every claim about a platform names its source or says it is unverified; "verified" means it ran on the target.
+- Existing dependencies were audited on 2026-09-30: `docs/decisions/0001`–`0013`. The open actions are listed in
+  `docs/decisions/README.md`.
+- **Web specifics:**
+  - Browser support is declared per engine (Blink, WebKit, Gecko); check features on caniuse/MDN, not memory.
+  - Prefer, in order: the browser platform, then a small library, then a framework. Each step needs a written reason.
+  - A polyfill counts as a dependency; graceful degradation is preferred.
+  - The UI is vanilla JS with no framework, so we own HTML escaping: `textContent` by default, and every `innerHTML`
+    with data in it must be escaped and audited.
+  - Native elements for accessibility (`<button>`, `<dialog>`, labels).
+  - UI changes are tested in Playwright on all three engines, plus keyboard-only and screen-reader checks.
+
 ## Run
 
 - `python3 app.py` → http://localhost:8420 (phone: printed LAN URL, same Wi-Fi). Stdlib + `cryptography` (since M1,
@@ -19,7 +57,7 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
   `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`,
   `publish-data [--from DIR]`.
   Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `.venv/bin/python -m unittest discover -s tests` (85: server end-to-end over HTTP, protocol vectors,
+- Tests: `.venv/bin/python -m unittest discover -s tests` (101, incl. 16 for protocol v2 in tests/test_protocol_v2.py; server end-to-end over HTTP, protocol vectors,
   migration, sync, peer mode, join by invite, reliable UDP, internet sync, plant data, self-updates). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
   `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
   `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
@@ -444,6 +482,35 @@ data published by the manager only.
   byte); HEAD tree identical before/after; 35 → 11 MB; force-pushed main. The old history is kept privately in
   `~/kks-explorer-history-before-M5b.bundle` (contains plant data). GitHub may keep old commits reachable by SHA until
   its support purges them. Still to do: the user makes the repo public; first real release (docs/RELEASES.md).
+
+## M6: the product re-derived under the evidence-first policy (decided 2026-09-30, no code yet)
+
+docs/m6/ (README, REQUIREMENTS, CAPABILITIES, COMPARISON) and docs/decisions/0014–0027 supersede the architecture
+above for new work.
+- **UI:** native UI per platform, no embedded web engine: Win32 + Direct2D on Windows, GTK 4 + libadwaita on GNOME,
+  Compose on Android. A web UI remains for browser clients (iOS).
+- **Language:** Nim for the core (sans I/O), desktop apps, server and importer. Android calls the Nim core through
+  JNI.
+- **Crypto and sync:** P-256 + AES-GCM + the platform's TLS, replacing Ed25519 and our Noise. Protocol v2 (entry ID
+  without sig), with a one-time migration.
+- **Drawings:** a grid-indexed path store, with CPU tiles composited by the GPU (measured on the laptop and a Note 9;
+  tools/m6).
+- **Photos, QR:** JPEG XL only, with libjxl everywhere (including our own WebAssembly build); zxing-cpp for QR.
+- **Security:** encryption at rest with a per-device key in the platform key store; Argon2id on the server.
+- **Courses:** re-authored in a JSON content model with declarative figures.
+- **Distribution:** Microsoft Store (private audience, fallback self-signed MSIX) and Flathub.
+
+**Phase 1 started 2026-09-30:**
+- `docs/PROTOCOL-v2.md` (v2 spec; v1 PROTOCOL.md stays frozen).
+- `ref/` = the test-only Python v2 reference (proto2, replay2, crypto2, make_v2_vectors).
+- `ref/vectors/v2-*.json`: core, replay (incl. the v1 import), malformed, crypto. FROZEN once the Nim core uses them.
+
+Spec details settled while writing:
+- peer ID = the first 24 bytes of SHA-256 of the uncompressed P-256 key; the key sits in each device's seq-1 entry;
+- entry ID excludes `sig`; copies sharing an ID are valid if any copy verifies;
+- the v1 import uses sorted [key, value] pairs.
+
+Next: docs/PATHSTORE.md, docs/COURSES.md, then phase 2 (the Nim core).
 
 ## Backlog (rough priority)
 

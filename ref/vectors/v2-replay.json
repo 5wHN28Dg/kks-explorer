@@ -1,0 +1,3625 @@
+{
+ "note": "Protocol v2 test vectors (docs/PROTOCOL-v2.md). Reproduce every value exactly; verify signatures (they are RFC 6979 here, but any valid low-S signature must verify).",
+ "private": {
+  "aad_hex": "6b6b732d707269766174652d76320a6339306138326138613961636262646564643933643037333837626661663833",
+  "body": {
+   "ct": "uZd8-g2uP35BJmZ_Cjk_j_eKAH8F5n5LYEAPku3bKYIAeh8D48GlWeiuF1qBF9ZKKmgkHvLN3OFfJT8DW45l7Cd6D0ztdRMbPLs3UfE",
+   "nonce": "AAECAwQFBgcICQoL",
+   "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+  },
+  "nonce_hex": "000102030405060708090a0b",
+  "person": "c90a82a8a9acbbdedd93d07387bfaf83",
+  "plaintext": {
+   "body": {
+    "course": "hrsg",
+    "score": 7
+   },
+   "type": "course_progress"
+  },
+  "secret_hex": "85c607f9bda251856d6d551629f5b553f1c72c678f6ba90e4a488bf9a3e7eba8"
+ },
+ "protocol": 2,
+ "scenarios": [
+  {
+   "devices": {
+    "ali-phone": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+    "bob-phone": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+    "bob-tablet": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+    "mgr-phone": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+    "mgr-tablet": "vp5JemdOeht8O98Yd-BLE_sDuaDqva8g",
+    "stranger": "qhU2FSt3FBrlM_e-qt7awwKLPqAxYyPi"
+   },
+   "entries": [
+    {
+     "body": {
+      "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+      "caption": "valve",
+      "kks": "11LAB70AA501",
+      "photo": "0e8526fc37b7fe5b5de7466a3cfa7c14"
+     },
+     "hlc": [
+      1790000002400,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "ed8503dbd088b2dc962228ed23e07183c1933c3cfd47e4f4a532a93a788ca5bd",
+     "seq": 5,
+     "sig": "E42Hop9fj2L_6SPM-260nQMFRthh_I0kNECb9hPCgkU1HoaR3Rotpvh6rOI2WeCM3hFF4aQhKpYEh6aqVvhx4Q",
+     "type": "photo",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "shared_note",
+      "value": {
+       "n": [
+        1,
+        2
+       ],
+       "text": "ÜML ☃"
+      }
+     },
+     "hlc": [
+      1790000003600,
+      0
+     ],
+     "key": "BEv4DfnR2utGVFPv64CwdwZEJ55qnZrtCANwdDjhktoe3VsxP59QGZOcw1jtld8ZtkAMpu6HCmVYNAB_m5Bk7rY",
+     "peer": "vp5JemdOeht8O98Yd-BLE_sDuaDqva8g",
+     "prev": null,
+     "seq": 1,
+     "sig": "ERgfqm8-ihUScKKCpOJZN20RYREoLvE1juqmgd2K5ZB0cl6yDYJe_Kl5BgykQK4rOghFMgtxNBhinotfeI91pA",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Ali Admin",
+      "person": "a3b1790fcdd87c86d1249f17ae528cc9",
+      "position": "Shift Supervisor",
+      "role": "admin",
+      "username": "ali"
+     },
+     "hlc": [
+      1790000001200,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "a21d7e838bc875b1b4e6778e915b18a24fa3416e9fe00b13f950a183ef49ec47",
+     "seq": 3,
+     "sig": "Jur1Vws9QTHULwlDgQGPre_uxbGM6xYDcEaxPFyGJX0ORFG251nAGgfKm2yEy8jvMo-9i1eoHeee0xEbiNTduA",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "ct": "YqrqYmB5BOC4D5GQ05a88mJSSlYfsrheLIdx3uGJu0dglI554pb0Uj81ao1dSu5PxGUwRg",
+      "nonce": "AAAAAAAAAAAAAAAA",
+      "person": "a3b1790fcdd87c86d1249f17ae528cc9"
+     },
+     "hlc": [
+      1790000002810,
+      0
+     ],
+     "peer": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+     "prev": "1b4c6a8b6706f682031a5f94698519c9766658403046e4e12b434ca443fdc471",
+     "seq": 2,
+     "sig": "ronVXdZzsGisTn83RgzdbeXrA3R8a7reQWheVoKVe2tBYk2z6EwdOnJmrgdJHHtiXEGube4ttMeXH0k4OeXvhA",
+     "type": "private",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "4fef3f08f5111ee836cc1ce2bb409fd03bb4a4fa949c6bb004807c4abd94cda9"
+     },
+     "hlc": [
+      1790000001600,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "3cdbd2e89e79dc958d9e6085b2e4035257ca8decf897a7f922ef2310fecf2481",
+     "seq": 2,
+     "sig": "suH2kaHUQ2wrgK3XrjmtY6JKP0iU_K9ntCwuNA_cqwhTUwkrqRbLrWOBaVIal7Vc1ipSO6Kx09MHbmT1t4mdNQ",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {
+       "notes": ""
+      },
+      "changes": {
+       "notes": "manager note"
+      },
+      "kks": "11LAB70AA501"
+     },
+     "hlc": [
+      1790000002000,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "7345b4f6ad0389cce7287f1b244e32f2c1e65bcf82f9219c8481cdda46781fe2",
+     "seq": 2,
+     "sig": "OdAcMDAPQen1YJo284URnRf6ASV5ZHLOTNNYX-N_2zhYmKb-vepfUjolK34gpQVN5ds-G2w1vqFAczWNj-HoCw",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "tag": "13bc48e57ca4ee7bc2b0359ada0e65db"
+     },
+     "hlc": [
+      1790000003170,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "9ce6fff03fa3afdf63f62a66e2c354870e4d9b2f877209801ac42c151325c807",
+     "seq": 6,
+     "sig": "7E_ZliwdVaJEDQC5xHXFfpsTMBkuu_yc6Q3P_YrpKAwtM0Jtw5cMJBAjqNW3nl3QtG_8OkrDWrOHA4kjxC90Lg",
+     "type": "tag_remove",
+     "v": 2
+    },
+    {
+     "body": {
+      "ct": "uZd8-g2uP35BJmZ_Cjk_j_eKAH8F5n5LYEAPku3bKYIAeh8D48GlWeiuF1qBF9ZKKmgkHvLN3OFfJT8DW45l7Cd6D0ztdRMbPLs3UfE",
+      "nonce": "AAECAwQFBgcICQoL",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000002800,
+      0
+     ],
+     "key": "BAp2KpD4IdNENrHuvlBYK1RKkRjOQehr3ZTdfNN2PsmGVfcg-9Di7dWtcDWdyMdrwaVJR0gfLJZtMM4o7UYqWqk",
+     "peer": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+     "prev": null,
+     "seq": 1,
+     "sig": "Bz12y9Beta0_zIA6UpwbpjjQCwQleWiI0efd6D5DwcMnd6miJgPiWt1vxOos3kRc_qxc9-lGCqHkhm9ZWequXw",
+     "type": "private",
+     "v": 2
+    },
+    {
+     "body": {
+      "entry": "ceb28f2d0d47016dd58fd5c45ecc15544625d0444bafad4fe848962cedfd77e4",
+      "note": "wrong step"
+     },
+     "hlc": [
+      1790000001750,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "18dbc3b60ba1316871bbe79da3f836109546a1023958f501d79cdc9aa9627e47",
+     "seq": 3,
+     "sig": "4Vug9qLNzk5tlLdlHqNfCkLZ7I4VRTp-zCBGiAVo8isEC6J3Av7GjHongtF0T6AWnE3r-zjVYxUXD8jdZkwF7Q",
+     "type": "reject",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {},
+      "changes": {
+       "area": "x"
+      },
+      "kks": "11LAB70AA501"
+     },
+     "hlc": [
+      1790000001250,
+      0
+     ],
+     "key": "BFJrIZVeUk82zXW0QxOqbocnBv-JpmpNMEtO28FT4GA-xJs5DtF4KE2EVgON6bD0rv5ZyILqUSVBPfI6mD2UWDc",
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": null,
+     "seq": 1,
+     "sig": "N_SsKIlX0KFhcrnGmTPEMM4Z8kWCi69SB9qQGlV_xbNxjLu3FL7Bxmrv8yg6B_8VK8LTkIp87qEspf023EKSPg",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "text": "unknown type"
+     },
+     "hlc": [
+      1790000003200,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "62688c492536eb75ef3e07616ad92483ac34eb1a15df8c9a2bc566faa874f844",
+     "seq": 9,
+     "sig": "1z8pgrnLqsSffcKtTei_cuPmvdESyG8K3vE2buj7C9QZC7uygkkw2Hol9pkTqTGqpc53kWuDC-BykYboe-s_5g",
+     "type": "note",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": {
+       "isa": "TE",
+       "kks": "11HAH90CT103",
+       "suffix": "K"
+      },
+      "entry": "ed8503dbd088b2dc962228ed23e07183c1933c3cfd47e4f4a532a93a788ca5bd"
+     },
+     "hlc": [
+      1790000002300,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "1a02eb3086d3c7e3b0662a92589e74d9586330b89045b95827b5133e402a3b49",
+     "seq": 3,
+     "sig": "iurE1g-PAPiyb7O33_LBBF40VtfCP4RYXU-ZS4Q0g1RYrX5Iny6F6ul4JFYRM_naySgpGcAQ_AnhhQbadNFzdQ",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "photo_mode",
+      "value": "all"
+     },
+     "hlc": [
+      1790000002510,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "a547041383bd80ea3e1e0d2ddc5286e77c39ce8363b0cdeaea02d990b086c7e7",
+     "seq": 11,
+     "sig": "pinLu29npj4BpJY9pgGbVKRimnWBnUYxOJZUq_TrvycS-VXamAwovaha8_DVMmgjBwWZxLmrEUkv_Ni-MTsWzQ",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "photo_mode",
+      "value": "on_open"
+     },
+     "hlc": [
+      1790000002600,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "765b4f76fc8310d6da13f16f43b5e34baf384d97253ebf18ac57f96b273eebff",
+     "seq": 6,
+     "sig": "16abq0NfCu9BlydWktd4sP2DbcKoKnWewTUwUEIyLAxOp0TPRzQYaeCpxeo1H-9VfYCEO3RsHqsESq8XZzUPdg",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+      "label": "tablet",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000002700,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "cd0ad040b77ee2474fefcb27f47f00178b6b418f1516adbc0c28cd2fe2b0549c",
+     "seq": 7,
+     "sig": "v2IG7y7Xb3gu-xP4GPN5E2ZiCHR_uMaKsZVt9YtCWc1BS0Q9PBqGZd2O1hS_XfdVnNjB1oD_jk0CLKvO-tjXJQ",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+      "label": "phone",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001400,
+      0
+     ],
+     "key": "BM_F9M27gcb6DvQbkw06kNHurkgY6BHD4QuM5wwWGvXB4u8TxZPf0sGX25_mpZ6GyFLR5Q6Sni0f1Ut7T0ejOwo",
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": null,
+     "seq": 1,
+     "sig": "AEtexOgp9u-ijiSA2H1r8HfjSs6k8jzfAbXLBDYfuuwcvLIDlejaqK_rg3IPMyP1dCio7-QUS3RAH1gG2CZSng",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "root_sig": "pzlRC1BaTrfI0u5GlJl6hgQC9CO4cgvL6zooK4odG8ZJ82KiMeAO6Z8ibxmzeIcgphr1Dv2pP_oMbc58HQP55Q",
+      "stmt": {
+       "kind": "manager",
+       "person": "a3b1790fcdd87c86d1249f17ae528cc9"
+      }
+     },
+     "hlc": [
+      1790000003400,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "e10e43b5186f3f9665e6051f4a6b7b7b469e31d88962606d093b4bfcb798cf66",
+     "seq": 8,
+     "sig": "gjBebrTTj8q4CHpWrQYV4-w7lBtRcQbmcJWiLocEUM4WinKFOcFloVaV8m0rQ29uNvqlUzupPM8tILMdBU45wg",
+     "type": "root",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {},
+      "changes": {
+       "area": "x"
+      },
+      "kks": "11lab70"
+     },
+     "hlc": [
+      1790000003210,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "20a821f0f604f70c974096e30ca64862538ca28ac56b4ed7e27810eccb87b456",
+     "seq": 10,
+     "sig": "kCNbiyH5TMQ11WxpLJIRqhERCpJKPcIH4KZktOQGVY4FmKo0p-JTku8Wm5z-r3Ih_urzdrhypLH0-GUINBbJUw",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "root_sig": "cFboI7NYvkFhZ0st5ZXMm5cvXaJ0xGh-JuIc3NVQdMYMLOD0-8g0OhpRtWPp9mFDTePwgEXt-wWl3aR3kGazwQ",
+      "stmt": {
+       "device": "vp5JemdOeht8O98Yd-BLE_sDuaDqva8g",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000003500,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "3f80b20c11c0ce630868ab301ac657b0fac1cb330e5c47f4cf431a0cf951bea9",
+     "seq": 9,
+     "sig": "f-YD8_UiIf0txDnw195eBg2nJqpIjxLOwrjTgp0epfx--IcBfNfiKz-W6yGXdn-yLW0wnFVp7Zr_7C4Ui8sHZg",
+     "type": "root",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {
+       "floor": "3 m"
+      },
+      "changes": {
+       "floor": "9 m"
+      },
+      "kks": "11LAB70AA501"
+     },
+     "hlc": [
+      1790000003700,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "8491a0f2bd9225f0a4fb4343e9cbc330a58df5d71bfb44910f31fbb11586bab2",
+     "seq": 14,
+     "sig": "K_Ali8f-Ooqu5I2RclTreAUWjOEUWZbQBPipj_UvcO8EPFRmUNrWEQvZz2yGo6vQbGbwNSokygv9br2ymEGNYQ",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "c303c33d5265a27ce8bd1d1e4e12dd19baa0165ca79017e39c66b782cbdd9df2"
+     },
+     "hlc": [
+      1790000003000,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "228e0e50b66afab4f7989f3b598a651a5dcbb7221640d1ccd95cf06e7d279b72",
+     "seq": 12,
+     "sig": "o8ThjbMaAgdXJ5vv_g1udc_frDAUdaCgoH_ofRo4H4txfMxd3xCRWmF3kRwrP6gmvT9oQHQnzhDCYrr4Yx4KVQ",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {},
+      "changes": {
+       "floor": "3 m",
+       "notes": "near pump"
+      },
+      "kks": "11LAB70AA501"
+     },
+     "hlc": [
+      1790000001500,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "200a3149d92609288cd8281e161d0496e2461591501b092d30b29efbb37e9b15",
+     "seq": 2,
+     "sig": "yr98HmDiL0iLjL16KxwafuQ9H6Yh7zdea8mGdg955M8ONn5tA8kRyBWQNv_xT_TIKBjLmX0Gj_8FJfQin33S3w",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Carol C",
+      "person": "10ca2309e703254f75c6d793959a6318",
+      "position": null,
+      "role": "user",
+      "username": "carol"
+     },
+     "hlc": [
+      1790000002660,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "d4737fd539d388966a6e6095eb4ce1d13eb4f90a2a1ddb0c154ef45c52679935",
+     "seq": 8,
+     "sig": "sxfXcTQGWwBZ0PNZwSo1kzdvZ2l1hotoMXtHCpnTkBYqvR-oUTN46sOCcziIzbPbONtL0pchoTb82DE1_HkeRQ",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+      "last_seq": 0
+     },
+     "hlc": [
+      1790000002950,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "c303c33d5265a27ce8bd1d1e4e12dd19baa0165ca79017e39c66b782cbdd9df2",
+     "seq": 10,
+     "sig": "JM5Oe4WK7HBQ0BgYM3t35PhMy3P77ieW8TVE_Z2EJKcLSx394Xw7hemTuN_iU5F19AW6kxzACBnOclOERRWNoQ",
+     "type": "revoke",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "qC_l5Wni2FDG_Y4QYbvf_N34TnrCiOOF",
+      "label": "x",
+      "person": "a3b1790fcdd87c86d1249f17ae528cc9"
+     },
+     "hlc": [
+      1790000002710,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "3259776af94aeac50ae40d8f5f5415292fd292b8c8e6fad96ee94607654c9961",
+     "seq": 8,
+     "sig": "AzHksIbbyQRAC8XG81kJEktAeD4n1tJX-t4BWFjArSAhgiMUUbYrhGv4hfY30nqddHYVQVbWNJx_VZm7iZ672w",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "0cc47c65adbfd635301726780adf7f03938e19f6c63c5b747367ecdc3e14e55a"
+     },
+     "hlc": [
+      1790000002350,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "9783d101f2484d43a55b28ea7710eca032aec597349b20c67a5afc878a1dc59b",
+     "seq": 8,
+     "sig": "devYtqv8FgMjLSiVWifvW-kQ4Zb2idsqYbIdK8EpsksdeMZNDhB_yGKfxFHmsribEKAVBG8tFPk7BXQAa3z3Ng",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "ceb28f2d0d47016dd58fd5c45ecc15544625d0444bafad4fe848962cedfd77e4"
+     },
+     "hlc": [
+      1790000001800,
+      0
+     ],
+     "key": "BMvV-wo34mkDAybAgRLJN_bgXJdboFxQqX6UjrAo8QO21q2GDkq8GMFsxclsEbmUEnFPTtF7SE-HzfXBZo0wO-4",
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": null,
+     "seq": 1,
+     "sig": "3DEidIwMcUMAxLADX3P0N0pgDW955-ft-nMa7ueBF3xni4oP4QyFkRu2D6dtuXzMSsVtYZ0yIe5wlYSdt2XEOQ",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+      "label": "phone",
+      "person": "a3b1790fcdd87c86d1249f17ae528cc9"
+     },
+     "hlc": [
+      1790000001300,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "bc868a7db7f4bdc7e32bfc8903294511e4f8e4a07bc639bf37ffc3703b34363d",
+     "seq": 5,
+     "sig": "IBwR1R-scXN9zLgMs3GJe0kH5DDzdIN7d3yNQN0qSAVcGBpOw9odyTRyzjFLDi6iGfr4z5HFXUbeql7fuxCPLg",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "4fef3f08f5111ee836cc1ce2bb409fd03bb4a4fa949c6bb004807c4abd94cda9"
+     },
+     "hlc": [
+      1790000002860,
+      0
+     ],
+     "peer": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+     "prev": "fe4c724a02adc4e1bd26f7a1f908edb55fe96a41ee87efffd4c00d86d7dcee12",
+     "seq": 5,
+     "sig": "2Wy_w02YU5Prpb7QeiNNKq_QFYmaCs_c_aqRNuflEx4Jyn5Hhp2L-6vgEhsTglMgt0CVzqfMUDCwXqZIcufGfA",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {
+       "floor": "3 m"
+      },
+      "changes": {
+       "floor": "6 m"
+      },
+      "kks": "11LAB70AA501"
+     },
+     "hlc": [
+      1790000001900,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "1d3d06961cbaff48d5cbd18e225c4e1294979499bb31be0ce16bb7268c289733",
+     "seq": 4,
+     "sig": "m1Uc6OOP7_LvhzviN8ogUDmjbWMjWgEI_301EDpSEQkBvduAnEQyPVl6XhxqXCCX01CvOoBnb_256TNxZn6Llg",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+      "last_seq": 8
+     },
+     "hlc": [
+      1790000003100,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "4f14d60a4c2c59990d6094cd12b9ee117f1baa8b4b449fb98cb49b9e10f17ae4",
+     "seq": 13,
+     "sig": "1CNCoEUBzyZyGNtoYKuneB_XOIhgqC_WokMKEaUqyoAFKiA7HONtMT5-fzakysfbP-0-fnr9w0amQuL7JDvnFw",
+     "type": "revoke",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {
+       "custom": [
+        {
+         "k": "Size",
+         "v": "DN50"
+        }
+       ],
+       "loc": "x"
+      },
+      "changes": {
+       "custom": [],
+       "loc": ""
+      },
+      "kks": "11LBA10AA402"
+     },
+     "hlc": [
+      1790000002160,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "b1c2c77acf747031f7cd1c9234924c43cd414e035c0e0f077674ea464002383b",
+     "seq": 7,
+     "sig": "B84Hs8ArvQU95uKi76p3ZGm57Lj3xnzlnmSsx2j5O8R1XcLBwxoOv1DOcYTg182PDRBDciEIkCsHUVj9g3ZzXQ",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": {
+       "isa": null,
+       "kks": "11LAB90AA301",
+       "suffix": ""
+      },
+      "entry": "cd0ad040b77ee2474fefcb27f47f00178b6b418f1516adbc0c28cd2fe2b0549c"
+     },
+     "hlc": [
+      1790000002420,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "6faf5fcadbc7db876e9f43ea80cc761b479f683dff6d5ce5183ed9c8e2fedb19",
+     "seq": 9,
+     "sig": "O3t2Hk7m-75Oa4HMJKcSP9lGbRg__CUQREF2cHPGYiRJGwOi7P-JIXnYONjH5ldPKcyxV0CohzjIrw6lCsQ0sg",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "bbox": [
+       0,
+       0,
+       10,
+       10
+      ],
+      "isa": null,
+      "kks": null,
+      "note": "",
+      "sheet": "lp",
+      "suffix": "",
+      "tag": "13bc48e57ca4ee7bc2b0359ada0e65db"
+     },
+     "hlc": [
+      1790000003165,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "ee604a4857939fdd3a7cdb12707fa465730c98507ecf1990cc01919710a9f9bd",
+     "seq": 5,
+     "sig": "uFcnsKuwNXjLl8kR__hH3BFOlydIJkCHmnNgHQ1qcTpwTuR2LOYwJpCZLrxGPsNlMHJN-8GJTpM-8w2D8rkMTA",
+     "type": "tag_add",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+      "label": "laptop",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "e0e6e3db16a0fbaad7b2b33329953d803160880cdc47cdddcbc3ba1b3c21cf8d",
+     "seq": 2,
+     "sig": "jYdZ2vgcGQppyr-h8UdilysqSEst0kq4E9DDoblniElf_IElZOIGHLKnC3uUWyCNkl8Mk0JM_EJJ3LaC--GacA",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Carol C",
+      "person": "10ca2309e703254f75c6d793959a6318",
+      "position": null,
+      "role": "admin",
+      "username": "carol"
+     },
+     "hlc": [
+      1790000002500,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "9b8dedec2b581e70189b830e81cdb2f50fc7789ddf5effe12ac9a968d10f149f",
+     "seq": 10,
+     "sig": "MhvPRU2t2sBxnQ8KUJWfmw8IOMX3I26D6HFE7xKfGBNmj7NygWWoXwjFwl4dub-MqcbDBL-G57sthtvLYQX0rw",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Bob Bobson",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83",
+      "position": "Technician",
+      "role": "user",
+      "username": "bob"
+     },
+     "hlc": [
+      1790000002850,
+      0
+     ],
+     "peer": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+     "prev": "1677d86c93e395d6942a59e0cfcb0d054562f2eb7c9d9ec13b5fce5cca7ce659",
+     "seq": 3,
+     "sig": "dWVDZvs11hEkX6z7v3zcRU0GpZyqg1fs9Qf3jCBsSqImFI4rEGYC8MbhFELdHzhxJZv05AFz1m58CverBJxZvA",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {},
+      "changes": {
+       "custom": [
+        {
+         "k": "Size",
+         "v": "DN50"
+        }
+       ],
+       "loc": "x"
+      },
+      "kks": "11LBA10AA402"
+     },
+     "hlc": [
+      1790000002150,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "e0996395e189275de438fcaf8feb3fd7581b573c99d09d2a1cafe8b736a64359",
+     "seq": 6,
+     "sig": "SkdATXE0VJv3l_j0-505I0ejwtXx9xkqmqnMEmXQi41A5WpBEdh_lCJN-pI-PZxv1AknDXxNEIUrQ_twdLsiZw",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p12",
+      "step": 4
+     },
+     "hlc": [
+      1790000003150,
+      0
+     ],
+     "peer": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+     "prev": "7a1ba8abdf1ee8ff0954bb3b3f18cadbb339f318423296f794d1d7b28038eb28",
+     "seq": 6,
+     "sig": "VmOBEDQHqPVw7y0QOetghFP6VoP07eNKzMjbwv4GiAEFkY7OVMbEDhqxlSChfihfrQpCX0LVjZZC4cfjHWbkJw",
+     "type": "link",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Bob User",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "hlc": [
+      1790000001210,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "0ff95401873b43e9ce1c53c30f924a33ec174b480922b458bbf798b848e3199f",
+     "seq": 4,
+     "sig": "WuwRaEvp7SeK-yy38SR6JhFjp4z_wZjdsksq9VQoUvkZ1msen2fs8_5nwXg4Z5nqkRlUi3yOpFPPg1yq4Ax6NQ",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "root_sig": "lLmCEAWOyPb-Aymkv70v6gEy_81mOYGUNvrAKGXwE1AsOfnY12vjiLCoEV4Dp_y2C0HWw_ITe6GlowirVGJu9Q",
+      "stmt": {
+       "kind": "import",
+       "state": "0000000000000000000000000000000000000000000000000000000000000000",
+       "v1": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+     },
+     "hlc": [
+      1790000003260,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "f91b26afc996eac52a4057fe21799ef9521435109584c8523638f13ac9a72c86",
+     "seq": 13,
+     "sig": "psCcvJa5sOlUB9EWmRPaMYo-inZYqwsvSDo2-GnrBPVZVaIvJxX6iEqVds9tIi3myeASScbcPy9kZ2CwK5UIoA",
+     "type": "root",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {},
+      "changes": {
+       "area": "stolen"
+      },
+      "kks": "11LAB70AA501"
+     },
+     "hlc": [
+      1790000002900,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "67d5711b99817408e30adc718961572afa91c748d42e6c68cc21e8e59c047b41",
+     "seq": 9,
+     "sig": "3lZOvGoz1JQeOh8-l4Ym0hlIsOwNdu0sEep6qXmp4shnESsXTqjlYtCXS5D2eZzgzqMlphczHRAtrVLGtRJPlw",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": null,
+      "data": {
+       "kks": "11LAB90AA301",
+       "status": "confirmed"
+      },
+      "tag_id": "hp:12"
+     },
+     "hlc": [
+      1790000002410,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "0cc47c65adbfd635301726780adf7f03938e19f6c63c5b747367ecdc3e14e55a",
+     "seq": 6,
+     "sig": "yxNup_I6rC-jEDHuLBkVB-SPMhNGGooODLID_8X4JNIj4T5vRQTa0U8crA89_K5W7skfwtexEpwuhEXAP_glCg",
+     "type": "review",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p12",
+      "step": 3
+     },
+     "hlc": [
+      1790000001700,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "4fef3f08f5111ee836cc1ce2bb409fd03bb4a4fa949c6bb004807c4abd94cda9",
+     "seq": 3,
+     "sig": "b1TF_wGcCrYq8VPEDgOhkfJNjhBsMB0EEtYcZVZpxKckFUCeoZ9-umfrrqC_c6JCrqMF9UtMDkfYIfBfrhkz6w",
+     "type": "link",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Bob Two",
+      "person": "433c5f7a06133374137a61d1dab5d75e",
+      "position": null,
+      "role": "user",
+      "username": "Bob"
+     },
+     "hlc": [
+      1790000002650,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "263993686014af1c14a1023851adc034457e856cbbbd0ebbd1ce61264e13a413",
+     "seq": 7,
+     "sig": "N8NhvRTOOp08qIdM9lC_TXtKGoRrcMoCCLomuTh-FcBv5rb5khQACZolghXCDAcpcuxoTNXUuCT_KZE9xkB9GQ",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "import": null,
+      "manager": {
+       "full_name": "Some One",
+       "person": "92ba41ca1e94a354260852cf07394517",
+       "position": null,
+       "username": "stranger"
+      },
+      "plant": "Test plant",
+      "root": "BEb8-aFAKBul_hHlT0c-_ifENlbtXoKBtvGiEt80JNqEeeYnhQwVTCVPujwpXHzLTWs05Zd9JZP_ScdJ7lC7iwk",
+      "sig_device": "XJqQdnf0dMu-bnW-bJ7PnNREt0jFgf8R814xSXQeN-Qxez2MFaFLq2vjSaiRbV7uDB93CVX0CP-ozTRbvWP0rQ",
+      "sig_manager": "-Aufx4is0z3EKUyW2pFWY4c7zkHdxUqBty5RdxcrfJc0JklleYMsQHybhcE7FaeLfT0YcgNmktC2gvFv5WiEig",
+      "stmt_device": {
+       "device": "qhU2FSt3FBrlM_e-qt7awwKLPqAxYyPi",
+       "kind": "device",
+       "person": "92ba41ca1e94a354260852cf07394517"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "92ba41ca1e94a354260852cf07394517"
+      }
+     },
+     "hlc": [
+      1790000000900,
+      0
+     ],
+     "key": "BH8Qv4W_CwoyRb2PWEnvTZ4bUag064sjkg35NtKQF8S-rk6_oA0vDjBxXJXlDJWhWMqjPLwltkKWqeZIgStpWRU",
+     "peer": "qhU2FSt3FBrlM_e-qt7awwKLPqAxYyPi",
+     "prev": null,
+     "seq": 1,
+     "sig": "8BpCmzXFhsJ-Edk5KIZEDgg0ficAzV4q-fz7qJPRjkIlDt6r9z43heApBnv63lzkXMeS7vNaQRimnPVhejvfqw",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {
+       "notes": "near pump"
+      },
+      "changes": {
+       "notes": "admin note"
+      },
+      "kks": "11LAB70AA501"
+     },
+     "hlc": [
+      1790000002100,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "7c651c9169fcb8764a7c3fa83850d4665963e7f77caf05f4c1254c0f5b540125",
+     "seq": 5,
+     "sig": "sMyuRlQjclzVTltZa00ATyfwF4m3CHTYGzyaLaTPBpEQdp_andNdBJclGqG4uzG_BZUFOPk0Dja4yCaN0LKXaQ",
+     "type": "equipment",
+     "v": 2
+    },
+    {
+     "body": {
+      "import": null,
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": "I&C Maintenance Engineer",
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "tzXGDCZSKug6jIYIqDHoSyOLsLqcZCr39_REBTihZTBEB8LNxEFIRervyQvBn0U1zRxDBARZUTMn0W8rqqdMlw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BG97K04UIw39oWCUzqXVmkbF0jfeaFPmxKaoG7PQwNESDlxPORdBBWEwr859KI0Ua3EOdEVqlvbTZfv5aWEvzqQ",
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": null,
+     "seq": 1,
+     "sig": "STTLYcfsFBjaIEMJo_CCOr0To_9nWg4I_HDss9Jwn-1oUvdE6ig9eL61O2t1cRDdYSkmiWdCy-wFHzTBGOGUAg",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "root_sig": "WKzhtQYlRaMoan35wWRY9ZhrwrZANvzPjYBrnaWZTgdWB5GGiPZn5500H4sn-Wmqpx4gEb_NcLak37uaBvddzQ",
+      "stmt": {
+       "kind": "rotate",
+       "root": "BCVkR00rUH5kk7cDjpEEMMXvbQ_knYIHvNGHd8PWIHxq0xgHLahJSNFU9Ytc1Bia-DXn8N1JyMjWvHOzRXG0tgY"
+      }
+     },
+     "hlc": [
+      1790000003300,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "1a6c6a2a52eef9fc4799b923e2ebd19f453eb8ff5725e4db027331dfb6fdd54b",
+     "seq": 7,
+     "sig": "1J_A8BHBUe-93VVghjRDnbgxmkj35KFs6U-FEK4pC8wdMb-w8A7X5HHsDRLSpW2CobQZyz5B0eSzUfHpo3DBlQ",
+     "type": "root",
+     "v": 2
+    },
+    {
+     "body": {
+      "bbox": [
+       1000,
+       2000,
+       1800,
+       2400
+      ],
+      "isa": "TI",
+      "kks": "11HAH90CT103",
+      "note": "missed",
+      "sheet": "hp",
+      "suffix": "",
+      "tag": "8a63966cf027aeb6d9d5bc98e343ae73"
+     },
+     "hlc": [
+      1790000002200,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "ceb28f2d0d47016dd58fd5c45ecc15544625d0444bafad4fe848962cedfd77e4",
+     "seq": 4,
+     "sig": "JnGu5ce2VvIVhgOzpm_HRZQwX0vFn9BAG63wgXixaRcju6LkuuETqdKloErQOJdX_hAkQpLBxPeLhinPnV4ncw",
+     "type": "tag_add",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p12",
+      "step": 5
+     },
+     "hlc": [
+      1790000003160,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "2143f21afbd53a9f93057390d72ef44f9df0d3115a83e5ad89df1ec1b139608f",
+     "seq": 4,
+     "sig": "njvdAFqjgOxTELuO0dEqZ8b6EBJr3eDt9ZA2R8fnfr4Mab_0eBdB8aGHRq8zR-UDqVy-HQZLbbsGydZyaAlMrQ",
+     "type": "link",
+     "v": 2
+    },
+    {
+     "body": {
+      "root_sig": "-sr-4FPypCwN6lfbvi35l_CFIJ7ZyR6DPLx5NUWIoEsltRJzUERkf_b-dVdcr7vA5l0TG0pI3odEJREg8Supzw",
+      "stmt": {
+       "key": "BMzsb3bhV6xSOr5Jti8cxWNq3miiE0_9WvxIY56DdC-pMSZ8apCs6hNtYfzCi6sRIW6cqF1P7bSvnmRIzK1Hd2Y",
+       "kind": "backup_key"
+      }
+     },
+     "hlc": [
+      1790000003250,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "fa43567372cd84f1a8eceef35f2634a9d9dfa790bf0cc73ece8632072f54da15",
+     "seq": 12,
+     "sig": "Ok9_6jbjSg7DRz3hp_TeruNK4erupSWufTkM1YilkSproyN6tVP3Wgdap1EVKgJFnFljhdPBGkJ6rPbeb5hnBA",
+     "type": "root",
+     "v": 2
+    },
+    {
+     "body": {
+      "extra": 2,
+      "key": "k",
+      "value": 1
+     },
+     "hlc": [
+      1790000003220,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "40c08bcfb2d4255ecb15474071f1697d08633a6819e098dde58f2d15762b4880",
+     "seq": 11,
+     "sig": "OiWKtAo4r--nQQid50LcSFRnYMUHM4GfIqobL4uqBhQ8QL-IyDke4kO2X-g1mUXnwtx9SL-TTpOj4np7gqghfQ",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Bob Bobson",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83",
+      "position": null,
+      "role": "admin",
+      "username": "bob"
+     },
+     "hlc": [
+      1790000002855,
+      0
+     ],
+     "peer": "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-",
+     "prev": "ab1b9542f78659bf8b3e35d51075188fdf0b7a7f1316a857a1f9e26949d38751",
+     "seq": 4,
+     "sig": "pwsYEoT81b3Cl-P_JP0-oInyAwzRI-WeQABfCxQa88NmpF2Xpx9K-ePu6VdFzdqCL-8i5QjfY6vPVSvMl_NfWQ",
+     "type": "person",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "impostor genesis for another root: bad_genesis",
+    "bob-phone entry before its cert: not_certified",
+    "p1 approved by ali; p2 rejected first, the later approve is already_decided",
+    "notes: manager value beats the admin write that did not see it (conflict kept=manager)",
+    "custom and loc emptied → 11LBA10AA402 removed",
+    "tag_add approved with edit → suffix K, isa TE; a manager tag added then removed",
+    "photo approve before its proposal: waits, applies",
+    "edit on a review proposal → rejected",
+    "admin creating an admin / writing a setting: not_allowed",
+    "duplicate username (case-insensitive): username_taken",
+    "private entry under own person counted, under another person not_allowed",
+    "bob-phone revoked by ali after its tablet cert: later proposal, its approve and the phone's own revoke of the tablet do not count",
+    "backup_key statement sets state.backup_key; an import statement outside a genesis is bad_body",
+    "root rotation: a later statement signed by the old key is bad_root_sig; the new key certifies mgr-tablet",
+    "floor 9 m by ali over her own 6 m with a stale base: conflict, new wins (both admin)"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {
+     "8a63966cf027aeb6d9d5bc98e343ae73": {
+      "bbox": [
+       1000,
+       2000,
+       1800,
+       2400
+      ],
+      "isa": "TE",
+      "kks": "11HAH90CT103",
+      "note": "missed",
+      "sheet": "hp",
+      "suffix": "K"
+     }
+    },
+    "backup_key": "BMzsb3bhV6xSOr5Jti8cxWNq3miiE0_9WvxIY56DdC-pMSZ8apCs6hNtYfzCi6sRIW6cqF1P7bSvnmRIzK1Hd2Y",
+    "conflicts": [
+     {
+      "entity": "equipment",
+      "field": "notes",
+      "kept": "manager note",
+      "kept_by": "1a02eb3086d3c7e3b0662a92589e74d9586330b89045b95827b5133e402a3b49",
+      "key": "11LAB70AA501",
+      "lost": "near pump",
+      "lost_by": "4fef3f08f5111ee836cc1ce2bb409fd03bb4a4fa949c6bb004807c4abd94cda9"
+     },
+     {
+      "entity": "equipment",
+      "field": "notes",
+      "kept": "manager note",
+      "kept_by": "1a02eb3086d3c7e3b0662a92589e74d9586330b89045b95827b5133e402a3b49",
+      "key": "11LAB70AA501",
+      "lost": "admin note",
+      "lost_by": "e0996395e189275de438fcaf8feb3fd7581b573c99d09d2a1cafe8b736a64359"
+     },
+     {
+      "entity": "equipment",
+      "field": "floor",
+      "kept": "9 m",
+      "kept_by": "45c8759ddcfe2930a18ece6d1edc3e3c6bf6eb300824de173a8f18740a7fc190",
+      "key": "11LAB70AA501",
+      "lost": "6 m",
+      "lost_by": "7c651c9169fcb8764a7c3fa83850d4665963e7f77caf05f4c1254c0f5b540125"
+     }
+    ],
+    "devices": {
+     "62-Al5J1R7o2gcY407caBlFThsLFPRYn": {
+      "cut": null,
+      "label": "laptop",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to": {
+      "cut": 8,
+      "label": "phone",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX": {
+      "cut": null,
+      "label": "phone",
+      "person": "a3b1790fcdd87c86d1249f17ae528cc9"
+     },
+     "gkXGpCNwnXCXyneOSZA6hePDi1K7N_L-": {
+      "cut": null,
+      "label": "tablet",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-": {
+      "cut": null,
+      "label": "",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "vp5JemdOeht8O98Yd-BLE_sDuaDqva8g": {
+      "cut": null,
+      "label": "",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     }
+    },
+    "equipment": {
+     "11LAB70AA501": {
+      "floor": "9 m",
+      "notes": "manager note"
+     }
+    },
+    "ignored": {
+     "1677d86c93e395d6942a59e0cfcb0d054562f2eb7c9d9ec13b5fce5cca7ce659": "not_allowed",
+     "200a3149d92609288cd8281e161d0496e2461591501b092d30b29efbb37e9b15": "not_certified",
+     "20a821f0f604f70c974096e30ca64862538ca28ac56b4ed7e27810eccb87b456": "unknown_type",
+     "228e0e50b66afab4f7989f3b598a651a5dcbb7221640d1ccd95cf06e7d279b72": "not_allowed",
+     "3f80b20c11c0ce630868ab301ac657b0fac1cb330e5c47f4cf431a0cf951bea9": "bad_root_sig",
+     "40c08bcfb2d4255ecb15474071f1697d08633a6819e098dde58f2d15762b4880": "bad_body",
+     "66c3acefc15cd7c33b51f4388e619d761e8b3ec5e4f7351350c4f3d5bfbfaf46": "revoked",
+     "67d5711b99817408e30adc718961572afa91c748d42e6c68cc21e8e59c047b41": "not_allowed",
+     "7345b4f6ad0389cce7287f1b244e32f2c1e65bcf82f9219c8481cdda46781fe2": "already_decided",
+     "7a1ba8abdf1ee8ff0954bb3b3f18cadbb339f318423296f794d1d7b28038eb28": "not_allowed",
+     "a547041383bd80ea3e1e0d2ddc5286e77c39ce8363b0cdeaea02d990b086c7e7": "not_allowed",
+     "c1186ea2fa51aac3bf3a00a87c900d33d3c2737ccb5d3bcbf9942cb7a7d1ae87": "bad_body",
+     "c303c33d5265a27ce8bd1d1e4e12dd19baa0165ca79017e39c66b782cbdd9df2": "revoked",
+     "d4737fd539d388966a6e6095eb4ce1d13eb4f90a2a1ddb0c154ef45c52679935": "username_taken",
+     "d80c740dd0c255afaf79373fd2e80c5a1a6be5846f3d5ed1489f32a2c3a681c1": "bad_genesis",
+     "fa43567372cd84f1a8eceef35f2634a9d9dfa790bf0cc73ece8632072f54da15": "bad_body",
+     "fe4c724a02adc4e1bd26f7a1f908edb55fe96a41ee87efffd4c00d86d7dcee12": "not_allowed"
+    },
+    "imported": null,
+    "links": [
+     [
+      "p12",
+      5,
+      "11LAB70AA501"
+     ]
+    ],
+    "manager": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+    "persons": {
+     "10ca2309e703254f75c6d793959a6318": {
+      "full_name": "Carol C",
+      "position": null,
+      "role": "user",
+      "username": "carol"
+     },
+     "a3b1790fcdd87c86d1249f17ae528cc9": {
+      "full_name": "Ali Admin",
+      "position": "Shift Supervisor",
+      "role": "admin",
+      "username": "ali"
+     },
+     "c90a82a8a9acbbdedd93d07387bfaf83": {
+      "full_name": "Bob Bobson",
+      "position": "Technician",
+      "role": "user",
+      "username": "bob"
+     },
+     "f03d20e6a3f5f704d6f48ae6fe55a6b3": {
+      "full_name": "Hashim M",
+      "position": "I&C Maintenance Engineer",
+      "role": "admin",
+      "username": "hashim"
+     }
+    },
+    "photos": {
+     "0e8526fc37b7fe5b5de7466a3cfa7c14": {
+      "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+      "caption": "valve",
+      "kks": "11LAB70AA501"
+     }
+    },
+    "private": {
+     "c90a82a8a9acbbdedd93d07387bfaf83": [
+      "1b4c6a8b6706f682031a5f94698519c9766658403046e4e12b434ca443fdc471"
+     ]
+    },
+    "proposals": {
+     "0cc47c65adbfd635301726780adf7f03938e19f6c63c5b747367ecdc3e14e55a": "approved",
+     "4fef3f08f5111ee836cc1ce2bb409fd03bb4a4fa949c6bb004807c4abd94cda9": "approved",
+     "ba06d9fb1a46c8166809252b5daeb4ba80ef7c2fce585b8d7ba3a9545285fc36": "pending",
+     "cd0ad040b77ee2474fefcb27f47f00178b6b418f1516adbc0c28cd2fe2b0549c": "rejected",
+     "ceb28f2d0d47016dd58fd5c45ecc15544625d0444bafad4fe848962cedfd77e4": "rejected",
+     "ed8503dbd088b2dc962228ed23e07183c1933c3cfd47e4f4a532a93a788ca5bd": "approved"
+    },
+    "reviews": {},
+    "root": "BCVkR00rUH5kk7cDjpEEMMXvbQ_knYIHvNGHd8PWIHxq0xgHLahJSNFU9Ytc1Bia-DXn8N1JyMjWvHOzRXG0tgY",
+    "settings": {
+     "photo_mode": "on_open",
+     "plant": "Test plant",
+     "shared_note": {
+      "n": [
+       1,
+       2
+      ],
+      "text": "ÜML ☃"
+     }
+    },
+    "votes": {}
+   },
+   "why": "one plant: identity, proposals, approvals, merge, revocation, rotation, backup key"
+  },
+  {
+   "devices": {
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+    "mgr-phone": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-"
+   },
+   "entries": [
+    {
+     "body": {
+      "device": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+      "last_seq": 2
+     },
+     "hlc": [
+      1790000002500,
+      0
+     ],
+     "key": "BMvV-wo34mkDAybAgRLJN_bgXJdboFxQqX6UjrAo8QO21q2GDkq8GMFsxclsEbmUEnFPTtF7SE-HzfXBZo0wO-4",
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": null,
+     "seq": 1,
+     "sig": "F63XeJiPfbmWxSpWXUu7Gu-zlNIogitjKtoyKicrUw82qDXi2ylOjUOAbxKU-GHyGb5MAt7qtwobBcXtOO1avQ",
+     "type": "revoke",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+      "label": "laptop",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "93b00efd4aa872ab4812d5a34e2eb53ab4e16ac56255a3702dfa80208576e5d6",
+     "seq": 2,
+     "sig": "0jCZmVc5sCCEvXHbPcP_oi3m8HXr1AQ_LmgA5qrhAh0vS7hbN-2_2APRCWkeYeT731s1v1nS8-OSEnNgi7qBZg",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "root_sig": "heLolVTnZJY-qqVTMtWjHGoGUstvrTd6ja0EPJ7EXhMYh-OadfTC5u2gkzcFVlUutQuLWacs917rSaoQXXwYPQ",
+      "stmt": {
+       "device": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+       "kind": "revoke",
+       "last_seq": 2
+      }
+     },
+     "hlc": [
+      1790000002600,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "1ecd80e197aac9e7ea90e547c78fb3de2df3f65559ce036e0a66758a190bb124",
+     "seq": 2,
+     "sig": "FRYkhE7iQDBOE6RY38_8UdTIFlKGF4COLpb_RGiMtzJtCtKABytIpVJZjzvKCSklB-LOtSkvrN3fAVQlgP5nTg",
+     "type": "root",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+      "last_seq": 0
+     },
+     "hlc": [
+      1790000002000,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "249b9a0765b8223ac9f9c9c4f9ecf9730af8804ed8377c287e0f4fd0763e6d4b",
+     "seq": 3,
+     "sig": "gx4YQOjKXFj-sUI4zDz-l9iVn7hC8noQA3-vcXMfPWkw21zGfTGDiWMs1nWtP0RRUCkJN-lzRNinYdByltNqOQ",
+     "type": "revoke",
+     "v": 2
+    },
+    {
+     "body": {
+      "import": null,
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "tzXGDCZSKug6jIYIqDHoSyOLsLqcZCr39_REBTihZTBEB8LNxEFIRervyQvBn0U1zRxDBARZUTMn0W8rqqdMlw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BG97K04UIw39oWCUzqXVmkbF0jfeaFPmxKaoG7PQwNESDlxPORdBBWEwr859KI0Ua3EOdEVqlvbTZfv5aWEvzqQ",
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": null,
+     "seq": 1,
+     "sig": "0FOB1mS5McjGJSF0s9q6_cJ2fOxPd8HOnQ6Tpw-5I0dVbFq0MVaoH3qmaiU5tmXQ0cdIdp58Nceu-I5U0OgVzQ",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "photo_mode",
+      "value": "on_open"
+     },
+     "hlc": [
+      1790000002700,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "48001f4f7d412246f638581e5bb79535d25f6efe96f76a7e01cca39ef4f90279",
+     "seq": 3,
+     "sig": "FGRPjuPtegkNyaswpjktFaOJx_UUkFoEFKY23QmoqB5yWJhEjVdZuHnkTkN6TzzeoyYXafYNOru9JpltUJM-tQ",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "photo_mode",
+      "value": "thief"
+     },
+     "hlc": [
+      1790000002100,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "706f146af28deafdf9b3d1c66d657d54a76bc7a6f8dea573d714d81c21a0bd93",
+     "seq": 4,
+     "sig": "vC6fWYkxV-PbGn1x_V3QhzgHQqJJSZ50wEurVhc2fPBEf3c6ADrVsb9mexfZzPV2scZ8au9dxZdsKTpOKpdzYA",
+     "type": "setting",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "phone cut at 2; its revoke of the laptop and its setting are revoked",
+    "laptop entries all count; photo_mode = on_open"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {},
+    "backup_key": null,
+    "conflicts": [],
+    "devices": {
+     "62-Al5J1R7o2gcY407caBlFThsLFPRYn": {
+      "cut": null,
+      "label": "laptop",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-": {
+      "cut": 2,
+      "label": "",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     }
+    },
+    "equipment": {},
+    "ignored": {
+     "706f146af28deafdf9b3d1c66d657d54a76bc7a6f8dea573d714d81c21a0bd93": "revoked",
+     "bda11b08c3707780b8d36a71a1567c7a3b11f995925682baf9fda1587dd34d11": "revoked"
+    },
+    "imported": null,
+    "links": [],
+    "manager": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+    "persons": {
+     "f03d20e6a3f5f704d6f48ae6fe55a6b3": {
+      "full_name": "Hashim M",
+      "position": null,
+      "role": "admin",
+      "username": "hashim"
+     }
+    },
+    "photos": {},
+    "private": {},
+    "proposals": {},
+    "reviews": {},
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {
+     "photo_mode": "on_open",
+     "plant": "Test plant"
+    },
+    "votes": {}
+   },
+   "why": "stolen manager phone: a root-signed revoke outranks device revokes"
+  },
+  {
+   "devices": {
+    "bad-key": "vJNaekFDeWHkH_vCjjfJD660wtk0VQNg",
+    "bob-phone": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+    "mgr-phone": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-"
+   },
+   "entries": [
+    {
+     "body": {
+      "key": "x",
+      "value": 1
+     },
+     "hlc": [
+      1790000001600,
+      0
+     ],
+     "key": "BG97K04UIw39oWCUzqXVmkbF0jfeaFPmxKaoG7PQwNESDlxPORdBBWEwr859KI0Ua3EOdEVqlvbTZfv5aWEvzqQ",
+     "peer": "vJNaekFDeWHkH_vCjjfJD660wtk0VQNg",
+     "prev": null,
+     "seq": 1,
+     "sig": "Cj6Z0Zxjr4EBzaeNlX35_cLLrImKZMKQhg1PAYwFyqFFeIdubuAXb2RCIylfQja2bs787AklCuqw0m-XICUTlQ",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Bob User",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "93b00efd4aa872ab4812d5a34e2eb53ab4e16ac56255a3702dfa80208576e5d6",
+     "seq": 2,
+     "sig": "cvw1fPynjedYRXCQNHm7Vtre-MoXwbigbHQ9txa5gJgUUBUw36MKq4sX68GeqUbVtEgcCSiMjsEd_KKo4x7BFA",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Bob User",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "93b00efd4aa872ab4812d5a34e2eb53ab4e16ac56255a3702dfa80208576e5d6",
+     "seq": 2,
+     "sig": "3o9XF73Rxe4wnZSIjW3WZ5h1vD_IEe12qHm3IvAcV1AbjMJ_J8Wz8BD7J7WKYYAGBSAsuPveaZbHFMrzeqsOFA",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "b",
+      "value": 2
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "d7915afc82bdf94582cecdb98c95e306e887f5b3ee9d7655cde8639150af29a8",
+     "seq": 2,
+     "sig": "6ByQt8om2v2zU9CUMuBu5cxddx3woJYP4bZJH6p0kTQpcxYhJcuUyLdetlPJqoZM6ciWFFcMy9Y--BT5tcf1Yw",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "y",
+      "value": 2
+     },
+     "hlc": [
+      1790000001700,
+      0
+     ],
+     "peer": "vJNaekFDeWHkH_vCjjfJD660wtk0VQNg",
+     "prev": "145fe9a02fa6465e21d23f3bbb3a442edf5b27e357794ad8a3441a7b567d999f",
+     "seq": 2,
+     "sig": "cDvJO2qaA87_bwSPhs-LIzWuMXQ3yqMK6PMgb8ppZPJXc-S6gFpr3SloU6QB31ypU-xPLyfu91IKyBenZmmHLQ",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001200,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "19b0bfe12859840e03c956ba4e7308126ea79f4e72ed185bbc08d8c5e6e1b224",
+     "seq": 3,
+     "sig": "3o9XF73Rxe4wnZSIjW3WZ5h1vD_IEe12qHm3IvAcV1AbjMJ_J8Wz8BD7J7WKYYAGBSAsuPveaZbHFMrzeqsOFA",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001200,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "19b0bfe12859840e03c956ba4e7308126ea79f4e72ed185bbc08d8c5e6e1b224",
+     "seq": 3,
+     "sig": "3o9XF73Rxe4wnZSIjW3WZ5h1vD_IEe12qHm3IvAcV1Dkcz1_2DpMEO8E2Ep1nn_5t8bN9Ks5NO4spP_PgbgXPQ",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p1",
+      "step": 2
+     },
+     "hlc": [
+      1790000001400,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "d7973584b25db4ffb61f439156d71101bb3d8f2bd7340e71645fdf58258816a4",
+     "seq": 2,
+     "sig": "8T1pT7SL3yVtbO8GfufMvu8cj1BFyleakEZ4OL4OivEH6tZZUcQTHDBPKkV44ko5ujSwGrKfcRhazVxYLO5uLA",
+     "type": "link",
+     "v": 2
+    },
+    {
+     "body": {
+      "import": null,
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "tzXGDCZSKug6jIYIqDHoSyOLsLqcZCr39_REBTihZTBEB8LNxEFIRervyQvBn0U1zRxDBARZUTMn0W8rqqdMlw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BG97K04UIw39oWCUzqXVmkbF0jfeaFPmxKaoG7PQwNESDlxPORdBBWEwr859KI0Ua3EOdEVqlvbTZfv5aWEvzqQ",
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": null,
+     "seq": 1,
+     "sig": "0FOB1mS5McjGJSF0s9q6_cJ2fOxPd8HOnQ6Tpw-5I0dVbFq0MVaoH3qmaiU5tmXQ0cdIdp58Nceu-I5U0OgVzQ",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "forged",
+      "value": 1
+     },
+     "hlc": [
+      1790000001800,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "e285f6ef3bb6dd0654970fdd91421e0f93c03490f0aa8ba1022decddaf48580a",
+     "seq": 5,
+     "sig": "_AuWjb2r9khJe118GHJA3zw0lYBu1rBfncNmHtOMtl1wLuMY_XifVK0GydWM38PH6H8_kd2Fz1cPhIMKpRtEzQ",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p1",
+      "step": 9
+     },
+     "hlc": [
+      1790000001400,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "d7973584b25db4ffb61f439156d71101bb3d8f2bd7340e71645fdf58258816a4",
+     "seq": 2,
+     "sig": "kH-mp7aXtF09lwa9ORwDdELZvpOuZKUrsYN8n33E6IRFFiuuMtRbLUnrBkJnjesf3Bj6yeH8Bz-YhfhWW5LhrQ",
+     "type": "link",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p1",
+      "step": 1
+     },
+     "hlc": [
+      1790000001300,
+      0
+     ],
+     "key": "BFJrIZVeUk82zXW0QxOqbocnBv-JpmpNMEtO28FT4GA-xJs5DtF4KE2EVgON6bD0rv5ZyILqUSVBPfI6mD2UWDc",
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": null,
+     "seq": 1,
+     "sig": "NotSvp8rWUa5Nz_l19o8z1yvn4PikfjqhoXLBFx90RB_cm0y-4rvshbx06XWA9ZGUPT9HjBREKVX5UkMx_l58A",
+     "type": "link",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "vJNaekFDeWHkH_vCjjfJD660wtk0VQNg",
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001210,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "7e777a4fc5d7ea6aa997d47c8ef881a4c0fb2b4830ee18f19c8ea5441667d39c",
+     "seq": 4,
+     "sig": "_AuWjb2r9khJe118GHJA3zw0lYBu1rBfncNmHtOMtl1wLuMY_XifVK0GydWM38PH6H8_kd2Fz1cPhIMKpRtEzQ",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p1",
+      "step": 3
+     },
+     "hlc": [
+      1790000001500,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "8a7dcc23b513844db834ae73373f31c95f90de741d3c20cf25ac70972394b345",
+     "seq": 3,
+     "sig": "uGRjoYJY1kByTWmAhSlH9K4XaD-BSojnI6oH_tSvbzVAWK7DhoCTkI0YHEk4gltlL49fvmVDVElyHxkrAzJxCg",
+     "type": "link",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "bob-phone forked at seq 2: cut at 1, both seq 2 entries and seq 3 are fork evidence",
+    "mgr-laptop seq 2 without seq 1: chain_gap",
+    "copies of valid entries with a wrong or high-S signature share the valid entry's ID: dropped, nothing reported (§3 copies)",
+    "a forged entry (content no key signed): bad_sig",
+    "bad-key: seq 1 whose key hashes to another peer ID: bad_key; its seq 2: chain_gap"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {},
+    "backup_key": null,
+    "conflicts": [],
+    "devices": {
+     "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to": {
+      "cut": 1,
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-": {
+      "cut": null,
+      "label": "",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "vJNaekFDeWHkH_vCjjfJD660wtk0VQNg": {
+      "cut": null,
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     }
+    },
+    "equipment": {},
+    "ignored": {
+     "145fe9a02fa6465e21d23f3bbb3a442edf5b27e357794ad8a3441a7b567d999f": "bad_key",
+     "61a5309d036dc8a3c59c2da6431e25688cc5baaea6176c8038bdae2cdeee5a04": "chain_gap",
+     "66e7269882182cf188f48d6e978fd48a53599bb35e7bf322da4cd9659ef533c9": "chain_gap",
+     "8a7dcc23b513844db834ae73373f31c95f90de741d3c20cf25ac70972394b345": "fork",
+     "bdddb834284bb67fa531b51ad2c677fb5a3771234949d6746bbf8031bb3a83d7": "bad_sig",
+     "d056bd1e276a37f8ef26c550ccf581b16b0be6ead0d744cfdbd6fdd1e48272ce": "fork",
+     "f0b1f8225d388a9030d52f6660fdcc2bba3e31f12c6a16bb1b1e351356607ab2": "fork"
+    },
+    "imported": null,
+    "links": [],
+    "manager": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+    "persons": {
+     "c90a82a8a9acbbdedd93d07387bfaf83": {
+      "full_name": "Bob User",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "f03d20e6a3f5f704d6f48ae6fe55a6b3": {
+      "full_name": "Hashim M",
+      "position": null,
+      "role": "admin",
+      "username": "hashim"
+     }
+    },
+    "photos": {},
+    "private": {},
+    "proposals": {
+     "d7973584b25db4ffb61f439156d71101bb3d8f2bd7340e71645fdf58258816a4": "pending"
+    },
+    "reviews": {},
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {
+     "plant": "Test plant"
+    },
+    "votes": {}
+   },
+   "why": "fork, gap, bad signature, high S, bad key"
+  },
+  {
+   "devices": {
+    "bob-laptop": "_EYPoymouF3qYLQd-kviliv2y8TofGJd",
+    "bob-phone": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+    "dana-phone": "p6BvoEtI6hNK0CnlmhaCLAvYOtLPBNZW",
+    "mgr-phone": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-"
+   },
+   "entries": [
+    {
+     "body": {
+      "entry": "c3a4027482cc2810192538888613068d8cd164946385fa9b378669bf4af6d000"
+     },
+     "hlc": [
+      1790000001500,
+      0
+     ],
+     "peer": "p6BvoEtI6hNK0CnlmhaCLAvYOtLPBNZW",
+     "prev": "2c0dde09d7d76cff8abc8680c0e6a699899a7dc85aaca12d9c3b1b6c183cef64",
+     "seq": 3,
+     "sig": "qwA-GBeXK86X8DfX6vq6tY2ZulXcScXj5TOF1CaUL7ExLqBeukmZb5Ps1r5LXtcf2FFdd8OYVq3HMMoxDsE2LA",
+     "type": "withdraw",
+     "v": 2
+    },
+    {
+     "body": {
+      "blob": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+      "caption": "",
+      "kks": "11LAB70AA501",
+      "photo": "73005fe702ee13768f3295d2745aba52"
+     },
+     "hlc": [
+      1790000001310,
+      0
+     ],
+     "key": "BCXL1CliHdEwgIzCDMu4rUokkT_gHHEoHtTKWyxvHgJacjuRp1IbYxP6sCdvN4npQss-HRLq-gnQI6KrratCCts",
+     "peer": "p6BvoEtI6hNK0CnlmhaCLAvYOtLPBNZW",
+     "prev": null,
+     "seq": 1,
+     "sig": "VZxynkSzscNsH1n4aojLMPR8-UnRmN4vqnWXTpTHZnBvPo4d96949AHqmckvt5yA89q1OXB3YE-nod6Z8jf59g",
+     "type": "photo",
+     "v": 2
+    },
+    {
+     "body": {
+      "entry": "c3a4027482cc2810192538888613068d8cd164946385fa9b378669bf4af6d000"
+     },
+     "hlc": [
+      1790000001510,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "483db055bc2dd26d1aa17e7029d2c811542d0e966cb2441901740b279a6681b6",
+     "seq": 4,
+     "sig": "pj9vtyfC0-WJYa1bdw8R-dqiSrrJ3Xp5k9eW6--8MR8QOHZm3Xu3qFd7hhr2luGHXPNkAFyqlgFKQ0OMpW26cg",
+     "type": "withdraw",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Bob User",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "93b00efd4aa872ab4812d5a34e2eb53ab4e16ac56255a3702dfa80208576e5d6",
+     "seq": 2,
+     "sig": "cvw1fPynjedYRXCQNHm7Vtre-MoXwbigbHQ9txa5gJgUUBUw36MKq4sX68GeqUbVtEgcCSiMjsEd_KKo4x7BFA",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "c3a4027482cc2810192538888613068d8cd164946385fa9b378669bf4af6d000"
+     },
+     "hlc": [
+      1790000001520,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "74db42c505be471f6d5c5554b95d41fee2721b34fed1041c79cbefb099e6a567",
+     "seq": 6,
+     "sig": "t1J5B7gkL1P_i_xBIjIZtV_Va-lAtqezft8ZM3bNEsYeUpjTBmxqRBadQgzebR--gjS6vfFx2df-tq8KG6eoew",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": true,
+      "proc": "p1",
+      "step": 1
+     },
+     "hlc": [
+      1790000002100,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "f036e49cbf323d32020ffec975a6e1073995ab21daa60774c41e57cb2d5d84e3",
+     "seq": 6,
+     "sig": "BIFfxsj2ANEAlyN8D7WQ4UyMq7lzA-rQkYY1vealBmsJhn9Bk0rz_fTefsFHctbQcZV_zP4-cK4PeeD_FPhImQ",
+     "type": "link",
+     "v": 2
+    },
+    {
+     "body": {
+      "entry": "c3a4027482cc2810192538888613068d8cd164946385fa9b378669bf4af6d000",
+      "on": true
+     },
+     "hlc": [
+      1790000001400,
+      0
+     ],
+     "peer": "p6BvoEtI6hNK0CnlmhaCLAvYOtLPBNZW",
+     "prev": "135e9e669fa1717fdd23b28b44f41b1fb2ce719f3f29791ec1ed1b0226a73368",
+     "seq": 2,
+     "sig": "FVKjnLwoXbBrWgQRrz4qE0qMv_7FZaYkAXgnzytqIhtkragJkv7PpwiGB_PLeUAh6HtOe_H3blnUaDMBdrPR-A",
+     "type": "vote",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "f036e49cbf323d32020ffec975a6e1073995ab21daa60774c41e57cb2d5d84e3"
+     },
+     "hlc": [
+      1790000001900,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "fa865bfd6e293931bbb7fef69ea469c703697b4ec3352a8173b879ae612e2ce1",
+     "seq": 9,
+     "sig": "6potOGXitN-MhzaNzESsKh1yG-TjzxS_KH2Pyy7qZNYZZbkuACX4PExbNYi-GaNtRLzP8iJG8rbIDSjVBHHCRQ",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "entry": "135e9e669fa1717fdd23b28b44f41b1fb2ce719f3f29791ec1ed1b0226a73368",
+      "on": false
+     },
+     "hlc": [
+      1790000001420,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "519ed4da463439a51a4b3ef24d2a4306dd2053aff9bd802bd592abb38af75523",
+     "seq": 3,
+     "sig": "pZJxRKx5cgfqdnInQL2ZkRJ6JqRzafraaxUbl8w0y1JHZqShj3MB3EteDAMUkHiYXNDAkrAEcmC3c7foT6UdRQ",
+     "type": "vote",
+     "v": 2
+    },
+    {
+     "body": {
+      "entry": "135e9e669fa1717fdd23b28b44f41b1fb2ce719f3f29791ec1ed1b0226a73368",
+      "on": true
+     },
+     "hlc": [
+      1790000001410,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "c3a4027482cc2810192538888613068d8cd164946385fa9b378669bf4af6d000",
+     "seq": 2,
+     "sig": "1QTAar0-yjKDqBfcFPAQglI9UdoAvJuYerZOfqlXyVxyFJ8xhLSNILOopDaqTkV_RRf5MjaWRYVRMtc5fBnOLA",
+     "type": "vote",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "_EYPoymouF3qYLQd-kviliv2y8TofGJd",
+      "label": "laptop",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001950,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "367ce7d08ebce4265ed89dbfc579022dca33a0ae21af213e44c879a5fa7df5bd",
+     "seq": 10,
+     "sig": "7qnizuTo_2IiI9Mbcii8P8qMWc1YHsSMH8n2PExsgEgZVSZnhBdy7mEnr18RX-8LDdU-SUdaQUhN6q6cdfVRSw",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001200,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "aa3bf0f5fa10a4076f6103e9d841fd4acc518463696627ba50bad150f176f391",
+     "seq": 4,
+     "sig": "2sbTwFvk7JN3nWEyRUrxldxBFqkQJ23QNdt__s5ptYVmoliveth3ANu2VrFBDwQO_EZBxj0NofNZgVZks0MkXg",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "p6BvoEtI6hNK0CnlmhaCLAvYOtLPBNZW",
+      "label": "",
+      "person": "e01d406ed95cc6ab47fe436a13466646"
+     },
+     "hlc": [
+      1790000001210,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "6d84d28c3e2588ccbae9ca781b906b223bcf0113dbdcb86d391f4e55bb1f1745",
+     "seq": 5,
+     "sig": "wHaVm1QiGo6fh4kZNFXxAKZQTebfTICB0xqaz9Fzsth00WdPnHE5OVWJUtQZ2tMmX9JWA5KRhDp6ChmMmXpUnw",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "135e9e669fa1717fdd23b28b44f41b1fb2ce719f3f29791ec1ed1b0226a73368"
+     },
+     "hlc": [
+      1790000001600,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "1c8505c8d241c317b27bfb7064827abc5c526265ad318015af20c864161242b1",
+     "seq": 7,
+     "sig": "GVZd-0oqd30aZzLpXWi5YgMO6oiuogQmzmDl6IFUVRpG_MZhdAqhMgDLDK79U1ydBAnx1byigAdDfh6hFlhxsQ",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "import": null,
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "tzXGDCZSKug6jIYIqDHoSyOLsLqcZCr39_REBTihZTBEB8LNxEFIRervyQvBn0U1zRxDBARZUTMn0W8rqqdMlw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BG97K04UIw39oWCUzqXVmkbF0jfeaFPmxKaoG7PQwNESDlxPORdBBWEwr859KI0Ua3EOdEVqlvbTZfv5aWEvzqQ",
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": null,
+     "seq": 1,
+     "sig": "0FOB1mS5McjGJSF0s9q6_cJ2fOxPd8HOnQ6Tpw-5I0dVbFq0MVaoH3qmaiU5tmXQ0cdIdp58Nceu-I5U0OgVzQ",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Dana User",
+      "person": "e01d406ed95cc6ab47fe436a13466646",
+      "position": null,
+      "role": "user",
+      "username": "dana"
+     },
+     "hlc": [
+      1790000001110,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "19b0bfe12859840e03c956ba4e7308126ea79f4e72ed185bbc08d8c5e6e1b224",
+     "seq": 3,
+     "sig": "7f4i16oHCPVEIqCgVlhGv63iMDYrdB_IrziuaLjGcYx3trAtWF8jQ3secGKaggWekSOSlCyBqZ7etAbG-APdpg",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "blob": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+      "caption": "",
+      "kks": "11LAB70AA501",
+      "photo": "746f0fdda809ff078506b8aa95f29ea3"
+     },
+     "hlc": [
+      1790000001300,
+      0
+     ],
+     "key": "BFJrIZVeUk82zXW0QxOqbocnBv-JpmpNMEtO28FT4GA-xJs5DtF4KE2EVgON6bD0rv5ZyILqUSVBPfI6mD2UWDc",
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": null,
+     "seq": 1,
+     "sig": "X6Hod9DIMweGOrOD9T75MwBOBEgYgizJoJuF4GVbKd0iU-b-4hsZUMHCQfpYKBC2JWASG36EU0u_nlm5krKKyw",
+     "type": "photo",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {
+       "status": "rejected"
+      },
+      "data": null,
+      "tag_id": "lp:7"
+     },
+     "hlc": [
+      1790000001800,
+      0
+     ],
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": "19125cfdd0ff2b3f26f82724d18aed699dbe800a62d51466a56c19937137c7aa",
+     "seq": 5,
+     "sig": "Z62lNI9uF6CdySnvkxVw81Yw1b5ZM676PtxsUWsEaWEjJH5lDP8glZPb3SG_qp76A81efc9jn4lL0gzmypC9aQ",
+     "type": "review",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": null,
+      "data": {
+       "status": "rejected"
+      },
+      "tag_id": "lp:7"
+     },
+     "hlc": [
+      1790000001700,
+      0
+     ],
+     "peer": "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-",
+     "prev": "8ecb43009a42d678940c564df0ae11b53e48bf8b31890b41f8ab2210a5b2ad61",
+     "seq": 8,
+     "sig": "4twkfcdIAlL8vG_9o9B5Ofz_y_-Juy7TaelzxFXfcPFpM2tJhWF164zn-dWbso5NOwavv01MqevpHyXaVM0H1A",
+     "type": "review",
+     "v": 2
+    },
+    {
+     "body": {
+      "entry": "1d01f2def5c2c74d0aba40a0b7cc4fe0c9ca60d3ddfa20d65d7e57059f18d827"
+     },
+     "hlc": [
+      1790000002000,
+      0
+     ],
+     "key": "BLYRb_nYOitGunWzZzNOuCCXp8nn3R_js1QIiADE6pqQhhzN0Kjqj1miGUJoPDDdLqBFyb-Py6Wl2YXn7lZQZq8",
+     "peer": "_EYPoymouF3qYLQd-kviliv2y8TofGJd",
+     "prev": null,
+     "seq": 1,
+     "sig": "_Z424u021R4n49MTy4o4arif_75f237hN7CxX9UCgE0X279fznCSK08s8icqHWiWpSIIIdPsSa-ZaSClB4Nrjw",
+     "type": "withdraw",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "photo a withdrawn by its author (another user can't); a later approve is already_decided",
+    "votes: dana on a; bob's vote on b switched off again → votes {a: [dana]} only",
+    "an approved user proposal with data null removes the review",
+    "a withdraw from the author's other device, earlier in the order, waits and applies"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {},
+    "backup_key": null,
+    "conflicts": [],
+    "devices": {
+     "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to": {
+      "cut": null,
+      "label": "",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "_EYPoymouF3qYLQd-kviliv2y8TofGJd": {
+      "cut": null,
+      "label": "laptop",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "ls7k-i1HM6ObzYxweSiyJp6-ETTMbTX-": {
+      "cut": null,
+      "label": "",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "p6BvoEtI6hNK0CnlmhaCLAvYOtLPBNZW": {
+      "cut": null,
+      "label": "",
+      "person": "e01d406ed95cc6ab47fe436a13466646"
+     }
+    },
+    "equipment": {},
+    "ignored": {
+     "02e0139906ae6242a8fb00ea50e1a2cc756a44507621b6be9ac347e8d2b20c5d": "not_allowed",
+     "1c8505c8d241c317b27bfb7064827abc5c526265ad318015af20c864161242b1": "already_decided"
+    },
+    "imported": null,
+    "links": [],
+    "manager": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+    "persons": {
+     "c90a82a8a9acbbdedd93d07387bfaf83": {
+      "full_name": "Bob User",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "e01d406ed95cc6ab47fe436a13466646": {
+      "full_name": "Dana User",
+      "position": null,
+      "role": "user",
+      "username": "dana"
+     },
+     "f03d20e6a3f5f704d6f48ae6fe55a6b3": {
+      "full_name": "Hashim M",
+      "position": null,
+      "role": "admin",
+      "username": "hashim"
+     }
+    },
+    "photos": {
+     "73005fe702ee13768f3295d2745aba52": {
+      "blob": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+      "caption": "",
+      "kks": "11LAB70AA501"
+     }
+    },
+    "private": {},
+    "proposals": {
+     "135e9e669fa1717fdd23b28b44f41b1fb2ce719f3f29791ec1ed1b0226a73368": "approved",
+     "1d01f2def5c2c74d0aba40a0b7cc4fe0c9ca60d3ddfa20d65d7e57059f18d827": "withdrawn",
+     "c3a4027482cc2810192538888613068d8cd164946385fa9b378669bf4af6d000": "withdrawn",
+     "f036e49cbf323d32020ffec975a6e1073995ab21daa60774c41e57cb2d5d84e3": "approved"
+    },
+    "reviews": {},
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {
+     "plant": "Test plant"
+    },
+    "votes": {
+     "c3a4027482cc2810192538888613068d8cd164946385fa9b378669bf4af6d000": [
+      "e01d406ed95cc6ab47fe436a13466646"
+     ]
+    }
+   },
+   "why": "withdraw, votes, review removal"
+  },
+  {
+   "devices": {
+    "ali-phone": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+    "bob-phone": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn"
+   },
+   "entries": [
+    {
+     "body": {
+      "device": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+      "label": "phone",
+      "person": "a3b1790fcdd87c86d1249f17ae528cc9"
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "4f649299b52110026f5b546a95ec616f312cb2e0f35373819c38c69f766eb28b",
+     "seq": 2,
+     "sig": "H9I60PnYgnI5SbO1zXnDj5fFii_prXlv0oYNdFzrgSFCSqjE3SOC53C-NOJrLlT2jQShhAdlWcmEVR-JMKGYpg",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "import": {
+       "root_sig": "qit4lMRfNHuCT4PGMPFvIoLIWVp-mqcylTHmkFG9B6c-WLbhlobL3PJ98Xg_gjfLl9twhRp2oo3q5C5XdBppbQ",
+       "state": {
+        "added_tags": [
+         [
+          "8a63966cf027aeb6d9d5bc98e343ae73",
+          {
+           "bbox": [
+            1000,
+            2000,
+            1800,
+            2400
+           ],
+           "isa": "TE",
+           "kks": "11HAH90CT103",
+           "note": "missed",
+           "sheet": "hp",
+           "suffix": "K"
+          }
+         ]
+        ],
+        "equipment": [
+         [
+          "11LAB70AA501",
+          {
+           "custom": [
+            {
+             "k": "Size",
+             "v": "DN80"
+            }
+           ],
+           "floor": "3 m",
+           "notes": "near pump"
+          }
+         ]
+        ],
+        "links": [
+         [
+          "p12",
+          3,
+          "11LAB70AA501"
+         ]
+        ],
+        "persons": [
+         [
+          "a3b1790fcdd87c86d1249f17ae528cc9",
+          {
+           "full_name": "Ali Admin",
+           "position": "Shift Supervisor",
+           "role": "admin",
+           "username": "ali"
+          }
+         ],
+         [
+          "c90a82a8a9acbbdedd93d07387bfaf83",
+          {
+           "full_name": "Bob User",
+           "position": null,
+           "role": "user",
+           "username": "bob"
+          }
+         ],
+         [
+          "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+          {
+           "full_name": "Old Name",
+           "position": null,
+           "role": "admin",
+           "username": "hashim"
+          }
+         ]
+        ],
+        "photos": [
+         [
+          "0e8526fc37b7fe5b5de7466a3cfa7c14",
+          {
+           "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+           "caption": "valve",
+           "kks": "11LAB70AA501"
+          }
+         ]
+        ],
+        "reviews": [
+         [
+          "hp:12",
+          {
+           "kks": "11LAB90AA301",
+           "status": "confirmed"
+          }
+         ]
+        ],
+        "settings": [
+         [
+          "photo_mode",
+          "on_open"
+         ],
+         [
+          "relay",
+          null
+         ]
+        ]
+       },
+       "stmt": {
+        "kind": "import",
+        "state": "39a8da649244ba35c5860d9630d7d732677a7e02271da4bf86b4564ccb300408",
+        "v1": "1bdab52676ceccea6ad930304b66a2074476ad46abb942566ee3bcd9f83b6e0f"
+       }
+      },
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": "I&C Maintenance Engineer",
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "D6-pP-N8-ZdI3pgmNCw5mhU3cpcCrekS4zeh3Vk5XN1s3UokIMnYPsov0GV3Xw3dETpyT6SnK9zjaxZOrchtUw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BMvV-wo34mkDAybAgRLJN_bgXJdboFxQqX6UjrAo8QO21q2GDkq8GMFsxclsEbmUEnFPTtF7SE-HzfXBZo0wO-4",
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": null,
+     "seq": 1,
+     "sig": "68yNeorB5YWPM7vbbXTpzRX20-rClpaPjJtv5iU48A1yMsu4NpODC2fREiZ8biPfpkT_KbknqBSx5rFh8RrKsA",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "device": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+      "label": "phone",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "hlc": [
+      1790000001110,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "3b46b4d7b8378483a1dc634e9e37cc8e35a7016f8f7dd0381a0fd21a26f5d8a7",
+     "seq": 3,
+     "sig": "ogo1dyObMHFZV0vCl5i3D9_glI86FfxQatwVYNUpKIF-EoGBCSkw6iTbnpfv6K6Qk4D5gvj9Ebhlm2dt_F8PGA",
+     "type": "device_cert",
+     "v": 2
+    },
+    {
+     "body": {
+      "edit": null,
+      "entry": "c64f55bc60dd6257e9f6a0a0e2a41c5c3ee0bec0f177bf2103fcf89656e82281"
+     },
+     "hlc": [
+      1790000001400,
+      0
+     ],
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": "ef5a9058bf162c70bb5fab73a525cd00d7bd0f0d8e461ea5952ac3a5073022d9",
+     "seq": 2,
+     "sig": "bByfx1hdyla6GXS315bF1NSBJmBge0I_elU57OkCrCASfkn1qqCp3hAal-xXqFhJaw3HvW8I00FxcO9oxNNNCQ",
+     "type": "approve",
+     "v": 2
+    },
+    {
+     "body": {
+      "kks": "11LAB70AA501",
+      "on": false,
+      "proc": "p12",
+      "step": 3
+     },
+     "hlc": [
+      1790000001300,
+      0
+     ],
+     "key": "BFJrIZVeUk82zXW0QxOqbocnBv-JpmpNMEtO28FT4GA-xJs5DtF4KE2EVgON6bD0rv5ZyILqUSVBPfI6mD2UWDc",
+     "peer": "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to",
+     "prev": null,
+     "seq": 1,
+     "sig": "9SBNsOxbShpqyLOZCF7vQuq-7Efl-huguPIqAwf5vdlZmWxm_dMt0h-JMCWsfsMB72bxdeOqbssc48koq0VbAQ",
+     "type": "link",
+     "v": 2
+    },
+    {
+     "body": {
+      "full_name": "Another Bob",
+      "person": "ea257c8eae4dbaa22ae7eb5a90b6adcb",
+      "position": null,
+      "role": "user",
+      "username": "Bob"
+     },
+     "hlc": [
+      1790000001500,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "74ab348cb8a63ad1ca52d0be31cb6aa57f4716529d4c3c060af4853aa98e2428",
+     "seq": 4,
+     "sig": "R6y_n8c1OpZNtrkUDI2tz0QfphWX1MfKWzvYQbEsNYMbiUIHfyMLQEuh2ej3De12uWjoM8aeyxzuM5ZkMUD_mQ",
+     "type": "person",
+     "v": 2
+    },
+    {
+     "body": {
+      "base": {
+       "floor": "1 m"
+      },
+      "changes": {
+       "floor": "6 m"
+      },
+      "kks": "11LAB70AA501"
+     },
+     "hlc": [
+      1790000001200,
+      0
+     ],
+     "key": "BM_F9M27gcb6DvQbkw06kNHurkgY6BHD4QuM5wwWGvXB4u8TxZPf0sGX25_mpZ6GyFLR5Q6Sni0f1Ut7T0ejOwo",
+     "peer": "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX",
+     "prev": null,
+     "seq": 1,
+     "sig": "5b1OjnTn7WWvTF7xSe_fNcmTFhCTLm1TlphGiLDDUFpUTt_Q4EBSKiKrL9Aujq5aPxMGnj3I5_lDcj8SkxgcuQ",
+     "type": "equipment",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "imported persons keep their roles; the manager takes the genesis name and position",
+    "imported settings, equipment, reviews, links, photos, added tags are the starting state",
+    "ali overwrites an imported floor with a stale base: conflict, new wins, kept_by null (imported values count as set by nobody)",
+    "bob's approved proposal removes an imported link",
+    "a new person with an imported username (case-insensitive): username_taken",
+    "state.imported = the v1 archive hash"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {
+     "8a63966cf027aeb6d9d5bc98e343ae73": {
+      "bbox": [
+       1000,
+       2000,
+       1800,
+       2400
+      ],
+      "isa": "TE",
+      "kks": "11HAH90CT103",
+      "note": "missed",
+      "sheet": "hp",
+      "suffix": "K"
+     }
+    },
+    "backup_key": null,
+    "conflicts": [
+     {
+      "entity": "equipment",
+      "field": "floor",
+      "kept": "6 m",
+      "kept_by": "ef5a9058bf162c70bb5fab73a525cd00d7bd0f0d8e461ea5952ac3a5073022d9",
+      "key": "11LAB70AA501",
+      "lost": "3 m",
+      "lost_by": null
+     }
+    ],
+    "devices": {
+     "62-Al5J1R7o2gcY407caBlFThsLFPRYn": {
+      "cut": null,
+      "label": "",
+      "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+     },
+     "NFNNdz9Q2usqyeT6CSqaKzYz2CACd6to": {
+      "cut": null,
+      "label": "phone",
+      "person": "c90a82a8a9acbbdedd93d07387bfaf83"
+     },
+     "WHUaEDDf7EPOJQsAYpGKQRvM39KxVOWX": {
+      "cut": null,
+      "label": "phone",
+      "person": "a3b1790fcdd87c86d1249f17ae528cc9"
+     }
+    },
+    "equipment": {
+     "11LAB70AA501": {
+      "custom": [
+       {
+        "k": "Size",
+        "v": "DN80"
+       }
+      ],
+      "floor": "6 m",
+      "notes": "near pump"
+     }
+    },
+    "ignored": {
+     "ce67478ffc8777207e5e46b6a368864212473ca2c240cec830540ebda4329f25": "username_taken"
+    },
+    "imported": "1bdab52676ceccea6ad930304b66a2074476ad46abb942566ee3bcd9f83b6e0f",
+    "links": [],
+    "manager": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+    "persons": {
+     "a3b1790fcdd87c86d1249f17ae528cc9": {
+      "full_name": "Ali Admin",
+      "position": "Shift Supervisor",
+      "role": "admin",
+      "username": "ali"
+     },
+     "c90a82a8a9acbbdedd93d07387bfaf83": {
+      "full_name": "Bob User",
+      "position": null,
+      "role": "user",
+      "username": "bob"
+     },
+     "f03d20e6a3f5f704d6f48ae6fe55a6b3": {
+      "full_name": "Hashim M",
+      "position": "I&C Maintenance Engineer",
+      "role": "admin",
+      "username": "hashim"
+     }
+    },
+    "photos": {
+     "0e8526fc37b7fe5b5de7466a3cfa7c14": {
+      "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+      "caption": "valve",
+      "kks": "11LAB70AA501"
+     }
+    },
+    "private": {},
+    "proposals": {
+     "c64f55bc60dd6257e9f6a0a0e2a41c5c3ee0bec0f177bf2103fcf89656e82281": "approved"
+    },
+    "reviews": {
+     "hp:12": {
+      "kks": "11LAB90AA301",
+      "status": "confirmed"
+     }
+    },
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {
+     "photo_mode": "on_open",
+     "plant": "Test plant",
+     "relay": null
+    },
+    "votes": {}
+   },
+   "why": "a v2 plant made from a v1 import (§21)"
+  },
+  {
+   "devices": {
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn"
+   },
+   "entries": [
+    {
+     "body": {
+      "import": {
+       "root_sig": "R4N73jqitzqYDaJVQxi4TldcIr2Y35oS-g0GFt_bV5U-78YClwchhQXae1DzcdyMKNF-bNSzVt9up3Ziukem8A",
+       "state": {
+        "added_tags": [
+         [
+          "8a63966cf027aeb6d9d5bc98e343ae73",
+          {
+           "bbox": [
+            1000,
+            2000,
+            1800,
+            2400
+           ],
+           "isa": "TE",
+           "kks": "11HAH90CT103",
+           "note": "missed",
+           "sheet": "hp",
+           "suffix": "K"
+          }
+         ]
+        ],
+        "equipment": [
+         [
+          "11LAB70AA501",
+          {
+           "custom": [
+            {
+             "k": "Size",
+             "v": "DN80"
+            }
+           ],
+           "floor": "3 m",
+           "notes": "near pump"
+          }
+         ]
+        ],
+        "links": [
+         [
+          "p12",
+          3,
+          "11LAB70AA501"
+         ]
+        ],
+        "persons": [
+         [
+          "a3b1790fcdd87c86d1249f17ae528cc9",
+          {
+           "full_name": "Ali Admin",
+           "position": "Shift Supervisor",
+           "role": "admin",
+           "username": "ali"
+          }
+         ],
+         [
+          "c90a82a8a9acbbdedd93d07387bfaf83",
+          {
+           "full_name": "Bob User",
+           "position": null,
+           "role": "user",
+           "username": "bob"
+          }
+         ],
+         [
+          "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+          {
+           "full_name": "Old Name",
+           "position": null,
+           "role": "admin",
+           "username": "hashim"
+          }
+         ]
+        ],
+        "photos": [
+         [
+          "0e8526fc37b7fe5b5de7466a3cfa7c14",
+          {
+           "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+           "caption": "valve",
+           "kks": "11LAB70AA501"
+          }
+         ]
+        ],
+        "reviews": [
+         [
+          "hp:12",
+          {
+           "kks": "11LAB90AA301",
+           "status": "confirmed"
+          }
+         ]
+        ],
+        "settings": [
+         [
+          "photo_mode",
+          "on_open"
+         ],
+         [
+          "relay",
+          null
+         ]
+        ]
+       },
+       "stmt": {
+        "kind": "import",
+        "state": "0000000000000000000000000000000000000000000000000000000000000000",
+        "v1": "1bdab52676ceccea6ad930304b66a2074476ad46abb942566ee3bcd9f83b6e0f"
+       }
+      },
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "D6-pP-N8-ZdI3pgmNCw5mhU3cpcCrekS4zeh3Vk5XN1s3UokIMnYPsov0GV3Xw3dETpyT6SnK9zjaxZOrchtUw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BMvV-wo34mkDAybAgRLJN_bgXJdboFxQqX6UjrAo8QO21q2GDkq8GMFsxclsEbmUEnFPTtF7SE-HzfXBZo0wO-4",
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": null,
+     "seq": 1,
+     "sig": "75Wg29oj63s2ZY1YbAQLi1Sc_sR0hCQyK7OCDJTNlbRCeGB0h0C0waA4FYe-k7xiYONfhAioYvmJeuNSyxPZDQ",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "x",
+      "value": 1
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "57ba9545ff4d6499ab7a801b6048815527799a21b305121f6f1420a6b4dba893",
+     "seq": 2,
+     "sig": "uheiWEI66_lKRcZz-ewtoAuiTjOML7GrCrUNgXX76OFiyWPhww0ikoGrM_gNVLIxzrJWeleqcpQ4yRkd0getOg",
+     "type": "setting",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "the genesis is ignored (bad_genesis or bad_root_sig): no plant, every later entry not_certified"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {},
+    "backup_key": null,
+    "conflicts": [],
+    "devices": {},
+    "equipment": {},
+    "ignored": {
+     "57ba9545ff4d6499ab7a801b6048815527799a21b305121f6f1420a6b4dba893": "bad_genesis",
+     "8f07d112bf37a640735ff6cd140170ceeac9f1e0ca54e08758c44a3c7143f743": "not_certified"
+    },
+    "imported": null,
+    "links": [],
+    "manager": null,
+    "persons": {},
+    "photos": {},
+    "private": {},
+    "proposals": {},
+    "reviews": {},
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {},
+    "votes": {}
+   },
+   "why": "import hash does not match the state"
+  },
+  {
+   "devices": {
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn"
+   },
+   "entries": [
+    {
+     "body": {
+      "import": {
+       "root_sig": "tu15mdLRDCHZbLXeu09Ct-k2csuFO4j_iVSkz5dYEwY4IK23HcxqU3KBmqyGDwbF7vrSVDIiVYmV6ZWdMghMXA",
+       "state": {
+        "added_tags": [
+         [
+          "8a63966cf027aeb6d9d5bc98e343ae73",
+          {
+           "bbox": [
+            1000,
+            2000,
+            1800,
+            2400
+           ],
+           "isa": "TE",
+           "kks": "11HAH90CT103",
+           "note": "missed",
+           "sheet": "hp",
+           "suffix": "K"
+          }
+         ]
+        ],
+        "equipment": [
+         [
+          "11LAB70AA501",
+          {
+           "custom": [
+            {
+             "k": "Size",
+             "v": "DN80"
+            }
+           ],
+           "floor": "3 m",
+           "notes": "near pump"
+          }
+         ]
+        ],
+        "links": [
+         [
+          "p12",
+          3,
+          "11LAB70AA501"
+         ]
+        ],
+        "persons": [
+         [
+          "14f99d15fefdff603cbbb11af35ede2b",
+          {
+           "full_name": "Clash",
+           "position": null,
+           "role": "user",
+           "username": "HASHIM"
+          }
+         ],
+         [
+          "a3b1790fcdd87c86d1249f17ae528cc9",
+          {
+           "full_name": "Ali Admin",
+           "position": "Shift Supervisor",
+           "role": "admin",
+           "username": "ali"
+          }
+         ],
+         [
+          "c90a82a8a9acbbdedd93d07387bfaf83",
+          {
+           "full_name": "Bob User",
+           "position": null,
+           "role": "user",
+           "username": "bob"
+          }
+         ],
+         [
+          "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+          {
+           "full_name": "Old Name",
+           "position": null,
+           "role": "admin",
+           "username": "hashim"
+          }
+         ]
+        ],
+        "photos": [
+         [
+          "0e8526fc37b7fe5b5de7466a3cfa7c14",
+          {
+           "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+           "caption": "valve",
+           "kks": "11LAB70AA501"
+          }
+         ]
+        ],
+        "reviews": [
+         [
+          "hp:12",
+          {
+           "kks": "11LAB90AA301",
+           "status": "confirmed"
+          }
+         ]
+        ],
+        "settings": [
+         [
+          "photo_mode",
+          "on_open"
+         ],
+         [
+          "relay",
+          null
+         ]
+        ]
+       },
+       "stmt": {
+        "kind": "import",
+        "state": "4393548204fa658919fa44affea6bebe85e0a172bdd89593a65248d05e8226a1",
+        "v1": "1bdab52676ceccea6ad930304b66a2074476ad46abb942566ee3bcd9f83b6e0f"
+       }
+      },
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "D6-pP-N8-ZdI3pgmNCw5mhU3cpcCrekS4zeh3Vk5XN1s3UokIMnYPsov0GV3Xw3dETpyT6SnK9zjaxZOrchtUw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BMvV-wo34mkDAybAgRLJN_bgXJdboFxQqX6UjrAo8QO21q2GDkq8GMFsxclsEbmUEnFPTtF7SE-HzfXBZo0wO-4",
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": null,
+     "seq": 1,
+     "sig": "_4YrYU7PR4x_nn5r76Y_Z-mwkmBbOIc_FDRJMSYOHLok4VdiK8odN6ESS91HQN-rSXLI-tkMYf01hLtVEptReA",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "x",
+      "value": 1
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "bbccf424017f372d5546b6e5005bdb1aafdda51ff7a9f15c01ad01b64d956bb0",
+     "seq": 2,
+     "sig": "cTQioioFf_FEuDlQfR8aoL9Q691yKardCWv671g2sWFiVDDwr1gNLlCRorEYeHq-WaoIsK-qgY1n5bOJNG_rrA",
+     "type": "setting",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "the genesis is ignored (bad_genesis or bad_root_sig): no plant, every later entry not_certified"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {},
+    "backup_key": null,
+    "conflicts": [],
+    "devices": {},
+    "equipment": {},
+    "ignored": {
+     "bbccf424017f372d5546b6e5005bdb1aafdda51ff7a9f15c01ad01b64d956bb0": "bad_genesis",
+     "ca4d5c333272e2b19e307d7ac97c56c438239d739e137c7f6b01cd1d1b8611e3": "not_certified"
+    },
+    "imported": null,
+    "links": [],
+    "manager": null,
+    "persons": {},
+    "photos": {},
+    "private": {},
+    "proposals": {},
+    "reviews": {},
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {},
+    "votes": {}
+   },
+   "why": "imported person with the manager's username"
+  },
+  {
+   "devices": {
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn"
+   },
+   "entries": [
+    {
+     "body": {
+      "key": "x",
+      "value": 1
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "bc912f29abe3eec2152811e1f875a64c163a43e9c97aa85069e11db1e5a9fc42",
+     "seq": 2,
+     "sig": "iSoQTcjP6I-DlWD7QJjF2NXWrU6-lFVgQdsVXCIgOogCXqEnzgqpN2dNvTO4LwXTxYpodM1HYidv2IFKs5S0YA",
+     "type": "setting",
+     "v": 2
+    },
+    {
+     "body": {
+      "import": {
+       "root_sig": "dHrAeI2aDbRwDqu_AnnirQXiefv0riMogk1-DMv_qNMvN8NZ_LAgDRrWhl5A1IbxGUgRdh5ssKtZ23rHVzflmA",
+       "state": {
+        "added_tags": [
+         [
+          "8a63966cf027aeb6d9d5bc98e343ae73",
+          {
+           "bbox": [
+            1000,
+            2000,
+            1800,
+            2400
+           ],
+           "isa": "TE",
+           "kks": "11HAH90CT103",
+           "note": "missed",
+           "sheet": "hp",
+           "suffix": "K"
+          }
+         ]
+        ],
+        "equipment": [
+         [
+          "11LAB70AA501",
+          {
+           "floor": ""
+          }
+         ]
+        ],
+        "links": [
+         [
+          "p12",
+          3,
+          "11LAB70AA501"
+         ]
+        ],
+        "persons": [
+         [
+          "a3b1790fcdd87c86d1249f17ae528cc9",
+          {
+           "full_name": "Ali Admin",
+           "position": "Shift Supervisor",
+           "role": "admin",
+           "username": "ali"
+          }
+         ],
+         [
+          "c90a82a8a9acbbdedd93d07387bfaf83",
+          {
+           "full_name": "Bob User",
+           "position": null,
+           "role": "user",
+           "username": "bob"
+          }
+         ],
+         [
+          "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+          {
+           "full_name": "Old Name",
+           "position": null,
+           "role": "admin",
+           "username": "hashim"
+          }
+         ]
+        ],
+        "photos": [
+         [
+          "0e8526fc37b7fe5b5de7466a3cfa7c14",
+          {
+           "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+           "caption": "valve",
+           "kks": "11LAB70AA501"
+          }
+         ]
+        ],
+        "reviews": [
+         [
+          "hp:12",
+          {
+           "kks": "11LAB90AA301",
+           "status": "confirmed"
+          }
+         ]
+        ],
+        "settings": [
+         [
+          "photo_mode",
+          "on_open"
+         ],
+         [
+          "relay",
+          null
+         ]
+        ]
+       },
+       "stmt": {
+        "kind": "import",
+        "state": "cc48fcc9accad421d1ab967ac492d4a13a946cc1aa2aa7bba5c5b06eb602d372",
+        "v1": "1bdab52676ceccea6ad930304b66a2074476ad46abb942566ee3bcd9f83b6e0f"
+       }
+      },
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "D6-pP-N8-ZdI3pgmNCw5mhU3cpcCrekS4zeh3Vk5XN1s3UokIMnYPsov0GV3Xw3dETpyT6SnK9zjaxZOrchtUw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BMvV-wo34mkDAybAgRLJN_bgXJdboFxQqX6UjrAo8QO21q2GDkq8GMFsxclsEbmUEnFPTtF7SE-HzfXBZo0wO-4",
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": null,
+     "seq": 1,
+     "sig": "qJxpHZivJPGd5NtHJj_vfHYeRJPqhjyXpPxFsglz2kduOHB3jL1MH1lb2v2bOnZ_LmHpWP_YBtORLB7wkzlSFA",
+     "type": "genesis",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "the genesis is ignored (bad_genesis or bad_root_sig): no plant, every later entry not_certified"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {},
+    "backup_key": null,
+    "conflicts": [],
+    "devices": {},
+    "equipment": {},
+    "ignored": {
+     "25beb2eaad5fa090c08802465c908f295b3dff281760d5ed7557299ce0f16f53": "not_certified",
+     "bc912f29abe3eec2152811e1f875a64c163a43e9c97aa85069e11db1e5a9fc42": "bad_genesis"
+    },
+    "imported": null,
+    "links": [],
+    "manager": null,
+    "persons": {},
+    "photos": {},
+    "private": {},
+    "proposals": {},
+    "reviews": {},
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {},
+    "votes": {}
+   },
+   "why": "imported state with an empty equipment field"
+  },
+  {
+   "devices": {
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn"
+   },
+   "entries": [
+    {
+     "body": {
+      "import": {
+       "root_sig": "j46w6KujP9iIebokKi_W0cSdqEZ0Qz3OPmS5YUFJ8N0TXH38TS2RWNXL9I-ysMuXomS4AJbtWBq17x8fNPe6RQ",
+       "state": {
+        "added_tags": [
+         [
+          "8a63966cf027aeb6d9d5bc98e343ae73",
+          {
+           "bbox": [
+            1000,
+            2000,
+            1800,
+            2400
+           ],
+           "isa": "TE",
+           "kks": "11HAH90CT103",
+           "note": "missed",
+           "sheet": "hp",
+           "suffix": "K"
+          }
+         ]
+        ],
+        "equipment": [
+         [
+          "11LAB70AA501",
+          {
+           "custom": [
+            {
+             "k": "Size",
+             "v": "DN80"
+            }
+           ],
+           "floor": "3 m",
+           "notes": "near pump"
+          }
+         ]
+        ],
+        "links": [
+         [
+          "p12",
+          3,
+          "11LAB70AA501"
+         ]
+        ],
+        "persons": [
+         [
+          "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+          {
+           "full_name": "Old Name",
+           "position": null,
+           "role": "admin",
+           "username": "hashim"
+          }
+         ],
+         [
+          "c90a82a8a9acbbdedd93d07387bfaf83",
+          {
+           "full_name": "Bob User",
+           "position": null,
+           "role": "user",
+           "username": "bob"
+          }
+         ],
+         [
+          "a3b1790fcdd87c86d1249f17ae528cc9",
+          {
+           "full_name": "Ali Admin",
+           "position": "Shift Supervisor",
+           "role": "admin",
+           "username": "ali"
+          }
+         ]
+        ],
+        "photos": [
+         [
+          "0e8526fc37b7fe5b5de7466a3cfa7c14",
+          {
+           "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+           "caption": "valve",
+           "kks": "11LAB70AA501"
+          }
+         ]
+        ],
+        "reviews": [
+         [
+          "hp:12",
+          {
+           "kks": "11LAB90AA301",
+           "status": "confirmed"
+          }
+         ]
+        ],
+        "settings": [
+         [
+          "photo_mode",
+          "on_open"
+         ],
+         [
+          "relay",
+          null
+         ]
+        ]
+       },
+       "stmt": {
+        "kind": "import",
+        "state": "dc18786b8b3cdf8b9594b07493ba276a22abb4e350f4d2d9abfb3138ab977025",
+        "v1": "1bdab52676ceccea6ad930304b66a2074476ad46abb942566ee3bcd9f83b6e0f"
+       }
+      },
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "D6-pP-N8-ZdI3pgmNCw5mhU3cpcCrekS4zeh3Vk5XN1s3UokIMnYPsov0GV3Xw3dETpyT6SnK9zjaxZOrchtUw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BMvV-wo34mkDAybAgRLJN_bgXJdboFxQqX6UjrAo8QO21q2GDkq8GMFsxclsEbmUEnFPTtF7SE-HzfXBZo0wO-4",
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": null,
+     "seq": 1,
+     "sig": "yD5eX0gOqpbyjK7gP5460C0A9PbptLs8y56_xwzjeTZM-jqRWDfA-ULNKU8FtW6OvFU8WPptJ-tZTPaDuA1uHQ",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "x",
+      "value": 1
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "06bec4b8688cd585ce12f35e41e72f83d4d63c430fe99c0583acaa1c080d0153",
+     "seq": 2,
+     "sig": "QZvK8DNNweqSEPfDnaiP38q8Kil9Hi3JsGdFz97KRJQuu01UzKinYWh_r_1wiIkj2J-1rN7tyJqW_6UC_sKOng",
+     "type": "setting",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "the genesis is ignored (bad_genesis or bad_root_sig): no plant, every later entry not_certified"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {},
+    "backup_key": null,
+    "conflicts": [],
+    "devices": {},
+    "equipment": {},
+    "ignored": {
+     "06bec4b8688cd585ce12f35e41e72f83d4d63c430fe99c0583acaa1c080d0153": "bad_genesis",
+     "dc072e4c3a0029850c7961dee1a03e26316ff991f88029fb2498d48d8fda25f5": "not_certified"
+    },
+    "imported": null,
+    "links": [],
+    "manager": null,
+    "persons": {},
+    "photos": {},
+    "private": {},
+    "proposals": {},
+    "reviews": {},
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {},
+    "votes": {}
+   },
+   "why": "imported persons not sorted by key"
+  },
+  {
+   "devices": {
+    "mgr-laptop": "62-Al5J1R7o2gcY407caBlFThsLFPRYn"
+   },
+   "entries": [
+    {
+     "body": {
+      "import": {
+       "root_sig": "93MgpqD8rfrNo-9ylCIcWNfSjqsuN3kYPwGIZZ2SWs1Bq1ANTnZq44HR_kHkeePLBBCXCqLFS74z8sNVB5lOOA",
+       "state": {
+        "added_tags": [
+         [
+          "8a63966cf027aeb6d9d5bc98e343ae73",
+          {
+           "bbox": [
+            1000,
+            2000,
+            1800,
+            2400
+           ],
+           "isa": "TE",
+           "kks": "11HAH90CT103",
+           "note": "missed",
+           "sheet": "hp",
+           "suffix": "K"
+          }
+         ]
+        ],
+        "equipment": [
+         [
+          "11LAB70AA501",
+          {
+           "custom": [
+            {
+             "k": "Size",
+             "v": "DN80"
+            }
+           ],
+           "floor": "3 m",
+           "notes": "near pump"
+          }
+         ]
+        ],
+        "links": [
+         [
+          "p12",
+          3,
+          "11LAB70AA501"
+         ]
+        ],
+        "persons": [
+         [
+          "a3b1790fcdd87c86d1249f17ae528cc9",
+          {
+           "full_name": "Ali Admin",
+           "position": "Shift Supervisor",
+           "role": "admin",
+           "username": "ali"
+          }
+         ],
+         [
+          "c90a82a8a9acbbdedd93d07387bfaf83",
+          {
+           "full_name": "Bob User",
+           "position": null,
+           "role": "user",
+           "username": "bob"
+          }
+         ],
+         [
+          "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+          {
+           "full_name": "Old Name",
+           "position": null,
+           "role": "admin",
+           "username": "hashim"
+          }
+         ]
+        ],
+        "photos": [
+         [
+          "0e8526fc37b7fe5b5de7466a3cfa7c14",
+          {
+           "blob": "39e7488008c48833ab17263512e4dcbea3c72a5f83ab83494be7c37559ce2415",
+           "caption": "valve",
+           "kks": "11LAB70AA501"
+          }
+         ]
+        ],
+        "reviews": [
+         [
+          "hp:12",
+          {
+           "kks": "11LAB90AA301",
+           "status": "confirmed"
+          }
+         ]
+        ],
+        "settings": [
+         [
+          "photo_mode",
+          "on_open"
+         ],
+         [
+          "relay",
+          null
+         ]
+        ]
+       },
+       "stmt": {
+        "kind": "import",
+        "state": "39a8da649244ba35c5860d9630d7d732677a7e02271da4bf86b4564ccb300408",
+        "v1": "1bdab52676ceccea6ad930304b66a2074476ad46abb942566ee3bcd9f83b6e0f"
+       }
+      },
+      "manager": {
+       "full_name": "Hashim M",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3",
+       "position": null,
+       "username": "hashim"
+      },
+      "plant": "Test plant",
+      "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+      "sig_device": "D6-pP-N8-ZdI3pgmNCw5mhU3cpcCrekS4zeh3Vk5XN1s3UokIMnYPsov0GV3Xw3dETpyT6SnK9zjaxZOrchtUw",
+      "sig_manager": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+      "stmt_device": {
+       "device": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+       "kind": "device",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      },
+      "stmt_manager": {
+       "kind": "manager",
+       "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+      }
+     },
+     "hlc": [
+      1790000001000,
+      0
+     ],
+     "key": "BMvV-wo34mkDAybAgRLJN_bgXJdboFxQqX6UjrAo8QO21q2GDkq8GMFsxclsEbmUEnFPTtF7SE-HzfXBZo0wO-4",
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": null,
+     "seq": 1,
+     "sig": "q69IDIqLpPOJWUvd1mbf3QW0UHhcl6DgI76V3sNJE2g95C6JtQuAHAYmZ__fQSAJmN1N51pUVCAtuVgtmcpASw",
+     "type": "genesis",
+     "v": 2
+    },
+    {
+     "body": {
+      "key": "x",
+      "value": 1
+     },
+     "hlc": [
+      1790000001100,
+      0
+     ],
+     "peer": "62-Al5J1R7o2gcY407caBlFThsLFPRYn",
+     "prev": "1684681726f449a61822896340a435082bf7cb49176160508ad4d442b608f303",
+     "seq": 2,
+     "sig": "IYFXqs_lIDj_kveeKw0llqDlcHRurXSOljlPYwi16ukVUvu-Wizl-PMYcE6qYDM6Yp-_6mCjp9NZkItfe4WZ2A",
+     "type": "setting",
+     "v": 2
+    }
+   ],
+   "expect": [
+    "the genesis is ignored (bad_genesis or bad_root_sig): no plant, every later entry not_certified"
+   ],
+   "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+   "state": {
+    "added_tags": {},
+    "backup_key": null,
+    "conflicts": [],
+    "devices": {},
+    "equipment": {},
+    "ignored": {
+     "1684681726f449a61822896340a435082bf7cb49176160508ad4d442b608f303": "bad_root_sig",
+     "d32b2223f60b902ecbfe5e3773d9aeb6f4e4f4c1a3544671353861d5c9ab2dc0": "not_certified"
+    },
+    "imported": null,
+    "links": [],
+    "manager": null,
+    "persons": {},
+    "photos": {},
+    "private": {},
+    "proposals": {},
+    "reviews": {},
+    "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+    "settings": {},
+    "votes": {}
+   },
+   "why": "import signed by another key"
+  }
+ ],
+ "statement": {
+  "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+  "root_id": "OcyqZVeDbnT9wyrdS1ANVw9xh5kZoMac",
+  "root_private_scalar_hex": "2c2e7987fe46bca1e4c704511ae89e51d9793520662e2a1d1369725335145c99",
+  "root_seed_hex": "e86327877d4b686fb43eaefb6e13b58334c6409b09c6cd0a482e5415269bd224",
+  "root_sig": "NGbqmYYMcQDYtZEgWXDmF1gzwRxkXuJt3xWRXYvyaFU2Kz2vj_gn0OD6T4Q445MXLDqcNtNh2AmIHp-mhtWGHw",
+  "signed_bytes_hex": "6b6b732d726f6f742d76320a7b226b696e64223a226d616e61676572222c22706572736f6e223a226630336432306536613366356637303464366634386165366665353561366233227d",
+  "stmt": {
+   "kind": "manager",
+   "person": "f03d20e6a3f5f704d6f48ae6fe55a6b3"
+  }
+ }
+}

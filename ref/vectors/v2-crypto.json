@@ -1,0 +1,122 @@
+{
+ "ecies": {
+  "ephemeral_private_scalar_hex": "1fde0175f77ee967e2ad6b9d4d7ecb7db00fcdb71b6a90c7ac5a9809945589f7",
+  "plaintext_hex": "706c616e74206261636b757020627974657320e29883",
+  "purpose": "backup",
+  "recipient": "BMzsb3bhV6xSOr5Jti8cxWNq3miiE0_9WvxIY56DdC-pMSZ8apCs6hNtYfzCi6sRIW6cqF1P7bSvnmRIzK1Hd2Y",
+  "recipient_private_scalar_hex": "7f3b7b4f6682442622be09c15b6350239d4630ba5cf146337ddbd1d47ade9595",
+  "sealed": {
+   "ct": "qG-MjvC9mEyKS_7ppoDRSloIYx9HnQ-Pg3k6a1ESdcs3A_8aMLY",
+   "epk": "BBn4Iy89hesjndOP6FkZEHsoMiP1KkyeBds7IBnc0l3CxT8KUaRK65VWlvIeJQRUuWtNHRDzx-8hfubFSvlO9yc",
+   "nonce": "AAECAwQFBgcICQoL",
+   "purpose": "backup",
+   "v": 2
+  }
+ },
+ "join_code": [
+  {
+   "answering": "fXo44e59TQBcfI_qhUjoHZ72qCpnxPHY",
+   "code": "106566",
+   "joiner": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k"
+  },
+  {
+   "answering": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+   "code": "100701",
+   "joiner": "fXo44e59TQBcfI_qhUjoHZ72qCpnxPHY"
+  }
+ ],
+ "join_request": {
+  "reject": [
+   {
+    "request": {
+     "created": 1790000000,
+     "device": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+     "full_name": "Dana User",
+     "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "kks_join": 2,
+     "label": "phone",
+     "position": null,
+     "sig": "RaE7z47Tsr5JlrGvRttXaQcWLlnAakadwqJZcMi_L-YCfGaAZnIKdLvSWny53O3HEZOSqZbJv_jLoaFlIF2nTg",
+     "username": "mallory"
+    },
+    "why": "tampered"
+   },
+   {
+    "request": {
+     "created": 1790000000,
+     "device": "fXo44e59TQBcfI_qhUjoHZ72qCpnxPHY",
+     "full_name": "Dana User",
+     "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "kks_join": 2,
+     "label": "phone",
+     "position": null,
+     "sig": "RaE7z47Tsr5JlrGvRttXaQcWLlnAakadwqJZcMi_L-YCfGaAZnIKdLvSWny53O3HEZOSqZbJv_jLoaFlIF2nTg",
+     "username": "dana"
+    },
+    "why": "device is not the key's peer ID"
+   }
+  ],
+  "valid": {
+   "created": 1790000000,
+   "device": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+   "full_name": "Dana User",
+   "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+   "kks_join": 2,
+   "label": "phone",
+   "position": null,
+   "sig": "RaE7z47Tsr5JlrGvRttXaQcWLlnAakadwqJZcMi_L-YCfGaAZnIKdLvSWny53O3HEZOSqZbJv_jLoaFlIF2nTg",
+   "username": "dana"
+  }
+ },
+ "note": "Protocol v2 test vectors (docs/PROTOCOL-v2.md). Reproduce every value exactly; verify signatures (they are RFC 6979 here, but any valid low-S signature must verify).",
+ "protocol": 2,
+ "relay": {
+  "hello": {
+   "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+   "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+   "sig": "8JLByiXAv8XlQUZn7TA30btPpUdm33TOPgeV-5wVjVRfbj1bly4rl4UGoPtUhzGxe0JGwtAj0HcLkKgH2QYPVA",
+   "t": "hello",
+   "ts": 1790000000
+  },
+  "now": 1790000100,
+  "reject": [
+   {
+    "hello": {
+     "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+     "sig": "8JLByiXAv8XlQUZn7TA30btPpUdm33TOPgeV-5wVjVRfbj1bly4rl4UGoPtUhzGxe0JGwtAj0HcLkKgH2QYPVA",
+     "t": "hello",
+     "ts": 1790000000
+    },
+    "now": 1790000301,
+    "why": "too old"
+   },
+   {
+    "hello": {
+     "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+     "sig": "bRdTVlKCKjiUDrr_GhFdLPEIfSXtMYYpJ5G50MGL9XRaW6iAveq-NdfI4QjYkSANmLMwJ54zGlCH49HgOdn07Q",
+     "t": "hello",
+     "ts": 1790000000
+    },
+    "now": 1790000000,
+    "why": "another room"
+   }
+  ],
+  "room": "cc461b695b764f2da42ecbc6b787ba3f",
+  "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
+  "root_id": "OcyqZVeDbnT9wyrdS1ANVw9xh5kZoMac"
+ },
+ "root_backup": {
+  "passphrase": "correct horse battery staple ocean lamp",
+  "plaintext_hex": "2c2e7987fe46bca1e4c704511ae89e51d9793520662e2a1d1369725335145c99",
+  "sealed": {
+   "ct": "kqEx-4ly_UMfToL44CktK6_KQFHdjEXbcdDIM9DzpizAQDqq6o5CTSt0fBZdZesX",
+   "iter": 600000,
+   "kdf": "pbkdf2-sha256",
+   "nonce": "AAECAwQFBgcICQoL",
+   "salt": "AAECAwQFBgcICQoLDA0ODw",
+   "v": 2
+  }
+ }
+}
