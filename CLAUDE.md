@@ -167,7 +167,9 @@ stdlib-only rule ends for the package: cryptography + zeroconf); one person may 
 certificates). Build order M0 protocol spec + Python reference + test vectors → M1 server on the log → M2 desktop
 package + LAN/file sync → M3 Android → M4 Learning (3 HTML courses, not yet in the repo) → M5 internet → M5b plant data out of the app, public
 repo, self-updates (2026-09-28) → M6 fully native desktop in Nim, no browser (added 2026-09-27; details decided when
-we get there) → M7 research iOS via Pythonista 3 / Pyto / iSH / a-Shell (2026-09-28).
+we get there) → M7 research iOS via Pythonista 3 / Pyto / iSH / a-Shell (2026-09-28; done 2026-09-30, before M6:
+docs/IOS_RESEARCH.md: no as a peer (no background, no mDNS, crypto only in Pyto), yes as a browser client of the server
+over HTTPS; nothing tried on a real iPhone).
 Answered 2026-09-26: plant Wi-Fi allows device-to-device traffic; courses in `source/courses/` (3 single-file HTML,
 localStorage progress, Google Fonts to vendor); quiz progress private (encrypted to the person's devices); photos
 on-demand or all, per device, stored as JPEG XL (no JPEG fallback since 2026-09-27: viewers without JXL decode it with libjxl); manager key: no second
@@ -452,3 +454,9 @@ data published by the manager only.
 5. Suggest procedure→equipment links (system code + description matching), user confirms.
 6. Attach PDF markup annotations to nearby tags instead of sheet-level notes.
 7. Calibration UI in the app for new fonts (label unknown glyph clusters instead of doing it by hand).
+8. The live plant server runs from the dev checkout (repo-root plant.db, photos/, backups/, root.key, plant-data/):
+   restarting app.py after code edits runs new code on real data. Plan (2026-09-30, deferred by the user): build +
+   install the packaged Linux app, delete the empty leftover `~/.local/share/kks-explorer` from the 2026-09-26 package
+   test (its config remembers port 8421 = the server's sync port), join it as a second device of the manager ("Join via
+   server", http://localhost:8420); then move the server's files out of the repo (e.g. ~/kks-server + its own
+   config.json, `KKS_CONFIG=… python3 app.py`), copy + compare before removing anything.
