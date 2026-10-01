@@ -31,8 +31,27 @@ Everything that is hashed or signed is first encoded as **canonical JSON**:
   anywhere. Quantities with fractions use fixed units, e.g. tag boxes in tenths of a pixel.
 - `true`, `false`, `null`, arrays and objects as usual.
 
-This is RFC 8785 (JCS) restricted to integers and ASCII keys, so JCS libraries also produce it. Readers may use the
-platform's JSON parser. Only the writer must produce these exact bytes.
+This is RFC 8785 (JCS) restricted to integers and ASCII keys, so JCS libraries also produce it. Only the writer must
+produce these exact bytes.
+
+**Strict reading** (decision 0029). Every JSON a device receives or loads is RFC 8259 JSON (messages, bundles,
+plant-data and course files). It is read with these rules, so that the same bytes mean the same value on every
+device. The input is **rejected as a whole** when it has any of the following:
+- bytes that are not UTF-8, a byte-order mark, or an unpaired surrogate (raw or as a `\u` escape);
+- a duplicate key in one object;
+- a trailing comma, a leading zero (`01`, `-01`), `+`, `NaN`, `Infinity`, or a raw control character (U+0000–U+001F)
+  inside a string;
+- anything but whitespace (space, tab, LF, CR) after the value;
+- nesting deeper than 128 arrays and objects.
+
+The reader keeps three kinds of numbers apart:
+- **integer:** no fraction, no exponent;
+- **big integer:** the same, but outside ±(2^63 − 1);
+- **float:** has a fraction or an exponent.
+
+The rules of this section (integers within ±(2^53 − 1), no floats) are checked on the value afterwards and give
+`bad_encoding`. `-0` reads as the integer 0. Platform parsers may be used if they can enforce all of this. Vectors:
+`ref/vectors/v2-json.json`.
 
 **base64url** = RFC 4648 §5 alphabet, **without padding**, everywhere in this document unless it says "standard
 base64".
@@ -404,6 +423,22 @@ Relaying is automatic: a device sends every entry it holds, not only its own.
   `plant`), `refused`, `used`, `unknown`, or `bad`. Then the connection closes.
 - The new device asks again every 2 s while `waiting`. Once `accepted`, it syncs (§15) with the same address, adopting
   the invite's `root`.
+
+**Through a server (enroll):** for a person who has an account on the plant's server.
+- The new device connects to the server's sync port with TLS (§15). It cannot pin the server's peer ID yet: trust on
+  first use. TLS still keeps the password away from anyone listening on the network. This replaces v1's HTTP
+  `/api/devices/enroll`, which sent the password in clear text on the plant LAN. Android forbids clear text by
+  default, and N1 wants encryption end to end.
+- Instead of `hello`, it sends `{"t":"enroll", "username", "password", "request": <join request>}`. The join
+  request's `device` must be the TLS client's peer ID.
+- **The server:**
+  - checks the password (with the same throttling as sign-in);
+  - certifies the device for that person with a `device_cert` from the person's custodial key. Refused when the
+    device belongs to someone else or was removed.
+- **The answer** is one `{"t":"enroll_ack", "state": "accepted"|"refused"|"bad", "why"?, "root"?, "plant"?}`. Then the
+  connection closes.
+- **Once accepted,** the device syncs (§15) with the same address, adopting `root`. From then on it pins the
+  server's peer ID, as seen on this connection.
 
 **Without an invite:**
 - Devices announce on mDNS: service `_kks._tcp`, TXT `peer`, `root` (the first 16 characters of the root ID), `plant`,

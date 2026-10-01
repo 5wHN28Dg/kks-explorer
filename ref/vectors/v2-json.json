@@ -1,0 +1,1192 @@
+{
+ "accept": [
+  {
+   "hex": "6e756c6c",
+   "value": {
+    "t": "null"
+   },
+   "why": "null"
+  },
+  {
+   "hex": "74727565",
+   "value": {
+    "t": "bool",
+    "v": true
+   },
+   "why": "true"
+  },
+  {
+   "hex": "2066616c736520",
+   "value": {
+    "t": "bool",
+    "v": false
+   },
+   "why": "false"
+  },
+  {
+   "hex": "30",
+   "value": {
+    "t": "int",
+    "v": "0"
+   },
+   "why": "zero"
+  },
+  {
+   "hex": "2d30",
+   "value": {
+    "t": "int",
+    "v": "0"
+   },
+   "why": "minus zero is the integer 0"
+  },
+  {
+   "hex": "2d3132333435",
+   "value": {
+    "t": "int",
+    "v": "-12345"
+   },
+   "why": "integer"
+  },
+  {
+   "hex": "39303037313939323534373430393931",
+   "value": {
+    "t": "int",
+    "v": "9007199254740991"
+   },
+   "why": "largest 53-bit"
+  },
+  {
+   "hex": "39303037313939323534373430393933",
+   "value": {
+    "t": "int",
+    "v": "9007199254740993"
+   },
+   "why": "above 53 bits is still an integer"
+  },
+  {
+   "hex": "39323233333732303336383534373735383037",
+   "value": {
+    "t": "int",
+    "v": "9223372036854775807"
+   },
+   "why": "largest int64"
+  },
+  {
+   "hex": "2d39323233333732303336383534373735383037",
+   "value": {
+    "t": "int",
+    "v": "-9223372036854775807"
+   },
+   "why": "smallest accepted int64"
+  },
+  {
+   "hex": "39323233333732303336383534373735383038",
+   "value": {
+    "t": "big",
+    "v": "9223372036854775808"
+   },
+   "why": "big integer"
+  },
+  {
+   "hex": "2d39323233333732303336383534373735383038",
+   "value": {
+    "t": "big",
+    "v": "-9223372036854775808"
+   },
+   "why": "big negative integer"
+  },
+  {
+   "hex": "313233343536373839303132333435363738393031323334353637383930",
+   "value": {
+    "t": "big",
+    "v": "123456789012345678901234567890"
+   },
+   "why": "huge integer"
+  },
+  {
+   "hex": "312e35",
+   "value": {
+    "t": "float",
+    "v": "1.5"
+   },
+   "why": "float with fraction"
+  },
+  {
+   "hex": "312e30",
+   "value": {
+    "t": "float",
+    "v": "1.0"
+   },
+   "why": "float 1.0 stays a float"
+  },
+  {
+   "hex": "316533",
+   "value": {
+    "t": "float",
+    "v": "1000.0"
+   },
+   "why": "exponent"
+  },
+  {
+   "hex": "2d322e35452d33",
+   "value": {
+    "t": "float",
+    "v": "-0.0025"
+   },
+   "why": "exponent sign"
+  },
+  {
+   "hex": "2d302e30",
+   "value": {
+    "t": "float",
+    "v": "-0.0"
+   },
+   "why": "minus zero float"
+  },
+  {
+   "hex": "35652d333234",
+   "value": {
+    "t": "float",
+    "v": "5e-324"
+   },
+   "why": "tiny float"
+  },
+  {
+   "hex": "302e31",
+   "value": {
+    "t": "float",
+    "v": "0.1"
+   },
+   "why": "float rounding"
+  },
+  {
+   "hex": "332e3134313539323635333538393739333233383436323634333338333237393530323838",
+   "value": {
+    "t": "float",
+    "v": "3.141592653589793"
+   },
+   "why": "many digits"
+  },
+  {
+   "hex": "2222",
+   "value": {
+    "t": "str",
+    "v": ""
+   },
+   "why": "empty string"
+  },
+  {
+   "hex": "225c22205c5c205c2f205c62205c66205c6e205c72205c7422",
+   "value": {
+    "t": "str",
+    "v": "\" \\ / \b \f \n \r \t"
+   },
+   "why": "escapes"
+  },
+  {
+   "hex": "225c75303064635c753236303322",
+   "value": {
+    "t": "str",
+    "v": "Ü☃"
+   },
+   "why": "unicode escape"
+  },
+  {
+   "hex": "225c75643833645c756465303022",
+   "value": {
+    "t": "str",
+    "v": "😀"
+   },
+   "why": "surrogate pair escape"
+  },
+  {
+   "hex": "22c39cc39fe29883f09f988022",
+   "value": {
+    "t": "str",
+    "v": "Üß☃😀"
+   },
+   "why": "raw UTF-8"
+  },
+  {
+   "hex": "227f22",
+   "value": {
+    "t": "str",
+    "v": ""
+   },
+   "why": "DEL is allowed raw"
+  },
+  {
+   "hex": "5b5d",
+   "value": {
+    "t": "arr",
+    "v": []
+   },
+   "why": "empty array"
+  },
+  {
+   "hex": "7b7d",
+   "value": {
+    "t": "obj",
+    "v": []
+   },
+   "why": "empty object"
+  },
+  {
+   "hex": "20090d0a7b20226122203a205b2031202c2032205d207d0a",
+   "value": {
+    "t": "obj",
+    "v": [
+     [
+      "a",
+      {
+       "t": "arr",
+       "v": [
+        {
+         "t": "int",
+         "v": "1"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      }
+     ]
+    ]
+   },
+   "why": "whitespace everywhere"
+  },
+  {
+   "hex": "7b2262223a312c2261223a327d",
+   "value": {
+    "t": "obj",
+    "v": [
+     [
+      "b",
+      {
+       "t": "int",
+       "v": "1"
+      }
+     ],
+     [
+      "a",
+      {
+       "t": "int",
+       "v": "2"
+      }
+     ]
+    ]
+   },
+   "why": "key order kept"
+  },
+  {
+   "hex": "7b2261223a7b2261223a317d2c2262223a7b2261223a327d7d",
+   "value": {
+    "t": "obj",
+    "v": [
+     [
+      "a",
+      {
+       "t": "obj",
+       "v": [
+        [
+         "a",
+         {
+          "t": "int",
+          "v": "1"
+         }
+        ]
+       ]
+      }
+     ],
+     [
+      "b",
+      {
+       "t": "obj",
+       "v": [
+        [
+         "a",
+         {
+          "t": "int",
+          "v": "2"
+         }
+        ]
+       ]
+      }
+     ]
+    ]
+   },
+   "why": "same key in different objects"
+  },
+  {
+   "hex": "7b225c753030363162223a312c226163223a327d",
+   "value": {
+    "t": "obj",
+    "v": [
+     [
+      "ab",
+      {
+       "t": "int",
+       "v": "1"
+      }
+     ],
+     [
+      "ac",
+      {
+       "t": "int",
+       "v": "2"
+      }
+     ]
+    ]
+   },
+   "why": "keys differing only by escape form are different"
+  },
+  {
+   "hex": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+   "value": {
+    "t": "arr",
+    "v": [
+     {
+      "t": "arr",
+      "v": [
+       {
+        "t": "arr",
+        "v": [
+         {
+          "t": "arr",
+          "v": [
+           {
+            "t": "arr",
+            "v": [
+             {
+              "t": "arr",
+              "v": [
+               {
+                "t": "arr",
+                "v": [
+                 {
+                  "t": "arr",
+                  "v": [
+                   {
+                    "t": "arr",
+                    "v": [
+                     {
+                      "t": "arr",
+                      "v": [
+                       {
+                        "t": "arr",
+                        "v": [
+                         {
+                          "t": "arr",
+                          "v": [
+                           {
+                            "t": "arr",
+                            "v": [
+                             {
+                              "t": "arr",
+                              "v": [
+                               {
+                                "t": "arr",
+                                "v": [
+                                 {
+                                  "t": "arr",
+                                  "v": [
+                                   {
+                                    "t": "arr",
+                                    "v": [
+                                     {
+                                      "t": "arr",
+                                      "v": [
+                                       {
+                                        "t": "arr",
+                                        "v": [
+                                         {
+                                          "t": "arr",
+                                          "v": [
+                                           {
+                                            "t": "arr",
+                                            "v": [
+                                             {
+                                              "t": "arr",
+                                              "v": [
+                                               {
+                                                "t": "arr",
+                                                "v": [
+                                                 {
+                                                  "t": "arr",
+                                                  "v": [
+                                                   {
+                                                    "t": "arr",
+                                                    "v": [
+                                                     {
+                                                      "t": "arr",
+                                                      "v": [
+                                                       {
+                                                        "t": "arr",
+                                                        "v": [
+                                                         {
+                                                          "t": "arr",
+                                                          "v": [
+                                                           {
+                                                            "t": "arr",
+                                                            "v": [
+                                                             {
+                                                              "t": "arr",
+                                                              "v": [
+                                                               {
+                                                                "t": "arr",
+                                                                "v": [
+                                                                 {
+                                                                  "t": "arr",
+                                                                  "v": [
+                                                                   {
+                                                                    "t": "arr",
+                                                                    "v": [
+                                                                     {
+                                                                      "t": "arr",
+                                                                      "v": [
+                                                                       {
+                                                                        "t": "arr",
+                                                                        "v": [
+                                                                         {
+                                                                          "t": "arr",
+                                                                          "v": [
+                                                                           {
+                                                                            "t": "arr",
+                                                                            "v": [
+                                                                             {
+                                                                              "t": "arr",
+                                                                              "v": [
+                                                                               {
+                                                                                "t": "arr",
+                                                                                "v": [
+                                                                                 {
+                                                                                  "t": "arr",
+                                                                                  "v": [
+                                                                                   {
+                                                                                    "t": "arr",
+                                                                                    "v": [
+                                                                                     {
+                                                                                      "t": "arr",
+                                                                                      "v": [
+                                                                                       {
+                                                                                        "t": "arr",
+                                                                                        "v": [
+                                                                                         {
+                                                                                          "t": "arr",
+                                                                                          "v": [
+                                                                                           {
+                                                                                            "t": "arr",
+                                                                                            "v": [
+                                                                                             {
+                                                                                              "t": "arr",
+                                                                                              "v": [
+                                                                                               {
+                                                                                                "t": "arr",
+                                                                                                "v": [
+                                                                                                 {
+                                                                                                  "t": "arr",
+                                                                                                  "v": [
+                                                                                                   {
+                                                                                                    "t": "arr",
+                                                                                                    "v": [
+                                                                                                     {
+                                                                                                      "t": "arr",
+                                                                                                      "v": [
+                                                                                                       {
+                                                                                                        "t": "arr",
+                                                                                                        "v": [
+                                                                                                         {
+                                                                                                          "t": "arr",
+                                                                                                          "v": [
+                                                                                                           {
+                                                                                                            "t": "arr",
+                                                                                                            "v": [
+                                                                                                             {
+                                                                                                              "t": "arr",
+                                                                                                              "v": [
+                                                                                                               {
+                                                                                                                "t": "arr",
+                                                                                                                "v": [
+                                                                                                                 {
+                                                                                                                  "t": "arr",
+                                                                                                                  "v": [
+                                                                                                                   {
+                                                                                                                    "t": "arr",
+                                                                                                                    "v": [
+                                                                                                                     {
+                                                                                                                      "t": "arr",
+                                                                                                                      "v": [
+                                                                                                                       {
+                                                                                                                        "t": "arr",
+                                                                                                                        "v": [
+                                                                                                                         {
+                                                                                                                          "t": "arr",
+                                                                                                                          "v": [
+                                                                                                                           {
+                                                                                                                            "t": "arr",
+                                                                                                                            "v": [
+                                                                                                                             {
+                                                                                                                              "t": "arr",
+                                                                                                                              "v": [
+                                                                                                                               {
+                                                                                                                                "t": "arr",
+                                                                                                                                "v": [
+                                                                                                                                 {
+                                                                                                                                  "t": "arr",
+                                                                                                                                  "v": [
+                                                                                                                                   {
+                                                                                                                                    "t": "arr",
+                                                                                                                                    "v": [
+                                                                                                                                     {
+                                                                                                                                      "t": "arr",
+                                                                                                                                      "v": [
+                                                                                                                                       {
+                                                                                                                                        "t": "arr",
+                                                                                                                                        "v": [
+                                                                                                                                         {
+                                                                                                                                          "t": "arr",
+                                                                                                                                          "v": [
+                                                                                                                                           {
+                                                                                                                                            "t": "arr",
+                                                                                                                                            "v": [
+                                                                                                                                             {
+                                                                                                                                              "t": "arr",
+                                                                                                                                              "v": [
+                                                                                                                                               {
+                                                                                                                                                "t": "arr",
+                                                                                                                                                "v": [
+                                                                                                                                                 {
+                                                                                                                                                  "t": "arr",
+                                                                                                                                                  "v": [
+                                                                                                                                                   {
+                                                                                                                                                    "t": "arr",
+                                                                                                                                                    "v": [
+                                                                                                                                                     {
+                                                                                                                                                      "t": "arr",
+                                                                                                                                                      "v": [
+                                                                                                                                                       {
+                                                                                                                                                        "t": "arr",
+                                                                                                                                                        "v": [
+                                                                                                                                                         {
+                                                                                                                                                          "t": "arr",
+                                                                                                                                                          "v": [
+                                                                                                                                                           {
+                                                                                                                                                            "t": "arr",
+                                                                                                                                                            "v": [
+                                                                                                                                                             {
+                                                                                                                                                              "t": "arr",
+                                                                                                                                                              "v": [
+                                                                                                                                                               {
+                                                                                                                                                                "t": "arr",
+                                                                                                                                                                "v": [
+                                                                                                                                                                 {
+                                                                                                                                                                  "t": "arr",
+                                                                                                                                                                  "v": [
+                                                                                                                                                                   {
+                                                                                                                                                                    "t": "arr",
+                                                                                                                                                                    "v": [
+                                                                                                                                                                     {
+                                                                                                                                                                      "t": "arr",
+                                                                                                                                                                      "v": [
+                                                                                                                                                                       {
+                                                                                                                                                                        "t": "arr",
+                                                                                                                                                                        "v": [
+                                                                                                                                                                         {
+                                                                                                                                                                          "t": "arr",
+                                                                                                                                                                          "v": [
+                                                                                                                                                                           {
+                                                                                                                                                                            "t": "arr",
+                                                                                                                                                                            "v": [
+                                                                                                                                                                             {
+                                                                                                                                                                              "t": "arr",
+                                                                                                                                                                              "v": [
+                                                                                                                                                                               {
+                                                                                                                                                                                "t": "arr",
+                                                                                                                                                                                "v": [
+                                                                                                                                                                                 {
+                                                                                                                                                                                  "t": "arr",
+                                                                                                                                                                                  "v": [
+                                                                                                                                                                                   {
+                                                                                                                                                                                    "t": "arr",
+                                                                                                                                                                                    "v": [
+                                                                                                                                                                                     {
+                                                                                                                                                                                      "t": "arr",
+                                                                                                                                                                                      "v": [
+                                                                                                                                                                                       {
+                                                                                                                                                                                        "t": "arr",
+                                                                                                                                                                                        "v": [
+                                                                                                                                                                                         {
+                                                                                                                                                                                          "t": "arr",
+                                                                                                                                                                                          "v": [
+                                                                                                                                                                                           {
+                                                                                                                                                                                            "t": "arr",
+                                                                                                                                                                                            "v": [
+                                                                                                                                                                                             {
+                                                                                                                                                                                              "t": "arr",
+                                                                                                                                                                                              "v": [
+                                                                                                                                                                                               {
+                                                                                                                                                                                                "t": "arr",
+                                                                                                                                                                                                "v": [
+                                                                                                                                                                                                 {
+                                                                                                                                                                                                  "t": "arr",
+                                                                                                                                                                                                  "v": [
+                                                                                                                                                                                                   {
+                                                                                                                                                                                                    "t": "arr",
+                                                                                                                                                                                                    "v": [
+                                                                                                                                                                                                     {
+                                                                                                                                                                                                      "t": "arr",
+                                                                                                                                                                                                      "v": [
+                                                                                                                                                                                                       {
+                                                                                                                                                                                                        "t": "arr",
+                                                                                                                                                                                                        "v": [
+                                                                                                                                                                                                         {
+                                                                                                                                                                                                          "t": "arr",
+                                                                                                                                                                                                          "v": [
+                                                                                                                                                                                                           {
+                                                                                                                                                                                                            "t": "arr",
+                                                                                                                                                                                                            "v": [
+                                                                                                                                                                                                             {
+                                                                                                                                                                                                              "t": "arr",
+                                                                                                                                                                                                              "v": [
+                                                                                                                                                                                                               {
+                                                                                                                                                                                                                "t": "arr",
+                                                                                                                                                                                                                "v": [
+                                                                                                                                                                                                                 {
+                                                                                                                                                                                                                  "t": "arr",
+                                                                                                                                                                                                                  "v": [
+                                                                                                                                                                                                                   {
+                                                                                                                                                                                                                    "t": "arr",
+                                                                                                                                                                                                                    "v": [
+                                                                                                                                                                                                                     {
+                                                                                                                                                                                                                      "t": "arr",
+                                                                                                                                                                                                                      "v": [
+                                                                                                                                                                                                                       {
+                                                                                                                                                                                                                        "t": "arr",
+                                                                                                                                                                                                                        "v": [
+                                                                                                                                                                                                                         {
+                                                                                                                                                                                                                          "t": "arr",
+                                                                                                                                                                                                                          "v": [
+                                                                                                                                                                                                                           {
+                                                                                                                                                                                                                            "t": "arr",
+                                                                                                                                                                                                                            "v": [
+                                                                                                                                                                                                                             {
+                                                                                                                                                                                                                              "t": "arr",
+                                                                                                                                                                                                                              "v": [
+                                                                                                                                                                                                                               {
+                                                                                                                                                                                                                                "t": "arr",
+                                                                                                                                                                                                                                "v": [
+                                                                                                                                                                                                                                 {
+                                                                                                                                                                                                                                  "t": "arr",
+                                                                                                                                                                                                                                  "v": [
+                                                                                                                                                                                                                                   {
+                                                                                                                                                                                                                                    "t": "arr",
+                                                                                                                                                                                                                                    "v": [
+                                                                                                                                                                                                                                     {
+                                                                                                                                                                                                                                      "t": "arr",
+                                                                                                                                                                                                                                      "v": [
+                                                                                                                                                                                                                                       {
+                                                                                                                                                                                                                                        "t": "arr",
+                                                                                                                                                                                                                                        "v": [
+                                                                                                                                                                                                                                         {
+                                                                                                                                                                                                                                          "t": "arr",
+                                                                                                                                                                                                                                          "v": [
+                                                                                                                                                                                                                                           {
+                                                                                                                                                                                                                                            "t": "arr",
+                                                                                                                                                                                                                                            "v": [
+                                                                                                                                                                                                                                             {
+                                                                                                                                                                                                                                              "t": "arr",
+                                                                                                                                                                                                                                              "v": [
+                                                                                                                                                                                                                                               {
+                                                                                                                                                                                                                                                "t": "arr",
+                                                                                                                                                                                                                                                "v": [
+                                                                                                                                                                                                                                                 {
+                                                                                                                                                                                                                                                  "t": "arr",
+                                                                                                                                                                                                                                                  "v": [
+                                                                                                                                                                                                                                                   {
+                                                                                                                                                                                                                                                    "t": "arr",
+                                                                                                                                                                                                                                                    "v": [
+                                                                                                                                                                                                                                                     {
+                                                                                                                                                                                                                                                      "t": "arr",
+                                                                                                                                                                                                                                                      "v": [
+                                                                                                                                                                                                                                                       {
+                                                                                                                                                                                                                                                        "t": "arr",
+                                                                                                                                                                                                                                                        "v": [
+                                                                                                                                                                                                                                                         {
+                                                                                                                                                                                                                                                          "t": "arr",
+                                                                                                                                                                                                                                                          "v": [
+                                                                                                                                                                                                                                                           {
+                                                                                                                                                                                                                                                            "t": "arr",
+                                                                                                                                                                                                                                                            "v": [
+                                                                                                                                                                                                                                                             {
+                                                                                                                                                                                                                                                              "t": "arr",
+                                                                                                                                                                                                                                                              "v": [
+                                                                                                                                                                                                                                                               {
+                                                                                                                                                                                                                                                                "t": "arr",
+                                                                                                                                                                                                                                                                "v": [
+                                                                                                                                                                                                                                                                 {
+                                                                                                                                                                                                                                                                  "t": "arr",
+                                                                                                                                                                                                                                                                  "v": []
+                                                                                                                                                                                                                                                                 }
+                                                                                                                                                                                                                                                                ]
+                                                                                                                                                                                                                                                               }
+                                                                                                                                                                                                                                                              ]
+                                                                                                                                                                                                                                                             }
+                                                                                                                                                                                                                                                            ]
+                                                                                                                                                                                                                                                           }
+                                                                                                                                                                                                                                                          ]
+                                                                                                                                                                                                                                                         }
+                                                                                                                                                                                                                                                        ]
+                                                                                                                                                                                                                                                       }
+                                                                                                                                                                                                                                                      ]
+                                                                                                                                                                                                                                                     }
+                                                                                                                                                                                                                                                    ]
+                                                                                                                                                                                                                                                   }
+                                                                                                                                                                                                                                                  ]
+                                                                                                                                                                                                                                                 }
+                                                                                                                                                                                                                                                ]
+                                                                                                                                                                                                                                               }
+                                                                                                                                                                                                                                              ]
+                                                                                                                                                                                                                                             }
+                                                                                                                                                                                                                                            ]
+                                                                                                                                                                                                                                           }
+                                                                                                                                                                                                                                          ]
+                                                                                                                                                                                                                                         }
+                                                                                                                                                                                                                                        ]
+                                                                                                                                                                                                                                       }
+                                                                                                                                                                                                                                      ]
+                                                                                                                                                                                                                                     }
+                                                                                                                                                                                                                                    ]
+                                                                                                                                                                                                                                   }
+                                                                                                                                                                                                                                  ]
+                                                                                                                                                                                                                                 }
+                                                                                                                                                                                                                                ]
+                                                                                                                                                                                                                               }
+                                                                                                                                                                                                                              ]
+                                                                                                                                                                                                                             }
+                                                                                                                                                                                                                            ]
+                                                                                                                                                                                                                           }
+                                                                                                                                                                                                                          ]
+                                                                                                                                                                                                                         }
+                                                                                                                                                                                                                        ]
+                                                                                                                                                                                                                       }
+                                                                                                                                                                                                                      ]
+                                                                                                                                                                                                                     }
+                                                                                                                                                                                                                    ]
+                                                                                                                                                                                                                   }
+                                                                                                                                                                                                                  ]
+                                                                                                                                                                                                                 }
+                                                                                                                                                                                                                ]
+                                                                                                                                                                                                               }
+                                                                                                                                                                                                              ]
+                                                                                                                                                                                                             }
+                                                                                                                                                                                                            ]
+                                                                                                                                                                                                           }
+                                                                                                                                                                                                          ]
+                                                                                                                                                                                                         }
+                                                                                                                                                                                                        ]
+                                                                                                                                                                                                       }
+                                                                                                                                                                                                      ]
+                                                                                                                                                                                                     }
+                                                                                                                                                                                                    ]
+                                                                                                                                                                                                   }
+                                                                                                                                                                                                  ]
+                                                                                                                                                                                                 }
+                                                                                                                                                                                                ]
+                                                                                                                                                                                               }
+                                                                                                                                                                                              ]
+                                                                                                                                                                                             }
+                                                                                                                                                                                            ]
+                                                                                                                                                                                           }
+                                                                                                                                                                                          ]
+                                                                                                                                                                                         }
+                                                                                                                                                                                        ]
+                                                                                                                                                                                       }
+                                                                                                                                                                                      ]
+                                                                                                                                                                                     }
+                                                                                                                                                                                    ]
+                                                                                                                                                                                   }
+                                                                                                                                                                                  ]
+                                                                                                                                                                                 }
+                                                                                                                                                                                ]
+                                                                                                                                                                               }
+                                                                                                                                                                              ]
+                                                                                                                                                                             }
+                                                                                                                                                                            ]
+                                                                                                                                                                           }
+                                                                                                                                                                          ]
+                                                                                                                                                                         }
+                                                                                                                                                                        ]
+                                                                                                                                                                       }
+                                                                                                                                                                      ]
+                                                                                                                                                                     }
+                                                                                                                                                                    ]
+                                                                                                                                                                   }
+                                                                                                                                                                  ]
+                                                                                                                                                                 }
+                                                                                                                                                                ]
+                                                                                                                                                               }
+                                                                                                                                                              ]
+                                                                                                                                                             }
+                                                                                                                                                            ]
+                                                                                                                                                           }
+                                                                                                                                                          ]
+                                                                                                                                                         }
+                                                                                                                                                        ]
+                                                                                                                                                       }
+                                                                                                                                                      ]
+                                                                                                                                                     }
+                                                                                                                                                    ]
+                                                                                                                                                   }
+                                                                                                                                                  ]
+                                                                                                                                                 }
+                                                                                                                                                ]
+                                                                                                                                               }
+                                                                                                                                              ]
+                                                                                                                                             }
+                                                                                                                                            ]
+                                                                                                                                           }
+                                                                                                                                          ]
+                                                                                                                                         }
+                                                                                                                                        ]
+                                                                                                                                       }
+                                                                                                                                      ]
+                                                                                                                                     }
+                                                                                                                                    ]
+                                                                                                                                   }
+                                                                                                                                  ]
+                                                                                                                                 }
+                                                                                                                                ]
+                                                                                                                               }
+                                                                                                                              ]
+                                                                                                                             }
+                                                                                                                            ]
+                                                                                                                           }
+                                                                                                                          ]
+                                                                                                                         }
+                                                                                                                        ]
+                                                                                                                       }
+                                                                                                                      ]
+                                                                                                                     }
+                                                                                                                    ]
+                                                                                                                   }
+                                                                                                                  ]
+                                                                                                                 }
+                                                                                                                ]
+                                                                                                               }
+                                                                                                              ]
+                                                                                                             }
+                                                                                                            ]
+                                                                                                           }
+                                                                                                          ]
+                                                                                                         }
+                                                                                                        ]
+                                                                                                       }
+                                                                                                      ]
+                                                                                                     }
+                                                                                                    ]
+                                                                                                   }
+                                                                                                  ]
+                                                                                                 }
+                                                                                                ]
+                                                                                               }
+                                                                                              ]
+                                                                                             }
+                                                                                            ]
+                                                                                           }
+                                                                                          ]
+                                                                                         }
+                                                                                        ]
+                                                                                       }
+                                                                                      ]
+                                                                                     }
+                                                                                    ]
+                                                                                   }
+                                                                                  ]
+                                                                                 }
+                                                                                ]
+                                                                               }
+                                                                              ]
+                                                                             }
+                                                                            ]
+                                                                           }
+                                                                          ]
+                                                                         }
+                                                                        ]
+                                                                       }
+                                                                      ]
+                                                                     }
+                                                                    ]
+                                                                   }
+                                                                  ]
+                                                                 }
+                                                                ]
+                                                               }
+                                                              ]
+                                                             }
+                                                            ]
+                                                           }
+                                                          ]
+                                                         }
+                                                        ]
+                                                       }
+                                                      ]
+                                                     }
+                                                    ]
+                                                   }
+                                                  ]
+                                                 }
+                                                ]
+                                               }
+                                              ]
+                                             }
+                                            ]
+                                           }
+                                          ]
+                                         }
+                                        ]
+                                       }
+                                      ]
+                                     }
+                                    ]
+                                   }
+                                  ]
+                                 }
+                                ]
+                               }
+                              ]
+                             }
+                            ]
+                           }
+                          ]
+                         }
+                        ]
+                       }
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "why": "nested 128 deep"
+  },
+  {
+   "hex": "7b22d0bad0bbd18ed187223a317d",
+   "value": {
+    "t": "obj",
+    "v": [
+     [
+      "ключ",
+      {
+       "t": "int",
+       "v": "1"
+      }
+     ]
+    ]
+   },
+   "why": "non-ASCII key"
+  }
+ ],
+ "note": "Strict JSON reading (PROTOCOL-v2 §1). Inputs are bytes (hex). Accepted inputs give the typed value: t = null|bool|int|big|float|str|arr|obj; int/big as decimal strings, float as the shortest round-trip decimal of the IEEE double, obj as [key, value] pairs in input order.",
+ "protocol": 2,
+ "reject": [
+  {
+   "hex": "",
+   "why": "empty input"
+  },
+  {
+   "hex": "2020",
+   "why": "only whitespace"
+  },
+  {
+   "hex": "efbbbf7b7d",
+   "why": "byte-order mark"
+  },
+  {
+   "hex": "22ff22",
+   "why": "invalid UTF-8"
+  },
+  {
+   "hex": "22c0af22",
+   "why": "overlong UTF-8"
+  },
+  {
+   "hex": "22eda08022",
+   "why": "raw surrogate in UTF-8"
+  },
+  {
+   "hex": "22e29822",
+   "why": "truncated UTF-8"
+  },
+  {
+   "hex": "225c756438303022",
+   "why": "unpaired high surrogate escape"
+  },
+  {
+   "hex": "225c756463303022",
+   "why": "unpaired low surrogate escape"
+  },
+  {
+   "hex": "225c75643830306122",
+   "why": "high surrogate then letter"
+  },
+  {
+   "hex": "7b225c7564383030223a317d",
+   "why": "surrogate in a key"
+  },
+  {
+   "hex": "7b2261223a312c2261223a327d",
+   "why": "duplicate key"
+  },
+  {
+   "hex": "7b2261223a312c2262223a322c2261223a2278227d",
+   "why": "duplicate key, different values types"
+  },
+  {
+   "hex": "7b2261223a312c225c7530303631223a327d",
+   "why": "duplicate key via escape"
+  },
+  {
+   "hex": "5b7b2278223a7b226b223a312c226b223a317d7d5d",
+   "why": "duplicate key nested"
+  },
+  {
+   "hex": "5b312c5d",
+   "why": "trailing comma in array"
+  },
+  {
+   "hex": "7b2261223a312c7d",
+   "why": "trailing comma in object"
+  },
+  {
+   "hex": "5b2c315d",
+   "why": "leading comma"
+  },
+  {
+   "hex": "3031",
+   "why": "leading zero"
+  },
+  {
+   "hex": "2d3031",
+   "why": "negative leading zero"
+  },
+  {
+   "hex": "30302e35",
+   "why": "leading zero float"
+  },
+  {
+   "hex": "2b31",
+   "why": "plus sign"
+  },
+  {
+   "hex": "2e35",
+   "why": "bare dot"
+  },
+  {
+   "hex": "312e",
+   "why": "dot without digits"
+  },
+  {
+   "hex": "3165",
+   "why": "exponent without digits"
+  },
+  {
+   "hex": "4e614e",
+   "why": "NaN"
+  },
+  {
+   "hex": "496e66696e697479",
+   "why": "Infinity"
+  },
+  {
+   "hex": "2d496e66696e697479",
+   "why": "minus Infinity"
+  },
+  {
+   "hex": "30783130",
+   "why": "hex"
+  },
+  {
+   "hex": "22610a6222",
+   "why": "raw newline in string"
+  },
+  {
+   "hex": "2261096222",
+   "why": "raw tab in string"
+  },
+  {
+   "hex": "2261006222",
+   "why": "raw NUL in string"
+  },
+  {
+   "hex": "225c78343122",
+   "why": "bad escape"
+  },
+  {
+   "hex": "225c75313222",
+   "why": "short unicode escape"
+  },
+  {
+   "hex": "276127",
+   "why": "single quotes"
+  },
+  {
+   "hex": "7b613a317d",
+   "why": "unquoted key"
+  },
+  {
+   "hex": "5b31202f2a2078202a2f5d",
+   "why": "comment"
+  },
+  {
+   "hex": "312032",
+   "why": "two values"
+  },
+  {
+   "hex": "7b7d78",
+   "why": "value then garbage"
+  },
+  {
+   "hex": "7b7d00",
+   "why": "NUL after value"
+  },
+  {
+   "hex": "0c7b7d",
+   "why": "form feed is not whitespace"
+  },
+  {
+   "hex": "5b31",
+   "why": "unclosed array"
+  },
+  {
+   "hex": "22616263",
+   "why": "unclosed string"
+  },
+  {
+   "hex": "747275",
+   "why": "true misspelled"
+  },
+  {
+   "hex": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+   "why": "nested 129 deep"
+  },
+  {
+   "hex": "7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a7b2261223a317d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
+   "why": "object nested 129 deep"
+  }
+ ]
+}

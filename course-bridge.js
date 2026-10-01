@@ -1,5 +1,5 @@
 // Course progress bridge (M4, docs/ARCHITECTURE.md §8). tools/build_courses.py puts this before each course's own
-// script, with data-course = the course's localStorage prefix ("ppt" → keys "ppt.solved", "ppt.last", …).
+// script, with data-course = the course's localStorage prefix (course.html: ?c=<id>) ("ppt" → keys "ppt.solved", "ppt.last", …).
 // - Before the course reads its progress: fill its localStorage keys from this device's log (private entries only
 //   this person's own devices can read; server/progress.py, LocalApi). Synchronously, since the course reads them as
 //   soon as its script starts.
@@ -7,7 +7,10 @@
 //   that worked, e.g. across a reload).
 // On a plant server (a browser, no app) there is no log for this: progress then stays in this browser only.
 (() => {
-  const course = document.currentScript.dataset.course, P = course + '.', PENDING = '__kks_pending.' + course;
+  // the v1 HTML courses name themselves (data-course); course.html (the JSON courses) carries the id as ?c=
+  const course = document.currentScript.dataset.course || new URLSearchParams(location.search).get('c') || '';
+  if (!/^[a-z_][a-z0-9_]{0,31}$/.test(course)) return;
+  const P = course + '.', PENDING = '__kks_pending.' + course;
   const native = window.KKSNative && window.KKSNative.progress ? window.KKSNative : null;
   const setItem = Storage.prototype.setItem;
 

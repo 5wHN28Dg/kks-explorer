@@ -1,0 +1,42 @@
+# /etc/systemd/system/kks-server.service: the v2 (M6) Nim server. Binary and web UI in /opt/kks-server (read-only to
+# the service), state in /var/lib/kks-server, settings in /etc/kks-server/config.json.
+#
+# The storage key (decision 0020) is sealed to this machine's TPM2 by systemd-creds, once:
+#   head -c 32 /dev/urandom | sudo systemd-creds encrypt --with-key=tpm2 --name=kks-storage-key - /etc/kks-server/storage-key.cred
+# Without a TPM2, --with-key=host seals it to /var/lib/systemd/credential.secret instead (weaker: readable by root).
+# The service sees it as $CREDENTIALS_DIRECTORY/kks-storage-key; it is never written in plain text to disk.
+[Unit]
+Description=KKS Explorer server (v2)
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+User=kks
+Group=kks
+Environment=KKS_CONFIG=/etc/kks-server/config.json
+WorkingDirectory=/var/lib/kks-server
+ExecStart=/opt/kks-server/kks-server serve
+LoadCredentialEncrypted=kks-storage-key:/etc/kks-server/storage-key.cred
+Restart=on-failure
+RestartSec=5
+StateDirectory=kks-server
+StateDirectoryMode=0750
+UMask=0077
+
+# hardening: the process can only write its state directory
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

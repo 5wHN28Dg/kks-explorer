@@ -64,10 +64,19 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 <div id="toast"></div>
 
 <script src="common.js"></script>
-<script src="qrcodegen.js"></script>
 <script>
 const $=s=>document.querySelector(s), esc=K.esc;
+// a value as a JavaScript argument inside an HTML attribute: a JSON string, HTML-escaped. esc() alone is not enough
+// there: the browser turns &#39; back into ' before running the handler (a name with a quote ran script: fixed 2026-10-01)
+const jsa=v=>esc(JSON.stringify(v));
 let ME=null, tab=null, SHEETS=[];
+// v2 crops (approving a marked tag): level 0 of the sheet's pyramid, decoded by K.jxl where the browser can't
+const cropBg={};
+new MutationObserver(()=>document.querySelectorAll('[data-crop]:not([data-bg])').forEach(el=>{
+  el.dataset.bg='1'; const id=el.dataset.crop, v=K.syncStatus?.plant_data?.active;
+  const u='/data/sheets/'+encodeURIComponent(id)+'.o0.jxl'+(v!=null?'?v='+v:'');
+  (cropBg[id]??=K.jxl.native().then(n=>n?u:K.jxl.url(u))).then(x=>{ el.style.backgroundImage=`url("${x}")` }).catch(e=>console.warn('crop',e)) }))
+  .observe(document.body,{childList:true,subtree:true});
 const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.user.role==='manager';
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
@@ -102,7 +111,9 @@ function detail(s){
     const sh=SHEETS.find(x=>x.id===p.sheet), b=p.bbox;
     let crop='';
     if(sh){ const w=b[2]-b[0]+40, h=b[3]-b[1]+40, sc=Math.min(420/w,160/h);
-      crop=`<div style="width:${Math.round(w*sc)}px;height:${Math.round(h*sc)}px;background:#fff url('${esc(sh.file)}') no-repeat;background-size:${sh.w*sc}px auto;background-position:${-(b[0]-20)*sc}px ${-(b[1]-20)*sc}px;border:1px solid var(--line);border-radius:4px;margin:6px 0"></div>` }
+      // v1: the sheet PNG; v2 (pyramid levels): level 0, filled in once decoded (fillCrops)
+      const bg=sh.levels?'':`url(${esc(JSON.stringify(encodeURI(sh.file)))})`;
+      crop=`<div ${sh.levels?`data-crop="${esc(sh.id)}" `:''}style="width:${Math.round(w*sc)}px;height:${Math.round(h*sc)}px;background:#fff ${bg} no-repeat;background-size:${sh.w*sc}px auto;background-position:${-(b[0]-20)*sc}px ${-(b[1]-20)*sc}px;border:1px solid var(--line);border-radius:4px;margin:6px 0"></div>` }
     return `<div>${esc(K.describe(s.kind,p))} <a href="/?sheet=${encodeURIComponent(p.sheet)}" class="sub">open sheet</a></div>${crop}
       ${p.note?`<div class="sub">Note: ${esc(p.note)}</div>`:''}
       <div class="row" style="margin-top:4px"><span class="sub">Code as it should be saved:</span>
@@ -116,7 +127,7 @@ function detail(s){
 }
 const who=s=>s.by_name&&s.by_name!==s.by?`${esc(s.by_name)} <span class="mono">(${esc(s.by)})</span>`:esc(s.by);  // full name + username
 const rnote=s=>s.request_note?`<div class="rnote">“${esc(s.request_note)}”</div>`:'';   // the requester's note for the approver
-const badge=s=>{ const st=s.conflicts?.length?'conflict':s.status; return `<span class="badge ${st}">${st}</span>` };
+const badge=s=>{ const st=esc(s.conflicts?.length?'conflict':s.status); return `<span class="badge ${st}">${st}</span>` };
 
 // ---------- views ----------
 const VIEWS={
@@ -168,18 +179,18 @@ const VIEWS={
       <table><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th></th></tr>${U.map(u=>`<tr><td>${u.full_name?esc(u.full_name):'<span class="del">no name yet</span>'}${u.position?`<div class="sub">${esc(u.position)}</div>`:''}</td>
       <td class="mono">${esc(u.username)}${u.id===ME.user.id?' <span class="sub">(you)</span>':''}</td>
       <td>${u.role}</td><td>${u.no_account?(u.active?`own device${u.devices===1?'':'s'} <span class="sub">(${u.devices})</span>`:'<span class="del">all devices removed</span>'):u.active?(u.has_password?'active':'<span class="sub">link not used yet</span>'):'<span class="del">deactivated</span>'}</td>
-      <td class="row">${u.no_account?(canEdit(u)?`${u.active?`<button class="ghost" onclick="confirm('Remove all devices of ${esc(u.username)}? They stop syncing.')&&setPerson('${u.person}',{active:false})">Remove devices</button>`:''}
-        ${isManager()?`<button class="ghost" onclick="setPerson('${u.person}',{role:'${u.role==='admin'?'user':'admin'}'})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}`:''):canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="setUser(${u.id},{active:${!u.active}})">${u.active?'Deactivate':'Activate'}</button>
-        ${isManager()?`<button class="ghost" onclick="setUser(${u.id},{role:'${u.role==='admin'?'user':'admin'}'})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}
+      <td class="row">${u.no_account?(canEdit(u)?`${u.active?`<button class="ghost" onclick="confirm(${jsa('Remove all devices of '+u.username+'? They stop syncing.')})&&setPerson(${jsa(u.person)},{active:false})">Remove devices</button>`:''}
+        ${isManager()?`<button class="ghost" onclick="setPerson(${jsa(u.person)},{role:${jsa(u.role==='admin'?'user':'admin')}})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}`:''):canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="setUser(${+u.id},{active:${!u.active}})">${u.active?'Deactivate':'Activate'}</button>
+        ${isManager()?`<button class="ghost" onclick="setUser(${+u.id},{role:${jsa(u.role==='admin'?'user':'admin')}})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}
         <button class="ghost" onclick="resetLink(${u.id},'${esc(u.username)}')">Password link</button>`:''}
-        ${canEdit(u)&&u.id!==ME.user.id&&!u.no_account?`<button class="ghost" onclick="editDetails(${u.id},'${esc(u.full_name).replace(/'/g,'&#39;')}','${esc(u.position).replace(/'/g,'&#39;')}')">Edit details</button>`:''}</td></tr>`).join('')}</table>
+        ${canEdit(u)&&u.id!==ME.user.id&&!u.no_account?`<button class="ghost" onclick="editDetails(${+u.id},${jsa(u.full_name||'')},${jsa(u.position||'')})">Edit details</button>`:''}</td></tr>`).join('')}</table>
       <p class="sub">Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).</p>`;
   },
   async devices(){
     const D=await K.api('/api/devices'), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
     const devRow=(d,mine)=>`<tr><td>${esc(d.label||'device')}${d.this_computer?' <span class="sub">(this one)</span>':''}${mine?'':`<div class="sub">${esc(d.username)}</div>`}</td>
       <td class="mono sub">${esc(d.device.slice(0,12))}…</td><td>${d.revoked?'<span class="del">removed</span>':'active'}</td>
-      <td>${!d.revoked&&!d.this_computer?`<button class="ghost" onclick="confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:'${d.device}'}),'Device removed')">Remove</button>`:''}</td></tr>`;
+      <td>${!d.revoked&&!d.this_computer?`<button class="ghost" onclick="confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:${jsa(d.device)}}),'Device removed')">Remove</button>`:''}</td></tr>`;
     let h=`<div class="card"><h3>Your devices</h3><table>${D.mine.map(d=>devRow(d,true)).join('')}</table>
       <div class="sub">A lost or stolen phone or laptop: remove it here from any of your other devices (or ask an admin). Its changes made after that don't count anywhere.</div></div>
       <div class="card"><h3>Syncing</h3><div class="sub">This ${D.mode==='peer'?'computer':'server'}: <span class="mono">${esc((D.node||'').slice(0,12))}…</span> · sync port ${D.sync_port||'off'} · finding devices on this Wi-Fi: ${esc(S.discovery)}</div>
@@ -238,8 +249,8 @@ const VIEWS={
     h+=`<table><tr><th>Drawing</th><th>Id</th><th>Tags</th><th></th></tr>${D.sheets.map(s=>`<tr><td>${esc(s.name)}<div class="sub">${s.w}×${s.h} px${s.notes?.length?` · ${s.notes.length} markup note(s)`:''}</div></td>
       <td class="mono">${esc(s.id)}</td><td class="sub">${s.tags.auto||0} auto · ${s.tags.verified||0} verified · ${s.tags.review||0} to review</td>
       <td class="row"><a class="ghost" href="/?sheet=${encodeURIComponent(s.id)}" style="text-decoration:none;color:inherit">Open</a>
-      ${s.has_source&&imp.available?`<select id="rot-${esc(s.id)}"><option value="auto">auto</option><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select><button class="ghost" ${busy?'disabled':''} onclick="reimport('${esc(s.id)}',document.getElementById('rot-${esc(s.id)}').value)">Re-import</button>`:''}
-      <button class="danger" ${busy?'disabled':''} onclick="removeSheet('${esc(s.id)}','${esc(s.name).replace(/'/g,'&#39;')}')">Remove</button></td></tr>`).join('')}</table>
+      ${s.has_source&&imp.available?`<select id="rot-${esc(s.id)}"><option value="auto">auto</option><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select><button class="ghost" ${busy?'disabled':''} onclick="reimport(${jsa(s.id)},document.getElementById(${jsa('rot-'+s.id)}).value)">Re-import</button>`:''}
+      <button class="danger" ${busy?'disabled':''} onclick="removeSheet(${jsa(s.id)},${jsa(s.name)})">Remove</button></td></tr>`).join('')}</table>
       <p class="sub">Remove takes the sheet and its tags out of the app. The image, tag list and uploaded PDF stay in the server's backups folder. Notes, photos and procedure links are stored per KKS, so they come back if the sheet is imported again.</p>`;
     $('#main').innerHTML=h; window._sheetIds=ids; renderJob(job);
     if(busy) pollJob();
@@ -296,7 +307,7 @@ async function reimport(id,rotate){
   if(!confirm(`Re-read sheet "${id}" from its stored PDF (orientation: ${rotate})? The current tags are backed up.`)) return;
   await act(()=>K.api('/api/sheets/reimport',{id,rotate}),'Import started');
 }
-function removeSheet(id,name){ confirm(`Remove "${name}" (${id}) from the app?`)&&act(()=>K.api(`/api/sheets/${id}/remove`,{}),'Sheet removed') }
+function removeSheet(id,name){ confirm(`Remove "${name}" (${id}) from the app?`)&&act(()=>K.api(`/api/sheets/${encodeURIComponent(id)}/remove`,{}),'Sheet removed') }
 function renderJob(job){
   const el=$('#job'); if(!el||!job) return;
   const r=job.result, head={running:'Importing…',done:'Import finished',failed:'Import failed'}[job.state];
@@ -308,7 +319,7 @@ function renderJob(job){
       <div class="sub" style="margin:6px 0">Check the preview is upright. Auto orientation retries sheets that read badly, but it isn't guaranteed.</div>
       <img src="data/sheets/${esc(r.id)}.png?v=${job.finished}" alt="" style="width:100%;max-height:420px;object-fit:contain;background:#fff;border-radius:4px" onclick="lightbox(this.src)">
       <div class="row" style="margin-top:8px"><a class="primary" href="/?sheet=${encodeURIComponent(r.id)}" style="text-decoration:none">Open in viewer</a>
-      <button class="ghost" onclick="reimport('${esc(r.id)}','${back}')">Upside down? Re-import rotated to ${back}°</button></div>`;
+      <button class="ghost" onclick="reimport(${jsa(r.id)},${jsa(String(back))})">Upside down? Re-import rotated to ${back}°</button></div>`;
   }
   el.innerHTML=h+'</div>';
 }
@@ -350,30 +361,31 @@ async function pollLobby(){
     el.innerHTML=r.requests.length?r.requests.map(q=>{const x=q.request;return `<div class="row" style="margin-top:8px;align-items:center">
       <span style="font-family:var(--mono);font-size:18px;letter-spacing:2px">${q.code.slice(0,3)} ${q.code.slice(3)}</span>
       <span><b>${esc(x.full_name)}</b> (${esc(x.username)}${x.position?', '+esc(x.position):''}) · “${esc(x.label||'?')}”${q.existing?`<br><span class="sub">${esc(q.existing.full_name)} (${esc(q.existing.username)}, ${esc(q.existing.role)}) already exists: accepting adds this device as theirs.</span>`:''}</span>
-      <button class="primary" onclick="decideLobby('${q.device}','accept',${!!q.existing})">Accept</button><button class="ghost" onclick="decideLobby('${q.device}','refuse')">Refuse</button></div>`}).join('')
+      <button class="primary" onclick="decideLobby(${jsa(q.device)},'accept',${!!q.existing})">Accept</button><button class="ghost" onclick="decideLobby(${jsa(q.device)},'refuse')">Refuse</button></div>`}).join('')
       :'<div class="sub" style="margin-top:6px">Nobody is waiting.</div>' }
   lobbyTimer=setTimeout(pollLobby,2000);
 }
 async function decideLobby(device,action,existing){
-  try{ const r=await K.api(`/api/join-requests/${device}`,{action,existing_ok:!!existing}); toast(action==='accept'?`Accepted ${r.username}: their device gets the plant over the Wi-Fi now`:'Refused'); lobbySeen=''; pollLobby() }catch(e){ toast(e.message) }
+  try{ const r=await K.api(`/api/join-requests/${encodeURIComponent(device)}`,{action,existing_ok:!!existing}); toast(action==='accept'?`Accepted ${r.username}: their device gets the plant over the Wi-Fi now`:'Refused'); lobbySeen=''; pollLobby() }catch(e){ toast(e.message) }
 }
-function qrSvg(text){
-  const q=qrcodegen.QrCode.encodeText(text,qrcodegen.QrCode.Ecc.MEDIUM), b=4, n=q.size+2*b; let d='';
-  for(let y=0;y<q.size;y++) for(let x=0;x<q.size;x++) if(q.getModule(x,y)) d+=`M${x+b},${y+b}h1v1h-1z`;
-  return `<svg viewBox="0 0 ${n} ${n}" width="280" height="280" shape-rendering="crispEdges" style="background:#fff;border-radius:6px;display:block;max-width:100%;height:auto"><path d="${d}" fill="#000"/></svg>`;
+async function qrSvg(text){   // zxing-cpp in WebAssembly (decision 0037), error correction M, quiet zone included
+  const {qrWrite}=await import('/kks-wasm.js'), q=await qrWrite(text), n=q.side; let d='';
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++) if(q.modules[y*n+x]<128) d+=`M${x},${y}h1v1h-1z`;
+  return `<svg viewBox="0 0 ${n} ${n}" width="280" height="280" shape-rendering="crispEdges" role="img" aria-label="Invite QR code" style="background:#fff;border-radius:6px;display:block;max-width:100%;height:auto"><path d="${d}" fill="#000"/></svg>`;
 }
 let inviteTimer=null;
 async function startInvite(){
   clearTimeout(inviteTimer);
   let r; try{ r=await K.api('/api/invites',{}) }catch(e){ return toast(e.message) }
   const tok=r.invite.token, box=$('#invite');
-  box.innerHTML=`<div class="row" style="align-items:flex-start;margin-top:8px"><div>${qrSvg(r.code)}</div>
+  const qr=await qrSvg(r.code);
+  box.innerHTML=`<div class="row" style="align-items:flex-start;margin-top:8px"><div>${qr}</div>
     <div style="flex:1;min-width:220px"><div class="sub">Plant ${esc(r.invite.plant||'')} · reachable at ${r.invite.addrs.map(esc).join(', ')}</div>
     <div id="invstate" style="margin:8px 0">Waiting for a device to scan it…</div>
     <details><summary class="sub" style="cursor:pointer">No camera? Copy the code instead</summary>
     <textarea readonly rows="4" style="width:100%;font-family:var(--mono);font-size:11px" onclick="this.select()">${esc(r.code)}</textarea>
     <button class="ghost" onclick="navigator.clipboard.writeText(${esc(JSON.stringify(r.code))}).then(()=>toast('Copied'))">Copy</button></details>
-    <button class="ghost" style="margin-top:8px" onclick="cancelInvite('${tok}')">Cancel</button></div></div>`;
+    <button class="ghost" style="margin-top:8px" onclick="cancelInvite(${jsa(tok)})">Cancel</button></div></div>`;
   pollInvite(tok);
 }
 async function pollInvite(tok){

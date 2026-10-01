@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Course — KKS Explorer</title>
+<link rel="icon" href="/icon.svg">
+<link rel="stylesheet" href="/vendor/fonts/courses.css">
+<link rel="stylesheet" href="/course.css">
+</head>
+<body>
+<header class="top"><div class="brand" id="brand">Course</div><a class="docid" href="/learning.html">← All courses</a></header>
+<nav class="mobile-nav" id="mnav" aria-label="Course contents (narrow screens)"></nav>
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Course contents"></nav>
+  <main id="main"><p class="stat">Loading…</p></main>
+</div>
+<script src="/common.js"></script>
+<script src="/course-bridge.js"></script>
+<script src="/course-figure.js"></script>
+<script>K.start().then(() => { const s = document.createElement('script'); s.src = '/course.js'; document.body.append(s) })</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+## model.nim + views.nim: what the screens show, on synthetic plant data (no plant data in the repository).
+import std/[unittest, tables, strutils]
+import kks/[json, model, views, pathstore]
+
+proc j(s: string): JNode = parseStrict(s)
+
+proc sample(): Model =
+  result = Model()
+  result.sheets = parseSheets(j("""[{"id":"a","name":"Sheet A","w":2000,"h":1000,"scale":2.0,"levels":3,"rot":0,"notes":["markup"]}]"""))
+  result.baseTags = parseTags(j("""[
+    {"id":"a:1","sheet":"a","kks":"11LAB70","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[100,100,140,120],"read":["11LAB70","AA501"]},
+    {"id":"a:2","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[200,100,240,120],"read":["11LAB70","AA501"]},
+    {"id":"a:3","sheet":"a","kks":"11HAD70CT101","suffix":"R","isa":"TIAC","kind":"instrument","status":"auto","conf":1,"bbox":[300,100,330,160],"read":["TIAC","11HAD70CT101R"]},
+    {"id":"a:4","sheet":"a","kks":null,"suffix":"","isa":null,"kind":"other","status":"review","conf":0.1,"bbox":[400,100,430,120],"read":["??","LAB7"]},
+    {"id":"a:5","sheet":"a","kks":"11LAB70AA502","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[500,100,540,120],"read":["",""]}]"""))
+  result.kksTables = j("""{"systems":{"LAB":"Feed water piping system","HAD":"HP drum"},"components":{"AA":"Valve","CT":"Temperature measurement"},
+    "isa_first":{"T":"Temperature"},"isa_next":{"I":"Indicate","A":"Alarm","C":"Control"},"blocks":{"11":"Block 1"}}""")
+  result.locations = buildLocations(j("""{"entries":[{"kks":"LAB70AA501","level":"14.50m","cabinet":"C1","desc":"feed valve"},
+                                                    {"kks":"LAB70AA501","level":"14.5 m","cabinet":"C1"}]}"""))
+  result.procs = j("""[{"id":"1.1","title":"Start","path":["1 Intro"],"page":3,"steps":[{"n":1,"text":"Open the feed valve"}]}]""")
+  result.state = j("""{"equipment":{"11LAB70AA501":{"floor":"3","notes":"leaks"}},
+    "reviews":{"a:4":{"status":"confirmed","kks":"11LAB70AA503","suffix":"","isa":null},"a:5":{"status":"rejected"}},
+    "photos":[{"id":"p1","kks":"11LAB70AA501","file":"x.jxl","caption":"c"}],
+    "links":[{"proc":"1.1","step":1,"kks":"11LAB70AA501"}],
+    "added_tags":[{"id":"00112233445566778899aabbccddeeff","sheet":"a","bbox":[600,100,640,120],"kks":"11LAB70AA504","suffix":"","isa":null,"kind":"equipment","note":""}]}""")
+  result.merge()
+
+suite "model":
+  let m = sample()
+  test "reviews override the reader; rejected tags go; added tags join":
+    check m.tagById("a:4")[1].full == "11LAB70AA503"
+    check m.tagById("a:4")[1].status == "confirmed"
+    check not m.tagById("a:5")[0]
+    check m.tagById("u:00112233445566778899aabbccddeeff")[1].status == "verified"
+  test "decoding":
+    let (ok, d) = m.decode(m.tagById("a:3")[1])
+    check ok and d.sys == "HAD" and d.comp == "CT" and d.isa == "Temperature — Indicate, Alarm, Control"
+    check not m.decode(m.tagById("a:1")[1])[0]
+  test "the location list: one elevation when the rows agree":
+    check m.refLoc("LAB70AA501").elev == "14.5 m"
+    check m.refLoc("LAB70AA501").cabinet == "C1"
+  test "search: exact codes first, without the unit, partial, by description":
+    check m.search("11LAB70AA501")[0].id == "a:2"
+    check m.search("LAB70AA501")[0].id == "a:2"
+    check m.search("HAD70CT101R")[0].id == "a:3"
+    check m.search("feed valve").len >= 1
+
+suite "views":
+  let m = sample()
+  test "the panel":
+    let v = tagView(m, "a:2")
+    check v["decoded"]["sys_name"].s == "Feed water piping system"
+    check v["equipment"]["floor"].s == "3"
+    check v["photos"].elems.len == 1
+    check v["procedures"][0]["title"].s == "Start"
+    check v["list_elev"].s == "14.5 m"
+    check v["box"][0].num == 100.0
+  test "sheets, tags in points, review queue, procedures, floors":
+    check sheetsView(m)[0]["tags"].i == 5
+    check tagsView(m, "a")[0]["x0"].num == 50.0
+    check reviewView(m).elems.len == 0
+    check procView(m, "1.1")["links"][0]["tag"].s == "a:2"
+    check floorsView(m)["3"].elems.len == 1
+  test "the flat path store":
+    var d = Drawing(width: 640, height: 320, gx: 1, gy: 1)
+    d.styles.add Style(kind: Stroke, width: 64)
+    d.paths.add pathstore.Path(style: 0, bbox: [0'i64, 0, 64, 64], cmdStart: 0, cmdCount: 2, ptStart: 0)
+    d.ops = @[OpMove, OpLine]
+    d.xy = @[0'i64, 0, 64, 64]
+    d.cells = @[@[0'i32]]
+    let f = flat(d)
+    check f[0 ..< 4] == "KKF1"
+    check f.len == 4 + 9 * 4 + 16 + 32 + 4 + 16 + 8 + 4

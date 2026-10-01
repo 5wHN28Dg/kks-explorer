@@ -57,7 +57,7 @@ Rules for this project (solo developer, 3+ targets, long lifespan):
   `backup`, `restore [--seq N] [--out F]`, `export-root-key --out F`, `import-root-key --file F`, `added-tags`,
   `publish-data [--from DIR]`.
   Settings: `config.json` (see `config.example.json`, `server/config.py`).
-- Tests: `.venv/bin/python -m unittest discover -s tests` (101, incl. 16 for protocol v2 in tests/test_protocol_v2.py; server end-to-end over HTTP, protocol vectors,
+- Tests: `.venv/bin/python -m unittest discover -s tests` (116, incl. 16 for protocol v2 in tests/test_protocol_v2.py, 3 strict JSON, 6 path store, 6 course format; server end-to-end over HTTP, protocol vectors,
   migration, sync, peer mode, join by invite, reliable UDP, internet sync, plant data, self-updates). Base.tearDown asserts the server never wrote an entry the replay ignores and a fresh replay matches.
   `peer/vectors/v1.json` is FROZEN (the Kotlin port must match it byte for byte); `test_file_is_frozen` fails if
   `peer/make_vectors.py` would change it. Add new vectors in a new file rather than editing v1. The UI was verified with Playwright
@@ -510,7 +510,188 @@ Spec details settled while writing:
 - entry ID excludes `sig`; copies sharing an ID are valid if any copy verifies;
 - the v1 import uses sorted [key, value] pairs.
 
-Next: docs/PATHSTORE.md, docs/COURSES.md, then phase 2 (the Nim core).
+- `docs/PATHSTORE.md` + `ref/pathstore.py` + `ref/vectors/pathstore-v1.json`: the .kkp grid path store; measured on
+  all 11 sheets with `tools/m6/pathstore_measure.py` (5.6 MB vs 8.0 MB of PDFs; hairline policy differs from MuPDF on
+  purpose).
+- `docs/COURSES.md` + `ref/courses.py` (validator + figure evaluator) + `ref/vectors/courses-v1.json` (valid, 54
+  rejects with codes, frame scripts, unit cases). Figures = a value graph (tables, sum, product, select, follow,
+  hold) bound to shapes, flows of particles on routes; no expressions. `tools/m6/course_figures.py` converts all 16
+  animated figures (206 KB compact) and compares 22 states side by side with the original JS in headless Chromium
+  (`~/.cache/ms-playwright/chromium_headless_shell-1243/…/chrome-headless-shell --no-sandbox`; the snap
+  chromium-browser isn't installed): geometry, labels and texts match; simplifications listed in COURSES.md §12.
+  Not frozen until a second implementation passes the vectors.
+
+**Phase 2 started 2026-09-30:** the Nim core in `core/` (README there; `cd core && nim test`, 37 tests).
+- Decision 0029 (accepted): crypto through a provider interface (`crypto.nim`; GnuTLS on GNOME/Linux in
+  `provider_gnutls.nim`, CNG on Windows and Java through JNI on Android still to write); our own strict JSON reader;
+  zlib linked; small hand-written `importc` bindings with the `header` pragma (the C compiler checks them); std/unittest.
+- **Strict reading added to PROTOCOL-v2 §1:** reject duplicate keys, trailing commas, leading zeros, raw control
+  characters, unpaired surrogates, BOM, trailing bytes, depth > 128. Nim's std/json accepts all of these. Vectors
+  `ref/vectors/v2-json.json` (`ref/sjson.py` = Python's parser with hooks, an independent reader).
+- **Passing:** every vector file (v2-json, v2-core, v2-crypto, v2-replay, v2-malformed, pathstore-v1, courses-v1),
+  byte-identical state bytes and ECIES output. Local checks with plant data in /tmp only: all 11 sheets' .kkp
+  re-encode to the Python reference's bytes, and the 16 real figures match the Python evaluator on 192 frames.
+- **Lessons:**
+  - Nim identifiers ignore case after the first letter, so `jbool` clashed with the enum `jBool`. JSON constructors
+    are now `newBool`, `newObj`, and so on.
+  - GnuTLS can't import a bare P-256 scalar, so `PrivateKey` = scalar + public point.
+  - `gnutls_free` is a macro; call it as `(gnutls_free)(p)`.
+  - Course-text rounding expands the double exactly (mantissa × 5^k), because C's printf rounds ties to even.
+- **Measured:** replay of 2019 entries 282 ms, of which 222 ms is ECDSA verification (GnuTLS 0.11 ms per signature;
+  Python/OpenSSL does the whole replay in 243 ms).
+- **Not done yet:** the CNG and JNI providers, the sync state machine (§15), core CI, and the importer in Nim (0026).
+
+Phase 2 also added: the §15 sync session as a sans-I/O state machine (`sync.nim`), the node (`node.nim`), the
+local API (`api.nim`, a port of LocalApi), invites, progress, plant data, bundles. `core`: 61 tests. Still to
+write: the CNG and JNI providers, core CI.
+
+**Phase 3 (2026-09-30/10-01): Linux platform layer + server** (`platform/linux/`, decision 0030; `nim test`: 13).
+- **Building blocks:** SQLite store with sealed rows (`dbstore`), TLS 1.3 over GnuTLS with peer-ID pinning
+  (`tls`), sync over TCP (`net`), Argon2id via OpenSSL plus a scrypt check of v1 hashes (`argon2`), mDNS through
+  Avahi's D-Bus (`mdns`).
+- **`kks_server`:** v1's HTTP routes for the unchanged web pages, setup link, users, publish-data, import-v1,
+  backup.
+- **Deployment:** `deploy/kks-server.service` (systemd-creds storage key).
+- **Tests:** `e2e/test_server_http.py`, 3 tests: the flow, login throttling, Drawings.
+- **Migration dry run:** `tools/m6/migrate_v1.py` on a copy of the real plant.db came out identical (copies
+  deleted).
+
+**Phase 4 (2026-10-01): importer in Nim, the 0026 gate met** (`importer/`, README there; `nim test`: 11 synthetic
+checks).
+- **The gate:** `kks-import` reproduces the Python importer bit for bit on all 11 sheets:
+  - orientation scores, 5,350 crops/masks, 27,847 glyphs (incl. every kNN similarity), 2,130 tags;
+  - 3.5 min single-threaded against Python's 11 min on 11 processes;
+  - LP: 203 of 207 stored tags read the same, the 4 others go to review.
+- **MuPDF 1.28.2** built from pinned source (`fetch_mupdf.sh`). OpenCV ops ported from 5.0.0 source; numpy's
+  OpenBLAS kernel order in `kks_dot.c`.
+- **Writes:** `.kkp` (vectors byte-identical to ref/pathstore), overview pyramid `sheets/<id>.o<k>.jxl` (spec in
+  PATHSTORE.md), the source PDF, sheets.json/tags.json.
+- **Glyph library:** `extractor/fontlib.kgl` (docs/GLYPHLIB.md, `tools/fontlib_export.py`).
+- **The Nim server's Drawings:** runs `kks-import` (config `importer`, `plant_dir`, `backup_dir`, `glyphs`), with
+  backup/restore and publish.
+- **Local gate:** `importer/tests/dump_*.py` + `diff_*.nim`, references outside the repo.
+- **Lessons:**
+  - The Python reference depends on OpenBLAS's thread count: chunk-boundary rows use another kernel, 1 ulp off.
+    Gate against `OPENBLAS_NUM_THREADS=1`.
+  - cv2's labels follow 2×2 blocks (Spaghetti), not pixels.
+  - cv2's GaussianBlur on float32 uses FMA (AVX2 build), even in its scalar tail.
+  - Nim builds an array literal in place: `a = [x, a[0]]` reads the overwritten a[0] (broke a SHA-256).
+  - Embedded JPEGs: Pillow (libjpeg-turbo) and MuPDF decode differently, up to 84 levels; the importer follows
+    MuPDF.
+
+**Phase 5 (2026-10-01): GNOME app** (`apps/gnome/`, README there; decision 0031).
+- **Build:** GTK 4.22 + libadwaita 1.9 through hand-written bindings; headers via `apt-get download` into
+  ~/.local/kksdev/root.
+- **What works:** the viewer (pyramid + Cairo vector tiles + hotspots), search, the equipment panel with editing,
+  review and photos (annotate → JXL d1.9), missed-tag marking, procedures with link mode, the review queue, the floor
+  filter, notes, Manage (approvals, proposals, history, people, devices with invite QR / nearby / request file /
+  bundle, account with root key backup), all ways of joining, the sync service (listener, mDNS, auto rounds), the
+  status line.
+- **Tests:** `apps/gnome/e2e/test_gnome.py` drives the app through AT-SPI against the Nim server (~30 s, no plant
+  data).
+- **Measured** (docs/m6/MEASUREMENTS.md, rules written first): startup 315 ms, 248 MB RSS, 2.8 MB binary.
+- **Not done:** the Flatpak build (manifest written and validated; no flatpak-builder/SDK here), webcam QR, courses
+  (after phase 8's conversion).
+- **Lessons:**
+  - Nim closures in loops share variables: use `closureScope` over indexed copies.
+  - Never let a Nim exception unwind through GLib: the trampolines catch and log. One escaped and silently killed
+    every timer.
+  - A dialog built during an AT-SPI action had no accessibility contents: handlers run from idle.
+  - `pkill -f` patterns match your own shell: anchor them (`^/tmp/...`).
+
+**Phase 6 (2026-10-01): Android v2** (`android/app2`, `android/nim`; README in app2; decision 0032 + addendum).
+- **Build:** the Nim core as `libkks.so` (NDK 27, SQLite amalgamation compiled in) behind a small JNI surface. Crypto
+  goes through the JCA, the device key lives in AndroidKeyStore, and TLS 1.3 in Kotlin pins the peer ID.
+- **Screens (Compose):** setup with four ways to join, drawings (pyramid, vector tiles, hotspots, marking, floors,
+  notes, search), the equipment panel (edit, review, photos with annotation → JPEG XL), procedures with link mode, the
+  review queue, Manage (approvals, proposals, history, people, devices with the invite QR from zxing-cpp, account).
+- **Sync service:** listener, NSD with TXT, rounds, and a WorkManager worker every 15 min.
+- **New protocol piece:** PROTOCOL-v2 §16 `enroll` over TLS, so passwords never travel in clear text.
+- **Removed devices wipe themselves (§15):** core `Hooks.wipe(by)`, used on Android and in GNOME (which re-executes).
+- **Tests:** `android/app2/e2e/test_app2.py` (emulator + Nim server, synthetic sheet; ~80 s): join, search, edit
+  synced, approval on the phone, removal and wipe.
+- **Also verified on the emulator:**
+  - procedure linking;
+  - an Arabic proposal approved on the phone;
+  - a photo round trip (1600×1200 JXL, arrow burned in);
+  - marking a missed tag;
+  - "Ask an admin" against the server (codes match);
+  - the background worker with the app closed;
+  - a GNOME laptop joining through the phone's invite;
+  - the QR decodes (OpenCV).
+- **Lessons:**
+  - NimMain must run on the core thread.
+  - Compose dialogs without the platform default width get no insets.
+  - The old v1 app on the same emulator was the "8491" sync noise.
+- **Not verified (needs the Note 9 and the Honor 600):** camera QR, TalkBack, real Wi-Fi discovery, Honor's
+  background limits, all measurements (rules in docs/m6/MEASUREMENTS.md).
+
+**Phase 7 (2026-10-01): Windows** (`apps/windows`, `platform/windows`; README in apps/windows; decision 0033).
+- **Toolchain:** mingw-w64 13 / GCC 13 cross-compile on this machine (`~/.local/kksdev/mingw`). Libraries come from
+  `platform/windows/build-deps.sh` (zlib, libjxl, zxing-cpp; pinned SHA-256). One static 14 MB exe.
+- **Core and platform:**
+  - `provider_cng.nim` (+ `kks_cng.c`): CNG crypto; device key in the NCrypt software key store; our own P-256 curve
+    check, since CNG's import check isn't documented;
+  - `kksw/tls` (Schannel through buffers, the same API as GnuTLS's `kksl/tls`): `net.nim` is shared;
+  - `kksw/mdns` (DnsService API) and `kksw/keystore` (DPAPI);
+  - `apps/common/appstate.nim` is now shared by GNOME and Windows.
+- **App:** Win32 controls + a Direct2D view (tiles on worker threads, the drawing's tags as UIA buttons via
+  `kks_uia.cpp`), the GNOME app's screens (setup, drawings, panel, procedures, review, Manage with the invite QR,
+  photos from a file with the mark-up editor).
+- **Test VMs:** Windows 10 22H2 (unactivated, the user's choice) and Windows 11 26H2 evaluation, under QEMU/KVM;
+  `apps/windows/e2e/vm/make-vm.sh` (unattended, OpenSSH, auto-logon).
+- **Tests:**
+  - core + platform tests pass in both VMs;
+  - TLS negotiates 1.2 on Windows 10 and 1.3 on Windows 11 [V];
+  - `apps/windows/e2e/test_windows.py VM_IP` drives the app through native UIA (`uiadrive.exe`): join, a tag
+    invoked via UIA, search + panel, an edit synced, a marked-up photo (its JPEG XL on the server checked for the box),
+    an approval, removal + wipe. 9 of 10 runs passed (the one failure was not kept).
+- **Measured (VMs, WARP):** startup to the first sheet 390 ms (10) / 268 ms (11), 45 MB private memory.
+- **Lessons:** in decision 0033's findings (handlers after notifications, WideCString lifetimes, UIA COM threading,
+  the numeric manifest resource type, the Windows 11 Terminal handoff).
+- **Not done:** camera and webcam QR (no camera in the VMs), MSIX packaging, a real laptop, CI (needs the user's OK
+  to push).
+
+**Phase 8 (2026-10-01): web client + courses** (decisions 0034, 0035).
+- **v2 viewer in index.html** (0034): path store tiles from `tiles.js` (module Worker), JXL pyramid; verified in all
+  three engines (`platform/linux/e2e/test_web_v2.py`). `/?kks=CODE` opens that equipment (course links).
+- **Escaping audit:** a stored XSS in admin.html (full name inside an inline handler, live since v1) fixed with
+  `jsa()`; the v1 Android APK in the field still carries the old admin.html.
+- **Courses converted:** `tools/m6/convert_courses.py dump RAW` (Playwright evaluates each HTML course) then
+  `build RAW OUT` (HTML → runs/blocks, the 10 static SVG diagrams → static figures, the 16 animated ones from
+  course_figures.py, WebP → JXL d1.9, shared photos deduplicated). Output in `data/courses/`: `ppt.json`, `fnd.json`,
+  `hrsg.json` (305/208/214 KB) + 28 `.jxl` (4.5 MB). Question counts match v1 (88/96/83); drill rules are checked
+  against the original JS judging functions; static diagrams compared pixel-wise with the original SVGs.
+- **Format additions** (COURSES.md, not frozen): module `bridge` {title, intro, questions}; test items by reference
+  `{module, ref}`. Vectors regenerated; Python, Nim core and course-figure.js all pass them.
+- **Web renderer** (0035): `course.html` + `course.js` (pages, DOM + textContent only) + `course-figure.js`
+  (evaluator port + Canvas 2D) + `course.css` (the original courses' stylesheet). Progress keys unchanged
+  (`<id>.solved` …), course-bridge.js takes the id from `?c=`. Nim server `/api/courses` (core `courses.summary`);
+  learning.html lists JSON courses there, else v1's. Tests: `tests/web/test_course_figure.py` (vectors in 3 engines),
+  `platform/linux/e2e/test_course_web.py` (every page of every course, figures drawn, answers, order, test, drills,
+  decoder, keyboard answer; 3 engines).
+- **Lesson:** a sync() inside the frame loop scheduled a second rAF each frame: callbacks multiplied, 8 fps; fixed by
+  marking the loop busy (60 fps).
+- **Native course renderers** (decision 0036; results there): GNOME (GtkLabel markup + Cairo/Pango), Windows
+  (RichEdit from escaped RTF + Direct2D/DirectWrite, WOFF2 faces unpacked by DirectWrite on 10 and 11), Android
+  (Compose, figure ops recorded in the Nim library and replayed on the canvas). Shared: `apps/common/figdraw.nim`,
+  `apps/common/coursestate.nim`, core `courses.pickCourses`/`summary`. Each app's e2e has a `test_courses`; all pass
+  (GNOME, Windows 10 + 11, Android emulator), and the existing flows still pass.
+- **Windows wipe flake:** `disk I/O error` after a removal: the restarted process opened the DB while the old one was
+  still closing it. Now the old process closes the store before starting the new one and exits at once; opening
+  retries briefly; the wipe overwrites deleted rows (secure_delete) and retries VACUUM. Before: 3 of 6 full
+  Windows runs failed (2 of them a test race on the photo blob, also fixed); after: 6 of 6 passed (3 per VM).
+- **Own WebAssembly build** (decision 0037): `platform/web/build-wasm.sh` (pinned emsdk 6.0.10, the same pinned
+  libjxl/zxing-cpp sources as native; SIMD + scalar; full 3.6 MB / decode-only 0.74 MB; reproducible) →
+  `vendor/kks/`, used through `kks-wasm.js` (+ `kks-wasm-worker.js` for encoding). Browsers now **encode photos to
+  JXL themselves** (effort 7: ~1.2 s for 1.9 MP on this laptop); the Nim server/core refuse non-JXL photos when they
+  have no encoder (they had stored JPEG before: a 0018 gap). QR read: BarcodeDetector first, else zxing-cpp; QR write
+  (admin invite) through zxing-cpp. Removed `vendor/jxl` (@jsquash), `vendor/jsqr`, `qrcodegen.js`.
+  Test: `platform/linux/e2e/test_web_wasm.py` (3 engines).
+- **Accessibility:** course pages keyboard-tested in 3 engines (rail, answers, order question, slider; roles and
+  names); index.html search is now a combobox/listbox and a pick moves focus to the panel heading; the Windows pages
+  scroll a Tab-focused control into view. Not done: TalkBack, Narrator, Orca themselves.
+- **Android figure faces:** TTF copies (`tools/build_courses.py --ttf`, vendor/fonts/ttf).
 
 ## Backlog (rough priority)
 

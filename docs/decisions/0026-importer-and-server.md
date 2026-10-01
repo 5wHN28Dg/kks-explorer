@@ -2,6 +2,28 @@
 
 Date 2026-09-30 · Scope: R19, R21, R22 · Status: **decided by the user 2026-09-30: importer and server in Nim** (the Python proposal below was rejected)
 
+## Gate result (2026-10-01): met
+
+The Nim importer (`importer/`, README there) reproduces the Python importer's reading on all 11 sheets, bit for bit:
+- orientation scores;
+- 5,350 cell crops and masks;
+- 27,847 glyphs (labels, confidences, all kNN similarities);
+- 2,130 tags.
+
+On LP, 203 of the 207 stored tags read the same. The other 4 are hand-verified tags the reader can't read; they go
+to review, and none is misread.
+
+What exactness took:
+- MuPDF 1.28.2, built from the pinned source.
+- OpenCV's operations ported where pixels matter (OpenCV 5.0.0 source, Apache-2.0).
+- The float order of numpy's OpenBLAS kernels for the kNN.
+- Found on the way: **the Python reference itself depends on OpenBLAS's thread count**. Rows at thread-chunk
+  boundaries use another kernel, which moves similarities by 1 ulp. The gate therefore compares against a
+  single-thread trace.
+
+The glyph library is in the documented format (`extractor/fontlib.kgl`, docs/GLYPHLIB.md). The Python importer can
+retire once the server's Drawings page calls `kks-import`.
+
 ## User decision (2026-09-30)
 
 **The importer and the server are written in Nim**, like the desktop core (0027). The Python proposal below is kept

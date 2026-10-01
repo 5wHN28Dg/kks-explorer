@@ -118,7 +118,7 @@ dt{color:var(--muted)} dd{margin:0}
 <div id="app">
 <header>
   <div class="brand">KKS Explorer <small id="plantName"></small></div>
-  <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false"><div id="results"></div></div>
+  <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search equipment by KKS code or description" aria-autocomplete="list" aria-expanded="false" aria-controls="results"><div id="results" role="listbox" aria-label="Search results"></div></div>
   <select id="sheetSel" title="Drawing"></select>
   <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
   <button class="btn" id="procBtn">Procedures</button>
@@ -148,9 +148,12 @@ dt{color:var(--muted)} dd{margin:0}
 <script>
 const $=s=>document.querySelector(s);
 let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
-let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='';
+let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='', PDV='';
 const api=u=>K.api(u);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// a value as a JavaScript argument inside an HTML attribute (onclick="f(${jsa(id)})"): a JSON string, HTML-escaped.
+// Escaping for HTML alone doesn't protect a quoted JS string in an attribute (web policy: every innerHTML audited).
+const jsa=v=>esc(JSON.stringify(v));
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2200)}
 
 // effective tag = extracted tag + your review decision
@@ -186,16 +189,20 @@ function locSec(b,sfx){
 }
 function selectLoc(b){
   selId=null; drawTags();
-  $('#panelBody').innerHTML=`<div class="phead"><div style="flex:1"><div class="kks">${esc(b)}</div><div class="sub">${esc(KKS.components[b.slice(5,7)]||'')}</div></div><button class="x" onclick="closePanel()">×</button></div>
+  $('#panelBody').innerHTML=`<div class="phead"><div style="flex:1"><div class="kks" tabindex="-1" role="heading" aria-level="2">${esc(b)}</div><div class="sub">${esc(KKS.components[b.slice(5,7)]||'')}</div></div><button class="x" onclick="closePanel()" aria-label="Close the panel">×</button></div>
     <div class="sec"><div class="warn">In the location list but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.</div></div>`+locSec(b);
   $('#panel').classList.add('open'); $('#panel').scrollTop=0;
+  if(focusPanel){ focusPanel=false; $('#panelBody .phead .kks')?.focus() }
 }
 
 async function load(){
   const me=await K.start(); K.toast=toast;
   $('#who').textContent=me.user.full_name||me.user.username; $('#plantName').textContent=K.cfg?'· '+K.cfg.plant_name:'';
   try{
-    [SHEETS,BASE_TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error(u+': '+r.status);return r.json()})));
+    // procedures are optional: a plant may not have published its operation manual (yet)
+    [SHEETS,BASE_TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{
+      if(r.status===404&&u.endsWith('procedures.json')) return [];
+      if(!r.ok)throw new Error(u+': '+r.status);return r.json()})));
   }catch(e){
     // no drawings here yet: they come by sync once the manager has published them (PROTOCOL.md §19)
     const pd=await api('/api/sync/status').then(s=>s.plant_data).catch(()=>null);
@@ -206,6 +213,7 @@ async function load(){
     K.overlay(`<div class="box"><h1>${pd?'Waiting for the drawings':'Plant data not available'}</h1><p>${msg}</p><button onclick="location.reload()">Retry</button></div>`);
     if(pd){ K.onChange(why=>{ if(why==='plantdata') location.reload() }); K.watchChanges() }
     return }
+  if(SHEETS.some(s=>s.levels)) PDV=String((await api('/api/sync/status').catch(()=>null))?.plant_data?.active??'');
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); toast('Offline: no saved copy of notes/photos on this device yet') }
   mergeTags();
   const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
@@ -218,10 +226,14 @@ async function load(){
   updateQueueBadge(); setTimeout(cacheSheets,3000);
   if(K.cfg?.mode==='peer'&&!K.cfg?.app) api('/api/update').then(u=>{   // once per new version (M5b)
     if(u.available&&!u.staged&&localStorage.getItem('updSeen')!==u.latest){ localStorage.setItem('updSeen',u.latest); toast(`KKS Explorer ${u.latest} is out: Manage → Account to install it`) } }).catch(()=>{});
-  $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
   refreshFloors(); refreshReviewCount(); renderProcs();
   const want=new URLSearchParams(location.search).get('sheet')||localStorage.getItem('sheet');  // ?sheet=id from Manage → Drawings
+  const wantK=(new URLSearchParams(location.search).get('kks')||'').toUpperCase().replace(/\s+/g,'');  // ?kks= from a course link
+  const hitK=wantK&&TAGS.find(t=>full(t)===wantK||t.kks===wantK);
+  if(hitK){ goTo(hitK.id); history.replaceState(null,'',location.pathname); return }
   openSheet(SHEETS.find(s=>s.id===want)?want:SHEETS[0].id);
+  if(wantK){ $('#q').value=wantK; $('#q').dispatchEvent(new Event('input')); $('#q').focus() }
 }
 
 // ---------- tags marked by hand (approved ones live in the DB, not tags.json, so they survive re-imports) ----------
@@ -249,7 +261,7 @@ function markDraw(e,phase){
 function markForm(bb){
   const t={sheet:cur.id,bbox:bb};
   $('#panelBody').innerHTML=`<div class="phead"><div style="flex:1"><div class="kks" style="font-size:17px">Mark a missing tag</div><div class="sub">${esc(cur.name)}</div></div><button class="x" onclick="markMode(false);closePanel()">×</button></div>
-    <div class="sec"><div class="crop" style="${cropStyle(t)}"></div>
+    <div class="sec"><div class="crop" data-sheet="${esc(t.sheet)}" style="${cropStyle(t)}"></div>
     <div class="sub">Type the code if you can read it. If not, leave it empty: it goes to the review queue.</div>
     <div class="row2" style="margin-top:8px"><div class="field"><label>KKS (with suffix)</label><input id="mkK" class="mono" placeholder="e.g. 11LAB90CP501"></div>
     <div class="field"><label>Function letters (instruments)</label><input id="mkI" class="mono" placeholder="e.g. PI, TIAC"></div></div>
@@ -296,18 +308,42 @@ function pendingFor(t){
 function pendingHtml(t){
   const L=pendingFor(t); if(!L.length) return '';
   const label={pending:'awaiting approval',conflict:'conflict: admin decides',queued:'queued offline'};
-  return `<div class="sec"><h3>Your changes, not live yet</h3>${L.map(x=>`<div class="pend"><span class="badge ${x.status}">${label[x.status]}</span> ${esc(K.describe(x.kind,x.p))}${x.kind==='photo'?`<img src="${esc(x.p.file?'photos/'+x.p.file:x.p.dataUrl)}" alt="">`:''}</div>`).join('')}</div>`;
+  return `<div class="sec"><h3>Your changes, not live yet</h3>${L.map(x=>`<div class="pend"><span class="badge ${esc(x.status)}">${label[x.status]}</span> ${esc(K.describe(x.kind,x.p))}${x.kind==='photo'?`<img src="${esc(x.p.file?'photos/'+x.p.file:x.p.dataUrl)}" alt="">`:''}</div>`).join('')}</div>`;
 }
 function updatePending(){ const el=$('#pendingSec'); if(el&&selTag&&$('#panel').classList.contains('open')) el.innerHTML=pendingHtml(selTag) }
 // with a service worker, fetching each sheet once stores it for offline use
-async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return; for(const s of SHEETS) for(const u of [s.file,s.vector].filter(Boolean)){ try{ await fetch(u) }catch(e){ return } } }
+async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return;
+  for(const s of SHEETS){
+    const us=s.levels?[...Array(s.levels).keys()].map(k=>sheetFile(s.id,'.o'+k+'.jxl')).concat(sheetFile(s.id,'.kkp')):[s.file,s.vector];
+    for(const u of us.filter(Boolean)){ try{ await fetch(u) }catch(e){ return } } } }
 
 // ---------- viewer ----------
 function openSheet(id,then){
   cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
-  const img=$('#sheetimg'); img.onload=()=>{ fit(); drawTags(); then&&then(); }; img.src=cur.file; loadVector();
+  const img=$('#sheetimg'); let first=true;
+  img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
+  if(cur.levels){ const k=startLevel(); img.dataset.level=k; img.src=levelUrl(k) } else { delete img.dataset.level; img.src=cur.file }
+  loadVector();
   img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
   renderNotes();
+}
+// ---------- v2 plant data (decision 0034): an overview pyramid of JPEG XL levels + the path store drawn by tiles.js ----
+// Level k is the sheet at 1/2^k of level 0 (cur.w × cur.h px). The <img> shows the coarsest level that is sharp enough
+// for the view; browsers without JPEG XL get it decoded by K.jxl (libjxl in WebAssembly).
+// URLs carry the plant data version (PDV), so a re-imported sheet is never served from an old cache entry
+function sheetFile(id,ext){ return 'data/sheets/'+encodeURIComponent(id)+ext+(PDV?'?v='+PDV:'') }
+function levelUrl(k){ return sheetFile(cur.id,'.o'+k+'.jxl') }
+function startLevel(){ const v=$('#viewer').getBoundingClientRect(), need=Math.max(v.width,v.height)*(devicePixelRatio||1);
+  let k=cur.levels-1; while(k>0&&Math.max(cur.w,cur.h)/2**k<need) k--; return k }
+function wantLevel(){ const need=view.s*(devicePixelRatio||1); let k=cur.levels-1; while(k>0&&1/2**k<need) k--; return k }
+function upgradeLevel(){
+  if(!cur?.levels) return; const k=wantLevel(), img=$('#sheetimg'), shown=+(img.dataset.level??cur.levels-1);
+  if(k>=shown) return;
+  img.dataset.level=k;   // asked for: not asked again while it loads
+  const s=cur, url=levelUrl(k);
+  // swap once decoded; without JPEG XL in the browser, K.jxl decodes it (a detached image isn't watched)
+  K.jxl.native().then(n=>n?url:K.jxl.url(url)).then(u=>{ const pre=new Image(); pre.onload=()=>{ if(cur===s) img.src=u }; pre.src=u })
+    .catch(e=>console.warn('overview level',k,e));
 }
 function apply(){ const t=`translate(${view.x}px,${view.y}px) scale(${view.s})`; $('#stage').style.transform=t; $('#stage2').style.transform=t; followSharp() }
 
@@ -315,13 +351,45 @@ function apply(){ const t=`translate(${view.x}px,${view.y}px) scale(${view.s})`;
 // The PNG is a fixed-resolution bitmap; beyond ~1:1 it gets blocky. The canvas draws the vector file (the PDF's own
 // drawing) at the screen's real resolution. While panning/zooming, the last drawing is moved along with CSS (and the
 // PNG shows at the edges); ~150 ms after the view settles it is redrawn sharp.
-const sharp={img:null,at:null,timer:null};
+const sharp={img:null,at:null,timer:null,worker:null,key:0,ready:null,pending:null};
 function loadVector(){
-  sharp.img=null; sharp.at=null; $('#sharp').style.display='none'; if(!cur.vector) return;
+  sharp.img=null; sharp.at=null; sharp.ready=null; $('#sharp').style.display='none';
+  if(cur.levels){   // v2: the path store in the worker
+    sharp.worker??=startTiles();
+    if(sharp.worker) sharp.worker.postMessage({t:'open',sheet:cur.id,url:sheetFile(cur.id,'.kkp')});
+    return;
+  }
+  if(!cur.vector) return;
   const im=new Image(), s=cur; im.onload=()=>{ if(cur===s){ sharp.img=im; drawSharp() } }; im.src=cur.vector;
+}
+function startTiles(){
+  try{
+    const w=new Worker('/tiles.js',{type:'module'});
+    w.onmessage=e=>{ const m=e.data;
+      if(m.t==='opened'){ if(cur&&m.sheet===cur.id){ sharp.ready=cur.id; drawSharp() } }
+      else if(m.t==='frame'){ if(sharp.pending&&m.key===sharp.pending.key) showFrame(m.bmp,sharp.pending.at); else m.bmp.close() }
+      else if(m.t==='error') console.warn('drawing',m.sheet,m.why);
+    };
+    return w;
+  }catch(e){ console.warn('no tile worker: the overview only',e); return null }
+}
+function showFrame(bmp,at){
+  const c=$('#sharp'), v=$('#viewer').getBoundingClientRect(), d=devicePixelRatio||1;
+  if(c.width!==bmp.width||c.height!==bmp.height){ c.width=bmp.width; c.height=bmp.height; c.style.width=bmp.width/d+'px'; c.style.height=bmp.height/d+'px' }
+  const x=c.getContext('2d'); x.setTransform(1,0,0,1,0,0); x.drawImage(bmp,0,0); bmp.close();
+  sharp.at=at; c.style.display='block'; followSharp(true);
 }
 function drawSharp(){
   const c=$('#sharp'), v=$('#viewer').getBoundingClientRect(), d=devicePixelRatio||1;
+  if(cur?.levels){
+    upgradeLevel();
+    if(sharp.ready!==cur.id||view.s*d<0.7){ c.style.display='none'; sharp.at=null; return }  // the overview is as sharp
+    const W=Math.round(v.width*d), H=Math.round(v.height*d), sc=cur.scale||2;
+    // the area in points: level-0 px = (screen − view.x) / view.s, points = px / scale
+    const key=++sharp.key; sharp.pending={key,at:{...view}};
+    sharp.worker.postMessage({t:'render',key,sheet:cur.id,x0:-view.x/view.s/sc,y0:-view.y/view.s/sc,s:view.s*d*sc,W,H});
+    return;
+  }
   if(!sharp.img||view.s*d<0.7){ c.style.display='none'; sharp.at=null; return }  // zoomed out: the PNG is as sharp
   const W=Math.round(v.width*d), H=Math.round(v.height*d);
   if(c.width!==W||c.height!==H){ c.width=W; c.height=H; c.style.width=v.width+'px'; c.style.height=v.height+'px' }
@@ -330,10 +398,11 @@ function drawSharp(){
   x.drawImage(sharp.img,0,0,cur.w,cur.h);
   sharp.at={...view}; c.style.transform=''; c.style.display='block';
 }
-function followSharp(){
+function followSharp(justDrawn){
   const a=sharp.at, c=$('#sharp');
   if(a){ const k=view.s/a.s; c.style.transform=`translate(${view.x-k*a.x}px,${view.y-k*a.y}px) scale(${k})` }
-  clearTimeout(sharp.timer); if(sharp.img) sharp.timer=setTimeout(drawSharp,150);
+  if(justDrawn) return;
+  clearTimeout(sharp.timer); if(sharp.img||cur?.levels) sharp.timer=setTimeout(drawSharp,150);
 }
 addEventListener('resize',()=>{ clearTimeout(sharp.timer); sharp.timer=setTimeout(drawSharp,150) });
 function fit(){ const v=$('#viewer').getBoundingClientRect(); view.s=Math.min(v.width/cur.w,v.height/cur.h)*0.98; view.x=(v.width-cur.w*view.s)/2; view.y=(v.height-cur.h*view.s)/2; apply() }
@@ -342,7 +411,7 @@ function fit(){ const v=$('#viewer').getBoundingClientRect(); view.s=Math.min(v.
 new ResizeObserver(()=>{ const v=$('#viewer').getBoundingClientRect(); if(cur&&v.width&&v.height&&!(view.s>0)) fit() }).observe($('#viewer'));
 // max zoom 16x when the sheet has a vector file (it stays sharp), 4x otherwise
 function zoomAt(f,cx,cy){ const v=$('#viewer').getBoundingClientRect(); cx??=v.width/2; cy??=v.height/2;
-  const ns=Math.max(0.05,Math.min(cur.vector?16:4,view.s*f)); view.x=cx-(cx-view.x)*ns/view.s; view.y=cy-(cy-view.y)*ns/view.s; view.s=ns; apply() }
+  const ns=Math.max(0.05,Math.min(cur.vector||cur.levels?16:4,view.s*f)); view.x=cx-(cx-view.x)*ns/view.s; view.y=cy-(cy-view.y)*ns/view.s; view.s=ns; apply() }
 function centerOn(b,scale=0.9){ const v=$('#viewer').getBoundingClientRect(); view.s=scale;
   const mobile=innerWidth<=720, pw=mobile?0:430, ph=mobile?v.height*0.62:0;
   view.x=(v.width-pw)/2-((b[0]+b[2])/2)*view.s; view.y=(v.height-ph)/2-((b[1]+b[3])/2)*view.s; apply() }
@@ -391,7 +460,7 @@ function tagClick(t){
 function goTo(tagId){
   const t=TAGS.find(x=>x.id===tagId); if(!t)return;
   const go=()=>{ const e=eff(t)||t; centerOn(e.bbox); select(e) };
-  if(cur.id!==t.sheet) openSheet(t.sheet,go); else go();
+  if(cur?.id!==t.sheet) openSheet(t.sheet,go); else go();
 }
 
 // ---------- KKS decoding ----------
@@ -414,17 +483,17 @@ function select(t){
   const procs=[...new Set(STATE.links.filter(l=>l.kks===k).map(l=>l.proc))];
   const photos=STATE.photos.filter(p=>p.kks===k);
   const sheetName=id=>SHEETS.find(s=>s.id===id)?.name||id;
-  let h=`<div class="phead"><div style="flex:1"><div class="kks">${k?esc(t.kks)+(t.suffix?`<span class="sfx">${esc(t.suffix)}</span>`:''):'<span style="color:var(--review)">Unread tag</span>'}</div>
-    <div class="sub">${esc(t.isa?t.isa+' · ':'')}${esc(kindName(t))}</div></div><button class="x" onclick="closePanel()">×</button></div><div id="pendingSec">${pendingHtml(t)}</div>`;
+  let h=`<div class="phead"><div style="flex:1"><div class="kks" tabindex="-1" role="heading" aria-level="2">${k?esc(t.kks)+(t.suffix?`<span class="sfx">${esc(t.suffix)}</span>`:''):'<span style="color:var(--review)">Unread tag</span>'}</div>
+    <div class="sub">${esc(t.isa?t.isa+' · ':'')}${esc(kindName(t))}</div></div><button class="x" onclick="closePanel()" aria-label="Close the panel">×</button></div><div id="pendingSec">${pendingHtml(t)}</div>`;
   if(t.status==='review'){
     const s=t.suggestion||{};
     h+=`<div class="sec"><h3>Check this tag</h3>
-      <div class="crop" style="${cropStyle(t)}"></div>
+      <div class="crop" data-sheet="${esc(t.sheet)}" style="${cropStyle(t)}"></div>
       <div class="sub">Reader saw: <span class="mono">${esc(t.read[0])} / ${esc(t.read[1])}</span> · confidence ${Math.round(t.conf*100)}%</div>
       ${t.note?`<div class="warn">${esc(t.note)}</div>`:''}${s.note?`<div class="warn">${esc(s.note)}</div>`:''}
       <div class="row2" style="margin-top:8px"><div class="field"><label>KKS (with suffix)</label><input id="rvK" class="mono" value="${esc((s.kks)||((t.kks||'')+(t.suffix||'')))}"></div>
       <div class="field"><label>Function letters (instruments)</label><input id="rvI" class="mono" value="${esc(s.isa||t.isa||'')}"></div></div>
-      <button class="primary" onclick="review('${t.id}','confirmed')">Confirm</button> <button class="ghost" onclick="review('${t.id}','rejected')">Not a tag</button>
+      <button class="primary" onclick="review(${jsa(t.id)},'confirmed')">Confirm</button> <button class="ghost" onclick="review(${jsa(t.id)},'rejected')">Not a tag</button>
       ${s.kks?'<div class="sub" style="margin-top:6px">Pre-filled value was checked visually during extraction.</div>':''}</div>`;
   }
   if(d){
@@ -441,12 +510,12 @@ function select(t){
   }
   h+=locSec(bodyOf(t),t.suffix);
   if(t.added) h+=`<div class="sec"><h3>Added by hand</h3><div class="sub">The app's reader missed this tag; someone marked it on the drawing.${t.note?' Note: '+esc(t.note):''}</div>
-    <button class="ghost" style="margin-top:6px" onclick="removeAdded('${t.added}','${esc(k||'this mark')}')">Remove this tag</button></div>`;
+    <button class="ghost" style="margin-top:6px" onclick="removeAdded(${jsa(t.added)},${jsa(k||'this mark')})">Remove this tag</button></div>`;
   if(where.length){
-    h+=`<div class="sec"><h3>Appears on</h3>${where.map(x=>`<span class="chip" onclick="goTo('${x.id}')">${esc(sheetName(x.sheet))}</span>`).join('')}</div>`;
+    h+=`<div class="sec"><h3>Appears on</h3>${where.map(x=>`<span class="chip" onclick="goTo(${jsa(x.id)})">${esc(sheetName(x.sheet))}</span>`).join('')}</div>`;
   }
   if(procs.length){
-    h+=`<div class="sec"><h3>Used in procedures</h3>${procs.map(p=>{const pr=PROCS.find(x=>x.id===p);return `<span class="chip" onclick="openProc('${p}')">${esc(p)} ${esc(pr?pr.title:'')}</span>`}).join('')}</div>`;
+    h+=`<div class="sec"><h3>Used in procedures</h3>${procs.map(p=>{const pr=PROCS.find(x=>x.id===p);return `<span class="chip" onclick="openProc(${jsa(p)})">${esc(p)} ${esc(pr?pr.title:'')}</span>`}).join('')}</div>`;
   }
   if(k){
     panelEq={k,live:JSON.parse(JSON.stringify(eq(k))),shown:JSON.parse(JSON.stringify(e))};
@@ -463,14 +532,15 @@ function select(t){
         <button class="ghost" id="cfAdd" style="display:none" onclick="document.getElementById('cfs').insertAdjacentHTML('beforeend',cfRow('',''))">+ Custom field</button></div>
       <div id="eqSave" style="margin-top:10px;display:none">${canApprove()?'':'<input id="f_rnote" maxlength="500" placeholder="Note for the approver (optional)" style="width:100%;margin-bottom:8px">'}<button class="primary" onclick="saveEq('${k}')">Save</button>
         <button class="ghost" onclick="select(eff(selTag))">Cancel</button></div></div>
-      <div class="sec"><h3>Photos</h3><div class="photos">${photos.map(p=>`<figure><img src="photos/${p.file}" onclick="lightbox(this.src)" alt=""><button onclick="delPhoto('${p.id}','${t.id}')">✕</button></figure>`).join('')}</div>
-      <label class="ghost" style="display:inline-block;margin-top:8px;cursor:pointer">+ Add photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'${k}','${t.id}')"></label></div>`;
+      <div class="sec"><h3>Photos</h3><div class="photos">${photos.map(p=>`<figure><img src="photos/${esc(encodeURIComponent(p.file))}" onclick="lightbox(this.src)" alt="${esc(p.caption||'Photo')}"><button onclick="delPhoto(${jsa(p.id)},${jsa(t.id)})" aria-label="Delete this photo">✕</button></figure>`).join('')}</div>
+      <label class="ghost" style="display:inline-block;margin-top:8px;cursor:pointer">+ Add photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,${jsa(k)},${jsa(t.id)})"></label></div>`;
   }
   P.innerHTML=h; $('#panel').classList.add('open'); $('#panel').scrollTop=0;
+  if(focusPanel){ focusPanel=false; P.querySelector('.phead .kks')?.focus() }
 }
 function cfRow(k,v,ro){return `<div class="cf"><input placeholder="Field" value="${esc(k)}"${ro?' readonly':''}><input placeholder="Value" value="${esc(v)}"${ro?' readonly':''}><button class="x" onclick="this.parentNode.remove()"${ro?' style="display:none"':''}>×</button></div>`}
 function fld(id,label,val,o={}){
-  const a=`id="${id}" readonly placeholder="—" data-ph="${o.ph||''}"`;   // the hint only once it is being edited
+  const a=`id="${id}" readonly placeholder="—" data-ph="${esc(o.ph||'')}"`;   // the hint only once it is being edited
   return `<div class="field lock"><label for="${id}">${label}</label><div class="lk">${o.area?`<textarea ${a} rows="2">${esc(val||'')}</textarea>`
     :`<input ${a} value="${esc(val||'')}"${o.type==='number'?' type="number" inputmode="numeric" min="0" max="10" step="1"':''}>`}
     <button class="pen" onclick="unlock('${id}')" title="Edit ${label}" aria-label="Edit ${label}">✎</button></div></div>`;
@@ -487,8 +557,16 @@ K.back = () => {
   if (d) { d.classList.remove('open'); if (d.id === 'procDrawer') { activeProc = null; drawTags() } return true }
   return false;
 };
-function cropStyle(t){ const b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
-  return `background-image:url(${SHEETS.find(s=>s.id===t.sheet).file});background-size:${SHEETS.find(s=>s.id===t.sheet).w*sc}px auto;background-position:${-(b[0]-10)*sc}px ${-(b[1]-10)*sc}px;width:${Math.min(360,w*sc)}px` }
+function cropStyle(t){ const S=SHEETS.find(s=>s.id===t.sheet), b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
+  // v1: the sheet PNG; v2: level 0 of the pyramid, filled in by the watcher below (it may need decoding first)
+  const bg=S.levels?'':`background-image:url("${encodeURI(S.file)}");`;
+  return esc(bg+`background-size:${S.w*sc}px auto;background-position:${-(b[0]-10)*sc}px ${-(b[1]-10)*sc}px;width:${Math.min(360,w*sc)}px`) }
+const cropBg={};
+function cropUrl(id){ return cropBg[id]??=K.jxl.native().then(n=>{ const u=sheetFile(id,'.o0.jxl'); return n?u:K.jxl.url(u) }) }
+new MutationObserver(()=>document.querySelectorAll('.crop[data-sheet]:not([data-bg])').forEach(el=>{
+  el.dataset.bg='1'; const S=SHEETS.find(x=>x.id===el.dataset.sheet);
+  if(S?.levels) cropUrl(S.id).then(u=>{ el.style.backgroundImage=`url("${u}")` }).catch(e=>console.warn('crop',e)) }))
+  .observe(document.body,{childList:true,subtree:true});
 const P0=k=>panelEq?.k===k?panelEq.shown:{...eq(k),...myPendingEq(k)};
 async function saveEq(k){
   const v=id=>document.getElementById(id).value.trim();
@@ -521,10 +599,18 @@ async function addPhoto(input,k,tid){
   c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
   const a=await K.annotate(c.toDataURL('image/png'),!canApprove());   // mark what matters, or just "Use photo"
   if(!a) return;
-  const up=K.cfg?.photo_upload||{type:'image/jpeg',q:0.85};   // the server / app turns it into JPEG XL (server/photos.py)
-  const mp=a.canvas.width*a.canvas.height/1e6, bar=up.ms_per_mp?K.progress('Converting the photo to JPEG XL…',up.ms_per_mp*mp+(up.type==='image/png'?0:1500)):null;
-  const r=await send('photo',{kks:k,dataUrl:a.canvas.toDataURL(up.type,up.q)},'photo for '+k,a.note);
-  bar?.done();
+  const up=K.cfg?.photo_upload||{type:'image/jpeg',q:0.85};
+  const mp=a.canvas.width*a.canvas.height/1e6;
+  let dataUrl;
+  if(up.type==='image/jxl'){   // the server stores JPEG XL only: encode here (decision 0037)
+    const bar=K.progress('Converting the photo to JPEG XL…',(up.ms_per_mp||2500)*mp);
+    try{ dataUrl=await K.jxlEncode(a.canvas,up.distance||1.9,up.effort||7) }catch(e){ bar.done(); toast(e.message); return }
+    bar.done();
+  } else {                     // the v1 server and the app convert it themselves (server/photos.py, the app's libjxl)
+    const bar=up.ms_per_mp?K.progress('Converting the photo to JPEG XL…',up.ms_per_mp*mp+(up.type==='image/png'?0:1500)):null;
+    dataUrl=a.canvas.toDataURL(up.type,up.q); bar?.done();
+  }
+  const r=await send('photo',{kks:k,dataUrl},'photo for '+k,a.note);
   if(r) select(eff(TAGS.find(x=>x.id===tid)));
 }
 async function delPhoto(pid,tid){
@@ -537,7 +623,7 @@ const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (commo
 let hits=[],hi=0;
 $('#q').addEventListener('input',()=>{
   const q=$('#q').value.trim().toUpperCase().replace(/\s+/g,''), qr=$('#q').value.trim().toLowerCase(), R=$('#results');
-  if(q.length<2){R.style.display='none';return}
+  if(q.length<2){R.style.display='none';$('#q').setAttribute('aria-expanded','false');return}
   const seen=new Set(); hits=[];
   for(const t0 of TAGS){ const t=eff(t0); if(!t)continue; const k=full(t); const e=eq(k);
     const text=[e.area,e.floor,e.loc,e.near,e.notes,...(e.custom||[]).map(c=>c.k+' '+c.v),
@@ -551,14 +637,19 @@ $('#q').addEventListener('input',()=>{
     const score=b===qb?90:b.startsWith(qb)?70:b.includes(qb)?50:qr.length>2&&text.includes(qr)?35:0; if(score)hits.push({loc:b,score,k:b}) }
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
   const sn=id=>SHEETS.find(s=>s.id===id).name;
-  R.innerHTML=hits.length?hits.map((h,i)=>{ if(h.loc){const r=refLoc(h.loc);return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.loc)} <span class="m" style="color:var(--review)">location list only</span></div><div class="m">${esc(r.elev||'level varies')}${r.cabinet?' · '+esc(r.cabinet):''}${r.rows[0].desc?' · '+esc(r.rows[0].desc):''}</div></div>`}
-    const e=eq(h.k), fl=floorOf(h.t), cab=refLoc(bodyOf(h.t)).cabinet;return `<div class="res${i===0?' on':''}" onclick="pick(${i})"><div class="k">${esc(h.k||h.t.read.join(' / '))}${h.t.isa?' <span class="m">'+esc(h.t.isa)+'</span>':''}${h.t.status==='review'?' <span class="m" style="color:var(--review)">unverified</span>':''}</div><div class="m">${esc(sn(h.t.sheet))} · ${esc(kindName(h.t))}${fl?' · '+esc(floorName(fl)):''}${cab?' · '+esc(cab):''}${e.area?' · '+esc(e.area):''}</div></div>`}).join(''):'<div class="res m">No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.</div>';
+  R.innerHTML=hits.length?hits.map((h,i)=>{ if(h.loc){const r=refLoc(h.loc);return `<div class="res${i===0?' on':''}" role="option" id="res-${i}" aria-selected="${i===0}" onclick="pick(${i})"><div class="k">${esc(h.loc)} <span class="m" style="color:var(--review)">location list only</span></div><div class="m">${esc(r.elev||'level varies')}${r.cabinet?' · '+esc(r.cabinet):''}${r.rows[0].desc?' · '+esc(r.rows[0].desc):''}</div></div>`}
+    const e=eq(h.k), fl=floorOf(h.t), cab=refLoc(bodyOf(h.t)).cabinet;return `<div class="res${i===0?' on':''}" role="option" id="res-${i}" aria-selected="${i===0}" onclick="pick(${i})"><div class="k">${esc(h.k||h.t.read.join(' / '))}${h.t.isa?' <span class="m">'+esc(h.t.isa)+'</span>':''}${h.t.status==='review'?' <span class="m" style="color:var(--review)">unverified</span>':''}</div><div class="m">${esc(sn(h.t.sheet))} · ${esc(kindName(h.t))}${fl?' · '+esc(floorName(fl)):''}${cab?' · '+esc(cab):''}${e.area?' · '+esc(e.area):''}</div></div>`}).join(''):'<div class="res m" role="option" aria-disabled="true">No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.</div>';
   R.style.display='block';
+  $('#q').setAttribute('aria-expanded','true'); $('#q').setAttribute('aria-activedescendant', hits.length?'res-0':'');
 });
 $('#q').addEventListener('keydown',e=>{ const R=$('#results');
-  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ hi=Math.max(0,Math.min(hits.length-1,hi+(e.key==='ArrowDown'?1:-1))); [...R.children].forEach((c,i)=>c.classList.toggle('on',i===hi)); e.preventDefault() }
-  if(e.key==='Enter'&&hits.length) pick(hi); if(e.key==='Escape') R.style.display='none'; });
-function pick(i){ $('#results').style.display='none'; $('#q').blur(); hits[i].loc?selectLoc(hits[i].loc):goTo(hits[i].t.id) }
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ hi=Math.max(0,Math.min(hits.length-1,hi+(e.key==='ArrowDown'?1:-1)));
+    [...R.children].forEach((c,i)=>{ c.classList.toggle('on',i===hi); c.setAttribute('aria-selected', String(i===hi)) });
+    $('#q').setAttribute('aria-activedescendant','res-'+hi); R.children[hi]?.scrollIntoView({block:'nearest'}); e.preventDefault() }
+  if(e.key==='Enter'&&hits.length) pick(hi); if(e.key==='Escape'){ R.style.display='none'; $('#q').setAttribute('aria-expanded','false') } });
+// a pick moves keyboard focus into the panel it opens (screen readers then read the equipment)
+let focusPanel=false;
+function pick(i){ $('#results').style.display='none'; $('#q').setAttribute('aria-expanded','false'); focusPanel=true; hits[i].loc?selectLoc(hits[i].loc):goTo(hits[i].t.id) }
 document.addEventListener('click',e=>{ if(!e.target.closest('.search')) $('#results').style.display='none' });
 
 // ---------- floors ----------
@@ -580,7 +671,7 @@ function renderProcs(){
     const txt=(p.id+' '+p.title+' '+p.path.join(' ')+' '+p.steps.map(s=>s.text).join(' ')).toLowerCase(); if(q&&!txt.includes(q))continue;
     const ch=p.path[0]||p.title; if(ch!==last){h+=`<div class="chapter">${esc(ch)}</div>`; last=ch}
     const n=STATE.links.filter(l=>l.proc===p.id).length;
-    h+=`<div class="proc" onclick="openProc('${p.id}')"><span class="id">${esc(p.id)}</span>${esc(p.title)} <span class="path">· ${p.steps.length} steps${n?` · ${n} linked`:''}</span></div>`;
+    h+=`<div class="proc" onclick="openProc(${jsa(p.id)})"><span class="id">${esc(p.id)}</span>${esc(p.title)} <span class="path">· ${p.steps.length} steps${n?` · ${n} linked`:''}</span></div>`;
   }
   $('#procBody').innerHTML=h||'<div class="sub">No procedure matches.</div>';
 }
@@ -592,12 +683,12 @@ function renderProcDetail(id){
   const counts={}; for(const l of L) for(const t of byKks(l.kks)) counts[t.sheet]=(counts[t.sheet]||0)+1;
   let h=`<button class="ghost" onclick="activeProc=null;renderProcs();drawTags()">← All procedures</button>
     <h3 style="margin:12px 0 2px">${esc(p.id)} ${esc(p.title)}</h3><div class="sub">${esc(p.path.join(' › '))} · manual page ${p.page}</div>`;
-  if(Object.keys(counts).length) h+=`<div style="margin:8px 0">Linked equipment on: ${Object.entries(counts).map(([s,n])=>`<span class="chip" onclick="openSheet('${s}')">${esc(SHEETS.find(x=>x.id===s).name)} (${n})</span>`).join('')}</div>`;
+  if(Object.keys(counts).length) h+=`<div style="margin:8px 0">Linked equipment on: ${Object.entries(counts).map(([s,n])=>`<span class="chip" onclick="openSheet(${jsa(s)})">${esc(SHEETS.find(x=>x.id===s).name)} (${n})</span>`).join('')}</div>`;
   else h+=`<div class="warn">No equipment linked yet. The manual names equipment by description, not KKS — tap “Link equipment” on a step, then tap the matching tags on the drawing. You do this once per step.</div>`;
   for(const s of p.steps){
     const ls=L.filter(l=>l.step===s.n);
-    h+=`<div class="step"><span class="n">${s.n})</span>${esc(s.text)}<div style="margin-top:5px">${ls.map(l=>{const t=byKks(l.kks)[0];return `<span class="chip mono" onclick="${t?`goTo('${t.id}')`:''}">${esc(l.kks)}</span><button class="x" style="font-size:14px" title="Unlink" onclick="unlink('${id}',${s.n},'${l.kks}')">×</button>`}).join('')}
-      <button class="ghost" style="font-size:12.5px;padding:3px 8px" onclick="startLink('${id}',${s.n})">+ Link equipment</button></div></div>`;
+    h+=`<div class="step"><span class="n">${s.n})</span>${esc(s.text)}<div style="margin-top:5px">${ls.map(l=>{const t=byKks(l.kks)[0];return `<span class="chip mono" onclick="${t?`goTo(${jsa(t.id)})`:''}">${esc(l.kks)}</span><button class="x" style="font-size:14px" title="Unlink" aria-label="Unlink ${esc(l.kks)}" onclick="unlink(${jsa(id)},${+s.n},${jsa(l.kks)})">×</button>`}).join('')}
+      <button class="ghost" style="font-size:12.5px;padding:3px 8px" onclick="startLink(${jsa(id)},${+s.n})">+ Link equipment</button></div></div>`;
   }
   $('#procBody').innerHTML=h;
 }
@@ -613,7 +704,7 @@ function renderReview(){
   const P=pending(), sn=id=>SHEETS.find(s=>s.id===id).name; let h='', last='';
   const sorted=[...P].sort((a,b)=>(a.sheet===cur.id?0:1)-(b.sheet===cur.id?0:1)||a.sheet.localeCompare(b.sheet)||(b.suggestion?1:0)-(a.suggestion?1:0));
   for(const t of sorted.slice(0,250)){ if(t.sheet!==last){h+=`<div class="chapter">${esc(sn(t.sheet))} (${P.filter(x=>x.sheet===t.sheet).length})</div>`; last=t.sheet}
-    h+=`<div class="revitem" onclick="goTo('${t.id}')"><div class="crop" style="${cropStyle(t)}"></div><span class="mono">${esc(t.read[0])} / ${esc(t.read[1])}</span>${t.suggestion?` → <span class="mono" style="color:var(--accent)">${esc(t.suggestion.kks)}</span>`:''}</div>` }
+    h+=`<div class="revitem" onclick="goTo(${jsa(t.id)})"><div class="crop" data-sheet="${esc(t.sheet)}" style="${cropStyle(t)}"></div><span class="mono">${esc(t.read[0])} / ${esc(t.read[1])}</span>${t.suggestion?` → <span class="mono" style="color:var(--accent)">${esc(t.suggestion.kks)}</span>`:''}</div>` }
   $('#revBody').innerHTML=h||'<div class="sub">Nothing left to review.</div>';
 }
 $('#hideRev').onchange=e=>document.body.classList.toggle('hide-review',e.target.checked);

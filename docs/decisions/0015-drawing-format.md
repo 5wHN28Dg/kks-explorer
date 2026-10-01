@@ -74,3 +74,10 @@ mid-range today. Same 512 px tiles, median of 5; `tools/m6/android-bench`.
 composites. Windows is unmeasured: no Windows machine.
 
 Sources: tools/m6/tile_bench.py, tools/m6/grid_bench.py, tools/m6/write_paths.py, tools/m6/android-bench/ (investigation tools, not product code; run in a folder holding <sheet>.pdf, <sheet>-merged.svg/.pdf); docs/m6/CAPABILITIES.md §2
+
+**Addendum 2026-09-30, while writing docs/PATHSTORE.md:**
+- The `.kkp` body is deflate-compressed: uncompressed it measured 2–2.5× the PDF, compressed 0.6–1.0×.
+- Deflate is platform-provided except on Windows. There the app links zlib (v1.3.2, 7 authors in the last 12 months,
+  zlib license), which passes the maintenance test.
+- The drawings' raster images (logos, stamps, the signed approval table) are stored in the file as lossless JPEG XL,
+  in paint order.

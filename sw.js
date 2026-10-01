@@ -3,8 +3,8 @@
 // - Plant data (/data, /photos, /api/state; needs login): cached as it's fetched. The page deletes the 'kks-data'
 //   cache on logout or when the server rejects the session. Error responses (401 etc.) are never cached.
 // Service workers only run over HTTPS or on localhost.
-const SHELL = 'kks-shell-v6', DATA = 'kks-data';
-const SHELL_FILES = ['/', '/index.html', '/admin.html', '/common.js', '/qrcodegen.js', '/course-bridge.js', '/learning.html', '/vendor/fonts/courses.css', '/vendor/jxl/decode.js', '/vendor/jxl/utils.js', '/vendor/jxl/codec/dec/jxl_dec.js', '/vendor/jxl/codec/dec/jxl_dec.wasm', '/vendor/jsqr/jsQR.js', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
+const SHELL = 'kks-shell-v9', DATA = 'kks-data';
+const SHELL_FILES = ['/', '/index.html', '/admin.html', '/common.js', '/tiles.js', '/course-bridge.js', '/learning.html', '/course.html', '/course.js', '/course-figure.js', '/course.css', '/kks-wasm.js', '/kks-wasm-worker.js', '/vendor/fonts/courses.css', '/vendor/kks/kks-simd-dec.js', '/vendor/kks/kks-simd-dec.wasm', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES))); self.skipWaiting() });
 self.addEventListener('activate', e => e.waitUntil(caches.keys()

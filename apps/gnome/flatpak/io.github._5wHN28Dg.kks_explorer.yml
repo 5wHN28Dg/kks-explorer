@@ -1,0 +1,50 @@
+# Flatpak manifest (decision 0022: Flathub). Build:
+#   flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50 org.flatpak.Builder
+#   flatpak run org.flatpak.Builder --user --install --force-clean build apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.yml
+# Status 2026-10-01: written, not yet built (flatpak-builder and the GNOME 50 SDK are not on the development machine).
+app-id: io.github._5wHN28Dg.kks_explorer
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: kks-explorer
+finish-args:
+  - --share=network            # sync with the plant's devices and server
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.freedesktop.Avahi    # mDNS: find the plant's devices on the Wi-Fi (decision 0002)
+  - --system-talk-name=org.freedesktop.Avahi
+  # the storage key goes through the Secret portal (libsecret does that by itself inside Flatpak); files through the
+  # FileChooser portal; no filesystem access is requested
+modules:
+  - name: nim
+    buildsystem: simple
+    cleanup: ['*']                 # build-time only
+    build-commands:
+      - sh build.sh
+      - bin/nim c koch && ./koch boot -d:release && ./koch tools
+      - mkdir -p /app/nim && cp -r bin lib config compiler /app/nim/
+    sources:
+      - type: archive
+        url: https://nim-lang.org/download/nim-2.2.12.tar.xz
+        sha256: 2639a06a5ea7a7fcf57df1e7e1ef4d1b2bee58c7ac9bd00dbd2aa5bea1e5a56a
+  - name: zxing-cpp
+    buildsystem: cmake-ninja
+    config-opts: [-DCMAKE_BUILD_TYPE=Release, -DZXING_EXAMPLES=OFF, -DZXING_BLACKBOX_TESTS=OFF, -DZXING_UNIT_TESTS=OFF,
+                  -DZXING_C_API=ON, -DBUILD_SHARED_LIBS=ON]
+    sources:
+      - type: archive
+        url: https://github.com/zxing-cpp/zxing-cpp/archive/refs/tags/v2.3.0.tar.gz
+        sha256: 64e4139103fdbc57752698ee15b5f0b0f7af9a0331ecbdc492047e0772c417ba
+  - name: kks-explorer
+    buildsystem: simple
+    build-commands:
+      - cd apps/gnome && KKS_DEV=/app/dev PATH=/app/nim/bin:$PATH nim c -d:release -o:/app/bin/kks-explorer kks_explorer.nim
+      - install -Dm644 data/kks.json /app/share/kks-explorer/data/kks.json
+      - install -Dm644 apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.desktop -t /app/share/applications
+      - install -Dm644 apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/io.github._5wHN28Dg.kks_explorer.svg
+    sources:
+      - type: dir
+        path: ../../..

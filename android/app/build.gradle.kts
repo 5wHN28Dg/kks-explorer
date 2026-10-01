@@ -104,7 +104,7 @@ tasks.configureEach { if (name.startsWith("configureCMake") || name.startsWith("
 // The web viewer and the plant data come from the repository, so the app always ships the current ones.
 val copyWeb by tasks.registering(Sync::class) {
     val repo = rootDir.parentFile
-    from(repo) { include("index.html", "admin.html", "common.js", "qrcodegen.js", "course-bridge.js", "vendor/fonts/*.css", "vendor/fonts/*.woff2", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png") }
+    from(repo) { include("index.html", "admin.html", "common.js", "tiles.js", "kks-wasm.js", "kks-wasm-worker.js", "vendor/kks/*", "course-bridge.js", "vendor/fonts/*.css", "vendor/fonts/*.woff2", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png") }
     from(File(repo, "data")) { into("data") }
     into(layout.buildDirectory.dir("web"))
 }

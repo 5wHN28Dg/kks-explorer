@@ -49,7 +49,7 @@ from server import plantdata
 from server import updates as updates_mod
 
 BASE = config_mod.BASE
-SHELL = {'/': 'index.html', '/index.html': 'index.html', '/admin.html': 'admin.html', '/common.js': 'common.js', '/qrcodegen.js': 'qrcodegen.js', '/course-bridge.js': 'course-bridge.js', '/learning.html': 'learning.html',
+SHELL = {'/': 'index.html', '/index.html': 'index.html', '/admin.html': 'admin.html', '/common.js': 'common.js', '/tiles.js': 'tiles.js', '/course-bridge.js': 'course-bridge.js', '/learning.html': 'learning.html', '/course.html': 'course.html', '/course.js': 'course.js', '/course-figure.js': 'course-figure.js', '/course.css': 'course.css', '/kks-wasm.js': 'kks-wasm.js', '/kks-wasm-worker.js': 'kks-wasm-worker.js',
          '/sw.js': 'sw.js', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg',
          '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png'}
 COOKIE = 'kks_session'

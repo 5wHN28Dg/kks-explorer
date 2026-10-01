@@ -26,6 +26,15 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0026](0026-importer-and-server.md) | Importer and server in Nim (user decision). The importer keeps MuPDF via its C API and replaces OpenCV with our own code, gated by identical readings on all sheets. The server is the Nim core without UI on headless Linux | decided |
 | [0027](0027-language.md) | Nim for the desktop apps (Win32 + Direct2D on Windows, GTK 4 + libadwaita on GNOME), server, importer and a sans-I/O core; Kotlin for Android UI; JS for web UI and relay | decided; Android uses the same Nim core via JNI (option a) |
 | [0028](0028-internet-transport-rudp-or-quic.md) | Internet transport: keep our reliable UDP (in Nim, TLS on top), field-test on real NATs, switch to MsQuic if it fails | decided (A) |
+| [0029](0029-nim-core-building-blocks.md) | Nim core: crypto through a provider interface (GnuTLS on GNOME, CNG on Windows, Java on Android), own strict JSON reader (+ strict-reading rule in PROTOCOL-v2 §1), zlib linked, hand-written small bindings, std/unittest | decided |
+| [0030](0030-linux-platform-layer.md) | Linux layer: SQLite C API, GnuTLS driven through buffers (pinned self-signed device certs), asyncdispatch + asynchttpserver with one thread owning the node, Argon2id via OpenSSL on a worker, mDNS via Avahi's D-Bus API (GIO) | decided under the user's go-ahead (revisitable) |
+| [0031](0031-gnome-app.md) | GNOME app: hand-written GTK/libadwaita/Cairo bindings (owlkettle fails the maintenance test), asyncdispatch driven from GLib, a C GtkWidget for the viewer (GSK textures), libsecret for the storage key, zxing-cpp for QR, Flatpak | decided under the user's go-ahead (revisitable) |
+| [0032](0032-android-platform-layer.md) | Android: Nim core via JNI (libkks.so, SQLite bundled), JCA crypto, AndroidKeyStore device key, TLS in Kotlin with peer-ID pinning; addendum: TLS enroll, Camera2 + zxing-cpp, platform AccessibilityNodeProvider | decided under the user's go-ahead (revisitable) |
+| [0033](0033-windows-platform-layer.md) | Windows: mingw-w64 cross-build from Linux, Windows 10/11 VMs (QEMU/KVM), CNG + NCrypt + DPAPI, bundled SQLite, Schannel (TLS 1.2 on 10), DNS-SD API, UIA tests from PowerShell | decided under the user's go-ahead (revisitable) |
+| [0034](0034-web-viewer-v2.md) | Browser client draws v2 plant data: DecompressionStream, path store tiles in a module Worker (OffscreenCanvas), JXL pyramid via `<img>` or the vendored WebAssembly decoder; escaping audit | decided under the user's standing instruction (revisitable) |
+| [0035](0035-web-course-renderer.md) | Browser client renders the JSON courses: vanilla `course.js`, DOM + `textContent`, Canvas 2D figures with a port of the reference evaluator, native controls | decided under the user's standing instruction (revisitable) |
+| [0037](0037-wasm-libjxl-zxing.md) | Our own WebAssembly libjxl (encode + decode) and zxing-cpp: pinned emsdk 6.0.10, same pinned sources as native, SIMD + scalar variants, BarcodeDetector first where present; browsers encode photos to JXL before upload | decided under the user's standing instruction (revisitable) |
+| [0036](0036-native-course-renderers.md) | Native course renderers: shared Nim evaluator and page logic; GtkLabel markup + Cairo/Pango (GNOME), RichEdit + Direct2D/DirectWrite (Windows), Compose (Android); WOFF2 faces via fontconfig / DirectWrite, system faces on Android | decided under the user's standing instruction (revisitable) |
 
 ## Audit of existing dependencies (2026-09-30)
 
@@ -36,14 +45,14 @@ reference, Microsoft Learn, caniuse and MDN browser-compat-data.
 |---|---|---|---|
 | [0001](0001-python-cryptography.md) | `cryptography` (Python) | keep | none |
 | [0002](0002-zeroconf.md) | `zeroconf` (Python mDNS) | replace with the OS service (user decision 2026-09-30) | on hold for M6 |
-| [0003](0003-photo-format-jpeg-xl.md) | JPEG XL stack (pillow-jxl-plugin, libjxl NDK, @jsquash/jxl) | keep (user decision 2026-09-30, from own tests) | none |
+| [0003](0003-photo-format-jpeg-xl.md) | JPEG XL stack (pillow-jxl-plugin, libjxl NDK, @jsquash/jxl) | keep (user decision 2026-09-30, from own tests) | done 2026-10-01: @jsquash/jxl replaced by our own libjxl WebAssembly build (0037) |
 | [0004](0004-pyinstaller-bundled-python.md) | PyInstaller + bundled CPython + Tk | keep until M6 | M6 replaces it |
 | [0005](0005-importer-pymupdf-opencv-numpy.md) | Importer: PyMuPDF, OpenCV, NumPy | keep | none |
 | [0006](0006-bouncycastle.md) | BouncyCastle (Android) | keep for Ed25519/X25519 on API 29–32 | the update is deferred to the v2 rewrite (the user, 2026-09-30); the post-1.79 advisories don't touch what we use; v2 removes it |
-| [0007](0007-zxing-android-embedded.md) | zxing core + zxing-android-embedded | **fails** maintenance test (embedded) | replace the embedded scanner UI with CameraX + zxing core |
+| [0007](0007-zxing-android-embedded.md) | zxing core + zxing-android-embedded | **fails** maintenance test (embedded) | replace the embedded scanner UI with CameraX + zxing core → done in v2 with Camera2 + zxing-cpp (0032 addendum) |
 | [0008](0008-androidx.md) | AndroidX: Compose, Activity, Core, WorkManager | keep (platform model) | update the 2024 versions |
-| [0009](0009-jsqr.md) | jsQR (web QR scanning) | **fails** maintenance test; still needed | use `BarcodeDetector` first where present |
-| [0010](0010-qrcodegen.md) | qrcodegen.js (web QR drawing) | keep | none |
+| [0009](0009-jsqr.md) | jsQR (web QR scanning) | **fails** maintenance test; still needed | done 2026-10-01: removed; `BarcodeDetector` first, else our zxing-cpp WebAssembly build (0037) |
+| [0010](0010-qrcodegen.md) | qrcodegen.js (web QR drawing) | keep | removed 2026-10-01: QR drawing through zxing-cpp, as on every other platform (0019, 0037) |
 | [0011](0011-vendored-fonts.md) | Vendored course fonts | keep | none |
 | [0012](0012-cloudflare-relay.md) | Cloudflare Workers relay | keep | none |
 | [0013](0013-own-implementations.md) | Our own Noise, reliable UDP, WebSocket clients, Kotlin JSON | keep; rudp re-evaluated in M6 | none now |

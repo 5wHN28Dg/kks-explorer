@@ -1,0 +1,314 @@
+package kks.explorer.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.asImageBitmap
+import kks.explorer.core.Core
+import kks.explorer.sync.Sync
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+
+@Composable
+fun Root() {
+    val scheme = if (androidx.compose.foundation.isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+    val ctx = LocalContext.current
+    DisposableEffect(Unit) {
+        val l: (String) -> Unit = { Changes.rev++ }
+        Core.listeners.add(l)
+        Sync.start(ctx.applicationContext)
+        onDispose { Core.listeners.remove(l) }
+    }
+    MaterialTheme(colorScheme = scheme) {
+        Surface(Modifier.fillMaxSize()) {
+            var joined by remember { mutableStateOf(Sync.joined()) }
+            if (joined) MainScreen() else SetupScreen { joined = true }
+        }
+    }
+}
+
+data class SheetInfo(val id: String, val name: String, val scale: Float, val levels: Int, val tags: Int, val review: Int, val notes: List<String>)
+
+fun sheets(): List<SheetInfo> = call("GET", "/native/sheets").json.optJSONArray("sheets").objects().map {
+    SheetInfo(it.getString("id"), it.getString("name"), it.optDouble("scale", 2.0).toFloat(), it.optInt("levels"), it.optInt("tags"), it.optInt("review"),
+        it.optJSONArray("notes")?.let { a -> (0 until a.length()).map { i -> a.getString(i) } } ?: emptyList())
+}
+
+fun tagBoxes(sheet: String, scale: Float): List<SheetView.TagBox> = call("GET", "/native/tags", query = mapOf("sheet" to sheet)).json.optJSONArray("tags").objects().map {
+    SheetView.TagBox(it.getString("id"), it.getDouble("x0").toFloat(), it.getDouble("y0").toFloat(), it.getDouble("x1").toFloat(),
+        it.getDouble("y1").toFloat(), it.getString("status"), it.optString("code"))
+} + call("GET", "/api/submissions", query = mapOf("status" to "open")).json.optJSONArray("submissions").objects()   // my proposed marks, dashed
+    .filter { it.optBoolean("mine") && it.str("kind") == "tag_add" && it.optJSONObject("payload")?.str("sheet") == sheet }
+    .mapNotNull { sub ->
+        val b = sub.getJSONObject("payload").optJSONArray("bbox") ?: return@mapNotNull null
+        SheetView.TagBox("pending:" + sub.optLong("id"), (b.getDouble(0) / scale).toFloat(), (b.getDouble(1) / scale).toFloat(),
+            (b.getDouble(2) / scale).toFloat(), (b.getDouble(3) / scale).toFloat(), "pending", "")
+    }
+
+/** what the screens share: the open sheet and tag, the active procedure, link mode (R7) */
+class Ui {
+    var tab by mutableStateOf("drawings")
+    var sheet by mutableStateOf("")
+    var selected by mutableStateOf("")
+    var focus by mutableStateOf<List<Float>?>(null)       // a tag to zoom to once its sheet is shown
+    var activeProc by mutableStateOf("")
+    var linkProc by mutableStateOf("")
+    var linkStep by mutableIntStateOf(0)
+    var floor by mutableStateOf("")
+    var focusSeq by mutableIntStateOf(0)
+
+    /** show a tag on its drawing (from search, a procedure, the review queue, "appears on") */
+    fun show(tagId: String) {
+        val t = call("GET", "/native/tag", query = mapOf("id" to tagId)).json
+        if (!t.has("sheet")) return
+        tab = "drawings"
+        selected = tagId
+        sheet = t.getString("sheet")
+        focus = t.optJSONArray("box")?.let { a -> (0 until 4).map { a.getDouble(it).toFloat() } }
+        focusSeq++
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreen() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val ui = remember { Ui() }
+    val snack = remember { SnackbarHostState() }
+    val rev = Changes.rev
+    val admin = remember(rev) { Sync.config().optBoolean("admin") }
+    val queue = remember(rev) { if (admin) call("GET", "/api/state").json.optInt("queue") else 0 }
+    BackHandler(enabled = ui.tab != "drawings") { ui.tab = "drawings" }
+    Scaffold(
+        snackbarHost = { SnackbarHost(snack) },
+        bottomBar = {
+            NavigationBar {
+                for ((id, label) in listOf("drawings" to "Drawings", "procedures" to "Procedures", "review" to "Review", "learning" to "Learning", "manage" to "Manage")) {
+                    NavigationBarItem(selected = ui.tab == id, onClick = { ui.tab = id }, label = { Text(label) },
+                        icon = {
+                            if (id == "manage" && queue > 0) BadgedBox(badge = { Badge { Text("$queue") } }) { Text("⚙") }
+                            else Text(when (id) { "drawings" -> "▦"; "procedures" -> "☰"; "review" -> "✓"; "learning" -> "✎"; else -> "⚙" })
+                        })
+                }
+            }
+        }
+    ) { pad ->
+        Box(Modifier.padding(pad).fillMaxSize()) {
+            when (ui.tab) {
+                "drawings" -> Drawings(ui, snack)
+                "procedures" -> Procedures(ui, snack)
+                "review" -> ReviewQueue(ui)
+                "learning" -> Learning(ui, snack)
+                "manage" -> Manage(snack)
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        // first start after joining: one round right away, so the phone shows the plant without waiting
+        withContext(Dispatchers.IO) { runCatching { Sync.syncAll(ctx.applicationContext) } }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Drawings(ui: Ui, snack: SnackbarHostState) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val rev = Changes.rev
+    val list = remember(rev) { sheets() }
+    LaunchedEffect(list) { if (ui.sheet.isEmpty() || list.none { it.id == ui.sheet }) list.firstOrNull()?.let { ui.sheet = it.id } }
+    var query by remember { mutableStateOf("") }
+    var drawer by remember { mutableStateOf(false) }
+    var floorMenu by remember { mutableStateOf(false) }
+    var notesOpen by remember { mutableStateOf(false) }
+    var view by remember { mutableStateOf<SheetView?>(null) }
+    val current = list.firstOrNull { it.id == ui.sheet }
+    val boxes = remember(ui.sheet, rev) { if (current != null) tagBoxes(current.id, current.scale) else emptyList() }
+    var marking by remember { mutableStateOf(false) }
+    var marked by remember { mutableStateOf<List<Float>?>(null) }
+    LaunchedEffect(marking, view) { view?.marking = marking }
+    val floors = remember(rev) { call("GET", "/native/floors").json }
+    val linkedCodes = remember(ui.activeProc, rev) {
+        if (ui.activeProc.isEmpty()) emptySet() else call("GET", "/native/proc", query = mapOf("id" to ui.activeProc)).json.optJSONArray("links").objects().map { it.getString("kks") }.toSet()
+    }
+    BackHandler(enabled = ui.selected.isNotEmpty() || drawer || ui.linkProc.isNotEmpty()) {
+        when { drawer -> drawer = false; ui.selected.isNotEmpty() -> ui.selected = ""; else -> ui.linkProc = "" }
+    }
+    LaunchedEffect(ui.sheet, view) {
+        val v = view ?: return@LaunchedEffect
+        if (current != null) v.setSheet(current.id, current.scale, current.levels)
+    }
+    LaunchedEffect(boxes, view) { view?.tags = boxes }
+    LaunchedEffect(ui.selected, view) { view?.selected = ui.selected }
+    LaunchedEffect(linkedCodes, boxes, view) { view?.highlight = boxes.filter { it.code in linkedCodes }.map { it.id }.toSet() }
+    LaunchedEffect(ui.floor, floors, view) {
+        view?.dimmed = if (ui.floor.isEmpty()) null else floors.optJSONArray(ui.floor)?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
+    }
+    LaunchedEffect(ui.focusSeq, view) {
+        val v = view ?: return@LaunchedEffect
+        val b = ui.focus ?: return@LaunchedEffect
+        ui.focus = null
+        v.post { v.centerOn(b[0], b[1], b[2], b[3], cy = 0.22f) }
+    }
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(title = { Text(current?.name ?: "KKS Explorer") }, actions = {
+            TextButton(onClick = { drawer = !drawer }) { Text(if (drawer) "Close" else "Sheets") }
+            TextButton(onClick = { scope.launch {
+                val n = withContext(Dispatchers.IO) { Sync.syncAll(ctx.applicationContext, wait = true) }
+                snack.showSnackbar(if (n > 0) "Synced with $n device${if (n == 1) "" else "s"}" else "No other device reached")
+            } }) { Text("Sync") }
+            Box {
+                IconButton(onClick = { floorMenu = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+                DropdownMenu(floorMenu, { floorMenu = false }) {
+                    if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
+                        onClick = { marking = !marking; ui.selected = ""; floorMenu = false })
+                    if (current != null && current.notes.isNotEmpty()) DropdownMenuItem(text = { Text("Notes on this sheet (${current.notes.size})") },
+                        onClick = { notesOpen = true; floorMenu = false })
+                    if (floors.length() > 0) {
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text("All floors" + if (ui.floor.isEmpty()) " ✓" else "") }, onClick = { ui.floor = ""; floorMenu = false })
+                        for (f in floors.keys().asSequence().sortedBy { it.toIntOrNull() ?: 99 })
+                            DropdownMenuItem(text = { Text("Floor $f" + if (ui.floor == f) " ✓" else "") }, onClick = { ui.floor = f; floorMenu = false })
+                    }
+                }
+            }
+        })
+        if (notesOpen && current != null) AlertDialog(onDismissRequest = { notesOpen = false }, title = { Text("Notes on ${current.name}") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { current.notes.forEach { Text(it) } } },
+            confirmButton = { TextButton(onClick = { notesOpen = false }) { Text("Close") } })
+        if (ui.floor.isNotEmpty()) Dim("  Showing floor ${ui.floor}: other tags are dimmed")
+        Box(Modifier.fillMaxSize()) {
+            AndroidView(factory = { c -> SheetView(c).also { v -> view = v } }, modifier = Modifier.fillMaxSize(), update = { v ->
+                v.onMark = { x0, y0, x1, y1 ->
+                    val sc = current?.scale ?: 2f
+                    if ((x1 - x0) * sc < 8 || (y1 - y0) * sc < 8) scope.launch { snack.showSnackbar("Box too small: drag across the whole tag") }
+                    else marked = listOf(x0, y0, x1, y1)
+                }
+                v.onTag = { id ->
+                    if (ui.linkProc.isNotEmpty()) {
+                        val code = boxes.firstOrNull { it.id == id }?.code.orEmpty()
+                        if (code.isEmpty()) scope.launch { snack.showSnackbar("This tag has no code yet: check it first") }
+                        else {
+                            val (_, m) = submit("link", JSONObject().put("proc", ui.linkProc).put("step", ui.linkStep).put("kks", code).put("on", true))
+                            scope.launch { snack.showSnackbar("$code → step ${ui.linkStep}: $m") }
+                        }
+                    } else ui.selected = id
+                }
+            })
+            if (list.isEmpty()) Card(Modifier.align(Alignment.Center).padding(24.dp)) {
+                Text("Waiting for the drawings. They arrive with the next sync from a device that has them.", Modifier.padding(16.dp))
+            }
+            Column(Modifier.fillMaxWidth().padding(8.dp)) {
+                if (marking) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                    Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Drag a box around the tag the app missed (two fingers move the drawing)", Modifier.weight(1f))
+                        TextButton(onClick = { marking = false }) { Text("Cancel") }
+                    }
+                }
+                if (ui.linkProc.isNotEmpty()) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                    Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Tap tags to link them to step ${ui.linkStep} of ${ui.linkProc}", Modifier.weight(1f))
+                        TextButton(onClick = { ui.tab = "procedures"; ui.linkProc = "" }) { Text("Done") }
+                    }
+                }
+                OutlinedTextField(query, { query = it }, placeholder = { Text("Search KKS or description") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search equipment by KKS code or description" },
+                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface))
+                if (query.trim().length >= 2) {
+                    val res = remember(query, rev) { call("GET", "/native/search", query = mapOf("q" to query.trim())).json.optJSONArray("results").objects() }
+                    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                        if (res.isEmpty()) Text("Nothing found", Modifier.padding(16.dp))
+                        LazyColumn {
+                            items(res) { r ->
+                                ListItem(headlineContent = { Text(r.getString("code").ifEmpty { "(unread)" }) },
+                                    supportingContent = { Text(r.getString("kind") + " · " + r.getString("sheet_name")) },
+                                    modifier = Modifier.clickable { query = ""; ui.show(r.getString("id")) })
+                            }
+                        }
+                    }
+                }
+            }
+            if (drawer) Surface(tonalElevation = 6.dp, modifier = Modifier.fillMaxHeight().width(300.dp).align(Alignment.CenterStart)) {
+                LazyColumn {
+                    item { Text("Sheets", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp)) }
+                    items(list) { s ->
+                        ListItem(headlineContent = { Text(s.name) }, supportingContent = { Text("${s.tags} tags" + if (s.review > 0) ", ${s.review} to review" else "") },
+                            modifier = Modifier.clickable { ui.sheet = s.id; ui.selected = ""; drawer = false })
+                    }
+                }
+            }
+            marked?.let { b ->
+                MarkDialog(current!!, b, view, snack, onDone = { ok -> marked = null; if (ok) marking = false })
+            }
+            if (ui.selected.isNotEmpty()) TagPanel(ui.selected, rev, onClose = { ui.selected = "" },
+                onGo = { id, _, _ -> ui.show(id) }, snack = snack, modifier = Modifier.align(Alignment.BottomCenter),
+                link = if (ui.linkProc.isNotEmpty()) ui.linkProc to ui.linkStep else null)
+        }
+    }
+}
+
+@Composable
+private fun ReviewQueue(ui: Ui) {
+    val rev = Changes.rev
+    val list = remember(rev) { call("GET", "/native/review").json.optJSONArray("tags").objects() }
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        Text("Readings to check", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 12.dp))
+        if (list.isEmpty()) Dim("Nothing to check: every reading was confirmed or rejected.")
+        LazyColumn {
+            items(list) { t ->
+                val read = t.optJSONArray("read")
+                ListItem(headlineContent = { Text(t.str("suggestion").ifEmpty { "${read?.optString(0)} / ${read?.optString(1)}" }) },
+                    supportingContent = { Text("${t.str("sheet_name")} · confidence ${(t.optDouble("conf") * 100).toInt()} %") },
+                    modifier = Modifier.clickable { ui.show(t.getString("id")) })
+            }
+        }
+    }
+}
+
+/** sent from the Drawings and Procedures screens (R7) */
+fun linkSubmit(proc: String, step: Int, kks: String, on: Boolean) =
+    submit("link", JSONObject().put("proc", proc).put("step", step).put("kks", kks).put("on", on))
+
+
+/** R6: propose a tag the reader missed; the code is optional (without one it goes to the review queue) */
+@Composable
+private fun MarkDialog(sheet: SheetInfo, b: List<Float>, view: SheetView?, snack: SnackbarHostState, onDone: (Boolean) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf("") }
+    var isa by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    val crop = remember(b) { view?.crop(b[0], b[1], b[2], b[3], 500)?.asImageBitmap() }
+    AlertDialog(onDismissRequest = { onDone(false) }, title = { Text("Mark a missing tag") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (crop != null) androidx.compose.foundation.Image(crop, "The marked part of the drawing", Modifier.fillMaxWidth())
+            Dim("Type the code if you can read it. If not, leave it empty: the mark goes to the review queue.")
+            OutlinedTextField(code, { code = it }, label = { Text("KKS (with suffix, optional)") }, singleLine = true)
+            OutlinedTextField(isa, { isa = it }, label = { Text("Function letters (instruments, optional)") }, singleLine = true)
+            OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, singleLine = true)
+        }
+    }, confirmButton = { TextButton(onClick = {
+        fun r(v: Float) = JSONObject.wrap(Math.round(v * sheet.scale * 10) / 10.0)
+        val bb = JSONArray().put(r(b[0])).put(r(b[1])).put(r(b[2])).put(r(b[3]))
+        val k = code.trim().uppercase()
+        val (ok, m) = submit("tag_add", JSONObject().put("sheet", sheet.id).put("bbox", bb).put("kks", k).put("isa", isa.trim().uppercase()).put("note", note.trim()))
+        scope.launch { snack.showSnackbar(m) }
+        onDone(ok)
+    }) { Text("Propose") } }, dismissButton = { TextButton(onClick = { onDone(false) }) { Text("Cancel") } })
+}

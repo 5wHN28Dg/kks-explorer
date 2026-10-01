@@ -57,6 +57,9 @@ Each phase ends with something testable. Nothing replaces the running system unt
 6. **Android:** Nim core through JNI plus the native Compose UI, on the Note 9.
 7. **Windows app** (Win32 + Direct2D): built and unit-tested in CI; UI checks when a Windows machine is available.
 8. **Web client** changes, and **course conversion** (script for text and questions; figures by hand).
+**Status 2026-10-01:** phases 1–8 done (CLAUDE.md lists each one's results and what is still unverified). Waiting for
+the user: the two phones (6), MSIX/Store or certificate, CI push and a real laptop (7), and phase 9.
+
 9. **Cutover:**
    1. back up everything;
    2. migrate the live plant;
@@ -66,7 +69,7 @@ Each phase ends with something testable. Nothing replaces the running system unt
 ## Open points outside the decisions
 
 - No Windows machine: Windows UI, performance and accessibility stay unverified until one is available (0016, 0022,
-  0027).
+  0027). Since 2026-10-01 they are verified in Windows 10 and 11 VMs (0033); a real laptop is still to come.
 - Store availability at the company is unknown; the fallback is agreed (0022).
 - The server's Linux distribution must have OpenSSL ≥ 3.2 (0023).
 - Measure a login, and startup decryption, on the real server and phone when built (0020, 0023).

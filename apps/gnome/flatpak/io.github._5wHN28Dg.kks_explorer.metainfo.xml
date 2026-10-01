@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github._5wHN28Dg.kks_explorer</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <name>KKS Explorer</name>
+  <summary>Find plant equipment on P&amp;ID drawings by KKS code</summary>
+  <description>
+    <p>
+      KKS Explorer shows a power plant's piping and instrumentation drawings with every tag readable and searchable.
+      Pick a KKS code to see what it means, where the equipment is, its photos, notes and the operating procedures that
+      use it.
+    </p>
+    <p>
+      Changes are signed by each person's device and sync between devices on the same Wi-Fi, or through the plant's
+      server, without a central service. The plant's data never leaves the plant's devices.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github._5wHN28Dg.kks_explorer.desktop</launchable>
+  <url type="homepage">https://github.com/5wHN28Dg/kks-explorer</url>
+  <developer id="io.github.kks-explorer">
+    <name>KKS Explorer contributors</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <releases>
+    <release version="2.0.0" date="2026-10-01">
+      <description><p>The native GNOME app (M6).</p></description>
+    </release>
+  </releases>
+</component>

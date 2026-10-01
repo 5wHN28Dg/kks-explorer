@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=KKS Explorer
+Comment=Find plant equipment on P&ID drawings by KKS code
+Exec=kks-explorer
+Icon=io.github._5wHN28Dg.kks_explorer
+Terminal=false
+Categories=Science;Engineering;
+Keywords=KKS;P&ID;plant;equipment;drawing;
+StartupNotify=true

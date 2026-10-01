@@ -9,6 +9,7 @@ File names stay the same: the courses link to each other by name. Also writes da
 (id = the course's localStorage prefix, title, file, question ids, SHA-256 of the source).
 
     python3 tools/build_courses.py [--fonts]     # --fonts: download the fonts again (vendor/fonts)
+    python3 tools/build_courses.py --ttf         # the same faces as TTF for the Android app (vendor/fonts/ttf)
 """
 import hashlib, json, os, re, sys, urllib.request
 
@@ -52,6 +53,29 @@ def fonts():
         f.write('\n'.join(sums) + '\n')
 
 
+def ttf():
+    """The same faces as TrueType for the Android app (its Typeface reads TTF/OTF, not WOFF2; decision 0036): the
+    weights the course figures use, from Google Fonts like the WOFF2 files (it serves TTF to a plain HTTP client).
+    Into vendor/fonts/ttf/ with their SHA-256."""
+    css = urllib.request.urlopen(urllib.request.Request(GOOGLE, headers={'User-Agent': 'Wget/1.21'})).read().decode()
+    d = os.path.join(FONTS, 'ttf')
+    os.makedirs(d, exist_ok=True)
+    sums = []
+    for block in re.findall(r'@font-face \{.*?\}', css, re.S):
+        if re.search(r'font-style: (\w+)', block)[1] != 'normal':
+            continue
+        fam = re.search(r"font-family: '([^']+)'", block)[1]
+        w = re.search(r'font-weight: (\d+)', block)[1]
+        url = re.search(r'url\((https://[^)]+\.ttf)\)', block)[1]
+        name = f"{fam.replace(' ', '')}-{w}.ttf"
+        data = urllib.request.urlopen(url).read()
+        with open(os.path.join(d, name), 'wb') as f:
+            f.write(data)
+        sums.append(f'{hashlib.sha256(data).hexdigest()}  {name}')
+    with open(os.path.join(d, 'SHA256SUMS'), 'w') as f:
+        f.write('\n'.join(sorted(sums, key=lambda x: x.split()[1])) + '\n')
+
+
 def build():
     os.makedirs(OUT, exist_ok=True)
     courses = []
@@ -84,6 +108,9 @@ def build():
 
 
 if __name__ == '__main__':
+    if '--ttf' in sys.argv:
+        ttf()
+        raise SystemExit(0)
     if '--fonts' in sys.argv or not os.path.exists(os.path.join(FONTS, 'courses.css')):
         fonts()
     build()

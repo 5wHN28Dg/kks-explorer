@@ -222,14 +222,17 @@ K.scanQr = () => new Promise(res => {
   const id = String(++K.nativeSeq); K.nativeCalls.set(id, ([status, text]) => res(status === 200 ? text : null));
   K.native.scanQr(id);
 });
-// Scanning an invite without the app: this computer's camera + jsQR (vendor/jsqr). -> the text, or null if cancelled.
+// Scanning an invite without the app: this computer's camera, read by BarcodeDetector where the browser has it, else
+// our zxing-cpp build (kks-wasm.js, decision 0037). -> the text, or null if cancelled.
 K.canScan = () => !!(K.native ? K.native.scanQr : navigator.mediaDevices?.getUserMedia);
 if (!K.native) K.scanQr = async () => {
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}}) }
   catch (e) { throw new Error(e.name === 'NotFoundError' ? 'No camera found on this computer. Paste the code instead, or choose “Ask an admin on this Wi-Fi”.'
                               : 'The camera could not be used: ' + (e.message || e.name)) }
-  if (!window.jsQR) await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = '/vendor/jsqr/jsQR.js'; sc.onload = res; sc.onerror = () => rej(new Error('QR reader not loaded')); document.head.appendChild(sc) });
+  let detector = null, zx = null;
+  try { if ('BarcodeDetector' in window && (await BarcodeDetector.getSupportedFormats()).includes('qr_code')) detector = new BarcodeDetector({formats: ['qr_code']}) } catch (e) {}
+  if (!detector) zx = await import('/kks-wasm.js');
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed;inset:0;z-index:300;background:#000d;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;font:14px system-ui';
   box.innerHTML = '<video playsinline muted style="max-width:90vw;max-height:70vh;border-radius:8px"></video><div>Hold the admin\'s QR code in front of the camera</div><button type="button" style="padding:8px 16px">Cancel</button>';
@@ -240,12 +243,20 @@ if (!K.native) K.scanQr = async () => {
     let done = false;
     const finish = v => { if (done) return; done = true; stream.getTracks().forEach(t => t.stop()); box.remove(); res(v) };
     box.querySelector('button').onclick = () => finish(null);
-    const tick = () => {
+    const tick = async () => {
       if (done) return;
       if (video.videoWidth) {
-        cv.width = video.videoWidth; cv.height = video.videoHeight; g.drawImage(video, 0, 0);
-        const q = jsQR(g.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, {inversionAttempts: 'dontInvert'});
-        if (q && q.data.includes('kks_invite')) return finish(q.data);
+        let text = null;
+        try {
+          if (detector) text = (await detector.detect(video))[0]?.rawValue || null;
+          else {
+            cv.width = video.videoWidth; cv.height = video.videoHeight; g.drawImage(video, 0, 0);
+            const px = g.getImageData(0, 0, cv.width, cv.height).data, lum = new Uint8Array(cv.width * cv.height);
+            for (let i = 0, j = 0; j < lum.length; i += 4, j++) lum[j] = (px[i] * 77 + px[i + 1] * 150 + px[i + 2] * 29) >> 8;
+            text = await zx.qrRead(lum, cv.width, cv.height);
+          }
+        } catch (e) { /* a frame that couldn't be read */ }
+        if (text && text.includes('kks_invite')) return finish(text);
       }
       setTimeout(tick, 150);
     };
@@ -393,7 +404,7 @@ K.renderStatus = () => {
     return;
   }
   if (K.reauth) {  // a top-level load of the page lets Cloudflare Access show its login, then comes back here
-    el.innerHTML = `<span style="color:var(--review)">●</span> <a href="${location.pathname}" style="color:var(--accent)">Sign in again</a>${n ? ` · ${n} queued` : ''}`;
+    el.innerHTML = `<span style="color:var(--review)">●</span> <a href="${K.esc(location.pathname)}" style="color:var(--accent)">Sign in again</a>${n ? ` · ${n} queued` : ''}`;
     el.title = 'Your remote-access sign-in expired. Working from the copy on this device; changes are queued.';
     return;
   }
@@ -415,9 +426,9 @@ K.describe = (kind, p) => ({
 if ('serviceWorker' in navigator && !K.native) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
 
 // ---------- JPEG XL photos ----------
-// Photos are stored as JXL (server/photos.py). A browser that shows JXL itself gets the file as it is; any other
-// decodes it here with libjxl compiled to WebAssembly (vendor/jxl, loaded only then) into a BMP: plain pixels, no
-// lossy re-encoding. (The Android app answers /photos/*.jxl with a BMP from its own libjxl instead.)
+// Photos are stored as JXL. A browser that shows JXL itself gets the file as it is; any other decodes it here with
+// our own libjxl build in WebAssembly (kks-wasm.js, decision 0037, loaded only then) into a BMP: plain pixels, no lossy
+// re-encoding. (The Android app answers /photos/*.jxl with a BMP from its own libjxl instead.)
 K.jxl = {
   probe: null, dec: null, done: new Map(),   // photo URL -> Promise of a blob: URL
   native() {
@@ -441,10 +452,11 @@ K.jxl = {
   },
   url(src) {
     if (!this.done.has(src)) this.done.set(src, (async () => {
-      this.dec ??= import('/vendor/jxl/decode.js');
-      const [{default: decode}, r] = await Promise.all([this.dec, fetch(src, {credentials: 'same-origin'})]);
+      this.dec ??= import('/kks-wasm.js');
+      const [{jxlDecode}, r] = await Promise.all([this.dec, fetch(src, {credentials: 'same-origin'})]);
       if (!r.ok) throw new Error('photo ' + r.status);
-      return URL.createObjectURL(this.bmp(await decode(await r.arrayBuffer())));
+      const d = await jxlDecode(new Uint8Array(await r.arrayBuffer()));
+      return URL.createObjectURL(this.bmp({width: d.width, height: d.height, data: d.rgba}));
     })());
     return this.done.get(src);
   },
@@ -467,6 +479,24 @@ K.jxl = {
   },
 };
 K.jxl.watch();
+
+// A photo from this browser becomes JPEG XL here, before it is sent (decision 0018: no JPEG anywhere): our libjxl
+// build in a worker, so the page stays responsive. canvas → a data: URL of the JXL codestream.
+K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => {
+  const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  K.jxlWorker ??= new Worker('/kks-wasm-worker.js', {type: 'module'});
+  const id = (K.jxlSeq = (K.jxlSeq || 0) + 1);
+  const on = e => {
+    if (e.data.id !== id) return;
+    K.jxlWorker.removeEventListener('message', on);
+    if (e.data.error) return rej(new Error(e.data.error));
+    const b = e.data.jxl; let s = '';
+    for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    res('data:image/jxl;base64,' + btoa(s));
+  };
+  K.jxlWorker.addEventListener('message', on);
+  K.jxlWorker.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
+});
 
 
 // ---------- photo viewer: pinch / wheel to zoom, drag to pan, double tap to zoom in or back ----------

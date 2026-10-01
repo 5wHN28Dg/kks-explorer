@@ -5,7 +5,8 @@
 import os, sys
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, '..'))
-shell = ['VERSION', 'index.html', 'admin.html', 'common.js', 'qrcodegen.js', 'course-bridge.js', 'learning.html', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png']
+shell = ['VERSION', 'index.html', 'admin.html', 'common.js', 'tiles.js', 'kks-wasm.js', 'kks-wasm-worker.js', 'course-bridge.js',
+         'learning.html', 'course.html', 'course.js', 'course-figure.js', 'course.css', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png']
 datas = [(os.path.join(ROOT, f), '.') for f in shell] + [(os.path.join(ROOT, 'data'), 'data'), (os.path.join(ROOT, 'vendor'), 'vendor')]
 
 a = Analysis(
