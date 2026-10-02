@@ -26,11 +26,13 @@ type
     remotePeer*: string
     handshaken*: bool
     closed*: bool
+    web: bool             ## a wss:// client: Schannel checks the chain and the host name; no peer ID
 
 proc c_identity_new(name: WideCString, tpm: cint, err: cstring, en: csize_t): CIdentity {.importc: "kks_identity_new", cdecl.}
 proc c_identity_free(id: CIdentity) {.importc: "kks_identity_free", cdecl.}
 proc c_import(name: WideCString, pub, d: pointer): cint {.importc: "kks_ncrypt_import", cdecl.}
 proc c_new(id: CIdentity, client: cint): CTls {.importc: "kks_tls_new", cdecl.}
+proc c_new_web(host: WideCString): CTls {.importc: "kks_tls_new_web", cdecl.}
 proc c_free(c: CTls) {.importc: "kks_tls_free", cdecl.}
 proc c_error(c: CTls): cstring {.importc: "kks_tls_error", cdecl.}
 proc c_feed(c: CTls, d: pointer, n: csize_t) {.importc: "kks_tls_feed", cdecl.}
@@ -79,6 +81,12 @@ proc free*(id: Identity) =
 proc newTlsConn*(p: Provider, id: Identity, client: bool, expectPeer = ""): TlsConn =
   TlsConn(c: c_new(id.c, cint(ord(client))), id: id, p: p, expectPeer: expectPeer)
 
+proc newWebTlsConn*(host: string): TlsConn =
+  ## A client for a web server (the relay's wss://): the Windows roots, SNI and the host name, like tls.nim on Linux.
+  let c = c_new_web(newWideCString(host))
+  if c == nil: raise newException(TlsError, "no TLS client credentials for " & host)
+  TlsConn(c: c, web: true)
+
 proc fail(c: TlsConn, what: string) =
   raise newException(TlsError, what & ": " & $c_error(c.c))
 
@@ -96,6 +104,9 @@ proc handshake*(c: TlsConn): bool =
   let r = c_handshake(c.c)
   if r < 0: c.fail("handshake")
   if r == 0: return false
+  if c.web:
+    c.handshaken = true
+    return true
   var pub = newSeq[byte](65)
   if c_peer_key(c.c, addr pub[0]) != 0: c.fail("peer")
   c.remotePeer = c.p.peerIdOfKey(keyString(pub))

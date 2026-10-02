@@ -3,6 +3,7 @@ package kks.explorer.core
 import android.util.Base64
 import org.json.JSONObject
 import java.io.DataInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -72,9 +73,36 @@ object Net {
         s.sslParameters = s.sslParameters.apply { applicationProtocols = arrayOf(ALPN) }
     }
 
-    class Peer(val socket: SSLSocket, val remote: String) {
-        val input: InputStream = socket.inputStream
-        val output: OutputStream = socket.outputStream
+    /** an authenticated sync connection: TLS over TCP (an SSLSocket) or over a relay pipe (EngineTls) */
+    class Peer(val input: InputStream, val output: OutputStream, val remote: String, private val closer: java.io.Closeable) {
+        constructor(s: SSLSocket, remote: String) : this(s.inputStream, s.outputStream, remote, s)
+        fun close() { runCatching { closer.close() } }
+    }
+
+    /** TLS with the sync's profile over a relay pipe (§18); the client pins expectPeer, the server requires a client certificate */
+    fun overPipe(ws: WsClient, client: Boolean, expectPeer: String): Peer {
+        val e = ctx.createSSLEngine()
+        e.useClientMode = client
+        e.enabledProtocols = e.supportedProtocols.filter { it == "TLSv1.3" || it == "TLSv1.2" }.toTypedArray()
+        e.enabledCipherSuites = e.supportedCipherSuites.filter { it in SUITES }.toTypedArray()
+        e.sslParameters = e.sslParameters.apply { applicationProtocols = arrayOf(ALPN) }
+        if (!client) e.needClientAuth = true
+        ws.setTimeout(TIMEOUT * 2)
+        val t = EngineTls(e, rawIn = {
+            var got: ByteArray? = null
+            while (got == null) {
+                val (op, data) = try { ws.recv() } catch (x: IOException) { break }
+                if (op == WsClient.BINARY) got = data
+            }
+            got
+        }, rawOut = { ws.sendBinary(it) }, onClose = { ws.close() })
+        try {
+            t.handshake()
+            if (e.applicationProtocol != ALPN) throw IllegalStateException("the other side does not speak $ALPN")
+            val remote = peerIdOf(e.session.peerCertificates[0] as X509Certificate)
+            if (expectPeer.isNotEmpty() && remote != expectPeer) throw IllegalStateException("another device answered")
+            return Peer(t.input, t.output, remote, t)
+        } catch (x: Exception) { t.close(); throw x }
     }
 
     fun connect(host: String, port: Int, expectPeer: String): Peer {
@@ -113,7 +141,7 @@ object Net {
 
     fun syncWith(host: String, port: Int, expectPeer: String, adoptRoot: String = ""): JSONObject {
         val p = connect(host, port, expectPeer)
-        try { return drive(p, true, adoptRoot) } finally { p.socket.close() }
+        try { return drive(p, true, adoptRoot) } finally { p.close() }
     }
 
     private fun frame(j: JSONObject): ByteArray {
@@ -131,7 +159,7 @@ object Net {
             require(n in 0..(64 shl 20))
             val b = ByteArray(n); din.readFully(b)
             return JSONObject(b.toString(Charsets.UTF_8))
-        } finally { p.socket.close() }
+        } finally { p.close() }
     }
 
     /** incoming syncs (other devices on the Wi-Fi); returns the port it listens on */

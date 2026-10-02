@@ -1,5 +1,6 @@
 import java.net.URI
 import java.security.MessageDigest
+import java.util.Properties
 
 // KKS Explorer v2 for Android (M6 phase 6, decisions 0014, 0027, 0032): native Compose screens on the Nim core
 // (src/main/jniLibs/<abi>/libkks.so, built by ../nim/build.sh). Installed next to the v1 app until the cutover.
@@ -30,11 +31,26 @@ android {
             }
         }
     }
+    // Release signing: the maintainer's key, never in the repository or CI (as the v1 app; docs/ANDROID_RELEASE.md).
+    // keystore.properties through $KKS_SIGNING or ~/.config/kks-explorer/signing/; without it the release is unsigned.
+    val signing = (System.getenv("KKS_SIGNING")?.let { File(it) }
+        ?: File(System.getProperty("user.home"), ".config/kks-explorer/signing/keystore.properties"))
+        .takeIf { it.isFile }?.let { f -> Properties().apply { f.inputStream().use { load(it) } } to f.parentFile }
+    signingConfigs {
+        if (signing != null) create("release") {
+            val (p, dir) = signing
+            storeFile = File(p.getProperty("storeFile")).let { if (it.isAbsolute) it else File(dir, it.path) }
+            storePassword = p.getProperty("storePassword")
+            keyAlias = p.getProperty("keyAlias")
+            keyPassword = p.getProperty("keyPassword")
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (signing != null) signingConfig = signingConfigs.getByName("release")
         }
     }
     ndkVersion = "27.2.12479018"

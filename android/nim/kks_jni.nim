@@ -110,9 +110,18 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
     cfg["txt"] = O(("peer", newStr(c.n.device)), ("root", newStr(if c.n.root.len > 0: c.p.peerIdOfKey(c.n.root)[0 ..< 16] else: "")),
                    ("plant", newStr(plantN)), ("label", newStr(c.api.deviceLabel)),
                    ("adm", newStr(if ok and me.isAdmin: "1" else: "0")), ("v", newStr("2")))
+    let rv = if c.n.run != nil: c.n.run.settings.getOrDefault("relay") else: nil
+    cfg["relay_url"] = newStr(if rv != nil and rv.isStr: rv.s else: "")
     cfg["admin"] = newBool(ok and me.isAdmin)
     cfg["role"] = newStr(if ok: me.role else: "")
     O(("status", newInt(200)), ("json", cfg))
+  of "/native/relay":
+    # §18: the plant's relay (the manager's setting), the room, and a hello signed now by the device key
+    let v = if c.n.run != nil: c.n.run.settings.getOrDefault("relay") else: nil
+    let relay = if v != nil and v.isStr: v.s else: ""
+    if relay.len == 0 or c.n.root.len == 0: return view(O(("relay", newStr(""))))
+    let room = relayRoom(c.p, c.n.root)
+    view(O(("relay", newStr(relay)), ("room", newStr(room)), ("hello", relayHello(c.p, c.key, room, nowMs() div 1000))))
   of "/native/join-request":
     let req = c.p.joinRequest(c.key, body["username"].s, body["full_name"].s,
                               if body.get("position") != nil: body["position"] else: newNull(), c.api.deviceLabel, nowMs() div 1000)

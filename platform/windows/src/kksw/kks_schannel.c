@@ -3,7 +3,10 @@
  * decision is the peer ID (PROTOCOL-v2 §15), so Schannel's own certificate validation is switched off
  * (SCH_CRED_MANUAL_CRED_VALIDATION) and the caller checks the peer's P-256 key. TLS 1.3 where Windows has it (11),
  * else 1.2 (Windows 10). ALPN "kks-sync/2" is required. The device certificate is self-signed for a key in a CNG key
- * storage provider, so the private key never leaves it. */
+ * storage provider, so the private key never leaves it.
+ * Web mode (kks_tls_new_web, the relay's wss://, PROTOCOL-v2 §18): the opposite trust decision: Schannel validates the
+ * server's chain against the Windows roots and its name against the host (auto validation, SNI), no client certificate,
+ * no ALPN. Revocation is not checked (neither does GnuTLS's default on Linux). */
 #define WIN32_LEAN_AND_MEAN
 #define SECURITY_WIN32
 #define SCHANNEL_USE_BLACKLISTS
@@ -137,12 +140,43 @@ static void drop(buf *b, size_t n) {   /* remove the first n bytes */
 
 typedef struct kks_tls {
     kks_identity *id;
-    int client, have_ctx, done, closed;
+    int client, have_ctx, done, closed, web;
+    wchar_t host[256];
     CtxtHandle ctx;
     SecPkgContext_StreamSizes sizes;
     buf in, out, plain;
     char err[200];
 } kks_tls;
+
+static CredHandle web_cred;
+static int have_web;
+
+/* a web client (wss://): NULL when the credentials can't be had */
+kks_tls *kks_tls_new_web(const wchar_t *host) {
+    if (!have_web) {
+        TLS_PARAMETERS tp;
+        memset(&tp, 0, sizeof tp);
+        tp.grbitDisabledProtocols = (DWORD)~(SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_3_CLIENT);
+        SCH_CREDENTIALS sc;
+        memset(&sc, 0, sizeof sc);
+        sc.dwVersion = SCH_CREDENTIALS_VERSION;
+        sc.cTlsParameters = 1;
+        sc.pTlsParameters = &tp;
+        sc.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION | SCH_CRED_NO_DEFAULT_CREDS | SCH_USE_STRONG_CRYPTO;
+        TimeStamp exp;
+        if (AcquireCredentialsHandleW(NULL, (LPWSTR)UNISP_NAME_W, SECPKG_CRED_OUTBOUND, NULL, &sc, NULL, NULL, &web_cred, &exp) != SEC_E_OK)
+            return NULL;
+        have_web = 1;
+    }
+    if (wcslen(host) >= 256) return NULL;
+    kks_tls *c = calloc(1, sizeof *c);
+    c->client = 1;
+    c->web = 1;
+    wcscpy(c->host, host);
+    return c;
+}
+
+static CredHandle *cred_of(kks_tls *c) { return c->web ? &web_cred : c->client ? &c->id->out_cred : &c->id->in_cred; }
 
 kks_tls *kks_tls_new(kks_identity *id, int client) {
     kks_tls *c = calloc(1, sizeof *c);
@@ -185,6 +219,8 @@ static size_t alpn_buffer(unsigned char *b) {
 
 #define ISC_FLAGS (ISC_REQ_SEQUENCE_DETECT | ISC_REQ_REPLAY_DETECT | ISC_REQ_CONFIDENTIALITY | ISC_REQ_ALLOCATE_MEMORY | \
                    ISC_REQ_STREAM | ISC_REQ_EXTENDED_ERROR | ISC_REQ_MANUAL_CRED_VALIDATION | ISC_REQ_USE_SUPPLIED_CREDS)
+#define ISC_FLAGS_WEB (ISC_REQ_SEQUENCE_DETECT | ISC_REQ_REPLAY_DETECT | ISC_REQ_CONFIDENTIALITY | ISC_REQ_ALLOCATE_MEMORY | \
+                       ISC_REQ_STREAM | ISC_REQ_EXTENDED_ERROR)
 #define ASC_FLAGS (ASC_REQ_SEQUENCE_DETECT | ASC_REQ_REPLAY_DETECT | ASC_REQ_CONFIDENTIALITY | ASC_REQ_ALLOCATE_MEMORY | \
                    ASC_REQ_STREAM | ASC_REQ_EXTENDED_ERROR | ASC_REQ_MUTUAL_AUTH)
 
@@ -202,15 +238,15 @@ static int step(kks_tls *c) {
         inb[n].BufferType = SECBUFFER_TOKEN; inb[n].pvBuffer = c->in.p; inb[n].cbBuffer = (unsigned long)c->in.n; n++;
         inb[n].BufferType = SECBUFFER_EMPTY; inb[n].pvBuffer = NULL; inb[n].cbBuffer = 0; n++;
     }
-    if (first || !c->client) { inb[n].BufferType = SECBUFFER_APPLICATION_PROTOCOLS; inb[n].pvBuffer = alpn; inb[n].cbBuffer = (unsigned long)alen; n++; }
+    if ((first || !c->client) && !c->web) { inb[n].BufferType = SECBUFFER_APPLICATION_PROTOCOLS; inb[n].pvBuffer = alpn; inb[n].cbBuffer = (unsigned long)alen; n++; }
     ind.cBuffers = n;
     outb[0].BufferType = SECBUFFER_TOKEN; outb[0].pvBuffer = NULL; outb[0].cbBuffer = 0;
     outb[1].BufferType = SECBUFFER_ALERT; outb[1].pvBuffer = NULL; outb[1].cbBuffer = 0;
     unsigned long attrs = 0;
     SECURITY_STATUS s;
     if (c->client)
-        s = InitializeSecurityContextW(&c->id->out_cred, first ? NULL : &c->ctx, (SEC_WCHAR *)L"kks-device", ISC_FLAGS, 0, 0,
-                                       &ind, 0, first ? &c->ctx : NULL, &outd, &attrs, NULL);
+        s = InitializeSecurityContextW(cred_of(c), first ? NULL : &c->ctx, c->web ? (SEC_WCHAR *)c->host : (SEC_WCHAR *)L"kks-device",
+                                       c->web ? ISC_FLAGS_WEB : ISC_FLAGS, 0, 0, n ? &ind : NULL, 0, first ? &c->ctx : NULL, &outd, &attrs, NULL);
     else
         s = AcceptSecurityContext(&c->id->in_cred, first ? NULL : &c->ctx, &ind, ASC_FLAGS, 0, first ? &c->ctx : NULL,
                                   &outd, &attrs, NULL);
@@ -240,6 +276,7 @@ int kks_tls_handshake(kks_tls *c) {
             if (QueryContextAttributesW(&c->ctx, SECPKG_ATTR_STREAM_SIZES, &c->sizes) != SEC_E_OK) {
                 snprintf(c->err, sizeof c->err, "no stream sizes"); return -1;
             }
+            if (c->web) { c->done = 1; return 1; }
             SecPkgContext_ApplicationProtocol ap;
             memset(&ap, 0, sizeof ap);
             if (QueryContextAttributesW(&c->ctx, SECPKG_ATTR_APPLICATION_PROTOCOL, &ap) != SEC_E_OK ||
@@ -337,7 +374,7 @@ void kks_tls_shutdown(kks_tls *c) {
     SecBuffer o = { 0, SECBUFFER_TOKEN, NULL };
     SecBufferDesc od = { SECBUFFER_VERSION, 1, &o };
     unsigned long attrs = 0;
-    if (c->client) InitializeSecurityContextW(&c->id->out_cred, &c->ctx, NULL, ISC_FLAGS, 0, 0, NULL, 0, NULL, &od, &attrs, NULL);
+    if (c->client) InitializeSecurityContextW(cred_of(c), &c->ctx, NULL, c->web ? ISC_FLAGS_WEB : ISC_FLAGS, 0, 0, NULL, 0, NULL, &od, &attrs, NULL);
     else AcceptSecurityContext(&c->id->in_cred, &c->ctx, NULL, ASC_FLAGS, 0, NULL, &od, &attrs, NULL);
     if (o.pvBuffer) { put(&c->out, o.pvBuffer, o.cbBuffer); FreeContextBuffer(o.pvBuffer); }
 }

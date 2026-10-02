@@ -296,6 +296,9 @@ class SheetView(ctx: Context) : View(ctx) {
     private val tagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
+    private companion object { var firstLogged = false }
+
+    // the drawing and its tags belong in the accessibility tree (explicit rather than "auto"). Open finding,
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { if (!fitted || ow == 0) fit() }
 
     override fun onDraw(c: Canvas) {
@@ -310,6 +313,10 @@ class SheetView(ctx: Context) : View(ctx) {
         askLevel(want)
         val best = levels[want] ?: levels.firstOrNull { it != null }
         if (best != null) c.drawBitmap(best, null, dst, bmpPaint) else c.drawRect(dst, white)
+        if (best != null && !firstLogged) {   // measurements: process start → the first sheet on screen
+            firstLogged = true
+            android.util.Log.i("KKSTime", "first sheet ${android.os.SystemClock.uptimeMillis() - android.os.Process.getStartUptimeMillis()} ms after process start")
+        }
         // 2. vector tiles once the overview isn't sharp enough
         val s = sheet
         if (s != null && z > scale0 * 1.05f) {

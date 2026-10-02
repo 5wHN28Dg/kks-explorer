@@ -44,6 +44,7 @@ object Jxl {
         val out = encodeRgba(buf.array(), bmp.width, bmp.height, DISTANCE, EFFORT) ?: throw IllegalStateException("JPEG XL encoding failed")
         val took = (System.nanoTime() - t0) / 1e6 / maxOf(bmp.width.toLong() * bmp.height / 1e6, 0.01)
         msPerMp = ((msPerMp + took) / 2).toLong()
+        android.util.Log.i("KKSTime", "jxl encode ${bmp.width}x${bmp.height} ${took.toLong()} ms/MP")   // measurements
         return out
     }
 
@@ -56,6 +57,7 @@ object Jxl {
         val out = encodeRgba(buf.array(), bmp.width, bmp.height, DISTANCE, EFFORT) ?: throw IllegalStateException("JPEG XL encoding failed")
         val took = (System.nanoTime() - t0) / 1e6 / maxOf(bmp.width.toLong() * bmp.height / 1e6, 0.01)
         msPerMp = ((msPerMp + took) / 2).toLong()
+        android.util.Log.i("KKSTime", "jxl encode ${bmp.width}x${bmp.height} ${took.toLong()} ms/MP")   // measurements
         return out
     }
 

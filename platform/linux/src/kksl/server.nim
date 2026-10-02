@@ -4,7 +4,7 @@
 
 import std/[asyncdispatch, asynchttpserver, base64, os, osproc, posix, strutils, tables, times, uri, sets, algorithm]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses]
-import dbstore, tls, net, argon2, mdns
+import dbstore, tls, net, argon2, mdns, internet
 
 const
   Cookie = "kks_session"
@@ -46,6 +46,7 @@ type
     fails: Table[string, (int, float)]
     listener*: Listener
     mdns*: Mdns
+    internet*: Internet           ## presence on the plant's relay (§18), answers syncs through it
     announced: string
     job*: JNode                ## the drawing import running or last run (one at a time)
     courseCache: (string, JNode)   ## (what the list was built from, the list)
@@ -90,6 +91,26 @@ proc herr(code: int, msg: string) {.noreturn.} =
 
 proc nowMs(): int64 = int64(epochTime() * 1000)
 proc nowS(): int64 = int64(epochTime())
+
+type Ifaddrs {.importc: "struct ifaddrs", header: "<ifaddrs.h>", bycopy.} = object
+  ifa_next: ptr Ifaddrs
+  ifa_name: cstring
+  ifa_flags: cuint
+  ifa_addr: ptr SockAddr
+proc getifaddrs(ifap: ptr ptr Ifaddrs): cint {.importc, header: "<ifaddrs.h>".}
+proc freeifaddrs(ifa: ptr Ifaddrs) {.importc, header: "<ifaddrs.h>".}
+
+proc localAddrs(port: int): seq[string] =
+  ## this machine's IPv4 addresses other devices could reach (not loopback), as "ip:port": invites carry them (§16)
+  var ifs: ptr Ifaddrs
+  if getifaddrs(addr ifs) != 0: return
+  var p = ifs
+  while p != nil:
+    if p.ifa_addr != nil and p.ifa_addr.sa_family == TSa_Family(AF_INET):
+      let ip = $inet_ntoa(cast[ptr Sockaddr_in](p.ifa_addr).sin_addr)
+      if not ip.startsWith("127."): result.add ip & ":" & $port
+    p = p.ifa_next
+  freeifaddrs(ifs)
 proc O(fields: varargs[(string, JNode)]): JNode = newObj(@fields)
 proc S(s: string): JNode = newStr(s)
 
@@ -1006,15 +1027,42 @@ proc serve*(s: Server): Future[void] =
       asyncCheck pumpLoop()
     except MdnsError as e:
       stderr.writeLine "mDNS off: " & e.msg
+  let hooks = Hooks(
+    join: proc (remote: string, m: JNode): JNode =
+      result = s.api.invites.offer(s.p, remote, m, nowS())
+      if result["state"].s == "accepted":
+        result["root"] = S(s.n.root)
+        result["plant"] = s.n.run.settings.getOrDefault("plant"),
+    secrets: proc (remote: string, m: JNode): JNode = O(("t", S("secrets")), ("secrets", newArr())),   # §17: a server holds none
+    enroll: proc (remote: string, m: JNode): JNode = s.enrollOverTls(remote, m))
   if s.cfg.syncPort > 0:
-    s.listener = listen(s.n, s.id, s.cfg.syncPort, hooks = Hooks(
-      join: proc (remote: string, m: JNode): JNode =
-        result = s.api.invites.offer(s.p, remote, m, nowS())
-        if result["state"].s == "accepted":
-          result["root"] = S(s.n.root)
-          result["plant"] = s.n.run.settings.getOrDefault("plant"),
-      secrets: proc (remote: string, m: JNode): JNode = O(("t", S("secrets")), ("secrets", newArr())),   # §17: a server holds none
-      enroll: proc (remote: string, m: JNode): JNode = s.enrollOverTls(remote, m)))
+    s.listener = listen(s.n, s.id, s.cfg.syncPort, hooks = hooks)
+  # §18: the server sits in the plant's room when the manager set a relay, and answers syncs through it (it starts
+  # none: the other devices sync with it on their rounds, as on the LAN)
+  s.internet = newInternet(s.n, s.id, hooks)
+  s.internet.start()
+  s.api.relayChanged = proc () = s.internet.restart()
+  # the status admin.html's Devices page shows (the v1 shape: syncs by device, found on the Wi-Fi, internet)
+  var syncs = newObj()
+  proc record(remote, address: string, st: Stats) =
+    syncs[remote] = O(("peer", S(remote)), ("address", S(address)), ("at", newInt(nowS())), ("ok", newBool(true)),
+                      ("result", O(("sent", newInt(st.sent)), ("received", newInt(st.received)),
+                                   ("denied", newBool(st.denied)), ("they_denied", newBool(st.theyDenied)))))
+  if s.listener != nil:
+    s.listener.onDone = proc (remote: string, st: Stats) = record(remote, "", st)
+  s.internet.onSynced = proc (remote: string, st: Stats, initiator: bool) = record(remote, "relay", st)
+  s.api.syncPort = s.cfg.syncPort
+  s.api.addresses = proc (): seq[string] =
+    if s.cfg.syncPort == 0: @[] else: localAddrs(s.cfg.syncPort)   # the listener binds every interface
+  s.api.syncSnapshot = proc (): JNode =
+    var found = newArr()
+    if s.mdns != nil:
+      for f in s.mdns.found: found.elems.add O(("name", S(f.name)), ("host", S(f.address)))
+    var online = newArr()
+    for p in s.internet.online: online.elems.add S(p)
+    let relay = relaySetting(s.n)
+    O(("discovery", S(if s.mdns != nil: "on" else: "off")), ("syncs", syncs), ("found", found),
+      ("internet", O(("relay", if relay.len > 0: S(relay) else: newNull()), ("state", S(s.internet.state)), ("online", online))))
   let http = newAsyncHttpServer(maxBody = s.cfg.maxUploadMb * 1024 * 1024 * 2 + 65536)
   proc cb(req: Request) {.async, gcsafe.} =
     {.cast(gcsafe).}:

@@ -45,9 +45,10 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
         Sync.start(ctx)
         if (App.visible) { Sync.syncAll(ctx); return Result.success() }        // on screen: its own loop runs too
         Discovery.start(ctx)
+        Internet.start()
         Thread.sleep(LOOK_MS)
         Sync.syncAll(ctx)
-        if (!App.visible) Discovery.stop()
+        if (!App.visible) { Discovery.stop(); Internet.stop() }
         return Result.success()
     }
 }

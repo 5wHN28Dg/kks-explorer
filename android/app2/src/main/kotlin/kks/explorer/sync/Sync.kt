@@ -175,17 +175,37 @@ object Sync {
             val rootId = config().optJSONObject("txt")?.optString("root") ?: ""
             val targets = Discovery.found().filter { it.root == rootId }.map { Triple(it.host, it.port, it.peer) } + remembered(ctx)
             val done = HashSet<String>()
+            val started = System.currentTimeMillis()
+            val lan = onLan(ctx)
             for ((host, port, peer) in targets) {
-                if (peer.isEmpty() || peer == me || !done.add(peer)) continue
+                if (peer.isEmpty() || peer == me || peer in done) continue
+                if (!lan && privateAddress(host)) continue      // on mobile data a LAN address can only time out
                 val seen = peers.getOrPut(peer) { Seen(host, port) }
                 try {
                     val st = Net.syncWith(host, port, peer)
                     seen.lastOk = System.currentTimeMillis(); seen.error = ""; seen.host = host; seen.port = port
                     Log.i("KKSSync", "synced with $host:$port: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
+                    done.add(peer)
                     n++
                 } catch (e: Exception) {
                     seen.error = e.message ?: "failed"
                     Log.w("KKSSync", "sync with $host:$port: ${e.message}")
+                }
+            }
+            // then the devices on the relay (§18) that no Wi-Fi sync reached and that did not sync with us meanwhile;
+            // a person's "Sync now" goes online for it even where automatic syncs stay off (metered networks)
+            if (wait && Internet.state != "online" && Internet.configured()) { Internet.start(); Internet.awaitOnline(8_000) }
+            if (Internet.state == "online") {
+                for (peer in Internet.online.toList()) {
+                    if (peer in done || peer == me || (peers[peer]?.lastOk ?: 0) >= started) continue
+                    try {
+                        val st = Internet.syncPeer(peer)
+                        Log.i("KKSSync", "synced through the relay with ${peer.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
+                        n++
+                    } catch (e: Exception) {
+                        peers.getOrPut(peer) { Seen("relay", 0) }.error = e.message ?: "failed"
+                        Log.w("KKSSync", "relay sync with ${peer.take(8)}: ${e.message}")
+                    }
                 }
             }
             lastRound = System.currentTimeMillis()
@@ -212,6 +232,7 @@ object Sync {
         }
         val snap = JSONObject().put("devices", devs).put("last_ok", if (lastOk > 0) lastOk / 1000 else JSONObject.NULL)
             .put("syncing", syncing).put("port", if (port > 0) port else JSONObject.NULL)
+            .put("relay", Internet.state).put("relay_online", Internet.online.size)
         Core.api("POST", "/native/net", JSONObject().put("port", port).put("addrs", JSONArray(addresses(port))).put("snapshot", snap))
         announce(ctx)
     }
@@ -241,6 +262,18 @@ object Sync {
             }
             pool.execute { runCatching { report(ctx) } }      // a new role or plant changes the TXT
         }
+        Internet.allowed = { SyncWorker.metered(ctx) || unmetered(ctx) }
+        Internet.onSynced = { remote, _ ->
+            peers.getOrPut(remote) { Seen("relay", 0) }.apply { host = "relay"; port = 0; lastOk = System.currentTimeMillis(); error = "" }
+            pool.execute { runCatching { report(ctx) } }
+        }
+        var seenOnline = 0
+        Internet.onChange = {
+            val n = Internet.online.size
+            if (n > seenOnline) pool.schedule({ runCatching { syncAll(ctx) } }, 1, TimeUnit.SECONDS)   // a device came online
+            seenOnline = n
+            pool.execute { runCatching { report(ctx) } }
+        }
         Discovery.onFound = { f ->
             val mine = runCatching { config().optJSONObject("txt")?.optString("root") }.getOrNull()
             if (f.root.isNotEmpty() && f.root == mine && !peers.containsKey(f.peer)) pool.schedule({ runCatching { syncAll(ctx) } }, 1, TimeUnit.SECONDS)
@@ -252,14 +285,26 @@ object Sync {
         start(ctx)
         if (on) {
             Discovery.start(ctx)
+            Internet.start()
             pool.execute { runCatching { report(ctx) } }
             if (auto == null) auto = pool.scheduleWithFixedDelay({ runCatching { syncAll(ctx) } }, 3, INTERVAL, TimeUnit.SECONDS)
         } else {
             auto?.cancel(false); auto = null
             Discovery.stop()
             Discovery.unannounce()
+            Internet.stop()
         }
     }
+
+    /** on Wi-Fi or Ethernet (where the plant's LAN addresses can answer) */
+    private fun onLan(ctx: Context): Boolean {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java) ?: return true
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
+    private val PRIVATE = Regex("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|169\\.254\\.)")
+    private fun privateAddress(host: String) = PRIVATE.containsMatchIn(host)
 
     fun unmetered(ctx: Context): Boolean {
         val cm = ctx.getSystemService(ConnectivityManager::class.java) ?: return false

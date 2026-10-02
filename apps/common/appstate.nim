@@ -3,9 +3,9 @@
 ## automatic rounds), all on one thread through asyncdispatch (one thread owns the node, decision 0030). The platform
 ## parts: crypto provider, TLS, mDNS, the storage key's home, where the device key lives, local addresses.
 
-import std/[asyncdispatch, httpclient, os, strutils, tables, times, uri, sets, nativesockets, selectors]
+import std/[asyncdispatch, httpclient, os, strutils, tables, times, uri, sets, sequtils, nativesockets, selectors]
 import kks/[json, util, crypto, proto, node, api, plant, sync, extras, bundle, plantdata, invites]
-import kksl/[dbstore, net]
+import kksl/[dbstore, net, internet]
 when defined(windows):
   import kks/provider_cng
   import kksw/[tls, mdns, keystore]
@@ -38,6 +38,7 @@ type
     id*: Identity
     listener*: Listener
     mdns*: Mdns
+    internet*: Internet                   ## presence on the plant's relay (§18)
     peers*: Table[string, PeerSeen]       ## device → where it was seen
     lastRound*: int64
     syncing*: bool
@@ -327,11 +328,12 @@ proc syncAll*(a: App): Future[int] {.async.} =
         if k == "root": root = v
       if peer.len > 0 and peer != a.n.device and root == rootId: targets.add((f.address, f.port, peer))
   targets.add a.remembered()
+  let started = nowMs()
   for (host, port, peer) in targets:
     if peer in done or peer == a.n.device: continue
-    done.incl peer
     try:
       discard await a.syncOne(host, port, peer)
+      done.incl peer
       inc result
     except CatchableError as e:
       var p = a.peers.getOrDefault(peer)
@@ -339,6 +341,18 @@ proc syncAll*(a: App): Future[int] {.async.} =
       p.port = port
       p.lastError = e.msg
       a.peers[peer] = p
+  # then the devices on the relay that no LAN sync reached and that did not sync with us since the round started
+  if a.internet != nil and a.internet.state == "online":
+    for peer in a.internet.online.toSeq:
+      if peer in done or a.peers.getOrDefault(peer).lastOk >= started: continue
+      try:
+        discard await a.internet.syncPeer(peer)
+        inc result
+      except CatchableError as e:
+        var p = a.peers.getOrDefault(peer)
+        p.host = "relay"
+        p.lastError = e.msg
+        a.peers[peer] = p
   a.changed("sync")
 
 proc snapshot*(a: App): JNode =
@@ -350,7 +364,9 @@ proc snapshot*(a: App): JNode =
     devs[d] = newObj(@[("host", newStr(p.host)), ("last_ok", newInt(p.lastOk div 1000)),
                        ("error", if p.lastError.len > 0: newStr(p.lastError) else: newNull())])
   newObj(@[("devices", devs), ("last_ok", if lastOk > 0: newInt(lastOk div 1000) else: newNull()),
-           ("syncing", newBool(a.syncing)), ("port", if a.listener != nil: newInt(a.listener.port) else: newNull())])
+           ("syncing", newBool(a.syncing)),
+           ("relay", newStr(if a.internet != nil: a.internet.state else: "off")),
+           ("relay_online", newInt(if a.internet != nil: a.internet.online.len else: 0)), ("port", if a.listener != nil: newInt(a.listener.port) else: newNull())])
 
 proc startSync*(a: App, port = SyncPortDefault, discovery = true) =
   ## Listener (the next free port from `port`), mDNS announce + browse, and the automatic rounds.
@@ -370,6 +386,22 @@ proc startSync*(a: App, port = SyncPortDefault, discovery = true) =
       pr.lastOk = nowMs()
       a.peers[remote] = pr
       a.changed("sync")
+  a.internet = newInternet(a.n, a.id, a.hooks)
+  a.internet.onSynced = proc (remote: string, st: Stats, initiator: bool) =
+    var pr = a.peers.getOrDefault(remote)
+    pr.host = "relay"
+    pr.port = 0
+    pr.lastOk = nowMs()
+    pr.lastError = ""
+    a.peers[remote] = pr
+    a.changed("sync")
+  var seen = 0
+  a.internet.onChange = proc () =
+    if a.internet.online.len > seen: a.nextRound = min(a.nextRound, nowMs() + 1000)   # a device came online
+    seen = a.internet.online.len
+    a.changed("relay")
+  a.internet.start()
+  a.api.relayChanged = proc () = a.internet.restart()
   if discovery:
     try:
       a.mdns = newMdns()

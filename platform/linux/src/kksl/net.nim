@@ -1,7 +1,7 @@
 ## Sync connections on Linux: async TCP, TLS through buffers (tls.nim), the core's session state machine. One thread
 ## owns the node (decision 0030); everything here runs on the asyncdispatch loop.
 
-import std/[asyncdispatch, asyncnet, net, times]
+import std/[asyncdispatch, asyncnet, net, nativesockets, times]
 import kks/[json, crypto, node, sync]
 when defined(windows): import kksw/tls   # Schannel (decision 0033), same API
 else: import tls
@@ -12,17 +12,28 @@ type NetError* = object of CatchableError
 
 proc nowMs*(): int64 = int64(epochTime() * 1000)
 
-proc recvSome(sock: AsyncSocket): Future[string] {.async.} =
-  let fut = sock.recv(16384)
+type Stream* = ref object
+  ## A byte stream a sync session runs over: TCP on the same network, or a relay pipe (PROTOCOL-v2 §18).
+  write*: proc (data: string): Future[void] {.closure, gcsafe.}
+  read*: proc (): Future[string] {.closure, gcsafe.}   ## some bytes; "" = closed
+  close*: proc () {.closure, gcsafe.}
+
+proc tcpStream*(sock: AsyncSocket): Stream =
+  Stream(write: proc (data: string): Future[void] = sock.send(data),
+         read: proc (): Future[string] = sock.recv(16384),
+         close: proc () = sock.close())
+
+proc recvSome(st: Stream): Future[string] {.async.} =
+  let fut = st.read()
   if not await withTimeout(fut, Timeout): raise newException(NetError, "timed out")
   result = fut.read
   if result.len == 0: raise newException(NetError, "connection closed")
 
-proc flush(sock: AsyncSocket, c: TlsConn) {.async.} =
+proc flush(st: Stream, c: TlsConn) {.async.} =
   let o = c.takeOut()
-  if o.len > 0: await sock.send(o)
+  if o.len > 0: await st.write(o)
 
-proc handshake(sock: AsyncSocket, c: TlsConn) {.async.} =
+proc handshake*(sock: Stream, c: TlsConn) {.async.} =
   discard c.handshake()
   await sock.flush(c)
   while not c.handshake():
@@ -30,7 +41,7 @@ proc handshake(sock: AsyncSocket, c: TlsConn) {.async.} =
     c.feed(await sock.recvSome())
   await sock.flush(c)
 
-proc drive(sock: AsyncSocket, c: TlsConn, s: Session) {.async.} =
+proc drive(sock: Stream, c: TlsConn, s: Session) {.async.} =
   ## Run the exchange to the end. On a protocol error, tell the other side and re-raise.
   var d: Deframer
   try:
@@ -54,15 +65,48 @@ proc drive(sock: AsyncSocket, c: TlsConn, s: Session) {.async.} =
     except CatchableError: discard
     raise
 
+proc connectTcp*(host: string, port: int): Future[AsyncSocket] {.async.} =
+  ## TCP to an IPv4 or IPv6 address (or a name: each address it resolves to in turn), within Timeout
+  let fut = asyncnet.dial(host, Port(port), buffered = false)
+  if not await withTimeout(fut, Timeout):
+    fut.addCallback(proc () =
+      if not fut.failed: fut.read.close())
+    raise newException(NetError, "could not connect to " & host)
+  try: result = fut.read
+  except OSError as e: raise newException(NetError, "could not connect to " & host & ": " & e.msg)
+
+proc syncOver*(n: Node, id: Identity, sock: Stream, expectPeer: string, adoptRoot = "",
+               hooks = Hooks()): Future[Stats] {.async.} =
+  ## Sync as the initiator over an open stream (TCP or a relay pipe), then close it.
+  let c = newTlsConn(n.p, id, client = true, expectPeer = expectPeer)
+  try:
+    await sock.handshake(c)
+    let s = newSession(n, true, c.remotePeer, adoptRoot, hooks)
+    s.wall = nowMs()
+    await sock.drive(c, s)
+    result = s.stats
+  finally:
+    c.close()
+    sock.close()
+
+proc serveOver*(n: Node, id: Identity, sock: Stream, hooks = Hooks()): Future[(string, Stats)] {.async.} =
+  ## Answer one sync over an open stream (the listener, or a relay pipe), then close it. -> (remote peer, stats)
+  let c = newTlsConn(n.p, id, client = false)
+  try:
+    await sock.handshake(c)
+    let s = newSession(n, false, c.remotePeer, hooks = hooks)
+    s.wall = nowMs()
+    await sock.drive(c, s)
+    result = (c.remotePeer, s.stats)
+  finally:
+    c.close()
+    sock.close()
+
 proc syncWith*(n: Node, id: Identity, host: string, port: int, expectPeer: string, adoptRoot = "",
                hooks = Hooks()): Future[Stats] {.async.} =
   ## Connect, sync as the initiator, close. expectPeer: the device we mean to reach (mDNS, invite, remembered).
-  let sock = newAsyncSocket(buffered = false)
-  let fut = sock.connect(host, Port(port))
-  if not await withTimeout(fut, Timeout):
-    sock.close()
-    raise newException(NetError, "could not connect to " & host)
-  fut.read
+  let raw = await connectTcp(host, port)
+  let sock = tcpStream(raw)
   let c = newTlsConn(n.p, id, client = true, expectPeer = expectPeer)
   try:
     await sock.handshake(c)
@@ -76,12 +120,8 @@ proc syncWith*(n: Node, id: Identity, host: string, port: int, expectPeer: strin
 
 proc ask*(n: Node, id: Identity, host: string, port: int, expectPeer: string, msg: JNode): Future[JNode] {.async.} =
   ## One question instead of a sync (§16 join, §17 secrets): send `msg`, return the single answer.
-  let sock = newAsyncSocket(buffered = false)
-  let fut = sock.connect(host, Port(port))
-  if not await withTimeout(fut, Timeout):
-    sock.close()
-    raise newException(NetError, "could not connect to " & host)
-  fut.read
+  let raw = await connectTcp(host, port)
+  let sock = tcpStream(raw)
   let c = newTlsConn(n.p, id, client = true, expectPeer = expectPeer)
   try:
     await sock.handshake(c)
@@ -106,7 +146,8 @@ type Listener* = ref object
   lastError*: string
   onDone*: proc (remote: string, stats: Stats)
 
-proc serveOne(l: Listener, n: Node, id: Identity, client: AsyncSocket, hooks: Hooks) {.async.} =
+proc serveOne(l: Listener, n: Node, id: Identity, raw: AsyncSocket, hooks: Hooks) {.async.} =
+  let client = tcpStream(raw)
   let c = newTlsConn(n.p, id, client = false)
   try:
     await client.handshake(c)
@@ -121,11 +162,31 @@ proc serveOne(l: Listener, n: Node, id: Identity, client: AsyncSocket, hooks: Ho
     c.close()
     client.close()
 
-proc listen*(n: Node, id: Identity, port: int, address = "0.0.0.0", hooks = Hooks()): Listener =
-  ## Accept sync connections until the loop stops. port 0 = any free port (see `port`).
-  let l = Listener(sock: newAsyncSocket(buffered = false))
-  l.sock.setSockOpt(OptReuseAddr, true)
-  l.sock.bindAddr(Port(port), address)
+when defined(windows):
+  var IPV6_V6ONLY {.importc, header: "<ws2ipdef.h>".}: cint
+  var IPPROTO_IPV6_C {.importc: "IPPROTO_IPV6", header: "<winsock2.h>".}: cint
+else:
+  var IPV6_V6ONLY {.importc, header: "<netinet/in.h>".}: cint
+  var IPPROTO_IPV6_C {.importc: "IPPROTO_IPV6", header: "<netinet/in.h>".}: cint
+
+proc listen*(n: Node, id: Identity, port: int, address = "", hooks = Hooks()): Listener =
+  ## Accept sync connections until the loop stops. port 0 = any free port (see `port`). address "" = every interface,
+  ## IPv6 and IPv4 on one dual-stack socket (mDNS announces both kinds of address; an IPv4-only listener refused the
+  ## IPv6 ones, found on the Note 9 2026-10-02), else IPv4 only where the system has no IPv6.
+  var l: Listener
+  if address.len == 0:
+    try:
+      l = Listener(sock: newAsyncSocket(AF_INET6, buffered = false))
+      setSockOptInt(l.sock.getFd, IPPROTO_IPV6_C, IPV6_V6ONLY, 0)   # Windows defaults to v6-only
+      l.sock.setSockOpt(OptReuseAddr, true)
+      l.sock.bindAddr(Port(port), "::")
+    except OSError:
+      if l != nil: l.sock.close()
+      l = nil
+  if l == nil:
+    l = Listener(sock: newAsyncSocket(buffered = false))
+    l.sock.setSockOpt(OptReuseAddr, true)
+    l.sock.bindAddr(Port(port), if address.len == 0: "0.0.0.0" else: address)
   l.sock.listen()
   l.port = int(l.sock.getLocalAddr()[1])
   proc loop() {.async.} =

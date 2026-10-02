@@ -234,7 +234,7 @@ proc main() =
   a.startSync(port, discovery = getEnv("KKS_NO_MDNS").len == 0)
   a.onChange.add proc (why: string) =
     if why == "wiped": needsRestart = true
-    else: changed = true
+    elif why != "relay": changed = true   # presence only: the status line catches up on its timer
   let clsName = newWideCString("KKSMain")   # must outlive RegisterClassExW
   var wc = WNDCLASSEXW(cbSize: UINT(sizeof(WNDCLASSEXW)), lpfnWndProc: mainProc, hInstance: hinst,
                        hCursor: LoadCursorW(nil, IDC_ARROW), hbrBackground: GetSysColorBrush(COLOR_WINDOW),

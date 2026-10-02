@@ -93,6 +93,9 @@ proc statusText(w: Win): string =
   result = w.a.plantName
   result.add " · " & (if reachable == 0: "no device reachable" elif reachable == 1: "1 device reachable" else: $reachable & " devices reachable")
   if last > 0: result.add " · synced " & fromUnix(last).local.format("HH:mm")
+  if snap["relay"].s == "online":
+    let n = snap["relay_online"].i
+    result.add " · internet: " & (if n == 1: "1 device" else: $n & " devices") & " online"
 
 proc refresh(w: Win) =
   ## the data changed underneath (sync, an approval): reload, keep the open sheet and selection (R20)
@@ -335,6 +338,7 @@ proc activate(w: Win, app: W) =
         quit(1))
       return
     if w.status != nil: adw_window_title_set_subtitle(w.status, w.statusText().cstring)
+    if why == "relay": return     # presence only: nothing to reload
     if not w.reloadQueued and w.a.joined and w.m != nil:
       w.reloadQueued = true
       timeout(300, proc (): bool =

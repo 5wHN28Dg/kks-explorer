@@ -45,7 +45,10 @@ object Core {
         nInit()
         if (h == 0L) {
             val dir = ctx.filesDir.resolve("core").absolutePath
+            val t0 = android.os.SystemClock.elapsedRealtime()
             h = nOpen(b(dir), Keys.storageKey(ctx), b("ks:" + Keys.DEVICE), Keys.devicePublic(), b(Build.MODEL ?: "phone"))
+            // measurements (docs/m6/MEASUREMENTS.md): the core's open, which replays the whole log
+            android.util.Log.i("KKSTime", "core open + replay ${android.os.SystemClock.elapsedRealtime() - t0} ms")
             // the program's KKS decode tables (data/kks.json, shipped in the app)
             val tables = ctx.assets.open("data/kks.json").readBytes()
             nApi(h, b("POST"), b("/native/tables"), b("{}"), tables)

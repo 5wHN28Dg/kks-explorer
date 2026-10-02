@@ -13,6 +13,9 @@ SERVER = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kksimp/kks_import'
 del sys.argv[1:]
 PKG = 'kks.explorer.v2'
+# the emulator reaches this machine at 10.0.2.2; a real phone over USB uses `adb reverse` and 127.0.0.1
+# (choose the phone with ANDROID_SERIAL; KKS_PHONE_HOST=127.0.0.1)
+PHONE_HOST = os.environ.get('KKS_PHONE_HOST', '10.0.2.2')
 
 
 def free_port():
@@ -73,6 +76,8 @@ class Phone(unittest.TestCase):
         r = cls.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400, 300, 520, 360],
                                                  'kks': '11LAB70AA501', 'isa': '', 'note': ''}})
         assert r.get('status') == 'approved', r
+        if PHONE_HOST == '127.0.0.1':
+            ui.adb('reverse', f'tcp:{cls.sport}', f'tcp:{cls.sport}')
         # a fresh app
         ui.adb('install', '-r', APK)
         ui.sh('pm', 'clear', PKG)
@@ -96,41 +101,44 @@ class Phone(unittest.TestCase):
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course page; a figure as an image for TalkBack;
         a question answered (progress shown); an animated figure on screen"""
-        ui.tap('Join through a server', exact=True)
-        ui.type_into('Server address', f'10.0.2.2:{self.sport}')
-        ui.type_into('Username', 'boss')
-        ui.type_into('Password', 'a long password')
-        ui.tap('Join', exact=True)
-        ui.find('Sample sheet', timeout=40)
-        ui.tap('Learning', exact=True)
-        ui.find('0 of 76 questions solved', timeout=15)
-        ui.tap('Rumaila Plant Foundations', exact=True)
-        ui.tap('Contents', exact=True, timeout=15)
-        ui.tap('1 · Combined cycle', exact=True)
-        ui.find('The combined cycle. Combined cycle:', timeout=15)
-        ui.scroll_to('Once the gas cools below HP boiling temperature')
-        ui.tap('Once the gas cools below HP boiling temperature')
-        ui.find('Right.', exact=True, timeout=10)
-        ui.find('1 of 76 solved', exact=True, timeout=10)
-        ui.tap('Contents', exact=True)
-        ui.tap('6 · Valves & pumps', exact=True)
-        ui.scroll_to('Gate valve cutaway. ', tries=30)
-        time.sleep(1.5)
-        with open('/tmp/kks-android-course.png', 'wb') as f:
-            f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
-        # leave a fresh app and no extra device for test_flow
-        model = ui.sh('getprop', 'ro.product.model').strip()
-        for d in self.boss.req('GET', '/api/devices')['all']:
-            if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
-                self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
-        ui.sh('pm', 'clear', PKG)
-        ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
-        time.sleep(3)
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            ui.tap('Learning', exact=True)
+            ui.find('0 of 76 questions solved', timeout=15)
+            ui.tap('Rumaila Plant Foundations', exact=True)
+            ui.tap('Contents', exact=True, timeout=15)
+            ui.tap('1 · Combined cycle', exact=True)
+            ui.scroll_to('The combined cycle. Combined cycle:', tries=20)
+            ui.scroll_to('Once the gas cools below HP boiling temperature')
+            ui.tap('Once the gas cools below HP boiling temperature')
+            ui.find('Right.', exact=True, timeout=10)
+            ui.find('1 of 76 solved', exact=True, timeout=10)
+            ui.tap('Contents', exact=True)
+            ui.scroll_to('6 · Valves & pumps', exact=True)
+            ui.tap('6 · Valves & pumps', exact=True)
+            ui.scroll_to('Gate valve cutaway. ', tries=30)
+            time.sleep(1.5)
+            with open('/tmp/kks-android-course.png', 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+        finally:
+            # leave a fresh app and no extra device for test_flow
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
 
     def test_flow(self):
         # join through the server (PROTOCOL-v2 §16 enroll over TLS)
         ui.tap('Join through a server', exact=True)
-        ui.type_into('Server address', f'10.0.2.2:{self.sport}')
+        ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
         ui.type_into('Username', 'boss')
         ui.type_into('Password', 'a long password')
         ui.tap('Join', exact=True)

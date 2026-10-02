@@ -67,6 +67,11 @@ proc gnutls_record_recv(s: Session, data: pointer, n: csize_t): int {.importc, h
 proc gnutls_bye(s: Session, how: CloseT): cint {.importc, header: HG.}
 proc gnutls_error_is_fatal(e: cint): cint {.importc, header: HG.}
 proc gnutls_strerror(e: cint): cstring {.importc, header: HG.}
+proc gnutls_certificate_set_x509_system_trust(c: Cred): cint {.importc, header: HG.}
+proc gnutls_server_name_set(s: Session, t: cint, name: cstring, n: csize_t): cint {.importc, header: HG.}
+proc gnutls_session_set_verify_cert(s: Session, host: cstring, flags: cuint) {.importc, header: HG.}
+proc gnutls_set_default_priority(s: Session): cint {.importc, header: HG.}
+var GNUTLS_NAME_DNS {.importc, header: HG, nodecl.}: cint
 proc gnutls_alpn_set_protocols(s: Session, p: ptr Datum, n: cuint, flags: cuint): cint {.importc, header: HG.}
 proc gnutls_alpn_get_selected_protocol(s: Session, p: ptr Datum): cint {.importc, header: HG.}
 proc gnutls_x509_privkey_init(k: ptr XKey): cint {.importc, header: HX.}
@@ -118,6 +123,7 @@ type
     handshaken*: bool
     closed*: bool
     verifyError: string
+    web: bool            ## a web server (the relay's wss): the system's CAs and the host name, not a device key
 
 proc fail(what: string, r: cint) =
   raise newException(TlsError, what & ": " & $gnutls_strerror(r))
@@ -230,6 +236,32 @@ proc newTlsConn*(p: Provider, id: Identity, client: bool, expectPeer = ""): TlsC
   gnutls_transport_set_pull_function(result.s, cast[PullFn](pull))
   gnutls_transport_set_push_function(result.s, cast[PushFn](push))
 
+var webCred: Cred
+
+proc newWebTlsConn*(host: string): TlsConn =
+  ## A TLS client for an ordinary web server (the relay, PROTOCOL-v2 §18): the system's trusted CAs, SNI, and the
+  ## certificate must name `host` (GnuTLS checks both during the handshake). Not used between devices.
+  result = TlsConn(web: true)
+  GC_ref(result)
+  if webCred == nil:
+    var r = gnutls_certificate_allocate_credentials(addr webCred)
+    if r < 0: fail("credentials", r)
+    r = gnutls_certificate_set_x509_system_trust(webCred)
+    if r < 0: fail("system trust", r)
+  var r = gnutls_init(addr result.s, GNUTLS_CLIENT or GNUTLS_NONBLOCK)
+  if r < 0: fail("init", r)
+  r = gnutls_set_default_priority(result.s)
+  if r < 0: fail("priority", r)
+  r = gnutls_credentials_set(result.s, GNUTLS_CRD_CERTIFICATE, webCred)
+  if r < 0: fail("credentials", r)
+  r = gnutls_server_name_set(result.s, GNUTLS_NAME_DNS, host.cstring, csize_t(host.len))
+  if r < 0: fail("server name", r)
+  gnutls_session_set_verify_cert(result.s, host.cstring, 0)
+  gnutls_session_set_ptr(result.s, cast[pointer](result))
+  gnutls_transport_set_ptr(result.s, cast[pointer](result))
+  gnutls_transport_set_pull_function(result.s, cast[PullFn](pull))
+  gnutls_transport_set_push_function(result.s, cast[PushFn](push))
+
 proc feed*(c: TlsConn, bytes: string) = c.inbuf.add bytes
 
 proc takeOut*(c: TlsConn): string =
@@ -241,6 +273,9 @@ proc handshake*(c: TlsConn): bool =
   ## Drive the handshake with what has arrived. -> true when done. Raises TlsError on failure.
   if c.handshaken: return true
   let r = gnutls_handshake(c.s)
+  if r == 0 and c.web:
+    c.handshaken = true
+    return true
   if r == 0:
     var sel: Datum
     if gnutls_alpn_get_selected_protocol(c.s, addr sel) < 0 or int(sel.size) != AlpnId.len:
@@ -264,6 +299,7 @@ proc send*(c: TlsConn, plain: string) =
 proc recv*(c: TlsConn): string =
   ## All plaintext that the received ciphertext holds. Sets `closed` when the other side said goodbye.
   var buf: array[16384, byte]
+  var left = c.inbuf.len
   while true:
     let n = gnutls_record_recv(c.s, addr buf[0], csize_t(buf.len))
     if n > 0:
@@ -274,7 +310,10 @@ proc recv*(c: TlsConn): string =
       c.closed = true
       return
     elif cint(n) == GNUTLS_E_AGAIN or cint(n) == GNUTLS_E_INTERRUPTED:
-      return
+      # GnuTLS also says "again" after a post-handshake message (a TLS 1.3 session ticket from a web server) while
+      # more records wait in inbuf: go on as long as it consumes something (2026-10-02, the relay's 101 sat unread)
+      if c.inbuf.len == 0 or c.inbuf.len >= left: return
+      left = c.inbuf.len
     elif gnutls_error_is_fatal(cint(n)) != 0:
       fail("receive", cint(n))
     else:

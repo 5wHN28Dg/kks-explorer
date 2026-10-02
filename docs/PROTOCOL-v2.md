@@ -500,6 +500,9 @@ This section only provides a byte stream; §15 (TLS and exchange) runs over it u
   `{"t":"refuse", "to", "id"}`.
 - The relay adds `from`, or answers `{"t":"gone", "id", "peer"}`.
 - `cand`: at most 8 `"ip:port"` strings (STUN public address plus own IPv4 addresses), each at most 64 characters.
+- `cand` may be empty: a device that does not do hole punching (no UDP, or a platform without it yet) sends `[]`.
+  When either side's list is empty, both skip the direct path and open the pipe at once (added 2026-10-02: the v2
+  apps start with the pipe only).
 
 **Direct: hole punching + reliable UDP**, exactly as in v1 §18 (0028):
 - Session = the first 8 bytes of `id`.

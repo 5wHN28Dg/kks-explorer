@@ -545,7 +545,7 @@ Phase 2 also added: the §15 sync session as a sans-I/O state machine (`sync.nim
 local API (`api.nim`, a port of LocalApi), invites, progress, plant data, bundles. `core`: 61 tests. Still to
 write: the CNG and JNI providers, core CI.
 
-**Phase 3 (2026-09-30/10-01): Linux platform layer + server** (`platform/linux/`, decision 0030; `nim test`: 13).
+**Phase 3 (2026-09-30/10-01): Linux platform layer + server** (`platform/linux/`, decision 0030; `nim test`: 18, incl. 4 relay tests and the dual-stack listener since 2026-10-02).
 - **Building blocks:** SQLite store with sealed rows (`dbstore`), TLS 1.3 over GnuTLS with peer-ID pinning
   (`tls`), sync over TCP (`net`), Argon2id via OpenSSL plus a scrypt check of v1 hashes (`argon2`), mDNS through
   Avahi's D-Bus (`mdns`).
@@ -692,6 +692,68 @@ checks).
   names); index.html search is now a combobox/listbox and a pick moves focus to the panel heading; the Windows pages
   scroll a Tab-focused control into view. Not done: TalkBack, Narrator, Orca themselves.
 - **Android figure faces:** TTF copies (`tools/build_courses.py --ttf`, vendor/fonts/ttf).
+
+**v2 internet sync (2026-10-02, decision 0038):** the relay pipe on every native target, no hole punching yet (this
+side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight to the pipe).
+- **Code:** `platform/linux/src/kksl/ws.nim` (WebSocket client, shared with Windows), `internet.nim` (presence, connect,
+  `syncOver`/`serveOver` from `net.nim` over the pipe); the server answers through it, the GNOME/Windows rounds also
+  sync relay-online devices that no LAN sync reached. Web trust: GnuTLS `newWebTlsConn` (system CAs, SNI, host name),
+  Schannel `kks_tls_new_web` (auto validation). Android: `core/Relay.kt` (WsClient with HTTPS endpoint identification,
+  `EngineTls` = SSLEngine over the pipe), `sync/Internet.kt`, core route `/native/relay` signs the hello. Manager field
+  "Internet relay" in Manage → Account on all three apps. The Worker accepts v2 hellos (deployed 2026-10-02 with the
+  user's OK; v1 tests still pass against it).
+- **Verified:** `platform/linux/tests/test_internet.nim` against the Python twin, `wrangler dev` and the deployed Worker
+  (Linux, Windows 10 TLS 1.2, Windows 11 TLS 1.3); the Honor 600 on mobile data only synced both ways with the server
+  through the deployed Worker (phone edit on the server 7.2 s after Save). The relay URL is in memory, never in tracked
+  files.
+- **Lessons:** GnuTLS says "again" after a TLS 1.3 session ticket while records wait (keep reading while it consumes);
+  send a TLS handshake step's output before waiting (TLS 1.2 hung on Windows 10); workerd lists a closing socket during
+  `webSocketClose` (the Worker never said `left`); `pkill -f "wrangler dev"` in a command that contains that text kills
+  the shell itself.
+- **Not done:** hole punching + reliable UDP (0028); a phone on mobile data skips private LAN addresses, laptops don't.
+- **Also 2026-10-02:**
+  - The Nim server now fills `/api/devices.sync` in v1's shape (`discovery`, `syncs`, `found`, `internet`) and its own
+    addresses for invites. Before, admin.html's Devices page said "Cannot reach the server" (a TypeError shown as a
+    network error) and invites were refused.
+  - Sync listeners are dual-stack (`listen` address "" = `::` with IPV6_V6ONLY off, else IPv4), and clients dial IPv4
+    or IPv6 (`connectTcp`). mDNS hands out IPv6 addresses, which the IPv4-only listener refused. Tested on Linux and
+    Windows 11.
+  - On real phones: the camera QR join worked on the Honor. TalkBack reads the drawing's tags on the Honor ("…, read
+    automatically, button, double tap to activate"), although uiautomator's dump on MagicOS lists none of them.
+  - e2e scripts can leave `kks_server` processes behind after failures: check with `pgrep -af kks_server`.
+  - Android course pages (the user's Note 9 report): pictures were decoded on the main thread on every scroll into
+    view, and figure frames waited on the core thread from the main thread. Worst of all, drawing a figure's vector
+    ops on the view canvas made the render thread re-rasterize every path each frame (13.6 ms per frame, against
+    4.5 ms for a plain list). Now: pictures are decoded on IO into an LRU cache; frames are computed on
+    Dispatchers.Default; a figure is drawn as vectors only while it plays and the page is still (smooth playback:
+    60 fps, p99 18 ms), else as one bitmap of the last frame rasterized in the background (`LocalScrolling`; frames
+    pause while the page moves). Rasterizing every animation frame on the CPU made playback stutter (the user's second
+    report). LazyColumn items carry contentType. Module 3 of course 2 went from 73 % janky frames (p90 38 ms) to
+    43–48 % (p90 20 ms), the level of a text-only page on that phone.
+  - Picture boxes are computed in a `layout` modifier: `fillMaxWidth().heightIn(max).aspectRatio()` asked for a size
+    outside the constraints, and Compose drew the picture over the items above and below.
+    Measured with `dumpsys gfxinfo` (+ `setprop debug.hwui.profile true` for the per-stage split; set it back).
+  - Also from that report: table columns sized to content (text columns share what is left and wrap); number
+    columns centered (the user's choice) with tabular figures, headings wrap when a table is too wide; a one-line course title so "N of M solved" fits; Material vector
+    icons in the bottom bar (`Glyphs`) with one shared label size that shrinks until "Procedures" fits; pictures
+    open full screen with pinch/double-tap zoom (`ZoomImage`).
+
+**Agreed next (2026-10-02, the user's decisions; nothing started):**
+1. **Webcam QR scanning in the GNOME and Windows apps** (the user wants both). First a decision record per policy:
+   GNOME = Camera portal + PipeWire (frames into zxing-cpp); Windows = Media Foundation (the VMs have no camera:
+   needs a real laptop or a virtual camera for tests). Verified so far: the browser scanner (common.js `K.scanQr`,
+   zxing-cpp WASM in Zen/Firefox) read an invite QR shown on the Note 9 through the laptop webcam, 2026-10-02.
+2. **Diagnostics and crash reports to the manager**, as proposed to and accepted by the user:
+   - each device keeps a small local log: errors, crashes with stack traces, sync failures, device model, app version;
+     no plant data, passwords or names beyond the device label;
+   - reports travel by normal sync as private entries readable only by the manager (like course progress, §13);
+   - Manage shows them per device, with "copy for Claude";
+   - teammates are told in the app; the manager can switch it per plant.
+   It needs a PROTOCOL-v2 section (new private entry kind) + decision record before code; all three apps.
+3. **Honor 600 background sync:** in the `rare` standby bucket the worker never ran in 1 h unplugged
+   (MEASUREMENTS.md). A second hour forced to `active` didn't help: MagicOS forces the app back to `rare` (reason `f`)
+   seconds after it leaves the screen. Next: an hour with MagicOS "App launch" set to manual / background allowed by
+   the user, then decide between an in-app notice with a settings button, asking for the exemption, or accepting it.
 
 ## Backlog (rough priority)
 

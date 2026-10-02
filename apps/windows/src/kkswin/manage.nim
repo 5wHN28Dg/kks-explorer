@@ -332,6 +332,14 @@ proc account(w: Win, p: Page) =
         w.toast(if n > 0: "Synced with " & $n & " device" & (if n == 1: "" else: "s") else: "No other device reached")
     asyncCheck go()))
   if me.role != "manager": return
+  # PROTOCOL-v2 §18: the plant's relay, a setting every device learns at its next sync
+  let rv = w.a.n.run.settings.getOrDefault("relay")
+  let relay = p.field("Internet relay (wss://…), empty = off", if rv != nil and rv.isStr: rv.s else: "")
+  p.buttons(("Save relay", proc () =
+    try:
+      discard w.a.call("POST", "/api/settings/relay", newObj(@[("url", newStr(relay.text.strip))]))
+      w.toast(if relay.text.strip.len == 0: "Relay removed" else: "Relay saved: every device learns it at its next sync")
+    except ApiError as e: w.toast(e.msg)))
   p.title("Root key")
   p.dim("The plant's root key signs the manager role and settles stolen devices. Keep an encrypted copy offline (a USB " &
         "stick in a drawer), protected by a passphrase only you know.")

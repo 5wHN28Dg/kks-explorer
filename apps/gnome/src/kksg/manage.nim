@@ -299,6 +299,16 @@ proc account(w: Win, box: W) =
         let n = await w.a.syncAll()
         w.toast(if n > 0: "Synced with " & $n & " device" & (if n == 1: "" else: "s") else: "No other device reached")
     asyncCheck go()))
+  if w.a.me[1].role == "manager":
+    # PROTOCOL-v2 §18: the plant's relay, a setting every device learns at its next sync
+    let rv = w.a.n.run.settings.getOrDefault("relay")
+    let relay = entryRow("Internet relay (wss://…), empty = off", if rv != nil and rv.isStr: rv.s else: "")
+    adw_preferences_group_add(sg, relay)
+    adw_preferences_group_add(sg, button("Save relay", "", proc () =
+      try:
+        discard w.a.call("POST", "/api/settings/relay", newObj(@[("url", newStr(text(relay).strip))]))
+        w.toast(if text(relay).strip.len == 0: "Relay removed" else: "Relay saved: every device learns it at its next sync")
+      except ApiError as e: w.toast(e.msg)))
   box.add sg
 
 proc rootKeySection(w: Win): W =

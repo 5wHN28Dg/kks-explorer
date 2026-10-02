@@ -42,3 +42,12 @@ suite "sync over real TCP":
     other.adopt(server.root)
     let st = waitFor other.syncWith(newIdentity(k), "127.0.0.1", lst.port, server.device)
     check st.theyDenied and other.entries.len == 0
+
+  test "the default listener takes IPv6 and IPv4 (one dual-stack socket)":
+    let both = listen(server, newIdentity(kServer), 0)
+    let k = P.p256Generate()
+    discard server.append("device_cert", deviceCertBody(P.peerId(k), me, "laptop 2"), nowMs())
+    var laptop = newNode(P, newMemStore(), k)
+    check (waitFor laptop.syncWith(newIdentity(k), "::1", both.port, server.device, adoptRoot = server.root)).received > 0
+    discard waitFor laptop.syncWith(newIdentity(k), "127.0.0.1", both.port, server.device)
+    check laptop.entries.len == server.entries.len

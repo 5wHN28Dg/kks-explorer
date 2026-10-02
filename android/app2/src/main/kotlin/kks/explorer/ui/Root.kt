@@ -100,11 +100,18 @@ fun MainScreen() {
         snackbarHost = { SnackbarHost(snack) },
         bottomBar = {
             NavigationBar {
+                // one label size for all five, shrunk until the longest fits on one line (large font settings wrapped
+                // "Procedures" on the Note 9)
+                var labelScale by remember { mutableFloatStateOf(1f) }
                 for ((id, label) in listOf("drawings" to "Drawings", "procedures" to "Procedures", "review" to "Review", "learning" to "Learning", "manage" to "Manage")) {
-                    NavigationBarItem(selected = ui.tab == id, onClick = { ui.tab = id }, label = { Text(label) },
+                    val glyph = when (id) { "drawings" -> Glyphs.DRAWINGS; "procedures" -> Glyphs.PROCEDURES; "review" -> Glyphs.REVIEW; "learning" -> Glyphs.LEARNING; else -> Glyphs.MANAGE }
+                    NavigationBarItem(selected = ui.tab == id, onClick = { ui.tab = id },
+                        label = { val st = MaterialTheme.typography.labelMedium
+                            Text(label, maxLines = 1, softWrap = false, style = st.copy(fontSize = st.fontSize * labelScale),
+                                onTextLayout = { if (it.didOverflowWidth && labelScale > 0.7f) labelScale -= 0.05f }) },
                         icon = {
-                            if (id == "manage" && queue > 0) BadgedBox(badge = { Badge { Text("$queue") } }) { Text("⚙") }
-                            else Text(when (id) { "drawings" -> "▦"; "procedures" -> "☰"; "review" -> "✓"; "learning" -> "✎"; else -> "⚙" })
+                            if (id == "manage" && queue > 0) BadgedBox(badge = { Badge { Text("$queue") } }) { Icon(glyph, contentDescription = null) }
+                            else Icon(glyph, contentDescription = null)
                         })
                 }
             }

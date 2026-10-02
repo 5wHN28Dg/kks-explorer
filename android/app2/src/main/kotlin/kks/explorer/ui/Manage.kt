@@ -321,6 +321,7 @@ private fun Account(rev: Int, say: (String) -> Unit) {
     var pos by remember(me.str("position")) { mutableStateOf(me.str("position")) }
     var addr by remember { mutableStateOf("") }
     var metered by remember { mutableStateOf(SyncWorker.metered(ctx)) }
+    var relay by remember(rev) { mutableStateOf(Sync.config().optString("relay_url")) }
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(5000); tick++ } }
     Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -335,10 +336,22 @@ private fun Account(rev: Int, say: (String) -> Unit) {
                 val last = Sync.peers.values.maxOfOrNull { it.lastOk } ?: 0L
                 Text("This phone: ${Sync.device().take(16)}… · sync port ${if (Sync.port > 0) Sync.port else "off"}")
                 Dim(if (Sync.syncing) "Syncing…" else if (last > 0) "Last sync ${whenText(last / 1000)}" else "Not synced yet")
+                val st = kks.explorer.sync.Internet.state
+                val on = kks.explorer.sync.Internet.online.size
+                if (st != "off") Dim(if (st == "online") "Internet: on the relay, $on other device${if (on == 1) "" else "s"} online" else "Internet: $st")
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Sync on metered networks (mobile data)", Modifier.weight(1f))
                 Switch(metered, { metered = it; SyncWorker.setMetered(ctx, it) })
+            }
+            if (me.str("role") == "manager") {
+                // §18: the plant's relay, a setting every device learns at its next sync (the manager only)
+                OutlinedTextField(relay, { relay = it }, label = { Text("Internet relay (wss://…), empty = off") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Button(onClick = {
+                    val r = call("POST", "/api/settings/relay", JSONObject().put("url", relay.trim()))
+                    if (r.error == null) kks.explorer.sync.Internet.restart()
+                    say(r.error ?: if (relay.isBlank()) "Relay removed" else "Relay saved: every device learns it at its next sync")
+                }) { Text("Save relay") }
             }
             OutlinedTextField(addr, { addr = it }, label = { Text("Sync with an address (host:port@device)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Button(onClick = {

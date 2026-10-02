@@ -51,11 +51,40 @@ metric below.
 | Battery | 1 hour with the app closed, joined, on Wi-Fi with one server (the worker every 15 min): battery stats for the app | over 1 % of the battery per hour needs a written reason |
 | Photo encode | ms per megapixel for JPEG XL at d1.9, effort 9 (`Jxl.msPerMp`) | informational: drives the progress estimate |
 
-**Measured:** nothing yet; it needs the phones.
+**Measured 2026-10-01/02 (baselines):** the signed release APK (27 MB; it still carries the x86_64 libraries
+too: an ABI split would shrink the phone download), joined to the measurement server on this laptop (the LP sheet,
+204 tags, 2,000 approved edits: about 2,020 log entries).
 
-For orientation only (not a baseline): the debug APK is 44 MB and unshrunk, with x86_64 and arm64 libraries:
-- `libkks.so` (the core with SQLite) is 2.5 MB per ABI;
-- libjxl and zxing-cpp make up the rest of the native code.
+| Metric | Note 9 (Android 10) | Honor 600 (Android 16) |
+|---|---|---|
+| Installed size (the system's app size after install) | 27.41 MB | 27.39 MB |
+| Cold start, `am start -W` TotalTime (median of 5) | 649 ms | 380 ms |
+| Core open + replay (app log) | 256 ms | 121 ms |
+| First sheet drawn after process start (app log) | 739 ms | 417 ms |
+| Steady memory, total PSS | ~214 MB | ~176 MB |
+| JPEG XL encode, d1.9 effort 9 | 4,587 ms/MP | 2,505 ms/MP |
+| Battery, 1 h in the background, screen off, on Wi-Fi with the server | 0.143 mAh charged to the app (0.334 mAh with its share of system use) of 4,000 mAh: under 0.01 % per hour | ~0 (1 ms CPU): **the worker never ran** (see below) |
+
+Battery on the Note 9 (2026-10-02 11:57–12:58): USB connected with `dumpsys battery unplug`, so the figure is
+Android's power-profile estimate, not a measured drain. The worker ran 3 times (Doze held the first run 25 min, then
+every 15 min), 3.2 s CPU, 35 KB over Wi-Fi. Two earlier runs were void: the phones were reconnected (stats reset), and
+the app had been force-stopped, which puts it in the stopped state where its scheduled work never runs. "Closed"
+means sent to the background with Home.
+
+Battery on the Honor 600 (2026-10-02 12:30–13:30, truly unplugged, on Wi-Fi, app sent to the background after the
+QR join): the phone slept 55 of the 60 minutes and **the background sync job never ran**. Android had the app in the
+`rare` standby bucket (40), which allows background jobs only a few times a day. Every other job constraint was met,
+including Honor's own `HN_USER_EXPERIENCE`; it waited only on timing. It ran at 13:49:07, seconds after the phone was
+plugged back in. So on this phone, background sync happens while charging or with the app open, not every 15 minutes.
+A second hour (14:15–15:15, app forced to `active` with `am set-standby-bucket`): again no run. The usage log shows
+why: 34 s after the forced change, and at 12:30:23 seconds after Home, the bucket went back to `rare` with reason `f`
+(forced by the system). Something with system rights on MagicOS (its power manager) puts the app in `rare` as soon
+as it leaves the screen; stock Android doesn't. Not on the battery-optimization exemption list. Next test: with the
+person's MagicOS settings changed (Battery → App launch → manage manually, allow running in the background), then
+decide what the app should say or ask.
+
+All within the rules: the first sheet is well under 3 s on the Note 9, replay well under 2 s, memory under 300 MB.
+A 12 MP photo takes about 55 s to encode at effort 9 on the Note 9: the progress bar is needed there.
 
 ## Windows app (phase 7)
 

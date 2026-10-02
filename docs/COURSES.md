@@ -1,8 +1,9 @@
 # Course content format, version 1
 
-**Status: draft, M6 phase 1 (2026-09-30). Not frozen** until all 16 animated figures are converted and checked
-against the originals (§12). Decision record 0025. Reference implementation: `ref/courses.py` (test-only). Vectors:
-`ref/vectors/courses-v1.json`. The vectors, not the prose, are the tiebreaker.
+**Status: FROZEN 2026-10-02** (the user's decision, after the four renderers and both validators passed the vectors
+and the three courses were converted). Changes need `"version": 2` and a new vector file; `courses-v1.json` is never
+edited (`tests/test_courses.py test_file_is_frozen`). Decision record 0025. Reference implementation: `ref/courses.py`
+(test-only). Vectors: `ref/vectors/courses-v1.json`. The vectors, not the prose, are the tiebreaker.
 
 A course is one JSON file, `courses/<course>.json`, published with the plant data (PROTOCOL-v2 §19). Its images are
 `courses/<file>.jxl` in the same published version. Four renderers draw it with native widgets and the platform's 2D
@@ -531,8 +532,7 @@ listed. Motion is not compared frame by frame: the originals are stateful and st
 **Second implementations (2026-10-01):** the Nim core (`core/src/kks/courses.nim`) and the web renderer
 (`course-figure.js`, in Chromium, Firefox and WebKit) pass the vectors. The three real courses are converted
 (`tools/m6/convert_courses.py`) and pass both validators. The four renderers exist and pass their end-to-end tests
-(decisions 0035, 0036). **Ready to freeze**, after the user has looked at the two additions of 2026-10-01 (`bridge`,
-test items by `ref`).
+(decisions 0035, 0036). Frozen 2026-10-02.
 
 | figure | inputs | how it maps |
 |---|---|---|

@@ -52,13 +52,32 @@ def tap(text, **kw):
     sh('input', 'tap', str(x), str(y))
 
 
-def type_into(field, value):
-    """ASCII only: `adb shell input text` can't type other scripts"""
+def type_into(field, value, clear=False):
+    """ASCII only: `adb shell input text` can't type other scripts. clear: empty the field first (Ctrl+A, Delete),
+    else the text goes in where the cursor lands"""
     tap(field, exact=True)
     time.sleep(0.3)
+    if clear:
+        sh('input', 'keycombination', '113', '29')   # Ctrl+A
+        sh('input', 'keyevent', '67')                # Delete
     sh('input', 'text', value.replace(' ', '%s'))
-    sh('input', 'keyevent', '111')        # hide the keyboard
+    hide_keyboard()
+
+
+def keyboard_shown():
+    return 'mInputShown=true' in sh('dumpsys', 'input_method')
+
+
+def hide_keyboard():
+    """Escape hides the keyboard on the emulator, not on the Honor 600 (MagicOS); Back does, but only send Back while
+    the keyboard is up, or it navigates"""
+    sh('input', 'keyevent', '111')
     time.sleep(0.3)
+    for _ in range(3):
+        if not keyboard_shown():
+            return
+        sh('input', 'keyevent', '4')
+        time.sleep(0.4)
 
 
 def scroll_to(text, exact=False, tries=8):

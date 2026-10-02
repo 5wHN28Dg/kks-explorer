@@ -1,10 +1,13 @@
-// The KKS Explorer internet relay (M5, docs/PROTOCOL.md §18): a Cloudflare Worker + one Durable Object per plant
+// The KKS Explorer internet relay (M5, docs/PROTOCOL.md §18; also protocol v2, docs/PROTOCOL-v2.md §18): a Cloudflare Worker + one Durable Object per plant
 // ("room"). The same protocol as peer/relay_server.py. It never sees plant data: devices meet here, prove they hold
 // their device key, swap addresses for a direct connection (hole punching), and if that fails get a pipe that passes
 // their end-to-end encrypted (Noise) sync bytes along unread.
 //   GET /v1/room/<room>                 presence + signaling (JSON text messages)
 //   GET /v1/pipe/<room>/<id>/<a|b>      a pipe between the two sides of connection <id> (binary messages)
 const ROOM = /^[0-9a-f]{32}$/, PEER = /^[A-Za-z0-9_-]{43}$/, ID = /^[0-9a-f]{32}$/;
+// protocol v2 (docs/PROTOCOL-v2.md §18): P-256 device keys, peer ID = base64url of the first 24 bytes of SHA-256(key)
+const PEER2 = /^[A-Za-z0-9_-]{32}$/, KEY2 = /^[A-Za-z0-9_-]{87}$/;
+const b64uOf = b => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const MAX_PEERS = 200, PIPE_WAIT_MS = 30000, MAX_BUFFER = 1 << 20;
 
 export default {
@@ -52,18 +55,19 @@ export class Room {
     return new Response(null, {status: 101, webSocket: client});
   }
 
-  members() {
+  members(except) {   // except: a socket being closed (workerd still lists it while webSocketClose runs)
     const out = new Map();
     for (const ws of this.ctx.getWebSockets()) {
+      if (ws === except) continue;
       const a = ws.deserializeAttachment();
       if (a?.kind === 'room' && a.peer) out.set(a.peer, ws);
     }
     return out;
   }
 
-  tell(msg, but) {
+  tell(msg, but, except) {
     const s = JSON.stringify(msg);
-    for (const [peer, ws] of this.members()) if (peer !== but) try { ws.send(s) } catch (e) {}
+    for (const [peer, ws] of this.members(except)) if (peer !== but) try { ws.send(s) } catch (e) {}
   }
 
   async webSocketMessage(ws, msg) {
@@ -80,11 +84,21 @@ export class Room {
     let m; try { m = JSON.parse(typeof msg === 'string' ? msg : new TextDecoder().decode(msg)) } catch (e) { return }
     if (!a.peer) {   // the first message: hello, signed with the device key
       const {peer, ts, sig} = m;
-      let ok = m.t === 'hello' && typeof peer === 'string' && PEER.test(peer) && Number.isInteger(ts) &&
-               Math.abs(ts - Date.now() / 1000) <= 300 && typeof sig === 'string';
+      const v2 = typeof m.key === 'string';
+      let ok = m.t === 'hello' && typeof peer === 'string' && (v2 ? PEER2.test(peer) && KEY2.test(m.key) : PEER.test(peer)) &&
+               Number.isInteger(ts) && Math.abs(ts - Date.now() / 1000) <= 300 && typeof sig === 'string';
       if (ok) try {
-        const key = await crypto.subtle.importKey('raw', b64u(peer), {name: 'Ed25519'}, false, ['verify']);
-        ok = await crypto.subtle.verify({name: 'Ed25519'}, key, b64u(sig), new TextEncoder().encode(`kks-relay-hello-v1\n${a.room}\n${ts}`));
+        if (v2) {   // ECDSA P-256 with SHA-256, signature r ‖ s; the peer ID must be the key's
+          const raw = b64u(m.key);
+          ok = raw.length === 65 && raw[0] === 4 && b64uOf(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)).slice(0, 24)) === peer;
+          if (ok) {
+            const key = await crypto.subtle.importKey('raw', raw, {name: 'ECDSA', namedCurve: 'P-256'}, false, ['verify']);
+            ok = await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, key, b64u(sig), new TextEncoder().encode(`kks-relay-hello-v2\n${a.room}\n${ts}`));
+          }
+        } else {
+          const key = await crypto.subtle.importKey('raw', b64u(peer), {name: 'Ed25519'}, false, ['verify']);
+          ok = await crypto.subtle.verify({name: 'Ed25519'}, key, b64u(sig), new TextEncoder().encode(`kks-relay-hello-v1\n${a.room}\n${ts}`));
+        }
       } catch (e) { ok = false }
       if (!ok) { ws.send(JSON.stringify({t: 'error', why: 'bad hello'})); ws.close(1008, 'bad hello'); return }
       const members = this.members(), old = members.get(peer);
@@ -108,7 +122,7 @@ export class Room {
 
   async gone(ws) {
     const a = ws.deserializeAttachment() || {};
-    if (a.kind === 'room' && a.peer && !a.replaced && !this.members().has(a.peer)) this.tell({t: 'left', peer: a.peer});
+    if (a.kind === 'room' && a.peer && !a.replaced && !this.members(ws).has(a.peer)) this.tell({t: 'left', peer: a.peer}, null, ws);
     if (a.kind === 'pipe') {
       for (const o of this.ctx.getWebSockets(`pipe:${a.id}:${a.side === 'a' ? 'b' : 'a'}`)) try { o.close(1000, 'the other side left') } catch (e) {}
       await this.ctx.storage.delete([`buf:${a.id}:a`, `buf:${a.id}:b`, `wait:${a.id}:a`, `wait:${a.id}:b`]);

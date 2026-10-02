@@ -22,6 +22,6 @@ when defined(mingw):
 
 task wintests, "cross-build the tests that apply to Windows into $KKS_WIN_OUT or /tmp/kkswin":
   let outd = getEnv("KKS_WIN_OUT", "/tmp/kkswin")
-  for n in ["test_dbstore", "test_tls", "test_net"]:
+  for n in ["test_dbstore", "test_tls", "test_net", "test_internet"]:
     exec "nim c -d:mingw -d:release --cpu:amd64 --nimcache:" & outd & "/cache-" & n & " -o:" & outd & "/" & n & ".exe " & thisDir() & "/tests/" & n & ".nim"
   exec "nim c -d:mingw -d:release --cpu:amd64 --nimcache:" & outd & "/cache-winplat -o:" & outd & "/test_winplat.exe " & thisDir() & "/../windows/tests/test_winplat.nim"

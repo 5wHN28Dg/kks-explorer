@@ -42,6 +42,21 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kks.explorer.Jxl
 import kks.explorer.core.Core
 import org.json.JSONArray
@@ -77,7 +92,7 @@ fun AnnotatedString.Builder.run(r: JSONArray, nav: Nav, gloss: Map<String, Strin
             o.has("b") -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { run(o.getJSONArray("b"), nav, gloss) }
             o.has("i") -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { run(o.getJSONArray("i"), nav, gloss) }
             o.has("small") -> withStyle(SpanStyle(fontSize = 0.85.em)) { run(o.getJSONArray("small"), nav, gloss) }
-            o.has("num") -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(o.getString("num")) }
+            o.has("num") -> withStyle(SpanStyle(fontFeatureSettings = "tnum")) { append(o.getString("num")) }   // even-width digits; a monospace face spread "691.5 kg/s" apart
             o.has("term") -> withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) { run(o.getJSONArray("term"), nav, gloss) }
             o.has("link") -> {
                 val to = o.getJSONObject("to")
@@ -97,7 +112,8 @@ fun AnnotatedString.Builder.run(r: JSONArray, nav: Nav, gloss: Map<String, Strin
 @Composable
 fun RunText(r: JSONArray, nav: Nav, gloss: Map<String, String> = emptyMap(), style: TextStyle = MaterialTheme.typography.bodyLarge,
             modifier: Modifier = Modifier) {
-    Text(buildAnnotatedString { run(r, nav, gloss) }, style = style, modifier = modifier)
+    val text = remember(r, nav) { buildAnnotatedString { run(r, nav, gloss) } }
+    Text(text, style = style, modifier = modifier)
 }
 
 // ---------------------------------------------------------------- progress (§8): the v1 keys, JSON strings
@@ -179,16 +195,18 @@ fun CourseScreen(id: String, startPage: String, onClose: () -> Unit, onCourse: (
     var contents by remember { mutableStateOf(false) }
     val page = pages.firstOrNull { it.getString("id") == pageId } ?: pages[0]
     LaunchedEffect(pageId) { prog.saveLast(pageId) }
-    val nav = Nav(page = { pageId = it }, course = { c, p -> onCourse(c, p) }, kks = { k ->
+    val nav = remember(id) { Nav(page = { pageId = it }, course = { c, p -> onCourse(c, p) }, kks = { k ->
         val hit = call("GET", "/native/search", query = mapOf("q" to k)).json.optJSONArray("results").objects().firstOrNull()
         if (hit != null) ui.show(hit.str("id"))
-    })
+    }) }
     fun title(p: JSONObject) = if (p.getString("kind") == "module") p.getString("n") + " · " + p.getString("short") else plain(p.getJSONArray("title"))
     val done = mods.sumOf { m -> moduleQs(m).count { it.getString("id") in prog.solved } }
     val total = mods.sumOf { moduleQs(it).size }
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Column { Text(doc.getString("title"), style = MaterialTheme.typography.titleMedium); Dim("$done of $total solved") } },
-            navigationIcon = { TextButton(onClick = onClose) { Text("←") } },
+        TopAppBar(title = { Column {
+                Text(doc.getString("title"), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("$done of $total solved", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) } },
+            navigationIcon = { IconButton(onClick = onClose) { Icon(Glyphs.BACK, contentDescription = "Back") } },
             actions = { TextButton(onClick = { contents = true }) { Text("Contents") } })
         key(pageId) { PageView(doc, page, pages, mods, prog, gloss, nav, ::title) }
     }
@@ -228,9 +246,11 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
     }
     val idx = pages.indexOf(p)
     val list = rememberLazyListState()
+    val scrolling = remember(list) { derivedStateOf { list.isScrollInProgress } }
+    CompositionLocalProvider(LocalScrolling provides scrolling) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), state = list, contentPadding = PaddingValues(vertical = 12.dp)) {
         fun blocks(bs: JSONArray, keyPrefix: String) {
-            bs.objects().forEachIndexed { i, b -> item(key = "$keyPrefix/$i") { Block(doc, b, nav, gloss, figs, "$keyPrefix/$i") } }
+            bs.objects().forEachIndexed { i, b -> item(key = "$keyPrefix/$i", contentType = blockType(b)) { Block(doc, b, nav, gloss, figs, "$keyPrefix/$i") } }
         }
         fun head(eyebrow: String, t: JSONArray) {
             item { Dim(eyebrow.uppercase()) }
@@ -238,7 +258,7 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
         }
         fun section(t: String) = item { Text(t, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 18.dp, bottom = 4.dp).semantics { heading() }) }
         fun question(qq: JSONObject, label: String, suffix: String = "", once: Boolean = false, onAnswer: ((Boolean) -> Unit)? = null) =
-            item(key = "q/" + qq.getString("id") + suffix) { Question(qq, label, q(qq.getString("id") + suffix), prog, qq.getString("id") + suffix, once, onAnswer, nav, gloss) }
+            item(key = "q/" + qq.getString("id") + suffix, contentType = "question") { Question(qq, label, q(qq.getString("id") + suffix), prog, qq.getString("id") + suffix, once, onAnswer, nav, gloss) }
         when (kind) {
             "module" -> {
                 head("Module " + p.getString("n"), p.getJSONArray("title"))
@@ -316,9 +336,16 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
             }
         }
     }
+    }
 }
 
+/** whether the course page is moving (figures show a still image meanwhile) */
+val LocalScrolling = staticCompositionLocalOf<State<Boolean>> { mutableStateOf(false) }
+
 // ---------------------------------------------------------------- blocks (§4)
+
+private val BLOCK_TYPES = listOf("h", "p", "ul", "ol", "table", "callout", "cards", "chain", "figure", "image", "issues", "tool")
+fun blockType(b: JSONObject): String = BLOCK_TYPES.firstOrNull { b.has(it) } ?: "other"
 
 @Composable
 fun Block(doc: JSONObject, b: JSONObject, nav: Nav, gloss: Map<String, String>, figs: MutableMap<String, Int>, key: String) {
@@ -358,16 +385,68 @@ fun Block(doc: JSONObject, b: JSONObject, nav: Nav, gloss: Map<String, String>, 
 @Composable
 fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
     val num = t.getJSONArray("num").list().map { (it as Number).toInt() }.toSet()
-    val head = t.getJSONArray("head").list()
-    val colW = if (head.size <= 2) 170.dp else 140.dp
-    Column(Modifier.horizontalScroll(rememberScrollState()).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(8.dp)) {
-        Row { head.forEach { h -> Box(Modifier.width(colW).padding(4.dp)) { RunText(h as JSONArray, nav, gloss, MaterialTheme.typography.labelLarge) } } }
-        t.getJSONArray("rows").list().forEach { r ->
-            HorizontalDivider()
-            Row { (r as JSONArray).list().forEachIndexed { i, c ->
-                Box(Modifier.width(colW).padding(4.dp)) { RunText(c as JSONArray, nav, gloss, if (i in num) MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, textAlign = TextAlign.End) else MaterialTheme.typography.bodyMedium, Modifier.fillMaxWidth()) }
-            } }
+    val head = t.getJSONArray("head").list().map { it as JSONArray }
+    val rows = t.getJSONArray("rows").list().map { r -> (r as JSONArray).list().map { it as JSONArray } }
+    val headStyle = MaterialTheme.typography.labelLarge
+    val body = MaterialTheme.typography.bodyMedium
+    val numStyle = body.copy(fontFeatureSettings = "tnum", textAlign = TextAlign.Center)     // tabular figures, centered (the user's choice)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val pad = 6.dp
+    // each column as wide as its widest cell on one line (text columns at most 240 dp, then they wrap); a table
+    // narrower than the screen gives the spare width to its text columns, a wider one scrolls sideways
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val avail = maxWidth - 16.dp
+        val widths = remember(t, avail) {
+            val natural = head.indices.map { i ->
+                val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to (if (i in num) numStyle else body) } }
+                val px = cells.maxOf { (c, st) -> measurer.measure(plain(c), st, softWrap = false, maxLines = 1).size.width }
+                with(density) { px.toDp() } + pad * 2 + 1.dp
+            }
+            // a number column at its narrowest: its widest number, or its heading's longest word (the heading wraps)
+            val narrow = head.indices.map { i ->
+                if (i !in num) 0.dp else {
+                    val cells = rows.mapNotNull { r -> r.getOrNull(i) }.maxOfOrNull { measurer.measure(plain(it), numStyle, softWrap = false, maxLines = 1).size.width } ?: 0
+                    val word = plain(head[i]).split(' ').maxOf { measurer.measure(it, headStyle, softWrap = false, maxLines = 1).size.width }
+                    with(density) { maxOf(cells, word).toDp() } + pad * 2 + 1.dp
+                }
+            }
+            var capped = natural.mapIndexed { i, w -> if (i in num) w else minOf(w, 240.dp) }
+            if (capped.fold(0.dp) { x, y -> x + y } > avail) capped = capped.mapIndexed { i, w -> if (i in num) narrow[i] else w }
+            val total = capped.fold(0.dp) { x, y -> x + y }
+            val text = head.indices.filter { it !in num }
+            val minText = 96.dp
+            val fixed = capped.filterIndexed { i, _ -> i in num }.fold(0.dp) { x, y -> x + y }
+            val textNat = text.fold(0.dp) { x, i -> x + capped[i] }
+            when {
+                text.isEmpty() -> capped
+                total <= avail -> { val extra = (avail - total) / text.size; capped.mapIndexed { i, w -> if (i in num) w else w + extra } }
+                // too wide: the text columns share what the number columns leave, in proportion, and wrap
+                avail - fixed >= minText * text.size -> capped.mapIndexed { i, w -> if (i in num) w else maxOf(minText, (avail - fixed) * (w / textNat)) }
+                else -> capped.mapIndexed { i, w -> if (i in num) w else minOf(w, minText) }     // scrolls sideways
+            }
         }
+        Column(Modifier.horizontalScroll(rememberScrollState()).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(8.dp)) {
+            Row { head.forEachIndexed { i, h -> Box(Modifier.width(widths[i]).padding(horizontal = pad, vertical = 4.dp)) {
+                RunText(h, nav, gloss, if (i in num) headStyle.copy(textAlign = TextAlign.Center) else headStyle, Modifier.fillMaxWidth()) } } }
+            rows.forEach { r ->
+                HorizontalDivider()
+                Row { r.forEachIndexed { i, c -> if (i < widths.size) Box(Modifier.width(widths[i]).padding(horizontal = pad, vertical = 4.dp)) {
+                    RunText(c, nav, gloss, if (i in num) numStyle else body, Modifier.fillMaxWidth()) } } }
+            }
+        }
+    }
+}
+
+/** decoded course pictures, kept while there is room (a page scrolled back must not decode again) */
+private object CourseImages {
+    private val cache = object : android.util.LruCache<String, Bitmap>(64 shl 20) { override fun sizeOf(k: String, v: Bitmap) = v.byteCount }
+    private val aspects = java.util.concurrent.ConcurrentHashMap<String, Float>()
+    fun get(file: String): Bitmap? = cache.get(file)
+    fun aspect(file: String): Float? = aspects[file]
+    fun load(ctx: android.content.Context, file: String): Bitmap? = cache.get(file) ?: run {
+        val data = Core.file("courses/$file") ?: runCatching { ctx.assets.open("data/courses/$file").readBytes() }.getOrNull()
+        data?.let { Jxl.bitmap(it) }?.also { it.prepareToDraw(); cache.put(file, it); aspects[file] = it.width / it.height.toFloat() }
     }
 }
 
@@ -375,16 +454,60 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
 fun ImageView(im: JSONObject, nav: Nav, gloss: Map<String, String>) {
     val ctx = LocalContext.current
     val file = im.getString("file")
-    val bmp = remember(file) {
-        val data = Core.file("courses/$file") ?: runCatching { ctx.assets.open("data/courses/$file").readBytes() }.getOrNull()
-        data?.let { Jxl.bitmap(it) }
-    }
+    // decoded off the main thread (JPEG XL decoding takes a while on a phone); the space is kept meanwhile
+    val bmp by produceState(CourseImages.get(file), file) { if (value == null) value = withContext(Dispatchers.IO) { CourseImages.load(ctx, file) } }
+    var zoom by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    LaunchedEffect(file) { kotlinx.coroutines.delay(10_000); if (bmp == null) failed = true }
     Column {
-        if (bmp != null) Image(bmp.asImageBitmap(), contentDescription = im.getString("alt"), contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).aspectRatio(bmp.width / bmp.height.toFloat()))
-        else Dim("(picture not available: ${im.getString("alt")})")
+        val b = bmp
+        val aspect = b?.let { it.width / it.height.toFloat() } ?: CourseImages.aspect(file) ?: (4f / 3f)
+        // the box the picture takes, computed here: full width, or 360 dp high and narrower for a tall picture.
+        // (fillMaxWidth + heightIn + aspectRatio asked for a size outside the constraints; Compose then drew the
+        // picture at its own size over the neighbours above and below, found on the Note 9 2026-10-02.)
+        val box = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).let { m ->
+            m.then(Modifier.layout { measurable, c ->
+                var bw = c.maxWidth.toFloat(); var bh = bw / aspect
+                val cap = 360.dp.toPx()
+                if (bh > cap) { bh = cap; bw = bh * aspect }
+                val p = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(bw.toInt(), bh.toInt()))
+                layout(p.width, p.height) { p.place(0, 0) }
+            })
+        }
+        if (b != null) {
+            val img = remember(b) { b.asImageBitmap() }
+            Image(img, contentDescription = im.getString("alt"), contentScale = ContentScale.Fit,
+                modifier = box.clickable(onClickLabel = "Enlarge") { zoom = true })
+            if (zoom) ZoomImage(img, im.getString("alt")) { zoom = false }
+        } else if (failed) Dim("(picture not available: ${im.getString("alt")})")
+        else Box(box.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp)))
         if (im.getJSONArray("caption").length() > 0) RunText(im.getJSONArray("caption"), nav, gloss, MaterialTheme.typography.bodySmall)
         if (im.getJSONArray("credit").length() > 0) RunText(im.getJSONArray("credit"), nav, gloss, MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** a picture full screen: pinch to zoom (1–8×), drag to pan, double-tap to zoom in or back out; Back or ✕ closes */
+@Composable
+fun ZoomImage(img: androidx.compose.ui.graphics.ImageBitmap, alt: String, onClose: () -> Unit) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        var scale by remember { mutableFloatStateOf(1f) }
+        var off by remember { mutableStateOf(Offset.Zero) }
+        BoxWithConstraints(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+            val w = constraints.maxWidth.toFloat(); val h = constraints.maxHeight.toFloat()
+            val c = Offset(w / 2, h / 2)
+            fun clamp(o: Offset, s: Float) = Offset(o.x.coerceIn(-(s - 1) * w / 2, (s - 1) * w / 2), o.y.coerceIn(-(s - 1) * h / 2, (s - 1) * h / 2))
+            // keep the point under the fingers where it is: off' = (p - c) - (p - c - off) · s'/s
+            fun zoomAt(p: Offset, ns: Float) { val k = ns / scale; off = clamp((p - c) - (p - c - off) * k, ns); scale = ns }
+            Image(img, contentDescription = alt, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()
+                .pointerInput(Unit) { detectTapGestures(onDoubleTap = { p -> if (scale > 1.01f) { scale = 1f; off = Offset.Zero } else zoomAt(p, 3f) }) }
+                .pointerInput(Unit) { detectTransformGestures { centroid, pan, z, _ ->
+                    zoomAt(centroid, (scale * z).coerceIn(1f, 8f)); off = clamp(off + pan, scale) } }
+                .graphicsLayer { scaleX = scale; scaleY = scale; translationX = off.x; translationY = off.y })
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                .background(androidx.compose.ui.graphics.Color(0x99000000), RoundedCornerShape(50))) {
+                Icon(Glyphs.CLOSE, contentDescription = "Close", tint = androidx.compose.ui.graphics.Color.White)
+            }
+        }
     }
 }
 
@@ -644,57 +767,122 @@ fun FigureView(doc: JSONObject, fid: String, figs: MutableMap<String, Int>, key:
     val w = f.getDouble("w").toFloat(); val h = f.getDouble("h").toFloat()
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f     // the app's theme, not the system's
     val reduce = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
-    val id = remember { figs.getOrPut(key) {
-        call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", fid).put("reduce", reduce)).json.optInt("fig") } }
-    var cur by remember { mutableStateOf(frame(id, JSONObject().put("dark", dark))) }
-    val st = cur?.state
     val animated = f.has("period")
+    val scope = rememberCoroutineScope()
+    val scrolling by LocalScrolling.current
+    // The core computes frames on its own thread; we wait for it off the main thread, so the page never waits.
+    // Two ways to draw (measured on the Note 9, 2026-10-02):
+    // - playing and the page still: the vector ops straight on the canvas (the GPU path, smooth playback);
+    // - paused, still, or the page moving: one bitmap of the last frame, rasterized in the background. Drawing the
+    //   vector ops while scrolling made the render thread re-rasterize every path on every frame (13.6 ms per frame
+    //   against 4.5 ms for a plain list); rasterizing every animation frame on the CPU instead made playback stutter.
+    // Frames stop while the page moves and go on where they were.
+    var id by remember { mutableIntStateOf(figs[key] ?: -1) }
+    val ops = remember { mutableStateOf<ByteBuffer?>(null) }        // read only while drawing
+    val still = remember { mutableStateOf<Pair<ByteBuffer, Bitmap>?>(null) }   // a bitmap and the frame it shows
+    var st by remember { mutableStateOf<JSONObject?>(null) }
+    var stText = remember { "" }
+    var px by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val raster = remember { FigureRaster() }
+    suspend fun step(fig: Int, cmd: JSONObject) {
+        val fr = withContext(Dispatchers.Default) { frame(fig, cmd) } ?: return
+        ops.value = fr.ops
+        val t = fr.state.toString()
+        if (t != stText) { stText = t; st = fr.state }
+    }
+    LaunchedEffect(dark) {
+        if (id < 0) id = withContext(Dispatchers.Default) {
+            call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", fid).put("reduce", reduce)).json.optInt("fig")
+        }.also { figs[key] = it }
+        step(id, JSONObject().put("dark", dark))
+    }
     val playing = st?.optBoolean("playing") == true
-    if (animated) LaunchedEffect(playing, dark) {
+    val live = animated && playing && !scrolling
+    if (animated) LaunchedEffect(id, live, dark) {
+        if (id < 0 || !live) return@LaunchedEffect
+        val fig = id
         var last = 0L
-        while (playing) withFrameNanos { t ->
+        while (isActive) {
+            val t = withFrameNanos { it }
             val dt = if (last == 0L) 0.0 else (t - last) / 1e9
             last = t
-            cur = frame(id, JSONObject().put("tick", dt).put("dark", dark))
+            step(fig, JSONObject().put("tick", dt).put("dark", dark))
         }
     }
-    fun send(cmd: JSONObject) { cur = frame(id, cmd.put("tick", 0).put("dark", dark)) }
+    // not live: make the bitmap of the frame on screen (until it is ready, the ops are drawn directly)
+    val cur = ops.value
+    LaunchedEffect(live, cur, px) {
+        if (live || cur == null || px.width <= 0 || still.value?.first === cur) return@LaunchedEffect
+        val size = px
+        val b = withContext(Dispatchers.Default) { raster.draw(cur, size, w) { role, wt -> Faces.of(ctx, role, wt) } } ?: return@LaunchedEffect
+        still.value = cur to b
+    }
+    fun send(cmd: JSONObject) {
+        val fig = id
+        if (fig >= 0) scope.launch { step(fig, cmd.put("tick", 0).put("dark", dark)) }
+    }
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row { Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f)); if (animated) Dim("animated") }
         Canvas(Modifier.widthIn(max = w.dp).fillMaxWidth().aspectRatio(w / h).align(Alignment.CenterHorizontally)
+            .onSizeChanged { px = it }
             .semantics { contentDescription = f.getString("title") + ". " + f.getString("alt"); role = Role.Image }) {
-            val ops = cur?.ops ?: return@Canvas
+            val o = ops.value ?: return@Canvas
+            val sb = still.value
             drawIntoCanvas { cv ->
                 val nc = cv.nativeCanvas
-                nc.save(); nc.scale(size.width / w, size.width / w)
-                replay(nc, ops) { role, w -> Faces.of(ctx, role, w) }
-                nc.restore()
+                if (sb != null && sb.first === o) nc.drawBitmap(sb.second, null, android.graphics.Rect(0, 0, size.width.toInt(), size.height.toInt()), null)
+                else { nc.save(); nc.scale(size.width / w, size.width / w); replay(nc, o) { role, wt -> Faces.of(ctx, role, wt) }; nc.restore() }
             }
         }
-        if (animated && st != null) {
-            if (!st.isNull("status")) Text(st.optString("status"), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { send(JSONObject().put("play", !playing)) }) { Text(if (playing) "Pause" else "Play") }
-                f.optJSONObject("slider")?.let { s ->
-                    val text = st.optString("slider")
-                    Column(Modifier.weight(1f)) {
-                        Text(s.getString("label") + ": " + text, style = MaterialTheme.typography.bodySmall)
-                        Slider(st.optDouble("v").toFloat(), { send(JSONObject().put("slider", it.toDouble())) },
-                            modifier = Modifier.semantics { contentDescription = s.getString("label"); stateDescription = text })
-                    }
-                }
-            }
-            f.optJSONArray("toggles")?.objects()?.forEach { tg ->
-                val k = tg.getString("key")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(st.optJSONObject("toggles")?.optBoolean(k) == true, { send(JSONObject().put("toggle", k)) })
-                    Text(tg.getString("label")) }
-            }
-            f.optJSONArray("modes")?.objects()?.forEachIndexed { i, m ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(st.optInt("mode") == i, { send(JSONObject().put("mode", i)) }); Text(m.getString("label")) }
-            }
-        }
+        val s = st
+        if (animated && s != null) FigureControls(f, s, playing, ::send)
         if (f.getJSONArray("caption").length() > 0) Text(plain(f.getJSONArray("caption")), style = MaterialTheme.typography.bodySmall)
     } }
+}
+
+/** three bitmaps in turn: one on screen, one possibly still being uploaded by the render thread, one drawn into */
+private class FigureRaster {
+    private val bufs = arrayOfNulls<Bitmap>(3)
+    private var next = 0
+    fun draw(ops: ByteBuffer, size: androidx.compose.ui.unit.IntSize, w: Float, face: (Int, Int) -> Typeface): Bitmap? {
+        if (size.width <= 0 || size.height <= 0) return null
+        val i = next; next = (next + 1) % bufs.size
+        var b = bufs[i]
+        if (b == null || b.width != size.width || b.height != size.height) {
+            b = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888); bufs[i] = b
+        }
+        b.eraseColor(0)
+        val c = android.graphics.Canvas(b)
+        c.scale(size.width / w, size.width / w)
+        replay(c, ops, face)
+        return b
+    }
+}
+
+@Composable
+private fun FigureControls(f: JSONObject, st: JSONObject, playing: Boolean, send: (JSONObject) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (!st.isNull("status")) Text(st.optString("status"), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { send(JSONObject().put("play", !playing)) }) { Text(if (playing) "Pause" else "Play") }
+            f.optJSONObject("slider")?.let { s ->
+                val text = st.optString("slider")
+                Column(Modifier.weight(1f)) {
+                    Text(s.getString("label") + ": " + text, style = MaterialTheme.typography.bodySmall)
+                    Slider(st.optDouble("v").toFloat(), { send(JSONObject().put("slider", it.toDouble())) },
+                        modifier = Modifier.semantics { contentDescription = s.getString("label"); stateDescription = text })
+                }
+            }
+        }
+        f.optJSONArray("toggles")?.objects()?.forEach { tg ->
+            val k = tg.getString("key")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(st.optJSONObject("toggles")?.optBoolean(k) == true, { send(JSONObject().put("toggle", k)) })
+                Text(tg.getString("label")) }
+        }
+        f.optJSONArray("modes")?.objects()?.forEachIndexed { i, m ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(st.optInt("mode") == i, { send(JSONObject().put("mode", i)) }); Text(m.getString("label")) }
+        }
+    }
 }
