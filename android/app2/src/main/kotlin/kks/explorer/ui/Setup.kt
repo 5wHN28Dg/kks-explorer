@@ -18,6 +18,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kks.explorer.App
 import kks.explorer.sync.Discovery
+import kks.explorer.sync.Migrate
 import kks.explorer.sync.Sync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -38,6 +39,7 @@ fun SetupScreen(onJoined: () -> Unit) {
                 if (removed.isNotEmpty()) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                     Text("$removed Its plant data was deleted from this phone.", Modifier.padding(16.dp))
                 }
+                MoveFromOldApp(onJoined)
                 Text("This phone does not belong to a plant yet.", style = MaterialTheme.typography.bodyLarge)
                 for ((id, title, sub) in listOf(
                     Triple("server", "Join through a server", "Username and password on the plant's server"),
@@ -54,6 +56,40 @@ fun SetupScreen(onJoined: () -> Unit) {
             "file" -> FileJoin(onJoined)
         }
         if (page.isNotEmpty()) TextButton(onClick = { page = "" }) { Text("Back") }
+    }
+}
+
+/** decision 0042: the old app (its bridge release) is on this phone with a plant: move from it by itself, once, at the first start */
+@Composable
+private fun MoveFromOldApp(onJoined: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var old by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var msg by remember { mutableStateOf("") }
+    var tries by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        old = withContext(Dispatchers.IO) { if (Migrate.oldAppPresent(ctx)) Migrate.info(ctx) else null }
+    }
+    val inf = old ?: return
+    LaunchedEffect(tries) {
+        busy = true
+        val err = withContext(Dispatchers.IO) { Migrate.run(ctx.applicationContext) { s -> scope.launch { msg = s } } }
+        busy = false
+        if (err.isEmpty()) onJoined() else msg = err
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Moving from the old app", style = MaterialTheme.typography.titleMedium)
+            Text("${inf.optString("name").ifEmpty { "Your" }} account, plant ${inf.optString("plant")}: this phone joins by itself, " +
+                 "and your changes that haven't reached the server yet come along.", style = MaterialTheme.typography.bodyMedium)
+            if (busy) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Text(msg)
+            } else if (msg.isNotEmpty()) {
+                Text(msg, color = MaterialTheme.colorScheme.error)
+                Button(onClick = { tries++ }) { Text("Try again") }
+            }
+        }
     }
 }
 

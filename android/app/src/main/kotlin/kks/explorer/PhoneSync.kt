@@ -242,6 +242,9 @@ class PhoneSync(context: Context, private val node: LocalNode) : SyncControl {
         node.store.setMeta("sync_peers", Json.write((listOf(address) + known().filter { it != address }).take(10)))
     }
 
+    /** devices of this plant found on the Wi-Fi now, as "host:port" (the bridge hands them to the new app) */
+    fun foundAddresses(): List<String> { val root = myRoot(); return found.values.filter { it.root.isNotEmpty() && it.root == root }.map { "${it.host}:${it.port}" } }
+
     /** One round: every device found on this Wi-Fi for this plant, then remembered addresses not seen that way. */
     override fun syncAll() {
         if (roundRunning) return

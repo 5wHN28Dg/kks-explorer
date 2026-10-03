@@ -53,6 +53,9 @@ class ShellState {
     var updBusy by mutableStateOf<String?>(null)
     var updError by mutableStateOf<String?>(null)
     var updChecked by mutableStateOf(0L)
+    var newInstalled by mutableStateOf(false)       // the bridge (decision 0042): the new app is on the phone
+    var bridgeDone by mutableStateOf(false)         // and has taken over this phone
+    var bridgeLater by mutableStateOf(false)        // the person chose to use the old app for now
 }
 
 /** A course of the Learning tab (data/courses/courses.json) and how far this person got. */
@@ -137,6 +140,7 @@ class MainActivity : ComponentActivity() {
         App.sync.start()          // find devices and sync while the app is on screen
         refresh()
         AppUpdates.onChange = { main.post { showUpdate() } }
+        showUpdate()
         io.execute { AppUpdates.maybeCheck(this) }
     }
 
@@ -170,7 +174,11 @@ class MainActivity : ComponentActivity() {
         val u = AppUpdates
         state.version = u.current(this); state.updLatest = u.latest?.version; state.updNotes = u.latest?.notes ?: ""
         state.updAvailable = u.available(this); state.updBusy = u.busy; state.updError = u.error; state.updChecked = u.checked
+        val had = state.newInstalled
+        state.newInstalled = Bridge.newAppInstalled(this); state.bridgeDone = Bridge.done(this)
+        if (!had && state.newInstalled && u.installed) { u.installed = false; Bridge.openNewApp(this) }   // installed just now: go on there
     }
+    fun installNewApp() = io.execute { AppUpdates.install(this, Bridge.NEW_APK, Bridge.NEW_APP) }
     fun checkUpdate() = io.execute { AppUpdates.check(this) }
     fun installUpdate() = io.execute { AppUpdates.install(this) }
 

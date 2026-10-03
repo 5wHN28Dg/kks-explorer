@@ -452,19 +452,14 @@ proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
   O(("id", newNull()), ("client_id", clientId), ("entry", newNull()), ("person", S(me.person)), ("kind", S(kind)),
     ("created", I(now div 1000)), ("held", newNull()), ("status", newNull()), ("note", newNull()), ("decided_at", newNull()))
 
-proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64): JNode =
-  if noteIn != nil and not noteIn.isNull and (noteIn.kind != jStr or noteIn.s.runeLen > 500): bad("note: up to 500 characters")
-  let requestNote = if noteIn != nil and noteIn.isStr: noteIn.s.strip else: ""
-  let cid = if clientId == nil: newNull() else: clientId
-  if not cid.isNull and not (cid.kind == jStr and cid.s.len in 8..64 and
-                             cid.s.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})): bad("bad client_id")
+proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64): JNode =
+  ## a change already in its §9 body form: the web/API submissions above, and the changes a v1 app hands over
+  ## (PROTOCOL-v2 §21a, client_id = the v1 entry ID, so each is written once)
   if cid.isStr:
     for old in a.n.store.subs():
       if old["client_id"].isStr and old["client_id"].s == cid.s:
         let s = a.subStatus(old)
         return O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
-  let p = a.normalize(kind, payload)
-  let body = toBody(kind, p)
   try: checkData(kind, body)
   except Ignore, KeyError: bad("invalid change")
   let conflicts = a.plan(kind, body)[1]
@@ -482,6 +477,20 @@ proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, 
   if me.isAdmin: O(("id", I(sid)), ("status", S("approved")))
   elif conflicts.len > 0: O(("id", I(sid)), ("status", S("conflict")), ("conflicts", conflictsOut(conflicts)))
   else: O(("id", I(sid)), ("status", S("pending")))
+
+proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64): JNode =
+  if noteIn != nil and not noteIn.isNull and (noteIn.kind != jStr or noteIn.s.runeLen > 500): bad("note: up to 500 characters")
+  let requestNote = if noteIn != nil and noteIn.isStr: noteIn.s.strip else: ""
+  let cid = if clientId == nil: newNull() else: clientId
+  if not cid.isNull and not (cid.kind == jStr and cid.s.len in 8..64 and
+                             cid.s.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})): bad("bad client_id")
+  if cid.isStr:
+    for old in a.n.store.subs():
+      if old["client_id"].isStr and old["client_id"].s == cid.s:
+        let s = a.subStatus(old)
+        return O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
+  let p = a.normalize(kind, payload)
+  a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
 
 proc rebase(a: Api, kind: string, b: JNode): JNode =
   case kind

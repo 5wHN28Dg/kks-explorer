@@ -4,6 +4,11 @@ rules, and write a migration package the Nim server imports (`kks-server import-
 
   python3 tools/m6/migrate_v1.py export --db COPY.db --photos PHOTOS_DIR --out package.json
   python3 tools/m6/migrate_v1.py compare --package package.json --v2-state state.json
+  python3 tools/m6/migrate_v1.py succession --db COPY.db --root-key ROOT.key --v2-root ROOT2 --server PEER2 --out s.json
+
+`succession` (PROTOCOL-v2 §21a, decision 0042) runs after `kks-server import-v1`, which prints the v2 root and the
+server's peer ID: it signs, with the v1 root key, the statement that lets v1 phones move by themselves
+(`kks-server import-succession s.json`).
 
 Never run it on the live plant.db: copy it first (the tool only reads, but a copy is the rule). The package holds the
 plant's data (unencrypted) and password hashes: keep it with the same care as plant.db, and delete it after.
@@ -38,6 +43,26 @@ def load_v1(db):
         r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")} else {}
     c.close()
     return root, entries, users, blobs
+
+
+def v1_devices(entries, run, custodial=()):
+    """§21a's v1 device table: [[device, {person, revoked, seq, server}], ...] sorted by device. server: one of the v1
+    server's own keys (custodial, one per account), which never move: only the devices people hold do."""
+    seqs = {}
+    for e in entries:
+        seqs[e['peer']] = max(seqs.get(e['peer'], 0), e['seq'])
+    return [[d, {'person': v['person'], 'revoked': d in run.cuts, 'seq': seqs.get(d, 0), 'server': d in custodial}]
+            for d, v in sorted(run.devices.items())]
+
+
+def custodial_of(db):
+    c = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
+    try:
+        return {r[0] for r in c.execute('SELECT device FROM custodial')}
+    except sqlite3.OperationalError:
+        return set()
+    finally:
+        c.close()
 
 
 def export(args):
@@ -76,7 +101,7 @@ def export(args):
         if hashlib.sha256(data).hexdigest() != sha:
             raise SystemExit(f'blob {name} does not hash to {sha}')
         out_blobs[sha] = base64.b64encode(data).decode()
-    pkg = {'kks_migration': 1, 'v1_hash': h, 'v1_entries': len(entries), 'plant': run.settings.get('plant') or 'Plant',
+    pkg = {'kks_migration': 1, 'v1_hash': h, 'v1_root': root, 'v1_devices': v1_devices(entries, run, custodial_of(args.db)), 'v1_entries': len(entries), 'plant': run.settings.get('plant') or 'Plant',
            'manager': {'person': manager, 'username': mp['username'], 'full_name': mp['full_name'], 'position': mp['position']},
            'import_state': state, 'accounts': accounts, 'blobs': out_blobs,
            'v1_state': {'persons': run.persons, 'manager': manager, 'settings': run.settings, 'equipment': run.equipment,
@@ -114,6 +139,25 @@ def compare(args):
     print('identical: persons (with roles), manager, settings, equipment, reviews, links, photos, added tags')
 
 
+def succession(args):
+    root, entries, _, _ = load_v1(args.db)
+    run, chain_ignored = R.replay_run(entries, root)
+    if chain_ignored:
+        raise SystemExit('the v1 log does not verify')
+    with open(args.root_key) as f:
+        rk = P.key_from_seed(bytes.fromhex(f.read().strip()))
+    if P.peer_id(rk) != root:
+        raise SystemExit(f'{args.root_key} is not this plant\'s v1 root key')
+    ordered = sorted(entries, key=P.order_key)
+    h = hashlib.sha256(canonical([P.entry_id(e) for e in ordered])).hexdigest()
+    stmt = {'kind': 'succession', 'v1_root': root, 'v1': h, 'v2_root': args.v2_root, 'server': args.server,
+            'archived': [[d, v['seq']] for d, v in v1_devices(entries, run)]}
+    out = {'stmt': stmt, 'sig': P.b64u(rk.sign(b'kks-succession-v1\n' + P.canonical(stmt)))}
+    with open(args.out, 'w', encoding='utf-8') as f:
+        json.dump(out, f, ensure_ascii=False)
+    print(f'succession statement for {len(stmt["archived"])} v1 devices, archive {h[:16]}… → {args.out}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -124,8 +168,14 @@ def main():
     c = sub.add_parser('compare')
     c.add_argument('--package', required=True)
     c.add_argument('--v2-state', required=True)
+    s = sub.add_parser('succession')
+    s.add_argument('--db', required=True)
+    s.add_argument('--root-key', required=True)
+    s.add_argument('--v2-root', required=True)
+    s.add_argument('--server', required=True)
+    s.add_argument('--out', required=True)
     a = ap.parse_args()
-    export(a) if a.cmd == 'export' else compare(a)
+    {'export': export, 'compare': compare, 'succession': succession}[a.cmd](a)
 
 
 if __name__ == '__main__':

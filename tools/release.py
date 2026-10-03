@@ -16,7 +16,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from server import updates
 
-FILES = ('KKS-Explorer-windows.zip', 'KKS-Explorer-linux.tar.gz', 'kks-explorer.apk')
+# kks-explorer-2.apk: the new Android app, installed by the v1 app's bridge release (0.8.1, decision 0042)
+FILES = ('KKS-Explorer-windows.zip', 'KKS-Explorer-linux.tar.gz', 'kks-explorer.apk', 'kks-explorer-2.apk')
 
 
 def key_path():

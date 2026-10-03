@@ -9,7 +9,8 @@ plugins {
 }
 
 // One version for every platform: the repository's VERSION file (M5b self-updates compare it with GitHub Releases).
-// versionCode = major·10000 + minor·100 + patch, so every release is higher than the last.
+// The cutover release's v1 app is the bridge to the new app (decision 0042): it must carry the release's version, or
+// it would offer itself again as an update. versionCode = major·10000 + minor·100 + patch.
 val appVersion = rootDir.parentFile.resolve("VERSION").readText().trim()
 val appVersionCode = appVersion.split('.').map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
 

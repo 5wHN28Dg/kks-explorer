@@ -103,6 +103,7 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
   of "/native/config":
     var cfg = c.api.configOut()
     cfg["device"] = newStr(c.n.device)
+    cfg["key"] = newStr(keyString(c.key.pub))
     cfg["root"] = newStr(c.n.root)
     # the mDNS TXT this phone announces (PROTOCOL-v2 §16; the same keys as the GNOME app)
     let (ok, me) = c.api.owner
@@ -130,6 +131,22 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
     if relay.len == 0 or c.n.root.len == 0: return view(O(("relay", newStr(""))))
     let room = relayRoom(c.p, c.n.root)
     view(O(("relay", newStr(relay)), ("room", newStr(room)), ("hello", relayHello(c.p, c.key, room, nowMs() div 1000))))
+  of "/native/relay-hello":
+    # §21a: a hello for another room (the v1 plant's, where the server waits for v1 phones moving over)
+    view(O(("hello", relayHello(c.p, c.key, body["room"].s, nowMs() div 1000))))
+  of "/native/v1-entry":
+    # §21a: one change the v1 app handed over, written as this device's own (client_id = the v1 entry ID: once only)
+    let (ok, me) = c.api.owner
+    if not ok: return O(("status", newInt(403)), ("json", O(("error", newStr("this phone is not certified yet")))))
+    for (sha, data) in body["blobs"].fields:
+      let raw = base64.decode(data.s)
+      if hex(c.p.sha256(raw.toBytes)) != sha: return O(("status", newInt(400)), ("json", O(("error", newStr("a photo file does not match its hash")))))
+      c.n.store.blobPut(sha, raw)
+    try:
+      let r = c.api.submitBody(me, body["type"].s, body["body"], body["v1"], body["note"].s, nowMs())
+      O(("status", newInt(200)), ("json", r))
+    except ApiError as e:
+      O(("status", newInt(400)), ("json", O(("error", newStr(e.msg)))))
   of "/native/join-request":
     let req = c.p.joinRequest(c.key, body["username"].s, body["full_name"].s,
                               if body.get("position") != nil: body["position"] else: newNull(), c.api.deviceLabel, nowMs() div 1000)

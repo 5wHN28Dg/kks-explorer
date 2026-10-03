@@ -9,5 +9,9 @@
         <receiver android:name=".DebugUpdateReceiver" android:exported="true">
             <intent-filter><action android:name="kks.explorer.DEBUG_UPDATE" /></intent-filter>
         </receiver>
+        <!-- and call the local API (the move rehearsal, decision 0042) -->
+        <receiver android:name=".DebugApiReceiver" android:exported="true">
+            <intent-filter><action android:name="kks.explorer.DEBUG_API" /></intent-filter>
+        </receiver>
     </application>
 </manifest>

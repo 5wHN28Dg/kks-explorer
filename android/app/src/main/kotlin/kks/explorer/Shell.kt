@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -37,6 +39,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -96,6 +99,7 @@ fun Shell(a: MainActivity) {
     }
     MaterialTheme(colorScheme = scheme) {
         when {
+            !s.bridgeLater -> BridgeScreen(a)
             !s.joined -> Web(a.pidWeb, Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding())
             s.course != null -> CourseScreen(a)
             s.manage != null -> Manage(a)
@@ -114,6 +118,40 @@ fun Shell(a: MainActivity) {
                 }
             }
         }
+    }
+}
+
+/** The bridge release (decision 0042): one screen that installs the new app, which then moves this phone by itself. */
+@Composable
+private fun BridgeScreen(a: MainActivity) {
+    val s = a.state
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp).verticalScroll(rememberScrollState()),
+           verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("KKS Explorer has a new app", style = MaterialTheme.typography.headlineSmall)
+        when {
+            s.bridgeDone -> {
+                Text("This phone has moved to the new app, with your changes that hadn't reached the server yet. " +
+                     "You can remove this old app now.", style = MaterialTheme.typography.bodyLarge)
+                Button(onClick = { Bridge.removeSelf(a) }) { Text("Remove the old app") }
+                OutlinedButton(onClick = { Bridge.openNewApp(a) }) { Text("Open the new app") }
+            }
+            s.newInstalled -> {
+                Text("The new app is installed. Open it: it joins your plant by itself and brings along your photos and " +
+                     "changes that haven't reached the server yet.", style = MaterialTheme.typography.bodyLarge)
+                Button(onClick = { Bridge.openNewApp(a) }) { Text("Open the new app") }
+            }
+            else -> {
+                Text("The plant has moved to a new, faster app. Install it: it joins your plant by itself, and your photos " +
+                     "and changes that haven't reached the server yet come along. Nothing to type.", style = MaterialTheme.typography.bodyLarge)
+                if (s.updBusy != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Text(s.updBusy!!)
+                } else Button(onClick = { a.installNewApp() }) { Text("Install the new app") }
+                Text("Checked against the release's signature first; Android then asks you to confirm.",
+                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                s.updError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        }
+        TextButton(onClick = { s.bridgeLater = true }) { Text("Use the old app for now") }
     }
 }
 

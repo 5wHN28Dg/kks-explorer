@@ -31,7 +31,8 @@ class SqliteStore(context: Context) : NodeStore {
         }
         override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {}
     }.writableDatabase
-    private val photos = File(context.filesDir, "photos").also { it.mkdirs() }
+    val photosDir = File(context.filesDir, "photos").also { it.mkdirs() }
+    private val photos get() = photosDir
 
     // ---------- device key ----------
     private val alias = "kks-device-seed"

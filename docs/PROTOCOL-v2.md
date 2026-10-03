@@ -614,3 +614,65 @@ Done once by the manager with the migration tool (0024):
    - If the state's hash doesn't match `stmt.state`, or any item breaks §9a: the genesis is `bad_genesis`.
 
 Photos keep their blob hashes, so photo files move over unchanged.
+
+## 21a. Moving v1 devices (added 2026-10-03, decision 0042)
+
+A v1 device moves to a new v2 device of the same person, without an admin. The v1 app proves the old device's
+identity with its v1 key and hands over its open changes; the new device writes them as its own entries. v1 IDs,
+keys and canonical bytes below are v1's (PROTOCOL.md §1–2): a v1 peer ID or root ID is the base64url Ed25519 public
+key, and signatures are Ed25519, in base64url.
+
+**Made at the migration** by the migration tool, which holds the v1 log and the v1 root key, after the v2 genesis:
+
+- **v1 device table:** `[[v1 device, {person, revoked, seq, server}], …]` sorted by device.
+  - `person`: the person the v1 log certified it for.
+  - `revoked`: true when any v1 `revoke` names it.
+  - `seq`: the highest seq of that device in the archive (0 if none).
+  - `server`: true for the v1 server's own keys (one per account), which never move.
+  - It is kept by the v2 server only. It is not in the log.
+- **Succession statement:**
+  - `stmt` = `{"kind":"succession", "v1_root", "v1": H (§21), "v2_root", "server": <the v2 server's peer ID>,
+    "archived": [[v1 device, seq], …] (sorted, one per device in the table)}`;
+  - `sig` = signed by the v1 root key over `"kks-succession-v1\n"` + v1-canonical(stmt).
+
+**On the server's sync port (TLS, §15).** As with `enroll`, the connecting device can't pin the server yet. Trust
+comes from the statement instead.
+
+- **Asking for the statement:** `{"t":"succession"}` instead of `hello` → `{"t":"succession", "stmt", "sig"}`, or
+  `{"t":"succession", "stmt": null}` from a node that holds none. The asker checks:
+  - `sig` against the v1 root it already trusts;
+  - that the TLS server's peer ID equals `stmt.server`.
+
+  The asker drops the statement if either check fails.
+- **The proof**, made by the v1 device after it has checked the statement:
+  - `{"kks_migrate":1, "v1_root", "v1_device", "v2_root", "device", "key", "label", "created", "sig"}`;
+  - `device` and `key` are the new v2 device's peer ID and key (§2);
+  - `sig` = signed by the v1 device key over `"kks-migrate-v1\n"` + v1-canonical(the rest).
+- **Moving:** `{"t":"migrate", "proof"}` instead of `hello`, on a connection pinned to `stmt.server` →
+  `{"t":"migrate_ack", "state": "accepted"|"refused"|"bad", "why"?, "root"?, "plant"?}`. Then the connection
+  closes.
+- **The server accepts** only if all of these hold:
+  - `device` is the TLS client's peer ID, and `key` hashes to `device`;
+  - `v1_root` and `v2_root` are its own;
+  - `v1_device` is in its table and not revoked;
+  - `sig` verifies;
+  - `v1_device` hasn't moved before, unless to this same `device`, which is accepted again.
+
+  It then certifies `device` for the table's person with a `device_cert` (label = the proof's `label`). It signs
+  with the person's custodial key if the person has an account on the server, else with the manager's. Once
+  accepted, the device syncs (§15) with the same address, adopting `root`.
+
+**Finding the server:**
+- the v1 device's remembered sync addresses (the v2 server keeps v1's sync port);
+- mDNS TXT `prev` = the first 16 characters of the v1 root ID;
+- the relay: the server is also present in the v1 room, first 32 hex characters of SHA-256(`"kks-relay-room-v1\n"` +
+  v1 root ID), with its v2 hello. The relay accepts v2 hellos in any room. A v2 peer ID (32 characters) tells it
+  apart from v1 devices (43).
+
+**The changes handed over** are the v1 device's own entries with seq > its `archived` seq whose type is
+`equipment`, `review`, `link`, `photo`, `photo_delete` or `tag_add`/`tag_remove`, and that are still open in the
+v1 device's view: pending, or applied directly (an admin's). Withdrawn, rejected and ignored entries are left out.
+- The new device writes each one as a new v2 entry with the same body (§9 bodies are unchanged from v1), plus the
+  author's own `comment` on it if there was one. Photo blobs keep their hashes.
+- It keeps the v1 entry IDs it has written, so it never writes one twice.
+- Its role decides as usual whether a change is a proposal (§10).

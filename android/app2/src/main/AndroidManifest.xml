@@ -5,8 +5,12 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- moving from the v1 app (decision 0042): its hand-over provider answers only apps signed with our key -->
+    <permission android:name="kks.explorer.permission.HANDOVER" android:protectionLevel="signature" />
+    <uses-permission android:name="kks.explorer.permission.HANDOVER" />
     <queries>
         <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
+        <package android:name="kks.explorer" />
     </queries>
     <application
         android:name="kks.explorer.App"

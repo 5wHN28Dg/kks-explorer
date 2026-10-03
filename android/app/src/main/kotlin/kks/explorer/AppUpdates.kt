@@ -23,6 +23,7 @@ object AppUpdates {
     @Volatile var error: String? = null; private set
     @Volatile var busy: String? = null; private set
     @Volatile var checked = 0L; private set
+    @Volatile var installed = false                       // the last install finished (the bridge then opens the new app)
     var onChange: () -> Unit = {}
     internal var api: String? = null                     // (debug builds: a test release server, DebugUpdateReceiver)
     internal var pub = Updates.RELEASE_PUB
@@ -48,17 +49,19 @@ object AppUpdates {
         onChange()
     }
 
-    /** Download, check against the signed manifest, hand to Android's installer (it asks the person). */
-    fun install(context: Context) {
+    /** Download, check against the signed manifest, hand to Android's installer (it asks the person). The bridge
+     *  (decision 0042) installs the new app the same way: another file of the same signed release, another package. */
+    fun install(context: Context, file: String = Updates.APK, pkg: String = context.packageName) {
+        if (latest == null && file != Updates.APK) check(context)
         val r = latest ?: return
         if (busy != null) return
         busy = "Downloading…"; error = null; onChange()
         try {
-            val apk = Updates.download(r, Updates.APK)
+            val apk = Updates.download(r, file)
             busy = "Installing…"; onChange()
             val pi = context.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
-                setAppPackageName(context.packageName)
+                setAppPackageName(pkg)
                 setSize(apk.size.toLong())
             }
             val id = pi.createSession(params)
@@ -81,7 +84,7 @@ object AppUpdates {
                     @Suppress("DEPRECATION") val ask = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT) ?: return
                     context.startActivity(ask.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
-                PackageInstaller.STATUS_SUCCESS -> Log.i(TAG, "installed")
+                PackageInstaller.STATUS_SUCCESS -> { Log.i(TAG, "installed"); installed = true; onChange() }
                 else -> {
                     val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
                     error = if (status == PackageInstaller.STATUS_FAILURE_ABORTED) "Install cancelled."

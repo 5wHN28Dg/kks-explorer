@@ -149,9 +149,11 @@ object Net {
         return byteArrayOf((b.size ushr 24).toByte(), (b.size ushr 16).toByte(), (b.size ushr 8).toByte(), b.size.toByte()) + b
     }
 
-    /** one question instead of a sync (§16 join): send msg, return the single answer */
-    fun ask(host: String, port: Int, expectPeer: String, msg: JSONObject): JSONObject {
-        val p = connect(host, port, expectPeer)
+    /** one question instead of a sync (§16 join, §21a): send msg, return the single answer */
+    fun ask(host: String, port: Int, expectPeer: String, msg: JSONObject): JSONObject = askOver(connect(host, port, expectPeer), msg)
+
+    /** the same over an open connection (a relay pipe), closed after */
+    fun askOver(p: Peer, msg: JSONObject): JSONObject {
         try {
             p.output.write(frame(msg)); p.output.flush()
             val din = DataInputStream(p.input)

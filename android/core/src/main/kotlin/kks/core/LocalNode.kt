@@ -103,6 +103,9 @@ class LocalNode private constructor(val store: NodeStore, key: SigningKey) : Mem
 
     private fun changed(why: String) = listeners.toList().forEach { runCatching { it(why) } }
 
+    /** the device key's Ed25519 signature over bytes outside the log (the bridge's move proof, PROTOCOL-v2 §21a) */
+    fun signRaw(msg: ByteArray): ByteArray = key.sign(msg)
+
     @Synchronized fun write(type: String, body: Map<String, Any?>): String = store.tx { append(type, body) }.also { changed("local") }
 
     @Synchronized override fun ingest(entries: List<Any?>): Int {

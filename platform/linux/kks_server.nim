@@ -74,6 +74,13 @@ proc main() =
   of "import-v1":
     if rest.len != 1: quit "usage: kks-server import-v1 PACKAGE.json"
     echo s.importV1(parseStrict(readFile(rest[0]), maxDepth = 512))
+    echo "v2 root: ", s.n.root
+    echo "server:  ", s.n.device
+    echo "Next (phones moving by themselves, PROTOCOL-v2 §21a): tools/m6/migrate_v1.py succession --v2-root ROOT --server SERVER …, then kks-server import-succession FILE"
+  of "import-succession":
+    if rest.len != 1: quit "usage: kks-server import-succession FILE.json"
+    try: echo s.importSuccession(parseStrict(readFile(rest[0])))
+    except ValueError as e: quit e.msg
   of "dump-state":
     if "out" notin args: quit "usage: kks-server dump-state --out FILE"
     writeFile(args["out"], toText(s.stateForCompare()))

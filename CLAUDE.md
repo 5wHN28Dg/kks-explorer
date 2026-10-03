@@ -812,6 +812,35 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   - test_rudp_interop against `tools/rudp_peer.py`.
 - **Not done:** Android (app2 still sends `cand: []`), real NATs.
 
+**Phone move without help (2026-10-03, decision 0042, PROTOCOL-v2 §21a; the user's choice "Bridge update, new ID").**
+- **Flow:** 0.8.0 → "Download and install" → the bridge (the v1 app built at the release's VERSION) → it installs
+  `kks-explorer-2.apk` from the same signed release → the new app asks the bridge (`Bridge.Handover`, a provider
+  behind a signature permission) for the plant's addresses and relay → it gets the succession statement from the server.
+  The bridge checks the statement against the v1 root, signs the move proof with the v1 device key, and hands over its
+  open changes after its archived seq, with photo files, request notes and course progress. The new app sends
+  `migrate`, syncs, then writes the changes through core `submitBody` (client_id = v1 entry ID: written once).
+- **Server:**
+  - `import-v1` keeps the v1 device table (custodial keys flagged `server`);
+  - `migrate_v1.py succession` + `kks-server import-succession`;
+  - `succession`/`migrate` sync hooks with GnuTLS Ed25519 verify (`provider_gnutls.ed25519Verify`, server only);
+  - presence in the v1 relay room (`internetV1`, `Internet.roomOf`);
+  - mDNS TXT `prev`;
+  - `/api/devices.sync.v1_waiting` (admin.html "Moving from the old app").
+- **New package ID** lives in `android/app2` applicationId, `Bridge.NEW_APP` and both manifests' `<queries>`: change
+  it there with the rename.
+- **Tests:**
+  - `platform/linux/tests/test_migrate.nim` (8: statement, proofs, tampering, refusals, the relay room; v1 plant from
+    `tools/m6/v1_test_plant.py`);
+  - `android/app2/e2e/test_move.py`, the full rehearsal on the emulator: v1 server, the old app joins as tom (debug
+    `DebugApiReceiver`), the server stops, a photo + link offline, migration, the bridge installs the new app from a
+    fake signed release, the move, both changes in the Nim server's Approvals with note + JXL file, the bridge shows
+    "Remove the old app", no duplicates after a restart. Passed twice.
+- **Lessons:**
+  - `pm clear` leaves an app stopped: broadcasts need `-f 32` or a start first;
+  - `logcat -s TAG:I TAG:W` hides info lines;
+  - the Android 16 install dialog says "INSTALL".
+- **NOT verified:** release-signed builds (only debug-key builds), a real phone, the relay path on a phone.
+
 ## Backlog (rough priority)
 
 1. When users have marked missed tags (`app.py added-tags`), find why the extractor missed them and fix the cause.
