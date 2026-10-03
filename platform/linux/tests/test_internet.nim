@@ -40,6 +40,8 @@ suite "internet sync through the relay":
   b.adopt(a.root)
   let ia = newInternet(a, newIdentity(kA))
   let ib = newInternet(b, newIdentity(kB), relayOf = proc (): string = url)
+  ia.stunServers = @[]     # tests: this machine's own addresses only (no public STUN server)
+  ib.stunServers = @[]
 
   test "both appear in the room and B pulls A's log through the pipe":
     ia.start()
@@ -55,6 +57,20 @@ suite "internet sync through the relay":
     let st = waitFor ia.syncPeer(b.device)
     check st.received == 1
     check a.entries.len == b.entries.len
+
+  test "both offer candidates: the sync goes direct (hole punching + reliable UDP)":
+    discard b.append("setting", newObj(@[("key", newStr("note2")), ("value", newStr("direct"))]), nowMs())
+    let st = waitFor ia.syncPeer(b.device)
+    check st.received == 1
+    check ia.lastHow == "direct" and ib.lastHow == "direct"
+
+  test "one side without direct connections: both use the relay pipe":
+    ib.direct = false
+    discard b.append("setting", newObj(@[("key", newStr("note3")), ("value", newStr("pipe"))]), nowMs())
+    let st = waitFor ia.syncPeer(b.device)
+    check st.received == 1
+    check ia.lastHow == "relay" and ib.lastHow == "relay"
+    ib.direct = true
 
   test "an absent device is reported":
     expect NetError:

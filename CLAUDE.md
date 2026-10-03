@@ -711,7 +711,8 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   send a TLS handshake step's output before waiting (TLS 1.2 hung on Windows 10); workerd lists a closing socket during
   `webSocketClose` (the Worker never said `left`); `pkill -f "wrangler dev"` in a command that contains that text kills
   the shell itself.
-- **Not done:** hole punching + reliable UDP (0028); a phone on mobile data skips private LAN addresses, laptops don't.
+- **Not done then:** hole punching + reliable UDP (0028; done on Linux/Windows/server 2026-10-03, below); a phone on
+  mobile data skips private LAN addresses, laptops don't.
 - **Also 2026-10-02:**
   - The Nim server now fills `/api/devices.sync` in v1's shape (`discovery`, `syncs`, `found`, `internet`) and its own
     addresses for invites. Before, admin.html's Devices page said "Cannot reach the server" (a TypeError shown as a
@@ -796,6 +797,20 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   - zxing-cpp 3.1.1 built in (`-d:flatpak` links `-lZXing` from /app/lib);
   - Nim via `koch boot`;
   - built here with flatpak-builder `--disable-rofiles-fuse` in ~/.local/kksdev/flatpak.
+
+**Direct connections (2026-10-03, decision 0028):**
+- **Core:** `core/src/kks/rudp.nim` is the reliable UDP, sans I/O and wire-compatible with v1's `peer/rudp.py` /
+  `Rudp.kt`. "Never sent" is `at = -1`: a send at time 0 is real.
+- **Platform:** `platform/linux/src/kksl/udp.nim` (shared with Windows) has one receive loop per socket, STUN
+  (Cloudflare, Google), punching (PUNCH/PUNCH_ACK) and `rudpStream` as a `net.Stream`.
+- **Relay client:** `internet.nim` tries direct first. Both sides offering candidates → punch with session = the
+  first 8 bytes of the connect id, else (or on failure) the pipe. `lastHow` = direct/relay. Its `roomOf` and `askPeer`
+  serve §21a.
+- **Tests:**
+  - core test_rudp: a simulated lossy link, v1's cases;
+  - test_internet: direct, and the pipe when one side has `direct = false`;
+  - test_rudp_interop against `tools/rudp_peer.py`.
+- **Not done:** Android (app2 still sends `cand: []`), real NATs.
 
 ## Backlog (rough priority)
 

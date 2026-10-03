@@ -1,11 +1,12 @@
 ## Sync across the internet (PROTOCOL-v2 §18) for the server and the desktop apps: presence in the plant's room on
-## the relay (a WebSocket signed in with the device key), and syncs through a relay pipe. The pipe carries the same
-## TLS session as a LAN sync, so the relay sees only ciphertext. No hole punching yet: this side offers no candidates,
-## which §18 says means "go straight to the pipe". Shared by Linux and Windows; runs on the node's async loop.
+## the relay (a WebSocket signed in with the device key), and syncs directly when hole punching works (udp.nim: STUN,
+## punching, reliable UDP), else through a relay pipe. Either way the stream carries the same TLS session as a LAN
+## sync, so the relay sees only ciphertext. A device that sends no candidates (§18: `cand: []`) gets the pipe at once.
+## Shared by Linux and Windows; runs on the node's async loop.
 
-import std/[asyncdispatch, sets, tables, times, sysrand]
+import std/[asyncdispatch, sets, strutils, tables, times, sysrand]
 import kks/[json, crypto, util, node, sync, extras]
-import net, ws
+import net, ws, udp
 when defined(windows): import kksw/tls
 else: import tls
 
@@ -23,6 +24,10 @@ type
     running: bool
     onSynced*: proc (remote: string, stats: Stats, initiator: bool)   ## after each sync through the relay
     onChange*: proc ()                ## presence changed (the status line)
+    direct*: bool                     ## try hole punching first (tests turn it off to force the pipe)
+    stunServers*: seq[(string, int)]  ## empty = no public candidate (only this machine's own addresses)
+    lastHow*: string                  ## "direct" or "relay": how the last sync went (for the status)
+    roomOf*: proc (): string          ## another room than the plant's ("" = none: stay out); the server's v1 room (§21a)
 
 proc relaySetting*(n: Node): string =
   if n.run == nil: return ""
@@ -30,7 +35,7 @@ proc relaySetting*(n: Node): string =
   if v != nil and v.kind == jStr: v.s else: ""
 
 proc newInternet*(n: Node, id: Identity, hooks = Hooks(), relayOf: proc (): string = nil): Internet =
-  result = Internet(n: n, id: id, hooks: hooks, state: "off")
+  result = Internet(n: n, id: id, hooks: hooks, state: "off", direct: true, stunServers: @Stun)
   let nn = n
   result.relayOf = if relayOf != nil: relayOf else: (proc (): string = relaySetting(nn))
 
@@ -54,17 +59,53 @@ proc openPipe(i: Internet, relay, id, side: string): Future[Stream] {.async.} =
   let w = await wsConnect(relay & "/v1/pipe/" & i.room & "/" & id & "/" & side)
   pipeStream(w)
 
+proc candidates(i: Internet): Future[(Udp, seq[string])] {.async.} =
+  ## a UDP socket and its candidates: the public address from STUN, then this machine's own (at most 8)
+  if not i.direct: return (nil, newSeq[string]())
+  let u = newUdp()
+  var cand: seq[string]
+  let pub = if i.stunServers.len > 0: await u.stun(i.stunServers) else: ""
+  if pub.len > 0: cand.add pub
+  for ip in localIPv4s():
+    if cand.len < 8: cand.add ip & ":" & $u.port
+  return (u, cand)
+
+proc candArr(c: seq[string]): JNode =
+  result = newArr()
+  for x in c: result.elems.add newStr(x)
+
+proc theirCands(m: JNode): seq[string] =
+  let c = m.get("cand")
+  if c != nil and c.kind == jArr:
+    for x in c.elems:
+      if x.kind == jStr and x.s.len <= 64 and result.len < 8: result.add x.s
+
+proc meet(i: Internet, u: Udp, ours, theirs: seq[string], relay, id, side: string): Future[Stream] {.async.} =
+  ## §18: hole punching when both sides offered candidates, else (or when it fails) the relay pipe
+  if u != nil and ours.len > 0 and theirs.len > 0:
+    var session = ""
+    for k in 0 ..< 8: session.add char(parseHexInt(id[k * 2 .. k * 2 + 1]))
+    let (h, p) = await u.punch(session, theirs)
+    if h.len > 0:
+      i.lastHow = "direct"
+      return u.rudpStream(h, p, session)
+  if u != nil: u.close()
+  i.lastHow = "relay"
+  return await i.openPipe(relay, id, side)
+
 proc changed(i: Internet) =
   if i.onChange != nil:
     try: i.onChange()
     except CatchableError: discard
 
-proc serveConnect(i: Internet, relay, frm, id: string) {.async.} =
-  ## another device asked for a sync: accept with no candidates, meet it in the pipe, answer as the TLS server
+proc serveConnect(i: Internet, relay, frm, id: string, theirs: seq[string]) {.async.} =
+  ## another device asked for a sync: accept with our candidates, meet it (directly or in the pipe), answer as the
+  ## TLS server
   try:
+    let (u, ours) = await i.candidates()
     await i.ws.sendText(toText(newObj(@[("t", newStr("accept")), ("to", newStr(frm)), ("id", newStr(id)),
-                                        ("cand", newArr())])))
-    let st = await i.openPipe(relay, id, "b")
+                                        ("cand", candArr(ours))])))
+    let st = await i.meet(u, ours, theirs, relay, id, "b")
     let (remote, stats) = await serveOver(i.n, i.id, st, i.hooks)
     if i.onSynced != nil: i.onSynced(remote, stats, false)
   except CatchableError as e:
@@ -86,7 +127,7 @@ proc handle(i: Internet, relay: string, m: JNode) =
     i.changed()
   of "connect":
     if m.get("from") != nil and m.get("id") != nil:
-      asyncCheck i.serveConnect(relay, m["from"].s, m["id"].s)
+      asyncCheck i.serveConnect(relay, m["from"].s, m["id"].s, theirCands(m))
   of "accept", "refuse", "gone":
     let id = if m.get("id") != nil: m["id"].s else: ""
     if id in i.waiting:
@@ -103,14 +144,15 @@ proc presence(i: Internet) {.async.} =
   var pause = 5_000
   while i.running:
     let relay = i.relayOf()
-    if relay.len == 0 or i.n.root.len == 0:
+    let other = if i.roomOf != nil: i.roomOf() else: ""
+    if relay.len == 0 or (if i.roomOf != nil: other.len == 0 else: i.n.root.len == 0):
       if i.state != "off":
         i.state = "off"
         i.online.clear()
         i.changed()
       await sleepAsync(10_000)
       continue
-    i.room = relayRoom(i.n.p, i.n.root)
+    i.room = if i.roomOf != nil: other else: relayRoom(i.n.p, i.n.root)
     i.state = "connecting"
     try:
       i.ws = await wsConnect(relay & "/v1/room/" & i.room)
@@ -153,20 +195,33 @@ proc stop*(i: Internet) =
   i.running = false
   if i.ws != nil: i.ws.close()
 
-proc syncPeer*(i: Internet, peer: string): Future[Stats] {.async.} =
-  ## sync with a device of the plant that is on the relay: connect (no candidates), then the pipe as side a
+proc openTo(i: Internet, peer: string): Future[Stream] {.async.} =
+  ## a stream to a device in the room: connect with our candidates, then direct or the pipe (side a)
   let relay = i.relayOf()
   if i.state != "online" or relay.len == 0: raise newException(NetError, "not on the relay")
   let id = newId()
   let f = newFuture[JNode]("relay answer")
   i.waiting[id] = f
+  let (u, ours) = await i.candidates()
   await i.ws.sendText(toText(newObj(@[("t", newStr("connect")), ("to", newStr(peer)), ("id", newStr(id)),
-                                      ("cand", newArr())])))
+                                      ("cand", candArr(ours))])))
   if not await withTimeout(f, 15_000):
     i.waiting.del id
+    if u != nil: u.close()
     raise newException(NetError, "no answer through the relay")
   let a = f.read
-  if a["t"].s != "accept": raise newException(NetError, "the device " & (if a["t"].s == "gone": "is not on the relay" else: "refused"))
-  let st = await i.openPipe(relay, id, "a")
+  if a["t"].s != "accept":
+    if u != nil: u.close()
+    raise newException(NetError, "the device " & (if a["t"].s == "gone": "is not on the relay" else: "refused"))
+  return await i.meet(u, ours, theirCands(a), relay, id, "a")
+
+proc syncPeer*(i: Internet, peer: string): Future[Stats] {.async.} =
+  ## sync with a device of the plant that is on the relay
+  let st = await i.openTo(peer)
   result = await syncOver(i.n, i.id, st, peer, hooks = i.hooks)
   if i.onSynced != nil: i.onSynced(peer, result, true)
+
+proc askPeer*(i: Internet, peer: string, msg: JNode, expectPeer = ""): Future[JNode] {.async.} =
+  ## one question instead of a sync (§16, §21a) to a device in the room
+  let st = await i.openTo(peer)
+  result = await askOver(i.n, i.id, st, expectPeer, msg)
