@@ -1,0 +1,5 @@
+tex/
+.godot/
+export/
+*.import
+built/

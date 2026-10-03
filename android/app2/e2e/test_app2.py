@@ -135,6 +135,38 @@ class Phone(unittest.TestCase):
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
             time.sleep(3)
 
+    def test_diagnostics(self):
+        """decision 0040: the manager's phone switches reports on; an event is sealed into a report the server stores
+        but can't open; the phone (holding the report key) shows it under Manage → Diagnostics. Needs the debug build
+        (DebugDiagReceiver records the event: a real report waits for a real error)."""
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            ui.tap('Manage', exact=True)
+            ui.tap('Account', exact=True)
+            ui.scroll_to('Switch reports on', exact=True, tries=12)
+            ui.tap('Switch reports on', exact=True)
+            self.wait_server(lambda: self.boss.req('GET', '/api/diagnostics')['on'], 'the setting never reached the server')
+            ui.adb('shell', 'am', 'broadcast', '-a', 'kks.explorer.DEBUG_DIAG', '-p', PKG, '--es', 'text', 'e2e-diagnostics-event')
+            reports = self.wait_server(lambda: self.boss.req('GET', '/api/diagnostics')['reports'], 'no report reached the server', tries=120)
+            self.assertIsNone(reports[0]['report'], 'a server must not open reports (it holds no person secret)')
+            self.assertFalse(self.boss.req('GET', '/api/diagnostics')['can_switch'])
+            ui.sh('input', 'keyevent', '4')
+            ui.tap('Diagnostics', exact=True)
+            ui.find('e2e-diagnostics-event', timeout=15)
+        finally:
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
+
     def test_flow(self):
         # join through the server (PROTOCOL-v2 §16 enroll over TLS)
         ui.tap('Join through a server', exact=True)

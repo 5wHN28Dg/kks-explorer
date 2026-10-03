@@ -538,8 +538,53 @@ def crypto_file():
     return V
 
 
+# ====================================================================== v2-reports (§13a, added 2026-10-03)
+def reports_file():
+    W = World()
+    M, B = pid('manager'), pid('bob')
+    rk = W.key('report-key')
+    rks = P.key_string(rk)
+    msecret = seed('manager-person-secret')
+    plain = {'device': W.peer('bob-phone'), 'app': 'android', 'version': '0.9.0', 'platform': 'Android 10',
+             'model': 'SM-N960F', 'from': T0 + 1500, 'to': T0 + 1600,
+             'events': [{'at': T0 + 1500, 'kind': 'sync', 'text': 'sync with 192.0.2.1:8421: connection refused'},
+                        {'at': T0 + 1600, 'kind': 'crash', 'text': 'IllegalStateException: example\n  at kks.explorer.X'}]}
+    sealed = C.ecies_seal(rks, 'kks-report', P.canonical(plain), eph=W.key('report-eph'), nonce=bytes(range(12)))
+    assert json.loads(C.ecies_open(rk, sealed)) == plain
+    key_body = {'key': rks, 'private': P.b64u(bytes.fromhex(private_scalar_hex(rk)))}
+    W.genesis('mgr-laptop', 1000, M, 'hashim', 'Hashim M')
+    W.w('mgr-laptop', 1100, 'person', person(B, 'bob', 'Bob User', 'user'))
+    W.w('mgr-laptop', 1200, 'device_cert', {'device': W.peer('bob-phone'), 'person': B, 'label': 'phone'})
+    W.w('mgr-laptop', 1300, 'private', R.private_body(msecret, M, 'report_key', key_body, nonce=bytes(12)))
+    W.w('mgr-laptop', 1310, 'setting', {'key': 'diagnostics', 'value': {'key': rks}})
+    W.w('bob-phone', 1700, 'report', {'sealed': sealed})
+    W.w('bob-phone', 1710, 'report', {'sealed': {**sealed, 'purpose': 'kks-backup'}})
+    W.w('bob-phone', 1720, 'report', {'sealed': {**sealed, 'extra': 1}})
+    W.w('bob-phone', 1730, 'report', {'sealed': {**sealed, 'v': True}})
+    W.w('bob-phone', 1740, 'report', {'sealed': {**sealed, 'ct': 'A' * 65_537}})
+    W.w('bob-phone', 1750, 'report', {'sealed': sealed, 'to': 'x'})
+    W.w('stranger', 1760, 'report', {'sealed': sealed})
+    last = len(W.logs['bob-phone'].entries)
+    W.w('mgr-laptop', 1800, 'revoke', {'device': W.peer('bob-phone'), 'last_seq': last})
+    W.w('bob-phone', 1900, 'report', {'sealed': sealed})
+    W.w('mgr-laptop', 2000, 'report', {'sealed': sealed})
+    W.w('mgr-laptop', 2100, 'setting', {'key': 'diagnostics', 'value': None})
+    sc = W.scenario('diagnostics reports (§13a)', [
+        'reports: bob-phone the valid report at 1700, mgr-laptop its report at 2000 (a manager device may report too)',
+        'bad_body: purpose not kks-report, an extra sealed key, v not the integer 2, ct over 65 536, an extra body key',
+        'not_certified: the stranger; revoked: bob-phone after its revoke',
+        'settings.diagnostics ends null (switched off); the report_key private entry is stored opaquely'])
+    return {'protocol': 2, 'note': NOTE,
+            'seal': {'report_key_private_scalar_hex': private_scalar_hex(rk), 'report_key': rks,
+                     'eph_private_scalar_hex': private_scalar_hex(W.key('report-eph')), 'nonce_hex': bytes(range(12)).hex(),
+                     'plaintext': plain, 'plaintext_bytes_hex': P.canonical(plain).hex(), 'sealed': sealed},
+            'report_key_private': {'secret_hex': msecret.hex(), 'person': M, 'plaintext': {'type': 'report_key', 'body': key_body},
+                                   'body': R.private_body(msecret, M, 'report_key', key_body, nonce=bytes(12))},
+            'scenarios': [sc]}
+
+
 FILES = {'v2-core.json': core, 'v2-replay.json': replay_file, 'v2-malformed.json': malformed_file,
-         'v2-crypto.json': crypto_file}
+         'v2-crypto.json': crypto_file, 'v2-reports.json': reports_file}
 
 
 if __name__ == '__main__':

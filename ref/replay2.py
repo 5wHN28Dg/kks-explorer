@@ -46,7 +46,9 @@ BODY = {
     'vote': ('entry', 'on'),
     'comment': ('entry', 'text'),
     'private': ('person', 'nonce', 'ct'),
+    'report': ('sealed',),
 }
+SEALED_KEYS = ('v', 'purpose', 'epk', 'nonce', 'ct')
 STMT = {'manager': ('kind', 'person'), 'device': ('kind', 'device', 'person'), 'rotate': ('kind', 'root'),
         'revoke': ('kind', 'device', 'last_seq'), 'backup_key': ('kind', 'key'), 'import': ('kind', 'v1', 'state')}
 IMPORT_KEYS = ('persons', 'settings', 'equipment', 'reviews', 'links', 'photos', 'added_tags')
@@ -198,6 +200,7 @@ class _Run:
         self.links, self.photos, self.tags = set(), {}, {}
         self.proposals, self.pending, self.waiting, self.votes = {}, {}, {}, {}
         self.conflicts, self.private, self.ignored = [], {}, {}
+        self.reports = {}
         self.revokes = []
         self.authors, self.decisions, self.history, self.at = {}, {}, [], None
         self.comments = {}
@@ -365,6 +368,17 @@ class _Run:
         _need(b['person'] == author, 'not_allowed')
         self.private.setdefault(author, []).append(eid)
 
+    def t_report(self, e, eid, author, role):
+        # §13a: a diagnostics report sealed to the manager's report key; any certified device, stored opaquely
+        s = e['body']['sealed']
+        _need(isinstance(s, dict))
+        _keys(s, SEALED_KEYS)
+        _need(s['v'] == 2 and type(s['v']) is int and s['purpose'] == 'kks-report')
+        _need(_match(P.KEYSTR_RE, s['epk']))
+        _need(_match(B64U_RE, s['nonce']) and len(s['nonce']) == 16)
+        _need(_match(B64U_RE, s['ct']) and 22 <= len(s['ct']) <= 65_536)
+        self.reports.setdefault(e['peer'], []).append(eid)
+
     # ----- data: self-approved or proposals -----
     def _data(self, e, eid, author, role):
         _check_data(e['type'], e['body'])
@@ -526,6 +540,7 @@ class _Run:
             'proposals': self.proposals, 'conflicts': self.conflicts,
             'votes': {k: sorted(v) for k, v in self.votes.items() if v and k in self.proposals},
             'private': self.private, 'ignored': self.ignored, 'imported': self.imported,
+            **({'reports': self.reports} if self.reports else {}),
         }
 
 

@@ -79,9 +79,11 @@ plugged back in. So on this phone, background sync happens while charging or wit
 A second hour (14:15–15:15, app forced to `active` with `am set-standby-bucket`): again no run. The usage log shows
 why: 34 s after the forced change, and at 12:30:23 seconds after Home, the bucket went back to `rare` with reason `f`
 (forced by the system). Something with system rights on MagicOS (its power manager) puts the app in `rare` as soon
-as it leaves the screen; stock Android doesn't. Not on the battery-optimization exemption list. Next test: with the
-person's MagicOS settings changed (Battery → App launch → manage manually, allow running in the background), then
-decide what the app should say or ask.
+as it leaves the screen; stock Android doesn't. Third hour with the app "Unrestricted" (battery-optimization
+exemption): bucket `exempted`, still no run, the job held only by Honor's `HN_USER_EXPERIENCE` constraint. Fourth hour
+with MagicOS "App launch" set to manual: bucket `active`, still no run; the job had lost its system registration
+(WorkManager: Job Id null) and the system log shows "job is prohibit by iaware" for many apps. On this phone,
+background sync happens when the app is open or charging; the app now says so (Manage → Account) when it detects it.
 
 All within the rules: the first sheet is well under 3 s on the Note 9, replay well under 2 s, memory under 300 MB.
 A 12 MP photo takes about 55 s to encode at effort 9 on the Note 9: the progress bar is needed there.

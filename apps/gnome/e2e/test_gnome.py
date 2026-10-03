@@ -10,6 +10,9 @@ from gi.repository import Atspi  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 APP = sys.argv[1] if len(sys.argv) > 1 else '/tmp/kksgnome/kks_explorer'
+HERE = os.path.dirname(os.path.abspath(__file__))
+VENV_PY = os.path.join(HERE, '..', '..', '..', '.venv', 'bin', 'python')   # OpenCV, for the QR video
+INVITE = '{"kks_invite":1,"root":"TEST-ROOT","peer":"TESTPEER","addrs":["192.0.2.1:8421"],"token":"camera-test","plant":"Camera test"}'
 SERVER = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kksimp/kks_import'
 SHOTS = os.environ.get('KKS_SHOTS', '/tmp/kks-gnome-shots')
@@ -92,6 +95,27 @@ class Gnome(unittest.TestCase):
         p = subprocess.Popen([APP], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.apps.append(p)
         return atspi.app_pid(p.pid)
+
+    def test_scan_camera(self):
+        """decision 0039: the scan dialog reads an invite from the camera; KKS_CAMERA_FILE plays a video of a QR code
+        through the same GStreamer pipeline (a QR in front of a real webcam needs a person)"""
+        if not os.path.exists(VENV_PY) or not shutil.which('ffmpeg'):
+            self.skipTest('needs the importer .venv (OpenCV) and ffmpeg to make the QR video')
+        video = os.path.join(self.dir, 'qr.mp4')
+        subprocess.run([VENV_PY, os.path.join(HERE, 'make_qr_video.py'), video, INVITE], check=True)
+        a = self.start_app('scanner', KKS_CAMERA_FILE=video)
+        atspi.click(atspi.find(a, 'button', name='Join with a code'))
+        atspi.click(atspi.find(a, 'button', name='Scan with the camera…'))
+        field = atspi.find(a, 'text', name='Invite text')
+        got = ''
+        for _ in range(40):
+            time.sleep(0.5)
+            for c in [field] + list(atspi.walk(field)):
+                t = c.get_text_iface()
+                if t is not None and t.get_character_count():
+                    got = atspi.Atspi.Text.get_text(t, 0, t.get_character_count())
+            if got: break
+        self.assertEqual(got, INVITE)
 
     def test_flow(self):
         a = self.start_app('laptop')

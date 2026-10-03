@@ -4,5 +4,8 @@
         <receiver android:name="kks.explorer.DebugSyncReceiver" android:exported="true">
             <intent-filter><action android:name="kks.explorer.DEBUG_SYNC" /></intent-filter>
         </receiver>
+        <receiver android:name="kks.explorer.DebugDiagReceiver" android:exported="true">
+            <intent-filter><action android:name="kks.explorer.DEBUG_DIAG" /></intent-filter>
+        </receiver>
     </application>
 </manifest>

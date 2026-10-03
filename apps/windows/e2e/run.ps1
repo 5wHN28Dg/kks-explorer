@@ -8,6 +8,7 @@ if (-not $Keep) {
   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\KKS Explorer" -ErrorAction SilentlyContinue
   $env:KKS_TRACE = "1"
   $env:KKS_TEST_PHOTO = "C:\kks\photo.jpg"      # the photo step picks this instead of a file dialog
+  $env:KKS_CAMERA_FILE = "C:\kks\qr.mp4"       # the scan window plays this through Media Foundation (no camera here)
   Start-Process C:\kks\KKSExplorer.exe
 }
 & C:\kks\uiadrive.exe KKSExplorer.exe "C:\kks\$Script" $log

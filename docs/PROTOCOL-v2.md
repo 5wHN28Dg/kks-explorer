@@ -192,6 +192,7 @@ Box coordinates are integers, in tenths of a sheet-image pixel. A body must have
 | `vote` | `{entry, on}`: advisory (photo choice); `on:false` takes the vote back | anyone certified |
 | `comment` | `{entry, text}`: a note on an entry; changes no state, replay lists it as side output `comments` | anyone certified |
 | `private` | `{person, nonce, ct}` (§13) | a device of that person |
+| `report` | `{sealed}` (§13a) | any certified device |
 
 ### 9a. Body rules
 
@@ -221,6 +222,8 @@ replay only accepts or ignores.
   - `suffix` `[A-Z0-9]{0,4}`, `isa` null or `[A-Z]{1,6}`, `note` 0–500.
 - **`approve`, `reject`, `withdraw`, `vote`, `comment`:** `entry` 64 hex; `note` 0–500; `on` boolean; `text` 1–500.
 - **`private`:** `nonce` 16 base64url characters, `ct` 22–1 400 000 base64url characters.
+- **`report`:** `sealed` is a §20 object with exactly `{v, purpose, epk, nonce, ct}`: `v` the integer 2, `purpose`
+  `kks-report`, `epk` a key string, `nonce` 16 base64url characters, `ct` 22–65 536 base64url characters.
 - **`root` and genesis key fields:** `root` in genesis is a key string (§2). `rotate.root` and `backup_key.key` are key
   strings.
 - **Genesis `import`:** see §21 for the state rules.
@@ -318,6 +321,30 @@ first device and handed to their other devices (§17), never written to the log.
   - `ct` includes the 16-byte tag at the end.
 - Replay stores private entries opaquely under their person. Only a device holding the secret decrypts them.
 
+## 13a. Diagnostics reports (added 2026-10-03)
+
+Errors, crashes and sync failures a device saw, for the manager only (decision 0040).
+- **Switching on:** a manager's own device (not a server: it holds no person secret) makes a P-256 *report key* and
+  writes two entries:
+  - a `private` entry (§13) for the manager person, plaintext `{"type":"report_key", "body":{"key": <the public key
+    string>, "private": <the 32-byte scalar, base64url>}}`, so every device of the manager can read reports;
+  - the setting `diagnostics` = `{"key": <the public key string>}`.
+  The setting `diagnostics` = `null` switches it off. A new key replaces the old one; reports sealed to an old key
+  stay readable by devices that hold its `report_key`.
+- **Reporting:** while the setting is on, a device writes a `report` entry, ECIES (§20) to the setting's key with
+  purpose `kks-report`. Plaintext = canonical JSON of `{"device", "app", "version", "platform", "model", "from",
+  "to", "events": [{"at", "kind", "text", "n"}, …]}`:
+  - `app`: `android`, `gnome`, `windows` or `server`; `platform`/`model`: free text ≤ 80;
+  - `from`/`to`: wall-clock ms of the first and last event; `kind`: `crash`, `error` or `sync`; `text` ≤ 4 000;
+  - `n`: how many times the same `kind` + `text` happened since the last report (optional, 1 when absent; `at` is
+    the latest time);
+  - no plant data, no passwords, no names beyond the device's label.
+
+  At most one report per device per 6 hours, only with events not reported before, and at most 32 KB of plaintext
+  (the oldest events are dropped first).
+- Replay checks the body (§9a) and keeps reports opaquely by device (§14 `reports`); only a holder of the report key
+  opens them.
+
 ## 14. Replay output
 
 The state is a JSON object:
@@ -337,6 +364,7 @@ The state is a JSON object:
 - `conflicts [...]` (in the order they happened);
 - `votes {entry: [person IDs, sorted]}` (non-empty only);
 - `private {person: [entry IDs in order]}`;
+- `reports {device: [entry IDs in order]}`, present only when there is at least one report (§13a);
 - `ignored {entry: code}`;
 - `imported` (the §21 `v1` hash or null).
 

@@ -738,22 +738,46 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
     icons in the bottom bar (`Glyphs`) with one shared label size that shrinks until "Procedures" fits; pictures
     open full screen with pinch/double-tap zoom (`ZoomImage`).
 
-**Agreed next (2026-10-02, the user's decisions; nothing started):**
-1. **Webcam QR scanning in the GNOME and Windows apps** (the user wants both). First a decision record per policy:
-   GNOME = Camera portal + PipeWire (frames into zxing-cpp); Windows = Media Foundation (the VMs have no camera:
-   needs a real laptop or a virtual camera for tests). Verified so far: the browser scanner (common.js `K.scanQr`,
-   zxing-cpp WASM in Zen/Firefox) read an invite QR shown on the Note 9 through the laptop webcam, 2026-10-02.
-2. **Diagnostics and crash reports to the manager**, as proposed to and accepted by the user:
-   - each device keeps a small local log: errors, crashes with stack traces, sync failures, device model, app version;
-     no plant data, passwords or names beyond the device label;
-   - reports travel by normal sync as private entries readable only by the manager (like course progress, §13);
-   - Manage shows them per device, with "copy for Claude";
-   - teammates are told in the app; the manager can switch it per plant.
-   It needs a PROTOCOL-v2 section (new private entry kind) + decision record before code; all three apps.
+**Done 2026-10-03 (agreed with the user 2026-10-02):**
+1. **Webcam QR scanning in the GNOME and Windows apps** (decision 0039). GNOME: `kks_camera.c` (camera portal →
+   `OpenPipeWireRemote` fd → GStreamer `pipewiresrc` → GRAY8 appsink; `v4l2src` without a portal), dialog in
+   `camera.nim`, button "Scan with the camera…" on Join with a code. GStreamer headers in ~/.local/kksdev/root (`.pc`
+   prefixes rewritten like GTK's). Windows: `kks_camera.cpp` (Media Foundation Source Reader, RGB32 → grey on a worker
+   thread; mfplat/mf/mfreadwrite loaded at run time so N editions still start; `initguid.h` for the GUIDs), scan
+   window in `camera.nim`, zxing-cpp reader `kks_qr_decode` in kks_qr.cpp. `KKS_CAMERA_FILE` plays a video through the
+   same pipeline (tests; `apps/gnome/e2e/make_qr_video.py` makes one with OpenCV + ffmpeg).
+   Verified: GNOME test_scan_camera (video file) and the real webcam through the portal on this laptop (frames,
+   no permission prompt for the unsandboxed app); Windows 10 + 11 test_scan_camera (video through MF), the VM
+   without a camera says so, and this laptop's webcam passed into the Windows 11 VM (`virsh attach-device` USB
+   13d3:5463, detached after) delivered frames. Verified 2026-10-03 with the user: GNOME scanned the Note 9's invite
+   QR through the laptop webcam and joined the measurement plant ("testingqrcamera · vivobook-s14x"). NOT verified:
+   the same on Windows with a real webcam and a real QR (waits for the borrowed laptop).
+2. **Diagnostics reports to the manager** (decision 0040, PROTOCOL-v2 §13a): entry type `report` {sealed} (ECIES to
+   the setting `diagnostics.key`, purpose `kks-report`); the report key's private half is a `private` entry
+   (`report_key`) of the manager. `core/src/kks/diagnostics.nim` (record with repeat counts, maybeReport ≤ 1 per 6 h,
+   ≤ 32 KB, enable/disable, readReports), `/api/diagnostics` GET/POST (server mode refuses the switch), config
+   `diagnostics`. Hooks: appstate (unexpected sync failures, "no successful sync for 24 h", report after each round),
+   GNOME/Windows `errorHook` in the callback guards, server HTTP 500s + hourly report, Android
+   `sync/Diagnostics.kt` (uncaught-exception handler → crash.txt → recorded at the next start, sync failures, report
+   after rounds). UI: Account → Diagnostics reports (state; the manager's switch) and Manage → Diagnostics (reports,
+   Copy / Copy all) on all three apps. Vectors `ref/vectors/v2-reports.json` (new; older files unchanged); Python
+   reference + Nim core agree. Tests: core test_diagnostics (6), Android e2e test_diagnostics (debug-only
+   `DebugDiagReceiver`). Connection-level failures (refused, timed out) are not recorded: a device that is off is
+   normal.
 3. **Honor 600 background sync:** in the `rare` standby bucket the worker never ran in 1 h unplugged
    (MEASUREMENTS.md). A second hour forced to `active` didn't help: MagicOS forces the app back to `rare` (reason `f`)
-   seconds after it leaves the screen. Next: an hour with MagicOS "App launch" set to manual / background allowed by
-   the user, then decide between an in-app notice with a settings button, asking for the exemption, or accepting it.
+   seconds after it leaves the screen. Third hour (2026-10-03 08:40): the app on the battery-optimization exemption
+   list ("Unrestricted", `cmd deviceidle whitelist +kks.explorer.v2`): bucket `exempted` (5), still no run: only
+   Honor's `HN_USER_EXPERIENCE` constraint unsatisfied. Fourth hour (MagicOS "App launch" set to manual by the user):
+   bucket stayed `active`, but the job lost its JobScheduler registration after its run (WorkManager diagnostics:
+   SyncWorker ENQUEUED with Job Id null; `adb shell am broadcast -a androidx.work.diagnostics.REQUEST_DIAGNOSTICS -p
+   kks.explorer.v2`), and the system log shows "job is prohibit by iaware" for many apps' jobs (iAware = MagicOS's
+   power manager). Conclusion: on Honor, background sync every 15 min is not reliable whatever the app does within
+   Android's rules; foreground service / FCM push rejected (battery, notification, Google dependency). Built instead
+   (2026-10-03): `Sync.backgroundLimit` (isBackgroundRestricted, standby bucket ≥ rare, or the worker hasn't run for
+   3 h although scheduled that long: SyncWorker records `worker_last` / `bg_since`) → a notice in Manage → Account
+   with a button to the app's system settings, and a diagnostics event. Verified on the Honor (forced `rare` bucket,
+   restored).
 
 ## Backlog (rough priority)
 

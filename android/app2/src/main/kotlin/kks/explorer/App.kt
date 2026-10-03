@@ -13,6 +13,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         Core.open(this)
+        kks.explorer.sync.Diagnostics.install(this)
         Core.listeners.add { why -> if (why.startsWith("wiped:")) removed(this, why.removePrefix("wiped:")) }
         kks.explorer.sync.SyncWorker.schedule(this)
     }

@@ -3,7 +3,7 @@
 ## unchanged. One thread owns the node (decision 0030).
 
 import std/[asyncdispatch, asynchttpserver, base64, os, osproc, posix, strutils, tables, times, uri, sets, algorithm]
-import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses]
+import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics]
 import dbstore, tls, net, argon2, mdns, internet
 
 const
@@ -1041,6 +1041,19 @@ proc serve*(s: Server): Future[void] =
   # none: the other devices sync with it on their rounds, as on the LAN)
   s.internet = newInternet(s.n, s.id, hooks)
   s.internet.start()
+  # diagnostics reports (§13a): the server's own errors, at most every 6 hours, while the manager has them on
+  proc reportLoop() {.async.} =
+    const version = staticRead("../../../../VERSION").strip
+    var os = "Linux"
+    try:
+      for line in readFile("/etc/os-release").splitLines:
+        if line.startsWith("PRETTY_NAME="): os = line[12 .. ^1].strip(chars = {'"'})
+    except IOError: discard
+    while true:
+      await sleepAsync(3_600_000)
+      try: discard s.n.maybeReport("server", version, os, "", nowS() * 1000)
+      except CatchableError: discard
+  asyncCheck reportLoop()
   s.api.relayChanged = proc () = s.internet.restart()
   # the status admin.html's Devices page shows (the v1 shape: syncs by device, found on the Wi-Fi, internet)
   var syncs = newObj()
@@ -1072,5 +1085,7 @@ proc serve*(s: Server): Future[void] =
         await s.sendJson(req, e.code, O(("error", S(e.msg))))
       except CatchableError as e:
         stderr.writeLine "error: " & e.msg & "\n" & e.getStackTrace()
+        try: s.n.record("error", req.url.path & ": " & $e.name & ": " & e.msg & "\n" & e.getStackTrace(), nowS() * 1000)
+        except CatchableError: discard
         await s.sendJson(req, 500, O(("error", S("internal error (see the server log)"))))
   http.serve(Port(s.cfg.port), cb, s.cfg.address)

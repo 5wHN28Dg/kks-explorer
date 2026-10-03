@@ -24,7 +24,13 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
         fun metered(ctx: Context) = ctx.getSharedPreferences("app", Context.MODE_PRIVATE).getBoolean("sync_metered", false)
 
         /** (Re)schedule; UPDATE keeps the timing of a scheduled job and only changes its network rule. */
+        /** when background sync was first scheduled, and when the worker last ran (the notice in Manage → Account) */
+        fun since(ctx: Context) = ctx.getSharedPreferences("app", Context.MODE_PRIVATE).getLong("bg_since", 0L)
+        fun lastRun(ctx: Context) = ctx.getSharedPreferences("app", Context.MODE_PRIVATE).getLong("worker_last", 0L)
+
         fun schedule(ctx: Context) {
+            val p = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+            if (!p.contains("bg_since")) p.edit().putLong("bg_since", System.currentTimeMillis()).apply()
             val net = if (metered(ctx)) NetworkType.CONNECTED else NetworkType.UNMETERED
             val req = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(net).build())
@@ -40,6 +46,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
 
     override fun doWork(): Result {
         val ctx = applicationContext
+        ctx.getSharedPreferences("app", Context.MODE_PRIVATE).edit().putLong("worker_last", System.currentTimeMillis()).apply()
         if (!Sync.joined()) return Result.success()                              // not joined yet: nothing to sync
         if (!metered(ctx) && !Sync.unmetered(ctx)) return Result.success()      // the setting just changed
         Sync.start(ctx)

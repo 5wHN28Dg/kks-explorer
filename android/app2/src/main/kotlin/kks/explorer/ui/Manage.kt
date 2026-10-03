@@ -9,6 +9,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import org.json.JSONArray
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -55,6 +59,7 @@ fun Manage(snack: SnackbarHostState) {
                         if (admin) { add(Triple("history", "History", "Every change, with revert and restore")); add(Triple("people", "People", "Accounts and roles")) }
                         add(Triple("devices", "Devices", "Your devices" + if (admin) ", all devices, joining" else ""))
                         add(Triple("account", "Account", "Your details, sync"))
+                        if (cfg.optString("role") == "manager") add(Triple("diagnostics", "Diagnostics", "Error reports from the plant's devices"))
                     }
                     for ((id, title, sub) in pages) ListItem(headlineContent = { Text(title) }, supportingContent = { Text(sub) },
                         modifier = Modifier.fillMaxWidth().clickable { page = id })
@@ -65,6 +70,7 @@ fun Manage(snack: SnackbarHostState) {
                 "people" -> People(rev, say)
                 "devices" -> Devices(rev, admin, say)
                 "account" -> Account(rev, say)
+                "diagnostics" -> DiagnosticsReports(rev)
             }
         }
     }
@@ -340,6 +346,22 @@ private fun Account(rev: Int, say: (String) -> Unit) {
                 val on = kks.explorer.sync.Internet.online.size
                 if (st != "off") Dim(if (st == "online") "Internet: on the relay, $on other device${if (on == 1) "" else "s"} online" else "Internet: $st")
             }
+            key(tick) {
+                Sync.backgroundLimit(ctx)?.let { why ->
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("This phone limits background sync", style = MaterialTheme.typography.titleSmall)
+                            Text("It syncs when the app is open, when you press Sync now, and often while charging, but not every 15 minutes on its own ($why). " +
+                                 "Some phones (Honor, Huawei, Xiaomi and others) do this whatever the app asks. If you want, allow background activity for KKS Explorer in its settings (Battery, App launch).",
+                                 style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = {
+                                ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.fromParts("package", ctx.packageName, null)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }) { Text("Open the app's settings") }
+                        }
+                    }
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Sync on metered networks (mobile data)", Modifier.weight(1f))
                 Switch(metered, { metered = it; SyncWorker.setMetered(ctx, it) })
@@ -371,6 +393,56 @@ private fun Account(rev: Int, say: (String) -> Unit) {
                     say(msg)
                 }
             }) { Text("Sync now") }
+        }
+        DiagnosticsCard(rev, say)
+    }
+}
+
+/** decision 0040: everyone sees whether reports are on; the manager switches them from their own device */
+@Composable
+private fun DiagnosticsCard(rev: Int, say: (String) -> Unit) {
+    val d = remember(rev) { call("GET", "/api/diagnostics").json }
+    val on = d.optBoolean("on")
+    Section("Diagnostics reports", if (on) "On: this phone sends the manager short error reports (crashes, failed syncs, app errors). Never plant data or passwords."
+                                   else "Off: this phone sends no error reports.") {
+        if (d.optBoolean("can_switch")) Button(onClick = {
+            val r = call("POST", "/api/diagnostics", JSONObject().put("on", !on))
+            say(r.error ?: if (on) "Reports off" else "Reports on: every device learns it at its next sync")
+        }) { Text(if (on) "Switch reports off" else "Switch reports on") }
+    }
+}
+
+/** the manager's reports, newest first, each with Copy (for Claude); "Copy all" on top */
+@Composable
+private fun DiagnosticsReports(rev: Int) {
+    val d = remember(rev) { call("GET", "/api/diagnostics").json }
+    val reports = d.optJSONArray("reports") ?: JSONArray()
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    val fmt = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+    LazyColumn(Modifier.fillMaxSize()) {
+        if (!d.optBoolean("on")) item { Dim("Reports are off (Account → Diagnostics reports).") }
+        if (d.has("can_read") && !d.optBoolean("can_read")) item { Dim("This phone holds no report key yet. Reports open on the device you switched them on from, and on your other devices after they synced with it.") }
+        if (reports.length() == 0) item { Dim("No reports yet.") }
+        else item { Button(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(reports.toString())) }) { Text("Copy all reports (for Claude)") } }
+        items((0 until reports.length()).toList()) { i ->
+            val r = reports.getJSONObject(i)
+            val rep = r.optJSONObject("report")
+            Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) { Column(Modifier.padding(12.dp)) {
+                Text(r.optString("username").ifEmpty { "?" } + " · " + r.optString("label").ifEmpty { "device" } + " · " + fmt.format(Date(r.optLong("at"))),
+                     style = MaterialTheme.typography.titleSmall)
+                if (rep == null) Dim("Not readable here: sealed to a report key this phone doesn't hold.")
+                else {
+                    Dim(rep.optString("app") + " " + rep.optString("version") + " · " + rep.optString("platform") + " · " + rep.optString("model"))
+                    val evs = rep.optJSONArray("events") ?: JSONArray()
+                    for (j in 0 until minOf(evs.length(), 30)) {
+                        val ev = evs.getJSONObject(j)
+                        val n = ev.optInt("n", 1)
+                        Text(ev.optString("kind") + (if (n > 1) " ×$n" else "") + " · " + fmt.format(Date(ev.optLong("at"))) + " · " + ev.optString("text").lineSequence().first(),
+                             style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(r.toString())) }) { Text("Copy") }
+            } }
         }
     }
 }

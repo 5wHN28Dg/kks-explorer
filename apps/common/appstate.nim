@@ -4,7 +4,7 @@
 ## parts: crypto provider, TLS, mDNS, the storage key's home, where the device key lives, local addresses.
 
 import std/[asyncdispatch, httpclient, os, strutils, tables, times, uri, sets, sequtils, nativesockets, selectors]
-import kks/[json, util, crypto, proto, node, api, plant, sync, extras, bundle, plantdata, invites]
+import kks/[json, util, crypto, proto, node, api, plant, sync, extras, bundle, plantdata, invites, diagnostics]
 import kksl/[dbstore, net, internet]
 when defined(windows):
   import kks/provider_cng
@@ -88,6 +88,37 @@ else:
 
 proc keyJson(k: PrivateKey): JNode = newObj(@[("scalar", newStr(hex(k.scalar))), ("pub", newStr(b64u(k.pub)))])
 proc keyOf(j: JNode): PrivateKey = PrivateKey(scalar: unhex(j["scalar"].s), pub: unb64u(j["pub"].s))
+
+const AppVersion* = staticRead("../../VERSION").strip   ## the program's version (VERSION at build time)
+
+proc platformName*(): string =
+  ## for diagnostics reports (§13a): the OS, nothing personal
+  when defined(windows): "Windows"
+  else:
+    try:
+      for line in readFile("/etc/os-release").splitLines:
+        if line.startsWith("PRETTY_NAME="): return line[12 .. ^1].strip(chars = {'"'})
+    except IOError: discard
+    "Linux"
+
+proc diag*(a: App, kind, text: string) =
+  ## keep an event for the manager's diagnostics reports (decision 0040); never raises
+  try: a.n.record(kind, text, int64(epochTime() * 1000))
+  except CatchableError: discard
+
+proc reportDiagnostics*(a: App, force = false): bool =
+  ## a report, if the manager has them on and something new happened (at most every 6 h unless `force`)
+  try: a.n.maybeReport(when defined(windows): "windows" else: "gnome", AppVersion, platformName(), "",
+                       int64(epochTime() * 1000), force)
+  except CatchableError: false
+
+proc expectedFailure*(msg: string): bool =
+  ## a device that is simply off or out of reach: normal, not worth a report
+  let m = msg.toLowerAscii
+  for s in ["could not connect", "timed out", "refused", "unreachable", "no route", "not on the relay",
+            "connection closed", "is not on the relay", "no answer"]:
+    if s in m: return true
+  false
 
 proc changed*(a: App, why: string) =
   for f in a.onChange: f(why)
@@ -341,6 +372,7 @@ proc syncAll*(a: App): Future[int] {.async.} =
       p.port = port
       p.lastError = e.msg
       a.peers[peer] = p
+      if not expectedFailure(e.msg): a.diag("sync", "sync with " & host & ":" & $port & ": " & e.msg)
   # then the devices on the relay that no LAN sync reached and that did not sync with us since the round started
   if a.internet != nil and a.internet.state == "online":
     for peer in a.internet.online.toSeq:
@@ -353,6 +385,13 @@ proc syncAll*(a: App): Future[int] {.async.} =
         p.host = "relay"
         p.lastError = e.msg
         a.peers[peer] = p
+        if not expectedFailure(e.msg): a.diag("sync", "sync through the relay: " & e.msg)
+  # gone quiet: no successful sync with anyone for a day although there were devices to try
+  var lastOk = 0'i64
+  for _, p in a.peers: lastOk = max(lastOk, p.lastOk)
+  if targets.len > 0 and lastOk > 0 and nowMs() - lastOk > 24 * 3600 * 1000:
+    a.diag("sync", "no successful sync for more than 24 hours")
+  discard a.reportDiagnostics()
   a.changed("sync")
 
 proc snapshot*(a: App): JNode =

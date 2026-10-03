@@ -121,6 +121,19 @@ class Windows(unittest.TestCase):
         ok, log = ui(name, lines, keep)
         self.assertTrue(ok, log)
 
+    def test_scan_camera(self):
+        """decision 0039: the scan window reads an invite through Media Foundation; KKS_CAMERA_FILE (run.ps1) plays a
+        video of a QR code through the same Source Reader (the VMs have no camera)"""
+        venv_py = os.path.join(REPO, '.venv', 'bin', 'python')
+        if not os.path.exists(venv_py) or not shutil.which('ffmpeg'):
+            self.skipTest('needs the importer .venv (OpenCV) and ffmpeg to make the QR video')
+        invite = '{"kks_invite":1,"root":"TEST-ROOT","peer":"TESTPEER","addrs":["192.0.2.1:8421"],"token":"camera-test","plant":"Camera test"}'
+        video = os.path.join(tempfile.gettempdir(), 'qr.mp4')
+        subprocess.run([venv_py, os.path.join(REPO, 'apps', 'gnome', 'e2e', 'make_qr_video.py'), video, invite], check=True)
+        put(video)
+        self.check('scan.uia', ['click\tJoin with a code', 'click\tScan with the camera…',
+                                'value\tInvite text\t"token":"camera-test"\t30'], keep=False)
+
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a question answered
         (progress in the window title); a figure is a named window; RichEdit text is there"""

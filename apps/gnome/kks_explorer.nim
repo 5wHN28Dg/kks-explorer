@@ -370,6 +370,7 @@ proc onUsr2(sig: cint) {.noconv.} = figRequested = true
 proc main() =
   if getEnv("KKS_TIMING").len > 0: viewer.startedAt = epochTime()
   let w = Win(a: openApp())
+  errorHook = proc (text: string) = w.a.diag("error", text)
   w.a.startSync(port = parseInt(getEnv("KKS_SYNC_PORT", "8421")), discovery = getEnv("KKS_NO_MDNS").len == 0)
   # asyncdispatch inside GLib: its epoll fd wakes us, a timer covers its timers
   discard watchFd(asyncFd(), proc (): bool =

@@ -190,6 +190,7 @@ object Sync {
                 } catch (e: Exception) {
                     seen.error = e.message ?: "failed"
                     Log.w("KKSSync", "sync with $host:$port: ${e.message}")
+                    if (!Diagnostics.expected(e.message)) Diagnostics.record("sync", "sync with $host:$port: ${e.javaClass.simpleName}: ${e.message}")
                 }
             }
             // then the devices on the relay (§18) that no Wi-Fi sync reached and that did not sync with us meanwhile;
@@ -205,10 +206,16 @@ object Sync {
                     } catch (e: Exception) {
                         peers.getOrPut(peer) { Seen("relay", 0) }.error = e.message ?: "failed"
                         Log.w("KKSSync", "relay sync with ${peer.take(8)}: ${e.message}")
+                        if (!Diagnostics.expected(e.message)) Diagnostics.record("sync", "sync through the relay: ${e.javaClass.simpleName}: ${e.message}")
                     }
                 }
             }
             lastRound = System.currentTimeMillis()
+            // gone quiet: no successful sync with anyone for a day although there were devices to try
+            val lastOk = peers.values.maxOfOrNull { it.lastOk } ?: 0L
+            if (targets.isNotEmpty() && lastOk > 0 && lastRound - lastOk > 24 * 3600 * 1000L) Diagnostics.record("sync", "no successful sync for more than 24 hours")
+            backgroundLimit(ctx)?.let { Diagnostics.record("sync", "background sync limited: $it (${Build.MANUFACTURER} ${Build.MODEL})") }
+            Diagnostics.report(ctx)
             return n
         } finally {
             syncing = false
@@ -305,6 +312,25 @@ object Sync {
 
     private val PRIVATE = Regex("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|169\\.254\\.)")
     private fun privateAddress(host: String) = PRIVATE.containsMatchIn(host)
+
+    /**
+     * Why background sync may not be running here, or null. Real signals only: Android's own restriction state, and
+     * whether the worker actually ran. Found on the Honor 600 (2026-10-03): MagicOS's iAware power manager blocks
+     * background jobs whatever the app does ("job is prohibit by iaware"); the phone then syncs only when the app is
+     * open or charging.
+     */
+    fun backgroundLimit(ctx: Context): String? {
+        val am = ctx.getSystemService(android.app.ActivityManager::class.java)
+        if (am != null && am.isBackgroundRestricted) return "Android restricts this app in the background"
+        val us = ctx.getSystemService(android.app.usage.UsageStatsManager::class.java)
+        val bucket = us?.appStandbyBucket ?: 0
+        if (bucket >= android.app.usage.UsageStatsManager.STANDBY_BUCKET_RARE) return "Android rarely lets this app run in the background"
+        val since = SyncWorker.since(ctx)
+        val now = System.currentTimeMillis()
+        val hours = 3 * 3600 * 1000L
+        if (since > 0 && now - since > hours && now - SyncWorker.lastRun(ctx) > hours) return "background sync hasn't run for over 3 hours"
+        return null
+    }
 
     fun unmetered(ctx: Context): Boolean {
         val cm = ctx.getSystemService(ConnectivityManager::class.java) ?: return false

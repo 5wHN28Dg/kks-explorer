@@ -59,6 +59,7 @@ type
     authors*: Table[string, string]
     conflicts*: seq[JNode]
     private*: OrderedTable[string, seq[string]]
+    reports*: OrderedTable[string, seq[string]]   ## device → report entry IDs (§13a)
     ignored*: OrderedTable[string, string]
     revokes: seq[Revoke]
     decisions*: OrderedTable[string, JNode]
@@ -683,6 +684,17 @@ proc tPrivate(r: Run, e: JNode, eid, author: string) =
   need(b["person"].isStr and b["person"].s == author, "not_allowed")
   r.private.mgetOrPut(author, @[]).add eid
 
+proc tReport(r: Run, e: JNode, eid: string) =
+  ## §13a: a diagnostics report sealed to the manager's report key; any certified device; kept opaquely by device
+  let s = e["body"]["sealed"]
+  need(s.kind == jObj)
+  keysAre(s, ["v", "purpose", "epk", "nonce", "ct"])
+  need(s["v"].kind == jInt and s["v"].i == 2 and s["purpose"].isStr and s["purpose"].s == "kks-report")
+  need(isB64u(s["epk"]) and s["epk"].s.len == 87)
+  need(isB64u(s["nonce"]) and s["nonce"].s.len == 16)
+  need(isB64u(s["ct"]) and s["ct"].s.len in 22..65_536)
+  r.reports.mgetOrPut(e["peer"].s, @[]).add eid
+
 proc bodyKeys(t: string): seq[string] =
   case t
   of "genesis": @["plant", "root", "manager", "stmt_manager", "stmt_device", "sig_manager", "sig_device", "import"]
@@ -704,6 +716,7 @@ proc bodyKeys(t: string): seq[string] =
   of "vote": @["entry", "on"]
   of "comment": @["entry", "text"]
   of "private": @["person", "nonce", "ct"]
+  of "report": @["sealed"]
   else: @[]
 
 proc run(c: Ctx, r: Run, ordered: seq[(string, JNode)]): Run =
@@ -728,6 +741,7 @@ proc run(c: Ctx, r: Run, ordered: seq[(string, JNode)]): Run =
       of "revoke": r.tRevoke(e, eid, author, role)
       of "setting": r.tSetting(e, role)
       of "private": r.tPrivate(e, eid, author)
+      of "report": r.tReport(e, eid)
       of "approve": r.tApprove(e, eid, author, role)
       of "reject": r.tReject(e, eid, author, role)
       of "withdraw": r.tWithdraw(e, eid, author)
@@ -843,11 +857,17 @@ proc state*(r: Run): JNode =
     priv.fields.add((k, a))
   var ignored = newObj()
   for k, v in r.ignored: ignored.fields.add((k, newStr(v)))
-  newObj(@[("root", newStr(r.root)), ("manager", orNull(r.manager)), ("settings", settings),
+  var reports = newObj()
+  for k, v in r.reports:
+    var a = newArr()
+    for x in v: a.elems.add newStr(x)
+    reports.fields.add((k, a))
+  result = newObj(@[("root", newStr(r.root)), ("manager", orNull(r.manager)), ("settings", settings),
          ("backup_key", orNull(r.backupKey)), ("persons", persons), ("devices", devices), ("equipment", equipment),
          ("reviews", reviews), ("links", la), ("photos", photos), ("added_tags", tags), ("proposals", proposals),
          ("conflicts", newArr(r.conflicts)), ("votes", votes), ("private", priv), ("ignored", ignored),
          ("imported", orNull(r.imported))])
+  if r.reports.len > 0: result.fields.add(("reports", reports))   # only when there are any (§14)
 
 proc replay*(p: Provider, entries: seq[JNode], root: string): JNode =
   ## Replay `entries` (any order, any devices) from the trust anchor `root` (root key string, §2). -> state.

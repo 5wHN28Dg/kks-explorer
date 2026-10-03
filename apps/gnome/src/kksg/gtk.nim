@@ -50,9 +50,13 @@ type Env = ref object
 
 proc envDestroy(data: pointer, closure: pointer) {.cdecl.} = GC_unref(cast[Env](data))
 
+var errorHook*: proc (text: string)   ## the app's diagnostics (decision 0040): every caught error, with its trace
+
 proc report(e: ref Exception) =
   ## an exception must never unwind through GLib's C frames: log it and carry on
   stderr.writeLine "error in a UI callback: " & e.msg & "\n" & e.getStackTrace()
+  if errorHook != nil:
+    try: errorHook($e.name & ": " & e.msg & "\n" & e.getStackTrace()) except CatchableError: discard
 
 template guard(body: untyped) =
   try: body

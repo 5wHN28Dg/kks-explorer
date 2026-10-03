@@ -380,6 +380,78 @@ proc account(w: Win, p: Page) =
     except CatchableError:
       w.toast("Wrong passphrase, or not a root key backup")))
 
+proc GlobalAlloc(flags: UINT, n: csize_t): pointer {.importc, stdcall, header: "<windows.h>".}
+proc GlobalLock(h: pointer): pointer {.importc, stdcall, header: "<windows.h>".}
+proc GlobalUnlock(h: pointer): BOOL {.importc, stdcall, header: "<windows.h>", discardable.}
+proc SetClipboardData(fmt: UINT, h: pointer): pointer {.importc, stdcall, header: "<windows.h>", discardable.}
+
+proc copyText(w: Win, text: string) =
+  ## text to the clipboard as CF_UNICODETEXT (the clipboard owns the memory after SetClipboardData)
+  let wide = newWideCString(text)
+  let bytes = (wide.len + 1) * 2
+  if OpenClipboard(w.hwnd) == 0: return
+  EmptyClipboard()
+  let h = GlobalAlloc(0x0002, csize_t(bytes))      # GMEM_MOVEABLE
+  if h != nil:
+    copyMem(GlobalLock(h), cast[pointer](wide[0].addr), bytes)
+    GlobalUnlock(h)
+    SetClipboardData(13, h)                        # CF_UNICODETEXT
+  CloseClipboard()
+  w.toast("Copied")
+
+proc diagnosticsSection(w: Win, p: Page) =
+  ## decision 0040: everyone sees whether reports are on; the manager switches them from their own device
+  var d: JNode
+  try: d = w.a.call("GET", "/api/diagnostics")
+  except ApiError: return
+  let on = d["on"].kind == jBool and d["on"].b
+  p.title("Diagnostics reports")
+  p.dim(if on: "On: this computer sends the manager short error reports (crashes, failed syncs, app errors). Never plant data or passwords."
+        else: "Off: this computer sends no error reports.")
+  if w.a.me[1].role == "manager" and d.get("can_switch") != nil and d["can_switch"].b:
+    let label = if on: "Switch reports off" else: "Switch reports on"
+    p.buttons((label, proc () =
+      try:
+        discard w.a.call("POST", "/api/diagnostics", newObj(@[("on", newBool(not on))]))
+        w.toast(if on: "Reports off" else: "Reports on: every device learns it at its next sync")
+        w.rebuildSide()
+      except ApiError as e: w.toast(e.msg)))
+
+proc diagnosticsReports(w: Win, p: Page) =
+  ## the manager's reports, newest first, each with Copy (for Claude); "Copy all" on top
+  var d: JNode
+  try: d = w.a.call("GET", "/api/diagnostics")
+  except ApiError as e:
+    p.dim(e.msg)
+    return
+  let reports = if d.get("reports") != nil: d["reports"] else: newArr()
+  if not (d["on"].kind == jBool and d["on"].b): p.dim("Reports are off (Account → Diagnostics reports).")
+  if d.get("can_read") != nil and not d["can_read"].b:
+    p.dim("This device holds no report key yet. Reports open on the device you switched them on from, and on your " &
+          "other devices after they synced with it.")
+  if reports.len == 0:
+    p.dim("No reports yet.")
+    return
+  let all = toText(reports)
+  p.buttons(("Copy all reports (for Claude)", proc () = w.copyText(all)))
+  let lp = reports.elems
+  for i in 0 ..< lp.len:
+    closureScope:
+      let r = lp[i]
+      let rep = r["report"]
+      p.title((if r["username"].s.len > 0: r["username"].s else: "?") & " · " & (if r["label"].s.len > 0: r["label"].s else: "device") &
+              " · " & fromUnix(r["at"].i div 1000).local.format("yyyy-MM-dd HH:mm"))
+      if rep.kind != jObj: p.dim("Not readable here: sealed to a report key this device doesn't hold.")
+      else:
+        p.dim(rep["app"].s & " " & rep["version"].s & " · " & rep["platform"].s)
+        for j, ev in rep["events"].elems:
+          if j >= 30: break
+          let n = if ev.get("n") != nil: ev["n"].i else: 1
+          p.label(ev["kind"].s & (if n > 1: " ×" & $n else: "") & " · " & fromUnix(ev["at"].i div 1000).local.format("MM-dd HH:mm") &
+                  " · " & ev["text"].s.splitLines()[0])
+      let one = toText(r)
+      p.buttons(("Copy", proc () = w.copyText(one)))
+
 proc manageTab*(w: Win, p: Page) =
   if managePage.len > 0:
     p.buttons(("‹ Manage", proc () =
@@ -392,7 +464,10 @@ proc manageTab*(w: Win, p: Page) =
     of "History": w.history(p)
     of "People": w.people(p)
     of "Devices": w.devices(p)
-    of "Account": w.account(p)
+    of "Account":
+      w.account(p)
+      w.diagnosticsSection(p)
+    of "Diagnostics": w.diagnosticsReports(p)
     else: discard
     return
   p.title("Manage")
@@ -404,6 +479,7 @@ proc manageTab*(w: Win, p: Page) =
     pages.add ("People", "Accounts and roles")
   pages.add ("Devices", "Your devices" & (if w.isAdmin: ", all devices, joining" else: ""))
   pages.add ("Account", "Your details, sync" & (if w.a.me[1].role == "manager": ", root key" else: ""))
+  if w.a.me[1].role == "manager": pages.add ("Diagnostics", "Error reports from the plant's devices")
   let lp7 = toSeq(pages)
   for lp7i in 0 ..< lp7.len:
     closureScope:
@@ -414,4 +490,4 @@ proc manageTab*(w: Win, p: Page) =
         w.rebuildSide()))
       p.dim(sub)
 
-proc liveManage*(): bool = managePage in ["Approvals", "My proposals", "History", "Devices"]
+proc liveManage*(): bool = managePage in ["Approvals", "My proposals", "History", "Devices", "Diagnostics"]

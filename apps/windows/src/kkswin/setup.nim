@@ -5,7 +5,7 @@ import std/[sequtils, strutils, asyncdispatch, times]
 import kks/json
 import kksl/dbstore
 import appstate
-import w32, ui, win
+import w32, ui, win, camera
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -98,6 +98,10 @@ proc buildSetup*(w: Win, p: Page, done: proc ()) =
   of "Join with a code":
     p.dim("An admin shows a QR code under Manage → Devices. Copy its text here.")
     let code = p.multiField("Invite text", "", 110)
+    p.buttons(("Scan with the camera…", proc () =
+      scanWindow(w.hwnd, proc (t: string) =
+        code.setText(t)
+        if not parseInvite(t)[0]: w.toast("That QR code is not an invite"))))
     let user = p.field("Your username", "")
     let fn = p.field("Your full name", "")
     let status = p.label("")

@@ -230,6 +230,7 @@ proc main() =
   createDir(dataDir())
   errorLog = dataDir() / "crash.log"
   let a = openApp()
+  errorHook = proc (text: string) = a.diag("error", text)
   let port = try: parseInt(getEnv("KKS_SYNC_PORT", $SyncPortDefault)) except ValueError: SyncPortDefault
   a.startSync(port, discovery = getEnv("KKS_NO_MDNS").len == 0)
   a.onChange.add proc (why: string) =

@@ -55,10 +55,33 @@ It covers:
 - a member's proposal approved in Manage;
 - removal and the self-wipe.
 
+## A real (borrowed) Windows laptop
+
+`e2e/host/kks-test-host.ps1` prepares a laptop that isn't ours for the same tests and measurements, and undoes it
+all afterwards. Run in PowerShell opened with "Run as administrator":
+
+    powershell -ExecutionPolicy Bypass -File kks-test-host.ps1 -Setup -PublicKey "<contents of ~/.ssh/kks_vm.pub>"
+    powershell -ExecutionPolicy Bypass -File kks-test-host.ps1 -Status
+    powershell -ExecutionPolicy Bypass -File kks-test-host.ps1 -Revert     # before giving it back; restart; again if asked
+
+- **Setup** makes a standard (non-admin) local account `kks` that can't open other users' folders, signs it in
+  automatically (password as an LSA secret; skipped if the laptop already signs someone in), adds the OpenSSH server
+  only if missing (key login for `kks` only, local network only), a separate "KKS test" power plan, firewall rules in
+  group "KKS Explorer test" (local network only) and `C:\kks`. Every step is recorded in
+  `C:\ProgramData\KKS-test\state.json`.
+- **Revert** undoes the recorded steps in reverse order and deletes the account with its profile. The profile stays
+  loaded after an SSH login until a restart: then it asks for a restart and a second `-Revert`.
+- Verified on the Windows 11 VM (2026-10-03): firewall rules (names, owners, states), SSH config hash, power plans,
+  accounts, profiles, OpenSSH shell and auto-login identical before and after; the test account got "access denied"
+  on another profile and could not log in by password; auto-login to the test account worked after a restart and was
+  restored afterwards. Not tried: installing and removing OpenSSH (the VMs need it to be reachable at all).
+
 ## Not done yet
 
-- **Camera:** camera capture and scanning an invite QR with a webcam (Media Foundation + zxing-cpp). The VMs have no
-  camera, so this waits for a real laptop. Joining with a code takes the invite's text.
+- **Camera:** taking photos with the camera (photos come from a file). Scanning an invite QR with the webcam is built
+  (decision 0039: Media Foundation + zxing-cpp); tested with a video file through the same Source Reader in both VMs
+  and with this laptop's webcam passed into the Windows 11 VM (frames arrive), not yet with a real QR in front of a
+  real webcam.
 - **Packaging:** MSIX (0022), its firewall rule, signing.
 - **A real laptop:** GPU timings (the VMs render with WARP), company policy (Defender rules, AppLocker), Narrator by ear.
 - **CI:** a GitHub Actions run needs the user's OK to push.

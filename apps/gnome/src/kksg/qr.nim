@@ -1,7 +1,8 @@
 ## QR codes (R13, decision 0019): drawing an invite, reading one from a picture.
 import gtk
 {.compile: "kks_zxing.cpp".}
-{.passL: "-lstdc++ -l:libZXing.so.3".}
+when defined(flatpak): {.passL: "-L/app/lib -lstdc++ -lZXing".}   # the zxing-cpp the manifest builds (3.1.1: libZXing.so.4)
+else: {.passL: "-lstdc++ -l:libZXing.so.3".}            # the system's (no -dev symlink on the build machine)
 proc kks_qr_encode(text: cstring, size: ptr cint): ptr UncheckedArray[byte] {.importc, cdecl.}
 proc kks_qr_decode(gray: pointer, w, h: cint): cstring {.importc, cdecl.}
 proc free(p: pointer) {.importc, header: "<stdlib.h>".}
@@ -23,6 +24,13 @@ proc qrTexture*(text: string, scale = 8, quiet = 4): W =
             px[o] = 0; px[o + 1] = 0; px[o + 2] = 0
   free(m)
   textureFromRgb(px, side, side)
+
+proc qrFromGray*(gray: ptr UncheckedArray[byte], w, h: int): string =
+  ## the text of a QR code in an 8-bit grey picture; "" when none
+  let p = kks_qr_decode(gray, cint(w), cint(h))
+  if p == nil: return ""
+  result = $p
+  free(p)
 
 proc qrFromPicture*(path: string): string =
   ## the text of a QR code in a picture file; "" when none

@@ -1,5 +1,5 @@
 import std/[unittest, times, strutils]
-import kks/[json, util, crypto, proto, replay]
+import kks/[json, util, crypto, proto, replay, extras]
 import testprovider
 import vectors
 
@@ -49,3 +49,15 @@ suite "replay (v2-replay.json)":
 suite "malformed bodies (v2-malformed.json)":
   test "scenarios":
     checkScenarios("v2-malformed.json")
+
+suite "diagnostics reports (v2-reports.json, §13a)":
+  test "scenario":
+    checkScenarios("v2-reports.json")
+  test "the sealed report opens with the report key":
+    let s = loadVectors("v2-reports.json")["seal"]
+    let rk = privateKeyFromHex(s["report_key_private_scalar_hex"].s, s["report_key"].s)
+    check hex(P.eciesOpen(rk, s["sealed"])) == s["plaintext_bytes_hex"].s
+  test "the report_key private entry":
+    let v = loadVectors("v2-reports.json")["report_key_private"]
+    let got = P.privateOpen(unhex(v["secret_hex"].s), v["body"])
+    check canonical(got) == canonical(v["plaintext"])

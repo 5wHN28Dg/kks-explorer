@@ -31,6 +31,7 @@ proc px*(v: int): int32 = int32(v * dpi div 96)
 
 var errorLog* = ""          ## file for errors caught at the Win32 boundary (set by the app: <data dir>/crash.log)
 var onError*: proc (msg: string)
+var errorHook*: proc (text: string)   ## the app's diagnostics (decision 0040): every caught error, with its trace
 
 proc report*(e: ref Exception) =
   ## an exception must never unwind through a Win32 callback (the GNOME app's lesson): log it and carry on
@@ -43,6 +44,8 @@ proc report*(e: ref Exception) =
     except IOError: discard
   if onError != nil:
     try: onError(e.msg) except CatchableError: discard
+  if errorHook != nil:
+    try: errorHook(msg) except CatchableError: discard
 
 proc trace*(msg: string) =
   ## breadcrumbs for crashes outside Nim (KKS_TRACE=1): appended to <data dir>/trace.log

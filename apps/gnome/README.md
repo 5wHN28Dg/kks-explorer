@@ -83,7 +83,5 @@ and the importer, with no plant data. In about 30 s it covers:
 **Not built or not verified yet:**
 - the Flatpak: `flatpak/` has the manifest, desktop entry and AppStream metadata, which pass `desktop-file-validate`
   and `appstreamcli validate`, but the build needs `flatpak-builder` and the GNOME 50 SDK;
-- webcam QR scanning (the Camera portal and PipeWire);
-- the courses: they render after their conversion in phase 8;
 - pan frame times;
 - Orca itself (the tree is checked through AT-SPI).

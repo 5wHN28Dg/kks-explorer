@@ -358,6 +358,59 @@ proc rootKeySection(w: Win): W =
         w.toast("Wrong passphrase, or not a root key backup"))))
   g
 
+proc copyText(w: Win, text: string) =
+  gdk_clipboard_set_text(gtk_widget_get_clipboard(w.window), text.cstring)
+  w.toast("Copied")
+
+proc diagnosticsGroup(w: Win): W =
+  ## decision 0040: everyone sees whether reports are on; the manager switches them from their own device
+  var d: JNode
+  try: d = w.a.call("GET", "/api/diagnostics")
+  except ApiError: return group("Diagnostics reports")
+  let on = d["on"].kind == jBool and d["on"].b
+  result = group("Diagnostics reports", if on: "On: this computer sends the manager short error reports (crashes, " &
+                 "failed syncs, app errors). Never plant data or passwords." else: "Off: this computer sends no error reports.")
+  if w.a.me[1].role == "manager" and d.get("can_switch") != nil and d["can_switch"].b:
+    adw_preferences_group_add(result, button(if on: "Switch reports off" else: "Switch reports on", "", proc () =
+      try:
+        discard w.a.call("POST", "/api/diagnostics", newObj(@[("on", newBool(not on))]))
+        w.toast(if on: "Reports off" else: "Reports on: every device learns it at its next sync. Reopen Account to see the new state.")
+      except ApiError as e: w.toast(e.msg)))
+
+proc diagnosticsReports(w: Win, box: W) =
+  ## the manager's reports, newest first, each with Copy (for Claude); "Copy all" on top
+  var d: JNode
+  try: d = w.a.call("GET", "/api/diagnostics")
+  except ApiError as e:
+    box.add label(e.msg, "dim-label")
+    return
+  let reports = if d.get("reports") != nil: d["reports"] else: newArr()
+  if not (d["on"].kind == jBool and d["on"].b): box.add label("Reports are off (Account → Diagnostics reports).", "dim-label")
+  if d.get("can_read") != nil and not d["can_read"].b:
+    box.add label("This device holds no report key yet. Reports open on the device you switched them on from, and on " &
+                  "your other devices after they synced with it.", "dim-label")
+  if reports.len == 0:
+    box.add label("No reports yet.", "dim-label")
+    return
+  box.add button("Copy all reports (for Claude)", "", proc () = w.copyText(toText(reports)))
+  for r in reports.elems:
+    let when0 = fromUnix(r["at"].i div 1000).local.format("yyyy-MM-dd HH:mm")
+    let who = (if r["username"].s.len > 0: r["username"].s else: "?") & " · " & (if r["label"].s.len > 0: r["label"].s else: "device")
+    let rep = r["report"]
+    let g = group(who, when0 & (if rep.kind == jObj: " · " & rep["app"].s & " " & rep["version"].s & " · " & rep["platform"].s else: ""))
+    if rep.kind != jObj:
+      adw_preferences_group_add(g, row("Not readable here", "sealed to a report key this device doesn't hold"))
+    else:
+      for i, ev in rep["events"].elems:
+        if i >= 30: break
+        let n = if ev.get("n") != nil: ev["n"].i else: 1
+        let first = ev["text"].s.splitLines()[0]
+        adw_preferences_group_add(g, row(ev["kind"].s & (if n > 1: " ×" & $n else: "") & " · " &
+                                         fromUnix(ev["at"].i div 1000).local.format("MM-dd HH:mm"), first, selectable = true))
+    let rr = r
+    adw_preferences_group_add(g, button("Copy", "", proc () = w.copyText(toText(rr))))
+    box.add g
+
 proc managePage*(w: Win): W =
   let box = vbox(12)
   margins(box, 8)
@@ -384,6 +437,9 @@ proc managePage*(w: Win): W =
   sub("Devices", "Your devices" & (if w.isAdmin: ", all devices, joining" else: ""), "devices", proc (b: W) = w.devices(b), live = true)
   sub("Account", "Your details, sync" & (if w.a.me[1].role == "manager": ", root key" else: ""), "account", proc (b: W) =
     w.account(b)
+    b.add w.diagnosticsGroup()
     if w.a.me[1].role == "manager": b.add w.rootKeySection())
+  if w.a.me[1].role == "manager":
+    sub("Diagnostics", "Error reports from the plant's devices", "diagnostics", proc (b: W) = w.diagnosticsReports(b), live = true)
   box.add list
   scrolled(box)

@@ -3,7 +3,7 @@
 
 import std/[tables, os, strutils, base64, times]
 import std/sets
-import kks/[json, crypto, proto, node, api, sync, bundle, extras, util, invites, plantdata, model, views, pathstore, courses]
+import kks/[json, crypto, proto, node, api, sync, bundle, extras, util, invites, plantdata, model, views, pathstore, courses, diagnostics]
 import kksl/dbstore
 import kksa/[provider_jni, figops]
 
@@ -115,6 +115,14 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
     cfg["admin"] = newBool(ok and me.isAdmin)
     cfg["role"] = newStr(if ok: me.role else: "")
     O(("status", newInt(200)), ("json", cfg))
+  of "/native/diag-record":
+    # decision 0040: an event for the manager's diagnostics reports (crash, error, sync)
+    c.n.record(body["kind"].s, body["text"].s, nowMs())
+    return view(O(("ok", newBool(true))))
+  of "/native/diag-report":
+    let wrote = c.n.maybeReport("android", body["version"].s, body["platform"].s, body["model"].s, nowMs(),
+                                body.get("force") != nil and body["force"].kind == jBool and body["force"].b)
+    return view(O(("wrote", newBool(wrote))))
   of "/native/relay":
     # §18: the plant's relay (the manager's setting), the room, and a hello signed now by the device key
     let v = if c.n.run != nil: c.n.run.settings.getOrDefault("relay") else: nil

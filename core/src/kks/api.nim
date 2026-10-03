@@ -4,7 +4,7 @@
 ## password accounts on top (it passes the signed-in account as the actor).
 
 import std/[algorithm, base64, math, sets, strutils, tables, unicode]
-import json, crypto, util, proto, replay, node, plant, progress, invites, extras, plantdata
+import json, crypto, util, proto, replay, node, plant, progress, invites, extras, plantdata, diagnostics
 
 type
   Actor* = object
@@ -852,7 +852,7 @@ proc configOut*(a: Api): JNode =
   let (joined, _) = a.owner
   let removed = a.n.store.getMeta("removed")
   O(("plant_name", if plantN.isNull: S(a.plantName) else: plantN), ("offline_days", I(3650)), ("mode", S(a.mode)),
-    ("setup_needed", B(false)),
+    ("setup_needed", B(false)), ("diagnostics", B(a.n.diagnosticsKey.len > 0)),
     ("photo_upload", if a.photoEncoder != nil: O(("type", S("image/png")), ("ms_per_mp", I(a.photoMsPerMp)))
                      else: O(("type", S("image/jxl")), ("distance", newFloat(1.9)), ("effort", I(7)))),
     ("node", O(("joined", B(joined)), ("device", S(a.n.device)), ("has_plant", B(a.n.root.len > 0)), ("plant", plantN),
@@ -922,6 +922,14 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
       need(me, "admin")
       return ok(O(("users", a.usersOut(me))))
     of "/api/devices": return ok(a.devicesOut(me))
+    of "/api/diagnostics":
+      # §13a: everyone sees whether reports are on (the app tells its person); the manager also sees the reports
+      var o = O(("on", B(a.n.diagnosticsKey.len > 0)), ("pending", I(a.n.pending.len)))
+      if me.role == "manager":
+        o["can_switch"] = B(a.mode != "server")
+        o["can_read"] = B(a.n.canRead)
+        o["reports"] = a.n.readReports
+      return ok(o)
     of "/api/progress":
       let got = a.n.loadProgress(me.person)
       proc dataOf(c: OrderedTable[string, string]): JNode =
@@ -1024,6 +1032,15 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
     discard a.write(me, "setting", O(("key", S("relay")), ("value", orNull(url))), now)
     if a.relayChanged != nil: a.relayChanged()
     return ok()
+  of "/api/diagnostics":
+    need(me, "manager")
+    if a.mode == "server":
+      bad("Switch diagnostics reports on or off from your own laptop or phone: a server holds no key to read them.")
+    let on = truthy(d.get("on"))
+    try:
+      if on: a.n.enable(now) else: a.n.disable(now)
+    except ValueError as e: bad(e.msg)
+    return ok(O(("on", B(on))))
   of "/api/progress":
     let course = if d.get("course") != nil and d["course"].isStr: d["course"].s else: ""
     var data: OrderedTable[string, string]

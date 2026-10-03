@@ -4,7 +4,7 @@
 import std/[asyncdispatch, strutils, tables]
 import kks/[json, api]
 import kksl/[mdns, dbstore]
-import gtk, ui, appstate, win, qr
+import gtk, ui, appstate, win, qr, camera
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -144,6 +144,10 @@ proc joinGroups*(w: Win, done: proc ()): seq[W] =
   for r in [code, user, full]: adw_preferences_group_add(g, r)
   let status = label("", "dim-label")
   let btns = hbox(8)
+  btns.add button("Scan with the camera…", "", proc () =
+    scanDialog(w.window, proc (t: string) =
+      gtk_editable_set_text(code, t.cstring)
+      if parseInvite(t)[0]: w.toast("Invite read") else: w.toast("That QR code is not an invite")))
   btns.add button("Open a picture of the code…", "", proc () =
     openFile(w.window, "Open a picture of the QR code", proc (path: string) =
       if path.len == 0: return

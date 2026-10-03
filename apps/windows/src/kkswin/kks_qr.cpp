@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <cstring>
+#include <cstdlib>
 #include "ZXing/ZXingC.h"
 
 // text → a black-on-white bitmap, `scale` pixels per module, quiet zone included; NULL on failure
@@ -34,4 +35,31 @@ extern "C" HBITMAP kks_qr_bitmap(const char *text, int scale, int *side) {
     }
     ZXing_Image_delete(img);
     return hb;
+}
+
+// the text of the first QR code in a grey image (decision 0039), malloc'd; NULL when none was found
+extern "C" char *kks_qr_decode(const unsigned char *gray, int w, int h) {
+    ZXing_ImageView *iv = ZXing_ImageView_new(gray, w, h, ZXing_ImageFormat_Lum, 0, 0);
+    if (!iv) return nullptr;
+    ZXing_ReaderOptions *o = ZXing_ReaderOptions_new();
+    ZXing_BarcodeFormat f = ZXing_BarcodeFormatFromString("QRCode");
+    ZXing_ReaderOptions_setFormats(o, &f, 1);
+    ZXing_ReaderOptions_setTryHarder(o, true);
+    ZXing_ReaderOptions_setTryRotate(o, true);
+    ZXing_ReaderOptions_setTryInvert(o, true);
+    ZXing_Barcodes *bs = ZXing_ReadBarcodes(iv, o);
+    char *out = nullptr;
+    if (bs) {
+        for (int i = 0; i < ZXing_Barcodes_size(bs) && !out; i++) {
+            const ZXing_Barcode *b = ZXing_Barcodes_at(bs, i);
+            if (ZXing_Barcode_isValid(b)) {
+                char *t = ZXing_Barcode_text(b);
+                if (t) { out = (char *)malloc(strlen(t) + 1); strcpy(out, t); ZXing_free(t); }
+            }
+        }
+        ZXing_Barcodes_delete(bs);
+    }
+    ZXing_ReaderOptions_delete(o);
+    ZXing_ImageView_delete(iv);
+    return out;
 }
