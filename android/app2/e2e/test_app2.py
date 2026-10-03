@@ -80,7 +80,9 @@ class Phone(unittest.TestCase):
             ui.adb('reverse', f'tcp:{cls.sport}', f'tcp:{cls.sport}')
         # a fresh app, and no old app (its "Moving from the old app" card would change the setup screen)
         subprocess.run(ui.ADB + ['uninstall', 'kks.explorer'], capture_output=True)
-        ui.adb('install', '-r', APK)
+        subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)   # a newer test build (test_update's 9.9.9) blocks -r
+        r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
+        assert 'Success' in r.stdout, 'install failed: ' + r.stdout + r.stderr
         ui.sh('pm', 'clear', PKG)
         ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
 

@@ -137,8 +137,12 @@ object Internet {
         return (0 until minOf(a.length(), 8)).mapNotNull { a.opt(it) as? String }.filter { it.length <= 64 }
     }
 
-    private fun ours(): Pair<Direct.Udp?, List<String>> =
-        if (!direct) null to emptyList() else try { Direct.candidates() } catch (e: Exception) { null to emptyList() }
+    private fun ours(tryDirect: Boolean = direct): Pair<Direct.Udp?, List<String>> =
+        if (!tryDirect) null to emptyList() else try { Direct.candidates() } catch (e: Exception) { null to emptyList() }
+
+    /** devices the direct path failed with, until when (ms): their syncs go through the pipe meanwhile */
+    private val noDirectUntil = ConcurrentHashMap<String, Long>()
+    private const val NO_DIRECT_MS = 3600_000L
 
     /** §18: hole punching when both sides offered candidates, else (or when it fails) the relay pipe */
     private fun meet(u: Direct.Udp?, ours: List<String>, theirs: List<String>, id: String, client: Boolean, expect: String): Net.Peer {
@@ -169,13 +173,27 @@ object Internet {
         } catch (e: Exception) { Log.w("KKSSync", "relay: answering ${from.take(8)} failed: ${e.message}") }
     }
 
-    /** sync with a device of the plant that is on the relay: connect with our candidates, then direct or the pipe (side a) */
+    /** sync with a device of the plant that is on the relay: connect with our candidates, then direct or the pipe (side a).
+     *  A direct path can punch through and then stall (found 2026-10-03 with two phones on mobile data: every sync
+     *  died with "the other device stopped answering"). So when a direct sync fails, the same sync runs again at once
+     *  through the pipe, and that device gets the pipe for an hour (PROTOCOL-v2 §18: "on failure, the pipe"). */
     fun syncPeer(peer: String): JSONObject {
+        val tryDirect = direct && (noDirectUntil[peer] ?: 0L) < System.currentTimeMillis()
+        return try { attempt(peer, tryDirect) } catch (e: Exception) {
+            if (!tryDirect || lastHow != "direct") throw e
+            noDirectUntil[peer] = System.currentTimeMillis() + NO_DIRECT_MS
+            Log.w("KKSSync", "direct sync with ${peer.take(8)} failed (${e.message}): the relay pipe for this device for an hour")
+            attempt(peer, false)
+        }
+    }
+
+    private fun attempt(peer: String, tryDirect: Boolean): JSONObject {
         if (state != "online") throw IllegalStateException("not on the relay")
         val id = ByteArray(16).also { rng.nextBytes(it) }.joinToString("") { "%02x".format(it) }
         val q = LinkedBlockingQueue<JSONObject>()
         waiting[id] = q
-        val (u, ours) = ours()
+        val (u, ours) = ours(tryDirect)
+        lastHow = ""
         send(JSONObject().put("t", "connect").put("to", peer).put("id", id).put("cand", JSONArray(ours)))
         val a = q.poll(15, TimeUnit.SECONDS)
         waiting.remove(id)

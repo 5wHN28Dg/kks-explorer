@@ -484,7 +484,17 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   Manage → Account. Verified on the emulator: `android/app2/e2e/test_direct.py`. The phone joins, the server
   restarts with its LAN sync port closed, and the server's change arrives through the relay twin (adb reverse) over
   the direct path.
-- **Not done:** real NATs, mobile data.
+- **Field finding (2026-10-03, the first two phones that moved, both on mobile data):**
+  - **What happened:** the direct path punched through, then stalled on every sync ("the other device stopped
+    answering"). Nothing fell back to the pipe, so their handed-over changes never reached the server.
+  - **The fix (0.9.1):** a failed direct sync runs again at once through the pipe, and that device gets the pipe for
+    an hour. It is in `Internet.kt` (Android) and `internet.nim` (desktop), with test switches `Direct.testStall` /
+    `Internet.testStall`.
+  - **Tests:** test_internet.nim "stalls after punching" and android/app2/e2e/test_direct.py
+    `test_stalled_direct_falls_back`.
+- **Test lesson:** `adb install -r` of an older version fails quietly after test_update's 9.9.9. The Android e2e tests
+  now uninstall first and assert the install, because earlier runs had silently tested a stale build.
+- **Not done:** real NATs studied (why the direct path stalls there).
 
 **Phone move without help (2026-10-03, decision 0042, PROTOCOL-v2 §21a; the user's choice "Bridge update, new ID").**
 - **Flow:** 0.8.0 → "Download and install" → the bridge (the v1 app built at the release's VERSION) → it installs

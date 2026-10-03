@@ -28,6 +28,8 @@ type
     stunServers*: seq[(string, int)]  ## empty = no public candidate (only this machine's own addresses)
     lastHow*: string                  ## "direct" or "relay": how the last sync went (for the status)
     roomOf*: proc (): string          ## another room than the plant's ("" = none: stay out); the server's v1 room (§21a)
+    noDirectUntil*: Table[string, float]   ## devices the direct path failed with: the pipe until then (epoch s)
+    testStall*: bool                  ## tests: the direct path punches through, then fails, like stalled paths in the field
 
 proc relaySetting*(n: Node): string =
   if n.run == nil: return ""
@@ -59,9 +61,9 @@ proc openPipe(i: Internet, relay, id, side: string): Future[Stream] {.async.} =
   let w = await wsConnect(relay & "/v1/pipe/" & i.room & "/" & id & "/" & side)
   pipeStream(w)
 
-proc candidates(i: Internet): Future[(Udp, seq[string])] {.async.} =
+proc candidates(i: Internet, tryDirect = true): Future[(Udp, seq[string])] {.async.} =
   ## a UDP socket and its candidates: the public address from STUN, then this machine's own (at most 8)
-  if not i.direct: return (nil, newSeq[string]())
+  if not i.direct or not tryDirect: return (nil, newSeq[string]())
   let u = newUdp()
   var cand: seq[string]
   let pub = if i.stunServers.len > 0: await u.stun(i.stunServers) else: ""
@@ -88,6 +90,9 @@ proc meet(i: Internet, u: Udp, ours, theirs: seq[string], relay, id, side: strin
     let (h, p) = await u.punch(session, theirs)
     if h.len > 0:
       i.lastHow = "direct"
+      if i.testStall:
+        u.close()
+        raise newException(NetError, "the other device stopped answering (test: stalled direct path)")
       return u.rudpStream(h, p, session)
   if u != nil: u.close()
   i.lastHow = "relay"
@@ -195,14 +200,15 @@ proc stop*(i: Internet) =
   i.running = false
   if i.ws != nil: i.ws.close()
 
-proc openTo(i: Internet, peer: string): Future[Stream] {.async.} =
+proc openTo(i: Internet, peer: string, tryDirect = true): Future[Stream] {.async.} =
   ## a stream to a device in the room: connect with our candidates, then direct or the pipe (side a)
   let relay = i.relayOf()
+  i.lastHow = ""
   if i.state != "online" or relay.len == 0: raise newException(NetError, "not on the relay")
   let id = newId()
   let f = newFuture[JNode]("relay answer")
   i.waiting[id] = f
-  let (u, ours) = await i.candidates()
+  let (u, ours) = await i.candidates(tryDirect)
   await i.ws.sendText(toText(newObj(@[("t", newStr("connect")), ("to", newStr(peer)), ("id", newStr(id)),
                                       ("cand", candArr(ours))])))
   if not await withTimeout(f, 15_000):
@@ -216,9 +222,22 @@ proc openTo(i: Internet, peer: string): Future[Stream] {.async.} =
   return await i.meet(u, ours, theirCands(a), relay, id, "a")
 
 proc syncPeer*(i: Internet, peer: string): Future[Stats] {.async.} =
-  ## sync with a device of the plant that is on the relay
-  let st = await i.openTo(peer)
-  result = await syncOver(i.n, i.id, st, peer, hooks = i.hooks)
+  ## sync with a device of the plant that is on the relay. A direct path can punch through and then stall (found
+  ## 2026-10-03 with two phones on mobile data), so a failed direct sync runs again at once through the pipe, and that
+  ## device gets the pipe for an hour (PROTOCOL-v2 §18: "on failure, the pipe").
+  let tryDirect = epochTime() >= i.noDirectUntil.getOrDefault(peer, 0.0)
+  var failed = ""
+  try:
+    let st = await i.openTo(peer, tryDirect)
+    result = await syncOver(i.n, i.id, st, peer, hooks = i.hooks)
+  except CatchableError as e:
+    if not (tryDirect and i.lastHow == "direct"): raise
+    failed = e.msg
+  if failed.len > 0:
+    i.noDirectUntil[peer] = epochTime() + 3600
+    stderr.writeLine "direct sync with " & peer[0 ..< min(8, peer.len)] & " failed (" & failed & "): the relay pipe for this device for an hour"
+    let st = await i.openTo(peer, false)
+    result = await syncOver(i.n, i.id, st, peer, hooks = i.hooks)
   if i.onSynced != nil: i.onSynced(peer, result, true)
 
 proc askPeer*(i: Internet, peer: string, msg: JNode, expectPeer = ""): Future[JNode] {.async.} =

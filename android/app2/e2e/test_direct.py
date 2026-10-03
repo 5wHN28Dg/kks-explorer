@@ -52,7 +52,9 @@ class Direct(unittest.TestCase):
         r = self.boss.req('POST', '/api/settings/relay', {'url': f'ws://127.0.0.1:{self.rport}'})
         assert r.get('ok'), r
         subprocess.run(ui.ADB + ['uninstall', 'kks.explorer'], capture_output=True)   # no old app on the setup screen
-        ui.adb('install', '-r', APK)
+        subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)   # a newer test build (test_update's 9.9.9) blocks -r
+        r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
+        assert 'Success' in r.stdout, 'install failed: ' + r.stdout + r.stderr
         ui.sh('pm', 'clear', PKG)
         ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
 
@@ -64,6 +66,14 @@ class Direct(unittest.TestCase):
         shutil.rmtree(self.dir, ignore_errors=True)
 
     def test_direct(self):
+        self.internet_sync(stall=False)
+
+    def test_stalled_direct_falls_back(self):
+        """found in the field 2026-10-03: a direct path punched through, then stalled on every sync. The same sync must
+        go again through the pipe, and that device keeps the pipe for an hour"""
+        self.internet_sync(stall=True)
+
+    def internet_sync(self, stall):
         ui.tap('Join through a server', exact=True, timeout=30)
         ui.type_into('Server address', f'10.0.2.2:{self.sport}')
         ui.type_into('Username', 'boss')
@@ -78,6 +88,7 @@ class Direct(unittest.TestCase):
             self.fail('the phone never joined')
         time.sleep(3)
         # the LAN path closes; a change waits on the server
+        ui.sh('am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_DIRECT', '-p', PKG, '--ez', 'stall', 'true' if stall else 'false')
         ui.adb('logcat', '-c')
         self.server.terminate(); self.server.wait(5)
         self.start_server(0)
@@ -99,9 +110,13 @@ class Direct(unittest.TestCase):
             if any(int(r) > 0 for _, _, r in syncs):
                 break
             time.sleep(1)
-        print('\n  phone ↔ server since the LAN closed:', syncs)
+        print(f'\n  phone ↔ server since the LAN closed{" (direct path stalled)" if stall else ""}:', syncs)
         self.assertTrue(any(int(r) > 0 for _, _, r in syncs), got[-3000:])
-        self.assertTrue(all(how == 'direct' for how, _, _ in syncs), 'hole punching failed; the pipe carried a sync')
+        if stall:
+            self.assertIn('the relay pipe for this device for an hour', got)
+            self.assertTrue(all(how == 'relay' for how, _, _ in syncs), 'a sync claimed the stalled direct path')
+        else:
+            self.assertTrue(all(how == 'direct' for how, _, _ in syncs), 'hole punching failed; the pipe carried a sync')
 
 
 if __name__ == '__main__':

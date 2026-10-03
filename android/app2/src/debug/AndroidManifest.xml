@@ -11,5 +11,8 @@
         <receiver android:name="kks.explorer.DebugUpdateReceiver" android:exported="true">
             <intent-filter><action android:name="kks.explorer.DEBUG_UPDATE" /></intent-filter>
         </receiver>
+        <receiver android:name="kks.explorer.DebugDirectReceiver" android:exported="true">
+            <intent-filter><action android:name="kks.explorer.DEBUG_DIRECT" /></intent-filter>
+        </receiver>
     </application>
 </manifest>

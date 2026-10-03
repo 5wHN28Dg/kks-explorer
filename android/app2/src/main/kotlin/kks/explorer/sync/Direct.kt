@@ -162,7 +162,12 @@ object Direct {
     }
 
     /** the reliable stream to the punched address, under TLS as client or server (Net.overRaw) */
+    /** debug builds only (DebugDirectReceiver): the direct path punches through, then carries nothing, like the stalled
+     *  paths seen on mobile data; the e2e test checks that syncs fall back to the pipe */
+    @Volatile var testStall = false
+
     fun connect(u: Udp, to: InetSocketAddress, session: ByteArray, client: Boolean, expectPeer: String, dead: Double = 15.0): Net.Peer {
+        if (testStall) { u.onPacket = null; throw IOException("the other device stopped answering (test: stalled direct path)") }
         val id = Core.rudpNew(session, dead, now())
         val inbox = LinkedBlockingQueue<ByteArray>()
         val st = State()

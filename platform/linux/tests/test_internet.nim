@@ -72,6 +72,19 @@ suite "internet sync through the relay":
     check ia.lastHow == "relay" and ib.lastHow == "relay"
     ib.direct = true
 
+  test "a direct path that stalls after punching: the same sync falls back to the pipe, and the pipe is kept":
+    ia.testStall = true
+    discard b.append("setting", newObj(@[("key", newStr("note4")), ("value", newStr("stalled"))]), nowMs())
+    let st = waitFor ia.syncPeer(b.device)
+    check st.received == 1
+    check ia.lastHow == "relay"
+    check b.device in ia.noDirectUntil
+    ia.testStall = false
+    discard b.append("setting", newObj(@[("key", newStr("note5")), ("value", newStr("still pipe"))]), nowMs())
+    check (waitFor ia.syncPeer(b.device)).received == 1
+    check ia.lastHow == "relay"           # within the hour: no new direct attempt
+    ia.noDirectUntil.clear()
+
   test "an absent device is reported":
     expect NetError:
       discard waitFor ia.syncPeer(P.peerId(P.p256Generate()))
