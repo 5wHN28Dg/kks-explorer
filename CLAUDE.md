@@ -498,7 +498,8 @@ above for new work.
 - **Photos, QR:** JPEG XL only, with libjxl everywhere (including our own WebAssembly build); zxing-cpp for QR.
 - **Security:** encryption at rest with a per-device key in the platform key store; Argon2id on the server.
 - **Courses:** re-authored in a JSON content model with declarative figures.
-- **Distribution:** Microsoft Store (private audience, fallback self-signed MSIX) and Flathub.
+- **Distribution:** Windows: self-signed MSIX trusted once by IT (no Microsoft Store: the user's registration was
+  blocked, 2026-10-03; 0022); Linux: Flatpak (Flathub).
 
 **Phase 1 started 2026-09-30:**
 - `docs/PROTOCOL-v2.md` (v2 spec; v1 PROTOCOL.md stays frozen).
@@ -779,6 +780,23 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
    with a button to the app's system settings, and a diagnostics event. Verified on the Honor (forced `rare` bucket,
    restored).
 
+**Cutover prep (2026-10-03, asked by the user; plan in docs/CUTOVER.md):**
+- **Server install:** `deploy/install-server-user.sh` builds into `~/kks-server/app/<version>-<commit>` (`current` /
+  `previous` links), writes `~/kks-server/config.json` once, seals the storage key with `systemd-creds --user`
+  (`storage-key.cred`, TPM) and writes the user unit `~/.config/systemd/user/kks-server.service`
+  (`LoadCredentialEncrypted`). Ran once (not started; unsealing checked).
+- **v1 copy:** `~/kks-server/v1` holds a checked copy of the live plant.db, root.key, photos, backups and plant-data
+  (102 files, SHA-256 equal). Nothing in the repo was touched.
+- **Drawings:** `kks-import SOURCE.pdf "" ID --keep-tags --data-dir D` re-makes a sheet's .kkp and pyramid but keeps
+  its v1 tags, notes, name and rotation. It checks the size before writing anything. Verified on a /tmp copy: all 11
+  sheets the same size, all 1,379 tags identical.
+- **Distribution:** no Microsoft Store (the user's registration was blocked); Windows = self-signed MSIX trusted by IT,
+  or the zip (0022). Flatpak manifest `apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.yml`:
+  - GNOME 50 runtime;
+  - zxing-cpp 3.1.1 built in (`-d:flatpak` links `-lZXing` from /app/lib);
+  - Nim via `koch boot`;
+  - built here with flatpak-builder `--disable-rofiles-fuse` in ~/.local/kksdev/flatpak.
+
 ## Backlog (rough priority)
 
 1. When users have marked missed tags (`app.py added-tags`), find why the extractor missed them and fix the cause.
@@ -793,4 +811,5 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
    install the packaged Linux app, delete the empty leftover `~/.local/share/kks-explorer` from the 2026-09-26 package
    test (its config remembers port 8421 = the server's sync port), join it as a second device of the manager ("Join via
    server", http://localhost:8420); then move the server's files out of the repo (e.g. ~/kks-server + its own
-   config.json, `KKS_CONFIG=… python3 app.py`), copy + compare before removing anything.
+   config.json, `KKS_CONFIG=… python3 app.py`), copy + compare before removing anything. 2026-10-03: superseded by
+   the cutover (docs/CUTOVER.md): the v2 server installs into ~/kks-server and the v1 copy is in ~/kks-server/v1.

@@ -1,7 +1,9 @@
 # Flatpak manifest (decision 0022: Flathub). Build:
 #   flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50 org.flatpak.Builder
 #   flatpak run org.flatpak.Builder --user --install --force-clean build apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.yml
-# Status 2026-10-01: written, not yet built (flatpak-builder and the GNOME 50 SDK are not on the development machine).
+# Status: built 2026-10-03 with org.flatpak.Builder and the GNOME 50 SDK (GTK 4.22.5, libadwaita 1.9.4, libjxl 0.11.2,
+# GStreamer 1.26 with the PipeWire plugin, sqlite, gnutls, libsecret all come from the runtime; only Nim and
+# zxing-cpp are built here). The camera comes through the camera portal (decision 0039): no device access needed.
 app-id: io.github._5wHN28Dg.kks_explorer
 runtime: org.gnome.Platform
 runtime-version: '50'
@@ -23,28 +25,50 @@ modules:
     cleanup: ['*']                 # build-time only
     build-commands:
       - sh build.sh
-      - bin/nim c koch && ./koch boot -d:release && ./koch tools
+      - bin/nim c koch && ./koch boot -d:release    # the compiler only: nothing in the app needs nimble packages
       - mkdir -p /app/nim && cp -r bin lib config compiler /app/nim/
     sources:
       - type: archive
         url: https://nim-lang.org/download/nim-2.2.12.tar.xz
         sha256: 2639a06a5ea7a7fcf57df1e7e1ef4d1b2bee58c7ac9bd00dbd2aa5bea1e5a56a
-  - name: zxing-cpp
+  - name: zxing-cpp                # the same pinned source as platform/windows/build-deps.sh (decision 0019)
     buildsystem: cmake-ninja
-    config-opts: [-DCMAKE_BUILD_TYPE=Release, -DZXING_EXAMPLES=OFF, -DZXING_BLACKBOX_TESTS=OFF, -DZXING_UNIT_TESTS=OFF,
-                  -DZXING_C_API=ON, -DBUILD_SHARED_LIBS=ON]
+    subdir: core
+    config-opts: [-DCMAKE_BUILD_TYPE=Release, -DZXING_READERS=ON, -DZXING_WRITERS=OLD, -DCMAKE_CXX_STANDARD=20,
+                  -DBUILD_SHARED_LIBS=ON]
     sources:
       - type: archive
-        url: https://github.com/zxing-cpp/zxing-cpp/archive/refs/tags/v2.3.0.tar.gz
-        sha256: 64e4139103fdbc57752698ee15b5f0b0f7af9a0331ecbdc492047e0772c417ba
+        url: https://codeload.github.com/zxing-cpp/zxing-cpp/tar.gz/v3.1.1
+        dest-filename: zxing-cpp-3.1.1.tar.gz
+        sha256: 7286b1e6ade66fe82b7c8208b4595deeb55d6486b410834fdc65702f46650542
   - name: kks-explorer
     buildsystem: simple
     build-commands:
-      - cd apps/gnome && KKS_DEV=/app/dev PATH=/app/nim/bin:$PATH nim c -d:release -o:/app/bin/kks-explorer kks_explorer.nim
+      - cd apps/gnome && KKS_DEV=/app/dev PATH=/app/nim/bin:$PATH nim c -d:release -d:flatpak -o:/app/bin/kks-explorer kks_explorer.nim
       - install -Dm644 data/kks.json /app/share/kks-explorer/data/kks.json
+      - mkdir -p /app/share/kks-explorer/data/courses /app/share/kks-explorer/vendor/fonts
+      - cp data/courses/*.json data/courses/*.jxl /app/share/kks-explorer/data/courses/
+      - cp vendor/fonts/*.woff2 /app/share/kks-explorer/vendor/fonts/
       - install -Dm644 apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.desktop -t /app/share/applications
       - install -Dm644 apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.metainfo.xml -t /app/share/metainfo
       - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/io.github._5wHN28Dg.kks_explorer.svg
     sources:
       - type: dir
         path: ../../..
+        skip:                      # build output, local tools, and the plant's private files never enter the build
+          - .git
+          - .venv
+          - android
+          - plant-data
+          - plant.db
+          - plant.db-wal
+          - plant.db-shm
+          - photos
+          - backups
+          - root.key
+          - source
+          - .flatpak-builder
+          - build-flatpak
+          - tools/plant3d/bench/tex
+          - tools/plant3d/bench/export
+          - tools/plant3d/bench/.godot

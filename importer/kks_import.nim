@@ -1,6 +1,10 @@
 ## kks-import: add a P&ID to the plant data (decision 0026; the Nim successor of import_sheet.py).
 ##
 ##   kks-import DRAWING.pdf "Display name" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace] [--data-dir DIR]
+##   kks-import DRAWING.pdf "Display name" SHEET_ID --keep-tags [--data-dir DIR]
+##     (the cutover: an existing v1 sheet gets its path store and pyramid; its tags and notes, hand-verified ones
+##      included, stay exactly as they are; refused if the image size differs from the sheet's, as the boxes
+##      would no longer line up)
 ##              [--glyphs fontlib.kgl] [--effort N]
 ##
 ## Reads page 1 of a vector (AutoCAD-plotted) PDF and writes into DIR (default plant-data/):
@@ -62,10 +66,11 @@ proc main() =
   var args: seq[string]
   var rotate = "auto"
   var replace = false
+  var keepTags = false
   var dataDir = getCurrentDir() / "plant-data"
   var glyphs = ""
   var effort = 7
-  var p = initOptParser(commandLineParams(), shortNoVal = {'h'}, longNoVal = @["replace", "help"])
+  var p = initOptParser(commandLineParams(), shortNoVal = {'h'}, longNoVal = @["replace", "keep-tags", "help"])
   for kind, key, val in p.getopt():
     case kind
     of cmdArgument: args.add key
@@ -73,6 +78,7 @@ proc main() =
       case key
       of "rotate": rotate = val
       of "replace": replace = true
+      of "keep-tags": keepTags = true
       of "data-dir": dataDir = val
       of "glyphs": glyphs = val
       of "effort": effort = parseInt(val)
@@ -91,8 +97,15 @@ proc main() =
   let tagsPath = dataDir / "tags.json"
   var sheets = if fileExists(sheetsPath): parseStrict(readFile(sheetsPath), 4096) else: newArr()
   var tags = if fileExists(tagsPath): parseStrict(readFile(tagsPath), 4096) else: newArr()
+  var old: JNode = nil
   for s in sheets.elems:
-    if s["id"].s == sid and not replace: die "Sheet id \"" & sid & "\" exists; pass a different id, or --replace."
+    if s["id"].s == sid:
+      old = s
+      if not replace and not keepTags: die "Sheet id \"" & sid & "\" exists; pass a different id, or --replace."
+  if keepTags:
+    if old == nil: die "--keep-tags needs an existing sheet \"" & sid & "\" in " & sheetsPath
+    if args.len != 3: die "--keep-tags needs the SHEET_ID"
+    rotate = $old["rot"].i      # the v1 sheet's rotation: the same page its tags were read on
   init()
   let lib = loadGlyphLib(findGlyphs(glyphs))
   var rd = Reader(lib: lib)
@@ -113,14 +126,16 @@ proc main() =
   else:
     rot = parseInt(rotate)
     log "Rotation forced to " & $rot & "°."
-  log "Extracting tags (this is the slow part)..."
   var doc = rotatedCopy(src, rot)
-  var found = extract.extract(rd, doc, loadPaths(doc))
+  var found: seq[Tag]
+  if not keepTags:
+    log "Extracting tags (this is the slow part)..."
+    found = extract.extract(rd, doc, loadPaths(doc))
   # The text-line score can't tell upright from upside down, but the reader can (import_sheet.py).
   var nFound = 0
   for t in found:
     if t.status != "ignore": inc nFound
-  if rotate == "auto" and nFound >= 10 and float(autoCount(found)) < 0.25 * float(nFound):
+  if not keepTags and rotate == "auto" and nFound >= 10 and float(autoCount(found)) < 0.25 * float(nFound):
     let flip = (rot + 180) mod 360
     log "Only " & $autoCount(found) & " of " & $nFound & " tags readable at " & $rot & "°: the sheet may be upside down. Trying " & $flip & "°..."
     let doc2 = rotatedCopy(src, flip)
@@ -135,6 +150,13 @@ proc main() =
       log "Kept " & $rot & "°: " & $flip & "° was no better (" & $autoCount(found2) & " readable). This sheet just reads poorly."
       doc2.close()
 
+  if keepTags:     # before anything is written: same page size as the v1 sheet, or the boxes won't line up
+    let (pw0, ph0) = doc.pageSize
+    let z0 = min(2.0, OverviewMax / max(float(pw0), float(ph0)))
+    let (w, h) = (int(float(pw0) * z0), int(float(ph0) * z0))
+    if abs(w - int(old["w"].i)) > 1 or abs(h - int(old["h"].i)) > 1:
+      die "The new image would be " & $w & "x" & $h & " px, the v1 sheet is " & $old["w"].i & "x" & $old["h"].i &
+          ": the tags' boxes would not line up. Nothing written."
   createDir(dataDir / "sheets")
   log "Writing the path store..."
   let srcDoc = mupdf.open(src)
@@ -171,7 +193,8 @@ proc main() =
   for n in notes:
     let t = n.strip
     if t.len > 0: noteArr.elems.add newStr(t)
-  let entry = newObj(@[("id", newStr(sid)), ("name", newStr(name)), ("rot", newInt(rot)), ("w", newInt(w0)),
+  if keepTags and old.get("notes") != nil: noteArr = old["notes"]   # the sheet's notes as they are
+  let entry = newObj(@[("id", newStr(sid)), ("name", if keepTags: old["name"] else: newStr(name)), ("rot", newInt(rot)), ("w", newInt(w0)),
                        ("h", newInt(h0)), ("scale", newFloat(z)), ("levels", newInt(levels)), ("notes", noteArr)])
   var newSheets = newArr()
   for s in sheets.elems:
@@ -179,7 +202,7 @@ proc main() =
   newSheets.elems.add entry
   var newTags = newArr()
   for t in tags.elems:
-    if t["sheet"].s != sid: newTags.elems.add t
+    if t["sheet"].s != sid or keepTags: newTags.elems.add t
   var nAuto, nReview = 0
   for t in found:
     if t.status == "ignore": continue

@@ -1,6 +1,10 @@
 # 0022 Distribution, signing and updates
 
-Date 2026-09-30 · Scope: R23, R24, N6 · Status: **accepted by the user 2026-09-30**. Store availability at the company is unknown; the self-signed MSIX deployed by IT is the agreed fallback
+Date 2026-09-30 · Scope: R23, R24, N6 · Status: **accepted by the user 2026-09-30; changed 2026-10-03: no Microsoft Store** (the user's developer-account
+registration was blocked; "windows uses the fallback from now on"). Windows ships as the agreed fallback: an MSIX
+signed with our own certificate, which IT trusts once on each machine (or by policy); updates through App Installer
+and our own signature check. If IT won't deploy the certificate, the next option is the single exe in a zip (no admin,
+one SmartScreen warning, updates verified by our Ed25519 release key)
 
 **Requirements:**
 - Desktop: one download, no administrator rights, no separate runtime to install. Android outside the Play Store.
