@@ -5,11 +5,11 @@ This adds a P&ID to the plant data:
 - it writes the path store (`.kkp`), the overview pyramid and the source PDF;
 - it updates `sheets.json` and `tags.json`.
 
-It replaces `import_sheet.py` + `extractor/`, and **reads exactly what the Python importer reads**. That is the gate
-of decision 0026, met on 2026-10-01.
+It replaced the old Python importer (`import_sheet.py` + `extractor/`, removed with the old app on 2026-10-03; in git
+history) and **read exactly what that importer read**. That was the gate of decision 0026, met on 2026-10-01.
 
     kks-import DRAWING.pdf "Display name" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace]
-               [--data-dir plant-data] [--glyphs extractor/fontlib.kgl] [--effort 7]
+               [--data-dir plant-data] [--glyphs importer/fontlib.kgl] [--effort 7]
 
 The last output line is `RESULT {json}`. Formats: docs/PATHSTORE.md (the files), docs/GLYPHLIB.md (the glyph
 library).
@@ -69,16 +69,17 @@ reusing it changes no pixel.
 
 - `nim test`: synthetic cases only, no plant data (CI-safe).
   - `tests/test_reader.nim`: every OpenCV operation against cv2, plus clean, split, interpret and classify against
-    the Python extractor. Vectors: `tests/vectors/cv2-ops.json.gz`, made by `tests/make_op_vectors.py` with
-    `OPENBLAS_NUM_THREADS=1`.
+    the old Python reader. Vectors: `tests/vectors/cv2-ops.json.gz`, frozen (made by `make_op_vectors.py` with
+    `OPENBLAS_NUM_THREADS=1`; the script went with the Python reader, see git history).
   - `tests/test_kkp.nim`: the `.kkp` writer on a synthetic drawing. The page has /Rotate and a crop box, every path
     kind and style, an RGBA image and a turned one. It is compared with `ref/pathstore.py` (`make_kkp_vectors.py`).
-- Local gate on the real sheets (plant data; reference dumps go to a folder outside the repository):
-  1. `.venv/bin/python importer/tests/dump_ref.py REF` (renders, clips, drawings);
-  2. `OPENBLAS_NUM_THREADS=1 .venv/bin/python importer/tests/dump_cells.py REF` (the reading, call by call);
-  3. `dump_kkp.py REF` and `dump_kkp_images.py REF`;
-  4. then `tests/diff_render.nim`, `diff_holes.nim`, `diff_trace.nim REF extractor/fontlib.kgl` and
-     `diff_kkp.nim REF`.
+- Local gate on the real sheets (plant data; reference dumps in a folder outside the repository):
+  - the reading was checked against the Python reader's dumps (`dump_ref.py`, `dump_cells.py`: removed with it; the
+    dumps made on 2026-10-01 still work as the reference for `diff_render.nim`, `diff_holes.nim` and
+    `diff_trace.nim REF importer/fontlib.kgl`);
+  - `dump_kkp.py REF` and `dump_kkp_images.py REF` (from `ref/`), then `diff_kkp.nim REF`.
+  - **A change to the reader** is checked against the *previous* Nim importer's output on all sheets: every tag cell
+    old vs new, and look at every changed crop.
 
 ## Result (2026-10-01, all 11 sheets)
 

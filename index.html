@@ -208,7 +208,7 @@ async function load(){
     const pd=await api('/api/sync/status').then(s=>s.plant_data).catch(()=>null);
     const msg=!K.online?'You are offline and this device has no saved copy of the plant data. Offline copies need the app opened over HTTPS (or localhost) at least once while online.'
       :pd&&pd.version?`The drawings (version ${pd.version}) are on their way: ${pd.missing} file${pd.missing===1?'':'s'}, ${(pd.missing_bytes/1048576).toFixed(1)} MB left. They arrive with the next sync; this page opens by itself.`
-      :pd?'No drawings yet. The manager publishes them (Manage → Drawings on the server, or python3 app.py publish-data); they reach this device by sync, and this page opens by itself.'
+      :pd?'No drawings yet. The manager publishes them (Manage → Drawings on the server, or kks-server publish-data); they reach this device by sync, and this page opens by itself.'
       :esc(e.message);
     K.overlay(`<div class="box"><h1>${pd?'Waiting for the drawings':'Plant data not available'}</h1><p>${msg}</p><button onclick="location.reload()">Retry</button></div>`);
     if(pd){ K.onChange(why=>{ if(why==='plantdata') location.reload() }); K.watchChanges() }

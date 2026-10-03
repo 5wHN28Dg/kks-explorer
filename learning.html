@@ -28,16 +28,12 @@ a.course h2{margin:0 0 4px;font-size:17px}
 <main id="main"><p class="sub">Loading…</p></main>
 <script src="common.js"></script>
 <script>
-// The courses: JSON (tools/m6/convert_courses.py) or v1's HTML (tools/build_courses.py). Progress = the course's own "solved" key,
-// from this device's log (private, M4) where there is one, else from this browser.
+// The courses (docs/COURSES.md, drawn by course.html) as the server lists them. Progress = the course's own "solved"
+// key, from this device's log (private, M4) where there is one, else from this browser.
 (async () => {
   await K.start();
-  // the JSON courses (docs/COURSES.md, course.html) where the server lists them, else v1's HTML courses
-  let courses = null;
+  let courses = [];
   try { courses = (await K.api('/api/courses')).courses.map(c => ({...c, href: '/course.html?c=' + encodeURIComponent(c.id)})) } catch (e) {}
-  if (!courses || !courses.length)
-    courses = (await (await fetch('/data/courses/courses.json', {credentials: 'same-origin'})).json())
-      .map(c => ({...c, href: '/data/courses/' + encodeURIComponent(c.file)}));
   let saved = null;
   try { saved = (await K.api('/api/progress')).courses } catch (e) {}
   const solvedOf = c => {

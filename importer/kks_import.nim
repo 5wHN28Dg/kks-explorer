@@ -20,7 +20,7 @@ import kks/[json, pathstore]
 import kksi/[mupdf, fontlib, reader, textlines, extract, kkp, jxl]
 
 const
-  RepoGlyphs = currentSourcePath().parentDir.parentDir / "extractor" / "fontlib.kgl"
+  RepoGlyphs = currentSourcePath().parentDir / "fontlib.kgl"
   OverviewMax = 6400.0   ## level 0's long side at most (px), and at most 2 px per point
   ThumbMax = 512         ## the last level's long side is at most this
 

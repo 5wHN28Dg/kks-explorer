@@ -7,7 +7,7 @@ import base64, hashlib, json, os, re, shutil, subprocess, sys, tempfile, time, u
 sys.path.insert(0, os.path.dirname(__file__))
 import adbui as ui  # noqa: E402
 from test_app2 import Client, free_port  # noqa: E402
-from test_move import FakeGitHub, calm, HOST  # noqa: E402
+from fakegithub import FakeGitHub, calm, HOST  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 APK = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')

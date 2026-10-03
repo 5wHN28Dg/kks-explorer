@@ -1,5 +1,5 @@
 // The KKS Explorer internet relay (M5, docs/PROTOCOL.md §18; also protocol v2, docs/PROTOCOL-v2.md §18): a Cloudflare Worker + one Durable Object per plant
-// ("room"). The same protocol as peer/relay_server.py. It never sees plant data: devices meet here, prove they hold
+// ("room"). The same protocol as relay/twin.py. It never sees plant data: devices meet here, prove they hold
 // their device key, swap addresses for a direct connection (hole punching), and if that fails get a pipe that passes
 // their end-to-end encrypted (Noise) sync bytes along unread.
 //   GET /v1/room/<room>                 presence + signaling (JSON text messages)

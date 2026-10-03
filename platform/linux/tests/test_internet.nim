@@ -1,4 +1,4 @@
-## Sync through a relay pipe (PROTOCOL-v2 §18) against the Python relay twin (peer/relay_server.py):
+## Sync through a relay pipe (PROTOCOL-v2 §18) against the Python relay twin (relay/twin.py):
 ## presence, connect with no candidates, the pipe, TLS + §15 inside it. Needs python3 with cryptography, or
 ## KKS_RELAY_URL (e.g. the Worker under `wrangler dev`).
 import std/[unittest, asyncdispatch, os, osproc, strutils, sets, tables]
@@ -23,7 +23,7 @@ suite "internet sync through the relay":
   let py = if fileExists(repo / ".venv/bin/python"): repo / ".venv/bin/python" else: "python3"
   let port = 18000 + (getCurrentProcessId() mod 1000)
   let relayProc = if external.len > 0: nil
-                  else: startProcess(py, repo, ["-m", "peer.relay_server", $port], options = {poStdErrToStdOut})
+                  else: startProcess(py, repo, ["relay/twin.py", $port], options = {poStdErrToStdOut})
   if relayProc != nil: sleep(800)
   let url = if external.len > 0: external else: "ws://127.0.0.1:" & $port
 

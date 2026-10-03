@@ -1,6 +1,6 @@
 """The phone's direct path (PROTOCOL-v2 §18, decision 0028) on an emulator: the phone joins the Nim server on the LAN,
 then the server restarts with its LAN sync port closed, so "Sync now" must go through the relay (the Python twin,
-peer/relay_server.py, reached from the emulator through `adb reverse`). Both sides offer candidates: the sync should go
+relay/twin.py, reached from the emulator through `adb reverse`). Both sides offer candidates: the sync should go
 direct (hole punching + the core's reliable UDP) and bring the server's change to the phone.
   python3 android/app2/e2e/test_direct.py [APK] [SERVER]
 Needs a running emulator and .venv (the relay twin needs cryptography)."""
@@ -37,7 +37,7 @@ class Direct(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix='kks-direct-')
         self.port, self.sport, self.rport = free_port(), free_port(), free_port()
-        self.relay = subprocess.Popen([PY, '-m', 'peer.relay_server', str(self.rport)], cwd=REPO,
+        self.relay = subprocess.Popen([PY, os.path.join(REPO, 'relay', 'twin.py'), str(self.rport)], cwd=REPO,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.cfg = {'address': '127.0.0.1', 'port': self.port, 'plant_name': 'Test plant', 'web_dir': REPO,
                     'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),

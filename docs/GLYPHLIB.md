@@ -1,9 +1,9 @@
 # The glyph library format (`.kgl`, version 1)
 
-The reader classifies each character of a tag box by comparing it with labelled glyphs (decision 0026). Until M6
-the library was `extractor/fontlib.pkl`, a Python pickle of `(X, Y)`. That format can't be read outside Python, so
-the library is now also written as `extractor/fontlib.kgl` by `tools/fontlib_export.py`. The Nim importer
-(`importer/src/kksi/fontlib.nim`) reads only this file.
+The reader classifies each character of a tag box by comparing it with labelled glyphs (decision 0026). The library
+is `importer/fontlib.kgl`, read by the Nim importer (`importer/src/kksi/fontlib.nim`). It was first built as a Python
+pickle (`extractor/fontlib.pkl`) by the old Python reader and exported to this format by `tools/fontlib_export.py`.
+Both were removed with the old app on 2026-10-03 and remain in git history; the `.kgl` is now the library itself.
 
 The file is one gzip stream. Inside it:
 
@@ -19,13 +19,13 @@ The file is one gzip stream. Inside it:
 
 A reader must reject a wrong magic, an unknown version, another glyph size, a truncated file and trailing bytes.
 
-**Vectors.** Each row is a glyph image made by `norm()` (extractor/segment.py; fontlib.nim):
+**Vectors.** Each row is a glyph image made by `norm()` (fontlib.nim; first the Python reader's segment.py):
 1. The glyph is scaled to height 32 with OpenCV's INTER_AREA.
 2. It is centred on a 20-wide canvas (cut on the right if wider).
 3. The canvas is blurred with a 3×3 Gaussian, σ 0.8.
 4. The result is divided by its Euclidean norm.
 
-The vectors are stored exactly as the pickle held them.
+The vectors are stored exactly as the original pickle held them.
 
 **Labels.**
 - A label is usually one character (`0`–`9`, `A`–`Z`).
@@ -36,8 +36,5 @@ The vectors are stored exactly as the pickle held them.
 
 **Version 1 content** (2026-10-01): 13,794 glyphs, 49 labels. The gzip file is 9.4 MB; the pickle is 35 MB.
 
-Rebuild after changing the library:
-
-    .venv/bin/python tools/fontlib_export.py extractor/fontlib.pkl extractor/fontlib.kgl
-
-The output is deterministic (gzip level 9, mtime 0).
+Adding glyphs today means writing new rows into this file (a calibration tool for that is on the backlog). Write it
+deterministically: gzip level 9, mtime 0.

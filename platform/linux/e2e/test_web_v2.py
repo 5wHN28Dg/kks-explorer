@@ -39,7 +39,7 @@ class WebV2(unittest.TestCase):
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
-               'glyphs': os.path.join(REPO, 'extractor', 'fontlib.kgl')}
+               'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl')}
         with open(os.path.join(cls.dir, 'config.json'), 'w') as f: json.dump(cfg, f)
         cls.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(cls.dir, 'config.json')], cwd=cls.dir,
                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

@@ -237,7 +237,7 @@ const VIEWS={
     const busy=job?.state==='running', ids=new Set(D.sheets.map(s=>s.id)), pd=D.plant_data||{};
     let h=`<div class="sub" style="margin-bottom:8px">${pd.version?`Plant data version ${pd.version}`:'No plant data published yet'}: every import or removal publishes a new version, and every device gets it by sync.</div><div class="card"><h3>Add a drawing</h3>`;
     if(!imp.available) h+=`<div class="warn bad">The importer isn't set up on the server: ${esc(imp.error)}</div>
-      <div class="sub">On the server, in the app folder: <span class="mono">python3 app.py setup-importer</span> (creates <span class="mono">.venv</span>; nothing is installed system-wide). Then reload this page.</div>`;
+      <div class="sub">The server's <span class="mono">kks-import</span> is installed with it (<span class="mono">deploy/install-server-user.sh</span>; config key <span class="mono">importer</span>). Then reload this page.</div>`;
     else h+=`<form id="impForm" onsubmit="event.preventDefault();startImport(this)">
       <div class="row"><input type="file" name="pdf" accept="application/pdf,.pdf" required onchange="impFile(this)">
       <input name="name" placeholder="Name, e.g. Condensate System" required maxlength="80" style="flex:1;min-width:200px" oninput="impName(this)">

@@ -45,5 +45,5 @@ KKS_RELAY_URL=ws://127.0.0.1:8787 .venv/bin/python -m unittest tests.test_intern
 KKS_RELAY_URL=ws://127.0.0.1:8787 /tmp/kkslinux/test_internet                          # v2 (platform/linux tests)
 ```
 
-Without `KKS_RELAY_URL`, the tests use `peer/relay_server.py`, the Python twin of this Worker (same protocol). You
-can also self-host that one: `python3 -m peer.relay_server 8787`, behind a TLS proxy for `wss://`.
+Without `KKS_RELAY_URL`, the tests use `relay/twin.py`, the Python twin of this Worker (same protocol). You
+can also self-host that one: `python3 relay/twin.py 8787`, behind a TLS proxy for `wss://`.

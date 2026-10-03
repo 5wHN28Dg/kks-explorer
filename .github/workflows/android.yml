@@ -1,6 +1,7 @@
-# Android app (https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1 M3): protocol/API tests of the Kotlin core (incl. against the Python server),
-# a debug APK and an UNSIGNED release APK. Release signing stays on the maintainer's machine
-# (https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing): the key is never given to CI.
+# Walkdown for Android: a debug APK and an UNSIGNED release APK, to check that the build works. Release signing stays
+# on the maintainer's machine (https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing): the key is never given to CI.
+# The Nim core (libkks.so) is committed prebuilt (android/nim/build.sh); the emulator tests (android/app2/e2e) run
+# on the maintainer's machine.
 name: Android
 
 on:
@@ -18,35 +19,20 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'            # Gradle 8.13 does not run on newer JDKs
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-      - name: Python server for the interop tests
-        run: |
-          python -m venv .venv
-          .venv/bin/python -m pip install -r requirements-desktop.txt
       - uses: gradle/actions/setup-gradle@v6
-      - uses: actions/cache@v6                # the pinned libjxl sources (checked by SHA-256 anyway)
+      - uses: actions/cache@v6                # the pinned libjxl and zxing-cpp sources (checked by SHA-256 anyway)
         with:
-          path: android/app/build/third_party/download
-          key: libjxl-${{ hashFiles('android/app/build.gradle.kts') }}
-      - name: Tests (Kotlin core)
-        working-directory: android
-        run: ./gradlew --no-daemon :core:test
+          path: android/app2/build/third_party/download
+          key: deps-${{ hashFiles('android/app2/build.gradle.kts') }}
       - name: Build APKs
         working-directory: android
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
+          ./gradlew --no-daemon :app2:assembleDebug :app2:assembleRelease
       - uses: actions/upload-artifact@v7
         with:
-          name: kks-explorer-android
+          name: walkdown-android
           path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/release/app-release-unsigned.apk
+            android/app2/build/outputs/apk/debug/app2-debug.apk
+            android/app2/build/outputs/apk/release/app2-release-unsigned.apk
           retention-days: 30
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: test-reports
-          path: android/core/build/reports/tests/

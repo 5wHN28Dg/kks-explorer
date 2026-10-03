@@ -6,7 +6,7 @@ import kks/[json, gz]
 import kksi/[imgops, contours, fontlib, reader]
 
 const Dir = currentSourcePath().parentDir
-const Glyphs = Dir.parentDir.parentDir / "extractor" / "fontlib.kgl"
+const Glyphs = Dir.parentDir / "fontlib.kgl"
 
 proc bytesOf(n: JNode): string = decode(n.s)
 proc floats(s: string): seq[float32] =

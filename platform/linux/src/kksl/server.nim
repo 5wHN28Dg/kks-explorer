@@ -287,64 +287,6 @@ proc handOverManager*(s: Server, to: JNode) =
   let stmt = O(("kind", S("manager")), ("person", to["person"]))
   discard s.n.appendAs(s.custodial(to["device"].s), "root", s.p.rootBody(rk, stmt), nowMs())
 
-# ---------------------------------------------------------------- migration from v1 (PROTOCOL-v2 §21)
-
-proc importV1*(s: Server, pkg: JNode): string =
-  ## Make the v2 plant from a migration package (tools/m6/migrate_v1.py export). Only on an empty server.
-  if s.n.root.len > 0: raise newException(ValueError, "this server already holds a plant")
-  if pkg.get("kks_migration") == nil or pkg["kks_migration"].i != 1: raise newException(ValueError, "not a migration package")
-  let rk = s.p.p256Generate()
-  s.store.putRow("keys", "root", keyJson(rk))
-  let m = pkg["manager"]
-  let st = pkg["import_state"]
-  let stmt = O(("kind", S("import")), ("v1", pkg["v1_hash"]), ("state", S(hex(s.p.sha256(canonical(st).toBytes)))))
-  let imp = O(("stmt", stmt), ("root_sig", S(s.p.signStatement(rk, stmt))), ("state", st))
-  let (mdev, mkey) = s.newCustodial()
-  discard s.n.appendAs(mkey, "genesis", s.p.genesisBody(rk, pkg["plant"].s, mdev, m["person"].s, m["username"].s,
-                                                       m["full_name"].s, m["position"], imp), nowMs())
-  s.n.adopt(keyString(rk.pub))
-  if s.n.run.manager != m["person"].s: raise newException(ValueError, "the genesis did not replay: " & $s.n.ignored)
-  discard s.n.appendAs(mkey, "device_cert", deviceCertBody(s.n.device, m["person"].s, "server"), nowMs())
-  var made = 0
-  for a in pkg["accounts"].elems:
-    let pid = a["person"].s
-    if pid notin s.n.run.persons: continue
-    var dev = mdev
-    if pid != m["person"].s:
-      let (d, _) = s.newCustodial()
-      discard s.n.appendAs(mkey, "device_cert", deviceCertBody(d, pid, "server"), nowMs())
-      dev = d
-    s.putUser(O(("id", newInt(s.newUserId)), ("username", a["username"]), ("pw", a["pw"]),
-                ("active", newBool(a["active"].kind == jInt and a["active"].i == 1 or a["active"].kind == jBool and a["active"].b)),
-                ("created", a["created"]), ("full_name", if a["full_name"].isNull: S("") else: a["full_name"]),
-                ("position", a["position"]), ("person", S(pid)), ("device", S(dev))))
-    inc made
-  # §21a: the v1 devices, so they can move by themselves later (decision 0042)
-  if pkg.get("v1_root") != nil and pkg["v1_root"].isStr:
-    s.store.putRow("v1", "root", pkg["v1_root"])
-    for d in pkg["v1_devices"].elems: s.store.putRow("v1_devices", d[0].s, d[1])
-  var blobs = 0
-  for (sha, b64) in pkg["blobs"].fields:
-    let data = decode(b64.s)
-    if hex(s.p.sha256(data.toBytes)) != sha: raise newException(ValueError, "blob " & sha & " does not match its hash")
-    s.n.store.blobPut(sha, data)
-    inc blobs
-  "v2 plant made: " & $s.n.entries.len & " entries, " & $s.n.run.persons.len & " persons, " & $made & " accounts, " &
-    $blobs & " blobs; ignored: " & $s.n.ignored.len
-
-proc stateForCompare*(s: Server): JNode =
-  ## The imported parts of the state in v1's shapes (tools/m6/migrate_v1.py compare).
-  let r = s.n.run
-  var persons, settings, eq, rv, photos, tags = newObj()
-  for k, v in r.persons: persons[k] = v
-  for k, v in r.settings: settings[k] = v
-  for k, v in r.equipment: eq[k] = v
-  for k, v in r.reviews: rv[k] = v
-  for k, v in r.photos: photos[k] = v
-  for k, v in r.tags: tags[k] = v
-  O(("persons", persons), ("manager", S(r.manager)), ("settings", settings), ("equipment", eq), ("reviews", rv),
-    ("links", r.state()["links"]), ("photos", photos), ("added_tags", tags))
-
 # ---------------------------------------------------------------- HTTP
 
 proc contentType(name: string): string =
@@ -544,8 +486,9 @@ proc enrollOverTls(s: Server, remote: string, m: JNode): JNode =
     ("server", S(s.n.device)))
 
 # ---- moving v1 devices (PROTOCOL-v2 §21a, decision 0042) ----
+# The one-time import (import-v1, import-succession) ran on 2026-10-03 and was removed with v1's code; what stays
+# answers the phones still moving: the statement, the proofs, the v1 relay room. Remove it once v1-status says none.
 
-const SuccessionDomain = "kks-succession-v1\n"
 const MigrateDomain = "kks-migrate-v1\n"
 
 proc v1Root*(s: Server): string =
@@ -557,26 +500,6 @@ proc v1Room*(s: Server): string =
   let r = s.v1Root
   if r.len == 0 or s.store.getRow("v1", "succession") == nil: return ""
   hex(s.p.sha256(toBytes("kks-relay-room-v1\n" & r)))[0 ..< 32]
-
-proc importSuccession*(s: Server, f: JNode): string =
-  ## Keep the succession statement (tools/m6/migrate_v1.py succession) after checking it against this server.
-  let root = s.v1Root
-  if root.len == 0: raise newException(ValueError, "this server holds no v1 import")
-  let st = f.get("stmt")
-  if st == nil or st.kind != jObj or f.get("sig") == nil or not f["sig"].isStr:
-    raise newException(ValueError, "not a succession statement")
-  for k in ["kind", "v1_root", "v1", "v2_root", "server"]:
-    if st.get(k) == nil or not st[k].isStr: raise newException(ValueError, "the statement lacks " & k)
-  if st["kind"].s != "succession" or st["v1_root"].s != root: raise newException(ValueError, "the statement is for another v1 plant")
-  if st["v2_root"].s != s.n.root: raise newException(ValueError, "the statement names another v2 root")
-  if st["server"].s != s.n.device: raise newException(ValueError, "the statement names another server")
-  var sig, pub: seq[byte]
-  try: (sig, pub) = (unb64u(f["sig"].s), unb64u(root))
-  except ValueError: raise newException(ValueError, "bad signature encoding")
-  if not ed25519Verify(pub, sig, toBytes(SuccessionDomain & canonical(st))):
-    raise newException(ValueError, "the v1 root key did not sign this statement")
-  s.store.putRow("v1", "succession", O(("stmt", st), ("sig", f["sig"])))
-  "succession statement kept: " & $st["archived"].elems.len & " v1 devices can move"
 
 proc successionOverTls(s: Server, remote: string, m: JNode): JNode =
   let f = s.store.getRow("v1", "succession")

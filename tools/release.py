@@ -13,8 +13,33 @@ and kks-explorer.apk (built and signed locally: https://github.com/5wHN28Dg/kks-
 import argparse, base64, hashlib, json, os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
-from server import updates
+
+
+class updates:
+    """what the devices check (v1's server/updates.py, removed with v1; the old app still verifies this signature)"""
+    REPO = '5wHN28Dg/kks-explorer'
+    RELEASE_PUB = 'YBHkaex01_tOIIUiI8kZMAHCwUF-aHIGYJtR0jnENtM'   # base64url raw Ed25519 public key
+    DOMAIN = b'kks-release-v1\n'
+    import re as _re
+    VERSION_RE = _re.compile(r'\d{1,4}\.\d{1,4}\.\d{1,4}')
+
+    @staticmethod
+    def current():
+        with open(os.path.join(ROOT, 'VERSION')) as f:
+            return f.read().strip()
+
+    @staticmethod
+    def verify(manifest_bytes, sig_text):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        def b(s):
+            return base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))
+        Ed25519PublicKey.from_public_bytes(b(updates.RELEASE_PUB)).verify(b(sig_text.strip()), updates.DOMAIN + manifest_bytes)
+
+
+# The old app's bridge (decision 0042): while any phone is still on KKS Explorer, every release must carry it as
+# kks-explorer.apk, or 0.8.0 phones see nothing to install. Its source was removed with v1; the built 0.9.0 bridge is
+# kept here (or $KKS_BRIDGE_APK). Check who hasn't moved: kks-server v1-status (wiki: Server).
+BRIDGE_APK = os.environ.get('KKS_BRIDGE_APK') or os.path.expanduser('~/kks-server/archive/kks-explorer-bridge-0.9.0.apk')
 
 # kks-explorer.apk: the v1 app (since the cutover its bridge release, decision 0042); walkdown.apk: Walkdown for
 # Android (it updates itself from this manifest, decision 0044); Walkdown.msix + windows-msix.cer, walkdown.flatpak:
@@ -88,7 +113,7 @@ def main():
         fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)   # never overwrites an existing key
         with os.fdopen(fd, 'w') as f:
             f.write(k.private_bytes(s.Encoding.Raw, s.PrivateFormat.Raw, s.NoEncryption()).hex() + '\n')
-        print(f'Wrote {p}. Back it up offline. Pin its public key in server/updates.py and Updates.kt: {public_b64u(k)}')
+        print(f'Wrote {p}. Back it up offline. Pin its public key in tools/release.py (updates.RELEASE_PUB): {public_b64u(k)}')
         return
     if not (a.version and a.dir):
         ap.error('VERSION and DIR are required')
@@ -98,8 +123,11 @@ def main():
         sys.exit(f'The VERSION file says {updates.current()}, not {a.version}: bump it, commit, build, then release.')
     key = load_key()
     if public_b64u(key) != updates.RELEASE_PUB:
-        sys.exit('This key is not the one pinned in server/updates.py (RELEASE_PUB): devices would refuse the release.')
+        sys.exit('This key is not the one pinned (updates.RELEASE_PUB): the old app would refuse the release.')
     files = {n: os.path.join(a.dir, n) for n in FILES if os.path.exists(os.path.join(a.dir, n))}
+    if 'kks-explorer.apk' not in files and os.path.exists(BRIDGE_APK):
+        files['kks-explorer.apk'] = BRIDGE_APK
+        print(f'Attaching the bridge for phones still on KKS Explorer: {BRIDGE_APK}')
     missing = [n for n in FILES if n not in files]
     if missing:
         print('Missing (devices of that kind will not see this update):', ', '.join(missing))

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Parse 'KKS LOCATION HRSG.pdf' (Word table: KKS | Level (cabinet) | Cabinet | Description | Direction) into
-plant-data/locations.json (then: app.py publish-data). Needs poppler's pdftotext. The list has no unit prefix, so entries are keyed by the 9/10-char
+plant-data/locations.json (then: kks-server publish-data, wiki: Server). Needs poppler's pdftotext. The list has no unit prefix, so entries are keyed by the 9/10-char
 KKS body (e.g. LAB93AA001) and apply to any unit number.
 Usage: python3 tools/parse_locations.py "source/KKS LOCATION HRSG.pdf" [plant-data/locations.json]"""
 import html, json, re, subprocess, sys

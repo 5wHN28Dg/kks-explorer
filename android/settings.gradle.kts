@@ -5,4 +5,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "kks-explorer-android"
-include(":core", ":app", ":app2")
+include(":app2")

@@ -2,6 +2,7 @@
 ##   kks-server [serve] [--config F]
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
 ##   kks-server publish-data DIR | backup --out FILE
+##   kks-server v1-status                    which old-app phones have moved (decision 0042)
 ##   kks-server export-root-key --out FILE   (passphrase in $KKS_ROOT_PASSPHRASE, 12+ characters): the plant root key,
 ##     sealed with the passphrase (decision 0023), the same file the apps' "Restore from a backup" reads
 ## The storage key (decision 0020) comes from systemd-creds: LoadCredentialEncrypted=kks-storage-key:… in the unit
@@ -73,19 +74,13 @@ proc main() =
     try: v = s.publishDir(rest[0])
     except ValueError as e: quit e.msg
     echo(if v == 0: "Unchanged: the files equal the latest version." else: "Published plant data version " & $v & ".")
-  of "import-v1":
-    if rest.len != 1: quit "usage: kks-server import-v1 PACKAGE.json"
-    echo s.importV1(parseStrict(readFile(rest[0]), maxDepth = 512))
-    echo "v2 root: ", s.n.root
-    echo "server:  ", s.n.device
-    echo "Next (phones moving by themselves, PROTOCOL-v2 §21a): tools/m6/migrate_v1.py succession --v2-root ROOT --server SERVER …, then kks-server import-succession FILE"
-  of "import-succession":
-    if rest.len != 1: quit "usage: kks-server import-succession FILE.json"
-    try: echo s.importSuccession(parseStrict(readFile(rest[0])))
-    except ValueError as e: quit e.msg
-  of "dump-state":
-    if "out" notin args: quit "usage: kks-server dump-state --out FILE"
-    writeFile(args["out"], toText(s.stateForCompare()))
+  of "v1-status":
+    # decision 0042: which old-app (KKS Explorer) phones have moved to Walkdown, and which haven't yet
+    let w = s.v1Waiting()
+    var moved = 0
+    for (_, _) in s.store.allRows("v1_moved"): inc moved
+    echo "moved to Walkdown: ", moved, "; still on the old app: ", w.elems.len
+    for x in w.elems: echo "  ", x["name"].s, "  (old device ", x["v1_device"].s[0 ..< 8], "…)"
   of "export-root-key":
     if "out" notin args: quit "usage: KKS_ROOT_PASSPHRASE=… kks-server export-root-key --out FILE"
     let pass = getEnv("KKS_ROOT_PASSPHRASE")

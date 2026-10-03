@@ -1,0 +1,7 @@
+# Python for the tests and tools (not part of any app): the protocol reference (ref/), the e2e drivers, the relay
+# twin, tools/m6 and tools/release.py. python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+cryptography
+Pillow
+numpy
+opencv-python-headless
+pymupdf

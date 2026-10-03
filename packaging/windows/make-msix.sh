@@ -47,7 +47,6 @@ rm -rf "$W"; mkdir -p "$W/layout/Assets" "$W/layout/data/courses" "$W/layout/ven
 sh "$REPO/apps/windows/build.sh" "$W/Walkdown.exe" >/dev/null
 cp "$W/Walkdown.exe" "$W/layout/"
 cp "$REPO"/data/courses/*.json "$REPO"/data/courses/*.jxl "$W/layout/data/courses/"
-rm -f "$W/layout/data/courses/courses.json"     # v1's list; the native apps read the course files themselves
 cp "$REPO"/vendor/fonts/*.woff2 "$W/layout/vendor/fonts/"
 "$PY" - "$REPO/icon-512.png" "$W/layout/Assets" <<'EOF'
 import sys

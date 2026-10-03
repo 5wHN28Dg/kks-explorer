@@ -13,9 +13,6 @@ source/
 to-do.md
 .venv/
 FILE
-# test fixture written by the old server (tools/make_v1_fixture.py): no real field data
-!tests/fixtures/v1/plant.db
-!tests/fixtures/v1/photos/
 dist/
 build/
 # Android build output
@@ -37,5 +34,3 @@ relay/node_modules/
 plant-data/
 # private notes about the plant for Claude Code (plant name, reader accuracy per sheet): never commit
 CLAUDE.local.md
-# Android core: Kotlin build output an IDE wrote next to the sources
-android/core/bin/

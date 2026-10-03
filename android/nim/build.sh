@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build the core library for the Android app (decision 0032): arm64-v8a (phones) and x86_64 (the emulator), with the
-# NDK's clang at API 29, SQLite compiled in. Output: android/app/src/main/jniLibs/<abi>/libkks.so
+# NDK's clang at API 29, SQLite compiled in. Output: android/app2/src/main/jniLibs/<abi>/libkks.so
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"

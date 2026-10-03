@@ -27,7 +27,7 @@ across the internet.
 publishes them to the plant's own devices. The program ships only the KKS decode tables (`data/kks.json`) and the
 Learning courses.
 
-The old KKS Explorer code (`app.py`, `server/`, `peer/`, `android/app`, `android/core`, `desktop.py`, `extractor/`)
-stays until every phone has moved to Walkdown.
+The old KKS Explorer code (Python server, WebView Android app, desktop package, Python reader) was removed on
+2026-10-03; it is in git history, and its notes are on the wiki.
 
 License: AGPL-3.0 (`LICENSE`).
