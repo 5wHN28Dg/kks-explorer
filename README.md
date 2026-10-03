@@ -29,5 +29,3 @@ Learning courses.
 
 The old KKS Explorer code (Python server, WebView Android app, desktop package, Python reader) was removed on
 2026-10-03; it is in git history, and its notes are on the wiki.
-
-License: AGPL-3.0 (`LICENSE`).
