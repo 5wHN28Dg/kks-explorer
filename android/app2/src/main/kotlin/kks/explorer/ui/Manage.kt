@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kks.explorer.Qr
 import kks.explorer.sync.Sync
+import kks.explorer.sync.Updates
 import kks.explorer.sync.SyncWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -396,6 +397,28 @@ private fun Account(rev: Int, say: (String) -> Unit) {
             }) { Text("Sync now") }
         }
         DiagnosticsCard(rev, say)
+        UpdatesCard()
+    }
+}
+
+/** decision 0044: this version, the newest release, Check now / Install */
+@Composable
+private fun UpdatesCard() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    Section("Updates", "This is Walkdown ${Updates.current(ctx)}. New versions are checked once a day and installed only when you tap Install.") {
+        val l = Updates.latest
+        when {
+            Updates.busy != null -> Text(Updates.busy!!)
+            l != null && Updates.available(ctx) -> {
+                Text("Version ${l.version} is out.")
+                if (l.notes.isNotBlank()) Dim(l.notes.take(600))
+                Button(onClick = { scope.launch(Dispatchers.IO) { Updates.install(ctx.applicationContext) } }) { Text("Download and install") }
+            }
+            Updates.checked > 0 && Updates.error == null -> Dim("Up to date.")
+        }
+        Updates.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        TextButton(onClick = { scope.launch(Dispatchers.IO) { Updates.check(ctx.applicationContext) } }, enabled = Updates.busy == null) { Text("Check now") }
     }
 }
 

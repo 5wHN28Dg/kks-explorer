@@ -16,8 +16,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from server import updates
 
-# walkdown.apk: the new Android app, installed by the v1 app's bridge release (0.8.1, decision 0042)
-FILES = ('KKS-Explorer-windows.zip', 'KKS-Explorer-linux.tar.gz', 'kks-explorer.apk', 'walkdown.apk')
+# kks-explorer.apk: the v1 app (since the cutover its bridge release, decision 0042); walkdown.apk: Walkdown for
+# Android (it updates itself from this manifest, decision 0044); Walkdown.msix + windows-msix.cer, walkdown.flatpak:
+# the laptops (installed by hand for now, 0043)
+FILES = ('KKS-Explorer-windows.zip', 'KKS-Explorer-linux.tar.gz', 'kks-explorer.apk', 'walkdown.apk', 'Walkdown.msix',
+         'windows-msix.cer', 'walkdown.flatpak')
+# Walkdown checks a second signature, ECDSA P-256 (it carries no Ed25519): release.json.p256 = base64 of the DER
+# signature over DOMAIN2 + release.json, by release-p256.pem in the signing folder; the public key is pinned in
+# android/app2 (sync/Updates.kt) and here
+DOMAIN2 = b'kks-release-v2\n'
+RELEASE_P256_PUB = ('MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5zNac3d7S/F5haZ7vi8BwMQ8Cv5Ee20FeaIKZO6CJIUYh21F1gjQe0XZI6yiV7wEsvBg'
+                    'VptuyJe62eHcJ99p9A==')
 
 
 def key_path():
@@ -45,6 +54,18 @@ def manifest(version, files, notes=''):
     return json.dumps({'app': 'kks-explorer', 'version': version, 'notes': notes, 'files': out}, indent=1).encode()
 
 
+def sign_p256(manifest_bytes, path=None):
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    with open(path or os.path.join(os.path.dirname(key_path()), 'release-p256.pem'), 'rb') as f:
+        k = serialization.load_pem_private_key(f.read(), None)
+    sig = k.sign(DOMAIN2 + manifest_bytes, ec.ECDSA(hashes.SHA256()))
+    pub = k.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    if base64.b64encode(pub).decode() != RELEASE_P256_PUB:
+        sys.exit('release-p256.pem is not the key pinned in Walkdown (RELEASE_P256_PUB): phones would refuse the release.')
+    return base64.b64encode(sig).decode()
+
+
 def sign(manifest_bytes, key):
     return base64.urlsafe_b64encode(key.sign(updates.DOMAIN + manifest_bytes)).rstrip(b'=').decode()
 
@@ -55,6 +76,7 @@ def main():
     ap.add_argument('dir', nargs='?')
     ap.add_argument('--notes')
     ap.add_argument('--publish', action='store_true')
+    ap.add_argument('--yes', action='store_true', help='publish without asking again')
     ap.add_argument('--new-key', action='store_true')
     a = ap.parse_args()
     if a.new_key:
@@ -90,14 +112,17 @@ def main():
     with open(os.path.join(a.dir, 'release.json.sig'), 'w') as f:
         f.write(sign(m, key) + '\n')
     updates.verify(m, open(os.path.join(a.dir, 'release.json.sig')).read())   # what the devices will check
+    with open(os.path.join(a.dir, 'release.json.p256'), 'w') as f:
+        f.write(sign_p256(m) + '\n')
     print(f'Signed release.json for {a.version}: {", ".join(files)}')
     if not a.publish:
         return
-    if input(f'Create the public GitHub release v{a.version} with these files? [y/N] ').strip().lower() != 'y':
+    if not a.yes and input(f'Create the public GitHub release v{a.version} with these files? [y/N] ').strip().lower() != 'y':
         return print('Not published.')
-    cmd = ['gh', 'release', 'create', f'v{a.version}', '--repo', updates.REPO, '--title', f'KKS Explorer {a.version}',
-           '--notes', notes or f'KKS Explorer {a.version}', *files.values(),
-           os.path.join(a.dir, 'release.json'), os.path.join(a.dir, 'release.json.sig')]
+    cmd = ['gh', 'release', 'create', f'v{a.version}', '--repo', updates.REPO, '--title', f'Walkdown {a.version}',
+           '--notes', notes or f'Walkdown {a.version}', *files.values(),
+           os.path.join(a.dir, 'release.json'), os.path.join(a.dir, 'release.json.sig'),
+           os.path.join(a.dir, 'release.json.p256')]
     subprocess.run(cmd, check=True)
 
 

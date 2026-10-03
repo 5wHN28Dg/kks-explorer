@@ -19,6 +19,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.asImageBitmap
 import kks.explorer.core.Core
 import kks.explorer.sync.Sync
+import kks.explorer.sync.Updates
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -117,7 +118,9 @@ fun MainScreen() {
             }
         }
     ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
+        Column(Modifier.padding(pad).fillMaxSize()) {
+            UpdateBanner()
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             when (ui.tab) {
                 "drawings" -> Drawings(ui, snack)
                 "procedures" -> Procedures(ui, snack)
@@ -125,8 +128,10 @@ fun MainScreen() {
                 "learning" -> Learning(ui, snack)
                 "manage" -> Manage(snack)
             }
+            }
         }
     }
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { runCatching { Updates.maybeCheck(ctx.applicationContext) } } }
     LaunchedEffect(Unit) {
         // first start after joining: one round right away, so the phone shows the plant without waiting
         withContext(Dispatchers.IO) { runCatching { Sync.syncAll(ctx.applicationContext) } }
@@ -318,4 +323,18 @@ private fun MarkDialog(sheet: SheetInfo, b: List<Float>, view: SheetView?, snack
         scope.launch { snack.showSnackbar(m) }
         onDone(ok)
     }) { Text("Propose") } }, dismissButton = { TextButton(onClick = { onDone(false) }) { Text("Cancel") } })
+}
+
+/** decision 0044: a newer Walkdown is out; one tap downloads, checks and hands it to Android's installer */
+@Composable
+fun UpdateBanner() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    if (!Updates.available(ctx)) return
+    Card(Modifier.fillMaxWidth().padding(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(Updates.busy ?: Updates.error ?: "Walkdown ${Updates.latest?.version} is out.", Modifier.weight(1f))
+            if (Updates.busy == null) TextButton(onClick = { scope.launch(Dispatchers.IO) { Updates.install(ctx.applicationContext) } }) { Text("Install") }
+        }
+    }
 }

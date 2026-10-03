@@ -10,7 +10,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val appVersion = rootDir.parentFile.resolve("VERSION").readText().trim()
+// -PkksVersion=a.b.c builds another version (the update test, e2e/test_update.py)
+val appVersion = (findProperty("kksVersion") as String?) ?: rootDir.parentFile.resolve("VERSION").readText().trim()
 val appVersionCode = appVersion.split('.').map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
 
 android {
@@ -21,7 +22,7 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = appVersionCode
-        versionName = "$appVersion-v2"
+        versionName = appVersion
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild {
             cmake {
@@ -52,6 +53,18 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (signing != null) signingConfig = signingConfigs.getByName("release")
         }
+        // the release as shipped (R8 shrinking and all) but signed with the debug key and with the debug-only test
+        // receivers: the e2e tests run on it before a release (assembleRehearsal)
+        create("rehearsal") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+    }
+    sourceSets.getByName("rehearsal") {
+        java.srcDir("src/debug/kotlin")
+        res.srcDir("src/debug/res")
+        manifest.srcFile("src/debug/AndroidManifest.xml")
     }
     ndkVersion = "27.2.12479018"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }

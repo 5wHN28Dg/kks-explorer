@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application android:networkSecurityConfig="@xml/debug_network" tools:ignore="UnusedAttribute">
         <receiver android:name="kks.explorer.DebugSyncReceiver" android:exported="true">
             <intent-filter><action android:name="kks.explorer.DEBUG_SYNC" /></intent-filter>
         </receiver>
         <receiver android:name="kks.explorer.DebugDiagReceiver" android:exported="true">
             <intent-filter><action android:name="kks.explorer.DEBUG_DIAG" /></intent-filter>
+        </receiver>
+        <receiver android:name="kks.explorer.DebugUpdateReceiver" android:exported="true">
+            <intent-filter><action android:name="kks.explorer.DEBUG_UPDATE" /></intent-filter>
         </receiver>
     </application>
 </manifest>

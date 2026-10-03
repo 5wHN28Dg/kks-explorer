@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- self-updates (decision 0044): a verified APK from the signed release goes to Android's installer, which asks -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <!-- moving from the v1 app (decision 0042): its hand-over provider answers only apps signed with our key -->
     <permission android:name="kks.explorer.permission.HANDOVER" android:protectionLevel="signature" />
@@ -29,6 +31,9 @@
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+        <receiver android:name="kks.explorer.sync.Updates$Receiver" android:exported="false">
+            <intent-filter><action android:name="kks.explorer.WALKDOWN_UPDATE_STATUS" /></intent-filter>
+        </receiver>
         <activity android:name="kks.explorer.ui.ScanActivity" android:exported="false"
             android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
     </application>

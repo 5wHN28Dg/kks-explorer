@@ -53,6 +53,18 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (signing != null) signingConfig = signingConfigs.getByName("release")
         }
+        // the release as shipped (R8 shrinking and all) but signed with the debug key and with the debug-only test
+        // receivers: the e2e tests run on it before a release (assembleRehearsal)
+        create("rehearsal") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+    }
+    sourceSets.getByName("rehearsal") {
+        java.srcDir("src/debug/kotlin")
+        res.srcDir("src/debug/res")
+        manifest.srcFile("src/debug/AndroidManifest.xml")
     }
     ndkVersion = "27.2.12479018"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }

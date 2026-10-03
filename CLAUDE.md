@@ -874,6 +874,18 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   - the Android 16 install dialog says "INSTALL".
 - **NOT verified:** release-signed builds (only debug-key builds), a real phone, the relay path on a phone.
 
+**Walkdown updates itself on Android (2026-10-03, decision 0044):**
+- **Signing:** the same GitHub release and `release.json`, plus `release.json.p256`: an ECDSA P-256 signature over
+  `"kks-release-v2\n"` + the manifest, by `~/.config/kks-explorer/signing/release-p256.pem`. Its public key is pinned
+  in `sync/Updates.kt` and `tools/release.py`; `release.py --yes` signs both and publishes without asking.
+- **In the app:** a daily check, a banner with Install, and Manage → Account → Updates. The download is checked
+  against the manifest, then goes to PackageInstaller (the person confirms).
+- **Tested:** `android/app2/e2e/test_update.py`, on a fake release. A wrong key offers nothing; the right one installs
+  0.8.0 → 9.9.9. The newer APK is built with `-PkksVersion=9.9.9`. Debug builds allow clear text to 10.0.2.2 only
+  (`src/debug/res/xml/debug_network.xml`).
+- **Rehearsal builds:** build type `rehearsal` in both apps (`assembleRehearsal`): the release with R8 shrinking,
+  debug-signed, plus the debug test receivers. test_move, test_update and test_app2 passed on them before 0.9.0.
+
 ## Backlog (rough priority)
 
 1. When users have marked missed tags (`app.py added-tags`), find why the extractor missed them and fix the cause.
