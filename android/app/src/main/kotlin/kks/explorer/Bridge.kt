@@ -109,7 +109,7 @@ object Bridge {
             App.start(ctx)
             val r: Map<String, Any?> = try {
                 when (method) {
-                    "info" -> info()
+                    "info" -> if (done(ctx)) mapOf("v1_root" to "", "done" to true) else info()   // moved once: nothing left
                     "handover" -> handover(extras!!.getString("stmt")!!, extras.getString("sig")!!, extras.getString("device")!!,
                                            extras.getString("key")!!, extras.getString("label") ?: "")
                     "done" -> { markDone(ctx); mapOf("ok" to true) }

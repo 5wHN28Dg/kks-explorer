@@ -35,6 +35,12 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0035](0035-web-course-renderer.md) | Browser client renders the JSON courses: vanilla `course.js`, DOM + `textContent`, Canvas 2D figures with a port of the reference evaluator, native controls | decided under the user's standing instruction (revisitable) |
 | [0037](0037-wasm-libjxl-zxing.md) | Our own WebAssembly libjxl (encode + decode) and zxing-cpp: pinned emsdk 6.0.10, same pinned sources as native, SIMD + scalar variants, BarcodeDetector first where present; browsers encode photos to JXL before upload | decided under the user's standing instruction (revisitable) |
 | [0036](0036-native-course-renderers.md) | Native course renderers: shared Nim evaluator and page logic; GtkLabel markup + Cairo/Pango (GNOME), RichEdit + Direct2D/DirectWrite (Windows), Compose (Android); WOFF2 faces via fontconfig / DirectWrite, system faces on Android | decided under the user's standing instruction (revisitable) |
+| [0038](0038-v2-relay-pipe.md) | Internet sync on the native apps through the relay pipe first; hole punching later (done 2026-10-03, 0028) | decided |
+| [0039](0039-webcam-qr.md) | Webcam QR: camera portal + PipeWire/GStreamer on GNOME, Media Foundation (loaded at run time) on Windows | decided, verified |
+| [0040](0040-diagnostics-reports.md) | Diagnostics reports to the manager: sealed `report` entries through the plant's own log | accepted by the user |
+| [0041](0041-plant3d-engine.md) | The 3D plant's engine: Godot 4 measured on the Note 9 and a laptop (on hold) | investigating |
+| [0042](0042-v1-phone-migration.md) | Phones move from the v1 app by a bridge update; v1 proofs checked by the server, open changes handed over | accepted by the user |
+| [0043](0043-msix-packaging.md) | MSIX: Microsoft's MakeAppx (NuGet, in a Windows VM), signed on the host with osslsigncode | accepted |
 
 ## Audit of existing dependencies (2026-09-30)
 

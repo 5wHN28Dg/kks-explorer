@@ -796,7 +796,26 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   - GNOME 50 runtime;
   - zxing-cpp 3.1.1 built in (`-d:flatpak` links `-lZXing` from /app/lib);
   - Nim via `koch boot`;
-  - built here with flatpak-builder `--disable-rofiles-fuse` in ~/.local/kksdev/flatpak.
+  - built here with flatpak-builder `--disable-rofiles-fuse` in ~/.local/kksdev/flatpak;
+  - bundle `kks-explorer.flatpak` 6.7 MB (10.6 MB installed). The GNOME e2e passes against the installed Flatpak and
+    the bundle (`e2e/flatpak-app.sh`; apps/gnome/README).
+- **MSIX (decision 0043):** `packaging/windows/make-msix.sh`:
+  - MakeAppx from the pinned NuGet `Microsoft.Windows.SDK.BuildTools`, run in the Windows VM;
+  - signed here with osslsigncode (Ubuntu's 2.13, unpacked into ~/.local/kksdev/root: no sudo).
+  The Windows e2e passes against the installed package on 10 and 11 (`KKS_WIN_MSIX`, `KKS_WIN_MSIX_CER`). Installs
+  need the desktop session (`e2e/msix.ps1`). So far with a test certificate; the real one comes with the new name.
+- **Sync timing fixes (found by the e2e tests):**
+  - **Desktop:** the automatic round's timer fired while another round ran (Sync now). It skipped that round and set
+    the next one 2 minutes away, so a change made just before waited minutes (`appstate`: no turn while `syncing`).
+  - **Android:** a round after a change was skipped while another ran, and waited for the 2-minute timer. Now one
+    more round runs right after (`again`).
+- **Desktop sync logging:** each sync's result, with its photo counts, goes to stderr (flushed). The Windows test
+  keeps it per script: `C:\kks\app-<script>.log`.
+- **Test fixes:**
+  - the GNOME e2e: the shots folder, a retry when the Devices page rebuilds under a click, the wipe check by name;
+  - the Windows e2e: the photo's file name is read again until its blob arrives (`file` is "" before);
+  - the Android e2e tests start without the old app installed;
+  - the bridge says "nothing to move" after a completed move.
 
 **Direct connections (2026-10-03, decision 0028):**
 - **Core:** `core/src/kks/rudp.nim` is the reliable UDP, sans I/O and wire-compatible with v1's `peer/rudp.py` /

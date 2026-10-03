@@ -260,6 +260,9 @@ proc createPlant*(a: App, plant, username, fullName: string, position: JNode) =
 proc syncOne*(a: App, host: string, port: int, expectPeer: string, adoptRoot = ""): Future[Stats] {.async.} =
   ## expectPeer is checked by TLS (the certificate's key must be that device's)
   let st = await syncWith(a.n, a.id, host, port, expectPeer, adoptRoot, a.hooks)
+  stderr.writeLine "sync with " & host & ":" & $port & ": sent " & $st.sent & ", received " & $st.received &
+    " (photos sent " & $st.blobsSent & ", received " & $st.blobsReceived & ")"
+  stderr.flushFile()        # a file when redirected: block-buffered, lost if the process is killed
   var p = a.peers.getOrDefault(expectPeer)
   p.host = host
   p.port = port
@@ -372,6 +375,8 @@ proc syncAll*(a: App): Future[int] {.async.} =
       p.port = port
       p.lastError = e.msg
       a.peers[peer] = p
+      stderr.writeLine "sync with " & host & ":" & $port & " failed: " & e.msg
+      stderr.flushFile()
       if not expectedFailure(e.msg): a.diag("sync", "sync with " & host & ":" & $port & ": " & e.msg)
   # then the devices on the relay that no LAN sync reached and that did not sync with us since the round started
   if a.internet != nil and a.internet.state == "online":
@@ -453,7 +458,9 @@ proc startSync*(a: App, port = SyncPortDefault, discovery = true) =
   proc loop() {.async.} =
     while true:
       await sleepAsync(500)
-      if nowMs() >= a.nextRound and a.n.root.len > 0:
+      # not while a round runs (Sync now): that would skip this one and push the next a whole Interval away, so a
+      # change made just before would wait minutes (found by the GNOME e2e test, 2026-10-03)
+      if nowMs() >= a.nextRound and a.n.root.len > 0 and not a.syncing:
         a.nextRound = nowMs() + Interval
         discard await a.syncAll()
   asyncCheck loop()

@@ -163,11 +163,16 @@ object Sync {
 
     /** one round: devices found on the Wi-Fi of this plant, then remembered addresses; returns how many were reached */
     private val round = java.util.concurrent.locks.ReentrantLock()
+    @Volatile private var again = false                // a round was skipped while this one ran
 
     /** wait: a person pressed Sync (wait for a running round, then run one); else skip if one is running */
     fun syncAll(ctx: Context, wait: Boolean = false): Int {
         if (!joined()) return 0
-        if (wait) round.lock() else if (!round.tryLock()) return 0   // a round runs already (timer, change, discovery, worker)
+        if (wait) round.lock() else if (!round.tryLock()) {    // a round runs already (timer, change, discovery, worker):
+            again = true                                     // run one more right after it, so a change made just now
+            return 0                                         // doesn't wait for the next 2-minute round
+        }
+        again = false
         syncing = true
         try {
             var n = 0
@@ -221,6 +226,7 @@ object Sync {
             syncing = false
             round.unlock()
             report(ctx)
+            if (again) { again = false; pool.schedule({ runCatching { syncAll(ctx) } }, 1, TimeUnit.SECONDS) }
         }
     }
 

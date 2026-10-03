@@ -92,9 +92,11 @@ class Gnome(unittest.TestCase):
         os.makedirs(d, exist_ok=True)
         env = dict(os.environ, KKS_DATA_DIR=d, KKS_STORAGE_KEY_FILE=os.path.join(d, 'key'), KKS_NO_MDNS='1',
                    KKS_SYNC_PORT=str(free_port()), **extra)
-        p = subprocess.Popen([APP], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        before = atspi.app_pids()
+        log = open(f'/tmp/kks-gnome-e2e-{name}.log', 'w')       # the app's own output, for when a test fails
+        p = subprocess.Popen([APP], env=env, stdout=log, stderr=subprocess.STDOUT)
         self.apps.append(p)
-        return atspi.app_pid(p.pid)
+        return atspi.app_pid(p.pid, name='kks-explorer', before=before)
 
     def test_scan_camera(self):
         """decision 0039: the scan dialog reads an invite from the camera; KKS_CAMERA_FILE plays a video of a QR code
@@ -196,23 +198,34 @@ class Gnome(unittest.TestCase):
         pb.wait(5)
         inv = atspi.find(a, 'dialog', name='Add a device with a QR code')
         atspi.click(atspi.find(inv, 'button', name='Close'))
-        row = atspi.find(a, None, contains='· sara', timeout=15)
-        atspi.click(atspi.find(row, 'button', name='Remove'))
-        dlg = atspi.find(a, 'alert', name='Remove this device?')
+        # the page rebuilds itself after each sync: a click on a row it just replaced is lost, so find it again
+        dlg = None
+        for _ in range(5):
+            row = atspi.find(a, None, contains='· sara', timeout=15)
+            atspi.click(atspi.find(row, 'button', name='Remove'))
+            try:
+                dlg = atspi.find(a, 'alert', name='Remove this device?', timeout=4)
+                break
+            except AssertionError:
+                continue
+        self.assertTrue(dlg, 'no alert named Remove this device?')
         atspi.click(atspi.find(dlg, 'button', name='Remove', timeout=10))
         atspi.find(a, None, contains='removed', timeout=10)
         b = self.start_app('phone')
-        b_pid = self.apps[-1].pid
         atspi.click(atspi.find(b, 'button', name='Sync now', timeout=15))
         note = None
         for _ in range(60):
             time.sleep(0.5)
-            try:
-                b2 = atspi.app_pid(b_pid, timeout=2)
-                note = atspi.find(b2, None, contains='removed from the plant by The Manager', timeout=1)
+            # the app re-executes itself after the wipe; under Flatpak it keeps the sandbox proxy's PID, so look in
+            # every kks-explorer on the bus (only the removed one says this)
+            for b2 in atspi.apps_named('kks-explorer') + atspi.apps_named('kks_explorer'):
+                try:
+                    note = atspi.find(b2, None, contains='removed from the plant by The Manager', timeout=1)
+                    break
+                except AssertionError:
+                    continue
+            if note:
                 break
-            except AssertionError:
-                continue
         self.assertTrue(note, 'the removed device did not wipe itself')
         self.assertNotIn(b'Sample sheet', open(os.path.join(self.dir, 'phone', 'kks.db'), 'rb').read())
 
@@ -227,6 +240,7 @@ class Gnome(unittest.TestCase):
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a static and an
         animated figure exposed as images; a question answered (progress shown); a driven slider moves by itself"""
+        os.makedirs(SHOTS, exist_ok=True)
         shot = os.path.join(SHOTS, 'gnome-course.png')
         a = self.start_app('learner', KKS_SHOT_ON_SIGNAL=shot)
         pid = self.apps[-1].pid

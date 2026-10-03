@@ -82,6 +82,32 @@ all afterwards. Run in PowerShell opened with "Run as administrator":
   (decision 0039: Media Foundation + zxing-cpp); tested with a video file through the same Source Reader in both VMs
   and with this laptop's webcam passed into the Windows 11 VM (frames arrive), not yet with a real QR in front of a
   real webcam.
-- **Packaging:** MSIX (0022), its firewall rule, signing.
+- **Packaging:** the firewall rule, and the real signing certificate (made with the new name; its subject is the
+  package's publisher).
 - **A real laptop:** GPU timings (the VMs render with WARP), company policy (Defender rules, AppLocker), Narrator by ear.
 - **CI:** a GitHub Actions run needs the user's OK to push.
+
+## MSIX (decision 0043)
+
+    packaging/windows/make-msix.sh --test-cert DIR               # a test certificate (CN=KKS Explorer Test)
+    packaging/windows/make-msix.sh VM_IP CERT.pfx OUT.msix       # password in $KKS_MSIX_PASS
+
+The script:
+- cross-builds the app and lays it out: the exe, `data/courses`, `vendor/fonts`, and logos from `icon-512.png`;
+- packs it with MakeAppx from the pinned `Microsoft.Windows.SDK.BuildTools` NuGet package, in the VM;
+- signs it here with osslsigncode, so the key never leaves this machine.
+
+The package declares full trust, network client and server, the webcam, and the command-line alias
+`kks-explorer.exe`.
+
+Installing needs the certificate in `LocalMachine\TrustedPeople` (IT can push it by policy) and an interactive
+session: `Add-AppxPackage` over SSH fails with 0x80070005 (e2e/msix.ps1 runs it in the desktop session).
+
+The Windows e2e test runs against the installed package with:
+
+    KKS_WIN_MSIX=OUT.msix KKS_WIN_MSIX_CER=CERT.cer python3 apps/windows/e2e/test_windows.py VM_IP
+
+Verified 2026-10-03 on Windows 10 22H2 and 11 26H2: all three tests pass against the MSIX (11 MB). The process runs
+from `C:\Program Files\WindowsApps\…` and its data goes to the package's folder. Uninstalling removes it (local
+photos not yet synced would go with it: say so in the install notes). The test removes the package and the
+certificate afterwards.

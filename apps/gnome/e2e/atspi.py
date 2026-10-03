@@ -1,5 +1,5 @@
 """Driving the GNOME app the way a screen-reader or keyboard user would: through its accessibility tree (AT-SPI)."""
-import time
+import os, time
 import gi
 gi.require_version('Atspi', '2.0')
 from gi.repository import Atspi
@@ -97,14 +97,62 @@ def dump(root, maxdepth=25):
             pass
 
 
-def app_pid(pid, timeout=15):
+def family(pid):
+    """pid and its descendants (`flatpak run` starts the app as a grandchild: flatpak-app.sh)"""
+    kids = {}
+    for d in os.listdir('/proc'):
+        if d.isdigit():
+            try:
+                with open(f'/proc/{d}/stat') as f:
+                    kids.setdefault(int(f.read().rsplit(')', 1)[1].split()[1]), []).append(int(d))
+            except (OSError, IndexError, ValueError):
+                pass
+    out, todo = set(), [pid]
+    while todo:
+        p = todo.pop()
+        out.add(p)
+        todo += kids.get(p, [])
+    return out
+
+
+def apps_named(name):
+    """every application called `name` on the accessibility bus now"""
+    desk = Atspi.get_desktop(0)
+    out = []
+    for i in range(desk.get_child_count()):
+        try:
+            a = desk.get_child_at_index(i)
+            if a and a.get_name() == name:
+                out.append(a)
+        except Exception:
+            pass
+    return out
+
+
+def app_pids():
+    """the process IDs the accessibility bus shows now"""
+    desk = Atspi.get_desktop(0)
+    out = set()
+    for i in range(desk.get_child_count()):
+        try:
+            out.add(desk.get_child_at_index(i).get_process_id())
+        except Exception:
+            pass
+    return out
+
+
+def app_pid(pid, timeout=15, name=None, before=()):
+    """the app started as `pid`. A Flatpak app shows the PID of its sandbox's accessibility proxy instead, which is not
+    a descendant: then the new application called `name` that wasn't there `before` the start."""
     t0 = time.time()
     while time.time() - t0 < timeout:
         desk = Atspi.get_desktop(0)
+        pids = family(pid)
         for i in range(desk.get_child_count()):
             a = desk.get_child_at_index(i)
             try:
-                if a and a.get_process_id() == pid:
+                if a and (a.get_process_id() in pids or
+                          (name and a.get_name() == name and a.get_process_id() not in before)):
                     return a
             except Exception:
                 pass

@@ -29,13 +29,19 @@ def put(*files):
     subprocess.run(['scp', '-q'] + SSH + list(files) + ['kks@%s:C:/kks/' % VM], check=True, timeout=300)
 
 
+# KKS_WIN_MSIX=signed.msix KKS_WIN_MSIX_CER=its.cer: test the installed MSIX instead of the plain exe (decision 0043):
+# the certificate goes into LocalMachine\TrustedPeople (what IT does by policy), both are removed afterwards
+MSIX, MSIX_CER = os.environ.get('KKS_WIN_MSIX'), os.environ.get('KKS_WIN_MSIX_CER')
+
+
 def ui(name, lines, keep=True):
     """run uiadrive with these script lines in the desktop session; -> (passed, log)"""
     path = os.path.join(tempfile.gettempdir(), name)
     with open(path, 'w') as f: f.write('\n'.join(lines) + '\n')
     put(path)
     vm('Remove-Item C:\\kks\\uia.log -ErrorAction SilentlyContinue')
-    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\run.ps1 -Script %s%s' % (name, ' -Keep' if keep else '')
+    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\run.ps1 -Script %s%s%s' % (name, ' -Keep' if keep else '',
+                                                                                      ' -Msix' if MSIX else '')
     b64 = base64.b64encode(args.encode()).decode()
     vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kksuia' % b64)
     for _ in range(120):
@@ -43,6 +49,18 @@ def ui(name, lines, keep=True):
         log = vm('[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Content C:\\kks\\uia.log -Encoding UTF8 -ErrorAction SilentlyContinue')
         if ' done' in log: return ('PASSED' in log, log)
     return (False, log)
+
+
+def msix(args):
+    """msix.ps1 in the desktop session (installs need one); -> its result line"""
+    vm('Remove-Item C:\\kks\\msix.log -ErrorAction SilentlyContinue')
+    b64 = base64.b64encode(('-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\msix.ps1 ' + args).encode()).decode()
+    vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kksmsix' % b64)
+    for _ in range(60):
+        time.sleep(2)
+        out = vm('Get-Content C:\\kks\\msix.log -ErrorAction SilentlyContinue').strip()
+        if out: return out
+    return 'no answer from msix.ps1'
 
 
 def free_port():
@@ -102,10 +120,20 @@ class Windows(unittest.TestCase):
         subprocess.run([sys.executable, '-c', 'from PIL import Image, ImageDraw; im = Image.new("RGB", (1200, 900), (60, 90, 150)); '
                         'ImageDraw.Draw(im).rectangle([400, 300, 800, 600], fill=(240, 240, 240)); im.save(%r, quality=92)' % photo], check=True)
         put(APP, DRIVER, os.path.join(HERE, 'run.ps1'), os.path.join(HERE, 'runapp.ps1'), photo)
+        if MSIX:
+            put(MSIX, MSIX_CER, os.path.join(HERE, 'msix.ps1'))
+            vm('Import-Certificate -FilePath C:\\kks\\%s -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople | Out-Null'
+               % os.path.basename(MSIX_CER))
+            out = msix('-Add C:\\kks\\' + os.path.basename(MSIX))
+            assert out.startswith('ok KKSExplorer_'), 'the MSIX did not install: ' + out
 
     @classmethod
     def tearDownClass(cls):
         vm('Get-Process KKSExplorer,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
+        if MSIX:      # leave the VM as it was: no package, no trusted test certificate
+            msix('-Remove')
+            vm('$t = (New-Object Security.Cryptography.X509Certificates.X509Certificate2 C:\\kks\\%s).Thumbprint; '
+               'Remove-Item Cert:\\LocalMachine\\TrustedPeople\\$t' % os.path.basename(MSIX_CER))
         cls.server.terminate()
         cls.server.wait(5)
         shutil.rmtree(cls.dir, ignore_errors=True)
@@ -188,8 +216,11 @@ class Windows(unittest.TestCase):
         ph = self.wait_server(lambda: [p for p in self.boss.req('GET', '/api/state').get('photos', [])
                                        if p.get('kks') == '11LAB70AA501' and p.get('caption') == 'Valve from Windows'],
                               'the photo never reached the server', tries=80)
-        def fetch_blob():   # the photo's entry can arrive before its blob (blobs follow on the next round)
-            try: return self.boss.op.open(self.boss.base + '/photos/' + ph[0]['file']).read()
+        def fetch_blob():   # the photo's entry can arrive before its file; until then its `file` is "": read it again
+            f = [p for p in self.boss.req('GET', '/api/state').get('photos', [])
+                 if p.get('kks') == '11LAB70AA501' and p.get('caption') == 'Valve from Windows'][0]['file']
+            if not f: return None
+            try: return self.boss.op.open(self.boss.base + '/photos/' + f).read()
             except urllib.error.HTTPError: return None
         blob = self.wait_server(fetch_blob, 'the photo file never reached the server', tries=80)
         self.assertEqual(blob[:2], b'\xff\x0a', 'not a JPEG XL codestream')

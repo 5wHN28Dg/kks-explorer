@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The MSIX manifest (decision 0043). make-msix.sh fills in @NAME@, @PUBLISHER@ (the signing certificate's subject,
+     exactly), @VERSION@ (a.b.c.0 from VERSION) and @DISPLAY@. -->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+         xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap uap3 desktop rescap">
+  <Identity Name="@NAME@" Publisher="@PUBLISHER@" Version="@VERSION@" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>@DISPLAY@</DisplayName>
+    <PublisherDisplayName>@DISPLAY@</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Find plant equipment on P&amp;ID drawings by KKS code.</Description>
+  </Properties>
+  <Dependencies>
+    <!-- Windows 10 1809 and later (the test VMs: 10 22H2 and 11) -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="KKSExplorer.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="@DISPLAY@" Description="Find plant equipment on P&amp;ID drawings by KKS code."
+                          BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- `kks-explorer` on the command line starts the app with its package identity (and the caller's environment:
+             the e2e tests pass their settings that way) -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="KKSExplorer.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="kks-explorer.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <!-- a classic desktop program (Win32), not an AppContainer app -->
+    <rescap:Capability Name="runFullTrust" />
+    <!-- sync with the plant's server and devices, and listen for theirs -->
+    <Capability Name="internetClientServer" />
+    <Capability Name="privateNetworkClientServer" />
+    <!-- QR codes through the webcam (decision 0039): listed in Windows' camera privacy settings -->
+    <DeviceCapability Name="webcam" />
+  </Capabilities>
+</Package>

@@ -80,8 +80,21 @@ and the importer, with no plant data. In about 30 s it covers:
 - Two app instances under one session's accessibility bus still interfere in tests. The test fetches what it needs
   from the first instance before starting the second.
 
+**Flatpak** (built and tested 2026-10-03): `flatpak/` holds the manifest (GNOME 50 runtime, zxing-cpp built in, Nim
+via `koch boot`), the desktop entry and the AppStream metadata. Build, install and make a single-file bundle:
+
+    flatpak run org.flatpak.Builder --user --install --disable-rofiles-fuse --state-dir=state --force-clean build \
+        apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.yml
+    flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo state/cache \
+        kks-explorer.flatpak io.github._5wHN28Dg.kks_explorer master
+
+The bundle is 6.7 MB (10.6 MB installed); it installs with `flatpak install --user --bundle kks-explorer.flatpak`.
+The e2e test runs against the installed Flatpak through `e2e/flatpak-app.sh`, which passes the test's KKS_* settings
+and /tmp into the sandbox, forwards its signals to the app and stops the sandbox at the end:
+`python3 apps/gnome/e2e/test_gnome.py "$PWD/apps/gnome/e2e/flatpak-app.sh"`. All three tests pass, also from the
+bundle. Under Flatpak the accessibility bus reports the PID of the sandbox's proxy, so `atspi.app_pid` also accepts
+the newly appeared app by name.
+
 **Not built or not verified yet:**
-- the Flatpak: `flatpak/` has the manifest, desktop entry and AppStream metadata, which pass `desktop-file-validate`
-  and `appstreamcli validate`, but the build needs `flatpak-builder` and the GNOME 50 SDK;
 - pan frame times;
 - Orca itself (the tree is checked through AT-SPI).

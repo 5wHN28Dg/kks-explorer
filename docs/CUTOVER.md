@@ -23,8 +23,9 @@ v2 server and the native apps. Written 2026-10-03; to be **rehearsed on copies f
    - Android: **two** APKs signed with the maintainer's key (docs/ANDROID_RELEASE.md): the old app as the bridge
      (`android/app`, `kks-explorer.apk`) and the new app (`android/app2`, `kks-explorer-2.apk`), both listed in the
      same signed `release.json` (`tools/release.py`);
-   - Flatpak bundle (`flatpak build-bundle`), for Linux laptops;
-   - Windows MSIX signed with our certificate + the certificate for IT (or the zip);
+   - Flatpak bundle (`flatpak build-bundle`, apps/gnome/README), for Linux laptops;
+   - Windows MSIX (`packaging/windows/make-msix.sh`, decision 0043) signed with our certificate, plus the certificate
+     for IT (or the zip);
    - `deploy/install-server-user.sh` run from the commit (the server snapshot).
 4. **Rehearsal on copies** (no live file touched): copy `~/kks-server/v1` to a scratch folder, run steps 3–6 below
    against it on test ports, open the result in a browser and an app, compare with the v1 server. Rehearse the phone
@@ -84,5 +85,7 @@ v2 server and the native apps. Written 2026-10-03; to be **rehearsed on copies f
 
 - The rename and its new app IDs. The new Android package ID goes into `android/app2` (applicationId),
   `Bridge.NEW_APP` in `android/app`, and both manifests (`<queries>`).
-- Windows: build the MSIX and its certificate (not built yet), and ask IT whether they trust the certificate by policy.
+- Windows: the MSIX pipeline is built and tested with a test certificate (10 and 11). Still to do: make the real
+  certificate with the new name (its subject becomes the publisher identity), and ask IT whether they will trust it
+  by policy (`LocalMachine\TrustedPeople`).
 - Which teammates use which devices (the inventory).
