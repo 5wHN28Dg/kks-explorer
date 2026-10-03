@@ -344,7 +344,8 @@ private fun Account(rev: Int, say: (String) -> Unit) {
                 Dim(if (Sync.syncing) "Syncing…" else if (last > 0) "Last sync ${whenText(last / 1000)}" else "Not synced yet")
                 val st = kks.explorer.sync.Internet.state
                 val on = kks.explorer.sync.Internet.online.size
-                if (st != "off") Dim(if (st == "online") "Internet: on the relay, $on other device${if (on == 1) "" else "s"} online" else "Internet: $st")
+                val how = when (kks.explorer.sync.Internet.lastHow) { "direct" -> " · last sync direct"; "relay" -> " · last sync through the relay"; else -> "" }
+                if (st != "off") Dim(if (st == "online") "Internet: on the relay, $on other device${if (on == 1) "" else "s"} online$how" else "Internet: $st")
             }
             key(tick) {
                 Sync.backgroundLimit(ctx)?.let { why ->

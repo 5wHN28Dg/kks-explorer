@@ -26,6 +26,8 @@ object Core {
     @JvmStatic private external fun nSyncEnd(s: Long)
     @JvmStatic private external fun nSheet(h: Long, id: ByteArray): ByteArray?
     @JvmStatic private external fun nFig(h: Long, id: Int, cmd: ByteArray): ByteArray?
+    @JvmStatic private external fun nRudpNew(session: ByteArray, dead: Double, now: Double): Long
+    @JvmStatic private external fun nRudpStep(id: Long, op: Int, data: ByteArray, now: Double): ByteArray
 
     private val thread = Executors.newSingleThreadExecutor { Thread(it, "kks-core") }
     private val main = Handler(Looper.getMainLooper())
@@ -74,6 +76,11 @@ object Core {
     }
 
     fun file(path: String): ByteArray? = onCore { nFile(h, b(path)) }
+
+    /** the reliable UDP stream of the direct path (core/src/kks/rudp.nim; the socket is sync/Direct.kt's) */
+    fun rudpNew(session: ByteArray, dead: Double, now: Double): Long = onCore { nRudpNew(session, dead, now) }
+    /** op 1 datagram in, 2 timers, 3 bytes out, 4 finish, 5 free → the packed result (Direct.Step) */
+    fun rudpStep(id: Long, op: Int, data: ByteArray, now: Double): ByteArray = onCore { nRudpStep(id, op, data, now) }
     /** one frame of a course figure: u32 + state JSON + drawing ops (kksa/figops.nim); null when it is gone */
     fun fig(id: Int, cmd: JSONObject): ByteArray? = onCore { nFig(h, id, b(cmd.toString())) }
     /** a sheet's path store, decoded (views.flat layout) */

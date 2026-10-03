@@ -24,6 +24,8 @@ extern uint8_t *kks_sync_info(int64_t s, int *outlen);
 extern void kks_sync_end(int64_t s);
 extern void kks_free(void *p);
 extern uint8_t *kks_sheet(int64_t h, const char *id, int *outlen);
+extern int64_t kks_rudp_new(const uint8_t *session, double dead, double now);
+extern uint8_t *kks_rudp_step(int64_t id, int op, const uint8_t *data, int len, double now, int *outlen);
 extern uint8_t *kks_fig(int64_t h, int id, const char *cmd, int *outlen);
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
@@ -211,5 +213,29 @@ JNIEXPORT jbyteArray JNICALL Java_kks_explorer_core_Core_nFig(JNIEnv *env, jclas
 	free(c);
 	jbyteArray r = out ? bytes(env, out, outlen) : NULL;
 	if (out) kks_free(out);
+	return r;
+}
+
+/* the reliable UDP stream of the direct path (PROTOCOL-v2 §18): Kotlin owns the socket (sync/Direct.kt) */
+JNIEXPORT jlong JNICALL Java_kks_explorer_core_Core_nRudpNew(JNIEnv *env, jclass cls, jbyteArray session, jdouble dead, jdouble now)
+{
+	g_env = env;
+	int n;
+	uint8_t *s = copy_bytes(env, session, &n);
+	int64_t id = n == 8 ? kks_rudp_new(s, dead, now) : 0;
+	free(s);
+	return (jlong)id;
+}
+
+JNIEXPORT jbyteArray JNICALL Java_kks_explorer_core_Core_nRudpStep(JNIEnv *env, jclass cls, jlong id, jint op, jbyteArray data,
+                                                                   jdouble now)
+{
+	g_env = env;
+	int n, outlen = 0;
+	uint8_t *d = copy_bytes(env, data, &n);
+	uint8_t *out = kks_rudp_step(id, op, d, n, now, &outlen);
+	free(d);
+	jbyteArray r = bytes(env, out, outlen);
+	kks_free(out);
 	return r;
 }

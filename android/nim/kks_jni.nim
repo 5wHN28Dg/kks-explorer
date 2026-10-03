@@ -3,7 +3,7 @@
 
 import std/[tables, os, strutils, base64, times]
 import std/sets
-import kks/[json, crypto, proto, node, api, sync, bundle, extras, util, invites, plantdata, model, views, pathstore, courses, diagnostics]
+import kks/[json, crypto, proto, node, api, sync, bundle, extras, util, invites, plantdata, model, views, pathstore, courses, diagnostics, rudp]
 import kksl/dbstore
 import kksa/[provider_jni, figops]
 
@@ -34,6 +34,7 @@ var
   insts: seq[Inst]
   syncs: Table[int64, Sync]
   nextSync = 1'i64
+  rudps: Table[int64, Rudp]     ## reliable UDP streams (§18 direct path); the socket is Kotlin's (sync/Direct.kt)
 
 proc cbytes(s: string, outlen: ptr cint): ptr UncheckedArray[byte] =
   ## a malloc'd copy for the C side (it frees with kks_free)
@@ -328,6 +329,51 @@ proc kks_sync_info(sid: int64, outlen: ptr cint): ptr UncheckedArray[byte] {.exp
   cbytes(toText(j), outlen)
 
 proc kks_sync_end(sid: int64) {.exportc, cdecl.} = syncs.del sid
+
+proc kks_rudp_new(session: ptr UncheckedArray[byte], dead, now: cdouble): int64 {.exportc, cdecl.} =
+  var ss = newString(8)
+  copyMem(addr ss[0], session, 8)
+  let id = nextSync
+  inc nextSync
+  rudps[id] = newRudp(ss, now, dead)
+  id
+
+proc kks_rudp_step(id: int64, op: cint, data: ptr UncheckedArray[byte], n: cint, now: cdouble,
+                   outlen: ptr cint): ptr UncheckedArray[byte] {.exportc, cdecl.} =
+  ## One event for a stream: op 1 a datagram from the other side, 2 timers, 3 bytes to send, 4 finish, 5 free.
+  ## -> flags u8 (1 error, 2 ended, 4 finished) + queued u32 + error (u32 len + bytes) + received (u32 len + bytes)
+  ##    + datagrams to send (u16 count, each u16 len + bytes); big-endian
+  var outp = ""
+  proc u32(x: int) =
+    outp.add char((x shr 24) and 0xff); outp.add char((x shr 16) and 0xff); outp.add char((x shr 8) and 0xff); outp.add char(x and 0xff)
+  proc u16(x: int) =
+    outp.add char((x shr 8) and 0xff); outp.add char(x and 0xff)
+  if id notin rudps: return cbytes("\x01\x00\x00\x00\x00\x00\x00\x00\x04gone\x00\x00\x00\x00\x00\x00", outlen)
+  let r = rudps[id]
+  var bs = newString(int(n))
+  if n > 0: copyMem(addr bs[0], data, int(n))
+  try:
+    case op
+    of 1: r.feed(bs, now)
+    of 2: r.tick(now)
+    of 3: r.write(bs, now)
+    of 4: r.finish(now)
+    of 5:
+      rudps.del id
+      return cbytes("", outlen)
+    else: discard
+  except CatchableError as e:
+    if r.error.len == 0: r.error = e.msg
+  let got = r.read()
+  let dgs = r.takeOut()
+  outp.add char((if r.error.len > 0: 1 else: 0) or (if r.ended: 2 else: 0) or (if r.finished: 4 else: 0))
+  u32(r.queued)
+  u32(r.error.len); outp.add r.error
+  u32(got.len); outp.add got
+  u16(dgs.len)
+  for d in dgs:
+    u16(d.len); outp.add d
+  cbytes(outp, outlen)
 
 proc kks_sheet(h: int64, id: cstring, outlen: ptr cint): ptr UncheckedArray[byte] {.exportc, cdecl.} =
   ## a sheet's path store, decoded, in views.flat's layout

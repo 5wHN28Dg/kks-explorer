@@ -810,7 +810,13 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   - core test_rudp: a simulated lossy link, v1's cases;
   - test_internet: direct, and the pipe when one side has `direct = false`;
   - test_rudp_interop against `tools/rudp_peer.py`.
-- **Not done:** Android (app2 still sends `cand: []`), real NATs.
+- **Android (2026-10-03):** `sync/Direct.kt` (the socket, STUN, punching; the stream's logic is the core's
+  `rudp.nim` through JNI `Core.rudpStep`: datagram in, timers, bytes out, finish, free → packed result). TLS over it
+  via `Net.overRaw`, which `overPipe` now uses too. `Internet.kt` tries direct first; `lastHow` is shown in
+  Manage → Account. Verified on the emulator: `android/app2/e2e/test_direct.py`. The phone joins, the server
+  restarts with its LAN sync port closed, and the server's change arrives through the relay twin (adb reverse) over
+  the direct path.
+- **Not done:** real NATs, mobile data.
 
 **Phone move without help (2026-10-03, decision 0042, PROTOCOL-v2 §21a; the user's choice "Bridge update, new ID").**
 - **Flow:** 0.8.0 → "Download and install" → the bridge (the v1 app built at the release's VERSION) → it installs

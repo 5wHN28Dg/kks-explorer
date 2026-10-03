@@ -81,21 +81,27 @@ object Net {
 
     /** TLS with the sync's profile over a relay pipe (§18); the client pins expectPeer, the server requires a client certificate */
     fun overPipe(ws: WsClient, client: Boolean, expectPeer: String): Peer {
-        val e = ctx.createSSLEngine()
-        e.useClientMode = client
-        e.enabledProtocols = e.supportedProtocols.filter { it == "TLSv1.3" || it == "TLSv1.2" }.toTypedArray()
-        e.enabledCipherSuites = e.supportedCipherSuites.filter { it in SUITES }.toTypedArray()
-        e.sslParameters = e.sslParameters.apply { applicationProtocols = arrayOf(ALPN) }
-        if (!client) e.needClientAuth = true
         ws.setTimeout(TIMEOUT * 2)
-        val t = EngineTls(e, rawIn = {
+        return overRaw(rawIn = {
             var got: ByteArray? = null
             while (got == null) {
                 val (op, data) = try { ws.recv() } catch (x: IOException) { break }
                 if (op == WsClient.BINARY) got = data
             }
             got
-        }, rawOut = { ws.sendBinary(it) }, onClose = { ws.close() })
+        }, rawOut = { ws.sendBinary(it) }, onClose = { ws.close() }, client = client, expectPeer = expectPeer)
+    }
+
+    /** the same over any byte transport: a relay pipe, or the direct path's reliable UDP (sync/Direct.kt).
+     *  rawIn blocks for the next piece and returns null at the end. */
+    fun overRaw(rawIn: () -> ByteArray?, rawOut: (ByteArray) -> Unit, onClose: () -> Unit, client: Boolean, expectPeer: String): Peer {
+        val e = ctx.createSSLEngine()
+        e.useClientMode = client
+        e.enabledProtocols = e.supportedProtocols.filter { it == "TLSv1.3" || it == "TLSv1.2" }.toTypedArray()
+        e.enabledCipherSuites = e.supportedCipherSuites.filter { it in SUITES }.toTypedArray()
+        e.sslParameters = e.sslParameters.apply { applicationProtocols = arrayOf(ALPN) }
+        if (!client) e.needClientAuth = true
+        val t = EngineTls(e, rawIn = rawIn, rawOut = rawOut, onClose = onClose)
         try {
             t.handshake()
             if (e.applicationProtocol != ALPN) throw IllegalStateException("the other side does not speak $ALPN")

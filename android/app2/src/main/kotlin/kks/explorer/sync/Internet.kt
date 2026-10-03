@@ -13,9 +13,9 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Sync across the internet (PROTOCOL-v2 §18), the twin of platform/linux/src/kksl/internet.nim: presence in the
- * plant's room on the relay (the hello is signed by the core with the device key), and syncs through a relay pipe
- * carrying the same TLS as on the Wi-Fi. No hole punching yet: this side offers no candidates, so both go straight
- * to the pipe. Runs on its own threads.
+ * plant's room on the relay (the hello is signed by the core with the device key), and syncs directly when hole
+ * punching works (Direct.kt: STUN, punching, the core's reliable UDP), else through a relay pipe; either way the
+ * stream carries the same TLS as on the Wi-Fi. Runs on its own threads.
  */
 object Internet {
     @Volatile var state = "off"; private set           // off, connecting, online, or what went wrong
@@ -32,6 +32,8 @@ object Internet {
     @Volatile var allowed: () -> Boolean = { true }
     @Volatile private var forced = 0L
     private val rng = SecureRandom()
+    @Volatile var direct = true                    // try hole punching first (tests can force the pipe)
+    @Volatile var lastHow = ""                     // "direct" or "relay": how the last sync went (the status)
 
     private fun changed() { runCatching { onChange?.invoke() } }
 
@@ -121,7 +123,7 @@ object Internet {
             "left" -> { online.remove(m.getString("peer")); changed() }
             "connect" -> {
                 val from = m.optString("from"); val id = m.optString("id")
-                if (from.isNotEmpty() && id.isNotEmpty()) Thread({ serve(from, id) }, "kks-relay-in").start()
+                if (from.isNotEmpty() && id.isNotEmpty()) Thread({ serve(from, id, cands(m)) }, "kks-relay-in").start()
             }
             "accept", "refuse", "gone" -> waiting.remove(m.optString("id"))?.offer(m)
             "error" -> { state = "relay error: ${m.optString("why")}"; changed() }
@@ -130,36 +132,62 @@ object Internet {
 
     private fun send(j: JSONObject) = (ws ?: throw IllegalStateException("not on the relay")).sendText(j.toString())
 
-    /** another device asked for a sync: accept with no candidates, meet it in the pipe, answer as the TLS server */
-    private fun serve(from: String, id: String) {
+    private fun cands(m: JSONObject): List<String> {
+        val a = m.optJSONArray("cand") ?: return emptyList()
+        return (0 until minOf(a.length(), 8)).mapNotNull { a.opt(it) as? String }.filter { it.length <= 64 }
+    }
+
+    private fun ours(): Pair<Direct.Udp?, List<String>> =
+        if (!direct) null to emptyList() else try { Direct.candidates() } catch (e: Exception) { null to emptyList() }
+
+    /** §18: hole punching when both sides offered candidates, else (or when it fails) the relay pipe */
+    private fun meet(u: Direct.Udp?, ours: List<String>, theirs: List<String>, id: String, client: Boolean, expect: String): Net.Peer {
+        if (u != null && ours.isNotEmpty() && theirs.isNotEmpty()) {
+            val session = Direct.session(id)
+            val at = Direct.punch(u, session, theirs)
+            if (at != null) {
+                lastHow = "direct"
+                return Direct.connect(u, at, session, client, expect)
+            }
+        }
+        u?.close()
+        lastHow = "relay"
+        return Net.overPipe(WsClient("$relay/v1/pipe/$room/$id/${if (client) "a" else "b"}"), client = client, expectPeer = expect)
+    }
+
+    /** another device asked for a sync: accept with our candidates, meet it (directly or in the pipe), answer as the TLS server */
+    private fun serve(from: String, id: String, theirs: List<String>) {
         try {
-            send(JSONObject().put("t", "accept").put("to", from).put("id", id).put("cand", JSONArray()))
-            val p = Net.overPipe(WsClient("$relay/v1/pipe/$room/$id/b"), client = false, expectPeer = "")
+            val (u, ours) = ours()
+            send(JSONObject().put("t", "accept").put("to", from).put("id", id).put("cand", JSONArray(ours)))
+            val p = meet(u, ours, theirs, id, client = false, expect = "")
             try {
                 val st = Net.drive(p, false)
-                Log.i("KKSSync", "relay sync from ${p.remote.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
+                Log.i("KKSSync", "relay sync ($lastHow) from ${p.remote.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
                 onSynced?.invoke(p.remote, st)
             } finally { p.close() }
         } catch (e: Exception) { Log.w("KKSSync", "relay: answering ${from.take(8)} failed: ${e.message}") }
     }
 
-    /** sync with a device of the plant that is on the relay: connect (no candidates), then the pipe as side a */
+    /** sync with a device of the plant that is on the relay: connect with our candidates, then direct or the pipe (side a) */
     fun syncPeer(peer: String): JSONObject {
         if (state != "online") throw IllegalStateException("not on the relay")
         val id = ByteArray(16).also { rng.nextBytes(it) }.joinToString("") { "%02x".format(it) }
         val q = LinkedBlockingQueue<JSONObject>()
         waiting[id] = q
-        send(JSONObject().put("t", "connect").put("to", peer).put("id", id).put("cand", JSONArray()))
+        val (u, ours) = ours()
+        send(JSONObject().put("t", "connect").put("to", peer).put("id", id).put("cand", JSONArray(ours)))
         val a = q.poll(15, TimeUnit.SECONDS)
         waiting.remove(id)
         when (a?.optString("t")) {
-            null -> throw IllegalStateException("no answer through the relay")
-            "gone" -> throw IllegalStateException("the device is not on the relay")
-            "refuse" -> throw IllegalStateException("the device refused")
+            null -> { u?.close(); throw IllegalStateException("no answer through the relay") }
+            "gone" -> { u?.close(); throw IllegalStateException("the device is not on the relay") }
+            "refuse" -> { u?.close(); throw IllegalStateException("the device refused") }
         }
-        val p = Net.overPipe(WsClient("$relay/v1/pipe/$room/$id/a"), client = true, expectPeer = peer)
+        val p = meet(u, ours, cands(a!!), id, client = true, expect = peer)
         try {
             val st = Net.drive(p, true)
+            Log.i("KKSSync", "relay sync ($lastHow) with ${peer.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
             onSynced?.invoke(peer, st)
             return st
         } finally { p.close() }
