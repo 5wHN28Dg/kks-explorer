@@ -44,7 +44,7 @@ object Migrate {
 
     private fun call(ctx: Context, method: String, extras: Bundle? = null): JSONObject {
         val b = ctx.contentResolver.call(HANDOVER, method, null, extras)
-            ?: throw IllegalStateException("the old app did not answer (is it the bridge version?)")
+            ?: throw IllegalStateException("KKS Explorer did not answer (is it the latest version?)")
         return JSONObject(b.getString("json") ?: "{}")
     }
 
@@ -55,7 +55,7 @@ object Migrate {
 
     /** the whole move; status gets what to show. "" = done, else what went wrong (the person can try again) */
     fun run(ctx: Context, status: (String) -> Unit): String {
-        val inf = info(ctx) ?: return "The old app has no plant to move."
+        val inf = info(ctx) ?: return "KKS Explorer has no plant to move."
         val v1root = inf.getString("v1_root")
         status("Looking for the plant's server…")
         Discovery.start(ctx)
@@ -82,14 +82,14 @@ object Migrate {
             val stmt = succ.getJSONObject("stmt")
             val server = stmt.getString("server")
             // the bridge checks the statement against the v1 root it trusts, then signs the move and hands over
-            status("Checking the server with the old app…")
+            status("Checking the server with KKS Explorer…")
             val cfg = Sync.config()
             val key = cfg.getString("key")
             val ho = call(ctx, "handover", Bundle().apply {
                 putString("stmt", stmt.toString()); putString("sig", succ.getString("sig"))
                 putString("device", cfg.getString("device")); putString("key", key); putString("label", Sync.label())
             })
-            if (!ho.optBoolean("ok")) return ho.optString("why").ifEmpty { "The old app refused the move." }
+            if (!ho.optBoolean("ok")) return ho.optString("why").ifEmpty { "KKS Explorer refused the move." }
             status("Moving this phone into the plant…")
             val ack = route.ask(JSONObject().put("t", "migrate").put("proof", ho.getJSONObject("proof")), server)
             if (ack.optString("state") != "accepted") return ack.optString("why").ifEmpty { "The server refused the move." }
@@ -130,7 +130,7 @@ object Migrate {
     private fun blob(ctx: Context, sha: String): ByteArray {
         val b = ctx.contentResolver.openInputStream(Uri.withAppendedPath(HANDOVER, "blob/$sha"))!!.use { it.readBytes() }
         val got = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
-        if (got != sha) throw IllegalStateException("a photo from the old app does not match its hash")
+        if (got != sha) throw IllegalStateException("a photo from KKS Explorer does not match its hash")
         return b
     }
 

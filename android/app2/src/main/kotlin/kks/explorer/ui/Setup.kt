@@ -32,7 +32,7 @@ fun SetupScreen(onJoined: () -> Unit) {
     var page by remember { mutableStateOf("") }
     BackHandler(enabled = page.isNotEmpty()) { page = "" }
     Column(Modifier.safeDrawingPadding().padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("KKS Explorer", style = MaterialTheme.typography.headlineMedium)
+        Text("Walkdown", style = MaterialTheme.typography.headlineMedium)
         when (page) {
             "" -> {
                 val removed = App.removedNote(ctx)
@@ -80,7 +80,7 @@ private fun MoveFromOldApp(onJoined: () -> Unit) {
     }
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Moving from the old app", style = MaterialTheme.typography.titleMedium)
+            Text("Moving from KKS Explorer", style = MaterialTheme.typography.titleMedium)
             Text("${inf.optString("name").ifEmpty { "Your" }} account, plant ${inf.optString("plant")}: this phone joins by itself, " +
                  "and your changes that haven't reached the server yet come along.", style = MaterialTheme.typography.bodyMedium)
             if (busy) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -205,7 +205,7 @@ private fun NearbyJoin(onJoined: () -> Unit) {
     val j = join
     if (j != null) { JoinProgress(j, needCode = true, onJoined = onJoined, onGiveUp = { join = null }); return }
     NameFields(username, fullName)
-    if (found.isEmpty()) Dim("No admin's device found yet. The admin's device must be on the same Wi-Fi with KKS Explorer open.")
+    if (found.isEmpty()) Dim("No admin's device found yet. The admin's device must be on the same Wi-Fi with Walkdown open.")
     for (f in found) ListItem(headlineContent = { Text("Ask ${f.label}") }, supportingContent = { Text("${f.plant} · ${f.host}") },
         modifier = Modifier.fillMaxWidth().clickable {
             if (!namesOk(username.value, fullName.value)) { msg = "Fill in a username (2+ characters) and your full name."; return@clickable }

@@ -27,13 +27,14 @@ What Windows checks [D: https://learn.microsoft.com/windows/msix/package/signing
   custom code with no reference.
 - **Sign on the host with osslsigncode** (the Ubuntu package): the key never leaves `~/.config/kks-explorer/signing`.
   GPL-3.0 is fine for a build tool we don't ship.
-- **Verify on the target:** SignTool `verify /pa` in the VM, then `Add-AppxPackage` on Windows 10 and 11 with the
-  certificate in TrustedPeople, then start the installed app.
+- **Verify on the target:** `osslsigncode verify` here, then `Add-AppxPackage` on Windows 10 and 11 with the
+  certificate in TrustedPeople. Windows' deployment log says "The app package signature was validated". Then the
+  Windows e2e suite runs against the installed app.
 - **Script:** `packaging/windows/make-msix.sh` (layout: the exe, `data/courses`, `vendor/fonts`; logos made from
   `icon-512.png`).
-- **Certificate:** until the rename, a *test* certificate (`CN=KKS Explorer Test`) checks the pipeline. The real one
-  is made with the new name: its subject becomes the package's publisher identity, and changing it later breaks
-  updates.
+- **Certificate:** `CN=Walkdown` (made 2026-10-03 after the rename; RSA 4096, valid to 2056, SHA-256 fingerprint
+  `15:22:2B:FC:…:07:13`). It lives in `~/.config/kks-explorer/signing/windows-msix.{pfx,password,cer,crt}`. Its subject
+  is the package's publisher identity: changing it later breaks updates. `--test-cert` still makes a throwaway one.
 - **Data:** an MSIX app's `%LOCALAPPDATA%` writes go to the package's own folder, which Windows deletes on uninstall.
   The plant data is in the log on the server and on other devices, but local photos waiting to sync would go with
   it. This goes in the install notes.

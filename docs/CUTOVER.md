@@ -10,14 +10,15 @@ v2 server and the native apps. Written 2026-10-03; to be **rehearsed on copies f
 | Server | `python3 app.py` from the development checkout; files in the repo root | `~/kks-server` (`deploy/install-server-user.sh`): an installed snapshot, a user systemd service, storage key sealed by `systemd-creds --user` |
 | Plant log | v1 entries (Ed25519) in `plant.db` | v2 entries (P-256), one-time import (PROTOCOL-v2 §21) |
 | Drawings | PNG + SVG per sheet | path store (`.kkp`) + JXL pyramid + the source PDF; **tags and notes kept as they are** (`kks-import --keep-tags`) |
-| Android | `kks.explorer` (WebView) | the new app (native, new package ID with the new name). Phones move **by themselves** through the bridge update of the old app (decision 0042, PROTOCOL-v2 §21a): open changes and photos come along |
+| Android | `kks.explorer` (WebView) | Walkdown (native, `io.github.walkdown`). Phones move **by themselves** through the bridge update of the old app (decision 0042, PROTOCOL-v2 §21a): open changes and photos come along |
 | Laptops | PyInstaller package / browser | GNOME: Flatpak; Windows: self-signed MSIX (decision 0022), or the zip fallback |
 | Browsers | v1 pages from the Python server | v2 pages from the v2 server (iPhone path) |
 
 ## Before the day
 
-1. **Rename decided** (the user, 2026-10-03: the project outgrew "KKS Explorer"). App IDs (Android package, Flatpak ID,
-   MSIX identity) change with it: the cutover is the one moment that costs nothing extra.
+1. **Renamed: Walkdown** (the user, 2026-10-03). Done in the code: Android `io.github.walkdown`, Flatpak
+   `io.github._5wHN28Dg.walkdown`, MSIX `Walkdown` (publisher `CN=Walkdown`), release APK `walkdown.apk`. The old app
+   keeps its name and IDs (0.8.0 looks for them).
 2. Everything committed; a version number for the cutover release (VERSION).
 3. Build the release artefacts from that commit:
    - Android: **two** APKs signed with the maintainer's key (docs/ANDROID_RELEASE.md): the old app as the bridge
@@ -83,9 +84,7 @@ v2 server and the native apps. Written 2026-10-03; to be **rehearsed on copies f
 
 ## Open before the day
 
-- The rename and its new app IDs. The new Android package ID goes into `android/app2` (applicationId),
-  `Bridge.NEW_APP` in `android/app`, and both manifests (`<queries>`).
-- Windows: the MSIX pipeline is built and tested with a test certificate (10 and 11). Still to do: make the real
-  certificate with the new name (its subject becomes the publisher identity), and ask IT whether they will trust it
-  by policy (`LocalMachine\TrustedPeople`).
+- Windows: the MSIX is built and signed with the real certificate (`CN=Walkdown`, made 2026-10-03, in
+  ~/.config/kks-explorer/signing with the other keys: **back it up**) and tested on 10 and 11. Still to do: ask IT
+  whether they will trust `windows-msix.cer` by policy (`LocalMachine\TrustedPeople`).
 - Which teammates use which devices (the inventory).

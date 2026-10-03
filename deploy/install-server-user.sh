@@ -46,9 +46,9 @@ if [ ! -f "$HOME_DIR/storage-key.cred" ]; then
 fi
 mkdir -p "$HOME/.config/systemd/user"
 cat > "$HOME/.config/systemd/user/kks-server.service" <<UNIT
-# KKS Explorer v2 server for this user (deploy/install-server-user.sh). Start: systemctl --user start kks-server
+# Walkdown v2 server for this user (deploy/install-server-user.sh). Start: systemctl --user start kks-server
 [Unit]
-Description=KKS Explorer server (v2, user)
+Description=Walkdown server (v2, user)
 After=network-online.target
 
 [Service]

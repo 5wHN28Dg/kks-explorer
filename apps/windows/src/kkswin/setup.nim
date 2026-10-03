@@ -64,7 +64,7 @@ proc runJoin(w: Win, hosts: seq[(string, int)], peer: string, token: JNode, user
 
 proc buildSetup*(w: Win, p: Page, done: proc ()) =
   p.clear()
-  p.title("KKS Explorer")
+  p.title("Walkdown")
   case setupPage
   of "":
     let removed = w.a.removedNote

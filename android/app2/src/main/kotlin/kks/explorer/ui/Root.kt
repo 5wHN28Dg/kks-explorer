@@ -175,7 +175,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
         v.post { v.centerOn(b[0], b[1], b[2], b[3], cy = 0.22f) }
     }
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(current?.name ?: "KKS Explorer") }, actions = {
+        TopAppBar(title = { Text(current?.name ?: "Walkdown") }, actions = {
             TextButton(onClick = { drawer = !drawer }) { Text(if (drawer) "Close" else "Sheets") }
             TextButton(onClick = { scope.launch {
                 val n = withContext(Dispatchers.IO) { Sync.syncAll(ctx.applicationContext, wait = true) }

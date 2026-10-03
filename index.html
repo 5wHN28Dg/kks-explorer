@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Plant P&amp;ID / KKS Explorer</title>
+<title>Plant P&amp;ID / Walkdown</title>
 <link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#243440"><link rel="icon" href="/icon.svg"><link rel="apple-touch-icon" href="/icon-192.png">
 <style>
 :root{
@@ -117,7 +117,7 @@ dt{color:var(--muted)} dd{margin:0}
 <body>
 <div id="app">
 <header>
-  <div class="brand">KKS Explorer <small id="plantName"></small></div>
+  <div class="brand">Walkdown <small id="plantName"></small></div>
   <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search equipment by KKS code or description" aria-autocomplete="list" aria-expanded="false" aria-controls="results"><div id="results" role="listbox" aria-label="Search results"></div></div>
   <select id="sheetSel" title="Drawing"></select>
   <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
@@ -225,7 +225,7 @@ async function load(){
     if(why==='synced') refreshState(); else { updatePending(); if(cur) drawTags() } });
   updateQueueBadge(); setTimeout(cacheSheets,3000);
   if(K.cfg?.mode==='peer'&&!K.cfg?.app) api('/api/update').then(u=>{   // once per new version (M5b)
-    if(u.available&&!u.staged&&localStorage.getItem('updSeen')!==u.latest){ localStorage.setItem('updSeen',u.latest); toast(`KKS Explorer ${u.latest} is out: Manage → Account to install it`) } }).catch(()=>{});
+    if(u.available&&!u.staged&&localStorage.getItem('updSeen')!==u.latest){ localStorage.setItem('updSeen',u.latest); toast(`Walkdown ${u.latest} is out: Manage → Account to install it`) } }).catch(()=>{});
   $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
   refreshFloors(); refreshReviewCount(); renderProcs();
   const want=new URLSearchParams(location.search).get('sheet')||localStorage.getItem('sheet');  // ?sheet=id from Manage → Drawings

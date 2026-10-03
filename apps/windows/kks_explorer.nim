@@ -1,4 +1,4 @@
-## KKS Explorer for Windows (M6 phase 7; decisions 0014, 0027, 0033): Win32 controls + a Direct2D drawing view on the
+## Walkdown for Windows (M6 phase 7; decisions 0014, 0027, 0033): Win32 controls + a Direct2D drawing view on the
 ## Nim core. One thread owns the node: asyncdispatch is pumped from the window's timer.
 
 import std/[asyncdispatch, os, osproc, strutils, tables, sets, times, math]
@@ -63,7 +63,7 @@ proc doShowSheet(id: string) =
   w.v.setSheet(id, flatBytes, si.scale, si.levels)
   w.v.tags = w.tagBoxes(id)
   w.applyHighlights()
-  SetWindowTextW(w.hwnd, newWideCString(si.name & " — KKS Explorer"))
+  SetWindowTextW(w.hwnd, newWideCString(si.name & " — Walkdown"))
 
 proc doSelectTag(id: string, center: bool) =
   w.selected = id
@@ -241,7 +241,7 @@ proc main() =
                        hCursor: LoadCursorW(nil, IDC_ARROW), hbrBackground: GetSysColorBrush(COLOR_WINDOW),
                        lpszClassName: clsName)
   discard RegisterClassExW(addr wc)
-  let hw = CreateWindowExW(WS_EX_CONTROLPARENT, newWideCString("KKSMain"), newWideCString("KKS Explorer"),
+  let hw = CreateWindowExW(WS_EX_CONTROLPARENT, newWideCString("KKSMain"), newWideCString("Walkdown"),
                            WS_OVERLAPPEDWINDOW or WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 820, nil, nil, hinst, nil)
   makeFonts(int(GetDpiForWindow(hw)))
   laterWindow = hw

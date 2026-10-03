@@ -1,4 +1,11 @@
-# KKS Explorer — project context for Claude Code
+# Walkdown (formerly KKS Explorer) — project context for Claude Code
+
+**Name (the user's choice, 2026-10-03): Walkdown.** IDs: Android `io.github.walkdown` (Android segments must start
+with a letter, so not Flathub's `_5wHN28Dg`; the code namespace stays `kks.explorer.v2`), Flatpak
+`io.github._5wHN28Dg.walkdown` (Flathub's form for a GitHub account starting with a digit), MSIX `Walkdown` (alias `walkdown.exe`, exe `Walkdown.exe`),
+release APK `walkdown.apk`. Unchanged on purpose: the v1 app (`kks.explorer`, "KKS Explorer", `kks-explorer.apk`: 0.8.0
+phones look for them), every protocol string (`kks-…` signature domains, relay rooms, `_kks._tcp`, ALPN, vectors), the
+deployed relay, the GitHub repo name (renaming it is the user's call; GitHub redirects the old URLs).
 
 Tool built by an I&C maintenance engineer at a combined-cycle power plant. The repository is meant to become public
 (M5b): no plant name, plant data or plant-specific notes in tracked files. Those live in `plant-data/` (the manager's
@@ -803,7 +810,8 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   - MakeAppx from the pinned NuGet `Microsoft.Windows.SDK.BuildTools`, run in the Windows VM;
   - signed here with osslsigncode (Ubuntu's 2.13, unpacked into ~/.local/kksdev/root: no sudo).
   The Windows e2e passes against the installed package on 10 and 11 (`KKS_WIN_MSIX`, `KKS_WIN_MSIX_CER`). Installs
-  need the desktop session (`e2e/msix.ps1`). So far with a test certificate; the real one comes with the new name.
+  need the desktop session (`e2e/msix.ps1`). Signed with the real certificate `CN=Walkdown` since the rename
+  (`~/.config/kks-explorer/signing/windows-msix.*`; the user must back it up).
 - **Sync timing fixes (found by the e2e tests):**
   - **Desktop:** the automatic round's timer fired while another round ran (Sync now). It skipped that round and set
     the next one 2 minutes away, so a change made just before waited minutes (`appstate`: no turn while `syncing`).
@@ -851,8 +859,8 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   - presence in the v1 relay room (`internetV1`, `Internet.roomOf`);
   - mDNS TXT `prev`;
   - `/api/devices.sync.v1_waiting` (admin.html "Moving from the old app").
-- **New package ID** lives in `android/app2` applicationId, `Bridge.NEW_APP` and both manifests' `<queries>`: change
-  it there with the rename.
+- **New package ID** `io.github.walkdown` lives in `android/app2` applicationId, `Bridge.NEW_APP` and both manifests'
+  `<queries>`.
 - **Tests:**
   - `platform/linux/tests/test_migrate.nim` (8: statement, proofs, tampering, refusals, the relay room; v1 plant from
     `tools/m6/v1_test_plant.py`);

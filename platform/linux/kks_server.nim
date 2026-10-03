@@ -55,7 +55,7 @@ proc main() =
   of "serve":
     let l = s.setupLink()
     if l.len > 0: echo "No manager yet. Open this link once to create the manager (valid 7 days):\n  ", l
-    echo "KKS Explorer server on http://", cfg.address, ":", cfg.port, (if cfg.syncPort > 0: ", sync port " & $cfg.syncPort else: "")
+    echo "Walkdown server on http://", cfg.address, ":", cfg.port, (if cfg.syncPort > 0: ", sync port " & $cfg.syncPort else: "")
     asyncCheck s.serve()
     runForever()
   of "setup-link":

@@ -1,4 +1,4 @@
-# KKS Explorer for Windows (M6 phase 7)
+# Walkdown for Windows (M6 phase 7)
 
 Win32 controls and a Direct2D drawing view on the Nim core (decisions 0014, 0027, 0033). It shares the device logic
 with the GNOME app (`apps/common/appstate.nim`) and the platform layer with the server
@@ -7,7 +7,7 @@ with the GNOME app (`apps/common/appstate.nim`) and the platform layer with the 
 ## Build (cross-compiled here, no Windows needed)
 
     platform/windows/build-deps.sh       # once: zlib, libjxl, zxing-cpp for Windows into ~/.local/kksdev/win64
-    apps/windows/build.sh                # → /tmp/kkswin/KKSExplorer.exe (one static exe, ~14 MB)
+    apps/windows/build.sh                # → /tmp/kkswin/Walkdown.exe (one static exe, ~14 MB)
 
 The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (decision 0033).
 `res/kks.manifest` provides Common Controls v6, per-monitor DPI v2, the UTF-8 code page and the Windows 10/11 compatibility entry.
@@ -98,7 +98,7 @@ The script:
 - signs it here with osslsigncode, so the key never leaves this machine.
 
 The package declares full trust, network client and server, the webcam, and the command-line alias
-`kks-explorer.exe`.
+`walkdown.exe`.
 
 Installing needs the certificate in `LocalMachine\TrustedPeople` (IT can push it by policy) and an interactive
 session: `Add-AppxPackage` over SSH fails with 0x80070005 (e2e/msix.ps1 runs it in the desktop session).

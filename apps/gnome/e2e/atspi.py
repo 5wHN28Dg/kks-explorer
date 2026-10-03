@@ -152,7 +152,7 @@ def app_pid(pid, timeout=15, name=None, before=()):
             a = desk.get_child_at_index(i)
             try:
                 if a and (a.get_process_id() in pids or
-                          (name and a.get_name() == name and a.get_process_id() not in before)):
+                          (name and a.get_name() in ((name,) if isinstance(name, str) else name) and a.get_process_id() not in before)):
                     return a
             except Exception:
                 pass

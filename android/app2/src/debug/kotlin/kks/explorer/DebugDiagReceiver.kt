@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import kks.explorer.sync.Diagnostics
 
-/** Debug builds only: `adb shell am broadcast -a kks.explorer.DEBUG_DIAG -p kks.explorer.v2 --es text "…"` records an
+/** Debug builds only: `adb shell am broadcast -a kks.explorer.DEBUG_DIAG -p io.github.walkdown --es text "…"` records an
  *  error event and writes a report now (decision 0040's e2e test; a real report waits for a real error and 6 hours). */
 class DebugDiagReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {

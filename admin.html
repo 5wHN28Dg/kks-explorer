@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Manage — KKS Explorer</title>
+<title>Manage — Walkdown</title>
 <link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#243440"><link rel="icon" href="/icon.svg">
 <style>
 :root{
@@ -427,7 +427,7 @@ async function renderUpdate(u){
   try{ u=u||await K.api('/api/update') }catch(e){ el.innerHTML=''; return }   // (server: admins only)
   const mayAct=K.cfg?.mode==='peer'||isManager();
   let h=`<div class="card"><h3>Updates</h3><div>This is version <b>${esc(u.current)}</b>.</div>`;
-  if(u.staged) h+=`<div class="warn" style="margin-top:8px">Version ${esc(u.staged)} is installed: close KKS Explorer (Quit) and start it again to use it.</div>`;
+  if(u.staged) h+=`<div class="warn" style="margin-top:8px">Version ${esc(u.staged)} is installed: close Walkdown (Quit) and start it again to use it.</div>`;
   else if(u.busy) h+=`<div class="sub" style="margin-top:8px">${u.busy==='unpacking'?'Unpacking…':'Downloading…'} this page updates by itself.</div>`;
   else if(u.available){
     h+=`<div style="margin-top:8px"><b>Version ${esc(u.latest)} is out.</b> ${u.page?`<a href="${esc(u.page)}" target="_blank" rel="noopener">What's new</a>`:''}</div>`

@@ -12,7 +12,7 @@ APK = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'android/app2/bui
 SERVER = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kksimp/kks_import'
 del sys.argv[1:]
-PKG = 'kks.explorer.v2'
+PKG = 'io.github.walkdown'
 # the emulator reaches this machine at 10.0.2.2; a real phone over USB uses `adb reverse` and 127.0.0.1
 # (choose the phone with ANDROID_SERIAL; KKS_PHONE_HOST=127.0.0.1)
 PHONE_HOST = os.environ.get('KKS_PHONE_HOST', '10.0.2.2')

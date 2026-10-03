@@ -14,7 +14,7 @@
     </queries>
     <application
         android:name="kks.explorer.App"
-        android:label="KKS Explorer 2"
+        android:label="Walkdown"
         android:allowBackup="false"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:enableOnBackInvokedCallback="true">
@@ -25,7 +25,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <provider android:name="androidx.core.content.FileProvider" android:authorities="kks.explorer.v2.files"
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="io.github.walkdown.files"
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>

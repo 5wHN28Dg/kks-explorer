@@ -1,14 +1,14 @@
 # Flatpak manifest (decision 0022: Flathub). Build:
 #   flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50 org.flatpak.Builder
-#   flatpak run org.flatpak.Builder --user --install --force-clean build apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.yml
+#   flatpak run org.flatpak.Builder --user --install --force-clean build apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.yml
 # Status: built 2026-10-03 with org.flatpak.Builder and the GNOME 50 SDK (GTK 4.22.5, libadwaita 1.9.4, libjxl 0.11.2,
 # GStreamer 1.26 with the PipeWire plugin, sqlite, gnutls, libsecret all come from the runtime; only Nim and
 # zxing-cpp are built here). The camera comes through the camera portal (decision 0039): no device access needed.
-app-id: io.github._5wHN28Dg.kks_explorer
+app-id: io.github._5wHN28Dg.walkdown
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
-command: kks-explorer
+command: walkdown
 finish-args:
   - --share=network            # sync with the plant's devices and server
   - --share=ipc
@@ -41,17 +41,17 @@ modules:
         url: https://codeload.github.com/zxing-cpp/zxing-cpp/tar.gz/v3.1.1
         dest-filename: zxing-cpp-3.1.1.tar.gz
         sha256: 7286b1e6ade66fe82b7c8208b4595deeb55d6486b410834fdc65702f46650542
-  - name: kks-explorer
+  - name: walkdown
     buildsystem: simple
     build-commands:
-      - cd apps/gnome && KKS_DEV=/app/dev PATH=/app/nim/bin:$PATH nim c -d:release -d:flatpak -o:/app/bin/kks-explorer kks_explorer.nim
-      - install -Dm644 data/kks.json /app/share/kks-explorer/data/kks.json
-      - mkdir -p /app/share/kks-explorer/data/courses /app/share/kks-explorer/vendor/fonts
-      - cp data/courses/*.json data/courses/*.jxl /app/share/kks-explorer/data/courses/
-      - cp vendor/fonts/*.woff2 /app/share/kks-explorer/vendor/fonts/
-      - install -Dm644 apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.desktop -t /app/share/applications
-      - install -Dm644 apps/gnome/flatpak/io.github._5wHN28Dg.kks_explorer.metainfo.xml -t /app/share/metainfo
-      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/io.github._5wHN28Dg.kks_explorer.svg
+      - cd apps/gnome && KKS_DEV=/app/dev PATH=/app/nim/bin:$PATH nim c -d:release -d:flatpak -o:/app/bin/walkdown kks_explorer.nim
+      - install -Dm644 data/kks.json /app/share/walkdown/data/kks.json
+      - mkdir -p /app/share/walkdown/data/courses /app/share/walkdown/vendor/fonts
+      - cp data/courses/*.json data/courses/*.jxl /app/share/walkdown/data/courses/
+      - cp vendor/fonts/*.woff2 /app/share/walkdown/vendor/fonts/
+      - install -Dm644 apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.desktop -t /app/share/applications
+      - install -Dm644 apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/io.github._5wHN28Dg.walkdown.svg
     sources:
       - type: dir
         path: ../../..

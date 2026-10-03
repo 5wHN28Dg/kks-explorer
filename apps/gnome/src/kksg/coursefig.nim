@@ -14,7 +14,7 @@ proc loadCourseFonts*() =
   ## the course faces (vendored WOFF2, decision 0011) as application fonts for Pango (fontconfig reads WOFF2)
   if fontsLoaded: return
   fontsLoaded = true
-  for base in [getAppDir() / "vendor" / "fonts", getAppDir() / ".." / "share" / "kks-explorer" / "vendor" / "fonts",
+  for base in [getAppDir() / "vendor" / "fonts", getAppDir() / ".." / "share" / "walkdown" / "vendor" / "fonts",
                currentSourcePath().parentDir.parentDir.parentDir.parentDir.parentDir / "vendor" / "fonts"]:
     if dirExists(base):
       for f in walkFiles(base / "*.woff2"): discard addAppFont(f)

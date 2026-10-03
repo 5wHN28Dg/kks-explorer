@@ -127,25 +127,25 @@ private fun BridgeScreen(a: MainActivity) {
     val s = a.state
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp).verticalScroll(rememberScrollState()),
            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("KKS Explorer has a new app", style = MaterialTheme.typography.headlineSmall)
+        Text("KKS Explorer is now Walkdown", style = MaterialTheme.typography.headlineSmall)
         when {
             s.bridgeDone -> {
-                Text("This phone has moved to the new app, with your changes that hadn't reached the server yet. " +
+                Text("This phone has moved to Walkdown, with your changes that hadn't reached the server yet. " +
                      "You can remove this old app now.", style = MaterialTheme.typography.bodyLarge)
                 Button(onClick = { Bridge.removeSelf(a) }) { Text("Remove the old app") }
-                OutlinedButton(onClick = { Bridge.openNewApp(a) }) { Text("Open the new app") }
+                OutlinedButton(onClick = { Bridge.openNewApp(a) }) { Text("Open Walkdown") }
             }
             s.newInstalled -> {
-                Text("The new app is installed. Open it: it joins your plant by itself and brings along your photos and " +
+                Text("Walkdown is installed. Open it: it joins your plant by itself and brings along your photos and " +
                      "changes that haven't reached the server yet.", style = MaterialTheme.typography.bodyLarge)
-                Button(onClick = { Bridge.openNewApp(a) }) { Text("Open the new app") }
+                Button(onClick = { Bridge.openNewApp(a) }) { Text("Open Walkdown") }
             }
             else -> {
-                Text("The plant has moved to a new, faster app. Install it: it joins your plant by itself, and your photos " +
+                Text("The plant has moved to Walkdown, the new and faster app. Install it: it joins your plant by itself, and your photos " +
                      "and changes that haven't reached the server yet come along. Nothing to type.", style = MaterialTheme.typography.bodyLarge)
                 if (s.updBusy != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Text(s.updBusy!!)
-                } else Button(onClick = { a.installNewApp() }) { Text("Install the new app") }
+                } else Button(onClick = { a.installNewApp() }) { Text("Install Walkdown") }
                 Text("Checked against the release's signature first; Android then asks you to confirm.",
                      style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 s.updError?.let { Text(it, color = MaterialTheme.colorScheme.error) }

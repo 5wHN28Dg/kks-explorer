@@ -3,9 +3,9 @@
 param([string]$Add = "", [switch]$Remove)
 $log = "C:\kks\msix.log"
 try {
-  Get-AppxPackage KKSExplorer | Remove-AppxPackage
+  Get-AppxPackage Walkdown | Remove-AppxPackage
   if ($Add) { Add-AppxPackage $Add }
-  Set-Content $log ("ok " + (Get-AppxPackage KKSExplorer).PackageFullName)
+  Set-Content $log ("ok " + (Get-AppxPackage Walkdown).PackageFullName)
 } catch {
   Set-Content $log ("failed " + $_.Exception.Message)
 }

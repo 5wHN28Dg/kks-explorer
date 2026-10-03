@@ -1,4 +1,4 @@
-## KKS Explorer for GNOME (M6 phase 5; decisions 0014, 0016, 0031): GTK 4 + libadwaita in Nim, the Nim core
+## Walkdown for GNOME (M6 phase 5; decisions 0014, 0016, 0031): GTK 4 + libadwaita in Nim, the Nim core
 ## underneath. One thread: GLib's main loop runs GTK, and asyncdispatch (sync, mDNS) is driven from it.
 
 import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequtils]
@@ -7,7 +7,7 @@ import kks/model
 import appstate
 import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn]
 
-const AppId = "io.github._5wHN28Dg.kks_explorer"
+const AppId = "io.github._5wHN28Dg.walkdown"
 
 proc doShowSheet(w: Win, id: string)
 proc doSelectTag(w: Win, id: string, center: bool)
@@ -156,7 +156,7 @@ proc sideRoot(w: Win): W =
   floorG.gtk_list_box_append(combo)
   lists.add w.resultList, label("Sheets", "heading"), w.sheetList, floorG, more
   side.add scrolled(lists)
-  let sideTitle = adw_window_title_new("KKS Explorer", w.a.plantName.cstring)
+  let sideTitle = adw_window_title_new("Walkdown", w.a.plantName.cstring)
   w.status = sideTitle
   let sideHeader = headerBar(sideTitle)
   adw_header_bar_pack_end(sideHeader, iconButton("view-refresh-symbolic", "Sync now", proc () =
@@ -313,7 +313,7 @@ proc setupScreen(w: Win): W =
       adw_preferences_group_add(choices, navRow(pages[i][0], pages[i][1], pages[i][0], proc () = adw_navigation_view_push(nav, pgW)))
   let root = adw_preferences_page_new()
   adw_preferences_page_add(root, choices)
-  adw_navigation_view_add(nav, adw_navigation_page_new(toolbarView(headerBar(adw_window_title_new("KKS Explorer", "Set up this device")), root), "Set up"))
+  adw_navigation_view_add(nav, adw_navigation_page_new(toolbarView(headerBar(adw_window_title_new("Walkdown", "Set up this device")), root), "Set up"))
   nav
 
 proc showMain(w: Win) =
@@ -323,7 +323,7 @@ proc showMain(w: Win) =
 
 proc activate(w: Win, app: W) =
   w.window = adw_application_window_new(app)
-  gtk_window_set_title(w.window, "KKS Explorer")
+  gtk_window_set_title(w.window, "Walkdown")
   gtk_window_set_default_size(w.window, 1280, 820)
   w.toasts = adw_toast_overlay_new()
   adw_application_window_set_content(w.window, w.toasts)

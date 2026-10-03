@@ -9,7 +9,7 @@ import base64, json, os, re, shutil, subprocess, sys, tempfile, time, unittest, 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
 VM = sys.argv[1] if len(sys.argv) > 1 else '192.168.122.181'
-APP = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkswin/KKSExplorer.exe'
+APP = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkswin/Walkdown.exe'
 DRIVER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kkswin/uiadrive.exe'
 SERVER = sys.argv[4] if len(sys.argv) > 4 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[5] if len(sys.argv) > 5 else '/tmp/kksimp/kks_import'
@@ -113,7 +113,7 @@ class Windows(unittest.TestCase):
         r = cls.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400, 300, 520, 360],
                                                  'kks': '11LAB70AA501', 'isa': '', 'note': ''}})
         assert r.get('status') == 'approved', r
-        vm('New-Item -ItemType Directory -Force C:\\kks | Out-Null; Get-Process KKSExplorer,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
+        vm('New-Item -ItemType Directory -Force C:\\kks | Out-Null; Get-Process Walkdown,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
         time.sleep(1)
         # a synthetic picture for the photo step (blue with a white square)
         photo = os.path.join(cls.dir, 'photo.jpg')
@@ -125,11 +125,11 @@ class Windows(unittest.TestCase):
             vm('Import-Certificate -FilePath C:\\kks\\%s -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople | Out-Null'
                % os.path.basename(MSIX_CER))
             out = msix('-Add C:\\kks\\' + os.path.basename(MSIX))
-            assert out.startswith('ok KKSExplorer_'), 'the MSIX did not install: ' + out
+            assert out.startswith('ok Walkdown_'), 'the MSIX did not install: ' + out
 
     @classmethod
     def tearDownClass(cls):
-        vm('Get-Process KKSExplorer,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
+        vm('Get-Process Walkdown,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
         if MSIX:      # leave the VM as it was: no package, no trusted test certificate
             msix('-Remove')
             vm('$t = (New-Object Security.Cryptography.X509Certificates.X509Certificate2 C:\\kks\\%s).Thumbprint; '

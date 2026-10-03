@@ -96,7 +96,7 @@ class Gnome(unittest.TestCase):
         log = open(f'/tmp/kks-gnome-e2e-{name}.log', 'w')       # the app's own output, for when a test fails
         p = subprocess.Popen([APP], env=env, stdout=log, stderr=subprocess.STDOUT)
         self.apps.append(p)
-        return atspi.app_pid(p.pid, name='kks-explorer', before=before)
+        return atspi.app_pid(p.pid, name=('walkdown', 'kks_explorer'), before=before)
 
     def test_scan_camera(self):
         """decision 0039: the scan dialog reads an invite from the camera; KKS_CAMERA_FILE plays a video of a QR code
@@ -217,8 +217,8 @@ class Gnome(unittest.TestCase):
         for _ in range(60):
             time.sleep(0.5)
             # the app re-executes itself after the wipe; under Flatpak it keeps the sandbox proxy's PID, so look in
-            # every kks-explorer on the bus (only the removed one says this)
-            for b2 in atspi.apps_named('kks-explorer') + atspi.apps_named('kks_explorer'):
+            # every Walkdown app on the bus (only the removed one says this)
+            for b2 in atspi.apps_named('walkdown') + atspi.apps_named('kks_explorer'):
                 try:
                     note = atspi.find(b2, None, contains='removed from the plant by The Manager', timeout=1)
                     break

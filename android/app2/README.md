@@ -1,7 +1,7 @@
-# KKS Explorer for Android, v2 (M6 phase 6)
+# Walkdown for Android (v2) (M6 phase 6)
 
 Native Compose screens on the Nim core (`core/`, through JNI: `android/nim/`), decisions 0014, 0027, 0032. Installed
-as `kks.explorer.v2` next to the v1 app until the cutover.
+as `io.github.walkdown` (Walkdown; the code namespace stays `kks.explorer.v2`), next to the v1 app until the cutover.
 
 ## Build
 
@@ -46,7 +46,7 @@ the synthetic sample sheet. It covers:
 - a member's proposal approved on the phone;
 - removal and wipe.
 
-Debug builds only: `adb shell am broadcast -a kks.explorer.DEBUG_SYNC -p kks.explorer.v2` runs the sync worker once.
+Debug builds only: `adb shell am broadcast -a kks.explorer.DEBUG_SYNC -p io.github.walkdown` runs the sync worker once.
 
 ## Not verified yet
 

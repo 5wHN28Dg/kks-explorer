@@ -13,7 +13,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 APK = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')
 SERVER = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkslinux/kks_server'
 del sys.argv[1:]
-PKG = 'kks.explorer.v2'
+PKG = 'io.github.walkdown'
 PY = os.path.join(REPO, '.venv/bin/python') if os.path.exists(os.path.join(REPO, '.venv/bin/python')) else 'python3'
 
 

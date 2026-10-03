@@ -8,7 +8,7 @@ for v in $(env | grep '^KKS_' | cut -d= -f1); do
   args="$args --env=$v=$(printenv "$v")"
 done
 # shellcheck disable=SC2086
-flatpak run --filesystem=/tmp $args io.github._5wHN28Dg.kks_explorer &
+flatpak run --filesystem=/tmp $args io.github._5wHN28Dg.walkdown &
 child=$!
 stop() {
   inst=$(flatpak ps --columns=instance,pid | awk -v p="$child" '$2 == p { print $1 }')
@@ -20,13 +20,13 @@ stop() {
 forward() {
   sandbox=$(flatpak ps --columns=pid,child-pid | awk -v p="$child" '$1 == p { print $2 }')
   [ -z "$sandbox" ] && return
-  # the app is a descendant of the sandbox's first process (bwrap): the one running kks-explorer
+  # the app is a descendant of the sandbox's first process (bwrap): the one running walkdown
   todo="$sandbox"
   while [ -n "$todo" ]; do
     next=""
     for p in $todo; do
       case "$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)" in
-        kks-explorer*|/app/bin/kks-explorer*) kill -s "$1" "$p"; return ;;
+        walkdown*|/app/bin/walkdown*) kill -s "$1" "$p"; return ;;
       esac
       next="$next $(pgrep -P "$p" | tr '\n' ' ')"
     done

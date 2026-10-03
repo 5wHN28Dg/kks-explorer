@@ -19,7 +19,7 @@ V1_APK = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'android/app/b
 V2_APK = sys.argv[2] if len(sys.argv) > 2 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')
 SERVER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kkslinux/kks_server'
 del sys.argv[1:]
-OLD, NEW = 'kks.explorer', 'kks.explorer.v2'
+OLD, NEW = 'kks.explorer', 'io.github.walkdown'
 PY = os.path.join(REPO, '.venv/bin/python') if os.path.exists(os.path.join(REPO, '.venv/bin/python')) else 'python3'
 HOST = '10.0.2.2'          # this machine, seen from the emulator
 sys.path.insert(0, REPO)
@@ -192,13 +192,13 @@ class Move(unittest.TestCase):
         boss = Client(f'http://127.0.0.1:{port2}')
         self.assertIn('user', boss.req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'}))   # the v1 password still works
         # 4. the bridge: a signed test release with the new app; Android's installer asks once
-        gh = FakeGitHub({'kks-explorer.apk': V1_APK, 'kks-explorer-2.apk': V2_APK})
+        gh = FakeGitHub({'kks-explorer.apk': V1_APK, 'walkdown.apk': V2_APK})
         ui.sh('appops', 'set', OLD, 'REQUEST_INSTALL_PACKAGES', 'allow')
         ui.sh('am', 'broadcast', '-a', 'kks.explorer.DEBUG_UPDATE', '-p', OLD, '--es', 'api', gh.api, '--es', 'pub', gh.pub)
         time.sleep(2)
         ui.sh('am', 'start', '-n', f'{OLD}/.MainActivity')
         calm()
-        ui.tap('Install the new app', exact=True, timeout=30)
+        ui.tap('Install Walkdown', exact=True, timeout=30)
         # Android's own dialog ("INSTALL" on Android 16, "Install" on others)
         t0 = time.time()
         while not (ui.present('INSTALL', exact=True) or ui.present('Install', exact=True)) and time.time() - t0 < 90:

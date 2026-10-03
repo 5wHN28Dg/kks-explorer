@@ -97,7 +97,7 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState) 
     var delete by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(-1f) }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
-    val camUri = remember { FileProvider.getUriForFile(ctx, "kks.explorer.v2.files", camFile) }
+    val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
     fun load(uri: Uri) = scope.launch {
         picked = withContext(Dispatchers.IO) {
             val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null

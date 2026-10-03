@@ -15,7 +15,7 @@ REPO=$(cd "$HERE/../.." && pwd)
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
 SDKBT_VERSION=10.0.28000.2705
 SDKBT_SHA256=8bfdfb6ca2633f531cf80b5fa22512ba61a394d7988f0970db83baadc67929ed
-NAME="${KKS_MSIX_NAME:-KKSExplorer}"           # the package name: changes with the rename (CUTOVER.md)
+NAME="${KKS_MSIX_NAME:-Walkdown}"           # the package name: changes with the rename (CUTOVER.md)
 DISPLAY_NAME="${KKS_MSIX_DISPLAY:-KKS Explorer}"
 OSSL=$(command -v osslsigncode || echo "$DEV/root/usr/bin/osslsigncode")
 PY="${KKS_PY:-$REPO/.venv/bin/python}"
@@ -44,8 +44,8 @@ echo "package $NAME $VERSION, publisher $SUBJECT"
 # 1. the app
 W=/tmp/kks-msix
 rm -rf "$W"; mkdir -p "$W/layout/Assets" "$W/layout/data/courses" "$W/layout/vendor/fonts"
-sh "$REPO/apps/windows/build.sh" "$W/KKSExplorer.exe" >/dev/null
-cp "$W/KKSExplorer.exe" "$W/layout/"
+sh "$REPO/apps/windows/build.sh" "$W/Walkdown.exe" >/dev/null
+cp "$W/Walkdown.exe" "$W/layout/"
 cp "$REPO"/data/courses/*.json "$REPO"/data/courses/*.jxl "$W/layout/data/courses/"
 rm -f "$W/layout/data/courses/courses.json"     # v1's list; the native apps read the course files themselves
 cp "$REPO"/vendor/fonts/*.woff2 "$W/layout/vendor/fonts/"

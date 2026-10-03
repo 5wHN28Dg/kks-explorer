@@ -65,7 +65,7 @@ proc B(b: bool): JNode = newBool(b)
 proc orNull(s: string): JNode = (if s.len == 0: newNull() else: newStr(s))
 
 proc newApi*(n: Node, mode = "peer"): Api =
-  result = Api(n: n, invites: newInvites(), mode: mode, plantName: "KKS Explorer", maxUpload: 15 * 1024 * 1024,
+  result = Api(n: n, invites: newInvites(), mode: mode, plantName: "Walkdown", maxUpload: 15 * 1024 * 1024,
                deviceLabel: "laptop", photoMsPerMp: 8000)
   let a = result
   n.listeners.add proc (why: string) =

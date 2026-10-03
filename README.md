@@ -1,4 +1,8 @@
-# KKS Explorer
+# Walkdown
+
+*Formerly KKS Explorer (renamed 2026-10-03). The repository keeps its old name, and so does the v1 app (the Python
+server, the desktop package and the WebView Android app, sections below), whose last release hands phones over to
+Walkdown (docs/CUTOVER.md).*
 
 Find any KKS code on a power plant's P&IDs and see everything known about it: the decoded code, where it is, photos,
 notes, and which operation-manual steps use it. Reads the tags straight off vector P&ID PDFs (AutoCAD plots).

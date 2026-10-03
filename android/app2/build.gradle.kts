@@ -17,7 +17,7 @@ android {
     namespace = "kks.explorer.v2"
     compileSdk = 36
     defaultConfig {
-        applicationId = "kks.explorer.v2"
+        applicationId = "io.github.walkdown"
         minSdk = 29
         targetSdk = 36
         versionCode = appVersionCode

@@ -50,7 +50,7 @@ proc storageKey*(folder: string, newKey: proc (): seq[byte]): seq[byte] =
   for i, b in result: s[i] = char(b)
   var inp = blob(s)
   var outp: DataBlob
-  if CryptProtectData(addr inp, newWideCString("KKS Explorer storage key"), nil, nil, nil, CRYPTPROTECT_UI_FORBIDDEN, addr outp) == 0:
+  if CryptProtectData(addr inp, newWideCString("Walkdown storage key"), nil, nil, nil, CRYPTPROTECT_UI_FORBIDDEN, addr outp) == 0:
     raise newException(KeyStoreError, "DPAPI could not seal the storage key")
   var sealed = newString(int(outp.cbData))
   if sealed.len > 0: copyMem(addr sealed[0], outp.pbData, sealed.len)

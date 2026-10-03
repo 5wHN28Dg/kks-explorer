@@ -22,9 +22,9 @@ import java.io.File
  */
 object Bridge {
     /** the new app (its package ID changes with the new name: the one place to change it here) */
-    const val NEW_APP = "kks.explorer.v2"
+    const val NEW_APP = "io.github.walkdown"
     /** its APK in the bridge's signed release */
-    const val NEW_APK = "kks-explorer-2.apk"
+    const val NEW_APK = "walkdown.apk"
     private val DATA = setOf("equipment", "review", "link", "photo", "photo_delete", "tag_add", "tag_remove")
     private val NOT_CARRIED = setOf("vote", "approve", "reject", "withdraw")
 

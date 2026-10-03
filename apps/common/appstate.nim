@@ -126,8 +126,8 @@ proc changed*(a: App, why: string) =
 proc dataDir*(): string =
   let x = getEnv("KKS_DATA_DIR")
   if x.len > 0: x
-  elif defined(windows): getEnv("LOCALAPPDATA", getHomeDir() / "AppData" / "Local") / "KKS Explorer"
-  else: getEnv("XDG_DATA_HOME", getHomeDir() / ".local" / "share") / "kks-explorer"
+  elif defined(windows): getEnv("LOCALAPPDATA", getHomeDir() / "AppData" / "Local") / "Walkdown"
+  else: getEnv("XDG_DATA_HOME", getHomeDir() / ".local" / "share") / "walkdown"
 
 proc label*(): string =
   let h = getHostname()
@@ -212,7 +212,7 @@ proc call*(a: App, meth, path: string, body: JNode = nil, q = initTable[string, 
   r.json
 
 proc programDataDirs(): seq[string] =
-  @[getAppDir() / "data", getAppDir() / ".." / "share" / "kks-explorer" / "data",
+  @[getAppDir() / "data", getAppDir() / ".." / "share" / "walkdown" / "data",
     currentSourcePath().parentDir.parentDir.parentDir / "data"]
 
 proc file*(a: App, path: string): (bool, string) =

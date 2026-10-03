@@ -8,7 +8,7 @@ the v2 Android app (`android/app2`), the v2 server, PROTOCOL-v2 §21a · Status:
 by doing nothing more than installing an update, without losing the changes and photos that haven't reached the
 server yet?
 
-The user's constraints: teammates use phones only; the new app gets a **new package ID** (with the new name); the
+The user's constraints: teammates use phones only; the new app gets a **new package ID** (`io.github.walkdown`: the app is now called Walkdown); the
 cutover waits until this is built and rehearsed.
 
 ## Findings

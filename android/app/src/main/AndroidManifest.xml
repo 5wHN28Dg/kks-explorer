@@ -12,7 +12,7 @@
     <!-- Android 11+: to find the camera apps that may write the photo file (MainActivity.openChooser), and the new app -->
     <queries>
         <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
-        <package android:name="kks.explorer.v2" />
+        <package android:name="io.github.walkdown" />
     </queries>
     <application
         android:label="KKS Explorer"

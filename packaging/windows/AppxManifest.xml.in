@@ -22,16 +22,16 @@
     <Resource Language="en-us" />
   </Resources>
   <Applications>
-    <Application Id="App" Executable="KKSExplorer.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="App" Executable="Walkdown.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements DisplayName="@DISPLAY@" Description="Find plant equipment on P&amp;ID drawings by KKS code."
                           BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
                           Square44x44Logo="Assets\Square44x44Logo.png" />
       <Extensions>
         <!-- `kks-explorer` on the command line starts the app with its package identity (and the caller's environment:
              the e2e tests pass their settings that way) -->
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="KKSExplorer.exe" EntryPoint="Windows.FullTrustApplication">
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="Walkdown.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="kks-explorer.exe" />
+            <desktop:ExecutionAlias Alias="walkdown.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
       </Extensions>

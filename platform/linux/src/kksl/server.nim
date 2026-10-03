@@ -57,7 +57,7 @@ type
     code: int
 
 proc defaultConfig*(): Config =
-  Config(address: "0.0.0.0", port: 8420, syncPort: 8421, plantName: "KKS Explorer", sessionDays: 30,
+  Config(address: "0.0.0.0", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
          offlineDays: 3, maxUploadMb: 15, plantDir: "plant-data", backupDir: "backups", maxPdfMb: 50,
          importer: getAppDir() / "kks-import")
 

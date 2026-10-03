@@ -24,10 +24,10 @@ proc importBundle*(n: Node, raw: string, wall: int64): JNode =
   ## -> {entries, photos, adopted}. Raises ValueError for anything that isn't a bundle of this plant.
   var d: JNode
   try: d = parseStrict(gunzip(raw, MaxBundle))
-  except CatchableError: raise newException(ValueError, "not a KKS Explorer bundle")
+  except CatchableError: raise newException(ValueError, "not a Walkdown bundle")
   if d.kind != jObj or d.get("kks_bundle") == nil or d["kks_bundle"].kind != jInt or d["kks_bundle"].i != 2 or
      d.get("entries") == nil or d["entries"].kind != jArr:
-    raise newException(ValueError, "not a KKS Explorer bundle (version 2)")
+    raise newException(ValueError, "not a Walkdown bundle (version 2)")
   var adopted = false
   let root = if d.get("root") != nil and d["root"].kind == jStr: d["root"].s else: ""
   if n.root.len == 0:

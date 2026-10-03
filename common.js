@@ -100,7 +100,7 @@ K.start = async () => {
   K.renderStatus();
   const h = new URLSearchParams(location.hash.slice(1));
   const cfg = K.cfg = await K.api('/api/config').catch(() => null);
-  if (cfg) document.title = cfg.plant_name + ' — KKS Explorer';
+  if (cfg) document.title = cfg.plant_name + ' — Walkdown';
   if (cfg?.mode === 'peer') document.documentElement.classList.add('peer');
   if (cfg?.app) document.documentElement.classList.add('app');   // inside the Android app: it has its own header and back
   if (cfg?.mode === 'peer' && !cfg.node.joined) {
@@ -127,7 +127,7 @@ K.start = async () => {
   } catch (e) {
     if (e.status === 401) {
       await K.wipe();
-      return new Promise(() => K.form(cfg?.plant_name || 'KKS Explorer', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
+      return new Promise(() => K.form(cfg?.plant_name || 'Walkdown', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
         [{name: 'username', label: 'Username', ac: 'username'}, {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Sign in',
         async v => { await K.api('/api/login', v); location.reload() }));
     }
