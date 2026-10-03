@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the repo's icon.svg (a KKS tag box) without its background, centred so every launcher mask keeps it whole -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="768" android:viewportHeight="768">
+    <group android:translateX="128" android:translateY="128">
+        <path android:strokeColor="#FF7A1A" android:strokeWidth="30"
+            android:pathData="M106,150 H406 A10,10 0 0 1 416,160 V352 A10,10 0 0 1 406,362 H106 A10,10 0 0 1 96,352 V160 A10,10 0 0 1 106,150 Z M96,256 H416" />
+    </group>
+</vector>
