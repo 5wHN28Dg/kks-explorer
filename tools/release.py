@@ -126,7 +126,11 @@ def main():
         sys.exit('This key is not the one pinned (updates.RELEASE_PUB): the old app would refuse the release.')
     files = {n: os.path.join(a.dir, n) for n in FILES if os.path.exists(os.path.join(a.dir, n))}
     if 'kks-explorer.apk' not in files and os.path.exists(BRIDGE_APK):
-        files['kks-explorer.apk'] = BRIDGE_APK
+        # copied in under its release name: gh uploads a file under its own name, and 0.8.0 downloads exactly this one
+        # (v0.9.1 first went out with the archive's file name and had to be fixed by hand)
+        import shutil
+        shutil.copyfile(BRIDGE_APK, os.path.join(a.dir, 'kks-explorer.apk'))
+        files['kks-explorer.apk'] = os.path.join(a.dir, 'kks-explorer.apk')
         print(f'Attaching the bridge for phones still on KKS Explorer: {BRIDGE_APK}')
     missing = [n for n in FILES if n not in files]
     if missing:
