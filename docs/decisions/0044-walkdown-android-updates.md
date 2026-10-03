@@ -13,7 +13,7 @@ platform's P-256 (0017, 0032).
 |---|---|---|
 | Installing an update | `PackageInstaller` sessions with `REQUEST_INSTALL_PACKAGES`. The person confirms in Android's own dialog, and Android checks that the update is signed like the installed app | [D] https://developer.android.com/reference/android/content/pm/PackageInstaller |
 | Verifying the manifest | `Signature.getInstance("SHA256withECDSA")` is in every Android version since API 1 and takes DER signatures. `KeyFactory("EC")` reads X.509 public keys | [D] https://developer.android.com/reference/java/security/Signature |
-| The old updater | GitHub `releases/latest` → `release.json` + `release.json.sig` (Ed25519 over `"kks-release-v1\n"` + bytes) → the file's SHA-256 and size from the manifest | v1 `Updates.kt`, docs/RELEASES.md |
+| The old updater | GitHub `releases/latest` → `release.json` + `release.json.sig` (Ed25519 over `"kks-release-v1\n"` + bytes) → the file's SHA-256 and size from the manifest | v1 `Updates.kt`, https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing |
 
 ## Choice
 

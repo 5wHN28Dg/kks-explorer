@@ -1,4 +1,4 @@
-# /etc/systemd/system/kks-explorer.service — see docs/REMOTE_ACCESS.md
+# /etc/systemd/system/kks-explorer.service — see https://github.com/5wHN28Dg/kks-explorer/wiki/Remote-access
 # Code in /opt/kks-explorer (read-only to the service), state in /var/lib/kks-explorer, settings in /etc/kks-explorer.
 [Unit]
 Description=KKS Explorer

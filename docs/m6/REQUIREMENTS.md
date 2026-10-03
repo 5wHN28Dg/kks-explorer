@@ -1,7 +1,7 @@
 # M6 requirements (approved 2026-09-30, answers included)
 
 What KKS Explorer must do, stated without choosing any technology. Taken from what the product does today (CLAUDE.md,
-docs/ARCHITECTURE.md) plus the user's decisions. IDs are used by the
+https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1) plus the user's decisions. IDs are used by the
 capability matrix and the decision records.
 
 ## Context

@@ -32,7 +32,7 @@ android {
             }
         }
     }
-    // Release signing: the maintainer's key, never in the repository or CI (as the v1 app; docs/ANDROID_RELEASE.md).
+    // Release signing: the maintainer's key, never in the repository or CI (as the v1 app; https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing).
     // keystore.properties through $KKS_SIGNING or ~/.config/kks-explorer/signing/; without it the release is unsigned.
     val signing = (System.getenv("KKS_SIGNING")?.let { File(it) }
         ?: File(System.getProperty("user.home"), ".config/kks-explorer/signing/keystore.properties"))

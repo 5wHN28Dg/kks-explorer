@@ -1,4 +1,4 @@
-// Course progress bridge (M4, docs/ARCHITECTURE.md §8). tools/build_courses.py puts this before each course's own
+// Course progress bridge (M4, https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1 §8). tools/build_courses.py puts this before each course's own
 // script, with data-course = the course's localStorage prefix (course.html: ?c=<id>) ("ppt" → keys "ppt.solved", "ppt.last", …).
 // - Before the course reads its progress: fill its localStorage keys from this device's log (private entries only
 //   this person's own devices can read; server/progress.py, LocalApi). Synchronously, since the course reads them as

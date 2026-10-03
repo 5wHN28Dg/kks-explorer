@@ -1,4 +1,4 @@
-# Desktop packages (docs/ARCHITECTURE.md M2c). Runs when you start it by hand (Actions → Desktop packages → Run
+# Desktop packages (https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1 M2c). Runs when you start it by hand (Actions → Desktop packages → Run
 # workflow) or push a tag like v2.0.0. The results are zip/tar files under the run's "Artifacts".
 # Action versions: v7 = the ones that run on Node.js 24 (GitHub retires Node 20 on its runners).
 name: Desktop packages

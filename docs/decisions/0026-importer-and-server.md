@@ -95,7 +95,7 @@ It runs on one machine, the manager's, as a batch job.
 - `systemd-creds` + TPM2 for its storage key (0020);
 - OpenSSL ≥ 3.2 for Argon2id (0023);
 - the system's SQLite and TLS.
-- Remote access through Cloudflare Tunnel + Access, once IT approves (docs/REMOTE_ACCESS.md).
+- Remote access through Cloudflare Tunnel + Access, once IT approves (https://github.com/5wHN28Dg/kks-explorer/wiki/Remote-access).
 
 **Proposed:**
 - The server is **the desktop core built without a UI**: same language and code (the language decision, next), plus

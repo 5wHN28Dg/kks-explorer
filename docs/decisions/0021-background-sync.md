@@ -27,7 +27,7 @@ Date 2026-09-30 · Scope: R16, R18, R20 · Status: **accepted by the user 2026-0
 - **Android:** as today. Discovery and quick syncs while the app is on screen; WorkManager every 15 minutes otherwise,
   unmetered by default, metered when allowed.
 - **Browser clients:** sync only while the page is open. The page shows the last successful sync, and warns when it
-  is old. That limit is accepted, and documented in docs/IOS_RESEARCH.md.
+  is old. That limit is accepted, and documented in https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research.
 - **Default:** background sync is **on** for phones (as today) and **asked on first run** on desktops. A desktop
   program starting at login should be the person's choice.
 

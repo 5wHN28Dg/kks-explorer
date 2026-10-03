@@ -1,4 +1,4 @@
-"""Course progress (M4, docs/ARCHITECTURE.md §8): private to the person, readable only by their own devices.
+"""Course progress (M4, https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1 §8): private to the person, readable only by their own devices.
 
 - Each person has one or more 32-byte *person secrets* (PROTOCOL.md §13). The first device that needs one makes it;
   a person's devices swap them over the sync port (`secrets` session, §17), so all of them end up knowing all of

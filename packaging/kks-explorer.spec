@@ -1,4 +1,4 @@
-# PyInstaller spec for the desktop app (docs/ARCHITECTURE.md M2c). Build from the repository folder:
+# PyInstaller spec for the desktop app (https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1 M2c). Build from the repository folder:
 #   pyinstaller --noconfirm packaging/kks-explorer.spec        → dist/KKS Explorer/
 # One folder, not one file: a one-file build unpacks itself on every start (slow) and trips antivirus more often.
 # Not included: the P&ID importer (pymupdf, opencv: ~300 MB; adding sheets stays an admin job on a server).

@@ -1,4 +1,4 @@
-; The 3D plant engine bench (docs/decisions/0041, docs/plant3d/MEASUREMENTS.md). Godot 4.7.
+; The 3D plant engine bench (docs/decisions/0041, https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant). Godot 4.7.
 config_version=5
 
 [application]

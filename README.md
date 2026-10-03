@@ -1,162 +1,33 @@
 # Walkdown
 
-*Formerly KKS Explorer (renamed 2026-10-03). The repository keeps its old name, and so does the v1 app (the Python
-server, the desktop package and the WebView Android app, sections below), whose last release hands phones over to
-Walkdown (docs/CUTOVER.md).*
+*Formerly KKS Explorer (renamed 2026-10-03).*
 
-Find any KKS code on a power plant's P&IDs and see everything known about it: the decoded code, where it is, photos,
-notes, and which operation-manual steps use it. Reads the tags straight off vector P&ID PDFs (AutoCAD plots).
-Multi-user, works offline, Python server + desktop app + Android app, devices sync with each other directly (same
-Wi-Fi, or across the internet through a relay). Every change is a signed entry in an append-only log
-(docs/PROTOCOL.md); what the app shows is replayed from it.
+Walkdown finds any KKS code on a power plant's P&ID drawings and shows everything known about it:
+- the decoded code and where the equipment is;
+- photos and notes;
+- the operation-manual steps that use it.
 
-**No plant data is in this repository.** Drawings, tag lists, procedures and location lists belong to a plant; its
-manager publishes them from their own server or laptop, and every device of that plant gets them by sync
-(docs/PROTOCOL.md §19). The program only ships the KKS decode tables (`data/kks.json`) and the Learning courses.
+It reads the tags straight off vector P&ID PDFs (AutoCAD plots, no text layer). Every device keeps the plant's signed,
+append-only log and works offline. Devices sync with the plant's server and with each other, on the same Wi-Fi or
+across the internet.
 
-## Start
-1. Install Python 3 (already on most laptops) and its `cryptography` package
-   (Debian/Ubuntu: `sudo apt install python3-cryptography`; or `python3 app.py setup-importer` and run with `.venv/bin/python`).
-2. Optional: `cp config.example.json config.json` and edit (plant name, port, paths, HTTPS). Defaults work.
-3. In this folder: `python3 app.py`
-4. **First run:** the console prints a one-time **setup link**. Open it and create the **manager** account
-   (valid 24 h; a new link is printed on every start until a manager exists). This also creates the plant **root key**
-   (`root.key` next to `plant.db`). Back it up right away: `python3 app.py export-root-key --out FILE` (passphrase-
-   encrypted; keep it offline). It is needed to hand over the manager role; it is not in the database or `backups/`.
-5. Laptop: http://localhost:8420 — Phone: the LAN URL it prints (same Wi-Fi).
-6. **Plant data:** add drawings in Manage → Drawings (below), or publish a folder you already have
-   (`sheets.json`, `tags.json`, `procedures.json`, `locations.json`, `sheets/`): `python3 app.py publish-data --from DIR`.
+- **Apps:** Android, Windows, Linux (GNOME), and the web pages for browsers. Get them from the
+  [latest release](https://github.com/5wHN28Dg/kks-explorer/releases/latest).
+- **Guides for teammates, the manager and the maintainer:** the [wiki](https://github.com/5wHN28Dg/kks-explorer/wiki).
+  It covers the [move from KKS Explorer](https://github.com/5wHN28Dg/kks-explorer/wiki/Moving-from-KKS-Explorer), the
+  [server](https://github.com/5wHN28Dg/kks-explorer/wiki/Server) and
+  [releasing](https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing).
+- **Building and testing:** [Development](https://github.com/5wHN28Dg/kks-explorer/wiki/Development), and the README
+  of each part (`core/`, `apps/gnome/`, `apps/windows/`, `android/app2/`, `importer/`, `relay/`).
+- **Specifications:** `docs/PROTOCOL-v2.md` (the log, sync, migration), `docs/PATHSTORE.md` (drawings),
+  `docs/COURSES.md` (courses), `docs/GLYPHLIB.md` (the reader's glyph library).
+- **Why things are the way they are:** `docs/decisions/` and the development policy `docs/evidence-first-*.md`.
 
-The server needs only `cryptography` (Ed25519 signatures). The importer needs more (see below).
-Tests: `.venv/bin/python -m unittest discover -s tests`.
+**No plant data is in this repository.** Drawings, tag lists, procedures and photos belong to a plant: its manager
+publishes them to the plant's own devices. The program ships only the KKS decode tables (`data/kks.json`) and the
+Learning courses.
 
-**Upgrading from a version before the signed log (2026-09-26):** the first start moves `plant.db` onto the log by
-itself: accounts, passwords, data, history, open submissions and votes carry over; a copy of the old database is kept
-as `backups/plant-v1-<time>.db`. If the replayed log would differ from the old data in any way, it stops and changes
-nothing.
+The old KKS Explorer code (`app.py`, `server/`, `peer/`, `android/app`, `android/core`, `desktop.py`, `extractor/`)
+stays until every phone has moved to Walkdown.
 
-## Using it
-- **Search** any KKS (full or partial: `11LAB70AA501`, `LBA80`, `CP101`), or text you've entered (location, notes).
-- **Zoom** as far as you like: once you stop moving, the sheet is redrawn from the PDF's own vector drawing, so
-  tags stay sharp at any zoom (up to 16×). Works offline once a sheet has been opened.
-- **A tag the app missed?** Tap ✎ (bottom right), drag a box around it, type the code if you can read it, Send.
-  It's a normal proposal: dashed until an admin approves it (the admin sees a crop and can correct the code), then a
-  normal tag for everyone. Marked without a code, it lands in the review queue. Works offline (queued).
-- **Tap a tag** on a drawing → panel with the decoded KKS (unit, system, component), which sheets it appears on,
-  linked procedures, location fields, notes, custom fields and photos. Press **Save** after editing. Your changes
-  that aren't live yet (awaiting approval, or queued offline) are listed at the top of the panel.
-- **Floor filter** (top bar) lists every floor you've entered; picking one highlights that floor's equipment.
-- **Procedures** → pick one → steps. Use **+ Link equipment** on a step, then tap the tags on the drawing.
-  The manual never uses KKS codes, so this linking is done once by you. Linked equipment is highlighted.
-- **Review** → tags the reader wasn't sure about, with a crop of the drawing. Confirm (fix the code if needed) or mark
-  “Not a tag”.
-- **Sheet notes** → markup text added to the PDFs (e.g. "KKS is wrong, has been revised", set-points).
-
-## Accuracy
-Tags read automatically are very likely right, not certainly: check a sample of every new sheet by eye, and confirm in
-the field when it matters. Characters the reader hasn't seen before get low confidence and land in the review queue
-instead of being guessed. Sheets with unusual layouts (flue gas ducts, blowdown) read worse than ordinary P&IDs.
-
-## Accounts and approvals
-- **Manager** (exactly one) > **admins** > **users**. The manager creates admins, promotes/demotes them, and can hand the
-  role to an admin (Manage → Account; the admin must accept; the old manager becomes an admin). Admins approve changes
-  and manage users. Users browse and propose changes.
-- No email: creating an account gives a **one-time link** (7 days) that you pass on; the person sets their own password.
-- **Every change is a proposal.** A user's edits (location, notes, photos, procedure links, review decisions) wait in
-  Manage → Approvals. Admin/manager edits apply at once (`admins_apply_directly`), and are still logged.
-- **Conflicts:** edits to different fields of the same item merge automatically. If a field changed after someone
-  proposed a new value for it, the proposal is flagged and an admin chooses (overwrite or reject). A value the
-  manager set or approved can only be overwritten by the manager.
-- **Photos:** several proposed photos for one item appear side by side. Users can vote; votes are only a hint.
-  An admin picks one (“Use this one” rejects the rest) or adds several.
-- **Lost manager** (left, forgot password): on the server, `python3 app.py reset-manager --user NAME`. It prints a
-  password link. This works only from the server's console, never over the network. `reset-password --user NAME`
-  prints a link for anyone. `python3 app.py users` lists accounts.
-
-## Desktop app (double-click)
-Packaged builds for Windows and Linux: GitHub → Actions → **Desktop packages** → Run workflow (or push a tag `v…`); the
-zip/tar files appear under the run's Artifacts. What users do with them: `packaging/README-desktop.txt` (ships as
-"READ ME FIRST"). It starts in peer mode (below), keeps data in `%APPDATA%\KKS Explorer` or
-`~/.local/share/kks-explorer`, opens the browser and shows a small Open / Quit window. Build locally:
-`.venv/bin/pip install -r requirements-desktop.txt pyinstaller pillow`, then
-`.venv/bin/pyinstaller --noconfirm packaging/kks-explorer.spec` → `dist/KKS Explorer/`; check it with
-`"dist/KKS Explorer/KKS Explorer" --self-test`. From source: `python3 desktop.py`.
-Not signed: Windows shows "Windows protected your PC" once (More info → Run anyway). The P&ID importer is not in the
-package (adding sheets stays a server job).
-
-## Your own laptop as a device (peer mode)
-Set `"mode": "peer"` in `config.json` (the app is then only reachable on that laptop, without a password: it is your
-device). On first start it asks how to set it up:
-- **Join through the plant server:** server address + your normal account. The server certifies the laptop as yours.
-- **Join through an admin (no server):** it saves a small `.kksjoin` file; an admin imports it in Manage → Devices and
-  gives you a bundle file back (Export bundle); import that here.
-- **Start a new plant:** only if none exists; you become the manager.
-
-Devices of the same plant find each other on the same Wi-Fi and sync every 2 minutes and a few seconds after each
-change (Manage → Devices shows who was found and the last syncs; "Sync with it" takes an address). Needs the
-`zeroconf` package for finding (in `.venv`); syncing by address works without it. The server takes part too (sync port
-8421). A lost laptop or phone: Manage → Devices → Remove, from another device of yours or by an admin. Bundles
-(Export bundle, admins only) carry the plant data **unencrypted**: treat them like a copy of the database.
-
-## History, restore and backups
-- **Manage → History** lists every applied change. *Revert* undoes one; *Restore to here* puts all plant data back to
-  that point. Both are logged too, so they can be undone.
-- **Automatic backups** in `backups/`: every write is appended to a journal (`journal-*.jsonl`, fsynced) and a full DB
-  snapshot (`snap-*.db`) is taken at start, every 200 writes, and on Ctrl+C. `python3 app.py backup` takes one now.
-- **Disaster restore:** `python3 app.py restore [--seq N]` rebuilds the DB from snapshot + journal into a **new** file and
-  tells you how to swap it in. It never touches the live `plant.db`.
-- **Not covered by that:** `backups/` sits on the same disk as the live data, and photos are separate files. Copy
-  `backups/` and `photos/` to another machine regularly (restic, rsync, or at least a USB drive). Photo files are never
-  deleted by the app, so an incremental copy is enough. Do a test restore now and then.
-- **Root key:** `root.key` is deliberately not in `backups/`. Keep the `export-root-key` file somewhere else (USB stick,
-  printed); `import-root-key --file F` puts it back on a new server.
-
-## Offline
-- The app installs as a PWA ("Add to home screen"). Drawings and data you have opened keep working without the server,
-  including search. Changes made offline are queued on the device and sent automatically on reconnect.
-- **Needs HTTPS** (or localhost). Over plain `http://192.168.x.x` the page works only while connected. Tailscale
-  (`tailscale serve`) gives you HTTPS with no certificate work.
-- Offline access lasts `offline_days` (default 7) after the device last reached the server. Logging out, or an admin
-  deactivating the account, removes the cached plant data the next time the device connects. **A device that never
-  reconnects keeps its copy.** Offline data cannot be taken back, so choose who gets accounts with that in mind.
-
-## Access from outside the plant network
-Chosen setup: **Cloudflare Tunnel + Cloudflare Access**, one HTTPS address for everyone, on every network. Step-by-step,
-tests and the reasoning (vs Tailscale) are in **[docs/REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md)**; templates in `deploy/`.
-Get written approval from plant IT/security first: P&IDs and KKS indexes are sensitive infrastructure documents.
-`python3 app.py check` audits a deployment (loopback-only listening, Secure cookies, cloudflared enforcing Access
-tokens, backups) and exits non-zero on any FAIL.
-
-## Another plant
-Every plant is its own: its own manager, root key, log and plant data. Start the app with a new database (or a new
-desktop install) and create the manager; then add drawings (Manage → Drawings or `import_sheet.py`), and optionally a
-location list (`tools/parse_locations.py`) and procedures (`tools/manual_parse.py`, written for one HRSG manual's
-layout: expect to adapt it). They are written into the working folder `plant_dir` (default `plant-data/`); Drawings
-publishes by itself, for the command-line tools run `python3 app.py publish-data` afterwards.
-
-## Your data
-Field data lives in `plant.db` (the signed log) and `photos/` (photos and plant data files, by hash), backups in
-`backups/`, the plant root key in `root.key`, the manager's working copy of the drawings in `plant-data/`. None of them
-go in git. Updating the app later: replace everything except those and `config.json`.
-
-## Adding a new P&ID
-One-time setup on the server (creates `.venv` in the app folder; nothing is installed system-wide, and the server
-itself keeps running on plain `python3`):
-```
-python3 app.py setup-importer
-```
-Then **Manage → Drawings** (the manager): choose the PDF, check the name and id, Import. About a minute per sheet; progress
-shows live. Afterwards check the preview is upright. If not, use the re-import button (the PDF is kept, so no
-re-upload). Re-import and Remove are in the sheet list; every change backs up `sheets.json`/`tags.json` first,
-a failed import puts them back, and History logs who added or removed what. Each successful change is published as a
-new plant data version, and every device gets it at its next sync.
-
-From the command line instead:
-```
-.venv/bin/python import_sheet.py path/to/drawing.pdf "Condensate System" [sheet_id] [--rotate auto|0|90|180|270] [--replace]
-python3 app.py publish-data
-```
-Works on vector PDFs plotted from AutoCAD. Scanned drawings won't work. Only page 1 is read.
-It picks the rotation with the most horizontal text and, if almost no tags read, retries upside down and keeps the
-better result. Tags are read with the character library in `extractor/fontlib.pkl`; characters it hasn't seen get
-low confidence and land in the review queue rather than being guessed.
+License: AGPL-3.0 (`LICENSE`).

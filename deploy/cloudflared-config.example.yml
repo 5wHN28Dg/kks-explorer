@@ -1,4 +1,4 @@
-# /etc/cloudflared/config.yml — Cloudflare Tunnel for KKS Explorer. See docs/REMOTE_ACCESS.md.
+# /etc/cloudflared/config.yml — Cloudflare Tunnel for KKS Explorer. See https://github.com/5wHN28Dg/kks-explorer/wiki/Remote-access.
 # The tunnel only connects outward (to Cloudflare, port 7844); nothing listens on the internet.
 tunnel: TUNNEL-UUID                                   # from `cloudflared tunnel create kks`
 credentials-file: /etc/cloudflared/TUNNEL-UUID.json

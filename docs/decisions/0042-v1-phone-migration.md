@@ -1,6 +1,6 @@
 # 0042 Moving phones from the v1 app to the v2 app without help (bridge update)
 
-Date 2026-10-03 · Scope: the cutover (docs/CUTOVER.md), the v1 Android app (`android/app`, package `kks.explorer`),
+Date 2026-10-03 · Scope: the cutover (https://github.com/5wHN28Dg/kks-explorer/wiki/Cutover-2026-10-03), the v1 Android app (`android/app`, package `kks.explorer`),
 the v2 Android app (`android/app2`), the v2 server, PROTOCOL-v2 §21a · Status: **accepted by the user 2026-10-03**
 ("Bridge update, new ID"); details by Claude.
 

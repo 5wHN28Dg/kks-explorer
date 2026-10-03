@@ -33,7 +33,7 @@ android {
     }
     // Release signing (M3e): the key stays on the maintainer's machine, never in the repository or CI. Its
     // keystore.properties (storeFile, storePassword, keyAlias, keyPassword) is found through $KKS_SIGNING or in
-    // ~/.config/kks-explorer/signing/. Without it, assembleRelease makes an unsigned APK (CI). docs/ANDROID_RELEASE.md
+    // ~/.config/kks-explorer/signing/. Without it, assembleRelease makes an unsigned APK (CI). https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing
     val signing = (System.getenv("KKS_SIGNING")?.let { File(it) }
         ?: File(System.getProperty("user.home"), ".config/kks-explorer/signing/keystore.properties"))
         .takeIf { it.isFile }?.let { f -> Properties().apply { f.inputStream().use { load(it) } } to f.parentFile }

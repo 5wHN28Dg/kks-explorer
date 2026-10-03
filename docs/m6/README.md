@@ -11,7 +11,7 @@ only compared at the end.
   - Windows desktop (10/11);
   - Linux desktop, **GNOME/GTK** named as the Linux platform stack;
   - Android;
-  - iOS through the browser (Safari), per docs/IOS_RESEARCH.md.
+  - iOS through the browser (Safari), per https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research.
 - **Protocol is open:** the data model and sync protocol may change if the decisions call for it. Existing plant data
   (signed logs on the server, laptops, phones) must then be migrated once, without loss.
 - **No code changes** until the decisions are agreed. That includes the approved actions of the dependency audit

@@ -1,4 +1,4 @@
-"""Self-updates from GitHub Releases (M5b, docs/RELEASES.md).
+"""Self-updates from GitHub Releases (M5b, https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing).
 
 A release carries `release.json` = {"app": "kks-explorer", "version": "X.Y.Z", "notes": str, "files": {name: {"sha256",
 "size"}}} and `release.json.sig` = base64url Ed25519 signature over b"kks-release-v1\n" + the exact bytes of

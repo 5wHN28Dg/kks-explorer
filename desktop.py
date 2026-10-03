@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """KKS Explorer for your own laptop: the double-click entry point (packaged with PyInstaller, packaging/).
 
-Starts the app in peer mode (docs/ARCHITECTURE.md: this computer is one person's device), opens the browser, and shows
+Starts the app in peer mode (https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1: this computer is one person's device), opens the browser, and shows
 a small window with Open / Quit. Your data lives in the usual per-user folder, not next to the program, so a new
 version is just a new folder:
   Windows  %APPDATA%\\KKS Explorer        Linux  ~/.local/share/kks-explorer        ($KKS_HOME overrides)

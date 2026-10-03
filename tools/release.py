@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make a signed release (M5b self-updates; the whole procedure: docs/RELEASES.md). Runs on the maintainer's machine
+"""Make a signed release (M5b self-updates; the whole procedure: https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing). Runs on the maintainer's machine
 only: the release key never goes into the repository or CI.
 
   python3 tools/release.py VERSION DIR [--notes FILE]          write DIR/release.json + DIR/release.json.sig
@@ -8,7 +8,7 @@ only: the release key never goes into the repository or CI.
   python3 tools/release.py --new-key                           create the release key (once; back it up offline)
 
 DIR holds the files to ship: KKS-Explorer-windows.zip, KKS-Explorer-linux.tar.gz (from the Desktop packages workflow)
-and kks-explorer.apk (built and signed locally: docs/ANDROID_RELEASE.md). The key: $KKS_SIGNING/release-ed25519.key or
+and kks-explorer.apk (built and signed locally: https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing). The key: $KKS_SIGNING/release-ed25519.key or
 ~/.config/kks-explorer/signing/release-ed25519.key (the hex Ed25519 seed)."""
 import argparse, base64, hashlib, json, os, subprocess, sys
 

@@ -33,7 +33,7 @@ the WebSocket Hibernation API answers keep-alive pings without waking the object
 pipe counts its messages as requests. Check Cloudflare's current free-plan limits against the plant's device count
 before relying on it.
 
-Before going live, get the same written IT/security approval as for remote access (`docs/REMOTE_ACCESS.md`). The
+Before going live, get the same written IT/security approval as for remote access (`https://github.com/5wHN28Dg/kks-explorer/wiki/Remote-access`). The
 devices only make outgoing connections (HTTPS/WebSocket to Cloudflare, UDP to STUN servers and to each other), but it
 is still plant equipment talking to the internet.
 

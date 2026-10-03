@@ -1,5 +1,5 @@
 """`python3 app.py check`: audit a deployment. Each finding is (level, message); level is OK, INFO, WARN or FAIL.
-Remote access model (see docs/REMOTE_ACCESS.md): the server listens on 127.0.0.1 only, cloudflared forwards to it,
+Remote access model (see https://github.com/5wHN28Dg/kks-explorer/wiki/Remote-access): the server listens on 127.0.0.1 only, cloudflared forwards to it,
 and Cloudflare Access (plus cloudflared's own token check) stands in front. Anything else weakens that."""
 import sqlite3, os, time
 from urllib.parse import urlparse

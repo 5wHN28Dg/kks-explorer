@@ -16,6 +16,26 @@ Also: pick a procedure ("Preparations for Startup — Air Compressor System") �
 
 The user prefers direct, no-fluff communication and honest pushback. Be explicit about what is verified vs not.
 
+**Where documentation goes (the user, 2026-10-03):**
+- Guides, how-tos, operations, history and research go in the **wiki**
+  (https://github.com/5wHN28Dg/kks-explorer/wiki; clone https://github.com/5wHN28Dg/kks-explorer.wiki.git, push to it
+  directly).
+- The repository keeps only what code, tests and the policy point at: the specs (PROTOCOL*, PATHSTORE, COURSES,
+  GLYPHLIB), `docs/decisions/`, the policy documents, `docs/m6/`, and each component's build README.
+- The wiki is public: no plant name, plant data or relay URL there either.
+
+**Live since 2026-10-03 (the cutover, done by Claude at the user's request; record on the wiki's Cutover page):**
+- **Server:** the v2 server runs as a user service from `~/kks-server` (0.9.0-d978bcd; `systemctl --user`, linger on).
+  CLI through `systemd-run` with the sealed credential (wiki: Server). v1's files are archived read-only in
+  `~/kks-server/v1` and `~/kks-server/archive`.
+- **Release:** v0.9.0 published: the bridge, Walkdown for Android, Windows and Linux. Teammates move by themselves;
+  Manage → Devices lists who hasn't.
+- **Next, when the user says everyone has moved:** delete the v1 code (app.py, server/, peer/, android/app,
+  android/core, desktop.py, extractor/, packaging/ for PyInstaller, v1 tests), stop the server's v1 room presence and
+  drop its v1 device table (decision 0042 "When to revisit").
+- **The plant root key:** inside the server. An encrypted backup and its passphrase are in
+  `~/.config/kks-explorer/signing/walkdown-root.{kksroot,passphrase}` (`kks-server export-root-key`).
+
 ## Development policy: evidence-first (in force from 2026-09-30)
 
 Two documents:
@@ -24,7 +44,7 @@ Two documents:
 - `docs/evidence-first-web-engineering.md` governs what runs in a browser engine: index.html, admin.html, learning.html,
   common.js, sw.js, course-bridge.js, the courses, vendor/.
 - The Android app's WebView and the desktop's system browser count as the web platform: the pages ship no engine. The
-  same pages must also work in Safari, since that is the iOS path (docs/IOS_RESEARCH.md).
+  same pages must also work in Safari, since that is the iOS path (https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research).
 
 Rules for this project (solo developer, 3+ targets, long lifespan):
 - **Investigate before implementing or bundling.** For each feature touching the platform, or each new dependency,
@@ -123,7 +143,7 @@ Rules for this project (solo developer, 3+ targets, long lifespan):
 - `common.js` — login gate, IndexedDB (cached `me` + offline lease, outbox), submit/flush, status. `sw.js` caches the
   shell and plant data (`kks-data` cache, wiped on logout/401). Service workers need HTTPS or localhost.
 - Remote access (decided 2026-09-24): Cloudflare Tunnel + Access, not Tailscale (Tailscale's free plan is
-  non-commercial; per-user app install; HQ laptops). Guide: `docs/REMOTE_ACCESS.md`; templates in `deploy/`
+  non-commercial; per-user app install; HQ laptops). Guide: `https://github.com/5wHN28Dg/kks-explorer/wiki/Remote-access`; templates in `deploy/`
   (cloudflared config with `originRequest.access.required`, hardened systemd unit, remote config). App side: listen on
   127.0.0.1, `public_url` https, `secure_cookies`; HSTS sent when public_url is https; `app.py check` audits it
   (`server/check.py`). An expired Access session makes fetches fail like a network error: `K.accessExpired()` probes
@@ -204,7 +224,7 @@ Lessons (don't repeat):
 
 ## v2: server mode + P2P (decided 2026-09-26)
 
-`docs/ARCHITECTURE.md` is the plan of record (supersedes `docs/PLAN_B_P2P.md`). Key decisions: every device runs a
+`https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1` is the plan of record (supersedes `https://github.com/5wHN28Dg/kks-explorer/wiki/Plan-B-P2P`). Key decisions: every device runs a
 local peer; signed per-device append-only logs + deterministic replay/merge (no host, no election; the server is an
 always-on peer); same-Wi-Fi + file/QR sync first, internet P2P later (M5); Android = Material 3 native shell + the
 existing web P&ID viewer in a WebView; Windows/Linux = this Python app packaged (double-click, opens browser; the
@@ -213,7 +233,7 @@ certificates). Build order M0 protocol spec + Python reference + test vectors �
 package + LAN/file sync → M3 Android → M4 Learning (3 HTML courses, not yet in the repo) → M5 internet → M5b plant data out of the app, public
 repo, self-updates (2026-09-28) → M6 fully native desktop in Nim, no browser (added 2026-09-27; details decided when
 we get there) → M7 research iOS via Pythonista 3 / Pyto / iSH / a-Shell (2026-09-28; done 2026-09-30, before M6:
-docs/IOS_RESEARCH.md: no as a peer (no background, no mDNS, crypto only in Pyto), yes as a browser client of the server
+https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research: no as a peer (no background, no mDNS, crypto only in Pyto), yes as a browser client of the server
 over HTTPS; nothing tried on a real iPhone).
 Answered 2026-09-26: plant Wi-Fi allows device-to-device traffic; courses in `source/courses/` (3 single-file HTML,
 localStorage progress, Google Fonts to vendor); quiz progress private (encrypted to the person's devices); photos
@@ -360,7 +380,7 @@ Before M3e (2026-09-27, asked by the user), all three verified on the emulator u
   1600×900 through the WASM path; the app loaded its own JXL as a 1600×900 BMP; desktop self-test checks JXL.
 M3e done 2026-09-27: release build with R8 + resource shrinking (`proguard-rules.pro`: JS bridge, JNI, worker),
 signed with the maintainer's own key: `~/.config/kks-explorer/signing/` (kks-release.jks, PKCS12, alias kks, RSA 4096,
-to 2056, + keystore.properties; or `$KKS_SIGNING`), never in the repo or CI — docs/ANDROID_RELEASE.md. Release APK
+to 2056, + keystore.properties; or `$KKS_SIGNING`), never in the repo or CI — https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing. Release APK
 35 MB (debug 65). `.github/workflows/android.yml`: core tests (with the Python server from .venv), debug + UNSIGNED
 release APK as artifacts, libjxl downloads cached. Verified: apksigner (v2, cert SHA-256 1a3a2b53…), release APK
 joined the server, showed the viewer, photo → JXL. NOT verified: the Android workflow itself (needs a GitHub run).
@@ -466,7 +486,7 @@ data published by the manager only.
   `python3 app.py publish-data` once (nothing published into the live plant.db by Claude). Plant name removed from
   tracked files; v2-replay/v4-malformed regenerated with "Test plant" (Python + Kotlin pass); plant notes moved to
   CLAUDE.local.md (gitignored). tools/manual_parse.py `--skip HEADER` instead of the plant's page header.
-- Self-updates (docs/RELEASES.md): `VERSION` (0.8.0; Android versionCode = a·10000+b·100+c), release.json +
+- Self-updates (https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing): `VERSION` (0.8.0; Android versionCode = a·10000+b·100+c), release.json +
   release.json.sig (Ed25519 over "kks-release-v1\n"+bytes, key `~/.config/kks-explorer/signing/release-ed25519.key`,
   public `YBHkaex0…` pinned in server/updates.py + Updates.kt, test checks both equal), `tools/release.py` (sign;
   `--publish` asks, then gh release create). Python `server/updates.py` (daily check, `update_check`; packaged desktop
@@ -488,7 +508,7 @@ data published by the manager only.
   files and plant.db dropped from every commit, names scrubbed from old docs (courses and peer/vectors kept byte for
   byte); HEAD tree identical before/after; 35 → 11 MB; force-pushed main. The old history is kept privately in
   `~/kks-explorer-history-before-M5b.bundle` (contains plant data). GitHub may keep old commits reachable by SHA until
-  its support purges them. Still to do: the user makes the repo public; first real release (docs/RELEASES.md).
+  its support purges them. Still to do: the user makes the repo public; first real release (https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing).
 
 ## M6: the product re-derived under the evidence-first policy (decided 2026-09-30, no code yet)
 
@@ -788,7 +808,7 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
    with a button to the app's system settings, and a diagnostics event. Verified on the Honor (forced `rare` bucket,
    restored).
 
-**Cutover prep (2026-10-03, asked by the user; plan in docs/CUTOVER.md):**
+**Cutover prep (2026-10-03, asked by the user; plan in https://github.com/5wHN28Dg/kks-explorer/wiki/Cutover-2026-10-03):**
 - **Server install:** `deploy/install-server-user.sh` builds into `~/kks-server/app/<version>-<commit>` (`current` /
   `previous` links), writes `~/kks-server/config.json` once, seals the storage key with `systemd-creds --user`
   (`storage-key.cred`, TPM) and writes the user unit `~/.config/systemd/user/kks-server.service`
@@ -901,4 +921,4 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
    test (its config remembers port 8421 = the server's sync port), join it as a second device of the manager ("Join via
    server", http://localhost:8420); then move the server's files out of the repo (e.g. ~/kks-server + its own
    config.json, `KKS_CONFIG=… python3 app.py`), copy + compare before removing anything. 2026-10-03: superseded by
-   the cutover (docs/CUTOVER.md): the v2 server installs into ~/kks-server and the v1 copy is in ~/kks-server/v1.
+   the cutover (https://github.com/5wHN28Dg/kks-explorer/wiki/Cutover-2026-10-03): the v2 server installs into ~/kks-server and the v1 copy is in ~/kks-server/v1.

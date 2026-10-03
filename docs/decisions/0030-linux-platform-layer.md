@@ -15,7 +15,7 @@ HTTP for the web UI, and Argon2id. And how does the server avoid sharing the nod
 | Encryption at rest (0020) | libsecret 0.21 on GNOME [V]; `systemd-creds` on the server [D] | the AES-GCM layer in the store, with bodies and blobs sealed by a per-device storage key; the key is unwrapped by the key-store adapter (libsecret / systemd-creds), and a key file in tests |
 | TLS (0017) | GnuTLS 3.8.12 [V] | GnuTLS with **custom pull/push functions**: TLS is driven from buffers. The same code then runs over TCP, our reliable UDP or the relay pipe, and can be tested in memory. Self-signed X.509 certificates from the device key (`gnutls_x509_crt_sign2`); our verify function pins the peer ID. |
 | Sockets, timers | POSIX through Nim's `std/asyncdispatch` | async, single-threaded (below) |
-| HTTP for browser clients | — | Nim's `std/asynchttpserver` (in the compiler's own repository, released with it). HTTP/1.1 only: it sits on the LAN or behind Cloudflare Tunnel (docs/REMOTE_ACCESS.md), never directly on the internet. |
+| HTTP for browser clients | — | Nim's `std/asynchttpserver` (in the compiler's own repository, released with it). HTTP/1.1 only: it sits on the LAN or behind Cloudflare Tunnel (https://github.com/5wHN28Dg/kks-explorer/wiki/Remote-access), never directly on the internet. |
 | Argon2id (0023) | OpenSSL ≥ 3.2 `EVP_KDF` "ARGON2ID" [V: 3.5.5] | libcrypto, server only; run on a worker thread (about 0.3–1 s per hash) |
 | mDNS (0002: the OS service) | avahi-daemon running [V]; `libavahi-client.so.3` installed, its headers not [V] | Avahi's **D-Bus API** through GIO's GDBus (GIO 2.88 [V]; GNOME has it anyway, and headless servers usually do). No new library. |
 

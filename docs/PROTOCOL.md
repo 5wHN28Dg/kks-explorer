@@ -11,7 +11,7 @@ Kotlin (`android/core`, M3a), both pass all vector files; `tools/interop_node.py
 real Python engine over TCP.
 Any implementation (Python, Kotlin) must reproduce every vector exactly; the vectors, not the prose, are the tiebreaker.
 
-Design background: `docs/ARCHITECTURE.md`.
+Design background: `https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1`.
 
 ## 1. Canonical encoding
 

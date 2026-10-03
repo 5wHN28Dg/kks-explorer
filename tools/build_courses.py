@@ -1,4 +1,4 @@
-"""Build the Learning courses (M4, docs/ARCHITECTURE.md §8) from source/courses/*.html into data/courses/.
+"""Build the Learning courses (M4, https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1 §8) from source/courses/*.html into data/courses/.
 
 Each course is copied unchanged except for two lines:
 - the Google Fonts links become one link to the vendored fonts (vendor/fonts/courses.css), so courses work offline

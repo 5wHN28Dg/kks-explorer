@@ -1,4 +1,4 @@
-"""Plant data on the signed log (docs/ARCHITECTURE.md M1, docs/PROTOCOL.md).
+"""Plant data on the signed log (https://github.com/5wHN28Dg/kks-explorer/wiki/Architecture-v1 M1, docs/PROTOCOL.md).
 
 The server is a peer that signs on behalf of people who use it through a browser: every account has a *custodial*
 device key here (table `custodial`), and every change is a log entry signed with it (table `entries`, journaled like

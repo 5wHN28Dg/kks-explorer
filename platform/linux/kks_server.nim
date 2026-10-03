@@ -2,11 +2,13 @@
 ##   kks-server [serve] [--config F]
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
 ##   kks-server publish-data DIR | backup --out FILE
+##   kks-server export-root-key --out FILE   (passphrase in $KKS_ROOT_PASSPHRASE, 12+ characters): the plant root key,
+##     sealed with the passphrase (decision 0023), the same file the apps' "Restore from a backup" reads
 ## The storage key (decision 0020) comes from systemd-creds: LoadCredentialEncrypted=kks-storage-key:… in the unit
 ## ($CREDENTIALS_DIRECTORY/kks-storage-key). For development, `storage_key_file` in the config (created if missing).
 
 import std/[asyncdispatch, os, posix, strutils, tables, times]
-import kks/[json, util, crypto, node, replay, plantdata, bundle, provider_gnutls]
+import kks/[json, util, crypto, node, replay, plantdata, bundle, provider_gnutls, extras]
 import kksl/[server, dbstore]
 
 proc storageKey(cfgPath: string, p: Provider): seq[byte] =
@@ -84,6 +86,20 @@ proc main() =
   of "dump-state":
     if "out" notin args: quit "usage: kks-server dump-state --out FILE"
     writeFile(args["out"], toText(s.stateForCompare()))
+  of "export-root-key":
+    if "out" notin args: quit "usage: KKS_ROOT_PASSPHRASE=… kks-server export-root-key --out FILE"
+    let pass = getEnv("KKS_ROOT_PASSPHRASE")
+    if pass.len < 12: quit "set KKS_ROOT_PASSPHRASE to a passphrase of 12 characters or more"
+    let k = s.store.getRow("keys", "root")
+    if k == nil: quit "this server holds no root key"
+    let sealed = p.passphraseSeal(pass, toText(k).toBytes)
+    let doc = newObj(@[("kks_root_backup", newInt(2)), ("plant", s.n.run.settings.getOrDefault("plant")),
+                       ("root", newStr(s.n.root)), ("sealed", sealed)])
+    # check it opens before calling it a backup
+    if p.passphraseOpen(pass, doc["sealed"]).toStr != toText(k): quit "the sealed copy did not open again: not written"
+    writeFile(args["out"], toText(doc))
+    discard chmod(args["out"].cstring, 0o600)
+    echo "Wrote ", args["out"], ": the plant root key, sealed with the passphrase. Keep both offline, apart if you can."
   of "backup":
     if "out" notin args: quit "usage: kks-server backup --out FILE"
     writeFile(args["out"], s.n.bundle(photos = true, now = int64(epochTime() * 1000)))

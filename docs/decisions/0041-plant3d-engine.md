@@ -1,6 +1,6 @@
 # 0041 The 3D plant: which engine (investigation)
 
-Date 2026-10-03 · Scope: docs/plant3d/REQUIREMENTS.md (R8 devices, R9 photo-realistic and scaling) · Status:
+Date 2026-10-03 · Scope: https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant (R8 devices, R9 photo-realistic and scaling) · Status:
 **investigating**: desk research done, the deciding measurements not yet (plan below).
 
 **Question:** which engine (or none) renders a generic, photo-realistic, walkable combined-cycle plant on laptops
@@ -49,7 +49,7 @@ https://bevy.org/news/bevy-0-17/ ([D] = vendor docs, [K] = known, to confirm).
 
 ## The deciding measurements (to run, rules first)
 
-Rules in docs/plant3d/MEASUREMENTS.md, written before measuring. One test scene, built the same way in each engine
+Rules in https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant, written before measuring. One test scene, built the same way in each engine
 measured: a pipe rack and pump bay of about 2 M triangles at full detail, 40 PBR materials with 2k textures, baked
 lighting plus one dynamic light, a walking camera on a fixed path. Measure on the Note 9 (frame time, sustained 10 min
 with thermal state, memory, install size) and a laptop (frame time at the highest preset). Godot first; Unreal only if

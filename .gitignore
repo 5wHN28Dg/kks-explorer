@@ -25,7 +25,7 @@ android/*/build/
 android/local.properties
 android/.kotlin/
 android/*/.cxx/
-# Android release signing: the keystore and its passwords live outside the repo (docs/ANDROID_RELEASE.md);
+# Android release signing: the keystore and its passwords live outside the repo (https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing);
 # these patterns only guard against a copy landing here by mistake
 *.jks
 *.keystore
@@ -37,3 +37,5 @@ relay/node_modules/
 plant-data/
 # private notes about the plant for Claude Code (plant name, reader accuracy per sheet): never commit
 CLAUDE.local.md
+# Android core: Kotlin build output an IDE wrote next to the sources
+android/core/bin/
