@@ -7,6 +7,7 @@
 #   at-spi, dconf, pipewire …) puts its sockets and mounts there. Sharing /run/user/$UID broke every Flatpak app on
 #   the desktop (2026-10-04): the private bus started a second xdg-document-portal, which took over
 #   /run/user/$UID/doc and unmounted it when the session ended;
+# - its own XDG data/config/cache/state folders (below), for the same reason: the user's keyring and settings;
 # - mutter --headless with one virtual monitor (1280x900), Wayland only;
 # - DISPLAY unset and GDK_BACKEND=wayland: the app can only reach that compositor; GTK_USE_PORTAL=0 as well.
 # mutter: $KKS_MUTTER, else `mutter` on PATH, else ~/.local/kksdev/root/usr/bin/mutter (Ubuntu's `mutter` package
@@ -23,6 +24,17 @@ export KKS_HEADLESS_PLUGIN=""
 RT="$(mktemp -d "${TMPDIR:-/tmp}/kks-headless-rt.XXXXXX")"
 chmod 700 "$RT"
 export XDG_RUNTIME_DIR="$RT" GTK_USE_PORTAL=0
+# Its own data, config, cache and state folders too: the services the private bus starts read and write the user's
+# files there. Every run started a gnome-keyring-daemon on ~/.local/share/keyrings (found 2026-10-04: it only read,
+# and an app's store was refused because the keyring was locked), and the portals' permission store writes
+# ~/.local/share/flatpak/db, dconf ~/.config/dconf/user. The user's Flatpak installation stays reachable (the
+# Flatpak tests run the installed app): its folders are linked in, all but the permission store `db`.
+mkdir -p "$RT/home/data/flatpak" "$RT/home/config" "$RT/home/cache" "$RT/home/state"
+for e in "${XDG_DATA_HOME:-$HOME/.local/share}"/flatpak/*; do
+  [ "$(basename "$e")" = db ] || ln -s "$e" "$RT/home/data/flatpak/"
+done
+export XDG_DATA_HOME="$RT/home/data" XDG_CONFIG_HOME="$RT/home/config" XDG_CACHE_HOME="$RT/home/cache" \
+       XDG_STATE_HOME="$RT/home/state"
 cleanup() {
   # the private portals' FUSE mounts (doc, gvfs) go away as dbus-run-session ends them: wait a moment, unmount any
   # left (they are ours: under $RT), then remove the directory

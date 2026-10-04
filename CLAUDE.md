@@ -590,6 +590,15 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
     added or gone), `journalctl -b | grep run-user-$UID-doc.mount` (nothing new), and a Flatpak app's sandbox
     starting (`flatpak run --command=true app.zen_browser.zen`). "Nothing shared with the desktop" has to hold for
     everything in `/run/user/$UID`, not just the bus and the display.
+- **Slow GNOME start (the user, 2026-10-04):** 20-40 s before the window. Not Flatpak (the plain build the same):
+  `kksl/mdns.nim` resolved each found `_kks._tcp` service with a synchronous D-Bus call on the main thread, and each
+  device that didn't answer cost Avahi's 5 s timeout. Now asynchronous (`g_dbus_connection_call`): ~2 s. The server
+  uses the same module (its loop was held the same way). Found with gdb (`ptrace_scope` 1: run the app under gdb and
+  SIGINT it, attaching is refused).
+- **headless.sh also isolates the XDG data/config/cache/state folders:** every run had started a private
+  gnome-keyring-daemon on the user's `~/.local/share/keyrings` (it only read; an app's store was refused as locked),
+  and the portals' permission store and dconf write under those folders. The user's Flatpak installation is linked
+  in (all but `db`). Check `~/.local/share/keyrings`, `~/.local/share/flatpak/db` and `~/.config/dconf/user` too.
 - **Diagnostics:** reports are sealed to the manager's report key: the server and its web pages can't read them
   (0040); read them on the manager's phone (Manage → Diagnostics, Copy all).
 
