@@ -42,8 +42,8 @@ object Updates {
     var busy by mutableStateOf<String?>(null); private set
     var error by mutableStateOf<String?>(null); private set
     var checked by mutableStateOf(0L); private set
-    internal var api = "https://api.github.com/repos/$REPO/releases/latest"   // debug builds: a test release (DebugUpdateReceiver)
-    internal var pub = RELEASE_P256_PUB
+    @Volatile internal var api = "https://api.github.com/repos/$REPO/releases/latest"   // debug builds: a test release (DebugUpdateReceiver)
+    @Volatile internal var pub = RELEASE_P256_PUB      // volatile: R8 inlined the constant and ignored the test override
 
     fun current(ctx: Context): String =
         (runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "0.0.0").substringBefore('-')
