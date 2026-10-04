@@ -63,6 +63,12 @@ system's.
 
 ## Tests
 
+Run the tests headless, so no window opens on the desktop: `apps/gnome/e2e/headless.sh` starts a private
+`mutter --headless` (one virtual monitor, Wayland only) in its own D-Bus session (its own accessibility bus) and runs
+the command inside: `apps/gnome/e2e/headless.sh python3 apps/gnome/e2e/test_gnome.py`. Without a `mutter` binary,
+unpack Ubuntu's package next to the GTK headers (`apt-get download mutter && dpkg-deb -x mutter_*.deb
+~/.local/kksdev/root`; it is a launcher for the libmutter GNOME Shell already has).
+
 `python3 apps/gnome/e2e/test_gnome.py` drives the app through its accessibility tree (AT-SPI), against the Nim server
 and the importer, with no plant data. In about 30 s it covers:
 - joining through the server;
