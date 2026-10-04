@@ -354,7 +354,7 @@ private fun Account(rev: Int, say: (String) -> Unit) {
                         Column(Modifier.padding(12.dp)) {
                             Text("This phone limits background sync", style = MaterialTheme.typography.titleSmall)
                             Text("It syncs when the app is open, when you press Sync now, and often while charging, but not every 15 minutes on its own ($why). " +
-                                 "Some phones (Honor, Huawei, Xiaomi and others) do this whatever the app asks. If you want, allow background activity for KKS Explorer in its settings (Battery, App launch).",
+                                 "Some phones (Honor, Huawei, Xiaomi and others) do this whatever the app asks. If you want, allow background activity for Walkdown in its settings (Battery, App launch).",
                                  style = MaterialTheme.typography.bodySmall)
                             TextButton(onClick = {
                                 ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,

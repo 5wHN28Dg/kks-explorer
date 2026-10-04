@@ -152,7 +152,7 @@ object Sync {
     /** a bundle file from an admin; "" when this phone now belongs to the plant */
     fun importBundle(ctx: Context, raw: ByteArray): String {
         val r = Core.api("POST", "/native/bundle", JSONObject().put("data", android.util.Base64.encodeToString(raw, android.util.Base64.NO_WRAP)))
-        if (r.status >= 400) return r.json.optString("error", "not a KKS Explorer bundle")
+        if (r.status >= 400) return r.json.optString("error", "not a Walkdown bundle")
         if (!joined()) return "The bundle was imported, but this phone is not certified in it yet."
         App.clearRemovedNote(ctx)
         report(ctx)

@@ -15,8 +15,8 @@ REPO=$(cd "$HERE/../.." && pwd)
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
 SDKBT_VERSION=10.0.28000.2705
 SDKBT_SHA256=8bfdfb6ca2633f531cf80b5fa22512ba61a394d7988f0970db83baadc67929ed
-NAME="${KKS_MSIX_NAME:-Walkdown}"           # the package name: changes with the rename (CUTOVER.md)
-DISPLAY_NAME="${KKS_MSIX_DISPLAY:-KKS Explorer}"
+NAME="${KKS_MSIX_NAME:-Walkdown}"           # the package identity: changing it makes another app
+DISPLAY_NAME="${KKS_MSIX_DISPLAY:-Walkdown}"     # Start menu and Settings → Apps (0.9.0 and 0.9.1 shipped "KKS Explorer")
 OSSL=$(command -v osslsigncode || echo "$DEV/root/usr/bin/osslsigncode")
 PY="${KKS_PY:-$REPO/.venv/bin/python}"
 
