@@ -227,6 +227,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             if (list.isEmpty()) Card(Modifier.align(Alignment.Center).padding(24.dp)) {
                 Text("Waiting for the drawings. They arrive with the next sync from a device that has them.", Modifier.padding(16.dp))
             }
+            // the whole sheet again, centred (the web viewer's ⤢, GNOME's header button, the 0 key on desktops)
+            if (current != null) SmallFloatingActionButton(onClick = { view?.fit() }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+                .semantics { contentDescription = "Fit the sheet to the screen" }) { Icon(Glyphs.FIT, contentDescription = null) }
             Column(Modifier.fillMaxWidth().padding(8.dp)) {
                 if (marking) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                     Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {

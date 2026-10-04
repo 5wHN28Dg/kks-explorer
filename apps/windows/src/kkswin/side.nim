@@ -5,7 +5,7 @@ import std/[strutils, tables, sets, sequtils, math, algorithm]
 import kks/json
 import kks/model
 import appstate
-import w32, ui, win
+import w32, ui, win, viewer
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -68,7 +68,8 @@ proc drawingsTab(w: Win, p: Page) =
     for n in si.notes: p.label(n)
   if ok:
     p.space()
-    p.buttons(((if w.v.marking: "Stop marking" else: "Mark a missing tag"), proc () =
+    p.buttons(("Fit the sheet (0)", proc () = w.v.fit()),      # the whole sheet again, centred (as GNOME and the web)
+              ((if w.v.marking: "Stop marking" else: "Mark a missing tag"), proc () =
       w.v.marking = not w.v.marking
       w.toast(if w.v.marking: "Drag a box around the tag the app missed" else: "")
       w.rebuildSide()))

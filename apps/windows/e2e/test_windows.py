@@ -200,7 +200,7 @@ class Windows(unittest.TestCase):
                                 'wait\t~Sample sheet\t60'], keep=False)
         # the drawing's tags are buttons for UI Automation (kks_uia.cpp): invoking one opens its panel
         self.check('tag.uia', ['wait\t~11LAB70AA501, \t30', 'click\t~11LAB70AA501, ', 'value\tSystem\tFeed water piping system',
-                               'click\tClose'])
+                               'click\tClose', 'click\tFit the sheet (0)', 'wait\t~11LAB70AA501, \t10'])   # the whole sheet again
         # search → the panel decodes the tag; an edit reaches the server by the automatic sync
         note = 'Gland repacked (Windows %s)' % time.strftime('%H:%M:%S')
         self.check('panel.uia', ['set\tSearch equipment by KKS code or description\tLAB70AA501', 'select\t~11LAB70AA501',
