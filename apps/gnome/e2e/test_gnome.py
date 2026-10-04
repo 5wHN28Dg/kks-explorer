@@ -155,7 +155,15 @@ class Gnome(unittest.TestCase):
         time.sleep(3)
         atspi.click(atspi.find(a, 'button', name='Manage'))
         atspi.click(atspi.find(a, 'button', name='Approvals'))
-        atspi.click(atspi.find(a, 'button', name='Approve', timeout=15))
+        # the page rebuilds after each sync: a click on the button it just replaced is lost (half the Flatpak runs,
+        # 2026-10-04), so click again until the app says it approved
+        for _ in range(5):
+            atspi.click(atspi.find(a, 'button', name='Approve', timeout=15))
+            try:
+                atspi.find(a, 'label', name='Approved', timeout=4)
+                break
+            except AssertionError:
+                pass
         for _ in range(40):
             subs = ali.req('GET', '/api/submissions?status=all')['submissions']
             if subs and subs[0]['status'] == 'approved':
