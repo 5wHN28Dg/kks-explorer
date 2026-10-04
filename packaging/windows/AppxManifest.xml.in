@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The MSIX manifest (decision 0043). make-msix.sh fills in @NAME@, @PUBLISHER@ (the signing certificate's subject,
-     exactly), @VERSION@ (a.b.c.0 from VERSION) and @DISPLAY@. -->
+     exactly), @VERSION@ (a.b.c.0 from VERSION), @DISPLAY@ and @ARCH@ (x64 or arm64, decision 0047). -->
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
          xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
          xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
          IgnorableNamespaces="uap uap3 desktop rescap">
-  <Identity Name="@NAME@" Publisher="@PUBLISHER@" Version="@VERSION@" ProcessorArchitecture="x64" />
+  <Identity Name="@NAME@" Publisher="@PUBLISHER@" Version="@VERSION@" ProcessorArchitecture="@ARCH@" />
   <Properties>
     <DisplayName>@DISPLAY@</DisplayName>
     <PublisherDisplayName>@DISPLAY@</PublisherDisplayName>

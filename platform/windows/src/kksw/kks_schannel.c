@@ -16,6 +16,7 @@
 #include <ncrypt.h>
 #include <sspi.h>
 #include <schannel.h>
+#include <stddef.h>   /* offsetof (gcc's headers brought it in; clang's do not) */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

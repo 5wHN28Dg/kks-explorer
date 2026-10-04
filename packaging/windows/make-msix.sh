@@ -3,6 +3,7 @@
 # Windows VM, sign it here with osslsigncode (the key never leaves this machine).
 #
 #   packaging/windows/make-msix.sh VM_IP CERT.pfx OUT.msix
+#   KKS_WIN_ARCH=aarch64 packaging/windows/make-msix.sh VM_IP CERT.pfx Walkdown-arm64.msix   (Windows on ARM64, 0047)
 #
 # CERT.pfx: the signing certificate with its key; its password in $KKS_MSIX_PASS (or empty). Its subject is the
 # package's publisher. The real one lives in ~/.config/kks-explorer/signing (never in the repo); a test one:
@@ -39,10 +40,11 @@ vm() { ssh $SSH "kks@$VM" "powershell -NoProfile -Command \"$1\""; }
 # the publisher = the certificate's subject, as Windows writes it ("CN=…")
 SUBJECT=$(openssl pkcs12 -in "$PFX" -nokeys -passin "pass:${KKS_MSIX_PASS:-}" 2>/dev/null | openssl x509 -noout -subject -nameopt RFC2253 | sed 's/^subject=//')
 VERSION=$(tr -d ' \n' < "$REPO/VERSION").0
-echo "package $NAME $VERSION, publisher $SUBJECT"
+ARCH=$([ "${KKS_WIN_ARCH:-x86_64}" = aarch64 ] && echo arm64 || echo x64)
+echo "package $NAME $VERSION ($ARCH), publisher $SUBJECT"
 
 # 1. the app
-W=/tmp/kks-msix
+W=/tmp/kks-msix-$ARCH
 rm -rf "$W"; mkdir -p "$W/layout/Assets" "$W/layout/data/courses" "$W/layout/vendor/fonts"
 sh "$REPO/apps/windows/build.sh" "$W/Walkdown.exe" >/dev/null
 cp "$W/Walkdown.exe" "$W/layout/"
@@ -55,7 +57,7 @@ src, out = Image.open(sys.argv[1]).convert('RGBA'), sys.argv[2]
 for name, px in (('Square44x44Logo', 44), ('Square150x150Logo', 150), ('StoreLogo', 50)):
     src.resize((px, px), Image.LANCZOS).save(f'{out}/{name}.png')
 EOF
-sed -e "s|@NAME@|$NAME|" -e "s|@PUBLISHER@|$SUBJECT|" -e "s|@VERSION@|$VERSION|" -e "s|@DISPLAY@|$DISPLAY_NAME|g" \
+sed -e "s|@NAME@|$NAME|" -e "s|@PUBLISHER@|$SUBJECT|" -e "s|@VERSION@|$VERSION|" -e "s|@DISPLAY@|$DISPLAY_NAME|g" -e "s|@ARCH@|$ARCH|" \
   "$HERE/AppxManifest.xml.in" > "$W/layout/AppxManifest.xml"
 
 # 2. MakeAppx from the pinned NuGet package, in the VM

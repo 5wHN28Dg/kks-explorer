@@ -2,11 +2,24 @@
 # The Windows app's C/C++ libraries, cross-built with mingw-w64 (decision 0033) from pinned, SHA-256-checked sources:
 # zlib (0015), libjxl + highway/brotli/skcms (0018), zxing-cpp (0019); SQLite comes from android/nim/fetch_sqlite.sh.
 # Same versions as the Android app (android/app2/build.gradle.kts). Output: $KKS_DEV/win64/{include,lib}.
+# KKS_WIN_ARCH=aarch64: Windows on ARM64 with llvm-mingw's clang (decision 0047; platform/windows/fetch-llvm-mingw.sh),
+# output $KKS_DEV/winarm64. The default is x86_64 with mingw-w64's gcc.
 set -eu
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
-MINGW="${KKS_MINGW_BIN:-$DEV/mingw/usr/bin}"
-OUT="$DEV/win64"
+ARCH="${KKS_WIN_ARCH:-x86_64}"
 SRC="$DEV/src"
+if [ "$ARCH" = aarch64 ]; then
+  sh "$(dirname "$0")/fetch-llvm-mingw.sh"
+  MINGW="$DEV/llvm-mingw/bin"
+  OUT="$DEV/winarm64"
+  CC_="$MINGW/aarch64-w64-mingw32-clang"; CXX_="$MINGW/aarch64-w64-mingw32-clang++"; RC_="$MINGW/aarch64-w64-mingw32-windres"
+  AR_="$MINGW/llvm-ar"; ZPRE=aarch64-w64-mingw32-; SYSPROC=ARM64
+else
+  MINGW="${KKS_MINGW_BIN:-$DEV/mingw/usr/bin}"
+  OUT="$DEV/win64"
+  CC_="$MINGW/x86_64-w64-mingw32-gcc-posix"; CXX_="$MINGW/x86_64-w64-mingw32-g++-posix"; RC_="$MINGW/x86_64-w64-mingw32-windres"
+  AR_="$MINGW/x86_64-w64-mingw32-ar"; ZPRE=x86_64-w64-mingw32-; SYSPROC=x86_64
+fi
 mkdir -p "$OUT/include" "$OUT/lib" "$SRC/dl"
 export PATH="$MINGW:$PATH"
 
@@ -22,24 +35,24 @@ unpack() { # name into
   rm -rf "$2"; mkdir -p "$2"; tar xzf "$SRC/dl/$1.tar.gz" -C "$2" --strip-components=1
 }
 
-cat > "$SRC/mingw-toolchain.cmake" <<T
+cat > "$SRC/mingw-toolchain-$ARCH.cmake" <<T
 set(CMAKE_SYSTEM_NAME Windows)
-set(CMAKE_SYSTEM_PROCESSOR x86_64)
-set(CMAKE_C_COMPILER $MINGW/x86_64-w64-mingw32-gcc-posix)
-set(CMAKE_CXX_COMPILER $MINGW/x86_64-w64-mingw32-g++-posix)
-set(CMAKE_RC_COMPILER $MINGW/x86_64-w64-mingw32-windres)
+set(CMAKE_SYSTEM_PROCESSOR $SYSPROC)
+set(CMAKE_C_COMPILER $CC_)
+set(CMAKE_CXX_COMPILER $CXX_)
+set(CMAKE_RC_COMPILER $RC_)
 set(CMAKE_FIND_ROOT_PATH $OUT)
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 T
-TC="-DCMAKE_TOOLCHAIN_FILE=$SRC/mingw-toolchain.cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=$OUT"
+TC="-DCMAKE_TOOLCHAIN_FILE=$SRC/mingw-toolchain-$ARCH.cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=$OUT"
 
 # zlib 1.3.2 (hash published on zlib.net)
 if [ ! -f "$OUT/lib/libz.a" ]; then
   fetch zlib https://zlib.net/zlib-1.3.2.tar.gz bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
-  unpack zlib "$SRC/w-zlib"
-  (cd "$SRC/w-zlib" && make -s -f win32/Makefile.gcc PREFIX=x86_64-w64-mingw32- CC=x86_64-w64-mingw32-gcc-posix libz.a >/dev/null &&
+  unpack zlib "$SRC/w-zlib-$ARCH"
+  (cd "$SRC/w-zlib-$ARCH" && make -s -f win32/Makefile.gcc PREFIX=$ZPRE CC="$CC_" AR="$AR_" RC="$RC_" libz.a >/dev/null &&
    cp libz.a "$OUT/lib/" && cp zlib.h zconf.h "$OUT/include/")
 fi
 
@@ -49,7 +62,7 @@ if [ ! -f "$OUT/lib/libjxl.a" ]; then
   fetch highway https://codeload.github.com/google/highway/tar.gz/457c891775a7397bdb0376bb1031e6e027af1c48 5124b0501c98d9930dbb065bfa1a5bbbd59ce0f12facb7e1e33aaef01a5f1f1a
   fetch brotli https://codeload.github.com/google/brotli/tar.gz/028fb5a23661f123017c060daa546b55cf4bde29 0afe09a53c8bad9861c8dd1fc1284308d54f19d2979ba3541cfdcc9b05fe360f
   fetch skcms https://codeload.github.com/google/skcms/tar.gz/96d9171c94b937a1b5f0293de7309ac16311b722 9bb4b5bba0b7c04f6c2bce9ff713d61e23c9a20c4945161ae16290498ad74627
-  J="$SRC/w-libjxl"
+  J="$SRC/w-libjxl-$ARCH"
   unpack libjxl "$J"; unpack highway "$J/third_party/highway"; unpack brotli "$J/third_party/brotli"; unpack skcms "$J/third_party/skcms"
   cmake -S "$J" -B "$J/build" $TC -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_DOXYGEN=OFF \
     -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_JNI=OFF \
@@ -64,7 +77,7 @@ fi
 # zxing-cpp v3.1.1, reader + the built-in writer (0032 addendum: the new writer needs a submodule)
 if [ ! -f "$OUT/lib/libZXing.a" ]; then
   fetch zxing-cpp https://codeload.github.com/zxing-cpp/zxing-cpp/tar.gz/v3.1.1 7286b1e6ade66fe82b7c8208b4595deeb55d6486b410834fdc65702f46650542
-  Z="$SRC/w-zxing"
+  Z="$SRC/w-zxing-$ARCH"
   unpack zxing-cpp "$Z"
   cmake -S "$Z/core" -B "$Z/build" $TC -DZXING_READERS=ON -DZXING_WRITERS=OLD -DZXING_C_API=ON -DCMAKE_CXX_STANDARD=20 >/dev/null
   cmake --build "$Z/build" -j"$(nproc)" >/dev/null

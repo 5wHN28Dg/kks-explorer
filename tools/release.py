@@ -45,7 +45,7 @@ BRIDGE_APK = os.environ.get('KKS_BRIDGE_APK') or os.path.expanduser('~/kks-serve
 # Android (it updates itself from this manifest, decision 0044); Walkdown.msix + windows-msix.cer, walkdown.flatpak:
 # the laptops (installed by hand for now, 0043)
 FILES = ('KKS-Explorer-windows.zip', 'KKS-Explorer-linux.tar.gz', 'kks-explorer.apk', 'walkdown.apk', 'Walkdown.msix',
-         'windows-msix.cer', 'walkdown.flatpak')
+         'Walkdown-arm64.msix', 'windows-msix.cer', 'walkdown.flatpak', 'walkdown-aarch64.flatpak')   # ARM64: decision 0047
 # Walkdown checks a second signature, ECDSA P-256 (it carries no Ed25519): release.json.p256 = base64 of the DER
 # signature over DOMAIN2 + release.json, by release-p256.pem in the signing folder; the public key is pinned in
 # android/app2 (sync/Updates.kt) and here

@@ -44,6 +44,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0044](0044-walkdown-android-updates.md) | Walkdown updates itself on Android: the same signed release, a second P-256 signature, PackageInstaller | accepted |
 | [0045](0045-server-control-socket.md) | The server's CLI commands that change the plant run inside the running server (a 0600 Unix socket) | done |
 | [0046](0046-android-abis.md) | Android release APKs for arm64-v8a only; libraries stay uncompressed; no 32-bit phones | accepted by the user |
+| [0047](0047-arm64-desktop-builds.md) | Native ARM64 desktop builds: Windows cross-built with llvm-mingw (signed here), the aarch64 Flatpak and ARM64 tests on GitHub's ARM64 runners | accepted by the user |
 
 ## Audit of existing dependencies (2026-09-30)
 

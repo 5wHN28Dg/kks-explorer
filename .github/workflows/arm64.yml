@@ -1,0 +1,118 @@
+# ARM64 builds and tests (decision 0047), on GitHub's ARM64 runners (free for public repositories):
+# - Windows on ARM64: cross-built on Linux with llvm-mingw, then run on a windows-11-arm runner: the platform tests
+#   (CNG, Schannel, DNS-SD, key store) and the app starting to its setup screen (UI Automation).
+# - Linux ARM64: the Nim core's tests natively, and the Flatpak bundle (walkdown-aarch64.flatpak), built by the
+#   Flatpak project's builder action on an ubuntu-24.04-arm runner.
+# Signing stays on the maintainer's machine: the release's ARM64 MSIX is built and signed there
+# (KKS_WIN_ARCH=aarch64 packaging/windows/make-msix.sh); the Flatpak bundle from here goes into the release as built
+# (bundles are not signed; the release manifest that lists its hash is).
+name: ARM64
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  NIM_VERSION: 2.2.12
+  NIM_SHA256: 2639a06a5ea7a7fcf57df1e7e1ef4d1b2bee58c7ac9bd00dbd2aa5bea1e5a56a
+
+jobs:
+  windows-arm64-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.local/kksdev/llvm-mingw
+            ~/.local/kksdev/winarm64
+            ~/.local/kksdev/src/sqlite-amalgamation-3530400
+            ~/nim
+          key: winarm64-${{ env.NIM_VERSION }}-${{ hashFiles('platform/windows/build-deps.sh', 'platform/windows/fetch-llvm-mingw.sh', 'android/nim/fetch_sqlite.sh') }}
+      - name: Nim (pinned source, checked)
+        run: |
+          if [ ! -x ~/nim/bin/nim ]; then
+            curl -sL -o /tmp/nim.tar.xz https://nim-lang.org/download/nim-$NIM_VERSION.tar.xz
+            echo "$NIM_SHA256  /tmp/nim.tar.xz" | sha256sum -c
+            mkdir -p ~/nim && tar xJf /tmp/nim.tar.xz -C ~/nim --strip-components=1
+            (cd ~/nim && sh build.sh >/dev/null && bin/nim c --hints:off koch >/dev/null && ./koch boot -d:release --hints:off >/dev/null)
+          fi
+          echo "$HOME/nim/bin" >> "$GITHUB_PATH"
+      - name: Libraries (llvm-mingw, zlib, libjxl, zxing-cpp, SQLite)
+        run: KKS_WIN_ARCH=aarch64 sh platform/windows/build-deps.sh
+      - name: The app, the UI Automation driver, the platform tests
+        run: |
+          mkdir -p out
+          KKS_WIN_ARCH=aarch64 NIM=nim sh apps/windows/build.sh "$PWD/out/Walkdown.exe"
+          cd platform/windows
+          KKS_WIN_ARCH=aarch64 nim c --os:windows -d:mingw --cpu:arm64 --cc:clang -d:release -o:../../out/test_winplat.exe tests/test_winplat.nim
+      - uses: actions/upload-artifact@v7
+        with:
+          name: walkdown-windows-arm64
+          path: out/*.exe
+          retention-days: 30
+
+  windows-arm64-test:
+    needs: windows-arm64-build
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: walkdown-windows-arm64
+          path: out
+      - name: The platform tests on Windows on ARM64
+        shell: pwsh
+        run: |
+          (Get-Item out\test_winplat.exe).VersionInfo | Out-Null
+          & out\test_winplat.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: The app starts to its setup screen
+        shell: pwsh
+        run: |
+          $env:KKS_DATA_DIR = "$env:RUNNER_TEMP\walkdown"
+          $app = Start-Process -FilePath out\Walkdown.exe -PassThru
+          Set-Content -Path script.uia -Value "wait`tJoin through a server`t60" -Encoding ascii
+          & out\uiadrive.exe Walkdown.exe "$PWD\script.uia" "$PWD\uia.log"
+          $code = $LASTEXITCODE
+          Get-Content uia.log
+          Stop-Process -Id $app.Id -Force
+          exit $code
+
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: ~/nim
+          key: nim-arm64-${{ env.NIM_VERSION }}
+      - name: Nim (pinned source, checked)
+        run: |
+          if [ ! -x ~/nim/bin/nim ]; then
+            curl -sL -o /tmp/nim.tar.xz https://nim-lang.org/download/nim-$NIM_VERSION.tar.xz
+            echo "$NIM_SHA256  /tmp/nim.tar.xz" | sha256sum -c
+            mkdir -p ~/nim && tar xJf /tmp/nim.tar.xz -C ~/nim --strip-components=1
+            (cd ~/nim && sh build.sh >/dev/null && bin/nim c --hints:off koch >/dev/null && ./koch boot -d:release --hints:off >/dev/null)
+          fi
+          echo "$HOME/nim/bin" >> "$GITHUB_PATH"
+      - name: The Nim core's tests on ARM64
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq libgnutls28-dev zlib1g-dev >/dev/null
+          cd core && nim test
+
+  flatpak-arm64:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: walkdown-aarch64.flatpak
+          manifest-path: apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.yml
+          arch: aarch64
+          cache-key: flatpak-builder-aarch64-${{ github.sha }}

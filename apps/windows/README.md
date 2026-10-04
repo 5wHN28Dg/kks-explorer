@@ -8,6 +8,8 @@ with the GNOME app (`apps/common/appstate.nim`) and the platform layer with the 
 
     platform/windows/build-deps.sh       # once: zlib, libjxl, zxing-cpp for Windows into ~/.local/kksdev/win64
     apps/windows/build.sh                # → /tmp/kkswin/Walkdown.exe (one static exe, ~14 MB)
+    KKS_WIN_ARCH=aarch64 sh platform/windows/build-deps.sh       # Windows on ARM64 (decision 0047): llvm-mingw,
+    KKS_WIN_ARCH=aarch64 apps/windows/build.sh OUT/Walkdown.exe  # libraries in ~/.local/kksdev/winarm64
 
 The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (decision 0033).
 `res/kks.manifest` provides Common Controls v6, per-monitor DPI v2, the UTF-8 code page and the Windows 10/11 compatibility entry.
