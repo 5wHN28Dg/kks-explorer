@@ -72,14 +72,14 @@ fun PhotoOf(file: String, caption: String = "", height: Int = 90) {
 fun PhotoViewer(b: ImageBitmap, caption: String, onClose: () -> Unit) {
     var scale by remember { mutableFloatStateOf(1f) }
     var off by remember { mutableStateOf(Offset.Zero) }
-    val bars = WindowInsets.systemBars.asPaddingValues()     // read here: a Dialog's own composition gets no insets
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        FullScreenDialogWindow()
         Surface(Modifier.fillMaxSize(), color = Color.Black) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ -> scale = (scale * zoom).coerceIn(1f, 8f); off = if (scale == 1f) Offset.Zero else off + pan }
             }) {
                 Image(b, caption.ifEmpty { "Photo" }, Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = off.x, translationY = off.y))
-                Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(bars).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(caption, color = Color.White, modifier = Modifier.weight(1f))
                     TextButton(onClick = onClose) { Text("Close") }
                 }
@@ -88,12 +88,17 @@ fun PhotoViewer(b: ImageBitmap, caption: String, onClose: () -> Unit) {
     }
 }
 
-/** the panel's photos of one KKS: thumbnails, delete, add (camera or gallery → annotate → JPEG XL → submit) */
+/** the panel's photos of one KKS: thumbnails (the tag plate first), delete, add (camera or gallery → annotate → JPEG XL →
+ *  submit), and the tag plate's photo */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Bitmap?>(null) }
+    var fromCamera by remember { mutableStateOf(true) }       // for Retake: the camera again, or the gallery
+    var plate by remember { mutableStateOf(false) }           // this picture is of the equipment's tag plate
+    var askPlate by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(-1f) }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
@@ -112,28 +117,41 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState) 
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) camera.launch(camUri) else scope.launch { snack.showSnackbar("Without the camera permission, pick a photo from the gallery") }
     }
+    fun shoot(ofPlate: Boolean) {
+        plate = ofPlate; fromCamera = true
+        if (ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(camUri) else perm.launch(Manifest.permission.CAMERA)
+    }
+    val hasPlate = photos.any { isPlate(it.str("caption")) }
     if (delete.isNotEmpty()) Confirm("Delete this photo?", "It is removed for everyone once approved.", "Delete", {
         val (_, m) = submit("photo_delete", JSONObject().put("photo_id", delete)); scope.launch { snack.showSnackbar(m) }
     }, { delete = "" })
     Text("Photos", style = MaterialTheme.typography.titleMedium)
     if (photos.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (p in photos) Column {
+        // the tag plate first: it is how the equipment is recognised in the field
+        for (p in photos.sortedBy { if (isPlate(it.str("caption"))) 0 else 1 }) Column {
+            if (isPlate(p.str("caption"))) Text("Tag plate", style = MaterialTheme.typography.labelMedium)
             PhotoOf(p.str("file"), p.str("caption"))
             TextButton(onClick = { delete = p.str("id") }) { Text("Delete") }
         }
     }
+    if (askPlate) AlertDialog(onDismissRequest = { askPlate = false }, title = { Text("And its tag plate?") },
+        text = { Text("A photo of the metal plate with the KKS code helps the next person find this equipment.") },
+        confirmButton = { TextButton(onClick = { askPlate = false; shoot(true) }) { Text("Take it") } },
+        dismissButton = { TextButton(onClick = { askPlate = false }) { Text("Not now") } })
     if (busy >= 0f) {
         Text("Compressing…")
         LinearProgressIndicator(progress = { busy }, modifier = Modifier.fillMaxWidth())
-    } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = {
-            if (ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(camUri) else perm.launch(Manifest.permission.CAMERA)
-        }) { Text("Take a photo") }
-        OutlinedButton(onClick = { gallery.launch("image/*") }) { Text("From the gallery") }
+    } else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { shoot(false) }) { Text("Take a photo") }
+        OutlinedButton(onClick = { shoot(true) }) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
+        OutlinedButton(onClick = { plate = false; fromCamera = false; gallery.launch("image/*") }) { Text("From the gallery") }
     }
     picked?.let { bmp ->
-        Annotate(bmp, onCancel = { picked = null }) { out, caption, note ->
+        Annotate(bmp, plate, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
+            onRetake = { picked = null; if (fromCamera) shoot(plate) else gallery.launch("image/*") }) { out, caption0, note ->
             picked = null
+            val caption = if (plate) plateCaption(caption0) else caption0
+            val offerPlate = !plate && fromCamera && !hasPlate
             scope.launch {
                 // libjxl has no progress callback: estimate from the measured time per megapixel, capped at 95 % until done
                 val mp = out.width.toLong() * out.height / 1e6
@@ -146,6 +164,7 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState) 
                 if (jxl == null) { snack.showSnackbar("Could not compress the photo"); return@launch }
                 val (_, m) = submit("photo", JSONObject().put("kks", kks).put("caption", caption)
                     .put("dataUrl", "data:image/jxl;base64," + Base64.encodeToString(jxl, Base64.NO_WRAP)), note)
+                if (offerPlate) askPlate = true
                 snack.showSnackbar(m)
             }
         }
@@ -171,12 +190,24 @@ private fun orientedBitmap(raw: ByteArray): Bitmap? {
     return bmp
 }
 
+/** A photo of the equipment's tag plate (the metal plate with its KKS code) is a photo whose caption starts with
+ *  "Tag plate": a convention, not a field, so the apps before 0.9.3 (which reject unknown photo fields) still take it
+ *  and simply show the caption (PROTOCOL-v2 §9). */
+const val PLATE = "Tag plate"
+fun isPlate(caption: String) = caption.startsWith(PLATE)
+private fun plateCaption(extra: String) = if (extra.isBlank()) PLATE else "$PLATE · ${extra.trim()}"
+
 private data class Mark(val kind: String, val color: Int, val a: Offset, val b: Offset)
 private val COLORS = listOf(0xFFE53935.toInt(), 0xFFFDD835.toInt(), 0xFF1E88E5.toInt(), 0xFFFFFFFF.toInt())
 
-/** the annotation editor (v1 K.annotate, GNOME annotate): arrow / box / circle in 4 colours, undo; burned into the image */
+/** the annotation editor (v1 K.annotate, GNOME annotate): arrow / box / circle in 4 colours, undo, retake; burned into
+ *  the image. Its window covers the screen and it pads itself by its own insets (bars, keyboard): before, the dialog's
+ *  window was clipped between the system bars while its content was laid out at the screen's full height, so the last
+ *  row (Send, Cancel) was cut off on the Honor 600 (2026-10-04); and Undo sat at the end of a row wider than the screen. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Annotate(src: Bitmap, onCancel: () -> Unit, onDone: (Bitmap, String, String) -> Unit) {
+private fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () -> Unit, onRetake: () -> Unit,
+                     onDone: (Bitmap, String, String) -> Unit) {
     val marks = remember { mutableStateListOf<Mark>() }
     var kind by remember { mutableStateOf("arrow") }
     var color by remember { mutableIntStateOf(COLORS[0]) }
@@ -189,20 +220,20 @@ private fun Annotate(src: Bitmap, onCancel: () -> Unit, onDone: (Bitmap, String,
     val fit = if (box.width == 0) 1f else minOf(box.width / src.width.toFloat(), box.height / src.height.toFloat())
     val ox = (box.width - src.width * fit) / 2; val oy = (box.height - src.height * fit) / 2
     fun toImg(p: Offset) = Offset((p.x - ox) / fit, (p.y - oy) / fit)
-    val bars = WindowInsets.systemBars.asPaddingValues()     // read here: a Dialog's own composition gets no insets
-    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        FullScreenDialogWindow()
         Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(bars).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (plate) Text("Tag plate", style = MaterialTheme.typography.titleMedium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.Center) {
                     for ((k, lab) in listOf("arrow" to "Arrow", "box" to "Box", "circle" to "Circle"))
                         FilterChip(kind == k, { kind = k }, label = { Text(lab) })
-                    for ((i, c) in COLORS.withIndex()) Box(Modifier.size(28.dp).padding(2.dp)
+                    for ((i, c) in COLORS.withIndex()) Box(Modifier.align(Alignment.CenterVertically).size(36.dp).padding(4.dp)
                         .clickable { color = c }.semantics { contentDescription = listOf("Red", "Yellow", "Blue", "White")[i] + if (color == c) ", chosen" else "" }) {
                         Canvas(Modifier.fillMaxSize()) {
                             drawCircle(Color(c)); if (color == c) drawCircle(Color.Black, style = Stroke(3f))
                         }
                     }
-                    TextButton(onClick = { if (marks.isNotEmpty()) marks.removeAt(marks.size - 1) }) { Text("Undo") }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { box = it }.pointerInput(kind, color, fit) {
                     detectDragGestures(onDragStart = { p -> drawing = Mark(kind, color, toImg(p), toImg(p)) },
@@ -229,11 +260,16 @@ private fun Annotate(src: Bitmap, onCancel: () -> Unit, onDone: (Bitmap, String,
                         }
                     }
                 }
-                OutlinedTextField(caption, { caption = it }, label = { Text("Caption (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(caption, { caption = it }, label = { Text(if (plate) "Caption (optional; it says Tag plate)" else "Caption (optional)") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(note, { note = it }, label = { Text("Note for the approver (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onDone(burn(src, marks), caption.trim(), note.trim()) }) { Text("Send") }
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { if (marks.isNotEmpty()) marks.removeAt(marks.size - 1) }, enabled = marks.isNotEmpty()) {
+                        Icon(Glyphs.UNDO, contentDescription = null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Undo")
+                    }
+                    OutlinedButton(onClick = onRetake) { Text(retake) }
                     OutlinedButton(onClick = onCancel) { Text("Cancel") }
+                    Button(onClick = { onDone(burn(src, marks), caption.trim(), note.trim()) }) { Text("Send") }
                 }
             }
         }

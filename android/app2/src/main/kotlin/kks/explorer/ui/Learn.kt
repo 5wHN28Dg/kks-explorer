@@ -489,7 +489,8 @@ fun ImageView(im: JSONObject, nav: Nav, gloss: Map<String, String>) {
 /** a picture full screen: pinch to zoom (1–8×), drag to pan, double-tap to zoom in or back out; Back or ✕ closes */
 @Composable
 fun ZoomImage(img: androidx.compose.ui.graphics.ImageBitmap, alt: String, onClose: () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        FullScreenDialogWindow()
         var scale by remember { mutableFloatStateOf(1f) }
         var off by remember { mutableStateOf(Offset.Zero) }
         BoxWithConstraints(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
@@ -503,7 +504,7 @@ fun ZoomImage(img: androidx.compose.ui.graphics.ImageBitmap, alt: String, onClos
                 .pointerInput(Unit) { detectTransformGestures { centroid, pan, z, _ ->
                     zoomAt(centroid, (scale * z).coerceIn(1f, 8f)); off = clamp(off + pan, scale) } }
                 .graphicsLayer { scaleX = scale; scaleY = scale; translationX = off.x; translationY = off.y })
-            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp)
                 .background(androidx.compose.ui.graphics.Color(0x99000000), RoundedCornerShape(50))) {
                 Icon(Glyphs.CLOSE, contentDescription = "Close", tint = androidx.compose.ui.graphics.Color.White)
             }

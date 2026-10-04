@@ -214,6 +214,9 @@ replay only accepts or ignores.
 - **`review`:** `tag_id` `[A-Za-z0-9:_.-]{1,64}`, `data` null (remove the decision) or object, `base` null or object.
 - **`link`:** `proc` 1–32, `step` int ≥ 0, `kks` as equipment, `on` boolean.
 - **`photo`:** `photo` an ID, `kks` as equipment, `blob` 64 hex, `caption` 0–500.
+  A caption that starts with `Tag plate` marks the photo of the equipment's tag plate (the metal plate with its KKS
+  code); clients may show it apart. A convention, not a field: readers before 0.9.3 reject unknown photo fields, and
+  read this one as a caption.
 - **`photo_delete`, `tag_remove`:** an ID.
 - **`tag_add`:**
   - `tag` an ID, `sheet` `[a-z0-9][a-z0-9-]{0,23}`;

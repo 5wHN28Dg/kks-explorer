@@ -138,6 +138,69 @@ class Phone(unittest.TestCase):
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
             time.sleep(3)
 
+    @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
+    def test_photos(self):
+        """the photo editor (the user's Honor 600, 2026-10-04): every button on screen above the navigation bar, undo,
+        retake; then the tag plate: offered after an equipment photo, sent with a caption that starts with Tag plate"""
+        w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+        nav = int(48 * int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160)     # the 3-button navigation bar
+
+        def snap():          # the emulator's camera app: shutter, then confirm, both at the bottom centre
+            if ui.present('WHILE USING THE APP', exact=True):
+                ui.tap('WHILE USING THE APP', exact=True)
+            time.sleep(5)
+            ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+            time.sleep(4)
+            ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+            ui.find('Send', exact=True, timeout=30)
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            ui.type_into('Search KKS or description', 'LAB70AA501')
+            ui.tap('11LAB70AA501', exact=True)
+            ui.scroll_to('Take a photo', exact=True)
+            ui.tap('Take a photo', exact=True)
+            snap()
+            for b in ('Undo', 'Retake', 'Cancel', 'Send', 'Arrow', 'Circle', 'White'):
+                bottom = int(re.findall(r'\d+', ui.find(b, exact=b != 'White').get('bounds'))[3])
+                self.assertLessEqual(bottom, h - nav, f'{b} is under the navigation bar or off the screen')
+            def undo_enabled():      # the clickable button around the label (the label itself always says enabled)
+                box = [int(v) for v in re.findall(r'\d+', ui.find('Undo', exact=True).get('bounds'))]
+                for n in ui.nodes():
+                    b = [int(v) for v in re.findall(r'\d+', n.get('bounds', '[0,0][0,0]'))]
+                    if n.get('clickable') == 'true' and b[0] <= box[0] and b[1] <= box[1] and b[2] >= box[2] and b[3] >= box[3]:
+                        return n.get('enabled') == 'true'
+                self.fail('no button around Undo')
+            self.assertFalse(undo_enabled(), 'Undo before anything was drawn')
+            ui.sh('input', 'swipe', str(w // 3), str(h // 2), str(w * 2 // 3), str(h * 3 // 5), '400')    # an arrow
+            self.assertTrue(undo_enabled(), 'Undo after an arrow')
+            ui.tap('Undo', exact=True)
+            self.assertFalse(undo_enabled(), 'Undo after undoing the only arrow')
+            ui.tap('Retake', exact=True)
+            snap()
+            ui.tap('Send', exact=True)
+            ui.find('And its tag plate?', exact=True, timeout=60)
+            ui.tap('Take it', exact=True)
+            snap()
+            ui.find('Tag plate', exact=True)
+            ui.tap('Send', exact=True)
+            def caps():
+                c = sorted(p['caption'] for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501')
+                return c if len(c) == 2 else None
+            self.assertEqual(self.wait_server(caps, 'the two photos never reached the server', tries=120), ['', 'Tag plate'])
+        finally:
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
+
     def test_diagnostics(self):
         """decision 0040: the manager's phone switches reports on; an event is sealed into a report the server stores
         but can't open; the phone (holding the report key) shows it under Manage → Diagnostics. Needs the debug build
