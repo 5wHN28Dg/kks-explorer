@@ -555,6 +555,25 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
 - **Fit button** on Android (bottom right) and Windows (side panel); GNOME had one.
 - **New drawings:** b1circ and cwp (plant data v6); the booster pump drawing has no KKS and was left out (the user).
 
+**2026-10-04, second batch (the user's list):**
+- **Photo coverage view** on all four UIs (Android ⋮ menu, GNOME header, Windows side panel, web 📷): tags coloured
+  green both / amber equipment only / blue tag plate only / red none; core `model.photoCover`, `tagsView.photos`.
+- **Photo editor** on all four: zoom (−/+/Fit, wheel, two-finger pinch and pan, right-drag), three line sizes (per
+  mark; Windows `Mark.size` in kks_d2d.cpp), and a touch-only loupe (Android pointer type, GNOME the drag's device
+  source, Windows WM_POINTER PT_TOUCH, web pointerType). Tested: web 3 engines (synthetic pointers), Android emulator
+  (`input motionevent`, the loupe's ring in a screenshot), Windows 11 VM (uiadrive `touchdrag` = InjectTouchInput, the
+  stroke in the server's JXL). NOT tested: two-finger pinch on Android/GNOME/Windows, the GNOME loupe.
+- **Server CLI** (decision 0045): `reset-password`, `reset-manager` (root `manager` statement; the old manager becomes
+  admin), `submit-file` (submissions as the manager through /api/submit's checks; client_ids dedupe).
+- **Procedures from other documents:** `tools/procedure_import.py` (public) + a private spec in
+  `~/kks-server/state/imports/<id>/` → procedures.json entry with `source` (shown instead of "manual page"), and
+  link/photo/equipment-field submissions. EP-06.27 (draining before start-up) imported live.
+- **ARM64** (decision 0047): Windows cross-built here with llvm-mingw (`KKS_WIN_ARCH=aarch64`), Walkdown-arm64.msix
+  signed here; `.github/workflows/arm64.yml` builds walkdown-aarch64.flatpak and tests on GitHub's ARM64 runners.
+- **GNOME tests headless:** `apps/gnome/e2e/headless.sh` (private mutter); never on the user's desktop.
+- **Diagnostics:** reports are sealed to the manager's report key: the server and its web pages can't read them
+  (0040); read them on the manager's phone (Manage → Diagnostics, Copy all).
+
 ## Backlog (rough priority)
 
 1. When users have marked missed tags (the log's `tag_add` entries), find why the reader missed them and fix the cause
