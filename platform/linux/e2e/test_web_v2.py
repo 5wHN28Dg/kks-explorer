@@ -85,6 +85,13 @@ class WebV2(unittest.TestCase):
             page.wait_for_function("() => { const i = document.getElementById('sheetimg'); return i && i.complete && i.naturalWidth > 0 }",
                                    timeout=30000)
             page.wait_for_selector('#layer [data-id], #layer .hot, #layer > *', timeout=15000)
+            # tags coloured by their photos: the tag has none yet (red); the button says it is pressed
+            page.click('#zcover')
+            self.assertEqual(page.get_attribute('#zcover', 'aria-pressed'), 'true')
+            self.assertTrue(page.is_visible('#coverlegend'))
+            self.assertGreater(page.locator('#layer .hs.p-none').count(), 0)
+            self.assertIn('no photos', page.get_attribute('#layer .hs.p-none >> nth=0', 'title'))
+            page.click('#zcover')
             # zoom in: the sharp layer comes from the worker
             page.evaluate("() => zoomAt(8)")
             page.wait_for_function("() => { const c = document.getElementById('sharp'); return c && c.style.display === 'block' }",
@@ -111,6 +118,40 @@ class WebV2(unittest.TestCase):
             # a course's KKS link: /?kks=CODE opens that equipment
             page.goto(self.base + '/?kks=11LAB70AA501')
             page.wait_for_function("() => typeof selTag !== 'undefined' && selTag && full(selTag) === '11LAB70AA501'", timeout=30000)
+            # the photo editor: a touch draw shows the loupe and hides it when lifted; a mouse draw never shows it; line
+            # sizes; zoom; the result is the photo at its own size with the marks burned in
+            page.evaluate("""() => { const c = document.createElement('canvas'); c.width = 800; c.height = 600;
+                const x = c.getContext('2d'); x.fillStyle = '#808080'; x.fillRect(0, 0, 800, 600);
+                window.__ann = K.annotate(c.toDataURL('image/png'), false).then(r => window.__res = r) }""")
+            page.wait_for_selector('canvas.view')
+            page.wait_for_timeout(300)
+            box = page.locator('canvas.view').bounding_box()
+            cxp, cyp = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+            def ptr(kind, typ, x, y, pid):
+                page.dispatch_event('canvas.view', kind, {'pointerId': pid, 'pointerType': typ, 'clientX': x, 'clientY': y,
+                                                          'button': 0, 'buttons': 1 if kind != 'pointerup' else 0, 'isPrimary': True, 'bubbles': True})
+            page.click('[data-s="1.8"]')
+            self.assertEqual(page.get_attribute('[data-s="1.8"]', 'aria-pressed'), 'true')
+            ptr('pointerdown', 'touch', cxp - 100, cyp, 7)
+            ptr('pointermove', 'touch', cxp + 100, cyp, 7)
+            page.wait_for_timeout(150)
+            self.assertTrue(page.is_visible('canvas.loupe'), name + ': no loupe while a finger draws')
+            ptr('pointerup', 'touch', cxp + 100, cyp, 7)
+            self.assertFalse(page.is_visible('canvas.loupe'), name + ': the loupe stayed after the finger left')
+            page.click('[aria-label="Zoom in"]')
+            ptr('pointerdown', 'mouse', cxp - 50, cyp + 60, 1)
+            ptr('pointermove', 'mouse', cxp + 50, cyp + 60, 1)
+            page.wait_for_timeout(150)
+            self.assertFalse(page.is_visible('canvas.loupe'), name + ': a loupe for the mouse')
+            ptr('pointerup', 'mouse', cxp + 50, cyp + 60, 1)
+            page.click('[data-a="ok"]')
+            page.wait_for_function('() => window.__res')
+            w, red = page.evaluate("""() => { const c = window.__res.canvas, x = c.getContext('2d');
+                const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0;
+                for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] < 120 && d[i + 2] < 120) n++;
+                return [c.width, n] }""")
+            self.assertEqual(w, 800)
+            self.assertGreater(red, 500, name + ': the marks were not burned in')
             # the plant's name next to Walkdown; the manager clears it in the admin page: then no name and no "·"
             self.assertEqual(page.text_content('#plantName'), '· Test plant')
             page.goto(self.base + '/admin.html#devices')

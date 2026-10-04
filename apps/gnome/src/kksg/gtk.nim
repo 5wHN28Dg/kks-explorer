@@ -404,7 +404,10 @@ proc gtk_event_controller_get_current_event_state*(c: W): cuint {.importc, heade
 proc gtk_gesture_zoom_get_scale_delta*(g: W): cdouble {.importc, header: HA.}
 proc gtk_gesture_get_bounding_box_center*(g: W, x, y: ptr cdouble): cint {.importc, header: HA.}
 proc gtk_event_controller_scroll_get_unit*(c: W): cint {.importc, header: HA.}
+proc gtk_event_controller_get_current_event_device*(c: W): pointer {.importc, header: HA.}
+proc gdk_device_get_source*(d: pointer): cint {.importc, header: HA.}
 var
+  GDK_SOURCE_TOUCHSCREEN* {.importc, header: HA, nodecl.}: cint
   GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES* {.importc, header: HA, nodecl.}: cint
   GDK_CONTROL_MASK* {.importc, header: HA, nodecl.}: cuint
   GDK_SHIFT_MASK* {.importc, header: HA, nodecl.}: cuint

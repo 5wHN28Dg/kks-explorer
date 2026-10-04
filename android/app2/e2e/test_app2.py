@@ -145,6 +145,12 @@ class Phone(unittest.TestCase):
         w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
         nav = int(48 * int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160)     # the 3-button navigation bar
 
+        def orange_pixels():   # the loupe's ring (#FF7A1A) in a screenshot
+            from PIL import Image
+            import io
+            im = Image.open(io.BytesIO(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)).convert('RGB')
+            return sum(1 for r, g, b in im.getdata() if r > 230 and 100 < g < 145 and b < 60)
+
         def snap():          # the emulator's camera app: shutter, then confirm, both at the bottom centre
             if ui.present('WHILE USING THE APP', exact=True):
                 ui.tap('WHILE USING THE APP', exact=True)
@@ -180,6 +186,17 @@ class Phone(unittest.TestCase):
             self.assertTrue(undo_enabled(), 'Undo after an arrow')
             ui.tap('Undo', exact=True)
             self.assertFalse(undo_enabled(), 'Undo after undoing the only arrow')
+            # thick lines, zoomed in; a finger held mid-stroke shows the loupe (its orange ring), gone once lifted
+            ui.tap('Thick lines', exact=True)
+            ui.tap('Zoom in', exact=True)
+            ui.sh('input', 'motionevent', 'DOWN', str(w // 3), str(h // 2))
+            ui.sh('input', 'motionevent', 'MOVE', str(w // 2), str(h * 11 // 20))
+            time.sleep(1)
+            held = orange_pixels()
+            ui.sh('input', 'motionevent', 'UP', str(w // 2), str(h * 11 // 20))
+            time.sleep(1)
+            self.assertGreater(held, 2000, 'no loupe while the finger draws')
+            self.assertLess(orange_pixels(), 200, 'the loupe stayed after the finger left')
             ui.tap('Retake', exact=True)
             snap()
             ui.tap('Send', exact=True)
@@ -192,6 +209,11 @@ class Phone(unittest.TestCase):
                 c = sorted(p['caption'] for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501')
                 return c if len(c) == 2 else None
             self.assertEqual(self.wait_server(caps, 'the two photos never reached the server', tries=120), ['', 'Tag plate'])
+            # the drawing coloured by photos: this tag has both now (the drawing's tags carry it in their names)
+            ui.sh('input', 'keyevent', '4')
+            ui.tap('More', exact=True)
+            ui.tap('Colour tags by photos', exact=True)
+            ui.find('11LAB70AA501, equipment and tag plate photos', timeout=20)
         finally:
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:

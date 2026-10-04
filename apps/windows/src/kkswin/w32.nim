@@ -123,6 +123,11 @@ const
   WM_LBUTTONUP* = 0x0202'u32
   WM_LBUTTONDBLCLK* = 0x0203'u32
   WM_MOUSEWHEEL* = 0x020A'u32
+  WM_RBUTTONDOWN* = 0x0204'u32
+  WM_RBUTTONUP* = 0x0205'u32
+  WM_POINTERUPDATE* = 0x0245'u32     ## touch and pen contacts (Windows 8+); the mouse keeps WM_*BUTTON*
+  WM_POINTERDOWN* = 0x0246'u32
+  WM_POINTERUP* = 0x0247'u32
   WM_MOUSELEAVE* = 0x02A3'u32
   WM_DPICHANGED* = 0x02E0'u32
   WM_APP* = 0x8000'u32
@@ -213,6 +218,10 @@ proc GetDpiForWindow*(h: HWND): UINT {.importc, stdcall, header: H.}
 proc SetProcessDpiAwarenessContext*(ctx: int): BOOL {.importc, stdcall, header: H, discardable.}
 proc SetCapture*(h: HWND): HWND {.importc, stdcall, header: H, discardable.}
 proc ReleaseCapture*(): BOOL {.importc, stdcall, header: H, discardable.}
+proc GetPointerType*(id: uint32, t: ptr uint32): BOOL {.importc, stdcall, header: H.}
+const
+  PT_TOUCH* = 2'u32
+  PT_PEN* = 3'u32
 proc ScreenToClient*(h: HWND, p: ptr POINT): BOOL {.importc, stdcall, header: H, discardable.}
 proc GetParent*(h: HWND): HWND {.importc, stdcall, header: H.}
 proc GetAncestor*(h: HWND, flags: UINT): HWND {.importc, stdcall, header: H.}

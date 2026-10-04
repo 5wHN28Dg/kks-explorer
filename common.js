@@ -556,61 +556,133 @@ K.lightbox.isOpen = () => document.getElementById('kzoom')?.style.display === 'b
 
 // ---------- marking a photo before it is sent: arrow, rectangle, circle ----------
 // -> Promise of {canvas, note} with the marks drawn in, or null if cancelled. askNote: offer "note for the approver".
+// The photo editor (R6): arrow, box or circle, four colours, three line sizes, undo; zoom (buttons, wheel, two-finger
+// pinch and pan) and, while a finger draws, a loupe: the area under the finger magnified, above it (touch only).
 K.annotate = (src, askNote) => new Promise(done => {
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed;inset:0;z-index:160;background:#0b1116;display:flex;flex-direction:column;color:#e9eef2;font:14px system-ui,sans-serif;padding-top:env(safe-area-inset-top,0px)';
-  const b = (t, a, extra = '') => `<button type="button" data-a="${a}" style="padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer;${extra}">${t}</button>`;
-  box.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px;align-items:center">${b('↗ Arrow', 'arrow')}${b('▭ Box', 'rect')}${b('◯ Circle', 'circle')}${b('Undo', 'undo')}
+  const b = (t, a, extra = '', label = '') => `<button type="button" data-a="${a}"${label ? ` aria-label="${label}"` : ''} style="padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer;${extra}">${t}</button>`;
+  box.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px;align-items:center">${b('↗ Arrow', 'arrow')}${b('▭ Box', 'rect')}${b('◯ Circle', 'circle')}
       <span style="display:inline-flex;gap:4px">${['#ff3b30', '#ffcc00', '#34c759', '#ffffff'].map(c => `<button type="button" data-c="${c}" aria-label="Colour" style="width:30px;height:30px;border-radius:15px;border:2px solid #3a5061;background:${c};cursor:pointer"></button>`).join('')}</span>
-      <span style="opacity:.7;font-size:12.5px">Drag on the photo to point at what matters (optional)</span></div>
-    <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px"><canvas style="max-width:100%;max-height:100%;touch-action:none;background:#000"></canvas></div>
+      <span style="display:inline-flex;gap:4px" role="group" aria-label="Line size">${[['S', 0.6, 'Thin lines'], ['M', 1, 'Medium lines'], ['L', 1.8, 'Thick lines']].map(([t, f, l]) => `<button type="button" data-s="${f}" aria-label="${l}" style="width:34px;padding:6px 0;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer">${t}</button>`).join('')}</span>
+      <span style="display:inline-flex;gap:4px">${b('−', 'zout', '', 'Zoom out')}${b('+', 'zin', '', 'Zoom in')}${b('Fit', 'zfit', '', 'Fit the photo')}</span>
+      <span style="opacity:.7;font-size:12.5px">Drag on the photo to point at what matters (optional) · two fingers zoom and move</span></div>
+    <div class="vp" style="flex:1;min-height:0;position:relative;overflow:hidden;touch-action:none"><canvas class="view" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none"></canvas>
+      <canvas class="loupe" width="180" height="180" style="position:absolute;display:none;width:180px;height:180px;border-radius:90px;border:3px solid #ff7a1a;box-shadow:0 4px 16px #000a;pointer-events:none"></canvas></div>
     <div style="display:flex;gap:8px;padding:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));align-items:center;flex-wrap:wrap">
       ${askNote ? '<input class="note" maxlength="500" placeholder="Note for the approver (optional)" style="flex:1;min-width:180px;padding:8px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit">' : '<span style="flex:1"></span>'}
-      ${b('Cancel', 'cancel')}${b('Use photo', 'ok', 'background:#ff7a1a;color:#1c2730;border:0;font-weight:650')}</div>`;
+      ${b('Undo', 'undo')}${b('Cancel', 'cancel')}${b('Use photo', 'ok', 'background:#ff7a1a;color:#1c2730;border:0;font-weight:650')}</div>`;
   document.body.appendChild(box);
-  const cv = box.querySelector('canvas'), g = cv.getContext('2d'), base = new Image();
-  let tool = 'arrow', color = '#ff3b30', shapes = [], draft = null;
-  const W = () => Math.max(3, Math.round(Math.max(cv.width, cv.height) * 0.006));
+  const vp = box.querySelector('.vp'), cv = box.querySelector('canvas.view'), g = cv.getContext('2d'), base = new Image();
+  const lp = box.querySelector('canvas.loupe'), lg = lp.getContext('2d');
+  let tool = 'arrow', color = '#ff3b30', size = 1, shapes = [], draft = null;
+  let zoom = 1, cx = 0, cy = 0, fit = 1;           // the image point at the view's centre; view px per image px = fit · zoom
+  const W0 = () => Math.max(3, Math.round(Math.max(base.naturalWidth, base.naturalHeight) * 0.006));
   const draw = (ctx, sh) => {
-    ctx.lineWidth = W(); ctx.strokeStyle = ctx.fillStyle = sh.c; ctx.lineCap = ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = W();
+    const w = W0() * (sh.s || 1);
+    ctx.lineWidth = w; ctx.strokeStyle = ctx.fillStyle = sh.c; ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = w;
     const [x0, y0, x1, y1] = sh.p;
     ctx.beginPath();
     if (sh.t === 'rect') ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
     else if (sh.t === 'circle') { ctx.ellipse((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, 0, 0, 2 * Math.PI); ctx.stroke() }
     else {
-      const a = Math.atan2(y1 - y0, x1 - x0), h = W() * 4.5;
+      const a = Math.atan2(y1 - y0, x1 - x0), h = w * 4.5;
       ctx.moveTo(x0, y0); ctx.lineTo(x1 - Math.cos(a) * h * 0.6, y1 - Math.sin(a) * h * 0.6); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - h * Math.cos(a - 0.45), y1 - h * Math.sin(a - 0.45));
       ctx.lineTo(x1 - h * Math.cos(a + 0.45), y1 - h * Math.sin(a + 0.45)); ctx.closePath(); ctx.fill();
     }
     ctx.shadowBlur = 0;
   };
-  const paint = () => { g.drawImage(base, 0, 0); shapes.concat(draft ? [draft] : []).forEach(sh => draw(g, sh)) };
+  const scene = ctx => { ctx.drawImage(base, 0, 0); shapes.concat(draft ? [draft] : []).forEach(sh => draw(ctx, sh)) };
+  const clampView = () => {
+    const s = fit * zoom, hw = cv.width / 2 / s, hh = cv.height / 2 / s, iw = base.naturalWidth, ih = base.naturalHeight;
+    cx = hw * 2 >= iw ? iw / 2 : Math.min(Math.max(cx, hw), iw - hw);
+    cy = hh * 2 >= ih ? ih / 2 : Math.min(Math.max(cy, hh), ih - hh);
+  };
+  const paint = () => {
+    const r = vp.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr) }
+    fit = Math.min(cv.width / base.naturalWidth, cv.height / base.naturalHeight); clampView();
+    const s = fit * zoom;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, cv.width, cv.height);
+    g.setTransform(s, 0, 0, s, cv.width / 2 - cx * s, cv.height / 2 - cy * s); scene(g);
+  };
+  // view px (CSS) → image px
+  const toImg = (px, py) => { const dpr = window.devicePixelRatio || 1, s = fit * zoom; return [cx + (px * dpr - cv.width / 2) / s, cy + (py * dpr - cv.height / 2) / s] };
+  const zoomAt = (px, py, z) => { const [ix, iy] = toImg(px, py), dpr = window.devicePixelRatio || 1; zoom = Math.min(8, Math.max(1, z));
+    const s = fit * zoom; cx = ix - (px * dpr - cv.width / 2) / s; cy = iy - (py * dpr - cv.height / 2) / s; paint() };
+  const loupe = (px, py) => {                     // the area under the finger, 2.5× the view, above the finger
+    const L = 180, k = 2.5, dpr = window.devicePixelRatio || 1, s = fit * zoom * k / dpr, [ix, iy] = toImg(px, py);
+    lg.setTransform(1, 0, 0, 1, 0, 0); lg.fillStyle = '#000'; lg.fillRect(0, 0, L, L);
+    lg.setTransform(s, 0, 0, s, L / 2 - ix * s, L / 2 - iy * s); scene(lg);
+    lg.setTransform(1, 0, 0, 1, 0, 0); lg.strokeStyle = '#ff7a1a'; lg.lineWidth = 1.5;
+    lg.beginPath(); lg.moveTo(L / 2 - 10, L / 2); lg.lineTo(L / 2 + 10, L / 2); lg.moveTo(L / 2, L / 2 - 10); lg.lineTo(L / 2, L / 2 + 10); lg.stroke();
+    const r = vp.getBoundingClientRect(), above = py - 40 - L >= 0;
+    lp.style.left = Math.min(Math.max(px - L / 2, 0), r.width - L) + 'px'; lp.style.top = (above ? py - 40 - L : py + 40) + 'px'; lp.style.display = 'block';
+  };
   const pick = () => box.querySelectorAll('[data-a]').forEach(x => x.style.borderColor = x.dataset.a === tool ? '#ff7a1a' : '#3a5061');
   const pickC = () => box.querySelectorAll('[data-c]').forEach(x => x.style.borderColor = x.dataset.c === color ? '#ff7a1a' : '#3a5061');
-  base.onload = () => { cv.width = base.naturalWidth; cv.height = base.naturalHeight; paint(); pick(); pickC() };
+  const pickS = () => box.querySelectorAll('[data-s]').forEach(x => { x.style.borderColor = +x.dataset.s === size ? '#ff7a1a' : '#3a5061'; x.setAttribute('aria-pressed', String(+x.dataset.s === size)) });
+  base.onload = () => { cx = base.naturalWidth / 2; cy = base.naturalHeight / 2; paint(); pick(); pickC(); pickS() };
   base.src = src;
-  const at = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height] };
+  const ro = new ResizeObserver(() => { if (base.naturalWidth) paint() }); ro.observe(vp);
+  const at = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] };
   // repaint at most once a frame: redrawing the whole photo on every move is slow on phones, and then moves pile up
   let queued = false;
-  const later = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; paint() }) } };
-  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); const [x, y] = at(e); draft = {t: tool, c: color, p: [x, y, x, y]} });
-  cv.addEventListener('pointermove', e => { if (!draft) return; const [x, y] = at(e); draft.p[2] = x; draft.p[3] = y; later() });
-  cv.addEventListener('pointerup', e => {   // (the end is where the finger left, even if moves were skipped)
-    if (!draft) return;
-    const [x, y] = at(e); draft.p[2] = x; draft.p[3] = y;
-    if (Math.hypot(draft.p[2] - draft.p[0], draft.p[3] - draft.p[1]) > W() * 2) shapes.push(draft);
-    draft = null; paint();
+  const later = f => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; paint(); f && f() }) } };
+  const pts = new Map();     // touch points down: one draws, two zoom and pan
+  let pinch = null;
+  cv.addEventListener('pointerdown', e => {
+    try { cv.setPointerCapture(e.pointerId) } catch (_) {}   // (a pointer the browser no longer knows: draw anyway)
+    pts.set(e.pointerId, at(e));
+    if (pts.size === 2) {   // a second finger: no drawing, zoom and pan instead
+      draft = null; lp.style.display = 'none';
+      const [a, c] = [...pts.values()]; pinch = {d: Math.hypot(a[0] - c[0], a[1] - c[1]), z: zoom, m: [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2]}; paint(); return;
+    }
+    if (pts.size > 2 || e.button === 2 || e.button === 1) return;
+    const [x, y] = toImg(...at(e)); draft = {t: tool, c: color, s: size, p: [x, y, x, y], touch: e.pointerType === 'touch'};
+    if (draft.touch) loupe(...at(e));
   });
-  cv.addEventListener('pointercancel', () => { draft = null; paint() });
-  const finish = v => { box.remove(); done(v) };
+  cv.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    const q = at(e), prev = pts.get(e.pointerId); pts.set(e.pointerId, q);
+    if (pinch && pts.size === 2) {
+      const [a, c] = [...pts.values()], m = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2], dpr = window.devicePixelRatio || 1;
+      zoom = Math.min(8, Math.max(1, pinch.z * Math.hypot(a[0] - c[0], a[1] - c[1]) / pinch.d));
+      const s = fit * zoom; cx -= (m[0] - pinch.m[0]) * dpr / s; cy -= (m[1] - pinch.m[1]) * dpr / s; pinch.m = m; later(); return;
+    }
+    if ((e.buttons & 6) && !draft) { const dpr = window.devicePixelRatio || 1, s = fit * zoom; cx -= (q[0] - prev[0]) * dpr / s; cy -= (q[1] - prev[1]) * dpr / s; later(); return }   // right or middle button: pan
+    if (!draft) return;
+    const [x, y] = toImg(...q); draft.p[2] = x; draft.p[3] = y; later(draft.touch ? () => loupe(...q) : null);
+  });
+  const up = e => {          // (the end is where the finger left, even if moves were skipped)
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    lp.style.display = 'none';
+    if (!draft) return;
+    const [x, y] = toImg(...at(e)); draft.p[2] = x; draft.p[3] = y;
+    if (Math.hypot(draft.p[2] - draft.p[0], draft.p[3] - draft.p[1]) > W0() * 2) shapes.push(draft);
+    draft = null; paint();
+  };
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; draft = null; lp.style.display = 'none'; paint() });
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(...at(e), zoom * Math.exp(-e.deltaY / 400)) }, {passive: false});
+  const finish = v => { ro.disconnect(); box.remove(); done(v) };
   box.querySelectorAll('[data-c]').forEach(x => x.onclick = () => { color = x.dataset.c; pickC() });
+  box.querySelectorAll('[data-s]').forEach(x => x.onclick = () => { size = +x.dataset.s; pickS() });
   box.querySelectorAll('[data-a]').forEach(x => x.onclick = () => {
-    const a = x.dataset.a;
+    const a = x.dataset.a, r = vp.getBoundingClientRect();
     if (a === 'undo') { shapes.pop(); paint() }
+    else if (a === 'zin') zoomAt(r.width / 2, r.height / 2, zoom * 1.5);
+    else if (a === 'zout') zoomAt(r.width / 2, r.height / 2, zoom / 1.5);
+    else if (a === 'zfit') { zoom = 1; paint() }
     else if (a === 'cancel') finish(null);
-    else if (a === 'ok') finish({canvas: cv, note: box.querySelector('.note')?.value.trim() || ''});
+    else if (a === 'ok') {   // the photo at its own size with the marks burned in
+      const out = document.createElement('canvas'); out.width = base.naturalWidth; out.height = base.naturalHeight;
+      scene(out.getContext('2d')); finish({canvas: out, note: box.querySelector('.note')?.value.trim() || ''});
+    }
     else { tool = a; pick() }
   });
 });

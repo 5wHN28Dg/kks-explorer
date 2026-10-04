@@ -211,7 +211,10 @@ class Windows(unittest.TestCase):
         self.assertEqual(got, note)
         # a photo: the annotation editor, a red box burned in, JPEG XL, synced
         self.check('photo.uia', ['click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'click\tBox',
-                                 'drag\tPhoto to mark up\t0.2\t0.2\t0.8\t0.8', 'set\tCaption (optional)\tValve from Windows',
+                                 'drag\tPhoto to mark up\t0.2\t0.2\t0.8\t0.8',
+                                 # a finger (injected touch: WM_POINTER), thick and yellow, zoomed in and back
+                                 'click\tYellow', 'click\tThick lines', 'click\tZoom in', 'click\tFit',
+                                 'touchdrag\tPhoto to mark up\t0.15\t0.92\t0.85\t0.92', 'set\tCaption (optional)\tValve from Windows',
                                  'click\tSend', 'wait\t~Saved: photo of 11LAB70AA501\t90'])
         ph = self.wait_server(lambda: [p for p in self.boss.req('GET', '/api/state').get('photos', [])
                                        if p.get('kks') == '11LAB70AA501' and p.get('caption') == 'Valve from Windows'],
@@ -234,6 +237,9 @@ class Windows(unittest.TestCase):
             reds = sum(1 for x in range(im.width) for y in range(0, im.height, 7)
                        if (lambda p: p[0] > 180 and p[1] < 90 and p[2] < 90)(im.getpixel((x, y))))
             self.assertGreater(reds, 50, 'no red box in the photo')
+            yellows = sum(1 for x in range(im.width) for y in range(0, im.height, 3)
+                          if (lambda p: p[0] > 200 and p[1] > 180 and p[2] < 90)(im.getpixel((x, y))))
+            self.assertGreater(yellows, 50, 'the touch-drawn line is not in the photo')
         # a member proposes on the server; the manager approves in the app
         r = self.boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Member', 'role': 'user'})
         ali = Client(self.boss.base)

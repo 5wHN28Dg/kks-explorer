@@ -119,6 +119,34 @@ class Gnome(unittest.TestCase):
             if got: break
         self.assertEqual(got, INVITE)
 
+    def test_photo_editor(self):
+        """the photo editor's controls (line sizes, zoom) are reachable; a photo goes to the server; the drawing can be
+        coloured by photos. KKS_PHOTO_FILE stands in for the file chooser. (Drawing and the touch loupe need a pointer
+        or a finger: not driven here.)"""
+        from PIL import Image
+        pic = os.path.join(self.dir, 'valve.png')
+        Image.new('RGB', (640, 480), (128, 128, 128)).save(pic)
+        a = self.start_app('photographer', KKS_PHOTO_FILE=pic)
+        atspi.click(atspi.find(a, 'button', name='Join through a server'))
+        atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
+        atspi.set_text(atspi.find(a, 'text', name='Username'), 'boss')
+        atspi.set_text(atspi.find(a, 'password text', name='Password'), 'a long password')
+        atspi.click(atspi.find(a, 'button', name='Join'))
+        atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA501')
+        time.sleep(1)
+        atspi.click(atspi.find(a, 'button', name='11LAB70AA501'))
+        atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+        for b in ('Thick', 'Zoom in', 'Zoom out', 'Fit the photo'):
+            atspi.click(atspi.find(a, None, name=b, timeout=10))
+        atspi.click(atspi.find(a, 'button', name='Add the photo'))
+        for _ in range(60):
+            if any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']):
+                break
+            time.sleep(0.5)
+        self.assertTrue(any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']))
+        atspi.click(atspi.find(a, 'button', name='Colour tags by photos'))
+
     def test_flow(self):
         a = self.start_app('laptop')
         # join through the server, from the setup screen

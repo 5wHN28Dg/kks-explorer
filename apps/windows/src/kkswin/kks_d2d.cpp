@@ -345,6 +345,11 @@ extern "C" void kks_view_draw_bitmap(void *p, int h, float x0, float y0, float x
         v->rt->DrawBitmap(v->bitmaps[(size_t)h - 1], D2D1::RectF(x0, y0, x1, y1), 1.f,
                           smooth ? D2D1_BITMAP_INTERPOLATION_MODE_LINEAR : D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
 }
+// a clip rectangle until kks_view_unclip (the photo editor's loupe)
+extern "C" void kks_view_clip(void *p, float x0, float y0, float x1, float y1) {
+    ((View *)p)->rt->PushAxisAlignedClip(D2D1::RectF(x0, y0, x1, y1), D2D1_ANTIALIAS_MODE_ALIASED);
+}
+extern "C" void kks_view_unclip(void *p) { ((View *)p)->rt->PopAxisAlignedClip(); }
 extern "C" void kks_view_rect(void *p, float x0, float y0, float x1, float y1, unsigned rgb, float alpha, int fill, float width, int dashed) {
     View *v = (View *)p;
     v->brush->SetColor(D2D1::ColorF(rgb, alpha));
@@ -374,7 +379,7 @@ extern "C" void kks_view_ellipse(void *p, float x0, float y0, float x1, float y1
 }
 
 // marks (kind 0 arrow, 1 box, 2 circle; rgb; x0, y0, x1, y1 in image px) burned into straight RGBA, in place
-struct Mark { int kind; unsigned rgb; float x0, y0, x1, y1; };
+struct Mark { int kind; unsigned rgb; float x0, y0, x1, y1; float size; };   // size: × the base line width
 extern "C" int kks_burn_marks(uint8_t *rgba, int w, int h, const Mark *marks, int n) {
     if (n == 0) return 0;
     if (kks_d2d_init() != 0) return 1;
@@ -395,10 +400,11 @@ extern "C" int kks_burn_marks(uint8_t *rgba, int w, int h, const Mark *marks, in
     ID2D1StrokeStyle *round = nullptr;
     g_d2d->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
                              D2D1_LINE_JOIN_ROUND), nullptr, 0, &round);
-    float sw = std::max(3.f, w / 200.f);
+    float sw0 = std::max(3.f, w / 200.f);
     rt->BeginDraw();
     for (int i = 0; i < n; i++) {
         const Mark &m = marks[i];
+        float sw = sw0 * (m.size > 0 ? m.size : 1.f);
         br->SetColor(D2D1::ColorF(m.rgb, 1));
         if (m.kind == 1) rt->DrawRectangle(D2D1::RectF(std::min(m.x0, m.x1), std::min(m.y0, m.y1), std::max(m.x0, m.x1), std::max(m.y0, m.y1)), br, sw);
         else if (m.kind == 2) rt->DrawEllipse(D2D1::Ellipse(D2D1::Point2F((m.x0 + m.x1) / 2, (m.y0 + m.y1) / 2),

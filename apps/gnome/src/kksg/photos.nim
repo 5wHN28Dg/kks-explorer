@@ -68,6 +68,7 @@ type
     kind: string           ## arrow · box · circle
     x0, y0, x1, y1: float  ## image px
     color: (float, float, float)
+    size: float            ## × the base line width (thin 0.6, medium 1, thick 1.8)
 
 const Colors = [("Red", (0.9, 0.1, 0.1)), ("Yellow", (1.0, 0.85, 0.0)), ("Blue", (0.1, 0.45, 1.0)), ("White", (1.0, 1.0, 1.0))]
 
@@ -115,7 +116,9 @@ proc rgbaSurface(px: seq[byte], w, h: int): Surface =
   cairo_surface_mark_dirty(result)
 
 proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w, h: int, caption, note: string)) =
-  ## the editor: the picture scaled to MaxSide, shapes drawn on top, then flattened to RGB
+  ## the editor: the picture scaled to MaxSide, shapes drawn on top, then flattened to RGB. Zoom: −/+/Fit, the wheel,
+  ## two fingers (pinch, pan); pan also with the right button. While a finger draws, a loupe shows the area under it
+  ## magnified, above the finger (touchscreens only: the drag's device says so).
   let sc = min(1.0, float(MaxSide) / float(max(iw, ih)))
   let ow = max(1, int(round(float(iw) * sc)))
   let oh = max(1, int(round(float(ih) * sc)))
@@ -133,42 +136,155 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   var shapes: seq[Shape]
   var tool = "arrow"
   var color = Colors[0][1]
+  var size = 1.0
   var cur: Shape
   var drawing = false
   let lw = max(4.0, float(max(ow, oh)) / 220)
   let area = gtk_drawing_area_new()
   gtk_widget_set_hexpand(area, 1)
   gtk_widget_set_vexpand(area, 1)
+  var aw, ah = 1.0                       # the area's size
+  var zoom = 1.0
+  var cx = float(ow) / 2                 # the image point at the area's centre
+  var cy = float(oh) / 2
   var fit = 1.0
-  var offX, offY = 0.0
-  area.onDraw(proc (c: Cairo, aw, ah: int) =
-    fit = min(float(aw) / float(ow), float(ah) / float(oh))
-    offX = (float(aw) - float(ow) * fit) / 2
-    offY = (float(ah) - float(oh) * fit) / 2
-    cairo_translate(c, offX, offY)
-    cairo_scale(c, fit, fit)
+  var touching = false                   # a finger draws: the loupe at (fx, fy)
+  var fx, fy = 0.0
+  var pinching = false
+  proc sc0(): float = fit * zoom
+  proc clampView() =
+    let s = sc0()
+    let hw = aw / 2 / s
+    let hh = ah / 2 / s
+    cx = (if hw * 2 >= float(ow): float(ow) / 2 else: clamp(cx, hw, float(ow) - hw))
+    cy = (if hh * 2 >= float(oh): float(oh) / 2 else: clamp(cy, hh, float(oh) - hh))
+  proc toImg(x, y: float): (float, float) = (cx + (x - aw / 2) / sc0(), cy + (y - ah / 2) / sc0())
+  proc zoomAt(x, y, z: float) =
+    let (ix, iy) = toImg(x, y)
+    zoom = clamp(z, 1.0, 8.0)
+    cx = ix - (x - aw / 2) / sc0()
+    cy = iy - (y - ah / 2) / sc0()
+    clampView()
+    gtk_widget_queue_draw(area)
+  proc scene(c: Cairo) =
     cairo_set_source_surface(c, base, 0, 0)
     cairo_paint(c)
-    for s in shapes: drawShape(c, s, lw)
-    if drawing: drawShape(c, cur, lw))
+    for s in shapes: drawShape(c, s, lw * s.size)
+    if drawing: drawShape(c, cur, lw * cur.size)
+  area.onDraw(proc (c: Cairo, w0, h0: int) =
+    aw = float(w0)
+    ah = float(h0)
+    fit = min(aw / float(ow), ah / float(oh))
+    clampView()
+    let s = sc0()
+    cairo_save(c)
+    cairo_translate(c, aw / 2 - cx * s, ah / 2 - cy * s)
+    cairo_scale(c, s, s)
+    scene(c)
+    cairo_restore(c)
+    if touching and drawing:            # the loupe: 2.5× the view around the finger, a circle above it
+      let r = 70.0
+      let k = 2.5
+      let lx = clamp(fx, r, aw - r)
+      let ly = if fy - 40 - 2 * r >= 0: fy - 40 - r else: fy + 40 + r
+      let (ix, iy) = toImg(fx, fy)
+      cairo_save(c)
+      cairo_new_path(c)
+      cairo_arc(c, lx, ly, r, 0, 2 * PI)
+      cairo_clip(c)
+      cairo_set_source_rgb(c, 0, 0, 0)
+      cairo_paint(c)
+      cairo_translate(c, lx - ix * s * k, ly - iy * s * k)
+      cairo_scale(c, s * k, s * k)
+      scene(c)
+      cairo_restore(c)
+      cairo_set_source_rgb(c, 1.0, 0.48, 0.1)
+      cairo_set_line_width(c, 1.5)
+      cairo_move_to(c, lx - 10, ly)
+      cairo_line_to(c, lx + 10, ly)
+      cairo_move_to(c, lx, ly - 10)
+      cairo_line_to(c, lx, ly + 10)
+      cairo_stroke(c)
+      cairo_set_line_width(c, 3)
+      cairo_arc(c, lx, ly, r, 0, 2 * PI)
+      cairo_stroke(c))
+  # one finger or the left button draws
   let drag = gtk_gesture_drag_new()
-  var sx, sy = 0.0
+  gtk_gesture_single_set_button(drag, 1)
+  var sx, sy = 0.0                       # where the drag began (area px)
   drag.onXY("drag-begin", proc (x, y: float) =
-    sx = (x - offX) / fit
-    sy = (y - offY) / fit
-    cur = Shape(kind: tool, x0: sx, y0: sy, x1: sx, y1: sy, color: color)
-    drawing = true)
+    if pinching: return
+    sx = x
+    sy = y
+    let dev = gtk_event_controller_get_current_event_device(drag)
+    touching = dev != nil and gdk_device_get_source(dev) == GDK_SOURCE_TOUCHSCREEN
+    fx = x
+    fy = y
+    let (ix, iy) = toImg(x, y)
+    cur = Shape(kind: tool, x0: ix, y0: iy, x1: ix, y1: iy, color: color, size: size)
+    drawing = true
+    gtk_widget_queue_draw(area))
   drag.onXY("drag-update", proc (dx, dy: float) =
-    cur.x1 = sx + dx / fit
-    cur.y1 = sy + dy / fit
+    if not drawing: return
+    fx = sx + dx
+    fy = sy + dy
+    (cur.x1, cur.y1) = toImg(fx, fy)
     gtk_widget_queue_draw(area))
   drag.onXY("drag-end", proc (dx, dy: float) =
-    cur.x1 = sx + dx / fit
-    cur.y1 = sy + dy / fit
-    drawing = false
-    if abs(cur.x1 - cur.x0) + abs(cur.y1 - cur.y0) > 6: shapes.add cur
+    if drawing:
+      (cur.x1, cur.y1) = toImg(sx + dx, sy + dy)
+      drawing = false
+      if (abs(cur.x1 - cur.x0) + abs(cur.y1 - cur.y0)) * sc0() > 6: shapes.add cur
+    touching = false
+    pinching = false
     gtk_widget_queue_draw(area))
   gtk_widget_add_controller(area, drag)
+  # two fingers: pinch to zoom, move to pan (the mark being drawn is dropped)
+  let pinch = gtk_gesture_zoom_new()
+  var z0 = 1.0
+  var mx, my = 0.0
+  pinch.onPtr("begin", proc (p: W) =
+    pinching = true
+    drawing = false
+    touching = false
+    z0 = zoom
+    var x, y: cdouble
+    discard gtk_gesture_get_bounding_box_center(pinch, addr x, addr y)
+    mx = float(x)
+    my = float(y))
+  pinch.onScale(proc (scale: float) =
+    var x, y: cdouble
+    discard gtk_gesture_get_bounding_box_center(pinch, addr x, addr y)
+    zoomAt(float(x), float(y), z0 * scale)
+    cx -= (float(x) - mx) / sc0()
+    cy -= (float(y) - my) / sc0()
+    mx = float(x)
+    my = float(y)
+    clampView()
+    gtk_widget_queue_draw(area))
+  gtk_widget_add_controller(area, pinch)
+  # the right button pans; the wheel zooms where the pointer is
+  let pan = gtk_gesture_drag_new()
+  gtk_gesture_single_set_button(pan, 3)
+  var pcx, pcy = 0.0
+  pan.onXY("drag-begin", proc (x, y: float) =
+    pcx = cx
+    pcy = cy)
+  pan.onXY("drag-update", proc (dx, dy: float) =
+    cx = pcx - dx / sc0()
+    cy = pcy - dy / sc0()
+    clampView()
+    gtk_widget_queue_draw(area))
+  gtk_widget_add_controller(area, pan)
+  var px0, py0 = 0.0
+  let motion = gtk_event_controller_motion_new()
+  motion.onXY("motion", proc (x, y: float) =
+    px0 = x
+    py0 = y)
+  gtk_widget_add_controller(area, motion)
+  let wheel = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES)
+  wheel.onScroll(proc (dx, dy: float) = zoomAt(px0, py0, zoom * exp(-dy * 0.15)))
+  gtk_widget_add_controller(area, wheel)
   let d = adw_dialog_new()
   adw_dialog_set_title(d, "Add a photo")
   adw_dialog_set_content_width(d, 1000)
@@ -194,6 +310,29 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
       let (name, rgb) = items2[i2]
       let col = rgb
       tools.add button(name, "flat", proc () = color = col)
+  tools.add gtk_separator_new(GTK_ORIENTATION_VERTICAL)
+  var sizeBtns: seq[W]
+  let items3 = toSeq([("Thin", 0.6, "Thin lines"), ("Medium", 1.0, "Medium lines"), ("Thick", 1.8, "Thick lines")])
+  for i3 in 0 ..< items3.len:
+    closureScope:
+      let (lab, f, desc) = items3[i3]
+      let b = gtk_toggle_button_new_with_label(lab.cstring)
+      setAccessibleLabel(b, desc)
+      gtk_widget_set_tooltip_text(b, desc.cstring)
+      if f == size: gtk_toggle_button_set_active(b, 1)
+      let ff = f
+      b.onClick(proc () =
+        size = ff
+        for x in sizeBtns: gtk_toggle_button_set_active(x, cint(x == b)))
+      sizeBtns.add b
+      tools.add b
+  tools.add gtk_separator_new(GTK_ORIENTATION_VERTICAL)
+  tools.add iconButton("zoom-out-symbolic", "Zoom out", proc () = zoomAt(aw / 2, ah / 2, zoom / 1.5))
+  tools.add iconButton("zoom-in-symbolic", "Zoom in", proc () = zoomAt(aw / 2, ah / 2, zoom * 1.5))
+  tools.add iconButton("zoom-fit-best-symbolic", "Fit the photo", proc () =
+    zoom = 1.0
+    clampView()
+    gtk_widget_queue_draw(area))
   tools.add button("Undo", "flat", proc () =
     if shapes.len > 0:
       shapes.setLen(shapes.len - 1)
@@ -216,7 +355,7 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
     let c = cairo_create(outS)
     cairo_set_source_surface(c, base, 0, 0)
     cairo_paint(c)
-    for s in shapes: drawShape(c, s, lw)
+    for s in shapes: drawShape(c, s, lw * s.size)
     cairo_destroy(c)
     cairo_surface_flush(outS)
     let data = cairo_image_surface_get_data(outS)
@@ -237,7 +376,10 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   present(d, w.window)
 
 proc addPhoto*(w: Win, kks: string) =
-  openFile(w.window, "Choose a photo", proc (path: string) =
+  # tests: KKS_PHOTO_FILE names the picture instead of the file chooser (as KKS_CAMERA_FILE for the camera)
+  let pick = proc (title: string, fn: proc (path: string)) =
+    if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
+  pick("Choose a photo", proc (path: string) =
     if path.len == 0: return
     let (iw, ih, px) = loadImage(path)
     if iw == 0:

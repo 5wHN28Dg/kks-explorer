@@ -6,6 +6,8 @@
 //   enter <name>            open a list item (its default action, else focus + Enter)
 //   keys <name> <vk,vk,…>   post key presses (virtual-key codes, hex or decimal) to the element's window
 //   drag <name> x0 y0 x1 y1 a left-button drag inside the element (fractions of its size), posted to its window
+//   touchdrag <name> x0 y0 x1 y1  the same with one finger, injected as real touch input (InjectTouchInput; works
+//                           without touch hardware), so the window gets WM_POINTER messages
 //   select <name>           select a list item (SelectionItem), e.g. before a button that opens the selection
 //   value <name> <text>     wait (15 s) until the field with this name holds a value containing text
 //   gone <name>             wait until no element has this name
@@ -222,6 +224,29 @@ int wmain(int argc, wchar_t **argv) {
                 Sleep(20);
             }
             PostMessageW((HWND)hw, WM_LBUTTONUP, 0, at(4, 5));
+        } else if (cmd == "touchdrag") {
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            RECT rc; if (!hw || !GetClientRect((HWND)hw, &rc) || f.size() < 6) { say("ERROR: can't touch " + arg); return 1; }
+            static bool ready = false;
+            if (!ready) { if (!InitializeTouchInjection(1, TOUCH_FEEDBACK_NONE)) { say("ERROR: InitializeTouchInjection"); return 1; } ready = true; }
+            SetForegroundWindow(GetAncestor((HWND)hw, GA_ROOT)); Sleep(300);
+            auto send = [&](double fx, double fy, POINTER_FLAGS flags) {
+                POINT p{(LONG)(fx * rc.right), (LONG)(fy * rc.bottom)}; ClientToScreen((HWND)hw, &p);
+                POINTER_TOUCH_INFO t{}; t.pointerInfo.pointerType = PT_TOUCH; t.pointerInfo.pointerId = 0;
+                t.pointerInfo.ptPixelLocation = p; t.pointerInfo.pointerFlags = flags;
+                t.touchFlags = TOUCH_FLAG_NONE; t.touchMask = TOUCH_MASK_CONTACTAREA;
+                t.rcContact = {p.x - 2, p.y - 2, p.x + 2, p.y + 2};
+                return InjectTouchInput(1, &t);
+            };
+            double x0 = std::stod(f[2]), y0 = std::stod(f[3]), x1 = std::stod(f[4]), y1 = std::stod(f[5]);
+            if (!send(x0, y0, POINTER_FLAG_DOWN | POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT)) { say("ERROR: InjectTouchInput " + std::to_string(GetLastError())); return 1; }
+            for (int s = 1; s <= 12; s++) {
+                double t = s / 12.0;
+                send(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, POINTER_FLAG_UPDATE | POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT);
+                Sleep(30);
+            }
+            send(x1, y1, POINTER_FLAG_UP);
         } else if (cmd == "select") {
             IUIAutomationSelectionItemPattern *sp = nullptr;
             if (FAILED(e->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sp)) || !sp) {

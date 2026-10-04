@@ -14,6 +14,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
@@ -197,13 +205,15 @@ const val PLATE = "Tag plate"
 fun isPlate(caption: String) = caption.startsWith(PLATE)
 private fun plateCaption(extra: String) = if (extra.isBlank()) PLATE else "$PLATE · ${extra.trim()}"
 
-private data class Mark(val kind: String, val color: Int, val a: Offset, val b: Offset)
+private data class Mark(val kind: String, val color: Int, val a: Offset, val b: Offset, val size: Float = 1f)   // size: × the base line width
 private val COLORS = listOf(0xFFE53935.toInt(), 0xFFFDD835.toInt(), 0xFF1E88E5.toInt(), 0xFFFFFFFF.toInt())
 
-/** the annotation editor (v1 K.annotate, GNOME annotate): arrow / box / circle in 4 colours, undo, retake; burned into
- *  the image. Its window covers the screen and it pads itself by its own insets (bars, keyboard): before, the dialog's
- *  window was clipped between the system bars while its content was laid out at the screen's full height, so the last
- *  row (Send, Cancel) was cut off on the Honor 600 (2026-10-04); and Undo sat at the end of a row wider than the screen. */
+/** the annotation editor (v1 K.annotate, GNOME annotate): arrow / box / circle in 4 colours, 3 line sizes, undo,
+ *  retake; burned into the image. Zoom with +/−/Fit or two fingers (pinch and pan); while a finger draws, a loupe shows
+ *  the area under it magnified, above the finger (touch only). Its window covers the screen and it pads itself by its
+ *  own insets (bars, keyboard): before, the dialog's window was clipped between the system bars while its content was
+ *  laid out at the screen's full height, so the last row (Send, Cancel) was cut off on the Honor 600 (2026-10-04); and
+ *  Undo sat at the end of a row wider than the screen. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () -> Unit, onRetake: () -> Unit,
@@ -211,15 +221,27 @@ private fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () -
     val marks = remember { mutableStateListOf<Mark>() }
     var kind by remember { mutableStateOf("arrow") }
     var color by remember { mutableIntStateOf(COLORS[0]) }
+    var lineSize by remember { mutableFloatStateOf(1f) }
     var drawing by remember { mutableStateOf<Mark?>(null) }
+    var finger by remember { mutableStateOf<Offset?>(null) }       // where a finger draws (view px): the loupe
     var caption by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var box by remember { mutableStateOf(IntSize.Zero) }
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var centre by remember { mutableStateOf(Offset(src.width / 2f, src.height / 2f)) }   // the image point at the view's centre
     val img = remember(src) { src.asImageBitmap() }
-    // image ↔ view: the image is fitted (contain) and centred
     val fit = if (box.width == 0) 1f else minOf(box.width / src.width.toFloat(), box.height / src.height.toFloat())
-    val ox = (box.width - src.width * fit) / 2; val oy = (box.height - src.height * fit) / 2
-    fun toImg(p: Offset) = Offset((p.x - ox) / fit, (p.y - oy) / fit)
+    fun clamp(c: Offset, z: Float): Offset {
+        val s = fit * z; val hw = box.width / 2f / s; val hh = box.height / 2f / s
+        return Offset(if (hw * 2 >= src.width) src.width / 2f else c.x.coerceIn(hw, src.width - hw),
+                      if (hh * 2 >= src.height) src.height / 2f else c.y.coerceIn(hh, src.height - hh))
+    }
+    fun toImg(p: Offset): Offset { val s = fit * zoom; return Offset(centre.x + (p.x - box.width / 2f) / s, centre.y + (p.y - box.height / 2f) / s) }
+    fun zoomAt(p: Offset, z: Float) {
+        val nz = z.coerceIn(1f, 8f); val ip = toImg(p); val s = fit * nz
+        zoom = nz; centre = clamp(Offset(ip.x - (p.x - box.width / 2f) / s, ip.y - (p.y - box.height / 2f) / s), nz)
+    }
+    val baseW = maxOf(3f, src.width / 200f)                 // image px, × the mark's size
     Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         FullScreenDialogWindow()
         Surface(Modifier.fillMaxSize()) {
@@ -235,28 +257,82 @@ private fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () -
                         }
                     }
                 }
-                Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { box = it }.pointerInput(kind, color, fit) {
-                    detectDragGestures(onDragStart = { p -> drawing = Mark(kind, color, toImg(p), toImg(p)) },
-                        onDragEnd = { drawing?.let { marks.add(it) }; drawing = null },
-                        onDragCancel = { drawing = null }) { change, _ -> drawing = drawing?.copy(b = toImg(change.position)) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for ((f, lab, desc) in listOf(Triple(0.6f, "S", "Thin lines"), Triple(1f, "M", "Medium lines"), Triple(1.8f, "L", "Thick lines")))
+                        FilterChip(lineSize == f, { lineSize = f }, label = { Text(lab) }, modifier = Modifier.semantics { contentDescription = desc })
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = { zoomAt(Offset(box.width / 2f, box.height / 2f), zoom / 1.5f) }, Modifier.semantics { contentDescription = "Zoom out" }) { Text("−") }
+                    OutlinedButton(onClick = { zoomAt(Offset(box.width / 2f, box.height / 2f), zoom * 1.5f) }, Modifier.semantics { contentDescription = "Zoom in" }) { Text("+") }
+                    OutlinedButton(onClick = { zoom = 1f; centre = Offset(src.width / 2f, src.height / 2f) }) { Text("Fit") }
+                }
+                Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().onSizeChanged { box = it }.pointerInput(kind, color, lineSize, fit) {
+                    // one finger draws; a second finger turns it into zoom and pan (and drops the mark being drawn)
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val touch = down.type == androidx.compose.ui.input.pointer.PointerType.Touch
+                        drawing = Mark(kind, color, toImg(down.position), toImg(down.position), lineSize)
+                        if (touch) finger = down.position
+                        var pinching = false
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            val pressed = ev.changes.filter { it.pressed }
+                            if (pressed.isEmpty()) {
+                                val m = drawing
+                                if (!pinching && m != null && hypot(m.b.x - m.a.x, m.b.y - m.a.y) * fit * zoom > 12f) marks.add(m)
+                                drawing = null; finger = null
+                                break
+                            }
+                            if (pressed.size >= 2) {
+                                pinching = true; drawing = null; finger = null
+                                val z = ev.calculateZoom(); val pan = ev.calculatePan(); val c = ev.calculateCentroid()
+                                if (c != Offset.Unspecified) zoomAt(c, zoom * z)
+                                val s = fit * zoom
+                                centre = clamp(Offset(centre.x - pan.x / s, centre.y - pan.y / s), zoom)
+                            } else if (!pinching) {
+                                val p = pressed[0].position
+                                drawing = drawing?.copy(b = toImg(p))
+                                if (touch) finger = p
+                            }
+                            ev.changes.forEach { it.consume() }
+                        }
+                    }
                 }) {
                     Canvas(Modifier.fillMaxSize()) {
-                        drawImage(img, dstOffset = androidx.compose.ui.unit.IntOffset(ox.toInt(), oy.toInt()),
-                            dstSize = IntSize((src.width * fit).toInt(), (src.height * fit).toInt()))
-                        for (m in marks + listOfNotNull(drawing)) {
-                            val a = Offset(ox + m.a.x * fit, oy + m.a.y * fit); val b = Offset(ox + m.b.x * fit, oy + m.b.y * fit)
-                            val w = maxOf(3f, src.width * fit / 200f)
-                            when (m.kind) {
-                                "box" -> drawRect(Color(m.color), Offset(minOf(a.x, b.x), minOf(a.y, b.y)),
-                                    androidx.compose.ui.geometry.Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = Stroke(w))
-                                "circle" -> drawOval(Color(m.color), Offset(minOf(a.x, b.x), minOf(a.y, b.y)),
-                                    androidx.compose.ui.geometry.Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = Stroke(w))
-                                else -> {
-                                    drawLine(Color(m.color), a, b, w)
-                                    val ang = atan2(b.y - a.y, b.x - a.x); val head = w * 5
-                                    for (s in listOf(-0.5f, 0.5f)) drawLine(Color(m.color), b, Offset(b.x - head * cos(ang + s), b.y - head * sin(ang + s)), w)
+                        // the scene: the photo and the marks, in image px through the view's transform
+                        fun DrawScope.scene(s: Float, ox: Float, oy: Float) {
+                            drawImage(img, dstOffset = androidx.compose.ui.unit.IntOffset(ox.toInt(), oy.toInt()),
+                                dstSize = IntSize((src.width * s).toInt(), (src.height * s).toInt()))
+                            for (m in marks + listOfNotNull(drawing)) {
+                                val a = Offset(ox + m.a.x * s, oy + m.a.y * s); val b = Offset(ox + m.b.x * s, oy + m.b.y * s)
+                                val w = baseW * m.size * s
+                                when (m.kind) {
+                                    "box" -> drawRect(Color(m.color), Offset(minOf(a.x, b.x), minOf(a.y, b.y)),
+                                        androidx.compose.ui.geometry.Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = Stroke(w))
+                                    "circle" -> drawOval(Color(m.color), Offset(minOf(a.x, b.x), minOf(a.y, b.y)),
+                                        androidx.compose.ui.geometry.Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = Stroke(w))
+                                    else -> {
+                                        drawLine(Color(m.color), a, b, w)
+                                        val ang = atan2(b.y - a.y, b.x - a.x); val head = w * 5
+                                        for (d in listOf(-0.5f, 0.5f)) drawLine(Color(m.color), b, Offset(b.x - head * cos(ang + d), b.y - head * sin(ang + d)), w)
+                                    }
                                 }
                             }
+                        }
+                        val s = fit * zoom
+                        scene(s, size.width / 2 - centre.x * s, size.height / 2 - centre.y * s)
+                        // the loupe: 2.5× the view around the finger, a circle above it (below it near the top edge)
+                        finger?.let { f ->
+                            val r = 70.dp.toPx(); val k = 2.5f; val gap = 40.dp.toPx()
+                            val lc = Offset(f.x.coerceIn(r, size.width - r), if (f.y - gap - 2 * r >= 0) f.y - gap - r else f.y + gap + r)
+                            val ip = toImg(f); val ls = s * k
+                            val circle = androidx.compose.ui.graphics.Path().apply { addOval(androidx.compose.ui.geometry.Rect(lc, r)) }
+                            clipPath(circle) {
+                                drawRect(Color.Black, lc - Offset(r, r), androidx.compose.ui.geometry.Size(2 * r, 2 * r))
+                                scene(ls, lc.x - ip.x * ls, lc.y - ip.y * ls)
+                                drawLine(Color(0xFFFF7A1A), lc - Offset(12f, 0f), lc + Offset(12f, 0f), 2f)
+                                drawLine(Color(0xFFFF7A1A), lc - Offset(0f, 12f), lc + Offset(0f, 12f), 2f)
+                            }
+                            drawCircle(Color(0xFFFF7A1A), r, lc, style = Stroke(3.dp.toPx()))
                         }
                     }
                 }
@@ -281,10 +357,11 @@ private fun burn(src: Bitmap, marks: List<Mark>): Bitmap {
     if (marks.isEmpty()) return src
     val out = src.copy(Bitmap.Config.ARGB_8888, true)
     val c = Canvas(out)
-    val w = maxOf(3f, src.width / 200f)
-    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = w; strokeCap = Paint.Cap.ROUND }
+    val w0 = maxOf(3f, src.width / 200f)
+    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     for (m in marks) {
-        p.color = m.color
+        val w = w0 * m.size
+        p.color = m.color; p.strokeWidth = w
         val l = minOf(m.a.x, m.b.x); val t = minOf(m.a.y, m.b.y); val r = maxOf(m.a.x, m.b.x); val bt = maxOf(m.a.y, m.b.y)
         when (m.kind) {
             "box" -> c.drawRect(l, t, r, bt, p)
