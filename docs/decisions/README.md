@@ -41,6 +41,9 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0041](0041-plant3d-engine.md) | The 3D plant's engine: Godot 4 measured on the Note 9 and a laptop (on hold) | investigating |
 | [0042](0042-v1-phone-migration.md) | Phones move from the v1 app by a bridge update; v1 proofs checked by the server, open changes handed over | accepted by the user |
 | [0043](0043-msix-packaging.md) | MSIX: Microsoft's MakeAppx (NuGet, in a Windows VM), signed on the host with osslsigncode | accepted |
+| [0044](0044-walkdown-android-updates.md) | Walkdown updates itself on Android: the same signed release, a second P-256 signature, PackageInstaller | accepted |
+| [0045](0045-server-control-socket.md) | The server's CLI commands that change the plant run inside the running server (a 0600 Unix socket) | done |
+| [0046](0046-android-abis.md) | Android release APKs for arm64-v8a only; libraries stay uncompressed; no 32-bit phones | accepted by the user |
 
 ## Audit of existing dependencies (2026-09-30)
 

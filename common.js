@@ -100,7 +100,7 @@ K.start = async () => {
   K.renderStatus();
   const h = new URLSearchParams(location.hash.slice(1));
   const cfg = K.cfg = await K.api('/api/config').catch(() => null);
-  if (cfg) document.title = cfg.plant_name + ' — Walkdown';
+  if (cfg) document.title = (cfg.plant_name ? cfg.plant_name + ' — ' : '') + 'Walkdown';
   if (cfg?.mode === 'peer') document.documentElement.classList.add('peer');
   if (cfg?.app) document.documentElement.classList.add('app');   // inside the Android app: it has its own header and back
   if (cfg?.mode === 'peer' && !cfg.node.joined) {

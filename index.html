@@ -197,7 +197,7 @@ function selectLoc(b){
 
 async function load(){
   const me=await K.start(); K.toast=toast;
-  $('#who').textContent=me.user.full_name||me.user.username; $('#plantName').textContent=K.cfg?'· '+K.cfg.plant_name:'';
+  $('#who').textContent=me.user.full_name||me.user.username; $('#plantName').textContent=K.cfg?.plant_name?'· '+K.cfg.plant_name:'';
   try{
     // procedures are optional: a plant may not have published its operation manual (yet)
     [SHEETS,BASE_TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{

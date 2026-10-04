@@ -2,7 +2,7 @@
 ## (Argon2id), the sync listener. Same routes, cookie and headers as v1's app.py in server mode, so the web pages work
 ## unchanged. One thread owns the node (decision 0030).
 
-import std/[asyncdispatch, asynchttpserver, base64, os, osproc, posix, strutils, tables, times, uri, sets, algorithm]
+import std/[asyncdispatch, asynchttpserver, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics]
 import kks/provider_gnutls
 import dbstore, tls, net, argon2, mdns, internet
@@ -582,6 +582,60 @@ proc publishDir*(s: Server, dir: string): int =
   let ck = s.store.getRow("custodial", mgr["device"].s)
   result = s.n.publishAs(keyOf(ck), files, nowMs())
 
+proc setPlantName*(s: Server, name: string) =
+  ## the plant's name, written by the manager's custodial key ("" = none shown)
+  let n = name.strip
+  if n.len > 80: raise newException(ValueError, "A plant name of 80 characters or fewer")
+  let mgr = s.managerUser()
+  if mgr == nil: raise newException(ValueError, "no manager yet")
+  discard s.n.appendAs(keyOf(s.store.getRow("custodial", mgr["device"].s)), "setting",
+                       O(("key", S("plant")), ("value", S(n))), nowMs())
+
+# ---- control socket: the CLI's commands that change the plant run inside the server process ----
+# Found 2026-10-04: `kks-server publish-data` in a second process wrote to the store, but the running server keeps the
+# log in memory and never saw it (the new sheets reached no device until a restart), and the two processes' copies of
+# the manager's chain could have signed two different entries with one seq. While the server runs, these commands go
+# through this socket (owner-only, next to the store) and run here.
+
+proc controlPath*(cfg: Config): string = absolutePath(cfg.storePath).parentDir / "kks-server.sock"
+
+proc control*(s: Server, cmd: string, args: seq[string]): string =
+  ## one CLI command that changes the plant; -> what to print. Raises ValueError for the person to read.
+  case cmd
+  of "publish-data":
+    if args.len != 1: raise newException(ValueError, "usage: kks-server publish-data DIR")
+    let v = s.publishDir(args[0])
+    if v == 0: "Unchanged: the files equal the latest version." else: "Published plant data version " & $v & "."
+  of "set-plant-name":
+    if args.len != 1: raise newException(ValueError, "usage: kks-server set-plant-name NAME   (\"\" for none)")
+    s.setPlantName(args[0])
+    if args[0].strip.len == 0: "The plant has no name now." else: "The plant is called " & args[0].strip & " now."
+  else: raise newException(ValueError, "not a control command: " & cmd)
+
+proc serveControl(s: Server) {.async.} =
+  let path = controlPath(s.cfg)
+  try: removeFile(path)                                # a stale socket of a server that stopped (fileExists is
+  except OSError: discard                               # false for sockets: not a regular file)
+  let sock = newAsyncSocket(nativesockets.AF_UNIX, nativesockets.SOCK_STREAM, nativesockets.IPPROTO_IP)
+  let old = umask(0o177)                                # created 0600: only this user can talk to it
+  try: sock.bindUnix(path)
+  finally: discard umask(old)
+  sock.listen()
+  while true:
+    let c = await sock.accept()
+    try:
+      let line = await c.recvLine(maxLength = 64 * 1024)
+      let req = parseStrict(line)
+      var args: seq[string]
+      for a in req["args"].elems: args.add a.s
+      var res: JNode
+      try: res = O(("ok", newBool(true)), ("out", S(s.control(req["cmd"].s, args))))
+      except ValueError as e: res = O(("ok", newBool(false)), ("out", S(e.msg)))
+      await c.send(toText(res) & "\n")
+    except CatchableError as e:
+      stderr.writeLine "control: " & e.msg
+    c.close()
+
 proc importerStatus(s: Server): JNode =
   if fileExists(s.cfg.importer): O(("available", newBool(true)))
   else: O(("available", newBool(false)), ("error", S("The drawing importer (kks-import) was not found at " & s.cfg.importer & ".")))
@@ -1041,6 +1095,7 @@ proc announce(s: Server) =
 
 proc serve*(s: Server): Future[void] =
   ## HTTP, sync and mDNS until the process stops.
+  asyncCheck s.serveControl()
   if s.cfg.syncPort > 0:
     try:
       s.mdns = newMdns()

@@ -1,14 +1,15 @@
 ## kks-server: the always-on peer for browser clients (M6, decisions 0026, 0030).
 ##   kks-server [serve] [--config F]
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
-##   kks-server publish-data DIR | backup --out FILE
+##   kks-server publish-data DIR | set-plant-name NAME | backup --out FILE
+##     (publish-data and set-plant-name run inside the server when it runs: its control socket next to the store)
 ##   kks-server v1-status                    which old-app phones have moved (decision 0042)
 ##   kks-server export-root-key --out FILE   (passphrase in $KKS_ROOT_PASSPHRASE, 12+ characters): the plant root key,
 ##     sealed with the passphrase (decision 0023), the same file the apps' "Restore from a backup" reads
 ## The storage key (decision 0020) comes from systemd-creds: LoadCredentialEncrypted=kks-storage-key:… in the unit
 ## ($CREDENTIALS_DIRECTORY/kks-storage-key). For development, `storage_key_file` in the config (created if missing).
 
-import std/[asyncdispatch, os, posix, strutils, tables, times]
+import std/[asyncdispatch, nativesockets, net, os, posix, strutils, tables, times]
 import kks/[json, util, crypto, node, replay, plantdata, bundle, provider_gnutls, extras]
 import kksl/[server, dbstore]
 
@@ -52,6 +53,23 @@ proc main() =
   if cfg.webDir.len == 0: cfg.webDir = here / "web"
   if cfg.dataDir.len == 0: cfg.dataDir = here / "data"
   if cfg.storePath.len == 0: cfg.storePath = "kks-server.db"
+  if cmd in ["publish-data", "set-plant-name"]:
+    # a running server does it itself (see server.control); else this process, with the server stopped
+    block forward:
+      let c = newSocket(nativesockets.AF_UNIX, nativesockets.SOCK_STREAM, nativesockets.IPPROTO_IP)
+      try: c.connectUnix(controlPath(cfg))
+      except OSError:                                  # no server running (or a socket it left behind)
+        c.close()
+        break forward
+      block:
+        var a = newArr()
+        for x in rest: a.elems.add newStr(x)
+        c.send(toText(newObj(@[("cmd", newStr(cmd)), ("args", a)])) & "\n")
+        let r = parseStrict(c.recvLine(timeout = 600_000))
+        c.close()
+        if not r["ok"].b: quit r["out"].s
+        echo r["out"].s
+        return
   let p = newGnuTlsProvider()
   let s = openServer(cfg, p, storageKey(cfgPath, p))
   case cmd
@@ -68,12 +86,9 @@ proc main() =
     for (_, u) in s.store.allRows("users"):
       echo u["id"].i, "  ", u["username"].s.alignLeft(20), " ", (if s.n.run != nil: s.n.run.role(u["person"].s) else: "?").alignLeft(8),
            " ", (if u["active"].b: "active" else: "inactive"), "  ", u["full_name"].s
-  of "publish-data":
-    if rest.len != 1: quit "usage: kks-server publish-data DIR"
-    var v: int
-    try: v = s.publishDir(rest[0])
+  of "publish-data", "set-plant-name":
+    try: echo s.control(cmd, rest)
     except ValueError as e: quit e.msg
-    echo(if v == 0: "Unchanged: the files equal the latest version." else: "Published plant data version " & $v & ".")
   of "v1-status":
     # decision 0042: which old-app (KKS Explorer) phones have moved to Walkdown, and which haven't yet
     let w = s.v1Waiting()

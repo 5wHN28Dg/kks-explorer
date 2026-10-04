@@ -1041,6 +1041,12 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
     discard a.write(me, "setting", O(("key", S("relay")), ("value", orNull(url))), now)
     if a.relayChanged != nil: a.relayChanged()
     return ok()
+  of "/api/settings/plant":
+    need(me, "manager")
+    let name = if d.get("name") != nil and d["name"].isStr: d["name"].s.strip else: ""
+    if name.len > 80: bad("A plant name of 80 characters or fewer")
+    discard a.write(me, "setting", O(("key", S("plant")), ("value", S(name))), now)    # "" = no name shown
+    return ok()
   of "/api/diagnostics":
     need(me, "manager")
     if a.mode == "server":

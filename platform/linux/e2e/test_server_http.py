@@ -136,6 +136,37 @@ class Drawings(Base):
         self.assertEqual(Client(self.base).req('GET', '/api/sheets')[0], 401)
 
 
+class Cli(Base):
+    def cli(self, *args):
+        r = subprocess.run([BIN, *args, '--config', os.path.join(self.dir, 'config.json')], capture_output=True, text=True,
+                           cwd=self.dir, timeout=60)
+        return r.returncode, (r.stdout + r.stderr).strip()
+
+    def test_cli_through_the_running_server(self):
+        """found 2026-10-04: publish-data in a second process wrote to the store, but the running server never saw it
+        (new sheets reached no device until a restart). Now the server runs it: no restart, at once."""
+        boss = self.manager()
+        sock = os.path.join(self.dir, 'kks-server.sock')
+        self.assertEqual(os.stat(sock).st_mode & 0o777, 0o600)
+        d = os.path.join(self.dir, 'cli-data')
+        os.makedirs(d)
+        for n in ('sheets.json', 'tags.json'):
+            open(os.path.join(d, n), 'w').write('[]')
+        self.assertEqual(self.cli('publish-data', d), (0, 'Published plant data version 1.'))
+        self.assertEqual(boss.req('GET', '/api/sync/status')[1]['plant_data']['version'], 1)
+        self.assertEqual(boss.req('GET', '/data/sheets.json')[1], [])
+        self.assertEqual(self.cli('publish-data', d), (0, 'Unchanged: the files equal the latest version.'))
+        # the plant's name: from the CLI and from the admin page; "" = none
+        self.assertEqual(self.cli('set-plant-name', 'Unit test plant'), (0, 'The plant is called Unit test plant now.'))
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[1]['plant_name'], 'Unit test plant')
+        self.assertEqual(boss.req('POST', '/api/settings/plant', {'name': '  '})[0], 200)
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[1]['plant_name'], '')
+        self.assertEqual(boss.req('POST', '/api/settings/plant', {'name': 'x' * 81})[0], 400)
+        code, out = self.cli('set-plant-name')
+        self.assertNotEqual(code, 0)
+        self.assertIn('usage', out)
+
+
 class Server(Base):
     def test_flow(self):
         anon = Client(self.base)
