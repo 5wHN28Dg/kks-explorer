@@ -25,7 +25,7 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - The wiki is public: no plant name, plant data or relay URL there either.
 
 **Live since 2026-10-03 (the cutover, done by Claude at the user's request; record on the wiki's Cutover page):**
-- **Server:** the v2 server runs as a user service from `~/kks-server` (0.9.0-d978bcd; `systemctl --user`, linger on).
+- **Server:** the v2 server runs as a user service from `~/kks-server` (0.9.2-c7c4848 since 2026-10-04; `systemctl --user`, linger on).
   CLI through `systemd-run` with the sealed credential (wiki: Server). v1's files are archived read-only in
   `~/kks-server/v1` and `~/kks-server/archive`.
 - **Release:** v0.9.0 published: the bridge, Walkdown for Android, Windows and Linux. Teammates move by themselves;
