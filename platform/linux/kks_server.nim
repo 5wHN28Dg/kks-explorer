@@ -1,8 +1,9 @@
 ## kks-server: the always-on peer for browser clients (M6, decisions 0026, 0030).
 ##   kks-server [serve] [--config F]
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
-##   kks-server publish-data DIR | set-plant-name NAME | backup --out FILE
-##     (publish-data and set-plant-name run inside the server when it runs: its control socket next to the store)
+##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json | backup --out FILE
+##     (publish-data, set-plant-name, submit-file, reset-password and reset-manager run inside the server when it runs: its control
+##     socket next to the store, decision 0045)
 ##   kks-server v1-status                    which old-app phones have moved (decision 0042)
 ##   kks-server export-root-key --out FILE   (passphrase in $KKS_ROOT_PASSPHRASE, 12+ characters): the plant root key,
 ##     sealed with the passphrase (decision 0023), the same file the apps' "Restore from a backup" reads
@@ -53,7 +54,10 @@ proc main() =
   if cfg.webDir.len == 0: cfg.webDir = here / "web"
   if cfg.dataDir.len == 0: cfg.dataDir = here / "data"
   if cfg.storePath.len == 0: cfg.storePath = "kks-server.db"
-  if cmd in ["publish-data", "set-plant-name"]:
+  if cmd in ["reset-password", "reset-manager"]:        # --user NAME
+    if "user" notin args: quit "usage: kks-server " & cmd & " --user NAME"
+    rest = @[args["user"]]
+  if cmd in ["publish-data", "set-plant-name", "reset-password", "reset-manager", "submit-file"]:
     # a running server does it itself (see server.control); else this process, with the server stopped
     block forward:
       let c = newSocket(nativesockets.AF_UNIX, nativesockets.SOCK_STREAM, nativesockets.IPPROTO_IP)
@@ -86,7 +90,7 @@ proc main() =
     for (_, u) in s.store.allRows("users"):
       echo u["id"].i, "  ", u["username"].s.alignLeft(20), " ", (if s.n.run != nil: s.n.run.role(u["person"].s) else: "?").alignLeft(8),
            " ", (if u["active"].b: "active" else: "inactive"), "  ", u["full_name"].s
-  of "publish-data", "set-plant-name":
+  of "publish-data", "set-plant-name", "reset-password", "reset-manager", "submit-file":
     try: echo s.control(cmd, rest)
     except ValueError as e: quit e.msg
   of "v1-status":

@@ -610,6 +610,49 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
     if args.len != 1: raise newException(ValueError, "usage: kks-server set-plant-name NAME   (\"\" for none)")
     s.setPlantName(args[0])
     if args[0].strip.len == 0: "The plant has no name now." else: "The plant is called " & args[0].strip & " now."
+  of "submit-file":
+    # a list of ordinary submissions [{kind, payload, client_id?, note?}] made as the manager, through the same checks
+    # as /api/submit: plant knowledge from a document (procedure links, photos, equipment fields). A client_id makes a
+    # second run add nothing.
+    if args.len != 1: raise newException(ValueError, "usage: kks-server submit-file FILE.json")
+    let mgr = s.managerUser()
+    if mgr == nil: raise newException(ValueError, "no manager yet")
+    let me = s.actorFor(mgr)
+    var items: JNode
+    try: items = parseStrict(readFile(args[0]), 64)
+    except CatchableError as e: raise newException(ValueError, args[0] & ": " & e.msg)
+    if items.kind != jArr: raise newException(ValueError, args[0] & ": a JSON list of submissions")
+    var count = initCountTable[string]()
+    for i, it in items.elems:
+      if it.kind != jObj or it.get("kind") == nil or not it["kind"].isStr:
+        raise newException(ValueError, "item " & $i & ": {kind, payload, client_id?, note?}")
+      var r: JNode
+      try: r = s.api.submit(me, it["kind"].s, it.get("payload"), it.get("client_id"), it.get("note"), nowMs())
+      except CatchableError as e: raise newException(ValueError, "item " & $i & " (" & it["kind"].s & "): " & e.msg &
+                                                     (if i > 0: " (the " & $i & " before it were submitted)" else: ""))
+      count.inc(if r.get("duplicate") != nil and r["duplicate"].kind == jBool and r["duplicate"].b: "already there"
+                elif r.get("status") != nil and r["status"].isStr: r["status"].s else: "done")
+    var parts: seq[string]
+    for k, v in count: parts.add $v & " " & k
+    $items.elems.len & " submissions: " & parts.join(", ") & "."
+  of "reset-password":
+    # a one-time link to set a new password (as the admin page's Users → Password link), for whoever runs the server
+    if args.len != 1: raise newException(ValueError, "usage: kks-server reset-password --user NAME")
+    let u = s.userByName(args[0])
+    if u == nil or not u["active"].b: raise newException(ValueError, "No active account named " & args[0] & ".")
+    "Open this link once within 3 days to set a new password for " & args[0] & ":\n  " &
+      s.link("/#reset=" & s.makeToken("reset", u["id"].i, 3 * 86400))
+  of "reset-manager":
+    # the manager account was lost (forgotten password, the person left): the root key, which the server holds,
+    # names another active account manager; the old manager becomes an admin (a root `manager` statement, §21)
+    if args.len != 1: raise newException(ValueError, "usage: kks-server reset-manager --user NAME")
+    let u = s.userByName(args[0])
+    if u == nil or not u["active"].b: raise newException(ValueError, "No active account named " & args[0] & ".")
+    if s.n.run != nil and s.n.run.manager == u["person"].s: raise newException(ValueError, args[0] & " is already the manager.")
+    s.handOverManager(u)
+    s.store.setMeta("transfer", "")                   # an offer waiting from the old manager is void
+    args[0] & " is the manager now. If they need a new password, open this link once within 3 days:\n  " &
+      s.link("/#reset=" & s.makeToken("reset", u["id"].i, 3 * 86400))
   else: raise newException(ValueError, "not a control command: " & cmd)
 
 proc serveControl(s: Server) {.async.} =

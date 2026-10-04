@@ -274,7 +274,7 @@ const VIEWS={
     if(isManager()){
       const t=ME.transfer_pending;
       h+=`<div class="card server-only"><h3>Hand over the manager role</h3>${t?`<div>Offered to <b>${esc(t.to_name)}</b>, waiting for them to accept (until ${when(t.expires)}). <button class="ghost" onclick="mgr('cancel')">Cancel offer</button></div>`:
-        `<div class="sub">Only to an existing admin. They must accept; you then become an admin. If the manager account is ever lost, whoever runs the server can use <span class="mono">python3 app.py reset-manager --user NAME</span>.</div>
+        `<div class="sub">Only to an existing admin. They must accept; you then become an admin. If the manager account is ever lost, whoever runs the server can name another account manager with <span class="mono">kks-server reset-manager --user NAME</span>.</div>
         <form class="inline" onsubmit="event.preventDefault();mgr('transfer',{username:this.username.value,password:this.password.value})"><input name="username" placeholder="admin username" required>
         <input type="password" name="password" placeholder="your password" autocomplete="current-password" required><button class="primary">Offer role</button></form>`}</div>`;
     }

@@ -165,6 +165,33 @@ class Cli(Base):
         code, out = self.cli('set-plant-name')
         self.assertNotEqual(code, 0)
         self.assertIn('usage', out)
+        # submissions from a file, as the manager (tools/procedure_import.py writes these); a second run adds nothing
+        subs = os.path.join(self.dir, 'subs.json')
+        with open(subs, 'w') as f:
+            json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 1, 'kks': '11LAB70AA501', 'on': True}, 'client_id': 'imp-test-link-1'},
+                       {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'custom': [{'k': 'Before start-up', 'v': 'open'}]},
+                                                         'base': {'custom': []}}, 'client_id': 'imp-test-field-1'}], f)
+        self.assertEqual(self.cli('submit-file', subs), (0, '2 submissions: 2 approved.'))
+        self.assertEqual(self.cli('submit-file', subs), (0, '2 submissions: 2 already there.'))
+        st = boss.req('GET', '/api/state')[1]
+        self.assertEqual([l['kks'] for l in st['links'] if l['proc'] == 'EP-1'], ['11LAB70AA501'])
+        self.assertEqual(st['equipment']['11LAB70AA501']['custom'], [{'k': 'Before start-up', 'v': 'open'}])
+        # a password link and a new manager, from whoever runs the server (the manager account was lost)
+        st, r, _ = boss.req('POST', '/api/users', {'username': 'sara', 'full_name': 'Sara Admin', 'role': 'admin'})
+        self.assertEqual(st, 200, r)
+        code, out = self.cli('reset-password', '--user', 'sara')
+        self.assertEqual(code, 0, out)
+        sara = Client(self.base)
+        self.assertEqual(sara.req('POST', '/api/password-reset', {'token': out.split('#reset=')[1].strip(),
+                                                                  'password': 'sara password 1'})[0], 200)
+        self.assertEqual(sara.req('POST', '/api/login', {'username': 'sara', 'password': 'sara password 1'})[0], 200)
+        self.assertEqual(self.cli('reset-manager', '--user', 'nobody')[0] != 0, True)
+        code, out = self.cli('reset-manager', '--user', 'sara')
+        self.assertEqual(code, 0, out)
+        self.assertIn('sara is the manager now', out)
+        roles = {u['username']: u['role'] for u in sara.req('GET', '/api/users')[1]['users']}
+        self.assertEqual((roles['sara'], roles['boss']), ('manager', 'admin'))
+        self.assertIn('already the manager', self.cli('reset-manager', '--user', 'sara')[1])
 
 
 class Server(Base):
