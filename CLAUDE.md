@@ -537,6 +537,24 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
 - **Rehearsal builds:** build type `rehearsal` in both apps (`assembleRehearsal`): the release with R8 shrinking,
   debug-signed, plus the debug test receivers. test_move, test_update and test_app2 passed on them before 0.9.0.
 
+**2026-10-04 (the user's field notes on 0.9.2, among others):**
+- **Rotated sheets:** kks-import wrote the .kkp of every rotated sheet turned against its overview and tags (since the
+  cutover; the Python reference had the same mix-up). Fixed with `kkp.sheetExtra` = −(rot + page /Rotate), a test of
+  all 16 combinations, the 7 sheets re-made live (plant data v4).
+- **Server CLI:** `publish-data` in a second process wrote to the store, but the running server never saw it (new
+  sheets reached no device until a restart; the two copies of the manager's chain could have forked: none did). Now
+  `publish-data` and `set-plant-name` go through the server's 0600 Unix socket (decision 0045). The plant's name is a
+  manager setting (`/api/settings/plant`, admin page Devices → Plant name; "" = none). `reset-password` /
+  `reset-manager` are in the CLI's help but were never written.
+- **Android APK:** arm64-v8a only in releases (18 MB), x86_64 in debug/rehearsal for the emulator; libraries stay
+  uncompressed; no 32-bit phones (decision 0046; a Galaxy A02s is 32-bit only).
+- **Android photo editor:** full-screen dialogs clipped their bottom (window between the bars, content at full screen
+  height): `FullScreenDialogWindow()` in Common.kt (also the photo viewer and course pictures). Undo/Retake/Cancel/Send
+  in a row of their own; Retake; tag plate photos = caption starting "Tag plate" (a convention: 0.9.x rejects unknown
+  photo fields; PROTOCOL-v2 §9), offered after an equipment photo. e2e `test_photos` (emulator camera).
+- **Fit button** on Android (bottom right) and Windows (side panel); GNOME had one.
+- **New drawings:** b1circ and cwp (plant data v6); the booster pump drawing has no KKS and was left out (the user).
+
 ## Backlog (rough priority)
 
 1. When users have marked missed tags (the log's `tag_add` entries), find why the reader missed them and fix the cause
