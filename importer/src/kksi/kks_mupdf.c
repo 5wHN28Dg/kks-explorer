@@ -754,6 +754,28 @@ void kks_free_images(kks_image *p, int n)
 
 /* ---------------------------------------------------------------- display geometry (ref/pathstore.from_pdf_page) */
 
+/* the first page's own /Rotate, normalised to 0/90/180/270 (anything else counts as 0, as PyMuPDF does). -1 on error */
+int kks_page_rotation(fz_document *doc)
+{
+	int rot = 0;
+	fz_page *page = NULL;
+	fz_var(page); fz_var(rot);
+	fz_try(g_ctx) {
+		page = fz_load_page(g_ctx, doc, 0);
+		pdf_page *pp = pdf_page_from_fz_page(g_ctx, page);
+		if (pp) rot = pdf_to_int(g_ctx, pdf_dict_get_inheritable(g_ctx, pp->obj, PDF_NAME(Rotate)));
+		while (rot < 0) rot += 360;
+		while (rot >= 360) rot -= 360;
+		if (rot % 90 != 0) rot = 0;
+	}
+	fz_always(g_ctx) { fz_drop_page(g_ctx, page); }
+	fz_catch(g_ctx) {
+		snprintf(g_error, sizeof g_error, "%s", fz_caught_message(g_ctx));
+		rot = -1;
+	}
+	return rot;
+}
+
 /* m = page.rotation_matrix * Matrix(extra) * shift and r = page.rect * Matrix(extra), with PyMuPDF's arithmetic
    (JM_rotate_page_matrix, util_concat_matrix, util_transform_rect: MuPDF floats). m: 6 doubles, r: 4 doubles. */
 int kks_display_geom(fz_document *doc, int extra, double *m_out, double *r_out)

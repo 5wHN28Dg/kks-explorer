@@ -93,6 +93,14 @@ proc addImages(d: var Drawing, m: array[6, float], images: seq[PageImage], seqno
     d.images.add pathstore.Image(after: after, rect: [min(xs), min(ys), max(xs), max(ys)],
                                  data: encodeLossless(px.d, px.w, px.h, px.n, effort))
 
+proc sheetExtra*(rot, pageRotation: int): int =
+  ## fromPdfPage's `extra` for a sheet turned by `rot` (sheets.json): `rot` turns the page without its own /Rotate
+  ## (rotatedCopy resets it, then show_pdf_page turns it), and the overview and the tags live in that frame.
+  ## fromPdfPage starts from the page as displayed, its /Rotate applied, and its Matrix(extra) turns the other way:
+  ## the same frame needs -(rot + /Rotate). Until 2026-10-04 kks-import passed `rot`, which turned every rotated
+  ## sheet's path store against its overview and tags (tests/test_kkp.nim checks all 16 combinations).
+  (720 - rot mod 360 - pageRotation mod 360) mod 360
+
 proc fromPdfPage*(doc: Doc, extra: int, images = true, effort = 9): Drawing =
   let (m, r) = doc.displayGeom(extra)
   result.width = uint32(q(max(0.0, r[2] - r[0])))

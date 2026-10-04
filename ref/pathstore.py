@@ -247,7 +247,8 @@ def _q(v):
 
 def from_pdf_page(page, extra_rotation=0, jxl_encode=None):
     """-> (width, height, styles, paths, images) for one PDF page, in display orientation. extra_rotation = degrees
-    clockwise on top of the page's own rotation (the importer's choice, sheets.json `rot`)."""
+    clockwise on top of the page's own rotation. NOT sheets.json `rot`, which counts from the page with its /Rotate reset:
+    a sheet's frame needs extra = -(rot + page.rotation) % 360 (PATHSTORE.md, importer kkp.sheetExtra)."""
     import pymupdf
     m = page.rotation_matrix * pymupdf.Matrix(extra_rotation)
     r = page.rect * pymupdf.Matrix(extra_rotation)          # page.rect is already in the page's rotated frame

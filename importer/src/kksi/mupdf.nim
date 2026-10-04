@@ -75,6 +75,7 @@ proc kks_drawings_images(d: Doc, out0: ptr ptr UncheckedArray[RawPath], unrotate
                          imgs: ptr ptr UncheckedArray[RawImage], nimg: ptr cint): cint {.importc, cdecl.}
 proc kks_free_images(p: ptr UncheckedArray[RawImage], n: cint) {.importc, cdecl.}
 proc kks_display_geom(d: Doc, extra: cint, m, r: ptr cdouble): cint {.importc, cdecl.}
+proc kks_page_rotation(d: Doc): cint {.importc, cdecl.}
 proc kks_free_paths(p: ptr UncheckedArray[RawPath], n: cint) {.importc, cdecl.}
 
 proc fail() = raise newException(MupdfError, $kks_error())
@@ -166,6 +167,11 @@ proc displayGeom*(d: Doc, extra: int): (array[6, float], array[4, float]) =
   if kks_display_geom(d, cint(extra), addr m[0], addr r[0]) == 0: fail()
   for i in 0 .. 5: result[0][i] = float(m[i])
   for i in 0 .. 3: result[1][i] = float(r[i])
+
+proc pageRotation*(d: Doc): int =
+  ## the first page's own /Rotate (0, 90, 180 or 270)
+  result = int(kks_page_rotation(d))
+  if result < 0: fail()
 
 proc renderRgb*(d: Doc, zoom: float): Pixmap =
   ## The whole page as RGB at `zoom` (Page.get_pixmap(matrix=Matrix(zoom, zoom))); data = w*h*3 bytes.

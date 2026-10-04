@@ -160,7 +160,7 @@ proc main() =
   createDir(dataDir / "sheets")
   log "Writing the path store..."
   let srcDoc = mupdf.open(src)
-  let drawing = fromPdfPage(srcDoc, rot)
+  let drawing = fromPdfPage(srcDoc, sheetExtra(rot, srcDoc.pageRotation))   # the overview's frame
   writeAtomic(dataDir / "sheets" / (sid & ".kkp"), encode(drawing))
   let notes = srcDoc.annotNotes()
   srcDoc.close()

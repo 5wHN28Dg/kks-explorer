@@ -182,7 +182,9 @@ Images are few and small, so they are not in the grid. A viewer tests each image
     {"id", "name", "rot", "w", "h", "scale", "levels", "notes": [...]}
 
 - `w`, `h`: level 0's size in px.
-- `rot`: the rotation applied to the source page.
+- `rot`: the rotation applied to the source page after its own /Rotate is reset to 0 (the importer's `rotatedCopy`).
+  The overview, the tags and the .kkp all share that frame; kks-import gets the .kkp there with
+  `from_pdf_page(page, extra)`, extra = −(rot + the page's /Rotate) mod 360 (`kkp.sheetExtra`).
 - `levels`: the number of pyramid files.
 - tags.json is unchanged from v1. A tag's `bbox` is in level-0 pixels.
 
