@@ -571,6 +571,17 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
 - **ARM64** (decision 0047): Windows cross-built here with llvm-mingw (`KKS_WIN_ARCH=aarch64`), Walkdown-arm64.msix
   signed here; `.github/workflows/arm64.yml` builds walkdown-aarch64.flatpak and tests on GitHub's ARM64 runners.
 - **GNOME tests headless:** `apps/gnome/e2e/headless.sh` (private mutter); never on the user's desktop.
+  - **A private test session must isolate `XDG_RUNTIME_DIR` as well as D-Bus and the display.** A nested
+    `dbus-run-session` that shares `/run/user/$UID` spawns its own portals, which take over and then tear down the
+    desktop's mounts and sockets: the first version of headless.sh started a second `xdg-document-portal` that
+    unmounted `/run/user/1000/doc` when it ended, and every Flatpak app on the user's desktop stopped starting
+    (`bwrap: Can't find source path …/doc/by-app/…`). headless.sh now runs in a fresh 0700 runtime directory and
+    unmounts what the private portals left there.
+  - **After any change to a test harness that starts sessions, compositors or D-Bus**, check the user's session for
+    side effects before and after: `findmnt /run/user/$UID/doc` (the same mount ID), `ls /run/user/$UID` (nothing
+    added or gone), `journalctl -b | grep run-user-$UID-doc.mount` (nothing new), and a Flatpak app's sandbox
+    starting (`flatpak run --command=true app.zen_browser.zen`). "Nothing shared with the desktop" has to hold for
+    everything in `/run/user/$UID`, not just the bus and the display.
 - **Diagnostics:** reports are sealed to the manager's report key: the server and its web pages can't read them
   (0040); read them on the manager's phone (Manage → Diagnostics, Copy all).
 

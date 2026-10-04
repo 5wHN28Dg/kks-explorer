@@ -64,7 +64,8 @@ system's.
 ## Tests
 
 Run the tests headless, so no window opens on the desktop: `apps/gnome/e2e/headless.sh` starts a private
-`mutter --headless` (one virtual monitor, Wayland only) in its own D-Bus session (its own accessibility bus) and runs
+`mutter --headless` (one virtual monitor, Wayland only) in its own D-Bus session (its own accessibility bus) and its
+own `XDG_RUNTIME_DIR` (so the portals it starts can't touch the desktop's `/run/user/$UID`), and runs
 the command inside: `apps/gnome/e2e/headless.sh python3 apps/gnome/e2e/test_gnome.py`. Without a `mutter` binary,
 unpack Ubuntu's package next to the GTK headers (`apt-get download mutter && dpkg-deb -x mutter_*.deb
 ~/.local/kksdev/root`; it is a launcher for the libmutter GNOME Shell already has).
