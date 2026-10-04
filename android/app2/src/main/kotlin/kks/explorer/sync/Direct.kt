@@ -122,7 +122,7 @@ object Direct {
             if (d.size >= HEAD && d.copyOfRange(1, HEAD).contentEquals(session)) {
                 when (d[0]) {
                     PUNCH -> { peer.compareAndSet(null, from); u.send(from, head(PUNCH_ACK)) }
-                    PUNCH_ACK -> { peer.compareAndSet(null, from); confirmed.set(true) }
+                    PUNCH_ACK -> { peer.set(from); confirmed.set(true) }     // where it heard us from: the best address
                     else -> if (peer.get() != null) confirmed.set(true)    // it already started the stream: it heard us
                 }
             }
@@ -135,6 +135,7 @@ object Direct {
             Thread.sleep(100)
         }
         u.onPacket = null
+        Log.i("KKSSync", "direct: theirs $cands -> " + (peer.get()?.let { "using $it" + if (confirmed.get()) " (answered)" else " (heard only)" } ?: "no path"))
         return peer.get()
     }
 
@@ -166,21 +167,32 @@ object Direct {
      *  paths seen on mobile data; the e2e test checks that syncs fall back to the pipe */
     @Volatile var testStall = false
 
-    fun connect(u: Udp, to: InetSocketAddress, session: ByteArray, client: Boolean, expectPeer: String, dead: Double = 15.0): Net.Peer {
+    fun connect(u: Udp, at: InetSocketAddress, session: ByteArray, client: Boolean, expectPeer: String, dead: Double = 15.0): Net.Peer {
         if (testStall) { u.onPacket = null; throw IOException("the other device stopped answering (test: stalled direct path)") }
+        val to = AtomicReference(at)
         val id = Core.rudpNew(session, dead, now())
         val inbox = LinkedBlockingQueue<ByteArray>()
         val st = State()
         fun step(op: Int, data: ByteArray = ByteArray(0)) = synchronized(st) {
             if (st.stopped) return@synchronized
             val s = Step(Core.rudpStep(id, op, data, now()))
-            s.out.forEach { u.send(to, it) }
+            s.out.forEach { u.send(to.get(), it) }
             if (s.got.isNotEmpty()) inbox.offer(s.got)
             if (s.error.isNotEmpty() && st.error.isEmpty()) st.error = s.error
             st.ended = s.ended; st.finished = s.finished; st.queued = s.queued
             if (s.ended || s.error.isNotEmpty()) inbox.offer(ByteArray(0))      // wake a waiting reader
         }
-        u.onPacket = { d, from -> if (from == to) step(1, d) }
+        // The other side's address can change after punching (NATs that map each destination to its own port, or
+        // rebind): packets with our session from another address move the stream there; TLS on top authenticates the
+        // peer. Before 2026-10-04 they were dropped, and the stream stalled ("the other device stopped answering").
+        var moved = 0
+        u.onPacket = { d, from ->
+            if (d.size >= HEAD && d.copyOfRange(1, HEAD).contentEquals(session)) {
+                val was = to.getAndSet(from)
+                if (from != was && moved++ < 4) Log.i("KKSSync", "direct: the other side's address changed from $was to $from")
+                step(1, d)
+            }
+        }
         Thread({ while (!st.stopped && !u.closed) { Thread.sleep(20); runCatching { step(2) } } }, "kks-rudp").apply { isDaemon = true; start() }
         fun free() {
             synchronized(st) { if (!st.stopped) { st.stopped = true; runCatching { Core.rudpStep(id, 5, ByteArray(0), now()) } } }

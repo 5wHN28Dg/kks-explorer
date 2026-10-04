@@ -4,7 +4,7 @@
 import std/[unittest, asyncdispatch, os, osproc, strutils, sets, tables]
 import kks/[json, util, crypto, proto, node, sync, plant]
 import plat
-import kksl/[net, internet]
+import kksl/[net, internet, udp]
 
 let P = testProvider()
 let repo = currentSourcePath().parentDir / ".." / ".." / ".."
@@ -85,6 +85,19 @@ suite "internet sync through the relay":
     check ia.lastHow == "relay"           # within the hour: no new direct attempt
     ia.noDirectUntil.clear()
 
+  test "a punch that hears nothing: the pipe at once, and no punching with that device for an hour":
+    ia.testNoPath = true
+    discard b.append("setting", newObj(@[("key", newStr("note6")), ("value", newStr("no path"))]), nowMs())
+    check (waitFor ia.syncPeer(b.device)).received == 1
+    check ia.lastHow == "relay"
+    check b.device in ia.noDirectUntil
+    ia.testNoPath = false
+    discard b.append("setting", newObj(@[("key", newStr("note7")), ("value", newStr("skip"))]), nowMs())
+    check (waitFor ia.syncPeer(b.device)).received == 1
+    check ia.lastHow == "relay" and ib.lastHow == "relay"   # neither side offered candidates: no 4 s punch
+    ia.noDirectUntil.clear()
+    ib.noDirectUntil.clear()
+
   test "an absent device is reported":
     expect NetError:
       discard waitFor ia.syncPeer(P.peerId(P.p256Generate()))
@@ -98,3 +111,25 @@ suite "internet sync through the relay":
     relayProc.terminate()
     discard relayProc.waitForExit()
     relayProc.close()
+
+suite "the direct stream":
+  test "follows the other side when its address changes after punching":
+    # B's NAT gives the stream another port than the one A punched (a mapping per destination, a rebinding): A's
+    # stream must move to where B's packets come from, or nothing B sends is answered
+    let a = newUdp()
+    let b = newUdp()
+    let dead = newUdp()                 # the address A punched: nothing there answers
+    let session = "\x01\x02\x03\x04\x05\x06\x07\x08"
+    let sa = a.rudpStream("127.0.0.1", dead.port, session)
+    let sb = b.rudpStream("127.0.0.1", a.port, session)
+    waitFor sb.write("hello from b")
+    check waitFor(sa.read()) == "hello from b"
+    waitFor sa.write("hello back")
+    var got = ""
+    let f = sb.read()
+    check waitFor(withTimeout(f, 5000))
+    if f.finished: got = f.read()
+    check got == "hello back"
+    sa.close()
+    sb.close()
+    dead.close()

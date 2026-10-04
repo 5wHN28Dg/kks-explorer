@@ -30,6 +30,7 @@ type
     roomOf*: proc (): string          ## another room than the plant's ("" = none: stay out); the server's v1 room (§21a)
     noDirectUntil*: Table[string, float]   ## devices the direct path failed with: the pipe until then (epoch s)
     testStall*: bool                  ## tests: the direct path punches through, then fails, like stalled paths in the field
+    testNoPath*: bool                 ## tests: the punch hears nothing, like two NATs that can't be punched
 
 proc relaySetting*(n: Node): string =
   if n.run == nil: return ""
@@ -82,21 +83,33 @@ proc theirCands(m: JNode): seq[string] =
     for x in c.elems:
       if x.kind == jStr and x.s.len <= 64 and result.len < 8: result.add x.s
 
-proc meet(i: Internet, u: Udp, ours, theirs: seq[string], relay, id, side: string): Future[Stream] {.async.} =
-  ## §18: hole punching when both sides offered candidates, else (or when it fails) the relay pipe
+type DirectStalled = object of NetError   ## the test switch: a direct path that punched, then stalled
+
+proc meet(i: Internet, u: Udp, ours, theirs: seq[string], relay, id, side, peer: string): Future[(Stream, string)] {.async.} =
+  ## §18: hole punching when both sides offered candidates, else (or when it fails) the relay pipe. -> the stream and
+  ## how it goes ("direct" or "relay"): each sync's own, for its fallback (lastHow is only the status line's: a sync
+  ## answered meanwhile could overwrite it)
   if u != nil and ours.len > 0 and theirs.len > 0:
     var session = ""
     for k in 0 ..< 8: session.add char(parseHexInt(id[k * 2 .. k * 2 + 1]))
-    let (h, p) = await u.punch(session, theirs)
-    if h.len > 0:
+    let pr = if i.testNoPath: (u.close(); PunchResult()) else: await u.punch(session, theirs)
+    stderr.writeLine "direct: ours " & $ours & ", theirs " & $theirs & " → heard " & $pr.heard &
+                     (if pr.host.len > 0: ", using " & pr.host & ":" & $pr.port & (if pr.confirmed: " (answered)" else: " (heard only)")
+                      else: ", no path") & " in " & $pr.ms & " ms"
+    stderr.flushFile()
+    if pr.host.len > 0:
       i.lastHow = "direct"
       if i.testStall:
         u.close()
-        raise newException(NetError, "the other device stopped answering (test: stalled direct path)")
-      return u.rudpStream(h, p, session)
+        raise newException(DirectStalled, "the other device stopped answering (test: stalled direct path)")
+      return (u.rudpStream(pr.host, pr.port, session), "direct")
+    # nothing came through: two NATs that can't be punched (2026-10-04: a carrier NAT with a new port per destination
+    # against a home router that only lets in the exact address it sent to). Don't spend the 4 s on this device for
+    # an hour.
+    if peer.len > 0: i.noDirectUntil[peer] = epochTime() + 3600
   if u != nil: u.close()
   i.lastHow = "relay"
-  return await i.openPipe(relay, id, side)
+  return (await i.openPipe(relay, id, side), "relay")
 
 proc changed(i: Internet) =
   if i.onChange != nil:
@@ -107,10 +120,10 @@ proc serveConnect(i: Internet, relay, frm, id: string, theirs: seq[string]) {.as
   ## another device asked for a sync: accept with our candidates, meet it (directly or in the pipe), answer as the
   ## TLS server
   try:
-    let (u, ours) = await i.candidates()
+    let (u, ours) = await i.candidates(epochTime() >= i.noDirectUntil.getOrDefault(frm, 0.0))   # [] = the pipe at once
     await i.ws.sendText(toText(newObj(@[("t", newStr("accept")), ("to", newStr(frm)), ("id", newStr(id)),
                                         ("cand", candArr(ours))])))
-    let st = await i.meet(u, ours, theirs, relay, id, "b")
+    let (st, _) = await i.meet(u, ours, theirs, relay, id, "b", frm)
     let (remote, stats) = await serveOver(i.n, i.id, st, i.hooks)
     if i.onSynced != nil: i.onSynced(remote, stats, false)
   except CatchableError as e:
@@ -200,7 +213,7 @@ proc stop*(i: Internet) =
   i.running = false
   if i.ws != nil: i.ws.close()
 
-proc openTo(i: Internet, peer: string, tryDirect = true): Future[Stream] {.async.} =
+proc openTo(i: Internet, peer: string, tryDirect = true): Future[(Stream, string)] {.async.} =
   ## a stream to a device in the room: connect with our candidates, then direct or the pipe (side a)
   let relay = i.relayOf()
   i.lastHow = ""
@@ -219,7 +232,7 @@ proc openTo(i: Internet, peer: string, tryDirect = true): Future[Stream] {.async
   if a["t"].s != "accept":
     if u != nil: u.close()
     raise newException(NetError, "the device " & (if a["t"].s == "gone": "is not on the relay" else: "refused"))
-  return await i.meet(u, ours, theirCands(a), relay, id, "a")
+  return await i.meet(u, ours, theirCands(a), relay, id, "a", peer)
 
 proc syncPeer*(i: Internet, peer: string): Future[Stats] {.async.} =
   ## sync with a device of the plant that is on the relay. A direct path can punch through and then stall (found
@@ -227,20 +240,22 @@ proc syncPeer*(i: Internet, peer: string): Future[Stats] {.async.} =
   ## device gets the pipe for an hour (PROTOCOL-v2 §18: "on failure, the pipe").
   let tryDirect = epochTime() >= i.noDirectUntil.getOrDefault(peer, 0.0)
   var failed = ""
+  var how = ""
   try:
-    let st = await i.openTo(peer, tryDirect)
+    let (st, h) = await i.openTo(peer, tryDirect)
+    how = h
     result = await syncOver(i.n, i.id, st, peer, hooks = i.hooks)
   except CatchableError as e:
-    if not (tryDirect and i.lastHow == "direct"): raise
+    if how != "direct" and not (e of DirectStalled): raise
     failed = e.msg
   if failed.len > 0:
     i.noDirectUntil[peer] = epochTime() + 3600
     stderr.writeLine "direct sync with " & peer[0 ..< min(8, peer.len)] & " failed (" & failed & "): the relay pipe for this device for an hour"
-    let st = await i.openTo(peer, false)
+    let (st, _) = await i.openTo(peer, false)
     result = await syncOver(i.n, i.id, st, peer, hooks = i.hooks)
   if i.onSynced != nil: i.onSynced(peer, result, true)
 
 proc askPeer*(i: Internet, peer: string, msg: JNode, expectPeer = ""): Future[JNode] {.async.} =
   ## one question instead of a sync (§16, §21a) to a device in the room
-  let st = await i.openTo(peer)
+  let (st, _) = await i.openTo(peer)
   result = await askOver(i.n, i.id, st, expectPeer, msg)

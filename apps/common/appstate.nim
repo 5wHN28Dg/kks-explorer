@@ -410,7 +410,8 @@ proc snapshot*(a: App): JNode =
   newObj(@[("devices", devs), ("last_ok", if lastOk > 0: newInt(lastOk div 1000) else: newNull()),
            ("syncing", newBool(a.syncing)),
            ("relay", newStr(if a.internet != nil: a.internet.state else: "off")),
-           ("relay_online", newInt(if a.internet != nil: a.internet.online.len else: 0)), ("port", if a.listener != nil: newInt(a.listener.port) else: newNull())])
+           ("relay_online", newInt(if a.internet != nil: a.internet.online.len else: 0)),
+           ("relay_how", newStr(if a.internet != nil: a.internet.lastHow else: "")), ("port", if a.listener != nil: newInt(a.listener.port) else: newNull())])
 
 proc startSync*(a: App, port = SyncPortDefault, discovery = true) =
   ## Listener (the next free port from `port`), mDNS announce + browse, and the automatic rounds.

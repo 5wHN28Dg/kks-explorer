@@ -79,36 +79,52 @@ proc parseCand*(c: string): (string, int) =
   if i <= 0: return ("", 0)
   try: (c[0 ..< i], parseInt(c[i + 1 .. ^1])) except ValueError: ("", 0)
 
-proc punch*(u: Udp, session: string, cands: seq[string], timeout = 4000, interval = 100): Future[(string, int)] {.async.} =
-  ## Hole punching: PUNCH to every candidate until the other side is heard and has heard us. -> its address, or ("", 0)
-  var peerHost = ""
-  var peerPort = 0
-  var confirmed = false
+type PunchResult* = object
+  host*: string                 ## the address to use ("" = no direct path)
+  port*: int
+  confirmed*: bool              ## the other side heard us (PUNCH_ACK, or it already started the stream)
+  heard*: seq[string]           ## the addresses we heard it from, in order ("ip:port"): for the log
+  ms*: int
+
+proc punch*(u: Udp, session: string, cands: seq[string], timeout = 4000, interval = 100): Future[PunchResult] {.async.} =
+  ## Hole punching: PUNCH to every candidate until the other side is heard and has heard us.
+  var r: PunchResult
   u.onPacket = proc (d, h: string, p: int) =
     if d.len < HeadLen or d[1 ..< HeadLen] != session: return
+    let a = h & ":" & $p
+    if a notin r.heard and r.heard.len < 8: r.heard.add a
     let typ = uint8(d[0])
     if typ == Punch:
-      if peerHost.len == 0: (peerHost, peerPort) = (h, p)
+      if r.host.len == 0: (r.host, r.port) = (h, p)
       asyncCheck u.send(h, p, packet(PunchAck, session))
     elif typ == PunchAck:
-      if peerHost.len == 0: (peerHost, peerPort) = (h, p)
-      confirmed = true
-    elif typ in [Data, Ack, Fin, Ping] and peerHost.len > 0:
-      confirmed = true                    # the other side already started: it heard us
+      # an answer to our PUNCH: the address our packets reach it at, and it ours: prefer it to an unanswered one
+      (r.host, r.port) = (h, p)
+      r.confirmed = true
+    elif typ in [Data, Ack, Fin, Ping] and r.host.len > 0:
+      r.confirmed = true                  # the other side already started: it heard us
   let t0 = monoNow()
-  while (monoNow() - t0) * 1000 < float(timeout) and not confirmed:
-    if peerHost.len > 0: await u.send(peerHost, peerPort, packet(Punch, session))
+  while (monoNow() - t0) * 1000 < float(timeout) and not r.confirmed:
+    if r.host.len > 0: await u.send(r.host, r.port, packet(Punch, session))
     else:
       for c in cands:
         let (h, p) = parseCand(c)
         if h.len > 0: await u.send(h, p, packet(Punch, session))
     await sleepAsync(interval)
   u.onPacket = nil
-  if peerHost.len > 0: return (peerHost, peerPort)      # heard them: they will hear our acks
-  ("", 0)
+  r.ms = int((monoNow() - t0) * 1000)
+  if r.host.len == 0: r.port = 0       # heard nothing: no direct path
+  return r
 
 proc rudpStream*(u: Udp, host: string, port: int, session: string, dead = 15.0): kksnet.Stream =
   ## the reliable stream to the punched address, as a net.Stream for syncOver/serveOver
+  # The other side's address can change after punching: NATs that map each destination to its own port, or that
+  # rebind. Packets from another address with our session move the stream there (the session is the connect id's,
+  # TLS on top authenticates the peer), and the change is logged: before 2026-10-04 they were dropped, and the
+  # stream stalled with "the other device stopped answering".
+  var host = host
+  var port = port
+  var moved = 0
   let r = newRudp(session, monoNow(), dead)
   var wake = newFuture[void]("rudp")
   var stopped = false
@@ -117,10 +133,15 @@ proc rudpStream*(u: Udp, host: string, port: int, session: string, dead = 15.0):
   proc poke() =
     if not wake.finished: wake.complete()
   u.onPacket = proc (d, h: string, p: int) =
-    if h == host and p == port:
-      r.feed(d, monoNow())
-      flush()
-      poke()
+    if d.len < HeadLen or d[1 ..< HeadLen] != session: return
+    if h != host or p != port:
+      if moved < 4: stderr.writeLine "direct: the other side's address changed from " & host & ":" & $port & " to " & h & ":" & $p
+      inc moved
+      host = h
+      port = p
+    r.feed(d, monoNow())
+    flush()
+    poke()
   proc timers() {.async.} =
     while not stopped and not u.closed:
       await sleepAsync(20)
@@ -128,11 +149,19 @@ proc rudpStream*(u: Udp, host: string, port: int, session: string, dead = 15.0):
       flush()
       if r.error.len > 0: poke()
   asyncCheck timers()
+  var told = false
+  proc fail(): ref kksnet.NetError =
+    # the state when a direct stream gives up, for studying stalls in the field (once per stream)
+    if not told:
+      told = true
+      stderr.writeLine "direct: " & r.error & " with " & host & ":" & $port & ": " & r.debugState
+      stderr.flushFile()
+    newException(kksnet.NetError, r.error)
   proc readOne(): Future[string] {.async.} =
     while true:
       let got = r.read()
       if got.len > 0: return got
-      if r.error.len > 0: raise newException(kksnet.NetError, r.error)
+      if r.error.len > 0: raise fail()
       if r.ended: return ""
       wake = newFuture[void]("rudp")
       discard await withTimeout(wake, 200)
@@ -140,7 +169,7 @@ proc rudpStream*(u: Udp, host: string, port: int, session: string, dead = 15.0):
     r.write(data, monoNow())
     flush()
     while r.queued > 4 * 1024 * 1024 and r.error.len == 0: await sleepAsync(20)   # back-pressure
-    if r.error.len > 0: raise newException(kksnet.NetError, r.error)
+    if r.error.len > 0: raise fail()
   proc closeIt() =
     proc finishUp() {.async.} =
       let t0 = monoNow()

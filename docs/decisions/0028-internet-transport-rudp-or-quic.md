@@ -61,3 +61,35 @@ Sources: https://github.com/microsoft/msquic/blob/main/docs/FAQ.md · https://mi
 https://github.com/openssl/openssl/blob/master/README-QUIC.md · https://www.phoronix.com/news/OpenSSL-3.5-Released ·
 GitHub repositories microsoft/msquic, ngtcp2/ngtcp2, cloudflare/quiche, litespeedtech/lsquic, private-octopus/picoquic,
 openssl/openssl (queried 2026-09-30); docs/decisions/0013, 0017, 0027; PROTOCOL.md §18
+
+## Field test (2026-10-03/04): why the direct path fails between a phone on mobile data and a home network
+
+- **What was seen:** two phones on mobile data synced with the server over the direct path, then stalled ("the other
+  device stopped answering", diagnostics reports n=3); 0.9.1 added the fallback to the pipe. With the server's
+  per-attempt logging (2026-10-04), the user's phone on mobile data never got a single datagram through: "heard
+  nothing, no path" after the full 4 s punch, every sync.
+- **Measured** [V] (a probe on the phone through `app_process`, STUN from both sides, punches by hand):
+  - the home router maps endpoint-independently (the same outside port towards both STUN servers) but filters by
+    address *and* port: it lets in only the exact address it has sent to;
+  - the carrier NAT maps per destination (symmetric): a new random port for each STUN server, so the port the phone
+    announces is not the one it uses towards the server;
+  - neither side has a global IPv6 address (the laptop only ULA, the phone none).
+  Between a symmetric NAT with random ports and a port-restricted one, plain hole punching cannot work: the router
+  drops the phone's packets (from an unannounced port), and the phone's NAT drops the router's (sent to a port it
+  never mapped towards it). Guessing ports at scale (the "birthday" technique) is not worth its traffic and
+  unreliability for a fallback path.
+- **This is not about the transport:** QUIC (option B) punches the same way and fails the same way here. The
+  recommendation stands; the relay pipe is the expected path for phones on mobile data.
+- **Fixed in the clients** (Linux/Windows/server `internet.nim` + `udp.nim`, Android `Internet.kt` + `Direct.kt`):
+  - each sync decides its fallback from its own path: the shared `lastHow` could be overwritten by a sync answered
+    meanwhile, so a failed direct sync was sometimes not retried through the pipe;
+  - a punch that hears nothing puts that device on the pipe for an hour (on both sides: the answering side offers
+    no candidates), instead of 4 s lost on every sync;
+  - the PUNCH_ACK's source wins as the address, and the stream follows the other side when its address changes
+    (packets with the session from elsewhere; TLS on top authenticates the peer), for NATs that rebind;
+  - a direct stream that fails logs the reliable-UDP state; each punch logs what it heard.
+- **Status:** the desktop status lines show whether the last internet sync went direct or through the relay
+  (Android had it in Manage → Account).
+
+**Revisit:** if devices gain global IPv6 (then candidates should include it: no NAT in the way), or if
+phone-to-phone over the relay becomes too slow.

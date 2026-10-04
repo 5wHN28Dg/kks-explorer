@@ -87,7 +87,14 @@ proc doSelectTag(id: string, center: bool) =
 proc syncLine(): string =
   let snap = w.a.snapshot
   if w.a.syncing: return "Syncing…"
-  if snap["last_ok"].kind == jInt: "Last sync " & fromUnix(snap["last_ok"].i).local.format("HH:mm") else: "Not synced yet"
+  result = if snap["last_ok"].kind == jInt: "Last sync " & fromUnix(snap["last_ok"].i).local.format("HH:mm") else: "Not synced yet"
+  if snap["relay"].s == "online":
+    let n = snap["relay_online"].i
+    result.add " · internet: " & (if n == 1: "1 device" else: $n & " devices") & " online"
+    case snap["relay_how"].s
+    of "direct": result.add ", last sync direct"
+    of "relay": result.add ", last sync through the relay"
+    else: discard
 
 proc refresh() =
   ## the data changed underneath (a sync, an approval): reload, keep the open sheet and selection (R20)

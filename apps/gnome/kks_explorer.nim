@@ -96,6 +96,10 @@ proc statusText(w: Win): string =
   if snap["relay"].s == "online":
     let n = snap["relay_online"].i
     result.add " · internet: " & (if n == 1: "1 device" else: $n & " devices") & " online"
+    case snap["relay_how"].s
+    of "direct": result.add ", last sync direct"
+    of "relay": result.add ", last sync through the relay"
+    else: discard
 
 proc refresh(w: Win) =
   ## the data changed underneath (sync, an approval): reload, keep the open sheet and selection (R20)

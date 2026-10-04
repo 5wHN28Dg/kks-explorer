@@ -6,6 +6,7 @@ import kks.explorer.core.Net
 import kks.explorer.core.WsClient
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
@@ -144,27 +145,37 @@ object Internet {
     private val noDirectUntil = ConcurrentHashMap<String, Long>()
     private const val NO_DIRECT_MS = 3600_000L
 
-    /** §18: hole punching when both sides offered candidates, else (or when it fails) the relay pipe */
-    private fun meet(u: Direct.Udp?, ours: List<String>, theirs: List<String>, id: String, client: Boolean, expect: String): Net.Peer {
+    /** a sync that went direct and failed there: its caller retries through the pipe */
+    private class DirectFailed(e: Exception) : IOException(e.message, e)
+
+    /** §18: hole punching when both sides offered candidates, else (or when it fails) the relay pipe -> the connection
+     *  and how it goes, "direct" or "relay": each sync's own for its fallback (lastHow is the status's, and a sync
+     *  answered meanwhile can overwrite it) */
+    private fun meet(u: Direct.Udp?, ours: List<String>, theirs: List<String>, id: String, client: Boolean, expect: String,
+                     peer: String): Pair<Net.Peer, String> {
         if (u != null && ours.isNotEmpty() && theirs.isNotEmpty()) {
             val session = Direct.session(id)
             val at = Direct.punch(u, session, theirs)
             if (at != null) {
                 lastHow = "direct"
-                return Direct.connect(u, at, session, client, expect)
+                return try { Direct.connect(u, at, session, client, expect) to "direct" } catch (e: Exception) { throw DirectFailed(e) }
             }
+            // nothing came through: two NATs that can't be punched (2026-10-04: a carrier NAT with a new port per
+            // destination against a home router that only lets in the exact address it sent to). Don't spend the 4 s
+            // on this device for an hour.
+            if (peer.isNotEmpty()) noDirectUntil[peer] = System.currentTimeMillis() + NO_DIRECT_MS
         }
         u?.close()
         lastHow = "relay"
-        return Net.overPipe(WsClient("$relay/v1/pipe/$room/$id/${if (client) "a" else "b"}"), client = client, expectPeer = expect)
+        return Net.overPipe(WsClient("$relay/v1/pipe/$room/$id/${if (client) "a" else "b"}"), client = client, expectPeer = expect) to "relay"
     }
 
     /** another device asked for a sync: accept with our candidates, meet it (directly or in the pipe), answer as the TLS server */
     private fun serve(from: String, id: String, theirs: List<String>) {
         try {
-            val (u, ours) = ours()
+            val (u, ours) = ours(direct && (noDirectUntil[from] ?: 0L) < System.currentTimeMillis())    // [] = the pipe at once
             send(JSONObject().put("t", "accept").put("to", from).put("id", id).put("cand", JSONArray(ours)))
-            val p = meet(u, ours, theirs, id, client = false, expect = "")
+            val (p, _) = meet(u, ours, theirs, id, client = false, expect = "", peer = from)
             try {
                 val st = Net.drive(p, false)
                 Log.i("KKSSync", "relay sync ($lastHow) from ${p.remote.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
@@ -180,7 +191,7 @@ object Internet {
     fun syncPeer(peer: String): JSONObject {
         val tryDirect = direct && (noDirectUntil[peer] ?: 0L) < System.currentTimeMillis()
         return try { attempt(peer, tryDirect) } catch (e: Exception) {
-            if (!tryDirect || lastHow != "direct") throw e
+            if (e !is DirectFailed) throw e
             noDirectUntil[peer] = System.currentTimeMillis() + NO_DIRECT_MS
             Log.w("KKSSync", "direct sync with ${peer.take(8)} failed (${e.message}): the relay pipe for this device for an hour")
             attempt(peer, false)
@@ -202,10 +213,10 @@ object Internet {
             "gone" -> { u?.close(); throw IllegalStateException("the device is not on the relay") }
             "refuse" -> { u?.close(); throw IllegalStateException("the device refused") }
         }
-        val p = meet(u, ours, cands(a!!), id, client = true, expect = peer)
+        val (p, how) = meet(u, ours, cands(a!!), id, client = true, expect = peer, peer = peer)
         try {
-            val st = Net.drive(p, true)
-            Log.i("KKSSync", "relay sync ($lastHow) with ${peer.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
+            val st = try { Net.drive(p, true) } catch (e: Exception) { throw if (how == "direct") DirectFailed(e) else e }
+            Log.i("KKSSync", "relay sync ($how) with ${peer.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
             onSynced?.invoke(peer, st)
             return st
         } finally { p.close() }

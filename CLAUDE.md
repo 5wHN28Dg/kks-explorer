@@ -494,7 +494,15 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
     `test_stalled_direct_falls_back`.
 - **Test lesson:** `adb install -r` of an older version fails quietly after test_update's 9.9.9. The Android e2e tests
   now uninstall first and assert the install, because earlier runs had silently tested a stale build.
-- **Not done:** real NATs studied (why the direct path stalls there).
+- **Real NATs studied (2026-10-04, decision 0028 "Field test"):** a carrier NAT that maps per destination against a
+  home router that filters by address and port: plain punching can't work, and no side has global IPv6, so the pipe
+  is the expected path for phones on mobile data. Fixed: each sync's fallback from its own path (the shared `lastHow`
+  raced); a punch that hears nothing = that device on the pipe for an hour (no 4 s per sync); the stream follows an
+  address change (the first desktop version shadowed `host` after `flush` captured it: a test now covers it); stalls
+  log the rudp state. Desktop status lines show "last sync direct / through the relay".
+- **Android tests and the user's phone:** the Android e2e tests uninstall `io.github.walkdown` on whatever device adb
+  sees, and debug builds share that ID. The user's Honor holds their real account: run them only with
+  `ANDROID_SERIAL=emulator-…`, and never install/clear anything on the Honor.
 
 **Phone move without help (2026-10-03, decision 0042, PROTOCOL-v2 §21a; the user's choice "Bridge update, new ID").**
 - **Flow:** 0.8.0 → "Download and install" → the bridge (the v1 app built at the release's VERSION) → it installs
