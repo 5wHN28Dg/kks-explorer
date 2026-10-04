@@ -37,6 +37,7 @@ proc freeNative*(p: pointer) = cfree(p)
 type
   TagBox* = object
     id*, status*, code*: string
+    photos*: string                ## both · equipment · plate · none (core model.photoCover)
     x0*, y0*, x1*, y1*: float      ## points
 
   Pixels = object
@@ -44,6 +45,7 @@ type
     px: seq[byte]
 
   Viewer* = ref object
+    coverage*: bool             ## colour the tags by their photos instead of by how they were read
     hwnd*: HWND
     v: pointer
     sheet: pointer
@@ -225,6 +227,13 @@ proc updateOnScreen(v: Viewer) =
     v.onScreen = idx
     if v.uia != nil: uiaChanged(v.uia)
 
+proc coverWords(photos: string): string =
+  case photos
+  of "both": "equipment and tag plate photos"
+  of "equipment": "equipment photo only"
+  of "plate": "tag plate photo only"
+  else: "no photos"
+
 proc statusWords(s: string): string =
   case s
   of "review": "needs checking"
@@ -237,7 +246,8 @@ proc a11yInfo(ud: pointer, i: cint, name: ptr UncheckedArray[Utf16Char], cap: ci
   let v = cast[Viewer](ud)
   if i < 0 or int(i) >= v.onScreen.len: return 0
   let t = v.tags[v.onScreen[int(i)]]
-  let text = (if t.code.len > 0: t.code else: "Unread tag") & ", " & statusWords(t.status) & (if t.id == v.selected: ", selected" else: "")
+  let text = (if t.code.len > 0: t.code else: "Unread tag") & ", " & (if v.coverage: coverWords(t.photos) else: statusWords(t.status)) &
+             (if t.id == v.selected: ", selected" else: "")
   let ws = newWideCString(text)
   var k = 0
   while k < int(cap) - 1 and k < ws.len:
@@ -252,6 +262,15 @@ proc a11yInfo(ud: pointer, i: cint, name: ptr UncheckedArray[Utf16Char], cap: ci
   1
 
 proc a11yInvoke(ud: pointer, i: cint) {.cdecl.} = discard    # invocations come back as WM_APP + 7 (kks_uia.cpp)
+
+proc coverColor(photos: string): uint32 =
+  ## the photo coverage colours, the same on every client: both green, the equipment only amber, the tag plate only
+  ## blue, none red
+  case photos
+  of "both": 0x2EA043'u32
+  of "equipment": 0xE69600'u32
+  of "plate": 0x1E78E6'u32
+  else: 0xDC2828'u32
 
 proc colorOf(status: string): uint32 =
   case status
@@ -307,8 +326,10 @@ proc paint(v: Viewer) =
     for t in v.tags:
       let r = ((t.x0 - v.ox) * v.z, (t.y0 - v.oy) * v.z, (t.x1 - v.ox) * v.z, (t.y1 - v.oy) * v.z)
       if r[2] < 0 or r[3] < 0 or r[0] > cw or r[1] > ch: continue
-      let col = colorOf(t.status)
+      let col = if v.coverage and t.status != "pending": coverColor(t.photos) else: colorOf(t.status)
       let dim = v.dimming and t.id notin v.dimmed
+      if v.coverage and t.status != "pending" and not dim and t.id != v.selected:
+        viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]), col, 0.28, 1, 0, 0)
       if t.id in v.highlight: viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]), 0x1AA64D, 0.3, 1, 0, 0)
       if t.id == v.selected: viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]), col, 0.28, 1, 0, 0)
       viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]), col, (if dim: 0.18 else: 1.0), 0,

@@ -36,6 +36,19 @@ suite "model":
     let (ok, d) = m.decode(m.tagById("a:3")[1])
     check ok and d.sys == "HAD" and d.comp == "CT" and d.isa == "Temperature — Indicate, Alarm, Control"
     check not m.decode(m.tagById("a:1")[1])[0]
+  test "photo coverage: equipment, tag plate, both, none (a caption starting Tag plate)":
+    let c = sample()
+    c.state["photos"].elems.add j("""{"id":"p2","kks":"11LAB70AA501","file":"y.jxl","caption":"Tag plate · north"}""")
+    c.state["photos"].elems.add j("""{"id":"p3","kks":"11LAB70AA502","file":"z.jxl","caption":"Tag plate"}""")
+    c.state["photos"].elems.add j("""{"id":"p4","kks":"11LAB70AA504","file":"w.jxl","caption":"the valve"}""")
+    check c.photoCover("11LAB70AA501") == "both"
+    check c.photoCover("11LAB70AA502") == "plate"
+    check c.photoCover("11LAB70AA504") == "equipment"
+    check c.photoCover("11HAD70CT101R") == "none"
+    check c.photoCover("") == "none"
+    var seen: Table[string, string]
+    for t in tagsView(c, "a").elems: seen[t["code"].s] = t["photos"].s
+    check seen["11LAB70AA501"] == "both" and seen["11HAD70CT101R"] == "none"
   test "the location list: one elevation when the rows agree":
     check m.refLoc("LAB70AA501").elev == "14.5 m"
     check m.refLoc("LAB70AA501").cabinet == "C1"

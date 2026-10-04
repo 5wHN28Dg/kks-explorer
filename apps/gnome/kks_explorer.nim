@@ -209,6 +209,11 @@ proc mainScreen(w: Win): W =
   w.sheetTitle = adw_window_title_new("", "")
   let contentHeader = headerBar(w.sheetTitle)
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-fit-best-symbolic", "Fit the sheet (0)", proc () = w.v.fit()))
+  adw_header_bar_pack_end(contentHeader, iconButton("camera-photo-symbolic", "Colour tags by photos", proc () =
+    w.v.coverage = not w.v.coverage
+    gtk_widget_queue_draw(w.v.widget)
+    w.toast(if w.v.coverage: "Tags by photos: green both · amber equipment only · blue tag plate only · red none"
+            else: "Tags by how they were read")))
   adw_header_bar_pack_end(contentHeader, iconButton("list-add-symbolic", "Mark a tag the app missed", proc () = w.startMarking()))
   w.panelBox = vbox(12)
   margins(w.panelBox, 12)

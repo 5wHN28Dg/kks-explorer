@@ -68,6 +68,10 @@ proc drawingsTab(w: Win, p: Page) =
     for n in si.notes: p.label(n)
   if ok:
     p.space()
+    p.check("Colour tags by photos", w.v.coverage, proc (on: bool) =
+      w.v.coverage = on
+      InvalidateRect(w.v.hwnd, nil, 0)
+      w.toast(if on: "Tags by photos: green both · amber equipment only · blue tag plate only · red none" else: "Tags by how they were read"))
     p.buttons(("Fit the sheet (0)", proc () = w.v.fit()),      # the whole sheet again, centred (as GNOME and the web)
               ((if w.v.marking: "Stop marking" else: "Mark a missing tag"), proc () =
       w.v.marking = not w.v.marking
@@ -88,7 +92,9 @@ proc procedureDetail(w: Win, p: Page, id: string) =
   var path: seq[string]
   if pr.get("path") != nil:
     for x in pr["path"].elems: path.add x.s
-  p.dim(path.join(" › ") & " · manual page " & (if pr.get("page") != nil: $pr["page"].i else: "?"))
+  # `source`: a procedure from another document (tools/procedure_import.py); else the operation manual's page
+  let src = if s(pr, "source").len > 0: s(pr, "source") else: "manual page " & (if pr.get("page") != nil: $pr["page"].i else: "?")
+  p.dim(path.join(" › ") & " · " & src)
   let ls = w.links.filterIt(it["proc"].s == id)
   if ls.len == 0:
     p.dim("No equipment linked yet. The manual names equipment by description, not KKS: choose “Link equipment” on a " &

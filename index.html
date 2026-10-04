@@ -48,6 +48,13 @@ main{position:relative;flex:1;min-height:0;overflow:hidden}
 .hs.floor{background:rgba(79,156,255,.35);outline:3px solid var(--ok)}
 .hs.dim{opacity:.15}
 .hs.pendmark{outline:2px dashed var(--accent);background:rgba(255,122,26,.10);pointer-events:none}
+/* tags coloured by their photos (the same colours on every client): both green, the equipment only amber, the tag plate
+   only blue, none red */
+body.cover #layer .hs:not(.pendmark){outline:2px solid var(--pc);background:color-mix(in srgb,var(--pc) 28%,transparent)}
+.hs.p-both{--pc:#2ea043} .hs.p-equipment{--pc:#e69600} .hs.p-plate{--pc:#1e78e6} .hs.p-none{--pc:#dc2828}
+#coverlegend{display:none;position:absolute;left:8px;bottom:8px;z-index:5;background:var(--panel,#1c2730);color:inherit;padding:4px 8px;border-radius:6px;font-size:12px}
+body.cover #coverlegend{display:block}
+#coverlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px}
 #markbox{position:absolute;outline:2px dashed var(--accent);background:rgba(255,122,26,.18);pointer-events:none}
 #viewer.marking,#viewer.marking .hs{cursor:crosshair}
 .zoom button.on{border-color:var(--accent);color:var(--accent)}
@@ -130,7 +137,8 @@ dt{color:var(--muted)} dd{margin:0}
 </header>
 <main>
   <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"></div><canvas id="sharp"></canvas><div id="stage2"><div id="layer"></div></div></div>
-  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button></div>
+  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button></div>
+  <div id="coverlegend" role="note">Photos:<i style="background:#2ea043"></i>both<i style="background:#e69600"></i>equipment only<i style="background:#1e78e6"></i>tag plate only<i style="background:#dc2828"></i>none</div>
   <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
   <div id="toast"></div>
   <aside class="drawer" id="procDrawer"><div class="head"><h2>Operation manual procedures</h2><button class="x" data-close="procDrawer">×</button></div>
@@ -249,6 +257,8 @@ function markMode(on){
   else{ $('#banner').style.display='none'; $('#bannerDone').textContent='Done'; $('#markbox')?.remove(); mark.start=null }
 }
 $('#zmark').onclick=()=>markMode(!mark.on);
+$('#zcover').onclick=()=>{ const on=document.body.classList.toggle('cover'); $('#zcover').classList.toggle('on',on);
+  $('#zcover').setAttribute('aria-pressed',String(on)); drawTags() };
 function toStage(e){ const r=$('#viewer').getBoundingClientRect(); return {x:(e.clientX-r.left-view.x)/view.s, y:(e.clientY-r.top-view.y)/view.s} }
 function markDraw(e,phase){
   const p=toStage(e);
@@ -432,15 +442,19 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
   el.addEventListener('click',e=>{ if(moved){e.stopPropagation();e.preventDefault()} },true);
 })();
 
+// a photo of the tag plate is a photo whose caption starts with "Tag plate" (PROTOCOL-v2 §9; core model.photoCover)
+function photoCover(k){ if(!k) return 'none'; let e=false,p=false; for(const x of STATE.photos||[]) if(x.kks===k){ if((x.caption||'').startsWith('Tag plate')) p=true; else e=true }
+  return e&&p?'both':e?'equipment':p?'plate':'none' }
+const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
 function drawTags(){
   const L=$('#layer'); L.innerHTML='';
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   for(const t of tagsOf(cur.id)){
     const d=document.createElement('div'), b=t.bbox, k=full(t);
-    d.className='hs'+(t.status==='review'?' review':'')+(t.id===selId?' sel':'')+(k&&hl.has(k)?' hl':'');
+    d.className='hs'+(t.status==='review'?' review':'')+(t.id===selId?' sel':'')+(k&&hl.has(k)?' hl':'')+' p-'+photoCover(k);
     if(floor){ const f=floorOf(t); d.classList.add(f.toLowerCase()===floor.toLowerCase()?'floor':'dim') }
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`;
-    d.title=k||'unreadable tag'; d.onclick=e=>{e.stopPropagation(); tagClick(t)}; L.appendChild(d);
+    d.title=(k||'unreadable tag')+(document.body.classList.contains('cover')?' · '+COVER_WORDS[photoCover(k)]:''); d.onclick=e=>{e.stopPropagation(); tagClick(t)}; L.appendChild(d);
   }
   // your marks awaiting approval (sent, or queued offline)
   for(const p of [...(STATE.mine||[]).filter(s=>s.kind==='tag_add').map(s=>s.payload),...K.outbox.filter(i=>i.kind==='tag_add').map(i=>i.payload)]){
@@ -682,7 +696,7 @@ function renderProcDetail(id){
   const byKks=k=>TAGS.map(eff).filter(t=>t&&full(t)===k);
   const counts={}; for(const l of L) for(const t of byKks(l.kks)) counts[t.sheet]=(counts[t.sheet]||0)+1;
   let h=`<button class="ghost" onclick="activeProc=null;renderProcs();drawTags()">← All procedures</button>
-    <h3 style="margin:12px 0 2px">${esc(p.id)} ${esc(p.title)}</h3><div class="sub">${esc(p.path.join(' › '))} · manual page ${p.page}</div>`;
+    <h3 style="margin:12px 0 2px">${esc(p.id)} ${esc(p.title)}</h3><div class="sub">${esc(p.path.join(' › '))} · ${p.source?esc(p.source):`manual page ${esc(p.page??'?')}`}</div>`;
   if(Object.keys(counts).length) h+=`<div style="margin:8px 0">Linked equipment on: ${Object.entries(counts).map(([s,n])=>`<span class="chip" onclick="openSheet(${jsa(s)})">${esc(SHEETS.find(x=>x.id===s).name)} (${n})</span>`).join('')}</div>`;
   else h+=`<div class="warn">No equipment linked yet. The manual names equipment by description, not KKS — tap “Link equipment” on a step, then tap the matching tags on the drawing. You do this once per step.</div>`;
   for(const s of p.steps){

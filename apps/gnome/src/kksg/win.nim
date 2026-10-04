@@ -80,7 +80,8 @@ proc tagBoxes*(w: Win, sheet: string): seq[TagBox] =
   let s = if ok and si.scale > 0: si.scale else: 2.0
   for t in w.m.tagsOf(sheet):
     result.add TagBox(id: t.id, x0: t.bbox[0] / s, y0: t.bbox[1] / s, x1: t.bbox[2] / s, y1: t.bbox[3] / s,
-                      status: (if t.status == "confirmed": "verified" else: t.status), label: t.full)
+                      status: (if t.status == "confirmed": "verified" else: t.status), label: t.full,
+                      photos: w.m.photoCover(t.full))
   # my pending marks (R6), dashed
   for sub in w.myOpen():
     if sub["kind"].s == "tag_add" and sub.get("payload") != nil:

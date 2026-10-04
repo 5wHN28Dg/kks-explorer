@@ -34,7 +34,8 @@ proc tagsView*(m: Model, sheet: string): JNode =
   for t in m.tagsOf(sheet):
     result.elems.add O(("id", S(t.id)), ("code", S(t.full)), ("isa", S(t.isa)),
                        ("status", S(if t.status == "confirmed": "verified" else: t.status)),
-                       ("x0", F(t.bbox[0] / s)), ("y0", F(t.bbox[1] / s)), ("x1", F(t.bbox[2] / s)), ("y1", F(t.bbox[3] / s)))
+                       ("x0", F(t.bbox[0] / s)), ("y0", F(t.bbox[1] / s)), ("x1", F(t.bbox[2] / s)), ("y1", F(t.bbox[3] / s)),
+                       ("photos", S(m.photoCover(t.full))))
 
 proc searchView*(m: Model, q: string): JNode =
   result = newArr()

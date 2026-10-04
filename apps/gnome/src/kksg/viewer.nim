@@ -22,6 +22,7 @@ type
     id*: string
     x0*, y0*, x1*, y1*: float    ## points
     status*: string              ## auto · verified · review · pending (a proposed mark)
+    photos*: string              ## both · equipment · plate · none (core model.photoCover)
     label*: string               ## for the accessible list and tooltips
 
   DecodeJob = object
@@ -32,6 +33,7 @@ type
     pixels: string
 
   Viewer* = ref object
+    coverage*: bool              ## colour the tags by their photos instead of by how they were read
     widget*: W
     sheet*: Sheet
     name*: string
@@ -200,6 +202,15 @@ proc renderSome(v: Viewer) =
   else: idle(proc () = v.renderSome())
 
 
+proc coverColor*(photos: string): (float, float, float) =
+  ## the photo coverage colours, the same on every client: both green, the equipment only amber, the tag plate only
+  ## blue, none red
+  case photos
+  of "both": (0.18, 0.63, 0.26)
+  of "equipment": (0.9, 0.59, 0.0)
+  of "plate": (0.12, 0.47, 0.9)
+  else: (0.86, 0.16, 0.16)
+
 proc tagColor(status: string): (float, float, float) =
   case status
   of "verified": (0.15, 0.6, 0.25)
@@ -285,7 +296,7 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     let tw = (t.x1 - t.x0) * v.z
     let th = (t.y1 - t.y0) * v.z
     if x + tw < 0 or y + th < 0 or x > float(w) or y > float(h): continue
-    var (cr, cg, cb) = tagColor(t.status)
+    var (cr, cg, cb) = if v.coverage and t.status != "pending": coverColor(t.photos) else: tagColor(t.status)
     let sel = t.id == v.selected
     let hit = t.id in v.hits
     let dim = v.floorOn and t.id notin v.floorIds
@@ -300,6 +311,10 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
       cairo_rectangle(c, x, y, tw, th)
       cairo_stroke(c)
       continue
+    if v.coverage and t.status != "pending" and not (sel or hit):
+      cairo_set_source_rgba(c, cr, cg, cb, 0.28)
+      cairo_rectangle(c, x, y, tw, th)
+      cairo_fill(c)
     if sel or hit:
       cairo_set_source_rgba(c, if hit and not sel: 1.0 else: cr, if hit and not sel: 0.85 else: cg, if hit and not sel: 0.0 else: cb, 0.28)
       cairo_rectangle(c, x, y, tw, th)

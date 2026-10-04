@@ -195,6 +195,17 @@ proc photosOf*(m: Model, k: string): seq[JNode] =
     for p in ph.elems:
       if p.s("kks") == k: result.add p
 
+const PlateCaption* = "Tag plate"
+  ## a photo of the equipment's tag plate is a photo whose caption starts with this (PROTOCOL-v2 §9: a convention)
+
+proc photoCover*(m: Model, k: string): string =
+  ## which photos a code has: "both", "equipment", "plate" or "none" (the drawings' photo coverage view)
+  if k.len == 0: return "none"
+  var equip, plate = false
+  for p in m.photosOf(k):
+    if p.s("caption").startsWith(PlateCaption): plate = true else: equip = true
+  if equip and plate: "both" elif equip: "equipment" elif plate: "plate" else: "none"
+
 proc procsOf*(m: Model, k: string): seq[string] =
   let links = if m.state != nil: m.state.get("links") else: nil
   if links != nil:

@@ -63,7 +63,8 @@ private fun ProcedureDetail(ui: Ui, id: String, rev: Int, snack: SnackbarHostSta
                 TextButton(onClick = { ui.activeProc = "" }) { Text("Back") }
             }
             val path = p.optJSONArray("path")?.let { a -> (0 until a.length()).joinToString(" › ") { a.getString(it) } }.orEmpty()
-            Dim(path + " · manual page " + p.optInt("page").let { if (it > 0) "$it" else "?" })
+            // `source`: a procedure from another document (tools/procedure_import.py); else the operation manual's page
+            Dim(path + " · " + p.optString("source").ifEmpty { "manual page " + p.optInt("page").let { if (it > 0) "$it" else "?" } })
             if (links.isEmpty()) Dim("No equipment linked yet. The manual names equipment by description, not KKS: choose “Link equipment” on a step, then tap the matching tags on the drawing.")
             else TextButton(onClick = { ui.tab = "drawings" }) { Text("Show the linked equipment on the drawings") }
             if (p.str("intro").isNotEmpty()) Text(p.str("intro"))

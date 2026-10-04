@@ -28,7 +28,8 @@ import kotlin.math.*
  */
 @SuppressLint("ViewConstructor")
 class SheetView(ctx: Context) : View(ctx) {
-    data class TagBox(val id: String, val x0: Float, val y0: Float, val x1: Float, val y1: Float, val status: String, val code: String = "")
+    data class TagBox(val id: String, val x0: Float, val y0: Float, val x1: Float, val y1: Float, val status: String, val code: String = "",
+                      val photos: String = "none")      // both · equipment · plate · none (the photo coverage view)
 
     private class Sheet(b: ByteArray) {
         val buf: ByteBuffer = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN)
@@ -212,7 +213,7 @@ class SheetView(ctx: Context) : View(ctx) {
             info.className = "android.widget.Button"
             info.setParent(this@SheetView)
             info.contentDescription = t.code.ifEmpty { "Unread tag" } + ", " +
-                when (t.status) { "review" -> "needs checking"; "verified" -> "verified"; else -> "read automatically" } +
+                (if (coverage) coverWords(t.photos) else when (t.status) { "review" -> "needs checking"; "verified" -> "verified"; else -> "read automatically" }) +
                 if (t.id == selected) ", selected" else ""
             val r = screenRect(t); r.intersect(0, 0, width, height)
             info.setBoundsInParent(r)
@@ -293,6 +294,9 @@ class SheetView(ctx: Context) : View(ctx) {
     private val bg = Paint().apply { color = Color.rgb(209, 212, 217) }
     private val white = Paint().apply { color = Color.WHITE }
     private val bmpPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    /** colour the tags by their photos instead of by how they were read (Drawings → ⋮ → Colour tags by photos) */
+    var coverage = false
+        set(v) { field = v; invalidate(); a11y.invalidateRoot() }
     private val tagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
@@ -344,8 +348,10 @@ class SheetView(ctx: Context) : View(ctx) {
         for (t in tags) {
             val r = RectF((t.x0 - ox) * z, (t.y0 - oy) * z, (t.x1 - ox) * z, (t.y1 - oy) * z)
             if (r.right < 0 || r.bottom < 0 || r.left > width || r.top > height) continue
-            val col = when (t.status) { "verified" -> Color.rgb(38, 153, 64); "review" -> Color.rgb(242, 140, 0); "pending" -> Color.rgb(140, 51, 191); else -> Color.rgb(26, 102, 230) }
+            val col = if (coverage && t.status != "pending") coverColor(t.photos)
+                else when (t.status) { "verified" -> Color.rgb(38, 153, 64); "review" -> Color.rgb(242, 140, 0); "pending" -> Color.rgb(140, 51, 191); else -> Color.rgb(26, 102, 230) }
             val dim = dimmed?.let { t.id !in it } == true
+            if (coverage && t.status != "pending" && !dim) { fillPaint.color = Color.argb(70, Color.red(col), Color.green(col), Color.blue(col)); c.drawRect(r, fillPaint) }
             if (t.id in highlight) { fillPaint.color = Color.argb(77, 26, 166, 77); c.drawRect(r, fillPaint) }
             if (t.id == selected) { fillPaint.color = Color.argb(71, Color.red(col), Color.green(col), Color.blue(col)); c.drawRect(r, fillPaint) }
             tagPaint.color = if (dim) Color.argb(46, Color.red(col), Color.green(col), Color.blue(col)) else col
@@ -430,4 +436,13 @@ class SheetView(ctx: Context) : View(ctx) {
         while (ii < imgs.size) drawImage(imgs[ii++])
         return bmp
     }
+}
+
+/** the photo coverage colours, the same on every client: both green, the equipment only amber, the tag plate only
+ *  blue, none red */
+fun coverColor(photos: String): Int = when (photos) {
+    "both" -> Color.rgb(46, 160, 67); "equipment" -> Color.rgb(230, 150, 0); "plate" -> Color.rgb(30, 120, 230); else -> Color.rgb(220, 40, 40)
+}
+fun coverWords(photos: String) = when (photos) {
+    "both" -> "equipment and tag plate photos"; "equipment" -> "equipment photo only"; "plate" -> "tag plate photo only"; else -> "no photos"
 }

@@ -31,7 +31,10 @@ proc procedureDetail(w: Win, id: string, box: W) =
   if p.get("path") != nil:
     for x in p["path"].elems: path.add x.s
   box.add label(s(p, "id") & "  " & s(p, "title"), "title-4", selectable = true)
-  box.add label(path.join(" › ") & " · manual page " & (if p.get("page") != nil: $p["page"].i else: "?"), "dim-label")
+  # `source`: a procedure from another document (tools/procedure_import.py); else the operation manual's page
+  let src = if p.get("source") != nil and p["source"].kind == jStr and p["source"].s.len > 0: p["source"].s
+            else: "manual page " & (if p.get("page") != nil: $p["page"].i else: "?")
+  box.add label(path.join(" › ") & " · " & src, "dim-label")
   let ls = w.links.filterIt(it["proc"].s == id)
   var counts = initOrderedTable[string, int]()
   for l in ls:

@@ -2,6 +2,7 @@ package kks.explorer.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,7 +54,7 @@ fun sheets(): List<SheetInfo> = call("GET", "/native/sheets").json.optJSONArray(
 
 fun tagBoxes(sheet: String, scale: Float): List<SheetView.TagBox> = call("GET", "/native/tags", query = mapOf("sheet" to sheet)).json.optJSONArray("tags").objects().map {
     SheetView.TagBox(it.getString("id"), it.getDouble("x0").toFloat(), it.getDouble("y0").toFloat(), it.getDouble("x1").toFloat(),
-        it.getDouble("y1").toFloat(), it.getString("status"), it.optString("code"))
+        it.getDouble("y1").toFloat(), it.getString("status"), it.optString("code"), it.optString("photos", "none"))
 } + call("GET", "/api/submissions", query = mapOf("status" to "open")).json.optJSONArray("submissions").objects()   // my proposed marks, dashed
     .filter { it.optBoolean("mine") && it.str("kind") == "tag_add" && it.optJSONObject("payload")?.str("sheet") == sheet }
     .mapNotNull { sub ->
@@ -67,6 +68,7 @@ class Ui {
     var tab by mutableStateOf("drawings")
     var sheet by mutableStateOf("")
     var selected by mutableStateOf("")
+    var coverage by mutableStateOf(false)                  // the drawings coloured by photos
     var focus by mutableStateOf<List<Float>?>(null)       // a tag to zoom to once its sheet is shown
     var activeProc by mutableStateOf("")
     var linkProc by mutableStateOf("")
@@ -169,6 +171,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     }
     LaunchedEffect(boxes, view) { view?.tags = boxes }
     LaunchedEffect(ui.selected, view) { view?.selected = ui.selected }
+    LaunchedEffect(ui.coverage, view) { view?.coverage = ui.coverage }
     LaunchedEffect(linkedCodes, boxes, view) { view?.highlight = boxes.filter { it.code in linkedCodes }.map { it.id }.toSet() }
     LaunchedEffect(ui.floor, floors, view) {
         view?.dimmed = if (ui.floor.isEmpty()) null else floors.optJSONArray(ui.floor)?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
@@ -189,6 +192,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             Box {
                 IconButton(onClick = { floorMenu = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
                 DropdownMenu(floorMenu, { floorMenu = false }) {
+                    if (current != null) DropdownMenuItem(text = { Text("Colour tags by photos" + if (ui.coverage) " ✓" else "") },
+                        onClick = { ui.coverage = !ui.coverage; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
                         onClick = { marking = !marking; ui.selected = ""; floorMenu = false })
                     if (current != null && current.notes.isNotEmpty()) DropdownMenuItem(text = { Text("Notes on this sheet (${current.notes.size})") },
@@ -206,6 +211,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { current.notes.forEach { Text(it) } } },
             confirmButton = { TextButton(onClick = { notesOpen = false }) { Text("Close") } })
         if (ui.floor.isNotEmpty()) Dim("  Showing floor ${ui.floor}: other tags are dimmed")
+        if (ui.coverage) CoverageLegend()
         Box(Modifier.fillMaxSize()) {
             AndroidView(factory = { c -> SheetView(c).also { v -> view = v } }, modifier = Modifier.fillMaxSize(), update = { v ->
                 v.onMark = { x0, y0, x1, y1 ->
@@ -338,6 +344,20 @@ fun UpdateBanner() {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(Updates.busy ?: Updates.error ?: "Walkdown ${Updates.latest?.version} is out.", Modifier.weight(1f))
             if (Updates.busy == null) TextButton(onClick = { scope.launch(Dispatchers.IO) { Updates.install(ctx.applicationContext) } }) { Text("Install") }
+        }
+    }
+}
+
+/** what the photo coverage colours mean (shown while they are on) */
+@Composable
+private fun CoverageLegend() {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).semantics(mergeDescendants = true) {},
+        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        for ((k, lab) in listOf("both" to "Both", "equipment" to "Equipment", "plate" to "Tag plate", "none" to "None")) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(12.dp).background(androidx.compose.ui.graphics.Color(coverColor(k))))
+                Spacer(Modifier.width(4.dp)); Text(lab, style = MaterialTheme.typography.labelMedium)
+            }
         }
     }
 }
