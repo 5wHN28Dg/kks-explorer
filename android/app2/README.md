@@ -5,7 +5,8 @@ as `io.github.walkdown` (Walkdown; the code namespace stays `kks.explorer.v2`), 
 
 ## Build
 
-    sh android/nim/build.sh                      # libkks.so for arm64-v8a + x86_64 (NDK 27, SQLite compiled in)
+    sh android/nim/build.sh                      # libkks.so for arm64-v8a + x86_64 (NDK 27, SQLite compiled in); the release
+                                                 # APK takes arm64-v8a only (decision 0046)
     cd android && JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 ./gradlew :app2:assembleDebug
 
 Gradle fetches and checks (SHA-256) libjxl v0.12.0 and zxing-cpp v3.1.1, and builds them with CMake

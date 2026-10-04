@@ -23,7 +23,6 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersion
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild {
             cmake {
                 arguments += listOf("-DLIBJXL_SRC=${layout.buildDirectory.dir("third_party/libjxl").get().asFile}",
@@ -47,7 +46,12 @@ android {
         }
     }
     buildTypes {
+        // native code per build type: phones are arm64 (32-bit-only phones are not supported, 2026-10-04); x86_64 only for
+        // the emulator, so the release APK leaves it out (9 MB). The libraries stay uncompressed: compressed ones are
+        // extracted at install and take more space on the phone than they save in the download (extractNativeLibs).
+        debug { ndk { abiFilters += listOf("arm64-v8a", "x86_64") } }
         release {
+            ndk { abiFilters += listOf("arm64-v8a") }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -57,6 +61,7 @@ android {
         // receivers: the e2e tests run on it before a release (assembleRehearsal)
         create("rehearsal") {
             initWith(getByName("release"))
+            ndk { abiFilters.clear(); abiFilters += listOf("arm64-v8a", "x86_64") }     // the e2e tests run on the emulator
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
         }
