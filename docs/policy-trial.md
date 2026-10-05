@@ -11,6 +11,8 @@ Sources:
   - the first, on the adoption commit: 4 leads and 1 inline comment ("review #1"–"#4" below);
   - the second, after this file was added: 7 leads and 3 more inline comments ("review 2 #1"–"#7"). Its #1, #3–#7
     repeat entries already below (1.1–1.4, 1.5, 1.10, 1.7, 1.8, 1.11); its #2 is new (1.15);
+  - the third, after 1.15 was added: 7 leads and 1 more inline comment ("review 3 #1"–"#7"). All repeat entries
+    below; two cite a rule that doesn't apply to this PR (2.8, 2.9);
 - **gitleaks local:** gitleaks 8.30.1 (the CI version, checksum verified) run locally with a JSON report, to see what
   CI's redacted "69 leaks" were.
 
@@ -51,6 +53,9 @@ Every finding is sorted into one of three groups:
 | 2.5 | WEB-10 | CI static-analysis: `common.js:552` (`K.lightbox`), `common.js:628` (the photo editor's `base.src`) | An image `src` set from a parameter. | The callers pass `this.src` of an image the page already shows (`photos/<escaped hash name>`, `data/sheets/<id>.png`), or a `data:` URL the page made itself with `canvas.toDataURL`. Image `src` can't execute script. The rule lists `src` without telling `<img>` apart from `<script>`/`<iframe>`. |
 | 2.6 | WEB-9 | CI static-analysis: `common.js:565`–`574` (the photo editor's toolbar) | A template literal assigned to `innerHTML`. | Every interpolation is a constant: button labels and colours from literal arrays, and `askNote`, which picks between two literal strings. No data reaches the sink. |
 | 2.7 | Review #1, the "no `docs/` files" part | review | "The only `docs/` files I found are COURSES, PROTOCOL-v2, PATHSTORE, GLYPHLIB and m6/*." | `docs/decisions/` (48 records, including the dependency audits 0001–0013) exists; the review's checkout hides it on purpose (the `hide` list). The missing-artifact part of #1 is real (1.1–1.4, 1.7). |
+
+| 2.8 | Gov §6 block list, "disables or suppresses a CI check without a recorded reason" | review 3 #2 | Cited as blocking because known issues (1.12–1.15) are recorded without a Section 10 exception. | This PR disables and suppresses nothing: every check runs and fails as it found. The underlying point (no exception, owner or deadline for known issues) is 1.15. |
+| 2.9 | Gov §6 block list, "no tests for new behavior on tier 2 and up" | review 3 #3 | Cited as blocking because CI runs no x86-64 test suite. | This PR adds no behavior (a README header, CI configuration, a findings document), so there is nothing new to test. The missing test jobs are real, and recorded as 1.10. |
 
 ## 3. Rules or checks that don't fit this project
 
