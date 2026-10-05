@@ -70,6 +70,37 @@ object Jxl {
         return bmp
     }
 
+    /** A piece of a large image: its bitmap and where it sits (px) */
+    class Piece(val bmp: Bitmap, val x: Int, val y: Int)
+
+    /** A JXL file → its pixels cut into bitmaps of at most `side` × `side` px, or null. The overview pyramid's level 0
+     *  is up to 6400 × 4800 px (123 MB as one ARGB bitmap), and Android's canvas refuses to draw a bitmap over 100 MB
+     *  ("Canvas: trying to draw too large bitmap": the crash on the Block 1 Main Steam sheet, 2026-10-05); GPUs also
+     *  have a largest texture size (4096 on some phones). Pieces stay under both. */
+    fun pieces(jxl: ByteArray, side: Int = 2048): Pair<List<Piece>, IntArray>? {
+        val dims = IntArray(2)
+        val px = decodeRgba(jxl, dims) ?: return null
+        val (w, h) = dims[0] to dims[1]
+        val out = ArrayList<Piece>()
+        var y = 0
+        while (y < h) {
+            val ph = minOf(side, h - y)
+            var x = 0
+            while (x < w) {
+                val pw = minOf(side, w - x)
+                val buf = ByteBuffer.allocate(pw * ph * 4)
+                for (r in 0 until ph) buf.put(px, ((y + r) * w + x) * 4, pw * 4)
+                buf.rewind()
+                val bmp = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
+                bmp.copyPixelsFromBuffer(buf)        // memory order R, G, B, A
+                out.add(Piece(bmp, x, y))
+                x += pw
+            }
+            y += ph
+        }
+        return out to dims
+    }
+
     /** A JXL file -> a 24-bit BMP of its pixels (for the WebView), or null if it can't be decoded. */
     fun toBmp(jxl: ByteArray): ByteArray? {
         val dims = IntArray(2)

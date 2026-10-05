@@ -76,7 +76,8 @@ class SheetView(ctx: Context) : View(ctx) {
 
     private var sheet: Sheet? = null
     private var scale0 = 2f
-    private var levels = arrayOfNulls<Bitmap>(0)
+    private class Level(val pieces: List<kks.explorer.Jxl.Piece>, val w: Int, val h: Int)
+    private var levels = arrayOfNulls<Level>(0)
     private var levelAsked = BooleanArray(0)
     private var sheetId = ""
     private var gen = 0
@@ -106,13 +107,13 @@ class SheetView(ctx: Context) : View(ctx) {
         levelAsked[k] = true
         val g = gen; val id = sheetId
         work.execute {
-            val bmp = Core.file("sheets/$id.o$k.jxl")?.let { Jxl.bitmap(it) }
-            main.post { if (g == gen && bmp != null) { levels[k] = bmp; invalidate() } }
+            val lv = Core.file("sheets/$id.o$k.jxl")?.let { Jxl.pieces(it) }?.let { (p, d) -> Level(p, d[0], d[1]) }
+            main.post { if (g == gen && lv != null) { levels[k] = lv; invalidate() } }
         }
     }
 
     private fun sheetSize(): Pair<Float, Float> = sheet?.let { it.widthPt to it.heightPt }
-        ?: levels.firstOrNull { it != null }?.let { b -> val k = levels.indexOf(b); val s = scale0 / (1 shl k); (b.width / s) to (b.height / s) }
+        ?: levels.firstOrNull { it != null }?.let { b -> val k = levels.indexOf(b); val s = scale0 / (1 shl k); (b.w / s) to (b.h / s) }
         ?: (1f to 1f)
 
     fun fit() {
@@ -316,7 +317,11 @@ class SheetView(ctx: Context) : View(ctx) {
         for (k in levels.indices.reversed()) if (scale0 / (1 shl k) >= z * 0.9f) { want = k; break }
         askLevel(want)
         val best = levels[want] ?: levels.firstOrNull { it != null }
-        if (best != null) c.drawBitmap(best, null, dst, bmpPaint) else c.drawRect(dst, white)
+        if (best != null) {
+            val f = dst.width() / best.w
+            for (p in best.pieces) c.drawBitmap(p.bmp, null, RectF(dst.left + p.x * f, dst.top + p.y * f,
+                dst.left + (p.x + p.bmp.width) * f, dst.top + (p.y + p.bmp.height) * f), bmpPaint)
+        } else c.drawRect(dst, white)
         if (best != null && !firstLogged) {   // measurements: process start → the first sheet on screen
             firstLogged = true
             android.util.Log.i("KKSTime", "first sheet ${android.os.SystemClock.uptimeMillis() - android.os.Process.getStartUptimeMillis()} ms after process start")

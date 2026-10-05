@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -75,6 +76,7 @@ class Ui {
     var linkStep by mutableIntStateOf(0)
     var floor by mutableStateOf("")
     var focusSeq by mutableIntStateOf(0)
+    var fullView by mutableStateOf(false)                 // the drawing alone: no header, no search (more room)
 
     /** show a tag on its drawing (from search, a procedure, the review queue, "appears on") */
     fun show(tagId: String) {
@@ -183,7 +185,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
         v.post { v.centerOn(b[0], b[1], b[2], b[3], cy = 0.22f) }
     }
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(current?.name ?: "Walkdown") }, actions = {
+        // long sheet names wrap to two lines in a smaller style, then end in "…" (the full name is in Sheets)
+        if (!ui.fullView) TopAppBar(title = { Text(current?.name ?: "Walkdown", maxLines = 2, style = MaterialTheme.typography.titleMedium,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }, actions = {
             TextButton(onClick = { drawer = !drawer }) { Text(if (drawer) "Close" else "Sheets") }
             TextButton(onClick = { scope.launch {
                 val n = withContext(Dispatchers.IO) { Sync.syncAll(ctx.applicationContext, wait = true) }
@@ -212,7 +216,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             confirmButton = { TextButton(onClick = { notesOpen = false }) { Text("Close") } })
         if (ui.floor.isNotEmpty()) Dim("  Showing floor ${ui.floor}: other tags are dimmed")
         if (ui.coverage) CoverageLegend()
-        Box(Modifier.fillMaxSize()) {
+        // clipped: zoomed in, the drawing used to draw over the header (the user's video, 2026-10-05); full screen is
+        // a choice now (the button above Fit)
+        Box(Modifier.fillMaxSize().clipToBounds()) {
             AndroidView(factory = { c -> SheetView(c).also { v -> view = v } }, modifier = Modifier.fillMaxSize(), update = { v ->
                 v.onMark = { x0, y0, x1, y1 ->
                     val sc = current?.scale ?: 2f
@@ -234,8 +240,15 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 Text("Waiting for the drawings. They arrive with the next sync from a device that has them.", Modifier.padding(16.dp))
             }
             // the whole sheet again, centred (the web viewer's ⤢, GNOME's header button, the 0 key on desktops)
-            if (current != null) SmallFloatingActionButton(onClick = { view?.fit() }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-                .semantics { contentDescription = "Fit the sheet to the screen" }) { Icon(Glyphs.FIT, contentDescription = null) }
+            if (current != null) Column(Modifier.align(Alignment.BottomEnd).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SmallFloatingActionButton(onClick = { ui.fullView = !ui.fullView },
+                    modifier = Modifier.semantics { contentDescription = if (ui.fullView) "Show the header and search" else "Full screen: the drawing only" }) {
+                    Icon(if (ui.fullView) Glyphs.FULLSCREEN_EXIT else Glyphs.FULLSCREEN, contentDescription = null)
+                }
+                SmallFloatingActionButton(onClick = { view?.fit() }, modifier = Modifier.semantics { contentDescription = "Fit the sheet to the screen" }) {
+                    Icon(Glyphs.FIT, contentDescription = null)
+                }
+            }
             Column(Modifier.fillMaxWidth().padding(8.dp)) {
                 if (marking) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                     Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -249,10 +262,10 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                         TextButton(onClick = { ui.tab = "procedures"; ui.linkProc = "" }) { Text("Done") }
                     }
                 }
-                OutlinedTextField(query, { query = it }, placeholder = { Text("Search KKS or description") }, singleLine = true,
+                if (!ui.fullView) OutlinedTextField(query, { query = it }, placeholder = { Text("Search KKS or description") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search equipment by KKS code or description" },
                     colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface))
-                if (query.trim().length >= 2) {
+                if (!ui.fullView && query.trim().length >= 2) {
                     val res = remember(query, rev) { call("GET", "/native/search", query = mapOf("q" to query.trim())).json.optJSONArray("results").objects() }
                     Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                         if (res.isEmpty()) Text("Nothing found", Modifier.padding(16.dp))

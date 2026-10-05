@@ -110,6 +110,29 @@ static void update_stream(pdf_document *doc, pdf_obj *obj, fz_buffer *buf)
 	pdf_update_stream(g_ctx, doc, obj, buf, 0);
 }
 
+/* src with its annotations made part of the page (pdf_bake_document: their appearance streams become page content),
+   saved to dst, for the overview pyramid: show_pdf_page carries only the page's content, so the overview lacked the
+   markup (clouds, lines, stamps, notes) that the path store has (fz_run_page draws annotations), and the red marks
+   came and went with the zoom (the user, 2026-10-05). Returns the number of annotations baked, or -1. */
+int kks_bake_annots(const char *src, const char *dst)
+{
+	int n = -1;
+	pdf_document *d = NULL;
+	fz_var(d); fz_var(n);
+	fz_try(g_ctx) {
+		d = pdf_open_document(g_ctx, src);
+		pdf_page *p = pdf_load_page(g_ctx, d, 0);
+		n = 0;
+		for (pdf_annot *a = pdf_first_annot(g_ctx, p); a; a = pdf_next_annot(g_ctx, a)) n++;
+		fz_drop_page(g_ctx, (fz_page *)p);
+		pdf_bake_document(g_ctx, d, 1, 0);
+		pdf_save_document(g_ctx, d, dst, NULL);
+	}
+	fz_always(g_ctx) pdf_drop_document(g_ctx, d);
+	fz_catch(g_ctx) { snprintf(g_error, sizeof g_error, "%s", fz_caught_message(g_ctx)); n = -1; }
+	return n;
+}
+
 /* Returns a new document (the saved-and-reopened copy) or NULL; kks_error() says why. */
 fz_document *kks_rotated_copy(const char *src, int extra)
 {

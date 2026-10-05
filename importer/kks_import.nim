@@ -165,6 +165,12 @@ proc main() =
   let notes = srcDoc.annotNotes()
   srcDoc.close()
   log "Rendering the overview pyramid..."
+  # with the annotations, like the path store (the tags were read without them: markup isn't equipment)
+  let baked = getTempDir() / ("kks-import-" & $getCurrentProcessId() & "-baked.pdf")
+  if bakeAnnots(src, baked) > 0:
+    doc.close()
+    doc = rotatedCopy(baked, rot)
+  removeFile(baked)
   let (pw, ph) = doc.pageSize
   let z = min(2.0, OverviewMax / max(float(pw), float(ph)))
   var levels = 0

@@ -53,6 +53,7 @@ proc kks_error(): cstring {.importc, cdecl.}
 proc kks_open(path: cstring): Doc {.importc, cdecl.}
 proc kks_close(d: Doc) {.importc, cdecl.}
 proc kks_rotated_copy(src: cstring, extra: cint): Doc {.importc, cdecl.}
+proc kks_bake_annots(src, dst: cstring): cint {.importc, cdecl.}
 proc kks_page_size(d: Doc, w, h: ptr cfloat): cint {.importc, cdecl.}
 proc kks_render_gray(d: Doc, zoom: cdouble, hasClip: cint, x0, y0, x1, y1: cdouble, minLw: cfloat,
                      w, h, x, y: ptr cint): ptr UncheckedArray[byte] {.importc, cdecl.}
@@ -95,6 +96,11 @@ proc rotatedCopy*(src: string, extra: int): Doc =
   ## extractor/orient.py rotated_copy(src, dst, extra), kept in memory.
   result = kks_rotated_copy(src, cint(extra))
   if result.isNil: fail()
+
+proc bakeAnnots*(src, dst: string): int =
+  ## src with page 0's annotations baked into its content, saved as dst (for the overview) -> how many there were
+  result = int(kks_bake_annots(src, dst))
+  if result < 0: fail()
 
 proc pageSize*(d: Doc): (float32, float32) =
   var w, h: cfloat

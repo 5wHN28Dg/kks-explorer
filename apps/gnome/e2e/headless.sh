@@ -8,7 +8,7 @@
 #   the desktop (2026-10-04): the private bus started a second xdg-document-portal, which took over
 #   /run/user/$UID/doc and unmounted it when the session ended;
 # - its own XDG data/config/cache/state folders (below), for the same reason: the user's keyring and settings;
-# - mutter --headless with one virtual monitor (1280x900), Wayland only;
+# - mutter --headless with one virtual monitor (1280x900, or $KKS_HEADLESS_SIZE), Wayland only;
 # - DISPLAY unset and GDK_BACKEND=wayland: the app can only reach that compositor; GTK_USE_PORTAL=0 as well.
 # mutter: $KKS_MUTTER, else `mutter` on PATH, else ~/.local/kksdev/root/usr/bin/mutter (Ubuntu's `mutter` package
 # unpacked there with `apt-get download mutter && dpkg-deb -x`: it is a thin launcher for the libmutter GNOME Shell uses).
@@ -49,7 +49,7 @@ dbus-run-session -- sh -c '
   disp="kks-headless-$$"
   unset DISPLAY
   export WAYLAND_DISPLAY="$disp" GDK_BACKEND=wayland
-  "$KKS_HEADLESS_MUTTER" $KKS_HEADLESS_PLUGIN --headless --virtual-monitor 1280x900 --no-x11 --wayland-display "$disp" >/tmp/kks-headless-mutter.log 2>&1 &
+  "$KKS_HEADLESS_MUTTER" $KKS_HEADLESS_PLUGIN --headless --virtual-monitor "${KKS_HEADLESS_SIZE:-1280x900}" --no-x11 --wayland-display "$disp" >/tmp/kks-headless-mutter.log 2>&1 &
   m=$!
   i=0
   while [ ! -S "$XDG_RUNTIME_DIR/$disp" ]; do

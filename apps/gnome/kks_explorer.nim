@@ -213,6 +213,8 @@ proc mainScreen(w: Win): W =
   w.sheetTitle = adw_window_title_new("", "")
   let contentHeader = headerBar(w.sheetTitle)
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-fit-best-symbolic", "Fit the sheet (0)", proc () = w.v.fit()))
+  adw_header_bar_pack_end(contentHeader, iconButton("zoom-in-symbolic", "Zoom in (+)", proc () = w.v.zoomBy(1.5)))
+  adw_header_bar_pack_end(contentHeader, iconButton("zoom-out-symbolic", "Zoom out (−)", proc () = w.v.zoomBy(1 / 1.5)))
   adw_header_bar_pack_end(contentHeader, iconButton("camera-photo-symbolic", "Colour tags by photos", proc () =
     w.v.coverage = not w.v.coverage
     gtk_widget_queue_draw(w.v.widget)

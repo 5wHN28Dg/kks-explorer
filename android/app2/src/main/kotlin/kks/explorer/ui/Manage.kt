@@ -26,6 +26,9 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import kks.explorer.Qr
 import kks.explorer.sync.Sync
@@ -62,8 +65,12 @@ fun Manage(snack: SnackbarHostState) {
                         add(Triple("account", "Account", "Your details, sync"))
                         if (cfg.optString("role") == "manager") add(Triple("diagnostics", "Diagnostics", "Error reports from the plant's devices"))
                     }
+                    // the number on the Manage tab is the approvals waiting: shown here too, so it's clear what it counts
+                    val queue = remember(rev) { if (admin) call("GET", "/api/state").json.optInt("queue") else 0 }
                     for ((id, title, sub) in pages) ListItem(headlineContent = { Text(title) }, supportingContent = { Text(sub) },
-                        modifier = Modifier.fillMaxWidth().clickable { page = id })
+                        trailingContent = if (id == "approvals" && queue > 0) ({ Badge { Text("$queue", style = MaterialTheme.typography.labelLarge) } }) else null,
+                        modifier = Modifier.fillMaxWidth().clickable { page = id }
+                            .semantics(mergeDescendants = true) { if (id == "approvals" && queue > 0) stateDescription = "$queue waiting" })
                 }
                 "approvals" -> Approvals(rev, admin, say)
                 "mine" -> MyProposals(rev, say)
@@ -94,12 +101,11 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit) {
             val conflict = sub.str("status") == "conflict"
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(sub.str("kind") + " · " + sub.str("target"), style = MaterialTheme.typography.titleSmall)
-                    Dim("by " + sub.str("by_name") + " · " + whenText(sub.optLong("created")) +
-                        sub.str("request_note").let { if (it.isNotEmpty()) " · note: $it" else "" })
-                    SelectionContainer { Text(summary(sub.optJSONObject("payload"))) }
+                    Text(proposalTitle(sub), style = MaterialTheme.typography.titleSmall)
+                    Dim("by " + sub.str("by_name") + " · " + whenText(sub.optLong("created")))
+                    sub.str("request_note").let { if (it.isNotEmpty()) Text("“$it”", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic) }
                     if (conflict) Text("Held: it clashes with the current value or another proposal. " + sub.str("note"), color = MaterialTheme.colorScheme.error)
-                    sub.optJSONArray("live").objects().forEach { lv -> Dim("Now: " + lv.str("entity") + " " + lv.opt("key") + ": " + lv.opt("value")) }
+                    ProposalBody(sub)
                     if (sub.str("kind") == "photo") PhotoOf(sub.optJSONObject("payload")?.str("file").orEmpty())
                     if (admin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { act(id, "approve", JSONObject().put("force", conflict), "Approved", say) }) { Text(if (conflict) "Approve anyway" else "Approve") }
@@ -126,9 +132,9 @@ private fun MyProposals(rev: Int, say: (String) -> Unit) {
         items(mine) { sub ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(sub.str("kind") + " · " + sub.str("target"), style = MaterialTheme.typography.titleSmall)
+                    Text(proposalTitle(sub), style = MaterialTheme.typography.titleSmall)
                     Dim(sub.str("status") + " · " + whenText(sub.optLong("created")) + sub.str("note").let { if (it.isNotEmpty()) " · $it" else "" })
-                    Text(summary(sub.optJSONObject("payload")))
+                    ProposalBody(sub)
                     if (sub.str("status") in setOf("pending", "conflict")) OutlinedButton(onClick = { withdraw = sub.optLong("id") }) { Text("Withdraw") }
                 }
             }
@@ -467,6 +473,68 @@ private fun DiagnosticsReports(rev: Int) {
                 }
                 TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(r.toString())) }) { Text("Copy") }
             } }
+        }
+    }
+}
+
+/** what a proposal is about, in words: "Location and notes · 10LCE21AA101" (not the raw kind and entity key) */
+fun proposalTitle(sub: JSONObject): String {
+    val p = sub.optJSONObject("payload") ?: JSONObject()
+    val what = when (sub.str("kind")) {
+        "equipment" -> "Location and notes"; "photo" -> "New photo"; "photo_delete" -> "Remove a photo"
+        "link" -> if (p.optBoolean("on", true)) "Link to a procedure step" else "Unlink from a procedure step"
+        "review" -> "Tag reading"; "tag_add" -> "Missing tag"; else -> sub.str("kind")
+    }
+    val about = p.str("kks").ifEmpty { sub.str("target").substringAfter(':') }
+    return if (about.isNotEmpty()) "$what · $about" else what
+}
+
+/** a proposal's content as label/value rows: for equipment, each changed field as old → new (and the value now, when
+ *  it changed since); before 2026-10-05 this was the raw payload ("changes: {"area":…}") and a "Now: … null" line */
+@Composable
+fun ProposalBody(sub: JSONObject) {
+    val p = sub.optJSONObject("payload") ?: JSONObject()
+    val rows = ArrayList<Triple<String, String, String>>()        // label, old (or ""), new
+    when (sub.str("kind")) {
+        "equipment" -> {
+            val ch = p.optJSONObject("changes") ?: JSONObject(); val base = p.optJSONObject("base") ?: JSONObject()
+            val live = sub.optJSONArray("live").objects().firstOrNull()?.optJSONObject("value")
+            val names = FIELDS.toMap()
+            for (k in ch.keys()) {
+                fun txt(o: JSONObject?, key: String): String = when (val v = o?.opt(key)) {
+                    null, JSONObject.NULL -> ""; is JSONArray -> v.objects().joinToString("; ") { it.str("k") + ": " + it.str("v") }; else -> v.toString() }
+                val old = txt(base, k); val now = txt(live, k)
+                rows.add(Triple(names[k] ?: if (k == "custom") "Other fields" else k, if (now != old && now.isNotEmpty()) "$old (now: $now)" else old, txt(ch, k)))
+            }
+        }
+        "photo" -> { p.str("caption").let { if (it.isNotEmpty()) rows.add(Triple("Caption", "", it)) } }
+        "link" -> { rows.add(Triple("Procedure", "", p.str("proc"))); rows.add(Triple("Step", "", p.str("step"))) }
+        "review" -> p.optJSONObject("data")?.let { d ->
+            rows.add(Triple("Decision", "", if (d.str("status") == "rejected") "Not a tag" else "Confirmed"))
+            if (d.str("kks").isNotEmpty()) rows.add(Triple("KKS", "", d.str("kks") + d.str("suffix")))
+            if (d.str("isa").isNotEmpty()) rows.add(Triple("Function letters", "", d.str("isa")))
+        }
+        "tag_add" -> {
+            rows.add(Triple("Sheet", "", p.str("sheet")))
+            if (p.str("isa").isNotEmpty()) rows.add(Triple("Function letters", "", p.str("isa")))
+            if (p.str("note").isNotEmpty()) rows.add(Triple("Note", "", p.str("note")))
+        }
+        "photo_delete" -> {}
+        else -> { val t = summary(p); if (t.isNotEmpty()) rows.add(Triple("", "", t)) }
+    }
+    if (rows.isEmpty()) return
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
+        Column {
+            rows.forEachIndexed { i, (label, old, new) ->
+                if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).semantics(mergeDescendants = true) {}) {
+                    if (label.isNotEmpty()) Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (old.isNotEmpty()) Text(old, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                        modifier = Modifier.semantics { contentDescription = "was: $old" })
+                    SelectionContainer { Text(new.ifEmpty { "(empty)" }, style = MaterialTheme.typography.bodyLarge) }
+                }
+            }
         }
     }
 }

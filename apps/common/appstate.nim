@@ -138,8 +138,25 @@ when defined(windows):
     ## one key-store key per data folder (tests run several devices on one account)
     "kks-device-" & hex(newCngProvider().sha256(toBytes(absolutePath(dir).toLowerAscii)))[0 ..< 16]
 
+var crashFile = ""   ## where a crash's message and stack go (the release builds keep Nim's stack traces on)
+
+proc writeCrash(msg: string) {.nimcall, gcsafe, raises: [], tags: [WriteIOEffect].} =
+  ## Nim's last words on an unhandled exception or a signal (SIGSEGV): to stderr as before, and to crash.txt, which the
+  ## next start turns into a diagnostics event (decision 0040), like Android's crash.txt. Until 2026-10-05 a desktop
+  ## crash left only "SIGSEGV: Illegal storage access" in the journal.
+  {.cast(gcsafe).}:
+    try:
+      stderr.write(msg)
+      if crashFile.len > 0:
+        let f = open(crashFile, fmAppend)
+        f.write(msg)
+        f.close()
+    except CatchableError: discard
+
 proc openApp*(dir = dataDir()): App =
   createDir(dir)
+  crashFile = dir / "crash.txt"
+  errorMessageWriter = writeCrash
   when defined(windows):
     let p = newCngProvider()
   else:
@@ -173,6 +190,12 @@ proc openApp*(dir = dataDir()): App =
   result.api = newApi(result.n, mode = "peer")
   result.api.deviceLabel = label()
   result.id = newIdentity(k)
+  if fileExists(crashFile):            # the last run crashed: report it (§13a), once
+    try:
+      let t = readFile(crashFile)
+      removeFile(crashFile)
+      result.diag("crash", t[max(0, t.len - 6000) .. ^1])
+    except CatchableError: discard
   let app = result
   result.n.listeners.add proc (why: string) =
     app.nextRound = nowMs() + AfterChange

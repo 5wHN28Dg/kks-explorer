@@ -6,6 +6,10 @@ switch("path", thisDir() & "/../../core/src")
 switch("path", thisDir() & "/../../platform/linux/src")
 switch("path", thisDir() & "/../../platform/windows/src")
 switch("hints", "off")
+# stack traces in release builds too: a crash in the field names its line (appstate crash.txt → diagnostics); they
+# cost nothing measurable in tile rendering (b1ms 4.02 s vs 4.05 s, 2026-10-05), the binary grows 4 → 6.7 MB
+switch("stackTrace", "on")
+switch("lineTrace", "on")
 switch("warning", "UnusedImport:off")
 # the target must come from the command line (build.sh: --os:windows -d:mingw --cpu:amd64): nim.cfg is read
 # before this file, and with Linux as the target it adds -ldl

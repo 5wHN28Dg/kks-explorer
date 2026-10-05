@@ -125,6 +125,10 @@ proc zoomAt*(v: Viewer, factor, x, y: float) =
   gtk_widget_queue_draw(v.widget)
   if v.onView != nil: v.onView()
 
+proc zoomBy*(v: Viewer, factor: float) =
+  ## zoom about the middle of the view (the header's buttons)
+  v.zoomAt(factor, float(gtk_widget_get_width(v.widget)) / 2, float(gtk_widget_get_height(v.widget)) / 2)
+
 proc centerOn*(v: Viewer, x0, y0, x1, y1: float, zoom = 0.0) =
   ## show the box (points) in the middle, at `zoom` (logical px per point) or at least 2× the fit
   let w = float(gtk_widget_get_width(v.widget))
