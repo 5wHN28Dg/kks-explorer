@@ -5,6 +5,7 @@ import std/[strutils, tables, times, sequtils, asyncdispatch]
 import kks/[json, api, node, extras, util]
 import kksl/dbstore
 import kks/model
+import proposals
 import gtk, ui, appstate, win, photos, join
 
 proc s(n: JNode, k: string): string =
@@ -13,20 +14,6 @@ proc s(n: JNode, k: string): string =
 proc at(n: JNode, k: string): string =
   if n == nil or n.get(k) == nil or n[k].kind != jInt: return ""
   fromUnix(n[k].i).local.format("yyyy-MM-dd HH:mm")
-
-proc summary(p: JNode): string =
-  ## a short, readable form of a payload
-  if p == nil or p.kind != jObj: return ""
-  var parts: seq[string]
-  for (k, v) in p.fields:
-    if k in ["base", "dataUrl", "blob", "photo_id", "id", "file"]: continue
-    let txt = case v.kind
-      of jStr: v.s
-      of jNull: "—"
-      of jObj, jArr: toText(v)
-      else: toText(v)
-    if txt.len > 0: parts.add k & ": " & (if txt.len > 160: txt[0 ..< 160] & "…" else: txt)
-  parts.join(" · ")
 
 proc refreshPage(w: Win, box: W, build: proc (box: W)) =
   box.clear()
@@ -55,15 +42,12 @@ proc approvals(w: Win, box: W) =
     closureScope:
       let sub = open[i]
       let id = sub["id"].i
-      let g = group(sub["kind"].s & " · " & s(sub, "target"),
+      let g = group(proposalTitle(sub),
                     "by " & s(sub, "by_name") & " · " & sub.at("created") &
                     (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: ""))
-      adw_preferences_group_add(g, row("Proposed", summary(sub["payload"]), selectable = true))
+      for (lab, v) in proposalRows(sub): adw_preferences_group_add(g, row(lab, v, selectable = true))
       if sub["status"].s == "conflict":
         adw_preferences_group_add(g, row("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), selectable = true))
-      if sub.get("live") != nil:
-        for lv in sub["live"].elems:
-          adw_preferences_group_add(g, row("Now", lv["entity"].s & " " & toText(lv["key"]) & ": " & toText(lv["value"]), selectable = true))
       if sub["kind"].s == "photo" and sub.get("payload") != nil:
         let file = s(sub["payload"], "file")
         let sha = file.split('.')[0]
@@ -96,9 +80,9 @@ proc myProposals(w: Win, box: W) =
     closureScope:
       let sub = mine[i]
       let id = sub["id"].i
-      let g = group(sub["kind"].s & " · " & s(sub, "target"), sub["status"].s & " · " & sub.at("created") &
+      let g = group(proposalTitle(sub), sub["status"].s & " · " & sub.at("created") &
                     (if s(sub, "note").len > 0: " · " & s(sub, "note") else: ""))
-      adw_preferences_group_add(g, row("Proposed", summary(sub["payload"]), selectable = true))
+      for (lab, v) in proposalRows(sub): adw_preferences_group_add(g, row(lab, v, selectable = true))
       if sub["status"].s in ["pending", "conflict"]:
         adw_preferences_group_add(g, button("Withdraw", "", proc () =
           confirm(w.window, "Withdraw this proposal?", "", "Withdraw", true, proc () =

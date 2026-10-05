@@ -6,6 +6,7 @@ import std/[strutils, tables, times, sequtils, asyncdispatch]
 import kks/[json, api, node, extras, util]
 import kksl/dbstore
 import kks/model
+import proposals
 import appstate
 import w32, ui, win, photos
 
@@ -23,15 +24,6 @@ proc s(n: JNode, k: string): string =
 proc at(n: JNode, k: string): string =
   if n == nil or n.get(k) == nil or n[k].kind != jInt: return ""
   fromUnix(n[k].i).local.format("yyyy-MM-dd HH:mm")
-
-proc summary(p: JNode): string =
-  if p == nil or p.kind != jObj: return ""
-  var parts: seq[string]
-  for (k, v) in p.fields:
-    if k in ["base", "dataUrl", "blob", "photo_id", "id", "file"]: continue
-    let txt = if v.kind == jStr: v.s elif v.kind == jNull: "—" else: toText(v)
-    if txt.len > 0: parts.add k & ": " & (if txt.len > 160: txt[0 ..< 160] & "…" else: txt)
-  parts.join(" · ")
 
 proc act(w: Win, id: int64, action: string, body: JNode, done: string): bool =
   try:
@@ -59,13 +51,11 @@ proc approvals(w: Win, p: Page) =
       let sub = lp1[lp1i]
       let id = sub["id"].i
       let conflict = sub["status"].s == "conflict"
-      p.title(sub["kind"].s & " · " & s(sub, "target"))
+      p.title(proposalTitle(sub))
       p.dim("by " & s(sub, "by_name") & " · " & sub.at("created") &
             (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: ""))
-      p.field("Proposed", summary(sub["payload"]), readonly = true)
+      for (lab, v) in proposalRows(sub): p.field(lab, v, readonly = true)
       if conflict: p.field("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), readonly = true)
-      if sub.get("live") != nil:
-        for lv in sub["live"].elems: p.field("Now", lv["entity"].s & " " & toText(lv["key"]) & ": " & toText(lv["value"]), readonly = true)
       var specs: seq[(string, proc ())]
       if sub["kind"].s == "photo" and sub.get("payload") != nil:
         let sha = s(sub["payload"], "file").split('.')[0]
@@ -97,9 +87,9 @@ proc myProposals(w: Win, p: Page) =
     closureScope:
       let sub = lp2[lp2i]
       let id = sub["id"].i
-      p.title(sub["kind"].s & " · " & s(sub, "target"))
+      p.title(proposalTitle(sub))
       p.dim(sub["status"].s & " · " & sub.at("created") & (if s(sub, "note").len > 0: " · " & s(sub, "note") else: ""))
-      p.field("Proposed", summary(sub["payload"]), readonly = true)
+      for (lab, v) in proposalRows(sub): p.field(lab, v, readonly = true)
       if sub["status"].s in ["pending", "conflict"]:
         p.buttons(("Withdraw", proc () =
           if ask(w.hwnd, "Withdraw this proposal?", "") and w.act(id, "withdraw", newObj(), "Withdrawn"): w.rebuildSide()))
