@@ -42,7 +42,7 @@ OpenEXR, libpng; `JPEGXL_ENABLE_SKCMS=ON` instead of lcms2).
 | --- | --- | --- | --- |
 | [highway](https://github.com/google/highway) (SIMD) | commit `457c891` (2024-05-31, 512 commits behind 1.3.0) | Apache-2.0 OR BSD-3-Clause | 1.4.0 on 2026-04-23; 46 authors in 12 months (jan-wassenberg leads); no SECURITY.md, no published advisories |
 | [brotli](https://github.com/google/brotli) (box compression) | commit `028fb5a` = the v1.2.0 release (2025-10-27) | MIT | v1.2.0 is the latest; it carries the decompression-bomb mitigation of [CVE-2025-6176](https://access.redhat.com/security/cve/cve-2025-6176); SECURITY.md present; 19 authors in 12 months (eustas leads) |
-| [skcms](https://skia.googlesource.com/skcms/+log) (ICC color profiles) | commit `96d9171` (2025-09-16) | BSD-3-Clause | part of Skia, about 10 Google authors in the last 18 months; later commits (2026) harden ICC table parsing (CLUT bounds, profiles that "walk off the end"), which our pin predates |
+| [skcms](https://skia.googlesource.com/skcms/+log) (ICC color profiles) | commit `96d9171` (2025-09-16) | BSD-3-Clause | part of Skia, 11 authors in its last 30 commits (18 months, most at Google); later commits (2026) harden ICC table parsing (CLUT bounds, profiles that "walk off the end"), which our pin predates |
 
 ## License
 BSD-3-Clause, with a separate royalty-free patent grant (`PATENTS` in the source). Transitive: Apache-2.0 OR
@@ -52,16 +52,19 @@ AGPL-3.0; none would need review under a copyleft-only rule. The project has no 
 ## Maintenance signals
 - Recent releases: v0.12.0 on 2026-07-01; v0.11.2, v0.10.5, v0.9.5, v0.8.5 and v0.7.3 on 2026-02-10 (security
   backports to five release lines at once) ([releases](https://github.com/libjxl/libjxl/releases)).
-- Security response: [SECURITY.md](https://github.com/libjxl/libjxl/blob/main/SECURITY.md) (reports through Google's
-  vulnerability program); GitHub advisories for CVE-2021-22563/22564; CVE-2024-11403, CVE-2024-11498, CVE-2025-12474,
-  CVE-2026-1837 and CVE-2025-70103 were fixed in point releases of every supported line (the 2026-02-10 releases)
-  ([OpenCVE list](https://app.opencve.io/cve/?vendor=libjxl_project)). 0.12.0 contains those fixes.
+- Security response: [SECURITY.md](https://github.com/libjxl/libjxl/blob/main/SECURITY.md) (a private address,
+  acknowledgement within 3 working days, 90-day disclosure); GitHub advisories for CVE-2021-22563/22564; CVE-2024-11403
+  and CVE-2024-11498 were fixed in 0.11.1 (2024-11), and CVE-2025-12474, CVE-2026-1837 and CVE-2025-70103 in the
+  2026-02-10 point releases of five release lines ([OpenCVE list](https://app.opencve.io/cve/?vendor=libjxl_project)).
+  0.12.0 contains all of these fixes.
 - Active maintainers: 37 commit authors in the last 12 months, led by eustas (166 commits), jonsneyers and others
   at Google and Cloudinary (GitHub contributor statistics, 2026-10-05).
 - Age across major versions: first release 2021; still 0.x, but it has carried the frozen ISO/IEC 18181 bitstream
   through 0.7 → 0.12 with a stable C API (`JxlDecoder*`/`JxlEncoder*`). Our wrappers build against both lines today:
   `importer/src/kksi/kks_jxl.c` (GNOME app and importer) against the platform's 0.11, and `jxl_jni.cpp`,
-  `kks_wasm.cpp`, `kks_img.cpp`/`kks_d2d.cpp` (Windows) against 0.12.
+  `kks_wasm.cpp`, `kks_img.cpp`/`kks_d2d.cpp` (Windows) against 0.12. Each release's notes still say it "is for
+  evaluation purposes" and to "always prefer to use the latest release"
+  ([v0.11.1](https://github.com/libjxl/libjxl/releases/tag/v0.11.1)): a reason to follow releases closely.
 
 ## Size impact
 Measured on the release builds of 2026-10-05:
