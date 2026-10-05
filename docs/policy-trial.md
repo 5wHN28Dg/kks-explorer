@@ -6,7 +6,11 @@ Policy v1.1 (`bf69f718b0d4b30ef439ca3a71118e2994433114`), adopted as a trial on 
 Sources:
 - **local:** `python3 ~/Documents/GitHub/policy/tools/policy_check.py conformance --root .`;
 - **CI:** the Policy workflow on PR #1 (conformance, secrets, dependencies, static-analysis);
-- **review:** the Claude review's summary comment and its one inline comment;
+- **review:** the Claude review on PR #1. It runs on every push and edits its one summary comment, so there were
+  two passes:
+  - the first, on the adoption commit: 4 leads and 1 inline comment ("review #1"–"#4" below);
+  - the second, after this file was added: 7 leads and 3 more inline comments ("review 2 #1"–"#7"). Its #1, #3–#7
+    repeat entries already below (1.1–1.4, 1.5, 1.10, 1.7, 1.8, 1.11); its #2 is new (1.15);
 - **gitleaks local:** gitleaks 8.30.1 (the CI version, checksum verified) run locally with a JSON report, to see what
   CI's redacted "69 leaks" were.
 
@@ -33,6 +37,8 @@ Every finding is sorted into one of three groups:
 | 1.12 | Hardening: transport security (NAT-5 spirit; semgrep `detect-insecure-websocket`) | CI static-analysis: `core/src/kks/api.nim:1038`, `android/app2/src/main/kotlin/kks/explorer/core/Relay.kt:35` | Production builds accept a `ws://` relay address. The manager's relay setting allows `ws://`, and the Android client opens a raw socket for it, which Android's cleartext policy doesn't cover. The sync itself is TLS inside the pipe, pinned to the peer, so content stays protected. But the presence traffic (room = the plant, device peer IDs, who is online) would travel in clear. `ws://` exists for the local relay twin in tests. Low. |
 | 1.13 | WEB-9 | CI static-analysis: `common.js:304` | The join code from the local API is interpolated into `innerHTML` without escaping (`${st.code.slice(0, 3)}`). The source is this device's own core, and the code is digits, so the impact is low. It is still a data value in an HTML sink. |
 | 1.14 | WEB-9 | CI static-analysis: `common.js:81` (`K.overlay(html)`), and the escaped templates at `common.js:277`, `:400`, `:407`, `:411`, `:696`, `:713` | These insert HTML built from templates, with data escaped by the project's own `K.esc` and numbers interpolated directly. The project's rule was "escape and audit every `innerHTML`"; WEB-9 requires `textContent`, or a maintained sanitizer. No injection is known at these sites. They are still departures from a MUST, and `K.overlay` takes a whole HTML string from many callers (see 3.6 for what the scan didn't see). |
+
+| 1.15 | Gov §1 (findings register), §8, §10 | review 2 #2 and its inline comment on this file | The project has no findings register, and the findings above have no severity (except 1.12's Low), owner or deadline. The known unfixed issues (1.12–1.14) have no Section 10 exception either. The adoption checklist asks for a register (an issue label is enough), and Section 8 starts each deadline when a finding is recorded. This file is the trial's list, kept unfixed on purpose until the user decides, not the register. |
 
 ## 2. False positives
 
