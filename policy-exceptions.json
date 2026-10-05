@@ -65,19 +65,6 @@
       "expires": "2027-01-03",
       "renewals": 0,
       "link": "https://github.com/5wHN28Dg/kks-explorer/issues/3"
-    },
-    {
-      "id": "EX-5",
-      "rule": "WEB-2",
-      "finding": "The supported browsers are not declared in browserslist.",
-      "reason": "The declaration goes with the rebuilt capability matrix (WEB-1, #9), which records the list it resolves to; both are part of the baseline audit (#12).",
-      "compensatingControl": "The web client's tests run in Chromium, WebKit and Firefox with Playwright before each change that touches it (platform/linux/e2e, tests/web), WebKit standing for Safari on iOS. The web client uses no transpiler or bundler, so no build tool reads a target list that could drift.",
-      "acceptedBy": "",
-      "written": "2026-10-05",
-      "accepted": "",
-      "expires": "2027-01-03",
-      "renewals": 0,
-      "link": "https://github.com/5wHN28Dg/kks-explorer/issues/12"
     }
   ]
 }

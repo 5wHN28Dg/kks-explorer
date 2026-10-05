@@ -1,0 +1,11 @@
+# The browsers the web client supports (WEB-2): index.html, admin.html, learning.html and course.html, served by
+# kks_server. Safari 17+ is the iOS path (iOS has no other engine; docs/m6/CAPABILITIES.md); desktop and Android
+# browsers on their current releases. There is no build step, so nothing transpiles to this list: it is the
+# declaration the capability matrix records and the Playwright tests stand for (Chromium, WebKit, Firefox).
+safari >= 17
+ios_saf >= 17
+last 2 chrome versions
+last 2 and_chr versions
+last 2 edge versions
+last 2 firefox versions
+firefox esr
