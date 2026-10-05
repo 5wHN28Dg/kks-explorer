@@ -1,6 +1,6 @@
 # Dependency record: kotlinx.coroutines 1.7.3
 
-Added: 2026-10-01 (Walkdown's Android app, decision 0032)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-01 (Walkdown's Android app, decision 0032)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: runtime
 Packages covered: `org.jetbrains.kotlinx:kotlinx-coroutines-core`, `-core-jvm`, `-android` and the `-bom`, version 1.7.3.
 **Not declared in `android/app2/build.gradle.kts`:** the app's code imports it directly (`kotlinx.coroutines.launch`,

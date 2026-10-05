@@ -1,6 +1,6 @@
 # Dependency record: wrangler (Cloudflare Workers CLI), unpinned
 
-Added: 2026-09-28 (the internet relay, M5; decision 0012)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-09-28 (the internet relay, M5; decision 0012)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: dev-only (a deploy and local-test tool; nothing of it ships: the relay is `relay/src/index.js`, our code, with no
 npm dependencies)
 Packages covered: `wrangler` from npm, run as `npx wrangler login|deploy|dev` (`relay/README.md`). No version is

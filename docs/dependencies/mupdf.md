@@ -1,6 +1,6 @@
 # Dependency record: MuPDF 1.28.2
 
-Added: 2026-10-01 (the Nim importer, decision 0026; before that through PyMuPDF, decision 0005)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-01 (the Nim importer, decision 0026; before that through PyMuPDF, decision 0005)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: runtime (server side: linked statically into `kks-import`, which the server runs for the Drawings page)
 Packages covered: MuPDF (`libmupdf.a` and `libmupdf-third.a` from the pinned source release)
 

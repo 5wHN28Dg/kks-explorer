@@ -1,6 +1,6 @@
 # Dependency record: llvm-mingw 20260922
 
-Added: 2026-10-04 (decision 0047)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-04 (decision 0047)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: build-time, with runtime parts (the C runtime start-up code, `libc++`, `libc++abi`, `libunwind` and
 `winpthreads` are linked statically into the ARM64 `Walkdown.exe`)
 Packages covered: the release archive `llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64.tar.xz` (clang/LLVM 23.1.2 and

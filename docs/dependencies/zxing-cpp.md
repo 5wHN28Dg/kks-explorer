@@ -1,6 +1,6 @@
 # Dependency record: zxing-cpp 3.1.1
 
-Added: 2026-10-01 (decision 0019; Android 0032 addendum, Windows 0033, WebAssembly 0037, Flatpak 0031)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-01 (decision 0019; Android 0032 addendum, Windows 0033, WebAssembly 0037, Flatpak 0031)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: runtime
 Packages covered: zxing-cpp (the `core` library only: reader, the built-in "OLD" writer, the C API)
 

@@ -1,6 +1,6 @@
 # Dependency record: Kotlin 2.0.21
 
-Added: 2026-09-26 (the v1 Android app); kept for Walkdown's Android UI (decisions 0027, 0032)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-09-26 (the v1 Android app); kept for Walkdown's Android UI (decisions 0027, 0032)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: runtime (`kotlin-stdlib` ships in the APK) and build-time (the compiler, its Gradle plugin, the Compose compiler
 plugin)
 Packages covered: the Gradle plugins `org.jetbrains.kotlin.android` and `org.jetbrains.kotlin.plugin.compose` 2.0.21

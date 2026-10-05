@@ -1,6 +1,6 @@
 # Dependency record: mingw-w64 13.0.0 with GCC 13.2 (Ubuntu 26.04 packages)
 
-Added: 2026-10-01 (decision 0033)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-01 (decision 0033)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: build-time, with runtime parts (the C runtime start-up code, `libstdc++`, `libgcc` and `winpthreads` are linked
 statically into `Walkdown.exe` and `uiadrive.exe`)
 Packages covered: the x86_64 Windows cross-toolchain from Ubuntu's archive, unpacked without root into

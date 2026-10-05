@@ -1,6 +1,6 @@
 # Dependency record: Gradle 8.13 (with the vendored wrapper)
 
-Added: 2026-09-26 (the v1 Android app)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-09-26 (the v1 Android app)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: build-time
 Packages covered: the Gradle 8.13 distribution (`android/gradle/wrapper/gradle-wrapper.properties`), the vendored
 wrapper jars `android/gradle/wrapper/gradle-wrapper.jar` and `tools/m6/android-bench/gradle/wrapper/gradle-wrapper.jar`

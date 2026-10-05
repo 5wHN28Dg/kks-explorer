@@ -1,6 +1,6 @@
 # Dependency record: Emscripten 6.0.10 (emsdk)
 
-Added: 2026-10-01 (decision 0037)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-01 (decision 0037)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: build-time, with runtime parts (Emscripten's generated loader `.js` and the C/C++ runtime libraries it compiles
 into the `.wasm` ship in `vendor/kks/`)
 Packages covered: emsdk at tag 6.0.10 (pinned by full commit in `platform/web/build-wasm.sh`) and the SDK release it

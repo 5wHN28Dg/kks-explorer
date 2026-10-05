@@ -1,6 +1,6 @@
 # Dependency record: Atkinson Hyperlegible (font, Google Fonts release)
 
-Added: 2026-09-27 (the Learning courses, M4; decision 0011)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-09-27 (the Learning courses, M4; decision 0011)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: runtime (font files shipped with every client: the web pages, the GNOME and Windows apps, the Android APK)
 Packages covered: `vendor/fonts/AtkinsonHyperlegible-{400,400i,700}-{latin,latin-ext}.woff2` and
 `vendor/fonts/ttf/AtkinsonHyperlegible-{400,700}.ttf`, with `OFL-AtkinsonHyperlegible.txt`

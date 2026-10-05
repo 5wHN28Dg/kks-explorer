@@ -1,6 +1,6 @@
 # Dependency record: Nim 2.2.12 (compiler and standard library)
 
-Added: 2026-09-30 (decision 0027, the user's choice; core 0029)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-09-30 (decision 0027, the user's choice; core 0029)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: build-time and runtime (the compiler runs at build time; its runtime and standard library are compiled into every
 native binary: the Android `libkks.so`, the GNOME and Windows apps, the server and the importer)
 Packages covered: the Nim compiler and its standard library. No Nimble packages are used (every import is `std/` or

@@ -1,7 +1,7 @@
 # Dependency record: Python packages for tests and tools (requirements-dev.txt)
 
 Added: 2026-09-30 to 2026-10-03 (the protocol reference `ref/`, the e2e drivers, tools/m6; the file itself on
-2026-10-03)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+2026-10-03)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: dev-only (nothing here ships: no app, the server or the web pages import Python)
 Packages covered (one shared record, as DEP-2 allows for dev-only packages that never ship; each field is given per
 package where they differ): `cryptography` 50.0.1, `Pillow` 12.3.0, `numpy` 2.5.3, `opencv-python-headless`

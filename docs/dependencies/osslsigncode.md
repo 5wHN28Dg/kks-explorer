@@ -1,6 +1,6 @@
 # Dependency record: osslsigncode 2.13 (Ubuntu package)
 
-Added: 2026-10-03 (decision 0043)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-03 (decision 0043)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: build-time (release signing; nothing of it ships, but the MSIX packages carry the signature it makes)
 Packages covered: `osslsigncode` 2.13-1 from Ubuntu 26.04's universe archive, unpacked without root into
 `~/.local/kksdev/root` (`packaging/windows/make-msix.sh` uses the system one when installed)

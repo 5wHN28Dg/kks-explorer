@@ -1,6 +1,6 @@
 # Dependency record: Eclipse Temurin JDK 21
 
-Added: 2026-09-27 (the Android builds, local and CI)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-09-27 (the Android builds, local and CI)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: build-time
 Packages covered: Eclipse Temurin 21 (OpenJDK build by Adoptium): `/usr/lib/jvm/temurin-21-jdk-amd64` on the
 maintainer's machine (21.0.7+6), and the `temurin` / `21` JDK that `actions/setup-java` installs in

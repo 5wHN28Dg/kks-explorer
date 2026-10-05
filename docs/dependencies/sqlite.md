@@ -1,6 +1,6 @@
 # Dependency record: SQLite 3.53.4 (amalgamation)
 
-Added: 2026-10-01 (Android core, decision 0032; Windows, decision 0033)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-01 (Android core, decision 0032; Windows, decision 0033)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: runtime
 Packages covered: the SQLite amalgamation (`sqlite3.c`), compiled into the Android core (`libkks.so`) and the Windows
 app. GNOME and the server link the platform's SQLite instead (see the index).

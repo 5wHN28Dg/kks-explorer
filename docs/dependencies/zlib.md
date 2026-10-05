@@ -1,6 +1,6 @@
 # Dependency record: zlib 1.3.2
 
-Added: 2026-10-01 (Windows, decisions 0029 and 0033)   Pull request: @@PR@@   Recorded by: Claude for Hashim, 2026-10-05
+Added: 2026-10-01 (Windows, decisions 0029 and 0033)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: runtime
 Packages covered: zlib, built from source for the Windows app only. Android (the NDK's `libz`), GNOME (the runtime)
 and the server (Ubuntu's `zlib1g`) use the platform's zlib (see the index); MuPDF's own vendored copy is counted in
