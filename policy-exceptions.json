@@ -4,7 +4,7 @@
     {
       "id": "EX-1",
       "rule": "WEB-8",
-      "finding": "The web client (index.html, admin.html, learning.html, course.html, served by kks_server) is served with no Content-Security-Policy.",
+      "finding": "The web client (index.html, admin.html, learning.html, course.html, served by kks_server) is served with no CSP, neither as a response header nor as a meta tag.",
       "reason": "A CSP that restricts script-src needs the 91 inline event handlers (#18) and the inline <script> blocks moved to files first; a CSP sent before that breaks every page.",
       "compensatingControl": "Every script is self-hosted (no page loads a script from another origin; vendor/ and the WebAssembly build are in the repository). The session cookie is HttpOnly and SameSite=Strict, so an injected script can't read it. Every HTML sink is listed in #7 and escapes its values; the static-analysis job still reports each one as a warning, and the PR review rejects any new sink or inline handler.",
       "acceptedBy": "",

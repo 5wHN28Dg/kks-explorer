@@ -107,7 +107,30 @@ until the owner accepts them (at least a day after writing, Section 11).
 | 4.1 | WEB-10 check vs WEB-10 rule | The rule now excludes image `src` and self-made `blob:`/`data:` URLs, but the check can't see the element or the URL's origin, so it still fails on them. Every such site needs a `policy-fp` marker backed by a fresh-context review, or, as here, an exception for something that isn't a risk. Either way the record says "accepted risk" or "marker" for what the rule says is not in scope. |
 | 4.2 | Section 1, baseline | The baseline turns missing artifacts into warnings, but a missing browser declaration (WEB-2) still fails, though `.browserslistrc` is as much a declaration file as `license-allowlist.txt`. It needed its own exception (EX-5). |
 | 4.3 | Exceptions by file | EX-2 has to cover whole files (admin.html, index.html, common.js, learning.html), so a new WEB-9 sink added to those files during the exception is a warning, not a failure. The compensating control relies on the PR review to catch it. A finer grain (per site, short of a line marker) isn't offered. |
-| 4.4 | The WEB-8 CSP check outside a git checkout | Run on a plain copy of the repository (no `.git`), the conformance check reported no WEB-8 failure at all; inside a git worktree it did. A run outside git silently skips the check rather than saying it couldn't run. Found while testing the exceptions; CI always has a checkout, so it doesn't affect CI. |
+| 4.4 | The WEB-8 check reads the exceptions file as a CSP source | The CSP check counts any tracked `.json` (and `.toml`, `.yaml`, `.py`, `.nim`…) file that contains the words "Content-Security-Policy" as a place where a CSP is set. EX-1's first wording ("served with no Content-Security-Policy") was enough: once `policy-exceptions.json` was in the PR, CI reported no WEB-8 failure at all, and EX-1 covered nothing. The exception describing the missing CSP made the check pass. (This is also why a run on a plain copy without `.git`, which reads untracked files too, showed no WEB-8.) EX-1 now says "no CSP, neither as a response header nor as a meta tag", and the check reports WEB-8 again. The check could skip `policy-exceptions.json` and require a directive (`script-src`, `default-src`) next to the marker. |
+
+### CI on the v2.1 commit (run 37354031321)
+
+- **secrets:** passes (the gitleaks allowlist).
+- **dependencies:** passes. osv-scanner matched the pinned Python packages, with no vulnerabilities; the missing
+  license allowlist is a baseline warning.
+- **conformance:** fails.
+  - Errors: the Gradle lockfile (EX-4), WEB-2 (EX-5), and `EX-n lacks acceptedBy, accepted` for all five entries.
+  - Warnings: the four missing artifacts, and the baseline period itself.
+  - It did not report WEB-8; see 4.4.
+- **static-analysis:** fails.
+  - Errors: 40 WEB-9 (EX-2) and 5 WEB-10 (EX-3).
+  - Warnings: 73 WEB-7, and the default-ruleset results below.
+- **claude-review:** see the review passes in the sources above.
+
+Default-ruleset warnings in CI that the v1.1 run blocked on or didn't show (non-blocking now):
+
+| Rule | Where | Group | Why |
+|---|---|---|---|
+| `dynamic-urllib-use-detected` | `tools/build_courses.py:27, 40, 46, 60, 71` | 1, part of #4 | The course build tool downloads the three font families from Google Fonts at build time, with no hash pinned. The URLs are fixed, so the urllib warning itself is a false positive, but the fetched fonts are third-party code fetched by a build script: DEP-8. |
+| `insecure-hash-algorithm-sha1` | `relay/twin.py:219` | 2 | The WebSocket handshake's `Sec-WebSocket-Accept`, which RFC 6455 defines with SHA-1. Not a security use. |
+| `avoid-pickle` | `tools/m6/grid_bench.py:88, 89`, `tools/m6/gsk_bench.py:91`, `tools/m6/write_paths.py:10` | 2 | Benchmark tools that load the `.paths.pkl` cache files they wrote themselves, in the same session's working folder. No untrusted input. |
+| `exported_activity` | `tools/m6/android-bench/src/main/AndroidManifest.xml:3` | 2 | The launcher activity of a benchmark app; Android requires a launcher to be exported. Not shipped. |
 
 ## 1. Real problems in this project
 
