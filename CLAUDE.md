@@ -25,7 +25,7 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - The wiki is public: no plant name, plant data or relay URL there either.
 
 **Live since 2026-10-03 (the cutover, done by Claude at the user's request; record on the wiki's Cutover page):**
-- **Server:** the v2 server runs as a user service from `~/kks-server` (0.9.2-c7c4848 since 2026-10-04; `systemctl --user`, linger on).
+- **Server:** the v2 server runs as a user service from `~/kks-server` (0.9.2-288f851 since 2026-10-05, no v1; `systemctl --user`, linger on).
   CLI through `systemd-run` with the sealed credential (wiki: Server). v1's files are archived read-only in
   `~/kks-server/v1` and `~/kks-server/archive`.
 - **Release:** v0.9.0 published: the bridge, Walkdown for Android, Windows and Linux. Releases since 2026-10-05 carry
@@ -604,6 +604,36 @@ RETIRED 2026-10-05 (decision 0048): the code below is gone; kept here as history
   in (all but `db`). Check `~/.local/share/keyrings`, `~/.local/share/flatpak/db` and `~/.config/dconf/user` too.
 - **Diagnostics:** reports are sealed to the manager's report key: the server and its web pages can't read them
   (0040); read them on the manager's phone (Manage → Diagnostics, Copy all).
+
+**2026-10-05 (the user's field notes; commits 845c36a, 288f851):**
+- **v1 retired** (decision 0048): the move path, the bridge, the Ed25519 release signature and PROTOCOL.md are gone
+  from the repository and the live server (deployed 288f851). Left on the machine for the user to decide: the 18
+  `v1`/`v1_devices`/`v1_moved` rows in the live server.db (nothing reads them; deleting them there was refused by the
+  permission check, so it's the user's call), `~/kks-server/archive/` and `~/kks-server/v1/`, the old
+  `release-ed25519.key`, the deployed relay's v1 hello support (its source no longer has it), the v1 files in the
+  repo root. The scrypt check of v1 password hashes stays (imported accounts).
+- **Android crash on Block 1 Main Steam / FW / IP:** the overview's level 0 is up to 6400 x 4800 px; one ARGB bitmap
+  of 115,916,800 bytes, and the canvas refuses over 100 MB. Levels are now pieces of at most 2048 px (`Jxl.pieces`).
+- **Overview with annotations:** the pyramid came from `show_pdf_page`'s copy (page content only) while the .kkp runs
+  the page with its annotations: red markup appeared only once vector tiles took over. The importer now renders
+  the overview from a copy with the annotations baked (`kks_bake_annots`, `pdf_bake_document`); tags are still read
+  without them. The 9 annotated sheets re-made live with `--keep-tags` (plant data v8; backup in
+  `~/kks-server/state/backups/plant-data-before-annot-*`). `--keep-tags` also kept moving the sheet to the end of
+  sheets.json (the apps' order): fixed, it stays in place.
+- **Android UI:** drawing clipped to its area (it drew over the header) + full-screen button; two-line sheet titles;
+  the tag panel resizable by its handle, fields as label | value rows; Approvals shows its count; proposals shown in
+  words (each field old → new) instead of the raw payload and "Now: photo <id>: null".
+- **GNOME crash on zoom (the user's Flatpak, 4 times, "SIGSEGV … nil"):** NOT reproduced (plain build and Flatpak,
+  live drawings, scale 2, GL/Vulkan, headless). Desktop release builds now keep Nim stack traces (cost not measurable
+  in tile rendering, binary 4 → 6.7 MB) and `appstate` writes a crash's message to `crash.txt`, sent with the next
+  diagnostics report. GNOME header: zoom in/out buttons (also what the test clicks: AT-SPI can't type into
+  the headless Wayland session).
+- **Build lesson:** the Gradle wrapper is in `android/` (`./gradlew :app2:assembleDebug`); `cd android/app2 &&
+  ./gradlew` fails, and with `-q | grep` the failure was invisible: the Android e2e runs of 2026-10-04 evening tested
+  an APK built before that day's Internet.kt/Direct.kt changes. Re-run on 2026-10-05 on a fresh build: all pass. Check
+  the APK's timestamp after building.
+- **Backups:** `~/walkdown-backup-2026-10-05/` (README inside): keys, passwords apart, plant bundle, plant data,
+  private files, for the user's flash drive.
 
 ## Backlog (rough priority)
 

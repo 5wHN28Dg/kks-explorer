@@ -203,9 +203,13 @@ proc main() =
   let entry = newObj(@[("id", newStr(sid)), ("name", if keepTags: old["name"] else: newStr(name)), ("rot", newInt(rot)), ("w", newInt(w0)),
                        ("h", newInt(h0)), ("scale", newFloat(z)), ("levels", newInt(levels)), ("notes", noteArr)])
   var newSheets = newArr()
-  for s in sheets.elems:
+  var placed = false
+  for s in sheets.elems:                 # a re-made sheet keeps its place (the apps list sheets in this order)
     if s["id"].s != sid: newSheets.elems.add s
-  newSheets.elems.add entry
+    elif not placed:
+      newSheets.elems.add entry
+      placed = true
+  if not placed: newSheets.elems.add entry
   var newTags = newArr()
   for t in tags.elems:
     if t["sheet"].s != sid or keepTags: newTags.elems.add t
