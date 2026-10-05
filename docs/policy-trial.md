@@ -1,7 +1,8 @@
 # Policy trial: findings
 
 Policy v1.1 (`bf69f718b0d4b30ef439ca3a71118e2994433114`), adopted as a trial on branch `adopt-policy`, PR #1,
-2026-10-05. Declared: `Tier: T3`, `Type: web, native, service`. Nothing below is fixed yet.
+2026-10-05, then moved to v2.1 the same day (next section). Declared: `Tier: T3`, `Type: web, native, service`.
+The v2.1 PR fixes the quick items only; every other finding is an issue, fixed later in its own PR.
 
 Sources:
 - **local:** `python3 ~/Documents/GitHub/policy/tools/policy_check.py conformance --root .`;
@@ -20,6 +21,93 @@ Every finding is sorted into one of three groups:
 1. a real problem in this project;
 2. a false positive, with the reason;
 3. a rule, or a check, that doesn't fit this project, with the reason.
+
+The sections 1–3 below are the v1.1 run, kept as recorded. What changed under v2.1 comes first.
+
+## Under v2.1 (2026-10-05)
+
+PR #1 moved to policy v2.1 (`c0aaa58ecbc6177e95e02f202ef70b31d2ca6366`) with `Baseline: until 2027-01-03`. Local
+runs: the conformance checker, the v2.1 static analysis (the policy's pinned Semgrep 1.179.0, the same steps as the
+sast action, inline scripts included), osv-scanner 2.6.0 and gitleaks 8.30.1. The findings register is now GitHub
+issues labelled `finding` and `severity:*` (#2–#18); exceptions are in `policy-exceptions.json` (EX-1 to EX-5,
+waiting for the owner's acceptance).
+
+### Fixed in this PR
+
+| v1.1 entry | Fix |
+|---|---|
+| 1.5 (DEP-7, Flatpak container) | `arm64.yml` pins `ghcr.io/flathub-infra/flatpak-github-actions:gnome-50@sha256:1de59efe…` (the multi-arch index: amd64 and arm64 images). |
+| 1.8, the Python half | `requirements-dev.txt` pins its five packages with `==` (the versions the tests passed with). osv-scanner now matches them: 0 vulnerabilities. Its missing packages are #14. |
+| 2.1 (gitleaks on the vectors) | `.gitleaks.toml` extends the default rules and allowlists `ref/vectors/` and `peer/vectors/`, with the reason. Local gitleaks 8.30.1 over the whole history: no leaks. The policy's `secrets-config` check passes. |
+| 1.15 (no findings register) | Issues #2–#18. |
+
+### The register and the exceptions
+
+| v1.1 entry | Issue | Severity | Exception |
+|---|---|---|---|
+| 1.1 threat model | #2 | Medium | baseline warning until 2027-01-03 |
+| 1.8 Gradle lockfile | #3 | Medium | EX-4 `Gov §5 (lockfile)`, `android/app2/build.gradle.kts` |
+| 3.1 pinned C/C++ sources (now DEP-8) | #4 | Medium | none needed: v2.1 checks the file only when it exists |
+| 1.9 branch protection | #5 | Medium | not eligible (Section 10) |
+| 1.10 no x86-64 tests in CI | #6 | Medium | no check reports it |
+| 1.14 and the inline-script sinks (WEB-9) | #7 | Medium | EX-2 `WEB-9`: admin.html, index.html, common.js, learning.html |
+| new: no CSP (WEB-8) | #8 | Medium | EX-1 `WEB-8` |
+| 1.2 capability matrix | #9 | Low | baseline warning |
+| 1.3 license allowlist | #10 | Low | baseline warning |
+| 1.4 budgets.json | #11 | Low | baseline warning |
+| 1.6 browserslist (WEB-2) | #12 | Low | EX-5 `WEB-2` (not an artifact the baseline covers) |
+| 1.7 dependency records | #13 | Low | no check reports it |
+| new: requirements-dev.txt incomplete | #14 | Low | no check reports it |
+| 1.12 `ws://` relay | #15 | Low | the default-ruleset result is now a warning |
+| 1.13 join code unescaped | #16 | Low | inside EX-2 |
+| WEB-10 sites | #17 | Low, likely not a defect (below) | EX-3 `WEB-10`: common.js, index.html |
+| new: 91 inline event handlers (WEB-7 warnings) | #18 | Low | warnings only |
+
+Not filed: 1.11 (T3 review). v2.1's Section 11 gives a solo substitute for "two reviewers": the self-review and the
+CI blind pass on every PR, plus an adversarial pass for a change that touches a trust boundary. That is a procedure
+to follow, not a defect.
+
+I checked each exception in a scratch git worktree with `acceptedBy` and `accepted` filled in: conformance and
+static analysis then both pass, every result covered, each reported as a warning naming its entry. As committed,
+with those two fields empty, CI reports `EX-n lacks acceptedBy, accepted` for each entry and fails, as intended
+until the owner accepts them (at least a day after writing, Section 11).
+
+### New results under v2.1
+
+1. **Real (filed):** WEB-8, no CSP (#8); the lockfile check on the Gradle build (#3); 73 WEB-7 warnings for 91 inline
+   handlers (#18); DEP-8 for the pinned C/C++ sources (#4); the sink scan now reaches the inline scripts: WEB-9
+   31 more sites (admin.html 18, index.html 12, learning.html 1) and WEB-10 2 more (index.html 335, 355).
+2. **False positives:**
+   - **The five WEB-10 results.** WEB-10's v2.1 text excludes the `src` of image and media elements, and the
+     `blob:`/`data:` URLs a page made itself. Every flagged site is one of those (common.js:148 a `blob:` download
+     link; common.js:468, 552 and index.html:335, 355 image sources). Section 5 closes a confirmed false positive
+     with a `policy-fp` marker after a fresh-context review, not with an exception. This PR adds no markers, so EX-3
+     covers them meanwhile, and #17 says so.
+   - **The WEB-9 constant markup** at common.js:565–574 (2.6) is now the "constant markup marked `policy-fp`" case
+     of WEB-9's check: same path, inside EX-2 meanwhile.
+   - **Default-ruleset warnings (non-blocking under v2.1):**
+     - `gcm-detection` at `Keys.kt:57, 60` and `NativeCrypto.kt:130–134`. The first is the decrypt branch, reading
+       the nonce stored with the data; the second is the JNI bridge, whose nonce comes from the Nim core.
+     - `unencrypted-socket` at `Net.kt:115`: the raw socket is wrapped in an `SSLSocket` on the next line.
+     - `detect-insecure-websocket` in `docs/policy-trial.md` lines 39 and 50: this file's own text.
+3. **v1.1 "doesn't fit" entries v2.1 resolved:**
+   - 3.1 by DEP-8 (`pinned-sources.cdx.json`, read by the scan, advisories checked by hand at audits);
+   - 3.2 by Section 11's solo substitute for T3 review;
+   - 3.3 by NAT-7's `release-test` for phones and low-end laptops;
+   - 3.5 for WEB-10 (image `src` and self-made `blob:`/`data:` are out of scope, though the check still flags them);
+   - 3.6 (inline scripts are scanned);
+   - 3.7 (default-ruleset results below ERROR/HIGH/CRITICAL, or rated low-confidence, are warnings).
+
+   Still open: 3.4 (WEB-2 wants a browserslist with no build tool to read it).
+
+### New "doesn't fit" or check notes under v2.1
+
+| # | Rule or check | Note |
+|---|---|---|
+| 4.1 | WEB-10 check vs WEB-10 rule | The rule now excludes image `src` and self-made `blob:`/`data:` URLs, but the check can't see the element or the URL's origin, so it still fails on them. Every such site needs a `policy-fp` marker backed by a fresh-context review, or, as here, an exception for something that isn't a risk. Either way the record says "accepted risk" or "marker" for what the rule says is not in scope. |
+| 4.2 | Section 1, baseline | The baseline turns missing artifacts into warnings, but a missing browser declaration (WEB-2) still fails, though `.browserslistrc` is as much a declaration file as `license-allowlist.txt`. It needed its own exception (EX-5). |
+| 4.3 | Exceptions by file | EX-2 has to cover whole files (admin.html, index.html, common.js, learning.html), so a new WEB-9 sink added to those files during the exception is a warning, not a failure. The compensating control relies on the PR review to catch it. A finer grain (per site, short of a line marker) isn't offered. |
+| 4.4 | The WEB-8 CSP check outside a git checkout | Run on a plain copy of the repository (no `.git`), the conformance check reported no WEB-8 failure at all; inside a git worktree it did. A run outside git silently skips the check rather than saying it couldn't run. Found while testing the exceptions; CI always has a checkout, so it doesn't affect CI. |
 
 ## 1. Real problems in this project
 

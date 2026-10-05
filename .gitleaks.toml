@@ -1,0 +1,17 @@
+# gitleaks configuration (governance Section 5, secrets scan). It extends the default rules and adds one allowlist.
+
+[extend]
+useDefault = true
+
+# The protocol test vectors: every key in them is made on purpose from a fixed, published seed
+# (ref/make_v2_vectors.py: sha256("kks-vector-seed:" + name)), so that independent implementations (the Python
+# reference, the Nim core, course-figure.js) can reproduce the vectors byte for byte. They protect nothing, and the
+# files are frozen spec, so the keys can't be moved or renamed. peer/vectors/ is the same file under its old path
+# in the history. All 69 default-rule hits in the history (generic-api-key) are in these files; see
+# docs/policy-trial.md 2.1.
+[[allowlists]]
+description = "Protocol test vectors: keys derived from published fixed seeds"
+paths = [
+  '''^ref/vectors/''',
+  '''^peer/vectors/''',
+]
