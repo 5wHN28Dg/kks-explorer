@@ -119,7 +119,7 @@ proc syncWith*(n: Node, id: Identity, host: string, port: int, expectPeer: strin
     sock.close()
 
 proc askOver*(n: Node, id: Identity, sock: Stream, expectPeer: string, msg: JNode): Future[JNode] {.async.} =
-  ## One question instead of a sync (§16 join, §17 secrets, §21a) over an open stream: send `msg`, return the answer.
+  ## One question instead of a sync (§16 join, §17 secrets) over an open stream: send `msg`, return the answer.
   let c = newTlsConn(n.p, id, client = true, expectPeer = expectPeer)
   try:
     await sock.handshake(c)

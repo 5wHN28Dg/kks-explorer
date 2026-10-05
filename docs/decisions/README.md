@@ -39,11 +39,12 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0039](0039-webcam-qr.md) | Webcam QR: camera portal + PipeWire/GStreamer on GNOME, Media Foundation (loaded at run time) on Windows | decided, verified |
 | [0040](0040-diagnostics-reports.md) | Diagnostics reports to the manager: sealed `report` entries through the plant's own log | accepted by the user |
 | [0041](0041-plant3d-engine.md) | The 3D plant's engine: Godot 4 measured on the Note 9 and a laptop (on hold) | investigating |
-| [0042](0042-v1-phone-migration.md) | Phones move from the v1 app by a bridge update; v1 proofs checked by the server, open changes handed over | accepted by the user |
+| [0042](0042-v1-phone-migration.md) | Phones move from the v1 app by a bridge update; v1 proofs checked by the server, open changes handed over | accepted by the user; retired 2026-10-05 (0048) |
 | [0043](0043-msix-packaging.md) | MSIX: Microsoft's MakeAppx (NuGet, in a Windows VM), signed on the host with osslsigncode | accepted |
 | [0044](0044-walkdown-android-updates.md) | Walkdown updates itself on Android: the same signed release, a second P-256 signature, PackageInstaller | accepted |
 | [0045](0045-server-control-socket.md) | The server's CLI commands that change the plant run inside the running server (a 0600 Unix socket) | done |
 | [0046](0046-android-abis.md) | Android release APKs for arm64-v8a only; libraries stay uncompressed; no 32-bit phones | accepted by the user |
+| [0048](0048-retire-v1.md) | The v1 move path retired: the server's v1 answers, the bridge, the Ed25519 release signature and PROTOCOL.md removed | decided by the user 2026-10-05 |
 | [0047](0047-arm64-desktop-builds.md) | Native ARM64 desktop builds: Windows cross-built with llvm-mingw (signed here), the aarch64 Flatpak and ARM64 tests on GitHub's ARM64 runners | accepted by the user |
 
 ## Audit of existing dependencies (2026-09-30)

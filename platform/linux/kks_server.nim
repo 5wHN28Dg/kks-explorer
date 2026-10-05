@@ -4,7 +4,6 @@
 ##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json | backup --out FILE
 ##     (publish-data, set-plant-name, submit-file, reset-password and reset-manager run inside the server when it runs: its control
 ##     socket next to the store, decision 0045)
-##   kks-server v1-status                    which old-app phones have moved (decision 0042)
 ##   kks-server export-root-key --out FILE   (passphrase in $KKS_ROOT_PASSPHRASE, 12+ characters): the plant root key,
 ##     sealed with the passphrase (decision 0023), the same file the apps' "Restore from a backup" reads
 ## The storage key (decision 0020) comes from systemd-creds: LoadCredentialEncrypted=kks-storage-key:… in the unit
@@ -93,13 +92,6 @@ proc main() =
   of "publish-data", "set-plant-name", "reset-password", "reset-manager", "submit-file":
     try: echo s.control(cmd, rest)
     except ValueError as e: quit e.msg
-  of "v1-status":
-    # decision 0042: which old-app (KKS Explorer) phones have moved to Walkdown, and which haven't yet
-    let w = s.v1Waiting()
-    var moved = 0
-    for (_, _) in s.store.allRows("v1_moved"): inc moved
-    echo "moved to Walkdown: ", moved, "; still on the old app: ", w.elems.len
-    for x in w.elems: echo "  ", x["name"].s, "  (old device ", x["v1_device"].s[0 ..< 8], "…)"
   of "export-root-key":
     if "out" notin args: quit "usage: KKS_ROOT_PASSPHRASE=… kks-server export-root-key --out FILE"
     let pass = getEnv("KKS_ROOT_PASSPHRASE")

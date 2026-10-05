@@ -25,8 +25,6 @@ var
   CURVE_P256 {.importc: "GNUTLS_ECC_CURVE_SECP256R1", header: HG, nodecl.}: cint
   SIGN_ECDSA_SHA256 {.importc: "GNUTLS_SIGN_ECDSA_SHA256", header: HG, nodecl.}: cint
   PK_ECDSA {.importc: "GNUTLS_PK_ECDSA", header: HG, nodecl.}: cint
-  CURVE_ED25519 {.importc: "GNUTLS_ECC_CURVE_ED25519", header: HG, nodecl.}: cint
-  SIGN_ED25519 {.importc: "GNUTLS_SIGN_EDDSA_ED25519", header: HG, nodecl.}: cint
   CIPHER_AES_256_GCM {.importc: "GNUTLS_CIPHER_AES_256_GCM", header: HG, nodecl.}: cint
   RND_RANDOM {.importc: "GNUTLS_RND_RANDOM", header: HC, nodecl.}: cint
   EXPORT_NO_LEADING_ZERO {.importc: "GNUTLS_EXPORT_FLAG_NO_LZ", header: HA, nodecl.}: cuint
@@ -211,16 +209,3 @@ method randomBytes*(p: GnuTlsProvider, n: int): seq[byte] =
   if n > 0:
     let r = rnd(RND_RANDOM, addr result[0], csize_t(n))
     if r < 0: fail("rnd", r)
-
-proc ed25519Verify*(pub, sig, msg: openArray[byte]): bool =
-  ## Ed25519 (RFC 8032) for the v1 keys of PROTOCOL-v2 §21a only; not part of the provider interface: only the server
-  ## checks v1 signatures (decision 0042)
-  if pub.len != 32 or sig.len != 64: return false
-  var k: PubKeyT
-  if pubkey_init(addr k) < 0: return false
-  defer: pubkey_deinit(k)
-  var x = datum(pub)
-  if pubkey_import_ecc_raw(k, CURVE_ED25519, addr x, nil) < 0: return false
-  var d = datum(msg)
-  var sd = datum(sig)
-  pubkey_verify_data2(k, SIGN_ED25519, 0, addr d, addr sd) >= 0

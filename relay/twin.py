@@ -1,4 +1,4 @@
-"""The internet relay (M5, PROTOCOL.md §18), in Python: the same protocol as relay/src/index.js (the Cloudflare
+"""The internet relay (PROTOCOL-v2.md §18), in Python: the same protocol as relay/src/index.js (the Cloudflare
 Worker that is deployed). Used by the tests; it could also run on any server (`python3 relay/twin.py PORT`).
 
 It never sees plant data: devices meet here per plant ("room"), prove they hold their device key, exchange addresses
@@ -7,22 +7,15 @@ sync bytes along unread."""
 import base64, hashlib, json, re, socket, struct, sys, threading, time
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives import hashes
 import hashlib
 
-HELLO_DOMAIN = b'kks-relay-hello-v1\n'
 HELLO_DOMAIN2 = b'kks-relay-hello-v2\n'
 PEER2_RE = re.compile(r'[A-Za-z0-9_-]{32}')
-ROOM_RE, PEER_RE, ID_RE = re.compile(r'[0-9a-f]{32}'), re.compile(r'[A-Za-z0-9_-]{43}'), re.compile(r'[0-9a-f]{32}')
+ROOM_RE, ID_RE = re.compile(r'[0-9a-f]{32}'), re.compile(r'[0-9a-f]{32}')
 MAX_PEERS, PIPE_WAIT = 200, 30
-
-
-def room_of(root):
-    """The room of a plant: nobody learns the root from it."""
-    return hashlib.sha256(b'kks-relay-room-v1\n' + root.encode()).hexdigest()[:32]
 
 
 def cand_ok(c):
@@ -101,21 +94,18 @@ class Relay:
             op, data = c.recv()
             m = json.loads(data)
             peer, ts, sig = m.get('peer'), m.get('ts'), m.get('sig')
-            v2 = isinstance(m.get('key'), str)
-            if m.get('t') != 'hello' or not isinstance(peer, str) or not (PEER2_RE if v2 else PEER_RE).fullmatch(peer) \
-                    or not isinstance(ts, int) or abs(ts - time.time()) > 300 or not isinstance(sig, str):
+            if m.get('t') != 'hello' or not isinstance(peer, str) or not PEER2_RE.fullmatch(peer) \
+                    or not isinstance(ts, int) or abs(ts - time.time()) > 300 or not isinstance(sig, str) \
+                    or not isinstance(m.get('key'), str):
                 raise ValueError('bad hello')
             unb = lambda x: base64.urlsafe_b64decode(x + '=' * (-len(x) % 4))
-            if v2:   # PROTOCOL-v2 §18: P-256, ECDSA-SHA256 with r ‖ s, peer ID = first 24 bytes of SHA-256(key)
-                raw = unb(m['key'])
-                if hashlib.sha256(raw).digest()[:24] != unb(peer):
-                    raise ValueError('bad hello')
-                r, s_ = int.from_bytes(unb(sig)[:32], 'big'), int.from_bytes(unb(sig)[32:], 'big')
-                ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw).verify(
-                    encode_dss_signature(r, s_), HELLO_DOMAIN2 + room.encode() + b'\n' + str(ts).encode(), ec.ECDSA(hashes.SHA256()))
-            else:
-                Ed25519PublicKey.from_public_bytes(unb(peer)).verify(
-                    unb(sig), HELLO_DOMAIN + room.encode() + b'\n' + str(ts).encode())
+            # PROTOCOL-v2 §18: P-256, ECDSA-SHA256 with r ‖ s, peer ID = first 24 bytes of SHA-256(key)
+            raw = unb(m['key'])
+            if hashlib.sha256(raw).digest()[:24] != unb(peer):
+                raise ValueError('bad hello')
+            r, s_ = int.from_bytes(unb(sig)[:32], 'big'), int.from_bytes(unb(sig)[32:], 'big')
+            ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw).verify(
+                encode_dss_signature(r, s_), HELLO_DOMAIN2 + room.encode() + b'\n' + str(ts).encode(), ec.ECDSA(hashes.SHA256()))
         except (OSError, ValueError, InvalidSignature, TypeError, KeyError):
             c.text({'t': 'error', 'why': 'bad hello'}); c.close(); return
         with self.lock:

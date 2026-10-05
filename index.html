@@ -212,7 +212,7 @@ async function load(){
       if(r.status===404&&u.endsWith('procedures.json')) return [];
       if(!r.ok)throw new Error(u+': '+r.status);return r.json()})));
   }catch(e){
-    // no drawings here yet: they come by sync once the manager has published them (PROTOCOL.md §19)
+    // no drawings here yet: they come by sync once the manager has published them (PROTOCOL-v2.md §19)
     const pd=await api('/api/sync/status').then(s=>s.plant_data).catch(()=>null);
     const msg=!K.online?'You are offline and this device has no saved copy of the plant data. Offline copies need the app opened over HTTPS (or localhost) at least once while online.'
       :pd&&pd.version?`The drawings (version ${pd.version}) are on their way: ${pd.missing} file${pd.missing===1?'':'s'}, ${(pd.missing_bytes/1048576).toFixed(1)} MB left. They arrive with the next sync; this page opens by itself.`

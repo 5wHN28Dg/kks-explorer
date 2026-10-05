@@ -78,8 +78,7 @@ class Phone(unittest.TestCase):
         assert r.get('status') == 'approved', r
         if PHONE_HOST == '127.0.0.1':
             ui.adb('reverse', f'tcp:{cls.sport}', f'tcp:{cls.sport}')
-        # a fresh app, and no old app (its "Moving from the old app" card would change the setup screen)
-        subprocess.run(ui.ADB + ['uninstall', 'kks.explorer'], capture_output=True)
+        # a fresh app
         subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)   # a newer test build (test_update's 9.9.9) blocks -r
         r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
         assert 'Success' in r.stdout, 'install failed: ' + r.stdout + r.stderr

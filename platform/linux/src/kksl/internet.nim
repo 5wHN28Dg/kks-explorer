@@ -27,7 +27,6 @@ type
     direct*: bool                     ## try hole punching first (tests turn it off to force the pipe)
     stunServers*: seq[(string, int)]  ## empty = no public candidate (only this machine's own addresses)
     lastHow*: string                  ## "direct" or "relay": how the last sync went (for the status)
-    roomOf*: proc (): string          ## another room than the plant's ("" = none: stay out); the server's v1 room (§21a)
     noDirectUntil*: Table[string, float]   ## devices the direct path failed with: the pipe until then (epoch s)
     testStall*: bool                  ## tests: the direct path punches through, then fails, like stalled paths in the field
     testNoPath*: bool                 ## tests: the punch hears nothing, like two NATs that can't be punched
@@ -162,15 +161,14 @@ proc presence(i: Internet) {.async.} =
   var pause = 5_000
   while i.running:
     let relay = i.relayOf()
-    let other = if i.roomOf != nil: i.roomOf() else: ""
-    if relay.len == 0 or (if i.roomOf != nil: other.len == 0 else: i.n.root.len == 0):
+    if relay.len == 0 or i.n.root.len == 0:
       if i.state != "off":
         i.state = "off"
         i.online.clear()
         i.changed()
       await sleepAsync(10_000)
       continue
-    i.room = if i.roomOf != nil: other else: relayRoom(i.n.p, i.n.root)
+    i.room = relayRoom(i.n.p, i.n.root)
     i.state = "connecting"
     try:
       i.ws = await wsConnect(relay & "/v1/room/" & i.room)
@@ -256,6 +254,6 @@ proc syncPeer*(i: Internet, peer: string): Future[Stats] {.async.} =
   if i.onSynced != nil: i.onSynced(peer, result, true)
 
 proc askPeer*(i: Internet, peer: string, msg: JNode, expectPeer = ""): Future[JNode] {.async.} =
-  ## one question instead of a sync (§16, §21a) to a device in the room
+  ## one question instead of a sync (§16) to a device in the room
   let (st, _) = await i.openTo(peer)
   result = await askOver(i.n, i.id, st, expectPeer, msg)

@@ -1,12 +1,12 @@
 # KKS Explorer internet relay (M5)
 
 Lets the plant's devices sync when they are not on one network (a phone on mobile data, a laptop at HQ). Protocol:
-`docs/PROTOCOL.md` §18 (v1 apps: Ed25519 hellos) and `docs/PROTOCOL-v2.md` §18 (v2 apps: P-256 hellos); one Worker
-serves both. It is a Cloudflare Worker with one Durable Object per plant ("room").
+`docs/PROTOCOL-v2.md` §18 (P-256 hellos; the v1 apps' Ed25519 hellos were dropped when v1 was retired, decision
+0048). It is a Cloudflare Worker with one Durable Object per plant ("room").
 
 What it does: devices announce themselves in the plant's room (each proves it holds its device key), swap addresses
 so they can connect to each other directly (UDP hole punching), and if that fails, it passes their sync bytes between
-them. Those bytes are encrypted end to end (the same sync as on the Wi-Fi: Noise in v1, TLS in v2), so the relay never sees plant data,
+them. Those bytes are encrypted end to end (the same TLS sync as on the Wi-Fi), so the relay never sees plant data,
 photos or passwords. It stores nothing except pipe bytes waiting up to 30 s for the other side.
 
 What it can't do: check that a device belongs to the plant (it doesn't have the log). Someone who knows the plant's
@@ -41,8 +41,7 @@ is still plant equipment talking to the internet.
 
 ```sh
 cd relay && npx wrangler dev --port 8787            # the real Worker code in workerd
-KKS_RELAY_URL=ws://127.0.0.1:8787 .venv/bin/python -m unittest tests.test_internet   # v1 (from the repo root)
-KKS_RELAY_URL=ws://127.0.0.1:8787 /tmp/kkslinux/test_internet                          # v2 (platform/linux tests)
+KKS_RELAY_URL=ws://127.0.0.1:8787 /tmp/kkslinux/test_internet     # platform/linux tests
 ```
 
 Without `KKS_RELAY_URL`, the tests use `relay/twin.py`, the Python twin of this Worker (same protocol). You

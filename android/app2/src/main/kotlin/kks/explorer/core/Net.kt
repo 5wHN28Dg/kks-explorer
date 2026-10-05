@@ -155,7 +155,7 @@ object Net {
         return byteArrayOf((b.size ushr 24).toByte(), (b.size ushr 16).toByte(), (b.size ushr 8).toByte(), b.size.toByte()) + b
     }
 
-    /** one question instead of a sync (§16 join, §21a): send msg, return the single answer */
+    /** one question instead of a sync (§16 join, enroll): send msg, return the single answer */
     fun ask(host: String, port: Int, expectPeer: String, msg: JSONObject): JSONObject = askOver(connect(host, port, expectPeer), msg)
 
     /** the same over an open connection (a relay pipe), closed after */

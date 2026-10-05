@@ -19,16 +19,12 @@ def calm():
 
 
 class FakeGitHub:
-    """GitHub's releases/latest with a release.json signed by a test key, and the files"""
+    """GitHub's releases/latest with a release.json and the files (the test adds its own release.json.p256)"""
     def __init__(self, files):
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-        key = Ed25519PrivateKey.generate()
-        self.pub = release.public_b64u(key)
         version = open(os.path.join(REPO, 'VERSION')).read().strip()
         m = release.manifest(version, files)
         self.blobs = {n: open(p, 'rb').read() for n, p in files.items()}
         self.blobs['release.json'] = m
-        self.blobs['release.json.sig'] = release.sign(m, key).encode()
         me = self
 
         class H(http.server.BaseHTTPRequestHandler):

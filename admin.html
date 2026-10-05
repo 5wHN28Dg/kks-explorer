@@ -204,7 +204,6 @@ const VIEWS={
         ${isManager()?`<form class="inline" style="margin-top:6px" onsubmit="event.preventDefault();setRelay(this.url.value)"><input name="url" value="${esc(N.relay||'')}" placeholder="wss://kks-relay.….workers.dev" style="min-width:280px"><button class="ghost">Save</button></form>`:''}`})()}</div>
       ${isManager()?`<div class="card"><h3>Plant name</h3><div class="sub">Shown next to Walkdown on every device. Leave it empty for none.</div>
         <form class="inline" style="margin-top:6px" onsubmit="event.preventDefault();setPlantName(this.name.value)"><input name="name" aria-label="Plant name" maxlength="80" value="${esc(K.cfg?.plant_name||'')}" style="min-width:280px"><button class="ghost">Save</button></form></div>`:''}
-      ${S.v1_waiting?`<div class="card"><h3>Moving from the old app</h3><div class="sub">${S.v1_waiting.length?`Old-app devices that haven't moved to the new app yet: ${S.v1_waiting.map(w=>esc(w.name||w.v1_device.slice(0,8)+'…')).join(', ')}. They move by themselves after the person installs the update.`:'Every old-app device has moved.'}</div></div>`:''}
       <div class="card"><h3>Bundle files</h3><div class="sub">A bundle carries the plant log (optionally with photos) by USB or messaging, where Wi-Fi sync can't reach. It is not encrypted: treat it like a copy of the database.</div>
       <div class="row" style="margin-top:8px">${isAdmin()?`<a class="ghost" href="/api/bundle" onclick="return exportBundle(0)" style="text-decoration:none;color:inherit">Export bundle</a><a class="ghost" href="/api/bundle?photos=1" onclick="return exportBundle(1)" style="text-decoration:none;color:inherit">Export with photos</a>`:''}
       <label class="ghost" style="cursor:pointer">Import a bundle<input type="file" accept=".kksbundle" hidden onchange="importBundle(this)"></label></div></div>`;
@@ -355,7 +354,7 @@ const setPlantName=name=>act(async()=>{await K.api('/api/settings/plant',{name})
   document.title=(name.trim()?name.trim()+' — ':'')+'Walkdown'},name.trim()?'Plant name saved: every device shows it after its next sync':'Plant name removed');
 const setRelay=url=>act(()=>K.api('/api/settings/relay',{url}),url?'Relay saved: every device learns it at its next sync':'Relay removed');
 async function importBundle(inp){ const f=inp.files[0]; if(!f) return; try{ const r=await K.importBundle(f); toast(`Imported ${r.entries} entries, ${r.photos} photos`); show('devices') }catch(e){ toast(e.message) } }
-// ---------- join by invite (QR code, or asked on the Wi-Fi without one): PROTOCOL.md §16 ----------
+// ---------- join by invite (QR code, or asked on the Wi-Fi without one): PROTOCOL-v2.md §16 ----------
 let lobbyTimer=null, lobbySeen='';
 async function pollLobby(){
   clearTimeout(lobbyTimer);

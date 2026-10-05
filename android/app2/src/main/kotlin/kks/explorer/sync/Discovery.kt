@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  */
 object Discovery {
     data class Found(val name: String, val host: String, val port: Int, val peer: String, val root: String, val plant: String,
-                     val label: String, val admin: Boolean, val prev: String = "")   // prev: the v1 root[:16] (§21a)
+                     val label: String, val admin: Boolean)
     private val found = ConcurrentHashMap<String, Found>()
     fun found(): List<Found> = found.values.toList()
     @Volatile var onFound: ((Found) -> Unit)? = null
@@ -60,7 +60,7 @@ object Discovery {
                 fun txt(k: String) = r.attributes[k]?.toString(Charsets.UTF_8) ?: ""
                 @Suppress("DEPRECATION") val host = r.host?.hostAddress
                 if (host != null) {
-                    val f = Found(r.serviceName, host, r.port, txt("peer"), txt("root"), txt("plant"), txt("label"), txt("adm") == "1", txt("prev"))
+                    val f = Found(r.serviceName, host, r.port, txt("peer"), txt("root"), txt("plant"), txt("label"), txt("adm") == "1")
                     found[r.serviceName] = f
                     Log.i("KKSSync", "found ${f.name} ${f.host}:${f.port} plant=${f.plant}")
                     onFound?.invoke(f)

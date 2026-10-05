@@ -48,7 +48,6 @@ type
     listener*: Listener
     mdns*: Mdns
     internet*: Internet           ## presence on the plant's relay (§18), answers syncs through it
-    internetV1*: Internet         ## presence in the v1 plant's room while v1 devices may still move (§21a)
     announced: string
     job*: JNode                ## the drawing import running or last run (one at a time)
     courseCache: (string, JNode)   ## (what the list was built from, the list)
@@ -484,83 +483,6 @@ proc enrollOverTls(s: Server, remote: string, m: JNode): JNode =
     return ack("refused", e.msg)
   O(("t", S("enroll_ack")), ("state", S("accepted")), ("root", S(s.n.root)), ("plant", s.n.run.settings.getOrDefault("plant")),
     ("server", S(s.n.device)))
-
-# ---- moving v1 devices (PROTOCOL-v2 §21a, decision 0042) ----
-# The one-time import (import-v1, import-succession) ran on 2026-10-03 and was removed with v1's code; what stays
-# answers the phones still moving: the statement, the proofs, the v1 relay room. Remove it once v1-status says none.
-
-const MigrateDomain = "kks-migrate-v1\n"
-
-proc v1Root*(s: Server): string =
-  let r = s.store.getRow("v1", "root")
-  if r != nil and r.isStr: r.s else: ""
-
-proc v1Room*(s: Server): string =
-  ## the v1 plant's relay room (v1 §18), where v1 devices look for the server once they move
-  let r = s.v1Root
-  if r.len == 0 or s.store.getRow("v1", "succession") == nil: return ""
-  hex(s.p.sha256(toBytes("kks-relay-room-v1\n" & r)))[0 ..< 32]
-
-proc successionOverTls(s: Server, remote: string, m: JNode): JNode =
-  let f = s.store.getRow("v1", "succession")
-  if f == nil: return O(("t", S("succession")), ("stmt", newNull()))
-  O(("t", S("succession")), ("stmt", f["stmt"]), ("sig", f["sig"]))
-
-proc migrateOverTls*(s: Server, remote: string, m: JNode): JNode =
-  ## §21a: a v1 device's proof → a device_cert for the same person
-  proc ack(state, why: string): JNode = O(("t", S("migrate_ack")), ("state", S(state)), ("why", S(why)))
-  let pr = m.get("proof")
-  if pr == nil or pr.kind != jObj: return ack("bad", "no proof")
-  for k in ["v1_root", "v1_device", "v2_root", "device", "key", "label", "sig"]:
-    if pr.get(k) == nil or not pr[k].isStr: return ack("bad", "the proof lacks " & k)
-  if pr.get("kks_migrate") == nil or pr["kks_migrate"].kind != jInt or pr["kks_migrate"].i != 1 or
-     pr.get("created") == nil or pr["created"].kind != jInt or pr.fields.len != 9:
-    return ack("bad", "not a migration proof")
-  let dev = pr["device"].s
-  if dev != remote: return ack("bad", "the proof is not for this connection's device")
-  try:
-    if not s.p.p256Valid(unb64u(pr["key"].s)) or s.p.peerIdOfKey(pr["key"].s) != dev: return ack("bad", "the key is not the device's")
-  except CatchableError: return ack("bad", "the key is not the device's")
-  if s.v1Root.len == 0 or s.store.getRow("v1", "succession") == nil: return ack("refused", "this server does not move v1 devices")
-  if pr["v1_root"].s != s.v1Root or pr["v2_root"].s != s.n.root: return ack("refused", "the proof is for another plant")
-  let v1dev = pr["v1_device"].s
-  let info = s.store.getRow("v1_devices", v1dev)
-  if info == nil: return ack("refused", "this v1 device is not in the plant's v1 log")
-  if info["revoked"].kind == jBool and info["revoked"].b: return ack("refused", "this v1 device was removed")
-  var rest = newObj()
-  for (k, v) in pr.fields:
-    if k != "sig": rest[k] = v
-  var sig, pub: seq[byte]
-  try: (sig, pub) = (unb64u(pr["sig"].s), unb64u(v1dev))
-  except ValueError: return ack("bad", "bad signature encoding")
-  if not ed25519Verify(pub, sig, toBytes(MigrateDomain & canonical(rest))): return ack("bad", "the v1 device did not sign this")
-  let moved = s.store.getRow("v1_moved", v1dev)
-  if moved != nil and moved.s != dev:
-    return ack("refused", "this v1 device has already moved to another device; join normally (ask an admin)")
-  let person = info["person"].s
-  if person notin s.n.run.persons: return ack("refused", "the person of this v1 device is not in the plant")
-  let have = s.n.run.devices.getOrDefault(dev)
-  if have != nil and have["person"].s != person: return ack("refused", "that device belongs to someone else")
-  if dev in s.n.run.cuts: return ack("refused", "that device was removed")
-  if have == nil:
-    var signer = ""
-    for u in s.users():
-      if u["person"].s == person and u["active"].kind == jBool and u["active"].b: signer = u["device"].s
-    if signer.len == 0: signer = s.managerUser()["device"].s
-    let lab = pr["label"].s
-    discard s.n.appendAs(s.custodial(signer), "device_cert", deviceCertBody(dev, person, lab[0 ..< min(80, lab.len)]), nowMs())
-  s.store.putRow("v1_moved", v1dev, S(dev))
-  O(("t", S("migrate_ack")), ("state", S("accepted")), ("root", S(s.n.root)), ("plant", s.n.run.settings.getOrDefault("plant")),
-    ("server", S(s.n.device)))
-
-proc v1Waiting*(s: Server): JNode =
-  ## the v1 devices that have not moved yet (Manage → Devices; when all have, the bridge can be retired)
-  result = newArr()
-  for (d, info) in s.store.allRows("v1_devices"):
-    let server = info.get("server") != nil and info["server"].kind == jBool and info["server"].b   # v1's own keys never move
-    if not server and s.store.getRow("v1_moved", d) == nil and not (info["revoked"].kind == jBool and info["revoked"].b) and
-       info["person"].s in s.n.run.persons:
-      result.elems.add O(("v1_device", S(d)), ("person", info["person"]), ("name", s.n.run.persons[info["person"].s]["full_name"]))
 
 # ---- plant data and drawings (PROTOCOL-v2 §19; server/sheets.py in v1) ----
 
@@ -1123,7 +1045,6 @@ proc txtRecord(s: Server): seq[(string, string)] =
   let rootId = if s.n.root.len > 0: s.p.peerIdOfKey(s.n.root)[0 ..< 16] else: ""
   let plant = if s.n.run != nil and s.n.run.settings.getOrDefault("plant") != nil: s.n.run.settings["plant"].s else: ""
   result = @[("peer", s.n.device), ("root", rootId), ("plant", plant), ("label", "server"), ("adm", "1"), ("v", "2")]
-  if s.v1Room.len > 0: result.add ("prev", s.v1Root[0 ..< 16])   # §21a: moving v1 devices find the server by it
 
 proc announce(s: Server) =
   if s.mdns == nil or s.cfg.syncPort == 0: return
@@ -1158,20 +1079,13 @@ proc serve*(s: Server): Future[void] =
         result["root"] = S(s.n.root)
         result["plant"] = s.n.run.settings.getOrDefault("plant"),
     secrets: proc (remote: string, m: JNode): JNode = O(("t", S("secrets")), ("secrets", newArr())),   # §17: a server holds none
-    enroll: proc (remote: string, m: JNode): JNode = s.enrollOverTls(remote, m),
-    succession: proc (remote: string, m: JNode): JNode = s.successionOverTls(remote, m),
-    migrate: proc (remote: string, m: JNode): JNode = s.migrateOverTls(remote, m))
+    enroll: proc (remote: string, m: JNode): JNode = s.enrollOverTls(remote, m))
   if s.cfg.syncPort > 0:
     s.listener = listen(s.n, s.id, s.cfg.syncPort, hooks = hooks)
   # §18: the server sits in the plant's room when the manager set a relay, and answers syncs through it (it starts
   # none: the other devices sync with it on their rounds, as on the LAN)
   s.internet = newInternet(s.n, s.id, hooks)
   s.internet.start()
-  # §21a: while v1 devices may still move, also in the v1 plant's room (they know only the v1 root)
-  if s.v1Room.len > 0:
-    s.internetV1 = newInternet(s.n, s.id, hooks)
-    s.internetV1.roomOf = proc (): string = s.v1Room
-    s.internetV1.start()
   # diagnostics reports (§13a): the server's own errors, at most every 6 hours, while the manager has them on
   proc reportLoop() {.async.} =
     const version = staticRead("../../../../VERSION").strip
@@ -1185,9 +1099,7 @@ proc serve*(s: Server): Future[void] =
       try: discard s.n.maybeReport("server", version, os, "", nowS() * 1000)
       except CatchableError: discard
   asyncCheck reportLoop()
-  s.api.relayChanged = proc () =
-    s.internet.restart()
-    if s.internetV1 != nil: s.internetV1.restart()
+  s.api.relayChanged = proc () = s.internet.restart()
   # the status admin.html's Devices page shows (the v1 shape: syncs by device, found on the Wi-Fi, internet)
   var syncs = newObj()
   proc record(remote, address: string, st: Stats) =
@@ -1209,7 +1121,6 @@ proc serve*(s: Server): Future[void] =
     let relay = relaySetting(s.n)
     result = O(("discovery", S(if s.mdns != nil: "on" else: "off")), ("syncs", syncs), ("found", found),
       ("internet", O(("relay", if relay.len > 0: S(relay) else: newNull()), ("state", S(s.internet.state)), ("online", online))))
-    if s.v1Room.len > 0: result["v1_waiting"] = s.v1Waiting()   # §21a: old-app phones that haven't moved yet
   let http = newAsyncHttpServer(maxBody = s.cfg.maxUploadMb * 1024 * 1024 * 2 + 65536)
   proc cb(req: Request) {.async, gcsafe.} =
     {.cast(gcsafe).}:

@@ -2,7 +2,7 @@
 
 Date 2026-10-03 · Scope: the cutover (https://github.com/5wHN28Dg/kks-explorer/wiki/Cutover-2026-10-03), the v1 Android app (`android/app`, package `kks.explorer`),
 the v2 Android app (`android/app2`), the v2 server, PROTOCOL-v2 §21a · Status: **accepted by the user 2026-10-03**
-("Bridge update, new ID"); details by Claude.
+("Bridge update, new ID"); details by Claude. **Retired 2026-10-05 (decision 0048):** the code described here was removed.
 
 **Question:** teammates run 0.8.0 of the v1 app on their phones, away from the manager. How do they move to the v2 app
 by doing nothing more than installing an update, without losing the changes and photos that haven't reached the

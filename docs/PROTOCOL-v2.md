@@ -1,7 +1,7 @@
 # KKS Explorer sync protocol, version 2
 
 **Status: draft, M6 phase 1 (started 2026-09-30).** It replaces version 1 (docs/PROTOCOL.md, frozen as the record of
-v1) according to decision records 0017, 0020, 0024 and 0028.
+v1; removed from the tree 2026-10-05 and kept in the repository's history, decision 0048) according to decision records 0017, 0020, 0024 and 0028.
 
 Reference implementation for generating and cross-checking vectors: `ref/` (Python, test-only). The product
 implementation is the Nim core (0027). The vectors in `ref/vectors/v2-*.json`, not the prose, are the tiebreaker.
@@ -618,7 +618,11 @@ Done once by the manager with the migration tool (0024):
 
 Photos keep their blob hashes, so photo files move over unchanged.
 
-## 21a. Moving v1 devices (added 2026-10-03, decision 0042)
+## 21a. Moving v1 devices (added 2026-10-03, decision 0042; retired 2026-10-05, decision 0048)
+
+**Retired.** No implementation answers `succession` or `migrate` any more, servers no longer announce TXT `prev` or
+join the v1 room, and the relay accepts only v2 hellos. A v1 device joins like any new device (§16). The text below
+is kept as the record of what ran from 2026-10-03 to 2026-10-05.
 
 A v1 device moves to a new v2 device of the same person, without an admin. The v1 app proves the old device's
 identity with its v1 key and hands over its open changes; the new device writes them as its own entries. v1 IDs,

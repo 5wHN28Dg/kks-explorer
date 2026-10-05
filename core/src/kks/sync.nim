@@ -60,8 +60,6 @@ type
     join*: proc (remote: string, msg: JNode): JNode
     secrets*: proc (remote: string, msg: JNode): JNode
     enroll*: proc (remote: string, msg: JNode): JNode   ## §16 through a server: password + join request → enroll_ack
-    succession*: proc (remote: string, msg: JNode): JNode   ## §21a: the v1 root's succession statement
-    migrate*: proc (remote: string, msg: JNode): JNode      ## §21a: a v1 device's proof → migrate_ack
     wipe*: proc (by: string)           ## called after a verified `revoked` (the platform deletes the plant data);
                                        ## by = who removed the device (full name, may be "")
 
@@ -79,7 +77,7 @@ type
     outbox*: seq[JNode]
     stats*: Stats
     done*: bool
-    special*: string           ## "join" / "secrets" / "enroll" / "succession" / "migrate" when the connection was one of those
+    special*: string           ## "join" / "secrets" / "enroll" when the connection was one of those
 
 proc fail(msg: string) {.noreturn.} = raise newException(SyncError, msg)
 
@@ -153,19 +151,15 @@ proc receive*(s: Session, m: JNode) =
   let t = m["t"].s
   if t == "error": fail("the other side stopped: " & (if m.get("why") != nil and m["why"].kind == jStr: m["why"].s else: ""))
   if s.done: fail("message after bye")
-  if not s.initiator and s.stage == sHello and t in ["join", "secrets", "enroll", "succession", "migrate"]:
+  if not s.initiator and s.stage == sHello and t in ["join", "secrets", "enroll"]:
     s.special = t
     let h = case t
             of "join": s.hooks.join
             of "enroll": s.hooks.enroll
-            of "succession": s.hooks.succession
-            of "migrate": s.hooks.migrate
             else: s.hooks.secrets
     s.send(if h != nil: h(s.remote, m)
            elif t == "join": newObj(@[("t", newStr("join_ack")), ("state", newStr("unknown"))])
            elif t == "enroll": newObj(@[("t", newStr("enroll_ack")), ("state", newStr("refused")), ("why", newStr("this device does not take enrolments"))])
-           elif t == "succession": newObj(@[("t", newStr("succession")), ("stmt", newNull())])
-           elif t == "migrate": newObj(@[("t", newStr("migrate_ack")), ("state", newStr("refused")), ("why", newStr("this device does not move v1 devices"))])
            else: newObj(@[("t", newStr("secrets")), ("secrets", newArr())]))
     s.done = true
     return

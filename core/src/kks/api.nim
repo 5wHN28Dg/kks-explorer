@@ -453,8 +453,8 @@ proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
     ("created", I(now div 1000)), ("held", newNull()), ("status", newNull()), ("note", newNull()), ("decided_at", newNull()))
 
 proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64): JNode =
-  ## a change already in its §9 body form: the web/API submissions above, and the changes a v1 app hands over
-  ## (PROTOCOL-v2 §21a, client_id = the v1 entry ID, so each is written once)
+  ## a change already in its §9 body form: the web/API submissions above and the server's submit-file (a repeated
+  ## client_id returns the first submission, so each is written once)
   if cid.isStr:
     for old in a.n.store.subs():
       if old["client_id"].isStr and old["client_id"].s == cid.s:

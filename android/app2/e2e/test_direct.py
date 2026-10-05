@@ -51,7 +51,6 @@ class Direct(unittest.TestCase):
         ui.adb('reverse', f'tcp:{self.rport}', f'tcp:{self.rport}')
         r = self.boss.req('POST', '/api/settings/relay', {'url': f'ws://127.0.0.1:{self.rport}'})
         assert r.get('ok'), r
-        subprocess.run(ui.ADB + ['uninstall', 'kks.explorer'], capture_output=True)   # no old app on the setup screen
         subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)   # a newer test build (test_update's 9.9.9) blocks -r
         r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
         assert 'Success' in r.stdout, 'install failed: ' + r.stdout + r.stderr

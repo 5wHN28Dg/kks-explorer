@@ -1,4 +1,4 @@
-# The KKS Explorer internet relay (M5, docs/PROTOCOL.md §18). Deploy: see README.md.
+# The Walkdown internet relay (docs/PROTOCOL-v2.md §18). Deploy: see README.md.
 name = "kks-relay"
 main = "src/index.js"
 compatibility_date = "2026-09-01"

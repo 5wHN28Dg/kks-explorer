@@ -28,17 +28,19 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - **Server:** the v2 server runs as a user service from `~/kks-server` (0.9.2-c7c4848 since 2026-10-04; `systemctl --user`, linger on).
   CLI through `systemd-run` with the sealed credential (wiki: Server). v1's files are archived read-only in
   `~/kks-server/v1` and `~/kks-server/archive`.
-- **Release:** v0.9.0 published: the bridge, Walkdown for Android, Windows and Linux. Teammates move by themselves;
-  Manage → Devices lists who hasn't.
+- **Release:** v0.9.0 published: the bridge, Walkdown for Android, Windows and Linux. Releases since 2026-10-05 carry
+  Walkdown's files and `release.json` + `release.json.p256` only (decision 0048).
 - **The old app's code was removed on 2026-10-03** (the user's request), before anyone had moved. It is in git
   history; its notes are on the wiki ("KKS Explorer v1 notes").
-- **What stays until every phone has moved:**
-  - the server's v1 support (`succession`/`migrate` answers, the v1 relay room, the v1 device table);
-  - the archived bridge APK `~/kks-server/archive/kks-explorer-bridge-0.9.0.apk`, which `tools/release.py` attaches
-    to every release, because 0.8.0 phones only install `kks-explorer.apk`;
-  - the Ed25519 release signature.
-  Check with `kks-server v1-status` (wiki: Server). When it says none are left, remove all three (decision 0042 "When
-  to revisit") and `docs/PROTOCOL.md`.
+- **The v1 move path was retired on 2026-10-05** (the user: "we are done with v1"; decision 0048). Removed from the
+  repo: the server's v1 support (`succession`/`migrate` answers, the v1 relay room, TXT `prev`, `v1_waiting`,
+  `kks-server v1-status`), the Android move flow (`Migrate.kt`, the hand-over permission, `<queries>` for
+  `kks.explorer`), the relay's v1 Ed25519 hellos (source only), the bridge APK attachment and the Ed25519
+  `release.json.sig` in `tools/release.py`, and `docs/PROTOCOL.md`. A phone still on 0.8.0 installs Walkdown by hand
+  and joins as a new device. Kept: the scrypt check of v1 password hashes (imported accounts that haven't logged in
+  since), PROTOCOL-v2 §21's import genesis. Left on the live machine (the user's call to delete): the store's `v1*`
+  rows, `~/kks-server/v1`, `~/kks-server/archive`, the Ed25519 release key; the deployed relay still accepts v1 hellos
+  until redeployed.
 - **The plant root key:** inside the server. An encrypted backup and its passphrase are in
   `~/.config/kks-explorer/signing/walkdown-root.{kksroot,passphrase}` (`kks-server export-root-key`).
 
@@ -150,7 +152,7 @@ above for new work.
   blocked, 2026-10-03; 0022); Linux: Flatpak (Flathub).
 
 **Phase 1 started 2026-09-30:**
-- `docs/PROTOCOL-v2.md` (v2 spec; v1 PROTOCOL.md stays frozen).
+- `docs/PROTOCOL-v2.md` (v2 spec; v1 PROTOCOL.md was frozen, then removed 2026-10-05).
 - `ref/` = the test-only Python v2 reference (proto2, replay2, crypto2, make_v2_vectors).
 - `ref/vectors/v2-*.json`: core, replay (incl. the v1 import), malformed, crypto. FROZEN once the Nim core uses them.
 
@@ -472,8 +474,7 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
 - **Platform:** `platform/linux/src/kksl/udp.nim` (shared with Windows) has one receive loop per socket, STUN
   (Cloudflare, Google), punching (PUNCH/PUNCH_ACK) and `rudpStream` as a `net.Stream`.
 - **Relay client:** `internet.nim` tries direct first. Both sides offering candidates → punch with session = the
-  first 8 bytes of the connect id, else (or on failure) the pipe. `lastHow` = direct/relay. Its `roomOf` and `askPeer`
-  serve §21a.
+  first 8 bytes of the connect id, else (or on failure) the pipe. `lastHow` = direct/relay.
 - **Tests:**
   - core test_rudp: a simulated lossy link, v1's cases;
   - test_internet: direct, and the pipe when one side has `direct = false`;
@@ -504,7 +505,8 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
   sees, and debug builds share that ID. The user's Honor holds their real account: run them only with
   `ANDROID_SERIAL=emulator-…`, and never install/clear anything on the Honor.
 
-**Phone move without help (2026-10-03, decision 0042, PROTOCOL-v2 §21a; the user's choice "Bridge update, new ID").**
+**Phone move without help (2026-10-03, decision 0042, PROTOCOL-v2 §21a; the user's choice "Bridge update, new ID").
+RETIRED 2026-10-05 (decision 0048): the code below is gone; kept here as history.**
 - **Flow:** 0.8.0 → "Download and install" → the bridge (the v1 app built at the release's VERSION) → it installs
   `kks-explorer-2.apk` from the same signed release → the new app asks the bridge (`Bridge.Handover`, a provider
   behind a signature permission) for the plant's addresses and relay → it gets the succession statement from the server.
@@ -536,7 +538,8 @@ side sends `cand: []`; PROTOCOL-v2 §18: an empty list on either side = straight
 **Walkdown updates itself on Android (2026-10-03, decision 0044):**
 - **Signing:** the same GitHub release and `release.json`, plus `release.json.p256`: an ECDSA P-256 signature over
   `"kks-release-v2\n"` + the manifest, by `~/.config/kks-explorer/signing/release-p256.pem`. Its public key is pinned
-  in `sync/Updates.kt` and `tools/release.py`; `release.py --yes` signs both and publishes without asking.
+  in `sync/Updates.kt` and `tools/release.py`; `release.py --yes` signs and publishes without asking (the Ed25519
+  signature for the old app was dropped 2026-10-05, decision 0048).
 - **In the app:** a daily check, a banner with Install, and Manage → Account → Updates. The download is checked
   against the manifest, then goes to PackageInstaller (the person confirms).
 - **Tested:** `android/app2/e2e/test_update.py`, on a fake release. A wrong key offers nothing; the right one installs
