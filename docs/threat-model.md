@@ -5,7 +5,8 @@ Gov §4 requires this file to be updated, and the update reviewed, before mergin
 trust boundary, changes authentication, authorization or sessions, stores or sends a new kind of sensitive data, or
 adds a dependency with network, filesystem or native-code access.
 
-Every mitigation below was checked in the code on 2026-10-05; file references are given where a reviewer would look.
+Every mitigation below was checked by reading the code on 2026-10-05 (static reading: nothing was run or tested,
+except that `staticFile` refuses `..` paths); file references are given where a reviewer would look.
 "Open" means the control is missing or weaker than the decision records say. "Accepted (00NN)" means a decision
 record accepted by the owner states the limit. "Undecided" rows have neither a control nor an acceptance yet: the
 owner either accepts them under Gov §10 (an entry with acceptedBy and an expiry) or files them as findings.
@@ -68,6 +69,9 @@ components).
 The web client (B4, B5):
 
 CSP: none yet (issue #8)
+
+The missing CSP fails WEB-8 (and WEB-7 cannot be met while the inline handlers of #18 remain). No Section 10
+exception is in force for it: EX-1 is written but not accepted.
 
 ## Threats and mitigations
 | Boundary | Threat (STRIDE) | Mitigation | Status |
