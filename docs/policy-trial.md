@@ -123,6 +123,15 @@ until the owner accepts them (at least a day after writing, Section 11).
   - Warnings: 73 WEB-7, and the default-ruleset results below.
 - **claude-review:** see the review passes in the sources above.
 
+Claude review on the v2.1 commits (two passes, 18:11 and 18:15; 0 blocking in the second):
+
+| Lead | Group | Note |
+|---|---|---|
+| The gitleaks allowlist has a reason but no `policy-fp: <reason> (<review link>)` marker, no confirmation by someone other than the author, and it covers whole directories rather than the vector files | 1, candidate, not filed | Section 5 marks a confirmed false positive "in the tool's own suppression syntax (… a commented allowlist entry)" with `policy-fp` and a review link. The allowlist was added without one, as instructed for this PR (no `policy-fp` markers). Fix: a fresh-context review of the 69 hits, then the marker with its link, and paths narrowed to the vector files (`ref/vectors/v2-*.json`, `peer/vectors/v2-replay.json`). Waiting for the owner's decision on filing it. |
+| `acceptedBy` and `accepted` empty in EX-1 to EX-5 | as intended | The owner accepts them at least a day after writing (Section 11). |
+| EX-2 covers 40 sinks in four files, so a new sink in those files is a warning | 3 (4.3) | Already recorded. |
+| The PR description has no `Secrets config change:` / `Exception change:` line (two inline comments at 18:11) | 2 | Stale: written before the description was updated; both lines are there now. |
+
 Default-ruleset warnings in CI that the v1.1 run blocked on or didn't show (non-blocking now):
 
 | Rule | Where | Group | Why |
