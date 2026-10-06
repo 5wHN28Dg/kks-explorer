@@ -669,7 +669,7 @@ class Front(Base):
         # two Host lines
         s = socket.create_connection(('127.0.0.1', self.port), timeout=5)
         s.sendall(b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nHost: evil.example\r\nConnection: close\r\n\r\n' % self.port)
-        self.assertTrue(s.recv(12).startswith(b'HTTP/1.1 421'))
+        self.assertIn(s.recv(12)[:12], (b'HTTP/1.1 421', b'HTTP/1.1 400'))   # refused by the app or already by the HTTP layer
         s.close()
         # X-Forwarded-Host doesn't widen the Origin check
         st = c.req('POST', '/api/login', {'username': 'x', 'password': 'y'},
