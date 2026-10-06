@@ -341,7 +341,7 @@ class Limits(Base):
         for _ in range(2):
             socks = [self.conn('127.0.0.2', timeout=10) for _ in range(64)]
             for s in socks:
-                s.sendall(b'GET /api/config HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
+                s.sendall(b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nConnection: close\r\n\r\n' % self.port)
             ok = 0
             for s in socks:
                 if s.recv(12).startswith(b'HTTP/1.1 200'):
