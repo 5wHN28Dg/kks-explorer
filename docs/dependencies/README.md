@@ -22,7 +22,7 @@ record in the pull request that adds it.
 | MuPDF 1.28.2 (+ 12 bundled libraries) | runtime (server's importer) | server host | `importer/fetch_mupdf.sh`: URL + SHA-256 | [mupdf.md](mupdf.md) |
 | SQLite 3.53.4 amalgamation | runtime | Android, Windows | `android/nim/fetch_sqlite.sh`: URL + SHA3-256 | [sqlite.md](sqlite.md) |
 | zlib 1.3.2 | runtime | Windows | `platform/windows/build-deps.sh`: URL + SHA-256 | [zlib.md](zlib.md) |
-| Nim 2.2.12 | build-time + runtime (stdlib in every native binary) | every native target | Flatpak manifest and `.github/workflows/arm64.yml`: tarball + SHA-256; locally choosenim (not hash-checked) | [nim.md](nim.md) |
+| Nim 2.2.12 | build-time + runtime (stdlib in every native binary) | every native target | Flatpak manifest and `.github/workflows/arm64.yml`: tarball + SHA-256; locally choosenim (not hash-checked); `kksl/httpserver.nim` is a vendored, modified copy of its asynchttpserver | [nim.md](nim.md) |
 | mingw-w64 13.0.0 / GCC 13.2 | build-time + static runtime | Windows x86_64 | Ubuntu 26.04 packages unpacked by hand (not pinned in a script) | [mingw-w64.md](mingw-w64.md) |
 | llvm-mingw 20260922 | build-time + static runtime | Windows ARM64 | `platform/windows/fetch-llvm-mingw.sh`: URL + SHA-256 | [llvm-mingw.md](llvm-mingw.md) |
 | Emscripten 6.0.10 (emsdk) | build-time + runtime parts in `vendor/kks/` | web | `platform/web/build-wasm.sh`: emsdk at a full commit | [emscripten.md](emscripten.md) |

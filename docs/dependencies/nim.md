@@ -3,7 +3,8 @@
 Added: 2026-09-30 (decision 0027, the user's choice; core 0029)   Pull request: https://github.com/5wHN28Dg/kks-explorer/pull/23 (record written for an existing dependency)   Recorded by: Claude for Hashim, 2026-10-05
 Kind: build-time and runtime (the compiler runs at build time; its runtime and standard library are compiled into every
 native binary: the Android `libkks.so`, the GNOME and Windows apps, the server and the importer)
-Packages covered: the Nim compiler and its standard library. No Nimble packages are used (every import is `std/` or
+Packages covered: the Nim compiler and its standard library, including one vendored, modified stdlib module (below).
+No Nimble packages are used (every import is `std/` or
 the project's own module; checked 2026-10-05).
 
 ## Purpose
@@ -55,6 +56,20 @@ of `system`, `std/*`, `pure/*`): about 0.3 MB of the server's 2.0 MB of symbols,
 Very high. Every native component except the Android UI (Kotlin, 5,600 lines) is Nim; replacing the language means
 rewriting the core, the desktop apps, the server and the importer. Data formats don't depend on it (they are specified
 in `docs/PROTOCOL-v2.md`, `docs/PATHSTORE.md`, `docs/COURSES.md`, with independent Python references in `ref/`).
+
+## Vendored copy: std/asynchttpserver (since PR #48, 2026-10-06)
+- **What:** `platform/linux/src/kksl/httpserver.nim` is a modified copy of Nim 2.2.12's `lib/pure/asynchttpserver.nim`
+  (MIT, (c) 2015 Dominik Picheta; Nim's `copying.txt`), used by the server instead of the standard module.
+- **Why a copy:** the standard module reads a chunked request body with no size limit before the application sees the
+  request, and has no deadlines or connection caps (finding #27, a High advisory). Its options can't change that, and
+  wrapping it can't either: the body is read inside the module. A different HTTP server library would be a new
+  dependency with its own record; the copy keeps the stdlib's code and changes only what #27 needs.
+- **The changes**, each marked `kks:` in the file: any Transfer-Encoding refused (411); deadlines for the first line
+  (60 s), all headers together (20 s) and the body (300 s); at most 512 connections, 64 per address. Tested by the
+  `Limits` class in `platform/linux/e2e/test_server_http.py`.
+- **Upgrade plan:** at each Nim upgrade, diff the new stdlib file against 2.2.12's and carry upstream fixes over (the
+  file's header says so); watch [nim-lang/security](https://github.com/nim-lang/security/security/advisories) for
+  `asynchttpserver` advisories. Drop the copy if the stdlib gains equivalent limits.
 
 ## Decision
 Keep (the user's choice in 0027, revisitable). Nim gives one memory-safe core on four platforms through their own C
