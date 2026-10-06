@@ -1,5 +1,5 @@
 # A copy of Nim 2.2.12's std/asynchttpserver (lib/pure/asynchttpserver.nim, (c) 2015 Dominik Picheta, MIT, Nim's
-# copying.txt), with limits for a server that faces the plant network directly (governance finding #27, advisory
+# copying.txt), with limits for a server that faces the plant network directly (issue #27, advisory
 # GHSA-xfj6-p785-whg5). The changes, all marked "kks:":
 # - a request with any Transfer-Encoding is refused (411), whatever its method and even with a Content-Length: the
 #   stdlib read chunked POST bodies with no size limit before the application saw the request, and left other
