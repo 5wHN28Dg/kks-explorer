@@ -2,19 +2,6 @@
   "schemaVersion": 1,
   "exceptions": [
     {
-      "id": "EX-1",
-      "rule": "WEB-8",
-      "finding": "The web client (index.html, admin.html, learning.html, course.html, served by kks_server) is served with no CSP, neither as a response header nor as a meta tag.",
-      "reason": "A CSP that restricts script-src needs the 91 inline event handlers (#18) and the inline <script> blocks moved to files first; a CSP sent before that breaks every page.",
-      "compensatingControl": "Every script is self-hosted (no page loads a script from another origin; vendor/ and the WebAssembly build are in the repository). The session cookie is HttpOnly and SameSite=Strict, so an injected script can't read it. Every HTML sink is listed in #7 and escapes its values; the static-analysis job still reports each one as a warning, and the PR review rejects any new sink or inline handler.",
-      "acceptedBy": "@5wHN28Dg",
-      "written": "2026-10-05",
-      "accepted": "2026-10-06",
-      "expires": "2027-01-03",
-      "renewals": 0,
-      "link": "https://github.com/5wHN28Dg/kks-explorer/issues/8"
-    },
-    {
       "id": "EX-2",
       "rule": "WEB-9",
       "files": [
@@ -32,22 +19,6 @@
       "expires": "2027-01-03",
       "renewals": 0,
       "link": "https://github.com/5wHN28Dg/kks-explorer/issues/7"
-    },
-    {
-      "id": "EX-4",
-      "rule": "Gov §5 (lockfile)",
-      "files": [
-        "android/app2/build.gradle.kts"
-      ],
-      "finding": "The Android app's Gradle build has no lockfile, so its transitive dependencies are neither pinned nor scanned.",
-      "reason": "Dependency locking changes the Android build and has to be checked against the release, rehearsal and debug builds and the e2e tests on the emulator; it is its own change (#3).",
-      "compensatingControl": "Every direct dependency and plugin has an exact version (the Compose BOM 2024.12.01 fixes the Compose versions; no ranges or dynamic versions), so the resolved tree only changes when a reviewed PR changes a version. Until the lockfile exists, each release audit lists the resolved tree (./gradlew :app2:dependencies) and checks it against OSV by hand.",
-      "acceptedBy": "@5wHN28Dg",
-      "written": "2026-10-05",
-      "accepted": "2026-10-06",
-      "expires": "2027-01-03",
-      "renewals": 0,
-      "link": "https://github.com/5wHN28Dg/kks-explorer/issues/3"
     }
   ]
 }
