@@ -315,7 +315,7 @@ K.joinWait = cfg => {
 
 // Remove plant data from this device (logout, account revoked, session expired). Queued changes are kept per user.
 K.wipe = async () => {
-  try { await caches.delete('kks-data') } catch (e) {}
+  try { for (const k of await caches.keys()) if (!k.startsWith('kks-shell-')) await caches.delete(k) } catch (e) {}   // all but the app shell
   try { await K.idb.clear() } catch (e) {}
   // a peer (own laptop / the app) that lost its plant: the courses' copies of the progress go too (on a plant server
   // they are the only copy, so logging out keeps them)
@@ -424,7 +424,16 @@ K.describe = (kind, p) => ({
   tag_remove: () => `remove hand-added tag ${p.id.slice(0, 8)}`,
 }[kind] || (() => kind))();
 
-if ('serviceWorker' in navigator && !K.native) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
+if ('serviceWorker' in navigator && !K.native) {
+  navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
+  // Before 2026-10-06 a stored photo could be served as a script (finding #25), and so registered as a service worker
+  // under /photos/ (a script there can only take a scope under /photos/). Only /sw.js, for the whole site, belongs
+  // here: any other registration goes. (Right after register() ours can have no worker yet: Firefox.)
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => {
+    const w = r.active || r.waiting || r.installing;
+    if (new URL(r.scope).pathname !== '/' || (w && new URL(w.scriptURL).pathname !== '/sw.js')) r.unregister();
+  })).catch(() => {});
+}
 
 // ---------- JPEG XL photos ----------
 // Photos are stored as JXL. A browser that shows JXL itself gets the file as it is; any other decodes it here with

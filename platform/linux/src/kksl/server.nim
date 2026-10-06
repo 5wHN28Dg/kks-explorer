@@ -328,6 +328,33 @@ proc contentType(name: string): string =
   of ".gz": "application/gzip"
   else: "application/octet-stream"
 
+const
+  # Stored content (photos, plant-data files) is never a document of this site: if a browser ever renders one as a
+  # page, it runs sandboxed (a unique origin, no scripts) and loads nothing. As a subresource (<img>, fetch) the
+  # header has no effect.
+  ContentSandbox = ("Content-Security-Policy", "default-src 'none'; sandbox")
+  # plant-data files the pages fetch; anything else goes out as a download
+  DataTypes = [".json", ".jxl", ".kkp", ".png", ".jpg", ".jpeg", ".webp", ".pdf", ".gz", ".woff2"]
+
+proc photoType*(data: string): (string, bool) =
+  ## A stored photo's Content-Type from its own bytes, never from the URL: the name in /photos/<sha>.<ext> is only a
+  ## hint, and any member's device can make a blob (2026-10-06: a blob starting with a JPEG XL signature followed by
+  ## HTML, requested as <sha>.html, was served as text/html: stored XSS). -> (type, is an image)
+  case blobExt(data)
+  of "jxl": ("image/jxl", true)
+  of "jpg": ("image/jpeg", true)
+  of "png": ("image/png", true)
+  of "webp": ("image/webp", true)
+  else: ("application/octet-stream", false)
+
+proc dataType*(rel: string): (string, seq[(string, string)]) =
+  ## a /data/ file's Content-Type and extra headers: the types the pages fetch go out sandboxed; anything else, and
+  ## PDFs (a browser's PDF viewer won't run in a sandboxed document), as a sandboxed download
+  let ext = rel.splitFile.ext.toLowerAscii
+  if ext in DataTypes and ext != ".pdf": (contentType(rel), @[ContentSandbox])
+  else: ((if ext == ".pdf": "application/pdf" else: "application/octet-stream"),
+         @[ContentSandbox, ("Content-Disposition", "attachment")])
+
 proc baseHeaders(s: Server, ctype: string, cache = "no-store"): HttpHeaders =
   result = newHttpHeaders({"Content-Type": ctype, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
                            "X-Frame-Options": "DENY", "Cache-Control": cache})
@@ -419,11 +446,11 @@ proc courseList(s: Server): JNode =
   result = O(("courses", newArr(found)))
   s.courseCache = (key, result)
 
-proc staticFile(s: Server, req: Request, dir, rel, cache: string) {.async.} =
+proc staticFile(s: Server, req: Request, dir, rel, cache: string, ctype = "", extra: seq[(string, string)] = @[]) {.async.} =
   let root = absolutePath(dir)
   let full = absolutePath(root / rel)
   if not full.startsWith(root & DirSep) or not fileExists(full): herr(404, "not found")
-  await s.sendBytes(req, readFile(full), contentType(full), cache)
+  await s.sendBytes(req, readFile(full), if ctype.len > 0: ctype else: contentType(full), cache, extra)
 
 proc personOf(d: JNode): (string, JNode) = personFields(d)
 
@@ -864,9 +891,11 @@ proc handle(s: Server, req: Request) {.async.} =
       await s.sendJson(req, 200, O(("user", s.publicUser(usr))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/logout":
+      # Clear-Site-Data: the HTTP cache goes too (it may hold photos from before the fix of finding #25, which were
+      # served with the URL's type and cached as immutable for a year)
       let raw = req.sessionRaw
       if raw.len > 0: s.store.delRow("sessions", hex(s.p.sha256(raw.toBytes)))
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader("", 0)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader("", 0), ("Clear-Site-Data", "\"cache\"")])
       return
     of "/api/setup":
       if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
@@ -921,20 +950,25 @@ proc handle(s: Server, req: Request) {.async.} =
     if path.startsWith("/data/"):
       let rel = path[6 .. ^1]
       let (ok, data) = s.n.file(rel)
+      # plant-data files: only the types the pages use; anything else (an .html the manager published) downloads
+      let (dtype, dextra) = dataType(rel)
       if ok:
-        await s.sendBytes(req, data, contentType(rel), "private, no-cache")
+        await s.sendBytes(req, data, dtype, "private, no-cache", dextra)
         return
       let (okGz, gzd) = s.n.file(rel & ".gz")
       if okGz:
-        await s.sendBytes(req, gzd, contentType(rel), "private, no-cache", @[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
+        await s.sendBytes(req, gzd, dtype, "private, no-cache", dextra & @[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
         return
-      await s.staticFile(req, s.cfg.dataDir, rel, "private, no-cache")
+      await s.staticFile(req, s.cfg.dataDir, rel, "private, no-cache", dtype, dextra)   # the program's own data/
       return
     if path.startsWith("/photos/"):
       let name = path[8 .. ^1]
       let sha = name.split('.')[0]
       if not isHex64(sha) or not s.n.store.blobHas(sha): herr(404, "not found")
-      await s.sendBytes(req, s.n.store.blobGet(sha), contentType(name), "private, max-age=31536000, immutable")
+      let blob = s.n.store.blobGet(sha)
+      let (ptype, image) = photoType(blob)
+      await s.sendBytes(req, blob, ptype, "private, max-age=31536000, immutable",
+                        if image: @[ContentSandbox] else: @[ContentSandbox, ("Content-Disposition", "attachment")])
       return
     case path
     of "/api/me":
