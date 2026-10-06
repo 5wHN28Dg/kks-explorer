@@ -156,6 +156,40 @@ class Cli(Base):
         self.assertEqual(boss.req('GET', '/api/sync/status')[1]['plant_data']['version'], 1)
         self.assertEqual(boss.req('GET', '/data/sheets.json')[1], [])
         self.assertEqual(self.cli('publish-data', d), (0, 'Unchanged: the files equal the latest version.'))
+        # /data/ (2026-10-06): published files and the program's own data/ are never pages of this site: the types the
+        # pages use go out sandboxed, anything else as a download
+        os.makedirs(os.path.join(d, 'courses'))
+        open(os.path.join(d, 'courses', 'evil.html'), 'w').write('<script>parent.pwned=1</script>')
+        open(os.path.join(d, 'courses', 'evil.svg'), 'w').write('<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>')
+        import gzip
+        open(os.path.join(d, 'courses', 'big.json.gz'), 'wb').write(gzip.compress(b'{"a": 1}'))
+        open(os.path.join(d, 'courses', 'page.html.gz'), 'wb').write(gzip.compress(b'<script>parent.pwned=1</script>'))
+        self.assertEqual(self.cli('publish-data', d), (0, 'Published plant data version 2.'))
+        for name in ('courses/evil.html', 'courses/evil.svg'):
+            st, data, hdr = boss.req('GET', '/data/' + name)
+            self.assertEqual(st, 200, name)
+            self.assertEqual(hdr['Content-Type'], 'application/octet-stream', name)
+            self.assertEqual(hdr['Content-Disposition'], 'attachment', name)
+            self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        with boss.op.open(urllib.request.Request(boss.base + '/data/courses/big.json')) as resp:   # the .gz copy
+            st, hdr = resp.status, resp.headers
+        self.assertEqual((st, hdr['Content-Type'], hdr['Content-Encoding']), (200, 'application/json', 'gzip'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        # a page compressed: asked by its own name it is gzip bytes, not a page; asked without .gz it downloads
+        st, data, hdr = boss.req('GET', '/data/courses/page.html.gz')
+        self.assertEqual((st, hdr['Content-Type'], hdr.get('Content-Encoding')), (200, 'application/gzip', None))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        with boss.op.open(urllib.request.Request(boss.base + '/data/courses/page.html')) as resp:
+            st, hdr = resp.status, resp.headers
+        self.assertEqual((st, hdr['Content-Type'], hdr['Content-Encoding'], hdr['Content-Disposition']),
+                         (200, 'application/octet-stream', 'gzip', 'attachment'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        st, data, hdr = boss.req('GET', '/data/sheets.json')
+        self.assertEqual((st, hdr['Content-Type']), (200, 'application/json'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        st, data, hdr = boss.req('GET', '/data/kks.json')     # the program's own data/, not published
+        self.assertEqual((st, hdr['Content-Type']), (200, 'application/json'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
         # the plant's name: from the CLI and from the admin page; "" = none
         self.assertEqual(self.cli('set-plant-name', 'Unit test plant'), (0, 'The plant is called Unit test plant now.'))
         self.assertEqual(Client(self.base).req('GET', '/api/config')[1]['plant_name'], 'Unit test plant')
@@ -243,6 +277,20 @@ class Server(Base):
         st, data, hdr = boss.req('GET', '/photos/' + ph['file'])
         self.assertEqual((st, data), (200, png)); self.assertIn('immutable', hdr['Cache-Control'])
         self.assertEqual(anon.req('GET', '/photos/' + ph['file'])[0], 401)
+        # 2026-10-06 stored XSS: a member's "photo" that starts with the JPEG XL signature and goes on as HTML, asked
+        # for as <sha>.html. Its type comes from its bytes, never the URL, and it is sandboxed.
+        poly = b'\xff\x0a<html><script>parent.pwned=1</script></html>'
+        st, r, _ = ali2.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'x',
+                            'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(poly).decode()}})
+        self.assertEqual(st, 200, r)
+        sha = [p for p in ali2.req('GET', '/api/submissions')[1]['submissions'] if p['kind'] == 'photo'][0]['payload']['file'].split('.')[0]
+        for ext in ('html', 'svg', 'htm', 'xml', 'js', 'jxl'):
+            st, data, hdr = boss.req('GET', f'/photos/{sha}.{ext}')
+            self.assertEqual((st, data), (200, poly))
+            self.assertEqual(hdr['Content-Type'], 'image/jxl', ext)
+            self.assertEqual(hdr['X-Content-Type-Options'], 'nosniff')
+            self.assertIn('sandbox', hdr['Content-Security-Policy'])
+            self.assertIn("default-src 'none'", hdr['Content-Security-Policy'])
         # History, the program's data, a bundle
         revs = boss.req('GET', '/api/revisions')[1]['revisions']
         self.assertGreaterEqual(len(revs), 2)
