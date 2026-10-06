@@ -33,7 +33,7 @@ except that `staticFile` refuses `..` paths); file references are given where a 
 | Admin | Yes, within limits | Create members, approve or reject proposals, certify and revoke members' devices, make invites, export and import bundles. Cannot change the manager or other admins. |
 | Member (role `user`) | Partly | Read all plant data; propose changes (they count only once approved, §11); vote, comment, withdraw own; manage own devices and profile. |
 | A removed (revoked) device or person | No | Nothing new: syncs are `denied`, server sessions end. Keeps what it already had (Accepted (0020)). |
-| Someone on the plant Wi-Fi/LAN | No | Reach the server's HTTP port and every device's sync port, see mDNS announcements. No plant data without a certified key or an account. |
+| Someone on the plant Wi-Fi/LAN | No | Reach every device's sync port and whatever HTTPS front the operator puts before the web pages, see mDNS announcements. No plant data without a certified key or an account. |
 | Someone on the internet | No | Reach the relay; reach the server only through the remote-access route the owner sets up (R19: a Cloudflare Tunnel with Access in `deploy/cloudflared-config.example.yml`). |
 | The relay operator (Cloudflare, or whoever runs the Worker) | Not for data | Sees room IDs, peer IDs, who is online, connection timing and sizes, candidate addresses. Sync bytes pass through it TLS-encrypted end to end. |
 | A compromised device (malware, stolen unlocked phone) | No | Everything its person may do, until revoked; reads everything that device holds. |
@@ -43,7 +43,7 @@ except that `staticFile` refuses `..` paths); file references are given where a 
 ```mermaid
 flowchart LR
   subgraph LAN["Plant network"]
-    B[Browser] -- "HTTP :8420 (B4)" --> S[kks-server]
+    P[HTTPS proxy or tunnel on the server machine] -- "HTTP 127.0.0.1:8420 (B4)" --> S[kks-server]
     D1[Phone / laptop app] -- "TLS 1.3 sync :8421, mDNS (B1)" --- S
     D1 -- "TLS sync (B1)" --- D2[Another device]
     D2 -- "join / enroll (B3)" --> S
@@ -53,7 +53,7 @@ flowchart LR
   D1 -- "wss presence + pipe (B2)" --> R[(Relay: Cloudflare Worker)]
   S -- "wss (B2)" --> R
   D1 -. "UDP direct, STUN (B2)" .- D2
-  Internet[Remote browser] -- "HTTPS via tunnel + Access (B4)" --> S
+  B[Browser, on the LAN or remote] -- "HTTPS (B4)" --> P
   D1 -- "HTTPS: release.json + APK (B12)" --> GH[(GitHub releases)]
   S --- DB[(Sealed store B9)]
   D1 --- K[(Platform key store B10)]
@@ -92,7 +92,7 @@ exception EX-1 covers it until 2027-01-03.
 | B3 enroll | I/S: password stolen in transit; brute force | Enroll runs over TLS on the sync port (§16; GNOME/Windows `appstate.nim`, Android `Sync.kt:85`); server throttles per username and per source. Trust on first use of the server's peer ID | Mitigated, TOFU accepted in §16 |
 | B3 enroll | S: per-source throttling bypassed | Over TLS the "source" key is the client's peer ID (`server.nim:481`): a new key per attempt avoids it; the per-username backoff still applies | Open: #39 |
 | B3 enroll | I/S: legacy HTTP enroll | `/api/devices/enroll` (`server.nim:868-876`) takes a password over the HTTP port and certifies any not-yet-certified device ID with no proof that the caller holds its key. No current client calls it (Android `Net.enroll`, `Net.kt:200-212`, has no callers; desktops use TLS) | Open: #33 |
-| B4 HTTP | I: web credentials exposed on the network | Gap in transport protection for the web pages on the plant network; details in a private advisory | Open, High: #26, [GHSA-m2gr-gcrf-xc6m](https://github.com/5wHN28Dg/kks-explorer/security/advisories/GHSA-m2gr-gcrf-xc6m) |
+| B4 HTTP | I: web credentials exposed on the network | The web listener takes only an address of this machine (`server.nim` isLoopback; any other `address` stops the server at start); browsers elsewhere reach it only through an HTTPS proxy or tunnel the operator runs. The proxy's TLS setup is the operator's | Mitigated by #50 once deployed: #26, [GHSA-m2gr-gcrf-xc6m](https://github.com/5wHN28Dg/kks-explorer/security/advisories/GHSA-m2gr-gcrf-xc6m) |
 | B4 HTTP | S: password guessing | Argon2id (`argon2.nim`, m 19 MiB, t 2; 0023 planned 64 MiB, t 3), dummy hash for unknown users, backoff per username and per IP after 4 failures, up to 15 min (`server.nim:167-177`); in memory, so a restart clears it | Mitigated; parameters below 0023's plan: #40 |
 | B4 HTTP | D: anyone locks an account | The per-username backoff applies from any address | Open: #39 |
 | B4 HTTP | S: session theft or fixation | 32 random bytes, stored only as SHA-256 in sealed rows; cookie `HttpOnly; SameSite=Strict`; 30-day fixed expiry; ended on logout, password change/reset, role change, deactivation; refused when the account's device is revoked (`server.nim:179-189, 325-347`) | Mitigated |
