@@ -88,7 +88,14 @@ jobs:
           [ -f ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
       - name: The importer's tests
         working-directory: importer
-        run: nim test
+        run: |
+          # TEMP diagnostics: which gcc, its default target, and whether it fuses multiply-adds
+          which -a gcc cc; gcc --version | head -1; gcc -v 2>&1 | grep -o -- '--with-arch[^ ]*' || true
+          echo | gcc -dM -E - | grep -E '__FMA__|__AVX2__|__x86_64__' || true
+          gcc -Q --help=target | grep -E '^ +-march=|^ +-mfma ' || true
+          env | grep -E '^(CC|CFLAGS|GCC_|COMPILER_PATH|LIBRARY_PATH)' || true
+          grep -m1 'model name' /proc/cpuinfo
+          nim test
 
   # the server and the importer, built once for the jobs that drive them (server-http, web, android-e2e, gnome-e2e)
   linux-build:
@@ -222,13 +229,13 @@ jobs:
         with:
           path: ~/.cache/pip
           key: pip-${{ env.IMAGE }}-${{ hashFiles('requirements-dev.txt') }}
-      - name: GTK 4, libadwaita, libsecret, zxing-cpp, GStreamer; mutter, AT-SPI and python3-gi for the test
+      - name: GTK 4, libadwaita, libsecret, zxing-cpp, GStreamer; mutter, AT-SPI, python3-gi and Pillow for the test (system python3)
         run: |
           tar xf linux-bin.tar -C /tmp
           sudo apt-get update -q
           sudo apt-get install -yq --no-install-recommends $APT_NIM libgtk-4-dev libadwaita-1-dev libsecret-1-dev \
             libzxing-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good gstreamer1.0-libav mutter at-spi2-core python3-gi gir1.2-atspi-2.0 \
+            gstreamer1.0-plugins-good gstreamer1.0-libav mutter at-spi2-core python3-gi python3-pil gir1.2-atspi-2.0 \
             gir1.2-glib-2.0 dbus-daemon ffmpeg fuse3 mesa-vulkan-drivers libgl1-mesa-dri fonts-dejavu-core >/dev/null
           pkg-config --modversion gtk4 libadwaita-1
       - name: .venv with OpenCV (the QR video for the camera test)
