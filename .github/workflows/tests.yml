@@ -1,0 +1,454 @@
+# The project's test suites on x86-64 (issue #6; policy Section 5, NAT-6, NAT-8, WEB-5, OTH-6): one job per suite, so
+# branch protection can require each. Linux jobs run on ubuntu-26.04, the maintainer's OS: its GTK 4.22,
+# libadwaita 1.9, libjxl 0.11 and zxing-cpp are the versions the apps are built against (apps/gnome/README,
+# importer/README). Windows is cross-built with mingw-w64 like on the maintainer's machine (apps/windows/README) and
+# tested on a windows-2022 runner. What is not covered here (the full Windows UIA e2e, real phones) is listed in the
+# PR that added this file and in the wiki's Development page.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main, adopt-policy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NIM_VERSION: 2.2.12
+  NIM_SHA256: 2639a06a5ea7a7fcf57df1e7e1ef4d1b2bee58c7ac9bd00dbd2aa5bea1e5a56a
+  IMAGE: ubuntu-26.04
+  # the libraries the Nim core, platform layer, server and importer link (GnuTLS, zlib, OpenSSL's Argon2id, SQLite,
+  # GIO for Avahi's D-Bus, libjxl 0.11)
+  APT_NIM: libgnutls28-dev zlib1g-dev libssl-dev libsqlite3-dev libglib2.0-dev libjxl-dev
+  # the Android emulator and its system image: the versions on the maintainer's machine (emulator 37.2.12, API 36
+  # default x86_64 r02), from Google's SDK repository, checked by SHA-256 (the repository lists SHA-1; both checked
+  # on 2026-10-06)
+  EMULATOR_URL: https://dl.google.com/android/repository/emulator-linux_x64-16428233.zip
+  EMULATOR_SHA256: b08fc43d8608d2955f607f1b287beb525041e730086bdca3af152accac3af9c1
+  SYSIMG_URL: https://dl.google.com/android/repository/sys-img/android/x86_64-36_r02.zip
+  SYSIMG_SHA256: e1b9d9fb665001ef27b16e57d8762a2d54aec6bff617e17506edb8676667b9da
+
+jobs:
+  core:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-nim
+        with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
+      - name: Libraries
+        run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends libgnutls28-dev zlib1g-dev >/dev/null
+      - name: The Nim core's tests (no platform, NAT-6)
+        working-directory: core
+        run: nim test
+
+  platform-linux:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-nim
+        with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
+      - name: Libraries, and Avahi on the system bus (test_mdns announces and browses through it)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM avahi-daemon >/dev/null
+          sudo systemctl start avahi-daemon
+          systemctl is-active avahi-daemon
+      - name: The relay twin's Python (test_internet starts relay/twin.py from .venv)
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -q -c requirements-dev.txt cryptography
+      - name: The platform layer's tests (store, TLS, sync over TCP, Argon2id, mDNS, the relay pipe and direct UDP)
+        working-directory: platform/linux
+        run: nim test
+
+  importer:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-nim
+        with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.2 built (pinned by SHA-256 in the script)
+        with:
+          path: |
+            ~/.local/kksdev/src/mupdf-1.28.2-source/include
+            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a
+            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf-third.a
+          key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
+      - name: Libraries, MuPDF
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
+          [ -f ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
+      - name: The importer's tests
+        working-directory: importer
+        run: nim test
+
+  # the server and the importer, built once for the jobs that drive them (server-http, web, android-e2e, gnome-e2e)
+  linux-build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-nim
+        with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.2 built (pinned by SHA-256 in the script)
+        with:
+          path: |
+            ~/.local/kksdev/src/mupdf-1.28.2-source/include
+            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a
+            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf-third.a
+          key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
+      - name: Libraries, MuPDF
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
+          [ -f ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
+      - name: kks_server and kks_import
+        run: |
+          (cd platform/linux && nim c -d:release -o:/tmp/kkslinux/kks_server kks_server.nim)
+          (cd importer && nim c -d:release -o:/tmp/kksimp/kks_import kks_import.nim)
+          tar cf linux-bin.tar -C /tmp kkslinux/kks_server kksimp/kks_import
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-bin
+          path: linux-bin.tar
+          retention-days: 3
+
+  server-http:
+    needs: linux-build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-bin
+      - name: Binaries and their libraries
+        run: |
+          tar xf linux-bin.tar -C /tmp
+          sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
+          test -x /tmp/kkslinux/kks_server && test -x /tmp/kksimp/kks_import   # else the Drawings tests would skip
+      - name: The server over HTTP (flow, login throttling, Drawings through the importer)
+        env:
+          KKS_IMPORT: /tmp/kksimp/kks_import
+        run: python3 platform/linux/e2e/test_server_http.py /tmp/kkslinux/kks_server -v
+
+  python:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ env.IMAGE }}-${{ hashFiles('requirements-dev.txt') }}
+      - name: .venv from requirements-dev.txt (pinned)
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -q -r requirements-dev.txt
+      - name: The protocol, strict JSON, path store and course vectors (the Python reference)
+        run: .venv/bin/python -m unittest discover -s tests -v
+
+  web:
+    needs: linux-build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, firefox, webkit]
+    name: web (${{ matrix.engine }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-bin
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ env.IMAGE }}-${{ hashFiles('requirements-dev.txt') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; the browser builds of the pinned Playwright
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ env.IMAGE }}-${{ matrix.engine }}-${{ hashFiles('requirements-dev.txt') }}
+      - name: Binaries, their libraries, djxl (test_web_wasm checks the stored photo)
+        run: |
+          tar xf linux-bin.tar -C /tmp
+          sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM libjxl-tools >/dev/null
+      - name: .venv with Playwright, and its ${{ matrix.engine }} build with the system packages it needs
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -q -r requirements-dev.txt
+          .venv/bin/playwright install --with-deps ${{ matrix.engine }}
+      - name: The browser client on v2 plant data (test_web_v2)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
+        run: .venv/bin/python platform/linux/e2e/test_web_v2.py -v -k ${{ matrix.engine }}
+      - name: Our libjxl and zxing-cpp WebAssembly build (test_web_wasm)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_wasm.py -v -k ${{ matrix.engine }}
+      - name: The JSON courses (test_course_web; the engine's pages and keyboard, plus the course list API)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_course_web.py -v -k ${{ matrix.engine }} -k list_api
+      - name: course-figure.js against the course vectors (tests/web)
+        run: .venv/bin/python tests/web/test_course_figure.py -v -k ${{ matrix.engine }}
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-shots-${{ matrix.engine }}
+          path: |
+            /tmp/kks-web-shots
+            /tmp/kks-course-shots
+          retention-days: 7
+          if-no-files-found: ignore
+
+  gnome-e2e:
+    needs: linux-build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-nim
+        with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-bin
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ env.IMAGE }}-${{ hashFiles('requirements-dev.txt') }}
+      - name: GTK 4, libadwaita, libsecret, zxing-cpp, GStreamer; mutter, AT-SPI and python3-gi for the test
+        run: |
+          tar xf linux-bin.tar -C /tmp
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends $APT_NIM libgtk-4-dev libadwaita-1-dev libsecret-1-dev \
+            libzxing-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good gstreamer1.0-libav mutter at-spi2-core python3-gi gir1.2-atspi-2.0 \
+            gir1.2-glib-2.0 dbus-daemon ffmpeg fuse3 mesa-vulkan-drivers libgl1-mesa-dri fonts-dejavu-core >/dev/null
+          pkg-config --modversion gtk4 libadwaita-1
+      - name: .venv with OpenCV (the QR video for the camera test)
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -q -c requirements-dev.txt opencv-python-headless numpy
+      - name: The GNOME app
+        working-directory: apps/gnome
+        run: nim c -d:release -o:/tmp/kksgnome/kks_explorer kks_explorer.nim
+      - name: The GNOME app through AT-SPI, in a private headless mutter (apps/gnome/e2e/headless.sh)
+        run: |
+          apps/gnome/e2e/headless.sh /usr/bin/python3 apps/gnome/e2e/test_gnome.py /tmp/kksgnome/kks_explorer \
+            /tmp/kkslinux/kks_server /tmp/kksimp/kks_import
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gnome-shots
+          path: |
+            /tmp/kks-gnome-shots
+            /tmp/kks-headless-mutter.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  android-e2e:
+    needs: linux-build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-bin
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'            # Gradle 8.13 does not run on newer JDKs
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; the pinned libjxl and zxing-cpp sources (checked by SHA-256 anyway)
+        with:
+          path: android/app2/build/third_party/download
+          key: deps-${{ hashFiles('android/app2/build.gradle.kts') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ env.IMAGE }}-${{ hashFiles('requirements-dev.txt') }}
+      - name: KVM for the emulator (the runner's /dev/kvm, opened to the runner user)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Binaries, their libraries, .venv (Pillow for the photo test, cryptography for the relay twin)
+        run: |
+          tar xf linux-bin.tar -C /tmp
+          sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
+          python3 -m venv .venv
+          .venv/bin/pip install -q -c requirements-dev.txt cryptography Pillow
+      - name: The emulator and its system image (pinned, checked); an AVD like the maintainer's Pixel 9 Pro XL
+        run: |
+          sdk=$HOME/Android/Sdk                  # where android/app2/e2e/adbui.py looks for adb
+          mkdir -p "$sdk/system-images/android-36/default" "$sdk/platforms" ~/.android/avd/ci.avd
+          ln -s "$ANDROID_HOME/platform-tools" "$sdk/platform-tools"
+          curl -sSL -o /tmp/emu.zip "$EMULATOR_URL" && echo "$EMULATOR_SHA256  /tmp/emu.zip" | sha256sum -c
+          curl -sSL -o /tmp/img.zip "$SYSIMG_URL" && echo "$SYSIMG_SHA256  /tmp/img.zip" | sha256sum -c
+          unzip -q /tmp/emu.zip -d "$sdk" && unzip -q /tmp/img.zip -d "$sdk/system-images/android-36/default"
+          rm /tmp/emu.zip /tmp/img.zip
+          printf 'avd.ini.encoding=UTF-8\npath=%s\npath.rel=avd/ci.avd\ntarget=android-36\n' "$HOME/.android/avd/ci.avd" > ~/.android/avd/ci.ini
+          cat > ~/.android/avd/ci.avd/config.ini <<EOF
+          AvdId=ci
+          PlayStore.enabled=false
+          abi.type=x86_64
+          avd.ini.encoding=UTF-8
+          disk.dataPartition.size=6G
+          hw.camera.back=virtualscene
+          hw.camera.front=emulated
+          hw.cpu.arch=x86_64
+          hw.cpu.ncore=4
+          hw.device.manufacturer=Google
+          hw.device.name=pixel_9_pro_xl
+          hw.gpu.enabled=yes
+          hw.gpu.mode=swiftshader_indirect
+          hw.keyboard=yes
+          hw.lcd.density=480
+          hw.lcd.height=2992
+          hw.lcd.width=1344
+          hw.mainKeys=no
+          hw.ramSize=4096
+          hw.sdCard=yes
+          image.sysdir.1=system-images/android-36/default/x86_64/
+          sdcard.size=512M
+          tag.id=default
+          tag.ids=default
+          target=android-36
+          vm.heapSize=256
+          EOF
+      - name: Walkdown for Android, debug APK
+        working-directory: android
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          ./gradlew --no-daemon :app2:assembleDebug
+          ls -l --time-style=full-iso app2/build/outputs/apk/debug/app2-debug.apk   # built now, not a stale one
+      - name: Boot the emulator
+        run: |
+          export ANDROID_SDK_ROOT=$HOME/Android/Sdk ANDROID_HOME=$HOME/Android/Sdk
+          adb=$ANDROID_SDK_ROOT/platform-tools/adb
+          t0=$(date +%s)
+          nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd ci -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -camera-back virtualscene > /tmp/emulator.log 2>&1 &
+          "$adb" wait-for-device
+          until [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; do
+            [ $(( $(date +%s) - t0 )) -gt 600 ] && { tail -50 /tmp/emulator.log; exit 1; }
+            sleep 5
+          done
+          "$adb" shell settings put global window_animation_scale 0
+          "$adb" shell settings put global transition_animation_scale 0
+          "$adb" shell settings put global animator_duration_scale 0
+          echo "booted in $(( $(date +%s) - t0 )) s"
+      - name: The app against the server (join, search, edit synced, approval, photos, courses, diagnostics, removal + wipe)
+        run: |
+          t0=$(date +%s)
+          .venv/bin/python android/app2/e2e/test_app2.py android/app2/build/outputs/apk/debug/app2-debug.apk \
+            /tmp/kkslinux/kks_server /tmp/kksimp/kks_import -v
+          echo "test_app2: $(( $(date +%s) - t0 )) s"
+      - name: The direct path (hole punching through the relay twin, and the fallback to the pipe)
+        run: |
+          t0=$(date +%s)
+          .venv/bin/python android/app2/e2e/test_direct.py android/app2/build/outputs/apk/debug/app2-debug.apk \
+            /tmp/kkslinux/kks_server -v
+          echo "test_direct: $(( $(date +%s) - t0 )) s"
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-logs
+          path: /tmp/emulator.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  windows-build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-nim
+        with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; zlib, libjxl, zxing-cpp (pinned by SHA-256 in the script), SQLite
+        with:
+          path: |
+            ~/.local/kksdev/win64
+            ~/.local/kksdev/src/sqlite-amalgamation-3530400
+          key: win64-${{ env.IMAGE }}-${{ hashFiles('platform/windows/build-deps.sh', 'android/nim/fetch_sqlite.sh') }}
+      - name: mingw-w64 13 (GCC 13, posix threads, decision 0033), the libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends g++-mingw-w64-x86-64-posix binutils-mingw-w64-x86-64 >/dev/null
+          x86_64-w64-mingw32-gcc --version | head -1
+          KKS_MINGW_BIN=/usr/bin sh platform/windows/build-deps.sh
+      - name: The app, the UI Automation driver, the core and platform tests
+        env:
+          KKS_MINGW_BIN: /usr/bin
+        run: |
+          mkdir -p out/core out/plat
+          NIM=nim sh apps/windows/build.sh "$PWD/out/Walkdown.exe"
+          (cd core && KKS_WIN_OUT=/tmp/kkswin-core nim wintests) && cp /tmp/kkswin-core/*.exe out/core/
+          (cd platform/linux && KKS_WIN_OUT=/tmp/kkswin-plat nim wintests) && cp /tmp/kkswin-plat/*.exe out/plat/
+          ls -l out out/core out/plat
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: walkdown-windows-x64
+          path: out
+          retention-days: 3
+
+  windows-test:
+    needs: windows-build
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: walkdown-windows-x64
+          path: out
+      - name: The core's tests with the CNG provider
+        shell: pwsh
+        run: |
+          $env:KKS_VECTORS = "$PWD\ref\vectors"
+          $failed = @()
+          foreach ($t in Get-ChildItem out\core\*.exe) {
+            Write-Host "== $($t.Name)"
+            & $t.FullName
+            if ($LASTEXITCODE -ne 0) { $failed += $t.Name }
+          }
+          if ($failed) { Write-Host "failed: $failed"; exit 1 }
+      - name: The platform tests (SQLite store, Schannel TLS, sync over TCP, the relay pipe and direct UDP, CNG, DNS-SD, DPAPI)
+        shell: pwsh
+        run: |
+          # test_internet against the relay twin (Python with cryptography), started here: one step, one process tree
+          python -m venv venv
+          venv\Scripts\pip install -q -c requirements-dev.txt cryptography
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $twin = Start-Process -FilePath venv\Scripts\python.exe -ArgumentList 'relay\twin.py', '18765' -PassThru -NoNewWindow `
+            -RedirectStandardOutput twin.log -RedirectStandardError twin.err
+          Start-Sleep -Seconds 2
+          if ($twin.HasExited) { Get-Content twin.log, twin.err; exit 1 }
+          $env:KKS_RELAY_URL = 'ws://127.0.0.1:18765'
+          $failed = @()
+          foreach ($t in Get-ChildItem out\plat\*.exe) {
+            Write-Host "== $($t.Name)"
+            & $t.FullName
+            if ($LASTEXITCODE -ne 0) { $failed += $t.Name }
+          }
+          Stop-Process -Id $twin.Id -Force
+          if ($failed) { Write-Host "failed: $failed"; Get-Content twin.log, twin.err -ErrorAction SilentlyContinue; exit 1 }
+      - name: The app starts to its setup screen (UI Automation)
+        shell: pwsh
+        run: |
+          $env:KKS_DATA_DIR = "$env:RUNNER_TEMP\walkdown"
+          $app = Start-Process -FilePath out\Walkdown.exe -PassThru
+          Set-Content -Path script.uia -Value "wait`tJoin through a server`t60" -Encoding ascii
+          & out\uiadrive.exe Walkdown.exe "$PWD\script.uia" "$PWD\uia.log"
+          $code = $LASTEXITCODE
+          Get-Content uia.log
+          Stop-Process -Id $app.Id -Force
+          exit $code
