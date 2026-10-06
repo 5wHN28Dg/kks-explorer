@@ -163,6 +163,9 @@ proc connectInner(url: string, timeout: int): Future[Ws] {.async.} =
   let u = parseUri(url)
   let secure = u.scheme == "wss"
   if u.scheme notin ["ws", "wss"] or u.hostname.len == 0: raise newException(WsError, "not a WebSocket address: " & url)
+  # ws:// only to this machine (tests' relay twin); the relay's presence traffic is never sent in clear (#15)
+  if not secure and u.hostname notin ["127.0.0.1", "localhost", "::1"]:
+    raise newException(WsError, "the relay must be a wss:// address (ws:// only to this machine)")
   let port = if u.port.len > 0: parseInt(u.port) else: (if secure: 443 else: 80)
   let w = Ws(sock: await asyncnet.dial(u.hostname, Port(port), buffered = false))   # IPv4 or IPv6; wsConnect bounds the time
   if secure:

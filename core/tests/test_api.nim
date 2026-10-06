@@ -145,6 +145,12 @@ suite "plant API":
     check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"wss://relay.example.dev/"}""")).status == 200
     check mgrNode.run.settings["relay"].s == "wss://relay.example.dev"
     check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"http://x"}""")).status == 400
+    # #15: ws:// (presence in clear) only to this machine, for tests
+    check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"ws://relay.example.dev"}""")).status == 400
+    check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"ws://10.0.0.5:8787"}""")).status == 400
+    check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"ws://127.0.0.1.evil.dev:80"}""")).status == 400
+    check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"ws://127.0.0.1:8787"}""")).status == 200
+    check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"wss://relay.example.dev/"}""")).status == 200
     check mgrApi.call(mgr, "POST", "/api/progress", j("""{"course":"hrsg","data":{"finalBest":"9"}}""")).status == 200
     check mgrApi.call(mgr, "GET", "/api/progress", q = {"course": "hrsg"}.toTable).json["data"]["finalBest"].s == "9"
 

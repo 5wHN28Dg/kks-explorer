@@ -47,6 +47,19 @@ const
   Open = ["pending", "conflict"]
   Entities = ["equipment", "review", "link", "photo", "added_tag"]
 
+proc relayLoopbackWs*(url: string): bool =
+  ## ws:// (no TLS) is allowed only to this machine: the relay twin in tests (finding #15). Everything else is wss://,
+  ## so presence on the relay (the plant's room, device IDs, who is online) is never sent in clear.
+  if not url.startsWith("ws://"): return false
+  var host = url[5 .. ^1]
+  let slash = host.find('/')
+  if slash >= 0: host = host[0 ..< slash]
+  if host.startsWith("["): host = host[1 .. max(1, host.find(']')) - 1]
+  else:
+    let colon = host.rfind(':')
+    if colon >= 0: host = host[0 ..< colon]
+  host == "127.0.0.1" or host == "localhost" or host == "::1"
+
 proc fail*(status: int, msg: string, extra: JNode = nil) {.noreturn.} =
   let e = newException(ApiError, msg)
   e.status = status
@@ -1035,9 +1048,9 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
     need(me, "manager")
     var url = if d.get("url") != nil and d["url"].isStr: d["url"].s.strip else: ""
     while url.endsWith("/"): url.setLen(url.len - 1)
-    if url.len > 0 and not ((url.startsWith("ws://") or url.startsWith("wss://")) and
+    if url.len > 0 and not ((url.startsWith("wss://") or relayLoopbackWs(url)) and
                             url.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '.', '-', ':', '/', '_', '~'})):
-      bad("The relay address looks like wss://kks-relay.example.workers.dev")
+      bad("The relay address looks like wss://kks-relay.example.workers.dev (ws:// only to this machine, for tests)")
     discard a.write(me, "setting", O(("key", S("relay")), ("value", orNull(url))), now)
     if a.relayChanged != nil: a.relayChanged()
     return ok()

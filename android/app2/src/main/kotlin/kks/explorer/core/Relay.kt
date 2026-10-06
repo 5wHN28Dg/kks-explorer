@@ -33,6 +33,9 @@ class WsClient(url: String, timeoutMs: Int = 15_000) {
     init {
         val u = URI(url)
         if (u.scheme != "ws" && u.scheme != "wss") throw WsError("not a ws:// or wss:// address")
+        // ws:// (a raw socket, outside Android's cleartext policy) only to this device: the relay twin in tests (#15)
+        if (u.scheme == "ws" && u.host !in setOf("127.0.0.1", "localhost", "::1", "[::1]"))
+            throw WsError("the relay must be a wss:// address (ws:// only to this device)")
         val port = if (u.port > 0) u.port else if (u.scheme == "wss") 443 else 80
         val raw = Socket().apply { connect(InetSocketAddress(u.host, port), timeoutMs); soTimeout = timeoutMs }
         sock = if (u.scheme == "wss") {
