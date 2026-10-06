@@ -1,8 +1,9 @@
 # A copy of Nim 2.2.12's std/asynchttpserver (lib/pure/asynchttpserver.nim, (c) 2015 Dominik Picheta, MIT, Nim's
 # copying.txt), with limits for a server that faces the plant network directly (governance finding #27, advisory
 # GHSA-xfj6-p785-whg5). The changes, all marked "kks:":
-# - request bodies sent with Transfer-Encoding: chunked are refused (411): the stdlib read them with no size limit
-#   before the application saw the request. No Walkdown client sends them;
+# - a request with any Transfer-Encoding is refused (411), whatever its method and even with a Content-Length: the
+#   stdlib read chunked POST bodies with no size limit before the application saw the request, and left other
+#   methods' bodies on the socket to be read as the next request. No Walkdown client sends one;
 # - deadlines: the first line of a request must arrive within IdleTimeoutMs (a kept-alive connection waits that
 #   long), then the rest of the request line and all headers together within HeaderTimeoutMs, and a Content-Length
 #   body within BodyTimeoutMs;
@@ -155,17 +156,6 @@ proc parseProtocol(protocol: string): tuple[orig: string, major, minor: int] =
 proc sendStatus(client: AsyncSocket, status: string): Future[void] =
   client.send("HTTP/1.1 " & status & "\c\L\c\L")
 
-func hasChunkedEncoding(request: Request): bool =
-  ## Searches for a chunked transfer encoding
-  const transferEncoding = "Transfer-Encoding"
-
-  if request.headers.hasKey(transferEncoding):
-    for encoding in seq[string](request.headers[transferEncoding]):
-      if "chunked" == encoding.strip:
-        # Returns true if it is both an HttpPost and has chunked encoding
-        return request.reqMethod == HttpPost
-  return false
-
 proc processRequest(
   server: AsyncHttpServer,
   req: FutureVar[Request],
@@ -279,6 +269,12 @@ proc processRequest(
         await client.sendStatus("417 Expectation Failed")
 
   # Read the body
+  if request.headers.hasKey("Transfer-Encoding"):
+    # kks: refused, any method, with or without Content-Length (finding #27). The stdlib read chunked POST bodies
+    # with no size limit before the callback ran, and left other methods' bodies on the socket.
+    await request.respond(Http411, "Transfer-Encoding is not accepted; send Content-Length.")
+    client.close()
+    return false
   # - Check for Content-length header
   if request.headers.hasKey("Content-Length"):
     var contentLength = 0
@@ -297,11 +293,6 @@ proc processRequest(
       if request.body.len != contentLength:
         await request.respond(Http400, "Bad Request. Content-Length does not match actual.")
         return true
-  elif hasChunkedEncoding(request):
-    # kks: refused. The stdlib read chunked bodies with no size limit before the callback ran (finding #27).
-    await request.respond(Http411, "Chunked request bodies are not accepted; send Content-Length.")
-    client.close()
-    return false
   elif request.reqMethod == HttpPost:
     await request.respond(Http411, "Content-Length required.")
     return true

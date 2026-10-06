@@ -273,8 +273,26 @@ class Server(Base):
 class Limits(Base):
     """finding #27 (advisory GHSA-xfj6-p785-whg5): request limits before authentication"""
 
+    def conn(self, src='127.0.0.1', timeout=None):
+        return socket.create_connection(('127.0.0.1', self.port), timeout=timeout, source_address=(src, 0))
+
+    def closed_count(self, socks):
+        time.sleep(1)
+        closed = 0
+        for s in socks:                  # one non-blocking look each: waiting per socket would reach the idle timeout
+            s.setblocking(False)
+            try:
+                if s.recv(1) == b'':
+                    closed += 1
+            except BlockingIOError:
+                pass
+            except ConnectionResetError:
+                closed += 1
+            s.close()
+        return closed
+
     def raw(self, data, wait=5.0):
-        c = socket.create_connection(('127.0.0.1', self.port), timeout=wait)
+        c = self.conn(timeout=wait)
         c.sendall(data)
         out = b''
         try:
@@ -293,6 +311,17 @@ class Limits(Base):
         self.assertTrue(r.startswith(b'HTTP/1.1 411'), r[:80])
         self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)   # still serving
 
+    def test_any_transfer_encoding_refused(self):
+        """not only chunked POST: another method's chunked body would be read as the next request (smuggling)"""
+        smuggled = b'5\r\nGET /\r\n0\r\n\r\n'
+        for head in (b'PUT /api/config HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n',
+                     b'POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\n',
+                     b'GET /api/config HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: gzip\r\n\r\n'):
+            with self.subTest(head=head[:40]):
+                r = self.raw(head + smuggled)
+                self.assertTrue(r.startswith(b'HTTP/1.1 411'), r[:80])
+                self.assertEqual(r.count(b'HTTP/1.1 '), 1, r)      # nothing after it was read as a request
+
     def test_slow_headers_closed(self):
         c = socket.create_connection(('127.0.0.1', self.port), timeout=40)
         c.sendall(b'GET /api/config HTTP/1.1\r\nHost: x\r\n')         # never finishes the headers
@@ -302,24 +331,15 @@ class Limits(Base):
         c.close()
 
     def test_connections_per_address_capped(self):
-        socks = [socket.create_connection(('127.0.0.1', self.port)) for _ in range(70)]
-        time.sleep(1)
-        closed = 0
-        for s in socks:
-            s.settimeout(0.5)
-            try:
-                if s.recv(1) == b'':
-                    closed += 1
-            except socket.timeout:
-                pass
-            s.close()
+        # from 127.0.0.2, which no other test uses, so no other connection shares the count
+        closed = self.closed_count([self.conn('127.0.0.2') for _ in range(70)])
         self.assertGreaterEqual(closed, 6)       # 64 per address: the rest are closed at once
         self.assertLessEqual(closed, 6)          # ... and only those
         self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)
         # the slots come back when connections end: 64 complete requests at once, twice
         time.sleep(1)
         for _ in range(2):
-            socks = [socket.create_connection(('127.0.0.1', self.port), timeout=10) for _ in range(64)]
+            socks = [self.conn('127.0.0.2', timeout=10) for _ in range(64)]
             for s in socks:
                 s.sendall(b'GET /api/config HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
             ok = 0
@@ -329,6 +349,24 @@ class Limits(Base):
                 s.close()
             self.assertEqual(ok, 64)
             time.sleep(1)
+
+    def test_connections_capped_in_total(self):
+        # 9 addresses x 60, each under the per-address cap: only the total of 512 applies
+        socks = [self.conn('127.0.0.%d' % (10 + a)) for a in range(9) for _ in range(60)]
+        closed = self.closed_count(socks)
+        self.assertGreaterEqual(closed, 540 - 512)
+        self.assertLessEqual(closed, 540 - 512 + 2)   # + the odd connection of an earlier test still closing
+        time.sleep(1)
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)
+
+    def test_idle_connection_closed(self):
+        """a connection that never sends a request line is closed after the idle timeout (60 s)"""
+        c = self.conn(timeout=90)
+        t0 = time.time()
+        self.assertEqual(c.recv(1), b'')
+        self.assertGreater(time.time() - t0, 55)
+        self.assertLess(time.time() - t0, 75)
+        c.close()
 
     def test_slow_header_lines_closed(self):
         """the header deadline is for all header lines together, not per line (one line every 5 s doesn't extend it)"""
