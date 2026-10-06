@@ -10,6 +10,7 @@ File names stay the same: the courses link to each other by name. Also writes da
 
     python3 tools/build_courses.py [--fonts]     # --fonts: download the fonts again (vendor/fonts)
     python3 tools/build_courses.py --ttf         # the same faces as TTF for the Android app (vendor/fonts/ttf)
+    python3 tools/build_courses.py --check-fonts # offline: vendor/fonts matches the pins and what the script writes
 """
 import hashlib, json, os, re, sys, urllib.request
 
@@ -85,25 +86,41 @@ def write_all(d, files):
             f.write(data)
 
 
-def fonts():
-    """Latin + Latin Extended woff2 files of the three families, a CSS file pointing at them, the licenses."""
+def woff2_name(fam, style, weight, subset):
+    return f"{fam.replace(' ', '')}-{weight}{'i' if style == 'italic' else ''}-{subset}.woff2"
+
+
+def courses_css():
+    """vendor/fonts/courses.css, from WOFF2 and RANGES."""
     out = ['/* The fonts of the courses (M4), vendored from Google Fonts so courses work offline and never contact Google.',
            '   Latin + Latin Extended only. SIL Open Font License 1.1: see OFL-*.txt. Made by tools/build_courses.py --fonts. */']
-    files = {}
-    for fam, style, weight, subset, url, sha in WOFF2:
-        name = f"{fam.replace(' ', '')}-{weight}{'i' if style == 'italic' else ''}-{subset}.woff2"
-        files[name] = fetch(GSTATIC + url, sha)
+    for fam, style, weight, subset, _, _ in WOFF2:
         out.append(f"@font-face {{\n  font-family: '{fam}';\n  font-style: {style};\n  font-weight: {weight};\n"
-                   f"  font-display: swap;\n  src: url({name}) format('woff2');\n  unicode-range: {RANGES[subset]};\n}}")
-    files['courses.css'] = ('\n'.join(out) + '\n').encode()
+                   f"  font-display: swap;\n  src: url({woff2_name(fam, style, weight, subset)}) format('woff2');\n"
+                   f"  unicode-range: {RANGES[subset]};\n}}")
+    return ('\n'.join(out) + '\n').encode()
+
+
+def sha256sums(files, order):
+    return ''.join(f'{hashlib.sha256(files[n]).hexdigest()}  {n}\n' for n in order).encode()
+
+
+def woff2_sums(files):
+    """vendor/fonts/SHA256SUMS: the woff2 files in the order of `sha256sum *.woff2 *.css` in a UTF-8 locale
+    (punctuation ignored), as in the committed file, then courses.css."""
+    names = sorted((n for n in files if n.endswith('.woff2')), key=lambda n: re.sub(r'[^a-z0-9]', '', n.lower()))
+    return sha256sums(files, names + ['courses.css'])
+
+
+def fonts():
+    """Latin + Latin Extended woff2 files of the three families, a CSS file pointing at them, the licenses."""
+    files = {woff2_name(fam, style, weight, subset): fetch(GSTATIC + url, sha)
+             for fam, style, weight, subset, url, sha in WOFF2}
+    files['courses.css'] = courses_css()
     for fam, d, sha in OFL:
         files[f'OFL-{fam}.txt'] = fetch(f'https://raw.githubusercontent.com/google/fonts/{OFL_COMMIT}/ofl/{d}/OFL.txt', sha)
+    files['SHA256SUMS'] = woff2_sums(files)
     write_all(FONTS, files)
-    # the order of `sha256sum *.woff2 *.css` in a UTF-8 locale (punctuation ignored), as in the committed file
-    names = sorted((n for n in files if n.endswith('.woff2')), key=lambda n: re.sub(r'[^a-z0-9]', '', n.lower()))
-    sums = [f'{hashlib.sha256(files[n]).hexdigest()}  {n}' for n in names + ['courses.css']]
-    with open(os.path.join(FONTS, 'SHA256SUMS'), 'w') as f:
-        f.write('\n'.join(sums) + '\n')
 
 
 def ttf():
@@ -111,10 +128,31 @@ def ttf():
     weights the course figures use, from Google Fonts like the WOFF2 files (it serves TTF to a plain HTTP client).
     Into vendor/fonts/ttf/ with their SHA-256."""
     files = {name: fetch(GSTATIC + url, sha) for name, url, sha in TTF}
+    files['SHA256SUMS'] = sha256sums(files, sorted(files))
     write_all(os.path.join(FONTS, 'ttf'), files)
-    sums = [f'{hashlib.sha256(data).hexdigest()}  {name}' for name, data in files.items()]
-    with open(os.path.join(FONTS, 'ttf', 'SHA256SUMS'), 'w') as f:
-        f.write('\n'.join(sorted(sums, key=lambda x: x.split()[1])) + '\n')
+
+
+def check():
+    """Offline: the files in vendor/fonts match the pins, and courses.css and both SHA256SUMS are what --fonts and
+    --ttf would write. Exits 1 with the differences."""
+    def read(*p):
+        with open(os.path.join(FONTS, *p), 'rb') as f:
+            return f.read()
+    pins = [(woff2_name(*w[:4]), w[5]) for w in WOFF2] + [(f'ttf/{n}', s) for n, _, s in TTF] + \
+           [(f'OFL-{fam}.txt', s) for fam, _, s in OFL]
+    bad = [f'vendor/fonts/{n}: SHA-256 differs from the pin' for n, s in pins
+           if hashlib.sha256(read(n)).hexdigest() != s]
+    woff = {woff2_name(*w[:4]): read(woff2_name(*w[:4])) for w in WOFF2}
+    woff['courses.css'] = read('courses.css')
+    ttfs = {n: read('ttf', n) for n, _, _ in TTF}
+    for name, want, have in (('courses.css', courses_css(), woff['courses.css']),
+                             ('SHA256SUMS', woff2_sums(woff), read('SHA256SUMS')),
+                             ('ttf/SHA256SUMS', sha256sums(ttfs, sorted(ttfs)), read('ttf', 'SHA256SUMS'))):
+        if want != have:
+            bad.append(f'vendor/fonts/{name}: not what tools/build_courses.py writes')
+    if bad:
+        raise SystemExit('\n'.join(bad))
+    print(f'vendor/fonts matches the pins ({len(pins)} files) and the generated files')
 
 
 def build():
@@ -149,6 +187,9 @@ def build():
 
 
 if __name__ == '__main__':
+    if '--check-fonts' in sys.argv:
+        check()
+        raise SystemExit(0)
     if '--ttf' in sys.argv:
         ttf()
         raise SystemExit(0)
