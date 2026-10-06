@@ -145,6 +145,7 @@ K.start = async () => {
 // ---------- peer mode: this computer is one person's device; set it up before first use ----------
 K.download = (data, name, type = 'application/json') => {
   if (K.native) return K.native.saveFile(name, type, data);   // Android: its own "save as" dialog
+  // nosemgrep: web-10-dynamic-url-sink -- a download link to a blob: URL this function made; it saves, never navigates
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], {type})); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000);
 };
@@ -474,6 +475,7 @@ K.jxl = {
     if (!/\.jxl(\?|$)/.test(src) || img.dataset.jxl === src) return;
     img.dataset.jxl = src;
     if (await this.native()) { img.style.visibility = 'visible'; return }
+    // nosemgrep: web-10-dynamic-url-sink -- an <img> source (a blob: URL of the decoded photo) can't run script
     try { const u = await this.url(src); if (img.dataset.jxl === src) { img.src = u; img.dataset.jxl = u; img.style.visibility = 'visible' } }
     catch (e) { console.warn('JXL photo not shown', src, e); img.style.visibility = 'visible'; img.alt = 'photo could not be shown' }
   },
@@ -558,6 +560,7 @@ K.lightbox = src => {
     addEventListener('resize', () => { if (box.style.display !== 'none') K.lightbox.fit() });
   }
   box.style.display = 'block';
+  // nosemgrep: web-10-dynamic-url-sink -- an <img> source can't run script
   const img = box.querySelector('img'); img.src = src;
   if (img.complete && img.naturalWidth) K.lightbox.fit();
 };
