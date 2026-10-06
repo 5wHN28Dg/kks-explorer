@@ -34,23 +34,6 @@
       "link": "https://github.com/5wHN28Dg/kks-explorer/issues/7"
     },
     {
-      "id": "EX-3",
-      "rule": "WEB-10",
-      "files": [
-        "common.js",
-        "index.html"
-      ],
-      "finding": "The WEB-10 check flags five run-time URLs: common.js:148 (a download link's href), common.js:468, common.js:552, index.html:335 and index.html:355 (image sources). By WEB-10's own text (v2.1) none is in scope: image src is not covered, and the blob: and data: URLs are ones the page made itself from its own data. The check can't tell, so it fails.",
-      "reason": "A confirmed false positive is closed with a policy-fp marker after a fresh-context review (Section 5), not with this exception; that review and the markers are their own change (#17). Until then this entry keeps the check from blocking on results that are not defects.",
-      "compensatingControl": "Each value is made by the page itself: a blob: URL from URL.createObjectURL, a data: URL from canvas.toDataURL, or a plant-data file path served from the same origin. All five sinks are <img>.src or <a download>.href, which can't run script. The static-analysis job reports each one as a warning, and the PR review rejects a new dynamic URL in a script-capable sink.",
-      "acceptedBy": "@5wHN28Dg",
-      "written": "2026-10-05",
-      "accepted": "2026-10-06",
-      "expires": "2027-01-03",
-      "renewals": 0,
-      "link": "https://github.com/5wHN28Dg/kks-explorer/issues/17"
-    },
-    {
       "id": "EX-4",
       "rule": "Gov §5 (lockfile)",
       "files": [
