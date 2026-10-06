@@ -1,19 +1,13 @@
-# Policy checks for a project. Copy to .github/workflows/policy.yml.
-#
-# Pin the policy actions to the full commit SHA of the release your README's "Policy: vX.Y" names, e.g. for v2.1:
-#   sha=$(git ls-remote https://github.com/5wHN28Dg/policy 'refs/tags/v2.1^{}' | cut -f1)
-#   sed -i "s/@c0aaa58ecbc6177e95e02f202ef70b31d2ca6366 /@$sha /" .github/workflows/policy.yml
-# Pinning by SHA is DEP-7. Make the jobs below required in branch protection (Section 5), except claude-review,
-# which is advisory.
-#
-# The Claude review needs a repository secret CLAUDE_CODE_OAUTH_TOKEN, made with `claude setup-token` (Pro/Max).
-# Without the secret the job is skipped. It never runs for pull requests from forks, which can't see secrets.
+# Automatic safeguards on every pull request and on main: a secrets scan over the whole history (gitleaks), known
+# vulnerabilities and licenses in the dependencies (osv-scanner), and static analysis (Semgrep, including the
+# HTML-sink and URL-sink rules for the web pages). The actions come from github.com/5wHN28Dg/policy, pinned by commit.
+# They read the `Tier:`, `Type:` and `Baseline:` lines at the top of README.md to decide what runs and what blocks
+# (until the Baseline date, a missing license allowlist is only a warning).
 name: Policy
 
 on:
   pull_request:
-    # `edited` re-runs the checks when the description changes, e.g. after adding a `Budget change:` line.
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
     tags: ['v*']
@@ -23,60 +17,22 @@ permissions:
   contents: read
 
 jobs:
-  conformance:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - uses: 5wHN28Dg/policy/actions/conformance@c0aaa58ecbc6177e95e02f202ef70b31d2ca6366 # v2.1
-
   secrets:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: 5wHN28Dg/policy/actions/secrets@c0aaa58ecbc6177e95e02f202ef70b31d2ca6366 # v2.1
+      - uses: 5wHN28Dg/policy/actions/secrets@84d5869e0298fe0b0959342b923e0d7911624100 # v2.2
 
   dependencies:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: 5wHN28Dg/policy/actions/vulns@c0aaa58ecbc6177e95e02f202ef70b31d2ca6366 # v2.1
+      - uses: 5wHN28Dg/policy/actions/vulns@84d5869e0298fe0b0959342b923e0d7911624100 # v2.2
 
   static-analysis:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: 5wHN28Dg/policy/actions/sast@c0aaa58ecbc6177e95e02f202ef70b31d2ca6366 # v2.1
-
-  sbom:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: 5wHN28Dg/policy/actions/sbom@c0aaa58ecbc6177e95e02f202ef70b31d2ca6366 # v2.1
-
-  claude-review:
-    if: >-
-      github.event_name == 'pull_request' && github.event.action != 'edited' && !github.event.pull_request.draft &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - id: secret
-        env:
-          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: echo "present=${TOKEN:+yes}" >> "$GITHUB_OUTPUT"
-      - if: steps.secret.outputs.present == 'yes'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false   # the reviewer reads the checkout; keep the token out of .git/config
-      - if: steps.secret.outputs.present == 'yes'
-        uses: 5wHN28Dg/policy/actions/claude-review@c0aaa58ecbc6177e95e02f202ef70b31d2ca6366 # v2.1
-        with:
-          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      - uses: 5wHN28Dg/policy/actions/sast@84d5869e0298fe0b0959342b923e0d7911624100 # v2.2
