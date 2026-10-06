@@ -1,7 +1,7 @@
 # Walkdown
 
+<!-- read by CI; do not remove -->
 Tier: T3
-Policy: v2.2
 Type: web, native, service
 Baseline: until 2027-01-03
 
