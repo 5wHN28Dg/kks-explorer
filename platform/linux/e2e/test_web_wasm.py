@@ -91,7 +91,7 @@ class WebWasm(unittest.TestCase):
             page.goto(self.base + '/admin.html')
             page.wait_for_function("() => typeof qrSvg === 'function' && typeof K !== 'undefined' && K.me")
             invite = page.evaluate("""async () => { const W = await import('/kks-wasm.js');
-              const box = document.createElement('div'); box.innerHTML = await qrSvg('{"kks_invite":1,"code":"x"}');
+              const box = document.createElement('div'); box.append(await qrSvg('{"kks_invite":1,"code":"x"}'));
               const svg = box.querySelector('svg[aria-label="Invite QR code"]'), n = svg.viewBox.baseVal.width, s = 4;
               const dark = new Set([...svg.querySelector('path').getAttribute('d').matchAll(/M(\\d+),(\\d+)/g)].map(m => m[1] + ',' + m[2]));
               const lum = new Uint8Array(n * s * n * s);
