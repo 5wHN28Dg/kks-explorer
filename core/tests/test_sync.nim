@@ -116,6 +116,25 @@ suite "sync state machine":
     let fake = P.makeEntry(stranger, 1, "", (tick(), 0'i64), "revoke", revokeBody(server.device, 0))
     check not server.acceptRevocation(fake)
 
+  test "an admin's revoke is believed for a user's device, not for the manager's (#31)":
+    let carol = P.newPersonId()
+    let carolKey = P.p256Generate()
+    var carolPhone = newNode(P, newMemStore(), carolKey)
+    discard mgrPhone.append("person", personBody(carol, "carol", "Carol Admin", "admin"), tick())
+    discard mgrPhone.append("device_cert", deviceCertBody(carolPhone.device, carol, "phone"), tick())
+    var dave = P.newPersonId()
+    var davePhone = newNode(P, newMemStore(), P.p256Generate())
+    discard mgrPhone.append("person", personBody(dave, "dave", "Dave User", "user"), tick())
+    discard mgrPhone.append("device_cert", deviceCertBody(davePhone.device, dave, "phone"), tick())
+    discard sync(carolPhone, mgrPhone, adopt = rootStr)
+    discard sync(davePhone, mgrPhone, adopt = rootStr)
+    let againstMgr = P.makeEntry(carolKey, int64(carolPhone.chainsLen + 1), "", (tick(), 0'i64), "revoke",
+                                 revokeBody(mgrPhone.device, int64(mgrPhone.chainsLen)))
+    check not mgrPhone.acceptRevocation(againstMgr)
+    let againstUser = P.makeEntry(carolKey, int64(carolPhone.chainsLen + 1), "", (tick(), 0'i64), "revoke",
+                                  revokeBody(davePhone.device, int64(davePhone.chainsLen)))
+    check davePhone.acceptRevocation(againstUser)
+
   test "fork evidence: two different entries for one (device, seq)":
     let cloneKey = P.p256Generate()
     var a1 = newNode(P, newMemStore(), cloneKey)

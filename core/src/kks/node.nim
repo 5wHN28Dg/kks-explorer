@@ -201,7 +201,11 @@ proc acceptRevocation*(n: Node, e: JNode): bool =
   let person = n.run.devices[author]["person"].s
   let role = n.run.role(person)
   let mine = if n.device in n.run.devices: n.run.devices[n.device]["person"].s else: ""
-  role in ["admin", "manager"] or (mine.len > 0 and person == mine)
+  # the same rule replay applies to a revoke (replay.tRevoke): the manager, the device's own person, or an admin for a
+  # user's device. Before 2026-10-06 any admin's revoke was believed here, so an admin could make the manager's
+  # devices wipe themselves although the log rejects that revoke (#31).
+  role == "manager" or (mine.len > 0 and person == mine) or
+    (role == "admin" and mine.len > 0 and n.run.role(mine) == "user")
 
 proc revokerName*(n: Node, e: JNode): string =
   ## who removed this device (an accepted revoke entry): the person's full name, else the username
