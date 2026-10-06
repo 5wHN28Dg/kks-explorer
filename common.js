@@ -315,7 +315,7 @@ K.joinWait = cfg => {
 
 // Remove plant data from this device (logout, account revoked, session expired). Queued changes are kept per user.
 K.wipe = async () => {
-  try { for (const k of await caches.keys()) if (k.startsWith('kks-data')) await caches.delete(k) } catch (e) {}
+  try { for (const k of await caches.keys()) if (!k.startsWith('kks-shell-')) await caches.delete(k) } catch (e) {}   // all but the app shell
   try { await K.idb.clear() } catch (e) {}
   // a peer (own laptop / the app) that lost its plant: the courses' copies of the progress go too (on a plant server
   // they are the only copy, so logging out keeps them)

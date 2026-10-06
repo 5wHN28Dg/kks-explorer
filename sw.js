@@ -7,9 +7,10 @@ const SHELL = 'kks-shell-v10', DATA = 'kks-data-v2';   // v2: nothing cached bef
 const SHELL_FILES = ['/', '/index.html', '/admin.html', '/common.js', '/tiles.js', '/course-bridge.js', '/learning.html', '/course.html', '/course.js', '/course-figure.js', '/course.css', '/kks-wasm.js', '/kks-wasm-worker.js', '/vendor/fonts/courses.css', '/vendor/kks/kks-simd-dec.js', '/vendor/kks/kks-simd-dec.wasm', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES))); self.skipWaiting() });
+// Activation keeps only this version's two caches: any other (an older version's, or one a script made before the
+// stored-content fix) goes, and lookups below read only the cache they name.
 self.addEventListener('activate', e => e.waitUntil(caches.keys()
-  .then(ks => Promise.all(ks.filter(k => (k.startsWith('kks-shell-') || k.startsWith('kks-data')) && k !== SHELL && k !== DATA)
-    .map(k => caches.delete(k))))
+  .then(ks => Promise.all(ks.filter(k => k !== SHELL && k !== DATA).map(k => caches.delete(k))))
   .then(() => self.clients.claim())));
 
 self.addEventListener('fetch', e => {
@@ -29,7 +30,7 @@ async function networkFirst(req, name) {
     if (r.ok) (await caches.open(name)).put(req, r.clone());
     return r;
   } catch (err) {
-    const c = await caches.match(req);
+    const c = await (await caches.open(name)).match(req);
     if (!c) throw err;
     // Serve the saved copy, marked so the page doesn't mistake it for fresh data: 'offline' when the server can't be
     // reached, 'reauth' when Cloudflare Access redirected us to its login (its session expired).
@@ -43,7 +44,7 @@ async function accessExpired() {
   catch (e) { return false }
 }
 async function cacheFirst(req, name) {
-  const c = await caches.match(req);
+  const c = await (await caches.open(name)).match(req);
   if (c) return c;
   // past the HTTP cache: it may hold a photo from before the fix of finding #25, served with the URL's type and
   // cached as immutable for a year

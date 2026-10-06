@@ -77,6 +77,8 @@ class Stale(unittest.TestCase):
                 page.evaluate("""async () => {
                     const c = await caches.open('kks-data');
                     await c.put('/photos/x.html', new Response('<script>1</script>', {headers: {'Content-Type': 'text/html'}}));
+                    const other = await caches.open('evil');   // a cache under any other name a script could have made
+                    await other.put('/photos/y.html', new Response('<script>1</script>', {headers: {'Content-Type': 'text/html'}}));
                     await navigator.serviceWorker.register('/vendor/planted-sw.js', {scope: '/vendor/'});
                 }""")
                 scripts = page.evaluate("async () => (await navigator.serviceWorker.getRegistrations())"
@@ -89,7 +91,7 @@ class Stale(unittest.TestCase):
                     return rs.every(r => { const w = r.active || r.waiting || r.installing;
                                            return !w || new URL(w.scriptURL).pathname === '/sw.js' });
                 }""")
-                until(page, "async () => !(await caches.keys()).includes('kks-data')")
+                until(page, "async () => (await caches.keys()).every(k => k === 'kks-shell-v10' || k === 'kks-data-v2')")
             browser.close()
             return sw
 
@@ -163,6 +165,11 @@ class Upgrade(unittest.TestCase):
                 page.reload()                                          # now controlled by the old worker
                 page.goto(base + '/photos/%s.html' % sha)
                 self.assertEqual(page.evaluate("window.pwned"), 1)    # the attack, before the fix
+                page.goto(base + '/learning.html')     # what such a script could leave: a page in a cache of its own
+                page.evaluate("""async () => {
+                    const c = await caches.open('evil');
+                    await c.put('/photos/z.html', new Response('<script>window.pwned=2</script>', {headers: {'Content-Type': 'text/html'}}));
+                }""")
                 proc.terminate(); proc.wait(5)
                 proc, _ = self.start(SERVER, REPO)                     # the upgrade, same origin and store
                 page.goto(base + '/learning.html')
@@ -172,6 +179,11 @@ class Upgrade(unittest.TestCase):
                     self.assertEqual(resp.headers.get('content-type'), 'image/jxl')   # WebKit shows it as an image
                 except Exception as e:
                     if 'Download is starting' not in str(e): raise         # a browser without JPEG XL saves it
+                self.assertIsNone(page.evaluate("window.pwned"))
+                try:
+                    page.goto(base + '/photos/z.html')
+                except Exception as e:
+                    if 'Download is starting' not in str(e): raise
                 self.assertIsNone(page.evaluate("window.pwned"))
                 browser.close()
         finally:
