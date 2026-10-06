@@ -274,19 +274,21 @@ class Address(unittest.TestCase):
     """finding #26 (advisory GHSA-m2gr-gcrf-xc6m): the web pages and sign-in are plain HTTP, so they listen on this
     machine only; a network address in the config is refused before anything starts"""
 
-    def start(self, address):
+    def config(self, address):
         d = tempfile.mkdtemp(prefix='kks-addr-')
-        cfg = {'address': address, 'port': free_port(), 'sync_port': free_port(), 'store': os.path.join(d, 'server.db'),
+        cfg = {'port': free_port(), 'sync_port': free_port(), 'store': os.path.join(d, 'server.db'),
                'storage_key_file': os.path.join(d, 'storage.key'), 'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data')}
+        if address is not None:
+            cfg['address'] = address
         json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
-        p = subprocess.run([BIN, 'serve', '--config', os.path.join(d, 'config.json')], capture_output=True, text=True,
-                           cwd=d, timeout=5) if address not in ('127.0.0.1', 'localhost') else None
-        return p, cfg
+        return d, cfg
 
     def test_network_address_refused(self):
         for a in ('0.0.0.0', '192.168.1.10', '::', '::1', '127.999.999.999', ''):
             with self.subTest(address=a):
-                p, _ = self.start(a)
+                d, _ = self.config(a)
+                p = subprocess.run([BIN, 'serve', '--config', os.path.join(d, 'config.json')], capture_output=True,
+                                   text=True, cwd=d, timeout=5)
                 self.assertNotEqual(p.returncode, 0)
                 self.assertIn('plain HTTP', p.stdout + p.stderr)
 
@@ -299,12 +301,7 @@ class Address(unittest.TestCase):
                 self.serves(a, shown)
 
     def serves(self, address, shown):
-        d = tempfile.mkdtemp(prefix='kks-addr-')
-        cfg = {'port': free_port(), 'sync_port': free_port(), 'store': os.path.join(d, 'server.db'),
-               'storage_key_file': os.path.join(d, 'storage.key'), 'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data')}
-        if address is not None:
-            cfg['address'] = address
-        json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
+        d, cfg = self.config(address)
         p = subprocess.Popen([BIN, 'serve', '--config', os.path.join(d, 'config.json')], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True, cwd=d)
         try:
