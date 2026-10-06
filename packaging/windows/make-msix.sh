@@ -14,6 +14,7 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
+# MakeAppx's NuGet package, listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 SDKBT_VERSION=10.0.28000.2705
 SDKBT_SHA256=8bfdfb6ca2633f531cf80b5fa22512ba61a394d7988f0970db83baadc67929ed
 NAME="${KKS_MSIX_NAME:-Walkdown}"           # the package identity: changing it makes another app

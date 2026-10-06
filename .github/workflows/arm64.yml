@@ -14,6 +14,7 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The Nim tarball is listed in pinned-sources.cdx.json (DEP-8): change it there too when the pin changes.
 env:
   NIM_VERSION: 2.2.12
   NIM_SHA256: 2639a06a5ea7a7fcf57df1e7e1ef4d1b2bee58c7ac9bd00dbd2aa5bea1e5a56a

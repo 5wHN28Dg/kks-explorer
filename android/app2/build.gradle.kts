@@ -83,6 +83,7 @@ android {
 
 // libjxl (JPEG XL, for photos) from pinned sources: the release tag and the submodule commits it names, each checked
 // against its SHA-256. Unpacked once into build/third_party/libjxl; CMake builds it (src/main/cpp).
+// These sources and zxing-cpp below are listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 val jxlSrc = layout.buildDirectory.dir("third_party/libjxl")
 val fetchLibjxl by tasks.registering {
     val sources = listOf(   // name, URL, SHA-256, where in the libjxl tree

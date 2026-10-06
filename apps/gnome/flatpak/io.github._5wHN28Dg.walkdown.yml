@@ -19,6 +19,7 @@ finish-args:
   - --system-talk-name=org.freedesktop.Avahi
   # the storage key goes through the Secret portal (libsecret does that by itself inside Flatpak); files through the
   # FileChooser portal; no filesystem access is requested
+# The archives below are listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 modules:
   - name: nim
     buildsystem: simple

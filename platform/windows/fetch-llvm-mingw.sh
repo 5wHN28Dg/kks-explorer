@@ -1,6 +1,7 @@
 #!/bin/sh
 # llvm-mingw (decision 0047): clang + mingw-w64 for Windows on ARM64 (aarch64-w64-mingw32), run on this x86_64 Linux
 # machine. Pinned release; the SHA-256 is the one GitHub publishes for the asset. Unpacked into ~/.local/kksdev/llvm-mingw.
+# The release is listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 set -eu
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
 VER=20260922

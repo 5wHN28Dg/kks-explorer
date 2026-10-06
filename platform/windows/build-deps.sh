@@ -4,6 +4,7 @@
 # Same versions as the Android app (android/app2/build.gradle.kts). Output: $KKS_DEV/win64/{include,lib}.
 # KKS_WIN_ARCH=aarch64: Windows on ARM64 with llvm-mingw's clang (decision 0047; platform/windows/fetch-llvm-mingw.sh),
 # output $KKS_DEV/winarm64. The default is x86_64 with mingw-w64's gcc.
+# Every source fetched here is listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 set -eu
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
 ARCH="${KKS_WIN_ARCH:-x86_64}"

@@ -2,6 +2,7 @@
 # libjxl + zxing-cpp for the browser client (decision 0037), built with a pinned Emscripten from the same pinned,
 # SHA-256-checked sources as the native apps (platform/windows/build-deps.sh). Two variants: WebAssembly SIMD and
 # scalar (Chromium 80–90). Run with bash. Output: vendor/kks/{kks-simd,kks}{,-dec}.{js,wasm} + SHA256SUMS (-dec: JPEG XL decoding only).
+# emsdk and the sources are listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)

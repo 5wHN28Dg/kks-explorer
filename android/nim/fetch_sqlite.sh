@@ -1,6 +1,6 @@
 #!/bin/sh
 # The SQLite amalgamation the Android core compiles in (decision 0032), pinned by SHA3-256 from sqlite.org/download.html
-# (checked 2026-10-01).
+# (checked 2026-10-01). The amalgamation is listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 set -eu
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
 VER=3530400

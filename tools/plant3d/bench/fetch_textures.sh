@@ -1,6 +1,7 @@
 #!/bin/sh
 # The bench's textures: CC0 PBR sets from ambientCG (https://ambientcg.com, "all assets are CC0"), 2K JPG, pinned by
-# SHA-256. Not committed (about 100 MB); this puts the maps the bench uses into tex/.
+# SHA-256. Not committed (about 100 MB); this puts the maps the bench uses into tex/. The sets are
+# listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 DL="${TMPDIR:-/tmp}/kks-bench-textures"

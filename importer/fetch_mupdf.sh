@@ -1,6 +1,7 @@
 #!/bin/sh
 # Fetch and build MuPDF 1.28.2 (the version PyMuPDF 1.28.2 bundles: same rendering = same glyph images, decision 0026)
 # into $KKS_DEV (default ~/.local/kksdev). Pinned by SHA-256 from https://mupdf.com/releases (checked 2026-10-01).
+# MuPDF and the libraries its tarball bundles are listed in pinned-sources.cdx.json (DEP-8): change it there too when a pin changes.
 set -eu
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
 VER=1.28.2
