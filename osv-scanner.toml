@@ -1,11 +1,13 @@
 # osv-scanner reads this file when it scans the repository (the policy's dependency and license checks).
 
 # PyMuPDF's package metadata states its license only as free text ("Dual Licensed - GNU AFFERO GPL 3.0 or Artifex
-# Commercial License"), which osv-scanner reports as "non-standard". This names the license we use it under:
-# AGPL-3.0, as its COPYING file and https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright say.
-# The override changes only this package's license field; vulnerability matching is unaffected.
+# Commercial License"), which osv-scanner reports as "non-standard". This names the license we use it under,
+# AGPL-3.0, as its sdist's COPYING (the AGPL v3 text) and https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright
+# say. Pinned to the version that was checked: a new version gets checked again before this is moved.
+# policy-fp: the scan's "non-standard" for pymupdf 1.28.2 is not a license problem; it is AGPL-3.0-only (https://github.com/5wHN28Dg/kks-explorer/pull/20#issuecomment-6018195833)
 [[PackageOverrides]]
 name = "pymupdf"
+version = "1.28.2"
 ecosystem = "PyPI"
 license.override = ["AGPL-3.0-only"]
-reason = "PyMuPDF is dual-licensed AGPL-3.0 / Artifex commercial; its metadata has no SPDX expression"
+reason = "PyMuPDF 1.28.2 is dual-licensed AGPL-3.0 / Artifex commercial; its metadata has no SPDX expression"

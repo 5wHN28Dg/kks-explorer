@@ -1,6 +1,10 @@
 # The license policy (governance Section 5): the licenses a dependency may have. One SPDX id per line; the policy's
 # dependency check (osv-scanner --licenses) fails on any other. Walkdown is AGPL-3.0 (LICENSE), so everything here is
-# compatible with distributing it under the AGPL-3.0. A license not on this list needs a reviewed change to this file.
+# compatible with distributing it under the AGPL-3.0.
+# Review needed: any license not listed here. The check fails on it; a PR that adds it to this file says why it is
+# compatible (the reviewer checks the dependency's record, DEP-2).
+# Not allowed: no license or "all rights reserved", proprietary or commercial-only terms, non-commercial terms
+# (e.g. CC-BY-NC-*), and source-available licenses that restrict use (SSPL, BUSL, Elastic).
 #
 # Copyleft compatible with the AGPL-3.0: MuPDF and PyMuPDF (AGPL-3.0), pillow-jxl-plugin (GPL-3.0-or-later)
 AGPL-3.0-only
