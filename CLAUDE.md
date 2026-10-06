@@ -48,9 +48,9 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 
 Follow these when making architectural, stack or dependency decisions. They're guidance, not a checklist; the only
 document they ask for is the capability matrix in docs/ (`docs/m6/CAPABILITIES.md`).
-- `/home/finn/Documents/GitHub/Personal-LLM-prompts/prompts/platform engineering policy.md` governs native code: the
+- `~/Documents/GitHub/Personal-LLM-prompts/prompts/platform engineering policy.md` governs native code: the
   Android app (`android/app2`), the desktop apps, any iOS work, and the server.
-- `/home/finn/Documents/GitHub/Personal-LLM-prompts/prompts/Evidence-first web engineering.md` governs what runs in a
+- `~/Documents/GitHub/Personal-LLM-prompts/prompts/Evidence-first web engineering.md` governs what runs in a
   browser engine: index.html, admin.html, learning.html, common.js, sw.js, course-bridge.js, the courses, vendor/. It
   builds on the platform one; read both for web work.
 - The web pages are served by the server to browsers; they ship no engine. They must also work in Safari, since that
