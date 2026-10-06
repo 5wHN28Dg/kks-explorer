@@ -6,7 +6,7 @@ data, and cleared on logout with Clear-Site-Data: "cache").
 $KKS_SERVER names the build (default /tmp/kkslinux/kks_server). `Upgrade` also needs a server from before the fix,
 $KKS_OLD_SERVER, built from commit af8bb3c (`git worktree add --detach D af8bb3c`, then `nim c -d:release` in
 D/platform/linux); it serves that commit's own web files, taken with `git archive`."""
-import base64, io, json, os, re, shutil, subprocess, tarfile, tempfile, time, unittest
+import base64, json, os, re, shutil, subprocess, tempfile, time, unittest
 from playwright.sync_api import sync_playwright
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -142,8 +142,9 @@ class Upgrade(unittest.TestCase):
         self.port = free_port()
         base = 'http://127.0.0.1:%d' % self.port
         oldweb = os.path.join(self.dir, 'oldweb')
+        os.makedirs(oldweb)
         tar = subprocess.run(['git', '-C', REPO, 'archive', OLD], capture_output=True, check=True).stdout
-        tarfile.open(fileobj=io.BytesIO(tar)).extractall(oldweb, filter='data')
+        subprocess.run(['tar', '-x', '-C', oldweb], input=tar, check=True)
         proc, setup = self.start(old, oldweb)
         try:
             with sync_playwright() as p:
