@@ -280,11 +280,11 @@ class Address(unittest.TestCase):
                'storage_key_file': os.path.join(d, 'storage.key'), 'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data')}
         json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
         p = subprocess.run([BIN, 'serve', '--config', os.path.join(d, 'config.json')], capture_output=True, text=True,
-                           cwd=d, timeout=5) if address not in ('127.0.0.1', '::1', 'localhost') else None
+                           cwd=d, timeout=5) if address not in ('127.0.0.1', 'localhost') else None
         return p, cfg
 
     def test_network_address_refused(self):
-        for a in ('0.0.0.0', '192.168.1.10', '::', ''):
+        for a in ('0.0.0.0', '192.168.1.10', '::', '::1', '127.999.999.999', ''):
             with self.subTest(address=a):
                 p, _ = self.start(a)
                 self.assertNotEqual(p.returncode, 0)

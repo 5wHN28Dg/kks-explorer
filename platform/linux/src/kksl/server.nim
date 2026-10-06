@@ -57,9 +57,11 @@ type
 
 proc isLoopback*(address: string): bool =
   ## the web listener's address must be this machine's own (finding #26: no plain-HTTP sign-in on the network)
+  ## (IPv4 only: the listener is an IPv4 socket, so "::1" could not be bound anyway)
   let a = address.strip.toLowerAscii
-  a == "localhost" or a == "::1" or a == "[::1]" or (a.startsWith("127.") and a.count('.') == 3 and
-    a.split('.').allIt(it.len > 0 and it.len <= 3 and it.allCharsInSet(Digits)))
+  let parts = a.split('.')
+  a == "localhost" or (parts.len == 4 and parts[0] == "127" and
+    parts.allIt(it.len in 1..3 and it.allCharsInSet(Digits) and parseInt(it) <= 255))
 
 proc defaultConfig*(): Config =
   Config(address: "127.0.0.1", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
