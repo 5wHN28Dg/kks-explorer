@@ -1,7 +1,9 @@
 import std/[unittest, asyncdispatch, asyncnet, net, tables, os]
 import kks/[json, util, crypto, proto, node, sync, plant, progress]
 import plat
-import kksl/[net, dbstore, tls]
+import kksl/[net, dbstore]
+when defined(windows): import kksw/tls
+else: import kksl/tls
 
 let P = testProvider()
 
@@ -119,17 +121,21 @@ suite "sync over real TCP":
     let capped = listen(server, newIdentity(kServer), 0, "")
     capped.maxOpen = 3
     capped.maxPerAddress = 2
-    var socks: seq[AsyncSocket]
+    var socks: seq[Socket]                          # blocking sockets: on Windows an async connect binds itself
     for a in ["127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.2", "127.0.0.3"]:
-      let s = newAsyncSocket(buffered = false)
+      let s = newSocket(buffered = false)
       s.bindAddr(Port(0), a)                        # the source address
-      waitFor s.connect("127.0.0.1", Port(capped.port))
+      s.connect("127.0.0.1", Port(capped.port))
       socks.add s
+      waitFor sleepAsync(100)                       # the listener takes it before the next one
     waitFor sleepAsync(300)
     var closed: seq[bool]
     for s in socks:
-      let fut = s.recv(1)
-      closed.add(waitFor(withTimeout(fut, 300)) and fut.read.len == 0)
+      var c = false
+      try: c = s.recv(1, timeout = 300).len == 0
+      except TimeoutError: discard
+      except OSError: c = true                      # reset
+      closed.add c
     check closed == @[false, false, true, false, true]   # the 3rd from one address, then the 4th overall
     check capped.open == 3
     for s in socks: s.close()
