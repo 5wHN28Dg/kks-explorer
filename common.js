@@ -301,7 +301,12 @@ K.joinWait = cfg => {
     const msg = {connecting: 'Connecting to the admin\'s device…', waiting: 'Waiting for the admin to accept on their screen…',
                  confirm: 'The admin accepted. Check the code on their screen first:', syncing: 'Accepted. Getting the plant data…'}[st.state];
     if (st.code) { const c = o.querySelector('.code'); c.style.display = '';
-      c.innerHTML = `Code: <b style="font-size:22px;letter-spacing:3px">${st.code.slice(0, 3)} ${st.code.slice(3)}</b><br><span style="opacity:.7">The admin sees the same code next to your name. Only continue if it matches.</span>`;
+      // built with textContent: the code comes from the local API (#16)
+      const b = document.createElement('b'); b.style.cssText = 'font-size:22px;letter-spacing:3px';
+      b.textContent = String(st.code).slice(0, 3) + ' ' + String(st.code).slice(3);
+      const hint = document.createElement('span'); hint.style.opacity = '.7';
+      hint.textContent = 'The admin sees the same code next to your name. Only continue if it matches.';
+      c.replaceChildren('Code: ', b, document.createElement('br'), hint);
       o.querySelector('.ok').style.display = st.state === 'syncing' ? 'none' : '' }
     if (!msg) { o.querySelector('.st').textContent = st.state === 'cancelled' ? 'Cancelled.' : 'Could not join.';
       o.querySelector('.err').textContent = st.error || ''; o.querySelector('.back').textContent = '← Back'; return }
