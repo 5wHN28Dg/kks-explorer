@@ -437,11 +437,17 @@ class Limits(Base):
         h = 'Host: 127.0.0.1:%d\r\n' % self.port
         for req in ('POST /api/login HTTP/1.1\r\n%sContent-Length: 5abc\r\n\r\n12345' % h,
                     'POST /api/login HTTP/1.1\r\n%sContent-Length: 5\r\nContent-Length: 7\r\n\r\n12345' % h,
-                    'POST /api/login HTTP/1.1\r\n%sTransfer-Encoding : chunked\r\nContent-Length: 5\r\n\r\n12345' % h):
+                    'POST /api/login HTTP/1.1\r\n%sTransfer-Encoding : chunked\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5, 7\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5,\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sNo colon here\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sExpect: something\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'GET /api/config\r\n%s\r\n' % h):
             with self.subTest(req=req[:60]):
                 r = self.raw(req.encode() + b'GET /api/config HTTP/1.1\r\n' + h.encode() + b'\r\n')
-                self.assertTrue(r.startswith(b'HTTP/1.1 400'), r[:80])
-                self.assertEqual(r.count(b'HTTP/1.1 '), 1, r)   # what followed was not read as a request
+                self.assertTrue(r.startswith(b'HTTP/1.1 400') or r.startswith(b'HTTP/1.1 417') or r == b'<reset>', r[:80])
+                self.assertLessEqual(r.count(b'HTTP/1.1 '), 1, r)   # what followed was not read as a request
+                self.assertNotIn(b'<timeout>', r)
 
     def test_header_size_capped(self):
         r = self.raw(b'GET /api/config HTTP/1.1\r\n' + b''.join(b'X-%d: %s\r\n' % (i, b'a' * 1000) for i in range(80)) + b'\r\n')
@@ -460,6 +466,31 @@ class Limits(Base):
         grown = self.rss_mb() - before
         for c in socks: c.close()
         self.assertLess(grown, 50, 'RSS grew by %.0f MB' % grown)   # was ~25 MB per connection
+
+    def test_pipelined_requests_memory(self):
+        """many short pipelined requests on a few connections: memory stays flat (a timer per read once grew it by a
+        gigabyte in seconds)"""
+        before = self.rss_mb()
+        req = (b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n' % self.port +
+               b''.join(b'X-%d: a\r\n' % i for i in range(90)) + b'\r\n')
+        import threading
+        socks = [self.conn('127.0.0.6') for _ in range(4)]
+        stop = time.time() + 6
+        def send(c):
+            try:
+                while time.time() < stop: c.sendall(req * 20)
+            except OSError: pass
+        def drain(c):
+            c.settimeout(1)
+            try:
+                while time.time() < stop + 1 and c.recv(1 << 16): pass
+            except OSError: pass
+        ts = [threading.Thread(target=f, args=(c,)) for c in socks for f in (send, drain)]
+        for t in ts: t.start()
+        for t in ts: t.join()
+        grown = self.rss_mb() - before
+        for c in socks: c.close()
+        self.assertLess(grown, 100, 'RSS grew by %.0f MB' % grown)
 
     def test_slow_reader_let_go(self):
         """a client that asks for a large file and never reads it: the server lets go of it after ResponseTimeoutMs

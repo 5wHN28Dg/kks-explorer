@@ -44,6 +44,7 @@ const
   MaxPerAddress* = 64           ## kks
   MaxHeaderBytes* = 64 * 1024   ## kks: all header lines of one request together
   MaxHeaders* = 100             ## kks
+  MaxBodiesInFlight* = 256 * 1024 * 1024   ## kks: bodies read at once before any handler sees them (503 beyond)
   ResponseTimeoutMs* = 120_000  ## kks: the handler and sending its response (a client that never reads)
 
 # TODO: If it turns out that the decisions that asynchttpserver makes
@@ -69,6 +70,7 @@ type
     maxFDs: int
     open: int                   ## kks: connections now
     perAddress: Table[string, int]   ## kks
+    bodyBytes: int              ## kks: request bodies being read now, all connections together
 
 proc getPort*(self: AsyncHttpServer): Port {.since: (1, 5, 1).} =
   ## Returns the port `self` was bound to.
@@ -141,9 +143,28 @@ proc respondError(req: Request, code: HttpCode): Future[void] =
   msg.add(content)
   result = req.client.send(msg)
 
-proc within(client: AsyncSocket, f: Future[void], ms: int): Future[bool] {.async.} =
-  ## kks: false (and the connection closed) when `f` doesn't finish in `ms`
-  if await withTimeout(f, ms): return true
+type Alarm = ref object
+  ## kks: one per connection, firing when `deadline` passes. withTimeout made a timer per read that lived until it
+  ## expired, so a client sending many short lines filled memory with timers (1 GB in seconds).
+  deadline: float
+  fired: Future[void]
+  done: bool
+
+proc newAlarm(): Alarm = Alarm(fired: newFuture[void]("kks.alarm"))
+
+proc watch(a: Alarm) {.async.} =
+  while not a.done:
+    await sleepAsync(500)
+    if not a.done and epochTime() >= a.deadline and not a.fired.finished: a.fired.complete()
+
+proc within[T](a: Alarm, client: AsyncSocket, f: Future[T], deadline: float): Future[bool] {.async.} =
+  ## kks: false (and the connection closed) when `f` doesn't finish before `deadline` (epoch seconds)
+  if epochTime() >= deadline:
+    client.close(); return false
+  a.deadline = deadline
+  await (f or a.fired)
+  a.fired.clearCallbacks()
+  if f.finished: return true
   client.close()
   return false
 
@@ -168,6 +189,7 @@ proc processRequest(
   address: sink string,
   lineFut: FutureVar[string],
   callback: proc (request: Request): Future[void] {.closure, gcsafe.},
+  alarm: Alarm,
 ): Future[bool] {.async.} =
 
   # Alias `request` to `req.mget()` so we don't have to write `mget` everywhere.
@@ -191,7 +213,7 @@ proc processRequest(
   for i in 0..1:
     lineFut.mget().setLen(0)
     lineFut.clean()
-    if not await within(client, client.recvLineInto(lineFut, maxLength = maxLine), IdleTimeoutMs):   # kks
+    if not await alarm.within(client, client.recvLineInto(lineFut, maxLength = maxLine), epochTime() + IdleTimeoutMs / 1000):   # kks
       return false
 
     if lineFut.mget == "":
@@ -243,6 +265,10 @@ proc processRequest(
       client.close()
       return false
     inc i
+  if i != 3:   # kks: method, target and protocol, nothing less (the previous request's values stayed otherwise)
+    await request.respondError(Http400)
+    client.close()
+    return false
 
   # Headers
   let headerDeadline = epochTime() + HeaderTimeoutMs / 1000   # kks: one deadline for all of them
@@ -251,8 +277,7 @@ proc processRequest(
     i = 0
     lineFut.mget.setLen(0)
     lineFut.clean()
-    let left = int((headerDeadline - epochTime()) * 1000)   # kks
-    if left <= 0 or not await within(client, client.recvLineInto(lineFut, maxLength = maxLine), left):
+    if not await alarm.within(client, client.recvLineInto(lineFut, maxLength = maxLine), headerDeadline):   # kks
       client.close()
       return false
 
@@ -265,6 +290,9 @@ proc processRequest(
     headerBytes += lineFut.mget.len                               # kks: size and count of all headers
     if headerBytes > MaxHeaderBytes or request.headers.len >= MaxHeaders:
       await client.sendStatus("431 Request Header Fields Too Large")
+      client.close(); return false
+    if ':' notin lineFut.mget or (lineFut.mget.toLowerAscii.startsWith("content-length") and ',' in lineFut.mget):   # kks
+      await client.sendStatus("400 Bad Request")
       client.close(); return false
     let (key, value) = parseHeader(lineFut.mget)
     # kks: a name with spaces ("Transfer-Encoding : chunked") or a second Content-Length would be read differently
@@ -286,7 +314,9 @@ proc processRequest(
       if "100-continue" in request.headers["Expect"]:
         await client.sendStatus("100 Continue")
       else:
-        await client.sendStatus("417 Expectation Failed")
+        await client.sendStatus("417 Expectation Failed")   # kks: and nothing more on this connection
+        client.close()
+        return false
 
   # Read the body
   if request.headers.hasKey("Transfer-Encoding"):
@@ -299,6 +329,10 @@ proc processRequest(
   if request.headers.hasKey("Content-Length"):
     var contentLength = 0
     let cl = request.headers["Content-Length"]
+    if seq[string](request.headers.getOrDefault("Content-Length")).len != 1:   # kks: "5, 7" splits into two values
+      await request.respond(Http400, "Bad Request. Invalid Content-Length.")
+      client.close()
+      return false
     # kks: digits only ("5abc" and "5, 7" read as 5 before), and a bad one closes the connection
     if cl.len == 0 or cl.len > 12 or not cl.allCharsInSet(Digits) or parseSaturatedNatural(cl, contentLength) == 0:
       await request.respond(Http400, "Bad Request. Invalid Content-Length.")
@@ -310,17 +344,23 @@ proc processRequest(
         client.close()
         return false
       # kks: read in pieces as they arrive (recv(n) allocated all n bytes before reading any), within a deadline
+      if server.bodyBytes + contentLength > MaxBodiesInFlight:   # kks: all connections' bodies together
+        await request.respond(Http503, "Too many uploads at once; try again shortly.")
+        client.close()
+        return false
       let bodyDeadline = epochTime() + BodyTimeoutMs / 1000
       var body = ""
-      while body.len < contentLength:
-        let left = int((bodyDeadline - epochTime()) * 1000)
-        let part = client.recv(min(64 * 1024, contentLength - body.len))
-        if left <= 0 or not await withTimeout(part, left):
-          client.close()
-          return false
-        let got = part.read
-        if got.len == 0: break
-        body.add got
+      server.bodyBytes += contentLength
+      try:
+        while body.len < contentLength:
+          let part = client.recv(min(64 * 1024, contentLength - body.len))
+          if not await alarm.within(client, part, bodyDeadline):
+            return false
+          let got = part.read
+          if got.len == 0: break
+          body.add got
+      finally:
+        server.bodyBytes -= contentLength
       request.body = body
       if request.body.len != contentLength:
         await request.respond(Http400, "Bad Request. Content-Length does not match actual.")
@@ -332,8 +372,7 @@ proc processRequest(
 
   # Call the user's callback.
   let handled = callback(request)   # kks: with a deadline, so a client that never reads its answer lets go
-  if not await withTimeout(handled, ResponseTimeoutMs):
-    client.close()
+  if not await alarm.within(client, handled, epochTime() + ResponseTimeoutMs / 1000):
     return false
   if handled.failed: raise handled.readError
 
@@ -366,15 +405,18 @@ proc processClient(server: AsyncHttpServer, client: AsyncSocket, address: string
   var lineFut = newFutureVar[string]("asynchttpserver.processClient")
   lineFut.mget() = newStringOfCap(80)
 
+  let alarm = newAlarm()   # kks
+  asyncCheck alarm.watch()
   try:
     while not client.isClosed:
       let retry = await processRequest(
-        server, request, client, address, lineFut, callback
+        server, request, client, address, lineFut, callback, alarm
       )
       if not retry:
         client.close()
         break
   finally:   # kks: the connection counts
+    alarm.done = true
     dec server.open
     server.perAddress[address] = server.perAddress.getOrDefault(address) - 1
     if server.perAddress[address] <= 0: server.perAddress.del address
