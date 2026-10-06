@@ -354,6 +354,21 @@ class Address(unittest.TestCase):
                 self.assertNotEqual(p.returncode, 0)
                 self.assertIn('https://', p.stdout + p.stderr)
 
+    def test_public_url_default_port(self):
+        d, cfg = self.config('127.0.0.1')
+        cfg['public_url'] = 'https://Walk.Example:443/'
+        json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
+        p = subprocess.Popen([BIN, 'serve', '--config', os.path.join(d, 'config.json')], stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, cwd=d)
+        try:
+            for _ in range(20):
+                if 'server on' in p.stdout.readline(): break
+            time.sleep(0.3)
+            c = Client('http://127.0.0.1:%d' % cfg['port'])
+            self.assertEqual(c.req('GET', '/api/config', headers={'Host': 'walk.example'})[0], 200)
+        finally:
+            p.terminate(); p.wait(5)
+
     def test_default_is_loopback(self):
         self.serves(None, 'http://127.0.0.1:')
 
@@ -429,6 +444,13 @@ class FrontProxy(Base):
         self.assertIn('; Secure', hdr['Set-Cookie'])
         self.assertEqual(boss.req('GET', '/api/config', headers={'Host': 'walk.example'})[0], 200)
         self.assertEqual(boss.req('GET', '/api/config', headers={'Host': 'evil.example'})[0], 421)
+        # a browser's sign-in through a proxy, with Host passed on or rewritten to this server's own: not refused as
+        # cross-origin (the public URL's host is compared in lower case)
+        for h in ('walk.example', '127.0.0.1:%d' % self.port):
+            with self.subTest(host=h):
+                st = Client(self.base).req('POST', '/api/login', {'username': 'boss', 'password': 'wrong'},
+                                           headers={'Host': h, 'Origin': 'https://walk.example'})[0]
+                self.assertEqual(st, 401)
         # the proxy appends the browser's address: the last entry counts, whatever the browser put before it
         fails = lambda ip, n: [Client(self.base).req('POST', '/api/login', {'username': 'x%s%d' % (ip, i), 'password': 'x'},
                                                      headers={'X-Forwarded-For': 'spoof%d, %s' % (i, ip)})[0] for i in range(n)]

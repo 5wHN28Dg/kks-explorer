@@ -90,7 +90,10 @@ proc loadConfig*(path: string): Config =
     if not result.publicUrl.toLowerAscii.startsWith("https://"):
       raise newException(ValueError, "\"public_url\": \"" & result.publicUrl & "\" must be an https:// address: " &
         "browsers reach the web pages only through an HTTPS proxy or tunnel (finding #26).")
-    result.publicUrl = "https://" & result.publicUrl[8 .. ^1]   # the scheme's case: Secure and HSTS test it
+    # one spelling, as browsers send it in Host and Origin: lower-case scheme and host, no default port
+    let pu = parseUri(result.publicUrl)
+    result.publicUrl = "https://" & pu.hostname.toLowerAscii & (if pu.port.len > 0 and pu.port != "443": ":" & pu.port else: "") &
+      pu.path & (if pu.query.len > 0: "?" & pu.query else: "")
   result.secureCookies = b("secure_cookies", false)
   result.trustedProxy = b("trusted_proxy", false)
   result.plantName = s("plant_name", result.plantName)
@@ -381,7 +384,7 @@ proc sessionRaw(req: Request): string =
 
 proc clientIp(s: Server, req: Request): string =
   ## the address login throttling counts. X-Forwarded-For only when the operator says the proxy in front appends to
-  ## it (`trusted_proxy`): its last entry is then the proxy's own. Anyone can send the header, so it is never read
+  ## it (`trusted_proxy`): its last entry is then the browser's address as the proxy saw it. Anyone can send the header, so it is never read
   ## otherwise (every browser behind a proxy that doesn't append is then one address).
   ## HttpHeaders splits "a, b" into values and getOrDefault gives the first: every value is read, the last kept.
   let peer = req.hostname
@@ -395,7 +398,7 @@ proc hostAllowed(s: Server, req: Request): bool =
   let hs = seq[string](req.headers.getOrDefault("Host"))
   if hs.len != 1: return false                          # two Host lines, or a comma list
   let h = hs[0].strip.toLowerAscii
-  var allowed = @["127.0.0.1:" & $s.cfg.port, "localhost:" & $s.cfg.port]
+  var allowed = @["127.0.0.1:" & $s.cfg.port, "localhost:" & $s.cfg.port, s.cfg.address & ":" & $s.cfg.port]
   if s.cfg.publicUrl.len > 0:
     let pu = parseUri(s.cfg.publicUrl)
     allowed.add pu.hostname.toLowerAscii & (if pu.port.len > 0: ":" & pu.port else: "")
