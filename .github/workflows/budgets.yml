@@ -194,7 +194,7 @@ jobs:
             ~/.local/kksdev/src/sqlite-amalgamation-3530400
             ~/nim
           key: budgets-win64-${{ env.NIM_VERSION }}-${{ hashFiles('platform/windows/build-deps.sh', 'android/nim/fetch_sqlite.sh') }}
-      - name: mingw-w64 (Ubuntu's 13.0.0 headers, GCC 13.2: decision 0033)
+      - name: mingw-w64 (Ubuntu's 13.0.0 headers and GCC 13.2, decision 0033)
         run: |
           sudo apt-get update -q
           sudo apt-get install -yq --no-install-recommends gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix \
@@ -293,7 +293,7 @@ jobs:
         with:
           path: android/app2/build/third_party/download
           key: deps-${{ hashFiles('android/app2/build.gradle.kts') }}
-      - name: The release APK (unsigned: signing stays on the maintainer's machine)
+      - name: The release APK, unsigned (signing stays on the maintainer's machine)
         working-directory: android
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
