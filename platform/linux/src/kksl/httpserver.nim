@@ -3,8 +3,9 @@
 # GHSA-xfj6-p785-whg5). The changes, all marked "kks:":
 # - request bodies sent with Transfer-Encoding: chunked are refused (411): the stdlib read them with no size limit
 #   before the application saw the request. No Walkdown client sends them;
-# - deadlines: the request line and headers must arrive within HeaderTimeoutMs, a Content-Length body within
-#   BodyTimeoutMs, and an idle keep-alive connection is closed after IdleTimeoutMs;
+# - deadlines: the first line of a request must arrive within IdleTimeoutMs (a kept-alive connection waits that
+#   long), then the rest of the request line and all headers together within HeaderTimeoutMs, and a Content-Length
+#   body within BodyTimeoutMs;
 # - at most MaxConnections connections at a time, and MaxPerAddress from one address.
 # Everything else is the stdlib's code. Re-check against the stdlib at each Nim upgrade.
 #
@@ -18,37 +19,10 @@
 
 ## This module implements a high performance asynchronous HTTP server.
 ##
-## This HTTP server has not been designed to be used in production, but
-## for testing applications locally. Because of this, when deploying your
-## application in production you should use a reverse proxy (for example nginx)
-## instead of allowing users to connect directly to this server.
+## (kks: the stdlib's note says to put a reverse proxy in front in production; Walkdown's listener is on
+## 127.0.0.1 only, finding #26, with the limits above.)
 
-when false:
-  # This example will create an HTTP server on an automatically chosen port.
-  # It will respond to all requests with a `200 OK` response code and "Hello World"
-  # as the response body.
-  import std/asyncdispatch
-  proc main {.async.} =
-    var server = newAsyncHttpServer()
-    proc cb(req: Request) {.async.} =
-      echo (req.reqMethod, req.url, req.headers)
-      let headers = {"Content-type": "text/plain; charset=utf-8"}
-      await req.respond(Http200, "Hello World", headers.newHttpHeaders())
-
-    server.listen(Port(0)) # or Port(8080) to hardcode the standard HTTP port.
-    let port = server.getPort
-    echo "test this with: curl localhost:" & $port.uint16 & "/"
-    while true:
-      if server.shouldAcceptRequest():
-        await server.acceptRequest(cb)
-      else:
-        # too many concurrent connections, `maxFDs` exceeded
-        # wait 500ms for FDs to be closed
-        await sleepAsync(500)
-
-  waitFor main()
-
-import std/[asyncnet, asyncdispatch, parseutils, uri, strutils, tables]
+import std/[asyncnet, asyncdispatch, parseutils, uri, strutils, tables, times]
 import std/httpcore
 from std/nativesockets import getLocalAddr, Domain, AF_INET, AF_INET6
 import std/private/since
@@ -60,7 +34,7 @@ export httpcore except parseHeader
 
 const
   maxLine = 8*1024
-  HeaderTimeoutMs* = 20_000     ## kks: the request line and the headers
+  HeaderTimeoutMs* = 20_000     ## kks: all the headers together, from the request line on
   IdleTimeoutMs* = 60_000       ## kks: waiting for the next request on a kept-alive connection
   BodyTimeoutMs* = 300_000      ## kks: a Content-Length body (uploads are at most a few tens of MB)
   MaxConnections* = 512         ## kks
@@ -272,11 +246,14 @@ proc processRequest(
     inc i
 
   # Headers
+  let headerDeadline = epochTime() + HeaderTimeoutMs / 1000   # kks: one deadline for all of them
   while true:
     i = 0
     lineFut.mget.setLen(0)
     lineFut.clean()
-    if not await within(client, client.recvLineInto(lineFut, maxLength = maxLine), HeaderTimeoutMs):   # kks
+    let left = int((headerDeadline - epochTime()) * 1000)   # kks
+    if left <= 0 or not await within(client, client.recvLineInto(lineFut, maxLength = maxLine), left):
+      client.close()
       return false
 
     if lineFut.mget == "":
@@ -403,17 +380,24 @@ proc shouldAcceptRequest*(server: AsyncHttpServer;
   result = assumedDescriptorsPerRequest < 0 or
     (activeDescriptors() + assumedDescriptorsPerRequest < server.maxFDs)
 
-proc acceptRequest*(server: AsyncHttpServer,
-            callback: proc (request: Request): Future[void] {.closure, gcsafe.}) {.async.} =
-  ## Accepts a single request. Write an explicit loop around this proc so that
-  ## errors can be handled properly.
-  var (address, client) = await server.socket.acceptAddr()
-  if server.open >= MaxConnections or server.perAddress.getOrDefault(address) >= MaxPerAddress:   # kks
+proc admit(server: AsyncHttpServer, client: AsyncSocket, address: string,
+           callback: proc (request: Request): Future[void] {.closure, gcsafe.}) =
+  ## kks: the connection caps; processClient gives the slot back when the connection ends
+  if server.open >= MaxConnections or server.perAddress.getOrDefault(address) >= MaxPerAddress:
     client.close()
     return
   inc server.open
   server.perAddress.mgetOrPut(address, 0) += 1
   asyncCheck processClient(server, client, address, callback)
+
+proc openConnections*(server: AsyncHttpServer): int = server.open   ## kks: for tests and diagnostics
+
+proc acceptRequest*(server: AsyncHttpServer,
+            callback: proc (request: Request): Future[void] {.closure, gcsafe.}) {.async.} =
+  ## Accepts a single request. Write an explicit loop around this proc so that
+  ## errors can be handled properly.
+  var (address, client) = await server.socket.acceptAddr()
+  server.admit(client, address, callback)
 
 proc serve*(server: AsyncHttpServer, port: Port,
             callback: proc (request: Request): Future[void] {.closure, gcsafe.},
@@ -436,12 +420,7 @@ proc serve*(server: AsyncHttpServer, port: Port,
   while true:
     if shouldAcceptRequest(server, assumedDescriptorsPerRequest):
       var (address, client) = await server.socket.acceptAddr()
-      if server.open >= MaxConnections or server.perAddress.getOrDefault(address) >= MaxPerAddress:   # kks
-        client.close()
-        continue
-      inc server.open
-      server.perAddress.mgetOrPut(address, 0) += 1
-      asyncCheck processClient(server, client, address, callback)
+      server.admit(client, address, callback)
     else:
       poll()
     #echo(f.isNil)

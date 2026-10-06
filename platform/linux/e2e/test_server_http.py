@@ -314,7 +314,44 @@ class Limits(Base):
                 pass
             s.close()
         self.assertGreaterEqual(closed, 6)       # 64 per address: the rest are closed at once
+        self.assertLessEqual(closed, 6)          # ... and only those
         self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)
+        # the slots come back when connections end: 64 complete requests at once, twice
+        time.sleep(1)
+        for _ in range(2):
+            socks = [socket.create_connection(('127.0.0.1', self.port), timeout=10) for _ in range(64)]
+            for s in socks:
+                s.sendall(b'GET /api/config HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
+            ok = 0
+            for s in socks:
+                if s.recv(12).startswith(b'HTTP/1.1 200'):
+                    ok += 1
+                s.close()
+            self.assertEqual(ok, 64)
+            time.sleep(1)
+
+    def test_slow_header_lines_closed(self):
+        """the header deadline is for all header lines together, not per line (one line every 5 s doesn't extend it)"""
+        c = socket.create_connection(('127.0.0.1', self.port), timeout=60)
+        c.sendall(b'GET /api/config HTTP/1.1\r\n')
+        t0 = time.time()
+        closed = False
+        while time.time() - t0 < 45:
+            try:
+                c.sendall(b'X-Slow: a\r\n')
+            except OSError:
+                closed = True
+                break
+            c.settimeout(5)
+            try:
+                if c.recv(1) == b'':
+                    closed = True
+                    break
+            except socket.timeout:
+                pass
+        self.assertTrue(closed)
+        self.assertLess(time.time() - t0, 30)
+        c.close()
 
 if __name__ == '__main__':
     unittest.main()
