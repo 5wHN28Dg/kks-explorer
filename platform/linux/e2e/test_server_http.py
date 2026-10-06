@@ -156,6 +156,24 @@ class Cli(Base):
         self.assertEqual(boss.req('GET', '/api/sync/status')[1]['plant_data']['version'], 1)
         self.assertEqual(boss.req('GET', '/data/sheets.json')[1], [])
         self.assertEqual(self.cli('publish-data', d), (0, 'Unchanged: the files equal the latest version.'))
+        # /data/ (2026-10-06): published files and the program's own data/ are never pages of this site: the types the
+        # pages use go out sandboxed, anything else as a download
+        os.makedirs(os.path.join(d, 'courses'))
+        open(os.path.join(d, 'courses', 'evil.html'), 'w').write('<script>parent.pwned=1</script>')
+        open(os.path.join(d, 'courses', 'evil.svg'), 'w').write('<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>')
+        self.assertEqual(self.cli('publish-data', d), (0, 'Published plant data version 2.'))
+        for name in ('courses/evil.html', 'courses/evil.svg'):
+            st, data, hdr = boss.req('GET', '/data/' + name)
+            self.assertEqual(st, 200, name)
+            self.assertEqual(hdr['Content-Type'], 'application/octet-stream', name)
+            self.assertEqual(hdr['Content-Disposition'], 'attachment', name)
+            self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        st, data, hdr = boss.req('GET', '/data/sheets.json')
+        self.assertEqual((st, hdr['Content-Type']), (200, 'application/json'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        st, data, hdr = boss.req('GET', '/data/kks.json')     # the program's own data/, not published
+        self.assertEqual((st, hdr['Content-Type']), (200, 'application/json'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
         # the plant's name: from the CLI and from the admin page; "" = none
         self.assertEqual(self.cli('set-plant-name', 'Unit test plant'), (0, 'The plant is called Unit test plant now.'))
         self.assertEqual(Client(self.base).req('GET', '/api/config')[1]['plant_name'], 'Unit test plant')

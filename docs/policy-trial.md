@@ -141,6 +141,12 @@ Default-ruleset warnings in CI that the v1.1 run blocked on or didn't show (non-
 | `avoid-pickle` | `tools/m6/grid_bench.py:88, 89`, `tools/m6/gsk_bench.py:91`, `tools/m6/write_paths.py:10` | 2 | Benchmark tools that load the `.paths.pkl` cache files they wrote themselves, in the same session's working folder. No untrusted input. |
 | `exported_activity` | `tools/m6/android-bench/src/main/AndroidManifest.xml:3` | 2 | The launcher activity of a benchmark app; Android requires a launcher to be exported. Not shipped. |
 
+### Under v2.2: check notes
+
+| # | Check | Note |
+|---|---|---|
+| 5.1 | WEB-8 (v2.2) | The check counts a file as setting a CSP when, outside comments, it names the header and has any directive. The server's sandbox header for stored content (`default-src 'none'; sandbox` on photos and plant-data files, PR #45) satisfies that, so WEB-8 stops being reported, although the pages still have no CSP (#8). EX-1 stays until #8 is fixed. The check can't tell a CSP on the pages from one on other responses. |
+
 ## 1. Real problems in this project
 
 | # | Rule | Source | Finding |

@@ -400,11 +400,11 @@ proc courseList(s: Server): JNode =
   result = O(("courses", newArr(found)))
   s.courseCache = (key, result)
 
-proc staticFile(s: Server, req: Request, dir, rel, cache: string) {.async.} =
+proc staticFile(s: Server, req: Request, dir, rel, cache: string, ctype = "", extra: seq[(string, string)] = @[]) {.async.} =
   let root = absolutePath(dir)
   let full = absolutePath(root / rel)
   if not full.startsWith(root & DirSep) or not fileExists(full): herr(404, "not found")
-  await s.sendBytes(req, readFile(full), contentType(full), cache)
+  await s.sendBytes(req, readFile(full), if ctype.len > 0: ctype else: contentType(full), cache, extra)
 
 proc personOf(d: JNode): (string, JNode) = personFields(d)
 
@@ -912,7 +912,7 @@ proc handle(s: Server, req: Request) {.async.} =
       if okGz:
         await s.sendBytes(req, gzd, dtype, "private, no-cache", dextra & @[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
         return
-      await s.staticFile(req, s.cfg.dataDir, rel, "private, no-cache")
+      await s.staticFile(req, s.cfg.dataDir, rel, "private, no-cache", dtype, dextra)   # the program's own data/
       return
     if path.startsWith("/photos/"):
       let name = path[8 .. ^1]
