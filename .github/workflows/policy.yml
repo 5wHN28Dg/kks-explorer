@@ -1,8 +1,8 @@
 # Automatic safeguards on every pull request and on main: a secrets scan over the whole history (gitleaks), known
 # vulnerabilities and licenses in the dependencies (osv-scanner), and static analysis (Semgrep, including the
 # HTML-sink and URL-sink rules for the web pages). The actions come from github.com/5wHN28Dg/policy, pinned by commit.
-# They read the `Tier:`, `Type:` and `Baseline:` lines at the top of README.md to decide what runs and what blocks
-# (until the Baseline date, a missing license allowlist is only a warning).
+# They read the `Tier:` and `Type:` lines at the top of README.md to decide what runs and what blocks, and
+# license-allowlist.txt for the license check.
 name: Policy
 
 on:
