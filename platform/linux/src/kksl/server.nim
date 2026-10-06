@@ -2,7 +2,7 @@
 ## (Argon2id), the sync listener. Same routes, cookie and headers as v1's app.py in server mode, so the web pages work
 ## unchanged. One thread owns the node (decision 0030).
 
-import std/[asyncdispatch, asynchttpserver, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm]
+import std/[asyncdispatch, asynchttpserver, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm, sequtils]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics]
 import kks/provider_gnutls
 import dbstore, tls, net, argon2, mdns, internet
@@ -55,8 +55,14 @@ type
   HttpErr = object of CatchableError
     code: int
 
+proc isLoopback*(address: string): bool =
+  ## the web listener's address must be this machine's own (finding #26: no plain-HTTP sign-in on the network)
+  let a = address.strip.toLowerAscii
+  a == "localhost" or a == "::1" or a == "[::1]" or (a.startsWith("127.") and a.count('.') == 3 and
+    a.split('.').allIt(it.len > 0 and it.len <= 3 and it.allCharsInSet(Digits)))
+
 proc defaultConfig*(): Config =
-  Config(address: "0.0.0.0", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
+  Config(address: "127.0.0.1", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
          offlineDays: 3, maxUploadMb: 15, plantDir: "plant-data", backupDir: "backups", maxPdfMb: 50,
          importer: getAppDir() / "kks-import")
 
@@ -68,6 +74,11 @@ proc loadConfig*(path: string): Config =
   proc i(k: string, d: int): int = (if j.get(k) != nil and j[k].kind == jInt: int(j[k].i) else: d)
   proc b(k: string, d: bool): bool = (if j.get(k) != nil and j[k].kind == jBool: j[k].b else: d)
   result.address = s("address", result.address)
+  if not isLoopback(result.address):
+    raise newException(ValueError, "\"address\": \"" & result.address & "\" would serve the web pages and their " &
+      "sign-in over plain HTTP to the network (finding #26). The web listener stays on this machine: use 127.0.0.1, " &
+      "and reach it from elsewhere only through an HTTPS reverse proxy or tunnel to it. Devices sync over TLS on " &
+      "the sync port, which listens on every interface.")
   result.port = i("port", result.port)
   result.syncPort = i("sync_port", result.syncPort)
   result.publicUrl = s("public_url", "")

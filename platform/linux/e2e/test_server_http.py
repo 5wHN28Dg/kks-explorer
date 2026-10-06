@@ -269,5 +269,51 @@ class Server(Base):
         self.assertIn(429, codes)
 
 
+
+class Address(unittest.TestCase):
+    """finding #26 (advisory GHSA-m2gr-gcrf-xc6m): the web pages and sign-in are plain HTTP, so they listen on this
+    machine only; a network address in the config is refused before anything starts"""
+
+    def start(self, address):
+        d = tempfile.mkdtemp(prefix='kks-addr-')
+        cfg = {'address': address, 'port': free_port(), 'sync_port': free_port(), 'store': os.path.join(d, 'server.db'),
+               'storage_key_file': os.path.join(d, 'storage.key'), 'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data')}
+        json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
+        p = subprocess.run([BIN, 'serve', '--config', os.path.join(d, 'config.json')], capture_output=True, text=True,
+                           cwd=d, timeout=5) if address not in ('127.0.0.1', '::1', 'localhost') else None
+        return p, cfg
+
+    def test_network_address_refused(self):
+        for a in ('0.0.0.0', '192.168.1.10', '::', ''):
+            with self.subTest(address=a):
+                p, _ = self.start(a)
+                self.assertNotEqual(p.returncode, 0)
+                self.assertIn('plain HTTP', p.stdout + p.stderr)
+
+    def test_default_is_loopback(self):
+        d = tempfile.mkdtemp(prefix='kks-addr-')
+        cfg = {'port': free_port(), 'sync_port': free_port(), 'store': os.path.join(d, 'server.db'),
+               'storage_key_file': os.path.join(d, 'storage.key'), 'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data')}
+        json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
+        p = subprocess.Popen([BIN, 'serve', '--config', os.path.join(d, 'config.json')], stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, cwd=d)
+        try:
+            line = ''
+            for _ in range(20):
+                line = p.stdout.readline()
+                if 'server on' in line:
+                    break
+            self.assertIn('http://127.0.0.1:', line)
+            for i in range(50):        # the line is printed just before the listener opens
+                try:
+                    socket.create_connection(('127.0.0.1', cfg['port']), timeout=5).close()
+                    break
+                except ConnectionRefusedError:
+                    time.sleep(0.1)
+            else:
+                self.fail('nothing listens on 127.0.0.1')
+        finally:
+            p.terminate(); p.wait(5)
+
 if __name__ == '__main__':
     unittest.main()
