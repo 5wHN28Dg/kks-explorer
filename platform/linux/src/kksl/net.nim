@@ -164,11 +164,13 @@ type Listener* = ref object
   onDone*: proc (remote: string, stats: Stats)
   open*: int                    ## incoming connections held now
   perAddress: Table[string, int]
+  maxOpen*, maxPerAddress*: int ## MaxIncoming, MaxIncomingPerAddress (tests lower them)
+  strangerMs*: int64            ## StrangerMs (tests lower it)
 
 proc serveOne(l: Listener, n: Node, id: Identity, raw: AsyncSocket, address: string, hooks: Hooks) {.async.} =
   let client = tcpStream(raw)
   let c = newTlsConn(n.p, id, client = false)
-  let deadline = nowMs() + StrangerMs
+  let deadline = nowMs() + l.strangerMs
   try:
     await client.handshake(c, deadline)
     let s = newSession(n, false, c.remotePeer, hooks = hooks)
@@ -212,10 +214,13 @@ proc listen*(n: Node, id: Identity, port: int, address = "", hooks = Hooks()): L
     l.sock.bindAddr(Port(port), if address.len == 0: "0.0.0.0" else: address)
   l.sock.listen()
   l.port = int(l.sock.getLocalAddr()[1])
+  l.maxOpen = MaxIncoming
+  l.maxPerAddress = MaxIncomingPerAddress
+  l.strangerMs = StrangerMs
   proc loop() {.async.} =
     while true:
       let (address, client) = await l.sock.acceptAddr()
-      if l.open >= MaxIncoming or l.perAddress.getOrDefault(address) >= MaxIncomingPerAddress:
+      if l.open >= l.maxOpen or l.perAddress.getOrDefault(address) >= l.maxPerAddress:
         client.close()   # issue #67: a full listener takes no more
         continue
       inc l.open
