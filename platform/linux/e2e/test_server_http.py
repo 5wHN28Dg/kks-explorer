@@ -161,6 +161,8 @@ class Cli(Base):
         os.makedirs(os.path.join(d, 'courses'))
         open(os.path.join(d, 'courses', 'evil.html'), 'w').write('<script>parent.pwned=1</script>')
         open(os.path.join(d, 'courses', 'evil.svg'), 'w').write('<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>')
+        import gzip
+        open(os.path.join(d, 'courses', 'big.json.gz'), 'wb').write(gzip.compress(b'{"a": 1}'))
         self.assertEqual(self.cli('publish-data', d), (0, 'Published plant data version 2.'))
         for name in ('courses/evil.html', 'courses/evil.svg'):
             st, data, hdr = boss.req('GET', '/data/' + name)
@@ -168,6 +170,10 @@ class Cli(Base):
             self.assertEqual(hdr['Content-Type'], 'application/octet-stream', name)
             self.assertEqual(hdr['Content-Disposition'], 'attachment', name)
             self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        with boss.op.open(urllib.request.Request(boss.base + '/data/courses/big.json')) as resp:   # the .gz copy
+            st, hdr = resp.status, resp.headers
+        self.assertEqual((st, hdr['Content-Type'], hdr['Content-Encoding']), (200, 'application/json', 'gzip'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
         st, data, hdr = boss.req('GET', '/data/sheets.json')
         self.assertEqual((st, hdr['Content-Type']), (200, 'application/json'))
         self.assertIn('sandbox', hdr['Content-Security-Policy'])

@@ -315,7 +315,7 @@ const
   # plant-data files the pages fetch; anything else goes out as a download
   DataTypes = [".json", ".jxl", ".kkp", ".png", ".jpg", ".jpeg", ".webp", ".pdf", ".gz", ".woff2"]
 
-proc photoType(data: string): (string, bool) =
+proc photoType*(data: string): (string, bool) =
   ## A stored photo's Content-Type from its own bytes, never from the URL: the name in /photos/<sha>.<ext> is only a
   ## hint, and any member's device can make a blob (2026-10-06: a blob starting with a JPEG XL signature followed by
   ## HTML, requested as <sha>.html, was served as text/html: stored XSS). -> (type, is an image)
@@ -325,6 +325,14 @@ proc photoType(data: string): (string, bool) =
   of "png": ("image/png", true)
   of "webp": ("image/webp", true)
   else: ("application/octet-stream", false)
+
+proc dataType*(rel: string): (string, seq[(string, string)]) =
+  ## a /data/ file's Content-Type and extra headers: the types the pages fetch go out sandboxed; anything else, and
+  ## PDFs (a browser's PDF viewer won't run in a sandboxed document), as a sandboxed download
+  let ext = rel.splitFile.ext.toLowerAscii
+  if ext in DataTypes and ext != ".pdf": (contentType(rel), @[ContentSandbox])
+  else: ((if ext == ".pdf": "application/pdf" else: "application/octet-stream"),
+         @[ContentSandbox, ("Content-Disposition", "attachment")])
 
 proc baseHeaders(s: Server, ctype: string, cache = "no-store"): HttpHeaders =
   result = newHttpHeaders({"Content-Type": ctype, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
@@ -902,9 +910,7 @@ proc handle(s: Server, req: Request) {.async.} =
       let rel = path[6 .. ^1]
       let (ok, data) = s.n.file(rel)
       # plant-data files: only the types the pages use; anything else (an .html the manager published) downloads
-      let known = rel.splitFile.ext.toLowerAscii in DataTypes
-      let dtype = if known: contentType(rel) else: "application/octet-stream"
-      let dextra = if known: @[ContentSandbox] else: @[ContentSandbox, ("Content-Disposition", "attachment")]
+      let (dtype, dextra) = dataType(rel)
       if ok:
         await s.sendBytes(req, data, dtype, "private, no-cache", dextra)
         return
