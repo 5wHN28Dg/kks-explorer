@@ -373,9 +373,17 @@ proc sendBytes(s: Server, req: Request, data, ctype, cache: string, extra: seq[(
   for (k, v) in extra: hdr.add(k, v)
   await req.respond(Http200, data, hdr)
 
-proc cookieHeader(s: Server, raw: string, maxAge: int): (string, string) =
+proc localPage(s: Server, req: Request): bool =
+  ## the request comes from a page opened over plain http on this machine (Origin http://127.0.0.1 or localhost)
+  let o = parseUri(req.headers.getOrDefault("Origin"))
+  o.scheme == "http" and o.hostname.toLowerAscii in ["127.0.0.1", "localhost", s.cfg.address]
+
+proc cookieHeader(s: Server, req: Request, raw: string, maxAge: int): (string, string) =
+  ## Secure under an https public_url, except for a page on this machine's own http address: WebKit drops a Secure
+  ## cookie set over http://127.0.0.1 (Chromium and Firefox keep it), and nothing crosses the network there.
+  let secure = s.cfg.secureCookies or (s.cfg.publicUrl.startsWith("https://") and not s.localPage(req))
   ("Set-Cookie", Cookie & "=" & raw & "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" & $maxAge &
-                 (if s.cfg.secureCookies or s.cfg.publicUrl.startsWith("https://"): "; Secure" else: ""))
+                 (if secure: "; Secure" else: ""))
 
 proc sessionRaw(req: Request): string =
   for part in req.headers.getOrDefault("Cookie").split(';'):
@@ -891,14 +899,14 @@ proc handle(s: Server, req: Request) {.async.} =
       let usr = s.login(if d.get("username") != nil and d["username"].isStr: d["username"].s else: "",
                         if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", ip)
       let raw = s.newSession(usr["id"].i)
-      await s.sendJson(req, 200, O(("user", s.publicUser(usr))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
+      await s.sendJson(req, 200, O(("user", s.publicUser(usr))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/logout":
       # Clear-Site-Data: the HTTP cache goes too (it may hold photos from before the fix of finding #25, which were
       # served with the URL's type and cached as immutable for a year)
       let raw = req.sessionRaw
       if raw.len > 0: s.store.delRow("sessions", hex(s.p.sha256(raw.toBytes)))
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader("", 0), ("Clear-Site-Data", "\"cache\"")])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, "", 0), ("Clear-Site-Data", "\"cache\"")])
       return
     of "/api/setup":
       if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
@@ -917,7 +925,7 @@ proc handle(s: Server, req: Request) {.async.} =
       let usr = s.createPlant(name, fn, pos, d["password"].s)
       s.consumeToken(tok)
       let raw = s.newSession(usr["id"].i)
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/password-reset":
       if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
@@ -934,7 +942,7 @@ proc handle(s: Server, req: Request) {.async.} =
       s.consumeToken(tok)
       s.endSessions(usr["id"].i)
       let raw = s.newSession(usr["id"].i)
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/devices/enroll":   # v1 clients: a device joining with its owner's account (v2 devices enroll over TLS, §16)
       let dev = d.get("device")
@@ -1033,7 +1041,7 @@ proc handle(s: Server, req: Request) {.async.} =
       s.putUser(usr)
       s.endSessions(usr["id"].i)
       let raw = s.newSession(usr["id"].i)
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/sheets/reimport":   # the stored PDF again, e.g. with another rotation
       if me.role != "manager": herr(403, "manager only")
