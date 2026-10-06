@@ -51,7 +51,7 @@ K.setReauth = on => { if (K.reauth !== on) { K.reauth = on; K.renderStatus() } }
 // attributes by name (true = present; false, null or undefined = left out); `on<event>` must be a function and is
 // attached with addEventListener (a string is refused: no inline handlers). Attributes that take a URL are refused,
 // except an image's or media element's src: a link's href is set on the element itself, through K.safeUrl, where the
-// static check (WEB-10) sees it. Elements that run or load code (script, iframe, object, ...) are refused.
+// static check sees it. Elements that run or load code (script, iframe, object, ...) are refused.
 K.build = (el, props, kids) => {
   const tag = el.localName.toLowerCase();
   if (/^(script|iframe|frame|frameset|object|embed|applet|base|link|meta|style|template|foreignobject|use|animate|set)$/.test(tag))
@@ -59,12 +59,13 @@ K.build = (el, props, kids) => {
   for (const [k, v] of Object.entries(props || {})) {
     const name = k.toLowerCase();
     if (name.startsWith('on')) {
+      if (v == null || v === false) continue;   // no handler, like any other absent attribute
       if (typeof v !== 'function') throw new TypeError(`K.h: ${k} must be a function`);
       el.addEventListener(name.slice(2), v); continue;
     }
     if (/^(href|xlink:href|action|formaction|srcdoc|data|poster|background|ping|codebase|cite|longdesc|manifest|src|srcset)$/.test(name)
         && !(/^(src|srcset)$/.test(name) && /^(img|source|audio|video|track)$/.test(tag)))
-      throw new TypeError(`K.h: set ${k} on the element itself (WEB-10)`);
+      throw new TypeError(`K.h: set ${k} on the element itself`);
     if (v == null || v === false) continue;
     el.setAttribute(k, v === true ? '' : String(v));
   }
@@ -73,7 +74,7 @@ K.build = (el, props, kids) => {
 };
 K.h = (tag, props, ...kids) => K.build(document.createElement(tag), props, kids);
 K.svg = (tag, props, ...kids) => K.build(document.createElementNS('http://www.w3.org/2000/svg', tag), props, kids);
-// A URL from data, checked before it becomes a link (WEB-10). Allowed: http and https (a relative URL resolves against
+// A URL from data, checked before it becomes a link. Allowed: http and https (a relative URL resolves against
 // this page). -> the URL as given, or 'about:blank' for anything else (javascript:, data:, blob:, a URL that doesn't
 // parse, no URL at all).
 K.safeUrl = (u, schemes = ['http:', 'https:']) => {

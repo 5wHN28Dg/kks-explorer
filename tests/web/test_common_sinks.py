@@ -64,7 +64,7 @@ class Sinks(unittest.TestCase):
               document.body.append(el);
               out.html = el.childNodes.length; out.text = el.textContent; out.title = el.getAttribute('title');
               out.hasHidden = el.hasAttribute('hidden'); out.hasLabel = el.hasAttribute('aria-label');
-              let clicked = 0; const b = K.h('button', {onclick: () => clicked++}, 'go'); b.click(); out.clicked = clicked;
+              let clicked = 0; const b = K.h('button', {onclick: () => clicked++}, 'go'); b.click(); out.clicked = clicked; out.nullHandler = K.h('button', {onclick: null}, 'x').localName;
               out.bool = K.h('input', {readonly: true}).hasAttribute('readonly');
               const refused = [];
               const tries = {
@@ -95,6 +95,7 @@ class Sinks(unittest.TestCase):
             self.assertFalse(r['hasHidden'])
             self.assertFalse(r['hasLabel'])
             self.assertEqual(r['clicked'], 1)
+            self.assertEqual(r['nullHandler'], 'button')   # an absent handler is skipped, like any absent attribute
             self.assertTrue(r['bool'])
             self.assertEqual(r['refused'], ['onclickString', 'href', 'HREF', 'formaction', 'action', 'srcdoc', 'iframeSrc',
                                             'script', 'scriptSrc', 'object', 'svgUse', 'svgHref'])

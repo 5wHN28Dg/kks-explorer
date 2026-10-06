@@ -66,7 +66,7 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 <script src="common.js"></script>
 <script>
 const $=s=>document.querySelector(s);
-// Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup (WEB-9). (Before, a
+// Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup. (Before, a
 // full name with a quote ran script through an inline handler: fixed 2026-10-01; there are no such handlers now.)
 const h=K.h;
 // el's children := these (arrays flattened; null, undefined and false left out)
@@ -74,7 +74,7 @@ const put=(el,...kids)=>el.replaceChildren(...kids.flat(Infinity).filter(c=>c!=n
 // a table of rows (in a tbody, as the HTML parser makes it)
 const table=(...rows)=>h('table',null,h('tbody',null,rows));
 const head=(...names)=>h('tr',null,names.map(n=>h('th',null,n)));
-// a link inside the app (a path and query this page made): href through the URL check (WEB-10)
+// a link inside the app (a path and query this page made): href through the URL check
 const appLink=(url,props,...kids)=>{ const a=h('a',props,...kids); a.href=K.safeUrl(url); return a };
 let ME=null, tab=null, SHEETS=[];
 // v2 crops (approving a marked tag): level 0 of the sheet's pyramid, decoded by K.jxl where the browser can't
@@ -498,7 +498,7 @@ async function renderUpdate(u){
   if(u.staged) out.push(h('div',{class:'warn',style:'margin-top:8px'},`Version ${u.staged} is installed: close Walkdown (Quit) and start it again to use it.`));
   else if(u.busy) out.push(h('div',{class:'sub',style:'margin-top:8px'},`${u.busy==='unpacking'?'Unpacking…':'Downloading…'} this page updates by itself.`));
   else if(u.available){
-    let page=null;   // the release page, from the update check: http(s) only (WEB-10)
+    let page=null;   // the release page, from the update check: http(s) only
     if(u.page){ page=h('a',{target:'_blank',rel:'noopener'},'What\'s new'); page.href=K.safeUrl(u.page) }
     out.push(h('div',{style:'margin-top:8px'},h('b',null,`Version ${str(u.latest)} is out.`),' ',page),
       u.notes?h('pre',{class:'linkbox',style:'max-height:160px;overflow:auto;white-space:pre-wrap'},u.notes):null,

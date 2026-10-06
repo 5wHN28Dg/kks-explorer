@@ -158,7 +158,7 @@ const $=s=>document.querySelector(s);
 let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
 let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='', PDV='';
 const api=u=>K.api(u);
-// Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup (WEB-9).
+// Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup.
 const h=K.h;
 // el's children := these (arrays flattened; null, undefined and false left out)
 const put=(el,...kids)=>el.replaceChildren(...kids.flat(Infinity).filter(c=>c!=null&&c!==false));
