@@ -25,3 +25,8 @@ suite "stored content types":
       check t in ["application/octet-stream", "application/pdf"]
       check ("Content-Disposition", "attachment") in extra
       check ("Content-Security-Policy", "default-src 'none'; sandbox") in extra
+
+  test "/data/: a compressed page is gzip bytes, never a page":
+    let (t, extra) = dataType("courses/page.html.gz")
+    check t == "application/gzip"
+    check ("Content-Security-Policy", "default-src 'none'; sandbox") in extra
