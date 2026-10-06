@@ -51,22 +51,6 @@
       "link": "https://github.com/5wHN28Dg/kks-explorer/issues/17"
     },
     {
-      "id": "EX-4",
-      "rule": "Gov §5 (lockfile)",
-      "files": [
-        "android/app2/build.gradle.kts"
-      ],
-      "finding": "The Android app's Gradle build has no lockfile, so its transitive dependencies are neither pinned nor scanned.",
-      "reason": "Dependency locking changes the Android build and has to be checked against the release, rehearsal and debug builds and the e2e tests on the emulator; it is its own change (#3).",
-      "compensatingControl": "Every direct dependency and plugin has an exact version (the Compose BOM 2024.12.01 fixes the Compose versions; no ranges or dynamic versions), so the resolved tree only changes when a reviewed PR changes a version. Until the lockfile exists, each release audit lists the resolved tree (./gradlew :app2:dependencies) and checks it against OSV by hand.",
-      "acceptedBy": "",
-      "written": "2026-10-05",
-      "accepted": "",
-      "expires": "2027-01-03",
-      "renewals": 0,
-      "link": "https://github.com/5wHN28Dg/kks-explorer/issues/3"
-    },
-    {
       "id": "EX-5",
       "rule": "WEB-2",
       "finding": "The supported browsers are not declared in browserslist.",
