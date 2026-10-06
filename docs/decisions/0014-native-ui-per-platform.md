@@ -33,8 +33,8 @@ hosts the app's UI, even though the matrix found a system web engine on every ta
    access.
 
    **Decided 2026-09-30: keep browser access.** That makes four UIs: Windows, GNOME, Android native, plus web for
-   browser clients. The web UI falls under docs/evidence-first-web-engineering.md.
+   browser clients. The web UI falls under the web engineering guideline (CLAUDE.md, "Engineering guidelines").
 
 **Revisit:** if maintaining four UIs proves too slow in practice. Measure it by release cadence.
 
-Sources: docs/m6/CAPABILITIES.md §1; docs/evidence-first-platform-engineering.md (Accessibility; A cost this policy imposes)
+Sources: docs/m6/CAPABILITIES.md §1; the platform engineering guideline (CLAUDE.md, "Engineering guidelines") (Accessibility; A cost this policy imposes)
