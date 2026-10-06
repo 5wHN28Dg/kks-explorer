@@ -44,7 +44,8 @@ const
   MaxPerAddress* = 64           ## kks
   MaxHeaderBytes* = 64 * 1024   ## kks: all header lines of one request together
   MaxHeaders* = 100             ## kks
-  MaxBodiesInFlight* = 256 * 1024 * 1024   ## kks: bodies read at once before any handler sees them (503 beyond)
+  MaxBodiesInFlight* = 256 * 1024 * 1024   ## kks: body bytes held at once before any handler sees them (503 beyond)
+  AnswerTimeoutMs = 20_000      ## kks: an error answer or 100 Continue to a client that doesn't read
   ResponseTimeoutMs* = 120_000  ## kks: the handler and sending its response (a client that never reads)
 
 # TODO: If it turns out that the decisions that asynchttpserver makes
@@ -147,7 +148,8 @@ type Alarm = ref object
   ## kks: one per connection, firing when `deadline` passes. withTimeout made a timer per read that lived until it
   ## expired, so a client sending many short lines filled memory with timers (1 GB in seconds).
   deadline: float
-  fired: Future[void]
+  fired: Future[void]   ## a fresh one for each wait; completed only while a wait is on
+  waiting: bool
   done: bool
 
 proc newAlarm(): Alarm = Alarm(fired: newFuture[void]("kks.alarm"))
@@ -155,15 +157,19 @@ proc newAlarm(): Alarm = Alarm(fired: newFuture[void]("kks.alarm"))
 proc watch(a: Alarm) {.async.} =
   while not a.done:
     await sleepAsync(500)
-    if not a.done and epochTime() >= a.deadline and not a.fired.finished: a.fired.complete()
+    if a.waiting and epochTime() >= a.deadline and not a.fired.finished: a.fired.complete()
 
 proc within[T](a: Alarm, client: AsyncSocket, f: Future[T], deadline: float): Future[bool] {.async.} =
   ## kks: false (and the connection closed) when `f` doesn't finish before `deadline` (epoch seconds)
   if epochTime() >= deadline:
     client.close(); return false
   a.deadline = deadline
-  await (f or a.fired)
-  a.fired.clearCallbacks()
+  a.fired = newFuture[void]("kks.alarm")
+  a.waiting = true
+  try:
+    await (f or a.fired)
+  finally:
+    a.waiting = false
   if f.finished: return true
   client.close()
   return false
@@ -221,7 +227,7 @@ proc processRequest(
       return false
 
     if lineFut.mget.len > maxLine:
-      await request.respondError(Http413)
+      discard await alarm.within(client, request.respondError(Http413), epochTime() + AnswerTimeoutMs / 1000)
       client.close()
       return false
     if lineFut.mget != "\c\L":
@@ -243,30 +249,30 @@ proc processRequest(
       of "CONNECT": request.reqMethod = HttpConnect
       of "TRACE": request.reqMethod = HttpTrace
       else:
-        await request.respondError(Http400)   # kks: answered, then closed (queued answers to a stream of bad
+        discard await alarm.within(client, request.respondError(Http400), epochTime() + AnswerTimeoutMs / 1000)   # kks: answered, then closed (queued answers to a stream of bad
         client.close()                        # lines grew without limit)
         return false
     of 1:
       try:
         parseUri(linePart, request.url)
       except ValueError:
-        await request.respondError(Http400)   # kks
+        discard await alarm.within(client, request.respondError(Http400), epochTime() + AnswerTimeoutMs / 1000)   # kks
         client.close()
         return false
     of 2:
       try:
         request.protocol = parseProtocol(linePart)
       except ValueError:
-        await request.respondError(Http400)   # kks
+        discard await alarm.within(client, request.respondError(Http400), epochTime() + AnswerTimeoutMs / 1000)   # kks
         client.close()
         return false
     else:
-      await request.respondError(Http400)   # kks
+      discard await alarm.within(client, request.respondError(Http400), epochTime() + AnswerTimeoutMs / 1000)   # kks
       client.close()
       return false
     inc i
   if i != 3:   # kks: method, target and protocol, nothing less (the previous request's values stayed otherwise)
-    await request.respondError(Http400)
+    discard await alarm.within(client, request.respondError(Http400), epochTime() + AnswerTimeoutMs / 1000)
     client.close()
     return false
 
@@ -284,27 +290,27 @@ proc processRequest(
     if lineFut.mget == "":
       client.close(); return false
     if lineFut.mget.len > maxLine:
-      await request.respondError(Http413)
+      discard await alarm.within(client, request.respondError(Http413), epochTime() + AnswerTimeoutMs / 1000)
       client.close(); return false
     if lineFut.mget == "\c\L": break
     headerBytes += lineFut.mget.len                               # kks: size and count of all headers
     if headerBytes > MaxHeaderBytes or request.headers.len >= MaxHeaders:
-      await client.sendStatus("431 Request Header Fields Too Large")
+      discard await alarm.within(client, client.sendStatus("431 Request Header Fields Too Large"), epochTime() + AnswerTimeoutMs / 1000)
       client.close(); return false
     if ':' notin lineFut.mget or (lineFut.mget.toLowerAscii.startsWith("content-length") and ',' in lineFut.mget):   # kks
-      await client.sendStatus("400 Bad Request")
+      discard await alarm.within(client, client.sendStatus("400 Bad Request"), epochTime() + AnswerTimeoutMs / 1000)
       client.close(); return false
     let (key, value) = parseHeader(lineFut.mget)
     # kks: a name with spaces ("Transfer-Encoding : chunked") or a second Content-Length would be read differently
     # by a proxy in front; refuse both.
     if key.len == 0 or key != key.strip or ' ' in key or '\t' in key or
        (cmpIgnoreCase(key, "Content-Length") == 0 and request.headers.hasKey("Content-Length")):
-      await client.sendStatus("400 Bad Request")
+      discard await alarm.within(client, client.sendStatus("400 Bad Request"), epochTime() + AnswerTimeoutMs / 1000)
       client.close(); return false
     request.headers[key] = value
     # Ensure the client isn't trying to DoS us.
     if request.headers.len > headerLimit:
-      await client.sendStatus("400 Bad Request")
+      discard await alarm.within(client, client.sendStatus("400 Bad Request"), epochTime() + AnswerTimeoutMs / 1000)
       request.client.close()
       return false
 
@@ -312,9 +318,9 @@ proc processRequest(
     # Check for Expect header
     if request.headers.hasKey("Expect"):
       if "100-continue" in request.headers["Expect"]:
-        await client.sendStatus("100 Continue")
+        discard   # kks: answered below, once the size is known to be acceptable
       else:
-        await client.sendStatus("417 Expectation Failed")   # kks: and nothing more on this connection
+        discard await alarm.within(client, client.sendStatus("417 Expectation Failed"), epochTime() + AnswerTimeoutMs / 1000)   # kks: and nothing more on this connection
         client.close()
         return false
 
@@ -322,7 +328,7 @@ proc processRequest(
   if request.headers.hasKey("Transfer-Encoding"):
     # kks: refused, any method, with or without Content-Length (finding #27). The stdlib read chunked POST bodies
     # with no size limit before the callback ran, and left other methods' bodies on the socket.
-    await request.respond(Http411, "Transfer-Encoding is not accepted; send Content-Length.")
+    discard await alarm.within(client, request.respond(Http411, "Transfer-Encoding is not accepted; send Content-Length."), epochTime() + AnswerTimeoutMs / 1000)
     client.close()
     return false
   # - Check for Content-length header
@@ -330,50 +336,56 @@ proc processRequest(
     var contentLength = 0
     let cl = request.headers["Content-Length"]
     if seq[string](request.headers.getOrDefault("Content-Length")).len != 1:   # kks: "5, 7" splits into two values
-      await request.respond(Http400, "Bad Request. Invalid Content-Length.")
+      discard await alarm.within(client, request.respond(Http400, "Bad Request. Invalid Content-Length."), epochTime() + AnswerTimeoutMs / 1000)
       client.close()
       return false
     # kks: digits only ("5abc" and "5, 7" read as 5 before), and a bad one closes the connection
     if cl.len == 0 or cl.len > 12 or not cl.allCharsInSet(Digits) or parseSaturatedNatural(cl, contentLength) == 0:
-      await request.respond(Http400, "Bad Request. Invalid Content-Length.")
+      discard await alarm.within(client, request.respond(Http400, "Bad Request. Invalid Content-Length."), epochTime() + AnswerTimeoutMs / 1000)
       client.close()
       return false
     else:
       if contentLength > server.maxBody:
-        await request.respondError(Http413)
+        discard await alarm.within(client, request.respondError(Http413), epochTime() + AnswerTimeoutMs / 1000)
         client.close()
         return false
       # kks: read in pieces as they arrive (recv(n) allocated all n bytes before reading any), within a deadline
-      if server.bodyBytes + contentLength > MaxBodiesInFlight:   # kks: all connections' bodies together
-        await request.respond(Http503, "Too many uploads at once; try again shortly.")
-        client.close()
-        return false
+      if request.reqMethod == HttpPost and "100-continue" in request.headers.getOrDefault("Expect"):
+        if not await alarm.within(client, client.sendStatus("100 Continue"), epochTime() + AnswerTimeoutMs / 1000):
+          return false
       let bodyDeadline = epochTime() + BodyTimeoutMs / 1000
       var body = ""
-      server.bodyBytes += contentLength
       try:
         while body.len < contentLength:
-          let part = client.recv(min(64 * 1024, contentLength - body.len))
+          let n = min(64 * 1024, contentLength - body.len)
+          if server.bodyBytes + n > MaxBodiesInFlight:   # kks: bytes held, all connections together
+            discard await alarm.within(client, request.respond(Http503, "Too many uploads at once; try again shortly."), epochTime() + AnswerTimeoutMs / 1000)
+            client.close()
+            return false
+          let part = client.recv(n)
           if not await alarm.within(client, part, bodyDeadline):
             return false
           let got = part.read
           if got.len == 0: break
           body.add got
+          server.bodyBytes += got.len
       finally:
-        server.bodyBytes -= contentLength
+        server.bodyBytes -= body.len
       request.body = body
       if request.body.len != contentLength:
-        await request.respond(Http400, "Bad Request. Content-Length does not match actual.")
+        discard await alarm.within(client, request.respond(Http400, "Bad Request. Content-Length does not match actual."), epochTime() + AnswerTimeoutMs / 1000)
         client.close()
         return false
   elif request.reqMethod == HttpPost:
-    await request.respond(Http411, "Content-Length required.")
-    return true
+    discard await alarm.within(client, request.respond(Http411, "Content-Length required."), epochTime() + AnswerTimeoutMs / 1000)
+    client.close()   # kks: no keep-alive after a refusal
+    return false
 
   # Call the user's callback.
   let handled = callback(request)   # kks: with a deadline, so a client that never reads its answer lets go
   if not await alarm.within(client, handled, epochTime() + ResponseTimeoutMs / 1000):
     return false
+  request.body = ""   # kks: not held while the connection waits for its next request
   if handled.failed: raise handled.readError
 
   if "upgrade" in request.headers.getOrDefault("connection"):

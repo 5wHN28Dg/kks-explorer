@@ -492,6 +492,40 @@ class Limits(Base):
         for c in socks: c.close()
         self.assertLess(grown, 100, 'RSS grew by %.0f MB' % grown)
 
+    def test_declared_sizes_dont_block_uploads(self):
+        """headers that announce large bodies and send nothing don't use up the upload budget (it counts bytes held)"""
+        budget = 256 * 1024 * 1024                         # MaxBodiesInFlight
+        sizes = [31_000_000] * 8 + [budget - 8 * 31_000_000 - 10]   # announced up to 10 bytes short of it
+        socks = [self.conn('127.0.0.7') for _ in sizes]
+        for c, n in zip(socks, sizes):
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: %d\r\n\r\n' % (self.port, n))
+        time.sleep(1)
+        st = Client(self.base).req('POST', '/api/login', {'username': 'nobody', 'password': 'x'})[0]
+        for c in socks: c.close()
+        self.assertIn(st, (401, 429))                     # an answer from the handler, not 503
+
+    def test_refusal_closes(self):
+        """a POST without Content-Length is refused and the connection closed, so a pipeline of them can't hold it"""
+        r = self.raw(b'POST /x HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n' % self.port * 50)
+        self.assertTrue(r.startswith(b'HTTP/1.1 411') or r == b'<reset>', r[:80])
+        self.assertLessEqual(r.count(b'HTTP/1.1 '), 1)
+        self.assertNotIn(b'<timeout>', r)
+
+    def test_bodies_not_held_by_idle_connections(self):
+        """large bodies on connections left open and idle: memory levels off instead of growing per connection"""
+        body = b'{' + b' ' * 30_000_000
+        socks, rss = [], []
+        for _ in range(10):
+            c = self.conn('127.0.0.8', timeout=30)
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: %d\r\n\r\n' % (self.port, len(body)) + body)
+            self.assertTrue(c.recv(12).startswith(b'HTTP/1.1 4'))   # answered; the connection stays open, idle
+            socks.append(c)
+            rss.append(self.rss_mb())
+        for c in socks: c.close()
+        self.assertLess(rss[-1] - rss[3], 60, rss)       # 30 MB per idle connection would be 180 MB here
+
     def test_slow_reader_let_go(self):
         """a client that asks for a large file and never reads it: the server lets go of it after ResponseTimeoutMs
         (120 s), leaving what is unsent to the kernel"""
