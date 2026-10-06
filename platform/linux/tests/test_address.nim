@@ -11,3 +11,8 @@ suite "web listener address":
     for a in ["", "0.0.0.0", "192.168.1.10", "::", "::1", "[::1]", "127.999.999.999", "127.0.0.256", "127.0.0",
               "127.0.0.1.5", "127..0.1", "127.0.0.01x", "128.0.0.1", "localhost.example.com", "127.0.0.1:80"]:
       check not isLoopback(a)
+
+  test "leading zeros are refused (the system would read them as octal or as a host name)":
+    for a in ["127.0.0.010", "127.0.0.08", "0127.0.0.1", "127.00.0.1"]:
+      check not isLoopback(a)
+    check isLoopback("127.0.0.0")

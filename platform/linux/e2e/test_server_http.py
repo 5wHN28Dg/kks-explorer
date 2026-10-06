@@ -37,6 +37,8 @@ IMPORTER = os.environ.get('KKS_IMPORT', '/tmp/kksimp/kks_import')
 
 
 class Base(unittest.TestCase):
+    extra = {}       # config entries a test class adds
+
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-nim-server-')
@@ -46,6 +48,7 @@ class Base(unittest.TestCase):
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
                'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl')}
+        cfg.update(cls.extra)
         with open(os.path.join(cls.dir, 'config.json'), 'w') as f:
             json.dump(cfg, f)
         cls.proc = subprocess.Popen([BIN, 'serve', '--config', os.path.join(cls.dir, 'config.json')], stdout=subprocess.PIPE,
@@ -321,6 +324,48 @@ class Address(unittest.TestCase):
                 self.fail('nothing listens on 127.0.0.1')
         finally:
             p.terminate(); p.wait(5)
+
+class Front(Base):
+    """the web pages behind an HTTPS proxy (finding #26's adversarial pass): Secure cookies under an https public URL,
+    only this server's host names, X-Forwarded-For only from a proxy the operator vouches for"""
+
+    def test_defaults_without_proxy(self):
+        boss = Client(self.base)
+        st, r, hdr = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
+                                                     'full_name': 'The Manager'})
+        self.assertEqual(st, 200, r)
+        self.assertNotIn('Secure', hdr['Set-Cookie'])     # plain http://127.0.0.1 on this machine
+        # X-Forwarded-For is anyone's to send: a new value per attempt does not escape the per-address limit
+        codes = [Client(self.base).req('POST', '/api/login', {'username': 'nobody%d' % i, 'password': 'x'},
+                                       headers={'X-Forwarded-For': '10.0.0.%d' % i})[0] for i in range(7)]
+        self.assertIn(429, codes)
+
+    def test_host_names(self):
+        c = Client(self.base)
+        self.assertEqual(c.req('GET', '/api/config', headers={'Host': 'localhost:%d' % self.port})[0], 200)
+        for h in ('evil.example', 'evil.example:%d' % self.port, '127.0.0.1', 'walk.example'):
+            with self.subTest(host=h):
+                self.assertEqual(c.req('GET', '/api/config', headers={'Host': h})[0], 421)
+                self.assertEqual(c.req('GET', '/', headers={'Host': h})[0], 421)
+
+
+class FrontProxy(Base):
+    extra = {'public_url': 'https://Walk.example', 'trusted_proxy': True}
+
+    def test_behind_proxy(self):
+        boss = Client(self.base)
+        st, r, hdr = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
+                                                     'full_name': 'The Manager'})
+        self.assertEqual(st, 200, r)
+        self.assertIn('; Secure', hdr['Set-Cookie'])
+        self.assertEqual(boss.req('GET', '/api/config', headers={'Host': 'walk.example'})[0], 200)
+        self.assertEqual(boss.req('GET', '/api/config', headers={'Host': 'evil.example'})[0], 421)
+        # the proxy appends the browser's address: the last entry counts, whatever the browser put before it
+        fails = lambda ip, n: [Client(self.base).req('POST', '/api/login', {'username': 'x%s%d' % (ip, i), 'password': 'x'},
+                                                     headers={'X-Forwarded-For': 'spoof%d, %s' % (i, ip)})[0] for i in range(n)]
+        self.assertIn(429, fails('10.0.0.1', 7))
+        self.assertEqual(fails('10.0.0.2', 1), [401])   # another browser is not locked out
+
 
 if __name__ == '__main__':
     unittest.main()

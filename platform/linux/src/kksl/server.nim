@@ -23,7 +23,8 @@ type
     port*: int
     syncPort*: int             ## 0 = off
     publicUrl*: string
-    secureCookies*: bool
+    secureCookies*: bool       ## also on whenever publicUrl is https
+    trustedProxy*: bool        ## the HTTPS proxy in front appends the browser's address to X-Forwarded-For
     plantName*: string
     sessionDays*: int
     offlineDays*: int
@@ -61,7 +62,7 @@ proc isLoopback*(address: string): bool =
   let a = address.strip.toLowerAscii
   let parts = a.split('.')
   a == "localhost" or (parts.len == 4 and parts[0] == "127" and
-    parts.allIt(it.len in 1..3 and it.allCharsInSet(Digits) and parseInt(it) <= 255))
+    parts.allIt(it.len in 1..3 and it.allCharsInSet(Digits) and (it.len == 1 or it[0] != '0') and parseInt(it) <= 255))
 
 proc defaultConfig*(): Config =
   Config(address: "127.0.0.1", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
@@ -85,6 +86,7 @@ proc loadConfig*(path: string): Config =
   result.syncPort = i("sync_port", result.syncPort)
   result.publicUrl = s("public_url", "")
   result.secureCookies = b("secure_cookies", false)
+  result.trustedProxy = b("trusted_proxy", false)
   result.plantName = s("plant_name", result.plantName)
   result.sessionDays = i("session_days", result.sessionDays)
   result.offlineDays = i("offline_days", result.offlineDays)
@@ -337,17 +339,32 @@ proc sendBytes(s: Server, req: Request, data, ctype, cache: string, extra: seq[(
 
 proc cookieHeader(s: Server, raw: string, maxAge: int): (string, string) =
   ("Set-Cookie", Cookie & "=" & raw & "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" & $maxAge &
-                 (if s.cfg.secureCookies: "; Secure" else: ""))
+                 (if s.cfg.secureCookies or s.cfg.publicUrl.startsWith("https://"): "; Secure" else: ""))
 
 proc sessionRaw(req: Request): string =
   for part in req.headers.getOrDefault("Cookie").split(';'):
     let kv = part.strip.split('=', 1)
     if kv.len == 2 and kv[0] == Cookie: return kv[1]
 
-proc clientIp(req: Request): string =
+proc clientIp(s: Server, req: Request): string =
+  ## the address login throttling counts. X-Forwarded-For only when the operator says the proxy in front appends to
+  ## it (`trusted_proxy`): its last entry is then the proxy's own. Anyone can send the header, so it is never read
+  ## otherwise (every browser behind a proxy that doesn't append is then one address).
+  ## HttpHeaders splits "a, b" into values and getOrDefault gives the first: every value is read, the last kept.
   let peer = req.hostname
-  let fwd = req.headers.getOrDefault("X-Forwarded-For")
-  if fwd.len > 0 and peer in ["127.0.0.1", "::1"]: fwd.split(',')[^1].strip else: peer
+  let fwd = seq[string](req.headers.getOrDefault("X-Forwarded-For")).join(",").split(',')[^1].strip
+  if s.cfg.trustedProxy and fwd.len > 0 and peer in ["127.0.0.1", "::1", "::ffff:127.0.0.1"]: fwd
+  else: peer
+
+proc hostAllowed(s: Server, req: Request): bool =
+  ## Host must name this server: 127.0.0.1 or localhost with its port, or public_url's host. Another name pointed
+  ## at 127.0.0.1 (DNS rebinding, a page open in a browser on this machine) is refused.
+  let h = req.headers.getOrDefault("Host").strip.toLowerAscii
+  var allowed = @["127.0.0.1:" & $s.cfg.port, "localhost:" & $s.cfg.port]
+  if s.cfg.publicUrl.len > 0:
+    let pu = parseUri(s.cfg.publicUrl)
+    allowed.add pu.hostname.toLowerAscii & (if pu.port.len > 0: ":" & pu.port else: "")
+  h in allowed
 
 proc currentUser(s: Server, req: Request): JNode =
   let raw = req.sessionRaw
@@ -770,6 +787,7 @@ proc handle(s: Server, req: Request) {.async.} =
   let path = decodeUrl(u.path)
   let q = queryOf(u)
   let meth = $req.reqMethod
+  if not s.hostAllowed(req): herr(421, "This server does not answer to that host name.")
   if meth == "GET" or meth == "HEAD":
     if path in Shell:
       await s.staticFile(req, s.cfg.webDir, Shell[path], "no-cache")
@@ -828,7 +846,7 @@ proc handle(s: Server, req: Request) {.async.} =
     try: d = parseStrict(req.body)
     except JsonError: herr(400, "bad json")
     if d.kind != jObj: herr(400, "bad json")
-  let ip = req.clientIp
+  let ip = s.clientIp(req)
   if isPost:
     case path
     of "/api/login":
