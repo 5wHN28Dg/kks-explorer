@@ -80,11 +80,17 @@ proc loadConfig*(path: string): Config =
   if not isLoopback(result.address):
     raise newException(ValueError, "\"address\": \"" & result.address & "\" would serve the web pages and their " &
       "sign-in over plain HTTP to the network (finding #26). The web listener stays on this machine: use 127.0.0.1, " &
-      "and reach it from elsewhere only through an HTTPS reverse proxy or tunnel to it. Devices sync over TLS on " &
-      "the sync port, which listens on every interface.")
+      "and reach it from elsewhere only through an HTTPS reverse proxy or tunnel to it, with \"public_url\" set to " &
+      "its https:// address (and \"trusted_proxy\": true if the proxy appends the browser's address to " &
+      "X-Forwarded-For). Devices sync over TLS on the sync port, which listens on every interface.")
   result.port = i("port", result.port)
   result.syncPort = i("sync_port", result.syncPort)
-  result.publicUrl = s("public_url", "")
+  result.publicUrl = s("public_url", "").strip
+  if result.publicUrl.len > 0:
+    if not result.publicUrl.toLowerAscii.startsWith("https://"):
+      raise newException(ValueError, "\"public_url\": \"" & result.publicUrl & "\" must be an https:// address: " &
+        "browsers reach the web pages only through an HTTPS proxy or tunnel (finding #26).")
+    result.publicUrl = "https://" & result.publicUrl[8 .. ^1]   # the scheme's case: Secure and HSTS test it
   result.secureCookies = b("secure_cookies", false)
   result.trustedProxy = b("trusted_proxy", false)
   result.plantName = s("plant_name", result.plantName)
@@ -359,7 +365,9 @@ proc clientIp(s: Server, req: Request): string =
 proc hostAllowed(s: Server, req: Request): bool =
   ## Host must name this server: 127.0.0.1 or localhost with its port, or public_url's host. Another name pointed
   ## at 127.0.0.1 (DNS rebinding, a page open in a browser on this machine) is refused.
-  let h = req.headers.getOrDefault("Host").strip.toLowerAscii
+  let hs = seq[string](req.headers.getOrDefault("Host"))
+  if hs.len != 1: return false                          # two Host lines, or a comma list
+  let h = hs[0].strip.toLowerAscii
   var allowed = @["127.0.0.1:" & $s.cfg.port, "localhost:" & $s.cfg.port]
   if s.cfg.publicUrl.len > 0:
     let pu = parseUri(s.cfg.publicUrl)
@@ -817,7 +825,7 @@ proc handle(s: Server, req: Request) {.async.} =
     let origin = req.headers.getOrDefault("Origin")
     if origin.len > 0:
       let host = parseUri(origin).hostname & (if parseUri(origin).port.len > 0: ":" & parseUri(origin).port else: "")
-      var allowed = @[$req.headers.getOrDefault("Host"), $req.headers.getOrDefault("X-Forwarded-Host")]
+      var allowed = @[$req.headers.getOrDefault("Host")]   # not X-Forwarded-Host: anyone can send it
       if s.cfg.publicUrl.len > 0:
         let pu = parseUri(s.cfg.publicUrl)
         allowed.add pu.hostname & (if pu.port.len > 0: ":" & pu.port else: "")

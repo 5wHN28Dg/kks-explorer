@@ -295,6 +295,17 @@ class Address(unittest.TestCase):
                 self.assertNotEqual(p.returncode, 0)
                 self.assertIn('plain HTTP', p.stdout + p.stderr)
 
+    def test_public_url_must_be_https(self):
+        for u in ('http://walk.example', 'walk.example', 'ftp://walk.example'):
+            with self.subTest(public_url=u):
+                d, cfg = self.config('127.0.0.1')
+                cfg['public_url'] = u
+                json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
+                p = subprocess.run([BIN, 'serve', '--config', os.path.join(d, 'config.json')], capture_output=True,
+                                   text=True, cwd=d, timeout=5)
+                self.assertNotEqual(p.returncode, 0)
+                self.assertIn('https://', p.stdout + p.stderr)
+
     def test_default_is_loopback(self):
         self.serves(None, 'http://127.0.0.1:')
 
@@ -343,14 +354,24 @@ class Front(Base):
     def test_host_names(self):
         c = Client(self.base)
         self.assertEqual(c.req('GET', '/api/config', headers={'Host': 'localhost:%d' % self.port})[0], 200)
-        for h in ('evil.example', 'evil.example:%d' % self.port, '127.0.0.1', 'walk.example'):
+        for h in ('evil.example', 'evil.example:%d' % self.port, '127.0.0.1', 'walk.example',
+                  '127.0.0.1:%d, evil.example' % self.port):
             with self.subTest(host=h):
                 self.assertEqual(c.req('GET', '/api/config', headers={'Host': h})[0], 421)
                 self.assertEqual(c.req('GET', '/', headers={'Host': h})[0], 421)
+        # two Host lines
+        s = socket.create_connection(('127.0.0.1', self.port), timeout=5)
+        s.sendall(b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nHost: evil.example\r\nConnection: close\r\n\r\n' % self.port)
+        self.assertTrue(s.recv(12).startswith(b'HTTP/1.1 421'))
+        s.close()
+        # X-Forwarded-Host doesn't widen the Origin check
+        st = c.req('POST', '/api/login', {'username': 'x', 'password': 'y'},
+                   headers={'Origin': 'http://evil.example', 'X-Forwarded-Host': 'evil.example'})[0]
+        self.assertEqual(st, 403)
 
 
 class FrontProxy(Base):
-    extra = {'public_url': 'https://Walk.example', 'trusted_proxy': True}
+    extra = {'public_url': 'HTTPS://Walk.example', 'trusted_proxy': True}   # the scheme's case doesn't matter
 
     def test_behind_proxy(self):
         boss = Client(self.base)
