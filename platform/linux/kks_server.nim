@@ -48,7 +48,9 @@ proc main() =
     else: rest.add a
     inc i
   if "config" in args: cfgPath = args["config"]
-  var cfg = loadConfig(cfgPath)
+  var cfg: Config
+  try: cfg = loadConfig(cfgPath)
+  except ValueError as e: quit("config " & cfgPath & ": " & e.msg)
   let here = getAppDir()
   if cfg.webDir.len == 0: cfg.webDir = here / "web"
   if cfg.dataDir.len == 0: cfg.dataDir = here / "data"
