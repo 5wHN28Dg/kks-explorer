@@ -243,6 +243,20 @@ class Server(Base):
         st, data, hdr = boss.req('GET', '/photos/' + ph['file'])
         self.assertEqual((st, data), (200, png)); self.assertIn('immutable', hdr['Cache-Control'])
         self.assertEqual(anon.req('GET', '/photos/' + ph['file'])[0], 401)
+        # 2026-10-06 stored XSS: a member's "photo" that starts with the JPEG XL signature and goes on as HTML, asked
+        # for as <sha>.html. Its type comes from its bytes, never the URL, and it is sandboxed.
+        poly = b'\xff\x0a<html><script>parent.pwned=1</script></html>'
+        st, r, _ = ali2.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'x',
+                            'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(poly).decode()}})
+        self.assertEqual(st, 200, r)
+        sha = [p for p in ali2.req('GET', '/api/submissions')[1]['submissions'] if p['kind'] == 'photo'][0]['payload']['file'].split('.')[0]
+        for ext in ('html', 'svg', 'htm', 'xml', 'js', 'jxl'):
+            st, data, hdr = boss.req('GET', f'/photos/{sha}.{ext}')
+            self.assertEqual((st, data), (200, poly))
+            self.assertEqual(hdr['Content-Type'], 'image/jxl', ext)
+            self.assertEqual(hdr['X-Content-Type-Options'], 'nosniff')
+            self.assertIn('sandbox', hdr['Content-Security-Policy'])
+            self.assertIn("default-src 'none'", hdr['Content-Security-Policy'])
         # History, the program's data, a bundle
         revs = boss.req('GET', '/api/revisions')[1]['revisions']
         self.assertGreaterEqual(len(revs), 2)
