@@ -75,7 +75,7 @@ proc loadConfig*(path: string): Config =
   proc s(k: string, d: string): string = (if j.get(k) != nil and j[k].isStr: j[k].s else: d)
   proc i(k: string, d: int): int = (if j.get(k) != nil and j[k].kind == jInt: int(j[k].i) else: d)
   proc b(k: string, d: bool): bool = (if j.get(k) != nil and j[k].kind == jBool: j[k].b else: d)
-  result.address = s("address", result.address)
+  result.address = s("address", result.address).strip.toLowerAscii   # what is checked is what is bound
   if not isLoopback(result.address):
     raise newException(ValueError, "\"address\": \"" & result.address & "\" would serve the web pages and their " &
       "sign-in over plain HTTP to the network (finding #26). The web listener stays on this machine: use 127.0.0.1, " &

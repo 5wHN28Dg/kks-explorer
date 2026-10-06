@@ -291,9 +291,19 @@ class Address(unittest.TestCase):
                 self.assertIn('plain HTTP', p.stdout + p.stderr)
 
     def test_default_is_loopback(self):
+        self.serves(None, 'http://127.0.0.1:')
+
+    def test_loopback_forms_serve(self):
+        for a, shown in (('127.0.0.1', 'http://127.0.0.1:'), (' LocalHost ', 'http://localhost:')):
+            with self.subTest(address=a):
+                self.serves(a, shown)
+
+    def serves(self, address, shown):
         d = tempfile.mkdtemp(prefix='kks-addr-')
         cfg = {'port': free_port(), 'sync_port': free_port(), 'store': os.path.join(d, 'server.db'),
                'storage_key_file': os.path.join(d, 'storage.key'), 'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data')}
+        if address is not None:
+            cfg['address'] = address
         json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
         p = subprocess.Popen([BIN, 'serve', '--config', os.path.join(d, 'config.json')], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True, cwd=d)
@@ -303,7 +313,7 @@ class Address(unittest.TestCase):
                 line = p.stdout.readline()
                 if 'server on' in line:
                     break
-            self.assertIn('http://127.0.0.1:', line)
+            self.assertIn(shown, line)
             for i in range(50):        # the line is printed just before the listener opens
                 try:
                     socket.create_connection(('127.0.0.1', cfg['port']), timeout=5).close()
