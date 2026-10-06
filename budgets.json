@@ -1,0 +1,63 @@
+{
+  "$schema": "https://github.com/5wHN28Dg/policy/blob/main/templates/budgets.schema.json",
+  "schemaVersion": 1,
+  "notes": "MEASURING RUN: the thresholds below are the absolute ceilings of docs/m6/MEASUREMENTS.md, or placeholders where a rule has none, until the first CI baseline is in.",
+  "web": {
+    "bundles": [
+      {"name": "index.html (the viewer)", "files": "index.html", "compression": "none", "maxKB": 1000},
+      {"name": "admin.html", "files": "admin.html", "compression": "none", "maxKB": 1000},
+      {"name": "common.js (every page)", "files": "common.js", "compression": "none", "maxKB": 1000},
+      {"name": "tiles.js (the viewer's worker)", "files": "tiles.js", "compression": "none", "maxKB": 1000},
+      {"name": "course scripts", "files": "course*.js", "compression": "none", "maxKB": 1000},
+      {"name": "WebAssembly loaders", "files": "kks-wasm*.js", "compression": "none", "maxKB": 1000},
+      {"name": "libjxl decoder, SIMD", "files": "vendor/kks/kks-simd-dec.*", "compression": "none", "maxKB": 10000},
+      {"name": "libjxl decoder, scalar", "files": "vendor/kks/kks-dec.*", "compression": "none", "maxKB": 10000},
+      {"name": "libjxl + zxing-cpp, SIMD", "files": "vendor/kks/kks-simd.*", "compression": "none", "maxKB": 10000},
+      {"name": "libjxl + zxing-cpp, scalar", "files": "vendor/kks/kks.*", "compression": "none", "maxKB": 10000}
+    ],
+    "lab": {
+      "profile": "Chromium (Playwright 1.63), Playwright's Pixel 7 device (412x839, DPR 2.625, touch), CPU 4x slower and network 40 ms RTT / 10 Mbit/s down / 5 Mbit/s up, both through the DevTools protocol; the viewer / and /course.html?c=fnd#cycle, signed in, fresh context each run, the worse page per run",
+      "runs": 5,
+      "lcpMs": 2500,
+      "cls": 0.1,
+      "tbtMs": 10000
+    }
+  },
+  "native": {
+    "linux": {
+      "measuredOn": "GitHub ubuntu-26.04 runner, private headless mutter (software GL); installed size from the Flatpak built in the GNOME 50 image",
+      "scenario": "joined to a fresh server holding the synthetic sample sheet; one warm-up start, then each start: spawn to the first sheet drawn, VmRSS 10 s later at fit",
+      "runs": 5,
+      "startupMs": 2000,
+      "memoryMB": 400,
+      "installedSizeMB": 1000
+    },
+    "windows": {
+      "measuredOn": "GitHub windows-2025 runner (Windows Server 2025, Direct2D on WARP); installed size from the MSIX layout built on ubuntu-26.04",
+      "scenario": "joined through UI Automation to a fresh server (in WSL 1) holding the synthetic sample sheet; one warm-up start, then each start: spawn to the first sheet in timing.log, private bytes 15 s after start at fit",
+      "runs": 5,
+      "startupMs": 3000,
+      "memoryMB": 400,
+      "installedSizeMB": 1000
+    },
+    "android": {
+      "measuredOn": "Samsung Galaxy Note 9 (Android 10), clean install of the signed release build",
+      "measuredWhere": "release-test",
+      "scenario": "joined, holding a drawing and 2,000+ log entries; app force-stopped, then the first sheet drawn after process start (app log); total PSS 30 s after the first sheet at fit",
+      "runs": 5,
+      "startupMs": 1108,
+      "memoryMB": 278,
+      "installedSizeMB": 1000
+    }
+  },
+  "custom": [
+    {
+      "name": "server memory after the workload",
+      "unit": "MB",
+      "max": 400,
+      "measuredBy": "tools/budgets/server_mem.py in budgets.yml (job server): VmRSS after setup, the sample sheet's import, 10 sign-ins, 20 photos, 100 edits and 300+ reads, 5 s idle",
+      "measuredWhere": "ci",
+      "runs": 5
+    }
+  ]
+}

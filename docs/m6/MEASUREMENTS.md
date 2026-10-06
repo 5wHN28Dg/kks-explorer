@@ -130,3 +130,34 @@ no battery figures (docs/decisions/0033). A real Windows laptop is still needed 
 
   Not yet compared: zoomed-in tile caches on a real GPU.
 - **Not measured yet:** a real laptop's GPU, panning frame times, the MSIX package's size.
+
+## CI budgets (budgets.json; NAT-7, WEB-15, OTH-5)
+
+`budgets.json` holds the thresholds; `.github/workflows/budgets.yml` measures them on every pull request and push to
+main, with the scripts in `tools/budgets/`, and fails when a median passes its threshold. Every result is kept as an
+artifact (90 days). The laptop, VM and phone baselines above stay the reference for those machines. A CI runner is
+another machine, and the CI scenarios use the synthetic sample sheet (no plant data in CI), so each CI metric gets its
+own baseline: the first CI run's medians.
+
+**Rules, written 2026-10-06 before the first CI measurement.** The relative rules are the ones above, applied to the
+CI baseline. The absolute ceilings are the ones above too; the web and server ceilings are new.
+
+| Metric (budgets.json) | CI scenario | Budget |
+|---|---|---|
+| Linux startup | ubuntu-26.04 runner, the GNOME release build in a private headless mutter (software GL). Joined to a fresh server (`tools/budgets/plant.py`: the sample sheet, one tag) through the UI, then 1 warm-up start and 5 measured starts: spawn → "first sheet drawn" (`KKS_TIMING`), timed outside the app | 1.5× the CI baseline, at most 2 s |
+| Linux memory | VmRSS 10 s after the first sheet, sheet at fit, server running | 1.3× the CI baseline, at most 400 MB |
+| Linux installed size | the Flatpak's `/app` (flatpak-builder's `files/`: binary, zxing-cpp, courses, fonts, metadata), built from the manifest in the GNOME 50 image | 1.25× the CI baseline |
+| Windows startup | windows-2025 runner (Windows Server 2025, no GPU: Direct2D on WARP), the exe cross-built on Linux as apps/windows/README says; joined through UI Automation to the same kind of server, which runs in WSL 1 on the runner; 1 warm-up + 5 starts: spawn → "first sheet" in timing.log | 1.5× the CI baseline, at most 3 s |
+| Windows memory | private bytes 15 s after the start, sheet at fit | 1.3× the CI baseline, at most 400 MB |
+| Windows installed size | the MSIX's files as `packaging/windows/make-msix.sh` lays them out (an MSIX installs unpacked) | 1.25× the CI baseline |
+| Android installed size | the release APK built in CI (unsigned; signing adds a few KB) | 1.25× the CI baseline |
+| Android startup, memory | `release-test` on the Note 9 (the slowest phone), as in the Android rules above: first sheet drawn after process start, total PSS 30 s after | 1.5× and 1.3× the 2026-10-01 baseline, at most 3 s and 300 MB: 1,108 ms and 278 MB |
+| Web bundles | the bytes of the files each page loads, as kks_server sends them (uncompressed: it compresses nothing but `.gz` plant files) | 1.25× the CI baseline (the installed-size rule) |
+| Web lab LCP | Chromium (Playwright), "Pixel 7" device, CPU 4× slower, network 40 ms RTT, 10 Mbit/s down, 5 up (the plant's Wi-Fi to its server, not a mobile network: the pages are served by the plant's server); the viewer `/` and the course page `/course.html?c=fnd#cycle` (animated figure), fresh context each run, observed until 10 s after ready; per run the worse page; median of 5 | 1.5× the CI baseline, at most 2,500 ms (the "good" boundary of Core Web Vitals) |
+| Web lab CLS | same; largest session window | at most 0.1 (Core Web Vitals "good") |
+| Web lab TBT | same; longtasks after first contentful paint, each over 50 ms | 1.5× the CI baseline. No outside ceiling: Lighthouse's TBT bands assume its simulated throttling, which these applied-throttling numbers don't match |
+| Server memory | ubuntu-26.04 runner, a fresh server per run, then over HTTP: setup and the sample sheet's import, 10 sign-ins, 20 photos (JPEG XL), 100 edits, 100 state reads, 20 reads of each plant file, 5 bundles; VmRSS after 5 s idle; median of 5 | 1.3× the CI baseline, at most 400 MB |
+
+A trial run of the scripts on the laptop before writing these rules (2026-10-06, under load from other work): GNOME
+211 ms and 171 MB; the server 41 MB; web LCP 1.4 to 3.1 s and TBT 0.7 to 1.8 s on the viewer (the course page
+LCP 0.6 to 0.9 s, TBT 65 to 182 ms).

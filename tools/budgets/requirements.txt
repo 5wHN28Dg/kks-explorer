@@ -1,0 +1,11 @@
+# The budget measurements' Python packages (tools/budgets, .github/workflows/budgets.yml): Playwright drives Chromium
+# for the web lab metrics (web.py), Pillow makes the MSIX logos (sizes.py). The same pins as requirements-dev.txt and
+# its complete form in PR #19, so one dependency record covers both (docs/dependencies/python-dev-tools.md, PR #23).
+# Pinned with == (Section 5), transitive packages included.
+playwright==1.63.0
+Pillow==12.3.0
+
+# transitive
+pyee==13.0.1                # via playwright
+greenlet==3.5.6             # via playwright
+typing_extensions==4.16.0   # via pyee
