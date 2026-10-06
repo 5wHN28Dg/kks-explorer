@@ -994,10 +994,13 @@ proc handle(s: Server, req: Request) {.async.} =
       return
     of "/api/progress": herr(404, "Course progress stays in this browser on a server.")
     of "/api/sync/now":
+      # admins only (#32): it makes the server open a connection to an address of the caller's choice
+      if not me.isAdmin: herr(403, "admin only")
       let addr0 = if d.get("address") != nil and d["address"].isStr: d["address"].s.strip else: ""
       if addr0.len == 0: herr(400, "give the other device's address (host:port)")
       let host = if ':' in addr0: addr0.rsplit(':', 1)[0] else: addr0
-      let port = if ':' in addr0: parseInt(addr0.rsplit(':', 1)[1]) else: 8421
+      let port = if ':' in addr0: (try: parseInt(addr0.rsplit(':', 1)[1]) except ValueError: -1) else: 8421
+      if port < 1 or port > 65535 or host.len == 0: herr(400, "give the other device's address (host:port)")
       try:
         let st = await s.n.syncWith(s.id, host, port, "")
         await s.sendJson(req, 200, O(("ok", newBool(true)), ("result", O(("sent", newInt(st.sent)),

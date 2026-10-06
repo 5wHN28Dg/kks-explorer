@@ -243,6 +243,10 @@ class Server(Base):
         st, data, hdr = boss.req('GET', '/photos/' + ph['file'])
         self.assertEqual((st, data), (200, png)); self.assertIn('immutable', hdr['Cache-Control'])
         self.assertEqual(anon.req('GET', '/photos/' + ph['file'])[0], 401)
+        # #32: only admins can make the server connect somewhere
+        self.assertEqual(ali2.req('POST', '/api/sync/now', {'address': '127.0.0.1:9'})[0], 403)
+        self.assertEqual(boss.req('POST', '/api/sync/now', {'address': '127.0.0.1:notaport'})[0], 400)
+        self.assertEqual(boss.req('POST', '/api/sync/now', {'address': '127.0.0.1:9'})[0], 502)   # nothing listens there
         # History, the program's data, a bundle
         revs = boss.req('GET', '/api/revisions')[1]['revisions']
         self.assertGreaterEqual(len(revs), 2)
