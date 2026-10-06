@@ -45,7 +45,7 @@ K.accessExpired = async () => {
   catch (e) { return false }
 };
 K.setReauth = on => { if (K.reauth !== on) { K.reauth = on; K.renderStatus() } };
-// ---------- building elements without markup (WEB-9: no HTML sink takes data) ----------
+// ---------- building elements without markup (no HTML sink takes data) ----------
 // K.h(tag, props, ...children) -> a new element; K.svg the same in the SVG namespace. Children: strings and numbers
 // become text nodes, nodes go in as they are, arrays are flattened; null, undefined and false are left out. props:
 // attributes by name (true = present; false, null or undefined = left out); `on<event>` must be a function and is
