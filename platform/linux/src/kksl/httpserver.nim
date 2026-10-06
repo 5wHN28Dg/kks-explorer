@@ -4,9 +4,11 @@
 # - a request with any Transfer-Encoding is refused (411), whatever its method and even with a Content-Length: the
 #   stdlib read chunked POST bodies with no size limit before the application saw the request, and left other
 #   methods' bodies on the socket to be read as the next request. No Walkdown client sends one;
-# - deadlines: the first line of a request must arrive within IdleTimeoutMs (a kept-alive connection waits that
-#   long), then the rest of the request line and all headers together within HeaderTimeoutMs, and a Content-Length
-#   body within BodyTimeoutMs;
+# - deadlines: the request line within IdleTimeoutMs (a kept-alive connection waits that long), all headers together
+#   within HeaderTimeoutMs, a Content-Length body within BodyTimeoutMs (read in pieces as it arrives), and the
+#   handler with its answer within ResponseTimeoutMs;
+# - a malformed request line, a bad or second Content-Length, or a header name with spaces is answered and the
+#   connection closed; all headers together at most MaxHeaderBytes and MaxHeaders;
 # - at most MaxConnections connections at a time, and MaxPerAddress from one address.
 # Everything else is the stdlib's code. Re-check against the stdlib at each Nim upgrade.
 #
@@ -20,8 +22,8 @@
 
 ## This module implements a high performance asynchronous HTTP server.
 ##
-## (kks: the stdlib's note says to put a reverse proxy in front in production; Walkdown's listener is on
-## 127.0.0.1 only, finding #26, with the limits above.)
+## (kks: the stdlib's note says to put a reverse proxy in front in production; Walkdown's listener takes only
+## this machine's addresses (issue #26), and the limits above stand either way.)
 
 import std/[asyncnet, asyncdispatch, parseutils, uri, strutils, tables, times]
 import std/httpcore
@@ -40,6 +42,9 @@ const
   BodyTimeoutMs* = 300_000      ## kks: a Content-Length body (uploads are at most a few tens of MB)
   MaxConnections* = 512         ## kks
   MaxPerAddress* = 64           ## kks
+  MaxHeaderBytes* = 64 * 1024   ## kks: all header lines of one request together
+  MaxHeaders* = 100             ## kks
+  ResponseTimeoutMs* = 120_000  ## kks: the handler and sending its response (a client that never reads)
 
 # TODO: If it turns out that the decisions that asynchttpserver makes
 # explicitly, about whether to close the client sockets or upgrade them are
@@ -216,27 +221,32 @@ proc processRequest(
       of "CONNECT": request.reqMethod = HttpConnect
       of "TRACE": request.reqMethod = HttpTrace
       else:
-        asyncCheck request.respondError(Http400)
-        return true # Retry processing of request
+        await request.respondError(Http400)   # kks: answered, then closed (queued answers to a stream of bad
+        client.close()                        # lines grew without limit)
+        return false
     of 1:
       try:
         parseUri(linePart, request.url)
       except ValueError:
-        asyncCheck request.respondError(Http400)
-        return true
+        await request.respondError(Http400)   # kks
+        client.close()
+        return false
     of 2:
       try:
         request.protocol = parseProtocol(linePart)
       except ValueError:
-        asyncCheck request.respondError(Http400)
-        return true
+        await request.respondError(Http400)   # kks
+        client.close()
+        return false
     else:
-      await request.respondError(Http400)
-      return true
+      await request.respondError(Http400)   # kks
+      client.close()
+      return false
     inc i
 
   # Headers
   let headerDeadline = epochTime() + HeaderTimeoutMs / 1000   # kks: one deadline for all of them
+  var headerBytes = 0                                         # kks
   while true:
     i = 0
     lineFut.mget.setLen(0)
@@ -252,7 +262,17 @@ proc processRequest(
       await request.respondError(Http413)
       client.close(); return false
     if lineFut.mget == "\c\L": break
+    headerBytes += lineFut.mget.len                               # kks: size and count of all headers
+    if headerBytes > MaxHeaderBytes or request.headers.len >= MaxHeaders:
+      await client.sendStatus("431 Request Header Fields Too Large")
+      client.close(); return false
     let (key, value) = parseHeader(lineFut.mget)
+    # kks: a name with spaces ("Transfer-Encoding : chunked") or a second Content-Length would be read differently
+    # by a proxy in front; refuse both.
+    if key.len == 0 or key != key.strip or ' ' in key or '\t' in key or
+       (cmpIgnoreCase(key, "Content-Length") == 0 and request.headers.hasKey("Content-Length")):
+      await client.sendStatus("400 Bad Request")
+      client.close(); return false
     request.headers[key] = value
     # Ensure the client isn't trying to DoS us.
     if request.headers.len > headerLimit:
@@ -278,27 +298,44 @@ proc processRequest(
   # - Check for Content-length header
   if request.headers.hasKey("Content-Length"):
     var contentLength = 0
-    if parseSaturatedNatural(request.headers["Content-Length"], contentLength) == 0:
+    let cl = request.headers["Content-Length"]
+    # kks: digits only ("5abc" and "5, 7" read as 5 before), and a bad one closes the connection
+    if cl.len == 0 or cl.len > 12 or not cl.allCharsInSet(Digits) or parseSaturatedNatural(cl, contentLength) == 0:
       await request.respond(Http400, "Bad Request. Invalid Content-Length.")
-      return true
+      client.close()
+      return false
     else:
       if contentLength > server.maxBody:
         await request.respondError(Http413)
-        return false
-      let bodyFut = client.recv(contentLength)   # kks: with a deadline
-      if not await withTimeout(bodyFut, BodyTimeoutMs):
         client.close()
         return false
-      request.body = bodyFut.read
+      # kks: read in pieces as they arrive (recv(n) allocated all n bytes before reading any), within a deadline
+      let bodyDeadline = epochTime() + BodyTimeoutMs / 1000
+      var body = ""
+      while body.len < contentLength:
+        let left = int((bodyDeadline - epochTime()) * 1000)
+        let part = client.recv(min(64 * 1024, contentLength - body.len))
+        if left <= 0 or not await withTimeout(part, left):
+          client.close()
+          return false
+        let got = part.read
+        if got.len == 0: break
+        body.add got
+      request.body = body
       if request.body.len != contentLength:
         await request.respond(Http400, "Bad Request. Content-Length does not match actual.")
-        return true
+        client.close()
+        return false
   elif request.reqMethod == HttpPost:
     await request.respond(Http411, "Content-Length required.")
     return true
 
   # Call the user's callback.
-  await callback(request)
+  let handled = callback(request)   # kks: with a deadline, so a client that never reads its answer lets go
+  if not await withTimeout(handled, ResponseTimeoutMs):
+    client.close()
+    return false
+  if handled.failed: raise handled.readError
 
   if "upgrade" in request.headers.getOrDefault("connection"):
     return false

@@ -351,6 +351,8 @@ class Limits(Base):
                 out += b
         except socket.timeout:
             out += b'<timeout>'
+        except ConnectionResetError:     # closed with our bytes unread: the answer may be lost to the reset
+            out += b'<reset>'
         c.close()
         return out
 
@@ -414,6 +416,62 @@ class Limits(Base):
         self.assertEqual(c.recv(1), b'')
         self.assertGreater(time.time() - t0, 55)
         self.assertLess(time.time() - t0, 75)
+        c.close()
+
+    def rss_mb(self):
+        for line in open('/proc/%d/status' % self.proc.pid):
+            if line.startswith('VmRSS:'):
+                return int(line.split()[1]) / 1024
+
+    def test_bad_request_lines_close(self):
+        """a stream of bad request lines gets one answer and the connection closes (answers were queued unread)"""
+        r = self.raw(b'X\r\n' * 5000, wait=5)
+        self.assertTrue(r.startswith(b'HTTP/1.1 400') or r == b'<reset>', r[:80])
+        self.assertLessEqual(r.count(b'HTTP/1.1 '), 1)
+        self.assertNotIn(b'<timeout>', r)              # closed, not kept open
+
+    def test_bad_framing_refused(self):
+        h = 'Host: 127.0.0.1:%d\r\n' % self.port
+        for req in ('POST /api/login HTTP/1.1\r\n%sContent-Length: 5abc\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5\r\nContent-Length: 7\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sTransfer-Encoding : chunked\r\nContent-Length: 5\r\n\r\n12345' % h):
+            with self.subTest(req=req[:60]):
+                r = self.raw(req.encode() + b'GET /api/config HTTP/1.1\r\n' + h.encode() + b'\r\n')
+                self.assertTrue(r.startswith(b'HTTP/1.1 400'), r[:80])
+                self.assertEqual(r.count(b'HTTP/1.1 '), 1, r)   # what followed was not read as a request
+
+    def test_header_size_capped(self):
+        r = self.raw(b'GET /api/config HTTP/1.1\r\n' + b''.join(b'X-%d: %s\r\n' % (i, b'a' * 1000) for i in range(80)) + b'\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 431') or r == b'<reset>', r[:80])
+        r = self.raw(b'GET /api/config HTTP/1.1\r\n' + b''.join(b'X-%d: a\r\n' % i for i in range(150)) + b'\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 431') or r == b'<reset>', r[:80])
+
+    def test_body_memory_follows_what_arrives(self):
+        """a large Content-Length with one byte sent doesn't make the server allocate the whole body"""
+        before = self.rss_mb()
+        socks = [self.conn('127.0.0.4') for _ in range(10)]
+        for c in socks:
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: 25000000\r\n\r\n{')
+        time.sleep(1.5)
+        grown = self.rss_mb() - before
+        for c in socks: c.close()
+        self.assertLess(grown, 50, 'RSS grew by %.0f MB' % grown)   # was ~25 MB per connection
+
+    def test_slow_reader_let_go(self):
+        """a client that asks for a large file and never reads it: the server lets go of it after ResponseTimeoutMs
+        (120 s), leaving what is unsent to the kernel"""
+        c = self.conn('127.0.0.5')
+        c.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        c.sendall(b'GET /vendor/kks/kks-simd.wasm HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n' % self.port)
+        local = '127.0.0.5:%d' % c.getsockname()[1]
+        def server_side():
+            out = subprocess.run(['ss', '-tnH', 'sport = :%d' % self.port], capture_output=True, text=True).stdout
+            return [l.split()[0] for l in out.splitlines() if local in l]
+        time.sleep(5)
+        self.assertEqual(server_side(), ['ESTAB'])       # stuck sending
+        time.sleep(125)
+        self.assertNotIn('ESTAB', server_side())        # let go
         c.close()
 
     def test_slow_header_lines_closed(self):

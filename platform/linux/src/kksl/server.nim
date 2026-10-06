@@ -1167,4 +1167,4 @@ proc serve*(s: Server): Future[void] =
         try: s.n.record("error", req.url.path & ": " & $e.name & ": " & e.msg & "\n" & e.getStackTrace(), nowS() * 1000)
         except CatchableError: discard
         await s.sendJson(req, 500, O(("error", S("internal error (see the server log)"))))
-  http.serve(Port(s.cfg.port), cb, s.cfg.address)
+  http.serve(Port(s.cfg.port), cb, s.cfg.address, assumedDescriptorsPerRequest = 5)   # stop accepting near the descriptor limit instead of crashing
