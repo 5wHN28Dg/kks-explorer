@@ -332,6 +332,7 @@ function openSheet(id,then){
   cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
   const img=$('#sheetimg'); let first=true;
   img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
+  // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the sheet overview) can't run script
   if(cur.levels){ const k=startLevel(); img.dataset.level=k; img.src=levelUrl(k) } else { delete img.dataset.level; img.src=cur.file }
   loadVector();
   img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
@@ -352,6 +353,7 @@ function upgradeLevel(){
   img.dataset.level=k;   // asked for: not asked again while it loads
   const s=cur, url=levelUrl(k);
   // swap once decoded; without JPEG XL in the browser, K.jxl decodes it (a detached image isn't watched)
+  // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the overview pyramid) can't run script
   K.jxl.native().then(n=>n?url:K.jxl.url(url)).then(u=>{ const pre=new Image(); pre.onload=()=>{ if(cur===s) img.src=u }; pre.src=u })
     .catch(e=>console.warn('overview level',k,e));
 }
