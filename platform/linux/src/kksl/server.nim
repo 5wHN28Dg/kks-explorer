@@ -2,10 +2,10 @@
 ## (Argon2id), the sync listener. Same routes, cookie and headers as v1's app.py in server mode, so the web pages work
 ## unchanged. One thread owns the node (decision 0030).
 
-import std/[asyncdispatch, asynchttpserver, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm]
+import std/[asyncdispatch, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics]
 import kks/provider_gnutls
-import dbstore, tls, net, argon2, mdns, internet
+import dbstore, tls, net, argon2, mdns, internet, httpserver
 
 const
   Cookie = "kks_session"

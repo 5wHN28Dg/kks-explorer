@@ -269,5 +269,52 @@ class Server(Base):
         self.assertIn(429, codes)
 
 
+
+class Limits(Base):
+    """finding #27 (advisory GHSA-xfj6-p785-whg5): request limits before authentication"""
+
+    def raw(self, data, wait=5.0):
+        c = socket.create_connection(('127.0.0.1', self.port), timeout=wait)
+        c.sendall(data)
+        out = b''
+        try:
+            while True:
+                b = c.recv(65536)
+                if not b:
+                    break
+                out += b
+        except socket.timeout:
+            out += b'<timeout>'
+        c.close()
+        return out
+
+    def test_chunked_body_refused(self):
+        r = self.raw(b'POST /api/login HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\nffffffff\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 411'), r[:80])
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)   # still serving
+
+    def test_slow_headers_closed(self):
+        c = socket.create_connection(('127.0.0.1', self.port), timeout=40)
+        c.sendall(b'GET /api/config HTTP/1.1\r\nHost: x\r\n')         # never finishes the headers
+        t0 = time.time()
+        self.assertEqual(c.recv(1), b'')                                  # the server closes it
+        self.assertLess(time.time() - t0, 30)
+        c.close()
+
+    def test_connections_per_address_capped(self):
+        socks = [socket.create_connection(('127.0.0.1', self.port)) for _ in range(70)]
+        time.sleep(1)
+        closed = 0
+        for s in socks:
+            s.settimeout(0.5)
+            try:
+                if s.recv(1) == b'':
+                    closed += 1
+            except socket.timeout:
+                pass
+            s.close()
+        self.assertGreaterEqual(closed, 6)       # 64 per address: the rest are closed at once
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)
+
 if __name__ == '__main__':
     unittest.main()
