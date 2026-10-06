@@ -1,6 +1,6 @@
 # Dependency records
 
-One record per direct dependency, as `DEP-2` of the engineering policy v2.1 requires
+One record per direct dependency, as `DEP-2` of the engineering policy v2.2 requires
 (`standards/dependencies.md`, template `templates/dependency-record.md`). Written 2026-10-05 for the baseline audit
 (#13). Facts that change (releases, maintainers, advisories) were checked that day against the projects' own pages,
 PyPI, npm and the GitHub API, and each record names its sources. "Verified" or a measured number means it was run or
@@ -145,21 +145,21 @@ Not built, run or shipped by any build, test or release script; a record is due 
 
 ## Open points found while writing these records
 
-For the owner to file or fix; none is changed here (this change touches only `docs/dependencies/`):
-1. **Gradle 8.13 is affected by CVE-2026-22865 and CVE-2026-22816** (high, fixed in 8.14.4): [gradle.md](gradle.md).
+Each is in the findings register; none is changed here (this change touches only `docs/dependencies/`):
+1. **Gradle 8.13 is affected by CVE-2026-22865 and CVE-2026-22816** (high, fixed in 8.14.4): [gradle.md](gradle.md). #3 (fix in #55).
    Also: `gradle-wrapper.properties` has no `distributionSha256Sum`.
 2. **Kotlin 2.0.21 is affected by CVE-2026-53914** (build-cache deserialization, fixed in 2.4.20): [kotlin.md](kotlin.md).
-   Update it together with the Compose BOM (decision 0008's open action).
+   Update it together with the Compose BOM (decision 0008's open action). #3 (fix in #55).
 3. **MuPDF 1.28.2 lags 1.28.5**, whose notes list several memory-safety fixes; the update needs the importer's gate:
-   [mupdf.md](mupdf.md).
-4. **wrangler runs unpinned** through `npx`, with an unlocked, unscanned 39-package tree: [wrangler.md](wrangler.md).
+   [mupdf.md](mupdf.md). #51.
+4. **wrangler runs unpinned** through `npx`, with an unlocked, unscanned 39-package tree: [wrangler.md](wrangler.md). #52.
 5. **kotlinx.coroutines is used directly but not declared** in `android/app2/build.gradle.kts`:
-   [kotlinx-coroutines.md](kotlinx-coroutines.md).
+   [kotlinx-coroutines.md](kotlinx-coroutines.md). #71.
 6. Fetched by hand, not pinned in a script: the mingw-w64 packages and osslsigncode (Ubuntu's archive verifies them at
    download), and the local Nim from choosenim (CI and the Flatpak check the tarball's SHA-256). The course fonts'
-   download is unpinned too, which is #4 (DEP-8).
+   download is unpinned too, which is #4 (DEP-8). #53.
 7. libjxl's pinned submodules are old: highway is two years behind its releases, and skcms predates its 2026 ICC
-   parsing hardening. They move when libjxl names newer commits: [libjxl.md](libjxl.md).
-8. The maintainer's local JDK (Temurin 21.0.7) is five quarterly security updates behind: [temurin-jdk.md](temurin-jdk.md).
+   parsing hardening. They move when libjxl names newer commits: [libjxl.md](libjxl.md). #72.
+8. The maintainer's local JDK (Temurin 21.0.7) is five quarterly security updates behind: [temurin-jdk.md](temurin-jdk.md). #73.
 9. The README doesn't yet name the Linux desktop stack or the server's OS version (`NAT-1`, `NAT-2`, `OTH-0`), which
-   the platform-provided classification above relies on.
+   the platform-provided classification above relies on. #9 (the capability matrix declares them).
