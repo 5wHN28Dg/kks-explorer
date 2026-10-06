@@ -1,5 +1,5 @@
 # Python for the tests and tools (not part of any app): the protocol reference (ref/), the e2e drivers, the relay
-# twin, tools/m6 and tools/release.py. Pinned with == (Section 5): the versions the tests last passed with (.venv,
+# twin, tools/m6 and tools/release.py. Pinned with ==: the versions the tests last passed with (.venv,
 # 2026-10-05); updates come as their own reviewed changes. python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 cryptography==50.0.1
 Pillow==12.3.0
