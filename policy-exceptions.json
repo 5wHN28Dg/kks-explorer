@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "id": "EX-2",
+      "rule": "WEB-9",
+      "files": [
+        "admin.html",
+        "index.html",
+        "common.js",
+        "learning.html"
+      ],
+      "finding": "40 HTML sinks insert markup built from template literals, with values escaped by the project's own K.esc / esc instead of a maintained sanitizer (admin.html 18, index.html 12, common.js 9, learning.html 1). common.js:304 interpolates the join code unescaped (#16).",
+      "reason": "Moving every view to DOM building with textContent, or adding a maintained sanitizer with its dependency record, touches every page; it is planned file by file in #7, admin.html first.",
+      "compensatingControl": "Every interpolated text value goes through K.esc / esc (the one known raw value, the join code, is digits from this device's own core, #16). The static-analysis job reports every site in these files as a warning, so a new one shows in each PR, and the PR review rejects new sinks. No script from another origin runs on these pages, and the session cookie is HttpOnly and SameSite=Strict.",
+      "acceptedBy": "@5wHN28Dg",
+      "written": "2026-10-05",
+      "accepted": "2026-10-06",
+      "expires": "2027-01-03",
+      "renewals": 0,
+      "link": "https://github.com/5wHN28Dg/kks-explorer/issues/7"
+    }
+  ]
+}

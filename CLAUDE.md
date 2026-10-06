@@ -20,8 +20,8 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - Guides, how-tos, operations, history and research go in the **wiki**
   (https://github.com/5wHN28Dg/kks-explorer/wiki; clone https://github.com/5wHN28Dg/kks-explorer.wiki.git, push to it
   directly).
-- The repository keeps only what code, tests and the policy point at: the specs (PROTOCOL*, PATHSTORE, COURSES,
-  GLYPHLIB), `docs/decisions/`, the policy documents, `docs/m6/`, and each component's build README.
+- The repository keeps only what code and tests point at: the specs (PROTOCOL*, PATHSTORE, COURSES, GLYPHLIB),
+  `docs/decisions/`, `docs/m6/`, and each component's build README.
 - The wiki is public: no plant name, plant data or relay URL there either.
 
 **Live since 2026-10-03 (the cutover, done by Claude at the user's request; record on the wiki's Cutover page):**
@@ -44,43 +44,30 @@ The user prefers direct, no-fluff communication and honest pushback. Be explicit
 - **The plant root key:** inside the server. An encrypted backup and its passphrase are in
   `~/.config/kks-explorer/signing/walkdown-root.{kksroot,passphrase}` (`kks-server export-root-key`).
 
-## Development policy: evidence-first (in force from 2026-09-30)
+## Engineering guidelines
 
-Two documents:
-- `docs/evidence-first-platform-engineering.md` governs native code: the Android app (`android/app2`), the desktop
-  apps, any iOS work, and the server.
-- `docs/evidence-first-web-engineering.md` governs what runs in a browser engine: index.html, admin.html, learning.html,
-  common.js, sw.js, course-bridge.js, the courses, vendor/.
+Follow these when making architectural, stack or dependency decisions. They're guidance, not a checklist; the only
+document they ask for is the capability matrix in docs/ (`docs/m6/CAPABILITIES.md`).
+- `~/Documents/GitHub/Personal-LLM-prompts/prompts/platform engineering policy.md` governs native code: the
+  Android app (`android/app2`), the desktop apps, any iOS work, and the server.
+- `~/Documents/GitHub/Personal-LLM-prompts/prompts/Evidence-first web engineering.md` governs what runs in a
+  browser engine: index.html, admin.html, learning.html, common.js, sw.js, course-bridge.js, the courses, vendor/. It
+  builds on the platform one; read both for web work.
 - The web pages are served by the server to browsers; they ship no engine. They must also work in Safari, since that
   is the iOS path (https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research).
 
-Rules for this project (solo developer, 3+ targets, long lifespan):
-- **Investigate before implementing or bundling.** For each feature touching the platform, or each new dependency,
-  answer the policy's four questions per target (what the platform provides, optional components and how reliably
-  they're present, what's missing, small custom code vs a well-maintained dependency). Base the answers on evidence:
-  vendor docs with links, or a test on the target. Record the result in `docs/decisions/NNNN-title.md` (one page:
-  question, per-platform findings with sources, choice, when to revisit) before writing the code.
-- **Capability matrix before architecture.** Keep `docs/CAPABILITIES.md` per target platform. Rebuild it when adding
-  a platform or a major feature, and before M6's design. The architecture is an output of the matrix, not an input.
-- **Dependencies** must meet the policy's "well-maintained" test: recent releases, a findable security response
-  history, more than one active maintainer, a compatible license, and survival of a major version change. Say which
-  criteria a dependency fails and why it is still chosen.
-- **Measure on the target** (clean device, no dev tools): installed size, startup time, steady memory, and on phones
-  battery. Each metric gets a baseline and a regression rule, written before measuring.
-- **Never weaken or bypass a platform security mechanism** to drop a dependency or simplify code.
-- **Keep business logic platform-independent** (`core/`, the sans-I/O Nim core): platform code stays a thin adapter,
-  tested on the platform.
-- Every claim about a platform names its source or says it is unverified; "verified" means it ran on the target.
-- Existing dependencies were audited on 2026-09-30: `docs/decisions/0001`–`0013`. The open actions are listed in
-  `docs/decisions/README.md`.
-- **Web specifics:**
-  - Browser support is declared per engine (Blink, WebKit, Gecko); check features on caniuse/MDN, not memory.
-  - Prefer, in order: the browser platform, then a small library, then a framework. Each step needs a written reason.
-  - A polyfill counts as a dependency; graceful degradation is preferred.
-  - The UI is vanilla JS with no framework, so we own HTML escaping: `textContent` by default, and every `innerHTML`
-    with data in it must be escaped and audited.
-  - Native elements for accessibility (`<button>`, `<dialog>`, labels).
-  - UI changes are tested in Playwright on all three engines, plus keyboard-only and screen-reader checks.
+## How to work
+- Work on a branch and open a PR. Never push to main. Wait for CI to pass, then merge.
+- Before saying a task is done: build, lint and test locally, then make sure CI is green.
+- Every bug fix gets a test that fails without the fix. Every new feature gets a test of its main path.
+- When finished, have a fresh subagent review the diff for bugs and security problems. Give it the task and the diff,
+  not your reasoning. Fix what you can confirm in the code.
+- Never weaken a safeguard to get something working: no skipping or deleting tests, disabling CI jobs, loosening lint
+  rules, adding suppressions, or relaxing security settings.
+- If a check fails for a reason outside your change (new vulnerability advisory, scanner update, flaky test, download
+  error): upgrade to a fixed version if a non-major one exists. Otherwise stop and report what's failing. Stopping
+  beats working around a safeguard.
+- Report in plain language, five lines max: what changed, how you tested it, anything I need to decide.
 
 ## Build and test (the code that exists)
 

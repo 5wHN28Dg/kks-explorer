@@ -1,5 +1,10 @@
 # Walkdown
 
+<!-- read by CI; do not remove -->
+Tier: T3
+Type: web, native, service
+Baseline: until 2027-01-03
+
 *Formerly KKS Explorer (renamed 2026-10-03).*
 
 Walkdown finds any KKS code on a power plant's P&ID drawings and shows everything known about it:

@@ -1,0 +1,38 @@
+# Automatic safeguards on every pull request and on main: a secrets scan over the whole history (gitleaks), known
+# vulnerabilities and licenses in the dependencies (osv-scanner), and static analysis (Semgrep, including the
+# HTML-sink and URL-sink rules for the web pages). The actions come from github.com/5wHN28Dg/policy, pinned by commit.
+# They read the `Tier:`, `Type:` and `Baseline:` lines at the top of README.md to decide what runs and what blocks
+# (until the Baseline date, a missing license allowlist is only a warning).
+name: Policy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: 5wHN28Dg/policy/actions/secrets@84d5869e0298fe0b0959342b923e0d7911624100 # v2.2
+
+  dependencies:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: 5wHN28Dg/policy/actions/vulns@84d5869e0298fe0b0959342b923e0d7911624100 # v2.2
+
+  static-analysis:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: 5wHN28Dg/policy/actions/sast@84d5869e0298fe0b0959342b923e0d7911624100 # v2.2
