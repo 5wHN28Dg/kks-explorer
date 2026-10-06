@@ -1,14 +1,15 @@
 // Service worker: makes the app installable and usable offline.
 // - App shell (public): network-first, cached copy when offline.
 // - Plant data (/data, /photos, /api/state; needs login): cached as it's fetched. The page deletes the 'kks-data'
-//   cache on logout or when the server rejects the session. Error responses (401 etc.) are never cached.
+//   caches on logout or when the server rejects the session. Error responses (401 etc.) are never cached.
 // Service workers only run over HTTPS or on localhost.
-const SHELL = 'kks-shell-v9', DATA = 'kks-data';
+const SHELL = 'kks-shell-v10', DATA = 'kks-data-v2';   // v2: nothing cached before the fix of finding #25
 const SHELL_FILES = ['/', '/index.html', '/admin.html', '/common.js', '/tiles.js', '/course-bridge.js', '/learning.html', '/course.html', '/course.js', '/course-figure.js', '/course.css', '/kks-wasm.js', '/kks-wasm-worker.js', '/vendor/fonts/courses.css', '/vendor/kks/kks-simd-dec.js', '/vendor/kks/kks-simd-dec.wasm', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES))); self.skipWaiting() });
 self.addEventListener('activate', e => e.waitUntil(caches.keys()
-  .then(ks => Promise.all(ks.filter(k => k.startsWith('kks-shell-') && k !== SHELL).map(k => caches.delete(k))))
+  .then(ks => Promise.all(ks.filter(k => (k.startsWith('kks-shell-') || k.startsWith('kks-data')) && k !== SHELL && k !== DATA)
+    .map(k => caches.delete(k))))
   .then(() => self.clients.claim())));
 
 self.addEventListener('fetch', e => {
@@ -44,7 +45,9 @@ async function accessExpired() {
 async function cacheFirst(req, name) {
   const c = await caches.match(req);
   if (c) return c;
-  const r = await fetch(req);
+  // past the HTTP cache: it may hold a photo from before the fix of finding #25, served with the URL's type and
+  // cached as immutable for a year
+  const r = await fetch(req, {cache: 'no-cache'});   // (a non-empty init makes a navigation's mode same-origin)
   if (r.ok) (await caches.open(name)).put(req, r.clone());
   return r;
 }

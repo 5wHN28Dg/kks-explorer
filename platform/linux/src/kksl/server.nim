@@ -852,9 +852,11 @@ proc handle(s: Server, req: Request) {.async.} =
       await s.sendJson(req, 200, O(("user", s.publicUser(usr))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/logout":
+      # Clear-Site-Data: the HTTP cache goes too (it may hold photos from before the fix of finding #25, which were
+      # served with the URL's type and cached as immutable for a year)
       let raw = req.sessionRaw
       if raw.len > 0: s.store.delRow("sessions", hex(s.p.sha256(raw.toBytes)))
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader("", 0)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader("", 0), ("Clear-Site-Data", "\"cache\"")])
       return
     of "/api/setup":
       if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
