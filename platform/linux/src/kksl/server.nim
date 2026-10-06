@@ -2,7 +2,7 @@
 ## (Argon2id), the sync listener. Same routes, cookie and headers as v1's app.py in server mode, so the web pages work
 ## unchanged. One thread owns the node (decision 0030).
 
-import std/[asyncdispatch, asynchttpserver, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm]
+import std/[asyncdispatch, asynchttpserver, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm, sequtils]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics]
 import kks/provider_gnutls
 import dbstore, tls, net, argon2, mdns, internet
@@ -23,7 +23,8 @@ type
     port*: int
     syncPort*: int             ## 0 = off
     publicUrl*: string
-    secureCookies*: bool
+    secureCookies*: bool       ## also on whenever publicUrl is https
+    trustedProxy*: bool        ## the HTTPS proxy in front appends the browser's address to X-Forwarded-For
     plantName*: string
     sessionDays*: int
     offlineDays*: int
@@ -55,8 +56,16 @@ type
   HttpErr = object of CatchableError
     code: int
 
+proc isLoopback*(address: string): bool =
+  ## the web listener's address must be this machine's own (finding #26: no plain-HTTP sign-in on the network)
+  ## (IPv4 only: the listener is an IPv4 socket, so "::1" could not be bound anyway)
+  let a = address.strip.toLowerAscii
+  let parts = a.split('.')
+  a == "localhost" or (parts.len == 4 and parts[0] == "127" and
+    parts.allIt(it.len in 1..3 and it.allCharsInSet(Digits) and (it.len == 1 or it[0] != '0') and parseInt(it) <= 255))
+
 proc defaultConfig*(): Config =
-  Config(address: "0.0.0.0", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
+  Config(address: "127.0.0.1", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
          offlineDays: 3, maxUploadMb: 15, plantDir: "plant-data", backupDir: "backups", maxPdfMb: 50,
          importer: getAppDir() / "kks-import")
 
@@ -67,11 +76,26 @@ proc loadConfig*(path: string): Config =
   proc s(k: string, d: string): string = (if j.get(k) != nil and j[k].isStr: j[k].s else: d)
   proc i(k: string, d: int): int = (if j.get(k) != nil and j[k].kind == jInt: int(j[k].i) else: d)
   proc b(k: string, d: bool): bool = (if j.get(k) != nil and j[k].kind == jBool: j[k].b else: d)
-  result.address = s("address", result.address)
+  result.address = s("address", result.address).strip.toLowerAscii   # what is checked is what is bound
+  if not isLoopback(result.address):
+    raise newException(ValueError, "\"address\": \"" & result.address & "\" would serve the web pages and their " &
+      "sign-in over plain HTTP to the network (finding #26). The web listener stays on this machine: use 127.0.0.1, " &
+      "and reach it from elsewhere only through an HTTPS reverse proxy or tunnel to it, with \"public_url\" set to " &
+      "its https:// address (and \"trusted_proxy\": true if the proxy appends the browser's address to " &
+      "X-Forwarded-For). Devices sync over TLS on the sync port, which listens on every interface.")
   result.port = i("port", result.port)
   result.syncPort = i("sync_port", result.syncPort)
-  result.publicUrl = s("public_url", "")
+  result.publicUrl = s("public_url", "").strip
+  if result.publicUrl.len > 0:
+    if not result.publicUrl.toLowerAscii.startsWith("https://"):
+      raise newException(ValueError, "\"public_url\": \"" & result.publicUrl & "\" must be an https:// address: " &
+        "browsers reach the web pages only through an HTTPS proxy or tunnel (finding #26).")
+    # one spelling, as browsers send it in Host and Origin: lower-case scheme and host, no default port
+    let pu = parseUri(result.publicUrl)
+    result.publicUrl = "https://" & pu.hostname.toLowerAscii & (if pu.port.len > 0 and pu.port != "443": ":" & pu.port else: "") &
+      pu.path & (if pu.query.len > 0: "?" & pu.query else: "")
   result.secureCookies = b("secure_cookies", false)
+  result.trustedProxy = b("trusted_proxy", false)
   result.plantName = s("plant_name", result.plantName)
   result.sessionDays = i("session_days", result.sessionDays)
   result.offlineDays = i("offline_days", result.offlineDays)
@@ -307,6 +331,33 @@ proc contentType(name: string): string =
   of ".gz": "application/gzip"
   else: "application/octet-stream"
 
+const
+  # Stored content (photos, plant-data files) is never a document of this site: if a browser ever renders one as a
+  # page, it runs sandboxed (a unique origin, no scripts) and loads nothing. As a subresource (<img>, fetch) the
+  # header has no effect.
+  ContentSandbox = ("Content-Security-Policy", "default-src 'none'; sandbox")
+  # plant-data files the pages fetch; anything else goes out as a download
+  DataTypes = [".json", ".jxl", ".kkp", ".png", ".jpg", ".jpeg", ".webp", ".pdf", ".gz", ".woff2"]
+
+proc photoType*(data: string): (string, bool) =
+  ## A stored photo's Content-Type from its own bytes, never from the URL: the name in /photos/<sha>.<ext> is only a
+  ## hint, and any member's device can make a blob (2026-10-06: a blob starting with a JPEG XL signature followed by
+  ## HTML, requested as <sha>.html, was served as text/html: stored XSS). -> (type, is an image)
+  case blobExt(data)
+  of "jxl": ("image/jxl", true)
+  of "jpg": ("image/jpeg", true)
+  of "png": ("image/png", true)
+  of "webp": ("image/webp", true)
+  else: ("application/octet-stream", false)
+
+proc dataType*(rel: string): (string, seq[(string, string)]) =
+  ## a /data/ file's Content-Type and extra headers: the types the pages fetch go out sandboxed; anything else, and
+  ## PDFs (a browser's PDF viewer won't run in a sandboxed document), as a sandboxed download
+  let ext = rel.splitFile.ext.toLowerAscii
+  if ext in DataTypes and ext != ".pdf": (contentType(rel), @[ContentSandbox])
+  else: ((if ext == ".pdf": "application/pdf" else: "application/octet-stream"),
+         @[ContentSandbox, ("Content-Disposition", "attachment")])
+
 proc baseHeaders(s: Server, ctype: string, cache = "no-store"): HttpHeaders =
   result = newHttpHeaders({"Content-Type": ctype, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
                            "X-Frame-Options": "DENY", "Cache-Control": cache})
@@ -322,19 +373,44 @@ proc sendBytes(s: Server, req: Request, data, ctype, cache: string, extra: seq[(
   for (k, v) in extra: hdr.add(k, v)
   await req.respond(Http200, data, hdr)
 
-proc cookieHeader(s: Server, raw: string, maxAge: int): (string, string) =
+proc localPage(s: Server, req: Request): bool =
+  ## the request comes from a page opened over plain http on this machine (Origin http://127.0.0.1 or localhost)
+  let o = parseUri(req.headers.getOrDefault("Origin"))
+  o.scheme == "http" and o.hostname.toLowerAscii in ["127.0.0.1", "localhost", s.cfg.address]
+
+proc cookieHeader(s: Server, req: Request, raw: string, maxAge: int): (string, string) =
+  ## Secure under an https public_url, except for a page on this machine's own http address: WebKit drops a Secure
+  ## cookie set over http://127.0.0.1 (Chromium and Firefox keep it), and nothing crosses the network there.
+  let secure = s.cfg.secureCookies or (s.cfg.publicUrl.startsWith("https://") and not s.localPage(req))
   ("Set-Cookie", Cookie & "=" & raw & "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" & $maxAge &
-                 (if s.cfg.secureCookies: "; Secure" else: ""))
+                 (if secure: "; Secure" else: ""))
 
 proc sessionRaw(req: Request): string =
   for part in req.headers.getOrDefault("Cookie").split(';'):
     let kv = part.strip.split('=', 1)
     if kv.len == 2 and kv[0] == Cookie: return kv[1]
 
-proc clientIp(req: Request): string =
+proc clientIp(s: Server, req: Request): string =
+  ## the address login throttling counts. X-Forwarded-For only when the operator says the proxy in front appends to
+  ## it (`trusted_proxy`): its last entry is then the browser's address as the proxy saw it. Anyone can send the header, so it is never read
+  ## otherwise (every browser behind a proxy that doesn't append is then one address).
+  ## HttpHeaders splits "a, b" into values and getOrDefault gives the first: every value is read, the last kept.
   let peer = req.hostname
-  let fwd = req.headers.getOrDefault("X-Forwarded-For")
-  if fwd.len > 0 and peer in ["127.0.0.1", "::1"]: fwd.split(',')[^1].strip else: peer
+  let fwd = seq[string](req.headers.getOrDefault("X-Forwarded-For")).join(",").split(',')[^1].strip
+  if s.cfg.trustedProxy and fwd.len > 0 and peer in ["127.0.0.1", "::1", "::ffff:127.0.0.1"]: fwd
+  else: peer
+
+proc hostAllowed(s: Server, req: Request): bool =
+  ## Host must name this server: 127.0.0.1 or localhost with its port, or public_url's host. Another name pointed
+  ## at 127.0.0.1 (DNS rebinding, a page open in a browser on this machine) is refused.
+  let hs = seq[string](req.headers.getOrDefault("Host"))
+  if hs.len != 1: return false                          # two Host lines, or a comma list
+  let h = hs[0].strip.toLowerAscii
+  var allowed = @["127.0.0.1:" & $s.cfg.port, "localhost:" & $s.cfg.port, s.cfg.address & ":" & $s.cfg.port]
+  if s.cfg.publicUrl.len > 0:
+    let pu = parseUri(s.cfg.publicUrl)
+    allowed.add pu.hostname.toLowerAscii & (if pu.port.len > 0: ":" & pu.port else: "")
+  h in allowed
 
 proc currentUser(s: Server, req: Request): JNode =
   let raw = req.sessionRaw
@@ -381,11 +457,11 @@ proc courseList(s: Server): JNode =
   result = O(("courses", newArr(found)))
   s.courseCache = (key, result)
 
-proc staticFile(s: Server, req: Request, dir, rel, cache: string) {.async.} =
+proc staticFile(s: Server, req: Request, dir, rel, cache: string, ctype = "", extra: seq[(string, string)] = @[]) {.async.} =
   let root = absolutePath(dir)
   let full = absolutePath(root / rel)
   if not full.startsWith(root & DirSep) or not fileExists(full): herr(404, "not found")
-  await s.sendBytes(req, readFile(full), contentType(full), cache)
+  await s.sendBytes(req, readFile(full), if ctype.len > 0: ctype else: contentType(full), cache, extra)
 
 proc personOf(d: JNode): (string, JNode) = personFields(d)
 
@@ -757,6 +833,7 @@ proc handle(s: Server, req: Request) {.async.} =
   let path = decodeUrl(u.path)
   let q = queryOf(u)
   let meth = $req.reqMethod
+  if not s.hostAllowed(req): herr(421, "This server does not answer to that host name.")
   if meth == "GET" or meth == "HEAD":
     if path in Shell:
       await s.staticFile(req, s.cfg.webDir, Shell[path], "no-cache")
@@ -786,7 +863,7 @@ proc handle(s: Server, req: Request) {.async.} =
     let origin = req.headers.getOrDefault("Origin")
     if origin.len > 0:
       let host = parseUri(origin).hostname & (if parseUri(origin).port.len > 0: ":" & parseUri(origin).port else: "")
-      var allowed = @[$req.headers.getOrDefault("Host"), $req.headers.getOrDefault("X-Forwarded-Host")]
+      var allowed = @[$req.headers.getOrDefault("Host")]   # not X-Forwarded-Host: anyone can send it
       if s.cfg.publicUrl.len > 0:
         let pu = parseUri(s.cfg.publicUrl)
         allowed.add pu.hostname & (if pu.port.len > 0: ":" & pu.port else: "")
@@ -815,19 +892,21 @@ proc handle(s: Server, req: Request) {.async.} =
     try: d = parseStrict(req.body)
     except JsonError: herr(400, "bad json")
     if d.kind != jObj: herr(400, "bad json")
-  let ip = req.clientIp
+  let ip = s.clientIp(req)
   if isPost:
     case path
     of "/api/login":
       let usr = s.login(if d.get("username") != nil and d["username"].isStr: d["username"].s else: "",
                         if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", ip)
       let raw = s.newSession(usr["id"].i)
-      await s.sendJson(req, 200, O(("user", s.publicUser(usr))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
+      await s.sendJson(req, 200, O(("user", s.publicUser(usr))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/logout":
+      # Clear-Site-Data: the HTTP cache goes too (it may hold photos from before the fix of finding #25, which were
+      # served with the URL's type and cached as immutable for a year)
       let raw = req.sessionRaw
       if raw.len > 0: s.store.delRow("sessions", hex(s.p.sha256(raw.toBytes)))
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader("", 0)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, "", 0), ("Clear-Site-Data", "\"cache\"")])
       return
     of "/api/setup":
       if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
@@ -846,7 +925,7 @@ proc handle(s: Server, req: Request) {.async.} =
       let usr = s.createPlant(name, fn, pos, d["password"].s)
       s.consumeToken(tok)
       let raw = s.newSession(usr["id"].i)
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/password-reset":
       if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
@@ -863,7 +942,7 @@ proc handle(s: Server, req: Request) {.async.} =
       s.consumeToken(tok)
       s.endSessions(usr["id"].i)
       let raw = s.newSession(usr["id"].i)
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/devices/enroll":   # v1 clients: a device joining with its owner's account (v2 devices enroll over TLS, §16)
       let dev = d.get("device")
@@ -882,20 +961,25 @@ proc handle(s: Server, req: Request) {.async.} =
     if path.startsWith("/data/"):
       let rel = path[6 .. ^1]
       let (ok, data) = s.n.file(rel)
+      # plant-data files: only the types the pages use; anything else (an .html the manager published) downloads
+      let (dtype, dextra) = dataType(rel)
       if ok:
-        await s.sendBytes(req, data, contentType(rel), "private, no-cache")
+        await s.sendBytes(req, data, dtype, "private, no-cache", dextra)
         return
       let (okGz, gzd) = s.n.file(rel & ".gz")
       if okGz:
-        await s.sendBytes(req, gzd, contentType(rel), "private, no-cache", @[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
+        await s.sendBytes(req, gzd, dtype, "private, no-cache", dextra & @[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
         return
-      await s.staticFile(req, s.cfg.dataDir, rel, "private, no-cache")
+      await s.staticFile(req, s.cfg.dataDir, rel, "private, no-cache", dtype, dextra)   # the program's own data/
       return
     if path.startsWith("/photos/"):
       let name = path[8 .. ^1]
       let sha = name.split('.')[0]
       if not isHex64(sha) or not s.n.store.blobHas(sha): herr(404, "not found")
-      await s.sendBytes(req, s.n.store.blobGet(sha), contentType(name), "private, max-age=31536000, immutable")
+      let blob = s.n.store.blobGet(sha)
+      let (ptype, image) = photoType(blob)
+      await s.sendBytes(req, blob, ptype, "private, max-age=31536000, immutable",
+                        if image: @[ContentSandbox] else: @[ContentSandbox, ("Content-Disposition", "attachment")])
       return
     case path
     of "/api/me":
@@ -957,7 +1041,7 @@ proc handle(s: Server, req: Request) {.async.} =
       s.putUser(usr)
       s.endSessions(usr["id"].i)
       let raw = s.newSession(usr["id"].i)
-      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(raw, s.cfg.sessionDays * 86400)])
+      await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/sheets/reimport":   # the stored PDF again, e.g. with another rotation
       if me.role != "manager": herr(403, "manager only")

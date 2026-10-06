@@ -186,6 +186,7 @@ K.start = async () => {
 // ---------- peer mode: this computer is one person's device; set it up before first use ----------
 K.download = (data, name, type = 'application/json') => {
   if (K.native) return K.native.saveFile(name, type, data);   // Android: its own "save as" dialog
+  // nosemgrep: web-10-dynamic-url-sink -- a download link to a blob: URL this function made; it saves, never navigates
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], {type})); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000);
 };
@@ -361,7 +362,7 @@ K.joinWait = cfg => {
 
 // Remove plant data from this device (logout, account revoked, session expired). Queued changes are kept per user.
 K.wipe = async () => {
-  try { await caches.delete('kks-data') } catch (e) {}
+  try { for (const k of await caches.keys()) if (!k.startsWith('kks-shell-')) await caches.delete(k) } catch (e) {}   // all but the app shell
   try { await K.idb.clear() } catch (e) {}
   // a peer (own laptop / the app) that lost its plant: the courses' copies of the progress go too (on a plant server
   // they are the only copy, so logging out keeps them)
@@ -472,7 +473,16 @@ K.describe = (kind, p) => ({
   tag_remove: () => `remove hand-added tag ${p.id.slice(0, 8)}`,
 }[kind] || (() => kind))();
 
-if ('serviceWorker' in navigator && !K.native) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
+if ('serviceWorker' in navigator && !K.native) {
+  navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
+  // Before 2026-10-06 a stored photo could be served as a script (finding #25), and so registered as a service worker
+  // under /photos/ (a script there can only take a scope under /photos/). Only /sw.js, for the whole site, belongs
+  // here: any other registration goes. (Right after register() ours can have no worker yet: Firefox.)
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => {
+    const w = r.active || r.waiting || r.installing;
+    if (new URL(r.scope).pathname !== '/' || (w && new URL(w.scriptURL).pathname !== '/sw.js')) r.unregister();
+  })).catch(() => {});
+}
 
 // ---------- JPEG XL photos ----------
 // Photos are stored as JXL. A browser that shows JXL itself gets the file as it is; any other decodes it here with
@@ -514,6 +524,7 @@ K.jxl = {
     if (!/\.jxl(\?|$)/.test(src) || img.dataset.jxl === src) return;
     img.dataset.jxl = src;
     if (await this.native()) { img.style.visibility = 'visible'; return }
+    // nosemgrep: web-10-dynamic-url-sink -- an <img> source (a blob: URL of the decoded photo) can't run script
     try { const u = await this.url(src); if (img.dataset.jxl === src) { img.src = u; img.dataset.jxl = u; img.style.visibility = 'visible' } }
     catch (e) { console.warn('JXL photo not shown', src, e); img.style.visibility = 'visible'; img.alt = 'photo could not be shown' }
   },
@@ -598,6 +609,7 @@ K.lightbox = src => {
     addEventListener('resize', () => { if (box.style.display !== 'none') K.lightbox.fit() });
   }
   box.style.display = 'block';
+  // nosemgrep: web-10-dynamic-url-sink -- an <img> source can't run script
   const img = box.querySelector('img'); img.src = src;
   if (img.complete && img.naturalWidth) K.lightbox.fit();
 };
