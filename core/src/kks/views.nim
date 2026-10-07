@@ -292,6 +292,7 @@ proc coverageView*(m: Model): JNode =
     O(("tags", I(c.tags)), ("verified", I(c.verified)), ("review", I(c.review)), ("marked", I(c.marked)),
       ("codes", I(c.codes)), ("located", I(c.located)),
       ("photos", O(("both", I(c.photos[0])), ("equipment", I(c.photos[1])), ("plate", I(c.photos[2])), ("none", I(c.photos[3])))))
+  let covers = m.photoCovers
   var bySheet = initOrderedTable[string, Counts]()
   for si in m.sheets: bySheet[si.id] = Counts()
   var bySys = initTable[string, Counts]()
@@ -314,7 +315,7 @@ proc coverageView*(m: Model): JNode =
       inc all.marked
     let k = t.full
     if t.kks.len > 0:
-      let p = photoIdx(m.photoCover(k))
+      let p = photoIdx(covers.getOrDefault(k, "none"))
       let here = m.located(t)
       if k notin seenSheet.mgetOrPut(t.sheet, initHashSet[string]()):
         seenSheet[t.sheet].incl k
