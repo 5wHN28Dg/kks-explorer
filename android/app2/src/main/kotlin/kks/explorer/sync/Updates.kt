@@ -75,8 +75,10 @@ object Updates {
     }
 
     /** the manifest if our release key signed it; throws otherwise */
-    fun verify(manifest: ByteArray, sigB64: String, pubB64: String = pub): JSONObject {
-        val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(Base64.decode(pubB64, Base64.DEFAULT)))
+    fun verify(manifest: ByteArray, sigB64: String, pubB64: String? = null): JSONObject {
+        // the key is read here, not as a default argument: R8 folded that read into the pinned constant, so a shrunk
+        // build ignored the test key (DebugUpdateReceiver) and the rehearsal update test failed
+        val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(Base64.decode(pubB64 ?: pub, Base64.DEFAULT)))
         val ok = runCatching {
             Signature.getInstance("SHA256withECDSA").run { initVerify(key); update(DOMAIN + manifest); verify(Base64.decode(sigB64.trim(), Base64.DEFAULT)) }
         }.getOrDefault(false)

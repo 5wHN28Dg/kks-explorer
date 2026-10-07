@@ -45,7 +45,42 @@ K.accessExpired = async () => {
   catch (e) { return false }
 };
 K.setReauth = on => { if (K.reauth !== on) { K.reauth = on; K.renderStatus() } };
-K.esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+// ---------- building elements without markup (no HTML sink takes data) ----------
+// K.h(tag, props, ...children) -> a new element; K.svg the same in the SVG namespace. Children: strings and numbers
+// become text nodes, nodes go in as they are, arrays are flattened; null, undefined and false are left out. props:
+// attributes by name (true = present; false, null or undefined = left out); `on<event>` must be a function and is
+// attached with addEventListener (a string is refused: no inline handlers). Attributes that take a URL are refused,
+// except an image's or media element's src: a link's href is set on the element itself, through K.safeUrl, where the
+// static check sees it. Elements that run or load code (script, iframe, object, ...) are refused.
+K.build = (el, props, kids) => {
+  const tag = el.localName.toLowerCase();
+  if (/^(script|iframe|frame|frameset|object|embed|applet|base|link|meta|style|template|foreignobject|use|animate|set)$/.test(tag))
+    throw new TypeError(`K.h: <${tag}> is not built here`);
+  for (const [k, v] of Object.entries(props || {})) {
+    const name = k.toLowerCase();
+    if (name.startsWith('on')) {
+      if (v == null || v === false) continue;   // no handler, like any other absent attribute
+      if (typeof v !== 'function') throw new TypeError(`K.h: ${k} must be a function`);
+      el.addEventListener(name.slice(2), v); continue;
+    }
+    if (/^(href|xlink:href|action|formaction|srcdoc|data|poster|background|ping|codebase|cite|longdesc|manifest|src|srcset)$/.test(name)
+        && !(/^(src|srcset)$/.test(name) && /^(img|source|audio|video|track)$/.test(tag)))
+      throw new TypeError(`K.h: set ${k} on the element itself`);
+    if (v == null || v === false) continue;
+    el.setAttribute(k, v === true ? '' : String(v));
+  }
+  el.append(...kids.flat(Infinity).filter(c => c != null && c !== false).map(c => c instanceof Node ? c : String(c)));
+  return el;
+};
+K.h = (tag, props, ...kids) => K.build(document.createElement(tag), props, kids);
+K.svg = (tag, props, ...kids) => K.build(document.createElementNS('http://www.w3.org/2000/svg', tag), props, kids);
+// A URL from data, checked before it becomes a link. Allowed: http and https (a relative URL resolves against
+// this page). -> the URL as given, or 'about:blank' for anything else (javascript:, data:, blob:, a URL that doesn't
+// parse, no URL at all).
+K.safeUrl = (u, schemes = ['http:', 'https:']) => {
+  try { if (u != null && schemes.includes(new URL(String(u), location.href).protocol)) return String(u) } catch (e) {}
+  return 'about:blank';
+};
 K.uid = () => [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
 
 // ---------- IndexedDB: kv (cached session info) + outbox (queued submissions) ----------
@@ -75,16 +110,22 @@ K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730
 #kov form,#kov .box{background:var(--chrome2,#243440);border:1px solid var(--line,#3a5061);border-radius:10px;padding:20px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}
 #kov h1{font-size:18px;margin:0}#kov p{margin:0;color:var(--muted,#94a6b4)}#kov input{padding:9px 10px;border-radius:6px;border:1px solid var(--line,#3a5061);background:var(--chrome,#1c2730);color:inherit;font:inherit}
 #kov button{background:var(--accent,#ff7a1a);color:#1c2730;border:0;border-radius:6px;padding:9px;font-weight:650;cursor:pointer;font:inherit}#kov button.back{background:none;border:1px solid var(--line,#3a5061);color:inherit;font-weight:400}#kov .err{color:var(--bad,#ff5a5a);min-height:1em}`;
-K.overlay = html => {
+// The overlay screen, holding these nodes (K.h).
+K.overlay = (...nodes) => {
   if (!document.getElementById('kovcss')) { const s = document.createElement('style'); s.id = 'kovcss'; s.textContent = K.css; document.head.appendChild(s) }
   let o = document.getElementById('kov'); if (!o) { o = document.createElement('div'); o.id = 'kov'; document.body.appendChild(o) }
-  o.innerHTML = html; return o;
+  o.replaceChildren(...nodes); return o;
 };
+// A box on the overlay: a title, a text, and optionally a button (its label, what it does).
+K.box = (title, text, button, onclick) => K.overlay(K.h('div', {class: 'box'}, K.h('h1', null, title), K.h('p', null, text),
+  button ? K.h('button', {onclick}, button) : null));
 // back: optional; adds "← Back" (also Esc) for forms reached from a choice screen
 K.form = (title, sub, fields, button, onsubmit, back) => {
-  const o = K.overlay(`<form autocomplete="on"><h1>${K.esc(title)}</h1>${sub ? `<p>${sub}</p>` : ''}
-    ${fields.map(f => `<input name="${f.name}" type="${f.type || 'text'}" placeholder="${K.esc(f.label)}" autocomplete="${f.ac || 'off'}" ${f.value ? `value="${K.esc(f.value)}" readonly` : ''} ${f.optional ? '' : 'required'}>`).join('')}
-    <div class="err"></div><button>${K.esc(button)}</button>${back ? '<button type="button" class="back">← Back</button>' : ''}</form>`);
+  const h = K.h;
+  const o = K.overlay(h('form', {autocomplete: 'on'}, h('h1', null, title), sub ? h('p', null, sub) : null,
+    fields.map(f => h('input', {name: f.name, type: f.type || 'text', placeholder: f.label, autocomplete: f.ac || 'off',
+                                value: f.value || null, readonly: !!f.value, required: !f.optional})),
+    h('div', {class: 'err'}), h('button', null, button), back ? h('button', {type: 'button', class: 'back'}, '← Back') : null));
   const f = o.querySelector('form'); f.querySelector('input:not([readonly])')?.focus();
   if (back) { f.querySelector('.back').onclick = back; f.onkeydown = e => { if (e.key === 'Escape') back() } }
   f.onsubmit = async e => { e.preventDefault(); const v = Object.fromEntries(new FormData(f)); f.querySelector('.err').textContent = '';
@@ -113,7 +154,7 @@ K.start = async () => {
       samePw(v); await K.api('/api/setup', {token: h.get('setup'), username: v.username, password: v.password, full_name: v.full_name, position: v.position}); done() }));
   if (h.get('reset')) {
     const info = await K.api(`/api/token-info?kind=reset&token=${encodeURIComponent(h.get('reset'))}`).catch(e => ({error: e.message}));
-    if (info.error) { K.overlay(`<div class="box"><h1>Link not valid</h1><p>${K.esc(info.error)} Ask an admin for a new one.</p></div>`); return new Promise(() => {}) }
+    if (info.error) { K.box('Link not valid', `${info.error} Ask an admin for a new one.`); return new Promise(() => {}) }
     return new Promise(() => K.form('Set your password', '', [{name: 'u', label: '', value: info.username, ac: 'username'}, ...pwFields], 'Save password', async v => {
       samePw(v); await K.api('/api/password-reset', {token: h.get('reset'), password: v.password}); done() }));
   }
@@ -134,10 +175,11 @@ K.start = async () => {
     const c = await K.idb.get('me');
     if (c && c.lease_until > Date.now()) { K.me = c; K.setOnline(false); await K.emit(); return c }
     if (K.reauth) {  // remote access sign-in expired and no usable offline copy: send them through the login
-      K.overlay(`<div class="box"><h1>Sign in again</h1><p>Your remote-access sign-in has expired.</p><button onclick="location.reload()">Continue</button></div>`);
+      K.box('Sign in again', 'Your remote-access sign-in has expired.', 'Continue', () => location.reload());
       return new Promise(() => {});
     }
-    K.overlay(`<div class="box"><h1>Offline</h1><p>${c ? `Offline access on this device expired (it lasts ${c.offline_days} days after the last sign-in check). Connect to the server to continue.` : 'Cannot reach the server, and this device has no offline copy yet.'}</p><button onclick="location.reload()">Retry</button></div>`);
+    K.box('Offline', c ? `Offline access on this device expired (it lasts ${c.offline_days} days after the last sign-in check). Connect to the server to continue.`
+                       : 'Cannot reach the server, and this device has no offline copy yet.', 'Retry', () => location.reload());
     return new Promise(() => {});
   }
 };
@@ -145,6 +187,7 @@ K.start = async () => {
 // ---------- peer mode: this computer is one person's device; set it up before first use ----------
 K.download = (data, name, type = 'application/json') => {
   if (K.native) return K.native.saveFile(name, type, data);   // Android: its own "save as" dialog
+  // nosemgrep: web-10-dynamic-url-sink -- a download link to a blob: URL this function made; it saves, never navigates
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], {type})); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000);
 };
@@ -160,18 +203,20 @@ K.importBundle = async file => {
 };
 K.joinScreen = (cfg, note = '') => {
   const dev = cfg.app ? 'phone' : 'computer';
-  const o = K.overlay(`<div class="box"><h1>Set up this ${dev}</h1>
-    <p>This ${dev} keeps its own copy of the plant data and syncs with the other devices on the same Wi-Fi.</p>
-    ${cfg.node.removed ? `<div class="err" style="margin-bottom:10px">This ${dev} was removed from ${K.esc(cfg.node.removed.plant || 'the plant')} by ${K.esc(cfg.node.removed.by || 'an admin')}. Its plant data has been deleted from it. To use it again, join again.</div>` : ''}
-    ${cfg.node.has_plant ? '<p>It already holds a plant\'s data but is not certified in it yet: import the bundle an admin gave you, or join through the server.</p>' : ''}
-    <button data-a="qr">Join with a QR code from an admin</button>
-    <button data-a="nearby">Ask an admin on this Wi-Fi (no camera, no files)</button>
-    <button data-a="server">Join through the plant server</button>
-    <button data-a="request">Join through an admin (no server)</button>
-    <button data-a="bundle">Import a bundle an admin gave you</button>
-    ${cfg.node.has_plant || cfg.node.can_create === false ? '' : '<button data-a="new" style="background:none;border:1px solid var(--line,#3a5061);color:inherit">Start a new plant (you become its manager)</button>'}
-    <input type="file" accept=".kksbundle" hidden><div class="err">${K.esc(note)}</div>
-    <p style="font-size:12px;opacity:.7">Device ${K.esc((cfg.node.device || 'not created yet').slice(0, 12))}…</p></div>`);
+  const h = K.h;
+  const o = K.overlay(h('div', {class: 'box'}, h('h1', null, `Set up this ${dev}`),
+    h('p', null, `This ${dev} keeps its own copy of the plant data and syncs with the other devices on the same Wi-Fi.`),
+    cfg.node.removed ? h('div', {class: 'err', style: 'margin-bottom:10px'}, `This ${dev} was removed from ${cfg.node.removed.plant || 'the plant'} by ${cfg.node.removed.by || 'an admin'}. Its plant data has been deleted from it. To use it again, join again.`) : null,
+    cfg.node.has_plant ? h('p', null, 'It already holds a plant\'s data but is not certified in it yet: import the bundle an admin gave you, or join through the server.') : null,
+    h('button', {'data-a': 'qr'}, 'Join with a QR code from an admin'),
+    h('button', {'data-a': 'nearby'}, 'Ask an admin on this Wi-Fi (no camera, no files)'),
+    h('button', {'data-a': 'server'}, 'Join through the plant server'),
+    h('button', {'data-a': 'request'}, 'Join through an admin (no server)'),
+    h('button', {'data-a': 'bundle'}, 'Import a bundle an admin gave you'),
+    cfg.node.has_plant || cfg.node.can_create === false ? null
+      : h('button', {'data-a': 'new', style: 'background:none;border:1px solid var(--line,#3a5061);color:inherit'}, 'Start a new plant (you become its manager)'),
+    h('input', {type: 'file', accept: '.kksbundle', hidden: true}), h('div', {class: 'err'}, note),
+    h('p', {style: 'font-size:12px;opacity:.7'}, `Device ${(cfg.node.device || 'not created yet').slice(0, 12)}…`)));
   const back = n => K.joinScreen(cfg, n);
   const choices = () => { if (history.state?.join) history.back(); else back() };   // ← Back = the browser's Back
   onpopstate = () => { const n = K.joinNote || ''; K.joinNote = ''; back(n) };
@@ -265,8 +310,9 @@ if (!K.native) K.scanQr = async () => {
 };
 // Ask an admin on this Wi-Fi: pick one of the admins' devices found by mDNS (the list refreshes itself).
 K.pickNearby = (cfg, who) => {
-  const o = K.overlay(`<div class="box"><h1>Admins on this Wi-Fi</h1><p>Pick the device of the admin who is adding you.</p>
-    <div class="list"><p style="opacity:.7">Looking…</p></div><div class="err"></div><button type="button" class="back">← Back</button></div>`);
+  const h = K.h;
+  const o = K.overlay(h('div', {class: 'box'}, h('h1', null, 'Admins on this Wi-Fi'), h('p', null, 'Pick the device of the admin who is adding you.'),
+    h('div', {class: 'list'}, h('p', {style: 'opacity:.7'}, 'Looking…')), h('div', {class: 'err'}), h('button', {type: 'button', class: 'back'}, '← Back')));
   let stop = false;
   o.querySelector('.back').onclick = () => { stop = true; history.back() };
   K.back = () => { stop = true; history.back(); return true };
@@ -274,8 +320,8 @@ K.pickNearby = (cfg, who) => {
     if (stop) return;
     let r; try { r = await K.api('/api/node/nearby') } catch (e) { r = {devices: [], discovery: e.message} }
     const list = o.querySelector('.list');
-    list.innerHTML = r.devices.length ? r.devices.map((d, i) => `<button type="button" data-i="${i}">${K.esc(d.plant || 'a plant')} — ${K.esc(d.label || d.host)}</button>`).join('')
-      : `<p style="opacity:.7">No admin's device found yet. The admin needs the app open on the same Wi-Fi (finding devices: ${K.esc(r.discovery || '?')}).</p>`;
+    list.replaceChildren(...(r.devices.length ? r.devices.map((d, i) => h('button', {type: 'button', 'data-i': i}, `${d.plant || 'a plant'} — ${d.label || d.host}`))
+      : [h('p', {style: 'opacity:.7'}, `No admin's device found yet. The admin needs the app open on the same Wi-Fi (finding devices: ${r.discovery || '?'}).`)]));
     list.querySelectorAll('button').forEach(b => b.onclick = async () => {
       stop = true;
       try { await K.api('/api/node/join-invite', {...who, nearby: r.devices[+b.dataset.i]}); K.joinWait(cfg) }
@@ -287,9 +333,10 @@ K.pickNearby = (cfg, who) => {
 };
 // Join by invite, after the request went out: wait for the admin to accept, then for the first sync.
 K.joinWait = cfg => {
-  const o = K.overlay(`<div class="box"><h1>Joining ${K.esc(cfg.plant_name || 'the plant')}</h1><p class="st">Connecting to the admin's device…</p>
-    <p class="code" style="display:none"></p><button type="button" class="ok" style="display:none">Yes, the admin's screen shows this code</button>
-    <div class="err"></div><button type="button" class="back">Cancel</button></div>`);
+  const h = K.h;
+  const o = K.overlay(h('div', {class: 'box'}, h('h1', null, `Joining ${cfg.plant_name || 'the plant'}`), h('p', {class: 'st'}, 'Connecting to the admin\'s device…'),
+    h('p', {class: 'code', style: 'display:none'}), h('button', {type: 'button', class: 'ok', style: 'display:none'}, 'Yes, the admin\'s screen shows this code'),
+    h('div', {class: 'err'}), h('button', {type: 'button', class: 'back'}, 'Cancel')));
   o.querySelector('.ok').onclick = async () => { o.querySelector('.ok').disabled = true; await K.api('/api/node/join-invite', {confirm: true}) };
   let stop = false;
   const cancel = async () => { stop = true; try { await K.api('/api/node/join-invite', {cancel: true}) } catch (e) {} K.joinScreen(cfg) };
@@ -301,7 +348,9 @@ K.joinWait = cfg => {
     const msg = {connecting: 'Connecting to the admin\'s device…', waiting: 'Waiting for the admin to accept on their screen…',
                  confirm: 'The admin accepted. Check the code on their screen first:', syncing: 'Accepted. Getting the plant data…'}[st.state];
     if (st.code) { const c = o.querySelector('.code'); c.style.display = '';
-      c.innerHTML = `Code: <b style="font-size:22px;letter-spacing:3px">${st.code.slice(0, 3)} ${st.code.slice(3)}</b><br><span style="opacity:.7">The admin sees the same code next to your name. Only continue if it matches.</span>`;
+      // as text: the code comes from the local API (#16)
+      c.replaceChildren('Code: ', h('b', {style: 'font-size:22px;letter-spacing:3px'}, String(st.code).slice(0, 3) + ' ' + String(st.code).slice(3)),
+        h('br'), h('span', {style: 'opacity:.7'}, 'The admin sees the same code next to your name. Only continue if it matches.'));
       o.querySelector('.ok').style.display = st.state === 'syncing' ? 'none' : '' }
     if (!msg) { o.querySelector('.st').textContent = st.state === 'cancelled' ? 'Cancelled.' : 'Could not join.';
       o.querySelector('.err').textContent = st.error || ''; o.querySelector('.back').textContent = '← Back'; return }
@@ -314,7 +363,7 @@ K.joinWait = cfg => {
 
 // Remove plant data from this device (logout, account revoked, session expired). Queued changes are kept per user.
 K.wipe = async () => {
-  try { await caches.delete('kks-data') } catch (e) {}
+  try { for (const k of await caches.keys()) if (!k.startsWith('kks-shell-')) await caches.delete(k) } catch (e) {}   // all but the app shell
   try { await K.idb.clear() } catch (e) {}
   // a peer (own laptop / the app) that lost its plant: the courses' copies of the progress go too (on a plant server
   // they are the only copy, so logging out keeps them)
@@ -397,18 +446,20 @@ K.renderStatus = () => {
   if (K.cfg?.mode === 'peer') {   // no server here: what matters is which devices this one can sync with
     const st = K.syncStatus; if (!st) { el.textContent = ''; return }
     const r = st.reachable || 0, net = st.internet ?? (navigator.onLine ? null : false);
-    el.innerHTML = `<span style="color:${r ? 'var(--ok)' : 'var(--review)'}">●</span> ${r ? `${r} device${r === 1 ? '' : 's'} reachable` : 'No devices reachable'}`
-      + ` · synced ${K.ago(st.last_sync)}` + (net === true ? ' · Internet ✓' : net === false ? ' · No internet' : '');
+    el.replaceChildren(K.h('span', {style: `color:${r ? 'var(--ok)' : 'var(--review)'}`}, '●'),
+      ` ${r ? `${r} device${r === 1 ? '' : 's'} reachable` : 'No devices reachable'}` + ` · synced ${K.ago(st.last_sync)}`
+      + (net === true ? ' · Internet ✓' : net === false ? ' · No internet' : ''));
     el.title = `Devices of this plant found on this network or synced with in the last 3 minutes: ${r}. Your changes are kept on this device and go to the others when they are reachable.`
       + (net == null ? ' (Whether there is internet can\'t be told from here: the browser only knows it is on a network.)' : '');
     return;
   }
   if (K.reauth) {  // a top-level load of the page lets Cloudflare Access show its login, then comes back here
-    el.innerHTML = `<span style="color:var(--review)">●</span> <a href="${K.esc(location.pathname)}" style="color:var(--accent)">Sign in again</a>${n ? ` · ${n} queued` : ''}`;
+    const a = K.h('a', {style: 'color:var(--accent)'}, 'Sign in again'); a.href = K.safeUrl(location.pathname);
+    el.replaceChildren(K.h('span', {style: 'color:var(--review)'}, '●'), ' ', a, n ? ` · ${n} queued` : '');
     el.title = 'Your remote-access sign-in expired. Working from the copy on this device; changes are queued.';
     return;
   }
-  el.innerHTML = `<span style="color:${K.online ? 'var(--ok)' : 'var(--review)'}">●</span> ${K.online ? 'Online' : 'Offline'}${n ? ` · ${n} queued` : ''}`;
+  el.replaceChildren(K.h('span', {style: `color:${K.online ? 'var(--ok)' : 'var(--review)'}`}, '●'), ` ${K.online ? 'Online' : 'Offline'}${n ? ` · ${n} queued` : ''}`);
   el.title = K.online ? 'Connected to the server' : 'Working from the copy on this device; changes are queued';
 };
 
@@ -423,7 +474,16 @@ K.describe = (kind, p) => ({
   tag_remove: () => `remove hand-added tag ${p.id.slice(0, 8)}`,
 }[kind] || (() => kind))();
 
-if ('serviceWorker' in navigator && !K.native) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
+if ('serviceWorker' in navigator && !K.native) {
+  navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
+  // Before 2026-10-06 a stored photo could be served as a script (finding #25), and so registered as a service worker
+  // under /photos/ (a script there can only take a scope under /photos/). Only /sw.js, for the whole site, belongs
+  // here: any other registration goes. (Right after register() ours can have no worker yet: Firefox.)
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => {
+    const w = r.active || r.waiting || r.installing;
+    if (new URL(r.scope).pathname !== '/' || (w && new URL(w.scriptURL).pathname !== '/sw.js')) r.unregister();
+  })).catch(() => {});
+}
 
 // ---------- JPEG XL photos ----------
 // Photos are stored as JXL. A browser that shows JXL itself gets the file as it is; any other decodes it here with
@@ -465,6 +525,7 @@ K.jxl = {
     if (!/\.jxl(\?|$)/.test(src) || img.dataset.jxl === src) return;
     img.dataset.jxl = src;
     if (await this.native()) { img.style.visibility = 'visible'; return }
+    // nosemgrep: web-10-dynamic-url-sink -- an <img> source (a blob: URL of the decoded photo) can't run script
     try { const u = await this.url(src); if (img.dataset.jxl === src) { img.src = u; img.dataset.jxl = u; img.style.visibility = 'visible' } }
     catch (e) { console.warn('JXL photo not shown', src, e); img.style.visibility = 'visible'; img.alt = 'photo could not be shown' }
   },
@@ -549,6 +610,7 @@ K.lightbox = src => {
     addEventListener('resize', () => { if (box.style.display !== 'none') K.lightbox.fit() });
   }
   box.style.display = 'block';
+  // nosemgrep: web-10-dynamic-url-sink -- an <img> source can't run script
   const img = box.querySelector('img'); img.src = src;
   if (img.complete && img.naturalWidth) K.lightbox.fit();
 };
@@ -561,17 +623,22 @@ K.lightbox.isOpen = () => document.getElementById('kzoom')?.style.display === 'b
 K.annotate = (src, askNote) => new Promise(done => {
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed;inset:0;z-index:160;background:#0b1116;display:flex;flex-direction:column;color:#e9eef2;font:14px system-ui,sans-serif;padding-top:env(safe-area-inset-top,0px)';
-  const b = (t, a, extra = '', label = '') => `<button type="button" data-a="${a}"${label ? ` aria-label="${label}"` : ''} style="padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer;${extra}">${t}</button>`;
-  box.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px;align-items:center">${b('↗ Arrow', 'arrow')}${b('▭ Box', 'rect')}${b('◯ Circle', 'circle')}
-      <span style="display:inline-flex;gap:4px">${['#ff3b30', '#ffcc00', '#34c759', '#ffffff'].map(c => `<button type="button" data-c="${c}" aria-label="Colour" style="width:30px;height:30px;border-radius:15px;border:2px solid #3a5061;background:${c};cursor:pointer"></button>`).join('')}</span>
-      <span style="display:inline-flex;gap:4px" role="group" aria-label="Line size">${[['S', 0.6, 'Thin lines'], ['M', 1, 'Medium lines'], ['L', 1.8, 'Thick lines']].map(([t, f, l]) => `<button type="button" data-s="${f}" aria-label="${l}" style="width:34px;padding:6px 0;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer">${t}</button>`).join('')}</span>
-      <span style="display:inline-flex;gap:4px">${b('−', 'zout', '', 'Zoom out')}${b('+', 'zin', '', 'Zoom in')}${b('Fit', 'zfit', '', 'Fit the photo')}</span>
-      <span style="opacity:.7;font-size:12.5px">Drag on the photo to point at what matters (optional) · two fingers zoom and move</span></div>
-    <div class="vp" style="flex:1;min-height:0;position:relative;overflow:hidden;touch-action:none"><canvas class="view" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none"></canvas>
-      <canvas class="loupe" width="180" height="180" style="position:absolute;display:none;width:180px;height:180px;border-radius:90px;border:3px solid #ff7a1a;box-shadow:0 4px 16px #000a;pointer-events:none"></canvas></div>
-    <div style="display:flex;gap:8px;padding:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));align-items:center;flex-wrap:wrap">
-      ${askNote ? '<input class="note" maxlength="500" placeholder="Note for the approver (optional)" style="flex:1;min-width:180px;padding:8px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit">' : '<span style="flex:1"></span>'}
-      ${b('Undo', 'undo')}${b('Cancel', 'cancel')}${b('Use photo', 'ok', 'background:#ff7a1a;color:#1c2730;border:0;font-weight:650')}</div>`;
+  const h = K.h, b = (t, a, extra = '', label = '') => h('button', {type: 'button', 'data-a': a, 'aria-label': label || null,
+    style: 'padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer;' + extra}, t);
+  box.append(h('div', {style: 'display:flex;gap:6px;flex-wrap:wrap;padding:8px;align-items:center'}, b('↗ Arrow', 'arrow'), b('▭ Box', 'rect'), b('◯ Circle', 'circle'),
+      h('span', {style: 'display:inline-flex;gap:4px'}, ['#ff3b30', '#ffcc00', '#34c759', '#ffffff'].map(c => h('button', {type: 'button', 'data-c': c, 'aria-label': 'Colour',
+        style: `width:30px;height:30px;border-radius:15px;border:2px solid #3a5061;background:${c};cursor:pointer`}))),
+      h('span', {style: 'display:inline-flex;gap:4px', role: 'group', 'aria-label': 'Line size'}, [['S', 0.6, 'Thin lines'], ['M', 1, 'Medium lines'], ['L', 1.8, 'Thick lines']].map(([t, f, l]) =>
+        h('button', {type: 'button', 'data-s': f, 'aria-label': l, style: 'width:34px;padding:6px 0;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer'}, t))),
+      h('span', {style: 'display:inline-flex;gap:4px'}, b('−', 'zout', '', 'Zoom out'), b('+', 'zin', '', 'Zoom in'), b('Fit', 'zfit', '', 'Fit the photo')),
+      h('span', {style: 'opacity:.7;font-size:12.5px'}, 'Drag on the photo to point at what matters (optional) · two fingers zoom and move')),
+    h('div', {class: 'vp', style: 'flex:1;min-height:0;position:relative;overflow:hidden;touch-action:none'},
+      h('canvas', {class: 'view', style: 'position:absolute;inset:0;width:100%;height:100%;touch-action:none'}),
+      h('canvas', {class: 'loupe', width: 180, height: 180, style: 'position:absolute;display:none;width:180px;height:180px;border-radius:90px;border:3px solid #ff7a1a;box-shadow:0 4px 16px #000a;pointer-events:none'})),
+    h('div', {style: 'display:flex;gap:8px;padding:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));align-items:center;flex-wrap:wrap'},
+      askNote ? h('input', {class: 'note', maxlength: 500, placeholder: 'Note for the approver (optional)', style: 'flex:1;min-width:180px;padding:8px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit'})
+              : h('span', {style: 'flex:1'}),
+      b('Undo', 'undo'), b('Cancel', 'cancel'), b('Use photo', 'ok', 'background:#ff7a1a;color:#1c2730;border:0;font-weight:650')));
   document.body.appendChild(box);
   const vp = box.querySelector('.vp'), cv = box.querySelector('canvas.view'), g = cv.getContext('2d'), base = new Image();
   const lp = box.querySelector('canvas.loupe'), lg = lp.getContext('2d');
@@ -693,9 +760,10 @@ K.annotate = (src, askNote) => new Promise(done => {
 K.progress = (title, estimateMs) => {
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:170;background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:12px 14px;min-width:260px;max-width:90vw;font:14px system-ui,sans-serif;box-shadow:0 6px 24px #0008';
-  box.innerHTML = `<div>${K.esc(title)}</div><div style="height:6px;border-radius:3px;background:#3a5061;margin:8px 0 4px;overflow:hidden"><i style="display:block;height:100%;width:0;background:#ff7a1a;transition:width .3s"></i></div><div class="t" style="font-size:12.5px;opacity:.75"></div>`;
+  const h = K.h, bar = h('i', {style: 'display:block;height:100%;width:0;background:#ff7a1a;transition:width .3s'}), t = h('div', {class: 't', style: 'font-size:12.5px;opacity:.75'});
+  box.append(h('div', null, title), h('div', {style: 'height:6px;border-radius:3px;background:#3a5061;margin:8px 0 4px;overflow:hidden'}, bar), t);
   document.body.appendChild(box);
-  const bar = box.querySelector('i'), t = box.querySelector('.t'), t0 = Date.now();
+  const t0 = Date.now();
   const tick = () => {
     const el = Date.now() - t0, f = Math.min(0.95, el / Math.max(estimateMs, 500));
     bar.style.width = (f * 100).toFixed(0) + '%';
@@ -710,12 +778,14 @@ K.progress = (title, estimateMs) => {
 K.ask = (title, text, askNote, okLabel = 'OK') => new Promise(done => {
   const o = document.createElement('div');
   o.style.cssText = 'position:fixed;inset:0;z-index:180;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px;font:14px system-ui,sans-serif';
-  o.innerHTML = `<div style="background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:16px;max-width:420px;width:100%">
-    <div style="font-weight:650;margin-bottom:6px">${K.esc(title)}</div>${text ? `<div style="opacity:.8;margin-bottom:8px">${K.esc(text)}</div>` : ''}
-    ${askNote ? '<input class="note" maxlength="500" placeholder="Note for the approver (optional)" style="width:100%;padding:8px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;margin-bottom:10px">' : ''}
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" data-v="0" style="padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:none;color:inherit;cursor:pointer">Cancel</button>
-    <button type="button" data-v="1" style="padding:8px 12px;border-radius:6px;border:0;background:#ff7a1a;color:#1c2730;font-weight:650;cursor:pointer">${K.esc(okLabel)}</button></div></div>`;
+  const h = K.h, note = askNote ? h('input', {class: 'note', maxlength: 500, placeholder: 'Note for the approver (optional)',
+    style: 'width:100%;padding:8px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;margin-bottom:10px'}) : null;
+  const answer = ok => () => { const v = ok ? {note: note?.value.trim() || ''} : null; o.remove(); done(v) };
+  o.append(h('div', {style: 'background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:16px;max-width:420px;width:100%'},
+    h('div', {style: 'font-weight:650;margin-bottom:6px'}, title), text ? h('div', {style: 'opacity:.8;margin-bottom:8px'}, text) : null, note,
+    h('div', {style: 'display:flex;gap:8px;justify-content:flex-end'},
+      h('button', {type: 'button', 'data-v': '0', style: 'padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:none;color:inherit;cursor:pointer', onclick: answer(false)}, 'Cancel'),
+      h('button', {type: 'button', 'data-v': '1', style: 'padding:8px 12px;border-radius:6px;border:0;background:#ff7a1a;color:#1c2730;font-weight:650;cursor:pointer', onclick: answer(true)}, okLabel))));
   document.body.appendChild(o);
-  o.querySelector('.note')?.focus();
-  o.querySelectorAll('button').forEach(x => x.onclick = () => { const v = x.dataset.v === '1' ? {note: o.querySelector('.note')?.value.trim() || ''} : null; o.remove(); done(v) });
+  note?.focus();
 });

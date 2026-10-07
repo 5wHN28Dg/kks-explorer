@@ -1,7 +1,7 @@
 # Decision records
 
 One page per dependency or platform decision, as required by the development policy (CLAUDE.md;
-docs/evidence-first-platform-engineering.md, docs/evidence-first-web-engineering.md). Each record names its sources.
+the platform engineering guideline (CLAUDE.md, "Engineering guidelines"), the web engineering guideline (CLAUDE.md, "Engineering guidelines")). Each record names its sources.
 "Verified" means it ran on the target; everything else is from vendor documentation or registries.
 
 "Well-maintained" test (native policy): recent releases, a security response history, more than one active
