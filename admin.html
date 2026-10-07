@@ -237,8 +237,10 @@ const VIEWS={
                                      :h('span',{class:'del'},s.error||'failed')),h('td')))
           :h('tr',null,h('td',{colspan:4,class:'sub'},'No syncs yet.'))),
         S.found.length?h('div',{class:'sub',style:'margin-top:6px'},'Found on this Wi-Fi: '+S.found.map(f=>f.name||f.host).join(', ')):null,
-        h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); syncNow(addr.value) }},h('button',{class:'primary',type:'button',onclick:()=>syncNow('')},'Sync now'),
-          addr,h('button',{class:'ghost'},'Sync with it'))),
+        // admins only (the server refuses others, #32); "Sync now" with no address is a device's round, not the server's
+        isAdmin()?h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); syncNow(addr.value) }},
+          D.mode==='peer'?h('button',{class:'primary',type:'button',onclick:()=>syncNow('')},'Sync now'):null,
+          addr,h('button',{class:'ghost'},'Sync with it')):null),
       h('div',{class:'card'},h('h3',null,'Internet'),
         h('div',{class:'sub'},N.relay?['Relay ',h('span',{class:'mono'},N.relay),` · ${N.state||''}`+(N.online?.length?` · online there: ${N.online.map(p=>D.names?.[p]||p.slice(0,8)+'…').join(', ')}`:'')]
           :'No internet relay set: devices sync only on the same network (or with files).',' Everything that passes the relay is end-to-end encrypted between devices: it can\'t read plant data.'),
