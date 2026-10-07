@@ -118,17 +118,17 @@ object Updates {
         // checks can overlap (the daily one, Check now, a test's) and finish in any order: each reads the address and
         // the key once, and only the latest started one may publish its answer. Before, a slow check of the real
         // release, started first, could replace a newer answer (test_update failed now and then).
-        val me = started.incrementAndGet()
+        val me = synchronized(this) { started.incrementAndGet() }
         val api = this.api; val pub = this.pub
         Log.i(TAG, "check $me: ${URI(api).host}")
         try {
             val r = fetchLatest(api, pub)
-            Log.i(TAG, "check $me: latest ${r?.version}" + if (started.get() == me) "" else ", dropped (a newer check started)")
-            if (started.get() == me) { latest = r; error = null }
+            val newest = synchronized(this) { (started.get() == me).also { if (it) { latest = r; error = null } } }
+            Log.i(TAG, "check $me: latest ${r?.version}" + if (newest) "" else ", dropped (a newer check started)")
         }
         catch (e: Exception) {
             Log.i(TAG, "check $me failed: ${e.message ?: e.javaClass.simpleName}")
-            if (started.get() == me) error = e.message ?: e.javaClass.simpleName
+            synchronized(this) { if (started.get() == me) error = e.message ?: e.javaClass.simpleName }
         }
         checked = System.currentTimeMillis()
         prefs(ctx).edit().putLong("checked", checked).apply()
