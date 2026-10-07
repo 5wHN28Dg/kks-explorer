@@ -36,7 +36,7 @@ def find(text, timeout=15, exact=False):
             if (v == text) if exact else (text in v):
                 return n
         # a slow emulator (CI's software GPU) shows "System UI isn't responding" over everything: wait it out
-        if waits < 12 and any("isn't responding" in label(n) for n in ns):
+        if waits < 12 and any("System UI isn't responding" in label(n) for n in ns):   # not the app's own: that must fail
             waits += 1
             for n in ns:
                 if label(n) == 'Wait':
