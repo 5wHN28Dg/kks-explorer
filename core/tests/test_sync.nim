@@ -135,6 +135,37 @@ suite "sync state machine":
                                   revokeBody(davePhone.device, int64(davePhone.chainsLen)))
     check davePhone.acceptRevocation(againstUser)
 
+  test "the revoke shown is one the log accepted (#66), and a person may remove their own device":
+    let erin = P.newPersonId()
+    var erinPhone = newNode(P, newMemStore(), P.p256Generate())
+    let frankKey = P.p256Generate()
+    var frankPhone = newNode(P, newMemStore(), frankKey)
+    let frank = P.newPersonId()
+    discard mgrPhone.append("person", personBody(erin, "erin", "Erin Admin", "admin"), tick())
+    discard mgrPhone.append("device_cert", deviceCertBody(erinPhone.device, erin, "phone"), tick())
+    discard mgrPhone.append("person", personBody(frank, "frank", "Frank Admin", "admin"), tick())
+    discard mgrPhone.append("device_cert", deviceCertBody(frankPhone.device, frank, "phone"), tick())
+    for d in [erinPhone, frankPhone]: discard sync(d, mgrPhone, adopt = rootStr)
+    # the manager removes Erin's phone; later admin Frank signs a revoke for it too, which the log rejects
+    discard mgrPhone.append("revoke", revokeBody(erinPhone.device, int64(erinPhone.chainsLen)), tick())
+    discard frankPhone.append("revoke", revokeBody(erinPhone.device, int64(erinPhone.chainsLen)), tick())
+    discard sync(frankPhone, mgrPhone)
+    let shown = mgrPhone.revocationOf(erinPhone.device)
+    check shown != nil and shown["peer"].s == mgrPhone.device
+    check erinPhone.acceptRevocation(shown)
+    # Frank's phone removes his laptop: his own device
+    var frankLaptop = newNode(P, newMemStore(), P.p256Generate())
+    discard mgrPhone.append("device_cert", deviceCertBody(frankLaptop.device, frank, "laptop"), tick())
+    discard sync(frankLaptop, mgrPhone, adopt = rootStr)
+    discard sync(frankPhone, mgrPhone)
+    let forged = P.makeEntry(P.p256Generate(), 1, "", (tick(), 0'i64), "revoke", revokeBody(frankLaptop.device, 0))
+    check not frankLaptop.acceptRevocation(forged)     # signed by a key the log doesn't know
+    discard frankPhone.append("revoke", revokeBody(frankLaptop.device, int64(frankLaptop.chainsLen)), tick())
+    discard sync(frankPhone, mgrPhone)
+    let mine = mgrPhone.revocationOf(frankLaptop.device)
+    check mine != nil and mine["peer"].s == frankPhone.device
+    check frankLaptop.acceptRevocation(mine)
+
   test "fork evidence: two different entries for one (device, seq)":
     let cloneKey = P.p256Generate()
     var a1 = newNode(P, newMemStore(), cloneKey)
