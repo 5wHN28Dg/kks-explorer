@@ -1,6 +1,6 @@
 ## The drawing viewer (R1, R2; decisions 0016, 0031):
-## - the overview pyramid (JPEG XL levels, decoded on a worker thread) below about the overview's own resolution;
-## - vector tiles above it, drawn from the .kkp by Cairo and cached as GPU textures;
+## - the overview pyramid (JPEG XL levels, decoded on a worker thread), shown until the vector tiles are ready;
+## - vector tiles at every zoom, drawn from the .kkp by Cairo and cached as GPU textures;
 ## - tag hotspots on top.
 ## Input: drag to pan, wheel or pinch to zoom, click a tag, keyboard (arrows, +/−, 0 to fit).
 
@@ -263,8 +263,11 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     cairo_set_source_rgb(c, 1, 1, 1)
     cairo_paint(c)
     cairo_destroy(c)
-  # 2. vector tiles once the overview is not sharp enough
-  if v.sheet != nil and dz > v.scale0 * 1.05:
+  # 2. vector tiles at every zoom, over the overview (which shows until they are rendered): the overview shrunk to fit
+  #    made the lines soft (the user, 2026-10-07). Clipped to the sheet: at low zoom one tile reaches past its edge.
+  if v.sheet != nil:
+    graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
+    gtk_snapshot_push_clip(s, addr r)
     let e = int(ceil(log2(dz)))
     let tz = pow(2.0, float(e))
     let span = float(TileSize) / tz         # points per tile
@@ -281,6 +284,7 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
                              cfloat(span * v.z), cfloat(span * v.z))
           gtk_snapshot_append_scaled_texture(s, v.tiles[key], GSK_SCALING_FILTER_LINEAR, addr r)
         else: missing.add key
+    gtk_snapshot_pop(s)
     if missing.len > 0:
       # nearest the centre last, so it is popped (rendered) first
       let cx = (x0 + x1) / 2 / span
@@ -395,7 +399,9 @@ proc newViewer*(): Viewer =
   gtk_widget_add_controller(v.widget, scroll)
   # pinch
   let pinch = gtk_gesture_zoom_new()
-  pinch.on("begin", proc () = v.pinchZ = v.z)
+  # "begin" passes the event sequence (NULL for a touchpad pinch): connected with on(), the trampoline took it for its
+  # own data and read through nil (the crash on a two-finger trackpad zoom, 2026-10-07)
+  pinch.onPtr("begin", proc (sequence: W) = v.pinchZ = v.z)
   pinch.onScale(proc (scale: float) =
     var cx, cy: cdouble
     discard gtk_gesture_get_bounding_box_center(pinch, addr cx, addr cy)

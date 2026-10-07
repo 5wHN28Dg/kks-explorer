@@ -71,6 +71,8 @@ fill       3 bytes  R, G, B; 0,0,0 when not filled
 - **Hairline:** draw one device pixel wide at any zoom (PDF width 0).
 - **Thin strokes:** a stroke narrower than one device pixel at the current zoom is drawn one device pixel wide. This
   matches Poppler and MuPDF, and was measured in 0015 (at 1× thin lines otherwise render lighter).
+- **Zoomed out:** below one device pixel per point, a renderer may draw hairlines and thin strokes half a device pixel
+  wide instead, so dense lettering doesn't fill in when the whole sheet is in view (the GNOME app does, since 2026-10-07).
 - **Miter limit:** fixed at 10 (the PDF default).
 - **Fill and stroke:** when both are set, fill first, then stroke, with the same geometry.
 
