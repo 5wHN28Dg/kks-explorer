@@ -265,6 +265,46 @@ class Gnome(unittest.TestCase):
         self.assertTrue(note, 'the removed device did not wipe itself')
         self.assertNotIn(b'Sample sheet', open(os.path.join(self.dir, 'phone', 'kks.db'), 'rb').read())
 
+    def test_systems(self):
+        """Equipment by system: the page lists the code under block → system → subsystem → kind, collapsed at the
+        system level; a search opens every level down to the code's row (photo dot named); the row opens the tag's
+        panel"""
+        a = self.start_app('systems')
+        self.join(a)
+        atspi.click(atspi.find(a, 'button', name='Equipment by system'))
+        atspi.find(a, 'label', name='1 code on the drawings', timeout=10)
+        atspi.find(a, 'list item', name='LAB · Feed water piping system', timeout=10)
+        # collapsed at the system level: the code's row is not there yet. (Opening a row by hand is Enter/Space or a
+        # click; its header row has no AT-SPI action, and keys can't be typed into the headless session.)
+        self.assertFalse(atspi.find_all(a, contains='11LAB70AA501'))
+        # a search opens every level of what it finds
+        q = atspi.find(a, 'entry', name='Search equipment by system')
+        atspi.set_text(q, 'nothing like this')
+        atspi.find(a, 'label', name='Nothing found', timeout=10)
+        atspi.set_text(q, 'feed water 70')
+        atspi.find(a, 'label', name='1 code found', timeout=10)
+        for level in ('LAB · Feed water piping system', 'LAB70'):
+            atspi.find(a, 'list item', name=level, timeout=10)
+        atspi.find(a, 'list item', contains='AA · ', timeout=10)
+        item = atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
+        # what Orca reads: the code (labelled by) and its description · sheet (described by)
+        described = [r.get_target(i).get_name() for r in item.get_relation_set()
+                     if r.get_relation_type() == Atspi.RelationType.DESCRIBED_BY for i in range(r.get_n_targets())]
+        self.assertIn('Sample sheet', described)
+        # the photo coverage dot, named (test_photo_editor may have added a photo of this code first)
+        dots = [n.get_name() for n in atspi.walk(item) if n.get_role_name() == 'image']
+        self.assertEqual(len(dots), 1)
+        self.assertIn(dots[0], ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'))
+        before = len([n for n in atspi.find_all(a, 'label') if n.get_name() == '11LAB70AA501'])
+        atspi.click(atspi.find(a, 'button', name='11LAB70AA501', timeout=10))
+        atspi.find(a, 'button', name='Close the panel', timeout=10)
+        for _ in range(20):
+            after = len([n for n in atspi.find_all(a, 'label') if n.get_name() == '11LAB70AA501'])
+            if after > before:
+                break
+            time.sleep(0.5)
+        self.assertGreater(after, before, 'the panel does not show the code')
+
     def join(self, a):
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
