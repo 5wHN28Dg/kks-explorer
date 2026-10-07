@@ -6,7 +6,6 @@
 ## tests/diff_trace.nim measures on the real glyphs.
 
 import std/[algorithm, math]
-when defined(traceResize): import std/strutils
 
 proc fmaf(a, b, c: cfloat): cfloat {.importc, header: "<math.h>".}
 
@@ -499,10 +498,6 @@ proc resizeArea*(src: FImg, dw, dh: int): FImg =
       return
     let xt = areaTab(src.w, dw, scaleX)
     let yt = areaTab(src.h, dh, scaleY)
-    when defined(traceResize):
-      echo "scale ", scaleX, " ", scaleY
-      for t in xt: echo "xt ", t[0], " ", t[1], " ", cast[uint32](t[2])
-      for t in yt[0 .. min(8, yt.high)]: echo "yt ", t[0], " ", t[1], " ", cast[uint32](t[2])
     var buf = newSeq[float32](dw)
     var sum = newSeq[float32](dw)
     var prevDy = yt[0][0]
@@ -510,18 +505,12 @@ proc resizeArea*(src: FImg, dw, dh: int): FImg =
       for k in 0 ..< dw: buf[k] = 0
       for (dxn, sxn, alpha) in xt:
         buf[dxn] += src.d[sy * src.w + sxn] * alpha
-        when defined(traceResize):
-          if src.w == 4 and src.h == 44 and dxn == 2 and dy == 6: echo "buf ", sy, " ", sxn, " ", toHex(cast[uint32](src.d[sy * src.w + sxn])), " ", toHex(cast[uint32](buf[dxn]))
       if dy != prevDy:
         for k in 0 ..< dw: result.d[prevDy * dw + k] = sum[k]
         for k in 0 ..< dw: sum[k] = beta * buf[k]
         prevDy = dy
-        when defined(traceResize):
-          if src.w == 4 and src.h == 44 and dy == 6: echo "sum0 ", sy, " ", toHex(cast[uint32](sum[2]))
       else:
         for k in 0 ..< dw: sum[k] += beta * buf[k]
-        when defined(traceResize):
-          if src.w == 4 and src.h == 44 and dy == 6: echo "sum ", sy, " ", toHex(cast[uint32](sum[2]))
     for k in 0 ..< dw: result.d[prevDy * dw + k] = sum[k]
     return
   # bilinear with area coefficients (resizeGeneric_ HResizeLinear + VResizeLinear, float)
