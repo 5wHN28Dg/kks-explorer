@@ -16,6 +16,7 @@ PKG = 'io.github.walkdown'
 # the emulator reaches this machine at 10.0.2.2; a real phone over USB uses `adb reverse` and 127.0.0.1
 # (choose the phone with ANDROID_SERIAL; KKS_PHONE_HOST=127.0.0.1)
 PHONE_HOST = os.environ.get('KKS_PHONE_HOST', '10.0.2.2')
+SHOTS = os.environ.get('KKS_SHOTS', os.path.expanduser('~/kks-work/shots-android'))
 
 
 def free_port():
@@ -282,6 +283,59 @@ class Phone(unittest.TestCase):
             # the screen closes; the tag's panel is open on its sheet
             ui.find('Feed water piping system', timeout=15)
             self.assertFalse(ui.present('Equipment by system', exact=True), 'the screen stayed open')
+        finally:
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
+
+    def test_coverage(self):
+        """the coverage dashboard (core coverageView): totals on the test plant; a sheet row opens that sheet with the
+        photo colours on; a system row opens Equipment by system showing that system only"""
+        r = self.boss.req('GET', '/api/sheets')
+        if not any(s.get('id') == 'second' for s in r.get('sheets', [])):
+            with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f:
+                pdf = f.read()
+            assert self.boss.req('POST', '/api/sheets/import?id=second&name=Second%20sheet', raw=pdf, ctype='application/pdf').get('ok')
+            for _ in range(300):
+                job = self.boss.req('GET', '/api/sheets/job')['job']
+                if job['state'] != 'running':
+                    break
+                time.sleep(0.2)
+            assert job['state'] == 'done', job['log']
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            ui.tap('More', exact=True)
+            ui.tap('Coverage', exact=True)
+            # the test plant: one code (11LAB70AA501, marked by the manager, so checked), no place, no photos
+            for t in ('Codes on the drawings: 1 (on 1 tag)', 'Checked by a person: 100 % (1 of 1 tag)',
+                      'Known place: 0 % (0 of 1 code)', 'To review: 0', 'Missed tags marked: 1'):
+                ui.find(t, timeout=15)
+            ui.find('Sample sheet: 1 code on 1 tag, 100 % checked by a person, 0 % with a known place, photos: 0 both, '
+                    '0 equipment only, 0 tag plate only, 1 none, 0 to review, 1 missed tags marked')
+            ui.find('LAB · Feed water piping system: 1 code, 100 % checked by a person')
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, 'android-coverage.png'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+            # a sheet row: that sheet, coloured by photos (the legend shows)
+            ui.tap('Second sheet: ')
+            ui.find('Second sheet', exact=True, timeout=15)
+            self.assertFalse(ui.present('Codes on the drawings'), 'the dashboard stayed open')
+            ui.find('Tag plate', exact=True)
+            # a system row: Equipment by system, that system only, open
+            ui.tap('More', exact=True)
+            ui.tap('Coverage', exact=True)
+            ui.tap('LAB · Feed water piping system: ', timeout=15)
+            ui.find('Only system LAB', exact=True, timeout=15)
+            ui.find('LAB70, ', timeout=10)
         finally:
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:
