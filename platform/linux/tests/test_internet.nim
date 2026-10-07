@@ -98,6 +98,14 @@ suite "internet sync through the relay":
     ia.noDirectUntil.clear()
     ib.noDirectUntil.clear()
 
+  test "a device answering MaxServed syncs through the relay refuses more (issue #67)":
+    ib.serving = MaxServed
+    try:
+      expect NetError:
+        discard waitFor ia.syncPeer(b.device)
+    finally: ib.serving = 0
+    check (waitFor ia.syncPeer(b.device)).theyDenied == false   # and answers again once one ends
+
   test "an absent device is reported":
     expect NetError:
       discard waitFor ia.syncPeer(P.peerId(P.p256Generate()))

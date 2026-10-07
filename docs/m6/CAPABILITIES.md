@@ -1,7 +1,7 @@
 # M6 capability matrix (2026-09-30)
 
 For each requirement in REQUIREMENTS.md: what each target platform provides through its supported stack
-(docs/evidence-first-platform-engineering.md, "What counts as platform-provided"), what is optional, and what is
+(the platform engineering guideline (CLAUDE.md, "Engineering guidelines"), "What counts as platform-provided"), what is optional, and what is
 missing.
 
 **Targets:**

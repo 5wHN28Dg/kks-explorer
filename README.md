@@ -1,9 +1,8 @@
 # Walkdown
 
+<!-- read by CI; do not remove -->
 Tier: T3
-Policy: v2.1
 Type: web, native, service
-Baseline: until 2027-01-03
 
 *Formerly KKS Explorer (renamed 2026-10-03).*
 
