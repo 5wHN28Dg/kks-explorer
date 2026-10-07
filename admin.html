@@ -65,10 +65,17 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 
 <script src="common.js"></script>
 <script>
-const $=s=>document.querySelector(s), esc=K.esc;
-// a value as a JavaScript argument inside an HTML attribute: a JSON string, HTML-escaped. esc() alone is not enough
-// there: the browser turns &#39; back into ' before running the handler (a name with a quote ran script: fixed 2026-10-01)
-const jsa=v=>esc(JSON.stringify(v));
+const $=s=>document.querySelector(s);
+// Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup. (Before, a
+// full name with a quote ran script through an inline handler: fixed 2026-10-01; there are no such handlers now.)
+const h=K.h;
+// el's children := these (arrays flattened; null, undefined and false left out)
+const put=(el,...kids)=>el.replaceChildren(...kids.flat(Infinity).filter(c=>c!=null&&c!==false));
+// a table of rows (in a tbody, as the HTML parser makes it)
+const table=(...rows)=>h('table',null,h('tbody',null,rows));
+const head=(...names)=>h('tr',null,names.map(n=>h('th',null,n)));
+// a link inside the app (a path and query this page made): href through the URL check
+const appLink=(url,props,...kids)=>{ const a=h('a',props,...kids); a.href=K.safeUrl(url); return a };
 let ME=null, tab=null, SHEETS=[];
 // v2 crops (approving a marked tag): level 0 of the sheet's pyramid, decoded by K.jxl where the browser can't
 const cropBg={};
@@ -91,43 +98,45 @@ async function init(){
 }
 async function show(t){
   tab=t; history.replaceState(null,'','#'+t);
-  $('#tabs').innerHTML=TABS.filter(x=>x[2]()).map(([id,label])=>`<button class="btn${id===t?' on':''}" onclick="show('${id}')">${label}${id==='queue'?'<span class="count" id="qn" style="display:none"></span>':''}${id==='account'&&ME.transfer_offer?'<span class="count">!</span>':''}</button>`).join('');
-  if(!K.online&&t!=='account'){ $('#main').innerHTML='<div class="warn">You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.</div>'; return }
-  try{ await VIEWS[t]() }catch(e){ if(e.status===401) return location.reload(); $('#main').innerHTML=`<div class="warn bad">${esc(K.isNetErr(e)?'Cannot reach the server.':e.message)}</div>` }
+  put($('#tabs'),TABS.filter(x=>x[2]()).map(([id,label])=>h('button',{class:'btn'+(id===t?' on':''),onclick:()=>show(id)},label,
+    id==='queue'?h('span',{class:'count',id:'qn',style:'display:none'}):null,id==='account'&&ME.transfer_offer?h('span',{class:'count'},'!'):null)));
+  if(!K.online&&t!=='account'){ put($('#main'),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
+  try{ await VIEWS[t]() }catch(e){ if(e.status===401) return location.reload(); put($('#main'),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
 }
 K.onChange(why=>{ if(why==='synced') show(tab) });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
 
 // ---------- rendering a submission ----------
-const val=v=>v==null||v===''?'<span class="sub">(empty)</span>':Array.isArray(v)?esc(v.map(c=>c.k+': '+c.v).join('; ')||'(none)'):typeof v==='object'?`<span class="mono">${esc(JSON.stringify(v))}</span>`:esc(v);
+const val=v=>v==null||v===''?h('span',{class:'sub'},'(empty)'):Array.isArray(v)?v.map(c=>c.k+': '+c.v).join('; ')||'(none)':typeof v==='object'?h('span',{class:'mono'},JSON.stringify(v)):String(v);
+const photoImg=file=>h('img',{src:'photos/'+file,alt:'',onclick:e=>lightbox(e.currentTarget.src)});
 function detail(s){
   const p=s.payload;
   if(s.kind==='equipment'){
     const live=(s.live?.[0]?.value)||{}, cf=new Set((s.conflicts||[]).map(c=>c.field));
-    return `<table><tr><th>Field</th><th>Now</th><th>Proposed</th>${cf.size?'<th>Submitter saw</th>':''}</tr>${Object.entries(p.changes).map(([f,v])=>
-      `<tr${cf.has(f)?' style="background:rgba(255,90,90,.08)"':''}><td>${esc(f)}</td><td>${val(live[f])}</td><td>${val(v)}</td>${cf.size?`<td>${cf.has(f)?val(p.base[f]):''}</td>`:''}</tr>`).join('')}</table>`;
+    return table(head('Field','Now','Proposed',...(cf.size?['Submitter saw']:[])),Object.entries(p.changes).map(([f,v])=>
+      h('tr',{style:cf.has(f)?'background:rgba(255,90,90,.08)':null},h('td',null,f),h('td',null,val(live[f])),h('td',null,val(v)),cf.size?h('td',null,cf.has(f)?val(p.base[f]):''):null)));
   }
   if(s.kind==='tag_add'){
     const sh=SHEETS.find(x=>x.id===p.sheet), b=p.bbox;
-    let crop='';
-    if(sh){ const w=b[2]-b[0]+40, h=b[3]-b[1]+40, sc=Math.min(420/w,160/h);
+    let crop=null;
+    if(sh){ const w=b[2]-b[0]+40, ht=b[3]-b[1]+40, sc=Math.min(420/w,160/ht);
       // v1: the sheet PNG; v2 (pyramid levels): level 0, filled in once decoded (fillCrops)
-      const bg=sh.levels?'':`url(${esc(JSON.stringify(encodeURI(sh.file)))})`;
-      crop=`<div ${sh.levels?`data-crop="${esc(sh.id)}" `:''}style="width:${Math.round(w*sc)}px;height:${Math.round(h*sc)}px;background:#fff ${bg} no-repeat;background-size:${sh.w*sc}px auto;background-position:${-(b[0]-20)*sc}px ${-(b[1]-20)*sc}px;border:1px solid var(--line);border-radius:4px;margin:6px 0"></div>` }
-    return `<div>${esc(K.describe(s.kind,p))} <a href="/?sheet=${encodeURIComponent(p.sheet)}" class="sub">open sheet</a></div>${crop}
-      ${p.note?`<div class="sub">Note: ${esc(p.note)}</div>`:''}
-      <div class="row" style="margin-top:4px"><span class="sub">Code as it should be saved:</span>
-      <input id="ek-${s.id}" class="mono" value="${esc((p.kks||'')+(p.suffix||''))}" placeholder="KKS, empty = review queue" style="width:190px">
-      <input id="ei-${s.id}" class="mono" value="${esc(p.isa||'')}" placeholder="letters" style="width:80px"></div>`;
+      const bg=sh.levels?'':`url(${JSON.stringify(encodeURI(sh.file))})`;
+      crop=h('div',{'data-crop':sh.levels?sh.id:null,style:`width:${Math.round(w*sc)}px;height:${Math.round(ht*sc)}px;background:#fff ${bg} no-repeat;background-size:${sh.w*sc}px auto;background-position:${-(b[0]-20)*sc}px ${-(b[1]-20)*sc}px;border:1px solid var(--line);border-radius:4px;margin:6px 0`}) }
+    return [h('div',null,K.describe(s.kind,p)+' ',appLink('/?sheet='+encodeURIComponent(p.sheet),{class:'sub'},'open sheet')),crop,
+      p.note?h('div',{class:'sub'},'Note: '+p.note):null,
+      h('div',{class:'row',style:'margin-top:4px'},h('span',{class:'sub'},'Code as it should be saved:'),
+        h('input',{id:'ek-'+s.id,class:'mono',value:(p.kks||'')+(p.suffix||''),placeholder:'KKS, empty = review queue',style:'width:190px'}),
+        h('input',{id:'ei-'+s.id,class:'mono',value:p.isa||'',placeholder:'letters',style:'width:80px'}))];
   }
-  if(s.kind==='tag_remove') return `<div class="del">${esc(K.describe(s.kind,p))}</div>`;
-  if(s.kind==='review') return `<div>${esc(K.describe(s.kind,p))}</div>${s.live?`<div class="sub">Now: ${val(s.live[0].value)}</div>`:''}`;
-  if(s.kind==='photo_delete') return `<div class="del">Delete this photo</div>${s.live?.[0]?.value?`<div class="photos"><figure><img src="photos/${esc(s.live[0].value.file)}" onclick="lightbox(this.src)" alt=""></figure></div>`:'<div class="sub">(already gone)</div>'}`;
-  return `<div class="${s.kind==='link'&&p.on===false?'del':'add'}">${esc(K.describe(s.kind,p))}</div>`;
+  if(s.kind==='tag_remove') return h('div',{class:'del'},K.describe(s.kind,p));
+  if(s.kind==='review') return [h('div',null,K.describe(s.kind,p)),s.live?h('div',{class:'sub'},'Now: ',val(s.live[0].value)):null];
+  if(s.kind==='photo_delete') return [h('div',{class:'del'},'Delete this photo'),s.live?.[0]?.value?h('div',{class:'photos'},h('figure',null,photoImg(s.live[0].value.file))):h('div',{class:'sub'},'(already gone)')];
+  return h('div',{class:s.kind==='link'&&p.on===false?'del':'add'},K.describe(s.kind,p));
 }
-const who=s=>s.by_name&&s.by_name!==s.by?`${esc(s.by_name)} <span class="mono">(${esc(s.by)})</span>`:esc(s.by);  // full name + username
-const rnote=s=>s.request_note?`<div class="rnote">“${esc(s.request_note)}”</div>`:'';   // the requester's note for the approver
-const badge=s=>{ const st=esc(s.conflicts?.length?'conflict':s.status); return `<span class="badge ${st}">${st}</span>` };
+const who=s=>s.by_name&&s.by_name!==s.by?[s.by_name+' ',h('span',{class:'mono'},`(${s.by??''})`)]:String(s.by??'');  // full name + username
+const rnote=s=>s.request_note?h('div',{class:'rnote'},`“${s.request_note}”`):null;   // the requester's note for the approver
+const badge=s=>{ const st=String((s.conflicts?.length?'conflict':s.status)??''); return h('span',{class:'badge '+st},st) };
 
 // ---------- views ----------
 const VIEWS={
@@ -135,155 +144,205 @@ const VIEWS={
     if(!SHEETS.length) SHEETS=await K.api('/data/sheets.json').catch(()=>[]);
     const subs=(await K.api('/api/submissions?status=open')).submissions.reverse();
     const qn=$('#qn'); if(qn){qn.textContent=subs.length; qn.style.display=subs.length?'':'none'}
-    if(!subs.length){ $('#main').innerHTML='<p class="sub">Nothing waiting for approval.</p>'; return }
+    if(!subs.length){ put($('#main'),h('p',{class:'sub'},'Nothing waiting for approval.')); return }
     const groups={}; for(const s of subs)(groups[s.target]??=[]).push(s);
-    let h='<p class="sub">Oldest first. Approving applies the change and records it in History, where it can be reverted.</p>';
+    const out=[h('p',{class:'sub'},'Oldest first. Approving applies the change and records it in History, where it can be reverted.')];
+    const button=(cls,label,onclick)=>h('button',{class:cls,onclick},label);
     for(const [target,L] of Object.entries(groups)){
       if(L[0].kind==='photo'){
         const kks=L[0].payload.kks;
-        h+=`<div class="card"><h3>Photo proposals · ${esc(kks)}</h3>${L.length>1?'<div class="sub">Several photos proposed. “Use this one” approves it and rejects the others. Votes are only a hint.</div>':''}
-          <div class="photos">${L.map(s=>`<figure><img src="photos/${esc(s.payload.file)}" onclick="lightbox(this.src)" alt="">
-          <div class="sub">${who(s)} · ${when(s.created)} · ${s.votes} vote${s.votes===1?'':'s'}</div>${s.payload.caption?`<div>${esc(s.payload.caption)}</div>`:''}${rnote(s)}
-          <div class="row" style="margin-top:6px">${L.length>1?`<button class="primary" onclick="decide(${s.id},'pick')">Use this one</button><button class="ghost" onclick="decide(${s.id},'approve')">Add</button>`:`<button class="primary" onclick="decide(${s.id},'approve')">Approve</button>`}
-          <button class="danger" onclick="decide(${s.id},'reject')">Reject</button></div></figure>`).join('')}</div></div>`;
+        out.push(h('div',{class:'card'},h('h3',null,`Photo proposals · ${kks??''}`),
+          L.length>1?h('div',{class:'sub'},'Several photos proposed. “Use this one” approves it and rejects the others. Votes are only a hint.'):null,
+          h('div',{class:'photos'},L.map(s=>h('figure',null,photoImg(s.payload.file),
+            h('div',{class:'sub'},who(s),` · ${when(s.created)} · ${s.votes} vote${s.votes===1?'':'s'}`),s.payload.caption?h('div',null,s.payload.caption):null,rnote(s),
+            h('div',{class:'row',style:'margin-top:6px'},
+              L.length>1?[button('primary','Use this one',()=>decide(s.id,'pick')),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
+              button('danger','Reject',()=>decide(s.id,'reject'))))))));
         continue;
       }
-      h+=`<div class="card"><h3>${esc(target)}</h3>${L.map(s=>`<div style="margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)">
-        <div class="row">${badge(s)}<span class="sub">#${s.id} · ${who(s)} · ${when(s.created)}</span></div>${rnote(s)}
-        ${s.conflicts?.length?`<div class="warn bad">Conflict: ${s.kind==='equipment'?'highlighted field(s) changed after this was submitted':'this changed after it was submitted'}. Approving overwrites the current value.</div>`:''}
-        ${detail(s)}
-        <div class="row" style="margin-top:6px">${s.conflicts?.length?`<button class="primary" onclick="decide(${s.id},'approve',true)">Overwrite with proposal</button>`:`<button class="primary" onclick="decide(${s.id},'approve')">Approve</button>`}
-        <button class="danger" onclick="decide(${s.id},'reject')">Reject</button></div></div>`).join('')}</div>`;
+      out.push(h('div',{class:'card'},h('h3',null,target),L.map(s=>h('div',{style:'margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)'},
+        h('div',{class:'row'},badge(s),h('span',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`)),rnote(s),
+        s.conflicts?.length?h('div',{class:'warn bad'},`Conflict: ${s.kind==='equipment'?'highlighted field(s) changed after this was submitted':'this changed after it was submitted'}. Approving overwrites the current value.`):null,
+        detail(s),
+        h('div',{class:'row',style:'margin-top:6px'},
+          s.conflicts?.length?button('primary','Overwrite with proposal',()=>decide(s.id,'approve',true)):button('primary','Approve',()=>decide(s.id,'approve')),
+          button('danger','Reject',()=>decide(s.id,'reject')))))));
     }
-    $('#main').innerHTML=h;
+    put($('#main'),out);
   },
   async mine(){
     const all=(await K.api('/api/submissions?status=all&limit=300')).submissions;
-    const mine=all.filter(s=>s.mine), vote=all.filter(s=>!s.mine&&s.kind==='photo'&&['pending','conflict'].includes(s.status));
-    let h='';
-    if(K.outbox.length) h+=`<div class="card"><h3>Queued on this device (${K.outbox.length})</h3><div class="sub">Sent automatically when the server is reachable.</div>${K.outbox.map(i=>`<div>${esc(K.describe(i.kind,i.payload))}</div>`).join('')}</div>`;
-    if(vote.length) h+=`<div class="card"><h3>Photo proposals from others</h3><div class="sub">Vote for the photo that shows the equipment best. An admin makes the final choice.</div><div class="photos">${vote.map(s=>`<figure><img src="photos/${esc(s.payload.file)}" onclick="lightbox(this.src)" alt=""><div class="sub">${esc(s.payload.kks)} · ${esc(s.by)} · ${s.votes} vote${s.votes===1?'':'s'}</div><button class="${s.voted?'primary':'ghost'}" onclick="vote(${s.id})">${s.voted?'Voted ✓':'Vote'}</button></figure>`).join('')}</div></div>`;
-    h+=`<table><tr><th>#</th><th>Status</th><th>Change</th><th>Sent</th><th>Decision</th><th></th></tr>${mine.map(s=>`<tr><td class="sub">${s.id}</td><td>${badge(s)}</td><td>${esc(K.describe(s.kind,s.payload))}${rnote(s)}</td><td class="sub">${when(s.created)}</td>
-      <td class="sub">${s.status==='conflict'?'waiting for an admin (clashes with a newer change)':esc(s.note&&!s.note.startsWith('[')?s.note:'')}</td><td>${['pending','conflict'].includes(s.status)?`<button class="ghost" onclick="withdraw(${s.id})">Withdraw</button>`:''}</td></tr>`).join('')}</table>`;
-    $('#main').innerHTML=h||'<p class="sub">No submissions yet.</p>';
-    if(!mine.length) $('#main').insertAdjacentHTML('beforeend','<p class="sub">You haven\'t submitted anything yet.</p>');
+    const mine=all.filter(s=>s.mine), toVote=all.filter(s=>!s.mine&&s.kind==='photo'&&['pending','conflict'].includes(s.status));
+    const out=[];
+    if(K.outbox.length) out.push(h('div',{class:'card'},h('h3',null,`Queued on this device (${K.outbox.length})`),h('div',{class:'sub'},'Sent automatically when the server is reachable.'),
+      K.outbox.map(i=>h('div',null,K.describe(i.kind,i.payload)))));
+    if(toVote.length) out.push(h('div',{class:'card'},h('h3',null,'Photo proposals from others'),h('div',{class:'sub'},'Vote for the photo that shows the equipment best. An admin makes the final choice.'),
+      h('div',{class:'photos'},toVote.map(s=>h('figure',null,photoImg(s.payload.file),h('div',{class:'sub'},`${s.payload.kks??''} · ${s.by??''} · ${s.votes} vote${s.votes===1?'':'s'}`),
+        h('button',{class:s.voted?'primary':'ghost',onclick:()=>vote(s.id)},s.voted?'Voted ✓':'Vote'))))));
+    out.push(table(head('#','Status','Change','Sent','Decision',''),mine.map(s=>h('tr',null,h('td',{class:'sub'},s.id),h('td',null,badge(s)),h('td',null,K.describe(s.kind,s.payload),rnote(s)),
+      h('td',{class:'sub'},when(s.created)),
+      h('td',{class:'sub'},s.status==='conflict'?'waiting for an admin (clashes with a newer change)':s.note&&!s.note.startsWith('[')?s.note:''),
+      h('td',null,['pending','conflict'].includes(s.status)?h('button',{class:'ghost',onclick:()=>withdraw(s.id)},'Withdraw'):null)))));
+    put($('#main'),out);
+    if(!mine.length) $('#main').append(h('p',{class:'sub'},'You haven\'t submitted anything yet.'));
   },
   async users(){
     const U=(await K.api('/api/users')).users;
     const canEdit=u=>u.role==='user'||(u.role==='admin'&&isManager());
-    $('#main').innerHTML=`<div class="card server-only"><h3>Add an account</h3>
-      <form class="inline" onsubmit="event.preventDefault();createUser(this)"><input name="full_name" placeholder="Full name" required maxlength="80" style="min-width:200px">
-      <input name="position" placeholder="Position (optional)" maxlength="80"><input name="username" placeholder="username" required maxlength="40">
-      <select name="role"><option value="user">user</option>${isManager()?'<option value="admin">admin</option>':''}</select><button class="primary">Create and get link</button></form>
-      <div class="sub">There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.</div><div id="newlink"></div></div>
-      <table><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th></th></tr>${U.map(u=>`<tr><td>${u.full_name?esc(u.full_name):'<span class="del">no name yet</span>'}${u.position?`<div class="sub">${esc(u.position)}</div>`:''}</td>
-      <td class="mono">${esc(u.username)}${u.id===ME.user.id?' <span class="sub">(you)</span>':''}</td>
-      <td>${u.role}</td><td>${u.no_account?(u.active?`own device${u.devices===1?'':'s'} <span class="sub">(${u.devices})</span>`:'<span class="del">all devices removed</span>'):u.active?(u.has_password?'active':'<span class="sub">link not used yet</span>'):'<span class="del">deactivated</span>'}</td>
-      <td class="row">${u.no_account?(canEdit(u)?`${u.active?`<button class="ghost" onclick="confirm(${jsa('Remove all devices of '+u.username+'? They stop syncing.')})&&setPerson(${jsa(u.person)},{active:false})">Remove devices</button>`:''}
-        ${isManager()?`<button class="ghost" onclick="setPerson(${jsa(u.person)},{role:${jsa(u.role==='admin'?'user':'admin')}})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}`:''):canEdit(u)&&u.id!==ME.user.id?`<button class="ghost" onclick="setUser(${+u.id},{active:${!u.active}})">${u.active?'Deactivate':'Activate'}</button>
-        ${isManager()?`<button class="ghost" onclick="setUser(${+u.id},{role:${jsa(u.role==='admin'?'user':'admin')}})">${u.role==='admin'?'Make user':'Make admin'}</button>`:''}
-        <button class="ghost" onclick="resetLink(${u.id},'${esc(u.username)}')">Password link</button>`:''}
-        ${canEdit(u)&&u.id!==ME.user.id&&!u.no_account?`<button class="ghost" onclick="editDetails(${+u.id},${jsa(u.full_name||'')},${jsa(u.position||'')})">Edit details</button>`:''}</td></tr>`).join('')}</table>
-      <p class="sub">Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).</p>`;
+    const ghost=(label,onclick)=>h('button',{class:'ghost',onclick},label), other=u=>u.role==='admin'?'user':'admin';
+    const actions=u=>{
+      const out=[];
+      if(u.no_account){ if(canEdit(u)){
+          if(u.active) out.push(ghost('Remove devices',()=>confirm('Remove all devices of '+u.username+'? They stop syncing.')&&setPerson(u.person,{active:false})));
+          if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setPerson(u.person,{role:other(u)}))) } }
+      else if(canEdit(u)&&u.id!==ME.user.id){
+        out.push(ghost(u.active?'Deactivate':'Activate',()=>setUser(+u.id,{active:!u.active})));
+        if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setUser(+u.id,{role:other(u)})));
+        out.push(ghost('Password link',()=>resetLink(u.id,u.username)));
+      }
+      if(canEdit(u)&&u.id!==ME.user.id&&!u.no_account) out.push(ghost('Edit details',()=>editDetails(+u.id,u.full_name||'',u.position||'')));
+      return out;
+    };
+    const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); createUser(F) }},h('input',{name:'full_name',placeholder:'Full name',required:true,maxlength:80,style:'min-width:200px'}),
+      h('input',{name:'position',placeholder:'Position (optional)',maxlength:80}),h('input',{name:'username',placeholder:'username',required:true,maxlength:40}),
+      h('select',{name:'role'},h('option',{value:'user'},'user'),isManager()?h('option',{value:'admin'},'admin'):null),h('button',{class:'primary'},'Create and get link'));
+    put($('#main'),h('div',{class:'card server-only'},h('h3',null,'Add an account'),F,
+        h('div',{class:'sub'},'There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.'),h('div',{id:'newlink'})),
+      table(head('Name','Username','Role','Status',''),U.map(u=>h('tr',null,
+        h('td',null,u.full_name?u.full_name:h('span',{class:'del'},'no name yet'),u.position?h('div',{class:'sub'},u.position):null),
+        h('td',{class:'mono'},u.username,u.id===ME.user.id?[' ',h('span',{class:'sub'},'(you)')]:null),
+        h('td',null,u.role),
+        h('td',null,u.no_account?(u.active?[`own device${u.devices===1?'':'s'} `,h('span',{class:'sub'},`(${u.devices})`)]:h('span',{class:'del'},'all devices removed'))
+                    :u.active?(u.has_password?'active':h('span',{class:'sub'},'link not used yet')):h('span',{class:'del'},'deactivated')),
+        h('td',{class:'row'},actions(u))))),
+      h('p',{class:'sub'},`Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).`));
   },
   async devices(){
     const D=await K.api('/api/devices'), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
-    const devRow=(d,mine)=>`<tr><td>${esc(d.label||'device')}${d.this_computer?' <span class="sub">(this one)</span>':''}${mine?'':`<div class="sub">${esc(d.username)}</div>`}</td>
-      <td class="mono sub">${esc(d.device.slice(0,12))}…</td><td>${d.revoked?'<span class="del">removed</span>':'active'}</td>
-      <td>${!d.revoked&&!d.this_computer?`<button class="ghost" onclick="confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:${jsa(d.device)}}),'Device removed')">Remove</button>`:''}</td></tr>`;
-    let h=`<div class="card"><h3>Your devices</h3><table>${D.mine.map(d=>devRow(d,true)).join('')}</table>
-      <div class="sub">A lost or stolen phone or laptop: remove it here from any of your other devices (or ask an admin). Its changes made after that don't count anywhere.</div></div>
-      <div class="card"><h3>Syncing</h3><div class="sub">This ${D.mode==='peer'?'computer':'server'}: <span class="mono">${esc((D.node||'').slice(0,12))}…</span> · sync port ${D.sync_port||'off'} · finding devices on this Wi-Fi: ${esc(S.discovery)}</div>
-      <table><tr><th>Device</th><th>Address</th><th>Last sync</th><th></th></tr>${Object.values(S.syncs).map(s=>`<tr><td>${esc(s.name||(s.peer?s.peer.slice(0,12)+'…':'unknown device'))}</td><td class="mono sub">${esc(s.address||'')}</td>
-        <td>${ago(s.at)} ${s.ok?`<span class="sub">received ${s.result.received}, sent ${s.result.sent}${s.result.they_denied?' · it does not know this device yet':''}${s.result.denied?' · not certified here: sent nothing':''}</span>`:`<span class="del">${esc(s.error||'failed')}</span>`}</td><td></td></tr>`).join('')||'<tr><td colspan="4" class="sub">No syncs yet.</td></tr>'}</table>
-      ${S.found.length?`<div class="sub" style="margin-top:6px">Found on this Wi-Fi: ${S.found.map(f=>esc(f.name||f.host)).join(', ')}</div>`:''}
-      <form class="inline" onsubmit="event.preventDefault();syncNow(this.address.value)"><button class="primary" type="button" onclick="syncNow('')">Sync now</button>
-      <input name="address" placeholder="or an address, e.g. 192.168.1.20" style="min-width:220px"><button class="ghost">Sync with it</button></form></div>
-      <div class="card"><h3>Internet</h3>${(()=>{const N=S.internet||{};return `<div class="sub">${N.relay?`Relay <span class="mono">${esc(N.relay)}</span> · ${esc(N.state||'')}${N.online?.length?` · online there: ${N.online.map(p=>esc(D.names?.[p]||p.slice(0,8)+'…')).join(', ')}`:''}`
-        :'No internet relay set: devices sync only on the same network (or with files).'} Everything that passes the relay is end-to-end encrypted between devices: it can't read plant data.</div>
-        ${isManager()?`<form class="inline" style="margin-top:6px" onsubmit="event.preventDefault();setRelay(this.url.value)"><input name="url" value="${esc(N.relay||'')}" placeholder="wss://kks-relay.….workers.dev" style="min-width:280px"><button class="ghost">Save</button></form>`:''}`})()}</div>
-      ${isManager()?`<div class="card"><h3>Plant name</h3><div class="sub">Shown next to Walkdown on every device. Leave it empty for none.</div>
-        <form class="inline" style="margin-top:6px" onsubmit="event.preventDefault();setPlantName(this.name.value)"><input name="name" aria-label="Plant name" maxlength="80" value="${esc(K.cfg?.plant_name||'')}" style="min-width:280px"><button class="ghost">Save</button></form></div>`:''}
-      <div class="card"><h3>Bundle files</h3><div class="sub">A bundle carries the plant log (optionally with photos) by USB or messaging, where Wi-Fi sync can't reach. It is not encrypted: treat it like a copy of the database.</div>
-      <div class="row" style="margin-top:8px">${isAdmin()?`<a class="ghost" href="/api/bundle" onclick="return exportBundle(0)" style="text-decoration:none;color:inherit">Export bundle</a><a class="ghost" href="/api/bundle?photos=1" onclick="return exportBundle(1)" style="text-decoration:none;color:inherit">Export with photos</a>`:''}
-      <label class="ghost" style="cursor:pointer">Import a bundle<input type="file" accept=".kksbundle" hidden onchange="importBundle(this)"></label></div></div>`;
-    if(isAdmin()) h+=`<div class="card"><h3>Add a device with a QR code</h3><div class="sub">For someone next to you on the same network: they choose "Join with a QR code" when they set up the app and scan this. You then see who asks and accept; their device syncs the plant from this ${K.cfg?.app?'phone':D.mode==='peer'?'computer':'server'}. No files needed. The code works once, for 15 minutes.</div>
-      <div id="invite"><button class="primary" style="margin-top:8px" onclick="startInvite()">Show QR code</button></div></div>
-      <div class="card"><h3>Waiting to join</h3><div class="sub">Devices on this Wi-Fi that asked without a code (“Ask an admin on this Wi-Fi”). Accept only if the code next to the name is the one on their screen.</div><div id="lobby"></div></div>
-      <div class="card"><h3>Add a computer from a join request</h3><div class="sub">Someone set up the app on their laptop and gave you a <span class="mono">.kksjoin</span> file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.</div>
-      <label class="primary" style="display:inline-block;margin-top:8px;cursor:pointer">Import join request<input type="file" accept=".kksjoin,.json" hidden onchange="importJoin(this)"></label></div>
-      <div class="card"><h3>All devices</h3><table>${D.all.map(d=>devRow(d,false)).join('')}</table></div>`;
-    $('#main').innerHTML=h;
+    const devRow=(d,mine)=>h('tr',null,h('td',null,d.label||'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:null,mine?null:h('div',{class:'sub'},d.username)),
+      h('td',{class:'mono sub'},`${d.device.slice(0,12)}…`),h('td',null,d.revoked?h('span',{class:'del'},'removed'):'active'),
+      h('td',null,!d.revoked&&!d.this_computer?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove'):null));
+    const N=S.internet||{}, syncs=Object.values(S.syncs);
+    const addr=h('input',{name:'address',placeholder:'or an address, e.g. 192.168.1.20',style:'min-width:220px'});
+    const relay=h('input',{name:'url',value:N.relay||'',placeholder:'wss://kks-relay.….workers.dev',style:'min-width:280px'});
+    const plant=h('input',{name:'name','aria-label':'Plant name',maxlength:80,value:K.cfg?.plant_name||'',style:'min-width:280px'});
+    const exportLink=(photos,label)=>{ const a=h('a',{class:'ghost',style:'text-decoration:none;color:inherit',onclick:e=>{ if(!exportBundle(photos)) e.preventDefault() }},label);
+      if(photos) a.href='/api/bundle?photos=1'; else a.href='/api/bundle'; return a };
+    const out=[h('div',{class:'card'},h('h3',null,'Your devices'),table(D.mine.map(d=>devRow(d,true))),
+        h('div',{class:'sub'},'A lost or stolen phone or laptop: remove it here from any of your other devices (or ask an admin). Its changes made after that don\'t count anywhere.')),
+      h('div',{class:'card'},h('h3',null,'Syncing'),
+        h('div',{class:'sub'},`This ${D.mode==='peer'?'computer':'server'}: `,h('span',{class:'mono'},`${(D.node||'').slice(0,12)}…`),` · sync port ${D.sync_port||'off'} · finding devices on this Wi-Fi: ${S.discovery??''}`),
+        table(head('Device','Address','Last sync',''),syncs.length?syncs.map(s=>h('tr',null,h('td',null,s.name||(s.peer?s.peer.slice(0,12)+'…':'unknown device')),h('td',{class:'mono sub'},s.address||''),
+            h('td',null,ago(s.at)+' ',s.ok?h('span',{class:'sub'},`received ${s.result.received}, sent ${s.result.sent}${s.result.they_denied?' · it does not know this device yet':''}${s.result.denied?' · not certified here: sent nothing':''}`)
+                                     :h('span',{class:'del'},s.error||'failed')),h('td')))
+          :h('tr',null,h('td',{colspan:4,class:'sub'},'No syncs yet.'))),
+        S.found.length?h('div',{class:'sub',style:'margin-top:6px'},'Found on this Wi-Fi: '+S.found.map(f=>f.name||f.host).join(', ')):null,
+        h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); syncNow(addr.value) }},h('button',{class:'primary',type:'button',onclick:()=>syncNow('')},'Sync now'),
+          addr,h('button',{class:'ghost'},'Sync with it'))),
+      h('div',{class:'card'},h('h3',null,'Internet'),
+        h('div',{class:'sub'},N.relay?['Relay ',h('span',{class:'mono'},N.relay),` · ${N.state||''}`+(N.online?.length?` · online there: ${N.online.map(p=>D.names?.[p]||p.slice(0,8)+'…').join(', ')}`:'')]
+          :'No internet relay set: devices sync only on the same network (or with files).',' Everything that passes the relay is end-to-end encrypted between devices: it can\'t read plant data.'),
+        isManager()?h('form',{class:'inline',style:'margin-top:6px',onsubmit:e=>{ e.preventDefault(); setRelay(relay.value) }},relay,h('button',{class:'ghost'},'Save')):null),
+      isManager()?h('div',{class:'card'},h('h3',null,'Plant name'),h('div',{class:'sub'},'Shown next to Walkdown on every device. Leave it empty for none.'),
+        h('form',{class:'inline',style:'margin-top:6px',onsubmit:e=>{ e.preventDefault(); setPlantName(plant.value) }},plant,h('button',{class:'ghost'},'Save'))):null,
+      h('div',{class:'card'},h('h3',null,'Bundle files'),h('div',{class:'sub'},'A bundle carries the plant log (optionally with photos) by USB or messaging, where Wi-Fi sync can\'t reach. It is not encrypted: treat it like a copy of the database.'),
+        h('div',{class:'row',style:'margin-top:8px'},isAdmin()?[exportLink(0,'Export bundle'),exportLink(1,'Export with photos')]:null,
+          h('label',{class:'ghost',style:'cursor:pointer'},'Import a bundle',h('input',{type:'file',accept:'.kksbundle',hidden:true,onchange:e=>importBundle(e.currentTarget)}))))];
+    if(isAdmin()) out.push(h('div',{class:'card'},h('h3',null,'Add a device with a QR code'),
+        h('div',{class:'sub'},`For someone next to you on the same network: they choose "Join with a QR code" when they set up the app and scan this. You then see who asks and accept; their device syncs the plant from this ${K.cfg?.app?'phone':D.mode==='peer'?'computer':'server'}. No files needed. The code works once, for 15 minutes.`),
+        h('div',{id:'invite'},qrButton())),
+      h('div',{class:'card'},h('h3',null,'Waiting to join'),h('div',{class:'sub'},'Devices on this Wi-Fi that asked without a code (“Ask an admin on this Wi-Fi”). Accept only if the code next to the name is the one on their screen.'),h('div',{id:'lobby'})),
+      h('div',{class:'card'},h('h3',null,'Add a computer from a join request'),
+        h('div',{class:'sub'},'Someone set up the app on their laptop and gave you a ',h('span',{class:'mono'},'.kksjoin'),' file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.'),
+        h('label',{class:'primary',style:'display:inline-block;margin-top:8px;cursor:pointer'},'Import join request',h('input',{type:'file',accept:'.kksjoin,.json',hidden:true,onchange:e=>importJoin(e.currentTarget)}))),
+      h('div',{class:'card'},h('h3',null,'All devices'),table(D.all.map(d=>devRow(d,false)))));
+    put($('#main'),out);
     if(isAdmin()) pollLobby();
   },
   async history(before){
     const R=(await K.api('/api/revisions'+(before?`?before=${before}`:''))).revisions;
+    const str=v=>String(v??''), add=t=>h('span',{class:'add'},t), del=t=>h('span',{class:'del'},t);
     const summary=r=>{ const a=r.after?JSON.parse(r.after):null, b=r.before?JSON.parse(r.before):null;
-      if(r.entity==='user') return esc(r.note);
-      if(r.entity==='sheet') return `<span class="mono">${esc(r.key)}</span> ${esc(r.note)}`;
-      if(r.entity==='link'){ const [p,s,k]=JSON.parse(r.key); return `${a?'<span class="add">linked</span>':'<span class="del">unlinked</span>'} ${esc(k)} · proc ${esc(p)} step ${s}` }
-      if(r.entity==='added_tag'){ const t=a||b; return `${a?'<span class="add">tag marked</span>':'<span class="del">marked tag removed</span>'} ${esc(t.isa||'')} ${esc((t.kks||'(no code)')+(t.suffix||''))} on ${esc(t.sheet)}` }
-      if(r.entity==='photo') return a?`<span class="add">photo added</span> ${esc(a.kks)}`:`<span class="del">photo removed</span> ${esc(b?.kks||'')}`;
+      if(r.entity==='user') return str(r.note);
+      if(r.entity==='sheet') return [h('span',{class:'mono'},str(r.key)),' '+str(r.note)];
+      if(r.entity==='link'){ const [p,s,k]=JSON.parse(r.key); return [a?add('linked'):del('unlinked'),` ${str(k)} · proc ${str(p)} step ${s}`] }
+      if(r.entity==='added_tag'){ const t=a||b; return [a?add('tag marked'):del('marked tag removed'),` ${t.isa||''} ${(t.kks||'(no code)')+(t.suffix||'')} on ${str(t.sheet)}`] }
+      if(r.entity==='photo') return a?[add('photo added'),' '+str(a.kks)]:[del('photo removed'),' '+(b?.kks||'')];
       if(r.entity==='equipment'){ const keys=[...new Set([...Object.keys(a||{}),...Object.keys(b||{})])].filter(k=>JSON.stringify((a||{})[k])!==JSON.stringify((b||{})[k]));
-        return `${esc(r.key)}: `+keys.map(k=>`${esc(k)} ${val((b||{})[k])} → ${val((a||{})[k])}`).join(' · ') }
-      return `${esc(r.entity)} ${esc(r.key)}: ${val(b)} → ${val(a)}` };
-    $('#main').innerHTML=`<p class="sub">Every applied change, newest first. <b>Revert</b> undoes one change. <b>Restore to here</b> puts all data (notes, locations, photos, links, reviews) back to how it was right after that change. Both are new entries themselves, so they can be undone too. Accounts are not affected.</p>
-      <table><tr><th>Rev</th><th>When</th><th>By</th><th>Change</th><th></th></tr>${R.map(r=>`<tr><td class="mono">${r.rev}</td><td class="sub">${when(r.ts)}</td><td>${esc(r.full_name||r.username||'server console')}</td>
-      <td>${summary(r)}${r.note&&!['user','sheet'].includes(r.entity)?` <span class="sub">(${esc(r.note)})</span>`:''}</td>
-      <td class="row">${!['user','sheet'].includes(r.entity)?`<button class="ghost" onclick="revert('${r.hid}')">Revert</button><button class="ghost" onclick="restoreTo('${r.hid}',${r.rev})">Restore to here</button>`:''}</td></tr>`).join('')}</table>
-      ${R.length?`<div class="row" style="margin-top:10px">${R.length===100?`<button class="ghost" onclick="VIEWS.history(${R[R.length-1].rev})">Older →</button>`:''}${isAdmin()?`<button class="danger" onclick="restoreTo(0)">Restore to before any logged change</button>`:''}</div>`:'<p class="sub">No changes yet.</p>'}`;
+        return [`${str(r.key)}: `,keys.map((k,i)=>[i?' · ':'',`${k} `,val((b||{})[k]),' → ',val((a||{})[k])])] }
+      return [`${str(r.entity)} ${str(r.key)}: `,val(b),' → ',val(a)] };
+    put($('#main'),h('p',{class:'sub'},'Every applied change, newest first. ',h('b',null,'Revert'),' undoes one change. ',h('b',null,'Restore to here'),' puts all data (notes, locations, photos, links, reviews) back to how it was right after that change. Both are new entries themselves, so they can be undone too. Accounts are not affected.'),
+      table(head('Rev','When','By','Change',''),R.map(r=>h('tr',null,h('td',{class:'mono'},r.rev),h('td',{class:'sub'},when(r.ts)),h('td',null,r.full_name||r.username||'server console'),
+        h('td',null,summary(r),r.note&&!['user','sheet'].includes(r.entity)?[' ',h('span',{class:'sub'},`(${r.note})`)]:null),
+        h('td',{class:'row'},!['user','sheet'].includes(r.entity)?[h('button',{class:'ghost',onclick:()=>revert(String(r.hid))},'Revert'),h('button',{class:'ghost',onclick:()=>restoreTo(String(r.hid),r.rev)},'Restore to here')]:null)))),
+      R.length?h('div',{class:'row',style:'margin-top:10px'},R.length===100?h('button',{class:'ghost',onclick:()=>VIEWS.history(R[R.length-1].rev)},'Older →'):null,
+                                                          isAdmin()?h('button',{class:'danger',onclick:()=>restoreTo(0)},'Restore to before any logged change'):null)
+              :h('p',{class:'sub'},'No changes yet.'));
   },
   async drawings(){
     const D=await K.api('/api/sheets'), imp=D.importer, job=D.job;
     const busy=job?.state==='running', ids=new Set(D.sheets.map(s=>s.id)), pd=D.plant_data||{};
-    let h=`<div class="sub" style="margin-bottom:8px">${pd.version?`Plant data version ${pd.version}`:'No plant data published yet'}: every import or removal publishes a new version, and every device gets it by sync.</div><div class="card"><h3>Add a drawing</h3>`;
-    if(!imp.available) h+=`<div class="warn bad">The importer isn't set up on the server: ${esc(imp.error)}</div>
-      <div class="sub">The server's <span class="mono">kks-import</span> is installed with it (<span class="mono">deploy/install-server-user.sh</span>; config key <span class="mono">importer</span>). Then reload this page.</div>`;
-    else h+=`<form id="impForm" onsubmit="event.preventDefault();startImport(this)">
-      <div class="row"><input type="file" name="pdf" accept="application/pdf,.pdf" required onchange="impFile(this)">
-      <input name="name" placeholder="Name, e.g. Condensate System" required maxlength="80" style="flex:1;min-width:200px" oninput="impName(this)">
-      <input name="id" placeholder="sheet id" required maxlength="24" style="width:150px" class="mono" oninput="impId(this)"></div>
-      <div class="row" style="margin-top:8px"><label>Orientation <select name="rotate"><option value="auto">Auto</option><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
-      <label id="impReplace" style="display:none"><input type="checkbox" name="replace"> Replace the existing sheet with this id</label>
-      <button class="primary" ${busy?'disabled':''}>Import</button></div>
-      <div class="sub" style="margin-top:6px">Vector PDFs plotted from AutoCAD only (scans won't work); page 1 is read. Takes about a minute. The tag list is backed up first and put back if the import fails.</div></form>`;
-    h+='</div><div id="job"></div>';
-    h+=`<table><tr><th>Drawing</th><th>Id</th><th>Tags</th><th></th></tr>${D.sheets.map(s=>`<tr><td>${esc(s.name)}<div class="sub">${s.w}×${s.h} px${s.notes?.length?` · ${s.notes.length} markup note(s)`:''}</div></td>
-      <td class="mono">${esc(s.id)}</td><td class="sub">${s.tags.auto||0} auto · ${s.tags.verified||0} verified · ${s.tags.review||0} to review</td>
-      <td class="row"><a class="ghost" href="/?sheet=${encodeURIComponent(s.id)}" style="text-decoration:none;color:inherit">Open</a>
-      ${s.has_source&&imp.available?`<select id="rot-${esc(s.id)}"><option value="auto">auto</option><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select><button class="ghost" ${busy?'disabled':''} onclick="reimport(${jsa(s.id)},document.getElementById(${jsa('rot-'+s.id)}).value)">Re-import</button>`:''}
-      <button class="danger" ${busy?'disabled':''} onclick="removeSheet(${jsa(s.id)},${jsa(s.name)})">Remove</button></td></tr>`).join('')}</table>
-      <p class="sub">Remove takes the sheet and its tags out of the app. The image, tag list and uploaded PDF stay in the server's backups folder. Notes, photos and procedure links are stored per KKS, so they come back if the sheet is imported again.</p>`;
-    $('#main').innerHTML=h; window._sheetIds=ids; renderJob(job);
+    const rotations=(props,auto)=>h('select',props,h('option',{value:'auto'},auto),['0','90','180','270'].map(v=>h('option',{value:v},v+'°')));
+    const card=h('div',{class:'card'},h('h3',null,'Add a drawing'));
+    if(!imp.available) card.append(h('div',{class:'warn bad'},`The importer isn't set up on the server: ${imp.error??''}`),
+      h('div',{class:'sub'},'The server\'s ',h('span',{class:'mono'},'kks-import'),' is installed with it (',h('span',{class:'mono'},'deploy/install-server-user.sh'),'; config key ',
+        h('span',{class:'mono'},'importer'),'). Then reload this page.'));
+    else{ const F=h('form',{id:'impForm',onsubmit:e=>{ e.preventDefault(); startImport(F) }},
+        h('div',{class:'row'},h('input',{type:'file',name:'pdf',accept:'application/pdf,.pdf',required:true,onchange:e=>impFile(e.currentTarget)}),
+          h('input',{name:'name',placeholder:'Name, e.g. Condensate System',required:true,maxlength:80,style:'flex:1;min-width:200px',oninput:e=>impName(e.currentTarget)}),
+          h('input',{name:'id',placeholder:'sheet id',required:true,maxlength:24,style:'width:150px',class:'mono',oninput:e=>impId(e.currentTarget)})),
+        h('div',{class:'row',style:'margin-top:8px'},h('label',null,'Orientation ',rotations({name:'rotate'},'Auto')),
+          h('label',{id:'impReplace',style:'display:none'},h('input',{type:'checkbox',name:'replace'}),' Replace the existing sheet with this id'),
+          h('button',{class:'primary',disabled:busy},'Import')),
+        h('div',{class:'sub',style:'margin-top:6px'},'Vector PDFs plotted from AutoCAD only (scans won\'t work); page 1 is read. Takes about a minute. The tag list is backed up first and put back if the import fails.'));
+      card.append(F) }
+    put($('#main'),h('div',{class:'sub',style:'margin-bottom:8px'},`${pd.version?`Plant data version ${pd.version}`:'No plant data published yet'}: every import or removal publishes a new version, and every device gets it by sync.`),
+      card,h('div',{id:'job'}),
+      table(head('Drawing','Id','Tags',''),D.sheets.map(s=>{
+        const rot=s.has_source&&imp.available?rotations({id:'rot-'+s.id},'auto'):null;
+        return h('tr',null,h('td',null,s.name,h('div',{class:'sub'},`${s.w}×${s.h} px${s.notes?.length?` · ${s.notes.length} markup note(s)`:''}`)),
+          h('td',{class:'mono'},s.id),h('td',{class:'sub'},`${s.tags.auto||0} auto · ${s.tags.verified||0} verified · ${s.tags.review||0} to review`),
+          h('td',{class:'row'},appLink('/?sheet='+encodeURIComponent(s.id),{class:'ghost',style:'text-decoration:none;color:inherit'},'Open'),
+            rot?[rot,h('button',{class:'ghost',disabled:busy,onclick:()=>reimport(s.id,rot.value)},'Re-import')]:null,
+            h('button',{class:'danger',disabled:busy,onclick:()=>removeSheet(s.id,s.name)},'Remove')))})),
+      h('p',{class:'sub'},'Remove takes the sheet and its tags out of the app. The image, tag list and uploaded PDF stay in the server\'s backups folder. Notes, photos and procedure links are stored per KKS, so they come back if the sheet is imported again.'));
+    window._sheetIds=ids; renderJob(job);
     if(busy) pollJob();
   },
   async account(){
     if(K.online){ try{ ME=await K.api('/api/me') }catch(e){} }
     const sw=!!navigator.serviceWorker?.controller, secure=window.isSecureContext;
     const lease=await K.idb.get('me');
-    let h=`<div class="card"><h3>Your details</h3>${ME.user.full_name?'':'<div class="warn">Add your full name, so others can tell whose account this is.</div>'}
-      <form class="inline" onsubmit="event.preventDefault();saveDetails(this)"><input name="full_name" placeholder="Full name" value="${esc(ME.user.full_name)}" required maxlength="80" style="min-width:220px">
-      <input name="position" placeholder="Position (optional)" value="${esc(ME.user.position)}" maxlength="80"><button class="primary">Save</button></form>
-      <div class="sub">Username <span class="mono">${esc(ME.user.username)}</span> · ${ME.user.role}</div></div>
-      <div class="card server-only"><h3>Password</h3>
-      <form class="inline" onsubmit="event.preventDefault();changePw(this)"><input type="password" name="old" placeholder="current password" autocomplete="current-password" required>
-      <input type="password" name="new" placeholder="new password (10+)" autocomplete="new-password" required minlength="10"><button class="primary">Change password</button></form></div>`;
-    if(ME.transfer_offer) h+=`<div class="card"><h3>The manager wants to hand the manager role to you</h3><div class="sub">You would become the single top account. The current manager becomes an admin.</div>
-      <div class="row" style="margin-top:8px"><button class="primary" onclick="mgr('accept')">Accept</button><button class="ghost" onclick="mgr('decline')">Decline</button></div></div>`;
+    const D=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); saveDetails(D) }},
+      h('input',{name:'full_name',placeholder:'Full name',value:ME.user.full_name??'',required:true,maxlength:80,style:'min-width:220px'}),
+      h('input',{name:'position',placeholder:'Position (optional)',value:ME.user.position??'',maxlength:80}),h('button',{class:'primary'},'Save'));
+    const P=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); changePw(P) }},
+      h('input',{type:'password',name:'old',placeholder:'current password',autocomplete:'current-password',required:true}),
+      h('input',{type:'password',name:'new',placeholder:'new password (10+)',autocomplete:'new-password',required:true,minlength:10}),h('button',{class:'primary'},'Change password'));
+    const out=[h('div',{class:'card'},h('h3',null,'Your details'),ME.user.full_name?null:h('div',{class:'warn'},'Add your full name, so others can tell whose account this is.'),D,
+        h('div',{class:'sub'},'Username ',h('span',{class:'mono'},ME.user.username),` · ${ME.user.role}`)),
+      h('div',{class:'card server-only'},h('h3',null,'Password'),P)];
+    if(ME.transfer_offer) out.push(h('div',{class:'card'},h('h3',null,'The manager wants to hand the manager role to you'),
+      h('div',{class:'sub'},'You would become the single top account. The current manager becomes an admin.'),
+      h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'primary',onclick:()=>mgr('accept')},'Accept'),h('button',{class:'ghost',onclick:()=>mgr('decline')},'Decline'))));
     if(isManager()){
       const t=ME.transfer_pending;
-      h+=`<div class="card server-only"><h3>Hand over the manager role</h3>${t?`<div>Offered to <b>${esc(t.to_name)}</b>, waiting for them to accept (until ${when(t.expires)}). <button class="ghost" onclick="mgr('cancel')">Cancel offer</button></div>`:
-        `<div class="sub">Only to an existing admin. They must accept; you then become an admin. If the manager account is ever lost, whoever runs the server can name another account manager with <span class="mono">kks-server reset-manager --user NAME</span>.</div>
-        <form class="inline" onsubmit="event.preventDefault();mgr('transfer',{username:this.username.value,password:this.password.value})"><input name="username" placeholder="admin username" required>
-        <input type="password" name="password" placeholder="your password" autocomplete="current-password" required><button class="primary">Offer role</button></form>`}</div>`;
+      const T=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); mgr('transfer',{username:T.username.value,password:T.password.value}) }},
+        h('input',{name:'username',placeholder:'admin username',required:true}),
+        h('input',{type:'password',name:'password',placeholder:'your password',autocomplete:'current-password',required:true}),h('button',{class:'primary'},'Offer role'));
+      out.push(h('div',{class:'card server-only'},h('h3',null,'Hand over the manager role'),
+        t?h('div',null,'Offered to ',h('b',null,t.to_name),`, waiting for them to accept (until ${when(t.expires)}). `,h('button',{class:'ghost',onclick:()=>mgr('cancel')},'Cancel offer'))
+         :[h('div',{class:'sub'},'Only to an existing admin. They must accept; you then become an admin. If the manager account is ever lost, whoever runs the server can name another account manager with ',
+             h('span',{class:'mono'},'kks-server reset-manager --user NAME'),'.'),T]));
     }
-    h+=`<div class="card server-only"><h3>This device</h3><table>
-      <tr><td>Offline app</td><td>${sw?'installed: drawings and data you have opened work without the server':secure?'installing… reload once':'<span class="del">not available</span>: needs HTTPS (or localhost). Over plain http on the LAN the page works only while connected.'}</td></tr>
-      <tr><td>Offline access until</td><td>${lease?new Date(lease.lease_until).toLocaleString():'-'} <span class="sub">(renewed each time you connect; ${ME.offline_days} days)</span></td></tr>
-      <tr><td>Queued changes</td><td>${K.outbox.length}</td></tr></table>
-      <div class="row" style="margin-top:8px"><button class="ghost" onclick="K.flush()">Sync now</button><button class="danger" onclick="K.logout()">Log out and remove plant data from this device</button></div></div>`;
-    h+='<div id="upd"></div>';
-    $('#main').innerHTML=h;
+    out.push(h('div',{class:'card server-only'},h('h3',null,'This device'),table(
+        h('tr',null,h('td',null,'Offline app'),h('td',null,sw?'installed: drawings and data you have opened work without the server':secure?'installing… reload once'
+          :[h('span',{class:'del'},'not available'),': needs HTTPS (or localhost). Over plain http on the LAN the page works only while connected.'])),
+        h('tr',null,h('td',null,'Offline access until'),h('td',null,(lease?new Date(lease.lease_until).toLocaleString():'-')+' ',h('span',{class:'sub'},`(renewed each time you connect; ${ME.offline_days} days)`))),
+        h('tr',null,h('td',null,'Queued changes'),h('td',null,K.outbox.length))),
+      h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'ghost',onclick:()=>K.flush()},'Sync now'),h('button',{class:'danger',onclick:()=>K.logout()},'Log out and remove plant data from this device'))),
+      h('div',{id:'upd'}));
+    put($('#main'),out);
     if(!K.cfg?.app) renderUpdate();   // (the Android app shows updates in its own Account tab)
   },
 };
@@ -312,18 +371,19 @@ async function reimport(id,rotate){
 function removeSheet(id,name){ confirm(`Remove "${name}" (${id}) from the app?`)&&act(()=>K.api(`/api/sheets/${encodeURIComponent(id)}/remove`,{}),'Sheet removed') }
 function renderJob(job){
   const el=$('#job'); if(!el||!job) return;
-  const r=job.result, head={running:'Importing…',done:'Import finished',failed:'Import failed'}[job.state];
-  let h=`<div class="card"><h3>${head} · ${esc(job.name)} (${esc(job.sheet)})</h3><div class="sub">by ${esc(job.by)} · orientation ${esc(job.rotate)}${job.state==='running'?' · this page updates by itself':''}</div>
-    <pre class="linkbox" style="max-height:220px;overflow:auto;white-space:pre-wrap">${esc(job.log.join('\n'))}</pre>`;
+  const r=job.result, title={running:'Importing…',done:'Import finished',failed:'Import failed'}[job.state], str=v=>String(v??'');
+  const card=h('div',{class:'card'},h('h3',null,`${title} · ${str(job.name)} (${str(job.sheet)})`),
+    h('div',{class:'sub'},`by ${str(job.by)} · orientation ${str(job.rotate)}${job.state==='running'?' · this page updates by itself':''}`),
+    h('pre',{class:'linkbox',style:'max-height:220px;overflow:auto;white-space:pre-wrap'},job.log.join('\n')));
   if(job.state==='done'&&r){
     const back=(r.rotation+180)%360;
-    h+=`<div><b>${r.auto}</b> tags read automatically, <b>${r.review}</b> in the review queue${r.notes?`, ${r.notes} markup note(s)`:''}.${job.version?` Published as plant data version ${job.version}.`:''}</div>
-      <div class="sub" style="margin:6px 0">Check the preview is upright. Auto orientation retries sheets that read badly, but it isn't guaranteed.</div>
-      <img src="data/sheets/${esc(r.id)}.png?v=${job.finished}" alt="" style="width:100%;max-height:420px;object-fit:contain;background:#fff;border-radius:4px" onclick="lightbox(this.src)">
-      <div class="row" style="margin-top:8px"><a class="primary" href="/?sheet=${encodeURIComponent(r.id)}" style="text-decoration:none">Open in viewer</a>
-      <button class="ghost" onclick="reimport(${jsa(r.id)},${jsa(String(back))})">Upside down? Re-import rotated to ${back}°</button></div>`;
+    card.append(h('div',null,h('b',null,String(r.auto)),' tags read automatically, ',h('b',null,String(r.review)),` in the review queue${r.notes?`, ${r.notes} markup note(s)`:''}.${job.version?` Published as plant data version ${job.version}.`:''}`),
+      h('div',{class:'sub',style:'margin:6px 0'},'Check the preview is upright. Auto orientation retries sheets that read badly, but it isn\'t guaranteed.'),
+      h('img',{src:`data/sheets/${r.id}.png?v=${job.finished}`,alt:'',style:'width:100%;max-height:420px;object-fit:contain;background:#fff;border-radius:4px',onclick:e=>lightbox(e.currentTarget.src)}),
+      h('div',{class:'row',style:'margin-top:8px'},appLink('/?sheet='+encodeURIComponent(r.id),{class:'primary',style:'text-decoration:none'},'Open in viewer'),
+        h('button',{class:'ghost',onclick:()=>reimport(r.id,String(back))},`Upside down? Re-import rotated to ${back}°`)));
   }
-  el.innerHTML=h+'</div>';
+  put(el,card);
 }
 let pollT=null;
 function pollJob(){ clearTimeout(pollT); pollT=setTimeout(async()=>{
@@ -344,7 +404,7 @@ const vote=id=>act(()=>K.api(`/api/submissions/${id}/vote`,{}));
 const withdraw=id=>confirm('Withdraw this submission?')&&act(()=>K.api(`/api/submissions/${id}/withdraw`,{}),'Withdrawn');
 async function createUser(f){
   const r=await act(()=>K.api('/api/users',{username:f.username.value.trim(),role:f.role.value,full_name:f.full_name.value,position:f.position.value}),'Account created');
-  if(r) $('#newlink').innerHTML=`<div class="warn">Give this link to <b>${esc(f.username.value)}</b> (valid ${r.expires_days} days, works once):<div class="linkbox">${esc(r.link)}</div></div>`;
+  if(r) put($('#newlink'),h('div',{class:'warn'},'Give this link to ',h('b',null,f.username.value),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link)));
 }
 const setUser=(id,d)=>act(()=>K.api(`/api/users/${id}`,d),'Updated');
 const exportBundle=photos=>{ if(!K.native) return true; K.native.saveApi('plant.kksbundle','/api/bundle'+(photos?'?photos=1':'')); return false };
@@ -359,14 +419,15 @@ let lobbyTimer=null, lobbySeen='';
 async function pollLobby(){
   clearTimeout(lobbyTimer);
   const el=$('#lobby'); if(!el) return;          // left the Devices page
-  let r; try{ r=await K.api('/api/join-requests') }catch(e){ el.innerHTML=`<div class="sub">${esc(e.message)}</div>`; return }
-  const key=JSON.stringify(r.requests.map(q=>[q.device,q.existing?.username]));
+  let r; try{ r=await K.api('/api/join-requests') }catch(e){ put(el,h('div',{class:'sub'},e.message)); return }
+  const key=JSON.stringify(r.requests.map(q=>[q.device,q.existing?.username])), str=v=>String(v??'');
   if(key!==lobbySeen||!el.firstChild){ lobbySeen=key;
-    el.innerHTML=r.requests.length?r.requests.map(q=>{const x=q.request;return `<div class="row" style="margin-top:8px;align-items:center">
-      <span style="font-family:var(--mono);font-size:18px;letter-spacing:2px">${q.code.slice(0,3)} ${q.code.slice(3)}</span>
-      <span><b>${esc(x.full_name)}</b> (${esc(x.username)}${x.position?', '+esc(x.position):''}) · “${esc(x.label||'?')}”${q.existing?`<br><span class="sub">${esc(q.existing.full_name)} (${esc(q.existing.username)}, ${esc(q.existing.role)}) already exists: accepting adds this device as theirs.</span>`:''}</span>
-      <button class="primary" onclick="decideLobby(${jsa(q.device)},'accept',${!!q.existing})">Accept</button><button class="ghost" onclick="decideLobby(${jsa(q.device)},'refuse')">Refuse</button></div>`}).join('')
-      :'<div class="sub" style="margin-top:6px">Nobody is waiting.</div>' }
+    put(el,r.requests.length?r.requests.map(q=>{const x=q.request, c=str(q.code);return h('div',{class:'row',style:'margin-top:8px;align-items:center'},
+      h('span',{style:'font-family:var(--mono);font-size:18px;letter-spacing:2px'},`${c.slice(0,3)} ${c.slice(3)}`),
+      h('span',null,h('b',null,str(x.full_name)),` (${str(x.username)}${x.position?', '+x.position:''}) · “${x.label||'?'}”`,
+        q.existing?[h('br'),h('span',{class:'sub'},`${str(q.existing.full_name)} (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null),
+      h('button',{class:'primary',onclick:()=>decideLobby(q.device,'accept',!!q.existing)},'Accept'),h('button',{class:'ghost',onclick:()=>decideLobby(q.device,'refuse')},'Refuse'))})
+      :h('div',{class:'sub',style:'margin-top:6px'},'Nobody is waiting.')) }
   lobbyTimer=setTimeout(pollLobby,2000);
 }
 async function decideLobby(device,action,existing){
@@ -375,38 +436,42 @@ async function decideLobby(device,action,existing){
 async function qrSvg(text){   // zxing-cpp in WebAssembly (decision 0037), error correction M, quiet zone included
   const {qrWrite}=await import('/kks-wasm.js'), q=await qrWrite(text), n=q.side; let d='';
   for(let y=0;y<n;y++) for(let x=0;x<n;x++) if(q.modules[y*n+x]<128) d+=`M${x},${y}h1v1h-1z`;
-  return `<svg viewBox="0 0 ${n} ${n}" width="280" height="280" shape-rendering="crispEdges" role="img" aria-label="Invite QR code" style="background:#fff;border-radius:6px;display:block;max-width:100%;height:auto"><path d="${d}" fill="#000"/></svg>`;
+  return K.svg('svg',{viewBox:`0 0 ${n} ${n}`,width:280,height:280,'shape-rendering':'crispEdges',role:'img','aria-label':'Invite QR code',
+    style:'background:#fff;border-radius:6px;display:block;max-width:100%;height:auto'},K.svg('path',{d,fill:'#000'}));
 }
+const qrButton=()=>h('button',{class:'primary',style:'margin-top:8px',onclick:()=>startInvite()},'Show QR code');
 let inviteTimer=null;
 async function startInvite(){
   clearTimeout(inviteTimer);
   let r; try{ r=await K.api('/api/invites',{}) }catch(e){ return toast(e.message) }
   const tok=r.invite.token, box=$('#invite');
   const qr=await qrSvg(r.code);
-  box.innerHTML=`<div class="row" style="align-items:flex-start;margin-top:8px"><div>${qr}</div>
-    <div style="flex:1;min-width:220px"><div class="sub">Plant ${esc(r.invite.plant||'')} · reachable at ${r.invite.addrs.map(esc).join(', ')}</div>
-    <div id="invstate" style="margin:8px 0">Waiting for a device to scan it…</div>
-    <details><summary class="sub" style="cursor:pointer">No camera? Copy the code instead</summary>
-    <textarea readonly rows="4" style="width:100%;font-family:var(--mono);font-size:11px" onclick="this.select()">${esc(r.code)}</textarea>
-    <button class="ghost" onclick="navigator.clipboard.writeText(${esc(JSON.stringify(r.code))}).then(()=>toast('Copied'))">Copy</button></details>
-    <button class="ghost" style="margin-top:8px" onclick="cancelInvite(${jsa(tok)})">Cancel</button></div></div>`;
+  put(box,h('div',{class:'row',style:'align-items:flex-start;margin-top:8px'},h('div',null,qr),
+    h('div',{style:'flex:1;min-width:220px'},h('div',{class:'sub'},`Plant ${r.invite.plant||''} · reachable at ${r.invite.addrs.join(', ')}`),
+      h('div',{id:'invstate',style:'margin:8px 0'},'Waiting for a device to scan it…'),
+      h('details',null,h('summary',{class:'sub',style:'cursor:pointer'},'No camera? Copy the code instead'),
+        h('textarea',{readonly:true,rows:4,style:'width:100%;font-family:var(--mono);font-size:11px',onclick:e=>e.currentTarget.select()},r.code),' ',
+        h('button',{class:'ghost',onclick:()=>navigator.clipboard.writeText(r.code).then(()=>toast('Copied'))},'Copy')),
+      h('button',{class:'ghost',style:'margin-top:8px',onclick:()=>cancelInvite(tok)},'Cancel'))));
   pollInvite(tok);
 }
 async function pollInvite(tok){
   const el=$('#invstate'); if(!el) return;            // left the Devices page
   let st; try{ st=await K.api(`/api/invites/${tok}`) }catch(e){ el.textContent=e.message; return }
-  const who=q=>`<b>${esc(q.full_name)}</b> (${esc(q.username)}${q.position?', '+esc(q.position):''}) · device “${esc(q.label||'?')}”`;
-  if(st.state==='open') el.innerHTML='Waiting for a device to scan it…';
+  const str=v=>String(v??''), who=q=>[h('b',null,str(q.full_name)),` (${str(q.username)}${q.position?', '+q.position:''}) · device “${q.label||'?'}”`];
+  if(st.state==='open') el.textContent='Waiting for a device to scan it…';
   else if(st.state==='asked'){ if(el.dataset.asked!==st.request.device){ el.dataset.asked=st.request.device;
-      el.innerHTML=`${who(st.request)} wants to join.${st.existing?`<div class="sub">${esc(st.existing.full_name)} (${esc(st.existing.username)}, ${esc(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.</div>`:'<div class="sub">A new person (role: user).</div>'}
-        <div class="row" style="margin-top:6px"><button class="primary" onclick="decideInvite('${tok}','accept',${!!st.existing})">Accept</button><button class="ghost" onclick="decideInvite('${tok}','refuse')">Refuse</button></div>` } }
-  else { el.innerHTML={accepted:`Accepted ${who(st.request)}. Their device is syncing the plant now.`,refused:'Refused.',cancelled:'Cancelled.',expired:'Expired. Show a new code if they still need one.'}[st.state]||esc(st.state); return }
+      put(el,who(st.request),' wants to join.',st.existing?h('div',{class:'sub'},`${str(st.existing.full_name)} (${str(st.existing.username)}, ${str(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.`)
+                                                    :h('div',{class:'sub'},'A new person (role: user).'),
+        h('div',{class:'row',style:'margin-top:6px'},h('button',{class:'primary',onclick:()=>decideInvite(tok,'accept',!!st.existing)},'Accept'),h('button',{class:'ghost',onclick:()=>decideInvite(tok,'refuse')},'Refuse'))) } }
+  else { const end={accepted:()=>['Accepted ',who(st.request),'. Their device is syncing the plant now.'],refused:()=>'Refused.',cancelled:()=>'Cancelled.',expired:()=>'Expired. Show a new code if they still need one.'};
+    put(el,Object.prototype.hasOwnProperty.call(end,st.state)?end[st.state]():str(st.state)); return }
   inviteTimer=setTimeout(()=>pollInvite(tok),1500);
 }
 async function decideInvite(tok,action,existing){
   try{ await K.api(`/api/invites/${tok}`,{action,existing_ok:!!existing}); clearTimeout(inviteTimer); pollInvite(tok) }catch(e){ toast(e.message) }
 }
-async function cancelInvite(tok){ clearTimeout(inviteTimer); try{ await K.api(`/api/invites/${tok}`,{action:'cancel'}) }catch(e){} $('#invite').innerHTML='<button class="primary" style="margin-top:8px" onclick="startInvite()">Show QR code</button>' }
+async function cancelInvite(tok){ clearTimeout(inviteTimer); try{ await K.api(`/api/invites/${tok}`,{action:'cancel'}) }catch(e){} put($('#invite'),qrButton()) }
 async function importJoin(inp,existing_ok){
   const f=inp.files?inp.files[0]:null, request=inp.request||JSON.parse(await f.text());
   try{ const r=await K.api('/api/devices/import-request',{request,existing_ok:!!existing_ok}); toast(`Certified a device for ${r.username}. Now give them a bundle.`); show('devices') }
@@ -417,7 +482,7 @@ async function importJoin(inp,existing_ok){
 async function resetLink(id,name){
   if(!confirm(`Create a new password link for ${name}? Their current password keeps working until they use it.`)) return;
   const r=await act(()=>K.api(`/api/users/${id}/reset`,{}));
-  if(r) $('#main').insertAdjacentHTML('afterbegin',`<div class="warn">Password link for <b>${esc(name)}</b> (valid ${r.expires_days} days, works once):<div class="linkbox">${esc(r.link)}</div></div>`);
+  if(r) $('#main').prepend(h('div',{class:'warn'},'Password link for ',h('b',null,name),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link)));
 }
 async function revert(rev,force){
   try{ await K.api(`/api/revisions/${rev}/revert`,{force:!!force}); toast('Reverted'); show('history') }
@@ -427,21 +492,24 @@ const restoreTo=(hid,rev)=>confirm(hid?`Put all plant data back to how it was ri
 // ---------- updates (M5b): signed GitHub releases, checked daily, installed only when asked ----------
 async function renderUpdate(u){
   const el=$('#upd'); if(!el) return;
-  try{ u=u||await K.api('/api/update') }catch(e){ el.innerHTML=''; return }   // (server: admins only)
-  const mayAct=K.cfg?.mode==='peer'||isManager();
-  let h=`<div class="card"><h3>Updates</h3><div>This is version <b>${esc(u.current)}</b>.</div>`;
-  if(u.staged) h+=`<div class="warn" style="margin-top:8px">Version ${esc(u.staged)} is installed: close Walkdown (Quit) and start it again to use it.</div>`;
-  else if(u.busy) h+=`<div class="sub" style="margin-top:8px">${u.busy==='unpacking'?'Unpacking…':'Downloading…'} this page updates by itself.</div>`;
+  try{ u=u||await K.api('/api/update') }catch(e){ el.replaceChildren(); return }   // (server: admins only)
+  const mayAct=K.cfg?.mode==='peer'||isManager(), str=v=>String(v??'');
+  const out=[h('h3',null,'Updates'),h('div',null,'This is version ',h('b',null,str(u.current)),'.')];
+  if(u.staged) out.push(h('div',{class:'warn',style:'margin-top:8px'},`Version ${u.staged} is installed: close Walkdown (Quit) and start it again to use it.`));
+  else if(u.busy) out.push(h('div',{class:'sub',style:'margin-top:8px'},`${u.busy==='unpacking'?'Unpacking…':'Downloading…'} this page updates by itself.`));
   else if(u.available){
-    h+=`<div style="margin-top:8px"><b>Version ${esc(u.latest)} is out.</b> ${u.page?`<a href="${esc(u.page)}" target="_blank" rel="noopener">What's new</a>`:''}</div>`
-      +(u.notes?`<pre class="linkbox" style="max-height:160px;overflow:auto;white-space:pre-wrap">${esc(u.notes)}</pre>`:'')
-      +(u.can_install&&mayAct?`<div class="row" style="margin-top:8px"><button class="primary" onclick="installUpdate()">Download and install</button></div>
-          <div class="sub">Checked against the release's signature before anything is installed; your data stays where it is. It runs from the next start.</div>`
-        :`<div class="sub" style="margin-top:6px">${u.how==='git'?'This copy runs from source: update it with <span class="mono">git pull</span> and restart it.':'There is no package of it for this system.'}</div>`);
-  } else if(u.latest) h+=`<div class="sub" style="margin-top:6px">Up to date.</div>`;
-  if(u.error) h+=`<div class="sub del" style="margin-top:6px">Last check: ${esc(u.error)}</div>`;
-  h+=`<div class="row" style="margin-top:8px">${mayAct?'<button class="ghost" onclick="checkUpdate()">Check now</button>':''}<span class="sub">${u.checked?`Checked ${K.ago(u.checked)}`:'Not checked yet'}${u.auto?' · checks by itself once a day':' · automatic checks are off (update_check)'}</span></div></div>`;
-  el.innerHTML=h;
+    let page=null;   // the release page, from the update check: http(s) only
+    if(u.page){ page=h('a',{target:'_blank',rel:'noopener'},'What\'s new'); page.href=K.safeUrl(u.page) }
+    out.push(h('div',{style:'margin-top:8px'},h('b',null,`Version ${str(u.latest)} is out.`),' ',page),
+      u.notes?h('pre',{class:'linkbox',style:'max-height:160px;overflow:auto;white-space:pre-wrap'},u.notes):null,
+      u.can_install&&mayAct?[h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'primary',onclick:()=>installUpdate()},'Download and install')),
+          h('div',{class:'sub'},'Checked against the release\'s signature before anything is installed; your data stays where it is. It runs from the next start.')]
+        :h('div',{class:'sub',style:'margin-top:6px'},u.how==='git'?['This copy runs from source: update it with ',h('span',{class:'mono'},'git pull'),' and restart it.']:'There is no package of it for this system.'));
+  } else if(u.latest) out.push(h('div',{class:'sub',style:'margin-top:6px'},'Up to date.'));
+  if(u.error) out.push(h('div',{class:'sub del',style:'margin-top:6px'},`Last check: ${u.error}`));
+  out.push(h('div',{class:'row',style:'margin-top:8px'},mayAct?h('button',{class:'ghost',onclick:()=>checkUpdate()},'Check now'):null,
+    h('span',{class:'sub'},(u.checked?`Checked ${K.ago(u.checked)}`:'Not checked yet')+(u.auto?' · checks by itself once a day':' · automatic checks are off (update_check)'))));
+  put(el,h('div',{class:'card'},out));
   if(u.busy) setTimeout(()=>tab==='account'&&renderUpdate(),1500);
 }
 async function checkUpdate(){ try{ renderUpdate(await K.api('/api/update/check',{})) }catch(e){ toast(e.message) } }

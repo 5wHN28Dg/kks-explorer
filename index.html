@@ -158,10 +158,10 @@ const $=s=>document.querySelector(s);
 let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
 let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='', PDV='';
 const api=u=>K.api(u);
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-// a value as a JavaScript argument inside an HTML attribute (onclick="f(${jsa(id)})"): a JSON string, HTML-escaped.
-// Escaping for HTML alone doesn't protect a quoted JS string in an attribute (web policy: every innerHTML audited).
-const jsa=v=>esc(JSON.stringify(v));
+// Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup.
+const h=K.h;
+// el's children := these (arrays flattened; null, undefined and false left out)
+const put=(el,...kids)=>el.replaceChildren(...kids.flat(Infinity).filter(c=>c!=null&&c!==false));
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2200)}
 
 // effective tag = extracted tag + your review decision
@@ -187,18 +187,21 @@ const floorOf=t=>(eq(full(t)).floor||'').trim();
 const floorName=f=>/^\d+$/.test(f)?'Floor '+f:f;
 const elevOf=t=>(eq(full(t)).elev||'').trim()||refLoc(bodyOf(t)).elev;
 function locSec(b,sfx){
-  const L=LOC[b]||[]; if(!L.length) return '';
+  const L=LOC[b]||[]; if(!L.length) return null;
   const conflict=new Set(L.map(r=>[r.level,r.cabinet,r.desc,r.direction].join('|'))).size>1;
-  return `<div class="sec"><h3>Location list${sfx?` <span style="font-weight:400">(listed as ${esc(b)}, without suffix ${esc(sfx)})</span>`:''}</h3>
-    ${conflict?`<div class="warn">Listed ${L.length} times with different values — check on site.</div>`:''}
-    ${L.map(r=>`<dl style="margin-bottom:6px"><dt>Level</dt><dd>${esc(lvlName(r.level))}</dd>
-      ${r.cabinet?`<dt>Cabinet</dt><dd class="mono">${esc(r.cabinet)}</dd>`:''}${r.desc?`<dt>Description</dt><dd>${esc(r.desc)}</dd>`:''}
-      ${r.direction?`<dt>Direction</dt><dd>${esc(r.direction)}</dd>`:''}<dt>Source</dt><dd class="sub">${esc(LOCSRC)}, page ${r.page}</dd></dl>`).join('')}</div>`;
+  return h('div',{class:'sec'},h('h3',null,'Location list',sfx?[' ',h('span',{style:'font-weight:400'},`(listed as ${b}, without suffix ${sfx})`)]:null),
+    conflict?h('div',{class:'warn'},`Listed ${L.length} times with different values — check on site.`):null,
+    L.map(r=>h('dl',{style:'margin-bottom:6px'},h('dt',null,'Level'),h('dd',null,lvlName(r.level)),
+      r.cabinet?[h('dt',null,'Cabinet'),h('dd',{class:'mono'},r.cabinet)]:null,r.desc?[h('dt',null,'Description'),h('dd',null,r.desc)]:null,
+      r.direction?[h('dt',null,'Direction'),h('dd',null,r.direction)]:null,h('dt',null,'Source'),h('dd',{class:'sub'},`${LOCSRC}, page ${r.page}`))));
 }
+const closeX=()=>h('button',{class:'x',onclick:()=>closePanel(),'aria-label':'Close the panel'},'×');
 function selectLoc(b){
   selId=null; drawTags();
-  $('#panelBody').innerHTML=`<div class="phead"><div style="flex:1"><div class="kks" tabindex="-1" role="heading" aria-level="2">${esc(b)}</div><div class="sub">${esc(KKS.components[b.slice(5,7)]||'')}</div></div><button class="x" onclick="closePanel()" aria-label="Close the panel">×</button></div>
-    <div class="sec"><div class="warn">In the location list but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.</div></div>`+locSec(b);
+  put($('#panelBody'),h('div',{class:'phead'},h('div',{style:'flex:1'},h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},b),
+      h('div',{class:'sub'},KKS.components[b.slice(5,7)]||'')),closeX()),
+    h('div',{class:'sec'},h('div',{class:'warn'},'In the location list but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.')),
+    locSec(b));
   $('#panel').classList.add('open'); $('#panel').scrollTop=0;
   if(focusPanel){ focusPanel=false; $('#panelBody .phead .kks')?.focus() }
 }
@@ -217,8 +220,8 @@ async function load(){
     const msg=!K.online?'You are offline and this device has no saved copy of the plant data. Offline copies need the app opened over HTTPS (or localhost) at least once while online.'
       :pd&&pd.version?`The drawings (version ${pd.version}) are on their way: ${pd.missing} file${pd.missing===1?'':'s'}, ${(pd.missing_bytes/1048576).toFixed(1)} MB left. They arrive with the next sync; this page opens by itself.`
       :pd?'No drawings yet. The manager publishes them (Manage → Drawings on the server, or kks-server publish-data); they reach this device by sync, and this page opens by itself.'
-      :esc(e.message);
-    K.overlay(`<div class="box"><h1>${pd?'Waiting for the drawings':'Plant data not available'}</h1><p>${msg}</p><button onclick="location.reload()">Retry</button></div>`);
+      :e.message;
+    K.box(pd?'Waiting for the drawings':'Plant data not available',msg,'Retry',()=>location.reload());
     if(pd){ K.onChange(why=>{ if(why==='plantdata') location.reload() }); K.watchChanges() }
     return }
   if(SHEETS.some(s=>s.levels)) PDV=String((await api('/api/sync/status').catch(()=>null))?.plant_data?.active??'');
@@ -234,7 +237,7 @@ async function load(){
   updateQueueBadge(); setTimeout(cacheSheets,3000);
   if(K.cfg?.mode==='peer'&&!K.cfg?.app) api('/api/update').then(u=>{   // once per new version (M5b)
     if(u.available&&!u.staged&&localStorage.getItem('updSeen')!==u.latest){ localStorage.setItem('updSeen',u.latest); toast(`Walkdown ${u.latest} is out: Manage → Account to install it`) } }).catch(()=>{});
-  $('#sheetSel').innerHTML=SHEETS.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+  put($('#sheetSel'),SHEETS.map(s=>h('option',{value:s.id},s.name)));
   refreshFloors(); refreshReviewCount(); renderProcs();
   const want=new URLSearchParams(location.search).get('sheet')||localStorage.getItem('sheet');  // ?sheet=id from Manage → Drawings
   const wantK=(new URLSearchParams(location.search).get('kks')||'').toUpperCase().replace(/\s+/g,'');  // ?kks= from a course link
@@ -269,14 +272,15 @@ function markDraw(e,phase){
   if(phase==='end'){ mark.start=null; if(b[2]-b[0]<8||b[3]-b[1]<8){ toast('Box too small: drag across the whole tag'); $('#markbox').remove(); return } markForm(b) }
 }
 function markForm(bb){
-  const t={sheet:cur.id,bbox:bb};
-  $('#panelBody').innerHTML=`<div class="phead"><div style="flex:1"><div class="kks" style="font-size:17px">Mark a missing tag</div><div class="sub">${esc(cur.name)}</div></div><button class="x" onclick="markMode(false);closePanel()">×</button></div>
-    <div class="sec"><div class="crop" data-sheet="${esc(t.sheet)}" style="${cropStyle(t)}"></div>
-    <div class="sub">Type the code if you can read it. If not, leave it empty: it goes to the review queue.</div>
-    <div class="row2" style="margin-top:8px"><div class="field"><label>KKS (with suffix)</label><input id="mkK" class="mono" placeholder="e.g. 11LAB90CP501"></div>
-    <div class="field"><label>Function letters (instruments)</label><input id="mkI" class="mono" placeholder="e.g. PI, TIAC"></div></div>
-    <div class="field"><label>Note (optional)</label><input id="mkN" placeholder="e.g. hard to read, second one below it"></div>
-    <button class="primary" onclick="sendMark()">Send</button> <button class="ghost" onclick="markMode(false);closePanel()">Cancel</button></div>`;
+  const t={sheet:cur.id,bbox:bb}, cancel=()=>{ markMode(false); closePanel() };
+  put($('#panelBody'),h('div',{class:'phead'},h('div',{style:'flex:1'},h('div',{class:'kks',style:'font-size:17px'},'Mark a missing tag'),h('div',{class:'sub'},cur.name)),
+      h('button',{class:'x',onclick:cancel},'×')),
+    h('div',{class:'sec'},h('div',{class:'crop','data-sheet':t.sheet,style:cropStyle(t)}),
+      h('div',{class:'sub'},'Type the code if you can read it. If not, leave it empty: it goes to the review queue.'),
+      h('div',{class:'row2',style:'margin-top:8px'},h('div',{class:'field'},h('label',null,'KKS (with suffix)'),h('input',{id:'mkK',class:'mono',placeholder:'e.g. 11LAB90CP501'})),
+        h('div',{class:'field'},h('label',null,'Function letters (instruments)'),h('input',{id:'mkI',class:'mono',placeholder:'e.g. PI, TIAC'}))),
+      h('div',{class:'field'},h('label',null,'Note (optional)'),h('input',{id:'mkN',placeholder:'e.g. hard to read, second one below it'})),
+      h('button',{class:'primary',onclick:()=>sendMark()},'Send'),' ',h('button',{class:'ghost',onclick:cancel},'Cancel')));
   $('#panel').classList.add('open'); $('#mkK').focus(); mark.pending=bb;
 }
 async function sendMark(){
@@ -315,12 +319,13 @@ function pendingFor(t){
   const k=full(t), rel=(kind,p)=>kind==='review'?p.tag_id===t.id:kind==='photo_delete'?STATE.photos.some(x=>x.id===p.photo_id&&x.kks===k):!!k&&p.kks===k;
   return [...(STATE.mine||[]).map(s=>({kind:s.kind,p:s.payload,status:s.status})),...K.outbox.map(i=>({kind:i.kind,p:i.payload,status:'queued'}))].filter(x=>rel(x.kind,x.p));
 }
-function pendingHtml(t){
-  const L=pendingFor(t); if(!L.length) return '';
+function pendingSec(t){
+  const L=pendingFor(t); if(!L.length) return null;
   const label={pending:'awaiting approval',conflict:'conflict: admin decides',queued:'queued offline'};
-  return `<div class="sec"><h3>Your changes, not live yet</h3>${L.map(x=>`<div class="pend"><span class="badge ${esc(x.status)}">${label[x.status]}</span> ${esc(K.describe(x.kind,x.p))}${x.kind==='photo'?`<img src="${esc(x.p.file?'photos/'+x.p.file:x.p.dataUrl)}" alt="">`:''}</div>`).join('')}</div>`;
+  return h('div',{class:'sec'},h('h3',null,'Your changes, not live yet'),L.map(x=>h('div',{class:'pend'},h('span',{class:'badge '+x.status},label[x.status]),' '+K.describe(x.kind,x.p),
+    x.kind==='photo'?h('img',{src:x.p.file?'photos/'+x.p.file:x.p.dataUrl,alt:''}):null)));
 }
-function updatePending(){ const el=$('#pendingSec'); if(el&&selTag&&$('#panel').classList.contains('open')) el.innerHTML=pendingHtml(selTag) }
+function updatePending(){ const el=$('#pendingSec'); if(el&&selTag&&$('#panel').classList.contains('open')) put(el,pendingSec(selTag)) }
 // with a service worker, fetching each sheet once stores it for offline use
 async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return;
   for(const s of SHEETS){
@@ -449,7 +454,7 @@ function photoCover(k){ if(!k) return 'none'; let e=false,p=false; for(const x o
   return e&&p?'both':e?'equipment':p?'plate':'none' }
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
 function drawTags(){
-  const L=$('#layer'); L.innerHTML='';
+  const L=$('#layer'); L.replaceChildren();
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   for(const t of tagsOf(cur.id)){
     const d=document.createElement('div'), b=t.bbox, k=full(t);
@@ -499,70 +504,81 @@ function select(t){
   const procs=[...new Set(STATE.links.filter(l=>l.kks===k).map(l=>l.proc))];
   const photos=STATE.photos.filter(p=>p.kks===k);
   const sheetName=id=>SHEETS.find(s=>s.id===id)?.name||id;
-  let h=`<div class="phead"><div style="flex:1"><div class="kks" tabindex="-1" role="heading" aria-level="2">${k?esc(t.kks)+(t.suffix?`<span class="sfx">${esc(t.suffix)}</span>`:''):'<span style="color:var(--review)">Unread tag</span>'}</div>
-    <div class="sub">${esc(t.isa?t.isa+' · ':'')}${esc(kindName(t))}</div></div><button class="x" onclick="closePanel()" aria-label="Close the panel">×</button></div><div id="pendingSec">${pendingHtml(t)}</div>`;
+  const out=[h('div',{class:'phead'},h('div',{style:'flex:1'},
+      h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},k?[t.kks,t.suffix?h('span',{class:'sfx'},t.suffix):null]:h('span',{style:'color:var(--review)'},'Unread tag')),
+      h('div',{class:'sub'},t.isa?t.isa+' · ':'',kindName(t))),closeX()),
+    h('div',{id:'pendingSec'},pendingSec(t))];
   if(t.status==='review'){
     const s=t.suggestion||{};
-    h+=`<div class="sec"><h3>Check this tag</h3>
-      <div class="crop" data-sheet="${esc(t.sheet)}" style="${cropStyle(t)}"></div>
-      <div class="sub">Reader saw: <span class="mono">${esc(t.read[0])} / ${esc(t.read[1])}</span> · confidence ${Math.round(t.conf*100)}%</div>
-      ${t.note?`<div class="warn">${esc(t.note)}</div>`:''}${s.note?`<div class="warn">${esc(s.note)}</div>`:''}
-      <div class="row2" style="margin-top:8px"><div class="field"><label>KKS (with suffix)</label><input id="rvK" class="mono" value="${esc((s.kks)||((t.kks||'')+(t.suffix||'')))}"></div>
-      <div class="field"><label>Function letters (instruments)</label><input id="rvI" class="mono" value="${esc(s.isa||t.isa||'')}"></div></div>
-      <button class="primary" onclick="review(${jsa(t.id)},'confirmed')">Confirm</button> <button class="ghost" onclick="review(${jsa(t.id)},'rejected')">Not a tag</button>
-      ${s.kks?'<div class="sub" style="margin-top:6px">Pre-filled value was checked visually during extraction.</div>':''}</div>`;
+    out.push(h('div',{class:'sec'},h('h3',null,'Check this tag'),
+      h('div',{class:'crop','data-sheet':t.sheet,style:cropStyle(t)}),
+      h('div',{class:'sub'},'Reader saw: ',h('span',{class:'mono'},`${t.read[0]??''} / ${t.read[1]??''}`),` · confidence ${Math.round(t.conf*100)}%`),
+      t.note?h('div',{class:'warn'},t.note):null,s.note?h('div',{class:'warn'},s.note):null,
+      h('div',{class:'row2',style:'margin-top:8px'},h('div',{class:'field'},h('label',null,'KKS (with suffix)'),h('input',{id:'rvK',class:'mono',value:(s.kks)||((t.kks||'')+(t.suffix||''))})),
+        h('div',{class:'field'},h('label',null,'Function letters (instruments)'),h('input',{id:'rvI',class:'mono',value:s.isa||t.isa||''}))),
+      h('button',{class:'primary',onclick:()=>review(t.id,'confirmed')},'Confirm'),' ',h('button',{class:'ghost',onclick:()=>review(t.id,'rejected')},'Not a tag'),
+      s.kks?h('div',{class:'sub',style:'margin-top:6px'},'Pre-filled value was checked visually during extraction.'):null));
   }
   if(d){
-    h+=`<div class="sec"><h3>From the drawing</h3><dl>
-      <dt>Plant unit</dt><dd><span class="mono">${d.blk}</span> ${esc(KKS.blocks[d.blk]||'')}</dd>
-      <dt>System</dt><dd><span class="mono">${d.sys}</span> ${esc(KKS.systems[d.sys]||'not in legend')}</dd>
-      <dt>Subsystem no.</dt><dd class="mono">${d.fn}</dd>
-      <dt>Component</dt><dd><span class="mono">${d.comp}</span> ${esc(KKS.components[d.comp]||'')}</dd>
-      <dt>Number</dt><dd class="mono">${d.num}</dd>
-      ${d.isa?`<dt>Instrument</dt><dd>${esc(d.isa)}</dd>`:''}
-      <dt>Reading</dt><dd>${t.status==='confirmed'?'confirmed by you':t.status==='verified'?'checked by eye against the drawing':'automatic, '+Math.round(t.conf*100)+'% confidence'}</dd>
-      ${t.flag?`<dt>Flag</dt><dd style="color:var(--review)">${esc(t.flag)}</dd>`:''}
-    </dl></div>`;
+    const code=(c,name)=>h('dd',null,h('span',{class:'mono'},c),' '+name);
+    out.push(h('div',{class:'sec'},h('h3',null,'From the drawing'),h('dl',null,
+      h('dt',null,'Plant unit'),code(d.blk,KKS.blocks[d.blk]||''),
+      h('dt',null,'System'),code(d.sys,KKS.systems[d.sys]||'not in legend'),
+      h('dt',null,'Subsystem no.'),h('dd',{class:'mono'},d.fn),
+      h('dt',null,'Component'),code(d.comp,KKS.components[d.comp]||''),
+      h('dt',null,'Number'),h('dd',{class:'mono'},d.num),
+      d.isa?[h('dt',null,'Instrument'),h('dd',null,d.isa)]:null,
+      h('dt',null,'Reading'),h('dd',null,t.status==='confirmed'?'confirmed by you':t.status==='verified'?'checked by eye against the drawing':'automatic, '+Math.round(t.conf*100)+'% confidence'),
+      t.flag?[h('dt',null,'Flag'),h('dd',{style:'color:var(--review)'},t.flag)]:null)));
   }
-  h+=locSec(bodyOf(t),t.suffix);
-  if(t.added) h+=`<div class="sec"><h3>Added by hand</h3><div class="sub">The app's reader missed this tag; someone marked it on the drawing.${t.note?' Note: '+esc(t.note):''}</div>
-    <button class="ghost" style="margin-top:6px" onclick="removeAdded(${jsa(t.added)},${jsa(k||'this mark')})">Remove this tag</button></div>`;
+  out.push(locSec(bodyOf(t),t.suffix));
+  if(t.added) out.push(h('div',{class:'sec'},h('h3',null,'Added by hand'),h('div',{class:'sub'},'The app\'s reader missed this tag; someone marked it on the drawing.'+(t.note?' Note: '+t.note:'')),
+    h('button',{class:'ghost',style:'margin-top:6px',onclick:()=>removeAdded(t.added,k||'this mark')},'Remove this tag')));
   if(where.length){
-    h+=`<div class="sec"><h3>Appears on</h3>${where.map(x=>`<span class="chip" onclick="goTo(${jsa(x.id)})">${esc(sheetName(x.sheet))}</span>`).join('')}</div>`;
+    out.push(h('div',{class:'sec'},h('h3',null,'Appears on'),where.map(x=>h('span',{class:'chip',onclick:()=>goTo(x.id)},sheetName(x.sheet)))));
   }
   if(procs.length){
-    h+=`<div class="sec"><h3>Used in procedures</h3>${procs.map(p=>{const pr=PROCS.find(x=>x.id===p);return `<span class="chip" onclick="openProc(${jsa(p)})">${esc(p)} ${esc(pr?pr.title:'')}</span>`}).join('')}</div>`;
+    out.push(h('div',{class:'sec'},h('h3',null,'Used in procedures'),procs.map(p=>{const pr=PROCS.find(x=>x.id===p);return h('span',{class:'chip',onclick:()=>openProc(p)},`${p} ${pr?pr.title??'':''}`)})));
   }
   if(k){
     panelEq={k,live:JSON.parse(JSON.stringify(eq(k))),shown:JSON.parse(JSON.stringify(e))};
-    const cf=e.custom||[], R=refLoc(bodyOf(t)), ph=v=>v?esc(v)+' (location list)':'';
+    const cf=e.custom||[], R=refLoc(bodyOf(t)), ph=v=>v?v+' (location list)':'';
     // read-only until you tap ✎ next to a field (no accidental edits); Save appears once something is unlocked
-    h+=`<div class="sec"><h3>Location</h3>
-      <div class="row2">${fld('f_area','Building / area',e.area)}${fld('f_floor','Floor',e.floor,{type:'number',ph:'0–10'})}</div>
-      <div class="row2">${fld('f_elev','Elevation',e.elev,{ph:ph(R.elev)||'e.g. 14 m'})}${fld('f_near','Near / landmark',e.near)}</div>
-      ${fld('f_loc','How to find it',e.loc,{area:1})}</div>
-      <div class="sec"><h3>Notes & custom fields</h3>
-      ${fld('f_notes','Notes',e.notes,{area:1,ph:'Anything worth remembering'})}
-      <div class="field lock"><label>Custom fields</label><div class="lk"><div id="cfs" style="flex:1">${cf.map(c=>cfRow(c.k,c.v,true)).join('')||'<div class="sub">None</div>'}</div>
-        <button class="pen" onclick="unlockCustom()" title="Edit custom fields" aria-label="Edit custom fields">✎</button></div>
-        <button class="ghost" id="cfAdd" style="display:none" onclick="document.getElementById('cfs').insertAdjacentHTML('beforeend',cfRow('',''))">+ Custom field</button></div>
-      <div id="eqSave" style="margin-top:10px;display:none">${canApprove()?'':'<input id="f_rnote" maxlength="500" placeholder="Note for the approver (optional)" style="width:100%;margin-bottom:8px">'}<button class="primary" onclick="saveEq('${k}')">Save</button>
-        <button class="ghost" onclick="select(eff(selTag))">Cancel</button></div></div>
-      <div class="sec"><h3>Photos</h3><div class="photos">${photos.map(p=>`<figure><img src="photos/${esc(encodeURIComponent(p.file))}" onclick="lightbox(this.src)" alt="${esc(p.caption||'Photo')}"><button onclick="delPhoto(${jsa(p.id)},${jsa(t.id)})" aria-label="Delete this photo">✕</button></figure>`).join('')}</div>
-      <label class="ghost" style="display:inline-block;margin-top:8px;cursor:pointer">+ Add photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,${jsa(k)},${jsa(t.id)})"></label></div>`;
+    out.push(h('div',{class:'sec'},h('h3',null,'Location'),
+        h('div',{class:'row2'},fld('f_area','Building / area',e.area),fld('f_floor','Floor',e.floor,{type:'number',ph:'0–10'})),
+        h('div',{class:'row2'},fld('f_elev','Elevation',e.elev,{ph:ph(R.elev)||'e.g. 14 m'}),fld('f_near','Near / landmark',e.near)),
+        fld('f_loc','How to find it',e.loc,{area:1})),
+      h('div',{class:'sec'},h('h3',null,'Notes & custom fields'),
+        fld('f_notes','Notes',e.notes,{area:1,ph:'Anything worth remembering'}),
+        h('div',{class:'field lock'},h('label',null,'Custom fields'),
+          h('div',{class:'lk'},h('div',{id:'cfs',style:'flex:1'},cf.length?cf.map(c=>cfRow(c.k,c.v,true)):h('div',{class:'sub'},'None')),
+            h('button',{class:'pen',onclick:()=>unlockCustom(),title:'Edit custom fields','aria-label':'Edit custom fields'},'✎')),
+          h('button',{class:'ghost',id:'cfAdd',style:'display:none',onclick:()=>$('#cfs').append(cfRow('',''))},'+ Custom field')),
+        h('div',{id:'eqSave',style:'margin-top:10px;display:none'},
+          canApprove()?null:h('input',{id:'f_rnote',maxlength:500,placeholder:'Note for the approver (optional)',style:'width:100%;margin-bottom:8px'}),
+          h('button',{class:'primary',onclick:()=>saveEq(k)},'Save'),' ',h('button',{class:'ghost',onclick:()=>select(eff(selTag))},'Cancel'))),
+      h('div',{class:'sec'},h('h3',null,'Photos'),
+        h('div',{class:'photos'},photos.map(p=>h('figure',null,h('img',{src:'photos/'+encodeURIComponent(p.file),alt:p.caption||'Photo',onclick:ev=>lightbox(ev.currentTarget.src)}),
+          h('button',{onclick:()=>delPhoto(p.id,t.id),'aria-label':'Delete this photo'},'✕')))),
+        h('label',{class:'ghost',style:'display:inline-block;margin-top:8px;cursor:pointer'},'+ Add photo',
+          h('input',{type:'file',accept:'image/*',capture:'environment',style:'display:none',onchange:ev=>addPhoto(ev.currentTarget,k,t.id)}))));
   }
-  P.innerHTML=h; $('#panel').classList.add('open'); $('#panel').scrollTop=0;
+  put(P,out); $('#panel').classList.add('open'); $('#panel').scrollTop=0;
   if(focusPanel){ focusPanel=false; P.querySelector('.phead .kks')?.focus() }
 }
-function cfRow(k,v,ro){return `<div class="cf"><input placeholder="Field" value="${esc(k)}"${ro?' readonly':''}><input placeholder="Value" value="${esc(v)}"${ro?' readonly':''}><button class="x" onclick="this.parentNode.remove()"${ro?' style="display:none"':''}>×</button></div>`}
+function cfRow(k,v,ro){
+  const row=h('div',{class:'cf'},h('input',{placeholder:'Field',value:k??'',readonly:!!ro}),h('input',{placeholder:'Value',value:v??'',readonly:!!ro}),
+    h('button',{class:'x',style:ro?'display:none':null,onclick:()=>row.remove()},'×'));
+  return row;
+}
 function fld(id,label,val,o={}){
-  const a=`id="${id}" readonly placeholder="—" data-ph="${esc(o.ph||'')}"`;   // the hint only once it is being edited
-  return `<div class="field lock"><label for="${id}">${label}</label><div class="lk">${o.area?`<textarea ${a} rows="2">${esc(val||'')}</textarea>`
-    :`<input ${a} value="${esc(val||'')}"${o.type==='number'?' type="number" inputmode="numeric" min="0" max="10" step="1"':''}>`}
-    <button class="pen" onclick="unlock('${id}')" title="Edit ${label}" aria-label="Edit ${label}">✎</button></div></div>`;
+  const a={id,readonly:true,placeholder:'—','data-ph':o.ph||''};   // the hint only once it is being edited
+  return h('div',{class:'field lock'},h('label',{for:id},label),h('div',{class:'lk'},
+    o.area?h('textarea',{...a,rows:2},val||''):h('input',{...(o.type==='number'?{type:'number',inputmode:'numeric',min:0,max:10,step:1}:{}),...a,value:val||''}),
+    h('button',{class:'pen',onclick:()=>unlock(id),title:`Edit ${label}`,'aria-label':`Edit ${label}`},'✎')));
 }
 function unlock(id){ const el=document.getElementById(id); el.readOnly=false; el.placeholder=el.dataset.ph||''; el.closest('.field').classList.add('editing'); el.focus(); $('#eqSave').style.display='' }
-function unlockCustom(){ const c=$('#cfs'); c.closest('.field').classList.add('editing'); if(!c.querySelector('.cf')) c.innerHTML='';
+function unlockCustom(){ const c=$('#cfs'); c.closest('.field').classList.add('editing'); if(!c.querySelector('.cf')) c.replaceChildren();
   c.querySelectorAll('input').forEach(i=>i.readOnly=false); c.querySelectorAll('.x').forEach(b=>b.style.display=''); $('#cfAdd').style.display=''; $('#eqSave').style.display='' }
 function closePanel(){ $('#panel').classList.remove('open'); selId=null; selTag=null; drawTags() }
 // The phone's Back button (Android app): close what is open first, one thing at a time; false = nothing left to close.
@@ -576,7 +592,7 @@ K.back = () => {
 function cropStyle(t){ const S=SHEETS.find(s=>s.id===t.sheet), b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
   // v1: the sheet PNG; v2: level 0 of the pyramid, filled in by the watcher below (it may need decoding first)
   const bg=S.levels?'':`background-image:url("${encodeURI(S.file)}");`;
-  return esc(bg+`background-size:${S.w*sc}px auto;background-position:${-(b[0]-10)*sc}px ${-(b[1]-10)*sc}px;width:${Math.min(360,w*sc)}px`) }
+  return bg+`background-size:${S.w*sc}px auto;background-position:${-(b[0]-10)*sc}px ${-(b[1]-10)*sc}px;width:${Math.min(360,w*sc)}px` }
 const cropBg={};
 function cropUrl(id){ return cropBg[id]??=K.jxl.native().then(n=>{ const u=sheetFile(id,'.o0.jxl'); return n?u:K.jxl.url(u) }) }
 new MutationObserver(()=>document.querySelectorAll('.crop[data-sheet]:not([data-bg])').forEach(el=>{
@@ -653,8 +669,13 @@ $('#q').addEventListener('input',()=>{
     const score=b===qb?90:b.startsWith(qb)?70:b.includes(qb)?50:qr.length>2&&text.includes(qr)?35:0; if(score)hits.push({loc:b,score,k:b}) }
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
   const sn=id=>SHEETS.find(s=>s.id===id).name;
-  R.innerHTML=hits.length?hits.map((h,i)=>{ if(h.loc){const r=refLoc(h.loc);return `<div class="res${i===0?' on':''}" role="option" id="res-${i}" aria-selected="${i===0}" onclick="pick(${i})"><div class="k">${esc(h.loc)} <span class="m" style="color:var(--review)">location list only</span></div><div class="m">${esc(r.elev||'level varies')}${r.cabinet?' · '+esc(r.cabinet):''}${r.rows[0].desc?' · '+esc(r.rows[0].desc):''}</div></div>`}
-    const e=eq(h.k), fl=floorOf(h.t), cab=refLoc(bodyOf(h.t)).cabinet;return `<div class="res${i===0?' on':''}" role="option" id="res-${i}" aria-selected="${i===0}" onclick="pick(${i})"><div class="k">${esc(h.k||h.t.read.join(' / '))}${h.t.isa?' <span class="m">'+esc(h.t.isa)+'</span>':''}${h.t.status==='review'?' <span class="m" style="color:var(--review)">unverified</span>':''}</div><div class="m">${esc(sn(h.t.sheet))} · ${esc(kindName(h.t))}${fl?' · '+esc(floorName(fl)):''}${cab?' · '+esc(cab):''}${e.area?' · '+esc(e.area):''}</div></div>`}).join(''):'<div class="res m" role="option" aria-disabled="true">No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.</div>';
+  put(R,hits.length?hits.map((x,i)=>{ const opt={class:'res'+(i===0?' on':''),role:'option',id:'res-'+i,'aria-selected':String(i===0),onclick:()=>pick(i)};
+    if(x.loc){const r=refLoc(x.loc);return h('div',opt,h('div',{class:'k'},x.loc+' ',h('span',{class:'m',style:'color:var(--review)'},'location list only')),
+      h('div',{class:'m'},(r.elev||'level varies')+(r.cabinet?' · '+r.cabinet:'')+(r.rows[0].desc?' · '+r.rows[0].desc:'')))}
+    const e=eq(x.k), fl=floorOf(x.t), cab=refLoc(bodyOf(x.t)).cabinet;
+    return h('div',opt,h('div',{class:'k'},x.k||x.t.read.join(' / '),x.t.isa?[' ',h('span',{class:'m'},x.t.isa)]:null,x.t.status==='review'?[' ',h('span',{class:'m',style:'color:var(--review)'},'unverified')]:null),
+      h('div',{class:'m'},`${sn(x.t.sheet)} · ${kindName(x.t)??''}`+(fl?' · '+floorName(fl):'')+(cab?' · '+cab:'')+(e.area?' · '+e.area:'')))})
+    :h('div',{class:'res m',role:'option','aria-disabled':'true'},'No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.'));
   R.style.display='block';
   $('#q').setAttribute('aria-expanded','true'); $('#q').setAttribute('aria-activedescendant', hits.length?'res-0':'');
 });
@@ -673,8 +694,8 @@ function refreshFloors(){
   const num=f=>{const n=parseFloat(f); return isNaN(n)?1e9:n};
   const fl=[...new Set(Object.values(STATE.equipment).map(e=>(e.floor||'').trim()).filter(Boolean))]
     .sort((a,b)=>num(a)-num(b)||a.localeCompare(b));
-  $('#floorSel').innerHTML='<option value="">All floors</option>'+fl.map(f=>`<option value="${esc(f)}" ${f===floor?'selected':''}>${esc(floorName(f))}</option>`).join('');
-  let dl=$('#floors'); if(!dl){dl=document.createElement('datalist');dl.id='floors';document.body.appendChild(dl)} dl.innerHTML=fl.map(f=>`<option value="${esc(f)}">`).join('');
+  put($('#floorSel'),h('option',{value:''},'All floors'),fl.map(f=>h('option',{value:f,selected:f===floor},floorName(f))));
+  let dl=$('#floors'); if(!dl){dl=document.createElement('datalist');dl.id='floors';document.body.appendChild(dl)} put(dl,fl.map(f=>h('option',{value:f})));
 }
 $('#floorSel').onchange=e=>{ floor=e.target.value; drawTags();
   if(floor){ const n=TAGS.map(eff).filter(t=>t&&floorOf(t).toLowerCase()===floor.toLowerCase()); const here=n.filter(t=>t.sheet===cur.id).length;
@@ -682,14 +703,14 @@ $('#floorSel').onchange=e=>{ floor=e.target.value; drawTags();
 
 // ---------- procedures ----------
 function renderProcs(){
-  const q=$('#procQ').value.trim().toLowerCase(); let last='', h='';
+  const q=$('#procQ').value.trim().toLowerCase(), out=[]; let last='';
   for(const p of PROCS){
     const txt=(p.id+' '+p.title+' '+p.path.join(' ')+' '+p.steps.map(s=>s.text).join(' ')).toLowerCase(); if(q&&!txt.includes(q))continue;
-    const ch=p.path[0]||p.title; if(ch!==last){h+=`<div class="chapter">${esc(ch)}</div>`; last=ch}
+    const ch=p.path[0]||p.title; if(ch!==last){out.push(h('div',{class:'chapter'},ch)); last=ch}
     const n=STATE.links.filter(l=>l.proc===p.id).length;
-    h+=`<div class="proc" onclick="openProc(${jsa(p.id)})"><span class="id">${esc(p.id)}</span>${esc(p.title)} <span class="path">· ${p.steps.length} steps${n?` · ${n} linked`:''}</span></div>`;
+    out.push(h('div',{class:'proc',onclick:()=>openProc(p.id)},h('span',{class:'id'},p.id),p.title,' ',h('span',{class:'path'},`· ${p.steps.length} steps${n?` · ${n} linked`:''}`)));
   }
-  $('#procBody').innerHTML=h||'<div class="sub">No procedure matches.</div>';
+  put($('#procBody'),out.length?out:h('div',{class:'sub'},'No procedure matches.'));
 }
 $('#procQ').oninput=renderProcs;
 function openProc(id){ openDrawer('procDrawer'); activeProc=id; renderProcDetail(id); drawTags() }
@@ -697,16 +718,19 @@ function renderProcDetail(id){
   const p=PROCS.find(x=>x.id===id); const L=STATE.links.filter(l=>l.proc===id);
   const byKks=k=>TAGS.map(eff).filter(t=>t&&full(t)===k);
   const counts={}; for(const l of L) for(const t of byKks(l.kks)) counts[t.sheet]=(counts[t.sheet]||0)+1;
-  let h=`<button class="ghost" onclick="activeProc=null;renderProcs();drawTags()">← All procedures</button>
-    <h3 style="margin:12px 0 2px">${esc(p.id)} ${esc(p.title)}</h3><div class="sub">${esc(p.path.join(' › '))} · ${p.source?esc(p.source):`manual page ${esc(p.page??'?')}`}</div>`;
-  if(Object.keys(counts).length) h+=`<div style="margin:8px 0">Linked equipment on: ${Object.entries(counts).map(([s,n])=>`<span class="chip" onclick="openSheet(${jsa(s)})">${esc(SHEETS.find(x=>x.id===s).name)} (${n})</span>`).join('')}</div>`;
-  else h+=`<div class="warn">No equipment linked yet. The manual names equipment by description, not KKS — tap “Link equipment” on a step, then tap the matching tags on the drawing. You do this once per step.</div>`;
+  const out=[h('button',{class:'ghost',onclick:()=>{ activeProc=null; renderProcs(); drawTags() }},'← All procedures'),
+    h('h3',{style:'margin:12px 0 2px'},`${p.id} ${p.title??''}`),h('div',{class:'sub'},`${p.path.join(' › ')} · ${p.source?p.source:`manual page ${p.page??'?'}`}`)];
+  if(Object.keys(counts).length) out.push(h('div',{style:'margin:8px 0'},'Linked equipment on: ',
+    Object.entries(counts).map(([s,n])=>h('span',{class:'chip',onclick:()=>openSheet(s)},`${SHEETS.find(x=>x.id===s).name} (${n})`))));
+  else out.push(h('div',{class:'warn'},'No equipment linked yet. The manual names equipment by description, not KKS — tap “Link equipment” on a step, then tap the matching tags on the drawing. You do this once per step.'));
   for(const s of p.steps){
     const ls=L.filter(l=>l.step===s.n);
-    h+=`<div class="step"><span class="n">${s.n})</span>${esc(s.text)}<div style="margin-top:5px">${ls.map(l=>{const t=byKks(l.kks)[0];return `<span class="chip mono" onclick="${t?`goTo(${jsa(t.id)})`:''}">${esc(l.kks)}</span><button class="x" style="font-size:14px" title="Unlink" aria-label="Unlink ${esc(l.kks)}" onclick="unlink(${jsa(id)},${+s.n},${jsa(l.kks)})">×</button>`}).join('')}
-      <button class="ghost" style="font-size:12.5px;padding:3px 8px" onclick="startLink(${jsa(id)},${+s.n})">+ Link equipment</button></div></div>`;
+    out.push(h('div',{class:'step'},h('span',{class:'n'},`${s.n})`),s.text,h('div',{style:'margin-top:5px'},
+      ls.map(l=>{const t=byKks(l.kks)[0];return [h('span',{class:'chip mono',onclick:()=>{ if(t) goTo(t.id) }},l.kks),
+        h('button',{class:'x',style:'font-size:14px',title:'Unlink','aria-label':`Unlink ${l.kks}`,onclick:()=>unlink(id,+s.n,l.kks)},'×')]}),
+      ' ',h('button',{class:'ghost',style:'font-size:12.5px;padding:3px 8px',onclick:()=>startLink(id,+s.n)},'+ Link equipment'))));
   }
-  $('#procBody').innerHTML=h;
+  put($('#procBody'),out);
 }
 function startLink(proc,step){ linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
   if(innerWidth<=720) $('#procDrawer').classList.remove('open') }
@@ -717,16 +741,18 @@ async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false}
 function pending(){ return TAGS.filter(t=>t.status==='review'&&!STATE.reviews[t.id]) }
 function refreshReviewCount(){ $('#revCount').textContent=pending().length }
 function renderReview(){
-  const P=pending(), sn=id=>SHEETS.find(s=>s.id===id).name; let h='', last='';
+  const P=pending(), sn=id=>SHEETS.find(s=>s.id===id).name, out=[]; let last='';
   const sorted=[...P].sort((a,b)=>(a.sheet===cur.id?0:1)-(b.sheet===cur.id?0:1)||a.sheet.localeCompare(b.sheet)||(b.suggestion?1:0)-(a.suggestion?1:0));
-  for(const t of sorted.slice(0,250)){ if(t.sheet!==last){h+=`<div class="chapter">${esc(sn(t.sheet))} (${P.filter(x=>x.sheet===t.sheet).length})</div>`; last=t.sheet}
-    h+=`<div class="revitem" onclick="goTo(${jsa(t.id)})"><div class="crop" data-sheet="${esc(t.sheet)}" style="${cropStyle(t)}"></div><span class="mono">${esc(t.read[0])} / ${esc(t.read[1])}</span>${t.suggestion?` → <span class="mono" style="color:var(--accent)">${esc(t.suggestion.kks)}</span>`:''}</div>` }
-  $('#revBody').innerHTML=h||'<div class="sub">Nothing left to review.</div>';
+  for(const t of sorted.slice(0,250)){ if(t.sheet!==last){out.push(h('div',{class:'chapter'},`${sn(t.sheet)} (${P.filter(x=>x.sheet===t.sheet).length})`)); last=t.sheet}
+    out.push(h('div',{class:'revitem',onclick:()=>goTo(t.id)},h('div',{class:'crop','data-sheet':t.sheet,style:cropStyle(t)}),h('span',{class:'mono'},`${t.read[0]??''} / ${t.read[1]??''}`),
+      t.suggestion?[' → ',h('span',{class:'mono',style:'color:var(--accent)'},t.suggestion.kks)]:null)) }
+  put($('#revBody'),out.length?out:h('div',{class:'sub'},'Nothing left to review.'));
 }
 $('#hideRev').onchange=e=>document.body.classList.toggle('hide-review',e.target.checked);
 
 // ---------- notes ----------
-function renderNotes(){ const n=cur.notes||[]; $('#notesBody').innerHTML=n.length?'<div class="sub">Text added to this PDF by markup (not part of the CAD drawing).</div>'+n.map(x=>`<div class="step">${esc(x)}</div>`).join(''):'<div class="sub">No markups on this sheet.</div>' }
+function renderNotes(){ const n=cur.notes||[]; put($('#notesBody'),n.length?[h('div',{class:'sub'},'Text added to this PDF by markup (not part of the CAD drawing).'),n.map(x=>h('div',{class:'step'},x))]
+                                                    :h('div',{class:'sub'},'No markups on this sheet.')) }
 
 // ---------- drawers ----------
 function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id)) }
