@@ -101,6 +101,27 @@ suite "views":
     c.merge()
     let lab = systemsView(c)["blocks"][0]["systems"][1]
     check lab["subsystems"][0]["kinds"][0]["items"][0]["count"].i == 2
+  test "coverage: per sheet, per system, totals":
+    let v = coverageView(m)
+    # tags left: a:1 11LAB70 (auto), a:2 AA501 (auto), a:3 CT101R (auto), a:4 → AA503 (confirmed), added AA504 (verified)
+    let t = v["total"]
+    check t["tags"].i == 5 and t["verified"].i == 2 and t["review"].i == 0 and t["marked"].i == 1
+    check t["codes"].i == 5
+    # photos: AA501 has an equipment photo (p1); the rest none
+    check t["photos"]["equipment"].i == 1 and t["photos"]["none"].i == 4 and t["photos"]["both"].i == 0
+    # places: AA501 from the location list and its floor; nothing else
+    check t["located"].i == 1
+    check v["sheets"].elems.len == 1 and v["sheets"][0]["name"].s == "Sheet A" and v["sheets"][0]["codes"].i == 5
+    var names: seq[string]
+    for s in v["systems"].elems: names.add s["sys"].s
+    check names == @["", "HAD", "LAB"]      # "" = codes that don't decode (11LAB70)
+    let lab = v["systems"][2]
+    check lab["codes"].i == 3 and lab["verified"].i == 2 and lab["located"].i == 1 and lab.get("tags") == nil
+  test "coverage: a place typed by a person counts":
+    let c = sample()
+    c.state["equipment"]["11LAB70AA504"] = j("""{"area":"pump house"}""")
+    c.merge()
+    check coverageView(c)["total"]["located"].i == 2
   test "the flat path store":
     var d = Drawing(width: 640, height: 320, gx: 1, gy: 1)
     d.styles.add Style(kind: Stroke, width: 64)

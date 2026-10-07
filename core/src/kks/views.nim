@@ -266,3 +266,89 @@ proc systemsView*(m: Model, q = ""): JNode =
       inc total
       rest.elems.add item(k)
   O(("blocks", blocks), ("other", rest), ("total", I(total)))
+
+proc located*(m: Model, t: Tag): bool =
+  ## a place is known: from the plant's location list, or a person filled one of the place fields
+  if m.refLoc(t.bodyOf).rows.len > 0: return true
+  let e = m.equipment(t.full)
+  for f in ["area", "floor", "elev", "near", "loc"]:
+    if e.str(f).strip.len > 0: return true
+
+proc coverageView*(m: Model): JNode =
+  ## How complete the plant's record is, per sheet and per system, to show where the team should go next: tags
+  ## checked by a person, codes with photos (both, equipment only, tag plate only, none), codes with a known place,
+  ## readings still to review, and tags people marked as missed by the reader.
+  type Counts = object
+    tags, verified, review, marked, codes, located: int
+    photos: array[4, int]          # both, equipment, plate, none
+  const kinds = ["both", "equipment", "plate", "none"]
+  proc photoIdx(c: string): int =
+    for i, k in kinds:
+      if k == c: return i
+    3
+  proc toJ(c: Counts): JNode =
+    O(("tags", I(c.tags)), ("verified", I(c.verified)), ("review", I(c.review)), ("marked", I(c.marked)),
+      ("codes", I(c.codes)), ("located", I(c.located)),
+      ("photos", O(("both", I(c.photos[0])), ("equipment", I(c.photos[1])), ("plate", I(c.photos[2])), ("none", I(c.photos[3])))))
+  var bySheet = initOrderedTable[string, Counts]()
+  for si in m.sheets: bySheet[si.id] = Counts()
+  var bySys = initTable[string, Counts]()
+  var all = Counts()
+  var seenSheet = initTable[string, HashSet[string]]()
+  var seenSys, seenAll: HashSet[string]
+  for t in m.tags:
+    if t.sheet notin bySheet: bySheet[t.sheet] = Counts()
+    var c = bySheet[t.sheet]
+    inc c.tags
+    inc all.tags
+    if t.status in ["verified", "confirmed"]:
+      inc c.verified
+      inc all.verified
+    if t.status == "review":
+      inc c.review
+      inc all.review
+    if t.added.len > 0:
+      inc c.marked
+      inc all.marked
+    let k = t.full
+    if t.kks.len > 0:
+      let p = photoIdx(m.photoCover(k))
+      let here = m.located(t)
+      if k notin seenSheet.mgetOrPut(t.sheet, initHashSet[string]()):
+        seenSheet[t.sheet].incl k
+        inc c.codes
+        inc c.photos[p]
+        if here: inc c.located
+      if k notin seenAll:
+        seenAll.incl k
+        inc all.codes
+        inc all.photos[p]
+        if here: inc all.located
+      let (ok, d) = m.decode(t)
+      let sys = if ok: d.sys else: ""
+      if k notin seenSys:
+        seenSys.incl k
+        var s = bySys.getOrDefault(sys)
+        inc s.codes
+        inc s.photos[p]
+        if here: inc s.located
+        if t.status in ["verified", "confirmed"]: inc s.verified
+        bySys[sys] = s
+    bySheet[t.sheet] = c
+  var sheets = newArr()
+  for id, c in bySheet:
+    let (ok, si) = m.sheetById(id)
+    var j = toJ(c)
+    j["id"] = S(id)
+    j["name"] = S(if ok: si.name else: id)
+    sheets.elems.add j
+  var keys: seq[string]
+  for k in bySys.keys: keys.add k
+  keys.sort()
+  var systems = newArr()
+  for k in keys:
+    let c = bySys[k]          # per code: tags, review and marked are per sheet only
+    systems.elems.add O(("sys", S(k)), ("sys_name", S(if k.len > 0: m.systemName(k) else: "")), ("codes", I(c.codes)),
+      ("verified", I(c.verified)), ("located", I(c.located)),
+      ("photos", O(("both", I(c.photos[0])), ("equipment", I(c.photos[1])), ("plate", I(c.photos[2])), ("none", I(c.photos[3])))))
+  O(("total", toJ(all)), ("sheets", sheets), ("systems", systems))
