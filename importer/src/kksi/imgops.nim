@@ -498,6 +498,10 @@ proc resizeArea*(src: FImg, dw, dh: int): FImg =
       return
     let xt = areaTab(src.w, dw, scaleX)
     let yt = areaTab(src.h, dh, scaleY)
+    when defined(traceResize):
+      echo "scale ", scaleX, " ", scaleY
+      for t in xt: echo "xt ", t[0], " ", t[1], " ", cast[uint32](t[2])
+      for t in yt[0 .. min(8, yt.high)]: echo "yt ", t[0], " ", t[1], " ", cast[uint32](t[2])
     var buf = newSeq[float32](dw)
     var sum = newSeq[float32](dw)
     var prevDy = yt[0][0]

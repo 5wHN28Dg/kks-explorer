@@ -91,7 +91,7 @@ jobs:
         run: |
           gcc -v 2>&1 | grep -o -- '--with-arch-64=[^ ]*' || true   # this image's gcc defaults to x86-64-v3 (FMA): the bit-exact float tests depend on it
           grep -m1 -o 'flags.*' /proc/cpuinfo | tr ' ' '\n' | grep -E '^(fma|avx2|avx512f|sse4_1|f16c)$' | tr '\n' ' '; echo   # TEMP
-          nim c -r -d:release --outdir:/tmp/kksdbg tests/debug_resize.nim || true   # TEMP
+          nim c -r -d:release -d:traceResize --outdir:/tmp/kksdbg tests/debug_resize.nim || true   # TEMP
           nim test
 
   # the server and the importer, built once for the jobs that drive them (server-http, web, android-e2e, gnome-e2e)

@@ -26,3 +26,13 @@ for c in cases.elems:
       echo "case ", n, " w=", src.w, " h=", src.h, " dw=", c["dw"].i, " lens ", got.len, "/", want.len, " diffs ", cnt,
         " first ", first, (if first >= 0: " got " & toHex(cast[uint32](got[first])) & " want " & toHex(cast[uint32](want[first])) else: "")
 echo "resize cases ", n, " bad ", bad
+for c in cases.elems:
+  if c["op"].s == "resize" and c["w"].i == 4 and c["h"].i == 44:
+    let src = FImg(w: 4, h: 44, d: floats(decode(c["src"].s)))
+    var line = "src"
+    for v in src.d[0 ..< 24]: line.add " " & toHex(cast[uint32](v))
+    echo line
+    let got = resizeArea(src, 3, 32).d
+    line = "out"
+    for v in got[0 ..< 24]: line.add " " & toHex(cast[uint32](v))
+    echo line
