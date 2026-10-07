@@ -90,14 +90,14 @@ object Updates {
     }
 
     /** the newest release, verified (null when it has no Walkdown APK) */
-    fun fetchLatest(): Release? {
+    fun fetchLatest(api: String, pub: String): Release? {
         val rel = JSONObject(String(get(api), Charsets.UTF_8))
         val urls = HashMap<String, String>()
         val assets = rel.optJSONArray("assets")
         for (i in 0 until (assets?.length() ?: 0)) assets!!.getJSONObject(i).let { urls[it.optString("name")] = it.optString("browser_download_url") }
         val mu = urls["release.json"]; val su = urls["release.json.p256"]
         if (mu == null || su == null) throw IllegalArgumentException("the latest release has no manifest signed for Walkdown")
-        val m = verify(get(mu), String(get(su), Charsets.UTF_8))
+        val m = verify(get(mu), String(get(su), Charsets.UTF_8), pub)
         val f = m.optJSONObject("files")?.optJSONObject(APK) ?: return null
         val sha = f.optString("sha256"); val size = f.optLong("size")
         if (!Regex("[0-9a-f]{64}").matches(sha) || urls[APK] == null) return null
@@ -112,9 +112,24 @@ object Updates {
         if (System.currentTimeMillis() - checked >= DAY) check(ctx)
     }
 
+    private val started = java.util.concurrent.atomic.AtomicInteger()
+
     fun check(ctx: Context) {
-        try { latest = fetchLatest(); error = null }
-        catch (e: Exception) { error = e.message ?: e.javaClass.simpleName; Log.i(TAG, "check failed: $error") }
+        // checks can overlap (the daily one, Check now, a test's) and finish in any order: each reads the address and
+        // the key once, and only the latest started one may publish its answer. Before, a slow check of the real
+        // release, started first, could replace a newer answer (test_update failed now and then).
+        val me = synchronized(this) { started.incrementAndGet() }
+        val api = this.api; val pub = this.pub
+        Log.i(TAG, "check $me: ${URI(api).host}")
+        try {
+            val r = fetchLatest(api, pub)
+            val newest = synchronized(this) { (started.get() == me).also { if (it) { latest = r; error = null } } }
+            Log.i(TAG, "check $me: latest ${r?.version}" + if (newest) "" else ", dropped (a newer check started)")
+        }
+        catch (e: Exception) {
+            Log.i(TAG, "check $me failed: ${e.message ?: e.javaClass.simpleName}")
+            synchronized(this) { if (started.get() == me) error = e.message ?: e.javaClass.simpleName }
+        }
         checked = System.currentTimeMillis()
         prefs(ctx).edit().putLong("checked", checked).apply()
     }
