@@ -165,7 +165,7 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 // Every configuration's resolved versions are locked in gradle.lockfile (governance Section 5): the transitive tree
 // is pinned and the vulnerability scan reads it. Update with
 // ./gradlew :app2:dependencies :app2:assembleDebug :app2:assembleRelease :app2:assembleRehearsal --write-locks
-dependencyLocking { lockAllConfigurations() }
+dependencyLocking { lockAllConfigurations(); lockMode.set(LockMode.STRICT) }   // a configuration missing from the lockfile fails the build
 run {
     // Tool libraries that the Android Gradle plugin and lint bring in at versions with published advisories
     // (osv-scanner over the lockfiles, 2026-10-05), raised to the first fixed release in the same line. Never

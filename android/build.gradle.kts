@@ -2,7 +2,7 @@
 // modules (app, core) were removed on 2026-10-03; they stay in git history.
 // The plugins' classpath is locked in buildscript-gradle.lockfile, like app2's dependencies in its gradle.lockfile.
 buildscript {
-    dependencyLocking { lockAllConfigurations() }
+    dependencyLocking { lockAllConfigurations(); lockMode.set(LockMode.STRICT) }   // a configuration missing from the lockfile fails the build
     // Tool libraries that the Android Gradle plugin and lint bring in at versions with published advisories
     // (osv-scanner over the lockfiles, 2026-10-05), raised to the first fixed release in the same line. Never
     // lowers a version; the lockfiles record the result.
