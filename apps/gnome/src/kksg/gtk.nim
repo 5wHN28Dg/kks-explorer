@@ -285,6 +285,9 @@ proc gtk_widget_get_width*(w: W): cint {.importc, header: HA.}
 proc gtk_widget_get_height*(w: W): cint {.importc, header: HA.}
 proc gtk_widget_get_root*(w: W): W {.importc, header: HA.}
 proc gtk_widget_get_mapped*(w: W): cint {.importc, header: HA.}
+proc gtk_root_get_focus*(r: W): W {.importc, header: HA.}
+proc gtk_widget_is_ancestor*(w, ancestor: W): cint {.importc, header: HA.}
+proc gtk_event_controller_focus_new*(): W {.importc, header: HA.}
 proc gtk_widget_set_tooltip_text*(w: W, t: cstring) {.importc, header: HA.}
 proc gtk_widget_set_cursor_from_name*(w: W, n: cstring) {.importc, header: HA.}
 proc gtk_widget_get_scale_factor*(w: W): cint {.importc, header: HA.}

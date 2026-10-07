@@ -112,6 +112,7 @@ proc refresh(w: Win) =
     let (ok, t) = w.m.tagById(w.selected)
     if ok: w.buildPanel(t)
   w.refreshLive()
+  w.refreshFollowers()
 
 proc sideRoot(w: Win): W =
   let side = vbox(0)
