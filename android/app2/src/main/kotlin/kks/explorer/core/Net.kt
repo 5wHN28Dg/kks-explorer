@@ -37,7 +37,8 @@ object Net {
     const val MAX_INCOMING = 32
     const val MAX_INCOMING_PER_ADDRESS = 4
     const val STRANGER_MS = 60_000L
-    private val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "kks-sync-dog").apply { isDaemon = true } }
+    private val watchdog = java.util.concurrent.ScheduledThreadPoolExecutor(1) { r -> Thread(r, "kks-sync-dog").apply { isDaemon = true } }
+        .apply { removeOnCancelPolicy = true }   // a cancelled watch (most of them) doesn't stay queued for 60 s
 
     /** close `c` after STRANGER_MS unless cancelled (drive cancels it once the other side is trusted) */
     fun watch(c: java.io.Closeable): java.util.concurrent.ScheduledFuture<*> =

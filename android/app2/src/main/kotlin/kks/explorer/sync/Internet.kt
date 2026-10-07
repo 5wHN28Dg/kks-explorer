@@ -183,8 +183,14 @@ object Internet {
         try {
             val (u, ours) = ours(direct && (noDirectUntil[from] ?: 0L) < System.currentTimeMillis())    // [] = the pipe at once
             send(JSONObject().put("t", "accept").put("to", from).put("id", id).put("cand", JSONArray(ours)))
-            val (p, _) = meet(u, ours, theirs, id, client = false, expect = "", peer = from)
-            val dog = Net.watch(java.io.Closeable { p.close() })
+            // the stranger's deadline runs from here, punching and the TLS handshake included
+            var peer: Net.Peer? = null
+            var expired = false
+            val dog = Net.watch(java.io.Closeable { expired = true; peer?.close() })
+            val (p, _) = try { meet(u, ours, theirs, id, client = false, expect = "", peer = from) }
+                         catch (e: Exception) { dog.cancel(false); throw e }
+            peer = p
+            if (expired) { dog.cancel(false); p.close(); return }
             try {
                 val st = Net.drive(p, false, dog = dog)
                 Log.i("KKSSync", "relay sync ($lastHow) from ${p.remote.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")

@@ -1,4 +1,4 @@
-import std/[unittest, tables, strutils]
+import std/[unittest, tables, strutils, times]
 import kks/[json, util, crypto, proto, replay, node, sync, plant]
 import testprovider
 
@@ -171,3 +171,10 @@ suite "sync state machine":
     s2.receive(newObj(@[("t", newStr("hello")), ("v", newInt(2)), ("root", newStr(rootStr)), ("vv", newObj())]))
     check s2.frameLimit == MaxFrame and s2.trusted
     check newSession(stranger, true, mgrPhone.device).frameLimit == MaxFrame   # the initiator chose its peer
+
+  test "a large batch from a stranger is handled in linear time (issue #67)":
+    var junk: seq[JNode]
+    for i in 0 ..< 20000: junk.add newObj(@[("peer", newStr("x" & $i)), ("seq", newInt(2))])
+    let t0 = epochTime()
+    check mgrPhone.ingest(junk, tick()) == 0
+    check epochTime() - t0 < 2.0                    # the search per entry took about 14 s here

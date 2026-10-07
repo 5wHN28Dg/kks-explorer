@@ -169,9 +169,10 @@ type Listener* = ref object
 
 proc serveOne(l: Listener, n: Node, id: Identity, raw: AsyncSocket, address: string, hooks: Hooks) {.async.} =
   let client = tcpStream(raw)
-  let c = newTlsConn(n.p, id, client = false)
+  var c: TlsConn
   let deadline = nowMs() + l.strangerMs
   try:
+    c = newTlsConn(n.p, id, client = false)   # inside the try: the slot is given back whatever fails
     await client.handshake(c, deadline)
     let s = newSession(n, false, c.remotePeer, hooks = hooks)
     s.wall = nowMs()
@@ -181,7 +182,7 @@ proc serveOne(l: Listener, n: Node, id: Identity, raw: AsyncSocket, address: str
   except CatchableError as e:
     l.lastError = e.msg
   finally:
-    c.close()
+    if c != nil: c.close()
     client.close()
     dec l.open
     l.perAddress[address] = l.perAddress.getOrDefault(address) - 1
