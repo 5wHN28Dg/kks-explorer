@@ -160,12 +160,21 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     var marking by remember { mutableStateOf(false) }
     var marked by remember { mutableStateOf<List<Float>?>(null) }
     LaunchedEffect(marking, view) { view?.marking = marking }
+    // selecting tags: one photo, place or note for several codes (Select.kt)
+    var selecting by remember { mutableStateOf(false) }
+    var selection by remember { mutableStateOf<Set<String>>(emptySet()) }     // tag ids, on this sheet
+    var multi by remember { mutableStateOf("") }                              // the open dialog: list, photo, place, note
+    LaunchedEffect(ui.sheet) { selection = emptySet(); multi = "" }
+    LaunchedEffect(selecting, view) { view?.selecting = selecting }
+    LaunchedEffect(selection, view) { view?.selection = selection }
+    val selectedTags = boxes.filter { it.id in selection }
+    val selectedCodes = selectedTags.map { it.code }.distinct()
     val floors = remember(rev) { call("GET", "/native/floors").json }
     val linkedCodes = remember(ui.activeProc, rev) {
         if (ui.activeProc.isEmpty()) emptySet() else call("GET", "/native/proc", query = mapOf("id" to ui.activeProc)).json.optJSONArray("links").objects().map { it.getString("kks") }.toSet()
     }
-    BackHandler(enabled = ui.selected.isNotEmpty() || drawer || ui.linkProc.isNotEmpty()) {
-        when { drawer -> drawer = false; ui.selected.isNotEmpty() -> ui.selected = ""; else -> ui.linkProc = "" }
+    BackHandler(enabled = ui.selected.isNotEmpty() || drawer || ui.linkProc.isNotEmpty() || selecting) {
+        when { drawer -> drawer = false; ui.selected.isNotEmpty() -> ui.selected = ""; selecting -> { selecting = false; selection = emptySet() }; else -> ui.linkProc = "" }
     }
     LaunchedEffect(ui.sheet, view) {
         val v = view ?: return@LaunchedEffect
@@ -199,7 +208,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     if (current != null) DropdownMenuItem(text = { Text("Colour tags by photos" + if (ui.coverage) " ✓" else "") },
                         onClick = { ui.coverage = !ui.coverage; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
-                        onClick = { marking = !marking; ui.selected = ""; floorMenu = false })
+                        onClick = { marking = !marking; selecting = false; ui.selected = ""; floorMenu = false })
+                    if (current != null) DropdownMenuItem(text = { Text(if (selecting) "Stop selecting" else "Select tags") },
+                        onClick = { selecting = !selecting; selection = emptySet(); marking = false; ui.selected = ""; floorMenu = false })
                     if (current != null && current.notes.isNotEmpty()) DropdownMenuItem(text = { Text("Notes on this sheet (${current.notes.size})") },
                         onClick = { notesOpen = true; floorMenu = false })
                     if (floors.length() > 0) {
@@ -224,6 +235,17 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     val sc = current?.scale ?: 2f
                     if ((x1 - x0) * sc < 8 || (y1 - y0) * sc < 8) scope.launch { snack.showSnackbar("Box too small: drag across the whole tag") }
                     else marked = listOf(x0, y0, x1, y1)
+                }
+                v.onToggle = { id ->
+                    val t = boxes.firstOrNull { it.id == id }
+                    if (t == null || t.code.isEmpty()) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("This tag has no code yet: it can't be selected") }
+                    else selection = if (id in selection) selection - id else selection + id
+                }
+                v.onBox = { ids ->
+                    val hit = boxes.filter { it.id in ids }
+                    val ok = hit.filter { it.code.isNotEmpty() }.map { it.id }
+                    selection = selection + ok
+                    if (ok.size < hit.size) scope.launch { snack.showSnackbar("${hit.size - ok.size} tag(s) without a code left out") }
                 }
                 v.onTag = { id ->
                     if (ui.linkProc.isNotEmpty()) {
@@ -256,6 +278,10 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                         TextButton(onClick = { marking = false }) { Text("Cancel") }
                     }
                 }
+                if (selecting) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                    Text("Tap tags to select them. Hold, then drag, to add every tag in a box (one finger still moves the drawing).",
+                        Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                }
                 if (ui.linkProc.isNotEmpty()) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                     Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Tap tags to link them to step ${ui.linkStep} of ${ui.linkProc}", Modifier.weight(1f))
@@ -287,6 +313,19 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                             modifier = Modifier.clickable { ui.sheet = s.id; ui.selected = ""; drawer = false })
                     }
                 }
+            }
+            if (selecting) SelectBar(selection.size, Modifier.align(Alignment.BottomCenter),
+                onList = { multi = "list" }, onPhoto = { multi = "photo" }, onPlace = { multi = "place" }, onNote = { multi = "note" },
+                onDone = { selecting = false; selection = emptySet() })
+            val sent: (String) -> Unit = { m ->
+                if (m.startsWith("Sent for")) { selecting = false; selection = emptySet() }
+                scope.launch { snack.showSnackbar(m) }
+            }
+            when (multi) {
+                "list" -> SelectList(selectedTags, onUntick = { selection = selection - it }, onClose = { multi = "" })
+                "photo" -> PhotoForAll(selectedCodes, sent) { multi = "" }
+                "place" -> PlaceForAll(selectedTags.map { it.id }, selectedCodes, sent) { multi = "" }
+                "note" -> NoteForAll(selectedCodes, sent) { multi = "" }
             }
             marked?.let { b ->
                 MarkDialog(current!!, b, view, snack, onDone = { ok -> marked = null; if (ok) marking = false })
