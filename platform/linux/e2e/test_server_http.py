@@ -321,6 +321,265 @@ class Server(Base):
 
 
 
+class Limits(Base):
+    """finding #27 (advisory GHSA-xfj6-p785-whg5): request limits before authentication"""
+
+    def conn(self, src='127.0.0.1', timeout=None):
+        return socket.create_connection(('127.0.0.1', self.port), timeout=timeout, source_address=(src, 0))
+
+    def closed_count(self, socks):
+        time.sleep(1)
+        closed = 0
+        for s in socks:                  # one non-blocking look each: waiting per socket would reach the idle timeout
+            s.setblocking(False)
+            try:
+                if s.recv(1) == b'':
+                    closed += 1
+            except BlockingIOError:
+                pass
+            except ConnectionResetError:
+                closed += 1
+            s.close()
+        return closed
+
+    def raw(self, data, wait=5.0):
+        c = self.conn(timeout=wait)
+        c.sendall(data)
+        out = b''
+        try:
+            while True:
+                b = c.recv(65536)
+                if not b:
+                    break
+                out += b
+        except socket.timeout:
+            out += b'<timeout>'
+        except ConnectionResetError:     # closed with our bytes unread: the answer may be lost to the reset
+            out += b'<reset>'
+        c.close()
+        return out
+
+    def test_chunked_body_refused(self):
+        r = self.raw(b'POST /api/login HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\nffffffff\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 411'), r[:80])
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)   # still serving
+
+    def test_any_transfer_encoding_refused(self):
+        """not only chunked POST: another method's chunked body would be read as the next request (smuggling)"""
+        smuggled = b'5\r\nGET /\r\n0\r\n\r\n'
+        for head in (b'PUT /api/config HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n',
+                     b'POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\n',
+                     b'GET /api/config HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: gzip\r\n\r\n'):
+            with self.subTest(head=head[:40]):
+                r = self.raw(head + smuggled)
+                self.assertTrue(r.startswith(b'HTTP/1.1 411'), r[:80])
+                self.assertEqual(r.count(b'HTTP/1.1 '), 1, r)      # nothing after it was read as a request
+
+    def test_slow_headers_closed(self):
+        c = socket.create_connection(('127.0.0.1', self.port), timeout=40)
+        c.sendall(b'GET /api/config HTTP/1.1\r\nHost: x\r\n')         # never finishes the headers
+        t0 = time.time()
+        self.assertEqual(c.recv(1), b'')                                  # the server closes it
+        self.assertLess(time.time() - t0, 30)
+        c.close()
+
+    def test_connections_per_address_capped(self):
+        # from 127.0.0.2, which no other test uses, so no other connection shares the count
+        closed = self.closed_count([self.conn('127.0.0.2') for _ in range(70)])
+        self.assertGreaterEqual(closed, 6)       # 64 per address: the rest are closed at once
+        self.assertLessEqual(closed, 6)          # ... and only those
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)
+        # the slots come back when connections end: 64 complete requests at once, twice
+        time.sleep(1)
+        for _ in range(2):
+            socks = [self.conn('127.0.0.2', timeout=10) for _ in range(64)]
+            for s in socks:
+                s.sendall(b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nConnection: close\r\n\r\n' % self.port)
+            ok = 0
+            for s in socks:
+                if s.recv(12).startswith(b'HTTP/1.1 200'):
+                    ok += 1
+                s.close()
+            self.assertEqual(ok, 64)
+            time.sleep(1)
+
+    def test_connections_capped_in_total(self):
+        # 9 addresses x 60, each under the per-address cap: only the total of 512 applies
+        socks = [self.conn('127.0.0.%d' % (10 + a)) for a in range(9) for _ in range(60)]
+        closed = self.closed_count(socks)
+        self.assertGreaterEqual(closed, 540 - 512)
+        self.assertLessEqual(closed, 540 - 512 + 2)   # + the odd connection of an earlier test still closing
+        time.sleep(1)
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)
+
+    def test_idle_connection_closed(self):
+        """a connection that never sends a request line is closed after the idle timeout (60 s)"""
+        c = self.conn(timeout=90)
+        t0 = time.time()
+        self.assertEqual(c.recv(1), b'')
+        self.assertGreater(time.time() - t0, 55)
+        self.assertLess(time.time() - t0, 75)
+        c.close()
+
+    def rss_mb(self):
+        for line in open('/proc/%d/status' % self.proc.pid):
+            if line.startswith('VmRSS:'):
+                return int(line.split()[1]) / 1024
+
+    def test_bad_request_lines_close(self):
+        """a stream of bad request lines gets one answer and the connection closes (answers were queued unread)"""
+        r = self.raw(b'X\r\n' * 5000, wait=5)
+        self.assertTrue(r.startswith(b'HTTP/1.1 400') or r == b'<reset>', r[:80])
+        self.assertLessEqual(r.count(b'HTTP/1.1 '), 1)
+        self.assertNotIn(b'<timeout>', r)              # closed, not kept open
+
+    def test_bad_framing_refused(self):
+        h = 'Host: 127.0.0.1:%d\r\n' % self.port
+        for req in ('POST /api/login HTTP/1.1\r\n%sContent-Length: 5abc\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5\r\nContent-Length: 7\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sTransfer-Encoding : chunked\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5, 7\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5,\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sNo colon here\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sExpect: something\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'GET /api/config\r\n%s\r\n' % h):
+            with self.subTest(req=req[:60]):
+                r = self.raw(req.encode() + b'GET /api/config HTTP/1.1\r\n' + h.encode() + b'\r\n')
+                self.assertTrue(r.startswith(b'HTTP/1.1 400') or r.startswith(b'HTTP/1.1 417') or r == b'<reset>', r[:80])
+                self.assertLessEqual(r.count(b'HTTP/1.1 '), 1, r)   # what followed was not read as a request
+                self.assertNotIn(b'<timeout>', r)
+
+    def test_header_size_capped(self):
+        r = self.raw(b'GET /api/config HTTP/1.1\r\n' + b''.join(b'X-%d: %s\r\n' % (i, b'a' * 1000) for i in range(80)) + b'\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 431') or r == b'<reset>', r[:80])
+        r = self.raw(b'GET /api/config HTTP/1.1\r\n' + b''.join(b'X-%d: a\r\n' % i for i in range(150)) + b'\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 431') or r == b'<reset>', r[:80])
+
+    def test_body_memory_follows_what_arrives(self):
+        """a large Content-Length with one byte sent doesn't make the server allocate the whole body"""
+        before = self.rss_mb()
+        socks = [self.conn('127.0.0.4') for _ in range(10)]
+        for c in socks:
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: 25000000\r\n\r\n{')
+        time.sleep(1.5)
+        grown = self.rss_mb() - before
+        for c in socks: c.close()
+        self.assertLess(grown, 50, 'RSS grew by %.0f MB' % grown)   # was ~25 MB per connection
+
+    def test_pipelined_requests_memory(self):
+        """many short pipelined requests on a few connections: memory stays flat (a timer per read once grew it by a
+        gigabyte in seconds)"""
+        before = self.rss_mb()
+        req = (b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n' % self.port +
+               b''.join(b'X-%d: a\r\n' % i for i in range(90)) + b'\r\n')
+        import threading
+        socks = [self.conn('127.0.0.6') for _ in range(4)]
+        stop = time.time() + 6
+        def send(c):
+            try:
+                while time.time() < stop: c.sendall(req * 20)
+            except OSError: pass
+        def drain(c):
+            c.settimeout(1)
+            try:
+                while time.time() < stop + 1 and c.recv(1 << 16): pass
+            except OSError: pass
+        ts = [threading.Thread(target=f, args=(c,)) for c in socks for f in (send, drain)]
+        for t in ts: t.start()
+        for t in ts: t.join()
+        grown = self.rss_mb() - before
+        for c in socks: c.close()
+        self.assertLess(grown, 100, 'RSS grew by %.0f MB' % grown)
+
+    def test_declared_sizes_dont_block_uploads(self):
+        """headers that announce large bodies and send nothing don't use up the upload budget (it counts bytes held)"""
+        budget = 256 * 1024 * 1024                         # MaxBodiesInFlight
+        sizes = [31_000_000] * 8 + [budget - 8 * 31_000_000 - 10]   # announced up to 10 bytes short of it
+        socks = [self.conn('127.0.0.7') for _ in sizes]
+        for c, n in zip(socks, sizes):
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: %d\r\n\r\n' % (self.port, n))
+        time.sleep(1)
+        st = Client(self.base).req('POST', '/api/login', {'username': 'nobody', 'password': 'x'})[0]
+        for c in socks: c.close()
+        self.assertIn(st, (401, 429))                     # an answer from the handler, not 503
+
+    def test_refusal_closes(self):
+        """a POST without Content-Length is refused and the connection closed, so a pipeline of them can't hold it"""
+        r = self.raw(b'POST /x HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n' % self.port * 50)
+        self.assertTrue(r.startswith(b'HTTP/1.1 411') or r == b'<reset>', r[:80])
+        self.assertLessEqual(r.count(b'HTTP/1.1 '), 1)
+        self.assertNotIn(b'<timeout>', r)
+
+    def test_bodies_not_held_by_idle_connections(self):
+        """large bodies on connections left open and idle: memory levels off instead of growing per connection"""
+        body = b'{' + b' ' * 30_000_000
+        socks, rss = [], []
+        for _ in range(10):
+            c = self.conn('127.0.0.8', timeout=30)
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: %d\r\n\r\n' % (self.port, len(body)) + body)
+            self.assertTrue(c.recv(12).startswith(b'HTTP/1.1 4'))   # answered; the connection stays open, idle
+            socks.append(c)
+            rss.append(self.rss_mb())
+        for c in socks: c.close()
+        self.assertLess(rss[-1] - rss[3], 60, rss)       # 30 MB per idle connection would be 180 MB here
+
+    def test_upload_budget_bounds_memory(self):
+        """bodies sent for real fill the server-wide upload budget (256 MB, charged at twice each buffer): past it uploads
+        get 503, memory stays bounded over several rounds (625 MB before the buffer was charged by its real size), and
+        once those connections end, uploads work again"""
+        import threading
+        before = self.rss_mb()
+        n = 30_000_000
+        head = (b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                b'Content-Length: %d\r\n\r\n{' % (self.port, n))
+        peak, refused = 0, 0
+        for _ in range(3):
+            answers = []
+            def send(c):
+                try:
+                    c.sendall(head + b' ' * (n - 2))      # all but the last byte: the body stays held
+                    c.settimeout(2)
+                    answers.append(c.recv(12))
+                except OSError:
+                    answers.append(b'<closed>')
+            socks = [self.conn('127.0.0.9') for _ in range(20)]
+            ts = [threading.Thread(target=send, args=(c,)) for c in socks]
+            for t in ts: t.start()
+            for t in ts: t.join(60)
+            peak = max(peak, self.rss_mb() - before)
+            refused += sum(1 for a in answers if a.startswith(b'HTTP/1.1 503') or a == b'<closed>')
+            for c in socks: c.close()
+            time.sleep(1)
+        self.assertGreaterEqual(refused, 30)
+        self.assertLess(peak, 450, 'RSS grew by %.0f MB' % peak)
+        self.assertIn(Client(self.base).req('POST', '/api/login', {'username': 'nobody', 'password': 'x'})[0], (401, 429))
+
+    def test_slow_header_lines_closed(self):
+        """the header deadline is for all header lines together, not per line (one line every 5 s doesn't extend it)"""
+        c = socket.create_connection(('127.0.0.1', self.port), timeout=60)
+        c.sendall(b'GET /api/config HTTP/1.1\r\n')
+        t0 = time.time()
+        closed = False
+        while time.time() - t0 < 45:
+            try:
+                c.sendall(b'X-Slow: a\r\n')
+            except OSError:
+                closed = True
+                break
+            c.settimeout(5)
+            try:
+                if c.recv(1) == b'':
+                    closed = True
+                    break
+            except socket.timeout:
+                pass
+        self.assertTrue(closed)
+        self.assertLess(time.time() - t0, 30)
+        c.close()
+
 class Address(unittest.TestCase):
     """finding #26 (advisory GHSA-m2gr-gcrf-xc6m): the web pages and sign-in are plain HTTP, so they listen on this
     machine only; a network address in the config is refused before anything starts"""
@@ -425,7 +684,7 @@ class Front(Base):
         # two Host lines
         s = socket.create_connection(('127.0.0.1', self.port), timeout=5)
         s.sendall(b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nHost: evil.example\r\nConnection: close\r\n\r\n' % self.port)
-        self.assertTrue(s.recv(12).startswith(b'HTTP/1.1 421'))
+        self.assertIn(s.recv(12)[:12], (b'HTTP/1.1 421', b'HTTP/1.1 400'))   # refused by the app or already by the HTTP layer
         s.close()
         # X-Forwarded-Host doesn't widen the Origin check
         st = c.req('POST', '/api/login', {'username': 'x', 'password': 'y'},

@@ -2,10 +2,10 @@
 ## (Argon2id), the sync listener. Same routes, cookie and headers as v1's app.py in server mode, so the web pages work
 ## unchanged. One thread owns the node (decision 0030).
 
-import std/[asyncdispatch, asynchttpserver, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm, sequtils]
+import std/[asyncdispatch, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm, sequtils]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics]
 import kks/provider_gnutls
-import dbstore, tls, net, argon2, mdns, internet
+import dbstore, tls, net, argon2, mdns, internet, httpserver
 
 const
   Cookie = "kks_session"
@@ -1217,4 +1217,4 @@ proc serve*(s: Server): Future[void] =
         try: s.n.record("error", req.url.path & ": " & $e.name & ": " & e.msg & "\n" & e.getStackTrace(), nowS() * 1000)
         except CatchableError: discard
         await s.sendJson(req, 500, O(("error", S("internal error (see the server log)"))))
-  http.serve(Port(s.cfg.port), cb, s.cfg.address)
+  http.serve(Port(s.cfg.port), cb, s.cfg.address, assumedDescriptorsPerRequest = 5)   # stop accepting near the descriptor limit instead of crashing
