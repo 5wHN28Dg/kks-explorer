@@ -216,6 +216,8 @@ proc adw_combo_row_set_selected*(r: W, i: cuint) {.importc, header: HA.}
 proc adw_expander_row_new*(): W {.importc, header: HA.}
 proc adw_expander_row_add_row*(r, child: W) {.importc, header: HA.}
 proc adw_expander_row_set_subtitle*(r: W, s: cstring) {.importc, header: HA.}
+proc adw_expander_row_set_expanded*(r: W, v: cint) {.importc, header: HA.}
+proc adw_expander_row_get_expanded*(r: W): cint {.importc, header: HA.}
 proc adw_alert_dialog_new*(heading, body: cstring): W {.importc, header: HA.}
 proc adw_alert_dialog_add_response*(d: W, id, label: cstring) {.importc, header: HA.}
 proc adw_alert_dialog_set_response_appearance*(d: W, id: cstring, a: cint) {.importc, header: HA.}

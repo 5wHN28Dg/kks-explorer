@@ -201,6 +201,16 @@ class Windows(unittest.TestCase):
         # the drawing's tags are buttons for UI Automation (kks_uia.cpp): invoking one opens its panel
         self.check('tag.uia', ['wait\t~11LAB70AA501, \t30', 'click\t~11LAB70AA501, ', 'value\tSystem\tFeed water piping system',
                                'click\tClose', 'click\tFit the sheet (0)', 'wait\t~11LAB70AA501, \t10'])   # the whole sheet again
+        # Equipment by system (core systemsView): a window with a search field and a native tree; a search opens every
+        # level; Enter on a code (what a keyboard or screen-reader user does) opens its tag; Esc closes the window
+        self.check('systems.uia', ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
+                                   'wait\t~LAB · Feed water piping system (\t20',
+                                   'set\tSearch codes, systems, descriptions\tLAB70AA501', 'wait\t~ found\t20',
+                                   'wait\t~LAB70 (\t20', 'wait\t~AA · \t20',
+                                   'enter\t~11LAB70AA501 · Sample sheet\t20', 'value\tSystem\tFeed water piping system',
+                                   'select\t~11LAB70AA501 · ', 'click\tShow the selected code on its drawing',
+                                   'value\tSystem\tFeed water piping system',
+                                   'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
         # search → the panel decodes the tag; an edit reaches the server by the automatic sync
         note = 'Gland repacked (Windows %s)' % time.strftime('%H:%M:%S')
         self.check('panel.uia', ['set\tSearch equipment by KKS code or description\tLAB70AA501', 'select\t~11LAB70AA501',
