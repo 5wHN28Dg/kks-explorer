@@ -75,18 +75,18 @@
    "icon-192.png": 709,
    "icon-512.png": 3047,
    "icon.svg": 303,
-   "index.html": 65922,
+   "index.html": 72556,
    "kks-wasm-worker.js": 479,
    "kks-wasm.js": 3443,
    "learning.html": 3263,
    "manifest.webmanifest": 459,
    "sw.js": 3608,
-   "systems.js": 5946,
+   "systems.js": 9537,
    "tiles.js": 8940,
    "vendor/fonts/courses.css": 6376,
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1031067
+  "total": 1041292
  }
 }

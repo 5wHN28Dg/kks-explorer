@@ -104,5 +104,63 @@ const KSys = (() => {
     return {blocks, other: rest, total};
   }
 
-  return {decode, photoCover, photoCovers, systemsView};
+  // a place is known (core views.located): the location list has the code (by KKS without the unit), or a person filled
+  // one of the place fields (Nim's strip: only ASCII whitespace counts as empty)
+  const own = (o, k) => o != null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
+  const PLACE = ['area', 'floor', 'elev', 'near', 'loc'];
+  function located(t, loc, equipment) {
+    const body = (t.kks || '').length > 2 ? t.kks.slice(2) : '';
+    const rows = own(loc, body);
+    if (Array.isArray(rows) && rows.length) return true;
+    const e = own(equipment, (t.kks || '') + (t.suffix || ''));
+    return PLACE.some(f => { const v = own(e, f); return typeof v === 'string' && /[^ \t\v\r\n\f]/.test(v) });
+  }
+
+  // How complete the plant's record is (core views.coverageView): totals, per sheet (the page's sheets first, in their
+  // order) and per system (sorted; "" = codes that don't decode). Codes are counted once per sheet, per system and in
+  // the totals; tags, review and marked are per tag, so system rows don't have them.
+  //   tags: the effective tags as for systemsView; sheets: [{id, name}]; kks: data/kks.json; loc: the location list by
+  //   KKS without the unit; equipment: state equipment (by full code); photos: state photos
+  // -> {total: counts, sheets: [counts + {id, name}], systems: [{sys, sys_name, codes, verified, located, photos}]};
+  //    counts = {tags, verified, review, marked, codes, located, photos: {both, equipment, plate, none}}
+  function coverageView({tags, sheets, kks, loc, equipment, photos}) {
+    const pcs = () => ({both: 0, equipment: 0, plate: 0, none: 0});
+    const blank = () => ({tags: 0, verified: 0, review: 0, marked: 0, codes: 0, located: 0, photos: pcs()});
+    const covers = photoCovers(photos);
+    const bySheet = new Map(), bySys = new Map(), seenSheet = new Map(), seenSys = new Set(), seenAll = new Set();
+    for (const s of sheets || []) bySheet.set(s.id, blank());
+    const all = blank();
+    const checked = t => t.status === 'verified' || t.status === 'confirmed';
+    for (const t of tags) {
+      if (!bySheet.has(t.sheet)) bySheet.set(t.sheet, blank());
+      const c = bySheet.get(t.sheet);
+      c.tags++; all.tags++;
+      if (checked(t)) { c.verified++; all.verified++ }
+      if (t.status === 'review') { c.review++; all.review++ }
+      if (t.added) { c.marked++; all.marked++ }
+      if (!t.kks) continue;
+      const k = t.kks + (t.suffix || ''), p = covers.get(k) || 'none', here = located(t, loc, equipment);
+      let seen = seenSheet.get(t.sheet);
+      if (!seen) seenSheet.set(t.sheet, seen = new Set());
+      if (!seen.has(k)) { seen.add(k); c.codes++; c.photos[p]++; if (here) c.located++ }
+      if (!seenAll.has(k)) { seenAll.add(k); all.codes++; all.photos[p]++; if (here) all.located++ }
+      if (!seenSys.has(k)) {
+        seenSys.add(k);
+        const d = decode(t, kks), sys = d ? d.sys : '';
+        let s = bySys.get(sys);
+        if (!s) bySys.set(sys, s = {codes: 0, verified: 0, located: 0, photos: pcs()});
+        s.codes++; s.photos[p]++;
+        if (here) s.located++;
+        if (checked(t)) s.verified++;
+      }
+    }
+    const sheetName = new Map((sheets || []).map(s => [s.id, typeof s.name === 'string' ? s.name : '']));
+    return {
+      total: all,
+      sheets: [...bySheet].map(([id, c]) => ({...c, id, name: sheetName.has(id) ? sheetName.get(id) : id})),
+      systems: [...bySys.keys()].sort(cmp).map(k => ({sys: k, sys_name: k ? name(kks, 'systems', k) : '', ...bySys.get(k)})),
+    };
+  }
+
+  return {decode, photoCover, photoCovers, systemsView, located, coverageView};
 })();

@@ -114,6 +114,15 @@ dt{color:var(--muted)} dd{margin:0}
 .sysrow:hover,.sysrow:focus-visible{background:var(--chrome3)}
 .sysrow .mono{flex:none} .sysrow .d{flex:1;min-width:0;color:var(--muted);font-size:12.5px}
 .sysdot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--pc);align-self:center}
+/* coverage: bars in the photo coverage colours, each with its numbers in words beside it */
+.covbar{flex:none;display:flex;width:56px;height:10px;border:1px solid var(--muted);border-radius:2px;overflow:hidden;align-self:center;background:var(--chrome)}
+.covbar span{display:block;background:var(--pc)} .covbar.wide{width:120px;margin:5px 0 3px}
+#covBody h3{font-size:13px;margin:14px 0 4px;color:var(--muted);font-weight:600}
+#covBody dl{grid-template-columns:150px 1fr}
+.covrow{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:7px 4px;border:0;border-bottom:1px solid var(--chrome3);background:none;color:inherit;font:inherit;cursor:pointer}
+.covrow:hover,.covrow:focus-visible{background:var(--chrome3)}
+.covrow .covbar{margin-top:5px} .covrow .t{flex:1;min-width:0} .covrow .d{display:block;color:var(--muted);font-size:12.5px}
+.covlegend{font-size:12px;color:var(--muted);margin-top:6px} .covlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px;background:var(--pc)}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .revitem{padding:8px 0;border-bottom:1px solid var(--chrome3);cursor:pointer}
 @media (max-width:720px){
@@ -136,6 +145,7 @@ dt{color:var(--muted)} dd{margin:0}
   <div class="brand">Walkdown <small id="plantName"></small></div>
   <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search equipment by KKS code or description" aria-autocomplete="list" aria-expanded="false" aria-controls="results"><div id="results" role="listbox" aria-label="Search results"></div></div>
   <button class="btn" id="sysBtn" title="Every KKS code on the drawings, by block and system" aria-controls="sysDrawer" aria-expanded="false">Systems</button>
+  <button class="btn" id="covBtn" title="How complete the plant's record is: checked tags, places, photos, per sheet and system" aria-controls="covDrawer" aria-expanded="false">Coverage</button>
   <select id="sheetSel" title="Drawing"></select>
   <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
   <button class="btn" id="procBtn">Procedures</button>
@@ -156,8 +166,10 @@ dt{color:var(--muted)} dd{margin:0}
     <div class="body" id="procBody"></div></aside>
   <aside class="drawer" id="sysDrawer" aria-labelledby="sysTitle"><div class="head"><h2 id="sysTitle">Equipment by system</h2><button class="x" data-close="sysDrawer" aria-label="Close equipment by system">×</button></div>
     <div style="padding:8px 10px 0"><input id="sysQ" type="search" aria-label="Filter equipment by system" aria-describedby="sysCount" placeholder="Filter: code, system, LAB70, valve, description…" autocomplete="off" spellcheck="false" style="width:100%;padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)">
-    <div class="sub" id="sysCount" aria-live="polite" style="margin-top:4px"></div></div>
+    <div class="sub" id="sysCount" aria-live="polite" style="margin-top:4px"></div><div id="sysOnlyBar"></div></div>
     <div class="body" id="sysBody"></div></aside>
+  <aside class="drawer" id="covDrawer" aria-labelledby="covTitle"><div class="head"><h2 id="covTitle" tabindex="-1">Coverage</h2><button class="x" data-close="covDrawer" aria-label="Close coverage">×</button></div>
+    <div class="body" id="covBody"></div></aside>
   <aside class="drawer" id="revDrawer"><div class="head"><h2>Needs review</h2><button class="x" data-close="revDrawer">×</button></div>
     <div style="padding:8px 10px 0" class="sub">Tags the reader wasn't sure about. Check against the drawing, then confirm or mark “not a tag”. <label style="display:block;margin-top:6px"><input type="checkbox" id="hideRev"> Hide unreviewed tags on drawings</label></div>
     <div class="body" id="revBody"></div></aside>
@@ -275,8 +287,9 @@ function markMode(on){
   else{ $('#banner').style.display='none'; $('#bannerDone').textContent='Done'; $('#markbox')?.remove(); mark.start=null }
 }
 $('#zmark').onclick=()=>markMode(!mark.on);
-$('#zcover').onclick=()=>{ const on=document.body.classList.toggle('cover'); $('#zcover').classList.toggle('on',on);
-  $('#zcover').setAttribute('aria-pressed',String(on)); drawTags() };
+function setCover(on){ document.body.classList.toggle('cover',on); $('#zcover').classList.toggle('on',on);
+  $('#zcover').setAttribute('aria-pressed',String(on)); if(cur) drawTags() }
+$('#zcover').onclick=()=>setCover(!document.body.classList.contains('cover'));
 function toStage(e){ const r=$('#viewer').getBoundingClientRect(); return {x:(e.clientX-r.left-view.x)/view.s, y:(e.clientY-r.top-view.y)/view.s} }
 function markDraw(e,phase){
   const p=toStage(e);
@@ -314,6 +327,8 @@ async function refreshState(){
   // the open systems list follows the sync too, but never redraws under the keyboard or a screen reader's focus
   const SD=$('#sysDrawer');
   if(SD.classList.contains('open')){ if(SD.contains(document.activeElement)) sysStale=true; else renderSystems() }
+  const CD=$('#covDrawer');   // the coverage numbers likewise
+  if(CD.classList.contains('open')){ if(CD.contains(document.activeElement)) covStale=true; else renderCoverage() }
   // an open panel shows what changed elsewhere (an approval, a rejection, a new photo), unless you are editing in it
   const P=$('#panel');
   if(selId&&P.classList.contains('open')&&!P.contains(document.activeElement)&&!P.querySelector('.editing')){
@@ -597,7 +612,7 @@ K.back = () => {
   if (K.lightbox.isOpen?.()) { K.lightbox.close(); return true }
   if ($('#panel').classList.contains('open')) { closePanel(); return true }
   const d = document.querySelector('.drawer.open');
-  if (d) { d.classList.remove('open'); if (d.id === 'procDrawer') { activeProc = null; drawTags() } return true }
+  if (d) { closeDrawer(d, true); return true }
   return false;
 };
 function cropStyle(t){ const S=SHEETS.find(s=>s.id===t.sheet), b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
@@ -755,7 +770,12 @@ function renderSystems(){
   sysStale=false;
   const q=$('#sysQ').value.trim();
   const v=KSys.systemsView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:LOC,photos:STATE.photos},q);
-  const all=q!==''&&v.total<=SYS_OPEN_ALL;
+  if(sysOnly){   // one system (from Coverage), in every block; SYS_OTHER = the codes that don't decode
+    v.blocks=v.blocks.map(b=>({...b,systems:b.systems.filter(s=>s.sys===sysOnly)})).filter(b=>b.systems.length);
+    if(sysOnly!==SYS_OTHER) v.other=[];
+    v.total=v.blocks.reduce((a,b)=>a+b.systems.reduce((c,s)=>c+s.count,0),0)+v.other.length;
+  }
+  const all=(q!==''||!!sysOnly)&&v.total<=SYS_OPEN_ALL;
   const sum=(label,n)=>h('summary',null,label,' ',h('span',{class:'c'},`(${n})`));
   const row=it=>h('button',{type:'button',class:'sysrow','data-tag':it.tag,onclick:()=>{ focusPanel=true; if(innerWidth<=720){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') } goTo(it.tag) }},
     h('span',{class:'sysdot p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
@@ -769,10 +789,61 @@ function renderSystems(){
           f.kinds.map(c=>h('details',{class:'lvl-kind',open:all},sum(c.comp+(c.comp_name?' · '+c.comp_name:''),c.count),c.items.map(row))))))))});
   if(v.other.length) out.push(h('details',{class:'lvl-blk lvl-other',open:all},sum('Other: codes that are not a full KKS',v.other.length),v.other.map(row)));
   put($('#sysBody'),out.length?out:h('div',{class:'sub'},q?'No code matches.':'No tags on the drawings yet.'));
-  $('#sysCount').textContent=`${v.total} code${v.total===1?'':'s'}`+(q?' match':'');
+  $('#sysCount').textContent=`${v.total} code${v.total===1?'':'s'}`+(sysOnly?(sysOnly===SYS_OTHER?(v.total===1?" that doesn't decode":" that don't decode"):' in system '+sysOnly):q?' match':'');
+  put($('#sysOnlyBar'),sysOnly?h('button',{type:'button',class:'ghost',style:'margin-top:6px',onclick:()=>{ sysOnly=''; renderSystems(); $('#sysQ').focus() }},'Show all systems'):null);
 }
-let sysT=0, sysStale=false;
-$('#sysQ').oninput=()=>{ clearTimeout(sysT); sysT=setTimeout(renderSystems,120) };
+const SYS_OTHER='-';
+let sysT=0, sysStale=false, sysOnly='';
+// a search covers every system again
+$('#sysQ').oninput=()=>{ sysOnly=''; clearTimeout(sysT); sysT=setTimeout(renderSystems,120) };
+function openSystem(code){ sysOnly=code||SYS_OTHER; $('#sysQ').value=''; openDrawer('sysDrawer'); renderSystems(); $('#sysQ').focus() }
+
+// ---------- coverage (core views.coverageView, ported in systems.js) ----------
+// Totals, then per sheet and per system, each with a bar of the photo coverage colours (its numbers in words beside it,
+// for screen readers). A sheet opens with the tags coloured by photos; a system opens in Equipment by system.
+const PHOTO_KINDS=['both','equipment','plate','none'];
+const pct=(a,b)=>b?Math.round(100*a/b)+' %':'–';
+const plural=(n,one,many)=>n+' '+(n===1?one:many);
+const photoWords=p=>`photos: ${p.both} equipment and tag plate, ${p.equipment} equipment only, ${p.plate} tag plate only, ${p.none} none`;
+function covBar(p,wide){
+  return h('span',{class:'covbar'+(wide?' wide':''),'aria-hidden':'true',title:photoWords(p)},
+    PHOTO_KINDS.filter(k=>p[k]>0).map(k=>h('span',{class:'p-'+k,style:`flex:${p[k]} 0 0`})));
+}
+let covStale=false;
+function renderCoverage(){
+  covStale=false;
+  const v=KSys.coverageView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:LOC,equipment:STATE.equipment,photos:STATE.photos});
+  const t=v.total, p=t.photos;
+  const sheetSub=s=>[plural(s.codes,'code','codes'),pct(s.verified,s.tags)+' checked',pct(s.located,s.codes)+' placed',
+    s.review?s.review+' to review':null,s.marked?s.marked+' marked':null].filter(Boolean).join(' · ');
+  const sysSub=s=>[plural(s.codes,'code','codes'),pct(s.verified,s.codes)+' checked',pct(s.located,s.codes)+' placed'].join(' · ');
+  const row=(title,sub,p,onclick,label)=>h('button',{type:'button',class:'covrow',onclick,title:label},covBar(p),
+    h('span',{class:'t'},title,h('span',{class:'d'},sub),h('span',{class:'vh'},' · '+photoWords(p))));
+  put($('#covBody'),
+    h('h3',null,'Totals'),
+    h('div',{class:'sub',style:'margin-bottom:6px'},`${plural(t.codes,'code','codes')} on the drawings, in ${plural(t.tags,'tag','tags')}`),
+    h('dl',{id:'covTotals'},
+      h('dt',null,'Checked by a person'),h('dd',null,`${t.verified} of ${plural(t.tags,'tag','tags')} (${pct(t.verified,t.tags)})`),
+      h('dt',null,'Known place'),h('dd',null,`${t.located} of ${plural(t.codes,'code','codes')} (${pct(t.located,t.codes)})`),
+      h('dt',null,'Photos'),h('dd',null,covBar(p,true),h('div',null,`both ${p.both} · equipment only ${p.equipment} · tag plate only ${p.plate} · none ${p.none}`)),
+      h('dt',null,'Readings to review'),h('dd',null,t.review),
+      h('dt',null,'Missed tags marked'),h('dd',null,t.marked)),
+    h('div',{class:'covlegend',role:'note'},'Photo colours:',PHOTO_KINDS.map(k=>[h('i',{class:'p-'+k,'aria-hidden':'true'}),
+      {both:'both',equipment:'equipment only',plate:'tag plate only',none:'none'}[k]])),
+    h('h3',null,'By sheet'),h('div',{class:'sub'},'Open a sheet to see its tags coloured by photos'),
+    v.sheets.map(s=>row(s.name,sheetSub(s),s.photos,()=>openCovered(s.id),`Open ${s.name} coloured by photos`)),
+    h('h3',null,'By system'),h('div',{class:'sub'},'Open a system in Equipment by system'),
+    v.systems.length?v.systems.map(s=>row(s.sys?s.sys+(s.sys_name?' · '+s.sys_name:''):"Codes that don't decode",sysSub(s),s.photos,
+      ()=>openSystem(s.sys),s.sys?`Show system ${s.sys} in Equipment by system`:"Show the codes that don't decode in Equipment by system"))
+      :h('div',{class:'sub'},'No codes on the drawings yet.'));
+}
+function openCovered(id){
+  if(innerWidth<=720) closeDrawer($('#covDrawer'),false);
+  setCover(true);
+  if(cur?.id!==id){ closePanel(); openSheet(id) }
+  toast(`${SHEETS.find(s=>s.id===id)?.name||id}: tags coloured by photos`);
+}
+$('#covDrawer').addEventListener('focusout',e=>{ if(covStale&&!$('#covDrawer').contains(e.relatedTarget)){ covStale=false; renderCoverage() } });
 $('#sysDrawer').addEventListener('focusout',e=>{ if(sysStale&&!$('#sysDrawer').contains(e.relatedTarget)){ sysStale=false; renderSystems() } });
 
 // ---------- review queue ----------
@@ -793,11 +864,18 @@ function renderNotes(){ const n=cur.notes||[]; put($('#notesBody'),n.length?[h('
                                                     :h('div',{class:'sub'},'No markups on this sheet.')) }
 
 // ---------- drawers ----------
-function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id)); $('#sysBtn').setAttribute('aria-expanded',String(id==='sysDrawer')) }
-document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ $('#'+b.dataset.close).classList.remove('open'); if(b.dataset.close==='sysDrawer'){ $('#sysBtn').setAttribute('aria-expanded','false'); $('#sysBtn').focus() } if(b.dataset.close==='procDrawer'){activeProc=null;drawTags()} });
+const DRAWER_BTN={sysDrawer:'#sysBtn',covDrawer:'#covBtn'};   // buttons that say whether their drawer is open
+function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id));
+  for(const d in DRAWER_BTN) $(DRAWER_BTN[d]).setAttribute('aria-expanded',String(id===d)) }
+// focus: back to the drawer's button (when it has one)
+function closeDrawer(d,focus){ d.classList.remove('open'); const b=DRAWER_BTN[d.id]&&$(DRAWER_BTN[d.id]);
+  if(b){ b.setAttribute('aria-expanded','false'); if(focus) b.focus() } if(d.id==='procDrawer'){ activeProc=null; drawTags() } }
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeDrawer($('#'+b.dataset.close),true));
 $('#procBtn').onclick=()=>{ if($('#procDrawer').classList.contains('open')){$('#procDrawer').classList.remove('open');activeProc=null;drawTags()} else {openDrawer('procDrawer'); activeProc?renderProcDetail(activeProc):renderProcs()} };
-$('#sysBtn').onclick=()=>{ if($('#sysDrawer').classList.contains('open')){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') }
-  else { openDrawer('sysDrawer'); renderSystems(); $('#sysQ').focus() } };
+$('#sysBtn').onclick=()=>{ if($('#sysDrawer').classList.contains('open')) closeDrawer($('#sysDrawer'),false);
+  else { sysOnly=''; openDrawer('sysDrawer'); renderSystems(); $('#sysQ').focus() } };
+$('#covBtn').onclick=()=>{ if($('#covDrawer').classList.contains('open')) closeDrawer($('#covDrawer'),false);
+  else { openDrawer('covDrawer'); renderCoverage(); $("#covTitle").focus() } };
 $('#revBtn').onclick=()=>{ if($('#revDrawer').classList.contains('open'))$('#revDrawer').classList.remove('open'); else {openDrawer('revDrawer'); renderReview()} };
 $('#notesBtn').onclick=()=>{ if($('#notesDrawer').classList.contains('open'))$('#notesDrawer').classList.remove('open'); else openDrawer('notesDrawer') };
 $('#sheetSel').onchange=e=>{ closePanel(); openSheet(e.target.value) };
