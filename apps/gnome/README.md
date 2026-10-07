@@ -26,7 +26,7 @@ system's.
 ## What it does
 
 **Joining a plant:**
-- through a server: username and password, `/api/devices/enroll`;
+- through a server: username and password, sent over TLS on the sync port (PROTOCOL-v2 §16 `enroll`);
 - with an invite code: the text, or a picture of the QR code read by zxing-cpp;
 - by asking an admin on the same Wi-Fi: the 6-digit code;
 - with a bundle file;
