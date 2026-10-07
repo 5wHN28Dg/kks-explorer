@@ -6,7 +6,6 @@ import java.io.DataInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
@@ -223,18 +222,5 @@ object Net {
             }
         }, "kks-listen").start()
         return server
-    }
-
-    /** "join through a server": the server certifies this device for the person (server/node.py join_via_server) */
-    fun enroll(base: String, username: String, password: String, device: String, label: String): JSONObject {
-        val c = URL(base.trimEnd('/') + "/api/devices/enroll").openConnection() as HttpURLConnection
-        c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = TIMEOUT; c.readTimeout = TIMEOUT
-        c.setRequestProperty("Content-Type", "application/json")
-        c.outputStream.use { it.write(JSONObject().put("username", username).put("password", password).put("device", device).put("label", label).toString().toByteArray()) }
-        val code = c.responseCode
-        val body = (if (code in 200..299) c.inputStream else c.errorStream)?.readBytes()?.toString(Charsets.UTF_8) ?: ""
-        val j = try { JSONObject(body) } catch (e: Exception) { JSONObject().put("error", "the server answered $code") }
-        if (code !in 200..299) throw IllegalStateException(j.optString("error", "the server answered $code"))
-        return j
     }
 }
