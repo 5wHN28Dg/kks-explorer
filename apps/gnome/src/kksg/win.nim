@@ -12,6 +12,7 @@ type Win* = ref object
   v*: Viewer
   split*, sheetList*, searchEntry*, resultList*, sheetTitle*, panelSplit*, panelBox*, markBtn*, status*: W
   sideNav*, banner*: W
+  coverBtn*: W                 ## the drawing's "Colour tags by photos" toggle
   linkProc*: string            ## link mode (R7): clicks on tags link them to this procedure step
   linkStep*: int
   activeProc*: string
