@@ -538,7 +538,6 @@ proc gaussian3*(src: FImg, sigma: float): FImg =
   ## filters as cv2's AVX2 build computes them, with fused multiply-adds where cv2's compiler fused them (also in its
   ## scalar tail), written out here as fmaf: this build never fuses on its own (config.nims). Matched bit for bit in
   ## tests/diff_ops.nim.
-  ## contracts it). Matched bit for bit in tests/diff_ops.nim.
   var k: array[3, float]
   let s2 = -0.5 / (sigma * sigma)
   var total = 0.0
