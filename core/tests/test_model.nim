@@ -42,6 +42,9 @@ suite "model":
     c.state["photos"].elems.add j("""{"id":"p3","kks":"11LAB70AA502","file":"z.jxl","caption":"Tag plate"}""")
     c.state["photos"].elems.add j("""{"id":"p4","kks":"11LAB70AA504","file":"w.jxl","caption":"the valve"}""")
     check c.photoCover("11LAB70AA501") == "both"
+    let all = c.photoCovers
+    for k in ["11LAB70AA501", "11LAB70AA502", "11LAB70AA504", "11LAB70AA503"]:
+      check all.getOrDefault(k, "none") == c.photoCover(k)
     check c.photoCover("11LAB70AA502") == "plate"
     check c.photoCover("11LAB70AA504") == "equipment"
     check c.photoCover("11HAD70CT101R") == "none"
