@@ -76,6 +76,9 @@ https://github.com/mingw-w64/mingw-w64/tags
   - A UI Automation provider needs `ProviderOptions_UseComThreading`: otherwise UIA calls it on worker threads, where
     Nim memory can't be allocated (a crash at start on Windows 11).
   - A Nim exception must not unwind through a window procedure: guards log it to `crash.log`.
+  - A lambda that only calls a nested closure proc (`proc () = open()`) and goes through a generic (`ui.toSpec`) must
+    be written `{.closure.}`: Nim 2.2.12 typed it nimcall there and copied its environment without counting the
+    reference, so closing the window freed it once too often (heap corruption, crashes later anywhere; 2026-10-07).
   - Common Controls v6, per-monitor DPI and UTF-8 come from a manifest resource; the resource type must be numeric
     (24), or the manifest is silently ignored.
 - **Test harness (uiadrive, scheduled tasks), learned the hard way:**
