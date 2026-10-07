@@ -66,6 +66,9 @@ dependency decisions, for native code and for what runs in a browser engine alik
   importer for the jobs below), `server-http`, `python`, `web` (Chromium, WebKit, Firefox), `gnome-e2e` (headless),
   `android-e2e` (an emulator on the runner; on a failure it keeps logcat, a screenshot and the UI tree), `windows-build`
   and `windows-test` (windows-2022). Not required by main yet; the full Windows UIA e2e and real phones stay manual.
+- `tests.yml` also has `web-size`: the web client's download size (app shell, on-demand vendor files, course content)
+  against `web-size.json`. Any change needs `python3 tools/web_size.py --update` in the same PR, and the PR says why
+  growth is worth it.
 - `android.yml` and `arm64.yml` build the apps (actions pinned by SHA).
 
 ## The system
