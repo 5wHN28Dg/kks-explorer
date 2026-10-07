@@ -347,7 +347,7 @@ class Gnome(unittest.TestCase):
         filtered to it"""
         os.makedirs(SHOTS, exist_ok=True)
         shot = os.path.join(SHOTS, 'gnome-coverage.png')
-        a = self.start_app('coverage', KKS_SHOT_ON_SIGNAL=shot)
+        a = self.start_app('coverage', KKS_SHOT_ON_SIGNAL=shot, KKS_SYNC_EVERY='2000')
         pid = self.apps[-1].pid
         self.join(a)
         st = self.boss.req('GET', '/api/state')
@@ -372,6 +372,12 @@ class Gnome(unittest.TestCase):
             item = atspi.find(a, 'list item', name=title)
             self.assertIn(value, [n.get_name() for n in atspi.walk(item) if n.get_role_name() == 'label'])
         atspi.find(a, 'label', name='0 codes · – checked · – placed')               # the second sheet has no tags
+        # the open page follows a sync: a place given on the server is counted without reopening it
+        if not placed:
+            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+                                                      'changes': {'area': 'Test hall'}}})
+            self.assertEqual(r.get('status'), 'approved', r)
+            atspi.find(a, 'label', name='1 of 1 code (100 %)', timeout=20)
         # a sheet row opens that sheet (the first one is shown at the start) with the photo colours on
         tb = atspi.find(a, 'toggle button', name='Colour tags by photos', showing=False)
         self.assertFalse(tb.get_state_set().contains(Atspi.StateType.PRESSED))
