@@ -280,6 +280,10 @@ class Server(Base):
         st, data, hdr = boss.req('GET', '/photos/' + ph['file'])
         self.assertEqual((st, data), (200, png)); self.assertIn('immutable', hdr['Cache-Control'])
         self.assertEqual(anon.req('GET', '/photos/' + ph['file'])[0], 401)
+        # #32: only admins can make the server connect somewhere
+        self.assertEqual(ali2.req('POST', '/api/sync/now', {'address': '127.0.0.1:9'})[0], 403)
+        self.assertEqual(boss.req('POST', '/api/sync/now', {'address': '127.0.0.1:notaport'})[0], 400)
+        self.assertEqual(boss.req('POST', '/api/sync/now', {'address': '127.0.0.1:9'})[0], 502)   # nothing listens there
         # 2026-10-06 stored XSS: a member's "photo" that starts with the JPEG XL signature and goes on as HTML, asked
         # for as <sha>.html. Its type comes from its bytes, never the URL, and it is sandboxed.
         poly = b'\xff\x0a<html><script>parent.pwned=1</script></html>'
@@ -302,10 +306,12 @@ class Server(Base):
         self.assertEqual(st, 200)
         st, b, hdr = boss.req('GET', '/api/bundle?photos=1')
         self.assertEqual(st, 200); self.assertTrue(b.startswith(b'\x1f\x8b'))
-        # a device enrolls with its owner's password (the GNOME/Android join via server)
+        # #33: the HTTP enroll route is gone (devices enroll over TLS on the sync port, §16; it took a password over
+        # HTTP and certified any device ID without proof of its key)
         st, r, _ = anon.req('POST', '/api/devices/enroll', {'username': 'ali', 'password': 'ali password 1',
                                                             'device': 'A' * 32, 'label': 'phone'})
-        self.assertEqual(st, 200, r); self.assertEqual(r['sync_port'], self.sport)
+        self.assertIn(st, (401, 404), r)
+        self.assertNotIn('A' * 32, json.dumps(boss.req('GET', '/api/devices')[1]))
         # deactivation ends the session
         uid = [u for u in boss.req('GET', '/api/users')[1]['users'] if u['username'] == 'ali'][0]['id']
         self.assertEqual(boss.req('POST', f'/api/users/{uid}', {'active': False})[0], 200)

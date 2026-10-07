@@ -944,15 +944,6 @@ proc handle(s: Server, req: Request) {.async.} =
       let raw = s.newSession(usr["id"].i)
       await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
-    of "/api/devices/enroll":   # v1 clients: a device joining with its owner's account (v2 devices enroll over TLS, §16)
-      let dev = d.get("device")
-      if dev == nil or not dev.isStr or not isPeer(dev.s): herr(400, "bad device ID")
-      s.enrollDevice(if d.get("username") != nil and d["username"].isStr: d["username"].s else: "",
-                     if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", dev.s,
-                     if d.get("label") != nil and d["label"].isStr: d["label"].s else: "laptop", ip)
-      await s.sendJson(req, 200, O(("root", S(s.n.root)), ("plant", s.n.run.settings.getOrDefault("plant")),
-                                   ("sync_port", newInt(s.cfg.syncPort)), ("server", S(s.n.device))))
-      return
     else: discard
   # everything else needs a signed-in account
   var usr = s.currentUser(req)
@@ -1078,10 +1069,13 @@ proc handle(s: Server, req: Request) {.async.} =
       return
     of "/api/progress": herr(404, "Course progress stays in this browser on a server.")
     of "/api/sync/now":
+      # admins only (#32): it makes the server open a connection to an address of the caller's choice
+      if not me.isAdmin: herr(403, "admin only")
       let addr0 = if d.get("address") != nil and d["address"].isStr: d["address"].s.strip else: ""
       if addr0.len == 0: herr(400, "give the other device's address (host:port)")
       let host = if ':' in addr0: addr0.rsplit(':', 1)[0] else: addr0
-      let port = if ':' in addr0: parseInt(addr0.rsplit(':', 1)[1]) else: 8421
+      let port = if ':' in addr0: (try: parseInt(addr0.rsplit(':', 1)[1]) except ValueError: -1) else: 8421
+      if port < 1 or port > 65535 or host.len == 0: herr(400, "give the other device's address (host:port)")
       try:
         let st = await s.n.syncWith(s.id, host, port, "")
         await s.sendJson(req, 200, O(("ok", newBool(true)), ("result", O(("sent", newInt(st.sent)),
