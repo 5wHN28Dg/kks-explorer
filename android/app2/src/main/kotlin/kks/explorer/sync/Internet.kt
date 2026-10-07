@@ -144,6 +144,8 @@ object Internet {
     /** devices the direct path failed with, until when (ms): their syncs go through the pipe meanwhile */
     private val noDirectUntil = ConcurrentHashMap<String, Long>()
     private const val NO_DIRECT_MS = 3600_000L
+    private const val MAX_SERVED = 8   // syncs answered through the relay at once (desktop: internet.nim MaxServed)
+    private val serving = java.util.concurrent.atomic.AtomicInteger()
 
     /** a sync that went direct and failed there: its caller retries through the pipe */
     private class DirectFailed(e: Exception) : IOException(e.message, e)
@@ -172,16 +174,30 @@ object Internet {
 
     /** another device asked for a sync: accept with our candidates, meet it (directly or in the pipe), answer as the TLS server */
     private fun serve(from: String, id: String, theirs: List<String>) {
+        // anyone with a key can ask through the relay (issue #67, #30): a few at a time
+        if (serving.incrementAndGet() > MAX_SERVED) {
+            serving.decrementAndGet()
+            runCatching { send(JSONObject().put("t", "refuse").put("to", from).put("id", id)) }
+            return
+        }
         try {
             val (u, ours) = ours(direct && (noDirectUntil[from] ?: 0L) < System.currentTimeMillis())    // [] = the pipe at once
             send(JSONObject().put("t", "accept").put("to", from).put("id", id).put("cand", JSONArray(ours)))
-            val (p, _) = meet(u, ours, theirs, id, client = false, expect = "", peer = from)
+            // the stranger's deadline runs from here, punching and the TLS handshake included
+            var peer: Net.Peer? = null
+            var expired = false
+            val dog = Net.watch(java.io.Closeable { expired = true; peer?.close() })
+            val (p, _) = try { meet(u, ours, theirs, id, client = false, expect = "", peer = from) }
+                         catch (e: Exception) { dog.cancel(false); throw e }
+            peer = p
+            if (expired) { dog.cancel(false); p.close(); return }
             try {
-                val st = Net.drive(p, false)
+                val st = Net.drive(p, false, dog = dog)
                 Log.i("KKSSync", "relay sync ($lastHow) from ${p.remote.take(8)}: sent ${st.optInt("sent")}, received ${st.optInt("received")}")
                 onSynced?.invoke(p.remote, st)
-            } finally { p.close() }
+            } finally { dog.cancel(false); p.close() }
         } catch (e: Exception) { Log.w("KKSSync", "relay: answering ${from.take(8)} failed: ${e.message}") }
+        finally { serving.decrementAndGet() }
     }
 
     /** sync with a device of the plant that is on the relay: connect with our candidates, then direct or the pipe (side a).

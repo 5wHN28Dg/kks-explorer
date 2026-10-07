@@ -292,7 +292,10 @@ proc kks_sync_feed(sid: int64, data: ptr UncheckedArray[byte], n: cint, outlen: 
     var bs = newString(int(n))
     if n > 0: copyMem(addr bs[0], data, int(n))
     try:
-      for m in x.d.feed(bs):
+      x.d.add bs
+      while true:
+        let m = x.d.next(x.s.frameLimit)   # small frames until the other side is trusted (issue #67)
+        if m == nil: break
         x.s.wall = nowMs()
         x.s.receive(m)
     except CatchableError as e:
@@ -309,7 +312,8 @@ proc kks_sync_info(sid: int64, outlen: ptr cint): ptr UncheckedArray[byte] {.exp
     let st = x.s.stats
     j = O(("known", newBool(true)), ("done", newBool(x.s.done)), ("error", newStr(x.error)),
           ("sent", newInt(st.sent)), ("received", newInt(st.received)), ("blobs_sent", newInt(st.blobsSent)),
-          ("blobs_received", newInt(st.blobsReceived)), ("denied", newBool(st.denied)))
+          ("blobs_received", newInt(st.blobsReceived)), ("denied", newBool(st.denied)),
+          ("trusted", newBool(x.s.trusted)))
   cbytes(toText(j), outlen)
 
 proc kks_sync_end(sid: int64) {.exportc, cdecl.} = syncs.del sid
