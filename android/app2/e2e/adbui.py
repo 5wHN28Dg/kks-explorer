@@ -28,11 +28,23 @@ def label(n):
 
 def find(text, timeout=15, exact=False):
     end = time.time() + timeout
+    waits = 0
     while True:
-        for n in nodes():
+        ns = nodes()
+        for n in ns:
             v = label(n)
             if (v == text) if exact else (text in v):
                 return n
+        # a slow emulator (CI's software GPU) shows "System UI isn't responding" over everything: wait it out
+        if waits < 12 and any("isn't responding" in label(n) for n in ns):
+            waits += 1
+            for n in ns:
+                if label(n) == 'Wait':
+                    x, y = center(n)
+                    sh('input', 'tap', str(x), str(y))
+            end = max(end, time.time() + 5)
+            time.sleep(1)
+            continue
         if time.time() > end:
             raise AssertionError(f'not on screen: {text!r}')
         time.sleep(0.7)
