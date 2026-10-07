@@ -1,4 +1,4 @@
-import std/[unittest, tables, strutils]
+import std/[unittest, tables, strutils, times]
 import kks/[json, util, crypto, proto, replay, node, sync, plant]
 import testprovider
 
@@ -151,3 +151,30 @@ suite "sync state machine":
     var d3: Deframer
     check d3.feed("\x00\x00\x00\x09{\"t\":\"x").len == 0
     check d3.feed("\"}").len == 1
+
+  test "a responder's frame limit follows trust (issue #67)":
+    var d: Deframer
+    d.add("\x00\x10\x00\x01")                       # 1 MiB + 1 announced
+    expect SyncError: discard d.next(HelloFrame)
+    var d2: Deframer
+    d2.add("\x00\x10\x00\x01")
+    check d2.next(MaxFrame) == nil                   # waits for the body under a larger limit
+    # the stages: before the hello, after it as a stranger, after it as a device of the plant
+    var stranger = newNode(P, newMemStore(), P.p256Generate())
+    stranger.adopt(rootStr)
+    let s = newSession(mgrPhone, false, stranger.device)
+    check s.frameLimit == HelloFrame and not s.trusted
+    s.receive(newObj(@[("t", newStr("hello")), ("v", newInt(2)), ("root", newStr(rootStr)), ("vv", newObj())]))
+    check s.frameLimit == StrangerFrame and not s.trusted
+    let s2 = newSession(mgrPhone, false, server.device)
+    check s2.frameLimit == HelloFrame
+    s2.receive(newObj(@[("t", newStr("hello")), ("v", newInt(2)), ("root", newStr(rootStr)), ("vv", newObj())]))
+    check s2.frameLimit == MaxFrame and s2.trusted
+    check newSession(stranger, true, mgrPhone.device).frameLimit == MaxFrame   # the initiator chose its peer
+
+  test "a large batch from a stranger is handled in linear time (issue #67)":
+    var junk: seq[JNode]
+    for i in 0 ..< 20000: junk.add newObj(@[("peer", newStr("x" & $i)), ("seq", newInt(2))])
+    let t0 = epochTime()
+    check mgrPhone.ingest(junk, tick()) == 0
+    check epochTime() - t0 < 2.0                    # the search per entry took about 14 s here

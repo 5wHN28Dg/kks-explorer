@@ -1,12 +1,17 @@
 ## Sync connections on Linux: async TCP, TLS through buffers (tls.nim), the core's session state machine. One thread
 ## owns the node (decision 0030); everything here runs on the asyncdispatch loop.
 
-import std/[asyncdispatch, asyncnet, net, nativesockets, times]
+import std/[asyncdispatch, asyncnet, net, nativesockets, tables, times]
 import kks/[json, crypto, node, sync]
 when defined(windows): import kksw/tls   # Schannel (decision 0033), same API
 else: import tls
 
-const Timeout* = 20_000   # ms without progress before a connection is dropped
+const
+  Timeout* = 20_000   # ms without progress before a connection is dropped
+  # Incoming sync connections a listener holds at once, in all and from one address (issue #67). A plant's devices
+  # sync one at a time with each other, in about a second; these leave room for many.
+  MaxIncoming* = 32
+  MaxIncomingPerAddress* = 4
 
 type NetError* = object of CatchableError
 
@@ -23,9 +28,13 @@ proc tcpStream*(sock: AsyncSocket): Stream =
          read: proc (): Future[string] = sock.recv(16384),
          close: proc () = sock.close())
 
-proc recvSome(st: Stream): Future[string] {.async.} =
+proc recvSome(st: Stream, deadline = 0'i64): Future[string] {.async.} =
+  ## some bytes within Timeout, and before `deadline` (ms, 0 = none)
+  if deadline > 0 and nowMs() >= deadline: raise newException(NetError, "the other side is not a device of this plant")
+  let wait = if deadline > 0: int(min(int64(Timeout), max(1'i64, deadline - nowMs()))) else: Timeout
   let fut = st.read()
-  if not await withTimeout(fut, Timeout): raise newException(NetError, "timed out")
+  if not await withTimeout(fut, wait):
+    raise newException(NetError, if deadline > 0 and nowMs() >= deadline: "the other side is not a device of this plant" else: "timed out")
   result = fut.read
   if result.len == 0: raise newException(NetError, "connection closed")
 
@@ -33,16 +42,17 @@ proc flush(st: Stream, c: TlsConn) {.async.} =
   let o = c.takeOut()
   if o.len > 0: await st.write(o)
 
-proc handshake*(sock: Stream, c: TlsConn) {.async.} =
+proc handshake*(sock: Stream, c: TlsConn, deadline = 0'i64) {.async.} =
   discard c.handshake()
   await sock.flush(c)
   while not c.handshake():
     await sock.flush(c)
-    c.feed(await sock.recvSome())
+    c.feed(await sock.recvSome(deadline))
   await sock.flush(c)
 
-proc drive(sock: Stream, c: TlsConn, s: Session) {.async.} =
-  ## Run the exchange to the end. On a protocol error, tell the other side and re-raise.
+proc drive(sock: Stream, c: TlsConn, s: Session, deadline = 0'i64) {.async.} =
+  ## Run the exchange to the end. On a protocol error, tell the other side and re-raise. `deadline` (ms) ends a
+  ## responder's connection while the other side is not trusted yet (issue #67).
   var d: Deframer
   try:
     while true:
@@ -53,9 +63,12 @@ proc drive(sock: Stream, c: TlsConn, s: Session) {.async.} =
       let plain = c.recv()
       if plain.len == 0:
         if c.closed: raise newException(NetError, "the other side closed the connection")
-        c.feed(await sock.recvSome())
+        c.feed(await sock.recvSome(if s.trusted: 0'i64 else: deadline))
         continue
-      for m in d.feed(plain):
+      d.add plain
+      while true:
+        let m = d.next(s.frameLimit)
+        if m == nil: break
         s.wall = nowMs()
         s.receive(m)
   except SyncError as e:
@@ -92,11 +105,12 @@ proc syncOver*(n: Node, id: Identity, sock: Stream, expectPeer: string, adoptRoo
 proc serveOver*(n: Node, id: Identity, sock: Stream, hooks = Hooks()): Future[(string, Stats)] {.async.} =
   ## Answer one sync over an open stream (the listener, or a relay pipe), then close it. -> (remote peer, stats)
   let c = newTlsConn(n.p, id, client = false)
+  let deadline = nowMs() + StrangerMs
   try:
-    await sock.handshake(c)
+    await sock.handshake(c, deadline)
     let s = newSession(n, false, c.remotePeer, hooks = hooks)
     s.wall = nowMs()
-    await sock.drive(c, s)
+    await sock.drive(c, s, deadline)
     result = (c.remotePeer, s.stats)
   finally:
     c.close()
@@ -148,22 +162,31 @@ type Listener* = ref object
   sessions*: int
   lastError*: string
   onDone*: proc (remote: string, stats: Stats)
+  open*: int                    ## incoming connections held now
+  perAddress: Table[string, int]
+  maxOpen*, maxPerAddress*: int ## MaxIncoming, MaxIncomingPerAddress (tests lower them)
+  strangerMs*: int64            ## StrangerMs (tests lower it)
 
-proc serveOne(l: Listener, n: Node, id: Identity, raw: AsyncSocket, hooks: Hooks) {.async.} =
+proc serveOne(l: Listener, n: Node, id: Identity, raw: AsyncSocket, address: string, hooks: Hooks) {.async.} =
   let client = tcpStream(raw)
-  let c = newTlsConn(n.p, id, client = false)
+  var c: TlsConn
+  let deadline = nowMs() + l.strangerMs
   try:
-    await client.handshake(c)
+    c = newTlsConn(n.p, id, client = false)   # inside the try: the slot is given back whatever fails
+    await client.handshake(c, deadline)
     let s = newSession(n, false, c.remotePeer, hooks = hooks)
     s.wall = nowMs()
-    await client.drive(c, s)
+    await client.drive(c, s, deadline)
     inc l.sessions
     if l.onDone != nil and s.special.len == 0: l.onDone(c.remotePeer, s.stats)
   except CatchableError as e:
     l.lastError = e.msg
   finally:
-    c.close()
+    if c != nil: c.close()
     client.close()
+    dec l.open
+    l.perAddress[address] = l.perAddress.getOrDefault(address) - 1
+    if l.perAddress[address] <= 0: l.perAddress.del address
 
 when defined(windows):
   var IPV6_V6ONLY {.importc, header: "<ws2ipdef.h>".}: cint
@@ -192,9 +215,17 @@ proc listen*(n: Node, id: Identity, port: int, address = "", hooks = Hooks()): L
     l.sock.bindAddr(Port(port), if address.len == 0: "0.0.0.0" else: address)
   l.sock.listen()
   l.port = int(l.sock.getLocalAddr()[1])
+  l.maxOpen = MaxIncoming
+  l.maxPerAddress = MaxIncomingPerAddress
+  l.strangerMs = StrangerMs
   proc loop() {.async.} =
     while true:
-      let client = await l.sock.accept()
-      asyncCheck l.serveOne(n, id, client, hooks)
+      let (address, client) = await l.sock.acceptAddr()
+      if l.open >= l.maxOpen or l.perAddress.getOrDefault(address) >= l.maxPerAddress:
+        client.close()   # issue #67: a full listener takes no more
+        continue
+      inc l.open
+      l.perAddress.mgetOrPut(address, 0) += 1
+      asyncCheck l.serveOne(n, id, client, address, hooks)
   asyncCheck loop()
   l

@@ -30,6 +30,7 @@ type
     noDirectUntil*: Table[string, float]   ## devices the direct path failed with: the pipe until then (epoch s)
     testStall*: bool                  ## tests: the direct path punches through, then fails, like stalled paths in the field
     testNoPath*: bool                 ## tests: the punch hears nothing, like two NATs that can't be punched
+    serving*: int                     ## syncs answered through the relay now (at most MaxServed, issue #67)
 
 proc relaySetting*(n: Node): string =
   if n.run == nil: return ""
@@ -115,9 +116,16 @@ proc changed(i: Internet) =
     try: i.onChange()
     except CatchableError: discard
 
+const MaxServed* = 8   ## syncs answered through the relay at once: anyone with a key can ask (issue #67, #30)
+
 proc serveConnect(i: Internet, relay, frm, id: string, theirs: seq[string]) {.async.} =
   ## another device asked for a sync: accept with our candidates, meet it (directly or in the pipe), answer as the
   ## TLS server
+  if i.serving >= MaxServed:
+    try: await i.ws.sendText(toText(newObj(@[("t", newStr("refuse")), ("to", newStr(frm)), ("id", newStr(id))])))
+    except CatchableError: discard
+    return
+  inc i.serving
   try:
     let (u, ours) = await i.candidates(epochTime() >= i.noDirectUntil.getOrDefault(frm, 0.0))   # [] = the pipe at once
     await i.ws.sendText(toText(newObj(@[("t", newStr("accept")), ("to", newStr(frm)), ("id", newStr(id)),
@@ -127,6 +135,8 @@ proc serveConnect(i: Internet, relay, frm, id: string, theirs: seq[string]) {.as
     if i.onSynced != nil: i.onSynced(remote, stats, false)
   except CatchableError as e:
     stderr.writeLine "relay: answering " & frm & " failed: " & e.msg
+  finally:
+    dec i.serving
 
 proc handle(i: Internet, relay: string, m: JNode) =
   let t = if m.get("t") != nil and m["t"].kind == jStr: m["t"].s else: ""

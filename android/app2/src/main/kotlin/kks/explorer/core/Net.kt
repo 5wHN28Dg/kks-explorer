@@ -32,6 +32,17 @@ import javax.net.ssl.SSLEngine
 object Net {
     const val ALPN = "kks-sync/2"
     private const val TIMEOUT = 15_000
+    // Incoming syncs held at once, in all and from one address, and how long a peer that isn't a device of this
+    // plant may stay connected (issue #67: any key completes TLS; the core keeps its frames small meanwhile).
+    const val MAX_INCOMING = 32
+    const val MAX_INCOMING_PER_ADDRESS = 4
+    const val STRANGER_MS = 60_000L
+    private val watchdog = java.util.concurrent.ScheduledThreadPoolExecutor(1) { r -> Thread(r, "kks-sync-dog").apply { isDaemon = true } }
+        .apply { removeOnCancelPolicy = true }   // a cancelled watch (most of them) doesn't stay queued for 60 s
+
+    /** close `c` after STRANGER_MS unless cancelled (drive cancels it once the other side is trusted) */
+    fun watch(c: java.io.Closeable): java.util.concurrent.ScheduledFuture<*> =
+        watchdog.schedule({ runCatching { c.close() } }, STRANGER_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
     private val SUITES = arrayOf("TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384",
         "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384")
 
@@ -126,7 +137,7 @@ object Net {
     }
 
     /** one §15 exchange to the end; returns the session's summary */
-    fun drive(p: Peer, initiator: Boolean, adoptRoot: String = ""): JSONObject {
+    fun drive(p: Peer, initiator: Boolean, adoptRoot: String = "", dog: java.util.concurrent.ScheduledFuture<*>? = null): JSONObject {
         val sid = Core.syncStart(initiator, p.remote, adoptRoot)
         try {
             var out = Core.syncFeed(sid, ByteArray(0))
@@ -134,6 +145,7 @@ object Net {
             while (true) {
                 if (out.isNotEmpty()) { p.output.write(out); p.output.flush() }
                 val info = Core.syncInfo(sid)
+                if (dog != null && info.optBoolean("trusted")) dog.cancel(false)
                 if (info.optBoolean("done")) return info
                 if (info.optString("error").isNotEmpty()) throw IllegalStateException(info.optString("error"))
                 val n = p.input.read(buf)
@@ -178,19 +190,35 @@ object Net {
             try { server = ctx.serverSocketFactory.createServerSocket(port) as SSLServerSocket } catch (e: java.net.BindException) { port++; if (port > firstPort + 20) throw e }
         }
         server.needClientAuth = true
+        val open = java.util.concurrent.atomic.AtomicInteger()
+        val perAddress = HashMap<String, Int>()
         Thread({
             while (!server.isClosed) {
                 val s = try { server.accept() as SSLSocket } catch (e: Exception) { break }
+                val address = s.inetAddress?.hostAddress ?: ""
+                val admitted = synchronized(perAddress) {
+                    if (open.get() >= MAX_INCOMING || (perAddress[address] ?: 0) >= MAX_INCOMING_PER_ADDRESS) false
+                    else { open.incrementAndGet(); perAddress[address] = (perAddress[address] ?: 0) + 1; true }
+                }
+                if (!admitted) { runCatching { s.close() }; continue }   // issue #67: a full listener takes no more
                 Thread({
+                    val dog = watch(s)
                     try {
                         profile(s)
                         s.soTimeout = TIMEOUT * 2
                         s.startHandshake()
                         val remote = peerIdOf(s.session.peerCertificates[0] as X509Certificate)
-                        onDone(remote, drive(Peer(s, remote), false))
+                        onDone(remote, drive(Peer(s, remote), false, dog = dog))
                     } catch (e: Exception) {
                         android.util.Log.w("KKSSync", "incoming sync: ${e.message}")
-                    } finally { s.close() }
+                    } finally {
+                        dog.cancel(false); s.close()
+                        synchronized(perAddress) {
+                            open.decrementAndGet()
+                            val n = (perAddress[address] ?: 1) - 1
+                            if (n <= 0) perAddress.remove(address) else perAddress[address] = n
+                        }
+                    }
                 }, "kks-sync-in").start()
             }
         }, "kks-listen").start()
