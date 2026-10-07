@@ -64,6 +64,10 @@ type
     markStart: (float, float)
     mark*: (float, float, float, float)
     onMark*: proc (x0, y0, x1, y1: float)
+    selecting*: bool             ## "Select tags" mode: a click toggles a tag, a dragged box adds the tags it touches
+    chosen*: HashSet[string]     ## the selected tags (a distinct outline)
+    onBox*: proc (x0, y0, x1, y1: float)   ## a box dragged in the select mode (points)
+    onEscape*: proc ()           ## Escape in the select mode
 
 var
   startedAt*: float             ## set by the app at launch (KKS_TIMING: the first drawn sheet is reported)
@@ -347,12 +351,35 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     cairo_rectangle(c, x, y, tw, th)
     cairo_stroke(c)
     cairo_set_dash(c, nil, 0, 0)
+    if t.id in v.chosen:
+      # selected for "… for all": a black and yellow ring outside the box, whatever colouring is on
+      cairo_set_line_width(c, 4)
+      cairo_set_source_rgba(c, 0, 0, 0, 0.9)
+      cairo_rectangle(c, x - 4, y - 4, tw + 8, th + 8)
+      cairo_stroke(c)
+      cairo_set_line_width(c, 2)
+      cairo_set_source_rgba(c, 1, 0.85, 0, 1)
+      cairo_rectangle(c, x - 4, y - 4, tw + 8, th + 8)
+      cairo_stroke(c)
+  if v.selecting and v.mark[2] != v.mark[0]:
+    var dash = [6.0, 4.0]
+    cairo_set_dash(c, addr dash[0], 2, 0)
+    cairo_set_source_rgba(c, 0.1, 0.35, 0.85, 0.9)
+    cairo_set_line_width(c, 2)
+    cairo_rectangle(c, (v.mark[0] - v.ox) * v.z, (v.mark[1] - v.oy) * v.z, (v.mark[2] - v.mark[0]) * v.z, (v.mark[3] - v.mark[1]) * v.z)
+    cairo_stroke(c)
+    cairo_set_dash(c, nil, 0, 0)
   if v.marking and v.mark[2] != v.mark[0]:
     cairo_set_source_rgba(c, 0.85, 0.1, 0.1, 0.9)
     cairo_set_line_width(c, 2)
     cairo_rectangle(c, (v.mark[0] - v.ox) * v.z, (v.mark[1] - v.oy) * v.z, (v.mark[2] - v.mark[0]) * v.z, (v.mark[3] - v.mark[1]) * v.z)
     cairo_stroke(c)
   cairo_destroy(c)
+
+proc tagsIn*(v: Viewer, x0, y0, x1, y1: float): seq[string] =
+  ## the tags whose box intersects the box (points)
+  for t in v.tags:
+    if t.status != "pending" and t.x0 <= x1 and t.x1 >= x0 and t.y0 <= y1 and t.y1 >= y0: result.add t.id
 
 proc snapCb(user: pointer, s: W, w, h: cint) {.cdecl.} =
   try: cast[Viewer](user).snapshot(s, int(w), int(h))
@@ -381,11 +408,11 @@ proc newViewer*(): Viewer =
   drag.onXY("drag-begin", proc (x, y: float) =
     v.dragOx = v.ox
     v.dragOy = v.oy
-    if v.marking:
+    if v.marking or v.selecting:
       v.markStart = (v.ox + x / v.z, v.oy + y / v.z)
       v.mark = (v.markStart[0], v.markStart[1], v.markStart[0], v.markStart[1]))
   drag.onXY("drag-update", proc (dx, dy: float) =
-    if v.marking:
+    if v.marking or v.selecting:
       let (sx, sy) = v.markStart
       let ex = sx + dx / v.z
       let ey = sy + dy / v.z
@@ -397,6 +424,11 @@ proc newViewer*(): Viewer =
   drag.onXY("drag-end", proc (dx, dy: float) =
     if v.marking and abs(dx) + abs(dy) > 6:
       if v.onMark != nil: v.onMark(v.mark[0], v.mark[1], v.mark[2], v.mark[3])
+    elif v.selecting:
+      let b = v.mark
+      v.mark = (0.0, 0.0, 0.0, 0.0)
+      gtk_widget_queue_draw(v.widget)
+      if abs(dx) + abs(dy) > 6 and v.onBox != nil: v.onBox(b[0], b[1], b[2], b[3])
     elif v.onView != nil: v.onView())
   gtk_widget_add_controller(v.widget, drag)
   # wheel zoom around the pointer
@@ -425,7 +457,9 @@ proc newViewer*(): Viewer =
     discard gtk_widget_grab_focus(v.widget)
     if v.marking: return
     let id = v.hitTag(x, y)
-    if id.len > 0:
+    if id.len > 0 and v.selecting:      # the select mode: the app toggles it (v.chosen), the panel stays as it is
+      if v.onSelect != nil: v.onSelect(id)
+    elif id.len > 0:
       v.selected = id
       gtk_widget_queue_draw(v.widget)
       if v.onSelect != nil: v.onSelect(id))
@@ -444,7 +478,8 @@ proc newViewer*(): Viewer =
     of 0x2d, 0xffad: v.zoomAt(0.8, w / 2, h / 2)              # - keypad-
     of 0x30, 0xffb0: v.fit()                                  # 0
     of 0xff1b:                                                 # Escape
-      if v.marking:
+      if v.selecting and v.onEscape != nil: v.onEscape()
+      elif v.marking:
         v.marking = false
         v.mark = (0.0, 0.0, 0.0, 0.0)
       else: return false

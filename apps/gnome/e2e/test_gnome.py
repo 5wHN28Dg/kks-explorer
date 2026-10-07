@@ -265,6 +265,118 @@ class Gnome(unittest.TestCase):
         self.assertTrue(note, 'the removed device did not wipe itself')
         self.assertNotIn(b'Sample sheet', open(os.path.join(self.dir, 'phone', 'kks.db'), 'rb').read())
 
+    def test_multi(self):
+        """Select tags, then one place and one note for all of them (core /api/submit-many). Selecting: two tags by
+        their search results (the keyboard's way; the headless session has no pointer to click the drawing with) and
+        two through KKS_SELECT_BOX, which stands in for a box dragged with the pointer and goes through the same code
+        as the drag's end (one of them has no code: it is refused, with a toast). One is unticked in the List."""
+        b = self.boss
+        tags = {'11LAC10AP001': [600, 300, 720, 360], '11LAC10AP002': [800, 300, 920, 360],
+                '11LAC10AP003': [600, 500, 720, 560], '11LAC20AA101': [800, 500, 920, 560], '': [960, 500, 1060, 560]}
+        for k, bb in tags.items():
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': k,
+                                                                             'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC10AP002',
+                                          'changes': {'floor': '1', 'notes': 'Old note'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        os.makedirs(SHOTS, exist_ok=True)
+        from PIL import Image
+        pic = os.path.join(self.dir, 'several.png')
+        Image.new('RGB', (320, 240), (90, 120, 150)).save(pic)
+        a = self.start_app('multi', KKS_SELECT_BOX='780,480,1080,580',     # 11LAC20AA101 and the unread tag
+                           KKS_PHOTO_FILE=pic,
+                           KKS_SHOT_ON_SIGNAL=os.path.join(SHOTS, 'gnome-multi.png'))
+        pid = self.apps[-1].pid
+        self.join(a)
+        mode = atspi.find(a, 'toggle button', name='Select tags')
+        atspi.click(mode)
+        atspi.find(a, 'label', name="Tags without a code can't be selected: review them first", timeout=10)
+        atspi.find(a, 'label', name='1 selected', timeout=10)
+        self.assertTrue(mode.get_state_set().contains(Atspi.StateType.PRESSED))
+        search = atspi.find(a, 'entry', contains='Search equipment')
+        for i, k in enumerate(('11LAC10AP001', '11LAC10AP002')):
+            atspi.set_text(search, k[2:])
+            atspi.click(atspi.find(a, 'button', name=k, timeout=10))
+            atspi.find(a, 'label', name=f'{i + 2} selected', timeout=10)
+        atspi.set_text(search, '')
+        os.kill(pid, signal.SIGUSR1)       # a picture of the selection on the drawing, to look at
+        # the List: every selected code with a switch, on; turn the box-selected one off (GTK 4 gives a check button
+        # no AT-SPI action, a switch has one)
+        atspi.click(atspi.find(a, 'button', name='List'))
+        dlg = atspi.find(a, 'dialog', name='Selected codes', timeout=10)
+        boxes = {n.get_name(): n for n in atspi.walk(dlg) if n.get_role_name() == 'switch'}
+        self.assertEqual(set(boxes), {'11LAC10AP001', '11LAC10AP002', '11LAC20AA101'})
+        self.assertTrue(all(x.get_state_set().contains(Atspi.StateType.CHECKED) for x in boxes.values()))
+        atspi.click(boxes['11LAC20AA101'])
+        atspi.find(a, 'label', name='2 selected', timeout=10)
+        self.assertFalse(boxes['11LAC20AA101'].get_state_set().contains(Atspi.StateType.CHECKED))
+        atspi.click(atspi.find(dlg, 'button', name='Close'))
+        time.sleep(0.5)
+        # Place for all: a floor; one of the two has another floor already, so the app says so before sending
+        atspi.click(atspi.find(a, 'button', name='Place for all…'))
+        pd = atspi.find(a, 'dialog', name='Place for all', timeout=10)
+        atspi.set_text(atspi.find(pd, 'text', name='Floor'), '3')
+        atspi.click(atspi.find(pd, 'button', name='Send'))
+        alert = atspi.find(a, 'alert', name='Replace values?', timeout=10)
+        atspi.find(alert, None, contains='1 of 2 already have a floor; it will be replaced.', timeout=5)
+        atspi.click(atspi.find(alert, 'button', name='Send'))
+        atspi.find(a, 'label', name='Sent for 2 codes · saved', timeout=10)
+        self.assertFalse(mode.get_state_set().contains(Atspi.StateType.PRESSED), 'the mode did not end')
+        want = {'11LAC10AP001': '3', '11LAC10AP002': '3', '11LAC10AP003': '', '11LAC20AA101': ''}
+        for _ in range(60):
+            eq = b.req('GET', '/api/state')['equipment']
+            got = {k: eq.get(k, {}).get('floor', '') for k in want}
+            if got == want:
+                break
+            time.sleep(0.5)
+        self.assertEqual(got, want)
+        # the server's history: a change to floor 3 for exactly those two codes, one each
+        def floor(v):
+            return json.loads(v).get('floor', '') if v else ''
+        revs = b.req('GET', '/api/revisions?limit=500')['revisions']
+        to3 = sorted(r['key'] for r in revs if r['entity'] == 'equipment' and floor(r['after']) == '3'
+                     and floor(r['before']) != '3')
+        self.assertEqual(to3, ['11LAC10AP001', '11LAC10AP002'])
+        # Note for all: appended under each code's own note
+        atspi.click(mode)
+        atspi.find(a, 'label', name='0 selected', timeout=10)
+        for i, k in enumerate(('11LAC10AP002', '11LAC10AP003')):
+            atspi.set_text(search, k[2:])
+            atspi.click(atspi.find(a, 'button', name=k, timeout=10))
+            atspi.find(a, 'label', name=f'{i + 1} selected', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Note for all…'))
+        nd = atspi.find(a, 'dialog', name='Note for all', timeout=10)
+        atspi.set_text(atspi.find(nd, 'text', name='Note'), 'Checked on the walkdown')
+        atspi.click(atspi.find(nd, 'button', name='Send'))
+        atspi.find(a, 'label', name='Sent for 2 codes · saved', timeout=10)
+        want = {'11LAC10AP002': 'Old note\nChecked on the walkdown', '11LAC10AP003': 'Checked on the walkdown',
+                '11LAC10AP001': ''}
+        for _ in range(60):
+            eq = b.req('GET', '/api/state')['equipment']
+            got = {k: eq.get(k, {}).get('notes', '') for k in want}
+            if got == want:
+                break
+            time.sleep(0.5)
+        self.assertEqual(got, want)
+        # Photo for all: one picture through the mark-up editor, a photo entry for each code (KKS_PHOTO_FILE stands in
+        # for the file chooser)
+        atspi.click(mode)
+        atspi.find(a, 'label', name='0 selected', timeout=10)
+        for i, k in enumerate(('11LAC10AP001', '11LAC10AP003')):
+            atspi.set_text(search, k[2:])
+            atspi.click(atspi.find(a, 'button', name=k, timeout=10))
+            atspi.find(a, 'label', name=f'{i + 1} selected', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Photo for all…'))
+        atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), 'Both drains')
+        atspi.click(atspi.find(a, 'button', name='Add the photo'))
+        for _ in range(60):
+            ph = sorted(p['kks'] for p in b.req('GET', '/api/state')['photos'] if p.get('caption') == 'Both drains')
+            if len(ph) >= 2:
+                break
+            time.sleep(0.5)
+        self.assertEqual(ph, ['11LAC10AP001', '11LAC10AP003'])
+
     def join(self, a):
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
