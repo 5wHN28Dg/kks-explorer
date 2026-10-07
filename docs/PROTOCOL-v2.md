@@ -425,8 +425,8 @@ responder answers. `{"t":"error","why":...}` may be sent instead of any message,
      - verify;
      - be of type `revoke`;
      - name this device in `body.device`;
-     - have an author that is certified and not revoked there, and is an admin, the manager, or a device of the same
-       person.
+     - have an author that is certified and not revoked there, and may revoke this device under §10's `revoke` rule:
+       the manager, a device of the same person, or an admin when this device belongs to a `user` person.
 3. **Taking entries in:**
    - verify each entry (§3);
    - replay with the batch to see which devices are certified by then, and keep only entries of those devices;

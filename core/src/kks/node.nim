@@ -178,10 +178,12 @@ proc entriesFor*(n: Node, theirVv: JNode): seq[JNode] =
   for (_, e) in n.evidence: result.add e
 
 proc revocationOf*(n: Node, device: string): JNode =
-  ## The revoke entry that cut `device`, shown to it so it can wipe itself (§15). nil if none.
+  ## The revoke entry that cut `device`, shown to it so it can wipe itself (§15). nil if none. Revokes replay ignored
+  ## are skipped: a later one the log rejected (an admin's, for an admin's device) would be shown instead of the one
+  ## that cut it, and the device would refuse it and keep its data.
   if n.run == nil or device notin n.run.cuts: return nil
-  for _, e in n.entries:
-    if e["type"].s == "revoke" and e["body"].kind == jObj and e["body"].get("device") != nil and
+  for id, e in n.entries:
+    if id notin n.ignored and e["type"].s == "revoke" and e["body"].kind == jObj and e["body"].get("device") != nil and
        e["body"]["device"].kind == jStr and e["body"]["device"].s == device:
       if result == nil or (e["hlc"][0].i, e["hlc"][1].i) > (result["hlc"][0].i, result["hlc"][1].i): result = e
 
@@ -201,7 +203,13 @@ proc acceptRevocation*(n: Node, e: JNode): bool =
   let person = n.run.devices[author]["person"].s
   let role = n.run.role(person)
   let mine = if n.device in n.run.devices: n.run.devices[n.device]["person"].s else: ""
-  role in ["admin", "manager"] or (mine.len > 0 and person == mine)
+  # the same rule replay applies to a revoke (replay.tRevoke): the manager, the device's own person, or an admin for a
+  # user's device. Before 2026-10-06 any admin's revoke was believed here, so an admin could make the manager's
+  # devices wipe themselves although the log rejects that revoke (#31).
+  # Roles are this device's view: a removed device gets no more entries, so a role changed after its last sync is
+  # not seen (replay judges the revoke at its place in the log).
+  role == "manager" or (mine.len > 0 and person == mine) or
+    (role == "admin" and mine.len > 0 and n.run.role(mine) == "user")
 
 proc revokerName*(n: Node, e: JNode): string =
   ## who removed this device (an accepted revoke entry): the person's full name, else the username
