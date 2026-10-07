@@ -535,8 +535,9 @@ proc resizeArea*(src: FImg, dw, dh: int): FImg =
 
 proc gaussian3*(src: FImg, sigma: float): FImg =
   ## GaussianBlur(ksize 3×3, sigma) on float32, BORDER_REFLECT_101: sepFilter2D's symmetric 3-tap row and column
-  ## filters as cv2's AVX2 build computes them, with fused multiply-adds (also in the scalar tail: the compiler
-  ## contracts it). Matched bit for bit in tests/diff_ops.nim.
+  ## filters as cv2's AVX2 build computes them, with fused multiply-adds where cv2's compiler fused them (also in its
+  ## scalar tail), written out here as fmaf: this build never fuses on its own (config.nims). Matched bit for bit in
+  ## tests/diff_ops.nim.
   var k: array[3, float]
   let s2 = -0.5 / (sigma * sigma)
   var total = 0.0

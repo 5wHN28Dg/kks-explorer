@@ -1,0 +1,33 @@
+# Nim from its pinned source tarball (SHA-256 checked), built once per runner image and cached. Used by tests.yml.
+name: Nim (pinned source, checked)
+description: Build Nim from the release tarball named by version and SHA-256, cache it in ~/nim, put it on PATH
+inputs:
+  version:
+    description: Nim version (the tarball nim-VERSION.tar.xz)
+    required: true
+  sha256:
+    description: SHA-256 of that tarball
+    required: true
+  image:
+    description: the runner image label, part of the cache key (the binary links that image's glibc)
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/nim
+        key: nim-${{ inputs.image }}-${{ runner.arch }}-${{ inputs.version }}-${{ inputs.sha256 }}
+    - shell: bash
+      env:
+        NIM_VERSION: ${{ inputs.version }}
+        NIM_SHA256: ${{ inputs.sha256 }}
+      run: |
+        if [ ! -x ~/nim/bin/nim ]; then
+          curl -sSL -o /tmp/nim.tar.xz "https://nim-lang.org/download/nim-$NIM_VERSION.tar.xz"
+          echo "$NIM_SHA256  /tmp/nim.tar.xz" | sha256sum -c
+          mkdir -p ~/nim && tar xJf /tmp/nim.tar.xz -C ~/nim --strip-components=1
+          (cd ~/nim && sh build.sh >/dev/null && bin/nim c --hints:off koch >/dev/null && ./koch boot -d:release --hints:off >/dev/null)
+        fi
+        echo "$HOME/nim/bin" >> "$GITHUB_PATH"
+        ~/nim/bin/nim --version | head -1

@@ -153,7 +153,7 @@ document they ask for is the capability matrix in docs/ (`docs/m6/CAPABILITIES.m
   - VMs `kks-win10` and `kks-win11` under virsh, reached with `ssh -i ~/.ssh/kks_vm kks@IP` (PowerShell); find the
     address with `virsh domifaddr`.
   - e2e: `apps/windows/e2e/test_windows.py VM_IP APP UIADRIVE SERVER IMPORTER`.
-  - Relay tests in the VM: run the twin here on 0.0.0.0 and set `KKS_RELAY_URL=ws://192.168.122.1:PORT`.
+  - Relay tests in the VM: ws:// is refused except to loopback (#56), so run the twin here and tunnel it: `ssh -i ~/.ssh/kks_vm -R PORT:127.0.0.1:PORT kks@VM` and set `KKS_RELAY_URL=ws://127.0.0.1:PORT` in the VM.
 - **Android:** android/app2/README.
   - The Gradle wrapper is in `android/`: `./gradlew :app2:assembleDebug`. Check the APK's timestamp after building;
     a failure hidden by `-q | grep` once left the tests running a stale APK.
