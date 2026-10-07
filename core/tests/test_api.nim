@@ -1,4 +1,4 @@
-import std/[unittest, tables, base64, strutils]
+import std/[algorithm, unittest, tables, base64, strutils]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, extras, invites, plantdata]
 import testprovider
 
@@ -94,6 +94,49 @@ suite "plant API":
     let st = mgrApi.call(mgr, "GET", "/api/state").json
     check st["photos"].len == 1 and st["photos"][0]["file"].s.endsWith(".jxl")
 
+  test "several codes at once: one photo, one place; retries change nothing":
+    let (_, ali) = userApi.owner
+    let url = "data:image/jxl;base64," & encode("\xff\x0ashared jxl")
+    let body = newObj(@[("kind", newStr("photo")), ("client_id", newStr("multi-photo-1")),
+                        ("kks", newArr(@[newStr("11LAB70AA501"), newStr("11LAB70AA502"), newStr("11LAB70AA503"), newStr("11LAB70AA501")])),
+                        ("payload", newObj(@[("dataUrl", newStr(url)), ("caption", newStr("the three drains"))]))])
+    let r = userApi.call(ali, "POST", "/api/submit-many", body)
+    if r.status != 200: echo "  ", r.json
+    check r.status == 200
+    let res = r.json["results"]
+    check res.elems.len == 3                                    # the repeated code counts once
+    var ids: seq[int64]
+    for x in res.elems:
+      check x["status"].s == "pending" and x.get("duplicate") == nil
+      ids.add x["id"].i
+    let again = userApi.call(ali, "POST", "/api/submit-many", body)
+    for x in again.json["results"].elems: check x["duplicate"].b
+    var codes, photoIds, blobs: seq[string]
+    for s in userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems:
+      if s["id"].i in ids:
+        codes.add s["payload"]["kks"].s
+        photoIds.add s["payload"]["photo_id"].s
+        blobs.add s["payload"]["file"].s
+    codes.sort()
+    check codes == @["11LAB70AA501", "11LAB70AA502", "11LAB70AA503"]
+    check photoIds[0] != photoIds[1] and photoIds[1] != photoIds[2] and photoIds[0] != photoIds[2]
+    check blobs[0] == blobs[1] and blobs[1] == blobs[2]       # one image, kept once
+    let place = userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA501","11LAB70AA502"],"payload":{"changes":{"area":"pump house","floor":"0"}},"note":"walked today"}"""))
+    check place.status == 200 and place.json["results"].elems.len == 2
+    # a shared note goes under each code's own note; it doesn't replace it
+    let (_, mgr) = mgrApi.owner
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA507","changes":{"notes":"old leak"}}}""")).status == 200
+    sync(userNode, mgrNode)
+    let note = userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA507","11LAB70AA508"],"payload":{"append":{"notes":"insulation missing"}}}"""))
+    check note.status == 200
+    var seen: seq[string]
+    for x in note.json["results"].elems:
+      for s in userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems:
+        if s["id"].i == x["id"].i: seen.add s["payload"]["changes"]["notes"].s
+    check seen == @["old leak\ninsulation missing", "insulation missing"]
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"tag_add","kks":["11LAB70AA501"],"payload":{}}""")).status == 400
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":[],"payload":{"changes":{"area":"x"}}}""")).status == 400
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["not a code!"],"payload":{"changes":{"area":"x"}}}""")).status == 400
   test "a marked tag, corrected while approving":
     let (_, ali) = userApi.owner
     let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"tag_add","payload":{"sheet":"lp","bbox":[10,10,60.04,30],"kks":"11lab70aa501","isa":"","note":""}}"""))
