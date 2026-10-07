@@ -33,4 +33,22 @@ suite "httpserver":
     check "SECRET" notin second
     check second.startsWith("HTTP/1.1 200") and second.endsWith("second")
     check "SECRET" notin waitFor first
-    http.close()
+    # (not closed: its accept loop is still waiting, and closing under it fails that loop)
+
+  test "a client that never reads its answer is let go at the answer deadline":
+    let http = newAsyncHttpServer()
+    http.responseTimeoutMs = 1000
+    proc cb(req: Request) {.async, gcsafe.} =
+      try: await req.respond(Http200, newString(30_000_000))   # far more than the socket buffers hold
+      except CatchableError: discard                # the send fails once the deadline closed the connection
+    asyncCheck http.serve(Port(0), cb, "127.0.0.1")
+    waitFor sleepAsync(100)
+    let c = newSocket()
+    c.connect("127.0.0.1", http.getPort)
+    c.send("GET / HTTP/1.1\r\nHost: x\r\n\r\n")    # and never read
+    waitFor sleepAsync(300)
+    check http.openConnections == 1
+    waitFor sleepAsync(2500)
+    check http.openConnections == 0                 # its slot is free again
+    c.close()
+    # (not closed: its accept loop is still waiting, and closing under it fails that loop)

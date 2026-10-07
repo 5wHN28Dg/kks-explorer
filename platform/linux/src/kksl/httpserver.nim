@@ -46,7 +46,8 @@ const
   MaxHeaders* = 100             ## kks
   MaxBodiesInFlight* = 256 * 1024 * 1024   ## kks: body bytes held at once before any handler sees them (503 beyond)
   AnswerTimeoutMs = 20_000      ## kks: an error answer or 100 Continue to a client that doesn't read
-  ResponseTimeoutMs* = 120_000  ## kks: the handler and sending its response (a client that never reads)
+  ResponseTimeoutMs* = 600_000  ## kks: the handler and sending its response (a client that never reads); long enough
+                                ## for a 50 MB PDF or a plant bundle to a slow client
 
 # TODO: If it turns out that the decisions that asynchttpserver makes
 # explicitly, about whether to close the client sockets or upgrade them are
@@ -163,6 +164,7 @@ type Alarm = ref object
   fired: Future[void]   ## a fresh one for each wait; completed only while a wait is on
   waiting: bool
   done: bool
+  charged: int          ## upload budget this connection's current request holds (given back when it is done)
 
 proc newAlarm(): Alarm = Alarm(fired: newFuture[void]("kks.alarm"))
 
@@ -367,23 +369,29 @@ proc processRequest(
         if not await alarm.within(client, client.sendStatus("100 Continue"), monoNow() + AnswerTimeoutMs / 1000):
           return false
       let bodyDeadline = monoNow() + BodyTimeoutMs / 1000
-      var body = ""
-      try:
-        while body.len < contentLength:
-          let n = min(64 * 1024, contentLength - body.len)
-          if server.bodyBytes + n > MaxBodiesInFlight:   # kks: bytes held, all connections together
+      # kks: the buffer grows here, not by string doubling, and the budget is charged twice its size (the handler gets
+      # a copy of the request) until the handler has finished: what is counted is what is held
+      var body = newString(0)
+      var filled = 0
+      while filled < contentLength:
+        let n = min(64 * 1024, contentLength - filled)
+        if filled + n > body.len:
+          let grow = min(contentLength, max(max(body.len * 2, filled + n), 64 * 1024)) - body.len
+          if server.bodyBytes + 2 * grow > MaxBodiesInFlight:   # kks: all connections together
             discard await alarm.within(client, request.respond(Http503, "Too many uploads at once; try again shortly."), monoNow() + AnswerTimeoutMs / 1000)
             client.close()
             return false
-          let part = client.recv(n)
-          if not await alarm.within(client, part, bodyDeadline):
-            return false
-          let got = part.read
-          if got.len == 0: break
-          body.add got
-          server.bodyBytes += got.len
-      finally:
-        server.bodyBytes -= body.len
+          server.bodyBytes += 2 * grow
+          alarm.charged += 2 * grow
+          body.setLen(body.len + grow)
+        let part = client.recv(n)
+        if not await alarm.within(client, part, bodyDeadline):
+          return false
+        let got = part.read
+        if got.len == 0: break
+        copyMem(addr body[filled], unsafeAddr got[0], got.len)
+        filled += got.len
+      body.setLen(filled)
       request.body = move body   # kks: not a second copy
       if request.body.len != contentLength:
         discard await alarm.within(client, request.respond(Http400, "Bad Request. Content-Length does not match actual."), monoNow() + AnswerTimeoutMs / 1000)
@@ -434,13 +442,21 @@ proc processClient(server: AsyncHttpServer, client: AsyncSocket, address: string
   asyncCheck alarm.watch()
   try:
     while not client.isClosed:
-      let retry = await processRequest(
-        server, request, client, address, lineFut, callback, alarm
-      )
+      var retry = false
+      try:
+        retry = await processRequest(
+          server, request, client, address, lineFut, callback, alarm
+        )
+      finally:   # kks: the request's upload budget, whatever happened
+        server.bodyBytes -= alarm.charged
+        alarm.charged = 0
       if not retry:
         client.close()
         break
+  except CatchableError as e:   # kks: one connection's error neither leaks its socket nor stops the server
+    stderr.writeLine "http: connection from " & address & ": " & e.msg
   finally:   # kks: the connection counts
+    if not client.isClosed: client.close()
     alarm.done = true
     dec server.open
     server.perAddress[address] = server.perAddress.getOrDefault(address) - 1

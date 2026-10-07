@@ -526,21 +526,36 @@ class Limits(Base):
         for c in socks: c.close()
         self.assertLess(rss[-1] - rss[3], 60, rss)       # 30 MB per idle connection would be 180 MB here
 
-    def test_slow_reader_let_go(self):
-        """a client that asks for a large file and never reads it: the server lets go of it after ResponseTimeoutMs
-        (120 s), leaving what is unsent to the kernel"""
-        c = self.conn('127.0.0.5')
-        c.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
-        c.sendall(b'GET /vendor/kks/kks-simd.wasm HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n' % self.port)
-        local = '127.0.0.5:%d' % c.getsockname()[1]
-        def server_side():
-            out = subprocess.run(['ss', '-tnH', 'sport = :%d' % self.port], capture_output=True, text=True).stdout
-            return [l.split()[0] for l in out.splitlines() if local in l]
-        time.sleep(5)
-        self.assertEqual(server_side(), ['ESTAB'])       # stuck sending
-        time.sleep(125)
-        self.assertNotIn('ESTAB', server_side())        # let go
-        c.close()
+    def test_upload_budget_bounds_memory(self):
+        """bodies sent for real fill the server-wide upload budget (256 MB, charged at twice each buffer): past it uploads
+        get 503, memory stays bounded over several rounds (625 MB before the buffer was charged by its real size), and
+        once those connections end, uploads work again"""
+        import threading
+        before = self.rss_mb()
+        n = 30_000_000
+        head = (b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                b'Content-Length: %d\r\n\r\n{' % (self.port, n))
+        peak, refused = 0, 0
+        for _ in range(3):
+            answers = []
+            def send(c):
+                try:
+                    c.sendall(head + b' ' * (n - 2))      # all but the last byte: the body stays held
+                    c.settimeout(2)
+                    answers.append(c.recv(12))
+                except OSError:
+                    answers.append(b'<closed>')
+            socks = [self.conn('127.0.0.9') for _ in range(20)]
+            ts = [threading.Thread(target=send, args=(c,)) for c in socks]
+            for t in ts: t.start()
+            for t in ts: t.join(60)
+            peak = max(peak, self.rss_mb() - before)
+            refused += sum(1 for a in answers if a.startswith(b'HTTP/1.1 503') or a == b'<closed>')
+            for c in socks: c.close()
+            time.sleep(1)
+        self.assertGreaterEqual(refused, 30)
+        self.assertLess(peak, 450, 'RSS grew by %.0f MB' % peak)
+        self.assertIn(Client(self.base).req('POST', '/api/login', {'username': 'nobody', 'password': 'x'})[0], (401, 429))
 
     def test_slow_header_lines_closed(self):
         """the header deadline is for all header lines together, not per line (one line every 5 s doesn't extend it)"""
