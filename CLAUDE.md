@@ -30,15 +30,18 @@ the drawings). The deployed relay's URL never goes in tracked files or the wiki.
 
 ## Engineering guidelines
 
-Follow these when making architectural, stack or dependency decisions. They're guidance, not a checklist; the only
-document they ask for is the capability matrix in docs/ (`docs/m6/CAPABILITIES.md`).
-- `~/Documents/GitHub/Personal-LLM-prompts/prompts/platform engineering policy.md` governs native code: the
-  Android app (`android/app2`), the desktop apps, any iOS work, and the server.
-- `~/Documents/GitHub/Personal-LLM-prompts/prompts/Evidence-first web engineering.md` governs what runs in a
-  browser engine: index.html, admin.html, learning.html, common.js, sw.js, course-bridge.js, the courses, vendor/. It
-  builds on the platform one; read both for web work.
-- The web pages are served by the server to browsers; they ship no engine. They must also work in Safari, since that
-  is the iOS path (https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research).
+`~/Documents/GitHub/Personal-LLM-prompts/skills/evidence-first-engineering/SKILL.md` governs architectural, stack and
+dependency decisions, for native code and for what runs in a browser engine alike. The full reasoning is in its
+`reference/` folder; open it only when a rule's reasoning is genuinely in question. In this project:
+- Native: the Android app (`android/app2`), the desktop apps, any iOS work, and the server.
+- Web: index.html, admin.html, learning.html, common.js, sw.js, course-bridge.js, the courses, vendor/. The pages are
+  served by the server to browsers and ship no engine. They must also work in Safari, since that is the iOS path
+  (https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research).
+- The capability matrix is a file here: `docs/m6/CAPABILITIES.md`. Keep it current (this line is the request SKILL.md
+  waits for before writing one).
+- Decision records too: a new platform, stack or dependency choice gets a one-page record in `docs/decisions/` (next
+  number after the last; question, findings per target with sources, choice, when to revisit), written before the
+  code. SKILL.md otherwise writes none unless asked; this line asks.
 
 ## How to work
 - Work on a branch and open a PR. Never push to main. Wait for CI to pass, then merge.
@@ -59,6 +62,10 @@ document they ask for is the capability matrix in docs/ (`docs/m6/CAPABILITIES.m
   of github.com/5wHN28Dg/policy (keep that repository public). They read the README's `Tier:`/`Type:` lines. A PR that
   changes `.gitleaks.toml` needs a `Secrets config change: <reason>` line in its description. main requires these three
   checks.
+- `tests.yml`: the test suites on x86-64, one job each: `core`, `platform-linux`, `importer`, `linux-build` (server and
+  importer for the jobs below), `server-http`, `python`, `web` (Chromium, WebKit, Firefox), `gnome-e2e` (headless),
+  `android-e2e` (an emulator on the runner; on a failure it keeps logcat, a screenshot and the UI tree), `windows-build`
+  and `windows-test` (windows-2022). Not required by main yet; the full Windows UIA e2e and real phones stay manual.
 - `android.yml` and `arm64.yml` build the apps (actions pinned by SHA).
 
 ## The system
@@ -140,7 +147,9 @@ document they ask for is the capability matrix in docs/ (`docs/m6/CAPABILITIES.m
 - **GNOME:**
   - build: apps/gnome/README;
   - e2e: run headless only, never on the user's desktop: `apps/gnome/e2e/headless.sh /usr/bin/python3
-    apps/gnome/e2e/test_gnome.py APP SERVER IMPORTER` (system Python, for AT-SPI);
+    apps/gnome/e2e/test_gnome.py APP SERVER IMPORTER` (system Python, for AT-SPI). APP must be a file named
+    `kks_explorer` (or the Flatpak): the wipe check finds the restarted app by that name, and a build copied to
+    another name fails test_flow with "the removed device did not wipe itself";
   - pinch regression: `e2e/viewer_pinch.nim`, also under headless.sh;
   - after changing anything that starts sessions, compositors or D-Bus, check the desktop is untouched before and
     after:
@@ -171,6 +180,10 @@ document they ask for is the capability matrix in docs/ (`docs/m6/CAPABILITIES.m
     only with `ANDROID_SERIAL=emulator-…`: the user's Honor holds their real account; never install or clear anything
     on it.
   - `test_update` needs a second APK built with `-PkksVersion=9.9.9`.
+  - Some helpers ignore the arguments and use `/tmp/kkslinux/kks_server` and `/tmp/walkdown-9.9.9.apk`. /tmp is
+    emptied at every reboot: link both again first, or the tests fail with FileNotFoundError.
+  - After the emulator has hung and been restarted, the first runs can fail (test_update did 3 times in a row on a
+    build that then passed 5 of 5). Re-run before blaming the change.
 - **Memory:** this laptop has 37 GB. Never run the emulator and a Windows VM together, and keep at most two
   heavy background jobs (builds, browsers, emulator) at once. An OOM once took the user's GNOME session down.
 - **Leftover processes:** `pkill -f` patterns match your own shell's command line. Kill by PID, or anchor the pattern
