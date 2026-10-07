@@ -28,8 +28,8 @@
     <control>touch</control>
   </supports>
   <releases>
-    <release version="2.0.0" date="2026-10-01">
-      <description><p>The native GNOME app (M6).</p></description>
+    <release version="0.9.3" date="2026-10-07">
+      <description><p>A two-finger trackpad pinch no longer crashes the app; the drawing is sharp at every zoom.</p></description>
     </release>
   </releases>
 </component>
