@@ -5,7 +5,7 @@ import std/[strutils, tables, sets, sequtils, math, algorithm]
 import kks/json
 import kks/model
 import appstate
-import w32, ui, win, viewer
+import w32, ui, win, viewer, systems
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -35,6 +35,7 @@ proc drawingsTab(w: Win, p: Page) =
   resList = p.list(@[], 180, onActivate = (proc (i: int) =
     if i < results.len: w.selectTag(results[i].id, true)), openLabel = "Show on the drawing")
   p.dim("Enter or double-click a result to show it on its drawing.")
+  p.buttons(("Equipment by system…", proc () = w.openSystems()))   # every code, block → system → kind
   p.title("Sheets")
   var rows: seq[string]
   for si in w.m.sheets:
