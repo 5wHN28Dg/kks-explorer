@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: tests-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}   # every main commit keeps its result
 
 env:
   NIM_VERSION: 2.2.12
