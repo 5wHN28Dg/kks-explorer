@@ -362,11 +362,22 @@ jobs:
           .venv/bin/python android/app2/e2e/test_direct.py android/app2/build/outputs/apk/debug/app2-debug.apk \
             /tmp/kkslinux/kks_server -v
           echo "test_direct: $(( $(date +%s) - t0 )) s"
+      - name: On failure, what the phone showed (logcat, a screenshot, the UI tree)
+        if: failure()
+        run: |
+          adb=$HOME/Android/Sdk/platform-tools/adb
+          "$adb" logcat -d > /tmp/logcat.txt 2>&1 || true
+          "$adb" exec-out screencap -p > /tmp/screen.png 2>/dev/null || true
+          "$adb" shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 && "$adb" pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1 || true
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-logs
-          path: /tmp/emulator.log
+          path: |
+            /tmp/emulator.log
+            /tmp/logcat.txt
+            /tmp/screen.png
+            /tmp/ui.xml
           retention-days: 7
           if-no-files-found: ignore
 
