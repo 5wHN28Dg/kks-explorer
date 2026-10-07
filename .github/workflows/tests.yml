@@ -156,6 +156,21 @@ jobs:
       - name: The protocol, strict JSON, path store and course vectors (the Python reference)
         run: .venv/bin/python -m unittest discover -s tests -v
 
+  # the web client's download size against web-size.json (tools/web_size.py): any change needs the baseline updated in
+  # the same PR, and the PR says why growth is worth it
+  web-size:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Sizes against the baseline
+        run: |
+          set +e
+          python3 tools/web_size.py > "$RUNNER_TEMP/size.txt"; code=$?
+          cat "$RUNNER_TEMP/size.txt"
+          { echo '### Web client size'; echo '```'; cat "$RUNNER_TEMP/size.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
   web:
     needs: linux-build
     runs-on: ubuntu-26.04
@@ -190,6 +205,9 @@ jobs:
       - name: The browser client on v2 plant data (test_web_v2)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_web_v2.py -v -k ${{ matrix.engine }}
+      - name: Equipment by system in index.html (test_web_systems)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_systems.py -v -k ${{ matrix.engine }}
       - name: Our libjxl and zxing-cpp WebAssembly build (test_web_wasm)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_wasm.py -v -k ${{ matrix.engine }}
@@ -198,6 +216,8 @@ jobs:
         run: .venv/bin/python platform/linux/e2e/test_course_web.py -v -k ${{ matrix.engine }} -k list_api
       - name: course-figure.js against the course vectors (tests/web)
         run: .venv/bin/python tests/web/test_course_figure.py -v -k ${{ matrix.engine }}
+      - name: systems.js against core views.systemsView's cases (tests/web)
+        run: .venv/bin/python tests/web/test_systems.py -v -k ${{ matrix.engine }}
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
