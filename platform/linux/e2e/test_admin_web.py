@@ -213,6 +213,14 @@ class AdminWeb(unittest.TestCase):
         self.assertIn(f'Plant {NAME} · reachable at', page.text_content('#invite'))
         page.locator('#invite').get_by_role('button', name='Cancel').click()
         page.wait_for_selector('#invite > button')
+        # syncing with an address is for admins (#32); "Sync now" without one is a device's round, not the server's
+        self.assertEqual(page.get_by_role('button', name='Sync with it').count(), 1)
+        self.assertEqual(page.get_by_role('button', name='Sync now').count(), 0)
+        tb, tpage, _ = self.context(p, name, 'tom')
+        tpage.goto(self.base + '/admin.html#devices')
+        tpage.wait_for_selector('#main .card h3')
+        self.assertEqual(tpage.get_by_role('button', name='Sync with it').count(), 0)
+        tb.close()
         self.assertEqual(page.text_content('#invite > button'), 'Show QR code')
         self.clean(page, name + ' devices')
         ctxreq = page.context.request
