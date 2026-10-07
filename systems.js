@@ -29,6 +29,15 @@ const KSys = (() => {
     return e && p ? 'both' : e ? 'equipment' : p ? 'plate' : 'none';
   }
 
+  // photoCover for every code, in one pass (core model.photoCovers): a code missing here has "none"
+  function photoCovers(photos) {
+    const e = new Set(), p = new Set(), out = new Map();
+    for (const x of photos || []) if (x.kks) ((x.caption || '').startsWith('Tag plate') ? p : e).add(x.kks);
+    for (const k of e) out.set(k, p.has(k) ? 'both' : 'equipment');
+    for (const k of p) if (!e.has(k)) out.set(k, 'plate');
+    return out;
+  }
+
   // Every code on the drawings once, grouped block → system → subsystem (the system number, e.g. LAB 70) → component
   // kind, each opening the first tag that shows it. `q` keeps the codes whose code, names, subsystem, ISA words or
   // location-list description contain every word of it. Codes that don't decode are listed under `other`.
@@ -60,10 +69,11 @@ const KSys = (() => {
       return ws.every(w => hay.includes(w));
     };
     const sheetName = new Map((sheets || []).map(s => [s.id, s.name]));
+    const covers = photoCovers(photos);
     const item = k => {
       const it = items.get(k);
       return {code: k, tag: it.tag, sheet: it.sheet, sheet_name: sheetName.has(it.sheet) ? sheetName.get(it.sheet) : it.sheet,
-              desc: it.desc, count: it.count, photos: photoCover(k, photos)};
+              desc: it.desc, count: it.count, photos: covers.get(k) || 'none'};
     };
     // block → system → subsystem → kind → codes, every level sorted by its code
     const tree = new Map(), at = (m, k) => { let v = m.get(k); if (!v) m.set(k, v = new Map()); return v };
@@ -94,5 +104,5 @@ const KSys = (() => {
     return {blocks, other: rest, total};
   }
 
-  return {decode, photoCover, systemsView};
+  return {decode, photoCover, photoCovers, systemsView};
 })();

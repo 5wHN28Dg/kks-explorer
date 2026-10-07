@@ -98,9 +98,29 @@ class Systems(unittest.TestCase):
         self.assertEqual(lab2['subsystems'][0]['kinds'][0]['items'][0]['count'], 2)
         self.assertEqual(got['two']['total'], 5)
 
+    def against_core(self, engine):
+        """a generated plant (tests/web/make_systems_vectors.nim): the JS gives exactly the Nim core's answers"""
+        with open(os.path.join(REPO, 'tests', 'web', 'systems-vectors.json'), encoding='utf-8') as f:
+            V = json.load(f)
+        with sync_playwright() as p:
+            b = getattr(p, engine).launch()
+            pg = b.new_page()
+            pg.set_content('<!doctype html><meta charset=utf-8><body></body>')
+            pg.add_script_tag(content=self.js)
+            got = pg.evaluate("""(V) => { const loc = {}; for (const e of V.locations) (loc[e.kks] ??= []).push(e);
+              const out = {}; for (const q of Object.keys(V.expected))
+                out[q] = KSys.systemsView({tags: V.tags, sheets: V.sheets, kks: V.kks, loc, photos: V.photos}, q);
+              return out }""", V)
+            b.close()
+        for q, want in V['expected'].items():
+            self.assertEqual(got[q], want, f'search {q!r}')
+
     def test_chromium(self): self.check('chromium')
     def test_firefox(self): self.check('firefox')
     def test_webkit(self): self.check('webkit')
+    def test_core_chromium(self): self.against_core('chromium')
+    def test_core_firefox(self): self.against_core('firefox')
+    def test_core_webkit(self): self.against_core('webkit')
 
 
 if __name__ == '__main__':

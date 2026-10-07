@@ -311,6 +311,9 @@ async function refreshState(){
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); if(K.isNetErr(e)) K.setOnline(false) }
   mergeTags();
   refreshFloors(); refreshReviewCount(); drawTags(); updateQueueBadge(); updatePending();
+  // the open systems list follows the sync too, but never redraws under the keyboard or a screen reader's focus
+  const SD=$('#sysDrawer');
+  if(SD.classList.contains('open')){ if(SD.contains(document.activeElement)) sysStale=true; else renderSystems() }
   // an open panel shows what changed elsewhere (an approval, a rejection, a new photo), unless you are editing in it
   const P=$('#panel');
   if(selId&&P.classList.contains('open')&&!P.contains(document.activeElement)&&!P.querySelector('.editing')){
@@ -469,6 +472,7 @@ const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
 function drawTags(){
   const L=$('#layer'); L.replaceChildren();
+  const covers=KSys.photoCovers(STATE.photos), photoCover=k=>covers.get(k)||'none';   // one pass over the photos
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   for(const t of tagsOf(cur.id)){
     const d=document.createElement('div'), b=t.bbox, k=full(t);
@@ -748,11 +752,12 @@ async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false}
 // While filtering, every level opens when few codes match; otherwise blocks open and systems closed.
 const SYS_OPEN_ALL=300;
 function renderSystems(){
+  sysStale=false;
   const q=$('#sysQ').value.trim();
   const v=KSys.systemsView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:LOC,photos:STATE.photos},q);
   const all=q!==''&&v.total<=SYS_OPEN_ALL;
   const sum=(label,n)=>h('summary',null,label,' ',h('span',{class:'c'},`(${n})`));
-  const row=it=>h('button',{type:'button',class:'sysrow','data-tag':it.tag,onclick:()=>{ focusPanel=true; if(innerWidth<=720) $('#sysDrawer').classList.remove('open'); goTo(it.tag) }},
+  const row=it=>h('button',{type:'button',class:'sysrow','data-tag':it.tag,onclick:()=>{ focusPanel=true; if(innerWidth<=720){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') } goTo(it.tag) }},
     h('span',{class:'sysdot p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
     h('span',{class:'mono'},it.code),
     h('span',{class:'d'},[it.desc,it.sheet_name].filter(Boolean).join(' · '),it.count>1?' · ×'+it.count:''),
@@ -766,8 +771,9 @@ function renderSystems(){
   put($('#sysBody'),out.length?out:h('div',{class:'sub'},q?'No code matches.':'No tags on the drawings yet.'));
   $('#sysCount').textContent=`${v.total} code${v.total===1?'':'s'}`+(q?' match':'');
 }
-let sysT=0;
+let sysT=0, sysStale=false;
 $('#sysQ').oninput=()=>{ clearTimeout(sysT); sysT=setTimeout(renderSystems,120) };
+$('#sysDrawer').addEventListener('focusout',e=>{ if(sysStale&&!$('#sysDrawer').contains(e.relatedTarget)){ sysStale=false; renderSystems() } });
 
 // ---------- review queue ----------
 function pending(){ return TAGS.filter(t=>t.status==='review'&&!STATE.reviews[t.id]) }
