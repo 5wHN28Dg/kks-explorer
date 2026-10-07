@@ -156,6 +156,21 @@ jobs:
       - name: The protocol, strict JSON, path store and course vectors (the Python reference)
         run: .venv/bin/python -m unittest discover -s tests -v
 
+  # the web client's download size against web-size.json (tools/web_size.py): any change needs the baseline updated in
+  # the same PR, and the PR says why growth is worth it
+  web-size:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Sizes against the baseline
+        run: |
+          set +e
+          python3 tools/web_size.py > "$RUNNER_TEMP/size.txt"; code=$?
+          cat "$RUNNER_TEMP/size.txt"
+          { echo '### Web client size'; echo '```'; cat "$RUNNER_TEMP/size.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
   web:
     needs: linux-build
     runs-on: ubuntu-26.04

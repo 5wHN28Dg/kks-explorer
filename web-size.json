@@ -1,0 +1,54 @@
+{
+ "on demand": {
+  "files": {
+   "vendor/fonts/AtkinsonHyperlegible-400-latin-ext.woff2": 9384,
+   "vendor/fonts/AtkinsonHyperlegible-400-latin.woff2": 17208,
+   "vendor/fonts/AtkinsonHyperlegible-400i-latin-ext.woff2": 9796,
+   "vendor/fonts/AtkinsonHyperlegible-400i-latin.woff2": 18292,
+   "vendor/fonts/AtkinsonHyperlegible-700-latin-ext.woff2": 9372,
+   "vendor/fonts/AtkinsonHyperlegible-700-latin.woff2": 17524,
+   "vendor/fonts/BarlowSemiCondensed-500-latin-ext.woff2": 14524,
+   "vendor/fonts/BarlowSemiCondensed-500-latin.woff2": 22428,
+   "vendor/fonts/BarlowSemiCondensed-600-latin-ext.woff2": 14848,
+   "vendor/fonts/BarlowSemiCondensed-600-latin.woff2": 22984,
+   "vendor/fonts/BarlowSemiCondensed-700-latin-ext.woff2": 15076,
+   "vendor/fonts/BarlowSemiCondensed-700-latin.woff2": 23244,
+   "vendor/fonts/JetBrainsMono-400-latin-ext.woff2": 11624,
+   "vendor/fonts/JetBrainsMono-400-latin.woff2": 31432,
+   "vendor/fonts/JetBrainsMono-600-latin-ext.woff2": 11624,
+   "vendor/fonts/JetBrainsMono-600-latin.woff2": 31432,
+   "vendor/kks/kks-dec.js": 7069,
+   "vendor/kks/kks-dec.wasm": 773606,
+   "vendor/kks/kks-simd.js": 11996,
+   "vendor/kks/kks-simd.wasm": 3578035,
+   "vendor/kks/kks.js": 11986,
+   "vendor/kks/kks.wasm": 3574745
+  },
+  "total": 8238229
+ },
+ "shell": {
+  "files": {
+   "admin.html": 50270,
+   "common.js": 59386,
+   "course-bridge.js": 3846,
+   "course-figure.js": 18968,
+   "course.css": 15526,
+   "course.html": 971,
+   "course.js": 31356,
+   "icon-192.png": 709,
+   "icon-512.png": 3047,
+   "icon.svg": 303,
+   "index.html": 61645,
+   "kks-wasm-worker.js": 479,
+   "kks-wasm.js": 3443,
+   "learning.html": 3263,
+   "manifest.webmanifest": 459,
+   "sw.js": 3593,
+   "tiles.js": 8940,
+   "vendor/fonts/courses.css": 6376,
+   "vendor/kks/kks-simd-dec.js": 7079,
+   "vendor/kks/kks-simd-dec.wasm": 741170
+  },
+  "total": 1020829
+ }
+}
