@@ -14,7 +14,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -70,6 +73,7 @@ class Ui {
     var sheet by mutableStateOf("")
     var selected by mutableStateOf("")
     var coverage by mutableStateOf(false)                  // the drawings coloured by photos
+    var dark by mutableStateOf(false)                      // dark drawings (remembered on this device: prefs "app")
     var focus by mutableStateOf<List<Float>?>(null)       // a tag to zoom to once its sheet is shown
     var activeProc by mutableStateOf("")
     var linkProc by mutableStateOf("")
@@ -95,7 +99,7 @@ class Ui {
 fun MainScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val ui = remember { Ui() }
+    val ui = remember { Ui().also { it.dark = ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE).getBoolean("dark_drawings", false) } }
     val snack = remember { SnackbarHostState() }
     val rev = Changes.rev
     val admin = remember(rev) { Sync.config().optBoolean("admin") }
@@ -174,6 +178,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     LaunchedEffect(boxes, view) { view?.tags = boxes }
     LaunchedEffect(ui.selected, view) { view?.selected = ui.selected }
     LaunchedEffect(ui.coverage, view) { view?.coverage = ui.coverage }
+    LaunchedEffect(ui.dark, view) { view?.dark = ui.dark }
     LaunchedEffect(linkedCodes, boxes, view) { view?.highlight = boxes.filter { it.code in linkedCodes }.map { it.id }.toSet() }
     LaunchedEffect(ui.floor, floors, view) {
         view?.dimmed = if (ui.floor.isEmpty()) null else floors.optJSONArray(ui.floor)?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
@@ -198,6 +203,15 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 DropdownMenu(floorMenu, { floorMenu = false }) {
                     if (current != null) DropdownMenuItem(text = { Text("Colour tags by photos" + if (ui.coverage) " ✓" else "") },
                         onClick = { ui.coverage = !ui.coverage; floorMenu = false })
+                    // checkable: TalkBack says "Dark drawings, checkbox, checked"; the switch is instant (SheetView.dark)
+                    if (current != null) DropdownMenuItem(text = { Text("Dark drawings") },
+                        trailingIcon = { Checkbox(ui.dark, onCheckedChange = null, modifier = Modifier.clearAndSetSemantics {}) },
+                        modifier = Modifier.semantics { role = androidx.compose.ui.semantics.Role.Checkbox
+                            toggleableState = androidx.compose.ui.state.ToggleableState(ui.dark) },
+                        onClick = {
+                            ui.dark = !ui.dark; floorMenu = false
+                            ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE).edit().putBoolean("dark_drawings", ui.dark).apply()
+                        })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
                         onClick = { marking = !marking; ui.selected = ""; floorMenu = false })
                     if (current != null && current.notes.isNotEmpty()) DropdownMenuItem(text = { Text("Notes on this sheet (${current.notes.size})") },
