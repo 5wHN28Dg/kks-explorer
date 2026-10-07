@@ -26,7 +26,7 @@ system's.
 ## What it does
 
 **Joining a plant:**
-- through a server: username and password, `/api/devices/enroll`;
+- through a server: username and password, sent over TLS on the sync port (PROTOCOL-v2 §16 `enroll`);
 - with an invite code: the text, or a picture of the QR code read by zxing-cpp;
 - by asking an admin on the same Wi-Fi: the 6-digit code;
 - with a bundle file;
@@ -69,6 +69,9 @@ own `XDG_RUNTIME_DIR` (so the portals it starts can't touch the desktop's `/run/
 the command inside: `apps/gnome/e2e/headless.sh python3 apps/gnome/e2e/test_gnome.py`. Without a `mutter` binary,
 unpack Ubuntu's package next to the GTK headers (`apt-get download mutter && dpkg-deb -x mutter_*.deb
 ~/.local/kksdev/root`; it is a launcher for the libmutter GNOME Shell already has).
+
+`e2e/viewer_pinch.nim` checks that a touchpad pinch (a `begin` with a NULL sequence) doesn't crash the viewer; build
+it and run it under `headless.sh` (the header says how).
 
 `python3 apps/gnome/e2e/test_gnome.py` drives the app through its accessibility tree (AT-SPI), against the Nim server
 and the importer, with no plant data. In about 30 s it covers:

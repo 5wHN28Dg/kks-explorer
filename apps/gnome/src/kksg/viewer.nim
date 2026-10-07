@@ -1,6 +1,6 @@
 ## The drawing viewer (R1, R2; decisions 0016, 0031):
-## - the overview pyramid (JPEG XL levels, decoded on a worker thread) below about the overview's own resolution;
-## - vector tiles above it, drawn from the .kkp by Cairo and cached as GPU textures;
+## - the overview pyramid (JPEG XL levels, decoded on a worker thread), shown until the vector tiles are ready;
+## - vector tiles at every zoom, drawn from the .kkp by Cairo and cached as GPU textures;
 ## - tag hotspots on top.
 ## Input: drag to pan, wheel or pinch to zoom, click a tag, keyboard (arrows, +/−, 0 to fit).
 
@@ -59,6 +59,7 @@ type
     px, py: float                ## pointer position (for wheel zoom)
     dragOx, dragOy: float
     pinchZ: float
+    fitZ: float                  ## the zoom that fits the sheet: the overview is a placeholder, none finer is decoded
     marking*: bool               ## drawing a box for a missed tag (R6)
     markStart: (float, float)
     mark*: (float, float, float, float)
@@ -103,6 +104,7 @@ proc fit*(v: Viewer) =
   let h = float(gtk_widget_get_height(v.widget))
   if w < 2 or h < 2: return
   v.z = min(w / v.sheet.widthPt, h / v.sheet.heightPt) * 0.98
+  v.fitZ = v.z
   v.ox = -(w / v.z - v.sheet.widthPt) / 2
   v.oy = -(h / v.z - v.sheet.heightPt) / 2
   v.fitted = true
@@ -238,8 +240,9 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
   # 1. the overview: the smallest level sharp enough for this zoom (asked for once), drawn when decoded; until then
   #    the sharpest level already decoded
   var want = 0
+  let odz = if v.fitZ > 0: min(dz, v.fitZ * v.sf) else: dz   # vector tiles cover the zooms beyond fit
   for k in countdown(v.levels.len - 1, 0):
-    if v.levelScale(k) >= dz * 0.9:
+    if v.levelScale(k) >= odz * 0.9:
       want = k
       break
   if v.levels.len > 0 and not v.asked[want]:
@@ -263,8 +266,11 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     cairo_set_source_rgb(c, 1, 1, 1)
     cairo_paint(c)
     cairo_destroy(c)
-  # 2. vector tiles once the overview is not sharp enough
-  if v.sheet != nil and dz > v.scale0 * 1.05:
+  # 2. vector tiles at every zoom, over the overview (which shows until they are rendered): the overview shrunk to fit
+  #    made the lines soft (the user, 2026-10-07). Clipped to the sheet: at low zoom one tile reaches past its edge.
+  if v.sheet != nil:
+    graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
+    gtk_snapshot_push_clip(s, addr r)
     let e = int(ceil(log2(dz)))
     let tz = pow(2.0, float(e))
     let span = float(TileSize) / tz         # points per tile
@@ -272,6 +278,15 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     let y0 = max(0.0, v.oy)
     let x1 = min(wpt, v.ox + float(w) / v.z)
     let y1 = min(hpt, v.oy + float(h) / v.z)
+    # while this level's tiles render, the neighbouring levels' cached tiles stand in (sharper than the overview)
+    for e2 in [e + 1, e - 1]:
+      let span2 = float(TileSize) / pow(2.0, float(e2))
+      for iy in int(floor(y0 / span2)) .. int(floor(y1 / span2)):
+        for ix in int(floor(x0 / span2)) .. int(floor(x1 / span2)):
+          if (e2, ix, iy) in v.tiles and (e, int(floor(float(ix) * span2 / span)), int(floor(float(iy) * span2 / span))) notin v.tiles:
+            graphene_rect_init(addr r, cfloat((float(ix) * span2 - v.ox) * v.z), cfloat((float(iy) * span2 - v.oy) * v.z),
+                               cfloat(span2 * v.z), cfloat(span2 * v.z))
+            gtk_snapshot_append_scaled_texture(s, v.tiles[(e2, ix, iy)], GSK_SCALING_FILTER_TRILINEAR, addr r)
     var missing: seq[(int, int, int)]
     for iy in int(floor(y0 / span)) .. int(floor(y1 / span)):
       for ix in int(floor(x0 / span)) .. int(floor(x1 / span)):
@@ -279,8 +294,9 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
         if key in v.tiles:
           graphene_rect_init(addr r, cfloat((float(ix) * span - v.ox) * v.z), cfloat((float(iy) * span - v.oy) * v.z),
                              cfloat(span * v.z), cfloat(span * v.z))
-          gtk_snapshot_append_scaled_texture(s, v.tiles[key], GSK_SCALING_FILTER_LINEAR, addr r)
+          gtk_snapshot_append_scaled_texture(s, v.tiles[key], GSK_SCALING_FILTER_TRILINEAR, addr r)   # drawn at 0.5-1x
         else: missing.add key
+    gtk_snapshot_pop(s)
     if missing.len > 0:
       # nearest the centre last, so it is popped (rendered) first
       let cx = (x0 + x1) / 2 / span
@@ -395,7 +411,9 @@ proc newViewer*(): Viewer =
   gtk_widget_add_controller(v.widget, scroll)
   # pinch
   let pinch = gtk_gesture_zoom_new()
-  pinch.on("begin", proc () = v.pinchZ = v.z)
+  # "begin" passes the event sequence (NULL for a touchpad pinch): connected with on(), the trampoline took it for its
+  # own data and read through nil (the crash on a two-finger trackpad zoom, 2026-10-07)
+  pinch.onPtr("begin", proc (sequence: W) = v.pinchZ = v.z)
   pinch.onScale(proc (scale: float) =
     var cx, cy: cdouble
     discard gtk_gesture_get_bounding_box_center(pinch, addr cx, addr cy)

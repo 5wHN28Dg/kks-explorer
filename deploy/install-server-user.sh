@@ -32,7 +32,7 @@ rm -rf "$APP" && mv "$APP.tmp" "$APP"
 ln -sfn "$VER" "$HOME_DIR/app/current"
 if [ ! -f "$HOME_DIR/config.json" ]; then
   cat > "$HOME_DIR/config.json" <<CFG
-{"address": "0.0.0.0", "port": 8420, "sync_port": 8421,
+{"address": "127.0.0.1", "port": 8420, "sync_port": 8421,
  "web_dir": "$HOME_DIR/app/current", "data_dir": "$HOME_DIR/app/current/data",
  "importer": "$HOME_DIR/app/current/kks-import", "glyphs": "$HOME_DIR/app/current/fontlib.kgl",
  "store": "$HOME_DIR/state/server.db", "plant_dir": "$HOME_DIR/state/plant-data", "backup_dir": "$HOME_DIR/state/backups"}

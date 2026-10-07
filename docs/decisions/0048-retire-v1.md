@@ -39,7 +39,8 @@ Removed from the repository:
 Kept:
 - the scrypt check of v1 password hashes (see above);
 - PROTOCOL-v2 §21 and the import genesis in replay (part of the live plant's log and of the frozen vectors);
-- `/api/devices/enroll` (the GNOME and Android apps still use it);
+- `/api/devices/enroll` (thought to be used by the apps; they enroll over TLS, §16, so it was removed on 2026-10-07,
+  #33);
 - the protocol strings CLAUDE.md lists as unchanged on purpose (`kks-…` domains, `_kks._tcp`, the relay's `/v1/…`
   URL paths, release.json's `"app": "kks-explorer"`).
 

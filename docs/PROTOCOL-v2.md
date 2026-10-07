@@ -397,6 +397,13 @@ Two implementations given the same entries, in any order, must produce the same 
 
 **Framing:** every application message is a 4-byte big-endian length + that many bytes of UTF-8 JSON, at most 64 MiB.
 
+**Before the responder trusts the other side** (any key completes TLS): until it has read the first message (`hello`,
+or a §16/§17 request), a responder may refuse a frame over 1 MiB; after it, while the other side is not a device it
+serves (`mayRead`), one over 4 MiB; and it may close such a connection after 60 s. The size is judged on the 4-byte
+header, before the body is read. A node may also cap the incoming connections it holds at once, in all and per
+address, and the syncs it answers through the relay. These are the reference implementation's limits; a frame
+between two trusted devices can still be 64 MiB.
+
 **Exchange:** every application message is an object with `t`. The initiator speaks first at every step; the
 responder answers. `{"t":"error","why":...}` may be sent instead of any message, then the connection closes.
 
