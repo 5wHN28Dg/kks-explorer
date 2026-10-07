@@ -1,7 +1,7 @@
 ## Equipment by system: every code on the drawings, grouped block → system → subsystem → component kind (core
 ## views.systemsView), with a search field. A row opens its tag like a search result.
 
-import std/strutils
+import std/[strutils, sets]
 import kks/json
 import kks/views
 import gtk, ui, viewer, win
@@ -50,8 +50,9 @@ proc itemRow(w: Win, it: JNode): W =
     w.selectTag(tag, true))
   adw_action_row_add_prefix(result, coverDot(s(it, "photos")))
 
-proc expander(title, subtitle: string, fill: proc (r: W), open: bool): W =
-  ## an expander row whose children are built the first time it opens (thousands of codes otherwise)
+proc expander(title, subtitle: string, fill: proc (r: W), open: bool, key = "", opened: ref HashSet[string] = nil): W =
+  ## an expander row whose children are built the first time it opens (thousands of codes otherwise); `opened`
+  ## remembers the open rows by `key`, so a rebuild after a sync opens them again
   let r = adw_expander_row_new()
   adw_preferences_row_set_use_markup(r, 0)
   adw_preferences_row_set_title(r, title.cstring)
@@ -62,8 +63,11 @@ proc expander(title, subtitle: string, fill: proc (r: W), open: bool): W =
       built = true
       fill(r)
   r.onPtr("notify::expanded", proc (p: W) =
-    if adw_expander_row_get_expanded(r) != 0: build())
-  if open:
+    let on = adw_expander_row_get_expanded(r) != 0
+    if on: build()
+    if opened != nil and key.len > 0:
+      if on: opened[].incl key else: opened[].excl key)
+  if open or (opened != nil and key in opened[]):
     build()
     adw_expander_row_set_expanded(r, 1)
   r
@@ -82,7 +86,10 @@ proc systemsPage*(w: Win, only = ""): W =
   margins(q, 8)
   let list = vbox(12)
   margins(list, 8)
+  let opened = new HashSet[string]
+  var follower: Follower
   proc fill() =
+    if follower != nil: follower.stale = false
     list.clear()
     let query = text(q).strip
     let v = systemsView(w.m, query)
@@ -113,7 +120,8 @@ proc systemsPage*(w: Win, only = ""): W =
       gtk_widget_set_hexpand(l, 1)
       head.add l, button("Show all systems", "flat", proc () =
         only = ""
-        fill())
+        fill()
+        discard gtk_widget_grab_focus(q))     # the button is gone: the focus goes to the search field
       list.add head
     else:
       list.add label(if query.len == 0: codes(total) & " on the drawings"
@@ -130,11 +138,13 @@ proc systemsPage*(w: Win, only = ""): W =
           let sy1 = sys[i]
           let sn = s(sy1, "sys_name")
           let title = s(sy1, "sys") & (if sn.len > 0: " · " & sn else: "")
+          let sk = s(sy1, "sys") & "|" & blk
           adw_preferences_group_add(g, expander(title, codes(n(sy1, "count")), proc (r: W) =
             let subs = sy1["subsystems"].elems
             for j in 0 ..< subs.len:
               closureScope:
                 let sub1 = subs[j]
+                let subk = sk & "|" & s(sub1, "code")
                 adw_expander_row_add_row(r, expander(s(sub1, "code"), codes(n(sub1, "count")), proc (r2: W) =
                   let kinds = sub1["kinds"].elems
                   for x in 0 ..< kinds.len:
@@ -143,17 +153,21 @@ proc systemsPage*(w: Win, only = ""): W =
                       let cn = s(k1, "comp_name")
                       adw_expander_row_add_row(r2, expander(s(k1, "comp") & (if cn.len > 0: " · " & cn else: ""),
                                                             codes(n(k1, "count")), proc (r3: W) =
-                        for it in k1["items"].elems: adw_expander_row_add_row(r3, w.itemRow(it)), open)), open)), open))
+                        for it in k1["items"].elems: adw_expander_row_add_row(r3, w.itemRow(it)), open,
+                        subk & "|" & s(k1, "comp"), opened)), open, subk, opened)), open, sk, opened))
     let other = if only.len == 0 or only == OtherCodes: v["other"].elems else: @[]
     if other.len > 0:
       let g = group("Other", "Codes that don't decode as KKS")
       list.add g
       let others = other
       adw_preferences_group_add(g, expander("Other codes", codes(others.len), proc (r: W) =
-        for it in others: adw_expander_row_add_row(r, w.itemRow(it)), open))
+        for it in others: adw_expander_row_add_row(r, w.itemRow(it)), open, "other", opened))
   q.on("search-changed", proc () =
-    only = ""        # a search covers every system again
+    only = ""                 # a search covers every system again
+    opened[].clear()          # a search opens what it finds; what was open before doesn't stay open
     fill())
   fill()
+  # a sync or an approval rebuilds the tree (new codes, photo colours), never under the focus (win.follow)
+  follower = w.follow(list, fill)
   outer.add q, scrolled(list)
   outer
