@@ -302,10 +302,12 @@ class Server(Base):
         self.assertEqual(st, 200)
         st, b, hdr = boss.req('GET', '/api/bundle?photos=1')
         self.assertEqual(st, 200); self.assertTrue(b.startswith(b'\x1f\x8b'))
-        # a device enrolls with its owner's password (the GNOME/Android join via server)
+        # #33: the HTTP enroll route is gone (devices enroll over TLS on the sync port, §16; it took a password over
+        # HTTP and certified any device ID without proof of its key)
         st, r, _ = anon.req('POST', '/api/devices/enroll', {'username': 'ali', 'password': 'ali password 1',
                                                             'device': 'A' * 32, 'label': 'phone'})
-        self.assertEqual(st, 200, r); self.assertEqual(r['sync_port'], self.sport)
+        self.assertIn(st, (401, 404), r)
+        self.assertNotIn('A' * 32, json.dumps(boss.req('GET', '/api/devices')[1]))
         # deactivation ends the session
         uid = [u for u in boss.req('GET', '/api/users')[1]['users'] if u['username'] == 'ali'][0]['id']
         self.assertEqual(boss.req('POST', f'/api/users/{uid}', {'active': False})[0], 200)
