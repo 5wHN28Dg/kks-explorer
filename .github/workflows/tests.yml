@@ -213,6 +213,8 @@ jobs:
         run: .venv/bin/python platform/linux/e2e/test_course_web.py -v -k ${{ matrix.engine }} -k list_api
       - name: course-figure.js against the course vectors (tests/web)
         run: .venv/bin/python tests/web/test_course_figure.py -v -k ${{ matrix.engine }}
+      - name: dark.js against apps/common/darkcolor.nim's values (tests/web)
+        run: .venv/bin/python tests/web/test_dark.py -v -k ${{ matrix.engine }} -k tag_colours
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

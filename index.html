@@ -58,6 +58,11 @@ body.cover #coverlegend{display:block}
 #markbox{position:absolute;outline:2px dashed var(--accent);background:rgba(255,122,26,.18);pointer-events:none}
 #viewer.marking,#viewer.marking .hs{cursor:crosshair}
 .zoom button.on{border-color:var(--accent);color:var(--accent)}
+/* dark drawings (dark.js, the same as the desktop apps): the sheet's paper #121212, around it a lighter grey; tag colours
+   raised toward white (dark.js lightenForDark, 0.35) so each keeps 3:1 against the dark paper */
+body.darkdwg #viewer{background:#3d3d42;--ok:#8dbfff;--review:#f7d05c;--accent:#ffa96a}
+body.darkdwg #sheetimg{background:#121212}
+body.darkdwg .hs.p-both{--pc:#77c185} body.darkdwg .hs.p-equipment{--pc:#efbb59} body.darkdwg .hs.p-plate{--pc:#6da7ef} body.darkdwg .hs.p-none{--pc:#e87373}
 body.hide-review .hs.review{display:none}
 .zoom{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;z-index:5}
 .zoom button{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:var(--chrome2);font-size:19px;cursor:pointer}
@@ -137,7 +142,7 @@ dt{color:var(--muted)} dd{margin:0}
 </header>
 <main>
   <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"></div><canvas id="sharp"></canvas><div id="stage2"><div id="layer"></div></div></div>
-  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button></div>
+  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button><button id="zdark" title="Dark drawings" aria-label="Dark drawings" aria-pressed="false">◐</button></div>
   <div id="coverlegend" role="note">Photos:<i style="background:#2ea043"></i>both<i style="background:#e69600"></i>equipment only<i style="background:#1e78e6"></i>tag plate only<i style="background:#dc2828"></i>none</div>
   <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
   <div id="toast"></div>
@@ -338,7 +343,9 @@ function openSheet(id,then){
   const img=$('#sheetimg'); let first=true;
   img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the sheet overview) can't run script
-  if(cur.levels){ const k=startLevel(); img.dataset.level=k; img.src=levelUrl(k) } else { delete img.dataset.level; img.src=cur.file }
+  if(cur.levels){ const k=startLevel(), s=cur, g=dark.gen; img.dataset.level=k;
+    if(dark.on) levelSrc(k).then(u=>{ if(cur===s&&dark.gen===g) img.src=u }); else img.src=levelUrl(k) }
+  else { delete img.dataset.level; img.src=cur.file }
   loadVector();
   img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
   renderNotes();
@@ -356,12 +363,40 @@ function upgradeLevel(){
   if(!cur?.levels) return; const k=wantLevel(), img=$('#sheetimg'), shown=+(img.dataset.level??cur.levels-1);
   if(k>=shown) return;
   img.dataset.level=k;   // asked for: not asked again while it loads
-  const s=cur, url=levelUrl(k);
-  // swap once decoded; without JPEG XL in the browser, K.jxl decodes it (a detached image isn't watched)
+  const s=cur, g=dark.gen;
+  // swap once decoded (and only if neither the sheet nor dark drawings changed meanwhile)
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the overview pyramid) can't run script
-  K.jxl.native().then(n=>n?url:K.jxl.url(url)).then(u=>{ const pre=new Image(); pre.onload=()=>{ if(cur===s) img.src=u }; pre.src=u })
+  levelSrc(k).then(u=>{ const pre=new Image(); pre.onload=()=>{ if(cur===s&&dark.gen===g) img.src=u }; pre.src=u })
     .catch(e=>console.warn('overview level',k,e));
 }
+// a level's image URL: the file itself where the browser shows JPEG XL, else K.jxl's decode (a detached image isn't
+// watched); in dark drawings the tile worker decodes it with our libjxl and transforms every pixel (dark.js), off this
+// thread. Dark levels are kept per sheet (blob: URLs, freed when another sheet opens).
+function levelSrc(k){
+  const url=levelUrl(k);
+  if(dark.on) sharp.worker??=startTiles();
+  if(!dark.on||!sharp.worker) return K.jxl.native().then(n=>n?url:K.jxl.url(url));
+  if(dark.sheet!==cur.id){ for(const p of dark.levels.values()) p.then(u=>URL.revokeObjectURL(u),()=>{}); dark.levels.clear(); dark.sheet=cur.id }
+  if(!dark.levels.has(url)) dark.levels.set(url,new Promise((res,rej)=>{ const id=++dark.seq; dark.wait.set(id,{res,rej}); sharp.worker.postMessage({t:'level',id,url}) })
+    .then(b=>URL.createObjectURL(b)));
+  return dark.levels.get(url);
+}
+// ---------- dark drawings: like a PDF reader's dark mode; remembered on this device ----------
+const dark={on:false,gen:0,sheet:null,levels:new Map(),wait:new Map(),seq:0};
+function setDark(on){
+  dark.on=on; dark.gen++; document.body.classList.toggle('darkdwg',on);
+  const b=$('#zdark'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
+  try{ on?localStorage.setItem('darkDrawings','1'):localStorage.removeItem('darkDrawings') }catch(e){}
+  if(!cur?.levels) return;
+  sharp.worker??=startTiles();
+  // the overview level on screen again in the new colours, and the sharp layer redrawn now (not after the 150 ms pause)
+  const img=$('#sheetimg'), s=cur, g=dark.gen, k=+(img.dataset.level??cur.levels-1);
+  // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the overview pyramid) can't run script
+  levelSrc(k).then(u=>{ if(cur===s&&dark.gen===g) img.src=u }).catch(e=>console.warn('overview level',k,e));
+  clearTimeout(sharp.timer); drawSharp();
+}
+$('#zdark').onclick=()=>setDark(!dark.on);
+try{ if(localStorage.getItem('darkDrawings')==='1') setDark(true) }catch(e){}
 function apply(){ const t=`translate(${view.x}px,${view.y}px) scale(${view.s})`; $('#stage').style.transform=t; $('#stage2').style.transform=t; followSharp() }
 
 // ---------- sharp layer: the sheet's vector drawing, redrawn for the visible area once the view stops moving ----------
@@ -385,6 +420,8 @@ function startTiles(){
     w.onmessage=e=>{ const m=e.data;
       if(m.t==='opened'){ if(cur&&m.sheet===cur.id){ sharp.ready=cur.id; drawSharp() } }
       else if(m.t==='frame'){ if(sharp.pending&&m.key===sharp.pending.key) showFrame(m.bmp,sharp.pending.at); else m.bmp.close() }
+      else if(m.t==='level'){ const p=dark.wait.get(m.id); dark.wait.delete(m.id); if(!p) return;
+        if(m.blob){ dark.lastMs=m.ms; p.res(m.blob) } else p.rej(new Error(m.why)) }
       else if(m.t==='error') console.warn('drawing',m.sheet,m.why);
     };
     return w;
@@ -404,7 +441,7 @@ function drawSharp(){
     const W=Math.round(v.width*d), H=Math.round(v.height*d), sc=cur.scale||2;
     // the area in points: level-0 px = (screen − view.x) / view.s, points = px / scale
     const key=++sharp.key; sharp.pending={key,at:{...view}};
-    sharp.worker.postMessage({t:'render',key,sheet:cur.id,x0:-view.x/view.s/sc,y0:-view.y/view.s/sc,s:view.s*d*sc,W,H});
+    sharp.worker.postMessage({t:'render',key,sheet:cur.id,x0:-view.x/view.s/sc,y0:-view.y/view.s/sc,s:view.s*d*sc,W,H,dark:dark.on});
     return;
   }
   if(!sharp.img||view.s*d<0.7){ c.style.display='none'; sharp.at=null; return }  // zoomed out: the PNG is as sharp
