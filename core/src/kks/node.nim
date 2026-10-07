@@ -217,18 +217,21 @@ proc ingest*(n: Node, batch: seq[JNode], wall: int64): int =
   ## device's chain continued in order (a gap waits for the next sync); a second different entry for a (device, seq)
   ## we hold is fork evidence. -> number of new entries (and evidence) kept.
   var good: OrderedTable[string, seq[(int64, string, JNode)]]
+  # a device's seq-1 entry (its key) may be in the same batch: indexed once (a search per entry was quadratic, and a
+  # stranger's one frame could hold the core for an hour, issue #67)
+  var batchKeys: Table[string, string]
+  for other in batch:
+    if other != nil and other.kind == jObj and other.get("peer") != nil and other["peer"].kind == jStr and
+       other.get("seq") != nil and other["seq"].kind == jInt and other["seq"].i == 1 and
+       other.get("key") != nil and other["key"].kind == jStr:
+      batchKeys[other["peer"].s] = other["key"].s   # the last one wins, as the search before did
   for e in batch:
     if e == nil or e.kind != jObj: continue
     let peer = if e.get("peer") != nil and e["peer"].kind == jStr: e["peer"].s else: ""
     var key = ""
     let c = n.chains.getOrDefault(peer)
     if c.len > 0: key = n.entries[c[0]]["key"].s
-    else:
-      for other in batch:   # its seq-1 entry may be in the same batch
-        if other != nil and other.kind == jObj and other.get("peer") != nil and other["peer"].kind == jStr and
-           other["peer"].s == peer and other.get("seq") != nil and other["seq"].kind == jInt and other["seq"].i == 1 and
-           other.get("key") != nil and other["key"].kind == jStr:
-          key = other["key"].s
+    else: key = batchKeys.getOrDefault(peer)
     try:
       n.p.verifyEntry(e, key)
     except ProtocolError:

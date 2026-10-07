@@ -41,12 +41,15 @@ a.course h2{margin:0 0 4px;font-size:17px}
     try { s = JSON.parse(s || '{}') } catch (e) { s = {} }
     return c.questions.filter(q => s[q]).length;
   };
-  document.getElementById('main').innerHTML = courses.map(c => {
+  const h = K.h;
+  document.getElementById('main').replaceChildren(...courses.map(c => {
     const n = solvedOf(c), t = c.questions.length;
-    return `<a class="course" href="${K.esc(c.href)}"><h2>${K.esc(c.title)}</h2>${c.short ? `<div class="sub">${K.esc(c.short)}</div>` : ''}
-      <div class="sub">${n} of ${t} questions answered correctly</div><div class="bar"><i style="width:${t ? Math.round(100 * n / t) : 0}%"></i></div></a>`;
-  }).join('') + `<p class="sub">${saved ? 'Your progress is private: only your own devices can read it, and it follows you between them.'
-                                         : 'On the plant server, progress stays in this browser. The app on your own phone or computer keeps it with you across devices.'}</p>`;
+    const a = h('a', {class: 'course'}, h('h2', null, c.title), c.short ? h('div', {class: 'sub'}, c.short) : null,
+      h('div', {class: 'sub'}, `${n} of ${t} questions answered correctly`), h('div', {class: 'bar'}, h('i', {style: `width:${t ? Math.round(100 * n / t) : 0}%`})));
+    a.href = K.safeUrl(c.href);
+    return a;
+  }), h('p', {class: 'sub'}, saved ? 'Your progress is private: only your own devices can read it, and it follows you between them.'
+                                   : 'On the plant server, progress stays in this browser. The app on your own phone or computer keeps it with you across devices.'));
 })();
 </script>
 </body>
