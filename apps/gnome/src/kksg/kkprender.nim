@@ -108,7 +108,9 @@ proc renderTile*(s: Sheet, zoom: float, x0, y0: float, w, h: int): Surface =
   let qy0 = int64(floor(y0 * float(Q)))
   let qx1 = int64(ceil((x0 + float(w) / zoom) * float(Q)))
   let qy1 = int64(ceil((y0 + float(h) / zoom) * float(Q)))
-  let px1 = 1.0 / k
+  # the thinnest line: one device pixel (PATHSTORE.md), half of one when zoomed out below a pixel per point, where
+  # full-pixel lines made dense text a dark block at fit (2026-10-07)
+  let px1 = (if zoom < 1.0: 0.5 else: 1.0) / k
   var imgs: seq[int]
   for i, im in s.d.images:
     if im.rect[2] >= qx0 and im.rect[0] <= qx1 and im.rect[3] >= qy0 and im.rect[1] <= qy1: imgs.add i

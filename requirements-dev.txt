@@ -1,6 +1,6 @@
 # Python for the tests and tools (not part of any app): the protocol reference (ref/), the e2e drivers, the relay
 # twin, tools/m6 and tools/release.py. python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-# Pinned with == (Section 5), transitive packages included, so the whole tree is fixed and scanned: the versions the
+# Pinned with ==, transitive packages included, so the whole tree is fixed and scanned: the versions the
 # tests last passed with. Updates come as their own reviewed changes.
 # Playwright's browsers: .venv/bin/playwright install chromium firefox webkit (1.63.0 = chromium 1243, firefox 1543,
 # webkit 2359).

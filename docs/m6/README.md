@@ -1,6 +1,6 @@
 # M6: re-deriving KKS Explorer from scratch under the evidence-first policy
 
-Started 2026-09-30. The policies: docs/evidence-first-platform-engineering.md, docs/evidence-first-web-engineering.md.
+Started 2026-09-30. The policies: the platform engineering guideline (CLAUDE.md, "Engineering guidelines"), the web engineering guideline (CLAUDE.md, "Engineering guidelines").
 The architecture must come out of the investigation; nothing in the current code is assumed. The current code is
 only compared at the end.
 

@@ -1,0 +1,27 @@
+# The licenses a dependency may have, one SPDX id per line. The dependency check in CI (osv-scanner --licenses)
+# fails on any other. Walkdown is AGPL-3.0 (LICENSE), so everything here is compatible with distributing it under the
+# AGPL-3.0. Adding a license here: say in the PR why it is compatible.
+# Never allowed: no license or "all rights reserved", proprietary or commercial-only terms, non-commercial terms
+# (e.g. CC-BY-NC-*), and source-available licenses that restrict use (SSPL, BUSL, Elastic).
+#
+# Copyleft compatible with the AGPL-3.0: MuPDF and PyMuPDF (AGPL-3.0), pillow-jxl-plugin (GPL-3.0-or-later)
+AGPL-3.0-only
+AGPL-3.0-or-later
+GPL-3.0-only
+GPL-3.0-or-later
+# Permissive
+Apache-2.0
+MIT
+MIT-0
+MIT-CMU
+BSD-2-Clause
+BSD-3-Clause
+0BSD
+ISC
+Zlib
+PSF-2.0
+CC0-1.0
+# SQLite's public-domain dedication
+blessing
+# Fonts (vendor/fonts)
+OFL-1.1

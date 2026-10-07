@@ -737,7 +737,7 @@ proc openCourse*(w: Win, id: string, page = "") =
   windows[id] = cw
   cw.window = adw_application_window_new(gtk_window_get_application(w.window))
   gtk_window_set_default_size(cw.window, 1180, 860)
-  cw.window.on("close-request", proc () = windows.del id)
+  cw.window.onCloseRequest(proc () = windows.del id)
   let split = adw_navigation_split_view_new()
   adw_navigation_split_view_set_min_sidebar_width(split, 240)
   adw_navigation_split_view_set_max_sidebar_width(split, 300)
