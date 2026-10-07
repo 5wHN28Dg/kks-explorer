@@ -131,9 +131,15 @@ suite "plant API":
     check note.status == 200
     var seen: seq[string]
     for x in note.json["results"].elems:
+      check x["status"].s == "pending"            # not held as a clash with the note it extends
       for s in userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems:
         if s["id"].i == x["id"].i: seen.add s["payload"]["changes"]["notes"].s
     check seen == @["old leak\ninsulation missing", "insulation missing"]
+    # a place over a code's existing value replaces it (the client says so first), it isn't held as a clash
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA509","changes":{"floor":"1"}}}""")).status == 200
+    sync(userNode, mgrNode)
+    let over = mgrApi.call(mgr, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA509","11LAB70AA510"],"payload":{"changes":{"floor":"3"}}}"""))
+    for x in over.json["results"].elems: check x["status"].s == "approved"
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"tag_add","kks":["11LAB70AA501"],"payload":{}}""")).status == 400
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":[],"payload":{"changes":{"area":"x"}}}""")).status == 400
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["not a code!"],"payload":{"changes":{"area":"x"}}}""")).status == 400

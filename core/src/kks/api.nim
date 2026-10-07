@@ -554,6 +554,13 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
           changes[f] = S(if old.strip.len > 0: old & "\n" & v.s else: v.s)
       var pi = O(("kks", S(k)), ("changes", changes))
       if payload.get("base") != nil: pi["base"] = payload["base"]
+      else:
+        # no base given: each code's own current values. One base can't fit every code, and without one a code that
+        # already had a value (or a note to append to) was held as a clash; the person chose to replace or extend it
+        let cur = a.n.run.equipment.getOrDefault(k)
+        var bs = newObj()
+        for (f, _) in changes.fields: bs[f] = (if cur != nil and cur.has(f): cur[f] else: defaultOf(f))
+        pi["base"] = bs
       results.elems.add a.submit(me, kind, pi, cidOf(i), noteIn, now)
   O(("results", results))
 
