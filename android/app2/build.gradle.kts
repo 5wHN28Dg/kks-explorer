@@ -6,7 +6,6 @@ import java.util.Properties
 // (src/main/jniLibs/<abi>/libkks.so, built by ../nim/build.sh). Installed next to the v1 app until the cutover.
 plugins {
     id("com.android.application")
-    kotlin("android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -68,6 +67,7 @@ android {
     }
     sourceSets.getByName("rehearsal") {
         java.srcDir("src/debug/kotlin")
+        kotlin.srcDir("src/debug/kotlin")     // AGP 9 compiles Kotlin only from kotlin source dirs
         res.srcDir("src/debug/res")
         manifest.srcFile("src/debug/AndroidManifest.xml")
     }
@@ -77,7 +77,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
 }
 
@@ -156,8 +155,38 @@ val copyFonts by tasks.registering(Sync::class) {
     from(File(rootDir.parentFile, "vendor/fonts/ttf")) { include("*.ttf") }
     into(layout.buildDirectory.dir("assets/fonts"))
 }
-android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("assets"))
+// AGP 9 takes generated directories through the Variant API only; the copy tasks above run before every build
+val generatedAssets = layout.buildDirectory.dir("assets").get().asFile.path
+androidComponents { onVariants { v -> v.sources.assets?.addStaticSourceDirectory(generatedAssets) } }
 tasks.named("preBuild") { dependsOn(copyData, copyFonts) }
+
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+
+// Every configuration's resolved versions are locked in gradle.lockfile (governance Section 5): the transitive tree
+// is pinned and the vulnerability scan reads it. Update with
+// ./gradlew :app2:dependencies :app2:assembleDebug :app2:assembleRelease :app2:assembleRehearsal --write-locks
+dependencyLocking { lockAllConfigurations(); lockMode.set(LockMode.STRICT) }   // a configuration missing from the lockfile fails the build
+run {
+    // Tool libraries that the Android Gradle plugin and lint bring in at versions with published advisories
+    // (osv-scanner over the lockfiles, 2026-10-05), raised to the first fixed release in the same line. Never
+    // lowers a version; the lockfiles record the result.
+    val patched = mapOf(
+        "org.bouncycastle:bcprov-jdk18on" to "1.85", "org.bouncycastle:bcpkix-jdk18on" to "1.85",
+        "org.bouncycastle:bcutil-jdk18on" to "1.85", "org.apache.commons:commons-lang3" to "3.18.0",
+        "org.jdom:jdom2" to "2.0.6.1", "org.bitbucket.b_c:jose4j" to "0.9.6",
+        "org.apache.httpcomponents:httpclient" to "4.5.14")
+    fun older(a: String, b: String): Boolean {
+        val x = a.split('.', '-').map { it.toIntOrNull() ?: 0 }; val y = b.split('.', '-').map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(x.size, y.size)) { val d = x.getOrElse(i) { 0 } - y.getOrElse(i) { 0 }; if (d != 0) return d < 0 }
+        return false
+    }
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            val fix = patched["${requested.group}:${requested.name}"]
+            if (fix != null && requested.version != null && older(requested.version!!, fix)) { useVersion(fix); because("published advisories") }
+        }
+    }
+}
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
@@ -165,5 +194,5 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 }

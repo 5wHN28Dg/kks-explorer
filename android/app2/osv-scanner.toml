@@ -1,0 +1,135 @@
+# osv-scanner reads this file for the lockfiles in this directory (it does not look in parent directories).
+#
+# The Android build's tools (Gradle plugins, lint, the test platform), from the Gradle lockfiles. None of them is in
+# the app's runtime classpath (the lockfiles list them under classpath, androidLintTool and
+# unified-test-platform-gradle-work-action only), so none ships in the APK. Their metadata names no SPDX license, so
+# each one is named here from its POM (or its parent POM, or the license file in its jar), checked on 2026-10-07.
+# Those whose license is not on license-allowlist.txt (not AGPL-compatible: the allowlist is for shipped code) are
+# left out of the license check, with their license in the reason. Pinned to the checked version: a new version gets
+# checked again before an entry moves.
+
+[[PackageOverrides]]
+name = "org.bouncycastle:bcprov-jdk18on"
+version = "1.85"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: 'Bouncy Castle Licence'; the jar's org/bouncycastle/LICENSE is the MIT text"
+
+[[PackageOverrides]]
+name = "org.bouncycastle:bcpkix-jdk18on"
+version = "1.85"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: 'Bouncy Castle Licence' (the MIT text, as in bcprov's org/bouncycastle/LICENSE)"
+
+[[PackageOverrides]]
+name = "org.bouncycastle:bcutil-jdk18on"
+version = "1.85"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: 'Bouncy Castle Licence' (the MIT text, as in bcprov's org/bouncycastle/LICENSE)"
+
+[[PackageOverrides]]
+name = "org.checkerframework:checker-qual"
+version = "3.43.0"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: The MIT License"
+
+[[PackageOverrides]]
+name = "net.sf.kxml:kxml2"
+version = "2.3.0"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: 'BSD style'; its license text (github.com/kobjects/kxml2, license.txt) is the MIT text"
+
+[[PackageOverrides]]
+name = "net.java.dev.jna:jna"
+version = "5.6.0"
+ecosystem = "Maven"
+license.override = ["Apache-2.0"]
+reason = "build tool, not in the APK. POM: LGPL-2.1 or Apache-2.0; used under Apache-2.0"
+
+[[PackageOverrides]]
+name = "net.java.dev.jna:jna-platform"
+version = "5.6.0"
+ecosystem = "Maven"
+license.override = ["Apache-2.0"]
+reason = "build tool, not in the APK. POM: LGPL-2.1 or Apache-2.0; used under Apache-2.0"
+
+[[PackageOverrides]]
+name = "com.sun.xml.fastinfoset:FastInfoset"
+version = "1.2.16"
+ecosystem = "Maven"
+license.override = ["Apache-2.0"]
+reason = "build tool, not in the APK. parent POM fastinfoset-project: Apache-2.0 or EDL 1.0; used under Apache-2.0"
+
+[[PackageOverrides]]
+name = "com.sun.istack:istack-commons-runtime"
+version = "3.0.8"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM istack-commons: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "jakarta.activation:jakarta.activation-api"
+version = "1.2.1"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM com.sun.activation:all: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "jakarta.xml.bind:jakarta.xml.bind-api"
+version = "2.3.2"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM jakarta.xml.bind-api-parent: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.glassfish.jaxb:jaxb-runtime"
+version = "2.3.2"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM jaxb-parent: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.glassfish.jaxb:txw2"
+version = "2.3.2"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM jaxb-parent: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.jvnet.staxex:stax-ex"
+version = "1.8.1"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. POM: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.junit:junit-bom"
+version = "5.13.3"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build tool, not in the APK; its license, EPL-2.0 (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "org.junit.platform:junit-platform-commons"
+version = "1.13.3"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build tool, not in the APK; its license, EPL-2.0 (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "org.junit.platform:junit-platform-engine"
+version = "1.13.3"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build tool, not in the APK; its license, EPL-2.0 (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "org.junit.platform:junit-platform-launcher"
+version = "1.13.3"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build tool, not in the APK; its license, EPL-2.0 (POM), is not on the allowlist, which is for shipped code"
