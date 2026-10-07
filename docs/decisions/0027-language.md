@@ -50,4 +50,4 @@ fluency and preference for a systems language. For a solo developer that is a le
 Sources: https://github.com/nim-lang/Nim, https://github.com/PMunch/futhark, https://github.com/khchen/winim,
 https://github.com/can-lehmann/owlkettle, https://github.com/StefanSalewski/gintro, https://github.com/nim-lang/db_connector,
 https://github.com/yglukhov/jnim, https://github.com/ArtifexSoftware/mupdf, https://github.com/opencv/opencv (all queried 2026-09-30);
-docs/evidence-first-platform-engineering.md (Windows: Win32; "A cost this policy imposes")
+the platform engineering guideline (CLAUDE.md, "Engineering guidelines") (Windows: Win32; "A cost this policy imposes")

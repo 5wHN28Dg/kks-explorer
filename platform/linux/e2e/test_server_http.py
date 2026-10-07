@@ -37,6 +37,8 @@ IMPORTER = os.environ.get('KKS_IMPORT', '/tmp/kksimp/kks_import')
 
 
 class Base(unittest.TestCase):
+    extra = {}       # config entries a test class adds
+
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-nim-server-')
@@ -46,6 +48,7 @@ class Base(unittest.TestCase):
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
                'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl')}
+        cfg.update(cls.extra)
         with open(os.path.join(cls.dir, 'config.json'), 'w') as f:
             json.dump(cfg, f)
         cls.proc = subprocess.Popen([BIN, 'serve', '--config', os.path.join(cls.dir, 'config.json')], stdout=subprocess.PIPE,
@@ -156,6 +159,40 @@ class Cli(Base):
         self.assertEqual(boss.req('GET', '/api/sync/status')[1]['plant_data']['version'], 1)
         self.assertEqual(boss.req('GET', '/data/sheets.json')[1], [])
         self.assertEqual(self.cli('publish-data', d), (0, 'Unchanged: the files equal the latest version.'))
+        # /data/ (2026-10-06): published files and the program's own data/ are never pages of this site: the types the
+        # pages use go out sandboxed, anything else as a download
+        os.makedirs(os.path.join(d, 'courses'))
+        open(os.path.join(d, 'courses', 'evil.html'), 'w').write('<script>parent.pwned=1</script>')
+        open(os.path.join(d, 'courses', 'evil.svg'), 'w').write('<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>')
+        import gzip
+        open(os.path.join(d, 'courses', 'big.json.gz'), 'wb').write(gzip.compress(b'{"a": 1}'))
+        open(os.path.join(d, 'courses', 'page.html.gz'), 'wb').write(gzip.compress(b'<script>parent.pwned=1</script>'))
+        self.assertEqual(self.cli('publish-data', d), (0, 'Published plant data version 2.'))
+        for name in ('courses/evil.html', 'courses/evil.svg'):
+            st, data, hdr = boss.req('GET', '/data/' + name)
+            self.assertEqual(st, 200, name)
+            self.assertEqual(hdr['Content-Type'], 'application/octet-stream', name)
+            self.assertEqual(hdr['Content-Disposition'], 'attachment', name)
+            self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        with boss.op.open(urllib.request.Request(boss.base + '/data/courses/big.json')) as resp:   # the .gz copy
+            st, hdr = resp.status, resp.headers
+        self.assertEqual((st, hdr['Content-Type'], hdr['Content-Encoding']), (200, 'application/json', 'gzip'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        # a page compressed: asked by its own name it is gzip bytes, not a page; asked without .gz it downloads
+        st, data, hdr = boss.req('GET', '/data/courses/page.html.gz')
+        self.assertEqual((st, hdr['Content-Type'], hdr.get('Content-Encoding')), (200, 'application/gzip', None))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        with boss.op.open(urllib.request.Request(boss.base + '/data/courses/page.html')) as resp:
+            st, hdr = resp.status, resp.headers
+        self.assertEqual((st, hdr['Content-Type'], hdr['Content-Encoding'], hdr['Content-Disposition']),
+                         (200, 'application/octet-stream', 'gzip', 'attachment'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        st, data, hdr = boss.req('GET', '/data/sheets.json')
+        self.assertEqual((st, hdr['Content-Type']), (200, 'application/json'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
+        st, data, hdr = boss.req('GET', '/data/kks.json')     # the program's own data/, not published
+        self.assertEqual((st, hdr['Content-Type']), (200, 'application/json'))
+        self.assertIn('sandbox', hdr['Content-Security-Policy'])
         # the plant's name: from the CLI and from the admin page; "" = none
         self.assertEqual(self.cli('set-plant-name', 'Unit test plant'), (0, 'The plant is called Unit test plant now.'))
         self.assertEqual(Client(self.base).req('GET', '/api/config')[1]['plant_name'], 'Unit test plant')
@@ -243,6 +280,20 @@ class Server(Base):
         st, data, hdr = boss.req('GET', '/photos/' + ph['file'])
         self.assertEqual((st, data), (200, png)); self.assertIn('immutable', hdr['Cache-Control'])
         self.assertEqual(anon.req('GET', '/photos/' + ph['file'])[0], 401)
+        # 2026-10-06 stored XSS: a member's "photo" that starts with the JPEG XL signature and goes on as HTML, asked
+        # for as <sha>.html. Its type comes from its bytes, never the URL, and it is sandboxed.
+        poly = b'\xff\x0a<html><script>parent.pwned=1</script></html>'
+        st, r, _ = ali2.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'x',
+                            'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(poly).decode()}})
+        self.assertEqual(st, 200, r)
+        sha = [p for p in ali2.req('GET', '/api/submissions')[1]['submissions'] if p['kind'] == 'photo'][0]['payload']['file'].split('.')[0]
+        for ext in ('html', 'svg', 'htm', 'xml', 'js', 'jxl'):
+            st, data, hdr = boss.req('GET', f'/photos/{sha}.{ext}')
+            self.assertEqual((st, data), (200, poly))
+            self.assertEqual(hdr['Content-Type'], 'image/jxl', ext)
+            self.assertEqual(hdr['X-Content-Type-Options'], 'nosniff')
+            self.assertIn('sandbox', hdr['Content-Security-Policy'])
+            self.assertIn("default-src 'none'", hdr['Content-Security-Policy'])
         # History, the program's data, a bundle
         revs = boss.req('GET', '/api/revisions')[1]['revisions']
         self.assertGreaterEqual(len(revs), 2)
@@ -267,6 +318,403 @@ class Server(Base):
         c = Client(self.base)
         codes = [c.req('POST', '/api/login', {'username': 'nobody', 'password': 'x'})[0] for _ in range(7)]
         self.assertIn(429, codes)
+
+
+
+class Limits(Base):
+    """finding #27 (advisory GHSA-xfj6-p785-whg5): request limits before authentication"""
+
+    def conn(self, src='127.0.0.1', timeout=None):
+        return socket.create_connection(('127.0.0.1', self.port), timeout=timeout, source_address=(src, 0))
+
+    def closed_count(self, socks):
+        time.sleep(1)
+        closed = 0
+        for s in socks:                  # one non-blocking look each: waiting per socket would reach the idle timeout
+            s.setblocking(False)
+            try:
+                if s.recv(1) == b'':
+                    closed += 1
+            except BlockingIOError:
+                pass
+            except ConnectionResetError:
+                closed += 1
+            s.close()
+        return closed
+
+    def raw(self, data, wait=5.0):
+        c = self.conn(timeout=wait)
+        c.sendall(data)
+        out = b''
+        try:
+            while True:
+                b = c.recv(65536)
+                if not b:
+                    break
+                out += b
+        except socket.timeout:
+            out += b'<timeout>'
+        except ConnectionResetError:     # closed with our bytes unread: the answer may be lost to the reset
+            out += b'<reset>'
+        c.close()
+        return out
+
+    def test_chunked_body_refused(self):
+        r = self.raw(b'POST /api/login HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\nffffffff\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 411'), r[:80])
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)   # still serving
+
+    def test_any_transfer_encoding_refused(self):
+        """not only chunked POST: another method's chunked body would be read as the next request (smuggling)"""
+        smuggled = b'5\r\nGET /\r\n0\r\n\r\n'
+        for head in (b'PUT /api/config HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n',
+                     b'POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\n',
+                     b'GET /api/config HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: gzip\r\n\r\n'):
+            with self.subTest(head=head[:40]):
+                r = self.raw(head + smuggled)
+                self.assertTrue(r.startswith(b'HTTP/1.1 411'), r[:80])
+                self.assertEqual(r.count(b'HTTP/1.1 '), 1, r)      # nothing after it was read as a request
+
+    def test_slow_headers_closed(self):
+        c = socket.create_connection(('127.0.0.1', self.port), timeout=40)
+        c.sendall(b'GET /api/config HTTP/1.1\r\nHost: x\r\n')         # never finishes the headers
+        t0 = time.time()
+        self.assertEqual(c.recv(1), b'')                                  # the server closes it
+        self.assertLess(time.time() - t0, 30)
+        c.close()
+
+    def test_connections_per_address_capped(self):
+        # from 127.0.0.2, which no other test uses, so no other connection shares the count
+        closed = self.closed_count([self.conn('127.0.0.2') for _ in range(70)])
+        self.assertGreaterEqual(closed, 6)       # 64 per address: the rest are closed at once
+        self.assertLessEqual(closed, 6)          # ... and only those
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)
+        # the slots come back when connections end: 64 complete requests at once, twice
+        time.sleep(1)
+        for _ in range(2):
+            socks = [self.conn('127.0.0.2', timeout=10) for _ in range(64)]
+            for s in socks:
+                s.sendall(b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nConnection: close\r\n\r\n' % self.port)
+            ok = 0
+            for s in socks:
+                if s.recv(12).startswith(b'HTTP/1.1 200'):
+                    ok += 1
+                s.close()
+            self.assertEqual(ok, 64)
+            time.sleep(1)
+
+    def test_connections_capped_in_total(self):
+        # 9 addresses x 60, each under the per-address cap: only the total of 512 applies
+        socks = [self.conn('127.0.0.%d' % (10 + a)) for a in range(9) for _ in range(60)]
+        closed = self.closed_count(socks)
+        self.assertGreaterEqual(closed, 540 - 512)
+        self.assertLessEqual(closed, 540 - 512 + 2)   # + the odd connection of an earlier test still closing
+        time.sleep(1)
+        self.assertEqual(Client(self.base).req('GET', '/api/config')[0], 200)
+
+    def test_idle_connection_closed(self):
+        """a connection that never sends a request line is closed after the idle timeout (60 s)"""
+        c = self.conn(timeout=90)
+        t0 = time.time()
+        self.assertEqual(c.recv(1), b'')
+        self.assertGreater(time.time() - t0, 55)
+        self.assertLess(time.time() - t0, 75)
+        c.close()
+
+    def rss_mb(self):
+        for line in open('/proc/%d/status' % self.proc.pid):
+            if line.startswith('VmRSS:'):
+                return int(line.split()[1]) / 1024
+
+    def test_bad_request_lines_close(self):
+        """a stream of bad request lines gets one answer and the connection closes (answers were queued unread)"""
+        r = self.raw(b'X\r\n' * 5000, wait=5)
+        self.assertTrue(r.startswith(b'HTTP/1.1 400') or r == b'<reset>', r[:80])
+        self.assertLessEqual(r.count(b'HTTP/1.1 '), 1)
+        self.assertNotIn(b'<timeout>', r)              # closed, not kept open
+
+    def test_bad_framing_refused(self):
+        h = 'Host: 127.0.0.1:%d\r\n' % self.port
+        for req in ('POST /api/login HTTP/1.1\r\n%sContent-Length: 5abc\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5\r\nContent-Length: 7\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sTransfer-Encoding : chunked\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5, 7\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sContent-Length: 5,\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sNo colon here\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'POST /api/login HTTP/1.1\r\n%sExpect: something\r\nContent-Length: 5\r\n\r\n12345' % h,
+                    'GET /api/config\r\n%s\r\n' % h):
+            with self.subTest(req=req[:60]):
+                r = self.raw(req.encode() + b'GET /api/config HTTP/1.1\r\n' + h.encode() + b'\r\n')
+                self.assertTrue(r.startswith(b'HTTP/1.1 400') or r.startswith(b'HTTP/1.1 417') or r == b'<reset>', r[:80])
+                self.assertLessEqual(r.count(b'HTTP/1.1 '), 1, r)   # what followed was not read as a request
+                self.assertNotIn(b'<timeout>', r)
+
+    def test_header_size_capped(self):
+        r = self.raw(b'GET /api/config HTTP/1.1\r\n' + b''.join(b'X-%d: %s\r\n' % (i, b'a' * 1000) for i in range(80)) + b'\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 431') or r == b'<reset>', r[:80])
+        r = self.raw(b'GET /api/config HTTP/1.1\r\n' + b''.join(b'X-%d: a\r\n' % i for i in range(150)) + b'\r\n')
+        self.assertTrue(r.startswith(b'HTTP/1.1 431') or r == b'<reset>', r[:80])
+
+    def test_body_memory_follows_what_arrives(self):
+        """a large Content-Length with one byte sent doesn't make the server allocate the whole body"""
+        before = self.rss_mb()
+        socks = [self.conn('127.0.0.4') for _ in range(10)]
+        for c in socks:
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: 25000000\r\n\r\n{')
+        time.sleep(1.5)
+        grown = self.rss_mb() - before
+        for c in socks: c.close()
+        self.assertLess(grown, 50, 'RSS grew by %.0f MB' % grown)   # was ~25 MB per connection
+
+    def test_pipelined_requests_memory(self):
+        """many short pipelined requests on a few connections: memory stays flat (a timer per read once grew it by a
+        gigabyte in seconds)"""
+        before = self.rss_mb()
+        req = (b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n' % self.port +
+               b''.join(b'X-%d: a\r\n' % i for i in range(90)) + b'\r\n')
+        import threading
+        socks = [self.conn('127.0.0.6') for _ in range(4)]
+        stop = time.time() + 6
+        def send(c):
+            try:
+                while time.time() < stop: c.sendall(req * 20)
+            except OSError: pass
+        def drain(c):
+            c.settimeout(1)
+            try:
+                while time.time() < stop + 1 and c.recv(1 << 16): pass
+            except OSError: pass
+        ts = [threading.Thread(target=f, args=(c,)) for c in socks for f in (send, drain)]
+        for t in ts: t.start()
+        for t in ts: t.join()
+        grown = self.rss_mb() - before
+        for c in socks: c.close()
+        self.assertLess(grown, 100, 'RSS grew by %.0f MB' % grown)
+
+    def test_declared_sizes_dont_block_uploads(self):
+        """headers that announce large bodies and send nothing don't use up the upload budget (it counts bytes held)"""
+        budget = 256 * 1024 * 1024                         # MaxBodiesInFlight
+        sizes = [31_000_000] * 8 + [budget - 8 * 31_000_000 - 10]   # announced up to 10 bytes short of it
+        socks = [self.conn('127.0.0.7') for _ in sizes]
+        for c, n in zip(socks, sizes):
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: %d\r\n\r\n' % (self.port, n))
+        time.sleep(1)
+        st = Client(self.base).req('POST', '/api/login', {'username': 'nobody', 'password': 'x'})[0]
+        for c in socks: c.close()
+        self.assertIn(st, (401, 429))                     # an answer from the handler, not 503
+
+    def test_refusal_closes(self):
+        """a POST without Content-Length is refused and the connection closed, so a pipeline of them can't hold it"""
+        r = self.raw(b'POST /x HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n' % self.port * 50)
+        self.assertTrue(r.startswith(b'HTTP/1.1 411') or r == b'<reset>', r[:80])
+        self.assertLessEqual(r.count(b'HTTP/1.1 '), 1)
+        self.assertNotIn(b'<timeout>', r)
+
+    def test_bodies_not_held_by_idle_connections(self):
+        """large bodies on connections left open and idle: memory levels off instead of growing per connection"""
+        body = b'{' + b' ' * 30_000_000
+        socks, rss = [], []
+        for _ in range(10):
+            c = self.conn('127.0.0.8', timeout=30)
+            c.sendall(b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                      b'Content-Length: %d\r\n\r\n' % (self.port, len(body)) + body)
+            self.assertTrue(c.recv(12).startswith(b'HTTP/1.1 4'))   # answered; the connection stays open, idle
+            socks.append(c)
+            rss.append(self.rss_mb())
+        for c in socks: c.close()
+        self.assertLess(rss[-1] - rss[3], 60, rss)       # 30 MB per idle connection would be 180 MB here
+
+    def test_upload_budget_bounds_memory(self):
+        """bodies sent for real fill the server-wide upload budget (256 MB, charged at twice each buffer): past it uploads
+        get 503, memory stays bounded over several rounds (625 MB before the buffer was charged by its real size), and
+        once those connections end, uploads work again"""
+        import threading
+        before = self.rss_mb()
+        n = 30_000_000
+        head = (b'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\n'
+                b'Content-Length: %d\r\n\r\n{' % (self.port, n))
+        peak, refused = 0, 0
+        for _ in range(3):
+            answers = []
+            def send(c):
+                try:
+                    c.sendall(head + b' ' * (n - 2))      # all but the last byte: the body stays held
+                    c.settimeout(2)
+                    answers.append(c.recv(12))
+                except OSError:
+                    answers.append(b'<closed>')
+            socks = [self.conn('127.0.0.9') for _ in range(20)]
+            ts = [threading.Thread(target=send, args=(c,)) for c in socks]
+            for t in ts: t.start()
+            for t in ts: t.join(60)
+            peak = max(peak, self.rss_mb() - before)
+            refused += sum(1 for a in answers if a.startswith(b'HTTP/1.1 503') or a == b'<closed>')
+            for c in socks: c.close()
+            time.sleep(1)
+        self.assertGreaterEqual(refused, 30)
+        self.assertLess(peak, 450, 'RSS grew by %.0f MB' % peak)
+        self.assertIn(Client(self.base).req('POST', '/api/login', {'username': 'nobody', 'password': 'x'})[0], (401, 429))
+
+    def test_slow_header_lines_closed(self):
+        """the header deadline is for all header lines together, not per line (one line every 5 s doesn't extend it)"""
+        c = socket.create_connection(('127.0.0.1', self.port), timeout=60)
+        c.sendall(b'GET /api/config HTTP/1.1\r\n')
+        t0 = time.time()
+        closed = False
+        while time.time() - t0 < 45:
+            try:
+                c.sendall(b'X-Slow: a\r\n')
+            except OSError:
+                closed = True
+                break
+            c.settimeout(5)
+            try:
+                if c.recv(1) == b'':
+                    closed = True
+                    break
+            except socket.timeout:
+                pass
+        self.assertTrue(closed)
+        self.assertLess(time.time() - t0, 30)
+        c.close()
+
+class Address(unittest.TestCase):
+    """finding #26 (advisory GHSA-m2gr-gcrf-xc6m): the web pages and sign-in are plain HTTP, so they listen on this
+    machine only; a network address in the config is refused before anything starts"""
+
+    def config(self, address):
+        d = tempfile.mkdtemp(prefix='kks-addr-')
+        cfg = {'port': free_port(), 'sync_port': free_port(), 'store': os.path.join(d, 'server.db'),
+               'storage_key_file': os.path.join(d, 'storage.key'), 'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data')}
+        if address is not None:
+            cfg['address'] = address
+        json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
+        return d, cfg
+
+    def test_network_address_refused(self):
+        for a in ('0.0.0.0', '192.168.1.10', '::', '::1', '127.999.999.999', ''):
+            with self.subTest(address=a):
+                d, _ = self.config(a)
+                p = subprocess.run([BIN, 'serve', '--config', os.path.join(d, 'config.json')], capture_output=True,
+                                   text=True, cwd=d, timeout=5)
+                self.assertNotEqual(p.returncode, 0)
+                self.assertIn('plain HTTP', p.stdout + p.stderr)
+
+    def test_public_url_must_be_https(self):
+        for u in ('http://walk.example', 'walk.example', 'ftp://walk.example'):
+            with self.subTest(public_url=u):
+                d, cfg = self.config('127.0.0.1')
+                cfg['public_url'] = u
+                json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
+                p = subprocess.run([BIN, 'serve', '--config', os.path.join(d, 'config.json')], capture_output=True,
+                                   text=True, cwd=d, timeout=5)
+                self.assertNotEqual(p.returncode, 0)
+                self.assertIn('https://', p.stdout + p.stderr)
+
+    def test_public_url_default_port(self):
+        d, cfg = self.config('127.0.0.1')
+        cfg['public_url'] = 'https://Walk.Example:443/'
+        json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
+        p = subprocess.Popen([BIN, 'serve', '--config', os.path.join(d, 'config.json')], stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, cwd=d)
+        try:
+            for _ in range(20):
+                if 'server on' in p.stdout.readline(): break
+            time.sleep(0.3)
+            c = Client('http://127.0.0.1:%d' % cfg['port'])
+            self.assertEqual(c.req('GET', '/api/config', headers={'Host': 'walk.example'})[0], 200)
+        finally:
+            p.terminate(); p.wait(5)
+
+    def test_default_is_loopback(self):
+        self.serves(None, 'http://127.0.0.1:')
+
+    def test_loopback_forms_serve(self):
+        for a, shown in (('127.0.0.1', 'http://127.0.0.1:'), (' LocalHost ', 'http://localhost:')):
+            with self.subTest(address=a):
+                self.serves(a, shown)
+
+    def serves(self, address, shown):
+        d, cfg = self.config(address)
+        p = subprocess.Popen([BIN, 'serve', '--config', os.path.join(d, 'config.json')], stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, cwd=d)
+        try:
+            line = ''
+            for _ in range(20):
+                line = p.stdout.readline()
+                if 'server on' in line:
+                    break
+            self.assertIn(shown, line)
+            for i in range(50):        # the line is printed just before the listener opens
+                try:
+                    socket.create_connection(('127.0.0.1', cfg['port']), timeout=5).close()
+                    break
+                except ConnectionRefusedError:
+                    time.sleep(0.1)
+            else:
+                self.fail('nothing listens on 127.0.0.1')
+        finally:
+            p.terminate(); p.wait(5)
+
+class Front(Base):
+    """the web pages behind an HTTPS proxy (finding #26's adversarial pass): Secure cookies under an https public URL,
+    only this server's host names, X-Forwarded-For only from a proxy the operator vouches for"""
+
+    def test_defaults_without_proxy(self):
+        boss = Client(self.base)
+        st, r, hdr = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
+                                                     'full_name': 'The Manager'})
+        self.assertEqual(st, 200, r)
+        self.assertNotIn('Secure', hdr['Set-Cookie'])     # plain http://127.0.0.1 on this machine
+        # X-Forwarded-For is anyone's to send: a new value per attempt does not escape the per-address limit
+        codes = [Client(self.base).req('POST', '/api/login', {'username': 'nobody%d' % i, 'password': 'x'},
+                                       headers={'X-Forwarded-For': '10.0.0.%d' % i})[0] for i in range(7)]
+        self.assertIn(429, codes)
+
+    def test_host_names(self):
+        c = Client(self.base)
+        self.assertEqual(c.req('GET', '/api/config', headers={'Host': 'localhost:%d' % self.port})[0], 200)
+        for h in ('evil.example', 'evil.example:%d' % self.port, '127.0.0.1', 'walk.example',
+                  '127.0.0.1:%d, evil.example' % self.port):
+            with self.subTest(host=h):
+                self.assertEqual(c.req('GET', '/api/config', headers={'Host': h})[0], 421)
+                self.assertEqual(c.req('GET', '/', headers={'Host': h})[0], 421)
+        # two Host lines
+        s = socket.create_connection(('127.0.0.1', self.port), timeout=5)
+        s.sendall(b'GET /api/config HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nHost: evil.example\r\nConnection: close\r\n\r\n' % self.port)
+        self.assertIn(s.recv(12)[:12], (b'HTTP/1.1 421', b'HTTP/1.1 400'))   # refused by the app or already by the HTTP layer
+        s.close()
+        # X-Forwarded-Host doesn't widen the Origin check
+        st = c.req('POST', '/api/login', {'username': 'x', 'password': 'y'},
+                   headers={'Origin': 'http://evil.example', 'X-Forwarded-Host': 'evil.example'})[0]
+        self.assertEqual(st, 403)
+
+
+class FrontProxy(Base):
+    extra = {'public_url': 'HTTPS://Walk.example', 'trusted_proxy': True}   # the scheme's case doesn't matter
+
+    def test_behind_proxy(self):
+        boss = Client(self.base)
+        st, r, hdr = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
+                                                     'full_name': 'The Manager'})
+        self.assertEqual(st, 200, r)
+        self.assertIn('; Secure', hdr['Set-Cookie'])
+        self.assertEqual(boss.req('GET', '/api/config', headers={'Host': 'walk.example'})[0], 200)
+        self.assertEqual(boss.req('GET', '/api/config', headers={'Host': 'evil.example'})[0], 421)
+        # a browser's sign-in through a proxy, with Host passed on or rewritten to this server's own: not refused as
+        # cross-origin (the public URL's host is compared in lower case)
+        for h in ('walk.example', '127.0.0.1:%d' % self.port):
+            with self.subTest(host=h):
+                st = Client(self.base).req('POST', '/api/login', {'username': 'boss', 'password': 'wrong'},
+                                           headers={'Host': h, 'Origin': 'https://walk.example'})[0]
+                self.assertEqual(st, 401)
+        # the proxy appends the browser's address: the last entry counts, whatever the browser put before it
+        fails = lambda ip, n: [Client(self.base).req('POST', '/api/login', {'username': 'x%s%d' % (ip, i), 'password': 'x'},
+                                                     headers={'X-Forwarded-For': 'spoof%d, %s' % (i, ip)})[0] for i in range(n)]
+        self.assertIn(429, fails('10.0.0.1', 7))
+        self.assertEqual(fails('10.0.0.2', 1), [401])   # another browser is not locked out
 
 
 if __name__ == '__main__':

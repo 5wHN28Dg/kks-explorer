@@ -7,6 +7,12 @@ import json, util, proto, node
 
 const
   MaxFrame* = 64 * 1024 * 1024
+  # A responder's limits while it doesn't know the other side (issue #67): any key completes TLS, so until the hello
+  # is read, and after it while the other side is no device this one serves, frames stay small and the platform
+  # ends the connection after StrangerMs. That bounds what a stranger makes a node hold.
+  HelloFrame* = 1024 * 1024           ## before the first message (hello, join, enroll, secrets) is read
+  StrangerFrame* = 4 * 1024 * 1024    ## after it, while the other side is not a device this one serves
+  StrangerMs* = 60_000
   Alpn* = "kks-sync/2"
 
 # ---------------------------------------------------------------- framing
@@ -29,20 +35,31 @@ type
   Deframer* = object
     buf: string
 
-proc feed*(d: var Deframer, bytes: string): seq[JNode] =
-  ## Complete messages in the bytes received so far (strict JSON, §1). Raises SyncError on a bad frame.
+proc add*(d: var Deframer, bytes: string) =
+  ## Bytes received; take the messages out with `next`.
   d.buf.add bytes
-  while d.buf.len >= 4:
-    let n = (int(uint8(d.buf[0])) shl 24) or (int(uint8(d.buf[1])) shl 16) or (int(uint8(d.buf[2])) shl 8) or
-            int(uint8(d.buf[3]))
-    if n > MaxFrame: raise newException(SyncError, "frame too large")
-    if d.buf.len < 4 + n: break
-    let body = d.buf[4 ..< 4 + n]
-    d.buf = d.buf[4 + n .. ^1]
-    var m: JNode
-    try: m = parseStrict(body)
-    except JsonError as e: raise newException(SyncError, "bad message: " & e.msg)
-    if m.kind != jObj or m.get("t") == nil or m["t"].kind != jStr: raise newException(SyncError, "message without t")
+
+proc next*(d: var Deframer, limit = MaxFrame): JNode =
+  ## The next complete message (strict JSON, §1), or nil until more bytes arrive. A frame announcing more than `limit`
+  ## bytes is refused on its 4-byte header, before its body is held. Raises SyncError on a bad frame.
+  if d.buf.len < 4: return nil
+  let n = (int(uint8(d.buf[0])) shl 24) or (int(uint8(d.buf[1])) shl 16) or (int(uint8(d.buf[2])) shl 8) or
+          int(uint8(d.buf[3]))
+  if n > min(limit, MaxFrame): raise newException(SyncError, "frame too large")
+  if d.buf.len < 4 + n: return nil
+  let body = d.buf[4 ..< 4 + n]
+  d.buf = d.buf[4 + n .. ^1]
+  try: result = parseStrict(body)
+  except JsonError as e: raise newException(SyncError, "bad message: " & e.msg)
+  if result.kind != jObj or result.get("t") == nil or result["t"].kind != jStr:
+    raise newException(SyncError, "message without t")
+
+proc feed*(d: var Deframer, bytes: string): seq[JNode] =
+  ## Complete messages in the bytes received so far, each up to MaxFrame (an initiator's side, tests).
+  d.add bytes
+  while true:
+    let m = d.next()
+    if m == nil: break
     result.add m
 
 # ---------------------------------------------------------------- the exchange
@@ -112,6 +129,18 @@ proc sendBlobs(s: Session) =
         inc s.stats.blobsSent
   s.send newObj(@[("t", newStr("blobs_end"))])
   s.sentBlobs = true
+
+proc trusted*(s: Session): bool =
+  ## The initiator chose its peer (TLS pinned it). The responder trusts the other side once its hello is read and it
+  ## is a device this node serves (§15 mayRead).
+  s.initiator or (s.stage != sHello and s.n.mayRead(s.remote))
+
+proc frameLimit*(s: Session): int =
+  ## the largest frame to accept next (issue #67)
+  if s.initiator: MaxFrame
+  elif s.stage == sHello: HelloFrame
+  elif s.n.mayRead(s.remote): MaxFrame
+  else: StrangerFrame
 
 proc newSession*(n: Node, initiator: bool, remote: string, adoptRoot = "", hooks = Hooks()): Session =
   result = Session(n: n, initiator: initiator, remote: remote, adoptRoot: adoptRoot, hooks: hooks)
