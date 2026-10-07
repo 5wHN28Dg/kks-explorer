@@ -39,6 +39,9 @@ dependency decisions, for native code and for what runs in a browser engine alik
   (https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research).
 - The capability matrix is a file here: `docs/m6/CAPABILITIES.md`. Keep it current (this line is the request SKILL.md
   waits for before writing one).
+- Decision records too: a new platform, stack or dependency choice gets a one-page record in `docs/decisions/` (next
+  number after the last; question, findings per target with sources, choice, when to revisit), written before the
+  code. SKILL.md otherwise writes none unless asked; this line asks.
 
 ## How to work
 - Work on a branch and open a PR. Never push to main. Wait for CI to pass, then merge.
@@ -59,6 +62,10 @@ dependency decisions, for native code and for what runs in a browser engine alik
   of github.com/5wHN28Dg/policy (keep that repository public). They read the README's `Tier:`/`Type:` lines. A PR that
   changes `.gitleaks.toml` needs a `Secrets config change: <reason>` line in its description. main requires these three
   checks.
+- `tests.yml`: the test suites on x86-64, one job each: `core`, `platform-linux`, `importer`, `linux-build` (server and
+  importer for the jobs below), `server-http`, `python`, `web` (Chromium, WebKit, Firefox), `gnome-e2e` (headless),
+  `android-e2e` (an emulator on the runner; on a failure it keeps logcat, a screenshot and the UI tree), `windows-build`
+  and `windows-test` (windows-2022). Not required by main yet; the full Windows UIA e2e and real phones stay manual.
 - `android.yml` and `arm64.yml` build the apps (actions pinned by SHA).
 
 ## The system
