@@ -74,6 +74,33 @@ suite "views":
     check reviewView(m).elems.len == 0
     check procView(m, "1.1")["links"][0]["tag"].s == "a:2"
     check floorsView(m)["3"].elems.len == 1
+  test "systems: block, system, subsystem, kind; each code once; search; undecoded codes apart":
+    let v = systemsView(m)
+    # a:2 11LAB70AA501, a:3 11HAD70CT101R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
+    check v["total"].i == 5
+    check v["blocks"].elems.len == 1 and v["blocks"][0]["blk"].s == "11" and v["blocks"][0]["blk_name"].s == "Block 1"
+    let systems = v["blocks"][0]["systems"]
+    check systems.elems.len == 2 and systems[0]["sys"].s == "HAD" and systems[1]["sys"].s == "LAB"
+    let lab = systems[1]
+    check lab["sys_name"].s == "Feed water piping system" and lab["count"].i == 3
+    check lab["subsystems"][0]["code"].s == "LAB70"
+    let valves = lab["subsystems"][0]["kinds"][0]
+    check valves["comp"].s == "AA" and valves["comp_name"].s == "Valve"
+    var codes: seq[string]
+    for it in valves["items"].elems: codes.add it["code"].s
+    check codes == @["11LAB70AA501", "11LAB70AA503", "11LAB70AA504"]
+    check valves["items"][0]["desc"].s == "feed valve" and valves["items"][0]["photos"].s == "equipment"
+    check v["other"].elems.len == 1 and v["other"][0]["code"].s == "11LAB70"
+    check systemsView(m, "temperature")["total"].i == 1
+    check systemsView(m, "feed lab70 valve")["total"].i == 3
+    check systemsView(m, "had")["blocks"][0]["systems"].elems.len == 1
+    check systemsView(m, "nothing like this")["total"].i == 0
+  test "systems: a code on two sheets is listed once, with its count":
+    let c = sample()
+    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[10,10,20,20],"read":["",""]}]"""))
+    c.merge()
+    let lab = systemsView(c)["blocks"][0]["systems"][1]
+    check lab["subsystems"][0]["kinds"][0]["items"][0]["count"].i == 2
   test "the flat path store":
     var d = Drawing(width: 640, height: 320, gx: 1, gy: 1)
     d.styles.add Style(kind: Stroke, width: 64)
