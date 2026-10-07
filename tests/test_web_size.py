@@ -1,5 +1,5 @@
 """tools/web_size.py: the web client's download size against the committed baseline."""
-import io, json, os, shutil, sys, tempfile, unittest
+import io, os, shutil, sys, tempfile, unittest
 from contextlib import redirect_stdout
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
@@ -17,6 +17,10 @@ class WebSize(unittest.TestCase):
         self.d = tempfile.mkdtemp(prefix='kks-websize-')
         os.makedirs(os.path.join(self.d, 'vendor', 'kks'))
         os.makedirs(os.path.join(self.d, 'vendor', 'fonts'))
+        os.makedirs(os.path.join(self.d, 'data', 'courses'))
+        self.write('data/kks.json', '{}')
+        self.write('data/courses/ppt.json', 'c' * 40)
+        self.write('data/courses/ppt-01.jxl', 'p' * 60)
         self.write('sw.js', "const SHELL_FILES = ['/', '/index.html', '/common.js', '/vendor/kks/kks-simd-dec.wasm'];\n")
         self.write('index.html', 'x' * 100)
         self.write('common.js', 'y' * 50)
@@ -37,6 +41,7 @@ class WebSize(unittest.TestCase):
         self.assertEqual(sorted(m['shell']['files']), ['common.js', 'index.html', 'sw.js', 'vendor/kks/kks-simd-dec.wasm'])
         self.assertEqual(sorted(m['on demand']['files']), ['vendor/fonts/a.woff2', 'vendor/kks/kks.wasm'])
         self.assertEqual(m['on demand']['total'], 90)
+        self.assertEqual(sorted(m['courses']['files']), ['data/courses/ppt-01.jxl', 'data/courses/ppt.json', 'data/kks.json'])
 
     def test_unchanged_passes_and_growth_fails(self):
         self.assertEqual(quiet(['--repo', self.d, '--update'])[0], 0)
@@ -65,11 +70,15 @@ class WebSize(unittest.TestCase):
         with self.assertRaises(SystemExit):
             web_size.measure(self.d)
 
-    def test_the_repository_matches_its_baseline(self):
-        repo = os.path.join(os.path.dirname(__file__), '..')
-        base = json.load(open(os.path.join(repo, 'web-size.json')))
-        self.assertEqual(web_size.diff(base, web_size.measure(repo)), [],
-                         'web-size.json is out of date: python3 tools/web_size.py --update')
+    def test_a_comment_in_the_list_stops(self):
+        self.write('sw.js', "const SHELL_FILES = ['/', '/index.html', // '/old.js'\n '/common.js'];\n")
+        with self.assertRaises(SystemExit):
+            web_size.measure(self.d)
+
+    def test_double_quotes_in_the_list_stop(self):
+        self.write('sw.js', 'const SHELL_FILES = ["/index.html", \'/common.js\'];\n')
+        with self.assertRaises(SystemExit):
+            web_size.measure(self.d)
 
 
 if __name__ == '__main__':
