@@ -1,4 +1,4 @@
-# The project's test suites on x86-64 (issue #6; policy Section 5, NAT-6, NAT-8, WEB-5, OTH-6): one job per suite, so
+# The project's test suites on x86-64 (issue #6): one job per suite, so
 # branch protection can require each. Linux jobs run on ubuntu-26.04, the maintainer's OS: its GTK 4.22,
 # libadwaita 1.9, libjxl 0.11 and zxing-cpp are the versions the apps are built against (apps/gnome/README,
 # importer/README). Windows is cross-built with mingw-w64 like on the maintainer's machine (apps/windows/README) and
@@ -9,7 +9,7 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: [main, adopt-policy]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -44,7 +44,7 @@ jobs:
         with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
       - name: Libraries
         run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends libgnutls28-dev zlib1g-dev >/dev/null
-      - name: The Nim core's tests (no platform, NAT-6)
+      - name: The Nim core's tests (no platform)
         working-directory: core
         run: nim test
 
