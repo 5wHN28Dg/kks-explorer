@@ -89,12 +89,7 @@ jobs:
       - name: The importer's tests
         working-directory: importer
         run: |
-          # TEMP diagnostics: which gcc, its default target, and whether it fuses multiply-adds
-          which -a gcc cc; gcc --version | head -1; gcc -v 2>&1 | grep -o -- '--with-arch[^ ]*' || true
-          echo | gcc -dM -E - | grep -E '__FMA__|__AVX2__|__x86_64__' || true
-          gcc -Q --help=target | grep -E '^ +-march=|^ +-mfma ' || true
-          env | grep -E '^(CC|CFLAGS|GCC_|COMPILER_PATH|LIBRARY_PATH)' || true
-          grep -m1 'model name' /proc/cpuinfo
+          gcc -v 2>&1 | grep -o -- '--with-arch-64=[^ ]*' || true   # this image's gcc defaults to x86-64-v3 (FMA): the bit-exact float tests depend on it
           nim test
 
   # the server and the importer, built once for the jobs that drive them (server-http, web, android-e2e, gnome-e2e)
