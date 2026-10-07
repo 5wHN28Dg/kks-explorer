@@ -30,15 +30,15 @@ the drawings). The deployed relay's URL never goes in tracked files or the wiki.
 
 ## Engineering guidelines
 
-Follow these when making architectural, stack or dependency decisions. They're guidance, not a checklist; the only
-document they ask for is the capability matrix in docs/ (`docs/m6/CAPABILITIES.md`).
-- `~/Documents/GitHub/Personal-LLM-prompts/prompts/platform engineering policy.md` governs native code: the
-  Android app (`android/app2`), the desktop apps, any iOS work, and the server.
-- `~/Documents/GitHub/Personal-LLM-prompts/prompts/Evidence-first web engineering.md` governs what runs in a
-  browser engine: index.html, admin.html, learning.html, common.js, sw.js, course-bridge.js, the courses, vendor/. It
-  builds on the platform one; read both for web work.
-- The web pages are served by the server to browsers; they ship no engine. They must also work in Safari, since that
-  is the iOS path (https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research).
+`~/Documents/GitHub/Personal-LLM-prompts/skills/evidence-first-engineering/SKILL.md` governs architectural, stack and
+dependency decisions, for native code and for what runs in a browser engine alike. The full reasoning is in its
+`reference/` folder; open it only when a rule's reasoning is genuinely in question. In this project:
+- Native: the Android app (`android/app2`), the desktop apps, any iOS work, and the server.
+- Web: index.html, admin.html, learning.html, common.js, sw.js, course-bridge.js, the courses, vendor/. The pages are
+  served by the server to browsers and ship no engine. They must also work in Safari, since that is the iOS path
+  (https://github.com/5wHN28Dg/kks-explorer/wiki/iOS-research).
+- The capability matrix is a file here: `docs/m6/CAPABILITIES.md`. Keep it current (this line is the request SKILL.md
+  waits for before writing one).
 
 ## How to work
 - Work on a branch and open a PR. Never push to main. Wait for CI to pass, then merge.
