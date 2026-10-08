@@ -74,6 +74,40 @@ suite "views":
     check reviewView(m).elems.len == 0
     check procView(m, "1.1")["links"][0]["tag"].s == "a:2"
     check floorsView(m)["3"].elems.len == 1
+  test "who set each field and took each photo pass through from the state":
+    let c = sample()
+    c.state["photos"][0]["by_name"] = newStr("Ali User")
+    c.state["equipment_by"] = j("""{"11LAB70AA501":{"floor":{"by":"ali","by_name":"Ali User","at":5,"submitted":4}}}""")
+    let v = tagView(c, "a:2")
+    check v["photos"][0]["by_name"].s == "Ali User"
+    check v["equipment_by"]["floor"]["by_name"].s == "Ali User"
+    check tagView(c, "a:3")["equipment_by"].len == 0
+  test "descriptions: a draft until a person confirms it as the custom field Description":
+    let c = sample()
+    c.descriptions = parseDescriptions(j("""{"11LAB70AA501":{"text":" Isolates the feed water line ","basis":"P&ID 1"},
+      "11HAD70CT101":"Drum temperature","11LAB70AA502":{"text":""},"bad":3}"""))
+    check c.descriptions.len == 2
+    let d = tagView(c, "a:2")["description"]
+    check d["status"].s == "draft" and d["label"].s == "draft, unchecked"
+    check d["text"].s == "Isolates the feed water line" and d["basis"].s == "P&ID 1"
+    let pl = d["confirm"]["payload"]
+    check d["confirm"]["kind"].s == "equipment" and pl["kks"].s == "11LAB70AA501"
+    check pl["changes"]["custom"].len == 1 and pl["changes"]["custom"][0]["k"].s == "Description"
+    check pl["base"]["custom"].len == 0
+    # by the code without its suffix
+    check tagView(c, "a:3")["description"]["text"].s == "Drum temperature"
+    check tagView(c, "u:00112233445566778899aabbccddeeff")["description"].kind == jNull
+    # confirmed: the custom field wins, with who confirmed it
+    c.state["equipment"]["11LAB70AA501"]["custom"] = j("""[{"k":"Maker","v":"X"},{"k":"Description","v":"Feed water stop valve"}]""")
+    c.state["equipment_by"] = j("""{"11LAB70AA501":{"custom:Description":{"by":"ali","by_name":"Ali User","at":9,"submitted":8}}}""")
+    let e = tagView(c, "a:2")["description"]
+    check e["status"].s == "confirmed" and e["text"].s == "Feed water stop valve" and e["by_name"].s == "Ali User"
+    check e["draft_differs"].b and e.get("confirm") == nil
+    # a draft confirmed on a code with other custom fields keeps them
+    c.state["equipment"]["11LAB70AA501"]["custom"] = j("""[{"k":"Maker","v":"X"}]""")
+    let f = tagView(c, "a:2")["description"]["confirm"]["payload"]
+    check f["changes"]["custom"].len == 2 and f["base"]["custom"].len == 1
+    check tagView(sample(), "a:2")["description"].kind == jNull
   test "the flat path store":
     var d = Drawing(width: 640, height: 320, gx: 1, gy: 1)
     d.styles.add Style(kind: Stroke, width: 64)

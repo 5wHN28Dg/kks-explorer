@@ -241,7 +241,7 @@ class Windows(unittest.TestCase):
                           if (lambda p: p[0] > 200 and p[1] > 180 and p[2] < 90)(im.getpixel((x, y))))
             self.assertGreater(yellows, 50, 'the touch-drawn line is not in the photo')
         # a member proposes on the server; the manager approves in the app
-        r = self.boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Member', 'role': 'user'})
+        r = self.boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Member', 'position': 'Technician', 'role': 'user'})
         ali = Client(self.boss.base)
         ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})
         ali.req('POST', '/api/login', {'username': 'ali', 'password': 'ali password 1'})

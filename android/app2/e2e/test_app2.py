@@ -277,7 +277,7 @@ class Phone(unittest.TestCase):
                               'the edit never reached the server')
         self.assertEqual(eq, 'Gland repacked')
         # a member proposes on the server; the manager approves on the phone
-        r = self.boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Member', 'role': 'user'})
+        r = self.boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Member', 'position': 'Technician', 'role': 'user'})
         ali = Client(self.base)
         ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})
         ali.req('POST', '/api/login', {'username': 'ali', 'password': 'ali password 1'})

@@ -214,7 +214,7 @@ class Cli(Base):
         self.assertEqual([l['kks'] for l in st['links'] if l['proc'] == 'EP-1'], ['11LAB70AA501'])
         self.assertEqual(st['equipment']['11LAB70AA501']['custom'], [{'k': 'Before start-up', 'v': 'open'}])
         # a password link and a new manager, from whoever runs the server (the manager account was lost)
-        st, r, _ = boss.req('POST', '/api/users', {'username': 'sara', 'full_name': 'Sara Admin', 'role': 'admin'})
+        st, r, _ = boss.req('POST', '/api/users', {'username': 'sara', 'full_name': 'Sara Admin', 'position': 'Shift engineer', 'role': 'admin'})
         self.assertEqual(st, 200, r)
         code, out = self.cli('reset-password', '--user', 'sara')
         self.assertEqual(code, 0, out)
@@ -253,7 +253,12 @@ class Server(Base):
         self.assertEqual(boss.req('POST', '/api/submit', {}, headers={'Origin': 'http://evil.example'})[0], 403)
         self.assertEqual(boss.req('POST', '/api/submit', raw=b'kind=x', headers={'Content-Type': 'application/x-www-form-urlencoded'})[0], 415)
         # an account for a user, password set by the one-time link
+        # a new account needs a position (the user's rule for new members)
         st, r, _ = boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali User', 'role': 'user'})
+        self.assertEqual(st, 400, r)
+        self.assertIn('position', r['error'])
+        st, r, _ = boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali User', 'position': 'Technician',
+                                                   'role': 'user'})
         self.assertEqual(st, 200, r)
         token = r['link'].split('#reset=')[1]
         ali = Client(self.base)
@@ -271,10 +276,12 @@ class Server(Base):
         self.assertEqual(subs[0]['by_name'], 'Ali User')
         self.assertEqual(boss.req('POST', f'/api/submissions/{subs[0]["id"]}/approve', {})[0], 200)
         self.assertEqual(ali2.req('GET', '/api/state')[1]['equipment']['11LAB70AA501']['notes'], 'leaks at the gland')
-        # a photo: kept as a blob, served by hash
+        # a photo: kept as a blob, served by hash. It needs the floor first, or with it (the user's rule)
         png = b'\xff\x0a' + b'0' * 64     # a JPEG XL codestream's signature: the server stores JXL only
-        st, r, _ = boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'gland',
-                            'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(png).decode()}})
+        photo = {'kks': '11LAB70AA501', 'caption': 'gland', 'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(png).decode()}
+        st, r, _ = boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': photo})
+        self.assertEqual((st, r.get('need')), (400, 'floor'), r)
+        st, r, _ = boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': dict(photo, floor='2')})
         self.assertEqual((st, r['status']), (200, 'approved'), r)
         ph = boss.req('GET', '/api/state')[1]['photos'][0]
         st, data, hdr = boss.req('GET', '/photos/' + ph['file'])
