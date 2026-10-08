@@ -63,8 +63,8 @@ class Gnome(unittest.TestCase):
         cls.base = f'http://127.0.0.1:{cls.port}'
         cls.boss = Client(cls.base)
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                   'full_name': 'The Manager'}).get('ok')
-        # a photo needs its code's floor (the user's rule): set it before any app joins, so every app has it
+                                                   'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
+        # a floor set on the server: the apps show who set it
         assert cls.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '2'},
                              'base': {}}}).get('status') == 'approved'
         # a drafted description (descriptions.json, published with the sheet below)

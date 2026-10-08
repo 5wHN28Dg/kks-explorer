@@ -149,7 +149,7 @@ K.start = async () => {
     return new Promise(() => K.joinScreen(cfg));
   }
   if (h.get('setup')) return new Promise(() => K.form('Create the manager account', 'One-time link from the server console. The manager is the top account: it promotes admins and can hand the role over later.',
-    [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position at the company (optional)', ac: 'organization-title', optional: true},
+    [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position at the company (job title)', ac: 'organization-title'},
      {name: 'username', label: 'Username', ac: 'username'}, ...pwFields], 'Create manager', async v => {
       samePw(v); await K.api('/api/setup', {token: h.get('setup'), username: v.username, password: v.password, full_name: v.full_name, position: v.position}); done() }));
   if (h.get('reset')) {
@@ -234,14 +234,14 @@ K.joinScreen = (cfg, note = '') => {
       sub('Join with a QR code', `For when an admin is next to you on the same network: they open Manage → Devices → “Add a device with a QR code”. `
         + (K.native ? 'Fill in your details, then scan their screen.' : cam ? 'Fill in your details, then scan their screen with this computer\'s camera, or paste the code they copied for you.'
                     : `This ${dev} has no camera: ask the admin to copy the code under the QR code for you and paste it here, or go back and choose “Ask an admin on this Wi-Fi”.`),
-      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (job title)'},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'},
        ...(K.native ? [] : [{name: 'invite', label: cam ? 'Invite code (leave empty to use the camera)' : 'Invite code (starts with {"kks_invite"…)', optional: cam}])],
       K.native || cam ? 'Scan the QR code' : 'Join',
       async v => { if (!v.invite) { v.invite = await K.scanQr(); if (!v.invite) return }
         await K.api('/api/node/join-invite', v); K.joinWait(cfg) }) },
     nearby: () => sub('Ask an admin on this Wi-Fi', `An admin's phone or computer on the same Wi-Fi gets your request; when they accept, the plant data comes over the Wi-Fi by itself.`,
-      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (job title)'},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'}], 'Find admins on this Wi-Fi',
       async v => K.pickNearby(cfg, v)),
     server: () => sub('Join through the plant server', `Your normal account on the plant server. The server certifies this ${dev} as yours; afterwards it syncs by itself on the same Wi-Fi.`,
@@ -249,14 +249,14 @@ K.joinScreen = (cfg, note = '') => {
        {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Join',
       async v => { await K.api('/api/node/join-server', v); location.reload() }),
     request: () => sub('Join through an admin', `You get a small file to give an admin (USB, WhatsApp, email). They certify this ${dev} and give you a bundle file back; import it here.`,
-      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (job title)'},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'}], 'Make the request file',
       async v => { const r = await K.api('/api/node/join-request', v);
         K.download(JSON.stringify(r.request, null, 1), `join-${v.username}.kksjoin`);
         cfg.node.device = r.request.device;
         K.joinNote = 'Request file saved. When the admin gives you a bundle, choose "Import a bundle".'; history.back() }),
     new: () => sub('Start a new plant', 'Only if no plant exists yet. This computer creates the plant\'s root key and you become the manager. Back the key up afterwards (Manage → Devices).',
-      [{name: 'plant', label: 'Plant name'}, {name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+      [{name: 'plant', label: 'Plant name'}, {name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (job title)'},
        {name: 'username', label: 'Username', ac: 'username'}], 'Create the plant',
       async v => { await K.api('/api/node/new-plant', v); location.reload() }),
   })[b.dataset.a]());

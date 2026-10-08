@@ -204,7 +204,7 @@ const VIEWS={
       return out;
     };
     const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); createUser(F) }},h('input',{name:'full_name',placeholder:'Full name',required:true,maxlength:80,style:'min-width:200px'}),
-      h('input',{name:'position',placeholder:'Position (optional)',maxlength:80}),h('input',{name:'username',placeholder:'username',required:true,maxlength:40}),
+      h('input',{name:'position',placeholder:'Position (job title)',required:true,maxlength:80}),h('input',{name:'username',placeholder:'username',required:true,maxlength:40}),
       h('select',{name:'role'},h('option',{value:'user'},'user'),isManager()?h('option',{value:'admin'},'admin'):null),h('button',{class:'primary'},'Create and get link'));
     put($('#main'),h('div',{class:'card server-only'},h('h3',null,'Add an account'),F,
         h('div',{class:'sub'},'There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.'),h('div',{id:'newlink'})),

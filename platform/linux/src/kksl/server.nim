@@ -924,7 +924,9 @@ proc handle(s: Server, req: Request) {.async.} =
       if prob.len > 0: herr(400, prob)
       var fn: string
       var pos: JNode
-      try: (fn, pos) = personOf(d)
+      try:
+        (fn, pos) = personOf(d)
+        requirePosition(pos)    # the manager is a new member too
       except ApiError as e: herr(400, e.msg)
       let tok = if d.get("token") != nil and d["token"].isStr: d["token"].s else: ""
       if s.peekToken("setup", tok) == nil or s.managerUser() != nil or s.n.root.len > 0:

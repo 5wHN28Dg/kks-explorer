@@ -52,7 +52,7 @@ class WebV2(unittest.TestCase):
         cls.base = 'http://127.0.0.1:%d' % cls.port
         boss = Client(cls.base)
         assert boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                               'full_name': 'The Manager'}).get('ok')
+                                               'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f: pdf = f.read()
         assert boss.req('POST', '/api/sheets/import?id=sample&name=Sample%20sheet', raw=pdf, ctype='application/pdf').get('ok')
         for _ in range(300):

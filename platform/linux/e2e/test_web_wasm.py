@@ -61,11 +61,8 @@ class WebWasm(unittest.TestCase):
         cls.base = 'http://127.0.0.1:%d' % cls.port
         cls.boss = Client(cls.base)
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                   'full_name': 'The Manager'}).get('ok')
+                                                   'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         cls.boss.req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'})
-        # a photo needs its code's floor (the user's rule): set it before any app joins, so every app has it
-        assert cls.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '2'},
-                             'base': {}}}).get('status') == 'approved'
 
     @classmethod
     def tearDownClass(cls):

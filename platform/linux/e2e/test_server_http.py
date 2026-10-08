@@ -71,8 +71,13 @@ class Base(unittest.TestCase):
 
     def manager(self):
         boss = Client(self.base)
+        # the manager is a new member too: a position is required
         st, r, _ = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
                                                    'full_name': 'The Manager'})
+        self.assertEqual(st, 400, r)
+        self.assertIn('position', r['error'])
+        st, r, _ = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
+                                                   'full_name': 'The Manager', 'position': 'Plant manager'})
         self.assertEqual(st, 200, r)
         return boss
 
@@ -243,10 +248,10 @@ class Server(Base):
         # setup creates the plant and signs the manager in
         boss = Client(self.base)
         st, r, _ = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
-                                                   'full_name': 'The Manager'})
+                                                   'full_name': 'The Manager', 'position': 'Plant manager'})
         self.assertEqual(st, 200, r)
         self.assertEqual(boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'other', 'password': 'a long password',
-                                                         'full_name': 'Nope'})[0], 403)
+                                                         'full_name': 'Nope', 'position': 'Nobody'})[0], 403)
         st, me, _ = boss.req('GET', '/api/me')
         self.assertEqual((me['user']['username'], me['user']['role']), ('boss', 'manager'))
         # cross-origin and non-JSON posts are refused
@@ -276,12 +281,11 @@ class Server(Base):
         self.assertEqual(subs[0]['by_name'], 'Ali User')
         self.assertEqual(boss.req('POST', f'/api/submissions/{subs[0]["id"]}/approve', {})[0], 200)
         self.assertEqual(ali2.req('GET', '/api/state')[1]['equipment']['11LAB70AA501']['notes'], 'leaks at the gland')
-        # a photo: kept as a blob, served by hash. It needs the floor first, or with it (the user's rule)
+        # a photo: kept as a blob, served by hash; a floor may come with it (the clients ask for one first)
         png = b'\xff\x0a' + b'0' * 64     # a JPEG XL codestream's signature: the server stores JXL only
         photo = {'kks': '11LAB70AA501', 'caption': 'gland', 'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(png).decode()}
-        st, r, _ = boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': photo})
-        self.assertEqual((st, r.get('need')), (400, 'floor'), r)
         st, r, _ = boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': dict(photo, floor='2')})
+        self.assertEqual(r.get('floor', {}).get('status'), 'approved', r)
         self.assertEqual((st, r['status']), (200, 'approved'), r)
         ph = boss.req('GET', '/api/state')[1]['photos'][0]
         st, data, hdr = boss.req('GET', '/photos/' + ph['file'])
@@ -678,7 +682,7 @@ class Front(Base):
     def test_defaults_without_proxy(self):
         boss = Client(self.base)
         st, r, hdr = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
-                                                     'full_name': 'The Manager'})
+                                                     'full_name': 'The Manager', 'position': 'Plant manager'})
         self.assertEqual(st, 200, r)
         self.assertNotIn('Secure', hdr['Set-Cookie'])     # plain http://127.0.0.1 on this machine
         # X-Forwarded-For is anyone's to send: a new value per attempt does not escape the per-address limit
@@ -711,7 +715,7 @@ class FrontProxy(Base):
     def test_behind_proxy(self):
         boss = Client(self.base)
         st, r, hdr = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
-                                                     'full_name': 'The Manager'})
+                                                     'full_name': 'The Manager', 'position': 'Plant manager'})
         self.assertEqual(st, 200, r)
         self.assertIn('; Secure', hdr['Set-Cookie'])
         self.assertEqual(boss.req('GET', '/api/config', headers={'Host': 'walk.example'})[0], 200)
