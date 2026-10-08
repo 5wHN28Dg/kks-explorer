@@ -485,7 +485,10 @@ class Gnome(unittest.TestCase):
                                     f"{ph['plate']} · none {ph['none']}")
         words = (f"photos: {ph['both']} equipment and tag plate, {ph['equipment']} equipment only, {ph['plate']} tag "
                  f"plate only, {ph['none']} none")
-        bars = [n for n in atspi.find_all(a, 'image') if n.get_name() == words]
+        for _ in range(20):        # the bars' accessible names can arrive a moment after the labels
+            bars = [n for n in atspi.find_all(a, 'image') if n.get_name() == words]
+            if len(bars) >= 3: break
+            time.sleep(0.5)
         self.assertGreaterEqual(len(bars), 3, 'the totals, the sheet and the system each have a named bar')
         os.kill(pid, signal.SIGUSR1)       # a picture of the page, to look at
         for title, value in (('Readings to review', '0'), ('Missed tags marked', '1')):
