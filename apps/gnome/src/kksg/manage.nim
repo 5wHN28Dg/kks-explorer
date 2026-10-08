@@ -3,7 +3,7 @@
 
 import std/[strutils, tables, times, sequtils, asyncdispatch]
 import kks/[json, api, node, extras, util]
-import kksl/dbstore
+import kksl/[dbstore, privfile, passphrase]
 import kks/model
 import proposals
 import gtk, ui, appstate, win, photos, join
@@ -296,35 +296,35 @@ proc account(w: Win, box: W) =
   box.add sg
 
 proc rootKeySection(w: Win): W =
-  ## R14: the plant's authority has an offline backup the manager holds (PROTOCOL-v2 §20: PBKDF2 ≥ 600 000 + AES-GCM)
+  ## R14: the plant's authority has an offline backup the manager holds (PROTOCOL-v2 §20: PBKDF2 ≥ 600 000 + AES-GCM).
+  ## The passphrase is generated (80 bits, decision 0023, issue #29) and shown once; the file is written 0600.
   let g = group("Root key", "The plant's root key signs the manager role and settles stolen devices. Keep an encrypted " &
-                "copy offline (a USB stick in a drawer), protected by a passphrase only you know.")
+                "copy offline (a USB stick in a drawer). Its passphrase is made for you: write it down and keep it apart.")
   let has = w.a.store.getRow("keys", "root") != nil
   adw_preferences_group_add(g, row("On this device", if has: "yes" else: "no (it is on another device of the manager)"))
-  let pw1 = passwordRow("Passphrase (12 characters or more)")
-  let pw2 = passwordRow("The passphrase again")
-  adw_preferences_group_add(g, pw1)
-  adw_preferences_group_add(g, pw2)
+  let pw1 = passwordRow("Passphrase of the backup to restore")
   if has:
+    let shown = row("Passphrase of the backup just saved", "(save a backup to see it)", selectable = true)
+    adw_preferences_group_add(g, shown)
     adw_preferences_group_add(g, button("Save an encrypted backup…", "", proc () =
-      let p1 = text(pw1)
-      if p1.len < 12:
-        w.toast("Use a passphrase of 12 characters or more")
-        return
-      if p1 != text(pw2):
-        w.toast("The two passphrases differ")
-        return
       saveFile(w.window, "Save the root key backup", "root-key.kksroot", proc (path: string) =
         if path.len == 0: return
+        let pass = w.a.p.newBackupPassphrase()
         let k = w.a.store.getRow("keys", "root")
         let plain = toText(k)
         var bytes: seq[byte]
         for c in plain: bytes.add byte(c)
-        let sealed = w.a.p.passphraseSeal(p1, bytes)
+        let sealed = w.a.p.passphraseSeal(pass, bytes)
         let doc = newObj(@[("kks_root_backup", newInt(2)), ("plant", newStr(w.a.plantName)), ("root", newStr(w.a.n.root)),
                            ("sealed", sealed)])
-        writeFile(path, toText(doc))
-        w.toast("Saved. Test it once with Restore on another device, then store it offline."))))
+        try:
+          writePrivate(path, toText(doc))
+        except OSError as e:
+          w.toast("Not saved: " & e.msg)
+          return
+        adw_action_row_set_subtitle(shown, pass.cstring)
+        w.toast("Saved. Write down the passphrase shown above: it is not kept anywhere. Test the backup once with Restore."))))
+  adw_preferences_group_add(g, pw1)
   adw_preferences_group_add(g, button("Restore from a backup…", "", proc () =
     openFile(w.window, "Open a root key backup", proc (path: string) =
       if path.len == 0: return
