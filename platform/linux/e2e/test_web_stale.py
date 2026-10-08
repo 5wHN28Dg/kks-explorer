@@ -91,7 +91,7 @@ class Stale(unittest.TestCase):
                     return rs.every(r => { const w = r.active || r.waiting || r.installing;
                                            return !w || new URL(w.scriptURL).pathname === '/sw.js' });
                 }""")
-                until(page, "async () => (await caches.keys()).every(k => k === 'kks-shell-v10' || k === 'kks-data-v2')")
+                until(page, "async () => (await caches.keys()).every(k => k === 'kks-shell-v11' || k === 'kks-data-v2')")
             browser.close()
             return sw
 

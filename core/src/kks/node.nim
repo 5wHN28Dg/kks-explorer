@@ -91,6 +91,7 @@ proc rebuild*(n: Node) =
     return
   var trusted: seq[(string, JNode)]
   for id, e in n.entries: trusted.add((id, e))
+  for (id, e) in n.evidence: trusted.add((id, e))   # a device that signed two entries for one seq is cut (§4, #35)
   let rr = n.p.replayRun(@[], n.root, trusted, useTrusted = true)
   n.run = rr.run
   n.ignored = rr.chainIgnored

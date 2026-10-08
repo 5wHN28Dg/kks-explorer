@@ -9,7 +9,7 @@ from playwright.sync_api import sync_playwright
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import free_port, Client
+from test_web_v2 import free_port, Client, CSP_WATCH
 
 PAGE_JS = r"""async () => {
   const W = await import('/kks-wasm.js');
@@ -74,6 +74,7 @@ class WebWasm(unittest.TestCase):
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context()
+            ctx.add_init_script(CSP_WATCH)
             ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
                              headers={'Origin': self.base})
             page = ctx.new_page()

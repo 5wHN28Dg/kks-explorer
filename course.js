@@ -3,7 +3,8 @@
 // innerHTML. Progress uses the original courses' localStorage keys (<id>.last, .skip, .solved, .finalBest: JSON
 // strings), so it carries over; course-bridge.js syncs them to the log where there is one.
 'use strict';
-(() => {
+// Runs once K.start() is done (it used to be an inline script in course.html that loaded this file then).
+K.start().then(() => {
   const params = new URLSearchParams(location.search);
   const CID = params.get('c') || '';
   const main = document.getElementById('main'), rail = document.getElementById('rail'), mnav = document.getElementById('mnav');
@@ -41,7 +42,8 @@
 
   // ---------------------------------------------------------------- runs (§3) and blocks (§4)
   function target(to) {
-    if (to.url) return {href: to.url, ext: true};
+    // an outside link from course data: https only, anything else (javascript:, data:, …) becomes about:blank (#42)
+    if (to.url) return {href: K.safeUrl(to.url, ['https:']), ext: true};
     if (to.kks) return {href: '/?kks=' + encodeURIComponent(to.kks)};
     if (to.course) return {href: 'course.html?c=' + encodeURIComponent(to.course) + (to.page ? '#' + encodeURIComponent(to.page) : '')};
     return {href: '#' + encodeURIComponent(to.page)};
@@ -492,4 +494,4 @@
     render();
   }
   start();
-})();
+});
