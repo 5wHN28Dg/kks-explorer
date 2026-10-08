@@ -23,6 +23,8 @@ Gradle fetches and checks (SHA-256) libjxl v0.12.0 and zxing-cpp v3.1.1, and bui
   - `Sync.kt`: joining, the listener, rounds, the status the core shows;
   - `Discovery.kt`: NSD announce and browse, with one resolve at a time;
   - `SyncWorker.kt`: every 15 min while the app is closed.
+  - `PhotoQueue.kt`: the photo queue (decision 0049): one WorkManager job per photo encodes it to JPEG XL and submits it,
+    in order, whether or not the panel or the app stays open.
 - `ui/`:
   - Setup: server, code or QR, nearby admin, file;
   - Drawings: `SheetView` (pyramid, vector tiles, hotspots, marking, accessibility), search, floor filter, notes;
@@ -30,7 +32,7 @@ Gradle fetches and checks (SHA-256) libjxl v0.12.0 and zxing-cpp v3.1.1, and bui
   - Procedures (link mode);
   - Review;
   - Manage: approvals, proposals, history, people, devices with the invite QR, account;
-  - `Photos` (camera or gallery → annotate → JPEG XL);
+  - `Photos` (the floor first when the code has none, camera or gallery → annotate → the photo queue);
   - `ScanQr` (Camera2 + zxing-cpp).
 - `Qr.kt` + `src/main/cpp/qr_jni.cpp`: zxing-cpp.
 - `Jxl.kt` + `jxl_jni.cpp`: libjxl.
