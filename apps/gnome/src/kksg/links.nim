@@ -45,8 +45,10 @@ proc goTo(w: Win, label: string, t: JNode) =
   w.v.centerOn(x0, y0, x1, y1)
   w.toast("Connector " & label & " on " & (if s(t, "sheet_name").len > 0: s(t, "sheet_name") else: sheet))
 
-proc followLink*(w: Win, i: int) =
-  let ls = linksView(w.m, w.sheet)
+proc followLink*(w: Win, i: int, sheet = "") =
+  ## connector i of `sheet` (default: the open one). The sidebar's list passes the sheet it was built for: following a
+  ## link opens another sheet under it, and its rows must still mean the first sheet's connectors.
+  let ls = linksView(w.m, if sheet.len > 0: sheet else: w.sheet)
   if i < 0 or i >= ls.len: return
   let l = ls.elems[i]
   let label = s(l, "label")
@@ -72,7 +74,8 @@ proc followLink*(w: Win, i: int) =
 proc connectorsPage*(w: Win): W =
   let box = vbox(8)
   margins(box, 12)
-  let ls = linksView(w.m, w.sheet)
+  let here = w.sheet
+  let ls = linksView(w.m, here)
   if ls.len == 0:
     box.add label("No connectors to other drawings on this sheet.", "dim-label")
     return scrolled(box)
@@ -84,6 +87,6 @@ proc connectorsPage*(w: Win): W =
     closureScope:
       let idx = i
       let l = ls.elems[i]
-      gtk_list_box_append(list, navRow("Connector " & s(l, "label"), whereText(l), linkName(l), proc () = w.followLink(idx)))
+      gtk_list_box_append(list, navRow("Connector " & s(l, "label"), whereText(l), linkName(l), proc () = w.followLink(idx, here)))
   box.add list
   scrolled(box)

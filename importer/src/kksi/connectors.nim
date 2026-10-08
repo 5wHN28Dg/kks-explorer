@@ -10,7 +10,7 @@
 ## Each circle is read upright, then turned clockwise, counter-clockwise (the drain sheet's are vertical), and last
 ## upside down; the first reading that passes wins.
 
-import std/[tables, math, algorithm]
+import std/[tables, math, algorithm, sets, sequtils]
 import mupdf, imgops, fontlib, reader, textlines
 
 type
@@ -30,6 +30,7 @@ const
   CircleMax = 36.0
   SmallMax = 14.0                ## a character's paths are at most this long
   Touch = 0.35                   ## boxes this close belong to one character
+  CellMax* = 400                 ## small paths in one 20 pt cell beyond which it is hatching, not letters
 
 proc isCircle*(p: Path): bool =
   let w = float(p.rect[2] - p.rect[0])
@@ -53,6 +54,7 @@ proc blobs*(paths: seq[Path]): seq[array[4, float]] =
   for p in paths:
     if p.hasFill: continue
     let b = [float(p.rect[0]), float(p.rect[1]), float(p.rect[2]), float(p.rect[3])]
+    if b.anyIt(it != it or abs(it) == Inf): continue      # a NaN or infinite box (malformed PDF) would span every cell
     if max(b[2] - b[0], b[3] - b[1]) > SmallMax: continue
     r.add b
   var parent = newSeq[int](r.len)
@@ -64,6 +66,9 @@ proc blobs*(paths: seq[Path]): seq[array[4, float]] =
       for gy in int(floor((b[1] - Touch) / Cell)) .. int(floor((b[3] + Touch) / Cell)):
         grid.mgetOrPut((gx, gy), @[]).add i
   for v in grid.values:
+    # a cell this crowded is hatching or fill, not a connector's letters: not merged (a crafted PDF with every small
+    # stroke in one cell would otherwise cost billions of comparisons)
+    if v.len > CellMax: continue
     for x in 0 ..< v.len:
       for y in x + 1 ..< v.len:
         let a = r[v[x]]
@@ -85,7 +90,7 @@ proc blobs*(paths: seq[Path]): seq[array[4, float]] =
 proc candidates*(paths: seq[Path]): seq[Candidate] =
   ## circles with 1–3 character blobs inside, one per label box (a circle drawn twice counts once)
   let bl = blobs(paths)
-  var seen: seq[array[4, int]]
+  var seen = initHashSet[array[4, int]]()
   for p in paths:
     if not p.isCircle: continue
     let r = [float(p.rect[0]), float(p.rect[1]), float(p.rect[2]), float(p.rect[3])]
@@ -101,7 +106,7 @@ proc candidates*(paths: seq[Path]): seq[Candidate] =
     if n notin 1 .. 3: continue
     let key = [int(round(inner[0])), int(round(inner[1])), int(round(inner[2])), int(round(inner[3]))]
     if key in seen: continue
-    seen.add key
+    seen.incl key
     result.add Candidate(circle: r, inner: inner, n: n, chars: chars)
 
 proc connectorLabel*(s: string, n: int): (bool, string) =

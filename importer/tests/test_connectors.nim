@@ -6,7 +6,7 @@
 ## Standards. The format of the Font data in this distribution was originally created by James Hurt, Cognition, Inc.
 ## (glyph data via Inkscape's svg_fonts/HersheySans1.svg, Windell H. Oskay; the Hershey Fonts' use restriction asks
 ## for this acknowledgement.)
-import std/[os, strutils, unittest, math, algorithm]
+import std/[os, strutils, unittest, math, algorithm, times]
 import kksi/[mupdf, fontlib, connectors]
 
 const Glyphs = currentSourcePath().parentDir.parentDir / "fontlib.kgl"
@@ -138,3 +138,16 @@ suite "connectors on a page":
     for f in f2: got.add((f.label, f.turn))
     got.sort()
     check got == @[("A28", 1), ("A3", 3), ("C16", 1), ("C16", 1), ("C29", 0), ("D2", 1)]
+
+suite "untrusted pages":
+  proc stroke(x0, y0, x1, y1: float): Path =
+    Path(kind: "s", rect: [float32(x0), float32(y0), float32(x1), float32(y1)], closePath: -1)
+  test "a NaN or infinite path box is left out (it would span every grid cell)":
+    let b = blobs(@[stroke(10, 10, 12, 14), stroke(NaN, 0, 1, 1), stroke(-Inf, 0, 1, 1), stroke(0, 0, Inf, 1)])
+    check b.len == 1
+  test "a cell crowded with tiny strokes doesn't take quadratic time":
+    var ps: seq[Path]
+    for i in 0 ..< 60_000: ps.add stroke(5 + float(i mod 100) * 0.1, 5, 5.05 + float(i mod 100) * 0.1, 5.05)
+    let t0 = epochTime()
+    discard blobs(ps)
+    check epochTime() - t0 < 5.0
