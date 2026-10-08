@@ -11,7 +11,8 @@ with the GNOME app (`apps/common/appstate.nim`) and the platform layer with the 
     KKS_WIN_ARCH=aarch64 sh platform/windows/build-deps.sh       # Windows on ARM64 (decision 0047): llvm-mingw,
     KKS_WIN_ARCH=aarch64 apps/windows/build.sh OUT/Walkdown.exe  # libraries in ~/.local/kksdev/winarm64
 
-The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (decision 0033).
+The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (decision 0033) by
+`sh platform/windows/fetch-mingw.sh` (Ubuntu's packages, pinned by SHA-256; no root needed).
 `res/kks.manifest` provides Common Controls v6, per-monitor DPI v2, the UTF-8 code page and the Windows 10/11 compatibility entry.
 
 ## What is where
@@ -99,7 +100,8 @@ all afterwards. Run in PowerShell opened with "Run as administrator":
 The script:
 - cross-builds the app and lays it out: the exe, `data/courses`, `vendor/fonts`, and logos from `icon-512.png`;
 - packs it with MakeAppx from the pinned `Microsoft.Windows.SDK.BuildTools` NuGet package, in the VM;
-- signs it here with osslsigncode, so the key never leaves this machine.
+- signs it here with osslsigncode, so the key never leaves this machine (2.14, built from pinned source by
+  `packaging/windows/build-osslsigncode.sh`).
 
 The package declares full trust, network client and server, the webcam, and the command-line alias
 `walkdown.exe`.

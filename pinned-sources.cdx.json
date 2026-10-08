@@ -1,0 +1,634 @@
+{
+ "bomFormat": "CycloneDX",
+ "specVersion": "1.5",
+ "version": 1,
+ "metadata": {
+  "component": {
+   "type": "application",
+   "name": "walkdown",
+   "description": "Third-party sources and tools the build scripts fetch, pinned by hash or commit (DEP-8). tests/test_pinned_sources.py keeps this list and the scripts in step."
+  }
+ },
+ "components": [
+  {
+   "type": "library",
+   "name": "libjxl",
+   "version": "v0.12.0",
+   "description": "JPEG XL: decodes member photos (Windows, Android, web)",
+   "licenses": [
+    {
+     "license": {
+      "id": "BSD-3-Clause"
+     }
+    }
+   ],
+   "purl": "pkg:generic/libjxl@v0.12.0?download_url=https%3A%2F%2Fcodeload.github.com%2Flibjxl%2Flibjxl%2Ftar.gz%2Fv0.12.0",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://codeload.github.com/libjxl/libjxl/tar.gz/v0.12.0",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "03e9be69a30be4011f559da75328b6d7cea8ad921fabfbd551ce10bf45cdc992"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/build-deps.sh, android/app2/build.gradle.kts, platform/web/build-wasm.sh"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "highway",
+   "version": "457c891775a7397bdb0376bb1031e6e027af1c48",
+   "description": "libjxl's SIMD library (the commit libjxl v0.12.0 names)",
+   "licenses": [
+    {
+     "expression": "Apache-2.0 OR BSD-3-Clause"
+    }
+   ],
+   "purl": "pkg:generic/highway@457c891775a7397bdb0376bb1031e6e027af1c48?download_url=https%3A%2F%2Fcodeload.github.com%2Fgoogle%2Fhighway%2Ftar.gz%2F457c891775a7397bdb0376bb1031e6e027af1c48",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://codeload.github.com/google/highway/tar.gz/457c891775a7397bdb0376bb1031e6e027af1c48",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "5124b0501c98d9930dbb065bfa1a5bbbd59ce0f12facb7e1e33aaef01a5f1f1a"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/build-deps.sh, android/app2/build.gradle.kts, platform/web/build-wasm.sh"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "brotli",
+   "version": "028fb5a23661f123017c060daa546b55cf4bde29",
+   "description": "libjxl's brotli (the commit libjxl v0.12.0 names)",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT"
+     }
+    }
+   ],
+   "purl": "pkg:generic/brotli@028fb5a23661f123017c060daa546b55cf4bde29?download_url=https%3A%2F%2Fcodeload.github.com%2Fgoogle%2Fbrotli%2Ftar.gz%2F028fb5a23661f123017c060daa546b55cf4bde29",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://codeload.github.com/google/brotli/tar.gz/028fb5a23661f123017c060daa546b55cf4bde29",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "0afe09a53c8bad9861c8dd1fc1284308d54f19d2979ba3541cfdcc9b05fe360f"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/build-deps.sh, android/app2/build.gradle.kts, platform/web/build-wasm.sh"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "skcms",
+   "version": "96d9171c94b937a1b5f0293de7309ac16311b722",
+   "description": "libjxl's ICC profile parser (the commit libjxl v0.12.0 names)",
+   "licenses": [
+    {
+     "license": {
+      "id": "BSD-3-Clause"
+     }
+    }
+   ],
+   "purl": "pkg:generic/skcms@96d9171c94b937a1b5f0293de7309ac16311b722?download_url=https%3A%2F%2Fcodeload.github.com%2Fgoogle%2Fskcms%2Ftar.gz%2F96d9171c94b937a1b5f0293de7309ac16311b722",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://codeload.github.com/google/skcms/tar.gz/96d9171c94b937a1b5f0293de7309ac16311b722",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "9bb4b5bba0b7c04f6c2bce9ff713d61e23c9a20c4945161ae16290498ad74627"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/build-deps.sh, android/app2/build.gradle.kts, platform/web/build-wasm.sh"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "zxing-cpp",
+   "version": "v3.1.1",
+   "description": "QR codes: reads camera images, draws invites",
+   "licenses": [
+    {
+     "license": {
+      "id": "Apache-2.0"
+     }
+    }
+   ],
+   "purl": "pkg:generic/zxing-cpp@v3.1.1?download_url=https%3A%2F%2Fcodeload.github.com%2Fzxing-cpp%2Fzxing-cpp%2Ftar.gz%2Fv3.1.1",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://codeload.github.com/zxing-cpp/zxing-cpp/tar.gz/v3.1.1",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "7286b1e6ade66fe82b7c8208b4595deeb55d6486b410834fdc65702f46650542"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/build-deps.sh, android/app2/build.gradle.kts, platform/web/build-wasm.sh, apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.yml"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "zlib",
+   "version": "1.3.2",
+   "description": "deflate/inflate on Windows (built without the gz* file functions, #58)",
+   "licenses": [
+    {
+     "license": {
+      "id": "Zlib"
+     }
+    }
+   ],
+   "purl": "pkg:generic/zlib@1.3.2?download_url=https%3A%2F%2Fzlib.net%2Fzlib-1.3.2.tar.gz",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://zlib.net/zlib-1.3.2.tar.gz",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/build-deps.sh"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "mupdf",
+   "version": "1.28.2",
+   "description": "the importer: parses and renders the P&ID PDFs the manager uploads",
+   "licenses": [
+    {
+     "license": {
+      "id": "AGPL-3.0-or-later"
+     }
+    }
+   ],
+   "purl": "pkg:generic/mupdf@1.28.2?download_url=https%3A%2F%2Fmupdf.com%2Fdownloads%2Farchive%2Fmupdf-1.28.2-source.tar.gz",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://mupdf.com/downloads/archive/mupdf-1.28.2-source.tar.gz",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "44075a84e329db55b9bef5f342a70fd26d69e48ad1d33cb89d9664581c641156"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "importer/fetch_mupdf.sh"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "sqlite-amalgamation",
+   "version": "3530400",
+   "description": "the store on Android and Windows",
+   "licenses": [
+    {
+     "license": {
+      "id": "blessing"
+     }
+    }
+   ],
+   "purl": "pkg:generic/sqlite-amalgamation@3530400?download_url=https%3A%2F%2Fsqlite.org%2F2026%2Fsqlite-amalgamation-3530400.zip",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+     "hashes": [
+      {
+       "alg": "SHA3-256",
+       "content": "628a44cfe82c66aed1ccbbe85a562d2e33ebe64b3288981ed76285612227934e"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "android/nim/fetch_sqlite.sh, platform/windows/build-deps.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "emsdk",
+   "version": "a2b92777574c2feda07994cd4f1079a3dfc151f8",
+   "description": "Emscripten 6.0.10 (tag 6.0.10 of emsdk, by commit): builds vendor/kks",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT"
+     }
+    }
+   ],
+   "purl": "pkg:generic/emsdk@a2b92777574c2feda07994cd4f1079a3dfc151f8?download_url=https%3A%2F%2Fgithub.com%2Femscripten-core%2Femsdk",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://github.com/emscripten-core/emsdk"
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/web/build-wasm.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "nim",
+   "version": "2.2.12",
+   "description": "the compiler; its standard library is compiled into every program",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT"
+     }
+    }
+   ],
+   "purl": "pkg:generic/nim@2.2.12?download_url=https%3A%2F%2Fnim-lang.org%2Fdownload%2Fnim-2.2.12.tar.xz",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://nim-lang.org/download/nim-2.2.12.tar.xz",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "2639a06a5ea7a7fcf57df1e7e1ef4d1b2bee58c7ac9bd00dbd2aa5bea1e5a56a"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.yml, .github/actions/setup-nim"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "llvm-mingw",
+   "version": "20260922",
+   "description": "the Windows ARM64 toolchain (its runtime is linked into the exe)",
+   "licenses": [
+    {
+     "expression": "Apache-2.0 WITH LLVM-exception"
+    }
+   ],
+   "purl": "pkg:generic/llvm-mingw@20260922?download_url=https%3A%2F%2Fgithub.com%2Fmstorsjo%2Fllvm-mingw%2Freleases%2Fdownload%2F20260922%2Fllvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64.tar.xz",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64.tar.xz",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "bb7bb7654b33d5aa8712acb837c963b2e0c56352560c76105270a3268c665c21"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/fetch-llvm-mingw.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "binutils-mingw-w64-x86-64",
+   "version": "2.45.90.20260125-1ubuntu1+13.3",
+   "description": "the Windows x86_64 toolchain, mingw-w64 13 / GCC 13 (its runtime is linked into the exe)",
+   "licenses": [
+    {
+     "license": {
+      "id": "GPL-3.0-or-later"
+     }
+    }
+   ],
+   "purl": "pkg:generic/binutils-mingw-w64-x86-64@2.45.90.20260125-1ubuntu1%2B13.3?download_url=https%3A%2F%2Flaunchpad.net%2Fubuntu%2F%2Barchive%2Fprimary%2F%2Bfiles%2Fbinutils-mingw-w64-x86-64_2.45.90.20260125-1ubuntu1%252B13.3_amd64.deb",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://launchpad.net/ubuntu/+archive/primary/+files/binutils-mingw-w64-x86-64_2.45.90.20260125-1ubuntu1%2B13.3_amd64.deb",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "f835050ed5b7fedf8f3242610fda1eb55b5472b72624f9a88de90c610b465552"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/fetch-mingw.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "gcc-mingw-w64-base",
+   "version": "13.2.0-6ubuntu1+26.1",
+   "description": "the Windows x86_64 toolchain, mingw-w64 13 / GCC 13 (its runtime is linked into the exe)",
+   "licenses": [
+    {
+     "expression": "GPL-3.0-or-later WITH GCC-exception-3.1"
+    }
+   ],
+   "purl": "pkg:generic/gcc-mingw-w64-base@13.2.0-6ubuntu1%2B26.1?download_url=https%3A%2F%2Flaunchpad.net%2Fubuntu%2F%2Barchive%2Fprimary%2F%2Bfiles%2Fgcc-mingw-w64-base_13.2.0-6ubuntu1%252B26.1_amd64.deb",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://launchpad.net/ubuntu/+archive/primary/+files/gcc-mingw-w64-base_13.2.0-6ubuntu1%2B26.1_amd64.deb",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "a30c07e807e9874ea93909448c5d6d37f9569ebe60ad32de8e490aad198538a3"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/fetch-mingw.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "gcc-mingw-w64-x86-64-posix",
+   "version": "13.2.0-6ubuntu1+26.1",
+   "description": "the Windows x86_64 toolchain, mingw-w64 13 / GCC 13 (its runtime is linked into the exe)",
+   "licenses": [
+    {
+     "expression": "GPL-3.0-or-later WITH GCC-exception-3.1"
+    }
+   ],
+   "purl": "pkg:generic/gcc-mingw-w64-x86-64-posix@13.2.0-6ubuntu1%2B26.1?download_url=https%3A%2F%2Flaunchpad.net%2Fubuntu%2F%2Barchive%2Fprimary%2F%2Bfiles%2Fgcc-mingw-w64-x86-64-posix_13.2.0-6ubuntu1%252B26.1_amd64.deb",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://launchpad.net/ubuntu/+archive/primary/+files/gcc-mingw-w64-x86-64-posix_13.2.0-6ubuntu1%2B26.1_amd64.deb",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "0855fa1d4a618550faac3a3e4352aa3226833b28184ad3c3b496a68a22c4eda2"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/fetch-mingw.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "gcc-mingw-w64-x86-64-posix-runtime",
+   "version": "13.2.0-6ubuntu1+26.1",
+   "description": "the Windows x86_64 toolchain, mingw-w64 13 / GCC 13 (its runtime is linked into the exe)",
+   "licenses": [
+    {
+     "expression": "GPL-3.0-or-later WITH GCC-exception-3.1"
+    }
+   ],
+   "purl": "pkg:generic/gcc-mingw-w64-x86-64-posix-runtime@13.2.0-6ubuntu1%2B26.1?download_url=https%3A%2F%2Flaunchpad.net%2Fubuntu%2F%2Barchive%2Fprimary%2F%2Bfiles%2Fgcc-mingw-w64-x86-64-posix-runtime_13.2.0-6ubuntu1%252B26.1_amd64.deb",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://launchpad.net/ubuntu/+archive/primary/+files/gcc-mingw-w64-x86-64-posix-runtime_13.2.0-6ubuntu1%2B26.1_amd64.deb",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "aca6b438e0b55b11cedcf1170a1ee26e7979e34192e34f6e6389e560908a5bfc"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/fetch-mingw.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "g++-mingw-w64-x86-64-posix",
+   "version": "13.2.0-6ubuntu1+26.1",
+   "description": "the Windows x86_64 toolchain, mingw-w64 13 / GCC 13 (its runtime is linked into the exe)",
+   "licenses": [
+    {
+     "expression": "GPL-3.0-or-later WITH GCC-exception-3.1"
+    }
+   ],
+   "purl": "pkg:generic/g++-mingw-w64-x86-64-posix@13.2.0-6ubuntu1%2B26.1?download_url=https%3A%2F%2Flaunchpad.net%2Fubuntu%2F%2Barchive%2Fprimary%2F%2Bfiles%2Fg%252B%252B-mingw-w64-x86-64-posix_13.2.0-6ubuntu1%252B26.1_amd64.deb",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://launchpad.net/ubuntu/+archive/primary/+files/g%2B%2B-mingw-w64-x86-64-posix_13.2.0-6ubuntu1%2B26.1_amd64.deb",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "52c3613f386e462ae71105d1a0b2a48d866ccb048ad253acff629c5a2291252d"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/fetch-mingw.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "mingw-w64-common",
+   "version": "13.0.0-2ubuntu1",
+   "description": "the Windows x86_64 toolchain, mingw-w64 13 / GCC 13 (its runtime is linked into the exe)",
+   "licenses": [
+    {
+     "license": {
+      "id": "ZPL-2.1"
+     }
+    }
+   ],
+   "purl": "pkg:generic/mingw-w64-common@13.0.0-2ubuntu1?download_url=https%3A%2F%2Flaunchpad.net%2Fubuntu%2F%2Barchive%2Fprimary%2F%2Bfiles%2Fmingw-w64-common_13.0.0-2ubuntu1_all.deb",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://launchpad.net/ubuntu/+archive/primary/+files/mingw-w64-common_13.0.0-2ubuntu1_all.deb",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "da9b2cb14134ca0ef3a31302df50295a2dd6fee7aa4fd888b11c6f72f8ab939e"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/fetch-mingw.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "mingw-w64-x86-64-dev",
+   "version": "13.0.0-2ubuntu1",
+   "description": "the Windows x86_64 toolchain, mingw-w64 13 / GCC 13 (its runtime is linked into the exe)",
+   "licenses": [
+    {
+     "license": {
+      "id": "ZPL-2.1"
+     }
+    }
+   ],
+   "purl": "pkg:generic/mingw-w64-x86-64-dev@13.0.0-2ubuntu1?download_url=https%3A%2F%2Flaunchpad.net%2Fubuntu%2F%2Barchive%2Fprimary%2F%2Bfiles%2Fmingw-w64-x86-64-dev_13.0.0-2ubuntu1_all.deb",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://launchpad.net/ubuntu/+archive/primary/+files/mingw-w64-x86-64-dev_13.0.0-2ubuntu1_all.deb",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "da40b9e2ae89d98d44b547a9e4fd01862858edb176bade9f12ad143e7ae7efe4"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "platform/windows/fetch-mingw.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "osslsigncode",
+   "version": "2.14",
+   "description": "signs the MSIX on the maintainer machine",
+   "licenses": [
+    {
+     "license": {
+      "id": "GPL-3.0-or-later"
+     }
+    }
+   ],
+   "purl": "pkg:generic/osslsigncode@2.14?download_url=https%3A%2F%2Fcodeload.github.com%2Fmtrojnar%2Fosslsigncode%2Ftar.gz%2Frefs%2Ftags%2F2.14",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://codeload.github.com/mtrojnar/osslsigncode/tar.gz/refs/tags/2.14",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "0f033fd6069387d2e489fbd2187e62f624764eb8c2758ee94e3e793e5150b5c5"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "packaging/windows/build-osslsigncode.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "Microsoft.Windows.SDK.BuildTools",
+   "version": "10.0.28000.2705",
+   "description": "MakeAppx, run in the Windows VM to pack the MSIX",
+   "licenses": [
+    {
+     "expression": "LicenseRef-Microsoft-Windows-SDK"
+    }
+   ],
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.buildtools/10.0.28000.2705/microsoft.windows.sdk.buildtools.10.0.28000.2705.nupkg",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "8bfdfb6ca2633f531cf80b5fa22512ba61a394d7988f0970db83baadc67929ed"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "packaging/windows/make-msix.sh"
+    }
+   ],
+   "purl": "pkg:generic/microsoft.windows.sdk.buildtools@10.0.28000.2705?download_url=https%3A%2F%2Fapi.nuget.org%2Fv3-flatcontainer%2Fmicrosoft.windows.sdk.buildtools%2F10.0.28000.2705%2Fmicrosoft.windows.sdk.buildtools.10.0.28000.2705.nupkg"
+  }
+ ]
+}
