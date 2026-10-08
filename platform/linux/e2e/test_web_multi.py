@@ -132,7 +132,11 @@ class WebMulti(unittest.TestCase):
             toast("Tags without a code can't be selected")
             self.assertEqual(count(), '2 selected')
             # a dragged box from above-left of a:4 to below-right of a:5 adds both (and passes over no other)
-            b4, b5 = hs('a:4').bounding_box(), hs('a:5').bounding_box()
+            # (a sync can redraw the tags between finding one and measuring it: measured again until both are there)
+            for _ in range(50):
+                b4, b5 = hs('a:4').bounding_box(), hs('a:5').bounding_box()
+                if b4 and b5: break
+                page.wait_for_timeout(100)
             page.mouse.move(b4['x'] - 4, b4['y'] - 15)
             page.mouse.down()
             page.mouse.move((b4['x'] + b5['x']) / 2, b5['y'], steps=4)
@@ -219,7 +223,7 @@ class WebMulti(unittest.TestCase):
             self.assertTrue(photos[0]['file'].endswith('.jxl'), photos[0])
             # the tags show it: a tag plate photo only (blue) once colouring by photos is on
             page.click('#zcover')
-            page.wait_for_function("document.querySelector('#layer .hs[data-id=\"a:6\"]').classList.contains('p-plate')")
+            page.wait_for_function("() => document.querySelector('#layer .hs[data-id=\"a:6\"]').classList.contains('p-plate')")
             # offline: queued like K.submit, shown per code, sent by the outbox's flush (the prefix dedupes a retry)
             btn.click()
             hs('a:6').click()
@@ -233,11 +237,14 @@ class WebMulti(unittest.TestCase):
                              [['equipment', '11LAB71AP001', 'notes + noted offline']])
             ctx.set_offline(False)
             page.evaluate("K.flush()")
-            page.wait_for_function("K.outbox.length === 0", timeout=15000)
+            page.wait_for_function("() => K.outbox.length === 0", timeout=15000)
             self.assertEqual(self.boss.req('GET', '/api/state')['equipment']['11LAB71AP001']['notes'], 'noted offline')
             # a finger drags a box too (synthetic touch pointer events, as the engines get them from a touch screen)
             btn.click()
-            b1, b2 = hs('a:1').bounding_box(), hs('a:2').bounding_box()
+            for _ in range(50):
+                b1, b2 = hs('a:1').bounding_box(), hs('a:2').bounding_box()
+                if b1 and b2: break
+                page.wait_for_timeout(100)
             page.evaluate("""([x0, y0, x1, y1]) => {
               const ev = (type, x, y) => (document.elementFromPoint(x, y) || document.getElementById('viewer')).dispatchEvent(
                 new PointerEvent(type, {bubbles: true, cancelable: true, pointerId: 7, pointerType: 'touch', isPrimary: true,
