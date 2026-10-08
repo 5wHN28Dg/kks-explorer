@@ -17,6 +17,7 @@ type Win* = ref object
   v*: Viewer
   split*, sheetList*, searchEntry*, resultList*, sheetTitle*, panelSplit*, panelBox*, markBtn*, status*: W
   sideNav*, banner*: W
+  queueBar*, queueLabel*: W    ## the photo queue's status (photos.nim), under the drawing
   linkProc*: string            ## link mode (R7): clicks on tags link them to this procedure step
   linkStep*: int
   activeProc*: string

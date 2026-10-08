@@ -2,8 +2,8 @@
 ## four colours, undo; burned into the image), scale to at most 1600 px, compress as JPEG XL at distance 1.9
 ## (the user's choice 2026-09-27), propose it.
 
-import std/[math, strutils, base64, os, sequtils, times]
-import kks/[json, node]
+import std/[math, strutils, base64, os, sequtils, times, typedthreads]
+import kks/[json, node, model]
 import kksi/jxl
 import gtk, ui, appstate, win
 
@@ -375,26 +375,142 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   adw_dialog_set_child(d, toolbarView(header, body))
   present(d, w.window)
 
+# ---------------------------------------------------------------- the photo queue (the user: "background compression
+# and a photo queue"). JPEG XL at effort 9 takes seconds: it runs on a worker thread, one photo after another in the
+# order they were added, and keeps going when the panel or the editor closes. Each photo is proposed as soon as it is
+# compressed, so they arrive in order. Before 2026-10-08 it ran on the main thread, freezing the window meanwhile.
+
+type
+  EncJob = object
+    id: int
+    rgb: seq[byte]
+    w, h: int
+  EncDone = object
+    id: int
+    data: string
+    err: string
+  Queued = object
+    id: int
+    kks, caption, note, floor: string
+
+var
+  encJobs: Channel[EncJob]
+  encDone: Channel[EncDone]
+  encThread: Thread[void]
+  encStarted = false
+  queue: seq[Queued]             ## main thread only: waiting or being compressed, oldest first
+  nextId = 0
+  polling = false
+
+proc encWorker() {.thread.} =
+  while true:
+    let j = encJobs.recv()
+    var d = EncDone(id: j.id)
+    try: d.data = encodeLossy(j.rgb, j.w, j.h, 3, 1.9, 9)
+    except CatchableError as e: d.err = e.msg
+    encDone.send(d)
+
+proc queueText(): string =
+  if queue.len == 0: return ""
+  "Compressing " & (if queue.len == 1: "1 photo" else: $queue.len & " photos") & " (" & queue[0].kks &
+    (if queue.len > 1: ", then " & queue[1 .. ^1].mapIt(it.kks).join(", ") else: "") &
+    "). They are sent in order; you can keep working."
+
+proc showQueue(w: Win) =
+  if w.queueLabel == nil: return
+  let t = queueText()
+  gtk_label_set_text(w.queueLabel, t.cstring)
+  gtk_widget_set_visible(w.queueBar, cint(t.len > 0))
+
+proc queuedFor*(kks: string): int =
+  for q in queue:
+    if q.kks == kks: inc result
+
+proc sendPhoto(w: Win, q: Queued, jxlData: string) =
+  var payload = newObj(@[("kks", newStr(q.kks)), ("caption", newStr(q.caption)),
+                         ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))])
+  if q.floor.len > 0: payload["floor"] = newStr(q.floor)   # written first, only if the code still has no floor
+  discard w.submit("photo", payload, "photo of " & q.kks, q.note)
+
+proc enqueue(w: Win, rgb: seq[byte], ow, oh: int, kks, caption, note, floor: string) =
+  if not encStarted:
+    encJobs.open()
+    encDone.open()
+    createThread(encThread, encWorker)
+    encStarted = true
+  inc nextId
+  queue.add Queued(id: nextId, kks: kks, caption: caption, note: note, floor: floor)
+  encJobs.send(EncJob(id: nextId, rgb: rgb, w: ow, h: oh))
+  w.showQueue()
+  if w.selected.len > 0: w.rebuildPanel()
+  if polling: return
+  polling = true
+  timeout(200, proc (): bool =
+    var done = false
+    while true:
+      let (got, d) = encDone.tryRecv()
+      if not got: break
+      var i = 0
+      while i < queue.len and queue[i].id != d.id: inc i
+      if i < queue.len:
+        let q = queue[i]
+        queue.delete(i)
+        if d.err.len > 0: w.toast("Photo of " & q.kks & " could not be compressed: " & d.err)
+        else: w.sendPhoto(q, d.data)
+        done = true
+      w.showQueue()
+    if done and w.selected.len > 0: w.rebuildPanel()   # its "being compressed" line
+    polling = queue.len > 0
+    polling)
+
+proc floorKnown(w: Win, kks: string): bool =
+  ## the code has a floor, I proposed one that is still open, or a queued photo carries one
+  let e = w.m.equipment(kks)
+  if s(e, "floor").strip.len > 0: return true
+  for q in queue:
+    if q.kks == kks and q.floor.len > 0: return true
+  for sub in w.myOpen():
+    let p = sub.get("payload")
+    if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == kks and p.get("changes") != nil and
+       s(p["changes"], "floor").strip.len > 0: return true
+
+proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
+  ## the user's rule: a photo needs its floor. Asked before the picture, sent with it.
+  let d = adw_alert_dialog_new(("Which floor is " & kks & " on?").cstring,
+    "A photo needs its floor, and this equipment has none yet. Enter the floor: a whole number from 0 (ground) to 10. It is sent with the photo.".cstring)
+  let e = gtk_entry_new()
+  gtk_entry_set_placeholder_text(e, "Floor, 0 to 10")
+  setAccessibleLabel(e, "Floor of " & kks)
+  adw_alert_dialog_set_extra_child(d, e)
+  adw_alert_dialog_add_response(d, "cancel", "Cancel")
+  adw_alert_dialog_add_response(d, "yes", "Continue")
+  adw_alert_dialog_set_response_appearance(d, "yes", ADW_RESPONSE_SUGGESTED)
+  adw_alert_dialog_set_default_response(d, "yes")
+  adw_alert_dialog_set_close_response(d, "cancel")
+  d.onResponse(proc (id: string) =
+    if id != "yes": return
+    let f = text(e).strip
+    if not (f == "10" or (f.len == 1 and f[0] in Digits)):
+      w.toast("Floor: a whole number from 0 to 10 (the height goes in Elevation). The photo was not added.")
+      return
+    fn(f))
+  present(d, w.window)
+
 proc addPhoto*(w: Win, kks: string) =
   # tests: KKS_PHOTO_FILE names the picture instead of the file chooser (as KKS_CAMERA_FILE for the camera)
   let pick = proc (title: string, fn: proc (path: string)) =
     if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
-  pick("Choose a photo", proc (path: string) =
-    if path.len == 0: return
-    let (iw, ih, px) = loadImage(path)
-    if iw == 0:
-      w.toast("That file could not be read as a picture.")
-      return
-    w.annotate(px, iw, ih, proc (rgb: seq[byte], ow, oh: int, caption, note: string) =
-      w.toast("Compressing…")
-      idle(proc () =
-        var jxlData: string
-        try: jxlData = encodeLossy(rgb, ow, oh, 3, 1.9, 9)
-        except JxlError as e:
-          w.toast(e.msg)
-          return
-        discard w.submit("photo", newObj(@[("kks", newStr(kks)), ("caption", newStr(caption)),
-                         ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))]), "photo of " & kks, note))))
+  proc go(floor: string) =
+    pick("Choose a photo", proc (path: string) =
+      if path.len == 0: return
+      let (iw, ih, px) = loadImage(path)
+      if iw == 0:
+        w.toast("That file could not be read as a picture.")
+        return
+      w.annotate(px, iw, ih, proc (rgb: seq[byte], ow, oh: int, caption, note: string) =
+        w.enqueue(rgb, ow, oh, kks, caption, note, floor)))
+  if w.floorKnown(kks): go("")
+  else: w.askFloor(kks, go)
 
 proc photoSection*(w: Win, kks: string): W =
   result = group("Photos")
@@ -439,4 +555,8 @@ proc photoSection*(w: Win, kks: string): W =
         cell.add del
         adw_wrap_box_append(box, cell)
   if n > 0: adw_preferences_group_add(g, box)
+  let q = queuedFor(kks)
+  if q > 0:
+    adw_preferences_group_add(g, label((if q == 1: "1 photo" else: $q & " photos") & " of this equipment being compressed; " &
+                                       "sent when ready.", "dim-label"))
   adw_preferences_group_add(g, button("+ Add photo", "", proc () = w.addPhoto(kks)))

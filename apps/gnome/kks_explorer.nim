@@ -241,6 +241,13 @@ proc mainScreen(w: Win): W =
     if w.bannerAction != nil: w.bannerAction())
   let contentView = toolbarView(contentHeader, w.panelSplit)
   adw_toolbar_view_add_top_bar(contentView, w.banner)
+  w.queueBar = hbox(8)
+  margins(w.queueBar, 6)
+  w.queueBar.add adw_spinner_new()
+  w.queueLabel = label("", "dim-label")
+  w.queueBar.add w.queueLabel
+  gtk_widget_set_visible(w.queueBar, 0)
+  adw_toolbar_view_add_bottom_bar(contentView, w.queueBar)
   let content = page(contentView, "Drawing")
   w.split = adw_navigation_split_view_new()
   adw_navigation_split_view_set_sidebar(w.split, sidebar)
