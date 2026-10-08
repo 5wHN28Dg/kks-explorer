@@ -73,18 +73,24 @@
  "relay": {
   "hello": {
    "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+   "member": "BJ56bD8ioqKJbjHjI_JOyvEtiLq4CwVCZeo_C9x3eMTbhHHTzUaAl9kVyfcDnOemS1ZFqC91JdroRW3wSlxctLk",
+   "msig": "nARq_xJGEAyv_eEIM5_Z3sQ8j-_S7f2oqUqKhvWeSZ1pWOx_REbYeOmunp-P28eH7EUrZIkj1sSTV4hFXACj7w",
    "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
-   "sig": "8JLByiXAv8XlQUZn7TA30btPpUdm33TOPgeV-5wVjVRfbj1bly4rl4UGoPtUhzGxe0JGwtAj0HcLkKgH2QYPVA",
+   "sig": "ZTyj5B5NIF6M6hRIvkuu69HdtKKzsGz1fyTLX3jJUtoU1vX0NEudnaUjfssiYrMPxKSo4UcQ35am9FMEsCF2eQ",
    "t": "hello",
    "ts": 1790000000
   },
+  "member": "BJ56bD8ioqKJbjHjI_JOyvEtiLq4CwVCZeo_C9x3eMTbhHHTzUaAl9kVyfcDnOemS1ZFqC91JdroRW3wSlxctLk",
+  "member_id": "7DCd67vZ-eSrtNqXsw8B0S7r5DFQDwhA",
   "now": 1790000100,
   "reject": [
    {
     "hello": {
      "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "member": "BJ56bD8ioqKJbjHjI_JOyvEtiLq4CwVCZeo_C9x3eMTbhHHTzUaAl9kVyfcDnOemS1ZFqC91JdroRW3wSlxctLk",
+     "msig": "nARq_xJGEAyv_eEIM5_Z3sQ8j-_S7f2oqUqKhvWeSZ1pWOx_REbYeOmunp-P28eH7EUrZIkj1sSTV4hFXACj7w",
      "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
-     "sig": "8JLByiXAv8XlQUZn7TA30btPpUdm33TOPgeV-5wVjVRfbj1bly4rl4UGoPtUhzGxe0JGwtAj0HcLkKgH2QYPVA",
+     "sig": "ZTyj5B5NIF6M6hRIvkuu69HdtKKzsGz1fyTLX3jJUtoU1vX0NEudnaUjfssiYrMPxKSo4UcQ35am9FMEsCF2eQ",
      "t": "hello",
      "ts": 1790000000
     },
@@ -94,6 +100,8 @@
    {
     "hello": {
      "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "member": "BJ56bD8ioqKJbjHjI_JOyvEtiLq4CwVCZeo_C9x3eMTbhHHTzUaAl9kVyfcDnOemS1ZFqC91JdroRW3wSlxctLk",
+     "msig": "t1IyMPXFSUSu2vI22NDsJYxH8xDcmwWR-8xzdXdTIMRKI79lcgCQwZixElIewtIlay_RsMVGebp5VpfeUXkuSg",
      "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
      "sig": "bRdTVlKCKjiUDrr_GhFdLPEIfSXtMYYpJ5G50MGL9XRaW6iAveq-NdfI4QjYkSANmLMwJ54zGlCH49HgOdn07Q",
      "t": "hello",
@@ -101,11 +109,46 @@
     },
     "now": 1790000000,
     "why": "another room"
+   },
+   {
+    "hello": {
+     "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+     "sig": "ZTyj5B5NIF6M6hRIvkuu69HdtKKzsGz1fyTLX3jJUtoU1vX0NEudnaUjfssiYrMPxKSo4UcQ35am9FMEsCF2eQ",
+     "t": "hello",
+     "ts": 1790000000
+    },
+    "now": 1790000000,
+    "why": "no room key proof (a device before decision 0050)"
+   },
+   {
+    "hello": {
+     "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "member": "BGPulQSdCn6IVWba5zfkIYFehOBIWNziE3kJC7mOUvEs_UD3YTmCTC-QSTygzw-LqlaMiwqbShBKdBH4L84OGkU",
+     "msig": "4d7lRrTkGs8BSv-Re66zfccPtdHzwmrUnNpQOHCmAm1Zr0ZhhcDb8BMu1v7YLGMob-263CbByr3xXU-6oIgT-w",
+     "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+     "sig": "ZTyj5B5NIF6M6hRIvkuu69HdtKKzsGz1fyTLX3jJUtoU1vX0NEudnaUjfssiYrMPxKSo4UcQ35am9FMEsCF2eQ",
+     "t": "hello",
+     "ts": 1790000000
+    },
+    "now": 1790000000,
+    "why": "signed by another room key"
+   },
+   {
+    "hello": {
+     "key": "BPUAmaluI-x-l8rBRIz2BIFxMenQWnMqh69J22PUbBHXMSj7vLeo3_U8kzhe8pvtznflULcb85JkAiTZ0q8gGyY",
+     "member": "BJ56bD8ioqKJbjHjI_JOyvEtiLq4CwVCZeo_C9x3eMTbhHHTzUaAl9kVyfcDnOemS1ZFqC91JdroRW3wSlxctLk",
+     "msig": "gEK_THR5rGkOnJ5K_V-Y5Ly0t6Ed3Hhb-8Nb9V-9wwdQUH1TDSAAUpJ2wutIwUhkaTV7canw8taV6odjiIFsDA",
+     "peer": "PunVpEJd6Frb1TtGaIAUGBBTpyLjLE5k",
+     "sig": "ZTyj5B5NIF6M6hRIvkuu69HdtKKzsGz1fyTLX3jJUtoU1vX0NEudnaUjfssiYrMPxKSo4UcQ35am9FMEsCF2eQ",
+     "t": "hello",
+     "ts": 1790000000
+    },
+    "now": 1790000000,
+    "why": "msig for another peer"
    }
   ],
-  "room": "cc461b695b764f2da42ecbc6b787ba3f",
-  "root": "BPjn1yfGWaK-39OpcQZMCFb4GAnu-sQuniWKdTzxW7jr6QatnWX7DZm2E6WLaaPx9DvyTrqlW4FxJnuTntSPcdM",
-  "root_id": "OcyqZVeDbnT9wyrdS1ANVw9xh5kZoMac"
+  "room": "71d7ae73294f39ac9f388dfd9dae0b41"
  },
  "root_backup": {
   "passphrase": "correct horse battery staple ocean lamp",

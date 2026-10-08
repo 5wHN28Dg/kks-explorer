@@ -13,6 +13,8 @@ from cryptography.hazmat.primitives import hashes
 import hashlib
 
 HELLO_DOMAIN2 = b'kks-relay-hello-v2\n'
+MEMBER_DOMAIN3, ROOM_DOMAIN3 = b'kks-relay-member-v3\n', b'kks-relay-room-v3\n'
+NO_MEMBER = "the plant's relay key is missing: update the app"
 PEER2_RE = re.compile(r'[A-Za-z0-9_-]{32}')
 ROOM_RE, ID_RE = re.compile(r'[0-9a-f]{32}'), re.compile(r'[0-9a-f]{32}')
 MAX_PEERS, PIPE_WAIT = 200, 30
@@ -106,6 +108,22 @@ class Relay:
             r, s_ = int.from_bytes(unb(sig)[:32], 'big'), int.from_bytes(unb(sig)[32:], 'big')
             ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw).verify(
                 encode_dss_signature(r, s_), HELLO_DOMAIN2 + room.encode() + b'\n' + str(ts).encode(), ec.ECDSA(hashes.SHA256()))
+            # decision 0050: the plant's room key signs too, and the room is the room key's
+            member, msig = m.get('member'), m.get('msig')
+            if not isinstance(member, str) or not isinstance(msig, str):
+                c.text({'t': 'error', 'why': NO_MEMBER}); c.close(); return
+            mraw = unb(member)
+            if len(mraw) != 65 or mraw[0] != 4:
+                raise ValueError('bad hello')
+            mid = base64.urlsafe_b64encode(hashlib.sha256(mraw).digest()[:24]).decode().rstrip('=')
+            if hashlib.sha256(ROOM_DOMAIN3 + mid.encode()).hexdigest()[:32] != room:
+                raise ValueError('bad hello')
+            ms = unb(msig)
+            if len(ms) != 64:
+                raise ValueError('bad hello')
+            ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), mraw).verify(
+                encode_dss_signature(int.from_bytes(ms[:32], 'big'), int.from_bytes(ms[32:], 'big')),
+                MEMBER_DOMAIN3 + room.encode() + b'\n' + peer.encode() + b'\n' + str(ts).encode(), ec.ECDSA(hashes.SHA256()))
         except (OSError, ValueError, InvalidSignature, TypeError, KeyError):
             c.text({'t': 'error', 'why': 'bad hello'}); c.close(); return
         with self.lock:
