@@ -394,13 +394,16 @@ K.flush = async () => {
   const res = {approved: 0, pending: 0, conflict: 0, failed: 0}, photos = {approved: 0, pending: 0, conflict: 0};
   try {
     for (const it of (await K.idb.all()).filter(i => i.user === K.me.user.id).sort((a, b) => a.ts - b.ts)) {
-      if (it.raw) break;   // a photo not converted yet: it and everything after it wait for it (sent in order)
+      // a photo not converted yet: it and everything after it wait for it (sent in order); only one that keeps failing
+      // to convert lets the others pass (it stays, and is tried again now and then)
+      if (it.raw) { if ((it.tries || 0) >= 3) continue; break }
       try {
         const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload, ...(it.note ? {note: it.note} : {})});
         (it.fresh ? photos : res)[r.status] = ((it.fresh ? photos : res)[r.status] || 0) + 1; await K.idb.unqueue(it.client_id); K.setOnline(true);
       } catch (e) {
         if (K.isNetErr(e)) { K.setOnline(false); break }
         if (e.status === 401) { location.reload(); return }
+        if (e.status >= 500 || e.status === 408 || e.status === 429) { K.flushSoon(); break }   // the server or a proxy, for now: later
         res.failed++; await K.idb.unqueue(it.client_id);  // rejected as invalid: retrying won't help
         console.warn('queued submission refused', it, e.message);
       }
@@ -437,31 +440,44 @@ K.converting = null;   // {n, of, kks} while the loop runs
 K.convertPhotos = async () => {
   clearTimeout(K.retryPhotos);
   if (K.converting || !K.me) return;
+  // one tab converts (two would do the same work twice); without Web Locks, each tab on its own
+  if (navigator.locks && !K.photoLock) return navigator.locks.request('kks-photo-convert', {ifAvailable: true}, async l => {
+    if (!l) { K.retryPhotos = setTimeout(K.convertPhotos, 30000); return }   // another tab has it
+    K.photoLock = true; try { await K.convertPhotos() } finally { K.photoLock = false }
+  });
+  // what the server takes (/api/config): not known yet (offline at the start, no saved copy) = wait for it, never guess
   K.converting = {n: 0, of: 0, kks: ''};
-  const up = K.cfg?.photo_upload || {type: 'image/jpeg', q: 0.85};
+  if (!K.cfg?.photo_upload) { K.cfg = await K.api('/api/config').catch(() => K.cfg);
+    if (!K.cfg?.photo_upload) { K.converting = null; K.retryPhotos = setTimeout(K.convertPhotos, 30000); return } }
+  const up = K.cfg.photo_upload;
   let bar = null;
   try {
     for (;;) {
       const L = (await K.idb.all()).filter(i => i.user === K.me.user.id && i.raw).sort((a, b) => a.ts - b.ts);
       if (!L.length) break;
-      const it = L[0];
+      const it = L.find(i => (i.tries || 0) < 3) || L[0];   // (one that keeps failing goes last)
       K.converting = {n: K.converting.n + 1, of: K.converting.n + L.length, kks: it.payload.kks}; K.renderStatus();
       const est = (up.ms_per_mp || (up.type === 'image/jxl' ? 2500 : 0)) * (it.mp || 2);
       bar = K.progress(`Converting photo ${K.converting.n} of ${K.converting.of} (${it.payload.kks})…`, est, 'photoq');
-      let dataUrl = null, failed = null;
+      let dataUrl = null, failed = null, timer;
       try {
         const img = await new Promise((ok, no) => { const i = K.h('img', {onload: () => ok(i), onerror: () => no(new Error('the saved photo could not be read')), src: it.raw}) });
         const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
-        dataUrl = up.type === 'image/jxl' ? await K.jxlEncode(c, up.distance || 1.9, up.effort || 7) : c.toDataURL(up.type, up.q);
+        // a worker the browser stopped without a word (memory, on phones) never answers: give up on this round
+        const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error('the converter did not answer')), Math.max(120000, est * 20)) });
+        dataUrl = up.type === 'image/jxl' ? await Promise.race([K.jxlEncode(c, up.distance || 1.9, up.effort || 7), late]) : c.toDataURL(up.type, up.q);
       } catch (e) { failed = e; console.warn('photo not converted', e); K.jxlWorker?.terminate(); K.jxlWorker = null }   // (a fresh one next time)
+      finally { clearTimeout(timer) }
       bar.done(); bar = null;
       if (failed) {
-        // offline before the converter was ever loaded, most likely: the photo stays as it is and is tried again (it
-        // and the photos after it wait). Only one that fails three times while online is given up, and said so.
+        // offline before the converter was ever loaded, most likely. The photo is never dropped: it stays as taken and
+        // is tried again; after three failures while online it stops holding up the rest and is retried less often.
         const tries = (it.tries || 0) + (K.online && navigator.onLine ? 1 : 0);
-        if (tries < 3) { await K.idb.queue({...it, tries}); K.retryPhotos = setTimeout(K.convertPhotos, 30000); break }
-        K.toast?.(`A photo for ${it.payload.kks} could not be converted (${failed.message}): it was not sent.`);
-        await K.idb.unqueue(it.client_id); await K.emit(); continue;
+        await K.idb.queue({...it, tries}); await K.emit();
+        if (tries === 3) K.toast?.(`A photo for ${it.payload.kks} could not be converted (${failed.message}). It stays on this device and is tried again.`);
+        K.retryPhotos = setTimeout(K.convertPhotos, tries >= 3 ? 300000 : 30000);
+        if (tries >= 3) K.flush();
+        break;
       }
       const {raw, mp, tries, ...rest} = it;
       await K.idb.queue({...rest, payload: {...it.payload, dataUrl}});
@@ -606,20 +622,20 @@ K.jxl.watch();
 K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => {
   const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
   if (!K.jxlWorker) {   // a worker whose module could not load (offline, before it was ever fetched) answers nothing: drop it
-    const w = K.jxlWorker = new Worker('/kks-wasm-worker.js', {type: 'module'}); K.jxlWait = new Map();
+    const w = K.jxlWorker = new Worker('/kks-wasm-worker.js', {type: 'module'}); w.wait = new Map();
     w.addEventListener('error', e => { e.preventDefault?.(); if (K.jxlWorker === w) K.jxlWorker = null; w.terminate();
-      for (const f of K.jxlWait.values()) f(new Error('the photo converter could not be loaded')); K.jxlWait.clear() });
+      for (const f of w.wait.values()) f(new Error('the photo converter could not be loaded')); w.wait.clear() });
   }
   const w = K.jxlWorker, id = (K.jxlSeq = (K.jxlSeq || 0) + 1);
   const on = e => {
     if (e.data.id !== id) return;
-    w.removeEventListener('message', on); K.jxlWait.delete(id);
+    w.removeEventListener('message', on); w.wait.delete(id);
     if (e.data.error) return rej(new Error(e.data.error));
     const b = e.data.jxl; let s = '';
     for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
     res('data:image/jxl;base64,' + btoa(s));
   };
-  w.addEventListener('message', on); K.jxlWait.set(id, e => { w.removeEventListener('message', on); rej(e) });
+  w.addEventListener('message', on); w.wait.set(id, e => { w.removeEventListener('message', on); rej(e) });
   w.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
 });
 

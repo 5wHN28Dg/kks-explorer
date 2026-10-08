@@ -189,6 +189,18 @@ class WebRequests(unittest.TestCase):
         self.assertEqual(sorted(s['group_kind'] for s in mine), ['equipment', 'plate_photo'])
         self.assertEqual([s['payload']['changes'] for s in mine if s['kind'] == 'equipment'], [{'floor': '3'}])
 
+        # a proxy or a restarting server answering 503: the photo stays queued (never dropped) and goes later
+        page.route('**/api/submit', lambda r: r.fulfill(status=503, content_type='application/json', body='{"error":"unavailable"}'))
+        page.evaluate("""async k => { const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+            c.getContext('2d').fillRect(0, 0, 50, 50); await K.queuePhoto(c, {kks: k, caption: 'after 503'}) }""", plain)
+        page.wait_for_function("() => K.outbox.length === 1 && !K.outbox[0].raw && !K.converting", timeout=90000)
+        page.wait_for_timeout(300)
+        self.assertEqual(page.evaluate("K.outbox.length"), 1)
+        page.unroute('**/api/submit')
+        page.evaluate("K.flush()")
+        self.idle(page)
+        self.assertIn('after 503', [s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all&kind=photo') if s.get('code') == plain])
+
         # 9. three photos in a row: the panel closed at once; converted in the background, sent in the order taken
         page.evaluate("""async k => { for (const i of [1, 2, 3]) { const c = document.createElement('canvas'); c.width = 900; c.height = 700;
             const g = c.getContext('2d'), d = g.createImageData(900, 700); for (let j = 0; j < d.data.length; j++) d.data[j] = (j * 7919 + i * 31) % 251;
