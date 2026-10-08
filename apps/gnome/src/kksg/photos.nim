@@ -2,7 +2,7 @@
 ## four colours, undo; burned into the image), scale to at most 1600 px, compress as JPEG XL at distance 1.9
 ## (the user's choice 2026-09-27), propose it.
 
-import std/[math, strutils, base64, os, sequtils]
+import std/[math, strutils, base64, os, sequtils, times]
 import kks/[json, node]
 import kksi/jxl
 import gtk, ui, appstate, win
@@ -428,6 +428,11 @@ proc photoSection*(w: Win, kks: string): W =
           cell.add b
         else:
           cell.add label("Not on this device yet (it arrives with the next sync)", "dim-label caption")
+        let by = s(p, "by_name")
+        let tsv = if p.get("submitted") != nil and p["submitted"].kind == jInt: p["submitted"] else: p.get("created")
+        let dd = if tsv != nil and tsv.kind == jInt and tsv.i > 0: fromUnix(tsv.i).local.format("yyyy-MM-dd") else: ""
+        if by.len > 0 or dd.len > 0:
+          cell.add label((if by.len > 0: "by " & by else: "") & (if by.len > 0 and dd.len > 0: ", " else: "") & dd, "dim-label caption")
         let del = button("Delete", "flat caption", proc () =
           confirm(w.window, "Delete this photo?", "It is removed for everyone once approved.", "Delete", true, proc () =
             discard w.submit("photo_delete", newObj(@[("photo_id", newStr(pid))]), "delete a photo")))
