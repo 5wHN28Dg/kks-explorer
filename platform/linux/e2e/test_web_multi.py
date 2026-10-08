@@ -138,6 +138,8 @@ class WebMulti(unittest.TestCase):
             page.mouse.move((b4['x'] + b5['x']) / 2, b5['y'], steps=4)
             page.mouse.move(b5['x'] + b5['width'] - 6, b5['y'] + b5['height'] + 10, steps=4)
             self.assertTrue(page.is_visible('#selbox'))
+            page.evaluate("() => drawTags()")      # a sync redraws the tags mid-drag: the box stays
+            self.assertTrue(page.is_visible('#selbox'))
             page.mouse.up()
             self.assertFalse(page.is_visible('#selbox'))
             self.assertEqual(count(), '4 selected')

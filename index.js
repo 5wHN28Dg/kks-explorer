@@ -366,7 +366,9 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
 function drawTags(){
-  const L=$('#layer'), fid=L.contains(document.activeElement)?document.activeElement.dataset.id:null; L.replaceChildren();
+  // a box being dragged (select mode, or marking a missed tag) stays: a sync can redraw the tags mid-drag
+  const L=$('#layer'), fid=L.contains(document.activeElement)?document.activeElement.dataset.id:null, boxes=L.querySelectorAll('#selbox,#markbox');
+  L.replaceChildren();
   const covers=KSys.photoCovers(STATE.photos), photoCover=k=>covers.get(k)||'none';   // one pass over the photos
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   const picked=new Set(multi.on?multi.codes:[]);
@@ -385,6 +387,7 @@ function drawTags(){
     if(p.sheet!==cur.id) continue; const b=p.bbox, d=document.createElement('div'); d.className='hs pendmark';
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; d.title='Your mark, awaiting approval'; L.appendChild(d);
   }
+  L.append(...boxes);
   if(fid) for(const x of L.querySelectorAll('.hs')) if(x.dataset.id===fid){ x.focus({preventScroll:true}); break }
 }
 function tagClick(t){
