@@ -4,18 +4,28 @@
 import std/[math, algorithm]
 import kks/pathstore
 import kksi/jxl
-import gtk
+import gtk, darkcolor
 
 type
   Sheet* = ref object
     d*: Drawing
     images: seq[Surface]          ## decoded on first use, index = image index (nil = not yet / failed)
     decoded: seq[bool]
+    dark*: bool                   ## dark drawings: lightness inverted, hue kept (darkcolor); set through setDark
 
 proc newSheet*(data: string): Sheet =
   result = Sheet(d: decode(data))
   result.images = newSeq[Surface](result.d.images.len)
   result.decoded = newSeq[bool](result.d.images.len)
+
+proc setDark*(s: Sheet, on: bool) =
+  ## switch dark drawings; the embedded images are decoded again in the new mode
+  if s.dark == on: return
+  s.dark = on
+  for i in 0 ..< s.images.len:
+    if s.images[i] != nil: cairo_surface_destroy(s.images[i])
+    s.images[i] = nil
+    s.decoded[i] = false
 
 proc widthPt*(s: Sheet): float = float(s.d.width) / float(Q)
 proc heightPt*(s: Sheet): float = float(s.d.height) / float(Q)
@@ -24,7 +34,8 @@ proc imageSurface(s: Sheet, i: int): Surface =
   if not s.decoded[i]:
     s.decoded[i] = true
     try:
-      let (w, h, _, px) = decodeRgba(s.d.images[i].data)
+      var (w, h, _, px) = decodeRgba(s.d.images[i].data)
+      if s.dark: darkenPixels(px, 4)
       let sf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, cint(w), cint(h))
       let dst = cairo_image_surface_get_data(sf)
       let stride = int(cairo_image_surface_get_stride(sf))
@@ -43,6 +54,13 @@ proc imageSurface(s: Sheet, i: int): Surface =
     except CatchableError:
       s.images[i] = nil
   s.images[i]
+
+proc setColor(s: Sheet, c: Cairo, rgb: openArray[uint8]) {.inline.} =
+  if s.dark:
+    let (r, g, b) = darkRgb(int(rgb[0]), int(rgb[1]), int(rgb[2]))
+    cairo_set_source_rgb(c, float(r) / 255, float(g) / 255, float(b) / 255)
+  else:
+    cairo_set_source_rgb(c, float(rgb[0]) / 255, float(rgb[1]) / 255, float(rgb[2]) / 255)
 
 proc drawPath(s: Sheet, c: Cairo, i: int, px1: float) =
   ## px1 = one device pixel in quanta
@@ -71,7 +89,7 @@ proc drawPath(s: Sheet, c: Cairo, i: int, px1: float) =
   let stroke = (st.kind and Stroke) != 0
   if fill:
     cairo_set_fill_rule(c, if (st.kind and EvenOdd) != 0: CAIRO_FILL_RULE_EVEN_ODD else: CAIRO_FILL_RULE_WINDING)
-    cairo_set_source_rgb(c, float(st.fill[0]) / 255, float(st.fill[1]) / 255, float(st.fill[2]) / 255)
+    s.setColor(c, st.fill)
     if stroke: cairo_fill_preserve(c) else: cairo_fill(c)
   if stroke:
     let w = if (st.kind and Hairline) != 0: px1 else: max(float(st.width), px1)
@@ -79,7 +97,7 @@ proc drawPath(s: Sheet, c: Cairo, i: int, px1: float) =
     cairo_set_line_cap(c, cint(st.cap))
     cairo_set_line_join(c, cint(st.join))
     cairo_set_miter_limit(c, 10)
-    cairo_set_source_rgb(c, float(st.stroke[0]) / 255, float(st.stroke[1]) / 255, float(st.stroke[2]) / 255)
+    s.setColor(c, st.stroke)
     cairo_stroke(c)
 
 proc drawImage(s: Sheet, c: Cairo, i: int) =
@@ -96,10 +114,12 @@ proc drawImage(s: Sheet, c: Cairo, i: int) =
   cairo_restore(c)
 
 proc renderTile*(s: Sheet, zoom: float, x0, y0: float, w, h: int): Surface =
-  ## The region whose top-left is (x0, y0) in points, w × h device pixels at `zoom` px per point, on white.
+  ## The region whose top-left is (x0, y0) in points, w × h device pixels at `zoom` px per point, on white (on the
+  ## dark background in dark mode).
   result = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, cint(w), cint(h))
   let c = cairo_create(result)
-  cairo_set_source_rgb(c, 1, 1, 1)
+  if s.dark: cairo_set_source_rgb(c, DarkLo / 255, DarkLo / 255, DarkLo / 255)
+  else: cairo_set_source_rgb(c, 1, 1, 1)
   cairo_paint(c)
   let k = zoom / float(Q)                    # device px per quantum
   cairo_scale(c, k, k)

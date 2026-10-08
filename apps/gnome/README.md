@@ -37,6 +37,11 @@ system's.
 - vector tiles above the overview's resolution, drawn by Cairo and composited by GSK;
 - tag hotspots by status;
 - pan, zoom, pinch and keyboard (arrows, + −, 0).
+- dark drawings (the header's moon toggle, remembered per device): a PDF reader's dark mode. Every colour's lightness
+  is inverted and its hue kept (`apps/common/darkcolor.nim`): black lines near-white, the paper #121212, red markup
+  red. Tiles are re-rendered and the overview levels decoded again in the new mode (the transform adds ~140 ms on the
+  worker to a 30 Mpx level 0, on top of ~270 ms of decoding); tag outlines are lightened to keep 3:1 on the dark
+  paper. Photos never change. Pure blue keeps its middle lightness, so thin blue lines stay dim on dark.
 
 **Search** by KKS (with or without the unit, partial, suffixes) or description.
 
@@ -69,6 +74,8 @@ own `XDG_RUNTIME_DIR` (so the portals it starts can't touch the desktop's `/run/
 the command inside: `apps/gnome/e2e/headless.sh python3 apps/gnome/e2e/test_gnome.py`. Without a `mutter` binary,
 unpack Ubuntu's package next to the GTK headers (`apt-get download mutter && dpkg-deb -x mutter_*.deb
 ~/.local/kksdev/root`; it is a launcher for the libmutter GNOME Shell already has).
+
+`nim test` (in apps/gnome) runs `tests/test_*.nim`: the dark-drawings colour transform and the markers' contrast.
 
 `e2e/viewer_pinch.nim` checks that a touchpad pinch (a `begin` with a NULL sequence) doesn't crash the viewer; build
 it and run it under `headless.sh` (the header says how).

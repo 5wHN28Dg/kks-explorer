@@ -186,8 +186,11 @@ function openSheet(id,then){
   cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
   const img=$('#sheetimg'); let first=true;
   img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
+  const s=cur, g=dark.gen;
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the sheet overview) can't run script
-  if(cur.levels){ const k=startLevel(); img.dataset.level=k; img.src=levelUrl(k) } else { delete img.dataset.level; img.src=cur.file }
+  const show=u=>{ if(cur===s&&dark.gen===g) img.src=u };   // only if neither the sheet nor dark drawings changed meanwhile
+  if(cur.levels){ const k=startLevel(); img.dataset.level=k; if(dark.on) levelSrc(k).then(show); else show(levelUrl(k)) }
+  else { delete img.dataset.level; show(cur.file) }
   loadVector();
   img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
   renderNotes();
@@ -205,12 +208,53 @@ function upgradeLevel(){
   if(!cur?.levels) return; const k=wantLevel(), img=$('#sheetimg'), shown=+(img.dataset.level??cur.levels-1);
   if(k>=shown) return;
   img.dataset.level=k;   // asked for: not asked again while it loads
-  const s=cur, url=levelUrl(k);
-  // swap once decoded; without JPEG XL in the browser, K.jxl decodes it (a detached image isn't watched)
+  const s=cur, g=dark.gen;
+  // swap once decoded (and only if neither the sheet nor dark drawings changed meanwhile)
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the overview pyramid) can't run script
-  K.jxl.native().then(n=>n?url:K.jxl.url(url)).then(u=>{ const pre=new Image(); pre.onload=()=>{ if(cur===s) img.src=u }; pre.src=u })
+  levelSrc(k).then(u=>{ const pre=new Image(); pre.onload=()=>{ if(cur===s&&dark.gen===g) img.src=u }; pre.src=u })
     .catch(e=>console.warn('overview level',k,e));
 }
+// a level's image URL: the file itself where the browser shows JPEG XL, else K.jxl's decode (a detached image isn't
+// watched); in dark drawings the tile worker decodes it with our libjxl and transforms every pixel (dark.js), off this
+// thread. Dark levels are kept per sheet (blob: URLs, freed when another sheet opens).
+function levelSrc(k){
+  if(dark.on) sharp.worker??=startTiles();
+  if(!dark.on||!sharp.worker||sharp.worker.failed){ const url=levelUrl(k); return K.jxl.native().then(n=>n?url:K.jxl.url(url)) }
+  // dark: at most ~4 megapixels (the vector tiles draw the detail when zoomed in): a level 0 of 6400 × 4800 would cost
+  // ~120 MB of decoder memory in the worker, a copy and a 92 MB BMP here, where light mode shows the file itself
+  while(k<cur.levels-1&&cur.w*cur.h/4**k>DARK_MAX_PX) k++;
+  const url=levelUrl(k);
+  if(dark.sheet!==cur.id){ dropDarkLevels(); dark.sheet=cur.id }
+  if(!dark.levels.has(url)){
+    const p=new Promise((res,rej)=>{ const id=++dark.seq; dark.wait.set(id,{res,rej}); sharp.worker.postMessage({t:'level',id,url}) })
+      .then(b=>URL.createObjectURL(b));
+    p.catch(()=>{ if(dark.levels.get(url)===p) dark.levels.delete(url) });   // a failure isn't kept: tried again next time
+    dark.levels.set(url,p);
+  }
+  // a failed dark decode shows the light level rather than nothing (the sheet must open, fit and take /?kks= links)
+  return dark.levels.get(url).catch(e=>{ console.warn('dark overview level',k,e);
+    if(!dark.warned){ dark.warned=true; toast('Dark drawings: the overview could not be made dark here; showing it light') }
+    return K.jxl.native().then(n=>n?url:K.jxl.url(url)) });
+}
+const DARK_MAX_PX=4e6;
+function dropDarkLevels(){ for(const p of dark.levels.values()) p.then(u=>URL.revokeObjectURL(u),()=>{}); dark.levels.clear() }
+// ---------- dark drawings: like a PDF reader's dark mode; remembered on this device ----------
+const dark={on:false,gen:0,sheet:null,levels:new Map(),wait:new Map(),seq:0,warned:false};
+function setDark(on){
+  dark.on=on; dark.gen++; document.body.classList.toggle('darkdwg',on);
+  const b=$('#zdark'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
+  try{ on?localStorage.setItem('darkDrawings','1'):localStorage.removeItem('darkDrawings') }catch(e){}
+  if(!on){ dropDarkLevels(); dark.sheet=null }      // their blob: URLs are freed with them
+  if(!cur?.levels) return;
+  sharp.worker??=startTiles();
+  // the overview level on screen again in the new colours, and the sharp layer redrawn now (not after the 150 ms pause)
+  const img=$('#sheetimg'), s=cur, g=dark.gen, k=+(img.dataset.level??cur.levels-1);
+  // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the overview pyramid) can't run script
+  levelSrc(k).then(u=>{ if(cur===s&&dark.gen===g) img.src=u }).catch(e=>console.warn('overview level',k,e));
+  clearTimeout(sharp.timer); drawSharp();
+}
+$('#zdark').onclick=()=>setDark(!dark.on);
+try{ if(localStorage.getItem('darkDrawings')==='1') setDark(true) }catch(e){}
 function apply(){ const t=`translate(${view.x}px,${view.y}px) scale(${view.s})`; $('#stage').style.transform=t; $('#stage2').style.transform=t; followSharp() }
 
 // ---------- sharp layer: the sheet's vector drawing, redrawn for the visible area once the view stops moving ----------
@@ -234,8 +278,14 @@ function startTiles(){
     w.onmessage=e=>{ const m=e.data;
       if(m.t==='opened'){ if(cur&&m.sheet===cur.id){ sharp.ready=cur.id; drawSharp() } }
       else if(m.t==='frame'){ if(sharp.pending&&m.key===sharp.pending.key) showFrame(m.bmp,sharp.pending.at); else m.bmp.close() }
+      else if(m.t==='level'){ const p=dark.wait.get(m.id); dark.wait.delete(m.id); if(!p) return;
+        if(m.blob){ dark.lastMs=m.ms; p.res(m.blob) } else p.rej(new Error(m.why)) }
       else if(m.t==='error') console.warn('drawing',m.sheet,m.why);
     };
+    // a worker that failed to load (or died) never answers: the overview levels it was asked for fall back to light
+    // (levelSrc), and no more are asked of it, rather than the sheet staying blank
+    w.onerror=e=>{ console.warn('tile worker',e.message||e); w.failed=true;
+      for(const p of dark.wait.values()) p.rej(new Error('the tile worker stopped')); dark.wait.clear() };
     return w;
   }catch(e){ console.warn('no tile worker: the overview only',e); return null }
 }
@@ -253,7 +303,7 @@ function drawSharp(){
     const W=Math.round(v.width*d), H=Math.round(v.height*d), sc=cur.scale||2;
     // the area in points: level-0 px = (screen − view.x) / view.s, points = px / scale
     const key=++sharp.key; sharp.pending={key,at:{...view}};
-    sharp.worker.postMessage({t:'render',key,sheet:cur.id,x0:-view.x/view.s/sc,y0:-view.y/view.s/sc,s:view.s*d*sc,W,H});
+    sharp.worker.postMessage({t:'render',key,sheet:cur.id,x0:-view.x/view.s/sc,y0:-view.y/view.s/sc,s:view.s*d*sc,W,H,dark:dark.on});
     return;
   }
   if(!sharp.img||view.s*d<0.7){ c.style.display='none'; sharp.at=null; return }  // zoomed out: the PNG is as sharp
