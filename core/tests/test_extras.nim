@@ -19,7 +19,7 @@ suite "protocol v2 outside the log (v2-crypto.json)":
 
   test "relay":
     let r = V["relay"]
-    check P.relayRoom(r["root"].s) == r["room"].s
+    check P.relayRoom(r["member"].s) == r["room"].s
     check P.checkRelayHello(r["hello"], r["room"].s, r["now"].i)
     for c in r["reject"].elems:
       check not P.checkRelayHello(c["hello"], r["room"].s, c["now"].i)

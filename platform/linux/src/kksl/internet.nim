@@ -5,7 +5,7 @@
 ## Shared by Linux and Windows; runs on the node's async loop.
 
 import std/[asyncdispatch, sets, strutils, tables, times, sysrand]
-import kks/[json, crypto, util, node, sync, extras]
+import kks/[json, crypto, util, proto, node, sync, extras, relaykey]
 import net, ws, udp
 when defined(windows): import kksw/tls
 else: import tls
@@ -19,7 +19,7 @@ type
     online*: HashSet[string]          ## devices of the plant on the relay now
     state*: string                    ## "off", "connecting", "online", or an error
     ws: Ws
-    room: string
+    room*: string                     ## the room on the relay now (decision 0050: the room key's)
     waiting: Table[string, Future[JNode]]
     running: bool
     onSynced*: proc (remote: string, stats: Stats, initiator: bool)   ## after each sync through the relay
@@ -178,20 +178,38 @@ proc presence(i: Internet) {.async.} =
         i.changed()
       await sleepAsync(10_000)
       continue
-    i.room = relayRoom(i.n.p, i.n.root)
+    let (hasKey, member) = i.n.memberKey
+    if not hasKey:   # decision 0050: the relay admits only holders of the plant's room key
+      let st = "waiting for the plant's relay key (it comes with the next sync with another device)"
+      if i.state != st:
+        i.state = st
+        i.online.clear()
+        i.changed()
+      await sleepAsync(10_000)
+      continue
+    i.room = relayRoom(i.n.p, keyString(member.pub))
     i.state = "connecting"
     try:
       i.ws = await wsConnect(relay & "/v1/room/" & i.room)
-      await i.ws.sendText(toText(relayHello(i.n.p, i.n.key, i.room, int64(epochTime()))))
+      await i.ws.sendText(toText(relayHello(i.n.p, i.n.key, member, i.room, int64(epochTime()))))
       pause = 5_000
       var lastIn = epochTime()
+      let room = i.room
       proc ping() {.async.} =
         let w = i.ws
+        var waited = 0
         while i.running and not w.closed:
-          await sleepAsync(25_000)
-          if not w.closed and epochTime() - lastIn > 20:
-            try: await w.sendText("""{"t":"ping"}""")
-            except CatchableError: break
+          await sleepAsync(5_000)
+          waited += 5_000
+          let (has, cur) = i.n.memberKey
+          if not has or relayRoom(i.n.p, keyString(cur.pub)) != room:   # the room key was rotated: move (0050)
+            w.close()
+            break
+          if waited >= 25_000:
+            waited = 0
+            if not w.closed and epochTime() - lastIn > 20:
+              try: await w.sendText("""{"t":"ping"}""")
+              except CatchableError: break
       asyncCheck ping()
       while i.running and i.relayOf() == relay:
         let msg = await i.ws.recv()

@@ -4,7 +4,7 @@
 ## password accounts on top (it passes the signed-in account as the actor).
 
 import std/[algorithm, base64, math, sets, strutils, tables, unicode]
-import json, crypto, util, proto, replay, node, plant, progress, invites, extras, plantdata, diagnostics
+import json, crypto, util, proto, replay, node, plant, progress, invites, extras, plantdata, diagnostics, relaykey
 
 type
   Actor* = object
@@ -825,6 +825,18 @@ proc usersOut(a: Api, me: Actor): JNode =
       ("position", if p["position"].isNull: S("") else: p["position"]), ("no_account", B(true)), ("has_password", B(false)),
       ("role", S(a.roleOf(pid))), ("created", newNull()), ("active", B(active > 0)), ("devices", I(devs)))
 
+proc newRoomKey(a: Api, me: Actor, now: int64) =
+  ## a new relay room key (decision 0050): kept here, its public key the setting `relay_member`; the other devices get
+  ## it at their next sync with one that holds it, and the room moves with it
+  let k = a.n.p.p256Generate()
+  a.n.keepMemberKey(k)
+  discard a.write(me, "setting", O(("key", S("relay_member")), ("value", S(keyString(k.pub)))), now)
+  if a.relayChanged != nil: a.relayChanged()
+
+proc rotateRoomKey(a: Api, me: Actor, now: int64) =
+  ## after the manager removes a device: a removed device never syncs again, so it never learns the new key
+  if me.role == "manager" and a.n.relayMemberSetting.len > 0: a.newRoomKey(me, now)
+
 proc updatePerson(a: Api, me: Actor, pid: string, d: JNode, now: int64): Response =
   need(me, "admin")
   if pid notin a.n.run.persons: fail(404, "no such person")
@@ -850,6 +862,7 @@ proc updatePerson(a: Api, me: Actor, pid: string, d: JNode, now: int64): Respons
     for dev, v in a.n.run.devices:
       if v["person"].s == pid and dev notin a.n.run.cuts: devs.add dev
     for dev in devs: discard a.write(me, "revoke", revokeBody(dev, a.lastSeq(dev)), now)
+    if devs.len > 0: a.rotateRoomKey(me, now)
   elif act != nil and act.kind == jBool and act.b: bad("To come back they join again with a new join request.")
   ok()
 
@@ -860,7 +873,9 @@ proc revokeDevice(a: Api, me: Actor, dev: JNode, now: int64): Response =
   if not (me.role == "manager" or v["person"].s == me.person or (me.role == "admin" and tgt == "user")):
     fail(403, "not allowed for that device")
   if dev.s == me.device: bad("This is the device you are using; remove it from another one.")
-  if dev.s notin a.n.run.cuts: discard a.write(me, "revoke", revokeBody(dev.s, a.lastSeq(dev.s)), now)
+  if dev.s notin a.n.run.cuts:
+    discard a.write(me, "revoke", revokeBody(dev.s, a.lastSeq(dev.s)), now)
+    a.rotateRoomKey(me, now)
   ok()
 
 # ---------------------------------------------------------------- outputs
@@ -1052,7 +1067,8 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
                             url.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '.', '-', ':', '/', '_', '~'})):
       bad("The relay address looks like wss://kks-relay.example.workers.dev (ws:// only to this machine, for tests)")
     discard a.write(me, "setting", O(("key", S("relay")), ("value", orNull(url))), now)
-    if a.relayChanged != nil: a.relayChanged()
+    if url.len > 0: a.newRoomKey(me, now)   # every save makes a new room key (0050): the manager's way to rotate it
+    elif a.relayChanged != nil: a.relayChanged()
     return ok()
   of "/api/settings/plant":
     need(me, "manager")

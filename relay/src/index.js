@@ -94,6 +94,23 @@ export class Room {
           const key = await crypto.subtle.importKey('raw', raw, {name: 'ECDSA', namedCurve: 'P-256'}, false, ['verify']);
           ok = await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, key, b64u(sig), new TextEncoder().encode(`kks-relay-hello-v2\n${a.room}\n${ts}`));
         }
+        // decision 0050: the plant's room key signs too, and the room is the room key's; the relay learns only that
+        // public key
+        if (ok && (typeof m.member !== 'string' || typeof m.msig !== 'string' || !KEY2.test(m.member))) {
+          ws.send(JSON.stringify({t: 'error', why: "the plant's relay key is missing: update the app"})); ws.close(1008, 'no relay key'); return;
+        }
+        if (ok) {
+          const mraw = b64u(m.member);
+          const mid = b64uOf(new Uint8Array(await crypto.subtle.digest('SHA-256', mraw)).slice(0, 24));
+          const roomOf = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`kks-relay-room-v3\n${mid}`)))]
+            .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+          ok = mraw.length === 65 && mraw[0] === 4 && roomOf === a.room;
+          if (ok) {
+            const mkey = await crypto.subtle.importKey('raw', mraw, {name: 'ECDSA', namedCurve: 'P-256'}, false, ['verify']);
+            ok = await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, mkey, b64u(m.msig),
+                                            new TextEncoder().encode(`kks-relay-member-v3\n${a.room}\n${peer}\n${ts}`));
+          }
+        }
       } catch (e) { ok = false }
       if (!ok) { ws.send(JSON.stringify({t: 'error', why: 'bad hello'})); ws.close(1008, 'bad hello'); return }
       const members = this.members(), old = members.get(peer);

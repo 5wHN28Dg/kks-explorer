@@ -412,13 +412,19 @@ responder answers. `{"t":"error","why":...}` may be sent instead of any message,
    - Different non-null roots: stop (different plants).
    - A device with no plant yet (`root` null) continues only if the other side's root is the one it was told to join
      (§16 or the server enrolment).
-2. **`entries`:** `{"t":"entries", "entries":[...], "denied": true?, "revoked"?: <entry>}`. The initiator sends first;
+2. **`entries`:** `{"t":"entries", "entries":[...], "denied": true?, "revoked"?: <entry>, "relay_member"?: {"key",
+   "scalar"}}`. The initiator sends first;
    the responder decides what to send only after taking in the initiator's entries.
    - **What to send:**
      - every stored entry with seq above the other side's `vv` for its device;
      - for a device whose entry at the other side's last seq has a different ID than ours, that device's whole chain;
      - all fork evidence held.
    - **Nothing** (`denied`) unless the other side is a certified, unrevoked device of a known person in our replay.
+   - **`relay_member`** (decision 0050): the plant's relay room key (§18), when the sender holds the one the log's
+     `relay_member` setting names, and only in a message that isn't `denied`. `key` is its key string, `scalar` its
+     private scalar as 64 lowercase hex characters. A receiver keeps it after taking in the entries, only if `key`
+     equals its own current `relay_member` setting and the scalar signs for that key; it keeps it in its sealed
+     store, and wipes it with the plant data.
    - When it is denied because it was **revoked**, the message carries `"revoked"`: the revoke entry that cut it. The
      removed device checks that entry against its own log and only then wipes its plant data (0020 storage key
      included). The entry must:
@@ -522,11 +528,24 @@ This section only provides a byte stream; §15 (TLS and exchange) runs over it u
 **Relay address:** a `setting` (manager only) with key `relay`, value `ws[s]://host[:port][/path]` without a trailing
 `/`, or null = off.
 
+**Room key** (decision 0050, added 2026-10-08): a P-256 key pair per plant. Its public key is the manager setting
+`relay_member` (a key string, or null). Certified devices get its private key in §15 `entries`.
+- The device that saves a non-empty `relay` setting also makes a new room key: it keeps it, and writes `relay_member`.
+- A manager's device makes a new one after each `revoke` it writes (removing a device, or deactivating a person). A
+  removed device is denied every sync, so it never learns the new key.
+- A device without the current room key stays off the relay. LAN sync doesn't need it.
+
 **Room:**
-- One per plant: room = the first 32 hex characters of SHA-256(`"kks-relay-room-v2\n"` + root ID).
-- A device opens a WebSocket to `<relay>/v1/room/<room>` and first sends `{"t":"hello", "peer", "key", "ts", "sig"}`,
-  where `sig` is by the device key over `"kks-relay-hello-v2\n"` + room + `"\n"` + ts.
-- The relay checks that `peer` is the key's peer ID, the signature, and |ts − now| ≤ 300 s. Then:
+- One per room key: room = the first 32 hex characters of SHA-256(`"kks-relay-room-v3\n"` + the room key's peer ID).
+  It moves when the key is replaced; a device in the old room leaves and enters the new one.
+- A device opens a WebSocket to `<relay>/v1/room/<room>` and first sends `{"t":"hello", "peer", "key", "ts", "sig",
+  "member", "msig"}`:
+  - `sig` is by the device key over `"kks-relay-hello-v2\n"` + room + `"\n"` + ts;
+  - `member` is the room key's key string;
+  - `msig` is by the room key over `"kks-relay-member-v3\n"` + room + `"\n"` + peer + `"\n"` + ts.
+- The relay checks that `peer` is the key's peer ID, that room is the one `member` gives, both signatures, and
+  |ts − now| ≤ 300 s. A hello without `member`/`msig` gets `{"t":"error","why":"the plant's relay key is missing:
+  update the app"}`. Then:
   - it answers `{"t":"welcome", "peers": [...]}`;
   - it tells the others `{"t":"joined", "peer"}`, and `{"t":"left", "peer"}` when the device leaves.
 - A second hello for the same device replaces the older socket, unless it is a replay (issue #44): a hello with the

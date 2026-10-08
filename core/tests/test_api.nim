@@ -1,5 +1,5 @@
 import std/[unittest, tables, base64, strutils]
-import kks/[json, util, crypto, proto, replay, node, sync, plant, api, extras, invites, plantdata]
+import kks/[json, util, crypto, proto, replay, node, sync, plant, api, extras, invites, plantdata, relaykey]
 import testprovider
 
 let P = testProvider()
@@ -151,6 +151,19 @@ suite "plant API":
     check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"ws://127.0.0.1.evil.dev:80"}""")).status == 400
     check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"ws://127.0.0.1:8787"}""")).status == 200
     check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"wss://relay.example.dev/"}""")).status == 200
+    # decision 0050: each save makes a new relay room key, held here, its public key the setting
+    let k1 = mgrNode.relayMemberSetting
+    check k1.len == 87 and mgrNode.memberKey[0] and keyString(mgrNode.memberKey[1].pub) == k1
+    check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"wss://relay.example.dev/"}""")).status == 200
+    let k2 = mgrNode.relayMemberSetting
+    check k2 != k1 and mgrNode.memberKey[0]
+    # the manager removing a device rotates it too
+    var victim = ""
+    for d, _ in mgrNode.run.devices:
+      if d != mgr.device and d notin mgrNode.run.cuts: victim = d
+    check victim.len > 0
+    check mgrApi.call(mgr, "POST", "/api/devices/revoke", newObj(@[("device", newStr(victim))])).status == 200
+    check mgrNode.relayMemberSetting != k2 and mgrNode.memberKey[0]
     check mgrApi.call(mgr, "POST", "/api/progress", j("""{"course":"hrsg","data":{"finalBest":"9"}}""")).status == 200
     check mgrApi.call(mgr, "GET", "/api/progress", q = {"course": "hrsg"}.toTable).json["data"]["finalBest"].s == "9"
 

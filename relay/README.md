@@ -9,9 +9,10 @@ so they can connect to each other directly (UDP hole punching), and if that fail
 them. Those bytes are encrypted end to end (the same TLS sync as on the Wi-Fi), so the relay never sees plant data,
 photos or passwords. It stores nothing except pipe bytes waiting up to 30 s for the other side.
 
-What it can't do: check that a device belongs to the plant (it doesn't have the log). Someone who knows the plant's
-root ID can see which device IDs are online. They still get nothing: the devices refuse a sync with any device that
-isn't certified in the plant's log.
+Who gets in: only devices that hold the plant's relay room key (decision 0050). Every certified device gets it with
+its first sync, and the manager replaces it by saving the relay address again, and automatically when removing a
+device. The relay sees only the room key's public key. Devices from before 0050 can't use it until they are updated
+(sync on the same network works as before); after the update, the manager saves the relay address once.
 
 ## Deploy (once, on your own Cloudflare account)
 

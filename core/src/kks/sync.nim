@@ -3,7 +3,7 @@
 ## remote peer ID (the §2 hash of the certificate's key).
 
 import std/[base64, sets, strutils, tables]
-import json, util, proto, node
+import json, util, proto, node, relaykey
 
 const
   MaxFrame* = 64 * 1024 * 1024
@@ -113,7 +113,9 @@ proc offer(s: Session): JNode =
     return
   let outs = s.n.entriesFor(s.theirVv)
   s.stats.sent = outs.len
-  newObj(@[("t", newStr("entries")), ("entries", newArr(outs))])
+  result = newObj(@[("t", newStr("entries")), ("entries", newArr(outs))])
+  let rk = s.n.memberKeyOut   # the relay room key, to a device this one serves (decision 0050)
+  if rk != nil: result["relay_member"] = rk
 
 proc wantMsg(s: Session): JNode =
   var a = newArr()
@@ -160,6 +162,7 @@ proc takeHello(s: Session, m: JNode) =
 proc takeEntries(s: Session, m: JNode) =
   let es = if m.get("entries") != nil and m["entries"].kind == jArr: m["entries"].elems else: @[]
   s.stats.received = s.n.ingest(es, s.wall)
+  discard s.n.takeMemberKey(m.get("relay_member"))   # kept only if it is the log's current room key (0050)
   s.stats.theyDenied = m.get("denied") != nil and m["denied"].kind == jBool and m["denied"].b
   let r = m.get("revoked")
   if r != nil and s.n.acceptRevocation(r):
