@@ -17,6 +17,7 @@ submission run, so that they outlive the panel and, if feasible, the process?
 | WorkManager | "the recommended solution for persistent work": work stays scheduled through app restarts and reboots; unique work with `APPEND_OR_REPLACE` runs requests one after another in the order enqueued, and starts a new chain if the old one failed | [D] https://developer.android.com/develop/background-work/background-tasks/persistent · https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/manage-work |
 | Limits | a worker may run up to 10 minutes; expedited work on Android 11 and older runs as a foreground service and needs `getForegroundInfo` (a notification) | [D] https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work |
 | Foreground service | the alternative for long user-started work: a notification and, from Android 14, a declared service type and its permission | [D] https://developer.android.com/develop/background-work/services/fgs/service-types |
+| Keystore | AES-GCM keys generated in AndroidKeyStore are non-exportable; the app already wraps the store's storage key this way | [D] https://developer.android.com/privacy-and-security/keystore · [V] `core/Keys.kt` |
 | Already here | `androidx.work:work-runtime-ktx` 2.11.2 is a dependency (the background sync, `SyncWorker`) | [V] `android/app2/build.gradle.kts` |
 
 ## Choice
@@ -32,8 +33,11 @@ submission run, so that they outlive the panel and, if feasible, the process?
 - **Not expedited:** the work runs as soon as WorkManager starts it (at once while the app is in use). Expedited work
   would need a notification on Android 10 and 11 (minSdk 29) for little gain while the app is open.
 - **Status:** "N photos being prepared" under the header on every screen, and per tag in the panel.
-- **At rest:** a queued photo is raw RGBA in the app's private files, unencrypted (like the camera's `shot.jpg`), until
-  it is sent; the store's rows are sealed.
+- **At rest:** the queued files are plant data, so they are sealed like the store (whose storage key is wrapped by a
+  Keystore key): `Keys.seal` encrypts each file with a fresh AES-256-GCM key, bound to the job ID and file kind, and
+  wraps that key with a non-exportable AndroidKeyStore AES key (`kks-local-seal`). Only the 32-byte key goes through
+  the Keystore, not the photo. The worker opens them, and they are deleted once sent. A removed phone deletes the key.
+  The camera app's own `cache/camera/shot.jpg` stays in clear only until it is read (it is deleted then).
 - **Removal:** a phone removed from the plant cancels the chain and deletes the queued files with the rest.
 
 **When to revisit:** if photos sit in the queue for long on the Honor (MagicOS defers background work, see the

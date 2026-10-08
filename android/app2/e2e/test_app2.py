@@ -420,6 +420,20 @@ class Phone(unittest.TestCase):
             # the process stops with photos still queued; WorkManager brings the work back when the app starts again
             ui.sh('am', 'force-stop', PKG)
             time.sleep(2)
+            # queued photos are plant data: sealed at rest (Keys.seal, decision 0049), never the raw pixels or the code
+            def jhash(t):           # Java's String.hashCode: the debug photo's background is (hash & 0xff, 120, 180)
+                h = 0
+                for ch in t:
+                    h = (31 * h + ord(ch)) & 0xFFFFFFFF
+                return h
+            names = ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
+            self.assertTrue([n for n in names if n.endswith('.px')], f'no queued photo left to check: {names}')
+            for n in names:
+                raw = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/photo-queue/' + n], capture_output=True).stdout
+                self.assertTrue(raw.startswith(b'KSL1'), f'{n} is not sealed')
+                for k in codes:
+                    self.assertNotIn(k.encode(), raw, f'{n} holds a code in clear text')
+                    self.assertNotIn(bytes([jhash(k) & 0xff, 120, 180, 255]) * 8, raw, f'{n} holds raw pixels')
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
 
             def arrived():

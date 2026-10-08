@@ -19,11 +19,10 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import kks.explorer.Jxl
 import kks.explorer.core.Core
+import kks.explorer.core.Keys
 import kks.explorer.ui.Changes
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.DataInputStream
-import java.io.DataOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.UUID
@@ -32,7 +31,8 @@ import java.util.concurrent.Executors
 /**
  * The photo queue (decision 0049; the user, 2026-10-08: compression stopped when the panel closed, and photos for
  * several tags should be taken one after another and processed in order). Send hands the annotated picture over here:
- * its pixels and what goes with it are written to the app's files (`photo-queue/`), and one WorkManager job per photo
+ * its pixels and what goes with it are sealed (Keys.seal: a Keystore-wrapped key per file) into the app's files
+ * (`photo-queue/`), and one WorkManager job per photo
  * encodes it to JPEG XL and submits it through the core. The jobs form one unique chain (APPEND_OR_REPLACE), so they
  * run one at a time, in the order sent; WorkManager keeps them across the app closing, the process dying and a restart.
  * A job never fails the chain: a photo that can't be encoded or is refused is recorded in [failures] and dropped.
@@ -71,10 +71,15 @@ object PhotoQueue {
         }
     }
 
+    /** what a sealed file is bound to: its kind and job ID (a file can't stand in for another) */
+    private fun aad(kind: String, id: String) = "kks-photo-queue/$kind/$id".toByteArray()
+
+    private fun readJob(f: File, id: String) = JSONObject(Keys.open(f.readBytes(), aad("job", id)).toString(Charsets.UTF_8))
+
     /** the queued jobs, oldest first: (id, its JSON) */
     private fun jobs(ctx: Context): List<Pair<String, JSONObject>> =
         (dir(ctx).listFiles { f -> f.name.endsWith(".json") } ?: emptyArray())
-            .mapNotNull { f -> runCatching { f.name.removeSuffix(".json") to JSONObject(f.readText()) }.getOrNull() }
+            .mapNotNull { f -> runCatching { f.name.removeSuffix(".json").let { id -> id to readJob(f, id) } }.getOrNull() }
             .sortedBy { it.second.optLong("at") }
 
     /** synchronized: the counts are posted in the order the folder was read */
@@ -99,13 +104,15 @@ object PhotoQueue {
             try {
                 val px = File(dir(app), "$id.px")
                 val argb = if (bmp.config == Bitmap.Config.ARGB_8888) bmp else bmp.copy(Bitmap.Config.ARGB_8888, false)
-                val buf = ByteBuffer.allocate(argb.width * argb.height * 4)
-                argb.copyPixelsToBuffer(buf)        // memory order R, G, B, A (as Jxl.fromBitmap reads it back)
-                DataOutputStream(px.outputStream().buffered()).use { o -> o.writeInt(argb.width); o.writeInt(argb.height); o.write(buf.array()) }
+                // width, height, then the pixels in memory order R, G, B, A (as Jxl.fromBitmap reads them back); sealed
+                val buf = ByteBuffer.allocate(8 + argb.width * argb.height * 4)
+                buf.putInt(argb.width).putInt(argb.height)
+                argb.copyPixelsToBuffer(buf)
+                px.writeBytes(Keys.seal(buf.array(), aad("px", id)))
                 val job = JSONObject().put("kks", kks).put("caption", caption).put("note", note).put("floor", floor)
                     .put("at", System.currentTimeMillis())
                 // the JSON last, through a rename: a job file is never seen half written
-                val tmp = File(dir(app), "$id.json.tmp"); tmp.writeText(job.toString())
+                val tmp = File(dir(app), "$id.json.tmp"); tmp.writeBytes(Keys.seal(job.toString().toByteArray(), aad("job", id)))
                 if (!tmp.renameTo(File(dir(app), "$id.json"))) { tmp.delete(); throw java.io.IOException("could not write the job") }
                 enqueue(app, id)
                 refresh(app)
@@ -156,15 +163,15 @@ object PhotoQueue {
     internal fun run(ctx: Context, id: String) {
         val jf = File(dir(ctx), "$id.json"); val px = File(dir(ctx), "$id.px")
         if (!jf.exists()) { px.delete(); refresh(ctx); return }      // already done (a rerun)
-        val job = runCatching { JSONObject(jf.readText()) }.getOrNull()
+        val job = runCatching { readJob(jf, id) }.getOrNull()
         val kks = job?.optString("kks").orEmpty()
         try {
             if (job == null || !px.exists()) { fail(ctx, kks.ifEmpty { "photo" }, "The queued photo was lost"); return }
-            val bmp = DataInputStream(px.inputStream().buffered()).use { i ->
-                val w = i.readInt(); val h = i.readInt()
-                val bytes = ByteArray(w * h * 4); i.readFully(bytes)
-                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { it.copyPixelsFromBuffer(ByteBuffer.wrap(bytes)) }
-            }
+            val plain = Keys.open(px.readBytes(), aad("px", id))
+            val head = ByteBuffer.wrap(plain, 0, 8)
+            val w = head.getInt(); val h = head.getInt()
+            require(w > 0 && h > 0 && plain.size == 8 + w * h * 4) { "the queued photo is damaged" }
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { it.copyPixelsFromBuffer(ByteBuffer.wrap(plain, 8, w * h * 4)) }
             val jxl = try { Jxl.fromBitmap(bmp) } catch (e: Throwable) {
                 Log.w(TAG, "encode $kks", e); fail(ctx, kks, "Could not compress the photo"); return
             }
