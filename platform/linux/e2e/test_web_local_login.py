@@ -37,7 +37,7 @@ class LocalLogin(unittest.TestCase):
         cls.base = 'http://127.0.0.1:%d' % cls.port
         r = urllib.request.Request(cls.base + '/api/setup', method='POST', headers={'Content-Type': 'application/json'},
                                    data=json.dumps({'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                    'full_name': 'The Manager'}).encode())
+                                                    'full_name': 'The Manager', 'position': 'Plant manager'}).encode())
         with urllib.request.urlopen(r) as resp:
             assert '; Secure' in resp.headers['Set-Cookie']   # no Origin: not a page here, so Secure
 

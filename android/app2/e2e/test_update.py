@@ -59,7 +59,7 @@ class Update(unittest.TestCase):
             if 'server on' in line:
                 break
         assert Client(f'http://127.0.0.1:{self.port}').req('POST', '/api/setup', {
-            'token': setup, 'username': 'boss', 'password': 'a long password', 'full_name': 'The Manager'}).get('ok')
+            'token': setup, 'username': 'boss', 'password': 'a long password', 'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)
         r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
         assert 'Success' in r.stdout, r.stdout + r.stderr

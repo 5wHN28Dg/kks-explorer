@@ -111,6 +111,15 @@ suite "views":
     let f = tagView(c, "a:2")["description"]["confirm"]["payload"]
     check f["changes"]["custom"].len == 2 and f["base"]["custom"].len == 1
     check tagView(sample(), "a:2")["description"].kind == jNull
+  test "descriptions: capped at what a custom field holds; a malformed file is skipped with a warning":
+    let long = "x".repeat(2500)
+    let d = parseDescriptions(j("{\"11LAB70AA501\":{\"text\":\"" & long & "\"}}"))
+    check d["11LAB70AA501"]["text"].s.len == DescriptionMax
+    var warned: seq[string]
+    let bad = loadDescriptions("{\"11LAB70AA501\": {\"text\": \"a\",}", proc (m: string) = warned.add m)
+    check bad.len == 0 and warned.len == 1 and "descriptions.json" in warned[0]
+    check loadDescriptions("", nil).len == 0
+    check loadDescriptions("""{"11LAB70AA501":"Stop valve"}""", nil)["11LAB70AA501"]["text"].s == "Stop valve"
   test "systems: block, system, subsystem, kind; each code once; search; undecoded codes apart":
     let v = systemsView(m)
     # a:2 11LAB70AA501, a:3 11HAD70CT101R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected

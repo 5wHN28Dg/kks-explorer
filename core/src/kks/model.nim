@@ -4,6 +4,7 @@
 
 import std/[strutils, tables, sets, algorithm]
 import json
+from std/unicode import runeLen, runeSubStr
 
 type
   SheetInfo* = object
@@ -82,6 +83,8 @@ proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
   for row in entries:
     result.mgetOrPut(row.s("kks"), @[]).add row
 
+const DescriptionMax* = 2000
+
 proc parseDescriptions*(j: JNode): Table[string, JNode] =
   ## descriptions.json (optional plant data, published by the manager): {"11LAB70AA501": {"text": "…", "basis": "…"}}.
   ## Drafted suggestions of what the equipment does; shown as "draft, unchecked" until a person confirms one, which
@@ -95,8 +98,18 @@ proc parseDescriptions*(j: JNode): Table[string, JNode] =
       text = v.s("text")
       basis = v.s("basis")
     text = text.strip
+    # at most what an equipment custom field holds (2000 characters), so a draft can always be confirmed as is
+    if text.runeLen > DescriptionMax: text = text.runeSubStr(0, DescriptionMax).strip
     if k.len > 0 and text.len > 0:
       result[k] = newObj(@[("text", newStr(text)), ("basis", newStr(basis.strip))])
+
+proc loadDescriptions*(data: string, warn: proc (msg: string)): Table[string, JNode] =
+  ## descriptions.json's bytes → parseDescriptions; a malformed file is skipped (told to `warn`) and never stops the
+  ## plant data from loading: it is optional and written by hand
+  if data.len == 0: return
+  try: result = parseDescriptions(parseStrict(data, 4096))
+  except JsonError as e:
+    if warn != nil: warn("descriptions.json skipped: not valid JSON (" & e.msg & ")")
 
 proc eff*(m: Model, t: Tag): (bool, Tag) =
   ## a person's review decision overrides the reader (index.html eff())
