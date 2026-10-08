@@ -388,7 +388,11 @@ class Gnome(unittest.TestCase):
         a = self.start_app('systems', KKS_SYNC_EVERY='2000')   # sync rounds every 2 s: the page follows the server
         self.join(a)
         atspi.click(atspi.find(a, 'button', name='Equipment by system'))
-        atspi.find(a, 'label', name='1 code on the drawings', timeout=10)
+        # the sample sheet's one code, plus the tags other tests on this server marked by hand (test_multi)
+        n = len({'11LAB70AA501'} | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
+                                    if t.get('kks')})
+        on = lambda k: f'{k} code{"" if k == 1 else "s"} on the drawings'
+        atspi.find(a, 'label', name=on(n), timeout=10)
         atspi.find(a, 'list item', name='LAB · Feed water piping system', timeout=10)
         # collapsed at the system level: the code's row is not there yet. (Opening a row by hand is Enter/Space or a
         # click; its header row has no AT-SPI action, and keys can't be typed into the headless session.)
@@ -399,7 +403,7 @@ class Gnome(unittest.TestCase):
                                                       'kks': code, 'isa': '', 'note': ''}})
             self.assertEqual(r.get('status'), 'approved', r)
         add('11PAB10AP001', [600, 700, 720, 760])
-        atspi.find(a, 'label', name='2 codes on the drawings', timeout=20)
+        atspi.find(a, 'label', name=on(n + 1), timeout=20)
         row = atspi.find(a, 'list item', contains='PAB', timeout=10)
         # but never under the focus: with the focus on a row of the tree, the next sync only marks it stale; it is
         # rebuilt when the focus leaves the tree (here: to the search field)
@@ -410,9 +414,9 @@ class Gnome(unittest.TestCase):
         if focused:
             add('11PAB10AP002', [600, 800, 720, 860])
             time.sleep(4)
-            self.assertTrue(atspi.find_all(a, 'label', contains='2 codes on the drawings'), 'rebuilt under the focus')
+            self.assertTrue(atspi.find_all(a, 'label', contains=on(n + 1)), 'rebuilt under the focus')
             atspi.find(a, 'entry', name='Search equipment by system').get_component_iface().grab_focus()
-            atspi.find(a, 'label', name='3 codes on the drawings', timeout=10)
+            atspi.find(a, 'label', name=on(n + 2), timeout=10)
         else:
             print('note: AT-SPI could not move the focus; the focus case was not driven', file=sys.stderr)
         # a search opens every level of what it finds
