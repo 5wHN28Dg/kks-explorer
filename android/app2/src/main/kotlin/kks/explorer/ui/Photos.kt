@@ -180,7 +180,7 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState) 
 }
 
 /** decoded, turned upright (EXIF), and at most 1600 px on the longer side (the size the other clients send) */
-private fun orientedBitmap(raw: ByteArray): Bitmap? {
+internal fun orientedBitmap(raw: ByteArray): Bitmap? {
     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
     var sample = 1
@@ -216,7 +216,7 @@ private val COLORS = listOf(0xFFE53935.toInt(), 0xFFFDD835.toInt(), 0xFF1E88E5.t
  *  Undo sat at the end of a row wider than the screen. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () -> Unit, onRetake: () -> Unit,
+internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () -> Unit, onRetake: () -> Unit,
                      onDone: (Bitmap, String, String) -> Unit) {
     val marks = remember { mutableStateListOf<Mark>() }
     var kind by remember { mutableStateOf("arrow") }
