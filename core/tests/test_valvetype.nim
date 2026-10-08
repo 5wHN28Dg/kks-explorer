@@ -86,3 +86,19 @@ suite "valve type: confirmed and corrected through the proposal flow":
     check submit(j("""{"kind":"equipment","payload":{"kks":"11LAB70AA502","changes":{"custom":[{"k":"Valve type","v":"butterfly valve"}]}}}""")) == 200
     refresh()
     check tagView(m, "a:2")["valve_type"]["text"].s == "butterfly valve"
+
+suite "valve type: the proposal's edge cases":
+  test "an empty Valve type entry is replaced, not doubled; a full custom list offers no confirm":
+    let m = plant()
+    m.state = j("""{"equipment":{"11LAB70AA501":{"custom":[{"k":"Size","v":"DN50"},{"k":"Valve type","v":""}]}}}""")
+    m.merge()
+    let v = tagView(m, "a:1")["valve_type"]
+    check v["status"].s == "drawing"
+    let c = v["confirm"]["payload"]["changes"]["custom"]
+    check c.len == 2 and c[0]["k"].s == "Size" and c[1]["k"].s == ValveTypeKey and c[1]["v"].s == "gate valve, motor-operated"
+    var full = newArr()
+    for i in 0 ..< 100: full.elems.add newObj(@[("k", newStr("f" & $i)), ("v", newStr("x"))])
+    m.state = newObj(@[("equipment", newObj(@[("11LAB70AA501", newObj(@[("custom", full)]))]))])
+    m.merge()
+    let w = tagView(m, "a:1")["valve_type"]
+    check w["status"].s == "drawing" and w["confirm"].isNull

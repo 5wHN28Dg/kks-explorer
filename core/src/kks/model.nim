@@ -269,11 +269,13 @@ proc search*(m: Model, q: string, limit = 60): seq[Tag] =
 const ValveTypeKey* = "Valve type"
   ## the equipment custom field ({k, v}) a confirmed or corrected valve type is kept in
 
+const CustomMax = 100   ## custom fields per equipment (PROTOCOL-v2: `custom` is a list of at most 100)
+
 proc customValue(e: JNode, key: string): string =
   let c = e.get("custom")
   if c != nil and c.kind == jArr:
     for x in c.elems:
-      if x.kind == jObj and x.s("k") == key: return x.s("v")
+      if x.kind == jObj and x.s("k") == key and x.s("v").len > 0: return x.s("v")
 
 proc drawnValveType*(t: Tag): string =
   ## the importer's reading of the tag's valve symbol in words ("gate valve, motor-operated, drawn closed"); "" = none
@@ -300,13 +302,23 @@ proc valveTypeOf*(m: Model, t: Tag): JNode =
   let cur = eq.get("custom")
   if cur != nil and cur.kind == jArr:
     for x in cur.elems: base.elems.add x
-  var changed = newArr(base.elems)
-  changed.elems.add newObj(@[("k", newStr(ValveTypeKey)), ("v", newStr(drawn))])
-  let payload = newObj(@[("kks", newStr(k)), ("changes", newObj(@[("custom", changed)])),
-                         ("base", newObj(@[("custom", base)]))])
+  # an empty "Valve type" entry already there is replaced, never doubled; a full list (100 fields) can't take one more
+  var changed = newArr()
+  var placed = false
+  for x in base.elems:
+    if not placed and x.kind == jObj and x.s("k") == ValveTypeKey:
+      changed.elems.add newObj(@[("k", newStr(ValveTypeKey)), ("v", newStr(drawn))])
+      placed = true
+    elif not (x.kind == jObj and x.s("k") == ValveTypeKey):
+      changed.elems.add x
+  if not placed: changed.elems.add newObj(@[("k", newStr(ValveTypeKey)), ("v", newStr(drawn))])
   var conf = t.symbol.get("conf")
   if conf == nil or not conf.isNum: conf = newNull()
-  newObj(@[("status", newStr("drawing")), ("text", newStr(drawn)), ("conf", conf),
-           ("label", newStr("from the drawing, unchecked")),
-           ("line", newStr("Valve type: " & drawn & " (from the drawing, unchecked)")),
-           ("confirm", newObj(@[("kind", newStr("equipment")), ("payload", payload)]))])
+  result = newObj(@[("status", newStr("drawing")), ("text", newStr(drawn)), ("conf", conf),
+                    ("label", newStr("from the drawing, unchecked")),
+                    ("line", newStr("Valve type: " & drawn & " (from the drawing, unchecked)")),
+                    ("confirm", newNull())])
+  if changed.elems.len <= CustomMax:
+    let payload = newObj(@[("kks", newStr(k)), ("changes", newObj(@[("custom", changed)])),
+                           ("base", newObj(@[("custom", base)]))])
+    result["confirm"] = newObj(@[("kind", newStr("equipment")), ("payload", payload)])
