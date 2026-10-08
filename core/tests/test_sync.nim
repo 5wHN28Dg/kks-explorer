@@ -180,6 +180,13 @@ suite "sync state machine":
     check mgrPhone.evidence.len == 1
     discard sync(server, mgrPhone)
     check server.evidence.len == 1
+    # the forked device is cut before the fork (§4), and stays cut after a restart (issue #35)
+    let forkedAt = a1.chainsLen
+    check mgrPhone.run.cuts.getOrDefault(a1.device, -1) == int64(forkedAt - 1)
+    check server.run.cuts.getOrDefault(a1.device, -1) == int64(forkedAt - 1)
+    let restarted = newNode(P, server.store, server.key)
+    check restarted.run.cuts.getOrDefault(a1.device, -1) == int64(forkedAt - 1)
+    check stateBytes(restarted.run.state) == stateBytes(server.run.state)
 
   test "the relay room key travels to certified devices only, and must be the log's (decision 0050)":
     let mk = P.p256Generate()

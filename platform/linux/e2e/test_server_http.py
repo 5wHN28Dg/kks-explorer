@@ -57,7 +57,7 @@ class Base(unittest.TestCase):
         t0 = time.time()
         while time.time() - t0 < 10:
             line = cls.proc.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m:
                 cls.setup = m[1]
             if 'server on' in line:
@@ -231,7 +231,58 @@ class Cli(Base):
         self.assertIn('already the manager', self.cli('reset-manager', '--user', 'sara')[1])
 
 
+class SecretFiles(Base):
+    cli = Cli.cli
+
+    def test_secret_files(self):
+        """the setup link is never printed by serve (#69); backups and root key exports are 0600 (#28, #29), the
+        root key's passphrase generated (80 bits)"""
+        link = os.path.join(self.dir, 'setup-link.txt')
+        self.assertEqual(os.stat(link).st_mode & 0o777, 0o600)
+        self.assertIn('#setup=' + self.setup, open(link).read())
+        self.manager()
+        self.assertFalse(os.path.exists(link))              # used: gone
+        old = os.umask(0o022)
+        try:
+            bundle, root, pp = (os.path.join(self.dir, n) for n in ('b.kksbundle', 'r.kksroot', 'r.passphrase'))
+            self.assertEqual(self.cli('backup', '--out', bundle)[0], 0)
+            code, out = self.cli('export-root-key', '--out', root, '--passphrase-out', pp)
+            self.assertEqual(code, 0, out)
+            code2, out2 = self.cli('export-root-key', '--out', root + '2')
+        finally:
+            os.umask(old)
+        for f in (bundle, root, pp, root + '2'):
+            self.assertEqual(os.stat(f).st_mode & 0o777, 0o600, f)
+        phrase = open(pp).read().strip()
+        self.assertRegex(phrase, r'^[0-9a-hjkmnp-tv-z]{4}(-[0-9a-hjkmnp-tv-z]{4}){3}$')
+        self.assertNotIn(phrase, out)
+        self.assertEqual(code2, 0, out2)
+        self.assertRegex(out2, r'\n  [0-9a-z]{4}(-[0-9a-z]{4}){3}\n')   # printed when no file is given
+        sys.path.insert(0, REPO)
+        from ref import crypto2
+        key = json.loads(crypto2.passphrase_open(phrase, json.loads(open(root).read())['sealed']))
+        self.assertIn('scalar', key)
+        r = subprocess.run([BIN, 'export-root-key', '--out', root, '--config', os.path.join(self.dir, 'config.json')],
+                           capture_output=True, text=True, env=dict(os.environ, KKS_ROOT_PASSPHRASE='weak but 12+'))
+        self.assertNotEqual(r.returncode, 0)                 # a chosen passphrase is refused
+
+
 class Server(Base):
+    def test_page_policy(self):
+        """#8: the pages, their scripts and workers come with a Content-Security-Policy: scripts from this site only
+        (no inline script or handler), no plugins, no <base>, not framed"""
+        c = Client(self.base)
+        for path in ('/', '/index.html', '/admin.html', '/learning.html', '/course.html', '/index.js', '/admin.js',
+                     '/learning.js', '/common.js', '/tiles.js', '/systems.js', '/sw.js', '/kks-wasm-worker.js', '/vendor/kks/kks-dec.js'):
+            st, _, hdr = c.req('GET', path)
+            self.assertEqual(st, 200, path)
+            csp = {d.split()[0]: d.split()[1:] for d in (x.strip() for x in hdr['Content-Security-Policy'].split(';')) if d}
+            self.assertEqual(csp['script-src'], ["'self'", "'wasm-unsafe-eval'"], path)
+            self.assertEqual(csp['object-src'], ["'none'"], path)
+            self.assertEqual(csp['base-uri'], ["'none'"], path)
+            self.assertEqual(csp['frame-ancestors'], ["'none'"], path)
+            self.assertEqual(csp['default-src'], ["'self'"], path)
+
     def test_flow(self):
         anon = Client(self.base)
         st, cfg, _ = anon.req('GET', '/api/config')
