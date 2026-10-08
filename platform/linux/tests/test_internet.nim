@@ -37,6 +37,8 @@ suite "internet sync through the relay":
   discard a.append("genesis", P.genesisBody(rootKey, "Test plant", a.device, me, "boss", "The Manager"), nowMs())
   a.adopt(keyString(rootKey.pub))
   discard a.append("device_cert", deviceCertBody(P.peerId(kB), me, "phone"), nowMs())
+  let kC = P.p256Generate()
+  discard a.append("device_cert", deviceCertBody(P.peerId(kC), me, "phone on mobile data"), nowMs())
   discard a.append("setting", newObj(@[("key", newStr("relay")), ("value", newStr(url))]), nowMs())
   # the plant's relay room key (decision 0050), as /api/settings/relay makes it on the manager's device
   let mk = P.p256Generate()
@@ -180,8 +182,14 @@ suite "internet sync through the relay":
     w3.close()
 
   test "a rotated room key reaches B with a sync, and both move to the new room (0050)":
+    # C syncs on the LAN once (gets the first key), then is reachable only through the relay
+    var c = newNode(P, newMemStore(), kC)
+    c.adopt(a.root)
+    let lstC = listen(a, newIdentity(kA), 0, "127.0.0.1")
+    discard waitFor c.syncWith(newIdentity(kC), "127.0.0.1", lstC.port, a.device)
+    check c.memberKey[0]
     let mk2 = P.p256Generate()
-    a.keepMemberKey(mk2)
+    a.keepMemberKey(mk2, nowMs())
     discard a.append("setting", newObj(@[("key", newStr("relay_member")), ("value", newStr(keyString(mk2.pub)))]), nowMs())
     discard waitFor ia.syncPeer(b.device)
     check b.memberKey[0] and keyString(b.memberKey[1].pub) == keyString(mk2.pub)
@@ -189,6 +197,23 @@ suite "internet sync through the relay":
     check waitUntil(proc (): bool = ia.room == room2 and ib.room == room2 and ia.state == "online" and
                                     ib.state == "online" and a.device in ib.online and b.device in ia.online, 30_000)
     check (waitFor ib.syncPeer(a.device)).theyDenied == false
+    # C still has only the old key: A (like the server) stays in the previous room for the grace period, so C can
+    # sync there once, learn the new key and move
+    check a.prevMemberKey(nowMs())[0] and not a.prevMemberKey(nowMs() + GraceMs + 1)[0]
+    let iaPrev = newInternet(a, newIdentity(kA))
+    iaPrev.keyOf = proc (): (bool, PrivateKey) = a.prevMemberKey(nowMs())
+    iaPrev.stunServers = @[]
+    iaPrev.start()
+    let ic = newInternet(c, newIdentity(kC), relayOf = proc (): string = url)
+    ic.stunServers = @[]
+    ic.start()
+    let room1 = relayRoom(P, keyString(mk.pub))
+    check waitUntil(proc (): bool = ic.state == "online" and ic.room == room1 and a.device in ic.online, 20_000)
+    discard waitFor ic.syncPeer(a.device)
+    check c.memberKey[0] and keyString(c.memberKey[1].pub) == keyString(mk2.pub)
+    check waitUntil(proc (): bool = ic.room == room2 and ic.state == "online" and a.device in ic.online, 30_000)
+    ic.stop()
+    iaPrev.stop()
 
   test "leaving is seen":
     ib.stop()

@@ -30,6 +30,7 @@ type
     noDirectUntil*: Table[string, float]   ## devices the direct path failed with: the pipe until then (epoch s)
     testStall*: bool                  ## tests: the direct path punches through, then fails, like stalled paths in the field
     testNoPath*: bool                 ## tests: the punch hears nothing, like two NATs that can't be punched
+    keyOf*: proc (): (bool, PrivateKey)   ## the room key to be present with (default: the plant's current one, 0050)
     serving*: int                     ## syncs answered through the relay now (at most MaxServed, issue #67)
 
 proc relaySetting*(n: Node): string =
@@ -41,6 +42,7 @@ proc newInternet*(n: Node, id: Identity, hooks = Hooks(), relayOf: proc (): stri
   result = Internet(n: n, id: id, hooks: hooks, state: "off", direct: true, stunServers: @Stun)
   let nn = n
   result.relayOf = if relayOf != nil: relayOf else: (proc (): string = relaySetting(nn))
+  result.keyOf = proc (): (bool, PrivateKey) = nn.memberKey
 
 proc newId(): string =
   var b: array[16, byte]
@@ -178,7 +180,7 @@ proc presence(i: Internet) {.async.} =
         i.changed()
       await sleepAsync(10_000)
       continue
-    let (hasKey, member) = i.n.memberKey
+    let (hasKey, member) = i.keyOf()
     if not hasKey:   # decision 0050: the relay admits only holders of the plant's room key
       let st = "waiting for the plant's relay key (it comes with the next sync with another device)"
       if i.state != st:
@@ -201,7 +203,7 @@ proc presence(i: Internet) {.async.} =
         while i.running and not w.closed:
           await sleepAsync(5_000)
           waited += 5_000
-          let (has, cur) = i.n.memberKey
+          let (has, cur) = i.keyOf()
           if not has or relayRoom(i.n.p, keyString(cur.pub)) != room:   # the room key was rotated: move (0050)
             w.close()
             break

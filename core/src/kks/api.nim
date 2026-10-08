@@ -829,7 +829,7 @@ proc newRoomKey(a: Api, me: Actor, now: int64) =
   ## a new relay room key (decision 0050): kept here, its public key the setting `relay_member`; the other devices get
   ## it at their next sync with one that holds it, and the room moves with it
   let k = a.n.p.p256Generate()
-  a.n.keepMemberKey(k)
+  a.n.keepMemberKey(k, now)
   discard a.write(me, "setting", O(("key", S("relay_member")), ("value", S(keyString(k.pub)))), now)
   if a.relayChanged != nil: a.relayChanged()
 

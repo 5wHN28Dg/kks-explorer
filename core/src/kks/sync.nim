@@ -162,7 +162,7 @@ proc takeHello(s: Session, m: JNode) =
 proc takeEntries(s: Session, m: JNode) =
   let es = if m.get("entries") != nil and m["entries"].kind == jArr: m["entries"].elems else: @[]
   s.stats.received = s.n.ingest(es, s.wall)
-  discard s.n.takeMemberKey(m.get("relay_member"))   # kept only if it is the log's current room key (0050)
+  discard s.n.takeMemberKey(m.get("relay_member"), s.wall)   # kept only if it is the log's current room key (0050)
   s.stats.theyDenied = m.get("denied") != nil and m["denied"].kind == jBool and m["denied"].b
   let r = m.get("revoked")
   if r != nil and s.n.acceptRevocation(r):

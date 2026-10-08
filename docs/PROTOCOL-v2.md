@@ -534,6 +534,9 @@ This section only provides a byte stream; §15 (TLS and exchange) runs over it u
 - A manager's device makes a new one after each `revoke` it writes (removing a device, or deactivating a person). A
   removed device is denied every sync, so it never learns the new key.
 - A device without the current room key stays off the relay. LAN sync doesn't need it.
+- A device that replaces its room key keeps the previous one for 7 days. An always-on node (the server) stays in the
+  previous room for that time too, so a device that reaches the plant only through the relay can still sync once
+  there and learn the new key.
 
 **Room:**
 - One per room key: room = the first 32 hex characters of SHA-256(`"kks-relay-room-v3\n"` + the room key's peer ID).

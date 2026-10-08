@@ -41,6 +41,10 @@ without reading the log?
   - An admin's removal can't write settings, so it doesn't rotate. The removed device can then still enter the room
     until the next rotation, though it still gets nothing from any sync. The manager rotates by saving the relay
     again.
+- **Grace period:** a device keeps the key it held before a rotation for 7 days. The server stays in that previous
+  room meanwhile, besides the new one. A device that reaches the plant only through the relay (a phone on mobile
+  data) can then still sync once with the server, learn the new key and move. The other devices leave the old room at
+  once.
 - **Old devices:** without the room key, the relay refuses them. LAN sync is unaffected. After updating, the manager
   saves the relay once; until then no device has a room key and nobody is online through the relay.
 
