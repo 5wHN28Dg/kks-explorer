@@ -181,6 +181,14 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
   setAccessibleLabel(v.widget, "Drawing " & name)
   gtk_widget_queue_draw(v.widget)
 
+proc dropSharperStale(v: Viewer, want: int, shown: W) =
+  ## the other mode's levels sharper than the zoom wants aren't shown again: they go now, not when this mode's level of
+  ## that size arrives (a level 0 is up to 123 MB; zoomed out it might never be asked). `shown` (on screen) stays.
+  for k in 0 ..< min(want, v.stale.len):
+    if v.stale[k] != nil and v.stale[k] != shown:
+      g_object_unref(v.stale[k])
+      v.stale[k] = nil
+
 proc pollDecodes*(v: Viewer) =
   ## called from a GLib timer: take finished overview levels
   while true:
@@ -307,6 +315,7 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
           tex = v.stale[k]
           break
   if tex != nil: best = 0
+  v.dropSharperStale(want, tex)
   graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
   if best >= 0:
     gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)

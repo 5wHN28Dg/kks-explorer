@@ -360,6 +360,9 @@ class SheetView(ctx: Context) : View(ctx) {
         askLevel(want)
         // this mode's level, else the level shown before a dark-drawings switch (not a blurrier one of this mode)
         val best = levels[want] ?: stale.getOrNull(want) ?: levels.firstOrNull { it != null } ?: stale.firstOrNull { it != null }
+        // the other mode's levels sharper than this zoom wants aren't shown again: they go now, not when this mode's
+        // level of that size arrives (a level 0 is up to 123 MB of bitmaps; zoomed out it might never be asked)
+        for (j in 0 until minOf(want, stale.size)) if (stale[j] !== best) stale[j] = null
         if (best != null) {
             val f = dst.width() / best.w
             for (p in best.pieces) c.drawBitmap(p.bmp, null, RectF(dst.left + p.x * f, dst.top + p.y * f,

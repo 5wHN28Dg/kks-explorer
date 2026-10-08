@@ -186,10 +186,11 @@ function openSheet(id,then){
   cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
   const img=$('#sheetimg'); let first=true;
   img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
+  const s=cur, g=dark.gen;
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the sheet overview) can't run script
-  if(cur.levels){ const k=startLevel(), s=cur, g=dark.gen; img.dataset.level=k;
-    if(dark.on) levelSrc(k).then(u=>{ if(cur===s&&dark.gen===g) img.src=u }); else img.src=levelUrl(k) }
-  else { delete img.dataset.level; img.src=cur.file }
+  const show=u=>{ if(cur===s&&dark.gen===g) img.src=u };   // only if neither the sheet nor dark drawings changed meanwhile
+  if(cur.levels){ const k=startLevel(); img.dataset.level=k; if(dark.on) levelSrc(k).then(show); else show(levelUrl(k)) }
+  else { delete img.dataset.level; show(cur.file) }
   loadVector();
   img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
   renderNotes();
@@ -218,7 +219,7 @@ function upgradeLevel(){
 // thread. Dark levels are kept per sheet (blob: URLs, freed when another sheet opens).
 function levelSrc(k){
   if(dark.on) sharp.worker??=startTiles();
-  if(!dark.on||!sharp.worker){ const url=levelUrl(k); return K.jxl.native().then(n=>n?url:K.jxl.url(url)) }
+  if(!dark.on||!sharp.worker||sharp.worker.failed){ const url=levelUrl(k); return K.jxl.native().then(n=>n?url:K.jxl.url(url)) }
   // dark: at most ~4 megapixels (the vector tiles draw the detail when zoomed in): a level 0 of 6400 × 4800 would cost
   // ~120 MB of decoder memory in the worker, a copy and a 92 MB BMP here, where light mode shows the file itself
   while(k<cur.levels-1&&cur.w*cur.h/4**k>DARK_MAX_PX) k++;
@@ -281,6 +282,10 @@ function startTiles(){
         if(m.blob){ dark.lastMs=m.ms; p.res(m.blob) } else p.rej(new Error(m.why)) }
       else if(m.t==='error') console.warn('drawing',m.sheet,m.why);
     };
+    // a worker that failed to load (or died) never answers: the overview levels it was asked for fall back to light
+    // (levelSrc), and no more are asked of it, rather than the sheet staying blank
+    w.onerror=e=>{ console.warn('tile worker',e.message||e); w.failed=true;
+      for(const p of dark.wait.values()) p.rej(new Error('the tile worker stopped')); dark.wait.clear() };
     return w;
   }catch(e){ console.warn('no tile worker: the overview only',e); return null }
 }

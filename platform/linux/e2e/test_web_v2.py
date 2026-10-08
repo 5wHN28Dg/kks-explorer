@@ -264,6 +264,14 @@ class WebV2(unittest.TestCase):
               w.postMessage = m => { if (m.t === 'level') { asked = m.url; const x = dark.wait.get(m.id); dark.wait.delete(m.id); x.rej(new Error('test')); return } pm.call(w, m) };
               cur = {...cur, id: 'big', w: 6400, h: 4800, levels: 5}; levelSrc(0).catch(() => {}); w.postMessage = pm; cur = save; return asked }""")
             self.assertIn('big.o2.jxl', asked or '', name)
+            # dark, and the tile worker stops without answering (failed to load, or died): the pending level falls back
+            # to light and the sheet opens (before the fix it waited for the answer forever, the sheet blank)
+            page.evaluate("""() => { const w = sharp.worker, pm = w.postMessage.bind(w);
+              w.postMessage = m => { if (m.t !== 'level') pm(m) };
+              dark.levels.clear(); dark.sheet = null; window.__opened = false; openSheet(cur.id, () => { window.__opened = true });
+              setTimeout(() => w.dispatchEvent(new ErrorEvent('error', {message: 'test'})), 200) }""")
+            page.wait_for_function("() => window.__opened === true", timeout=30000)
+            self.assertTrue(page.evaluate("() => sharp.worker.failed === true && dark.wait.size === 0"), name)
             browser.close()
             self.assertEqual([e for e in errors if 'test: no dark level' not in e and 'test' != e], [], name)
 
