@@ -270,8 +270,8 @@ class WebV2(unittest.TestCase):
               w.postMessage = m => { if (m.t !== 'level') pm(m) };
               dark.levels.clear(); dark.sheet = null; window.__opened = false; openSheet(cur.id, () => { window.__opened = true });
               setTimeout(() => w.dispatchEvent(new ErrorEvent('error', {message: 'test'})), 200) }""")
+            page.wait_for_function("() => sharp.worker.failed === true && dark.wait.size === 0", timeout=30000)
             page.wait_for_function("() => window.__opened === true", timeout=30000)
-            self.assertTrue(page.evaluate("() => sharp.worker.failed === true && dark.wait.size === 0"), name)
             browser.close()
             self.assertEqual([e for e in errors if 'test: no dark level' not in e and 'test' != e], [], name)
 
