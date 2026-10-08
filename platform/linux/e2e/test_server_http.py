@@ -57,7 +57,7 @@ class Base(unittest.TestCase):
         t0 = time.time()
         while time.time() - t0 < 10:
             line = cls.proc.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('until then it is in ', 1)[1].strip()).read() if 'until then it is in ' in line else line)   # the link is in a 0600 file (#69)
             if m:
                 cls.setup = m[1]
             if 'server on' in line:
@@ -229,6 +229,42 @@ class Cli(Base):
         roles = {u['username']: u['role'] for u in sara.req('GET', '/api/users')[1]['users']}
         self.assertEqual((roles['sara'], roles['boss']), ('manager', 'admin'))
         self.assertIn('already the manager', self.cli('reset-manager', '--user', 'sara')[1])
+
+
+class SecretFiles(Base):
+    cli = Cli.cli
+
+    def test_secret_files(self):
+        """the setup link is never printed by serve (#69); backups and root key exports are 0600 (#28, #29), the
+        root key's passphrase generated (80 bits)"""
+        link = os.path.join(self.dir, 'setup-link.txt')
+        self.assertEqual(os.stat(link).st_mode & 0o777, 0o600)
+        self.assertIn('#setup=' + self.setup, open(link).read())
+        self.manager()
+        self.assertFalse(os.path.exists(link))              # used: gone
+        old = os.umask(0o022)
+        try:
+            bundle, root, pp = (os.path.join(self.dir, n) for n in ('b.kksbundle', 'r.kksroot', 'r.passphrase'))
+            self.assertEqual(self.cli('backup', '--out', bundle)[0], 0)
+            code, out = self.cli('export-root-key', '--out', root, '--passphrase-out', pp)
+            self.assertEqual(code, 0, out)
+            code2, out2 = self.cli('export-root-key', '--out', root + '2')
+        finally:
+            os.umask(old)
+        for f in (bundle, root, pp, root + '2'):
+            self.assertEqual(os.stat(f).st_mode & 0o777, 0o600, f)
+        phrase = open(pp).read().strip()
+        self.assertRegex(phrase, r'^[0-9a-hjkmnp-tv-z]{4}(-[0-9a-hjkmnp-tv-z]{4}){3}$')
+        self.assertNotIn(phrase, out)
+        self.assertEqual(code2, 0, out2)
+        self.assertRegex(out2, r'\n  [0-9a-z]{4}(-[0-9a-z]{4}){3}\n')   # printed when no file is given
+        sys.path.insert(0, REPO)
+        from ref import crypto2
+        key = json.loads(crypto2.passphrase_open(phrase, json.loads(open(root).read())['sealed']))
+        self.assertIn('scalar', key)
+        r = subprocess.run([BIN, 'export-root-key', '--out', root, '--config', os.path.join(self.dir, 'config.json')],
+                           capture_output=True, text=True, env=dict(os.environ, KKS_ROOT_PASSPHRASE='weak but 12+'))
+        self.assertNotEqual(r.returncode, 0)                 # a chosen passphrase is refused
 
 
 class Server(Base):

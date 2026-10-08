@@ -269,6 +269,10 @@ proc openServer*(cfg: Config, p: Provider, storageKey: seq[byte]): Server =
   result.api.syncPort = cfg.syncPort
   result.id = newIdentity(key)
 
+proc setupLinkPath*(cfg: Config): string =
+  ## where `serve` keeps the one-time setup link while there is no manager (0600; issue #69)
+  absolutePath(cfg.storePath).parentDir / "setup-link.txt"
+
 proc setupLink*(s: Server): string =
   ## A one-time link to create the manager, while there is none.
   if s.managerUser() != nil: return ""
@@ -924,6 +928,8 @@ proc handle(s: Server, req: Request) {.async.} =
         herr(403, "This setup link is invalid or already used.")
       let usr = s.createPlant(name, fn, pos, d["password"].s)
       s.consumeToken(tok)
+      try: removeFile(setupLinkPath(s.cfg))   # used: the file's link is dead (#69)
+      except OSError: discard
       let raw = s.newSession(usr["id"].i)
       await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
