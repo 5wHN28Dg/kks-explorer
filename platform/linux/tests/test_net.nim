@@ -38,6 +38,19 @@ suite "sync over real TCP":
     expect TlsError:
       discard waitFor other.syncWith(newIdentity(k), "127.0.0.1", lst.port, P.peerId(P.p256Generate()), adoptRoot = server.root)
 
+  test "an enroll is answered with the TCP peer's address (issue #39)":
+    var seen = ""
+    let el = listen(server, newIdentity(kServer), 0, "127.0.0.1",
+                    Hooks(enroll: proc (r: string, m: JNode): JNode = newObj(@[("t", newStr("enroll_ack")), ("state", newStr("hooks"))])))
+    el.enrollFrom = proc (r: string, address: string, m: JNode): JNode =
+      seen = address
+      newObj(@[("t", newStr("enroll_ack")), ("state", newStr("refused"))])
+    let k = P.p256Generate()
+    var who = newNode(P, newMemStore(), k)
+    let ans = waitFor who.ask(newIdentity(k), "127.0.0.1", el.port, server.device,
+                              newObj(@[("t", newStr("enroll")), ("username", newStr("x")), ("password", newStr("y"))]))
+    check ans["state"].s == "refused" and seen == "127.0.0.1"
+
   test "a stranger completes TLS but receives nothing":
     let k = P.p256Generate()
     var other = newNode(P, newMemStore(), k)
