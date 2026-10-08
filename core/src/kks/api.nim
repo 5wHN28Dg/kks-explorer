@@ -214,6 +214,9 @@ proc tagPayload*(a: Api, p: JNode, keepId = ""): JNode =
     ("kind", S(if isa.len > 0: "instrument" else: "equipment")),
     ("orient", S(if bb[3] - bb[1] > bb[2] - bb[0]: "v" else: "h")), ("note", S(textOf(p.get("note"), 500))))
 
+proc floorOk(v: string): bool = v.len == 0 or v == "10" or (v.len == 1 and v[0] in Digits)
+const FloorRule = "Floor: a whole number from 0 to 10 (the height goes in Elevation)"
+
 proc normalize*(a: Api, kind: string, p: JNode): JNode =
   ## Validate a client payload -> the payload to keep (photos: the image goes into the blob store).
   if kind notin Kinds or p == nil or p.kind != jObj: bad("bad submission kind or payload")
@@ -224,8 +227,7 @@ proc normalize*(a: Api, kind: string, p: JNode): JNode =
     let base = fields(if p.get("base") != nil: p["base"] else: newObj())
     if changes.len == 0: bad("no changes")
     let fl = changes.get("floor")
-    if fl != nil and fl.s.len > 0 and not (fl.s == "10" or (fl.s.len == 1 and fl.s[0] in Digits)):
-      bad("Floor: a whole number from 0 to 10 (the height goes in Elevation)")
+    if fl != nil and not floorOk(fl.s): bad(FloorRule)
     var bs = newObj()
     for (f, _) in changes.fields: bs[f] = (if base.has(f): base[f] else: defaultOf(f))
     O(("kks", S(k)), ("changes", changes), ("base", bs))
@@ -634,6 +636,17 @@ proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote:
   elif conflicts.len > 0: O(("id", I(sid)), ("status", S("conflict")), ("conflicts", conflictsOut(conflicts)))
   else: O(("id", I(sid)), ("status", S("pending")))
 
+proc hasFloor*(a: Api, me: Actor, kks: string): bool =
+  ## the equipment has a floor, or this person has proposed one that is still open
+  let cur = a.n.run.equipment.getOrDefault(kks)
+  if cur != nil and cur.get("floor") != nil and cur["floor"].isStr and cur["floor"].s.strip.len > 0: return true
+  for r in a.n.store.subs():
+    if not (r["person"].isStr and r["person"].s == me.person) or r["kind"].s != "equipment": continue
+    let (_, body) = a.kindBody(r)
+    let fl = body["changes"].get("floor")
+    if body["kks"].s == kks and fl != nil and fl.isStr and fl.s.strip.len > 0 and a.subStatus(r).status in Open:
+      return true
+
 proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64): JNode =
   if noteIn != nil and not noteIn.isNull and (noteIn.kind != jStr or noteIn.s.runeLen > 500): bad("note: up to 500 characters")
   let requestNote = if noteIn != nil and noteIn.isStr: noteIn.s.strip else: ""
@@ -645,8 +658,25 @@ proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, 
       if old["client_id"].isStr and old["client_id"].s == cid.s:
         let s = a.subStatus(old)
         return O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
+  var floorRes: JNode = nil
+  if kind == "photo" and payload != nil and payload.kind == jObj:
+    # a photo needs the equipment's floor (the user's rule): already set, proposed by this person and still open, or
+    # sent with the photo as "floor" (then written first, as an equipment change of its own)
+    let k = kksOf(payload.get("kks"))
+    let fl = textOf(payload.get("floor"), 8)
+    if not floorOk(fl): bad(FloorRule)
+    if fl.len == 0 and not a.hasFloor(me, k):
+      fail(400, "Add the floor of " & k & " first (Location), or send it with the photo: a photo needs its floor.",
+           O(("need", S("floor"))))
+    let cur = a.n.run.equipment.getOrDefault(k)
+    let live = if cur != nil and cur.get("floor") != nil and cur["floor"].isStr: cur["floor"].s else: ""
+    if fl.len > 0 and fl != live:
+      let fcid = if cid.isStr: S("f-" & cid.s[0 ..< min(cid.s.len, 62)]) else: newNull()
+      floorRes = a.submitBody(me, "equipment", O(("kks", S(k)), ("changes", O(("floor", S(fl)))), ("base", O(("floor", S(live))))),
+                              fcid, "", now)
   let p = a.normalize(kind, payload)
-  a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
+  result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
+  if floorRes != nil: result["floor"] = floorRes
 
 proc rebase(a: Api, kind: string, b: JNode): JNode =
   case kind
