@@ -51,7 +51,7 @@ main{position:relative;flex:1;min-height:0;overflow:hidden}
 /* tags coloured by their photos (the same colours on every client): both green, the equipment only amber, the tag plate
    only blue, none red */
 body.cover #layer .hs:not(.pendmark){outline:2px solid var(--pc);background:color-mix(in srgb,var(--pc) 28%,transparent)}
-.hs.p-both{--pc:#2ea043} .hs.p-equipment{--pc:#e69600} .hs.p-plate{--pc:#1e78e6} .hs.p-none{--pc:#dc2828}
+.p-both{--pc:#2ea043} .p-equipment{--pc:#e69600} .p-plate{--pc:#1e78e6} .p-none{--pc:#dc2828}
 #coverlegend{display:none;position:absolute;left:8px;bottom:8px;z-index:5;background:var(--panel,#1c2730);color:inherit;padding:4px 8px;border-radius:6px;font-size:12px}
 body.cover #coverlegend{display:block}
 #coverlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px}
@@ -106,6 +106,15 @@ dt{color:var(--muted)} dd{margin:0}
 .chapter{margin:14px 0 4px;color:var(--accent);font-size:13px;font-weight:600}
 .step{padding:8px 0;border-bottom:1px solid var(--chrome3)}
 .step .n{font-family:var(--mono);color:var(--accent);margin-right:6px}
+#sysBody details{margin-left:12px} #sysBody>details{margin-left:0}
+#sysBody summary{padding:5px 2px;cursor:pointer;border-radius:4px} #sysBody summary:hover{background:var(--chrome3)}
+#sysBody summary .c{color:var(--muted)}
+#sysBody .lvl-blk>summary{color:var(--accent);font-weight:600} #sysBody .lvl-sys>summary{font-weight:600}
+.sysrow{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;padding:6px 4px 6px 16px;border:0;border-bottom:1px solid var(--chrome3);background:none;color:inherit;font:inherit;cursor:pointer}
+.sysrow:hover,.sysrow:focus-visible{background:var(--chrome3)}
+.sysrow .mono{flex:none} .sysrow .d{flex:1;min-width:0;color:var(--muted);font-size:12.5px}
+.sysdot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--pc);align-self:center}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .revitem{padding:8px 0;border-bottom:1px solid var(--chrome3);cursor:pointer}
 @media (max-width:720px){
   .brand small{display:none}
@@ -126,6 +135,7 @@ dt{color:var(--muted)} dd{margin:0}
 <header>
   <div class="brand">Walkdown <small id="plantName"></small></div>
   <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search equipment by KKS code or description" aria-autocomplete="list" aria-expanded="false" aria-controls="results"><div id="results" role="listbox" aria-label="Search results"></div></div>
+  <button class="btn" id="sysBtn" title="Every KKS code on the drawings, by block and system" aria-controls="sysDrawer" aria-expanded="false">Systems</button>
   <select id="sheetSel" title="Drawing"></select>
   <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
   <button class="btn" id="procBtn">Procedures</button>
@@ -144,6 +154,10 @@ dt{color:var(--muted)} dd{margin:0}
   <aside class="drawer" id="procDrawer"><div class="head"><h2>Operation manual procedures</h2><button class="x" data-close="procDrawer">×</button></div>
     <div style="padding:8px 10px 0"><input id="procQ" placeholder="Filter procedures…" style="width:100%;padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)"></div>
     <div class="body" id="procBody"></div></aside>
+  <aside class="drawer" id="sysDrawer" aria-labelledby="sysTitle"><div class="head"><h2 id="sysTitle">Equipment by system</h2><button class="x" data-close="sysDrawer" aria-label="Close equipment by system">×</button></div>
+    <div style="padding:8px 10px 0"><input id="sysQ" type="search" aria-label="Filter equipment by system" aria-describedby="sysCount" placeholder="Filter: code, system, LAB70, valve, description…" autocomplete="off" spellcheck="false" style="width:100%;padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)">
+    <div class="sub" id="sysCount" aria-live="polite" style="margin-top:4px"></div></div>
+    <div class="body" id="sysBody"></div></aside>
   <aside class="drawer" id="revDrawer"><div class="head"><h2>Needs review</h2><button class="x" data-close="revDrawer">×</button></div>
     <div style="padding:8px 10px 0" class="sub">Tags the reader wasn't sure about. Check against the drawing, then confirm or mark “not a tag”. <label style="display:block;margin-top:6px"><input type="checkbox" id="hideRev"> Hide unreviewed tags on drawings</label></div>
     <div class="body" id="revBody"></div></aside>
@@ -153,6 +167,7 @@ dt{color:var(--muted)} dd{margin:0}
 </div>
 
 <script src="common.js"></script>
+<script src="systems.js"></script>
 <script src="index.js"></script>
 </body>
 </html>

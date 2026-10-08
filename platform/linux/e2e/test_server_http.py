@@ -237,7 +237,7 @@ class Server(Base):
         (no inline script or handler), no plugins, no <base>, not framed"""
         c = Client(self.base)
         for path in ('/', '/index.html', '/admin.html', '/learning.html', '/course.html', '/index.js', '/admin.js',
-                     '/learning.js', '/common.js', '/tiles.js', '/sw.js', '/kks-wasm-worker.js', '/vendor/kks/kks-dec.js'):
+                     '/learning.js', '/common.js', '/tiles.js', '/systems.js', '/sw.js', '/kks-wasm-worker.js', '/vendor/kks/kks-dec.js'):
             st, _, hdr = c.req('GET', path)
             self.assertEqual(st, 200, path)
             csp = {d.split()[0]: d.split()[1:] for d in (x.strip() for x in hdr['Content-Security-Policy'].split(';')) if d}

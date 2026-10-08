@@ -10,7 +10,7 @@ import dbstore, tls, net, argon2, mdns, internet, httpserver
 const
   Cookie = "kks_session"
   MinPassword = 10
-  Shell = {"/": "index.html", "/index.html": "index.html", "/admin.html": "admin.html", "/common.js": "common.js", "/tiles.js": "tiles.js",
+  Shell = {"/": "index.html", "/index.html": "index.html", "/admin.html": "admin.html", "/common.js": "common.js", "/tiles.js": "tiles.js", "/systems.js": "systems.js",
            "/course-bridge.js": "course-bridge.js", "/learning.html": "learning.html",
            "/course.html": "course.html", "/course.js": "course.js", "/course-figure.js": "course-figure.js",
            "/index.js": "index.js", "/admin.js": "admin.js", "/learning.js": "learning.js",

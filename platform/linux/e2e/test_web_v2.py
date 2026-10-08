@@ -119,7 +119,7 @@ class WebV2(unittest.TestCase):
             self.assertEqual(box.get_attribute('aria-expanded'), 'true')
             self.assertEqual(box.get_attribute('aria-activedescendant'), 'res-0')
             page.keyboard.press('Enter')
-            page.wait_for_function("document.activeElement && document.activeElement.getAttribute('role') === 'heading'", timeout=15000)
+            page.wait_for_function("() => document.activeElement && document.activeElement.getAttribute('role') === 'heading'", timeout=15000)
             self.assertIn('11LAB70AA501', page.evaluate("document.activeElement.textContent"))
             self.assertEqual(page.get_by_role('button', name='Close the panel').count(), 1)
             # a course's KKS link: /?kks=CODE opens that equipment

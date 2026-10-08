@@ -142,6 +142,9 @@ async function refreshState(){
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); if(K.isNetErr(e)) K.setOnline(false) }
   mergeTags();
   refreshFloors(); refreshReviewCount(); drawTags(); updateQueueBadge(); updatePending();
+  // the open systems list follows the sync too, but never redraws under the keyboard or a screen reader's focus
+  const SD=$('#sysDrawer');
+  if(SD.classList.contains('open')){ if(SD.contains(document.activeElement)) sysStale=true; else renderSystems() }
   // an open panel shows what changed elsewhere (an approval, a rejection, a new photo), unless you are editing in it
   const P=$('#panel');
   if(selId&&P.classList.contains('open')&&!P.contains(document.activeElement)&&!P.querySelector('.editing')){
@@ -296,11 +299,11 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 })();
 
 // a photo of the tag plate is a photo whose caption starts with "Tag plate" (PROTOCOL-v2 §9; core model.photoCover)
-function photoCover(k){ if(!k) return 'none'; let e=false,p=false; for(const x of STATE.photos||[]) if(x.kks===k){ if((x.caption||'').startsWith('Tag plate')) p=true; else e=true }
-  return e&&p?'both':e?'equipment':p?'plate':'none' }
+const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
 function drawTags(){
   const L=$('#layer'); L.replaceChildren();
+  const covers=KSys.photoCovers(STATE.photos), photoCover=k=>covers.get(k)||'none';   // one pass over the photos
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   for(const t of tagsOf(cur.id)){
     const d=document.createElement('div'), b=t.bbox, k=full(t);
@@ -331,14 +334,7 @@ function goTo(tagId){
 }
 
 // ---------- KKS decoding ----------
-function decode(t){
-  const k=t.kks||''; const m=k.match(/^(\d{2})([A-Z]{3})(\d{2})([A-Z]{2})(\d{3})$/); if(!m) return null;
-  const [,blk,sys,fn,comp,num]=m;
-  let isa='';
-  if(t.isa){ let s=t.isa, first=s.startsWith('PD')?'PD':s[0], rest=s.slice(first.length);
-    isa=(KKS.isa_first[first]||first)+' — '+[...rest].map(c=>KKS.isa_next[c]||c).join(', '); }
-  return {blk,sys,fn,comp,num,isa};
-}
+const decode=t=>KSys.decode(t,KKS);
 function kindName(t){ const d=decode(t); if(!d) return t.kind; return KKS.components[d.comp]||('Component code '+d.comp) }
 
 // ---------- equipment panel ----------
@@ -583,6 +579,33 @@ function startLink(proc,step){ linkTarget={proc,step}; $('#bannerText').textCont
 $('#bannerDone').onclick=()=>{ if(mark.on){ markMode(false); closePanel(); return } const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
 async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags() }
 
+// ---------- equipment by system (core views.systemsView, ported in systems.js) ----------
+// While filtering, every level opens when few codes match; otherwise blocks open and systems closed.
+const SYS_OPEN_ALL=300;
+function renderSystems(){
+  sysStale=false;
+  const q=$('#sysQ').value.trim();
+  const v=KSys.systemsView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:LOC,photos:STATE.photos},q);
+  const all=q!==''&&v.total<=SYS_OPEN_ALL;
+  const sum=(label,n)=>h('summary',null,label,' ',h('span',{class:'c'},`(${n})`));
+  const row=it=>h('button',{type:'button',class:'sysrow','data-tag':it.tag,onclick:()=>{ focusPanel=true; if(innerWidth<=720){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') } goTo(it.tag) }},
+    h('span',{class:'sysdot p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
+    h('span',{class:'mono'},it.code),
+    h('span',{class:'d'},[it.desc,it.sheet_name].filter(Boolean).join(' · '),it.count>1?' · ×'+it.count:''),
+    h('span',{class:'vh'},' · '+COVER_WORDS[it.photos]));
+  const out=v.blocks.map(b=>{ const n=b.systems.reduce((a,s)=>a+s.count,0);
+    return h('details',{class:'lvl-blk',open:true},sum(b.blk+(b.blk_name?' · '+b.blk_name:''),n),
+      b.systems.map(s=>h('details',{class:'lvl-sys',open:all},sum(s.sys+(s.sys_name?' · '+s.sys_name:''),s.count),
+        s.subsystems.map(f=>h('details',{class:'lvl-sub',open:all},sum(f.code,f.count),
+          f.kinds.map(c=>h('details',{class:'lvl-kind',open:all},sum(c.comp+(c.comp_name?' · '+c.comp_name:''),c.count),c.items.map(row))))))))});
+  if(v.other.length) out.push(h('details',{class:'lvl-blk lvl-other',open:all},sum('Other: codes that are not a full KKS',v.other.length),v.other.map(row)));
+  put($('#sysBody'),out.length?out:h('div',{class:'sub'},q?'No code matches.':'No tags on the drawings yet.'));
+  $('#sysCount').textContent=`${v.total} code${v.total===1?'':'s'}`+(q?' match':'');
+}
+let sysT=0, sysStale=false;
+$('#sysQ').oninput=()=>{ clearTimeout(sysT); sysT=setTimeout(renderSystems,120) };
+$('#sysDrawer').addEventListener('focusout',e=>{ if(sysStale&&!$('#sysDrawer').contains(e.relatedTarget)){ sysStale=false; renderSystems() } });
+
 // ---------- review queue ----------
 function pending(){ return TAGS.filter(t=>t.status==='review'&&!STATE.reviews[t.id]) }
 function refreshReviewCount(){ $('#revCount').textContent=pending().length }
@@ -601,9 +624,11 @@ function renderNotes(){ const n=cur.notes||[]; put($('#notesBody'),n.length?[h('
                                                     :h('div',{class:'sub'},'No markups on this sheet.')) }
 
 // ---------- drawers ----------
-function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id)) }
-document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ $('#'+b.dataset.close).classList.remove('open'); if(b.dataset.close==='procDrawer'){activeProc=null;drawTags()} });
+function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id)); $('#sysBtn').setAttribute('aria-expanded',String(id==='sysDrawer')) }
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ $('#'+b.dataset.close).classList.remove('open'); if(b.dataset.close==='sysDrawer'){ $('#sysBtn').setAttribute('aria-expanded','false'); $('#sysBtn').focus() } if(b.dataset.close==='procDrawer'){activeProc=null;drawTags()} });
 $('#procBtn').onclick=()=>{ if($('#procDrawer').classList.contains('open')){$('#procDrawer').classList.remove('open');activeProc=null;drawTags()} else {openDrawer('procDrawer'); activeProc?renderProcDetail(activeProc):renderProcs()} };
+$('#sysBtn').onclick=()=>{ if($('#sysDrawer').classList.contains('open')){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') }
+  else { openDrawer('sysDrawer'); renderSystems(); $('#sysQ').focus() } };
 $('#revBtn').onclick=()=>{ if($('#revDrawer').classList.contains('open'))$('#revDrawer').classList.remove('open'); else {openDrawer('revDrawer'); renderReview()} };
 $('#notesBtn').onclick=()=>{ if($('#notesDrawer').classList.contains('open'))$('#notesDrawer').classList.remove('open'); else openDrawer('notesDrawer') };
 $('#sheetSel').onchange=e=>{ closePanel(); openSheet(e.target.value) };

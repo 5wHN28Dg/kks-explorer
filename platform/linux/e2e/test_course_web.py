@@ -165,7 +165,7 @@ class CourseWeb(unittest.TestCase):
                     break
             self.assertIn('Units', focused or '', name + ': Tab never reached the rail')
             page.keyboard.press('Enter')
-            page.wait_for_function("location.hash === '#units' && document.activeElement.tagName === 'H1'", timeout=5000)
+            page.wait_for_function("() => location.hash === '#units' && document.activeElement.tagName === 'H1'", timeout=5000)
             # Tab onward reaches the warm-up's first option; Enter answers it
             for _ in range(80):
                 page.keyboard.press('Tab')
