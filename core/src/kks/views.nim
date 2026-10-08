@@ -1,7 +1,7 @@
 ## What the screens show, as JSON (R2–R7), on top of model.nim: one place for the logic, every UI renders it (Android
 ## through JNI, later Windows). GNOME uses model.nim directly.
 
-import std/[strutils, tables, sets, math]
+import std/[strutils, tables, sets, math, algorithm]
 import json, model, pathstore
 
 proc S(s: string): JNode = newStr(s)
@@ -31,11 +31,12 @@ proc tagsView*(m: Model, sheet: string): JNode =
   ## the sheet's tags, boxes in points
   result = newArr()
   let s = m.scaleOf(sheet)
+  let covers = m.photoCovers
   for t in m.tagsOf(sheet):
     result.elems.add O(("id", S(t.id)), ("code", S(t.full)), ("isa", S(t.isa)),
                        ("status", S(if t.status == "confirmed": "verified" else: t.status)),
                        ("x0", F(t.bbox[0] / s)), ("y0", F(t.bbox[1] / s)), ("x1", F(t.bbox[2] / s)), ("y1", F(t.bbox[3] / s)),
-                       ("photos", S(m.photoCover(t.full))))
+                       ("photos", S(covers.getOrDefault(t.full, "none"))))
 
 proc searchView*(m: Model, q: string): JNode =
   result = newArr()
@@ -214,3 +215,86 @@ proc flat*(d: Drawing): string =
     o.add im.data
     pad4()
   o
+
+proc systemsView*(m: Model, q = ""): JNode =
+  ## Every code on the drawings once, grouped block → system → subsystem (the system number, e.g. LAB 70) →
+  ## component kind, each opening the first tag that shows it. `q` keeps the codes whose code, names, subsystem or
+  ## location-list description contain every word of it. Codes that don't decode are listed under "other".
+  type Item = object
+    code, tag, sheet, desc: string
+    count: int
+  var items = initOrderedTable[string, Item]()
+  var dec = initTable[string, Decoded]()
+  var other: seq[string]
+  for t in m.tags:
+    let k = t.full
+    if t.kks.len == 0: continue
+    if k in items:
+      inc items[k].count
+      continue
+    var desc = ""
+    for r in m.refLoc(t.bodyOf).rows:
+      if r.str("desc").len > 0:
+        desc = r.str("desc")
+        break
+    items[k] = Item(code: k, tag: t.id, sheet: t.sheet, desc: desc, count: 1)
+    let (ok, d) = m.decode(t)
+    if ok: dec[k] = d
+    else: other.add k
+  let words = q.toLowerAscii.splitWhitespace
+  proc keep(k: string): bool =
+    if words.len == 0: return true
+    var hay = k & " " & items[k].desc
+    if k in dec:
+      let d = dec[k]
+      hay.add " " & d.blk & " " & m.blockName(d.blk) & " " & d.sys & " " & m.systemName(d.sys) & " " & d.sys & d.fn &
+              " " & d.comp & " " & m.componentName(d.comp) & " " & d.isa
+    hay = hay.toLowerAscii
+    for w in words:
+      if w notin hay: return false
+    true
+  let covers = m.photoCovers
+  proc item(k: string): JNode =
+    let it = items[k]
+    let (ok, si) = m.sheetById(it.sheet)
+    O(("code", S(k)), ("tag", S(it.tag)), ("sheet", S(it.sheet)), ("sheet_name", S(if ok: si.name else: it.sheet)),
+      ("desc", S(it.desc)), ("count", I(it.count)), ("photos", S(covers.getOrDefault(k, "none"))))
+  # block → system → subsystem → kind → codes, every level sorted by its code
+  var tree = initTable[string, Table[string, Table[string, Table[string, seq[string]]]]]()
+  var total = 0
+  for k, d in dec:
+    if not keep(k): continue
+    inc total
+    tree.mgetOrPut(d.blk, initTable[string, Table[string, Table[string, seq[string]]]]()).mgetOrPut(d.sys,
+      initTable[string, Table[string, seq[string]]]()).mgetOrPut(d.fn, initTable[string, seq[string]]()).mgetOrPut(
+      d.comp, @[]).add k
+  proc sortedKeys[T](t: Table[string, T]): seq[string] =
+    for k in t.keys: result.add k
+    result.sort()
+  var blocks = newArr()
+  for b in tree.sortedKeys:
+    var systems = newArr()
+    for s in tree[b].sortedKeys:
+      var subs = newArr()
+      var sysCount = 0
+      for f in tree[b][s].sortedKeys:
+        var kinds = newArr()
+        var subCount = 0
+        for c in tree[b][s][f].sortedKeys:
+          var codes = tree[b][s][f][c]
+          codes.sort()
+          var arr = newArr()
+          for k in codes: arr.elems.add item(k)
+          subCount += codes.len
+          kinds.elems.add O(("comp", S(c)), ("comp_name", S(m.componentName(c))), ("count", I(codes.len)), ("items", arr))
+        sysCount += subCount
+        subs.elems.add O(("fn", S(f)), ("code", S(s & f)), ("count", I(subCount)), ("kinds", kinds))
+      systems.elems.add O(("sys", S(s)), ("sys_name", S(m.systemName(s))), ("count", I(sysCount)), ("subsystems", subs))
+    blocks.elems.add O(("blk", S(b)), ("blk_name", S(m.blockName(b))), ("systems", systems))
+  var rest = newArr()
+  other.sort()
+  for k in other:
+    if keep(k):
+      inc total
+      rest.elems.add item(k)
+  O(("blocks", blocks), ("other", rest), ("total", I(total)))

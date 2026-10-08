@@ -243,6 +243,20 @@ proc draftOf*(m: Model, t: Tag): JNode =
   result = m.descriptions.getOrDefault(t.full)
   if result == nil and t.suffix.len > 0: result = m.descriptions.getOrDefault(t.kks)
 
+proc photoCovers*(m: Model): Table[string, string] =
+  ## photoCover for every code that has photos, in one pass (a code missing here has "none"); views that colour many
+  ## codes use this: photoCover per code scans every photo each time
+  var equip, plate: HashSet[string]
+  let ph = if m.state != nil: m.state.get("photos") else: nil
+  if ph != nil:
+    for p in ph.elems:
+      let k = p.s("kks")
+      if k.len == 0: continue
+      if p.s("caption").isPlate: plate.incl k else: equip.incl k
+  for k in equip: result[k] = (if k in plate: "both" else: "equipment")
+  for k in plate:
+    if k notin equip: result[k] = "plate"
+
 proc procsOf*(m: Model, k: string): seq[string] =
   let links = if m.state != nil: m.state.get("links") else: nil
   if links != nil:

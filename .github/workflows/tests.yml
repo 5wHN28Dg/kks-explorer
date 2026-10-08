@@ -205,6 +205,9 @@ jobs:
       - name: The browser client on v2 plant data (test_web_v2)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_web_v2.py -v -k ${{ matrix.engine }}
+      - name: Equipment by system in index.html (test_web_systems)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_systems.py -v -k ${{ matrix.engine }}
       - name: Our libjxl and zxing-cpp WebAssembly build (test_web_wasm)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_wasm.py -v -k ${{ matrix.engine }}
@@ -213,6 +216,8 @@ jobs:
         run: .venv/bin/python platform/linux/e2e/test_course_web.py -v -k ${{ matrix.engine }} -k list_api
       - name: course-figure.js against the course vectors (tests/web)
         run: .venv/bin/python tests/web/test_course_figure.py -v -k ${{ matrix.engine }}
+      - name: systems.js against core views.systemsView's cases (tests/web)
+        run: .venv/bin/python tests/web/test_systems.py -v -k ${{ matrix.engine }}
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
