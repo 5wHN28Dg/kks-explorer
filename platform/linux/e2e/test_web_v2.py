@@ -176,6 +176,109 @@ class WebV2(unittest.TestCase):
             self.assertGreater(dark, 100, name + ': the sharp layer drew nothing dark')
             self.assertEqual(errors, [], name)
 
+    def run_dark(self, name):
+        """dark drawings: the toggle turns the sharp layer and the overview dark (lines light), is remembered across a
+        reload, and turning it off restores the light drawing"""
+        stats = """(sel) => { const e = document.querySelector(sel); let c = e;
+            if (e.tagName === 'IMG') { c = document.createElement('canvas'); c.width = e.naturalWidth; c.height = e.naturalHeight;
+              c.getContext('2d').drawImage(e, 0, 0) }
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, n = new Map(); let light = 0, dark = 0;
+            for (let i = 0; i < d.length; i += 4) { const k = d[i] + ',' + d[i + 1] + ',' + d[i + 2]; n.set(k, (n.get(k) || 0) + 1);
+              if (d[i] > 180 && d[i + 1] > 180 && d[i + 2] > 180) light++; if (d[i] < 60 && d[i + 1] < 60 && d[i + 2] < 60) dark++ }
+            return {bg: [...n].sort((a, b) => b[1] - a[1])[0][0], light, dark, src: e.currentSrc || e.src || ''} }"""
+        sharp_on = "() => { const c = document.getElementById('sharp'); return c && c.style.display === 'block' }"
+        with sync_playwright() as p:
+            browser = getattr(p, name).launch()
+            ctx = browser.new_context(viewport={'width': 1200, 'height': 800})
+            r = ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
+                                 headers={'Origin': self.base})
+            self.assertTrue(r.ok, r.text())
+            page = ctx.new_page()
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(self.base + '/')
+            loaded = "() => { const i = document.getElementById('sheetimg'); return i && i.complete && i.naturalWidth > 0 }"
+            page.wait_for_function(loaded, timeout=30000)
+            button = page.get_by_role('button', name='Dark drawings')
+            self.assertEqual(button.get_attribute('aria-pressed'), 'false')
+            light_img = page.evaluate(stats, '#sheetimg')
+            self.assertEqual(light_img['bg'], '255,255,255', name)
+            # on: the overview becomes a transformed level (a blob: URL from the worker), the sharp layer redraws dark
+            button.click()
+            self.assertEqual(button.get_attribute('aria-pressed'), 'true')
+            page.wait_for_function("(was) => document.getElementById('sheetimg').src !== was", arg=light_img['src'], timeout=30000)
+            page.wait_for_function(loaded, timeout=30000)
+            img = page.evaluate(stats, '#sheetimg')
+            self.assertEqual(img['bg'], '18,18,18', name + ': the overview paper is not #121212')
+            self.assertGreater(img['light'], 50, name + ': no light lines on the dark overview')
+            page.evaluate("() => zoomAt(8)")
+            page.wait_for_function(sharp_on, timeout=30000)
+            page.wait_for_timeout(500)
+            on = page.evaluate(stats, '#sharp')
+            self.assertEqual(on['bg'], '18,18,18', name + ': the sharp layer\'s background is not #121212')
+            self.assertGreater(on['light'], 100, name + ': no light lines on the dark sharp layer')
+            ms = page.evaluate("() => dark.lastMs")
+            print(f'{name}: dark overview transform {ms:.1f} ms', flush=True)
+            # the dark tag colours: a coverage outline is the lightened red
+            page.click('#zcover')
+            self.assertEqual(page.evaluate("() => getComputedStyle(document.querySelector('#layer .hs.p-none')).outlineColor"),
+                             'rgb(232, 115, 115)')
+            page.click('#zcover')
+            page.screenshot(path=os.path.join(SHOTS, name + '-dark.png'))
+            # remembered: after a reload the drawing opens dark
+            page.reload()
+            page.wait_for_function("() => document.getElementById('sheetimg').src.startsWith('blob:')", timeout=30000)
+            page.wait_for_function(loaded, timeout=30000)
+            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-pressed'), 'true')
+            self.assertEqual(page.evaluate(stats, '#sheetimg')['bg'], '18,18,18', name + ': not dark after a reload')
+            # off: the light drawing again, at once
+            page.evaluate("() => zoomAt(8)")
+            page.wait_for_function(sharp_on, timeout=30000)
+            page.wait_for_timeout(500)
+            self.assertEqual(page.evaluate(stats, '#sharp')['bg'], '18,18,18', name)
+            page.get_by_role('button', name='Dark drawings').focus()   # by keyboard this time
+            page.keyboard.press('Space')
+            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-pressed'), 'false')
+            for _ in range(100):   # the light level (native, or K.jxl's cached decode) and a new frame
+                page.wait_for_timeout(100)
+                off, offimg = page.evaluate(stats, '#sharp'), page.evaluate(stats, '#sheetimg')
+                if off['bg'] == offimg['bg'] == '255,255,255': break
+            self.assertEqual(off['bg'], '255,255,255', name + ': the sharp layer stayed dark')
+            self.assertGreater(off['dark'], 100, name + ': no dark lines after turning it off')
+            self.assertEqual(offimg['bg'], '255,255,255', name + ': the overview stayed dark')
+            page.reload()
+            page.wait_for_function(loaded, timeout=30000)
+            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-pressed'), 'false')
+            # dark, but the worker can't make the overview dark: the sheet still opens, fits and draws its tags, with
+            # the light level (before the fix img.src was never set and the sheet stayed blank)
+            page.get_by_role('button', name='Dark drawings').click()
+            page.evaluate("""() => { const w = sharp.worker, pm = w.postMessage.bind(w);
+              w.postMessage = m => { if (m.t === 'level') { const x = dark.wait.get(m.id); dark.wait.delete(m.id); x.rej(new Error('test: no dark level')); return } pm(m) };
+              dark.levels.clear(); dark.sheet = null; window.__opened = false; openSheet(cur.id, () => { window.__opened = true }) }""")
+            # its callback (fit, tags, a /?kks= link) runs only once the overview loads
+            page.wait_for_function("() => window.__opened === true", timeout=30000)
+            page.wait_for_function(loaded, timeout=30000)
+            self.assertTrue(page.evaluate("() => dark.warned && dark.levels.size === 0"), name + ': no light fallback')
+            # a big sheet's dark overview is at most ~4 megapixels: 6400 × 4800 asks the worker for level 2, not 0
+            asked = page.evaluate("""() => { const save = cur; let asked = null; const w = sharp.worker, pm = w.postMessage;
+              w.postMessage = m => { if (m.t === 'level') { asked = m.url; const x = dark.wait.get(m.id); dark.wait.delete(m.id); x.rej(new Error('test')); return } pm.call(w, m) };
+              cur = {...cur, id: 'big', w: 6400, h: 4800, levels: 5}; levelSrc(0).catch(() => {}); w.postMessage = pm; cur = save; return asked }""")
+            self.assertIn('big.o2.jxl', asked or '', name)
+            # dark, and the tile worker stops without answering (failed to load, or died): the pending level falls back
+            # to light and the sheet opens (before the fix it waited for the answer forever, the sheet blank)
+            page.evaluate("""() => { const w = sharp.worker, pm = w.postMessage.bind(w);
+              w.postMessage = m => { if (m.t !== 'level') pm(m) };
+              dark.levels.clear(); dark.sheet = null; window.__opened = false; openSheet(cur.id, () => { window.__opened = true });
+              setTimeout(() => w.dispatchEvent(new ErrorEvent('error', {message: 'test'})), 200) }""")
+            page.wait_for_function("() => sharp.worker.failed === true && dark.wait.size === 0", timeout=30000)
+            page.wait_for_function("() => window.__opened === true", timeout=30000)
+            browser.close()
+            self.assertEqual([e for e in errors if 'test: no dark level' not in e and 'test' != e], [], name)
+
+    def test_dark_chromium(self): self.run_dark('chromium')
+    def test_dark_firefox(self): self.run_dark('firefox')
+    def test_dark_webkit(self): self.run_dark('webkit')
+
     def test_chromium(self): self.run_engine('chromium')
     def test_firefox(self): self.run_engine('firefox')
     def test_webkit(self): self.run_engine('webkit')

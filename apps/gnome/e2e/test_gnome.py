@@ -406,6 +406,73 @@ class Gnome(unittest.TestCase):
         atspi.click(atspi.find(a, 'button', name='Join'))
         atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
 
+    def drawing_shot(self, a, pid, shot):
+        """a screenshot of the window (KKS_SHOT_ON_SIGNAL) cropped to the drawing: (median grey, light pixels, dark
+        pixels) of the sheet's area"""
+        from PIL import Image
+        if os.path.exists(shot):
+            os.remove(shot)
+        time.sleep(3)                      # the overview, then the vector tiles
+        os.kill(pid, signal.SIGUSR1)
+        for _ in range(40):
+            time.sleep(0.25)
+            if os.path.exists(shot):
+                break
+        time.sleep(0.5)
+        view = atspi.find(a, 'image', name='Drawing Sample sheet')
+        e = view.get_component_iface().get_extents(Atspi.CoordType.WINDOW)
+        im = Image.open(shot).convert('RGB')
+        # the middle half of the view: the sheet (fitted), not the grey around it
+        box = (e.x + e.width // 4, e.y + e.height // 4, e.x + 3 * e.width // 4, e.y + 3 * e.height // 4)
+        px = list(im.crop(box).get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(im.crop(box).getdata())
+        greys = sorted(sum(p) // 3 for p in px)
+        light = sum(1 for p in px if min(p) > 170 and max(p) - min(p) < 30)
+        dark = sum(1 for p in px if max(p) < 90)
+        return greys[len(greys) // 2], light, dark, len(px)
+
+    @staticmethod
+    def pressed(node):
+        # GTK 4 reports a toggle button's state as PRESSED (aria-pressed), not CHECKED
+        st = node.get_state_set()
+        return st.contains(Atspi.StateType.PRESSED) or st.contains(Atspi.StateType.CHECKED)
+
+    def test_dark_drawings(self):
+        """Dark drawings: the header's toggle turns the sheet light-on-dark at once (dark paper, light lines), off
+        restores it, and the choice survives a restart of the app"""
+        os.makedirs(SHOTS, exist_ok=True)
+        shot = os.path.join(SHOTS, 'gnome-dark.png')
+        a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot)
+        pid = self.apps[-1].pid
+        self.join(a)
+        med, light, dark, n = self.drawing_shot(a, pid, shot)
+        self.assertGreater(med, 200, 'light mode: white paper')
+        self.assertGreater(dark, 0, 'light mode: dark lines')
+        toggle = atspi.find(a, 'toggle button', name='Dark drawings')
+        self.assertFalse(self.pressed(toggle))
+        atspi.click(toggle)
+        med, light, dark, n = self.drawing_shot(a, pid, shot)
+        shutil.copy(shot, os.path.join(SHOTS, 'gnome-dark-on.png'))
+        self.assertLess(med, 40, 'dark mode: dark paper')
+        self.assertGreater(light, 0, 'dark mode: light lines')
+        self.assertTrue(self.pressed(toggle))
+        atspi.click(atspi.find(a, 'toggle button', name='Dark drawings'))
+        med, light, dark, n = self.drawing_shot(a, pid, shot)
+        self.assertGreater(med, 200, 'off again: white paper')
+        atspi.click(atspi.find(a, 'toggle button', name='Dark drawings'))
+        time.sleep(1)
+        # a restart keeps it (this device's store)
+        p = self.apps.pop()
+        p.terminate()
+        p.wait(5)
+        a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot)
+        pid = self.apps[-1].pid
+        toggle = atspi.find(a, 'toggle button', name='Dark drawings', timeout=20)
+        self.assertTrue(self.pressed(toggle), 'the toggle is on after a restart')
+        med, light, dark, n = self.drawing_shot(a, pid, shot)
+        shutil.copy(shot, os.path.join(SHOTS, 'gnome-dark-restart.png'))
+        self.assertLess(med, 40, 'after a restart: still dark')
+        self.assertGreater(light, 0)
+
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a static and an
         animated figure exposed as images; a question answered (progress shown); a driven slider moves by itself"""

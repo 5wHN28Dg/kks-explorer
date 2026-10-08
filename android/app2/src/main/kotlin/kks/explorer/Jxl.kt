@@ -61,10 +61,25 @@ object Jxl {
         return out
     }
 
-    /** A JXL file → a Bitmap (the overview pyramid, photos), or null if it can't be decoded. */
-    fun bitmap(jxl: ByteArray): Bitmap? {
+    /** straight RGBA (as libjxl decodes it) to premultiplied, in place: an ARGB_8888 bitmap is premultiplied and
+     *  copyPixelsFromBuffer doesn't convert, so a transparent pixel whose colour isn't black (every pixel after dark
+     *  drawings' map) would add its colour over the sheet */
+    internal fun premultiply(px: ByteArray) {
+        var i = 0
+        while (i + 3 < px.size) {
+            val a = px[i + 3].toInt() and 255
+            if (a != 255) for (c in 0..2) px[i + c] = (((px[i + c].toInt() and 255) * a + 127) / 255).toByte()
+            i += 4
+        }
+    }
+
+    /** A JXL file → a Bitmap (the overview pyramid, photos), or null if it can't be decoded. `map` changes the RGBA
+     *  pixels in place first (dark drawings: images inside a sheet; never photos). */
+    fun bitmap(jxl: ByteArray, map: ((ByteArray) -> Unit)? = null): Bitmap? {
         val dims = IntArray(2)
         val px = decodeRgba(jxl, dims) ?: return null
+        map?.invoke(px)
+        premultiply(px)
         val bmp = Bitmap.createBitmap(dims[0], dims[1], Bitmap.Config.ARGB_8888)
         bmp.copyPixelsFromBuffer(ByteBuffer.wrap(px))        // memory order R, G, B, A
         return bmp
@@ -76,10 +91,16 @@ object Jxl {
     /** A JXL file → its pixels cut into bitmaps of at most `side` × `side` px, or null. The overview pyramid's level 0
      *  is up to 6400 × 4800 px (123 MB as one ARGB bitmap), and Android's canvas refuses to draw a bitmap over 100 MB
      *  ("Canvas: trying to draw too large bitmap": the crash on the Block 1 Main Steam sheet, 2026-10-05); GPUs also
-     *  have a largest texture size (4096 on some phones). Pieces stay under both. */
-    fun pieces(jxl: ByteArray, side: Int = 2048): Pair<List<Piece>, IntArray>? {
+     *  have a largest texture size (4096 on some phones). Pieces stay under both. `map` changes the RGBA pixels in
+     *  place first (dark drawings), on the caller's thread. `keep` is asked between the heavy steps (after the decode,
+     *  after `map`): false = the result is no longer wanted (a superseded request), stop and return null. */
+    fun pieces(jxl: ByteArray, side: Int = 2048, map: ((ByteArray) -> Unit)? = null, keep: () -> Boolean = { true }): Pair<List<Piece>, IntArray>? {
         val dims = IntArray(2)
         val px = decodeRgba(jxl, dims) ?: return null
+        if (!keep()) return null
+        map?.invoke(px)
+        premultiply(px)
+        if (!keep()) return null
         val (w, h) = dims[0] to dims[1]
         val out = ArrayList<Piece>()
         var y = 0
