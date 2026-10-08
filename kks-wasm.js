@@ -7,11 +7,12 @@ const simd = (() => { try {   // the smallest module using a v128 instruction (i
 let mod = null, dec = null;
 /** everything (encoding, QR codes): about 1.5 MB compressed */
 export function load() {
-  return mod ??= import(simd ? '/vendor/kks/kks-simd.js' : '/vendor/kks/kks.js').then(m => m.default());
+  // (a load that failed, offline, is not kept: the next call tries again)
+  return mod ??= import(simd ? '/vendor/kks/kks-simd.js' : '/vendor/kks/kks.js').then(m => m.default()).catch(e => { mod = null; throw e });
 }
 /** JPEG XL decoding only, for browsers that can't show it themselves (smaller; the full module serves too if loaded) */
 function loadDecoder() {
-  return mod ?? (dec ??= import(simd ? '/vendor/kks/kks-simd-dec.js' : '/vendor/kks/kks-dec.js').then(m => m.default()));
+  return mod ?? (dec ??= import(simd ? '/vendor/kks/kks-simd-dec.js' : '/vendor/kks/kks-dec.js').then(m => m.default()).catch(e => { dec = null; throw e }));
 }
 export const variant = simd ? 'simd' : 'scalar';
 

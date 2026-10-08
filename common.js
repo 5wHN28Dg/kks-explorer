@@ -162,7 +162,7 @@ K.start = async () => {
     const me = await K.api('/api/me');
     K.me = me; K.setOnline(true);
     await K.idb.set('me', {...me, lease_until: Date.now() + me.offline_days * 864e5});
-    await K.emit(); K.flushSoon(500);
+    await K.emit(); K.flushSoon(500); K.convertPhotos();   // (photos left converting by an earlier visit)
     K.watchChanges();
     return me;
   } catch (e) {
@@ -173,7 +173,7 @@ K.start = async () => {
         async v => { await K.api('/api/login', v); location.reload() }));
     }
     const c = await K.idb.get('me');
-    if (c && c.lease_until > Date.now()) { K.me = c; K.setOnline(false); await K.emit(); return c }
+    if (c && c.lease_until > Date.now()) { K.me = c; K.setOnline(false); await K.emit(); K.convertPhotos(); return c }
     if (K.reauth) {  // remote access sign-in expired and no usable offline copy: send them through the login
       K.box('Sign in again', 'Your remote-access sign-in has expired.', 'Continue', () => location.reload());
       return new Promise(() => {});
@@ -376,8 +376,8 @@ K.logout = async () => {
 };
 
 // ---------- submissions + outbox ----------
-K.submit = async (kind, payload, note) => {
-  const item = {client_id: K.uid(), kind, payload, ...(note ? {note} : {})};   // note: words for the approver
+K.submit = async (kind, payload, note, cid) => {
+  const item = {client_id: cid || K.uid(), kind, payload, ...(note ? {note} : {})};   // note: words for the approver
   try { const r = await K.api('/api/submit', item); K.setOnline(true); return r }
   catch (e) {
     if (!K.isNetErr(e)) throw e;
@@ -385,33 +385,109 @@ K.submit = async (kind, payload, note) => {
     return {status: 'queued'};
   }
 };
-let flushing = false, flushTimer = null;
+let flushing = false, flushAgain = false, flushTimer = null;
 K.flushSoon = (ms = 20000) => { clearTimeout(flushTimer); flushTimer = setTimeout(K.flush, ms) };
 K.flush = async () => {
-  if (flushing || !K.me) return; flushing = true;
-  const res = {approved: 0, pending: 0, conflict: 0, failed: 0};
+  if (!K.me) return;
+  if (flushing) { flushAgain = true; return }   // (a photo converted meanwhile: one more round once this one ends)
+  flushing = true;
+  const res = {approved: 0, pending: 0, conflict: 0, failed: 0}, photos = {approved: 0, pending: 0, conflict: 0};
   try {
     for (const it of (await K.idb.all()).filter(i => i.user === K.me.user.id).sort((a, b) => a.ts - b.ts)) {
+      // a photo not converted yet: it and everything after it wait for it (sent in order); only one that keeps failing
+      // to convert lets the others pass (it stays, and is tried again now and then)
+      if (it.raw) { if ((it.tries || 0) >= 3) continue; break }
       try {
         const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload, ...(it.note ? {note: it.note} : {})});
-        res[r.status] = (res[r.status] || 0) + 1; await K.idb.unqueue(it.client_id); K.setOnline(true);
+        (it.fresh ? photos : res)[r.status] = ((it.fresh ? photos : res)[r.status] || 0) + 1; await K.idb.unqueue(it.client_id); K.setOnline(true);
       } catch (e) {
         if (K.isNetErr(e)) { K.setOnline(false); break }
         if (e.status === 401) { location.reload(); return }
+        if (e.status >= 500 || e.status === 408 || e.status === 429) { K.flushSoon(); break }   // the server or a proxy, for now: later
         res.failed++; await K.idb.unqueue(it.client_id);  // rejected as invalid: retrying won't help
         console.warn('queued submission refused', it, e.message);
       }
     }
   } finally { flushing = false }
   await K.emit();
-  const sent = res.approved + res.pending + res.conflict;
-  if (sent || res.failed) K.toast?.(`Synced ${sent} offline change(s)` + (res.pending ? ` · ${res.pending} awaiting approval` : '') +
+  const sent = res.approved + res.pending + res.conflict, ph = photos.approved + photos.pending + photos.conflict;
+  const msg = [];
+  if (ph) msg.push(`${photos.approved ? 'Saved' : 'Sent'} ${ph} photo${ph === 1 ? '' : 's'}` + (photos.pending && photos.approved ? ` (${photos.pending} awaiting approval)` : photos.pending ? ' for approval' : ''));
+  if (sent || res.failed) msg.push(`Synced ${sent} offline change(s)` + (res.pending ? ` · ${res.pending} awaiting approval` : '') +
     (res.conflict ? ` · ${res.conflict} conflict(s) for an admin` : '') + (res.failed ? ` · ${res.failed} refused` : ''));
-  if (K.outbox.length) K.flushSoon();
-  if (sent) K.listeners.forEach(f => f('synced'));
+  if (msg.length) K.toast?.(msg.join(' · '));
+  if (K.outbox.some(i => !i.raw)) K.flushSoon();
+  if (sent || ph) K.listeners.forEach(f => f('synced'));
+  if (flushAgain) { flushAgain = false; return K.flush() }
+};
+
+// ---------- photos: converted one at a time in the background, sent in the order they were taken ----------
+// A photo goes into the outbox at once, as a PNG (`raw`, a data: URL), before it is converted: closing the panel, or the page,
+// loses nothing, and the next start carries on. One loop converts the photos oldest first (JPEG XL in the worker, or
+// the type the server asks for) and puts the result in place of the PNG; the outbox is then sent as usual, in order
+// (K.flush stops at a photo that is not converted yet). `fresh` marks a photo taken online, for the toast's words.
+K.queuePhoto = async (canvas, payload, note) => {
+  // (a data: URL, not a Blob: nothing to read back that could fail, and IndexedDB keeps strings everywhere)
+  const raw = canvas.width && canvas.height ? canvas.toDataURL('image/png') : '';
+  if (!raw.startsWith('data:image/png')) throw new Error('The photo could not be kept.');
+  const it = {client_id: K.uid(), kind: 'photo', payload, ...(note ? {note} : {}), user: K.me.user.id, ts: Date.now(),
+              raw, mp: canvas.width * canvas.height / 1e6, fresh: true};
+  await K.idb.queue(it); await K.emit();
+  K.convertPhotos();
+  return it.client_id;
+};
+K.converting = null;   // {n, of, kks} while the loop runs
+K.convertPhotos = async () => {
+  clearTimeout(K.retryPhotos);
+  if (K.converting || !K.me) return;
+  // one tab converts (two would do the same work twice); without Web Locks, each tab on its own
+  if (navigator.locks && !K.photoLock) return navigator.locks.request('kks-photo-convert', {ifAvailable: true}, async l => {
+    if (!l) { K.retryPhotos = setTimeout(K.convertPhotos, 30000); return }   // another tab has it
+    K.photoLock = true; try { await K.convertPhotos() } finally { K.photoLock = false }
+  });
+  // what the server takes (/api/config): not known yet (offline at the start, no saved copy) = wait for it, never guess
+  K.converting = {n: 0, of: 0, kks: ''};
+  if (!K.cfg?.photo_upload) { K.cfg = await K.api('/api/config').catch(() => K.cfg);
+    if (!K.cfg?.photo_upload) { K.converting = null; K.retryPhotos = setTimeout(K.convertPhotos, 30000); return } }
+  const up = K.cfg.photo_upload;
+  let bar = null;
+  try {
+    for (;;) {
+      const L = (await K.idb.all()).filter(i => i.user === K.me.user.id && i.raw).sort((a, b) => a.ts - b.ts);
+      if (!L.length) break;
+      const it = L.find(i => (i.tries || 0) < 3) || L[0];   // (one that keeps failing goes last)
+      K.converting = {n: K.converting.n + 1, of: K.converting.n + L.length, kks: it.payload.kks}; K.renderStatus();
+      const est = (up.ms_per_mp || (up.type === 'image/jxl' ? 2500 : 0)) * (it.mp || 2);
+      bar = K.progress(`Converting photo ${K.converting.n} of ${K.converting.of} (${it.payload.kks})…`, est, 'photoq');
+      let dataUrl = null, failed = null, timer;
+      try {
+        const img = await new Promise((ok, no) => { const i = K.h('img', {onload: () => ok(i), onerror: () => no(new Error('the saved photo could not be read')), src: it.raw}) });
+        const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
+        // a worker the browser stopped without a word (memory, on phones) never answers: give up on this round
+        const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error('the converter did not answer')), Math.max(120000, est * 20)) });
+        dataUrl = up.type === 'image/jxl' ? await Promise.race([K.jxlEncode(c, up.distance || 1.9, up.effort || 7), late]) : c.toDataURL(up.type, up.q);
+      } catch (e) { failed = e; console.warn('photo not converted', e); K.jxlWorker?.terminate(); K.jxlWorker = null }   // (a fresh one next time)
+      finally { clearTimeout(timer) }
+      bar.done(); bar = null;
+      if (failed) {
+        // offline before the converter was ever loaded, most likely. The photo is never dropped: it stays as taken and
+        // is tried again; after three failures while online it stops holding up the rest and is retried less often.
+        const tries = (it.tries || 0) + (K.online && navigator.onLine ? 1 : 0);
+        await K.idb.queue({...it, tries}); await K.emit();
+        if (tries === 3) K.toast?.(`A photo for ${it.payload.kks} could not be converted (${failed.message}). It stays on this device and is tried again.`);
+        K.retryPhotos = setTimeout(K.convertPhotos, tries >= 3 ? 300000 : 30000);
+        if (tries >= 3) K.flush();
+        break;
+      }
+      const {raw, mp, tries, ...rest} = it;
+      await K.idb.queue({...rest, payload: {...it.payload, dataUrl}});
+      await K.emit();
+      await K.flush();
+    }
+  } finally { bar?.done(); K.converting = null; K.renderStatus() }
 };
 K.setOnline = on => { if (K.online !== on) { K.online = on; K.renderStatus() } };
-addEventListener('online', () => K.flushSoon(500));
+addEventListener('online', () => { K.flushSoon(500); K.convertPhotos() });
 addEventListener('offline', () => K.setOnline(false));
 
 // Changes made elsewhere (another device's edits arriving by sync, an admin's decision) reach an open page by polling
@@ -442,24 +518,24 @@ K.ago = t => { if (!t) return 'never'; const s = Math.max(0, Date.now() / 1000 -
 
 K.renderStatus = () => {
   const el = document.getElementById('syncStatus'); if (!el) return;
-  const n = K.outbox.length;
+  const n = K.outbox.length, cv = K.converting?.of ? ` · converting photo ${K.converting.n} of ${K.converting.of}` : '';
   if (K.cfg?.mode === 'peer') {   // no server here: what matters is which devices this one can sync with
     const st = K.syncStatus; if (!st) { el.textContent = ''; return }
     const r = st.reachable || 0, net = st.internet ?? (navigator.onLine ? null : false);
     el.replaceChildren(K.h('span', {style: `color:${r ? 'var(--ok)' : 'var(--review)'}`}, '●'),
       ` ${r ? `${r} device${r === 1 ? '' : 's'} reachable` : 'No devices reachable'}` + ` · synced ${K.ago(st.last_sync)}`
-      + (net === true ? ' · Internet ✓' : net === false ? ' · No internet' : ''));
+      + (net === true ? ' · Internet ✓' : net === false ? ' · No internet' : '') + cv);
     el.title = `Devices of this plant found on this network or synced with in the last 3 minutes: ${r}. Your changes are kept on this device and go to the others when they are reachable.`
       + (net == null ? ' (Whether there is internet can\'t be told from here: the browser only knows it is on a network.)' : '');
     return;
   }
   if (K.reauth) {  // a top-level load of the page lets Cloudflare Access show its login, then comes back here
     const a = K.h('a', {style: 'color:var(--accent)'}, 'Sign in again'); a.href = K.safeUrl(location.pathname);
-    el.replaceChildren(K.h('span', {style: 'color:var(--review)'}, '●'), ' ', a, n ? ` · ${n} queued` : '');
+    el.replaceChildren(K.h('span', {style: 'color:var(--review)'}, '●'), ' ', a, n ? ` · ${n} queued` : '', cv);
     el.title = 'Your remote-access sign-in expired. Working from the copy on this device; changes are queued.';
     return;
   }
-  el.replaceChildren(K.h('span', {style: `color:${K.online ? 'var(--ok)' : 'var(--review)'}`}, '●'), ` ${K.online ? 'Online' : 'Offline'}${n ? ` · ${n} queued` : ''}`);
+  el.replaceChildren(K.h('span', {style: `color:${K.online ? 'var(--ok)' : 'var(--review)'}`}, '●'), ` ${K.online ? 'Online' : 'Offline'}${n ? ` · ${n} queued` : ''}${cv}`);
   el.title = K.online ? 'Connected to the server' : 'Working from the copy on this device; changes are queued';
 };
 
@@ -468,7 +544,7 @@ K.describe = (kind, p) => ({
   equipment: () => Object.entries(p.changes).map(([f, v]) => `${f} → ${f === 'custom' ? v.map(c => c.k + ': ' + c.v).join('; ') || '(none)' : v || '(empty)'}`).join(' · '),
   review: () => !p.data ? `tag ${p.tag_id}: clear the review decision` : p.data.status === 'rejected' ? `tag ${p.tag_id}: not a tag` : `tag ${p.tag_id}: confirm as ${p.data.kks}${p.data.suffix || ''}${p.data.isa ? ' (' + p.data.isa + ')' : ''}`,
   link: () => `${p.on === false ? 'unlink' : 'link'} ${p.kks} ${p.on === false ? 'from' : 'to'} procedure ${p.proc} step ${p.step}`,
-  photo: () => `new photo for ${p.kks}${p.caption ? ': ' + p.caption : ''}`,
+  photo: () => `new ${String(p.caption || '').startsWith('Tag plate') ? 'tag plate photo' : 'photo'} for ${p.kks}${p.caption ? ': ' + p.caption : ''}${p.floor ? ` (floor ${p.floor})` : ''}`,
   photo_delete: () => `delete photo ${p.photo_id.slice(0, 8)}`,
   tag_add: () => `mark a missed tag on ${p.sheet}: ${p.kks ? (p.isa ? p.isa + ' ' : '') + p.kks + (p.suffix || '') : '(code not given)'}`,
   tag_remove: () => `remove hand-added tag ${p.id.slice(0, 8)}`,
@@ -545,18 +621,22 @@ K.jxl.watch();
 // build in a worker, so the page stays responsive. canvas → a data: URL of the JXL codestream.
 K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => {
   const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-  K.jxlWorker ??= new Worker('/kks-wasm-worker.js', {type: 'module'});
-  const id = (K.jxlSeq = (K.jxlSeq || 0) + 1);
+  if (!K.jxlWorker) {   // a worker whose module could not load (offline, before it was ever fetched) answers nothing: drop it
+    const w = K.jxlWorker = new Worker('/kks-wasm-worker.js', {type: 'module'}); w.wait = new Map();
+    w.addEventListener('error', e => { e.preventDefault?.(); if (K.jxlWorker === w) K.jxlWorker = null; w.terminate();
+      for (const f of w.wait.values()) f(new Error('the photo converter could not be loaded')); w.wait.clear() });
+  }
+  const w = K.jxlWorker, id = (K.jxlSeq = (K.jxlSeq || 0) + 1);
   const on = e => {
     if (e.data.id !== id) return;
-    K.jxlWorker.removeEventListener('message', on);
+    w.removeEventListener('message', on); w.wait.delete(id);
     if (e.data.error) return rej(new Error(e.data.error));
     const b = e.data.jxl; let s = '';
     for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
     res('data:image/jxl;base64,' + btoa(s));
   };
-  K.jxlWorker.addEventListener('message', on);
-  K.jxlWorker.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
+  w.addEventListener('message', on); w.wait.set(id, e => { w.removeEventListener('message', on); rej(e) });
+  w.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
 });
 
 
@@ -757,8 +837,8 @@ K.annotate = (src, askNote) => new Promise(done => {
 // ---------- a progress bar for work the device does without reporting progress (JPEG XL encoding) ----------
 // The encoder gives no progress callback: the bar follows the time the last photos took per megapixel on this
 // device (estimate), stops at 95 % until the work is done, then fills.
-K.progress = (title, estimateMs) => {
-  const box = document.createElement('div');
+K.progress = (title, estimateMs, id) => {
+  const box = document.createElement('div'); if (id) box.id = id; box.setAttribute('role', 'status');
   box.style.cssText = 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:170;background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:12px 14px;min-width:260px;max-width:90vw;font:14px system-ui,sans-serif;box-shadow:0 6px 24px #0008';
   const h = K.h, bar = h('i', {style: 'display:block;height:100%;width:0;background:#ff7a1a;transition:width .3s'}), t = h('div', {class: 't', style: 'font-size:12.5px;opacity:.75'});
   box.append(h('div', null, title), h('div', {style: 'height:6px;border-radius:3px;background:#3a5061;margin:8px 0 4px;overflow:hidden'}, bar), t);
