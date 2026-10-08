@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -50,6 +51,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import kks.explorer.Jxl
 import kks.explorer.core.Core
+import kks.explorer.sync.PhotoQueue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -100,7 +102,7 @@ fun PhotoViewer(b: ImageBitmap, caption: String, onClose: () -> Unit) {
  *  submit), and the tag plate's photo */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState) {
+fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, floorNow: String = "") {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Bitmap?>(null) }
@@ -108,7 +110,12 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState) 
     var plate by remember { mutableStateOf(false) }           // this picture is of the equipment's tag plate
     var askPlate by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(-1f) }
+    // the floor comes first when the code has none (the user, 2026-10-08): asked before the camera opens, sent with the
+    // photo (the core writes it as its own change); a floor already queued with a photo of this code is used again
+    var floor by rememberSaveable(kks) { mutableStateOf("") }
+    var askFloor by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val sendFloor = if (floorNow.isNotBlank()) "" else floor.ifEmpty { PhotoQueue.queuedFloor[kks].orEmpty() }
+    fun withFloor(then: () -> Unit) { if (floorNow.isBlank() && sendFloor.isEmpty()) askFloor = then else then() }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
     val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
     fun load(uri: Uri) = scope.launch {
@@ -139,44 +146,58 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState) 
         for (p in photos.sortedBy { if (isPlate(it.str("caption"))) 0 else 1 }) Column {
             if (isPlate(p.str("caption"))) Text("Tag plate", style = MaterialTheme.typography.labelMedium)
             PhotoOf(p.str("file"), p.str("caption"))
+            photoCredit(p).let { if (it.isNotEmpty()) Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             TextButton(onClick = { delete = p.str("id") }) { Text("Delete") }
         }
+    }
+    askFloor?.let { then ->
+        var chosen by remember { mutableStateOf("") }
+        AlertDialog(onDismissRequest = { askFloor = null }, title = { Text("Which floor is it on?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("$kks has no floor yet. Every photo needs it first: it is sent with the photo.")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (f in 0..10) FilterChip(chosen == "$f", { chosen = "$f" }, label = { Text("$f") },
+                            modifier = Modifier.semantics { contentDescription = "Floor $f" + if (chosen == "$f") ", chosen" else "" })
+                    }
+                    Dim("A whole number from 0 to 10; the height in metres goes in Elevation.")
+                }
+            },
+            confirmButton = { TextButton(onClick = { floor = chosen; askFloor = null; then() }, enabled = chosen.isNotEmpty()) { Text("Continue") } },
+            dismissButton = { TextButton(onClick = { askFloor = null }) { Text("Cancel") } })
     }
     if (askPlate) AlertDialog(onDismissRequest = { askPlate = false }, title = { Text("And its tag plate?") },
         text = { Text("A photo of the metal plate with the KKS code helps the next person find this equipment.") },
         confirmButton = { TextButton(onClick = { askPlate = false; shoot(true) }) { Text("Take it") } },
         dismissButton = { TextButton(onClick = { askPlate = false }) { Text("Not now") } })
-    if (busy >= 0f) {
-        Text("Compressing…")
-        LinearProgressIndicator(progress = { busy }, modifier = Modifier.fillMaxWidth())
-    } else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { shoot(false) }) { Text("Take a photo") }
-        OutlinedButton(onClick = { shoot(true) }) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
-        OutlinedButton(onClick = { plate = false; fromCamera = false; gallery.launch("image/*") }) { Text("From the gallery") }
+    val queued = PhotoQueue.pendingByCode[kks] ?: 0
+    if (queued > 0) {
+        Text(if (queued == 1) "1 photo of this tag is being prepared" else "$queued photos of this tag are being prepared")
+        LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { withFloor { shoot(false) } }) { Text("Take a photo") }
+        OutlinedButton(onClick = { withFloor { shoot(true) } }) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
+        OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; gallery.launch("image/*") } }) { Text("From the gallery") }
     }
     picked?.let { bmp ->
         Annotate(bmp, plate, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
             onRetake = { picked = null; if (fromCamera) shoot(plate) else gallery.launch("image/*") }) { out, caption0, note ->
             picked = null
             val caption = if (plate) plateCaption(caption0) else caption0
-            val offerPlate = !plate && fromCamera && !hasPlate
-            scope.launch {
-                // libjxl has no progress callback: estimate from the measured time per megapixel, capped at 95 % until done
-                val mp = out.width.toLong() * out.height / 1e6
-                val expect = (Jxl.msPerMp * mp).toLong().coerceAtLeast(500)
-                val t0 = System.currentTimeMillis()
-                busy = 0f
-                val tick = launch { while (true) { busy = ((System.currentTimeMillis() - t0).toFloat() / expect).coerceAtMost(0.95f); delay(100) } }
-                val jxl = withContext(Dispatchers.Default) { runCatching { Jxl.fromBitmap(out) }.getOrNull() }
-                tick.cancel(); busy = -1f
-                if (jxl == null) { snack.showSnackbar("Could not compress the photo"); return@launch }
-                val (_, m) = submit("photo", JSONObject().put("kks", kks).put("caption", caption)
-                    .put("dataUrl", "data:image/jxl;base64," + Base64.encodeToString(jxl, Base64.NO_WRAP)), note)
-                if (offerPlate) askPlate = true
-                snack.showSnackbar(m)
-            }
+            // the queue encodes and sends it in the background, in order, whether or not this panel stays open
+            PhotoQueue.add(ctx, out, kks, caption, note, sendFloor)
+            if (!plate && fromCamera && !hasPlate) askPlate = true
+            scope.launch { snack.showSnackbar("Photo queued: it is compressed and sent in the background") }
         }
     }
+}
+
+/** who took a photo and when ("by Ali User, 2026-10-08 09:12"): sent (submitted), else when it took effect */
+fun photoCredit(p: JSONObject): String {
+    val who = p.str("by_name").ifEmpty { p.str("by") }
+    val at = whenText(p.optLong("submitted").takeIf { it > 0 } ?: p.optLong("created"))
+    return listOf(if (who.isNotEmpty()) "by $who" else "", at).filter { it.isNotEmpty() }.joinToString(", ")
 }
 
 /** decoded, turned upright (EXIF), and at most 1600 px on the longer side (the size the other clients send) */
@@ -378,4 +399,26 @@ private fun burn(src: Bitmap, marks: List<Mark>): Bitmap {
         }
     }
     return out
+}
+
+/** the photo queue on every screen: how many are being prepared, and what failed (kept until dismissed) */
+@Composable
+fun PhotoQueueBar() {
+    val ctx = LocalContext.current
+    val n = PhotoQueue.pending
+    if (n > 0) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        Spacer(Modifier.width(8.dp))
+        Text(if (n == 1) "1 photo being prepared" else "$n photos being prepared", style = MaterialTheme.typography.labelLarge)
+    }
+    if (PhotoQueue.failures.isNotEmpty()) Card(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp)) {
+            Text(if (PhotoQueue.failures.size == 1) "A photo was not sent" else "${PhotoQueue.failures.size} photos were not sent",
+                style = MaterialTheme.typography.titleSmall)
+            for (f in PhotoQueue.failures.takeLast(5)) Text(f, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { PhotoQueue.dismissFailures(ctx) }, Modifier.align(Alignment.End)) { Text("Dismiss") }
+        }
+    }
 }

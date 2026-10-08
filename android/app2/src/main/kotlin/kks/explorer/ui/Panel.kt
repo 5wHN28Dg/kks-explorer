@@ -168,7 +168,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                     Heading("Used in procedures")
                     Fields((0 until procs.length()).map { i -> procs.getJSONObject(i).let { Field(it.getString("id"), it.optString("title")) } })
                 }
-                PhotoStrip(code, t.optJSONArray("photos").objects(), snack)
+                PhotoStrip(code, t.optJSONArray("photos").objects(), snack, floorNow = eq.optString("floor"))
             }
         }
         }

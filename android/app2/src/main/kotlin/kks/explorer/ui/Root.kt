@@ -124,6 +124,7 @@ fun MainScreen() {
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             UpdateBanner()
+            PhotoQueueBar()
             Box(Modifier.weight(1f).fillMaxWidth()) {
             when (ui.tab) {
                 "drawings" -> Drawings(ui, snack)
