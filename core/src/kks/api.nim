@@ -5,6 +5,7 @@
 
 import std/[algorithm, base64, math, sets, strutils, tables, unicode]
 import json, crypto, util, proto, replay, node, plant, progress, invites, extras, plantdata, diagnostics
+from model import photoKind
 
 type
   Actor* = object
@@ -40,6 +41,8 @@ type
     syncSnapshot*: proc (): JNode
     addresses*: proc (): seq[string]
     relayChanged*: proc ()
+    tagIdx: Table[string, string]     ## full code → tag id (tagIndex), for tagIdxKey
+    tagIdxKey: string
 
 const
   Kinds = ["equipment", "review", "link", "photo", "photo_delete", "tag_add", "tag_remove"]
@@ -417,6 +420,90 @@ proc names(a: Api, person: string): (string, string) =
   if person in a.n.run.persons: (a.n.run.persons[person]["username"].s, a.n.run.persons[person]["full_name"].s)
   else: ("", "")
 
+proc displayName(a: Api, person: string): string =
+  ## the full name, else the username ("" = unknown)
+  let (u, f) = a.names(person)
+  if f.len > 0: f else: u
+
+proc tagIndex*(a: Api): Table[string, string] =
+  ## full code (KKS + suffix) → the tag to open on the P&ID: tags.json with the reviews applied (a rejected reading
+  ## shows nothing), then the marked tags ("u:<id>", as model.merge). The first tag per code wins. Cached per
+  ## plant-data version and log state.
+  let (okA, m) = a.n.active
+  let sha = if okA and "tags.json" in m.files: m.files["tags.json"][0] else: ""
+  let key = sha & "|" & $(if a.n.run != nil: a.n.run.history.len else: 0) & "|" & $a.n.entries.len
+  if key == a.tagIdxKey: return a.tagIdx
+  var idx: Table[string, string]
+  if sha.len > 0:
+    let data = a.n.store.blobGet(sha)
+    var tags: JNode
+    try: tags = parseStrict(data, 4096)
+    except JsonError: tags = newArr()
+    if tags.kind == jArr:
+      for t in tags.elems:
+        if t.kind != jObj or t.get("id") == nil or not t["id"].isStr: continue
+        let id = t["id"].s
+        var code = (if t.get("kks") != nil and t["kks"].isStr: t["kks"].s else: "") &
+                   (if t.get("suffix") != nil and t["suffix"].isStr: t["suffix"].s else: "")
+        let rv = if a.n.run != nil: a.n.run.reviews.getOrDefault(id) else: nil
+        if rv != nil and rv.kind == jObj and rv.get("status") != nil and rv["status"].isStr:
+          if rv["status"].s == "rejected": continue
+          code = (if rv.get("kks") != nil and rv["kks"].isStr: rv["kks"].s else: "") &
+                 (if rv.get("suffix") != nil and rv["suffix"].isStr: rv["suffix"].s else: "")
+        if code.len > 0 and code notin idx: idx[code] = id
+  if a.n.run != nil:
+    for id, t in a.n.run.tags:
+      if t["kks"].isStr:
+        let code = t["kks"].s & (if t["suffix"].isStr: t["suffix"].s else: "")
+        if code notin idx: idx[code] = "u:" & id
+  a.tagIdx = idx
+  a.tagIdxKey = key
+  idx
+
+proc codeOf(a: Api, kind: string, body: JNode): string =
+  ## the equipment code a change is about ("" = none: a review, or a marked tag without a code)
+  case kind
+  of "equipment", "photo", "link": body["kks"].s
+  of "tag_add": (if body["kks"].isStr: body["kks"].s & body["suffix"].s else: "")
+  of "photo_delete":
+    let ph = a.n.run.photos.getOrDefault(body["photo"].s)
+    if ph != nil: ph["kks"].s else: ""
+  else: ""
+
+proc tagOfChange(a: Api, kind: string, body: JNode, code: string): string =
+  case kind
+  of "review": body["tag_id"].s
+  of "tag_add": "u:" & body["tag"].s
+  of "tag_remove": "u:" & body["tag"].s
+  else: (if code.len > 0: a.tagIndex.getOrDefault(code) else: "")
+
+proc groupKind*(kind: string, body: JNode): string =
+  ## the kind proposals compete within: a photo is an equipment photo or a tag plate photo (caption "Tag plate…",
+  ## PROTOCOL-v2 §9), never both
+  if kind == "photo": photoKind(body["caption"].s) & "_photo" else: kind
+
+proc fieldsOf(kind: string, body: JNode): seq[string] =
+  ## the fields an equipment change sets; custom fields as "custom:<name>" for each name added, changed or removed
+  ## against the change's base ("custom" when none can be named)
+  if kind != "equipment": return
+  for (f, v) in body["changes"].fields:
+    if f != "custom":
+      result.add f
+      continue
+    var old: Table[string, string]
+    let b = body["base"].get("custom")
+    if b != nil and b.kind == jArr:
+      for x in b.elems: old[x["k"].s] = x["v"].s
+    var named: seq[string]
+    var seen: HashSet[string]
+    for x in v.elems:
+      let k = x["k"].s
+      seen.incl k
+      if (k notin old or old[k] != x["v"].s) and ("custom:" & k) notin named: named.add "custom:" & k
+    for k, _ in old:
+      if k notin seen and ("custom:" & k) notin named: named.add "custom:" & k
+    if named.len == 0: result.add "custom" else: result.add named
+
 proc subOut(a: Api, r: JNode, me: Actor, live: bool): JNode =
   let (kind, body) = a.kindBody(r)
   let s = a.subStatus(r)
@@ -426,6 +513,15 @@ proc subOut(a: Api, r: JNode, me: Actor, live: bool): JNode =
              ("payload", a.toPayload(kind, body)), ("by", S(if user.len > 0: user else: "?")),
              ("mine", B(r["person"].isStr and r["person"].s == me.person)))
   result["by_name"] = S(if full.len > 0: full else: result["by"].s)
+  let code = a.codeOf(kind, body)
+  result["code"] = S(code)
+  result["tag"] = S(a.tagOfChange(kind, body, code))
+  result["group_kind"] = S(groupKind(kind, body))
+  if kind == "photo": result["photo_kind"] = S(photoKind(body["caption"].s))
+  if kind == "equipment":
+    var fs = newArr()
+    for f in fieldsOf(kind, body): fs.elems.add S(f)
+    result["fields"] = fs
   var requestNote = ""
   if not r["entry"].isNull:
     let eid = r["entry"].s
@@ -447,15 +543,62 @@ proc subOut(a: Api, r: JNode, me: Actor, live: bool): JNode =
       lv.elems.add O(("entity", S(entity)), ("key", k), ("value", a.valueOut(entity, key, a.n.run.getEntity(entity, key))))
     result["live"] = lv
 
-proc listSubs(a: Api, me: Actor, filter: string, limit: int): seq[JNode] =
+type SubFilter* = object
+  ## /api/submissions filters (all optional): kinds (submission kinds or group kinds: equipment_photo, plate_photo),
+  ## fields (an equipment change setting any of them: floor, notes, custom, custom:<name>), only my own
+  kinds*, fields*: seq[string]
+  mine*: bool
+
+const Statuses = ["open", "decided", "all", "pending", "conflict", "approved", "rejected", "withdrawn"]
+
+proc listSubs(a: Api, me: Actor, filter: string, limit: int, f = SubFilter()): seq[JNode] =
   for r in a.n.store.subs():
     let st = a.subStatus(r).status
     if filter == "open" and st notin Open: continue
     if filter == "decided" and st in Open: continue
+    if filter notin ["open", "decided", "all"] and st != filter: continue
     if not me.isAdmin and not (r["person"].isStr and r["person"].s == me.person) and not (r["kind"].s == "photo" and st in Open):
       continue
+    if f.mine and not (r["person"].isStr and r["person"].s == me.person): continue
+    if f.kinds.len > 0 or f.fields.len > 0:
+      let (kind, body) = a.kindBody(r)
+      if f.kinds.len > 0 and kind notin f.kinds and groupKind(kind, body) notin f.kinds: continue
+      if f.fields.len > 0:
+        var hit = false
+        for x in fieldsOf(kind, body):
+          if x in f.fields or (x.startsWith("custom") and "custom" in f.fields): hit = true
+        if not hit: continue
     result.add a.subOut(r, me, live = true)
     if result.len >= limit: break
+
+const GroupLabels = [("equipment_photo", "Equipment photo"), ("plate_photo", "Tag plate photo"),
+                     ("equipment", "Location and notes"), ("link", "Procedure link"), ("review", "Tag reading"),
+                     ("tag_add", "Marked tag"), ("tag_remove", "Remove a marked tag"), ("photo_delete", "Remove a photo")]
+
+proc groupSubs*(subs: seq[JNode]): JNode =
+  ## open proposals per code (or per tag when there is no code), then per kind. Proposals of one kind for one code
+  ## compete ("several": the clients show Pick and votes only then); an equipment photo and a tag plate photo don't.
+  var order: seq[string]
+  var groups: Table[string, (string, string, OrderedTable[string, seq[JNode]])]
+  for x in subs:
+    let code = x["code"].s
+    let key = if code.len > 0: "code:" & code else: "tag:" & x["tag"].s
+    if key notin groups:
+      order.add key
+      groups[key] = (code, x["tag"].s, initOrderedTable[string, seq[JNode]]())
+    groups[key][2].mgetOrPut(x["group_kind"].s, @[]).add x
+  result = newArr()
+  for key in order:
+    let (code, tag, kinds) = groups[key]
+    var ks = newArr()
+    var several = false
+    for (gk, label) in GroupLabels:
+      if gk in kinds:
+        let items = kinds[gk]
+        several = several or items.len > 1
+        ks.elems.add O(("kind", S(gk)), ("label", S(label)), ("several", B(items.len > 1)),
+                       ("pick", B(items.len > 1 and gk.endsWith("_photo"))), ("items", newArr(items)))
+    result.elems.add O(("code", S(code)), ("tag", S(tag)), ("several", B(several)), ("kinds", ks))
 
 proc subRow(a: Api, id: int64): JNode =
   for r in a.n.store.subs():
@@ -587,10 +730,14 @@ proc act*(a: Api, me: Actor, sid: int64, action: string, d: JNode, now: int64): 
       note = (if note.len > 0: note & "; " else: "") & "proposed by " & (if u.len > 0: u else: "?")
   if note.len > 0: a.n.store.putNote(written, note)
   var rejected = 0
-  if action == "pick":   # choose this photo, discard the other open ones for the same item
+  if action == "pick" and kind == "photo":
+    # choose this photo, discard the other open ones of the same kind for the same code: an equipment photo never
+    # competes with a tag plate photo (caption "Tag plate…", PROTOCOL-v2 §9)
+    let mine = photoKind(body["caption"].s)
     for o in a.n.store.subs():
       if o["id"].i == sid or o["kind"].s != "photo": continue
-      if a.kindBody(o)[1]["kks"].s == body["kks"].s and a.subStatus(o).status in Open:
+      let ob = a.kindBody(o)[1]
+      if ob["kks"].s == body["kks"].s and photoKind(ob["caption"].s) == mine and a.subStatus(o).status in Open:
         a.rejectSub(me, o, "another photo was chosen (#" & $sid & ")", now)
         inc rejected
   O(("ok", B(true)), ("rejected", I(rejected)))
@@ -927,9 +1074,20 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
                                ("transfer_pending", newNull())))
     of "/api/state": return ok(a.stateOut(me))
     of "/api/submissions":
+      # ?status=open|decided|all|pending|conflict|approved|rejected|withdrawn &kind=photo,equipment_photo,…
+      # &field=floor,custom:Description &mine=1 &group=code (adds "groups": per code, per kind)
       let status = q.getOrDefault("status", "open")
-      if status notin ["open", "decided", "all"]: bad("bad status")
-      return ok(O(("submissions", newArr(a.listSubs(me, status, min(q.qint("limit", 200), 1000))))))
+      if status notin Statuses: bad("bad status")
+      proc list(k: string): seq[string] =
+        for x in q.getOrDefault(k).split(','):
+          if x.strip.len > 0: result.add x.strip
+      let f = SubFilter(kinds: list("kind"), fields: list("field"), mine: q.getOrDefault("mine") in ["1", "true"])
+      for k in f.kinds:
+        if k notin Kinds and k notin ["equipment_photo", "plate_photo"]: bad("bad kind: " & k)
+      let subs = a.listSubs(me, status, min(q.qint("limit", 200), 1000), f)
+      var res = O(("submissions", newArr(subs)))
+      if q.getOrDefault("group") == "code": res["groups"] = groupSubs(subs)
+      return ok(res)
     of "/api/revisions":
       need(me, "admin")
       let before = q.qint("before", high(int))

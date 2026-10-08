@@ -198,12 +198,20 @@ proc photosOf*(m: Model, k: string): seq[JNode] =
 const PlateCaption* = "Tag plate"
   ## a photo of the equipment's tag plate is a photo whose caption starts with this (PROTOCOL-v2 §9: a convention)
 
+const DescriptionKey* = "Description"
+  ## the equipment custom field ({k, v}) a confirmed description is kept in
+
+proc isPlate*(caption: string): bool = caption.startsWith(PlateCaption)
+proc photoKind*(caption: string): string =
+  ## "plate" (a tag plate photo) or "equipment": the two kinds of photo a code has, never competing with each other
+  if isPlate(caption): "plate" else: "equipment"
+
 proc photoCover*(m: Model, k: string): string =
   ## which photos a code has: "both", "equipment", "plate" or "none" (the drawings' photo coverage view)
   if k.len == 0: return "none"
   var equip, plate = false
   for p in m.photosOf(k):
-    if p.s("caption").startsWith(PlateCaption): plate = true else: equip = true
+    if isPlate(p.s("caption")): plate = true else: equip = true
   if equip and plate: "both" elif equip: "equipment" elif plate: "plate" else: "none"
 
 proc procsOf*(m: Model, k: string): seq[string] =
