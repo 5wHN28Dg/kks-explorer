@@ -573,7 +573,7 @@ proc enrollOverTls(s: Server, remote: string, m: JNode): JNode =
 proc publishDir*(s: Server, dir: string): int =
   ## Publish the plant files in `dir` as a new version signed by the manager's custodial key; 0 = unchanged.
   var files: seq[(string, string)]
-  for f in ["sheets.json", "tags.json", "procedures.json", "locations.json"]:
+  for f in ["sheets.json", "tags.json", "procedures.json", "locations.json", "descriptions.json"]:
     if fileExists(dir / f): files.add((f, readFile(dir / f)))
   for sub in ["sheets", "courses"]:
     if dirExists(dir / sub):

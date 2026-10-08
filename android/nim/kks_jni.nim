@@ -89,6 +89,7 @@ proc model(c: Inst): Model =
   m.baseTags = parseTags(file("tags.json", "[]"))
   m.procs = file("procedures.json", "[]")
   m.locations = buildLocations(file("locations.json", "{}"))
+  m.descriptions = parseDescriptions(file("descriptions.json", "{}"))
   m.kksTables = c.tables
   let (ok, me) = c.api.owner
   m.state = if ok: c.api.handle(me, "GET", "/api/state", initTable[string, string](), newObj(), nowMs()).json else: newObj()

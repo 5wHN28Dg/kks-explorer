@@ -40,6 +40,7 @@ proc loadModel*(w: Win) =
   m.baseTags = parseTags(parseStrict(w.fileOr("tags.json", "[]"), 4096))
   m.procs = parseStrict(w.fileOr("procedures.json", "[]"), 4096)
   m.locations = buildLocations(parseStrict(w.fileOr("locations.json", "{}"), 4096))
+  m.descriptions = parseDescriptions(parseStrict(w.fileOr("descriptions.json", "{}"), 4096))
   m.kksTables = parseStrict(w.fileOr("kks.json", "{}"), 4096)
   try: m.state = w.a.call("GET", "/api/state")
   except ApiError: m.state = newObj()
