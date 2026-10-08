@@ -1,17 +1,20 @@
 ## kks-server: the always-on peer for browser clients (M6, decisions 0026, 0030).
 ##   kks-server [serve] [--config F]
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
-##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json | backup --out FILE
+##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json
+##   kks-server backup --out FILE: the plant (log and photos), encrypted with a key from the last export-root-key's
+##     passphrase (decision 0051); kks-server open-backup --in FILE --out BUNDLE --passphrase-file F opens it anywhere
 ##     (publish-data, set-plant-name, submit-file, reset-password and reset-manager run inside the server when it runs: its control
 ##     socket next to the store, decision 0045)
-##   kks-server export-root-key --out FILE   (passphrase in $KKS_ROOT_PASSPHRASE, 12+ characters): the plant root key,
-##     sealed with the passphrase (decision 0023), the same file the apps' "Restore from a backup" reads
+##   kks-server export-root-key --out FILE [--passphrase-out FILE]: the plant root key, sealed with a generated
+##     passphrase (80 bits, decision 0023, issue #29) that is printed, or written to --passphrase-out; the same file
+##     the apps' "Restore from a backup" reads. Both files 0600.
 ## The storage key (decision 0020) comes from systemd-creds: LoadCredentialEncrypted=kks-storage-key:… in the unit
 ## ($CREDENTIALS_DIRECTORY/kks-storage-key). For development, `storage_key_file` in the config (created if missing).
 
 import std/[asyncdispatch, nativesockets, net, os, posix, strutils, tables, times]
 import kks/[json, util, crypto, node, replay, plantdata, bundle, provider_gnutls, extras]
-import kksl/[server, dbstore]
+import kksl/[server, dbstore, privfile, passphrase, serverbackup]
 
 proc storageKey(cfgPath: string, p: Provider): seq[byte] =
   let credDir = getEnv("CREDENTIALS_DIRECTORY")
@@ -27,8 +30,7 @@ proc storageKey(cfgPath: string, p: Provider): seq[byte] =
   if not fileExists(keyFile):
     stderr.writeLine "warning: creating a storage key file at " & keyFile & " (development only; production seals it with systemd-creds)"
     createDir(parentDir(keyFile))
-    writeFile(keyFile, p.randomBytes(32).toStr)
-    discard chmod(keyFile.cstring, 0o600)
+    writePrivate(keyFile, p.randomBytes(32).toStr)
   let raw = readFile(keyFile)
   if raw.len != 32: quit "the storage key file must be 32 bytes"
   raw.toBytes
@@ -76,11 +78,26 @@ proc main() =
         echo r["out"].s
         return
   let p = newGnuTlsProvider()
+  if cmd == "open-backup":   # decision 0051: no store needed, any machine with this program and the passphrase
+    if "in" notin args or "out" notin args or "passphrase-file" notin args:
+      quit "usage: kks-server open-backup --in BACKUP --out BUNDLE --passphrase-file FILE"
+    var bundle: string
+    try: bundle = p.openBackup(readFile(args["passphrase-file"]).strip, readFile(args["in"]))
+    except ValueError as e: quit e.msg
+    except CatchableError: quit "that passphrase doesn't open this backup (it opens with the passphrase of the root key export made before it)"
+    writePrivate(args["out"], bundle)
+    echo "Wrote ", args["out"], ": the plant as a bundle (import it in Manage → Import a bundle)"
+    return
   let s = openServer(cfg, p, storageKey(cfgPath, p))
   case cmd
   of "serve":
+    # issue #69: the one-time link goes to a 0600 file, not to stdout (the journal, under systemd)
+    let linkFile = setupLinkPath(cfg)
     let l = s.setupLink()
-    if l.len > 0: echo "No manager yet. Open this link once to create the manager (valid 7 days):\n  ", l
+    if l.len > 0:
+      writePrivate(linkFile, l & "\n")
+      echo "No manager yet. The one-time link that creates the manager (valid 7 days) is in the setup link file: ", linkFile
+    elif fileExists(linkFile): removeFile(linkFile)
     echo "Walkdown server on http://", cfg.address, ":", cfg.port, (if cfg.syncPort > 0: ", sync port " & $cfg.syncPort else: "")
     asyncCheck s.serve()
     runForever()
@@ -95,9 +112,10 @@ proc main() =
     try: echo s.control(cmd, rest)
     except ValueError as e: quit e.msg
   of "export-root-key":
-    if "out" notin args: quit "usage: KKS_ROOT_PASSPHRASE=… kks-server export-root-key --out FILE"
-    let pass = getEnv("KKS_ROOT_PASSPHRASE")
-    if pass.len < 12: quit "set KKS_ROOT_PASSPHRASE to a passphrase of 12 characters or more"
+    if "out" notin args: quit "usage: kks-server export-root-key --out FILE [--passphrase-out FILE]"
+    if existsEnv("KKS_ROOT_PASSPHRASE"):
+      quit "KKS_ROOT_PASSPHRASE is not read any more: the passphrase is generated (decision 0023, issue #29)"
+    let pass = p.newBackupPassphrase()
     let k = s.store.getRow("keys", "root")
     if k == nil: quit "this server holds no root key"
     let sealed = p.passphraseSeal(pass, toText(k).toBytes)
@@ -105,13 +123,25 @@ proc main() =
                        ("root", newStr(s.n.root)), ("sealed", sealed)])
     # check it opens before calling it a backup
     if p.passphraseOpen(pass, doc["sealed"]).toStr != toText(k): quit "the sealed copy did not open again: not written"
-    writeFile(args["out"], toText(doc))
-    discard chmod(args["out"].cstring, 0o600)
-    echo "Wrote ", args["out"], ": the plant root key, sealed with the passphrase. Keep both offline, apart if you can."
+    if "passphrase-out" in args:
+      if absolutePath(args["passphrase-out"]) == absolutePath(args["out"]): quit "--out and --passphrase-out must differ"
+      writePrivate(args["passphrase-out"], pass & "\n")   # first: a backup is never written without its passphrase
+    writePrivate(args["out"], toText(doc))
+    s.store.putRow("keys", "backup", p.newBackupKeyRow(pass))   # the server backups' key from now on (decision 0051)
+    if "passphrase-out" in args:
+      echo "Wrote ", args["out"], ": the plant root key, sealed with the passphrase in ", args["passphrase-out"], "."
+    else:
+      echo "Wrote ", args["out"], ": the plant root key, sealed with this passphrase (write it down; it is not kept):"
+      echo "  ", pass
+    echo "Keep both offline, apart if you can. Server backups made from now on open with this passphrase (open-backup)."
   of "backup":
     if "out" notin args: quit "usage: kks-server backup --out FILE"
-    writeFile(args["out"], s.n.bundle(photos = true, now = int64(epochTime() * 1000)))
-    echo "Wrote ", args["out"], " (a bundle: unencrypted plant data; keep it safe)"
+    let row = s.store.getRow("keys", "backup")
+    if row == nil:
+      quit "no backup key yet: run export-root-key first (backups are encrypted with a key from its passphrase, decision 0051)"
+    let now = int64(epochTime() * 1000)
+    writePrivate(args["out"], p.sealBackup(row, s.n.root, now div 1000, s.n.bundle(photos = true, now = now)))
+    echo "Wrote ", args["out"], " (encrypted: it opens with the passphrase of the last root key export, kks-server open-backup)"
   else:
     quit "unknown command " & cmd
   s.store.close()

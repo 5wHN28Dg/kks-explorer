@@ -1,4 +1,4 @@
-import std/[unittest, times, osproc, strutils, os]
+import std/[unittest, times, osproc, strutils, os, base64]
 import kksl/argon2
 
 suite "Argon2id via OpenSSL":
@@ -6,7 +6,7 @@ suite "Argon2id via OpenSSL":
     let salt = "0123456789abcdef"
     let got = derive("correct horse", salt)
     let (cli, code) = execCmdEx("openssl kdf -keylen 32 -kdfopt pass:'correct horse' -kdfopt salt:0123456789abcdef " &
-                                "-kdfopt iter:2 -kdfopt memcost:19456 -kdfopt lanes:1 ARGON2ID")
+                                "-kdfopt iter:3 -kdfopt memcost:65536 -kdfopt lanes:1 ARGON2ID")
     check code == 0
     var hexs = ""
     for c in got: hexs.add toHex(ord(c), 2)
@@ -14,7 +14,8 @@ suite "Argon2id via OpenSSL":
     let t0 = epochTime()
     let h = hashPassword("correct horse", salt)
     echo "  one hash: ", int((epochTime() - t0) * 1000), " ms"
-    check h.startsWith("$argon2id$v=19$m=19456,t=2,p=1$")
+    check h.startsWith("$argon2id$v=19$m=65536,t=3,p=1$")   # decision 0023's parameters (issue #40)
+    check not needsRehash(h)
     check checkPassword("correct horse", h)
     check not checkPassword("correct hors", h)
     check not checkPassword("x", "")
@@ -27,3 +28,11 @@ suite "Argon2id via OpenSSL":
     check isLegacy(h.strip)
     check checkPassword("old password!", h.strip)
     check not checkPassword("old password?", h.strip)
+
+  test "a hash with the old parameters still verifies and asks to be replaced (issue #40)":
+    let salt = "0123456789abcdef"
+    let old = "$argon2id$v=19$m=19456,t=2,p=1$" & encode(salt).strip(leading = false, chars = {'='}) & "$" &
+              encode(derive("correct horse", salt, 19456, 2, 1)).strip(leading = false, chars = {'='})
+    check checkPassword("correct horse", old)
+    check needsRehash(old)
+    check needsRehash("scrypt$16384$8$1$00$00")
