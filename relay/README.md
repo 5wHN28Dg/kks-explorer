@@ -16,13 +16,19 @@ device. The relay sees only the room key's public key. Devices from before 0050 
 
 ## Deploy (once, on your own Cloudflare account)
 
-Needs Node.js 18+ and a free Cloudflare account.
+Needs Node.js 22+ and a free Cloudflare account. wrangler is pinned in `package.json` and `package-lock.json` (with
+every package's integrity hash): `npm ci` installs exactly that, and `npx` then runs the installed copy, never the
+latest release from the registry.
 
 ```sh
 cd relay
+npm ci --ignore-scripts     # the pinned wrangler, into relay/node_modules
 npx wrangler login          # opens the browser
 npx wrangler deploy         # prints https://kks-relay.<your-subdomain>.workers.dev
 ```
+
+To move wrangler: change its version in `package.json`, run `npm install --package-lock-only --ignore-scripts`, and
+commit both files (the dependency check in CI scans the lockfile; `osv-scanner.toml` here explains its entries).
 
 Then, as the manager: Manage → Devices → Internet in the web pages (v2 apps: Manage → Account → Internet relay) →
 relay address `wss://kks-relay.<your-subdomain>.workers.dev`
@@ -41,7 +47,7 @@ is still plant equipment talking to the internet.
 ## Test locally
 
 ```sh
-cd relay && npx wrangler dev --port 8787            # the real Worker code in workerd
+cd relay && npm ci --ignore-scripts && npx wrangler dev --port 8787            # the real Worker code in workerd
 KKS_RELAY_URL=ws://127.0.0.1:8787 /tmp/kkslinux/test_internet     # platform/linux tests
 ```
 

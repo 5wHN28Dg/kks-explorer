@@ -13,6 +13,7 @@
 #include <cstring>
 #include <deque>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <vector>
@@ -35,7 +36,12 @@ extern "C" int kks_d2d_init(void) {
 
 // ---------------------------------------------------------------- JPEG XL → BGRA (premultiplied for D2D)
 
-static bool jxl_bgra(const uint8_t *data, size_t n, std::vector<uint8_t> &out, int &w, int &h) {
+// The most pixels a picture may have (#37): 100 MP, as on Android and the web (jxl_jni.cpp, kks_wasm.cpp). Photos are
+// made at most 2048 px wide and drawing images are far smaller, so anything bigger was crafted; its header must not
+// make us allocate (100000 x 100000 would be 40 GB).
+static const uint64_t MAX_PIXELS = 100000000ull;
+
+static bool jxl_bgra(const uint8_t *data, size_t n, std::vector<uint8_t> &out, int &w, int &h) try {
     auto dec = JxlDecoderMake(nullptr);
     if (JxlDecoderSubscribeEvents(dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE) != JXL_DEC_SUCCESS) return false;
     JxlDecoderSetInput(dec.get(), data, n);
@@ -47,9 +53,12 @@ static bool jxl_bgra(const uint8_t *data, size_t n, std::vector<uint8_t> &out, i
         if (s == JXL_DEC_ERROR || s == JXL_DEC_NEED_MORE_INPUT) return false;
         if (s == JXL_DEC_BASIC_INFO) {
             if (JxlDecoderGetBasicInfo(dec.get(), &info) != JXL_DEC_SUCCESS) return false;
+            if (info.xsize == 0 || info.ysize == 0 || (uint64_t)info.xsize * info.ysize > MAX_PIXELS) return false;
             w = (int)info.xsize; h = (int)info.ysize;
-            out.resize((size_t)w * h * 4);
         } else if (s == JXL_DEC_NEED_IMAGE_OUT_BUFFER) {
+            size_t size = 0;
+            if (JxlDecoderImageOutBufferSize(dec.get(), &fmt, &size) != JXL_DEC_SUCCESS || size != (size_t)w * h * 4) return false;
+            out.resize(size);
             if (JxlDecoderSetImageOutBuffer(dec.get(), &fmt, out.data(), out.size()) != JXL_DEC_SUCCESS) return false;
         } else if (s == JXL_DEC_FULL_IMAGE) {
             // RGBA → premultiplied BGRA
@@ -59,6 +68,8 @@ static bool jxl_bgra(const uint8_t *data, size_t n, std::vector<uint8_t> &out, i
             }
         } else if (s == JXL_DEC_SUCCESS) return !out.empty();
     }
+} catch (const std::bad_alloc &) {   // (an exception must not cross into Nim)
+    return false;
 }
 
 // ---------------------------------------------------------------- a sheet in the flat layout

@@ -38,6 +38,8 @@ type
     importer*: string          ## the kks-import program (decision 0026)
     glyphs*: string            ## its glyph library, when not next to it
     maxPdfMb*: int
+    importTimeoutS*: int       ## an import is stopped after this long (issue #34)
+    importMemoryMb*: int       ## the importer's address-space limit (RLIMIT_AS; a large sheet peaks near 1.8 GB RSS)
 
   Server* = ref object
     cfg*: Config
@@ -69,7 +71,7 @@ proc isLoopback*(address: string): bool =
 proc defaultConfig*(): Config =
   Config(address: "127.0.0.1", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
          offlineDays: 3, maxUploadMb: 15, plantDir: "plant-data", backupDir: "backups", maxPdfMb: 50,
-         importer: getAppDir() / "kks-import")
+         importer: getAppDir() / "kks-import", importTimeoutS: 1800, importMemoryMb: 6144)
 
 proc loadConfig*(path: string): Config =
   result = defaultConfig()
@@ -110,6 +112,10 @@ proc loadConfig*(path: string): Config =
   result.importer = s("importer", result.importer)
   result.glyphs = s("glyphs", "")
   result.maxPdfMb = i("max_pdf_mb", result.maxPdfMb)
+  result.importTimeoutS = i("import_timeout_s", result.importTimeoutS)
+  result.importMemoryMb = i("import_memory_mb", result.importMemoryMb)
+  if result.importTimeoutS < 1: raise newException(ValueError, "import_timeout_s must be 1 or more")
+  if result.importMemoryMb < 256: raise newException(ValueError, "import_memory_mb must be 256 or more")
 
 proc herr(code: int, msg: string) {.noreturn.} =
   let e = newException(HttpErr, msg)
@@ -738,7 +744,13 @@ proc runImport(s: Server, job: JNode, args: seq[string], replace: bool) {.async.
   var ok = false
   var p: Process
   try:
-    p = startProcess(s.cfg.importer, args = args, options = {poStdErrToStdOut})
+    # issue #34: MuPDF reads an uploaded file, so the importer runs with an address-space limit and no core dumps
+    # (set by sh before it execs the importer: the same process, killed below at the deadline). The arguments are
+    # passed through "$@", never through the script text.
+    p = startProcess("/bin/sh", args = @["-c", "ulimit -c 0 && ulimit -v " & $(s.cfg.importMemoryMb * 1024) &
+                                         " && exec \"$0\" \"$@\"", s.cfg.importer] & args,
+                     options = {poStdErrToStdOut})
+    let deadline = epochTime() + float(s.cfg.importTimeoutS)
     let fd = p.outputHandle
     discard fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) or O_NONBLOCK)
     var pending = ""
@@ -756,17 +768,33 @@ proc runImport(s: Server, job: JNode, args: seq[string], replace: bool) {.async.
         elif l.len > 0:
           job["log"].elems.add S(l)
           if job["log"].elems.len > 300: job["log"].elems.delete(0)
+    var stopped = false
+    proc stop() =
+      if not stopped:
+        stopped = true
+        p.kill()
+        job["log"].elems.add S("The importer was stopped after " & $s.cfg.importTimeoutS & " s (import_timeout_s in the config).")
+    var reads = 0
     while true:
+      if epochTime() > deadline:          # checked on every pass: an importer that never stops printing is stopped too
+        stop()
+        break
       let n = posix.read(fd, addr buf[0], buf.len)
       if n > 0:
         pending.add buf[0 ..< n]
+        if pending.len > 65536 and '\n' notin pending: pending.add '\n'   # one endless line: cut it
         takeLines(false)
+        inc reads
+        if reads mod 16 == 0: await sleepAsync(0)   # let the server answer others meanwhile
         continue
       if n == 0: break                       # end of output
       if errno != EAGAIN and errno != EWOULDBLOCK: break
       await sleepAsync(200)
     takeLines(true)
-    let code = p.waitForExit()
+    while p.peekExitCode() == -1:          # no blocking wait: a child that closed its output may still hang
+      if epochTime() > deadline: stop()
+      await sleepAsync(100)
+    let code = p.peekExitCode()
     ok = code == 0 and job["result"].kind == jObj
   except CatchableError as e:
     job["log"].elems.add S("Importer crashed: " & e.msg)
@@ -809,9 +837,10 @@ proc startImport(s: Server, me: JNode, sid0, name0, rotate: string, replace: boo
               ("by", me["username"]), ("state", S("running")), ("log", newArr()), ("result", newNull()),
               ("started", newInt(nowS())))
   s.job = job
-  var args = @[src, name, sid, "--rotate", rotate, "--data-dir", s.cfg.plantDir]
+  var args = @["--rotate", rotate, "--data-dir", s.cfg.plantDir]
   if replace: args.add "--replace"
   if s.cfg.glyphs.len > 0: args.add @["--glyphs", s.cfg.glyphs]
+  args.add @["--", src, name, sid]   # the name is the manager's text: never read as an option (issue #38)
   asyncCheck s.runImport(job, args, replace)
   job
 
