@@ -397,6 +397,7 @@ K.flush = async () => {
       // a photo not converted yet: it and everything after it wait for it (sent in order); only one that keeps failing
       // to convert lets the others pass (it stays, and is tried again now and then)
       if (it.raw) { if ((it.tries || 0) >= 3) continue; break }
+      if (it.refused) continue;   // a photo the server refused waits for the person (Try again or Discard): it is never dropped
       try {
         const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload, ...(it.note ? {note: it.note} : {})});
         (it.fresh ? photos : res)[r.status] = ((it.fresh ? photos : res)[r.status] || 0) + 1; await K.idb.unqueue(it.client_id); K.setOnline(true);
@@ -404,8 +405,12 @@ K.flush = async () => {
         if (K.isNetErr(e)) { K.setOnline(false); break }
         if (e.status === 401) { location.reload(); return }
         if (e.status >= 500 || e.status === 408 || e.status === 429) { K.flushSoon(); break }   // the server or a proxy, for now: later
-        res.failed++; await K.idb.unqueue(it.client_id);  // rejected as invalid: retrying won't help
-        console.warn('queued submission refused', it, e.message);
+        res.failed++;
+        // rejected as invalid: retrying alone won't help. A photo is kept and shown (a proxy's 413 or 403 refuses a
+        // good photo too, and the person may no longer have it); other changes can be made again and are dropped.
+        if (it.kind === 'photo') await K.idb.queue({...it, refused: String(e.message || `error ${e.status}`).slice(0, 300)});
+        else await K.idb.unqueue(it.client_id);
+        console.warn('queued submission refused', it.kind, e.message);
       }
     }
   } finally { flushing = false }
@@ -416,10 +421,17 @@ K.flush = async () => {
   if (sent || res.failed) msg.push(`Synced ${sent} offline change(s)` + (res.pending ? ` · ${res.pending} awaiting approval` : '') +
     (res.conflict ? ` · ${res.conflict} conflict(s) for an admin` : '') + (res.failed ? ` · ${res.failed} refused` : ''));
   if (msg.length) K.toast?.(msg.join(' · '));
-  if (K.outbox.some(i => !i.raw)) K.flushSoon();
+  if (K.outbox.some(i => !i.raw && !i.refused)) K.flushSoon();
   if (sent || ph) K.listeners.forEach(f => f('synced'));
   if (flushAgain) { flushAgain = false; return K.flush() }
 };
+
+// a refused photo (kept in the outbox, see K.flush): send it again, or let it go
+K.retryRefused = async id => {
+  const it = (await K.idb.all()).find(i => i.client_id === id); if (!it) return;
+  const {refused, ...again} = it; await K.idb.queue(again); await K.emit(); return K.flush();
+};
+K.discardQueued = async id => { await K.idb.unqueue(id); await K.emit() };
 
 // ---------- photos: converted one at a time in the background, sent in the order they were taken ----------
 // A photo goes into the outbox at once, as a PNG (`raw`, a data: URL), before it is converted: closing the panel, or the page,
@@ -518,7 +530,7 @@ K.ago = t => { if (!t) return 'never'; const s = Math.max(0, Date.now() / 1000 -
 
 K.renderStatus = () => {
   const el = document.getElementById('syncStatus'); if (!el) return;
-  const n = K.outbox.length, cv = K.converting?.of ? ` · converting photo ${K.converting.n} of ${K.converting.of}` : '';
+  const n = K.outbox.length, nr = K.outbox.filter(i => i.refused).length, cv = (nr ? ` · ${nr} refused` : '') + (K.converting?.of ? ` · converting photo ${K.converting.n} of ${K.converting.of}` : '');
   if (K.cfg?.mode === 'peer') {   // no server here: what matters is which devices this one can sync with
     const st = K.syncStatus; if (!st) { el.textContent = ''; return }
     const r = st.reachable || 0, net = st.internet ?? (navigator.onLine ? null : false);

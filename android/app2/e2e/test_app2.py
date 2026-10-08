@@ -451,6 +451,14 @@ class Phone(unittest.TestCase):
                              'the floor sent with the photo was not written')
             ui.find('Sample sheet', timeout=20)
             self.assertFalse(ui.present('photos being prepared'), 'the queue count stayed after the photos were sent')
+            # an encode that fails (out of memory) keeps the photo and tries again: it arrives, and nothing is reported
+            ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--ei', 'fail_encodes', '2')
+            ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--es', 'kks', '11LAB70AA505',
+                   '--es', 'caption', 'retried')
+            def retried():
+                return [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA505'] or None
+            self.assertEqual(self.wait_server(retried, 'a photo whose encode failed was dropped', tries=600)[0]['caption'], 'retried')
+            self.assertFalse(ui.present('A photo was not sent'), 'a retried photo was reported as not sent')
             # a photo the core refuses (a bad code) is reported, and the queue goes on
             ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--es', 'kks', 'bad-code')
             ui.find('A photo was not sent', timeout=120)

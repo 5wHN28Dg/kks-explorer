@@ -130,7 +130,10 @@ const VIEWS={
     const mine=mineR.submissions.filter(s=>s.mine), toVote=others.submissions.filter(s=>!s.mine&&['pending','conflict'].includes(s.status));
     const out=[];
     if(K.outbox.length) out.push(h('div',{class:'card'},h('h3',null,`Queued on this device (${K.outbox.length})`),h('div',{class:'sub'},'Sent automatically when the server is reachable.'),
-      K.outbox.map(i=>h('div',null,K.describe(i.kind,i.payload),i.raw?[' ',h('span',{class:'badge pending'},'converting')]:null))));
+      K.outbox.map(i=>h('div',null,K.describe(i.kind,i.payload),i.raw?[' ',h('span',{class:'badge pending'},'converting')]:null,
+        i.refused?[' ',h('span',{class:'badge conflict'},'refused: '+i.refused),' ',
+          h('button',{class:'ghost',onclick:async()=>{await K.retryRefused(i.client_id);show(tab)}},'Try again'),' ',
+          h('button',{class:'ghost',onclick:async()=>{if(confirm('Discard this photo? It is not on the server.')){await K.discardQueued(i.client_id);show(tab)}}},'Discard')]:null))));
     if(toVote.length) out.push(h('div',{class:'card'},h('h3',null,'Photo proposals from others'),h('div',{class:'sub'},'Vote for the photo that shows the equipment best. An admin makes the final choice.'),
       h('div',{class:'photos'},toVote.map(s=>h('figure',null,photoImg(s.payload.file),h('div',{class:'sub'},`${s.payload.kks??''} · ${s.by_name||s.by||''} · ${s.votes} vote${s.votes===1?'':'s'}`),
         h('button',{class:s.voted?'primary':'ghost',onclick:()=>vote(s.id)},s.voted?'Voted ✓':'Vote'))))));

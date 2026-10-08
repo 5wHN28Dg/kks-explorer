@@ -169,11 +169,11 @@ function myPendingEq(k){ // your not-yet-approved equipment edits for k, oldest 
 }
 function pendingFor(t){
   const k=full(t), rel=(kind,p)=>kind==='review'?p.tag_id===t.id:kind==='photo_delete'?STATE.photos.some(x=>x.id===p.photo_id&&x.kks===k):!!k&&p.kks===k;
-  return [...(STATE.mine||[]).map(s=>({kind:s.kind,p:s.payload,status:s.status})),...K.outbox.map(i=>({kind:i.kind,p:i.payload,status:i.raw?'converting':'queued'}))].filter(x=>rel(x.kind,x.p));
+  return [...(STATE.mine||[]).map(s=>({kind:s.kind,p:s.payload,status:s.status})),...K.outbox.map(i=>({kind:i.kind,p:i.payload,status:i.refused?'refused':i.raw?'converting':'queued'}))].filter(x=>rel(x.kind,x.p));
 }
 function pendingSec(t){
   const L=pendingFor(t); if(!L.length) return null;
-  const label={pending:'awaiting approval',conflict:'conflict: admin decides',queued:'queued offline',converting:'converting, then sent'};
+  const label={pending:'awaiting approval',conflict:'conflict: admin decides',queued:'queued offline',converting:'converting, then sent',refused:'refused by the server: see Manage → My submissions'};
   return h('div',{class:'sec'},h('h3',null,'Your changes, not live yet'),L.map(x=>h('div',{class:'pend'},h('span',{class:'badge '+x.status},label[x.status]),' '+K.describe(x.kind,x.p),
     x.kind==='photo'&&(x.p.file||x.p.dataUrl)?h('img',{src:x.p.file?'photos/'+x.p.file:x.p.dataUrl,alt:''}):null)));
 }

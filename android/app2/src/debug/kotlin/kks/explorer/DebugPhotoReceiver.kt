@@ -10,11 +10,13 @@ import android.graphics.Paint
 import kks.explorer.sync.PhotoQueue
 
 /** Debug builds only: queue a made-up photo without a camera (e2e test_photo_queue): kks, caption, floor extras;
- *  `--ez hold true` makes the queue's jobs wait (until false or the process ends), so a test sees them queued.
+ *  `--ez hold true` makes the queue's jobs wait (until false or the process ends), so a test sees them queued;
+ *  `--ei fail_encodes N` makes the next N encodes fail as if out of memory (the photo must be kept and retried).
  *  `adb shell am broadcast -a kks.explorer.DEBUG_PHOTO -p io.github.walkdown --es kks 11LAB70AA501 --es floor 2` */
 class DebugPhotoReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.hasExtra("hold")) { PhotoQueue.holdForTest = intent.getBooleanExtra("hold", false); return }
+        if (intent.hasExtra("fail_encodes")) { PhotoQueue.failEncodesForTest = intent.getIntExtra("fail_encodes", 0); return }
         val kks = intent.getStringExtra("kks") ?: return
         val bmp = Bitmap.createBitmap(1600, 1200, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)

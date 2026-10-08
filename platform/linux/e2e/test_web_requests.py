@@ -49,7 +49,7 @@ class WebRequests(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m: setup = m[1]
             if 'server on' in line: break
         cls.base = 'http://127.0.0.1:%d' % cls.port
@@ -201,6 +201,21 @@ class WebRequests(unittest.TestCase):
         self.idle(page)
         self.assertIn('after 503', [s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all&kind=photo') if s.get('code') == plain])
 
+        # a proxy refusing the body (413, a smaller limit than the server's): the photo is kept, marked refused and shown,
+        # later flushes leave it alone, and Try again sends it (before, any 4xx dropped the photo for good)
+        page.route('**/api/submit', lambda r: r.fulfill(status=413, content_type='text/plain', body='Request Entity Too Large'))
+        page.evaluate("""async k => { const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+            c.getContext('2d').fillRect(0, 0, 80, 50); await K.queuePhoto(c, {kks: k, caption: 'after 413'}) }""", plain)
+        page.wait_for_function("() => K.outbox.length === 1 && K.outbox[0].refused && !K.converting", timeout=90000)
+        page.evaluate("K.flush()")
+        page.wait_for_timeout(300)
+        self.assertEqual(page.evaluate("K.outbox.length"), 1, 'a refused photo was dropped')
+        self.assertIn('1 refused', page.text_content('#syncStatus'))
+        page.unroute('**/api/submit')
+        page.evaluate("K.retryRefused(K.outbox[0].client_id)")
+        self.idle(page)
+        self.assertIn('after 413', [s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all&kind=photo') if s.get('code') == plain])
+
         # 9. three photos in a row: the panel closed at once; converted in the background, sent in the order taken
         page.evaluate("""async k => { for (const i of [1, 2, 3]) { const c = document.createElement('canvas'); c.width = 900; c.height = 700;
             const g = c.getContext('2d'), d = g.createImageData(900, 700); for (let j = 0; j < d.data.length; j++) d.data[j] = (j * 7919 + i * 31) % 251;
@@ -219,9 +234,15 @@ class WebRequests(unittest.TestCase):
             g.putImageData(d, 0, 0); await K.queuePhoto(c, {kks: k, caption: 'after reload'}) }""", plain)
         page.reload()
         page.wait_for_function("() => typeof K !== 'undefined' && K.me", timeout=30000)
+        # (K.me is set before the outbox is read back, so an empty outbox right now proves nothing: wait for the server)
+        def after_reload():
+            return [s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all&kind=photo')
+                    if s.get('code') == plain].count('after reload')
+        for _ in range(180):
+            if after_reload(): break
+            page.wait_for_timeout(500)
         self.idle(page)
-        self.assertEqual([s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all&kind=photo')
-                          if s.get('code') == plain].count('after reload'), 1)
+        self.assertEqual(after_reload(), 1)
         browser.close()
         self.assertEqual(errors, [], name)
         return plain

@@ -35,7 +35,9 @@ import java.util.concurrent.Executors
  * (`photo-queue/`), and one WorkManager job per photo
  * encodes it to JPEG XL and submits it through the core. The jobs form one unique chain (APPEND_OR_REPLACE), so they
  * run one at a time, in the order sent; WorkManager keeps them across the app closing, the process dying and a restart.
- * A job never fails the chain: a photo that can't be encoded or is refused is recorded in [failures] and dropped.
+ * A job never fails the chain. A photo the core refuses, or whose files are damaged, is recorded in [failures] and
+ * dropped; any other failure (out of memory while encoding, the Keystore, the core throwing) keeps the photo: it goes to
+ * the end of the queue and is tried again a minute later, and after [TRIES] tries it waits for the next app start.
  */
 object PhotoQueue {
     const val WORK = "kks-photos"
@@ -125,8 +127,11 @@ object PhotoQueue {
         }
     }
 
-    private fun enqueue(ctx: Context, id: String) {
-        val req = OneTimeWorkRequestBuilder<PhotoWorker>().setInputData(workDataOf("job" to id)).addTag("job:$id").build()
+    private const val TRIES = 5
+
+    private fun enqueue(ctx: Context, id: String, delaySeconds: Long = 0) {
+        val req = OneTimeWorkRequestBuilder<PhotoWorker>().setInputData(workDataOf("job" to id)).addTag("job:$id")
+            .setInitialDelay(delaySeconds, java.util.concurrent.TimeUnit.SECONDS).build()
         WorkManager.getInstance(ctx).enqueueUniqueWork(WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
     }
 
@@ -161,8 +166,22 @@ object PhotoQueue {
 
     /** set only by the debug builds' test receiver: jobs wait while it is on (at most 2 minutes) */
     @Volatile var holdForTest = false
+    /** set only by the debug builds' test receiver: the next this many encodes fail as if out of memory */
+    @Volatile var failEncodesForTest = 0
 
-    /** one job: encode, submit, forget (sent, refused or unreadable: each ends it) */
+    /** a failure that may pass later: keep the photo, count the try, and queue it again (true = keep the files) */
+    private fun retry(ctx: Context, id: String, jf: File, job: JSONObject, kks: String, why: String): Boolean {
+        val tries = job.optInt("tries") + 1
+        job.put("tries", tries)
+        val tmp = File(dir(ctx), "$id.json.tmp")
+        tmp.writeBytes(Keys.seal(job.toString().toByteArray(), aad("job", id)))
+        if (!tmp.renameTo(jf)) { tmp.delete(); fail(ctx, kks, "$why (the photo was lost)"); return false }
+        if (tries < TRIES) enqueue(ctx, id, 60)
+        else fail(ctx, kks, "$why. The photo is kept on this phone and tried again when the app next starts")
+        return true
+    }
+
+    /** one job: encode, submit, forget (sent, refused or unreadable: each ends it; anything else retries) */
     internal fun run(ctx: Context, id: String) {
         val until = System.currentTimeMillis() + 120_000
         while (holdForTest && System.currentTimeMillis() < until) Thread.sleep(200)
@@ -170,6 +189,9 @@ object PhotoQueue {
         if (!jf.exists()) { px.delete(); refresh(ctx); return }      // already done (a rerun)
         val job = runCatching { readJob(jf, id) }.getOrNull()
         val kks = job?.optString("kks").orEmpty()
+        // a job file the Keystore can't open now may open after a restart: kept, and init() queues it again then
+        if (job == null && px.exists()) { Log.w(TAG, "job $id unreadable, kept"); return }
+        var keep = false
         try {
             if (job == null || !px.exists()) { fail(ctx, kks.ifEmpty { "photo" }, "The queued photo was lost"); return }
             val plain = Keys.open(px.readBytes(), aad("px", id))
@@ -177,8 +199,12 @@ object PhotoQueue {
             val w = head.getInt(); val h = head.getInt()
             require(w > 0 && h > 0 && plain.size == 8 + w * h * 4) { "the queued photo is damaged" }
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { it.copyPixelsFromBuffer(ByteBuffer.wrap(plain, 8, w * h * 4)) }
-            val jxl = try { Jxl.fromBitmap(bmp) } catch (e: Throwable) {
-                Log.w(TAG, "encode $kks", e); fail(ctx, kks, "Could not compress the photo"); return
+            val jxl = try {
+                if (failEncodesForTest > 0) { failEncodesForTest--; throw OutOfMemoryError("test") }
+                Jxl.fromBitmap(bmp)
+            } catch (e: Throwable) {
+                Log.w(TAG, "encode $kks", e); bmp.recycle()
+                keep = retry(ctx, id, jf, job, kks, "Could not compress the photo"); return
             }
             bmp.recycle()
             val payload = JSONObject().put("kks", kks).put("caption", job.optString("caption"))
@@ -189,12 +215,18 @@ object PhotoQueue {
             val r = Core.api("POST", "/api/submit", body)
             if (r.status >= 400) fail(ctx, kks, r.json.optString("error", "error ${r.status}"))
             else main.post { Changes.rev++ }
-        } catch (e: Throwable) {
-            // anything else (out of memory, a short file, the core): reported, and the next photos still go
+        } catch (e: IllegalArgumentException) {
+            // a damaged file (the size check above): it won't get better
             Log.w(TAG, "photo of $kks", e)
             fail(ctx, kks.ifEmpty { "photo" }, "Could not send the photo (${e.message ?: e.javaClass.simpleName})")
+        } catch (e: Throwable) {
+            // anything else (out of memory, the Keystore, the core throwing): kept and tried again; the next photos still go
+            Log.w(TAG, "photo of $kks", e)
+            keep = job != null && runCatching {
+                retry(ctx, id, jf, job, kks, "Could not send the photo (${e.message ?: e.javaClass.simpleName})")
+            }.getOrDefault(false)
         } finally {
-            jf.delete(); px.delete()
+            if (!keep) { jf.delete(); px.delete() }
             refresh(ctx)
         }
     }
