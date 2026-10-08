@@ -275,6 +275,13 @@ class SecretFiles(Base):
         self.assertTrue(any(e.get('type') == 'genesis' for e in b['entries']))
         self.assertNotEqual(code4, 0)
         self.assertFalse(os.path.exists(opened + '2'))
+        for change in ({'created': doc['created'] + 1}, {'iter': 2 ** 31}):   # the header is authenticated; no hours of PBKDF2
+            bad = os.path.join(self.dir, 'bad.kksbackup')
+            open(bad, 'w').write(json.dumps(dict(doc, **change)))
+            t0 = time.time()
+            self.assertNotEqual(self.cli('open-backup', '--in', bad, '--out', opened + '3', '--passphrase-file', pp)[0], 0, change)
+            self.assertLess(time.time() - t0, 30)
+            self.assertFalse(os.path.exists(opened + '3'))
         phrase = open(pp).read().strip()
         self.assertRegex(phrase, r'^[0-9a-hjkmnp-tv-z]{4}(-[0-9a-hjkmnp-tv-z]{4}){3}$')
         self.assertNotIn(phrase, out)

@@ -25,8 +25,9 @@ for backups encrypted so that only the manager can restore them. Nothing in the 
   the iteration count, in the server's sealed store (`keys/backup`). A new export replaces it.
 - **`kks-server backup --out FILE`** writes `{"kks_server_backup": 2, "root", "created", "kdf": "pbkdf2-sha256",
   "iter", "salt", "nonce", "ct"}` (0600):
-  - `ct` = AES-256-GCM(K, a random 12-byte nonce, the gzip bundle, associated data ASCII
-    `kks-server-backup-v2\n`);
+  - `ct` = AES-256-GCM(K, a random 12-byte nonce, the gzip bundle, associated data ASCII `kks-server-backup-v2\n`
+    + root + `\n` + created + `\n` + salt + `\n` + iter, so the header can't be changed);
+  - `open-backup` refuses `iter` above 6 000 000, so a crafted file can't make it run for hours;
   - it refuses to run until `export-root-key` has made K, so there is never a plain backup.
 - **`kks-server open-backup --in FILE --out BUNDLE --passphrase-file PASS`** derives K from the passphrase and the
   file's salt, and writes the plain bundle (0600). The manager imports it like any bundle (Manage → Import). It works
