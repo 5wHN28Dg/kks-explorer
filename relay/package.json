@@ -1,0 +1,15 @@
+{
+  "name": "kks-relay",
+  "private": true,
+  "description": "The Walkdown internet relay (a Cloudflare Worker). wrangler is pinned here and in package-lock.json; deploy with `npm ci` then `npx wrangler deploy` (README.md).",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "wrangler": "4.148.0"
+  },
+  "overrides": {
+    "sharp": "0.35.5"
+  }
+}
