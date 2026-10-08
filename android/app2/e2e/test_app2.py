@@ -213,6 +213,17 @@ class Phone(unittest.TestCase):
             ui.tap('More', exact=True)
             ui.tap('Colour tags by photos', exact=True)
             ui.find('11LAB70AA501, equipment and tag plate photos', timeout=20)
+            # delete one: the confirm dialog sent an empty photo id ("bad photo id") before the fix
+            ui.tap('11LAB70AA501, equipment and tag plate photos')
+            ui.scroll_to('Delete', exact=True)
+            ui.tap('Delete', exact=True)
+            ui.find('Delete this photo?', exact=True)
+            ui.tap('Delete', exact=True)
+            self.assertFalse(ui.present('bad photo id'), 'the delete sent no photo id')
+            def left():
+                c = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501']
+                return c if len(c) == 1 else None
+            self.wait_server(left, 'the deleted photo is still on the server', tries=60)
         finally:
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:
