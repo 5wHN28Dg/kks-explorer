@@ -335,6 +335,100 @@ class Phone(unittest.TestCase):
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
             time.sleep(3)
 
+    def test_dark(self):
+        """dark drawings: DarkColor equals the Nim function (tests/web/dark-vectors.json, checked on the device by the
+        debug-only DebugDarkReceiver) and the markers keep 3:1; the ⋮ toggle turns the paper dark and the lines light
+        at once (a screenshot against the light one, pixel by pixel), and it is still on after the app restarts"""
+        from PIL import Image
+        import io
+
+        def shot(name):
+            png = subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, name), 'wb') as f:
+                f.write(png)
+            return Image.open(io.BytesIO(png)).convert('RGB')
+
+        def checked(text):   # the checkable node around a label (the menu item; the label itself is not checkable)
+            box = [int(v) for v in re.findall(r'\d+', ui.find(text, exact=True).get('bounds'))]
+            for n in ui.nodes():
+                b = [int(v) for v in re.findall(r'\d+', n.get('bounds', '[0,0][0,0]'))]
+                if n.get('checkable') == 'true' and b[0] <= box[0] and b[1] <= box[1] and b[2] >= box[2] and b[3] >= box[3]:
+                    return n.get('checked')
+            self.fail(f'nothing checkable around {text!r}: ' + repr([(n.get('class'), label(n), n.get('checkable'), n.get('bounds')) for n in ui.nodes()][-12:]))
+
+        def label(n):
+            return ui.label(n)
+
+        def region():        # the middle of the drawing: below the search field, clear of the buttons and the sides
+            a, b, c, d = map(int, re.findall(r'\d+', ui.find('Drawing sample').get('bounds')))
+            top = int(re.findall(r'\d+', ui.find('Search equipment by KKS code or description').get('bounds'))[3]) + 20
+            return a + (c - a) // 5, top, c - (c - a) // 5, top + (d - top) * 2 // 3
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            # the colour function on the device
+            with open(os.path.join(REPO, 'tests', 'web', 'dark-vectors.json'), 'rb') as f:
+                subprocess.run(ui.ADB + ['shell', 'run-as', PKG, 'sh', '-c', '"cat > files/dark-vectors.json"'], input=f.read(), check=True)
+            subprocess.run(ui.ADB + ['shell', 'run-as', PKG, 'rm', '-f', 'files/dark-check.txt'])
+            ui.adb('shell', 'am', 'broadcast', '-a', 'kks.explorer.DEBUG_DARK', '-p', PKG)
+            check = ''
+            for _ in range(30):
+                check = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/dark-check.txt'], capture_output=True, text=True).stdout
+                if check:
+                    break
+                time.sleep(0.5)
+            self.assertTrue(check.startswith('ok '), check)
+            # the sheet in light mode: which pixels are paper (white) and which are lines (dark grey/black)
+            time.sleep(3)
+            box = region()
+            light = shot('android-dark-before.png')
+            paper, lines = [], []
+            for y in range(box[1], box[3], 2):
+                for x in range(box[0], box[2], 2):
+                    r, g, b = light.getpixel((x, y))
+                    if min(r, g, b) >= 250:
+                        paper.append((x, y))
+                    elif max(r, g, b) <= 70 and max(r, g, b) - min(r, g, b) <= 10:
+                        lines.append((x, y))
+            self.assertGreater(len(paper), 1000, 'no paper in the light screenshot')
+            self.assertGreater(len(lines), 20, 'no lines in the light screenshot')
+            ui.tap('More', exact=True)
+            self.assertEqual(checked('Dark drawings'), 'false')
+            ui.tap('Dark drawings', exact=True)
+            time.sleep(4)
+
+            def judge(im):
+                dark_paper = sum(1 for p in paper if max(im.getpixel(p)) <= 40)
+                light_lines = sum(1 for p in lines if min(im.getpixel(p)) >= 150)
+                return dark_paper / len(paper), light_lines / len(lines)
+            pf, lf = judge(shot('android-dark-on.png'))
+            self.assertGreater(pf, 0.95, f'only {pf:.0%} of the paper turned dark')
+            self.assertGreater(lf, 0.8, f'only {lf:.0%} of the lines turned light')
+            # remembered: the app restarted shows the sheet dark, the menu item checked
+            ui.sh('am', 'force-stop', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.find('Sample sheet', timeout=40)
+            time.sleep(4)
+            pf, lf = judge(shot('android-dark-restarted.png'))
+            self.assertGreater(pf, 0.95, f'after a restart only {pf:.0%} of the paper is dark')
+            self.assertGreater(lf, 0.8, f'after a restart only {lf:.0%} of the lines are light')
+            ui.tap('More', exact=True)
+            self.assertEqual(checked('Dark drawings'), 'true')
+            ui.sh('input', 'keyevent', '4')
+        finally:
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
+
     def test_diagnostics(self):
         """decision 0040: the manager's phone switches reports on; an event is sealed into a report the server stores
         but can't open; the phone (holding the report key) shows it under Manage → Diagnostics. Needs the debug build

@@ -90,8 +90,9 @@ class SheetView(ctx: Context) : View(ctx) {
 
     fun setSheet(id: String, scale: Float, nLevels: Int) {
         gen++; sheetId = id; scale0 = scale; fitted = false
+        supersedeLevels()
         tiles.evictAll(); pending.clear()
-        sheet = null; levels = arrayOfNulls(nLevels); levelAsked = BooleanArray(nLevels)
+        sheet = null; levels = arrayOfNulls(nLevels); levelAsked = BooleanArray(nLevels); stale = arrayOfNulls(0)
         contentDescription = "Drawing $id"
         val g = gen
         work.execute {
@@ -105,12 +106,50 @@ class SheetView(ctx: Context) : View(ctx) {
     private fun askLevel(k: Int) {
         if (k < 0 || k >= levels.size || levelAsked[k]) return
         levelAsked[k] = true
-        val g = gen; val id = sheetId
-        work.execute {
-            val lv = Core.file("sheets/$id.o$k.jxl")?.let { Jxl.pieces(it) }?.let { (p, d) -> Level(p, d[0], d[1]) }
-            main.post { if (g == gen && lv != null) { levels[k] = lv; invalidate() } }
-        }
+        val g = gen; val id = sheetId; val d = dark; val e = epoch.get()
+        // a level 0 is up to 6400 × 4800 px (123 MB of RGBA): a request superseded by another sheet or a dark-drawings
+        // switch is cancelled while queued, and stops between its heavy steps if already running (`epoch`)
+        val live = { epoch.get() == e }
+        levelJobs.add(work.submit {
+            if (!live()) return@submit
+            // dark drawings: every pixel through DarkColor here, on the worker (a level 0 is up to 30 M pixels)
+            val lv = Core.file("sheets/$id.o$k.jxl")?.let { if (live()) Jxl.pieces(it, map = if (d) DarkColor::rgbaBytes else null, keep = live) else null }
+                ?.let { (p, dims) -> Level(p, dims[0], dims[1]) }
+            main.post {
+                if (g == gen && d == dark && lv != null) {
+                    levels[k] = lv
+                    for (j in k until stale.size) stale[j] = null    // as sharp or sharper in this mode: the old ones go
+                    invalidate()
+                }
+            }
+        })
+        levelJobs.removeAll { it.isDone }
     }
+
+    /** cancels the queued and running level decodes (a new sheet or a dark-drawings switch) */
+    private fun supersedeLevels() {
+        epoch.incrementAndGet()
+        for (f in levelJobs) f.cancel(false)
+        levelJobs.clear()
+    }
+
+    /** dark drawings (Drawings → ⋮ → Dark drawings): the sheet light on dark (DarkColor), markers lightened. Switching
+     *  drops the tiles and decodes the overview levels again; until they arrive the levels shown before stay (never a
+     *  blank sheet, even when switching back before anything arrived). */
+    var dark = false
+        set(v) {
+            if (field == v) return
+            field = v
+            supersedeLevels()
+            tiles.evictAll(); pending.clear()
+            // per level: the one this mode had, else the one shown before that (a quick on → off keeps something)
+            stale = Array(levels.size) { k -> levels[k] ?: stale.getOrNull(k) }
+            levels = arrayOfNulls(levels.size); levelAsked = BooleanArray(levels.size)
+            invalidate(); a11y.invalidateRoot()
+        }
+    private var stale = arrayOfNulls<Level>(0)        // the other mode's levels, shown until this mode's arrive
+    private val epoch = java.util.concurrent.atomic.AtomicInteger()
+    private val levelJobs = ArrayList<java.util.concurrent.Future<*>>()
 
     private fun sheetSize(): Pair<Float, Float> = sheet?.let { it.widthPt to it.heightPt }
         ?: levels.firstOrNull { it != null }?.let { b -> val k = levels.indexOf(b); val s = scale0 / (1 shl k); (b.w / s) to (b.h / s) }
@@ -327,8 +366,8 @@ class SheetView(ctx: Context) : View(ctx) {
 
     // ---------------------------------------------------------------- drawing
 
-    private val bg = Paint().apply { color = Color.rgb(209, 212, 217) }
-    private val white = Paint().apply { color = Color.WHITE }
+    private val bg = Paint()
+    private val white = Paint()
     private val bmpPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     /** colour the tags by their photos instead of by how they were read (Drawings → ⋮ → Colour tags by photos) */
     var coverage = false
@@ -342,6 +381,9 @@ class SheetView(ctx: Context) : View(ctx) {
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { if (!fitted || ow == 0) fit() }
 
     override fun onDraw(c: Canvas) {
+        // around the sheet: grey; on dark drawings lighter than the dark paper (GNOME's colours)
+        bg.color = if (dark) Color.rgb(61, 61, 66) else Color.rgb(209, 212, 217)
+        white.color = if (dark) PAPER_DARK else Color.WHITE
         c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bg)
         if (levels.isEmpty()) return        // no sheet set yet
         if (!fitted) fit()
@@ -351,7 +393,11 @@ class SheetView(ctx: Context) : View(ctx) {
         var want = 0
         for (k in levels.indices.reversed()) if (scale0 / (1 shl k) >= z * 0.9f) { want = k; break }
         askLevel(want)
-        val best = levels[want] ?: levels.firstOrNull { it != null }
+        // this mode's level, else the level shown before a dark-drawings switch (not a blurrier one of this mode)
+        val best = levels[want] ?: stale.getOrNull(want) ?: levels.firstOrNull { it != null } ?: stale.firstOrNull { it != null }
+        // the other mode's levels sharper than this zoom wants aren't shown again: they go now, not when this mode's
+        // level of that size arrives (a level 0 is up to 123 MB of bitmaps; zoomed out it might never be asked)
+        for (j in 0 until minOf(want, stale.size)) if (stale[j] !== best) stale[j] = null
         if (best != null) {
             val f = dst.width() / best.w
             for (p in best.pieces) c.drawBitmap(p.bmp, null, RectF(dst.left + p.x * f, dst.top + p.y * f,
@@ -370,15 +416,15 @@ class SheetView(ctx: Context) : View(ctx) {
             val x0 = max(0f, ox); val y0 = max(0f, oy)
             val x1 = min(w, ox + width / z); val y1 = min(h, oy + height / z)
             for (iy in floor(y0 / span).toInt()..floor(y1 / span).toInt()) for (ix in floor(x0 / span).toInt()..floor(x1 / span).toInt()) {
-                val key = "$e:$ix:$iy"
+                val key = "$dark:$e:$ix:$iy"
                 val t = tiles.get(key)
                 if (t != null) {
                     c.drawBitmap(t, null, RectF((ix * span - ox) * z, (iy * span - oy) * z, ((ix + 1) * span - ox) * z, ((iy + 1) * span - oy) * z), bmpPaint)
                 } else if (pending.add(key)) {
-                    val g = gen
+                    val g = gen; val d = dark
                     work.execute {
-                        val bmp = renderTile(s, tz, ix * span, iy * span)
-                        main.post { pending.remove(key); if (g == gen) { tiles.put(key, bmp); invalidate() } }
+                        val bmp = renderTile(s, tz, ix * span, iy * span, d)
+                        main.post { pending.remove(key); if (g == gen && d == dark) { tiles.put(key, bmp); invalidate() } }
                     }
                 }
             }
@@ -388,11 +434,10 @@ class SheetView(ctx: Context) : View(ctx) {
         for (t in tags) {
             val r = RectF((t.x0 - ox) * z, (t.y0 - oy) * z, (t.x1 - ox) * z, (t.y1 - oy) * z)
             if (r.right < 0 || r.bottom < 0 || r.left > width || r.top > height) continue
-            val col = if (coverage && t.status != "pending") coverColor(t.photos)
-                else when (t.status) { "verified" -> Color.rgb(38, 153, 64); "review" -> Color.rgb(242, 140, 0); "pending" -> Color.rgb(140, 51, 191); else -> Color.rgb(26, 102, 230) }
+            val col = markerColor(t.status, t.photos, coverage, dark)
             val dim = dimmed?.let { t.id !in it } == true
             if (coverage && t.status != "pending" && !dim) { fillPaint.color = Color.argb(70, Color.red(col), Color.green(col), Color.blue(col)); c.drawRect(r, fillPaint) }
-            if (t.id in highlight) { fillPaint.color = Color.argb(77, 26, 166, 77); c.drawRect(r, fillPaint) }
+            if (t.id in highlight) { fillPaint.color = (if (dark) DarkColor.lighten(Color.rgb(26, 166, 77)) else Color.rgb(26, 166, 77)) and 0xFFFFFF or (77 shl 24); c.drawRect(r, fillPaint) }
             if (t.id == selected) { fillPaint.color = Color.argb(71, Color.red(col), Color.green(col), Color.blue(col)); c.drawRect(r, fillPaint) }
             tagPaint.color = if (dim) Color.argb(46, Color.red(col), Color.green(col), Color.blue(col)) else col
             tagPaint.strokeWidth = (if (t.id == selected) 3f else 1.5f) * dens
@@ -414,7 +459,7 @@ class SheetView(ctx: Context) : View(ctx) {
             tagPaint.pathEffect = null
         }
         mark?.let { m ->
-            tagPaint.color = Color.rgb(140, 51, 191); tagPaint.strokeWidth = 2f * dens; tagPaint.pathEffect = dash
+            tagPaint.color = markerColor("pending", "", false, dark); tagPaint.strokeWidth = 2f * dens; tagPaint.pathEffect = dash
             c.drawRect((m.left - ox) * z, (m.top - oy) * z, (m.right - ox) * z, (m.bottom - oy) * z, tagPaint)
             tagPaint.pathEffect = null
         }
@@ -430,16 +475,18 @@ class SheetView(ctx: Context) : View(ctx) {
         val w = ceil((x1 - x0 + 2 * pad) * zz).toInt(); val h = ceil((y1 - y0 + 2 * pad) * zz).toInt()
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
-        val t = renderTile(s, zz, x0 - pad, y0 - pad)       // tile px square: enough for a tag-sized crop
+        val t = renderTile(s, zz, x0 - pad, y0 - pad, dark)  // tile px square: enough for a tag-sized crop
         c.drawBitmap(t, 0f, 0f, null)
         return out
     }
 
-    /** one tile: the region at (x0, y0) pt, `tile` px square at tz px/pt, on white (PATHSTORE.md style rules) */
-    private fun renderTile(s: Sheet, tz: Float, x0: Float, y0: Float): Bitmap {
+    /** one tile: the region at (x0, y0) pt, `tile` px square at tz px/pt, on white (PATHSTORE.md style rules); dark:
+     *  every stroke, fill and image pixel through DarkColor, on the dark paper */
+    private fun renderTile(s: Sheet, tz: Float, x0: Float, y0: Float, dark: Boolean): Bitmap {
         val bmp = Bitmap.createBitmap(tile, tile, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        c.drawColor(Color.WHITE)
+        c.drawColor(if (dark) PAPER_DARK else Color.WHITE)
+        fun col(r: Int, g: Int, b: Int) = if (dark) DarkColor.rgb(r, g, b) else Color.rgb(r, g, b)
         val k = tz / 64f                         // px per quantum
         c.scale(k, k); c.translate(-x0 * 64f, -y0 * 64f)
         val qx0 = floor(x0 * 64).toInt(); val qy0 = floor(y0 * 64).toInt()
@@ -453,7 +500,7 @@ class SheetView(ctx: Context) : View(ctx) {
         var ii = 0
         fun drawImage(im: IntArray) {
             val data = ByteArray(im[6]); System.arraycopy(b.array(), im[5], data, 0, im[6])   // absolute: tiles render in parallel
-            Jxl.bitmap(data)?.let { c.drawBitmap(it, null, RectF(im[1].toFloat(), im[2].toFloat(), im[3].toFloat(), im[4].toFloat()), bmpPaint) }
+            Jxl.bitmap(data, if (dark) DarkColor::rgbaBytes else null)?.let { c.drawBitmap(it, null, RectF(im[1].toFloat(), im[2].toFloat(), im[3].toFloat(), im[4].toFloat()), bmpPaint) }
         }
         for (i in s.visible(qx0, qy0, qx1, qy1)) {
             while (ii < imgs.size && imgs[ii][0] <= i) drawImage(imgs[ii++])
@@ -474,7 +521,7 @@ class SheetView(ctx: Context) : View(ctx) {
             }
             if (kind and 2 != 0) {
                 path.fillType = if (kind and 4 != 0) Path.FillType.EVEN_ODD else Path.FillType.WINDING
-                fill.color = Color.rgb(b.get(st + 11).toInt() and 255, b.get(st + 12).toInt() and 255, b.get(st + 13).toInt() and 255)
+                fill.color = col(b.get(st + 11).toInt() and 255, b.get(st + 12).toInt() and 255, b.get(st + 13).toInt() and 255)
                 c.drawPath(path, fill)
             }
             if (kind and 1 != 0) {
@@ -482,13 +529,28 @@ class SheetView(ctx: Context) : View(ctx) {
                 stroke.strokeWidth = if (kind and 8 != 0) px1 else max(wq, px1)
                 stroke.strokeCap = when (b.get(st + 1).toInt()) { 1 -> Paint.Cap.ROUND; 2 -> Paint.Cap.SQUARE; else -> Paint.Cap.BUTT }
                 stroke.strokeJoin = when (b.get(st + 2).toInt()) { 1 -> Paint.Join.ROUND; 2 -> Paint.Join.BEVEL; else -> Paint.Join.MITER }
-                stroke.color = Color.rgb(b.get(st + 8).toInt() and 255, b.get(st + 9).toInt() and 255, b.get(st + 10).toInt() and 255)
+                stroke.color = col(b.get(st + 8).toInt() and 255, b.get(st + 9).toInt() and 255, b.get(st + 10).toInt() and 255)
                 c.drawPath(path, stroke)
             }
         }
         while (ii < imgs.size) drawImage(imgs[ii++])
         return bmp
     }
+}
+
+/** the dark paper: white through DarkColor (#121212) */
+val PAPER_DARK = DarkColor.rgb(255, 255, 255)
+
+/** how a tag was read: verified green, to review amber, my proposed mark purple, read automatically blue */
+fun tagColor(status: String): Int = when (status) {
+    "verified" -> Color.rgb(38, 153, 64); "review" -> Color.rgb(242, 140, 0); "pending" -> Color.rgb(140, 51, 191); else -> Color.rgb(26, 102, 230)
+}
+
+/** a tag's outline colour: by its photos (coverage view) or by how it was read; on dark drawings the same hues raised
+ *  toward white, each ≥ 3:1 against the dark paper (DebugDarkReceiver checks it) */
+fun markerColor(status: String, photos: String, coverage: Boolean, dark: Boolean): Int {
+    val c = if (coverage && status != "pending") coverColor(photos) else tagColor(status)
+    return if (dark) DarkColor.lighten(c) else c
 }
 
 /** the photo coverage colours, the same on every client: both green, the equipment only amber, the tag plate only

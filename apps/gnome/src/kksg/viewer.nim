@@ -4,10 +4,10 @@
 ## - tag hotspots on top.
 ## Input: drag to pan, wheel or pinch to zoom, click a tag, keyboard (arrows, +/−, 0 to fit).
 
-import std/[math, tables, sets, algorithm, strutils, times, typedthreads]
+import std/[math, tables, sets, algorithm, strutils, times, typedthreads, atomics]
 import kks/json
 import kksi/jxl
-import gtk, kkprender
+import gtk, kkprender, darkcolor
 
 {.compile: "kks_view.c".}
 proc kks_view_new(snap: pointer, user: pointer): W {.importc, cdecl.}
@@ -27,6 +27,7 @@ type
 
   DecodeJob = object
     gen, level: int
+    dark: bool                   ## dark drawings: the level's pixels are transformed here, on the worker
     data: string
   DecodeDone = object
     gen, level, w, h: int
@@ -34,12 +35,14 @@ type
 
   Viewer* = ref object
     coverage*: bool              ## colour the tags by their photos instead of by how they were read
+    dark*: bool                  ## dark drawings (setDark): tiles and overview light-on-dark, markers lightened
     widget*: W
     sheet*: Sheet
     name*: string
     scale0: float                ## level 0's px per point
     levels: seq[W]               ## textures, nil until decoded
-    levelData: seq[string]
+    stale: seq[W]                ## the levels shown before a dark-drawings switch, until this mode's arrive
+    levelData: seq[string]       ## kept: switching dark drawings decodes the levels again (a few MB per sheet)
     asked: seq[bool]
     gen: int                     ## bumps when the sheet changes (late decodes are dropped)
     z*, ox*, oy*: float          ## logical px per point; the point at the widget's top-left
@@ -76,10 +79,12 @@ var
   results: Channel[DecodeDone]
   worker: Thread[void]
   workerStarted = false
+  liveGen: Atomic[int]          ## the viewer's current gen: the worker skips jobs queued for an older one
 
 proc decodeWorker() {.thread.} =
   while true:
     let j = jobs.recv()
+    if j.gen != liveGen.load: continue   # superseded (another sheet, a dark-drawings switch): don't decode it
     var d = DecodeDone(gen: j.gen, level: j.level)
     try:
       let (w, h, _, px) = decodeRgba(j.data)
@@ -90,6 +95,8 @@ proc decodeWorker() {.thread.} =
         d.pixels[i * 3] = char(px[i * 4])
         d.pixels[i * 3 + 1] = char(px[i * 4 + 1])
         d.pixels[i * 3 + 2] = char(px[i * 4 + 2])
+      if j.dark and d.pixels.len > 0:
+        darkenPixels(d.pixels.toOpenArrayByte(0, d.pixels.len - 1), 3)
     except CatchableError: discard
     results.send(d)
 
@@ -157,10 +164,13 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
   ## kkp: the path store; info: the sheets.json entry; levels: the pyramid files' bytes, level 0 first
   inc v.gen
   v.dropTiles()
-  for t in v.levels:
+  liveGen.store(v.gen)
+  for t in v.levels & v.stale:
     if t != nil: g_object_unref(t)
+  v.stale = @[]
   v.name = name
   v.sheet = if kkp.len > 0: newSheet(kkp) else: nil
+  if v.sheet != nil: v.sheet.setDark(v.dark)
   v.scale0 = if info.get("scale") != nil and info["scale"].isNum: info["scale"].num else: 2.0
   v.levelData = levels
   v.levels = newSeq[W](levels.len)
@@ -171,9 +181,17 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
   ensureWorker()
   if levels.len > 0:                      # the smallest level now, so something shows at once
     v.asked[^1] = true
-    jobs.send(DecodeJob(gen: v.gen, level: levels.len - 1, data: levels[^1]))
+    jobs.send(DecodeJob(gen: v.gen, level: levels.len - 1, dark: v.dark, data: levels[^1]))
   setAccessibleLabel(v.widget, "Drawing " & name)
   gtk_widget_queue_draw(v.widget)
+
+proc dropSharperStale(v: Viewer, want: int, shown: W) =
+  ## the other mode's levels sharper than the zoom wants aren't shown again: they go now, not when this mode's level of
+  ## that size arrives (a level 0 is up to 123 MB; zoomed out it might never be asked). `shown` (on screen) stays.
+  for k in 0 ..< min(want, v.stale.len):
+    if v.stale[k] != nil and v.stale[k] != shown:
+      g_object_unref(v.stale[k])
+      v.stale[k] = nil
 
 proc pollDecodes*(v: Viewer) =
   ## called from a GLib timer: take finished overview levels
@@ -181,9 +199,36 @@ proc pollDecodes*(v: Viewer) =
     let (ok, d) = results.tryRecv()
     if not ok: break
     if d.gen != v.gen or d.w == 0: continue
+    if v.levels[d.level] != nil: g_object_unref(v.levels[d.level])
     v.levels[d.level] = textureFromRgb(d.pixels.toOpenArrayByte(0, d.pixels.len - 1), d.w, d.h)
-    v.levelData[d.level] = ""            # the bytes are no longer needed
+    for k in d.level ..< v.stale.len:     # the old mode's levels no sharper than this one go
+      if v.stale[k] != nil:
+        g_object_unref(v.stale[k])
+        v.stale[k] = nil
     gtk_widget_queue_draw(v.widget)
+
+proc setDark*(v: Viewer, on: bool) =
+  ## dark drawings on or off, at once: cached tiles are dropped (re-rendered in the new colours) and the overview
+  ## levels decoded again (the smallest first). Decodes queued for the old mode are skipped by the worker (`liveGen`),
+  ## and the levels shown so far stay until this mode's arrive (never the smallest level, never blank)
+  if v.dark == on: return
+  v.dark = on
+  inc v.gen
+  liveGen.store(v.gen)
+  v.dropTiles()
+  if v.sheet != nil: v.sheet.setDark(on)
+  if v.stale.len != v.levels.len: v.stale = newSeq[W](v.levels.len)
+  for k in 0 ..< v.levels.len:
+    if v.levels[k] != nil:          # this mode's level replaces an older stale one; else the older one stays
+      if v.stale[k] != nil: g_object_unref(v.stale[k])
+      v.stale[k] = v.levels[k]
+    v.levels[k] = nil
+    v.asked[k] = false
+  if v.levels.len > 0:
+    ensureWorker()
+    v.asked[^1] = true
+    jobs.send(DecodeJob(gen: v.gen, level: v.levels.len - 1, dark: on, data: v.levelData[^1]))
+  gtk_widget_queue_draw(v.widget)
 
 proc levelScale(v: Viewer, k: int): float = v.scale0 / float(1 shl k)
 
@@ -228,11 +273,18 @@ proc tagColor(status: string): (float, float, float) =
   of "pending": (0.55, 0.2, 0.75)
   else: (0.1, 0.4, 0.9)
 
+proc markerColor*(status, photos: string, coverage, dark: bool): (float, float, float) =
+  ## a tag's outline colour: by its photos (coverage view) or by how it was read; the same hues on dark drawings,
+  ## raised toward white so each keeps 3:1 against the dark sheet (tests/test_darkcolor.nim)
+  let (r, g, b) = if coverage and status != "pending": coverColor(photos) else: tagColor(status)
+  if dark: lightenForDark(r, g, b) else: (r, g, b)
+
 proc snapshot(v: Viewer, s: W, w, h: int) =
   var r: GraphRect
   graphene_rect_init(addr r, 0, 0, cfloat(w), cfloat(h))
   let bg = gtk_snapshot_append_cairo(s, addr r)
-  cairo_set_source_rgb(bg, 0.82, 0.83, 0.85)
+  if v.dark: cairo_set_source_rgb(bg, 0.24, 0.24, 0.26)     # around the sheet: lighter than the dark paper
+  else: cairo_set_source_rgb(bg, 0.82, 0.83, 0.85)
   cairo_paint(bg)
   cairo_destroy(bg)
   if v.sheet == nil and v.levels.len == 0: return
@@ -251,23 +303,33 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
       break
   if v.levels.len > 0 and not v.asked[want]:
     v.asked[want] = true
-    jobs.send(DecodeJob(gen: v.gen, level: want, data: v.levelData[want]))
+    jobs.send(DecodeJob(gen: v.gen, level: want, dark: v.dark, data: v.levelData[want]))
   var best = -1
-  if v.levels.len > 0 and v.levels[want] != nil: best = want
+  var tex: W = nil
+  if v.levels.len > 0 and v.levels[want] != nil: tex = v.levels[want]
+  elif want < v.stale.len and v.stale[want] != nil: tex = v.stale[want]   # shown before a dark switch: not blurrier
   else:
     for k in 0 ..< v.levels.len:
       if v.levels[k] != nil:
-        best = k
+        tex = v.levels[k]
         break
+    if tex == nil:
+      for k in 0 ..< v.stale.len:
+        if v.stale[k] != nil:
+          tex = v.stale[k]
+          break
+  if tex != nil: best = 0
+  v.dropSharperStale(want, tex)
   graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
   if best >= 0:
-    gtk_snapshot_append_scaled_texture(s, v.levels[best], GSK_SCALING_FILTER_TRILINEAR, addr r)
+    gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
     if not timingReported and startedAt > 0:
       timingReported = true
       stderr.writeLine "timing: first sheet drawn " & $int((epochTime() - startedAt) * 1000) & " ms after launch"
   else:
     let c = gtk_snapshot_append_cairo(s, addr r)
-    cairo_set_source_rgb(c, 1, 1, 1)
+    if v.dark: cairo_set_source_rgb(c, DarkLo / 255, DarkLo / 255, DarkLo / 255)
+    else: cairo_set_source_rgb(c, 1, 1, 1)
     cairo_paint(c)
     cairo_destroy(c)
   # 2. vector tiles at every zoom, over the overview (which shows until they are rendered): the overview shrunk to fit
@@ -320,12 +382,12 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     let tw = (t.x1 - t.x0) * v.z
     let th = (t.y1 - t.y0) * v.z
     if x + tw < 0 or y + th < 0 or x > float(w) or y > float(h): continue
-    var (cr, cg, cb) = if v.coverage and t.status != "pending": coverColor(t.photos) else: tagColor(t.status)
+    var (cr, cg, cb) = markerColor(t.status, t.photos, v.coverage, v.dark)
     let sel = t.id == v.selected
     let hit = t.id in v.hits
     let dim = v.floorOn and t.id notin v.floorIds
     if t.id in v.linked:
-      (cr, cg, cb) = (0.1, 0.65, 0.3)
+      (cr, cg, cb) = if v.dark: lightenForDark(0.1, 0.65, 0.3) else: (0.1, 0.65, 0.3)
       cairo_set_source_rgba(c, cr, cg, cb, 0.3)
       cairo_rectangle(c, x, y, tw, th)
       cairo_fill(c)
@@ -343,7 +405,7 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
       cairo_set_source_rgba(c, if hit and not sel: 1.0 else: cr, if hit and not sel: 0.85 else: cg, if hit and not sel: 0.0 else: cb, 0.28)
       cairo_rectangle(c, x, y, tw, th)
       cairo_fill(c)
-    cairo_set_source_rgba(c, cr, cg, cb, if sel: 1.0 else: 0.75)
+    cairo_set_source_rgba(c, cr, cg, cb, if sel or v.dark: 1.0 else: 0.75)
     cairo_set_line_width(c, if sel: 3.0 else: 1.5)
     if t.status == "pending":
       var dash = [4.0, 3.0]

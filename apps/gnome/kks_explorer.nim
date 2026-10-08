@@ -4,6 +4,7 @@
 import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequtils]
 import kks/[json, api]
 import kks/model
+import kksl/dbstore
 import appstate
 import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems]
 
@@ -195,6 +196,7 @@ proc mainScreen(w: Win): W =
   let sidebar = page(w.sideNav, "Sheets")
   # content: viewer + tag panel
   w.v = newViewer()
+  w.v.setDark(w.a.store.getMeta("dark_drawings") == "1")    # per device (this device's store), like sync_peers
   w.showSheet = proc (id: string) = w.doShowSheet(id)
   w.selectTag = proc (id: string, center: bool) = w.doSelectTag(id, center)
   w.rebuildPanel = proc () =
@@ -231,6 +233,17 @@ proc mainScreen(w: Win): W =
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-fit-best-symbolic", "Fit the sheet (0)", proc () = w.v.fit()))
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-in-symbolic", "Zoom in (+)", proc () = w.v.zoomBy(1.5)))
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-out-symbolic", "Zoom out (−)", proc () = w.v.zoomBy(1 / 1.5)))
+  # dark drawings: a PDF reader's dark mode for the sheets (lightness inverted, hue kept; photos never change)
+  let darkBtn = gtk_toggle_button_new()
+  gtk_button_set_icon_name(darkBtn, "weather-clear-night-symbolic")
+  gtk_widget_set_tooltip_text(darkBtn, "Dark drawings")
+  setAccessibleLabel(darkBtn, "Dark drawings")
+  gtk_toggle_button_set_active(darkBtn, cint(w.v.dark))
+  darkBtn.on("toggled", proc () =
+    let on = gtk_toggle_button_get_active(darkBtn) != 0
+    w.v.setDark(on)
+    w.a.store.setMeta("dark_drawings", if on: "1" else: ""))
+  adw_header_bar_pack_end(contentHeader, darkBtn)
   adw_header_bar_pack_end(contentHeader, iconButton("camera-photo-symbolic", "Colour tags by photos", proc () =
     w.v.coverage = not w.v.coverage
     gtk_widget_queue_draw(w.v.widget)
