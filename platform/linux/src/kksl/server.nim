@@ -13,6 +13,7 @@ const
   Shell = {"/": "index.html", "/index.html": "index.html", "/admin.html": "admin.html", "/common.js": "common.js", "/tiles.js": "tiles.js",
            "/course-bridge.js": "course-bridge.js", "/learning.html": "learning.html",
            "/course.html": "course.html", "/course.js": "course.js", "/course-figure.js": "course-figure.js",
+           "/index.js": "index.js", "/admin.js": "admin.js", "/learning.js": "learning.js",
            "/course.css": "course.css", "/kks-wasm.js": "kks-wasm.js", "/kks-wasm-worker.js": "kks-wasm-worker.js",
            "/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest", "/icon.svg": "icon.svg",
            "/icon-192.png": "icon-192.png", "/icon-512.png": "icon-512.png"}.toTable
@@ -336,6 +337,12 @@ const
   # page, it runs sandboxed (a unique origin, no scripts) and loads nothing. As a subresource (<img>, fetch) the
   # header has no effect.
   ContentSandbox = ("Content-Security-Policy", "default-src 'none'; sandbox")
+  # The app's own pages, their scripts and workers (#8): scripts only from this site, no inline script or handler
+  # (the pages have none), WebAssembly for our libjxl/zxing build (decision 0037); pictures may be data: or blob:
+  # URLs (photo previews, JPEG XL decoded to BMP). Inline styles stay allowed: views set style attributes.
+  AppPolicy* = ("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; " &
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; " &
+    "frame-ancestors 'none'; form-action 'self'")
   # plant-data files the pages fetch; anything else goes out as a download
   DataTypes = [".json", ".jxl", ".kkp", ".png", ".jpg", ".jpeg", ".webp", ".pdf", ".gz", ".woff2"]
 
@@ -836,10 +843,10 @@ proc handle(s: Server, req: Request) {.async.} =
   if not s.hostAllowed(req): herr(421, "This server does not answer to that host name.")
   if meth == "GET" or meth == "HEAD":
     if path in Shell:
-      await s.staticFile(req, s.cfg.webDir, Shell[path], "no-cache")
+      await s.staticFile(req, s.cfg.webDir, Shell[path], "no-cache", extra = @[AppPolicy])
       return
     if path.startsWith("/vendor/"):
-      await s.staticFile(req, s.cfg.webDir / "vendor", path[8 .. ^1], "no-cache")
+      await s.staticFile(req, s.cfg.webDir / "vendor", path[8 .. ^1], "no-cache", extra = @[AppPolicy])
       return
     if path == "/api/config":
       var c = s.api.configOut()
