@@ -124,7 +124,19 @@ suite "internet sync through the relay":
     let w1 = waitFor wsConnect(url & "/v1/room/" & room)
     waitFor w1.sendText(h)
     check w1.first()["t"].s == "welcome"
-    for replay in [h, toText(relayHello(P, kX, room, now - 10))]:   # the same hello again; an older one
+    # the same signature with s -> n - s (still valid) and spelled with a different last base64 character's spare bits
+    let hj = parseStrict(h)
+    var sig = unb64u(hj["sig"].s)
+    const n = [0xff'u8, 0xff, 0xff, 0xff, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+               0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63, 0x25, 0x51]
+    var borrow = 0
+    for i in countdown(31, 0):
+      var d = int(n[i]) - int(sig[32 + i]) - borrow
+      borrow = (if d < 0: 1 else: 0)
+      sig[32 + i] = byte((d + 256) mod 256)
+    let flipped = hj.copy
+    flipped["sig"] = newStr(b64u(sig))
+    for replay in [h, toText(flipped), toText(relayHello(P, kX, room, now - 10))]:   # again; malleated; older
       let w2 = waitFor wsConnect(url & "/v1/room/" & room)
       waitFor w2.sendText(replay)
       let m = w2.first()

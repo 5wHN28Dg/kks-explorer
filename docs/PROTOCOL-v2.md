@@ -530,7 +530,7 @@ This section only provides a byte stream; §15 (TLS and exchange) runs over it u
   - it answers `{"t":"welcome", "peers": [...]}`;
   - it tells the others `{"t":"joined", "peer"}`, and `{"t":"left", "peer"}` when the device leaves.
 - A second hello for the same device replaces the older socket, unless it is a replay (issue #44): a hello with the
-  present socket's signature, or an older `ts` than its, gets `{"t":"error","why":"replayed hello"}` and is closed, and
+  present socket's signature r (its first 32 bytes, so s ↦ n − s is the same hello), or an older `ts` than its, gets `{"t":"error","why":"replayed hello"}` and is closed, and
   the present socket stays. A bad hello, or more than 200 devices: `error` and close.
 - `ping` after 25 s of silence, answered by `pong`.
 

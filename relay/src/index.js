@@ -99,11 +99,13 @@ export class Room {
       const members = this.members(), old = members.get(peer);
       // a captured hello replayed (within its 300 s) must not knock the device off: not its present socket's hello
       // again, nor an older one (issue #44). A fresh hello has a new signature (ECDSA is randomized) and ts ≥ the last.
-      const was = old?.deserializeAttachment();
-      if (was && (was.sig === sig || ts < was.ts)) { ws.send(JSON.stringify({t: 'error', why: 'replayed hello'})); ws.close(1008, 'replayed hello'); return }
+      // "Again" is judged on r, the signature's first half as bytes: s ↦ n − s and other spellings of the same
+      // base64 keep it, so they are the same hello.
+      const r = b64uOf(b64u(sig).slice(0, 32)), was = old?.deserializeAttachment();
+      if (was && (was.r === r || ts < was.ts)) { ws.send(JSON.stringify({t: 'error', why: 'replayed hello'})); ws.close(1008, 'replayed hello'); return }
       if (!old && members.size >= MAX_PEERS) { ws.send(JSON.stringify({t: 'error', why: 'room full'})); ws.close(1008, 'room full'); return }
       if (old) { old.serializeAttachment({kind: 'room', room: a.room, replaced: true}); try { old.close(1000, 'replaced') } catch (e) {} }
-      ws.serializeAttachment({...a, peer, ts, sig});
+      ws.serializeAttachment({...a, peer, ts, r});
       ws.send(JSON.stringify({t: 'welcome', peers: [...members.keys()].filter(p => p !== peer)}));
       this.tell({t: 'joined', peer}, peer);
       return;
