@@ -25,6 +25,7 @@ type
     note*, flag*: string
     added*: string               ## an added tag's id (R6)
     suggestion*: JNode
+    symbol*: JNode               ## tags.json "symbol": the valve symbol the importer found, nil = none (importer/README)
 
   Decoded* = object
     blk*, sys*, fn*, comp*, num*: string
@@ -63,6 +64,8 @@ proc parseTag(x: JNode): Tag =
   result = Tag(id: x.s("id"), sheet: x.s("sheet"), kks: x.s("kks"), suffix: x.s("suffix"), isa: x.s("isa"),
                kind: x.s("kind"), status: x.s("status"), conf: x.f("conf"), note: x.s("note"), flag: x.s("flag"),
                suggestion: x.get("suggestion"))
+  let sym = x.get("symbol")
+  if sym != nil and sym.kind == jObj and sym.get("type").isStr and sym["type"].s.len in 1 .. 100: result.symbol = sym
   let b = x.get("bbox")
   if b != nil and b.elems.len == 4:
     for i in 0 .. 3: result.bbox[i] = b[i].num
@@ -260,3 +263,50 @@ proc search*(m: Model, q: string, limit = 60): seq[Tag] =
     if score > 0: scored.add((-score, i, t))
   scored.sort(proc (a, b: (int, int, Tag)): int = cmp((a[0], a[1]), (b[0], b[1])))
   for x in scored[0 ..< min(limit, scored.len)]: result.add x[2]
+
+# ---------------------------------------------------------------- valve type (from the drawing's symbol)
+
+const ValveTypeKey* = "Valve type"
+  ## the equipment custom field ({k, v}) a confirmed or corrected valve type is kept in
+
+proc customValue(e: JNode, key: string): string =
+  let c = e.get("custom")
+  if c != nil and c.kind == jArr:
+    for x in c.elems:
+      if x.kind == jObj and x.s("k") == key: return x.s("v")
+
+proc drawnValveType*(t: Tag): string =
+  ## the importer's reading of the tag's valve symbol in words ("gate valve, motor-operated, drawn closed"); "" = none
+  if t.symbol == nil: return ""
+  result = t.symbol.s("type")
+  if t.symbol.s("actuator") == "motor": result.add ", motor-operated"
+  let nc = t.symbol.get("nc")
+  if nc != nil and nc.kind == jBool and nc.b: result.add ", drawn closed"
+
+proc valveTypeOf*(m: Model, t: Tag): JNode =
+  ## The valve type the equipment panel shows: confirmed (the custom field "Valve type", set through the normal
+  ## equipment proposal) or read from the drawing's symbol, "unchecked", with the proposal that confirms it (a UI
+  ## may let the person edit `v` first: that is a correction). nil = neither.
+  let k = t.full
+  let drawn = drawnValveType(t)
+  let eq = m.equipment(k)
+  let have = if k.len > 0: customValue(eq, ValveTypeKey) else: ""
+  if have.len > 0:
+    return newObj(@[("status", newStr("confirmed")), ("text", newStr(have)), ("drawn", newStr(drawn)),
+                    ("label", newStr("confirmed")), ("line", newStr("Valve type: " & have & " (confirmed)")),
+                    ("drawn_differs", newBool(drawn.len > 0 and drawn != have))])
+  if drawn.len == 0 or k.len == 0: return nil
+  var base = newArr()
+  let cur = eq.get("custom")
+  if cur != nil and cur.kind == jArr:
+    for x in cur.elems: base.elems.add x
+  var changed = newArr(base.elems)
+  changed.elems.add newObj(@[("k", newStr(ValveTypeKey)), ("v", newStr(drawn))])
+  let payload = newObj(@[("kks", newStr(k)), ("changes", newObj(@[("custom", changed)])),
+                         ("base", newObj(@[("custom", base)]))])
+  var conf = t.symbol.get("conf")
+  if conf == nil or not conf.isNum: conf = newNull()
+  newObj(@[("status", newStr("drawing")), ("text", newStr(drawn)), ("conf", conf),
+           ("label", newStr("from the drawing, unchecked")),
+           ("line", newStr("Valve type: " & drawn & " (from the drawing, unchecked)")),
+           ("confirm", newObj(@[("kind", newStr("equipment")), ("payload", payload)]))])
