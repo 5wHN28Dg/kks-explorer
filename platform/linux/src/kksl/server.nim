@@ -112,6 +112,8 @@ proc loadConfig*(path: string): Config =
   result.maxPdfMb = i("max_pdf_mb", result.maxPdfMb)
   result.importTimeoutS = i("import_timeout_s", result.importTimeoutS)
   result.importMemoryMb = i("import_memory_mb", result.importMemoryMb)
+  if result.importTimeoutS < 1: raise newException(ValueError, "import_timeout_s must be 1 or more")
+  if result.importMemoryMb < 256: raise newException(ValueError, "import_memory_mb must be 256 or more")
 
 proc herr(code: int, msg: string) {.noreturn.} =
   let e = newException(HttpErr, msg)
@@ -756,21 +758,33 @@ proc runImport(s: Server, job: JNode, args: seq[string], replace: bool) {.async.
         elif l.len > 0:
           job["log"].elems.add S(l)
           if job["log"].elems.len > 300: job["log"].elems.delete(0)
+    var stopped = false
+    proc stop() =
+      if not stopped:
+        stopped = true
+        p.kill()
+        job["log"].elems.add S("The importer was stopped after " & $s.cfg.importTimeoutS & " s (import_timeout_s in the config).")
+    var reads = 0
     while true:
+      if epochTime() > deadline:          # checked on every pass: an importer that never stops printing is stopped too
+        stop()
+        break
       let n = posix.read(fd, addr buf[0], buf.len)
       if n > 0:
         pending.add buf[0 ..< n]
+        if pending.len > 65536 and '\n' notin pending: pending.add '\n'   # one endless line: cut it
         takeLines(false)
+        inc reads
+        if reads mod 16 == 0: await sleepAsync(0)   # let the server answer others meanwhile
         continue
       if n == 0: break                       # end of output
       if errno != EAGAIN and errno != EWOULDBLOCK: break
-      if epochTime() > deadline:
-        p.kill()
-        job["log"].elems.add S("The importer was stopped after " & $s.cfg.importTimeoutS & " s (import_timeout_s in the config).")
-        break
       await sleepAsync(200)
     takeLines(true)
-    let code = p.waitForExit()
+    while p.peekExitCode() == -1:          # no blocking wait: a child that closed its output may still hang
+      if epochTime() > deadline: stop()
+      await sleepAsync(100)
+    let code = p.peekExitCode()
     ok = code == 0 and job["result"].kind == jObj
   except CatchableError as e:
     job["log"].elems.add S("Importer crashed: " & e.msg)

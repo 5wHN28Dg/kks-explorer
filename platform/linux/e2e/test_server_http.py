@@ -144,6 +144,8 @@ class Drawings(Base):
 
 
 FAKE_DIR = tempfile.mkdtemp(prefix='kks-fake-importer-')
+import atexit, shutil
+atexit.register(shutil.rmtree, FAKE_DIR, True)
 FAKE_IMPORTER = os.path.join(FAKE_DIR, 'kks-import')
 with open(FAKE_IMPORTER, 'w') as f:   # records its limits and arguments, then hangs like a PDF that never finishes
     f.write('#!/bin/sh\nulimit -v > "$0.limits"; ulimit -c >> "$0.limits"\n'
