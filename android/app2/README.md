@@ -49,7 +49,9 @@ the synthetic sample sheet. It covers:
 - a member's proposal approved on the phone;
 - removal and wipe.
 
-Debug builds only: `adb shell am broadcast -a kks.explorer.DEBUG_SYNC -p io.github.walkdown` runs the sync worker once.
+Debug builds only: `adb shell am broadcast -a kks.explorer.DEBUG_SYNC -p io.github.walkdown` runs the sync worker once;
+`kks.explorer.DEBUG_DARK` checks the dark drawings colours (`ui/DarkColor.kt`) against `tests/web/dark-vectors.json`
+(test_app2's `test_dark` copies the file in first).
 
 ## Not verified yet
 

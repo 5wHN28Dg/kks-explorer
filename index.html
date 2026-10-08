@@ -54,10 +54,15 @@ body.cover #layer .hs:not(.pendmark){outline:2px solid var(--pc);background:colo
 .p-both{--pc:#2ea043} .p-equipment{--pc:#e69600} .p-plate{--pc:#1e78e6} .p-none{--pc:#dc2828}
 #coverlegend{display:none;position:absolute;left:8px;bottom:8px;z-index:5;background:var(--panel,#1c2730);color:inherit;padding:4px 8px;border-radius:6px;font-size:12px}
 body.cover #coverlegend{display:block}
-#coverlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px}
+#coverlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px;background:var(--pc)}
 #markbox{position:absolute;outline:2px dashed var(--accent);background:rgba(255,122,26,.18);pointer-events:none}
 #viewer.marking,#viewer.marking .hs{cursor:crosshair}
 .zoom button.on{border-color:var(--accent);color:var(--accent)}
+/* dark drawings (dark.js, the same as the desktop apps): the sheet's paper #121212, around it a lighter grey; tag colours
+   raised toward white (dark.js lightenForDark, 0.35) so each keeps 3:1 against the dark paper */
+body.darkdwg #viewer{background:#3d3d42;--ok:#8dbfff;--review:#f7d05c;--accent:#ffa96a}
+body.darkdwg #sheetimg{background:#121212}
+body.darkdwg :is(.hs,.sw).p-both{--pc:#77c185} body.darkdwg :is(.hs,.sw).p-equipment{--pc:#efbb59} body.darkdwg :is(.hs,.sw).p-plate{--pc:#6da7ef} body.darkdwg :is(.hs,.sw).p-none{--pc:#e87373}
 body.hide-review .hs.review{display:none}
 .zoom{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;z-index:5}
 .zoom button{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:var(--chrome2);font-size:19px;cursor:pointer}
@@ -153,8 +158,8 @@ dt{color:var(--muted)} dd{margin:0}
 </header>
 <main>
   <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"></div><canvas id="sharp"></canvas><div id="stage2"><div id="layer"></div></div></div>
-  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button></div>
-  <div id="coverlegend" role="note">Photos:<i style="background:#2ea043"></i>both<i style="background:#e69600"></i>equipment only<i style="background:#1e78e6"></i>tag plate only<i style="background:#dc2828"></i>none</div>
+  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button><button id="zdark" title="Dark drawings" aria-label="Dark drawings" aria-pressed="false">◐</button></div>
+  <div id="coverlegend" role="note">Photos:<i class="sw p-both"></i>both<i class="sw p-equipment"></i>equipment only<i class="sw p-plate"></i>tag plate only<i class="sw p-none"></i>none</div>
   <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
   <div id="toast"></div>
   <aside class="drawer" id="procDrawer"><div class="head"><h2>Operation manual procedures</h2><button class="x" data-close="procDrawer">×</button></div>
