@@ -5,8 +5,11 @@ the filter, keyboard only (Tab to a summary, Enter opens it, Enter on a row open
 and a row on another sheet switching the drawing.
   /path/to/venv-with-playwright/bin/python platform/linux/e2e/test_web_systems.py [unittest arguments]
 $KKS_SERVER names the build (default /tmp/kkslinux/kks_server); screenshots go to $KKS_SHOTS (default /tmp/kks-web-shots)."""
-import json, os, re, shutil, subprocess, tempfile, unittest, urllib.request, http.cookiejar, zlib, struct
+import json, os, re, shutil, subprocess, sys, tempfile, unittest, urllib.request, http.cookiejar, zlib, struct
 from playwright.sync_api import sync_playwright
+
+sys.path.insert(0, os.path.dirname(__file__))
+from test_web_v2 import CSP_WATCH
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
@@ -68,7 +71,7 @@ class WebSystems(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m: setup = m[1]
             if 'server on' in line: break
         cls.base = 'http://127.0.0.1:%d' % cls.port
@@ -118,6 +121,7 @@ class WebSystems(unittest.TestCase):
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context(viewport={'width': 1200, 'height': 800})
+            ctx.add_init_script(CSP_WATCH)
             r = ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
                                  headers={'Origin': self.base})
             self.assertTrue(r.ok, r.text())
@@ -145,20 +149,20 @@ class WebSystems(unittest.TestCase):
             self.assertEqual(row.locator('.sysdot').get_attribute('class'), 'sysdot p-none')
             # the filter: every word somewhere in the code, names, subsystem or description; levels open when few match
             page.fill('#sysQ', 'feed valve')   # 'feed' in LAB's name, 'valve' in AA's: the three LAB70 valves
-            page.wait_for_function("document.getElementById('sysCount').textContent === '3 codes match'")
+            page.wait_for_function("() => document.getElementById('sysCount').textContent === '3 codes match'")
             self.assertEqual(page.evaluate("[...document.querySelectorAll('#sysBody details')].every(d => d.open)"), True)
             page.fill('#sysQ', 'NORTH')   # only in the location list's description
-            page.wait_for_function("document.getElementById('sysCount').textContent === '1 code match'")
+            page.wait_for_function("() => document.getElementById('sysCount').textContent === '1 code match'")
             self.assertTrue(page.is_visible('.sysrow:has-text("11LAB70AA501")'))
             page.fill('#sysQ', 'lab')
-            page.wait_for_function("document.getElementById('sysCount').textContent === '5 codes match'")
+            page.wait_for_function("() => document.getElementById('sysCount').textContent === '5 codes match'")
             page.fill('#sysQ', 'temperature 11had')
-            page.wait_for_function("document.getElementById('sysCount').textContent === '1 code match'")
+            page.wait_for_function("() => document.getElementById('sysCount').textContent === '1 code match'")
             page.fill('#sysQ', 'nothing like this')
-            page.wait_for_function("document.getElementById('sysCount').textContent === '0 codes match'")
+            page.wait_for_function("() => document.getElementById('sysCount').textContent === '0 codes match'")
             self.assertIn('No code matches', page.text_content('#sysBody'))
             page.fill('#sysQ', '')
-            page.wait_for_function("document.getElementById('sysCount').textContent === '7 codes'")
+            page.wait_for_function("() => document.getElementById('sysCount').textContent === '7 codes'")
             page.screenshot(path=os.path.join(SHOTS, 'systems-' + name + '.png'))
             # keyboard only: Tab from the filter to the block, to its first system; Enter opens each level; Enter on the
             # row opens the panel with focus on the code
@@ -174,13 +178,13 @@ class WebSystems(unittest.TestCase):
             page.keyboard.press('Tab')
             self.assertTrue(focused().startswith('BUTTON:') and '11HAD70CT101R' in focused(), name + ': ' + focused())
             page.keyboard.press('Enter')
-            page.wait_for_function("document.activeElement && document.activeElement.getAttribute('role') === 'heading'", timeout=15000)
+            page.wait_for_function("() => document.activeElement && document.activeElement.getAttribute('role') === 'heading'", timeout=15000)
             self.assertIn('11HAD70CT101R', page.evaluate("document.activeElement.textContent"))
             # a row on another sheet switches the drawing
             page.get_by_role('button', name='Systems').click()   # (closes)
             page.get_by_role('button', name='Systems').click()   # (opens, rebuilt)
             page.fill('#sysQ', 'lab71')
-            page.wait_for_function("document.getElementById('sysCount').textContent === '1 code match'")
+            page.wait_for_function("() => document.getElementById('sysCount').textContent === '1 code match'")
             page.click('.sysrow:has-text("11LAB71AP001")')
             page.wait_for_function("() => cur.id === 'b' && selTag && full(selTag) === '11LAB71AP001'", timeout=15000)
             self.assertIn('11LAB71AP001', page.text_content('#panelBody .phead .kks'))

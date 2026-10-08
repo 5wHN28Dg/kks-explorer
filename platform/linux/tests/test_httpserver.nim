@@ -52,3 +52,33 @@ suite "httpserver":
     check http.openConnections == 0                 # its slot is free again
     c.close()
     # (not closed: its accept loop is still waiting, and closing under it fails that loop)
+
+  test "a bare CR or a NUL in a request or header line is refused (issue #79)":
+    let http = newAsyncHttpServer()
+    var seen = new seq[string]
+    proc cb(req: Request) {.async, gcsafe.} =
+      {.cast(gcsafe).}: seen[].add req.url.path & " " & $req.headers.getOrDefault("Content-Length") & " " & req.body
+      await req.respond(Http200, "ok")
+    asyncCheck http.serve(Port(0), cb, "127.0.0.1")
+    waitFor sleepAsync(100)
+    let port = http.getPort
+    proc ask(raw: string): Future[string] {.async.} =
+      let c = await asyncnet.dial("127.0.0.1", port)
+      await c.send(raw)
+      var all = ""
+      while true:
+        let b = await c.recv(4096)
+        if b.len == 0: break
+        all.add b
+      c.close()
+      result = all
+    # asyncnet ended the line at the CR: the server saw "Content-Length: 5" and took "hello" as a body
+    let smuggle = waitFor ask("POST /a HTTP/1.1\r\nHost: x\r\nX-A: a\rContent-Length: 5\r\nConnection: close\r\n\r\nhello")
+    check smuggle.startsWith("HTTP/1.1 400")
+    check (waitFor ask("GET /b HTTP/1.1\rX: y\r\nHost: x\r\nConnection: close\r\n\r\n")).startsWith("HTTP/1.1 400")
+    check (waitFor ask("GET /c HTTP/1.1\r\nHost: x\r\nX-A: a\0b\r\nConnection: close\r\n\r\n")).startsWith("HTTP/1.1 400")
+    check seen[].len == 0
+    # CRLF and bare LF line ends still work
+    check (waitFor ask("GET /d HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")).startsWith("HTTP/1.1 200")
+    check (waitFor ask("GET /e HTTP/1.1\nHost: x\nConnection: close\n\n")).startsWith("HTTP/1.1 200")
+    check seen[] == @["/d  ", "/e  "]

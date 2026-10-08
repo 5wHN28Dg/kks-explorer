@@ -46,6 +46,8 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0046](0046-android-abis.md) | Android release APKs for arm64-v8a only; libraries stay uncompressed; no 32-bit phones | accepted by the user |
 | [0048](0048-retire-v1.md) | The v1 move path retired: the server's v1 answers, the bridge, the Ed25519 release signature and PROTOCOL.md removed | decided by the user 2026-10-05 |
 | [0047](0047-arm64-desktop-builds.md) | Native ARM64 desktop builds: Windows cross-built with llvm-mingw (signed here), the aarch64 Flatpak and ARM64 tests on GitHub's ARM64 runners | accepted by the user |
+| [0051](0051-server-backup-encryption.md) | The server's backups are encrypted (AES-GCM) with a key derived from the root key export's generated passphrase, kept sealed for unattended runs; `open-backup` restores; join-by-file bundles stay plain | decided by the user 2026-10-08 (#28) |
+| [0052](0052-accepted-risks-68-70.md) | Accepted risks: the server holds the root key and custodial keys online (#70); the sync hello and mDNS TXT show a LAN stranger which plant and devices are there (#68) | accepted by the user 2026-10-08 |
 
 ## Audit of existing dependencies (2026-09-30)
 

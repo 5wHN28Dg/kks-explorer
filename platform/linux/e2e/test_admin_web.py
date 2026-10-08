@@ -14,7 +14,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 IMPORTER = os.environ.get('KKS_IMPORTER', '/tmp/kksimp/kks_import')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import free_port, Client
+from test_web_v2 import free_port, Client, CSP_WATCH
 
 # short enough for a name (80 characters): closes an attribute, an <img> whose onerror runs, an element with an id
 NAME = '"><img src=x onerror=pwned=1><b id=injected>N</b>\''
@@ -42,7 +42,7 @@ class AdminWeb(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m: setup = m[1]
             if 'server on' in line: break
         cls.base = 'http://127.0.0.1:%d' % cls.port
@@ -111,6 +111,7 @@ class AdminWeb(unittest.TestCase):
         browser = getattr(p, name).launch()
         # (no service worker: it would answer the data files and /api/update itself, and page.route sees no request)
         ctx = browser.new_context(viewport={'width': 1300, 'height': 900}, service_workers='block')
+        ctx.add_init_script(CSP_WATCH)
         r = ctx.request.post(self.base + '/api/login', data={'username': user, 'password': PW}, headers={'Origin': self.base})
         self.assertTrue(r.ok, r.text())
         page = ctx.new_page()

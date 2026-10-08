@@ -111,6 +111,12 @@ class Relay:
         with self.lock:
             members = self.rooms.setdefault(room, {})
             old = members.get(peer)
+            # issue #44: a replayed hello (the present socket's, or an older one) doesn't replace the device
+            # judged on r (the signature's first half, as bytes): s -> n - s and other base64 spellings keep it
+            r = base64.urlsafe_b64decode(sig + '=' * (-len(sig) % 4))[:32]
+            if old and (getattr(old, 'hello', None) is not None and (r == old.hello[1] or ts < old.hello[0])):
+                c.text({'t': 'error', 'why': 'replayed hello'}); c.close(); return
+            c.hello = (ts, r)
             if len(members) >= MAX_PEERS and not old:
                 c.text({'t': 'error', 'why': 'room full'}); c.close(); return
             members[peer] = c
