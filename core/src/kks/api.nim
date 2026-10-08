@@ -1019,10 +1019,20 @@ proc personActive*(r: Run, pid: string): bool =
   for d, v in r.devices:
     if v["person"].s == pid and d notin r.cuts: return true
 
+proc personRemoved*(r: Run, pid: string): bool =
+  ## a person who had devices and has none left (deactivated, or every device removed). Someone registered whose
+  ## device hasn't joined yet has none either, but was never removed: not this.
+  var had = false
+  for d, v in r.devices:
+    if v["person"].s == pid:
+      if d notin r.cuts: return false
+      had = true
+  had
+
 proc removedId(a: Api, id: string): bool =
-  ## a removed device, or a person with no device left: the only things that can be hidden
+  ## a removed device, or a removed person (personRemoved): the only things that can be hidden
   if id in a.n.run.devices: id in a.n.run.cuts
-  elif id in a.n.run.persons: not a.n.run.personActive(id)
+  elif id in a.n.run.persons: a.n.run.personRemoved(id)
   else: false
 
 proc deviceHidden(a: Api, hidden: HashSet[string], d: string): bool =
@@ -1040,7 +1050,7 @@ proc setHidden(a: Api, me: Actor, d: JNode): JNode =
         hidden.incl dev
         inc changed
     for pid, _ in a.n.run.persons:
-      if not a.n.run.personActive(pid) and pid notin hidden:
+      if a.n.run.personRemoved(pid) and pid notin hidden:
         hidden.incl pid
         inc changed
   else:
