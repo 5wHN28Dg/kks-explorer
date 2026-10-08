@@ -301,7 +301,8 @@ class WebRequests(unittest.TestCase):
         page.wait_for_function("g => document.getElementById('allDevices') && !document.getElementById('allDevices').textContent.includes(g) || "
                                "[...document.querySelectorAll('#allDevices tr')].some(r => r.textContent.includes(g) && r.textContent.includes('Show again'))", arg=gone)
         page.locator('#tabs button', has_text='Users').click()
-        page.wait_for_selector('#main table')
+        # an element only the Users tab has: the Devices tab's table is still there until it renders
+        page.wait_for_selector('#main form.inline input[name=position]')
         self.assertEqual(page.locator('#main td.mono', has_text=gone).count(), 1)   # (shown again above, with the device)
         page.get_by_role('button', name='Clear removed').click()
         page.wait_for_function("g => document.querySelector('#main table') && ![...document.querySelectorAll('#main td.mono')].some(t => t.textContent === g)", arg=gone)
@@ -320,7 +321,7 @@ class WebRequests(unittest.TestCase):
         page.route('**/api/update', lambda r: r.fulfill(status=200, content_type='application/json', body=json.dumps(
             {'current': '1.0.0', 'latest': '1.1.0', 'available': True, 'notes': 'Fixes', 'can_install': True, 'checked': 0, 'auto': True})))
         page.locator('#tabs button', has_text='Account').click()
-        page.wait_for_selector('#main .card h3')
+        page.wait_for_selector('#main input[name=full_name]')   # the Account tab itself, not the last tab's cards
         self.assertEqual(page.locator('#upd').count(), 0)
         page.locator('#tabs button', has_text='Updates').click()
         page.wait_for_selector('#upd .card')
