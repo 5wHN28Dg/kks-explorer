@@ -567,6 +567,10 @@ class Phone(unittest.TestCase):
             for x in self.boss.req('GET', '/api/submissions')['submissions']:
                 if x['by'] == 'omar':
                     self.boss.req('POST', f'/api/submissions/{x["id"]}/reject', {})
+            # the photo "Use this one" approved stays on the code: remove it, or test_photos counts it as its own
+            for p in self.boss.req('GET', '/api/state')['photos']:
+                if p.get('by') == 'omar':
+                    self.boss.req('POST', '/api/submit', {'kind': 'photo_delete', 'payload': {'photo_id': p['id']}})
             self.leave()
 
     def test_position_required(self):
