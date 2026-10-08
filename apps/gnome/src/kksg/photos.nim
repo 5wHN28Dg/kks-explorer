@@ -407,7 +407,8 @@ proc encWorker() {.thread.} =
     let j = encJobs.recv()
     var d = EncDone(id: j.id)
     try: d.data = encodeLossy(j.rgb, j.w, j.h, 3, 1.9, 9)
-    except CatchableError as e: d.err = e.msg
+    except CatchableError, Defect:      # always answer: a dead worker would leave the queue waiting for ever
+      d.err = getCurrentExceptionMsg()
     encDone.send(d)
 
 proc queueText(): string =
@@ -442,7 +443,7 @@ proc enqueue(w: Win, rgb: seq[byte], ow, oh: int, kks, caption, note, floor: str
   queue.add Queued(id: nextId, kks: kks, caption: caption, note: note, floor: floor)
   encJobs.send(EncJob(id: nextId, rgb: rgb, w: ow, h: oh))
   w.showQueue()
-  if w.selected.len > 0: w.rebuildPanel()
+  if w.selected.len > 0: idle(proc () = w.rebuildPanel())   # not inside the click (an AT-SPI action)
   if polling: return
   polling = true
   timeout(200, proc (): bool =
@@ -456,7 +457,9 @@ proc enqueue(w: Win, rgb: seq[byte], ow, oh: int, kks, caption, note, floor: str
         let q = queue[i]
         queue.delete(i)
         if d.err.len > 0: w.toast("Photo of " & q.kks & " could not be compressed: " & d.err)
-        else: w.sendPhoto(q, d.data)
+        else:
+          try: w.sendPhoto(q, d.data)
+          except CatchableError as e: w.toast("Photo of " & q.kks & " was not sent: " & e.msg)
         done = true
       w.showQueue()
     if done and w.selected.len > 0: w.rebuildPanel()   # its "being compressed" line

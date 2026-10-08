@@ -169,6 +169,15 @@ proc descriptionSection(w: Win, t: Tag): W =
       adw_preferences_group_add(result, row("The drafted description differs", "Edit the custom field under Location and notes to change it."))
     return
   let conf = d.get("confirm")
+  # a confirmation already waiting for approval: no second one
+  for sub in w.myOpen():
+    let p = sub.get("payload")
+    if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == k and p.get("changes") != nil and
+       p["changes"].get("custom") != nil and p["changes"]["custom"].kind == jArr and
+       p["changes"]["custom"].elems.anyIt(s(it, "k") == DescriptionKey):
+      result = group("Draft description (unchecked)", "Your confirmation waits for approval.")
+      adw_preferences_group_add(result, row(s(d, "text"), if s(d, "basis").len > 0: "Basis: " & s(d, "basis") else: "", selectable = true))
+      return
   result = group("Draft description (unchecked)", "Drafted from the drawings, not checked by a person yet. Confirm it " &
                  "if it is right, or edit it first.")
   let g = result

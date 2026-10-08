@@ -65,7 +65,7 @@ proc approvals(w: Win, box: W) =
   ## the user's "Approvals page clean-up": per code, then per kind (an equipment photo and a tag plate photo don't
   ## compete). Pick and votes only where several photos of one kind wait; Approve/Reject otherwise. Names in full.
   var groups: seq[JNode]
-  try: groups = w.a.call("GET", "/api/submissions", nil, {"status": "open", "group": "code"}.toTable)["groups"].elems
+  try: groups = w.a.call("GET", "/api/submissions", nil, {"status": "open", "group": "code", "limit": "1000"}.toTable)["groups"].elems
   except ApiError as e:
     box.add label(e.msg, "dim-label")
     return
