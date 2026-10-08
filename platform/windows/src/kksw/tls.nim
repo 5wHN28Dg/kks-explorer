@@ -45,6 +45,19 @@ proc c_recv(c: CTls, d: pointer, cap: csize_t): clong {.importc: "kks_tls_recv",
 proc c_closed(c: CTls): cint {.importc: "kks_tls_closed", cdecl.}
 proc c_shutdown(c: CTls) {.importc: "kks_tls_shutdown", cdecl.}
 proc c_version(c: CTls): cint {.importc: "kks_tls_version", cdecl.}
+proc c_cipher(c: CTls, o: cstring, n: csize_t) {.importc: "kks_tls_cipher", cdecl.}
+proc c_test_mode(m: cint) {.importc: "kks_tls_test_mode", cdecl.}
+
+proc cipher*(c: TlsConn): string =
+  ## the negotiated cipher suite, e.g. "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"; "" before the handshake
+  var b = newString(128)
+  c_cipher(c.c, cstring(b), csize_t(b.len))
+  $cstring(b)
+
+proc tlsTestMode*(m: int) =
+  ## tests only, for identities made afterwards: 0 normal, 1 TLS 1.2 only, 2 TLS 1.2 with clients offering AES-CBC
+  ## suites alone (to check that the other side refuses them, #41)
+  c_test_mode(cint(m))
 
 proc version*(c: TlsConn): string =
   ## the negotiated TLS version (tests, the status page): "1.3", "1.2" or ""
