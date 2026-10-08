@@ -159,8 +159,13 @@ object PhotoQueue {
         prefs(ctx).edit().clear().commit()
     }
 
+    /** set only by the debug builds' test receiver: jobs wait while it is on (at most 2 minutes) */
+    @Volatile var holdForTest = false
+
     /** one job: encode, submit, forget (sent, refused or unreadable: each ends it) */
     internal fun run(ctx: Context, id: String) {
+        val until = System.currentTimeMillis() + 120_000
+        while (holdForTest && System.currentTimeMillis() < until) Thread.sleep(200)
         val jf = File(dir(ctx), "$id.json"); val px = File(dir(ctx), "$id.px")
         if (!jf.exists()) { px.delete(); refresh(ctx); return }      // already done (a rerun)
         val job = runCatching { readJob(jf, id) }.getOrNull()
