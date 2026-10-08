@@ -36,7 +36,7 @@ fun submit(kind: String, payload: JSONObject, note: String = ""): Pair<Boolean, 
 
 /** one field of the panel: the label on the left, the value on the right (a code part in monospace before the
  *  meaning), so label and value can't be mistaken for each other (the user, 2026-10-05: "no clear separation") */
-private data class Field(val label: String, val value: String, val code: String = "")
+private data class Field(val label: String, val value: String, val code: String = "", val by: String = "")
 
 @Composable
 private fun Fields(rows: List<Field>) {
@@ -48,10 +48,13 @@ private fun Fields(rows: List<Field>) {
                     verticalAlignment = androidx.compose.ui.Alignment.Top) {
                     Text(f.label, Modifier.weight(0.38f).padding(end = 8.dp), style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(Modifier.weight(0.62f)) {
-                        if (f.code.isNotEmpty()) Text(f.code + "  ", style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                        Text(f.value.ifEmpty { if (f.code.isEmpty()) "—" else "" }, style = MaterialTheme.typography.bodyLarge)
+                    Column(Modifier.weight(0.62f)) {
+                        Row {
+                            if (f.code.isNotEmpty()) Text(f.code + "  ", style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            Text(f.value.ifEmpty { if (f.code.isEmpty()) "—" else "" }, style = MaterialTheme.typography.bodyLarge)
+                        }
+                        if (f.by.isNotEmpty()) Text(f.by, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -119,6 +122,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                 } })
             }
             val code = t.optString("code")
+            t.optJSONObject("description")?.let { DescriptionSection(code, it, t.optJSONObject("equipment") ?: JSONObject(), snack) }
             if (link != null && code.isNotEmpty()) Button(onClick = {
                 val (_, m) = linkSubmit(link.first, link.second, code, true)
                 scope.launch { snack.showSnackbar("$code → step ${link.second}: $m") }
@@ -129,9 +133,14 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                     Heading("Location and notes", Modifier.weight(1f))
                     if (!editing) TextButton(onClick = { editing = true }) { Text("Edit") }
                 }
+                val eqBy = t.optJSONObject("equipment_by") ?: JSONObject()
                 if (!editing) {
+                    // who set each field (the user, 2026-10-08: "show who … and the tag info they add")
                     Fields(FIELDS.map { (f, title) ->
-                        Field(title, eq.optString(f).ifEmpty { if (f == "elev" && t.optString("list_elev").isNotEmpty()) t.optString("list_elev") + " (location list)" else "" })
+                        Field(title, eq.optString(f).ifEmpty { if (f == "elev" && t.optString("list_elev").isNotEmpty()) t.optString("list_elev") + " (location list)" else "" },
+                            by = if (eq.optString(f).isNotEmpty()) credit(eqBy.optJSONObject(f)) else "")
+                    } + (eq.optJSONArray("custom")?.objects() ?: emptyList()).filter { it.str("k") != DESCRIPTION }.map { c ->
+                        Field(c.str("k"), c.str("v"), by = credit(eqBy.optJSONObject("custom:" + c.str("k"))))
                     })
                 } else {
                     val values = remember(id) { mutableStateMapOf<String, String>().apply { FIELDS.forEach { (f, _) -> put(f, eq.optString(f)) } } }
@@ -200,5 +209,66 @@ private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
             val (_, msg) = submit("review", JSONObject().put("tag_id", t.getString("id")).put("data", JSONObject().put("status", "rejected")).put("base", JSONObject.NULL))
             scope.launch { snack.showSnackbar(msg) }
         }) { Text("Not a tag") }
+    }
+}
+
+/** the custom field a confirmed description lives in (core views.nim DescriptionKey) */
+const val DESCRIPTION = "Description"
+
+/** "by Ali User, 2026-10-08 09:12" from an equipment_by entry ("" when nobody is known: a v1 import, a cleared field) */
+fun credit(w: JSONObject?): String {
+    if (w == null) return ""
+    val who = w.str("by_name").ifEmpty { w.str("by") }
+    if (who.isEmpty()) return ""
+    val at = whenText(w.optLong("submitted").takeIf { it > 0 } ?: w.optLong("at"))
+    return "by $who" + if (at.isNotEmpty()) ", $at" else ""
+}
+
+/** the equipment's description (the user, 2026-10-08: "KKS tag descriptions"): a draft from the plant data is marked
+ *  "Draft description (unchecked)" with Confirm (the proposal the core made ready) and Edit; a confirmed one says by whom */
+@Composable
+private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snack: SnackbarHostState) {
+    val scope = rememberCoroutineScope()
+    var editing by remember(code) { mutableStateOf(false) }
+    var text by remember(code, d.str("text")) { mutableStateOf(d.str("text")) }
+    val draft = d.str("status") == "draft"
+    Heading("Description")
+    Surface(color = if (draft) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+        shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(if (draft) "Draft description (unchecked)" else "Confirmed" + d.str("by_name").let { if (it.isNotEmpty()) " by $it" else "" } +
+                    whenText(d.optLong("at")).let { if (it.isNotEmpty()) ", $it" else "" },
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!editing) Text(d.str("text"), style = MaterialTheme.typography.bodyLarge)
+            if (d.str("basis").isNotEmpty() && (draft || editing)) Dim("Basis: " + d.str("basis"))
+            if (!draft && d.optBoolean("draft_differs")) Dim("The plant data's draft says something else.")
+            if (editing) {
+                OutlinedTextField(text, { text = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        val v = text.trim()
+                        if (v.isEmpty()) { scope.launch { snack.showSnackbar("Write a description first") }; return@Button }
+                        if (v.length > 2000) { scope.launch { snack.showSnackbar("Up to 2000 characters") }; return@Button }
+                        val base = eq.optJSONArray("custom") ?: JSONArray()
+                        val next = JSONArray()
+                        var put = false
+                        for (c in base.objects()) if (c.str("k") == DESCRIPTION) { if (!put) next.put(JSONObject().put("k", DESCRIPTION).put("v", v)); put = true } else next.put(c)
+                        if (!put) next.put(JSONObject().put("k", DESCRIPTION).put("v", v))
+                        val (ok, m) = submit("equipment", JSONObject().put("kks", code).put("changes", JSONObject().put("custom", next))
+                            .put("base", JSONObject().put("custom", base)))
+                        scope.launch { snack.showSnackbar(m) }
+                        if (ok) editing = false
+                    }) { Text("Save") }
+                    OutlinedButton(onClick = { editing = false; text = d.str("text") }) { Text("Cancel") }
+                }
+            } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val confirm = d.optJSONObject("confirm")
+                if (draft && confirm != null) Button(onClick = {
+                    val (_, m) = submit(confirm.str("kind"), confirm.getJSONObject("payload"))
+                    scope.launch { snack.showSnackbar(m) }
+                }) { Text("Confirm") }
+                OutlinedButton(onClick = { editing = true }) { Text("Edit") }
+            }
+        }
     }
 }
