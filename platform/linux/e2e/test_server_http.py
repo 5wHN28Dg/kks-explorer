@@ -244,15 +244,37 @@ class SecretFiles(Base):
         self.assertFalse(os.path.exists(link))              # used: gone
         old = os.umask(0o022)
         try:
-            bundle, root, pp = (os.path.join(self.dir, n) for n in ('b.kksbundle', 'r.kksroot', 'r.passphrase'))
-            self.assertEqual(self.cli('backup', '--out', bundle)[0], 0)
+            bundle, root, pp = (os.path.join(self.dir, n) for n in ('b.kksbackup', 'r.kksroot', 'r.passphrase'))
+            # decision 0051: no plain backup, ever: refused until a root key export made the backup key
+            code0, out0 = self.cli('backup', '--out', bundle)
+            self.assertNotEqual(code0, 0)
+            self.assertIn('export-root-key', out0)
+            self.assertFalse(os.path.exists(bundle))
             code, out = self.cli('export-root-key', '--out', root, '--passphrase-out', pp)
             self.assertEqual(code, 0, out)
+            self.assertEqual(self.cli('backup', '--out', bundle)[0], 0)
             code2, out2 = self.cli('export-root-key', '--out', root + '2')
+            opened = os.path.join(self.dir, 'opened.kksbundle')
+            code3, out3 = self.cli('open-backup', '--in', bundle, '--out', opened, '--passphrase-file', pp)
+            wrong = os.path.join(self.dir, 'wrong.passphrase')
+            open(wrong, 'w').write('0000-0000-0000-0000\n')
+            code4, out4 = self.cli('open-backup', '--in', bundle, '--out', opened + '2', '--passphrase-file', wrong)
         finally:
             os.umask(old)
-        for f in (bundle, root, pp, root + '2'):
+        for f in (bundle, root, pp, root + '2', opened):
             self.assertEqual(os.stat(f).st_mode & 0o777, 0o600, f)
+        raw = open(bundle, 'rb').read()
+        self.assertNotEqual(raw[:2], b'\x1f\x8b')                   # not a gzip bundle: encrypted
+        doc = json.loads(raw)
+        self.assertEqual((doc['kks_server_backup'], doc['kdf'], doc['iter']), (2, 'pbkdf2-sha256', 600000))
+        self.assertNotIn(b'The Manager', raw)
+        self.assertEqual(code3, 0, out3)                          # the passphrase of the export before it opens it
+        import gzip
+        b = json.loads(gzip.decompress(open(opened, 'rb').read()))
+        self.assertEqual(b['kks_bundle'], 2)
+        self.assertTrue(any(e.get('type') == 'genesis' for e in b['entries']))
+        self.assertNotEqual(code4, 0)
+        self.assertFalse(os.path.exists(opened + '2'))
         phrase = open(pp).read().strip()
         self.assertRegex(phrase, r'^[0-9a-hjkmnp-tv-z]{4}(-[0-9a-hjkmnp-tv-z]{4}){3}$')
         self.assertNotIn(phrase, out)
