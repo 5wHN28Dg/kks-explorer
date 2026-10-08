@@ -310,16 +310,64 @@ proc history(w: Win, box: W) =
       adw_preferences_group_add(g, rw)
   box.add g
 
+var showHidden = false     ## Devices and People: also the removed ones an admin hid (this run only)
+
+proc hide(w: Win, body: JNode, done: string, again: proc ()) =
+  ## POST /api/hidden: display only, the log and History keep everything
+  try:
+    let r = w.a.call("POST", "/api/hidden", body)
+    w.toast(done & (if r.get("changed") != nil and r["changed"].kind == jInt and r["changed"].i == 0: " (nothing to change)" else: ""))
+    again()
+  except ApiError as e: w.toast(e.msg)
+
+proc hiddenControls(w: Win, box: W, hiddenN: int, what: string, again: proc ()): W =
+  ## "Clear removed" and "Show hidden (n)"
+  result = hbox(8)
+  let clear = button("Clear removed", "", proc () =
+    w.hide(newObj(@[("clear_removed", newBool(true))]), "Removed devices and people hidden", again))
+  setAccessibleDescription(clear, "Hide every removed device and every person with no active device from these lists")
+  result.add clear
+  if hiddenN > 0 or showHidden:
+    let t = gtk_toggle_button_new_with_label((if showHidden: "Hide hidden" else: "Show hidden (" & $hiddenN & ")").cstring)
+    gtk_toggle_button_set_active(t, cint(showHidden))
+    setAccessibleLabel(t, if showHidden: "Hide the hidden " & what else: "Show the " & $hiddenN & " hidden " & what)
+    t.onClick(proc () =
+      showHidden = not showHidden
+      again())
+    result.add t
+
 proc people(w: Win, box: W) =
   var users: seq[JNode]
-  try: users = w.a.call("GET", "/api/users")["users"].elems
+  try: users = w.a.call("GET", "/api/users", nil, if showHidden: {"show_hidden": "1"}.toTable else: initTable[string, string]())["users"].elems
   except ApiError as e:
     box.add label(e.msg, "dim-label")
     return
-  let g = group("People", "Everyone who has an identity in this plant. Devices are added under Devices.")
-  for u in users:
-    adw_preferences_group_add(g, row(s(u, "full_name") & " (" & s(u, "username") & ")",
-      s(u, "role") & (if s(u, "position").len > 0: " · " & s(u, "position") else: ""), selectable = true))
+  let again = proc () = w.refreshPage(box, proc (b: W) = w.people(b))
+  var nHidden = 0
+  if not showHidden:
+    try:
+      for u in w.a.call("GET", "/api/users", nil, {"show_hidden": "1"}.toTable)["users"].elems:
+        if u.get("hidden") != nil and u["hidden"].kind == jBool and u["hidden"].b: inc nHidden
+    except ApiError: discard
+  box.add w.hiddenControls(box, nHidden, "people", again)
+  let g = group("People", "Everyone who has an identity in this plant. Devices are added under Devices. People whose " &
+                "devices were all removed can be hidden here (History keeps them).")
+  for i in 0 ..< users.len:
+    closureScope:
+      let u = users[i]
+      let pid = s(u, "person")
+      let removed = u.get("active") != nil and u["active"].kind == jBool and not u["active"].b
+      let hidden = u.get("hidden") != nil and u["hidden"].kind == jBool and u["hidden"].b
+      let name = s(u, "full_name") & " (" & s(u, "username") & ")"
+      let rw = row(name, s(u, "role") & (if s(u, "position").len > 0: " · " & s(u, "position") else: "") &
+                   (if hidden: " · hidden" elif removed: " · no active device" else: ""), selectable = true)
+      if removed and pid.len > 0:
+        let b = button(if hidden: "Unhide" else: "Hide", "flat", proc () =
+          w.hide(newObj(@[("ids", newArr(@[newStr(pid)])), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden", again))
+        setAccessibleLabel(b, (if hidden: "Unhide " else: "Hide ") & name)
+        gtk_widget_set_valign(b, GTK_ALIGN_CENTER)
+        adw_action_row_add_suffix(rw, b)
+      adw_preferences_group_add(g, rw)
   box.add g
   # People join with their devices (invite, nearby admin, request file); the join form asks for their position.
   # (The "Add a person" form that was here posted to POST /api/users, which only the server has: on a laptop it always
@@ -327,10 +375,13 @@ proc people(w: Win, box: W) =
 
 proc devices(w: Win, box: W) =
   var d: JNode
-  try: d = w.a.call("GET", "/api/devices")
+  try: d = w.a.call("GET", "/api/devices", nil, if showHidden: {"show_hidden": "1"}.toTable else: initTable[string, string]())
   except ApiError as e:
     box.add label(e.msg, "dim-label")
     return
+  let again = proc () = w.refreshPage(box, proc (b: W) = w.devices(b))
+  if w.isAdmin:
+    box.add w.hiddenControls(box, if d.get("hidden") != nil and d["hidden"].kind == jInt: int(d["hidden"].i) else: 0, "devices", again)
   proc devRows(list: JNode, title: string) =
     if list == nil or list.kind != jArr: return
     let g = group(title)
@@ -339,7 +390,15 @@ proc devices(w: Win, box: W) =
         let x = list.elems[i]
         let dev = s(x, "device")
         let rw = row((if s(x, "label").len > 0: s(x, "label") else: "device") & " · " & s(x, "username") & (if x["this_computer"].b: " (this device)" else: ""),
-                     dev[0 ..< min(16, dev.len)] & "…" & (if x["revoked"].b: " · removed" else: ""))
+                     dev[0 ..< min(16, dev.len)] & "…" & (if x["revoked"].b: " · removed" else: "") &
+                     (if x.get("hidden") != nil and x["hidden"].kind == jBool and x["hidden"].b: " · hidden" else: ""))
+        if x["revoked"].b and w.isAdmin:
+          let hidden = x.get("hidden") != nil and x["hidden"].kind == jBool and x["hidden"].b
+          let hb = button(if hidden: "Unhide" else: "Hide", "flat", proc () =
+            w.hide(newObj(@[("ids", newArr(@[newStr(dev)])), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden", again))
+          setAccessibleLabel(hb, (if hidden: "Unhide the removed device " else: "Hide the removed device ") & s(x, "label") & " of " & s(x, "username"))
+          gtk_widget_set_valign(hb, GTK_ALIGN_CENTER)
+          adw_action_row_add_suffix(rw, hb)
         if not x["revoked"].b and not x["this_computer"].b:
           let b = button("Remove", "flat destructive-action", proc () =
             confirm(w.window, "Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again.",
