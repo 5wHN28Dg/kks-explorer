@@ -11,7 +11,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 SHOTS = os.environ.get('KKS_SHOTS', '/tmp/kks-course-shots')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import free_port, Client
+from test_web_v2 import free_port, Client, CSP_WATCH
 
 COURSES = {}
 for cid in ('ppt', 'fnd', 'hrsg'):
@@ -64,6 +64,7 @@ class CourseWeb(unittest.TestCase):
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context(viewport={'width': 1280, 'height': 900})
+            ctx.add_init_script(CSP_WATCH)
             r = ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
                                  headers={'Origin': self.base})
             self.assertTrue(r.ok, r.text())
@@ -79,7 +80,7 @@ class CourseWeb(unittest.TestCase):
                 page.wait_for_selector('#main h1')
                 for pg in course['pages']:
                     page.evaluate(f"location.hash = {json.dumps(pg['id'])}")
-                    page.wait_for_function(f"document.title.includes({json.dumps(pg['kind'] == 'module' and pg['short'] or '')})")
+                    page.wait_for_function(f"() => document.title.includes({json.dumps(pg['kind'] == 'module' and pg['short'] or '')})")
                     figs = [b['figure'] for b in pg.get('body', []) if 'figure' in b]
                     if figs:
                         page.wait_for_timeout(250)
@@ -147,6 +148,7 @@ class CourseWeb(unittest.TestCase):
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context(viewport={'width': 1280, 'height': 900})
+            ctx.add_init_script(CSP_WATCH)
             ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
                              headers={'Origin': self.base})
             page = ctx.new_page()
@@ -163,7 +165,7 @@ class CourseWeb(unittest.TestCase):
                     break
             self.assertIn('Units', focused or '', name + ': Tab never reached the rail')
             page.keyboard.press('Enter')
-            page.wait_for_function("location.hash === '#units' && document.activeElement.tagName === 'H1'", timeout=5000)
+            page.wait_for_function("() => location.hash === '#units' && document.activeElement.tagName === 'H1'", timeout=5000)
             # Tab onward reaches the warm-up's first option; Enter answers it
             for _ in range(80):
                 page.keyboard.press('Tab')
@@ -202,6 +204,47 @@ class CourseWeb(unittest.TestCase):
             self.assertGreater(page.get_by_role('heading', level=2).count(), 2)
             self.assertEqual(errors, [], name)
             browser.close()
+
+    def links(self, name):
+        """#42: a course's outside link goes to href only if it is https; a javascript: or data: URL from course data
+        becomes about:blank and runs nothing when clicked"""
+        course = json.loads(json.dumps(COURSES['fnd']))
+        course['pages'][0]['body'].insert(0, {'p': [
+            {'link': ['evil'], 'to': {'url': 'javascript:window.pwned=1'}}, ' ',
+            {'link': ['data'], 'to': {'url': 'data:text/html,<script>parent.pwned=2</script>'}}, ' ',
+            {'link': ['plain'], 'to': {'url': 'http://example.invalid/'}}, ' ',
+            {'link': ['good'], 'to': {'url': 'https://example.invalid/page'}}]})
+        with sync_playwright() as p:
+            browser = getattr(p, name).launch()
+            ctx = browser.new_context(service_workers='block')
+            ctx.add_init_script(CSP_WATCH)
+            ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
+                             headers={'Origin': self.base})
+            ctx.route('**/data/courses/fnd.json', lambda r: r.fulfill(status=200, content_type='application/json',
+                                                                       body=json.dumps(course)))
+            page = ctx.new_page()
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(f'{self.base}/course.html?c=fnd#{course["pages"][0]["id"]}')
+            page.wait_for_selector('#main a:text-is("good")')
+            hrefs = {t: page.get_attribute(f'#main a:text-is("{t}")', 'href') for t in ('evil', 'data', 'plain', 'good')}
+            self.assertEqual(hrefs, {'evil': 'about:blank', 'data': 'about:blank', 'plain': 'about:blank',
+                                     'good': 'https://example.invalid/page'}, name)
+            page.evaluate('window.pwned = 0')
+            page.locator('#main a:text-is("evil")').click(modifiers=[])
+            page.wait_for_timeout(300)
+            self.assertEqual(page.evaluate('window.pwned'), 0, name)
+            self.assertEqual(errors, [], name)
+            # the page's policy (#8) is enforced, and the tests see a violation: a script added inline doesn't run
+            page.evaluate("() => { const s = document.createElement('script'); s.textContent = 'window.pwned = 3'; document.body.append(s) }")
+            page.wait_for_timeout(300)
+            self.assertEqual(page.evaluate('window.pwned'), 0, name)
+            self.assertTrue(any('CSP violation: script-src' in e for e in errors), (name, errors))
+            browser.close()
+
+    def test_links_chromium(self): self.links('chromium')
+    def test_links_firefox(self): self.links('firefox')
+    def test_links_webkit(self): self.links('webkit')
 
     def test_keyboard_chromium(self): self.keyboard('chromium')
     def test_keyboard_firefox(self): self.keyboard('firefox')

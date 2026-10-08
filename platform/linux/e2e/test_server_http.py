@@ -232,6 +232,21 @@ class Cli(Base):
 
 
 class Server(Base):
+    def test_page_policy(self):
+        """#8: the pages, their scripts and workers come with a Content-Security-Policy: scripts from this site only
+        (no inline script or handler), no plugins, no <base>, not framed"""
+        c = Client(self.base)
+        for path in ('/', '/index.html', '/admin.html', '/learning.html', '/course.html', '/index.js', '/admin.js',
+                     '/learning.js', '/common.js', '/tiles.js', '/systems.js', '/sw.js', '/kks-wasm-worker.js', '/vendor/kks/kks-dec.js'):
+            st, _, hdr = c.req('GET', path)
+            self.assertEqual(st, 200, path)
+            csp = {d.split()[0]: d.split()[1:] for d in (x.strip() for x in hdr['Content-Security-Policy'].split(';')) if d}
+            self.assertEqual(csp['script-src'], ["'self'", "'wasm-unsafe-eval'"], path)
+            self.assertEqual(csp['object-src'], ["'none'"], path)
+            self.assertEqual(csp['base-uri'], ["'none'"], path)
+            self.assertEqual(csp['frame-ancestors'], ["'none'"], path)
+            self.assertEqual(csp['default-src'], ["'self'"], path)
+
     def test_flow(self):
         anon = Client(self.base)
         st, cfg, _ = anon.req('GET', '/api/config')
