@@ -115,7 +115,8 @@ proc rgbaSurface(px: seq[byte], w, h: int): Surface =
       d[p + 3] = byte(a)
   cairo_surface_mark_dirty(result)
 
-proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w, h: int, caption, note: string)) =
+proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w, h: int, caption, note: string),
+               plate = false) =
   ## the editor: the picture scaled to MaxSide, shapes drawn on top, then flattened to RGB. Zoom: −/+/Fit, the wheel,
   ## two fingers (pinch, pan); pan also with the right button. While a finger draws, a loupe shows the area under it
   ## magnified, above the finger (touchscreens only: the drag's device says so).
@@ -286,7 +287,7 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   wheel.onScroll(proc (dx, dy: float) = zoomAt(px0, py0, zoom * exp(-dy * 0.15)))
   gtk_widget_add_controller(area, wheel)
   let d = adw_dialog_new()
-  adw_dialog_set_title(d, "Add a photo")
+  adw_dialog_set_title(d, if plate: "Add a tag plate photo" else: "Add a photo")
   adw_dialog_set_content_width(d, 1000)
   adw_dialog_set_content_height(d, 780)
   let tools = hbox(4)
@@ -370,7 +371,8 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
     cairo_surface_destroy(outS)
     adw_dialog_close(d)
     done(rgb, ow, oh, text(caption).strip, text(note).strip))
-  let header = headerBar(adw_window_title_new("Add a photo", "Draw to point things out"))
+  let header = headerBar(adw_window_title_new(if plate: "Add a tag plate photo" else: "Add a photo",
+                                              if plate: "The metal plate with the KKS code" else: "Draw to point things out"))
   adw_header_bar_pack_end(header, send)
   adw_dialog_set_child(d, toolbarView(header, body))
   present(d, w.window)
@@ -422,6 +424,8 @@ proc showQueue(w: Win) =
   let t = queueText()
   gtk_label_set_text(w.queueLabel, t.cstring)
   gtk_widget_set_visible(w.queueBar, cint(t.len > 0))
+
+proc queuedCount*(): int = queue.len   ## photos still being compressed or waiting (closing the window loses them)
 
 proc queuedFor*(kks: string): int =
   for q in queue:
@@ -504,19 +508,46 @@ proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
     fn(f))
   present(d, w.window)
 
-proc addPhoto*(w: Win, kks: string) =
+proc hasPlate(w: Win, kks: string): bool =
+  ## the code has a tag plate photo, or one is on its way
+  for q in queue:
+    if q.kks == kks and isPlate(q.caption): return true
+  let ph = if w.m.state != nil: w.m.state.get("photos") else: nil
+  if ph != nil:
+    for p in ph.elems:
+      if s(p, "kks") == kks and isPlate(s(p, "caption")): return true
+
+proc plateCaption(extra: string): string =
+  ## a tag plate photo's caption starts with "Tag plate" (PROTOCOL-v2 §9, as on Android)
+  if extra.strip.len == 0: PlateCaption else: PlateCaption & " · " & extra.strip
+
+proc addPhoto*(w: Win, kks: string, plate = false) =
+  ## an equipment photo, or (plate) a photo of its tag plate. After an equipment photo of a code with no tag plate
+  ## photo, the app offers one (as Android does).
   # tests: KKS_PHOTO_FILE names the picture instead of the file chooser (as KKS_CAMERA_FILE for the camera)
   let pick = proc (title: string, fn: proc (path: string)) =
     if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
   proc go(floor: string) =
-    pick("Choose a photo", proc (path: string) =
+    pick(if plate: "Choose a photo of the tag plate" else: "Choose a photo", proc (path: string) =
       if path.len == 0: return
       let (iw, ih, px) = loadImage(path)
       if iw == 0:
         w.toast("That file could not be read as a picture.")
         return
       w.annotate(px, iw, ih, proc (rgb: seq[byte], ow, oh: int, caption, note: string) =
-        w.enqueue(rgb, ow, oh, kks, caption, note, floor)))
+        let offer = not plate and not w.hasPlate(kks)
+        w.enqueue(rgb, ow, oh, kks, if plate: plateCaption(caption) else: caption, note, floor)
+        if offer:
+          let d = adw_alert_dialog_new("And its tag plate?",
+            "A photo of the metal plate with the KKS code helps the next person find this equipment.")
+          adw_alert_dialog_add_response(d, "no", "Not now")
+          adw_alert_dialog_add_response(d, "yes", "Add it")
+          adw_alert_dialog_set_response_appearance(d, "yes", ADW_RESPONSE_SUGGESTED)
+          adw_alert_dialog_set_default_response(d, "yes")
+          adw_alert_dialog_set_close_response(d, "no")
+          d.onResponse(proc (id: string) =
+            if id == "yes": w.addPhoto(kks, plate = true))
+          present(d, w.window), plate = plate))
   if w.floorKnown(kks): go("")
   else: w.askFloor(kks, go)
 
@@ -529,7 +560,9 @@ proc photoSection*(w: Win, kks: string): W =
   var n = 0
   let ph = if w.m.state != nil: w.m.state.get("photos") else: nil
   if ph != nil:
-    let items3 = toSeq(ph.elems.filterIt(s(it, "kks") == kks))
+    # the tag plate first: it is how the equipment is recognised in the field
+    let items3 = ph.elems.filterIt(s(it, "kks") == kks and isPlate(s(it, "caption"))) &
+                 ph.elems.filterIt(s(it, "kks") == kks and not isPlate(s(it, "caption")))
     for i3 in 0 ..< items3.len:
       closureScope:   # each pass gets its own copies of the captured variables
         let p = items3[i3]
@@ -539,6 +572,7 @@ proc photoSection*(w: Win, kks: string): W =
         let pid = s(p, "id")
         let (have, data) = w.photoBytes(file)
         let cell = vbox(2)
+        if isPlate(caption): cell.add label("Tag plate", "caption-heading")
         if have:
           let tex = textureOfPhoto(data)
           let pic = gtk_picture_new_for_paintable(tex)
@@ -567,4 +601,7 @@ proc photoSection*(w: Win, kks: string): W =
   if q > 0:
     adw_preferences_group_add(g, label((if q == 1: "1 photo" else: $q & " photos") & " of this equipment being compressed; " &
                                        "sent when ready.", "dim-label"))
-  adw_preferences_group_add(g, button("+ Add photo", "", proc () = w.addPhoto(kks)))
+  let btns = hbox(8)
+  btns.add button("+ Add photo", "", proc () = w.addPhoto(kks))
+  btns.add button(if w.hasPlate(kks): "+ New tag plate photo" else: "+ Tag plate photo", "", proc () = w.addPhoto(kks, plate = true))
+  adw_preferences_group_add(g, btns)

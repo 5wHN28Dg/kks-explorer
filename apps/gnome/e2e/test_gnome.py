@@ -147,6 +147,9 @@ class Gnome(unittest.TestCase):
         for b in ('Thick', 'Zoom in', 'Zoom out', 'Fit the photo'):
             atspi.click(atspi.find(a, None, name=b, timeout=10))
         atspi.click(atspi.find(a, 'button', name='Add the photo'))
+        # no tag plate photo of this code yet: the app offers one (as Android does)
+        ask = atspi.find(a, 'alert', name='And its tag plate?', timeout=10)
+        atspi.click(atspi.find(ask, 'button', name='Not now'))
         for _ in range(60):
             if any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']):
                 break
@@ -468,19 +471,32 @@ class Gnome(unittest.TestCase):
             self.assertFalse(cap == 'second' and atspi.find_all(a, 'alert'), 'the floor was asked twice')
             atspi.set_text(caption, cap)
             atspi.click(atspi.find(a, 'button', name='Add the photo'))
+            # no tag plate photo yet: offered after each equipment photo; the second time it is taken
+            ask = atspi.find(a, 'alert', name='And its tag plate?', timeout=10)
+            if cap == 'first':
+                atspi.click(atspi.find(ask, 'button', name='Not now'))
+                continue
+            atspi.click(atspi.find(ask, 'button', name='Add it'))
+            atspi.find(a, None, name='Add a tag plate photo', timeout=15)
+            atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), 'plate')
+            atspi.click(atspi.find(a, 'button', name='Add the photo'))
         atspi.click(atspi.find(a, 'button', name='Close the panel'))
-        atspi.find(a, 'label', contains='Compressing 2 photos', timeout=5)
+        atspi.find(a, 'label', contains='Compressing ', timeout=5)
+        # closing the window now would lose them: the app asks first
+        atspi.click(atspi.find(a, 'button', name='Close', timeout=5))
+        ask = atspi.find(a, 'alert', contains='still being prepared', timeout=5)
+        atspi.click(atspi.find(ask, 'button', name='Wait'))
         caps = {}
         for _ in range(120):
             st = self.boss.req('GET', '/api/state')
             caps = {p['id']: p['caption'] for p in st['photos'] if p['kks'] == '11LCB20AA102'}
-            if len(caps) == 2:
+            if len(caps) == 3:
                 break
             time.sleep(0.5)
-        self.assertEqual(sorted(caps.values()), ['first', 'second'])
+        self.assertEqual(sorted(caps.values()), ['Tag plate · plate', 'first', 'second'])
         self.assertEqual(st['equipment']['11LCB20AA102'].get('floor'), '3')
         revs = [r for r in self.boss.req('GET', '/api/revisions?limit=200')['revisions'] if r.get('entity') == 'photo' and r.get('key') in caps]
-        self.assertEqual([caps[r['key']] for r in revs], ['second', 'first'], 'newest first: sent in the order added')
+        self.assertEqual([caps[r['key']] for r in revs], ['Tag plate · plate', 'second', 'first'], 'newest first: sent in the order added')
         # who took the photo
         atspi.click(atspi.find(a, 'button', name='11LCB20AA102'))
         atspi.find(a, 'label', contains='by The Manager, ', timeout=10)
@@ -516,6 +532,8 @@ class Gnome(unittest.TestCase):
         atspi.click(atspi.find(a, 'button', name='My proposals'))
         atspi.click(atspi.find(a, 'toggle button', name='Equipment photos', timeout=10))
         atspi.find(a, 'label', name='2 proposals, 1 code', timeout=10)
+        atspi.click(atspi.find(a, 'toggle button', name='Tag plate photos', timeout=10))
+        atspi.find(a, 'label', name='1 proposal, 1 code', timeout=10)
         atspi.find(a, 'label', name='11LCB20AA102', timeout=10)
         atspi.click(atspi.find(a, 'toggle button', name='Rejected', timeout=10))
         atspi.find(a, 'label', name='None of your proposals match.', timeout=10)

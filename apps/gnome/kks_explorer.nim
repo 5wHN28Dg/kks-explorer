@@ -5,7 +5,7 @@ import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequt
 import kks/[json, api]
 import kks/model
 import appstate
-import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, systems]
+import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, systems, photos]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
@@ -369,6 +369,24 @@ proc activate(w: Win, app: W) =
         w.reloadQueued = false
         w.refresh()
         false)
+  var closing = false
+  w.window.onCloseRequestStop(proc (): bool =
+    # photos still in the queue are lost when the app closes: ask first
+    let n = queuedCount()
+    if n == 0 or closing: return false
+    let d = adw_alert_dialog_new((if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared").cstring,
+                                 "Closing now loses them. Wait until they are sent (a moment), or close anyway.")
+    adw_alert_dialog_add_response(d, "wait", "Wait")
+    adw_alert_dialog_add_response(d, "close", "Close anyway")
+    adw_alert_dialog_set_response_appearance(d, "close", ADW_RESPONSE_DESTRUCTIVE)
+    adw_alert_dialog_set_default_response(d, "wait")
+    adw_alert_dialog_set_close_response(d, "wait")
+    d.onResponse(proc (id: string) =
+      if id == "close":
+        closing = true
+        gtk_window_close(w.window))
+    present(d, w.window)
+    true)
   gtk_window_present(w.window)
   if getEnv("KKS_DEBUG_DIALOG").len > 0:      # accessibility check: a dialog over whatever screen is up
     timeout(3000, proc (): bool =
