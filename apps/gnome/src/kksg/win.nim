@@ -5,6 +5,11 @@ import kks/[json, api]
 import kks/model
 import gtk, ui, appstate, viewer
 
+type Follower* = ref object
+  area*: W                     ## the part a rebuild replaces (a ref is held)
+  rebuild*: proc ()
+  stale*: bool
+
 type Win* = ref object
   a*: App
   window*, toasts*, root*: W
@@ -25,6 +30,7 @@ type Win* = ref object
   rebuildPanel*: proc ()
   closePanel*: proc ()
   openProc*: proc (id: string)
+  followers*: seq[Follower]    ## open sidebar pages that follow the plant's data (follow)
   livePage*: W                 ## the open Manage page that rebuilds when the data changes (a ref is held)
   liveBuild*: proc (box: W)
 
@@ -134,3 +140,39 @@ proc refreshLive*(w: Win) =
   elif gtk_widget_get_mapped(w.livePage) != 0:
     w.livePage.clear()
     w.liveBuild(w.livePage)
+
+proc focusInside(area: W): bool =
+  let root = gtk_widget_get_root(area)
+  if root == nil: return false
+  let f = gtk_root_get_focus(root)
+  f != nil and (f == area or gtk_widget_is_ancestor(f, area) != 0)
+
+proc follow*(w: Win, area: W, rebuild: proc ()): Follower =
+  ## `area` shows data that syncs and approvals change (refreshFollowers rebuilds it), but never under the keyboard
+  ## or screen reader's focus: while the focus is inside it, it is only marked stale and rebuilt when the focus
+  ## leaves (or by the page itself, e.g. on a search: it sets `stale` false). A page hidden under another one is
+  ## rebuilt when it shows again.
+  let f = Follower(area: g_object_ref(area), rebuild: rebuild)
+  w.followers.add f
+  proc catchUp() =
+    if f.stale and gtk_widget_get_mapped(f.area) != 0 and not focusInside(f.area):
+      f.stale = false
+      f.rebuild()
+  let fc = gtk_event_controller_focus_new()
+  fc.on("leave", proc () = idle(catchUp))       # after the focus has moved on
+  gtk_widget_add_controller(area, fc)
+  area.on("map", catchUp)
+  f
+
+proc refreshFollowers*(w: Win) =
+  var keep: seq[Follower]
+  for f in w.followers:
+    if gtk_widget_get_root(f.area) == nil:      # its page was closed
+      g_object_unref(f.area)
+      continue
+    keep.add f
+    if gtk_widget_get_mapped(f.area) == 0 or focusInside(f.area): f.stale = true
+    else:
+      f.stale = false
+      f.rebuild()
+  w.followers = keep

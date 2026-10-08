@@ -6,7 +6,7 @@ import kks/[json, api]
 import kks/model
 import kksl/dbstore
 import appstate
-import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn]
+import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, systems]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
@@ -113,6 +113,7 @@ proc refresh(w: Win) =
     let (ok, t) = w.m.tagById(w.selected)
     if ok: w.buildPanel(t)
   w.refreshLive()
+  w.refreshFollowers()
 
 proc sideRoot(w: Win): W =
   let side = vbox(0)
@@ -134,6 +135,8 @@ proc sideRoot(w: Win): W =
   gtk_list_box_set_selection_mode(more, GTK_SELECTION_NONE)
   more.gtk_list_box_append(navRow("Procedures", "Operation manual steps and their equipment", "Open the procedures", proc () =
     w.pushPage(w.proceduresPage(), "Procedures", "procs")))
+  more.gtk_list_box_append(navRow("Equipment by system", "Every code on the drawings, by block, system and kind",
+    "Open Equipment by system", proc () = w.pushPage(w.systemsPage(), "Equipment by system", "systems")))
   more.gtk_list_box_append(navRow("Learning", "The courses, with your progress", "Open Learning", proc () =
     w.pushPage(w.learningPage(), "Learning", "learning")))
   more.gtk_list_box_append(navRow("Review queue", "Tag readings to confirm or correct", "Open the review queue", proc () =

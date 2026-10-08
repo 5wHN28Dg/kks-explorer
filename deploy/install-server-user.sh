@@ -20,7 +20,7 @@ rm -rf "$APP.tmp" && mkdir -p "$APP.tmp"
 (cd "$REPO/platform/linux" && "$NIM" c -d:release --hints:off -o:"$APP.tmp/kks-server" kks_server.nim >/dev/null)
 (cd "$REPO/importer" && "$NIM" c -d:release --hints:off -o:"$APP.tmp/kks-import" kks_import.nim >/dev/null)
 cp "$REPO/importer/fontlib.kgl" "$APP.tmp/"
-for f in index.html admin.html common.js tiles.js dark.js course-bridge.js learning.html course.html course.js course-figure.js \
+for f in index.html admin.html common.js tiles.js dark.js systems.js course-bridge.js learning.html course.html course.js course-figure.js \
          course.css kks-wasm.js kks-wasm-worker.js sw.js manifest.webmanifest icon.svg icon-192.png icon-512.png; do
   cp "$REPO/$f" "$APP.tmp/"
 done

@@ -349,6 +349,43 @@ class Phone(unittest.TestCase):
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
             time.sleep(3)
 
+    def test_systems(self):
+        """Equipment by system (core systemsView): the ⋮ menu opens it; systems start closed; a header opens on a tap
+        and says whether it is open; a filter opens the whole path; a code opens its tag like a search result"""
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            ui.tap('More', exact=True)
+            ui.tap('Equipment by system', exact=True)
+            ui.find('LAB · Feed water piping system, ', timeout=15)
+            self.assertFalse(ui.present('LAB70, '), 'systems start closed')
+            ui.tap('LAB · Feed water piping system, ')
+            ui.find('LAB70, ', timeout=10)
+            time.sleep(1)
+            self.assertFalse(ui.present('11LAB70AA501, '), 'the subsystem opened by itself')
+            ui.type_into('Filter equipment by system', 'LAB70AA501')
+            ui.find('AA · ', timeout=10)
+            row = ui.find('11LAB70AA501, ', timeout=10)
+            self.assertIn('Sample sheet', label := ui.label(row), label)
+            with open('/tmp/kks-android-systems.png', 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+            ui.tap('11LAB70AA501, ')
+            # the screen closes; the tag's panel is open on its sheet
+            ui.find('Feed water piping system', timeout=15)
+            self.assertFalse(ui.present('Equipment by system', exact=True), 'the screen stayed open')
+        finally:
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
+
     def test_flow(self):
         # join through the server (PROTOCOL-v2 §16 enroll over TLS)
         ui.tap('Join through a server', exact=True)
