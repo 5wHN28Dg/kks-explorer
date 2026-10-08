@@ -1049,7 +1049,9 @@ proc handle(s: Server, req: Request) {.async.} =
       if role == "admin" and me.role != "manager": herr(403, "only the manager can create admins")
       var fn: string
       var pos: JNode
-      try: (fn, pos) = personOf(d)
+      try:
+        (fn, pos) = personOf(d)
+        requirePosition(pos)    # every new member needs one (existing ones keep what they have)
       except ApiError as e: herr(400, e.msg)
       if s.userByName(name) != nil: herr(409, "That username exists.")
       for _, pr in s.n.run.persons:

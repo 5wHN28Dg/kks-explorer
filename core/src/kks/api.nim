@@ -889,6 +889,12 @@ proc personFields*(d: JNode): (string, JNode) =
   if name.runeLen > 80 or pos.runeLen > 80: bad("Full name and position: up to 80 characters each.")
   (name, if pos.len == 0: newNull() else: S(pos))
 
+const PositionNeeded* = "Enter the position (job title, e.g. I&C technician): every new member needs one."
+
+proc requirePosition*(pos: JNode) =
+  ## new members only (existing ones keep what they have): personFields() gives null for an empty position
+  if pos == nil or not pos.isStr or pos.s.len == 0: bad(PositionNeeded)
+
 proc roleOf(a: Api, pid: string): string = a.n.run.role(pid)
 
 proc personBody(a: Api, pid: string, fullName = "", position: JNode = nil, role = "", keepPosition = true): JNode =
@@ -906,6 +912,12 @@ proc existingPerson(a: Api, username: string): JNode =
     if p["username"].s.toLowerAscii == username.toLowerAscii:
       return O(("username", p["username"]), ("full_name", p["full_name"]), ("role", S(a.roleOf(pid))))
   newNull()
+
+proc needsPosition(a: Api, req: JNode): bool =
+  ## a join request for a new member without a position: accepting it fails, so the screens say so up front
+  let name = if req.get("username") != nil and req["username"].isStr: req["username"].s else: ""
+  let pos = req.get("position")
+  a.existingPerson(name).isNull and (pos == nil or not pos.isStr or pos.s.strip.len == 0)
 
 proc validUsername*(s: string): bool = s.len in 2..40 and s.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '.', '@', '-'})
 
@@ -925,6 +937,9 @@ proc certify*(a: Api, me: Actor, req: JNode, existingOk: bool, now: int64): JNod
   if pid.len > 0:
     if not (me.role == "manager" or pid == me.person or a.roleOf(pid) == "user"): fail(403, "Only the manager can add devices for admins.")
   else:
+    if pos.isNull:
+      bad("This join request has no position, and every new member needs one: ask " & fn &
+          " to send a new request with their position (job title).")
     pid = a.newHexId
     discard a.write(me, "person", personBody(pid, name, fn, "user", pos), now)
   if have == nil:
@@ -1265,7 +1280,8 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
           let req = ask.request
           lst.elems.add O(("device", S(ask.device)), ("request", req), ("seen", I(ask.seen)), ("exp", I(ask.exp)),
                           ("code", S(a.n.p.joinCode(ask.device, a.n.device))),
-                          ("existing", a.existingPerson(req["username"].s)))
+                          ("existing", a.existingPerson(req["username"].s)),
+                          ("needs_position", B(a.needsPosition(req))))
       return ok(O(("requests", lst)))
     else:
       if path.startsWith("/api/invites/"):
@@ -1275,7 +1291,8 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
         let v = a.invites.items[tok]
         let state = if v.exp < now div 1000 and v.state in ["open", "asked"]: "expired" else: v.state
         return ok(O(("state", S(state)), ("exp", I(v.exp)), ("request", if v.request == nil: newNull() else: v.request),
-                    ("seen", I(v.seen)), ("existing", if v.request == nil: newNull() else: a.existingPerson(v.request["username"].s))))
+                    ("seen", I(v.seen)), ("existing", if v.request == nil: newNull() else: a.existingPerson(v.request["username"].s)),
+                    ("needs_position", B(v.request != nil and a.needsPosition(v.request)))))
       fail(404, "not found")
   if meth != "POST": fail(405, "method not allowed")
   let parts = path.split('/')
