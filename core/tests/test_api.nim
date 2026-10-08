@@ -143,6 +143,30 @@ suite "plant API":
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"tag_add","kks":["11LAB70AA501"],"payload":{}}""")).status == 400
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":[],"payload":{"changes":{"area":"x"}}}""")).status == 400
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["not a code!"],"payload":{"changes":{"area":"x"}}}""")).status == 400
+  test "several codes at once: all checked before any is written; a value changed meanwhile is a clash":
+    let (_, ali) = userApi.owner
+    let (_, mgr) = mgrApi.owner
+    # code B's notes are long: appended, they go over the field's 4000 characters. Nothing is written, not even A's.
+    check mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("payload", newObj(@[
+      ("kks", newStr("11LAB70AA602")), ("changes", newObj(@[("notes", newStr("x".repeat(3990)))]))]))])).status == 200
+    sync(userNode, mgrNode)
+    let before = userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems.len
+    let r = userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA601","11LAB70AA602"],"payload":{"append":{"notes":"a longer note that will not fit"}},"client_id":"partial-1"}"""))
+    check r.status == 400
+    check userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems.len == before
+    # a refused note keeps no photo
+    let data = "\xff\x0aa photo for a refused note"
+    let sha = hex(userNode.p.sha256(data.toBytes))
+    let ph = userApi.call(ali, "POST", "/api/submit-many", newObj(@[("kind", newStr("photo")),
+      ("kks", newArr(@[newStr("11LAB70AA601")])), ("note", newStr("n".repeat(501))),
+      ("payload", newObj(@[("dataUrl", newStr("data:image/jxl;base64," & encode(data)))]))]))
+    check ph.status == 400 and not userNode.store.blobHas(sha)
+    # the person was shown "area: (none)" for 11LAB70AA603; meanwhile the manager set it: sent with that base, a clash
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA603","changes":{"area":"boiler house"}}}""")).status == 200
+    let st = mgrApi.call(mgr, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA603","11LAB70AA604"],"payload":{"changes":{"area":"pump house"},"bases":{"11LAB70AA603":{"area":""},"11LAB70AA604":{"area":""}}}}"""))
+    check st.status == 200
+    check st.json["results"][0]["status"].s == "conflict"       # the manager's newer value isn't overwritten silently
+    check st.json["results"][1]["status"].s != "conflict"
   test "a marked tag, corrected while approving":
     let (_, ali) = userApi.owner
     let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"tag_add","payload":{"sheet":"lp","bbox":[10,10,60.04,30],"kks":"11lab70aa501","isa":"","note":""}}"""))

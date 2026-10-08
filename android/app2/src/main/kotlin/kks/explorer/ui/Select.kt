@@ -34,7 +34,15 @@ import java.io.File
 
 /** One photo, place or note for several codes (core submitMany, /api/submit-many): an ordinary submission per code,
  *  `client_id` a fresh prefix per action so a retry can't send anything twice. Returns (ok, the snackbar's words). */
-fun submitMany(kind: String, codes: List<String>, payload: JSONObject, note: String = ""): Pair<Boolean, String> {
+fun submitMany(kind: String, codes: List<String>, payload: JSONObject, note: String = "", shown: Map<String, JSONObject>? = null): Pair<Boolean, String> {
+    // the values the person was shown for the fields that are replaced: a value changed meanwhile is then a clash
+    // (core submitMany `bases`), not overwritten silently. An appended note can't lose anything: none needed.
+    val changes = payload.optJSONObject("changes")
+    if (shown != null && changes != null) {
+        val bases = JSONObject()
+        for (c in codes) { val e = shown[c] ?: JSONObject(); val b = JSONObject(); for (f in changes.keys()) b.put(f, e.optString(f, "")); bases.put(c, b) }
+        payload.put("bases", bases)
+    }
     val body = JSONObject().put("kind", kind).put("kks", JSONArray(codes)).put("payload", payload)
         .put("client_id", "many-" + java.util.UUID.randomUUID().toString().replace("-", ""))
     if (note.isNotBlank()) body.put("note", note.trim())
@@ -116,7 +124,7 @@ fun PlaceForAll(tagIds: List<String>, codes: List<String>, onSent: (String) -> U
         }
     }, confirmButton = { TextButton(enabled = filled.isNotEmpty(), onClick = {
         val changes = JSONObject(); for (f in filled) changes.put(f, values[f]!!.trim())
-        val (ok, m) = submitMany("equipment", codes, JSONObject().put("changes", changes), note)
+        val (ok, m) = submitMany("equipment", codes, JSONObject().put("changes", changes), note, shown = current)
         onSent(m); if (ok) onClose()
     }) { Text("Send") } }, dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } })
 }

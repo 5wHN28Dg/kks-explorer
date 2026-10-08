@@ -159,6 +159,18 @@ proc sendMany(w: Win, kind: string, payload: JNode, note: string): bool =
     return false
   var arr = newArr()
   for k in codes: arr.elems.add newStr(k)
+  if kind == "equipment":
+    # the values this device shows for the fields it changes: a value someone changed meanwhile is then a clash
+    # (core submitMany `bases`), not overwritten silently
+    var bases = newObj()
+    for k in codes:
+      let e = w.m.equipment(k)
+      var b = newObj()
+      if payload.get("changes") != nil:          # replaced fields only: an appended note can't lose anything
+        for (f, _) in payload["changes"].fields:
+          b[f] = (if e.get(f) != nil: e[f] else: newStr(""))
+      bases[k] = b
+    payload["bases"] = bases
   var body = newObj(@[("kind", newStr(kind)), ("kks", arr), ("payload", payload), ("client_id", newStr(clientPrefix()))])
   if note.strip.len > 0: body["note"] = newStr(note.strip)
   var r: JNode

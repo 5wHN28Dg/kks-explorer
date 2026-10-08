@@ -770,6 +770,12 @@ function pickList(){
 // one submit-many for the selected codes; says how it went and leaves the mode
 async function sendMany(kind,payload,note){
   const codes=[...multi.codes]; if(!codes.length){ toast('Nothing selected'); return false }
+  if(kind==='equipment'){
+    // the values this page shows for the fields it changes: a value someone changed meanwhile (or before an offline
+    // send goes out) is then a clash (core submitMany bases), not overwritten silently
+    const fields=Object.keys(payload.changes||{});   // replaced fields only: an appended note can't lose anything
+    payload={...payload,bases:Object.fromEntries(codes.map(k=>[k,Object.fromEntries(fields.map(f=>[f,(STATE.equipment?.[k]||{})[f]??'']))]))};
+  }
   let r; try{ r=await K.submitMany(kind,codes,payload,note) }catch(e){ toast('Not saved: '+e.message); return false }
   pickMode(false);
   if(r.status==='queued'){ toast(`Offline, queued for ${nCodes(codes.length)}`); updatePending(); drawTags(); return true }

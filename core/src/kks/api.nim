@@ -518,6 +518,11 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
   ## submission per code, so every device reads them as before (PROTOCOL-v2 §9 has one kks per entry). A photo's image
   ## is kept once and every entry points to it. `client_id` is a prefix: code i is sent as "<prefix>-<i>", so a retry
   ## doesn't duplicate anything.
+  ##
+  ## Everything is checked before anything is written (a code that fails — e.g. a note over the field's length once
+  ## appended — leaves no half-sent set behind for a retry to duplicate). Equipment payload: `changes`, and/or `append`
+  ## (text added under each code's own current value), and `bases` {code: {field: value}}: the values the person was
+  ## shown, so a value changed meanwhile is a clash as in a single edit; a code without one gets its current values.
   if kind notin ["photo", "equipment"]: bad("only photos and equipment fields go to several codes at once")
   if codes == nil or codes.kind != jArr or codes.elems.len notin 1..200: bad("kks: a list of 1 to 200 codes")
   var list: seq[string]
@@ -528,8 +533,17 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
   let prefix = if clientId == nil or clientId.isNull: "" else: (if clientId.isStr: clientId.s else: "\0")
   if prefix.len > 0 and not (prefix.len in 8..56 and prefix.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})):
     bad("bad client_id")
+  let (_, requestNote, _) = a.submitPrep(newNull(), noteIn)      # the note first: nothing is kept for a refused one
   proc cidOf(i: int): JNode = (if prefix.len == 0: newNull() else: S(prefix & "-" & $i))
-  var results = newArr()
+  # earlier sends of this set (a retry): one pass over the submissions, not one per code
+  var dups = initTable[string, JNode]()
+  if prefix.len > 0:
+    for old in a.n.store.subs():
+      if old["client_id"].isStr and old["client_id"].s.startsWith(prefix & "-"):
+        let st = a.subStatus(old)
+        dups[old["client_id"].s] = O(("id", old["id"]), ("status", S(st.status)), ("note", S(st.note)), ("duplicate", B(true)))
+  # 1. every body, checked
+  var bodies: seq[JNode]
   if kind == "photo":
     var first = copy(payload)
     first["kks"] = S(list[0])
@@ -538,30 +552,33 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
       var pi = copy(p)
       pi["kks"] = S(k)
       if i > 0: pi["photo_id"] = S(a.newHexId)
-      let (cid, requestNote, dup) = a.submitPrep(cidOf(i), noteIn)
-      results.elems.add(if dup != nil: dup else: a.submitBody(me, "photo", toBody("photo", pi), cid, requestNote, now))
+      bodies.add toBody("photo", pi)
   else:
-    # "append": text added under each code's own current value (a shared note must not wipe the notes already there)
     let app = payload.get("append")
     if app != nil and app.kind != jObj: bad("bad append")
-    for i, k in list:
+    let bases = payload.get("bases")
+    if bases != nil and bases.kind != jObj: bad("bad bases")
+    for k in list:
+      let cur = a.n.run.equipment.getOrDefault(k)
       var changes = if payload.get("changes") != nil and payload["changes"].kind == jObj: copy(payload["changes"]) else: newObj()
       if app != nil:
-        let cur = a.n.run.equipment.getOrDefault(k)
         for (f, v) in app.fields:
           if not v.isStr: bad("bad append")
           let old = if cur != nil and cur.has(f) and cur[f].isStr: cur[f].s else: ""
           changes[f] = S(if old.strip.len > 0: old & "\n" & v.s else: v.s)
-      var pi = O(("kks", S(k)), ("changes", changes))
-      if payload.get("base") != nil: pi["base"] = payload["base"]
-      else:
-        # no base given: each code's own current values. One base can't fit every code, and without one a code that
-        # already had a value (or a note to append to) was held as a clash; the person chose to replace or extend it
-        let cur = a.n.run.equipment.getOrDefault(k)
-        var bs = newObj()
-        for (f, _) in changes.fields: bs[f] = (if cur != nil and cur.has(f): cur[f] else: defaultOf(f))
-        pi["base"] = bs
-      results.elems.add a.submit(me, kind, pi, cidOf(i), noteIn, now)
+      let shown = if bases != nil: bases.get(k) else: nil
+      if shown != nil and shown.kind != jObj: bad("bad bases")
+      var bs = newObj()
+      for (f, _) in changes.fields:
+        bs[f] = (if shown != nil and shown.has(f): shown[f] elif cur != nil and cur.has(f): cur[f] else: defaultOf(f))
+      let p = a.normalize("equipment", O(("kks", S(k)), ("changes", changes), ("base", bs)))   # lengths, fields
+      bodies.add toBody("equipment", p)
+  # 2. written, all or (on a retry) the ones not sent before
+  var results = newArr()
+  for i, k in list:
+    let cid = cidOf(i)
+    if cid.isStr and cid.s in dups: results.elems.add dups[cid.s]
+    else: results.elems.add a.submitBody(me, kind, bodies[i], cid, requestNote, now)
   O(("results", results))
 
 proc rebase(a: Api, kind: string, b: JNode): JNode =
