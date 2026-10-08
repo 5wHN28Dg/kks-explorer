@@ -32,6 +32,21 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
+/** codes in one selection: the server takes up to 200 per submit-many (core api.submitMany) */
+const val MAX_PICK = 200
+
+/** `sel` with the tag ids `add` added in order while the distinct codes stay within MAX_PICK; true = some were left out */
+fun addCapped(sel: Set<String>, add: List<String>, codeOf: (String) -> String): Pair<Set<String>, Boolean> {
+    val out = LinkedHashSet(sel)
+    val codes = sel.map(codeOf).toMutableSet()
+    for (id in add) {
+        val c = codeOf(id)
+        if (c !in codes && codes.size >= MAX_PICK) return out to true
+        out.add(id); codes.add(c)
+    }
+    return out to false
+}
+
 /** One photo, place or note for several codes (core submitMany, /api/submit-many): an ordinary submission per code,
  *  `client_id` a fresh prefix per action so a retry can't send anything twice. Returns (ok, the snackbar's words). */
 fun submitMany(kind: String, codes: List<String>, payload: JSONObject, note: String = "", shown: Map<String, JSONObject>? = null): Pair<Boolean, String> {
@@ -106,14 +121,17 @@ private val PLACE = FIELDS.filter { it.first != "notes" }
 fun PlaceForAll(tagIds: List<String>, codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
     val values = remember { mutableStateMapOf<String, String>() }
     var note by remember { mutableStateOf("") }
-    var current by remember { mutableStateOf<Map<String, JSONObject>>(emptyMap()) }
+    // the values shown (the bases): Send waits for them, or every code with a value would be sent as a clash
+    var current by remember { mutableStateOf<Map<String, JSONObject>?>(null) }
+    var sending by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(tagIds) {
         current = withContext(Dispatchers.IO) {
             tagIds.associate { id -> call("GET", "/native/tag", query = mapOf("id" to id)).json.let { it.optString("code") to (it.optJSONObject("equipment") ?: JSONObject()) } }
         }
     }
     val filled = PLACE.map { it.first }.filter { (values[it] ?: "").isNotBlank() }
-    val replaced = codes.count { c -> val e = current[c]; e != null && filled.any { f -> e.optString(f).isNotBlank() && e.optString(f) != values[f]!!.trim() } }
+    val replaced = codes.count { c -> val e = current?.get(c); e != null && filled.any { f -> e.optString(f).isNotBlank() && e.optString(f) != values[f]!!.trim() } }
     AlertDialog(onDismissRequest = onClose, title = { Text("Place for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Dim("Only the fields you fill are sent; the others stay as they are.")
@@ -122,10 +140,14 @@ fun PlaceForAll(tagIds: List<String>, codes: List<String>, onSent: (String) -> U
             if (replaced > 0) Text("$replaced of ${codes.size} codes already have another value here: it will be replaced.",
                 color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         }
-    }, confirmButton = { TextButton(enabled = filled.isNotEmpty(), onClick = {
+    }, confirmButton = { TextButton(enabled = filled.isNotEmpty() && current != null && !sending, onClick = {
         val changes = JSONObject(); for (f in filled) changes.put(f, values[f]!!.trim())
-        val (ok, m) = submitMany("equipment", codes, JSONObject().put("changes", changes), note, shown = current)
-        onSent(m); if (ok) onClose()
+        val shown = current ?: return@TextButton
+        sending = true
+        scope.launch {   // up to 200 submissions: off the main thread
+            val (ok, m) = withContext(Dispatchers.IO) { submitMany("equipment", codes, JSONObject().put("changes", changes), note, shown = shown) }
+            sending = false; onSent(m); if (ok) onClose()
+        }
     }) { Text("Send") } }, dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } })
 }
 
@@ -134,15 +156,20 @@ fun PlaceForAll(tagIds: List<String>, codes: List<String>, onSent: (String) -> U
 fun NoteForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
     var text by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     AlertDialog(onDismissRequest = onClose, title = { Text("Note for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Dim("Added under each code's notes; what is there stays.")
             OutlinedTextField(text, { text = it }, label = { Text("Note to add") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(note, { note = it }, label = { Text("Note for the approver (optional)") }, modifier = Modifier.fillMaxWidth())
         }
-    }, confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = {
-        val (ok, m) = submitMany("equipment", codes, JSONObject().put("append", JSONObject().put("notes", text.trim())), note)
-        onSent(m); if (ok) onClose()
+    }, confirmButton = { TextButton(enabled = text.isNotBlank() && !sending, onClick = {
+        sending = true
+        scope.launch {   // up to 200 submissions: off the main thread
+            val (ok, m) = withContext(Dispatchers.IO) { submitMany("equipment", codes, JSONObject().put("append", JSONObject().put("notes", text.trim())), note) }
+            sending = false; onSent(m); if (ok) onClose()
+        }
     }) { Text("Send") } }, dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } })
 }
 

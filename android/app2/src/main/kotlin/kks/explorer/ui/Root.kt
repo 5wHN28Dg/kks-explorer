@@ -242,13 +242,20 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 v.onToggle = { id ->
                     val t = boxes.firstOrNull { it.id == id }
                     if (t == null || t.code.isEmpty()) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("This tag has no code yet: it can't be selected") }
-                    else selection = if (id in selection) selection - id else selection + id
+                    else if (id in selection) selection = selection - id
+                    else {
+                        val (next, full) = addCapped(selection, listOf(id)) { i -> boxes.firstOrNull { it.id == i }?.code.orEmpty() }
+                        selection = next
+                        if (full) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("At most $MAX_PICK tags at once: send these first") }
+                    }
                 }
                 v.onBox = { ids ->
                     val hit = boxes.filter { it.id in ids }
                     val ok = hit.filter { it.code.isNotEmpty() }.map { it.id }
-                    selection = selection + ok
-                    if (ok.size < hit.size) scope.launch { snack.showSnackbar("${hit.size - ok.size} tag(s) without a code left out") }
+                    val (next, full) = addCapped(selection, ok) { i -> boxes.firstOrNull { it.id == i }?.code.orEmpty() }
+                    selection = next
+                    if (full) scope.launch { snack.showSnackbar("At most $MAX_PICK tags at once: send these first") }
+                    else if (ok.size < hit.size) scope.launch { snack.showSnackbar("${hit.size - ok.size} tag(s) without a code left out") }
                 }
                 v.onTag = { id ->
                     if (ui.linkProc.isNotEmpty()) {

@@ -167,6 +167,8 @@ suite "plant API":
     check st.status == 200
     check st.json["results"][0]["status"].s == "conflict"       # the manager's newer value isn't overwritten silently
     check st.json["results"][1]["status"].s != "conflict"
+    # a field both set and appended to: refused (the append used to replace the change silently)
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA605"],"payload":{"changes":{"notes":"new"},"append":{"notes":"more"}}}""")).status == 400
   test "a marked tag, corrected while approving":
     let (_, ali) = userApi.owner
     let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"tag_add","payload":{"sheet":"lp","bbox":[10,10,60.04,30],"kks":"11lab70aa501","isa":"","note":""}}"""))

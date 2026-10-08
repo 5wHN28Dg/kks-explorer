@@ -13,6 +13,9 @@ const PlaceFields = [("area", "Building / area", "a building / area"), ("floor",
 
 var testBoxDone = false
 
+## codes in one selection: the server takes up to 200 per submit-many (core api.submitMany). Tests: KKS_MAX_PICK lowers it.
+let MaxPick = (try: max(1, min(200, parseInt(getEnv("KKS_MAX_PICK", "200")))) except ValueError: 200)
+
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
 
@@ -50,6 +53,9 @@ proc togglePick*(w: Win, id: string) =
     w.unreadOnce()
     return
   let i = w.picked.find(k)
+  if i < 0 and w.picked.len >= MaxPick:
+    w.toast("At most " & $MaxPick & " tags at once: send these first")
+    return
   if i >= 0: w.picked.delete(i) else: w.picked.add k
   w.updatePick()
   w.announce(k & (if i >= 0: " removed, " else: " selected, ") & countText(w.picked.len))
@@ -57,16 +63,20 @@ proc togglePick*(w: Win, id: string) =
 proc addBox*(w: Win, x0, y0, x1, y1: float) =
   ## a dragged box (points): adds every tag it touches (never removes)
   var added = 0
-  var unread = false
+  var unread, full = false
   for id in w.v.tagsIn(x0, y0, x1, y1):
     let (ok, t) = w.m.tagById(id)
     if not ok: continue
     if t.full.len == 0:
       unread = true
     elif t.full notin w.picked:
+      if w.picked.len >= MaxPick:
+        full = true
+        break
       w.picked.add t.full
       inc added
   if unread: w.unreadOnce()
+  if full: w.toast("At most " & $MaxPick & " tags at once: send these first")
   w.updatePick()
   w.announce((if added == 1: "1 code added, " else: $added & " codes added, ") & countText(w.picked.len))
 

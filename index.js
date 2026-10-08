@@ -542,9 +542,13 @@ function updatePick(){
     d.classList.toggle('picked',p); d.setAttribute('aria-pressed',String(p)) }
 }
 function unreadOnce(){ if(!multi.saidUnread){ multi.saidUnread=true; toast("Tags without a code can't be selected: review them first") } }
+// at most this many codes in one selection: the server takes up to 200 per submit-many (core submitMany), and a set it
+// refused while queued offline would be dropped from the outbox
+const MAX_PICK=200;
+const fullOnce=()=>toast(`At most ${MAX_PICK} tags at once: send these first`);
 function togglePick(t){
   const k=full(t); if(!k){ unreadOnce(); return }
-  const i=multi.codes.indexOf(k); if(i>=0) multi.codes.splice(i,1); else multi.codes.push(k);
+  const i=multi.codes.indexOf(k); if(i>=0) multi.codes.splice(i,1); else if(multi.codes.length<MAX_PICK) multi.codes.push(k); else fullOnce();
   updatePick();
 }
 // the dragged box (sheet units), drawn while it moves; null removes it
@@ -557,14 +561,14 @@ function pickBox(p){
 // every tag on this sheet whose box intersects b: added (never removed)
 function addBox(b){
   const hidden=document.body.classList.contains('hide-review');
-  let added=0, unread=false;
+  let added=0, unread=false, full_=false;
   for(const t of tagsOf(cur.id)){
     const r=t.bbox; if(hidden&&t.status==='review') continue;
     if(!(r[0]<=b[2]&&r[2]>=b[0]&&r[1]<=b[3]&&r[3]>=b[1])) continue;
     const k=full(t); if(!k){ unread=true; continue }
-    if(!multi.codes.includes(k)){ multi.codes.push(k); added++ }
+    if(!multi.codes.includes(k)){ if(multi.codes.length>=MAX_PICK){ full_=true; break } multi.codes.push(k); added++ }
   }
-  if(unread) unreadOnce();
+  if(unread) unreadOnce(); if(full_) fullOnce();
   updatePick();
 }
 function dialog(title,...kids){

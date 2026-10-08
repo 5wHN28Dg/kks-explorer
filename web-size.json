@@ -77,7 +77,7 @@
    "icon-512.png": 3047,
    "icon.svg": 303,
    "index.html": 17125,
-   "index.js": 63779,
+   "index.js": 64202,
    "kks-wasm-worker.js": 479,
    "kks-wasm.js": 3443,
    "learning.html": 1792,
@@ -90,6 +90,6 @@
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1048198
+  "total": 1048621
  }
 }

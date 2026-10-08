@@ -64,7 +64,8 @@ class WebMulti(unittest.TestCase):
         setup = None
         for _ in range(100):
             self.log.flush(); self.log.seek(0); out = self.log.read()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', out)
+            f = re.search(r'setup link file: (.+)', out)   # the link is in a 0600 file (#69)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(f[1].strip()).read()) if f else None
             if m: setup = m[1]
             if 'server on' in out and setup: break
             import time; time.sleep(0.1)
@@ -150,6 +151,13 @@ class WebMulti(unittest.TestCase):
             self.assertEqual(hs('a:1').get_attribute('aria-pressed'), 'false')
             self.assertEqual(page.evaluate("document.activeElement.dataset.id"), 'a:1')
             page.keyboard.press('Enter')
+            self.assertEqual(count(), '4 selected')
+            # at most 200 (the server's limit per submit-many): a 201st tag isn't added, and that is said
+            saved = page.evaluate("() => { const s = [...multi.codes]; multi.codes = Array.from({length: 200}, (_, i) => '11LAB70AA' + (700 + i)); updatePick(); return s }")
+            hs('a:1').click()
+            toast('At most 200 tags at once')
+            self.assertEqual(count(), '200 selected')
+            page.evaluate("s => { multi.codes = s; updatePick() }", saved)
             self.assertEqual(count(), '4 selected')
             # the List: untick 12LBA10AA101
             page.click('#pickList')

@@ -285,7 +285,7 @@ class Gnome(unittest.TestCase):
         pic = os.path.join(self.dir, 'several.png')
         Image.new('RGB', (320, 240), (90, 120, 150)).save(pic)
         a = self.start_app('multi', KKS_SELECT_BOX='780,480,1080,580',     # 11LAC20AA101 and the unread tag
-                           KKS_PHOTO_FILE=pic,
+                           KKS_PHOTO_FILE=pic, KKS_MAX_PICK='3',             # the cap (200 in use), lowered
                            KKS_SHOT_ON_SIGNAL=os.path.join(SHOTS, 'gnome-multi.png'))
         pid = self.apps[-1].pid
         self.join(a)
@@ -299,6 +299,11 @@ class Gnome(unittest.TestCase):
             atspi.set_text(search, k[2:])
             atspi.click(atspi.find(a, 'button', name=k, timeout=10))
             atspi.find(a, 'label', name=f'{i + 2} selected', timeout=10)
+        # a fourth over the cap: not added, and said
+        atspi.set_text(search, 'LAC10AP003')
+        atspi.click(atspi.find(a, 'button', name='11LAC10AP003', timeout=10))
+        atspi.find(a, 'label', name='At most 3 tags at once: send these first', timeout=10)
+        atspi.find(a, 'label', name='3 selected', timeout=10)
         atspi.set_text(search, '')
         os.kill(pid, signal.SIGUSR1)       # a picture of the selection on the drawing, to look at
         # the List: every selected code with a switch, on; turn the box-selected one off (GTK 4 gives a check button

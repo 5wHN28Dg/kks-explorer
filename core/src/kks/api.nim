@@ -465,10 +465,12 @@ proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
   O(("id", newNull()), ("client_id", clientId), ("entry", newNull()), ("person", S(me.person)), ("kind", S(kind)),
     ("created", I(now div 1000)), ("held", newNull()), ("status", newNull()), ("note", newNull()), ("decided_at", newNull()))
 
-proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64): JNode =
+proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64,
+                 dupChecked = false): JNode =
   ## a change already in its §9 body form: the web/API submissions above and the server's submit-file (a repeated
-  ## client_id returns the first submission, so each is written once)
-  if cid.isStr:
+  ## client_id returns the first submission, so each is written once). `dupChecked`: the caller has looked for this
+  ## client_id already (submitMany: one pass over the submissions for the whole set, not one per code)
+  if cid.isStr and not dupChecked:
     for old in a.n.store.subs():
       if old["client_id"].isStr and old["client_id"].s == cid.s:
         let s = a.subStatus(old)
@@ -564,6 +566,7 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
       if app != nil:
         for (f, v) in app.fields:
           if not v.isStr: bad("bad append")
+          if changes.has(f): bad("append: " & f & " is also in changes")
           let old = if cur != nil and cur.has(f) and cur[f].isStr: cur[f].s else: ""
           changes[f] = S(if old.strip.len > 0: old & "\n" & v.s else: v.s)
       let shown = if bases != nil: bases.get(k) else: nil
@@ -578,7 +581,7 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
   for i, k in list:
     let cid = cidOf(i)
     if cid.isStr and cid.s in dups: results.elems.add dups[cid.s]
-    else: results.elems.add a.submitBody(me, kind, bodies[i], cid, requestNote, now)
+    else: results.elems.add a.submitBody(me, kind, bodies[i], cid, requestNote, now, dupChecked = true)
   O(("results", results))
 
 proc rebase(a: Api, kind: string, b: JNode): JNode =
