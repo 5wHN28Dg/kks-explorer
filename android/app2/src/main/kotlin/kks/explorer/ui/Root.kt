@@ -131,7 +131,7 @@ fun MainScreen() {
                 "procedures" -> Procedures(ui, snack)
                 "review" -> ReviewQueue(ui)
                 "learning" -> Learning(ui, snack)
-                "manage" -> Manage(snack)
+                "manage" -> Manage(snack, ui)
             }
             }
         }
