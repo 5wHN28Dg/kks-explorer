@@ -275,6 +275,10 @@ proc tagColor(status: string): (float, float, float) =
   of "pending": (0.55, 0.2, 0.75)
   else: (0.1, 0.4, 0.9)
 
+proc linkColor*(dark: bool): (float, float, float) =
+  ## an off-page connector's violet; on dark drawings raised toward white like the tags' colours
+  if dark: lightenForDark(0.55, 0.2, 0.85) else: (0.55, 0.2, 0.85)
+
 proc markerColor*(status, photos: string, coverage, dark: bool): (float, float, float) =
   ## a tag's outline colour: by its photos (coverage view) or by how it was read; the same hues on dark drawings,
   ## raised toward white so each keeps 3:1 against the dark sheet (tests/test_darkcolor.nim)
@@ -422,11 +426,12 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     let rad = max(6.0, max(l.x1 - l.x0, l.y1 - l.y0) / 2 * v.z + 3)
     if cx + rad < 0 or cy + rad < 0 or cx - rad > float(w) or cy - rad > float(h): continue
     let sel = i == v.linkSel
+    let (lr, lg, lb) = linkColor(v.dark)
     cairo_new_sub_path(c)
     cairo_arc(c, cx, cy, rad, 0, 2 * PI)
-    cairo_set_source_rgba(c, 0.55, 0.2, 0.85, if sel: 0.3 else: 0.12)
+    cairo_set_source_rgba(c, lr, lg, lb, if sel: 0.3 else: 0.12)
     cairo_fill_preserve(c)
-    cairo_set_source_rgba(c, 0.55, 0.2, 0.85, 0.9)
+    cairo_set_source_rgba(c, lr, lg, lb, 0.9)
     cairo_set_line_width(c, if sel: 3.5 else: 2.0)
     if not sel:
       var dash = [5.0, 3.0]
