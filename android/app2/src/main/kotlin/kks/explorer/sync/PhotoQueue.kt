@@ -95,6 +95,7 @@ object PhotoQueue {
         val id = UUID.randomUUID().toString().replace("-", "")       // also the submission's client_id: a rerun can't add it twice
         main.post { pending += 1; pendingByCode[kks] = (pendingByCode[kks] ?: 0) + 1; if (floor.isNotEmpty()) queuedFloor[kks] = floor }
         io.execute {
+            if (wiped) return@execute
             try {
                 val px = File(dir(app), "$id.px")
                 val argb = if (bmp.config == Bitmap.Config.ARGB_8888) bmp else bmp.copy(Bitmap.Config.ARGB_8888, false)
@@ -104,7 +105,8 @@ object PhotoQueue {
                 val job = JSONObject().put("kks", kks).put("caption", caption).put("note", note).put("floor", floor)
                     .put("at", System.currentTimeMillis())
                 // the JSON last, through a rename: a job file is never seen half written
-                val tmp = File(dir(app), "$id.json.tmp"); tmp.writeText(job.toString()); tmp.renameTo(File(dir(app), "$id.json"))
+                val tmp = File(dir(app), "$id.json.tmp"); tmp.writeText(job.toString())
+                if (!tmp.renameTo(File(dir(app), "$id.json"))) { tmp.delete(); throw java.io.IOException("could not write the job") }
                 enqueue(app, id)
                 refresh(app)
             } catch (e: Throwable) {
@@ -139,7 +141,12 @@ object PhotoQueue {
     }
 
     /** a removed phone (App.removed): the queued photos are plant data too */
+    @Volatile private var wiped = false
+
     fun wipe(ctx: Context) {
+        wiped = true
+        // wait for a photo being written now, so nothing is left behind it
+        runCatching { io.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS) }
         runCatching { WorkManager.getInstance(ctx).cancelUniqueWork(WORK) }
         dir(ctx).deleteRecursively()
         prefs(ctx).edit().clear().commit()
@@ -170,6 +177,10 @@ object PhotoQueue {
             val r = Core.api("POST", "/api/submit", body)
             if (r.status >= 400) fail(ctx, kks, r.json.optString("error", "error ${r.status}"))
             else main.post { Changes.rev++ }
+        } catch (e: Throwable) {
+            // anything else (out of memory, a short file, the core): reported, and the next photos still go
+            Log.w(TAG, "photo of $kks", e)
+            fail(ctx, kks.ifEmpty { "photo" }, "Could not send the photo (${e.message ?: e.javaClass.simpleName})")
         } finally {
             jf.delete(); px.delete()
             refresh(ctx)
@@ -181,7 +192,7 @@ object PhotoQueue {
 class PhotoWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
     override fun doWork(): Result {
         val id = inputData.getString("job") ?: return Result.success()
-        PhotoQueue.run(applicationContext, id)
+        try { PhotoQueue.run(applicationContext, id) } catch (e: Throwable) { android.util.Log.w("KKSPhotos", "job $id", e) }
         return Result.success()       // never fail the chain: the next photos must still go
     }
 }
