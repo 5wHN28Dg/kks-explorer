@@ -84,7 +84,7 @@ proc main() =
     let l = s.setupLink()
     if l.len > 0:
       writePrivate(linkFile, l & "\n")
-      echo "No manager yet. Run `kks-server setup-link` for the one-time link that creates it; until then it is in ", linkFile
+      echo "No manager yet. The one-time link that creates the manager (valid 7 days) is in the setup link file: ", linkFile
     elif fileExists(linkFile): removeFile(linkFile)
     echo "Walkdown server on http://", cfg.address, ":", cfg.port, (if cfg.syncPort > 0: ", sync port " & $cfg.syncPort else: "")
     asyncCheck s.serve()
@@ -111,9 +111,11 @@ proc main() =
                        ("root", newStr(s.n.root)), ("sealed", sealed)])
     # check it opens before calling it a backup
     if p.passphraseOpen(pass, doc["sealed"]).toStr != toText(k): quit "the sealed copy did not open again: not written"
+    if "passphrase-out" in args:
+      if absolutePath(args["passphrase-out"]) == absolutePath(args["out"]): quit "--out and --passphrase-out must differ"
+      writePrivate(args["passphrase-out"], pass & "\n")   # first: a backup is never written without its passphrase
     writePrivate(args["out"], toText(doc))
     if "passphrase-out" in args:
-      writePrivate(args["passphrase-out"], pass & "\n")
       echo "Wrote ", args["out"], ": the plant root key, sealed with the passphrase in ", args["passphrase-out"], "."
     else:
       echo "Wrote ", args["out"], ": the plant root key, sealed with this passphrase (write it down; it is not kept):"

@@ -57,7 +57,7 @@ class Base(unittest.TestCase):
         t0 = time.time()
         while time.time() - t0 < 10:
             line = cls.proc.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('until then it is in ', 1)[1].strip()).read() if 'until then it is in ' in line else line)   # the link is in a 0600 file (#69)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m:
                 cls.setup = m[1]
             if 'server on' in line:
