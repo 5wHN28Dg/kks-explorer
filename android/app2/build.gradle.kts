@@ -27,6 +27,13 @@ android {
                 arguments += listOf("-DLIBJXL_SRC=${layout.buildDirectory.dir("third_party/libjxl").get().asFile}",
                     "-DZXING_SRC=${layout.buildDirectory.dir("third_party/zxing-cpp").get().asFile}",
                     "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_STL=c++_static")
+                // -PkksNativeJobs=N: at most N compile and N link jobs for libjxl/zxing-cpp (Ninja job pools). Without
+                // it Ninja runs one job per core, which needs several GB on a many-core machine; a memory-capped
+                // build (a CI runner, a desktop shared with other work) can set it.
+                (project.findProperty("kksNativeJobs") as String?)?.toIntOrNull()?.let { n ->
+                    arguments += listOf("-DCMAKE_JOB_POOLS=compile=$n;link=$n", "-DCMAKE_JOB_POOL_COMPILE=compile",
+                        "-DCMAKE_JOB_POOL_LINK=link")
+                }
             }
         }
     }
