@@ -166,6 +166,9 @@ type Listener* = ref object
   perAddress: Table[string, int]
   maxOpen*, maxPerAddress*: int ## MaxIncoming, MaxIncomingPerAddress (tests lower them)
   strangerMs*: int64            ## StrangerMs (tests lower it)
+  enrollFrom*: proc (remote, address: string, m: JNode): JNode
+    ## when set, answers §16 enroll instead of the hooks' `enroll`, told the TCP peer's address (password throttling
+    ## counts the address: a peer ID costs nothing to change, issue #39)
 
 proc serveOne(l: Listener, n: Node, id: Identity, raw: AsyncSocket, address: string, hooks: Hooks) {.async.} =
   let client = tcpStream(raw)
@@ -174,7 +177,12 @@ proc serveOne(l: Listener, n: Node, id: Identity, raw: AsyncSocket, address: str
   try:
     c = newTlsConn(n.p, id, client = false)   # inside the try: the slot is given back whatever fails
     await client.handshake(c, deadline)
-    let s = newSession(n, false, c.remotePeer, hooks = hooks)
+    var h = hooks
+    if l.enrollFrom != nil:
+      let f = l.enrollFrom
+      let a = address
+      h.enroll = proc (remote: string, m: JNode): JNode = f(remote, a, m)
+    let s = newSession(n, false, c.remotePeer, hooks = h)
     s.wall = nowMs()
     await client.drive(c, s, deadline)
     inc l.sessions

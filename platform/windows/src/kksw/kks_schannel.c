@@ -16,6 +16,7 @@
 #include <ncrypt.h>
 #include <sspi.h>
 #include <schannel.h>
+#include <bcrypt.h>
 #include <stddef.h>   /* offsetof (gcc's headers brought it in; clang's do not) */
 #include <stdlib.h>
 #include <string.h>
@@ -35,11 +36,42 @@ static void set_err(char *err, size_t n, const char *what, long code) {
     if (err && n) snprintf(err, n, "%s (0x%08lx)", what, (unsigned long)code);
 }
 
+/* TLS 1.2 (Windows 10 negotiates it) with AEAD ciphers and ephemeral elliptic-curve key exchange only (#41,
+ * decision 0033), as GnuTLS and Android offer: Windows' default list also has AES-CBC and 3DES suites, and
+ * static-RSA and finite-field DH key exchange. Off here: AES in CBC mode, 3DES, RSA and DH key exchange; what stays
+ * is ECDHE with AES-GCM (and TLS 1.3's suites, which are all AEAD). The same list for sync and for wss://. */
+#define USTR(s) { sizeof(s) - sizeof(WCHAR), sizeof(s), (PWSTR)(s) }
+static UNICODE_STRING mode_cbc[] = { USTR(BCRYPT_CHAIN_MODE_CBC) };
+static UNICODE_STRING mode_gcm[] = { USTR(BCRYPT_CHAIN_MODE_GCM) };
+static CRYPTO_SETTINGS weak[] = {
+    { TlsParametersCngAlgUsageCipher, USTR(BCRYPT_AES_ALGORITHM), 1, mode_cbc, 0, 0 },
+    { TlsParametersCngAlgUsageCipher, USTR(BCRYPT_3DES_ALGORITHM), 0, NULL, 0, 0 },
+    { TlsParametersCngAlgUsageKeyExchange, USTR(BCRYPT_RSA_ALGORITHM), 0, NULL, 0, 0 },
+    { TlsParametersCngAlgUsageKeyExchange, USTR(BCRYPT_DH_ALGORITHM), 0, NULL, 0, 0 },
+};
+/* tests only (kks_tls_test_mode): a client that offers ECDHE with AES-CBC alone (GCM, 3DES, RSA and DH key exchange
+ * off), to check that the other side refuses it */
+static CRYPTO_SETTINGS cbc_only[] = {
+    { TlsParametersCngAlgUsageCipher, USTR(BCRYPT_AES_ALGORITHM), 1, mode_gcm, 0, 0 },
+    { TlsParametersCngAlgUsageCipher, USTR(BCRYPT_3DES_ALGORITHM), 0, NULL, 0, 0 },
+    { TlsParametersCngAlgUsageKeyExchange, USTR(BCRYPT_RSA_ALGORITHM), 0, NULL, 0, 0 },
+    { TlsParametersCngAlgUsageKeyExchange, USTR(BCRYPT_DH_ALGORITHM), 0, NULL, 0, 0 },
+};
+static int test_mode;   /* 0 normal; 1: TLS 1.2 only; 2: as 1, and clients offer AES-CBC alone */
+void kks_tls_test_mode(int m) { test_mode = m; }   /* applies to identities made afterwards */
+
+static void tls_params(TLS_PARAMETERS *tp, DWORD protocols, int client) {
+    memset(tp, 0, sizeof *tp);
+    if (test_mode) protocols &= SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_2_SERVER;
+    tp->grbitDisabledProtocols = (DWORD)~protocols;
+    if (test_mode == 2 && client) { tp->cDisabledCrypto = sizeof cbc_only / sizeof cbc_only[0]; tp->pDisabledCrypto = cbc_only; }
+    else { tp->cDisabledCrypto = sizeof weak / sizeof weak[0]; tp->pDisabledCrypto = weak; }
+}
+
 static int acquire(kks_identity *id, int client, CredHandle *h, char *err, size_t en) {
     TLS_PARAMETERS tp;
-    memset(&tp, 0, sizeof tp);
     /* everything but TLS 1.2 and 1.3 disabled */
-    tp.grbitDisabledProtocols = (DWORD)~(SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_2_SERVER | SP_PROT_TLS1_3_CLIENT | SP_PROT_TLS1_3_SERVER);
+    tls_params(&tp, SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_2_SERVER | SP_PROT_TLS1_3_CLIENT | SP_PROT_TLS1_3_SERVER, client);
     SCH_CREDENTIALS sc;
     memset(&sc, 0, sizeof sc);
     sc.dwVersion = SCH_CREDENTIALS_VERSION;
@@ -156,8 +188,7 @@ static int have_web;
 kks_tls *kks_tls_new_web(const wchar_t *host) {
     if (!have_web) {
         TLS_PARAMETERS tp;
-        memset(&tp, 0, sizeof tp);
-        tp.grbitDisabledProtocols = (DWORD)~(SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_3_CLIENT);
+        tls_params(&tp, SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_3_CLIENT, 1);
         SCH_CREDENTIALS sc;
         memset(&sc, 0, sizeof sc);
         sc.dwVersion = SCH_CREDENTIALS_VERSION;
@@ -378,6 +409,17 @@ void kks_tls_shutdown(kks_tls *c) {
     if (c->client) InitializeSecurityContextW(cred_of(c), &c->ctx, NULL, c->web ? ISC_FLAGS_WEB : ISC_FLAGS, 0, 0, NULL, 0, NULL, &od, &attrs, NULL);
     else AcceptSecurityContext(&c->id->in_cred, &c->ctx, NULL, ASC_FLAGS, 0, NULL, &od, &attrs, NULL);
     if (o.pvBuffer) { put(&c->out, o.pvBuffer, o.cbBuffer); FreeContextBuffer(o.pvBuffer); }
+}
+
+/* the negotiated cipher suite's name, e.g. TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 (tests, the status page); "" before
+ * the handshake */
+void kks_tls_cipher(kks_tls *c, char *out, size_t n) {
+    SecPkgContext_CipherInfo ci;
+    memset(&ci, 0, sizeof ci);
+    ci.dwVersion = SECPKGCONTEXT_CIPHERINFO_V1;
+    if (n) out[0] = 0;
+    if (!c->done || QueryContextAttributesW(&c->ctx, SECPKG_ATTR_CIPHER_INFO, &ci) != SEC_E_OK) return;
+    WideCharToMultiByte(CP_UTF8, 0, ci.szCipherSuite, -1, out, (int)n, NULL, NULL);
 }
 
 /* the negotiated protocol: 0x3 = TLS 1.2, 0x4 = TLS 1.3, 0 = unknown (SECPKG_ATTR_CONNECTION_INFO) */

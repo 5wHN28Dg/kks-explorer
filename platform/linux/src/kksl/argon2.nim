@@ -1,5 +1,6 @@
-## Argon2id password hashes through OpenSSL ≥ 3.2 (decision 0023: m = 19 MiB, t = 2, p = 1), stored in the PHC string
-## format `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>` (standard base64, no padding). Server only.
+## Argon2id password hashes through OpenSSL ≥ 3.2 (decision 0023: m = 64 MiB, t = 3, p = 1; issue #40), stored in the PHC
+## string format `$argon2id$v=19$m=65536,t=3,p=1$<salt>$<hash>` (standard base64, no padding). Server only. Hashes
+## made with other parameters (19 MiB, t = 2 before #40; v1's scrypt) still verify and are replaced at the next login.
 
 import std/[base64, strutils]
 
@@ -7,8 +8,8 @@ import std/[base64, strutils]
 const
   HP = "<openssl/params.h>"
   HK = "<openssl/kdf.h>"
-  MemKiB* = 19456'u32
-  Iter* = 2'u32
+  MemKiB* = 65536'u32
+  Iter* = 3'u32
   Lanes* = 1'u32
 
 type
@@ -76,6 +77,12 @@ proc scrypt*(password, salt: string, n: uint64, r, p: uint32, outLen: int): stri
     raise newException(Argon2Error, "scrypt failed")
 
 proc isLegacy*(stored: string): bool = stored.startsWith("scrypt$")
+
+proc needsRehash*(stored: string): bool =
+  ## not an Argon2id hash with today's parameters: replace it once the password is known (at a login)
+  let parts = stored.split('$')
+  stored.isLegacy or parts.len != 6 or parts[1] != "argon2id" or
+    parts[3] != "m=" & $MemKiB & ",t=" & $Iter & ",p=" & $Lanes
 
 proc b64(s: string): string = encode(s).strip(leading = false, chars = {'='})
 

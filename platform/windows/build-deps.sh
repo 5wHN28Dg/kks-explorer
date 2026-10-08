@@ -15,6 +15,7 @@ if [ "$ARCH" = aarch64 ]; then
   CC_="$MINGW/aarch64-w64-mingw32-clang"; CXX_="$MINGW/aarch64-w64-mingw32-clang++"; RC_="$MINGW/aarch64-w64-mingw32-windres"
   AR_="$MINGW/llvm-ar"; ZPRE=aarch64-w64-mingw32-; SYSPROC=ARM64
 else
+  [ -n "${KKS_MINGW_BIN:-}" ] || sh "$(dirname "$0")/fetch-mingw.sh"   # the pinned toolchain (exits at once when present)
   MINGW="${KKS_MINGW_BIN:-$DEV/mingw/usr/bin}"
   OUT="$DEV/win64"
   CC_="$MINGW/x86_64-w64-mingw32-gcc-posix"; CXX_="$MINGW/x86_64-w64-mingw32-g++-posix"; RC_="$MINGW/x86_64-w64-mingw32-windres"
@@ -34,6 +35,10 @@ fetch() { # name url sha256
 unpack() { # name into
   rm -rf "$2"; mkdir -p "$2"; tar xzf "$SRC/dl/$1.tar.gz" -C "$2" --strip-components=1
 }
+# KKS_WIN_LIBS: the libraries to build (default all of them: zlib libjxl zxing sqlite)
+want() { case " ${KKS_WIN_LIBS:-zlib libjxl zxing sqlite} " in *" $1 "*) return 0;; esac; return 1; }
+# libz.a exists and holds none of zlib's gz* objects
+gz_free() { [ -f "$1" ] && ! "$AR_" t "$1" | grep -q '^gz'; }
 
 cat > "$SRC/mingw-toolchain-$ARCH.cmake" <<T
 set(CMAKE_SYSTEM_NAME Windows)
@@ -48,16 +53,20 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 T
 TC="-DCMAKE_TOOLCHAIN_FILE=$SRC/mingw-toolchain-$ARCH.cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=$OUT"
 
-# zlib 1.3.2 (hash published on zlib.net)
-if [ ! -f "$OUT/lib/libz.a" ]; then
+# zlib 1.3.2 (hash published on zlib.net). Without its gz* file functions (gzclose, gzlib, gzread, gzwrite): the
+# program uses deflate and inflate only, and CVE-2026-76844 (gz_write, #58) is fixed on zlib's development branch
+# only. A call to a gz* function now fails to link instead of bringing that code in.
+if want zlib && ! gz_free "$OUT/lib/libz.a"; then
   fetch zlib https://zlib.net/zlib-1.3.2.tar.gz bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
   unpack zlib "$SRC/w-zlib-$ARCH"
   (cd "$SRC/w-zlib-$ARCH" && make -s -f win32/Makefile.gcc PREFIX=$ZPRE CC="$CC_" AR="$AR_" RC="$RC_" libz.a >/dev/null &&
+   "$AR_" d libz.a gzclose.o gzlib.o gzread.o gzwrite.o &&
    cp libz.a "$OUT/lib/" && cp zlib.h zconf.h "$OUT/include/")
+  gz_free "$OUT/lib/libz.a" || { echo "zlib: libz.a still holds gz* objects" >&2; exit 1; }
 fi
 
 # libjxl v0.12.0 and the submodule commits it names
-if [ ! -f "$OUT/lib/libjxl.a" ]; then
+if want libjxl && [ ! -f "$OUT/lib/libjxl.a" ]; then
   fetch libjxl https://codeload.github.com/libjxl/libjxl/tar.gz/v0.12.0 03e9be69a30be4011f559da75328b6d7cea8ad921fabfbd551ce10bf45cdc992
   fetch highway https://codeload.github.com/google/highway/tar.gz/457c891775a7397bdb0376bb1031e6e027af1c48 5124b0501c98d9930dbb065bfa1a5bbbd59ce0f12facb7e1e33aaef01a5f1f1a
   fetch brotli https://codeload.github.com/google/brotli/tar.gz/028fb5a23661f123017c060daa546b55cf4bde29 0afe09a53c8bad9861c8dd1fc1284308d54f19d2979ba3541cfdcc9b05fe360f
@@ -75,7 +84,7 @@ if [ ! -f "$OUT/lib/libjxl.a" ]; then
 fi
 
 # zxing-cpp v3.1.1, reader + the built-in writer (0032 addendum: the new writer needs a submodule)
-if [ ! -f "$OUT/lib/libZXing.a" ]; then
+if want zxing && [ ! -f "$OUT/lib/libZXing.a" ]; then
   fetch zxing-cpp https://codeload.github.com/zxing-cpp/zxing-cpp/tar.gz/v3.1.1 7286b1e6ade66fe82b7c8208b4595deeb55d6486b410834fdc65702f46650542
   Z="$SRC/w-zxing-$ARCH"
   unpack zxing-cpp "$Z"
@@ -85,5 +94,7 @@ if [ ! -f "$OUT/lib/libZXing.a" ]; then
 fi
 
 # SQLite (the amalgamation, compiled into the program)
-[ -f "$SRC/sqlite-amalgamation-3530400/sqlite3.c" ] || sh "$(dirname "$0")/../../android/nim/fetch_sqlite.sh"
+if want sqlite; then
+  [ -f "$SRC/sqlite-amalgamation-3530400/sqlite3.c" ] || sh "$(dirname "$0")/../../android/nim/fetch_sqlite.sh"
+fi
 ls "$OUT/lib"
