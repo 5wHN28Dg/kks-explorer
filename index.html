@@ -51,7 +51,7 @@ main{position:relative;flex:1;min-height:0;overflow:hidden}
 /* tags coloured by their photos (the same colours on every client): both green, the equipment only amber, the tag plate
    only blue, none red */
 body.cover #layer .hs:not(.pendmark){outline:2px solid var(--pc);background:color-mix(in srgb,var(--pc) 28%,transparent)}
-.hs.p-both{--pc:#2ea043} .hs.p-equipment{--pc:#e69600} .hs.p-plate{--pc:#1e78e6} .hs.p-none{--pc:#dc2828}
+.p-both{--pc:#2ea043} .p-equipment{--pc:#e69600} .p-plate{--pc:#1e78e6} .p-none{--pc:#dc2828}
 #coverlegend{display:none;position:absolute;left:8px;bottom:8px;z-index:5;background:var(--panel,#1c2730);color:inherit;padding:4px 8px;border-radius:6px;font-size:12px}
 body.cover #coverlegend{display:block}
 #coverlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px}
@@ -106,6 +106,15 @@ dt{color:var(--muted)} dd{margin:0}
 .chapter{margin:14px 0 4px;color:var(--accent);font-size:13px;font-weight:600}
 .step{padding:8px 0;border-bottom:1px solid var(--chrome3)}
 .step .n{font-family:var(--mono);color:var(--accent);margin-right:6px}
+#sysBody details{margin-left:12px} #sysBody>details{margin-left:0}
+#sysBody summary{padding:5px 2px;cursor:pointer;border-radius:4px} #sysBody summary:hover{background:var(--chrome3)}
+#sysBody summary .c{color:var(--muted)}
+#sysBody .lvl-blk>summary{color:var(--accent);font-weight:600} #sysBody .lvl-sys>summary{font-weight:600}
+.sysrow{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;padding:6px 4px 6px 16px;border:0;border-bottom:1px solid var(--chrome3);background:none;color:inherit;font:inherit;cursor:pointer}
+.sysrow:hover,.sysrow:focus-visible{background:var(--chrome3)}
+.sysrow .mono{flex:none} .sysrow .d{flex:1;min-width:0;color:var(--muted);font-size:12.5px}
+.sysdot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--pc);align-self:center}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .revitem{padding:8px 0;border-bottom:1px solid var(--chrome3);cursor:pointer}
 @media (max-width:720px){
   .brand small{display:none}
@@ -126,6 +135,7 @@ dt{color:var(--muted)} dd{margin:0}
 <header>
   <div class="brand">Walkdown <small id="plantName"></small></div>
   <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search equipment by KKS code or description" aria-autocomplete="list" aria-expanded="false" aria-controls="results"><div id="results" role="listbox" aria-label="Search results"></div></div>
+  <button class="btn" id="sysBtn" title="Every KKS code on the drawings, by block and system" aria-controls="sysDrawer" aria-expanded="false">Systems</button>
   <select id="sheetSel" title="Drawing"></select>
   <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
   <button class="btn" id="procBtn">Procedures</button>
@@ -144,6 +154,10 @@ dt{color:var(--muted)} dd{margin:0}
   <aside class="drawer" id="procDrawer"><div class="head"><h2>Operation manual procedures</h2><button class="x" data-close="procDrawer">×</button></div>
     <div style="padding:8px 10px 0"><input id="procQ" placeholder="Filter procedures…" style="width:100%;padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)"></div>
     <div class="body" id="procBody"></div></aside>
+  <aside class="drawer" id="sysDrawer" aria-labelledby="sysTitle"><div class="head"><h2 id="sysTitle">Equipment by system</h2><button class="x" data-close="sysDrawer" aria-label="Close equipment by system">×</button></div>
+    <div style="padding:8px 10px 0"><input id="sysQ" type="search" aria-label="Filter equipment by system" aria-describedby="sysCount" placeholder="Filter: code, system, LAB70, valve, description…" autocomplete="off" spellcheck="false" style="width:100%;padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)">
+    <div class="sub" id="sysCount" aria-live="polite" style="margin-top:4px"></div></div>
+    <div class="body" id="sysBody"></div></aside>
   <aside class="drawer" id="revDrawer"><div class="head"><h2>Needs review</h2><button class="x" data-close="revDrawer">×</button></div>
     <div style="padding:8px 10px 0" class="sub">Tags the reader wasn't sure about. Check against the drawing, then confirm or mark “not a tag”. <label style="display:block;margin-top:6px"><input type="checkbox" id="hideRev"> Hide unreviewed tags on drawings</label></div>
     <div class="body" id="revBody"></div></aside>
@@ -153,6 +167,7 @@ dt{color:var(--muted)} dd{margin:0}
 </div>
 
 <script src="common.js"></script>
+<script src="systems.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
@@ -296,6 +311,9 @@ async function refreshState(){
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); if(K.isNetErr(e)) K.setOnline(false) }
   mergeTags();
   refreshFloors(); refreshReviewCount(); drawTags(); updateQueueBadge(); updatePending();
+  // the open systems list follows the sync too, but never redraws under the keyboard or a screen reader's focus
+  const SD=$('#sysDrawer');
+  if(SD.classList.contains('open')){ if(SD.contains(document.activeElement)) sysStale=true; else renderSystems() }
   // an open panel shows what changed elsewhere (an approval, a rejection, a new photo), unless you are editing in it
   const P=$('#panel');
   if(selId&&P.classList.contains('open')&&!P.contains(document.activeElement)&&!P.querySelector('.editing')){
@@ -450,11 +468,11 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 })();
 
 // a photo of the tag plate is a photo whose caption starts with "Tag plate" (PROTOCOL-v2 §9; core model.photoCover)
-function photoCover(k){ if(!k) return 'none'; let e=false,p=false; for(const x of STATE.photos||[]) if(x.kks===k){ if((x.caption||'').startsWith('Tag plate')) p=true; else e=true }
-  return e&&p?'both':e?'equipment':p?'plate':'none' }
+const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
 function drawTags(){
   const L=$('#layer'); L.replaceChildren();
+  const covers=KSys.photoCovers(STATE.photos), photoCover=k=>covers.get(k)||'none';   // one pass over the photos
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   for(const t of tagsOf(cur.id)){
     const d=document.createElement('div'), b=t.bbox, k=full(t);
@@ -485,14 +503,7 @@ function goTo(tagId){
 }
 
 // ---------- KKS decoding ----------
-function decode(t){
-  const k=t.kks||''; const m=k.match(/^(\d{2})([A-Z]{3})(\d{2})([A-Z]{2})(\d{3})$/); if(!m) return null;
-  const [,blk,sys,fn,comp,num]=m;
-  let isa='';
-  if(t.isa){ let s=t.isa, first=s.startsWith('PD')?'PD':s[0], rest=s.slice(first.length);
-    isa=(KKS.isa_first[first]||first)+' — '+[...rest].map(c=>KKS.isa_next[c]||c).join(', '); }
-  return {blk,sys,fn,comp,num,isa};
-}
+const decode=t=>KSys.decode(t,KKS);
 function kindName(t){ const d=decode(t); if(!d) return t.kind; return KKS.components[d.comp]||('Component code '+d.comp) }
 
 // ---------- equipment panel ----------
@@ -737,6 +748,33 @@ function startLink(proc,step){ linkTarget={proc,step}; $('#bannerText').textCont
 $('#bannerDone').onclick=()=>{ if(mark.on){ markMode(false); closePanel(); return } const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
 async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags() }
 
+// ---------- equipment by system (core views.systemsView, ported in systems.js) ----------
+// While filtering, every level opens when few codes match; otherwise blocks open and systems closed.
+const SYS_OPEN_ALL=300;
+function renderSystems(){
+  sysStale=false;
+  const q=$('#sysQ').value.trim();
+  const v=KSys.systemsView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:LOC,photos:STATE.photos},q);
+  const all=q!==''&&v.total<=SYS_OPEN_ALL;
+  const sum=(label,n)=>h('summary',null,label,' ',h('span',{class:'c'},`(${n})`));
+  const row=it=>h('button',{type:'button',class:'sysrow','data-tag':it.tag,onclick:()=>{ focusPanel=true; if(innerWidth<=720){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') } goTo(it.tag) }},
+    h('span',{class:'sysdot p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
+    h('span',{class:'mono'},it.code),
+    h('span',{class:'d'},[it.desc,it.sheet_name].filter(Boolean).join(' · '),it.count>1?' · ×'+it.count:''),
+    h('span',{class:'vh'},' · '+COVER_WORDS[it.photos]));
+  const out=v.blocks.map(b=>{ const n=b.systems.reduce((a,s)=>a+s.count,0);
+    return h('details',{class:'lvl-blk',open:true},sum(b.blk+(b.blk_name?' · '+b.blk_name:''),n),
+      b.systems.map(s=>h('details',{class:'lvl-sys',open:all},sum(s.sys+(s.sys_name?' · '+s.sys_name:''),s.count),
+        s.subsystems.map(f=>h('details',{class:'lvl-sub',open:all},sum(f.code,f.count),
+          f.kinds.map(c=>h('details',{class:'lvl-kind',open:all},sum(c.comp+(c.comp_name?' · '+c.comp_name:''),c.count),c.items.map(row))))))))});
+  if(v.other.length) out.push(h('details',{class:'lvl-blk lvl-other',open:all},sum('Other: codes that are not a full KKS',v.other.length),v.other.map(row)));
+  put($('#sysBody'),out.length?out:h('div',{class:'sub'},q?'No code matches.':'No tags on the drawings yet.'));
+  $('#sysCount').textContent=`${v.total} code${v.total===1?'':'s'}`+(q?' match':'');
+}
+let sysT=0, sysStale=false;
+$('#sysQ').oninput=()=>{ clearTimeout(sysT); sysT=setTimeout(renderSystems,120) };
+$('#sysDrawer').addEventListener('focusout',e=>{ if(sysStale&&!$('#sysDrawer').contains(e.relatedTarget)){ sysStale=false; renderSystems() } });
+
 // ---------- review queue ----------
 function pending(){ return TAGS.filter(t=>t.status==='review'&&!STATE.reviews[t.id]) }
 function refreshReviewCount(){ $('#revCount').textContent=pending().length }
@@ -755,9 +793,11 @@ function renderNotes(){ const n=cur.notes||[]; put($('#notesBody'),n.length?[h('
                                                     :h('div',{class:'sub'},'No markups on this sheet.')) }
 
 // ---------- drawers ----------
-function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id)) }
-document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ $('#'+b.dataset.close).classList.remove('open'); if(b.dataset.close==='procDrawer'){activeProc=null;drawTags()} });
+function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id)); $('#sysBtn').setAttribute('aria-expanded',String(id==='sysDrawer')) }
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ $('#'+b.dataset.close).classList.remove('open'); if(b.dataset.close==='sysDrawer'){ $('#sysBtn').setAttribute('aria-expanded','false'); $('#sysBtn').focus() } if(b.dataset.close==='procDrawer'){activeProc=null;drawTags()} });
 $('#procBtn').onclick=()=>{ if($('#procDrawer').classList.contains('open')){$('#procDrawer').classList.remove('open');activeProc=null;drawTags()} else {openDrawer('procDrawer'); activeProc?renderProcDetail(activeProc):renderProcs()} };
+$('#sysBtn').onclick=()=>{ if($('#sysDrawer').classList.contains('open')){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') }
+  else { openDrawer('sysDrawer'); renderSystems(); $('#sysQ').focus() } };
 $('#revBtn').onclick=()=>{ if($('#revDrawer').classList.contains('open'))$('#revDrawer').classList.remove('open'); else {openDrawer('revDrawer'); renderReview()} };
 $('#notesBtn').onclick=()=>{ if($('#notesDrawer').classList.contains('open'))$('#notesDrawer').classList.remove('open'); else openDrawer('notesDrawer') };
 $('#sheetSel').onchange=e=>{ closePanel(); openSheet(e.target.value) };

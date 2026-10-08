@@ -197,6 +197,8 @@ proc GetClientRect*(h: HWND, r: ptr RECT): BOOL {.importc, stdcall, header: H, d
 proc InvalidateRect*(h: HWND, r: ptr RECT, erase: BOOL): BOOL {.importc, stdcall, header: H, discardable.}
 proc SetTimer*(h: HWND, id: uint, ms: UINT, f: pointer): uint {.importc, stdcall, header: H, discardable.}
 proc KillTimer*(h: HWND, id: uint): BOOL {.importc, stdcall, header: H, discardable.}
+proc IsWindow*(h: HWND): BOOL {.importc, stdcall, header: H.}
+proc IsChild*(parent, h: HWND): BOOL {.importc, stdcall, header: H.}
 proc LoadCursorW*(inst: HINSTANCE, name: int): HCURSOR {.importc: "LoadCursorW", stdcall, header: H.}
 proc SetCursor*(c: HCURSOR): HCURSOR {.importc, stdcall, header: H, discardable.}
 proc GetSysColorBrush*(i: int32): HBRUSH {.importc, stdcall, header: H.}

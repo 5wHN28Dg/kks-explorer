@@ -26,6 +26,7 @@ The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (d
     worker threads; tag hotspots; marking);
   - `kks_uia.cpp`: the drawing's tags as UI Automation buttons;
   - `win.nim`, `panel.nim`, `side.nim` (search, sheets, floors, procedures with link mode, the review queue),
+    `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView),
     `manage.nim` (approvals, proposals, history, people, devices with the invite QR via `kks_qr.cpp`, account with
     the root key backup), `setup.nim` (all ways to join, or a new plant);
   - `photos.nim` + `kks_img.cpp`: thumbnails, a viewer, adding from a file (WIC → upright → 1600 px →
@@ -51,6 +52,7 @@ The test:
 It covers:
 - joining (TLS enroll);
 - a drawing tag invoked through UIA;
+- Equipment by system (search, the tree item, Enter and the button open the tag, Esc closes);
 - search and the decoded panel;
 - an edit synced to the server;
 - a photo marked up with a box (the server's JPEG XL is decoded to check the box is in it);
