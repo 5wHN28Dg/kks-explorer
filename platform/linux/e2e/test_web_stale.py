@@ -156,7 +156,7 @@ class Upgrade(unittest.TestCase):
                     'token': setup, 'username': 'boss', 'password': 'a long password', 'full_name': 'The Manager'})
                 self.assertTrue(r.ok, r.text())
                 r = ctx.request.post(base + '/api/submit', headers={'Origin': base}, data={'kind': 'photo', 'payload': {
-                    'kks': '11LAB70AA501', 'caption': 'x', 'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(POLY).decode()}})
+                    'kks': '11LAB70AA501', 'caption': 'x', 'floor': '1', 'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(POLY).decode()}})
                 self.assertTrue(r.ok, r.text())
                 sha = ctx.request.get(base + '/api/state').json()['photos'][0]['file'].split('.')[0]
                 page = ctx.new_page()

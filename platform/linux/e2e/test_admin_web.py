@@ -79,7 +79,7 @@ class AdminWeb(unittest.TestCase):
             cls.jxl = pg.evaluate("""() => { const c = document.createElement('canvas'); c.width = 64; c.height = 48;
                 const g = c.getContext('2d'); g.fillStyle = '#3c5a96'; g.fillRect(0, 0, 64, 48); return K.jxlEncode(c, 1.9, 3) }""")
             b.close()
-        assert boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': KKS, 'caption': NAME, 'dataUrl': cls.jxl}}).get('status') == 'approved'
+        assert boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': KKS, 'caption': NAME, 'dataUrl': cls.jxl, 'floor': '1'}}).get('status') == 'approved'
         # tom's change to the tag stays pending: index.html shows it under "Your changes, not live yet"
         assert cls.tom.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': KKS, 'changes': {'near': EVIL}, 'base': {}}}).get('status') == 'pending'
 
@@ -126,6 +126,9 @@ class AdminWeb(unittest.TestCase):
         tom = self.tom
         self.assertEqual(tom.req('POST', '/api/submit', {'kind': 'equipment', 'note': EVIL, 'payload': {'kks': k,
                          'changes': {'notes': EVIL, 'custom': [{'k': NAME, 'v': EVIL}]}, 'base': {}}})['status'], 'pending')
+        # a photo needs the floor first: the manager sets it (applied directly, so no card of its own)
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': k,
+                         'changes': {'floor': '1'}, 'base': {}}})['status'], 'approved')
         self.assertEqual(tom.req('POST', '/api/submit', {'kind': 'photo', 'note': EVIL, 'payload': {'kks': k, 'caption': EVIL,
                          'dataUrl': self.jxl}})['status'], 'pending')
         self.assertEqual(tom.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [100 + 10 * n, 100, 200, 150],
@@ -191,6 +194,7 @@ class AdminWeb(unittest.TestCase):
         self.assertIn('Password link for tom', page.text_content('#main > .warn'))
         page.fill('#main form.inline input[name=full_name]', NAME)
         page.fill('#main form.inline input[name=username]', 'u' + name)
+        page.fill('#main form.inline input[name=position]', NAME)    # a new account needs a position
         page.press('#main form.inline input[name=username]', 'Enter')
         page.wait_for_selector('#newlink .linkbox')
         self.assertIn('Give this link to u' + name, page.text_content('#newlink'))
