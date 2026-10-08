@@ -77,7 +77,7 @@ class WebCoverage(tws.WebSystems):
             page.focus('#q')
             self.edit('11LAB71AP001', 'floor', '2')
             page.evaluate(SYNCED)
-            page.wait_for_function("document.getElementById('covTotals').textContent.includes('2 of 7 codes (29 %)')", timeout=15000)
+            page.wait_for_function("() => document.getElementById('covTotals').textContent.includes('2 of 7 codes (29 %)')", timeout=15000)
             # with the focus inside: nothing moves under it; when the focus leaves, the drawer catches up
             page.locator('#covBody .covrow').first.focus()
             self.edit('11LAB70AA503', 'area', 'pump house')
@@ -86,7 +86,13 @@ class WebCoverage(tws.WebSystems):
             self.assertIn('2 of 7 codes', self.text(page, '#covTotals'))
             self.assertTrue(page.evaluate("document.activeElement.classList.contains('covrow')"))
             page.focus('#q')
-            page.wait_for_function("document.getElementById('covTotals').textContent.includes('3 of 7 codes (43 %)')", timeout=15000)
+            page.wait_for_function("() => document.getElementById('covTotals').textContent.includes('3 of 7 codes (43 %)')", timeout=15000)
+            # the focus on the drawer's heading (where opening it puts the focus): the numbers follow at once
+            page.focus('#covTitle')
+            self.edit('11LAB70AA504', 'area', 'pump house')
+            page.evaluate(SYNCED)
+            page.wait_for_function("() => document.getElementById('covTotals').textContent.includes('4 of 7 codes (57 %)')", timeout=15000)
+            self.assertEqual(page.evaluate("document.activeElement.id"), 'covTitle')
             # keyboard: from the heading, past the close button, to the first sheet row; Enter opens Sheet A coloured
             page.focus('#covTitle')
             page.keyboard.press('Tab')
@@ -99,7 +105,7 @@ class WebCoverage(tws.WebSystems):
             page.locator('#covBody .covrow', has_text='Sheet B').click()
             page.wait_for_function("() => cur.id === 'b' && document.body.classList.contains('cover')", timeout=15000)
             self.assertEqual(page.get_attribute('#zcover', 'aria-pressed'), 'true')
-            page.wait_for_function("document.querySelectorAll('#layer .hs.p-none').length === 2")
+            page.wait_for_function("() => document.querySelectorAll('#layer .hs.p-none').length === 2")
             # a system row: Equipment by system on that system, every level open; "Show all systems" leaves it
             page.locator('#covBody .covrow').nth(4).click()   # LAB
             self.assertTrue(page.is_visible('#sysDrawer'))
@@ -120,7 +126,7 @@ class WebCoverage(tws.WebSystems):
             self.assertEqual(page.evaluate("[...document.querySelectorAll('#sysBody .sysrow .mono')].map(e => e.textContent)"), ['11LAB70'])
             # typing a search covers every system again
             page.fill('#sysQ', 'lab')
-            page.wait_for_function("document.getElementById('sysCount').textContent === '5 codes match'")
+            page.wait_for_function("() => document.getElementById('sysCount').textContent === '5 codes match'")
             # closing returns the focus to the drawer's button
             btn.click()
             page.click('#covDrawer [data-close]')

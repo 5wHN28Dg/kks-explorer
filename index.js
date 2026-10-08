@@ -147,7 +147,8 @@ async function refreshState(){
   const SD=$('#sysDrawer');
   if(SD.classList.contains('open')){ if(SD.contains(document.activeElement)) sysStale=true; else renderSystems() }
   const CD=$('#covDrawer');   // the coverage numbers likewise
-  if(CD.classList.contains('open')){ if(CD.contains(document.activeElement)) covStale=true; else renderCoverage() }
+  // rebuilt at once unless the focus is on something the rebuild replaces (a row in #covBody; the heading stays)
+  if(CD.classList.contains('open')){ if($('#covBody').contains(document.activeElement)) covStale=true; else renderCoverage() }
   // an open panel shows what changed elsewhere (an approval, a rejection, a new photo), unless you are editing in it
   const P=$('#panel');
   if(selId&&P.classList.contains('open')&&!P.contains(document.activeElement)&&!P.querySelector('.editing')){
@@ -664,7 +665,7 @@ function openCovered(id){
   if(cur?.id!==id){ closePanel(); openSheet(id) }
   toast(`${SHEETS.find(s=>s.id===id)?.name||id}: tags coloured by photos`);
 }
-$('#covDrawer').addEventListener('focusout',e=>{ if(covStale&&!$('#covDrawer').contains(e.relatedTarget)){ covStale=false; renderCoverage() } });
+$('#covBody').addEventListener('focusout',e=>{ if(covStale&&!$('#covBody').contains(e.relatedTarget)){ covStale=false; renderCoverage() } });
 $('#sysDrawer').addEventListener('focusout',e=>{ if(sysStale&&!$('#sysDrawer').contains(e.relatedTarget)){ sysStale=false; renderSystems() } });
 
 // ---------- review queue ----------

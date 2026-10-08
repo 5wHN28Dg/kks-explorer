@@ -218,7 +218,11 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
         })
         if (systemsOpen) SystemsScreen(ui, systemsOnly) { systemsOpen = false }
         if (coverageOpen) CoverageScreen(
-            onSheet = { id -> coverageOpen = false; ui.tab = "drawings"; ui.selected = ""; ui.sheet = id; ui.coverage = true },
+            onSheet = { id ->
+                // a hand-marked tag can outlive its sheet: its row is counted, but there is nothing to open
+                if (list.none { it.id == id }) scope.launch { snack.showSnackbar("That sheet is no longer in the plant data") }
+                else { coverageOpen = false; ui.tab = "drawings"; ui.selected = ""; ui.sheet = id; ui.coverage = true }
+            },
             onSystem = { sys -> coverageOpen = false; systemsOnly = sys; systemsOpen = true },
             onClose = { coverageOpen = false })
         if (notesOpen && current != null) AlertDialog(onDismissRequest = { notesOpen = false }, title = { Text("Notes on ${current.name}") },

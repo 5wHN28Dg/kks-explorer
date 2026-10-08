@@ -4,7 +4,7 @@
 
 import std/[strutils, math, tables]
 import kks/json
-import kks/views
+import kks/[views, model]
 import gtk, ui, viewer, win, sidepages, systems
 
 proc s(n: JNode, k: string): string =
@@ -130,6 +130,10 @@ proc fillCoverage(w: Win, pg: Page, list: W) =
       let id = s(sh, "id")
       let name = s(sh, "name")
       let r = navRow(name, sheetSub(sh), "Open " & name & " coloured by photos", proc () =
+        # a hand-marked tag can outlive its sheet: its row is counted, but there is nothing to open
+        if not w.m.sheetById(id)[0]:
+          w.toast("That sheet is no longer in the plant data")
+          return
         w.showSheet(id)
         # the toggle's handler colours the tags and says how
         if w.coverBtn != nil: gtk_toggle_button_set_active(w.coverBtn, 1))
