@@ -5,7 +5,7 @@ import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequt
 import kks/[json, api]
 import kks/model
 import appstate
-import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, systems]
+import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, systems, links]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
@@ -37,6 +37,7 @@ proc doShowSheet(w: Win, id: string) =
     if okL: levels.add data
   w.v.setSheet(si.name, kkp, si.raw, levels)
   w.v.tags = w.tagBoxes(id)
+  w.setLinks()
   adw_navigation_split_view_set_show_content(w.split, 1)
   discard gtk_widget_grab_focus(w.v.widget)
 
@@ -107,6 +108,7 @@ proc refresh(w: Win) =
   w.fillSheets()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
+    w.setLinks()
     gtk_widget_queue_draw(w.v.widget)
   if w.selected.len > 0:
     let (ok, t) = w.m.tagById(w.selected)
@@ -140,6 +142,8 @@ proc sideRoot(w: Win): W =
     w.pushPage(w.learningPage(), "Learning", "learning")))
   more.gtk_list_box_append(navRow("Review queue", "Tag readings to confirm or correct", "Open the review queue", proc () =
     w.pushPage(w.reviewPage(), "Review queue", "review")))
+  more.gtk_list_box_append(navRow("Connectors on this sheet", "Where the lines continue on other drawings",
+    "Open the sheet's connectors", proc () = w.pushPage(w.connectorsPage(), "Connectors on this sheet", "links")))
   more.gtk_list_box_append(navRow("Notes on this sheet", "Markup text in the PDF", "Open the sheet's notes", proc () =
     w.pushPage(w.notesPage(), "Notes on this sheet", "notes")))
   more.gtk_list_box_append(navRow("Manage", if w.isAdmin: "Approvals, history, people, devices, account" else: "Your proposals, devices, account",
@@ -211,6 +215,7 @@ proc mainScreen(w: Win): W =
       w.loadModel()
       w.applyHighlights()
     else: w.selectTag(id, false)
+  w.v.onLink = proc (i: int) = w.followLink(i)
   w.v.onMark = proc (x0, y0, x1, y1: float) =
     w.markDialog(x0, y0, x1, y1)
   w.sheetTitle = adw_window_title_new("", "")

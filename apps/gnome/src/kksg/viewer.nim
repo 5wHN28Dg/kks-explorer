@@ -55,6 +55,9 @@ type
     floorOn*: bool               ## floor filter: other floors dimmed (R5)
     floorIds*: HashSet[string]
     onSelect*: proc (id: string)
+    links*: seq[TagBox]          ## off-page connectors (C16, D2 …): label, box in points
+    linkSel*: int                ## the connector just arrived at (-1 none), drawn bold
+    onLink*: proc (i: int)       ## a connector clicked: index into links
     onView*: proc ()             ## zoom/position changed (status line)
     px, py: float                ## pointer position (for wheel zoom)
     dragOx, dragOy: float
@@ -133,6 +136,7 @@ proc zoomBy*(v: Viewer, factor: float) =
 
 proc centerOn*(v: Viewer, x0, y0, x1, y1: float, zoom = 0.0) =
   ## show the box (points) in the middle, at `zoom` (logical px per point) or at least 2× the fit
+  if not v.fitted: v.fit()      # a sheet just set: fit first, or the first frame's fit would undo this
   let w = float(gtk_widget_get_width(v.widget))
   let h = float(gtk_widget_get_height(v.widget))
   if zoom > 0: v.z = zoom
@@ -163,6 +167,8 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
   v.asked = newSeq[bool](levels.len)
   v.selected = ""
   v.hits.clear()
+  v.links = @[]
+  v.linkSel = -1
   v.fitted = false
   ensureWorker()
   if levels.len > 0:                      # the smallest level now, so something shows at once
@@ -347,6 +353,24 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     cairo_rectangle(c, x, y, tw, th)
     cairo_stroke(c)
     cairo_set_dash(c, nil, 0, 0)
+  # off-page connectors: violet dashed circles, unlike the tags' rectangles
+  for i, l in v.links:
+    let cx = ((l.x0 + l.x1) / 2 - v.ox) * v.z
+    let cy = ((l.y0 + l.y1) / 2 - v.oy) * v.z
+    let rad = max(6.0, max(l.x1 - l.x0, l.y1 - l.y0) / 2 * v.z + 3)
+    if cx + rad < 0 or cy + rad < 0 or cx - rad > float(w) or cy - rad > float(h): continue
+    let sel = i == v.linkSel
+    cairo_new_sub_path(c)
+    cairo_arc(c, cx, cy, rad, 0, 2 * PI)
+    cairo_set_source_rgba(c, 0.55, 0.2, 0.85, if sel: 0.3 else: 0.12)
+    cairo_fill_preserve(c)
+    cairo_set_source_rgba(c, 0.55, 0.2, 0.85, 0.9)
+    cairo_set_line_width(c, if sel: 3.5 else: 2.0)
+    if not sel:
+      var dash = [5.0, 3.0]
+      cairo_set_dash(c, addr dash[0], 2, 0)
+    cairo_stroke(c)
+    cairo_set_dash(c, nil, 0, 0)
   if v.marking and v.mark[2] != v.mark[0]:
     cairo_set_source_rgba(c, 0.85, 0.1, 0.1, 0.9)
     cairo_set_line_width(c, 2)
@@ -371,8 +395,17 @@ proc hitTag*(v: Viewer, x, y: float): string =
         area = a
         result = t.id
 
+proc hitLink*(v: Viewer, x, y: float): int =
+  ## the connector under (x, y) in widget px, -1 none (a little slack: they are small)
+  result = -1
+  let px = v.ox + x / v.z
+  let py = v.oy + y / v.z
+  let pad = 6.0 / v.z
+  for i, l in v.links:
+    if px >= l.x0 - pad and px <= l.x1 + pad and py >= l.y0 - pad and py <= l.y1 + pad: return i
+
 proc newViewer*(): Viewer =
-  let v = Viewer(z: 1)
+  let v = Viewer(z: 1, linkSel: -1)
   GC_ref(v)
   v.widget = kks_view_new(cast[pointer](snapCb), cast[pointer](v))
   gtk_widget_set_cursor_from_name(v.widget, "grab")
@@ -424,6 +457,10 @@ proc newViewer*(): Viewer =
   click.onPressed("released", proc (n: int, x, y: float) =
     discard gtk_widget_grab_focus(v.widget)
     if v.marking: return
+    let li = v.hitLink(x, y)
+    if li >= 0:
+      if v.onLink != nil: v.onLink(li)
+      return
     let id = v.hitTag(x, y)
     if id.len > 0:
       v.selected = id

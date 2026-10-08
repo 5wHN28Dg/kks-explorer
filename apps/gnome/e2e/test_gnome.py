@@ -119,6 +119,53 @@ class Gnome(unittest.TestCase):
             if got: break
         self.assertEqual(got, INVITE)
 
+    def test_links(self):
+        """links between drawings: a second sheet, connectors written into sheets.json (as the importer does) and
+        published; "Connectors on this sheet" names each with where it continues; one target opens that sheet, none
+        says so, several ask which"""
+        pdf = open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb').read()
+        assert self.boss.req('POST', '/api/sheets/import?id=other&name=Other%20sheet', raw=pdf, ctype='application/pdf').get('ok')
+        for _ in range(300):
+            job = self.boss.req('GET', '/api/sheets/job')['job']
+            if job['state'] != 'running':
+                break
+            time.sleep(0.2)
+        self.assertEqual(job['state'], 'done', job['log'])
+        cfgp = os.path.join(self.dir, 'config.json')
+        plant = json.load(open(cfgp))['plant_dir']
+        sheets = json.load(open(os.path.join(plant, 'sheets.json')))
+        def link(label, x, y, sc):   # bbox in level-0 px, like the importer's
+            return {'label': label, 'bbox': [x * sc, y * sc, (x + 12) * sc, (y + 12) * sc], 'conf': 0.95}
+        for sh in sheets:
+            sc = sh.get('scale') or 2.0
+            if sh['id'] == 'sample':
+                sh['links'] = [link('C16', 100, 100, sc), link('D2', 200, 100, sc), link('A3', 300, 100, sc)]
+            elif sh['id'] == 'other':
+                sh['links'] = [link('C16', 150, 300, sc), link('A3', 250, 300, sc), link('A3', 350, 300, sc)]
+        json.dump(sheets, open(os.path.join(plant, 'sheets.json'), 'w'))
+        out = subprocess.run([SERVER, 'publish-data', plant, '--config', cfgp], cwd=self.dir, capture_output=True, text=True)
+        self.assertIn('Published', out.stdout + out.stderr)
+        a = self.start_app('linker')
+        self.join(a)
+        atspi.click(atspi.find(a, 'button', name='Sample sheet'))
+        atspi.click(atspi.find(a, 'button', name='Connectors on this sheet', timeout=10))
+        # each row: the connector (its name) and where it continues (read with it)
+        atspi.find(a, 'label', name="the other end isn't on any drawing in the app", timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Connector D2', timeout=10))
+        atspi.find(a, 'label', contains="D2: the other end isn't on any drawing", timeout=10)
+        atspi.find(a, 'label', name='continues on Other sheet')
+        atspi.click(atspi.find(a, 'button', name='Connector C16'))
+        atspi.find(a, 'label', name='Connector C16 on Other sheet', timeout=10)
+        # now on the other sheet: its connectors; A3 is there twice, so following one asks where to go
+        atspi.click(atspi.find(a, 'button', name='Back'))
+        atspi.click(atspi.find(a, 'button', name='Connectors on this sheet', timeout=10))
+        atspi.find(a, 'label', name='continues on Sample sheet', timeout=10)
+        atspi.find(a, 'label', name='continues on Sample sheet, elsewhere on this sheet', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Connector A3'))
+        ask = atspi.find(a, 'alert', name='Where does A3 continue?', timeout=10)
+        atspi.click(atspi.find(ask, 'button', name='Sample sheet'))
+        atspi.find(a, 'label', name='Connector A3 on Sample sheet', timeout=10)
+
     def test_photo_editor(self):
         """the photo editor's controls (line sizes, zoom) are reachable; a photo goes to the server; the drawing can be
         coloured by photos. KKS_PHOTO_FILE stands in for the file chooser. (Drawing and the touch loupe need a pointer
