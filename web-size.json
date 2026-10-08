@@ -65,8 +65,8 @@
  },
  "shell": {
   "files": {
-   "admin.html": 50285,
-   "common.js": 59311,
+   "admin.html": 57964,
+   "common.js": 64515,
    "course-bridge.js": 3846,
    "course-figure.js": 18968,
    "course.css": 15526,
@@ -75,9 +75,9 @@
    "icon-192.png": 709,
    "icon-512.png": 3047,
    "icon.svg": 303,
-   "index.html": 65922,
+   "index.html": 72324,
    "kks-wasm-worker.js": 479,
-   "kks-wasm.js": 3443,
+   "kks-wasm.js": 3590,
    "learning.html": 3263,
    "manifest.webmanifest": 459,
    "sw.js": 3608,
@@ -87,6 +87,6 @@
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1031007
+  "total": 1050439
  }
 }
