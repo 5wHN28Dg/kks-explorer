@@ -181,13 +181,21 @@ Images are few and small, so they are not in the grid. A viewer tests each image
 
 **sheets.json** (v2 entry):
 
-    {"id", "name", "rot", "w", "h", "scale", "levels", "notes": [...]}
+    {"id", "name", "rot", "w", "h", "scale", "levels", "notes": [...], "links": [...]}
 
 - `w`, `h`: level 0's size in px.
 - `rot`: the rotation applied to the source page after its own /Rotate is reset to 0 (the importer's `rotatedCopy`).
   The overview, the tags and the .kkp all share that frame; kks-import gets the .kkp there with
   `from_pdf_page(page, extra)`, extra = −(rot + the page's /Rotate) mod 360 (`kkp.sheetExtra`).
 - `levels`: the number of pyramid files.
+- `links` (since 2026-10-07; optional, absent = none): the sheet's off-page connectors, `{"label", "bbox", "conf"}`.
+  - `label`: the code in a connector circle, a capital letter and 1–2 digits (`"C16"`, `"D2"`). The same label on
+    another sheet is where the line continues; twice on one sheet, the line continues there.
+  - `bbox`: the circle's box in level-0 pixels, like a tag's.
+  - `conf`: the lowest glyph confidence of the reading (0–1).
+  - Written by kks-import in both modes (`--keep-tags` too: it never changes the tags) from the circles found in the
+    drawing's vectors (importer/README, "Off-page connectors"). Readers ignore entries without a label or a 4-number
+    box. core `model.parseSheets` reads them, `views.linksView(sheet)` gives each connector with its targets.
 - tags.json is unchanged from v1. A tag's `bbox` is in level-0 pixels.
 
 ## Drawing a view (informative)

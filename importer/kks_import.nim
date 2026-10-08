@@ -17,7 +17,7 @@
 
 import std/[os, strutils, times, parseopt, algorithm]
 import kks/[json, pathstore]
-import kksi/[mupdf, fontlib, reader, textlines, extract, kkp, jxl]
+import kksi/[mupdf, fontlib, reader, textlines, extract, kkp, jxl, connectors]
 
 const
   RepoGlyphs = currentSourcePath().parentDir / "fontlib.kgl"
@@ -157,6 +157,8 @@ proc main() =
     if abs(w - int(old["w"].i)) > 1 or abs(h - int(old["h"].i)) > 1:
       die "The new image would be " & $w & "x" & $h & " px, the v1 sheet is " & $old["w"].i & "x" & $old["h"].i &
           ": the tags' boxes would not line up. Nothing written."
+  log "Finding the connectors to other sheets..."
+  let links = findConnectors(doc, lib)     # on the page the tags were read on (no annotations)
   createDir(dataDir / "sheets")
   log "Writing the path store..."
   let srcDoc = mupdf.open(src)
@@ -202,6 +204,12 @@ proc main() =
   if keepTags and old.get("notes") != nil: noteArr = old["notes"]   # the sheet's notes as they are
   let entry = newObj(@[("id", newStr(sid)), ("name", if keepTags: old["name"] else: newStr(name)), ("rot", newInt(rot)), ("w", newInt(w0)),
                        ("h", newInt(h0)), ("scale", newFloat(z)), ("levels", newInt(levels)), ("notes", noteArr)])
+  var linkArr = newArr()    # off-page connectors: the same label on another sheet is where the line continues
+  for c in links:
+    var bb = newArr()
+    for v in c.bbox: bb.elems.add newFloat(pyRoundTo(v * z, 1))
+    linkArr.elems.add newObj(@[("label", newStr(c.label)), ("bbox", bb), ("conf", newFloat(c.conf))])
+  entry["links"] = linkArr
   var newSheets = newArr()
   var placed = false
   for s in sheets.elems:                 # a re-made sheet keeps its place (the apps list sheets in this order)
@@ -229,10 +237,10 @@ proc main() =
       ("note", newStr(it.note)), ("flag", newStr(t.flag)), ("suggestion", newNull())])
   writeAtomic(tagsPath, toText(newTags))
   writeAtomic(sheetsPath, toText(newSheets))
-  log "Done: \"" & name & "\" added: " & $nAuto & " tags auto-read, " & $nReview & " in the review queue (" &
+  log "Done: \"" & name & "\" added: " & $nAuto & " tags auto-read, " & $nReview & " in the review queue, " & $links.len & " connectors (" &
       formatFloat(epochTime() - t0, ffDecimal, 1) & " s)."
   log "RESULT " & toText(newObj(@[("id", newStr(sid)), ("name", newStr(name)), ("auto", newInt(nAuto)),
                                   ("review", newInt(nReview)), ("rotation", newInt(rot)), ("w", newInt(w0)),
-                                  ("h", newInt(h0)), ("notes", newInt(noteArr.elems.len))]))
+                                  ("h", newInt(h0)), ("notes", newInt(noteArr.elems.len)), ("links", newInt(links.len))]))
 
 main()

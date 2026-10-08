@@ -6,6 +6,11 @@ import std/[strutils, tables, sets, algorithm]
 import json
 
 type
+  Link* = object
+    label*: string               ## an off-page connector's code ("C16"): the same code elsewhere continues the line
+    bbox*: array[4, float]       ## level-0 px of its sheet
+    conf*: float
+
   SheetInfo* = object
     id*, name*: string
     w*, h*: float               ## level-0 px
@@ -13,6 +18,7 @@ type
     levels*: int
     rot*: int
     notes*: seq[string]
+    links*: seq[Link]            ## sheets.json "links" (absent before 2026-10-07: none)
     raw*: JNode
 
   Tag* = object
@@ -57,6 +63,17 @@ proc parseSheets*(j: JNode): seq[SheetInfo] =
     if x.get("notes") != nil:
       for n in x["notes"].elems:
         if n.isStr: si.notes.add n.s
+    let ls = x.get("links")
+    if ls != nil and ls.kind == jArr:
+      for l in ls.elems:
+        let b = if l.kind == jObj: l.get("bbox") else: nil
+        if l.kind != jObj or l.s("label").len == 0 or b == nil or b.kind != jArr or b.elems.len != 4: continue
+        var k = Link(label: l.s("label"), conf: l.f("conf", 1.0))
+        var ok = true
+        for i in 0 .. 3:
+          if not b[i].isNum: ok = false
+          else: k.bbox[i] = b[i].num
+        if ok: si.links.add k
     result.add si
 
 proc parseTag(x: JNode): Tag =

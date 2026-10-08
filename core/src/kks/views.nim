@@ -21,7 +21,8 @@ proc sheetsView*(m: Model): JNode =
     var notes = newArr()
     for x in si.notes: notes.elems.add S(x)
     result.elems.add O(("id", S(si.id)), ("name", S(si.name)), ("w", F(si.w)), ("h", F(si.h)), ("scale", F(si.scale)),
-                       ("levels", I(si.levels)), ("tags", I(n)), ("review", I(review)), ("notes", notes))
+                       ("levels", I(si.levels)), ("tags", I(n)), ("review", I(review)), ("notes", notes),
+                       ("links", I(si.links.len)))
 
 proc scaleOf(m: Model, sheet: string): float =
   let (ok, si) = m.sheetById(sheet)
@@ -36,6 +37,28 @@ proc tagsView*(m: Model, sheet: string): JNode =
                        ("status", S(if t.status == "confirmed": "verified" else: t.status)),
                        ("x0", F(t.bbox[0] / s)), ("y0", F(t.bbox[1] / s)), ("x1", F(t.bbox[2] / s)), ("y1", F(t.bbox[3] / s)),
                        ("photos", S(m.photoCover(t.full))))
+
+proc linksView*(m: Model, sheet: string): JNode =
+  ## the sheet's off-page connectors (boxes in points), each with where its line continues: the same label on the
+  ## other sheets (in the sheets' order), then any other connector with that label on this sheet ("same_sheet": a
+  ## local continuation, or the drawing repeats the code). No targets = the other end isn't on any sheet we have.
+  result = newArr()
+  let (ok, si) = m.sheetById(sheet)
+  if not ok: return
+  let s = if si.scale > 0: si.scale else: 2.0
+  proc box(b: array[4, float], sc: float): seq[(string, JNode)] =
+    @[("x0", F(b[0] / sc)), ("y0", F(b[1] / sc)), ("x1", F(b[2] / sc)), ("y1", F(b[3] / sc))]
+  for i, l in si.links:
+    var targets = newArr()
+    for pass in 0 .. 1:
+      for o in m.sheets:
+        if (pass == 0) == (o.id == sheet): continue
+        let os = if o.scale > 0: o.scale else: 2.0
+        for j, x in o.links:
+          if x.label != l.label or (o.id == sheet and j == i): continue
+          targets.elems.add newObj(@[("sheet", S(o.id)), ("sheet_name", S(o.name)), ("same_sheet", newBool(o.id == sheet))] &
+                                   box(x.bbox, os))
+    result.elems.add newObj(@[("label", S(l.label)), ("conf", F(l.conf))] & box(l.bbox, s) & @[("targets", targets)])
 
 proc searchView*(m: Model, q: string): JNode =
   result = newArr()
