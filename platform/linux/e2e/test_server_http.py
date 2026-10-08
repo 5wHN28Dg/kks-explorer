@@ -57,7 +57,7 @@ class Base(unittest.TestCase):
         t0 = time.time()
         while time.time() - t0 < 10:
             line = cls.proc.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m:
                 cls.setup = m[1]
             if 'server on' in line:
@@ -135,8 +135,44 @@ class Drawings(Base):
         job = self.wait(boss)
         self.assertEqual(job['state'], 'failed')
         self.assertEqual(open(os.path.join(self.dir, 'plant-data', 'sheets.json')).read(), before)
+        # a name that looks like an option is a name, not an importer option (issue #38)
+        boss.req('POST', '/api/sheets/import?id=four&name=--replace', raw=pdf, headers={'Content-Type': 'application/pdf'})
+        job = self.wait(boss)
+        self.assertEqual((job['state'], job['result'] and job['result']['name']), ('done', '--replace'), job['log'])
         # managers only
         self.assertEqual(Client(self.base).req('GET', '/api/sheets')[0], 401)
+
+
+FAKE_DIR = tempfile.mkdtemp(prefix='kks-fake-importer-')
+import atexit, shutil
+atexit.register(shutil.rmtree, FAKE_DIR, True)
+FAKE_IMPORTER = os.path.join(FAKE_DIR, 'kks-import')
+with open(FAKE_IMPORTER, 'w') as f:   # records its limits and arguments, then hangs like a PDF that never finishes
+    f.write('#!/bin/sh\nulimit -v > "$0.limits"; ulimit -c >> "$0.limits"\n'
+            'for a in "$@"; do printf "%s\\n" "$a"; done > "$0.args"\nexec sleep 60\n')
+os.chmod(FAKE_IMPORTER, 0o755)
+
+
+class ImportLimits(Base):
+    """issue #34: the importer runs with an address-space limit, no core dumps, and is stopped at a deadline"""
+    extra = {'importer': FAKE_IMPORTER, 'import_timeout_s': 2, 'import_memory_mb': 700}
+
+    def test_limits_and_deadline(self):
+        boss = self.manager()
+        st, r, _ = boss.req('POST', '/api/sheets/import?id=one&name=-x%20y', raw=b'%PDF-1.4 x', headers={'Content-Type': 'application/pdf'})
+        self.assertEqual(st, 200, r)
+        t0 = time.time()
+        while time.time() - t0 < 20:
+            job = boss.req('GET', '/api/sheets/job')[1]['job']
+            if job['state'] != 'running':
+                break
+            time.sleep(0.2)
+        self.assertEqual(job['state'], 'failed', job)
+        self.assertLess(time.time() - t0, 10)
+        self.assertTrue(any('stopped after 2 s' in l for l in job['log']), job['log'])
+        self.assertEqual(open(FAKE_IMPORTER + '.limits').read().split(), [str(700 * 1024), '0'])
+        args = open(FAKE_IMPORTER + '.args').read().splitlines()
+        self.assertEqual(args[-4:-1], ['--', os.path.join(self.dir, 'backups', 'uploads', 'one.pdf'), '-x y'])  # issue #38
 
 
 class Cli(Base):
@@ -231,7 +267,87 @@ class Cli(Base):
         self.assertIn('already the manager', self.cli('reset-manager', '--user', 'sara')[1])
 
 
+class SecretFiles(Base):
+    cli = Cli.cli
+
+    def test_secret_files(self):
+        """the setup link is never printed by serve (#69); backups and root key exports are 0600 (#28, #29), the
+        root key's passphrase generated (80 bits)"""
+        link = os.path.join(self.dir, 'setup-link.txt')
+        self.assertEqual(os.stat(link).st_mode & 0o777, 0o600)
+        self.assertIn('#setup=' + self.setup, open(link).read())
+        self.manager()
+        self.assertFalse(os.path.exists(link))              # used: gone
+        old = os.umask(0o022)
+        try:
+            bundle, root, pp = (os.path.join(self.dir, n) for n in ('b.kksbackup', 'r.kksroot', 'r.passphrase'))
+            # decision 0051: no plain backup, ever: refused until a root key export made the backup key
+            code0, out0 = self.cli('backup', '--out', bundle)
+            self.assertNotEqual(code0, 0)
+            self.assertIn('export-root-key', out0)
+            self.assertFalse(os.path.exists(bundle))
+            code, out = self.cli('export-root-key', '--out', root, '--passphrase-out', pp)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(self.cli('backup', '--out', bundle)[0], 0)
+            code2, out2 = self.cli('export-root-key', '--out', root + '2')
+            opened = os.path.join(self.dir, 'opened.kksbundle')
+            code3, out3 = self.cli('open-backup', '--in', bundle, '--out', opened, '--passphrase-file', pp)
+            wrong = os.path.join(self.dir, 'wrong.passphrase')
+            open(wrong, 'w').write('0000-0000-0000-0000\n')
+            code4, out4 = self.cli('open-backup', '--in', bundle, '--out', opened + '2', '--passphrase-file', wrong)
+        finally:
+            os.umask(old)
+        for f in (bundle, root, pp, root + '2', opened):
+            self.assertEqual(os.stat(f).st_mode & 0o777, 0o600, f)
+        raw = open(bundle, 'rb').read()
+        self.assertNotEqual(raw[:2], b'\x1f\x8b')                   # not a gzip bundle: encrypted
+        doc = json.loads(raw)
+        self.assertEqual((doc['kks_server_backup'], doc['kdf'], doc['iter']), (2, 'pbkdf2-sha256', 600000))
+        self.assertNotIn(b'The Manager', raw)
+        self.assertEqual(code3, 0, out3)                          # the passphrase of the export before it opens it
+        import gzip
+        b = json.loads(gzip.decompress(open(opened, 'rb').read()))
+        self.assertEqual(b['kks_bundle'], 2)
+        self.assertTrue(any(e.get('type') == 'genesis' for e in b['entries']))
+        self.assertNotEqual(code4, 0)
+        self.assertFalse(os.path.exists(opened + '2'))
+        for change in ({'created': doc['created'] + 1}, {'iter': 2 ** 31}):   # the header is authenticated; no hours of PBKDF2
+            bad = os.path.join(self.dir, 'bad.kksbackup')
+            open(bad, 'w').write(json.dumps(dict(doc, **change)))
+            t0 = time.time()
+            self.assertNotEqual(self.cli('open-backup', '--in', bad, '--out', opened + '3', '--passphrase-file', pp)[0], 0, change)
+            self.assertLess(time.time() - t0, 30)
+            self.assertFalse(os.path.exists(opened + '3'))
+        phrase = open(pp).read().strip()
+        self.assertRegex(phrase, r'^[0-9a-hjkmnp-tv-z]{4}(-[0-9a-hjkmnp-tv-z]{4}){3}$')
+        self.assertNotIn(phrase, out)
+        self.assertEqual(code2, 0, out2)
+        self.assertRegex(out2, r'\n  [0-9a-z]{4}(-[0-9a-z]{4}){3}\n')   # printed when no file is given
+        sys.path.insert(0, REPO)
+        from ref import crypto2
+        key = json.loads(crypto2.passphrase_open(phrase, json.loads(open(root).read())['sealed']))
+        self.assertIn('scalar', key)
+        r = subprocess.run([BIN, 'export-root-key', '--out', root, '--config', os.path.join(self.dir, 'config.json')],
+                           capture_output=True, text=True, env=dict(os.environ, KKS_ROOT_PASSPHRASE='weak but 12+'))
+        self.assertNotEqual(r.returncode, 0)                 # a chosen passphrase is refused
+
+
 class Server(Base):
+    def test_page_policy(self):
+        """#8: the pages, their scripts and workers come with a Content-Security-Policy: scripts from this site only
+        (no inline script or handler), no plugins, no <base>, not framed"""
+        c = Client(self.base)
+        for path in ('/', '/index.html', '/admin.html', '/learning.html', '/course.html', '/index.js', '/admin.js',
+                     '/learning.js', '/common.js', '/tiles.js', '/systems.js', '/sw.js', '/kks-wasm-worker.js', '/vendor/kks/kks-dec.js'):
+            st, _, hdr = c.req('GET', path)
+            self.assertEqual(st, 200, path)
+            csp = {d.split()[0]: d.split()[1:] for d in (x.strip() for x in hdr['Content-Security-Policy'].split(';')) if d}
+            self.assertEqual(csp['script-src'], ["'self'", "'wasm-unsafe-eval'"], path)
+            self.assertEqual(csp['object-src'], ["'none'"], path)
+            self.assertEqual(csp['base-uri'], ["'none'"], path)
+            self.assertEqual(csp['frame-ancestors'], ["'none'"], path)
+            self.assertEqual(csp['default-src'], ["'self'"], path)
+
     def test_flow(self):
         anon = Client(self.base)
         st, cfg, _ = anon.req('GET', '/api/config')
