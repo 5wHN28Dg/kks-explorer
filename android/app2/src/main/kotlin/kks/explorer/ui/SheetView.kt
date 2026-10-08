@@ -190,8 +190,14 @@ class SheetView(ctx: Context) : View(ctx) {
             val px = ox + e.x / z; val py = oy + e.y / z; val pad = 8f / z
             val hit = tags.filter { it.status != "pending" && px >= it.x0 - pad && px <= it.x1 + pad && py >= it.y0 - pad && py <= it.y1 + pad }
                 .minByOrNull { (it.x1 - it.x0) * (it.y1 - it.y0) }
-            if (hit != null) { selected = hit.id; onTag?.invoke(hit.id) }
+            if (hit != null) { if (selecting) onToggle?.invoke(hit.id) else { selected = hit.id; onTag?.invoke(hit.id) } }
             return true
+        }
+        override fun onLongPress(e: MotionEvent) {
+            if (!selecting) return
+            boxFrom = PointF(ox + e.x / z, oy + e.y / z); box = RectF(boxFrom!!.x, boxFrom!!.y, boxFrom!!.x, boxFrom!!.y)
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            invalidate()
         }
     })
 
@@ -201,8 +207,34 @@ class SheetView(ctx: Context) : View(ctx) {
     private var mark: RectF? = null
     private var markFrom: PointF? = null
 
+    /** selecting tags (one photo, place or note for several codes): a tap toggles a tag; a long press then a drag
+     *  draws a box that adds every tag it touches. One finger still pans and two fingers zoom: a box needs the hold
+     *  first, so moving around the drawing between picks stays the plain drag it always was. */
+    var selecting = false; set(v) { field = v; box = null; boxFrom = null; invalidate(); a11y.invalidateRoot() }
+    var selection: Set<String> = emptySet(); set(v) { field = v; invalidate(); a11y.invalidateRoot() }
+    var onToggle: ((String) -> Unit)? = null
+    var onBox: ((List<String>) -> Unit)? = null
+    private var box: RectF? = null
+    private var boxFrom: PointF? = null
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        boxFrom?.let { a ->
+            val p = PointF(ox + e.x / z, oy + e.y / z)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_MOVE -> box = RectF(min(a.x, p.x), min(a.y, p.y), max(a.x, p.x), max(a.y, p.y))
+                MotionEvent.ACTION_UP -> {
+                    val b = box
+                    boxFrom = null; box = null
+                    if (b != null && b.width() > 0f && b.height() > 0f)
+                        onBox?.invoke(tags.filter { it.status != "pending" && it.x1 >= b.left && it.x0 <= b.right && it.y1 >= b.top && it.y0 <= b.bottom }.map { it.id })
+                }
+                MotionEvent.ACTION_CANCEL -> { boxFrom = null; box = null }
+            }
+            gestures.onTouchEvent(e)          // ends its long press
+            invalidate()
+            return true
+        }
         if (marking && e.pointerCount == 1 && !scaleDetector.isInProgress) {
             val p = PointF(ox + e.x / z, oy + e.y / z)
             when (e.actionMasked) {
@@ -254,7 +286,8 @@ class SheetView(ctx: Context) : View(ctx) {
             info.setParent(this@SheetView)
             info.contentDescription = t.code.ifEmpty { "Unread tag" } + ", " +
                 (if (coverage) coverWords(t.photos) else when (t.status) { "review" -> "needs checking"; "verified" -> "verified"; else -> "read automatically" }) +
-                if (t.id == selected) ", selected" else ""
+                (if (selecting) (if (t.id in selection) ", selected" else if (t.code.isEmpty()) ", no code: can't be selected" else ", not selected")
+                 else if (t.id == selected) ", selected" else "")
             val r = screenRect(t); r.intersect(0, 0, width, height)
             info.setBoundsInParent(r)
             val loc = IntArray(2); getLocationOnScreen(loc)
@@ -262,6 +295,7 @@ class SheetView(ctx: Context) : View(ctx) {
             info.isVisibleToUser = !r.isEmpty
             info.isEnabled = true
             info.isClickable = true
+            if (selecting) { info.isCheckable = true; info.isChecked = t.id in selection }
             info.isFocusable = true
             info.isAccessibilityFocused = focused == id
             info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
@@ -283,7 +317,8 @@ class SheetView(ctx: Context) : View(ctx) {
                     focused = -1; invalidate(); send(id, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED); return true
                 }
                 AccessibilityNodeInfo.ACTION_CLICK -> {
-                    selected = t.id; onTag?.invoke(t.id); send(id, AccessibilityEvent.TYPE_VIEW_CLICKED); return true
+                    if (selecting) onToggle?.invoke(t.id) else { selected = t.id; onTag?.invoke(t.id) }
+                    send(id, AccessibilityEvent.TYPE_VIEW_CLICKED); return true
                 }
             }
             return false
@@ -410,6 +445,19 @@ class SheetView(ctx: Context) : View(ctx) {
             c.drawRect(r, tagPaint)
         }
         tagPaint.pathEffect = null
+        // the selection: a black and yellow ring (GNOME's), visible on any drawing and over any tag colour
+        if (selection.isNotEmpty()) for (t in tags) if (t.id in selection) {
+            val r = RectF((t.x0 - ox) * z, (t.y0 - oy) * z, (t.x1 - ox) * z, (t.y1 - oy) * z)
+            if (r.right < 0 || r.bottom < 0 || r.left > width || r.top > height) continue
+            r.inset(-3f * dens, -3f * dens)
+            tagPaint.color = Color.BLACK; tagPaint.strokeWidth = 5f * dens; c.drawRect(r, tagPaint)
+            tagPaint.color = Color.rgb(255, 214, 0); tagPaint.strokeWidth = 2.5f * dens; c.drawRect(r, tagPaint)
+        }
+        box?.let { m ->
+            tagPaint.color = Color.rgb(255, 214, 0); tagPaint.strokeWidth = 2f * dens; tagPaint.pathEffect = dash
+            c.drawRect((m.left - ox) * z, (m.top - oy) * z, (m.right - ox) * z, (m.bottom - oy) * z, tagPaint)
+            tagPaint.pathEffect = null
+        }
         mark?.let { m ->
             tagPaint.color = markerColor("pending", "", false, dark); tagPaint.strokeWidth = 2f * dens; tagPaint.pathEffect = dash
             c.drawRect((m.left - ox) * z, (m.top - oy) * z, (m.right - ox) * z, (m.bottom - oy) * z, tagPaint)
