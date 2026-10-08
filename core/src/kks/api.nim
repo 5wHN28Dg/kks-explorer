@@ -1109,6 +1109,89 @@ proc stateOut(a: Api, me: Actor): JNode =
              ("rev", I(r.history.len)), ("mine", mine), ("equipment_by", a.equipmentBy))
   if me.isAdmin: result["queue"] = I(opn.len)
 
+const BoardKinds = [("photos", "Equipment photos"), ("plates", "Tag plate photos"), ("places", "Places and notes"),
+                    ("reviews", "Tag readings"), ("marked", "Marked tags"), ("links", "Procedure links"),
+                    ("removals", "Removals")]
+
+proc boardKind(kind: string, body: JNode): string =
+  case kind
+  of "photo": (if photoKind(body["caption"].s) == "plate": "plates" else: "photos")
+  of "equipment": "places"
+  of "review": "reviews"
+  of "tag_add": "marked"
+  of "link": "links"
+  else: "removals"     # photo_delete, tag_remove
+
+proc leaderboard*(a: Api): JNode =
+  ## Who contributes, from the log (every device's entries, not just this one's submissions): per person, their
+  ## data changes per kind and how each ended (approved — directly, by an admin's own write, or after review —,
+  ## rejected, pending, withdrawn), the approval ratio, the decisions they made and the votes they cast, and when
+  ## they last contributed. Entries the replay ignored are not counted. Sorted by approved contributions.
+  type Row = object
+    kinds: Table[string, array[4, int]]     ## approved, rejected, pending, withdrawn
+    direct, decided, votes, comments: int
+    last: int64
+  var rows: OrderedTable[string, Row]
+  let r = a.n.run
+  for pid, _ in r.persons: rows[pid] = Row()
+  for eid, e in a.n.entries:
+    if eid in a.n.ignored or eid in r.ignored: continue
+    let person = a.personOf(e["peer"].s)
+    if person notin rows: continue
+    let t = e["type"].s
+    let at = e["hlc"][0].i div 1000
+    if t in Kinds:
+      let (st, _, _) = a.statusOf(eid)
+      let i = case st
+        of "approved": 0
+        of "rejected": 1
+        of "withdrawn": 3
+        else: 2
+      let bk = boardKind(t, e["body"])
+      var c = rows[person].kinds.getOrDefault(bk)
+      inc c[i]
+      rows[person].kinds[bk] = c
+      if st == "approved" and eid notin r.proposals: inc rows[person].direct
+      rows[person].last = max(rows[person].last, at)
+    elif t in ["approve", "reject"]: inc rows[person].decided
+    elif t == "vote" and e["body"]["on"].kind == jBool and e["body"]["on"].b: inc rows[person].votes
+    elif t == "comment": inc rows[person].comments
+  var lst: seq[(int, int, string, JNode)]
+  for pid, row in rows:
+    var tot: array[4, int]
+    var kinds = newObj()
+    for (k, _) in BoardKinds:
+      let c = row.kinds.getOrDefault(k)
+      for i in 0 .. 3: tot[i] += c[i]
+      kinds[k] = O(("total", I(c[0] + c[1] + c[2] + c[3])), ("approved", I(c[0])), ("rejected", I(c[1])),
+                   ("pending", I(c[2])), ("withdrawn", I(c[3])))
+    let total = tot[0] + tot[1] + tot[2] + tot[3]
+    let p = r.persons[pid]
+    var active = false
+    for d, v in r.devices:
+      if v["person"].s == pid and d notin r.cuts: active = true
+    let o = O(("person", S(pid)), ("username", p["username"]), ("full_name", p["full_name"]),
+              ("name", S(a.displayName(pid))), ("position", if p["position"].isNull: S("") else: p["position"]),
+              ("role", S(r.role(pid))), ("active", B(active)),
+              ("total", I(total)), ("approved", I(tot[0])), ("rejected", I(tot[1])), ("pending", I(tot[2])),
+              ("withdrawn", I(tot[3])), ("direct", I(row.direct)),
+              ("ratio", if tot[1] > 0: newFloat(tot[0] / tot[1]) else: newNull()),
+              ("approval_rate", if tot[0] + tot[1] > 0: newFloat(tot[0] / (tot[0] + tot[1])) else: newNull()),
+              ("kinds", kinds), ("decided", I(row.decided)), ("votes", I(row.votes)), ("comments", I(row.comments)),
+              ("last", if row.last > 0: I(row.last) else: newNull()))
+    lst.add((-tot[0], -total, a.displayName(pid).toLowerAscii, o))
+  lst.sort(proc (x, y: (int, int, string, JNode)): int =
+    result = cmp(x[0], y[0])
+    if result == 0: result = cmp(x[1], y[1])
+    if result == 0: result = cmp(x[2], y[2]))
+  var people = newArr()
+  for i, x in lst:
+    x[3]["rank"] = I(i + 1)
+    people.elems.add x[3]
+  var labels = newObj()
+  for (k, l) in BoardKinds: labels[k] = S(l)
+  O(("people", people), ("kinds", labels))
+
 proc publicUser*(me: Actor): JNode =
   O(("id", I(1)), ("username", S(me.username)), ("role", S(me.role)), ("active", B(true)), ("has_password", B(true)),
     ("created", newNull()), ("full_name", S(me.fullName)), ("position", if me.position.isNull: S("") else: me.position),
@@ -1155,6 +1238,7 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
       need(me, "admin")
       return ok(O(("users", a.usersOut(me))))
     of "/api/devices": return ok(a.devicesOut(me))
+    of "/api/leaderboard": return ok(a.leaderboard)   # every member (the user asked for it to be visible to all)
     of "/api/diagnostics":
       # §13a: everyone sees whether reports are on (the app tells its person); the manager also sees the reports
       var o = O(("on", B(a.n.diagnosticsKey.len > 0)), ("pending", I(a.n.pending.len)))
