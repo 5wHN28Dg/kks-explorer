@@ -223,7 +223,7 @@ proc hashPw(s: Server, pw: string): string = hashPassword(pw, s.p.randomBytes(16
 proc login(s: Server, username, password: string, sources: openArray[string]): JNode =
   ## `sources`: where the attempt comes from ("ip:…" from `sourceKey`, "tls:<peer>"), the first one the most specific
   ## that can't be changed for free. The account is counted per source, and as a whole only under pressure (#39).
-  let acct = "u:" & username.toLowerAscii
+  let acct = "u:" & username[0 ..< min(64, username.len)].toLowerAscii   # usernames are ≤ 40: no key grows with the body
   let keys = @sources & (acct & "@" & sources[0])
   let now = epochTime()
   if s.fails.blocked(keys, now, [acct]): herr(429, "Too many failed attempts. Wait a few minutes.")
