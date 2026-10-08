@@ -48,10 +48,8 @@ proc codeHeader(w: Win, code, tag: string, subtitle: string): W =
   ## a code's heading in Approvals and My proposals; the button opens it on the drawing
   let title = if code.len > 0: code else: "Tag " & tag
   result = group(title, subtitle)
-  let open = button("Show on the drawing", "flat")
-  setAccessibleLabel(open, "Open " & title & " on the drawing")
-  gtk_widget_set_tooltip_text(open, ("Open " & title & " on the drawing").cstring)
-  open.onClick(proc () = w.openTag(code, tag))
+  let open = iconButton("find-location-symbolic", "Open " & title & " on the drawing", proc () = w.openTag(code, tag))
+  gtk_widget_add_css_class(open, "flat")
   adw_preferences_group_set_header_suffix(result, open)
 
 proc photoButton(w: Win, g: W, sub: JNode) =
@@ -132,15 +130,26 @@ const KindChoices = [("All kinds", "", ""), ("Equipment photos", "equipment_phot
                      ("Removals", "photo_delete,tag_remove", "")]
 var mineStatus, mineKind = 0      ## My proposals' filters, kept while the app runs
 
-proc combo(title: string, names: seq[string], selected: int, changed: proc (i: int)): W =
-  result = adw_combo_row_new()
-  adw_preferences_row_set_title(result, title.cstring)
-  let arr = allocCStringArray(names)
-  adw_combo_row_set_model(result, gtk_string_list_new(arr))
-  deallocCStringArray(arr)
-  adw_combo_row_set_selected(result, cuint(selected))
-  let c = result
-  result.onPtr("notify::selected", proc (p: W) = changed(int(adw_combo_row_get_selected(c))))
+proc chips(title: string, names: seq[string], selected: int, changed: proc (i: int)): W =
+  ## one choice of several, as a row of toggle buttons (each named for a screen reader, its state "pressed")
+  result = group(title)
+  let wb = adw_wrap_box_new()
+  adw_wrap_box_set_child_spacing(wb, 6)
+  adw_wrap_box_set_line_spacing(wb, 6)
+  var all: seq[W]
+  for i in 0 ..< names.len:
+    closureScope:
+      let idx = i
+      let t = gtk_toggle_button_new_with_label(names[i].cstring)
+      gtk_widget_add_css_class(t, "pill")
+      setAccessibleDescription(t, title & " filter")
+      if i == selected: gtk_toggle_button_set_active(t, 1)
+      all.add t
+      t.onClick(proc () =
+        for j, x in all: gtk_toggle_button_set_active(x, cint(j == idx))
+        changed(idx))
+      adw_wrap_box_append(wb, t)
+  adw_preferences_group_add(result, wb)
 
 proc myList(w: Win, box: W) =
   ## my proposals with the filters applied (server-side: status, kind, field), grouped by code
@@ -188,17 +197,15 @@ proc myList(w: Win, box: W) =
     box.add g
 
 proc myProposals(w: Win, box: W) =
-  let filters = group("Show")
   let list = vbox(12)
-  adw_preferences_group_add(filters, combo("Status", StatusChoices.mapIt(it[0]), mineStatus, proc (i: int) =
+  box.add chips("Status", StatusChoices.mapIt(it[0]), mineStatus, proc (i: int) =
     mineStatus = i
     list.clear()
-    w.myList(list)))
-  adw_preferences_group_add(filters, combo("Kind", KindChoices.mapIt(it[0]), mineKind, proc (i: int) =
+    w.myList(list))
+  box.add chips("Kind", KindChoices.mapIt(it[0]), mineKind, proc (i: int) =
     mineKind = i
     list.clear()
-    w.myList(list)))
-  box.add filters
+    w.myList(list))
   w.myList(list)
   box.add list
   # photos others proposed: members vote where several photos of one kind compete for a code
@@ -330,7 +337,7 @@ proc hiddenControls(w: Win, box: W, hiddenN: int, what: string, again: proc ()):
   if hiddenN > 0 or showHidden:
     let t = gtk_toggle_button_new_with_label((if showHidden: "Hide hidden" else: "Show hidden (" & $hiddenN & ")").cstring)
     gtk_toggle_button_set_active(t, cint(showHidden))
-    setAccessibleLabel(t, if showHidden: "Hide the hidden " & what else: "Show the " & $hiddenN & " hidden " & what)
+    setAccessibleDescription(t, if showHidden: "Leave the hidden " & what & " out again" else: "List the " & $hiddenN & " hidden " & what & " too")
     t.onClick(proc () =
       showHidden = not showHidden
       again())
@@ -364,7 +371,7 @@ proc people(w: Win, box: W) =
       if removed and pid.len > 0:
         let b = button(if hidden: "Unhide" else: "Hide", "flat", proc () =
           w.hide(newObj(@[("ids", newArr(@[newStr(pid)])), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden", again))
-        setAccessibleLabel(b, (if hidden: "Unhide " else: "Hide ") & name)
+        setAccessibleDescription(b, (if hidden: "Show " else: "Hide ") & name & " in this list" & (if hidden: " again" else: ""))
         gtk_widget_set_valign(b, GTK_ALIGN_CENTER)
         adw_action_row_add_suffix(rw, b)
       adw_preferences_group_add(g, rw)
@@ -396,7 +403,7 @@ proc devices(w: Win, box: W) =
           let hidden = x.get("hidden") != nil and x["hidden"].kind == jBool and x["hidden"].b
           let hb = button(if hidden: "Unhide" else: "Hide", "flat", proc () =
             w.hide(newObj(@[("ids", newArr(@[newStr(dev)])), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden", again))
-          setAccessibleLabel(hb, (if hidden: "Unhide the removed device " else: "Hide the removed device ") & s(x, "label") & " of " & s(x, "username"))
+          setAccessibleDescription(hb, (if hidden: "Show the removed device " else: "Hide the removed device ") & s(x, "label") & " of " & s(x, "username"))
           gtk_widget_set_valign(hb, GTK_ALIGN_CENTER)
           adw_action_row_add_suffix(rw, hb)
         if not x["revoked"].b and not x["this_computer"].b:

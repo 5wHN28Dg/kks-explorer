@@ -179,10 +179,10 @@ proc descriptionSection(w: Win, t: Tag): W =
   let confirmB = button("Confirm description", "suggested-action", proc () =
     if conf == nil: return
     if w.submit(s(conf, "kind"), conf["payload"], "description of " & k).len > 0: w.rebuildPanel())
-  setAccessibleLabel(confirmB, "Confirm the drafted description of " & k)
+  setAccessibleDescription(confirmB, "Sends the drafted description of " & k & " as it is")
   btns.add confirmB
   let editB = button("Edit description", "", nil)
-  setAccessibleLabel(editB, "Edit the drafted description of " & k & " before sending it")
+  setAccessibleDescription(editB, "Change the drafted description of " & k & " before sending it")
   btns.add editB
   adw_preferences_group_add(g, btns)
   editB.onClick(proc () =
