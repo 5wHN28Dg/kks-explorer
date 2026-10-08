@@ -219,6 +219,10 @@ class Gnome(unittest.TestCase):
         atspi.set_text(atspi.find(b, 'text', name='Invite text'), code)
         atspi.set_text(atspi.find(b, 'text', name='Your username'), 'sara')
         atspi.set_text(atspi.find(b, 'text', name='Your full name'), 'Sara Engineer')
+        # every new member needs a position (the user's request): the form refuses without one
+        atspi.click(atspi.find(b, 'button', name='Join with this code'))
+        atspi.find(b, 'label', contains='every new member needs a position', timeout=10)
+        atspi.set_text(atspi.find(b, 'text', name='Your position (job title)'), 'Process engineer')
         atspi.click(atspi.find(b, 'button', name='Join with this code'))
         acc = None
         for _ in range(30):
@@ -227,6 +231,8 @@ class Gnome(unittest.TestCase):
             if acc:
                 break
         self.assertTrue(acc, 'the admin never saw the request')
+        # the admin sees the position the request carries
+        atspi.find(a, 'label', contains='position Process engineer', timeout=10)
         atspi.click(acc[0])
         atspi.find(b, 'list item', contains='Sample sheet', timeout=30)
         # the manager removes the second device (Manage → Devices → Remove); it learns it at its next sync with this

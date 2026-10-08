@@ -285,6 +285,8 @@ proc setupScreen(w: Win): W =
   let plant = entryRow("Plant name", "")
   let u2 = entryRow("Your username", "")
   let fullName = entryRow("Your full name", "")
+  let position = entryRow("Your position (job title)", "")
+  gtk_widget_set_tooltip_text(position, "Required: every member needs one, e.g. Maintenance manager")
   let create = button("Create the plant", "suggested-action")
   gtk_widget_set_halign(create, GTK_ALIGN_END)
   gtk_widget_set_margin_top(create, 8)
@@ -292,14 +294,15 @@ proc setupScreen(w: Win): W =
     let pn = text(plant).strip
     let un = text(u2).strip.toLowerAscii
     let fn = text(fullName).strip
-    if pn.len == 0 or un.len < 2 or fn.len == 0:
-      w.toast("Fill in the plant name, a username (2+ characters) and your full name.")
+    let ps = text(position).strip
+    if pn.len == 0 or un.len < 2 or fn.len == 0 or ps.len == 0:
+      w.toast("Fill in the plant name, a username (2+ characters), your full name and your position (job title).")
       return
     try:
-      w.a.createPlant(pn, un, fn, newNull())
+      w.a.createPlant(pn, un, fn, newStr(ps))
       w.showMain()
     except CatchableError as e: w.toast(e.msg))
-  for r in [plant, u2, fullName]: adw_preferences_group_add(g2, r)
+  for r in [plant, u2, fullName, position]: adw_preferences_group_add(g2, r)
   adw_preferences_group_add(g2, create)
   # a bundle file from an admin
   let g3 = group("", "An admin can hand you a bundle file (Manage → Devices → Save a bundle).")

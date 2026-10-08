@@ -150,19 +150,9 @@ proc people(w: Win, box: W) =
     adw_preferences_group_add(g, row(s(u, "full_name") & " (" & s(u, "username") & ")",
       s(u, "role") & (if s(u, "position").len > 0: " · " & s(u, "position") else: ""), selectable = true))
   box.add g
-  let add = group("Add a person", "For someone whose device will join later (by QR code, request file or nearby admin).")
-  let un = entryRow("Username", "")
-  let fn = entryRow("Full name", "")
-  let pos = entryRow("Position (optional)", "")
-  for r in [un, fn, pos]: adw_preferences_group_add(add, r)
-  adw_preferences_group_add(add, button("Add", "", proc () =
-    try:
-      discard w.a.call("POST", "/api/users", newObj(@[("username", newStr(text(un).strip.toLowerAscii)),
-        ("full_name", newStr(text(fn).strip)), ("position", newStr(text(pos).strip)), ("role", newStr("user"))]))
-      w.toast("Added " & text(un).strip)
-      w.refreshPage(box, proc (b: W) = w.people(b))
-    except ApiError as e: w.toast(e.msg)))
-  box.add add
+  # People join with their devices (invite, nearby admin, request file); the join form asks for their position.
+  # (The "Add a person" form that was here posted to POST /api/users, which only the server has: on a laptop it always
+  # failed with "not found".)
 
 proc devices(w: Win, box: W) =
   var d: JNode
@@ -205,7 +195,7 @@ proc devices(w: Win, box: W) =
             let r = reqs[i]
             let dev = s(r, "device")
             let req = r["request"]
-            let rw = row(s(req, "full_name") & " (" & s(req, "username") & ") · " & s(req, "label"), "code " & s(r, "code"))
+            let rw = row(s(req, "full_name") & " (" & s(req, "username") & ") · " & s(req, "label"), "code " & s(r, "code") & positionNote(r))
             let choices = @[("Accept", "accept"), ("Refuse", "refuse")]
             for ci in 0 ..< choices.len:
               closureScope:
