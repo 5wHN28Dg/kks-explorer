@@ -75,17 +75,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-nim
         with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.2 built (pinned by SHA-256 in the script)
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.5 built (pinned by SHA-256 in the script)
         with:
           path: |
-            ~/.local/kksdev/src/mupdf-1.28.2-source/include
-            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a
-            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf-third.a
+            ~/.local/kksdev/src/mupdf-1.28.5-source/include
+            ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a
+            ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf-third.a
           key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
       - name: Libraries, MuPDF
         run: |
           sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
-          [ -f ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
+          [ -f ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
       - name: The importer's tests
         working-directory: importer
         run: |
@@ -99,17 +99,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-nim
         with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.2 built (pinned by SHA-256 in the script)
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.5 built (pinned by SHA-256 in the script)
         with:
           path: |
-            ~/.local/kksdev/src/mupdf-1.28.2-source/include
-            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a
-            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf-third.a
+            ~/.local/kksdev/src/mupdf-1.28.5-source/include
+            ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a
+            ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf-third.a
           key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
       - name: Libraries, MuPDF
         run: |
           sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
-          [ -f ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
+          [ -f ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
       - name: kks_server and kks_import
         run: |
           (cd platform/linux && nim c -d:release -o:/tmp/kkslinux/kks_server kks_server.nim)
