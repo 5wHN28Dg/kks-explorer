@@ -425,6 +425,7 @@ jobs:
           NIM=nim sh apps/windows/build.sh "$PWD/out/Walkdown.exe"
           (cd core && KKS_WIN_OUT=/tmp/kkswin-core nim wintests) && cp /tmp/kkswin-core/*.exe out/core/
           (cd platform/linux && KKS_WIN_OUT=/tmp/kkswin-plat nim wintests) && cp /tmp/kkswin-plat/*.exe out/plat/
+          nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console --nimcache:/tmp/kkswin-jxl -o:out/plat/test_jxl_limit.exe apps/windows/tests/test_jxl_limit.nim
           ls -l out out/core out/plat
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
