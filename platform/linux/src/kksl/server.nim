@@ -5,7 +5,7 @@
 import std/[asyncdispatch, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm, sequtils]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics]
 import kks/provider_gnutls
-import dbstore, tls, net, argon2, mdns, internet, httpserver
+import dbstore, tls, net, argon2, mdns, internet, httpserver, throttle
 
 const
   Cookie = "kks_session"
@@ -45,7 +45,7 @@ type
     n*: Node
     api*: Api
     id*: Identity
-    fails: Table[string, (int, float)]
+    fails: Throttle               ## failed password and token checks (issue #39)
     listener*: Listener
     mdns*: Mdns
     internet*: Internet           ## presence on the plant's relay (§18), answers syncs through it
@@ -188,17 +188,9 @@ proc publicUser(s: Server, u: JNode): JNode =
     ("has_password", newBool(u["pw"].isStr and u["pw"].s.len > 0)), ("created", u["created"]),
     ("full_name", u["full_name"]), ("position", if u["position"].isNull: S("") else: u["position"]), ("person", u["person"]))
 
-proc throttled(s: Server, keys: varargs[string]): bool =
-  let now = epochTime()
-  for k in keys:
-    if k in s.fails and s.fails[k][1] > now: return true
+proc throttled(s: Server, keys: varargs[string]): bool = s.fails.blocked(keys, epochTime())
 
-proc record(s: Server, ok: bool, keys: varargs[string]) =
-  for k in keys:
-    if ok: s.fails.del k
-    else:
-      let n = s.fails.getOrDefault(k, (0, 0.0))[0] + 1
-      s.fails[k] = (n, epochTime() + (if n >= 5: float(min(900, 15 * (1 shl min(n - 5, 10)))) else: 0.0))
+proc record(s: Server, ok: bool, keys: varargs[string]) = s.fails.record(ok, keys, epochTime())
 
 proc newSession(s: Server, userId: int64): string =
   let raw = b64u(s.p.randomBytes(32))
@@ -228,15 +220,19 @@ proc consumeToken(s: Server, raw: string) = s.store.delRow("tokens", hex(s.p.sha
 
 proc hashPw(s: Server, pw: string): string = hashPassword(pw, s.p.randomBytes(16).toStr)
 
-proc login(s: Server, username, password, ip: string): JNode =
-  let keys = ["u:" & username.toLowerAscii, "ip:" & ip]
-  if s.throttled(keys): herr(429, "Too many failed attempts. Wait a few minutes.")
+proc login(s: Server, username, password: string, sources: openArray[string]): JNode =
+  ## `sources`: where the attempt comes from ("ip:…" from `sourceKey`, "tls:<peer>"), the first one the most specific
+  ## that can't be changed for free. The account is counted per source, and as a whole only under pressure (#39).
+  let acct = "u:" & username.toLowerAscii
+  let keys = @sources & (acct & "@" & sources[0])
+  let now = epochTime()
+  if s.fails.blocked(keys, now, [acct]): herr(429, "Too many failed attempts. Wait a few minutes.")
   let u = s.userByName(username)
   let ok = u != nil and checkPassword(password, if u["pw"].isStr: u["pw"].s else: "") and u["active"].b
   if u == nil: discard checkPassword("x", "")
-  s.record(ok, keys)
+  s.fails.record(ok, keys, epochTime(), [acct])
   if not ok: herr(401, "Wrong username or password.")
-  if isLegacy(u["pw"].s):   # a v1 scrypt hash: replace it with Argon2id now that we have the password
+  if needsRehash(u["pw"].s):   # v1 scrypt, or Argon2id below today's parameters (#40): replace it now
     u["pw"] = S(s.hashPw(password))
     s.putUser(u)
   u
@@ -534,10 +530,10 @@ proc updateUser(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode 
 
 # ---- enrolment: a device joining with its owner's password (PROTOCOL-v2 §16 "through a server") ----
 
-proc enrollDevice(s: Server, username, password, dev, label0, ip: string) =
+proc enrollDevice(s: Server, username, password, dev, label0: string, sources: openArray[string]) =
   ## Raises HttpErr (403/409/429/401) like the HTTP route; certifies `dev` for the account's person.
-  if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
-  let usr = s.login(username, password, ip)
+  if s.throttled(sources): herr(429, "Too many attempts.")
+  let usr = s.login(username, password, sources)
   let lab = label0[0 ..< min(80, label0.len)]
   let have = s.n.run.devices.getOrDefault(dev)
   if have != nil and have["person"].s != usr["person"].s: herr(409, "That device belongs to someone else.")
@@ -545,8 +541,9 @@ proc enrollDevice(s: Server, username, password, dev, label0, ip: string) =
   if have == nil:
     discard s.n.appendAs(s.custodial(usr["device"].s), "device_cert", deviceCertBody(dev, usr["person"].s, lab), nowMs())
 
-proc enrollOverTls(s: Server, remote: string, m: JNode): JNode =
-  ## the §16 enroll message on the sync port
+proc enrollOverTls(s: Server, remote, address: string, m: JNode): JNode =
+  ## the §16 enroll message on the sync port (`address`: the TCP peer's; "" through the relay). The peer ID costs
+  ## nothing to change, so the address is the source that counts (#39).
   proc ack(state, why: string): JNode = O(("t", S("enroll_ack")), ("state", S(state)), ("why", S(why)))
   let req = m.get("request")
   if req == nil or not s.p.checkJoinRequest(req) or req["device"].s != remote:
@@ -554,7 +551,8 @@ proc enrollOverTls(s: Server, remote: string, m: JNode): JNode =
   try:
     s.enrollDevice(if m.get("username") != nil and m["username"].isStr: m["username"].s else: "",
                    if m.get("password") != nil and m["password"].isStr: m["password"].s else: "", remote,
-                   if req.get("label") != nil and req["label"].isStr: req["label"].s else: "device", "tls:" & remote)
+                   if req.get("label") != nil and req["label"].isStr: req["label"].s else: "device",
+                   (if address.len > 0: @[sourceKey(address), "tls:" & remote] else: @["tls:" & remote]))
   except HttpErr as e:
     return ack("refused", e.msg)
   O(("t", S("enroll_ack")), ("state", S("accepted")), ("root", S(s.n.root)), ("plant", s.n.run.settings.getOrDefault("plant")),
@@ -893,11 +891,12 @@ proc handle(s: Server, req: Request) {.async.} =
     except JsonError: herr(400, "bad json")
     if d.kind != jObj: herr(400, "bad json")
   let ip = s.clientIp(req)
+  let src = [sourceKey(ip)]
   if isPost:
     case path
     of "/api/login":
       let usr = s.login(if d.get("username") != nil and d["username"].isStr: d["username"].s else: "",
-                        if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", ip)
+                        if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", src)
       let raw = s.newSession(usr["id"].i)
       await s.sendJson(req, 200, O(("user", s.publicUser(usr))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
@@ -909,7 +908,7 @@ proc handle(s: Server, req: Request) {.async.} =
       await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, "", 0), ("Clear-Site-Data", "\"cache\"")])
       return
     of "/api/setup":
-      if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
+      if s.throttled(src): herr(429, "Too many attempts.")
       let name = if d.get("username") != nil and d["username"].isStr: d["username"].s.strip else: ""
       if not validUsername(name): herr(400, "Username: 2-40 letters (a-z), digits, . _ - @")
       let prob = passwordProblem(d.get("password"))
@@ -920,7 +919,7 @@ proc handle(s: Server, req: Request) {.async.} =
       except ApiError as e: herr(400, e.msg)
       let tok = if d.get("token") != nil and d["token"].isStr: d["token"].s else: ""
       if s.peekToken("setup", tok) == nil or s.managerUser() != nil or s.n.root.len > 0:
-        s.record(false, "ip:" & ip)
+        s.record(false, src)
         herr(403, "This setup link is invalid or already used.")
       let usr = s.createPlant(name, fn, pos, d["password"].s)
       s.consumeToken(tok)
@@ -928,13 +927,13 @@ proc handle(s: Server, req: Request) {.async.} =
       await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/password-reset":
-      if s.throttled("ip:" & ip): herr(429, "Too many attempts.")
+      if s.throttled(src): herr(429, "Too many attempts.")
       let prob = passwordProblem(d.get("password"))
       if prob.len > 0: herr(400, prob)
       let tok = if d.get("token") != nil and d["token"].isStr: d["token"].s else: ""
       let t = s.peekToken("reset", tok)
       if t == nil:
-        s.record(false, "ip:" & ip)
+        s.record(false, src)
         herr(403, "This link is invalid or has expired.")
       var usr = s.userById(t["user_id"].i)
       usr["pw"] = S(s.hashPw(d["password"].s))
@@ -1025,7 +1024,7 @@ proc handle(s: Server, req: Request) {.async.} =
       return
     case path
     of "/api/password":
-      discard s.login(usr["username"].s, if d.get("old") != nil and d["old"].isStr: d["old"].s else: "", ip)
+      discard s.login(usr["username"].s, if d.get("old") != nil and d["old"].isStr: d["old"].s else: "", src)
       let prob = passwordProblem(d.get("new"))
       if prob.len > 0: herr(400, prob)
       usr["pw"] = S(s.hashPw(d["new"].s))
@@ -1094,7 +1093,7 @@ proc handle(s: Server, req: Request) {.async.} =
       case parts[3]
       of "transfer":
         if me.role != "manager": herr(403, "manager only")
-        discard s.login(usr["username"].s, if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", ip)
+        discard s.login(usr["username"].s, if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", src)
         let to = s.userByName(if d.get("username") != nil and d["username"].isStr: d["username"].s else: "")
         if to == nil or s.n.run.role(to["person"].s) != "admin" or not to["active"].b:
           herr(400, "The new manager must be an active admin.")
@@ -1157,9 +1156,10 @@ proc serve*(s: Server): Future[void] =
         result["root"] = S(s.n.root)
         result["plant"] = s.n.run.settings.getOrDefault("plant"),
     secrets: proc (remote: string, m: JNode): JNode = O(("t", S("secrets")), ("secrets", newArr())),   # §17: a server holds none
-    enroll: proc (remote: string, m: JNode): JNode = s.enrollOverTls(remote, m))
+    enroll: proc (remote: string, m: JNode): JNode = s.enrollOverTls(remote, "", m))   # through the relay
   if s.cfg.syncPort > 0:
     s.listener = listen(s.n, s.id, s.cfg.syncPort, hooks = hooks)
+    s.listener.enrollFrom = proc (remote, address: string, m: JNode): JNode = s.enrollOverTls(remote, address, m)
   # §18: the server sits in the plant's room when the manager set a relay, and answers syncs through it (it starts
   # none: the other devices sync with it on their rounds, as on the LAN)
   s.internet = newInternet(s.n, s.id, hooks)
