@@ -90,6 +90,7 @@ class SheetView(ctx: Context) : View(ctx) {
 
     fun setSheet(id: String, scale: Float, nLevels: Int) {
         gen++; sheetId = id; scale0 = scale; fitted = false
+        supersedeLevels()
         tiles.evictAll(); pending.clear()
         sheet = null; levels = arrayOfNulls(nLevels); levelAsked = BooleanArray(nLevels); stale = arrayOfNulls(0)
         contentDescription = "Drawing $id"
@@ -105,27 +106,50 @@ class SheetView(ctx: Context) : View(ctx) {
     private fun askLevel(k: Int) {
         if (k < 0 || k >= levels.size || levelAsked[k]) return
         levelAsked[k] = true
-        val g = gen; val id = sheetId; val d = dark
-        work.execute {
+        val g = gen; val id = sheetId; val d = dark; val e = epoch.get()
+        // a level 0 is up to 6400 × 4800 px (123 MB of RGBA): a request superseded by another sheet or a dark-drawings
+        // switch is cancelled while queued, and stops between its heavy steps if already running (`epoch`)
+        val live = { epoch.get() == e }
+        levelJobs.add(work.submit {
+            if (!live()) return@submit
             // dark drawings: every pixel through DarkColor here, on the worker (a level 0 is up to 30 M pixels)
-            val lv = Core.file("sheets/$id.o$k.jxl")?.let { Jxl.pieces(it, map = if (d) DarkColor::rgbaBytes else null) }
+            val lv = Core.file("sheets/$id.o$k.jxl")?.let { if (live()) Jxl.pieces(it, map = if (d) DarkColor::rgbaBytes else null, keep = live) else null }
                 ?.let { (p, dims) -> Level(p, dims[0], dims[1]) }
-            main.post { if (g == gen && d == dark && lv != null) { levels[k] = lv; stale = arrayOfNulls(0); invalidate() } }
-        }
+            main.post {
+                if (g == gen && d == dark && lv != null) {
+                    levels[k] = lv
+                    for (j in k until stale.size) stale[j] = null    // as sharp or sharper in this mode: the old ones go
+                    invalidate()
+                }
+            }
+        })
+        levelJobs.removeAll { it.isDone }
+    }
+
+    /** cancels the queued and running level decodes (a new sheet or a dark-drawings switch) */
+    private fun supersedeLevels() {
+        epoch.incrementAndGet()
+        for (f in levelJobs) f.cancel(false)
+        levelJobs.clear()
     }
 
     /** dark drawings (Drawings → ⋮ → Dark drawings): the sheet light on dark (DarkColor), markers lightened. Switching
-     *  drops the tiles and decodes the overview levels again; until they arrive the old level still shows. */
+     *  drops the tiles and decodes the overview levels again; until they arrive the levels shown before stay (never a
+     *  blank sheet, even when switching back before anything arrived). */
     var dark = false
         set(v) {
             if (field == v) return
             field = v
+            supersedeLevels()
             tiles.evictAll(); pending.clear()
-            stale = levels.copyOf()
+            // per level: the one this mode had, else the one shown before that (a quick on → off keeps something)
+            stale = Array(levels.size) { k -> levels[k] ?: stale.getOrNull(k) }
             levels = arrayOfNulls(levels.size); levelAsked = BooleanArray(levels.size)
             invalidate(); a11y.invalidateRoot()
         }
     private var stale = arrayOfNulls<Level>(0)        // the other mode's levels, shown until this mode's arrive
+    private val epoch = java.util.concurrent.atomic.AtomicInteger()
+    private val levelJobs = ArrayList<java.util.concurrent.Future<*>>()
 
     private fun sheetSize(): Pair<Float, Float> = sheet?.let { it.widthPt to it.heightPt }
         ?: levels.firstOrNull { it != null }?.let { b -> val k = levels.indexOf(b); val s = scale0 / (1 shl k); (b.w / s) to (b.h / s) }
@@ -334,7 +358,8 @@ class SheetView(ctx: Context) : View(ctx) {
         var want = 0
         for (k in levels.indices.reversed()) if (scale0 / (1 shl k) >= z * 0.9f) { want = k; break }
         askLevel(want)
-        val best = levels[want] ?: levels.firstOrNull { it != null } ?: stale.getOrNull(want) ?: stale.firstOrNull { it != null }
+        // this mode's level, else the level shown before a dark-drawings switch (not a blurrier one of this mode)
+        val best = levels[want] ?: stale.getOrNull(want) ?: levels.firstOrNull { it != null } ?: stale.firstOrNull { it != null }
         if (best != null) {
             val f = dst.width() / best.w
             for (p in best.pieces) c.drawBitmap(p.bmp, null, RectF(dst.left + p.x * f, dst.top + p.y * f,

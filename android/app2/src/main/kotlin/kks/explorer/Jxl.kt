@@ -79,11 +79,14 @@ object Jxl {
      *  is up to 6400 × 4800 px (123 MB as one ARGB bitmap), and Android's canvas refuses to draw a bitmap over 100 MB
      *  ("Canvas: trying to draw too large bitmap": the crash on the Block 1 Main Steam sheet, 2026-10-05); GPUs also
      *  have a largest texture size (4096 on some phones). Pieces stay under both. `map` changes the RGBA pixels in
-     *  place first (dark drawings), on the caller's thread. */
-    fun pieces(jxl: ByteArray, side: Int = 2048, map: ((ByteArray) -> Unit)? = null): Pair<List<Piece>, IntArray>? {
+     *  place first (dark drawings), on the caller's thread. `keep` is asked between the heavy steps (after the decode,
+     *  after `map`): false = the result is no longer wanted (a superseded request), stop and return null. */
+    fun pieces(jxl: ByteArray, side: Int = 2048, map: ((ByteArray) -> Unit)? = null, keep: () -> Boolean = { true }): Pair<List<Piece>, IntArray>? {
         val dims = IntArray(2)
         val px = decodeRgba(jxl, dims) ?: return null
+        if (!keep()) return null
         map?.invoke(px)
+        if (!keep()) return null
         val (w, h) = dims[0] to dims[1]
         val out = ArrayList<Piece>()
         var y = 0
