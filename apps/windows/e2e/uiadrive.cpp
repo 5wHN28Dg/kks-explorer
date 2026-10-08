@@ -256,6 +256,9 @@ int wmain(int argc, wchar_t **argv) {
                 say("ERROR: not selectable: " + arg); return 1;
             }
             sp->Select(); sp->Release();
+        } else if (cmd == "focus") {
+            // the keyboard focus to this element (what Tab or a screen reader's navigation does)
+            if (FAILED(e->SetFocus())) { say("ERROR: can't focus " + arg); return 1; }
         } else if (cmd == "enter") {
             // what a keyboard (or screen reader) user does: the window in front, the item focused and selected, Enter
             UIA_HWND hw = 0;

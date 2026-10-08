@@ -1,9 +1,10 @@
 ## Equipment by system: every code on the drawings, grouped block → system → subsystem → component kind (core
 ## views.systemsView), with a search field, in a window of its own. The tree is a native TreeView (comctl32), so UI
 ## Automation and the keyboard come with it. Enter, a double-click or the button under the search field opens the
-## selected code's tag like a search result does.
+## selected code's tag like a search result does. Typing searches after a 200 ms pause. A sync or an approval rebuilds
+## the tree (win.follow), keeping the open groups and the selection, but never while the focus is in the tree.
 
-import std/strutils
+import std/[strutils, sets]
 import kks/[json, views]
 import w32, ui, win
 
@@ -30,6 +31,9 @@ var
   TVM_GETNEXTITEM {.importc, header: CC, nodecl.}: UINT
   TVM_GETITEMW {.importc, header: CC, nodecl.}: UINT
   TVM_SELECTITEM {.importc, header: CC, nodecl.}: UINT
+  TVM_GETITEMSTATE {.importc, header: CC, nodecl.}: UINT
+  TVM_ENSUREVISIBLE {.importc, header: CC, nodecl.}: UINT
+  TVIS_EXPANDED {.importc, header: CC, nodecl.}: UINT
   TVIF_TEXT {.importc, header: CC, nodecl.}: UINT
   TVIF_PARAM {.importc, header: CC, nodecl.}: UINT
   TVE_EXPAND {.importc, header: CC, nodecl.}: WPARAM
@@ -59,7 +63,7 @@ proc coverWords(photos: string): string =
 proc codes(k: int): string = (if k == 1: "1 code" else: $k & " codes")
 
 type Target = object
-  tag, sheet: string
+  code, tag, sheet: string
 
 var sysWindow: HWND          ## the open window (one at a time)
 
@@ -76,10 +80,18 @@ proc openSystems*(w: Win) =
   let (hw, p) = popup(w.hwnd, "Equipment by system", 600, 680, proc () = sysWindow = nil, escape = true)
   sysWindow = hw
   var targets: seq[Target]
+  var groups: seq[(HTREEITEM, string)]     ## the last fill's group rows and their keys (block|system|…)
   var q, status, tree: HWND
-  proc fillTree()
-  # typing refills the tree (EN_CHANGE runs inside the edit's notification: only the tree, another control, changes)
-  q = p.field("Search codes, systems, descriptions", "", onChange = proc () = fillTree())
+  var follower: Follower
+  var pending: uint                        ## the search's timer
+  proc fillTree(keep: bool)
+  # typing searches once it pauses (each search rebuilds the whole tree: not on every key); what a search finds opens,
+  # what was open before doesn't stay open
+  q = p.field("Search codes, systems, descriptions", "", onChange = proc () =
+    cancel(pending)
+    pending = afterMs(200, proc () {.closure.} =
+      pending = 0
+      if IsWindow(tree) != 0: fillTree(false)))
   sendText(q, EM_SETCUEBANNER, 1, "e.g. LAB70, feed water, valve")
   status = p.dim("")
   proc open() =
@@ -109,7 +121,26 @@ proc openSystems*(w: Win) =
       return true      # a code opens; the default would also toggle a group, which we do ourselves in open()
     false)
 
-  proc fillTree() =
+  proc fillTree(keep: bool) =
+    ## keep: open the groups that were open and select the row that was selected (a rebuild after a sync)
+    if follower != nil: follower.stale = false
+    var wasOpen: HashSet[string]
+    var selKey = ""
+    if keep:
+      for (h, k) in groups:
+        if (UINT(SendMessageW(tree, TVM_GETITEMSTATE, cast[WPARAM](h), LPARAM(TVIS_EXPANDED))) and TVIS_EXPANDED) != 0:
+          wasOpen.incl k
+      let cur = cast[HTREEITEM](SendMessageW(tree, TVM_GETNEXTITEM, TVGN_CARET, 0))
+      if cur != nil:
+        var tv = TVITEMW(mask: TVIF_PARAM, hItem: cur)
+        if SendMessageW(tree, TVM_GETITEMW, 0, cast[LPARAM](addr tv)) != 0:
+          let i = int(tv.lParam) - 1
+          if i >= 0 and i < targets.len: selKey = "code|" & targets[i].code
+          else:
+            for (h, k) in groups:
+              if h == cur: selKey = k
+    groups.setLen(0)
+    var select: HTREEITEM
     let query = q.text.strip
     let v = systemsView(w.m, query)
     let total = n(v, "total")
@@ -128,36 +159,46 @@ proc openSystems*(w: Win) =
         if s(it, "desc").len > 0: parts.add s(it, "desc")
         parts.add s(it, "sheet_name") & (if n(it, "count") > 1: " ×" & $n(it, "count") else: "")
         parts.add coverWords(s(it, "photos"))
-        targets.add Target(tag: s(it, "tag"), sheet: s(it, "sheet"))
-        discard tree.insert(parent, parts.join(" · "), targets.len)
+        targets.add Target(code: s(it, "code"), tag: s(it, "tag"), sheet: s(it, "sheet"))
+        let h = tree.insert(parent, parts.join(" · "), targets.len)
+        if selKey == "code|" & s(it, "code"): select = h
+    proc group(parent: HTREEITEM, text, key: string, open: bool): HTREEITEM =
+      result = tree.insert(parent, text)
+      groups.add (result, key)
+      if open or key in wasOpen: expand.add result
+      if key == selKey: select = result
     for b in v["blocks"].elems:
       let bn = s(b, "blk_name")
-      let bi = tree.insert(TVI_ROOT, if bn.len > 0: s(b, "blk") & " · " & bn else: "Block " & s(b, "blk"))
-      expand.add bi                                  # blocks always open: their systems are the first level to read
+      let bk = s(b, "blk")
+      # blocks always open: their systems are the first level to read
+      let bi = group(TVI_ROOT, if bn.len > 0: bk & " · " & bn else: "Block " & bk, bk, true)
       for sy in b["systems"].elems:
         let sn = s(sy, "sys_name")
-        let si = tree.insert(bi, s(sy, "sys") & (if sn.len > 0: " · " & sn else: "") & " (" & $n(sy, "count") & ")")
-        if all: expand.add si
+        let sk = bk & "|" & s(sy, "sys")
+        let si = group(bi, s(sy, "sys") & (if sn.len > 0: " · " & sn else: "") & " (" & $n(sy, "count") & ")", sk, all)
         for sub in sy["subsystems"].elems:
-          let ui = tree.insert(si, s(sub, "code") & " (" & $n(sub, "count") & ")")
-          if all: expand.add ui
+          let subk = sk & "|" & s(sub, "code")
+          let ui = group(si, s(sub, "code") & " (" & $n(sub, "count") & ")", subk, all)
           for k in sub["kinds"].elems:
             let cn = s(k, "comp_name")
-            let ki = tree.insert(ui, s(k, "comp") & (if cn.len > 0: " · " & cn else: "") & " (" & $n(k, "count") & ")")
-            if all: expand.add ki
+            let ki = group(ui, s(k, "comp") & (if cn.len > 0: " · " & cn else: "") & " (" & $n(k, "count") & ")",
+                           subk & "|" & s(k, "comp"), all)
             items(ki, k["items"])
     let other = v["other"]
     if other.elems.len > 0:
-      let oi = tree.insert(TVI_ROOT, "Other: codes that don't decode as KKS (" & $other.elems.len & ")")
-      if all: expand.add oi
+      let oi = group(TVI_ROOT, "Other: codes that don't decode as KKS (" & $other.elems.len & ")", "other", all)
       items(oi, other)
     for h in expand: SendMessageW(tree, TVM_EXPAND, TVE_EXPAND, cast[LPARAM](h))
-    let first = SendMessageW(tree, TVM_GETNEXTITEM, TVGN_ROOT, 0)
-    if first != 0: SendMessageW(tree, TVM_SELECTITEM, TVGN_CARET, first)
+    if select == nil: select = cast[HTREEITEM](SendMessageW(tree, TVM_GETNEXTITEM, TVGN_ROOT, 0))
+    if select != nil:
+      SendMessageW(tree, TVM_SELECTITEM, TVGN_CARET, cast[LPARAM](select))
+      SendMessageW(tree, TVM_ENSUREVISIBLE, 0, cast[LPARAM](select))
     SendMessageW(tree, WM_SETREDRAW, 1, 0)
     InvalidateRect(tree, nil, 1)
 
-  fillTree()
+  fillTree(false)
+  # a sync or an approval rebuilds the tree (new codes, photo coverage, current tag ids), never under the focus
+  follower = w.follow(tree, proc () {.closure.} = fillTree(true))
   p.layout()
   ShowWindow(hw, SW_SHOW)
   SetFocus(q)
