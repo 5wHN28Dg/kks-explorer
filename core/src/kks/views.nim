@@ -293,6 +293,11 @@ proc coverageView*(m: Model): JNode =
       ("codes", I(c.codes)), ("located", I(c.located)),
       ("photos", O(("both", I(c.photos[0])), ("equipment", I(c.photos[1])), ("plate", I(c.photos[2])), ("none", I(c.photos[3])))))
   let covers = m.photoCovers
+  # a code is checked when a person checked any of its tags (it may be "auto" on one sheet and verified on another);
+  # tags marked by hand count as checked too: an approved marked tag is a person's reading
+  var checkedCodes: HashSet[string]
+  for t in m.tags:
+    if t.kks.len > 0 and t.status in ["verified", "confirmed"]: checkedCodes.incl t.full
   var bySheet = initOrderedTable[string, Counts]()
   for si in m.sheets: bySheet[si.id] = Counts()
   var bySys = initTable[string, Counts]()
@@ -335,7 +340,7 @@ proc coverageView*(m: Model): JNode =
         inc s.codes
         inc s.photos[p]
         if here: inc s.located
-        if t.status in ["verified", "confirmed"]: inc s.verified
+        if k in checkedCodes: inc s.verified
         bySys[sys] = s
     bySheet[t.sheet] = c
   var sheets = newArr()

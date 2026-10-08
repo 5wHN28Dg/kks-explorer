@@ -61,12 +61,12 @@ class WebCoverage(tws.WebSystems):
             rows = page.locator('#covBody .covrow')
             names = [re.sub(r'\s+', ' ', x).strip() for x in rows.all_text_contents()]
             self.assertEqual(len(names), 2 + 4, names)
-            self.assertTrue(names[0].startswith('Sheet A6 codes · 33 % checked · 17 % placed · 1 marked'), names[0])
-            self.assertTrue(names[1].startswith('Sheet B2 codes · 0 % checked · 50 % placed'), names[1])
+            self.assertTrue(names[0].startswith('Sheet A6 codes · 33 % of tags checked · 17 % placed · 1 marked'), names[0])
+            self.assertTrue(names[1].startswith('Sheet B2 codes · 0 % of tags checked · 50 % placed'), names[1])
             self.assertIn("Codes that don't decode1 code", names[2])
             self.assertIn('HAD', names[3])
             self.assertIn('LAB', names[4])
-            self.assertIn('4 codes · 50 % checked · 25 % placed', names[4])
+            self.assertIn('4 codes · 50 % of codes checked · 25 % placed', names[4])
             self.assertIn('LBA', names[5])
             # the bar's words for screen readers; the bar itself is hidden from them
             self.assertIn('photos: 0 equipment and tag plate, 0 equipment only, 0 tag plate only, 2 none', names[1])

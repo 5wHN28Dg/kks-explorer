@@ -120,6 +120,14 @@ suite "views":
     check names == @["", "HAD", "LAB"]      # "" = codes that don't decode (11LAB70)
     let lab = v["systems"][2]
     check lab["codes"].i == 3 and lab["verified"].i == 2 and lab["located"].i == 1 and lab.get("tags") == nil
+  test "coverage: a code is checked when any of its tags is (auto on the first sheet, verified on a later one)":
+    let c = sample()
+    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"verified","conf":1,"bbox":[10,10,20,20],"read":["",""]}]"""))
+    c.merge()
+    var lab: JNode
+    for s in coverageView(c)["systems"].elems:
+      if s["sys"].s == "LAB": lab = s
+    check lab["codes"].i == 3 and lab["verified"].i == 3        # a:2 is auto, but b:1 checked 11LAB70AA501
   test "coverage: a place typed by a person counts":
     let c = sample()
     c.state["equipment"]["11LAB70AA504"] = j("""{"area":"pump house"}""")

@@ -814,9 +814,9 @@ function renderCoverage(){
   covStale=false;
   const v=KSys.coverageView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:LOC,equipment:STATE.equipment,photos:STATE.photos});
   const t=v.total, p=t.photos;
-  const sheetSub=s=>[plural(s.codes,'code','codes'),pct(s.verified,s.tags)+' checked',pct(s.located,s.codes)+' placed',
+  const sheetSub=s=>[plural(s.codes,'code','codes'),pct(s.verified,s.tags)+' of tags checked',pct(s.located,s.codes)+' placed',
     s.review?s.review+' to review':null,s.marked?s.marked+' marked':null].filter(Boolean).join(' · ');
-  const sysSub=s=>[plural(s.codes,'code','codes'),pct(s.verified,s.codes)+' checked',pct(s.located,s.codes)+' placed'].join(' · ');
+  const sysSub=s=>[plural(s.codes,'code','codes'),pct(s.verified,s.codes)+' of codes checked',pct(s.located,s.codes)+' placed'].join(' · ');
   const row=(title,sub,p,onclick,label)=>h('button',{type:'button',class:'covrow',onclick,title:label},covBar(p),
     h('span',{class:'t'},title,h('span',{class:'d'},sub),h('span',{class:'vh'},' · '+photoWords(p))));
   put($('#covBody'),
@@ -838,6 +838,8 @@ function renderCoverage(){
       :h('div',{class:'sub'},'No codes on the drawings yet.'));
 }
 function openCovered(id){
+  // a hand-marked tag can outlive its sheet: its row is counted, but there is nothing to open
+  if(!SHEETS.some(s=>s.id===id)){ toast('That sheet is no longer in the plant data'); return }
   if(innerWidth<=720) closeDrawer($('#covDrawer'),false);
   setCover(true);
   if(cur?.id!==id){ closePanel(); openSheet(id) }

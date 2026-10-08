@@ -319,9 +319,9 @@ class Phone(unittest.TestCase):
             for t in ('Codes on the drawings: 1 (on 1 tag)', 'Checked by a person: 100 % (1 of 1 tag)',
                       'Known place: 0 % (0 of 1 code)', 'To review: 0', 'Missed tags marked: 1'):
                 ui.find(t, timeout=15)
-            ui.find('Sample sheet: 1 code on 1 tag, 100 % checked by a person, 0 % with a known place, photos: 0 both, '
+            ui.find('Sample sheet: 1 code on 1 tag, 100 % of tags checked by a person, 0 % with a known place, photos: 0 both, '
                     '0 equipment only, 0 tag plate only, 1 none, 0 to review, 1 missed tags marked')
-            ui.find('LAB · Feed water piping system: 1 code, 100 % checked by a person')
+            ui.find('LAB · Feed water piping system: 1 code, 100 % of codes checked by a person')
             os.makedirs(SHOTS, exist_ok=True)
             with open(os.path.join(SHOTS, 'android-coverage.png'), 'wb') as f:
                 f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)

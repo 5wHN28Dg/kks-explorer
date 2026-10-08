@@ -67,6 +67,15 @@ private fun flatten(v: JSONObject, searching: Boolean, toggled: Map<String, Bool
     return out
 }
 
+/** the codes the screen shows: all of the view's, or only one system's (or only the undecoded ones, `only` = "") */
+internal fun shownCount(v: JSONObject, only: String?): Int {
+    if (only == null) return v.optInt("total")
+    if (only == "") return v.optJSONArray("other")?.length() ?: 0
+    var n = 0
+    for (b in v.optJSONArray("blocks").objects()) for (y in b.optJSONArray("systems").objects()) if (y.str("sys") == only) n += y.optInt("count")
+    return n
+}
+
 /** every code on the drawings, by block → system → subsystem → component kind (core systemsView); a code opens its
  *  tag the way a search result does */
 @Composable
@@ -89,7 +98,7 @@ fun SystemsScreen(ui: Ui, sys: String? = null, onClose: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onClose, modifier = Modifier.semantics { contentDescription = "Close" }) { Icon(Glyphs.BACK, contentDescription = null) }
                     Text("Equipment by system", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                    view?.let { val n = it.optInt("total"); Dim("$n code" + if (n == 1) "" else "s"); Spacer(Modifier.width(12.dp)) }
+                    view?.let { val n = shownCount(it, only); Dim("$n code" + if (n == 1) "" else "s"); Spacer(Modifier.width(12.dp)) }
                 }
                 only?.let { o ->
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -98,7 +107,7 @@ fun SystemsScreen(ui: Ui, sys: String? = null, onClose: () -> Unit) {
                         TextButton(onClick = { only = null; toggled.clear() }) { Text("Show all systems") }
                     }
                 }
-                OutlinedTextField(query, { if (it.trim() != q) toggled.clear(); query = it }, placeholder = { Text("Filter: code, system, kind or description") }, singleLine = true,
+                OutlinedTextField(query, { if (it.trim() != q) { toggled.clear(); if (it.isNotBlank()) only = null }; query = it }, placeholder = { Text("Filter: code, system, kind or description") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).semantics { contentDescription = "Filter equipment by system" })
                 if (view == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 else if (rows.isEmpty()) Dim("  " + if (q.isEmpty()) "No codes on the drawings yet." else "Nothing matches “$q”.")

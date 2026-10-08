@@ -371,7 +371,7 @@ class Gnome(unittest.TestCase):
         for title, value in (('Readings to review', '0'), ('Missed tags marked', '1')):
             item = atspi.find(a, 'list item', name=title)
             self.assertIn(value, [n.get_name() for n in atspi.walk(item) if n.get_role_name() == 'label'])
-        atspi.find(a, 'label', name='0 codes · – checked · – placed')               # the second sheet has no tags
+        atspi.find(a, 'label', name='0 codes · – of tags checked · – placed')               # the second sheet has no tags
         # the open page follows a sync: a place given on the server is counted without reopening it
         if not placed:
             r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',

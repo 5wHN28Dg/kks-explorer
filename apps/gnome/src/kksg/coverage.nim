@@ -85,7 +85,7 @@ proc totalsRows(t: JNode): seq[(string, string, string)] =
     ("t:marked", "Missed tags marked", $n(t, "marked"))]
 
 proc sheetSub(sh: JNode): string =
-  result = plural(n(sh, "codes"), "code", "codes") & " · " & pct(n(sh, "verified"), n(sh, "tags")) & " checked · " &
+  result = plural(n(sh, "codes"), "code", "codes") & " · " & pct(n(sh, "verified"), n(sh, "tags")) & " of tags checked · " &
            pct(n(sh, "located"), n(sh, "codes")) & " placed"
   if n(sh, "review") > 0: result.add " · " & $n(sh, "review") & " to review"
   if n(sh, "marked") > 0: result.add " · " & $n(sh, "marked") & " marked"
@@ -96,7 +96,7 @@ proc sysTitle(sy: JNode): string =
   if code.len == 0: "Codes that don't decode" else: code & (if sn.len > 0: " · " & sn else: "")
 
 proc sysSub(sy: JNode): string =
-  plural(n(sy, "codes"), "code", "codes") & " · " & pct(n(sy, "verified"), n(sy, "codes")) & " checked · " &
+  plural(n(sy, "codes"), "code", "codes") & " · " & pct(n(sy, "verified"), n(sy, "codes")) & " of codes checked · " &
     pct(n(sy, "located"), n(sy, "codes")) & " placed"
 
 proc shapeOf(v: JNode): string =

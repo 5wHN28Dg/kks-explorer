@@ -158,9 +158,12 @@ proc follow*(w: Win, area: W, rebuild: proc (), update: proc (): bool = nil): Fo
   let f = Follower(area: g_object_ref(area), rebuild: rebuild, update: update)
   w.followers.add f
   proc catchUp() =
-    if f.stale and gtk_widget_get_mapped(f.area) != 0 and not focusInside(f.area):
-      f.stale = false
-      f.rebuild()
+    if f.stale and gtk_widget_get_mapped(f.area) != 0:
+      if f.update != nil and f.update():      # in place: safe even under the focus
+        f.stale = false
+      elif not focusInside(f.area):
+        f.stale = false
+        f.rebuild()
   let fc = gtk_event_controller_focus_new()
   fc.on("leave", proc () = idle(catchUp))       # after the focus has moved on
   gtk_widget_add_controller(area, fc)
@@ -174,9 +177,10 @@ proc refreshFollowers*(w: Win) =
       g_object_unref(f.area)
       continue
     keep.add f
-    if f.update != nil and f.update():          # changed in place: nothing under the focus is replaced
+    if gtk_widget_get_mapped(f.area) == 0: f.stale = true     # hidden: no work now, brought up to date when shown
+    elif f.update != nil and f.update():        # changed in place: nothing under the focus is replaced
       f.stale = false
-    elif gtk_widget_get_mapped(f.area) == 0 or focusInside(f.area): f.stale = true
+    elif focusInside(f.area): f.stale = true
     else:
       f.stale = false
       f.rebuild()

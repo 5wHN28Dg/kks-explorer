@@ -131,6 +131,8 @@ const KSys = (() => {
     for (const s of sheets || []) bySheet.set(s.id, blank());
     const all = blank();
     const checked = t => t.status === 'verified' || t.status === 'confirmed';
+    // a code is checked when a person checked any of its tags (as the core: auto on one sheet, verified on another)
+    const checkedCodes = new Set(tags.filter(t => t.kks && checked(t)).map(t => t.kks + (t.suffix || '')));
     for (const t of tags) {
       if (!bySheet.has(t.sheet)) bySheet.set(t.sheet, blank());
       const c = bySheet.get(t.sheet);
@@ -151,7 +153,7 @@ const KSys = (() => {
         if (!s) bySys.set(sys, s = {codes: 0, verified: 0, located: 0, photos: pcs()});
         s.codes++; s.photos[p]++;
         if (here) s.located++;
-        if (checked(t)) s.verified++;
+        if (checkedCodes.has(k)) s.verified++;
       }
     }
     const sheetName = new Map((sheets || []).map(s => [s.id, typeof s.name === 'string' ? s.name : '']));

@@ -57,10 +57,10 @@ fun CoverageScreen(onSheet: (String) -> Unit, onSystem: (String) -> Unit, onClos
                     items(v.optJSONArray("sheets").objects(), key = { "s:" + it.str("id") }, contentType = { "row" }) { s ->
                         val codes = s.optInt("codes"); val tags = s.optInt("tags")
                         CoverRow(title = s.str("name"),
-                            line = "${plural(codes, "code")} · ${pct(s.optInt("verified"), tags)} checked · ${pct(s.optInt("located"), codes)} placed" +
+                            line = "${plural(codes, "code")} · ${pct(s.optInt("verified"), tags)} of tags checked · ${pct(s.optInt("located"), codes)} placed" +
                                 (if (s.optInt("review") > 0) " · ${s.optInt("review")} to review" else "") +
                                 (if (s.optInt("marked") > 0) " · ${s.optInt("marked")} marked" else ""),
-                            words = "${s.str("name")}: ${plural(codes, "code")} on ${plural(tags, "tag")}${pctW(s.optInt("verified"), tags, "checked by a person")}" +
+                            words = "${s.str("name")}: ${plural(codes, "code")} on ${plural(tags, "tag")}${pctW(s.optInt("verified"), tags, "of tags checked by a person")}" +
                                 "${pctW(s.optInt("located"), codes, "with a known place")}, ${photoWords(s.optJSONObject("photos"))}, " +
                                 "${s.optInt("review")} to review, ${s.optInt("marked")} missed tags marked",
                             photos = s.optJSONObject("photos"), action = "Show the sheet with photo colours") { onSheet(s.str("id")) }
@@ -70,8 +70,8 @@ fun CoverageScreen(onSheet: (String) -> Unit, onSystem: (String) -> Unit, onClos
                         val codes = y.optInt("codes")
                         val title = if (y.str("sys").isEmpty()) "Codes that don't decode" else listOf(y.str("sys"), y.str("sys_name")).filter { it.isNotEmpty() }.joinToString(" · ")
                         CoverRow(title = title,
-                            line = "${plural(codes, "code")} · ${pct(y.optInt("verified"), codes)} checked · ${pct(y.optInt("located"), codes)} placed",
-                            words = "$title: ${plural(codes, "code")}${pctW(y.optInt("verified"), codes, "checked by a person")}" +
+                            line = "${plural(codes, "code")} · ${pct(y.optInt("verified"), codes)} of codes checked · ${pct(y.optInt("located"), codes)} placed",
+                            words = "$title: ${plural(codes, "code")}${pctW(y.optInt("verified"), codes, "of codes checked by a person")}" +
                                 "${pctW(y.optInt("located"), codes, "with a known place")}, ${photoWords(y.optJSONObject("photos"))}",
                             photos = y.optJSONObject("photos"), action = "List the system's equipment") { onSystem(y.str("sys")) }
                     }
