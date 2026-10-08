@@ -109,6 +109,26 @@ const WM_KKS_LATER* = WM_APP + 1
 var laterWindow*: HWND          ## the main window, which runs the queue on WM_KKS_LATER
 var laterQueue: seq[proc ()]
 
+var timers = initTable[uint, proc ()]()
+
+proc timerProc(h: HWND, m: UINT, id: uint, t: DWORD) {.stdcall.} =
+  KillTimer(nil, id)
+  if id in timers:
+    let f = timers[id]
+    timers.del id
+    try: f()
+    except CatchableError as e: report(e)
+
+proc afterMs*(ms: int, f: proc ()): uint =
+  ## run f once, ms from now, on the UI thread (a thread timer); -> its id for cancel
+  result = SetTimer(nil, 0, UINT(ms), cast[pointer](timerProc))
+  if result != 0: timers[result] = f
+
+proc cancel*(id: uint) =
+  if id != 0 and id in timers:
+    KillTimer(nil, id)
+    timers.del id
+
 proc later*(f: proc ()) =
   laterQueue.add f
   PostMessageW(laterWindow, WM_KKS_LATER, 0, 0)

@@ -34,14 +34,15 @@ def put(*files):
 MSIX, MSIX_CER = os.environ.get('KKS_WIN_MSIX'), os.environ.get('KKS_WIN_MSIX_CER')
 
 
-def ui(name, lines, keep=True):
-    """run uiadrive with these script lines in the desktop session; -> (passed, log)"""
+def ui(name, lines, keep=True, sync_every=0):
+    """run uiadrive with these script lines in the desktop session; -> (passed, log). sync_every (ms): a fresh app's
+    automatic sync rounds (KKS_SYNC_EVERY)"""
     path = os.path.join(tempfile.gettempdir(), name)
     with open(path, 'w') as f: f.write('\n'.join(lines) + '\n')
     put(path)
     vm('Remove-Item C:\\kks\\uia.log -ErrorAction SilentlyContinue')
-    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\run.ps1 -Script %s%s%s' % (name, ' -Keep' if keep else '',
-                                                                                      ' -Msix' if MSIX else '')
+    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\run.ps1 -Script %s%s%s%s' % (
+        name, ' -Keep' if keep else '', ' -Msix' if MSIX else '', ' -SyncEvery %d' % sync_every if sync_every else '')
     b64 = base64.b64encode(args.encode()).decode()
     vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kksuia' % b64)
     for _ in range(120):
@@ -145,8 +146,8 @@ class Windows(unittest.TestCase):
             time.sleep(0.5)
         self.fail(what)
 
-    def check(self, name, lines, keep=True):
-        ok, log = ui(name, lines, keep)
+    def check(self, name, lines, keep=True, sync_every=0):
+        ok, log = ui(name, lines, keep, sync_every)
         self.assertTrue(ok, log)
 
     def test_scan_camera(self):
@@ -192,6 +193,29 @@ class Windows(unittest.TestCase):
         for d in self.boss.req('GET', '/api/devices')['all']:
             if d['username'] == 'boss' and d['label'].lower() == host and not d['revoked']:
                 self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+
+    def test_systems_follows_sync(self):
+        """Equipment by system follows a sync without a search, but never under the focus. Sync rounds every 3 s, in
+        an app of its own: in the main flow such fast rounds rebuild the Manage pages under its clicks."""
+        self.check('sysjoin.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
+                                   'set\tUsername\tboss', 'set\tPassword\ta long password', 'click\tJoin',
+                                   'wait\t~Sample sheet\t60'], keep=False, sync_every=3000)
+        self.check('systems0.uia', ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
+                                    'wait\t1 code on the drawings\t20'])
+        # a code approved on the server appears without a search
+        def add(code, bb):
+            r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb,
+                                                      'kks': code, 'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        add('11PAB10AP001', [600, 700, 720, 760])
+        self.check('systems1.uia', ['wait\t2 codes on the drawings\t40', 'wait\t~PAB (1)\t10', 'focus\t~PAB (1)'])
+        # but never under the focus: with the focus in the tree a sync only marks it stale; it is rebuilt once the
+        # focus leaves the tree (here: to the search field)
+        add('11PAB10AP002', [600, 800, 720, 860])
+        time.sleep(10)          # three sync rounds
+        self.check('systems2.uia', ['wait\t2 codes on the drawings\t1', 'focus\tSearch codes, systems, descriptions',
+                                    'wait\t3 codes on the drawings\t15'])
+        self.check('systems3.uia', ['keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
 
     def test_flow(self):
         # join through the server (PROTOCOL-v2 §16 enroll over Schannel)
