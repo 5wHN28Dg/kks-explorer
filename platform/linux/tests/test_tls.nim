@@ -77,6 +77,8 @@ suite "TLS through buffers, pinned device keys":
         discard c2.handshake()
         wire(c2, s2)
       check not s2.handshaken
+      c2.close()
+      s2.close()
       ia.free(); ib.free(); ic.free()
 
   test "a whole sync runs over it":

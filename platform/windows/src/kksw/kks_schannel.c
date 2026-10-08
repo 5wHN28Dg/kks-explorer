@@ -49,9 +49,13 @@ static CRYPTO_SETTINGS weak[] = {
     { TlsParametersCngAlgUsageKeyExchange, USTR(BCRYPT_RSA_ALGORITHM), 0, NULL, 0, 0 },
     { TlsParametersCngAlgUsageKeyExchange, USTR(BCRYPT_DH_ALGORITHM), 0, NULL, 0, 0 },
 };
-/* tests only (kks_tls_test_mode): a client that offers AES-CBC suites alone, to check that the other side refuses */
+/* tests only (kks_tls_test_mode): a client that offers ECDHE with AES-CBC alone (GCM, 3DES, RSA and DH key exchange
+ * off), to check that the other side refuses it */
 static CRYPTO_SETTINGS cbc_only[] = {
     { TlsParametersCngAlgUsageCipher, USTR(BCRYPT_AES_ALGORITHM), 1, mode_gcm, 0, 0 },
+    { TlsParametersCngAlgUsageCipher, USTR(BCRYPT_3DES_ALGORITHM), 0, NULL, 0, 0 },
+    { TlsParametersCngAlgUsageKeyExchange, USTR(BCRYPT_RSA_ALGORITHM), 0, NULL, 0, 0 },
+    { TlsParametersCngAlgUsageKeyExchange, USTR(BCRYPT_DH_ALGORITHM), 0, NULL, 0, 0 },
 };
 static int test_mode;   /* 0 normal; 1: TLS 1.2 only; 2: as 1, and clients offer AES-CBC alone */
 void kks_tls_test_mode(int m) { test_mode = m; }   /* applies to identities made afterwards */
@@ -60,7 +64,7 @@ static void tls_params(TLS_PARAMETERS *tp, DWORD protocols, int client) {
     memset(tp, 0, sizeof *tp);
     if (test_mode) protocols &= SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_2_SERVER;
     tp->grbitDisabledProtocols = (DWORD)~protocols;
-    if (test_mode == 2 && client) { tp->cDisabledCrypto = 1; tp->pDisabledCrypto = cbc_only; }
+    if (test_mode == 2 && client) { tp->cDisabledCrypto = sizeof cbc_only / sizeof cbc_only[0]; tp->pDisabledCrypto = cbc_only; }
     else { tp->cDisabledCrypto = sizeof weak / sizeof weak[0]; tp->pDisabledCrypto = weak; }
 }
 
@@ -407,7 +411,6 @@ void kks_tls_shutdown(kks_tls *c) {
     if (o.pvBuffer) { put(&c->out, o.pvBuffer, o.cbBuffer); FreeContextBuffer(o.pvBuffer); }
 }
 
-/* the negotiated protocol: 0x3 = TLS 1.2, 0x4 = TLS 1.3, 0 = unknown (SECPKG_ATTR_CONNECTION_INFO) */
 /* the negotiated cipher suite's name, e.g. TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 (tests, the status page); "" before
  * the handshake */
 void kks_tls_cipher(kks_tls *c, char *out, size_t n) {
@@ -419,6 +422,7 @@ void kks_tls_cipher(kks_tls *c, char *out, size_t n) {
     WideCharToMultiByte(CP_UTF8, 0, ci.szCipherSuite, -1, out, (int)n, NULL, NULL);
 }
 
+/* the negotiated protocol: 0x3 = TLS 1.2, 0x4 = TLS 1.3, 0 = unknown (SECPKG_ATTR_CONNECTION_INFO) */
 int kks_tls_version(kks_tls *c) {
     SecPkgContext_ConnectionInfo ci;
     if (!c->done || QueryContextAttributesW(&c->ctx, SECPKG_ATTR_CONNECTION_INFO, &ci) != SEC_E_OK) return 0;
