@@ -135,8 +135,42 @@ class Drawings(Base):
         job = self.wait(boss)
         self.assertEqual(job['state'], 'failed')
         self.assertEqual(open(os.path.join(self.dir, 'plant-data', 'sheets.json')).read(), before)
+        # a name that looks like an option is a name, not an importer option (issue #38)
+        boss.req('POST', '/api/sheets/import?id=four&name=--replace', raw=pdf, headers={'Content-Type': 'application/pdf'})
+        job = self.wait(boss)
+        self.assertEqual((job['state'], job['result'] and job['result']['name']), ('done', '--replace'), job['log'])
         # managers only
         self.assertEqual(Client(self.base).req('GET', '/api/sheets')[0], 401)
+
+
+FAKE_DIR = tempfile.mkdtemp(prefix='kks-fake-importer-')
+FAKE_IMPORTER = os.path.join(FAKE_DIR, 'kks-import')
+with open(FAKE_IMPORTER, 'w') as f:   # records its limits and arguments, then hangs like a PDF that never finishes
+    f.write('#!/bin/sh\nulimit -v > "$0.limits"; ulimit -c >> "$0.limits"\n'
+            'for a in "$@"; do printf "%s\\n" "$a"; done > "$0.args"\nexec sleep 60\n')
+os.chmod(FAKE_IMPORTER, 0o755)
+
+
+class ImportLimits(Base):
+    """issue #34: the importer runs with an address-space limit, no core dumps, and is stopped at a deadline"""
+    extra = {'importer': FAKE_IMPORTER, 'import_timeout_s': 2, 'import_memory_mb': 700}
+
+    def test_limits_and_deadline(self):
+        boss = self.manager()
+        st, r, _ = boss.req('POST', '/api/sheets/import?id=one&name=-x%20y', raw=b'%PDF-1.4 x', headers={'Content-Type': 'application/pdf'})
+        self.assertEqual(st, 200, r)
+        t0 = time.time()
+        while time.time() - t0 < 20:
+            job = boss.req('GET', '/api/sheets/job')[1]['job']
+            if job['state'] != 'running':
+                break
+            time.sleep(0.2)
+        self.assertEqual(job['state'], 'failed', job)
+        self.assertLess(time.time() - t0, 10)
+        self.assertTrue(any('stopped after 2 s' in l for l in job['log']), job['log'])
+        self.assertEqual(open(FAKE_IMPORTER + '.limits').read().split(), [str(700 * 1024), '0'])
+        args = open(FAKE_IMPORTER + '.args').read().splitlines()
+        self.assertEqual(args[-4:-1], ['--', os.path.join(self.dir, 'backups', 'uploads', 'one.pdf'), '-x y'])  # issue #38
 
 
 class Cli(Base):

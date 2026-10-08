@@ -61,6 +61,11 @@ RestartSec=5
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
+# issue #34: the server and the drawing importer it starts (which also has its own address-space limit and timeout,
+# import_memory_mb / import_timeout_s) together; a large sheet's import peaks near 1.8 GB. ProtectSystem/ProtectHome
+# are not set: a user unit can't apply them without user namespaces, and here they were silently ignored.
+MemoryMax=8G
+LimitCORE=0
 
 [Install]
 WantedBy=default.target
