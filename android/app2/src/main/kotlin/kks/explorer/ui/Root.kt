@@ -154,6 +154,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     var drawer by remember { mutableStateOf(false) }
     var floorMenu by remember { mutableStateOf(false) }
     var notesOpen by remember { mutableStateOf(false) }
+    var systemsOpen by remember { mutableStateOf(false) }
     var view by remember { mutableStateOf<SheetView?>(null) }
     val current = list.firstOrNull { it.id == ui.sheet }
     val boxes = remember(ui.sheet, rev) { if (current != null) tagBoxes(current.id, current.scale) else emptyList() }
@@ -205,6 +206,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             Box {
                 IconButton(onClick = { floorMenu = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
                 DropdownMenu(floorMenu, { floorMenu = false }) {
+                    DropdownMenuItem(text = { Text("Equipment by system") }, onClick = { systemsOpen = true; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text("Colour tags by photos" + if (ui.coverage) " ✓" else "") },
                         onClick = { ui.coverage = !ui.coverage; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
@@ -222,6 +224,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 }
             }
         })
+        if (systemsOpen) SystemsScreen(ui) { systemsOpen = false }
         if (notesOpen && current != null) AlertDialog(onDismissRequest = { notesOpen = false }, title = { Text("Notes on ${current.name}") },
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { current.notes.forEach { Text(it) } } },
             confirmButton = { TextButton(onClick = { notesOpen = false }) { Text("Close") } })

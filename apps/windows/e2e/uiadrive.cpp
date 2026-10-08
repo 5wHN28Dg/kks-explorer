@@ -84,13 +84,15 @@ static std::string type_name(CONTROLTYPEID t) {
     case UIA_WindowControlTypeId: return "Window"; case UIA_CheckBoxControlTypeId: return "CheckBox";
     case UIA_ImageControlTypeId: return "Image"; case UIA_ScrollBarControlTypeId: return "ScrollBar";
     case UIA_TitleBarControlTypeId: return "TitleBar"; case UIA_DocumentControlTypeId: return "Document";
+    case UIA_TreeControlTypeId: return "Tree"; case UIA_TreeItemControlTypeId: return "TreeItem";
     default: return "Type" + std::to_string(t);
     }
 }
 
 static DWORD pid_of(const std::wstring &exe);
 
-static IUIAutomationElement *find(DWORD &pid, const std::string &spec, bool dump = false, CONTROLTYPEID only = 0) {
+// only/only2: the control types that may match (0 = any); select and enter take list and tree items
+static IUIAutomationElement *find(DWORD &pid, const std::string &spec, bool dump = false, CONTROLTYPEID only = 0, CONTROLTYPEID only2 = 0) {
     { auto rs = roots(pid); if (rs.empty()) { DWORD np = pid_of(exeName); if (np) pid = np; } for (auto *r : rs) r->Release(); }
     bool contains = !spec.empty() && spec[0] == '~';
     std::wstring want = wide(contains ? spec.substr(1) : spec);
@@ -108,7 +110,7 @@ static IUIAutomationElement *find(DWORD &pid, const std::string &spec, bool dump
                 if (dump) { CONTROLTYPEID t = 0; e->get_CurrentControlType(&t); say("  " + type_name(t) + " '" + utf8(nm.c_str()) + "'"); }
                 CONTROLTYPEID ct = 0;
                 if (only) e->get_CurrentControlType(&ct);
-                if (!dump && (!only || ct == only) && ((contains && nm.find(want) != std::wstring::npos) || (!contains && nm == want))) { hit = e; hit->AddRef(); }
+                if (!dump && (!only || ct == only || (only2 && ct == only2)) && ((contains && nm.find(want) != std::wstring::npos) || (!contains && nm == want))) { hit = e; hit->AddRef(); }
                 if (name) SysFreeString(name);
                 e->Release();
             }
@@ -120,9 +122,9 @@ static IUIAutomationElement *find(DWORD &pid, const std::string &spec, bool dump
     return hit;
 }
 
-static IUIAutomationElement *wait_for(DWORD &pid, const std::string &spec, int ms = 15000, CONTROLTYPEID only = 0) {
+static IUIAutomationElement *wait_for(DWORD &pid, const std::string &spec, int ms = 15000, CONTROLTYPEID only = 0, CONTROLTYPEID only2 = 0) {
     for (int t = 0; t < ms; t += 300) {
-        if (auto *e = find(pid, spec, false, only)) return e;
+        if (auto *e = find(pid, spec, false, only, only2)) return e;
         Sleep(300);
     }
     return nullptr;
@@ -164,7 +166,8 @@ int wmain(int argc, wchar_t **argv) {
         int timeout = (cmd == "wait" && f.size() > 2) ? std::stoi(f[2]) * 1000 : 15000;
         CONTROLTYPEID only = (cmd == "set" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
                              (cmd == "enter" || cmd == "select") ? UIA_ListItemControlTypeId : 0;
-        IUIAutomationElement *e = wait_for(pid, arg, timeout, only);
+        CONTROLTYPEID only2 = (cmd == "enter" || cmd == "select") ? UIA_TreeItemControlTypeId : 0;
+        IUIAutomationElement *e = wait_for(pid, arg, timeout, only, only2);
         if (!e) { say("ERROR: not found: " + arg + " (line " + std::to_string(lineNo) + ")"); find(pid, "", true); return 1; }
         if (cmd == "value") {
             std::wstring want = wide(f.size() > 2 ? f[2] : "");
@@ -253,6 +256,9 @@ int wmain(int argc, wchar_t **argv) {
                 say("ERROR: not selectable: " + arg); return 1;
             }
             sp->Select(); sp->Release();
+        } else if (cmd == "focus") {
+            // the keyboard focus to this element (what Tab or a screen reader's navigation does)
+            if (FAILED(e->SetFocus())) { say("ERROR: can't focus " + arg); return 1; }
         } else if (cmd == "enter") {
             // what a keyboard (or screen reader) user does: the window in front, the item focused and selected, Enter
             UIA_HWND hw = 0;

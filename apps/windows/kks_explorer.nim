@@ -110,6 +110,7 @@ proc refresh() =
     let (ok, t) = w.m.tagById(w.selected)
     if ok and GetParent(GetFocus()) != w.panel.hwnd: w.buildPanel(t)
   w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
+  w.refreshFollowers()        # open windows that show the plant's data (Equipment by system), never under the focus
 
 proc setTab(t: string) =
   w.tab = t
@@ -174,6 +175,8 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
         guard: refresh()
       elif w.v != nil and setupP == nil:
         w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
+      if w.v != nil and setupP == nil:
+        guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
     return 0
   of WM_KKS_LATER:
     runLater()
