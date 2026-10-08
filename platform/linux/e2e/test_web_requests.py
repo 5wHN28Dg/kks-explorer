@@ -66,7 +66,14 @@ class WebRequests(unittest.TestCase):
         cls.tom = cls.account('tom', TOM)
         # a JPEG XL photo, made by the browser as the pages do (the server stores nothing else)
         with sync_playwright() as p:
-            b = p.chromium.launch()
+            # whichever engine is installed (CI installs one per job)
+            for eng in (p.chromium, p.firefox, p.webkit):
+                try:
+                    b = eng.launch(); break
+                except Exception:
+                    continue
+            else:
+                raise RuntimeError('no Playwright browser installed')
             ctx = b.new_context()
             ctx.request.post(cls.base + '/api/login', data={'username': 'boss', 'password': PW}, headers={'Origin': cls.base})
             pg = ctx.new_page()
