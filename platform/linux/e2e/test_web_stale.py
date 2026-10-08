@@ -52,7 +52,7 @@ class Stale(unittest.TestCase):
         cls.setup = None
         for _ in range(50):
             line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m: cls.setup = m[1]
             if 'server on' in line: break
         cls.base = 'http://127.0.0.1:%d' % cls.port
@@ -91,7 +91,7 @@ class Stale(unittest.TestCase):
                     return rs.every(r => { const w = r.active || r.waiting || r.installing;
                                            return !w || new URL(w.scriptURL).pathname === '/sw.js' });
                 }""")
-                until(page, "async () => (await caches.keys()).every(k => k === 'kks-shell-v10' || k === 'kks-data-v2')")
+                until(page, "async () => (await caches.keys()).every(k => k === 'kks-shell-v11' || k === 'kks-data-v2')")
             browser.close()
             return sw
 
@@ -131,7 +131,7 @@ class Upgrade(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = proc.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m: setup = m[1]
             if 'server on' in line: break
         time.sleep(0.3)

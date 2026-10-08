@@ -4,7 +4,9 @@
 import std/[unittest, asyncdispatch, os, osproc, strutils, sets, tables]
 import kks/[json, util, crypto, proto, node, sync, plant]
 import plat
-import kksl/[net, internet, udp]
+import kksl/[net, internet, udp, ws]
+import kks/extras
+import std/times
 
 let P = testProvider()
 let repo = currentSourcePath().parentDir / ".." / ".." / ".."
@@ -109,6 +111,44 @@ suite "internet sync through the relay":
   test "an absent device is reported":
     expect NetError:
       discard waitFor ia.syncPeer(P.peerId(P.p256Generate()))
+
+  test "a replayed hello doesn't knock the device off the relay (issue #44)":
+    let kX = P.p256Generate()
+    let room = relayRoom(P, a.root)
+    let now = int64(epochTime())
+    proc first(w: Ws): JNode =
+      let f = w.recv()
+      check waitFor(withTimeout(f, 5000))
+      parseStrict(f.read().data)
+    let h = toText(relayHello(P, kX, room, now))
+    let w1 = waitFor wsConnect(url & "/v1/room/" & room)
+    waitFor w1.sendText(h)
+    check w1.first()["t"].s == "welcome"
+    # the same signature with s -> n - s (still valid) and spelled with a different last base64 character's spare bits
+    let hj = parseStrict(h)
+    var sig = unb64u(hj["sig"].s)
+    const n = [0xff'u8, 0xff, 0xff, 0xff, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+               0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63, 0x25, 0x51]
+    var borrow = 0
+    for i in countdown(31, 0):
+      var d = int(n[i]) - int(sig[32 + i]) - borrow
+      borrow = (if d < 0: 1 else: 0)
+      sig[32 + i] = byte((d + 256) mod 256)
+    let flipped = hj.copy
+    flipped["sig"] = newStr(b64u(sig))
+    for replay in [h, toText(flipped), toText(relayHello(P, kX, room, now - 10))]:   # again; malleated; older
+      let w2 = waitFor wsConnect(url & "/v1/room/" & room)
+      waitFor w2.sendText(replay)
+      let m = w2.first()
+      check m["t"].s == "error" and m["why"].s == "replayed hello"
+      w2.close()
+    waitFor w1.sendText("""{"t":"ping"}""")
+    check w1.first()["t"].s == "pong"                          # still there
+    let w3 = waitFor wsConnect(url & "/v1/room/" & room)         # a fresh hello replaces it, as before
+    waitFor w3.sendText(toText(relayHello(P, kX, room, now)))
+    check w3.first()["t"].s == "welcome"
+    w1.close()
+    w3.close()
 
   test "leaving is seen":
     ib.stop()

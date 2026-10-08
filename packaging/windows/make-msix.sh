@@ -8,8 +8,8 @@
 # CERT.pfx: the signing certificate with its key; its password in $KKS_MSIX_PASS (or empty). Its subject is the
 # package's publisher. The real one lives in ~/.config/kks-explorer/signing (never in the repo); a test one:
 #   packaging/windows/make-msix.sh --test-cert DIR
-# The VM: OpenSSH with ~/.ssh/kks_vm, user kks (apps/windows/e2e/vm). Needs osslsigncode (Ubuntu package; unpacked
-# into ~/.local/kksdev/root when there is no root access) and python3 with Pillow (the logos).
+# The VM: OpenSSH with ~/.ssh/kks_vm, user kks (apps/windows/e2e/vm). Needs python3 with Pillow (the logos);
+# osslsigncode is built from pinned source by build-osslsigncode.sh (run here when missing; KKS_OSSLSIGNCODE overrides).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
@@ -18,7 +18,7 @@ SDKBT_VERSION=10.0.28000.2705
 SDKBT_SHA256=8bfdfb6ca2633f531cf80b5fa22512ba61a394d7988f0970db83baadc67929ed
 NAME="${KKS_MSIX_NAME:-Walkdown}"           # the package identity: changing it makes another app
 DISPLAY_NAME="${KKS_MSIX_DISPLAY:-Walkdown}"     # Start menu and Settings → Apps (0.9.0 and 0.9.1 shipped "KKS Explorer")
-OSSL=$(command -v osslsigncode || echo "$DEV/root/usr/bin/osslsigncode")
+OSSL="${KKS_OSSLSIGNCODE:-$DEV/osslsigncode/bin/osslsigncode}"
 PY="${KKS_PY:-$REPO/.venv/bin/python}"
 
 if [ "${1:-}" = "--test-cert" ]; then
@@ -34,6 +34,7 @@ if [ "${1:-}" = "--test-cert" ]; then
 fi
 
 VM="$1"; PFX="$2"; OUT="$3"
+[ -n "${KKS_OSSLSIGNCODE:-}" ] || sh "$HERE/build-osslsigncode.sh" >/dev/null   # the pinned build (exits at once when present)
 SSH="-i $HOME/.ssh/kks_vm -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes"
 vm() { ssh $SSH "kks@$VM" "powershell -NoProfile -Command \"$1\""; }
 

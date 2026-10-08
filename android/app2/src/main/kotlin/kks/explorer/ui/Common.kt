@@ -56,7 +56,8 @@ fun Dim(text: String) = Text(text, style = MaterialTheme.typography.bodyMedium, 
 @Composable
 fun Confirm(title: String, text: String, yes: String, onYes: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { if (text.isNotEmpty()) Text(text) },
-        confirmButton = { TextButton(onClick = { onDismiss(); onYes() }) { Text(yes) } },
+        // act first, then close: closing may clear the state the action reads (a photo delete sent an empty id)
+        confirmButton = { TextButton(onClick = { onYes(); onDismiss() }) { Text(yes) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }
 
