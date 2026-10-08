@@ -54,3 +54,12 @@ suite "rudp (PROTOCOL-v2 §18)":
     let r = newRudp("ABCDEFGH", 0.0)
     r.feed(packet(Data, "XXXXXXXX", "\0\0\0\0hello"), 0.1)
     check r.read() == ""
+  test "out-of-order data beyond the receive window is dropped (issue #36)":
+    let r = newRudp("ABCDEFGH", 0.0)
+    for s in 1'u32 .. 5000'u32:          # seq 0 never arrives: everything else would wait in the buffer
+      r.feed(packet(Data, "ABCDEFGH", char(s shr 24) & char((s shr 16) and 255) & char((s shr 8) and 255) & char(s and 255) & "x"), 0.1)
+    check r.buffered == int(RecvWindow) - 1
+    discard r.takeOut()
+    r.feed(packet(Data, "ABCDEFGH", "\0\0\0\0y"), 0.2)     # the hole fills: the window's contents come out in order
+    check r.read() == "y" & "x".repeat(int(RecvWindow) - 1)
+    check r.buffered == 0

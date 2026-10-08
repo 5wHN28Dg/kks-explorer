@@ -6,6 +6,8 @@
 ##      included, stay exactly as they are; refused if the image size differs from the sheet's, as the boxes
 ##      would no longer line up)
 ##              [--glyphs fontlib.kgl] [--effort N] [--legend auto|hrsg|none]
+##   Options go before the positional arguments or anywhere among them; after `--` everything is positional (the
+##   server passes the sheet name, which the manager types, after it).
 ##
 ## Reads page 1 of a vector (AutoCAD-plotted) PDF and writes into DIR (default plant-data/):
 ##   sheets/<id>.pdf      the drawing as given (the source of record)
@@ -13,8 +15,8 @@
 ##   sheets/<id>.o<k>.jxl the overview pyramid (docs/PATHSTORE.md "Overview pyramid")
 ##   sheets.json, tags.json  this sheet's entry and its tags (other sheets kept)
 ## Each valve tag (component AA) gets an optional "symbol" field when its drawn symbol is found and the sheet carries
-## the HRSG legend (valves.nim; --keep-tags refreshes it and nothing else). The reading is the Python importer's, bit for bit (tests/diff_trace.nim). The last output line is
-## `RESULT {json}` for the server.
+## the HRSG legend (valves.nim; --keep-tags refreshes it and nothing else). The reading is the Python importer's,
+## bit for bit (tests/diff_trace.nim). The last output line is `RESULT {json}` for the server.
 
 import std/[os, strutils, times, parseopt, algorithm]
 import kks/[json, pathstore]
@@ -72,7 +74,14 @@ proc main() =
   var glyphs = ""
   var effort = 7
   var legend = "auto"
-  var p = initOptParser(commandLineParams(), shortNoVal = {'h'}, longNoVal = @["replace", "keep-tags", "help"])
+  # "--": everything after it is a positional argument (issue #38; parseopt's remainingArgs skips the first one)
+  var params = commandLineParams()
+  var positional: seq[string]
+  let cut = params.find("--")
+  if cut >= 0:
+    positional = params[cut + 1 .. ^1]
+    params.setLen(cut)
+  var p = initOptParser(params, shortNoVal = {'h'}, longNoVal = @["replace", "keep-tags", "help"])
   for kind, key, val in p.getopt():
     case kind
     of cmdArgument: args.add key
@@ -90,6 +99,7 @@ proc main() =
         quit 0
       else: die "Unknown option --" & key
     of cmdEnd: discard
+  args.add positional
   if args.len notin 2 .. 3: die "Usage: kks-import DRAWING.pdf \"Display name\" [SHEET_ID] [options]; --help for more."
   if rotate notin ["auto", "0", "90", "180", "270"]: die "--rotate must be auto, 0, 90, 180 or 270."
   if legend notin ["auto", "hrsg", "none"]: die "--legend must be auto, hrsg or none."

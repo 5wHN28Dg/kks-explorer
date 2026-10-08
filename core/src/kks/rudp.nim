@@ -20,6 +20,9 @@ const
   Ping* = 6'u8
   Mss* = 1150            ## payload per datagram: 1 + 8 + 4 + 1150 < 1200, under any path MTU
   HeadLen* = 9
+  RecvWindow* = 512'u32  ## out-of-order packets kept at most this far past the next expected one (issue #36): a sender
+                         ## never has more than 256 packets plus its FIN in flight, so a well-behaved peer never
+                         ## reaches it; anything further is dropped (unacknowledged), bounding the buffer to ~590 kB
 
 type
   Sent = object
@@ -129,6 +132,7 @@ proc onAck(r: Rudp, nxt, mask: uint32, now: float) =
   r.pump(now)
 
 proc onData(r: Rudp, seq: uint32, payload: string, fin: bool, now: float) =
+  if seq >= r.rnext and seq - r.rnext >= RecvWindow: return   # beyond the window: dropped, not acknowledged
   if fin: r.peerFin = int64(seq)
   if seq >= r.rnext and seq notin r.rbuf:
     r.rbuf[seq] = payload
@@ -172,6 +176,8 @@ proc write*(r: Rudp, data: string, now: float) =
   if r.finSeq >= 0: raise newException(IOError, "stream closed")
   r.queue.add data
   r.pump(now)
+
+proc buffered*(r: Rudp): int = r.rbuf.len   ## packets received out of order, waiting for a hole to fill
 
 proc queued*(r: Rudp): int = r.queue.len   ## bytes not yet packetized (back-pressure)
 

@@ -9,6 +9,8 @@
 #   handler with its answer within ResponseTimeoutMs;
 # - a malformed request line, a bad or second Content-Length, or a header name with spaces is answered and the
 #   connection closed; all headers together at most MaxHeaderBytes and MaxHeaders;
+# - lines are read by `recvHttpLine`, not asyncnet's recvLineInto, which ends a line at a bare CR: a CR must be
+#   followed by LF (RFC 9112 §2.2), and a bare CR or a NUL in the request line or a header is refused (issue #79);
 # - at most MaxConnections connections at a time, and MaxPerAddress from one address.
 # Everything else is the stdlib's code. Re-check against the stdlib at each Nim upgrade.
 #
@@ -188,6 +190,36 @@ proc within[T](a: Alarm, client: AsyncSocket, f: Future[T], deadline: float): Fu
   client.close()
   return false
 
+proc recvHttpLine(client: AsyncSocket, line: FutureVar[string], maxLength: int) {.async.} =   # kks (issue #79)
+  ## asyncnet's recvLineInto with RFC 9112 §2.2 line ends: CRLF, or a bare LF; "" once the client closed, "\c\L" for
+  ## an empty line. A CR not followed by LF stays in the line (it can't otherwise contain one) and the caller refuses
+  ## it: asyncnet ended the line there, so `X-A: a\rContent-Length: 5` was two headers here and one in a proxy.
+  template done() =
+    line.complete()
+    return
+  while true:
+    let c = await client.recv(1)
+    if c.len == 0:
+      line.mget.setLen(0)
+      done()
+    case c[0]
+    of '\L':
+      if line.mget.len == 0: line.mget.add "\c\L"
+      done()
+    of '\c':
+      if (await client.recv(1)) == "\L":
+        if line.mget.len == 0: line.mget.add "\c\L"
+      else:
+        line.mget.add '\c'
+      done()
+    else:
+      line.mget.add c[0]
+      if line.mget.len > maxLength: done()
+
+proc badLine(line: string): bool =   # kks (issue #79)
+  ## a bare CR or a NUL in a request line or header line
+  line != "\c\L" and ('\c' in line or '\0' in line)
+
 proc parseProtocol(protocol: string): tuple[orig: string, major, minor: int] =
   result = default(tuple[orig: string, major, minor: int])
   var i = protocol.skipIgnoreCase("HTTP/")
@@ -233,7 +265,7 @@ proc processRequest(
   for i in 0..1:
     lineFut.mget().setLen(0)
     lineFut.clean()
-    if not await alarm.within(client, client.recvLineInto(lineFut, maxLength = maxLine), monoNow() + IdleTimeoutMs / 1000):   # kks
+    if not await alarm.within(client, client.recvHttpLine(lineFut, maxLine), monoNow() + IdleTimeoutMs / 1000):   # kks
       return false
 
     if lineFut.mget == "":
@@ -246,6 +278,10 @@ proc processRequest(
       return false
     if lineFut.mget != "\c\L":
       break
+  if badLine(lineFut.mget):   # kks (issue #79)
+    discard await alarm.within(client, request.respondError(Http400), monoNow() + AnswerTimeoutMs / 1000)
+    client.close()
+    return false
 
   # First line - GET /path HTTP/1.1
   var i = 0
@@ -297,7 +333,7 @@ proc processRequest(
     i = 0
     lineFut.mget.setLen(0)
     lineFut.clean()
-    if not await alarm.within(client, client.recvLineInto(lineFut, maxLength = maxLine), headerDeadline):   # kks
+    if not await alarm.within(client, client.recvHttpLine(lineFut, maxLine), headerDeadline):   # kks
       client.close()
       return false
 
@@ -307,6 +343,9 @@ proc processRequest(
       discard await alarm.within(client, request.respondError(Http413), monoNow() + AnswerTimeoutMs / 1000)
       client.close(); return false
     if lineFut.mget == "\c\L": break
+    if badLine(lineFut.mget):   # kks (issue #79)
+      discard await alarm.within(client, client.sendStatus("400 Bad Request"), monoNow() + AnswerTimeoutMs / 1000)
+      client.close(); return false
     headerBytes += lineFut.mget.len                               # kks: size and count of all headers
     if headerBytes > MaxHeaderBytes or request.headers.len >= MaxHeaders:
       discard await alarm.within(client, client.sendStatus("431 Request Header Fields Too Large"), monoNow() + AnswerTimeoutMs / 1000)
