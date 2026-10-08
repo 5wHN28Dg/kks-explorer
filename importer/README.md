@@ -40,8 +40,10 @@ writes them to the sheet's `links` in sheets.json (docs/PATHSTORE.md), in both m
 
 ## Build
 
-1. MuPDF 1.28.2, the version PyMuPDF 1.28.2 bundles. Same renderer means the same glyph images. Fetch it once,
-   pinned by SHA-256:
+1. MuPDF 1.28.5. The importer was matched against PyMuPDF 1.28.2 (MuPDF 1.28.2: same renderer, same glyph images);
+   1.28.3-1.28.5 fix memory-safety bugs (#51). Checked on all 17 plant sheets (2026-10-08): the same tags and the
+   same `.kkp`, byte for byte; the overview pyramid identical on 16, on one ~300 anti-aliased pixels of 16 MP differ.
+   Fetch it once, pinned by SHA-256:
 
        sh importer/fetch_mupdf.sh          # into ~/.local/kksdev (KKS_DEV)
 

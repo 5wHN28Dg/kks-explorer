@@ -91,7 +91,7 @@ object Internet {
                 while (running) {
                     val (op, data) = w.recv()
                     if (op == WsClient.TEXT) handle(JSONObject(String(data, Charsets.UTF_8)))
-                    if (Sync.config().optString("relay_url") != url) break
+                    if (Sync.config().optString("relay_url") != url || Sync.config().optString("relay_room") != room) break
                 }
                 w.close(); pinger.interrupt()
             } catch (e: Exception) {

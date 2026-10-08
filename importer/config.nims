@@ -3,7 +3,7 @@ switch("path", thisDir() & "/src")
 switch("path", thisDir() & "/../core/src")
 switch("hints", "off")
 let dev = getEnv("KKS_DEV", getHomeDir() & ".local/kksdev")
-let mu = dev & "/src/mupdf-1.28.2-source"
+let mu = dev & "/src/mupdf-1.28.5-source"
 switch("passC", "-I" & mu & "/include")
 # Never let the C compiler fuse a multiply and an add on its own: the reader matches OpenCV and numpy bit for bit,
 # and fuses exactly where they do, with explicit fmaf (imgops.gaussian3, kks_dot.c). Left to the compiler, the same

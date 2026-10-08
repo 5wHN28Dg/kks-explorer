@@ -18,6 +18,12 @@ def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
 
+
+# A Content-Security-Policy violation becomes a page error (#8): the tests that collect page errors then fail on any
+# script, worker, picture or style the policy blocks.
+CSP_WATCH = """document.addEventListener('securitypolicyviolation', e => {
+  throw new Error('CSP violation: ' + e.violatedDirective + ' blocked ' + (e.blockedURI || 'inline')) })"""
+
 class Client:
     def __init__(self, base):
         self.base = base
@@ -46,7 +52,7 @@ class WebV2(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m: setup = m[1]
             if 'server on' in line: break
         cls.base = 'http://127.0.0.1:%d' % cls.port
@@ -74,6 +80,7 @@ class WebV2(unittest.TestCase):
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context(viewport={'width': 1200, 'height': 800})
+            ctx.add_init_script(CSP_WATCH)
             r = ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
                                  headers={'Origin': self.base})
             self.assertTrue(r.ok, r.text())
@@ -112,7 +119,7 @@ class WebV2(unittest.TestCase):
             self.assertEqual(box.get_attribute('aria-expanded'), 'true')
             self.assertEqual(box.get_attribute('aria-activedescendant'), 'res-0')
             page.keyboard.press('Enter')
-            page.wait_for_function("document.activeElement && document.activeElement.getAttribute('role') === 'heading'", timeout=15000)
+            page.wait_for_function("() => document.activeElement && document.activeElement.getAttribute('role') === 'heading'", timeout=15000)
             self.assertIn('11LAB70AA501', page.evaluate("document.activeElement.textContent"))
             self.assertEqual(page.get_by_role('button', name='Close the panel').count(), 1)
             # a course's KKS link: /?kks=CODE opens that equipment

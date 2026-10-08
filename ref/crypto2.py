@@ -36,19 +36,27 @@ def check_join_request(req):
 
 
 # ---------- §18 relay ----------
-def relay_room(root_key_str):
-    return hashlib.sha256(b'kks-relay-room-v2\n' + P.peer_id_of_key(root_key_str).encode()).hexdigest()[:32]
+def relay_room(member_key_str):
+    """the room of the plant's relay room key (decision 0050)"""
+    return hashlib.sha256(b'kks-relay-room-v3\n' + P.peer_id_of_key(member_key_str).encode()).hexdigest()[:32]
 
 
-def relay_hello(device_key, room, ts):
-    return {'t': 'hello', 'peer': P.peer_id(device_key), 'key': P.key_string(device_key), 'ts': ts,
-            'sig': P.sign(device_key, b'kks-relay-hello-v2\n' + room.encode() + b'\n' + str(ts).encode())}
+def relay_hello(device_key, member_key, room, ts):
+    peer = P.peer_id(device_key)
+    return {'t': 'hello', 'peer': peer, 'key': P.key_string(device_key), 'ts': ts,
+            'sig': P.sign(device_key, b'kks-relay-hello-v2\n' + room.encode() + b'\n' + str(ts).encode()),
+            'member': P.key_string(member_key),
+            'msig': P.sign(member_key, b'kks-relay-member-v3\n' + room.encode() + b'\n' + peer.encode() + b'\n'
+                           + str(ts).encode())}
 
 
 def check_relay_hello(h, room, now, skew=300):
     try:
         return (P.peer_id_of_key(h['key']) == h['peer'] and abs(h['ts'] - now) <= skew
-                and P.verify(h['key'], b'kks-relay-hello-v2\n' + room.encode() + b'\n' + str(h['ts']).encode(), h['sig']))
+                and isinstance(h['member'], str) and relay_room(h['member']) == room
+                and P.verify(h['key'], b'kks-relay-hello-v2\n' + room.encode() + b'\n' + str(h['ts']).encode(), h['sig'])
+                and P.verify(h['member'], b'kks-relay-member-v3\n' + room.encode() + b'\n' + h['peer'].encode() + b'\n'
+                             + str(h['ts']).encode(), h['msig']))
     except (KeyError, ValueError, TypeError):
         return False
 

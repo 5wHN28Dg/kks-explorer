@@ -4,7 +4,7 @@
 
 import std/[strutils, tables, times, sequtils, asyncdispatch]
 import kks/[json, api, node, extras, util]
-import kksl/dbstore
+import kksl/[dbstore, passphrase]
 import kks/model
 import proposals
 import appstate
@@ -332,28 +332,25 @@ proc account(w: Win, p: Page) =
     except ApiError as e: w.toast(e.msg)))
   p.title("Root key")
   p.dim("The plant's root key signs the manager role and settles stolen devices. Keep an encrypted copy offline (a USB " &
-        "stick in a drawer), protected by a passphrase only you know.")
+        "stick in a drawer). Its passphrase is made for you (80 bits, decision 0023, issue #29): write it down and keep " &
+        "it apart.")
   let has = w.a.store.getRow("keys", "root") != nil
   p.field("On this device", if has: "yes" else: "no (it is on another device of the manager)", readonly = true)
-  let pw1 = p.field("Passphrase (12 characters or more)", "", password = true)
-  let pw2 = p.field("The passphrase again", "", password = true)
   if has:
+    let shown = p.field("Passphrase of the backup just saved", "", readonly = true)
     p.buttons(("Save an encrypted backup…", proc () =
-      if pw1.text.len < 12:
-        w.toast("Use a passphrase of 12 characters or more")
-        return
-      if pw1.text != pw2.text:
-        w.toast("The two passphrases differ")
-        return
       let path = saveFile(w.hwnd, "Save the root key backup", "Root key backups|*.kksroot", "root-key.kksroot", "kksroot")
       if path.len == 0: return
       try:
+        let pass = w.a.p.newBackupPassphrase()
         let rk = toText(w.a.store.getRow("keys", "root"))
-        let sealed = w.a.p.passphraseSeal(pw1.text, rk.toBytes)
+        let sealed = w.a.p.passphraseSeal(pass, rk.toBytes)
         writeFile(path, toText(newObj(@[("kks_root_backup", newInt(2)), ("plant", newStr(w.a.plantName)),
                                         ("root", newStr(w.a.n.root)), ("sealed", sealed)])))      # the GNOME app's format
-        w.toast("Saved. Test it once with Restore on another device, then store it offline.")
+        shown.setText(pass)
+        w.toast("Saved. Write down the passphrase shown above: it is not kept anywhere. Test the backup once with Restore.")
       except CatchableError as e: w.toast(e.msg)))
+  let pw1 = p.field("Passphrase of the backup to restore", "", password = true)
   p.buttons(("Restore from a backup…", proc () =
     let path = openFile(w.hwnd, "Open a root key backup", "Root key backups|*.kksroot|All files|*.*")
     if path.len == 0: return
