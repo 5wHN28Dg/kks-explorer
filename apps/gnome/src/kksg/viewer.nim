@@ -4,7 +4,7 @@
 ## - tag hotspots on top.
 ## Input: drag to pan, wheel or pinch to zoom, click a tag, keyboard (arrows, +/−, 0 to fit).
 
-import std/[math, tables, sets, algorithm, strutils, times, typedthreads]
+import std/[math, tables, sets, algorithm, strutils, times, typedthreads, atomics]
 import kks/json
 import kksi/jxl
 import gtk, kkprender, darkcolor
@@ -41,6 +41,7 @@ type
     name*: string
     scale0: float                ## level 0's px per point
     levels: seq[W]               ## textures, nil until decoded
+    stale: seq[W]                ## the levels shown before a dark-drawings switch, until this mode's arrive
     levelData: seq[string]       ## kept: switching dark drawings decodes the levels again (a few MB per sheet)
     asked: seq[bool]
     gen: int                     ## bumps when the sheet changes (late decodes are dropped)
@@ -74,10 +75,12 @@ var
   results: Channel[DecodeDone]
   worker: Thread[void]
   workerStarted = false
+  liveGen: Atomic[int]          ## the viewer's current gen: the worker skips jobs queued for an older one
 
 proc decodeWorker() {.thread.} =
   while true:
     let j = jobs.recv()
+    if j.gen != liveGen.load: continue   # superseded (another sheet, a dark-drawings switch): don't decode it
     var d = DecodeDone(gen: j.gen, level: j.level)
     try:
       let (w, h, _, px) = decodeRgba(j.data)
@@ -157,8 +160,10 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
   ## kkp: the path store; info: the sheets.json entry; levels: the pyramid files' bytes, level 0 first
   inc v.gen
   v.dropTiles()
-  for t in v.levels:
+  liveGen.store(v.gen)
+  for t in v.levels & v.stale:
     if t != nil: g_object_unref(t)
+  v.stale = @[]
   v.name = name
   v.sheet = if kkp.len > 0: newSheet(kkp) else: nil
   if v.sheet != nil: v.sheet.setDark(v.dark)
@@ -184,18 +189,27 @@ proc pollDecodes*(v: Viewer) =
     if d.gen != v.gen or d.w == 0: continue
     if v.levels[d.level] != nil: g_object_unref(v.levels[d.level])
     v.levels[d.level] = textureFromRgb(d.pixels.toOpenArrayByte(0, d.pixels.len - 1), d.w, d.h)
+    for k in d.level ..< v.stale.len:     # the old mode's levels no sharper than this one go
+      if v.stale[k] != nil:
+        g_object_unref(v.stale[k])
+        v.stale[k] = nil
     gtk_widget_queue_draw(v.widget)
 
 proc setDark*(v: Viewer, on: bool) =
   ## dark drawings on or off, at once: cached tiles are dropped (re-rendered in the new colours) and the overview
-  ## levels decoded again (the smallest first); decodes still running in the old mode are dropped by `gen`
+  ## levels decoded again (the smallest first). Decodes queued for the old mode are skipped by the worker (`liveGen`),
+  ## and the levels shown so far stay until this mode's arrive (never the smallest level, never blank)
   if v.dark == on: return
   v.dark = on
   inc v.gen
+  liveGen.store(v.gen)
   v.dropTiles()
   if v.sheet != nil: v.sheet.setDark(on)
+  if v.stale.len != v.levels.len: v.stale = newSeq[W](v.levels.len)
   for k in 0 ..< v.levels.len:
-    if v.levels[k] != nil: g_object_unref(v.levels[k])
+    if v.levels[k] != nil:          # this mode's level replaces an older stale one; else the older one stays
+      if v.stale[k] != nil: g_object_unref(v.stale[k])
+      v.stale[k] = v.levels[k]
     v.levels[k] = nil
     v.asked[k] = false
   if v.levels.len > 0:
@@ -279,15 +293,23 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     v.asked[want] = true
     jobs.send(DecodeJob(gen: v.gen, level: want, dark: v.dark, data: v.levelData[want]))
   var best = -1
-  if v.levels.len > 0 and v.levels[want] != nil: best = want
+  var tex: W = nil
+  if v.levels.len > 0 and v.levels[want] != nil: tex = v.levels[want]
+  elif want < v.stale.len and v.stale[want] != nil: tex = v.stale[want]   # shown before a dark switch: not blurrier
   else:
     for k in 0 ..< v.levels.len:
       if v.levels[k] != nil:
-        best = k
+        tex = v.levels[k]
         break
+    if tex == nil:
+      for k in 0 ..< v.stale.len:
+        if v.stale[k] != nil:
+          tex = v.stale[k]
+          break
+  if tex != nil: best = 0
   graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
   if best >= 0:
-    gtk_snapshot_append_scaled_texture(s, v.levels[best], GSK_SCALING_FILTER_TRILINEAR, addr r)
+    gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
     if not timingReported and startedAt > 0:
       timingReported = true
       stderr.writeLine "timing: first sheet drawn " & $int((epochTime() - startedAt) * 1000) & " ms after launch"

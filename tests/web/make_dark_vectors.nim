@@ -1,5 +1,5 @@
 ## Writes tests/web/dark-vectors.json: apps/common/darkcolor.nim's darkRgb on every grey and a 0..255 grid of colours
-## (step 37), the expected values for dark.js (tests/web/test_dark.py).
+## (step 37), plus the colours the 3:1 raise applies to (step 17), the expected values for dark.js (tests/web/test_dark.py).
 ##   nim r --hints:off tests/web/make_dark_vectors.nim > tests/web/dark-vectors.json
 import std/strutils
 import ../../apps/common/darkcolor
@@ -14,4 +14,11 @@ for r in countup(0, 255, 37):
     for b in countup(0, 255, 37):
       if not (r == g and g == b): add(r, g, b)
 for c in [(255, 0, 0), (0, 0, 255), (0, 0, 128), (10, 200, 30), (255, 128, 0), (0, 160, 0), (255, 7, 255), (1, 2, 254)]: add(c[0], c[1], c[2])
+# the colours the 3:1 raise applies to (coloured, not lighter than HSL 0.6), densely: where the copies could drift
+for r in countup(0, 255, 17):
+  for g in countup(0, 255, 17):
+    for b in countup(0, 255, 17):
+      let mx = max(r, max(g, b))
+      let mn = min(r, min(g, b))
+      if mx - mn >= RaiseChroma and mx + mn <= RaiseLight: add(r, g, b)
 echo "{\"lo\": ", DarkLo, ", \"hi\": ", DarkHi, ", \"rgb\": [\n", lines.join(",\n"), "\n]}"

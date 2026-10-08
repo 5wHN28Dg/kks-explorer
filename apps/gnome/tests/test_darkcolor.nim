@@ -42,7 +42,7 @@ suite "dark drawings colour":
     check darkRgb(128, 128, 128)[0] in 125 .. 131      # mid grey stays mid grey
 
   test "pure colours keep their hue and stay saturated":
-    for (c, hue) in [((255, 0, 0), 0.0), ((0, 0, 255), 240.0), ((0, 160, 0), 120.0), ((255, 128, 0), 30.0)]:
+    for (c, hue) in [((255, 0, 0), 0.0), ((0, 160, 0), 120.0), ((255, 128, 0), 30.0)]:
       let (r, g, b) = darkRgb(c[0], c[1], c[2])
       let (h0, _, l0) = hsl(c[0], c[1], c[2])
       let (h1, s1, l1) = hsl(r, g, b)
@@ -51,6 +51,32 @@ suite "dark drawings colour":
       check s1 > (if c[1] == 0 and (c[0] == 0 or c[2] == 0): 0.8 else: 0.7)
       check abs((l1 - DarkLo / 255) / ((DarkHi - DarkLo) / 255) - (1 - l0)) < 0.01   # lightness inverted
     check darkRgb(255, 0, 0) == (DarkHi, DarkLo, DarkLo)
+
+  test "a line colour too dark on the dark sheet is raised to 3:1, its hue kept (pure blue)":
+    let bg = (DarkLo / 255, DarkLo / 255, DarkLo / 255)
+    let (r, g, b) = darkRgb(0, 0, 255)
+    check contrast((r / 255, g / 255, b / 255), bg) >= 3.0
+    check abs(hsl(r, g, b)[0] - 240.0) < 2.0 and b > r and r == g
+    check darkRgb(255, 0, 0) == (DarkHi, DarkLo, DarkLo)          # red was bright enough: unchanged
+
+  test "every line or markup colour reaches 3:1 against the dark sheet (a grid of colours, the real WCAG ratio)":
+    let bg = (DarkLo / 255, DarkLo / 255, DarkLo / 255)
+    var worst = 99.0
+    for r in countup(0, 255, 15):
+      for g in countup(0, 255, 15):
+        for b in countup(0, 255, 15):
+          let mx = max(r, max(g, b))
+          let mn = min(r, min(g, b))
+          let line = (mx - mn >= RaiseChroma and mx + mn <= RaiseLight) or (mx - mn < RaiseChroma and mx + mn <= 255)
+          if not line: continue                                   # light fills and the paper stay dark on purpose
+          let (dr, dg, db) = darkRgb(r, g, b)
+          worst = min(worst, contrast((dr / 255, dg / 255, db / 255), bg))
+    check worst >= 3.0
+
+  test "light fills and the paper are not raised":
+    check darkRgb(255, 255, 255) == (DarkLo, DarkLo, DarkLo)
+    let (r, g, b) = darkRgb(200, 200, 255)                        # a light blue fill → a dark blue fill
+    check hsl(r, g, b)[2] < 0.4
 
   test "dark colours become light with the same hue":
     let (r, g, b) = darkRgb(0, 0, 128)                 # navy → light blue

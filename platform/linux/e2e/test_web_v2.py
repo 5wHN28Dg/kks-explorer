@@ -242,8 +242,23 @@ class WebV2(unittest.TestCase):
             page.reload()
             page.wait_for_function(loaded, timeout=30000)
             self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-pressed'), 'false')
+            # dark, but the worker can't make the overview dark: the sheet still opens, fits and draws its tags, with
+            # the light level (before the fix img.src was never set and the sheet stayed blank)
+            page.get_by_role('button', name='Dark drawings').click()
+            page.evaluate("""() => { const w = sharp.worker, pm = w.postMessage.bind(w);
+              w.postMessage = m => { if (m.t === 'level') { const x = dark.wait.get(m.id); dark.wait.delete(m.id); x.rej(new Error('test: no dark level')); return } pm(m) };
+              dark.levels.clear(); dark.sheet = null; window.__opened = false; openSheet(cur.id, () => { window.__opened = true }) }""")
+            # its callback (fit, tags, a /?kks= link) runs only once the overview loads
+            page.wait_for_function("() => window.__opened === true", timeout=30000)
+            page.wait_for_function(loaded, timeout=30000)
+            self.assertTrue(page.evaluate("() => dark.warned && dark.levels.size === 0"), name + ': no light fallback')
+            # a big sheet's dark overview is at most ~4 megapixels: 6400 × 4800 asks the worker for level 2, not 0
+            asked = page.evaluate("""() => { const save = cur; let asked = null; const w = sharp.worker, pm = w.postMessage;
+              w.postMessage = m => { if (m.t === 'level') { asked = m.url; const x = dark.wait.get(m.id); dark.wait.delete(m.id); x.rej(new Error('test')); return } pm.call(w, m) };
+              cur = {...cur, id: 'big', w: 6400, h: 4800, levels: 5}; levelSrc(0).catch(() => {}); w.postMessage = pm; cur = save; return asked }""")
+            self.assertIn('big.o2.jxl', asked or '', name)
             browser.close()
-            self.assertEqual(errors, [], name)
+            self.assertEqual([e for e in errors if 'test: no dark level' not in e and 'test' != e], [], name)
 
     def test_dark_chromium(self): self.run_dark('chromium')
     def test_dark_firefox(self): self.run_dark('firefox')

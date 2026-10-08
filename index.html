@@ -51,10 +51,10 @@ main{position:relative;flex:1;min-height:0;overflow:hidden}
 /* tags coloured by their photos (the same colours on every client): both green, the equipment only amber, the tag plate
    only blue, none red */
 body.cover #layer .hs:not(.pendmark){outline:2px solid var(--pc);background:color-mix(in srgb,var(--pc) 28%,transparent)}
-.hs.p-both{--pc:#2ea043} .hs.p-equipment{--pc:#e69600} .hs.p-plate{--pc:#1e78e6} .hs.p-none{--pc:#dc2828}
+.hs.p-both,.sw.p-both{--pc:#2ea043} .hs.p-equipment,.sw.p-equipment{--pc:#e69600} .hs.p-plate,.sw.p-plate{--pc:#1e78e6} .hs.p-none,.sw.p-none{--pc:#dc2828}
 #coverlegend{display:none;position:absolute;left:8px;bottom:8px;z-index:5;background:var(--panel,#1c2730);color:inherit;padding:4px 8px;border-radius:6px;font-size:12px}
 body.cover #coverlegend{display:block}
-#coverlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px}
+#coverlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px;background:var(--pc)}
 #markbox{position:absolute;outline:2px dashed var(--accent);background:rgba(255,122,26,.18);pointer-events:none}
 #viewer.marking,#viewer.marking .hs{cursor:crosshair}
 .zoom button.on{border-color:var(--accent);color:var(--accent)}
@@ -62,7 +62,7 @@ body.cover #coverlegend{display:block}
    raised toward white (dark.js lightenForDark, 0.35) so each keeps 3:1 against the dark paper */
 body.darkdwg #viewer{background:#3d3d42;--ok:#8dbfff;--review:#f7d05c;--accent:#ffa96a}
 body.darkdwg #sheetimg{background:#121212}
-body.darkdwg .hs.p-both{--pc:#77c185} body.darkdwg .hs.p-equipment{--pc:#efbb59} body.darkdwg .hs.p-plate{--pc:#6da7ef} body.darkdwg .hs.p-none{--pc:#e87373}
+body.darkdwg :is(.hs,.sw).p-both{--pc:#77c185} body.darkdwg :is(.hs,.sw).p-equipment{--pc:#efbb59} body.darkdwg :is(.hs,.sw).p-plate{--pc:#6da7ef} body.darkdwg :is(.hs,.sw).p-none{--pc:#e87373}
 body.hide-review .hs.review{display:none}
 .zoom{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;z-index:5}
 .zoom button{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:var(--chrome2);font-size:19px;cursor:pointer}
@@ -143,7 +143,7 @@ dt{color:var(--muted)} dd{margin:0}
 <main>
   <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"></div><canvas id="sharp"></canvas><div id="stage2"><div id="layer"></div></div></div>
   <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button><button id="zdark" title="Dark drawings" aria-label="Dark drawings" aria-pressed="false">◐</button></div>
-  <div id="coverlegend" role="note">Photos:<i style="background:#2ea043"></i>both<i style="background:#e69600"></i>equipment only<i style="background:#1e78e6"></i>tag plate only<i style="background:#dc2828"></i>none</div>
+  <div id="coverlegend" role="note">Photos:<i class="sw p-both"></i>both<i class="sw p-equipment"></i>equipment only<i class="sw p-plate"></i>tag plate only<i class="sw p-none"></i>none</div>
   <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
   <div id="toast"></div>
   <aside class="drawer" id="procDrawer"><div class="head"><h2>Operation manual procedures</h2><button class="x" data-close="procDrawer">×</button></div>
@@ -373,20 +373,33 @@ function upgradeLevel(){
 // watched); in dark drawings the tile worker decodes it with our libjxl and transforms every pixel (dark.js), off this
 // thread. Dark levels are kept per sheet (blob: URLs, freed when another sheet opens).
 function levelSrc(k){
-  const url=levelUrl(k);
   if(dark.on) sharp.worker??=startTiles();
-  if(!dark.on||!sharp.worker) return K.jxl.native().then(n=>n?url:K.jxl.url(url));
-  if(dark.sheet!==cur.id){ for(const p of dark.levels.values()) p.then(u=>URL.revokeObjectURL(u),()=>{}); dark.levels.clear(); dark.sheet=cur.id }
-  if(!dark.levels.has(url)) dark.levels.set(url,new Promise((res,rej)=>{ const id=++dark.seq; dark.wait.set(id,{res,rej}); sharp.worker.postMessage({t:'level',id,url}) })
-    .then(b=>URL.createObjectURL(b)));
-  return dark.levels.get(url);
+  if(!dark.on||!sharp.worker){ const url=levelUrl(k); return K.jxl.native().then(n=>n?url:K.jxl.url(url)) }
+  // dark: at most ~4 megapixels (the vector tiles draw the detail when zoomed in): a level 0 of 6400 × 4800 would cost
+  // ~120 MB of decoder memory in the worker, a copy and a 92 MB BMP here, where light mode shows the file itself
+  while(k<cur.levels-1&&cur.w*cur.h/4**k>DARK_MAX_PX) k++;
+  const url=levelUrl(k);
+  if(dark.sheet!==cur.id){ dropDarkLevels(); dark.sheet=cur.id }
+  if(!dark.levels.has(url)){
+    const p=new Promise((res,rej)=>{ const id=++dark.seq; dark.wait.set(id,{res,rej}); sharp.worker.postMessage({t:'level',id,url}) })
+      .then(b=>URL.createObjectURL(b));
+    p.catch(()=>{ if(dark.levels.get(url)===p) dark.levels.delete(url) });   // a failure isn't kept: tried again next time
+    dark.levels.set(url,p);
+  }
+  // a failed dark decode shows the light level rather than nothing (the sheet must open, fit and take /?kks= links)
+  return dark.levels.get(url).catch(e=>{ console.warn('dark overview level',k,e);
+    if(!dark.warned){ dark.warned=true; toast('Dark drawings: the overview could not be made dark here; showing it light') }
+    return K.jxl.native().then(n=>n?url:K.jxl.url(url)) });
 }
+const DARK_MAX_PX=4e6;
+function dropDarkLevels(){ for(const p of dark.levels.values()) p.then(u=>URL.revokeObjectURL(u),()=>{}); dark.levels.clear() }
 // ---------- dark drawings: like a PDF reader's dark mode; remembered on this device ----------
-const dark={on:false,gen:0,sheet:null,levels:new Map(),wait:new Map(),seq:0};
+const dark={on:false,gen:0,sheet:null,levels:new Map(),wait:new Map(),seq:0,warned:false};
 function setDark(on){
   dark.on=on; dark.gen++; document.body.classList.toggle('darkdwg',on);
   const b=$('#zdark'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
   try{ on?localStorage.setItem('darkDrawings','1'):localStorage.removeItem('darkDrawings') }catch(e){}
+  if(!on){ dropDarkLevels(); dark.sheet=null }      // their blob: URLs are freed with them
   if(!cur?.levels) return;
   sharp.worker??=startTiles();
   // the overview level on screen again in the new colours, and the sharp layer redrawn now (not after the 150 ms pause)
