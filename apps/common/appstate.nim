@@ -479,13 +479,15 @@ proc startSync*(a: App, port = SyncPortDefault, discovery = true) =
       a.onChange.add proc (why: string) = a.announce()
     except MdnsError: a.mdns = nil
   a.nextRound = nowMs() + 2000
+  # tests: KKS_SYNC_EVERY (ms) instead of the 2 minutes, for a page that must follow what the server just changed
+  let roundEvery = max(1000, parseInt(getEnv("KKS_SYNC_EVERY", $Interval)))
   proc loop() {.async.} =
     while true:
       await sleepAsync(500)
       # not while a round runs (Sync now): that would skip this one and push the next a whole Interval away, so a
       # change made just before would wait minutes (found by the GNOME e2e test, 2026-10-03)
       if nowMs() >= a.nextRound and a.n.root.len > 0 and not a.syncing:
-        a.nextRound = nowMs() + Interval
+        a.nextRound = nowMs() + roundEvery
         discard await a.syncAll()
   asyncCheck loop()
 

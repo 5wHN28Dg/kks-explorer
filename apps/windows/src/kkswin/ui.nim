@@ -26,6 +26,8 @@ var
   changes = initTable[int, proc ()]()
   selects = initTable[int, proc (i: int)]()
   activates = initTable[int, proc (i: int)]()
+  notifies = initTable[HWND, proc (code: UINT, l: LPARAM): bool]()   ## WM_NOTIFY from a control (tree views)
+  enters = initTable[HWND, proc ()]()                               ## Enter on a focused control that isn't a list
 
 proc px*(v: int): int32 = int32(v * dpi div 96)
 
@@ -91,6 +93,12 @@ proc control*(parent: HWND, cls, text: string, style: uint32, ex = 0'u32, font: 
 proc onClick*(id: int, f: proc ()) = clicks[id] = f
 proc onSelectList*(id: int, f: proc (i: int)) = selects[id] = f
 proc onActivateList*(id: int, f: proc (i: int)) = activates[id] = f
+proc onNotify*(h: HWND, f: proc (code: UINT, l: LPARAM): bool) =
+  ## WM_NOTIFY from this control reaches f (in the notification: queue real work with `later`); true = handled
+  notifies[h] = f
+proc onEnter*(h: HWND, f: proc ()) =
+  ## Enter while this control has the focus runs f (after the key's message, like a list's activation)
+  enters[h] = f
 
 proc dispatchCommand0(w: WPARAM, l: LPARAM): bool
 
@@ -100,6 +108,26 @@ proc dispatchCommand0(w: WPARAM, l: LPARAM): bool
 const WM_KKS_LATER* = WM_APP + 1
 var laterWindow*: HWND          ## the main window, which runs the queue on WM_KKS_LATER
 var laterQueue: seq[proc ()]
+
+var timers = initTable[uint, proc ()]()
+
+proc timerProc(h: HWND, m: UINT, id: uint, t: DWORD) {.stdcall.} =
+  KillTimer(nil, id)
+  if id in timers:
+    let f = timers[id]
+    timers.del id
+    try: f()
+    except CatchableError as e: report(e)
+
+proc afterMs*(ms: int, f: proc ()): uint =
+  ## run f once, ms from now, on the UI thread (a thread timer); -> its id for cancel
+  result = SetTimer(nil, 0, UINT(ms), cast[pointer](timerProc))
+  if result != 0: timers[result] = f
+
+proc cancel*(id: uint) =
+  if id != 0 and id in timers:
+    KillTimer(nil, id)
+    timers.del id
 
 proc later*(f: proc ()) =
   laterQueue.add f
@@ -152,7 +180,7 @@ proc forget*(ids: seq[int]) =
 # ---------------------------------------------------------------- a page
 
 type
-  ItemKind = enum ikLabel, ikTitle, ikDim, ikField, ikMulti, ikButtons, ikList, ikCheck, ikSpace, ikCustom, ikRich, ikTall, ikAspect
+  ItemKind = enum ikLabel, ikTitle, ikDim, ikField, ikMulti, ikButtons, ikList, ikCheck, ikSpace, ikCustom, ikRich, ikTall, ikAspect, ikFill
   Item = object
     kind: ItemKind
     hwnds: seq[HWND]
@@ -289,6 +317,10 @@ proc layout*(p: Page) =
       y += px(it.height) + px(10)
     of ikSpace:
       y += px(it.height)
+    of ikFill:
+      let h = max(int(px(it.height)), int(r.bottom) - y - int(px(24)))   # the page's margins: no scroll bar
+      MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(h), 1)
+      y += h
     of ikCustom:
       MoveWindow(it.hwnds[0], x, int32(y), int32(w), px(it.height), 1)
       y += px(it.height) + px(10)
@@ -348,6 +380,10 @@ proc pageProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
         relayoutWanted = true
         if p != nil: later(proc () = p.relayoutIfWanted())
       return 0
+    if hdr.hwndFrom in notifies:
+      try:
+        if notifies[hdr.hwndFrom](hdr.code, l): return 0
+      except CatchableError as e: report(e)
     if hdr.code == EN_LINK:
       let el = cast[ptr EnLinkMsg](l)
       if el.msg == WM_LBUTTONUP or (el.msg == WM_KEYDOWN and el.wParam == 0x0D):
@@ -399,6 +435,9 @@ proc pageProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
         if it.kind == ikRich:
           richH.del it.hwnds[0]
           richLinks.del it.hwnds[0]
+        for c in it.hwnds:
+          notifies.del c
+          enters.del c
       pages.del h
   else: discard
   DefWindowProcW(h, m, w, l)
@@ -426,7 +465,10 @@ proc destroy*(p: Page) =
 proc clear*(p: Page) =
   ## remove every control (the page is rebuilt)
   for it in p.items:
-    for h in it.hwnds: DestroyWindow(h)
+    for h in it.hwnds:
+      notifies.del h
+      enters.del h
+      DestroyWindow(h)
   forget(p.ids)
   p.items.setLen(0)
   p.ids.setLen(0)
@@ -464,7 +506,10 @@ proc multiField*(p: Page, name, value: string, height = 90, readonly = false): H
   p.items.add Item(kind: ikMulti, hwnds: @[lab, result], height: height)
 
 proc toSpec*[F](x: (string, F)): (string, proc ()) =
-  ## lambdas that capture nothing are nimcall and a tuple doesn't convert by itself: wrap them as closures
+  ## lambdas that capture nothing are nimcall and a tuple doesn't convert by itself: wrap them as closures.
+  ## A lambda that only calls a nested closure proc (`proc () = open()`) must say `{.closure.}`: Nim 2.2.12 types it
+  ## nimcall here, makes it a closure later, and this instance then copies its environment without counting the
+  ## reference (freed once too often when the buttons go: heap corruption, crashes anywhere later; Windows 11)
   let f = x[1]
   (x[0], proc () = f())
 
@@ -596,6 +641,10 @@ proc radios*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq
 proc custom*(p: Page, h: HWND, height: int) =
   p.items.add Item(kind: ikCustom, hwnds: @[h], height: height)
 
+proc fill*(p: Page, h: HWND, minHeight: int) =
+  ## a child that takes the rest of the page's height (at least minHeight DIPs): put it last
+  p.items.add Item(kind: ikFill, hwnds: @[h], height: minHeight)
+
 proc setRows*(l: HWND, rows: seq[string]) =
   SendMessageW(l, LB_RESETCONTENT, 0, 0)
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
@@ -631,6 +680,9 @@ proc activateFocused*(): bool =
   ## Enter on a focused list opens its item (the keyboard equivalent of a double-click)
   let f = GetFocus()
   if f == nil: return false
+  if f in enters:
+    later(enters[f])
+    return true
   let id = int(GetDlgCtrlID(f))
   if id notin activates: return false
   let i = int(SendMessageW(f, LB_GETCURSEL, 0, 0))
@@ -641,6 +693,7 @@ proc activateFocused*(): bool =
 # ---------------------------------------------------------------- a popup window hosting a page
 
 var popups = initTable[HWND, (Page, proc ())]()
+var escCloses: seq[HWND]      ## popups that Escape closes (IsDialogMessage turns it into IDCANCEL)
 
 proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
   case m
@@ -648,8 +701,13 @@ proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
     if h in popups: MoveWindow(popups[h][0].hwnd, 0, 0, int32(loword(l)), int32(hiword(l)), 1)
     return 0
   of WM_COMMAND:
+    if loword(int(w)) == 2 and l == 0 and h in escCloses:     # IDCANCEL: Escape
+      PostMessageW(h, WM_CLOSE, 0, 0)
+      return 0
     if dispatchCommand(w, l): return 0
   of WM_DESTROY:
+    let i = escCloses.find(h)
+    if i >= 0: escCloses.del i
     if h in popups:
       let onClose = popups[h][1]
       popups.del h
@@ -660,8 +718,9 @@ proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
 
 var popupClassDone = false
 
-proc popup*(owner: HWND, title: string, w, h: int, onClose: proc () = nil): (HWND, Page) =
-  ## a separate window (an invite, a dialog-like form) with one page; closing it calls onClose
+proc popup*(owner: HWND, title: string, w, h: int, onClose: proc () = nil, escape = false): (HWND, Page) =
+  ## a separate window (an invite, a dialog-like form) with one page; closing it calls onClose; with `escape`,
+  ## the Escape key closes it too
   if not popupClassDone:
     let clsName = newWideCString("KKSPopup")   # must outlive RegisterClassExW
     var wc = WNDCLASSEXW(cbSize: UINT(sizeof(WNDCLASSEXW)), lpfnWndProc: popupProc, hInstance: hinst,
@@ -673,6 +732,7 @@ proc popup*(owner: HWND, title: string, w, h: int, onClose: proc () = nil): (HWN
                            CW_USEDEFAULT, CW_USEDEFAULT, px(w), px(h), owner, nil, hinst, nil)
   let p = newPage(hw)
   popups[hw] = (p, onClose)
+  if escape: escCloses.add hw
   var r: RECT
   GetClientRect(hw, addr r)
   MoveWindow(p.hwnd, 0, 0, r.right, r.bottom, 1)

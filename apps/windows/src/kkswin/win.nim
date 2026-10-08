@@ -6,6 +6,11 @@ import kks/model
 import appstate
 import w32, ui, viewer
 
+type Follower* = ref object
+  area*: HWND                ## the control a rebuild replaces the contents of (a tree)
+  rebuild*: proc ()
+  stale*: bool
+
 type Win* = ref object
   a*: App
   hwnd*: HWND
@@ -28,6 +33,35 @@ type Win* = ref object
   rebuildSide*: proc ()
   relayout*: proc ()
   lastMsg*: string
+  followers*: seq[Follower]  ## open windows that follow the plant's data (follow)
+
+proc focusInside(area: HWND): bool =
+  let f = GetFocus()
+  f != nil and (f == area or IsChild(area, f) != 0)
+
+proc follow*(w: Win, area: HWND, rebuild: proc ()): Follower =
+  ## `area` shows data that syncs and approvals change (refreshFollowers rebuilds it), but never under the keyboard
+  ## or screen reader's focus: while the focus is in it, it is only marked stale, and rebuilt when the focus has left
+  ## (catchUpFollowers, every second) or by the window itself (a search sets `stale` false)
+  result = Follower(area: area, rebuild: rebuild)
+  w.followers.add result
+
+proc refreshFollowers*(w: Win) =
+  var keep: seq[Follower]
+  for f in w.followers:
+    if IsWindow(f.area) == 0: continue          # its window was closed
+    keep.add f
+    if focusInside(f.area): f.stale = true
+    else:
+      f.stale = false
+      f.rebuild()
+  w.followers = keep
+
+proc catchUpFollowers*(w: Win) =
+  for f in w.followers:
+    if f.stale and IsWindow(f.area) != 0 and not focusInside(f.area):
+      f.stale = false
+      f.rebuild()
 
 proc toast*(w: Win, msg: string) =
   w.lastMsg = msg
@@ -81,10 +115,11 @@ proc myOpen*(w: Win): seq[JNode] =
 proc tagBoxes*(w: Win, sheet: string): seq[TagBox] =
   let (ok, si) = w.m.sheetById(sheet)
   let s = if ok and si.scale > 0: si.scale else: 2.0
+  let covers = w.m.photoCovers          # one pass over the photos for all tags
   for t in w.m.tagsOf(sheet):
     result.add TagBox(id: t.id, x0: t.bbox[0] / s, y0: t.bbox[1] / s, x1: t.bbox[2] / s, y1: t.bbox[3] / s,
                       status: (if t.status == "confirmed": "verified" else: t.status), code: t.full,
-                      photos: w.m.photoCover(t.full))
+                      photos: covers.getOrDefault(t.full, "none"))
   for sub in w.myOpen():         # my pending marks (R6), dashed
     if sub["kind"].s == "tag_add" and sub.get("payload") != nil:
       let p = sub["payload"]
