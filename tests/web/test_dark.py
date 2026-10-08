@@ -59,10 +59,10 @@ class Dark(unittest.TestCase):
         """index.html: each dark tag colour is lightenForDark (0.35) of its light colour, and reaches 3:1 on #121212"""
         with open(os.path.join(REPO, 'index.html'), encoding='utf-8') as f: src = f.read()
         light = dict(re.findall(r'--(ok|review|accent):(#[0-9a-f]{6})', src.split('body.darkdwg')[0]))
-        light |= dict(re.findall(r'\.hs\.p-(\w+)\{--pc:(#[0-9a-f]{6})\}', src.split('body.darkdwg')[0]))
+        light |= dict(re.findall(r'\.p-(\w+)\{--pc:(#[0-9a-f]{6})\}', src.split('body.darkdwg')[0]))
         block = re.search(r'body\.darkdwg #viewer\{([^}]*)\}', src)[1]
         dark = dict(re.findall(r'--(ok|review|accent):(#[0-9a-f]{6})', block))
-        dark |= dict(re.findall(r'body\.darkdwg \.hs\.p-(\w+)\{--pc:(#[0-9a-f]{6})\}', src))
+        dark |= dict(re.findall(r'body\.darkdwg :is\(\.hs,\.sw\)\.p-(\w+)\{--pc:(#[0-9a-f]{6})\}', src))
         self.assertEqual(set(dark), {'ok', 'review', 'accent', 'both', 'equipment', 'plate', 'none'})
         bg = (self.V['lo'],) * 3
         for k, h in dark.items():
