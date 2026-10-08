@@ -213,6 +213,12 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check userApi.call(ali, "POST", "/api/submit", photoReq(K, "Tag plate", "plate one")).json["status"].s == "pending"
     # another code: still refused, also for an admin
     check mgrApi.call(mgr, "POST", "/api/submit", photoReq("11LAB70AA502", "", "x")).status == 400
+    # an image this device can't take: refused before the floor sent with it is written
+    var bad = photoReq("11LAB70AA503", "", "x", floor = "4")
+    bad["payload"]["dataUrl"] = newStr("data:image/png;base64," & encode("\x89PNG\r\n\x1a\nx"))
+    check userApi.call(ali, "POST", "/api/submit", bad).status == 400
+    check "11LAB70AA503" notin userNode.run.equipment
+    for _, e in userNode.entries: check not (e["type"].s == "equipment" and e["body"]["kks"].s == "11LAB70AA503")
 
   test "approvals grouped per code and kind, with the submitter's full name and the tag to open":
     sync(userNode, mgrNode)

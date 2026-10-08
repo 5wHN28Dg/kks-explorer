@@ -659,22 +659,25 @@ proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, 
         let s = a.subStatus(old)
         return O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
   var floorRes: JNode = nil
+  var k, fl = ""
   if kind == "photo" and payload != nil and payload.kind == jObj:
     # a photo needs the equipment's floor (the user's rule): already set, proposed by this person and still open, or
-    # sent with the photo as "floor" (then written first, as an equipment change of its own)
-    let k = kksOf(payload.get("kks"))
-    let fl = textOf(payload.get("floor"), 8)
+    # sent with the photo as "floor" (then written first, as an equipment change of its own). Refused before the
+    # image is kept.
+    k = kksOf(payload.get("kks"))
+    fl = textOf(payload.get("floor"), 8)
     if not floorOk(fl): bad(FloorRule)
     if fl.len == 0 and not a.hasFloor(me, k):
       fail(400, "Add the floor of " & k & " first (Location), or send it with the photo: a photo needs its floor.",
            O(("need", S("floor"))))
+  let p = a.normalize(kind, payload)     # the image is checked before a floor sent with it is written
+  if kind == "photo" and fl.len > 0:
     let cur = a.n.run.equipment.getOrDefault(k)
     let live = if cur != nil and cur.get("floor") != nil and cur["floor"].isStr: cur["floor"].s else: ""
-    if fl.len > 0 and fl != live:
+    if fl != live:
       let fcid = if cid.isStr: S("f-" & cid.s[0 ..< min(cid.s.len, 62)]) else: newNull()
       floorRes = a.submitBody(me, "equipment", O(("kks", S(k)), ("changes", O(("floor", S(fl)))), ("base", O(("floor", S(live))))),
                               fcid, "", now)
-  let p = a.normalize(kind, payload)
   result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
   if floorRes != nil: result["floor"] = floorRes
 
