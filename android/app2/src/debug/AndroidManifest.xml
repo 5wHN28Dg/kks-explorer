@@ -1,17 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <!-- The test hooks below answer only senders holding DUMP: the adb shell and the system (#43). DUMP is a
+         signature|privileged|development permission, so no app installed from anywhere can get it without adb. -->
     <application android:networkSecurityConfig="@xml/debug_network" tools:ignore="UnusedAttribute">
-        <receiver android:name="kks.explorer.DebugSyncReceiver" android:exported="true">
+        <receiver android:name="kks.explorer.DebugSyncReceiver" android:exported="true"
+            android:permission="android.permission.DUMP">
             <intent-filter><action android:name="kks.explorer.DEBUG_SYNC" /></intent-filter>
         </receiver>
-        <receiver android:name="kks.explorer.DebugDiagReceiver" android:exported="true">
+        <receiver android:name="kks.explorer.DebugDiagReceiver" android:exported="true"
+            android:permission="android.permission.DUMP">
             <intent-filter><action android:name="kks.explorer.DEBUG_DIAG" /></intent-filter>
         </receiver>
-        <receiver android:name="kks.explorer.DebugUpdateReceiver" android:exported="true">
+        <receiver android:name="kks.explorer.DebugUpdateReceiver" android:exported="true"
+            android:permission="android.permission.DUMP">
             <intent-filter><action android:name="kks.explorer.DEBUG_UPDATE" /></intent-filter>
         </receiver>
-        <receiver android:name="kks.explorer.DebugDirectReceiver" android:exported="true">
+        <receiver android:name="kks.explorer.DebugDirectReceiver" android:exported="true"
+            android:permission="android.permission.DUMP">
             <intent-filter><action android:name="kks.explorer.DEBUG_DIRECT" /></intent-filter>
         </receiver>
     </application>
