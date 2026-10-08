@@ -333,6 +333,7 @@ proc gtk_button_new_from_icon_name*(s: cstring): W {.importc, header: HA.}
 proc gtk_button_set_label*(b: W, s: cstring) {.importc, header: HA.}
 proc gtk_button_set_icon_name*(b: W, s: cstring) {.importc, header: HA.}
 proc gtk_toggle_button_new_with_label*(s: cstring): W {.importc, header: HA.}
+proc gtk_toggle_button_new*(): W {.importc, header: HA.}
 proc gtk_toggle_button_get_active*(b: W): cint {.importc, header: HA.}
 proc gtk_toggle_button_set_active*(b: W, v: cint) {.importc, header: HA.}
 proc gtk_check_button_new_with_label*(s: cstring): W {.importc, header: HA.}

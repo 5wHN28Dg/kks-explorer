@@ -47,6 +47,8 @@ jobs:
       - name: The Nim core's tests (no platform)
         working-directory: core
         run: nim test
+      - name: The dark-drawings colour vectors still match apps/common/darkcolor.nim (dark.js and DarkColor.kt are checked against them)
+        run: nim r --hints:off --path:apps/common tests/web/make_dark_vectors.nim | diff -u tests/web/dark-vectors.json -
 
   platform-linux:
     runs-on: ubuntu-26.04
@@ -216,6 +218,8 @@ jobs:
         run: .venv/bin/python platform/linux/e2e/test_course_web.py -v -k ${{ matrix.engine }} -k list_api
       - name: course-figure.js against the course vectors (tests/web)
         run: .venv/bin/python tests/web/test_course_figure.py -v -k ${{ matrix.engine }}
+      - name: dark.js against apps/common/darkcolor.nim's values (tests/web)
+        run: .venv/bin/python tests/web/test_dark.py -v -k ${{ matrix.engine }} -k tag_colours
       - name: systems.js against core views.systemsView's cases (tests/web)
         run: .venv/bin/python tests/web/test_systems.py -v -k ${{ matrix.engine }}
       - if: failure()
@@ -259,6 +263,9 @@ jobs:
       - name: The GNOME app
         working-directory: apps/gnome
         run: nim c -d:release -o:/tmp/kksgnome/kks_explorer kks_explorer.nim
+      - name: The GNOME app's unit tests (the dark-drawings colours and marker contrast)
+        working-directory: apps/gnome
+        run: nim test
       - name: The GNOME app through AT-SPI, in a private headless mutter (apps/gnome/e2e/headless.sh)
         run: |
           apps/gnome/e2e/headless.sh /usr/bin/python3 apps/gnome/e2e/test_gnome.py /tmp/kksgnome/kks_explorer \

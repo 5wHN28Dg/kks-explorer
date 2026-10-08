@@ -2,9 +2,13 @@
 // (docs/PATHSTORE.md) and renders the visible area at the screen's resolution on an OffscreenCanvas. The page shows
 // the result above the overview pyramid. Messages:
 //   {t:'open', sheet, url}                      → {t:'opened', sheet, w, h} (quanta) or {t:'error', sheet, why}
-//   {t:'render', key, sheet, x0, y0, s, W, H}   → {t:'frame', key, bmp} (ImageBitmap, transferred)
-// x0, y0: the top-left of the area in points; s: device pixels per point; W, H: device pixels.
+//   {t:'render', key, sheet, x0, y0, s, W, H, dark}   → {t:'frame', key, bmp} (ImageBitmap, transferred)
+//   {t:'level', id, url}                        → {t:'level', id, blob, ms} (a BMP) or {t:'level', id, why}
+// x0, y0: the top-left of the area in points; s: device pixels per point; W, H: device pixels; dark: dark drawings
+// (dark.js: every colour's lightness inverted, hue kept). 'level' decodes an overview pyramid level with our libjxl,
+// turns it dark pixel by pixel here, off the page's thread, and hands it back as a BMP for the page's <img>.
 'use strict';
+import {darkRgb, darkenPixels} from '/dark.js';
 
 const sheets = new Map();     // id → parsed sheet (or a Promise while loading)
 let latest = 0;               // only the newest render request is drawn
@@ -42,8 +46,9 @@ async function parse(buf) {
   S.styles = [];
   for (let i = 0; i < nStyles; i++) {
     const kind = r.u8(), cap = r.u8(), join = r.u8(), width = r.varint(), sc = r.bytes(3), fc = r.bytes(3);
+    const css = c => `rgb(${c[0]},${c[1]},${c[2]})`;
     S.styles.push({kind, cap: ['butt', 'round', 'square'][cap] || 'butt', join: ['miter', 'round', 'bevel'][join] || 'miter', width,
-                   stroke: `rgb(${sc[0]},${sc[1]},${sc[2]})`, fill: `rgb(${fc[0]},${fc[1]},${fc[2]})`});
+                   stroke: css(sc), fill: css(fc), strokeDark: css(darkRgb(sc[0], sc[1], sc[2])), fillDark: css(darkRgb(fc[0], fc[1], fc[2]))});
   }
   // paths: style, bbox, commands and points, kept compact; a Path2D is made when first drawn
   S.pStyle = new Uint32Array(nPaths); S.bbox = new Int32Array(nPaths * 4);
@@ -75,7 +80,7 @@ async function parse(buf) {
   S.images = [];
   for (let i = 0; i < nImages; i++) {
     const after = r.varint(), x0 = r.varint(), y0 = r.varint(), x1 = r.varint(), y1 = r.varint(), len = r.varint();
-    S.images.push({after, x0, y0, x1, y1, data: r.bytes(len).slice(), bmp: null});
+    S.images.push({after, x0, y0, x1, y1, data: r.bytes(len).slice(), bmp: null, bmpDark: null});
   }
   if (r.p !== r.b.length) throw new Error('trailing bytes');
   S.paths2d = new Array(nPaths);
@@ -106,6 +111,34 @@ async function bitmapOf(bytes) {
   const d = await (await wasm).jxlDecode(bytes);
   return await createImageBitmap(new ImageData(d.rgba, d.width, d.height));
 }
+// dark drawings: always our libjxl, the decoder the desktop apps use, so the pixels transformed are the same
+async function rgbaOf(bytes) {
+  wasm ??= import('/kks-wasm.js');
+  return (await wasm).jxlDecode(bytes);
+}
+async function darkBitmapOf(bytes) {
+  const d = await rgbaOf(bytes);
+  return await createImageBitmap(new ImageData(darkenPixels(d.rgba), d.width, d.height));
+}
+
+// an overview level in dark mode: decoded, transformed, packed as a 24-bit BMP (rows bottom-up, BGR, padded to 4 bytes;
+// the format common.js's K.jxl.bmp gives the page for JPEG XL it can't show), the transform fused into the packing
+async function darkLevel(url) {
+  const r = await fetch(url, {credentials: 'same-origin'});
+  if (!r.ok) throw new Error('overview ' + r.status);
+  const d = await rgbaOf(new Uint8Array(await r.arrayBuffer()));
+  const t0 = performance.now(), w = d.width, h = d.height, row = (w * 3 + 3) & ~3, size = 54 + row * h;
+  const buf = new Uint8Array(size), v = new DataView(buf.buffer);
+  buf[0] = 66; buf[1] = 77; v.setUint32(2, size, true); v.setUint32(10, 54, true); v.setUint32(14, 40, true);
+  v.setInt32(18, w, true); v.setInt32(22, h, true); v.setUint16(26, 1, true); v.setUint16(28, 24, true);
+  v.setUint32(34, row * h, true);
+  const px = darkenPixels(d.rgba);
+  for (let y = 0; y < h; y++) {
+    let o = 54 + (h - 1 - y) * row, s = y * w * 4;
+    for (let x = 0; x < w; x++, s += 4) { buf[o++] = px[s + 2]; buf[o++] = px[s + 1]; buf[o++] = px[s] }
+  }
+  return {blob: new Blob([buf], {type: 'image/bmp'}), ms: performance.now() - t0};
+}
 
 // ---------- drawing (PATHSTORE.md "Drawing a view", the style rules of "style") ----------
 function cellRange(v0, v1, size, n) {
@@ -121,10 +154,11 @@ async function render(m) {
   const qx1 = Math.ceil((m.x0 + m.W / m.s) * 64), qy1 = Math.ceil((m.y0 + m.H / m.s) * 64);
   // images in view, decoded before drawing (in paint order)
   const imgs = S.images.filter(im => im.x1 >= qx0 && im.x0 <= qx1 && im.y1 >= qy0 && im.y0 <= qy1);
-  for (const im of imgs) if (!im.bmp) { try { im.bmp = await bitmapOf(im.data); } catch (e) { im.bmp = 'failed'; } }
+  const bk = m.dark ? 'bmpDark' : 'bmp';
+  for (const im of imgs) if (!im[bk]) { try { im[bk] = await (m.dark ? darkBitmapOf : bitmapOf)(im.data); } catch (e) { im[bk] = 'failed'; } }
   if (m.key !== latest) return;
   const c = new OffscreenCanvas(m.W, m.H), x = c.getContext('2d');
-  x.fillStyle = '#fff'; x.fillRect(0, 0, m.W, m.H);
+  x.fillStyle = m.dark ? 'rgb(18,18,18)' : '#fff'; x.fillRect(0, 0, m.W, m.H);   // dark: darkRgb(white), #121212
   x.setTransform(k, 0, 0, k, -m.x0 * m.s, -m.y0 * m.s);
   x.miterLimit = 10;
   const [cx0, cx1] = cellRange(qx0, qx1, S.width, S.gx), [cy0, cy1] = cellRange(qy0, qy1, S.height, S.gy);
@@ -134,16 +168,16 @@ async function render(m) {
   list.sort((a, b) => a - b);
   let ii = 0;
   const px1 = 1 / k;
-  const drawImage = im => { if (im.bmp && im.bmp !== 'failed') x.drawImage(im.bmp, im.x0, im.y0, im.x1 - im.x0, im.y1 - im.y0); };
+  const drawImage = im => { const b = im[bk]; if (b && b !== 'failed') x.drawImage(b, im.x0, im.y0, im.x1 - im.x0, im.y1 - im.y0); };
   for (const i of list) {
     while (ii < imgs.length && imgs[ii].after <= i) drawImage(imgs[ii++]);
     const b = i * 4;
     if (S.bbox[b + 2] < qx0 || S.bbox[b] > qx1 || S.bbox[b + 3] < qy0 || S.bbox[b + 1] > qy1) continue;
     const st = S.styles[S.pStyle[i]], p = path2d(S, i);
-    if (st.kind & 2) { x.fillStyle = st.fill; x.fill(p, st.kind & 4 ? 'evenodd' : 'nonzero'); }
+    if (st.kind & 2) { x.fillStyle = m.dark ? st.fillDark : st.fill; x.fill(p, st.kind & 4 ? 'evenodd' : 'nonzero'); }
     if (st.kind & 1) {
       x.lineWidth = st.kind & 8 ? px1 : Math.max(st.width, px1);   // hairline, and never thinner than a pixel
-      x.lineCap = st.cap; x.lineJoin = st.join; x.strokeStyle = st.stroke;
+      x.lineCap = st.cap; x.lineJoin = st.join; x.strokeStyle = m.dark ? st.strokeDark : st.stroke;
       x.stroke(p);
     }
   }
@@ -161,6 +195,9 @@ onmessage = e => {
       .then(parse).then(S => { postMessage({t: 'opened', sheet: m.sheet, w: S.width, h: S.height}); return S; })
       .catch(err => { postMessage({t: 'error', sheet: m.sheet, why: String(err.message || err)}); sheets.delete(m.sheet); return null; });
     sheets.set(m.sheet, p);
+  } else if (m.t === 'level') {
+    darkLevel(m.url).then(({blob, ms}) => postMessage({t: 'level', id: m.id, blob, ms}))
+      .catch(err => postMessage({t: 'level', id: m.id, why: String(err.message || err)}));
   } else if (m.t === 'render') {
     latest = m.key;
     render(m).catch(err => postMessage({t: 'error', sheet: m.sheet, why: String(err.message || err)}));
