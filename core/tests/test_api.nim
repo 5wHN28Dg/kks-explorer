@@ -318,6 +318,18 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check mgrApi.call(mgr, "GET", "/api/users").json["users"].len == 2
     check mgrApi.call(mgr, "GET", "/api/leaderboard").json["people"].len == 2
 
+  test "Clear removed keeps a person who was never removed (no device yet)":
+    # a person registered before any of their devices joined: not removed, so neither Clear removed nor Hide takes them
+    let pid = mgrApi.newHexId
+    discard mgrNode.append("person", personBody(pid, "pre", "Pre Registered", "user", newStr("Technician")),
+                           int64(epochTime() * 1000))
+    check pid in mgrNode.run.persons
+    discard mgrApi.call(mgr, "POST", "/api/hidden", j("""{"clear_removed":true}"""))
+    var names: seq[string]
+    for u in mgrApi.call(mgr, "GET", "/api/users").json["users"].elems: names.add u["username"].s
+    check "pre" in names
+    check mgrApi.call(mgr, "POST", "/api/hidden", newObj(@[("ids", newArr(@[newStr(pid)]))])).status == 400
+
   test "photos without a floor are taken; a floor with a photo only fills an empty one; its client_id is its own":
     let r1 = mgrApi.call(mgr, "POST", "/api/submit", photoReq("11LAB70AA502", "", "no floor"))
     check r1.status == 200 and r1.json["status"].s == "approved" and r1.json.get("floor") == nil

@@ -363,7 +363,9 @@ proc people(w: Win, box: W) =
     closureScope:
       let u = users[i]
       let pid = s(u, "person")
-      let removed = u.get("active") != nil and u["active"].kind == jBool and not u["active"].b
+      # removed: had devices and has none left (someone whose device hasn't joined yet was never removed)
+      let removed = u.get("active") != nil and u["active"].kind == jBool and not u["active"].b and
+                    u.get("devices") != nil and u["devices"].kind == jInt and u["devices"].i > 0
       let hidden = u.get("hidden") != nil and u["hidden"].kind == jBool and u["hidden"].b
       let name = s(u, "full_name") & " (" & s(u, "username") & ")"
       let rw = row(name, s(u, "role") & (if s(u, "position").len > 0: " · " & s(u, "position") else: "") &
