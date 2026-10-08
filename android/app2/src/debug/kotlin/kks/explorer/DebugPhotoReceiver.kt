@@ -9,10 +9,12 @@ import android.graphics.Color
 import android.graphics.Paint
 import kks.explorer.sync.PhotoQueue
 
-/** Debug builds only: queue a made-up photo without a camera (e2e test_photo_queue): kks, caption, floor extras.
+/** Debug builds only: queue a made-up photo without a camera (e2e test_photo_queue): kks, caption, floor extras;
+ *  `--ez hold true` makes the queue's jobs wait (until false or the process ends), so a test sees them queued.
  *  `adb shell am broadcast -a kks.explorer.DEBUG_PHOTO -p io.github.walkdown --es kks 11LAB70AA501 --es floor 2` */
 class DebugPhotoReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
+        if (intent.hasExtra("hold")) { PhotoQueue.holdForTest = intent.getBooleanExtra("hold", false); return }
         val kks = intent.getStringExtra("kks") ?: return
         val bmp = Bitmap.createBitmap(1600, 1200, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)

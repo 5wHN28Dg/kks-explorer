@@ -11,7 +11,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 APK = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')
 SERVER = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kksimp/kks_import'
-del sys.argv[1:]
+del sys.argv[1:4]     # what follows goes to unittest (e.g. Phone.test_flow)
 PKG = 'io.github.walkdown'
 # the emulator reaches this machine at 10.0.2.2; a real phone over USB uses `adb reverse` and 127.0.0.1
 # (choose the phone with ANDROID_SERIAL; KKS_PHONE_HOST=127.0.0.1)
@@ -411,12 +411,14 @@ class Phone(unittest.TestCase):
             self.open_tag()
             ui.sh('input', 'keyevent', '4')                    # close the panel: the queue must not care
             codes = ['11LAB70AA502', '11LAB70AA503', '11LAB70AA504']
+            # held (debug builds): the jobs wait, so their files can be checked and the app stopped with all three queued
+            ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--ez', 'hold', 'true')
             for i, k in enumerate(codes):
                 extra = ['--es', 'floor', '3'] if i == 0 else []
                 ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--es', 'kks', k,
-                       '--es', 'caption', f'queued {i}', *extra)
-            ui.find('photos being prepared', timeout=10)
-            time.sleep(2)
+                       '--es', 'caption', f'queued_{i}', *extra)     # no spaces: adb shell joins the words
+            ui.find('3 photos being prepared', timeout=20)
+            time.sleep(1)
             # the process stops with photos still queued; WorkManager brings the work back when the app starts again
             ui.sh('am', 'force-stop', PKG)
             time.sleep(2)
@@ -427,7 +429,8 @@ class Phone(unittest.TestCase):
                     h = (31 * h + ord(ch)) & 0xFFFFFFFF
                 return h
             names = ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
-            self.assertTrue([n for n in names if n.endswith('.px')], f'no queued photo left to check: {names}')
+            self.assertEqual(len([n for n in names if n.endswith('.px')]), 3, f'the queued photos: {names}')
+            self.assertEqual(len([n for n in names if n.endswith('.json')]), 3, f'the queued jobs: {names}')
             for n in names:
                 raw = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/photo-queue/' + n], capture_output=True).stdout
                 self.assertTrue(raw.startswith(b'KSL1'), f'{n} is not sealed')
@@ -441,7 +444,7 @@ class Phone(unittest.TestCase):
                 return ph if len(ph) == 3 else None
             ph = self.wait_server(arrived, 'the queued photos never all reached the server', tries=360)
             by = {p['kks']: p for p in ph}
-            self.assertEqual([by[k]['caption'] for k in codes], ['queued 0', 'queued 1', 'queued 2'])
+            self.assertEqual([by[k]['caption'] for k in codes], ['queued_0', 'queued_1', 'queued_2'])
             sent = [by[k].get('submitted') or by[k].get('created') or 0 for k in codes]
             self.assertEqual(sent, sorted(sent), 'the photos were not sent in the order taken')
             self.assertEqual(self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA502', {}).get('floor'), '3',
@@ -475,10 +478,10 @@ class Phone(unittest.TestCase):
         try:
             self.join()
             self.open_tag()
-            ui.scroll_to('by the e2e stair')
-            ui.find('by Nura Credit, ')                         # the author of the field, not the approver
+            # the description comes before the location fields
             ui.scroll_to('Draft description (unchecked)', exact=True)
-            ui.find('Feed water isolation valve', exact=True)
+            ui.scroll_to('Feed water isolation valve', exact=True)
+            ui.scroll_to('Confirm', exact=True)
             ui.tap('Confirm', exact=True)
 
             def confirmed():
@@ -487,6 +490,8 @@ class Phone(unittest.TestCase):
             self.assertEqual(self.wait_server(confirmed, 'the confirmed description never reached the server')[0]['v'],
                              'Feed water isolation valve')
             ui.find('Confirmed by The Manager', timeout=20)
+            ui.scroll_to('by the e2e stair')
+            ui.find('by Nura Credit, ')                         # the author of the field, not the approver
         finally:
             self.leave()
 
@@ -621,11 +626,14 @@ class Phone(unittest.TestCase):
         """requests 6, 9 and 10 as a member: the leaderboard; Updates on Manage's top level (not in Account); My
         proposals filtered by status and grouped by code"""
         tala = self.member('tala', 'Tala Member', 'tala password 1')
-        for note in ('first e2e note', 'second e2e note'):
-            r = tala.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': note}}})
-            self.assertEqual(r.get('status'), 'pending', r)
-        subs = [x for x in self.boss.req('GET', '/api/submissions')['submissions'] if x['by'] == 'tala']
-        self.boss.req('POST', f'/api/submissions/{subs[0]["id"]}/reject', {})
+        now = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('notes', '')
+        for note in ('first e2e note', 'second e2e note'):     # the second is held: it clashes with the first
+            r = tala.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': note},
+                                                                                'base': {'notes': now}}})
+            self.assertIn(r.get('status'), ('pending', 'conflict'), r)
+        first = [x for x in self.boss.req('GET', '/api/submissions')['submissions']
+                 if x['by'] == 'tala' and x['payload']['changes'].get('notes') == 'first e2e note']
+        self.boss.req('POST', f'/api/submissions/{first[0]["id"]}/reject', {})
         try:
             self.join('tala', 'tala password 1')
             ui.tap('Manage', exact=True)

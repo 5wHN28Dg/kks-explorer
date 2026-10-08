@@ -258,7 +258,7 @@ private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snac
                             .put("base", JSONObject().put("custom", base)))
                         scope.launch { snack.showSnackbar(m) }
                         if (ok) editing = false
-                    }) { Text("Save") }
+                    }) { Text("Save description") }
                     OutlinedButton(onClick = { editing = false; text = d.str("text") }) { Text("Cancel") }
                 }
             } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -267,7 +267,8 @@ private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snac
                     val (_, m) = submit(confirm.str("kind"), confirm.getJSONObject("payload"))
                     scope.launch { snack.showSnackbar(m) }
                 }) { Text("Confirm") }
-                OutlinedButton(onClick = { editing = true }) { Text("Edit") }
+                // its own label: the panel's "Edit" is the location fields' (and a test or TalkBack user must tell them apart)
+                OutlinedButton(onClick = { editing = true }) { Text("Edit description") }
             }
         }
     }
