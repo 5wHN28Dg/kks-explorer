@@ -111,6 +111,10 @@ class Relay:
         with self.lock:
             members = self.rooms.setdefault(room, {})
             old = members.get(peer)
+            # issue #44: a replayed hello (the present socket's, or an older one) doesn't replace the device
+            if old and (getattr(old, 'hello', None) is not None and (sig == old.hello[1] or ts < old.hello[0])):
+                c.text({'t': 'error', 'why': 'replayed hello'}); c.close(); return
+            c.hello = (ts, sig)
             if len(members) >= MAX_PEERS and not old:
                 c.text({'t': 'error', 'why': 'room full'}); c.close(); return
             members[peer] = c

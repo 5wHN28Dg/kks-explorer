@@ -4,7 +4,9 @@
 import std/[unittest, asyncdispatch, os, osproc, strutils, sets, tables]
 import kks/[json, util, crypto, proto, node, sync, plant]
 import plat
-import kksl/[net, internet, udp]
+import kksl/[net, internet, udp, ws]
+import kks/extras
+import std/times
 
 let P = testProvider()
 let repo = currentSourcePath().parentDir / ".." / ".." / ".."
@@ -109,6 +111,32 @@ suite "internet sync through the relay":
   test "an absent device is reported":
     expect NetError:
       discard waitFor ia.syncPeer(P.peerId(P.p256Generate()))
+
+  test "a replayed hello doesn't knock the device off the relay (issue #44)":
+    let kX = P.p256Generate()
+    let room = relayRoom(P, a.root)
+    let now = int64(epochTime())
+    proc first(w: Ws): JNode =
+      let f = w.recv()
+      check waitFor(withTimeout(f, 5000))
+      parseStrict(f.read().data)
+    let h = toText(relayHello(P, kX, room, now))
+    let w1 = waitFor wsConnect(url & "/v1/room/" & room)
+    waitFor w1.sendText(h)
+    check w1.first()["t"].s == "welcome"
+    for replay in [h, toText(relayHello(P, kX, room, now - 10))]:   # the same hello again; an older one
+      let w2 = waitFor wsConnect(url & "/v1/room/" & room)
+      waitFor w2.sendText(replay)
+      let m = w2.first()
+      check m["t"].s == "error" and m["why"].s == "replayed hello"
+      w2.close()
+    waitFor w1.sendText("""{"t":"ping"}""")
+    check w1.first()["t"].s == "pong"                          # still there
+    let w3 = waitFor wsConnect(url & "/v1/room/" & room)         # a fresh hello replaces it, as before
+    waitFor w3.sendText(toText(relayHello(P, kX, room, now)))
+    check w3.first()["t"].s == "welcome"
+    w1.close()
+    w3.close()
 
   test "leaving is seen":
     ib.stop()

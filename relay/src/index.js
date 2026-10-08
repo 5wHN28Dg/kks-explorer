@@ -97,9 +97,13 @@ export class Room {
       } catch (e) { ok = false }
       if (!ok) { ws.send(JSON.stringify({t: 'error', why: 'bad hello'})); ws.close(1008, 'bad hello'); return }
       const members = this.members(), old = members.get(peer);
+      // a captured hello replayed (within its 300 s) must not knock the device off: not its present socket's hello
+      // again, nor an older one (issue #44). A fresh hello has a new signature (ECDSA is randomized) and ts ≥ the last.
+      const was = old?.deserializeAttachment();
+      if (was && (was.sig === sig || ts < was.ts)) { ws.send(JSON.stringify({t: 'error', why: 'replayed hello'})); ws.close(1008, 'replayed hello'); return }
       if (!old && members.size >= MAX_PEERS) { ws.send(JSON.stringify({t: 'error', why: 'room full'})); ws.close(1008, 'room full'); return }
       if (old) { old.serializeAttachment({kind: 'room', room: a.room, replaced: true}); try { old.close(1000, 'replaced') } catch (e) {} }
-      ws.serializeAttachment({...a, peer});
+      ws.serializeAttachment({...a, peer, ts, sig});
       ws.send(JSON.stringify({t: 'welcome', peers: [...members.keys()].filter(p => p !== peer)}));
       this.tell({t: 'joined', peer}, peer);
       return;
