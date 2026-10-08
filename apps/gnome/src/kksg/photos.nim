@@ -3,7 +3,7 @@
 ## (the user's choice 2026-09-27), propose it.
 
 import std/[math, strutils, base64, os, sequtils, times, typedthreads]
-import kks/[json, node, model]
+import kks/[json, node, model, api]
 import kksi/jxl
 import gtk, ui, appstate, win
 
@@ -467,6 +467,11 @@ proc floorKnown(w: Win, kks: string): bool =
   ## the code has a floor, I proposed one that is still open, or a queued photo carries one
   let e = w.m.equipment(kks)
   if s(e, "floor").strip.len > 0: return true
+  # the loaded model lags a change by a moment (a photo just sent with its floor): ask the core itself
+  try:
+    let eq = w.a.call("GET", "/api/state")["equipment"].get(kks)
+    if s(eq, "floor").strip.len > 0: return true
+  except ApiError: discard
   for q in queue:
     if q.kks == kks and q.floor.len > 0: return true
   for sub in w.myOpen():
