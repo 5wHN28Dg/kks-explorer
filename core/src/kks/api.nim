@@ -1028,16 +1028,69 @@ proc configOut*(a: Api): JNode =
                ("can_create", B(true)),
                ("removed", if not joined and removed.len > 0: noteOf(removed) else: newNull()))))
 
+proc whoOf(a: Api, h: JNode): JNode =
+  ## who made a History row's change and when: the author of the change itself (the proposal, not the approval),
+  ## by_name = full name, else username; at = when it took effect, submitted = when it was written
+  let src = h["source"].s
+  let person = if src in a.n.entries: a.personOf(a.n.entries[src]["peer"].s) else: ""
+  let (u, _) = a.names(person)
+  O(("by", S(u)), ("by_name", S(a.displayName(person))), ("at", I(a.n.entries[h["at"].s]["hlc"][0].i div 1000)),
+    ("submitted", a.ts(src)))
+
+proc customPairs(v: JNode): Table[string, string] =
+  if v != nil and v.kind == jArr:
+    for x in v.elems:
+      if x.kind == jObj and x.get("k") != nil and x["k"].isStr and x.get("v") != nil and x["v"].isStr: result[x["k"].s] = x["v"].s
+
+proc equipmentBy*(a: Api): JNode =
+  ## {kks: {field: {by, by_name, at, submitted}}}: who last set each field still set (custom fields as "custom:<k>")
+  var per: OrderedTable[string, OrderedTable[string, JNode]]
+  for h in a.n.run.history:
+    if h["entity"].s != "equipment": continue
+    let k = h["key"].s
+    let before = if h["before"].isNull: newObj() else: h["before"]
+    let after = if h["after"].isNull: newObj() else: h["after"]
+    discard per.hasKeyOrPut(k, initOrderedTable[string, JNode]())
+    var who: JNode
+    for f in ["area", "floor", "elev", "near", "loc", "notes"]:
+      let b = before.get(f)
+      let x = after.get(f)
+      if pyEq(b, x): continue
+      if x == nil: per[k].del(f)
+      else:
+        if who == nil: who = a.whoOf(h)
+        per[k][f] = who
+    let cb = customPairs(before.get("custom"))
+    let ca = customPairs(after.get("custom"))
+    for ck, cv in ca:
+      if ck notin cb or cb[ck] != cv:
+        if who == nil: who = a.whoOf(h)
+        per[k]["custom:" & ck] = who
+    for ck, _ in cb:
+      if ck notin ca: per[k].del("custom:" & ck)
+  result = newObj()
+  for k, fs in per:
+    if fs.len == 0 or k notin a.n.run.equipment: continue
+    var o = newObj()
+    for f, w in fs: o[f] = w
+    result[k] = o
+
 proc stateOut(a: Api, me: Actor): JNode =
   let r = a.n.run
   var created: Table[string, int64]
+  var who: Table[string, JNode]
   for h in r.history:
     if h["entity"].s == "photo" and h["before"].isNull and not h["after"].isNull:
       created[h["key"].s] = a.n.entries[h["at"].s]["hlc"][0].i div 1000
+      who[h["key"].s] = a.whoOf(h)
   var photos: seq[JNode]
   for k, v in r.photos:
+    let w = who.getOrDefault(k)
     photos.add O(("id", S(k)), ("kks", v["kks"]), ("file", S(a.n.blobName(v["blob"].s))), ("caption", v["caption"]),
-                 ("created", if k in created: I(created[k]) else: newNull()))
+                 ("created", if k in created: I(created[k]) else: newNull()),
+                 ("kind", S(photoKind(v["caption"].s))),
+                 ("by", if w == nil: S("") else: w["by"]), ("by_name", if w == nil: S("") else: w["by_name"]),
+                 ("submitted", if w == nil: newNull() else: w["submitted"]))
   photos.sort(proc (x, y: JNode): int =
     result = cmp(if x["created"].isNull: 0'i64 else: x["created"].i, if y["created"].isNull: 0'i64 else: y["created"].i)
     if result == 0: result = cmp(x["id"].s, y["id"].s))
@@ -1053,7 +1106,7 @@ proc stateOut(a: Api, me: Actor): JNode =
   for s in opn:
     if s["mine"].b: mine.elems.add s
   result = O(("equipment", eq), ("reviews", rv), ("photos", newArr(photos)), ("links", links), ("added_tags", tags),
-             ("rev", I(r.history.len)), ("mine", mine))
+             ("rev", I(r.history.len)), ("mine", mine), ("equipment_by", a.equipmentBy))
   if me.isAdmin: result["queue"] = I(opn.len)
 
 proc publicUser*(me: Actor): JNode =
