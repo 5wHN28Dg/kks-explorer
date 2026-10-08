@@ -1,5 +1,5 @@
 import std/[unittest, tables, strutils, times]
-import kks/[json, util, crypto, proto, replay, node, sync, plant]
+import kks/[json, util, crypto, proto, replay, node, sync, plant, relaykey]
 import testprovider
 
 let P = testProvider()
@@ -187,6 +187,29 @@ suite "sync state machine":
     let restarted = newNode(P, server.store, server.key)
     check restarted.run.cuts.getOrDefault(a1.device, -1) == int64(forkedAt - 1)
     check stateBytes(restarted.run.state) == stateBytes(server.run.state)
+
+  test "the relay room key travels to certified devices only, and must be the log's (decision 0050)":
+    let mk = P.p256Generate()
+    mgrPhone.keepMemberKey(mk)
+    discard mgrPhone.append("setting", newObj(@[("key", newStr("relay_member")), ("value", newStr(keyString(mk.pub)))]), tick())
+    check mgrPhone.memberKey[0]
+    discard sync(server, mgrPhone)
+    check server.memberKey[0] and server.memberKey[1].scalar == mk.scalar
+    var stranger = newNode(P, newMemStore(), P.p256Generate())
+    stranger.adopt(rootStr)
+    discard sync(stranger, mgrPhone)
+    check not stranger.memberKey[0]
+    # a key that isn't the log's current one is not kept, nor one whose scalar doesn't sign for it
+    var fresh = newNode(P, newMemStore(), P.p256Generate())
+    fresh.adopt(rootStr)
+    discard fresh.ingest(mgrPhone.entriesFor(newObj()), tick())
+    let other = P.p256Generate()
+    check not fresh.takeMemberKey(newObj(@[("key", newStr(keyString(other.pub))), ("scalar", newStr(hex(other.scalar)))]))
+    check not fresh.takeMemberKey(newObj(@[("key", newStr(keyString(mk.pub))), ("scalar", newStr(hex(other.scalar)))]))
+    check fresh.takeMemberKey(newObj(@[("key", newStr(keyString(mk.pub))), ("scalar", newStr(hex(mk.scalar)))]))
+    # rotated: the old key no longer counts
+    discard mgrPhone.append("setting", newObj(@[("key", newStr("relay_member")), ("value", newStr(keyString(other.pub)))]), tick())
+    check not mgrPhone.memberKey[0]
 
   test "join and secrets connections reach their hooks":
     var asked = ""

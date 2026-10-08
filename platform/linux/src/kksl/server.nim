@@ -3,7 +3,7 @@
 ## unchanged. One thread owns the node (decision 0030).
 
 import std/[asyncdispatch, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm, sequtils]
-import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics]
+import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics, relaykey]
 import kks/provider_gnutls
 import dbstore, tls, net, argon2, mdns, internet, httpserver, throttle
 
@@ -52,6 +52,7 @@ type
     listener*: Listener
     mdns*: Mdns
     internet*: Internet           ## presence on the plant's relay (§18), answers syncs through it
+    internetPrev*: Internet       ## presence in the previous room for a week after a rotation (decision 0050)
     announced: string
     job*: JNode                ## the drawing import running or last run (one at a time)
     courseCache: (string, JNode)   ## (what the list was built from, the list)
@@ -1218,6 +1219,11 @@ proc serve*(s: Server): Future[void] =
   # none: the other devices sync with it on their rounds, as on the LAN)
   s.internet = newInternet(s.n, s.id, hooks)
   s.internet.start()
+  # 0050: after a rotation the server stays in the previous room for a while, so a device that reaches the plant only
+  # through the relay (a phone on mobile data) can sync there once and learn the new key
+  s.internetPrev = newInternet(s.n, s.id, hooks)
+  s.internetPrev.keyOf = proc (): (bool, PrivateKey) = s.n.prevMemberKey(nowMs())
+  s.internetPrev.start()
   # diagnostics reports (§13a): the server's own errors, at most every 6 hours, while the manager has them on
   proc reportLoop() {.async.} =
     const version = staticRead("../../../../VERSION").strip
@@ -1231,7 +1237,9 @@ proc serve*(s: Server): Future[void] =
       try: discard s.n.maybeReport("server", version, os, "", nowS() * 1000)
       except CatchableError: discard
   asyncCheck reportLoop()
-  s.api.relayChanged = proc () = s.internet.restart()
+  s.api.relayChanged = proc () =
+    s.internet.restart()
+    s.internetPrev.restart()
   # the status admin.html's Devices page shows (the v1 shape: syncs by device, found on the Wi-Fi, internet)
   var syncs = newObj()
   proc record(remote, address: string, st: Stats) =

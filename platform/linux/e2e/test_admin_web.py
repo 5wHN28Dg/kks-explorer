@@ -243,7 +243,8 @@ class AdminWeb(unittest.TestCase):
 
         # account: the pending hand-over; updates (their own tab): the texts as text and the javascript: page link neutralised
         page.locator('#tabs button', has_text='Account').click()
-        page.wait_for_selector('#main .card h3')
+        # an element only the Account tab has: the Drawings tab's cards are still there until it renders
+        page.wait_for_selector('#main input[name=full_name]')
         self.assertIn('Offered to ann, waiting', page.text_content('#main'))
         self.assertEqual(page.input_value('#main input[name=full_name]'), NAME)
         self.clean(page, name + ' account')

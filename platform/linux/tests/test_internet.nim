@@ -5,7 +5,7 @@ import std/[unittest, asyncdispatch, os, osproc, strutils, sets, tables]
 import kks/[json, util, crypto, proto, node, sync, plant]
 import plat
 import kksl/[net, internet, udp, ws]
-import kks/extras
+import kks/[extras, relaykey]
 import std/times
 
 let P = testProvider()
@@ -37,7 +37,13 @@ suite "internet sync through the relay":
   discard a.append("genesis", P.genesisBody(rootKey, "Test plant", a.device, me, "boss", "The Manager"), nowMs())
   a.adopt(keyString(rootKey.pub))
   discard a.append("device_cert", deviceCertBody(P.peerId(kB), me, "phone"), nowMs())
+  let kC = P.p256Generate()
+  discard a.append("device_cert", deviceCertBody(P.peerId(kC), me, "phone on mobile data"), nowMs())
   discard a.append("setting", newObj(@[("key", newStr("relay")), ("value", newStr(url))]), nowMs())
+  # the plant's relay room key (decision 0050), as /api/settings/relay makes it on the manager's device
+  let mk = P.p256Generate()
+  a.keepMemberKey(mk)
+  discard a.append("setting", newObj(@[("key", newStr("relay_member")), ("value", newStr(keyString(mk.pub)))]), nowMs())
   var b = newNode(P, newMemStore(), kB)
   b.adopt(a.root)
   let ia = newInternet(a, newIdentity(kA))
@@ -45,13 +51,38 @@ suite "internet sync through the relay":
   ia.stunServers = @[]     # tests: this machine's own addresses only (no public STUN server)
   ib.stunServers = @[]
 
-  test "both appear in the room and B pulls A's log through the pipe":
-    ia.start()
+  test "without the plant's room key a device stays off the relay, and the relay refuses an old hello (0050)":
     ib.start()
-    check waitUntil(proc (): bool = ia.state == "online" and ib.state == "online" and a.device in ib.online)
+    check waitUntil(proc (): bool = ib.state.startsWith("waiting for the plant's relay key"), 3000)
+    let room = relayRoom(P, keyString(mk.pub))
+    let w = waitFor wsConnect(url & "/v1/room/" & room)
+    var old = relayHello(P, kB, mk, room, int64(epochTime()))
+    old.fields = old.fields[0 ..< 5]                        # t, peer, key, ts, sig: a device before 0050
+    waitFor w.sendText(toText(old))
+    let f = w.recv()
+    check waitFor(withTimeout(f, 5000))
+    let m = parseStrict(f.read().data)
+    check m["t"].s == "error" and "relay key" in m["why"].s
+    w.close()
+    let stranger = P.p256Generate()                          # its own key as the room key: another room's
+    let w2 = waitFor wsConnect(url & "/v1/room/" & room)
+    waitFor w2.sendText(toText(relayHello(P, stranger, stranger, room, int64(epochTime()))))
+    let f2 = w2.recv()
+    check waitFor(withTimeout(f2, 5000))
+    check parseStrict(f2.read().data)["t"].s == "error"
+    w2.close()
+
+  test "the room key comes with a LAN sync, then both appear in the room and B pulls through the pipe":
+    let lst = listen(a, newIdentity(kA), 0, "127.0.0.1")
+    let first = waitFor b.syncWith(newIdentity(kB), "127.0.0.1", lst.port, a.device)
+    check first.received == a.entries.len
+    check b.memberKey[0] and keyString(b.memberKey[1].pub) == keyString(mk.pub)
+    ia.start()
+    check waitUntil(proc (): bool = ia.state == "online" and ib.state == "online" and a.device in ib.online, 20_000)
     checkpoint "presence: " & ia.state & " / " & ib.state
+    discard a.append("setting", newObj(@[("key", newStr("note0")), ("value", newStr("through the relay"))]), nowMs())
     let st = waitFor ib.syncPeer(a.device)
-    check st.received == a.entries.len
+    check st.received == 1
     check relaySetting(b) == url
 
   test "a change travels the other way":
@@ -114,13 +145,13 @@ suite "internet sync through the relay":
 
   test "a replayed hello doesn't knock the device off the relay (issue #44)":
     let kX = P.p256Generate()
-    let room = relayRoom(P, a.root)
+    let room = relayRoom(P, keyString(mk.pub))
     let now = int64(epochTime())
     proc first(w: Ws): JNode =
       let f = w.recv()
       check waitFor(withTimeout(f, 5000))
       parseStrict(f.read().data)
-    let h = toText(relayHello(P, kX, room, now))
+    let h = toText(relayHello(P, kX, mk, room, now))
     let w1 = waitFor wsConnect(url & "/v1/room/" & room)
     waitFor w1.sendText(h)
     check w1.first()["t"].s == "welcome"
@@ -136,7 +167,7 @@ suite "internet sync through the relay":
       sig[32 + i] = byte((d + 256) mod 256)
     let flipped = hj.copy
     flipped["sig"] = newStr(b64u(sig))
-    for replay in [h, toText(flipped), toText(relayHello(P, kX, room, now - 10))]:   # again; malleated; older
+    for replay in [h, toText(flipped), toText(relayHello(P, kX, mk, room, now - 10))]:   # again; malleated; older
       let w2 = waitFor wsConnect(url & "/v1/room/" & room)
       waitFor w2.sendText(replay)
       let m = w2.first()
@@ -145,10 +176,44 @@ suite "internet sync through the relay":
     waitFor w1.sendText("""{"t":"ping"}""")
     check w1.first()["t"].s == "pong"                          # still there
     let w3 = waitFor wsConnect(url & "/v1/room/" & room)         # a fresh hello replaces it, as before
-    waitFor w3.sendText(toText(relayHello(P, kX, room, now)))
+    waitFor w3.sendText(toText(relayHello(P, kX, mk, room, now)))
     check w3.first()["t"].s == "welcome"
     w1.close()
     w3.close()
+
+  test "a rotated room key reaches B with a sync, and both move to the new room (0050)":
+    # C syncs on the LAN once (gets the first key), then is reachable only through the relay
+    var c = newNode(P, newMemStore(), kC)
+    c.adopt(a.root)
+    let lstC = listen(a, newIdentity(kA), 0, "127.0.0.1")
+    discard waitFor c.syncWith(newIdentity(kC), "127.0.0.1", lstC.port, a.device)
+    check c.memberKey[0]
+    let mk2 = P.p256Generate()
+    a.keepMemberKey(mk2, nowMs())
+    discard a.append("setting", newObj(@[("key", newStr("relay_member")), ("value", newStr(keyString(mk2.pub)))]), nowMs())
+    discard waitFor ia.syncPeer(b.device)
+    check b.memberKey[0] and keyString(b.memberKey[1].pub) == keyString(mk2.pub)
+    let room2 = relayRoom(P, keyString(mk2.pub))
+    check waitUntil(proc (): bool = ia.room == room2 and ib.room == room2 and ia.state == "online" and
+                                    ib.state == "online" and a.device in ib.online and b.device in ia.online, 30_000)
+    check (waitFor ib.syncPeer(a.device)).theyDenied == false
+    # C still has only the old key: A (like the server) stays in the previous room for the grace period, so C can
+    # sync there once, learn the new key and move
+    check a.prevMemberKey(nowMs())[0] and not a.prevMemberKey(nowMs() + GraceMs + 1)[0]
+    let iaPrev = newInternet(a, newIdentity(kA))
+    iaPrev.keyOf = proc (): (bool, PrivateKey) = a.prevMemberKey(nowMs())
+    iaPrev.stunServers = @[]
+    iaPrev.start()
+    let ic = newInternet(c, newIdentity(kC), relayOf = proc (): string = url)
+    ic.stunServers = @[]
+    ic.start()
+    let room1 = relayRoom(P, keyString(mk.pub))
+    check waitUntil(proc (): bool = ic.state == "online" and ic.room == room1 and a.device in ic.online, 20_000)
+    discard waitFor ic.syncPeer(a.device)
+    check c.memberKey[0] and keyString(c.memberKey[1].pub) == keyString(mk2.pub)
+    check waitUntil(proc (): bool = ic.room == room2 and ic.state == "online" and a.device in ic.online, 30_000)
+    ic.stop()
+    iaPrev.stop()
 
   test "leaving is seen":
     ib.stop()
