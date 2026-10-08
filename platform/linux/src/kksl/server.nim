@@ -465,19 +465,27 @@ proc staticFile(s: Server, req: Request, dir, rel, cache: string, ctype = "", ex
 
 proc personOf(d: JNode): (string, JNode) = personFields(d)
 
-proc usersOut(s: Server): JNode =
+proc usersOut(s: Server, showHidden = false): JNode =
+  ## accounts, then the people without one; a removed person an admin hid (POST /api/hidden) only with show_hidden
   result = newArr()
   var have: HashSet[string]
   var rows = s.users
   rows.sort(proc (a, b: JNode): int = cmp(a["username"].s.toLowerAscii, b["username"].s.toLowerAscii))
+  let hidden = s.api.hiddenIds
   for u in rows:
-    result.elems.add s.publicUser(u)
     have.incl u["person"].s
+    let gone = u["person"].s in hidden and not s.n.run.personActive(u["person"].s)
+    if gone and not showHidden: continue
+    var o = s.publicUser(u)
+    o["hidden"] = newBool(gone)
+    result.elems.add o
   var pids: seq[string]
   for pid, _ in s.n.run.persons: pids.add pid
   pids.sort(proc (a, b: string): int = cmp(s.n.run.persons[a]["username"].s.toLowerAscii, s.n.run.persons[b]["username"].s.toLowerAscii))
   for pid in pids:
     if pid in have: continue
+    let gone = pid in hidden and not s.n.run.personActive(pid)
+    if gone and not showHidden: continue
     let pr = s.n.run.persons[pid]
     var devs, active = 0
     for d, v in s.n.run.devices:
@@ -487,7 +495,7 @@ proc usersOut(s: Server): JNode =
     result.elems.add O(("id", newNull()), ("person", S(pid)), ("username", pr["username"]), ("full_name", pr["full_name"]),
       ("position", if pr["position"].isNull: S("") else: pr["position"]), ("no_account", newBool(true)),
       ("has_password", newBool(false)), ("role", S(s.n.run.role(pid))), ("created", newNull()),
-      ("active", newBool(active > 0)), ("devices", newInt(devs)))
+      ("active", newBool(active > 0)), ("devices", newInt(devs)), ("hidden", newBool(gone)))
 
 proc updateUser(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode =
   if not me.isAdmin: herr(403, "admin only")
@@ -983,7 +991,7 @@ proc handle(s: Server, req: Request) {.async.} =
       return
     of "/api/users":
       if not me.isAdmin: herr(403, "admin only")
-      await s.sendJson(req, 200, O(("users", s.usersOut)))
+      await s.sendJson(req, 200, O(("users", s.usersOut(q.getOrDefault("show_hidden") in ["1", "true"]))))
       return
     of "/api/sync/status":
       await s.sendJson(req, 200, O(("rev", newInt(s.api.rev)), ("mode", S("server")), ("internet", newNull()),

@@ -951,32 +951,106 @@ proc usernameOf(r: Run, pid: string): JNode =
   let p = r.persons.getOrDefault(pid)
   if p == nil: newNull() else: p["username"]
 
-proc devicesOut(a: Api, me: Actor): JNode =
+# ----- hiding removed devices and people from the lists (display only; this device's own setting, not the log)
+
+const HiddenKey = "hidden_removed"
+
+proc hiddenIds*(a: Api): HashSet[string] =
+  ## device and person IDs an admin hid from the lists on this device (or this server, for all its web users)
+  let raw = a.n.store.getMeta(HiddenKey)
+  if raw.len == 0: return
+  try:
+    let j = parseStrict(raw)
+    for x in j.elems:
+      if x.isStr: result.incl x.s
+  except JsonError: discard
+
+proc personActive*(r: Run, pid: string): bool =
+  ## a person with at least one device not removed
+  for d, v in r.devices:
+    if v["person"].s == pid and d notin r.cuts: return true
+
+proc removedId(a: Api, id: string): bool =
+  ## a removed device, or a person with no device left: the only things that can be hidden
+  if id in a.n.run.devices: id in a.n.run.cuts
+  elif id in a.n.run.persons: not a.n.run.personActive(id)
+  else: false
+
+proc deviceHidden(a: Api, hidden: HashSet[string], d: string): bool =
+  d in a.n.run.cuts and (d in hidden or a.n.run.devices[d]["person"].s in hidden)
+
+proc setHidden(a: Api, me: Actor, d: JNode): JNode =
+  ## {"ids": [device or person IDs], "hide": true|false} or {"clear_removed": true}: hide every removed device and
+  ## deactivated person now in the lists
+  need(me, "admin")
+  var hidden = a.hiddenIds
+  var changed = 0
+  if truthy(d.get("clear_removed")):
+    for dev, _ in a.n.run.devices:
+      if dev in a.n.run.cuts and dev notin hidden:
+        hidden.incl dev
+        inc changed
+    for pid, _ in a.n.run.persons:
+      if not a.n.run.personActive(pid) and pid notin hidden:
+        hidden.incl pid
+        inc changed
+  else:
+    let ids = d.get("ids")
+    if ids == nil or ids.kind != jArr or ids.len == 0 or ids.len > 1000: bad("ids: the devices or people to hide")
+    let hide = if d.get("hide") != nil: truthy(d["hide"]) else: true
+    for x in ids.elems:
+      if not x.isStr: bad("ids: the devices or people to hide")
+      if hide:
+        if not a.removedId(x.s): bad("Only removed devices and deactivated people can be hidden.")
+        if x.s notin hidden:
+          hidden.incl x.s
+          inc changed
+      elif x.s in hidden:
+        hidden.excl x.s
+        inc changed
+  # forget IDs that came back (a person who joined again shows again)
+  var keep: seq[string]
+  for x in hidden:
+    if a.removedId(x): keep.add x
+  keep.sort(system.cmp)
+  var arr = newArr()
+  for x in keep: arr.elems.add S(x)
+  a.n.store.setMeta(HiddenKey, toText(arr))
+  O(("ok", B(true)), ("changed", I(changed)), ("hidden", I(keep.len)))
+
+proc devicesOut(a: Api, me: Actor, showHidden = false): JNode =
   let r = a.n.run
+  let hidden = a.hiddenIds
+  var nHidden = 0
   proc dev(d: string, v: JNode): JNode =
     O(("device", S(d)), ("label", v["label"]), ("person", v["person"]),
       ("username", usernameOf(r, v["person"].s)),
-      ("revoked", B(d in r.cuts)), ("this_computer", B(d == a.n.device)))
+      ("revoked", B(d in r.cuts)), ("this_computer", B(d == a.n.device)), ("hidden", B(a.deviceHidden(hidden, d))))
   var mine, all = newArr()
   var names = newObj()
   for d, v in r.devices:
     let p = r.persons.getOrDefault(v["person"].s)
     names[d] = S((if p == nil: "?" else: p["username"].s) & " · " & (if v["label"].s.len > 0: v["label"].s else: "device"))
+    if a.deviceHidden(hidden, d):
+      inc nHidden
+      if not showHidden: continue
     if v["person"].s == me.person: mine.elems.add dev(d, v)
     all.elems.add dev(d, v)
-  O(("mine", mine), ("all", if me.isAdmin: all else: newNull()), ("node", S(a.n.device)), ("mode", S(a.mode)),
+  O(("mine", mine), ("all", if me.isAdmin: all else: newNull()), ("hidden", I(nHidden)), ("node", S(a.n.device)), ("mode", S(a.mode)),
     ("sync", if a.syncSnapshot != nil: a.syncSnapshot() else: newObj()), ("names", names),
     ("sync_port", if a.syncPort > 0: I(a.syncPort) else: newNull()))
 
-proc usersOut(a: Api, me: Actor): JNode =
+proc usersOut(a: Api, me: Actor, showHidden = false): JNode =
   result = newArr(@[O(("id", I(1)), ("username", S(me.username)), ("role", S(me.role)), ("active", B(true)),
                       ("has_password", B(true)), ("created", newNull()), ("full_name", S(me.fullName)),
                       ("position", if me.position.isNull: S("") else: me.position), ("person", S(me.person)))])
   var pids: seq[string]
   for pid, _ in a.n.run.persons: pids.add pid
   pids.sort(proc (x, y: string): int = cmp(a.n.run.persons[x]["username"].s.toLowerAscii, a.n.run.persons[y]["username"].s.toLowerAscii))
+  let hidden = a.hiddenIds
   for pid in pids:
     if pid == me.person: continue
+    if not showHidden and pid in hidden and not a.n.run.personActive(pid): continue
     let p = a.n.run.persons[pid]
     var devs, active = 0
     for d, v in a.n.run.devices:
@@ -985,7 +1059,8 @@ proc usersOut(a: Api, me: Actor): JNode =
         if d notin a.n.run.cuts: inc active
     result.elems.add O(("id", newNull()), ("person", S(pid)), ("username", p["username"]), ("full_name", p["full_name"]),
       ("position", if p["position"].isNull: S("") else: p["position"]), ("no_account", B(true)), ("has_password", B(false)),
-      ("role", S(a.roleOf(pid))), ("created", newNull()), ("active", B(active > 0)), ("devices", I(devs)))
+      ("role", S(a.roleOf(pid))), ("created", newNull()), ("active", B(active > 0)), ("devices", I(devs)),
+      ("hidden", B(pid in hidden and active == 0)))
 
 proc updatePerson(a: Api, me: Actor, pid: string, d: JNode, now: int64): Response =
   need(me, "admin")
@@ -1251,8 +1326,8 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
       return ok(O(("revisions", a.historyOut(rows, me.person))))
     of "/api/users":
       need(me, "admin")
-      return ok(O(("users", a.usersOut(me))))
-    of "/api/devices": return ok(a.devicesOut(me))
+      return ok(O(("users", a.usersOut(me, q.getOrDefault("show_hidden") in ["1", "true"]))))
+    of "/api/devices": return ok(a.devicesOut(me, q.getOrDefault("show_hidden") in ["1", "true"]))
     of "/api/leaderboard": return ok(a.leaderboard)   # every member (the user asked for it to be visible to all)
     of "/api/diagnostics":
       # §13a: everyone sees whether reports are on (the app tells its person); the manager also sees the reports
@@ -1356,6 +1431,7 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
     if not a.n.p.checkJoinRequest(req): bad("bad join request")
     return ok(a.certify(me, req, truthy(d.get("existing_ok")), now))
   of "/api/devices/revoke": return a.revokeDevice(me, d.get("device"), now)
+  of "/api/hidden": return ok(a.setHidden(me, d))
   of "/api/settings/relay":
     need(me, "manager")
     var url = if d.get("url") != nil and d["url"].isStr: d["url"].s.strip else: ""
