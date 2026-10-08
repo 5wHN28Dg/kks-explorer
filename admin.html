@@ -25,6 +25,8 @@ main{padding:10px 12px 40px;max-width:1100px;margin:0 auto}
 .count{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--review);color:#1c2730;font-size:12px;font-weight:700;text-align:center;margin-left:4px}
 .card{background:var(--chrome2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}
 .card h3{margin:0 0 6px;font-size:14px;font-family:var(--mono)}
+.card h3 a{color:var(--accent)} .card h4{margin:10px 0 4px;font-size:13px;color:var(--muted);font-weight:600}
+.card .kind+.kind{border-top:1px solid var(--line);margin-top:8px}
 .sub{color:var(--muted);font-size:12.5px}
 .mono{font-family:var(--mono)}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -77,6 +79,13 @@ const head=(...names)=>h('tr',null,names.map(n=>h('th',null,n)));
 // a link inside the app (a path and query this page made): href through the URL check
 const appLink=(url,props,...kids)=>{ const a=h('a',props,...kids); a.href=K.safeUrl(url); return a };
 let ME=null, tab=null, SHEETS=[];
+// My submissions: the filters ([id, label, kind param, field param]: core api listSubs)
+const MINE_KINDS=[['all','Everything'],['equipment_photo','Equipment photos','equipment_photo'],['plate_photo','Tag plate photos','plate_photo'],
+  ['equipment','Places and notes (all fields)','equipment'],['floor','Floor','equipment','floor'],['notes','Notes','equipment','notes'],
+  ['custom','Custom fields','equipment','custom'],['link','Procedure links','link'],['review','Tag readings','review'],['tag_add','Marked tags','tag_add'],
+  ['removals','Removals','tag_remove,photo_delete']];
+const MINE_F={status:'all',kind:'all'};
+let SHOW_HIDDEN=false;   // Users and Devices: removed ones an admin hid, shown anyway
 // v2 crops (approving a marked tag): level 0 of the sheet's pyramid, decoded by K.jxl where the browser can't
 const cropBg={};
 new MutationObserver(()=>document.querySelectorAll('[data-crop]:not([data-bg])').forEach(el=>{
@@ -90,13 +99,16 @@ const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
 async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
 
-const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isManager()&&!K.cfg?.app],['history','History',isAdmin],['account','Account',()=>true]];
+// Updates is its own tab, not part of Account (the Android app shows updates in its own screens)
+const canUpdate=()=>!K.cfg?.app&&(K.cfg?.mode==='peer'||isAdmin());
+const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['board','Leaderboard',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isManager()&&!K.cfg?.app],['history','History',isAdmin],['updates','Updates',canUpdate],['account','Account',()=>true]];
 async function init(){
   ME=await K.start(); K.toast=toast;
   $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`;
   const t=location.hash.slice(1); show(TABS.some(x=>x[0]===t&&x[2]())?t:isAdmin()?'queue':'mine');
 }
 async function show(t){
+  if(t!==tab) SHOW_HIDDEN=false;   // (hidden items shown again: on the page where that was asked only)
   tab=t; history.replaceState(null,'','#'+t);
   put($('#tabs'),TABS.filter(x=>x[2]()).map(([id,label])=>h('button',{class:'btn'+(id===t?' on':''),onclick:()=>show(id)},label,
     id==='queue'?h('span',{class:'count',id:'qn',style:'display:none'}):null,id==='account'&&ME.transfer_offer?h('span',{class:'count'},'!'):null)));
@@ -142,52 +154,79 @@ const badge=s=>{ const st=String((s.conflicts?.length?'conflict':s.status)??'');
 const VIEWS={
   async queue(){
     if(!SHEETS.length) SHEETS=await K.api('/data/sheets.json').catch(()=>[]);
-    const subs=(await K.api('/api/submissions?status=open')).submissions.reverse();
-    const qn=$('#qn'); if(qn){qn.textContent=subs.length; qn.style.display=subs.length?'':'none'}
-    if(!subs.length){ put($('#main'),h('p',{class:'sub'},'Nothing waiting for approval.')); return }
-    const groups={}; for(const s of subs)(groups[s.target]??=[]).push(s);
-    const out=[h('p',{class:'sub'},'Oldest first. Approving applies the change and records it in History, where it can be reverted.')];
+    // grouped by code (core api groupSubmissions): per code, each kind of change is its own group, so an equipment photo
+    // and a tag plate photo never compete; Pick and votes only where several of the same kind wait ("pick")
+    const R=await K.api('/api/submissions?status=open&group=code'), groups=R.groups||[];
+    const qn=$('#qn'); if(qn){qn.textContent=R.submissions.length; qn.style.display=R.submissions.length?'':'none'}
+    if(!groups.length){ put($('#main'),h('p',{class:'sub'},'Nothing waiting for approval.')); return }
+    const out=[h('p',{class:'sub'},'Grouped by code, oldest first. Approving applies the change and records it in History, where it can be reverted.')];
     const button=(cls,label,onclick)=>h('button',{class:cls,onclick},label);
-    for(const [target,L] of Object.entries(groups)){
-      if(L[0].kind==='photo'){
-        const kks=L[0].payload.kks;
-        out.push(h('div',{class:'card'},h('h3',null,`Photo proposals · ${kks??''}`),
-          L.length>1?h('div',{class:'sub'},'Several photos proposed. “Use this one” approves it and rejects the others. Votes are only a hint.'):null,
+    const oldest=g=>Math.min(...g.kinds.flatMap(k=>k.items.map(s=>s.created||0)));
+    for(const g of [...groups].sort((a,b)=>oldest(a)-oldest(b))){
+      // the code opens its tag on the drawing; a change without a code (a review) opens its tag by id
+      const marked=g.kinds.every(k=>k.kind==='tag_add');
+      const title=g.code?appLink('/?kks='+encodeURIComponent(g.code),{class:'mono',title:'Show it on the drawing'},g.code)
+        :g.tag&&!marked?appLink('/?tag='+encodeURIComponent(g.tag),{title:'Show it on the drawing'},'Tag '+g.tag)
+        :'Marked tags without a code';
+      out.push(h('div',{class:'card group','data-code':g.code||g.tag||''},h('h3',null,title),g.kinds.map(kd=>{
+        const L=[...kd.items].sort((a,b)=>(a.created||0)-(b.created||0));
+        if(kd.kind.endsWith('_photo')) return h('div',{class:'kind','data-kind':kd.kind},h('h4',null,`${kd.label} (${L.length})`),
+          kd.pick?h('div',{class:'sub'},`Several ${kd.label.toLowerCase()}s proposed. “Use this one” approves it and rejects the other ${kd.label.toLowerCase()}s of this code. Votes are only a hint.`):null,
           h('div',{class:'photos'},L.map(s=>h('figure',null,photoImg(s.payload.file),
-            h('div',{class:'sub'},who(s),` · ${when(s.created)} · ${s.votes} vote${s.votes===1?'':'s'}`),s.payload.caption?h('div',null,s.payload.caption):null,rnote(s),
+            h('div',{class:'sub'},who(s),` · ${when(s.created)}`,kd.pick?` · ${s.votes} vote${s.votes===1?'':'s'}`:''),s.payload.caption?h('div',null,s.payload.caption):null,rnote(s),
             h('div',{class:'row',style:'margin-top:6px'},
-              L.length>1?[button('primary','Use this one',()=>decide(s.id,'pick')),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
-              button('danger','Reject',()=>decide(s.id,'reject'))))))));
-        continue;
-      }
-      out.push(h('div',{class:'card'},h('h3',null,target),L.map(s=>h('div',{style:'margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)'},
-        h('div',{class:'row'},badge(s),h('span',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`)),rnote(s),
-        s.conflicts?.length?h('div',{class:'warn bad'},`Conflict: ${s.kind==='equipment'?'highlighted field(s) changed after this was submitted':'this changed after it was submitted'}. Approving overwrites the current value.`):null,
-        detail(s),
-        h('div',{class:'row',style:'margin-top:6px'},
-          s.conflicts?.length?button('primary','Overwrite with proposal',()=>decide(s.id,'approve',true)):button('primary','Approve',()=>decide(s.id,'approve')),
-          button('danger','Reject',()=>decide(s.id,'reject')))))));
+              kd.pick?[button('primary','Use this one',()=>decide(s.id,'pick')),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
+              button('danger','Reject',()=>decide(s.id,'reject')))))));
+        return h('div',{class:'kind','data-kind':kd.kind},h('h4',null,`${kd.label} (${L.length})`),L.map(s=>h('div',{class:'item',style:'margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)'},
+          h('div',{class:'row'},badge(s),h('span',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`)),rnote(s),
+          s.conflicts?.length?h('div',{class:'warn bad'},`Conflict: ${s.kind==='equipment'?'highlighted field(s) changed after this was submitted':'this changed after it was submitted'}. Approving overwrites the current value.`):null,
+          detail(s),
+          h('div',{class:'row',style:'margin-top:6px'},
+            s.conflicts?.length?button('primary','Overwrite with proposal',()=>decide(s.id,'approve',true)):button('primary','Approve',()=>decide(s.id,'approve')),
+            button('danger','Reject',()=>decide(s.id,'reject'))))));
+      })));
     }
     put($('#main'),out);
   },
   async mine(){
-    const all=(await K.api('/api/submissions?status=all&limit=300')).submissions;
-    const mine=all.filter(s=>s.mine), toVote=all.filter(s=>!s.mine&&s.kind==='photo'&&['pending','conflict'].includes(s.status));
+    // filtered by the server (/api/submissions: status, kind, field, mine), grouped here by code
+    const F=MINE_F, q=new URLSearchParams({mine:'1',status:F.status,limit:'300'});
+    const kf=MINE_KINDS.find(x=>x[0]===F.kind)||MINE_KINDS[0]; if(kf[2]) q.set('kind',kf[2]); if(kf[3]) q.set('field',kf[3]);
+    const [mineR,others]=await Promise.all([K.api('/api/submissions?'+q),K.api('/api/submissions?status=open&kind=photo')]);
+    const mine=mineR.submissions.filter(s=>s.mine), toVote=others.submissions.filter(s=>!s.mine&&['pending','conflict'].includes(s.status));
     const out=[];
     if(K.outbox.length) out.push(h('div',{class:'card'},h('h3',null,`Queued on this device (${K.outbox.length})`),h('div',{class:'sub'},'Sent automatically when the server is reachable.'),
-      K.outbox.map(i=>h('div',null,K.describe(i.kind,i.payload)))));
+      K.outbox.map(i=>h('div',null,K.describe(i.kind,i.payload),i.raw?[' ',h('span',{class:'badge pending'},'converting')]:null))));
     if(toVote.length) out.push(h('div',{class:'card'},h('h3',null,'Photo proposals from others'),h('div',{class:'sub'},'Vote for the photo that shows the equipment best. An admin makes the final choice.'),
-      h('div',{class:'photos'},toVote.map(s=>h('figure',null,photoImg(s.payload.file),h('div',{class:'sub'},`${s.payload.kks??''} · ${s.by??''} · ${s.votes} vote${s.votes===1?'':'s'}`),
+      h('div',{class:'photos'},toVote.map(s=>h('figure',null,photoImg(s.payload.file),h('div',{class:'sub'},`${s.payload.kks??''} · ${s.by_name||s.by||''} · ${s.votes} vote${s.votes===1?'':'s'}`),
         h('button',{class:s.voted?'primary':'ghost',onclick:()=>vote(s.id)},s.voted?'Voted ✓':'Vote'))))));
-    out.push(table(head('#','Status','Change','Sent','Decision',''),mine.map(s=>h('tr',null,h('td',{class:'sub'},s.id),h('td',null,badge(s)),h('td',null,K.describe(s.kind,s.payload),rnote(s)),
-      h('td',{class:'sub'},when(s.created)),
-      h('td',{class:'sub'},s.status==='conflict'?'waiting for an admin (clashes with a newer change)':s.note&&!s.note.startsWith('[')?s.note:''),
-      h('td',null,['pending','conflict'].includes(s.status)?h('button',{class:'ghost',onclick:()=>withdraw(s.id)},'Withdraw'):null)))));
+    const sel=(name,label,opts,v)=>h('label',{class:'sub'},label+' ',h('select',{name,'aria-label':label,onchange:e=>{ MINE_F[name]=e.currentTarget.value; show('mine') }},
+      opts.map(([val,text])=>h('option',{value:val,selected:val===v},text))));
+    out.push(h('div',{class:'row',id:'mineFilters','data-f':F.status+'|'+F.kind,style:'margin:8px 0'},
+      sel('status','Status',[['all','All'],['open','Waiting (pending or conflict)'],['approved','Approved'],['rejected','Rejected'],['withdrawn','Withdrawn'],['conflict','Conflict']],F.status),
+      sel('kind','Kind',MINE_KINDS.map(x=>[x[0],x[1]]),F.kind),
+      h('span',{class:'sub'},`${mine.length} shown`)));
+    // grouped by code; a change without one (a review, a marked tag without a code) by its tag or sheet
+    const groups=new Map();
+    for(const s of mine){ const g=s.code||(s.kind==='tag_add'?'Marked tags on '+(s.payload.sheet||'?'):s.tag?'Tag '+s.tag:s.target||'Other'); if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(s) }
+    const kindName={equipment_photo:'Equipment photo',plate_photo:'Tag plate photo',equipment:'Place and notes',link:'Procedure link',review:'Tag reading',tag_add:'Marked tag',tag_remove:'Tag removal',photo_delete:'Photo removal'};
+    for(const [g,L] of groups){
+      const s0=L[0], code=s0.code;
+      out.push(h('div',{class:'card mine','data-code':g},h('h3',null,code?appLink('/?kks='+encodeURIComponent(code),{class:'mono'},code):g),
+        table(head('#','Kind','Status','Change','Sent','Decision',''),L.map(s=>h('tr',null,h('td',{class:'sub'},s.id),
+          h('td',{class:'sub'},kindName[s.group_kind]||s.kind,s.fields?.length?h('div',null,s.fields.join(', ')):null),h('td',null,badge(s)),
+          h('td',null,K.describe(s.kind,s.payload),rnote(s)),
+          h('td',{class:'sub'},when(s.created)),
+          h('td',{class:'sub'},s.status==='conflict'?'waiting for an admin (clashes with a newer change)':s.note&&!s.note.startsWith('[')?s.note:''),
+          h('td',null,['pending','conflict'].includes(s.status)?h('button',{class:'ghost',onclick:()=>withdraw(s.id)},'Withdraw'):null))))));
+    }
+    if(!mine.length) out.push(h('p',{class:'sub'},F.status==='all'&&F.kind==='all'?'You haven\'t submitted anything yet.':'Nothing matches these filters.'));
     put($('#main'),out);
-    if(!mine.length) $('#main').append(h('p',{class:'sub'},'You haven\'t submitted anything yet.'));
   },
   async users(){
-    const U=(await K.api('/api/users')).users;
+    // removed people an admin hid (POST /api/hidden) stay out of the list unless shown
+    const all=(await K.api('/api/users?show_hidden=1')).users, nHidden=all.filter(u=>u.hidden).length, U=all.filter(u=>SHOW_HIDDEN||!u.hidden);
+    const gone=u=>!u.active&&u.id!==ME.user.id&&u.person;
     const canEdit=u=>u.role==='user'||(u.role==='admin'&&isManager());
     const ghost=(label,onclick)=>h('button',{class:'ghost',onclick},label), other=u=>u.role==='admin'?'user':'admin';
     const actions=u=>{
@@ -201,6 +240,7 @@ const VIEWS={
         out.push(ghost('Password link',()=>resetLink(u.id,u.username)));
       }
       if(canEdit(u)&&u.id!==ME.user.id&&!u.no_account) out.push(ghost('Edit details',()=>editDetails(+u.id,u.full_name||'',u.position||'')));
+      if(gone(u)) out.push(u.hidden?ghost('Show again',()=>setHidden([u.person],false)):ghost('Hide',()=>setHidden([u.person],true)));
       return out;
     };
     const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); createUser(F) }},h('input',{name:'full_name',placeholder:'Full name',required:true,maxlength:80,style:'min-width:200px'}),
@@ -208,7 +248,8 @@ const VIEWS={
       h('select',{name:'role'},h('option',{value:'user'},'user'),isManager()?h('option',{value:'admin'},'admin'):null),h('button',{class:'primary'},'Create and get link'));
     put($('#main'),h('div',{class:'card server-only'},h('h3',null,'Add an account'),F,
         h('div',{class:'sub'},'There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.'),h('div',{id:'newlink'})),
-      table(head('Name','Username','Role','Status',''),U.map(u=>h('tr',null,
+      hiddenBar(true,nHidden),   // (whether a person still has a device is the server's to tell: Clear removed asks it)
+      table(head('Name','Username','Role','Status',''),U.map(u=>h('tr',{class:u.hidden?'hidden-row':null},
         h('td',null,u.full_name?u.full_name:h('span',{class:'del'},'no name yet'),u.position?h('div',{class:'sub'},u.position):null),
         h('td',{class:'mono'},u.username,u.id===ME.user.id?[' ',h('span',{class:'sub'},'(you)')]:null),
         h('td',null,u.role),
@@ -218,10 +259,11 @@ const VIEWS={
       h('p',{class:'sub'},`Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).`));
   },
   async devices(){
-    const D=await K.api('/api/devices'), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
+    const D=await K.api('/api/devices'+(SHOW_HIDDEN?'?show_hidden=1':'')), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
     const devRow=(d,mine)=>h('tr',null,h('td',null,d.label||'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:null,mine?null:h('div',{class:'sub'},d.username)),
       h('td',{class:'mono sub'},`${d.device.slice(0,12)}…`),h('td',null,d.revoked?h('span',{class:'del'},'removed'):'active'),
-      h('td',null,!d.revoked&&!d.this_computer?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove'):null));
+      h('td',null,!d.revoked&&!d.this_computer?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
+        :d.revoked&&isAdmin()?h('button',{class:'ghost',onclick:()=>d.hidden?setHidden([d.device,d.person],false):setHidden([d.device],true)},d.hidden?'Show again':'Hide'):null));
     const N=S.internet||{}, syncs=Object.values(S.syncs);
     const addr=h('input',{name:'address',placeholder:'or an address, e.g. 192.168.1.20',style:'min-width:220px'});
     const relay=h('input',{name:'url',value:N.relay||'',placeholder:'wss://kks-relay.….workers.dev',style:'min-width:280px'});
@@ -257,7 +299,7 @@ const VIEWS={
       h('div',{class:'card'},h('h3',null,'Add a computer from a join request'),
         h('div',{class:'sub'},'Someone set up the app on their laptop and gave you a ',h('span',{class:'mono'},'.kksjoin'),' file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.'),
         h('label',{class:'primary',style:'display:inline-block;margin-top:8px;cursor:pointer'},'Import join request',h('input',{type:'file',accept:'.kksjoin,.json',hidden:true,onchange:e=>importJoin(e.currentTarget)}))),
-      h('div',{class:'card'},h('h3',null,'All devices'),table(D.all.map(d=>devRow(d,false)))));
+      h('div',{class:'card',id:'allDevices'},h('h3',null,'All devices'),hiddenBar(D.all.some(d=>d.revoked&&!d.hidden),D.hidden||0),table(D.all.map(d=>devRow(d,false)))));
     put($('#main'),out);
     if(isAdmin()) pollLobby();
   },
@@ -311,6 +353,18 @@ const VIEWS={
     window._sheetIds=ids; renderJob(job);
     if(busy) pollJob();
   },
+  async board(){
+    // every member sees names and numbers only (core api leaderboard: no usernames, roles or IDs)
+    const B=await K.api('/api/leaderboard'), kinds=B.kinds||{}, P=B.people||[];
+    const pct=x=>x==null?'–':Math.round(x*100)+' %';
+    const what=p=>Object.entries(p.kinds||{}).filter(([,v])=>v.total).map(([k,v])=>h('div',null,`${kinds[k]||k}: ${v.approved} approved`+(v.rejected?`, ${v.rejected} rejected`:'')+(v.pending?`, ${v.pending} waiting`:'')));
+    put($('#main'),h('p',{class:'sub'},'Everyone who contributed, by approved contributions. Approved changes include an admin\'s own (applied without review). Ratio: approved per rejected.'),
+      P.length?table(head('#','Name','Approved','Rejected','Ratio','Approval rate','Waiting','What','Last contribution'),P.map(p=>h('tr',{'data-key':p.key},
+        h('td',{class:'mono'},p.rank),h('td',null,p.name),h('td',null,h('b',null,p.approved)),h('td',null,p.rejected),
+        h('td',null,p.ratio==null?(p.approved?'no rejections':'–'):p.ratio.toFixed(1)),h('td',null,pct(p.approval_rate)),h('td',null,p.pending),
+        h('td',{class:'sub'},what(p)),h('td',{class:'sub'},p.last?`${when(p.last)} (${K.ago(p.last)})`:'')))):h('p',{class:'sub'},'No contributions yet.'));
+  },
+  async updates(){ put($('#main'),h('div',{id:'upd'},h('p',{class:'sub'},'Checking…'))); await renderUpdate() },
   async account(){
     if(K.online){ try{ ME=await K.api('/api/me') }catch(e){} }
     const sw=!!navigator.serviceWorker?.controller, secure=window.isSecureContext;
@@ -342,10 +396,8 @@ const VIEWS={
           :[h('span',{class:'del'},'not available'),': needs HTTPS (or localhost). Over plain http on the LAN the page works only while connected.'])),
         h('tr',null,h('td',null,'Offline access until'),h('td',null,(lease?new Date(lease.lease_until).toLocaleString():'-')+' ',h('span',{class:'sub'},`(renewed each time you connect; ${ME.offline_days} days)`))),
         h('tr',null,h('td',null,'Queued changes'),h('td',null,K.outbox.length))),
-      h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'ghost',onclick:()=>K.flush()},'Sync now'),h('button',{class:'danger',onclick:()=>K.logout()},'Log out and remove plant data from this device'))),
-      h('div',{id:'upd'}));
+      h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'ghost',onclick:()=>K.flush()},'Sync now'),h('button',{class:'danger',onclick:()=>K.logout()},'Log out and remove plant data from this device'))));
     put($('#main'),out);
-    if(!K.cfg?.app) renderUpdate();   // (the Android app shows updates in its own Account tab)
   },
 };
 
@@ -400,8 +452,14 @@ async function decide(id,action,force){
   if(force&&!confirm('Overwrite the current value with this proposal?')) return;
   const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);   // hand-marked tag: approve with the edited code
   const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
-  await act(()=>K.api(`/api/submissions/${id}/${action}`,{force:!!force,note,edit}),{approve:'Approved',pick:'Photo chosen, others rejected',reject:'Rejected'}[action]);
+  await act(()=>K.api(`/api/submissions/${id}/${action}`,{force:!!force,note,edit}),{approve:'Approved',pick:'Photo chosen, the others of its kind rejected',reject:'Rejected'}[action]);
 }
+// removed devices and people: hidden from the lists (display only: the log, History and the leaderboard keep them)
+const setHidden=(ids,hide)=>act(()=>K.api('/api/hidden',{ids,hide}),hide?'Hidden':'Shown again');
+const clearRemoved=()=>act(()=>K.api('/api/hidden',{clear_removed:true}),'Removed devices and people cleared from the lists');
+const hiddenBar=(any,n)=>isAdmin()&&(any||n)?h('div',{class:'row',style:'margin:6px 0'},
+  any?h('button',{class:'ghost',onclick:clearRemoved},'Clear removed'):null,
+  n?h('button',{class:'ghost','aria-pressed':String(SHOW_HIDDEN),onclick:()=>{ SHOW_HIDDEN=!SHOW_HIDDEN; show(tab) }},SHOW_HIDDEN?'Leave hidden out':`Show hidden (${n})`):null):null;
 const vote=id=>act(()=>K.api(`/api/submissions/${id}/vote`,{}));
 const withdraw=id=>confirm('Withdraw this submission?')&&act(()=>K.api(`/api/submissions/${id}/withdraw`,{}),'Withdrawn');
 async function createUser(f){
@@ -422,16 +480,19 @@ async function pollLobby(){
   clearTimeout(lobbyTimer);
   const el=$('#lobby'); if(!el) return;          // left the Devices page
   let r; try{ r=await K.api('/api/join-requests') }catch(e){ put(el,h('div',{class:'sub'},e.message)); return }
-  const key=JSON.stringify(r.requests.map(q=>[q.device,q.existing?.username])), str=v=>String(v??'');
+  const key=JSON.stringify(r.requests.map(q=>[q.device,q.existing?.username,q.needs_position])), str=v=>String(v??'');
   if(key!==lobbySeen||!el.firstChild){ lobbySeen=key;
     put(el,r.requests.length?r.requests.map(q=>{const x=q.request, c=str(q.code);return h('div',{class:'row',style:'margin-top:8px;align-items:center'},
       h('span',{style:'font-family:var(--mono);font-size:18px;letter-spacing:2px'},`${c.slice(0,3)} ${c.slice(3)}`),
       h('span',null,h('b',null,str(x.full_name)),` (${str(x.username)}${x.position?', '+x.position:''}) · “${x.label||'?'}”`,
-        q.existing?[h('br'),h('span',{class:'sub'},`${str(q.existing.full_name)} (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null),
-      h('button',{class:'primary',onclick:()=>decideLobby(q.device,'accept',!!q.existing)},'Accept'),h('button',{class:'ghost',onclick:()=>decideLobby(q.device,'refuse')},'Refuse'))})
+        q.existing?[h('br'),h('span',{class:'sub'},`${str(q.existing.full_name)} (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null,
+        q.needs_position?h('div',{class:'warn needs-position'},noPosition(x.full_name)):null),
+      h('button',{class:'primary',disabled:!!q.needs_position,onclick:()=>decideLobby(q.device,'accept',!!q.existing)},'Accept'),h('button',{class:'ghost',onclick:()=>decideLobby(q.device,'refuse')},'Refuse'))})
       :h('div',{class:'sub',style:'margin-top:6px'},'Nobody is waiting.')) }
   lobbyTimer=setTimeout(pollLobby,2000);
 }
+// every new member needs a position (core certify refuses one without): the request has to be sent again with it
+const noPosition=name=>`No position (job title) given. Every new member needs one: ask ${String(name??'them')} to send a new request with their position.`;
 async function decideLobby(device,action,existing){
   try{ const r=await K.api(`/api/join-requests/${encodeURIComponent(device)}`,{action,existing_ok:!!existing}); toast(action==='accept'?`Accepted ${r.username}: their device gets the plant over the Wi-Fi now`:'Refused'); lobbySeen=''; pollLobby() }catch(e){ toast(e.message) }
 }
@@ -465,7 +526,8 @@ async function pollInvite(tok){
   else if(st.state==='asked'){ if(el.dataset.asked!==st.request.device){ el.dataset.asked=st.request.device;
       put(el,who(st.request),' wants to join.',st.existing?h('div',{class:'sub'},`${str(st.existing.full_name)} (${str(st.existing.username)}, ${str(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.`)
                                                     :h('div',{class:'sub'},'A new person (role: user).'),
-        h('div',{class:'row',style:'margin-top:6px'},h('button',{class:'primary',onclick:()=>decideInvite(tok,'accept',!!st.existing)},'Accept'),h('button',{class:'ghost',onclick:()=>decideInvite(tok,'refuse')},'Refuse'))) } }
+        st.needs_position?h('div',{class:'warn needs-position'},noPosition(st.request.full_name)):null,
+        h('div',{class:'row',style:'margin-top:6px'},h('button',{class:'primary',disabled:!!st.needs_position,onclick:()=>decideInvite(tok,'accept',!!st.existing)},'Accept'),h('button',{class:'ghost',onclick:()=>decideInvite(tok,'refuse')},'Refuse'))) } }
   else { const end={accepted:()=>['Accepted ',who(st.request),'. Their device is syncing the plant now.'],refused:()=>'Refused.',cancelled:()=>'Cancelled.',expired:()=>'Expired. Show a new code if they still need one.'};
     put(el,Object.prototype.hasOwnProperty.call(end,st.state)?end[st.state]():str(st.state)); return }
   inviteTimer=setTimeout(()=>pollInvite(tok),1500);
@@ -494,7 +556,7 @@ const restoreTo=(hid,rev)=>confirm(hid?`Put all plant data back to how it was ri
 // ---------- updates (M5b): signed GitHub releases, checked daily, installed only when asked ----------
 async function renderUpdate(u){
   const el=$('#upd'); if(!el) return;
-  try{ u=u||await K.api('/api/update') }catch(e){ el.replaceChildren(); return }   // (server: admins only)
+  try{ u=u||await K.api('/api/update') }catch(e){ put(el,h('p',{class:'sub'},K.isNetErr(e)?'Cannot reach the server.':e.message)); return }   // (server: admins only)
   const mayAct=K.cfg?.mode==='peer'||isManager(), str=v=>String(v??'');
   const out=[h('h3',null,'Updates'),h('div',null,'This is version ',h('b',null,str(u.current)),'.')];
   if(u.staged) out.push(h('div',{class:'warn',style:'margin-top:8px'},`Version ${u.staged} is installed: close Walkdown (Quit) and start it again to use it.`));
@@ -512,7 +574,7 @@ async function renderUpdate(u){
   out.push(h('div',{class:'row',style:'margin-top:8px'},mayAct?h('button',{class:'ghost',onclick:()=>checkUpdate()},'Check now'):null,
     h('span',{class:'sub'},(u.checked?`Checked ${K.ago(u.checked)}`:'Not checked yet')+(u.auto?' · checks by itself once a day':' · automatic checks are off (update_check)'))));
   put(el,h('div',{class:'card'},out));
-  if(u.busy) setTimeout(()=>tab==='account'&&renderUpdate(),1500);
+  if(u.busy) setTimeout(()=>tab==='updates'&&renderUpdate(),1500);
 }
 async function checkUpdate(){ try{ renderUpdate(await K.api('/api/update/check',{})) }catch(e){ toast(e.message) } }
 async function installUpdate(){ try{ renderUpdate(await K.api('/api/update/install',{})) }catch(e){ toast(e.message) } }
