@@ -555,7 +555,8 @@ class Phone(unittest.TestCase):
         finally:
             for a in self.boss.req('GET', '/api/state').get('added_tags', []):
                 if a.get('sheet') == 'removed-sheet':
-                    self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}})
+                    r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}})
+                    assert r.get('status') == 'approved', r   # else the later tests would count this tag
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:

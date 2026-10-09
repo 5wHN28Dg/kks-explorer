@@ -315,7 +315,7 @@ proc coverageView*(m: Model): JNode =
   var all = Counts()
   var seenSheet = initTable[string, HashSet[string]]()
   var seenSys, seenAll: HashSet[string]
-  # located per tag, once per (code, unit-less body): the code alone can't key it, a suffix may be typed into the code;
+  # located per tag, once per (unit-less body, full code): the code alone can't key it, a suffix may be typed into the code;
   # the equipment records looked up by a table built once (state.equipment is a list of fields)
   var eqTab = initTable[string, JNode]()
   let eq = if m.state != nil: m.state.get("equipment") else: nil
