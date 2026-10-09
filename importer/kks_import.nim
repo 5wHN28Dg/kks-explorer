@@ -303,7 +303,8 @@ outOfMemHook = onOutOfMemory
 try:
   main()
 except MupdfError as e:
-  if "malloc (" in e.msg or "calloc (" in e.msg or "realloc (" in e.msg:
+  # "... failed (overflow)" is a size a crafted file asked for, not memory running out
+  if ("malloc (" in e.msg or "calloc (" in e.msg or "realloc (" in e.msg) and "(overflow)" notin e.msg:
     stderr.write $oomLine
     stderr.writeLine "  (MuPDF: " & e.msg & ")"
     quit ExitOutOfMemory

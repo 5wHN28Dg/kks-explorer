@@ -82,7 +82,6 @@ class Base(unittest.TestCase):
         return boss
 
 
-@unittest.skipUnless(os.path.exists(IMPORTER), 'the importer (kks_import) is not built')
 def many_circles_pdf(n):
     """a page of n empty circles 21 pt across (Bezier, like the drawings' off-page connectors)"""
     ops = ['0.35 w']
@@ -107,6 +106,7 @@ def many_circles_pdf(n):
     return out
 
 
+@unittest.skipUnless(os.path.exists(IMPORTER), 'the importer (kks_import) is not built')
 class Drawings(Base):
     def wait(self, c):
         for _ in range(600):

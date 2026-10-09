@@ -35,7 +35,8 @@ writes them to the sheet's `links` in sheets.json (docs/PATHSTORE.md), in both m
 - **Tested:** `tests/test_connectors.nim`, a synthetic page with Hershey Simplex strokes (close to the drawings' SHX
   font): codes upright and turned both ways, a bold label whose digits touch, the page itself turned, and circles
   that are not connectors.
-- **Limits for untrusted PDFs** (2026-10-09): each candidate circle is checked against every character blob and read
+- **Limits for untrusted PDFs** (2026-10-09; the connector finder only: the rest of an import is bounded by the
+  server's memory limit and timeout): each candidate circle is checked against every character blob and read
   up to four times, so the work grows with circles × blobs. A page with more than `MaxCircles` (1000) connector-sized
   circles or more than `MaxSmallPaths` (2 000 000) small stroke paths is refused: the import stops with a message
   naming the limit, before anything is written. Both are about 10 times the most on the 17 real sheets (82 circles on
