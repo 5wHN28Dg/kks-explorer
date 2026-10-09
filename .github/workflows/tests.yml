@@ -317,15 +317,12 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  android-e2e:
-    needs: linux-build
+  android-apk:
+    # the debug APK once, for the emulator jobs below (each boots its own emulator and runs a share of the tests)
     runs-on: ubuntu-26.04
-    timeout-minutes: 75
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: linux-bin
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -335,6 +332,37 @@ jobs:
         with:
           path: android/app2/build/third_party/download
           key: deps-${{ hashFiles('android/app2/build.gradle.kts') }}
+      - name: Walkdown for Android, debug APK
+        working-directory: android
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          ./gradlew --no-daemon :app2:assembleDebug
+          ls -l --time-style=full-iso app2/build/outputs/apk/debug/app2-debug.apk   # built now, not a stale one
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-apk
+          path: android/app2/build/outputs/apk/debug/app2-debug.apk
+          retention-days: 3
+          if-no-files-found: error
+  android-e2e:
+    # three emulators at once, each a share of test_app2 (KKS_SHARD, shares by each test's time on CI: test_app2.py
+    # SHARD_WEIGHTS); test_direct with share 1. The same tests as one emulator ran, in about a third of the time.
+    needs: [linux-build, android-apk]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-bin
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-apk
+          path: android/app2/build/outputs/apk/debug
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pip
@@ -389,12 +417,6 @@ jobs:
           target=android-36
           vm.heapSize=256
           EOF
-      - name: Walkdown for Android, debug APK
-        working-directory: android
-        run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          ./gradlew --no-daemon :app2:assembleDebug
-          ls -l --time-style=full-iso app2/build/outputs/apk/debug/app2-debug.apk   # built now, not a stale one
       - name: Boot the emulator
         run: |
           export ANDROID_SDK_ROOT=$HOME/Android/Sdk ANDROID_HOME=$HOME/Android/Sdk
@@ -411,13 +433,15 @@ jobs:
           "$adb" shell settings put global transition_animation_scale 0
           "$adb" shell settings put global animator_duration_scale 0
           echo "booted in $(( $(date +%s) - t0 )) s"
-      - name: The app against the server (join, search, edit synced, approval, photos, courses, diagnostics, removal + wipe)
+      - name: The app against the server, share ${{ matrix.shard }} of 3 (join, search, edit synced, approval, photos, courses, diagnostics, removal + wipe)
+        env: {KKS_SHARD: '${{ matrix.shard }}/3'}
         run: |
           t0=$(date +%s)
           .venv/bin/python android/app2/e2e/test_app2.py android/app2/build/outputs/apk/debug/app2-debug.apk \
             /tmp/kkslinux/kks_server /tmp/kksimp/kks_import -v
           echo "test_app2: $(( $(date +%s) - t0 )) s"
       - name: The direct path (hole punching through the relay twin, and the fallback to the pipe)
+        if: matrix.shard == 1
         run: |
           t0=$(date +%s)
           .venv/bin/python android/app2/e2e/test_direct.py android/app2/build/outputs/apk/debug/app2-debug.apk \
@@ -433,7 +457,7 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: android-logs
+          name: android-logs-${{ matrix.shard }}
           path: |
             /tmp/emulator.log
             /tmp/logcat.txt

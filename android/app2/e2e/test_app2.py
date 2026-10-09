@@ -1069,5 +1069,35 @@ class Phone(unittest.TestCase):
             self.leave('tala')
 
 
+# CI runs the tests on several emulators at once: KKS_SHARD=k/n keeps this run's share (k = 1..n). Shares are made
+# by each test's time on CI (seconds, from a CI run; a test not listed counts DEFAULT_WEIGHT), largest first, each to
+# the share with the least so far: every test lands in exactly one share, a new one included.
+SHARD_WEIGHTS = {'test_links_and_valve': 258, 'test_photo_queue': 239, 'test_photos': 201, 'test_description_and_credit': 121,
+                 'test_flow': 120, 'test_position_required': 85, 'test_hide_removed': 84, 'test_courses': 80,
+                 'test_approvals_grouped': 73, 'test_coverage': 72, 'test_dark': 70, 'test_member_pages': 70,
+                 'test_multi': 70, 'test_systems': 67, 'test_diagnostics': 60, 'test_floor_first': 60}
+DEFAULT_WEIGHT = 90
+
+
+def shard_of(names, n):
+    """{test name: share 1..n}"""
+    load, out = [0] * n, {}
+    for t in sorted(names, key=lambda t: (-SHARD_WEIGHTS.get(t, DEFAULT_WEIGHT), t)):
+        i = min(range(n), key=lambda j: (load[j], j))
+        out[t] = i + 1; load[i] += SHARD_WEIGHTS.get(t, DEFAULT_WEIGHT)
+    return out
+
+
+def load_tests(loader, tests, pattern):
+    spec = os.environ.get('KKS_SHARD', '')
+    if not spec: return tests
+    k, n = (int(x) for x in spec.split('/'))
+    names = loader.getTestCaseNames(Phone)
+    keep = {t for t, s in shard_of(names, n).items() if s == k}
+    suite = unittest.TestSuite(Phone(t) for t in names if t in keep)
+    print(f'shard {k}/{n}: {", ".join(sorted(keep))}', file=sys.stderr)
+    return suite
+
+
 if __name__ == '__main__':
     unittest.main()
