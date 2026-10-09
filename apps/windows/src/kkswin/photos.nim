@@ -178,12 +178,12 @@ proc photoForCodes*(w: Win, codes: seq[string], queued: proc ())
 
 type
   EncJob = object
-    key: string
+    key, clientId: string       ## the result is matched on both: a key can be taken again after a discard
     rgb: seq[byte]
     w, h: int
     fail: bool                 ## tests: KKS_TEST_ENCODE_FAIL makes the first n encodes fail
   EncDone = object
-    key: string
+    key, clientId: string
     data: string
     err: string
 
@@ -206,7 +206,7 @@ var
 proc encWorker() {.thread.} =
   while true:
     let j = encJobs.recv()
-    var d = EncDone(key: j.key)
+    var d = EncDone(key: j.key, clientId: j.clientId)
     try:
       if j.fail: d.err = "the encoder failed (a test)"
       else:
@@ -229,9 +229,7 @@ proc encWorker() {.thread.} =
 
 proc codesOf(q: QueuedPhoto): seq[string] = (if q.codes.len > 0: q.codes else: @[q.kks])
 
-proc nameOf(q: QueuedPhoto): string =
-  ## how the queue names it: its code, or the first of several "and N more"
-  if q.codes.len > 1: q.codes[0] & " and " & $(q.codes.len - 1) & " more" else: q.kks
+proc nameOf(q: QueuedPhoto): string = q.name   ## its code, or the first of several "and N more"
 
 iterator kept(): QueuedPhoto =
   ## every photo not sent yet: in the queue (waiting, being compressed, waiting for a retry), then the parked ones
@@ -343,10 +341,10 @@ proc received(w: Win, d: EncDone) =
   var it: QueuedPhoto
   var found = false
   for q in pq.items:
-    if q.key == d.key:
+    if q.key == d.key and q.clientId == d.clientId:
       it = q
       found = true
-  if not found: return          # discarded while it was being compressed
+  if not found: return          # not the photo it was compressed for (discarded meanwhile)
   var outcome = Sent
   var why = ""
   if d.err.len > 0:
@@ -394,7 +392,7 @@ proc startNext(w: Win) =
   if ok:
     let fail = failLeft > 0
     if fail: dec failLeft
-    encJobs.send(EncJob(key: it.key, rgb: px, w: it.w, h: it.h, fail: fail))
+    encJobs.send(EncJob(key: it.key, clientId: it.clientId, rgb: px, w: it.w, h: it.h, fail: fail))
 
 proc pollQueue(w: Win) =
   var changed = false
@@ -472,13 +470,13 @@ proc floorAfterDiscard(w: Win, gone: QueuedPhoto) =
   if gone.floor.len == 0: return
   for q in kept():
     if q.codes.len == 0 and q.kks == gone.kks:
-      if q.floor.len == 0:
-        try:
-          pq.setFloor(q.key, gone.floor)
-          for p in parked.mitems:
-            if p.key == q.key: p.floor = gone.floor
-        except CatchableError as e: w.toast("The floor could not be kept with the next photo: " & e.msg)
-      return
+      if q.floor.len > 0: return
+      try:
+        pq.setFloor(q.key, gone.floor)
+        for p in parked.mitems:
+          if p.key == q.key: p.floor = gone.floor
+        return
+      except CatchableError as e: w.toast("The floor could not be kept with the next photo: " & e.msg)
   if not w.floorKnown(gone.kks):
     w.toast("The floor of " & gone.kks & " (" & gone.floor & ") was to be sent with that photo: it was not saved. " &
             "The next photo of " & gone.kks & " asks for it again.")
@@ -514,6 +512,9 @@ proc discardPhoto(w: Win, key: string) =
       gone = q
       found = true
   if not found: return
+  if pq.busy == key:
+    w.toast("That photo is being tried again right now: discard it once that try has ended")
+    return
   try: pq.forget(key)
   except CatchableError as e:
     w.toast("The photo could not be discarded: " & e.msg)

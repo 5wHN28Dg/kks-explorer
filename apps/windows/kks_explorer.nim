@@ -233,8 +233,8 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
       if n > 0: what.add(if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared")
       if f > 0: what.add(if f == 1: "1 photo was not sent" else: $f & " photos were not sent")
       if not ask(h, "Close Walkdown?", what.join(", and ") & ". " & (if n + f == 1: "It is" else: "They are") &
-                 " kept on this computer and sent when Walkdown next starts. Cancel to keep Walkdown open " &
-                 "(sent in a moment), or OK to close now."):
+                 " kept on this computer and sent when Walkdown next starts. Cancel to keep Walkdown open" &
+                 (if n > 0: " (the ones being prepared are sent in a moment)" else: "") & ", or OK to close now."):
         return 0
   of WM_DESTROY:
     PostQuitMessage(0)
