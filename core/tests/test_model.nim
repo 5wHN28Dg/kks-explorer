@@ -133,6 +133,17 @@ suite "views":
     c.state["equipment"]["11LAB70AA504"] = j("""{"area":"pump house"}""")
     c.merge()
     check coverageView(c)["total"]["located"].i == 2
+  test "coverage: a place is looked up per tag, not per code (a suffix typed into the code has another body)":
+    # 11LAB70AA501 + R and 11LAB70AA501R are one code, but only the first is in the location list (LAB70AA501)
+    let c = sample()
+    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"b","kks":"11LAB70AA501","suffix":"R","isa":null,"kind":"equipment","status":"auto","conf":1,"bbox":[10,10,20,20],"read":["",""]},
+      {"id":"c:1","sheet":"c","kks":"11LAB70AA501R","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,"bbox":[10,10,20,20],"read":["",""]}]"""))
+    c.merge()
+    let v = coverageView(c)
+    var located: seq[(string, int64)]
+    for s in v["sheets"].elems: located.add (s["id"].s, s["located"].i)
+    check located == @[("a", 1'i64), ("b", 1'i64), ("c", 0'i64)]
+    check v["total"]["located"].i == 2 and v["total"]["codes"].i == 6
   test "coverage percent: 100 only when all, 0 only when none, else to the nearest":
     check coveragePct(0, 300) == 0 and coveragePct(1, 300) == 1 and coveragePct(1, 200) == 1
     check coveragePct(199, 200) == 99 and coveragePct(299, 300) == 99 and coveragePct(200, 200) == 100

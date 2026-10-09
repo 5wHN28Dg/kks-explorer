@@ -76,7 +76,7 @@ fun CoverageScreen(onSheet: (String) -> Boolean, onSystem: (String) -> Unit, onC
                                 "${s.optInt("review")} to review, ${s.optInt("marked")} missed tags marked",
                             photos = s.optJSONObject("photos"), action = "Show the sheet with photo colours") {
                         // a hand-marked tag can outlive its sheet: its row is counted, but there is nothing to open
-                        if (!onSheet(s.str("id"))) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("That sheet is no longer in the plant data") }
+                        if (!onSheet(s.str("id"))) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("That sheet is no longer in the plant data", duration = SnackbarDuration.Long) }
                     }
                     }
                     item(contentType = "head") { ListHead("By system", "Tap a system to list its equipment") }

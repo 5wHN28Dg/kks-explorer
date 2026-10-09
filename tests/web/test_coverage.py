@@ -48,7 +48,11 @@ class Coverage(unittest.TestCase):
         typed['state']['equipment'] = {'11LAB70AA504': {'area': 'pump house'}}
         blank = copy.deepcopy(SAMPLE)
         blank['state']['equipment'] = {'11LAB70AA504': {'area': ' \t', 'notes': 'not a place'}}
-        v, t2, b2 = run(engine, [SAMPLE, typed, blank])
+        typed_in = copy.deepcopy(SAMPLE)   # one code, two bodies: only LAB70AA501 is in the location list
+        typed_in['tags'] += [
+            {'id': 'b:1', 'sheet': 'b', 'kks': '11LAB70AA501', 'suffix': 'R', 'isa': None, 'kind': 'equipment', 'status': 'auto'},
+            {'id': 'c:1', 'sheet': 'c', 'kks': '11LAB70AA501R', 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto'}]
+        v, t2, b2, s2 = run(engine, [SAMPLE, typed, blank, typed_in])
         # test_model.nim "coverage: per sheet, per system, totals"
         t = v['total']
         self.assertEqual((t['tags'], t['verified'], t['review'], t['marked'], t['codes']), (5, 2, 0, 1, 5))
@@ -62,6 +66,9 @@ class Coverage(unittest.TestCase):
         # "coverage: a place typed by a person counts"; blanks and other fields don't
         self.assertEqual(t2['total']['located'], 2)
         self.assertEqual(b2['total']['located'], 1)
+        # "coverage: a place is looked up per tag, not per code"
+        self.assertEqual([(x['id'], x['located']) for x in s2['sheets']], [('a', 1), ('b', 1), ('c', 0)])
+        self.assertEqual((s2['total']['located'], s2['total']['codes']), (2, 6))
 
     def against_core(self, engine):
         with open(os.path.join(REPO, 'tests', 'web', 'coverage-vectors.json'), encoding='utf-8') as f:

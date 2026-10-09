@@ -553,10 +553,10 @@ class Phone(unittest.TestCase):
             ui.find('Only system LAB', exact=True, timeout=15)
             ui.find('LAB70, ', timeout=10)
         finally:
+            removed = []
             for a in self.boss.req('GET', '/api/state').get('added_tags', []):
                 if a.get('sheet') == 'removed-sheet':
-                    r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}})
-                    assert r.get('status') == 'approved', r   # else the later tests would count this tag
+                    removed.append(self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}}))
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
@@ -564,6 +564,8 @@ class Phone(unittest.TestCase):
             ui.sh('pm', 'clear', PKG)
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
             time.sleep(3)
+            # after the rest of the clean-up: else the later tests would count this tag
+            assert removed and all(r.get('status') == 'approved' for r in removed), removed
 
     def test_flow(self):
         # join through the server (PROTOCOL-v2 §16 enroll over TLS)
