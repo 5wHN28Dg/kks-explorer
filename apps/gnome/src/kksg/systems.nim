@@ -74,8 +74,12 @@ proc expander(title, subtitle: string, fill: proc (r: W), open: bool, key = "", 
 
 proc codes(k: int): string = (if k == 1: "1 code" else: $k & " codes")
 
-proc systemsPage*(w: Win): W =
+const OtherCodes* = "-"   ## systemsPage(only = OtherCodes): just the codes that don't decode
+
+proc systemsPage*(w: Win, only = ""): W =
+  ## `only`: show just this system (a code like "LAB", or OtherCodes), opened, until the search is used
   let outer = vbox(0)
+  var only = only
   let q = gtk_search_entry_new()
   gtk_search_entry_set_placeholder_text(q, "Search codes, systems, descriptions")
   setAccessibleLabel(q, "Search equipment by system")
@@ -89,13 +93,41 @@ proc systemsPage*(w: Win): W =
     list.clear()
     let query = text(q).strip
     let v = systemsView(w.m, query)
-    let total = n(v, "total")
+    var total = n(v, "total")
+    var blocks = v["blocks"].elems
+    if only.len > 0:
+      # one system: keep its rows in every block (the other codes for OtherCodes)
+      total = 0
+      var kept: seq[JNode]
+      for b in blocks:
+        var sys: seq[JNode]
+        for sy in b["systems"].elems:
+          if s(sy, "sys") == only:
+            sys.add sy
+            total += n(sy, "count")
+        if sys.len > 0:
+          var b2 = newObj(@[("blk", newStr(s(b, "blk"))), ("blk_name", newStr(s(b, "blk_name"))), ("systems", newArr())])
+          b2["systems"].elems = sys
+          kept.add b2
+      blocks = kept
+      if only == OtherCodes: total = v["other"].elems.len
     # while searching every level opens, unless that would build too many rows at once
-    let open = query.len > 0 and total <= 300
-    list.add label(if query.len == 0: codes(total) & " on the drawings"
-                   elif total == 0: "Nothing found"
-                   else: codes(total) & " found" & (if open: "" else: " (open a system to see them)"), "dim-label")
-    for b in v["blocks"].elems:
+    let open = (query.len > 0 or only.len > 0) and total <= 300
+    if only.len > 0:
+      let head = hbox(6)
+      let what = if only == OtherCodes: "that don't decode" else: "in system " & only
+      let l = label(codes(total) & " " & what, "dim-label")
+      gtk_widget_set_hexpand(l, 1)
+      head.add l, button("Show all systems", "flat", proc () =
+        only = ""
+        fill()
+        discard gtk_widget_grab_focus(q))     # the button is gone: the focus goes to the search field
+      list.add head
+    else:
+      list.add label(if query.len == 0: codes(total) & " on the drawings"
+                     elif total == 0: "Nothing found"
+                     else: codes(total) & " found" & (if open: "" else: " (open a system to see them)"), "dim-label")
+    for b in blocks:
       let blk = s(b, "blk")
       let bn = s(b, "blk_name")
       let g = group(if bn.len > 0: blk & " · " & bn else: "Block " & blk)
@@ -123,7 +155,7 @@ proc systemsPage*(w: Win): W =
                                                             codes(n(k1, "count")), proc (r3: W) =
                         for it in k1["items"].elems: adw_expander_row_add_row(r3, w.itemRow(it)), open,
                         subk & "|" & s(k1, "comp"), opened)), open, subk, opened)), open, sk, opened))
-    let other = v["other"].elems
+    let other = if only.len == 0 or only == OtherCodes: v["other"].elems else: @[]
     if other.len > 0:
       let g = group("Other", "Codes that don't decode as KKS")
       list.add g
@@ -131,6 +163,7 @@ proc systemsPage*(w: Win): W =
       adw_preferences_group_add(g, expander("Other codes", codes(others.len), proc (r: W) =
         for it in others: adw_expander_row_add_row(r, w.itemRow(it)), open, "other", opened))
   q.on("search-changed", proc () =
+    only = ""                 # a search covers every system again
     opened[].clear()          # a search opens what it finds; what was open before doesn't stay open
     fill())
   fill()

@@ -160,6 +160,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     var floorMenu by remember { mutableStateOf(false) }
     var notesOpen by remember { mutableStateOf(false) }
     var systemsOpen by remember { mutableStateOf(false) }
+    var systemsOnly by remember { mutableStateOf<String?>(null) }       // from Coverage: one system
+    var coverageOpen by remember { mutableStateOf(false) }
     var view by remember { mutableStateOf<SheetView?>(null) }
     val current = list.firstOrNull { it.id == ui.sheet }
     val boxes = remember(ui.sheet, rev) { if (current != null) tagBoxes(current.id, current.scale) else emptyList() }
@@ -212,7 +214,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             Box {
                 IconButton(onClick = { floorMenu = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
                 DropdownMenu(floorMenu, { floorMenu = false }) {
-                    DropdownMenuItem(text = { Text("Equipment by system") }, onClick = { systemsOpen = true; floorMenu = false })
+                    DropdownMenuItem(text = { Text("Equipment by system") }, onClick = { systemsOnly = null; systemsOpen = true; floorMenu = false })
+                    DropdownMenuItem(text = { Text("Coverage") }, onClick = { coverageOpen = true; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text("Colour tags by photos" + if (ui.coverage) " ✓" else "") },
                         onClick = { ui.coverage = !ui.coverage; floorMenu = false })
                     // checkable: TalkBack says "Dark drawings, checkbox, checked"; the switch is instant (SheetView.dark)
@@ -239,7 +242,15 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 }
             }
         })
-        if (systemsOpen) SystemsScreen(ui) { systemsOpen = false }
+        if (systemsOpen) SystemsScreen(ui, systemsOnly) { systemsOpen = false }
+        if (coverageOpen) CoverageScreen(
+            onSheet = { id ->
+                // false: the sheet is gone (a hand-marked tag can outlive it); the dashboard says so in its own window
+                if (list.none { it.id == id }) false
+                else { coverageOpen = false; ui.tab = "drawings"; ui.selected = ""; ui.sheet = id; ui.coverage = true; true }
+            },
+            onSystem = { sys -> coverageOpen = false; systemsOnly = sys; systemsOpen = true },
+            onClose = { coverageOpen = false })
         if (notesOpen && current != null) AlertDialog(onDismissRequest = { notesOpen = false }, title = { Text("Notes on ${current.name}") },
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { current.notes.forEach { Text(it) } } },
             confirmButton = { TextButton(onClick = { notesOpen = false }) { Text("Close") } })

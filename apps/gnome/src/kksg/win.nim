@@ -8,6 +8,7 @@ import gtk, ui, appstate, viewer
 type Follower* = ref object
   area*: W                     ## the part a rebuild replaces (a ref is held)
   rebuild*: proc ()
+  update*: proc (): bool       ## optional: new values into the same widgets; false = the structure changed
   stale*: bool
 
 type Win* = ref object
@@ -17,6 +18,7 @@ type Win* = ref object
   v*: Viewer
   split*, sheetList*, searchEntry*, resultList*, sheetTitle*, panelSplit*, panelBox*, markBtn*, status*: W
   sideNav*, banner*: W
+  coverBtn*: W                 ## the drawing's "Colour tags by photos" toggle
   queueBar*, queueLabel*: W    ## the photo queue's status (photos.nim), under the drawing
   picking*: bool               ## "Select tags" mode: one photo, place or note for several codes (multi.nim)
   picked*: seq[string]         ## the selected codes, in the order they were picked
@@ -155,17 +157,21 @@ proc focusInside(area: W): bool =
   let f = gtk_root_get_focus(root)
   f != nil and (f == area or gtk_widget_is_ancestor(f, area) != 0)
 
-proc follow*(w: Win, area: W, rebuild: proc ()): Follower =
+proc follow*(w: Win, area: W, rebuild: proc (), update: proc (): bool = nil): Follower =
   ## `area` shows data that syncs and approvals change (refreshFollowers rebuilds it), but never under the keyboard
   ## or screen reader's focus: while the focus is inside it, it is only marked stale and rebuilt when the focus
   ## leaves (or by the page itself, e.g. on a search: it sets `stale` false). A page hidden under another one is
-  ## rebuilt when it shows again.
-  let f = Follower(area: g_object_ref(area), rebuild: rebuild)
+  ## rebuilt when it shows again. `update`, if given, is tried first: it puts new values into the same widgets (safe
+  ## under the focus) and says false when only a rebuild will do.
+  let f = Follower(area: g_object_ref(area), rebuild: rebuild, update: update)
   w.followers.add f
   proc catchUp() =
-    if f.stale and gtk_widget_get_mapped(f.area) != 0 and not focusInside(f.area):
-      f.stale = false
-      f.rebuild()
+    if f.stale and gtk_widget_get_mapped(f.area) != 0:
+      if f.update != nil and f.update():      # in place: safe even under the focus
+        f.stale = false
+      elif not focusInside(f.area):
+        f.stale = false
+        f.rebuild()
   let fc = gtk_event_controller_focus_new()
   fc.on("leave", proc () = idle(catchUp))       # after the focus has moved on
   gtk_widget_add_controller(area, fc)
@@ -179,7 +185,10 @@ proc refreshFollowers*(w: Win) =
       g_object_unref(f.area)
       continue
     keep.add f
-    if gtk_widget_get_mapped(f.area) == 0 or focusInside(f.area): f.stale = true
+    if gtk_widget_get_mapped(f.area) == 0: f.stale = true     # hidden: no work now, brought up to date when shown
+    elif f.update != nil and f.update():        # changed in place: nothing under the focus is replaced
+      f.stale = false
+    elif focusInside(f.area): f.stale = true
     else:
       f.stale = false
       f.rebuild()
