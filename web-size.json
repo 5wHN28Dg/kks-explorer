@@ -67,7 +67,7 @@
   "files": {
    "admin.html": 4474,
    "admin.js": 46022,
-   "common.js": 60930,
+   "common.js": 61196,
    "course-bridge.js": 3846,
    "course-figure.js": 18968,
    "course.css": 15526,
@@ -91,6 +91,6 @@
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1057799
+  "total": 1058065
  }
 }
