@@ -4,7 +4,8 @@
 ## as WM_POINTER (Windows 8+): one finger draws and shows a loupe above it, the area under the finger magnified; pen
 ## and mouse draw without it.
 
-import std/[tables, math, unicode]
+import std/[tables, math, strutils]
+from std/unicode import runeLen, toRunes, `$`   # strutils' strip: the core's own
 import w32, ui
 
 proc viewNew(h: HWND): pointer {.importc: "kks_view_new", cdecl.}

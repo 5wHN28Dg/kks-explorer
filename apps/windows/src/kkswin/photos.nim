@@ -291,10 +291,12 @@ proc sendQueued(w: Win, q: var Queued): bool =
   if q.floor.len == 0:
     # the floor was asked with an earlier photo of this code that is kept (not sent): it goes with this one too, or a
     # photo would arrive without it (the core writes a floor only while the code has none)
-    for f in failed:
-      if f.kks == q.kks and f.floor.len > 0:
-        q.floor = f.floor
-        break
+    block find:
+      for l in [addr queue, addr failed]:   # (q itself is out of the queue already)
+        for f in l[]:
+          if f.kks == q.kks and f.floor.len > 0:
+            q.floor = f.floor
+            break find
   var payload = newObj(@[("kks", newStr(q.kks)), ("caption", newStr(q.caption)),
                          ("dataUrl", newStr("data:image/jxl;base64," & encode(q.data)))])
   if q.floor.len > 0: payload["floor"] = newStr(q.floor)   # written first, only if the code still has no floor
@@ -475,10 +477,13 @@ proc floorKnown(w: Win, kks: string): bool = w.floorsMissing([kks]).len == 0
 
 proc validFloor(f: string): bool = f == "10" or (f.len == 1 and f[0] in Digits)
 
-proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
-  ## a photo needs its floor: asked before the picture, sent with it (the core writes it first, as its own change)
+proc askFloor(w: Win, kks: string, fn: proc (floor: string), cancelled: proc () = nil) =
+  ## a photo needs its floor: asked before the picture, sent with it (the core writes it first, as its own change).
+  ## `cancelled`: the window closed without a floor (Cancel, Escape, its close box)
   var hw: HWND
-  let (h, p) = popup(w.hwnd, "Which floor is " & kks & " on?", 480, 330, escape = true)
+  var answered = false
+  let (h, p) = popup(w.hwnd, "Which floor is " & kks & " on?", 480, 330, proc () =
+    if not answered and cancelled != nil: later(cancelled), escape = true)
   hw = h
   p.title("Which floor is " & kks & " on?")
   p.dim("A photo needs its floor, and this equipment has none yet. Enter the floor: a whole number from 0 (ground) " &
@@ -490,6 +495,7 @@ proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
     if not validFloor(f):
       msg.setText("Floor: a whole number from 0 to 10 (the height goes in Elevation).")
       return
+    answered = true
     DestroyWindow(hw)
     fn(f)), ("Cancel", proc () = DestroyWindow(hw)))
   p.layout()
@@ -521,7 +527,15 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
     if rgba.len == 0: return
     annotate(w.hwnd, rgba, pw, ph, proc (marked: seq[byte], caption, note: string) =
       let offer = not plate and not w.hasPlate(kks)
-      w.enqueue(marked, pw, ph, kks, if plate: plateCaption(caption) else: caption.strip, note.strip, floor)
+      let cap = if plate: plateCaption(caption) else: caption.strip
+      if floor.len == 0 and not w.floorKnown(kks):
+        # the photo that was to carry the floor was discarded while this editor was open: ask now. Without an answer
+        # the photo still goes (the marks are never lost), without a floor
+        let n = note.strip
+        w.askFloor(kks, proc (f: string) = w.enqueue(marked, pw, ph, kks, cap, n, f),
+                   proc () = w.enqueue(marked, pw, ph, kks, cap, n, ""))
+        return
+      w.enqueue(marked, pw, ph, kks, cap, note.strip, floor)
       if offer:
         later(proc () =
           if askYesNo(w.hwnd, "And its tag plate?", "A photo of the metal plate with the KKS code helps the next " &
