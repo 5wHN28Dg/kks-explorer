@@ -274,6 +274,9 @@ class Gnome(unittest.TestCase):
                 if r.get('entity') == 'photo' and r.get('key') in ids]
         self.assertEqual([ids[r['key']] for r in revs], ['queued two', 'queued one'], 'newest first: sent in the order added')
         self.assertEqual(atspi.find_all(a, 'label', contains='Compressing '), [], 'the queue is empty')
+        third = self.apps[-1]    # done: its syncs must not rebuild the other tests' screens
+        third.terminate()
+        third.wait(10)
 
     def test_flow(self):
         a = self.start_app('laptop')
