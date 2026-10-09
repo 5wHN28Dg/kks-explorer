@@ -18,44 +18,9 @@ sentences are general combined-cycle knowledge, not this plant's documents. That
 """
 import argparse, json, math, os, re, sys
 
-# What each KKS system does in a combined-cycle plant with a heat-recovery steam generator (general knowledge).
+# What a KKS system does, for the standard (VGB) systems data/kks.json doesn't name (general knowledge). The systems
+# kks.json names come from the plant's own documents and are used as they are, never overridden by a general meaning.
 SYSTEM_ROLE = {
-    'LAA': 'the deaerator system, which removes dissolved oxygen and other gases from the feedwater and holds a reserve '
-           'of it for the feed pumps',
-    'LAB': 'the feedwater piping, which carries water from the feed pumps through the economisers to the drums',
-    'LAE': 'the HP spray (attemperation) system, which injects feedwater into the HP steam to hold its temperature',
-    'LAF': 'the IP spray (attemperation) system, which injects water into the reheat steam to hold its temperature',
-    'LAW': 'the closed cooling water system, which cools auxiliary equipment in a sealed water loop',
-    'LAX': 'the industrial cooling water system, which supplies cooling water to auxiliary coolers',
-    'LBA': 'the main (HP) steam piping, which carries superheated steam from the HRSG to the HP turbine',
-    'LBB': 'the hot reheat piping, which carries reheated steam from the HRSG to the IP turbine',
-    'LBC': 'the cold reheat piping, which returns steam from the HP turbine exhaust to the HRSG reheater',
-    'LBG': 'the auxiliary steam piping, which supplies steam for start-up, sealing and heating',
-    'LCA': 'the main condensate piping, which carries condensate from the condenser to the HRSG',
-    'LCB': 'the main condensate pump system, which lifts condensate from the condenser hotwell',
-    'LCC': 'the condensate heating system, which preheats condensate before the deaerator or drums',
-    'LCE': 'the condensate desuperheating spray system, which uses condensate to cool steam (e.g. bypass steam)',
-    'LCP': 'the standby condensate system, which stores and supplies condensate',
-    'LCQ': 'the boiler blowdown system, which drains water from the drums to control dissolved solids',
-    'HAC': 'the economiser, which heats feedwater with exhaust gas before it enters the drum',
-    'HAD': 'the evaporator system (drum and evaporator tubes), where water is turned into saturated steam',
-    'HAH': 'the superheater, which heats saturated steam from the drum above its saturation temperature',
-    'HAJ': 'the reheater, which reheats steam returned from the HP turbine',
-    'HAN': 'the pressure-system drains and vents, which empty and vent the HRSG pressure parts',
-    'HNA': 'the gas duct system, which carries the gas turbine exhaust through the HRSG',
-    'HNE': 'the stack, which releases the cooled exhaust gas',
-    'MAA': 'the HP turbine',
-    'MAB': 'the IP turbine',
-    'MAC': 'the LP turbine',
-    'MAG': 'the condensing system, which condenses the turbine exhaust steam back to water',
-    'MAP': 'the LP turbine bypass, which routes steam around the turbine to the condenser during start-up and trips',
-    'QCA': 'the hydrazine dosing system, which removes residual oxygen from the water',
-    'QCC': 'the phosphate dosing system, which conditions the drum water',
-    'QCD': 'the ammonia dosing system, which controls the water pH',
-    'QJF': 'the nitrogen protection system, which blankets idle pressure parts with nitrogen against corrosion',
-    'QUA': 'the feedwater sampling system, which takes water samples for chemical analysis',
-    'QUB': 'the steam sampling system, which takes steam samples for chemical analysis',
-    # standard KKS (VGB) systems on the unit's balance-of-plant drawings, not in data/kks.json
     'PAB': 'the circulating (main cooling) water piping, which carries cooling water to and from the condenser',
     'PAC': 'the circulating water pump system, which drives the main cooling water through the condenser',
     'PGB': 'the closed cooling water piping, which carries cooling water to the auxiliary coolers in a sealed loop',
@@ -79,16 +44,27 @@ COMPONENT_ROLE = {
     'CL': 'a level measurement',
     'CP': 'a pressure measurement',
     'CT': 'a temperature measurement',
-    'CY': 'a vibration measurement',
+    'CY': 'a machine-condition measurement (e.g. vibration or bearing temperature)',
     'CS': 'a speed measurement',
     'CQ': 'an analysis measurement (water or steam chemistry)',
     'CG': 'a position measurement',
     'CE': 'an electrical measurement',
 }
 
+# a component kind in a few words, for "drawn next to …"
+COMPONENT_SHORT = {'AA': 'valve', 'AB': 'isolating element', 'AC': 'heat exchanger', 'AP': 'pump', 'AT': 'filter or separator',
+                   'BB': 'vessel or tank', 'BR': 'piping', 'HA': 'machine', 'CF': 'flow measurement', 'CL': 'level measurement',
+                   'CP': 'pressure measurement', 'CT': 'temperature measurement', 'CY': 'machine-condition measurement',
+                   'CS': 'speed measurement', 'CQ': 'analysis measurement', 'CG': 'position measurement',
+                   'CE': 'electrical measurement'}
+# the measurement a component kind is, and the ISA first letter that agrees with it
+# (CY and CQ take several: on the drawings CY carries TISA, LISA and BVSA, CQ carries QI and A…)
+COMPONENT_MEASURES = {'CF': 'F', 'CL': 'L', 'CP': 'P', 'CT': 'T', 'CS': 'S', 'CG': 'G'}
+MAX_TEXT = 2000     # the core cuts a description there (DescriptionMax)
+
 ISA_FUNCTION = {'I': 'indicated', 'A': 'alarmed', 'C': 'used for control', 'S': 'used for a switching action (e.g. a trip '
                 'or interlock)', 'T': 'transmitted to the control system', 'R': 'recorded', 'Q': 'totalised',
-                'E': 'the sensing element'}
+                'E': ''}   # E: the sensing element (said in a sentence of its own)
 
 KKS_RE = re.compile(r'^(\d\d)([A-Z]{3})(\d\d)([A-Z]{2})(\d{3})$')
 
@@ -97,19 +73,35 @@ def load(p, default=None):
     if not os.path.exists(p):
         if default is not None: return default
         sys.exit(f'{p} is missing')
-    with open(p, encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(p, encoding='utf-8') as f:
+            return json.load(f)
+    except (ValueError, UnicodeDecodeError) as e:
+        sys.exit(f'{p} is not valid JSON: {e}')
+
+
+def isa_first(isa):
+    """the measured variable's letters: P, or PD / TD / … (a difference)"""
+    return isa[:2] if len(isa) > 1 and isa[1] == 'D' else isa[:1]
 
 
 def isa_words(isa, tables):
     if not isa: return ''
-    first = 'PD' if isa.startswith('PD') else isa[0]
-    what = tables.get('isa_first', {}).get(first, '').lower()
-    acts = [ISA_FUNCTION[c] for c in isa[len(first):] if c in ISA_FUNCTION]
-    if not what and not acts: return ''
+    first = isa_first(isa)
+    names = tables.get('isa_first', {})
+    what = (names.get(first) or (names.get(first[0], '') + ' difference' if len(first) == 2 and names.get(first[0]) else '')).lower()
+    rest = isa[len(first):]
+    acts = [ISA_FUNCTION[c] for c in rest if ISA_FUNCTION.get(c)]
+    if not what and not acts and 'E' not in rest: return ''
     s = f'The instrument letters {isa} say it measures {what or "a process value"}'
-    if acts: s += ', ' + (', '.join(acts[:-1]) + ' and ' + acts[-1] if len(acts) > 1 else acts[0])
-    return s + '.'
+    if acts: s += ' and is ' + (', '.join(acts[:-1]) + ' and ' + acts[-1] if len(acts) > 1 else acts[0])
+    s += '.'
+    if 'E' in rest: s += ' It is the sensing element.'
+    return s
+
+
+def an(word):
+    return ('an ' if word[:1].lower() in 'aeiou' else 'a ') + word
 
 
 def apply_state(tags, state):
@@ -130,13 +122,21 @@ def apply_state(tags, state):
     return res
 
 
+def box(t):
+    b = t.get('bbox')
+    return b if isinstance(b, list) and len(b) == 4 and all(isinstance(x, (int, float)) for x in b) else None
+
+
 def nearest(tag, others, k=2, limit=400.0):
     """the closest other codes on the same sheet (box centres, level-0 px), within `limit` px"""
-    bx = tag['bbox']; cx, cy = (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2
+    bx = box(tag)
+    if not bx: return []
+    cx, cy = (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2
     out = []
     for o in others:
-        if o is tag or not o.get('kks') or o['kks'] == tag['kks']: continue
-        b = o['bbox']; d = math.hypot((b[0] + b[2]) / 2 - cx, (b[1] + b[3]) / 2 - cy)
+        b = box(o)
+        if o is tag or not b or not o.get('kks') or o['kks'] == tag['kks']: continue
+        d = math.hypot((b[0] + b[2]) / 2 - cx, (b[1] + b[3]) / 2 - cy)
         if d <= limit: out.append((d, o))
     out.sort(key=lambda x: x[0])
     seen, res = set(), []
@@ -149,43 +149,49 @@ def nearest(tag, others, k=2, limit=400.0):
 
 def describe(code, tag, sheet_name, tables, near, loc_desc):
     m = KKS_RE.match(tag['kks'])
-    basis, parts = [], []
-    if not m:
-        return None
+    if not m: return None
     blk, sysc, fn, comp, _ = m.groups()
+    basis, parts = [], []
     sys_name = tables.get('systems', {}).get(sysc, '')
     comp_name = tables.get('components', {}).get(comp, '')
+    isa = str(tag.get('isa') or '')
+    # the component kind and the instrument letters must agree (a CP read as TDIT: one of them is misread), else only
+    # the code's own kind is said, and the letters' disagreement is named for the reviewer
+    measures = COMPONENT_MEASURES.get(comp)
+    letters_ok = bool(isa) and (measures is None and comp.startswith('C') or measures == isa_first(isa)[:1])
     role = COMPONENT_ROLE.get(comp)
-    sys_role = SYSTEM_ROLE.get(sysc)
     if role:
-        parts.append(f'{code} is {role}.')
-        basis.append('component kind (general knowledge)')
+        parts.append(f'{code} is {role}.'); basis.append('component kind (general knowledge)')
     elif comp_name:
-        parts.append(f'{code} is a {comp_name.lower()}.')
-        basis.append('component kind')
-    if sys_role:
-        parts.append(f'It belongs to {sys_role} (system {sysc}, section {sysc}{fn}).')
+        parts.append(f'{code} is {an(comp_name.lower())}.'); basis.append('component kind')
+    if sys_name:
+        parts.append(f'It belongs to {sys_name if sys_name.lower().startswith("the ") else "the " + sys_name} '
+                     f'(system {sysc}, section {sysc}{fn}).'); basis.append('KKS system name')
+    elif SYSTEM_ROLE.get(sysc):
+        parts.append(f'It belongs to {SYSTEM_ROLE[sysc]} (system {sysc}, section {sysc}{fn}).')
         basis.append('KKS system (general knowledge)')
-    elif sys_name:
-        parts.append(f'It belongs to the {sys_name.lower()} (system {sysc}, section {sysc}{fn}).')
-        basis.append('KKS system name')
     block = tables.get('blocks', {}).get(blk)
     if block: parts.append(f'Unit: {block}.')
-    w = isa_words(tag.get('isa') or '', tables)
-    if w:
-        parts.append(w); basis.append('instrument letters')
+    if isa and letters_ok:
+        w = isa_words(isa, tables)
+        if w: parts.append(w); basis.append('instrument letters')
+    elif isa and comp.startswith('C'):
+        parts.append(f'Its instrument letters {isa} don\'t match its code\'s kind: check the drawing.')
     if loc_desc:
-        parts.append(f'The location list describes it as "{loc_desc}".'); basis.append('location list')
+        d = loc_desc if len(loc_desc) <= 300 else loc_desc[:297].rstrip() + '…'
+        parts.append(f'The location list describes it as "{d}".'); basis.append('location list')
     if near:
         names = []
         for o in near:
             om = KKS_RE.match(o['kks'])
-            kind = COMPONENT_ROLE.get(om.group(4), '').split(':')[0] if om else ''
-            names.append(o['kks'] + (o.get('suffix') or '') + (f' ({kind.replace("a ", "", 1).replace("an ", "", 1)})' if kind else ''))
-        parts.append(f'On {sheet_name} it is drawn next to {" and ".join(names)}.')
-        basis.append('drawing neighbours')
+            kind = COMPONENT_SHORT.get(om.group(4), '') if om else ''
+            names.append(o['kks'] + str(o.get('suffix') or '') + (f' ({kind})' if kind else ''))
+        parts.append(f'On {sheet_name[:120]} it is drawn next to {" and ".join(names)}.'); basis.append('drawing neighbours')
     if not parts: return None
-    return {'text': ' '.join(parts), 'basis': ', '.join(basis)}
+    text = ' '.join(parts)
+    while len(text) > MAX_TEXT and len(parts) > 1:   # whole sentences go, never one cut in half
+        parts.pop(); text = ' '.join(parts)
+    return {'text': text[:MAX_TEXT], 'basis': ', '.join(basis)}
 
 
 def main(argv=None):
@@ -193,35 +199,55 @@ def main(argv=None):
     ap.add_argument('plant_data')
     ap.add_argument('--kks', default=os.path.join(os.path.dirname(__file__), '..', 'data', 'kks.json'))
     ap.add_argument('--out')
-    ap.add_argument('--keep', action='store_true', help='leave existing drafts in --out as they are')
+    ap.add_argument('--keep', action='store_true', help='leave existing drafts in --out as they are (those of codes no longer on the drawings go)')
     ap.add_argument('--state', help='the state as the apps see it (GET /api/state): added tags and review decisions')
     a = ap.parse_args(argv)
     pd = a.plant_data
-    sheets = {s['id']: s for s in load(os.path.join(pd, 'sheets.json'))}
-    tags = load(os.path.join(pd, 'tags.json'))
+    sheet_list, tags = load(os.path.join(pd, 'sheets.json')), load(os.path.join(pd, 'tags.json'))
+    if not isinstance(sheet_list, list) or not isinstance(tags, list): sys.exit('sheets.json and tags.json must be lists')
+    sheets = {s['id']: s for s in sheet_list if isinstance(s, dict) and 'id' in s}
     if a.state: tags = apply_state(tags, load(a.state))
     tables = load(a.kks)
     locs = {}
     ll = load(os.path.join(pd, 'locations.json'), {'entries': []})
-    for e in (ll if isinstance(ll, list) else ll.get('entries', [])):   # either form, as the core reads it
-        if isinstance(e, dict) and e.get('desc') and e.get('kks'): locs.setdefault(e['kks'], e['desc'])
+    for e in (ll if isinstance(ll, list) else ll.get('entries', []) if isinstance(ll, dict) else []):   # either form, as the core reads it
+        if isinstance(e, dict) and isinstance(e.get('desc'), str) and isinstance(e.get('kks'), str) and e['desc'].strip():
+            locs.setdefault(e['kks'], e['desc'].strip())
     out = a.out or os.path.join(pd, 'descriptions.json')
-    result = load(out, {}) if a.keep else {}
     by_sheet = {}
     for t in tags:
-        if t.get('kks'): by_sheet.setdefault(t['sheet'], []).append(t)
+        # a reading nobody has checked yet (status "review") gets no draft: it may not be a tag at all
+        if not isinstance(t, dict) or not isinstance(t.get('kks'), str) or not t['kks'] or not t.get('sheet'): continue
+        if t.get('status') == 'review': continue
+        t = dict(t, suffix=str(t.get('suffix') or ''))
+        by_sheet.setdefault(t['sheet'], []).append(t)
+    codes = {t['kks'] + t['suffix'] for ts in by_sheet.values() for t in ts}
+    result = {}
+    if a.keep:
+        old = load(out, {})
+        if not isinstance(old, dict): sys.exit(f'{out}: not a JSON object')
+        result = {k: v for k, v in old.items() if k in codes}   # drafts of codes no longer drawn go
     n = 0
     for sid, ts in by_sheet.items():
-        name = sheets.get(sid, {}).get('name', sid)
+        name = clean(str(sheets.get(sid, {}).get('name') or sid))
         for t in ts:
-            code = t['kks'] + (t.get('suffix') or '')
+            code = t['kks'] + t['suffix']
             if code in result: continue
-            d = describe(code, t, name, tables, nearest(t, ts), locs.get(t['kks'][2:]))
+            d = describe(code, t, name, tables, nearest(t, ts), clean(locs.get(t['kks'][2:], '')))
             if d: result[code] = d; n += 1
-    with open(out + '.tmp', 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=1, sort_keys=True)
-    os.replace(out + '.tmp', out)
+    tmp = out + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=1, sort_keys=True)
+        os.replace(tmp, out)
+    finally:
+        if os.path.exists(tmp): os.remove(tmp)
     print(f'{out}: {n} new drafts, {len(result)} in all')
+
+
+def clean(s):
+    """text the core's strict reader takes: no lone surrogates (replaced)"""
+    return s.encode('utf-8', 'replace').decode('utf-8')
 
 
 if __name__ == '__main__':
