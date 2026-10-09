@@ -9,7 +9,8 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 # markup that would add an element and run script if it were parsed: an <img> with onerror, a closed attribute and a
 # <script>, quotes of both kinds
 EVIL = '<img src=x onerror="window.pwned=1"><b id=injected>x</b>"><script>window.pwned=2</script>\'"'
-ENGINES = ('chromium', 'firefox', 'webkit')
+# all three, or the one a CI job installed ($KKS_ENGINE)
+ENGINES = tuple(os.environ['KKS_ENGINE'].split(',')) if os.environ.get('KKS_ENGINE') else ('chromium', 'firefox', 'webkit')
 ORIGIN = 'http://kks.test'   # a page with an http origin (K.safeUrl resolves relative URLs against it)
 
 
