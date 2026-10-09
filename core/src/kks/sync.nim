@@ -142,7 +142,11 @@ proc sendBlobs(s: Session) =
   ## platform sends them: putting every wanted blob in the outbox at once held a whole plant's drawings and photos
   ## several times over (raw, base64, framed, encrypted) for each device that needed them, and the server's memory
   ## grew to gigabytes (2026-10-09).
-  if s.n.mayRead(s.remote): s.blobQueue = s.theirWant[0 ..< min(10000, s.theirWant.len)]
+  if s.n.mayRead(s.remote):
+    var seen: HashSet[string]
+    for sha in s.theirWant:     # each blob once: a want listing one big blob 10000 times got it 10000 times
+      if s.blobQueue.len >= 10000: break
+      if not seen.containsOrIncl(sha): s.blobQueue.add sha
   s.blobAt = 0
   s.sendingBlobs = true
   s.sentBlobs = true
@@ -150,6 +154,15 @@ proc sendBlobs(s: Session) =
 proc sending*(s: Session): bool =
   ## messages wait to be made (`take` again before waiting for the other side)
   s.outbox.len > 0 or s.sendingBlobs
+
+proc errorMsg*(why: string): JNode = newObj(@[("t", newStr("error")), ("why", newStr(why))])
+
+proc stop*(s: Session, why: string) =
+  ## Give up: drop what was still to be sent, and send `error` (the platform then closes).
+  s.blobQueue = @[]
+  s.sendingBlobs = false
+  s.later = @[]
+  s.outbox = @[errorMsg(why)]
 
 proc take*(s: Session, budget = 1024 * 1024): seq[JNode] =
   ## The messages to send now: the outbox, then blobs until about `budget` bytes of them (at least one), blobs_end
@@ -271,4 +284,3 @@ proc receive*(s: Session, m: JNode) =
     s.stage = sDone
   of sDone: fail("message after bye")
 
-proc errorMsg*(why: string): JNode = newObj(@[("t", newStr("error")), ("why", newStr(why))])

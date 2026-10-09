@@ -65,7 +65,8 @@ PrivateTmp=true
 # import_memory_mb / import_timeout_s) together; a large sheet's import peaks near 1.8 GB, the server itself stays
 # in the low hundreds of MB (2026-10-09). A server that runs away anyway is killed at the cap and restarted
 # (Restart=on-failure) instead of crowding the desktop or a small VM: no swap for it, and never MemoryHigh (throttling
-# took the desktop down here). An importer killed at the cap fails only its import (OOMPolicy=continue).
+# took the desktop down here). OOMPolicy=continue: when the kernel picks the importer at the cap (usually: it is the
+# biggest), only its import fails; when it picks the server, the server restarts.
 # ProtectSystem/ProtectHome are not set: a user unit can't apply them without user namespaces, and here they were
 # silently ignored.
 MemoryMax=3G

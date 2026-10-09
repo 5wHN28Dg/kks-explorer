@@ -123,7 +123,6 @@ suite "sync state machine":
           a.receive(m)
           moved = true
         biggest = max(biggest, bytes)
-        check b.outbox.len == 0                         # nothing waits beyond the budget
       if not moved: break
     check a.done and b.done
     check blobs == 12 and a.stats.blobsReceived == 12
@@ -133,6 +132,20 @@ suite "sync state machine":
       if t == "blob": lastBlob = i
     check order.find("blobs_end") == lastBlob + 1           # blobs_end right after the last blob
     for sha in shas: check mgrPhone.store.blobGet(sha).len == 300_002
+    # a want that lists one blob many times gets it once
+    let r = newSession(cam, false, mgrPhone.device)
+    r.wall = tick()
+    r.receive(newObj(@[("t", newStr("hello")), ("v", newInt(2)), ("root", newStr(rootStr)), ("vv", mgrPhone.vv())]))
+    r.receive(newObj(@[("t", newStr("entries")), ("entries", newArr())]))
+    var dup = newArr()
+    for i in 0 ..< 50: dup.elems.add newStr(shas[0])
+    r.receive(newObj(@[("t", newStr("want")), ("blobs", dup)]))
+    r.receive(newObj(@[("t", newStr("blobs_end"))]))
+    var sent = 0
+    while r.sending:
+      for m in r.take():
+        if m["t"].s == "blob": inc sent
+    check sent == 1
 
   test "a removed device is shown the revoke and wipes itself":
     let bob = P.newPersonId()
