@@ -28,6 +28,9 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.10.0" date="2026-10-09">
+      <description><p>Valve types and links between drawings; a coverage dashboard; dark drawings; one photo, place or note for several tags; photos compressed in the background and never lost; draft descriptions; who took each photo; grouped approvals; a leaderboard.</p></description>
+    </release>
     <release version="0.9.3" date="2026-10-07">
       <description><p>A two-finger trackpad pinch no longer crashes the app; the drawing is sharp at every zoom.</p></description>
     </release>
