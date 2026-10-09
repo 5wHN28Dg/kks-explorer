@@ -266,6 +266,35 @@ suite "the direct stream":
     sa.close()                            # its socket is closed already: sending its FIN must not crash
     waitFor sleepAsync(4000)
 
+  test "a direct stream through a receive buffer of a few packets: losses take round trips, not timeouts (2026-10-09)":
+    # Windows' small default receive buffer dropped much of each burst. The stream waited a retransmission timeout
+    # for a lost packet whose followers had all been acknowledged within a round trip (no later ACK came to resend it
+    # on), and counted that wait as a round trip when the followers were acknowledged with it, so the timeout grew
+    # to its 4 s cap: through a 4 kB buffer, a few kB a second, and a sync of many MB stalled until a side gave up.
+    let a = newUdp()
+    let b = newUdp(recvBuffer = 4096)     # the receiving side's buffer: a few packets
+    let session = "\x31\x32\x33\x34\x35\x36\x37\x38"
+    let sa = a.rudpStream("127.0.0.1", b.port, session)
+    let sb = b.rudpStream("127.0.0.1", a.port, session)
+    let data = P.randomBytes(4 * 1024 * 1024).toStr
+    let t0 = epochTime()
+    asyncCheck sa.write(data)             # returns once queued (back-pressure starts above 4 MB)
+    var got = ""
+    while got.len < data.len and epochTime() - t0 < 60:
+      let f = sb.read()
+      if not waitFor(withTimeout(f, 20_000)) or f.failed: break
+      let part = f.read()
+      if part.len == 0: break
+      got.add part
+    let seconds = epochTime() - t0
+    echo "  ", got.len div 1024, " kB of 4096 through a 4 kB receive buffer in ", formatFloat(seconds, ffDecimal, 1), " s"
+    let same = got == data                # not `check got == data`: it prints both on a failure
+    check same
+    check seconds < 30                    # 1-2 s here; before the fix the 60 s above moved under 1 MB
+    sa.close()
+    sb.close()
+    waitFor sleepAsync(4000)
+
   type DirectRun = object
     ok: bool
     live, heap: int            ## growth of the Nim heap's live bytes (after a full collection) and of the heap itself

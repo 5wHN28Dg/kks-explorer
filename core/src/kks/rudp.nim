@@ -70,6 +70,14 @@ proc raw(r: Rudp, typ: uint8, now: float, body = "") =
   r.outbox.add packet(typ, r.session, body)
   r.lastTx = now
 
+proc track(r: Rudp, seq: uint32, rec: Sent, now: float) =
+  ## a new packet waits for its ACK. With nothing in flight before it, the wait for progress starts now: it ran from
+  ## the last ACK that moved the window, so the side that had only received for longer than `dead` (a device
+  ## pulling a large sync: Windows' CI took over 15 s for 96 MB) failed with "the other device stopped answering"
+  ## at the first packet it sent after that, its FIN at the end of the sync (2026-10-09)
+  if r.unacked.len == 0: r.progress = now
+  r.unacked[seq] = rec
+
 proc sendData(r: Rudp, seq: uint32, now: float) =
   r.unacked[seq].at = now
   if int64(seq) == r.finSeq: r.raw(Fin, now, be32(seq))
@@ -79,7 +87,7 @@ proc pump(r: Rudp, now: float) =
   ## packetize queued bytes while the window allows
   while r.queue.len > r.qAt and float(r.nextSeq - r.base) < float(int(r.cwnd)):
     let n = min(Mss, r.queue.len - r.qAt)
-    r.unacked[r.nextSeq] = Sent(payload: r.queue[r.qAt ..< r.qAt + n], at: -1.0)
+    r.track(r.nextSeq, Sent(payload: r.queue[r.qAt ..< r.qAt + n], at: -1.0), now)
     r.qAt += n
     if r.qAt == r.queue.len:
       r.queue.setLen(0)
@@ -102,16 +110,49 @@ proc lost(r: Rudp, seq: uint32) =
     r.cwnd = float(r.ssthresh)
     r.recover = r.nextSeq
 
+proc fastRetransmit(r: Rudp, now: float) =
+  ## holes with 3+ later packets acknowledged are lost: send them again once a round trip has passed since they were
+  ## sent. Once only: a retransmission lost too waits for its timeout, which backs off (tick). Checked on every ACK
+  ## and every tick: when the packets after a hole were acknowledged within a round trip of its sending (on a fast
+  ## link, all of them) and no ACK followed (the window full, or the data at its end), checking on ACKs alone never
+  ## found it old enough, and the hole waited for its retransmission timeout (2026-10-09)
+  var sacked = 0
+  for rec in r.unacked.values:
+    if rec.sacked: inc sacked
+  if sacked < 3: return
+  var keys = toSeq(r.unacked.keys)
+  keys.sort(system.cmp, Descending)
+  var later = 0
+  var holes: seq[uint32]
+  for s in keys:
+    if r.unacked[s].sacked: inc later
+    elif later >= 3 and r.unacked[s].retries == 0 and r.unacked[s].at >= 0 and
+         now - r.unacked[s].at > (if r.haveRtt: r.srtt else: 0.1):
+      holes.add s
+  # lowest first, at most a window: the lowest holds up everything after it, and the end of a burst is what a full
+  # receive buffer drops
+  for k in countdown(holes.high, max(0, holes.len - max(1, int(r.cwnd)))):
+    r.lost(holes[k])
+    inc r.unacked[holes[k]].retries
+    r.sendData(holes[k], now)
+
 proc onAck(r: Rudp, nxt, mask: uint32, now: float) =
   var newly = 0
   var gone: seq[uint32]
   for s in r.unacked.keys:
     if s < nxt: gone.add s
+  # One round trip per ACK that moves the window: the packet that moved it, the lowest one passed (the others waited
+  # in the other side's buffer for it, and timing them counted that wait, a retransmission timeout, as a round trip:
+  # the timeout grew to its 4 s cap, 2026-10-09). Karn: none if it, or any passed with it, was sent more than once.
+  var timed = true
   for s in gone:
-    let rec = r.unacked[s]
+    if r.unacked[s].retries > 0: timed = false
+  if gone.len > 0:
+    let first = r.unacked[min(gone)]
+    if timed and first.at >= 0 and not first.sacked: r.sample(now - first.at)
+  for s in gone:
     r.unacked.del s
     inc newly
-    if rec.retries == 0 and rec.at >= 0: r.sample(now - rec.at)   # Karn: only packets sent once
   for i in 0 ..< 32:
     if ((mask shr uint32(i)) and 1) == 1:
       let s = nxt + 1 + uint32(i)
@@ -123,16 +164,7 @@ proc onAck(r: Rudp, nxt, mask: uint32, now: float) =
     r.progress = now
   if newly > 0:
     r.cwnd = min(r.cwnd + (if r.cwnd < float(r.ssthresh): 1.0 else: 1.0 / r.cwnd) * float(newly), 256.0)
-  # holes with 3+ later packets acknowledged are lost: send them again now, at most once a round trip each
-  var keys = toSeq(r.unacked.keys)
-  keys.sort(system.cmp, Descending)
-  var later = 0
-  for s in keys:
-    if r.unacked[s].sacked: inc later
-    elif later >= 3 and r.unacked[s].at >= 0 and now - r.unacked[s].at > (if r.haveRtt: r.srtt else: 0.1):
-      r.lost(s)
-      inc r.unacked[s].retries
-      r.sendData(s, now)
+  r.fastRetransmit(now)
   r.pump(now)
 
 proc onData(r: Rudp, seq: uint32, payload: string, fin: bool, now: float) =
@@ -162,12 +194,16 @@ proc feed*(r: Rudp, d: string, now: float) =
 
 proc tick*(r: Rudp, now: float, closed = false) =
   ## timers: retransmissions, failure detection, keep-alive (call every few tens of ms)
+  r.fastRetransmit(now)
   var keys = toSeq(r.unacked.keys)
   keys.sort()
-  for i, s in keys:
-    if i > int(r.cwnd): break
+  var n = 0
+  for s in keys:
+    if n > int(r.cwnd): break
     let rec = r.unacked[s]
-    if not rec.sacked and rec.at >= 0 and now - rec.at > min(4.0, r.rto * float(1 shl min(rec.retries, 4))):
+    if rec.sacked: continue               # not counted: holes past many SACKed packets were never timed out
+    inc n
+    if rec.at >= 0 and now - rec.at > min(4.0, r.rto * float(1 shl min(rec.retries, 4))):
       r.lost(s)
       inc r.unacked[s].retries
       r.sendData(s, now)
@@ -199,7 +235,7 @@ proc finish*(r: Rudp, now: float) =
   ## after the queue: FIN (acknowledged like data)
   if r.finSeq < 0 and r.queued == 0:
     r.finSeq = int64(r.nextSeq)
-    r.unacked[r.nextSeq] = Sent(at: -1.0)
+    r.track(r.nextSeq, Sent(at: -1.0), now)
     r.sendData(r.nextSeq, now)
     inc r.nextSeq
 
