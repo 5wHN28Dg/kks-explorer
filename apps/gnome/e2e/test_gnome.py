@@ -373,7 +373,7 @@ class Gnome(Plant):
         time.sleep(3)
         atspi.click(atspi.find(a, 'button', name='Manage'))
         atspi.click(atspi.find(a, 'button', name='Approvals'))
-        # the page rebuilds after each sync: a click on the button it just replaced is lost (half the Flatpak runs,
+        # the page rebuilds after a sync that brought data: a click on the button it just replaced is lost (half the Flatpak runs,
         # 2026-10-04), so click again until the app says it approved
         for _ in range(5):
             atspi.click(atspi.find(a, 'button', name='Approve', timeout=15))
@@ -430,7 +430,7 @@ class Gnome(Plant):
         pb.wait(5)
         inv = atspi.find(a, 'dialog', name='Add a device with a QR code')
         atspi.click(atspi.find(inv, 'button', name='Close'))
-        # the page rebuilds itself after each sync: a click on a row it just replaced is lost, so find it again
+        # the page rebuilds itself after a sync that brought data: a click on a row it just replaced is lost, so find it again
         dlg = None
         for _ in range(5):
             row = atspi.find(a, None, contains='· sara', timeout=15)
@@ -971,8 +971,14 @@ class Gnome(Plant):
         atspi.find(a, 'label', name='Equipment photo (2)', timeout=15)
         atspi.find(a, 'label', name='Tag plate photo', timeout=10)
         atspi.find(a, None, contains='by Omar Tech', timeout=10)
-        self.assertEqual(len(atspi.find_all(a, 'button', contains='Pick this photo')), 2)
-        for _ in range(5):          # the page rebuilds after each sync: a lost click is retried
+        # the page may be rebuilding (a photo's picture arrives after its entry): count it once it is complete
+        for _ in range(20):
+            picks = len(atspi.find_all(a, 'button', contains='Pick this photo'))
+            if picks == 2:
+                break
+            time.sleep(0.5)
+        self.assertEqual(picks, 2)
+        for _ in range(5):          # the page rebuilds after a sync that brought data: a lost click is retried
             atspi.click(atspi.find(a, 'button', name='Pick this photo', timeout=15))
             try:
                 atspi.find(a, 'label', contains='Photo chosen', timeout=4)

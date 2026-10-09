@@ -152,7 +152,9 @@ proc liveDataKey(w: Win): string =
   for (k, ask) in w.a.api.invites.pending(nowMs() div 1000): result.add "|" & k & ":" & ask.device
 
 proc liveBuilt*(w: Win, box: W) =
-  ## `box` was just (re)built by its page: if it is the live page, it shows the data as it is now
+  ## `box` was just (re)built by its page: if it is the live page, it shows the data as it is now. (A part of it
+  ## rebuilt alone, like My proposals' list after a withdraw, doesn't count: the rest may show the old data, so the
+  ## next sync round rebuilds the page once.)
   if box != nil and box == w.livePage: w.liveKey = w.liveDataKey
 
 proc setLive*(w: Win, box: W, build: proc (box: W)) =
