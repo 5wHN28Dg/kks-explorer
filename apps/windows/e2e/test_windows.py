@@ -275,7 +275,9 @@ class Windows(unittest.TestCase):
                    pick('11LAC10AP003', 2) + [
                    'click\tPhoto for all…', 'wait\tPhoto to mark up\t30', 'keys\tDrawing\t0x1B', 'state\tSelect tags\toff',
                    'toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP002', 1) + [
-                   'set\tCaption (optional)\tBoth drains', 'click\tSend', 'wait\t~Sent for 2 codes · saved\t90',
+                   # queued at once (kept on disk, compressed on the queue's worker thread), then one submit-many
+                   'set\tCaption (optional)\tBoth drains', 'click\tSend', 'wait\t~Photo queued for 2 codes\t20',
+                   'state\tSelect tags\ton', 'wait\t1 selected\t10', 'wait\t~Photo sent for 2 codes · saved\t90',
                    'state\tSelect tags\ton', 'wait\t1 selected\t10',
                    # a tag opened from elsewhere with a selection: OK ends the mode and opens the tag
                    'click\tEquipment by system…', 'wait\tEquipment by system\t20',
@@ -560,21 +562,22 @@ class Windows(unittest.TestCase):
     def test_photo_queue(self):
         """photos are compressed on a worker thread through a queue, one after another, and sent as each is ready, while
         the panel closes; a photo that fails (KKS_TEST_ENCODE_FAIL: the first encode fails) is kept and reported, not
-        dropped, and Try again sends it; closing the window while one is kept asks first, and so does signing out (the
-        shutdown block reason, cleared once every photo is sent); a caption over the core's 500 characters is cut
-        before the photo is queued (refused by the core, it could never be sent)"""
+        dropped (its retry a minute later is put off here: KKS_TEST_RETRY_MS), and Try again sends it; closing the
+        window while one is kept asks first (they are kept on disk: signing out is not held up); a caption over the
+        core's 500 characters is cut before the photo is queued (refused by the core, it could never be sent)"""
         self.add_tag('11LBA10AA101', [600, 900, 720, 960], floor='1')
         self.add_tag('11LBA10AA102', [800, 900, 920, 960], floor='1')
-        self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1'})
+        self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1', 'KKS_TEST_RETRY_MS': '600000'})
         self.check('queue0.uia', self.show('11LBA10AA101') + [
             'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tQueue A',
             'click\tSend', 'wait\tAnd its tag plate?\t20', 'click\tNo',
-            'wait\t~The photo of 11LBA10AA101 could not be compressed\t30', 'wait\tPhotos not sent (1)…\t10',
+            'wait\t~Photo of 11LBA10AA101 was not sent (could not be compressed\t30', 'wait\tPhotos not sent (1)…\t10',
             'wait\t~1 photo of this equipment not sent\t10',
-            # closing the window now would lose it: the app asks, Cancel keeps it open
-            'close\tPhotos not sent (1)…', 'wait\tClose Walkdown?\t10', 'click\tCancel', 'gone\tClose Walkdown?',
-            'wait\tPhotos not sent (1)…\t10',
-            'endsession\tPhotos not sent (1)…\t0', 'blockreason\tPhotos not sent (1)…\tPhotos are not sent yet'])
+            # closing the window: the app says it is kept, and offers to wait; Cancel keeps it open
+            'close\tPhotos not sent (1)…', 'wait\tClose Walkdown?\t10', 'wait\t~kept on this computer and sent when Walkdown next starts\t5',
+            'click\tCancel', 'gone\tClose Walkdown?', 'wait\tPhotos not sent (1)…\t10',
+            # kept on disk: signing out loses nothing, so it is not held up
+            'endsession\tPhotos not sent (1)…\t1', 'blockreason\tPhotos not sent (1)…\t-'])
         long_caption = 'Queue B ' + 'x' * 592
         # another code's photo: compressed in the background while the panel closes, then sent
         self.check('queue1.uia', self.show('11LBA10AA102') + [
@@ -596,6 +599,61 @@ class Windows(unittest.TestCase):
         self.assertEqual(ph['11LBA10AA101'].get('by_name'), 'The Manager')
         self.leave()
 
+    def test_photo_queue_crash(self):
+        """the photo queue survives the app ending (the user's rule: a photo is never lost; Android's queue, decision
+        0049). Two photos are queued and the app is killed before they are compressed (KKS_TEST_PHOTO_HOLD); started
+        again, it sends the first and dies right after the core took it, before the queue forgot it
+        (KKS_TEST_PHOTO_DIE_AFTER_SEND); started a third time, it sends the first again (kept once: its client_id) and
+        then the second, in order"""
+        a, b = '11LBA30AA101', '11LBA30AA102'
+        self.add_tag(a, [600, 1100, 720, 1160], floor='2')
+        self.add_tag(b, [800, 1100, 920, 1160], floor='2')
+        self.join('crjoin.uia', env={'KKS_TEST_PHOTO_HOLD': '1'})
+        def photo(code, caption):
+            return self.show(code) + ['click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30',
+                                      'set\tCaption (optional)\t' + caption, 'click\tSend',
+                                      'wait\tAnd its tag plate?\t20', 'click\tNo']
+        self.check('crash0.uia', photo(a, 'Crash one') + photo(b, 'Crash two') +
+                   ['wait\tCompressing 2 photos (%s, then %s). They are sent in order; you can keep working.\t10' % (a, b)])
+        vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Stop-Process -Force')
+        time.sleep(1)
+        # the second start dies by itself right after the core took the first photo (the driver may find no app)
+        ui('crash1.uia', ['sleep\t1000'], restart=True, env={'KKS_TEST_PHOTO_DIE_AFTER_SEND': '1'})
+        for _ in range(60):
+            if 'Walkdown' not in vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName'):
+                break
+            time.sleep(2)
+        else:
+            self.fail('the second start did not die after sending the first photo')
+        def mine():
+            return [p for p in self.boss.req('GET', '/api/state').get('photos', []) if p.get('caption', '').startswith('Crash ')]
+        self.check('crash2.uia', ['wait\t~Saved: photo of %s\t120' % b, 'gone\t~Compressing \t20'], restart=True,
+                   sync_every=2000)
+        self.wait_server(lambda: len(mine()) >= 2, 'the queued photos never reached the server', tries=120)
+        time.sleep(6)            # a second copy of the first photo would arrive with the next sync
+        got = mine()
+        self.assertEqual(sorted(p['caption'] for p in got), ['Crash one', 'Crash two'])
+        ids = {p['id']: p['caption'] for p in got}
+        revs = [r for r in self.boss.req('GET', '/api/revisions?limit=200')['revisions']
+                if r.get('entity') == 'photo' and r.get('key') in ids]
+        self.assertEqual([ids[r['key']] for r in revs], ['Crash two', 'Crash one'], 'newest first: sent in the order added')
+        self.leave()
+
+    def test_photo_queue_retry(self):
+        """a photo that fails (KKS_TEST_ENCODE_FAIL: the first encode fails) is tried again by itself after a wait
+        (KKS_TEST_RETRY_MS here, a minute normally) and arrives"""
+        code = '11LBA40AA101'
+        self.add_tag(code, [600, 1200, 720, 1260], floor='3')
+        self.join('rjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1', 'KKS_TEST_RETRY_MS': '3000'})
+        self.check('retry0.uia', self.show(code) + [
+            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tRetried',
+            'click\tSend', 'wait\tAnd its tag plate?\t20', 'click\tNo',
+            'wait\t~Photo of %s was not sent (could not be compressed\t30' % code,
+            'wait\t~Saved: photo of %s\t90' % code, 'gone\tPhotos not sent (1)…'])
+        self.wait_server(lambda: [p for p in self.boss.req('GET', '/api/state').get('photos', [])
+                                  if p.get('caption') == 'Retried'], 'the retried photo never reached the server', tries=80)
+        self.leave()
+
     def test_photo_floor_discard(self):
         """the floor asked with a photo that is then kept (not sent) goes with the code's next photo; discarding a kept
         photo that carried the code's only floor says so, and the next photo asks for the floor again, even one whose
@@ -604,17 +662,17 @@ class Windows(unittest.TestCase):
         self.add_tag(a, [600, 1000, 720, 1060])
         self.add_tag(b, [800, 1000, 920, 1060])
         self.add_tag(c, [1000, 1000, 1120, 1060])
-        self.join('fjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '3'})
+        self.join('fjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '3', 'KKS_TEST_RETRY_MS': '600000'})
         def photo(code, floor=None, caption=''):
             return self.show(code) + ['click\tAdd a photo from a file…'] + (
                 ['wait\tWhich floor is %s on?\t20' % code, 'set\tFloor of %s (0–10)\t%s' % (code, floor), 'click\tContinue']
                 if floor else []) + ['wait\tPhoto to mark up\t30', 'set\tCaption (optional)\t' + caption, 'click\tSend',
                                      'wait\tAnd its tag plate?\t20', 'click\tNo']
-        self.check('floor0.uia', photo(a, '4', 'Floor A') + ['wait\t~The photo of %s could not be compressed\t30' % a,
+        self.check('floor0.uia', photo(a, '4', 'Floor A') + ['wait\t~Photo of %s was not sent (could not be compressed\t30' % a,
                                                              'wait\tPhotos not sent (1)…\t10'] +
-                   photo(b, '6', 'Floor B') + ['wait\t~The photo of %s could not be compressed\t30' % b,
+                   photo(b, '6', 'Floor B') + ['wait\t~Photo of %s was not sent (could not be compressed\t30' % b,
                                                'wait\tPhotos not sent (2)…\t10'] +
-                   photo(c, '7', 'Floor C') + ['wait\t~The photo of %s could not be compressed\t30' % c,
+                   photo(c, '7', 'Floor C') + ['wait\t~Photo of %s was not sent (could not be compressed\t30' % c,
                                                'wait\tPhotos not sent (3)…\t10'] +
                    # Photo for all doesn't count a floor riding on a kept photo (its own photo would go without it,
                    # and the kept one may be discarded): refused, naming the code

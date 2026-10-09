@@ -214,6 +214,24 @@ proc finish*(q: PhotoQueue, key: string, outcome: Outcome, why: string, now: int
     else:
       result = "Photo of " & it.name & " was not sent (" & why & "). It is kept and tried again when the app next starts."
 
+proc forget*(q: PhotoQueue, key: string) =
+  ## the person discarded this photo (never sent): its rows go, and it leaves the queue. Raises when the store can't
+  ## be written (then it stays). Never for the photo being compressed or sent (`busy`): its result would come back
+  ## under a key the next photo may take
+  if q.busy == key: raise newException(ValueError, "the photo is being compressed or sent now")
+  q.remove(key)
+  q.drop(key)
+
+proc setFloor*(q: PhotoQueue, key, floor: string) =
+  ## the photo takes over the floor of one that was discarded before it was sent (its code's floor was asked with
+  ## that one): on disk too, so a restart keeps it. Raises when the store can't be written
+  let j = q.store.getRow(JobTable, key)
+  if j == nil or j.kind != jObj: return
+  j["floor"] = newStr(floor)
+  q.store.putRow(JobTable, key, j)
+  for it in q.items.mitems:
+    if it.key == key: it.floor = floor
+
 proc wipe*(q: PhotoQueue) =
   ## a removed device: the store's wipe deleted the rows; forget the photos in memory and write nothing more
   q.wiped = true

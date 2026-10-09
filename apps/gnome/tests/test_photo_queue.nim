@@ -229,4 +229,26 @@ suite "photo queue on disk":
     check "caption" in textProblem("é".repeat(501), "")
     check "note" in textProblem("", "x".repeat(501))
 
+  test "a discarded photo leaves the store (never while it is being worked on); a floor taken over is kept on disk":
+    var s = fresh()
+    var q = newPhotoQueue(s)
+    let a = q.add(p, pic(2, 2, 1), 2, 2, "A1", "first", "", "4", 1)
+    let b = q.add(p, pic(2, 2, 2), 2, 2, "A1", "second", "", "", 2)
+    let c = q.add(p, pic(2, 2, 3), 2, 2, "C1", "third", "", "", 3)
+    var reports: seq[string]
+    discard q.next(10, reports)
+    check q.busy == a.key
+    expect ValueError: q.forget(a.key)                 # its result would come back under a key reused later
+    check q.count == 3
+    discard q.finish(a.key, Failed, "the encoder", 10)
+    q.forget(a.key)                                    # failed, waiting: it can go
+    check q.count == 2 and q.items[0].key == b.key
+    q.setFloor(b.key, "4")                             # the next photo of the code takes its floor over
+    check q.items[0].floor == "4"
+    s = s.reopen()
+    q = newPhotoQueue(s)
+    check q.resume().len == 0
+    check q.count == 2 and q.items[0].key == b.key and q.items[0].floor == "4" and q.items[1].key == c.key
+    s.close()
+
 removeDir(dir)
