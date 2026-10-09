@@ -57,7 +57,7 @@ proc next*(d: var Deframer, limit = MaxFrame): JNode =
   let body = d.buf[a + 4 ..< a + 4 + n]
   d.at = a + 4 + n
   if d.at == d.buf.len:
-    d.buf.setLen(0)
+    d.buf = ""          # not setLen(0): a 64 MB frame's buffer would stay for the rest of the session
     d.at = 0
   try: result = parseStrict(body)
   except JsonError as e: raise newException(SyncError, "bad message: " & e.msg)
