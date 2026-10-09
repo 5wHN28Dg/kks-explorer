@@ -375,6 +375,15 @@ function drawTags(){
   const covers=KSys.photoCovers(STATE.photos), photoCover=k=>covers.get(k)||'none';   // one pass over the photos
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   const picked=new Set(multi.on?multi.codes:[]);
+  // off-page connectors (C16, D2 …), under the tags (a click on a tag next to one stays the tag's): dashed violet circles; a click opens where the line continues (followLink). Not
+  // while selecting tags (clicks pick tags only) or marking a missed tag
+  const sc=pxScale(cur);
+  for(const l of linksHere()){
+    const sel=linkSel&&linkSel.sheet===cur.id&&Math.abs(linkSel.x0-l.x0)<0.01&&Math.abs(linkSel.y0-l.y0)<0.01;
+    L.appendChild(h('button',{type:'button',class:'conn'+(sel?' sel':''),tabindex:'-1','data-label':l.label,'aria-label':linkName(l),title:linkName(l),
+      style:`left:${l.x0*sc-3}px;top:${l.y0*sc-3}px;width:${(l.x1-l.x0)*sc+6}px;height:${(l.y1-l.y0)*sc+6}px`,
+      onclick:e=>{ e.stopPropagation(); if(multi.on||mark.on) return; followLink(cur.id,l.label,l.x0,l.y0) }}));
+  }
   for(const t of tagsOf(cur.id)){
     // a button: Enter or Space acts like a click; in the tab order only while selecting tags
     const d=document.createElement('button'), b=t.bbox, k=full(t);
@@ -389,15 +398,6 @@ function drawTags(){
   for(const p of [...(STATE.mine||[]).filter(s=>s.kind==='tag_add').map(s=>s.payload),...K.outbox.filter(i=>i.kind==='tag_add').map(i=>i.payload)]){
     if(p.sheet!==cur.id) continue; const b=p.bbox, d=document.createElement('div'); d.className='hs pendmark';
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; d.title='Your mark, awaiting approval'; L.appendChild(d);
-  }
-  // off-page connectors (C16, D2 …): dashed violet circles; a click opens where the line continues (followLink). Not
-  // while selecting tags (clicks pick tags only) or marking a missed tag
-  const sc=pxScale(cur);
-  for(const l of linksHere()){
-    const sel=linkSel&&linkSel.sheet===cur.id&&Math.abs(linkSel.x0-l.x0)<0.01&&Math.abs(linkSel.y0-l.y0)<0.01;
-    L.appendChild(h('button',{type:'button',class:'conn'+(sel?' sel':''),tabindex:'-1','data-label':l.label,'aria-label':linkName(l),title:linkName(l),
-      style:`left:${l.x0*sc-3}px;top:${l.y0*sc-3}px;width:${(l.x1-l.x0)*sc+6}px;height:${(l.y1-l.y0)*sc+6}px`,
-      onclick:e=>{ e.stopPropagation(); if(multi.on||mark.on) return; followLink(cur.id,l.label,l.x0,l.y0) }}));
   }
   // the valve symbol of the tag whose panel is open (the core's valve_type box), while the panel shows it
   const vt=selTag&&selTag.sheet===cur.id?valveTypeOf(selTag):null;
@@ -1012,7 +1012,7 @@ function goToLink(label,t){
   const go=()=>{ const sc=pxScale(cur); linkSel={sheet:t.sheet,x0:t.x0,y0:t.y0};
     centerOn([t.x0*sc,t.y0*sc,t.x1*sc,t.y1*sc]); drawTags();
     // the list was rebuilt for the new sheet: keyboard focus goes back into it, not to the page
-    if($('#linksDrawer').classList.contains('open')&&!$('#linksDrawer').contains(document.activeElement)) $('#linksBody .connrow, #linksBody')?.focus();
+    if($('#linksDrawer').classList.contains('open')&&!$('#linksDrawer').contains(document.activeElement)) $('#linksBody .connrow')?.focus();
     toast('Connector '+label+' on '+(t.sheet_name||t.sheet)) };
   if(cur?.id!==t.sheet){ closePanel(); openSheet(t.sheet,go) } else go();
 }

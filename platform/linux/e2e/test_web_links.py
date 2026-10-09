@@ -149,6 +149,7 @@ class WebLinks(unittest.TestCase):
             self.assertEqual(page.evaluate("document.querySelector('#layer .conn.sel').style.left"), '397px')
             page.click('#linksBody .connrow >> nth=0')
             page.wait_for_function("() => cur.id === 'b'")
+            page.wait_for_function("() => document.activeElement?.classList.contains('connrow')")   # focus back in the rebuilt list
             self.assertEqual(page.locator('#linksBody .connrow').count(), 3, 'the list follows the open sheet')
             page.select_option('#sheetSel', 'c')
             page.wait_for_function("() => cur.id === 'c'")

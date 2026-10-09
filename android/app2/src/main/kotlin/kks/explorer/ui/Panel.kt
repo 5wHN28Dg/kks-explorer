@@ -339,7 +339,8 @@ private fun ValveSection(vt: JSONObject, rev: Int, snack: SnackbarHostState) {
 
 /** the valve type in this person's own open proposal for the code k ("" = none) */
 private fun myValveType(k: String): String {
-    for (sub in call("GET", "/api/submissions", query = mapOf("status" to "open")).json.optJSONArray("submissions").objects()) {
+    val q = mapOf("status" to "open", "mine" to "1", "kind" to "equipment")    // only mine: the list is paged
+    for (sub in call("GET", "/api/submissions", query = q).json.optJSONArray("submissions").objects()) {
         val p = sub.optJSONObject("payload") ?: continue
         if (!sub.optBoolean("mine") || sub.str("kind") != "equipment" || p.str("kks") != k) continue
         val c = p.optJSONObject("changes")?.optJSONArray("custom") ?: continue

@@ -187,7 +187,8 @@ const KSys = (() => {
       const label = ok ? str(l, 'label') : '', b = ok ? l.bbox : null;
       if (!ok || !label || utf8len(label) > MAX_LINK_LABEL || !Array.isArray(b) || b.length !== 4) continue;
       if (!b.every(v => typeof v === 'number')) continue;
-      if (linkBoxOk(b, scaleOf(x))) out.push({label, bbox: b.slice(), conf: num(l, 'conf', 1.0)});
+      // a conf JSON.parse made Infinity (1e999) is taken as read, like the core
+      if (linkBoxOk(b, scaleOf(x))) out.push({label, bbox: b.slice(), conf: Number.isFinite(l.conf) ? l.conf : 1.0});
     }
     return out;
   }

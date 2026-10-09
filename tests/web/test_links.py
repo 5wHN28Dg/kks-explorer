@@ -12,7 +12,10 @@ RUN = r"""(V) => {
   for (const id of Object.keys(V.expected)) out[id] = KSys.linksView(V.sheets, id);
   const v = KSys.linksView(V.sheets, V.find_in);
   return {views: out, finds: V.finds.map(f => KSys.findLink(v, f.label, f.x0, f.y0)),
-          gone: KSys.findLink(v, 'nothing', 0, 0), none: KSys.linksView(null, 's0')} }"""
+          gone: KSys.findLink(v, 'nothing', 0, 0), none: KSys.linksView(null, 's0'),
+          // a conf JSON.parse makes Infinity is taken as read (core parseSheets; Nim can't write it into the vectors)
+          inf: KSys.linksView(JSON.parse('[{"id":"x","links":[{"label":"B2","bbox":[0,0,20,20],"conf":1e999},' +
+                                         '{"label":"B2","bbox":[40,0,60,20],"conf":-1e999}]}]'), 'x').map(l => l.conf)} }"""
 
 
 class Links(unittest.TestCase):
@@ -34,7 +37,7 @@ class Links(unittest.TestCase):
         for sid, want in self.v['expected'].items():
             self.assertEqual(got['views'][sid], want, sid)
         self.assertEqual(got['finds'], [f['want'] for f in self.v['finds']])
-        self.assertEqual((got['gone'], got['none']), (-1, []))
+        self.assertEqual((got['gone'], got['none'], got['inf']), (-1, [], [1, 1]))
         # the vectors cover what they should: no targets, one, several, the same sheet, the 20-target cap
         counts = [len(x['targets']) for v in self.v['expected'].values() for x in v]
         self.assertIn(0, counts)

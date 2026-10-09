@@ -288,8 +288,10 @@ class SheetView(ctx: Context) : View(ctx) {
             links.indices.filter { i -> shown(screenRect(links[i])) }.take(50).map { LINK0 + it }
 
         fun at(x: Float, y: Float): Int {
-            if (!selecting && !marking) hitLink(x, y).takeIf { it >= 0 }?.let { return LINK0 + it }
             val px = ox + x / z; val py = oy + y / z
+            // a connector, unless the finger is right on a tag (the tap rule)
+            if (!selecting && !marking && tags.none { px in it.x0..it.x1 && py in it.y0..it.y1 })
+                hitLink(x, y).takeIf { it >= 0 }?.let { return LINK0 + it }
             return tags.indices.filter { val t = tags[it]; px in t.x0..t.x1 && py in t.y0..t.y1 }
                 .minByOrNull { (tags[it].x1 - tags[it].x0) * (tags[it].y1 - tags[it].y0) } ?: -1
         }
