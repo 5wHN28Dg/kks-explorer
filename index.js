@@ -43,7 +43,7 @@ function locSec(b,sfx){
 }
 const closeX=()=>h('button',{class:'x',onclick:()=>closePanel(),'aria-label':'Close the panel'},'×');
 function selectLoc(b){
-  selId=null; drawTags();
+  selId=null; selTag=null; drawTags();
   put($('#panelBody'),h('div',{class:'phead'},h('div',{style:'flex:1'},h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},b),
       h('div',{class:'sub'},KKS.components[b.slice(5,7)]||'')),closeX()),
     h('div',{class:'sec'},h('div',{class:'warn'},'In the location list but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.')),
@@ -387,6 +387,11 @@ function drawTags(){
     if(p.sheet!==cur.id) continue; const b=p.bbox, d=document.createElement('div'); d.className='hs pendmark';
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; d.title='Your mark, awaiting approval'; L.appendChild(d);
   }
+  // the valve symbol of the tag whose panel is open (the core's valve_type box), while the panel shows it
+  const vt=selTag&&selTag.sheet===cur.id?valveTypeOf(selTag):null;
+  if(vt?.box){ const b=vt.box, d=document.createElement('div'); d.className='vsym'; d.setAttribute('aria-hidden','true');
+    d.title='The valve symbol the type was read from';
+    d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; L.appendChild(d) }
   L.append(...boxes);
   if(fid) for(const x of L.querySelectorAll('.hs')) if(x.dataset.id===fid){ x.focus({preventScroll:true}); break }
 }
@@ -446,6 +451,7 @@ function select(t){
       h('dt',null,'Reading'),h('dd',null,t.status==='confirmed'?'confirmed by you':t.status==='verified'?'checked by eye against the drawing':'automatic, '+Math.round(t.conf*100)+'% confidence'),
       t.flag?[h('dt',null,'Flag'),h('dd',{style:'color:var(--review)'},t.flag)]:null)));
   }
+  const vt=valveTypeOf(t); if(vt) out.push(valveSec(t,vt));
   out.push(locSec(bodyOf(t),t.suffix));
   if(t.added) out.push(h('div',{class:'sec'},h('h3',null,'Added by hand'),h('div',{class:'sub'},'The app\'s reader missed this tag; someone marked it on the drawing.'+(t.note?' Note: '+t.note:'')),
     h('button',{class:'ghost',style:'margin-top:6px',onclick:()=>removeAdded(t.added,k||'this mark')},'Remove this tag')));
@@ -480,6 +486,34 @@ function select(t){
   }
   put(P,out); $('#panel').classList.add('open'); $('#panel').scrollTop=0;
   if(focusPanel){ focusPanel=false; P.querySelector('.phead .kks')?.focus() }
+}
+// ---------- valve type: read from the drawn symbol (unchecked) until someone confirms or corrects it ----------
+// (systems.js KSys.valveType, a port of core model.valveTypeOf; kept as the equipment custom field "Valve type")
+const valveTypeOf=t=>{ const k=full(t); return k?KSys.valveType(t,eq(k)):null };
+function valveSec(t,vt){
+  const k=full(t), sec=h('div',{class:'sec',id:'valveSec'},h('h3',null,'Valve type'),h('div',{id:'vtLine'},vt.line));
+  if(vt.status==='confirmed'){
+    if(vt.drawn_differs) sec.append(h('div',{class:'sub'},'The drawing\'s symbol reads: '+vt.drawn));
+    return sec }
+  sec.append(h('div',{class:'sub'},'Read from the valve symbol drawn next to the tag (outlined on the drawing)'+
+    (vt.conf!=null?', '+Math.round(vt.conf*100)+' % sure':'')+'. Confirm it, or correct it if the symbol says otherwise.'));
+  if(!vt.confirm){ sec.append(h('div',{class:'warn'},'This equipment already has 100 custom fields: remove one to save the valve type.')); return sec }
+  const done=r=>{ if(r){ const x=TAGS.find(y=>y.id===t.id); select(x?eff(x)||t:t) } };
+  const btns=h('div',{class:'vtBtns',style:'margin-top:8px'},
+    h('button',{class:'primary',onclick:()=>send(vt.confirm.kind,vt.confirm.payload,k+' valve type: '+vt.text).then(done)},'Confirm'),' ',
+    h('button',{class:'ghost',onclick:()=>correct()},'Correct'));
+  sec.append(btns);
+  function correct(){
+    const inp=h('input',{id:'vtValue',value:vt.text,maxlength:200,'aria-label':'Valve type'});
+    const form=h('div',{class:'field editing'},h('label',{for:'vtValue'},'Valve type (as it really is)'),inp,
+      h('div',{style:'margin-top:8px'},
+        h('button',{class:'primary',onclick:()=>{ const c=KSys.withValveType(vt.confirm,inp.value);
+          if(!c){ toast('Type the valve type first'); return }
+          send(c.kind,c.payload,k+' valve type: '+c.payload.changes.custom.find(x=>x.k===KSys.VALVE_KEY).v).then(done) }},'Send'),' ',
+        h('button',{class:'ghost',onclick:()=>{ form.remove(); btns.style.display='' }},'Cancel')));
+    btns.style.display='none'; sec.append(form); inp.focus(); inp.select();
+  }
+  return sec;
 }
 function cfRow(k,v,ro){
   const row=h('div',{class:'cf'},h('input',{placeholder:'Field',value:k??'',readonly:!!ro}),h('input',{placeholder:'Value',value:v??'',readonly:!!ro}),

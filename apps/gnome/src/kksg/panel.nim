@@ -4,7 +4,7 @@
 
 import std/[strutils, math, sets, tables, unicode, sequtils]
 import kks/json
-import kks/model
+import kks/[model, views]
 import gtk, ui, appstate, win, photos
 
 proc section(title: string, rows: seq[W], description = ""): W =
@@ -78,6 +78,7 @@ proc equipmentSection(w: Win, t: Tag): W =
   let edit = button("Edit", "flat")
   adw_preferences_group_set_header_suffix(g, edit)
   edit.onClick(proc () =
+    w.panelEditing = true
     gtk_widget_set_visible(edit, 0)
     for r in shown & customRows: gtk_widget_set_visible(r, 0)
     var entries: seq[(string, W)]
@@ -137,7 +138,58 @@ proc equipmentSection(w: Win, t: Tag): W =
     btns.add button("Cancel", "", proc () = w.rebuildPanel())
     adw_preferences_group_add(g, btns))
 
+proc valveSection(w: Win, t: Tag, vt: JNode): W =
+  ## the valve type (core tagView's valve_type): read from the drawn symbol, unchecked, with Confirm (the core's
+  ## proposal as it is) and Correct (the same proposal with the person's value); or the confirmed type
+  let k = t.full
+  let line = label(s(vt, "line"), selectable = true)
+  if s(vt, "status") == "confirmed":
+    result = group("Valve type", if vt.get("drawn_differs") != nil and vt["drawn_differs"].kind == jBool and
+                   vt["drawn_differs"].b: "The drawing's symbol reads: " & s(vt, "drawn") else: "")
+    adw_preferences_group_add(result, line)
+    return
+  let conf = vt.get("conf")
+  result = group("Valve type", "Read from the valve symbol drawn next to the tag (outlined on the drawing)" &
+                 (if conf != nil and conf.isNum: ", " & $int(round(conf.num * 100)) & " % sure" else: "") &
+                 ". Confirm it, or correct it if the symbol says otherwise.")
+  let g = result
+  adw_preferences_group_add(g, line)
+  let c = vt.get("confirm")
+  if c == nil or c.kind != jObj:
+    adw_preferences_group_add(g, label("This equipment already has 100 custom fields: remove one to save the valve type.",
+                                       "warning"))
+    return
+  let text0 = s(vt, "text")
+  let btns = hbox(8)
+  gtk_widget_set_margin_top(btns, 8)
+  # labelled by their own text (a GtkButton's label wins over an accessible label): distinct from the review's Confirm
+  let ok = button("Confirm type", "suggested-action", proc () =
+    if w.submit(c["kind"].s, c["payload"], k & " valve type: " & text0).len > 0: w.rebuildPanel())
+  let fix = button("Correct type", "")
+  btns.add ok, fix
+  adw_preferences_group_add(g, btns)
+  fix.onClick(proc () =
+    w.panelEditing = true
+    gtk_widget_set_visible(btns, 0)
+    let e = entryRow("Valve type", text0)
+    adw_preferences_group_add(g, e)
+    let row2 = hbox(8)
+    gtk_widget_set_margin_top(row2, 8)
+    let send = button("Send", "suggested-action", proc () =
+      let v = text(e).strip
+      if v.len == 0:
+        w.toast("Type the valve type first")
+        return
+      let p = c["payload"].copy
+      for x in p["changes"]["custom"].elems:
+        if x.kind == jObj and s(x, "k") == ValveTypeKey: x["v"] = newStr(v)
+      if w.submit(c["kind"].s, p, k & " valve type: " & v).len > 0: w.rebuildPanel())
+    row2.add send, button("Cancel", "", proc () = w.rebuildPanel())
+    adw_preferences_group_add(g, row2)
+    discard gtk_widget_grab_focus(e))
+
 proc buildPanel*(w: Win, t: Tag) =
+  w.panelEditing = false
   w.panelBox.clear()
   let m = w.m
   let k = t.full
@@ -175,6 +227,15 @@ proc buildPanel*(w: Win, t: Tag) =
       else: "automatic, " & $int(round(t.conf * 100)) & " % confidence")
     if t.flag.len > 0: rows.add row("Flag", t.flag)
     w.panelBox.add section("From the drawing", rows)
+  # the valve type, and its symbol outlined on the drawing while this panel shows it
+  let vt = if k.len > 0: tagView(m, t.id).get("valve_type") else: nil
+  w.v.symbolBox = @[]
+  if vt != nil and vt.kind == jObj:
+    w.panelBox.add w.valveSection(t, vt)
+    let b = vt.get("box")
+    if b != nil and b.kind == jArr and b.elems.len == 4 and t.sheet == w.sheet:
+      for x in b.elems: w.v.symbolBox.add x.num
+  gtk_widget_queue_draw(w.v.widget)
   let rl = m.refLoc(t.bodyOf)
   if rl.rows.len > 0:
     var rows: seq[W]

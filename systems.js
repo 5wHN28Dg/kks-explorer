@@ -1,6 +1,6 @@
-// The equipment list by system, as data: a port of core views.systemsView (core/src/kks/views.nim) for the browser
-// client, which builds its own model (index.html). No DOM here: index.html renders it, tests/web/test_systems.py runs
-// it against core/tests/test_model.nim's cases.
+// The equipment list by system and a tag's valve type, as data: ports of core views.systemsView and model.valveTypeOf
+// (core/src/kks/views.nim, model.nim) for the browser client, which builds its own model (index.html). No DOM here:
+// index.html renders them, tests/web/test_systems.py runs them against the core's cases and vectors.
 'use strict';
 const KSys = (() => {
   const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;   // Nim's sort on strings: byte order (the codes are ASCII)
@@ -104,5 +104,67 @@ const KSys = (() => {
     return {blocks, other: rest, total};
   }
 
-  return {decode, photoCover, photoCovers, systemsView};
+  // ---- the valve type (a port of core model.drawnValveType / valveTypeOf and tagView's valve_type) ----
+  const VALVE_KEY = 'Valve type';   // the equipment custom field ({k, v}) a confirmed or corrected type is kept in
+  const CUSTOM_MAX = 100;           // custom fields per equipment (PROTOCOL-v2: `custom` is a list of at most 100)
+  const finite = n => typeof n === 'number' && Number.isFinite(n);   // JSON.parse turns 1e999 into Infinity
+  const utf8len = s => new TextEncoder().encode(s).length;
+  // tags.json "symbol" as the core keeps it (model.parseTags): an object whose type is a string of 1–100 bytes
+  const symbolOf = t => { const y = t && t.symbol;
+    return y && typeof y === 'object' && !Array.isArray(y) && typeof y.type === 'string' && utf8len(y.type) >= 1 &&
+      utf8len(y.type) <= 100 ? y : null };
+  const str = (o, k) => o && typeof o[k] === 'string' ? o[k] : '';
+  // the drawn valve symbol in words ("gate valve, motor-operated, normally closed"); '' = none. `nc` = the body is
+  // hatched, which on these drawings means normally closed
+  function drawnValveType(t) {
+    const y = symbolOf(t); if (!y) return '';
+    let r = y.type;
+    if (str(y, 'actuator') === 'motor') r += ', motor-operated';
+    if (y.nc === true) r += ', normally closed';
+    return r;
+  }
+  function customValue(e, key) {
+    for (const x of Array.isArray(e && e.custom) ? e.custom : [])
+      if (x && typeof x === 'object' && !Array.isArray(x) && str(x, 'k') === key && str(x, 'v').length) return x.v;
+    return '';
+  }
+  // What the panel shows of a tag's valve type, or null: confirmed (the custom field "Valve type") or from the drawing,
+  // unchecked, with `confirm`: the equipment proposal that saves it (send it as it is, or with the value edited: a
+  // correction; see withValveType). `box`: the symbol's box in the tag's own units (level-0 px), to highlight it.
+  //   t: the effective tag; equipment: the live equipment record of its code (STATE.equipment[code])
+  function valveType(t, equipment) {
+    const k = (t.kks || '') + (t.suffix || ''), drawn = drawnValveType(t), eq = equipment || {};
+    const have = k ? customValue(eq, VALVE_KEY) : '';
+    if (have) return {status: 'confirmed', text: have, drawn, label: 'confirmed', line: 'Valve type: ' + have + ' (confirmed)',
+                      drawn_differs: !!drawn && drawn !== have};
+    if (!drawn || !k) return null;
+    // the symbol belongs to the code the reader saw: a review that made it a non-valve (component not AA) drops it
+    if (!(t.kks.length === 12 && t.kks.slice(7, 9) === 'AA')) return null;
+    const base = Array.isArray(eq.custom) ? eq.custom.slice() : [];
+    // an empty "Valve type" entry already there is replaced, never doubled; a full list can't take one more
+    const isKey = x => x && typeof x === 'object' && !Array.isArray(x) && str(x, 'k') === VALVE_KEY;
+    const changed = []; let placed = false;
+    for (const x of base) {
+      if (!placed && isKey(x)) { changed.push({k: VALVE_KEY, v: drawn}); placed = true }
+      else if (!isKey(x)) changed.push(x);
+    }
+    if (!placed) changed.push({k: VALVE_KEY, v: drawn});
+    const y = symbolOf(t);
+    const r = {status: 'drawing', text: drawn, conf: finite(y.conf) ? y.conf : null, label: 'from the drawing, unchecked',
+               line: 'Valve type: ' + drawn + ' (from the drawing, unchecked)', confirm: null};
+    if (changed.length <= CUSTOM_MAX)
+      r.confirm = {kind: 'equipment', payload: {kks: k, changes: {custom: changed}, base: {custom: base}}};
+    const b = y.bbox;
+    if (Array.isArray(b) && b.length === 4 && b.every(finite)) r.box = b.slice();
+    return r;
+  }
+  // the confirm proposal with the person's own value instead of the drawing's (a correction); null for an empty value
+  function withValveType(confirm, value) {
+    const v = String(value || '').trim(); if (!v || !confirm) return null;
+    const c = JSON.parse(JSON.stringify(confirm));
+    for (const x of c.payload.changes.custom) if (x && typeof x === 'object' && x.k === VALVE_KEY) x.v = v;
+    return c;
+  }
+
+  return {decode, photoCover, photoCovers, systemsView, valveType, withValveType, VALVE_KEY};
 })();
