@@ -92,6 +92,48 @@ suite "sync state machine":
   test "a blob nobody references is refused":
     check not server.blobOffer(hex(P.sha256(toBytes("junk"))), "junk")
 
+  test "blobs are made a budget at a time, not all at once (2026-10-09: a server held 7.4 GB)":
+    # 12 photos of 300 kB: the manager's phone wants them from a device that has them
+    var cam = newNode(P, newMemStore(), P.p256Generate())
+    discard mgrPhone.append("device_cert", deviceCertBody(cam.device, mgr, "camera"), tick())
+    discard sync(cam, mgrPhone, adopt = rootStr)
+    var shas: seq[string]
+    for i in 0 ..< 12:
+      let sha = cam.keepBlob(char(0xff) & char(0x0a) & repeat(char(65 + i), 300_000))
+      shas.add sha
+      discard cam.append("photo", newObj(@[("photo", newStr(P.newPersonId())), ("kks", newStr("11LAB70AA501")),
+                                           ("blob", newStr(sha)), ("caption", newStr("p" & $i))]), tick())
+    let a = newSession(mgrPhone, true, cam.device)     # the phone asks; cam answers its want with the blobs
+    let b = newSession(cam, false, mgrPhone.device)
+    a.wall = tick()
+    b.wall = a.wall
+    var blobs, biggest = 0
+    var order: seq[string]
+    while not (a.done and b.done):
+      var moved = false
+      while a.sending:
+        for m in a.take(): b.receive(m); moved = true
+      while b.sending:
+        var bytes = 0
+        for m in b.take(budget = 1_000_000):
+          order.add m["t"].s
+          if m["t"].s == "blob":
+            inc blobs
+            bytes += m["data"].s.len
+          a.receive(m)
+          moved = true
+        biggest = max(biggest, bytes)
+        check b.outbox.len == 0                         # nothing waits beyond the budget
+      if not moved: break
+    check a.done and b.done
+    check blobs == 12 and a.stats.blobsReceived == 12
+    check biggest <= 4 * 400_000 + 1000                 # ~1 MB of photos (base64) per take, never all 4.8 MB
+    var lastBlob = -1
+    for i, t in order:
+      if t == "blob": lastBlob = i
+    check order.find("blobs_end") == lastBlob + 1           # blobs_end right after the last blob
+    for sha in shas: check mgrPhone.store.blobGet(sha).len == 300_002
+
   test "a removed device is shown the revoke and wipes itself":
     let bob = P.newPersonId()
     var bobPhone = newNode(P, newMemStore(), P.p256Generate())
