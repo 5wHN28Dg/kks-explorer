@@ -341,6 +341,11 @@ class Windows(unittest.TestCase):
             r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'other', 'bbox': [400, 300, 520, 360],
                                               'kks': '11LAB70AA601', 'isa': '', 'note': ''}})
             self.assertEqual(r.get('status'), 'approved', r)
+        # a member's proposal for the other sheet's tag, for the Approvals card below
+        if 'swmem' not in [u['username'] for u in b.req('GET', '/api/users').get('users', [])]:
+            r = self.member('swmem', 'Switch Member').req('POST', '/api/submit', {
+                'kind': 'equipment', 'payload': {'kks': '11LAB70AA601', 'changes': {'notes': 'Check the gland'}}})
+            self.assertEqual(r.get('status'), 'pending', r)
         self.join('swjoin.uia')
         lines = []
         for _ in range(12):
@@ -362,6 +367,17 @@ class Windows(unittest.TestCase):
                                    'click\tShow the selected code on its drawing', 'wait\tLeave Select tags?\t10',
                                    'click\tOK', 'wait\tSample sheet — Walkdown\t10', 'state\tSelect tags\toff',
                                    'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
+        # the same from an Approvals card (Open … on the drawing): the sheet stays until the person agreed
+        self.check('switch3.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10',
+                                   'set\tSearch equipment by KKS code or description\tLAB70AA501', 'select\t~11LAB70AA501',
+                                   'click\tSelect or unselect', 'wait\t1 selected\t10',
+                                   'click\tManage', 'click\tApprovals', 'wait\tOpen 11LAB70AA601 on the drawing\t30',
+                                   'click\tOpen 11LAB70AA601 on the drawing', 'wait\tLeave Select tags?\t10',
+                                   'click\tCancel', 'gone\tLeave Select tags?', 'sleep\t500',
+                                   'wait\tSample sheet — Walkdown\t5', 'gone\tOther drawing — Walkdown', 'wait\t1 selected\t5',
+                                   'click\tOpen 11LAB70AA601 on the drawing', 'wait\tLeave Select tags?\t10', 'click\tOK',
+                                   'wait\tOther drawing — Walkdown\t10', 'gone\t1 selected', 'click\tDrawings',
+                                   'state\tSelect tags\toff'])
         self.assertIn('Walkdown', vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName'))
         self.leave()
 
@@ -704,7 +720,7 @@ class Windows(unittest.TestCase):
                                    'set\tUsername\tboss', 'set\tPassword\ta long password', 'click\tJoin',
                                    'wait\t~Sample sheet\t60'], keep=False, sync_every=3000)
         # the published sheet's codes (other tests publish more: test_description), plus the tags other tests on this
-        # server marked by hand (test_multi, test_approvals)
+        # server marked by hand (test_multi, test_multi_clash, test_approvals, test_sheet_switch, …)
         published = {t['kks'] + (t.get('suffix') or '') for t in json.loads(self.boss.op.open(self.boss.base + '/data/tags.json').read())
                      if t.get('kks')}
         n = len({'11LAB70AA501'} | published | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
