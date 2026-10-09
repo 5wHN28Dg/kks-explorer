@@ -335,6 +335,8 @@ proc panelQuiet(w: Win) =
   if w.selected.len > 0 and not w.picking and (f == nil or GetParent(f) != w.panel.hwnd or not typingIn(f)):
     w.rebuildPanel()
 
+proc floorAfterDiscard(w: Win, gone: QueuedPhoto)
+
 proc received(w: Win, d: EncDone) =
   ## one photo compressed (or not): send it, then remove it, keep it for a retry, or report a refusal
   if pq == nil or pq.wiped: return
@@ -373,7 +375,10 @@ proc received(w: Win, d: EncDone) =
         q.readyAt = now + retryWait
     if not still:               # its tries in this run are used up: kept on disk, tried again at the next start
       parked.add it
-  else: whyOf.del d.key
+  else:
+    whyOf.del d.key
+    # a refused photo may have carried the floor its code was asked for: another photo of the code takes it over
+    if outcome == Refused and it.codes.len == 0: w.floorAfterDiscard(it)
   if r.len > 0: w.toast(r)
 
 proc startNext(w: Win) =
@@ -396,16 +401,18 @@ proc startNext(w: Win) =
 
 proc pollQueue(w: Win) =
   var changed = false
-  if pq != nil and not pq.wiped:
-    while true:
-      let (got, d) = encDone.tryRecv()
-      if not got: break
-      w.received(d)
-      changed = true
-    w.startNext()
-  # the next poll first: an error in the screen updates below must not stop the queue
-  polling = pq != nil and not pq.wiped and pq.count > 0
-  if polling: discard afterMs(200, proc () = w.pollQueue())
+  try:
+    if pq != nil and not pq.wiped:
+      while true:
+        let (got, d) = encDone.tryRecv()
+        if not got: break
+        changed = true
+        w.received(d)
+      w.startNext()
+  finally:
+    # the next poll whatever happened above (a store error, a screen update): an error must not stop the queue
+    polling = pq != nil and not pq.wiped and pq.count > 0
+    if polling: discard afterMs(200, proc () = w.pollQueue())
   if changed:
     w.showQueue()
     w.panelQuiet()
@@ -503,12 +510,13 @@ proc retryNow(w: Win, key: string) =
   w.showQueue()
   w.panelQuiet()
 
-proc discardPhoto(w: Win, key: string) =
+proc discardPhoto(w: Win, key, clientId: string) =
+  ## by key and client_id: while the question was open the photo may have been sent and its key taken by a new one
   if pq == nil or pq.wiped: return
   var gone: QueuedPhoto
   var found = false
   for q in kept():
-    if q.key == key:
+    if q.key == key and q.clientId == clientId:
       gone = q
       found = true
   if not found: return
@@ -549,12 +557,13 @@ proc failedWindow*(w: Win) =
       closureScope:
         let q = items[i]
         let key = q.key
+        let cid = q.clientId
         p.title("Photo of " & q.nameOf)
         if q.caption.len > 0: p.label(q.caption)
         p.dim(whyOf.getOrDefault(key, "Not sent").capitalizeAscii)
         p.buttons(("Try again", proc () = w.retryNow(key)),
           ("Discard", proc () =
-            if ask(h, "Discard this photo?", "It was never sent: it is lost."): w.discardPhoto(key)))
+            if ask(h, "Discard this photo?", "It was never sent: it is lost."): w.discardPhoto(key, cid)))
     p.buttons(("Close", proc () = DestroyWindow(h)))
     p.layout()
   refillFailed = fill
