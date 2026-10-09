@@ -98,8 +98,11 @@ proc main() =
       writePrivate(linkFile, l & "\n")
       echo "No manager yet. The one-time link that creates the manager (valid 7 days) is in the setup link file: ", linkFile
     elif fileExists(linkFile): removeFile(linkFile)
+    asyncCheck s.serve()   # listening once this returns: the HTTP listener opens before serve's first await (a port
+                           # already taken fails at the first poll, as before)
+    # said only now: whoever waits for this line (the e2e tests, a service manager's log) may connect at once. Before,
+    # it came before mDNS and the listeners were set up, and a connection right after it was refused (GNOME e2e flake)
     echo "Walkdown server on http://", cfg.address, ":", cfg.port, (if cfg.syncPort > 0: ", sync port " & $cfg.syncPort else: "")
-    asyncCheck s.serve()
     runForever()
   of "setup-link":
     let l = s.setupLink()
