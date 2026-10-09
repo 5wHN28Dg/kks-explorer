@@ -1,6 +1,7 @@
-// The equipment list by system and a tag's valve type, as data: ports of core views.systemsView and model.valveTypeOf
-// (core/src/kks/views.nim, model.nim) for the browser client, which builds its own model (index.html). No DOM here:
-// index.html renders them, tests/web/test_systems.py runs them against the core's cases and vectors.
+// The equipment list by system, a tag's valve type and the links between drawings, as data: ports of core
+// views.systemsView, model.valveTypeOf and views.linksView (core/src/kks/views.nim, model.nim) for the browser client,
+// which builds its own model (index.html). No DOM here: index.html renders them; tests/web/test_systems.py and
+// test_links.py run them against the core's cases and vectors.
 'use strict';
 const KSys = (() => {
   const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;   // Nim's sort on strings: byte order (the codes are ASCII)
@@ -241,5 +242,65 @@ const KSys = (() => {
     return c;
   }
 
-  return {decode, photoCover, photoCovers, systemsView, located, pct, coverageView, valveType, withValveType, VALVE_KEY};
+  // ---- links between drawings (a port of core model.parseSheets' "links" and views.linksView / findLink) ----
+  const MAX_LINKS_PER_SHEET = 500, MAX_LINK_LABEL = 16, MAX_LINK_SIDE = 100, MAX_TARGET_NAME = 200, MAX_LINK_TARGETS = 20;
+  const num = (o, k, d) => o && typeof o === 'object' && typeof o[k] === 'number' ? o[k] : d;
+  const scaleOf = x => num(x, 'scale', 2.0);
+  // finite, ordered, at most MAX_LINK_SIDE points across, finite in points (core linkBoxOk)
+  function linkBoxOk(b, scale) {
+    const sc = scale > 0 ? scale : 2.0;
+    for (const v of b) if (!Number.isFinite(v) || !Number.isFinite(v / sc)) return false;
+    return b[2] > b[0] && b[3] > b[1] && (b[2] - b[0]) / sc <= MAX_LINK_SIDE && (b[3] - b[1]) / sc <= MAX_LINK_SIDE;
+  }
+  // a sheets.json entry's connectors as the core keeps them: [{label, bbox, conf}] (bbox in level-0 px)
+  function sheetLinks(x) {
+    const out = [], ls = x && typeof x === 'object' ? x.links : null;
+    if (!Array.isArray(ls)) return out;
+    for (const l of ls) {
+      if (out.length >= MAX_LINKS_PER_SHEET) break;
+      const ok = l && typeof l === 'object' && !Array.isArray(l);
+      const label = ok ? str(l, 'label') : '', b = ok ? l.bbox : null;
+      if (!ok || !label || utf8len(label) > MAX_LINK_LABEL || !Array.isArray(b) || b.length !== 4) continue;
+      if (!b.every(v => typeof v === 'number')) continue;
+      // a conf JSON.parse made Infinity (1e999) is taken as read, like the core
+      if (linkBoxOk(b, scaleOf(x))) out.push({label, bbox: b.slice(), conf: Number.isFinite(l.conf) ? l.conf : 1.0});
+    }
+    return out;
+  }
+  // at most n bytes of UTF-8, cut at a character boundary (core views.clip)
+  function clip(s, n) {
+    const e = new TextEncoder().encode(s); if (e.length <= n) return s;
+    let k = n; while (k > 0 && (e[k] & 0xC0) === 0x80) k--;
+    return new TextDecoder().decode(e.subarray(0, k));
+  }
+  // The sheet's off-page connectors (boxes in points), each with where its line continues: the same label on the other
+  // sheets (in the sheets' order), then any other connector with that label on this sheet (same_sheet). No targets =
+  // the other end isn't on any sheet we have. -> [{label, conf, x0, y0, x1, y1, targets: [{sheet, sheet_name,
+  // same_sheet, x0, y0, x1, y1}]}]
+  function linksView(sheets, sheet) {
+    const all = (sheets || []).map(x => ({id: str(x, 'id'), name: str(x, 'name'), scale: scaleOf(x), links: sheetLinks(x)}));
+    const si = all.find(x => x.id === sheet); if (!si) return [];
+    const box = (b, sc) => ({x0: b[0] / sc, y0: b[1] / sc, x1: b[2] / sc, y1: b[3] / sc});
+    const byLabel = new Map();
+    all.forEach((o, k) => o.links.forEach((x, j) => { if (!byLabel.has(x.label)) byLabel.set(x.label, []); byLabel.get(x.label).push([k, j]) }));
+    const s = si.scale > 0 ? si.scale : 2.0;
+    return si.links.map((l, i) => {
+      const targets = [], same = byLabel.get(l.label) || [];
+      fill: for (let pass = 0; pass <= 1; pass++)
+        for (const [k, j] of same) {
+          const o = all[k];
+          if ((pass === 0) === (o.id === sheet) || (o.id === sheet && j === i)) continue;
+          if (targets.length >= MAX_LINK_TARGETS) break fill;
+          const os = o.scale > 0 ? o.scale : 2.0;
+          targets.push({sheet: o.id, sheet_name: clip(o.name, MAX_TARGET_NAME), same_sheet: o.id === sheet, ...box(o.links[j].bbox, os)});
+        }
+      return {label: l.label, conf: l.conf, ...box(l.bbox, s), targets};
+    });
+  }
+  // the index of the connector with this label and box corner, -1 if it's gone (core findLink)
+  function findLink(ls, label, x0, y0) {
+    return ls.findIndex(l => l.label === label && Math.abs(l.x0 - x0) < 0.01 && Math.abs(l.y0 - y0) < 0.01);
+  }
+
+  return {decode, photoCover, photoCovers, systemsView, located, pct, coverageView, valveType, withValveType, VALVE_KEY, linksView, findLink};
 })();

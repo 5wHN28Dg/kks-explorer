@@ -9,6 +9,7 @@ import w32, ui, viewer
 type Follower* = ref object
   area*: HWND                ## the control a rebuild replaces the contents of (a tree)
   rebuild*: proc ()
+  update*: proc (): bool     ## new numbers into the same controls (allowed under the focus); false: rebuild instead
   stale*: bool
 
 type Win* = ref object
@@ -44,11 +45,12 @@ proc focusInside(area: HWND): bool =
   let f = GetFocus()
   f != nil and (f == area or IsChild(area, f) != 0)
 
-proc follow*(w: Win, area: HWND, rebuild: proc ()): Follower =
+proc follow*(w: Win, area: HWND, rebuild: proc (), update: proc (): bool = nil): Follower =
   ## `area` shows data that syncs and approvals change (refreshFollowers rebuilds it), but never under the keyboard
   ## or screen reader's focus: while the focus is in it, it is only marked stale, and rebuilt when the focus has left
   ## (catchUpFollowers, every second) or by the window itself (a search sets `stale` false)
-  result = Follower(area: area, rebuild: rebuild)
+  ## (with `update`: tried first, even under the focus, since it replaces nothing; it says false when the shape changed)
+  result = Follower(area: area, rebuild: rebuild, update: update)
   w.followers.add result
 
 proc refreshFollowers*(w: Win) =
@@ -56,7 +58,9 @@ proc refreshFollowers*(w: Win) =
   for f in w.followers:
     if IsWindow(f.area) == 0: continue          # its window was closed
     keep.add f
-    if focusInside(f.area): f.stale = true
+    if f.update != nil and f.update():
+      f.stale = false
+    elif focusInside(f.area): f.stale = true
     else:
       f.stale = false
       f.rebuild()
