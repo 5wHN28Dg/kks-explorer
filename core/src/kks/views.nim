@@ -95,7 +95,8 @@ proc tagView*(m: Model, id: string): JNode =
   let vt = m.valveTypeOf(t)
   if vt != nil and t.symbol != nil and vt["status"].s == "drawing":
     let b = t.symbol.get("bbox")
-    if b != nil and b.kind == jArr and b.elems.len == 4 and b[0].isNum and b[1].isNum and b[2].isNum and b[3].isNum:
+    if b != nil and b.kind == jArr and b.elems.len == 4 and b[0].finiteNum and b[1].finiteNum and b[2].finiteNum and
+       b[3].finiteNum:
       vt["box"] = newArr(@[F(b[0].num / s), F(b[1].num / s), F(b[2].num / s), F(b[3].num / s)])
   result["valve_type"] = if vt == nil: newNull() else: vt
 

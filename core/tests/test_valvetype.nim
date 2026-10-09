@@ -90,6 +90,17 @@ suite "valve type: confirmed and corrected through the proposal flow":
     check tagView(m, "a:2")["valve_type"]["text"].s == "butterfly valve"
 
 suite "valve type: the proposal's edge cases":
+  test "an infinite conf or box number in the symbol never reaches the view (it would not be valid JSON)":
+    let m = Model()
+    m.sheets = parseSheets(j("""[{"id":"a","name":"A","w":2000,"h":1000,"scale":2.0,"levels":3,"rot":0}]"""))
+    m.baseTags = parseTags(j("""[{"id":"a:9","sheet":"a","kks":"11LAB70AA509","suffix":"","isa":null,
+      "kind":"equipment","status":"auto","conf":1,"bbox":[1,2,3,4],"read":["11LAB70","AA509"],
+      "symbol":{"type":"gate valve","actuator":"none","nc":false,"conf":1e999,"bbox":[1e999,0,10,10]}}]"""))
+    m.state = j("""{"equipment":{}}""")
+    m.merge()
+    let v = tagView(m, "a:9")["valve_type"]
+    check v["conf"].isNull and v.get("box") == nil
+    discard parseStrict(toText(tagView(m, "a:9")))
   test "a review that corrects the code to a non-valve drops the drawing's type (still shown when it stays a valve)":
     let m = plant()
     m.state = j("""{"equipment":{},"reviews":{

@@ -27,6 +27,9 @@ Each valve tag (a full KKS with component `AA`) may get an optional `symbol` fie
   actuator, so none is reported.
 - `nc`: the body is hatched, which means normally closed. The legend table doesn't define hatching; that reading
   rests on the user's confirmation of the convention on these drawings (2026-10-09).
+  Strokes ending on the body's outline are not counted, so hatching only counts when most strokes lie inside the
+  body. On the 7 HRSG sheets (2026-10-09) every typed body has either 0 or 25–28 counted strokes (the threshold is 6),
+  so no reading there is borderline. Sparse hatching drawn edge to edge would be missed.
 - `conf`: a heuristic for what to check first (body complete, hatch clear, link close and unambiguous), not a
   probability.
 - `bbox`: the symbol's body in level-0 px, like the tag's.

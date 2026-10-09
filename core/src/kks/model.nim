@@ -2,7 +2,7 @@
 ## plant-data files (sheets, tags, procedures, locations), the program's KKS tables, and the live state from the log.
 ## Pure logic, shared by every UI (GNOME, Android through views.nim, Windows). Tested in core/tests/test_model.nim.
 
-import std/[strutils, tables, sets, algorithm]
+import std/[strutils, tables, sets, algorithm, math]
 import json
 
 type
@@ -277,6 +277,10 @@ proc customValue(e: JNode, key: string): string =
     for x in c.elems:
       if x.kind == jObj and x.s("k") == key and x.s("v").len > 0: return x.s("v")
 
+proc finiteNum*(n: JNode): bool =
+  ## a number that can be written back as JSON (the reader turns 1e999 into Inf)
+  n.isNum and classify(n.num) notin {fcInf, fcNegInf, fcNan}
+
 proc drawnValveType*(t: Tag): string =
   ## the importer's reading of the tag's valve symbol in words ("gate valve, motor-operated, normally closed"); "" = none
   if t.symbol == nil: return ""
@@ -317,7 +321,7 @@ proc valveTypeOf*(m: Model, t: Tag): JNode =
       changed.elems.add x
   if not placed: changed.elems.add newObj(@[("k", newStr(ValveTypeKey)), ("v", newStr(drawn))])
   var conf = t.symbol.get("conf")
-  if conf == nil or not conf.isNum: conf = newNull()
+  if not conf.finiteNum: conf = newNull()
   result = newObj(@[("status", newStr("drawing")), ("text", newStr(drawn)), ("conf", conf),
                     ("label", newStr("from the drawing, unchecked")),
                     ("line", newStr("Valve type: " & drawn & " (from the drawing, unchecked)")),
