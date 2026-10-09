@@ -36,6 +36,7 @@ proc newUdp*(): Udp =
   asyncCheck result.recvLoop()
 
 proc send*(u: Udp, host: string, port: int, data: string) {.async.} =
+  if u.closed: return                     # asyncnet asserts on a closed socket: a Defect, not caught below
   try: await u.sock.sendTo(host, Port(port), data)
   except CatchableError: discard          # unreachable candidates are normal while punching
 
@@ -148,6 +149,7 @@ proc rudpStream*(u: Udp, host: string, port: int, session: string, dead = 15.0):
       r.tick(monoNow())
       flush()
       if r.error.len > 0: poke()
+    poke()                              # a waiting read sees the stream stopped
   asyncCheck timers()
   var told = false
   proc fail(): ref kksnet.NetError =
@@ -162,9 +164,11 @@ proc rudpStream*(u: Udp, host: string, port: int, session: string, dead = 15.0):
       let got = r.read()
       if got.len > 0: return got
       if r.error.len > 0: raise fail()
-      if r.ended: return ""
+      if r.ended or stopped or u.closed: return ""
+      # woken by a packet, an error or the stream stopping: no timer per wait (withTimeout kept each one in the
+      # dispatcher for 200 ms, and a read here waits once per packet)
       wake = newFuture[void]("rudp")
-      discard await withTimeout(wake, 200)
+      await wake
   proc writeAll(data: string): Future[void] {.async.} =
     r.write(data, monoNow())
     flush()
