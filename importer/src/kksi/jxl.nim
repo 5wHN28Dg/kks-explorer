@@ -8,14 +8,21 @@ const dev = getEnv("KKS_DEV", getHomeDir() & ".local/kksdev")
 proc kks_jxl_encode(p: pointer, w, h, n, effort: cint, len: ptr csize_t): ptr UncheckedArray[byte] {.importc, cdecl.}
 proc kks_jxl_encode_d(p: pointer, w, h, n, effort: cint, distance: cfloat, len: ptr csize_t): ptr UncheckedArray[byte] {.importc, cdecl.}
 proc kks_jxl_decode(p: pointer, len: csize_t, w, h, alpha: ptr cint): ptr UncheckedArray[byte] {.importc, cdecl.}
+proc kks_jxl_out_of_memory(): cint {.importc, cdecl.}
 proc free(p: pointer) {.importc, header: "<stdlib.h>".}
 
-type JxlError* = object of CatchableError
+type
+  JxlError* = object of CatchableError
+  JxlOutOfMemory* = object of JxlError   ## an allocation failed (the importer runs under an address-space limit)
+
+proc encodeFailed() {.noreturn.} =
+  if kks_jxl_out_of_memory() != 0: raise newException(JxlOutOfMemory, "JPEG XL encoding ran out of memory")
+  raise newException(JxlError, "JPEG XL encoding failed")
 
 proc encodeLossless*(pixels: openArray[byte], w, h, n: int, effort = 9): string =
   var len: csize_t
   let p = kks_jxl_encode(unsafeAddr pixels[0], cint(w), cint(h), cint(n), cint(effort), addr len)
-  if p == nil: raise newException(JxlError, "JPEG XL encoding failed")
+  if p == nil: encodeFailed()
   result = newString(int(len))
   if len > 0: copyMem(addr result[0], p, int(len))
   free(p)
@@ -24,7 +31,7 @@ proc encodeLossy*(pixels: openArray[byte], w, h, n: int, distance = 1.9, effort 
   ## photos (R9): lossy JPEG XL at a Butteraugli distance
   var len: csize_t
   let p = kks_jxl_encode_d(unsafeAddr pixels[0], cint(w), cint(h), cint(n), cint(effort), cfloat(distance), addr len)
-  if p == nil: raise newException(JxlError, "JPEG XL encoding failed")
+  if p == nil: encodeFailed()
   result = newString(int(len))
   if len > 0: copyMem(addr result[0], p, int(len))
   free(p)

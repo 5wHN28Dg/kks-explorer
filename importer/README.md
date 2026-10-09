@@ -35,6 +35,14 @@ writes them to the sheet's `links` in sheets.json (docs/PATHSTORE.md), in both m
 - **Tested:** `tests/test_connectors.nim`, a synthetic page with Hershey Simplex strokes (close to the drawings' SHX
   font): codes upright and turned both ways, a bold label whose digits touch, the page itself turned, and circles
   that are not connectors.
+- **Limits for untrusted PDFs** (2026-10-09; the connector finder only: the rest of an import is bounded by the
+  server's memory limit and timeout): each candidate circle is checked against every character blob and read
+  up to four times, so the work grows with circles × blobs. A page with more than `MaxCircles` (1000) connector-sized
+  circles or more than `MaxSmallPaths` (2 000 000) small stroke paths is refused: the import stops with a message
+  naming the limit, before anything is written. Both are about 10 times the most on the 17 real sheets (82 circles on
+  one, 170 449 small stroke paths on another); with the limits in place every real sheet imports byte for byte as
+  before. At both limits the matching takes about 6 s, and the up to 4000 label renders about 26 s on the largest real
+  page (they grow with the page's drawing, which only the server's timeout bounds). A crowded 20 pt cell (more than `CellMax`, 400, small paths: hatching) is still skipped, not refused.
 - **Checked on the real sheets** (2026-10-07, local): see the commit and decision notes; every tag the same as the
   previous importer on every sheet, in both modes.
 
@@ -77,6 +85,22 @@ the --keep-tags annotation on synthetic drawings.
 
 **Gate on the real sheets (2026-10-08):** the previous importer and this one, on copies of all 17 sheets: every tag
 identical apart from `symbol`. Results and the eye check: the pull request that added this.
+
+## Memory
+
+The server runs the importer with an address-space limit (`import_memory_mb` in its config.json, 2560 MB by
+default), below the service's own memory cap (`MemoryMax=3G`, deploy/install-server-user.sh), so an import that grows
+stops itself instead of being killed by the cgroup. An address-space limit counts reserved address space, not memory
+used: libjxl's encoder runs one thread per CPU and glibc gave each its own 64 MB malloc arena, so the largest real
+sheet needed 3.2 GB of address space for 1.85 GB resident and crashed under 2560 MB. The importer now keeps glibc to
+two arenas (`mallopt(M_ARENA_MAX, 2)`): the same sheet needs about 2 GB and imports the same files (2026-10-09).
+
+When memory runs out, the importer prints one line ("The importer ran out of memory (its address-space limit is N MB):
+the import stopped.") and exits with code 3 (also when libjxl reports a failed allocation through its memory
+manager); the server then adds which setting to raise. libjxl (C++) aborts
+instead when a buffer or a worker thread can't be had (`std::bad_alloc`, `std::system_error`); the server gives the
+same advice for an importer that died of a signal. To import a larger drawing,
+raise `import_memory_mb` and restart the server, keeping it below `MemoryMax` (or raise both).
 
 ## Build
 

@@ -31,6 +31,14 @@ const
   SmallMax = 14.0                ## a character's paths are at most this long
   Touch = 0.35                   ## boxes this close belong to one character
   CellMax* = 400                 ## small paths in one 20 pt cell beyond which it is hatching, not letters
+  # Bounds for an untrusted (crafted) PDF: each candidate circle is checked against every character blob and read
+  # up to four times, so the work grows with circles x blobs. About 10x the most on the 17 real sheets (2026-10-09:
+  # at most 82 circles, cbd; 170 449 small stroke paths, cwp); a drawing past either is refused, not cut short.
+  MaxCircles* = 1_000            ## connector-sized circles on one page
+  MaxSmallPaths* = 2_000_000     ## stroke-only paths of at most SmallMax (the characters' strokes) on one page
+
+type ConnectorLimitError* = object of ValueError
+  ## the page is past MaxCircles or MaxSmallPaths: the import stops (nothing is written)
 
 proc isCircle*(p: Path): bool =
   let w = float(p.rect[2] - p.rect[0])
@@ -56,6 +64,10 @@ proc blobs*(paths: seq[Path]): seq[array[4, float]] =
     let b = [float(p.rect[0]), float(p.rect[1]), float(p.rect[2]), float(p.rect[3])]
     if b.anyIt(it != it or abs(it) == Inf): continue      # a NaN or infinite box (malformed PDF) would span every cell
     if max(b[2] - b[0], b[3] - b[1]) > SmallMax: continue
+    if r.len == MaxSmallPaths:
+      raise newException(ConnectorLimitError, "This drawing has more than " & $MaxSmallPaths &
+        " small stroke paths (the connector finder's limit, MaxSmallPaths in importer/src/kksi/connectors.nim; " &
+        "about 10 times the most on a real sheet). The import stopped; nothing was written.")
     r.add b
   var parent = newSeq[int](r.len)
   for i in 0 ..< r.len: parent[i] = i
@@ -89,6 +101,13 @@ proc blobs*(paths: seq[Path]): seq[array[4, float]] =
 
 proc candidates*(paths: seq[Path]): seq[Candidate] =
   ## circles with 1–3 character blobs inside, one per label box (a circle drawn twice counts once)
+  var nCircles = 0
+  for p in paths:
+    if p.isCircle: inc nCircles
+  if nCircles > MaxCircles:
+    raise newException(ConnectorLimitError, "This drawing has " & $nCircles & " connector-sized circles; the " &
+      "connector finder stops at " & $MaxCircles & " (MaxCircles in importer/src/kksi/connectors.nim; about 10 " &
+      "times the most on a real sheet). The import stopped; nothing was written.")
   let bl = blobs(paths)
   var seen = initHashSet[array[4, int]]()
   for p in paths:

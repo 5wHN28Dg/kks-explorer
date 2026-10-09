@@ -1,6 +1,7 @@
 """The server's systemd unit (deploy/install-server-user.sh) and build (2026-10-09: the deployed server held 7.4 GB):
 - the unit caps the server's memory with MemoryMax, without swap, restarts it when it is killed, and never throttles
   it with MemoryHigh (throttling took the desktop down);
+- the importer's own address-space limit (import_memory_mb) is below that cap, so an import stops itself first;
 - the server is built with glibc's malloc (platform/linux/kks_server.nims), which gives freed memory back.
   .venv/bin/python -m unittest tests.test_server_unit"""
 import os, re, unittest
@@ -40,12 +41,22 @@ class ServerUnit(unittest.TestCase):
         s = service_settings(unit_text())
         self.assertIn('MemoryMax', s)
         cap = size(s['MemoryMax'][-1])
-        # room for the importer it runs (a large sheet peaks near 1.8 GB) and the server, well under the old 8G
+        # room for the importer it runs (the largest real sheet peaks near 1.85 GB resident) and the server, well under
+        # the old 8G
         self.assertGreaterEqual(cap, 2 << 30)
         self.assertLessEqual(cap, 4 << 30)
         self.assertEqual(s.get('MemorySwapMax'), ['0'])
         self.assertEqual(s.get('Restart'), ['on-failure'])
         self.assertEqual(s.get('OOMPolicy'), ['continue'])
+
+    def test_importer_stops_itself_below_the_cap(self):
+        """2026-10-09: the importer's address-space limit was 6144 MB under a 3G cap, so a growing import was killed by
+        the cgroup (no message) instead of stopping itself with one"""
+        cap = size(service_settings(unit_text())['MemoryMax'][-1])
+        with open(os.path.join(REPO, 'platform', 'linux', 'src', 'kksl', 'server.nim')) as f:
+            mb = int(re.search(r'importMemoryMb: (\d+)\)', f.read()).group(1))
+        self.assertEqual(mb, 2560)
+        self.assertLess(mb << 20, cap)
 
     def test_never_memory_high(self):
         self.assertNotIn('MemoryHigh', service_settings(unit_text()))
