@@ -32,8 +32,16 @@ proc setLinks*(w: Win) =
   var boxes: seq[TagBox]
   for l in linksView(w.m, w.sheet).elems:
     boxes.add TagBox(id: s(l, "label"), x0: f(l, "x0"), y0: f(l, "y0"), x1: f(l, "x1"), y1: f(l, "y1"), name: linkName(l))
+  # the connector just arrived at stays bold across a reload (a sync): found again by its label and place
+  let old = w.v.linkSel
+  var sel = -1
+  if old >= 0 and old < w.v.links.len:
+    let o = w.v.links[old]
+    for i, b in boxes:
+      if b.id == o.id and abs(b.x0 - o.x0) < 0.01 and abs(b.y0 - o.y0) < 0.01: sel = i
   w.v.links = boxes
-  w.v.linkSel = -1         # an index into the old list: a reload can reorder it (goTo sets it after this)
+  w.v.linkSel = sel
+  w.v.updateOnScreen()     # UI Automation must never see indices into the old list
   w.v.invalidate()
 
 proc goTo(w: Win, label: string, t: JNode) =
@@ -99,11 +107,15 @@ proc onDrawingLink*(w: Win, i: int) =
   let b = w.v.links[i]
   w.followLink(w.sheet, b.id, b.x0, b.y0)
 
+var connWindow: HWND        ## the open Connectors window (one at a time)
+
 proc openConnectors*(w: Win) =
   ## "Connectors on this sheet": a window for the open sheet, each row named with where it continues
+  if connWindow != nil and IsWindow(connWindow) != 0: DestroyWindow(connWindow)   # a new one for the sheet shown now
   let here = w.sheet
   let (ok, si) = w.m.sheetById(here)
-  let (hw, p) = popup(w.hwnd, "Connectors on this sheet", 520, 520, escape = true)
+  let (hw, p) = popup(w.hwnd, "Connectors on this sheet", 520, 520, proc () = connWindow = nil, escape = true)
+  connWindow = hw
   let ls = linksView(w.m, here)
   p.title("Connectors on " & (if ok: si.name else: "this sheet"))
   if ls.len == 0:

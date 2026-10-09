@@ -621,11 +621,12 @@ proc drawRow*(dc: HDC, r: RECT, text: string, selected: bool, indent: int) =
   ## an owner-drawn list row's background and text, the text from `indent` px (a picture goes before it)
   var rr = r
   FillRect(dc, addr rr, cast[HBRUSH0](GetSysColorBrush(if selected: COLOR_HIGHLIGHT else: int32(COLOR_WINDOW))))
-  SelectObject(dc, fontNormal)
+  let oldFont = SelectObject(dc, fontNormal)
   SetBkMode(dc, 1)          # TRANSPARENT
   SetTextColor(dc, GetSysColor(if selected: COLOR_HIGHLIGHTTEXT else: COLOR_WINDOWTEXT))
   var tr = RECT(left: r.left + int32(indent), top: r.top, right: r.right - px(4), bottom: r.bottom)
   discard DrawTextW(dc, newWideCString(text), -1, addr tr, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS)
+  SelectObject(dc, oldFont)  # the DC goes back as it came (WM_DRAWITEM)
 
 proc pictureList*(p: Page, rows: seq[string], draw: OwnerDraw, height = 200, onActivate: proc (i: int) = nil,
                   openLabel = ""): HWND {.discardable.} =

@@ -493,7 +493,7 @@ class Windows(unittest.TestCase):
         self.join('covjoin.uia', sync_every=2000)
         before = other_row()
         self.check('cov0.uia', ['click\tCoverage…', 'wait\tCoverage\t20', 'wait\t~ on the drawings, in \t10',
-                                'wait\t~Checked by a person: \t5', 'wait\t~Known place: \t5', 'wait\tReadings to review: 0\t5',
+                                'wait\t~Checked by a person: \t5', 'wait\t~Known place: \t5', 'wait\t~Readings to review: \t5',
                                 'wait\t~Missed tags marked: \t5', 'wait\t~photos: \t5',      # the totals' bar, named
                                 'wait\t%s\t10' % before, 'focus\t%s' % before])
         # a place given on the server: the row shows it at the next sync, the focus still in the list

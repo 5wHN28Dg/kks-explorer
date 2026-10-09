@@ -281,7 +281,7 @@ proc boxOf(v: Viewer, i: int): TagBox =
   ## an onScreen entry's box: a tag, or a connector (negative)
   if i >= 0: v.tags[i] else: v.links[-i - 1]
 
-proc updateOnScreen(v: Viewer) =
+proc updateOnScreen*(v: Viewer) =
   ## the tags and connectors inside the view in reading order (rows of about a tag's height, each left to right); the
   ## provider is told when the set changes. The select mode picks tags only: its connectors aren't buttons then
   let (cw, ch) = v.client
@@ -324,6 +324,8 @@ proc a11yInfo(ud: pointer, i: cint, name: ptr UncheckedArray[Utf16Char], cap: ci
   let v = cast[Viewer](ud)
   if i < 0 or int(i) >= v.onScreen.len: return 0
   let ki = v.onScreen[int(i)]
+  # the lists may have changed since the last paint (a sheet switch, a reload): an index gone stale names nothing
+  if (ki >= 0 and ki >= v.tags.len) or (ki < 0 and -ki - 1 >= v.links.len): return 0
   let t = v.boxOf(ki)
   let text = if ki < 0: t.name
              else: (if t.code.len > 0: t.code else: "Unread tag") & ", " & (if v.coverage: coverWords(t.photos) else: statusWords(t.status)) &
@@ -532,6 +534,7 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
     let i = int(w)
     if i < v.onScreen.len:
       let k = v.onScreen[i]
+      if k >= v.tags.len: return 0             # stale (the tags changed since the last paint)
       if k < 0:                                # a connector: where its line continues (links.nim)
         if v.onLink != nil and -k - 1 < v.links.len: v.onLink(-k - 1)
         return 0

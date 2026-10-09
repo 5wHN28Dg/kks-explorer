@@ -2,8 +2,8 @@
 ## its own: totals, then per sheet and per system, each with a bar of the photo coverage colours (named by its numbers
 ## for screen readers; a list row's text says them too). A sheet row opens that sheet coloured by photos; a system row
 ## opens Equipment by system filtered to that system. A sync or an approval puts the new numbers into the same controls
-## (nothing is replaced under the focus); when sheets or systems came or went, the window is rebuilt, never under the
-## focus (win.follow).
+## (a list whose rows changed gets its new texts, its selection kept); when sheets or systems came or went, the window
+## is rebuilt, never under the focus (win.follow).
 
 import std/[strutils, tables]
 import kks/json
@@ -48,6 +48,7 @@ proc drawBar(dc: HDC, r: RECT, c: Counts) =
   var total = 0
   for x in c: total += x
   let inner = RECT(left: r.left + 1, top: r.top + 1, right: r.right - 1, bottom: r.bottom - 1)
+  fillRgb(dc, inner, 0xFFFFFF'u32)     # nothing to count: empty (and no colours left from before)
   if total > 0:
     var x = float(inner.left)
     let wdt = float(inner.right - inner.left)
@@ -173,12 +174,13 @@ proc updateCoverage(w: Win, pg: CovPage): bool =
   let v = coverageView(w.m)
   if shapeOf(v) != pg.shape: return false
   let t = v["total"]
-  pg.totals.setText(totalsText(t))
+  if pg.totals.text != totalsText(t): pg.totals.setText(totalsText(t))
   for i, r in totalsRows(t):
     if pg.rows[i].text != r: pg.rows[i].setText(r)
   pg.barCounts = counts(t["photos"])
-  pg.bar.setText(photoWords(t["photos"]))
-  InvalidateRect(pg.bar, nil, 1)
+  if pg.bar.text != photoWords(t["photos"]):
+    pg.bar.setText(photoWords(t["photos"]))
+    InvalidateRect(pg.bar, nil, 1)
   var sheetRows, sysRows: seq[string]
   pg.sheetCounts = @[]
   for sh in v["sheets"].elems:
