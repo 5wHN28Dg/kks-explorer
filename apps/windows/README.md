@@ -36,7 +36,12 @@ The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (d
     forms close when the mode ends; a tag opened from elsewhere asks before it drops a selection;
   - `kks_uia.cpp`: the drawing's tags as UI Automation buttons;
   - `win.nim`, `panel.nim`, `side.nim` (search, sheets, floors, procedures with link mode, the review queue),
-    `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView),
+    `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView;
+    Coverage opens it filtered to one system), `coverage.nim` (Coverage: core `coverageView`, totals and a row per
+    sheet and per system with its photo bar, new numbers put in place at each sync; a sheet row opens the sheet
+    coloured by photos, a system row Equipment by system), `links.nim` (links between drawings: core `linksView`, the
+    connectors as circled hotspots and UI Automation buttons, "Connectors on this sheet"; one target opens it, several
+    ask, none says so),
     `manage.nim` (approvals one card per code, my proposals with filters, the leaderboard, history, people, devices
     with the invite QR via `kks_qr.cpp` and hiding removed ones, account with the root key backup), `setup.nim` (all
     ways to join, each asking a new member's position, or a new plant);
@@ -65,6 +70,10 @@ It covers:
 - joining (TLS enroll);
 - a drawing tag invoked through UIA;
 - Equipment by system (search, the tree item, Enter and the button open the tag, Esc closes);
+- Coverage (the totals, a sheet's row updated in place by a sync with the focus in the list, a sheet row opens it
+  coloured by photos, a system row opens Equipment by system filtered to it);
+- links between drawings (connectors as buttons on the drawing and in Connectors on this sheet; none, one and
+  several targets);
 - search and the decoded panel;
 - an edit synced to the server;
 - a photo marked up with a box (the server's JPEG XL is decoded to check the box is in it);
