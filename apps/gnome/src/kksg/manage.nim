@@ -18,6 +18,7 @@ proc at(n: JNode, k: string): string =
 proc refreshPage(w: Win, box: W, build: proc (box: W)) =
   box.clear()
   build(box)
+  w.liveBuilt(box)     # (a live page rebuilt by its own action is up to date: the next sync needn't rebuild it)
 
 proc act(w: Win, id: int64, action: string, body: JNode, done: string): bool =
   try:

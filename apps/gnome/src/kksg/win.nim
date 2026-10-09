@@ -1,7 +1,7 @@
 ## The window's shared state and the actions every screen uses (decision 0031).
 
 import std/[strutils, tables, sets, base64]
-import kks/[json, api]
+import kks/[json, api, node, invites]
 import kks/model
 import gtk, ui, appstate, viewer
 
@@ -42,6 +42,7 @@ type Win* = ref object
   followers*: seq[Follower]    ## open sidebar pages that follow the plant's data (follow)
   livePage*: W                 ## the open Manage page that rebuilds when the data changes (a ref is held)
   liveBuild*: proc (box: W)
+  liveKey: string              ## liveDataKey when the live page was last built
 
 proc toast*(w: Win, msg: string) = toast(w.toasts, msg)
 
@@ -142,19 +143,40 @@ proc applyHighlights*(w: Win) =
         w.v.floorIds.incl t.id
   gtk_widget_queue_draw(w.v.widget)
 
+proc liveDataKey(w: Win): string =
+  ## Everything a live page shows changes this: the log (entries), the API's own writes (rev: submission rows,
+  ## notes, the hidden list), the devices asking to join (they come through a sync session, not the log), and the
+  ## photos still missing (an approval's picture arrives after its entry). A sync round that brought none of these
+  ## leaves it as it was.
+  result = $w.a.api.rev & "|" & $w.a.n.entries.len & "|" & $w.a.n.blobWants.len
+  for (k, ask) in w.a.api.invites.pending(nowMs() div 1000): result.add "|" & k & ":" & ask.device
+
+proc liveBuilt*(w: Win, box: W) =
+  ## `box` was just (re)built by its page: if it is the live page, it shows the data as it is now. (A part of it
+  ## rebuilt alone, like My proposals' list after a withdraw, doesn't count: the rest may show the old data, so the
+  ## next sync round rebuilds the page once.)
+  if box != nil and box == w.livePage: w.liveKey = w.liveDataKey
+
 proc setLive*(w: Win, box: W, build: proc (box: W)) =
   ## this page shows data that syncs can change (Approvals, Devices…): rebuild it on changes while it is shown
   if w.livePage != nil: g_object_unref(w.livePage)
   w.livePage = if box != nil: g_object_ref(box) else: nil
   w.liveBuild = build
+  w.liveBuilt(box)
 
 proc refreshLive*(w: Win) =
+  ## Rebuilt only when what it shows changed. Every finished sync round (every few seconds, and each time another
+  ## device synced with this one) calls this: a page replaced each time lost a click that came in between (the GNOME
+  ## e2e's "the removed device is still listed": Clear removed was pressed on the page just replaced).
   if w.livePage == nil: return
   if gtk_widget_get_root(w.livePage) == nil:      # its page was closed
     w.setLive(nil, nil)
   elif gtk_widget_get_mapped(w.livePage) != 0:
+    let key = w.liveDataKey
+    if key == w.liveKey: return
     w.livePage.clear()
     w.liveBuild(w.livePage)
+    w.liveKey = key
 
 proc focusInside(area: W): bool =
   let root = gtk_widget_get_root(area)
