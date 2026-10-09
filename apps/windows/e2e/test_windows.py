@@ -158,11 +158,11 @@ class Windows(unittest.TestCase):
     def join(self, name, **kw):
         self.check(name, [l % (HOST, self.sport) if '%' in l else l for l in self.JOIN], keep=False, **kw)
 
-    def leave(self):
+    def leave(self, user='boss'):
         """the manager removes this VM's device on the server: test_flow finds the one it joins by its label"""
         host = vm('$env:COMPUTERNAME').strip().lower()
         for d in self.boss.req('GET', '/api/devices')['all']:
-            if d['username'] == 'boss' and d['label'].lower() == host and not d['revoked']:
+            if d['username'] == user and d['label'].lower() == host and not d['revoked']:
                 self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
 
     def test_dark_drawings(self):
@@ -212,6 +212,13 @@ class Windows(unittest.TestCase):
             'click\tSelect or unselect', 'wait\t~At most 3 tags at once: send these first\t10', 'wait\t3 selected\t5',
             # a tag button of the drawing toggles too (off, then on again)
             'click\t~11LAC10AP001, ', 'wait\t2 selected\t10', 'click\t~11LAC10AP001, ', 'wait\t3 selected\t10',
+            # a tag opened from elsewhere (Equipment by system) would end the mode: asked first; Cancel keeps it all
+            'click\tEquipment by system…', 'wait\tEquipment by system\t20',
+            'set\tSearch codes, systems, descriptions\tLAC10AP003', 'wait\t~ found\t20',
+            'select\t~11LAC10AP003 · ', 'click\tShow the selected code on its drawing',
+            'wait\tLeave Select tags?\t10', 'wait\t~the 3 selected codes are dropped\t5', 'click\tCancel',
+            'gone\tLeave Select tags?', 'state\tSelect tags\ton', 'wait\t3 selected\t5',
+            'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system',
             # the List: turn the box-selected code off
             'click\tList', 'wait\tSelected codes\t10', 'state\t~11LAC20AA101\ton', 'toggle\t~11LAC20AA101',
             'wait\t2 selected\t10', 'state\t~11LAC20AA101\toff', 'click\tClose the list', 'gone\tSelected codes',
@@ -227,10 +234,21 @@ class Windows(unittest.TestCase):
         self.wait_server(floors, 'the floors never reached the server: %s' % b.req('GET', '/api/state')['equipment'], tries=80)
         # Note for all: appended under each code's own note; Escape on the drawing ends the mode first, once
         self.check('multi1.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10', 'keys\tDrawing\t0x1B',
-                                  'state\tSelect tags\toff', 'toggle\tSelect tags', 'wait\t0 selected\t10'] +
+                                  'state\tSelect tags\toff', 'toggle\tSelect tags', 'wait\t0 selected\t10',
+                                  # Escape in the middle of a box being dragged: the mode ends and no box stays drawn
+                                  # (the button still down: the box goes at Escape, not only at the button up;
+                                  # the pre-fix app left 1252 px of it, 8C33BF once the mode was off)
+                                  'escdrag\tDrawing\t0.15\t0.15\t0.85\t0.85\thold', 'state\tSelect tags\toff',
+                                  'sleep\t500', 'pixels\tDrawing\t1A59D9\t40', 'pixels\tDrawing\t8C33BF\t40',
+                                  'mouseup\tDrawing', 'sleep\t300', 'pixels\tDrawing\t8C33BF\t40',
+                                  'toggle\tSelect tags', 'wait\t0 selected\t10'] +
                    pick('11LAC10AP002', 1) + pick('11LAC10AP003', 2) + [
-                   'click\tNote for all…', 'wait\tNote for all\t10', 'set\tNote\tChecked on the walkdown', 'click\tSend',
-                   'wait\t~Sent for 2 codes · saved\t20'])
+                   'click\tNote for all…', 'wait\tNote for all\t10'] +
+                   # a code picked while the form is open isn't in its send: it stays selected, the mode on
+                   pick('11LAC10AP001', 3) + [
+                   'set\tNote\tChecked on the walkdown', 'click\tSend',
+                   'wait\t~Sent for 2 codes · saved\t20', 'gone\tNote for all', 'state\tSelect tags\ton',
+                   'wait\t1 selected\t10', 'keys\tDrawing\t0x1B', 'state\tSelect tags\toff'])
         want2 = {'11LAC10AP002': 'Old note\nChecked on the walkdown', '11LAC10AP003': 'Checked on the walkdown',
                  '11LAC10AP001': ''}
         def notes():
@@ -238,24 +256,129 @@ class Windows(unittest.TestCase):
             got = {k: eq.get(k, {}).get('notes', '') for k in want2}
             return got if got == want2 else None
         self.wait_server(notes, 'the notes never reached the server', tries=80)
-        # Photo for all needs every code's floor (the user's rule): refused while one has none, naming it; its floor
-        # set with Place for all, then one picture through the mark-up editor, sent once for both codes
+        # Photo for all: a photo needs each code's floor, and 11LAC10AP003 has none: said, nothing opens; Place for all
+        # sets it (11LAC10AP001 has floor 3 already: nothing to replace, no question)
         self.check('multi2.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) +
                    pick('11LAC10AP003', 2) + [
-                   'click\tPhoto for all…', "wait\t~A photo needs each code's floor. No floor yet: 11LAC10AP003. "
-                   "Set it with Place for all first.\t20", 'gone\tPhoto to mark up', 'click\tDone',
-                   'toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP003', 1) + [
-                   'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t5', 'click\tSend',
-                   'wait\t~Sent for 1 code · saved\t20',
-                   'toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) + pick('11LAC10AP003', 2) + [
-                   'click\tPhoto for all…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tBoth drains',
-                   'click\tSend', 'wait\t~Sent for 2 codes · saved\t90'])
+                   'click\tPhoto for all…',
+                   'wait\t~A photo needs each code\'s floor. No floor yet: 11LAC10AP003. Set it with Place for all first.\t10',
+                   'gone\tPhoto to mark up', 'state\tSelect tags\ton',
+                   'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t3', 'click\tSend',
+                   'wait\t~Sent for 2 codes · saved\t20', 'state\tSelect tags\toff', 'gone\tPlace for all'])
+        # a round's windows close with it: the List and a form left open are gone once the mode ends
+        self.check('multi3.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) + [
+                   'click\tList', 'wait\tSelected codes\t10', 'click\tNote for all…', 'wait\tNote for all\t10',
+                   'keys\tDrawing\t0x1B', 'state\tSelect tags\toff', 'gone\tSelected codes', 'gone\tNote for all'])
+        # one picture through the mark-up editor, sent once for both codes; the editor outlives its round (the mode
+        # ended, a new selection begun meanwhile): it sends for its own codes and leaves the new selection alone
+        self.check('multi4.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) +
+                   pick('11LAC10AP003', 2) + [
+                   'click\tPhoto for all…', 'wait\tPhoto to mark up\t30', 'keys\tDrawing\t0x1B', 'state\tSelect tags\toff',
+                   'toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP002', 1) + [
+                   'set\tCaption (optional)\tBoth drains', 'click\tSend', 'wait\t~Sent for 2 codes · saved\t90',
+                   'state\tSelect tags\ton', 'wait\t1 selected\t10',
+                   # a tag opened from elsewhere with a selection: OK ends the mode and opens the tag
+                   'click\tEquipment by system…', 'wait\tEquipment by system\t20',
+                   'set\tSearch codes, systems, descriptions\tLAC10AP003', 'wait\t~ found\t20',
+                   'select\t~11LAC10AP003 · ', 'click\tShow the selected code on its drawing',
+                   'wait\t~the selected code is dropped\t10', 'click\tOK', 'state\tSelect tags\toff',
+                   'wait\t11LAC10AP003\t10', 'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
         def photos():
             ph = [p for p in b.req('GET', '/api/state').get('photos', []) if p.get('caption') == 'Both drains']
             ok = sorted(p['kks'] for p in ph) == ['11LAC10AP001', '11LAC10AP003'] and all(p.get('file') for p in ph)
             return ph if ok else None
         ph = self.wait_server(photos, 'the photos never reached the server', tries=80)
         self.assertEqual(len({p['file'] for p in ph}), 1, 'one image for both codes: %s' % ph)
+        self.leave()
+
+    def test_multi_clash(self):
+        """Place for all asks before replacing a floor. A floor changed on the server while that question is open (the
+        app keeps syncing meanwhile) is a clash, held, not overwritten: what is sent as each code's base is what the
+        app showed before it asked"""
+        b = self.boss
+        for k, bb in {'11LAC40AP001': [1100, 300, 1200, 360], '11LAC40AP002': [1100, 400, 1200, 460]}.items():
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': k,
+                                                                             'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC40AP002', 'changes': {'floor': '1'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.join('mcjoin.uia', sync_every=2000)
+        def pick(code, n):
+            return ['set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
+                    'click\tSelect or unselect', 'wait\t%d selected\t10' % n]
+        # the question is left open
+        self.check('mclash0.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC40AP001', 1) +
+                   pick('11LAC40AP002', 2) + [
+                   'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t3', 'click\tSend',
+                   'wait\t~1 of 2 already have a floor; it will be replaced.\t10'])
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC40AP002', 'changes': {'floor': '5'},
+                                                                            'base': {'floor': '1'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        time.sleep(12)          # several sync rounds: the app has the new floor under the open question
+        self.check('mclash1.uia', ['click\tOK', 'wait\t~Sent for 2 codes · 1 held (they clash with pending changes)\t20'])
+        def floors():
+            eq = b.req('GET', '/api/state')['equipment']
+            got = (eq.get('11LAC40AP001', {}).get('floor'), eq.get('11LAC40AP002', {}).get('floor'))
+            return got if got[0] == '3' else None
+        self.assertEqual(self.wait_server(floors, 'the floor never reached the server', tries=80), ('3', '5'))
+        self.leave()
+
+    def test_sheet_switch(self):
+        """switching sheets while the zoomed-in drawing's tiles render (Show on the drawing zooms in on the tag) closes
+        the old sheet under a busy worker: it must stay until its tiles are done (kks_d2d.cpp). Back and forth many
+        times; the app is still there and answering. A smoke test: the app built before that fix also passed it on the
+        VM (reading freed memory rarely crashes here); tests/test_tiles.nim is the test that fails without the fix"""
+        b = self.boss
+        if 'other' not in [s['id'] for s in json.load(open(os.path.join(self.dir, 'plant-data', 'sheets.json')))]:
+            with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f: pdf = f.read()
+            self.assertTrue(b.req('POST', '/api/sheets/import?id=other&name=Other%20drawing', raw=pdf,
+                                  ctype='application/pdf').get('ok'))
+            for _ in range(300):
+                job = b.req('GET', '/api/sheets/job')['job']
+                if job['state'] != 'running': break
+                time.sleep(0.2)
+            self.assertEqual(job['state'], 'done', job['log'])
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'other', 'bbox': [400, 300, 520, 360],
+                                              'kks': '11LAB70AA601', 'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        # a member's proposal for the other sheet's tag, for the Approvals card below
+        if 'swmem' not in [u['username'] for u in b.req('GET', '/api/users').get('users', [])]:
+            r = self.member('swmem', 'Switch Member').req('POST', '/api/submit', {
+                'kind': 'equipment', 'payload': {'kks': '11LAB70AA601', 'changes': {'notes': 'Check the gland'}}})
+            self.assertEqual(r.get('status'), 'pending', r)
+        self.join('swjoin.uia')
+        lines = []
+        for _ in range(12):
+            for code in ('11LAB70AA501', '11LAB70AA601'):
+                lines += ['set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
+                          'click\tShow on the drawing', 'keys\tDrawing\t0x6B,0x6B']
+        self.check('switch.uia', lines + ['sleep\t2000', 'value\tSystem\tFeed water piping system'])
+        # a tag on another sheet opened from Equipment by system with a selection: Cancel keeps the selection and the
+        # drawing (the sheet is switched only once the person agreed)
+        self.check('switch2.uia', ['wait\tOther drawing — Walkdown\t10', 'toggle\tSelect tags', 'wait\t0 selected\t10',
+                                   'set\tSearch equipment by KKS code or description\tLAB70AA601', 'select\t~11LAB70AA601',
+                                   'click\tSelect or unselect', 'wait\t1 selected\t10',
+                                   'click\tEquipment by system…', 'wait\tEquipment by system\t20',
+                                   'set\tSearch codes, systems, descriptions\tLAB70AA501', 'wait\t~ found\t20',
+                                   'select\t~11LAB70AA501 · ', 'click\tShow the selected code on its drawing',
+                                   'wait\tLeave Select tags?\t10', 'click\tCancel', 'gone\tLeave Select tags?',
+                                   'sleep\t500', 'wait\tOther drawing — Walkdown\t5', 'gone\tSample sheet — Walkdown',
+                                   'wait\t1 selected\t5',
+                                   'click\tShow the selected code on its drawing', 'wait\tLeave Select tags?\t10',
+                                   'click\tOK', 'wait\tSample sheet — Walkdown\t10', 'state\tSelect tags\toff',
+                                   'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
+        # the same from an Approvals card (Open … on the drawing): the sheet stays until the person agreed
+        self.check('switch3.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10',
+                                   'set\tSearch equipment by KKS code or description\tLAB70AA501', 'select\t~11LAB70AA501',
+                                   'click\tSelect or unselect', 'wait\t1 selected\t10',
+                                   'click\tManage', 'click\tApprovals', 'wait\tOpen 11LAB70AA601 on the drawing\t30',
+                                   'click\tOpen 11LAB70AA601 on the drawing', 'wait\tLeave Select tags?\t10',
+                                   'click\tCancel', 'gone\tLeave Select tags?', 'sleep\t500',
+                                   'wait\tSample sheet — Walkdown\t5', 'gone\tOther drawing — Walkdown', 'wait\t1 selected\t5',
+                                   'click\tOpen 11LAB70AA601 on the drawing', 'wait\tLeave Select tags?\t10', 'click\tOK',
+                                   'wait\tOther drawing — Walkdown\t10', 'gone\t1 selected', 'click\tDrawings',
+                                   'state\tSelect tags\toff'])
+        self.assertIn('Walkdown', vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName'))
         self.leave()
 
     def test_valve_type(self):
@@ -286,6 +409,42 @@ class Windows(unittest.TestCase):
         self.assertEqual(self.wait_server(custom, 'the valve type never reached the server', tries=80),
                          [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}])
         self.leave()
+        # a member's proposal waits for approval: the panel says so and offers no second one (it would clash)
+        tags = json.load(open(os.path.join(fix, 'tags.json')))
+        tags.append({'id': 'sample:v2', 'sheet': 'sample', 'kks': '11LAB70AA778', 'suffix': '', 'isa': None,
+                     'kind': 'equipment', 'status': 'auto', 'conf': 1, 'bbox': [1000, 700, 1120, 760],
+                     'read': ['11LAB70', 'AA778'], 'symbol': {'type': 'globe valve', 'conf': 0.9, 'bbox': [1000, 640, 1120, 690]}})
+        with open(os.path.join(fix, 'tags.json'), 'w') as f: json.dump(tags, f)
+        r = subprocess.run([SERVER, 'publish-data', fix, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        users = [u['username'] for u in self.boss.req('GET', '/api/users').get('users', [])]
+        if 'vali' not in users:
+            r = self.boss.req('POST', '/api/users', {'username': 'vali', 'full_name': 'Vali Member', 'position': 'Technician',
+                                                     'role': 'user'})
+            Client(self.boss.base).req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1],
+                                                                      'password': 'vali password 1'})
+        self.check('vjoin2.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
+                                  'set\tUsername\tvali', 'set\tPassword\tvali password 1', 'click\tJoin',
+                                  'wait\t~Sample sheet\t60'], keep=False, sync_every=3000)
+        self.check('valve2.uia', ['set\tSearch equipment by KKS code or description\tLAB70AA778', 'select\t~11LAB70AA778',
+                                  'click\tShow on the drawing',
+                                  'wait\tValve type: globe valve (from the drawing, unchecked)\t20',
+                                  'click\tConfirm valve type', 'wait\t~Sent for approval: valve type of 11LAB70AA778\t20',
+                                  'wait\tYour valve type “globe valve” is waiting for approval.\t20',
+                                  'gone\tConfirm valve type'])
+        def sub():
+            s = [x for x in self.boss.req('GET', '/api/submissions?status=open')['submissions']
+                 if x['kind'] == 'equipment' and x['payload'].get('kks') == '11LAB70AA778']
+            return s if s else None
+        s = self.wait_server(sub, 'the proposal never reached the server', tries=80)
+        self.assertEqual(len(s), 1, 'proposed twice: %s' % s)
+        self.boss.req('POST', '/api/submissions/%s/approve' % s[0]['id'], {})
+        # approved: confirmed once the app has synced (the focus out of the panel, which a sync never rebuilds under it)
+        self.check('valve3.uia', ['focus\tSearch equipment by KKS code or description',
+                                  'wait\tValve type: globe valve (confirmed)\t60',
+                                  'gone\tYour valve type “globe valve” is waiting for approval.'])
+        self.leave('vali')
 
     def add_tag(self, code, bb, floor=None):
         r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': code,
@@ -359,6 +518,13 @@ class Windows(unittest.TestCase):
                                                'wait\tPhotos not sent (2)…\t10'] +
                    photo(c, '7', 'Floor C') + ['wait\t~The photo of %s could not be compressed\t30' % c,
                                                'wait\tPhotos not sent (3)…\t10'] +
+                   # Photo for all doesn't count a floor riding on a kept photo (its own photo would go without it,
+                   # and the kept one may be discarded): refused, naming the code
+                   ['click\tDrawings', 'toggle\tSelect tags', 'wait\t0 selected\t10',
+                    'set\tSearch equipment by KKS code or description\t' + a[2:], 'select\t~' + a,
+                    'click\tSelect or unselect', 'wait\t1 selected\t10', 'click\tPhoto for all…',
+                    'wait\t~A photo needs each code\'s floor. No floor yet: %s.\t20' % a, 'gone\tPhoto to mark up',
+                    'keys\tDrawing\t0x1B', 'state\tSelect tags\toff'] +
                    # the floor is on its way with the kept photo: not asked again, and it goes with this one
                    photo(b, None, 'Floor B2') + ['wait\t~Saved: photo of %s\t90' % b])
         def floor_b():
@@ -561,7 +727,7 @@ class Windows(unittest.TestCase):
                                    'set\tUsername\tboss', 'set\tPassword\ta long password', 'click\tJoin',
                                    'wait\t~Sample sheet\t60'], keep=False, sync_every=3000)
         # the published sheet's codes (other tests publish more: test_description), plus the tags other tests on this
-        # server marked by hand (test_multi, test_approvals)
+        # server marked by hand (test_multi, test_multi_clash, test_approvals, test_sheet_switch, …)
         published = {t['kks'] + (t.get('suffix') or '') for t in json.loads(self.boss.op.open(self.boss.base + '/data/tags.json').read())
                      if t.get('kks')}
         n = len({'11LAB70AA501'} | published | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])

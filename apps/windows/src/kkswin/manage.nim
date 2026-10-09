@@ -48,9 +48,7 @@ proc openTag(w: Win, code, tag: string) =
   if id.len == 0:
     w.toast("That code is on no drawing")
     return
-  let (_, t) = w.m.tagById(id)
-  if t.sheet != w.sheet: w.showSheet(t.sheet)
-  w.selectTag(id, true)
+  w.selectTag(id, true)       # it shows the sheet itself, after asking whether to drop a selection
 
 proc codeTitle(code, tag: string): string =
   if code.len > 0: code elif tag.len > 0: "Tag without a code" else: "Other"

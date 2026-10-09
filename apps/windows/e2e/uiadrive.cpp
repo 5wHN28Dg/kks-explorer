@@ -21,6 +21,11 @@
 //                           (median > 200, some dark pixels): dark drawings
 //   boxdrag <window> <element> <fw> <fh>  a left-button drag in <window> from just above-left of <element> to its
 //                           top-left plus fw × its width, fh × its height (a box around it and its neighbours)
+//   escdrag <name> x0 y0 x1 y1 [hold]  a drag as `drag` that Escape (posted to its window) interrupts before the button
+//                           is up; with "hold" the button stays down (until `mouseup`)
+//   mouseup <name>          the left button up in the element's window
+//   pixels <name> <rrggbb> <max>  the element as drawn (PrintWindow) has at most <max> pixels of this colour (each
+//                           channel within 3): e.g. no box left on the drawing
 //   sleep <ms>
 //   dump                    log every element (type, name)
 // Exits 0 when every line passed, 1 at the first failure (logged).
@@ -143,6 +148,38 @@ static bool shade_of(IUIAutomationElement *e, int &median, int &light, int &dark
     }
     SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
     return ok;
+}
+
+// pixels of the element, as drawn, within 3 of this colour in each channel; -1 if not captured
+static int count_colour(IUIAutomationElement *e, int R, int G, int B) {
+    UIA_HWND hw = 0;
+    e->get_CurrentNativeWindowHandle(&hw);
+    if (!hw) return -1;
+    HWND root = GetAncestor((HWND)hw, GA_ROOT);
+    RECT rr, er;
+    GetWindowRect(root, &rr);
+    GetWindowRect((HWND)hw, &er);
+    int W = rr.right - rr.left, H = rr.bottom - rr.top;
+    if (W <= 0 || H <= 0) return -1;
+    HDC sdc = GetDC(nullptr);
+    HDC dc = CreateCompatibleDC(sdc);
+    BITMAPINFO bi = {};
+    bi.bmiHeader.biSize = sizeof bi.bmiHeader; bi.bmiHeader.biWidth = W; bi.bmiHeader.biHeight = -H;
+    bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
+    void *bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(sdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    HGDIOBJ old = SelectObject(dc, bmp);
+    int n = -1;
+    if (PrintWindow(root, dc, 2 /* PW_RENDERFULLCONTENT */)) {
+        n = 0;
+        for (int y = std::max(0L, er.top - rr.top); y < std::min((LONG)H, er.bottom - rr.top); y++)
+            for (int x = std::max(0L, er.left - rr.left); x < std::min((LONG)W, er.right - rr.left); x++) {
+                const uint8_t *p = (const uint8_t *)bits + ((size_t)y * W + x) * 4;
+                if (abs(p[2] - R) <= 3 && abs(p[1] - G) <= 3 && abs(p[0] - B) <= 3) n++;
+            }
+    }
+    SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
+    return n;
 }
 
 // only/only2: the control types that may match (0 = any); select and enter take list and tree items
@@ -313,6 +350,15 @@ int wmain(int argc, wchar_t **argv) {
             if (!ok) { say("ERROR: " + arg + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
             continue;
         }
+        if (cmd == "pixels") {
+            unsigned long rgb = std::stoul(f.size() > 2 ? f[2] : "0", nullptr, 16);
+            int most = f.size() > 3 ? std::stoi(f[3]) : 0;
+            int n = count_colour(e, (int)(rgb >> 16) & 255, (int)(rgb >> 8) & 255, (int)rgb & 255);
+            say("  " + std::to_string(n) + " pixels of " + (f.size() > 2 ? f[2] : ""));
+            e->Release();
+            if (n < 0 || n > most) { say("ERROR: " + arg + " has " + std::to_string(n) + " pixels of " + f[2]); return 1; }
+            continue;
+        }
         if (cmd == "toggle") {
             IUIAutomationTogglePattern *tp = nullptr;
             if (FAILED(e->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&tp)) || !tp) {
@@ -367,7 +413,7 @@ int wmain(int argc, wchar_t **argv) {
                 PostMessageW((HWND)hw, WM_KEYUP, vk, 0);
                 Sleep(60);
             }
-        } else if (cmd == "drag") {
+        } else if (cmd == "drag" || cmd == "escdrag") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);
             RECT rc; if (!hw || !GetClientRect((HWND)hw, &rc) || f.size() < 6) { say("ERROR: can't drag on " + arg); return 1; }
@@ -379,7 +425,18 @@ int wmain(int argc, wchar_t **argv) {
                 PostMessageW((HWND)hw, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM((int)(x * rc.right), (int)(y * rc.bottom)));
                 Sleep(20);
             }
-            PostMessageW((HWND)hw, WM_LBUTTONUP, 0, at(4, 5));
+            if (cmd == "escdrag") {
+                Sleep(300);
+                PostMessageW((HWND)hw, WM_KEYDOWN, VK_ESCAPE, 0);
+                PostMessageW((HWND)hw, WM_KEYUP, VK_ESCAPE, 0);
+                Sleep(300);
+            }
+            if (!(cmd == "escdrag" && f.size() > 6 && f[6] == "hold")) PostMessageW((HWND)hw, WM_LBUTTONUP, 0, at(4, 5));
+        } else if (cmd == "mouseup") {
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            PostMessageW((HWND)hw, WM_LBUTTONUP, 0, 0);
         } else if (cmd == "touchdrag") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);

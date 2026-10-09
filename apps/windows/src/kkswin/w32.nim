@@ -266,5 +266,6 @@ template sendText*(h: HWND, msg: UINT, w: WPARAM, s: string): LRESULT =
 # courses (decision 0036)
 proc SetForegroundWindow*(h: HWND): BOOL {.importc, stdcall, header: H, discardable.}
 proc GetForegroundWindow*(): HWND {.importc, stdcall, header: H.}
+proc GetActiveWindow*(): HWND {.importc, stdcall, header: H.}
 proc GetWindowRect*(h: HWND, r: ptr RECT): BOOL {.importc, stdcall, header: H.}
 proc ShellExecuteW*(h: HWND, op, file, params, dir: WideCString, show: int32): pointer {.importc, stdcall, header: "<shellapi.h>", discardable.}
