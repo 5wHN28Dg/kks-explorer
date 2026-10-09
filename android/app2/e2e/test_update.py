@@ -6,13 +6,17 @@ NEWER_APK: the same app built with -PkksVersion=9.9.9 (default /tmp/walkdown-9.9
 import base64, hashlib, json, os, re, shutil, subprocess, sys, tempfile, time, unittest
 sys.path.insert(0, os.path.dirname(__file__))
 import adbui as ui  # noqa: E402
+# read before test_app2 is imported: it takes (and deletes) the arguments as its own. Read after, they were gone, and
+# the test installed whatever debug APK was at the default path instead of the one named (the 0.10.0 rehearsal "failed"
+# because that path held the 9.9.9 build, to which 9.9.9 is not an update)
+ARGS = sys.argv[1:4]
 from test_app2 import Client, free_port  # noqa: E402
 from fakegithub import FakeGitHub, calm, HOST  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-APK = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')
-NEWER = sys.argv[2] if len(sys.argv) > 2 else '/tmp/walkdown-9.9.9.apk'
-SERVER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kkslinux/kks_server'
+APK = ARGS[0] if len(ARGS) > 0 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')
+NEWER = ARGS[1] if len(ARGS) > 1 else '/tmp/walkdown-9.9.9.apk'
+SERVER = ARGS[2] if len(ARGS) > 2 else '/tmp/kkslinux/kks_server'
 del sys.argv[1:]
 PKG = 'io.github.walkdown'
 
@@ -36,6 +40,22 @@ def version_installed():
     out = ui.sh('dumpsys', 'package', PKG)
     m = re.search(r'versionName=(\S+)', out)
     return m[1] if m else None
+
+
+def apk_version(path):
+    """an APK file's versionName (aapt2 from the SDK's newest build-tools)"""
+    tools = os.path.join(os.path.dirname(os.path.dirname(ui.ADB[0])), 'build-tools')
+    aapt2 = os.path.join(tools, max(os.listdir(tools), key=lambda v: [int(x) if x.isdigit() else 0 for x in re.split(r'[.-]', v)]), 'aapt2')
+    m = re.search(r"versionName='([^']*)'", subprocess.run([aapt2, 'dump', 'badging', path], capture_output=True, text=True).stdout)
+    assert m, f'no versionName in {path}'
+    return m[1]
+
+
+def newer(a, b):
+    """the app's own comparison (Updates.newer): numeric major.minor.patch"""
+    def parts(v):
+        return ([int(x) if x.isdigit() else 0 for x in v.split('-')[0].split('.')] + [0, 0, 0])[:3]
+    return parts(a) > parts(b)
 
 
 class Update(unittest.TestCase):
@@ -63,6 +83,15 @@ class Update(unittest.TestCase):
         subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)
         r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
         assert 'Success' in r.stdout, r.stdout + r.stderr
+        # the app under test is the one named, and the release offered is newer than it (else no banner is right)
+        self.assertEqual(version_installed(), apk_version(APK), f'installed is not {APK}')
+        self.assertEqual(apk_version(NEWER), '9.9.9', f'{NEWER} is not the 9.9.9 build the test release offers')
+        self.assertTrue(newer('9.9.9', version_installed()), f'9.9.9 is not newer than {APK} ({version_installed()})')
+        try:
+            kind = 'debuggable' if ui.debuggable(PKG) else 'not debuggable'
+        except AssertionError as e:      # only informative here
+            kind = f'debuggable unknown: {e}'
+        print(f'\n  app under test: {APK} ({version_installed()}, {kind})')
         ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
 
     def tearDown(self):
