@@ -13,6 +13,9 @@
 //   gone <name>             wait until no element has this name
 //   toggle <name>           flip a check box (Toggle)
 //   state <name> on|off     wait (15 s) until the check box with this name is on / off
+//   choose <name>           choose a radio button (its default action, what a screen reader does; BM_CLICK if none)
+//   chosen <name>           wait (15 s) until the radio button with this name is the chosen one
+//   close <name>            ask the top-level window holding this element to close (WM_CLOSE, as its X button)
 //   shade <name> dark|light wait (20 s) until the middle half of the element, as drawn (PrintWindow), is dark paper
 //                           with light lines (median grey < 40, some light pixels) or white paper with dark lines
 //                           (median > 200, some dark pixels): dark drawings
@@ -217,7 +220,8 @@ int wmain(int argc, wchar_t **argv) {
         int timeout = (cmd == "wait" && f.size() > 2) ? std::stoi(f[2]) * 1000 : 15000;
         CONTROLTYPEID only = (cmd == "set" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
                              (cmd == "enter" || cmd == "select") ? UIA_ListItemControlTypeId :
-                             (cmd == "toggle" || cmd == "state") ? UIA_CheckBoxControlTypeId : 0;
+                             (cmd == "toggle" || cmd == "state") ? UIA_CheckBoxControlTypeId :
+                             (cmd == "choose" || cmd == "chosen") ? UIA_RadioButtonControlTypeId : 0;
         CONTROLTYPEID only2 = (cmd == "enter" || cmd == "select") ? UIA_TreeItemControlTypeId : 0;
         IUIAutomationElement *e = wait_for(pid, arg, timeout, only, only2);
         if (!e) { say("ERROR: not found: " + arg + " (line " + std::to_string(lineNo) + ")"); find(pid, "", true); return 1; }
@@ -258,6 +262,25 @@ int wmain(int argc, wchar_t **argv) {
             }
             e->Release();
             if (!ok) { say("ERROR: " + arg + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
+            continue;
+        }
+        if (cmd == "chosen") {
+            bool ok = false;
+            for (int t = 0; t < 15000 && !ok; t += 300) {
+                IUIAutomationElement *x = find(pid, arg, false, UIA_RadioButtonControlTypeId);
+                if (x) {
+                    IUIAutomationLegacyIAccessiblePattern *lp = nullptr;
+                    if (SUCCEEDED(x->GetCurrentPatternAs(UIA_LegacyIAccessiblePatternId, __uuidof(IUIAutomationLegacyIAccessiblePattern), (void **)&lp)) && lp) {
+                        DWORD st = 0;
+                        if (SUCCEEDED(lp->get_CurrentState(&st))) ok = (st & 0x10 /* STATE_SYSTEM_CHECKED */) != 0;
+                        lp->Release();
+                    }
+                    x->Release();
+                }
+                if (!ok) Sleep(300);
+            }
+            e->Release();
+            if (!ok) { say("ERROR: " + arg + " is not chosen"); return 1; }
             continue;
         }
         if (cmd == "shade") {
@@ -360,6 +383,24 @@ int wmain(int argc, wchar_t **argv) {
                 Sleep(30);
             }
             send(x1, y1, POINTER_FLAG_UP);
+        } else if (cmd == "close") {
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            PostMessageW(GetAncestor((HWND)hw, GA_ROOT), WM_CLOSE, 0, 0);
+        } else if (cmd == "choose") {
+            IUIAutomationLegacyIAccessiblePattern *lp = nullptr;
+            bool done = false;
+            if (SUCCEEDED(e->GetCurrentPatternAs(UIA_LegacyIAccessiblePatternId, __uuidof(IUIAutomationLegacyIAccessiblePattern), (void **)&lp)) && lp) {
+                done = SUCCEEDED(lp->DoDefaultAction());
+                lp->Release();
+            }
+            if (!done) {
+                UIA_HWND hw = 0;
+                e->get_CurrentNativeWindowHandle(&hw);
+                if (!hw) { say("ERROR: can't choose " + arg); return 1; }
+                SendMessageW((HWND)hw, BM_CLICK, 0, 0);
+            }
         } else if (cmd == "select") {
             IUIAutomationSelectionItemPattern *sp = nullptr;
             if (FAILED(e->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sp)) || !sp) {

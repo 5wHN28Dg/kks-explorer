@@ -2,7 +2,7 @@
 ## devices (join requests, invites with a QR code, request files, bundles, removal), and the account (details, sync,
 ## the root key backup). Everything goes through the core's local API, like admin.html.
 
-import std/[strutils, tables, times, sequtils, asyncdispatch]
+import std/[strutils, tables, times, sequtils, asyncdispatch, math]
 import kks/[json, api, node, extras, util]
 import kksl/[dbstore, passphrase]
 import kks/model
@@ -36,76 +36,238 @@ proc act(w: Win, id: int64, action: string, body: JNode, done: string): bool =
 
 var managePage* = ""     ## "" = the list of sections
 
+proc openTag(w: Win, code, tag: string) =
+  ## a proposal's code on the P&ID: its tag (tags.json with reviews, or a marked tag), else any tag with that code
+  var id = tag
+  if id.len == 0 or not w.m.tagById(id)[0]:
+    id = ""
+    for t in w.m.tags:
+      if code.len > 0 and t.full == code:
+        id = t.id
+        break
+  if id.len == 0:
+    w.toast("That code is on no drawing")
+    return
+  let (_, t) = w.m.tagById(id)
+  if t.sheet != w.sheet: w.showSheet(t.sheet)
+  w.selectTag(id, true)
+
+proc codeTitle(code, tag: string): string =
+  if code.len > 0: code elif tag.len > 0: "Tag without a code" else: "Other"
+
+proc openButton(w: Win, p: Page, code, tag: string) =
+  ## the code's card opens its tag on the drawing
+  if code.len == 0 and tag.len == 0: return
+  p.buttons(("Open " & (if code.len > 0: code else: "this tag") & " on the drawing", proc () = w.openTag(code, tag)))
+
+proc photoButton(w: Win, sub: JNode, specs: var seq[(string, proc ())]) =
+  if sub["kind"].s == "photo" and sub.get("payload") != nil:
+    let sha = s(sub["payload"], "file").split('.')[0]
+    if sha.len > 0 and w.a.n.store.blobHas(sha):
+      let data = w.a.n.store.blobGet(sha)
+      let cap = s(sub["payload"], "caption")
+      specs.add ("Show the photo", proc () = w.showPhoto(data, cap))
+
 proc approvals(w: Win, p: Page) =
+  ## the user's "Approvals page clean-up" (2026-10-08): one card per code (or per tag without one), the proposals in it
+  ## by kind (/api/submissions?group=code); "Use this one" and votes only where several photos of one kind compete
+  ## (an equipment photo and a tag plate photo are not rivals), Approve and Reject otherwise; the submitter's full
+  ## name; the code opens its tag on the drawing
+  var groups: seq[JNode]
+  try: groups = w.a.call("GET", "/api/submissions", nil, {"status": "open", "group": "code", "limit": "1000"}.toTable)["groups"].elems
+  except ApiError as e:
+    p.dim(e.msg)
+    return
+  if groups.len == 0:
+    p.dim("Nothing waits for approval.")
+    return
+  p.dim("One card per tag. Approving applies the change and records it in History, where it can be reverted.")
+  for gi in 0 ..< groups.len:
+    closureScope:
+      let grp = groups[gi]
+      let code = s(grp, "code")
+      let tag = s(grp, "tag")
+      p.title(codeTitle(code, tag))
+      w.openButton(p, code, tag)
+      let kinds = grp["kinds"].elems
+      for ki in 0 ..< kinds.len:
+        closureScope:
+          let kd = kinds[ki]
+          let pick = kd.get("pick") != nil and kd["pick"].kind == jBool and kd["pick"].b
+          let items = kd["items"].elems
+          let lab = s(kd, "label")
+          p.label(lab & (if items.len > 1: " (" & $items.len & ")" else: ""))
+          if pick:
+            p.dim("Several proposed. “Use this one” approves it and rejects the other " & lab.toLowerAscii &
+                  "s of this code; Add approves it and keeps the others. Votes are only a hint.")
+          for ii in 0 ..< items.len:
+            closureScope:
+              let sub = items[ii]
+              let id = sub["id"].i
+              let conflict = sub["status"].s == "conflict"
+              let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
+              let who = if s(sub, "by_name").len > 0: s(sub, "by_name") else: s(sub, "by")
+              p.label(proposalTitle(sub))
+              p.dim("by " & who & " · " & sub.at("created") &
+                    (if pick: " · " & $votes & (if votes == 1: " vote" else: " votes") else: "") &
+                    (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: ""))
+              for (lab2, v) in proposalRows(sub): p.field(lab2, v, readonly = true)
+              if conflict: p.field("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), readonly = true)
+              var specs: seq[(string, proc ())]
+              w.photoButton(sub, specs)
+              if w.isAdmin:
+                if pick:
+                  specs.add ("Use this one", proc () =
+                    if w.act(id, "pick", newObj(), "Photo chosen; the other " & lab.toLowerAscii & "s of this code were rejected"):
+                      w.rebuildSide())
+                  specs.add ("Add", proc () =
+                    if w.act(id, "approve", newObj(), "Added"): w.rebuildSide())
+                else:
+                  specs.add ((if conflict: "Approve anyway" else: "Approve"), proc () =
+                    if w.act(id, "approve", newObj(@[("force", newBool(conflict))]), "Approved"): w.rebuildSide())
+                specs.add ("Reject", proc () =
+                  if w.act(id, "reject", newObj(), "Rejected"): w.rebuildSide())
+              if specs.len > 0: p.buttons(specs)
+      p.space()
+
+const StatusChoices = [("All", "all"), ("Waiting", "pending"), ("Held (clashes)", "conflict"), ("Approved", "approved"),
+                       ("Rejected", "rejected"), ("Withdrawn", "withdrawn")]
+const KindChoices = [("All kinds", "", ""), ("Equipment photos", "equipment_photo", ""), ("Tag plate photos", "plate_photo", ""),
+                     ("Places and notes (any field)", "equipment", ""), ("Floor", "equipment", "floor"),
+                     ("Notes", "equipment", "notes"), ("Other fields", "equipment", "custom"),
+                     ("Procedure links", "link", ""), ("Tag readings", "review", ""), ("Marked tags", "tag_add", ""),
+                     ("Removals", "photo_delete,tag_remove", "")]
+var
+  mineStatus, mineKind = 0      ## My proposals' filters, kept while the app runs
+  focusFilter = ""              ## the filter just changed: its choice gets the focus back after the page is rebuilt
+
+proc statusName(st: string): string =
+  case st
+  of "pending": "waiting for approval"
+  of "conflict": "held: it clashes"
+  else: st
+
+proc myProposals(w: Win, p: Page) =
+  ## the user's "My proposals: filters" (2026-10-08): status, kind and field, filtered by the core
+  ## (/api/submissions?mine=1&status=…&kind=…&field=…), the list grouped by code; then others' photos to vote on
+  p.label("Status")
+  let st = p.chips(StatusChoices.mapIt(it[0]), mineStatus, proc (i: int) =
+    mineStatus = i
+    focusFilter = "status"
+    w.rebuildSide())
+  p.label("Kind")
+  let kd = p.chips(KindChoices.mapIt(it[0]), mineKind, proc (i: int) =
+    mineKind = i
+    focusFilter = "kind"
+    w.rebuildSide())
+  if focusFilter == "status": later(proc () = SetFocus(st[mineStatus]))
+  elif focusFilter == "kind": later(proc () = SetFocus(kd[mineKind]))
+  focusFilter = ""
+  let (_, kind, field) = KindChoices[mineKind]
+  var q = {"status": StatusChoices[mineStatus][1], "mine": "1", "limit": "500"}.toTable
+  if kind.len > 0: q["kind"] = kind
+  if field.len > 0: q["field"] = field
   var subs: seq[JNode]
-  try: subs = w.a.call("GET", "/api/submissions", nil, {"status": "open"}.toTable)["submissions"].elems
+  try: subs = w.a.call("GET", "/api/submissions", nil, q)["submissions"].elems
   except ApiError as e:
     p.dim(e.msg)
     return
   if subs.len == 0:
-    p.dim("Nothing waits for approval.")
-    return
-  let lp1 = toSeq(subs)
-  for lp1i in 0 ..< lp1.len:
-    closureScope:
-      let sub = lp1[lp1i]
-      let id = sub["id"].i
-      let conflict = sub["status"].s == "conflict"
-      p.title(proposalTitle(sub))
-      p.dim("by " & s(sub, "by_name") & " · " & sub.at("created") &
-            (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: ""))
-      for (lab, v) in proposalRows(sub): p.field(lab, v, readonly = true)
-      if conflict: p.field("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), readonly = true)
-      var specs: seq[(string, proc ())]
-      if sub["kind"].s == "photo" and sub.get("payload") != nil:
-        let sha = s(sub["payload"], "file").split('.')[0]
-        if w.a.n.store.blobHas(sha):
-          let data = w.a.n.store.blobGet(sha)
-          let cap = s(sub["payload"], "caption")
-          specs.add ("Show the photo", proc () = w.showPhoto(data, cap))
-      if w.isAdmin:
-        specs.add ((if conflict: "Approve anyway" else: "Approve"), proc () =
-          if w.act(id, "approve", newObj(@[("force", newBool(conflict))]), "Approved"): w.rebuildSide())
-        if sub["kind"].s == "photo":
-          specs.add ("Pick this photo", proc () =
-            if w.act(id, "pick", newObj(), "Photo chosen, others rejected"): w.rebuildSide())
-        specs.add ("Reject", proc () =
-          if w.act(id, "reject", newObj(), "Rejected"): w.rebuildSide())
-      p.buttons(specs)
-      p.space()
+    p.dim(if mineStatus == 0 and mineKind == 0: "You have proposed nothing yet." else: "None of your proposals match.")
+  else:
+    var order: seq[string]
+    var per: Table[string, seq[JNode]]
+    for x in subs:
+      let key = if s(x, "code").len > 0: s(x, "code") else: "tag:" & s(x, "tag")
+      if key notin per: order.add key
+      per.mgetOrPut(key, @[]).add x
+    p.dim($subs.len & (if subs.len == 1: " proposal" else: " proposals") & ", " & $order.len &
+          (if order.len == 1: " code" else: " codes"))
+    for key in order:
+      let items = per[key]
+      p.title(codeTitle(s(items[0], "code"), s(items[0], "tag")))
+      w.openButton(p, s(items[0], "code"), s(items[0], "tag"))
+      for i in 0 ..< items.len:
+        closureScope:
+          let sub = items[i]
+          let id = sub["id"].i
+          let stt = sub["status"].s
+          p.label(proposalTitle(sub) & (if s(sub, "photo_kind") == "plate": " (tag plate)" else: ""))
+          p.dim(statusName(stt) & " · " & sub.at("created") &
+                (if s(sub, "note").len > 0 and stt != "conflict": " · " & s(sub, "note") else: ""))
+          for (lab, v) in proposalRows(sub): p.field(lab, v, readonly = true)
+          var specs: seq[(string, proc ())]
+          w.photoButton(sub, specs)
+          if stt in ["pending", "conflict"]:
+            specs.add ("Withdraw", proc () =
+              if ask(w.hwnd, "Withdraw this proposal?", "") and w.act(id, "withdraw", newObj(), "Withdrawn"): w.rebuildSide())
+          if specs.len > 0: p.buttons(specs)
+      p.space(6)
+  # photos others proposed: members vote where several photos of one kind compete for a code
+  var groups: seq[JNode]
+  try: groups = w.a.call("GET", "/api/submissions", nil, {"status": "open", "kind": "photo", "group": "code"}.toTable)["groups"].elems
+  except ApiError: return
+  var cands: seq[JNode]
+  for grp in groups:
+    for k in grp["kinds"].elems:
+      if k.get("pick") != nil and k["pick"].kind == jBool and k["pick"].b:
+        for x in k["items"].elems:
+          if not x["mine"].b: cands.add x
+  if cands.len > 0:
+    p.title("Photos to vote on")
+    p.dim("Several photos of the same kind wait for these codes. Vote for the ones you find useful; an admin picks one.")
+    for i in 0 ..< cands.len:
+      closureScope:
+        let sub = cands[i]
+        let id = sub["id"].i
+        let voted = sub.get("voted") != nil and sub["voted"].kind == jBool and sub["voted"].b
+        p.label(s(sub, "code") & " · " & (if s(sub, "photo_kind") == "plate": "tag plate" else: "equipment") &
+                " photo by " & s(sub, "by_name") & " · " & $(if sub.get("votes") != nil: sub["votes"].i else: 0) & " votes")
+        p.buttons(((if voted: "Take back my vote" else: "Vote for this photo"), proc () =
+          if w.act(id, "vote", newObj(), "Vote changed"): w.rebuildSide()))
 
-proc myProposals(w: Win, p: Page) =
-  var subs: seq[JNode]
-  try: subs = w.a.call("GET", "/api/submissions", nil, {"status": "all", "limit": "200"}.toTable)["submissions"].elems
+proc leaderboard(w: Win, p: Page) =
+  ## the user's "Leaderboard" (2026-10-08), /api/leaderboard, every member: a name and numbers per person, nothing
+  ## else (the core leaves out IDs, usernames, roles)
+  var d: JNode
+  try: d = w.a.call("GET", "/api/leaderboard")
   except ApiError as e:
     p.dim(e.msg)
     return
-  let mine = subs.filterIt(it["mine"].b)
-  if mine.len == 0: p.dim("You have proposed nothing yet.")
-  let lp2 = toSeq(mine)
-  for lp2i in 0 ..< lp2.len:
-    closureScope:
-      let sub = lp2[lp2i]
-      let id = sub["id"].i
-      p.title(proposalTitle(sub))
-      p.dim(sub["status"].s & " · " & sub.at("created") & (if s(sub, "note").len > 0: " · " & s(sub, "note") else: ""))
-      for (lab, v) in proposalRows(sub): p.field(lab, v, readonly = true)
-      if sub["status"].s in ["pending", "conflict"]:
-        p.buttons(("Withdraw", proc () =
-          if ask(w.hwnd, "Withdraw this proposal?", "") and w.act(id, "withdraw", newObj(), "Withdrawn"): w.rebuildSide()))
-  let photosOpen = subs.filterIt(not it["mine"].b and it["kind"].s == "photo" and it["status"].s in ["pending", "conflict"])
-  if photosOpen.len > 0:
-    p.title("Photos waiting for approval")
-    p.dim("Vote for the ones you find useful; an admin decides.")
-    let lp3 = toSeq(photosOpen)
-    for lp3i in 0 ..< lp3.len:
-      closureScope:
-        let sub = lp3[lp3i]
-        let id = sub["id"].i
-        let voted = sub.get("voted") != nil and sub["voted"].b
-        p.label(s(sub, "target") & " · by " & s(sub, "by_name") & " · " & $(if sub.get("votes") != nil: sub["votes"].i else: 0) & " votes")
-        p.buttons(((if voted: "Take back my vote" else: "Vote for this photo"), proc () =
-          if w.act(id, "vote", newObj(), "Vote changed"): w.rebuildSide()))
+  p.dim("Everyone's proposals and direct changes, counted from the whole plant log. Sorted by approved, then total.")
+  let people = if d.get("people") != nil: d["people"].elems else: @[]
+  if people.len == 0:
+    p.dim("Nobody has proposed anything yet.")
+    return
+  proc num(n: JNode, k: string): int64 =
+    if n != nil and n.get(k) != nil and n[k].kind == jInt: n[k].i else: 0
+  proc fnum(n: JNode, k: string): float =
+    if n == nil or n.get(k) == nil: return -1
+    case n[k].kind
+    of jFloat: n[k].f
+    of jInt: float(n[k].i)
+    else: -1
+  let kinds = d.get("kinds")
+  for x in people:
+    let name = if s(x, "name").len > 0: s(x, "name") else: "?"
+    p.title($num(x, "rank") & ". " & name)
+    let rate = fnum(x, "approval_rate")
+    p.label($num(x, "approved") & " approved · " & $num(x, "pending") & " waiting · " & $num(x, "rejected") &
+            " rejected · " & $num(x, "total") & " in all" & (if rate >= 0: " · " & $int(round(rate * 100)) & " % approved" else: ""))
+    if num(x, "direct") > 0: p.dim($num(x, "direct") & " made directly as an admin")
+    if num(x, "withdrawn") > 0: p.dim($num(x, "withdrawn") & " withdrawn")
+    if num(x, "decided") > 0: p.dim($num(x, "decided") & " decided as an approver")
+    if num(x, "votes") > 0 or num(x, "comments") > 0:
+      p.dim($num(x, "votes") & " votes · " & $num(x, "comments") & " comments")
+    let ks = x.get("kinds")
+    if kinds != nil and kinds.kind == jObj and ks != nil and ks.kind == jObj:
+      for (k, lab) in kinds.fields:
+        let c = ks.get(k)
+        if num(c, "total") == 0: continue
+        p.dim((if lab.isStr: lab.s else: k) & ": " & $num(c, "approved") & " approved of " & $num(c, "total") &
+              (if num(c, "pending") > 0: ", " & $num(c, "pending") & " waiting" else: "") &
+              (if num(c, "rejected") > 0: ", " & $num(c, "rejected") & " rejected" else: ""))
+    if x.get("last") != nil and x["last"].kind == jInt and x["last"].i > 0: p.dim("Last: " & x.at("last"))
 
 proc history(w: Win, p: Page) =
   var revs: seq[JNode]
@@ -139,28 +301,71 @@ proc history(w: Win, p: Page) =
                 w.rebuildSide()
               except ApiError as e: w.toast(e.msg)))
 
+var showHidden = false     ## Devices and People: also the removed ones an admin hid (this run only)
+
+proc hide(w: Win, body: JNode, done: string) =
+  ## POST /api/hidden (the user, 2026-10-08: "Remove deleted users and devices"): display only, a setting of this
+  ## device; the log, History and the leaderboard keep everything
+  try:
+    let r = w.a.call("POST", "/api/hidden", body)
+    let n = if r.get("changed") != nil and r["changed"].kind == jInt: r["changed"].i else: -1
+    w.toast(if body.get("clear_removed") != nil: (if n == 0: "Nothing removed to clear" else: "Cleared " & $n & " removed")
+            else: done)
+    w.rebuildSide()
+  except ApiError as e: w.toast(e.msg)
+
+proc hiddenControls(w: Win, p: Page, nHidden: int) =
+  ## "Clear removed" and "Show hidden (n)" (admins)
+  var specs: seq[(string, proc ())]
+  specs.add ("Clear removed", proc () = w.hide(newObj(@[("clear_removed", newBool(true))]), ""))
+  if nHidden > 0 or showHidden:
+    specs.add ((if showHidden: "Hide hidden" else: "Show hidden (" & $nHidden & ")"), proc () =
+      showHidden = not showHidden
+      w.rebuildSide())
+  p.buttons(specs)
+  p.dim("Clear removed hides removed devices and people with no active device from these lists; History keeps them.")
+
+proc hiddenQuery(): Table[string, string] =
+  if showHidden: {"show_hidden": "1"}.toTable else: initTable[string, string]()
+
 proc people(w: Win, p: Page) =
   var users: seq[JNode]
-  try: users = w.a.call("GET", "/api/users")["users"].elems
+  try: users = w.a.call("GET", "/api/users", nil, hiddenQuery())["users"].elems
   except ApiError as e:
     p.dim(e.msg)
     return
-  p.dim("Everyone who has an identity in this plant. Devices are added under Devices.")
-  for u in users:
-    p.label(s(u, "full_name") & " (" & s(u, "username") & ") · " & s(u, "role") &
-            (if s(u, "position").len > 0: " · " & s(u, "position") else: ""))
-  p.title("Add a person")
-  p.dim("For someone whose device will join later (by QR code, request file or nearby admin).")
-  let un = p.field("Username", "")
-  let fn = p.field("Full name", "")
-  let pos = p.field("Position (optional)", "")
-  p.buttons(("Add", proc () =
-    try:
-      discard w.a.call("POST", "/api/users", newObj(@[("username", newStr(un.text.strip.toLowerAscii)),
-        ("full_name", newStr(fn.text.strip)), ("position", newStr(pos.text.strip)), ("role", newStr("user"))]))
-      w.toast("Added " & un.text.strip)
-      w.rebuildSide()
-    except ApiError as e: w.toast(e.msg)))
+  var nHidden = 0
+  try:
+    for u in w.a.call("GET", "/api/users", nil, {"show_hidden": "1"}.toTable)["users"].elems:
+      if u.get("hidden") != nil and u["hidden"].kind == jBool and u["hidden"].b: inc nHidden
+  except ApiError: discard
+  w.hiddenControls(p, nHidden)
+  p.dim("Everyone who has an identity in this plant. People join with their devices (Devices); the join form asks " &
+        "for their position.")
+  let lp = toSeq(users)
+  for i in 0 ..< lp.len:
+    closureScope:
+      let u = lp[i]
+      let pid = s(u, "person")
+      # removed: had devices and has none left (someone whose device hasn't joined yet was never removed)
+      let removed = u.get("active") != nil and u["active"].kind == jBool and not u["active"].b and
+                    u.get("devices") != nil and u["devices"].kind == jInt and u["devices"].i > 0
+      let hidden = u.get("hidden") != nil and u["hidden"].kind == jBool and u["hidden"].b
+      let name = s(u, "full_name") & " (" & s(u, "username") & ")"
+      p.label(name & " · " & s(u, "role") & (if s(u, "position").len > 0: " · " & s(u, "position") else: "") &
+              (if hidden: " · hidden" elif removed: " · removed" else: ""))
+      if (removed or hidden) and pid.len > 0:
+        p.buttons(((if hidden: "Show " & name & " again" else: "Hide " & name), proc () =
+          w.hide(newObj(@[("ids", newArr(@[newStr(pid)])), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden")))
+  # (The "Add a person" form that was here posted to POST /api/users, which only the server has: in the app it always
+  # failed with "not found". As in the GNOME app, people join with their devices.)
+
+proc positionNote(r: JNode): string =
+  ## an invite's or join request's position, or why accepting it will fail (a new member without one)
+  let req = r.get("request")
+  if r.get("needs_position") != nil and r["needs_position"].kind == jBool and r["needs_position"].b:
+    return ". No position (job title) given: a new member needs one, so ask them to send a new request with their position"
+  if s(req, "position").len > 0: ", position " & s(req, "position") else: ""
 
 proc inviteWindow(w: Win) =
   var r: JNode
@@ -206,7 +411,7 @@ proc inviteWindow(w: Win) =
             asked = true
             let req = st["request"]
             status.setText("A device asks to join: " & s(req, "full_name") & " (" & s(req, "username") & "), " &
-                           s(req, "label") & (if not st["existing"].isNull: ". That username exists: it becomes their new device." else: "") &
+                           s(req, "label") & positionNote(st) & (if not st["existing"].isNull: ". That username exists: it becomes their new device." else: "") &
                            ". Accept or Refuse below.")
         of "expired":
           status.setText("Expired. Close this and make a new one.")
@@ -218,10 +423,11 @@ proc inviteWindow(w: Win) =
 
 proc devices(w: Win, p: Page) =
   var d: JNode
-  try: d = w.a.call("GET", "/api/devices")
+  try: d = w.a.call("GET", "/api/devices", nil, if w.isAdmin: hiddenQuery() else: initTable[string, string]())
   except ApiError as e:
     p.dim(e.msg)
     return
+  if w.isAdmin: w.hiddenControls(p, if d.get("hidden") != nil and d["hidden"].kind == jInt: int(d["hidden"].i) else: 0)
   proc rows(list: JNode, title: string) =
     if list == nil or list.kind != jArr: return
     p.title(title)
@@ -231,8 +437,16 @@ proc devices(w: Win, p: Page) =
         let x = lp5[lp5i]
         let dev = s(x, "device")
         let me = x["this_computer"].b
+        let hidden = x.get("hidden") != nil and x["hidden"].kind == jBool and x["hidden"].b
+        let devName = (if s(x, "label").len > 0: s(x, "label") else: "device") & " of " & s(x, "username")
         p.label((if s(x, "label").len > 0: s(x, "label") else: "device") & " · " & s(x, "username") &
-                (if me: " (this device)" else: "") & "   " & dev[0 ..< min(16, dev.len)] & "…" & (if x["revoked"].b: " · removed" else: ""))
+                (if me: " (this device)" else: "") & "   " & dev[0 ..< min(16, dev.len)] & "…" & (if x["revoked"].b: " · removed" else: "") &
+                (if hidden: " · hidden" else: ""))
+        if x["revoked"].b and w.isAdmin:
+          p.buttons(((if hidden: "Show " & devName & " again" else: "Hide " & devName), proc () =
+            # a device is hidden by its own ID or its person's (Clear removed): showing it again clears both
+            let ids = if hidden and s(x, "person").len > 0: @[newStr(dev), newStr(s(x, "person"))] else: @[newStr(dev)]
+            w.hide(newObj(@[("ids", newArr(ids)), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden")))
         if not x["revoked"].b and not me:
           p.buttons(("Remove " & (if s(x, "label").len > 0: s(x, "label") else: "device") & " of " & s(x, "username"), proc () =
             if ask(w.hwnd, "Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again."):
@@ -255,7 +469,7 @@ proc devices(w: Win, p: Page) =
           let r = lp6[lp6i]
           let dev = s(r, "device")
           let req = r["request"]
-          p.label(s(req, "full_name") & " (" & s(req, "username") & ") · " & s(req, "label") & " · code " & s(r, "code"))
+          p.label(s(req, "full_name") & " (" & s(req, "username") & ") · " & s(req, "label") & " · code " & s(r, "code") & positionNote(r))
           proc decide(act: string) =
             try:
               discard w.a.call("POST", "/api/join-requests/" & dev, newObj(@[("action", newStr(act)), ("existing_ok", newBool(true))]))
@@ -448,6 +662,7 @@ proc manageTab*(w: Win, p: Page) =
     case managePage
     of "Approvals": w.approvals(p)
     of "My proposals": w.myProposals(p)
+    of "Leaderboard": w.leaderboard(p)
     of "History": w.history(p)
     of "People": w.people(p)
     of "Devices": w.devices(p)
@@ -460,7 +675,8 @@ proc manageTab*(w: Win, p: Page) =
   p.title("Manage")
   var pages: seq[(string, string)]
   if w.isAdmin: pages.add ("Approvals", "Proposals waiting for a decision")
-  pages.add ("My proposals", "What you proposed, and photos to vote on")
+  pages.add ("My proposals", "What you proposed, filtered and by code; photos to vote on")
+  pages.add ("Leaderboard", "Who added what, and how much was approved")
   if w.isAdmin:
     pages.add ("History", "Every change, with revert and restore")
     pages.add ("People", "Accounts and roles")
@@ -477,4 +693,4 @@ proc manageTab*(w: Win, p: Page) =
         w.rebuildSide()))
       p.dim(sub)
 
-proc liveManage*(): bool = managePage in ["Approvals", "My proposals", "History", "Devices", "Diagnostics"]
+proc liveManage*(): bool = managePage in ["Approvals", "My proposals", "Leaderboard", "History", "Devices", "Diagnostics"]

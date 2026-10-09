@@ -33,11 +33,13 @@ The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (d
   - `kks_uia.cpp`: the drawing's tags as UI Automation buttons;
   - `win.nim`, `panel.nim`, `side.nim` (search, sheets, floors, procedures with link mode, the review queue),
     `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView),
-    `manage.nim` (approvals, proposals, history, people, devices with the invite QR via `kks_qr.cpp`, account with
-    the root key backup), `setup.nim` (all ways to join, or a new plant);
-  - `photos.nim` + `kks_img.cpp`: thumbnails, a viewer, adding from a file (WIC → upright → 1600 px →
-    `annotate.nim`, the mark-up editor with arrow, box and circle in four colours plus undo, the marks burned in by
-    Direct2D → JPEG XL d1.9).
+    `manage.nim` (approvals one card per code, my proposals with filters, the leaderboard, history, people, devices
+    with the invite QR via `kks_qr.cpp` and hiding removed ones, account with the root key backup), `setup.nim` (all
+    ways to join, each asking a new member's position, or a new plant);
+  - `photos.nim` + `kks_img.cpp`: thumbnails with who took each, a viewer, adding from a file (the floor first when
+    the code has none; WIC → upright → 1600 px → `annotate.nim`, the mark-up editor with arrow, box and circle in four
+    colours plus undo, the marks burned in by Direct2D → the photo queue: JPEG XL d1.9 on a worker thread, in order;
+    a photo that fails is kept under "Photos not sent" with Try again and Discard), and the tag plate's photo.
 - The KKS decode tables (`data/kks.json`) are compiled into the exe.
 
 ## Test
@@ -66,6 +68,15 @@ It covers:
 - several tags at once (a dragged box, search results, a tag button; the List; place, note and photo for all);
 - the valve type from the drawing's symbol in the panel, confirmed with its button;
 - a member's proposal approved in Manage;
+- the floor asked before a photo and sent with it; who took each photo and set each field; My proposals' filters;
+  deleting a photo;
+- the photo queue (a failed encode kept, Try again; the next photo compressed while the panel closes; closing the
+  window asks first);
+- drafted descriptions confirmed as they are or edited;
+- Approvals by code ("Use this one" only between competing photos of one kind, the card opens its tag) and the
+  Leaderboard;
+- a new member's position (the join form refuses without one, the admin sees it; a new plant too);
+- removed devices hidden (Clear removed, Show hidden, Show … again);
 - removal and the self-wipe.
 
 ## A real (borrowed) Windows laptop
