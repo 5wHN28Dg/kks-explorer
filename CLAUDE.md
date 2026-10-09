@@ -274,7 +274,8 @@ Lessons (don't repeat):
 1. When users have marked missed tags (the log's `tag_add` entries), find why the reader missed them and fix the cause
    in the importer.
 2. Verify a random sample of auto tags per new sheet; build per-sheet verified references like LP.
-3. Valve type from symbols (gate/globe/check/motorized/safety): template-match the legend symbols near each tag.
+3. Valve type from symbols: done for the HRSG sheets, which carry their legend (importer/README "Valve types"). Left:
+   safety/angle valves, the sheets without a legend (need their legend document), the app screens.
 4. Extract instrument descriptions from the FW/LP junction-box panels (English text next to each instrument).
 5. Suggest procedure→equipment links (system code + description matching), the user confirms.
 6. Attach PDF markup annotations to nearby tags instead of sheet-level notes.
