@@ -66,21 +66,26 @@ proc isAdmin*(w: Win): bool =
   let (ok, me) = w.a.me
   ok and me.isAdmin
 
+proc trySubmit*(w: Win, kind: string, payload: JNode, what: string, note = "", clientId = ""): string =
+  ## as submit, but an error is raised (ApiError), not shown. `clientId`: the core keeps a change sent twice with the
+  ## same one once (the photo queue resends after a crash).
+  var body = newObj(@[("kind", newStr(kind)), ("payload", payload)])
+  if note.strip.len > 0: body["note"] = newStr(note.strip)
+  if clientId.len > 0: body["client_id"] = newStr(clientId)
+  let r = w.a.call("POST", "/api/submit", body)
+  result = if r.get("status") != nil and r["status"].isStr: r["status"].s else: "pending"
+  case result
+  of "approved": w.toast("Saved: " & what)
+  of "conflict": w.toast("Held: it clashes with a pending change (see Approvals)")
+  else: w.toast("Sent for approval: " & what)
+
 proc submit*(w: Win, kind: string, payload: JNode, what: string, note = ""): string =
   ## Propose a change (members) or make it (admins). Returns "approved", "pending", "conflict" or "" on error,
   ## and says what happened.
-  var body = newObj(@[("kind", newStr(kind)), ("payload", payload)])
-  if note.strip.len > 0: body["note"] = newStr(note.strip)
-  try:
-    let r = w.a.call("POST", "/api/submit", body)
-    result = if r.get("status") != nil and r["status"].isStr: r["status"].s else: "pending"
-    case result
-    of "approved": w.toast("Saved: " & what)
-    of "conflict": w.toast("Held: it clashes with a pending change (see Approvals)")
-    else: w.toast("Sent for approval: " & what)
+  try: w.trySubmit(kind, payload, what, note)
   except ApiError as e:
     w.toast(e.msg)
-    result = ""
+    ""
 
 proc myOpen*(w: Win): seq[JNode] =
   ## my own open proposals (pending or held)
