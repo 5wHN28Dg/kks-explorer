@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kks.explorer.Jxl
 import kks.explorer.core.Core
+import kks.explorer.sync.PhotoQueue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -172,6 +173,16 @@ fun NoteForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Uni
         }
     }) { Text("Send") } }, dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } })
 }
+
+/** the selected codes that have no floor yet (none on the equipment, none queued with a photo): a photo needs its
+ *  floor (the user, 2026-10-08), and one dialog can't ask for several, so Photo for all names them instead. Off the
+ *  main thread: one core call per tag. */
+internal fun codesWithoutFloor(tagIds: List<String>): List<String> = tagIds.mapNotNull { id ->
+    val t = Core.api("GET", "/native/tag", query = mapOf("id" to id)).json
+    val code = t.optString("code")
+    val floor = t.optJSONObject("equipment")?.optString("floor").orEmpty()
+    if (code.isNotEmpty() && floor.isBlank() && PhotoQueue.queuedFloor[code].isNullOrEmpty()) code else null
+}.distinct()
 
 /** one photo for every code: the panel's camera (or gallery) → mark-up editor → JPEG XL, sent once (the core keeps
  *  the image once and points every code's entry to it) */

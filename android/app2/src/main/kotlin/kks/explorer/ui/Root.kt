@@ -128,13 +128,14 @@ fun MainScreen() {
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             UpdateBanner()
+            PhotoQueueBar()
             Box(Modifier.weight(1f).fillMaxWidth()) {
             when (ui.tab) {
                 "drawings" -> Drawings(ui, snack)
                 "procedures" -> Procedures(ui, snack)
                 "review" -> ReviewQueue(ui)
                 "learning" -> Learning(ui, snack)
-                "manage" -> Manage(snack)
+                "manage" -> Manage(snack, ui)
             }
             }
         }
@@ -339,7 +340,15 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 }
             }
             if (selecting) SelectBar(selection.size, Modifier.align(Alignment.BottomCenter),
-                onList = { multi = "list" }, onPhoto = { multi = "photo" }, onPlace = { multi = "place" }, onNote = { multi = "note" },
+                onList = { multi = "list" }, onPhoto = {
+                    val ids = selectedTags.map { it.id }
+                    scope.launch {
+                        val missing = withContext(Dispatchers.IO) { codesWithoutFloor(ids) }
+                        if (missing.isEmpty()) multi = "photo"
+                        else snack.showSnackbar("A photo needs each code's floor. No floor yet: " + missing.take(5).joinToString(", ") +
+                            (if (missing.size > 5) " and ${missing.size - 5} more" else "") + ". Set it with Place for all first.")
+                    }
+                }, onPlace = { multi = "place" }, onNote = { multi = "note" },
                 onDone = { selecting = false; selection = emptySet() })
             val sent: (String) -> Unit = { m ->
                 if (m.startsWith("Sent for")) { selecting = false; selection = emptySet() }

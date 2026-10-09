@@ -77,7 +77,7 @@ class WebSystems(unittest.TestCase):
         cls.base = 'http://127.0.0.1:%d' % cls.port
         boss = Client(cls.base)
         assert boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                               'full_name': 'The Manager'}).get('ok')
+                                               'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         d = os.path.join(cls.dir, 'fixture')
         os.makedirs(os.path.join(d, 'sheets'))
         for name, obj in (('sheets.json', SHEETS), ('tags.json', TAGS), ('locations.json', LOCATIONS)):

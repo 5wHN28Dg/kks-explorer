@@ -16,6 +16,7 @@ class App : Application() {
         kks.explorer.sync.Diagnostics.install(this)
         Core.listeners.add { why -> if (why.startsWith("wiped:")) removed(this, why.removePrefix("wiped:")) }
         kks.explorer.sync.SyncWorker.schedule(this)
+        kks.explorer.sync.PhotoQueue.init(this)
     }
 
     companion object {
@@ -29,6 +30,7 @@ class App : Application() {
             ctx.getSharedPreferences("sync", Context.MODE_PRIVATE).edit().clear().commit()
             Keys.wipe(ctx)
             File(ctx.filesDir, "core").deleteRecursively()
+            kks.explorer.sync.PhotoQueue.wipe(ctx)
             if (visible) ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.let {
                 ctx.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             }

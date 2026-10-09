@@ -13,6 +13,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * Keys in the Android Keystore (decisions 0020, 0032): the device's signing key (non-exportable P-256, also the TLS
@@ -21,6 +22,7 @@ import javax.crypto.spec.GCMParameterSpec
 object Keys {
     const val DEVICE = "kks-device"
     private const val WRAP = "kks-storage-wrap"
+    private const val QUEUE = "kks-local-seal"
     private fun ks() = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
     /** the device key's 65-byte uncompressed public point (made on first use) */
@@ -39,16 +41,56 @@ object Keys {
         return byteArrayOf(4) + be32(w.affineX) + be32(w.affineY)
     }
 
-    private fun wrapKey(): SecretKey {
+    /** a non-exportable AES-256-GCM key in the Keystore, made on first use */
+    private fun aesKey(alias: String): SecretKey {
         val ks = ks()
-        if (!ks.containsAlias(WRAP)) {
+        if (!ks.containsAlias(alias)) {
             KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
-                init(KeyGenParameterSpec.Builder(WRAP, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                init(KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(256).build())
             }.generateKey()
         }
-        return ks.getKey(WRAP, null) as SecretKey
+        return ks.getKey(alias, null) as SecretKey
+    }
+
+    private fun wrapKey(): SecretKey = aesKey(WRAP)
+
+    private val MAGIC = byteArrayOf('K'.code.toByte(), 'S'.code.toByte(), 'L'.code.toByte(), '1'.code.toByte())
+
+    /**
+     * Plant data kept outside the store for a while (the photo queue, decision 0049), sealed at rest: a fresh random
+     * AES-256 key per file encrypts the bytes (AES-GCM, `aad` bound in: a file can't be passed off as another), and
+     * that key is wrapped by a non-exportable Keystore key. "KSL1" ‖ n ‖ wrapped key (IV ‖ sealed, n bytes) ‖ IV ‖ sealed.
+     * The per-file key keeps a large photo off the Keystore's slow path (only 32 bytes go through it).
+     */
+    fun seal(plain: ByteArray, aad: ByteArray): ByteArray {
+        val dek = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        try {
+            val w = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, aesKey(QUEUE)) }
+            val wrapped = w.iv + w.doFinal(dek)
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.ENCRYPT_MODE, SecretKeySpec(dek, "AES"))
+            c.updateAAD(aad)
+            val body = c.doFinal(plain)
+            return MAGIC + byteArrayOf(wrapped.size.toByte()) + wrapped + c.iv + body
+        } finally { dek.fill(0) }
+    }
+
+    /** the bytes [seal] sealed with the same `aad`; throws if they were changed, swapped or the key is gone */
+    fun open(sealed: ByteArray, aad: ByteArray): ByteArray {
+        require(sealed.size > 5 && sealed.copyOfRange(0, 4).contentEquals(MAGIC)) { "not a sealed file" }
+        val n = sealed[4].toInt() and 0xff
+        val wrapped = sealed.copyOfRange(5, 5 + n)
+        val w = Cipher.getInstance("AES/GCM/NoPadding")
+        w.init(Cipher.DECRYPT_MODE, aesKey(QUEUE), GCMParameterSpec(128, wrapped.copyOfRange(0, 12)))
+        val dek = w.doFinal(wrapped.copyOfRange(12, wrapped.size))
+        try {
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.DECRYPT_MODE, SecretKeySpec(dek, "AES"), GCMParameterSpec(128, sealed.copyOfRange(5 + n, 5 + n + 12)))
+            c.updateAAD(aad)
+            return c.doFinal(sealed, 5 + n + 12, sealed.size - (5 + n + 12))
+        } finally { dek.fill(0) }
     }
 
     /** the store's storage key: random on first use, kept wrapped (IV ‖ sealed) next to the database */
@@ -69,7 +111,7 @@ object Keys {
     /** forget everything (a removed device): the next start makes new keys */
     fun wipe(ctx: Context) {
         val ks = ks()
-        for (a in listOf(DEVICE, WRAP)) if (ks.containsAlias(a)) ks.deleteEntry(a)
+        for (a in listOf(DEVICE, WRAP, QUEUE)) if (ks.containsAlias(a)) ks.deleteEntry(a)
         File(ctx.filesDir, "storage.key.wrapped").delete()
     }
 }
