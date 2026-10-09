@@ -107,13 +107,26 @@ method notes*(s: DbStore): seq[(string, string)] =
 
 method putNote*(s: DbStore, eid, note: string) = s.putRow("notes", eid, newStr(note))
 
-proc transaction*(s: DbStore, body: proc ()) =
+method begin*(s: DbStore) =
+  ## BEGIN IMMEDIATE: the write lock is taken now, so no other writer (another process on this file) can make the
+  ## commit fail half-way with "busy". Not nested: a second begin is refused (see Node.atomic).
+  if s.db.inTransaction: raise newException(ValueError, "a store transaction is already open")
   s.db.exec("BEGIN IMMEDIATE")
+
+method commit*(s: DbStore) = s.db.exec("COMMIT")
+
+method rollback*(s: DbStore) =
+  ## SQLite may already have undone the transaction itself (some failed statements and a failed COMMIT do)
+  if s.db.inTransaction: s.db.exec("ROLLBACK")
+
+proc transaction*(s: DbStore, body: proc ()) =
+  ## the platform's own local rows (not log entries: those go through Node.atomic, which keeps memory in step)
+  s.begin()
   try:
     body()
-    s.db.exec("COMMIT")
-  except CatchableError:
-    s.db.exec("ROLLBACK")
+    s.commit()
+  except:
+    s.rollback()
     raise
 
 proc wipe*(s: DbStore, note: string) =

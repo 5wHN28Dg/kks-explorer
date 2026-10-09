@@ -38,6 +38,7 @@ proc sqlite3_column_bytes(s: PStmt, i: cint): cint {.importc, header: H.}
 proc sqlite3_column_blob(s: PStmt, i: cint): pointer {.importc, header: H.}
 proc sqlite3_column_int64(s: PStmt, i: cint): int64 {.importc, header: H.}
 proc sqlite3_finalize(s: PStmt): cint {.importc, header: H.}
+proc sqlite3_get_autocommit(db: PDb): cint {.importc, header: H.}
 
 proc check(db: PDb, r: cint) =
   if r != SQLITE_OK: raise newException(SqliteError, $sqlite3_errmsg(db))
@@ -47,6 +48,8 @@ proc open*(path: string): PDb =
   if r != SQLITE_OK: raise newException(SqliteError, "cannot open " & path)
 
 proc close*(db: PDb) = discard sqlite3_close_v2(db)
+
+proc inTransaction*(db: PDb): bool = sqlite3_get_autocommit(db) == 0   ## a BEGIN is open (not yet committed or undone)
 
 proc exec*(db: PDb, sql: string) =
   var err: cstring

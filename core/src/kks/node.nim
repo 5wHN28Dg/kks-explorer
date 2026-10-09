@@ -24,6 +24,12 @@ method subs*(s: Store): seq[JNode] {.base.} = @[]                  ## submission
 method putSub*(s: Store, row: JNode): int64 {.base.} = 0           ## insert when row.id is null, else replace; -> id
 method notes*(s: Store): seq[(string, string)] {.base.} = @[]      ## History notes: entry id → note
 method putNote*(s: Store, eid, note: string) {.base.} = discard
+# One transaction (Node.atomic): the writes between begin and commit reach the disk all together or not at all. A
+# store refuses a begin while one is open (nesting would let an outer rollback undo writes the node already took in).
+# A store without transactions (this base) writes as it goes.
+method begin*(s: Store) {.base.} = discard
+method commit*(s: Store) {.base.} = discard
+method rollback*(s: Store) {.base.} = discard   ## undoes everything since begin; no-op when nothing is open
 
 proc blobExt*(data: string): string =
   ## A blob's file extension from its first bytes.
@@ -41,6 +47,7 @@ type MemStore* = ref object of Store
   evidence*: seq[StoredEntry]
   blobs*: Table[string, string]
   meta*: Table[string, string]
+  saved: MemStore                       ## the state at begin (a shallow copy: rows are replaced, never changed)
 
 proc newMemStore*(): MemStore = MemStore()
 method loadEntries*(s: MemStore): seq[StoredEntry] = s.entries
@@ -69,6 +76,19 @@ method putNote*(s: MemStore, eid, note: string) =
       x[1] = note
       return
   s.noteRows.add((eid, note))
+method begin*(s: MemStore) =
+  if s.saved != nil: raise newException(ValueError, "a store transaction is already open")
+  s.saved = MemStore(subRows: s.subRows, noteRows: s.noteRows, entries: s.entries, evidence: s.evidence,
+                     blobs: s.blobs, meta: s.meta)
+method commit*(s: MemStore) =
+  if s.saved == nil: raise newException(ValueError, "no store transaction is open")
+  s.saved = nil
+method rollback*(s: MemStore) =
+  let b = s.saved
+  if b == nil: return
+  s.subRows = b.subRows; s.noteRows = b.noteRows; s.entries = b.entries; s.evidence = b.evidence
+  s.blobs = b.blobs; s.meta = b.meta
+  s.saved = nil
 
 type Node* = ref object
   p*: Provider
@@ -83,6 +103,8 @@ type Node* = ref object
   run*: Run                             ## the replayed state
   ignored*: OrderedTable[string, string]
   listeners*: seq[proc (why: string)]   ## told after every change: "local", "received", "adopted"
+  staging: bool                         ## inside `atomic`: new entries wait in `staged` until the store commits
+  staged: seq[StoredEntry]
 
 proc rebuild*(n: Node) =
   ## Replay everything held, as trusted (each entry was verified when it arrived).
@@ -127,6 +149,8 @@ proc adopt*(n: Node, root: string) =
   n.changed("adopted")
 
 proc lastOf(n: Node, device: string): (int64, string) =
+  for i in countdown(n.staged.high, 0):   # an entry written earlier in the open transaction is the chain's head
+    if n.staged[i].e["peer"].s == device: return (n.staged[i].e["seq"].i, n.staged[i].id)
   let c = n.chains.getOrDefault(device)
   if c.len == 0: (0'i64, "") else: (int64(c.len), c[^1])
 
@@ -137,10 +161,39 @@ proc appendAs*(n: Node, key: PrivateKey, typ: string, body: JNode, wall: int64):
   let e = n.p.makeEntry(key, seq + 1, prev, n.clock.now(wall), typ, body)
   let id = n.p.entryId(e)
   n.store.putEntry(id, e)
+  if n.staging:
+    n.staged.add((id, e))   # memory follows once the transaction is on disk (atomic)
+    return e
   n.addStored(id, e)
   n.rebuild()
   n.changed("local")
   e
+
+proc atomic*(n: Node, body: proc ()) =
+  ## Runs `body` as one store transaction: its entries and rows (a submission's entry, its comment and the row with
+  ## its client_id) are on disk all together or not at all, so a crash between them can't leave an entry whose resend
+  ## isn't recognised. The entries `body` appends reach memory (the chains, the replay, the listeners) only after the
+  ## commit: an error rolls the store back and leaves memory as it was, so memory never holds what the disk doesn't
+  ## (a retry then continues the chain from the same head: no fork, nothing twice). Within `body` the new entries are
+  ## not replayed yet (`n.run` and `n.entries` are as before it; the next append continues after them). Not nested.
+  if n.staging: raise newException(ValueError, "atomic: already inside a transaction")
+  n.store.begin()
+  n.staging = true
+  try:
+    body()
+    n.store.commit()
+  except:
+    n.staging = false
+    n.staged.setLen(0)
+    n.store.rollback()
+    raise
+  n.staging = false
+  let done = move n.staged
+  n.staged = @[]
+  for (id, e) in done: n.addStored(id, e)
+  if done.len > 0:
+    n.rebuild()
+    n.changed("local")
 
 proc append*(n: Node, typ: string, body: JNode, wall: int64): JNode =
   ## A new entry in this device's own log.
