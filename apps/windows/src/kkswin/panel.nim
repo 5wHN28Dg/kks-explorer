@@ -2,14 +2,25 @@
 ## own data (read-only until Edit), where else the code appears, procedures, photos, and the review of uncertain
 ## readings.
 
-import std/[strutils, math, sets, tables, sequtils]
+import std/[strutils, math, sets, tables, sequtils, times]
 import kks/json
-import kks/model
+import kks/[model, views]
 import appstate
 import w32, ui, win, photos
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
+
+proc day(n: JNode): string =
+  if n == nil or n.kind != jInt or n.i <= 0: "" else: fromUnix(n.i).local.format("yyyy-MM-dd")
+
+proc byLine*(who: JNode): string =
+  ## "by Ali User, 2026-10-08" (who set a field: /api/state equipment_by); "" when unknown (v1-imported values)
+  if who == nil or who.kind != jObj: return ""
+  let name = s(who, "by_name")
+  if name.len == 0: return ""
+  let d = day(who.get("at"))
+  "by " & name & (if d.len > 0: ", " & d else: "")
 
 proc normKks(s: string): string =
   for c in s.toUpperAscii:
@@ -52,14 +63,23 @@ proc equipmentSection(w: Win, p: Page, t: Tag) =
   let k = t.full
   let live = w.m.equipment(k)
   let rl = w.m.refLoc(t.bodyOf)
+  let eqBy = if w.m.state != nil and w.m.state.get("equipment_by") != nil: w.m.state["equipment_by"].get(k) else: nil
+  proc author(field: string): string =
+    if eqBy == nil or eqBy.kind != jObj: "" else: byLine(eqBy.get(field))
   p.title("Location and notes")
   if editing != t.id:
     for (f, title) in Fields:
       var v = s(live, f)
       if f == "elev" and v.len == 0 and rl.elev.len > 0: v = rl.elev & " (location list)"
       p.field(title, if v.len > 0: v else: "—", readonly = true)
+      let who = if s(live, f).len > 0: author(f) else: ""      # who set it (the user's "who added the info")
+      if who.len > 0: p.dim(who)
     if live.get("custom") != nil:
-      for c in live["custom"].elems: p.field(s(c, "k"), s(c, "v"), readonly = true)
+      for c in live["custom"].elems:
+        if s(c, "k") == DescriptionKey: continue      # shown in its own section
+        p.field(s(c, "k"), s(c, "v"), readonly = true)
+        let who = author("custom:" & s(c, "k"))
+        if who.len > 0: p.dim(who)
     let id = t.id
     p.buttons(("Edit", proc () =
       editing = id
@@ -104,6 +124,69 @@ proc equipmentSection(w: Win, p: Page, t: Tag) =
       editing = ""
       w.rebuildPanel()))
 
+var editingDesc = ""   ## the tag whose drafted description is open for editing
+
+proc descriptionSection(w: Win, p: Page, t: Tag) =
+  ## what the equipment does (core tagView.description): a draft from descriptions.json, shown as unchecked until
+  ## someone confirms it (an equipment proposal setting the custom field "Description"), or the confirmed text with who
+  let d = tagView(w.m, t.id).get("description")
+  if d == nil or d.kind != jObj: return
+  let k = t.full
+  if s(d, "status") == "confirmed":
+    p.title("Description")
+    p.label(s(d, "text"))
+    p.dim((if s(d, "by_name").len > 0: "Confirmed by " & s(d, "by_name") else: "Confirmed") &
+          (if day(d.get("at")).len > 0: ", " & day(d.get("at")) else: ""))
+    if d.get("draft_differs") != nil and d["draft_differs"].kind == jBool and d["draft_differs"].b:
+      p.dim("The drafted description differs. Edit the custom field under Location and notes to change it.")
+    return
+  let conf = d.get("confirm")
+  let basis = if s(d, "basis").len > 0: "Basis: " & s(d, "basis") else: ""
+  p.title("Draft description (unchecked)")
+  # a confirmation already waiting for approval: no second one
+  for sub in w.myOpen():
+    let pl = sub.get("payload")
+    if sub["kind"].s == "equipment" and pl != nil and s(pl, "kks") == k and pl.get("changes") != nil and
+       pl["changes"].get("custom") != nil and pl["changes"]["custom"].kind == jArr and
+       pl["changes"]["custom"].elems.anyIt(s(it, "k") == DescriptionKey):
+      p.label(s(d, "text"))
+      if basis.len > 0: p.dim(basis)
+      p.dim("Your confirmation waits for approval.")
+      return
+  let id = t.id
+  if editingDesc == id:
+    let e = p.multiField("Description", s(d, "text"), 90)
+    p.buttons(("Send description", proc () =
+      let v = e.text.replace("\r\n", "\n").strip
+      if v.len == 0:
+        w.toast("Write the description first")
+        return
+      let base = if conf != nil: conf["payload"]["base"]["custom"] else: newArr()
+      var cs = newArr()
+      for c in base.elems:
+        if s(c, "k") != DescriptionKey: cs.elems.add c
+      cs.elems.add newObj(@[("k", newStr(DescriptionKey)), ("v", newStr(v))])
+      if w.submit("equipment", newObj(@[("kks", newStr(k)), ("changes", newObj(@[("custom", cs)])),
+                                        ("base", newObj(@[("custom", base)]))]), "description of " & k).len > 0:
+        editingDesc = ""
+        w.loadModel()
+        w.rebuildPanel()),
+      ("Cancel", proc () =
+        editingDesc = ""
+        w.rebuildPanel()))
+    return
+  p.dim("Drafted from the drawings, not checked by a person yet. Confirm it if it is right, or edit it first.")
+  p.label(s(d, "text"))
+  if basis.len > 0: p.dim(basis)
+  p.buttons(("Confirm description", proc () =
+    if conf == nil: return
+    if w.submit(s(conf, "kind"), conf["payload"], "description of " & k).len > 0:
+      w.loadModel()
+      w.rebuildPanel()),
+    ("Edit description", proc () =
+      editingDesc = id
+      w.rebuildPanel()))
+
 proc buildPanel*(w: Win, t: Tag) =
   let p = w.panel
   p.clear()
@@ -143,6 +226,23 @@ proc buildPanel*(w: Win, t: Tag) =
       of "verified": "checked by eye against the drawing"
       else: "automatic, " & $int(round(t.conf * 100)) & " % confidence"), readonly = true)
     if t.flag.len > 0: p.field("Flag", t.flag, readonly = true)
+  # the valve type: confirmed, or read from the drawing's symbol and unchecked, with the proposal that confirms it as
+  # it is (core model.valveTypeOf; sent unchanged, a correction goes through Edit's "Valve type" custom field)
+  let vt = m.valveTypeOf(t)
+  if vt != nil:
+    p.label(s(vt, "line"))
+    if s(vt, "status") == "confirmed" and vt.get("drawn_differs") != nil and vt["drawn_differs"].kind == jBool and
+       vt["drawn_differs"].b:
+      p.dim("The drawing's symbol reads: " & s(vt, "drawn"))
+    let c = vt.get("confirm")
+    if c != nil and c.kind == jObj and c.get("payload") != nil:
+      let kind = s(c, "kind")
+      let payload = c["payload"]
+      let what = "valve type of " & k
+      p.buttons(("Confirm valve type", proc () =
+        if w.submit(kind, payload, what).len > 0:
+          w.loadModel()
+          w.rebuildPanel()))
   let rl = m.refLoc(t.bodyOf)
   if rl.rows.len > 0:
     p.title("Location list")
@@ -191,6 +291,7 @@ proc buildPanel*(w: Win, t: Tag) =
       w.tab = "procedures"
       w.rebuildSide()
       w.applyHighlights()), openLabel = "Open the procedure")
+  w.descriptionSection(p, t)
   w.equipmentSection(p, t)
   w.photoSection(p, k)
   p.layout()

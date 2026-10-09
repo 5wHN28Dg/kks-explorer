@@ -23,6 +23,9 @@ type Win* = ref object
   tabButtons*: seq[HWND]
   sheet*: string
   selected*: string
+  picking*: bool            ## "Select tags" mode: one photo, place or note for several codes (multi.nim)
+  picked*: seq[string]      ## the selected codes, in the order they were picked
+  pickSaidUnread*: bool     ## the "no code" message was shown in this round of the mode
   linkProc*: string         ## link mode (R7): clicks on tags link them to this procedure step
   linkStep*: int
   activeProc*: string
@@ -33,6 +36,8 @@ type Win* = ref object
   rebuildSide*: proc ()
   relayout*: proc ()
   lastMsg*: string
+  queueLabel*: HWND         ## the photo queue's line beside the status (photos.nim), hidden while it is empty
+  failedButton*: HWND       ## "Photos not sent (n)…": photos that failed, kept until sent or discarded (photos.nim)
   followers*: seq[Follower]  ## open windows that follow the plant's data (follow)
 
 proc focusInside(area: HWND): bool =
@@ -91,20 +96,26 @@ proc isAdmin*(w: Win): bool =
   let (ok, me) = w.a.me
   ok and me.isAdmin
 
-proc submit*(w: Win, kind: string, payload: JNode, what: string, note = ""): string =
-  ## Propose a change (members) or make it (admins). -> "approved", "pending", "conflict" or "" on error.
+proc trySubmit*(w: Win, kind: string, payload: JNode, what: string, note = "", clientId = ""): (string, string) =
+  ## Propose a change (members) or make it (admins) and say how it went. -> (status, error): status "approved",
+  ## "pending" or "conflict", or "" with the reason. `clientId`: the core returns the first submission for a repeat
   var body = newObj(@[("kind", newStr(kind)), ("payload", payload)])
   if note.strip.len > 0: body["note"] = newStr(note.strip)
+  if clientId.len > 0: body["client_id"] = newStr(clientId)
   try:
     let r = w.a.call("POST", "/api/submit", body)
-    result = if r.get("status") != nil and r["status"].isStr: r["status"].s else: "pending"
-    case result
+    result[0] = if r.get("status") != nil and r["status"].isStr: r["status"].s else: "pending"
+    case result[0]
     of "approved": w.toast("Saved: " & what)
     of "conflict": w.toast("Held: it clashes with a pending change (see Approvals)")
     else: w.toast("Sent for approval: " & what)
-  except ApiError as e:
+  except CatchableError as e:
     w.toast(e.msg)
-    result = ""
+    result = ("", if e.msg.len > 0: e.msg else: $e.name)
+
+proc submit*(w: Win, kind: string, payload: JNode, what: string, note = ""): string =
+  ## Propose a change (members) or make it (admins). -> "approved", "pending", "conflict" or "" on error.
+  w.trySubmit(kind, payload, what, note)[0]
 
 proc myOpen*(w: Win): seq[JNode] =
   try:

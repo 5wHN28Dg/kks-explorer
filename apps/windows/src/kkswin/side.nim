@@ -5,7 +5,8 @@ import std/[strutils, tables, sets, sequtils, math, algorithm]
 import kks/json
 import kks/model
 import appstate
-import w32, ui, win, viewer, systems
+import kksl/dbstore
+import w32, ui, win, viewer, systems, multi
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -32,9 +33,19 @@ proc drawingsTab(w: Win, p: Page) =
   var search: HWND
   search = p.field("Search equipment by KKS code or description", "", onChange = proc () = fill(search.text))
   sendText(search, EM_SETCUEBANNER, 1, "e.g. LAB70AA501 or feed water")
+  # the select mode: a result toggles its tag (the keyboard's way to select several)
   resList = p.list(@[], 180, onActivate = (proc (i: int) =
-    if i < results.len: w.selectTag(results[i].id, true)), openLabel = "Show on the drawing")
-  p.dim("Enter or double-click a result to show it on its drawing.")
+    if i >= results.len: return
+    if w.picking:
+      let t = results[i]
+      if t.sheet != w.sheet: w.showSheet(t.sheet)
+      let (okS, si) = w.m.sheetById(t.sheet)
+      let sc = if okS and si.scale > 0: si.scale else: 2.0
+      w.v.centerOn(t.bbox[0] / sc, t.bbox[1] / sc, t.bbox[2] / sc, t.bbox[3] / sc)
+      w.togglePick(t.id)
+    else: w.selectTag(results[i].id, true)), openLabel = (if w.picking: "Select or unselect" else: "Show on the drawing"))
+  p.dim(if w.picking: "Select tags: Enter or double-click a result to select or unselect its code."
+        else: "Enter or double-click a result to show it on its drawing.")
   p.buttons(("Equipment by system…", proc () = w.openSystems()))   # every code, block → system → kind
   p.title("Sheets")
   var rows: seq[string]
@@ -73,8 +84,18 @@ proc drawingsTab(w: Win, p: Page) =
       w.v.coverage = on
       InvalidateRect(w.v.hwnd, nil, 0)
       w.toast(if on: "Tags by photos: green both · amber equipment only · blue tag plate only · red none" else: "Tags by how they were read"))
+    # dark drawings: a PDF reader's dark mode for the sheets (lightness inverted, hue kept; photos never change),
+    # remembered on this device (its store, like sync_peers)
+    p.check("Dark drawings", w.v.dark, proc (on: bool) =
+      w.v.setDark(on)
+      w.a.store.setMeta("dark_drawings", if on: "1" else: ""))
+    # the select mode: one photo, place or note for several tags (multi.nim); a check box, so its state is exposed
+    p.check("Select tags", w.picking, proc (on: bool) =
+      if on != w.picking:
+        if on: w.startPicking() else: w.stopPicking())
     p.buttons(("Fit the sheet (0)", proc () = w.v.fit()),      # the whole sheet again, centred (as GNOME and the web)
               ((if w.v.marking: "Stop marking" else: "Mark a missing tag"), proc () =
+      if w.picking: w.stopPicking()
       w.v.marking = not w.v.marking
       w.toast(if w.v.marking: "Drag a box around the tag the app missed" else: "")
       w.rebuildSide()))

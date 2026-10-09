@@ -6,7 +6,7 @@ import kks/[json, api, pathstore, views]
 import kks/model
 import appstate
 import kksl/dbstore
-import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn]
+import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi, photos]
 
 const
   TimerPump = 1'u
@@ -35,7 +35,7 @@ proc layoutMain() =
     MoveWindow(setupP.hwnd, 0, 0, int32(W), int32(H), 1)
     return
   let side = int(px(SideW))
-  let panelW = if w.selected.len > 0: int(px(PanelW)) else: 0
+  let panelW = if w.selected.len > 0 or w.picking: int(px(PanelW)) else: 0
   let st = int(px(StatusH))
   var x = 0
   for b in w.tabButtons:
@@ -46,7 +46,25 @@ proc layoutMain() =
   MoveWindow(w.v.hwnd, int32(side), 0, int32(max(10, W - side - panelW)), int32(H - st), 1)
   MoveWindow(w.panel.hwnd, int32(W - panelW), 0, int32(panelW), int32(H - st), 1)
   ShowWindow(w.panel.hwnd, if panelW > 0: SW_SHOW else: SW_HIDE)
-  MoveWindow(w.status, px(8), int32(H - st + int(px(4))), int32(W - int(px(16))), int32(st - int(px(6))), 1)
+  # the bottom row: the status line, then the photo queue's line and "Photos not sent (n)…" while there are any
+  var right = W - int(px(8))
+  if w.failedButton != nil:
+    let n = failedCount()
+    ShowWindow(w.failedButton, if n > 0: SW_SHOW else: SW_HIDE)
+    if n > 0:
+      let bw = int(px(170))
+      right -= bw
+      MoveWindow(w.failedButton, int32(right), int32(H - st + int(px(1))), int32(bw), int32(st - int(px(2))), 1)
+      right -= int(px(8))
+  if w.queueLabel != nil:
+    let q = queuedCount() > 0
+    ShowWindow(w.queueLabel, if q: SW_SHOW else: SW_HIDE)
+    if q:
+      let qw = min(int(px(520)), (right - int(px(8))) div 2)
+      right -= qw
+      MoveWindow(w.queueLabel, int32(right), int32(H - st + int(px(4))), int32(qw), int32(st - int(px(6))), 1)
+      right -= int(px(8))
+  MoveWindow(w.status, px(8), int32(H - st + int(px(4))), int32(max(10, right - int(px(8)))), int32(st - int(px(6))), 1)
 
 proc doShowSheet(id: string) =
   let (ok, si) = w.m.sheetById(id)
@@ -62,10 +80,12 @@ proc doShowSheet(id: string) =
     if okL: d else: ""
   w.v.setSheet(id, flatBytes, si.scale, si.levels)
   w.v.tags = w.tagBoxes(id)
+  w.syncChosen()
   w.applyHighlights()
   SetWindowTextW(w.hwnd, newWideCString(si.name & " — Walkdown"))
 
 proc doSelectTag(id: string, center: bool) =
+  if w.picking and id.len > 0: w.stopPicking()     # a tag opened from elsewhere (Equipment by system) ends the mode
   w.selected = id
   w.v.selected = id
   if id.len == 0:
@@ -101,12 +121,15 @@ proc refresh() =
   w.loadModel()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
+    w.syncChosen()
     w.applyHighlights()
   elif w.m.sheets.len > 0: doShowSheet(w.m.sheets[0].id)
   let f = GetFocus()
   let typing = f != nil and GetParent(f) == w.side.hwnd and w.tab == "drawings"
   if not typing and (w.tab != "manage" or liveManage()): w.rebuildSide()
-  if w.selected.len > 0:
+  if w.picking:
+    if GetParent(GetFocus()) != w.panel.hwnd: w.pickPanel(w.panel)
+  elif w.selected.len > 0:
     let (ok, t) = w.m.tagById(w.selected)
     if ok and GetParent(GetFocus()) != w.panel.hwnd: w.buildPanel(t)
   w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
@@ -186,6 +209,21 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     let r = cast[ptr RECT](lp)
     MoveWindow(h, r.left, r.top, r.right - r.left, r.bottom - r.top, 1)
     return 0
+  of WM_CLOSE:
+    # photos still in the queue, or kept because they were not sent, are lost when the app closes: ask first
+    let n = (if w != nil: queuedCount() else: 0)
+    let f = (if w != nil: failedCount() else: 0)
+    if n + f > 0:
+      var what: seq[string]
+      if n > 0: what.add(if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared")
+      if f > 0: what.add(if f == 1: "1 photo was not sent" else: $f & " photos were not sent")
+      let how = (if n > 0: "Cancel to wait until the photos being prepared are sent (a moment)" else: "Cancel to keep Walkdown open") &
+                (if f > 0: "; the ones not sent go with Photos not sent… → Try again" else: "") & ", or OK to close anyway."
+      if not ask(h, "Close Walkdown?", what.join(", and ") & ". Closing now loses " & (if n + f == 1: "it" else: "them") &
+                 ". " & how):
+        return 0
+  of 0x0011'u32:     # WM_QUERYENDSESSION: signing out or shutting down would lose them too; Windows then names the app
+    if w != nil and blockShutdown(h): return 0
   of WM_DESTROY:
     PostQuitMessage(0)
     return 0
@@ -212,8 +250,13 @@ proc showMain() =
   w.v = newViewer(w.hwnd, hinst)
   trace("viewer")
   w.panel = newPage(w.hwnd)
+  w.queueLabel = control(w.hwnd, "STATIC", "", SS_LEFT or SS_NOPREFIX)[0]
+  let (fb, fbid) = control(w.hwnd, "BUTTON", "Photos not sent (0)…", WS_TABSTOP or BS_PUSHBUTTON)
+  w.failedButton = fb
+  onClick(fbid, proc () = w.failedWindow())
   w.v.onTag = proc (id: string) =
-    if w.linkProc.len > 0:
+    if w.picking: w.togglePick(id)       # the select mode (multi.nim)
+    elif w.linkProc.len > 0:
       let (ok, t) = w.m.tagById(id)
       if ok and t.full.len > 0:
         discard w.submit("link", newObj(@[("proc", newStr(w.linkProc)), ("step", newInt(w.linkStep)), ("kks", newStr(t.full)),
@@ -222,6 +265,9 @@ proc showMain() =
       else: w.toast("This tag has no code yet: check it first")
     else: doSelectTag(id, false)
   w.v.onMark = markDialog
+  w.v.onBox = proc (x0, y0, x1, y1: float) = w.addBox(x0, y0, x1, y1)
+  w.v.onEscape = proc () = w.stopPicking()
+  w.v.setDark(w.a.store.getMeta("dark_drawings") == "1")    # per device (this device's store), like sync_peers
   w.loadModel()
   trace("model: " & $w.m.sheets.len & " sheets, " & $w.m.tags.len & " tags")
   w.rebuildSide()
@@ -267,8 +313,10 @@ proc main() =
       w.side.layout()
     else: w.buildSide(proc (p: Page) = w.manageTab(p))
   w.rebuildPanel = proc () =
-    let (ok, t) = w.m.tagById(w.selected)
-    if ok: w.buildPanel(t)
+    if w.picking: w.pickPanel(w.panel)
+    else:
+      let (ok, t) = w.m.tagById(w.selected)
+      if ok: w.buildPanel(t)
   w.relayout = layoutMain
   if a.joined: showMain()
   else:

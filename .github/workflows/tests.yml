@@ -219,6 +219,9 @@ jobs:
       - name: Equipment by system in index.html (test_web_systems)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_systems.py -v -k ${{ matrix.engine }}
+      - name: The Coverage drawer in index.html (test_web_coverage)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_coverage.py -v -k ${{ matrix.engine }}
       - name: The valve type in index.html's panel (test_web_valve)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_valve.py -v -k ${{ matrix.engine }}
@@ -254,6 +257,8 @@ jobs:
         run: .venv/bin/python tests/web/test_systems.py -v -k ${{ matrix.engine }}
       - name: systems.js KSys.linksView against core views.linksView's vectors (tests/web)
         run: .venv/bin/python tests/web/test_links.py -v -k ${{ matrix.engine }}
+      - name: systems.js's coverageView against core views.coverageView (tests/web)
+        run: .venv/bin/python tests/web/test_coverage.py -v -k ${{ matrix.engine }}
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -465,6 +470,7 @@ jobs:
           (cd core && KKS_WIN_OUT=/tmp/kkswin-core nim wintests) && cp /tmp/kkswin-core/*.exe out/core/
           (cd platform/linux && KKS_WIN_OUT=/tmp/kkswin-plat nim wintests) && cp /tmp/kkswin-plat/*.exe out/plat/
           nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console --nimcache:/tmp/kkswin-jxl -o:out/plat/test_jxl_limit.exe apps/windows/tests/test_jxl_limit.nim
+          nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console --nimcache:/tmp/kkswin-dark -o:out/plat/test_dark.exe apps/windows/tests/test_dark.nim
           ls -l out out/core out/plat
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

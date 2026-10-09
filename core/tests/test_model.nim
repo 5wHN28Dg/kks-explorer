@@ -147,6 +147,51 @@ suite "views":
     c.merge()
     let lab = systemsView(c)["blocks"][0]["systems"][1]
     check lab["subsystems"][0]["kinds"][0]["items"][0]["count"].i == 2
+  test "coverage: per sheet, per system, totals":
+    let v = coverageView(m)
+    # tags left: a:1 11LAB70 (auto), a:2 AA501 (auto), a:3 CT101R (auto), a:4 → AA503 (confirmed), added AA504 (verified)
+    let t = v["total"]
+    check t["tags"].i == 5 and t["verified"].i == 2 and t["review"].i == 0 and t["marked"].i == 1
+    check t["codes"].i == 5
+    # photos: AA501 has an equipment photo (p1); the rest none
+    check t["photos"]["equipment"].i == 1 and t["photos"]["none"].i == 4 and t["photos"]["both"].i == 0
+    # places: AA501 from the location list and its floor; nothing else
+    check t["located"].i == 1
+    check v["sheets"].elems.len == 1 and v["sheets"][0]["name"].s == "Sheet A" and v["sheets"][0]["codes"].i == 5
+    var names: seq[string]
+    for s in v["systems"].elems: names.add s["sys"].s
+    check names == @["", "HAD", "LAB"]      # "" = codes that don't decode (11LAB70)
+    let lab = v["systems"][2]
+    check lab["codes"].i == 3 and lab["verified"].i == 2 and lab["located"].i == 1 and lab.get("tags") == nil
+  test "coverage: a code is checked when any of its tags is (auto on the first sheet, verified on a later one)":
+    let c = sample()
+    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"verified","conf":1,"bbox":[10,10,20,20],"read":["",""]}]"""))
+    c.merge()
+    var lab: JNode
+    for s in coverageView(c)["systems"].elems:
+      if s["sys"].s == "LAB": lab = s
+    check lab["codes"].i == 3 and lab["verified"].i == 3        # a:2 is auto, but b:1 checked 11LAB70AA501
+  test "coverage: a place typed by a person counts":
+    let c = sample()
+    c.state["equipment"]["11LAB70AA504"] = j("""{"area":"pump house"}""")
+    c.merge()
+    check coverageView(c)["total"]["located"].i == 2
+  test "coverage: a place is looked up per tag, not per code (a suffix typed into the code has another body)":
+    # 11LAB70AA501 + R and 11LAB70AA501R are one code, but only the first is in the location list (LAB70AA501)
+    let c = sample()
+    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"b","kks":"11LAB70AA501","suffix":"R","isa":null,"kind":"equipment","status":"auto","conf":1,"bbox":[10,10,20,20],"read":["",""]},
+      {"id":"c:1","sheet":"c","kks":"11LAB70AA501R","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,"bbox":[10,10,20,20],"read":["",""]}]"""))
+    c.merge()
+    let v = coverageView(c)
+    var located: seq[(string, int64)]
+    for s in v["sheets"].elems: located.add (s["id"].s, s["located"].i)
+    check located == @[("a", 1'i64), ("b", 1'i64), ("c", 0'i64)]
+    check v["total"]["located"].i == 2 and v["total"]["codes"].i == 6
+  test "coverage percent: 100 only when all, 0 only when none, else to the nearest":
+    check coveragePct(0, 300) == 0 and coveragePct(1, 300) == 1 and coveragePct(1, 200) == 1
+    check coveragePct(199, 200) == 99 and coveragePct(299, 300) == 99 and coveragePct(200, 200) == 100
+    check coveragePct(1, 3) == 33 and coveragePct(2, 3) == 67 and coveragePct(1, 8) == 13 and coveragePct(1, 2) == 50
+    check coveragePct(3, 200) == 2 and coveragePct(197, 200) == 99   # halves round up (1.5 -> 2, 98.5 -> 99)
   test "the flat path store":
     var d = Drawing(width: 640, height: 320, gx: 1, gy: 1)
     d.styles.add Style(kind: Stroke, width: 64)

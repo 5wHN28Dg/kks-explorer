@@ -546,6 +546,75 @@ class Phone(unittest.TestCase):
             ui.fresh_app(PKG)
             time.sleep(3)
 
+    def test_coverage(self):
+        """the coverage dashboard (core coverageView): totals on the test plant; a sheet row opens that sheet with the
+        photo colours on; a system row opens Equipment by system showing that system only"""
+        r = self.boss.req('GET', '/api/sheets')
+        if not any(s.get('id') == 'second' for s in r.get('sheets', [])):
+            with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f:
+                pdf = f.read()
+            assert self.boss.req('POST', '/api/sheets/import?id=second&name=Second%20sheet', raw=pdf, ctype='application/pdf').get('ok')
+            for _ in range(300):
+                job = self.boss.req('GET', '/api/sheets/job')['job']
+                if job['state'] != 'running':
+                    break
+                time.sleep(0.2)
+            assert job['state'] == 'done', job['log']
+        # a hand-marked tag whose sheet is not in the plant data (a tag can outlive its sheet): counted, nothing to open
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'removed-sheet', 'bbox': [400, 300, 520, 360],
+                                                 'kks': '11LAB70AA509', 'isa': '', 'note': ''}})
+        assert r.get('status') == 'approved', r
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            ui.tap('More', exact=True)
+            ui.tap('Coverage', exact=True)
+            # the test plant: two codes marked by the manager (so checked), no place, no photos: 11LAB70AA501 on the
+            # sample sheet, 11LAB70AA509 on a sheet that isn't there
+            for t in ('Codes on the drawings: 2 (on 2 tags)', 'Checked by a person: 100 % (2 of 2 tags)',
+                      'Known place: 0 % (0 of 2 codes)', 'To review: 0', 'Missed tags marked: 2'):
+                ui.find(t, timeout=15)
+            ui.find('Sample sheet: 1 code on 1 tag, 100 % of tags checked by a person, 0 % with a known place, photos: 0 both, '
+                    '0 equipment only, 0 tag plate only, 1 none, 0 to review, 1 missed tags marked')
+            ui.find('LAB · Feed water piping system: 2 codes, 100 % of codes checked by a person')
+            # the missing sheet's row: the message shows in the dashboard, which stays open (it is its own window, so
+            # the app's snackbar behind it would never be seen)
+            ui.tap('removed-sheet: 1 code on 1 tag')
+            ui.find('That sheet is no longer in the plant data', exact=True, timeout=10)
+            self.assertTrue(ui.present('Codes on the drawings'), 'the dashboard closed')
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, 'android-coverage.png'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+            # a sheet row: that sheet, coloured by photos (the legend shows)
+            ui.tap('Second sheet: ')
+            ui.find('Second sheet', exact=True, timeout=15)
+            self.assertFalse(ui.present('Codes on the drawings'), 'the dashboard stayed open')
+            ui.find('Tag plate', exact=True)
+            # a system row: Equipment by system, that system only, open
+            ui.tap('More', exact=True)
+            ui.tap('Coverage', exact=True)
+            ui.tap('LAB · Feed water piping system: ', timeout=15)
+            ui.find('Only system LAB', exact=True, timeout=15)
+            ui.find('LAB70, ', timeout=10)
+        finally:
+            removed = []
+            for a in self.boss.req('GET', '/api/state').get('added_tags', []):
+                if a.get('sheet') == 'removed-sheet':
+                    removed.append(self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}}))
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
+            # after the rest of the clean-up: else the later tests would count this tag
+            assert removed and all(r.get('status') == 'approved' for r in removed), removed
+
     def test_flow(self):
         # join through the server (PROTOCOL-v2 §16 enroll over TLS)
         ui.tap('Join through a server', exact=True)
