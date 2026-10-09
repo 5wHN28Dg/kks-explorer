@@ -39,7 +39,9 @@ type
     glyphs*: string            ## its glyph library, when not next to it
     maxPdfMb*: int
     importTimeoutS*: int       ## an import is stopped after this long (issue #34)
-    importMemoryMb*: int       ## the importer's address-space limit (RLIMIT_AS; a large sheet peaks near 1.8 GB RSS)
+    importMemoryMb*: int       ## the importer's address-space limit (RLIMIT_AS; the largest real sheet needs ~2 GB of
+                               ## address space). Below the service's MemoryMax (3G, deploy/install-server-user.sh),
+                               ## so an import that grows stops itself with a message instead of being killed.
 
   Server* = ref object
     cfg*: Config
@@ -71,7 +73,7 @@ proc isLoopback*(address: string): bool =
 proc defaultConfig*(): Config =
   Config(address: "127.0.0.1", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
          offlineDays: 3, maxUploadMb: 15, plantDir: "plant-data", backupDir: "backups", maxPdfMb: 50,
-         importer: getAppDir() / "kks-import", importTimeoutS: 1800, importMemoryMb: 6144)
+         importer: getAppDir() / "kks-import", importTimeoutS: 1800, importMemoryMb: 2560)
 
 proc loadConfig*(path: string): Config =
   result = defaultConfig()
@@ -747,6 +749,8 @@ proc restoreSheets(s: Server, backup, sid: string) =
 proc validSheetId(sid: string): bool =
   sid.len in 1 .. 24 and sid[0] in {'a' .. 'z', '0' .. '9'} and sid.allCharsInSet({'a' .. 'z', '0' .. '9', '-'})
 
+const ImporterOutOfMemory = 3   ## kks-import's exit code when it ran out of memory (importer/kks_import.nim)
+
 proc runImport(s: Server, job: JNode, args: seq[string], replace: bool) {.async.} =
   let backup = s.backupSheets("import", job["sheet"].s)
   var ok = false
@@ -804,6 +808,17 @@ proc runImport(s: Server, job: JNode, args: seq[string], replace: bool) {.async.
       await sleepAsync(100)
     let code = p.peekExitCode()
     ok = code == 0 and job["result"].kind == jObj
+    if not stopped and code == ImporterOutOfMemory:
+      job["log"].elems.add S("The importer ran out of memory: it may use " & $s.cfg.importMemoryMb &
+        " MB (import_memory_mb in the server's config.json). To import a drawing this large, raise import_memory_mb " &
+        "and restart the server; keep it below the service's memory cap (MemoryMax in its systemd unit, 3G as " &
+        "installed by deploy/install-server-user.sh), or raise that too.")
+    elif not stopped and code > 128:
+      # libjxl (C++) aborts when an allocation or a thread fails under the limit (std::bad_alloc, std::system_error)
+      job["log"].elems.add S("The importer crashed (signal " & $(code - 128) & "). A large drawing does this when it " &
+        "reaches the importer's memory limit of " & $s.cfg.importMemoryMb & " MB (import_memory_mb in the server's " &
+        "config.json). If so, raise import_memory_mb and restart the server; keep it below the service's memory cap " &
+        "(MemoryMax in its systemd unit), or raise that too.")
   except CatchableError as e:
     job["log"].elems.add S("Importer crashed: " & e.msg)
   finally:

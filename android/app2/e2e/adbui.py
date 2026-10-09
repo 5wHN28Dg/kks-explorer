@@ -132,3 +132,15 @@ def scroll_to(text, exact=False, tries=8):
         sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.5)), '300')
         time.sleep(0.5)
     find(text, timeout=2, exact=exact)
+
+
+def debuggable(pkg):
+    """True if the installed package is debuggable (adb run-as works): the debug build is, the rehearsal and the
+    release are not. The package flag and run-as must agree, so a changed dumpsys format can't turn a debug build's
+    run-as checks into skips."""
+    flags = re.search(r'pkgFlags=\[([^\]]*)\]', sh('dumpsys', 'package', pkg))
+    assert flags, f'{pkg} is not installed'
+    flag = 'DEBUGGABLE' in flags[1].split()
+    runas = subprocess.run(ADB + ['shell', 'run-as', pkg, 'true'], capture_output=True).returncode == 0
+    assert flag == runas, f'{pkg}: dumpsys says debuggable={flag}, but run-as {"works" if runas else "fails"}'
+    return flag

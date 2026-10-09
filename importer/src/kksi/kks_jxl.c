@@ -4,6 +4,29 @@
 #include <jxl/thread_parallel_runner.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
+
+/* libjxl's allocations go through malloc as by default, but a failed one is noted, so that the caller can say the
+   encoder ran out of memory (the importer runs under an address-space limit) instead of just "encoding failed". */
+static atomic_int kks_jxl_oom;
+static void *kks_jxl_alloc(void *opaque, size_t size)
+{
+	(void)opaque;
+	void *p = malloc(size);
+	if (!p) atomic_store(&kks_jxl_oom, 1);
+	return p;
+}
+static void kks_jxl_free(void *opaque, void *address)
+{
+	(void)opaque;
+	free(address);
+}
+static const JxlMemoryManager kks_jxl_mm = {NULL, kks_jxl_alloc, kks_jxl_free};
+/* 1 when an allocation failed since the last call */
+int kks_jxl_out_of_memory(void)
+{
+	return atomic_exchange(&kks_jxl_oom, 0);
+}
 
 /* RGB (n=3) or RGBA (n=4), 8 bit, sRGB. distance 0 = lossless, else the Butteraugli distance (photos: 1.9, the
    user's choice 2026-09-27). Returns malloc'd bytes (*len), NULL on error. */
@@ -15,7 +38,8 @@ unsigned char *kks_jxl_encode(const unsigned char *pixels, int w, int h, int n, 
 
 unsigned char *kks_jxl_encode_d(const unsigned char *pixels, int w, int h, int n, int effort, float distance, size_t *len)
 {
-	JxlEncoder *enc = JxlEncoderCreate(NULL);
+	atomic_store(&kks_jxl_oom, 0);
+	JxlEncoder *enc = JxlEncoderCreate(&kks_jxl_mm);
 	unsigned char *out = NULL;
 	if (!enc) return NULL;
 	/* libjxl's own thread pool: the output does not depend on the thread count */
@@ -44,6 +68,10 @@ unsigned char *kks_jxl_encode_d(const unsigned char *pixels, int w, int h, int n
 	JxlEncoderCloseInput(enc);
 	size_t cap = 4096, used = 0;
 	out = malloc(cap);
+	if (!out) {
+		atomic_store(&kks_jxl_oom, 1);
+		goto fail;
+	}
 	for (;;) {
 		uint8_t *next = out + used;
 		size_t avail = cap - used;
@@ -52,7 +80,12 @@ unsigned char *kks_jxl_encode_d(const unsigned char *pixels, int w, int h, int n
 		if (st == JXL_ENC_SUCCESS) break;
 		if (st != JXL_ENC_NEED_MORE_OUTPUT) goto fail;
 		cap *= 2;
-		out = realloc(out, cap);
+		unsigned char *grown = realloc(out, cap);
+		if (!grown) {
+			atomic_store(&kks_jxl_oom, 1);
+			goto fail;
+		}
+		out = grown;
 	}
 	JxlEncoderDestroy(enc);
 	if (runner) JxlThreadParallelRunnerDestroy(runner);

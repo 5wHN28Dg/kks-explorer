@@ -17,6 +17,18 @@ type
 
 const Stun* = [("stun.cloudflare.com", 3478), ("stun.l.google.com", 19302)]
 
+const SocketBuffer* = 1 shl 20
+  ## bytes each socket asks for, received and sent: a stream's window (256 packets of 1.2 kB, ~300 kB) arrives in a
+  ## burst, and Windows' default receive buffer (64 kB) dropped most of it; Linux caps the request at
+  ## net.core.rmem_max (~208 kB by default)
+when defined(windows):
+  let SoRcvBuf = cint(0x1002)
+  let SoSndBuf = cint(0x1001)
+else:
+  from std/posix import nil
+  let SoRcvBuf = posix.SO_RCVBUF       # a variable (importc) on Linux CPUs other than amd64: not a const
+  let SoSndBuf = posix.SO_SNDBUF
+
 proc monoNow(): float = epochTime()
 
 proc recvLoop(u: Udp) {.async.} =
@@ -28,14 +40,19 @@ proc recvLoop(u: Udp) {.async.} =
       if u.closed: break
       await sleepAsync(20)
 
-proc newUdp*(): Udp =
-  ## a UDP socket on any free port (IPv4: STUN and the candidates are IPv4), receiving at once
+proc newUdp*(recvBuffer = SocketBuffer): Udp =
+  ## a UDP socket on any free port (IPv4: STUN and the candidates are IPv4), receiving at once. `recvBuffer`: the
+  ## receive buffer to ask for (tests shrink it to make a lossy link)
   let s = newAsyncSocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, buffered = false)
+  # best effort: a system that refuses keeps its default, and the stream recovers what that drops
+  try: setSockOptInt(s.getFd, SOL_SOCKET, SoRcvBuf, recvBuffer) except OSError: discard
+  try: setSockOptInt(s.getFd, SOL_SOCKET, SoSndBuf, SocketBuffer) except OSError: discard
   s.bindAddr(Port(0))
   result = Udp(sock: s, port: int(s.getLocalAddr()[1]))
   asyncCheck result.recvLoop()
 
 proc send*(u: Udp, host: string, port: int, data: string) {.async.} =
+  if u.closed: return                     # asyncnet asserts on a closed socket: a Defect, not caught below
   try: await u.sock.sendTo(host, Port(port), data)
   except CatchableError: discard          # unreachable candidates are normal while punching
 
@@ -148,6 +165,7 @@ proc rudpStream*(u: Udp, host: string, port: int, session: string, dead = 15.0):
       r.tick(monoNow())
       flush()
       if r.error.len > 0: poke()
+    poke()                              # a waiting read sees the stream stopped
   asyncCheck timers()
   var told = false
   proc fail(): ref kksnet.NetError =
@@ -162,9 +180,11 @@ proc rudpStream*(u: Udp, host: string, port: int, session: string, dead = 15.0):
       let got = r.read()
       if got.len > 0: return got
       if r.error.len > 0: raise fail()
-      if r.ended: return ""
+      if r.ended or stopped or u.closed: return ""
+      # woken by a packet, an error or the stream stopping: no timer per wait (withTimeout kept each one in the
+      # dispatcher for 200 ms, and a read here waits once per packet)
       wake = newFuture[void]("rudp")
-      discard await withTimeout(wake, 200)
+      await wake
   proc writeAll(data: string): Future[void] {.async.} =
     r.write(data, monoNow())
     flush()

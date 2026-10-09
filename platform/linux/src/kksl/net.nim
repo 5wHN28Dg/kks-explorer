@@ -1,7 +1,7 @@
 ## Sync connections on Linux: async TCP, TLS through buffers (tls.nim), the core's session state machine. One thread
 ## owns the node (decision 0030); everything here runs on the asyncdispatch loop.
 
-import std/[asyncdispatch, asyncnet, net, nativesockets, tables, times]
+import std/[asyncdispatch, asyncnet, monotimes, net, nativesockets, tables, times]
 import kks/[json, crypto, node, sync]
 when defined(windows): import kksw/tls   # Schannel (decision 0033), same API
 else: import tls
@@ -17,24 +17,57 @@ type NetError* = object of CatchableError
 
 proc nowMs*(): int64 = int64(epochTime() * 1000)
 
-type Stream* = ref object
-  ## A byte stream a sync session runs over: TCP on the same network, or a relay pipe (PROTOCOL-v2 §18).
-  write*: proc (data: string): Future[void] {.closure, gcsafe.}
-  read*: proc (): Future[string] {.closure, gcsafe.}   ## some bytes; "" = closed
-  close*: proc () {.closure, gcsafe.}
+type
+  Alarm = ref object
+    ## One per stream, firing when `deadline` passes during a read. withTimeout made a timer per read that stayed
+    ## in the dispatcher for Timeout (20 s) after the read: the direct stream gives a packet per read, so a sync over
+    ## it held some 20 s of reads' timers, about a tenth of the data it moved (2026-10-09).
+    deadline: MonoTime    ## monotonic: a clock change neither ends a healthy read nor stretches a stalled one
+    fired: Future[void]   ## a fresh one for each read; completed only while that read waits
+    waiting: bool         ## a read waits
+    watching: bool        ## the watcher runs (it stops at its first look with no read waiting)
+
+  Stream* = ref object
+    ## A byte stream a sync session runs over: TCP on the same network, or a relay pipe (PROTOCOL-v2 §18).
+    write*: proc (data: string): Future[void] {.closure, gcsafe.}
+    read*: proc (): Future[string] {.closure, gcsafe.}   ## some bytes; "" = closed
+    close*: proc () {.closure, gcsafe.}
+    alarm: Alarm
+
+const AlarmStep = 250   ## ms between the watcher's looks: how late a timeout may fire
 
 proc tcpStream*(sock: AsyncSocket): Stream =
   Stream(write: proc (data: string): Future[void] = sock.send(data),
          read: proc (): Future[string] = sock.recv(16384),
          close: proc () = sock.close())
 
+proc watch(a: Alarm) {.async.} =
+  ## one timer at a time per stream, whatever the number of reads
+  while a.waiting:
+    await sleepAsync(AlarmStep)
+    if a.waiting and getMonoTime() >= a.deadline and not a.fired.finished: a.fired.complete()
+  a.watching = false
+
 proc recvSome(st: Stream, deadline = 0'i64): Future[string] {.async.} =
   ## some bytes within Timeout, and before `deadline` (ms, 0 = none)
   if deadline > 0 and nowMs() >= deadline: raise newException(NetError, "the other side is not a device of this plant")
-  let wait = if deadline > 0: int(min(int64(Timeout), max(1'i64, deadline - nowMs()))) else: Timeout
+  let wait = if deadline > 0: min(int64(Timeout), max(1'i64, deadline - nowMs())) else: int64(Timeout)
   let fut = st.read()
-  if not await withTimeout(fut, wait):
-    raise newException(NetError, if deadline > 0 and nowMs() >= deadline: "the other side is not a device of this plant" else: "timed out")
+  if not fut.finished:
+    if st.alarm == nil: st.alarm = Alarm()
+    let a = st.alarm
+    a.deadline = getMonoTime() + initDuration(milliseconds = wait)
+    a.fired = newFuture[void]("kks.net.alarm")
+    a.waiting = true
+    if not a.watching:
+      a.watching = true
+      asyncCheck a.watch()
+    try:
+      await (fut or a.fired)
+    finally:
+      a.waiting = false
+    if not fut.finished:
+      raise newException(NetError, if deadline > 0 and nowMs() >= deadline: "the other side is not a device of this plant" else: "timed out")
   result = fut.read
   if result.len == 0: raise newException(NetError, "connection closed")
 

@@ -422,18 +422,21 @@ class Phone(unittest.TestCase):
             ui.type_into('Password', 'a long password')
             ui.tap('Join', exact=True)
             ui.find('Sample sheet', timeout=40)
-            # the colour function on the device
-            with open(os.path.join(REPO, 'tests', 'web', 'dark-vectors.json'), 'rb') as f:
-                subprocess.run(ui.ADB + ['shell', 'run-as', PKG, 'sh', '-c', '"cat > files/dark-vectors.json"'], input=f.read(), check=True)
-            subprocess.run(ui.ADB + ['shell', 'run-as', PKG, 'rm', '-f', 'files/dark-check.txt'])
-            ui.adb('shell', 'am', 'broadcast', '-a', 'kks.explorer.DEBUG_DARK', '-p', PKG)
-            check = ''
-            for _ in range(30):
-                check = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/dark-check.txt'], capture_output=True, text=True).stdout
-                if check:
-                    break
-                time.sleep(0.5)
-            self.assertTrue(check.startswith('ok '), check)
+            # the colour function on the device (its files are reached with run-as: debug builds only)
+            with self.subTest('DarkColor against the Nim vectors'):
+                if not ui.debuggable(PKG):
+                    self.skipTest('not a debuggable build (rehearsal/release): run-as cannot reach the app\'s files')
+                with open(os.path.join(REPO, 'tests', 'web', 'dark-vectors.json'), 'rb') as f:
+                    subprocess.run(ui.ADB + ['shell', 'run-as', PKG, 'sh', '-c', '"cat > files/dark-vectors.json"'], input=f.read(), check=True)
+                subprocess.run(ui.ADB + ['shell', 'run-as', PKG, 'rm', '-f', 'files/dark-check.txt'])
+                ui.adb('shell', 'am', 'broadcast', '-a', 'kks.explorer.DEBUG_DARK', '-p', PKG)
+                check = ''
+                for _ in range(30):
+                    check = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/dark-check.txt'], capture_output=True, text=True).stdout
+                    if check:
+                        break
+                    time.sleep(0.5)
+                self.assertTrue(check.startswith('ok '), check)
             # the sheet in light mode: which pixels are paper (white) and which are lines (dark grey/black)
             time.sleep(3)
             box = region()
@@ -663,8 +666,14 @@ class Phone(unittest.TestCase):
         ui.tap('Drawings', exact=True)
         ui.tap('Sync', exact=True)
         ui.find('removed from the plant by The Manager', timeout=30)
-        db = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/core/kks.db'], capture_output=True).stdout
-        self.assertLess(len(db), 64 * 1024, 'the plant data is still on the phone')
+        with self.subTest('the store is wiped'):
+            if not ui.debuggable(PKG):
+                self.skipTest('not a debuggable build (rehearsal/release): run-as cannot read the store')
+            # the store's size, 0 if the wipe removed it; anything but a number (run-as failed) fails, so an error
+            # message can't pass for a small store
+            size = ui.sh('run-as', PKG, 'sh', '-c', '"if [ -e files/core/kks.db ]; then stat -c %s files/core/kks.db; else echo 0; fi"').strip()
+            self.assertRegex(size, r'^\d+$', 'run-as could not read the store')
+            self.assertLess(int(size), 64 * 1024, 'the plant data is still on the phone')
 
 
     # ---------------------------------------------------------------- the user's requests of 2026-10-08
@@ -694,15 +703,18 @@ class Phone(unittest.TestCase):
                 for ch in t:
                     h = (31 * h + ord(ch)) & 0xFFFFFFFF
                 return h
-            names = ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
-            self.assertEqual(len([n for n in names if n.endswith('.px')]), 3, f'the queued photos: {names}')
-            self.assertEqual(len([n for n in names if n.endswith('.json')]), 3, f'the queued jobs: {names}')
-            for n in names:
-                raw = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/photo-queue/' + n], capture_output=True).stdout
-                self.assertTrue(raw.startswith(b'KSL1'), f'{n} is not sealed')
-                for k in codes:
-                    self.assertNotIn(k.encode(), raw, f'{n} holds a code in clear text')
-                    self.assertNotIn(bytes([jhash(k) & 0xff, 120, 180, 255]) * 8, raw, f'{n} holds raw pixels')
+            with self.subTest('the queued files are sealed'):
+                if not ui.debuggable(PKG):
+                    self.skipTest('not a debuggable build (rehearsal/release): run-as cannot reach the queue\'s files')
+                names = ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
+                self.assertEqual(len([n for n in names if n.endswith('.px')]), 3, f'the queued photos: {names}')
+                self.assertEqual(len([n for n in names if n.endswith('.json')]), 3, f'the queued jobs: {names}')
+                for n in names:
+                    raw = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/photo-queue/' + n], capture_output=True).stdout
+                    self.assertTrue(raw.startswith(b'KSL1'), f'{n} is not sealed')
+                    for k in codes:
+                        self.assertNotIn(k.encode(), raw, f'{n} holds a code in clear text')
+                        self.assertNotIn(bytes([jhash(k) & 0xff, 120, 180, 255]) * 8, raw, f'{n} holds raw pixels')
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
 
             def arrived():
