@@ -29,7 +29,7 @@ proc poly(p: var Pen, pts: openArray[(float, float)], close = false) =
 
 proc line(p: var Pen, x0, y0, x1, y1: float) = p.poly([(x0, y0), (x1, y1)])
 
-type Mark = enum mGate, mMotor, mBox, mCheck, mStem, mT, mHatch
+type Mark = enum mGate, mMotor, mBox, mCheck, mStem, mT, mHatch, mSplit
 
 proc valve(p: var Pen, cx, cy: float, marks: set[Mark] = {}, vertical = false, w = 18.0, h = 11.0) =
   ## a valve in the HRSG legend's drawing: a bowtie (one Z polyline, closed) and its marks; sizes in pt
@@ -37,7 +37,20 @@ proc valve(p: var Pen, cx, cy: float, marks: set[Mark] = {}, vertical = false, w
   let b = h / 2
   # (u along the flow, v across it) → page
   proc P(u, v: float): (float, float) = (if vertical: (cx + v, cy + u) else: (cx + u, cy + v))
-  p.poly([P(-a, -b), P(a, b), P(a, -b), P(-a, b)], close = true)
+  if mSplit in marks:
+    # the X drawn as loose pieces (AutoCAD plots split strokes): each diagonal halved at the centre, the sides on
+    # their own
+    for (u0, v0, u1, v1) in [(-a, -b, a, b), (-a, b, a, -b)]:
+      for i in 0 .. 1:
+        let f0 = float(i) / 2
+        let f1 = float(i + 1) / 2
+        let p0 = P(u0 + (u1 - u0) * f0, v0 + (v1 - v0) * f0)
+        let p1 = P(u0 + (u1 - u0) * f1, v0 + (v1 - v0) * f1)
+        p.line(p0[0], p0[1], p1[0], p1[1])
+    p.line(P(a, -b)[0], P(a, -b)[1], P(a, b)[0], P(a, b)[1])
+    p.line(P(-a, -b)[0], P(-a, -b)[1], P(-a, b)[0], P(-a, b)[1])
+  else:
+    p.poly([P(-a, -b), P(a, b), P(a, -b), P(-a, b)], close = true)
   if mBox in marks:
     p.line(P(-a, -b)[0], P(-a, -b)[1], P(a, -b)[0], P(a, -b)[1])
     p.line(P(-a, b)[0], P(-a, b)[1], P(a, b)[0], P(a, b)[1])
@@ -64,11 +77,11 @@ proc tagAt(id: string, x0, y0, x1, y1: float): ValveTag =
   ## a tag box given in pt, on a sheet at 2 px per pt
   ValveTag(id: id, bbox: [x0 * 2, y0 * 2, x1 * 2, y1 * 2])
 
-proc one(marks: set[Mark], vertical = false): JNode =
+proc one(marks: set[Mark], vertical = false, w = 18.0, h = 11.0): JNode =
   ## one valve at (100, 200) with its tag touching it, on a sheet with the legend: its "symbol" field
   var p = initPen()
   p.legendRow(300, 50)
-  p.valve(100, 200, marks, vertical)
+  p.valve(100, 200, marks, vertical, w, h)
   let t = if vertical: tagAt("t", 106, 190, 140, 210) else: tagAt("t", 85, 207, 115, 225)
   let sv = analyse(p.d, 2.0, @[t])
   check sv.hasLegend
@@ -93,6 +106,15 @@ suite "valve symbols":
   test "hatched = normally closed (nc)":
     let s = one({mHatch})
     check s != nil and s["type"].s == "globe valve" and s["nc"].b
+  test "an X drawn in loose pieces is not hatching (not normally closed)":
+    for vertical in [false, true]:
+      let s = one({mSplit}, vertical)
+      check s != nil and s["type"].s == "globe valve" and not s["nc"].b
+      let h = one({mSplit, mHatch}, vertical)
+      check h != nil and h["nc"].b
+    # a square body: the half-diagonals are short enough to pass the length test; their corners still keep them out
+    let q = one({mSplit}, false, 12, 12)
+    check q != nil and not q["nc"].b
   test "the symbol's box is in level-0 px":
     let s = one({})
     check s != nil

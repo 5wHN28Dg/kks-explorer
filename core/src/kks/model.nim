@@ -300,6 +300,8 @@ proc valveTypeOf*(m: Model, t: Tag): JNode =
                     ("label", newStr("confirmed")), ("line", newStr("Valve type: " & have & " (confirmed)")),
                     ("drawn_differs", newBool(drawn.len > 0 and drawn != have))])
   if drawn.len == 0 or k.len == 0: return nil
+  # the symbol belongs to the code the reader saw; a review that corrected it to a non-valve (component not AA) drops it
+  if not (t.kks.len == 12 and t.kks[7 .. 8] == "AA"): return nil
   var base = newArr()
   let cur = eq.get("custom")
   if cur != nil and cur.kind == jArr:

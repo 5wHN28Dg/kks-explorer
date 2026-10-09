@@ -90,6 +90,14 @@ suite "valve type: confirmed and corrected through the proposal flow":
     check tagView(m, "a:2")["valve_type"]["text"].s == "butterfly valve"
 
 suite "valve type: the proposal's edge cases":
+  test "a review that corrects the code to a non-valve drops the drawing's type (still shown when it stays a valve)":
+    let m = plant()
+    m.state = j("""{"equipment":{},"reviews":{
+      "a:1":{"status":"confirmed","kks":"11LAB70CP501","isa":"","suffix":""},
+      "a:3":{"status":"confirmed","kks":"11LAB70AA513","isa":"","suffix":""}}}""")
+    m.merge()
+    check tagView(m, "a:1")["valve_type"].isNull
+    check tagView(m, "a:3")["valve_type"]["text"].s == "globe valve, normally closed"
   test "an empty Valve type entry is replaced, not doubled; a full custom list offers no confirm":
     let m = plant()
     m.state = j("""{"equipment":{"11LAB70AA501":{"custom":[{"k":"Size","v":"DN50"},{"k":"Valve type","v":""}]}}}""")
