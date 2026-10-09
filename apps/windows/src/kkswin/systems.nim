@@ -3,6 +3,8 @@
 ## Automation and the keyboard come with it. Enter, a double-click or the button under the search field opens the
 ## selected code's tag like a search result does. Typing searches after a 200 ms pause. A sync or an approval rebuilds
 ## the tree (win.follow), keeping the open groups and the selection, but never while the focus is in the tree.
+## Coverage opens it filtered to one system (`only`, as GNOME's systemsPage): that system's rows in every block, opened,
+## until a search or "Show all systems".
 
 import std/[strutils, sets]
 import kks/[json, views]
@@ -65,7 +67,10 @@ proc codes(k: int): string = (if k == 1: "1 code" else: $k & " codes")
 type Target = object
   code, tag, sheet: string
 
+const OtherCodes* = "-"      ## openSystems(only = OtherCodes): just the codes that don't decode
+
 var sysWindow: HWND          ## the open window (one at a time)
+var sysFilter: proc (only: string)   ## the open window's: show just this system ("" = all)
 
 proc insert(tree: HWND, parent: HTREEITEM, text: string, param = 0): HTREEITEM =
   let ws = newWideCString(text)        # lives until the call returns; the tree copies the text
@@ -73,12 +78,17 @@ proc insert(tree: HWND, parent: HTREEITEM, text: string, param = 0): HTREEITEM =
                             item: TVITEMW(mask: TVIF_TEXT or TVIF_PARAM, pszText: toWideCString(ws), lParam: LPARAM(param)))
   cast[HTREEITEM](SendMessageW(tree, TVM_INSERTITEMW, 0, cast[LPARAM](addr tis)))
 
-proc openSystems*(w: Win) =
+proc openSystems*(w: Win, only = "") =
+  ## `only`: show just this system (a code like "LAB", or OtherCodes), opened, until the search is used
   if sysWindow != nil:
+    if only.len > 0 and sysFilter != nil: sysFilter(only)
     SetForegroundWindow(sysWindow)
     return
-  let (hw, p) = popup(w.hwnd, "Equipment by system", 600, 680, proc () = sysWindow = nil, escape = true)
+  let (hw, p) = popup(w.hwnd, "Equipment by system", 600, 680, proc () =
+    sysWindow = nil
+    sysFilter = nil, escape = true)
   sysWindow = hw
+  var only = only
   var targets: seq[Target]
   var groups: seq[(HTREEITEM, string)]     ## the last fill's group rows and their keys (block|system|…)
   var q, status, tree: HWND
@@ -87,13 +97,23 @@ proc openSystems*(w: Win) =
   proc fillTree(keep: bool)
   # typing searches once it pauses (each search rebuilds the whole tree: not on every key); what a search finds opens,
   # what was open before doesn't stay open
+  var allBtn: HWND
   q = p.field("Search codes, systems, descriptions", "", onChange = proc () =
+    if only.len > 0 and q.text.strip.len > 0:      # a search covers every system again
+      only = ""
+      EnableWindow(allBtn, 0)
     cancel(pending)
     pending = afterMs(200, proc () {.closure.} =
       pending = 0
       if IsWindow(tree) != 0: fillTree(false)))
   sendText(q, EM_SETCUEBANNER, 1, "e.g. LAB70, feed water, valve")
   status = p.dim("")
+  allBtn = p.buttons(("Show all systems", proc () {.closure.} =
+    only = ""
+    EnableWindow(allBtn, 0)
+    SetFocus(q)                 # the button turns off: the focus goes to the search field
+    fillTree(false)))[0]
+  EnableWindow(allBtn, BOOL(ord(only.len > 0)))
   proc open() =
     let it = cast[HTREEITEM](SendMessageW(tree, TVM_GETNEXTITEM, TVGN_CARET, 0))
     if it == nil: return
@@ -142,10 +162,28 @@ proc openSystems*(w: Win) =
     var select: HTREEITEM
     let query = q.text.strip
     let v = systemsView(w.m, query)
-    let total = n(v, "total")
-    # while searching every level opens, unless that would make too many rows at once
-    let all = query.len > 0 and total <= 300
-    status.setText(if query.len == 0: codes(total) & " on the drawings"
+    var total = n(v, "total")
+    var blocks = v["blocks"].elems
+    if only.len > 0:
+      # one system: keep its rows in every block (the other codes for OtherCodes)
+      total = 0
+      var kept: seq[JNode]
+      for b in blocks:
+        var sys: seq[JNode]
+        for sy in b["systems"].elems:
+          if s(sy, "sys") == only:
+            sys.add sy
+            total += n(sy, "count")
+        if sys.len > 0:
+          var b2 = newObj(@[("blk", newStr(s(b, "blk"))), ("blk_name", newStr(s(b, "blk_name"))), ("systems", newArr())])
+          b2["systems"].elems = sys
+          kept.add b2
+      blocks = kept
+      if only == OtherCodes: total = v["other"].elems.len
+    # while searching (or showing one system) every level opens, unless that would make too many rows at once
+    let all = (query.len > 0 or only.len > 0) and total <= 300
+    status.setText(if only.len > 0: codes(total) & " " & (if only == OtherCodes: "that don't decode" else: "in system " & only)
+                   elif query.len == 0: codes(total) & " on the drawings"
                    elif total == 0: "Nothing found"
                    else: codes(total) & " found" & (if all: "" else: " (open a system to see them)"))
     SendMessageW(tree, WM_SETREDRAW, 0, 0)
@@ -166,7 +204,7 @@ proc openSystems*(w: Win) =
       groups.add (result, key)
       if open or key in wasOpen: expand.add result
       if key == selKey: select = result
-    for b in v["blocks"].elems:
+    for b in blocks:
       let bn = s(b, "blk_name")
       let bk = s(b, "blk")
       # blocks always open: their systems are the first level to read
@@ -184,7 +222,7 @@ proc openSystems*(w: Win) =
                            subk & "|" & s(k, "comp"), all)
             items(ki, k["items"])
     let other = v["other"]
-    if other.elems.len > 0:
+    if other.elems.len > 0 and (only.len == 0 or only == OtherCodes):
       let oi = group(TVI_ROOT, "Other: codes that don't decode as KKS (" & $other.elems.len & ")", "other", all)
       items(oi, other)
     for h in expand: SendMessageW(tree, TVM_EXPAND, TVE_EXPAND, cast[LPARAM](h))
@@ -195,6 +233,11 @@ proc openSystems*(w: Win) =
     SendMessageW(tree, WM_SETREDRAW, 1, 0)
     InvalidateRect(tree, nil, 1)
 
+  sysFilter = proc (o: string) =
+    only = o
+    EnableWindow(allBtn, BOOL(ord(o.len > 0)))
+    if q.text.len > 0: q.setText("")        # (its change handler keeps `only`: the field is empty)
+    fillTree(false)
   fillTree(false)
   # a sync or an approval rebuilds the tree (new codes, photo coverage, current tag ids), never under the focus
   follower = w.follow(tree, proc () {.closure.} = fillTree(true))

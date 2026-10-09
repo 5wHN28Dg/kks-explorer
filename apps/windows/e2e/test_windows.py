@@ -329,18 +329,7 @@ class Windows(unittest.TestCase):
         times; the app is still there and answering. A smoke test: the app built before that fix also passed it on the
         VM (reading freed memory rarely crashes here); tests/test_tiles.nim is the test that fails without the fix"""
         b = self.boss
-        if 'other' not in [s['id'] for s in json.load(open(os.path.join(self.dir, 'plant-data', 'sheets.json')))]:
-            with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f: pdf = f.read()
-            self.assertTrue(b.req('POST', '/api/sheets/import?id=other&name=Other%20drawing', raw=pdf,
-                                  ctype='application/pdf').get('ok'))
-            for _ in range(300):
-                job = b.req('GET', '/api/sheets/job')['job']
-                if job['state'] != 'running': break
-                time.sleep(0.2)
-            self.assertEqual(job['state'], 'done', job['log'])
-            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'other', 'bbox': [400, 300, 520, 360],
-                                              'kks': '11LAB70AA601', 'isa': '', 'note': ''}})
-            self.assertEqual(r.get('status'), 'approved', r)
+        self.other_sheet()
         # a member's proposal for the other sheet's tag, for the Approvals card below
         if 'swmem' not in [u['username'] for u in b.req('GET', '/api/users').get('users', [])]:
             r = self.member('swmem', 'Switch Member').req('POST', '/api/submit', {
@@ -458,6 +447,115 @@ class Windows(unittest.TestCase):
         """script lines: find a code by the search and open its panel"""
         return ['click\tDrawings', 'set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
                 'click\tShow on the drawing']
+
+    def other_sheet(self):
+        """a second sheet, "Other drawing" (the sample PDF again, no tags of its own), with one tag marked by hand"""
+        b = self.boss
+        if 'other' not in [s['id'] for s in json.load(open(os.path.join(self.dir, 'plant-data', 'sheets.json')))]:
+            with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f: pdf = f.read()
+            self.assertTrue(b.req('POST', '/api/sheets/import?id=other&name=Other%20drawing', raw=pdf,
+                                  ctype='application/pdf').get('ok'))
+            for _ in range(300):
+                job = b.req('GET', '/api/sheets/job')['job']
+                if job['state'] != 'running': break
+                time.sleep(0.2)
+            self.assertEqual(job['state'], 'done', job['log'])
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'other', 'bbox': [400, 300, 520, 360],
+                                              'kks': '11LAB70AA601', 'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+
+    def test_coverage(self):
+        """Coverage (core coverageView): the totals, a row per sheet and per system with its photo bar's numbers in
+        words; a sync puts new numbers into the open window in place, even with the focus in its list; a sheet row opens
+        that sheet coloured by photos; a system row opens Equipment by system filtered to it, and Show all systems
+        undoes that"""
+        self.other_sheet()
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'other', 'bbox': [600, 300, 720, 360],
+                                                  'kks': '11LAB70AA602', 'isa': '', 'note': ''}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        def pct(a, b):       # core views.coveragePct: 100 only when all, 0 only when none
+            return '–' if b == 0 else '%d %%' % (0 if a <= 0 else 100 if a >= b else min(99, max(1, (200 * a + b) // (2 * b))))
+        def other_row():
+            """the "Other drawing" row as the window shows it now: every tag on it was marked by hand (checked)"""
+            st = self.boss.req('GET', '/api/state')
+            codes = sorted({t['kks'] + (t.get('suffix') or '') for t in st.get('added_tags', []) if t.get('sheet') == 'other' and t.get('kks')})
+            placed = sum(1 for k in codes if any(str((st['equipment'].get(k) or {}).get(f, '')).strip()
+                                                 for f in ('area', 'floor', 'elev', 'near', 'loc')))
+            ph = {'both': 0, 'equipment': 0, 'plate': 0, 'none': 0}
+            for k in codes:
+                caps = [p.get('caption') or '' for p in st.get('photos', []) if p['kks'] == k]
+                plate, equip = any(c.startswith('Tag plate') for c in caps), any(not c.startswith('Tag plate') for c in caps)
+                ph['both' if plate and equip else 'equipment' if equip else 'plate' if plate else 'none'] += 1
+            n = len(codes)
+            return ('Other drawing · %d code%s · %s of tags checked · %s placed · %d marked · photos: %d equipment and tag '
+                    'plate, %d equipment only, %d tag plate only, %d none') % (n, '' if n == 1 else 's', pct(n, n),
+                    pct(placed, n), n, ph['both'], ph['equipment'], ph['plate'], ph['none'])
+        self.join('covjoin.uia', sync_every=2000)
+        before = other_row()
+        self.check('cov0.uia', ['click\tCoverage…', 'wait\tCoverage\t20', 'wait\t~ on the drawings, in \t10',
+                                'wait\t~Checked by a person: \t5', 'wait\t~Known place: \t5', 'wait\tReadings to review: 0\t5',
+                                'wait\t~Missed tags marked: \t5', 'wait\t~photos: \t5',      # the totals' bar, named
+                                'wait\t%s\t10' % before, 'focus\t%s' % before])
+        # a place given on the server: the row shows it at the next sync, the focus still in the list
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA602',
+                                                  'changes': {'area': 'Test hall'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        after = other_row()
+        self.assertNotEqual(before, after)
+        self.check('cov1.uia', ['wait\t%s\t30' % after,
+                                # the sheet row: that sheet, coloured by photos
+                                'select\t%s' % after, 'click\tOpen the selected sheet coloured by photos',
+                                'wait\tOther drawing — Walkdown\t10', 'state\tColour tags by photos\ton',
+                                'wait\t~11LAB70AA602, no photos\t20',
+                                # a system row: Equipment by system with that system only
+                                'select\t~LAB · Feed water piping system · ',
+                                'click\tShow the selected system in Equipment by system', 'wait\tEquipment by system\t20',
+                                'wait\t~ in system LAB\t10', 'wait\t~11LAB70AA602 · \t10',
+                                'click\tShow all systems', 'gone\t~ in system LAB',
+                                'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system',
+                                'close\tOpen the selected sheet coloured by photos', 'gone\tCoverage'])
+        self.leave()
+
+    def test_links(self):
+        """links between drawings: connectors written into sheets.json (as the importer does) and published; each is a
+        circled hotspot on the drawing (a UI Automation button named with where it continues) and a row in "Connectors
+        on this sheet"; one target opens that sheet, none says so, several ask which"""
+        self.other_sheet()
+        fix = os.path.join(self.dir, 'links-fixture')
+        shutil.rmtree(fix, ignore_errors=True)
+        shutil.copytree(os.path.join(self.dir, 'plant-data'), fix)
+        sheets = json.load(open(os.path.join(fix, 'sheets.json')))
+        def link(label, x, y, sc):   # bbox in level-0 px, like the importer's
+            return {'label': label, 'bbox': [x * sc, y * sc, (x + 12) * sc, (y + 12) * sc], 'conf': 0.95}
+        for sh in sheets:
+            sc = sh.get('scale') or 2.0
+            if sh['id'] == 'sample':
+                sh['links'] = [link('C16', 100, 100, sc), link('D2', 200, 100, sc), link('A3', 300, 100, sc)]
+            elif sh['id'] == 'other':
+                sh['links'] = [link('C16', 150, 300, sc), link('A3', 250, 300, sc), link('A3', 350, 300, sc)]
+        with open(os.path.join(fix, 'sheets.json'), 'w') as f: json.dump(sheets, f)
+        r = subprocess.run([SERVER, 'publish-data', fix, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.join('linkjoin.uia')
+        none = "Connector D2, the other end isn't on any drawing in the app"
+        self.check('links0.uia', [
+            'wait\tSample sheet — Walkdown\t20',
+            # the drawing's connectors are buttons too
+            'wait\tConnector C16, continues on Other drawing\t20', 'wait\t%s\t5' % none,
+            'click\tConnectors on this sheet…', 'wait\tConnectors on this sheet\t10',
+            # none: said; one: that sheet
+            'select\t%s' % none, 'click\tGo where the selected connector continues',
+            "wait\t~Connector D2: the other end isn't on any drawing in the app\t10",
+            'select\tConnector C16, continues on Other drawing', 'click\tGo where the selected connector continues',
+            'wait\tOther drawing — Walkdown\t10', 'wait\t~Connector C16 on Other drawing\t10',
+            'close\tGo where the selected connector continues', 'gone\tConnectors on this sheet',
+            # on the other sheet, A3 is there twice: invoking one on the drawing asks where to go
+            'click\tFit the sheet (0)', 'wait\tConnector C16, continues on Sample sheet\t20',
+            'click\tConnector A3, continues on Sample sheet, elsewhere on this sheet',
+            'wait\tWhere does A3 continue?\t10', 'click\tSample sheet', 'gone\tWhere does A3 continue?',
+            'wait\tSample sheet — Walkdown\t10', 'wait\t~Connector A3 on Sample sheet\t10'])
+        self.leave()
 
     def test_photo_queue(self):
         """photos are compressed on a worker thread through a queue, one after another, and sent as each is ready, while

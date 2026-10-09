@@ -29,6 +29,7 @@ proc viewBegin(v: pointer, r, g, b: cfloat): cint {.importc: "kks_view_begin", c
 proc viewDrawBitmap(v: pointer, h: cint, x0, y0, x1, y1: cfloat, smooth: cint) {.importc: "kks_view_draw_bitmap", cdecl.}
 proc viewRect(v: pointer, x0, y0, x1, y1: cfloat, rgb: cuint, alpha: cfloat, fill: cint, width: cfloat, dashed: cint) {.importc: "kks_view_rect", cdecl.}
 proc viewEnd(v: pointer): cint {.importc: "kks_view_end", cdecl.}
+proc viewCircle(v: pointer, cx, cy, r: cfloat, rgb: cuint, alpha: cfloat, fill: cint, width: cfloat, dashed: cint) {.importc: "kks_view_circle", cdecl.}
 {.compile("kks_uia.cpp", "-std=c++17").}
 {.passL: "-luiautomationcore -loleaut32".}
 proc uiaNew(h: HWND, count, info, invoke: pointer, ud: pointer): pointer {.importc: "kks_uia_new", cdecl.}
@@ -41,6 +42,7 @@ type
   TagBox* = object
     id*, status*, code*: string
     photos*: string                ## both · equipment · plate · none (core model.photoCover)
+    name*: string                  ## a connector's name for screen readers ("Connector C16, continues on …")
     x0*, y0*, x1*, y1*: float      ## points
 
   Pixels = object
@@ -80,11 +82,15 @@ type
     chosen*: HashSet[string]    ## the selected tags (a distinct outline)
     onBox*: proc (x0, y0, x1, y1: float)   ## a box dragged in the select mode (points)
     onEscape*: proc ()          ## Escape in the select mode
+    links*: seq[TagBox]         ## off-page connectors (C16, D2 …): id = the label, box in points (links.nim)
+    linkSel*: int               ## the connector just arrived at (-1 none), drawn bold
+    onLink*: proc (i: int)      ## a connector clicked or invoked: index into links
     dragging: bool
     dragMoved: bool
     lastX, lastY: int
-    uia: pointer                ## the UI Automation provider (kks_uia.cpp): tags on screen as buttons
-    onScreen: seq[int]          ## indices into tags, reading order, at most 200 (what the provider exposes)
+    uia: pointer                ## the UI Automation provider (kks_uia.cpp): tags and connectors on screen as buttons
+    onScreen: seq[int]          ## indices into tags (a connector j: -(j + 1)), reading order, at most 200 (what the
+                                ## provider exposes)
 
 const
   Tile = 512
@@ -165,6 +171,8 @@ proc setSheet*(v: Viewer, id: string, flat: string, scale: float, nLevels: int) 
   v.levelAsked = newSeq[bool](nLevels)
   v.fitted = false
   v.selected = ""
+  v.links = @[]
+  v.linkSel = -1
   if nLevels > 0:
     v.levelAsked[nLevels - 1] = true
     let d = v.levelData(nLevels - 1)
@@ -269,19 +277,29 @@ proc reupload(v: Viewer) =
 proc screenRect(v: Viewer, t: TagBox): RECT =
   RECT(left: int32((t.x0 - v.ox) * v.z), top: int32((t.y0 - v.oy) * v.z), right: int32((t.x1 - v.ox) * v.z), bottom: int32((t.y1 - v.oy) * v.z))
 
+proc boxOf(v: Viewer, i: int): TagBox =
+  ## an onScreen entry's box: a tag, or a connector (negative)
+  if i >= 0: v.tags[i] else: v.links[-i - 1]
+
 proc updateOnScreen(v: Viewer) =
-  ## the tags inside the view in reading order (rows of about a tag's height, each left to right); the provider is
-  ## told when the set changes
+  ## the tags and connectors inside the view in reading order (rows of about a tag's height, each left to right); the
+  ## provider is told when the set changes. The select mode picks tags only: its connectors aren't buttons then
   let (cw, ch) = v.client
   var idx: seq[int]
   for i, t in v.tags:
     if t.status == "pending": continue
     let r = v.screenRect(t)
     if r.right > 0 and r.bottom > 0 and float(r.left) < cw and float(r.top) < ch: idx.add i
+  if not v.selecting:
+    for j, l in v.links:
+      let r = v.screenRect(l)
+      if r.right > 0 and r.bottom > 0 and float(r.left) < cw and float(r.top) < ch: idx.add(-j - 1)
   idx.sort(proc (a, b: int): int =
-    let ra = int(v.tags[a].y0 / 12)
-    let rb = int(v.tags[b].y0 / 12)
-    if ra != rb: cmp(ra, rb) else: cmp(v.tags[a].x0, v.tags[b].x0))
+    let ba = v.boxOf(a)
+    let bb = v.boxOf(b)
+    let ra = int(ba.y0 / 12)
+    let rb = int(bb.y0 / 12)
+    if ra != rb: cmp(ra, rb) else: cmp(ba.x0, bb.x0))
   if idx.len > 200: idx.setLen(200)
   if idx != v.onScreen:
     v.onScreen = idx
@@ -305,9 +323,11 @@ proc a11yCount(ud: pointer): cint {.cdecl.} = cint(cast[Viewer](ud).onScreen.len
 proc a11yInfo(ud: pointer, i: cint, name: ptr UncheckedArray[Utf16Char], cap: cint, r: ptr RECT): cint {.cdecl.} =
   let v = cast[Viewer](ud)
   if i < 0 or int(i) >= v.onScreen.len: return 0
-  let t = v.tags[v.onScreen[int(i)]]
-  let text = (if t.code.len > 0: t.code else: "Unread tag") & ", " & (if v.coverage: coverWords(t.photos) else: statusWords(t.status)) &
-             (if t.id == v.selected: ", selected" else: "") & (if t.id in v.chosen: ", in the selection" else: "")
+  let ki = v.onScreen[int(i)]
+  let t = v.boxOf(ki)
+  let text = if ki < 0: t.name
+             else: (if t.code.len > 0: t.code else: "Unread tag") & ", " & (if v.coverage: coverWords(t.photos) else: statusWords(t.status)) &
+                   (if t.id == v.selected: ", selected" else: "") & (if t.id in v.chosen: ", in the selection" else: "")
   let ws = newWideCString(text)
   var k = 0
   while k < int(cap) - 1 and k < ws.len:
@@ -419,6 +439,17 @@ proc paint(v: Viewer) =
         let o = 4 * dens
         viewRect(v.v, cfloat(r[0] - o), cfloat(r[1] - o), cfloat(r[2] + o), cfloat(r[3] + o), 0x000000, 0.9, 0, cfloat(4 * dens), 0)
         viewRect(v.v, cfloat(r[0] - o), cfloat(r[1] - o), cfloat(r[2] + o), cfloat(r[3] + o), 0xFFD900, 1, 0, cfloat(2 * dens), 0)
+    # 4. off-page connectors: violet dashed circles, unlike the tags' rectangles (the GNOME viewer's)
+    let lc = if v.dark: lighten(0x8C33D9) else: 0x8C33D9'u32
+    for i, l in v.links:
+      let cx = ((l.x0 + l.x1) / 2 - v.ox) * v.z
+      let cy = ((l.y0 + l.y1) / 2 - v.oy) * v.z
+      let rad = max(6.0 * dens, max(l.x1 - l.x0, l.y1 - l.y0) / 2 * v.z + 3 * dens)
+      if cx + rad < 0 or cy + rad < 0 or cx - rad > cw or cy - rad > ch: continue
+      let sel = i == v.linkSel
+      viewCircle(v.v, cfloat(cx), cfloat(cy), cfloat(rad), lc, (if sel: 0.3 else: 0.12), 1, 0, 0)
+      viewCircle(v.v, cfloat(cx), cfloat(cy), cfloat(rad), lc, 0.9, 0, cfloat((if sel: 3.5 else: 2.0) * dens),
+                 cint(ord(not sel)))
     if v.markOn:
       let m = v.mark
       viewRect(v.v, cfloat((m[0] - v.ox) * v.z), cfloat((m[1] - v.oy) * v.z), cfloat((m[2] - v.ox) * v.z),
@@ -472,6 +503,15 @@ proc hit(v: Viewer, x, y: int): string =
         best = a
         result = t.id
 
+proc hitLink(v: Viewer, x, y: int): int =
+  ## the connector under (x, y) in window px, -1 none (a little slack: they are small)
+  result = -1
+  let px = v.ox + float(x) / v.z
+  let py = v.oy + float(y) / v.z
+  let pad = 6 / v.z
+  for i, l in v.links:
+    if px >= l.x0 - pad and px <= l.x1 + pad and py >= l.y0 - pad and py <= l.y1 + pad: return i
+
 proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT
 
 proc viewProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
@@ -491,7 +531,11 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
   of WM_APP + 7:      # a screen reader invoked a tag (kks_uia.cpp)
     let i = int(w)
     if i < v.onScreen.len:
-      let id = v.tags[v.onScreen[i]].id
+      let k = v.onScreen[i]
+      if k < 0:                                # a connector: where its line continues (links.nim)
+        if v.onLink != nil and -k - 1 < v.links.len: v.onLink(-k - 1)
+        return 0
+      let id = v.tags[k].id
       if not v.selecting: v.selected = id     # the select mode: the app toggles it (chosen), the panel stays
       v.invalidate()
       if v.onTag != nil: v.onTag(id)
@@ -563,6 +607,8 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
       v.markOn = false
       let id = v.hit(sloword(l), shiword(l))
       if id.len > 0 and v.onTag != nil: v.onTag(id)
+    elif was and not v.dragMoved and (let li = v.hitLink(sloword(l), shiword(l)); li >= 0):
+      if v.onLink != nil: v.onLink(li)          # a connector before the tags under it (as GNOME)
     elif was and not v.dragMoved:
       let id = v.hit(sloword(l), shiword(l))
       if id.len > 0:
@@ -604,7 +650,7 @@ proc newViewer*(parent: HWND, hinst: HINSTANCE): Viewer =
                          hCursor: LoadCursorW(nil, IDC_ARROW), lpszClassName: clsName)
     discard RegisterClassExW(addr wc)
     viewClassDone = true
-  result = Viewer(z: 1)
+  result = Viewer(z: 1, linkSel: -1)
   result.hwnd = CreateWindowExW(0, newWideCString("KKSDrawing"), newWideCString("Drawing"),
                                 WS_CHILD or WS_VISIBLE or WS_TABSTOP, 0, 0, 10, 10, parent, nil, hinst, nil)
   result.v = viewNew(result.hwnd)
