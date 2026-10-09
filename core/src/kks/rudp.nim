@@ -123,13 +123,18 @@ proc fastRetransmit(r: Rudp, now: float) =
   var keys = toSeq(r.unacked.keys)
   keys.sort(system.cmp, Descending)
   var later = 0
+  var holes: seq[uint32]
   for s in keys:
     if r.unacked[s].sacked: inc later
     elif later >= 3 and r.unacked[s].retries == 0 and r.unacked[s].at >= 0 and
          now - r.unacked[s].at > (if r.haveRtt: r.srtt else: 0.1):
-      r.lost(s)
-      inc r.unacked[s].retries
-      r.sendData(s, now)
+      holes.add s
+  # lowest first, at most a window: the lowest holds up everything after it, and the end of a burst is what a full
+  # receive buffer drops
+  for k in countdown(holes.high, max(0, holes.len - max(1, int(r.cwnd)))):
+    r.lost(holes[k])
+    inc r.unacked[holes[k]].retries
+    r.sendData(holes[k], now)
 
 proc onAck(r: Rudp, nxt, mask: uint32, now: float) =
   var newly = 0
@@ -192,10 +197,13 @@ proc tick*(r: Rudp, now: float, closed = false) =
   r.fastRetransmit(now)
   var keys = toSeq(r.unacked.keys)
   keys.sort()
-  for i, s in keys:
-    if i > int(r.cwnd): break
+  var n = 0
+  for s in keys:
+    if n > int(r.cwnd): break
     let rec = r.unacked[s]
-    if not rec.sacked and rec.at >= 0 and now - rec.at > min(4.0, r.rto * float(1 shl min(rec.retries, 4))):
+    if rec.sacked: continue               # not counted: holes past many SACKed packets were never timed out
+    inc n
+    if rec.at >= 0 and now - rec.at > min(4.0, r.rto * float(1 shl min(rec.retries, 4))):
       r.lost(s)
       inc r.unacked[s].retries
       r.sendData(s, now)

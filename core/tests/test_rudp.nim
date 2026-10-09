@@ -152,3 +152,21 @@ suite "rudp (PROTOCOL-v2 §18)":
     for d in b.takeOut(): a.feed(d, now + 0.191)
     check "unacked=0 " in a.debugState
     check a.rto <= max(rto0, 0.2) + 1e-9
+
+
+  test "lost packets are resent lowest first (2026-10-09)":
+    # the lowest holds up everything after it, and a full receive buffer drops the end of a burst: sent highest
+    # first, it was the one most likely lost again, and then waited for its timeout
+    let a = newRudp("ABCDEFGH", 0.0)
+    let b = newRudp("ABCDEFGH", 0.0)
+    a.write("x".repeat(8 * Mss), 0.0)
+    let sent = a.takeOut()
+    check sent.len == 8
+    for k in [1, 2, 3, 5, 6, 7]: b.feed(sent[k], 0.001)          # 0 and 4 lost
+    for d in b.takeOut(): a.feed(d, 0.002)
+    discard a.takeOut()
+    a.tick(0.03)
+    var seqs: seq[string]
+    for d in a.takeOut():
+      if d[0] == char(Data): seqs.add d[HeadLen ..< HeadLen + 4]
+    check seqs == @["\0\0\0\0", "\0\0\0\4"]
