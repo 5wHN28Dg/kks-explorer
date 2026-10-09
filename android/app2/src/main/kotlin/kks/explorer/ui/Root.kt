@@ -206,6 +206,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     val linkBoxes = remember(links) { links.map(::linkBox) }
     var connectorsOpen by remember { mutableStateOf(false) }
     var ask by remember { mutableStateOf<Follow.Ask?>(null) }
+    // the connector arrived at stays bold only on the sheet it was followed to, until another sheet is opened
+    LaunchedEffect(ui.sheet) { if (ui.arrived?.first != ui.sheet) ui.arrived = null }
     LaunchedEffect(linkBoxes, ui.arrived, view) {
         val v = view ?: return@LaunchedEffect
         v.links = linkBoxes

@@ -108,6 +108,16 @@ class WebLinks(unittest.TestCase):
             self.assertEqual(page.locator('#layer .conn.sel').count(), 1)
             self.assertEqual(page.get_attribute('#layer .conn.sel', 'data-label'), 'C16')
             self.assertEqual(page.get_attribute(conn % 'C16', 'aria-label'), 'Connector C16, continues on Sheet A')
+            # only on the sheet it was followed to: another sheet and back, no longer bold
+            page.select_option('#sheetSel', 'c')
+            page.wait_for_function("() => cur.id === 'c'")
+            page.select_option('#sheetSel', 'b')
+            page.wait_for_function("() => cur.id === 'b' && document.querySelector('#layer .conn')")
+            self.assertEqual(page.locator('#layer .conn.sel').count(), 0)
+            page.click(conn % 'C16')                                     # back to a's C16, then to b's again
+            page.wait_for_function("() => cur.id === 'a' && document.querySelector('#layer .conn.sel')")
+            page.click(conn % 'C16')
+            page.wait_for_function("() => cur.id === 'b' && document.querySelector('#layer .conn.sel')")
             # centred on it (the viewer is 1200 wide less the panel's room; the box is 900-930 px on the sheet)
             mid = page.evaluate("(() => { const r = document.querySelector('#layer .conn.sel').getBoundingClientRect(), v = document.getElementById('viewer').getBoundingClientRect(); return [r.left + r.width / 2 - v.left, v.width] })()")
             self.assertAlmostEqual(mid[0], (mid[1] - 430) / 2, delta=3)

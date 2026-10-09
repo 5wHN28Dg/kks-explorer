@@ -202,8 +202,10 @@ class SheetView(ctx: Context) : View(ctx) {
         override fun onDoubleTap(e: MotionEvent): Boolean { zoomAt(2f, e.x, e.y); return true }
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
             // a connector opens where its line continues; not while selecting (a tap picks tags only)
-            if (!selecting) hitLink(e.x, e.y).takeIf { it >= 0 }?.let { onLink?.invoke(it); return true }
             val px = ox + e.x / z; val py = oy + e.y / z; val pad = 8f / z
+            // (a tap right on a tag stays the tag's: the connectors' slack must not take it)
+            if (!selecting && tags.none { it.status != "pending" && px >= it.x0 && px <= it.x1 && py >= it.y0 && py <= it.y1 })
+                hitLink(e.x, e.y).takeIf { it >= 0 }?.let { onLink?.invoke(it); return true }
             val hit = tags.filter { it.status != "pending" && px >= it.x0 - pad && px <= it.x1 + pad && py >= it.y0 - pad && py <= it.y1 + pad }
                 .minByOrNull { (it.x1 - it.x0) * (it.y1 - it.y0) }
             if (hit != null) { if (selecting) onToggle?.invoke(hit.id) else { selected = hit.id; onTag?.invoke(hit.id) } }
@@ -286,7 +288,7 @@ class SheetView(ctx: Context) : View(ctx) {
             links.indices.filter { i -> shown(screenRect(links[i])) }.take(50).map { LINK0 + it }
 
         fun at(x: Float, y: Float): Int {
-            if (!selecting) hitLink(x, y).takeIf { it >= 0 }?.let { return LINK0 + it }
+            if (!selecting && !marking) hitLink(x, y).takeIf { it >= 0 }?.let { return LINK0 + it }
             val px = ox + x / z; val py = oy + y / z
             return tags.indices.filter { val t = tags[it]; px in t.x0..t.x1 && py in t.y0..t.y1 }
                 .minByOrNull { (tags[it].x1 - tags[it].x0) * (tags[it].y1 - tags[it].y0) } ?: -1
@@ -337,11 +339,11 @@ class SheetView(ctx: Context) : View(ctx) {
             val loc = IntArray(2); getLocationOnScreen(loc)
             info.setBoundsInScreen(Rect(r).apply { offset(loc[0], loc[1]) })
             info.isVisibleToUser = !r.isEmpty
-            info.isEnabled = !selecting
-            info.isClickable = !selecting
+            info.isEnabled = !selecting && !marking
+            info.isClickable = !selecting && !marking
             info.isFocusable = true
             info.isAccessibilityFocused = focused == id
-            if (!selecting) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
+            if (!selecting && !marking) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
             info.addAction(if (focused == id) AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_ACCESSIBILITY_FOCUS
                            else AccessibilityNodeInfo.AccessibilityAction.ACTION_ACCESSIBILITY_FOCUS)
             return info
@@ -361,7 +363,7 @@ class SheetView(ctx: Context) : View(ctx) {
                         focused = -1; invalidate(); send(id, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED); return true
                     }
                     AccessibilityNodeInfo.ACTION_CLICK -> {
-                        if (selecting) return false
+                        if (selecting || marking) return false
                         onLink?.invoke(id - LINK0); send(id, AccessibilityEvent.TYPE_VIEW_CLICKED); return true
                     }
                 }

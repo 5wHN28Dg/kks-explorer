@@ -301,7 +301,7 @@ private fun ValveSection(vt: JSONObject, rev: Int, snack: SnackbarHostState) {
                 busy = true
                 val p = JSONObject(confirm.getJSONObject("payload").toString())
                 for (x in p.getJSONObject("changes").getJSONArray("custom").objects()) if (x.str("k") == VALVE_TYPE) x.put("v", v)
-                val (ok, m) = submit(confirm.str("kind"), p, "$k valve type: $v")
+                val (ok, m) = submit(confirm.str("kind"), p)     // no note: the approver sees the change itself
                 if (ok) correcting = false else busy = false
                 scope.launch { snack.showSnackbar(m) }
             }

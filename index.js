@@ -187,7 +187,7 @@ async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return;
 
 // ---------- viewer ----------
 function openSheet(id,then){
-  cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
+  cur=SHEETS.find(s=>s.id===id); linkSel=null; $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
   const img=$('#sheetimg'); let first=true;
   img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
   const s=cur, g=dark.gen;
@@ -1011,6 +1011,8 @@ function goToLink(label,t){
   if(innerWidth<=720) $('#linksDrawer').classList.remove('open');   // full width there: the drawing must show
   const go=()=>{ const sc=pxScale(cur); linkSel={sheet:t.sheet,x0:t.x0,y0:t.y0};
     centerOn([t.x0*sc,t.y0*sc,t.x1*sc,t.y1*sc]); drawTags();
+    // the list was rebuilt for the new sheet: keyboard focus goes back into it, not to the page
+    if($('#linksDrawer').classList.contains('open')&&!$('#linksDrawer').contains(document.activeElement)) $('#linksBody .connrow, #linksBody')?.focus();
     toast('Connector '+label+' on '+(t.sheet_name||t.sheet)) };
   if(cur?.id!==t.sheet){ closePanel(); openSheet(t.sheet,go) } else go();
 }

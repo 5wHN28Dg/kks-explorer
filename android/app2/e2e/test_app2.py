@@ -812,6 +812,7 @@ class Phone(unittest.TestCase):
             subs = [x for x in self.boss.req('GET', '/api/submissions?status=open')['submissions'] if x['by'] == 'vera' and x['kind'] == 'equipment']
             self.assertEqual(len(subs), 1, subs)
             self.assertEqual(subs[0]['payload']['changes']['custom'], [{'k': 'Valve type', 'v': 'globe valve'}])
+            self.assertFalse(subs[0].get('note'), 'a note to the approver nobody wrote')
         finally:
             for x in self.boss.req('GET', '/api/submissions')['submissions']:
                 if x['by'] == 'vera':
