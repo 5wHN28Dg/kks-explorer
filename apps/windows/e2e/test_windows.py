@@ -201,6 +201,8 @@ class Windows(unittest.TestCase):
         self.check('multi0.uia', [
             'toggle\tSelect tags', 'state\tSelect tags\ton', 'wait\t0 selected\t10',
             # a box from 11LAC20AA101 over the unread tag next to it: the code is added, the unread one refused
+            # the panel opened beside the drawing: the whole sheet again, so the unread tag is in view too
+            'click\tFit the sheet (0)', 'wait\t~Unread tag, \t20',
             'wait\t~11LAC20AA101, \t20', 'boxdrag\tDrawing\t~11LAC20AA101, \t2.3\t1.1',
             'wait\t1 selected\t10', "wait\t~Tags without a code can't be selected: review them first\t10",
             'wait\t~, in the selection\t10'] +

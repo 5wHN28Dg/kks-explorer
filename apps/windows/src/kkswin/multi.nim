@@ -136,9 +136,9 @@ proc clientPrefix(): string =
   result = "wm" & $(getTime().toUnix) & "x"
   for _ in 0 ..< 10: result.add "0123456789abcdef"[rand(15)]
 
-proc sendMany(w: Win, kind: string, payload: JNode, note: string): bool =
-  ## one submit-many for the selected codes; says how it went and leaves the mode
-  let codes = w.picked
+proc sendMany(w: Win, codes: seq[string], kind: string, payload: JNode, note: string): bool =
+  ## one submit-many for these codes (the selection when the photo or form was opened: what its title said); says how
+  ## it went and leaves the mode
   if codes.len == 0:
     w.toast("Nothing selected")
     return false
@@ -185,8 +185,9 @@ proc photoForAll*(w: Win) =
   if w.picked.len == 0:
     w.toast("Select tags first")
     return
+  let codes = w.picked     # the editor is a window of its own: the selection may change while it is open
   w.takePhoto(proc (dataUrl, caption, note: string) =
-    discard w.sendMany("photo", newObj(@[("dataUrl", newStr(dataUrl)), ("caption", newStr(caption))]), note))
+    discard w.sendMany(codes, "photo", newObj(@[("dataUrl", newStr(dataUrl)), ("caption", newStr(caption))]), note))
 
 proc placeForAll*(w: Win) =
   if w.picked.len == 0:
@@ -195,7 +196,8 @@ proc placeForAll*(w: Win) =
   var hw: HWND
   let (h, p) = popup(w.hwnd, "Place for all", 460, 520, escape = true)
   hw = h
-  p.title(countText(w.picked.len))
+  let codes = w.picked     # the form is a window of its own: it sends for what its title says
+  p.title(countText(codes.len))
   p.dim("Only the fields you fill are sent; the others stay as they are for each code.")
   var entries: seq[(string, string, HWND)]
   for (f, title, noun) in PlaceFields:
@@ -204,7 +206,6 @@ proc placeForAll*(w: Win) =
   p.buttons(("Send", proc () =
     var changes = newObj()
     var lines: seq[string]
-    let codes = w.picked
     for (f, noun, e) in entries:
       let v = e.text.strip
       if v.len == 0: continue
@@ -222,7 +223,7 @@ proc placeForAll*(w: Win) =
       w.toast("Fill at least one field")
       return
     if lines.len > 0 and not ask(hw, "Replace values?", lines.join("\n")): return
-    if w.sendMany("equipment", newObj(@[("changes", changes)]), if note != nil: note.text else: ""): DestroyWindow(hw)),
+    if w.sendMany(codes, "equipment", newObj(@[("changes", changes)]), if note != nil: note.text else: ""): DestroyWindow(hw)),
     ("Cancel", proc () = DestroyWindow(hw)))
   p.layout()
   ShowWindow(hw, SW_SHOW)
@@ -234,7 +235,8 @@ proc noteForAll*(w: Win) =
   var hw: HWND
   let (h, p) = popup(w.hwnd, "Note for all", 460, 360, escape = true)
   hw = h
-  p.title(countText(w.picked.len))
+  let codes = w.picked
+  p.title(countText(codes.len))
   p.dim("Added under each code's own notes; nothing already there is removed.")
   let e = p.field("Note", "")
   let note = if not w.isAdmin: p.field("Note for the approver (optional)", "") else: nil
@@ -243,7 +245,7 @@ proc noteForAll*(w: Win) =
     if v.len == 0:
       w.toast("Write the note first")
       return
-    if w.sendMany("equipment", newObj(@[("append", newObj(@[("notes", newStr(v))]))]), if note != nil: note.text else: ""):
+    if w.sendMany(codes, "equipment", newObj(@[("append", newObj(@[("notes", newStr(v))]))]), if note != nil: note.text else: ""):
       DestroyWindow(hw)),
     ("Cancel", proc () = DestroyWindow(hw)))
   p.layout()
@@ -261,6 +263,6 @@ proc pickPanel*(w: Win, p: Page) =
   p.buttons(("Note for all…", proc () = w.noteForAll()))
   p.buttons(("Done", proc () = w.stopPicking()))
   if w.picked.len > 0:
-    p.title("Selected codes")
+    p.title("In the selection")
     for k in w.picked: p.label(k)
   p.layout()

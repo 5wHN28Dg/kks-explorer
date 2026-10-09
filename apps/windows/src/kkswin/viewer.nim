@@ -209,6 +209,12 @@ proc poll*(v: Viewer) =
     else:
       let g = int(k div 100)
       let lvl = int(k mod 100)
+      if g == v.gen and lvl < v.levels.len and p.w == 0:
+        for k in lvl ..< v.stale.len:     # this mode's level failed: the old mode's stay no longer than it would
+          if v.stale[k] > 0:
+            viewBitmapFree(v.v, v.stale[k])
+            v.stale[k] = 0
+        any = true
       if g == v.gen and lvl < v.levels.len and p.w > 0:
         v.levels[lvl] = p
         if v.levelBmp[lvl] > 0: viewBitmapFree(v.v, v.levelBmp[lvl])
