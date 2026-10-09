@@ -297,6 +297,8 @@ suite "the direct stream":
     GC_fullCollect()
     result.live = getOccupiedMem() - live0
     result.heap = getTotalMem() - heap0
+    DbStore(srv.store).close()           # Windows can't delete the folder of an open database (the next run's removeDir)
+    DbStore(dev.store).close()
     echo "  ", nBlobs, " MB of blobs directly in ", result.seconds, " s: the Nim heap grew by ",
          result.heap div (1024 * 1024), " MB, its live bytes by ", result.live div 1024, " kB"
 
