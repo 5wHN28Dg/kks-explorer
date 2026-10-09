@@ -11,6 +11,13 @@
 //   select <name>           select a list item (SelectionItem), e.g. before a button that opens the selection
 //   value <name> <text>     wait (15 s) until the field with this name holds a value containing text
 //   gone <name>             wait until no element has this name
+//   toggle <name>           flip a check box (Toggle)
+//   state <name> on|off     wait (15 s) until the check box with this name is on / off
+//   shade <name> dark|light wait (20 s) until the middle half of the element, as drawn (PrintWindow), is dark paper
+//                           with light lines (median grey < 40, some light pixels) or white paper with dark lines
+//                           (median > 200, some dark pixels): dark drawings
+//   boxdrag <window> <element> <fw> <fh>  a left-button drag in <window> from just above-left of <element> to its
+//                           top-left plus fw × its width, fh × its height (a box around it and its neighbours)
 //   sleep <ms>
 //   dump                    log every element (type, name)
 // Exits 0 when every line passed, 1 at the first failure (logged).
@@ -23,6 +30,8 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
+#include <cstdint>
 
 static IUIAutomation *ua;
 static FILE *logf;
@@ -90,6 +99,48 @@ static std::string type_name(CONTROLTYPEID t) {
 }
 
 static DWORD pid_of(const std::wstring &exe);
+
+// the element as drawn, the middle half of it: (median grey, light pixels, dark pixels, pixels); false if not captured
+static bool shade_of(IUIAutomationElement *e, int &median, int &light, int &dark, int &n) {
+    UIA_HWND hw = 0;
+    e->get_CurrentNativeWindowHandle(&hw);
+    if (!hw) return false;
+    HWND root = GetAncestor((HWND)hw, GA_ROOT);
+    RECT rr, er;
+    GetWindowRect(root, &rr);
+    GetWindowRect((HWND)hw, &er);
+    int W = rr.right - rr.left, H = rr.bottom - rr.top;
+    if (W <= 0 || H <= 0) return false;
+    HDC sdc = GetDC(nullptr);
+    HDC dc = CreateCompatibleDC(sdc);
+    BITMAPINFO bi = {};
+    bi.bmiHeader.biSize = sizeof bi.bmiHeader; bi.bmiHeader.biWidth = W; bi.bmiHeader.biHeight = -H;
+    bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
+    void *bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(sdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    HGDIOBJ old = SelectObject(dc, bmp);
+    bool ok = PrintWindow(root, dc, 2 /* PW_RENDERFULLCONTENT: Direct2D content too */) != 0;
+    if (ok) {
+        int x0 = er.left - rr.left, y0 = er.top - rr.top, w = er.right - er.left, h = er.bottom - er.top;
+        std::vector<int> greys;
+        light = dark = 0;
+        for (int y = y0 + h / 4; y < y0 + 3 * h / 4; y++)
+            for (int x = x0 + w / 4; x < x0 + 3 * w / 4; x++) {
+                if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                const uint8_t *p = (const uint8_t *)bits + ((size_t)y * W + x) * 4;
+                int b = p[0], g = p[1], r = p[2];
+                int mx = std::max(r, std::max(g, b)), mn = std::min(r, std::min(g, b));
+                greys.push_back((r + g + b) / 3);
+                if (mn > 170 && mx - mn < 30) light++;
+                if (mx < 90) dark++;
+            }
+        n = (int)greys.size();
+        if (n == 0) ok = false;
+        else { std::nth_element(greys.begin(), greys.begin() + n / 2, greys.end()); median = greys[n / 2]; }
+    }
+    SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
+    return ok;
+}
 
 // only/only2: the control types that may match (0 = any); select and enter take list and tree items
 static IUIAutomationElement *find(DWORD &pid, const std::string &spec, bool dump = false, CONTROLTYPEID only = 0, CONTROLTYPEID only2 = 0) {
@@ -165,7 +216,8 @@ int wmain(int argc, wchar_t **argv) {
         }
         int timeout = (cmd == "wait" && f.size() > 2) ? std::stoi(f[2]) * 1000 : 15000;
         CONTROLTYPEID only = (cmd == "set" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
-                             (cmd == "enter" || cmd == "select") ? UIA_ListItemControlTypeId : 0;
+                             (cmd == "enter" || cmd == "select") ? UIA_ListItemControlTypeId :
+                             (cmd == "toggle" || cmd == "state") ? UIA_CheckBoxControlTypeId : 0;
         CONTROLTYPEID only2 = (cmd == "enter" || cmd == "select") ? UIA_TreeItemControlTypeId : 0;
         IUIAutomationElement *e = wait_for(pid, arg, timeout, only, only2);
         if (!e) { say("ERROR: not found: " + arg + " (line " + std::to_string(lineNo) + ")"); find(pid, "", true); return 1; }
@@ -189,7 +241,65 @@ int wmain(int argc, wchar_t **argv) {
             if (!ok) { say("ERROR: " + arg + " does not hold " + (f.size() > 2 ? f[2] : "")); return 1; }
             continue;
         }
-        if (cmd == "click") {
+        if (cmd == "state") {
+            bool want = f.size() > 2 && f[2] == "on", ok = false;
+            for (int t = 0; t < 15000 && !ok; t += 300) {
+                IUIAutomationElement *x = find(pid, arg, false, UIA_CheckBoxControlTypeId);
+                if (x) {
+                    IUIAutomationTogglePattern *tp = nullptr;
+                    if (SUCCEEDED(x->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&tp)) && tp) {
+                        ToggleState st;
+                        if (SUCCEEDED(tp->get_CurrentToggleState(&st))) ok = (st == ToggleState_On) == want;
+                        tp->Release();
+                    }
+                    x->Release();
+                }
+                if (!ok) Sleep(300);
+            }
+            e->Release();
+            if (!ok) { say("ERROR: " + arg + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
+            continue;
+        }
+        if (cmd == "shade") {
+            bool wantDark = f.size() > 2 && f[2] == "dark", ok = false;
+            int med = -1, light = 0, dark = 0, n = 0;
+            for (int t = 0; t < 20000 && !ok; t += 500) {
+                IUIAutomationElement *x = find(pid, arg);
+                if (x) {
+                    if (shade_of(x, med, light, dark, n))
+                        ok = wantDark ? (med < 40 && light > 0) : (med > 200 && dark > 0);
+                    x->Release();
+                }
+                if (!ok) Sleep(500);
+            }
+            say("  median grey " + std::to_string(med) + ", light " + std::to_string(light) + ", dark " + std::to_string(dark) +
+                " of " + std::to_string(n));
+            e->Release();
+            if (!ok) { say("ERROR: " + arg + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
+            continue;
+        }
+        if (cmd == "toggle") {
+            IUIAutomationTogglePattern *tp = nullptr;
+            if (FAILED(e->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&tp)) || !tp) {
+                say("ERROR: not a check box: " + arg); return 1;
+            }
+            tp->Toggle(); tp->Release();
+        } else if (cmd == "boxdrag") {
+            // the box: from just above-left of the element (in its window's client coordinates) to fw × fh of its size
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            IUIAutomationElement *t = f.size() > 4 ? wait_for(pid, f[2], 15000) : nullptr;
+            if (!hw || !t) { say("ERROR: can't box-drag " + arg + " around " + (f.size() > 2 ? f[2] : "")); return 1; }
+            RECT r; t->get_CurrentBoundingRectangle(&r); t->Release();
+            POINT a{r.left - 4, r.top - 4}, b{r.left + (LONG)((r.right - r.left) * std::stod(f[3])), r.top + (LONG)((r.bottom - r.top) * std::stod(f[4]))};
+            ScreenToClient((HWND)hw, &a); ScreenToClient((HWND)hw, &b);
+            PostMessageW((HWND)hw, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(a.x, a.y));
+            for (int s = 1; s <= 8; s++) {
+                PostMessageW((HWND)hw, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(a.x + (b.x - a.x) * s / 8, a.y + (b.y - a.y) * s / 8));
+                Sleep(20);
+            }
+            PostMessageW((HWND)hw, WM_LBUTTONUP, 0, MAKELPARAM(b.x, b.y));
+        } else if (cmd == "click") {
             IUIAutomationInvokePattern *ip = nullptr;
             if (FAILED(e->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&ip)) || !ip) {
                 say("ERROR: not clickable: " + arg); return 1;

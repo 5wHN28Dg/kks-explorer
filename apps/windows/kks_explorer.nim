@@ -6,7 +6,7 @@ import kks/[json, api, pathstore, views]
 import kks/model
 import appstate
 import kksl/dbstore
-import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn]
+import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi]
 
 const
   TimerPump = 1'u
@@ -35,7 +35,7 @@ proc layoutMain() =
     MoveWindow(setupP.hwnd, 0, 0, int32(W), int32(H), 1)
     return
   let side = int(px(SideW))
-  let panelW = if w.selected.len > 0: int(px(PanelW)) else: 0
+  let panelW = if w.selected.len > 0 or w.picking: int(px(PanelW)) else: 0
   let st = int(px(StatusH))
   var x = 0
   for b in w.tabButtons:
@@ -62,10 +62,12 @@ proc doShowSheet(id: string) =
     if okL: d else: ""
   w.v.setSheet(id, flatBytes, si.scale, si.levels)
   w.v.tags = w.tagBoxes(id)
+  w.syncChosen()
   w.applyHighlights()
   SetWindowTextW(w.hwnd, newWideCString(si.name & " — Walkdown"))
 
 proc doSelectTag(id: string, center: bool) =
+  if w.picking and id.len > 0: w.stopPicking()     # a tag opened from elsewhere (Equipment by system) ends the mode
   w.selected = id
   w.v.selected = id
   if id.len == 0:
@@ -101,12 +103,15 @@ proc refresh() =
   w.loadModel()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
+    w.syncChosen()
     w.applyHighlights()
   elif w.m.sheets.len > 0: doShowSheet(w.m.sheets[0].id)
   let f = GetFocus()
   let typing = f != nil and GetParent(f) == w.side.hwnd and w.tab == "drawings"
   if not typing and (w.tab != "manage" or liveManage()): w.rebuildSide()
-  if w.selected.len > 0:
+  if w.picking:
+    if GetParent(GetFocus()) != w.panel.hwnd: w.pickPanel(w.panel)
+  elif w.selected.len > 0:
     let (ok, t) = w.m.tagById(w.selected)
     if ok and GetParent(GetFocus()) != w.panel.hwnd: w.buildPanel(t)
   w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
@@ -213,7 +218,8 @@ proc showMain() =
   trace("viewer")
   w.panel = newPage(w.hwnd)
   w.v.onTag = proc (id: string) =
-    if w.linkProc.len > 0:
+    if w.picking: w.togglePick(id)       # the select mode (multi.nim)
+    elif w.linkProc.len > 0:
       let (ok, t) = w.m.tagById(id)
       if ok and t.full.len > 0:
         discard w.submit("link", newObj(@[("proc", newStr(w.linkProc)), ("step", newInt(w.linkStep)), ("kks", newStr(t.full)),
@@ -222,6 +228,9 @@ proc showMain() =
       else: w.toast("This tag has no code yet: check it first")
     else: doSelectTag(id, false)
   w.v.onMark = markDialog
+  w.v.onBox = proc (x0, y0, x1, y1: float) = w.addBox(x0, y0, x1, y1)
+  w.v.onEscape = proc () = w.stopPicking()
+  w.v.setDark(w.a.store.getMeta("dark_drawings") == "1")    # per device (this device's store), like sync_peers
   w.loadModel()
   trace("model: " & $w.m.sheets.len & " sheets, " & $w.m.tags.len & " tags")
   w.rebuildSide()
@@ -267,8 +276,10 @@ proc main() =
       w.side.layout()
     else: w.buildSide(proc (p: Page) = w.manageTab(p))
   w.rebuildPanel = proc () =
-    let (ok, t) = w.m.tagById(w.selected)
-    if ok: w.buildPanel(t)
+    if w.picking: w.pickPanel(w.panel)
+    else:
+      let (ok, t) = w.m.tagById(w.selected)
+      if ok: w.buildPanel(t)
   w.relayout = layoutMain
   if a.joined: showMain()
   else:
