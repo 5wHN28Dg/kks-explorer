@@ -647,10 +647,14 @@ proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote:
     row["note"] = S(toText(conflictsOut(conflicts)))
     let sid = a.n.store.putSub(row)
     return O(("id", I(sid)), ("status", S("conflict")), ("conflicts", conflictsOut(conflicts)))
-  let eid = a.write(me, kind, body, now)
-  if requestNote.len > 0: discard a.write(me, "comment", O(("entry", S(eid)), ("text", S(requestNote))), now)
-  row["entry"] = S(eid)
-  let sid = a.n.store.putSub(row)
+  # the entry, its comment and the row with the client_id: one transaction (a crash between them would leave an entry
+  # the resend doesn't find, and the change would be written twice)
+  var sid: int64
+  a.n.atomic(proc () =
+    let eid = a.write(me, kind, body, now)
+    if requestNote.len > 0: discard a.write(me, "comment", O(("entry", S(eid)), ("text", S(requestNote))), now)
+    row["entry"] = S(eid)
+    sid = a.n.store.putSub(row))
   if me.isAdmin: O(("id", I(sid)), ("status", S("approved")))
   elif conflicts.len > 0: O(("id", I(sid)), ("status", S("conflict")), ("conflicts", conflictsOut(conflicts)))
   else: O(("id", I(sid)), ("status", S("pending")))
@@ -845,31 +849,36 @@ proc act*(a: Api, me: Actor, sid: int64, action: string, d: JNode, now: int64): 
   if conflicts.len > 0 and not truthy(d.get("force")):
     fail(409, "conflict", O(("conflicts", conflictsOut(conflicts))))
   var note = if conflicts.len > 0: "forced over conflicting change" else: ""
-  var written: string
-  if eid.len > 0:
-    written = a.write(me, "approve", O(("entry", S(eid)), ("edit", edit)), now)
-  else:
-    written = a.write(me, kind, a.rebase(kind, body), now)
-    var x = copy(r)
-    x["entry"] = S(written)
-    x["held"] = newNull()
-    x["status"] = newNull()
-    discard a.n.store.putSub(x)
-    if not (r["person"].isStr and r["person"].s == me.person):
-      let (u, _) = a.names(r["person"].s)
-      note = (if note.len > 0: note & "; " else: "") & "proposed by " & (if u.len > 0: u else: "?")
-  if note.len > 0: a.n.store.putNote(written, note)
+  if eid.len == 0 and not (r["person"].isStr and r["person"].s == me.person):
+    let (u, _) = a.names(r["person"].s)
+    note = (if note.len > 0: note & "; " else: "") & "proposed by " & (if u.len > 0: u else: "?")
+  # one transaction: a held change's entry and its row (which then points to it, so a second approve finds it decided),
+  # the History note, and a pick's rejections of the other photos
   var rejected = 0
-  if action == "pick" and kind == "photo":
-    # choose this photo, discard the other open ones of the same kind for the same code: an equipment photo never
-    # competes with a tag plate photo (caption "Tag plate…", PROTOCOL-v2 §9)
-    let mine = photoKind(body["caption"].s)
-    for o in a.n.store.subs():
-      if o["id"].i == sid or o["kind"].s != "photo": continue
-      let ob = a.kindBody(o)[1]
-      if ob["kks"].s == body["kks"].s and photoKind(ob["caption"].s) == mine and a.subStatus(o).status in Open:
-        a.rejectSub(me, o, PickNote & " (#" & $sid & ")", now)
-        inc rejected
+  a.n.atomic(proc () =
+    var written: string
+    if eid.len > 0:
+      written = a.write(me, "approve", O(("entry", S(eid)), ("edit", edit)), now)
+    else:
+      written = a.write(me, kind, a.rebase(kind, body), now)
+      var x = copy(r)
+      x["entry"] = S(written)
+      x["held"] = newNull()
+      x["status"] = newNull()
+      discard a.n.store.putSub(x)
+    if note.len > 0: a.n.store.putNote(written, note)
+    if action == "pick" and kind == "photo":
+      # choose this photo, discard the other open ones of the same kind for the same code: an equipment photo never
+      # competes with a tag plate photo (caption "Tag plate…", PROTOCOL-v2 §9). In the same transaction: a pick
+      # that stopped half-way couldn't be repeated (the photo is approved already), and the others would stay open.
+      # (The statuses read here are the ones before this pick: its own entries are not replayed yet.)
+      let mine = photoKind(body["caption"].s)
+      for o in a.n.store.subs():
+        if o["id"].i == sid or o["kind"].s != "photo": continue
+        let ob = a.kindBody(o)[1]
+        if ob["kks"].s == body["kks"].s and photoKind(ob["caption"].s) == mine and a.subStatus(o).status in Open:
+          a.rejectSub(me, o, PickNote & " (#" & $sid & ")", now)
+          inc rejected)
   O(("ok", B(true)), ("rejected", I(rejected)))
 
 # ---------------------------------------------------------------- History, revert, restore
@@ -972,7 +981,8 @@ proc putBack(a: Api, me: Actor, targets: seq[(string, JNode, JNode)], note: stri
       elif kind == "review" and a.managerOwned("review", key.s): owned = true
       if owned: fail(403, toText(key) & ": set or approved by the manager; only the manager can change it back.")
     todo.add((kind, body))
-  for (kind, body) in todo: a.n.store.putNote(a.write(me, kind, body, now), note)
+  a.n.atomic(proc () =      # every entry with its note, all or none
+    for (kind, body) in todo: a.n.store.putNote(a.write(me, kind, body, now), note))
   todo.len
 
 proc revert*(a: Api, me: Actor, ref0: JNode, force: bool, now: int64): int =
