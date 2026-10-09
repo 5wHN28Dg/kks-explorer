@@ -61,6 +61,7 @@ class WebMulti(unittest.TestCase):
         self.log = open(os.path.join(self.dir, 'server.log'), 'w+')
         self.server = subprocess.Popen([SERVER, 'serve', '--config', self.cfg], cwd=self.dir, stdout=self.log,
                                        stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(self.stop)   # runs even when setUp fails below (tearDown doesn't: it left servers running)
         setup = None
         for _ in range(100):
             self.log.flush(); self.log.seek(0); out = self.log.read()
@@ -72,7 +73,7 @@ class WebMulti(unittest.TestCase):
         self.base = 'http://127.0.0.1:%d' % self.port
         self.boss = Client(self.base)
         assert self.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                    'full_name': 'The Manager'}).get('ok')
+                                                    'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         d = os.path.join(self.dir, 'fixture')
         os.makedirs(os.path.join(d, 'sheets'))
         for name, obj in (('sheets.json', SHEETS), ('tags.json', TAGS)):
@@ -87,7 +88,7 @@ class WebMulti(unittest.TestCase):
         with open(self.photo, 'wb') as f: f.write(png(160, 120, b'\x30\x80\xc0'))
         os.makedirs(SHOTS, exist_ok=True)
 
-    def tearDown(self):
+    def stop(self):
         self.server.terminate()
         self.server.wait(5)
         self.log.close()
@@ -205,6 +206,20 @@ class WebMulti(unittest.TestCase):
             self.assertEqual(st['11LAB70AA501']['notes'], 'old note\nchecked on the walkdown')
             self.assertEqual(st['12LBA10AA101']['notes'], 'checked on the walkdown')
             # Photo for all: the mark-up editor, JPEG XL in the browser, one file for both codes
+            btn.click()
+            hs('a:4').click()
+            hs('a:6').click()
+            # a photo needs each code's floor: 11LAB71AP001 has none, so Photo for all says so and opens nothing
+            page.evaluate("document.getElementById('toast').textContent = ''")
+            page.click('#pickPhoto')
+            toast("A photo needs each code's floor. No floor yet: 11LAB71AP001.")
+            self.assertEqual(page.locator('dialog[open]').count(), 0)
+            page.click('#pickPlace')
+            dlg = page.locator('dialog[open]')
+            dlg.get_by_label('Floor').fill('2')
+            dlg.locator('[data-send]').click()   # AA503's floor 5 is replaced: the second press sends
+            dlg.locator('[data-send]').click()
+            toast('Sent for 2 codes')
             btn.click()
             hs('a:4').click()
             hs('a:6').click()

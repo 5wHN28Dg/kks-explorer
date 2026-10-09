@@ -19,6 +19,7 @@ type Win* = ref object
   split*, sheetList*, searchEntry*, resultList*, sheetTitle*, panelSplit*, panelBox*, markBtn*, status*: W
   sideNav*, banner*: W
   coverBtn*: W                 ## the drawing's "Colour tags by photos" toggle
+  queueBar*, queueLabel*: W    ## the photo queue's status (photos.nim), under the drawing
   picking*: bool               ## "Select tags" mode: one photo, place or note for several codes (multi.nim)
   picked*: seq[string]         ## the selected codes, in the order they were picked
   pickBar*, pickCount*, pickBtn*: W
@@ -53,6 +54,7 @@ proc loadModel*(w: Win) =
   m.baseTags = parseTags(parseStrict(w.fileOr("tags.json", "[]"), 4096))
   m.procs = parseStrict(w.fileOr("procedures.json", "[]"), 4096)
   m.locations = buildLocations(parseStrict(w.fileOr("locations.json", "{}"), 4096))
+  m.descriptions = loadDescriptions(w.fileOr("descriptions.json", ""), proc (msg: string) = stderr.writeLine msg)
   m.kksTables = parseStrict(w.fileOr("kks.json", "{}"), 4096)
   try: m.state = w.a.call("GET", "/api/state")
   except ApiError: m.state = newObj()

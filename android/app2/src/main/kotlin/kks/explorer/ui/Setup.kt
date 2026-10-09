@@ -117,20 +117,33 @@ private fun JoinProgress(join: Sync.Join, needCode: Boolean, onJoined: () -> Uni
     if (!done) OutlinedButton(onClick = { cancelled = true; onGiveUp() }) { Text("Stop asking") }
 }
 
-@Composable
-private fun NameFields(username: MutableState<String>, fullName: MutableState<String>) {
-    OutlinedTextField(username.value, { username.value = it }, label = { Text("Your username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(fullName.value, { fullName.value = it }, label = { Text("Your full name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+/** who joins: username, full name and position (job title). A new member needs all three (the user, 2026-10-08:
+ *  "Require the position field for new users"; the core refuses a new person without a position). */
+class Names {
+    val username = mutableStateOf("")
+    val fullName = mutableStateOf("")
+    val position = mutableStateOf("")
+    fun ok() = username.value.trim().length >= 2 && fullName.value.trim().isNotEmpty() && position.value.trim().isNotEmpty()
+    val user get() = username.value.trim().lowercase()
+    val full get() = fullName.value.trim()
+    val pos get() = position.value.trim()
 }
 
-private fun namesOk(u: String, f: String) = u.trim().length >= 2 && f.trim().isNotEmpty()
+const val NAMES_MISSING = "Fill in a username (2+ characters), your full name and your position (job title)."
+
+@Composable
+private fun NameFields(n: Names) {
+    OutlinedTextField(n.username.value, { n.username.value = it }, label = { Text("Your username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(n.fullName.value, { n.fullName.value = it }, label = { Text("Your full name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(n.position.value, { n.position.value = it }, label = { Text("Your position (job title)") }, singleLine = true,
+        modifier = Modifier.fillMaxWidth(), supportingText = { Text("Required, e.g. I&C technician") })
+}
 
 @Composable
 private fun CodeJoin(onJoined: () -> Unit) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
-    val username = remember { mutableStateOf("") }
-    val fullName = remember { mutableStateOf("") }
+    val names = remember { Names() }
     var join by remember { mutableStateOf<Sync.Join?>(null) }
     var msg by remember { mutableStateOf("") }
     val scan = rememberLauncherForActivityResult(ScanQr.Contract()) { r -> if (r != null) text = r }
@@ -140,15 +153,15 @@ private fun CodeJoin(onJoined: () -> Unit) {
     if (j != null) { JoinProgress(j, needCode = false, onJoined = onJoined, onGiveUp = { join = null }); return }
     OutlinedButton(onClick = { scan.launch(Unit) }) { Text("Scan the QR code") }
     OutlinedTextField(text, { text = it }, label = { Text("Invite text") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-    NameFields(username, fullName)
+    NameFields(names)
     Button(onClick = {
         val inv = Sync.parseInvite(text)
         when {
             inv == null -> msg = "That is not an invite. Copy the whole text the admin's device shows."
-            !namesOk(username.value, fullName.value) -> msg = "Fill in a username (2+ characters) and your full name."
+            !names.ok() -> msg = NAMES_MISSING
             else -> scope.launch {
                 msg = ""
-                join = withContext(Dispatchers.IO) { Sync.inviteJoin(inv, username.value.trim().lowercase(), fullName.value.trim()) }
+                join = withContext(Dispatchers.IO) { Sync.inviteJoin(inv, names.user, names.full, names.pos) }
             }
         }
     }) { Text("Join with this code") }
@@ -158,8 +171,7 @@ private fun CodeJoin(onJoined: () -> Unit) {
 @Composable
 private fun NearbyJoin(onJoined: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val username = remember { mutableStateOf("") }
-    val fullName = remember { mutableStateOf("") }
+    val names = remember { Names() }
     var found by remember { mutableStateOf(listOf<Discovery.Found>()) }
     var join by remember { mutableStateOf<Sync.Join?>(null) }
     var msg by remember { mutableStateOf("") }
@@ -168,12 +180,12 @@ private fun NearbyJoin(onJoined: () -> Unit) {
     Dim("Admins' devices nearby. You and the admin compare a 6-digit code.")
     val j = join
     if (j != null) { JoinProgress(j, needCode = true, onJoined = onJoined, onGiveUp = { join = null }); return }
-    NameFields(username, fullName)
+    NameFields(names)
     if (found.isEmpty()) Dim("No admin's device found yet. The admin's device must be on the same Wi-Fi with Walkdown open.")
     for (f in found) ListItem(headlineContent = { Text("Ask ${f.label}") }, supportingContent = { Text("${f.plant} · ${f.host}") },
         modifier = Modifier.fillMaxWidth().clickable {
-            if (!namesOk(username.value, fullName.value)) { msg = "Fill in a username (2+ characters) and your full name."; return@clickable }
-            scope.launch { msg = ""; join = withContext(Dispatchers.IO) { Sync.lobbyJoin(f, username.value.trim().lowercase(), fullName.value.trim()) } }
+            if (!names.ok()) { msg = NAMES_MISSING; return@clickable }
+            scope.launch { msg = ""; join = withContext(Dispatchers.IO) { Sync.lobbyJoin(f, names.user, names.full, names.pos) } }
         })
     if (msg.isNotEmpty()) Text(msg, color = MaterialTheme.colorScheme.error)
 }
@@ -194,13 +206,12 @@ private fun FileJoin(onJoined: () -> Unit) {
             if (err.isEmpty()) onJoined() else msg = err
         }
     }
-    val username = remember { mutableStateOf("") }
-    val fullName = remember { mutableStateOf("") }
+    val names = remember { Names() }
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             msg = withContext(Dispatchers.IO) {
-                val req = call("POST", "/native/join-request", org.json.JSONObject().put("username", username.value.trim().lowercase()).put("full_name", fullName.value.trim())).json
+                val req = call("POST", "/native/join-request", org.json.JSONObject().put("username", names.user).put("full_name", names.full).put("position", names.pos)).json
                 ctx.contentResolver.openOutputStream(uri)?.use { it.write(req.toString().toByteArray()) }
                 "Saved. Send it to an admin; they open it under Manage → Devices and send you a bundle back."
             }
@@ -208,10 +219,10 @@ private fun FileJoin(onJoined: () -> Unit) {
     }
     Text("Join with a file", style = MaterialTheme.typography.titleMedium)
     Dim("1. Make a join request and send it to an admin (it is signed by this phone's key).")
-    NameFields(username, fullName)
+    NameFields(names)
     OutlinedButton(onClick = {
-        if (!namesOk(username.value, fullName.value)) msg = "Fill in a username (2+ characters) and your full name."
-        else save.launch("join-${username.value.trim().lowercase()}.kksjoin")
+        if (!names.ok()) msg = NAMES_MISSING
+        else { msg = ""; save.launch("join-${names.user}.kksjoin") }
     }) { Text("Save a join request…") }
     Dim("2. Open the bundle the admin saved for you. It holds the plant's data unencrypted: get it directly from the admin.")
     Button(onClick = { open.launch(arrayOf("*/*")) }) { Text("Open a bundle…") }

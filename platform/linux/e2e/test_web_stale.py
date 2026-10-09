@@ -91,7 +91,9 @@ class Stale(unittest.TestCase):
                     return rs.every(r => { const w = r.active || r.waiting || r.installing;
                                            return !w || new URL(w.scriptURL).pathname === '/sw.js' });
                 }""")
-                until(page, "async () => (await caches.keys()).every(k => k === 'kks-shell-v11' || k === 'kks-data-v2')")
+                # the cache names sw.js uses now (read from it: a version bump there must not break this test)
+                names = re.search(r"const SHELL = '([^']+)', DATA = '([^']+)'", open(os.path.join(REPO, 'sw.js')).read()).groups()
+                until(page, "async () => (await caches.keys()).every(k => k === '%s' || k === '%s')" % names)
             browser.close()
             return sw
 
@@ -103,7 +105,7 @@ class Stale(unittest.TestCase):
         with sync_playwright() as p:
             ctx = p.request.new_context(base_url=self.base, extra_http_headers={'Origin': self.base})
             r = ctx.post('/api/setup', data={'token': self.setup, 'username': 'boss', 'password': 'a long password',
-                                             'full_name': 'The Manager'})
+                                             'full_name': 'The Manager', 'position': 'Plant manager'})
             self.assertTrue(r.ok, r.text())
             r = ctx.post('/api/logout', data={})
             self.assertTrue(r.ok)
@@ -153,7 +155,7 @@ class Upgrade(unittest.TestCase):
                 browser = p[name].launch()
                 ctx = browser.new_context()
                 r = ctx.request.post(base + '/api/setup', headers={'Origin': base}, data={
-                    'token': setup, 'username': 'boss', 'password': 'a long password', 'full_name': 'The Manager'})
+                    'token': setup, 'username': 'boss', 'password': 'a long password', 'full_name': 'The Manager', 'position': 'Plant manager'})
                 self.assertTrue(r.ok, r.text())
                 r = ctx.request.post(base + '/api/submit', headers={'Origin': base}, data={'kind': 'photo', 'payload': {
                     'kks': '11LAB70AA501', 'caption': 'x', 'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(POLY).decode()}})

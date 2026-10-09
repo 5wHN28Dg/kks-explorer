@@ -172,7 +172,7 @@ dependency decisions, for native code and for what runs in a browser engine alik
   - Rebuild `libkks.so` (`sh android/nim/build.sh`) after any core change, and commit it.
   - A memory-capped build: `-PkksNativeJobs=3` (at most 3 native compile/link jobs; a clean build then fits in
     6 GiB) and `--no-daemon --max-workers=2`. Without it Ninja runs one job per core and was OOM-killed at 6 GiB.
-  - Emulator: AVD Pixel_9_Pro_XL, `JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64`. Start it in its own capped scope
+  - Emulator: AVD Pixel_9_Pro_XL, `JAVA_HOME=/usr/lib/jvm/temurin-25-jdk-amd64`. Start it in its own capped scope
     with guest rendering:
 
     ```

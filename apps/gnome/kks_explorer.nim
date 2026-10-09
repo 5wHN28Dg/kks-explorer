@@ -6,7 +6,7 @@ import kks/[json, api]
 import kks/model
 import kksl/dbstore
 import appstate
-import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, coverage]
+import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, coverage, photos]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
@@ -291,6 +291,13 @@ proc mainScreen(w: Win): W =
   let contentView = toolbarView(contentHeader, w.panelSplit)
   adw_toolbar_view_add_bottom_bar(contentView, w.pickBar())
   adw_toolbar_view_add_top_bar(contentView, w.banner)
+  w.queueBar = hbox(8)
+  margins(w.queueBar, 6)
+  w.queueBar.add adw_spinner_new()
+  w.queueLabel = label("", "dim-label")
+  w.queueBar.add w.queueLabel
+  gtk_widget_set_visible(w.queueBar, 0)
+  adw_toolbar_view_add_bottom_bar(contentView, w.queueBar)
   let content = page(contentView, "Drawing")
   w.split = adw_navigation_split_view_new()
   adw_navigation_split_view_set_sidebar(w.split, sidebar)
@@ -335,6 +342,8 @@ proc setupScreen(w: Win): W =
   let plant = entryRow("Plant name", "")
   let u2 = entryRow("Your username", "")
   let fullName = entryRow("Your full name", "")
+  let position = entryRow("Your position (job title)", "")
+  gtk_widget_set_tooltip_text(position, "Required: every member needs one, e.g. Maintenance manager")
   let create = button("Create the plant", "suggested-action")
   gtk_widget_set_halign(create, GTK_ALIGN_END)
   gtk_widget_set_margin_top(create, 8)
@@ -342,14 +351,15 @@ proc setupScreen(w: Win): W =
     let pn = text(plant).strip
     let un = text(u2).strip.toLowerAscii
     let fn = text(fullName).strip
-    if pn.len == 0 or un.len < 2 or fn.len == 0:
-      w.toast("Fill in the plant name, a username (2+ characters) and your full name.")
+    let ps = text(position).strip
+    if pn.len == 0 or un.len < 2 or fn.len == 0 or ps.len == 0:
+      w.toast("Fill in the plant name, a username (2+ characters), your full name and your position (job title).")
       return
     try:
-      w.a.createPlant(pn, un, fn, newNull())
+      w.a.createPlant(pn, un, fn, newStr(ps))
       w.showMain()
     except CatchableError as e: w.toast(e.msg))
-  for r in [plant, u2, fullName]: adw_preferences_group_add(g2, r)
+  for r in [plant, u2, fullName, position]: adw_preferences_group_add(g2, r)
   adw_preferences_group_add(g2, create)
   # a bundle file from an admin
   let g3 = group("", "An admin can hand you a bundle file (Manage → Devices → Save a bundle).")
@@ -409,6 +419,24 @@ proc activate(w: Win, app: W) =
         w.reloadQueued = false
         w.refresh()
         false)
+  var closing = false
+  w.window.onCloseRequestStop(proc (): bool =
+    # photos still in the queue are lost when the app closes: ask first
+    let n = queuedCount()
+    if n == 0 or closing: return false
+    let d = adw_alert_dialog_new((if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared").cstring,
+                                 "Closing now loses them. Wait until they are sent (a moment), or close anyway.")
+    adw_alert_dialog_add_response(d, "wait", "Wait")
+    adw_alert_dialog_add_response(d, "close", "Close anyway")
+    adw_alert_dialog_set_response_appearance(d, "close", ADW_RESPONSE_DESTRUCTIVE)
+    adw_alert_dialog_set_default_response(d, "wait")
+    adw_alert_dialog_set_close_response(d, "wait")
+    d.onResponse(proc (id: string) =
+      if id == "close":
+        closing = true
+        gtk_window_close(w.window))
+    present(d, w.window)
+    true)
   gtk_window_present(w.window)
   if getEnv("KKS_DEBUG_DIALOG").len > 0:      # accessibility check: a dialog over whatever screen is up
     timeout(3000, proc (): bool =

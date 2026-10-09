@@ -42,7 +42,7 @@ import org.json.JSONObject
 
 /** R10–R14 (admin.html, the GNOME app's Manage): approvals, proposals, history, people, devices, account */
 @Composable
-fun Manage(snack: SnackbarHostState) {
+fun Manage(snack: SnackbarHostState, ui: Ui? = null) {
     var page by remember { mutableStateOf("") }
     BackHandler(enabled = page.isNotEmpty()) { page = "" }
     val rev = Changes.rev
@@ -55,13 +55,14 @@ fun Manage(snack: SnackbarHostState) {
         }
         Box(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             when (page) {
-                "" -> Column {
+                "" -> Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text("Manage", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 12.dp))
                     val pages = buildList {
                         if (admin) add(Triple("approvals", "Approvals", "Proposals waiting for a decision"))
                         add(Triple("mine", "My proposals", "What you proposed, and photos to vote on"))
                         if (admin) { add(Triple("history", "History", "Every change, with revert and restore")); add(Triple("people", "People", "Accounts and roles")) }
                         add(Triple("devices", "Devices", "Your devices" + if (admin) ", all devices, joining" else ""))
+                        add(Triple("leaderboard", "Leaderboard", "Who added what, and how much was approved"))
                         add(Triple("account", "Account", "Your details, sync"))
                         if (cfg.optString("role") == "manager") add(Triple("diagnostics", "Diagnostics", "Error reports from the plant's devices"))
                     }
@@ -71,13 +72,17 @@ fun Manage(snack: SnackbarHostState) {
                         trailingContent = if (id == "approvals" && queue > 0) ({ Badge { Text("$queue", style = MaterialTheme.typography.labelLarge) } }) else null,
                         modifier = Modifier.fillMaxWidth().clickable { page = id }
                             .semantics(mergeDescendants = true) { if (id == "approvals" && queue > 0) stateDescription = "$queue waiting" })
+                    // on the top level (the user, 2026-10-08: "Move the update button outside the account section")
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    UpdatesCard()
                 }
-                "approvals" -> Approvals(rev, admin, say)
-                "mine" -> MyProposals(rev, say)
+                "approvals" -> Approvals(rev, admin, say) { tag -> ui?.show(tag) }
+                "mine" -> MyProposals(rev, say) { tag -> ui?.show(tag) }
                 "history" -> History(rev, say)
                 "people" -> People(rev, say)
                 "devices" -> Devices(rev, admin, say)
                 "account" -> Account(rev, say)
+                "leaderboard" -> Leaderboard(rev)
                 "diagnostics" -> DiagnosticsReports(rev)
             }
         }
@@ -89,28 +94,35 @@ private fun act(id: Long, action: String, body: JSONObject, done: String, say: (
     say(r.error ?: done)
 }
 
+/** R10, cleaned up (the user, 2026-10-08): one card per code (or per tag without one), the proposals inside by kind
+ *  (/api/submissions?group=code); Pick and votes only where several photos of one kind compete, Approve and Reject
+ *  otherwise (an equipment photo and a tag plate photo are not rivals); the full name of whoever sent it; the code opens
+ *  its tag on the drawing */
 @Composable
-private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit) {
-    val r = remember(rev) { call("GET", "/api/submissions", query = mapOf("status" to "open")) }
+private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (String) -> Unit) {
+    val r = remember(rev) { call("GET", "/api/submissions", query = mapOf("status" to "open", "group" to "code", "limit" to "500")) }
     if (!r.ok) { Dim(r.error!!); return }
-    val open = r.json.optJSONArray("submissions").objects()
-    if (open.isEmpty()) { Dim("Nothing waits for approval."); return }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        items(open) { sub ->
-            val id = sub.optLong("id")
-            val conflict = sub.str("status") == "conflict"
+    val groups = r.json.optJSONArray("groups").objects()
+    if (groups.isEmpty()) { Dim("Nothing waits for approval."); return }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { Dim("One card per tag. Approving applies the change and records it in History, where it can be reverted.") }
+        items(groups) { g ->
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(proposalTitle(sub), style = MaterialTheme.typography.titleSmall)
-                    Dim("by " + sub.str("by_name") + " · " + whenText(sub.optLong("created")))
-                    sub.str("request_note").let { if (it.isNotEmpty()) Text("“$it”", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic) }
-                    if (conflict) Text("Held: it clashes with the current value or another proposal. " + sub.str("note"), color = MaterialTheme.colorScheme.error)
-                    ProposalBody(sub)
-                    if (sub.str("kind") == "photo") PhotoOf(sub.optJSONObject("payload")?.str("file").orEmpty())
-                    if (admin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { act(id, "approve", JSONObject().put("force", conflict), "Approved", say) }) { Text(if (conflict) "Approve anyway" else "Approve") }
-                        if (sub.str("kind") == "photo") OutlinedButton(onClick = { act(id, "pick", JSONObject(), "Photo chosen, others rejected", say) }) { Text("Pick") }
-                        OutlinedButton(onClick = { act(id, "reject", JSONObject(), "Rejected", say) }) { Text("Reject") }
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val tag = g.str("tag")
+                    val title = g.str("code").ifEmpty { if (tag.isNotEmpty()) "Tag without a code" else "Other" }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f).then(if (tag.isNotEmpty()) Modifier.clickable(onClickLabel = "Open on the drawing") { open(tag) } else Modifier))
+                        if (tag.isNotEmpty()) TextButton(onClick = { open(tag) }) { Text("Open on the drawing") }
+                    }
+                    for (k in g.optJSONArray("kinds").objects()) {
+                        val items = k.optJSONArray("items").objects()
+                        val pick = k.optBoolean("pick")
+                        HorizontalDivider()
+                        Text(k.str("label") + if (items.size > 1) " (${items.size})" else "", style = MaterialTheme.typography.titleSmall)
+                        if (pick) Dim("Several proposed. “Use this one” approves it and rejects the other ${k.str("label").lowercase()}s; votes are only a hint.")
+                        for (sub in items) ApprovalItem(sub, admin, pick, say)
                     }
                 }
             }
@@ -119,33 +131,92 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit) {
 }
 
 @Composable
-private fun MyProposals(rev: Int, say: (String) -> Unit) {
-    val r = remember(rev) { call("GET", "/api/submissions", query = mapOf("status" to "all", "limit" to "200")) }
-    if (!r.ok) { Dim(r.error!!); return }
-    val subs = r.json.optJSONArray("submissions").objects()
-    val mine = subs.filter { it.optBoolean("mine") }
-    val photos = subs.filter { !it.optBoolean("mine") && it.str("kind") == "photo" && it.str("status") in setOf("pending", "conflict") }
+private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (String) -> Unit) {
+    val id = sub.optLong("id")
+    val conflict = sub.str("status") == "conflict"
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (sub.str("kind") == "link") Text(proposalTitle(sub).substringBefore(" · "), style = MaterialTheme.typography.bodyMedium)
+        Dim("by " + sub.str("by_name").ifEmpty { sub.str("by") } + " · " + whenText(sub.optLong("created")) +
+            if (pick) " · ${sub.optInt("votes")} vote${if (sub.optInt("votes") == 1) "" else "s"}" else "")
+        sub.str("request_note").let { if (it.isNotEmpty()) Text("“$it”", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic) }
+        if (conflict) Text("Held: it clashes with the current value or another proposal. " + sub.str("note"), color = MaterialTheme.colorScheme.error)
+        ProposalBody(sub)
+        if (sub.str("kind") == "photo") PhotoOf(sub.optJSONObject("payload")?.str("file").orEmpty(), height = 160)
+        if (admin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (pick) {
+                Button(onClick = { act(id, "pick", JSONObject(), "Photo chosen, the others of this kind rejected", say) }) { Text("Use this one") }
+                OutlinedButton(onClick = { act(id, "approve", JSONObject(), "Added", say) }) { Text("Add") }
+            } else Button(onClick = { act(id, "approve", JSONObject().put("force", conflict), "Approved", say) }) { Text(if (conflict) "Approve anyway" else "Approve") }
+            OutlinedButton(onClick = { act(id, "reject", JSONObject(), "Rejected", say) }) { Text("Reject") }
+        }
+    }
+}
+
+/** what the person proposed (the user, 2026-10-08: "My proposals: filters and groups"): chips for the status and the
+ *  kind (filtered by the core: /api/submissions?mine=1&status=…&kind=…), the list grouped by code; then others' photos
+ *  to vote on */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MyProposals(rev: Int, say: (String) -> Unit, open: (String) -> Unit) {
+    var status by remember { mutableStateOf("all") }
+    var kind by remember { mutableStateOf("") }
+    val r = remember(rev, status, kind) {
+        call("GET", "/api/submissions", query = buildMap {
+            put("status", status); put("mine", "1"); put("limit", "300"); if (kind.isNotEmpty()) put("kind", kind)
+        })
+    }
+    val votes = remember(rev) { call("GET", "/api/submissions", query = mapOf("status" to "open", "kind" to "photo", "limit" to "200")) }
+    val mine = r.json.optJSONArray("submissions").objects()
+    val groups = mine.groupBy { it.str("code").ifEmpty { it.str("tag").let { t -> if (t.isNotEmpty()) "tag:$t" else "" } } }
+    val photos = votes.json.optJSONArray("submissions").objects().filter { !it.optBoolean("mine") }
     var withdraw by remember { mutableStateOf<Long?>(null) }
     withdraw?.let { id -> Confirm("Withdraw this proposal?", "", "Withdraw", { act(id, "withdraw", JSONObject(), "Withdrawn", say) }, { withdraw = null }) }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (mine.isEmpty()) item { Dim("You have proposed nothing yet.") }
-        items(mine) { sub ->
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for ((k, lab) in listOf("all" to "All", "open" to "Waiting", "approved" to "Approved", "rejected" to "Rejected", "withdrawn" to "Withdrawn"))
+                    FilterChip(status == k, { status = k }, label = { Text(lab) }, modifier = Modifier.semantics { contentDescription = "Status: $lab" + if (status == k) ", chosen" else "" })
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for ((k, lab) in listOf("" to "All kinds", "equipment_photo" to "Equipment photos", "plate_photo" to "Tag plate photos",
+                        "equipment" to "Location and notes", "link" to "Procedure links", "review" to "Tag readings",
+                        "tag_add" to "Marked tags", "tag_remove,photo_delete" to "Removals"))
+                    FilterChip(kind == k, { kind = k }, label = { Text(lab) }, modifier = Modifier.semantics { contentDescription = "Kind: $lab" + if (kind == k) ", chosen" else "" })
+            }
+        }
+        if (!r.ok) item { Dim(r.error!!) }
+        else if (mine.isEmpty()) item { Dim(if (status == "all" && kind.isEmpty()) "You have proposed nothing yet." else "Nothing matches these filters.") }
+        items(groups.entries.toList()) { (key, subs) ->
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(proposalTitle(sub), style = MaterialTheme.typography.titleSmall)
-                    Dim(sub.str("status") + " · " + whenText(sub.optLong("created")) + sub.str("note").let { if (it.isNotEmpty()) " · $it" else "" })
-                    ProposalBody(sub)
-                    if (sub.str("status") in setOf("pending", "conflict")) OutlinedButton(onClick = { withdraw = sub.optLong("id") }) { Text("Withdraw") }
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val tag = subs.first().str("tag")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(when { key.startsWith("tag:") -> "Tag without a code"; key.isEmpty() -> "Other"; else -> key },
+                            style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                        if (tag.isNotEmpty()) TextButton(onClick = { open(tag) }) { Text("Open on the drawing") }
+                    }
+                    subs.forEachIndexed { i, sub ->
+                        if (i > 0) HorizontalDivider()
+                        Text(proposalTitle(sub).substringBefore(" · ") + if (sub.str("photo_kind") == "plate") " (tag plate)" else "", style = MaterialTheme.typography.titleSmall)
+                        Dim(statusText(sub.str("status")) + " · " + whenText(sub.optLong("created")) + sub.str("note").let { if (it.isNotEmpty()) " · $it" else "" })
+                        ProposalBody(sub)
+                        if (sub.str("kind") == "photo") PhotoOf(sub.optJSONObject("payload")?.str("file").orEmpty())
+                        if (sub.str("status") in setOf("pending", "conflict")) OutlinedButton(onClick = { withdraw = sub.optLong("id") }) { Text("Withdraw") }
+                    }
                 }
             }
         }
         if (photos.isNotEmpty()) item { Section("Photos waiting for approval", "Vote for the ones you find useful; an admin decides.") {} }
         items(photos) { sub ->
-            ListItem(headlineContent = { Text(sub.str("target") + " · by " + sub.str("by_name")) },
+            ListItem(headlineContent = { Text(sub.str("code").ifEmpty { sub.str("target") } + " · by " + sub.str("by_name")) },
                 supportingContent = { Text("${sub.optInt("votes")} votes" + if (sub.optBoolean("voted")) " (yours)" else "") },
                 trailingContent = { TextButton(onClick = { act(sub.optLong("id"), "vote", JSONObject(), "Vote changed", say) }) { Text(if (sub.optBoolean("voted")) "Unvote" else "Vote") } })
         }
     }
+}
+
+private fun statusText(s: String) = when (s) {
+    "pending" -> "Waiting"; "conflict" -> "Held (clashes)"; "approved" -> "Approved"; "rejected" -> "Rejected"; "withdrawn" -> "Withdrawn"; else -> s
 }
 
 @Composable
@@ -179,24 +250,55 @@ private fun History(rev: Int, say: (String) -> Unit) {
     }
 }
 
+/** hide removed devices and people from the lists (the user, 2026-10-08: "Remove deleted users and devices"): a local
+ *  setting of this device (POST /api/hidden); the log and History keep them */
+private fun hide(ids: List<String>, on: Boolean, say: (String) -> Unit) {
+    val r = call("POST", "/api/hidden", JSONObject().put("ids", JSONArray(ids)).put("hide", on))
+    say(r.error ?: if (on) "Hidden" else "Shown again")
+}
+
+private fun clearRemoved(say: (String) -> Unit) {
+    val r = call("POST", "/api/hidden", JSONObject().put("clear_removed", true))
+    say(r.error ?: r.json.optInt("changed").let { n -> if (n == 0) "Nothing removed to clear" else "Cleared $n removed" })
+}
+
 @Composable
 private fun People(rev: Int, say: (String) -> Unit) {
-    val r = remember(rev) { call("GET", "/api/users") }
+    var showHidden by remember { mutableStateOf(false) }
+    val r = remember(rev, showHidden) { call("GET", "/api/users", query = if (showHidden) mapOf("show_hidden" to "1") else emptyMap()) }
+    val nHidden = remember(rev) { call("GET", "/api/users", query = mapOf("show_hidden" to "1")).json.optJSONArray("users").objects().count { it.optBoolean("hidden") } }
     var un by remember { mutableStateOf("") }
     var fn by remember { mutableStateOf("") }
     var pos by remember { mutableStateOf("") }
     Column(Modifier.verticalScroll(rememberScrollState())) {
         if (!r.ok) Dim(r.error!!)
         Section("People", "Everyone who has an identity in this plant. Devices are added under Devices.") {
-            for (u in r.json.optJSONArray("users").objects())
+            val users = r.json.optJSONArray("users").objects()
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (users.any { it.has("active") && !it.optBoolean("active") && it.optInt("devices") > 0 && !it.optBoolean("hidden") })
+                    OutlinedButton(onClick = { clearRemoved(say) }) { Text("Clear removed") }
+                if (nHidden > 0 || showHidden) TextButton(onClick = { showHidden = !showHidden }) { Text(if (showHidden) "Hide hidden" else "Show hidden ($nHidden)") }
+            }
+            for (u in users) {
+                val removed = u.has("active") && !u.optBoolean("active") && u.optInt("devices") > 0
+                val waiting = u.has("active") && !u.optBoolean("active") && u.optInt("devices") == 0
                 ListItem(headlineContent = { Text(u.str("full_name") + " (" + u.str("username") + ")") },
-                    supportingContent = { Text(u.str("role") + u.str("position").let { if (it.isNotEmpty()) " · $it" else "" }) })
+                    supportingContent = { Text(u.str("role") + u.str("position").let { if (it.isNotEmpty()) " · $it" else "" } +
+                        (if (removed) " · removed" else "") + (if (waiting) " · no device yet" else "") + (if (u.optBoolean("hidden")) " · hidden" else "")) },
+                    trailingContent = {
+                        val pid = u.str("person")
+                        if ((removed || u.optBoolean("hidden")) && pid.isNotEmpty()) TextButton(onClick = { hide(listOf(pid), !u.optBoolean("hidden"), say) }) {
+                            Text(if (u.optBoolean("hidden")) "Show" else "Hide")
+                        }
+                    })
+            }
         }
         Section("Add a person", "For someone whose device will join later (by QR code, request file or nearby admin).") {
             OutlinedTextField(un, { un = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(fn, { fn = it }, label = { Text("Full name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(pos, { pos = it }, label = { Text("Position (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(pos, { pos = it }, label = { Text("Position (job title)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Button(onClick = {
+                if (pos.isBlank()) { say("Enter the position (job title): every new member needs one."); return@Button }
                 val res = call("POST", "/api/users", JSONObject().put("username", un.trim().lowercase()).put("full_name", fn.trim()).put("position", pos.trim()).put("role", "user"))
                 if (res.ok) { say("Added ${un.trim()}"); un = ""; fn = ""; pos = "" } else say(res.error!!)
             }) { Text("Add") }
@@ -208,7 +310,8 @@ private fun People(rev: Int, say: (String) -> Unit) {
 private fun Devices(rev: Int, admin: Boolean, say: (String) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val r = remember(rev) { call("GET", "/api/devices") }
+    var showHidden by remember { mutableStateOf(false) }
+    val r = remember(rev, showHidden) { call("GET", "/api/devices", query = if (showHidden) mapOf("show_hidden" to "1") else emptyMap()) }
     var poll by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(3000); poll++ } }      // join requests arrive without a log change
     val reqs = remember(rev, poll) { if (admin) call("GET", "/api/join-requests").json.optJSONArray("requests").objects() else emptyList() }
@@ -239,19 +342,37 @@ private fun Devices(rev: Int, admin: Boolean, say: (String) -> Unit) {
     @Composable fun rows(list: List<JSONObject>) = list.forEach { x ->
         val dev = x.str("device")
         ListItem(headlineContent = { Text(x.str("label").ifEmpty { "device" } + " · " + x.str("username") + if (x.optBoolean("this_computer")) " (this phone)" else "") },
-            supportingContent = { Text(dev.take(16) + "…" + if (x.optBoolean("revoked")) " · removed" else "") },
-            trailingContent = { if (!x.optBoolean("revoked") && !x.optBoolean("this_computer")) TextButton(onClick = { remove = x }) { Text("Remove") } })
+            supportingContent = { Text(dev.take(16) + "…" + (if (x.optBoolean("revoked")) " · removed" else "") + if (x.optBoolean("hidden")) " · hidden" else "") },
+            trailingContent = {
+                if (!x.optBoolean("revoked") && !x.optBoolean("this_computer")) TextButton(onClick = { remove = x }) { Text("Remove") }
+                else if (admin && x.optBoolean("revoked")) TextButton(onClick = { hide(listOf(dev), !x.optBoolean("hidden"), say) }) {
+                    Text(if (x.optBoolean("hidden")) "Show" else "Hide")
+                }
+            })
     }
     Column(Modifier.verticalScroll(rememberScrollState())) {
         if (!r.ok) Dim(r.error!!)
         Section("Your devices") { rows(r.json.optJSONArray("mine").objects()) }
         if (admin) {
-            Section("All devices") { rows(r.json.optJSONArray("all").objects()) }
+            Section("All devices") {
+                val all = r.json.optJSONArray("all").objects()
+                val nHidden = r.json.optInt("hidden")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (all.any { it.optBoolean("revoked") && !it.optBoolean("hidden") }) OutlinedButton(onClick = { clearRemoved(say) }) { Text("Clear removed") }
+                    if (nHidden > 0 || showHidden) TextButton(onClick = { showHidden = !showHidden }) { Text(if (showHidden) "Hide hidden" else "Show hidden ($nHidden)") }
+                }
+                rows(all)
+            }
             if (reqs.isNotEmpty()) Section("Waiting to join", "Accept only if the code on the other device is the same.") {
                 for (x in reqs) {
                     val q = x.optJSONObject("request") ?: JSONObject()
                     ListItem(headlineContent = { Text(q.str("full_name") + " (" + q.str("username") + ") · " + q.str("label")) },
-                        supportingContent = { Text("code " + x.str("code"), fontFamily = FontFamily.Monospace) },
+                        supportingContent = { Column {
+                            Text("code " + x.str("code"), fontFamily = FontFamily.Monospace)
+                            if (q.str("position").isNotEmpty()) Text(q.str("position"))
+                            if (x.optBoolean("needs_position")) Text("No position: a new member needs one. Refuse, and ask them to send a new request with their job title.",
+                                color = MaterialTheme.colorScheme.error)
+                        } },
                         trailingContent = { Row {
                             for ((lab, a) in listOf("Accept" to "accept", "Refuse" to "refuse")) TextButton(onClick = {
                                 val res = call("POST", "/api/join-requests/" + x.str("device"), JSONObject().put("action", a).put("existing_ok", true))
@@ -312,7 +433,10 @@ private fun InviteDialog(say: (String) -> Unit, onClose: () -> Unit) {
                 st?.str("state") == "asked" -> {
                     val q = st.optJSONObject("request") ?: JSONObject()
                     Text("A device asks to join: ${q.str("full_name")} (${q.str("username")}), ${q.str("label")}" +
+                        q.str("position").let { if (it.isNotEmpty()) ", $it" else "" } +
                         if (st.opt("existing") != null && st.opt("existing") != JSONObject.NULL) ". That username exists: it becomes their new device." else "")
+                    if (st.optBoolean("needs_position")) Text("No position: a new member needs one. Refuse, and ask them to join again with their job title.",
+                        color = MaterialTheme.colorScheme.error)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { send("accept") }) { Text("Accept") }
                         OutlinedButton(onClick = { send("refuse") }) { Text("Refuse") }
@@ -403,7 +527,48 @@ private fun Account(rev: Int, say: (String) -> Unit) {
             }) { Text("Sync now") }
         }
         DiagnosticsCard(rev, say)
-        UpdatesCard()
+    }
+}
+
+/** the leaderboard (the user, 2026-10-08), /api/leaderboard: a name and numbers per person, nothing else (the core
+ *  leaves out IDs, usernames, roles); a row opens the counts per kind */
+@Composable
+private fun Leaderboard(rev: Int) {
+    val r = remember(rev) { call("GET", "/api/leaderboard") }
+    if (!r.ok) { Dim(r.error!!); return }
+    val kinds = r.json.optJSONObject("kinds") ?: JSONObject()
+    val people = r.json.optJSONArray("people").objects()
+    var open by remember { mutableStateOf("") }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        item { Dim("Everyone's proposals and direct changes, counted from the whole plant log. Sorted by approved, then total.") }
+        if (people.isEmpty()) item { Dim("Nobody has proposed anything yet.") }
+        items(people) { p ->
+            val key = p.str("key")
+            val rate = if (p.isNull("approval_rate")) "" else " · ${(p.optDouble("approval_rate") * 100).toInt()} % approved"
+            Card(Modifier.fillMaxWidth().clickable(onClickLabel = if (open == key) "Hide the details" else "Show the details") { open = if (open == key) "" else key }) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${p.optInt("rank")}.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(36.dp))
+                        Text(p.str("name"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text("${p.optInt("approved")}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Dim("${p.optInt("approved")} approved · ${p.optInt("pending")} waiting · ${p.optInt("rejected")} rejected · ${p.optInt("total")} in all$rate")
+                    if (open == key) {
+                        if (p.optInt("direct") > 0) Dim("${p.optInt("direct")} made directly as an admin")
+                        if (p.optInt("withdrawn") > 0) Dim("${p.optInt("withdrawn")} withdrawn")
+                        if (p.optInt("decided") > 0) Dim("${p.optInt("decided")} decided as an approver")
+                        if (p.optInt("votes") > 0 || p.optInt("comments") > 0) Dim("${p.optInt("votes")} votes · ${p.optInt("comments")} comments")
+                        val ks = p.optJSONObject("kinds") ?: JSONObject()
+                        for (k in kinds.keys()) ks.optJSONObject(k)?.takeIf { it.optInt("total") > 0 }?.let { c ->
+                            Text("${kinds.str(k)}: ${c.optInt("approved")} approved of ${c.optInt("total")}" +
+                                (if (c.optInt("pending") > 0) ", ${c.optInt("pending")} waiting" else "") +
+                                (if (c.optInt("rejected") > 0) ", ${c.optInt("rejected")} rejected" else ""), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        if (p.optLong("last") > 0) Dim("Last: " + whenText(p.optLong("last")))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -483,7 +648,7 @@ fun proposalTitle(sub: JSONObject): String {
     val what = when (sub.str("kind")) {
         "equipment" -> "Location and notes"; "photo" -> "New photo"; "photo_delete" -> "Remove a photo"
         "link" -> if (p.optBoolean("on", true)) "Link to a procedure step" else "Unlink from a procedure step"
-        "review" -> "Tag reading"; "tag_add" -> "Missing tag"; else -> sub.str("kind")
+        "review" -> "Tag reading"; "tag_add" -> "Missing tag"; "tag_remove" -> "Remove a marked tag"; else -> sub.str("kind")
     }
     val about = p.str("kks").ifEmpty { sub.str("target").substringAfter(':') }
     return if (about.isNotEmpty()) "$what · $about" else what
