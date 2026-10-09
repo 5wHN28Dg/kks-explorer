@@ -1,6 +1,7 @@
 """systems.js (KSys.systemsView, the web client's port of core views.systemsView) on the cases of
 core/tests/test_model.nim ("systems: …"), in Chromium, Firefox and WebKit: the same input data gives the same groups,
-order, counts, descriptions, photo coverage and search results as the Nim core.
+order, counts, descriptions, photo coverage and search results as the Nim core. KSys.valveType (core model.valveTypeOf,
+tagView's valve_type) on core/tests/test_valvetype.nim's cases and on tests/web/valve-vectors.json (made by the core).
   .venv/bin/python tests/web/test_systems.py"""
 import json, os, unittest
 from playwright.sync_api import sync_playwright
@@ -114,6 +115,112 @@ class Systems(unittest.TestCase):
             b.close()
         for q, want in V['expected'].items():
             self.assertEqual(got[q], want, f'search {q!r}')
+
+    def test_chromium(self): self.check('chromium')
+    def test_firefox(self): self.check('firefox')
+    def test_webkit(self): self.check('webkit')
+    def test_core_chromium(self): self.against_core('chromium')
+    def test_core_firefox(self): self.against_core('firefox')
+    def test_core_webkit(self): self.against_core('webkit')
+
+
+# the valve tags of core/tests/test_valvetype.nim's plant() (a sheet at 2 px per point)
+VALVES = [
+    {'id': 'a:1', 'sheet': 'a', 'kks': '11LAB70AA501', 'suffix': '', 'symbol': {'type': 'gate valve', 'actuator': 'motor',
+     'nc': False, 'conf': 0.93, 'bbox': [200, 60, 240, 96]}},
+    {'id': 'a:2', 'sheet': 'a', 'kks': '11LAB70AA502', 'suffix': ''},
+    {'id': 'a:3', 'sheet': 'a', 'kks': '11LAB70AA503', 'suffix': '', 'symbol': {'type': 'globe valve', 'actuator': 'none',
+     'nc': True, 'conf': 0.8}},
+    {'id': 'a:4', 'sheet': 'a', 'kks': '11LAB70AA504', 'suffix': '', 'symbol': 'not an object'}]
+
+# index.html's eff() then KSys.valveType, as the panel calls it (valveTypeOf)
+VALVE_RUN = r"""([tags, state]) => {
+  const eff = t => { const r = (state.reviews || {})[t.id];
+    if (r) { if (r.status === 'rejected') return null; return {...t, kks: r.kks, isa: r.isa || null, suffix: r.suffix || '', status: 'confirmed'} }
+    return t };
+  const out = {};
+  for (const t0 of tags) { const t = eff(t0); if (!t) continue;
+    out[t.id] = KSys.valveType(t, (state.equipment || {})[(t.kks || '') + (t.suffix || '')]) }
+  return out }"""
+
+
+class ValveType(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(REPO, 'systems.js'), encoding='utf-8') as f:
+            cls.js = f.read()
+
+    def page(self, p, engine):
+        b = getattr(p, engine).launch()
+        pg = b.new_page()
+        pg.set_content('<!doctype html><meta charset=utf-8><body></body>')
+        pg.add_script_tag(content=self.js)
+        return b, pg
+
+    def check(self, engine):
+        with sync_playwright() as p:
+            b, pg = self.page(p, engine)
+            run = lambda state: pg.evaluate(VALVE_RUN, [VALVES, state])
+            v = run({'equipment': {}})
+            # the full KKS in a correction: the edited value replaces the drawing's in the same proposal
+            corrected = pg.evaluate("""(c) => [KSys.withValveType(c, '  check valve '), KSys.withValveType(c, '   '), c]""",
+                                    v['a:3']['confirm'])
+            # an infinite number (JSON.parse reads 1e999 as Infinity) never reaches the view
+            inf = pg.evaluate("""() => KSys.valveType(JSON.parse('{"id":"a:9","kks":"11LAB70AA509","suffix":"","symbol":'
+              + '{"type":"gate valve","actuator":"none","nc":false,"conf":1e999,"bbox":[1e999,0,10,10]}}'), {})""")
+            empty = run({'equipment': {'11LAB70AA501': {'custom': [{'k': 'Size', 'v': 'DN50'}, {'k': 'Valve type', 'v': ''}]}}})
+            full = run({'equipment': {'11LAB70AA501': {'custom': [{'k': 'f%d' % i, 'v': 'x'} for i in range(100)]}}})
+            confirmed = run({'equipment': {'11LAB70AA501': {'custom': [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}]},
+                                           '11LAB70AA503': {'custom': [{'k': 'Valve type', 'v': 'check valve'}]},
+                                           '11LAB70AA502': {'custom': [{'k': 'Valve type', 'v': 'butterfly valve'}]}}})
+            reviewed = run({'equipment': {}, 'reviews': {
+                'a:1': {'status': 'confirmed', 'kks': '11LAB70CP501', 'isa': '', 'suffix': ''},
+                'a:3': {'status': 'confirmed', 'kks': '11LAB70AA513', 'isa': '', 'suffix': ''}}})
+            b.close()
+        g = v['a:1']
+        self.assertEqual((g['status'], g['text'], g['conf']), ('drawing', 'gate valve, motor-operated', 0.93))
+        self.assertEqual(g['line'], 'Valve type: gate valve, motor-operated (from the drawing, unchecked)')
+        self.assertEqual(g['box'], [200, 60, 240, 96], 'in the tag\'s own units (level-0 px)')
+        self.assertEqual(g['confirm'], {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+                         'changes': {'custom': [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}]}, 'base': {'custom': []}}})
+        self.assertEqual(v['a:3']['text'], 'globe valve, normally closed')
+        self.assertNotIn('box', v['a:3'])
+        self.assertIsNone(v['a:2'])
+        self.assertIsNone(v['a:4'])
+        self.assertEqual(corrected[0]['payload']['changes']['custom'], [{'k': 'Valve type', 'v': 'check valve'}])
+        self.assertIsNone(corrected[1])
+        self.assertEqual(corrected[2]['payload']['changes']['custom'][0]['v'], 'globe valve, normally closed', 'not changed in place')
+        self.assertIsNone(inf['conf'])
+        self.assertNotIn('box', inf)
+        c = empty['a:1']['confirm']['payload']
+        self.assertEqual(c['changes']['custom'], [{'k': 'Size', 'v': 'DN50'}, {'k': 'Valve type', 'v': 'gate valve, motor-operated'}])
+        self.assertEqual(c['base']['custom'], [{'k': 'Size', 'v': 'DN50'}, {'k': 'Valve type', 'v': ''}])
+        self.assertEqual(full['a:1']['status'], 'drawing')
+        self.assertIsNone(full['a:1']['confirm'])
+        self.assertEqual(confirmed['a:1'], {'status': 'confirmed', 'text': 'gate valve, motor-operated', 'drawn': 'gate valve, motor-operated',
+                                            'label': 'confirmed', 'line': 'Valve type: gate valve, motor-operated (confirmed)',
+                                            'drawn_differs': False})
+        self.assertEqual((confirmed['a:3']['text'], confirmed['a:3']['drawn'], confirmed['a:3']['drawn_differs']),
+                         ('check valve', 'globe valve, normally closed', True))
+        self.assertEqual(confirmed['a:2']['text'], 'butterfly valve')
+        self.assertIsNone(reviewed['a:1'])
+        self.assertEqual(reviewed['a:3']['text'], 'globe valve, normally closed')
+
+    def against_core(self, engine):
+        """generated tags (tests/web/make_valve_vectors.nim): the JS gives exactly core tagView's valve_type (its box
+        in points: the JS keeps the tag's px, so it is divided by the sheet's scale here)"""
+        with open(os.path.join(REPO, 'tests', 'web', 'valve-vectors.json'), encoding='utf-8') as f:
+            V = json.load(f)
+        with sync_playwright() as p:
+            b, pg = self.page(p, engine)
+            got = pg.evaluate(VALVE_RUN, [V['tags'], V['state']])
+            b.close()
+        scale = V['sheets'][0]['scale']
+        self.assertEqual(set(got), set(V['expected']))
+        for i, want in V['expected'].items():
+            g = got[i]
+            if g and 'box' in g: g['box'] = [x / scale for x in g['box']]
+            self.assertEqual(g, want, i)
 
     def test_chromium(self): self.check('chromium')
     def test_firefox(self): self.check('firefox')

@@ -157,3 +157,82 @@ suite "views":
     let f = flat(d)
     check f[0 ..< 4] == "KKF1"
     check f.len == 4 + 9 * 4 + 16 + 32 + 4 + 16 + 8 + 4
+
+suite "links between sheets":
+  proc linked(): Model =
+    result = Model()
+    result.sheets = parseSheets(j("""[
+      {"id":"lp","name":"LP","w":2000,"h":1000,"scale":2.0,"levels":3,"rot":0,"notes":[],
+       "links":[{"label":"C16","bbox":[100,200,142,242],"conf":1.0},{"label":"D2","bbox":[300,200,342,242],"conf":0.6},
+                {"label":"S3","bbox":[500,200,542,242],"conf":1.0},{"label":"C47","bbox":[700,200,742,242],"conf":1.0},
+                {"label":"C47","bbox":[900,200,942,242],"conf":1.0}]},
+      {"id":"old","name":"Old sheet","w":1000,"h":500,"scale":1.0,"levels":2,"rot":0,"notes":[]},
+      {"id":"cbd","name":"Drains","w":1000,"h":500,"scale":1.0,"levels":2,"rot":0,"notes":[],
+       "links":[{"label":"C16","bbox":[10,20,31,41],"conf":1.0},{"label":"C47","bbox":[50,20,71,41],"conf":0.9},
+                {"label":"bad"},{"label":"X1","bbox":[1,2,3]},7]},
+      {"id":"fw","name":"FW","w":1000,"h":500,"scale":0.5,"levels":2,"rot":0,"notes":[],
+       "links":[{"label":"D2","bbox":[100,100,110,110]}]}]"""))
+    result.merge()
+  let m = linked()
+  test "parsed; a sheet without the field and broken entries are fine":
+    check m.sheets[0].links.len == 5
+    check m.sheets[1].links.len == 0
+    check m.sheets[2].links.len == 2
+    check m.sheets[3].links[0].conf == 1.0       # no conf: taken as read
+    check sheetsView(m)[0]["links"].i == 5 and sheetsView(m)[1]["links"].i == 0
+    check linksView(m, "old").elems.len == 0
+    check linksView(m, "nope").elems.len == 0
+  test "each connector with its targets on the other sheets, boxes in points":
+    let v = linksView(m, "lp")
+    check v.elems.len == 5
+    check v[0]["label"].s == "C16" and v[0]["x0"].num == 50 and v[0]["y1"].num == 121
+    check v[0]["targets"].elems.len == 1
+    let t = v[0]["targets"][0]
+    check t["sheet"].s == "cbd" and t["sheet_name"].s == "Drains" and not t["same_sheet"].b
+    check t["x0"].num == 10 and t["y0"].num == 20 and t["x1"].num == 31 and t["y1"].num == 41
+    check v[1]["label"].s == "D2" and v[1]["conf"].num == 0.6
+    check v[1]["targets"][0]["sheet"].s == "fw" and v[1]["targets"][0]["x1"].num == 220    # fw: 0.5 px per point
+    check v[2]["label"].s == "S3" and v[2]["targets"].elems.len == 0                      # the other end isn't here
+  test "the same label twice on a sheet: the other sheet first, then the other circle on this one":
+    let v = linksView(m, "lp")
+    check v[3]["targets"].elems.len == 2
+    check v[3]["targets"][0]["sheet"].s == "cbd"
+    check v[3]["targets"][1]["sheet"].s == "lp" and v[3]["targets"][1]["same_sheet"].b and v[3]["targets"][1]["x0"].num == 450
+    check v[4]["targets"][1]["x0"].num == 350
+    let c = linksView(m, "cbd")
+    check c[1]["targets"].elems.len == 2 and c[1]["targets"][0]["sheet"].s == "lp" and c[1]["targets"][1]["sheet"].s == "lp"
+  test "untrusted sheets.json: links per sheet and targets per connector are capped (a label repeated everywhere)":
+    var a = newSeq[string]()
+    for i in 0 ..< 3000: a.add """{"label":"A1","bbox":[""" & $i & """,0,""" & $(i + 10) & """,10]}"""
+    let big = Model()
+    big.sheets = parseSheets(j("""[{"id":"x","name":"X","scale":1.0,"links":[""" & a.join(",") & """]},
+                                   {"id":"y","name":"Y","scale":1.0,"links":[""" & a.join(",") & """]}]"""))
+    check big.sheets[0].links.len == MaxLinksPerSheet and big.sheets[1].links.len == MaxLinksPerSheet
+    let v = linksView(big, "x")
+    check v.elems.len == MaxLinksPerSheet
+    check v[0]["targets"].elems.len == MaxLinkTargets
+    check v[0]["targets"][0]["sheet"].s == "y"          # the other sheet still comes first
+  test "findLink: a connector kept across a reload is found by its label and box, gone gives -1":
+    let v = linksView(m, "lp")
+    check findLink(v, "C47", 450, 100) == 4
+    check findLink(v, "C47", 350, 100) == 3
+    check findLink(v, "C16", 450, 100) == -1
+    check findLink(v, "Z9", 50, 100) == -1
+  test "untrusted sheets.json: long labels, bad boxes and a huge sheet name don't get through":
+    let big = Model()
+    let longName = "Ä".repeat(150_000)       # 300 kB, 2-byte characters
+    big.sheets = parseSheets(j("""[{"id":"x","name":"X","scale":2.0,"links":[
+        {"label":"A1","bbox":[0,0,20,20]},
+        {"label":"AAAAAAAAAAAAAAAAA","bbox":[0,0,20,20]},
+        {"label":"A1","bbox":[0,0,1e12,1e12]},
+        {"label":"A1","bbox":[20,20,0,0]},
+        {"label":"A1","bbox":[1e308,0,1.7e308,20]},
+        {"label":"A1","bbox":[0,0,200,201]}]},
+      {"id":"y","name":"""" & longName & """","scale":1e-300,"links":[{"label":"A1","bbox":[1,1,2,2]}]},
+      {"id":"z","name":"""" & longName & """","scale":2.0,"links":[{"label":"A1","bbox":[0,0,20,20]}]}]"""))
+    check big.sheets[0].links.len == 1
+    check big.sheets[1].links.len == 0       # 1 px is 1e300 points at that scale
+    let v = linksView(big, "x")
+    check v[0]["targets"].elems.len == 1
+    let n = v[0]["targets"][0]["sheet_name"].s
+    check n.len <= MaxTargetName and n.len >= MaxTargetName - 1 and n == "Ä".repeat(n.len div 2)
