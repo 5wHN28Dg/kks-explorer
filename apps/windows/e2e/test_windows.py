@@ -242,7 +242,7 @@ class Windows(unittest.TestCase):
         # set with Place for all, then one picture through the mark-up editor, sent once for both codes
         self.check('multi2.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) +
                    pick('11LAC10AP003', 2) + [
-                   'click\tPhoto for all…', "wait\tA photo needs each code's floor. No floor yet: 11LAC10AP003. "
+                   'click\tPhoto for all…', "wait\t~A photo needs each code's floor. No floor yet: 11LAC10AP003. "
                    "Set it with Place for all first.\t20", 'gone\tPhoto to mark up', 'click\tDone',
                    'toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP003', 1) + [
                    'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t5', 'click\tSend',
@@ -356,7 +356,7 @@ class Windows(unittest.TestCase):
             'click\tConfirm description', 'wait\t~Saved: description of 11LAB70AA888\t20',
             'wait\t~Confirmed by The Manager\t20', 'gone\tConfirm description'])
         self.check('desc1.uia', self.show('11LAB70AA889') + [
-            'wait\tFeed water vent valve\t20', 'click\tEdit description', 'set\tDescription\tFeed water vent valve, DN25',
+            'wait\tFeed water vent valve\t20', 'click\tEdit description', 'focus\tDescription', 'set\tDescription\tFeed water vent valve, DN25',
             'click\tSend description', 'wait\t~Saved: description of 11LAB70AA889\t20', 'wait\t~Confirmed by The Manager\t20',
             'wait\tFeed water vent valve, DN25\t10'])
         def descs():
@@ -504,9 +504,12 @@ class Windows(unittest.TestCase):
         self.check('sysjoin.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
                                    'set\tUsername\tboss', 'set\tPassword\ta long password', 'click\tJoin',
                                    'wait\t~Sample sheet\t60'], keep=False, sync_every=3000)
-        # the sample sheet's one code, plus the tags other tests on this server marked by hand (test_multi)
-        n = len({'11LAB70AA501'} | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
-                                    if t.get('kks')})
+        # the published sheet's codes (other tests publish more: test_description), plus the tags other tests on this
+        # server marked by hand (test_multi, test_approvals)
+        published = {t['kks'] + (t.get('suffix') or '') for t in json.loads(self.boss.op.open(self.boss.base + '/data/tags.json').read())
+                     if t.get('kks')}
+        n = len({'11LAB70AA501'} | published | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
+                                                 if t.get('kks')})
         on = lambda k: f'{k} code{"" if k == 1 else "s"} on the drawings'
         self.check('systems0.uia', ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
                                     'wait\t%s\t20' % on(n)])

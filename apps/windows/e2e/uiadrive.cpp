@@ -161,7 +161,19 @@ static IUIAutomationElement *find(DWORD &pid, const std::string &spec, bool dump
                 IUIAutomationElement *e = nullptr; arr->GetElement(i, &e);
                 BSTR name = nullptr; e->get_CurrentName(&name);
                 std::wstring nm = name ? name : L"";
-                if (dump) { CONTROLTYPEID t = 0; e->get_CurrentControlType(&t); say("  " + type_name(t) + " '" + utf8(nm.c_str()) + "'"); }
+                if (dump) {
+                    CONTROLTYPEID t = 0; e->get_CurrentControlType(&t);
+                    std::string val;
+                    if (t == UIA_EditControlTypeId) {     // an edit's value too: what a failed `value` saw
+                        IUIAutomationValuePattern *vp = nullptr;
+                        if (SUCCEEDED(e->GetCurrentPatternAs(UIA_ValuePatternId, __uuidof(IUIAutomationValuePattern), (void **)&vp)) && vp) {
+                            BSTR v = nullptr;
+                            if (SUCCEEDED(vp->get_CurrentValue(&v)) && v) { val = " = '" + utf8(v) + "'"; SysFreeString(v); }
+                            vp->Release();
+                        }
+                    }
+                    say("  " + type_name(t) + " '" + utf8(nm.c_str()) + "'" + val);
+                }
                 CONTROLTYPEID ct = 0;
                 if (only) e->get_CurrentControlType(&ct);
                 if (!dump && (!only || ct == only || (only2 && ct == only2)) && ((contains && nm.find(want) != std::wstring::npos) || (!contains && nm == want))) { hit = e; hit->AddRef(); }
@@ -242,7 +254,7 @@ int wmain(int argc, wchar_t **argv) {
                 if (!ok) Sleep(300);
             }
             e->Release();
-            if (!ok) { say("ERROR: " + arg + " does not hold " + (f.size() > 2 ? f[2] : "")); return 1; }
+            if (!ok) { say("ERROR: " + arg + " does not hold " + (f.size() > 2 ? f[2] : "")); find(pid, "", true); return 1; }
             continue;
         }
         if (cmd == "state") {
