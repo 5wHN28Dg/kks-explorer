@@ -39,7 +39,7 @@ class Client:
             return {'status': e.code, 'error': e.read().decode()}
 
 
-class Gnome(unittest.TestCase):
+class Plant(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-gnome-e2e-')
@@ -116,6 +116,65 @@ class Gnome(unittest.TestCase):
         if not wait:
             return None
         return atspi.app_pid(p.pid, name=('walkdown', 'kks_explorer'), before=before)
+
+    def join(self, a):
+        atspi.click(atspi.find(a, 'button', name='Join through a server'))
+        atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
+        atspi.set_text(atspi.find(a, 'text', name='Username'), 'boss')
+        atspi.set_text(atspi.find(a, 'password text', name='Password'), 'a long password')
+        atspi.click(atspi.find(a, 'button', name='Join'))
+        atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
+
+    def drawing_shot(self, a, pid, shot):
+        """a screenshot of the window (KKS_SHOT_ON_SIGNAL) cropped to the drawing: (median grey, light pixels, dark
+        pixels) of the sheet's area"""
+        from PIL import Image
+        if os.path.exists(shot):
+            os.remove(shot)
+        time.sleep(3)                      # the overview, then the vector tiles
+        os.kill(pid, signal.SIGUSR1)
+        for _ in range(40):
+            time.sleep(0.25)
+            if os.path.exists(shot):
+                break
+        time.sleep(0.5)
+        view = atspi.find(a, 'image', name='Drawing Sample sheet')
+        e = view.get_component_iface().get_extents(Atspi.CoordType.WINDOW)
+        im = Image.open(shot).convert('RGB')
+        # the middle half of the view: the sheet (fitted), not the grey around it
+        box = (e.x + e.width // 4, e.y + e.height // 4, e.x + 3 * e.width // 4, e.y + 3 * e.height // 4)
+        px = list(im.crop(box).get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(im.crop(box).getdata())
+        greys = sorted(sum(p) // 3 for p in px)
+        light = sum(1 for p in px if min(p) > 170 and max(p) - min(p) < 30)
+        dark = sum(1 for p in px if max(p) < 90)
+        return greys[len(greys) // 2], light, dark, len(px)
+
+    @staticmethod
+    def pressed(node):
+        # GTK 4 reports a toggle button's state as PRESSED (aria-pressed), not CHECKED
+        st = node.get_state_set()
+        return st.contains(Atspi.StateType.PRESSED) or st.contains(Atspi.StateType.CHECKED)
+
+    def magenta(self, a, pid, shot):
+        """pixels of the valve symbol's outline (dashed magenta, viewer.nim) in the drawing's part of a window shot"""
+        from PIL import Image
+        if os.path.exists(shot):
+            os.remove(shot)
+        time.sleep(1.5)
+        os.kill(pid, signal.SIGUSR1)
+        for _ in range(40):
+            time.sleep(0.25)
+            if os.path.exists(shot):
+                break
+        time.sleep(0.5)
+        e = atspi.find(a, 'image', contains='Drawing ').get_component_iface().get_extents(Atspi.CoordType.WINDOW)
+        im = Image.open(shot).convert('RGB').crop((e.x, e.y, e.x + e.width, e.y + e.height))
+        px = list(im.get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(im.getdata())
+        return sum(1 for r, g, b in px if abs(r - 176) < 30 and g < 70 and abs(b - 158) < 30)
+
+
+class Gnome(Plant):
+    """the app's screens, one test after another on one server: later tests see what earlier ones added"""
 
     def test_scan_camera(self):
         """decision 0039: the scan dialog reads an invite from the camera; KKS_CAMERA_FILE plays a video of a QR code
@@ -279,7 +338,7 @@ class Gnome(unittest.TestCase):
         third.wait(10)
 
     def test_flow(self):
-        a = self.start_app('laptop')
+        a = self.start_app('laptop', KKS_SYNC_EVERY='2000')   # rounds every 2 s: pages must stay usable through them
         # join through the server, from the setup screen
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
@@ -402,7 +461,19 @@ class Gnome(unittest.TestCase):
         self.assertTrue(note, 'the removed device did not wipe itself')
         self.assertNotIn(b'Sample sheet', open(os.path.join(self.dir, 'phone', 'kks.db'), 'rb').read())
         # "remove deleted users and devices": Clear removed hides the removed device; Show hidden brings it back
-        atspi.click(atspi.find(a, 'button', name='Clear removed', timeout=10))
+        # a sync round that brings nothing new leaves the page as it is: it was rebuilt after every round, and a click
+        # that came in between went to the page just replaced (2 of 4 runs here: "the removed device is still listed")
+        clear = atspi.find(a, 'button', name='Clear removed', timeout=10)
+        log = '/tmp/kks-gnome-e2e-laptop.log'
+        rounds = open(log).read().count('sync with ')
+        for _ in range(40):
+            if open(log).read().count('sync with ') > rounds:
+                break
+            time.sleep(0.25)
+        self.assertGreater(open(log).read().count('sync with '), rounds, 'no sync round came')
+        time.sleep(1)       # the app reloads 300 ms after a sync: wait past that before looking
+        self.assertTrue(clear.get_state_set().contains(Atspi.StateType.SHOWING), 'a sync that brought nothing rebuilt the page')
+        atspi.click(clear)
         for _ in range(20):
             if not atspi.find_all(a, contains='· sara'):
                 break
@@ -620,104 +691,6 @@ class Gnome(unittest.TestCase):
             time.sleep(0.5)
         self.assertGreater(after, before, 'the panel does not show the code')
 
-    def test_coverage(self):
-        """Coverage: the totals match the test plant (one code, marked by a person, so checked); the photo bars are
-        named by their numbers; a sheet row opens that sheet coloured by photos; a system row opens Equipment by system
-        filtered to it"""
-        os.makedirs(SHOTS, exist_ok=True)
-        shot = os.path.join(SHOTS, 'gnome-coverage.png')
-        a = self.start_app('coverage', KKS_SHOT_ON_SIGNAL=shot, KKS_SYNC_EVERY='2000')
-        pid = self.apps[-1].pid
-        self.join(a)
-        st = self.boss.req('GET', '/api/state')
-        eq = st['equipment'].get('11LAB70AA501', {})
-        placed = 1 if any(str(eq.get(f, '')).strip() for f in ('area', 'floor', 'elev', 'near', 'loc')) else 0
-        caps = [p.get('caption') or '' for p in st['photos'] if p['kks'] == '11LAB70AA501']
-        plate, equip = any(c.startswith('Tag plate') for c in caps), any(not c.startswith('Tag plate') for c in caps)
-        ph = {'both': int(plate and equip), 'equipment': int(equip and not plate), 'plate': int(plate and not equip)}
-        ph['none'] = 1 - sum(ph.values())
-        atspi.click(atspi.find(a, 'button', name='Coverage'))
-        atspi.find(a, None, name='1 code on the drawings, in 1 tag', timeout=10)
-        atspi.find(a, 'label', name='1 of 1 tag (100 %)', timeout=10)               # checked by a person
-        atspi.find(a, 'label', name=f'{placed} of 1 code ({100 * placed} %)')       # known place
-        atspi.find(a, 'label', name=f"both {ph['both']} · equipment only {ph['equipment']} · tag plate only "
-                                    f"{ph['plate']} · none {ph['none']}")
-        words = (f"photos: {ph['both']} equipment and tag plate, {ph['equipment']} equipment only, {ph['plate']} tag "
-                 f"plate only, {ph['none']} none")
-        for _ in range(20):        # the bars' accessible names can arrive a moment after the labels
-            bars = [n for n in atspi.find_all(a, 'image') if n.get_name() == words]
-            if len(bars) >= 3: break
-            time.sleep(0.5)
-        self.assertGreaterEqual(len(bars), 3, 'the totals, the sheet and the system each have a named bar')
-        os.kill(pid, signal.SIGUSR1)       # a picture of the page, to look at
-        for title, value in (('Readings to review', '0'), ('Missed tags marked', '1')):
-            item = atspi.find(a, 'list item', name=title)
-            self.assertIn(value, [n.get_name() for n in atspi.walk(item) if n.get_role_name() == 'label'])
-        atspi.find(a, 'label', name='0 codes · – of tags checked · – placed')               # the second sheet has no tags
-        # the open page follows a sync: a place given on the server is counted without reopening it
-        if not placed:
-            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
-                                                      'changes': {'area': 'Test hall'}}})
-            self.assertEqual(r.get('status'), 'approved', r)
-            atspi.find(a, 'label', name='1 of 1 code (100 %)', timeout=20)
-        # a sheet row opens that sheet (the first one is shown at the start) with the photo colours on
-        tb = atspi.find(a, 'toggle button', name='Colour tags by photos', showing=False)
-        self.assertFalse(tb.get_state_set().contains(Atspi.StateType.PRESSED))
-        before = len([n for n in atspi.find_all(a, 'label') if n.get_name() == 'Second sheet'])
-        # (an AdwActionRow names its activatable button by the row's title; the sidebar's own row is not showing)
-        atspi.click(atspi.find(a, 'button', name='Second sheet'))
-        for _ in range(20):
-            after = len([n for n in atspi.find_all(a, 'label') if n.get_name() == 'Second sheet'])
-            if after > before and tb.get_state_set().contains(Atspi.StateType.PRESSED):
-                break
-            time.sleep(0.5)
-        self.assertGreater(after, before, 'the drawing\'s title does not show the second sheet')
-        self.assertTrue(tb.get_state_set().contains(Atspi.StateType.PRESSED), 'the photo colours are not on')
-        # a system row opens Equipment by system with that system only, opened down to the code
-        atspi.click(atspi.find(a, 'button', name='LAB · Feed water piping system'))
-        atspi.find(a, 'label', name='1 code in system LAB', timeout=10)
-        atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
-        atspi.click(atspi.find(a, 'button', name='Show all systems'))
-        atspi.find(a, 'label', name='1 code on the drawings', timeout=10)
-
-    def join(self, a):
-        atspi.click(atspi.find(a, 'button', name='Join through a server'))
-        atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
-        atspi.set_text(atspi.find(a, 'text', name='Username'), 'boss')
-        atspi.set_text(atspi.find(a, 'password text', name='Password'), 'a long password')
-        atspi.click(atspi.find(a, 'button', name='Join'))
-        atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
-
-    def drawing_shot(self, a, pid, shot):
-        """a screenshot of the window (KKS_SHOT_ON_SIGNAL) cropped to the drawing: (median grey, light pixels, dark
-        pixels) of the sheet's area"""
-        from PIL import Image
-        if os.path.exists(shot):
-            os.remove(shot)
-        time.sleep(3)                      # the overview, then the vector tiles
-        os.kill(pid, signal.SIGUSR1)
-        for _ in range(40):
-            time.sleep(0.25)
-            if os.path.exists(shot):
-                break
-        time.sleep(0.5)
-        view = atspi.find(a, 'image', name='Drawing Sample sheet')
-        e = view.get_component_iface().get_extents(Atspi.CoordType.WINDOW)
-        im = Image.open(shot).convert('RGB')
-        # the middle half of the view: the sheet (fitted), not the grey around it
-        box = (e.x + e.width // 4, e.y + e.height // 4, e.x + 3 * e.width // 4, e.y + 3 * e.height // 4)
-        px = list(im.crop(box).get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(im.crop(box).getdata())
-        greys = sorted(sum(p) // 3 for p in px)
-        light = sum(1 for p in px if min(p) > 170 and max(p) - min(p) < 30)
-        dark = sum(1 for p in px if max(p) < 90)
-        return greys[len(greys) // 2], light, dark, len(px)
-
-    @staticmethod
-    def pressed(node):
-        # GTK 4 reports a toggle button's state as PRESSED (aria-pressed), not CHECKED
-        st = node.get_state_set()
-        return st.contains(Atspi.StateType.PRESSED) or st.contains(Atspi.StateType.CHECKED)
-
     def test_dark_drawings(self):
         """Dark drawings: the header's toggle turns the sheet light-on-dark at once (dark paper, light lines), off
         restores it, and the choice survives a restart of the app"""
@@ -754,23 +727,6 @@ class Gnome(unittest.TestCase):
         shutil.copy(shot, os.path.join(SHOTS, 'gnome-dark-restart.png'))
         self.assertLess(med, 40, 'after a restart: still dark')
         self.assertGreater(light, 0)
-
-    def magenta(self, a, pid, shot):
-        """pixels of the valve symbol's outline (dashed magenta, viewer.nim) in the drawing's part of a window shot"""
-        from PIL import Image
-        if os.path.exists(shot):
-            os.remove(shot)
-        time.sleep(1.5)
-        os.kill(pid, signal.SIGUSR1)
-        for _ in range(40):
-            time.sleep(0.25)
-            if os.path.exists(shot):
-                break
-        time.sleep(0.5)
-        e = atspi.find(a, 'image', contains='Drawing ').get_component_iface().get_extents(Atspi.CoordType.WINDOW)
-        im = Image.open(shot).convert('RGB').crop((e.x, e.y, e.x + e.width, e.y + e.height))
-        px = list(im.get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(im.getdata())
-        return sum(1 for r, g, b in px if abs(r - 176) < 30 and g < 70 and abs(b - 158) < 30)
 
     def test_valve_type(self):
         """The valve type read from a drawn symbol (tags.json "symbol", core tagView's valve_type): the panel says
@@ -1066,6 +1022,71 @@ class Gnome(unittest.TestCase):
         atspi.click(atspi.find(f, 'button', name='Account', timeout=10))
         atspi.find(f, 'label', name='founder', timeout=10)
         atspi.find(f, 'label', name='manager', timeout=10)
+
+
+class Coverage(Plant):
+    """Coverage counts every code, tag, place and photo of the plant: on a server of its own, so the totals are the
+    test plant's whatever ran before (on the shared one they changed with the tags test_multi and test_systems add)"""
+
+    def test_coverage(self):
+        """Coverage: the totals match the test plant (one code, marked by a person, so checked); the photo bars are
+        named by their numbers; a sheet row opens that sheet coloured by photos; a system row opens Equipment by system
+        filtered to it"""
+        os.makedirs(SHOTS, exist_ok=True)
+        shot = os.path.join(SHOTS, 'gnome-coverage.png')
+        a = self.start_app('coverage', KKS_SHOT_ON_SIGNAL=shot, KKS_SYNC_EVERY='2000')
+        pid = self.apps[-1].pid
+        self.join(a)
+        st = self.boss.req('GET', '/api/state')
+        eq = st['equipment'].get('11LAB70AA501', {})
+        placed = 1 if any(str(eq.get(f, '')).strip() for f in ('area', 'floor', 'elev', 'near', 'loc')) else 0
+        caps = [p.get('caption') or '' for p in st['photos'] if p['kks'] == '11LAB70AA501']
+        plate, equip = any(c.startswith('Tag plate') for c in caps), any(not c.startswith('Tag plate') for c in caps)
+        ph = {'both': int(plate and equip), 'equipment': int(equip and not plate), 'plate': int(plate and not equip)}
+        ph['none'] = 1 - sum(ph.values())
+        atspi.click(atspi.find(a, 'button', name='Coverage'))
+        atspi.find(a, None, name='1 code on the drawings, in 1 tag', timeout=10)
+        atspi.find(a, 'label', name='1 of 1 tag (100 %)', timeout=10)               # checked by a person
+        atspi.find(a, 'label', name=f'{placed} of 1 code ({100 * placed} %)')       # known place
+        atspi.find(a, 'label', name=f"both {ph['both']} · equipment only {ph['equipment']} · tag plate only "
+                                    f"{ph['plate']} · none {ph['none']}")
+        words = (f"photos: {ph['both']} equipment and tag plate, {ph['equipment']} equipment only, {ph['plate']} tag "
+                 f"plate only, {ph['none']} none")
+        for _ in range(20):        # the bars' accessible names can arrive a moment after the labels
+            bars = [n for n in atspi.find_all(a, 'image') if n.get_name() == words]
+            if len(bars) >= 3: break
+            time.sleep(0.5)
+        self.assertGreaterEqual(len(bars), 3, 'the totals, the sheet and the system each have a named bar')
+        os.kill(pid, signal.SIGUSR1)       # a picture of the page, to look at
+        for title, value in (('Readings to review', '0'), ('Missed tags marked', '1')):
+            item = atspi.find(a, 'list item', name=title)
+            self.assertIn(value, [n.get_name() for n in atspi.walk(item) if n.get_role_name() == 'label'])
+        atspi.find(a, 'label', name='0 codes · – of tags checked · – placed')               # the second sheet has no tags
+        # the open page follows a sync: a place given on the server is counted without reopening it
+        if not placed:
+            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+                                                      'changes': {'area': 'Test hall'}}})
+            self.assertEqual(r.get('status'), 'approved', r)
+            atspi.find(a, 'label', name='1 of 1 code (100 %)', timeout=20)
+        # a sheet row opens that sheet (the first one is shown at the start) with the photo colours on
+        tb = atspi.find(a, 'toggle button', name='Colour tags by photos', showing=False)
+        self.assertFalse(tb.get_state_set().contains(Atspi.StateType.PRESSED))
+        before = len([n for n in atspi.find_all(a, 'label') if n.get_name() == 'Second sheet'])
+        # (an AdwActionRow names its activatable button by the row's title; the sidebar's own row is not showing)
+        atspi.click(atspi.find(a, 'button', name='Second sheet'))
+        for _ in range(20):
+            after = len([n for n in atspi.find_all(a, 'label') if n.get_name() == 'Second sheet'])
+            if after > before and tb.get_state_set().contains(Atspi.StateType.PRESSED):
+                break
+            time.sleep(0.5)
+        self.assertGreater(after, before, 'the drawing\'s title does not show the second sheet')
+        self.assertTrue(tb.get_state_set().contains(Atspi.StateType.PRESSED), 'the photo colours are not on')
+        # a system row opens Equipment by system with that system only, opened down to the code
+        atspi.click(atspi.find(a, 'button', name='LAB · Feed water piping system'))
+        atspi.find(a, 'label', name='1 code in system LAB', timeout=10)
+        atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Show all systems'))
+        atspi.find(a, 'label', name='1 code on the drawings', timeout=10)
 
 
 if __name__ == '__main__':

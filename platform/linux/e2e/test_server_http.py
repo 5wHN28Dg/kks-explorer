@@ -780,14 +780,12 @@ class Address(unittest.TestCase):
                 if 'server on' in line:
                     break
             self.assertIn(shown, line)
-            for i in range(50):        # the line is printed just before the listener opens
-                try:
-                    socket.create_connection(('127.0.0.1', cfg['port']), timeout=5).close()
-                    break
-                except ConnectionRefusedError:
-                    time.sleep(0.1)
-            else:
-                self.fail('nothing listens on 127.0.0.1')
+            # the line comes once the listener is open: a connection right after it is taken (it was refused while
+            # the line came before mDNS and the listeners were set up)
+            try:
+                socket.create_connection(('127.0.0.1', cfg['port']), timeout=5).close()
+            except ConnectionRefusedError:
+                self.fail('nothing listens on 127.0.0.1 when the server says it is on')
         finally:
             p.terminate(); p.wait(5)
 
