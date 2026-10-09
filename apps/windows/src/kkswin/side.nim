@@ -6,7 +6,7 @@ import kks/json
 import kks/model
 import appstate
 import kksl/dbstore
-import w32, ui, win, viewer, systems, multi
+import w32, ui, win, viewer, systems, multi, coverage, links
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -46,7 +46,8 @@ proc drawingsTab(w: Win, p: Page) =
     else: w.selectTag(results[i].id, true)), openLabel = (if w.picking: "Select or unselect" else: "Show on the drawing"))
   p.dim(if w.picking: "Select tags: Enter or double-click a result to select or unselect its code."
         else: "Enter or double-click a result to show it on its drawing.")
-  p.buttons(("Equipment by system…", proc () = w.openSystems()))   # every code, block → system → kind
+  p.buttons(("Equipment by system…", proc () = w.openSystems()),   # every code, block → system → kind
+            ("Coverage…", proc () = w.openCoverage()))           # what is checked, placed and photographed
   p.title("Sheets")
   var rows: seq[string]
   for si in w.m.sheets:
@@ -80,6 +81,7 @@ proc drawingsTab(w: Win, p: Page) =
     for n in si.notes: p.label(n)
   if ok:
     p.space()
+    p.buttons(("Connectors on this sheet…", proc () = w.openConnectors()))   # where its lines continue
     p.check("Colour tags by photos", w.v.coverage, proc (on: bool) =
       w.v.coverage = on
       InvalidateRect(w.v.hwnd, nil, 0)

@@ -6,7 +6,7 @@ import kks/[json, api, pathstore, views]
 import kks/model
 import appstate
 import kksl/dbstore
-import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi, photos]
+import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi, photos, links]
 
 const
   TimerPump = 1'u
@@ -80,6 +80,7 @@ proc doShowSheet(id: string) =
     if okL: d else: ""
   w.v.setSheet(id, flatBytes, si.scale, si.levels)
   w.v.tags = w.tagBoxes(id)
+  w.setLinks()
   w.syncChosen()
   w.applyHighlights()
   SetWindowTextW(w.hwnd, newWideCString(si.name & " — Walkdown"))
@@ -135,6 +136,7 @@ proc refresh() =
   w.loadModel()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
+    w.setLinks()
     w.syncChosen()
     w.applyHighlights()
   elif w.m.sheets.len > 0: doShowSheet(w.m.sheets[0].id)
@@ -278,6 +280,7 @@ proc showMain() =
         refresh()
       else: w.toast("This tag has no code yet: check it first")
     else: doSelectTag(id, false)
+  w.v.onLink = proc (i: int) = w.onDrawingLink(i)
   w.v.onMark = markDialog
   w.v.onBox = proc (x0, y0, x1, y1: float) = w.addBox(x0, y0, x1, y1)
   w.v.onEscape = proc () = w.stopPicking()

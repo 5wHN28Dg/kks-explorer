@@ -17,6 +17,60 @@ const DT_CALCRECT = 0x400'u32
 const DT_WORDBREAK = 0x10'u32
 const DT_NOPREFIX = 0x800'u32
 
+# owner-drawn controls (a list whose rows start with a small picture, a picture named by its text): the page asks the
+# control's draw proc (onOwnerDraw) for WM_DRAWITEM
+type
+  DRAWITEMSTRUCT {.importc, header: HG.} = object
+    CtlType, CtlID, itemID, itemAction, itemState: UINT
+    hwndItem: HWND
+    hDC: HDC
+    rcItem: RECT
+    itemData: uint
+  MEASUREITEMSTRUCT {.importc, header: HG.} = object
+    CtlType, CtlID, itemID, itemWidth, itemHeight: UINT
+    itemData: uint
+  HBRUSH0 = pointer
+proc CreateSolidBrush(c: DWORD): HBRUSH0 {.importc, stdcall, header: HG.}
+proc DeleteObject(o: pointer): int32 {.importc, stdcall, header: HG, discardable.}
+proc FillRect(dc: HDC, r: ptr RECT, b: HBRUSH0): int32 {.importc, stdcall, header: HG, discardable.}
+proc FrameRect(dc: HDC, r: ptr RECT, b: HBRUSH0): int32 {.importc, stdcall, header: HG, discardable.}
+proc DrawFocusRect(dc: HDC, r: ptr RECT): int32 {.importc, stdcall, header: HG, discardable.}
+proc SetTextColor(dc: HDC, c: DWORD): DWORD {.importc, stdcall, header: HG, discardable.}
+proc SetBkMode(dc: HDC, m: int32): int32 {.importc, stdcall, header: HG, discardable.}
+const
+  WM_DRAWITEM = 0x002B'u32
+  WM_MEASUREITEM = 0x002C'u32
+  ODS_SELECTED = 0x0001'u32
+  ODS_FOCUS = 0x0010'u32
+  SS_OWNERDRAW = 0x000D'u32
+  LBS_OWNERDRAWFIXED = 0x0010'u32
+  LBS_HASSTRINGS = 0x0040'u32
+  DT_SINGLELINE = 0x20'u32
+  DT_VCENTER = 0x4'u32
+  DT_END_ELLIPSIS = 0x8000'u32
+  COLOR_HIGHLIGHT = 13'i32
+  COLOR_HIGHLIGHTTEXT = 14'i32
+  COLOR_WINDOWTEXT = 8'i32
+
+type OwnerDraw* = proc (dc: HDC, r: RECT, item: int, selected: bool)
+var ownerDraws = initTable[HWND, OwnerDraw]()
+
+proc colorRef(rgb: uint32): DWORD =
+  ## 0xRRGGBB → GDI's 0x00BBGGRR
+  DWORD(((rgb and 0xFF) shl 16) or (rgb and 0xFF00) or ((rgb shr 16) and 0xFF))
+
+proc fillRgb*(dc: HDC, r: RECT, rgb: uint32) =
+  var rr = r
+  let b = CreateSolidBrush(colorRef(rgb))
+  FillRect(dc, addr rr, b)
+  DeleteObject(b)
+
+proc frameRgb*(dc: HDC, r: RECT, rgb: uint32) =
+  var rr = r
+  let b = CreateSolidBrush(colorRef(rgb))
+  FrameRect(dc, addr rr, b)
+  DeleteObject(b)
+
 var
   hinst*: HINSTANCE
   fontNormal*, fontTitle*, fontSmall*: HFONT
@@ -428,6 +482,19 @@ proc pageProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
     return 0
   of WM_CTLCOLORSTATIC:
     return cast[LRESULT](GetSysColorBrush(COLOR_WINDOW))
+  of WM_MEASUREITEM:
+    let mi = cast[ptr MEASUREITEMSTRUCT](l)
+    mi.itemHeight = UINT(px(26))
+    return 1
+  of WM_DRAWITEM:
+    let di = cast[ptr DRAWITEMSTRUCT](l)
+    if di.hwndItem in ownerDraws:
+      try: ownerDraws[di.hwndItem](di.hDC, di.rcItem, int(cast[int32](di.itemID)), (di.itemState and ODS_SELECTED) != 0)
+      except CatchableError as e: report(e)
+      if (di.itemState and ODS_FOCUS) != 0:
+        var r = di.rcItem
+        DrawFocusRect(di.hDC, addr r)
+      return 1
   of WM_DESTROY:
     if p != nil:
       forget(p.ids)
@@ -438,6 +505,7 @@ proc pageProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
         for c in it.hwnds:
           notifies.del c
           enters.del c
+          ownerDraws.del c
       pages.del h
   else: discard
   DefWindowProcW(h, m, w, l)
@@ -468,6 +536,7 @@ proc clear*(p: Page) =
     for h in it.hwnds:
       notifies.del h
       enters.del h
+      ownerDraws.del h
       DestroyWindow(h)
   forget(p.ids)
   p.items.setLen(0)
@@ -547,6 +616,54 @@ proc list*(p: Page, rows: seq[string], height = 200, onSelect: proc (i: int) = n
       if i >= 0: onActivate(i)
     p.items.add Item(kind: ikButtons, hwnds: @[b])
   l
+
+proc drawRow*(dc: HDC, r: RECT, text: string, selected: bool, indent: int) =
+  ## an owner-drawn list row's background and text, the text from `indent` px (a picture goes before it)
+  var rr = r
+  FillRect(dc, addr rr, cast[HBRUSH0](GetSysColorBrush(if selected: COLOR_HIGHLIGHT else: int32(COLOR_WINDOW))))
+  let oldFont = SelectObject(dc, fontNormal)
+  SetBkMode(dc, 1)          # TRANSPARENT
+  SetTextColor(dc, GetSysColor(if selected: COLOR_HIGHLIGHTTEXT else: COLOR_WINDOWTEXT))
+  var tr = RECT(left: r.left + int32(indent), top: r.top, right: r.right - px(4), bottom: r.bottom)
+  discard DrawTextW(dc, newWideCString(text), -1, addr tr, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS)
+  SelectObject(dc, oldFont)  # the DC goes back as it came (WM_DRAWITEM)
+
+proc pictureList*(p: Page, rows: seq[string], draw: OwnerDraw, height = 200, onActivate: proc (i: int) = nil,
+                  openLabel = ""): HWND {.discardable.} =
+  ## a list whose rows `draw` paints (a small picture, then drawRow); the rows' strings stay its UI Automation names
+  let (l, id) = control(p.hwnd, "LISTBOX", "", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT or
+                        LBS_OWNERDRAWFIXED or LBS_HASSTRINGS, WS_EX_CLIENTEDGE)
+  p.ids.add id
+  ownerDraws[l] = draw
+  for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  if onActivate != nil: activates[id] = onActivate
+  p.items.add Item(kind: ikList, hwnds: @[l], height: height)
+  if onActivate != nil and openLabel.len > 0:
+    let (b, bid) = control(p.hwnd, "BUTTON", openLabel, WS_TABSTOP or BS_PUSHBUTTON)
+    p.ids.add bid
+    clicks[bid] = proc () =
+      let i = int(SendMessageW(l, LB_GETCURSEL, 0, 0))
+      if i >= 0: onActivate(i)
+    p.items.add Item(kind: ikButtons, hwnds: @[b])
+  l
+
+proc picture*(p: Page, name: string, height: int, draw: OwnerDraw): HWND {.discardable.} =
+  ## a small drawn picture whose text (its UI Automation name) says what it shows; `draw` gets item -1
+  result = p.keep(control(p.hwnd, "STATIC", name, SS_OWNERDRAW or SS_NOPREFIX))
+  ownerDraws[result] = draw
+  p.items.add Item(kind: ikCustom, hwnds: @[result], height: height)
+
+proc updateRows*(l: HWND, rows: seq[string]) =
+  ## new texts for a list's rows, keeping the selection and the scroll position (a sync, under the focus)
+  let sel = SendMessageW(l, LB_GETCURSEL, 0, 0)
+  let top = SendMessageW(l, 0x018E'u32, 0, 0)         # LB_GETTOPINDEX
+  SendMessageW(l, 0x000B'u32, 0, 0)                   # WM_SETREDRAW off
+  SendMessageW(l, LB_RESETCONTENT, 0, 0)
+  for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  if sel >= 0 and sel < rows.len: SendMessageW(l, LB_SETCURSEL, WPARAM(sel), 0)
+  if top >= 0: SendMessageW(l, 0x0197'u32, WPARAM(top), 0)    # LB_SETTOPINDEX
+  SendMessageW(l, 0x000B'u32, 1, 0)
+  InvalidateRect(l, nil, 1)
 
 proc space*(p: Page, h = 12) = p.items.add Item(kind: ikSpace, height: h)
 

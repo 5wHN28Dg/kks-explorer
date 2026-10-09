@@ -434,6 +434,14 @@ extern "C" void kks_view_rect(void *p, float x0, float y0, float x1, float y1, u
     if (fill) v->rt->FillRectangle(r, v->brush);
     else v->rt->DrawRectangle(r, v->brush, width, dashed ? v->dash : nullptr);
 }
+// a circle (an off-page connector's hotspot): filled, or outlined (dashed or not)
+extern "C" void kks_view_circle(void *p, float cx, float cy, float r, unsigned rgb, float alpha, int fill, float width, int dashed) {
+    View *v = (View *)p;
+    v->brush->SetColor(D2D1::ColorF(rgb, alpha));
+    D2D1_ELLIPSE e = D2D1::Ellipse(D2D1::Point2F(cx, cy), r, r);
+    if (fill) v->rt->FillEllipse(e, v->brush);
+    else v->rt->DrawEllipse(e, v->brush, width, dashed ? v->dash : nullptr);
+}
 // returns 1, or 0 when the device was lost (the caller re-uploads its bitmaps)
 extern "C" int kks_view_end(void *p) {
     View *v = (View *)p;
