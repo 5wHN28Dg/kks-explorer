@@ -230,7 +230,7 @@ int wmain(int argc, wchar_t **argv) {
             continue;
         }
         int timeout = (cmd == "wait" && f.size() > 2) ? std::stoi(f[2]) * 1000 : 15000;
-        CONTROLTYPEID only = (cmd == "set" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
+        CONTROLTYPEID only = (cmd == "set" || cmd == "settext" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
                              (cmd == "enter" || cmd == "select") ? UIA_ListItemControlTypeId :
                              (cmd == "toggle" || cmd == "state") ? UIA_CheckBoxControlTypeId :
                              (cmd == "choose" || cmd == "chosen") ? UIA_RadioButtonControlTypeId : 0;
@@ -347,6 +347,14 @@ int wmain(int argc, wchar_t **argv) {
             }
             BSTR b = SysAllocString(wide(f.size() > 2 ? f[2] : "").c_str());
             vp->SetValue(b); SysFreeString(b); vp->Release();
+        } else if (cmd == "settext") {
+            // WM_SETTEXT straight to the edit box: not held to the field's typing limit (EM_LIMITTEXT), so the app's own
+            // check of a value set from outside is what gets tested
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            std::wstring v = wide(f.size() > 2 ? f[2] : "");
+            if (!SendMessageW((HWND)hw, WM_SETTEXT, 0, (LPARAM)v.c_str())) { say("ERROR: WM_SETTEXT refused: " + arg); return 1; }
         } else if (cmd == "keys") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);
@@ -419,7 +427,7 @@ int wmain(int argc, wchar_t **argv) {
             for (int t = 0; t < 15000 && !ok; t += 300) {
                 WCHAR buf[512] = {};
                 DWORD n = 512;
-                got = ShutdownBlockReasonQuery(root, buf, &n) ? std::wstring(buf) : L"-";
+                got = ShutdownBlockReasonQuery(root, buf, &n) && buf[0] ? std::wstring(buf) : L"-";
                 ok = want == L"-" ? got == L"-" : got.find(want) != std::wstring::npos;
                 if (!ok) Sleep(300);
             }

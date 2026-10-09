@@ -321,7 +321,7 @@ class Windows(unittest.TestCase):
         long_caption = 'Queue B ' + 'x' * 592
         # another code's photo: compressed in the background while the panel closes, then sent
         self.check('queue1.uia', self.show('11LBA10AA102') + [
-            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\t' + long_caption,
+            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'settext\tCaption (optional)\t' + long_caption,
             'click\tSend', 'wait\t~Compressing 1 photo (11LBA10AA102)\t10', 'wait\tAnd its tag plate?\t20', 'click\tNo',
             'click\tClose', 'wait\t~Saved: photo of 11LBA10AA102\t90', 'gone\t~Compressing 1 photo'])
         # the kept one: Try again
@@ -329,7 +329,7 @@ class Windows(unittest.TestCase):
                                   'click\tTry again', 'wait\t~Saved: photo of 11LBA10AA101\t90',
                                   'wait\tEvery photo was sent or discarded.\t20', 'click\tClose',
                                   # nothing waits any more: signing out is not held up
-                                  'blockreason\tPhotos not sent (0)…\t-', 'endsession\tPhotos not sent (0)…\t1'])
+                                  'blockreason\tManage\t-', 'endsession\tManage\t1'])
         def both():
             ph = {p['kks']: p for p in self.boss.req('GET', '/api/state').get('photos', []) if p.get('caption', '').startswith('Queue ')}
             return ph if set(ph) == {'11LBA10AA101', '11LBA10AA102'} else None
