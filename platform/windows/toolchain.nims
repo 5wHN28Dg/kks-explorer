@@ -3,9 +3,9 @@
 # build-deps.sh are in ~/.local/kksdev/winx64 or winarm64 (or $KKS_WIN64), linked statically.
 # Included by the config.nims of core/, platform/linux/, platform/windows/ and apps/windows/; the target comes from
 # the command line (--os:windows -d:mingw --cpu:amd64 or --cpu:arm64).
+let winDev = getEnv("KKS_DEV", getEnv("HOME") & "/.local/kksdev")   # getHomeDir() follows the target OS here
+let winTri = (when defined(arm64): "aarch64" else: "x86_64") & "-w64-mingw32"
 when defined(mingw):
-  let winDev = getEnv("KKS_DEV", getEnv("HOME") & "/.local/kksdev")   # getHomeDir() follows the target OS here
-  let winTri = (when defined(arm64): "aarch64" else: "x86_64") & "-w64-mingw32"
   let winKey = (when defined(arm64): "arm64" else: "amd64") & ".windows.clang."
   switch("cc", "clang")
   switch(winKey & "path", winDev & "/llvm-mingw/bin")

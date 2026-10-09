@@ -2,7 +2,7 @@
 ## dropping its queued tiles, while a worker may still be rendering one of them. The sheet must outlive that tile (it
 ## used to be deleted at once, and the worker read freed memory), and it must still go once its tiles are done.
 ## Cross-built like the app (CI's windows-build puts it in out/plat, windows-test runs it); runs on Windows:
-##   nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console -o:test_tiles.exe apps/windows/tests/test_tiles.nim
+##   nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console -o:test_tiles.exe apps/windows/tests/test_tiles.nim
 import std/[unittest, os, times]
 
 {.compile("../src/kkswin/kks_d2d.cpp", "-std=c++17").}

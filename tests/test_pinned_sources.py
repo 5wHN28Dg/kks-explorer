@@ -85,15 +85,21 @@ class PinnedSources(unittest.TestCase):
     def test_no_gcc_mingw_toolchain(self):
         """0053: both Windows architectures build with llvm-mingw; the GCC cross toolchain from Ubuntu's packages is
         gone from the list, the scripts and CI"""
-        gnu = re.compile(r'mingw-w64-(x86-64|common|base)|gcc-mingw|g\+\+-mingw|binutils-mingw|x86_64-w64-mingw32-g(cc|\+\+)')
+        gnu = re.compile(r'mingw-w64-(x86-64|common|base)|gcc-mingw|g\+\+-mingw|binutils-mingw|x86_64-w64-mingw32-g(cc|\+\+)'
+                         r'|-gcc-posix|\.windows\.gcc\.|KKS_MINGW_BIN|kksdev/mingw\b|kksdev/win64\b')
         self.assertEqual([c['name'] for c in self.bom['components'] if gnu.search(c['name'])], [])
-        files = [f for pat in SCRIPTS + ['.github/workflows/*.yml', '*/config.nims', '*/*/config.nims', 'apps/windows/*.sh',
+        files = [f for pat in SCRIPTS + ['.github/workflows/*.yml', '**/config.nims', 'apps/windows/*.sh',
                                          'platform/windows/*.nims']
-                 for f in glob.glob(os.path.join(REPO, pat))]
+                 for f in glob.glob(os.path.join(REPO, pat), recursive=True)]
         self.assertFalse(os.path.exists(os.path.join(REPO, 'platform', 'windows', 'fetch-mingw.sh')))
         for f in sorted(set(files)):
             with open(f, encoding='utf-8') as fh:
-                self.assertIsNone(gnu.search(fh.read()), os.path.relpath(f, REPO))
+                text = fh.read()
+            self.assertIsNone(gnu.search(text), os.path.relpath(f, REPO))
+            # a config.nims for Windows builds without the shared settings would fall back to Nim's default
+            # x86_64-w64-mingw32-gcc from PATH
+            if f.endswith('config.nims') and 'mingw' in text:
+                self.assertRegex(text, r'include "[./]*(platform/windows/|windows/)?toolchain\.nims"', os.path.relpath(f, REPO))
 
 
 class Relay(unittest.TestCase):

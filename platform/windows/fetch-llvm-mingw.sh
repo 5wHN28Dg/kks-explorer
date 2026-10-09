@@ -10,8 +10,8 @@ SHA=bb7bb7654b33d5aa8712acb837c963b2e0c56352560c76105270a3268c665c21
 [ -x "$DEV/llvm-mingw/bin/aarch64-w64-mingw32-clang" ] && [ -x "$DEV/llvm-mingw/bin/x86_64-w64-mingw32-clang" ] && grep -qx "$VER" "$DEV/llvm-mingw/VERSION.kks" 2>/dev/null && exit 0
 mkdir -p "$DEV/src/dl"
 f="$DEV/src/dl/$NAME.tar.xz"
-[ -f "$f" ] || curl -sL -o "$f" "https://github.com/mstorsjo/llvm-mingw/releases/download/$VER/$NAME.tar.xz"
-echo "$SHA  $f" | sha256sum -c --quiet
+[ -f "$f" ] || curl -sSfL -o "$f" "https://github.com/mstorsjo/llvm-mingw/releases/download/$VER/$NAME.tar.xz"
+echo "$SHA  $f" | sha256sum -c --quiet || { rm -f "$f"; exit 1; }   # a broken download is fetched again next time
 rm -rf "$DEV/llvm-mingw"; mkdir -p "$DEV/llvm-mingw"
 tar xJf "$f" -C "$DEV/llvm-mingw" --strip-components=1
 echo "$VER" > "$DEV/llvm-mingw/VERSION.kks"
