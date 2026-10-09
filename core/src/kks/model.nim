@@ -278,12 +278,14 @@ proc customValue(e: JNode, key: string): string =
       if x.kind == jObj and x.s("k") == key and x.s("v").len > 0: return x.s("v")
 
 proc drawnValveType*(t: Tag): string =
-  ## the importer's reading of the tag's valve symbol in words ("gate valve, motor-operated, drawn closed"); "" = none
+  ## the importer's reading of the tag's valve symbol in words ("gate valve, motor-operated, normally closed"); "" = none
   if t.symbol == nil: return ""
   result = t.symbol.s("type")
   if t.symbol.s("actuator") == "motor": result.add ", motor-operated"
   let nc = t.symbol.get("nc")
-  if nc != nil and nc.kind == jBool and nc.b: result.add ", drawn closed"
+  # `nc` = the body is hatched; hatching means normally closed (the legend table doesn't say so: the user confirmed
+  # the convention for these drawings, 2026-10-09)
+  if nc != nil and nc.kind == jBool and nc.b: result.add ", normally closed"
 
 proc valveTypeOf*(m: Model, t: Tag): JNode =
   ## The valve type the equipment panel shows: confirmed (the custom field "Valve type", set through the normal

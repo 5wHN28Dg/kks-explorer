@@ -90,7 +90,7 @@ suite "valve symbols":
         check s["actuator"].s == act
         check s["nc"].b == false
         check s["conf"].num > 0.8
-  test "hatched = drawn closed":
+  test "hatched = normally closed (nc)":
     let s = one({mHatch})
     check s != nil and s["type"].s == "globe valve" and s["nc"].b
   test "the symbol's box is in level-0 px":

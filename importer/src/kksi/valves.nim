@@ -1,8 +1,11 @@
 ## Valve types from the drawing's symbols (backlog 3). The P&IDs draw a valve as an "X" between two sides (a bowtie),
 ## or inside a box (a control valve), with marks around it: a full centre line (gate), a stem ending in a square
 ## (motor actuator) or in a bar (T handle: the legend's JAM VALVE), an inner bar near one end (check; with a stem:
-## min-flow), and hatching (drawn closed). This module finds those symbols in the sheet's vector paths, names them
+## min-flow), and hatching (normally closed). This module finds those symbols in the sheet's vector paths, names them
 ## by the HRSG legend, and links each valve tag (component AA) to its symbol.
+##
+## Hatching = normally closed: the legend table doesn't define hatching; the user confirmed this convention for
+## these drawings (2026-10-09). The flag stays `nc` in tags.json.
 ##
 ## Only sheets that carry the HRSG legend table get types: the legend is recognised on the sheet itself (a row of
 ## GATE, GLOBE, ELECTRIC GATE, ELECTRIC GLOBE, ELECTRIC CONTROL, … CHECK symbols). Other drawing families draw
@@ -19,7 +22,7 @@ const
   U = 2.0              ## units per point
   LinkMax = 25.0       ## a tag links to its symbol when the gap (box to box) is at most this …
   LinkMargin = 15.0    ## … and the next symbol is at least this much further away
-  HatchMin = 6         ## strokes inside the body from which it counts as hatched (drawn closed)
+  HatchMin = 6         ## strokes inside the body from which it counts as hatched (normally closed)
 
 type
   Seg = object

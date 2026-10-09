@@ -25,7 +25,8 @@ Each valve tag (a full KKS with component `AA`) may get an optional `symbol` fie
   `jam valve` (a stem ending in a T).
 - `actuator`: `motor` (a stem to a square: the legend's ELECTRIC valves) or `none`. The legend has no pneumatic
   actuator, so none is reported.
-- `nc`: the body is hatched. Read as "drawn closed"; the legend doesn't define hatching, so it is a hint.
+- `nc`: the body is hatched, which means normally closed. The legend table doesn't define hatching; that reading
+  rests on the user's confirmation of the convention on these drawings (2026-10-09).
 - `conf`: a heuristic for what to check first (body complete, hatch clear, link close and unambiguous), not a
   probability.
 - `bbox`: the symbol's body in level-0 px, like the tag's.

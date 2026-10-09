@@ -42,9 +42,11 @@ suite "valve type: the panel":
     check c["payload"]["changes"]["custom"][0]["k"].s == ValveTypeKey
     check c["payload"]["changes"]["custom"][0]["v"].s == "gate valve, motor-operated"
     check c["payload"]["base"]["custom"].len == 0
-  test "drawn closed; no box when the importer gave none":
+  test "hatched (nc) = normally closed, also in the confirm proposal; no box when the importer gave none":
     let v = tagView(m, "a:3")["valve_type"]
-    check v["text"].s == "globe valve, drawn closed"
+    check v["text"].s == "globe valve, normally closed"
+    check v["line"].s == "Valve type: globe valve, normally closed (from the drawing, unchecked)"
+    check v["confirm"]["payload"]["changes"]["custom"][0]["v"].s == "globe valve, normally closed"
     check v.get("box") == nil
   test "old plant data (no symbol field) and a malformed one: no valve type":
     check tagView(m, "a:2")["valve_type"].isNull
@@ -81,7 +83,7 @@ suite "valve type: confirmed and corrected through the proposal flow":
     refresh()
     let v = tagView(m, "a:3")["valve_type"]
     check v["status"].s == "confirmed" and v["text"].s == "check valve"
-    check v["drawn"].s == "globe valve, drawn closed" and v["drawn_differs"].b
+    check v["drawn"].s == "globe valve, normally closed" and v["drawn_differs"].b
   test "a type set by hand on equipment without a symbol shows too":
     check submit(j("""{"kind":"equipment","payload":{"kks":"11LAB70AA502","changes":{"custom":[{"k":"Valve type","v":"butterfly valve"}]}}}""")) == 200
     refresh()
