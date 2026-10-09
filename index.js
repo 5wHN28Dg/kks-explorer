@@ -369,43 +369,61 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
 function drawTags(){
-  // a box being dragged (select mode, or marking a missed tag) stays: a sync can redraw the tags mid-drag
-  const L=$('#layer'), fid=L.contains(document.activeElement)?document.activeElement.dataset.id:null, boxes=L.querySelectorAll('#selbox,#markbox');
-  L.replaceChildren();
+  // a sync redraws the tags at any moment, so their buttons are updated in place (by tag id), never replaced: a button
+  // replaced between the press and the release lost the click. A box being dragged (select mode, or marking a missed
+  // tag) and the focus stay too.
+  const L=$('#layer'), fe=L.contains(document.activeElement)?document.activeElement:null, old=new Map(), want=[];
+  for(const x of L.querySelectorAll('.hs[data-id]')) old.set(x.dataset.id,x);
   const covers=KSys.photoCovers(STATE.photos), photoCover=k=>covers.get(k)||'none';   // one pass over the photos
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   const picked=new Set(multi.on?multi.codes:[]);
   // off-page connectors (C16, D2 …), under the tags (a click on a tag next to one stays the tag's): dashed violet circles; a click opens where the line continues (followLink). Not
   // while selecting tags (clicks pick tags only) or marking a missed tag
-  const sc=pxScale(cur);
+  // Kept in place like the tags (by sheet, label and corner); each button reads its connector at click time.
+  const sc=pxScale(cur), oldC=new Map();
+  for(const x of L.querySelectorAll('button.conn')) oldC.set(x.dataset.key,x);
   for(const l of linksHere()){
     const sel=linkSel&&linkSel.sheet===cur.id&&Math.abs(linkSel.x0-l.x0)<0.01&&Math.abs(linkSel.y0-l.y0)<0.01;
-    L.appendChild(h('button',{type:'button',class:'conn'+(sel?' sel':''),tabindex:'-1','data-label':l.label,'aria-label':linkName(l),title:linkName(l),
-      style:`left:${l.x0*sc-3}px;top:${l.y0*sc-3}px;width:${(l.x1-l.x0)*sc+6}px;height:${(l.y1-l.y0)*sc+6}px`,
-      onclick:e=>{ e.stopPropagation(); if(multi.on||mark.on) return; followLink(cur.id,l.label,l.x0,l.y0) }}));
+    const key=cur.id+'\n'+l.label+'\n'+l.x0+'\n'+l.y0;
+    let d=oldC.get(key); oldC.delete(key);
+    if(!d){ d=h('button',{type:'button',tabindex:'-1','data-key':key,
+      onclick:e=>{ e.stopPropagation(); if(multi.on||mark.on) return; followLink(d._l.sheet,d._l.label,d._l.x0,d._l.y0) }}) }
+    d._l={sheet:cur.id,label:l.label,x0:l.x0,y0:l.y0};
+    d.className='conn'+(sel?' sel':''); d.dataset.label=l.label; d.setAttribute('aria-label',linkName(l)); d.title=linkName(l);
+    d.style.cssText=`left:${l.x0*sc-3}px;top:${l.y0*sc-3}px;width:${(l.x1-l.x0)*sc+6}px;height:${(l.y1-l.y0)*sc+6}px`;
+    want.push(d);
   }
   for(const t of tagsOf(cur.id)){
     // a button: Enter or Space acts like a click; in the tab order only while selecting tags
-    const d=document.createElement('button'), b=t.bbox, k=full(t);
-    d.type='button'; d.dataset.id=t.id; d.dataset.k=k; d.tabIndex=multi.on?0:-1; d.setAttribute('aria-label',k||'unreadable tag');
-    if(multi.on) d.setAttribute('aria-pressed',String(picked.has(k)));
+    let d=old.get(t.id); old.delete(t.id);
+    if(!d){ d=document.createElement('button'); d.type='button'; d.dataset.id=t.id }
+    const b=t.bbox, k=full(t);
+    d.dataset.k=k; d.tabIndex=multi.on?0:-1; d.setAttribute('aria-label',k||'unreadable tag');
+    if(multi.on) d.setAttribute('aria-pressed',String(picked.has(k))); else d.removeAttribute('aria-pressed');
     d.className='hs'+(t.status==='review'?' review':'')+(t.id===selId?' sel':'')+(k&&hl.has(k)?' hl':'')+(k&&picked.has(k)?' picked':'')+' p-'+photoCover(k);
     if(floor){ const f=floorOf(t); d.classList.add(f.toLowerCase()===floor.toLowerCase()?'floor':'dim') }
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`;
-    d.title=(k||'unreadable tag')+(document.body.classList.contains('cover')?' · '+COVER_WORDS[photoCover(k)]:''); d.onclick=e=>{e.stopPropagation(); tagClick(t)}; L.appendChild(d);
+    d.title=(k||'unreadable tag')+(document.body.classList.contains('cover')?' · '+COVER_WORDS[photoCover(k)]:''); d.onclick=e=>{e.stopPropagation(); tagClick(t)};
+    want.push(d);
   }
   // your marks awaiting approval (sent, or queued offline)
   for(const p of [...(STATE.mine||[]).filter(s=>s.kind==='tag_add').map(s=>s.payload),...K.outbox.filter(i=>i.kind==='tag_add').map(i=>i.payload)]){
     if(p.sheet!==cur.id) continue; const b=p.bbox, d=document.createElement('div'); d.className='hs pendmark';
-    d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; d.title='Your mark, awaiting approval'; L.appendChild(d);
+    d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; d.title='Your mark, awaiting approval'; want.push(d);
   }
   // the valve symbol of the tag whose panel is open (the core's valve_type box), while the panel shows it
   const vt=selTag&&selTag.sheet===cur.id?valveTypeOf(selTag):null;
   if(vt?.box){ const b=vt.box, d=document.createElement('div'); d.className='vsym'; d.setAttribute('aria-hidden','true');
     d.title='The valve symbol the type was read from';
-    d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; L.appendChild(d) }
-  L.append(...boxes);
-  if(fid) for(const x of L.querySelectorAll('.hs')) if(x.dataset.id===fid){ x.focus({preventScroll:true}); break }
+    d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; want.push(d) }
+  want.push(...L.querySelectorAll('#selbox,#markbox'));
+  // the rest go first, then this order: a node already in its place isn't moved (a move is a removal: it would lose
+  // a press on it, and its focus)
+  const keep=new Set(want);
+  for(const x of [...L.childNodes]) if(!keep.has(x)) x.remove();
+  let at=L.firstChild;
+  for(const d of want){ if(d===at) at=at.nextSibling; else L.insertBefore(d,at) }
+  if(fe&&fe.isConnected&&document.activeElement!==fe) fe.focus({preventScroll:true});
 }
 function tagClick(t){
   if(multi.on){ togglePick(t); return }

@@ -83,8 +83,7 @@ class Phone(unittest.TestCase):
         subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)   # a newer test build (test_update's 9.9.9) blocks -r
         r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
         assert 'Success' in r.stdout, 'install failed: ' + r.stdout + r.stderr
-        ui.sh('pm', 'clear', PKG)
-        ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+        ui.fresh_app(PKG)
 
     @classmethod
     def tearDownClass(cls):
@@ -116,8 +115,7 @@ class Phone(unittest.TestCase):
         for d in self.boss.req('GET', '/api/devices?show_hidden=1')['all']:
             if d['username'] == user and d['label'] == model and not d['revoked']:
                 self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
-        ui.sh('pm', 'clear', PKG)
-        ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+        ui.fresh_app(PKG)
         time.sleep(3)
 
     def member(self, username, full_name, pw):
@@ -173,8 +171,7 @@ class Phone(unittest.TestCase):
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
                     self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
-            ui.sh('pm', 'clear', PKG)
-            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.fresh_app(PKG)
             time.sleep(3)
 
     def test_multi(self):
@@ -283,8 +280,7 @@ class Phone(unittest.TestCase):
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
                     self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
-            ui.sh('pm', 'clear', PKG)
-            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.fresh_app(PKG)
             time.sleep(3)
 
     @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
@@ -387,8 +383,7 @@ class Phone(unittest.TestCase):
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
                     self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
-            ui.sh('pm', 'clear', PKG)
-            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.fresh_app(PKG)
             time.sleep(3)
 
     def test_dark(self):
@@ -481,8 +476,7 @@ class Phone(unittest.TestCase):
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
                     self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
-            ui.sh('pm', 'clear', PKG)
-            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.fresh_app(PKG)
             time.sleep(3)
 
     def test_diagnostics(self):
@@ -513,8 +507,7 @@ class Phone(unittest.TestCase):
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
                     self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
-            ui.sh('pm', 'clear', PKG)
-            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.fresh_app(PKG)
             time.sleep(3)
 
     def test_systems(self):
@@ -550,8 +543,7 @@ class Phone(unittest.TestCase):
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
                     self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
-            ui.sh('pm', 'clear', PKG)
-            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.fresh_app(PKG)
             time.sleep(3)
 
     def test_flow(self):
@@ -842,6 +834,9 @@ class Phone(unittest.TestCase):
             ui.tap('Cancel', exact=True)
             time.sleep(2)
             self.assertTrue(ui.present('Take a photo', exact=True), 'the camera opened without a floor')
+            # the photo buttons wrap: "From the gallery" is on the row under "Take a photo", below the screen's edge
+            # when the swipes stopped with "Take a photo" at the bottom (run 37899373392)
+            ui.scroll_to('From the gallery', exact=True)
             ui.tap('From the gallery', exact=True)
             ui.find('Which floor is it on?', exact=True)
             ui.tap('Floor 4')
