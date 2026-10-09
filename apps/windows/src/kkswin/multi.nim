@@ -89,7 +89,6 @@ proc stopPicking*(w: Win) =
 proc startPicking*(w: Win) =
   if w.picking: return
   w.v.marking = false
-  w.linkProc = ""
   w.picking = true
   w.pickSaidUnread = false
   w.picked.setLen(0)
