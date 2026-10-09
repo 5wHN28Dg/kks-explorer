@@ -152,3 +152,11 @@ suite "SQLite store, sealed at rest":
     check other.getMeta("a") == "2"
     other.close()
     st.close()
+    # a store closed after a ROLLBACK that failed: every later write and read fails, none goes anywhere
+    var dead = openDbStore(P, dir / "tx.db", key)
+    dead.db.close()
+    dead.db = nil
+    check not dead.db.inTransaction
+    expect SqliteError: dead.setMeta("a", "3")
+    expect SqliteError: discard dead.getMeta("a")
+    expect SqliteError: dead.begin()

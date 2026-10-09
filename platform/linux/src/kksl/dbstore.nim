@@ -116,8 +116,17 @@ method begin*(s: DbStore) =
 method commit*(s: DbStore) = s.db.exec("COMMIT")
 
 method rollback*(s: DbStore) =
-  ## SQLite may already have undone the transaction itself (some failed statements and a failed COMMIT do)
-  if s.db.inTransaction: s.db.exec("ROLLBACK")
+  ## SQLite may already have undone the transaction itself (some failed statements and a failed COMMIT do). A ROLLBACK
+  ## that fails with the transaction still open closes the connection (which undoes it): the writes that come after
+  ## must fail, not go into a transaction nobody commits while the node takes them into memory.
+  if not s.db.inTransaction: return
+  try:
+    s.db.exec("ROLLBACK")
+  except SqliteError:
+    if s.db.inTransaction:
+      s.db.close()
+      s.db = nil
+    raise
 
 proc transaction*(s: DbStore, body: proc ()) =
   ## the platform's own local rows (not log entries: those go through Node.atomic, which keeps memory in step)

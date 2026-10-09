@@ -26,9 +26,10 @@ method notes*(s: Store): seq[(string, string)] {.base.} = @[]      ## History no
 method putNote*(s: Store, eid, note: string) {.base.} = discard
 # One transaction (Node.atomic): the writes between begin and commit reach the disk all together or not at all. A
 # store refuses a begin while one is open (nesting would let an outer rollback undo writes the node already took in).
-# A store without transactions (this base) writes as it goes.
-method begin*(s: Store) {.base.} = discard
-method commit*(s: Store) {.base.} = discard
+# Every store must have them: this base refuses, so a store (or a wrapper) that forgets them fails loudly instead of
+# losing the all-or-nothing.
+method begin*(s: Store) {.base.} = raise newException(ValueError, "this store has no transactions")
+method commit*(s: Store) {.base.} = raise newException(ValueError, "this store has no transactions")
 method rollback*(s: Store) {.base.} = discard   ## undoes everything since begin; no-op when nothing is open
 
 proc blobExt*(data: string): string =

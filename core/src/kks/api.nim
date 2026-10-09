@@ -853,7 +853,8 @@ proc act*(a: Api, me: Actor, sid: int64, action: string, d: JNode, now: int64): 
     let (u, _) = a.names(r["person"].s)
     note = (if note.len > 0: note & "; " else: "") & "proposed by " & (if u.len > 0: u else: "?")
   # one transaction: a held change's entry and its row (which then points to it, so a second approve finds it decided),
-  # and the History note
+  # the History note, and a pick's rejections of the other photos
+  var rejected = 0
   a.n.atomic(proc () =
     var written: string
     if eid.len > 0:
@@ -865,18 +866,19 @@ proc act*(a: Api, me: Actor, sid: int64, action: string, d: JNode, now: int64): 
       x["held"] = newNull()
       x["status"] = newNull()
       discard a.n.store.putSub(x)
-    if note.len > 0: a.n.store.putNote(written, note))
-  var rejected = 0
-  if action == "pick" and kind == "photo":
-    # choose this photo, discard the other open ones of the same kind for the same code: an equipment photo never
-    # competes with a tag plate photo (caption "Tag plate…", PROTOCOL-v2 §9)
-    let mine = photoKind(body["caption"].s)
-    for o in a.n.store.subs():
-      if o["id"].i == sid or o["kind"].s != "photo": continue
-      let ob = a.kindBody(o)[1]
-      if ob["kks"].s == body["kks"].s and photoKind(ob["caption"].s) == mine and a.subStatus(o).status in Open:
-        a.rejectSub(me, o, PickNote & " (#" & $sid & ")", now)
-        inc rejected
+    if note.len > 0: a.n.store.putNote(written, note)
+    if action == "pick" and kind == "photo":
+      # choose this photo, discard the other open ones of the same kind for the same code: an equipment photo never
+      # competes with a tag plate photo (caption "Tag plate…", PROTOCOL-v2 §9). In the same transaction: a pick
+      # that stopped half-way couldn't be repeated (the photo is approved already), and the others would stay open.
+      # (The statuses read here are the ones before this pick: its own entries are not replayed yet.)
+      let mine = photoKind(body["caption"].s)
+      for o in a.n.store.subs():
+        if o["id"].i == sid or o["kind"].s != "photo": continue
+        let ob = a.kindBody(o)[1]
+        if ob["kks"].s == body["kks"].s and photoKind(ob["caption"].s) == mine and a.subStatus(o).status in Open:
+          a.rejectSub(me, o, PickNote & " (#" & $sid & ")", now)
+          inc rejected)
   O(("ok", B(true)), ("rejected", I(rejected)))
 
 # ---------------------------------------------------------------- History, revert, restore

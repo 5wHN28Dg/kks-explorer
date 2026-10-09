@@ -121,7 +121,7 @@ suite "a submission is written all at once":
     check userNode.count("photo") == 2 and userNode.count("comment") == 2
     check consistent(userNode, userStore)
 
-  test "the process dies before the row: after a restart the resend writes the photo once":
+  test "the row fails, then a restart (a new node from the store): the resend writes the photo once":
     userStore.subFail = 1
     expect IOError: discard userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA503", "photo-cid-3"))
     restartUser()
@@ -174,6 +174,27 @@ suite "a submission is written all at once":
     check consistent(mgrNode, mgrStore)
     check mgrApi.call(mgr, "POST", "/api/revisions/" & hid & "/revert").json["changed"].i == 1
     check consistent(mgrNode, mgrStore)
+
+  test "a pick whose rejection of the other photo fails: nothing is kept, and the pick can be repeated":
+    discard userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA801", "pick-cid-1"))
+    discard userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA801", "pick-cid-2"))
+    sync(userNode, mgrNode)
+    var sids: seq[int64]
+    for s in mgrApi.call(mgr, "GET", "/api/submissions").json["submissions"].elems:
+      if s["kind"].s == "photo" and s["payload"]["kks"].s == "11LAB70AA801": sids.add s["id"].i
+    check sids.len == 2
+    let before = mgrNode.entries.len
+    mgrStore.entryFail = 2        # the approve is written, the other photo's reject fails
+    expect IOError: discard mgrApi.call(mgr, "POST", "/api/submissions/" & $sids[0] & "/pick")
+    check mgrNode.entries.len == before
+    check consistent(mgrNode, mgrStore)
+    let r = mgrApi.call(mgr, "POST", "/api/submissions/" & $sids[0] & "/pick")
+    check r.status == 200 and r.json["rejected"].i == 1
+    check consistent(mgrNode, mgrStore)
+
+  test "a store without transactions refuses one":
+    let bare = newNode(P, Store(), P.p256Generate())
+    expect ValueError: bare.atomic(proc () = discard)
 
   test "transactions don't nest; a failed one leaves the store usable":
     expect ValueError:
