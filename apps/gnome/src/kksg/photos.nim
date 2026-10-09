@@ -5,6 +5,7 @@
 import std/[math, strutils, base64, os, sequtils, times, typedthreads, posix]
 import kks/[json, node, model, api]
 import kksi/jxl
+import kksl/dbstore
 import gtk, ui, appstate, win, photoqueue
 
 const MaxSide = 1600
