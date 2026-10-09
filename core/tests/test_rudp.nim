@@ -63,3 +63,41 @@ suite "rudp (PROTOCOL-v2 §18)":
     r.feed(packet(Data, "ABCDEFGH", "\0\0\0\0y"), 0.2)     # the hole fills: the window's contents come out in order
     check r.read() == "y" & "x".repeat(int(RecvWindow) - 1)
     check r.buffered == 0
+
+  proc lostFirstOfFour(): (Rudp, Rudp, seq[string]) =
+    ## A sends 4 packets; the first is lost, the other 3 reach B at once (a fast link) and B's ACKs come back: A has
+    ## nothing more to send, so no later ACK comes
+    let a = newRudp("ABCDEFGH", 0.0)
+    let b = newRudp("ABCDEFGH", 0.0)
+    a.write("x".repeat(4 * Mss), 0.0)
+    let sent = a.takeOut()
+    doAssert sent.len == 4
+    for d in sent[1 .. 3]: b.feed(d, 0.001)
+    for d in b.takeOut(): a.feed(d, 0.002)
+    (a, b, a.takeOut())
+
+  test "a lost packet whose followers were all acknowledged is resent within a round trip, not a timeout (2026-10-09)":
+    # The 3 ACKs came within a round trip of its sending, too soon to call it lost; with no ACK after them, it waited
+    # for its retransmission timeout (at least 200 ms; 4 s once the timeout had grown)
+    let (a, _, early) = lostFirstOfFour()
+    check early.len == 0                    # too soon: it may be on its way
+    a.tick(0.03)                            # the next tick, a round trip (~2 ms here) later
+    let resent = a.takeOut()
+    check resent.len == 1
+    if resent.len == 1: check resent[0][0] == char(Data) and resent[0][HeadLen ..< HeadLen + 4] == "\0\0\0\0"
+
+  test "a packet acknowledged out of order is not timed again when the hole before it fills (2026-10-09)":
+    # Its round trip was measured when it was SACKed; measuring it again when the cumulative ACK passes it counted the
+    # wait for the hole (a retransmission timeout) as a round trip, and the timeout grew to its 4 s cap
+    let (a, b, _) = lostFirstOfFour()
+    let rto0 = a.rto
+    a.tick(0.3)                             # the hole resent (by a timeout or as lost: either way, sent twice)
+    let resent = a.takeOut()
+    check resent.len >= 1
+    var got = 0
+    for d in resent:
+      if d[0] == char(Data): b.feed(d, 0.301); inc got
+    check got >= 1
+    for d in b.takeOut(): a.feed(d, 0.302)
+    check "unacked=0 " in a.debugState      # all 4 acknowledged
+    check a.rto <= rto0 + 1e-9

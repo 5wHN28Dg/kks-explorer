@@ -17,6 +17,18 @@ type
 
 const Stun* = [("stun.cloudflare.com", 3478), ("stun.l.google.com", 19302)]
 
+const SocketBuffer* = 1 shl 20
+  ## bytes each socket asks for, received and sent: a stream's window (256 packets of 1.2 kB, ~300 kB) arrives in a
+  ## burst, and Windows' default receive buffer (64 kB) dropped most of it; Linux caps the request at
+  ## net.core.rmem_max (~208 kB by default)
+when defined(windows):
+  const SoRcvBuf = cint(0x1002)
+  const SoSndBuf = cint(0x1001)
+else:
+  from std/posix import nil
+  const SoRcvBuf = posix.SO_RCVBUF
+  const SoSndBuf = posix.SO_SNDBUF
+
 proc monoNow(): float = epochTime()
 
 proc recvLoop(u: Udp) {.async.} =
@@ -28,9 +40,15 @@ proc recvLoop(u: Udp) {.async.} =
       if u.closed: break
       await sleepAsync(20)
 
-proc newUdp*(): Udp =
-  ## a UDP socket on any free port (IPv4: STUN and the candidates are IPv4), receiving at once
+proc newUdp*(recvBuffer = SocketBuffer): Udp =
+  ## a UDP socket on any free port (IPv4: STUN and the candidates are IPv4), receiving at once. `recvBuffer`: the
+  ## receive buffer to ask for (tests shrink it to make a lossy link)
   let s = newAsyncSocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, buffered = false)
+  # best effort: a system that refuses keeps its default, and the stream recovers what that drops
+  try:
+    setSockOptInt(s.getFd, SOL_SOCKET, SoRcvBuf, recvBuffer)
+    setSockOptInt(s.getFd, SOL_SOCKET, SoSndBuf, SocketBuffer)
+  except OSError: discard
   s.bindAddr(Port(0))
   result = Udp(sock: s, port: int(s.getLocalAddr()[1]))
   asyncCheck result.recvLoop()

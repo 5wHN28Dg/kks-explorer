@@ -102,6 +102,23 @@ proc lost(r: Rudp, seq: uint32) =
     r.cwnd = float(r.ssthresh)
     r.recover = r.nextSeq
 
+proc fastRetransmit(r: Rudp, now: float) =
+  ## holes with 3+ later packets acknowledged are lost: send them again once a round trip has passed since they were
+  ## sent (a retransmission that is lost too: once a retransmission timeout has). Checked on every ACK and every
+  ## tick: when the packets after a hole were acknowledged within a round trip of its sending (on a fast link, all of
+  ## them) and no ACK followed (the window full, or the data at its end), checking on ACKs alone never found it old
+  ## enough, and the hole waited for its retransmission timeout (2026-10-09)
+  var keys = toSeq(r.unacked.keys)
+  keys.sort(system.cmp, Descending)
+  var later = 0
+  for s in keys:
+    if r.unacked[s].sacked: inc later
+    elif later >= 3 and r.unacked[s].at >= 0 and
+         now - r.unacked[s].at > (if r.unacked[s].retries > 0: r.rto elif r.haveRtt: r.srtt else: 0.1):
+      r.lost(s)
+      inc r.unacked[s].retries
+      r.sendData(s, now)
+
 proc onAck(r: Rudp, nxt, mask: uint32, now: float) =
   var newly = 0
   var gone: seq[uint32]
@@ -111,7 +128,9 @@ proc onAck(r: Rudp, nxt, mask: uint32, now: float) =
     let rec = r.unacked[s]
     r.unacked.del s
     inc newly
-    if rec.retries == 0 and rec.at >= 0: r.sample(now - rec.at)   # Karn: only packets sent once
+    # Karn: only packets sent once; and not one already sampled when it was SACKed: it then waited in the other
+    # side's buffer for the hole before it, and that wait (a retransmission timeout) is no round trip
+    if rec.retries == 0 and rec.at >= 0 and not rec.sacked: r.sample(now - rec.at)
   for i in 0 ..< 32:
     if ((mask shr uint32(i)) and 1) == 1:
       let s = nxt + 1 + uint32(i)
@@ -123,16 +142,7 @@ proc onAck(r: Rudp, nxt, mask: uint32, now: float) =
     r.progress = now
   if newly > 0:
     r.cwnd = min(r.cwnd + (if r.cwnd < float(r.ssthresh): 1.0 else: 1.0 / r.cwnd) * float(newly), 256.0)
-  # holes with 3+ later packets acknowledged are lost: send them again now, at most once a round trip each
-  var keys = toSeq(r.unacked.keys)
-  keys.sort(system.cmp, Descending)
-  var later = 0
-  for s in keys:
-    if r.unacked[s].sacked: inc later
-    elif later >= 3 and r.unacked[s].at >= 0 and now - r.unacked[s].at > (if r.haveRtt: r.srtt else: 0.1):
-      r.lost(s)
-      inc r.unacked[s].retries
-      r.sendData(s, now)
+  r.fastRetransmit(now)
   r.pump(now)
 
 proc onData(r: Rudp, seq: uint32, payload: string, fin: bool, now: float) =
@@ -162,6 +172,7 @@ proc feed*(r: Rudp, d: string, now: float) =
 
 proc tick*(r: Rudp, now: float, closed = false) =
   ## timers: retransmissions, failure detection, keep-alive (call every few tens of ms)
+  r.fastRetransmit(now)
   var keys = toSeq(r.unacked.keys)
   keys.sort()
   for i, s in keys:
