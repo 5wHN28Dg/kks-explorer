@@ -5,6 +5,7 @@
 
 import std/[algorithm, base64, math, sets, strutils, tables, unicode]
 import json, crypto, util, proto, replay, node, plant, progress, invites, extras, plantdata, diagnostics, relaykey
+from model import photoKind
 
 type
   Actor* = object
@@ -40,12 +41,25 @@ type
     syncSnapshot*: proc (): JNode
     addresses*: proc (): seq[string]
     relayChanged*: proc ()
+    tagIdx: Table[string, string]     ## full code → tag id (tagIndex), for tagIdxKey
+    tagIdxKey: string
+    tagIndexCalls*: int               ## how often tagIndex ran (one per listing; checked by the tests)
+    boardKey, whoKey: string          ## the head (headKey) the cached leaderboard / who-and-when walk is for
+    boardCache, whoCache: JNode       ## whoCache: {"equipment_by": …, "photos": {photo id: who}}
+    walks*: int                       ## how often the leaderboard or the who walk was computed (tests)
 
 const
+  RevertNote = "revert of rev "     ## the History notes of entries written by revert / restore to
+  RestoreNote = "restore to rev "
+  PickNote = "another photo was chosen"   ## the note of the rejections Pick writes by itself
   Kinds = ["equipment", "review", "link", "photo", "photo_delete", "tag_add", "tag_remove"]
   EqFields = ["area", "floor", "elev", "near", "loc", "notes", "custom"]
   Open = ["pending", "conflict"]
   Entities = ["equipment", "review", "link", "photo", "added_tag"]
+
+proc headKey(a: Api): string =
+  ## changes with every new log entry and every write through the API (submission rows, notes, the hide list)
+  $a.rev & "|" & $a.n.entries.len
 
 proc relayLoopbackWs*(url: string): bool =
   ## ws:// (no TLS) is allowed only to this machine: the relay twin in tests (finding #15). Everything else is wss://,
@@ -211,6 +225,9 @@ proc tagPayload*(a: Api, p: JNode, keepId = ""): JNode =
     ("kind", S(if isa.len > 0: "instrument" else: "equipment")),
     ("orient", S(if bb[3] - bb[1] > bb[2] - bb[0]: "v" else: "h")), ("note", S(textOf(p.get("note"), 500))))
 
+proc floorOk(v: string): bool = v.len == 0 or v == "10" or (v.len == 1 and v[0] in Digits)
+const FloorRule = "Floor: a whole number from 0 to 10 (the height goes in Elevation)"
+
 proc normalize*(a: Api, kind: string, p: JNode): JNode =
   ## Validate a client payload -> the payload to keep (photos: the image goes into the blob store).
   if kind notin Kinds or p == nil or p.kind != jObj: bad("bad submission kind or payload")
@@ -221,8 +238,7 @@ proc normalize*(a: Api, kind: string, p: JNode): JNode =
     let base = fields(if p.get("base") != nil: p["base"] else: newObj())
     if changes.len == 0: bad("no changes")
     let fl = changes.get("floor")
-    if fl != nil and fl.s.len > 0 and not (fl.s == "10" or (fl.s.len == 1 and fl.s[0] in Digits)):
-      bad("Floor: a whole number from 0 to 10 (the height goes in Elevation)")
+    if fl != nil and not floorOk(fl.s): bad(FloorRule)
     var bs = newObj()
     for (f, _) in changes.fields: bs[f] = (if base.has(f): base[f] else: defaultOf(f))
     O(("kks", S(k)), ("changes", changes), ("base", bs))
@@ -417,7 +433,92 @@ proc names(a: Api, person: string): (string, string) =
   if person in a.n.run.persons: (a.n.run.persons[person]["username"].s, a.n.run.persons[person]["full_name"].s)
   else: ("", "")
 
-proc subOut(a: Api, r: JNode, me: Actor, live: bool): JNode =
+proc displayName(a: Api, person: string): string =
+  ## the full name, else the username ("" = unknown)
+  let (u, f) = a.names(person)
+  if f.len > 0: f else: u
+
+proc tagIndex*(a: Api): Table[string, string] =
+  ## full code (KKS + suffix) → the tag to open on the P&ID: tags.json with the reviews applied (a rejected reading
+  ## shows nothing), then the marked tags ("u:<id>", as model.merge). The first tag per code wins. Cached per
+  ## plant-data version and log state. Call it once per listing (it reads the plant-data manifest).
+  inc a.tagIndexCalls
+  let (okA, m) = a.n.active
+  let sha = if okA and "tags.json" in m.files: m.files["tags.json"][0] else: ""
+  let key = sha & "|" & $(if a.n.run != nil: a.n.run.history.len else: 0) & "|" & $a.n.entries.len
+  if key == a.tagIdxKey: return a.tagIdx
+  var idx: Table[string, string]
+  if sha.len > 0:
+    let data = a.n.store.blobGet(sha)
+    var tags: JNode
+    try: tags = parseStrict(data, 4096)
+    except JsonError: tags = newArr()
+    if tags.kind == jArr:
+      for t in tags.elems:
+        if t.kind != jObj or t.get("id") == nil or not t["id"].isStr: continue
+        let id = t["id"].s
+        var code = (if t.get("kks") != nil and t["kks"].isStr: t["kks"].s else: "") &
+                   (if t.get("suffix") != nil and t["suffix"].isStr: t["suffix"].s else: "")
+        let rv = if a.n.run != nil: a.n.run.reviews.getOrDefault(id) else: nil
+        if rv != nil and rv.kind == jObj and rv.get("status") != nil and rv["status"].isStr:
+          if rv["status"].s == "rejected": continue
+          code = (if rv.get("kks") != nil and rv["kks"].isStr: rv["kks"].s else: "") &
+                 (if rv.get("suffix") != nil and rv["suffix"].isStr: rv["suffix"].s else: "")
+        if code.len > 0 and code notin idx: idx[code] = id
+  if a.n.run != nil:
+    for id, t in a.n.run.tags:
+      if t["kks"].isStr:
+        let code = t["kks"].s & (if t["suffix"].isStr: t["suffix"].s else: "")
+        if code notin idx: idx[code] = "u:" & id
+  a.tagIdx = idx
+  a.tagIdxKey = key
+  idx
+
+proc codeOf(a: Api, kind: string, body: JNode): string =
+  ## the equipment code a change is about ("" = none: a review, or a marked tag without a code)
+  case kind
+  of "equipment", "photo", "link": body["kks"].s
+  of "tag_add": (if body["kks"].isStr: body["kks"].s & body["suffix"].s else: "")
+  of "photo_delete":
+    let ph = a.n.run.photos.getOrDefault(body["photo"].s)
+    if ph != nil: ph["kks"].s else: ""
+  else: ""
+
+proc tagOfChange(a: Api, kind: string, body: JNode, code: string, idx: Table[string, string]): string =
+  case kind
+  of "review": body["tag_id"].s
+  of "tag_add": "u:" & body["tag"].s
+  of "tag_remove": "u:" & body["tag"].s
+  else: (if code.len > 0: idx.getOrDefault(code) else: "")
+
+proc groupKind*(kind: string, body: JNode): string =
+  ## the kind proposals compete within: a photo is an equipment photo or a tag plate photo (caption "Tag plate…",
+  ## PROTOCOL-v2 §9), never both
+  if kind == "photo": photoKind(body["caption"].s) & "_photo" else: kind
+
+proc fieldsOf(kind: string, body: JNode): seq[string] =
+  ## the fields an equipment change sets; custom fields as "custom:<name>" for each name added, changed or removed
+  ## against the change's base ("custom" when none can be named)
+  if kind != "equipment": return
+  for (f, v) in body["changes"].fields:
+    if f != "custom":
+      result.add f
+      continue
+    var old: Table[string, string]
+    let b = body["base"].get("custom")
+    if b != nil and b.kind == jArr:
+      for x in b.elems: old[x["k"].s] = x["v"].s
+    var named: seq[string]
+    var seen: HashSet[string]
+    for x in v.elems:
+      let k = x["k"].s
+      seen.incl k
+      if (k notin old or old[k] != x["v"].s) and ("custom:" & k) notin named: named.add "custom:" & k
+    for k, _ in old:
+      if k notin seen and ("custom:" & k) notin named: named.add "custom:" & k
+    if named.len == 0: result.add "custom" else: result.add named
+
+proc subOut(a: Api, r: JNode, me: Actor, live: bool, idx: Table[string, string]): JNode =
   let (kind, body) = a.kindBody(r)
   let s = a.subStatus(r)
   let (user, full) = a.names(if r["person"].isStr: r["person"].s else: "")
@@ -426,6 +527,15 @@ proc subOut(a: Api, r: JNode, me: Actor, live: bool): JNode =
              ("payload", a.toPayload(kind, body)), ("by", S(if user.len > 0: user else: "?")),
              ("mine", B(r["person"].isStr and r["person"].s == me.person)))
   result["by_name"] = S(if full.len > 0: full else: result["by"].s)
+  let code = a.codeOf(kind, body)
+  result["code"] = S(code)
+  result["tag"] = S(a.tagOfChange(kind, body, code, idx))
+  result["group_kind"] = S(groupKind(kind, body))
+  if kind == "photo": result["photo_kind"] = S(photoKind(body["caption"].s))
+  if kind == "equipment":
+    var fs = newArr()
+    for f in fieldsOf(kind, body): fs.elems.add S(f)
+    result["fields"] = fs
   var requestNote = ""
   if not r["entry"].isNull:
     let eid = r["entry"].s
@@ -447,15 +557,67 @@ proc subOut(a: Api, r: JNode, me: Actor, live: bool): JNode =
       lv.elems.add O(("entity", S(entity)), ("key", k), ("value", a.valueOut(entity, key, a.n.run.getEntity(entity, key))))
     result["live"] = lv
 
-proc listSubs(a: Api, me: Actor, filter: string, limit: int): seq[JNode] =
+type SubFilter* = object
+  ## /api/submissions filters (all optional): kinds (submission kinds or group kinds: equipment_photo, plate_photo),
+  ## fields (an equipment change setting any of them: floor, notes, custom, custom:<name>), only my own
+  kinds*, fields*: seq[string]
+  mine*: bool
+
+const Statuses = ["open", "decided", "all", "pending", "conflict", "approved", "rejected", "withdrawn"]
+
+proc listSubs(a: Api, me: Actor, filter: string, limit: int, f = SubFilter()): seq[JNode] =
+  var idx: Table[string, string]
+  var haveIdx = false
   for r in a.n.store.subs():
     let st = a.subStatus(r).status
     if filter == "open" and st notin Open: continue
     if filter == "decided" and st in Open: continue
+    if filter notin ["open", "decided", "all"] and st != filter: continue
     if not me.isAdmin and not (r["person"].isStr and r["person"].s == me.person) and not (r["kind"].s == "photo" and st in Open):
       continue
-    result.add a.subOut(r, me, live = true)
+    if f.mine and not (r["person"].isStr and r["person"].s == me.person): continue
+    if f.kinds.len > 0 or f.fields.len > 0:
+      let (kind, body) = a.kindBody(r)
+      if f.kinds.len > 0 and kind notin f.kinds and groupKind(kind, body) notin f.kinds: continue
+      if f.fields.len > 0:
+        var hit = false
+        for x in fieldsOf(kind, body):
+          if x in f.fields or (x.startsWith("custom") and "custom" in f.fields): hit = true
+        if not hit: continue
+    if not haveIdx:
+      idx = a.tagIndex
+      haveIdx = true
+    result.add a.subOut(r, me, live = true, idx)
     if result.len >= limit: break
+
+const GroupLabels = [("equipment_photo", "Equipment photo"), ("plate_photo", "Tag plate photo"),
+                     ("equipment", "Location and notes"), ("link", "Procedure link"), ("review", "Tag reading"),
+                     ("tag_add", "Marked tag"), ("tag_remove", "Remove a marked tag"), ("photo_delete", "Remove a photo")]
+
+proc groupSubs*(subs: seq[JNode]): JNode =
+  ## open proposals per code (or per tag when there is no code), then per kind. Proposals of one kind for one code
+  ## compete ("several": the clients show Pick and votes only then); an equipment photo and a tag plate photo don't.
+  var order: seq[string]
+  var groups: Table[string, (string, string, OrderedTable[string, seq[JNode]])]
+  for x in subs:
+    let code = x["code"].s
+    let key = if code.len > 0: "code:" & code else: "tag:" & x["tag"].s
+    if key notin groups:
+      order.add key
+      groups[key] = (code, x["tag"].s, initOrderedTable[string, seq[JNode]]())
+    groups[key][2].mgetOrPut(x["group_kind"].s, @[]).add x
+  result = newArr()
+  for key in order:
+    let (code, tag, kinds) = groups[key]
+    var ks = newArr()
+    var several = false
+    for (gk, label) in GroupLabels:
+      if gk in kinds:
+        let items = kinds[gk]
+        several = several or items.len > 1
+        ks.elems.add O(("kind", S(gk)), ("label", S(label)), ("several", B(items.len > 1)),
+                       ("pick", B(items.len > 1 and gk.endsWith("_photo"))), ("items", newArr(items)))
+    result.elems.add O(("code", S(code)), ("tag", S(tag)), ("several", B(several)), ("kinds", ks))
 
 proc subRow(a: Api, id: int64): JNode =
   for r in a.n.store.subs():
@@ -493,6 +655,15 @@ proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote:
   elif conflicts.len > 0: O(("id", I(sid)), ("status", S("conflict")), ("conflicts", conflictsOut(conflicts)))
   else: O(("id", I(sid)), ("status", S("pending")))
 
+proc openFloors(a: Api, me: Actor, kks: string): seq[string] =
+  ## the floors this person has proposed for `kks` that are still open
+  for r in a.n.store.subs():
+    if not (r["person"].isStr and r["person"].s == me.person) or r["kind"].s != "equipment": continue
+    let (_, body) = a.kindBody(r)
+    let fl = body["changes"].get("floor")
+    if body["kks"].s == kks and fl != nil and fl.isStr and fl.s.strip.len > 0 and a.subStatus(r).status in Open:
+      result.add fl.s
+
 proc submitPrep(a: Api, clientId, noteIn: JNode): (JNode, string, JNode) =
   ## (client id, request note, the earlier submission's answer when this client id was already sent, else nil)
   if noteIn != nil and not noteIn.isNull and (noteIn.kind != jStr or noteIn.s.runeLen > 500): bad("note: up to 500 characters")
@@ -512,8 +683,31 @@ proc submitPrep(a: Api, clientId, noteIn: JNode): (JNode, string, JNode) =
 proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64): JNode =
   let (cid, requestNote, dup) = a.submitPrep(clientId, noteIn)
   if dup != nil: return dup
-  let p = a.normalize(kind, payload)
-  a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
+  var floorRes: JNode = nil
+  var k, fl = ""
+  if kind == "photo" and payload != nil and payload.kind == jObj:
+    # "floor" may come with a photo (the clients ask for it first when the code has none: the user's rule, kept in
+    # their photo flow; the core never refuses a photo for it, so a queued or older client's photo isn't lost)
+    k = kksOf(payload.get("kks"))
+    fl = textOf(payload.get("floor"), 8)
+    if not floorOk(fl): bad(FloorRule)
+  let p = a.normalize(kind, payload)     # the image is checked before a floor sent with it is written
+  if kind == "photo" and fl.len > 0:
+    let cur = a.n.run.equipment.getOrDefault(k)
+    let live = if cur != nil and cur.get("floor") != nil and cur["floor"].isStr: cur["floor"].s else: ""
+    # written only when the code has no floor and this person has no floor proposal for it still open (the same one,
+    # or a different one they chose later: a queued photo's floor must not compete with it); a different floor than
+    # the one set is a normal edit, never a side effect of a photo
+    let mine = a.openFloors(me, k)
+    if live.len == 0 and mine.len == 0:
+      # "." is refused in a client's client_id, so this one never matches a photo's
+      let fcid = if cid.isStr: S("floor." & cid.s) else: newNull()
+      floorRes = a.submitBody(me, "equipment", O(("kks", S(k)), ("changes", O(("floor", S(fl)))), ("base", O(("floor", S(""))))),
+                              fcid, "", now)
+    else:
+      floorRes = O(("status", S("unchanged")), ("floor", S(if live.len > 0: live else: mine[^1])))
+  result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
+  if floorRes != nil: result["floor"] = floorRes
 
 proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, noteIn: JNode, now: int64): JNode =
   ## One photo, or one change to the equipment fields (a note, a place), for several codes at once: an ordinary
@@ -666,11 +860,15 @@ proc act*(a: Api, me: Actor, sid: int64, action: string, d: JNode, now: int64): 
       note = (if note.len > 0: note & "; " else: "") & "proposed by " & (if u.len > 0: u else: "?")
   if note.len > 0: a.n.store.putNote(written, note)
   var rejected = 0
-  if action == "pick":   # choose this photo, discard the other open ones for the same item
+  if action == "pick" and kind == "photo":
+    # choose this photo, discard the other open ones of the same kind for the same code: an equipment photo never
+    # competes with a tag plate photo (caption "Tag plate…", PROTOCOL-v2 §9)
+    let mine = photoKind(body["caption"].s)
     for o in a.n.store.subs():
       if o["id"].i == sid or o["kind"].s != "photo": continue
-      if a.kindBody(o)[1]["kks"].s == body["kks"].s and a.subStatus(o).status in Open:
-        a.rejectSub(me, o, "another photo was chosen (#" & $sid & ")", now)
+      let ob = a.kindBody(o)[1]
+      if ob["kks"].s == body["kks"].s and photoKind(ob["caption"].s) == mine and a.subStatus(o).status in Open:
+        a.rejectSub(me, o, PickNote & " (#" & $sid & ")", now)
         inc rejected
   O(("ok", B(true)), ("rejected", I(rejected)))
 
@@ -785,7 +983,7 @@ proc revert*(a: Api, me: Actor, ref0: JNode, force: bool, now: int64): int =
   if not pyEq(live, it.after) and not force:
     fail(409, "conflict", O(("conflicts", newArr(@[O(("field", S(it.entity)), ("live", a.valueOut(it.entity, it.key, live)),
          ("proposed", a.valueOut(it.entity, it.key, it.before)), ("note", S("changed again after this revision")))]))))
-  a.putBack(me, @[(it.entity, it.key, it.before)], "revert of rev " & $rev, now)
+  a.putBack(me, @[(it.entity, it.key, it.before)], RevertNote & $rev, now)
 
 proc restoreTo*(a: Api, me: Actor, ref0: JNode, now: int64): int =
   let rows = a.history
@@ -799,7 +997,7 @@ proc restoreTo*(a: Api, me: Actor, ref0: JNode, now: int64): int =
       if k notin first: first[k] = (it.entity, it.key, it.before)
   var targets: seq[(string, JNode, JNode)]
   for _, t in first: targets.add t
-  a.putBack(me, targets, "restore to rev " & $rev, now)
+  a.putBack(me, targets, RestoreNote & $rev, now)
 
 # ---------------------------------------------------------------- people and devices
 
@@ -821,6 +1019,12 @@ proc personFields*(d: JNode): (string, JNode) =
   if name.runeLen > 80 or pos.runeLen > 80: bad("Full name and position: up to 80 characters each.")
   (name, if pos.len == 0: newNull() else: S(pos))
 
+const PositionNeeded* = "Enter the position (job title, e.g. I&C technician): every new member needs one."
+
+proc requirePosition*(pos: JNode) =
+  ## new members only (existing ones keep what they have): personFields() gives null for an empty position
+  if pos == nil or not pos.isStr or pos.s.len == 0: bad(PositionNeeded)
+
 proc roleOf(a: Api, pid: string): string = a.n.run.role(pid)
 
 proc personBody(a: Api, pid: string, fullName = "", position: JNode = nil, role = "", keepPosition = true): JNode =
@@ -838,6 +1042,12 @@ proc existingPerson(a: Api, username: string): JNode =
     if p["username"].s.toLowerAscii == username.toLowerAscii:
       return O(("username", p["username"]), ("full_name", p["full_name"]), ("role", S(a.roleOf(pid))))
   newNull()
+
+proc needsPosition(a: Api, req: JNode): bool =
+  ## a join request for a new member without a position: accepting it fails, so the screens say so up front
+  let name = if req.get("username") != nil and req["username"].isStr: req["username"].s else: ""
+  let pos = req.get("position")
+  a.existingPerson(name).isNull and (pos == nil or not pos.isStr or pos.s.strip.len == 0)
 
 proc validUsername*(s: string): bool = s.len in 2..40 and s.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '.', '@', '-'})
 
@@ -857,6 +1067,9 @@ proc certify*(a: Api, me: Actor, req: JNode, existingOk: bool, now: int64): JNod
   if pid.len > 0:
     if not (me.role == "manager" or pid == me.person or a.roleOf(pid) == "user"): fail(403, "Only the manager can add devices for admins.")
   else:
+    if pos.isNull:
+      bad("This join request has no position, and every new member needs one: ask " & fn &
+          " to send a new request with their position (job title).")
     pid = a.newHexId
     discard a.write(me, "person", personBody(pid, name, fn, "user", pos), now)
   if have == nil:
@@ -868,32 +1081,116 @@ proc usernameOf(r: Run, pid: string): JNode =
   let p = r.persons.getOrDefault(pid)
   if p == nil: newNull() else: p["username"]
 
-proc devicesOut(a: Api, me: Actor): JNode =
+# ----- hiding removed devices and people from the lists (display only; this device's own setting, not the log)
+
+const HiddenKey = "hidden_removed"
+
+proc hiddenIds*(a: Api): HashSet[string] =
+  ## device and person IDs an admin hid from the lists on this device (or this server, for all its web users)
+  let raw = a.n.store.getMeta(HiddenKey)
+  if raw.len == 0: return
+  try:
+    let j = parseStrict(raw)
+    for x in j.elems:
+      if x.isStr: result.incl x.s
+  except JsonError: discard
+
+proc personActive*(r: Run, pid: string): bool =
+  ## a person with at least one device not removed
+  for d, v in r.devices:
+    if v["person"].s == pid and d notin r.cuts: return true
+
+proc personRemoved*(r: Run, pid: string): bool =
+  ## a person who had devices and has none left (deactivated, or every device removed). Someone registered whose
+  ## device hasn't joined yet has none either, but was never removed: not this.
+  var had = false
+  for d, v in r.devices:
+    if v["person"].s == pid:
+      if d notin r.cuts: return false
+      had = true
+  had
+
+proc removedId(a: Api, id: string): bool =
+  ## a removed device, or a removed person (personRemoved): the only things that can be hidden
+  if id in a.n.run.devices: id in a.n.run.cuts
+  elif id in a.n.run.persons: a.n.run.personRemoved(id)
+  else: false
+
+proc deviceHidden(a: Api, hidden: HashSet[string], d: string): bool =
+  d in a.n.run.cuts and (d in hidden or a.n.run.devices[d]["person"].s in hidden)
+
+proc setHidden(a: Api, me: Actor, d: JNode): JNode =
+  ## {"ids": [device or person IDs], "hide": true|false} or {"clear_removed": true}: hide every removed device and
+  ## deactivated person now in the lists
+  need(me, "admin")
+  var hidden = a.hiddenIds
+  var changed = 0
+  if truthy(d.get("clear_removed")):
+    for dev, _ in a.n.run.devices:
+      if dev in a.n.run.cuts and dev notin hidden:
+        hidden.incl dev
+        inc changed
+    for pid, _ in a.n.run.persons:
+      if a.n.run.personRemoved(pid) and pid notin hidden:
+        hidden.incl pid
+        inc changed
+  else:
+    let ids = d.get("ids")
+    if ids == nil or ids.kind != jArr or ids.len == 0 or ids.len > 1000: bad("ids: the devices or people to hide")
+    let hide = if d.get("hide") != nil: truthy(d["hide"]) else: true
+    for x in ids.elems:
+      if not x.isStr: bad("ids: the devices or people to hide")
+      if hide:
+        if not a.removedId(x.s): bad("Only removed devices and deactivated people can be hidden.")
+        if x.s notin hidden:
+          hidden.incl x.s
+          inc changed
+      elif x.s in hidden:
+        hidden.excl x.s
+        inc changed
+  # forget IDs that came back (a person who joined again shows again)
+  var keep: seq[string]
+  for x in hidden:
+    if a.removedId(x): keep.add x
+  keep.sort(system.cmp)
+  var arr = newArr()
+  for x in keep: arr.elems.add S(x)
+  a.n.store.setMeta(HiddenKey, toText(arr))
+  O(("ok", B(true)), ("changed", I(changed)), ("hidden", I(keep.len)))
+
+proc devicesOut(a: Api, me: Actor, showHidden = false): JNode =
   let r = a.n.run
+  let hidden = a.hiddenIds
+  var nHidden = 0
   proc dev(d: string, v: JNode): JNode =
     O(("device", S(d)), ("label", v["label"]), ("person", v["person"]),
       ("username", usernameOf(r, v["person"].s)),
-      ("revoked", B(d in r.cuts)), ("this_computer", B(d == a.n.device)))
+      ("revoked", B(d in r.cuts)), ("this_computer", B(d == a.n.device)), ("hidden", B(a.deviceHidden(hidden, d))))
   var mine, all = newArr()
   var names = newObj()
   for d, v in r.devices:
     let p = r.persons.getOrDefault(v["person"].s)
     names[d] = S((if p == nil: "?" else: p["username"].s) & " · " & (if v["label"].s.len > 0: v["label"].s else: "device"))
+    if a.deviceHidden(hidden, d):
+      inc nHidden
+      if not showHidden: continue
     if v["person"].s == me.person: mine.elems.add dev(d, v)
     all.elems.add dev(d, v)
-  O(("mine", mine), ("all", if me.isAdmin: all else: newNull()), ("node", S(a.n.device)), ("mode", S(a.mode)),
+  O(("mine", mine), ("all", if me.isAdmin: all else: newNull()), ("hidden", I(nHidden)), ("node", S(a.n.device)), ("mode", S(a.mode)),
     ("sync", if a.syncSnapshot != nil: a.syncSnapshot() else: newObj()), ("names", names),
     ("sync_port", if a.syncPort > 0: I(a.syncPort) else: newNull()))
 
-proc usersOut(a: Api, me: Actor): JNode =
+proc usersOut(a: Api, me: Actor, showHidden = false): JNode =
   result = newArr(@[O(("id", I(1)), ("username", S(me.username)), ("role", S(me.role)), ("active", B(true)),
                       ("has_password", B(true)), ("created", newNull()), ("full_name", S(me.fullName)),
                       ("position", if me.position.isNull: S("") else: me.position), ("person", S(me.person)))])
   var pids: seq[string]
   for pid, _ in a.n.run.persons: pids.add pid
   pids.sort(proc (x, y: string): int = cmp(a.n.run.persons[x]["username"].s.toLowerAscii, a.n.run.persons[y]["username"].s.toLowerAscii))
+  let hidden = a.hiddenIds
   for pid in pids:
     if pid == me.person: continue
+    if not showHidden and pid in hidden and not a.n.run.personActive(pid): continue
     let p = a.n.run.persons[pid]
     var devs, active = 0
     for d, v in a.n.run.devices:
@@ -902,7 +1199,8 @@ proc usersOut(a: Api, me: Actor): JNode =
         if d notin a.n.run.cuts: inc active
     result.elems.add O(("id", newNull()), ("person", S(pid)), ("username", p["username"]), ("full_name", p["full_name"]),
       ("position", if p["position"].isNull: S("") else: p["position"]), ("no_account", B(true)), ("has_password", B(false)),
-      ("role", S(a.roleOf(pid))), ("created", newNull()), ("active", B(active > 0)), ("devices", I(devs)))
+      ("role", S(a.roleOf(pid))), ("created", newNull()), ("active", B(active > 0)), ("devices", I(devs)),
+      ("hidden", B(pid in hidden and active == 0)))
 
 proc newRoomKey(a: Api, me: Actor, now: int64) =
   ## a new relay room key (decision 0050): kept here, its public key the setting `relay_member`; the other devices get
@@ -975,16 +1273,117 @@ proc configOut*(a: Api): JNode =
                ("can_create", B(true)),
                ("removed", if not joined and removed.len > 0: noteOf(removed) else: newNull()))))
 
+type Credits = object
+  ## who a written change is credited to, beyond its entry's author (this device's own records, not the log):
+  ## a held change approved by another admin is written by the approver but proposed by the row's person; an entry
+  ## written by a revert or restore puts back an earlier value and is nobody's contribution
+  proposer: Table[string, string]   ## entry → the person whose submission it carries
+  restores: HashSet[string]         ## entries written by revert / restore to
+
+proc credits(a: Api): Credits =
+  for r in a.n.store.subs():
+    if r["entry"].isStr and r["person"].isStr: result.proposer[r["entry"].s] = r["person"].s
+  for (eid, note) in a.n.store.notes():
+    if note.startsWith(RevertNote) or note.startsWith(RestoreNote): result.restores.incl eid
+
+proc creditOf(a: Api, c: Credits, eid: string): string =
+  if eid in c.proposer: c.proposer[eid]
+  elif eid in a.n.entries: a.personOf(a.n.entries[eid]["peer"].s)
+  else: ""
+
+proc whoOf(a: Api, h: JNode, c: Credits): JNode =
+  ## who made a History row's change and when: the author of the change itself (the proposal, not the approval),
+  ## by_name = full name, else username; at = when it took effect, submitted = when it was written
+  let src = h["source"].s
+  let person = a.creditOf(c, src)
+  let (u, _) = a.names(person)
+  O(("by", S(u)), ("by_name", S(a.displayName(person))), ("at", I(a.n.entries[h["at"].s]["hlc"][0].i div 1000)),
+    ("submitted", a.ts(src)))
+
+proc customPairs(v: JNode): Table[string, string] =
+  if v != nil and v.kind == jArr:
+    for x in v.elems:
+      if x.kind == jObj and x.get("k") != nil and x["k"].isStr and x.get("v") != nil and x["v"].isStr: result[x["k"].s] = x["v"].s
+
+proc equipmentBy*(a: Api, c: Credits): JNode =
+  ## {kks: {field: {by, by_name, at, submitted}}}: who last set each field still set (custom fields as "custom:<k>").
+  ## A value put back by a revert or restore keeps the credit of whoever set that value before (none if unknown).
+  var per: OrderedTable[string, OrderedTable[string, JNode]]
+  var past: Table[string, seq[(string, JNode)]]     ## kks \0 field → (value, who) in History order
+  for h in a.n.run.history:
+    if h["entity"].s != "equipment": continue
+    let k = h["key"].s
+    let before = if h["before"].isNull: newObj() else: h["before"]
+    let after = if h["after"].isNull: newObj() else: h["after"]
+    let restore = h["source"].s in c.restores
+    discard per.hasKeyOrPut(k, initOrderedTable[string, JNode]())
+    var who: JNode
+    template credit(f0, v0: string) =
+      let f = f0
+      let v = v0
+      let key = k & "\0" & f
+      if restore:
+        var w: JNode = nil
+        let seen = past.getOrDefault(key)
+        for i in countdown(seen.high, 0):
+          if seen[i][0] == v:
+            w = seen[i][1]
+            break
+        if w == nil: per[k].del(f) else: per[k][f] = w
+      else:
+        if who == nil: who = a.whoOf(h, c)
+        per[k][f] = who
+        past.mgetOrPut(key, @[]).add((v, who))
+    for f in ["area", "floor", "elev", "near", "loc", "notes"]:
+      let b = before.get(f)
+      let x = after.get(f)
+      if pyEq(b, x): continue
+      if x == nil or (x.isStr and x.s.len == 0): per[k].del(f)
+      else: credit(f, x.s)
+    let cb = customPairs(before.get("custom"))
+    let ca = customPairs(after.get("custom"))
+    for ck, cv in ca:
+      if cv.len == 0: per[k].del("custom:" & ck)      # cleared: nobody's value
+      elif ck notin cb or cb[ck] != cv: credit("custom:" & ck, cv)
+    for ck, _ in cb:
+      if ck notin ca: per[k].del("custom:" & ck)
+  result = newObj()
+  for k, fs in per:
+    if fs.len == 0 or k notin a.n.run.equipment: continue
+    var o = newObj()
+    for f, w in fs: o[f] = w
+    result[k] = o
+
+proc whoWalk(a: Api): JNode =
+  ## who and when for /api/state, from one pass over the History; cached until the log or this device's records
+  ## change: {"equipment_by": …, "photos": {photo id: {by, by_name, at, submitted}}}
+  let k = a.headKey
+  if k == a.whoKey and a.whoCache != nil: return a.whoCache
+  inc a.walks
+  let c = a.credits
+  var who, created = newObj()
+  for h in a.n.run.history:
+    if h["entity"].s == "photo" and h["before"].isNull and not h["after"].isNull:
+      created[h["key"].s] = I(a.n.entries[h["at"].s]["hlc"][0].i div 1000)
+      # a photo put back by a revert or restore keeps who took it (when known here)
+      if h["source"].s notin c.restores or who.get(h["key"].s) == nil: who[h["key"].s] = a.whoOf(h, c)
+  a.whoCache = O(("equipment_by", a.equipmentBy(c)), ("photos", who), ("created", created))
+  a.whoKey = k
+  a.whoCache
+
 proc stateOut(a: Api, me: Actor): JNode =
   let r = a.n.run
-  var created: Table[string, int64]
-  for h in r.history:
-    if h["entity"].s == "photo" and h["before"].isNull and not h["after"].isNull:
-      created[h["key"].s] = a.n.entries[h["at"].s]["hlc"][0].i div 1000
+  let ww = a.whoWalk
+  let who = ww["photos"]
+  let created = ww["created"]
   var photos: seq[JNode]
   for k, v in r.photos:
+    let w = who.get(k)
     photos.add O(("id", S(k)), ("kks", v["kks"]), ("file", S(a.n.blobName(v["blob"].s))), ("caption", v["caption"]),
-                 ("created", if k in created: I(created[k]) else: newNull()))
+                 ("created", if created.get(k) != nil: created[k] else: newNull()),
+                 ("kind", S(photoKind(v["caption"].s))),
+                 ("by", if w == nil: S("") else: w["by"]), ("by_name", if w == nil: S("") else: w["by_name"]),
+                 ("submitted", if w == nil: newNull() else: w["submitted"]))
   photos.sort(proc (x, y: JNode): int =
     result = cmp(if x["created"].isNull: 0'i64 else: x["created"].i, if y["created"].isNull: 0'i64 else: y["created"].i)
     if result == 0: result = cmp(x["id"].s, y["id"].s))
@@ -1000,8 +1399,104 @@ proc stateOut(a: Api, me: Actor): JNode =
   for s in opn:
     if s["mine"].b: mine.elems.add s
   result = O(("equipment", eq), ("reviews", rv), ("photos", newArr(photos)), ("links", links), ("added_tags", tags),
-             ("rev", I(r.history.len)), ("mine", mine))
+             ("rev", I(r.history.len)), ("mine", mine), ("equipment_by", ww["equipment_by"]))
   if me.isAdmin: result["queue"] = I(opn.len)
+
+const BoardKinds = [("photos", "Equipment photos"), ("plates", "Tag plate photos"), ("places", "Places and notes"),
+                    ("reviews", "Tag readings"), ("marked", "Marked tags"), ("links", "Procedure links"),
+                    ("removals", "Removals")]
+
+proc boardKind(kind: string, body: JNode): string =
+  case kind
+  of "photo": (if photoKind(body["caption"].s) == "plate": "plates" else: "photos")
+  of "equipment": "places"
+  of "review": "reviews"
+  of "tag_add": "marked"
+  of "link": "links"
+  else: "removals"     # photo_delete, tag_remove
+
+proc leaderboardWalk(a: Api): JNode =
+  ## Who contributes, from the log (every device's entries, not just this one's submissions): per person, their
+  ## data changes per kind and how each ended (approved — directly, by an admin's own write, or after review —,
+  ## rejected, pending, withdrawn), the approval ratio, the decisions they made and the votes they cast, and when
+  ## they last contributed. Entries the replay ignored are not counted. Sorted by approved contributions.
+  type Row = object
+    kinds: Table[string, array[4, int]]     ## approved, rejected, pending, withdrawn
+    direct, decided, votes, comments: int
+    last: int64
+  var rows: OrderedTable[string, Row]
+  let r = a.n.run
+  let hidden = a.hiddenIds
+  for pid, _ in r.persons:
+    if pid notin hidden or r.personActive(pid): rows[pid] = Row()   # the people an admin hid stay out
+  inc a.walks
+  let cr = a.credits
+  for eid, e in a.n.entries:
+    if eid in a.n.ignored or eid in r.ignored or eid in cr.restores: continue
+    let author = a.personOf(e["peer"].s)
+    let person = a.creditOf(cr, eid)
+    if person notin rows: continue
+    let t = e["type"].s
+    let at = e["hlc"][0].i div 1000
+    if t in Kinds:
+      let (st, _, _) = a.statusOf(eid)
+      let i = case st
+        of "approved": 0
+        of "rejected": 1
+        of "withdrawn": 3
+        else: 2
+      let bk = boardKind(t, e["body"])
+      var c = rows[person].kinds.getOrDefault(bk)
+      inc c[i]
+      rows[person].kinds[bk] = c
+      if st == "approved" and eid notin r.proposals and person == author: inc rows[person].direct
+      rows[person].last = max(rows[person].last, at)
+    elif t == "approve" or (t == "reject" and not (e["body"]["note"].isStr and e["body"]["note"].s.startsWith(PickNote))):
+      inc rows[person].decided       # a Pick's own rejections of the other photos are not decisions of their own
+    elif t == "vote" and e["body"]["on"].kind == jBool and e["body"]["on"].b: inc rows[person].votes
+    elif t == "comment": inc rows[person].comments
+  var lst: seq[(int, int, string, JNode)]
+  for pid, row in rows:
+    if row.kinds.len == 0 and row.decided + row.votes + row.comments == 0: continue   # only people who contributed
+    var tot: array[4, int]
+    var kinds = newObj()
+    for (k, _) in BoardKinds:
+      let c = row.kinds.getOrDefault(k)
+      for i in 0 .. 3: tot[i] += c[i]
+      kinds[k] = O(("total", I(c[0] + c[1] + c[2] + c[3])), ("approved", I(c[0])), ("rejected", I(c[1])),
+                   ("pending", I(c[2])), ("withdrawn", I(c[3])))
+    let total = tot[0] + tot[1] + tot[2] + tot[3]
+    # a name and numbers only: no IDs, positions, roles or active state (those stay admin-only, /api/users), and the
+    # username only for someone without a full name; people who contributed nothing aren't listed;
+    # key: stable per person and plant, not the person ID
+    let key = hex(a.n.p.sha256(toBytes("kks-board\n" & a.n.root & "\n" & pid)))[0 ..< 16]
+    let o = O(("key", S(key)), ("name", S(a.displayName(pid))),
+              ("total", I(total)), ("approved", I(tot[0])), ("rejected", I(tot[1])), ("pending", I(tot[2])),
+              ("withdrawn", I(tot[3])), ("direct", I(row.direct)),
+              ("ratio", if tot[1] > 0: newFloat(tot[0] / tot[1]) else: newNull()),
+              ("approval_rate", if tot[0] + tot[1] > 0: newFloat(tot[0] / (tot[0] + tot[1])) else: newNull()),
+              ("kinds", kinds), ("decided", I(row.decided)), ("votes", I(row.votes)), ("comments", I(row.comments)),
+              ("last", if row.last > 0: I(row.last) else: newNull()))
+    lst.add((-tot[0], -total, a.displayName(pid).toLowerAscii, o))
+  lst.sort(proc (x, y: (int, int, string, JNode)): int =
+    result = cmp(x[0], y[0])
+    if result == 0: result = cmp(x[1], y[1])
+    if result == 0: result = cmp(x[2], y[2]))
+  var people = newArr()
+  for i, x in lst:
+    x[3]["rank"] = I(i + 1)
+    people.elems.add x[3]
+  var labels = newObj()
+  for (k, l) in BoardKinds: labels[k] = S(l)
+  O(("people", people), ("kinds", labels))
+
+proc leaderboard*(a: Api): JNode =
+  ## leaderboardWalk, cached until the log or this device's records change
+  let k = a.headKey
+  if k != a.boardKey or a.boardCache == nil:
+    a.boardCache = a.leaderboardWalk
+    a.boardKey = k
+  a.boardCache
 
 proc publicUser*(me: Actor): JNode =
   O(("id", I(1)), ("username", S(me.username)), ("role", S(me.role)), ("active", B(true)), ("has_password", B(true)),
@@ -1021,9 +1516,20 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
                                ("transfer_pending", newNull())))
     of "/api/state": return ok(a.stateOut(me))
     of "/api/submissions":
+      # ?status=open|decided|all|pending|conflict|approved|rejected|withdrawn &kind=photo,equipment_photo,…
+      # &field=floor,custom:Description &mine=1 &group=code (adds "groups": per code, per kind)
       let status = q.getOrDefault("status", "open")
-      if status notin ["open", "decided", "all"]: bad("bad status")
-      return ok(O(("submissions", newArr(a.listSubs(me, status, min(q.qint("limit", 200), 1000))))))
+      if status notin Statuses: bad("bad status")
+      proc list(k: string): seq[string] =
+        for x in q.getOrDefault(k).split(','):
+          if x.strip.len > 0: result.add x.strip
+      let f = SubFilter(kinds: list("kind"), fields: list("field"), mine: q.getOrDefault("mine") in ["1", "true"])
+      for k in f.kinds:
+        if k notin Kinds and k notin ["equipment_photo", "plate_photo"]: bad("bad kind: " & k)
+      let subs = a.listSubs(me, status, min(q.qint("limit", 200), 1000), f)
+      var res = O(("submissions", newArr(subs)))
+      if q.getOrDefault("group") == "code": res["groups"] = groupSubs(subs)
+      return ok(res)
     of "/api/revisions":
       need(me, "admin")
       let before = q.qint("before", high(int))
@@ -1036,8 +1542,9 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
       return ok(O(("revisions", a.historyOut(rows, me.person))))
     of "/api/users":
       need(me, "admin")
-      return ok(O(("users", a.usersOut(me))))
-    of "/api/devices": return ok(a.devicesOut(me))
+      return ok(O(("users", a.usersOut(me, q.getOrDefault("show_hidden") in ["1", "true"]))))
+    of "/api/devices": return ok(a.devicesOut(me, q.getOrDefault("show_hidden") in ["1", "true"]))
+    of "/api/leaderboard": return ok(a.leaderboard)   # every member (the user asked for it to be visible to all)
     of "/api/diagnostics":
       # §13a: everyone sees whether reports are on (the app tells its person); the manager also sees the reports
       var o = O(("on", B(a.n.diagnosticsKey.len > 0)), ("pending", I(a.n.pending.len)))
@@ -1064,7 +1571,8 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
           let req = ask.request
           lst.elems.add O(("device", S(ask.device)), ("request", req), ("seen", I(ask.seen)), ("exp", I(ask.exp)),
                           ("code", S(a.n.p.joinCode(ask.device, a.n.device))),
-                          ("existing", a.existingPerson(req["username"].s)))
+                          ("existing", a.existingPerson(req["username"].s)),
+                          ("needs_position", B(a.needsPosition(req))))
       return ok(O(("requests", lst)))
     else:
       if path.startsWith("/api/invites/"):
@@ -1074,7 +1582,8 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
         let v = a.invites.items[tok]
         let state = if v.exp < now div 1000 and v.state in ["open", "asked"]: "expired" else: v.state
         return ok(O(("state", S(state)), ("exp", I(v.exp)), ("request", if v.request == nil: newNull() else: v.request),
-                    ("seen", I(v.seen)), ("existing", if v.request == nil: newNull() else: a.existingPerson(v.request["username"].s))))
+                    ("seen", I(v.seen)), ("existing", if v.request == nil: newNull() else: a.existingPerson(v.request["username"].s)),
+                    ("needs_position", B(v.request != nil and a.needsPosition(v.request)))))
       fail(404, "not found")
   if meth != "POST": fail(405, "method not allowed")
   let parts = path.split('/')
@@ -1141,6 +1650,7 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
     if not a.n.p.checkJoinRequest(req): bad("bad join request")
     return ok(a.certify(me, req, truthy(d.get("existing_ok")), now))
   of "/api/devices/revoke": return a.revokeDevice(me, d.get("device"), now)
+  of "/api/hidden": return ok(a.setHidden(me, d))
   of "/api/settings/relay":
     need(me, "manager")
     var url = if d.get("url") != nil and d["url"].isStr: d["url"].s.strip else: ""

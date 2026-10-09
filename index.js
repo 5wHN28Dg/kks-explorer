@@ -1,7 +1,7 @@
 // The drawings page (index.html). A file of its own, not an inline script, so the Content-Security-Policy can
 // allow scripts from this site only (#8).
 const $=s=>document.querySelector(s);
-let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
+let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},DESC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
 let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='', PDV='';
 const api=u=>K.api(u);
 // Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup.
@@ -73,6 +73,8 @@ async function load(){
   if(SHEETS.some(s=>s.levels)) PDV=String((await api('/api/sync/status').catch(()=>null))?.plant_data?.active??'');
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); toast('Offline: no saved copy of notes/photos on this device yet') }
   mergeTags();
+  // drafted descriptions (optional plant data; core model.parseDescriptions): code -> {text, basis}
+  DESC=await fetch('data/descriptions.json').then(r=>r.ok?r.json():{}).catch(()=>({})); DESC=parseDesc(DESC);
   const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
   for(const e of lj.entries)(LOC[e.kks]??=[]).push(e); if(lj.source) LOCSRC=lj.source;
   K.onChange(why=>{
@@ -82,12 +84,13 @@ async function load(){
     if(why==='synced') refreshState(); else { updatePending(); if(cur) drawTags() } });
   updateQueueBadge(); setTimeout(cacheSheets,3000);
   if(K.cfg?.mode==='peer'&&!K.cfg?.app) api('/api/update').then(u=>{   // once per new version (M5b)
-    if(u.available&&!u.staged&&localStorage.getItem('updSeen')!==u.latest){ localStorage.setItem('updSeen',u.latest); toast(`Walkdown ${u.latest} is out: Manage → Account to install it`) } }).catch(()=>{});
+    if(u.available&&!u.staged&&localStorage.getItem('updSeen')!==u.latest){ localStorage.setItem('updSeen',u.latest); toast(`Walkdown ${u.latest} is out: Manage → Updates to install it`) } }).catch(()=>{});
   put($('#sheetSel'),SHEETS.map(s=>h('option',{value:s.id},s.name)));
   refreshFloors(); refreshReviewCount(); renderProcs();
   const want=new URLSearchParams(location.search).get('sheet')||localStorage.getItem('sheet');  // ?sheet=id from Manage → Drawings
   const wantK=(new URLSearchParams(location.search).get('kks')||'').toUpperCase().replace(/\s+/g,'');  // ?kks= from a course link
-  const hitK=wantK&&TAGS.find(t=>full(t)===wantK||t.kks===wantK);
+  const wantT=new URLSearchParams(location.search).get('tag');   // ?tag=id from Manage → Approvals (a tag without a code)
+  const hitK=wantK&&TAGS.find(t=>full(t)===wantK||t.kks===wantK)||wantT&&TAGS.find(t=>t.id===wantT);
   if(hitK){ goTo(hitK.id); history.replaceState(null,'',location.pathname); return }
   openSheet(SHEETS.find(s=>s.id===want)?want:SHEETS[0].id);
   if(wantK){ $('#q').value=wantK; $('#q').dispatchEvent(new Event('input')); $('#q').focus() }
@@ -167,13 +170,13 @@ function myPendingEq(k){ // your not-yet-approved equipment edits for k, oldest 
 }
 function pendingFor(t){
   const k=full(t), rel=(kind,p)=>kind==='review'?p.tag_id===t.id:kind==='photo_delete'?STATE.photos.some(x=>x.id===p.photo_id&&x.kks===k):!!k&&p.kks===k;
-  return [...(STATE.mine||[]).map(s=>({kind:s.kind,p:s.payload,status:s.status})),...K.outbox.map(i=>({kind:i.kind,p:i.payload,status:'queued'}))].filter(x=>rel(x.kind,x.p));
+  return [...(STATE.mine||[]).map(s=>({kind:s.kind,p:s.payload,status:s.status})),...K.outbox.map(i=>({kind:i.kind,p:i.payload,status:i.refused?'refused':i.raw?'converting':'queued'}))].filter(x=>rel(x.kind,x.p));
 }
 function pendingSec(t){
   const L=pendingFor(t); if(!L.length) return null;
-  const label={pending:'awaiting approval',conflict:'conflict: admin decides',queued:'queued offline'};
+  const label={pending:'awaiting approval',conflict:'conflict: admin decides',queued:'queued offline',converting:'converting, then sent',refused:'refused by the server: see Manage → My submissions'};
   return h('div',{class:'sec'},h('h3',null,'Your changes, not live yet'),L.map(x=>h('div',{class:'pend'},h('span',{class:'badge '+x.status},label[x.status]),' '+K.describe(x.kind,x.p),
-    x.kind==='photo'?h('img',{src:x.p.file?'photos/'+x.p.file:x.p.dataUrl,alt:''}):null)));
+    x.kind==='photo'&&(x.p.file||x.p.dataUrl)?h('img',{src:x.p.file?'photos/'+x.p.file:x.p.dataUrl,alt:''}):null)));
 }
 function updatePending(){ const el=$('#pendingSec'); if(el&&selTag&&$('#panel').classList.contains('open')) put(el,pendingSec(selTag)) }
 // with a service worker, fetching each sheet once stores it for offline use
@@ -410,6 +413,76 @@ function goTo(tagId){
 const decode=t=>KSys.decode(t,KKS);
 function kindName(t){ const d=decode(t); if(!d) return t.kind; return KKS.components[d.comp]||('Component code '+d.comp) }
 
+// ---------- who and when (/api/state: photos[].by_name, equipment_by {code: {field: {by, by_name, at}}}) ----------
+const day=t=>t?new Date(t*1000).toLocaleDateString():'';
+const byLine=w=>w&&w.by_name?`by ${w.by_name}${w.at?', '+day(w.at):''}`:'';
+const eqBy=k=>(STATE.equipment_by||{})[k]||{};
+
+// ---------- descriptions: drafts from descriptions.json until a person confirms one (core views.descriptionOf) ----------
+// Confirming is an equipment proposal that adds the custom field "Description"; a confirmed one is that field.
+const DESC_KEY='Description';
+function parseDesc(j){   // core model.parseDescriptions: a string = the text; text capped at 2000 characters
+  const out={}; if(!j||typeof j!=='object'||Array.isArray(j)) return out;
+  for(const [k,v] of Object.entries(j)){ let text='',basis='';
+    if(typeof v==='string') text=v; else if(v&&typeof v==='object'){ if(typeof v.text==='string') text=v.text; if(typeof v.basis==='string') basis=v.basis }
+    text=[...text.trim()].slice(0,2000).join('').trim(); if(k&&text) out[k]={text,basis:basis.trim()} }
+  return out;
+}
+const customOf=(e,key)=>((e&&e.custom||[]).find(c=>c.k===key)||{}).v||'';
+function descriptionOf(t){
+  const k=full(t); if(!k) return null;
+  const live=eq(k), have=customOf(live,DESC_KEY), draft=DESC[k]||(t.suffix?DESC[t.kks]:null)||null;
+  if(have){ const w=eqBy(k)['custom:'+DESC_KEY];
+    return {status:'confirmed',text:have,basis:draft?.basis||'',by_name:w?.by_name||'',at:w?.at??null,draft_differs:!!draft&&draft.text!==have} }
+  if(!draft) return null;
+  const base=(live.custom||[]).map(c=>({k:c.k,v:c.v}));
+  return {status:'draft',text:draft.text,basis:draft.basis,
+    confirm:{kind:'equipment',payload:{kks:k,changes:{custom:[...base,{k:DESC_KEY,v:draft.text}]},base:{custom:base}}}};
+}
+function descSec(t){
+  const d=descriptionOf(t), k=full(t); if(!d) return null;
+  const pe=myPendingEq(k), waiting=!!pe.custom&&customOf(pe,DESC_KEY)!==customOf(eq(k),DESC_KEY);   // your confirmation or edit, not live yet
+  const tools=waiting?h('div',{class:'sub',style:'margin-top:6px'},'Your change to the description is awaiting approval.')
+    :h('div',{style:'margin-top:8px'},d.status==='draft'?[h('button',{class:'primary',onclick:()=>confirmDesc(t)},'Confirm'),' ']:null,
+      h('button',{class:'ghost',onclick:()=>editDesc(t,d.text)},'Edit'));
+  const basis=d.basis?h('div',{class:'sub'},'Basis: '+d.basis):null;
+  return h('div',{class:'sec',id:'descSec'},h('h3',null,'Description'),
+    d.status==='draft'?h('div',{class:'draft'},h('div',{class:'lbl'},'Draft description (unchecked)'),h('div',{class:'desc'},d.text),basis)
+      :[h('div',{class:'desc'},d.text),h('div',{class:'by'},'Confirmed'+(d.by_name?' by '+d.by_name:'')+(d.at?', '+day(d.at):'')),basis,
+        d.draft_differs?h('div',{class:'sub'},'Differs from the drafted text.'):null],
+    tools);
+}
+async function confirmDesc(t){ const d=descriptionOf(t); if(d?.status!=='draft') return;
+  if(await send(d.confirm.kind,d.confirm.payload,full(t)+': description confirmed')) reselect() }
+// the open panel again, at the same scroll position (after a change made from it: focus is still in it)
+function reselect(){ const P=$('#panel'); if(!selTag||!P.classList.contains('open')) return; const sc=P.scrollTop; select(eff(TAGS.find(x=>x.id===selTag.id)||selTag)); P.scrollTop=sc }
+function editDesc(t,text){
+  const ta=h('textarea',{id:'descEdit',rows:4,maxlength:2000,style:'width:100%'},text);
+  put($('#descSec'),h('h3',null,'Description'),h('div',{class:'field'},h('label',{for:'descEdit'},'What this equipment does'),ta),
+    h('button',{class:'primary',onclick:()=>saveDesc(t,ta.value.trim())},'Save'),' ',h('button',{class:'ghost',onclick:()=>$('#descSec').replaceWith(descSec(t))},'Cancel'));
+  $('#descSec').classList.add('editing'); ta.focus();
+}
+async function saveDesc(t,text){
+  const k=full(t), base=(eq(k).custom||[]).map(c=>({k:c.k,v:c.v})), rest=base.filter(c=>c.k!==DESC_KEY);
+  const custom=text?[...rest,{k:DESC_KEY,v:text}]:rest;
+  if(JSON.stringify(custom)===JSON.stringify(base)){ toast('Nothing changed'); return }
+  if(await send('equipment',{kks:k,changes:{custom},base:{custom:base}},k+': description')) reselect();
+}
+
+// ---------- photos: the floor first, then the photo; converted and sent in the background (K.queuePhoto) ----------
+const floorKnown=k=>!!((eq(k).floor||'').trim()||String(myPendingEq(k).floor??'').trim()
+  ||[...(STATE.mine||[]).map(s=>s.payload),...K.outbox.map(i=>i.payload)].some(p=>p&&p.kks===k&&p.floor));
+function photoAdd(k){
+  const need=!floorKnown(k);
+  const pick=(label,plate)=>h('label',{class:'ghost',style:'display:inline-block;margin:8px 6px 0 0;cursor:pointer'},label,
+    h('input',{type:'file',accept:'image/*',capture:'environment',style:'display:none','data-plate':plate?'1':null,onchange:ev=>addPhoto(ev.currentTarget,k,plate)}));
+  const btns=h('div',{id:'phAdd',style:need?'display:none':null},pick('+ Equipment photo',false),pick('+ Tag plate photo',true));
+  if(!need) return btns;
+  const inp=h('input',{id:'phFloor',type:'number',inputmode:'numeric',min:0,max:10,step:1,placeholder:'0–10',style:'width:90px',
+    oninput:()=>{ btns.style.display=/^(\d|10)$/.test(inp.value.trim())?'':'none' }});
+  return [h('div',{class:'field',style:'margin-top:8px'},h('label',{for:'phFloor'},'Floor: needed before a photo (this equipment has none yet)'),inp),btns];
+}
+
 // ---------- equipment panel ----------
 let selTag=null, panelEq=null;
 function select(t){
@@ -422,7 +495,7 @@ function select(t){
   const out=[h('div',{class:'phead'},h('div',{style:'flex:1'},
       h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},k?[t.kks,t.suffix?h('span',{class:'sfx'},t.suffix):null]:h('span',{style:'color:var(--review)'},'Unread tag')),
       h('div',{class:'sub'},t.isa?t.isa+' · ':'',kindName(t))),closeX()),
-    h('div',{id:'pendingSec'},pendingSec(t))];
+    h('div',{id:'pendingSec'},pendingSec(t)),descSec(t)];
   if(t.status==='review'){
     const s=t.suggestion||{};
     out.push(h('div',{class:'sec'},h('h3',null,'Check this tag'),
@@ -457,16 +530,17 @@ function select(t){
   }
   if(k){
     panelEq={k,live:JSON.parse(JSON.stringify(eq(k))),shown:JSON.parse(JSON.stringify(e))};
-    const cf=e.custom||[], R=refLoc(bodyOf(t)), ph=v=>v?v+' (location list)':'';
+    const cf=e.custom||[], R=refLoc(bodyOf(t)), ph=v=>v?v+' (location list)':'', B=eqBy(k), by=f=>byLine(B[f]);
     // read-only until you tap ✎ next to a field (no accidental edits); Save appears once something is unlocked
     out.push(h('div',{class:'sec'},h('h3',null,'Location'),
-        h('div',{class:'row2'},fld('f_area','Building / area',e.area),fld('f_floor','Floor',e.floor,{type:'number',ph:'0–10'})),
-        h('div',{class:'row2'},fld('f_elev','Elevation',e.elev,{ph:ph(R.elev)||'e.g. 14 m'}),fld('f_near','Near / landmark',e.near)),
-        fld('f_loc','How to find it',e.loc,{area:1})),
+        h('div',{class:'row2'},fld('f_area','Building / area',e.area,{by:by('area')}),fld('f_floor','Floor',e.floor,{type:'number',ph:'0–10',by:by('floor')})),
+        h('div',{class:'row2'},fld('f_elev','Elevation',e.elev,{ph:ph(R.elev)||'e.g. 14 m',by:by('elev')}),fld('f_near','Near / landmark',e.near,{by:by('near')})),
+        fld('f_loc','How to find it',e.loc,{area:1,by:by('loc')})),
       h('div',{class:'sec'},h('h3',null,'Notes & custom fields'),
-        fld('f_notes','Notes',e.notes,{area:1,ph:'Anything worth remembering'}),
+        fld('f_notes','Notes',e.notes,{area:1,ph:'Anything worth remembering',by:by('notes')}),
         h('div',{class:'field lock'},h('label',null,'Custom fields'),
-          h('div',{class:'lk'},h('div',{id:'cfs',style:'flex:1'},cf.length?cf.map(c=>cfRow(c.k,c.v,true)):h('div',{class:'sub'},'None')),
+          h('div',{class:'lk'},h('div',{id:'cfs',style:'flex:1'},cf.length?cf.map(c=>cfRow(c.k,c.v,true,byLine(B['custom:'+c.k]))):null,
+            cf.some(c=>c.k!==DESC_KEY)?null:h('div',{class:'sub cfnone'},'None')),
             h('button',{class:'pen',onclick:()=>unlockCustom(),title:'Edit custom fields','aria-label':'Edit custom fields'},'✎')),
           h('button',{class:'ghost',id:'cfAdd',style:'display:none',onclick:()=>$('#cfs').append(cfRow('',''))},'+ Custom field')),
         h('div',{id:'eqSave',style:'margin-top:10px;display:none'},
@@ -474,26 +548,26 @@ function select(t){
           h('button',{class:'primary',onclick:()=>saveEq(k)},'Save'),' ',h('button',{class:'ghost',onclick:()=>select(eff(selTag))},'Cancel'))),
       h('div',{class:'sec'},h('h3',null,'Photos'),
         h('div',{class:'photos'},photos.map(p=>h('figure',null,h('img',{src:'photos/'+encodeURIComponent(p.file),alt:p.caption||'Photo',onclick:ev=>lightbox(ev.currentTarget.src)}),
-          h('button',{onclick:()=>delPhoto(p.id,t.id),'aria-label':'Delete this photo'},'✕')))),
-        h('label',{class:'ghost',style:'display:inline-block;margin-top:8px;cursor:pointer'},'+ Add photo',
-          h('input',{type:'file',accept:'image/*',capture:'environment',style:'display:none',onchange:ev=>addPhoto(ev.currentTarget,k,t.id)}))));
+          h('button',{onclick:()=>delPhoto(p.id,t.id),'aria-label':'Delete this photo'},'✕'),
+          h('figcaption',null,p.kind==='plate'||String(p.caption||'').startsWith('Tag plate')?'Tag plate · ':'',byLine({by_name:p.by_name,at:p.submitted??p.created})||day(p.created))))),
+        photoAdd(k)));
   }
   put(P,out); $('#panel').classList.add('open'); $('#panel').scrollTop=0;
   if(focusPanel){ focusPanel=false; P.querySelector('.phead .kks')?.focus() }
 }
-function cfRow(k,v,ro){
-  const row=h('div',{class:'cf'},h('input',{placeholder:'Field',value:k??'',readonly:!!ro}),h('input',{placeholder:'Value',value:v??'',readonly:!!ro}),
-    h('button',{class:'x',style:ro?'display:none':null,onclick:()=>row.remove()},'×'));
+function cfRow(k,v,ro,by){
+  const row=h('div',{class:'cf',style:ro&&k===DESC_KEY?'display:none':null},h('input',{placeholder:'Field',value:k??'',readonly:!!ro}),h('input',{placeholder:'Value',value:v??'',readonly:!!ro}),
+    h('button',{class:'x',style:ro?'display:none':null,onclick:()=>row.remove()},'×'),by?h('div',{class:'by'},by):null);
   return row;
 }
 function fld(id,label,val,o={}){
   const a={id,readonly:true,placeholder:'—','data-ph':o.ph||''};   // the hint only once it is being edited
-  return h('div',{class:'field lock'},h('label',{for:id},label),h('div',{class:'lk'},
+  return h('div',{class:'field lock'},h('label',{for:id},label,o.by&&val?[' ',h('span',{class:'by'},'· '+o.by)]:null),h('div',{class:'lk'},
     o.area?h('textarea',{...a,rows:2},val||''):h('input',{...(o.type==='number'?{type:'number',inputmode:'numeric',min:0,max:10,step:1}:{}),...a,value:val||''}),
     h('button',{class:'pen',onclick:()=>unlock(id),title:`Edit ${label}`,'aria-label':`Edit ${label}`},'✎')));
 }
 function unlock(id){ const el=document.getElementById(id); el.readOnly=false; el.placeholder=el.dataset.ph||''; el.closest('.field').classList.add('editing'); el.focus(); $('#eqSave').style.display='' }
-function unlockCustom(){ const c=$('#cfs'); c.closest('.field').classList.add('editing'); if(!c.querySelector('.cf')) c.replaceChildren();
+function unlockCustom(){ const c=$('#cfs'); c.closest('.field').classList.add('editing'); c.querySelector('.cfnone')?.remove();
   c.querySelectorAll('input').forEach(i=>i.readOnly=false); c.querySelectorAll('.x').forEach(b=>b.style.display=''); $('#cfAdd').style.display=''; $('#eqSave').style.display='' }
 function closePanel(){ $('#panel').classList.remove('open'); selId=null; selTag=null; drawTags() }
 // The phone's Back button (Android app): close what is open first, one thing at a time; false = nothing left to close.
@@ -538,20 +612,31 @@ async function review(id,status){
   renderReview(); const t=TAGS.find(x=>x.id===id);
   if(r.status==='approved'){ if(status==='confirmed') select(eff(t)); else closePanel() }
 }
-async function addPhoto(input,k,tid){
+async function addPhoto(input,k,plate){
   const f=input.files[0]; input.value=''; if(!f) return;
-  const p=await photoData(f); if(!p) return;
-  const r=await send('photo',{kks:k,dataUrl:p.dataUrl},'photo for '+k,p.note);
-  if(r) select(eff(TAGS.find(x=>x.id===tid)));
+  // no floor for this code yet: the one typed above the buttons goes with the photo (written first, PROTOCOL-v2 §9)
+  const fl=floorKnown(k)?'':($('#phFloor')?.value||'').trim();
+  if(!floorKnown(k)&&!/^(\d|10)$/.test(fl)){ toast('The floor first: a whole number from 0 to 10'); return }
+  const a=await photoCanvas(f); if(!a) return;
+  // queued at once (kept on this device), converted in the background, sent in order: closing the panel stops nothing
+  try{ await K.queuePhoto(a.canvas,{kks:k,...(plate?{caption:'Tag plate'}:{}),...(fl?{floor:fl}:{})},a.note) }
+  catch(e){ toast('Not saved: '+e.message); return }
+  toast(`${plate?'Tag plate photo':'Photo'} for ${k}: converting, then sent`);
+  if(selTag&&full(selTag)===k&&!$('#panel').querySelector('.editing')) reselect();
 }
-// a picture file → scaled, marked up in the editor, encoded as the server wants it -> {dataUrl, note} or null
-async function photoData(f){
+// a picture file → scaled and marked up in the editor -> {canvas, note} or null
+async function photoCanvas(f){
   const img=new Image(), url=URL.createObjectURL(f);
   try{ await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(new Error('That file could not be read as a picture.'));img.src=url}) }
   catch(e){ toast(e.message); return null } finally{ URL.revokeObjectURL(url) }
   const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
   c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-  const a=await K.annotate(c.toDataURL('image/png'),!canApprove());   // mark what matters, or just "Use photo"
+  return K.annotate(c.toDataURL('image/png'),!canApprove());   // mark what matters, or just "Use photo"
+}
+// a picture file → marked up and encoded as the server wants it, for a photo of several codes at once (sent at once,
+// not queued: /api/submit-many) -> {dataUrl, note} or null
+async function photoData(f){
+  const a=await photoCanvas(f);
   if(!a) return null;
   const up=K.cfg?.photo_upload||{type:'image/jpeg',q:0.85};
   const mp=a.canvas.width*a.canvas.height/1e6;
@@ -666,6 +751,9 @@ const noteValue=d=>d.querySelector('#dlgNote')?.value.trim()||'';
 function pickNothing(){ if(multi.codes.length) return false; toast('Select tags first'); return true }
 function photoForAll(){
   if(pickNothing()) return;
+  // the user's rule: a photo needs its equipment's floor (one dialog can't ask for several, so set them first)
+  const missing=multi.codes.filter(k=>!floorKnown(k));
+  if(missing.length){ toast(`A photo needs each code's floor. No floor yet: ${missing.slice(0,5).join(', ')}${missing.length>5?` and ${missing.length-5} more`:''}. Set it with Place for all first.`); return }
   const d=dialog('Photo for all',
     h('p',{class:'sub',style:'margin:0 0 8px'},`One photo for ${nCodes(multi.codes.length)}: it is kept once, every code gets it.`),
     h('div',{class:'field'},h('label',{for:'dlgCaption'},'Caption (optional)'),h('input',{id:'dlgCaption',maxlength:200,placeholder:'e.g. Tag plate, or what the photo shows'}),
