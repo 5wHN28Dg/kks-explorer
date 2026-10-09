@@ -278,6 +278,9 @@ proc createPlant*(a: App, plant, username, fullName: string, position: JNode) =
   a.store.putRow("keys", "root", keyJson(rk))
   let pid = newPersonId(a.p)
   discard a.n.append("genesis", a.p.genesisBody(rk, plant, a.n.device, pid, username, fullName, position), nowMs())
+  # the plant's root, as the server's setup does: without it the replay ignored the genesis (its root must be the
+  # node's), so the new manager had no account here (empty details in Account, no role)
+  a.n.adopt(keyString(rk.pub))
   a.changed("joined")
 
 proc syncOne*(a: App, host: string, port: int, expectPeer: string, adoptRoot = ""): Future[Stats] {.async.} =

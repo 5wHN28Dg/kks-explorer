@@ -11,6 +11,16 @@
 //   select <name>           select a list item (SelectionItem), e.g. before a button that opens the selection
 //   value <name> <text>     wait (15 s) until the field with this name holds a value containing text
 //   gone <name>             wait until no element has this name
+//   toggle <name>           flip a check box (Toggle)
+//   state <name> on|off     wait (15 s) until the check box with this name is on / off
+//   choose <name>           choose a radio button (its default action, what a screen reader does; BM_CLICK if none)
+//   chosen <name>           wait (15 s) until the radio button with this name is the chosen one
+//   close <name>            ask the top-level window holding this element to close (WM_CLOSE, as its X button)
+//   shade <name> dark|light wait (20 s) until the middle half of the element, as drawn (PrintWindow), is dark paper
+//                           with light lines (median grey < 40, some light pixels) or white paper with dark lines
+//                           (median > 200, some dark pixels): dark drawings
+//   boxdrag <window> <element> <fw> <fh>  a left-button drag in <window> from just above-left of <element> to its
+//                           top-left plus fw × its width, fh × its height (a box around it and its neighbours)
 //   sleep <ms>
 //   dump                    log every element (type, name)
 // Exits 0 when every line passed, 1 at the first failure (logged).
@@ -23,6 +33,8 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
+#include <cstdint>
 
 static IUIAutomation *ua;
 static FILE *logf;
@@ -91,6 +103,48 @@ static std::string type_name(CONTROLTYPEID t) {
 
 static DWORD pid_of(const std::wstring &exe);
 
+// the element as drawn, the middle half of it: (median grey, light pixels, dark pixels, pixels); false if not captured
+static bool shade_of(IUIAutomationElement *e, int &median, int &light, int &dark, int &n) {
+    UIA_HWND hw = 0;
+    e->get_CurrentNativeWindowHandle(&hw);
+    if (!hw) return false;
+    HWND root = GetAncestor((HWND)hw, GA_ROOT);
+    RECT rr, er;
+    GetWindowRect(root, &rr);
+    GetWindowRect((HWND)hw, &er);
+    int W = rr.right - rr.left, H = rr.bottom - rr.top;
+    if (W <= 0 || H <= 0) return false;
+    HDC sdc = GetDC(nullptr);
+    HDC dc = CreateCompatibleDC(sdc);
+    BITMAPINFO bi = {};
+    bi.bmiHeader.biSize = sizeof bi.bmiHeader; bi.bmiHeader.biWidth = W; bi.bmiHeader.biHeight = -H;
+    bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
+    void *bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(sdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    HGDIOBJ old = SelectObject(dc, bmp);
+    bool ok = PrintWindow(root, dc, 2 /* PW_RENDERFULLCONTENT: Direct2D content too */) != 0;
+    if (ok) {
+        int x0 = er.left - rr.left, y0 = er.top - rr.top, w = er.right - er.left, h = er.bottom - er.top;
+        std::vector<int> greys;
+        light = dark = 0;
+        for (int y = y0 + h / 4; y < y0 + 3 * h / 4; y++)
+            for (int x = x0 + w / 4; x < x0 + 3 * w / 4; x++) {
+                if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                const uint8_t *p = (const uint8_t *)bits + ((size_t)y * W + x) * 4;
+                int b = p[0], g = p[1], r = p[2];
+                int mx = std::max(r, std::max(g, b)), mn = std::min(r, std::min(g, b));
+                greys.push_back((r + g + b) / 3);
+                if (mn > 170 && mx - mn < 30) light++;
+                if (mx < 90) dark++;
+            }
+        n = (int)greys.size();
+        if (n == 0) ok = false;
+        else { std::nth_element(greys.begin(), greys.begin() + n / 2, greys.end()); median = greys[n / 2]; }
+    }
+    SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
+    return ok;
+}
+
 // only/only2: the control types that may match (0 = any); select and enter take list and tree items
 static IUIAutomationElement *find(DWORD &pid, const std::string &spec, bool dump = false, CONTROLTYPEID only = 0, CONTROLTYPEID only2 = 0) {
     { auto rs = roots(pid); if (rs.empty()) { DWORD np = pid_of(exeName); if (np) pid = np; } for (auto *r : rs) r->Release(); }
@@ -107,7 +161,19 @@ static IUIAutomationElement *find(DWORD &pid, const std::string &spec, bool dump
                 IUIAutomationElement *e = nullptr; arr->GetElement(i, &e);
                 BSTR name = nullptr; e->get_CurrentName(&name);
                 std::wstring nm = name ? name : L"";
-                if (dump) { CONTROLTYPEID t = 0; e->get_CurrentControlType(&t); say("  " + type_name(t) + " '" + utf8(nm.c_str()) + "'"); }
+                if (dump) {
+                    CONTROLTYPEID t = 0; e->get_CurrentControlType(&t);
+                    std::string val;
+                    if (t == UIA_EditControlTypeId) {     // an edit's value too: what a failed `value` saw
+                        IUIAutomationValuePattern *vp = nullptr;
+                        if (SUCCEEDED(e->GetCurrentPatternAs(UIA_ValuePatternId, __uuidof(IUIAutomationValuePattern), (void **)&vp)) && vp) {
+                            BSTR v = nullptr;
+                            if (SUCCEEDED(vp->get_CurrentValue(&v)) && v) { val = " = '" + utf8(v) + "'"; SysFreeString(v); }
+                            vp->Release();
+                        }
+                    }
+                    say("  " + type_name(t) + " '" + utf8(nm.c_str()) + "'" + val);
+                }
                 CONTROLTYPEID ct = 0;
                 if (only) e->get_CurrentControlType(&ct);
                 if (!dump && (!only || ct == only || (only2 && ct == only2)) && ((contains && nm.find(want) != std::wstring::npos) || (!contains && nm == want))) { hit = e; hit->AddRef(); }
@@ -164,8 +230,10 @@ int wmain(int argc, wchar_t **argv) {
             continue;
         }
         int timeout = (cmd == "wait" && f.size() > 2) ? std::stoi(f[2]) * 1000 : 15000;
-        CONTROLTYPEID only = (cmd == "set" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
-                             (cmd == "enter" || cmd == "select") ? UIA_ListItemControlTypeId : 0;
+        CONTROLTYPEID only = (cmd == "set" || cmd == "settext" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
+                             (cmd == "enter" || cmd == "select") ? UIA_ListItemControlTypeId :
+                             (cmd == "toggle" || cmd == "state") ? UIA_CheckBoxControlTypeId :
+                             (cmd == "choose" || cmd == "chosen") ? UIA_RadioButtonControlTypeId : 0;
         CONTROLTYPEID only2 = (cmd == "enter" || cmd == "select") ? UIA_TreeItemControlTypeId : 0;
         IUIAutomationElement *e = wait_for(pid, arg, timeout, only, only2);
         if (!e) { say("ERROR: not found: " + arg + " (line " + std::to_string(lineNo) + ")"); find(pid, "", true); return 1; }
@@ -186,10 +254,87 @@ int wmain(int argc, wchar_t **argv) {
                 if (!ok) Sleep(300);
             }
             e->Release();
-            if (!ok) { say("ERROR: " + arg + " does not hold " + (f.size() > 2 ? f[2] : "")); return 1; }
+            if (!ok) { say("ERROR: " + arg + " does not hold " + (f.size() > 2 ? f[2] : "")); find(pid, "", true); return 1; }
             continue;
         }
-        if (cmd == "click") {
+        if (cmd == "state") {
+            bool want = f.size() > 2 && f[2] == "on", ok = false;
+            for (int t = 0; t < 15000 && !ok; t += 300) {
+                IUIAutomationElement *x = find(pid, arg, false, UIA_CheckBoxControlTypeId);
+                if (x) {
+                    IUIAutomationTogglePattern *tp = nullptr;
+                    if (SUCCEEDED(x->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&tp)) && tp) {
+                        ToggleState st;
+                        if (SUCCEEDED(tp->get_CurrentToggleState(&st))) ok = (st == ToggleState_On) == want;
+                        tp->Release();
+                    }
+                    x->Release();
+                }
+                if (!ok) Sleep(300);
+            }
+            e->Release();
+            if (!ok) { say("ERROR: " + arg + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
+            continue;
+        }
+        if (cmd == "chosen") {
+            bool ok = false;
+            for (int t = 0; t < 15000 && !ok; t += 300) {
+                IUIAutomationElement *x = find(pid, arg, false, UIA_RadioButtonControlTypeId);
+                if (x) {
+                    IUIAutomationLegacyIAccessiblePattern *lp = nullptr;
+                    if (SUCCEEDED(x->GetCurrentPatternAs(UIA_LegacyIAccessiblePatternId, __uuidof(IUIAutomationLegacyIAccessiblePattern), (void **)&lp)) && lp) {
+                        DWORD st = 0;
+                        if (SUCCEEDED(lp->get_CurrentState(&st))) ok = (st & 0x10 /* STATE_SYSTEM_CHECKED */) != 0;
+                        lp->Release();
+                    }
+                    x->Release();
+                }
+                if (!ok) Sleep(300);
+            }
+            e->Release();
+            if (!ok) { say("ERROR: " + arg + " is not chosen"); return 1; }
+            continue;
+        }
+        if (cmd == "shade") {
+            bool wantDark = f.size() > 2 && f[2] == "dark", ok = false;
+            int med = -1, light = 0, dark = 0, n = 0;
+            for (int t = 0; t < 20000 && !ok; t += 500) {
+                IUIAutomationElement *x = find(pid, arg);
+                if (x) {
+                    if (shade_of(x, med, light, dark, n))
+                        ok = wantDark ? (med < 40 && light > 0) : (med > 200 && dark > 0);
+                    x->Release();
+                }
+                if (!ok) Sleep(500);
+            }
+            say("  median grey " + std::to_string(med) + ", light " + std::to_string(light) + ", dark " + std::to_string(dark) +
+                " of " + std::to_string(n));
+            e->Release();
+            if (!ok) { say("ERROR: " + arg + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
+            continue;
+        }
+        if (cmd == "toggle") {
+            IUIAutomationTogglePattern *tp = nullptr;
+            if (FAILED(e->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&tp)) || !tp) {
+                say("ERROR: not a check box: " + arg); return 1;
+            }
+            tp->Toggle(); tp->Release();
+        } else if (cmd == "boxdrag") {
+            // the box: from just above-left of the element (in its window's client coordinates) to fw × fh of its size
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            IUIAutomationElement *t = f.size() > 4 ? wait_for(pid, f[2], 15000) : nullptr;
+            if (!hw || !t) { say("ERROR: can't box-drag " + arg + " around " + (f.size() > 2 ? f[2] : "")); return 1; }
+            RECT r; t->get_CurrentBoundingRectangle(&r); t->Release();
+            POINT a{r.left - 4, r.top - 4}, b{r.left + (LONG)((r.right - r.left) * std::stod(f[3])), r.top + (LONG)((r.bottom - r.top) * std::stod(f[4]))};
+            ScreenToClient((HWND)hw, &a); ScreenToClient((HWND)hw, &b);
+            PostMessageW((HWND)hw, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(a.x, a.y));
+            for (int s = 1; s <= 8; s++) {
+                PostMessageW((HWND)hw, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(a.x + (b.x - a.x) * s / 8, a.y + (b.y - a.y) * s / 8));
+                Sleep(20);
+            }
+            PostMessageW((HWND)hw, WM_LBUTTONUP, 0, MAKELPARAM(b.x, b.y));
+        } else if (cmd == "click") {
             IUIAutomationInvokePattern *ip = nullptr;
             if (FAILED(e->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&ip)) || !ip) {
                 say("ERROR: not clickable: " + arg); return 1;
@@ -202,6 +347,14 @@ int wmain(int argc, wchar_t **argv) {
             }
             BSTR b = SysAllocString(wide(f.size() > 2 ? f[2] : "").c_str());
             vp->SetValue(b); SysFreeString(b); vp->Release();
+        } else if (cmd == "settext") {
+            // WM_SETTEXT straight to the edit box: not held to the field's typing limit (EM_LIMITTEXT), so the app's own
+            // check of a value set from outside is what gets tested
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            std::wstring v = wide(f.size() > 2 ? f[2] : "");
+            if (!SendMessageW((HWND)hw, WM_SETTEXT, 0, (LPARAM)v.c_str())) { say("ERROR: WM_SETTEXT refused: " + arg); return 1; }
         } else if (cmd == "keys") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);
@@ -250,6 +403,56 @@ int wmain(int argc, wchar_t **argv) {
                 Sleep(30);
             }
             send(x1, y1, POINTER_FLAG_UP);
+        } else if (cmd == "endsession") {
+            // what signing out does first: WM_QUERYENDSESSION to the element's top window; f[2]: the answer expected
+            // (0: the app asks to wait, 1: it lets the session end)
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            DWORD_PTR r = 0;
+            if (!SendMessageTimeoutW(GetAncestor((HWND)hw, GA_ROOT), WM_QUERYENDSESSION, 0, ENDSESSION_LOGOFF, SMTO_ABORTIFHUNG, 10000, &r)) {
+                say("ERROR: no answer to WM_QUERYENDSESSION"); return 1;
+            }
+            if (f.size() > 2 && std::to_string(r ? 1 : 0) != f[2]) { say("ERROR: WM_QUERYENDSESSION answered " + std::to_string(r)); return 1; }
+        } else if (cmd == "blockreason") {
+            // the shutdown block reason of the element's top window (what Windows shows when signing out): f[2] a part
+            // of it, or "-" for none. Waits up to 15 s for it to change
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            HWND root = GetAncestor((HWND)hw, GA_ROOT);
+            std::wstring want = wide(f.size() > 2 ? f[2] : "-");
+            std::wstring got;
+            bool ok = false;
+            for (int t = 0; t < 15000 && !ok; t += 300) {
+                WCHAR buf[512] = {};
+                DWORD n = 512;
+                got = ShutdownBlockReasonQuery(root, buf, &n) && buf[0] ? std::wstring(buf) : L"-";
+                ok = want == L"-" ? got == L"-" : got.find(want) != std::wstring::npos;
+                if (!ok) Sleep(300);
+            }
+            if (!ok) {
+                std::string g(got.begin(), got.end());
+                say("ERROR: the shutdown block reason is " + g + ", not " + (f.size() > 2 ? f[2] : "-")); return 1;
+            }
+        } else if (cmd == "close") {
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            PostMessageW(GetAncestor((HWND)hw, GA_ROOT), WM_CLOSE, 0, 0);
+        } else if (cmd == "choose") {
+            IUIAutomationLegacyIAccessiblePattern *lp = nullptr;
+            bool done = false;
+            if (SUCCEEDED(e->GetCurrentPatternAs(UIA_LegacyIAccessiblePatternId, __uuidof(IUIAutomationLegacyIAccessiblePattern), (void **)&lp)) && lp) {
+                done = SUCCEEDED(lp->DoDefaultAction());
+                lp->Release();
+            }
+            if (!done) {
+                UIA_HWND hw = 0;
+                e->get_CurrentNativeWindowHandle(&hw);
+                if (!hw) { say("ERROR: can't choose " + arg); return 1; }
+                SendMessageW((HWND)hw, BM_CLICK, 0, 0);
+            }
         } else if (cmd == "select") {
             IUIAutomationSelectionItemPattern *sp = nullptr;
             if (FAILED(e->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sp)) || !sp) {

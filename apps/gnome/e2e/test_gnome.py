@@ -924,6 +924,12 @@ class Gnome(unittest.TestCase):
         atspi.set_text(atspi.find(f, 'text', name='Your position (job title)'), 'Plant manager')
         atspi.click(atspi.find(f, 'button', name='Create the plant'))
         atspi.find(f, 'button', name='Manage', timeout=15)
+        # the new plant's manager has an account here (the genesis took effect: the plant's root adopted), not empty
+        # details without a role (the bug the Windows test caught)
+        atspi.click(atspi.find(f, 'button', name='Manage'))
+        atspi.click(atspi.find(f, 'button', name='Account', timeout=10))
+        atspi.find(f, 'label', name='founder', timeout=10)
+        atspi.find(f, 'label', name='manager', timeout=10)
 
 
 if __name__ == '__main__':

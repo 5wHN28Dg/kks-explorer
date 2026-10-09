@@ -1,9 +1,12 @@
 ## The drawing viewer (R1; decisions 0015, 0016, 0033): the overview pyramid below its own resolution, vector tiles
 ## rendered by Direct2D on worker threads above it (kks_d2d.cpp), tag hotspots on top. Drag to pan, wheel to zoom,
-## double-click to zoom in, click a tag. The same model as the Android and GNOME viewers.
+## double-click to zoom in, click a tag. The same model as the Android and GNOME viewers. Dark drawings (setDark): tiles
+## and overview levels light-on-dark, made on the worker threads (kks_d2d.cpp kks_dark_rgb, a copy of
+## apps/common/darkcolor.nim); the "Select tags" mode (`selecting`): a click toggles a tag, a dragged box adds the tags
+## it touches (multi.nim).
 
 import std/[tables, math, sets, algorithm]
-import w32, ui
+import w32, ui, darkcolor
 
 {.compile("kks_d2d.cpp", "-std=c++17").}
 {.passL: "-ljxl -ljxl_cms -lhwy -lbrotlidec -lbrotlienc -lbrotlicommon -ljxl_threads -lstdc++".}
@@ -13,8 +16,8 @@ proc sheetOpen(flat: pointer, n: csize_t): pointer {.importc: "kks_sheet_open", 
 proc sheetClose(s: pointer) {.importc: "kks_sheet_close", cdecl.}
 proc sheetW(s: pointer): cint {.importc: "kks_sheet_width", cdecl.}
 proc sheetH(s: pointer): cint {.importc: "kks_sheet_height", cdecl.}
-proc tileRequest(key: clonglong, s: pointer, tz, x0, y0: cfloat, size: cint) {.importc: "kks_tile_request", cdecl.}
-proc jxlRequest(key: clonglong, data: pointer, n: csize_t) {.importc: "kks_jxl_request", cdecl.}
+proc tileRequest(key: clonglong, s: pointer, tz, x0, y0: cfloat, size: cint, dark: cint) {.importc: "kks_tile_request", cdecl.}
+proc jxlRequest(key: clonglong, data: pointer, n: csize_t, dark: cint) {.importc: "kks_jxl_request", cdecl.}
 proc jobsClear() {.importc: "kks_jobs_clear", cdecl.}
 proc jobDone(key: ptr clonglong, w, h: ptr cint, px: ptr pointer): cint {.importc: "kks_job_done", cdecl.}
 proc cfree(p: pointer) {.importc: "kks_free", cdecl.}
@@ -46,6 +49,7 @@ type
 
   Viewer* = ref object
     coverage*: bool             ## colour the tags by their photos instead of by how they were read
+    dark*: bool                 ## dark drawings (setDark): tiles and overview light-on-dark, markers lightened
     hwnd*: HWND
     v: pointer
     sheet: pointer
@@ -55,6 +59,7 @@ type
     levels: seq[Pixels]         ## decoded, kept to re-upload after a lost device
     levelBmp: seq[cint]
     levelAsked: seq[bool]
+    stale: seq[cint]            ## the levels shown before a dark-drawings switch, until this mode's arrive (bitmaps)
     levelData*: proc (k: int): string   ## the app gives the JXL bytes of level k
     tiles: Table[string, (Pixels, cint)]
     tileOrder: seq[string]
@@ -71,6 +76,10 @@ type
     onMark*: proc (x0, y0, x1, y1: float)
     mark: (float, float, float, float)
     markOn: bool
+    selecting*: bool            ## "Select tags" mode: a click toggles a tag (onTag), a dragged box adds the tags it touches
+    chosen*: HashSet[string]    ## the selected tags (a distinct outline)
+    onBox*: proc (x0, y0, x1, y1: float)   ## a box dragged in the select mode (points)
+    onEscape*: proc ()          ## Escape in the select mode
     dragging: bool
     dragMoved: bool
     lastX, lastY: int
@@ -121,12 +130,18 @@ proc clearTiles(v: Viewer) =
   v.tileOrder.setLen(0)
   v.pending.clear()
 
+proc dropStale(v: Viewer) =
+  for b in v.stale:
+    if b > 0: viewBitmapFree(v.v, b)
+  v.stale = @[]
+
 proc setSheet*(v: Viewer, id: string, flat: string, scale: float, nLevels: int) =
   inc v.gen
   jobsClear()
   v.clearTiles()
   for b in v.levelBmp:
     if b > 0: viewBitmapFree(v.v, b)
+  v.dropStale()
   if v.sheet != nil: sheetClose(v.sheet)
   v.sheet = if flat.len > 0: sheetOpen(unsafeAddr flat[0], csize_t(flat.len)) else: nil
   v.sheetId = id
@@ -139,14 +154,14 @@ proc setSheet*(v: Viewer, id: string, flat: string, scale: float, nLevels: int) 
   if nLevels > 0:
     v.levelAsked[nLevels - 1] = true
     let d = v.levelData(nLevels - 1)
-    if d.len > 0: jxlRequest(clonglong(v.gen * 100 + nLevels - 1), unsafeAddr d[0], csize_t(d.len))
+    if d.len > 0: jxlRequest(clonglong(v.gen * 100 + nLevels - 1), unsafeAddr d[0], csize_t(d.len), cint(ord(v.dark)))
   v.invalidate()
 
 proc askLevel(v: Viewer, k: int) =
   if k < 0 or k >= v.levels.len or v.levelAsked[k]: return
   v.levelAsked[k] = true
   let d = v.levelData(k)
-  if d.len > 0: jxlRequest(clonglong(v.gen * 100 + k), unsafeAddr d[0], csize_t(d.len))
+  if d.len > 0: jxlRequest(clonglong(v.gen * 100 + k), unsafeAddr d[0], csize_t(d.len), cint(ord(v.dark)))
 
 proc upload(v: Viewer, p: Pixels): cint =
   if p.w == 0: return 0
@@ -160,7 +175,7 @@ var tileNames = initTable[int, (int, string)]()   # serial → (gen, name)
 proc requestTile(v: Viewer, name: string, tz, x0, y0: float) =
   inc tileSerial
   tileNames[tileSerial] = (v.gen, name)
-  tileRequest(clonglong(1_000_000_000_000 + tileSerial), v.sheet, cfloat(tz), cfloat(x0), cfloat(y0), Tile)
+  tileRequest(clonglong(1_000_000_000_000 + tileSerial), v.sheet, cfloat(tz), cfloat(x0), cfloat(y0), Tile, cint(ord(v.dark)))
 
 proc poll*(v: Viewer) =
   ## take finished tiles and pyramid decodes (call from a timer); redraw if anything arrived
@@ -194,15 +209,51 @@ proc poll*(v: Viewer) =
     else:
       let g = int(k div 100)
       let lvl = int(k mod 100)
+      if g == v.gen and lvl < v.levels.len and p.w == 0:
+        for k in lvl ..< v.stale.len:     # this mode's level failed: the old mode's stay no longer than it would
+          if v.stale[k] > 0:
+            viewBitmapFree(v.v, v.stale[k])
+            v.stale[k] = 0
+        any = true
       if g == v.gen and lvl < v.levels.len and p.w > 0:
         v.levels[lvl] = p
+        if v.levelBmp[lvl] > 0: viewBitmapFree(v.v, v.levelBmp[lvl])
         v.levelBmp[lvl] = v.upload(p)
+        for k in lvl ..< v.stale.len:     # the old mode's levels no sharper than this one go
+          if v.stale[k] > 0:
+            viewBitmapFree(v.v, v.stale[k])
+            v.stale[k] = 0
         if not v.fitted: v.fit()
         any = true
   if any: v.invalidate()
 
+proc setDark*(v: Viewer, on: bool) =
+  ## dark drawings on or off, at once: cached tiles are dropped (rendered again in the new colours) and the overview
+  ## levels decoded again (the smallest first). Jobs queued for the old mode are dropped; the levels shown so far stay
+  ## until this mode's arrive (never blank)
+  if v.dark == on: return
+  v.dark = on
+  inc v.gen
+  jobsClear()
+  v.clearTiles()
+  if v.stale.len != v.levels.len: v.stale = newSeq[cint](v.levels.len)
+  for k in 0 ..< v.levels.len:
+    if v.levelBmp[k] > 0:           # this mode's level replaces an older stale one; else the older one stays
+      if v.stale[k] > 0: viewBitmapFree(v.v, v.stale[k])
+      v.stale[k] = v.levelBmp[k]
+    v.levelBmp[k] = 0
+    v.levels[k] = Pixels()
+    v.levelAsked[k] = false
+  if v.levels.len > 0:
+    v.levelAsked[^1] = true
+    let d = v.levelData(v.levels.len - 1)
+    if d.len > 0: jxlRequest(clonglong(v.gen * 100 + v.levels.len - 1), unsafeAddr d[0], csize_t(d.len), cint(ord(on)))
+  v.invalidate()
+
 proc reupload(v: Viewer) =
-  ## after a lost device (D2DERR_RECREATE_TARGET) every bitmap is gone
+  ## after a lost device (D2DERR_RECREATE_TARGET) every bitmap is gone (the old mode's levels too: their handles would
+  ## name new bitmaps now)
+  for k in 0 ..< v.stale.len: v.stale[k] = 0
   for k in 0 ..< v.levels.len: v.levelBmp[k] = v.upload(v.levels[k])
   for name, t in v.tiles.mpairs: t[1] = v.upload(t[0])
 
@@ -247,7 +298,7 @@ proc a11yInfo(ud: pointer, i: cint, name: ptr UncheckedArray[Utf16Char], cap: ci
   if i < 0 or int(i) >= v.onScreen.len: return 0
   let t = v.tags[v.onScreen[int(i)]]
   let text = (if t.code.len > 0: t.code else: "Unread tag") & ", " & (if v.coverage: coverWords(t.photos) else: statusWords(t.status)) &
-             (if t.id == v.selected: ", selected" else: "")
+             (if t.id == v.selected: ", selected" else: "") & (if t.id in v.chosen: ", in the selection" else: "")
   let ws = newWideCString(text)
   var k = 0
   while k < int(cap) - 1 and k < ws.len:
@@ -279,8 +330,14 @@ proc colorOf(status: string): uint32 =
   of "pending": 0x8C33BF'u32
   else: 0x1A66E6'u32
 
+proc lighten(c: uint32): uint32 =
+  ## a marker colour raised toward white for dark drawings (darkcolor.lightenForDark: each keeps 3:1 on the dark paper)
+  let (r, g, b) = lightenForDark(float((c shr 16) and 255) / 255, float((c shr 8) and 255) / 255, float(c and 255) / 255)
+  (uint32(round(r * 255)) shl 16) or (uint32(round(g * 255)) shl 8) or uint32(round(b * 255))
+
 proc paint(v: Viewer) =
-  if viewBegin(v.v, 0.82, 0.83, 0.85) == 0: return
+  # around the sheet: lighter than the dark paper in dark drawings
+  if (if v.dark: viewBegin(v.v, 0.24, 0.24, 0.26) else: viewBegin(v.v, 0.82, 0.83, 0.85)) == 0: return
   let (cw, ch) = v.client
   if v.levels.len > 0:
     if not v.fitted: v.fit()
@@ -293,15 +350,27 @@ proc paint(v: Viewer) =
         want = k
         break
     v.askLevel(want)
-    var best = -1
-    if v.levelBmp[want] > 0: best = want
+    var bmp: cint = 0
+    if v.levelBmp[want] > 0: bmp = v.levelBmp[want]
+    elif want < v.stale.len and v.stale[want] > 0: bmp = v.stale[want]   # shown before a dark switch: not blurrier
     else:
       for k in 0 ..< v.levels.len:
         if v.levelBmp[k] > 0:
-          best = k
+          bmp = v.levelBmp[k]
           break
-    if best >= 0: viewDrawBitmap(v.v, v.levelBmp[best], cfloat(dst[0]), cfloat(dst[1]), cfloat(dst[2]), cfloat(dst[3]), 1)
-    else: viewRect(v.v, cfloat(dst[0]), cfloat(dst[1]), cfloat(dst[2]), cfloat(dst[3]), 0xFFFFFF, 1, 1, 0, 0)
+      if bmp == 0:
+        for k in 0 ..< v.stale.len:
+          if v.stale[k] > 0:
+            bmp = v.stale[k]
+            break
+    # the other mode's levels sharper than the zoom wants aren't shown again: they go now (a level 0 is large)
+    for k in 0 ..< min(want, v.stale.len):
+      if v.stale[k] > 0 and v.stale[k] != bmp:
+        viewBitmapFree(v.v, v.stale[k])
+        v.stale[k] = 0
+    if bmp > 0: viewDrawBitmap(v.v, bmp, cfloat(dst[0]), cfloat(dst[1]), cfloat(dst[2]), cfloat(dst[3]), 1)
+    else: viewRect(v.v, cfloat(dst[0]), cfloat(dst[1]), cfloat(dst[2]), cfloat(dst[3]),
+                   (if v.dark: uint32(DarkLo) * 0x010101'u32 else: 0xFFFFFF'u32), 1, 1, 0, 0)
     # 2. vector tiles once the overview isn't sharp enough
     if v.sheet != nil and v.z > v.scale0 * 1.05:
       let e = int(ceil(log2(v.z)))
@@ -326,18 +395,25 @@ proc paint(v: Viewer) =
     for t in v.tags:
       let r = ((t.x0 - v.ox) * v.z, (t.y0 - v.oy) * v.z, (t.x1 - v.ox) * v.z, (t.y1 - v.oy) * v.z)
       if r[2] < 0 or r[3] < 0 or r[0] > cw or r[1] > ch: continue
-      let col = if v.coverage and t.status != "pending": coverColor(t.photos) else: colorOf(t.status)
+      let col0 = if v.coverage and t.status != "pending": coverColor(t.photos) else: colorOf(t.status)
+      let col = if v.dark: lighten(col0) else: col0
       let dim = v.dimming and t.id notin v.dimmed
       if v.coverage and t.status != "pending" and not dim and t.id != v.selected:
         viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]), col, 0.28, 1, 0, 0)
-      if t.id in v.highlight: viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]), 0x1AA64D, 0.3, 1, 0, 0)
+      if t.id in v.highlight: viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]),
+                                       (if v.dark: lighten(0x1AA64D) else: 0x1AA64D), 0.3, 1, 0, 0)
       if t.id == v.selected: viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]), col, 0.28, 1, 0, 0)
       viewRect(v.v, cfloat(r[0]), cfloat(r[1]), cfloat(r[2]), cfloat(r[3]), col, (if dim: 0.18 else: 1.0), 0,
                cfloat((if t.id == v.selected: 3.0 else: 1.5) * dens), cint(ord(t.status == "pending")))
+      if t.id in v.chosen:
+        # selected for "… for all": a black and yellow ring outside the box, whatever colouring is on
+        let o = 4 * dens
+        viewRect(v.v, cfloat(r[0] - o), cfloat(r[1] - o), cfloat(r[2] + o), cfloat(r[3] + o), 0x000000, 0.9, 0, cfloat(4 * dens), 0)
+        viewRect(v.v, cfloat(r[0] - o), cfloat(r[1] - o), cfloat(r[2] + o), cfloat(r[3] + o), 0xFFD900, 1, 0, cfloat(2 * dens), 0)
     if v.markOn:
       let m = v.mark
       viewRect(v.v, cfloat((m[0] - v.ox) * v.z), cfloat((m[1] - v.oy) * v.z), cfloat((m[2] - v.ox) * v.z),
-               cfloat((m[3] - v.oy) * v.z), 0x8C33BF, 1, 0, cfloat(2 * dens), 1)
+               cfloat((m[3] - v.oy) * v.z), (if v.selecting: 0x1A59D9'u32 else: 0x8C33BF'u32), 1, 0, cfloat(2 * dens), 1)
   if viewEnd(v.v) == 0: v.reupload()
   v.updateOnScreen()
 
@@ -360,6 +436,11 @@ proc centerOn*(v: Viewer, x0, y0, x1, y1: float) =
   v.oy = (y0 + y1) / 2 - ch / v.z / 2
   v.fitted = true
   v.invalidate()
+
+proc tagsIn*(v: Viewer, x0, y0, x1, y1: float): seq[string] =
+  ## the tags whose box intersects the box (points)
+  for t in v.tags:
+    if t.status != "pending" and t.x0 <= x1 and t.x1 >= x0 and t.y0 <= y1 and t.y1 >= y0: result.add t.id
 
 proc hit(v: Viewer, x, y: int): string =
   let px = v.ox + float(x) / v.z
@@ -393,7 +474,7 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
     let i = int(w)
     if i < v.onScreen.len:
       let id = v.tags[v.onScreen[i]].id
-      v.selected = id
+      if not v.selecting: v.selected = id     # the select mode: the app toggles it (chosen), the panel stays
       v.invalidate()
       if v.onTag != nil: v.onTag(id)
     return 0
@@ -404,6 +485,10 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
     EndPaint(h, addr ps)
     return 0
   of WM_ERASEBKGND: return 1
+  of 0x0087:          # WM_GETDLGCODE: Escape reaches the drawing in the select mode (the dialog manager keeps it otherwise)
+    if v.selecting and l != 0:
+      let msg = cast[ptr MSG](l)
+      if msg.message == WM_KEYDOWN and int(msg.wParam) == 0x1B: return 0x0004     # DLGC_WANTMESSAGE
   of WM_SIZE:
     viewResize(v.v, cint(loword(l)), cint(hiword(l)))
     if not v.fitted: v.fit()
@@ -416,18 +501,19 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
     v.dragMoved = false
     v.lastX = sloword(l)
     v.lastY = shiword(l)
-    if v.marking:
+    if v.marking or v.selecting:
       let px = v.ox + float(v.lastX) / v.z
       let py = v.oy + float(v.lastY) / v.z
       v.mark = (px, py, px, py)
-      v.markOn = true
+      v.markOn = v.marking
     return 0
   of WM_MOUSEMOVE:
     if v.dragging:
       let x = sloword(l)
       let y = shiword(l)
       if abs(x - v.lastX) + abs(y - v.lastY) > 3: v.dragMoved = true
-      if v.marking:
+      if v.selecting and v.dragMoved: v.markOn = true     # a box, not a click
+      if v.marking or v.selecting:
         let px = v.ox + float(x) / v.z
         let py = v.oy + float(y) / v.z
         let ax = v.ox + float(v.lastX) / v.z      # where the drag started
@@ -448,6 +534,14 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
       v.markOn = false
       if v.onMark != nil and v.mark[2] > v.mark[0]: v.onMark(v.mark[0], v.mark[1], v.mark[2], v.mark[3])
       v.invalidate()
+    elif was and v.selecting and v.dragMoved:
+      v.markOn = false
+      v.invalidate()
+      if v.onBox != nil: v.onBox(v.mark[0], v.mark[1], v.mark[2], v.mark[3])
+    elif was and v.selecting:
+      v.markOn = false
+      let id = v.hit(sloword(l), shiword(l))
+      if id.len > 0 and v.onTag != nil: v.onTag(id)
     elif was and not v.dragMoved:
       let id = v.hit(sloword(l), shiword(l))
       if id.len > 0:
@@ -472,6 +566,8 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
     of 0x26: (v.oy -= 60 / v.z; v.invalidate())
     of 0x28: (v.oy += 60 / v.z; v.invalidate())
     of 0x30: v.fit()
+    of 0x1B:                          # Escape ends the select mode
+      if v.selecting and v.onEscape != nil: v.onEscape()
     else: discard
     return 0
   else: discard

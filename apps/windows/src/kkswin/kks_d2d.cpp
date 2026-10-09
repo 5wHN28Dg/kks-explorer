@@ -34,6 +34,38 @@ extern "C" int kks_d2d_init(void) {
     return 0;
 }
 
+// ---------------------------------------------------------------- dark drawings
+
+// A PDF reader's dark mode for the sheets: each colour's lightness inverted, its hue kept, squeezed into
+// [DARK_LO, DARK_HI]; saturated line colours raised to 3:1 against the dark paper. A copy of apps/common/darkcolor.nim
+// darkRgb (exact integer maths, as dark.js and DarkColor.kt): apps/windows/tests/test_dark.nim checks it against the
+// Nim original on every 8-bit colour. Here so the worker threads transform tiles and overview levels themselves.
+static const int DARK_LO = 18, DARK_HI = 237, RAISE_CHROMA = 48, RAISE_LIGHT = 306, RAISE_Y2 = 104040000;
+
+static inline int dark_byte(int c, int mx, int mn) { return DARK_LO + ((c + 255 - mx - mn) * (DARK_HI - DARK_LO) + 127) / 255; }
+
+extern "C" void kks_dark_rgb(int r, int g, int b, int *outR, int *outG, int *outB) {
+    int mx = std::max(r, std::max(g, b)), mn = std::min(r, std::min(g, b));
+    int r0 = dark_byte(r, mx, mn), g0 = dark_byte(g, mx, mn), b0 = dark_byte(b, mx, mn);
+    int dr = r0, dg = g0, db = b0;
+    if (mx - mn >= RAISE_CHROMA && mx + mn <= RAISE_LIGHT) {
+        int k = 0;
+        while (k < 16 && 2126 * dr * dr + 7152 * dg * dg + 722 * db * db < RAISE_Y2) {
+            k++;
+            dr = r0 + (DARK_HI - r0) * k / 16;
+            dg = g0 + (DARK_HI - g0) * k / 16;
+            db = b0 + (DARK_HI - b0) * k / 16;
+        }
+    }
+    *outR = dr; *outG = dg; *outB = db;
+}
+
+static inline void dark_px(uint8_t &r, uint8_t &g, uint8_t &b) {
+    int dr, dg, db;
+    kks_dark_rgb(r, g, b, &dr, &dg, &db);
+    r = (uint8_t)dr; g = (uint8_t)dg; b = (uint8_t)db;
+}
+
 // ---------------------------------------------------------------- JPEG XL → BGRA (premultiplied for D2D)
 
 // The most pixels a picture may have (#37): 100 MP, as on Android and the web (jxl_jni.cpp, kks_wasm.cpp). Photos are
@@ -41,7 +73,8 @@ extern "C" int kks_d2d_init(void) {
 // make us allocate (100000 x 100000 would be 40 GB).
 static const uint64_t MAX_PIXELS = 100000000ull;
 
-static bool jxl_bgra(const uint8_t *data, size_t n, std::vector<uint8_t> &out, int &w, int &h) try {
+// dark: the colours turned for dark drawings (straight RGB, before premultiplying; alpha untouched)
+static bool jxl_bgra(const uint8_t *data, size_t n, std::vector<uint8_t> &out, int &w, int &h, bool dark = false) try {
     auto dec = JxlDecoderMake(nullptr);
     if (JxlDecoderSubscribeEvents(dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE) != JXL_DEC_SUCCESS) return false;
     JxlDecoderSetInput(dec.get(), data, n);
@@ -64,6 +97,7 @@ static bool jxl_bgra(const uint8_t *data, size_t n, std::vector<uint8_t> &out, i
             // RGBA → premultiplied BGRA
             for (size_t i = 0; i < out.size(); i += 4) {
                 uint8_t r = out[i], g = out[i + 1], b = out[i + 2], a = out[i + 3];
+                if (dark) dark_px(r, g, b);
                 out[i] = (uint8_t)(b * a / 255); out[i + 1] = (uint8_t)(g * a / 255); out[i + 2] = (uint8_t)(r * a / 255);
             }
         } else if (s == JXL_DEC_SUCCESS) return !out.empty();
@@ -119,8 +153,9 @@ static void visible(const Sheet &s, int x0, int y0, int x1, int y1, std::vector<
     for (int i = 0; i < s.nPaths; i++) if (seen[(size_t)i]) out.push_back(i);
 }
 
-// one tile: `size` px square at tz px/pt from (x0, y0) pt, white background → BGRA (premultiplied)
-static bool render_tile(const Sheet &s, float tz, float x0, float y0, int size, std::vector<uint8_t> &out) {
+// one tile: `size` px square at tz px/pt from (x0, y0) pt, white background → BGRA (premultiplied); dark: dark
+// drawings (the dark paper, every path colour and embedded image turned)
+static bool render_tile(const Sheet &s, float tz, float x0, float y0, int size, bool dark, std::vector<uint8_t> &out) {
     IWICBitmap *bmp = nullptr;
     ID2D1RenderTarget *rt = nullptr;
     if (FAILED(g_wic->CreateBitmap(size, size, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &bmp))) return false;
@@ -132,7 +167,13 @@ static bool render_tile(const Sheet &s, float tz, float x0, float y0, int size, 
     int qx1 = (int)std::ceil((x0 + size / tz) * 64), qy1 = (int)std::ceil((y0 + size / tz) * 64);
     float px1 = 1.f / k;
     rt->BeginDraw();
-    rt->Clear(D2D1::ColorF(1, 1, 1, 1));
+    if (dark) rt->Clear(D2D1::ColorF(DARK_LO / 255.f, DARK_LO / 255.f, DARK_LO / 255.f, 1));
+    else rt->Clear(D2D1::ColorF(1, 1, 1, 1));
+    auto color = [&](size_t at) {
+        uint8_t r = s.b[at], g = s.b[at + 1], b = s.b[at + 2];
+        if (dark) dark_px(r, g, b);
+        return D2D1::ColorF(r / 255.f, g / 255.f, b / 255.f, 1);
+    };
     rt->SetTransform(D2D1::Matrix3x2F::Translation(-x0 * 64.f, -y0 * 64.f) * D2D1::Matrix3x2F::Scale(k, k));
     ID2D1SolidColorBrush *brush = nullptr;
     rt->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), &brush);
@@ -142,7 +183,7 @@ static bool render_tile(const Sheet &s, float tz, float x0, float y0, int size, 
     size_t ii = 0;
     auto drawImage = [&](const Sheet::Img &im) {
         std::vector<uint8_t> px; int w = 0, h = 0;
-        if (!jxl_bgra(&s.b[im.at], im.len, px, w, h)) return;
+        if (!jxl_bgra(&s.b[im.at], im.len, px, w, h, dark)) return;
         ID2D1Bitmap *b = nullptr;
         if (SUCCEEDED(rt->CreateBitmap(D2D1::SizeU(w, h), px.data(), w * 4,
                 D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)), &b))) {
@@ -188,7 +229,7 @@ static bool render_tile(const Sheet &s, float tz, float x0, float y0, int size, 
         sink->Close();
         release(sink);
         if (kind & 2) {
-            brush->SetColor(D2D1::ColorF(s.b[st + 11] / 255.f, s.b[st + 12] / 255.f, s.b[st + 13] / 255.f, 1));
+            brush->SetColor(color(st + 11));
             rt->FillGeometry(geo, brush);
         }
         if (kind & 1) {
@@ -198,7 +239,7 @@ static bool render_tile(const Sheet &s, float tz, float x0, float y0, int size, 
             D2D1_LINE_JOIN join = s.b[st + 2] == 1 ? D2D1_LINE_JOIN_ROUND : s.b[st + 2] == 2 ? D2D1_LINE_JOIN_BEVEL : D2D1_LINE_JOIN_MITER;
             ID2D1StrokeStyle *ss = nullptr;
             g_d2d->CreateStrokeStyle(D2D1::StrokeStyleProperties(cap, cap, cap, join, 10.f), nullptr, 0, &ss);
-            brush->SetColor(D2D1::ColorF(s.b[st + 8] / 255.f, s.b[st + 9] / 255.f, s.b[st + 10] / 255.f, 1));
+            brush->SetColor(color(st + 8));
             rt->DrawGeometry(geo, brush, sw, ss);
             release(ss);
         }
@@ -220,7 +261,7 @@ static bool render_tile(const Sheet &s, float tz, float x0, float y0, int size, 
 
 // ---------------------------------------------------------------- the worker pool: tiles and JPEG XL decodes
 
-struct Job { long long key; int kind; void *sheet; float tz, x0, y0; int size; std::vector<uint8_t> data; };
+struct Job { long long key; int kind; void *sheet; float tz, x0, y0; int size; bool dark; std::vector<uint8_t> data; };
 struct Done { long long key; std::vector<uint8_t> px; int w, h; bool ok; };
 
 static std::mutex g_mu;
@@ -241,8 +282,8 @@ static void worker() {
             g_jobs.pop_front();
         }
         Done d{j.key, {}, 0, 0, false};
-        if (j.kind == 0) { d.ok = render_tile(*(Sheet *)j.sheet, j.tz, j.x0, j.y0, j.size, d.px); d.w = d.h = j.size; }
-        else d.ok = jxl_bgra(j.data.data(), j.data.size(), d.px, d.w, d.h);
+        if (j.kind == 0) { d.ok = render_tile(*(Sheet *)j.sheet, j.tz, j.x0, j.y0, j.size, j.dark, d.px); d.w = d.h = j.size; }
+        else d.ok = jxl_bgra(j.data.data(), j.data.size(), d.px, d.w, d.h, j.dark);
         std::lock_guard<std::mutex> l(g_mu);
         g_done.push_back(std::move(d));
     }
@@ -255,17 +296,18 @@ static void start_workers() {
 }
 
 // the sheet must stay open until its tiles are done (the caller drops results of an old generation by key)
-extern "C" void kks_tile_request(long long key, void *sheet, float tz, float x0, float y0, int size) {
+extern "C" void kks_tile_request(long long key, void *sheet, float tz, float x0, float y0, int size, int dark) {
     start_workers();
     std::lock_guard<std::mutex> l(g_mu);
-    g_jobs.push_back(Job{key, 0, sheet, tz, x0, y0, size, {}});
+    g_jobs.push_back(Job{key, 0, sheet, tz, x0, y0, size, dark != 0, {}});
     g_cv.notify_one();
 }
 
-extern "C" void kks_jxl_request(long long key, const uint8_t *data, size_t n) {
+// dark: decoded for dark drawings (an overview level)
+extern "C" void kks_jxl_request(long long key, const uint8_t *data, size_t n, int dark) {
     start_workers();
     std::lock_guard<std::mutex> l(g_mu);
-    g_jobs.push_back(Job{key, 1, nullptr, 0, 0, 0, 0, std::vector<uint8_t>(data, data + n)});
+    g_jobs.push_back(Job{key, 1, nullptr, 0, 0, 0, 0, dark != 0, std::vector<uint8_t>(data, data + n)});
     g_cv.notify_one();
 }
 
