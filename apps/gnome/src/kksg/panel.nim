@@ -2,7 +2,7 @@
 ## own data (read-only until Edit), where else the code appears, procedures, photos, and the review of uncertain
 ## readings.
 
-import std/[strutils, math, sets, tables, unicode, sequtils]
+import std/[strutils, math, sets, tables, unicode, sequtils, times]
 import kks/json
 import kks/[model, views]
 import gtk, ui, appstate, win, photos
@@ -13,6 +13,17 @@ proc section(title: string, rows: seq[W], description = ""): W =
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
+
+proc day(n: JNode): string =
+  if n == nil or n.kind != jInt or n.i <= 0: "" else: fromUnix(n.i).local.format("yyyy-MM-dd")
+
+proc byLine*(who: JNode): string =
+  ## "by Ali User, 2026-10-08" (who set a field: /api/state equipment_by); "" when unknown (v1-imported values)
+  if who == nil or who.kind != jObj: return ""
+  let name = s(who, "by_name")
+  if name.len == 0: return ""
+  let d = day(who.get("at"))
+  "by " & name & (if d.len > 0: ", " & d else: "")
 
 proc normKks(s: string): string =
   for c in s.toUpperAscii:
@@ -60,26 +71,32 @@ proc equipmentSection(w: Win, t: Tag): W =
   let k = t.full
   let live = w.m.equipment(k)
   let rl = w.m.refLoc(t.bodyOf)
+  let eqBy = if w.m.state != nil and w.m.state.get("equipment_by") != nil: w.m.state["equipment_by"].get(k) else: nil
+  proc author(field: string): string =
+    if eqBy == nil or eqBy.kind != jObj: "" else: byLine(eqBy.get(field))
   result = group("Location and notes")
   let g = result
   var shown: seq[W]
   for (f, title) in Fields:
     var v = s(live, f)
     if f == "elev" and v.len == 0 and rl.elev.len > 0: v = rl.elev & " (location list)"
-    let r = row(title, if v.len > 0: v else: "—", selectable = true)
+    let who = if s(live, f).len > 0: author(f) else: ""
+    let r = row(title, (if v.len > 0: v else: "—") & (if who.len > 0: "\n" & who else: ""), selectable = true)
     adw_preferences_group_add(g, r)
     shown.add r
   var customRows: seq[W]
   if live.get("custom") != nil:
     for c in live["custom"].elems:
-      let r = row(s(c, "k"), s(c, "v"), selectable = true)
+      if s(c, "k") == DescriptionKey: continue      # shown in its own section
+      let who = author("custom:" & s(c, "k"))
+      let r = row(s(c, "k"), s(c, "v") & (if who.len > 0: "\n" & who else: ""), selectable = true)
       adw_preferences_group_add(g, r)
       customRows.add r
   let edit = button("Edit", "flat")
   adw_preferences_group_set_header_suffix(g, edit)
   edit.onClick(proc () =
-    if w.panelEditing:     # the valve type's Correct form is open: one form at a time (a save rebuilds the panel)
-      w.toast("Send or cancel the valve type first")
+    if w.panelEditing:     # another form is open (a valve type, a description): one at a time, a save rebuilds the panel
+      w.toast("Save or cancel your edits first")
       return
     w.panelEditing = true
     gtk_widget_set_visible(edit, 0)
@@ -176,7 +193,7 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
   gtk_widget_set_margin_top(btns, 8)
   # labelled by their own text (a GtkButton's label wins over an accessible label): distinct from the review's Confirm
   let ok = button("Confirm type", "suggested-action", proc () =
-    if w.panelEditing:     # the Edit form is open: sending would rebuild the panel and lose what is typed there
+    if w.panelEditing:     # another form is open: sending would rebuild the panel and lose what is typed there
       w.toast("Save or cancel your edits first")
       return
     if w.submit(c["kind"].s, c["payload"], k & " valve type: " & text0).len > 0: w.rebuildPanel())
@@ -208,6 +225,74 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
     row2.add send, button("Cancel", "", proc () = w.rebuildPanel())
     adw_preferences_group_add(g, row2)
     discard gtk_widget_grab_focus(e))
+
+proc descriptionSection(w: Win, t: Tag): W =
+  ## what the equipment does (tagView.description): a draft from descriptions.json, shown as unchecked until someone
+  ## confirms it (an equipment proposal setting the custom field "Description"), or the confirmed text with who
+  let d = tagView(w.m, t.id).get("description")
+  if d == nil or d.kind != jObj: return nil
+  let k = t.full
+  if s(d, "status") == "confirmed":
+    result = group("Description")
+    let who = (if s(d, "by_name").len > 0: "Confirmed by " & s(d, "by_name") else: "Confirmed") &
+              (if day(d.get("at")).len > 0: ", " & day(d.get("at")) else: "")
+    adw_preferences_group_add(result, row(s(d, "text"), who, selectable = true))
+    if d.get("draft_differs") != nil and d["draft_differs"].kind == jBool and d["draft_differs"].b:
+      adw_preferences_group_add(result, row("The drafted description differs", "Edit the custom field under Location and notes to change it."))
+    return
+  let conf = d.get("confirm")
+  # a confirmation already waiting for approval: no second one
+  for sub in w.myOpen():
+    let p = sub.get("payload")
+    if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == k and p.get("changes") != nil and
+       p["changes"].get("custom") != nil and p["changes"]["custom"].kind == jArr and
+       p["changes"]["custom"].elems.anyIt(s(it, "k") == DescriptionKey):
+      result = group("Draft description (unchecked)", "Your confirmation waits for approval.")
+      adw_preferences_group_add(result, row(s(d, "text"), if s(d, "basis").len > 0: "Basis: " & s(d, "basis") else: "", selectable = true))
+      return
+  result = group("Draft description (unchecked)", "Drafted from the drawings, not checked by a person yet. Confirm it " &
+                 "if it is right, or edit it first.")
+  let g = result
+  let textRow = row(s(d, "text"), if s(d, "basis").len > 0: "Basis: " & s(d, "basis") else: "", selectable = true)
+  adw_preferences_group_add(g, textRow)
+  let btns = hbox(8)
+  gtk_widget_set_margin_top(btns, 8)
+  let confirmB = button("Confirm description", "suggested-action", proc () =
+    if conf == nil: return
+    if w.panelEditing:     # another form is open: sending would rebuild the panel and lose what is typed there
+      w.toast("Save or cancel your edits first")
+      return
+    if w.submit(s(conf, "kind"), conf["payload"], "description of " & k).len > 0: w.rebuildPanel())
+  setAccessibleDescription(confirmB, "Sends the drafted description of " & k & " as it is")
+  btns.add confirmB
+  let editB = button("Edit description", "", nil)
+  setAccessibleDescription(editB, "Change the drafted description of " & k & " before sending it")
+  btns.add editB
+  adw_preferences_group_add(g, btns)
+  editB.onClick(proc () =
+    if w.panelEditing:
+      w.toast("Save or cancel your edits first")
+      return
+    w.panelEditing = true   # a sync round doesn't rebuild the panel under it (kks_explorer refresh)
+    gtk_widget_set_visible(btns, 0)
+    let e = entryRow("Description", s(d, "text"))
+    adw_preferences_group_add(g, e)
+    let b2 = hbox(8)
+    b2.add button("Send", "suggested-action", proc () =
+      let v = text(e).strip
+      if v.len == 0:
+        w.toast("Write the description first")
+        return
+      let base = if conf != nil: conf["payload"]["base"]["custom"] else: newArr()
+      var cs = newArr()
+      for c in base.elems:
+        if s(c, "k") != DescriptionKey: cs.elems.add c
+      cs.elems.add newObj(@[("k", newStr(DescriptionKey)), ("v", newStr(v))])
+      if w.submit("equipment", newObj(@[("kks", newStr(k)), ("changes", newObj(@[("custom", cs)])),
+                                        ("base", newObj(@[("custom", base)]))]), "description of " & k).len > 0:
+        w.rebuildPanel())
+    b2.add button("Cancel", "", proc () = w.rebuildPanel())
+    adw_preferences_group_add(g, b2))
 
 proc buildPanel*(w: Win, t: Tag) =
   w.panelEditing = false
@@ -309,5 +394,7 @@ proc buildPanel*(w: Win, t: Tag) =
         let pid = p
         rows.add navRow(p, if pr != nil: s(pr, "title") else: "", "Open procedure " & p, proc () = w.openProc(pid))
     w.panelBox.add section("Used in procedures", rows)
+  let desc = w.descriptionSection(t)
+  if desc != nil: w.panelBox.add desc
   w.panelBox.add w.equipmentSection(t)
   w.panelBox.add w.photoSection(k)

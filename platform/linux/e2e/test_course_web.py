@@ -44,7 +44,7 @@ class CourseWeb(unittest.TestCase):
             if 'server on' in line: break
         cls.base = 'http://127.0.0.1:%d' % cls.port
         assert Client(cls.base).req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                           'full_name': 'The Manager'}).get('ok')
+                                                           'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         os.makedirs(SHOTS, exist_ok=True)
 
     @classmethod

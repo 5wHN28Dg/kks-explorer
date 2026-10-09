@@ -146,8 +146,10 @@ class AdminWeb(unittest.TestCase):
         page.wait_for_selector('#main .card')
         self.clean(page, name + ' approvals')
         self.assertEqual(page.text_content('#who'), NAME + ' · manager')
-        # tom's equipment proposal: who, the request note, every field as text
-        card = page.locator('#main .card', has=page.locator('h3', has_text='equipment:' + k))
+        # tom's equipment proposal: who, the request note, every field as text (one card per code, each kind apart)
+        group = page.locator(f'#main .card.group[data-code="{k}"]')
+        self.assertEqual(group.locator('h3 a').get_attribute('href'), '/?kks=' + k)
+        card = group.locator('[data-kind=equipment]')
         self.assertIn(f'{NAME} (tom)', card.text_content())
         self.assertEqual(card.locator('.rnote').text_content(), f'“{EVIL}”')
         self.assertEqual(card.locator('td').nth(0).text_content(), 'notes')
@@ -155,11 +157,11 @@ class AdminWeb(unittest.TestCase):
         self.assertIn(f'{NAME}: {EVIL}', card.locator('table').text_content())
         self.assertEqual(card.locator('.sub', has_text='(empty)').count(), 2)
         # the photo proposal: caption and request note as text, the photo shown from the server
-        ph = page.locator('#main .card', has=page.locator('h3', has_text='Photo proposals · ' + k))
+        ph = group.locator('[data-kind=equipment_photo]')
         self.assertIn(EVIL, ph.locator('figure').text_content())
         self.assertRegex(ph.locator('img').get_attribute('src'), r'^(photos/|blob:)')   # (blob: once K.jxl decoded it)
         # the marked tag: note as text, the codes in their fields, a link to the sheet
-        tags = page.locator('#main .card', has=page.locator('h3', has_text='tag_add:sample'))
+        tags = page.locator('#main .card', has=page.locator('h3', has_text='Marked tags without a code')).first
         self.assertIn('Note: ' + EVIL, tags.text_content())
         self.assertIn('PI', [tags.locator('input.mono').nth(i).input_value() for i in range(tags.locator('input.mono').count())])
         self.assertEqual(tags.locator('a.sub').first.get_attribute('href'), '/?sheet=sample')
@@ -167,10 +169,10 @@ class AdminWeb(unittest.TestCase):
         self.assertIn(f'link {k} to procedure EP-9 step 2', page.text_content('#main'))
         # approve the equipment proposal, reject the photo with a hostile reason (prompt)
         card.get_by_role('button', name='Approve').click()
-        page.wait_for_function("t => ![...document.querySelectorAll('#main .card h3')].some(h => h.textContent === t)", arg='equipment:' + k)
-        ph = page.locator('#main .card', has=page.locator('h3', has_text='Photo proposals · ' + k))
+        page.wait_for_function("c => !document.querySelector(`.card.group[data-code='${c}'] [data-kind=equipment]`)", arg=k)
+        ph = group.locator('[data-kind=equipment_photo]')
         ph.get_by_role('button', name='Reject').click()
-        page.wait_for_function("t => ![...document.querySelectorAll('#main .card h3')].some(h => h.textContent === t)", arg='Photo proposals · ' + k)
+        page.wait_for_function("c => !document.querySelector(`.card.group[data-code='${c}'] [data-kind=equipment_photo]`)", arg=k)
         self.clean(page, name + ' after deciding')
 
         # history: the approved change, field by field, as text
@@ -192,6 +194,7 @@ class AdminWeb(unittest.TestCase):
         self.assertIn('Password link for tom', page.text_content('#main > .warn'))
         page.fill('#main form.inline input[name=full_name]', NAME)
         page.fill('#main form.inline input[name=username]', 'u' + name)
+        page.fill('#main form.inline input[name=position]', NAME)    # a new account needs a position
         page.press('#main form.inline input[name=username]', 'Enter')
         page.wait_for_selector('#newlink .linkbox')
         self.assertIn('Give this link to u' + name, page.text_content('#newlink'))
@@ -238,17 +241,27 @@ class AdminWeb(unittest.TestCase):
         self.assertEqual(row.locator('select').input_value(), 'auto')
         self.clean(page, name + ' drawings')
 
-        # account: the pending hand-over; the update's texts as text and its javascript: page link neutralised
+        # account: the pending hand-over; updates (their own tab): the texts as text and the javascript: page link neutralised
         page.locator('#tabs button', has_text='Account').click()
-        page.wait_for_selector('#upd .card')
+        # an element only the Account tab has: the Drawings tab's cards are still there until it renders
+        page.wait_for_selector('#main input[name=full_name]')
         self.assertIn('Offered to ann, waiting', page.text_content('#main'))
         self.assertEqual(page.input_value('#main input[name=full_name]'), NAME)
+        self.clean(page, name + ' account')
+        page.locator('#tabs button', has_text='Updates').click()
+        page.wait_for_selector('#upd .card')
         upd = page.text_content('#upd')
         self.assertIn(f'This is version {EVIL}.', upd)
         self.assertIn(f'Version {EVIL} is out.', upd)
         self.assertIn(f'Last check: {EVIL}', upd)
         self.assertEqual(page.get_attribute('#upd a', 'href'), 'about:blank')
-        self.clean(page, name + ' account')
+        self.clean(page, name + ' updates')
+
+        # the leaderboard: the names as text
+        page.locator('#tabs button', has_text='Leaderboard').click()
+        page.wait_for_selector('#main table')
+        self.assertIn(NAME, page.text_content('#main table'))
+        self.clean(page, name + ' leaderboard')
 
         # my submissions: tom's photo proposals to vote on (the kks and who), the manager's own changes
         page.locator('#tabs button', has_text='My submissions').click()
@@ -274,6 +287,8 @@ class AdminWeb(unittest.TestCase):
             s[0]['notes'] = [EVIL, NAME]
             route.fulfill(response=r, body=json.dumps(s))
         page.route('**/data/sheets.json*', sheets)
+        page.route('**/data/descriptions.json', lambda r: r.fulfill(status=200, content_type='application/json', body=json.dumps(
+            {KKS: {'text': EVIL, 'basis': NAME}})))
         page.goto(self.base + '/?kks=' + KKS)
         page.wait_for_function("k => typeof selTag !== 'undefined' && selTag && full(selTag) === k", arg=KKS, timeout=30000)
         self.clean(page, name + ' panel')
@@ -291,6 +306,11 @@ class AdminWeb(unittest.TestCase):
         self.assertEqual(page.input_value('#f_near'), EVIL)   # (your pending value is shown)
         self.assertEqual([page.locator('#cfs .cf input').nth(i).input_value() for i in range(2)], [NAME, EVIL])
         self.assertEqual(page.get_attribute(P + ' .photos img', 'alt'), NAME)
+        # who took the photo and who set the fields (the manager, named with markup); the drafted description
+        self.assertIn('by ' + NAME, page.text_content(P + ' .photos figcaption'))
+        self.assertIn('by ' + NAME, page.text_content('label[for=f_area]'))
+        self.assertIn(EVIL, page.text_content('#descSec .desc'))
+        self.assertIn('Basis: ' + NAME, page.text_content('#descSec'))
         self.assertIn(NAME, page.locator(P + ' .sec', has=page.locator('h3', has_text='Appears on')).text_content())
         self.assertIn('Note: ' + EVIL, page.locator(P + ' .sec', has=page.locator('h3', has_text='Added by hand')).text_content())
         self.assertIn('EP-1 ' + EVIL, page.locator(P + ' .sec', has=page.locator('h3', has_text='Used in procedures')).text_content())

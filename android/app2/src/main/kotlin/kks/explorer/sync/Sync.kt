@@ -102,8 +102,10 @@ object Sync {
     } catch (e: Exception) { null }
 
     /** one join attempt: by invite (token) or in an admin's lobby (no token, the 6-digit code is compared) */
-    class Join(val hosts: List<Pair<String, Int>>, val peer: String, val token: String?, username: String, fullName: String) {
-        val request: JSONObject = Core.api("POST", "/native/join-request", JSONObject().put("username", username).put("full_name", fullName)).json
+    class Join(val hosts: List<Pair<String, Int>>, val peer: String, val token: String?, username: String, fullName: String, position: String) {
+        // the position (job title): every new member needs one (the user, 2026-10-08; the core refuses a new person without)
+        val request: JSONObject = Core.api("POST", "/native/join-request", JSONObject().put("username", username).put("full_name", fullName)
+            .put("position", position)).json
         var host = ""; var port = 0
         var root = ""
         val code: String get() = Core.api("POST", "/native/join-code", JSONObject().put("admin", peer)).json.optString("code")
@@ -138,13 +140,13 @@ object Sync {
         }
     }
 
-    fun inviteJoin(inv: JSONObject, username: String, fullName: String): Join {
+    fun inviteJoin(inv: JSONObject, username: String, fullName: String, position: String): Join {
         val a = inv.getJSONArray("addrs")
         val hosts = (0 until a.length()).mapNotNull { serverAddress(a.getString(it)).takeIf { it.first.isNotEmpty() } }
-        return Join(hosts, inv.getString("peer"), inv.getString("token"), username, fullName)
+        return Join(hosts, inv.getString("peer"), inv.getString("token"), username, fullName, position)
     }
 
-    fun lobbyJoin(f: Discovery.Found, username: String, fullName: String) = Join(listOf(f.host to f.port), f.peer, null, username, fullName)
+    fun lobbyJoin(f: Discovery.Found, username: String, fullName: String, position: String) = Join(listOf(f.host to f.port), f.peer, null, username, fullName, position)
 
     /** admins' devices on this Wi-Fi (TXT adm=1) */
     fun adminsNearby(): List<Discovery.Found> { val me = device(); return Discovery.found().filter { it.admin && it.peer.isNotEmpty() && it.peer != me } }

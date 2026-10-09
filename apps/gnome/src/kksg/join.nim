@@ -11,6 +11,13 @@ proc s(n: JNode, k: string): string =
 
 # ---------------------------------------------------------------- the admin's side
 
+proc positionNote*(r: JNode): string =
+  ## an invite's or join request's position, or why accepting it will fail (a new member without one)
+  let req = r.get("request")
+  if r.get("needs_position") != nil and r["needs_position"].kind == jBool and r["needs_position"].b:
+    return ". No position given: a new member needs one, so ask them to send a new request with their job title"
+  if s(req, "position").len > 0: ", position " & s(req, "position") else: ""
+
 proc inviteDialog*(w: Win) =
   var r: JNode
   try: r = w.a.call("POST", "/api/invites", newObj())
@@ -67,7 +74,8 @@ proc inviteDialog*(w: Win) =
           asked = true
           let req = st["request"]
           gtk_label_set_text(status, ("A device asks to join: " & s(req, "full_name") & " (" & s(req, "username") & "), " &
-                                      s(req, "label") & (if not st["existing"].isNull: ". That username exists: it becomes their new device." else: "")).cstring)
+                                      s(req, "label") & positionNote(st) &
+                                      (if not st["existing"].isNull: ". That username exists: it becomes their new device." else: "")).cstring)
           gtk_widget_set_visible(decide, 1)
       of "expired":
         gtk_label_set_text(status, "Expired. Close this and make a new one.")
@@ -84,10 +92,12 @@ proc inviteDialog*(w: Win) =
 
 # ---------------------------------------------------------------- the new device's side
 
-proc runJoin(w: Win, hosts: seq[(string, int)], peer: string, token: JNode, username, fullName: string,
+const NeedFields = "Fill in your username, full name and position (job title): every new member needs a position"
+
+proc runJoin(w: Win, hosts: seq[(string, int)], peer: string, token: JNode, username, fullName, position: string,
              status: W, needCode: bool, done: proc ()) {.async.} =
   ## ask until accepted (§16: every 2 s while waiting), then sync adopting the root
-  let req = parseStrict(w.a.joinRequestFile(username, fullName, newNull()))
+  let req = parseStrict(w.a.joinRequestFile(username, fullName, newStr(position)))
   var host = ""
   var port = 0
   var ack: JNode
@@ -141,7 +151,9 @@ proc joinGroups*(w: Win, done: proc ()): seq[W] =
   let code = entryRow("Invite text", "")
   let user = entryRow("Your username", "")
   let full = entryRow("Your full name", "")
-  for r in [code, user, full]: adw_preferences_group_add(g, r)
+  let pos = entryRow("Your position (job title)", "")
+  gtk_widget_set_tooltip_text(pos, "Required: every new member needs one, e.g. I&C technician")
+  for r in [code, user, full, pos]: adw_preferences_group_add(g, r)
   let status = label("", "dim-label")
   let btns = hbox(8)
   btns.add button("Scan with the camera…", "", proc () =
@@ -160,14 +172,14 @@ proc joinGroups*(w: Win, done: proc ()): seq[W] =
       w.toast("That is not an invite (copy the whole text)")
       return
     let un = text(user).strip.toLowerAscii
-    if un.len < 2 or text(full).strip.len == 0:
-      w.toast("Fill in your username and full name")
+    if un.len < 2 or text(full).strip.len == 0 or text(pos).strip.len == 0:
+      w.toast(NeedFields)
       return
     var hosts: seq[(string, int)]
     for a in inv["addrs"].elems:
       let i = a.s.rfind(':')
       if i > 0: hosts.add((a.s[0 ..< i], parseInt(a.s[i + 1 .. ^1])))
-    asyncCheck w.runJoin(hosts, inv["peer"].s, inv["token"], un, text(full).strip, status, false, done))
+    asyncCheck w.runJoin(hosts, inv["peer"].s, inv["token"], un, text(full).strip, text(pos).strip, status, false, done))
   adw_preferences_group_add(g, btns)
   adw_preferences_group_add(g, status)
   result.add g
@@ -175,8 +187,11 @@ proc joinGroups*(w: Win, done: proc ()): seq[W] =
   let g2 = group("Ask an admin on this Wi-Fi", "Admins' devices nearby. You and the admin compare a 6-digit code.")
   let user2 = entryRow("Your username", "")
   let full2 = entryRow("Your full name", "")
+  let pos2 = entryRow("Your position (job title)", "")
+  gtk_widget_set_tooltip_text(pos2, "Required: every new member needs one, e.g. I&C technician")
   adw_preferences_group_add(g2, user2)
   adw_preferences_group_add(g2, full2)
+  adw_preferences_group_add(g2, pos2)
   let list = vbox(4)
   let status2 = label("", "dim-label")
   proc fill() =
@@ -194,10 +209,10 @@ proc joinGroups*(w: Win, done: proc ()): seq[W] =
           if k == "label": lab = v
         list.add navRow(lab & " · " & plant, f.address, "Ask " & lab, proc () =
           let un = text(user2).strip.toLowerAscii
-          if un.len < 2 or text(full2).strip.len == 0:
-            w.toast("Fill in your username and full name")
+          if un.len < 2 or text(full2).strip.len == 0 or text(pos2).strip.len == 0:
+            w.toast(NeedFields)
             return
-          asyncCheck w.runJoin(@[(f.address, f.port)], peer, newNull(), un, text(full2).strip, status2, true, done))
+          asyncCheck w.runJoin(@[(f.address, f.port)], peer, newNull(), un, text(full2).strip, text(pos2).strip, status2, true, done))
   adw_preferences_group_add(g2, list)
   adw_preferences_group_add(g2, button("Look again", "flat", fill))
   adw_preferences_group_add(g2, status2)

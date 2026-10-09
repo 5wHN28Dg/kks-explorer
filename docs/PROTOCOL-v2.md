@@ -590,6 +590,8 @@ A published version is a `setting` (manager only), key `plant_data`, value `{"ve
 
 **File kinds:**
 - `sheets.json`, `tags.json`, `procedures.json`, `locations.json` (JSON, as in v1);
+- `descriptions.json` (optional): `{code: {text, basis}}`, drafted descriptions shown as unchecked until a person
+  confirms one as the equipment's custom field `Description` (through an ordinary `equipment` change);
 - `sheets/<id>.pdf`: the original drawing, the source of record;
 - `sheets/<id>.kkp`: the **grid-indexed path store** (0015; format: docs/PATHSTORE.md);
 - `sheets/<id>.o<k>.jxl`: overview pyramid level k = 0, 1, … (lossless JPEG XL, 0016, 0018);

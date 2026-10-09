@@ -219,6 +219,9 @@ jobs:
       - name: The valve type in index.html's panel (test_web_valve)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_valve.py -v -k ${{ matrix.engine }}
+      - name: The 2026-10-08 requests on the web (test_web_requests)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
+        run: .venv/bin/python platform/linux/e2e/test_web_requests.py -v -k ${{ matrix.engine }}
       - name: Our libjxl and zxing-cpp WebAssembly build (test_web_wasm)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_wasm.py -v -k ${{ matrix.engine }}
