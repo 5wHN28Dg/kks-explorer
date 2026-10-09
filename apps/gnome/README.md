@@ -48,6 +48,8 @@ system's.
 **The equipment panel:**
 - the decoded KKS, the location list, the person's own fields (read-only until Edit), custom fields;
 - photos: annotate, JPEG XL at d1.9, a zoomable view;
+- the valve type read from the drawn symbol (core `tagView`'s `valve_type`), its symbol outlined on the drawing while
+  the panel is open: Confirm type, or Correct type with your own value (kept as the custom field "Valve type");
 - where the code appears, the procedures that use it;
 - reviewing uncertain readings.
 

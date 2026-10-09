@@ -215,6 +215,7 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
     view(O(("ok", newBool(true))))
   of "/native/sheets": view(O(("sheets", sheetsView(c.model))))
   of "/native/tags": view(O(("tags", tagsView(c.model, arg("sheet")))))
+  of "/native/links": view(O(("links", linksView(c.model, arg("sheet")))))
   of "/native/search": view(O(("results", searchView(c.model, arg("q")))))
   of "/native/tag": view(tagView(c.model, arg("id")))
   of "/native/review": view(O(("tags", reviewView(c.model))))

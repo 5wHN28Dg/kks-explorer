@@ -21,7 +21,8 @@ proc sheetsView*(m: Model): JNode =
     var notes = newArr()
     for x in si.notes: notes.elems.add S(x)
     result.elems.add O(("id", S(si.id)), ("name", S(si.name)), ("w", F(si.w)), ("h", F(si.h)), ("scale", F(si.scale)),
-                       ("levels", I(si.levels)), ("tags", I(n)), ("review", I(review)), ("notes", notes))
+                       ("levels", I(si.levels)), ("tags", I(n)), ("review", I(review)), ("notes", notes),
+                       ("links", I(si.links.len)))
 
 proc scaleOf(m: Model, sheet: string): float =
   let (ok, si) = m.sheetById(sheet)
@@ -37,6 +38,52 @@ proc tagsView*(m: Model, sheet: string): JNode =
                        ("status", S(if t.status == "confirmed": "verified" else: t.status)),
                        ("x0", F(t.bbox[0] / s)), ("y0", F(t.bbox[1] / s)), ("x1", F(t.bbox[2] / s)), ("y1", F(t.bbox[3] / s)),
                        ("photos", S(covers.getOrDefault(t.full, "none"))))
+
+const MaxTargetName* = 200  ## a target repeats its sheet's name: a huge name times every target would add up
+
+proc clip(s: string, n: int): string =
+  ## at most n bytes, cut at a character boundary (UTF-8)
+  if s.len <= n: return s
+  var e = n
+  while e > 0 and (ord(s[e]) and 0xC0) == 0x80: dec e
+  s[0 ..< e]
+
+const MaxLinkTargets* = 20   ## where one connector can continue, at most (a label repeated everywhere lists the first)
+
+proc linksView*(m: Model, sheet: string): JNode =
+  ## the sheet's off-page connectors (boxes in points), each with where its line continues: the same label on the
+  ## other sheets (in the sheets' order), then any other connector with that label on this sheet ("same_sheet": a
+  ## local continuation, or the drawing repeats the code). No targets = the other end isn't on any sheet we have.
+  result = newArr()
+  let (ok, si) = m.sheetById(sheet)
+  if not ok: return
+  let s = if si.scale > 0: si.scale else: 2.0
+  proc box(b: array[4, float], sc: float): seq[(string, JNode)] =
+    @[("x0", F(b[0] / sc)), ("y0", F(b[1] / sc)), ("x1", F(b[2] / sc)), ("y1", F(b[3] / sc))]
+  # every sheet's connectors by label, once: matching each connector against every other one is quadratic
+  var byLabel = initTable[string, seq[(int, int)]]()
+  for k, o in m.sheets:
+    for j, x in o.links: byLabel.mgetOrPut(x.label, @[]).add (k, j)
+  for i, l in si.links:
+    var targets = newArr()
+    let same = byLabel.getOrDefault(l.label)
+    block fill:
+      for pass in 0 .. 1:
+        for (k, j) in same:
+          template o: untyped = m.sheets[k]     # not a copy of the sheet (its links) per step
+          if (pass == 0) == (o.id == sheet) or (o.id == sheet and j == i): continue
+          if targets.elems.len >= MaxLinkTargets: break fill
+          let os = if o.scale > 0: o.scale else: 2.0
+          targets.elems.add newObj(@[("sheet", S(o.id)), ("sheet_name", S(clip(o.name, MaxTargetName))),
+                                     ("same_sheet", newBool(o.id == sheet))] & box(o.links[j].bbox, os))
+    result.elems.add newObj(@[("label", S(l.label)), ("conf", F(l.conf))] & box(l.bbox, s) & @[("targets", targets)])
+
+proc findLink*(ls: JNode, label: string, x0, y0: float): int =
+  ## the index in a linksView of the connector with this label and box corner, -1 if it's gone: a screen that kept
+  ## an index across a data reload (a new publish can reorder the connectors) finds the one it showed
+  result = -1
+  for i, l in ls.elems:
+    if l["label"].s == label and abs(l["x0"].num - x0) < 0.01 and abs(l["y0"].num - y0) < 0.01: return i
 
 proc searchView*(m: Model, q: string): JNode =
   result = newArr()

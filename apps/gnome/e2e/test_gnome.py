@@ -134,6 +134,53 @@ class Gnome(unittest.TestCase):
             if got: break
         self.assertEqual(got, INVITE)
 
+    def test_links(self):
+        """links between drawings: a second sheet, connectors written into sheets.json (as the importer does) and
+        published; "Connectors on this sheet" names each with where it continues; one target opens that sheet, none
+        says so, several ask which"""
+        pdf = open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb').read()
+        assert self.boss.req('POST', '/api/sheets/import?id=other&name=Other%20sheet', raw=pdf, ctype='application/pdf').get('ok')
+        for _ in range(300):
+            job = self.boss.req('GET', '/api/sheets/job')['job']
+            if job['state'] != 'running':
+                break
+            time.sleep(0.2)
+        self.assertEqual(job['state'], 'done', job['log'])
+        cfgp = os.path.join(self.dir, 'config.json')
+        plant = json.load(open(cfgp))['plant_dir']
+        sheets = json.load(open(os.path.join(plant, 'sheets.json')))
+        def link(label, x, y, sc):   # bbox in level-0 px, like the importer's
+            return {'label': label, 'bbox': [x * sc, y * sc, (x + 12) * sc, (y + 12) * sc], 'conf': 0.95}
+        for sh in sheets:
+            sc = sh.get('scale') or 2.0
+            if sh['id'] == 'sample':
+                sh['links'] = [link('C16', 100, 100, sc), link('D2', 200, 100, sc), link('A3', 300, 100, sc)]
+            elif sh['id'] == 'other':
+                sh['links'] = [link('C16', 150, 300, sc), link('A3', 250, 300, sc), link('A3', 350, 300, sc)]
+        json.dump(sheets, open(os.path.join(plant, 'sheets.json'), 'w'))
+        out = subprocess.run([SERVER, 'publish-data', plant, '--config', cfgp], cwd=self.dir, capture_output=True, text=True)
+        self.assertIn('Published', out.stdout + out.stderr)
+        a = self.start_app('linker')
+        self.join(a)
+        atspi.click(atspi.find(a, 'button', name='Sample sheet'))
+        atspi.click(atspi.find(a, 'button', name='Connectors on this sheet', timeout=10))
+        # each row: the connector (its name) and where it continues (read with it)
+        atspi.find(a, 'label', name="the other end isn't on any drawing in the app", timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Connector D2', timeout=10))
+        atspi.find(a, 'label', contains="D2: the other end isn't on any drawing", timeout=10)
+        atspi.find(a, 'label', name='continues on Other sheet')
+        atspi.click(atspi.find(a, 'button', name='Connector C16'))
+        atspi.find(a, 'label', name='Connector C16 on Other sheet', timeout=10)
+        # now on the other sheet: its connectors; A3 is there twice, so following one asks where to go
+        atspi.click(atspi.find(a, 'button', name='Back'))
+        atspi.click(atspi.find(a, 'button', name='Connectors on this sheet', timeout=10))
+        atspi.find(a, 'label', name='continues on Sample sheet', timeout=10)
+        atspi.find(a, 'label', name='continues on Sample sheet, elsewhere on this sheet', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Connector A3'))
+        ask = atspi.find(a, 'alert', name='Where does A3 continue?', timeout=10)
+        atspi.click(atspi.find(ask, 'button', name='Sample sheet'))
+        atspi.find(a, 'label', name='Connector A3 on Sample sheet', timeout=10)
+
     def test_photo_editor(self):
         """the photo editor's controls (line sizes, zoom) are reachable; a photo goes to the server; the drawing can be
         coloured by photos. KKS_PHOTO_FILE stands in for the file chooser. (Drawing and the touch loupe need a pointer
@@ -645,6 +692,126 @@ class Gnome(unittest.TestCase):
         shutil.copy(shot, os.path.join(SHOTS, 'gnome-dark-restart.png'))
         self.assertLess(med, 40, 'after a restart: still dark')
         self.assertGreater(light, 0)
+
+    def magenta(self, a, pid, shot):
+        """pixels of the valve symbol's outline (dashed magenta, viewer.nim) in the drawing's part of a window shot"""
+        from PIL import Image
+        if os.path.exists(shot):
+            os.remove(shot)
+        time.sleep(1.5)
+        os.kill(pid, signal.SIGUSR1)
+        for _ in range(40):
+            time.sleep(0.25)
+            if os.path.exists(shot):
+                break
+        time.sleep(0.5)
+        e = atspi.find(a, 'image', contains='Drawing ').get_component_iface().get_extents(Atspi.CoordType.WINDOW)
+        im = Image.open(shot).convert('RGB').crop((e.x, e.y, e.x + e.width, e.y + e.height))
+        px = list(im.get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(im.getdata())
+        return sum(1 for r, g, b in px if abs(r - 176) < 30 and g < 70 and abs(b - 158) < 30)
+
+    def test_valve_type(self):
+        """The valve type read from a drawn symbol (tags.json "symbol", core tagView's valve_type): the panel says
+        "(from the drawing, unchecked)" and the symbol is outlined while the panel is open; Confirm saves it as it is,
+        Correct saves the edited value (the equipment custom field "Valve type"); then the panel shows it confirmed.
+        (Named to run after test_systems, which counts the codes on this shared server.)"""
+        # two valve tags with their symbols, added to the imported sample sheet and published again
+        pd = os.path.join(self.dir, 'plant-data')
+        with open(os.path.join(pd, 'tags.json')) as f:
+            tags = json.load(f)
+        with open(os.path.join(pd, 'sheets.json')) as f:
+            sh = [x for x in json.load(f) if x['id'] == 'sample'][0]
+        cx, cy = sh['w'] // 2, sh['h'] // 2
+        for i, (code, typ, nc) in enumerate((('11LBA10AA101', 'gate valve', False), ('11LBA10AA102', 'globe valve', True))):
+            x = cx + i * 400
+            tags.append({'id': f'sample:v{i}', 'sheet': 'sample', 'kks': code, 'suffix': '', 'isa': None, 'kind': 'equipment',
+                         'status': 'auto', 'conf': 0.9, 'bbox': [x, cy, x + 120, cy + 50], 'read': ['', ''],
+                         'symbol': {'type': typ, 'actuator': 'motor' if i == 0 else 'none', 'nc': nc, 'conf': 0.9,
+                                    'bbox': [x + 10, cy - 90, x + 110, cy - 20]}})
+        with open(os.path.join(pd, 'tags.json'), 'w') as f:
+            json.dump(tags, f)
+        r = subprocess.run([SERVER, 'publish-data', pd, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        os.makedirs(SHOTS, exist_ok=True)
+        shot = os.path.join(SHOTS, 'gnome-valve.png')
+        a = self.start_app('valve', KKS_SHOT_ON_SIGNAL=shot, KKS_SYNC_EVERY='2000')
+        pid = self.apps[-1].pid
+        self.join(a)
+        def custom(code):        # saved in the app's own node first, then on the server by sync
+            for _ in range(40):
+                c = self.boss.req('GET', '/api/state')['equipment'].get(code, {}).get('custom')
+                if c:
+                    return c
+                time.sleep(0.5)
+        q = atspi.find(a, 'entry', contains='Search equipment')
+
+        def press(button, then):
+            # the panel rebuilds after each sync round: a click on the button it just replaced is lost, so again
+            for _ in range(5):
+                atspi.click(atspi.find(a, 'button', name=button, timeout=15))
+                try:
+                    return atspi.find(a, *then, timeout=4)
+                except AssertionError:
+                    pass
+            self.fail(f'{button}: never got {then}')
+
+        def cancel_edit():
+            # the Edit form's Cancel (the panel's, not another page's): until the form is gone
+            for _ in range(5):
+                for c in [n for n in atspi.find_all(a, 'button', contains='Cancel') if n.get_name() == 'Cancel']:
+                    atspi.click(c)
+                    time.sleep(1)
+                    if not atspi.find_all(a, 'text', contains='Notes'):
+                        return
+            self.fail('the Edit form did not close')
+
+        def open_tag(code):
+            for _ in range(20):          # the new tags.json reaches the app by sync
+                atspi.set_text(q, code)
+                time.sleep(1)
+                if atspi.find_all(a, 'button', contains=code):
+                    break
+            atspi.click(atspi.find(a, 'button', name=code))
+        # the gate valve: unchecked, its symbol outlined; Confirm sends it as it is
+        open_tag('11LBA10AA101')
+        atspi.find(a, 'label', name='Valve type: gate valve, motor-operated (from the drawing, unchecked)', timeout=15)
+        self.assertGreater(self.magenta(a, pid, shot), 50, 'the symbol is outlined while the panel is open')
+        shutil.copy(shot, os.path.join(SHOTS, 'gnome-valve-open.png'))
+        atspi.click(atspi.find(a, 'button', name='Close the panel'))
+        self.assertEqual(self.magenta(a, pid, shot), 0, 'no outline once the panel is closed')
+        open_tag('11LBA10AA101')
+        press('Confirm type', ('label', 'Valve type: gate valve, motor-operated (confirmed)'))
+        self.assertEqual(custom('11LBA10AA101'), [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}])
+        self.assertEqual(self.magenta(a, pid, shot), 0, 'a confirmed type has no symbol to point at')
+        # the hatched globe valve: Correct, a value of the person's own, Send
+        open_tag('11LBA10AA102')
+        atspi.find(a, 'label', name='Valve type: globe valve, normally closed (from the drawing, unchecked)', timeout=15)
+        # not while the Edit form is open: sending rebuilds the panel, which would lose what is typed there
+        press('Edit', ('text', 'Notes'))
+        atspi.set_text(atspi.find(a, 'text', name='Notes'), 'half typed')
+        atspi.click(atspi.find(a, 'button', name='Confirm type'))
+        time.sleep(1.5)
+        self.assertTrue(atspi.find_all(a, 'text', contains='Notes'), 'Confirm type rebuilt the panel under the Edit form')
+        self.assertIsNone(self.boss.req('GET', '/api/state')['equipment'].get('11LBA10AA102', {}).get('custom'))
+        cancel_edit()
+        press('Correct type', ('text', 'Valve type'))
+        # the sync rounds (every 2 s here) bring the confirmed gate valve back from the server: the open form stays
+        time.sleep(5)
+        self.assertTrue(atspi.find_all(a, 'text', contains='Valve type'), 'a sync rebuilt the panel under the form')
+        # (a toast's title is Pango markup: the typed "&" must not blank it)
+        atspi.set_text(atspi.find(a, 'text', name='Valve type'), 'check & lift valve')
+        atspi.click(atspi.find(a, 'button', name='Send'))
+        atspi.find(a, 'label', name='Valve type: check & lift valve (confirmed)', timeout=15)
+        atspi.find(a, None, contains='Saved: 11LBA10AA102 valve type: check & lift valve', timeout=5)
+        atspi.find(a, None, contains="The drawing's symbol reads: globe valve, normally closed", timeout=10)
+        self.assertEqual(custom('11LBA10AA102'), [{'k': 'Valve type', 'v': 'check & lift valve'}])
+        # the same for the panel's Edit form (found with this test: every sync round rebuilt the panel under it)
+        press('Edit', ('text', 'Notes'))
+        self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LBA10AA101', 'changes': {'floor': '3'}}})
+        time.sleep(6)
+        self.assertTrue(atspi.find_all(a, 'text', contains='Notes'), 'a sync rebuilt the panel under the Edit form')
+        cancel_edit()
 
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a static and an
