@@ -277,6 +277,12 @@ suite "links between sheets":
       {"id":"z","name":"""" & longName & """","scale":2.0,"links":[{"label":"A1","bbox":[0,0,20,20]}]}]"""))
     check big.sheets[0].links.len == 1
     check big.sheets[1].links.len == 0       # 1 px is 1e300 points at that scale
+    # an infinite conf (the reader turns 1e999 into Inf) is taken as read, so the view stays valid JSON
+    let inf = Model()
+    inf.sheets = parseSheets(j("""[{"id":"x","name":"X","links":[{"label":"B2","bbox":[0,0,20,20],"conf":1e999},
+      {"label":"B2","bbox":[40,0,60,20],"conf":-1e999}]}]"""))
+    check inf.sheets[0].links.len == 2 and inf.sheets[0].links[0].conf == 1.0 and inf.sheets[0].links[1].conf == 1.0
+    check parseStrict(toText(linksView(inf, "x")))[0]["conf"].num == 1.0
     let v = linksView(big, "x")
     check v[0]["targets"].elems.len == 1
     let n = v[0]["targets"][0]["sheet_name"].s

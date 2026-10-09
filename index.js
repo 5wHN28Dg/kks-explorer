@@ -191,7 +191,7 @@ async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return;
 
 // ---------- viewer ----------
 function openSheet(id,then){
-  cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
+  cur=SHEETS.find(s=>s.id===id); linkSel=null; $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
   const img=$('#sheetimg'); let first=true;
   img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
   const s=cur, g=dark.gen;
@@ -201,7 +201,7 @@ function openSheet(id,then){
   else { delete img.dataset.level; show(cur.file) }
   loadVector();
   img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
-  renderNotes();
+  renderNotes(); renderLinks();
 }
 // ---------- v2 plant data (decision 0034): an overview pyramid of JPEG XL levels + the path store drawn by tiles.js ----
 // Level k is the sheet at 1/2^k of level 0 (cur.w × cur.h px). The <img> shows the coarsest level that is sharp enough
@@ -381,6 +381,22 @@ function drawTags(){
   const covers=KSys.photoCovers(STATE.photos), photoCover=k=>covers.get(k)||'none';   // one pass over the photos
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
   const picked=new Set(multi.on?multi.codes:[]);
+  // off-page connectors (C16, D2 …), under the tags (a click on a tag next to one stays the tag's): dashed violet circles; a click opens where the line continues (followLink). Not
+  // while selecting tags (clicks pick tags only) or marking a missed tag
+  // Kept in place like the tags (by sheet, label and corner); each button reads its connector at click time.
+  const sc=pxScale(cur), oldC=new Map();
+  for(const x of L.querySelectorAll('button.conn')) oldC.set(x.dataset.key,x);
+  for(const l of linksHere()){
+    const sel=linkSel&&linkSel.sheet===cur.id&&Math.abs(linkSel.x0-l.x0)<0.01&&Math.abs(linkSel.y0-l.y0)<0.01;
+    const key=cur.id+'\n'+l.label+'\n'+l.x0+'\n'+l.y0;
+    let d=oldC.get(key); oldC.delete(key);
+    if(!d){ d=h('button',{type:'button',tabindex:'-1','data-key':key,
+      onclick:e=>{ e.stopPropagation(); if(multi.on||mark.on) return; followLink(d._l.sheet,d._l.label,d._l.x0,d._l.y0) }}) }
+    d._l={sheet:cur.id,label:l.label,x0:l.x0,y0:l.y0};
+    d.className='conn'+(sel?' sel':''); d.dataset.label=l.label; d.setAttribute('aria-label',linkName(l)); d.title=linkName(l);
+    d.style.cssText=`left:${l.x0*sc-3}px;top:${l.y0*sc-3}px;width:${(l.x1-l.x0)*sc+6}px;height:${(l.y1-l.y0)*sc+6}px`;
+    want.push(d);
+  }
   for(const t of tagsOf(cur.id)){
     // a button: Enter or Space acts like a click; in the tab order only while selecting tags
     let d=old.get(t.id); old.delete(t.id);
@@ -1054,6 +1070,54 @@ $('#hideRev').onchange=e=>document.body.classList.toggle('hide-review',e.target.
 function renderNotes(){ const n=cur.notes||[]; put($('#notesBody'),n.length?[h('div',{class:'sub'},'Text added to this PDF by markup (not part of the CAD drawing).'),n.map(x=>h('div',{class:'step'},x))]
                                                     :h('div',{class:'sub'},'No markups on this sheet.')) }
 
+// ---------- links between drawings: the off-page connectors (systems.js KSys.linksView, a port of the core's) ----------
+// Each connector is a hotspot on the drawing and a row in "Connectors on this sheet". Activating one opens where its
+// line continues: one target goes there, several ask which, none says so (GNOME's links.nim).
+let linkSel=null;                  // the connector just arrived at {sheet, x0, y0} (points), drawn bold
+const pxScale=s=>s&&typeof s.scale==='number'&&s.scale>0?s.scale:2;   // level-0 px per point (core views: scale or 2)
+const linksMemo={sheets:null,id:null,v:[]};
+function linksHere(){ if(!cur) return [];
+  if(linksMemo.sheets!==SHEETS||linksMemo.id!==cur.id) Object.assign(linksMemo,{sheets:SHEETS,id:cur.id,v:KSys.linksView(SHEETS,cur.id)});
+  return linksMemo.v }
+const targetName=t=>t.same_sheet?'elsewhere on this sheet':t.sheet_name;
+function whereText(l){ const names=[...new Set(l.targets.map(targetName))];
+  return names.length?'continues on '+names.join(', '):"the other end isn't on any drawing in the app" }
+const linkName=l=>'Connector '+l.label+', '+whereText(l);
+// the choice's buttons, one per target: the sheet's name, numbered when one sheet has the code more than once
+function targetLabels(ts){ const names=ts.map(targetName), n=x=>names.filter(y=>y===x).length;
+  return names.map((x,i)=>n(x)>1?`${x} (${names.slice(0,i+1).filter(y=>y===x).length} of ${n(x)})`:x) }
+function goToLink(label,t){
+  if(!SHEETS.some(s=>s.id===t.sheet)){ toast('Connector '+label+': that drawing is no longer in the app'); return }
+  if(innerWidth<=720) $('#linksDrawer').classList.remove('open');   // full width there: the drawing must show
+  const go=()=>{ const sc=pxScale(cur); linkSel={sheet:t.sheet,x0:t.x0,y0:t.y0};
+    centerOn([t.x0*sc,t.y0*sc,t.x1*sc,t.y1*sc]); drawTags();
+    // the list was rebuilt for the new sheet: keyboard focus goes back into it, not to the page
+    if($('#linksDrawer').classList.contains('open')&&!$('#linksDrawer').contains(document.activeElement)) $('#linksBody .connrow')?.focus();
+    toast('Connector '+label+' on '+(t.sheet_name||t.sheet)) };
+  if(cur?.id!==t.sheet){ closePanel(); openSheet(t.sheet,go) } else go();
+}
+// the connector `label` at (x0, y0) of `sheet`: looked up again (a sync between showing and clicking can reorder them)
+function followLink(sheet,label,x0,y0){
+  const ls=KSys.linksView(SHEETS,sheet), i=KSys.findLink(ls,label,x0,y0);
+  if(i<0){ toast('Connector '+label+' is no longer on this drawing'); return }
+  const ts=ls[i].targets;
+  if(!ts.length){ toast('Connector '+label+": the other end isn't on any drawing in the app"); return }
+  if(ts.length===1){ goToLink(label,ts[0]); return }
+  const labels=targetLabels(ts);
+  const d=dialog('Where does '+label+' continue?',h('p',{class:'sub',style:'margin:0 0 8px'},"This connector's code appears in more than one place."),
+    h('div',{class:'btns',style:'flex-wrap:wrap;justify-content:flex-start'},ts.map((t,j)=>h('button',{type:'button',class:j?'ghost':'primary',
+      onclick:()=>{ d.close(); goToLink(label,t) }},labels[j]))),
+    h('div',{class:'btns'},h('button',{type:'button',class:'ghost',onclick:()=>d.close()},'Cancel')));
+  d.querySelector('button')?.focus();
+}
+function renderLinks(){
+  const here=cur.id, ls=linksHere();
+  put($('#linksBody'),ls.length?[h('div',{class:'sub'},'Where this sheet\'s lines continue (the circled codes on the drawing).'),
+    ls.map(l=>h('button',{type:'button',class:'connrow','aria-label':linkName(l),onclick:()=>followLink(here,l.label,l.x0,l.y0)},
+      h('span',{class:'mono'},'Connector '+l.label),h('span',{class:'sub'},whereText(l))))]
+    :h('div',{class:'sub'},'No connectors to other drawings on this sheet.'));
+}
+
 // ---------- drawers ----------
 const DRAWER_BTN={sysDrawer:'#sysBtn',covDrawer:'#covBtn'};   // buttons that say whether their drawer is open
 function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id));
@@ -1068,6 +1132,7 @@ $('#sysBtn').onclick=()=>{ if($('#sysDrawer').classList.contains('open')) closeD
 $('#covBtn').onclick=()=>{ if($('#covDrawer').classList.contains('open')) closeDrawer($('#covDrawer'),false);
   else { openDrawer('covDrawer'); renderCoverage(); $("#covTitle").focus() } };
 $('#revBtn').onclick=()=>{ if($('#revDrawer').classList.contains('open'))$('#revDrawer').classList.remove('open'); else {openDrawer('revDrawer'); renderReview()} };
+$('#linksBtn').onclick=()=>{ if($('#linksDrawer').classList.contains('open'))$('#linksDrawer').classList.remove('open'); else { renderLinks(); openDrawer('linksDrawer') } };
 $('#notesBtn').onclick=()=>{ if($('#notesDrawer').classList.contains('open'))$('#notesDrawer').classList.remove('open'); else openDrawer('notesDrawer') };
 $('#sheetSel').onchange=e=>{ closePanel(); openSheet(e.target.value) };
 addEventListener('resize',()=>{});
