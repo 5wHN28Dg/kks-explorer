@@ -247,9 +247,14 @@ suite "the direct stream":
     sb.close()
     dead.close()
 
-  test "a sync of many MB of blobs goes through the direct stream, in bounded memory (2026-10-09)":
-    # the stream cut its queue after every packet and TLS its input after every record: copying the rest each time
-    # stalled the loop on a few MB until the other side gave up ("the other device stopped answering")
+  type DirectRun = object
+    ok: bool
+    live, heap: int            ## growth of the Nim heap's live bytes (after a full collection) and of the heap itself
+    seconds: int
+
+  proc directSync(nBlobs: int): DirectRun =
+    ## a server sends a device `nBlobs` blobs of 1 MB over the direct stream; both keep them in SQLite (malloc), so
+    ## what the Nim heap holds afterwards is what the sync left behind
     let rootKey = P.p256Generate()
     let kS = P.p256Generate()
     let dir = getTempDir() / "kks-direct-memory"
@@ -259,7 +264,6 @@ suite "the direct stream":
     let boss = P.newPersonId()
     discard srv.append("genesis", P.genesisBody(rootKey, "Test plant", srv.device, boss, "boss", "The Manager"), nowMs())
     srv.adopt(keyString(rootKey.pub))
-    const nBlobs = 24
     var listed = newArr(@[newArr(@[newStr("sheets.json"), newStr(srv.keepBlob("[]")), newInt(2)])])
     for i in 0 ..< nBlobs:
       listed.elems.add newArr(@[newStr("sheets/s" & $i & ".jxl"), newStr(srv.keepBlob(P.randomBytes(1024 * 1024).toStr)),
@@ -269,7 +273,9 @@ suite "the direct stream":
     let kD = P.p256Generate()
     discard srv.append("device_cert", deviceCertBody(P.peerId(kD), boss, "phone"), nowMs())
     var dev = newNode(P, openDbStore(P, dir / "device.db", P.randomBytes(32)), kD)
-    let before = getTotalMem()
+    GC_fullCollect()
+    let heap0 = getTotalMem()
+    let live0 = getOccupiedMem()
     let a = newUdp()
     let b = newUdp()
     let session = "\x11\x12\x13\x14\x15\x16\x17\x18"
@@ -277,10 +283,39 @@ suite "the direct stream":
     let t0 = epochTime()
     let synced = syncOver(dev, newIdentity(kD), b.rudpStream("127.0.0.1", a.port, session), srv.device,
                           adoptRoot = srv.root)
-    check waitFor(withTimeout(synced, 60_000))      # before the fix: still copying after 9 minutes
+    check waitFor(withTimeout(synced, 120_000))     # before 2026-10-09: still copying after 9 minutes (24 MB)
     if synced.finished and not synced.failed:
       discard waitFor served
       check synced.read.blobsReceived == nBlobs + 1
-      let grown = (getTotalMem() - before) div (1024 * 1024)
-      echo "  ", nBlobs, " MB of blobs directly in ", int(epochTime() - t0), " s: the Nim heap grew by ", grown, " MB"
-      check grown < 32                              # the stream's 4 MB back-pressure and both ends' buffers
+      result.ok = true
+      result.seconds = int(epochTime() - t0)
+    # both streams finish (FIN acknowledged, sockets closed) a few seconds after the sync, holding their buffers until
+    # then: let them, so both runs are measured in the same state
+    let t1 = epochTime()
+    while epochTime() - t1 < 6.0:
+      if hasPendingOperations(): poll(100) else: sleep(100)
+    GC_fullCollect()
+    result.live = getOccupiedMem() - live0
+    result.heap = getTotalMem() - heap0
+    echo "  ", nBlobs, " MB of blobs directly in ", result.seconds, " s: the Nim heap grew by ",
+         result.heap div (1024 * 1024), " MB, its live bytes by ", result.live div 1024, " kB"
+
+  test "a sync of many MB of blobs goes through the direct stream, in bounded memory (2026-10-09)":
+    # The stream cut its queue after every packet and TLS its input after every record: copying the rest each time
+    # stalled the loop on a few MB until the other side gave up ("the other device stopped answering").
+    # What a sync leaves behind must not grow with the data: every read armed a 20 s timer (withTimeout) that stayed
+    # in the dispatcher after the read, and the direct stream gives about a packet per read, so the live heap grew
+    # by about a tenth of the bytes moved (7-9 MB more for 96 MB of blobs than for 16; 2026-10-09).
+    let heap0 = getTotalMem()
+    let small = directSync(16)
+    let large = directSync(96)
+    check small.ok and large.ok
+    let more = (large.live - small.live) div 1024
+    let heap = (getTotalMem() - heap0) div (1024 * 1024)
+    echo "  the large sync left ", more, " kB more live than the small one; the heap grew by ", heap, " MB in all"
+    # nothing that scales with the bytes: 80 MB more of blobs, under 2 MB more held (about 0.2 MB here: the device's
+    # log lists 80 more files)
+    check more < 2048
+    # the peak, whatever the order of the runs: the stream's 4 MB back-pressure and both ends' buffers, 36-42 MB on
+    # Linux; everything held at once was about ten times the bytes
+    check heap < 64
