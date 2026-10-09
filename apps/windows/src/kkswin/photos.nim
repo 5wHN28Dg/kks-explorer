@@ -143,22 +143,12 @@ proc showPhoto*(w: Win, data, caption: string) =
 
 # ---------------------------------------------------------------- the panel section
 
-proc sendPhoto(w: Win, kks: string, rgba: seq[byte], iw, ih: int, caption, note: string) =
-  w.toast("Compressing…")
-  var n: csize_t
-  let jxl = jxlEncode(unsafeAddr rgba[0], cint(iw), cint(ih), Distance, Effort, addr n)
-  if jxl == nil:
-    w.toast("Could not compress the photo")
-    return
-  var data = newString(int(n))
-  copyMem(addr data[0], jxl, int(n))
-  cfree(jxl)
-  discard w.submit("photo", newObj(@[("kks", newStr(kks)), ("caption", newStr(caption.strip)),
-                   ("dataUrl", newStr("data:image/jxl;base64," & encode(data)))]), "photo of " & kks, note.strip)
-  w.rebuildPanel()
-
-proc addPhoto(w: Win, kks: string, path: string) =
-  ## a picture from a file: upright, at most 1600 px, then the annotation editor, then JPEG XL
+proc takePhoto*(w: Win, send: proc (dataUrl, caption, note: string)) =
+  ## a picture from a file: upright, at most 1600 px, then the annotation editor, then JPEG XL; `send` gets its data URL
+  # KKS_TEST_PHOTO: the end-to-end test's picture instead of the file dialog's answer
+  let path = if getEnv("KKS_TEST_PHOTO").len > 0: getEnv("KKS_TEST_PHOTO")
+             else: openFile(w.hwnd, "Add a photo", "Pictures|*.jpg;*.jpeg;*.png;*.heic;*.webp;*.bmp;*.tif;*.tiff|All files|*.*")
+  if path.len == 0: return
   var iw, ih: cint
   let px = imageLoad(newWideCString(path), 1600, addr iw, addr ih)
   if px == nil:
@@ -168,8 +158,24 @@ proc addPhoto(w: Win, kks: string, path: string) =
   copyMem(addr rgba[0], px, rgba.len)
   cfree(px)
   let (pw, ph) = (int(iw), int(ih))
-  annotate(w.hwnd, rgba, pw, ph, proc (marked: seq[byte], caption, note: string) = w.sendPhoto(kks, marked, pw, ph, caption, note),
-           askNote = not w.isAdmin)
+  annotate(w.hwnd, rgba, pw, ph, proc (marked: seq[byte], caption, note: string) =
+    w.toast("Compressing…")
+    var n: csize_t
+    let jxl = jxlEncode(unsafeAddr marked[0], cint(pw), cint(ph), Distance, Effort, addr n)
+    if jxl == nil:
+      w.toast("Could not compress the photo")
+      return
+    var data = newString(int(n))
+    copyMem(addr data[0], jxl, int(n))
+    cfree(jxl)
+    send("data:image/jxl;base64," & encode(data), caption.strip, note.strip),
+    askNote = not w.isAdmin)
+
+proc addPhoto(w: Win, kks: string) =
+  w.takePhoto(proc (dataUrl, caption, note: string) =
+    discard w.submit("photo", newObj(@[("kks", newStr(kks)), ("caption", newStr(caption)), ("dataUrl", newStr(dataUrl))]),
+                     "photo of " & kks, note)
+    w.rebuildPanel())
 
 proc photoSection*(w: Win, p: Page, kks: string) =
   p.title("Photos")
@@ -201,8 +207,4 @@ proc photoSection*(w: Win, p: Page, kks: string) =
                         discard w.submit("photo_delete", newObj(@[("photo_id", newStr(pid))]), "delete a photo")))
         else:
           discard p.dim("A photo not on this device yet (it arrives with the next sync)" & (if caption.len > 0: ": " & caption else: ""))
-  p.buttons(("Add a photo from a file…", proc () =
-    # KKS_TEST_PHOTO: the end-to-end test's picture instead of the file dialog's answer
-    let path = if getEnv("KKS_TEST_PHOTO").len > 0: getEnv("KKS_TEST_PHOTO")
-               else: openFile(w.hwnd, "Add a photo", "Pictures|*.jpg;*.jpeg;*.png;*.heic;*.webp;*.bmp;*.tif;*.tiff|All files|*.*")
-    if path.len > 0: w.addPhoto(kks, path)))
+  p.buttons(("Add a photo from a file…", proc () = w.addPhoto(kks)))

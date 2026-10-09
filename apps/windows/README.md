@@ -24,7 +24,12 @@ The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (d
   - `ui.nim`: pages of labelled fields, buttons and lists (the UIA names come from the labels); handlers run after
     the control's notification returns; guards log errors to `crash.log`;
   - `viewer.nim` + `kks_d2d.cpp`: the drawing (overview pyramid; vector tiles drawn by Direct2D into WIC bitmaps on
-    worker threads; tag hotspots; marking);
+    worker threads; tag hotspots; marking). Dark drawings (the sidebar's check box, remembered per device): every
+    colour's lightness inverted, its hue kept, on the worker threads (`kks_dark_rgb`, a copy of
+    `apps/common/darkcolor.nim` that `tests/test_dark.nim` checks on every 8-bit colour); tag outlines lightened;
+  - `multi.nim`: "Select tags" (a check box in the sidebar): a click or a tag button toggles a tag, a dragged box adds
+    the tags it touches, a search result toggles its tag; the right-hand panel then has the count, the List and one
+    photo, place or note for all the codes (core `/api/submit-many`; Place for all asks before replacing values);
   - `kks_uia.cpp`: the drawing's tags as UI Automation buttons;
   - `win.nim`, `panel.nim`, `side.nim` (search, sheets, floors, procedures with link mode, the review queue),
     `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView),
@@ -57,6 +62,9 @@ It covers:
 - search and the decoded panel;
 - an edit synced to the server;
 - a photo marked up with a box (the server's JPEG XL is decoded to check the box is in it);
+- dark drawings (the drawing's pixels as drawn, overview and tiles; the choice after a restart);
+- several tags at once (a dragged box, search results, a tag button; the List; place, note and photo for all);
+- the valve type from the drawing's symbol in the panel, confirmed with its button;
 - a member's proposal approved in Manage;
 - removal and the self-wipe.
 

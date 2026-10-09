@@ -23,6 +23,9 @@ type Win* = ref object
   tabButtons*: seq[HWND]
   sheet*: string
   selected*: string
+  picking*: bool            ## "Select tags" mode: one photo, place or note for several codes (multi.nim)
+  picked*: seq[string]      ## the selected codes, in the order they were picked
+  pickSaidUnread*: bool     ## the "no code" message was shown in this round of the mode
   linkProc*: string         ## link mode (R7): clicks on tags link them to this procedure step
   linkStep*: int
   activeProc*: string

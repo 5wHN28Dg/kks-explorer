@@ -18,4 +18,4 @@ else
   CXX="${KKS_MINGW_BIN:-$HOME/.local/kksdev/mingw/usr/bin}/x86_64-w64-mingw32-g++-posix"
 fi
 # the e2e tests' UI Automation driver (e2e/uiadrive.cpp), next to the app
-"$CXX" -O2 -static -municode -D_WIN32_WINNT=0x0A00 -o "$(dirname "$OUT")/uiadrive.exe" "$HERE/e2e/uiadrive.cpp" -luiautomationcore -lole32 -loleaut32 -luuid
+"$CXX" -O2 -static -municode -D_WIN32_WINNT=0x0A00 -o "$(dirname "$OUT")/uiadrive.exe" "$HERE/e2e/uiadrive.cpp" -luiautomationcore -lole32 -loleaut32 -luuid -lgdi32

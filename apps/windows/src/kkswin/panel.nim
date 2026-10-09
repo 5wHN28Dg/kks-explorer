@@ -143,6 +143,23 @@ proc buildPanel*(w: Win, t: Tag) =
       of "verified": "checked by eye against the drawing"
       else: "automatic, " & $int(round(t.conf * 100)) & " % confidence"), readonly = true)
     if t.flag.len > 0: p.field("Flag", t.flag, readonly = true)
+  # the valve type: confirmed, or read from the drawing's symbol and unchecked, with the proposal that confirms it as
+  # it is (core model.valveTypeOf; sent unchanged, a correction goes through Edit's "Valve type" custom field)
+  let vt = m.valveTypeOf(t)
+  if vt != nil:
+    p.label(s(vt, "line"))
+    if s(vt, "status") == "confirmed" and vt.get("drawn_differs") != nil and vt["drawn_differs"].kind == jBool and
+       vt["drawn_differs"].b:
+      p.dim("The drawing's symbol reads: " & s(vt, "drawn"))
+    let c = vt.get("confirm")
+    if c != nil and c.kind == jObj and c.get("payload") != nil:
+      let kind = s(c, "kind")
+      let payload = c["payload"]
+      let what = "valve type of " & k
+      p.buttons(("Confirm valve type", proc () =
+        if w.submit(kind, payload, what).len > 0:
+          w.loadModel()
+          w.rebuildPanel()))
   let rl = m.refLoc(t.bodyOf)
   if rl.rows.len > 0:
     p.title("Location list")

@@ -1,14 +1,18 @@
 # Run one UI script against a fresh Walkdown in this desktop session (started by a scheduled task, see e2e/README).
-param([string]$Script, [switch]$Keep, [switch]$Msix, [int]$SyncEvery = 0)
+param([string]$Script, [switch]$Keep, [switch]$Msix, [int]$SyncEvery = 0, [switch]$Restart, [string]$AppEnv = "")
 # -Msix: the installed MSIX (decision 0043), started through its alias; its LOCALAPPDATA lives in the package folder
+# -Restart: a new process on the same data (what survives a restart); -AppEnv "K=V;K2=V2": extra environment for the app
 $log = "C:\kks\uia.log"
 Set-Content $log ""
 if (-not $Keep) {
   Get-Process Walkdown -ErrorAction SilentlyContinue | Stop-Process -Force
   Start-Sleep -Milliseconds 500
-  Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Walkdown" -ErrorAction SilentlyContinue
-  Get-ChildItem "$env:LOCALAPPDATA\Packages\Walkdown_*\LocalCache\Local\Walkdown" -ErrorAction SilentlyContinue |
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  if (-not $Restart) {
+    Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Walkdown" -ErrorAction SilentlyContinue
+    Get-ChildItem "$env:LOCALAPPDATA\Packages\Walkdown_*\LocalCache\Local\Walkdown" -ErrorAction SilentlyContinue |
+      Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  foreach ($kv in ($AppEnv -split ";")) { if ($kv -match "^([A-Za-z_][A-Za-z0-9_]*)=(.*)$") { Set-Item "env:$($Matches[1])" $Matches[2] } }
   $env:KKS_TRACE = "1"
   if ($SyncEvery -gt 0) { $env:KKS_SYNC_EVERY = "$SyncEvery" }   # automatic sync rounds every N ms (tests)
   $env:KKS_TEST_PHOTO = "C:\kks\photo.jpg"      # the photo step picks this instead of a file dialog

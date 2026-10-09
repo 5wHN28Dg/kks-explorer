@@ -34,15 +34,17 @@ def put(*files):
 MSIX, MSIX_CER = os.environ.get('KKS_WIN_MSIX'), os.environ.get('KKS_WIN_MSIX_CER')
 
 
-def ui(name, lines, keep=True, sync_every=0):
+def ui(name, lines, keep=True, sync_every=0, restart=False, env=None):
     """run uiadrive with these script lines in the desktop session; -> (passed, log). sync_every (ms): a fresh app's
-    automatic sync rounds (KKS_SYNC_EVERY)"""
+    automatic sync rounds (KKS_SYNC_EVERY); restart: a new app process on the same data (not wiped); env: more
+    environment for a fresh app"""
     path = os.path.join(tempfile.gettempdir(), name)
     with open(path, 'w') as f: f.write('\n'.join(lines) + '\n')
     put(path)
     vm('Remove-Item C:\\kks\\uia.log -ErrorAction SilentlyContinue')
-    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\run.ps1 -Script %s%s%s%s' % (
-        name, ' -Keep' if keep else '', ' -Msix' if MSIX else '', ' -SyncEvery %d' % sync_every if sync_every else '')
+    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\run.ps1 -Script %s%s%s%s%s%s' % (
+        name, ' -Keep' if keep and not restart else '', ' -Msix' if MSIX else '', ' -SyncEvery %d' % sync_every if sync_every else '',
+        ' -Restart' if restart else '', ' -AppEnv "%s"' % ';'.join('%s=%s' % kv for kv in env.items()) if env else '')
     b64 = base64.b64encode(args.encode()).decode()
     vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kksuia' % b64)
     for _ in range(120):
@@ -146,9 +148,137 @@ class Windows(unittest.TestCase):
             time.sleep(0.5)
         self.fail(what)
 
-    def check(self, name, lines, keep=True, sync_every=0):
-        ok, log = ui(name, lines, keep, sync_every)
+    def check(self, name, lines, keep=True, sync_every=0, restart=False, env=None):
+        ok, log = ui(name, lines, keep, sync_every, restart, env)
         self.assertTrue(ok, log)
+
+    JOIN = ['click\tJoin through a server', 'set\tServer address\t%s:%d', 'set\tUsername\tboss',
+            'set\tPassword\ta long password', 'click\tJoin', 'wait\t~Sample sheet\t60']
+
+    def join(self, name, **kw):
+        self.check(name, [l % (HOST, self.sport) if '%' in l else l for l in self.JOIN], keep=False, **kw)
+
+    def leave(self):
+        """the manager removes this VM's device on the server: test_flow finds the one it joins by its label"""
+        host = vm('$env:COMPUTERNAME').strip().lower()
+        for d in self.boss.req('GET', '/api/devices')['all']:
+            if d['username'] == 'boss' and d['label'].lower() == host and not d['revoked']:
+                self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+
+    def test_dark_drawings(self):
+        """Dark drawings: the check box turns the sheet light-on-dark at once (dark paper, light lines, as drawn on the
+        screen), off restores it, and the choice survives a restart of the app (this device's store)"""
+        self.join('djoin.uia')
+        self.check('dark0.uia', ['state\tDark drawings\toff', 'shade\tDrawing\tlight', 'toggle\tDark drawings',
+                                 'state\tDark drawings\ton', 'shade\tDrawing\tdark',
+                                 'toggle\tDark drawings', 'shade\tDrawing\tlight', 'toggle\tDark drawings',
+                                 'shade\tDrawing\tdark', 'sleep\t500'])
+        # zoomed in: the vector tiles (Direct2D on the workers) are dark too
+        self.check('dark1.uia', ['keys\tDrawing\t0x6B,0x6B,0x6B,0x6B,0x6B,0x6B', 'sleep\t1500', 'shade\tDrawing\tdark',
+                                 'click\tFit the sheet (0)'])
+        self.check('dark2.uia', ['wait\t~Sample sheet\t60', 'state\tDark drawings\ton', 'shade\tDrawing\tdark'],
+                   restart=True)
+        self.leave()
+
+    def test_multi(self):
+        """Select tags, then one place, one note and one photo for all of them (core /api/submit-many). Selecting: a box
+        dragged on the drawing (one tag in it has no code: refused, said), search results (the keyboard's way) and a
+        tag button of the drawing (a screen reader's way); one is turned off in the List; a cap (KKS_MAX_PICK)"""
+        b = self.boss
+        tags = {'11LAC10AP001': [600, 300, 720, 360], '11LAC10AP002': [800, 300, 920, 360],
+                '11LAC10AP003': [600, 500, 720, 560], '11LAC20AA101': [800, 500, 920, 560], '': [960, 500, 1060, 560]}
+        for k, bb in tags.items():
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': k,
+                                                                             'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC10AP002',
+                                          'changes': {'floor': '1', 'notes': 'Old note'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.join('mjoin.uia', env={'KKS_MAX_PICK': '3'})
+        def pick(code, n):
+            return ['set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
+                    'click\tSelect or unselect', 'wait\t%d selected\t10' % n]
+        self.check('multi0.uia', [
+            'toggle\tSelect tags', 'state\tSelect tags\ton', 'wait\t0 selected\t10',
+            # a box from 11LAC20AA101 over the unread tag next to it: the code is added, the unread one refused
+            # the panel opened beside the drawing: the whole sheet again, so the unread tag is in view too
+            'click\tFit the sheet (0)', 'wait\t~Unread tag, \t20',
+            'wait\t~11LAC20AA101, \t20', 'boxdrag\tDrawing\t~11LAC20AA101, \t2.3\t1.1',
+            'wait\t1 selected\t10', "wait\t~Tags without a code can't be selected: review them first\t10",
+            'wait\t~, in the selection\t10'] +
+            pick('11LAC10AP001', 2) + pick('11LAC10AP002', 3) + [
+            # a fourth over the cap: not added, and said
+            'set\tSearch equipment by KKS code or description\tLAC10AP003', 'select\t~11LAC10AP003',
+            'click\tSelect or unselect', 'wait\t~At most 3 tags at once: send these first\t10', 'wait\t3 selected\t5',
+            # a tag button of the drawing toggles too (off, then on again)
+            'click\t~11LAC10AP001, ', 'wait\t2 selected\t10', 'click\t~11LAC10AP001, ', 'wait\t3 selected\t10',
+            # the List: turn the box-selected code off
+            'click\tList', 'wait\tSelected codes\t10', 'state\t~11LAC20AA101\ton', 'toggle\t~11LAC20AA101',
+            'wait\t2 selected\t10', 'state\t~11LAC20AA101\toff', 'click\tClose the list', 'gone\tSelected codes',
+            # Place for all: a floor; one of the two has another floor already, so the app asks first
+            'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t3', 'click\tSend',
+            'wait\t~1 of 2 already have a floor; it will be replaced.\t10', 'click\tOK',
+            'wait\t~Sent for 2 codes · saved\t20', 'state\tSelect tags\toff'])
+        want = {'11LAC10AP001': '3', '11LAC10AP002': '3', '11LAC10AP003': '', '11LAC20AA101': ''}
+        def floors():
+            eq = b.req('GET', '/api/state')['equipment']
+            got = {k: eq.get(k, {}).get('floor', '') for k in want}
+            return got if got == want else None
+        self.wait_server(floors, 'the floors never reached the server: %s' % b.req('GET', '/api/state')['equipment'], tries=80)
+        # Note for all: appended under each code's own note; Escape on the drawing ends the mode first, once
+        self.check('multi1.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10', 'keys\tDrawing\t0x1B',
+                                  'state\tSelect tags\toff', 'toggle\tSelect tags', 'wait\t0 selected\t10'] +
+                   pick('11LAC10AP002', 1) + pick('11LAC10AP003', 2) + [
+                   'click\tNote for all…', 'wait\tNote for all\t10', 'set\tNote\tChecked on the walkdown', 'click\tSend',
+                   'wait\t~Sent for 2 codes · saved\t20'])
+        want2 = {'11LAC10AP002': 'Old note\nChecked on the walkdown', '11LAC10AP003': 'Checked on the walkdown',
+                 '11LAC10AP001': ''}
+        def notes():
+            eq = b.req('GET', '/api/state')['equipment']
+            got = {k: eq.get(k, {}).get('notes', '') for k in want2}
+            return got if got == want2 else None
+        self.wait_server(notes, 'the notes never reached the server', tries=80)
+        # Photo for all: one picture through the mark-up editor, sent once for both codes
+        self.check('multi2.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) +
+                   pick('11LAC10AP003', 2) + [
+                   'click\tPhoto for all…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tBoth drains',
+                   'click\tSend', 'wait\t~Sent for 2 codes · saved\t90'])
+        def photos():
+            ph = [p for p in b.req('GET', '/api/state').get('photos', []) if p.get('caption') == 'Both drains']
+            ok = sorted(p['kks'] for p in ph) == ['11LAC10AP001', '11LAC10AP003'] and all(p.get('file') for p in ph)
+            return ph if ok else None
+        ph = self.wait_server(photos, 'the photos never reached the server', tries=80)
+        self.assertEqual(len({p['file'] for p in ph}), 1, 'one image for both codes: %s' % ph)
+        self.leave()
+
+    def test_valve_type(self):
+        """the valve type read from the drawing's symbol (tags.json "symbol", core valveTypeOf): shown as unchecked in
+        the panel; Confirm sends the core's proposal as it is, and the panel then says confirmed"""
+        fix = os.path.join(self.dir, 'valve-fixture')
+        shutil.rmtree(fix, ignore_errors=True)
+        shutil.copytree(os.path.join(self.dir, 'plant-data'), fix)
+        tags = json.load(open(os.path.join(fix, 'tags.json')))
+        tags.append({'id': 'sample:v1', 'sheet': 'sample', 'kks': '11LAB70AA777', 'suffix': '', 'isa': None,
+                     'kind': 'equipment', 'status': 'auto', 'conf': 1, 'bbox': [800, 700, 920, 760],
+                     'read': ['11LAB70', 'AA777'],
+                     'symbol': {'type': 'gate valve', 'actuator': 'motor', 'nc': False, 'conf': 0.93,
+                                'bbox': [800, 640, 920, 690]}})
+        with open(os.path.join(fix, 'tags.json'), 'w') as f: json.dump(tags, f)
+        r = subprocess.run([SERVER, 'publish-data', fix, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.join('vjoin.uia')
+        self.check('valve.uia', ['set\tSearch equipment by KKS code or description\tLAB70AA777', 'select\t~11LAB70AA777',
+                                 'click\tShow on the drawing',
+                                 'wait\tValve type: gate valve, motor-operated (from the drawing, unchecked)\t20',
+                                 'click\tConfirm valve type', 'wait\t~Saved: valve type of 11LAB70AA777\t20',
+                                 'wait\tValve type: gate valve, motor-operated (confirmed)\t20', 'gone\tConfirm valve type'])
+        def custom():
+            c = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA777', {}).get('custom', [])
+            return c if c else None
+        self.assertEqual(self.wait_server(custom, 'the valve type never reached the server', tries=80),
+                         [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}])
+        self.leave()
 
     def test_scan_camera(self):
         """decision 0039: the scan window reads an invite through Media Foundation; KKS_CAMERA_FILE (run.ps1) plays a
@@ -188,11 +318,7 @@ class Windows(unittest.TestCase):
         shot = os.path.join(tempfile.gettempdir(), 'kks-win-course.ppm')
         dom = 'kks-win11' if VM.endswith('.20') else 'kks-win10'
         subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, shot], capture_output=True)
-        # leave no device behind for test_flow (it finds this VM's device by its label)
-        host = vm('$env:COMPUTERNAME').strip().lower()
-        for d in self.boss.req('GET', '/api/devices')['all']:
-            if d['username'] == 'boss' and d['label'].lower() == host and not d['revoked']:
-                self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+        self.leave()       # leave no device behind for test_flow (it finds this VM's device by its label)
 
     def test_systems_follows_sync(self):
         """Equipment by system follows a sync without a search, but never under the focus. Sync rounds every 3 s, in
@@ -200,21 +326,25 @@ class Windows(unittest.TestCase):
         self.check('sysjoin.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
                                    'set\tUsername\tboss', 'set\tPassword\ta long password', 'click\tJoin',
                                    'wait\t~Sample sheet\t60'], keep=False, sync_every=3000)
+        # the sample sheet's one code, plus the tags other tests on this server marked by hand (test_multi)
+        n = len({'11LAB70AA501'} | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
+                                    if t.get('kks')})
+        on = lambda k: f'{k} code{"" if k == 1 else "s"} on the drawings'
         self.check('systems0.uia', ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
-                                    'wait\t1 code on the drawings\t20'])
+                                    'wait\t%s\t20' % on(n)])
         # a code approved on the server appears without a search
         def add(code, bb):
             r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb,
                                                       'kks': code, 'isa': '', 'note': ''}})
             self.assertEqual(r.get('status'), 'approved', r)
         add('11PAB10AP001', [600, 700, 720, 760])
-        self.check('systems1.uia', ['wait\t2 codes on the drawings\t40', 'wait\t~PAB (1)\t10', 'focus\t~PAB (1)'])
+        self.check('systems1.uia', ['wait\t%s\t40' % on(n + 1), 'wait\t~PAB (1)\t10', 'focus\t~PAB (1)'])
         # but never under the focus: with the focus in the tree a sync only marks it stale; it is rebuilt once the
         # focus leaves the tree (here: to the search field)
         add('11PAB10AP002', [600, 800, 720, 860])
         time.sleep(10)          # three sync rounds
-        self.check('systems2.uia', ['wait\t2 codes on the drawings\t1', 'focus\tSearch codes, systems, descriptions',
-                                    'wait\t3 codes on the drawings\t15'])
+        self.check('systems2.uia', ['wait\t%s\t1' % on(n + 1), 'focus\tSearch codes, systems, descriptions',
+                                    'wait\t%s\t15' % on(n + 2)])
         self.check('systems3.uia', ['keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
 
     def test_flow(self):
