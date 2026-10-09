@@ -139,6 +139,15 @@ class WebV2(unittest.TestCase):
                                                           'button': 0, 'buttons': 1 if kind != 'pointerup' else 0, 'isPrimary': True, 'bubbles': True})
             page.click('[data-s="1.8"]')
             self.assertEqual(page.get_attribute('[data-s="1.8"]', 'aria-pressed'), 'true')
+            # a finger that lifts before the next frame: the loupe that frame was to draw stays hidden (it came back
+            # after the finger left, and then showed over the next mouse draw: a WebKit flake on CI)
+            page.evaluate("""() => new Promise(ok => { const c = document.querySelector('canvas.view'), r = c.getBoundingClientRect();
+                const ev = (k, x) => c.dispatchEvent(new PointerEvent(k, {pointerId: 9, pointerType: 'touch', clientX: r.left + x,
+                    clientY: r.top + r.height / 2, button: 0, buttons: k === 'pointerup' ? 0 : 1, isPrimary: true, bubbles: true}));
+                ev('pointerdown', r.width / 2 - 80); ev('pointermove', r.width / 2 + 80); ev('pointerup', r.width / 2 + 80);
+                requestAnimationFrame(() => requestAnimationFrame(ok)) })""")
+            self.assertFalse(page.is_visible('canvas.loupe'), name + ': the loupe came back after a quick finger draw')
+            page.click('[data-a="undo"]')
             ptr('pointerdown', 'touch', cxp - 100, cyp, 7)
             ptr('pointermove', 'touch', cxp + 100, cyp, 7)
             page.wait_for_timeout(150)
