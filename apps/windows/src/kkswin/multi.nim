@@ -222,7 +222,8 @@ proc photoForAll*(w: Win) =
     w.toast("Select tags first")
     return
   # the user's rule: a photo needs its equipment's floor (one editor can't ask for several, so set them first)
-  let missing = w.floorsMissing(w.picked)
+  # (a floor still riding on a queued or kept photo doesn't count: this photo would go without it)
+  let missing = w.floorsMissing(w.picked, queued = false)
   if missing.len > 0:
     w.toast("A photo needs each code's floor. No floor yet: " & missing[0 ..< min(5, missing.len)].join(", ") &
             (if missing.len > 5: " and " & $(missing.len - 5) & " more" else: "") & ". Set it with Place for all first.")

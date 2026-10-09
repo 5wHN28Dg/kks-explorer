@@ -518,6 +518,13 @@ class Windows(unittest.TestCase):
                                                'wait\tPhotos not sent (2)…\t10'] +
                    photo(c, '7', 'Floor C') + ['wait\t~The photo of %s could not be compressed\t30' % c,
                                                'wait\tPhotos not sent (3)…\t10'] +
+                   # Photo for all doesn't count a floor riding on a kept photo (its own photo would go without it,
+                   # and the kept one may be discarded): refused, naming the code
+                   ['click\tDrawings', 'toggle\tSelect tags', 'wait\t0 selected\t10',
+                    'set\tSearch equipment by KKS code or description\t' + a[2:], 'select\t~' + a,
+                    'click\tSelect or unselect', 'wait\t1 selected\t10', 'click\tPhoto for all…',
+                    'wait\t~A photo needs each code\'s floor. No floor yet: %s.\t20' % a, 'gone\tPhoto to mark up',
+                    'keys\tDrawing\t0x1B', 'state\tSelect tags\toff'] +
                    # the floor is on its way with the kept photo: not asked again, and it goes with this one
                    photo(b, None, 'Floor B2') + ['wait\t~Saved: photo of %s\t90' % b])
         def floor_b():
