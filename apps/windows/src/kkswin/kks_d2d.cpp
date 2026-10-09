@@ -108,7 +108,14 @@ static bool jxl_bgra(const uint8_t *data, size_t n, std::vector<uint8_t> &out, i
 
 // ---------------------------------------------------------------- a sheet in the flat layout
 
+// A sheet is shared by its owner (the viewer, until kks_sheet_close) and every tile job for it, queued or being
+// rendered: the last of them deletes it. A worker inside render_tile never reads a closed sheet's freed memory.
+static std::atomic<int> g_sheets{0};      // sheets not yet deleted (tests: kks_sheets_alive)
+
 struct Sheet {
+    std::atomic<int> refs{1};
+    Sheet() { g_sheets++; }
+    ~Sheet() { g_sheets--; }
     std::vector<uint8_t> b;
     int width, height, nStyles, nPaths, nImages, nOps, nXY, gx, gy;
     size_t stylesAt, pathsAt, opsAt, xyAt, cellsAt, entriesAt;
@@ -136,7 +143,11 @@ extern "C" void *kks_sheet_open(const uint8_t *flat, size_t n) {
     return s;
 }
 
-extern "C" void kks_sheet_close(void *s) { delete (Sheet *)s; }
+static void sheet_unref(Sheet *s) { if (s && s->refs.fetch_sub(1) == 1) delete s; }
+
+// the owner's reference: the sheet goes once its queued and running tiles are done too
+extern "C" void kks_sheet_close(void *s) { sheet_unref((Sheet *)s); }
+extern "C" int kks_sheets_alive(void) { return g_sheets.load(); }
 extern "C" int kks_sheet_width(void *s) { return ((Sheet *)s)->width; }    // quanta (1/64 pt)
 extern "C" int kks_sheet_height(void *s) { return ((Sheet *)s)->height; }
 
@@ -284,8 +295,11 @@ static void worker() {
         Done d{j.key, {}, 0, 0, false};
         if (j.kind == 0) { d.ok = render_tile(*(Sheet *)j.sheet, j.tz, j.x0, j.y0, j.size, j.dark, d.px); d.w = d.h = j.size; }
         else d.ok = jxl_bgra(j.data.data(), j.data.size(), d.px, d.w, d.h, j.dark);
-        std::lock_guard<std::mutex> l(g_mu);
-        g_done.push_back(std::move(d));
+        {
+            std::lock_guard<std::mutex> l(g_mu);
+            g_done.push_back(std::move(d));
+        }
+        if (j.kind == 0) sheet_unref((Sheet *)j.sheet);    // after the result is out: a sheet gone means its tiles are done
     }
 }
 
@@ -295,9 +309,10 @@ static void start_workers() {
     for (unsigned i = 0; i < n; i++) { g_workers.emplace_back(worker); g_workers.back().detach(); }
 }
 
-// the sheet must stay open until its tiles are done (the caller drops results of an old generation by key)
+// the job holds a reference to the sheet: the caller may close it at once (it drops results of an old generation by key)
 extern "C" void kks_tile_request(long long key, void *sheet, float tz, float x0, float y0, int size, int dark) {
     start_workers();
+    ((Sheet *)sheet)->refs++;
     std::lock_guard<std::mutex> l(g_mu);
     g_jobs.push_back(Job{key, 0, sheet, tz, x0, y0, size, dark != 0, {}});
     g_cv.notify_one();
@@ -311,7 +326,16 @@ extern "C" void kks_jxl_request(long long key, const uint8_t *data, size_t n, in
     g_cv.notify_one();
 }
 
-extern "C" void kks_jobs_clear(void) { std::lock_guard<std::mutex> l(g_mu); g_jobs.clear(); }
+// the queued jobs go (their sheets' references with them); jobs already running finish and report as usual
+extern "C" void kks_jobs_clear(void) {
+    std::deque<Job> dropped;
+    {
+        std::lock_guard<std::mutex> l(g_mu);
+        dropped.swap(g_jobs);
+    }
+    for (auto &j : dropped) if (j.kind == 0) sheet_unref((Sheet *)j.sheet);
+}
+extern "C" int kks_jobs_queued(void) { std::lock_guard<std::mutex> l(g_mu); return (int)g_jobs.size(); }
 
 // a finished job: returns 1 and fills key/size/pixels (malloc'd, the caller frees with kks_free), else 0
 extern "C" int kks_job_done(long long *key, int *w, int *h, uint8_t **px) {

@@ -104,8 +104,7 @@ proc openSystems*(w: Win) =
       SendMessageW(tree, TVM_EXPAND, 3, cast[LPARAM](it))      # TVE_TOGGLE
       return
     let t = targets[i]
-    if t.sheet != w.sheet: w.showSheet(t.sheet)
-    w.selectTag(t.tag, true)
+    w.selectTag(t.tag, true)     # it shows the sheet itself, after asking whether to drop a selection
   # {.closure.}: see ui.toSpec (a lambda that only calls a nested proc is typed nimcall there)
   p.buttons(("Show the selected code on its drawing", proc () {.closure.} = open()))
   # the static text just before the tree is its name for UI Automation (and screen readers)

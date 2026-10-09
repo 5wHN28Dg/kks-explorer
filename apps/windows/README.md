@@ -26,10 +26,14 @@ The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (d
   - `viewer.nim` + `kks_d2d.cpp`: the drawing (overview pyramid; vector tiles drawn by Direct2D into WIC bitmaps on
     worker threads; tag hotspots; marking). Dark drawings (the sidebar's check box, remembered per device): every
     colour's lightness inverted, its hue kept, on the worker threads (`kks_dark_rgb`, a copy of
-    `apps/common/darkcolor.nim` that `tests/test_dark.nim` checks on every 8-bit colour); tag outlines lightened;
+    `apps/common/darkcolor.nim` that `tests/test_dark.nim` checks on every 8-bit colour); tag outlines lightened.
+    A sheet is shared by its owner and its tile jobs and goes with the last of them, so a sheet switch never frees one
+    a worker is still rendering (`tests/test_tiles.nim`);
   - `multi.nim`: "Select tags" (a check box in the sidebar): a click or a tag button toggles a tag, a dragged box adds
     the tags it touches, a search result toggles its tag; the right-hand panel then has the count, the List and one
-    photo, place or note for all the codes (core `/api/submit-many`; Place for all asks before replacing values);
+    photo, place or note for all the codes (core `/api/submit-many`; Place for all asks before replacing values, and
+    sends as each code's base what it showed before asking; Photo for all needs every code's floor). The List and the
+    forms close when the mode ends; a tag opened from elsewhere asks before it drops a selection;
   - `kks_uia.cpp`: the drawing's tags as UI Automation buttons;
   - `win.nim`, `panel.nim`, `side.nim` (search, sheets, floors, procedures with link mode, the review queue),
     `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView),
