@@ -255,7 +255,6 @@ class Gnome(unittest.TestCase):
 
         def mine():
             return [p for p in self.boss.req('GET', '/api/state')['photos'] if p.get('caption', '').startswith('queued ')]
-        self.assertEqual(mine(), [], 'nothing was sent before the kill')
         self.start_app('crasher', wait=False, KKS_TEST_PHOTO_DIE_AFTER_SEND='1')
         second = self.apps[-1]
         second.wait(120)

@@ -441,7 +441,10 @@ proc sendPhoto(w: Win, q: QueuedPhoto, jxlData: string) =
   var payload = newObj(@[("kks", newStr(q.kks)), ("caption", newStr(q.caption)),
                          ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))])
   if q.floor.len > 0: payload["floor"] = newStr(q.floor)   # written first, only if the code still has no floor
-  discard w.trySubmit("photo", payload, "photo of " & q.kks, q.note, q.clientId)
+  # one transaction: the core writes the entry, its note and the submission row (the one with the client_id) as
+  # separate rows; a kill between them would leave the photo without its client_id, and the resend would add it again
+  w.a.store.transaction(proc () =
+    discard w.trySubmit("photo", payload, "photo of " & q.kks, q.note, q.clientId))
 
 proc received(w: Win, d: EncDone) =
   ## one photo compressed (or not): send it, then remove it, keep it for a retry, or report a refusal

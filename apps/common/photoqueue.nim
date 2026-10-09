@@ -93,8 +93,8 @@ proc resume*(q: PhotoQueue): seq[string] =
     try:
       q.items.add parseJob(key, q.store.getRow(JobTable, key))
       known.add key
-    except CatchableError as e:
-      result.add "A queued photo could not be read and was dropped (" & e.msg & ")"
+    except CryptoError, ValueError:       # damaged (the seal, the JSON, a field); a store error is raised instead
+      result.add "A queued photo could not be read and was dropped (" & getCurrentExceptionMsg() & ")"
       q.remove(key)
   for key in q.keys(PixelTable):          # a picture without its job (not written that way, but never kept for ever)
     if key notin known: q.store.delRow(PixelTable, key)
@@ -145,10 +145,14 @@ proc next*(q: PhotoQueue, now: int64, reports: var seq[string]): (bool, QueuedPh
       let px = q.pixels(it)
       q.busy = it.key
       return (true, it, px)
-    except CatchableError as e:
-      reports.add "Photo of " & it.kks & " could not be read and was dropped (" & e.msg & ")"
+    except CryptoError, ValueError:       # damaged (the seal, base64, the size): it won't get better
+      reports.add "Photo of " & it.kks & " could not be read and was dropped (" & getCurrentExceptionMsg() & ")"
       q.remove(it.key)
       q.items.delete(i)
+    except CatchableError as e:           # the store itself (I/O, busy): kept, tried again in a minute
+      reports.add "Photo of " & it.kks & " could not be read now (" & e.msg & "). It is kept and tried again in a minute."
+      q.items[i].readyAt = now + RetryMs
+      inc i
 
 proc finish*(q: PhotoQueue, key: string, outcome: Outcome, why: string, now: int64): string =
   ## what became of the photo being worked on; returns a report for the person ("" when there is nothing to say)
@@ -159,13 +163,13 @@ proc finish*(q: PhotoQueue, key: string, outcome: Outcome, why: string, now: int
   if i == q.items.len: return ""
   var it = q.items[i]
   case outcome
-  of Sent:
-    q.remove(key)
+  of Sent, Refused:
+    try: q.remove(key)
+    except CatchableError as e:          # kept: tried again in a minute (a resend is kept once, by its client_id)
+      q.items[i].readyAt = now + RetryMs
+      return "Photo of " & it.kks & ": the queue could not be updated (" & e.msg & "). It is tried again in a minute."
     q.drop(key)
-  of Refused:
-    q.remove(key)
-    q.drop(key)
-    result = "Photo of " & it.kks & " was refused: " & why
+    if outcome == Refused: result = "Photo of " & it.kks & " was refused: " & why
   of Failed:
     q.items.delete(i)
     inc it.tries

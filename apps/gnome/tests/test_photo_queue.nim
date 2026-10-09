@@ -162,4 +162,24 @@ suite "photo queue on disk":
     check left == 0
     s.close()
 
+  test "a store error is not damage: the photo is kept and tried again (reading it, and removing it once sent)":
+    let s = fresh()
+    let q = newPhotoQueue(s)
+    let a = q.add(p, pic(2, 2, 1), 2, 2, "A1", "", "", "", 1)
+    var reports: seq[string]
+    s.db.exec("ALTER TABLE rows RENAME TO rows_away")      # every read and write of a row now fails
+    check not q.next(0, reports)[0]
+    check reports.len == 1 and "kept" in reports[0] and q.count == 1
+    s.db.exec("ALTER TABLE rows_away RENAME TO rows")
+    check not q.next(RetryMs - 1, reports)[0]
+    check q.next(RetryMs, reports)[1].key == a.key
+    s.db.exec("ALTER TABLE rows RENAME TO rows_away")
+    let r = q.finish(a.key, Sent, "", RetryMs)
+    check "could not be updated" in r and q.count == 1 and q.busy == ""
+    s.db.exec("ALTER TABLE rows_away RENAME TO rows")
+    check q.next(2 * RetryMs, reports)[1].key == a.key      # sent again (kept once by the core: its client_id)
+    check q.finish(a.key, Sent, "", 2 * RetryMs) == "" and q.count == 0
+    check s.getRow(JobTable, a.key) == nil and s.getRow(PixelTable, a.key) == nil
+    s.close()
+
 removeDir(dir)
