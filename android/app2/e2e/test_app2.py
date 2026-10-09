@@ -788,17 +788,17 @@ class Phone(unittest.TestCase):
         def conn(label, x, y):
             return {'label': label, 'bbox': [x, y, x + 40, y + 40], 'conf': 0.9}
 
-        # a second sheet: the sample's drawing again; C16 continues there, D2 twice there, S3 nowhere
+        # a sheet of its own (test_coverage imports one called second): the sample's drawing again; C16 continues there, D2 twice there, S3 nowhere
         sheets = json.loads(saved['sheets.json'])
         sample = next(s for s in sheets if s['id'] == 'sample')
         sample['links'] = [conn('C16', 1300, 900), conn('D2', 1400, 900), conn('S3', 1500, 900)]
-        second = dict(sample, id='second', name='Second sheet', links=[conn('C16', 200, 200), conn('D2', 300, 200), conn('D2', 1200, 700)])
-        sheets.append(second)
+        linked = dict(sample, id='linked', name='Linked sheet', links=[conn('C16', 200, 200), conn('D2', 300, 200), conn('D2', 1200, 700)])
+        sheets.append(linked)
         copied = []
         for f in os.listdir(os.path.join(plant, 'sheets')):
             if f.startswith('sample.'):
-                shutil.copy(os.path.join(plant, 'sheets', f), os.path.join(plant, 'sheets', 'second.' + f[len('sample.'):]))
-                copied.append(os.path.join(plant, 'sheets', 'second.' + f[len('sample.'):]))
+                shutil.copy(os.path.join(plant, 'sheets', f), os.path.join(plant, 'sheets', 'linked.' + f[len('sample.'):]))
+                copied.append(os.path.join(plant, 'sheets', 'linked.' + f[len('sample.'):]))
         tags = json.loads(saved['tags.json'])
 
         def valve(i, kks, x, typ, actuator):
@@ -815,25 +815,25 @@ class Phone(unittest.TestCase):
                 # the list: every connector with where it continues
                 ui.tap('More', exact=True)
                 ui.tap('Connectors on this sheet (3)', exact=True)
-                ui.find('continues on Second sheet')
+                ui.find('continues on Linked sheet')
                 ui.find("the other end isn't on any drawing in the app")
                 ui.tap('Connector S3', exact=True)
                 ui.find("Connector S3: the other end isn't on any drawing in the app", timeout=10)
                 # on the drawing (named for TalkBack): one target opens it
                 ui.tap('Fit the sheet to the screen', exact=True)     # every circle on screen
-                ui.tap('Connector C16, continues on Second sheet', exact=True)
-                ui.find('Connector C16 on Second sheet', timeout=10)
-                ui.find('Second sheet', exact=True)                  # the title
+                ui.tap('Connector C16, continues on Linked sheet', exact=True)
+                ui.find('Connector C16 on Linked sheet', timeout=10)
+                ui.find('Linked sheet', exact=True)                  # the title
                 ui.tap('Fit the sheet to the screen', exact=True)
                 ui.tap('Connector C16, continues on Sample sheet', exact=True)
                 ui.find('Connector C16 on Sample sheet', timeout=10)
                 # several: asked which, numbered
                 ui.tap('Fit the sheet to the screen', exact=True)
-                ui.tap('Connector D2, continues on Second sheet', exact=True)
+                ui.tap('Connector D2, continues on Linked sheet', exact=True)
                 ui.find('Where does D2 continue?', exact=True)
-                ui.find('Second sheet (1 of 2)', exact=True)
-                ui.tap('Second sheet (2 of 2)', exact=True)
-                ui.find('Connector D2 on Second sheet', timeout=10)
+                ui.find('Linked sheet (1 of 2)', exact=True)
+                ui.tap('Linked sheet (2 of 2)', exact=True)
+                ui.find('Connector D2 on Linked sheet', timeout=10)
                 ui.find('Connector D2, continues on Sample sheet, elsewhere on this sheet', exact=True)
                 # the valve type: read from the drawing, its symbol outlined while the panel is open
                 self.open_tag('11LAB70AA601')
