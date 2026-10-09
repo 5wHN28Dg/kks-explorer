@@ -54,7 +54,7 @@ def apk_version(path):
 def newer(a, b):
     """the app's own comparison (Updates.newer): numeric major.minor.patch"""
     def parts(v):
-        return ([int(x) if x.isdigit() else 0 for x in v.split('.')] + [0, 0, 0])[:3]
+        return ([int(x) if x.isdigit() else 0 for x in v.split('-')[0].split('.')] + [0, 0, 0])[:3]
     return parts(a) > parts(b)
 
 
@@ -85,8 +85,8 @@ class Update(unittest.TestCase):
         assert 'Success' in r.stdout, r.stdout + r.stderr
         # the app under test is the one named, and the release offered is newer than it (else no banner is right)
         self.assertEqual(version_installed(), apk_version(APK), f'installed is not {APK}')
-        self.assertTrue(newer(apk_version(NEWER), version_installed()),
-                        f'{NEWER} ({apk_version(NEWER)}) is not newer than {APK} ({version_installed()})')
+        self.assertEqual(apk_version(NEWER), '9.9.9', f'{NEWER} is not the 9.9.9 build the test release offers')
+        self.assertTrue(newer('9.9.9', version_installed()), f'9.9.9 is not newer than {APK} ({version_installed()})')
         try:
             kind = 'debuggable' if ui.debuggable(PKG) else 'not debuggable'
         except AssertionError as e:      # only informative here
