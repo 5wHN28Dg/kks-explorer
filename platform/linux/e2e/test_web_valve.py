@@ -113,6 +113,15 @@ class WebValve(unittest.TestCase):
             self.assertEqual(page.locator('#layer .vsym').count(), 0)
             page.click(f'#layer .hs[data-id="a:{name}1"]')
             page.wait_for_selector('#layer .vsym')
+            # not while another form of the panel is open: sending rebuilds the panel, which would lose the typing
+            page.click('button[aria-label="Edit Notes"]')
+            page.fill('#f_notes', 'half typed')
+            page.click('#valveSec button:text-is("Confirm type")')
+            self.assertEqual(page.text_content('#toast'), 'Save or cancel your edits first')
+            self.assertEqual(page.input_value('#f_notes'), 'half typed')
+            self.assertIsNone(self.custom(gate))
+            page.click('#eqSave button:text-is("Cancel")')
+            page.wait_for_selector('#layer .vsym')
             # Confirm: sent as it is
             page.click('#valveSec button:text-is("Confirm type")')
             page.wait_for_function("() => document.getElementById('vtLine')?.textContent === 'Valve type: gate valve, motor-operated (confirmed)'",
@@ -160,14 +169,16 @@ class WebValve(unittest.TestCase):
             mp.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length === 12 && typeof cur !== 'undefined' && cur", timeout=30000)
             mp.click(f'#layer .hs[data-id="a:{name}4"]')
             mp.wait_for_function("() => document.getElementById('vtLine')?.textContent === 'Valve type: ball valve (from the drawing, unchecked)'")
-            mp.locator('#valveSec button:text-is("Confirm type")').dblclick()
+            # Confirm, a second Confirm and Correct at once: one proposal (the section waits for the answer)
+            mp.evaluate("""() => { const b = [...document.querySelectorAll('#valveSec button')];
+              b[0].click(); b[0].click(); b[1].click() }""")
             mp.wait_for_selector('#vtMine', timeout=15000)
             self.assertEqual(mp.text_content('#vtMine'), 'Your valve type “ball valve” is waiting for approval.')
             self.assertEqual(mp.locator('#valveSec button').count(), 0)
             self.assertIn('(from the drawing, unchecked)', mp.text_content('#vtLine'))
             subs = [x for x in self.boss.req('GET', '/api/submissions?status=open')['submissions']
                     if x['kind'] == 'equipment' and x['payload'].get('kks') == f'11LAB70AA5{n}4']
-            self.assertEqual(len(subs), 1, 'a double click sent the proposal twice')
+            self.assertEqual(len(subs), 1, 'a second press sent another proposal')
             self.assertEqual(subs[0]['payload']['changes']['custom'], [{'k': 'Valve type', 'v': 'ball valve'}])
             browser.close()
             self.assertEqual(errors, [], name)

@@ -75,9 +75,21 @@ proc passwordRow*(title: string): W =
   result = adw_password_entry_row_new()
   adw_preferences_row_set_title(result, title.cstring)
 
+proc esc*(s: string): string =
+  ## Pango markup escaping, for the few labels built with markup
+  for c in s:
+    case c
+    of '&': result.add "&amp;"
+    of '<': result.add "&lt;"
+    of '>': result.add "&gt;"
+    of '"': result.add "&quot;"
+    of '\'': result.add "&#39;"
+    else: result.add c
+
 proc toast*(overlay: W, msg: string) =
   if overlay == nil: return
-  let t = adw_toast_new(msg.cstring)
+  # a toast's title is Pango markup: the text is escaped (codes, typed values and plant data go into toasts)
+  let t = adw_toast_new(esc(msg).cstring)
   adw_toast_set_timeout(t, 4)
   adw_toast_overlay_add_toast(overlay, t)
 
@@ -106,17 +118,6 @@ proc toolbarView*(header, content: W): W =
 proc headerBar*(title: W = nil): W =
   result = adw_header_bar_new()
   if title != nil: adw_header_bar_set_title_widget(result, title)
-
-proc esc*(s: string): string =
-  ## Pango markup escaping, for the few labels built with markup
-  for c in s:
-    case c
-    of '&': result.add "&amp;"
-    of '<': result.add "&lt;"
-    of '>': result.add "&gt;"
-    of '"': result.add "&quot;"
-    of '\'': result.add "&#39;"
-    else: result.add c
 
 proc navRow*(title, subtitle, actionLabel: string, fn: proc ()): W =
   ## a row that opens something: the whole row activates its "go" button, which carries an accessible name

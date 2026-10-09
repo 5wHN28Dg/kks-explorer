@@ -78,6 +78,9 @@ proc equipmentSection(w: Win, t: Tag): W =
   let edit = button("Edit", "flat")
   adw_preferences_group_set_header_suffix(g, edit)
   edit.onClick(proc () =
+    if w.panelEditing:     # the valve type's Correct form is open: one form at a time (a save rebuilds the panel)
+      w.toast("Send or cancel the valve type first")
+      return
     w.panelEditing = true
     gtk_widget_set_visible(edit, 0)
     for r in shown & customRows: gtk_widget_set_visible(r, 0)
@@ -173,11 +176,17 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
   gtk_widget_set_margin_top(btns, 8)
   # labelled by their own text (a GtkButton's label wins over an accessible label): distinct from the review's Confirm
   let ok = button("Confirm type", "suggested-action", proc () =
+    if w.panelEditing:     # the Edit form is open: sending would rebuild the panel and lose what is typed there
+      w.toast("Save or cancel your edits first")
+      return
     if w.submit(c["kind"].s, c["payload"], k & " valve type: " & text0).len > 0: w.rebuildPanel())
   let fix = button("Correct type", "")
   btns.add ok, fix
   adw_preferences_group_add(g, btns)
   fix.onClick(proc () =
+    if w.panelEditing:
+      w.toast("Save or cancel your edits first")
+      return
     w.panelEditing = true
     gtk_widget_set_visible(btns, 0)
     let e = entryRow("Valve type", text0)

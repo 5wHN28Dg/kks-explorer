@@ -503,16 +503,22 @@ function valveSec(t,vt){
   if(mine){ sec.append(h('div',{class:'sub',id:'vtMine'},'Your valve type “'+mine.v+'” is waiting for approval.')); return sec }
   const done=r=>{ if(r){ const x=TAGS.find(y=>y.id===t.id); select(x?eff(x)||t:t) } };
   // one proposal per press: the buttons wait for the answer (a second one would clash with the first)
-  const go=(btn,c,what)=>{ if(btn.disabled) return; btn.disabled=true; send(c.kind,c.payload,k+' valve type: '+what).then(r=>{ btn.disabled=false; done(r) }) };
-  const ok=h('button',{class:'primary',onclick:()=>go(ok,vt.confirm,vt.text)},'Confirm type');
-  const btns=h('div',{class:'vtBtns',style:'margin-top:8px'},ok,' ',h('button',{class:'ghost',onclick:()=>correct()},'Correct type'));
+  // one proposal at a time: every button of the section waits for the answer (a second one would clash with the
+  // first), and none while another form of the panel is open (the rebuild after sending would lose what is typed there)
+  const busy=on=>sec.querySelectorAll('button').forEach(b=>b.disabled=on);
+  const otherForm=()=>[...$('#panel').querySelectorAll('.editing')].some(e=>!sec.contains(e));
+  const go=(c,what)=>{ if(sec.dataset.busy) return; if(otherForm()){ toast('Save or cancel your edits first'); return }
+    sec.dataset.busy='1'; busy(true);
+    send(c.kind,c.payload,k+' valve type: '+what).then(r=>{ delete sec.dataset.busy; busy(false); done(r) }) };
+  const ok=h('button',{class:'primary',onclick:()=>go(vt.confirm,vt.text)},'Confirm type');
+  const btns=h('div',{class:'vtBtns',style:'margin-top:8px'},ok,' ',h('button',{class:'ghost',onclick:()=>{ if(otherForm()){ toast('Save or cancel your edits first'); return } correct() }},'Correct type'));
   sec.append(btns);
   function correct(){
     const submit=()=>{ const c=KSys.withValveType(vt.confirm,inp.value);
       if(!c){ toast('Type the valve type first'); return }
-      go(sendBtn,c,c.payload.changes.custom.find(x=>x.k===KSys.VALVE_KEY).v) };
+      go(c,c.payload.changes.custom.find(x=>x.k===KSys.VALVE_KEY).v) };
     const inp=h('input',{id:'vtValue',value:vt.text,maxlength:200,'aria-label':'Valve type',onkeydown:e=>{ if(e.key==='Enter') submit() }});
-    const sendBtn=h('button',{class:'primary',onclick:submit},'Send');
+    const sendBtn=h('button',{class:'primary',onclick:submit},'Send');   // (the section's buttons wait while it sends)
     const form=h('div',{class:'field editing'},h('label',{for:'vtValue'},'Valve type (as it really is)'),inp,
       h('div',{style:'margin-top:8px'},sendBtn,' ',
         h('button',{class:'ghost',onclick:()=>{ form.remove(); btns.style.display='' }},'Cancel')));
