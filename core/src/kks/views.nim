@@ -39,6 +39,8 @@ proc tagsView*(m: Model, sheet: string): JNode =
                        ("x0", F(t.bbox[0] / s)), ("y0", F(t.bbox[1] / s)), ("x1", F(t.bbox[2] / s)), ("y1", F(t.bbox[3] / s)),
                        ("photos", S(covers.getOrDefault(t.full, "none"))))
 
+const MaxLinkTargets* = 20   ## where one connector can continue, at most (a label repeated everywhere lists the first)
+
 proc linksView*(m: Model, sheet: string): JNode =
   ## the sheet's off-page connectors (boxes in points), each with where its line continues: the same label on the
   ## other sheets (in the sheets' order), then any other connector with that label on this sheet ("same_sheet": a
@@ -49,17 +51,30 @@ proc linksView*(m: Model, sheet: string): JNode =
   let s = if si.scale > 0: si.scale else: 2.0
   proc box(b: array[4, float], sc: float): seq[(string, JNode)] =
     @[("x0", F(b[0] / sc)), ("y0", F(b[1] / sc)), ("x1", F(b[2] / sc)), ("y1", F(b[3] / sc))]
+  # every sheet's connectors by label, once: matching each connector against every other one is quadratic
+  var byLabel = initTable[string, seq[(int, int)]]()
+  for k, o in m.sheets:
+    for j, x in o.links: byLabel.mgetOrPut(x.label, @[]).add (k, j)
   for i, l in si.links:
     var targets = newArr()
-    for pass in 0 .. 1:
-      for o in m.sheets:
-        if (pass == 0) == (o.id == sheet): continue
-        let os = if o.scale > 0: o.scale else: 2.0
-        for j, x in o.links:
-          if x.label != l.label or (o.id == sheet and j == i): continue
+    let same = byLabel.getOrDefault(l.label)
+    block fill:
+      for pass in 0 .. 1:
+        for (k, j) in same:
+          let o = m.sheets[k]
+          if (pass == 0) == (o.id == sheet) or (o.id == sheet and j == i): continue
+          if targets.elems.len >= MaxLinkTargets: break fill
+          let os = if o.scale > 0: o.scale else: 2.0
           targets.elems.add newObj(@[("sheet", S(o.id)), ("sheet_name", S(o.name)), ("same_sheet", newBool(o.id == sheet))] &
-                                   box(x.bbox, os))
+                                   box(o.links[j].bbox, os))
     result.elems.add newObj(@[("label", S(l.label)), ("conf", F(l.conf))] & box(l.bbox, s) & @[("targets", targets)])
+
+proc findLink*(ls: JNode, label: string, x0, y0: float): int =
+  ## the index in a linksView of the connector with this label and box corner, -1 if it's gone: a screen that kept
+  ## an index across a data reload (a new publish can reorder the connectors) finds the one it showed
+  result = -1
+  for i, l in ls.elems:
+    if l["label"].s == label and abs(l["x0"].num - x0) < 0.01 and abs(l["y0"].num - y0) < 0.01: return i
 
 proc searchView*(m: Model, q: string): JNode =
   result = newArr()

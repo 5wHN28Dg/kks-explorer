@@ -75,9 +75,15 @@ proc passwordRow*(title: string): W =
   result = adw_password_entry_row_new()
   adw_preferences_row_set_title(result, title.cstring)
 
+proc newToast*(msg: string): W =
+  ## plain text: an AdwToast's title is Pango markup by default, and messages carry sheet names and labels from the
+  ## plant data ("Drains & vents" showed nothing; "<a href=…>" would be a link)
+  result = adw_toast_new(msg.cstring)
+  adw_toast_set_use_markup(result, 0)
+
 proc toast*(overlay: W, msg: string) =
   if overlay == nil: return
-  let t = adw_toast_new(msg.cstring)
+  let t = newToast(msg)
   adw_toast_set_timeout(t, 4)
   adw_toast_overlay_add_toast(overlay, t)
 

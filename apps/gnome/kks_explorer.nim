@@ -228,7 +228,9 @@ proc mainScreen(w: Win): W =
       w.loadModel()
       w.applyHighlights()
     else: w.selectTag(id, false)
-  w.v.onLink = proc (i: int) = w.followLink(i)
+  w.v.onLink = proc (i: int) =
+    let b = w.v.links[i]
+    w.followLink(w.sheet, b.id, b.x0, b.y0)
   w.v.onMark = proc (x0, y0, x1, y1: float) =
     w.markDialog(x0, y0, x1, y1)
   w.v.onBox = proc (x0, y0, x1, y1: float) = w.addBox(x0, y0, x1, y1)

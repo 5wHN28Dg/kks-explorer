@@ -2,7 +2,7 @@
 ## "Connectors on this sheet" (named for screen readers: "Connector C16, continues on Sheet X"). Activating one opens
 ## where its line continues: one target goes there, several ask which, none says so. Targets: core linksView.
 
-import std/strutils
+import std/[strutils, sequtils]
 import kks/[json, views]
 import kks/model
 import gtk, ui, win, viewer
@@ -29,8 +29,8 @@ proc linkName*(l: JNode): string = "Connector " & s(l, "label") & ", " & whereTe
 proc setLinks*(w: Win) =
   ## the open sheet's connectors into the viewer (after setSheet or a data reload)
   var boxes: seq[TagBox]
-  for i, l in linksView(w.m, w.sheet).elems:
-    boxes.add TagBox(id: $i, x0: f(l, "x0"), y0: f(l, "y0"), x1: f(l, "x1"), y1: f(l, "y1"), label: linkName(l))
+  for l in linksView(w.m, w.sheet).elems:
+    boxes.add TagBox(id: s(l, "label"), x0: f(l, "x0"), y0: f(l, "y0"), x1: f(l, "x1"), y1: f(l, "y1"), label: linkName(l))
   w.v.links = boxes
   gtk_widget_queue_draw(w.v.widget)
 
@@ -45,13 +45,30 @@ proc goTo(w: Win, label: string, t: JNode) =
   w.v.centerOn(x0, y0, x1, y1)
   w.toast("Connector " & label & " on " & (if s(t, "sheet_name").len > 0: s(t, "sheet_name") else: sheet))
 
-proc followLink*(w: Win, i: int, sheet = "") =
-  ## connector i of `sheet` (default: the open one). The sidebar's list passes the sheet it was built for: following a
-  ## link opens another sheet under it, and its rows must still mean the first sheet's connectors.
-  let ls = linksView(w.m, if sheet.len > 0: sheet else: w.sheet)
-  if i < 0 or i >= ls.len: return
+proc responseLabels*(ts: seq[JNode]): seq[string] =
+  ## the choice dialog's buttons, one per target: the sheet's name, numbered when one sheet has the code more than
+  ## once (else two identical buttons), with "_" doubled (a response label underlines the letter after a "_")
+  var names: seq[string]
+  for t in ts: names.add targetName(t)
+  for i, n in names:
+    var l = n
+    if names.count(n) > 1:
+      var k = 0
+      for j in 0 .. i:
+        if names[j] == n: inc k
+      l.add " (" & $k & " of " & $names.count(n) & ")"
+    result.add l.replace("_", "__")
+
+proc followLink*(w: Win, sheet, label: string, x0, y0: float) =
+  ## the connector `label` at (x0, y0) of `sheet`. The viewer's circles and the sidebar's rows keep the connector they
+  ## show, not an index: a reload in between (a new publish) can reorder them. The sidebar passes the sheet it was
+  ## built for: following a link opens another sheet under it, and its rows must still mean the first sheet's.
+  let ls = linksView(w.m, sheet)
+  let i = findLink(ls, label, x0, y0)
+  if i < 0:
+    w.toast("Connector " & label & " is no longer on this drawing")
+    return
   let l = ls.elems[i]
-  let label = s(l, "label")
   let ts = l["targets"].elems
   if ts.len == 0:
     w.toast("Connector " & label & ": the other end isn't on any drawing in the app")
@@ -60,8 +77,8 @@ proc followLink*(w: Win, i: int, sheet = "") =
   else:
     let d = adw_alert_dialog_new(("Where does " & label & " continue?").cstring,
                                  "This connector's code appears in more than one place.")
-    for j, t in ts:
-      adw_alert_dialog_add_response(d, ("t" & $j).cstring, targetName(t).cstring)
+    for j, r in responseLabels(ts):
+      adw_alert_dialog_add_response(d, ("t" & $j).cstring, r.cstring)
     adw_alert_dialog_add_response(d, "cancel", "Cancel")
     adw_alert_dialog_set_default_response(d, "t0")
     adw_alert_dialog_set_close_response(d, "cancel")
@@ -85,8 +102,8 @@ proc connectorsPage*(w: Win): W =
   gtk_list_box_set_selection_mode(list, GTK_SELECTION_NONE)
   for i in 0 ..< ls.len:
     closureScope:
-      let idx = i
       let l = ls.elems[i]
-      gtk_list_box_append(list, navRow("Connector " & s(l, "label"), whereText(l), linkName(l), proc () = w.followLink(idx, here)))
+      let (lab, x0, y0) = (s(l, "label"), f(l, "x0"), f(l, "y0"))
+      gtk_list_box_append(list, navRow("Connector " & lab, whereText(l), linkName(l), proc () = w.followLink(here, lab, x0, y0)))
   box.add list
   scrolled(box)

@@ -158,3 +158,20 @@ suite "links between sheets":
     check v[4]["targets"][1]["x0"].num == 350
     let c = linksView(m, "cbd")
     check c[1]["targets"].elems.len == 2 and c[1]["targets"][0]["sheet"].s == "lp" and c[1]["targets"][1]["sheet"].s == "lp"
+  test "untrusted sheets.json: links per sheet and targets per connector are capped (a label repeated everywhere)":
+    var a = newSeq[string]()
+    for i in 0 ..< 3000: a.add """{"label":"A1","bbox":[""" & $i & """,0,10,10]}"""
+    let big = Model()
+    big.sheets = parseSheets(j("""[{"id":"x","name":"X","scale":1.0,"links":[""" & a.join(",") & """]},
+                                   {"id":"y","name":"Y","scale":1.0,"links":[""" & a.join(",") & """]}]"""))
+    check big.sheets[0].links.len == MaxLinksPerSheet and big.sheets[1].links.len == MaxLinksPerSheet
+    let v = linksView(big, "x")
+    check v.elems.len == MaxLinksPerSheet
+    check v[0]["targets"].elems.len == MaxLinkTargets
+    check v[0]["targets"][0]["sheet"].s == "y"          # the other sheet still comes first
+  test "findLink: a connector kept across a reload is found by its label and box, gone gives -1":
+    let v = linksView(m, "lp")
+    check findLink(v, "C47", 450, 100) == 4
+    check findLink(v, "C47", 350, 100) == 3
+    check findLink(v, "C16", 450, 100) == -1
+    check findLink(v, "Z9", 50, 100) == -1

@@ -56,6 +56,10 @@ proc f(n: JNode, k: string, d = 0.0): float =
   let v = n.get(k)
   if v != nil and v.isNum: v.num else: d
 
+const MaxLinksPerSheet* = 500
+  ## sheets.json is published data but read as untrusted: a P&ID has tens of connectors, and every connector is
+  ## matched against every other with its label (views.linksView), so a sheet keeps at most this many
+
 proc parseSheets*(j: JNode): seq[SheetInfo] =
   for x in j.elems:
     var si = SheetInfo(id: x.s("id"), name: x.s("name"), w: x.f("w"), h: x.f("h"), scale: x.f("scale", 2.0),
@@ -66,6 +70,7 @@ proc parseSheets*(j: JNode): seq[SheetInfo] =
     let ls = x.get("links")
     if ls != nil and ls.kind == jArr:
       for l in ls.elems:
+        if si.links.len >= MaxLinksPerSheet: break
         let b = if l.kind == jObj: l.get("bbox") else: nil
         if l.kind != jObj or l.s("label").len == 0 or b == nil or b.kind != jArr or b.elems.len != 4: continue
         var k = Link(label: l.s("label"), conf: l.f("conf", 1.0))
