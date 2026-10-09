@@ -97,12 +97,12 @@ suite "TLS through buffers, pinned device keys":
     let sr = newSession(a, false, c.remotePeer)
     var di, dr: Deframer
     for _ in 0 ..< 50:
-      for m in si.outbox: t.send(frame(m))
-      si.outbox.setLen(0)
+      while si.sending:
+        for m in si.take(): t.send(frame(m))
       c.feed(t.takeOut())
       for m in dr.feed(c.recv()): sr.receive(m)
-      for m in sr.outbox: c.send(frame(m))
-      sr.outbox.setLen(0)
+      while sr.sending:
+        for m in sr.take(): c.send(frame(m))
       t.feed(c.takeOut())
       for m in di.feed(t.recv()): si.receive(m)
       if si.done and sr.done: break

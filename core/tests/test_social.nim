@@ -50,10 +50,10 @@ suite "invites, secrets, course progress":
     s1.wall = tick()
     s2.wall = s1.wall
     while not (s1.done and s2.done):
-      while s1.outbox.len > 0:
-        let m = s1.outbox[0]; s1.outbox.delete(0); s2.receive(m)
-      while s2.outbox.len > 0:
-        let m = s2.outbox[0]; s2.outbox.delete(0); s1.receive(m)
+      while s1.sending:
+        for m in s1.take(): s2.receive(m)
+      while s2.sending:
+        for m in s2.take(): s1.receive(m)
     check laptop.owner == me
     var d1: OrderedTable[string, string]
     d1["solved"] = """{"a":true}"""

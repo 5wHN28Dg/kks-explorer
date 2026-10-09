@@ -34,21 +34,31 @@ type
 
   Deframer* = object
     buf: string
+    at: int              ## where the next frame starts in buf (consumed bytes are dropped in `add`, not per frame:
+                         ## cutting the buffer after every frame copied the rest each time, quadratic in a big read)
 
 proc add*(d: var Deframer, bytes: string) =
   ## Bytes received; take the messages out with `next`.
+  if d.at > 0:
+    if d.at >= d.buf.len: d.buf.setLen(0)
+    else: d.buf = d.buf[d.at .. ^1]
+    d.at = 0
   d.buf.add bytes
 
 proc next*(d: var Deframer, limit = MaxFrame): JNode =
   ## The next complete message (strict JSON, §1), or nil until more bytes arrive. A frame announcing more than `limit`
   ## bytes is refused on its 4-byte header, before its body is held. Raises SyncError on a bad frame.
-  if d.buf.len < 4: return nil
-  let n = (int(uint8(d.buf[0])) shl 24) or (int(uint8(d.buf[1])) shl 16) or (int(uint8(d.buf[2])) shl 8) or
-          int(uint8(d.buf[3]))
+  let a = d.at
+  if d.buf.len - a < 4: return nil
+  let n = (int(uint8(d.buf[a])) shl 24) or (int(uint8(d.buf[a + 1])) shl 16) or (int(uint8(d.buf[a + 2])) shl 8) or
+          int(uint8(d.buf[a + 3]))
   if n > min(limit, MaxFrame): raise newException(SyncError, "frame too large")
-  if d.buf.len < 4 + n: return nil
-  let body = d.buf[4 ..< 4 + n]
-  d.buf = d.buf[4 + n .. ^1]
+  if d.buf.len - a < 4 + n: return nil
+  let body = d.buf[a + 4 ..< a + 4 + n]
+  d.at = a + 4 + n
+  if d.at == d.buf.len:
+    d.buf = ""          # not setLen(0): a 64 MB frame's buffer would stay for the rest of the session
+    d.at = 0
   try: result = parseStrict(body)
   except JsonError as e: raise newException(SyncError, "bad message: " & e.msg)
   if result.kind != jObj or result.get("t") == nil or result["t"].kind != jStr:
@@ -91,14 +101,19 @@ type
     theirVv: JNode
     theirWant: seq[string]
     sentBlobs, gotBlobsEnd: bool
-    outbox*: seq[JNode]
+    outbox*: seq[JNode]        ## messages to send; blobs are not put here but made one by one in `take`
+    blobQueue: seq[string]     ## the blobs still to send (their hashes), then blobs_end
+    blobAt: int
+    sendingBlobs: bool
+    later: seq[JNode]          ## messages queued while blobs are being sent: they follow blobs_end
     stats*: Stats
     done*: bool
     special*: string           ## "join" / "secrets" / "enroll" when the connection was one of those
 
 proc fail(msg: string) {.noreturn.} = raise newException(SyncError, msg)
 
-proc send(s: Session, m: JNode) = s.outbox.add m
+proc send(s: Session, m: JNode) =
+  if s.sendingBlobs: s.later.add m else: s.outbox.add m
 
 proc hello(s: Session): JNode =
   newObj(@[("t", newStr("hello")), ("v", newInt(2)),
@@ -123,14 +138,53 @@ proc wantMsg(s: Session): JNode =
   newObj(@[("t", newStr("want")), ("blobs", a)])
 
 proc sendBlobs(s: Session) =
+  ## The blobs the other side wants, then blobs_end. They are read and encoded in `take`, a few at a time as the
+  ## platform sends them: putting every wanted blob in the outbox at once held a whole plant's drawings and photos
+  ## several times over (raw, base64, framed, encrypted) for each device that needed them, and the server's memory
+  ## grew to gigabytes (2026-10-09).
   if s.n.mayRead(s.remote):
-    for i, sha in s.theirWant:
-      if i >= 10000: break
-      if s.n.store.blobHas(sha):
-        s.send newObj(@[("t", newStr("blob")), ("sha", newStr(sha)), ("data", newStr(encode(s.n.store.blobGet(sha))))])
-        inc s.stats.blobsSent
-  s.send newObj(@[("t", newStr("blobs_end"))])
+    var seen: HashSet[string]
+    for sha in s.theirWant:     # each blob once: a want listing one big blob 10000 times got it 10000 times
+      if s.blobQueue.len >= 10000: break
+      if not seen.containsOrIncl(sha): s.blobQueue.add sha
+  s.blobAt = 0
+  s.sendingBlobs = true
   s.sentBlobs = true
+
+proc sending*(s: Session): bool =
+  ## messages wait to be made (`take` again before waiting for the other side)
+  s.outbox.len > 0 or s.sendingBlobs
+
+proc errorMsg*(why: string): JNode = newObj(@[("t", newStr("error")), ("why", newStr(why))])
+
+proc stop*(s: Session, why: string) =
+  ## Give up: drop what was still to be sent, and send `error` (the platform then closes).
+  s.blobQueue = @[]
+  s.sendingBlobs = false
+  s.later = @[]
+  s.outbox = @[errorMsg(why)]
+
+proc take*(s: Session, budget = 1024 * 1024): seq[JNode] =
+  ## The messages to send now: the outbox, then blobs until about `budget` bytes of them (at least one), blobs_end
+  ## after the last. Call again while `sending`.
+  result = move s.outbox
+  s.outbox = @[]
+  var bytes = 0
+  while s.sendingBlobs and (bytes == 0 or bytes < budget):
+    if s.blobAt < s.blobQueue.len:
+      let sha = s.blobQueue[s.blobAt]
+      inc s.blobAt
+      if s.n.store.blobHas(sha):
+        let data = s.n.store.blobGet(sha)
+        bytes += max(1, data.len)
+        result.add newObj(@[("t", newStr("blob")), ("sha", newStr(sha)), ("data", newStr(encode(data)))])
+        inc s.stats.blobsSent
+    else:
+      result.add newObj(@[("t", newStr("blobs_end"))])
+      s.sendingBlobs = false
+      s.blobQueue = @[]
+      result.add move(s.later)
+      s.later = @[]
 
 proc trusted*(s: Session): bool =
   ## The initiator chose its peer (TLS pinned it). The responder trusts the other side once its hello is read and it
@@ -230,4 +284,3 @@ proc receive*(s: Session, m: JNode) =
     s.stage = sDone
   of sDone: fail("message after bye")
 
-proc errorMsg*(why: string): JNode = newObj(@[("t", newStr("error")), ("why", newStr(why))])

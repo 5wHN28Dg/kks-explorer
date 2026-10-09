@@ -116,7 +116,8 @@ type
     s: Session
     id: Identity
     p: Provider
-    inbuf: string        ## ciphertext received, not yet consumed by GnuTLS
+    inbuf: string        ## ciphertext received; GnuTLS has consumed it up to inAt
+    inAt: int            ## (dropped in `feed`, not per pull: cutting it per record copied the rest each time)
     outbuf: string       ## ciphertext to send
     expectPeer*: string  ## client: the peer ID it meant to reach ("" = any, the caller decides)
     remotePeer*: string  ## set by the verify function
@@ -161,12 +162,15 @@ proc newIdentity*(key: PrivateKey): Identity =
 
 proc pull(p: pointer, data: pointer, size: csize_t): int {.cdecl.} =
   let c = cast[TlsConn](p)
-  if c.inbuf.len == 0:
+  if c.inbuf.len - c.inAt == 0:
     gnutls_transport_set_errno(c.s, EAGAIN)
     return -1
-  let n = min(int(size), c.inbuf.len)
-  copyMem(data, addr c.inbuf[0], n)
-  c.inbuf = c.inbuf[n .. ^1]
+  let n = min(int(size), c.inbuf.len - c.inAt)
+  copyMem(data, addr c.inbuf[c.inAt], n)
+  c.inAt += n
+  if c.inAt == c.inbuf.len:
+    c.inbuf.setLen(0)
+    c.inAt = 0
   n
 
 proc push(p: pointer, data: pointer, size: csize_t): int {.cdecl.} =
@@ -262,7 +266,11 @@ proc newWebTlsConn*(host: string): TlsConn =
   gnutls_transport_set_pull_function(result.s, cast[PullFn](pull))
   gnutls_transport_set_push_function(result.s, cast[PushFn](push))
 
-proc feed*(c: TlsConn, bytes: string) = c.inbuf.add bytes
+proc feed*(c: TlsConn, bytes: string) =
+  if c.inAt > 0:
+    c.inbuf = c.inbuf[c.inAt .. ^1]
+    c.inAt = 0
+  c.inbuf.add bytes
 
 proc takeOut*(c: TlsConn): string =
   ## Ciphertext to send to the other side.
@@ -299,7 +307,7 @@ proc send*(c: TlsConn, plain: string) =
 proc recv*(c: TlsConn): string =
   ## All plaintext that the received ciphertext holds. Sets `closed` when the other side said goodbye.
   var buf: array[16384, byte]
-  var left = c.inbuf.len
+  var left = c.inbuf.len - c.inAt
   while true:
     let n = gnutls_record_recv(c.s, addr buf[0], csize_t(buf.len))
     if n > 0:
@@ -312,8 +320,8 @@ proc recv*(c: TlsConn): string =
     elif cint(n) == GNUTLS_E_AGAIN or cint(n) == GNUTLS_E_INTERRUPTED:
       # GnuTLS also says "again" after a post-handshake message (a TLS 1.3 session ticket from a web server) while
       # more records wait in inbuf: go on as long as it consumes something (2026-10-02, the relay's 101 sat unread)
-      if c.inbuf.len == 0 or c.inbuf.len >= left: return
-      left = c.inbuf.len
+      if c.inbuf.len - c.inAt == 0 or c.inbuf.len - c.inAt >= left: return
+      left = c.inbuf.len - c.inAt
     elif gnutls_error_is_fatal(cint(n)) != 0:
       fail("receive", cint(n))
     else:

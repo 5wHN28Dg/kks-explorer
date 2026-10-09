@@ -35,7 +35,8 @@ type
     dead: float
     nextSeq, base: uint32
     unacked: Table[uint32, Sent]
-    queue: string
+    queue: string        ## bytes written, packetized up to qAt (cut in `write`, not per packet: cutting per packet
+    qAt: int             ## copied the rest each time, quadratic, and a sync of a few MB stalled the server's loop)
     cwnd: float
     ssthresh: int
     srtt, rttvar, rto: float
@@ -76,10 +77,13 @@ proc sendData(r: Rudp, seq: uint32, now: float) =
 
 proc pump(r: Rudp, now: float) =
   ## packetize queued bytes while the window allows
-  while r.queue.len > 0 and float(r.nextSeq - r.base) < float(int(r.cwnd)):
-    let n = min(Mss, r.queue.len)
-    r.unacked[r.nextSeq] = Sent(payload: r.queue[0 ..< n], at: -1.0)
-    r.queue = r.queue[n .. ^1]
+  while r.queue.len > r.qAt and float(r.nextSeq - r.base) < float(int(r.cwnd)):
+    let n = min(Mss, r.queue.len - r.qAt)
+    r.unacked[r.nextSeq] = Sent(payload: r.queue[r.qAt ..< r.qAt + n], at: -1.0)
+    r.qAt += n
+    if r.qAt == r.queue.len:
+      r.queue.setLen(0)
+      r.qAt = 0
     r.sendData(r.nextSeq, now)
     inc r.nextSeq
 
@@ -174,12 +178,15 @@ proc tick*(r: Rudp, now: float, closed = false) =
 
 proc write*(r: Rudp, data: string, now: float) =
   if r.finSeq >= 0: raise newException(IOError, "stream closed")
+  if r.qAt > 0:
+    r.queue = r.queue[r.qAt .. ^1]
+    r.qAt = 0
   r.queue.add data
   r.pump(now)
 
 proc buffered*(r: Rudp): int = r.rbuf.len   ## packets received out of order, waiting for a hole to fill
 
-proc queued*(r: Rudp): int = r.queue.len   ## bytes not yet packetized (back-pressure)
+proc queued*(r: Rudp): int = r.queue.len - r.qAt   ## bytes not yet packetized (back-pressure)
 
 proc read*(r: Rudp): string =
   ## everything received in order so far
@@ -190,7 +197,7 @@ proc ended*(r: Rudp): bool = r.peerFin >= 0 and int64(r.rnext) > r.peerFin   ## 
 
 proc finish*(r: Rudp, now: float) =
   ## after the queue: FIN (acknowledged like data)
-  if r.finSeq < 0 and r.queue.len == 0:
+  if r.finSeq < 0 and r.queued == 0:
     r.finSeq = int64(r.nextSeq)
     r.unacked[r.nextSeq] = Sent(at: -1.0)
     r.sendData(r.nextSeq, now)

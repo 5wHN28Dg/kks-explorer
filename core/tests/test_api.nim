@@ -12,10 +12,10 @@ proc now(): int64 =
 proc pump(a, b: Session) =
   while not (a.done and b.done):
     var moved = false
-    while a.outbox.len > 0:
-      let m = a.outbox[0]; a.outbox.delete(0); b.receive(m); moved = true
-    while b.outbox.len > 0:
-      let m = b.outbox[0]; b.outbox.delete(0); a.receive(m); moved = true
+    while a.sending:
+      for m in a.take(): b.receive(m); moved = true
+    while b.sending:
+      for m in b.take(): a.receive(m); moved = true
     if not moved: break
 
 proc sync(a, b: Node, adopt = "") =

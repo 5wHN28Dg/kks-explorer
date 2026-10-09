@@ -49,9 +49,17 @@ proc newId(): string =
   if not urandom(b): raise newException(CatchableError, "no randomness")
   hex(b)
 
+const PipePiece* = 64 * 1024   ## the most bytes of the stream in one relay message
+
 proc pipeStream(w: Ws): Stream =
-  ## a relay pipe as a byte stream: each binary message is a piece of the TLS stream
-  Stream(write: proc (data: string): Future[void] = w.sendBinary(data),
+  ## a relay pipe as a byte stream: each binary message is a piece of the TLS stream, at most PipePiece bytes (a
+  ## whole write in one message made a masked copy of all of it at once, and the relay limits a message's size)
+  Stream(write: proc (data: string): Future[void] {.async.} =
+           var o = 0
+           while o < data.len:
+             let n = min(PipePiece, data.len - o)
+             await w.sendBinary(data[o ..< o + n])
+             o += n,
          read: proc (): Future[string] {.async.} =
            try:
              while true:

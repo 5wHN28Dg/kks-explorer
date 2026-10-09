@@ -4,7 +4,7 @@
 import std/[unittest, asyncdispatch, os, osproc, strutils, sets, tables]
 import kks/[json, util, crypto, proto, node, sync, plant]
 import plat
-import kksl/[net, internet, udp, ws]
+import kksl/[net, internet, udp, ws, dbstore]
 import kks/[extras, relaykey]
 import std/times
 
@@ -246,3 +246,41 @@ suite "the direct stream":
     sa.close()
     sb.close()
     dead.close()
+
+  test "a sync of many MB of blobs goes through the direct stream, in bounded memory (2026-10-09)":
+    # the stream cut its queue after every packet and TLS its input after every record: copying the rest each time
+    # stalled the loop on a few MB until the other side gave up ("the other device stopped answering")
+    let rootKey = P.p256Generate()
+    let kS = P.p256Generate()
+    let dir = getTempDir() / "kks-direct-memory"
+    removeDir(dir)
+    createDir(dir)
+    var srv = newNode(P, openDbStore(P, dir / "server.db", P.randomBytes(32)), kS)
+    let boss = P.newPersonId()
+    discard srv.append("genesis", P.genesisBody(rootKey, "Test plant", srv.device, boss, "boss", "The Manager"), nowMs())
+    srv.adopt(keyString(rootKey.pub))
+    const nBlobs = 24
+    var listed = newArr(@[newArr(@[newStr("sheets.json"), newStr(srv.keepBlob("[]")), newInt(2)])])
+    for i in 0 ..< nBlobs:
+      listed.elems.add newArr(@[newStr("sheets/s" & $i & ".jxl"), newStr(srv.keepBlob(P.randomBytes(1024 * 1024).toStr)),
+                                newInt(1024 * 1024)])
+    discard srv.append("setting", newObj(@[("key", newStr("plant_data")),
+                                           ("value", newObj(@[("version", newInt(1)), ("files", listed)]))]), nowMs())
+    let kD = P.p256Generate()
+    discard srv.append("device_cert", deviceCertBody(P.peerId(kD), boss, "phone"), nowMs())
+    var dev = newNode(P, openDbStore(P, dir / "device.db", P.randomBytes(32)), kD)
+    let before = getTotalMem()
+    let a = newUdp()
+    let b = newUdp()
+    let session = "\x11\x12\x13\x14\x15\x16\x17\x18"
+    let served = serveOver(srv, newIdentity(kS), a.rudpStream("127.0.0.1", b.port, session))
+    let t0 = epochTime()
+    let synced = syncOver(dev, newIdentity(kD), b.rudpStream("127.0.0.1", a.port, session), srv.device,
+                          adoptRoot = srv.root)
+    check waitFor(withTimeout(synced, 60_000))      # before the fix: still copying after 9 minutes
+    if synced.finished and not synced.failed:
+      discard waitFor served
+      check synced.read.blobsReceived == nBlobs + 1
+      let grown = (getTotalMem() - before) div (1024 * 1024)
+      echo "  ", nBlobs, " MB of blobs directly in ", int(epochTime() - t0), " s: the Nim heap grew by ", grown, " MB"
+      check grown < 32                              # the stream's 4 MB back-pressure and both ends' buffers
