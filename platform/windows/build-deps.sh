@@ -1,26 +1,21 @@
 #!/bin/sh
-# The Windows app's C/C++ libraries, cross-built with mingw-w64 (decision 0033) from pinned, SHA-256-checked sources:
-# zlib (0015), libjxl + highway/brotli/skcms (0018), zxing-cpp (0019); SQLite comes from android/nim/fetch_sqlite.sh.
-# Same versions as the Android app (android/app2/build.gradle.kts). Output: $KKS_DEV/win64/{include,lib}.
-# KKS_WIN_ARCH=aarch64: Windows on ARM64 with llvm-mingw's clang (decision 0047; platform/windows/fetch-llvm-mingw.sh),
-# output $KKS_DEV/winarm64. The default is x86_64 with mingw-w64's gcc.
+# The Windows app's C/C++ libraries, cross-built with llvm-mingw's clang (decisions 0047, 0053;
+# platform/windows/fetch-llvm-mingw.sh) from pinned, SHA-256-checked sources: zlib (0015), libjxl +
+# highway/brotli/skcms (0018), zxing-cpp (0019); SQLite comes from android/nim/fetch_sqlite.sh.
+# Same versions as the Android app (android/app2/build.gradle.kts).
+# Output: $KKS_DEV/winx64/{include,lib} (x86_64, the default) or, with KKS_WIN_ARCH=aarch64, $KKS_DEV/winarm64.
+# KKS_JOBS: parallel compile jobs (default: all cores).
 set -eu
 DEV="${KKS_DEV:-$HOME/.local/kksdev}"
 ARCH="${KKS_WIN_ARCH:-x86_64}"
 SRC="$DEV/src"
-if [ "$ARCH" = aarch64 ]; then
-  sh "$(dirname "$0")/fetch-llvm-mingw.sh"
-  MINGW="$DEV/llvm-mingw/bin"
-  OUT="$DEV/winarm64"
-  CC_="$MINGW/aarch64-w64-mingw32-clang"; CXX_="$MINGW/aarch64-w64-mingw32-clang++"; RC_="$MINGW/aarch64-w64-mingw32-windres"
-  AR_="$MINGW/llvm-ar"; ZPRE=aarch64-w64-mingw32-; SYSPROC=ARM64
-else
-  [ -n "${KKS_MINGW_BIN:-}" ] || sh "$(dirname "$0")/fetch-mingw.sh"   # the pinned toolchain (exits at once when present)
-  MINGW="${KKS_MINGW_BIN:-$DEV/mingw/usr/bin}"
-  OUT="$DEV/win64"
-  CC_="$MINGW/x86_64-w64-mingw32-gcc-posix"; CXX_="$MINGW/x86_64-w64-mingw32-g++-posix"; RC_="$MINGW/x86_64-w64-mingw32-windres"
-  AR_="$MINGW/x86_64-w64-mingw32-ar"; ZPRE=x86_64-w64-mingw32-; SYSPROC=x86_64
-fi
+sh "$(dirname "$0")/fetch-llvm-mingw.sh"   # the pinned toolchain (exits at once when present)
+MINGW="$DEV/llvm-mingw/bin"
+if [ "$ARCH" = aarch64 ]; then OUT="$DEV/winarm64"; SYSPROC=ARM64
+elif [ "$ARCH" = x86_64 ]; then OUT="$DEV/winx64"; SYSPROC=x86_64
+else echo "KKS_WIN_ARCH: x86_64 or aarch64, not $ARCH" >&2; exit 1; fi
+CC_="$MINGW/$ARCH-w64-mingw32-clang"; CXX_="$MINGW/$ARCH-w64-mingw32-clang++"; RC_="$MINGW/$ARCH-w64-mingw32-windres"
+AR_="$MINGW/llvm-ar"; ZPRE=$ARCH-w64-mingw32-
 mkdir -p "$OUT/include" "$OUT/lib" "$SRC/dl"
 export PATH="$MINGW:$PATH"
 
@@ -79,7 +74,7 @@ if want libjxl && [ ! -f "$OUT/lib/libjxl.a" ]; then
     -DJPEGXL_ENABLE_VIEWERS=OFF -DJPEGXL_ENABLE_DEVTOOLS=OFF -DJPEGXL_ENABLE_FUZZERS=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF \
     -DJPEGXL_ENABLE_TRANSCODE_JPEG=OFF -DJPEGXL_ENABLE_SKCMS=ON -DJPEGXL_STATIC=ON -DHWY_ENABLE_TESTS=OFF \
     -DHWY_ENABLE_EXAMPLES=OFF -DHWY_ENABLE_CONTRIB=OFF -DBROTLI_DISABLE_TESTS=ON >/dev/null
-  cmake --build "$J/build" -j"$(nproc)" >/dev/null
+  cmake --build "$J/build" -j"${KKS_JOBS:-$(nproc)}" >/dev/null
   cmake --install "$J/build" >/dev/null
 fi
 
@@ -89,7 +84,7 @@ if want zxing && [ ! -f "$OUT/lib/libZXing.a" ]; then
   Z="$SRC/w-zxing-$ARCH"
   unpack zxing-cpp "$Z"
   cmake -S "$Z/core" -B "$Z/build" $TC -DZXING_READERS=ON -DZXING_WRITERS=OLD -DZXING_C_API=ON -DCMAKE_CXX_STANDARD=20 >/dev/null
-  cmake --build "$Z/build" -j"$(nproc)" >/dev/null
+  cmake --build "$Z/build" -j"${KKS_JOBS:-$(nproc)}" >/dev/null
   cmake --install "$Z/build" >/dev/null
 fi
 

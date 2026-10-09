@@ -6,13 +6,15 @@ with the GNOME app (`apps/common/appstate.nim`) and the platform layer with the 
 
 ## Build (cross-compiled here, no Windows needed)
 
-    platform/windows/build-deps.sh       # once: zlib, libjxl, zxing-cpp for Windows into ~/.local/kksdev/win64
-    apps/windows/build.sh                # → /tmp/kkswin/Walkdown.exe (one static exe, ~14 MB)
-    KKS_WIN_ARCH=aarch64 sh platform/windows/build-deps.sh       # Windows on ARM64 (decision 0047): llvm-mingw,
+    platform/windows/build-deps.sh       # once: zlib, libjxl, zxing-cpp for Windows into ~/.local/kksdev/winx64
+    apps/windows/build.sh                # → /tmp/kkswin/Walkdown.exe (one static exe, ~16 MB)
+    KKS_WIN_ARCH=aarch64 sh platform/windows/build-deps.sh       # Windows on ARM64 (decision 0047):
     KKS_WIN_ARCH=aarch64 apps/windows/build.sh OUT/Walkdown.exe  # libraries in ~/.local/kksdev/winarm64
 
-The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (decision 0033) by
-`sh platform/windows/fetch-mingw.sh` (Ubuntu's packages, pinned by SHA-256; no root needed).
+The toolchain for both architectures is llvm-mingw (clang, lld, mingw-w64, libc++; UCRT; decisions 0047, 0053),
+unpacked into `~/.local/kksdev/llvm-mingw` by `sh platform/windows/fetch-llvm-mingw.sh` (one release, pinned by
+SHA-256; no root needed; the build scripts run it). The Nim settings for it are in `platform/windows/toolchain.nims`,
+which the `config.nims` of core/, platform/linux/, platform/windows/ and apps/windows/ include.
 `res/kks.manifest` provides Common Controls v6, per-monitor DPI v2, the UTF-8 code page and the Windows 10/11 compatibility entry.
 
 ## What is where
