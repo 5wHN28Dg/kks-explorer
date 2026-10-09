@@ -247,6 +247,25 @@ suite "the direct stream":
     sb.close()
     dead.close()
 
+  test "a read waiting on a direct stream ends when the stream stops (2026-10-09)":
+    # the reader waits for a packet, an error or the stream stopping, with no timer per wait: once the stream has
+    # stopped and its socket closed, a read gives "" (closed) instead of waiting for packets that can't come
+    let a = newUdp()
+    let b = newUdp()
+    let session = "\x21\x22\x23\x24\x25\x26\x27\x28"
+    let sa = a.rudpStream("127.0.0.1", b.port, session)
+    let sb = b.rudpStream("127.0.0.1", a.port, session)
+    waitFor sa.write("hello")
+    check waitFor(sb.read()) == "hello"
+    let pending = sb.read()
+    a.close()                             # the other side is gone: sb's FIN is never acknowledged
+    sb.close()                            # finishes after its FIN wait (3 s), then closes its socket
+    check waitFor(withTimeout(pending, 10_000))
+    if pending.finished and not pending.failed: check pending.read == ""
+    check waitFor(withTimeout(sb.read(), 1000))   # and a read after that returns at once
+    sa.close()                            # its socket is closed already: sending its FIN must not crash
+    waitFor sleepAsync(4000)
+
   type DirectRun = object
     ok: bool
     live, heap: int            ## growth of the Nim heap's live bytes (after a full collection) and of the heap itself
@@ -287,7 +306,7 @@ suite "the direct stream":
     if synced.finished and not synced.failed:
       discard waitFor served
       check synced.read.blobsReceived == nBlobs + 1
-      result.ok = true
+      result.ok = synced.read.blobsReceived == nBlobs + 1    # the checks here are outside a test: the test checks `ok`
       result.seconds = int(epochTime() - t0)
     # both streams finish (FIN acknowledged, sockets closed) a few seconds after the sync, holding their buffers until
     # then: let them, so both runs are measured in the same state

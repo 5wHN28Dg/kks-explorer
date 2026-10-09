@@ -36,6 +36,7 @@ proc newUdp*(): Udp =
   asyncCheck result.recvLoop()
 
 proc send*(u: Udp, host: string, port: int, data: string) {.async.} =
+  if u.closed: return                     # asyncnet asserts on a closed socket: a Defect, not caught below
   try: await u.sock.sendTo(host, Port(port), data)
   except CatchableError: discard          # unreachable candidates are normal while punching
 
