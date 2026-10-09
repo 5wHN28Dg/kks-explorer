@@ -52,6 +52,9 @@ jobs:
       - name: The valve-type vectors still match core views.tagView (systems.js KSys.valveType is checked against them)
         working-directory: core
         run: nim r --hints:off --path:src ../tests/web/make_valve_vectors.nim | diff -u ../tests/web/valve-vectors.json -
+      - name: The links vectors still match core views.linksView (systems.js KSys.linksView is checked against them)
+        working-directory: core
+        run: nim r --hints:off --path:src ../tests/web/make_links_vectors.nim | diff -u ../tests/web/links-vectors.json -
 
   platform-linux:
     runs-on: ubuntu-26.04
@@ -219,6 +222,9 @@ jobs:
       - name: The valve type in index.html's panel (test_web_valve)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_valve.py -v -k ${{ matrix.engine }}
+      - name: Links between drawings in index.html (test_web_links)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_links.py -v -k ${{ matrix.engine }}
       - name: The 2026-10-08 requests on the web (test_web_requests)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_web_requests.py -v -k ${{ matrix.engine }}
@@ -246,6 +252,8 @@ jobs:
         run: .venv/bin/python tests/web/test_dark.py -v -k ${{ matrix.engine }} -k tag_colours
       - name: systems.js against core views.systemsView's cases (tests/web)
         run: .venv/bin/python tests/web/test_systems.py -v -k ${{ matrix.engine }}
+      - name: systems.js KSys.linksView against core views.linksView's vectors (tests/web)
+        run: .venv/bin/python tests/web/test_links.py -v -k ${{ matrix.engine }}
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

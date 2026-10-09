@@ -77,20 +77,20 @@
    "icon-192.png": 709,
    "icon-512.png": 3047,
    "icon.svg": 303,
-   "index.html": 18491,
-   "index.js": 79331,
+   "index.html": 19702,
+   "index.js": 83756,
    "kks-wasm-worker.js": 479,
    "kks-wasm.js": 3590,
    "learning.html": 1792,
    "learning.js": 1645,
    "manifest.webmanifest": 459,
    "sw.js": 3662,
-   "systems.js": 10117,
+   "systems.js": 13823,
    "tiles.js": 11413,
    "vendor/fonts/courses.css": 6376,
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1090525
+  "total": 1099867
  }
 }
