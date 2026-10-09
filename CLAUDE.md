@@ -64,8 +64,12 @@ dependency decisions, for native code and for what runs in a browser engine alik
   checks.
 - `tests.yml`: the test suites on x86-64, one job each: `core`, `platform-linux`, `importer`, `linux-build` (server and
   importer for the jobs below), `server-http`, `python`, `web` (Chromium, WebKit, Firefox), `gnome-e2e` (headless),
-  `android-e2e` (an emulator on the runner; on a failure it keeps logcat, a screenshot and the UI tree), `windows-build`
-  and `windows-test` (windows-2022). Not required by main yet; the full Windows UIA e2e and real phones stay manual.
+  `windows-build` and `windows-test` (windows-2022). Not required by main yet; the full Windows UIA e2e and real phones
+  stay manual.
+- **No Android e2e on CI (the user, 2026-10-09):** GitHub's emulator took ~40 min, ~21 min split over three, which is
+  no faster than the laptop's emulator. So before merging any change to `android/`, `core/` or the JNI, run the
+  Android e2e here (`test_app2.py`, `test_direct.py`; `test_update.py` when the update path changes), and say so in the
+  PR. `android.yml` still builds the APK on CI.
 - `tests.yml` also has `web-size`: the web client's download size (app shell, on-demand vendor files, course content)
   against `web-size.json`. Any change needs `python3 tools/web_size.py --update` in the same PR, and the PR says why
   growth is worth it.
