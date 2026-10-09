@@ -196,7 +196,8 @@ proc buildPanel*(w: Win, t: Tag) =
   p.dim((if t.isa.len > 0: t.isa & " · " else: "") & m.kindName(t))
   p.buttons(("Close", proc () = w.selectTag("", false)))
   var mine: seq[string]
-  for sub in w.myOpen():
+  let myOpenSubs = w.myOpen()
+  for sub in myOpenSubs:
     let pl = sub.get("payload")
     if pl == nil: continue
     if (sub["kind"].s in ["equipment", "photo", "link"] and s(pl, "kks") == k and k.len > 0) or
@@ -234,8 +235,21 @@ proc buildPanel*(w: Win, t: Tag) =
     if s(vt, "status") == "confirmed" and vt.get("drawn_differs") != nil and vt["drawn_differs"].kind == jBool and
        vt["drawn_differs"].b:
       p.dim("The drawing's symbol reads: " & s(vt, "drawn"))
+    # my own proposal of a type, not live yet (a member's waits for approval): said, and no second one offered (as
+    # the GNOME app and the web)
+    var pendingType = ""
+    if s(vt, "status") != "confirmed":
+      for sub in myOpenSubs:
+        let pl = sub.get("payload")
+        if sub["kind"].s == "equipment" and pl != nil and s(pl, "kks") == k and pl.get("changes") != nil and
+           pl["changes"].get("custom") != nil and pl["changes"]["custom"].kind == jArr:
+          for x in pl["changes"]["custom"].elems:
+            if x.kind == jObj and s(x, "k") == ValveTypeKey and s(x, "v").len > 0 and pendingType.len == 0:
+              pendingType = s(x, "v")
     let c = vt.get("confirm")
-    if c != nil and c.kind == jObj and c.get("payload") != nil:
+    if pendingType.len > 0:
+      p.dim("Your valve type “" & pendingType & "” is waiting for approval.")
+    elif c != nil and c.kind == jObj and c.get("payload") != nil:
       let kind = s(c, "kind")
       let payload = c["payload"]
       let what = "valve type of " & k

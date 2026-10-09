@@ -446,19 +446,21 @@ proc failedWindow*(w: Win) =
 proc floorOf(n: JNode): string =
   if n != nil and n.get("floor") != nil and n["floor"].isStr: n["floor"].s.strip else: ""
 
-proc floorOpen(w: Win, kks: string, mine: seq[JNode]): bool =
-  ## a floor for this code is on its way: with a queued or kept photo, or proposed by me and still open
-  for l in [addr queue, addr failed]:       # (not `queue & failed`: that copies every photo's pixels)
-    for q in l[]:
-      if q.kks == kks and q.floor.len > 0: return true
+proc floorOpen(w: Win, kks: string, mine: seq[JNode], queued: bool): bool =
+  ## a floor for this code is on its way: with a queued or kept photo (if `queued`), or proposed by me and still open
+  if queued:
+    for l in [addr queue, addr failed]:     # (not `queue & failed`: that copies every photo's pixels)
+      for q in l[]:
+        if q.kks == kks and q.floor.len > 0: return true
   for sub in mine:
     let p = sub.get("payload")
     if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == kks and p.get("changes") != nil and
        floorOf(p["changes"]).len > 0: return true
 
-proc floorsMissing*(w: Win, codes: openArray[string]): seq[string] =
+proc floorsMissing*(w: Win, codes: openArray[string], queued = true): seq[string] =
   ## the codes with no floor yet: none on the equipment (the loaded model, then the core itself: the model lags a
-  ## change by a moment), none on its way
+  ## change by a moment), none on its way. `queued` = false: a floor riding on a queued or kept photo doesn't count
+  ## (Photo for all: its photo goes without a floor of its own, and a kept photo may be discarded with its floor)
   var st: JNode = nil
   var mine: seq[JNode]
   var mineRead = false
@@ -471,7 +473,7 @@ proc floorsMissing*(w: Win, codes: openArray[string]): seq[string] =
     if not mineRead:
       mine = w.myOpen()
       mineRead = true
-    if not w.floorOpen(k, mine): result.add k
+    if not w.floorOpen(k, mine, queued): result.add k
 
 proc floorKnown(w: Win, kks: string): bool = w.floorsMissing([kks]).len == 0
 
