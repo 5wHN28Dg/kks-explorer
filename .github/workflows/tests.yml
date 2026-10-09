@@ -47,6 +47,8 @@ jobs:
       - name: The Nim core's tests (no platform)
         working-directory: core
         run: nim test
+      - name: The dark-drawings colour vectors still match apps/common/darkcolor.nim (dark.js and DarkColor.kt are checked against them)
+        run: nim r --hints:off --path:apps/common tests/web/make_dark_vectors.nim | diff -u tests/web/dark-vectors.json -
 
   platform-linux:
     runs-on: ubuntu-26.04
@@ -75,17 +77,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-nim
         with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.2 built (pinned by SHA-256 in the script)
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.5 built (pinned by SHA-256 in the script)
         with:
           path: |
-            ~/.local/kksdev/src/mupdf-1.28.2-source/include
-            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a
-            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf-third.a
+            ~/.local/kksdev/src/mupdf-1.28.5-source/include
+            ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a
+            ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf-third.a
           key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
       - name: Libraries, MuPDF
         run: |
           sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
-          [ -f ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
+          [ -f ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
       - name: The importer's tests
         working-directory: importer
         run: |
@@ -99,17 +101,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-nim
         with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.2 built (pinned by SHA-256 in the script)
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; MuPDF 1.28.5 built (pinned by SHA-256 in the script)
         with:
           path: |
-            ~/.local/kksdev/src/mupdf-1.28.2-source/include
-            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a
-            ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf-third.a
+            ~/.local/kksdev/src/mupdf-1.28.5-source/include
+            ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a
+            ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf-third.a
           key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
       - name: Libraries, MuPDF
         run: |
           sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
-          [ -f ~/.local/kksdev/src/mupdf-1.28.2-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
+          [ -f ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
       - name: kks_server and kks_import
         run: |
           (cd platform/linux && nim c -d:release -o:/tmp/kkslinux/kks_server kks_server.nim)
@@ -205,9 +207,15 @@ jobs:
       - name: The browser client on v2 plant data (test_web_v2)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_web_v2.py -v -k ${{ matrix.engine }}
+      - name: Several tags at once in index.html (test_web_multi; /api/submit-many)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_multi.py -v -k ${{ matrix.engine }}
       - name: Equipment by system in index.html (test_web_systems)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_systems.py -v -k ${{ matrix.engine }}
+      - name: The 2026-10-08 requests on the web (test_web_requests)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
+        run: .venv/bin/python platform/linux/e2e/test_web_requests.py -v -k ${{ matrix.engine }}
       - name: Our libjxl and zxing-cpp WebAssembly build (test_web_wasm)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_wasm.py -v -k ${{ matrix.engine }}
@@ -216,6 +224,8 @@ jobs:
         run: .venv/bin/python platform/linux/e2e/test_course_web.py -v -k ${{ matrix.engine }} -k list_api
       - name: course-figure.js against the course vectors (tests/web)
         run: .venv/bin/python tests/web/test_course_figure.py -v -k ${{ matrix.engine }}
+      - name: dark.js against apps/common/darkcolor.nim's values (tests/web)
+        run: .venv/bin/python tests/web/test_dark.py -v -k ${{ matrix.engine }} -k tag_colours
       - name: systems.js against core views.systemsView's cases (tests/web)
         run: .venv/bin/python tests/web/test_systems.py -v -k ${{ matrix.engine }}
       - if: failure()
@@ -259,6 +269,9 @@ jobs:
       - name: The GNOME app
         working-directory: apps/gnome
         run: nim c -d:release -o:/tmp/kksgnome/kks_explorer kks_explorer.nim
+      - name: The GNOME app's unit tests (the dark-drawings colours and marker contrast)
+        working-directory: apps/gnome
+        run: nim test
       - name: The GNOME app through AT-SPI, in a private headless mutter (apps/gnome/e2e/headless.sh)
         run: |
           apps/gnome/e2e/headless.sh /usr/bin/python3 apps/gnome/e2e/test_gnome.py /tmp/kksgnome/kks_explorer \
@@ -425,6 +438,7 @@ jobs:
           NIM=nim sh apps/windows/build.sh "$PWD/out/Walkdown.exe"
           (cd core && KKS_WIN_OUT=/tmp/kkswin-core nim wintests) && cp /tmp/kkswin-core/*.exe out/core/
           (cd platform/linux && KKS_WIN_OUT=/tmp/kkswin-plat nim wintests) && cp /tmp/kkswin-plat/*.exe out/plat/
+          nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console --nimcache:/tmp/kkswin-jxl -o:out/plat/test_jxl_limit.exe apps/windows/tests/test_jxl_limit.nim
           ls -l out out/core out/plat
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -37,22 +37,32 @@ proc checkJoinRequest*(p: Provider, req: JNode): bool =
 
 # ---------------------------------------------------------------- §18 relay
 
-proc relayRoom*(p: Provider, rootKeyStr: string): string =
-  hex(p.sha256(toBytes("kks-relay-room-v2\n" & p.peerIdOfKey(rootKeyStr))))[0 ..< 32]
+proc relayRoom*(p: Provider, memberKeyStr: string): string =
+  ## the room of the plant's relay room key (decision 0050): only its holders can make a hello the relay admits
+  hex(p.sha256(toBytes("kks-relay-room-v3\n" & p.peerIdOfKey(memberKeyStr))))[0 ..< 32]
 
 proc helloBytes(room: string, ts: int64): string = "kks-relay-hello-v2\n" & room & "\n" & $ts
+proc memberBytes(room, peer: string, ts: int64): string = "kks-relay-member-v3\n" & room & "\n" & peer & "\n" & $ts
 
-proc relayHello*(p: Provider, key: PrivateKey, room: string, ts: int64): JNode =
-  newObj(@[("t", newStr("hello")), ("peer", newStr(p.peerId(key))), ("key", newStr(keyString(key.pub))), ("ts", newInt(ts)),
-         ("sig", newStr(p.sign(key, helloBytes(room, ts))))])
+proc relayHello*(p: Provider, key, member: PrivateKey, room: string, ts: int64): JNode =
+  ## `key` the device key, `member` the plant's relay room key (0050)
+  let peer = p.peerId(key)
+  newObj(@[("t", newStr("hello")), ("peer", newStr(peer)), ("key", newStr(keyString(key.pub))), ("ts", newInt(ts)),
+         ("sig", newStr(p.sign(key, helloBytes(room, ts)))), ("member", newStr(keyString(member.pub))),
+         ("msig", newStr(p.sign(member, memberBytes(room, peer, ts))))])
 
 proc checkRelayHello*(p: Provider, h: JNode, room: string, now: int64, skew = 300'i64): bool =
+  ## what the relay checks (§18): the device's signature, the room key's, and that the room is the room key's
   try:
     let key = h["key"]
     let ts = h["ts"]
-    if not (key.isStr and ts.kind == jInt and h["peer"].isStr and h["sig"].isStr): return false
-    p.peerIdOfKey(key.s) == h["peer"].s and abs(ts.i - now) <= skew and
-      p.verify(key.s, helloBytes(room, ts.i), h["sig"].s)
+    let member = h.get("member")
+    let msig = h.get("msig")
+    if not (key.isStr and ts.kind == jInt and h["peer"].isStr and h["sig"].isStr and member != nil and member.isStr and
+            msig != nil and msig.isStr): return false
+    p.peerIdOfKey(key.s) == h["peer"].s and abs(ts.i - now) <= skew and relayRoom(p, member.s) == room and
+      p.verify(key.s, helloBytes(room, ts.i), h["sig"].s) and
+      p.verify(member.s, memberBytes(room, h["peer"].s, ts.i), msig.s)
   except CatchableError:
     false
 

@@ -1,5 +1,6 @@
-import std/[unittest, tables, base64, strutils]
-import kks/[json, util, crypto, proto, replay, node, sync, plant, api, extras, invites, plantdata]
+import std/[algorithm, unittest, tables, base64, strutils]
+from std/times import epochTime
+import kks/[json, util, crypto, proto, replay, node, sync, plant, api, extras, invites, plantdata, relaykey]
 import testprovider
 
 let P = testProvider()
@@ -106,6 +107,81 @@ suite "plant API":
     check st["photos"].len == 1 and st["photos"][0]["file"].s.endsWith(".jxl")
     check st["photos"][0]["by_name"].s == "Ali User" and st["photos"][0]["kind"].s == "equipment"
 
+  test "several codes at once: one photo, one place; retries change nothing":
+    let (_, ali) = userApi.owner
+    let url = "data:image/jxl;base64," & encode("\xff\x0ashared jxl")
+    let body = newObj(@[("kind", newStr("photo")), ("client_id", newStr("multi-photo-1")),
+                        ("kks", newArr(@[newStr("11LAB70AA501"), newStr("11LAB70AA502"), newStr("11LAB70AA503"), newStr("11LAB70AA501")])),
+                        ("payload", newObj(@[("dataUrl", newStr(url)), ("caption", newStr("the three drains"))]))])
+    let r = userApi.call(ali, "POST", "/api/submit-many", body)
+    if r.status != 200: echo "  ", r.json
+    check r.status == 200
+    let res = r.json["results"]
+    check res.elems.len == 3                                    # the repeated code counts once
+    var ids: seq[int64]
+    for x in res.elems:
+      check x["status"].s == "pending" and x.get("duplicate") == nil
+      ids.add x["id"].i
+    let again = userApi.call(ali, "POST", "/api/submit-many", body)
+    for x in again.json["results"].elems: check x["duplicate"].b
+    var codes, photoIds, blobs: seq[string]
+    for s in userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems:
+      if s["id"].i in ids:
+        codes.add s["payload"]["kks"].s
+        photoIds.add s["payload"]["photo_id"].s
+        blobs.add s["payload"]["file"].s
+    codes.sort()
+    check codes == @["11LAB70AA501", "11LAB70AA502", "11LAB70AA503"]
+    check photoIds[0] != photoIds[1] and photoIds[1] != photoIds[2] and photoIds[0] != photoIds[2]
+    check blobs[0] == blobs[1] and blobs[1] == blobs[2]       # one image, kept once
+    let place = userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA501","11LAB70AA502"],"payload":{"changes":{"area":"pump house","floor":"0"}},"note":"walked today"}"""))
+    check place.status == 200 and place.json["results"].elems.len == 2
+    # a shared note goes under each code's own note; it doesn't replace it
+    let (_, mgr) = mgrApi.owner
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA507","changes":{"notes":"old leak"}}}""")).status == 200
+    sync(userNode, mgrNode)
+    let note = userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA507","11LAB70AA508"],"payload":{"append":{"notes":"insulation missing"}}}"""))
+    check note.status == 200
+    var seen: seq[string]
+    for x in note.json["results"].elems:
+      check x["status"].s == "pending"            # not held as a clash with the note it extends
+      for s in userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems:
+        if s["id"].i == x["id"].i: seen.add s["payload"]["changes"]["notes"].s
+    check seen == @["old leak\ninsulation missing", "insulation missing"]
+    # a place over a code's existing value replaces it (the client says so first), it isn't held as a clash
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA509","changes":{"floor":"1"}}}""")).status == 200
+    sync(userNode, mgrNode)
+    let over = mgrApi.call(mgr, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA509","11LAB70AA510"],"payload":{"changes":{"floor":"3"}}}"""))
+    for x in over.json["results"].elems: check x["status"].s == "approved"
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"tag_add","kks":["11LAB70AA501"],"payload":{}}""")).status == 400
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":[],"payload":{"changes":{"area":"x"}}}""")).status == 400
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["not a code!"],"payload":{"changes":{"area":"x"}}}""")).status == 400
+  test "several codes at once: all checked before any is written; a value changed meanwhile is a clash":
+    let (_, ali) = userApi.owner
+    let (_, mgr) = mgrApi.owner
+    # code B's notes are long: appended, they go over the field's 4000 characters. Nothing is written, not even A's.
+    check mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("payload", newObj(@[
+      ("kks", newStr("11LAB70AA602")), ("changes", newObj(@[("notes", newStr("x".repeat(3990)))]))]))])).status == 200
+    sync(userNode, mgrNode)
+    let before = userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems.len
+    let r = userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA601","11LAB70AA602"],"payload":{"append":{"notes":"a longer note that will not fit"}},"client_id":"partial-1"}"""))
+    check r.status == 400
+    check userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems.len == before
+    # a refused note keeps no photo
+    let data = "\xff\x0aa photo for a refused note"
+    let sha = hex(userNode.p.sha256(data.toBytes))
+    let ph = userApi.call(ali, "POST", "/api/submit-many", newObj(@[("kind", newStr("photo")),
+      ("kks", newArr(@[newStr("11LAB70AA601")])), ("note", newStr("n".repeat(501))),
+      ("payload", newObj(@[("dataUrl", newStr("data:image/jxl;base64," & encode(data)))]))]))
+    check ph.status == 400 and not userNode.store.blobHas(sha)
+    # the person was shown "area: (none)" for 11LAB70AA603; meanwhile the manager set it: sent with that base, a clash
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA603","changes":{"area":"boiler house"}}}""")).status == 200
+    let st = mgrApi.call(mgr, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA603","11LAB70AA604"],"payload":{"changes":{"area":"pump house"},"bases":{"11LAB70AA603":{"area":""},"11LAB70AA604":{"area":""}}}}"""))
+    check st.status == 200
+    check st.json["results"][0]["status"].s == "conflict"       # the manager's newer value isn't overwritten silently
+    check st.json["results"][1]["status"].s != "conflict"
+    # a field both set and appended to: refused (the append used to replace the change silently)
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA605"],"payload":{"changes":{"notes":"new"},"append":{"notes":"more"}}}""")).status == 400
   test "a marked tag, corrected while approving":
     let (_, ali) = userApi.owner
     let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"tag_add","payload":{"sheet":"lp","bbox":[10,10,60.04,30],"kks":"11lab70aa501","isa":"","note":""}}"""))
@@ -163,14 +239,28 @@ suite "plant API":
     check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"ws://127.0.0.1.evil.dev:80"}""")).status == 400
     check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"ws://127.0.0.1:8787"}""")).status == 200
     check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"wss://relay.example.dev/"}""")).status == 200
+    # decision 0050: each save makes a new relay room key, held here, its public key the setting
+    let k1 = mgrNode.relayMemberSetting
+    check k1.len == 87 and mgrNode.memberKey[0] and keyString(mgrNode.memberKey[1].pub) == k1
+    check mgrApi.call(mgr, "POST", "/api/settings/relay", j("""{"url":"wss://relay.example.dev/"}""")).status == 200
+    let k2 = mgrNode.relayMemberSetting
+    check k2 != k1 and mgrNode.memberKey[0]
+    # the manager removing a device rotates it too
+    var victim = ""
+    for d, _ in mgrNode.run.devices:
+      if d != mgr.device and d notin mgrNode.run.cuts: victim = d
+    check victim.len > 0
+    check mgrApi.call(mgr, "POST", "/api/devices/revoke", newObj(@[("device", newStr(victim))])).status == 200
+    check mgrNode.relayMemberSetting != k2 and mgrNode.memberKey[0]
     check mgrApi.call(mgr, "POST", "/api/progress", j("""{"course":"hrsg","data":{"finalBest":"9"}}""")).status == 200
     check mgrApi.call(mgr, "GET", "/api/progress", q = {"course": "hrsg"}.toTable).json["data"]["finalBest"].s == "9"
 
-proc photoReq(kks, caption, data: string, floor = ""): JNode =
+proc photoReq(kks, caption, data: string, floor = "", cid = ""): JNode =
   var p = newObj(@[("kks", newStr(kks)), ("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0a" & data))),
                    ("caption", newStr(caption))])
   if floor.len > 0: p["floor"] = newStr(floor)
-  newObj(@[("kind", newStr("photo")), ("payload", p)])
+  result = newObj(@[("kind", newStr("photo")), ("payload", p)])
+  if cid.len > 0: result["client_id"] = newStr(cid)
 
 suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)":
   let rootKey = P.p256Generate()
@@ -201,18 +291,20 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check mgrApi.call(mgr, "POST", "/api/devices/import-request",
                       newObj(@[("request", second), ("existing_ok", newBool(true))])).status == 200
 
-  test "a photo needs the floor first, or with it":
+  test "a floor sent with a photo: written once, before it":
     let (_, ali) = userApi.owner
-    let r = userApi.call(ali, "POST", "/api/submit", photoReq(K, "", "no floor"))
-    check r.status == 400 and r.json["need"].s == "floor"
     check userApi.call(ali, "POST", "/api/submit", photoReq(K, "", "bad floor", floor = "14 m")).status == 400
     let ok1 = userApi.call(ali, "POST", "/api/submit", photoReq(K, "", "valve one", floor = "2"))
     check ok1.status == 200 and ok1.json["status"].s == "pending" and ok1.json["floor"]["status"].s == "pending"
-    # the open floor proposal is enough for the next photo (equipment or tag plate)
-    check userApi.call(ali, "POST", "/api/submit", photoReq(K, "", "valve two")).json["status"].s == "pending"
+    # the same floor with the next photo, while the first proposal is open: not proposed twice
+    let ok2 = userApi.call(ali, "POST", "/api/submit", photoReq(K, "", "valve two", floor = "2"))
+    check ok2.json["status"].s == "pending" and ok2.json["floor"]["status"].s == "unchanged"
+    var floors = 0
+    for _, e in userNode.entries:
+      if e["type"].s == "equipment" and e["body"]["kks"].s == K: inc floors
+    check floors == 1
+    # without a floor: accepted (the clients ask for the floor first; the core never refuses the photo)
     check userApi.call(ali, "POST", "/api/submit", photoReq(K, "Tag plate", "plate one")).json["status"].s == "pending"
-    # another code: still refused, also for an admin
-    check mgrApi.call(mgr, "POST", "/api/submit", photoReq("11LAB70AA502", "", "x")).status == 400
     # an image this device can't take: refused before the floor sent with it is written
     var bad = photoReq("11LAB70AA503", "", "x", floor = "4")
     bad["payload"]["dataUrl"] = newStr("data:image/png;base64," & encode("\x89PNG\r\n\x1a\nx"))
@@ -222,7 +314,9 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
 
   test "approvals grouped per code and kind, with the submitter's full name and the tag to open":
     sync(userNode, mgrNode)
+    let calls = mgrApi.tagIndexCalls
     let res = mgrApi.call(mgr, "GET", "/api/submissions", q = {"group": "code"}.toTable).json
+    check mgrApi.tagIndexCalls == calls + 1     # once per listing, not once per submission
     check res["groups"].len == 1
     let g = res["groups"][0]
     check g["code"].s == K and g["tag"].s == "a:2" and g["several"].b
@@ -278,7 +372,8 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     let b = userApi.call(ali, "GET", "/api/leaderboard").json
     check b["people"].len == 2
     let top = b["people"][0]
-    check top["name"].s == "Ali User" and top["rank"].i == 1
+    check top["name"].s == "Ali User" and top["rank"].i == 1 and top["key"].s.len == 16
+    for f in ["person", "username", "full_name", "position", "role", "active"]: check top.get(f) == nil
     check top["approved"].i == 3 and top["rejected"].i == 1 and top["pending"].i == 1 and top["total"].i == 5
     check top["ratio"].num == 3.0 and top["approval_rate"].num == 0.75
     check top["kinds"]["photos"]["approved"].i == 1 and top["kinds"]["photos"]["rejected"].i == 1
@@ -286,7 +381,8 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check top["kinds"]["links"]["pending"].i == 1
     check top["last"].kind == jInt
     let boss = b["people"][1]
-    check boss["name"].s == "The Manager" and boss["direct"].i == 1 and boss["decided"].i >= 4 and boss["ratio"].isNull
+    # approve floor, approve (pick) one photo, approve the plate; the other photo Pick rejected by itself doesn't count
+    check boss["name"].s == "The Manager" and boss["direct"].i == 1 and boss["decided"].i == 3 and boss["ratio"].isNull
 
   test "removed devices and people can be hidden from the lists (display only)":
     let (_, ali) = userApi.owner
@@ -303,13 +399,140 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     var names: seq[string]
     for u in mgrApi.call(mgr, "GET", "/api/users").json["users"].elems: names.add u["username"].s
     check names == @["boss"]
-    # the log is untouched: the History and the leaderboard still have them
-    check mgrApi.call(mgr, "GET", "/api/leaderboard").json["people"].len == 2
+    # the leaderboard leaves a hidden person out too; the log is untouched
+    check mgrApi.call(mgr, "GET", "/api/leaderboard").json["people"].len == 1
     let back = mgrApi.call(mgr, "POST", "/api/hidden", newObj(@[("ids", newArr(@[newStr(ali.person)])), ("hide", newBool(false))])).json
     check back["changed"].i == 1
     check mgrApi.call(mgr, "GET", "/api/users").json["users"].len == 2
+    check mgrApi.call(mgr, "GET", "/api/leaderboard").json["people"].len == 2
+
+  test "Clear removed keeps a person who was never removed (no device yet)":
+    # a person registered before any of their devices joined: not removed, so neither Clear removed nor Hide takes them
+    let pid = mgrApi.newHexId
+    discard mgrNode.append("person", personBody(pid, "pre", "Pre Registered", "user", newStr("Technician")),
+                           int64(epochTime() * 1000))
+    check pid in mgrNode.run.persons
+    discard mgrApi.call(mgr, "POST", "/api/hidden", j("""{"clear_removed":true}"""))
+    var names: seq[string]
+    for u in mgrApi.call(mgr, "GET", "/api/users").json["users"].elems: names.add u["username"].s
+    check "pre" in names
+    check mgrApi.call(mgr, "POST", "/api/hidden", newObj(@[("ids", newArr(@[newStr(pid)]))])).status == 400
+
+  test "photos without a floor are taken; a floor with a photo only fills an empty one; its client_id is its own":
+    let r1 = mgrApi.call(mgr, "POST", "/api/submit", photoReq("11LAB70AA502", "", "no floor"))
+    check r1.status == 200 and r1.json["status"].s == "approved" and r1.json.get("floor") == nil
+    let r2 = mgrApi.call(mgr, "POST", "/api/submit", photoReq("11LAB70AA502", "", "with floor", floor = "1", cid = "abcdefgh77"))
+    check r2.json["floor"]["status"].s == "approved"
+    check mgrNode.run.equipment["11LAB70AA502"]["floor"].s == "1"
+    # a photo whose own client_id looks like a derived one is a new photo, not a duplicate; its floor 7 doesn't
+    # overwrite the floor that is set (that is a normal edit)
+    let r3 = mgrApi.call(mgr, "POST", "/api/submit", photoReq("11LAB70AA502", "", "third", floor = "7", cid = "f-abcdefgh77"))
+    check r3.json.get("duplicate") == nil and r3.json["status"].s == "approved" and r3.json["floor"]["status"].s == "unchanged"
+    check mgrNode.run.equipment["11LAB70AA502"]["floor"].s == "1"
+
+  test "credit: a held change goes to who proposed it; a revert gives the value back to who set it":
+    # a second admin on this server (as a custodial key of the server would be)
+    let sk = P.p256Generate()
+    let sreq = P.joinRequest(sk, "sara", "Sara Admin", newStr("Shift engineer"), "server", now() div 1000)
+    let sid = mgrApi.call(mgr, "POST", "/api/devices/import-request", newObj(@[("request", sreq)])).json["person"].s
+    check mgrApi.call(mgr, "POST", "/api/persons/" & sid, j("""{"role":"admin"}""")).status == 200
+    let (okS, sara) = mgrNode.actorOf(P.peerId(sk), sk)
+    check okS and sara.role == "admin"
+    # Sara's stale change is held (her own submission row); the manager forces it through: it is written by the
+    # manager's key, but it is Sara's contribution
+    let held = mgrApi.call(sara, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"near":"north side"},"base":{"near":"old"}}}"""))
+    check held.json["status"].s == "conflict"
+    proc row(name: string): JNode =
+      for p in mgrApi.call(mgr, "GET", "/api/leaderboard").json["people"].elems:
+        if p["name"].s == name: return p
+    let bossBefore = row("The Manager")
+    check mgrApi.call(mgr, "POST", "/api/submissions/" & $held.json["id"].i & "/approve", j("""{"force":true}""")).status == 200
+    var st = mgrApi.call(mgr, "GET", "/api/state").json
+    check st["equipment"][K]["near"].s == "north side"
+    check st["equipment_by"][K]["near"]["by_name"].s == "Sara Admin"
+    check row("Sara Admin")["approved"].i == 1 and row("Sara Admin")["direct"].i == 0
+    check row("The Manager")["total"].i == bossBefore["total"].i and row("The Manager")["direct"].i == bossBefore["direct"].i
+    # the manager changes Ali's floor, then reverts it: the floor is Ali's again, and the revert counts for nobody
+    check st["equipment_by"][K]["floor"]["by_name"].s == "Ali User"
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"floor":"3"},"base":{"floor":"2"}}}""")).json["status"].s == "approved"
+    let bossTotal = row("The Manager")["total"].i
+    var hid = ""
+    for row in mgrApi.call(mgr, "GET", "/api/revisions").json["revisions"].elems:
+      if hid.len == 0 and row["entity"].s == "equipment" and row["after"].s.contains("\"floor\":\"3\""): hid = row["hid"].s
+    check mgrApi.call(mgr, "POST", "/api/revisions/" & hid & "/revert").status == 200
+    st = mgrApi.call(mgr, "GET", "/api/state").json
+    check st["equipment"][K]["floor"].s == "2"
+    check st["equipment_by"][K]["floor"]["by_name"].s == "Ali User"
+    check row("The Manager")["total"].i == bossTotal
+    # a field cleared to "" is nobody's: no author shown
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"custom":[{"k":"Description","v":""}]},"base":{"custom":[{"k":"Description","v":"Feed water stop valve"}]}}}""")).status == 200
+    check mgrApi.call(mgr, "GET", "/api/state").json["equipment_by"][K].get("custom:Description") == nil
+
+  test "a 2,000-entry log: the leaderboard and the who-and-when walk are computed once per change":
+    let rk = P.p256Generate()
+    let key = P.p256Generate()
+    let st = newMemStore()
+    let dev = P.peerId(key)
+    var hlc: Hlc
+    var prev = ""
+    proc put(sq: int64, typ: string, body: JNode) =
+      let e = P.makeEntry(key, sq, prev, hlc.now(now()), typ, body)
+      prev = P.entryId(e)
+      st.putEntry(prev, e)
+    put(1, "genesis", P.genesisBody(rk, "Big plant", dev, P.newPersonId(), "boss", "The Manager"))
+    for i in 1 .. 2000:
+      let code = "11LAB" & align($(i mod 90 + 10), 2, '0') & "AA" & align($(i mod 900 + 100), 3, '0')
+      put(int64(i + 1), "equipment", newObj(@[("kks", newStr(code)), ("changes", newObj(@[("notes", newStr("n" & $i))])),
+                                              ("base", newObj())]))
+    st.setMeta("root", keyString(rk.pub))
+    let n = newNode(P, st, key)
+    check n.entries.len == 2001
+    let a = newApi(n)
+    let (_, me) = a.owner
+    var t0 = epochTime()
+    let b1 = a.call(me, "GET", "/api/leaderboard").json
+    let s1 = a.call(me, "GET", "/api/state").json
+    let first = epochTime() - t0
+    let walks = a.walks
+    t0 = epochTime()
+    for _ in 1 .. 5:
+      discard a.call(me, "GET", "/api/leaderboard")
+      discard a.call(me, "GET", "/api/state")
+    let again = (epochTime() - t0) / 5
+    check a.walks == walks and walks == 2       # nothing new in the log: no new walk
+    check b1["people"][0]["direct"].i == 2000 and s1["equipment_by"].len > 0
+    echo "  2,001 entries: leaderboard + state ", int(first * 1000), " ms first, ", int(again * 1000), " ms cached"
+    discard a.n.append("equipment", j("""{"kks":"11LAB70AA501","changes":{"notes":"new"},"base":{}}"""), now())
+    discard a.call(me, "GET", "/api/leaderboard")
+    check a.walks == walks + 1
+
+  test "a later photo's floor never competes with the person's own open floor proposal":
+    # (a photo queued offline with floor 3, then the Floor field set to 4 by hand, then the photo sent: one proposal)
+    let (_, ali) = userApi.owner
+    const C = "11LAB70AA509"
+    let first = userApi.call(ali, "POST", "/api/submit", photoReq(C, "", "first", floor = "2"))
+    check first.json["floor"]["status"].s == "pending"
+    let later = userApi.call(ali, "POST", "/api/submit", photoReq(C, "", "later", floor = "4"))
+    check later.json["floor"]["status"].s == "unchanged" and later.json["floor"]["floor"].s == "2"
+    var floors = 0
+    for _, e in userNode.entries:
+      if e["type"].s == "equipment" and e["body"]["kks"].s == C: inc floors
+    check floors == 1
+
+  test "the leaderboard lists only people who contributed (it isn't a member list)":
+    let n0 = mgrApi.call(mgr, "GET", "/api/leaderboard").json["people"].len
+    check mgrApi.call(mgr, "POST", "/api/devices/import-request",
+                      newObj(@[("request", P.joinRequest(P.p256Generate(), "quiet", "Quiet Member", newStr("Operator"), "phone", now() div 1000))])).status == 200
+    var member = false   # a member now
+    for _, v in mgrNode.run.persons:
+      if v["full_name"].isStr and v["full_name"].s == "Quiet Member": member = true
+    check member
+    let b = mgrApi.call(mgr, "GET", "/api/leaderboard").json
+    check b["people"].len == n0
+    for x in b["people"].elems: check x["name"].s != "Quiet Member"
 
 import kks/bundle
+
 suite "bundles":
   test "a new device joins from a file, with the plant data":
     let rootKey = P.p256Generate()
@@ -324,3 +547,4 @@ suite "bundles":
     check r["adopted"].b and r["entries"].i == 2 and r["photos"].i == 2
     check b.file("sheets/lp.kkp")[1] == "KKP1 bytes"
     expect ValueError: discard b.importBundle("not gzip", now())
+

@@ -30,14 +30,14 @@ class LocalLogin(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m: setup = m[1]
             if 'server on' in line: break
         time.sleep(0.3)
         cls.base = 'http://127.0.0.1:%d' % cls.port
         r = urllib.request.Request(cls.base + '/api/setup', method='POST', headers={'Content-Type': 'application/json'},
                                    data=json.dumps({'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                    'full_name': 'The Manager'}).encode())
+                                                    'full_name': 'The Manager', 'position': 'Plant manager'}).encode())
         with urllib.request.urlopen(r) as resp:
             assert '; Secure' in resp.headers['Set-Cookie']   # no Origin: not a page here, so Secure
 

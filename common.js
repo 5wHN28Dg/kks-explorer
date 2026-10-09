@@ -103,7 +103,13 @@ K.idb = (() => {
 })();
 
 K.onChange = fn => K.listeners.push(fn);
-K.emit = async () => { K.outbox = (await K.idb.all()).filter(i => i.user === K.me?.user.id); K.renderStatus(); K.listeners.forEach(f => f()) };
+// K.outbox: one item per code, as the pages show them (a queued submit-many stands for one submission per code). A
+// refused one stays one item under its stored client_id, so Try again and Discard (and the "refused" count) reach it.
+K.emit = async () => {
+  K.outbox = (await K.idb.all()).filter(i => i.user === K.me?.user.id).flatMap(i => !i.many ? [i]
+    : i.refused ? [{client_id: i.client_id, kind: i.kind, payload: {...i.payload, kks: i.kks.join(', ')}, refused: i.refused, ...(i.note ? {note: i.note} : {})}]
+    : i.kks.map((k, n) => ({client_id: i.client_id + '-' + n, kind: i.kind, payload: {...i.payload, kks: k}, ...(i.note ? {note: i.note} : {})})));
+  K.renderStatus(); K.listeners.forEach(f => f()) };
 
 // ---------- overlay screens (login, setup, password link, offline lock) ----------
 K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730);color:var(--ink,#e9eef2);display:flex;align-items:center;justify-content:center;font:14px/1.45 system-ui,sans-serif;padding:16px}
@@ -149,7 +155,7 @@ K.start = async () => {
     return new Promise(() => K.joinScreen(cfg));
   }
   if (h.get('setup')) return new Promise(() => K.form('Create the manager account', 'One-time link from the server console. The manager is the top account: it promotes admins and can hand the role over later.',
-    [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position at the company (optional)', ac: 'organization-title', optional: true},
+    [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position at the company (job title)', ac: 'organization-title'},
      {name: 'username', label: 'Username', ac: 'username'}, ...pwFields], 'Create manager', async v => {
       samePw(v); await K.api('/api/setup', {token: h.get('setup'), username: v.username, password: v.password, full_name: v.full_name, position: v.position}); done() }));
   if (h.get('reset')) {
@@ -162,7 +168,7 @@ K.start = async () => {
     const me = await K.api('/api/me');
     K.me = me; K.setOnline(true);
     await K.idb.set('me', {...me, lease_until: Date.now() + me.offline_days * 864e5});
-    await K.emit(); K.flushSoon(500);
+    await K.emit(); K.flushSoon(500); K.convertPhotos();   // (photos left converting by an earlier visit)
     K.watchChanges();
     return me;
   } catch (e) {
@@ -173,7 +179,7 @@ K.start = async () => {
         async v => { await K.api('/api/login', v); location.reload() }));
     }
     const c = await K.idb.get('me');
-    if (c && c.lease_until > Date.now()) { K.me = c; K.setOnline(false); await K.emit(); return c }
+    if (c && c.lease_until > Date.now()) { K.me = c; K.setOnline(false); await K.emit(); K.convertPhotos(); return c }
     if (K.reauth) {  // remote access sign-in expired and no usable offline copy: send them through the login
       K.box('Sign in again', 'Your remote-access sign-in has expired.', 'Continue', () => location.reload());
       return new Promise(() => {});
@@ -234,14 +240,14 @@ K.joinScreen = (cfg, note = '') => {
       sub('Join with a QR code', `For when an admin is next to you on the same network: they open Manage → Devices → “Add a device with a QR code”. `
         + (K.native ? 'Fill in your details, then scan their screen.' : cam ? 'Fill in your details, then scan their screen with this computer\'s camera, or paste the code they copied for you.'
                     : `This ${dev} has no camera: ask the admin to copy the code under the QR code for you and paste it here, or go back and choose “Ask an admin on this Wi-Fi”.`),
-      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (job title)'},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'},
        ...(K.native ? [] : [{name: 'invite', label: cam ? 'Invite code (leave empty to use the camera)' : 'Invite code (starts with {"kks_invite"…)', optional: cam}])],
       K.native || cam ? 'Scan the QR code' : 'Join',
       async v => { if (!v.invite) { v.invite = await K.scanQr(); if (!v.invite) return }
         await K.api('/api/node/join-invite', v); K.joinWait(cfg) }) },
     nearby: () => sub('Ask an admin on this Wi-Fi', `An admin's phone or computer on the same Wi-Fi gets your request; when they accept, the plant data comes over the Wi-Fi by itself.`,
-      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (job title)'},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'}], 'Find admins on this Wi-Fi',
       async v => K.pickNearby(cfg, v)),
     server: () => sub('Join through the plant server', `Your normal account on the plant server. The server certifies this ${dev} as yours; afterwards it syncs by itself on the same Wi-Fi.`,
@@ -249,14 +255,14 @@ K.joinScreen = (cfg, note = '') => {
        {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Join',
       async v => { await K.api('/api/node/join-server', v); location.reload() }),
     request: () => sub('Join through an admin', `You get a small file to give an admin (USB, WhatsApp, email). They certify this ${dev} and give you a bundle file back; import it here.`,
-      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+      [{name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (job title)'},
        {name: 'username', label: 'Username (if you have an account already, the same one)', ac: 'username'}], 'Make the request file',
       async v => { const r = await K.api('/api/node/join-request', v);
         K.download(JSON.stringify(r.request, null, 1), `join-${v.username}.kksjoin`);
         cfg.node.device = r.request.device;
         K.joinNote = 'Request file saved. When the admin gives you a bundle, choose "Import a bundle".'; history.back() }),
     new: () => sub('Start a new plant', 'Only if no plant exists yet. This computer creates the plant\'s root key and you become the manager. Back the key up afterwards (Manage → Devices).',
-      [{name: 'plant', label: 'Plant name'}, {name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (optional)', optional: true},
+      [{name: 'plant', label: 'Plant name'}, {name: 'full_name', label: 'Your full name', ac: 'name'}, {name: 'position', label: 'Position (job title)'},
        {name: 'username', label: 'Username', ac: 'username'}], 'Create the plant',
       async v => { await K.api('/api/node/new-plant', v); location.reload() }),
   })[b.dataset.a]());
@@ -376,8 +382,8 @@ K.logout = async () => {
 };
 
 // ---------- submissions + outbox ----------
-K.submit = async (kind, payload, note) => {
-  const item = {client_id: K.uid(), kind, payload, ...(note ? {note} : {})};   // note: words for the approver
+K.submit = async (kind, payload, note, cid) => {
+  const item = {client_id: cid || K.uid(), kind, payload, ...(note ? {note} : {})};   // note: words for the approver
   try { const r = await K.api('/api/submit', item); K.setOnline(true); return r }
   catch (e) {
     if (!K.isNetErr(e)) throw e;
@@ -385,33 +391,141 @@ K.submit = async (kind, payload, note) => {
     return {status: 'queued'};
   }
 };
-let flushing = false, flushTimer = null;
+// One photo, or one change to the equipment fields ({changes} or {append}), for several codes: core api.submitMany
+// makes an ordinary submission per code. The client_id is a prefix (code i goes as "<prefix>-<i>"), so a retry from the
+// outbox duplicates nothing. -> {results: [{status, …} per code]}; offline it is queued like K.submit
+// ({status: 'queued'}).
+K.submitMany = async (kind, kks, payload, note) => {
+  const item = {client_id: K.uid(), kind, kks, payload, ...(note ? {note} : {})};
+  try { const r = await K.api('/api/submit-many', item); K.setOnline(true); return r }
+  catch (e) {
+    if (!K.isNetErr(e)) throw e;
+    await K.idb.queue({...item, many: true, user: K.me.user.id, ts: Date.now()}); K.setOnline(false); await K.emit(); K.flushSoon();
+    return {status: 'queued'};
+  }
+};
+let flushing = false, flushAgain = false, flushTimer = null;
 K.flushSoon = (ms = 20000) => { clearTimeout(flushTimer); flushTimer = setTimeout(K.flush, ms) };
 K.flush = async () => {
-  if (flushing || !K.me) return; flushing = true;
-  const res = {approved: 0, pending: 0, conflict: 0, failed: 0};
+  if (!K.me) return;
+  if (flushing) { flushAgain = true; return }   // (a photo converted meanwhile: one more round once this one ends)
+  flushing = true;
+  const res = {approved: 0, pending: 0, conflict: 0, failed: 0}, photos = {approved: 0, pending: 0, conflict: 0};
   try {
     for (const it of (await K.idb.all()).filter(i => i.user === K.me.user.id).sort((a, b) => a.ts - b.ts)) {
+      // a photo not converted yet: it and everything after it wait for it (sent in order); only one that keeps failing
+      // to convert lets the others pass (it stays, and is tried again now and then)
+      if (it.raw) { if ((it.tries || 0) >= 3) continue; break }
+      if (it.refused) continue;   // a photo the server refused waits for the person (Try again or Discard): it is never dropped
       try {
-        const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload, ...(it.note ? {note: it.note} : {})});
-        res[r.status] = (res[r.status] || 0) + 1; await K.idb.unqueue(it.client_id); K.setOnline(true);
+        const note = it.note ? {note: it.note} : {};
+        if (it.many) {   // a submit-many: a status per code
+          const r = await K.api('/api/submit-many', {client_id: it.client_id, kind: it.kind, kks: it.kks, payload: it.payload, ...note});
+          for (const x of r.results || []) res[x.status] = (res[x.status] || 0) + 1;
+        } else {
+          const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload, ...note});
+          (it.fresh ? photos : res)[r.status] = ((it.fresh ? photos : res)[r.status] || 0) + 1;
+        }
+        await K.idb.unqueue(it.client_id); K.setOnline(true);
       } catch (e) {
         if (K.isNetErr(e)) { K.setOnline(false); break }
         if (e.status === 401) { location.reload(); return }
-        res.failed++; await K.idb.unqueue(it.client_id);  // rejected as invalid: retrying won't help
-        console.warn('queued submission refused', it, e.message);
+        if (e.status >= 500 || e.status === 408 || e.status === 429) { K.flushSoon(); break }   // the server or a proxy, for now: later
+        res.failed++;
+        // rejected as invalid: retrying alone won't help. A photo is kept and shown (a proxy's 413 or 403 refuses a
+        // good photo too, and the person may no longer have it); other changes can be made again and are dropped.
+        if (it.kind === 'photo') await K.idb.queue({...it, refused: String(e.message || `error ${e.status}`).slice(0, 300)});
+        else await K.idb.unqueue(it.client_id);
+        console.warn('queued submission refused', it.kind, e.message);
       }
     }
   } finally { flushing = false }
   await K.emit();
-  const sent = res.approved + res.pending + res.conflict;
-  if (sent || res.failed) K.toast?.(`Synced ${sent} offline change(s)` + (res.pending ? ` · ${res.pending} awaiting approval` : '') +
+  const sent = res.approved + res.pending + res.conflict, ph = photos.approved + photos.pending + photos.conflict;
+  const msg = [];
+  if (ph) msg.push(`${photos.approved ? 'Saved' : 'Sent'} ${ph} photo${ph === 1 ? '' : 's'}` + (photos.pending && photos.approved ? ` (${photos.pending} awaiting approval)` : photos.pending ? ' for approval' : ''));
+  if (sent || res.failed) msg.push(`Synced ${sent} offline change(s)` + (res.pending ? ` · ${res.pending} awaiting approval` : '') +
     (res.conflict ? ` · ${res.conflict} conflict(s) for an admin` : '') + (res.failed ? ` · ${res.failed} refused` : ''));
-  if (K.outbox.length) K.flushSoon();
-  if (sent) K.listeners.forEach(f => f('synced'));
+  if (msg.length) K.toast?.(msg.join(' · '));
+  if (K.outbox.some(i => !i.raw && !i.refused)) K.flushSoon();
+  if (sent || ph) K.listeners.forEach(f => f('synced'));
+  if (flushAgain) { flushAgain = false; return K.flush() }
+};
+
+// a refused photo (kept in the outbox, see K.flush): send it again, or let it go
+K.retryRefused = async id => {
+  const it = (await K.idb.all()).find(i => i.client_id === id); if (!it) return;
+  const {refused, ...again} = it; await K.idb.queue(again); await K.emit(); return K.flush();
+};
+K.discardQueued = async id => { await K.idb.unqueue(id); await K.emit() };
+
+// ---------- photos: converted one at a time in the background, sent in the order they were taken ----------
+// A photo goes into the outbox at once, as a PNG (`raw`, a data: URL), before it is converted: closing the panel, or the page,
+// loses nothing, and the next start carries on. One loop converts the photos oldest first (JPEG XL in the worker, or
+// the type the server asks for) and puts the result in place of the PNG; the outbox is then sent as usual, in order
+// (K.flush stops at a photo that is not converted yet). `fresh` marks a photo taken online, for the toast's words.
+K.queuePhoto = async (canvas, payload, note) => {
+  // (a data: URL, not a Blob: nothing to read back that could fail, and IndexedDB keeps strings everywhere)
+  const raw = canvas.width && canvas.height ? canvas.toDataURL('image/png') : '';
+  if (!raw.startsWith('data:image/png')) throw new Error('The photo could not be kept.');
+  const it = {client_id: K.uid(), kind: 'photo', payload, ...(note ? {note} : {}), user: K.me.user.id, ts: Date.now(),
+              raw, mp: canvas.width * canvas.height / 1e6, fresh: true};
+  await K.idb.queue(it); await K.emit();
+  K.convertPhotos();
+  return it.client_id;
+};
+K.converting = null;   // {n, of, kks} while the loop runs
+K.convertPhotos = async () => {
+  clearTimeout(K.retryPhotos);
+  if (K.converting || !K.me) return;
+  // one tab converts (two would do the same work twice); without Web Locks, each tab on its own
+  if (navigator.locks && !K.photoLock) return navigator.locks.request('kks-photo-convert', {ifAvailable: true}, async l => {
+    if (!l) { K.retryPhotos = setTimeout(K.convertPhotos, 30000); return }   // another tab has it
+    K.photoLock = true; try { await K.convertPhotos() } finally { K.photoLock = false }
+  });
+  // what the server takes (/api/config): not known yet (offline at the start, no saved copy) = wait for it, never guess
+  K.converting = {n: 0, of: 0, kks: ''};
+  if (!K.cfg?.photo_upload) { K.cfg = await K.api('/api/config').catch(() => K.cfg);
+    if (!K.cfg?.photo_upload) { K.converting = null; K.retryPhotos = setTimeout(K.convertPhotos, 30000); return } }
+  const up = K.cfg.photo_upload;
+  let bar = null;
+  try {
+    for (;;) {
+      const L = (await K.idb.all()).filter(i => i.user === K.me.user.id && i.raw).sort((a, b) => a.ts - b.ts);
+      if (!L.length) break;
+      const it = L.find(i => (i.tries || 0) < 3) || L[0];   // (one that keeps failing goes last)
+      K.converting = {n: K.converting.n + 1, of: K.converting.n + L.length, kks: it.payload.kks}; K.renderStatus();
+      const est = (up.ms_per_mp || (up.type === 'image/jxl' ? 2500 : 0)) * (it.mp || 2);
+      bar = K.progress(`Converting photo ${K.converting.n} of ${K.converting.of} (${it.payload.kks})…`, est, 'photoq');
+      let dataUrl = null, failed = null, timer;
+      try {
+        const img = await new Promise((ok, no) => { const i = K.h('img', {onload: () => ok(i), onerror: () => no(new Error('the saved photo could not be read')), src: it.raw}) });
+        const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
+        // a worker the browser stopped without a word (memory, on phones) never answers: give up on this round
+        const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error('the converter did not answer')), Math.max(120000, est * 20)) });
+        dataUrl = up.type === 'image/jxl' ? await Promise.race([K.jxlEncode(c, up.distance || 1.9, up.effort || 7), late]) : c.toDataURL(up.type, up.q);
+      } catch (e) { failed = e; console.warn('photo not converted', e); K.jxlWorker?.terminate(); K.jxlWorker = null }   // (a fresh one next time)
+      finally { clearTimeout(timer) }
+      bar.done(); bar = null;
+      if (failed) {
+        // offline before the converter was ever loaded, most likely. The photo is never dropped: it stays as taken and
+        // is tried again; after three failures while online it stops holding up the rest and is retried less often.
+        const tries = (it.tries || 0) + (K.online && navigator.onLine ? 1 : 0);
+        await K.idb.queue({...it, tries}); await K.emit();
+        if (tries === 3) K.toast?.(`A photo for ${it.payload.kks} could not be converted (${failed.message}). It stays on this device and is tried again.`);
+        K.retryPhotos = setTimeout(K.convertPhotos, tries >= 3 ? 300000 : 30000);
+        if (tries >= 3) K.flush();
+        break;
+      }
+      const {raw, mp, tries, ...rest} = it;
+      await K.idb.queue({...rest, payload: {...it.payload, dataUrl}});
+      await K.emit();
+      await K.flush();
+    }
+  } finally { bar?.done(); K.converting = null; K.renderStatus() }
 };
 K.setOnline = on => { if (K.online !== on) { K.online = on; K.renderStatus() } };
-addEventListener('online', () => K.flushSoon(500));
+addEventListener('online', () => { K.flushSoon(500); K.convertPhotos() });
 addEventListener('offline', () => K.setOnline(false));
 
 // Changes made elsewhere (another device's edits arriving by sync, an admin's decision) reach an open page by polling
@@ -442,33 +556,34 @@ K.ago = t => { if (!t) return 'never'; const s = Math.max(0, Date.now() / 1000 -
 
 K.renderStatus = () => {
   const el = document.getElementById('syncStatus'); if (!el) return;
-  const n = K.outbox.length;
+  const n = K.outbox.length, nr = K.outbox.filter(i => i.refused).length, cv = (nr ? ` · ${nr} refused` : '') + (K.converting?.of ? ` · converting photo ${K.converting.n} of ${K.converting.of}` : '');
   if (K.cfg?.mode === 'peer') {   // no server here: what matters is which devices this one can sync with
     const st = K.syncStatus; if (!st) { el.textContent = ''; return }
     const r = st.reachable || 0, net = st.internet ?? (navigator.onLine ? null : false);
     el.replaceChildren(K.h('span', {style: `color:${r ? 'var(--ok)' : 'var(--review)'}`}, '●'),
       ` ${r ? `${r} device${r === 1 ? '' : 's'} reachable` : 'No devices reachable'}` + ` · synced ${K.ago(st.last_sync)}`
-      + (net === true ? ' · Internet ✓' : net === false ? ' · No internet' : ''));
+      + (net === true ? ' · Internet ✓' : net === false ? ' · No internet' : '') + cv);
     el.title = `Devices of this plant found on this network or synced with in the last 3 minutes: ${r}. Your changes are kept on this device and go to the others when they are reachable.`
       + (net == null ? ' (Whether there is internet can\'t be told from here: the browser only knows it is on a network.)' : '');
     return;
   }
   if (K.reauth) {  // a top-level load of the page lets Cloudflare Access show its login, then comes back here
     const a = K.h('a', {style: 'color:var(--accent)'}, 'Sign in again'); a.href = K.safeUrl(location.pathname);
-    el.replaceChildren(K.h('span', {style: 'color:var(--review)'}, '●'), ' ', a, n ? ` · ${n} queued` : '');
+    el.replaceChildren(K.h('span', {style: 'color:var(--review)'}, '●'), ' ', a, n ? ` · ${n} queued` : '', cv);
     el.title = 'Your remote-access sign-in expired. Working from the copy on this device; changes are queued.';
     return;
   }
-  el.replaceChildren(K.h('span', {style: `color:${K.online ? 'var(--ok)' : 'var(--review)'}`}, '●'), ` ${K.online ? 'Online' : 'Offline'}${n ? ` · ${n} queued` : ''}`);
+  el.replaceChildren(K.h('span', {style: `color:${K.online ? 'var(--ok)' : 'var(--review)'}`}, '●'), ` ${K.online ? 'Online' : 'Offline'}${n ? ` · ${n} queued` : ''}${cv}`);
   el.title = K.online ? 'Connected to the server' : 'Working from the copy on this device; changes are queued';
 };
 
 // Human summary of a submission payload.
 K.describe = (kind, p) => ({
-  equipment: () => Object.entries(p.changes).map(([f, v]) => `${f} → ${f === 'custom' ? v.map(c => c.k + ': ' + c.v).join('; ') || '(none)' : v || '(empty)'}`).join(' · '),
+  equipment: () => [...Object.entries(p.changes || {}).map(([f, v]) => `${f} → ${f === 'custom' ? v.map(c => c.k + ': ' + c.v).join('; ') || '(none)' : v || '(empty)'}`),
+                     ...Object.entries(p.append || {}).map(([f, v]) => `${f} + ${v}`)].join(' · '),
   review: () => !p.data ? `tag ${p.tag_id}: clear the review decision` : p.data.status === 'rejected' ? `tag ${p.tag_id}: not a tag` : `tag ${p.tag_id}: confirm as ${p.data.kks}${p.data.suffix || ''}${p.data.isa ? ' (' + p.data.isa + ')' : ''}`,
   link: () => `${p.on === false ? 'unlink' : 'link'} ${p.kks} ${p.on === false ? 'from' : 'to'} procedure ${p.proc} step ${p.step}`,
-  photo: () => `new photo for ${p.kks}${p.caption ? ': ' + p.caption : ''}`,
+  photo: () => `new ${String(p.caption || '').startsWith('Tag plate') ? 'tag plate photo' : 'photo'} for ${p.kks}${p.caption ? ': ' + p.caption : ''}${p.floor ? ` (floor ${p.floor})` : ''}`,
   photo_delete: () => `delete photo ${p.photo_id.slice(0, 8)}`,
   tag_add: () => `mark a missed tag on ${p.sheet}: ${p.kks ? (p.isa ? p.isa + ' ' : '') + p.kks + (p.suffix || '') : '(code not given)'}`,
   tag_remove: () => `remove hand-added tag ${p.id.slice(0, 8)}`,
@@ -545,18 +660,22 @@ K.jxl.watch();
 // build in a worker, so the page stays responsive. canvas → a data: URL of the JXL codestream.
 K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => {
   const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-  K.jxlWorker ??= new Worker('/kks-wasm-worker.js', {type: 'module'});
-  const id = (K.jxlSeq = (K.jxlSeq || 0) + 1);
+  if (!K.jxlWorker) {   // a worker whose module could not load (offline, before it was ever fetched) answers nothing: drop it
+    const w = K.jxlWorker = new Worker('/kks-wasm-worker.js', {type: 'module'}); w.wait = new Map();
+    w.addEventListener('error', e => { e.preventDefault?.(); if (K.jxlWorker === w) K.jxlWorker = null; w.terminate();
+      for (const f of w.wait.values()) f(new Error('the photo converter could not be loaded')); w.wait.clear() });
+  }
+  const w = K.jxlWorker, id = (K.jxlSeq = (K.jxlSeq || 0) + 1);
   const on = e => {
     if (e.data.id !== id) return;
-    K.jxlWorker.removeEventListener('message', on);
+    w.removeEventListener('message', on); w.wait.delete(id);
     if (e.data.error) return rej(new Error(e.data.error));
     const b = e.data.jxl; let s = '';
     for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
     res('data:image/jxl;base64,' + btoa(s));
   };
-  K.jxlWorker.addEventListener('message', on);
-  K.jxlWorker.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
+  w.addEventListener('message', on); w.wait.set(id, e => { w.removeEventListener('message', on); rej(e) });
+  w.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
 });
 
 
@@ -721,7 +840,10 @@ K.annotate = (src, askNote) => new Promise(done => {
     }
     if ((e.buttons & 6) && !draft) { const dpr = window.devicePixelRatio || 1, s = fit * zoom; cx -= (q[0] - prev[0]) * dpr / s; cy -= (q[1] - prev[1]) * dpr / s; later(); return }   // right or middle button: pan
     if (!draft) return;
-    const [x, y] = toImg(...q); draft.p[2] = x; draft.p[3] = y; later(draft.touch ? () => loupe(...q) : null);
+    // the loupe is drawn in the next frame: only if this finger still draws then, and where it is then (drawn after
+    // the finger had lifted, it stayed up over the next mouse draw)
+    const id = e.pointerId, [x, y] = toImg(...q); draft.p[2] = x; draft.p[3] = y;
+    later(draft.touch ? () => { const p = draft && draft.touch && pts.get(id); if (p) loupe(...p) } : null);
   });
   const up = e => {          // (the end is where the finger left, even if moves were skipped)
     pts.delete(e.pointerId);
@@ -757,8 +879,8 @@ K.annotate = (src, askNote) => new Promise(done => {
 // ---------- a progress bar for work the device does without reporting progress (JPEG XL encoding) ----------
 // The encoder gives no progress callback: the bar follows the time the last photos took per megapixel on this
 // device (estimate), stops at 95 % until the work is done, then fills.
-K.progress = (title, estimateMs) => {
-  const box = document.createElement('div');
+K.progress = (title, estimateMs, id) => {
+  const box = document.createElement('div'); if (id) box.id = id; box.setAttribute('role', 'status');
   box.style.cssText = 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:170;background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:12px 14px;min-width:260px;max-width:90vw;font:14px system-ui,sans-serif;box-shadow:0 6px 24px #0008';
   const h = K.h, bar = h('i', {style: 'display:block;height:100%;width:0;background:#ff7a1a;transition:width .3s'}), t = h('div', {class: 't', style: 'font-size:12.5px;opacity:.75'});
   box.append(h('div', null, title), h('div', {style: 'height:6px;border-radius:3px;background:#3a5061;margin:8px 0 4px;overflow:hidden'}, bar), t);

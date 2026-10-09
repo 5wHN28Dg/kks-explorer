@@ -516,11 +516,21 @@ def crypto_file():
                                                   {'why': 'device is not the key\'s peer ID',
                                                    'request': dict(req, device=P.peer_id(answering))}]}
     root = P.key_from_seed(seed('root'))
-    room = C.relay_room(P.key_string(root))
-    hello = C.relay_hello(joiner, room, 1790000000)
-    V['relay'] = {'root': P.key_string(root), 'root_id': P.peer_id(root), 'room': room, 'hello': hello, 'now': 1790000100,
+    member = P.key_from_seed(seed('relay-room-key'))
+    other = P.key_from_seed(seed('relay-other-room-key'))
+    room = C.relay_room(P.key_string(member))
+    hello = C.relay_hello(joiner, member, room, 1790000000)
+    no_member = {k: v for k, v in hello.items() if k not in ('member', 'msig')}
+    V['relay'] = {'member': P.key_string(member), 'member_id': P.peer_id(member), 'room': room, 'hello': hello,
+                  'now': 1790000100,
                   'reject': [{'why': 'too old', 'hello': hello, 'now': 1790000301},
-                             {'why': 'another room', 'hello': C.relay_hello(joiner, '0' * 32, 1790000000),
+                             {'why': 'another room', 'hello': C.relay_hello(joiner, member, '0' * 32, 1790000000),
+                              'now': 1790000000},
+                             {'why': 'no room key proof (a device before decision 0050)', 'hello': no_member,
+                              'now': 1790000000},
+                             {'why': 'signed by another room key', 'hello': C.relay_hello(joiner, other, room, 1790000000),
+                              'now': 1790000000},
+                             {'why': 'msig for another peer', 'hello': dict(hello, msig=C.relay_hello(answering, member, room, 1790000000)['msig']),
                               'now': 1790000000}]}
     backup = P.key_from_seed(seed('backup'))
     eph = P.key_from_seed(seed('ecies-ephemeral'))

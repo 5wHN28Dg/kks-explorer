@@ -2,8 +2,9 @@
 ## plant-data files (sheets, tags, procedures, locations), the program's KKS tables, and the live state from the log.
 ## Pure logic, shared by every UI (GNOME, Android through views.nim, Windows). Tested in core/tests/test_model.nim.
 
-import std/[strutils, tables, sets, algorithm]
+import std/[strutils, tables, sets, algorithm, math]
 import json
+from std/unicode import runeLen, runeSubStr
 
 type
   SheetInfo* = object
@@ -25,6 +26,7 @@ type
     note*, flag*: string
     added*: string               ## an added tag's id (R6)
     suggestion*: JNode
+    symbol*: JNode               ## tags.json "symbol": the valve symbol the importer found, nil = none (importer/README)
 
   Decoded* = object
     blk*, sys*, fn*, comp*, num*: string
@@ -64,6 +66,8 @@ proc parseTag(x: JNode): Tag =
   result = Tag(id: x.s("id"), sheet: x.s("sheet"), kks: x.s("kks"), suffix: x.s("suffix"), isa: x.s("isa"),
                kind: x.s("kind"), status: x.s("status"), conf: x.f("conf"), note: x.s("note"), flag: x.s("flag"),
                suggestion: x.get("suggestion"))
+  let sym = x.get("symbol")
+  if sym != nil and sym.kind == jObj and sym.get("type").isStr and sym["type"].s.len in 1 .. 100: result.symbol = sym
   let b = x.get("bbox")
   if b != nil and b.elems.len == 4:
     for i in 0 .. 3: result.bbox[i] = b[i].num
@@ -82,6 +86,8 @@ proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
   for row in entries:
     result.mgetOrPut(row.s("kks"), @[]).add row
 
+const DescriptionMax* = 2000
+
 proc parseDescriptions*(j: JNode): Table[string, JNode] =
   ## descriptions.json (optional plant data, published by the manager): {"11LAB70AA501": {"text": "…", "basis": "…"}}.
   ## Drafted suggestions of what the equipment does; shown as "draft, unchecked" until a person confirms one, which
@@ -95,8 +101,18 @@ proc parseDescriptions*(j: JNode): Table[string, JNode] =
       text = v.s("text")
       basis = v.s("basis")
     text = text.strip
+    # at most what an equipment custom field holds (2000 characters), so a draft can always be confirmed as is
+    if text.runeLen > DescriptionMax: text = text.runeSubStr(0, DescriptionMax).strip
     if k.len > 0 and text.len > 0:
       result[k] = newObj(@[("text", newStr(text)), ("basis", newStr(basis.strip))])
+
+proc loadDescriptions*(data: string, warn: proc (msg: string)): Table[string, JNode] =
+  ## descriptions.json's bytes → parseDescriptions; a malformed file is skipped (told to `warn`) and never stops the
+  ## plant data from loading: it is optional and written by hand
+  if data.len == 0: return
+  try: result = parseDescriptions(parseStrict(data, 4096))
+  except JsonError as e:
+    if warn != nil: warn("descriptions.json skipped: not valid JSON (" & e.msg & ")")
 
 proc eff*(m: Model, t: Tag): (bool, Tag) =
   ## a person's review decision overrides the reader (index.html eff())
@@ -297,3 +313,70 @@ proc search*(m: Model, q: string, limit = 60): seq[Tag] =
     if score > 0: scored.add((-score, i, t))
   scored.sort(proc (a, b: (int, int, Tag)): int = cmp((a[0], a[1]), (b[0], b[1])))
   for x in scored[0 ..< min(limit, scored.len)]: result.add x[2]
+
+# ---------------------------------------------------------------- valve type (from the drawing's symbol)
+
+const ValveTypeKey* = "Valve type"
+  ## the equipment custom field ({k, v}) a confirmed or corrected valve type is kept in
+
+const CustomMax = 100   ## custom fields per equipment (PROTOCOL-v2: `custom` is a list of at most 100)
+
+proc customValue(e: JNode, key: string): string =
+  let c = e.get("custom")
+  if c != nil and c.kind == jArr:
+    for x in c.elems:
+      if x.kind == jObj and x.s("k") == key and x.s("v").len > 0: return x.s("v")
+
+proc finiteNum*(n: JNode): bool =
+  ## a number that can be written back as JSON (the reader turns 1e999 into Inf)
+  n.isNum and classify(n.num) notin {fcInf, fcNegInf, fcNan}
+
+proc drawnValveType*(t: Tag): string =
+  ## the importer's reading of the tag's valve symbol in words ("gate valve, motor-operated, normally closed"); "" = none
+  if t.symbol == nil: return ""
+  result = t.symbol.s("type")
+  if t.symbol.s("actuator") == "motor": result.add ", motor-operated"
+  let nc = t.symbol.get("nc")
+  # `nc` = the body is hatched; hatching means normally closed (the legend table doesn't say so: the user confirmed
+  # the convention for these drawings, 2026-10-09)
+  if nc != nil and nc.kind == jBool and nc.b: result.add ", normally closed"
+
+proc valveTypeOf*(m: Model, t: Tag): JNode =
+  ## The valve type the equipment panel shows: confirmed (the custom field "Valve type", set through the normal
+  ## equipment proposal) or read from the drawing's symbol, "unchecked", with the proposal that confirms it (a UI
+  ## may let the person edit `v` first: that is a correction). nil = neither.
+  let k = t.full
+  let drawn = drawnValveType(t)
+  let eq = m.equipment(k)
+  let have = if k.len > 0: customValue(eq, ValveTypeKey) else: ""
+  if have.len > 0:
+    return newObj(@[("status", newStr("confirmed")), ("text", newStr(have)), ("drawn", newStr(drawn)),
+                    ("label", newStr("confirmed")), ("line", newStr("Valve type: " & have & " (confirmed)")),
+                    ("drawn_differs", newBool(drawn.len > 0 and drawn != have))])
+  if drawn.len == 0 or k.len == 0: return nil
+  # the symbol belongs to the code the reader saw; a review that corrected it to a non-valve (component not AA) drops it
+  if not (t.kks.len == 12 and t.kks[7 .. 8] == "AA"): return nil
+  var base = newArr()
+  let cur = eq.get("custom")
+  if cur != nil and cur.kind == jArr:
+    for x in cur.elems: base.elems.add x
+  # an empty "Valve type" entry already there is replaced, never doubled; a full list (100 fields) can't take one more
+  var changed = newArr()
+  var placed = false
+  for x in base.elems:
+    if not placed and x.kind == jObj and x.s("k") == ValveTypeKey:
+      changed.elems.add newObj(@[("k", newStr(ValveTypeKey)), ("v", newStr(drawn))])
+      placed = true
+    elif not (x.kind == jObj and x.s("k") == ValveTypeKey):
+      changed.elems.add x
+  if not placed: changed.elems.add newObj(@[("k", newStr(ValveTypeKey)), ("v", newStr(drawn))])
+  var conf = t.symbol.get("conf")
+  if not conf.finiteNum: conf = newNull()
+  result = newObj(@[("status", newStr("drawing")), ("text", newStr(drawn)), ("conf", conf),
+                    ("label", newStr("from the drawing, unchecked")),
+                    ("line", newStr("Valve type: " & drawn & " (from the drawing, unchecked)")),
+                    ("confirm", newNull())])
+  if changed.elems.len <= CustomMax:
+    let payload = newObj(@[("kks", newStr(k)), ("changes", newObj(@[("custom", changed)])),
+                           ("base", newObj(@[("custom", base)]))])
+    result["confirm"] = newObj(@[("kind", newStr("equipment")), ("payload", payload)])

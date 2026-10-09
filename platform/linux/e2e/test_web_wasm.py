@@ -9,7 +9,7 @@ from playwright.sync_api import sync_playwright
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import free_port, Client
+from test_web_v2 import free_port, Client, CSP_WATCH
 
 PAGE_JS = r"""async () => {
   const W = await import('/kks-wasm.js');
@@ -55,17 +55,14 @@ class WebWasm(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m: setup = m[1]
             if 'server on' in line: break
         cls.base = 'http://127.0.0.1:%d' % cls.port
         cls.boss = Client(cls.base)
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                   'full_name': 'The Manager'}).get('ok')
+                                                   'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         cls.boss.req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'})
-        # a photo needs its code's floor (the user's rule): set it before any app joins, so every app has it
-        assert cls.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '2'},
-                             'base': {}}}).get('status') == 'approved'
 
     @classmethod
     def tearDownClass(cls):
@@ -77,6 +74,7 @@ class WebWasm(unittest.TestCase):
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context()
+            ctx.add_init_script(CSP_WATCH)
             ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
                              headers={'Origin': self.base})
             page = ctx.new_page()

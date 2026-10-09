@@ -17,6 +17,12 @@ type Win* = ref object
   v*: Viewer
   split*, sheetList*, searchEntry*, resultList*, sheetTitle*, panelSplit*, panelBox*, markBtn*, status*: W
   sideNav*, banner*: W
+  queueBar*, queueLabel*: W    ## the photo queue's status (photos.nim), under the drawing
+  picking*: bool               ## "Select tags" mode: one photo, place or note for several codes (multi.nim)
+  picked*: seq[string]         ## the selected codes, in the order they were picked
+  pickBar*, pickCount*, pickBtn*: W
+  pickSaidUnread*: bool        ## the "no code" toast was shown in this round of the mode
+  pickChanged*: proc ()        ## the selection changed (the bar's count, the drawing)
   linkProc*: string            ## link mode (R7): clicks on tags link them to this procedure step
   linkStep*: int
   activeProc*: string
@@ -46,7 +52,7 @@ proc loadModel*(w: Win) =
   m.baseTags = parseTags(parseStrict(w.fileOr("tags.json", "[]"), 4096))
   m.procs = parseStrict(w.fileOr("procedures.json", "[]"), 4096)
   m.locations = buildLocations(parseStrict(w.fileOr("locations.json", "{}"), 4096))
-  m.descriptions = parseDescriptions(parseStrict(w.fileOr("descriptions.json", "{}"), 4096))
+  m.descriptions = loadDescriptions(w.fileOr("descriptions.json", ""), proc (msg: string) = stderr.writeLine msg)
   m.kksTables = parseStrict(w.fileOr("kks.json", "{}"), 4096)
   try: m.state = w.a.call("GET", "/api/state")
   except ApiError: m.state = newObj()

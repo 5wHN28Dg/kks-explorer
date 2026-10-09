@@ -1,9 +1,9 @@
 ## Manage (R10–R14; admin.html): approvals, my proposals, history with revert and restore, people, devices (join
 ## requests, revoke), and the account. Everything goes through the core's local API, like admin.html.
 
-import std/[strutils, tables, times, sequtils, asyncdispatch]
+import std/[strutils, tables, times, sequtils, asyncdispatch, math]
 import kks/[json, api, node, extras, util]
-import kksl/dbstore
+import kksl/[dbstore, privfile, passphrase]
 import kks/model
 import proposals
 import gtk, ui, appstate, win, photos, join
@@ -28,79 +28,257 @@ proc act(w: Win, id: int64, action: string, body: JNode, done: string): bool =
     w.toast(e.msg)
     false
 
+proc openTag(w: Win, code, tag: string) =
+  ## a proposal's code on the P&ID: its tag (tags.json with reviews, or a marked tag), else any tag with that code
+  var id = tag
+  if id.len == 0 or not w.m.tagById(id)[0]:
+    id = ""
+    for t in w.m.tags:
+      if code.len > 0 and t.full == code:
+        id = t.id
+        break
+  if id.len == 0:
+    w.toast("That code is on no drawing")
+    return
+  let (_, t) = w.m.tagById(id)
+  if t.sheet != w.sheet: w.showSheet(t.sheet)
+  w.selectTag(id, true)
+
+proc codeHeader(w: Win, code, tag: string, subtitle: string): W =
+  ## a code's heading in Approvals and My proposals; the button opens it on the drawing
+  let title = if code.len > 0: code else: "Tag " & tag
+  result = group(title, subtitle)
+  let open = iconButton("find-location-symbolic", "Open " & title & " on the drawing", proc () = w.openTag(code, tag))
+  gtk_widget_add_css_class(open, "flat")
+  adw_preferences_group_set_header_suffix(result, open)
+
+proc photoButton(w: Win, g: W, sub: JNode) =
+  if sub["kind"].s == "photo" and sub.get("payload") != nil:
+    let file = s(sub["payload"], "file")
+    let sha = file.split('.')[0]
+    if sha.len > 0 and w.a.n.store.blobHas(sha):
+      let data = w.a.n.store.blobGet(sha)
+      let cap = s(sub["payload"], "caption")
+      adw_preferences_group_add(g, button("Show the photo", "flat", proc () = w.showPhoto(data, cap)))
+
 proc approvals(w: Win, box: W) =
-  var subs: seq[JNode]
-  try: subs = w.a.call("GET", "/api/submissions", nil, {"status": "open"}.toTable)["submissions"].elems
+  ## the user's "Approvals page clean-up": per code, then per kind (an equipment photo and a tag plate photo don't
+  ## compete). Pick and votes only where several photos of one kind wait; Approve/Reject otherwise. Names in full.
+  var groups: seq[JNode]
+  try: groups = w.a.call("GET", "/api/submissions", nil, {"status": "open", "group": "code", "limit": "1000"}.toTable)["groups"].elems
   except ApiError as e:
     box.add label(e.msg, "dim-label")
     return
-  let open = subs.filterIt(not it["mine"].b or w.isAdmin)
-  if open.len == 0:
+  if groups.len == 0:
     box.add label("Nothing waits for approval.", "dim-label")
     return
-  for i in 0 ..< open.len:
+  let again = proc () = w.refreshPage(box, proc (b: W) = w.approvals(b))
+  for gi in 0 ..< groups.len:
     closureScope:
-      let sub = open[i]
-      let id = sub["id"].i
-      let g = group(proposalTitle(sub),
-                    "by " & s(sub, "by_name") & " · " & sub.at("created") &
-                    (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: ""))
-      for (lab, v) in proposalRows(sub): adw_preferences_group_add(g, row(lab, v, selectable = true))
-      if sub["status"].s == "conflict":
-        adw_preferences_group_add(g, row("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), selectable = true))
-      if sub["kind"].s == "photo" and sub.get("payload") != nil:
-        let file = s(sub["payload"], "file")
-        let sha = file.split('.')[0]
-        if w.a.n.store.blobHas(sha):
-          let data = w.a.n.store.blobGet(sha)
-          adw_preferences_group_add(g, button("Show the photo", "flat", proc () = w.showPhoto(data, s(sub["payload"], "caption"))))
-      let btns = hbox(8)
-      gtk_widget_set_margin_top(btns, 6)
-      if w.isAdmin:
-        btns.add button(if sub["status"].s == "conflict": "Approve anyway" else: "Approve", "suggested-action", proc () =
-          if w.act(id, "approve", newObj(@[("force", newBool(sub["status"].s == "conflict"))]), "Approved"):
-            w.refreshPage(box, proc (b: W) = w.approvals(b)))
-        if sub["kind"].s == "photo":
-          btns.add button("Pick this photo", "", proc () =
-            if w.act(id, "pick", newObj(), "Photo chosen, others rejected"): w.refreshPage(box, proc (b: W) = w.approvals(b)))
-        btns.add button("Reject", "destructive-action", proc () =
-          if w.act(id, "reject", newObj(), "Rejected"): w.refreshPage(box, proc (b: W) = w.approvals(b)))
-      adw_preferences_group_add(g, btns)
-      box.add g
+      let grp = groups[gi]
+      var n = 0
+      for k in grp["kinds"].elems: n += k["items"].len
+      box.add w.codeHeader(s(grp, "code"), s(grp, "tag"), $n & (if n == 1: " proposal" else: " proposals"))
+      for ki in 0 ..< grp["kinds"].elems.len:
+        closureScope:
+          let kd = grp["kinds"].elems[ki]
+          let pick = kd["pick"].kind == jBool and kd["pick"].b
+          let items = kd["items"].elems
+          let kg = group(s(kd, "label") & (if items.len > 1: " (" & $items.len & ")" else: ""),
+                         if pick: "Several photos of this kind: pick the one to keep (the others of this kind are rejected), " &
+                                  "or reject them one by one." else: "")
+          for ii in 0 ..< items.len:
+            closureScope:
+              let sub = items[ii]
+              let id = sub["id"].i
+              let who = "by " & s(sub, "by_name") & " · " & sub.at("created") &
+                        (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: "")
+              adw_preferences_group_add(kg, row(proposalTitle(sub), who, selectable = true))
+              for (lab, v) in proposalRows(sub): adw_preferences_group_add(kg, row(lab, v, selectable = true))
+              if sub["status"].s == "conflict":
+                adw_preferences_group_add(kg, row("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), selectable = true))
+              w.photoButton(kg, sub)
+              let what = proposalTitle(sub) & " by " & s(sub, "by_name")
+              let btns = hbox(8)
+              gtk_widget_set_margin_top(btns, 6)
+              gtk_widget_set_margin_bottom(btns, 10)
+              if pick:
+                let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
+                let pb = button("Pick this photo", "suggested-action", proc () =
+                  if w.act(id, "pick", newObj(), "Photo chosen; the other " & s(kd, "label").toLowerAscii & "s were rejected"): again())
+                setAccessibleDescription(pb, what & ", " & $votes & " votes")
+                btns.add pb
+                btns.add label($votes & (if votes == 1: " vote" else: " votes"), "dim-label")
+              else:
+                let ab = button(if sub["status"].s == "conflict": "Approve anyway" else: "Approve", "suggested-action", proc () =
+                  if w.act(id, "approve", newObj(@[("force", newBool(sub["status"].s == "conflict"))]), "Approved"): again())
+                setAccessibleDescription(ab, what)
+                btns.add ab
+              let rb = button("Reject", "destructive-action", proc () =
+                if w.act(id, "reject", newObj(), "Rejected"): again())
+              setAccessibleDescription(rb, what)
+              btns.add rb
+              adw_preferences_group_add(kg, btns)
+          box.add kg
 
-proc myProposals(w: Win, box: W) =
+const StatusChoices = [("All", "all"), ("Waiting", "pending"), ("Held (clashes)", "conflict"), ("Approved", "approved"),
+                       ("Rejected", "rejected"), ("Withdrawn", "withdrawn")]
+const KindChoices = [("All kinds", "", ""), ("Equipment photos", "equipment_photo", ""), ("Tag plate photos", "plate_photo", ""),
+                     ("Places and notes (any field)", "equipment", ""), ("Floor", "equipment", "floor"),
+                     ("Notes", "equipment", "notes"), ("Other fields", "equipment", "custom"),
+                     ("Procedure links", "link", ""), ("Tag readings", "review", ""), ("Marked tags", "tag_add", ""),
+                     ("Removals", "photo_delete,tag_remove", "")]
+var mineStatus, mineKind = 0      ## My proposals' filters, kept while the app runs
+
+proc chips(title: string, names: seq[string], selected: int, changed: proc (i: int)): W =
+  ## one choice of several, as a row of toggle buttons (each named for a screen reader, its state "pressed")
+  result = group(title)
+  let wb = adw_wrap_box_new()
+  adw_wrap_box_set_child_spacing(wb, 6)
+  adw_wrap_box_set_line_spacing(wb, 6)
+  var all: seq[W]
+  for i in 0 ..< names.len:
+    closureScope:
+      let idx = i
+      let t = gtk_toggle_button_new_with_label(names[i].cstring)
+      gtk_widget_add_css_class(t, "pill")
+      setAccessibleDescription(t, title & " filter")
+      if i == selected: gtk_toggle_button_set_active(t, 1)
+      all.add t
+      t.onClick(proc () =
+        for j, x in all: gtk_toggle_button_set_active(x, cint(j == idx))
+        changed(idx))
+      adw_wrap_box_append(wb, t)
+  adw_preferences_group_add(result, wb)
+
+proc myList(w: Win, box: W) =
+  ## my proposals with the filters applied (server-side: status, kind, field), grouped by code
+  let (_, kind, field) = KindChoices[mineKind]
+  var q = {"status": StatusChoices[mineStatus][1], "mine": "1", "limit": "500"}.toTable
+  if kind.len > 0: q["kind"] = kind
+  if field.len > 0: q["field"] = field
   var subs: seq[JNode]
-  try: subs = w.a.call("GET", "/api/submissions", nil, {"status": "all", "limit": "200"}.toTable)["submissions"].elems
+  try: subs = w.a.call("GET", "/api/submissions", nil, q)["submissions"].elems
   except ApiError as e:
     box.add label(e.msg, "dim-label")
     return
-  let mine = subs.filterIt(it["mine"].b)
-  if mine.len == 0: box.add label("You have proposed nothing yet.", "dim-label")
-  for i in 0 ..< mine.len:
-    closureScope:
-      let sub = mine[i]
-      let id = sub["id"].i
-      let g = group(proposalTitle(sub), sub["status"].s & " · " & sub.at("created") &
-                    (if s(sub, "note").len > 0: " · " & s(sub, "note") else: ""))
-      for (lab, v) in proposalRows(sub): adw_preferences_group_add(g, row(lab, v, selectable = true))
-      if sub["status"].s in ["pending", "conflict"]:
-        adw_preferences_group_add(g, button("Withdraw", "", proc () =
-          confirm(w.window, "Withdraw this proposal?", "", "Withdraw", true, proc () =
-            if w.act(id, "withdraw", newObj(), "Withdrawn"): w.refreshPage(box, proc (b: W) = w.myProposals(b)))))
-      box.add g
-  # photos others proposed: members vote
-  let photosOpen = subs.filterIt(not it["mine"].b and it["kind"].s == "photo" and it["status"].s in ["pending", "conflict"])
-  if photosOpen.len > 0:
-    let g = group("Photos waiting for approval", "Vote for the ones you find useful; an admin decides.")
-    for i in 0 ..< photosOpen.len:
+  if subs.len == 0:
+    box.add label(if mineStatus == 0 and mineKind == 0: "You have proposed nothing yet." else: "None of your proposals match.", "dim-label")
+    return
+  var order: seq[string]
+  var per: Table[string, seq[JNode]]
+  for x in subs:
+    let key = if s(x, "code").len > 0: s(x, "code") else: "tag:" & s(x, "tag")
+    if key notin per: order.add key
+    per.mgetOrPut(key, @[]).add x
+  box.add label($subs.len & (if subs.len == 1: " proposal" else: " proposals") & ", " & $order.len &
+                (if order.len == 1: " code" else: " codes"), "dim-label")
+  for key in order:
+    let items = per[key]
+    let g = w.codeHeader(s(items[0], "code"), s(items[0], "tag"), "")
+    for i in 0 ..< items.len:
       closureScope:
-        let sub = photosOpen[i]
+        let sub = items[i]
         let id = sub["id"].i
-        adw_preferences_group_add(g, navRow(s(sub, "target") & " · by " & s(sub, "by_name"),
+        let st = sub["status"].s
+        let stName = case st
+          of "pending": "waiting for approval"
+          of "conflict": "held: it clashes"
+          else: st
+        adw_preferences_group_add(g, row(proposalTitle(sub), stName & " · " & sub.at("created") &
+                                         (if s(sub, "note").len > 0 and st != "conflict": " · " & s(sub, "note") else: ""), selectable = true))
+        for (lab, v) in proposalRows(sub): adw_preferences_group_add(g, row(lab, v, selectable = true))
+        if st in ["pending", "conflict"]:
+          let wb = button("Withdraw", "", proc () =
+            confirm(w.window, "Withdraw this proposal?", "", "Withdraw", true, proc () =
+              if w.act(id, "withdraw", newObj(), "Withdrawn"): w.refreshPage(box, proc (b: W) = w.myList(b))))
+          setAccessibleDescription(wb, proposalTitle(sub))
+          adw_preferences_group_add(g, wb)
+    box.add g
+
+proc myProposals(w: Win, box: W) =
+  let list = vbox(12)
+  box.add chips("Status", StatusChoices.mapIt(it[0]), mineStatus, proc (i: int) =
+    mineStatus = i
+    list.clear()
+    w.myList(list))
+  box.add chips("Kind", KindChoices.mapIt(it[0]), mineKind, proc (i: int) =
+    mineKind = i
+    list.clear()
+    w.myList(list))
+  w.myList(list)
+  box.add list
+  # photos others proposed: members vote where several photos of one kind compete for a code
+  var groups: seq[JNode]
+  try: groups = w.a.call("GET", "/api/submissions", nil, {"status": "open", "kind": "photo", "group": "code"}.toTable)["groups"].elems
+  except ApiError: return
+  var cands: seq[JNode]
+  for grp in groups:
+    for kd in grp["kinds"].elems:
+      if kd["pick"].kind == jBool and kd["pick"].b:
+        for x in kd["items"].elems:
+          if not x["mine"].b: cands.add x
+  if cands.len > 0:
+    let g = group("Photos to vote on", "Several photos of the same kind wait for these codes. Vote for the ones you find useful; an admin picks one.")
+    for i in 0 ..< cands.len:
+      closureScope:
+        let sub = cands[i]
+        let id = sub["id"].i
+        adw_preferences_group_add(g, navRow(s(sub, "code") & " · " & (if s(sub, "photo_kind") == "plate": "tag plate" else: "equipment") &
+                                            " photo by " & s(sub, "by_name"),
           $(if sub.get("votes") != nil: sub["votes"].i else: 0) & " votes" & (if sub.get("voted") != nil and sub["voted"].b: " (yours)" else: ""),
-          "Vote for this photo", proc () =
+          "Vote for this photo by " & s(sub, "by_name"), proc () =
             if w.act(id, "vote", newObj(), "Vote changed"): w.refreshPage(box, proc (b: W) = w.myProposals(b))))
     box.add g
+
+proc leaderboard*(w: Win, box: W) =
+  ## the user's "Leaderboard": members by approved contributions, what each contributed, approvals and rejections,
+  ## the ratio, the last contribution (GET /api/leaderboard, every member)
+  var d: JNode
+  try: d = w.a.call("GET", "/api/leaderboard")
+  except ApiError as e:
+    box.add label(e.msg, "dim-label")
+    return
+  let people = d["people"].elems
+  if people.len == 0:
+    box.add label("Nobody yet.", "dim-label")
+    return
+  proc num(n: JNode, k: string): int64 =
+    if n != nil and n.get(k) != nil and n[k].kind == jInt: n[k].i else: 0
+  let g = group("Members by approved contributions", "Counted from the whole plant's history. Ratio = approved per rejected.")
+  for p in people:
+    let name = if s(p, "name").len > 0: s(p, "name") elif s(p, "full_name").len > 0: s(p, "full_name") else: "?"
+    let rate = p.get("approval_rate")
+    let ratio = p.get("ratio")
+    var parts = @[$num(p, "approved") & " approved", $num(p, "rejected") & " rejected"]
+    if num(p, "pending") > 0: parts.add $num(p, "pending") & " waiting"
+    if num(p, "withdrawn") > 0: parts.add $num(p, "withdrawn") & " withdrawn"
+    parts.add(if ratio != nil and ratio.kind == jFloat: "ratio " & formatFloat(ratio.f, ffDecimal, 1)
+              elif num(p, "approved") > 0: "no rejections" else: "")
+    if rate != nil and rate.kind == jFloat: parts.add $int(round(rate.f * 100)) & " % approved"
+    parts.add(if p.get("last") != nil and p["last"].kind == jInt: "last " & p.at("last")[0 ..< 10] else: "nothing yet")
+    let ex = adw_expander_row_new()
+    adw_preferences_row_set_use_markup(ex, 0)
+    adw_preferences_row_set_title(ex, ("#" & $num(p, "rank") & "  " & name).cstring)
+    adw_expander_row_set_subtitle(ex, parts.filterIt(it.len > 0).join(" · ").cstring)
+    var hasAny = false
+    let kinds = p.get("kinds")
+    if kinds != nil and kinds.kind == jObj:
+      for (k, lab) in d["kinds"].fields:
+        let c = kinds.get(k)
+        if num(c, "total") == 0: continue
+        hasAny = true
+        var bits = @[$num(c, "approved") & " approved"]
+        if num(c, "rejected") > 0: bits.add $num(c, "rejected") & " rejected"
+        if num(c, "pending") > 0: bits.add $num(c, "pending") & " waiting"
+        if num(c, "withdrawn") > 0: bits.add $num(c, "withdrawn") & " withdrawn"
+        adw_expander_row_add_row(ex, row(lab.s & ": " & $num(c, "total"), bits.join(" · ")))
+    if num(p, "decided") > 0 or num(p, "votes") > 0:
+      hasAny = true
+      adw_expander_row_add_row(ex, row("Reviewing", $num(p, "decided") & " decisions · " & $num(p, "votes") & " votes"))
+    if not hasAny: adw_expander_row_add_row(ex, row("No contributions yet", ""))
+    adw_preferences_group_add(g, ex)
+  box.add g
 
 proc history(w: Win, box: W) =
   var revs: seq[JNode]
@@ -139,37 +317,80 @@ proc history(w: Win, box: W) =
       adw_preferences_group_add(g, rw)
   box.add g
 
+var showHidden = false     ## Devices and People: also the removed ones an admin hid (this run only)
+
+proc hide(w: Win, body: JNode, done: string, again: proc ()) =
+  ## POST /api/hidden: display only, the log and History keep everything
+  try:
+    let r = w.a.call("POST", "/api/hidden", body)
+    w.toast(done & (if r.get("changed") != nil and r["changed"].kind == jInt and r["changed"].i == 0: " (nothing to change)" else: ""))
+    again()
+  except ApiError as e: w.toast(e.msg)
+
+proc hiddenControls(w: Win, box: W, hiddenN: int, what: string, again: proc ()): W =
+  ## "Clear removed" and "Show hidden (n)"
+  result = hbox(8)
+  let clear = button("Clear removed", "", proc () =
+    w.hide(newObj(@[("clear_removed", newBool(true))]), "Removed devices and people hidden", again))
+  setAccessibleDescription(clear, "Hide every removed device and every person with no active device from these lists")
+  result.add clear
+  if hiddenN > 0 or showHidden:
+    let t = gtk_toggle_button_new_with_label((if showHidden: "Hide hidden" else: "Show hidden (" & $hiddenN & ")").cstring)
+    gtk_toggle_button_set_active(t, cint(showHidden))
+    setAccessibleDescription(t, if showHidden: "Leave the hidden " & what & " out again" else: "List the " & $hiddenN & " hidden " & what & " too")
+    t.onClick(proc () =
+      showHidden = not showHidden
+      again())
+    result.add t
+
 proc people(w: Win, box: W) =
   var users: seq[JNode]
-  try: users = w.a.call("GET", "/api/users")["users"].elems
+  try: users = w.a.call("GET", "/api/users", nil, if showHidden: {"show_hidden": "1"}.toTable else: initTable[string, string]())["users"].elems
   except ApiError as e:
     box.add label(e.msg, "dim-label")
     return
-  let g = group("People", "Everyone who has an identity in this plant. Devices are added under Devices.")
-  for u in users:
-    adw_preferences_group_add(g, row(s(u, "full_name") & " (" & s(u, "username") & ")",
-      s(u, "role") & (if s(u, "position").len > 0: " · " & s(u, "position") else: ""), selectable = true))
-  box.add g
-  let add = group("Add a person", "For someone whose device will join later (by QR code, request file or nearby admin).")
-  let un = entryRow("Username", "")
-  let fn = entryRow("Full name", "")
-  let pos = entryRow("Position (optional)", "")
-  for r in [un, fn, pos]: adw_preferences_group_add(add, r)
-  adw_preferences_group_add(add, button("Add", "", proc () =
+  let again = proc () = w.refreshPage(box, proc (b: W) = w.people(b))
+  var nHidden = 0
+  if not showHidden:
     try:
-      discard w.a.call("POST", "/api/users", newObj(@[("username", newStr(text(un).strip.toLowerAscii)),
-        ("full_name", newStr(text(fn).strip)), ("position", newStr(text(pos).strip)), ("role", newStr("user"))]))
-      w.toast("Added " & text(un).strip)
-      w.refreshPage(box, proc (b: W) = w.people(b))
-    except ApiError as e: w.toast(e.msg)))
-  box.add add
+      for u in w.a.call("GET", "/api/users", nil, {"show_hidden": "1"}.toTable)["users"].elems:
+        if u.get("hidden") != nil and u["hidden"].kind == jBool and u["hidden"].b: inc nHidden
+    except ApiError: discard
+  box.add w.hiddenControls(box, nHidden, "people", again)
+  let g = group("People", "Everyone who has an identity in this plant. Devices are added under Devices. People whose " &
+                "devices were all removed can be hidden here (History keeps them).")
+  for i in 0 ..< users.len:
+    closureScope:
+      let u = users[i]
+      let pid = s(u, "person")
+      # removed: had devices and has none left (someone whose device hasn't joined yet was never removed)
+      let removed = u.get("active") != nil and u["active"].kind == jBool and not u["active"].b and
+                    u.get("devices") != nil and u["devices"].kind == jInt and u["devices"].i > 0
+      let hidden = u.get("hidden") != nil and u["hidden"].kind == jBool and u["hidden"].b
+      let name = s(u, "full_name") & " (" & s(u, "username") & ")"
+      let rw = row(name, s(u, "role") & (if s(u, "position").len > 0: " · " & s(u, "position") else: "") &
+                   (if hidden: " · hidden" elif removed: " · no active device" else: ""), selectable = true)
+      if removed and pid.len > 0:
+        let b = button(if hidden: "Unhide" else: "Hide", "flat", proc () =
+          w.hide(newObj(@[("ids", newArr(@[newStr(pid)])), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden", again))
+        setAccessibleDescription(b, (if hidden: "Show " else: "Hide ") & name & " in this list" & (if hidden: " again" else: ""))
+        gtk_widget_set_valign(b, GTK_ALIGN_CENTER)
+        adw_action_row_add_suffix(rw, b)
+      adw_preferences_group_add(g, rw)
+  box.add g
+  # People join with their devices (invite, nearby admin, request file); the join form asks for their position.
+  # (The "Add a person" form that was here posted to POST /api/users, which only the server has: on a laptop it always
+  # failed with "not found".)
 
 proc devices(w: Win, box: W) =
   var d: JNode
-  try: d = w.a.call("GET", "/api/devices")
+  try: d = w.a.call("GET", "/api/devices", nil, if showHidden: {"show_hidden": "1"}.toTable else: initTable[string, string]())
   except ApiError as e:
     box.add label(e.msg, "dim-label")
     return
+  let again = proc () = w.refreshPage(box, proc (b: W) = w.devices(b))
+  if w.isAdmin:
+    box.add w.hiddenControls(box, if d.get("hidden") != nil and d["hidden"].kind == jInt: int(d["hidden"].i) else: 0, "devices", again)
   proc devRows(list: JNode, title: string) =
     if list == nil or list.kind != jArr: return
     let g = group(title)
@@ -178,7 +399,15 @@ proc devices(w: Win, box: W) =
         let x = list.elems[i]
         let dev = s(x, "device")
         let rw = row((if s(x, "label").len > 0: s(x, "label") else: "device") & " · " & s(x, "username") & (if x["this_computer"].b: " (this device)" else: ""),
-                     dev[0 ..< min(16, dev.len)] & "…" & (if x["revoked"].b: " · removed" else: ""))
+                     dev[0 ..< min(16, dev.len)] & "…" & (if x["revoked"].b: " · removed" else: "") &
+                     (if x.get("hidden") != nil and x["hidden"].kind == jBool and x["hidden"].b: " · hidden" else: ""))
+        if x["revoked"].b and w.isAdmin:
+          let hidden = x.get("hidden") != nil and x["hidden"].kind == jBool and x["hidden"].b
+          let hb = button(if hidden: "Unhide" else: "Hide", "flat", proc () =
+            w.hide(newObj(@[("ids", newArr(@[newStr(dev)])), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden", again))
+          setAccessibleDescription(hb, (if hidden: "Show the removed device " else: "Hide the removed device ") & s(x, "label") & " of " & s(x, "username"))
+          gtk_widget_set_valign(hb, GTK_ALIGN_CENTER)
+          adw_action_row_add_suffix(rw, hb)
         if not x["revoked"].b and not x["this_computer"].b:
           let b = button("Remove", "flat destructive-action", proc () =
             confirm(w.window, "Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again.",
@@ -205,7 +434,7 @@ proc devices(w: Win, box: W) =
             let r = reqs[i]
             let dev = s(r, "device")
             let req = r["request"]
-            let rw = row(s(req, "full_name") & " (" & s(req, "username") & ") · " & s(req, "label"), "code " & s(r, "code"))
+            let rw = row(s(req, "full_name") & " (" & s(req, "username") & ") · " & s(req, "label"), "code " & s(r, "code") & positionNote(r))
             let choices = @[("Accept", "accept"), ("Refuse", "refuse")]
             for ci in 0 ..< choices.len:
               closureScope:
@@ -296,35 +525,35 @@ proc account(w: Win, box: W) =
   box.add sg
 
 proc rootKeySection(w: Win): W =
-  ## R14: the plant's authority has an offline backup the manager holds (PROTOCOL-v2 §20: PBKDF2 ≥ 600 000 + AES-GCM)
+  ## R14: the plant's authority has an offline backup the manager holds (PROTOCOL-v2 §20: PBKDF2 ≥ 600 000 + AES-GCM).
+  ## The passphrase is generated (80 bits, decision 0023, issue #29) and shown once; the file is written 0600.
   let g = group("Root key", "The plant's root key signs the manager role and settles stolen devices. Keep an encrypted " &
-                "copy offline (a USB stick in a drawer), protected by a passphrase only you know.")
+                "copy offline (a USB stick in a drawer). Its passphrase is made for you: write it down and keep it apart.")
   let has = w.a.store.getRow("keys", "root") != nil
   adw_preferences_group_add(g, row("On this device", if has: "yes" else: "no (it is on another device of the manager)"))
-  let pw1 = passwordRow("Passphrase (12 characters or more)")
-  let pw2 = passwordRow("The passphrase again")
-  adw_preferences_group_add(g, pw1)
-  adw_preferences_group_add(g, pw2)
+  let pw1 = passwordRow("Passphrase of the backup to restore")
   if has:
+    let shown = row("Passphrase of the backup just saved", "(save a backup to see it)", selectable = true)
+    adw_preferences_group_add(g, shown)
     adw_preferences_group_add(g, button("Save an encrypted backup…", "", proc () =
-      let p1 = text(pw1)
-      if p1.len < 12:
-        w.toast("Use a passphrase of 12 characters or more")
-        return
-      if p1 != text(pw2):
-        w.toast("The two passphrases differ")
-        return
       saveFile(w.window, "Save the root key backup", "root-key.kksroot", proc (path: string) =
         if path.len == 0: return
+        let pass = w.a.p.newBackupPassphrase()
         let k = w.a.store.getRow("keys", "root")
         let plain = toText(k)
         var bytes: seq[byte]
         for c in plain: bytes.add byte(c)
-        let sealed = w.a.p.passphraseSeal(p1, bytes)
+        let sealed = w.a.p.passphraseSeal(pass, bytes)
         let doc = newObj(@[("kks_root_backup", newInt(2)), ("plant", newStr(w.a.plantName)), ("root", newStr(w.a.n.root)),
                            ("sealed", sealed)])
-        writeFile(path, toText(doc))
-        w.toast("Saved. Test it once with Restore on another device, then store it offline."))))
+        try:
+          writePrivate(path, toText(doc))
+        except OSError as e:
+          w.toast("Not saved: " & e.msg)
+          return
+        adw_action_row_set_subtitle(shown, pass.cstring)
+        w.toast("Saved. Write down the passphrase shown above: it is not kept anywhere. Test the backup once with Restore."))))
+  adw_preferences_group_add(g, pw1)
   adw_preferences_group_add(g, button("Restore from a backup…", "", proc () =
     openFile(w.window, "Open a root key backup", proc (path: string) =
       if path.len == 0: return
@@ -414,7 +643,8 @@ proc managePage*(w: Win): W =
       let tv = toolbarView(headerBar(adw_window_title_new(title.cstring, "")), scrolled(b))
       adw_navigation_view_push(w.sideNav, adw_navigation_page_new_with_tag(tv, title.cstring, tag.cstring))))
   if w.isAdmin: sub("Approvals", "Proposals waiting for a decision", "approvals", proc (b: W) = w.approvals(b), live = true)
-  sub("My proposals", "What you proposed, and photos to vote on", "mine", proc (b: W) = w.myProposals(b), live = true)
+  sub("My proposals", "What you proposed, filtered and by code; photos to vote on", "mine", proc (b: W) = w.myProposals(b), live = true)
+  sub("Leaderboard", "Members by approved contributions", "leaderboard", proc (b: W) = w.leaderboard(b), live = true)
   if w.isAdmin:
     sub("History", "Every change, with revert and restore", "history", proc (b: W) = w.history(b), live = true)
     sub("People", "Accounts and roles", "people", proc (b: W) = w.people(b))

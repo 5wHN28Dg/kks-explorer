@@ -94,12 +94,35 @@ export class Room {
           const key = await crypto.subtle.importKey('raw', raw, {name: 'ECDSA', namedCurve: 'P-256'}, false, ['verify']);
           ok = await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, key, b64u(sig), new TextEncoder().encode(`kks-relay-hello-v2\n${a.room}\n${ts}`));
         }
+        // decision 0050: the plant's room key signs too, and the room is the room key's; the relay learns only that
+        // public key
+        if (ok && (typeof m.member !== 'string' || typeof m.msig !== 'string' || !KEY2.test(m.member))) {
+          ws.send(JSON.stringify({t: 'error', why: "the plant's relay key is missing: update the app"})); ws.close(1008, 'no relay key'); return;
+        }
+        if (ok) {
+          const mraw = b64u(m.member);
+          const mid = b64uOf(new Uint8Array(await crypto.subtle.digest('SHA-256', mraw)).slice(0, 24));
+          const roomOf = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`kks-relay-room-v3\n${mid}`)))]
+            .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+          ok = mraw.length === 65 && mraw[0] === 4 && roomOf === a.room;
+          if (ok) {
+            const mkey = await crypto.subtle.importKey('raw', mraw, {name: 'ECDSA', namedCurve: 'P-256'}, false, ['verify']);
+            ok = await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, mkey, b64u(m.msig),
+                                            new TextEncoder().encode(`kks-relay-member-v3\n${a.room}\n${peer}\n${ts}`));
+          }
+        }
       } catch (e) { ok = false }
       if (!ok) { ws.send(JSON.stringify({t: 'error', why: 'bad hello'})); ws.close(1008, 'bad hello'); return }
       const members = this.members(), old = members.get(peer);
+      // a captured hello replayed (within its 300 s) must not knock the device off: not its present socket's hello
+      // again, nor an older one (issue #44). A fresh hello has a new signature (ECDSA is randomized) and ts ≥ the last.
+      // "Again" is judged on r, the signature's first half as bytes: s ↦ n − s and other spellings of the same
+      // base64 keep it, so they are the same hello.
+      const r = b64uOf(b64u(sig).slice(0, 32)), was = old?.deserializeAttachment();
+      if (was && (was.r === r || ts < was.ts)) { ws.send(JSON.stringify({t: 'error', why: 'replayed hello'})); ws.close(1008, 'replayed hello'); return }
       if (!old && members.size >= MAX_PEERS) { ws.send(JSON.stringify({t: 'error', why: 'room full'})); ws.close(1008, 'room full'); return }
       if (old) { old.serializeAttachment({kind: 'room', room: a.room, replaced: true}); try { old.close(1000, 'replaced') } catch (e) {} }
-      ws.serializeAttachment({...a, peer});
+      ws.serializeAttachment({...a, peer, ts, r});
       ws.send(JSON.stringify({t: 'welcome', peers: [...members.keys()].filter(p => p !== peer)}));
       this.tell({t: 'joined', peer}, peer);
       return;

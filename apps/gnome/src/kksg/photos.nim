@@ -2,8 +2,8 @@
 ## four colours, undo; burned into the image), scale to at most 1600 px, compress as JPEG XL at distance 1.9
 ## (the user's choice 2026-09-27), propose it.
 
-import std/[math, strutils, base64, os, sequtils]
-import kks/[json, node]
+import std/[math, strutils, base64, os, sequtils, times, typedthreads]
+import kks/[json, node, model, api]
 import kksi/jxl
 import gtk, ui, appstate, win
 
@@ -115,7 +115,8 @@ proc rgbaSurface(px: seq[byte], w, h: int): Surface =
       d[p + 3] = byte(a)
   cairo_surface_mark_dirty(result)
 
-proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w, h: int, caption, note: string)) =
+proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w, h: int, caption, note: string),
+               plate = false) =
   ## the editor: the picture scaled to MaxSide, shapes drawn on top, then flattened to RGB. Zoom: −/+/Fit, the wheel,
   ## two fingers (pinch, pan); pan also with the right button. While a finger draws, a loupe shows the area under it
   ## magnified, above the finger (touchscreens only: the drag's device says so).
@@ -286,7 +287,7 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   wheel.onScroll(proc (dx, dy: float) = zoomAt(px0, py0, zoom * exp(-dy * 0.15)))
   gtk_widget_add_controller(area, wheel)
   let d = adw_dialog_new()
-  adw_dialog_set_title(d, "Add a photo")
+  adw_dialog_set_title(d, if plate: "Add a tag plate photo" else: "Add a photo")
   adw_dialog_set_content_width(d, 1000)
   adw_dialog_set_content_height(d, 780)
   let tools = hbox(4)
@@ -370,12 +371,208 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
     cairo_surface_destroy(outS)
     adw_dialog_close(d)
     done(rgb, ow, oh, text(caption).strip, text(note).strip))
-  let header = headerBar(adw_window_title_new("Add a photo", "Draw to point things out"))
+  let header = headerBar(adw_window_title_new(if plate: "Add a tag plate photo" else: "Add a photo",
+                                              if plate: "The metal plate with the KKS code" else: "Draw to point things out"))
   adw_header_bar_pack_end(header, send)
   adw_dialog_set_child(d, toolbarView(header, body))
   present(d, w.window)
 
-proc addPhoto*(w: Win, kks: string) =
+# ---------------------------------------------------------------- the photo queue (the user: "background compression
+# and a photo queue"). JPEG XL at effort 9 takes seconds: it runs on a worker thread, one photo after another in the
+# order they were added, and keeps going when the panel or the editor closes. Each photo is proposed as soon as it is
+# compressed, so they arrive in order. Before 2026-10-08 it ran on the main thread, freezing the window meanwhile.
+
+type
+  EncJob = object
+    id: int
+    rgb: seq[byte]
+    w, h: int
+  EncDone = object
+    id: int
+    data: string
+    err: string
+  Queued = object
+    id: int
+    kks, caption, note, floor: string
+
+var
+  encJobs: Channel[EncJob]
+  encDone: Channel[EncDone]
+  encThread: Thread[void]
+  encStarted = false
+  queue: seq[Queued]             ## main thread only: waiting or being compressed, oldest first
+  nextId = 0
+  polling = false
+
+proc encWorker() {.thread.} =
+  while true:
+    let j = encJobs.recv()
+    var d = EncDone(id: j.id)
+    try: d.data = encodeLossy(j.rgb, j.w, j.h, 3, 1.9, 9)
+    except CatchableError, Defect:      # always answer: a dead worker would leave the queue waiting for ever
+      d.err = getCurrentExceptionMsg()
+    encDone.send(d)
+
+proc queueText(): string =
+  if queue.len == 0: return ""
+  "Compressing " & (if queue.len == 1: "1 photo" else: $queue.len & " photos") & " (" & queue[0].kks &
+    (if queue.len > 1: ", then " & queue[1 .. ^1].mapIt(it.kks).join(", ") else: "") &
+    "). They are sent in order; you can keep working."
+
+proc showQueue(w: Win) =
+  if w.queueLabel == nil: return
+  let t = queueText()
+  gtk_label_set_text(w.queueLabel, t.cstring)
+  gtk_widget_set_visible(w.queueBar, cint(t.len > 0))
+
+proc queuedCount*(): int = queue.len   ## photos still being compressed or waiting (closing the window loses them)
+
+proc queuedFor*(kks: string): int =
+  for q in queue:
+    if q.kks == kks: inc result
+
+proc sendPhoto(w: Win, q: Queued, jxlData: string) =
+  var payload = newObj(@[("kks", newStr(q.kks)), ("caption", newStr(q.caption)),
+                         ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))])
+  if q.floor.len > 0: payload["floor"] = newStr(q.floor)   # written first, only if the code still has no floor
+  discard w.submit("photo", payload, "photo of " & q.kks, q.note)
+
+proc enqueue(w: Win, rgb: seq[byte], ow, oh: int, kks, caption, note, floor: string) =
+  if not encStarted:
+    encJobs.open()
+    encDone.open()
+    createThread(encThread, encWorker)
+    encStarted = true
+  inc nextId
+  queue.add Queued(id: nextId, kks: kks, caption: caption, note: note, floor: floor)
+  encJobs.send(EncJob(id: nextId, rgb: rgb, w: ow, h: oh))
+  w.showQueue()
+  if w.selected.len > 0: idle(proc () = w.rebuildPanel())   # not inside the click (an AT-SPI action)
+  if polling: return
+  polling = true
+  timeout(200, proc (): bool =
+    var done = false
+    while true:
+      let (got, d) = encDone.tryRecv()
+      if not got: break
+      var i = 0
+      while i < queue.len and queue[i].id != d.id: inc i
+      if i < queue.len:
+        let q = queue[i]
+        queue.delete(i)
+        if d.err.len > 0: w.toast("Photo of " & q.kks & " could not be compressed: " & d.err)
+        else:
+          try: w.sendPhoto(q, d.data)
+          except CatchableError as e: w.toast("Photo of " & q.kks & " was not sent: " & e.msg)
+        done = true
+      w.showQueue()
+    if done and w.selected.len > 0: w.rebuildPanel()   # its "being compressed" line
+    polling = queue.len > 0
+    polling)
+
+proc floorKnown(w: Win, kks: string): bool =
+  ## the code has a floor, I proposed one that is still open, or a queued photo carries one
+  let e = w.m.equipment(kks)
+  if s(e, "floor").strip.len > 0: return true
+  # the loaded model lags a change by a moment (a photo just sent with its floor): ask the core itself
+  try:
+    let eq = w.a.call("GET", "/api/state")["equipment"].get(kks)
+    if s(eq, "floor").strip.len > 0: return true
+  except ApiError: discard
+  for q in queue:
+    if q.kks == kks and q.floor.len > 0: return true
+  for sub in w.myOpen():
+    let p = sub.get("payload")
+    if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == kks and p.get("changes") != nil and
+       s(p["changes"], "floor").strip.len > 0: return true
+
+proc floorsMissing*(w: Win, codes: openArray[string]): seq[string] =
+  ## the codes with no floor yet (as floorKnown, but the core's state is read once for all of them)
+  var st: JNode = nil
+  for k in codes:
+    if s(w.m.equipment(k), "floor").strip.len > 0: continue
+    if st == nil:
+      try: st = w.a.call("GET", "/api/state")["equipment"]
+      except ApiError: st = newObj()
+    if s(st.get(k), "floor").strip.len > 0: continue
+    var known = false
+    for q in queue:
+      if q.kks == k and q.floor.len > 0: known = true
+    if not known:
+      for sub in w.myOpen():
+        let p = sub.get("payload")
+        if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == k and p.get("changes") != nil and
+           s(p["changes"], "floor").strip.len > 0: known = true
+    if not known: result.add k
+
+proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
+  ## the user's rule: a photo needs its floor. Asked before the picture, sent with it.
+  let d = adw_alert_dialog_new(("Which floor is " & kks & " on?").cstring,
+    "A photo needs its floor, and this equipment has none yet. Enter the floor: a whole number from 0 (ground) to 10. It is sent with the photo.".cstring)
+  let e = gtk_entry_new()
+  gtk_entry_set_placeholder_text(e, "Floor, 0 to 10")
+  setAccessibleLabel(e, "Floor of " & kks)
+  adw_alert_dialog_set_extra_child(d, e)
+  adw_alert_dialog_add_response(d, "cancel", "Cancel")
+  adw_alert_dialog_add_response(d, "yes", "Continue")
+  adw_alert_dialog_set_response_appearance(d, "yes", ADW_RESPONSE_SUGGESTED)
+  adw_alert_dialog_set_default_response(d, "yes")
+  adw_alert_dialog_set_close_response(d, "cancel")
+  d.onResponse(proc (id: string) =
+    if id != "yes": return
+    let f = text(e).strip
+    if not (f == "10" or (f.len == 1 and f[0] in Digits)):
+      w.toast("Floor: a whole number from 0 to 10 (the height goes in Elevation). The photo was not added.")
+      return
+    fn(f))
+  present(d, w.window)
+
+proc hasPlate(w: Win, kks: string): bool =
+  ## the code has a tag plate photo, or one is on its way
+  for q in queue:
+    if q.kks == kks and isPlate(q.caption): return true
+  let ph = if w.m.state != nil: w.m.state.get("photos") else: nil
+  if ph != nil:
+    for p in ph.elems:
+      if s(p, "kks") == kks and isPlate(s(p, "caption")): return true
+
+proc plateCaption(extra: string): string =
+  ## a tag plate photo's caption starts with "Tag plate" (PROTOCOL-v2 §9, as on Android)
+  if extra.strip.len == 0: PlateCaption else: PlateCaption & " · " & extra.strip
+
+proc addPhoto*(w: Win, kks: string, plate = false) =
+  ## an equipment photo, or (plate) a photo of its tag plate. After an equipment photo of a code with no tag plate
+  ## photo, the app offers one (as Android does).
+  # tests: KKS_PHOTO_FILE names the picture instead of the file chooser (as KKS_CAMERA_FILE for the camera)
+  let pick = proc (title: string, fn: proc (path: string)) =
+    if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
+  proc go(floor: string) =
+    pick(if plate: "Choose a photo of the tag plate" else: "Choose a photo", proc (path: string) =
+      if path.len == 0: return
+      let (iw, ih, px) = loadImage(path)
+      if iw == 0:
+        w.toast("That file could not be read as a picture.")
+        return
+      w.annotate(px, iw, ih, proc (rgb: seq[byte], ow, oh: int, caption, note: string) =
+        let offer = not plate and not w.hasPlate(kks)
+        w.enqueue(rgb, ow, oh, kks, if plate: plateCaption(caption) else: caption, note, floor)
+        if offer:
+          let d = adw_alert_dialog_new("And its tag plate?",
+            "A photo of the metal plate with the KKS code helps the next person find this equipment.")
+          adw_alert_dialog_add_response(d, "no", "Not now")
+          adw_alert_dialog_add_response(d, "yes", "Add it")
+          adw_alert_dialog_set_response_appearance(d, "yes", ADW_RESPONSE_SUGGESTED)
+          adw_alert_dialog_set_default_response(d, "yes")
+          adw_alert_dialog_set_close_response(d, "no")
+          d.onResponse(proc (id: string) =
+            if id == "yes": w.addPhoto(kks, plate = true))
+          present(d, w.window), plate = plate))
+  if w.floorKnown(kks): go("")
+  else: w.askFloor(kks, go)
+
+proc takePhoto*(w: Win, send: proc (dataUrl, caption, note: string)) =
+  ## a picture from a file, marked up in the editor, compressed to JPEG XL: `send` gets its data URL (a photo of
+  ## several codes at once, multi.nim; one code's photos go through the queue above)
   # tests: KKS_PHOTO_FILE names the picture instead of the file chooser (as KKS_CAMERA_FILE for the camera)
   let pick = proc (title: string, fn: proc (path: string)) =
     if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
@@ -393,8 +590,8 @@ proc addPhoto*(w: Win, kks: string) =
         except JxlError as e:
           w.toast(e.msg)
           return
-        discard w.submit("photo", newObj(@[("kks", newStr(kks)), ("caption", newStr(caption)),
-                         ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))]), "photo of " & kks, note))))
+        send("data:image/jxl;base64," & encode(jxlData), caption, note))))
+
 
 proc photoSection*(w: Win, kks: string): W =
   result = group("Photos")
@@ -405,7 +602,9 @@ proc photoSection*(w: Win, kks: string): W =
   var n = 0
   let ph = if w.m.state != nil: w.m.state.get("photos") else: nil
   if ph != nil:
-    let items3 = toSeq(ph.elems.filterIt(s(it, "kks") == kks))
+    # the tag plate first: it is how the equipment is recognised in the field
+    let items3 = ph.elems.filterIt(s(it, "kks") == kks and isPlate(s(it, "caption"))) &
+                 ph.elems.filterIt(s(it, "kks") == kks and not isPlate(s(it, "caption")))
     for i3 in 0 ..< items3.len:
       closureScope:   # each pass gets its own copies of the captured variables
         let p = items3[i3]
@@ -415,6 +614,7 @@ proc photoSection*(w: Win, kks: string): W =
         let pid = s(p, "id")
         let (have, data) = w.photoBytes(file)
         let cell = vbox(2)
+        if isPlate(caption): cell.add label("Tag plate", "caption-heading")
         if have:
           let tex = textureOfPhoto(data)
           let pic = gtk_picture_new_for_paintable(tex)
@@ -428,10 +628,22 @@ proc photoSection*(w: Win, kks: string): W =
           cell.add b
         else:
           cell.add label("Not on this device yet (it arrives with the next sync)", "dim-label caption")
+        let by = s(p, "by_name")
+        let tsv = if p.get("submitted") != nil and p["submitted"].kind == jInt: p["submitted"] else: p.get("created")
+        let dd = if tsv != nil and tsv.kind == jInt and tsv.i > 0: fromUnix(tsv.i).local.format("yyyy-MM-dd") else: ""
+        if by.len > 0 or dd.len > 0:
+          cell.add label((if by.len > 0: "by " & by else: "") & (if by.len > 0 and dd.len > 0: ", " else: "") & dd, "dim-label caption")
         let del = button("Delete", "flat caption", proc () =
           confirm(w.window, "Delete this photo?", "It is removed for everyone once approved.", "Delete", true, proc () =
             discard w.submit("photo_delete", newObj(@[("photo_id", newStr(pid))]), "delete a photo")))
         cell.add del
         adw_wrap_box_append(box, cell)
   if n > 0: adw_preferences_group_add(g, box)
-  adw_preferences_group_add(g, button("+ Add photo", "", proc () = w.addPhoto(kks)))
+  let q = queuedFor(kks)
+  if q > 0:
+    adw_preferences_group_add(g, label((if q == 1: "1 photo" else: $q & " photos") & " of this equipment being compressed; " &
+                                       "sent when ready.", "dim-label"))
+  let btns = hbox(8)
+  btns.add button("+ Add photo", "", proc () = w.addPhoto(kks))
+  btns.add button(if w.hasPlate(kks): "+ New tag plate photo" else: "+ Tag plate photo", "", proc () = w.addPhoto(kks, plate = true))
+  adw_preferences_group_add(g, btns)

@@ -9,15 +9,57 @@ It replaced the old Python importer (`import_sheet.py` + `extractor/`, removed w
 history) and **read exactly what that importer read**. That was the gate of decision 0026, met on 2026-10-01.
 
     kks-import DRAWING.pdf "Display name" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace]
-               [--data-dir plant-data] [--glyphs importer/fontlib.kgl] [--effort 7]
+               [--data-dir plant-data] [--glyphs importer/fontlib.kgl] [--effort 7] [--legend auto|hrsg|none]
 
 The last output line is `RESULT {json}`. Formats: docs/PATHSTORE.md (the files), docs/GLYPHLIB.md (the glyph
 library).
 
+## Valve types from the drawn symbols (`src/kksi/valves.nim`)
+
+Each valve tag (a full KKS with component `AA`) may get an optional `symbol` field in tags.json:
+
+    "symbol": {"type": "globe valve", "actuator": "none", "nc": false, "conf": 0.93, "bbox": [x0, y0, x1, y1]}
+
+- `type`: the HRSG legend's name: `globe valve` (a plain bowtie), `gate valve` (a full centre line), `check valve`
+  (an inner bar near one end), `min-flow valve` (inner bar and a stem), `control valve` (the body in a box),
+  `jam valve` (a stem ending in a T).
+- `actuator`: `motor` (a stem to a square: the legend's ELECTRIC valves) or `none`. The legend has no pneumatic
+  actuator, so none is reported.
+- `nc`: the body is hatched, which means normally closed. The legend table doesn't define hatching; that reading
+  rests on the user's confirmation of the convention on these drawings (2026-10-09).
+  Strokes ending on the body's outline are not counted, so hatching only counts when most strokes lie inside the
+  body. On the 7 HRSG sheets (2026-10-09) every typed body has either 0 or 25–28 counted strokes (the threshold is 6),
+  so no reading there is borderline. Sparse hatching drawn edge to edge would be missed.
+- `conf`: a heuristic for what to check first (body complete, hatch clear, link close and unambiguous), not a
+  probability.
+- `bbox`: the symbol's body in level-0 px, like the tag's.
+
+How:
+1. **Symbols.** The X finder looks for points where diagonal strokes reach out symmetrically in all four diagonal
+   directions; the strokes around each X give the body (sides, box) and the marks. Text beside a valve has upright
+   strokes too, so an actuator box only counts when the stem reaches it.
+2. **Legend.** Types are only written on a sheet that carries the HRSG legend table, recognised on the sheet: a row
+   of same-size symbols that includes a gate, a globe, a motorised gate, a motorised globe, a control and a check
+   valve. Other drawing families (the Block 1 / MA piping sheets) draw the same shapes with other meanings and have
+   no legend on the sheet, so their valves get no type. `--legend hrsg|none` overrides the search.
+3. **Link.** A tag links to its nearest symbol when the gap between their boxes is at most 25 units (12.5 pt), the
+   symbol's nearest valve tag is this tag, and the next symbol is at least 15 units further. A symbol that is
+   another tag's mutual nearest doesn't count as "the next" (stacks of valves, each tag touching its own). The
+   legend's symbols are never linked. Anything else stays without a type.
+
+The field is written on every import; `--keep-tags` refreshes it (removed where no symbol is linked any more) and
+changes nothing else of any tag. `tests/test_valves.nim` covers each legend shape, the legend row, the link rules and
+the --keep-tags annotation on synthetic drawings.
+
+**Gate on the real sheets (2026-10-08):** the previous importer and this one, on copies of all 17 sheets: every tag
+identical apart from `symbol`. Results and the eye check: the pull request that added this.
+
 ## Build
 
-1. MuPDF 1.28.2, the version PyMuPDF 1.28.2 bundles. Same renderer means the same glyph images. Fetch it once,
-   pinned by SHA-256:
+1. MuPDF 1.28.5. The importer was matched against PyMuPDF 1.28.2 (MuPDF 1.28.2: same renderer, same glyph images);
+   1.28.3-1.28.5 fix memory-safety bugs (#51). Checked on all 17 plant sheets (2026-10-08): the same tags and the
+   same `.kkp`, byte for byte; the overview pyramid identical on 16, on one ~300 anti-aliased pixels of 16 MP differ.
+   Fetch it once, pinned by SHA-256:
 
        sh importer/fetch_mupdf.sh          # into ~/.local/kksdev (KKS_DEV)
 

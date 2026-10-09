@@ -170,7 +170,9 @@ dependency decisions, for native code and for what runs in a browser engine alik
   - The Gradle wrapper is in `android/`: `./gradlew :app2:assembleDebug`. Check the APK's timestamp after building;
     a failure hidden by `-q | grep` once left the tests running a stale APK.
   - Rebuild `libkks.so` (`sh android/nim/build.sh`) after any core change, and commit it.
-  - Emulator: AVD Pixel_9_Pro_XL, `JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64`. Start it in its own capped scope
+  - A memory-capped build: `-PkksNativeJobs=3` (at most 3 native compile/link jobs; a clean build then fits in
+    6 GiB) and `--no-daemon --max-workers=2`. Without it Ninja runs one job per core and was OOM-killed at 6 GiB.
+  - Emulator: AVD Pixel_9_Pro_XL, `JAVA_HOME=/usr/lib/jvm/temurin-25-jdk-amd64`. Start it in its own capped scope
     with guest rendering:
 
     ```
@@ -272,7 +274,8 @@ Lessons (don't repeat):
 1. When users have marked missed tags (the log's `tag_add` entries), find why the reader missed them and fix the cause
    in the importer.
 2. Verify a random sample of auto tags per new sheet; build per-sheet verified references like LP.
-3. Valve type from symbols (gate/globe/check/motorized/safety): template-match the legend symbols near each tag.
+3. Valve type from symbols: done for the HRSG sheets, which carry their legend (importer/README "Valve types"). Left:
+   safety/angle valves, the sheets without a legend (need their legend document), the app screens.
 4. Extract instrument descriptions from the FW/LP junction-box panels (English text next to each instrument).
 5. Suggest procedure→equipment links (system code + description matching), the user confirms.
 6. Attach PDF markup annotations to nearby tags instead of sheet-level notes.

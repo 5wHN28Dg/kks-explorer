@@ -27,7 +27,7 @@ class Direct(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = self.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m:
                 setup = m[1]
             if 'server on' in line:
@@ -46,7 +46,7 @@ class Direct(unittest.TestCase):
         setup = self.start_server(self.sport)
         self.boss = Client(f'http://127.0.0.1:{self.port}')
         assert self.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                    'full_name': 'The Manager'}).get('ok')
+                                                    'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         # one address for both: the emulator reaches the host's relay through adb reverse
         ui.adb('reverse', f'tcp:{self.rport}', f'tcp:{self.rport}')
         r = self.boss.req('POST', '/api/settings/relay', {'url': f'ws://127.0.0.1:{self.rport}'})

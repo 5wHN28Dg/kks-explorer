@@ -4,8 +4,9 @@
 import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequtils]
 import kks/[json, api]
 import kks/model
+import kksl/dbstore
 import appstate
-import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, systems]
+import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, photos]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
@@ -37,6 +38,7 @@ proc doShowSheet(w: Win, id: string) =
     if okL: levels.add data
   w.v.setSheet(si.name, kkp, si.raw, levels)
   w.v.tags = w.tagBoxes(id)
+  w.syncChosen()
   adw_navigation_split_view_set_show_content(w.split, 1)
   discard gtk_widget_grab_focus(w.v.widget)
 
@@ -71,10 +73,18 @@ proc runSearch(w: Win) =
       let title = if t.full.len > 0: t.full else: "(unread)"
       let id = t.id
       let sheet = t.sheet
+      let picking = w.picking     # the select mode: a result toggles its tag (the keyboard's way to select)
       gtk_list_box_append(w.resultList, navRow(title, w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet),
-        "Show " & title & " on " & (if okS: si.name else: t.sheet), proc () =
+        (if picking: "Select or unselect " else: "Show ") & title & " on " & (if okS: si.name else: t.sheet), proc () =
           if sheet != w.sheet: w.showSheet(sheet)
-          w.selectTag(id, true)))
+          if w.picking:
+            let (okT, tt) = w.m.tagById(id)
+            if okT:
+              let (okS2, si2) = w.m.sheetById(tt.sheet)
+              let sc = if okS2 and si2.scale > 0: si2.scale else: 2.0
+              w.v.centerOn(tt.bbox[0] / sc, tt.bbox[1] / sc, tt.bbox[2] / sc, tt.bbox[3] / sc)
+            w.togglePick(id)
+          else: w.selectTag(id, true)))
       w.v.hits.incl t.id
   if found.len == 0: gtk_list_box_append(w.resultList, row("Nothing found", "Try part of the code, or a word from the description"))
   gtk_widget_set_visible(w.resultList, 1)
@@ -107,6 +117,7 @@ proc refresh(w: Win) =
   w.fillSheets()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
+    w.syncChosen()
     gtk_widget_queue_draw(w.v.widget)
   if w.selected.len > 0:
     let (ok, t) = w.m.tagById(w.selected)
@@ -185,6 +196,7 @@ proc mainScreen(w: Win): W =
   let sidebar = page(w.sideNav, "Sheets")
   # content: viewer + tag panel
   w.v = newViewer()
+  w.v.setDark(w.a.store.getMeta("dark_drawings") == "1")    # per device (this device's store), like sync_peers
   w.showSheet = proc (id: string) = w.doShowSheet(id)
   w.selectTag = proc (id: string, center: bool) = w.doSelectTag(id, center)
   w.rebuildPanel = proc () =
@@ -201,7 +213,8 @@ proc mainScreen(w: Win): W =
     w.pushPage(w.procedurePage(id), id, "proc")
     adw_navigation_split_view_set_show_content(w.split, 0)
   w.v.onSelect = proc (id: string) =
-    if w.linkProc.len > 0:          # link mode (R7)
+    if w.picking: w.togglePick(id)  # the select mode (multi.nim)
+    elif w.linkProc.len > 0:          # link mode (R7)
       let (ok, t) = w.m.tagById(id)
       if not ok or t.full.len == 0:
         w.toast("This tag has no KKS yet: review it first")
@@ -213,17 +226,43 @@ proc mainScreen(w: Win): W =
     else: w.selectTag(id, false)
   w.v.onMark = proc (x0, y0, x1, y1: float) =
     w.markDialog(x0, y0, x1, y1)
+  w.v.onBox = proc (x0, y0, x1, y1: float) = w.addBox(x0, y0, x1, y1)
+  w.v.onEscape = proc () = w.stopPicking()
   w.sheetTitle = adw_window_title_new("", "")
   let contentHeader = headerBar(w.sheetTitle)
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-fit-best-symbolic", "Fit the sheet (0)", proc () = w.v.fit()))
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-in-symbolic", "Zoom in (+)", proc () = w.v.zoomBy(1.5)))
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-out-symbolic", "Zoom out (−)", proc () = w.v.zoomBy(1 / 1.5)))
+  # dark drawings: a PDF reader's dark mode for the sheets (lightness inverted, hue kept; photos never change)
+  let darkBtn = gtk_toggle_button_new()
+  gtk_button_set_icon_name(darkBtn, "weather-clear-night-symbolic")
+  gtk_widget_set_tooltip_text(darkBtn, "Dark drawings")
+  setAccessibleLabel(darkBtn, "Dark drawings")
+  gtk_toggle_button_set_active(darkBtn, cint(w.v.dark))
+  darkBtn.on("toggled", proc () =
+    let on = gtk_toggle_button_get_active(darkBtn) != 0
+    w.v.setDark(on)
+    w.a.store.setMeta("dark_drawings", if on: "1" else: ""))
+  adw_header_bar_pack_end(contentHeader, darkBtn)
   adw_header_bar_pack_end(contentHeader, iconButton("camera-photo-symbolic", "Colour tags by photos", proc () =
     w.v.coverage = not w.v.coverage
     gtk_widget_queue_draw(w.v.widget)
     w.toast(if w.v.coverage: "Tags by photos: green both · amber equipment only · blue tag plate only · red none"
             else: "Tags by how they were read")))
-  adw_header_bar_pack_end(contentHeader, iconButton("list-add-symbolic", "Mark a tag the app missed", proc () = w.startMarking()))
+  adw_header_bar_pack_end(contentHeader, iconButton("list-add-symbolic", "Mark a tag the app missed", proc () =
+    if w.picking: w.stopPicking()
+    w.startMarking()))
+  # the select mode: one photo, place or note for several tags (multi.nim); a toggle, so its state is exposed
+  w.pickBtn = gtk_toggle_button_new()
+  gtk_button_set_icon_name(w.pickBtn, "selection-mode-symbolic")
+  gtk_widget_set_tooltip_text(w.pickBtn, "Select tags")
+  setAccessibleLabel(w.pickBtn, "Select tags")
+  w.pickBtn.on("toggled", proc () =
+    let on = gtk_toggle_button_get_active(w.pickBtn) != 0
+    if on != w.picking:
+      if on: w.startPicking() else: w.stopPicking()
+    w.runSearch())              # the results' labels say what activating them does
+  adw_header_bar_pack_start(contentHeader, w.pickBtn)
   w.panelBox = vbox(12)
   margins(w.panelBox, 12)
   let panelHeader = headerBar(adw_window_title_new("Equipment", ""))
@@ -240,7 +279,15 @@ proc mainScreen(w: Win): W =
   w.banner.on("button-clicked", proc () =
     if w.bannerAction != nil: w.bannerAction())
   let contentView = toolbarView(contentHeader, w.panelSplit)
+  adw_toolbar_view_add_bottom_bar(contentView, w.pickBar())
   adw_toolbar_view_add_top_bar(contentView, w.banner)
+  w.queueBar = hbox(8)
+  margins(w.queueBar, 6)
+  w.queueBar.add adw_spinner_new()
+  w.queueLabel = label("", "dim-label")
+  w.queueBar.add w.queueLabel
+  gtk_widget_set_visible(w.queueBar, 0)
+  adw_toolbar_view_add_bottom_bar(contentView, w.queueBar)
   let content = page(contentView, "Drawing")
   w.split = adw_navigation_split_view_new()
   adw_navigation_split_view_set_sidebar(w.split, sidebar)
@@ -285,6 +332,8 @@ proc setupScreen(w: Win): W =
   let plant = entryRow("Plant name", "")
   let u2 = entryRow("Your username", "")
   let fullName = entryRow("Your full name", "")
+  let position = entryRow("Your position (job title)", "")
+  gtk_widget_set_tooltip_text(position, "Required: every member needs one, e.g. Maintenance manager")
   let create = button("Create the plant", "suggested-action")
   gtk_widget_set_halign(create, GTK_ALIGN_END)
   gtk_widget_set_margin_top(create, 8)
@@ -292,14 +341,15 @@ proc setupScreen(w: Win): W =
     let pn = text(plant).strip
     let un = text(u2).strip.toLowerAscii
     let fn = text(fullName).strip
-    if pn.len == 0 or un.len < 2 or fn.len == 0:
-      w.toast("Fill in the plant name, a username (2+ characters) and your full name.")
+    let ps = text(position).strip
+    if pn.len == 0 or un.len < 2 or fn.len == 0 or ps.len == 0:
+      w.toast("Fill in the plant name, a username (2+ characters), your full name and your position (job title).")
       return
     try:
-      w.a.createPlant(pn, un, fn, newNull())
+      w.a.createPlant(pn, un, fn, newStr(ps))
       w.showMain()
     except CatchableError as e: w.toast(e.msg))
-  for r in [plant, u2, fullName]: adw_preferences_group_add(g2, r)
+  for r in [plant, u2, fullName, position]: adw_preferences_group_add(g2, r)
   adw_preferences_group_add(g2, create)
   # a bundle file from an admin
   let g3 = group("", "An admin can hand you a bundle file (Manage → Devices → Save a bundle).")
@@ -359,6 +409,24 @@ proc activate(w: Win, app: W) =
         w.reloadQueued = false
         w.refresh()
         false)
+  var closing = false
+  w.window.onCloseRequestStop(proc (): bool =
+    # photos still in the queue are lost when the app closes: ask first
+    let n = queuedCount()
+    if n == 0 or closing: return false
+    let d = adw_alert_dialog_new((if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared").cstring,
+                                 "Closing now loses them. Wait until they are sent (a moment), or close anyway.")
+    adw_alert_dialog_add_response(d, "wait", "Wait")
+    adw_alert_dialog_add_response(d, "close", "Close anyway")
+    adw_alert_dialog_set_response_appearance(d, "close", ADW_RESPONSE_DESTRUCTIVE)
+    adw_alert_dialog_set_default_response(d, "wait")
+    adw_alert_dialog_set_close_response(d, "wait")
+    d.onResponse(proc (id: string) =
+      if id == "close":
+        closing = true
+        gtk_window_close(w.window))
+    present(d, w.window)
+    true)
   gtk_window_present(w.window)
   if getEnv("KKS_DEBUG_DIALOG").len > 0:      # accessibility check: a dialog over whatever screen is up
     timeout(3000, proc (): bool =

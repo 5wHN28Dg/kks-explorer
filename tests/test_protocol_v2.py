@@ -125,7 +125,7 @@ class Crypto(unittest.TestCase):
 
     def test_relay(self):
         r = self.V['relay']
-        self.assertEqual(C.relay_room(r['root']), r['room'])
+        self.assertEqual(C.relay_room(r['member']), r['room'])
         self.assertTrue(C.check_relay_hello(r['hello'], r['room'], r['now']))
         for x in r['reject']:
             self.assertFalse(C.check_relay_hello(x['hello'], r['room'], x['now']), x['why'])

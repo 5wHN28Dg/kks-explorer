@@ -53,13 +53,13 @@ class Update(unittest.TestCase):
         setup = None
         for _ in range(50):
             line = self.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
+            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
             if m:
                 setup = m[1]
             if 'server on' in line:
                 break
         assert Client(f'http://127.0.0.1:{self.port}').req('POST', '/api/setup', {
-            'token': setup, 'username': 'boss', 'password': 'a long password', 'full_name': 'The Manager'}).get('ok')
+            'token': setup, 'username': 'boss', 'password': 'a long password', 'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)
         r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
         assert 'Success' in r.stdout, r.stdout + r.stderr
