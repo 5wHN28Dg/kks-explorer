@@ -296,29 +296,29 @@ class Windows(unittest.TestCase):
         app keeps syncing meanwhile) is a clash, held, not overwritten: what is sent as each code's base is what the
         app showed before it asked"""
         b = self.boss
-        for k, bb in {'11LAC30AP001': [1100, 300, 1200, 360], '11LAC30AP002': [1100, 400, 1200, 460]}.items():
+        for k, bb in {'11LAC40AP001': [1100, 300, 1200, 360], '11LAC40AP002': [1100, 400, 1200, 460]}.items():
             r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': k,
                                                                              'isa': '', 'note': ''}})
             self.assertEqual(r.get('status'), 'approved', r)
-        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC30AP002', 'changes': {'floor': '1'}}})
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC40AP002', 'changes': {'floor': '1'}}})
         self.assertEqual(r.get('status'), 'approved', r)
         self.join('mcjoin.uia', sync_every=2000)
         def pick(code, n):
             return ['set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
                     'click\tSelect or unselect', 'wait\t%d selected\t10' % n]
         # the question is left open
-        self.check('mclash0.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC30AP001', 1) +
-                   pick('11LAC30AP002', 2) + [
+        self.check('mclash0.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC40AP001', 1) +
+                   pick('11LAC40AP002', 2) + [
                    'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t3', 'click\tSend',
                    'wait\t~1 of 2 already have a floor; it will be replaced.\t10'])
-        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC30AP002', 'changes': {'floor': '5'},
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC40AP002', 'changes': {'floor': '5'},
                                                                             'base': {'floor': '1'}}})
         self.assertEqual(r.get('status'), 'approved', r)
         time.sleep(12)          # several sync rounds: the app has the new floor under the open question
         self.check('mclash1.uia', ['click\tOK', 'wait\t~Sent for 2 codes · 1 held (they clash with pending changes)\t20'])
         def floors():
             eq = b.req('GET', '/api/state')['equipment']
-            got = (eq.get('11LAC30AP001', {}).get('floor'), eq.get('11LAC30AP002', {}).get('floor'))
+            got = (eq.get('11LAC40AP001', {}).get('floor'), eq.get('11LAC40AP002', {}).get('floor'))
             return got if got[0] == '3' else None
         self.assertEqual(self.wait_server(floors, 'the floor never reached the server', tries=80), ('3', '5'))
         self.leave()
@@ -430,6 +430,233 @@ class Windows(unittest.TestCase):
                                   'gone\tYour valve type “globe valve” is waiting for approval.'])
         self.leave('vali')
 
+    def add_tag(self, code, bb, floor=None):
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': code,
+                                                                              'isa': '', 'note': ''}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        if floor is not None:
+            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'floor': floor}}})
+            self.assertEqual(r.get('status'), 'approved', r)
+
+    def show(self, code):
+        """script lines: find a code by the search and open its panel"""
+        return ['click\tDrawings', 'set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
+                'click\tShow on the drawing']
+
+    def test_photo_queue(self):
+        """photos are compressed on a worker thread through a queue, one after another, and sent as each is ready, while
+        the panel closes; a photo that fails (KKS_TEST_ENCODE_FAIL: the first encode fails) is kept and reported, not
+        dropped, and Try again sends it; closing the window while one is kept asks first, and so does signing out (the
+        shutdown block reason, cleared once every photo is sent); a caption over the core's 500 characters is cut
+        before the photo is queued (refused by the core, it could never be sent)"""
+        self.add_tag('11LBA10AA101', [600, 900, 720, 960], floor='1')
+        self.add_tag('11LBA10AA102', [800, 900, 920, 960], floor='1')
+        self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1'})
+        self.check('queue0.uia', self.show('11LBA10AA101') + [
+            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tQueue A',
+            'click\tSend', 'wait\tAnd its tag plate?\t20', 'click\tNo',
+            'wait\t~The photo of 11LBA10AA101 could not be compressed\t30', 'wait\tPhotos not sent (1)…\t10',
+            'wait\t~1 photo of this equipment not sent\t10',
+            # closing the window now would lose it: the app asks, Cancel keeps it open
+            'close\tPhotos not sent (1)…', 'wait\tClose Walkdown?\t10', 'click\tCancel', 'gone\tClose Walkdown?',
+            'wait\tPhotos not sent (1)…\t10',
+            'endsession\tPhotos not sent (1)…\t0', 'blockreason\tPhotos not sent (1)…\tPhotos are not sent yet'])
+        long_caption = 'Queue B ' + 'x' * 592
+        # another code's photo: compressed in the background while the panel closes, then sent
+        self.check('queue1.uia', self.show('11LBA10AA102') + [
+            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'settext\tCaption (optional)\t' + long_caption,
+            'click\tSend', 'wait\t~Compressing 1 photo (11LBA10AA102)\t10', 'wait\tAnd its tag plate?\t20', 'click\tNo',
+            'click\tClose', 'wait\t~Saved: photo of 11LBA10AA102\t90', 'gone\t~Compressing 1 photo'])
+        # the kept one: Try again
+        self.check('queue2.uia', ['click\tPhotos not sent (1)…', 'wait\tPhotos not sent\t10', 'wait\t~Could not be compressed\t10',
+                                  'click\tTry again', 'wait\t~Saved: photo of 11LBA10AA101\t90',
+                                  'wait\tEvery photo was sent or discarded.\t20', 'click\tClose',
+                                  # nothing waits any more: signing out is not held up
+                                  'blockreason\tManage\t-', 'endsession\tManage\t1'])
+        def both():
+            ph = {p['kks']: p for p in self.boss.req('GET', '/api/state').get('photos', []) if p.get('caption', '').startswith('Queue ')}
+            return ph if set(ph) == {'11LBA10AA101', '11LBA10AA102'} else None
+        ph = self.wait_server(both, 'the queued photos never reached the server', tries=80)
+        self.assertEqual(len(long_caption), 600)
+        self.assertEqual((ph['11LBA10AA101']['caption'], ph['11LBA10AA102']['caption']), ('Queue A', long_caption[:500]))
+        self.assertEqual(ph['11LBA10AA101'].get('by_name'), 'The Manager')
+        self.leave()
+
+    def test_photo_floor_discard(self):
+        """the floor asked with a photo that is then kept (not sent) goes with the code's next photo; discarding a kept
+        photo that carried the code's only floor says so, and the next photo asks for the floor again, even one whose
+        editor was already open (it asks when that photo is sent)"""
+        a, b, c = '11LBA20AA101', '11LBA20AA102', '11LBA20AA103'
+        self.add_tag(a, [600, 1000, 720, 1060])
+        self.add_tag(b, [800, 1000, 920, 1060])
+        self.add_tag(c, [1000, 1000, 1120, 1060])
+        self.join('fjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '3'})
+        def photo(code, floor=None, caption=''):
+            return self.show(code) + ['click\tAdd a photo from a file…'] + (
+                ['wait\tWhich floor is %s on?\t20' % code, 'set\tFloor of %s (0–10)\t%s' % (code, floor), 'click\tContinue']
+                if floor else []) + ['wait\tPhoto to mark up\t30', 'set\tCaption (optional)\t' + caption, 'click\tSend',
+                                     'wait\tAnd its tag plate?\t20', 'click\tNo']
+        self.check('floor0.uia', photo(a, '4', 'Floor A') + ['wait\t~The photo of %s could not be compressed\t30' % a,
+                                                             'wait\tPhotos not sent (1)…\t10'] +
+                   photo(b, '6', 'Floor B') + ['wait\t~The photo of %s could not be compressed\t30' % b,
+                                               'wait\tPhotos not sent (2)…\t10'] +
+                   photo(c, '7', 'Floor C') + ['wait\t~The photo of %s could not be compressed\t30' % c,
+                                               'wait\tPhotos not sent (3)…\t10'] +
+                   # the floor is on its way with the kept photo: not asked again, and it goes with this one
+                   photo(b, None, 'Floor B2') + ['wait\t~Saved: photo of %s\t90' % b])
+        def floor_b():
+            e = self.boss.req('GET', '/api/state').get('equipment', {}).get(b) or {}
+            return e.get('floor')
+        self.assertEqual(self.wait_server(floor_b, 'the floor never went with the next photo', tries=60), '6')
+        # discard the kept photo of a (the first): its floor is lost, and the person is told
+        self.check('floor1.uia', ['click\tPhotos not sent (3)…', 'wait\tPhotos not sent\t10', 'click\tDiscard',
+                                  'wait\tDiscard this photo?\t10', 'click\tOK',
+                                  'wait\t~The floor of %s (4) was to be sent with that photo\t20' % a,
+                                  'click\tDiscard', 'wait\tDiscard this photo?\t10', 'click\tOK',
+                                  'wait\tPhotos not sent (1)…\t20', 'click\tClose'] +
+                   self.show(a) + ['click\tAdd a photo from a file…', 'wait\tWhich floor is %s on?\t20' % a,
+                                   'click\tCancel', 'gone\tWhich floor is %s on?' % a])
+        self.assertIsNone((self.boss.req('GET', '/api/state').get('equipment', {}).get(a) or {}).get('floor'))
+        # c: the editor opens without asking (the kept photo carries floor 7); that photo is discarded meanwhile, so
+        # Send asks for the floor
+        self.check('floor2.uia', self.show(c) + [
+            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tFloor C2',
+            'click\tPhotos not sent (1)…', 'wait\tPhotos not sent\t10', 'click\tDiscard', 'wait\tDiscard this photo?\t10',
+            'click\tOK', 'wait\t~The floor of %s (7) was to be sent with that photo\t20' % c,
+            'wait\tEvery photo was sent or discarded.\t20',
+            'click\tSend', 'wait\tWhich floor is %s on?\t20' % c, 'set\tFloor of %s (0–10)\t8' % c, 'click\tContinue',
+            'wait\t~Saved: photo of %s\t90' % c])
+        def floor_c():
+            return (self.boss.req('GET', '/api/state').get('equipment', {}).get(c) or {}).get('floor')
+        self.assertEqual(self.wait_server(floor_c, 'the floor asked late never arrived', tries=60), '8')
+        self.leave()
+
+    def test_description(self):
+        """a drafted description (descriptions.json, core tagView.description) shows as unchecked; Confirm sends it as it
+        is, Edit lets it be changed first; both become the custom field "Description", shown as confirmed by whom"""
+        fix = os.path.join(self.dir, 'desc-fixture')
+        shutil.rmtree(fix, ignore_errors=True)
+        shutil.copytree(os.path.join(self.dir, 'plant-data'), fix)
+        tags = json.load(open(os.path.join(fix, 'tags.json')))
+        for i, code in enumerate(['11LAB70AA888', '11LAB70AA889']):
+            tags.append({'id': 'sample:d%d' % i, 'sheet': 'sample', 'kks': code, 'suffix': '', 'isa': None,
+                         'kind': 'equipment', 'status': 'auto', 'conf': 1, 'bbox': [1000 + 140 * i, 700, 1120 + 140 * i, 760],
+                         'read': [code[:7], code[7:]]})
+        with open(os.path.join(fix, 'tags.json'), 'w') as f: json.dump(tags, f)
+        with open(os.path.join(fix, 'descriptions.json'), 'w') as f:
+            json.dump({'11LAB70AA888': {'text': 'Feed water drain valve', 'basis': 'the sample sheet'},
+                       '11LAB70AA889': 'Feed water vent valve'}, f)
+        r = subprocess.run([SERVER, 'publish-data', fix, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.join('descjoin.uia')
+        self.check('desc0.uia', self.show('11LAB70AA888') + [
+            'wait\tDraft description (unchecked)\t20', 'wait\tFeed water drain valve\t10', 'wait\tBasis: the sample sheet\t10',
+            'click\tConfirm description', 'wait\t~Saved: description of 11LAB70AA888\t20',
+            'wait\t~Confirmed by The Manager\t20', 'gone\tConfirm description'])
+        self.check('desc1.uia', self.show('11LAB70AA889') + [
+            'wait\tFeed water vent valve\t20', 'click\tEdit description', 'focus\tDescription', 'set\tDescription\tFeed water vent valve, DN25',
+            'click\tSend description', 'wait\t~Saved: description of 11LAB70AA889\t20', 'wait\t~Confirmed by The Manager\t20',
+            'wait\tFeed water vent valve, DN25\t10'])
+        def descs():
+            eq = self.boss.req('GET', '/api/state')['equipment']
+            got = {k: [c['v'] for c in eq.get(k, {}).get('custom', []) if c.get('k') == 'Description'] for k in ('11LAB70AA888', '11LAB70AA889')}
+            return got if all(got.values()) else None
+        self.assertEqual(self.wait_server(descs, 'the descriptions never reached the server', tries=80),
+                         {'11LAB70AA888': ['Feed water drain valve'], '11LAB70AA889': ['Feed water vent valve, DN25']})
+        self.leave()
+
+    def member(self, username, full_name):
+        """a member on the server (web login)"""
+        r = self.boss.req('POST', '/api/users', {'username': username, 'full_name': full_name, 'position': 'Technician', 'role': 'user'})
+        c = Client(self.boss.base)
+        c.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': username + ' password 1'})
+        c.req('POST', '/api/login', {'username': username, 'password': username + ' password 1'})
+        return c
+
+    def test_approvals(self):
+        """Approvals: one card per code, the proposals by kind; "Use this one" only where two equipment photos compete
+        (a tag plate photo is no rival: Approve), the submitter's full name, the card opens its tag; then the
+        Leaderboard counts what the member did"""
+        self.add_tag('11LAC30AP001', [600, 1000, 720, 1060], floor='1')
+        self.add_tag('11LAC30AP002', [800, 1000, 920, 1060], floor='1')
+        omar = self.member('omar', 'Omar Fieldman')
+        def jxl(name):
+            with open(os.path.join(REPO, 'data', 'courses', name), 'rb') as f:
+                return 'data:image/jxl;base64,' + base64.b64encode(f.read()).decode()
+        for cap, pic in [('Pump front', 'ppt-07.jxl'), ('Pump side', 'ppt-12.jxl'), ('Tag plate', 'ppt-15.jxl')]:
+            r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAC30AP001', 'caption': cap, 'dataUrl': jxl(pic)}})
+            self.assertEqual(r.get('status'), 'pending', r)
+        r = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC30AP002', 'changes': {'notes': 'Seal leaks'}}})
+        self.assertEqual(r.get('status'), 'pending', r)
+        self.join('ajoin.uia')
+        self.check('appr0.uia', ['click\tManage', 'click\tApprovals', 'wait\t11LAC30AP001\t30',
+                                 'wait\tOpen 11LAC30AP001 on the drawing\t10', 'wait\tEquipment photo (2)\t10',
+                                 'wait\tTag plate photo\t10', 'wait\t~by Omar Fieldman · \t10', 'wait\t11LAC30AP002\t10',
+                                 'click\tOpen 11LAC30AP001 on the drawing', 'value\tNumber\t001',
+                                 'wait\tTag plate photo from a file…\t10', 'click\tClose',
+                                 'click\tUse this one', 'wait\t~Photo chosen\t20', 'gone\tUse this one',
+                                 'gone\tEquipment photo (2)', 'wait\tTag plate photo\t20'])
+        def decided():
+            subs = omar.req('GET', '/api/submissions?status=all')['submissions']
+            got = sorted((s.get('payload', {}).get('caption', ''), s['status']) for s in subs if s['kind'] == 'photo')
+            return got if [g[1] for g in got].count('pending') == 1 and 'approved' in [g[1] for g in got] else None
+        got = self.wait_server(decided, 'the pick never reached the server', tries=80)
+        self.assertEqual(sorted(st for _, st in got), ['approved', 'pending', 'rejected'], got)
+        self.assertEqual([st for cap, st in got if cap == 'Tag plate'], ['pending'], 'the pick rejected the tag plate photo: %s' % got)
+        # the tag plate photo and the notes: Approve each
+        self.check('appr1.uia', ['click\tApprove', 'wait\t~Approved\t20', 'sleep\t1000', 'click\tApprove',
+                                 'wait\tNothing waits for approval.\t30'])
+        self.wait_server(lambda: not [s for s in omar.req('GET', '/api/submissions?status=all')['submissions'] if s['status'] == 'pending'],
+                         'the approvals never reached the server', tries=80)
+        # the Leaderboard: Omar, by name only, with his numbers
+        self.check('board.uia', ['click\t‹ Manage', 'click\tLeaderboard', 'wait\t~. Omar Fieldman\t20',
+                                 'wait\t3 approved · 0 waiting · 1 rejected · 4 in all · 75 % approved\t20',
+                                 'wait\t~Equipment photos: 1 approved of 2, 1 rejected\t10'])
+        self.leave()
+
+    def test_position(self):
+        """every new member needs a position (job title): the join form refuses without one and sends it with the join
+        request (the admin sees it); a new plant needs the manager's too"""
+        inv = self.boss.req('POST', '/api/invites', {})
+        self.assertIn('code', inv, inv)
+        token = inv['invite']['token']
+        lines = ['click\tJoin with a code', 'set\tInvite text\t' + inv['code'], 'set\tYour username\tsara',
+                 'set\tYour full name\tSara Engineer', 'click\tJoin with this code',
+                 'wait\tFill in a username (2+ characters), your full name and your position (job title).\t10',
+                 'set\tYour position (job title)\tI&C technician', 'click\tJoin with this code',
+                 'wait\tWaiting for the admin to accept…\t60']
+        self.check('pos0.uia', lines, keep=False)
+        st = self.wait_server(lambda: (lambda x: x if x.get('state') == 'asked' else None)(self.boss.req('GET', '/api/invites/' + token)),
+                              'the join request never reached the server', tries=80)
+        self.assertEqual(st['request'].get('position'), 'I&C technician', st)
+        self.assertFalse(st.get('needs_position'), st)
+        self.assertTrue(self.boss.req('POST', '/api/invites/' + token, {'action': 'accept'}).get('ok'))
+        self.check('pos1.uia', ['wait\t~Sample sheet\t60', 'click\tManage', 'click\tAccount',
+                                'value\tPosition\tI&C technician'])
+        sara = [u for u in self.boss.req('GET', '/api/users')['users'] if u.get('username') == 'sara']
+        self.assertEqual([u.get('position') for u in sara], ['I&C technician'], sara)
+        for d in self.boss.req('GET', '/api/devices')['all']:
+            if d['username'] == 'sara' and not d['revoked']: self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+        # a new plant: the manager's position too
+        self.check('pos2.uia', ['click\tStart a new plant', 'set\tPlant name\tPosition test plant', 'set\tYour username\tmona',
+                                'set\tYour full name\tMona Manager', 'click\tCreate the plant',
+                                'wait\tFill in the plant name, a username (2+ characters), your full name and your position (job title).\t10',
+                                'set\tYour position (job title)\tShift engineer', 'click\tCreate the plant',
+                                'wait\tManage\t30', 'click\tManage', 'click\tAccount', 'value\tPosition\tShift engineer'],
+                   keep=False)
+
+    def test_hidden(self):
+        """removed devices hidden from the lists (a setting of this device): Clear removed, Show hidden (n), Show … again"""
+        self.join('hjoin0.uia')
+        self.leave()                     # this VM's device is removed …
+        self.join('hjoin1.uia')          # … and joins again as a new one
+        self.check('hide0.uia', ['click\tManage', 'click\tDevices', 'wait\t~ · removed\t30', 'click\tClear removed',
+                                 'wait\t~Cleared \t20', 'gone\t~ · removed', 'click\t~Show hidden (',
+                                 'wait\t~ · removed · hidden\t20', 'click\t~ again', 'wait\t~Shown again\t20',
+                                 'click\tHide hidden', 'wait\t~ · removed\t20', 'gone\t~ · hidden'])
+        self.leave()
+
     def test_scan_camera(self):
         """decision 0039: the scan window reads an invite through Media Foundation; KKS_CAMERA_FILE (run.ps1) plays a
         video of a QR code through the same Source Reader (the VMs have no camera)"""
@@ -476,9 +703,12 @@ class Windows(unittest.TestCase):
         self.check('sysjoin.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
                                    'set\tUsername\tboss', 'set\tPassword\ta long password', 'click\tJoin',
                                    'wait\t~Sample sheet\t60'], keep=False, sync_every=3000)
-        # the sample sheet's one code, plus the tags other tests on this server marked by hand (test_multi)
-        n = len({'11LAB70AA501'} | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
-                                    if t.get('kks')})
+        # the published sheet's codes (other tests publish more: test_description), plus the tags other tests on this
+        # server marked by hand (test_multi, test_approvals)
+        published = {t['kks'] + (t.get('suffix') or '') for t in json.loads(self.boss.op.open(self.boss.base + '/data/tags.json').read())
+                     if t.get('kks')}
+        n = len({'11LAB70AA501'} | published | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
+                                                 if t.get('kks')})
         on = lambda k: f'{k} code{"" if k == 1 else "s"} on the drawings'
         self.check('systems0.uia', ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
                                     'wait\t%s\t20' % on(n)])
@@ -523,13 +753,21 @@ class Windows(unittest.TestCase):
         got = self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('notes'),
                                'the edit never reached the server')
         self.assertEqual(got, note)
-        # a photo: the annotation editor, a red box burned in, JPEG XL, synced
-        self.check('photo.uia', ['click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'click\tBox',
+        # a photo: the code has no floor, so the floor is asked first and sent with the photo (the user's rule); then
+        # the annotation editor, a red box burned in, JPEG XL (the queue), synced; the app offers a tag plate photo
+        self.check('photo.uia', ['click\tAdd a photo from a file…', 'wait\tWhich floor is 11LAB70AA501 on?\t20',
+                                 'set\tFloor of 11LAB70AA501 (0–10)\t11', 'click\tContinue',
+                                 'wait\tFloor: a whole number from 0 to 10 (the height goes in Elevation).\t10',
+                                 'set\tFloor of 11LAB70AA501 (0–10)\t4', 'click\tContinue',
+                                 'wait\tPhoto to mark up\t30', 'click\tBox',
                                  'drag\tPhoto to mark up\t0.2\t0.2\t0.8\t0.8',
                                  # a finger (injected touch: WM_POINTER), thick and yellow, zoomed in and back
                                  'click\tYellow', 'click\tThick lines', 'click\tZoom in', 'click\tFit',
                                  'touchdrag\tPhoto to mark up\t0.15\t0.92\t0.85\t0.92', 'set\tCaption (optional)\tValve from Windows',
-                                 'click\tSend', 'wait\t~Saved: photo of 11LAB70AA501\t90'])
+                                 'click\tSend', 'wait\tAnd its tag plate?\t20', 'click\tNo',
+                                 'wait\t~Saved: photo of 11LAB70AA501\t90'])
+        self.assertEqual(self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('floor'),
+                                          'the floor sent with the photo never reached the server'), '4')
         ph = self.wait_server(lambda: [p for p in self.boss.req('GET', '/api/state').get('photos', [])
                                        if p.get('kks') == '11LAB70AA501' and p.get('caption') == 'Valve from Windows'],
                               'the photo never reached the server', tries=80)
@@ -560,19 +798,38 @@ class Windows(unittest.TestCase):
         ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})
         ali.req('POST', '/api/login', {'username': 'ali', 'password': 'ali password 1'})
         self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
-                         'changes': {'floor': '2'}}})['status'], 'pending')
+                         'changes': {'floor': '2'}, 'base': {'floor': '4'}}})['status'], 'pending')
         self.check('approve.uia', ['click\tManage', 'click\tAccount', 'click\tSync now', 'wait\t~Synced with 1 device\t30',
                                    'click\t‹ Manage', 'click\tApprovals', 'wait\tApprove\t30', 'click\tApprove',
                                    'wait\t~Approved'])
         self.wait_server(lambda: [s for s in ali.req('GET', '/api/submissions?status=all')['submissions'] if s['status'] == 'approved'],
                          'the approval never reached the server')
+        # who took the photo and who set each field (/api/state photos[].by_name, equipment_by): the floor is Ali's
+        # now, the notes and the photo the manager's
+        self.check('who.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA501', 'select\t~11LAB70AA501',
+                               'click\tShow on the drawing', 'value\tFloor\t2', 'wait\t~by Ali Member, 20\t30',
+                               'wait\t~by The Manager, 20\t10', 'wait\t~Open photo: Valve from Windows\t10'])
+        # My proposals, filtered by the core (status, kind, field)
+        self.check('mine.uia', ['click\tClose', 'click\tManage', 'click\tMy proposals',
+                                'choose\tRejected', 'chosen\tRejected', 'wait\tNone of your proposals match.\t20',
+                                'choose\tAll', 'chosen\tAll', 'choose\tFloor', 'chosen\tFloor', 'value\tFloor\t4',
+                                'gone\t~New photo · 11LAB70AA501',
+                                'choose\tEquipment photos', 'chosen\tEquipment photos', 'wait\t~New photo · 11LAB70AA501\t20',
+                                'choose\tNotes', 'wait\t~Location and notes · 11LAB70AA501\t20', 'value\tNotes\tGland repacked',
+                                'choose\tAll kinds', 'chosen\tAll kinds'])
+        # deleting the photo sends its id (the Android bug: "bad photo id")
+        self.check('delete.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA501',
+                                  'select\t~11LAB70AA501', 'click\tShow on the drawing', 'click\tDelete',
+                                  'wait\tDelete this photo?\t10', 'click\tOK', 'wait\t~Saved: delete a photo\t20'])
+        self.wait_server(lambda: not [p for p in self.boss.req('GET', '/api/state').get('photos', [])
+                                      if p.get('caption') == 'Valve from Windows'], 'the photo was never deleted', tries=80)
         # the manager removes this device on the server; at its next sync it wipes itself and starts over
         devs = self.boss.req('GET', '/api/devices')['all']
         host = vm('$env:COMPUTERNAME').strip()
         mine = [d for d in devs if d['username'] == 'boss' and d['label'].lower() == host.lower() and not d['revoked']]
         self.assertEqual(len(mine), 1, (host, devs))
         self.assertTrue(self.boss.req('POST', '/api/devices/revoke', {'device': mine[0]['device']}).get('ok'))
-        self.check('removed.uia', ['click\t‹ Manage', 'click\tAccount', 'click\tSync now',
+        self.check('removed.uia', ['click\tManage', 'click\tAccount', 'click\tSync now',
                                    'wait\t~removed from the plant by The Manager\t60'])
 
 

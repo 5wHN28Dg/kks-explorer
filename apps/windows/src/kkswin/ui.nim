@@ -638,6 +638,21 @@ proc radios*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq
       res.add b
   res
 
+proc chips*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq[HWND] {.discardable.} =
+  ## one choice of several (a filter): radio buttons laid out in rows like buttons; f runs when one is chosen. UIA:
+  ## radio buttons named by their text, the chosen one selected
+  var res: seq[HWND]
+  for i in 0 ..< labels.len:
+    closureScope:
+      let idx = i
+      let (b, id) = control(p.hwnd, "BUTTON", labels[i], WS_TABSTOP or BS_AUTORADIOBUTTON or (if i == 0: WS_GROUP else: 0))
+      p.ids.add id
+      SendMessageW(b, BM_SETCHECK, WPARAM(ord(i == selected)), 0)
+      clicks[id] = proc () = f(idx)
+      res.add b
+  p.items.add Item(kind: ikButtons, hwnds: res)
+  res
+
 proc custom*(p: Page, h: HWND, height: int) =
   p.items.add Item(kind: ikCustom, hwnds: @[h], height: height)
 
@@ -651,6 +666,10 @@ proc setRows*(l: HWND, rows: seq[string]) =
 
 proc ask*(owner: HWND, title, text: string): bool =
   MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OKCANCEL or MB_ICONQUESTION) == IDOK
+
+proc askYesNo*(owner: HWND, title, text: string): bool =
+  ## a question with Yes and No (MB_YESNO; IDYES = 6)
+  MessageBoxW(owner, newWideCString(text), newWideCString(title), 0x4'u32 or MB_ICONQUESTION) == 6
 
 proc say*(owner: HWND, title, text: string) =
   discard MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OK)

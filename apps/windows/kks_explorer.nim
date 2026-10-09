@@ -6,7 +6,7 @@ import kks/[json, api, pathstore, views]
 import kks/model
 import appstate
 import kksl/dbstore
-import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi]
+import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi, photos]
 
 const
   TimerPump = 1'u
@@ -46,7 +46,25 @@ proc layoutMain() =
   MoveWindow(w.v.hwnd, int32(side), 0, int32(max(10, W - side - panelW)), int32(H - st), 1)
   MoveWindow(w.panel.hwnd, int32(W - panelW), 0, int32(panelW), int32(H - st), 1)
   ShowWindow(w.panel.hwnd, if panelW > 0: SW_SHOW else: SW_HIDE)
-  MoveWindow(w.status, px(8), int32(H - st + int(px(4))), int32(W - int(px(16))), int32(st - int(px(6))), 1)
+  # the bottom row: the status line, then the photo queue's line and "Photos not sent (n)…" while there are any
+  var right = W - int(px(8))
+  if w.failedButton != nil:
+    let n = failedCount()
+    ShowWindow(w.failedButton, if n > 0: SW_SHOW else: SW_HIDE)
+    if n > 0:
+      let bw = int(px(170))
+      right -= bw
+      MoveWindow(w.failedButton, int32(right), int32(H - st + int(px(1))), int32(bw), int32(st - int(px(2))), 1)
+      right -= int(px(8))
+  if w.queueLabel != nil:
+    let q = queuedCount() > 0
+    ShowWindow(w.queueLabel, if q: SW_SHOW else: SW_HIDE)
+    if q:
+      let qw = min(int(px(520)), (right - int(px(8))) div 2)
+      right -= qw
+      MoveWindow(w.queueLabel, int32(right), int32(H - st + int(px(4))), int32(qw), int32(st - int(px(6))), 1)
+      right -= int(px(8))
+  MoveWindow(w.status, px(8), int32(H - st + int(px(4))), int32(max(10, right - int(px(8)))), int32(st - int(px(6))), 1)
 
 proc doShowSheet(id: string) =
   let (ok, si) = w.m.sheetById(id)
@@ -205,6 +223,21 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     let r = cast[ptr RECT](lp)
     MoveWindow(h, r.left, r.top, r.right - r.left, r.bottom - r.top, 1)
     return 0
+  of WM_CLOSE:
+    # photos still in the queue, or kept because they were not sent, are lost when the app closes: ask first
+    let n = (if w != nil: queuedCount() else: 0)
+    let f = (if w != nil: failedCount() else: 0)
+    if n + f > 0:
+      var what: seq[string]
+      if n > 0: what.add(if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared")
+      if f > 0: what.add(if f == 1: "1 photo was not sent" else: $f & " photos were not sent")
+      let how = (if n > 0: "Cancel to wait until the photos being prepared are sent (a moment)" else: "Cancel to keep Walkdown open") &
+                (if f > 0: "; the ones not sent go with Photos not sent… → Try again" else: "") & ", or OK to close anyway."
+      if not ask(h, "Close Walkdown?", what.join(", and ") & ". Closing now loses " & (if n + f == 1: "it" else: "them") &
+                 ". " & how):
+        return 0
+  of 0x0011'u32:     # WM_QUERYENDSESSION: signing out or shutting down would lose them too; Windows then names the app
+    if w != nil and blockShutdown(h): return 0
   of WM_DESTROY:
     PostQuitMessage(0)
     return 0
@@ -231,6 +264,10 @@ proc showMain() =
   w.v = newViewer(w.hwnd, hinst)
   trace("viewer")
   w.panel = newPage(w.hwnd)
+  w.queueLabel = control(w.hwnd, "STATIC", "", SS_LEFT or SS_NOPREFIX)[0]
+  let (fb, fbid) = control(w.hwnd, "BUTTON", "Photos not sent (0)…", WS_TABSTOP or BS_PUSHBUTTON)
+  w.failedButton = fb
+  onClick(fbid, proc () = w.failedWindow())
   w.v.onTag = proc (id: string) =
     if w.picking: w.togglePick(id)       # the select mode (multi.nim)
     elif w.linkProc.len > 0:

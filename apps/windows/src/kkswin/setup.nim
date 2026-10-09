@@ -13,10 +13,17 @@ proc s(n: JNode, k: string): string =
 var setupPage* = ""
 var setupConfirm*: proc ()     ## "Yes, the same code" (asking an admin nearby)
 
-proc runJoin(w: Win, hosts: seq[(string, int)], peer: string, token: JNode, username, fullName: string,
+# every new member needs a position (job title): the user, 2026-10-08; the core refuses a new person without one
+const NeedFields = "Fill in a username (2+ characters), your full name and your position (job title)."
+const PositionHint = "Required: every new member needs one, e.g. I&C technician."
+
+proc filled(user, fn, pos: HWND): bool =
+  user.text.strip.len >= 2 and fn.text.strip.len > 0 and pos.text.strip.len > 0
+
+proc runJoin(w: Win, hosts: seq[(string, int)], peer: string, token: JNode, username, fullName, position: string,
              status: HWND, needCode: bool, confirmBtn: HWND, done: proc ()) {.async.} =
   ## ask until accepted (§16: every 2 s while waiting), then sync adopting the root
-  let req = parseStrict(w.a.joinRequestFile(username, fullName, newNull()))
+  let req = parseStrict(w.a.joinRequestFile(username, fullName, newStr(position)))
   var host = ""
   var port = 0
   var ack: JNode
@@ -104,22 +111,27 @@ proc buildSetup*(w: Win, p: Page, done: proc ()) =
         if not parseInvite(t)[0]: w.toast("That QR code is not an invite"))))
     let user = p.field("Your username", "")
     let fn = p.field("Your full name", "")
+    let pos = p.field("Your position (job title)", "")
+    p.dim(PositionHint)
     let status = p.label("")
     p.buttons(("Join with this code", proc () =
       let (ok, inv) = parseInvite(code.text.replace("\r\n", "").replace("\n", ""))
       if not ok:
         status.setText("That is not an invite. Copy the whole text the admin's device shows.")
         return
-      if user.text.strip.len < 2 or fn.text.strip.len == 0:
-        status.setText("Fill in a username (2+ characters) and your full name.")
+      if not filled(user, fn, pos):
+        status.setText(NeedFields)
         return
       var hosts: seq[(string, int)]
       for a in inv["addrs"].elems: hosts.add serverAddress(a.s)
-      asyncCheck w.runJoin(hosts, inv["peer"].s, inv["token"], user.text.strip.toLowerAscii, fn.text.strip, status, false, nil, done)))
+      asyncCheck w.runJoin(hosts, inv["peer"].s, inv["token"], user.text.strip.toLowerAscii, fn.text.strip,
+                           pos.text.strip, status, false, nil, done)))
   of "Ask an admin on this network":
     p.dim("Admins' devices nearby. You and the admin compare a 6-digit code.")
     let user = p.field("Your username", "")
     let fn = p.field("Your full name", "")
+    let pos = p.field("Your position (job title)", "")
+    p.dim(PositionHint)
     let status = p.label("")
     let found = w.a.adminsNearby()
     if found.len == 0:
@@ -136,11 +148,11 @@ proc buildSetup*(w: Win, p: Page, done: proc ()) =
           if k == "plant": plant = v
           if k == "peer": peer = v
         p.buttons(("Ask " & lab & " · " & plant, proc () =
-          if user.text.strip.len < 2 or fn.text.strip.len == 0:
-            status.setText("Fill in a username (2+ characters) and your full name.")
+          if not filled(user, fn, pos):
+            status.setText(NeedFields)
             return
           asyncCheck w.runJoin(@[(ff.address, ff.port)], peer, newNull(), user.text.strip.toLowerAscii, fn.text.strip,
-                               status, true, confirmBtn, done)))
+                               pos.text.strip, status, true, confirmBtn, done)))
     confirmBtn = p.buttons(("Yes, the admin shows the same code", proc () =
       if setupConfirm != nil: setupConfirm()))[0]
     ShowWindow(confirmBtn, SW_HIDE)
@@ -149,14 +161,16 @@ proc buildSetup*(w: Win, p: Page, done: proc ()) =
     p.dim("1. Make a join request and send it to an admin (it is signed by this device's key).")
     let user = p.field("Your username", "")
     let fn = p.field("Your full name", "")
+    let pos = p.field("Your position (job title)", "")
+    p.dim(PositionHint)
     let status = p.label("")
     p.buttons(("Save a join request…", proc () =
-      if user.text.strip.len < 2 or fn.text.strip.len == 0:
-        status.setText("Fill in a username (2+ characters) and your full name.")
+      if not filled(user, fn, pos):
+        status.setText(NeedFields)
         return
       let path = saveFile(w.hwnd, "Save a join request", "Join requests|*.kksjoin", "join-" & user.text.strip.toLowerAscii & ".kksjoin", "kksjoin")
       if path.len > 0:
-        writeFile(path, w.a.joinRequestFile(user.text.strip.toLowerAscii, fn.text.strip, newNull()))
+        writeFile(path, w.a.joinRequestFile(user.text.strip.toLowerAscii, fn.text.strip, newStr(pos.text.strip)))
         status.setText("Saved. Send it to an admin; they open it under Manage → Devices and send you a bundle back.")))
     p.dim("2. Open the bundle the admin saved for you. It holds the plant's data unencrypted: get it directly from the admin.")
     p.buttons(("Open a bundle…", proc () =
@@ -171,13 +185,15 @@ proc buildSetup*(w: Win, p: Page, done: proc ()) =
     let plant = p.field("Plant name", "")
     let un = p.field("Your username", "")
     let fn = p.field("Your full name", "")
+    let pos = p.field("Your position (job title)", "")
+    p.dim("Required: every member needs one, e.g. Maintenance manager.")
     let status = p.label("")
     p.buttons(("Create the plant", proc () =
-      if plant.text.strip.len == 0 or un.text.strip.len < 2 or fn.text.strip.len == 0:
-        status.setText("Fill in the plant name, a username (2+ characters) and your full name.")
+      if plant.text.strip.len == 0 or not filled(un, fn, pos):
+        status.setText("Fill in the plant name, a username (2+ characters), your full name and your position (job title).")
         return
       try:
-        w.a.createPlant(plant.text.strip, un.text.strip.toLowerAscii, fn.text.strip, newNull())
+        w.a.createPlant(plant.text.strip, un.text.strip.toLowerAscii, fn.text.strip, newStr(pos.text.strip))
         done()
       except CatchableError as e: status.setText(e.msg)))
   else: discard
