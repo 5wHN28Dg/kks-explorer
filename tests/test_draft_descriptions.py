@@ -53,6 +53,13 @@ class Drafts(unittest.TestCase):
                                'a:3': {'status': 'rejected'}}}, open(st, 'w'))
         d = self.run_tool('--state', st)
         self.assertEqual(sorted(d), ['11LAB70AA501', '11LAB70AA502', '11LAB71CP101'])
+        # an unchecked reading a person corrected is checked now: it gets its draft under the corrected code
+        self.write_tags([{'id': 'r1', 'sheet': 'a', 'kks': '11LAB70AA50', 'status': 'review', 'bbox': [0, 0, 10, 10]},
+                         {'id': [1], 'sheet': ['a'], 'kks': '11LAB70AA509'}])
+        json.dump({'reviews': {'r1': {'status': 'confirmed', 'kks': '11LAB70AA507'}}}, open(st, 'w'))
+        self.assertEqual(sorted(self.run_tool('--state', st)), ['11LAB70AA507'])
+        json.dump('x', open(st, 'w'))
+        self.assertEqual(self.run_tool('--state', st), {})   # a state that isn't an object: no decisions, no crash
 
     def test_location_list_as_a_plain_array(self):
         # the core reads either {"entries": [...]} or a bare array
@@ -82,11 +89,12 @@ class Drafts(unittest.TestCase):
             {'id': '1', 'sheet': 'a', 'kks': '11LAB70AA001', 'status': 'review', 'bbox': [0, 0, 10, 10]},   # unchecked
             {'id': '2', 'sheet': 'a', 'kks': '11LAB70AA002', 'suffix': 5},                                 # no box
             {'id': '3', 'kks': '11LAB70AA003', 'bbox': [0, 0, 10, 10]},                                      # no sheet
-            {'id': '4', 'sheet': 'a', 'kks': '11LAB70AA501', 'bbox': [0, 0, 10, 10]}])
+            {'id': '4', 'sheet': 'a', 'kks': '11LAB70AA501', 'bbox': [0, 0, 10, 10]},
+            {'id': '5', 'sheet': 'a', 'kks': '11LAB70CP506', 'suffix': '\udc00', 'isa': 'P\ud800I', 'bbox': [5, 5, 15, 15]}])
         json.dump([{'id': 'a', 'name': 'H\ud800P'}], open(os.path.join(self.d, 'sheets.json'), 'w'))
         json.dump({'entries': [{'kks': 'LAB70AA501', 'desc': 'x' * 2500}]}, open(os.path.join(self.d, 'locations.json'), 'w'))
         d = self.run_tool()
-        self.assertEqual(sorted(d), ['11LAB70AA0025', '11LAB70AA501'])
+        self.assertEqual(sorted(d), ['11LAB70AA0025', '11LAB70AA501', '11LAB70CP506?'])
         self.assertLessEqual(len(d['11LAB70AA501']['text']), dd.MAX_TEXT)
         self.assertTrue(d['11LAB70AA501']['text'].endswith('.'))   # whole sentences only
         raw = open(os.path.join(self.d, 'descriptions.json'), encoding='utf-8').read()

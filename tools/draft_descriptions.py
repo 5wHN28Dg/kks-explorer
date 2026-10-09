@@ -106,18 +106,21 @@ def an(word):
 
 def apply_state(tags, state):
     """tags.json + added tags, with review decisions on top (core model.nim merge/eff)"""
+    state = state if isinstance(state, dict) else {}
     out = list(tags)
-    for a in (state or {}).get('added_tags') or []:
+    for a in state.get('added_tags') or []:
         if isinstance(a, dict) and a.get('kks') and isinstance(a.get('bbox'), list) and len(a['bbox']) == 4:
             out.append({'id': 'u:' + str(a.get('id', '')), 'sheet': a.get('sheet', ''), 'kks': a['kks'],
                         'suffix': a.get('suffix') or '', 'isa': a.get('isa') or '', 'bbox': a['bbox']})
-    reviews = (state or {}).get('reviews') or {}
+    reviews = state.get('reviews') or {}
     res = []
     for t in out:
-        r = reviews.get(t.get('id')) if isinstance(reviews, dict) else None
+        tid = t.get('id') if isinstance(t, dict) else None
+        r = reviews.get(tid) if isinstance(reviews, dict) and isinstance(tid, str) else None
         if isinstance(r, dict):
             if r.get('status') == 'rejected': continue
-            t = dict(t, kks=r.get('kks') or '', isa=r.get('isa') or '', suffix=r.get('suffix') or '')
+            # a person's decision: the reading is checked now (core eff sets "confirmed")
+            t = dict(t, kks=r.get('kks') or '', isa=r.get('isa') or '', suffix=r.get('suffix') or '', status='confirmed')
         res.append(t)
     return res
 
@@ -205,7 +208,7 @@ def main(argv=None):
     pd = a.plant_data
     sheet_list, tags = load(os.path.join(pd, 'sheets.json')), load(os.path.join(pd, 'tags.json'))
     if not isinstance(sheet_list, list) or not isinstance(tags, list): sys.exit('sheets.json and tags.json must be lists')
-    sheets = {s['id']: s for s in sheet_list if isinstance(s, dict) and 'id' in s}
+    sheets = {s['id']: s for s in sheet_list if isinstance(s, dict) and isinstance(s.get('id'), str)}
     if a.state: tags = apply_state(tags, load(a.state))
     tables = load(a.kks)
     locs = {}
@@ -217,9 +220,10 @@ def main(argv=None):
     by_sheet = {}
     for t in tags:
         # a reading nobody has checked yet (status "review") gets no draft: it may not be a tag at all
-        if not isinstance(t, dict) or not isinstance(t.get('kks'), str) or not t['kks'] or not t.get('sheet'): continue
+        if not isinstance(t, dict) or not isinstance(t.get('kks'), str) or not t['kks'] or not isinstance(t.get('sheet'), str) \
+                or not t['sheet']: continue
         if t.get('status') == 'review': continue
-        t = dict(t, suffix=str(t.get('suffix') or ''))
+        t = dict(t, kks=clean(t['kks']), suffix=clean(str(t.get('suffix') or '')), isa=clean(str(t.get('isa') or '')))
         by_sheet.setdefault(t['sheet'], []).append(t)
     codes = {t['kks'] + t['suffix'] for ts in by_sheet.values() for t in ts}
     result = {}
