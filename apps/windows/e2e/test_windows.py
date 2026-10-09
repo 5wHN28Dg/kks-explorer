@@ -237,12 +237,19 @@ class Windows(unittest.TestCase):
         self.check('multi1.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10', 'keys\tDrawing\t0x1B',
                                   'state\tSelect tags\toff', 'toggle\tSelect tags', 'wait\t0 selected\t10',
                                   # Escape in the middle of a box being dragged: the mode ends and no box stays drawn
-                                  'escdrag\tDrawing\t0.15\t0.15\t0.85\t0.85', 'state\tSelect tags\toff',
+                                  # (the button still down: the box goes at Escape, not only at the button up;
+                                  # the pre-fix app left 1252 px of it, 8C33BF once the mode was off)
+                                  'escdrag\tDrawing\t0.15\t0.15\t0.85\t0.85\thold', 'state\tSelect tags\toff',
                                   'sleep\t500', 'pixels\tDrawing\t1A59D9\t40', 'pixels\tDrawing\t8C33BF\t40',
+                                  'mouseup\tDrawing', 'sleep\t300', 'pixels\tDrawing\t8C33BF\t40',
                                   'toggle\tSelect tags', 'wait\t0 selected\t10'] +
                    pick('11LAC10AP002', 1) + pick('11LAC10AP003', 2) + [
-                   'click\tNote for all…', 'wait\tNote for all\t10', 'set\tNote\tChecked on the walkdown', 'click\tSend',
-                   'wait\t~Sent for 2 codes · saved\t20'])
+                   'click\tNote for all…', 'wait\tNote for all\t10'] +
+                   # a code picked while the form is open isn't in its send: it stays selected, the mode on
+                   pick('11LAC10AP001', 3) + [
+                   'set\tNote\tChecked on the walkdown', 'click\tSend',
+                   'wait\t~Sent for 2 codes · saved\t20', 'gone\tNote for all', 'state\tSelect tags\ton',
+                   'wait\t1 selected\t10', 'keys\tDrawing\t0x1B', 'state\tSelect tags\toff'])
         want2 = {'11LAC10AP002': 'Old note\nChecked on the walkdown', '11LAC10AP003': 'Checked on the walkdown',
                  '11LAC10AP001': ''}
         def notes():
@@ -342,6 +349,20 @@ class Windows(unittest.TestCase):
                 lines += ['set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
                           'click\tShow on the drawing', 'keys\tDrawing\t0x6B,0x6B']
         self.check('switch.uia', lines + ['sleep\t2000', 'value\tSystem\tFeed water piping system'])
+        # a tag on another sheet opened from Equipment by system with a selection: Cancel keeps the selection and the
+        # drawing (the sheet is switched only once the person agreed)
+        self.check('switch2.uia', ['wait\tOther drawing — Walkdown\t10', 'toggle\tSelect tags', 'wait\t0 selected\t10',
+                                   'set\tSearch equipment by KKS code or description\tLAB70AA601', 'select\t~11LAB70AA601',
+                                   'click\tSelect or unselect', 'wait\t1 selected\t10',
+                                   'click\tEquipment by system…', 'wait\tEquipment by system\t20',
+                                   'set\tSearch codes, systems, descriptions\tLAB70AA501', 'wait\t~ found\t20',
+                                   'select\t~11LAB70AA501 · ', 'click\tShow the selected code on its drawing',
+                                   'wait\tLeave Select tags?\t10', 'click\tCancel', 'gone\tLeave Select tags?',
+                                   'sleep\t500', 'wait\tOther drawing — Walkdown\t5', 'gone\tSample sheet — Walkdown',
+                                   'wait\t1 selected\t5',
+                                   'click\tShow the selected code on its drawing', 'wait\tLeave Select tags?\t10',
+                                   'click\tOK', 'wait\tSample sheet — Walkdown\t10', 'state\tSelect tags\toff',
+                                   'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
         self.assertIn('Walkdown', vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName'))
         self.leave()
 

@@ -18,7 +18,9 @@
 //                           (median > 200, some dark pixels): dark drawings
 //   boxdrag <window> <element> <fw> <fh>  a left-button drag in <window> from just above-left of <element> to its
 //                           top-left plus fw × its width, fh × its height (a box around it and its neighbours)
-//   escdrag <name> x0 y0 x1 y1  a drag as `drag` that Escape (posted to its window) interrupts before the button is up
+//   escdrag <name> x0 y0 x1 y1 [hold]  a drag as `drag` that Escape (posted to its window) interrupts before the button
+//                           is up; with "hold" the button stays down (until `mouseup`)
+//   mouseup <name>          the left button up in the element's window
 //   pixels <name> <rrggbb> <max>  the element as drawn (PrintWindow) has at most <max> pixels of this colour (each
 //                           channel within 3): e.g. no box left on the drawing
 //   sleep <ms>
@@ -386,7 +388,12 @@ int wmain(int argc, wchar_t **argv) {
                 PostMessageW((HWND)hw, WM_KEYUP, VK_ESCAPE, 0);
                 Sleep(300);
             }
-            PostMessageW((HWND)hw, WM_LBUTTONUP, 0, at(4, 5));
+            if (!(cmd == "escdrag" && f.size() > 6 && f[6] == "hold")) PostMessageW((HWND)hw, WM_LBUTTONUP, 0, at(4, 5));
+        } else if (cmd == "mouseup") {
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            PostMessageW((HWND)hw, WM_LBUTTONUP, 0, 0);
         } else if (cmd == "touchdrag") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);

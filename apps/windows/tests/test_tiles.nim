@@ -50,12 +50,12 @@ proc waitDone(timeoutS = 30.0): (bool, int) =
   var key: clonglong
   var w, h: cint
   var px: pointer
-  while epochTime() - t0 < timeoutS:
+  while true:                         # at least once: timeoutS = 0 polls once
     if jobDone(addr key, addr w, addr h, addr px) == 1:
       if px != nil: cfree(px)
       return (true, int(w))
+    if epochTime() - t0 >= timeoutS: return (false, 0)
     sleep(1)
-  (false, 0)
 
 proc waitGone(timeoutS = 30.0): bool =
   let t0 = epochTime()

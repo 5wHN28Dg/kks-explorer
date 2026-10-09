@@ -204,7 +204,15 @@ proc sendMany(w: Win, round: int, codes: seq[string], kind: string, payload: JNo
   if pending == 0 and held == 0: msg.add " · saved"
   w.loadModel()
   if w.sheet.len > 0: w.v.tags = w.tagBoxes(w.sheet)
-  if round == pickRound: w.stopPicking()
+  if round == pickRound:
+    # codes picked after the photo or form was opened weren't in this send: they stay selected, the mode on
+    var rest: seq[string]
+    for k in w.picked:
+      if k notin codes: rest.add k
+    if rest.len == 0: w.stopPicking()
+    else:
+      w.picked = rest
+      w.updatePick()
   else: w.syncChosen()      # a photo from an earlier round: the selection made since stays
   w.toast(msg)
   true
@@ -261,7 +269,9 @@ proc placeForAll*(w: Win) =
     # what this device shows now, before the question: the sync goes on while it is open
     let payload = newObj(@[("changes", changes), ("bases", w.basesOf(codes, changes))])
     if lines.len > 0 and not ask(hw, "Replace values?", lines.join("\n")): return
-    discard w.sendMany(round, codes, "equipment", payload, if note != nil: note.text else: "")),   # the round's end closes this
+    if round != pickRound: return     # the round ended while the question was open (its window went with it)
+    if w.sendMany(round, codes, "equipment", payload, if note != nil: note.text else: "") and hw in roundWins:
+      DestroyWindow(hw)),             # (unless the round's end has closed it already)
     ("Cancel", proc () = DestroyWindow(hw)))
   p.layout()
   ShowWindow(hw, SW_SHOW)
@@ -284,8 +294,9 @@ proc noteForAll*(w: Win) =
     if v.len == 0:
       w.toast("Write the note first")
       return
-    discard w.sendMany(round, codes, "equipment", newObj(@[("append", newObj(@[("notes", newStr(v))]))]),
-                       if note != nil: note.text else: "")),    # the round's end closes this
+    if w.sendMany(round, codes, "equipment", newObj(@[("append", newObj(@[("notes", newStr(v))]))]),
+                  if note != nil: note.text else: "") and hw in roundWins:
+      DestroyWindow(hw)),             # (unless the round's end has closed it already)
     ("Cancel", proc () = DestroyWindow(hw)))
   p.layout()
   ShowWindow(hw, SW_SHOW)

@@ -187,8 +187,7 @@ proc follow(cw: CW, target: string) =
     let code = target[4 .. ^1]
     for t in cw.w.m.tags:
       if t.full == code or t.kks == code:
-        cw.w.showSheet(t.sheet)
-        cw.w.selectTag(t.id, true)
+        cw.w.selectTag(t.id, true)     # it shows the sheet (after asking whether to drop a selection)
         discard SetForegroundWindow(cw.w.hwnd)
         return
     cw.w.toast(code & " is not on any sheet")

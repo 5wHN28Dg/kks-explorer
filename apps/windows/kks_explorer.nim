@@ -72,9 +72,14 @@ proc doSelectTag(id: string, center: bool) =
     # a selection is never dropped without asking (nothing has been sent for it)
     if w.picked.len > 0:
       let owner = if GetActiveWindow() != nil: GetActiveWindow() else: w.hwnd
-      let n = w.picked.len
+      let before = w.picked
+      let n = before.len
       if not ask(owner, "Leave Select tags?", "Opening this tag ends Select tags: the " &
                  (if n == 1: "selected code is" else: $n & " selected codes are") & " dropped, nothing is sent for them."):
+        return
+      # the main window stays usable under the question: a selection changed meanwhile wasn't the one asked about
+      if w.picking and w.picked != before:
+        w.toast("The selection changed: open the tag again to leave Select tags")
         return
     w.stopPicking()
   w.selected = id
