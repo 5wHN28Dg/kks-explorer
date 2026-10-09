@@ -5,7 +5,7 @@
 ##     (the cutover: an existing v1 sheet gets its path store and pyramid; its tags and notes, hand-verified ones
 ##      included, stay exactly as they are; refused if the image size differs from the sheet's, as the boxes
 ##      would no longer line up)
-##              [--glyphs fontlib.kgl] [--effort N]
+##              [--glyphs fontlib.kgl] [--effort N] [--legend auto|hrsg|none]
 ##   Options go before the positional arguments or anywhere among them; after `--` everything is positional (the
 ##   server passes the sheet name, which the manager types, after it).
 ##
@@ -14,12 +14,14 @@
 ##   sheets/<id>.kkp      the grid-indexed path store (docs/PATHSTORE.md)
 ##   sheets/<id>.o<k>.jxl the overview pyramid (docs/PATHSTORE.md "Overview pyramid")
 ##   sheets.json, tags.json  this sheet's entry and its tags (other sheets kept)
-## The reading is the Python importer's, bit for bit (tests/diff_trace.nim). The last output line is
-## `RESULT {json}` for the server.
+## Each valve tag (component AA) gets an optional "symbol" field when its drawn symbol is found and the sheet carries
+## the HRSG legend (valves.nim; --keep-tags refreshes it and leaves the rest of each tag alone). The sheet's entry
+## gets its off-page connectors, "links" (connectors.nim), in both modes. The reading is the Python importer's,
+## bit for bit (tests/diff_trace.nim). The last output line is `RESULT {json}` for the server.
 
 import std/[os, strutils, times, parseopt, algorithm]
 import kks/[json, pathstore]
-import kksi/[mupdf, fontlib, reader, textlines, extract, kkp, jxl, connectors]
+import kksi/[mupdf, fontlib, reader, textlines, extract, kkp, jxl, connectors, valves]
 
 const
   RepoGlyphs = currentSourcePath().parentDir / "fontlib.kgl"
@@ -72,6 +74,7 @@ proc main() =
   var dataDir = getCurrentDir() / "plant-data"
   var glyphs = ""
   var effort = 7
+  var legend = "auto"
   # "--": everything after it is a positional argument (issue #38; parseopt's remainingArgs skips the first one)
   var params = commandLineParams()
   var positional: seq[string]
@@ -91,14 +94,16 @@ proc main() =
       of "data-dir": dataDir = val
       of "glyphs": glyphs = val
       of "effort": effort = parseInt(val)
+      of "legend": legend = val
       of "help", "h":
-        echo "kks-import DRAWING.pdf \"Display name\" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace] [--data-dir DIR] [--glyphs fontlib.kgl] [--effort 1-9]"
+        echo "kks-import DRAWING.pdf \"Display name\" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace] [--data-dir DIR] [--glyphs fontlib.kgl] [--effort 1-9] [--legend auto|hrsg|none]"
         quit 0
       else: die "Unknown option --" & key
     of cmdEnd: discard
   args.add positional
   if args.len notin 2 .. 3: die "Usage: kks-import DRAWING.pdf \"Display name\" [SHEET_ID] [options]; --help for more."
   if rotate notin ["auto", "0", "90", "180", "270"]: die "--rotate must be auto, 0, 90, 180 or 270."
+  if legend notin ["auto", "hrsg", "none"]: die "--legend must be auto, hrsg or none."
   let src = args[0]
   let name = args[1]
   let sid = if args.len == 3: args[2] else: sheetId(name)
@@ -245,6 +250,10 @@ proc main() =
       ("kind", newStr(it.kind)), ("status", newStr(t.status)), ("conf", newFloat(t.conf)), ("bbox", bb),
       ("orient", newStr($t.orient)), ("read", newArr(@[newStr(t.top), newStr(t.bottom)])),
       ("note", newStr(it.note)), ("flag", newStr(t.flag)), ("suggestion", newNull())])
+  # valve types from the drawn symbols: on this sheet's valve tags, a fresh "symbol" field or none
+  let vs = annotate(newTags, sid, drawing, z, legend)
+  if not vs.hasLegend: log "Valve types: no HRSG legend on this sheet, so no types (" & $vs.valves & " valve tags)."
+  else: log "Valve types: " & $vs.typed & " of " & $vs.valves & " valve tags linked to their symbol and typed."
   writeAtomic(tagsPath, toText(newTags))
   writeAtomic(sheetsPath, toText(newSheets))
   log "Done: \"" & name & "\" added: " & $nAuto & " tags auto-read, " & $nReview & " in the review queue, " & $links.len & " connectors (" &

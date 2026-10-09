@@ -193,10 +193,12 @@ Images are few and small, so they are not in the grid. A viewer tests each image
     another sheet is where the line continues; twice on one sheet, the line continues there.
   - `bbox`: the circle's box in level-0 pixels, like a tag's.
   - `conf`: the lowest glyph confidence of the reading (0–1).
-  - Written by kks-import in both modes (`--keep-tags` too: it never changes the tags) from the circles found in the
+  - Written by kks-import in both modes (`--keep-tags` too: it leaves the tags' readings alone) from the circles found in the
     drawing's vectors (importer/README, "Off-page connectors"). Readers ignore entries without a label or a 4-number
     box. core `model.parseSheets` reads them, `views.linksView(sheet)` gives each connector with its targets.
-- tags.json is unchanged from v1. A tag's `bbox` is in level-0 pixels.
+- tags.json is as in v1. A tag's `bbox` is in level-0 pixels. A valve tag may carry an optional `symbol`
+  (the drawn valve symbol's type, actuator and `nc`: hatched, meaning normally closed; importer/README "Valve
+  types"); readers ignore fields they don't know.
 
 ## Drawing a view (informative)
 
