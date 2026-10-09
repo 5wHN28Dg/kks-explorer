@@ -66,6 +66,16 @@ proc autoCount(ts: seq[Tag]): int =
   for t in ts:
     if t.status == "auto": inc result
 
+when defined(linux) and not defined(android):
+  # glibc's malloc gives each thread that allocates its own arena, reserving 64 MB of address space apiece; libjxl's
+  # encoder runs one thread per CPU, so on a 20-thread laptop the reservations alone came to about 1.3 GB. The server
+  # runs the importer under an address-space limit (import_memory_mb, RLIMIT_AS), which counts reservations, not
+  # memory used: the largest real sheet peaked at 3.2 GB of address space for 1.85 GB resident, and crashed under a
+  # 2.5 GB limit. Two arenas: 1.96 GB of address space for the same 1.85 GB (2026-10-09), and the same output.
+  proc mallopt(param, value: cint): cint {.importc, header: "<malloc.h>".}
+  var M_ARENA_MAX {.importc, header: "<malloc.h>".}: cint
+  discard mallopt(M_ARENA_MAX, 2)
+
 proc main() =
   var args: seq[string]
   var rotate = "auto"
@@ -173,7 +183,9 @@ proc main() =
       die "The new image would be " & $w & "x" & $h & " px, the v1 sheet is " & $old["w"].i & "x" & $old["h"].i &
           ": the tags' boxes would not line up. Nothing written."
   log "Finding the connectors to other sheets..."
-  let links = findConnectors(doc, lib)     # on the page the tags were read on (no annotations)
+  # on the page the tags were read on (no annotations); before anything is written, so a page past the connector
+  # finder's limits (a crafted PDF) leaves the plant data as it was
+  let links = try: findConnectors(doc, lib) except ConnectorLimitError as e: die e.msg
   createDir(dataDir / "sheets")
   log "Writing the path store..."
   let srcDoc = mupdf.open(src)
@@ -262,4 +274,37 @@ proc main() =
                                   ("review", newInt(nReview)), ("rotation", newInt(rot)), ("w", newInt(w0)),
                                   ("h", newInt(h0)), ("notes", newInt(noteArr.elems.len)), ("links", newInt(links.len))]))
 
-main()
+# Out of memory: one plain line and exit code 3 (the server explains its import_memory_mb limit when it sees that
+# code). Nim's own allocator calls the hook; MuPDF reports a failed allocation as an error.
+const ExitOutOfMemory = 3
+var oomLine: cstring       # made before it is needed: the hook can't allocate
+when defined(linux):
+  type RLim {.importc: "struct rlimit", header: "<sys/resource.h>".} = object
+    rlim_cur, rlim_max: uint64
+  proc getrlimit(resource: cint, r: var RLim): cint {.importc, header: "<sys/resource.h>".}
+  var RLIMIT_AS {.importc, header: "<sys/resource.h>".}: cint
+  var RLIM_INFINITY {.importc, header: "<sys/resource.h>".}: uint64
+proc limitText(): string =
+  when defined(linux):
+    var r: RLim
+    if getrlimit(RLIMIT_AS, r) == 0 and r.rlim_cur != RLIM_INFINITY:
+      return " (its address-space limit is " & $(r.rlim_cur div (1024 * 1024)) & " MB)"
+  ""
+let oomText = "The importer ran out of memory" & limitText() & ": the import stopped.\n"
+oomLine = cstring(oomText)
+proc c_write(fd: cint, buf: cstring, n: csize_t): int {.importc: "write", header: "<unistd.h>".}
+proc c_exit(code: cint) {.importc: "_exit", header: "<unistd.h>", noreturn.}
+proc onOutOfMemory() {.nimcall, tags: [], gcsafe, raises: [].} =
+  {.cast(gcsafe).}:
+    discard c_write(2, oomLine, csize_t(oomLine.len))
+  c_exit(ExitOutOfMemory)
+outOfMemHook = onOutOfMemory
+
+try:
+  main()
+except MupdfError as e:
+  if "malloc (" in e.msg or "calloc (" in e.msg or "realloc (" in e.msg:
+    stderr.write $oomLine
+    stderr.writeLine "  (MuPDF: " & e.msg & ")"
+    quit ExitOutOfMemory
+  raise

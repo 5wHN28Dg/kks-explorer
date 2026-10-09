@@ -151,3 +151,31 @@ suite "untrusted pages":
     let t0 = epochTime()
     discard blobs(ps)
     check epochTime() - t0 < 5.0
+  proc ring(x, y: float): Path =
+    ## a connector-sized circle: four Bézier items, 21 pt across
+    result = Path(kind: "s", rect: [float32(x), float32(y), float32(x + 21), float32(y + 21)], closePath: -1)
+    for i in 0 ..< 4: result.items.add Item(cmd: 'c')
+  test "a page past MaxCircles is refused, one at the limit is read":
+    var ps: seq[Path]
+    for i in 0 ..< MaxCircles: ps.add ring(float(i mod 100) * 30, float(i div 100) * 30)
+    check candidates(ps).len == 0          # empty circles: no candidates, but no error either
+    ps.add ring(0, 3000)
+    expect ConnectorLimitError: discard candidates(ps)
+    try: discard candidates(ps)
+    except ConnectorLimitError as e: check "MaxCircles" in e.msg and $MaxCircles in e.msg
+  test "a page past MaxSmallPaths is refused, one at the limit is read":
+    # 400 strokes on top of each other per 20 pt cell (CellMax: merged, one blob per cell); one more path, filled at
+    # first (not a stroke: not counted), then a stroke
+    var ps = newSeq[Path](MaxSmallPaths + 1)
+    for i in 0 ..< MaxSmallPaths:
+      let c = i div CellMax
+      let (x, y) = (float(c mod 1000) * 20 + 5, float(c div 1000) * 20 + 5)
+      ps[i] = stroke(x, y, x + 1, y + 1)
+    ps[^1] = stroke(5, 5, 6, 6)
+    ps[^1].hasFill = true
+    check blobs(ps).len == MaxSmallPaths div CellMax
+    ps[^1].hasFill = false
+    expect ConnectorLimitError: discard blobs(ps)
+    expect ConnectorLimitError: discard candidates(ps)
+    try: discard blobs(ps)
+    except ConnectorLimitError as e: check "MaxSmallPaths" in e.msg and $MaxSmallPaths in e.msg

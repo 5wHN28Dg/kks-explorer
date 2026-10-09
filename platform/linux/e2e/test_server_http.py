@@ -83,6 +83,30 @@ class Base(unittest.TestCase):
 
 
 @unittest.skipUnless(os.path.exists(IMPORTER), 'the importer (kks_import) is not built')
+def many_circles_pdf(n):
+    """a page of n empty circles 21 pt across (Bezier, like the drawings' off-page connectors)"""
+    ops = ['0.35 w']
+    for i in range(n):
+        cx, cy, r = 20 + (i % 60) * 30, 20 + (i // 60) * 30, 10.5
+        c = 0.5523 * r
+        ops.append(f'{cx + r} {cy} m {cx + r} {cy + c} {cx + c} {cy + r} {cx} {cy + r} c '
+                   f'{cx - c} {cy + r} {cx - r} {cy + c} {cx - r} {cy} c {cx - r} {cy - c} {cx - c} {cy - r} {cx} {cy - r} c '
+                   f'{cx + c} {cy - r} {cx + r} {cy - c} {cx + r} {cy} c S')
+    content = '\n'.join(ops).encode() + b'\n'
+    objs = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+            b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1840 560] /Contents 4 0 R >>',
+            b'<< /Length %d >>\nstream\n' % len(content) + content + b'endstream']
+    out = b'%PDF-1.4\n'
+    offs = []
+    for i, o in enumerate(objs):
+        offs.append(len(out))
+        out += b'%d 0 obj\n' % (i + 1) + o + b'\nendobj\n'
+    xref = len(out)
+    out += b'xref\n0 %d\n0000000000 65535 f \n' % (len(objs) + 1) + b''.join(b'%010d 00000 n \n' % o for o in offs)
+    out += b'trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n' % (len(objs) + 1, xref)
+    return out
+
+
 class Drawings(Base):
     def wait(self, c):
         for _ in range(600):
@@ -140,6 +164,16 @@ class Drawings(Base):
         job = self.wait(boss)
         self.assertEqual(job['state'], 'failed')
         self.assertEqual(open(os.path.join(self.dir, 'plant-data', 'sheets.json')).read(), before)
+        # a crafted page past the connector finder's limit (MaxCircles, 1000) is refused; nothing changes (2026-10-09)
+        sheets_dir = os.path.join(self.dir, 'plant-data', 'sheets')
+        files = {n: open(os.path.join(sheets_dir, n), 'rb').read() for n in os.listdir(sheets_dir)}
+        boss.req('POST', '/api/sheets/import?id=circles&name=Circles', raw=many_circles_pdf(1001),
+                 headers={'Content-Type': 'application/pdf'})
+        job = self.wait(boss)
+        self.assertEqual(job['state'], 'failed', job['log'])
+        self.assertTrue(any('MaxCircles' in l and '1001' in l for l in job['log']), job['log'])
+        self.assertEqual(open(os.path.join(self.dir, 'plant-data', 'sheets.json')).read(), before)
+        self.assertEqual({n: open(os.path.join(sheets_dir, n), 'rb').read() for n in os.listdir(sheets_dir)}, files)
         # a name that looks like an option is a name, not an importer option (issue #38)
         boss.req('POST', '/api/sheets/import?id=four&name=--replace', raw=pdf, headers={'Content-Type': 'application/pdf'})
         job = self.wait(boss)
@@ -178,6 +212,60 @@ class ImportLimits(Base):
         self.assertEqual(open(FAKE_IMPORTER + '.limits').read().split(), [str(700 * 1024), '0'])
         args = open(FAKE_IMPORTER + '.args').read().splitlines()
         self.assertEqual(args[-4:-1], ['--', os.path.join(self.dir, 'backups', 'uploads', 'one.pdf'), '-x y'])  # issue #38
+
+
+OOM_IMPORTER = os.path.join(FAKE_DIR, 'kks-import-oom')
+with open(OOM_IMPORTER, 'w') as f:   # records its limit, then runs out of memory as kks-import reports it (exit code 3)
+    f.write('#!/bin/sh\nulimit -v > "$0.limits"\necho "The importer ran out of memory: the import stopped." >&2\nexit 3\n')
+os.chmod(OOM_IMPORTER, 0o755)
+CRASH_IMPORTER = os.path.join(FAKE_DIR, 'kks-import-crash')
+with open(CRASH_IMPORTER, 'w') as f:   # dies of a signal, as a C library can when an allocation fails
+    f.write('#!/bin/sh\nkill -SEGV $$\n')
+os.chmod(CRASH_IMPORTER, 0o755)
+
+
+class ImportFailure(Base):
+    def run_import(self, boss):
+        before = open(os.path.join(self.dir, 'plant-data', 'sheets.json')).read() \
+            if os.path.exists(os.path.join(self.dir, 'plant-data', 'sheets.json')) else None
+        st, r, _ = boss.req('POST', '/api/sheets/import?id=one&name=One', raw=b'%PDF-1.4 x', headers={'Content-Type': 'application/pdf'})
+        self.assertEqual(st, 200, r)
+        for _ in range(100):
+            job = boss.req('GET', '/api/sheets/job')[1]['job']
+            if job['state'] != 'running':
+                break
+            time.sleep(0.2)
+        self.assertEqual(job['state'], 'failed', job)
+        after = open(os.path.join(self.dir, 'plant-data', 'sheets.json')).read() \
+            if os.path.exists(os.path.join(self.dir, 'plant-data', 'sheets.json')) else None
+        self.assertEqual(after, before)
+        return job['log']
+
+
+class ImportOutOfMemory(ImportFailure):
+    """2026-10-09: the default limit is 2560 MB (below the service's 3G cap), and an import that runs out of memory
+    says which setting to raise"""
+    extra = {'importer': OOM_IMPORTER}
+
+    def test_out_of_memory_names_the_limit(self):
+        log = self.run_import(self.manager())
+        self.assertEqual(open(OOM_IMPORTER + '.limits').read().split(), [str(2560 * 1024)])
+        hint = [l for l in log if 'import_memory_mb' in l]
+        self.assertEqual(len(hint), 1, log)
+        self.assertIn('2560 MB', hint[0])
+        self.assertIn('raise import_memory_mb', hint[0])
+        self.assertIn('MemoryMax', hint[0])
+
+
+class ImportCrash(ImportFailure):
+    extra = {'importer': CRASH_IMPORTER, 'import_memory_mb': 1000}
+
+    def test_crash_mentions_the_limit(self):
+        log = self.run_import(self.manager())
+        hint = [l for l in log if 'import_memory_mb' in l]
+        self.assertEqual(len(hint), 1, log)
+        self.assertIn('signal 11', hint[0])
+        self.assertIn('1000 MB', hint[0])
 
 
 class Cli(Base):
