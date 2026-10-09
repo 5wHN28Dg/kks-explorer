@@ -746,7 +746,10 @@ K.annotate = (src, askNote) => new Promise(done => {
     }
     if ((e.buttons & 6) && !draft) { const dpr = window.devicePixelRatio || 1, s = fit * zoom; cx -= (q[0] - prev[0]) * dpr / s; cy -= (q[1] - prev[1]) * dpr / s; later(); return }   // right or middle button: pan
     if (!draft) return;
-    const [x, y] = toImg(...q); draft.p[2] = x; draft.p[3] = y; later(draft.touch ? () => loupe(...q) : null);
+    // the loupe is drawn in the next frame: only if this finger still draws then, and where it is then (drawn after
+    // the finger had lifted, it stayed up over the next mouse draw)
+    const id = e.pointerId, [x, y] = toImg(...q); draft.p[2] = x; draft.p[3] = y;
+    later(draft.touch ? () => { const p = draft && draft.touch && pts.get(id); if (p) loupe(...p) } : null);
   });
   const up = e => {          // (the end is where the finger left, even if moves were skipped)
     pts.delete(e.pointerId);
