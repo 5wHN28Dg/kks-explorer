@@ -4,10 +4,12 @@ relative to what is drawn around it. The drafts go into the plant data's descrip
 "Draft description (unchecked)" until a person confirms or rewrites it (the confirmation goes through the normal
 proposal flow as the equipment's custom field "Description").
 
-  python3 tools/draft_descriptions.py PLANT_DATA_DIR [--kks data/kks.json] [--out FILE] [--keep]
+  python3 tools/draft_descriptions.py PLANT_DATA_DIR [--kks data/kks.json] [--out FILE] [--keep] [--state STATE.json]
 
 PLANT_DATA_DIR holds sheets.json, tags.json and (optional) locations.json. --keep leaves existing entries in FILE
-alone (only new codes get a draft). Every draft names its basis, so a reviewer sees what each sentence rests on:
+alone (only new codes get a draft). --state takes the plant's state as the apps see it (GET /api/state): the tags
+people marked as missed (added_tags) are drafted too, and review decisions apply as in the apps (a corrected reading
+gets the draft under its corrected code; a rejected one gets none). Without it, only tags.json's readings are used. Every draft names its basis, so a reviewer sees what each sentence rests on:
 "KKS system + component kind (general knowledge)", "instrument letters", "drawing neighbours", "location list".
 
 What the drafts can't know: the drawings say which equipment is drawn near which, not how the pipes connect (line
@@ -110,6 +112,24 @@ def isa_words(isa, tables):
     return s + '.'
 
 
+def apply_state(tags, state):
+    """tags.json + added tags, with review decisions on top (core model.nim merge/eff)"""
+    out = list(tags)
+    for a in (state or {}).get('added_tags') or []:
+        if isinstance(a, dict) and a.get('kks') and isinstance(a.get('bbox'), list) and len(a['bbox']) == 4:
+            out.append({'id': 'u:' + str(a.get('id', '')), 'sheet': a.get('sheet', ''), 'kks': a['kks'],
+                        'suffix': a.get('suffix') or '', 'isa': a.get('isa') or '', 'bbox': a['bbox']})
+    reviews = (state or {}).get('reviews') or {}
+    res = []
+    for t in out:
+        r = reviews.get(t.get('id')) if isinstance(reviews, dict) else None
+        if isinstance(r, dict):
+            if r.get('status') == 'rejected': continue
+            t = dict(t, kks=r.get('kks') or '', isa=r.get('isa') or '', suffix=r.get('suffix') or '')
+        res.append(t)
+    return res
+
+
 def nearest(tag, others, k=2, limit=400.0):
     """the closest other codes on the same sheet (box centres, level-0 px), within `limit` px"""
     bx = tag['bbox']; cx, cy = (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2
@@ -174,14 +194,17 @@ def main(argv=None):
     ap.add_argument('--kks', default=os.path.join(os.path.dirname(__file__), '..', 'data', 'kks.json'))
     ap.add_argument('--out')
     ap.add_argument('--keep', action='store_true', help='leave existing drafts in --out as they are')
+    ap.add_argument('--state', help='the state as the apps see it (GET /api/state): added tags and review decisions')
     a = ap.parse_args(argv)
     pd = a.plant_data
     sheets = {s['id']: s for s in load(os.path.join(pd, 'sheets.json'))}
     tags = load(os.path.join(pd, 'tags.json'))
+    if a.state: tags = apply_state(tags, load(a.state))
     tables = load(a.kks)
     locs = {}
-    for e in load(os.path.join(pd, 'locations.json'), {'entries': []}).get('entries', []):
-        if e.get('desc') and e.get('kks'): locs.setdefault(e['kks'], e['desc'])
+    ll = load(os.path.join(pd, 'locations.json'), {'entries': []})
+    for e in (ll if isinstance(ll, list) else ll.get('entries', [])):   # either form, as the core reads it
+        if isinstance(e, dict) and e.get('desc') and e.get('kks'): locs.setdefault(e['kks'], e['desc'])
     out = a.out or os.path.join(pd, 'descriptions.json')
     result = load(out, {}) if a.keep else {}
     by_sheet = {}

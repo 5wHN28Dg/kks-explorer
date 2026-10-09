@@ -44,6 +44,21 @@ class Drafts(unittest.TestCase):
         self.assertEqual(d['11LAB70AA501']['text'], 'hand edit')
         self.assertIn('11LAB70CP101', d)
 
+    def test_state_added_tags_and_reviews(self):
+        # as the apps see it: a tag marked as missed gets a draft; a corrected reading gets it under the corrected
+        # code (not the misread one); a rejected reading gets none
+        st = os.path.join(self.d, 'state.json')
+        json.dump({'added_tags': [{'id': 'm1', 'sheet': 'a', 'kks': '11LAB70AA502', 'suffix': '', 'bbox': [120, 130, 150, 150]}],
+                   'reviews': {'a:2': {'status': 'confirmed', 'kks': '11LAB71CP101', 'suffix': '', 'isa': 'PI'},
+                               'a:3': {'status': 'rejected'}}}, open(st, 'w'))
+        d = self.run_tool('--state', st)
+        self.assertEqual(sorted(d), ['11LAB70AA501', '11LAB70AA502', '11LAB71CP101'])
+
+    def test_location_list_as_a_plain_array(self):
+        # the core reads either {"entries": [...]} or a bare array
+        json.dump([{'kks': 'LAB70AA501', 'desc': 'feed control valve'}], open(os.path.join(self.d, 'locations.json'), 'w'))
+        self.assertIn('"feed control valve"', self.run_tool()['11LAB70AA501']['text'])
+
 
 if __name__ == '__main__':
     unittest.main()
