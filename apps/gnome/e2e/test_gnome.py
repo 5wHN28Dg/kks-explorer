@@ -102,7 +102,9 @@ class Gnome(unittest.TestCase):
         cls.server.wait(5)
         shutil.rmtree(cls.dir, ignore_errors=True)
 
-    def start_app(self, name, **extra):
+    def start_app(self, name, wait=True, **extra):
+        """the app on its own data folder (the same one again for the same name); wait=False: don't wait for its
+        window (returns None; the process is self.apps[-1])"""
         d = os.path.join(self.dir, name)
         os.makedirs(d, exist_ok=True)
         env = dict(os.environ, KKS_DATA_DIR=d, KKS_STORAGE_KEY_FILE=os.path.join(d, 'key'), KKS_NO_MDNS='1',
@@ -111,6 +113,8 @@ class Gnome(unittest.TestCase):
         log = open(f'/tmp/kks-gnome-e2e-{name}.log', 'w')       # the app's own output, for when a test fails
         p = subprocess.Popen([APP], env=env, stdout=log, stderr=subprocess.STDOUT)
         self.apps.append(p)
+        if not wait:
+            return None
         return atspi.app_pid(p.pid, name=('walkdown', 'kks_explorer'), before=before)
 
     def test_scan_camera(self):
@@ -217,6 +221,60 @@ class Gnome(unittest.TestCase):
                 break
             time.sleep(0.3)
         self.assertTrue(tb.get_state_set().contains(Atspi.StateType.PRESSED), 'the toggle does not say it is on')
+
+    def test_photo_queue_crash(self):
+        """the photo queue survives the app ending (the user's rule: a photo is never lost). Two photos are queued and
+        the app is killed (SIGKILL) before they are compressed (KKS_TEST_PHOTO_HOLD); started again, it sends the
+        first and dies right after the core took it, before the queue forgot it (KKS_TEST_PHOTO_DIE_AFTER_SEND);
+        started a third time, it sends the first again (kept once: its client_id) and then the second, in order."""
+        from PIL import Image
+        pic = os.path.join(self.dir, 'queued.png')
+        Image.new('RGB', (320, 240), (90, 140, 200)).save(pic)
+        a = self.start_app('crasher', KKS_PHOTO_FILE=pic, KKS_TEST_PHOTO_HOLD='1')
+        self.join(a)
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA501')
+        time.sleep(1)
+        atspi.click(atspi.find(a, 'button', name='11LAB70AA501'))
+        time.sleep(2)            # the panel is built for this code
+        for cap in ('queued one', 'queued two'):
+            for _ in range(5):   # the panel rebuilds after a sync and when a photo is queued: a lost click is retried
+                atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+                try:
+                    caption = atspi.find(a, 'text', name='Caption', timeout=8)
+                    break
+                except AssertionError:
+                    continue
+            atspi.set_text(caption, cap)
+            atspi.click(atspi.find(a, 'button', name='Add the photo'))
+            ask = atspi.find(a, 'alert', name='And its tag plate?', timeout=10)
+            atspi.click(atspi.find(ask, 'button', name='Not now'))
+        atspi.find(a, 'label', contains='Compressing 2 photos', timeout=10)
+        first = self.apps[-1]
+        first.kill()
+        first.wait(10)
+
+        def mine():
+            return [p for p in self.boss.req('GET', '/api/state')['photos'] if p.get('caption', '').startswith('queued ')]
+        self.assertEqual(mine(), [], 'nothing was sent before the kill')
+        self.start_app('crasher', wait=False, KKS_TEST_PHOTO_DIE_AFTER_SEND='1')
+        second = self.apps[-1]
+        second.wait(120)
+        self.assertEqual(second.returncode, -signal.SIGKILL, 'the app should have died after sending the first photo')
+        a = self.start_app('crasher')
+        got = []
+        for _ in range(120):
+            got = mine()
+            if len(got) >= 2:
+                break
+            time.sleep(0.5)
+        time.sleep(6)            # a second copy of the first photo would arrive with the next sync
+        got = mine()
+        self.assertEqual(sorted(p['caption'] for p in got), ['queued one', 'queued two'])
+        ids = {p['id']: p['caption'] for p in got}
+        revs = [r for r in self.boss.req('GET', '/api/revisions?limit=200')['revisions']
+                if r.get('entity') == 'photo' and r.get('key') in ids]
+        self.assertEqual([ids[r['key']] for r in revs], ['queued two', 'queued one'], 'newest first: sent in the order added')
+        self.assertEqual(atspi.find_all(a, 'label', contains='Compressing '), [], 'the queue is empty')
 
     def test_flow(self):
         a = self.start_app('laptop')

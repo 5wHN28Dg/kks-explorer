@@ -2,10 +2,10 @@
 ## four colours, undo; burned into the image), scale to at most 1600 px, compress as JPEG XL at distance 1.9
 ## (the user's choice 2026-09-27), propose it.
 
-import std/[math, strutils, base64, os, sequtils, times, typedthreads]
+import std/[math, strutils, base64, os, sequtils, times, typedthreads, posix]
 import kks/[json, node, model, api]
 import kksi/jxl
-import gtk, ui, appstate, win
+import gtk, ui, appstate, win, photoqueue
 
 const MaxSide = 1600
 
@@ -381,42 +381,46 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
 # and a photo queue"). JPEG XL at effort 9 takes seconds: it runs on a worker thread, one photo after another in the
 # order they were added, and keeps going when the panel or the editor closes. Each photo is proposed as soon as it is
 # compressed, so they arrive in order. Before 2026-10-08 it ran on the main thread, freezing the window meanwhile.
+# Since 2026-10-09 each photo is kept on disk first (apps/common/photoqueue.nim: sealed rows in the device's store)
+# and removed only once the core accepted or refused it: a crash, an OOM kill or a logout no longer loses it, the next
+# start sends it (with the same client_id, so a photo sent just before the crash is kept once).
 
 type
   EncJob = object
-    id: int
+    key: string
     rgb: seq[byte]
     w, h: int
   EncDone = object
-    id: int
+    key: string
     data: string
     err: string
-  Queued = object
-    id: int
-    kks, caption, note, floor: string
 
 var
   encJobs: Channel[EncJob]
   encDone: Channel[EncDone]
   encThread: Thread[void]
   encStarted = false
-  queue: seq[Queued]             ## main thread only: waiting or being compressed, oldest first
-  nextId = 0
+  pq: PhotoQueue                 ## main thread only (the store's thread); nil until the main screen first shows
   polling = false
 
 proc encWorker() {.thread.} =
   while true:
     let j = encJobs.recv()
-    var d = EncDone(id: j.id)
+    var d = EncDone(key: j.key)
     try: d.data = encodeLossy(j.rgb, j.w, j.h, 3, 1.9, 9)
     except CatchableError, Defect:      # always answer: a dead worker would leave the queue waiting for ever
       d.err = getCurrentExceptionMsg()
     encDone.send(d)
 
+iterator queued(): QueuedPhoto =
+  if pq != nil:
+    for q in pq.items: yield q
+
 proc queueText(): string =
-  if queue.len == 0: return ""
-  "Compressing " & (if queue.len == 1: "1 photo" else: $queue.len & " photos") & " (" & queue[0].kks &
-    (if queue.len > 1: ", then " & queue[1 .. ^1].mapIt(it.kks).join(", ") else: "") &
+  if pq == nil or pq.count == 0: return ""
+  let items = pq.items
+  "Compressing " & (if items.len == 1: "1 photo" else: $items.len & " photos") & " (" & items[0].kks &
+    (if items.len > 1: ", then " & items[1 .. ^1].mapIt(it.kks).join(", ") else: "") &
     "). They are sent in order; you can keep working."
 
 proc showQueue(w: Win) =
@@ -425,50 +429,108 @@ proc showQueue(w: Win) =
   gtk_label_set_text(w.queueLabel, t.cstring)
   gtk_widget_set_visible(w.queueBar, cint(t.len > 0))
 
-proc queuedCount*(): int = queue.len   ## photos still being compressed or waiting (closing the window loses them)
+proc queuedCount*(): int =   ## photos still being compressed or waiting (kept on disk: the next start sends them)
+  if pq == nil: 0 else: pq.count
 
 proc queuedFor*(kks: string): int =
-  for q in queue:
+  for q in queued():
     if q.kks == kks: inc result
 
-proc sendPhoto(w: Win, q: Queued, jxlData: string) =
+proc sendPhoto(w: Win, q: QueuedPhoto, jxlData: string) =
+  ## raises ApiError when the core refuses it
   var payload = newObj(@[("kks", newStr(q.kks)), ("caption", newStr(q.caption)),
                          ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))])
   if q.floor.len > 0: payload["floor"] = newStr(q.floor)   # written first, only if the code still has no floor
-  discard w.submit("photo", payload, "photo of " & q.kks, q.note)
+  discard w.trySubmit("photo", payload, "photo of " & q.kks, q.note, q.clientId)
 
-proc enqueue(w: Win, rgb: seq[byte], ow, oh: int, kks, caption, note, floor: string) =
+proc received(w: Win, d: EncDone) =
+  ## one photo compressed (or not): send it, then remove it, keep it for a retry, or report a refusal
+  if pq.wiped: return
+  var it: QueuedPhoto
+  var found = false
+  for q in pq.items:
+    if q.key == d.key:
+      it = q
+      found = true
+  if not found: return
+  var outcome = Sent
+  var why = ""
+  if d.err.len > 0:
+    outcome = Failed
+    why = "it could not be compressed: " & d.err
+  else:
+    try:
+      w.sendPhoto(it, d.data)
+      # tests: the app dies after the core took the photo, before the queue forgot it (the resend must not add it twice)
+      if getEnv("KKS_TEST_PHOTO_DIE_AFTER_SEND").len > 0: discard posix.kill(getpid(), SIGKILL)
+    except ApiError as e:
+      if e.status >= 400: (outcome, why) = (Refused, e.msg)
+      else: (outcome, why) = (Failed, e.msg)
+    except CatchableError as e:
+      (outcome, why) = (Failed, e.msg)
+  try:
+    let r = pq.finish(d.key, outcome, why, nowMs())
+    if r.len > 0: w.toast(r)
+  except CatchableError as e:          # the store: the photo stays queued (a resend is kept once, by its client_id)
+    w.toast("Photo of " & it.kks & ": the queue could not be updated (" & e.msg & ")")
+
+proc startNext(w: Win) =
+  ## start compressing the next photo (the first one not waiting for a retry), if none is being worked on
+  if pq == nil or pq.wiped: return
   if not encStarted:
     encJobs.open()
     encDone.open()
     createThread(encThread, encWorker)
     encStarted = true
-  inc nextId
-  queue.add Queued(id: nextId, kks: kks, caption: caption, note: note, floor: floor)
-  encJobs.send(EncJob(id: nextId, rgb: rgb, w: ow, h: oh))
+  # tests: KKS_TEST_PHOTO_HOLD keeps the photos queued without compressing them (the app is killed with photos queued)
+  if getEnv("KKS_TEST_PHOTO_HOLD").len == 0:
+    var reports: seq[string]
+    let (ok, it, px) = pq.next(nowMs(), reports)
+    for r in reports: w.toast(r)
+    if ok: encJobs.send(EncJob(key: it.key, rgb: px, w: it.w, h: it.h))
   w.showQueue()
-  if w.selected.len > 0: idle(proc () = w.rebuildPanel())   # not inside the click (an AT-SPI action)
-  if polling: return
+
+proc pump(w: Win) =
+  ## start the next photo, and keep one timer going while photos are queued (results, retries that come due)
+  w.startNext()
+  if polling or pq == nil or pq.count == 0 or pq.wiped: return
   polling = true
   timeout(200, proc (): bool =
     var done = false
     while true:
       let (got, d) = encDone.tryRecv()
       if not got: break
-      var i = 0
-      while i < queue.len and queue[i].id != d.id: inc i
-      if i < queue.len:
-        let q = queue[i]
-        queue.delete(i)
-        if d.err.len > 0: w.toast("Photo of " & q.kks & " could not be compressed: " & d.err)
-        else:
-          try: w.sendPhoto(q, d.data)
-          except CatchableError as e: w.toast("Photo of " & q.kks & " was not sent: " & e.msg)
-        done = true
-      w.showQueue()
+      w.received(d)
+      done = true
     if done and w.selected.len > 0: w.rebuildPanel()   # its "being compressed" line
-    polling = queue.len > 0
+    w.startNext()
+    polling = pq.count > 0 and not pq.wiped
     polling)
+
+proc resumePhotos*(w: Win) =
+  ## once, when the main screen first shows: the photos left from before (a crash, a kill, a logout) go first, in
+  ## their order
+  if pq != nil: return
+  pq = newPhotoQueue(w.a.store)
+  var reports: seq[string]
+  try: reports = pq.resume()
+  except CatchableError as e: reports.add "The queued photos could not be read: " & e.msg
+  for r in reports: w.toast(r)
+  w.pump()
+
+proc photosWiped*(w: Win) =
+  ## a removed device: the store's wipe deleted the queued photos; nothing more is compressed or sent
+  if pq == nil: pq = newPhotoQueue(w.a.store)
+  pq.wipe()
+
+proc enqueue(w: Win, rgb: seq[byte], ow, oh: int, kks, caption, note, floor: string) =
+  w.resumePhotos()
+  try: discard pq.add(w.a.p, rgb, ow, oh, kks, caption, note, floor, nowMs())
+  except CatchableError as e:
+    w.toast("The photo of " & kks & " could not be kept for sending (" & e.msg & "). It was not added.")
+    return
+  w.pump()
+  if w.selected.len > 0: idle(proc () = w.rebuildPanel())   # not inside the click (an AT-SPI action)
 
 proc floorKnown(w: Win, kks: string): bool =
   ## the code has a floor, I proposed one that is still open, or a queued photo carries one
@@ -479,7 +541,7 @@ proc floorKnown(w: Win, kks: string): bool =
     let eq = w.a.call("GET", "/api/state")["equipment"].get(kks)
     if s(eq, "floor").strip.len > 0: return true
   except ApiError: discard
-  for q in queue:
+  for q in queued():
     if q.kks == kks and q.floor.len > 0: return true
   for sub in w.myOpen():
     let p = sub.get("payload")
@@ -496,7 +558,7 @@ proc floorsMissing*(w: Win, codes: openArray[string]): seq[string] =
       except ApiError: st = newObj()
     if s(st.get(k), "floor").strip.len > 0: continue
     var known = false
-    for q in queue:
+    for q in queued():
       if q.kks == k and q.floor.len > 0: known = true
     if not known:
       for sub in w.myOpen():
@@ -529,7 +591,7 @@ proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
 
 proc hasPlate(w: Win, kks: string): bool =
   ## the code has a tag plate photo, or one is on its way
-  for q in queue:
+  for q in queued():
     if q.kks == kks and isPlate(q.caption): return true
   let ph = if w.m.state != nil: w.m.state.get("photos") else: nil
   if ph != nil:
