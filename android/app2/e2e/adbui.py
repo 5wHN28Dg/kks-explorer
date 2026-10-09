@@ -26,6 +26,17 @@ def label(n):
     return n.get('text') or n.get('content-desc') or ''
 
 
+def system_ui_wait(ns):
+    """taps Wait on "System UI isn't responding" (not the app's own: that must fail); True if it was there"""
+    if not any("System UI isn't responding" in label(n) for n in ns):
+        return False
+    for n in ns:
+        if label(n) == 'Wait':
+            x, y = center(n)
+            sh('input', 'tap', str(x), str(y))
+    return True
+
+
 def find(text, timeout=15, exact=False):
     end = time.time() + timeout
     waits = 0
@@ -36,12 +47,8 @@ def find(text, timeout=15, exact=False):
             if (v == text) if exact else (text in v):
                 return n
         # a slow emulator (CI's software GPU) shows "System UI isn't responding" over everything: wait it out
-        if waits < 12 and any("System UI isn't responding" in label(n) for n in ns):   # not the app's own: that must fail
+        if waits < 12 and system_ui_wait(ns):
             waits += 1
-            for n in ns:
-                if label(n) == 'Wait':
-                    x, y = center(n)
-                    sh('input', 'tap', str(x), str(y))
             end = max(end, time.time() + 5)
             time.sleep(1)
             continue
@@ -60,11 +67,18 @@ def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=15):
     26 ms later ("remove task", "start not valid"), and the next test found the home screen (run 37903391890). So
     the app is started again until its own window shows."""
     sh('pm', 'clear', pkg)
+    waits = 0
     for _ in range(4):
         sh('am', 'start', '-n', f'{pkg}/{activity}')
-        end = time.time() + timeout
+        end, seen = time.time() + timeout, 0
         while time.time() < end:
-            if any(n.get('package') == pkg for n in nodes()):
+            ns = nodes()
+            if waits < 12 and system_ui_wait(ns):
+                waits += 1
+                end = max(end, time.time() + 5)
+            # in two dumps in a row (each takes about a second): not a window that is being taken away
+            seen = seen + 1 if any(n.get('package') == pkg for n in ns) else 0
+            if seen >= 2:
                 return
             time.sleep(0.5)
     raise AssertionError(f'{pkg} did not come up after pm clear')
