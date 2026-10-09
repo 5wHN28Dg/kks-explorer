@@ -405,6 +405,23 @@ class Gnome(unittest.TestCase):
             atspi.set_text(search, k[2:])
             atspi.click(atspi.find(a, 'button', name=k, timeout=10))
             atspi.find(a, 'label', name=f'{i + 1} selected', timeout=10)
+        # a photo needs each code's floor: AP003 has none, so Photo for all says so and opens nothing; Place for all
+        # sets it (AP001's floor 3 is replaced), then the photo goes
+        atspi.click(atspi.find(a, 'button', name='Photo for all…'))
+        atspi.find(a, 'label', contains="No floor yet: 11LAC10AP003", timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Place for all…'))
+        pd = atspi.find(a, 'dialog', name='Place for all', timeout=10)
+        atspi.set_text(atspi.find(pd, 'text', name='Floor'), '4')
+        atspi.click(atspi.find(pd, 'button', name='Send'))
+        alert = atspi.find(a, 'alert', name='Replace values?', timeout=10)
+        atspi.click(atspi.find(alert, 'button', name='Send'))
+        atspi.find(a, 'label', name='Sent for 2 codes · saved', timeout=10)
+        atspi.click(mode)
+        atspi.find(a, 'label', name='0 selected', timeout=10)
+        for i, k in enumerate(('11LAC10AP001', '11LAC10AP003')):
+            atspi.set_text(search, k[2:])
+            atspi.click(atspi.find(a, 'button', name=k, timeout=10))
+            atspi.find(a, 'label', name=f'{i + 1} selected', timeout=10)
         atspi.click(atspi.find(a, 'button', name='Photo for all…'))
         atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), 'Both drains')
         atspi.click(atspi.find(a, 'button', name='Add the photo'))

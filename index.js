@@ -751,6 +751,9 @@ const noteValue=d=>d.querySelector('#dlgNote')?.value.trim()||'';
 function pickNothing(){ if(multi.codes.length) return false; toast('Select tags first'); return true }
 function photoForAll(){
   if(pickNothing()) return;
+  // the user's rule: a photo needs its equipment's floor (one dialog can't ask for several, so set them first)
+  const missing=multi.codes.filter(k=>!floorKnown(k));
+  if(missing.length){ toast(`A photo needs each code's floor. No floor yet: ${missing.slice(0,5).join(', ')}${missing.length>5?` and ${missing.length-5} more`:''}. Set it with Place for all first.`); return }
   const d=dialog('Photo for all',
     h('p',{class:'sub',style:'margin:0 0 8px'},`One photo for ${nCodes(multi.codes.length)}: it is kept once, every code gets it.`),
     h('div',{class:'field'},h('label',{for:'dlgCaption'},'Caption (optional)'),h('input',{id:'dlgCaption',maxlength:200,placeholder:'e.g. Tag plate, or what the photo shows'}),

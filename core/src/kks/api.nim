@@ -695,15 +695,17 @@ proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, 
   if kind == "photo" and fl.len > 0:
     let cur = a.n.run.equipment.getOrDefault(k)
     let live = if cur != nil and cur.get("floor") != nil and cur["floor"].isStr: cur["floor"].s else: ""
-    # written only when the code has no floor and this person hasn't proposed the same one already; a different
-    # floor than the one set is a normal edit, never a side effect of a photo
-    if live.len == 0 and fl notin a.openFloors(me, k):
+    # written only when the code has no floor and this person has no floor proposal for it still open (the same one,
+    # or a different one they chose later: a queued photo's floor must not compete with it); a different floor than
+    # the one set is a normal edit, never a side effect of a photo
+    let mine = a.openFloors(me, k)
+    if live.len == 0 and mine.len == 0:
       # "." is refused in a client's client_id, so this one never matches a photo's
       let fcid = if cid.isStr: S("floor." & cid.s) else: newNull()
       floorRes = a.submitBody(me, "equipment", O(("kks", S(k)), ("changes", O(("floor", S(fl)))), ("base", O(("floor", S(""))))),
                               fcid, "", now)
     else:
-      floorRes = O(("status", S("unchanged")), ("floor", S(if live.len > 0: live else: fl)))
+      floorRes = O(("status", S("unchanged")), ("floor", S(if live.len > 0: live else: mine[^1])))
   result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
   if floorRes != nil: result["floor"] = floorRes
 
@@ -1455,6 +1457,7 @@ proc leaderboardWalk(a: Api): JNode =
     elif t == "comment": inc rows[person].comments
   var lst: seq[(int, int, string, JNode)]
   for pid, row in rows:
+    if row.kinds.len == 0 and row.decided + row.votes + row.comments == 0: continue   # only people who contributed
     var tot: array[4, int]
     var kinds = newObj()
     for (k, _) in BoardKinds:
@@ -1463,7 +1466,8 @@ proc leaderboardWalk(a: Api): JNode =
       kinds[k] = O(("total", I(c[0] + c[1] + c[2] + c[3])), ("approved", I(c[0])), ("rejected", I(c[1])),
                    ("pending", I(c[2])), ("withdrawn", I(c[3])))
     let total = tot[0] + tot[1] + tot[2] + tot[3]
-    # a name and numbers only: no IDs, usernames, positions, roles or active state (those stay admin-only, /api/users);
+    # a name and numbers only: no IDs, positions, roles or active state (those stay admin-only, /api/users), and the
+    # username only for someone without a full name; people who contributed nothing aren't listed;
     # key: stable per person and plant, not the person ID
     let key = hex(a.n.p.sha256(toBytes("kks-board\n" & a.n.root & "\n" & pid)))[0 ..< 16]
     let o = O(("key", S(key)), ("name", S(a.displayName(pid))),

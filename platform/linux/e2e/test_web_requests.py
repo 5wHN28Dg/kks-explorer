@@ -223,6 +223,20 @@ class WebRequests(unittest.TestCase):
         self.idle(page)
         self.assertIn('after 413', [s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all&kind=photo') if s.get('code') == plain])
 
+        # the same for a photo of several codes queued offline (a submit-many): kept as one refused item, retried for all
+        page.route('**/api/submit-many', lambda r: r.fulfill(status=413, content_type='text/plain', body='Request Entity Too Large'))
+        mid = 'manyrefused%d' % n   # a client id per engine: the server answers a repeated one as a duplicate
+        page.evaluate("""async ([a, b, jxl, mid]) => { await K.idb.queue({client_id: mid, kind: 'photo', kks: [a, b], many: true,
+            payload: {dataUrl: jxl, caption: 'many after 413'}, user: K.me.user.id, ts: Date.now()}); await K.emit(); await K.flush() }""",
+            [code, plain, self.jxl, mid])
+        page.wait_for_function("mid => K.outbox.length === 1 && K.outbox[0].refused && K.outbox[0].client_id === mid", arg=mid, timeout=30000)
+        self.assertIn('1 refused', page.text_content('#syncStatus'))
+        page.unroute('**/api/submit-many')
+        page.evaluate("mid => K.retryRefused(mid)", mid)
+        self.idle(page)
+        many = [s.get('code') for s in self.subs(tom, 'mine=1&status=all&kind=photo') if s['payload'].get('caption') == 'many after 413' and s.get('code') in (code, plain)]
+        self.assertEqual(sorted(many), sorted([code, plain]))
+
         # 9. three photos in a row: the panel closed at once; converted in the background, sent in the order taken
         page.evaluate("""async k => { for (const i of [1, 2, 3]) { const c = document.createElement('canvas'); c.width = 900; c.height = 700;
             const g = c.getContext('2d'), d = g.createImageData(900, 700); for (let j = 0; j < d.data.length; j++) d.data[j] = (j * 7919 + i * 31) % 251;

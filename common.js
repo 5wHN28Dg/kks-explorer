@@ -103,9 +103,11 @@ K.idb = (() => {
 })();
 
 K.onChange = fn => K.listeners.push(fn);
-// K.outbox: one item per code, as the pages show them (a queued submit-many stands for one submission per code)
+// K.outbox: one item per code, as the pages show them (a queued submit-many stands for one submission per code). A
+// refused one stays one item under its stored client_id, so Try again and Discard (and the "refused" count) reach it.
 K.emit = async () => {
   K.outbox = (await K.idb.all()).filter(i => i.user === K.me?.user.id).flatMap(i => !i.many ? [i]
+    : i.refused ? [{client_id: i.client_id, kind: i.kind, payload: {...i.payload, kks: i.kks.join(', ')}, refused: i.refused, ...(i.note ? {note: i.note} : {})}]
     : i.kks.map((k, n) => ({client_id: i.client_id + '-' + n, kind: i.kind, payload: {...i.payload, kks: k}, ...(i.note ? {note: i.note} : {})})));
   K.renderStatus(); K.listeners.forEach(f => f()) };
 

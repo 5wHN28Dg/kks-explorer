@@ -506,7 +506,33 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     discard a.call(me, "GET", "/api/leaderboard")
     check a.walks == walks + 1
 
+  test "a later photo's floor never competes with the person's own open floor proposal":
+    # (a photo queued offline with floor 3, then the Floor field set to 4 by hand, then the photo sent: one proposal)
+    let (_, ali) = userApi.owner
+    const C = "11LAB70AA509"
+    let first = userApi.call(ali, "POST", "/api/submit", photoReq(C, "", "first", floor = "2"))
+    check first.json["floor"]["status"].s == "pending"
+    let later = userApi.call(ali, "POST", "/api/submit", photoReq(C, "", "later", floor = "4"))
+    check later.json["floor"]["status"].s == "unchanged" and later.json["floor"]["floor"].s == "2"
+    var floors = 0
+    for _, e in userNode.entries:
+      if e["type"].s == "equipment" and e["body"]["kks"].s == C: inc floors
+    check floors == 1
+
+  test "the leaderboard lists only people who contributed (it isn't a member list)":
+    let n0 = mgrApi.call(mgr, "GET", "/api/leaderboard").json["people"].len
+    check mgrApi.call(mgr, "POST", "/api/devices/import-request",
+                      newObj(@[("request", P.joinRequest(P.p256Generate(), "quiet", "Quiet Member", newStr("Operator"), "phone", now() div 1000))])).status == 200
+    var member = false   # a member now
+    for _, v in mgrNode.run.persons:
+      if v["full_name"].isStr and v["full_name"].s == "Quiet Member": member = true
+    check member
+    let b = mgrApi.call(mgr, "GET", "/api/leaderboard").json
+    check b["people"].len == n0
+    for x in b["people"].elems: check x["name"].s != "Quiet Member"
+
 import kks/bundle
+
 suite "bundles":
   test "a new device joins from a file, with the plant data":
     let rootKey = P.p256Generate()
@@ -521,3 +547,4 @@ suite "bundles":
     check r["adopted"].b and r["entries"].i == 2 and r["photos"].i == 2
     check b.file("sheets/lp.kkp")[1] == "KKP1 bytes"
     expect ValueError: discard b.importBundle("not gzip", now())
+

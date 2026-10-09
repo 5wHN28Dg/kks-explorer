@@ -269,6 +269,15 @@ class Phone(unittest.TestCase):
             e = self.wait_server(noted, 'the note never reached the server', tries=80)
             self.assertEqual(e['11LAB70AA501']['notes'], (old + '\n' if old.strip() else '') + 'Lagging checked')
             self.assertEqual(e['11LAB70AA504']['notes'], 'Lagging checked')
+            # Photo for all: a photo needs each code's floor; 504 has none, so the app says so and opens nothing
+            ui.tap('More', exact=True)
+            ui.tap('Select tags', exact=True)
+            tap_tag('11LAB70AA501')
+            tap_tag('11LAB70AA504')
+            ui.find('2 selected', exact=True)
+            ui.tap('Photo for all', exact=True)
+            ui.find('No floor yet: 11LAB70AA504', timeout=10)
+            self.assertFalse(ui.present('Photo for 2 codes', exact=True), 'Photo for all opened without the floors')
         finally:
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:
