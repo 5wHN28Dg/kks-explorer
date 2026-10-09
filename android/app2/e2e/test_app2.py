@@ -669,9 +669,11 @@ class Phone(unittest.TestCase):
         with self.subTest('the store is wiped'):
             if not ui.debuggable(PKG):
                 self.skipTest('not a debuggable build (rehearsal/release): run-as cannot read the store')
-            r = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/core/kks.db'], capture_output=True)
-            self.assertEqual(r.returncode, 0, r.stderr)     # an empty read must not pass for a wiped store
-            self.assertLess(len(r.stdout), 64 * 1024, 'the plant data is still on the phone')
+            # the store's size, 0 if the wipe removed it; anything but a number (run-as failed) fails, so an error
+            # message can't pass for a small store
+            size = ui.sh('run-as', PKG, 'sh', '-c', '"if [ -e files/core/kks.db ]; then stat -c %s files/core/kks.db; else echo 0; fi"').strip()
+            self.assertRegex(size, r'^\d+$', 'run-as could not read the store')
+            self.assertLess(int(size), 64 * 1024, 'the plant data is still on the phone')
 
 
     # ---------------------------------------------------------------- the user's requests of 2026-10-08

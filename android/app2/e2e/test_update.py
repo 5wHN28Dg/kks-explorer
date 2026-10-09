@@ -87,7 +87,11 @@ class Update(unittest.TestCase):
         self.assertEqual(version_installed(), apk_version(APK), f'installed is not {APK}')
         self.assertTrue(newer(apk_version(NEWER), version_installed()),
                         f'{NEWER} ({apk_version(NEWER)}) is not newer than {APK} ({version_installed()})')
-        print(f'\n  app under test: {APK} ({version_installed()}, {"debuggable" if ui.debuggable(PKG) else "not debuggable"})')
+        try:
+            kind = 'debuggable' if ui.debuggable(PKG) else 'not debuggable'
+        except AssertionError as e:      # only informative here
+            kind = f'debuggable unknown: {e}'
+        print(f'\n  app under test: {APK} ({version_installed()}, {kind})')
         ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
 
     def tearDown(self):
