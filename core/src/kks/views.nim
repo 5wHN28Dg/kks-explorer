@@ -92,6 +92,31 @@ proc searchView*(m: Model, q: string): JNode =
     result.elems.add O(("id", S(t.id)), ("sheet", S(t.sheet)), ("sheet_name", S(if ok: si.name else: t.sheet)),
                        ("code", S(t.full)), ("kind", S(m.kindName(t))))
 
+proc descriptionOf(m: Model, t: Tag, eq, eqBy: JNode): JNode =
+  ## what the equipment does: confirmed (the custom field "Description", set through a proposal) or a draft from
+  ## descriptions.json, shown as "draft, unchecked" with the proposal that confirms it; null = neither
+  let k = t.full
+  let have = customOf(eq, DescriptionKey)
+  let draft = m.draftOf(t)
+  if have.len > 0:
+    let who = eqBy.get("custom:" & DescriptionKey)
+    result = O(("status", S("confirmed")), ("text", S(have)), ("basis", S(draft.str("basis"))),
+               ("by_name", S(who.str("by_name"))), ("at", if who != nil and who.get("at") != nil: who["at"] else: newNull()),
+               ("label", S("confirmed" & (if who.str("by_name").len > 0: " by " & who.str("by_name") else: ""))),
+               ("draft_differs", newBool(draft != nil and draft.str("text") != have)))
+    return
+  if draft == nil or k.len == 0: return newNull()
+  # confirming = the equipment proposal adding {k: Description, v: text} to the custom fields (base = what is there)
+  var base = newArr()
+  let cur = eq.get("custom")
+  if cur != nil and cur.kind == jArr:
+    for x in cur.elems: base.elems.add x
+  var changed = newArr(base.elems)
+  changed.elems.add O(("k", S(DescriptionKey)), ("v", S(draft.str("text"))))
+  let payload = O(("kks", S(k)), ("changes", O(("custom", changed))), ("base", O(("custom", base))))
+  O(("status", S("draft")), ("text", S(draft.str("text"))), ("basis", S(draft.str("basis"))),
+    ("label", S("draft, unchecked")), ("confirm", O(("kind", S("equipment")), ("payload", payload))))
+
 proc tagView*(m: Model, id: string): JNode =
   ## everything the equipment panel shows (index.html select())
   let (ok, t) = m.tagById(id)
@@ -116,7 +141,12 @@ proc tagView*(m: Model, id: string): JNode =
                      ("direction", S(r.str("direction"))))
   result["location_list"] = rows
   result["list_elev"] = S(rl.elev)
-  result["equipment"] = if k.len > 0: m.equipment(k) else: newObj()
+  let eq = if k.len > 0: m.equipment(k) else: newObj()
+  result["equipment"] = eq
+  # who set each field and when ({field: {by, by_name, at}}; custom fields as "custom:<k>"), from /api/state
+  let eqBy = if m.state != nil and m.state.get("equipment_by") != nil: m.state["equipment_by"].get(k) else: nil
+  result["equipment_by"] = if eqBy != nil and k.len > 0: eqBy else: newObj()
+  result["description"] = descriptionOf(m, t, eq, result["equipment_by"])
   var photos = newArr()
   if k.len > 0:
     for p in m.photosOf(k): photos.elems.add p

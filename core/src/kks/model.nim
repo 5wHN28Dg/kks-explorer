@@ -4,6 +4,7 @@
 
 import std/[strutils, tables, sets, algorithm, math]
 import json
+from std/unicode import runeLen, runeSubStr
 
 type
   Link* = object
@@ -44,6 +45,7 @@ type
     procs*: JNode
     kksTables*: JNode
     locations*: Table[string, seq[JNode]]   ## by KKS body (no unit prefix)
+    descriptions*: Table[string, JNode]      ## descriptions.json: code → {text, basis}, drafts until a person confirms
     state*: JNode                ## /api/state
 
 proc full*(t: Tag): string = t.kks & t.suffix
@@ -116,6 +118,34 @@ proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
                 else: @[]
   for row in entries:
     result.mgetOrPut(row.s("kks"), @[]).add row
+
+const DescriptionMax* = 2000
+
+proc parseDescriptions*(j: JNode): Table[string, JNode] =
+  ## descriptions.json (optional plant data, published by the manager): {"11LAB70AA501": {"text": "…", "basis": "…"}}.
+  ## Drafted suggestions of what the equipment does; shown as "draft, unchecked" until a person confirms one, which
+  ## writes it as the equipment's custom field "Description" (DescriptionKey) through the normal proposal flow.
+  ## A plain string value is the text with no basis; entries without text are skipped.
+  if j == nil or j.kind != jObj: return
+  for (k, v) in j.fields:
+    var text, basis = ""
+    if v.kind == jStr: text = v.s
+    elif v.kind == jObj:
+      text = v.s("text")
+      basis = v.s("basis")
+    text = text.strip
+    # at most what an equipment custom field holds (2000 characters), so a draft can always be confirmed as is
+    if text.runeLen > DescriptionMax: text = text.runeSubStr(0, DescriptionMax).strip
+    if k.len > 0 and text.len > 0:
+      result[k] = newObj(@[("text", newStr(text)), ("basis", newStr(basis.strip))])
+
+proc loadDescriptions*(data: string, warn: proc (msg: string)): Table[string, JNode] =
+  ## descriptions.json's bytes → parseDescriptions; a malformed file is skipped (told to `warn`) and never stops the
+  ## plant data from loading: it is optional and written by hand
+  if data.len == 0: return
+  try: result = parseDescriptions(parseStrict(data, 4096))
+  except JsonError as e:
+    if warn != nil: warn("descriptions.json skipped: not valid JSON (" & e.msg & ")")
 
 proc eff*(m: Model, t: Tag): (bool, Tag) =
   ## a person's review decision overrides the reader (index.html eff())
@@ -234,13 +264,33 @@ proc photosOf*(m: Model, k: string): seq[JNode] =
 const PlateCaption* = "Tag plate"
   ## a photo of the equipment's tag plate is a photo whose caption starts with this (PROTOCOL-v2 §9: a convention)
 
+const DescriptionKey* = "Description"
+  ## the equipment custom field ({k, v}) a confirmed description is kept in
+
+proc isPlate*(caption: string): bool = caption.startsWith(PlateCaption)
+proc photoKind*(caption: string): string =
+  ## "plate" (a tag plate photo) or "equipment": the two kinds of photo a code has, never competing with each other
+  if isPlate(caption): "plate" else: "equipment"
+
 proc photoCover*(m: Model, k: string): string =
   ## which photos a code has: "both", "equipment", "plate" or "none" (the drawings' photo coverage view)
   if k.len == 0: return "none"
   var equip, plate = false
   for p in m.photosOf(k):
-    if p.s("caption").startsWith(PlateCaption): plate = true else: equip = true
+    if isPlate(p.s("caption")): plate = true else: equip = true
   if equip and plate: "both" elif equip: "equipment" elif plate: "plate" else: "none"
+
+proc customOf*(e: JNode, key: string): string =
+  ## the value of an equipment custom field ("" = none)
+  let c = e.get("custom")
+  if c != nil and c.kind == jArr:
+    for x in c.elems:
+      if x.kind == jObj and x.s("k") == key: return x.s("v")
+
+proc draftOf*(m: Model, t: Tag): JNode =
+  ## the drafted description for a tag: by its full code, else without the suffix; nil = none
+  result = m.descriptions.getOrDefault(t.full)
+  if result == nil and t.suffix.len > 0: result = m.descriptions.getOrDefault(t.kks)
 
 proc photoCovers*(m: Model): Table[string, string] =
   ## photoCover for every code that has photos, in one pass (a code missing here has "none"); views that colour many
@@ -251,7 +301,7 @@ proc photoCovers*(m: Model): Table[string, string] =
     for p in ph.elems:
       let k = p.s("kks")
       if k.len == 0: continue
-      if p.s("caption").startsWith(PlateCaption): plate.incl k else: equip.incl k
+      if p.s("caption").isPlate: plate.incl k else: equip.incl k
   for k in equip: result[k] = (if k in plate: "both" else: "equipment")
   for k in plate:
     if k notin equip: result[k] = "plate"

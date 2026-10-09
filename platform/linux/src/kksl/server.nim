@@ -479,19 +479,27 @@ proc staticFile(s: Server, req: Request, dir, rel, cache: string, ctype = "", ex
 
 proc personOf(d: JNode): (string, JNode) = personFields(d)
 
-proc usersOut(s: Server): JNode =
+proc usersOut(s: Server, showHidden = false): JNode =
+  ## accounts, then the people without one; a removed person an admin hid (POST /api/hidden) only with show_hidden
   result = newArr()
   var have: HashSet[string]
   var rows = s.users
   rows.sort(proc (a, b: JNode): int = cmp(a["username"].s.toLowerAscii, b["username"].s.toLowerAscii))
+  let hidden = s.api.hiddenIds
   for u in rows:
-    result.elems.add s.publicUser(u)
     have.incl u["person"].s
+    let gone = u["person"].s in hidden and not s.n.run.personActive(u["person"].s)
+    if gone and not showHidden: continue
+    var o = s.publicUser(u)
+    o["hidden"] = newBool(gone)
+    result.elems.add o
   var pids: seq[string]
   for pid, _ in s.n.run.persons: pids.add pid
   pids.sort(proc (a, b: string): int = cmp(s.n.run.persons[a]["username"].s.toLowerAscii, s.n.run.persons[b]["username"].s.toLowerAscii))
   for pid in pids:
     if pid in have: continue
+    let gone = pid in hidden and not s.n.run.personActive(pid)
+    if gone and not showHidden: continue
     let pr = s.n.run.persons[pid]
     var devs, active = 0
     for d, v in s.n.run.devices:
@@ -501,7 +509,7 @@ proc usersOut(s: Server): JNode =
     result.elems.add O(("id", newNull()), ("person", S(pid)), ("username", pr["username"]), ("full_name", pr["full_name"]),
       ("position", if pr["position"].isNull: S("") else: pr["position"]), ("no_account", newBool(true)),
       ("has_password", newBool(false)), ("role", S(s.n.run.role(pid))), ("created", newNull()),
-      ("active", newBool(active > 0)), ("devices", newInt(devs)))
+      ("active", newBool(active > 0)), ("devices", newInt(devs)), ("hidden", newBool(gone)))
 
 proc updateUser(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode =
   if not me.isAdmin: herr(403, "admin only")
@@ -581,7 +589,7 @@ proc enrollOverTls(s: Server, remote, address: string, m: JNode): JNode =
 proc publishDir*(s: Server, dir: string): int =
   ## Publish the plant files in `dir` as a new version signed by the manager's custodial key; 0 = unchanged.
   var files: seq[(string, string)]
-  for f in ["sheets.json", "tags.json", "procedures.json", "locations.json"]:
+  for f in ["sheets.json", "tags.json", "procedures.json", "locations.json", "descriptions.json"]:
     if fileExists(dir / f): files.add((f, readFile(dir / f)))
   for sub in ["sheets", "courses"]:
     if dirExists(dir / sub):
@@ -956,7 +964,9 @@ proc handle(s: Server, req: Request) {.async.} =
       if prob.len > 0: herr(400, prob)
       var fn: string
       var pos: JNode
-      try: (fn, pos) = personOf(d)
+      try:
+        (fn, pos) = personOf(d)
+        requirePosition(pos)    # the manager is a new member too
       except ApiError as e: herr(400, e.msg)
       let tok = if d.get("token") != nil and d["token"].isStr: d["token"].s else: ""
       if s.peekToken("setup", tok) == nil or s.managerUser() != nil or s.n.root.len > 0:
@@ -1025,7 +1035,7 @@ proc handle(s: Server, req: Request) {.async.} =
       return
     of "/api/users":
       if not me.isAdmin: herr(403, "admin only")
-      await s.sendJson(req, 200, O(("users", s.usersOut)))
+      await s.sendJson(req, 200, O(("users", s.usersOut(q.getOrDefault("show_hidden") in ["1", "true"]))))
       return
     of "/api/sync/status":
       await s.sendJson(req, 200, O(("rev", newInt(s.api.rev)), ("mode", S("server")), ("internet", newNull()),
@@ -1091,7 +1101,9 @@ proc handle(s: Server, req: Request) {.async.} =
       if role == "admin" and me.role != "manager": herr(403, "only the manager can create admins")
       var fn: string
       var pos: JNode
-      try: (fn, pos) = personOf(d)
+      try:
+        (fn, pos) = personOf(d)
+        requirePosition(pos)    # every new member needs one (existing ones keep what they have)
       except ApiError as e: herr(400, e.msg)
       if s.userByName(name) != nil: herr(409, "That username exists.")
       for _, pr in s.n.run.persons:

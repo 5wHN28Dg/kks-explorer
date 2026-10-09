@@ -86,6 +86,10 @@ proc trampFalse(inst: W, data: pointer): cint {.cdecl.} =
   ## for signals whose handler returns a gboolean (close-request): runs fn, returns FALSE (let it go on)
   guard: cast[Env](data).fn0()
   0
+proc trampStop(inst: W, data: pointer): cint {.cdecl.} =
+  ## close-request whose handler may keep the window open: fnB returns true to stop the close
+  result = 0
+  guard: result = cint(cast[Env](data).fnB())
 proc trampBoolSrc(data: pointer): cint {.cdecl.} =
   ## timers keep running after an error (fnB returns false to stop on purpose)
   result = 1
@@ -101,6 +105,9 @@ proc on*(inst: W, sig: string, fn: proc ()): culong {.discardable.} =
 proc onCloseRequest*(inst: W, fn: proc ()): culong {.discardable.} =
   ## close-request: fn runs, the window closes (the handler returns FALSE)
   connect(inst, "close-request", cast[pointer](trampFalse), Env(fn0: fn))
+proc onCloseRequestStop*(inst: W, fn: proc (): bool): culong {.discardable.} =
+  ## close-request: fn returns true to keep the window open
+  connect(inst, "close-request", cast[pointer](trampStop), Env(fnB: fn))
 proc onPtr*(inst: W, sig: string, fn: proc (p: W)): culong {.discardable.} =
   ## signals with one object argument: row-activated (row), notify (pspec), …
   connect(inst, sig, cast[pointer](trampP), Env(fnP: fn))
