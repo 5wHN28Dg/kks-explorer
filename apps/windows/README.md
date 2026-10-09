@@ -47,8 +47,12 @@ The toolchain is mingw-w64 13 / GCC 13, unpacked into `~/.local/kksdev/mingw` (d
     ways to join, each asking a new member's position, or a new plant);
   - `photos.nim` + `kks_img.cpp`: thumbnails with who took each, a viewer, adding from a file (the floor first when
     the code has none; WIC → upright → 1600 px → `annotate.nim`, the mark-up editor with arrow, box and circle in four
-    colours plus undo, the marks burned in by Direct2D → the photo queue: JPEG XL d1.9 on a worker thread, in order;
-    a photo that fails is kept under "Photos not sent" with Try again and Discard), and the tag plate's photo.
+    colours plus undo, the marks burned in by Direct2D → the photo queue, kept on disk (`apps/common/photoqueue.nim`:
+    each photo's pixels and job as sealed rows in the device's store, whose key DPAPI protects; removed only once
+    the core accepted or refused it; a restart sends what is left, in order, with the same client_id; a removed
+    device's wipe deletes it): JPEG XL d1.9 on a worker thread, in order; a photo that fails is tried again a minute
+    later (5 times in a run, then at the next start) and shows under "Photos not sent" with Try again and Discard;
+    Photo for all goes through the same queue, sent with one submit-many), and the tag plate's photo.
 - The KKS decode tables (`data/kks.json`) are compiled into the exe.
 
 ## Test
@@ -83,8 +87,9 @@ It covers:
 - a member's proposal approved in Manage;
 - the floor asked before a photo and sent with it; who took each photo and set each field; My proposals' filters;
   deleting a photo;
-- the photo queue (a failed encode kept, Try again; the next photo compressed while the panel closes; closing the
-  window asks first);
+- the photo queue (a failed encode kept, Try again, or tried again by itself; the next photo compressed while the
+  panel closes; closing the window asks first; killed with photos queued, the next start sends them, once each, in
+  order, even when it dies right after the core took the first);
 - drafted descriptions confirmed as they are or edited;
 - Approvals by code ("Use this one" only between competing photos of one kind, the card opens its tag) and the
   Leaderboard;

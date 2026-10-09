@@ -174,6 +174,20 @@ proc basesOf(w: Win, codes: seq[string], changes: JNode): JNode =
         b[f] = (if e.get(f) != nil: e[f] else: newStr(""))
     result[k] = b
 
+proc doneWith(w: Win, round: int, codes: seq[string]) =
+  ## these codes were sent (or their photo queued): the mode ends for them if it is still the round the photo or form
+  ## was opened in
+  if round == pickRound:
+    # codes picked after the photo or form was opened weren't in this send: they stay selected, the mode on
+    var rest: seq[string]
+    for k in w.picked:
+      if k notin codes: rest.add k
+    if rest.len == 0: w.stopPicking()
+    else:
+      w.picked = rest
+      w.updatePick()
+  else: w.syncChosen()      # a photo from an earlier round: the selection made since stays
+
 proc sendMany(w: Win, round: int, codes: seq[string], kind: string, payload: JNode, note: string): bool =
   ## one submit-many for these codes (the selection when the photo or form was opened: what its title said); says how
   ## it went and leaves the mode if it is still the round the photo or form was opened in
@@ -204,16 +218,7 @@ proc sendMany(w: Win, round: int, codes: seq[string], kind: string, payload: JNo
   if pending == 0 and held == 0: msg.add " · saved"
   w.loadModel()
   if w.sheet.len > 0: w.v.tags = w.tagBoxes(w.sheet)
-  if round == pickRound:
-    # codes picked after the photo or form was opened weren't in this send: they stay selected, the mode on
-    var rest: seq[string]
-    for k in w.picked:
-      if k notin codes: rest.add k
-    if rest.len == 0: w.stopPicking()
-    else:
-      w.picked = rest
-      w.updatePick()
-  else: w.syncChosen()      # a photo from an earlier round: the selection made since stays
+  w.doneWith(round, codes)
   w.toast(msg)
   true
 
@@ -230,8 +235,11 @@ proc photoForAll*(w: Win) =
     return
   let codes = w.picked     # the editor is a window of its own: the selection may change while it is open
   let round = pickRound
-  w.takePhoto(proc (dataUrl, caption, note: string) =
-    discard w.sendMany(round, codes, "photo", newObj(@[("dataUrl", newStr(dataUrl)), ("caption", newStr(caption))]), note))
+  # kept on disk and compressed on the queue's worker thread like any photo (photos.nim), then one submit-many
+  w.photoForCodes(codes, proc () =
+    w.doneWith(round, codes)
+    w.toast("Photo queued for " & (if codes.len == 1: "1 code" else: $codes.len & " codes") &
+            ": it is sent once compressed"))
 
 proc placeForAll*(w: Win) =
   if w.picked.len == 0:
