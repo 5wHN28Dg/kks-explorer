@@ -290,17 +290,29 @@ proc updateOnScreen*(v: Viewer) =
     if t.status == "pending": continue
     let r = v.screenRect(t)
     if r.right > 0 and r.bottom > 0 and float(r.left) < cw and float(r.top) < ch: idx.add i
+  proc readingOrder(a, b: int): int =
+    let ba = v.boxOf(a)
+    let bb = v.boxOf(b)
+    let ra = int(ba.y0 / 12)
+    let rb = int(bb.y0 / 12)
+    if ra != rb: cmp(ra, rb) else: cmp(ba.x0, bb.x0)
+  # connectors are kept beside the first 200 tags (they sit on the sheet's edges: a cut after sorting would drop them
+  # on a full sheet), at most 50
+  idx.sort(readingOrder)
+  if idx.len > 200: idx.setLen(200)
   if not v.selecting:
+    var n = 0
     for j, l in v.links:
       let r = v.screenRect(l)
-      if r.right > 0 and r.bottom > 0 and float(r.left) < cw and float(r.top) < ch: idx.add(-j - 1)
+      if n < 50 and r.right > 0 and r.bottom > 0 and float(r.left) < cw and float(r.top) < ch:
+        idx.add(-j - 1)
+        inc n
   idx.sort(proc (a, b: int): int =
     let ba = v.boxOf(a)
     let bb = v.boxOf(b)
     let ra = int(ba.y0 / 12)
     let rb = int(bb.y0 / 12)
     if ra != rb: cmp(ra, rb) else: cmp(ba.x0, bb.x0))
-  if idx.len > 200: idx.setLen(200)
   if idx != v.onScreen:
     v.onScreen = idx
     if v.uia != nil: uiaChanged(v.uia)
@@ -510,9 +522,13 @@ proc hitLink(v: Viewer, x, y: int): int =
   result = -1
   let px = v.ox + float(x) / v.z
   let py = v.oy + float(y) / v.z
-  let pad = 6 / v.z
+  let dens = float(GetDpiForWindow(v.hwnd)) / 96
   for i, l in v.links:
-    if px >= l.x0 - pad and px <= l.x1 + pad and py >= l.y0 - pad and py <= l.y1 + pad: return i
+    # the circle as drawn (paint), with a little slack: they are small
+    let rad = max(6.0 * dens, max(l.x1 - l.x0, l.y1 - l.y0) / 2 * v.z + 3 * dens) + 3 * dens
+    let dx = ((l.x0 + l.x1) / 2 - px) * v.z
+    let dy = ((l.y0 + l.y1) / 2 - py) * v.z
+    if dx * dx + dy * dy <= rad * rad: return i
 
 proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT
 

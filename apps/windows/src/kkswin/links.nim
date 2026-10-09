@@ -87,7 +87,7 @@ proc followLink*(w: Win, sheet, label: string, x0, y0: float) =
   elif ts.len == 1:
     w.goTo(label, ts[0])
   else:
-    let (hw, p) = popup(w.hwnd, "Where does " & label & " continue?", 460, 160 + 44 * ts.len, escape = true)
+    let (hw, p) = popup(w.hwnd, "Where does " & label & " continue?", 460, min(600, 160 + 44 * ts.len), escape = true)
     p.title("Where does " & label & " continue?")
     p.dim("This connector's code appears in more than one place.")
     let names = choiceLabels(ts)
