@@ -182,4 +182,28 @@ suite "photo queue on disk":
     check s.getRow(JobTable, a.key) == nil and s.getRow(PixelTable, a.key) == nil
     s.close()
 
+  test "one photo of several codes keeps its codes, in order; a damaged code list is a damaged job":
+    var s = fresh()
+    var q = newPhotoQueue(s)
+    let a = q.add(p, pic(2, 2, 1), 2, 2, "", "Both drains", "", "", 1, @["11LAC10AP001", "11LAC10AP003"])
+    check a.kks == "11LAC10AP001" and a.codes == @["11LAC10AP001", "11LAC10AP003"]
+    check a.clientId.len <= 56          # submit-many's prefix limit
+    let b = q.add(p, pic(2, 2, 2), 2, 2, "11LAB70AA501", "", "", "", 2)
+    s = s.reopen()
+    q = newPhotoQueue(s)
+    check q.resume().len == 0
+    check q.items[0].codes == @["11LAC10AP001", "11LAC10AP003"] and q.items[0].kks == "11LAC10AP001"
+    check q.items[1].codes.len == 0 and q.items[1].key == b.key
+    expect ValueError:
+      var many: seq[string]
+      for i in 0 .. 200: many.add "11LAC10AP" & align($i, 3, '0')
+      discard q.add(p, pic(1, 1, 1), 1, 1, "", "", "", "", 3, many)
+    var j = s.getRow(JobTable, a.key)
+    j["codes"] = newArr()
+    s.putRow(JobTable, a.key, j)
+    s = s.reopen()
+    q = newPhotoQueue(s)
+    check q.resume().len == 1 and q.count == 1 and q.items[0].key == b.key
+    s.close()
+
 removeDir(dir)

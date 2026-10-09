@@ -546,6 +546,8 @@ class Gnome(unittest.TestCase):
         atspi.click(atspi.find(a, 'button', name='Photo for all…'))
         atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), 'Both drains')
         atspi.click(atspi.find(a, 'button', name='Add the photo'))
+        # queued like any photo (kept on disk, compressed on the worker thread), then one submit-many
+        atspi.find(a, 'label', contains='Photo queued for 2 codes', timeout=10)
         for _ in range(60):
             ph = sorted(p['kks'] for p in b.req('GET', '/api/state')['photos'] if p.get('caption') == 'Both drains')
             if len(ph) >= 2:

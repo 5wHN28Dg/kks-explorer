@@ -10,12 +10,15 @@
 ##
 ## The format (version 1), one photo:
 ## - table `photo_queue`, key = a 12-digit decimal sequence number (`000000000001`): the job, a JSON object
-##   `{"v": 1, "client_id": "<32 hex>", "kks", "caption", "note", "floor": strings, "w", "h": ints, "at": ms}`
+##   `{"v": 1, "client_id": "<32 hex>", "kks", "caption", "note", "floor": strings, "w", "h": ints, "at": ms}`, and
+##   for one photo of several codes ("Photo for all") `"codes": [1 to 200 codes]` (`kks` is then the first): it is
+##   sent as one /api/submit-many with `client_id` as the prefix (code i goes as "<client_id>-<i>")
 ## - table `photo_queue_px`, the same key: a JSON string, standard base64 (padded) of w × h × 3 bytes, the annotated
 ##   picture's RGB rows top to bottom, exactly what the JPEG XL encoder takes.
 ## Both rows are written in one transaction and removed in one, so a crash leaves both or neither. The queue's order is
 ## the key order (the order the photos were added). `client_id` goes with the submission (§9 submit), so a photo sent
-## just before a crash and sent again after it is kept once (the core returns the first submission).
+## just before a crash and sent again after it is kept once (the core returns the first submission; submit-many skips
+## the codes already sent).
 ##
 ## Outcomes: sent (accepted, or a duplicate) and refused (the core said no, status 400 and up) end a photo; any other
 ## failure (the encoder, the core throwing, not joined) keeps it: it goes to the end of the queue and is tried again a
@@ -37,6 +40,7 @@ type
     key*: string           ## its rows' key: the queue's order
     clientId*: string
     kks*, caption*, note*, floor*: string
+    codes*: seq[string]    ## one photo of several codes (sent with submit-many); empty: the one code `kks`
     w*, h*: int
     at*: int64             ## ms, when it was added
     tries*: int            ## transient failures in this run (not stored)
@@ -82,6 +86,13 @@ proc parseJob(key: string, j: JNode): QueuedPhoto =
   if result.kks.len == 0 or result.w <= 0 or result.h <= 0 or
      not (result.clientId.len in 8..64 and result.clientId.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})):
     raise newException(ValueError, "a damaged job")
+  let cs = j.get("codes")
+  if cs != nil:
+    if cs.kind != jArr or cs.elems.len notin 1..200: raise newException(ValueError, "the job's codes are damaged")
+    for c in cs.elems:
+      if not c.isStr or c.s.len == 0: raise newException(ValueError, "the job's codes are damaged")
+      result.codes.add c.s
+    if result.codes[0] != result.kks: raise newException(ValueError, "the job's codes are damaged")
 
 proc resume*(q: PhotoQueue): seq[string] =
   ## at start: the photos left from before (a crash, a kill, a logout, or tries used up), in their order. Returns the
@@ -100,10 +111,12 @@ proc resume*(q: PhotoQueue): seq[string] =
     if key notin known: q.store.delRow(PixelTable, key)
 
 proc add*(q: PhotoQueue, p: Provider, rgb: openArray[byte], w, h: int, kks, caption, note, floor: string,
-          now: int64): QueuedPhoto =
+          now: int64, codes: seq[string] = @[]): QueuedPhoto =
   ## keep one photo (its pixels and its job) and put it at the end of the queue. Raises when it can't be written:
-  ## then nothing is kept.
+  ## then nothing is kept. `codes`: one photo of several codes (then `kks` is ignored: the first code)
   if q.wiped: raise newException(IOError, "this device was removed from the plant")
+  if codes.len > 200: raise newException(ValueError, "at most 200 codes")
+  let kks = if codes.len > 0: codes[0] else: kks
   if w <= 0 or h <= 0 or rgb.len != w * h * 3: raise newException(ValueError, "the picture's size doesn't match")
   var last = 0
   for r in q.store.db.rows("SELECT max(k) FROM rows WHERE tbl=?", t(JobTable)):
@@ -111,12 +124,16 @@ proc add*(q: PhotoQueue, p: Provider, rgb: openArray[byte], w, h: int, kks, capt
     if s.len > 0: last = parseInt(s)
   let key = align($(last + 1), 12, '0')
   result = QueuedPhoto(key: key, clientId: hex(p.randomBytes(16)), kks: kks, caption: caption, note: note,
-                       floor: floor, w: w, h: h, at: now)
+                       floor: floor, codes: codes, w: w, h: h, at: now)
   var raw = newString(rgb.len)
   if rgb.len > 0: copyMem(addr raw[0], unsafeAddr rgb[0], rgb.len)
   let job = newObj(@[("v", newInt(1)), ("client_id", newStr(result.clientId)), ("kks", newStr(kks)),
                      ("caption", newStr(caption)), ("note", newStr(note)), ("floor", newStr(floor)),
                      ("w", newInt(w)), ("h", newInt(h)), ("at", newInt(now))])
+  if codes.len > 0:
+    var arr = newArr()
+    for c in codes: arr.elems.add newStr(c)
+    job["codes"] = arr
   let px = newStr(encode(raw))
   q.store.transaction(proc () =
     q.store.putRow(PixelTable, key, px)
