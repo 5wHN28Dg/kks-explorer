@@ -8,11 +8,12 @@
 ## data names the table and the key, so rows can't be swapped). Nothing new to protect: the same key and the same
 ## rows the app already uses for its own records. A removed device's wipe (§15) deletes every row, the queue with them.
 ##
-## The format (version 1), one photo:
+## The format, one photo:
 ## - table `photo_queue`, key = a 12-digit decimal sequence number (`000000000001`): the job, a JSON object
-##   `{"v": 1, "client_id": "<32 hex>", "kks", "caption", "note", "floor": strings, "w", "h": ints, "at": ms}`, and
-##   for one photo of several codes ("Photo for all") `"codes": [1 to 200 codes]` (`kks` is then the first): it is
-##   sent as one /api/submit-many with `client_id` as the prefix (code i goes as "<client_id>-<i>")
+##   `{"v": 1, "client_id": "<32 hex>", "kks", "caption", "note", "floor": strings, "w", "h": ints, "at": ms}`;
+##   one photo of several codes ("Photo for all") is `"v": 2` with `"codes": [1 to 200 codes]` too (`kks` is then the
+##   first; a reader that knows only version 1 drops it as damaged instead of sending it for one code): it is sent as
+##   one /api/submit-many with `client_id` as the prefix (code i goes as "<client_id>-<i>")
 ## - table `photo_queue_px`, the same key: a JSON string, standard base64 (padded) of w × h × 3 bytes, the annotated
 ##   picture's RGB rows top to bottom, exactly what the JPEG XL encoder takes.
 ## Both rows are written in one transaction and removed in one, so a crash leaves both or neither. The queue's order is
@@ -25,7 +26,7 @@
 ## minute later; after `Tries` failures in one run it waits for the next start. A job or picture row that can't be
 ## read (damaged, or the wrong size) ends that photo with a report.
 
-import std/[base64, strutils]
+import std/[base64, strutils, unicode]
 import kks/[json, crypto, util]
 import kksl/[dbstore, sqlite]
 
@@ -54,6 +55,18 @@ type
 
 proc newPhotoQueue*(s: DbStore): PhotoQueue = PhotoQueue(store: s)
 
+proc name*(it: QueuedPhoto): string =
+  ## how messages name it: its code, or the first of several "and N more"
+  if it.codes.len > 1: it.codes[0] & " and " & $(it.codes.len - 1) & " more" else: it.kks
+
+const MaxText* = 500     ## the core's limit for a photo's caption and for a request note (characters)
+
+proc textProblem*(caption, note: string): string =
+  ## what the core would refuse in the caption or the note ("" = fine): checked in the editor, before the photo is
+  ## queued, so a photo is never dropped later for its text
+  if caption.runeLen > MaxText: return "The caption is too long: at most " & $MaxText & " characters"
+  if note.runeLen > MaxText: return "The note is too long: at most " & $MaxText & " characters"
+
 proc remove(q: PhotoQueue, key: string) =
   q.store.transaction(proc () =
     q.store.delRow(JobTable, key)
@@ -79,7 +92,7 @@ proc int0(j: JNode, k: string): int64 =
   v.i
 
 proc parseJob(key: string, j: JNode): QueuedPhoto =
-  if j == nil or j.kind != jObj or int0(j, "v") != 1: raise newException(ValueError, "not a version 1 job")
+  if j == nil or j.kind != jObj or int0(j, "v") notin 1'i64 .. 2'i64: raise newException(ValueError, "not a version 1 or 2 job")
   result = QueuedPhoto(key: key, clientId: str(j, "client_id"), kks: str(j, "kks"), caption: str(j, "caption"),
                        note: str(j, "note"), floor: str(j, "floor"), w: int(int0(j, "w")), h: int(int0(j, "h")),
                        at: int0(j, "at"))
@@ -87,6 +100,7 @@ proc parseJob(key: string, j: JNode): QueuedPhoto =
      not (result.clientId.len in 8..64 and result.clientId.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})):
     raise newException(ValueError, "a damaged job")
   let cs = j.get("codes")
+  if (cs != nil) != (int0(j, "v") == 2): raise newException(ValueError, "the job's version doesn't match its codes")
   if cs != nil:
     if cs.kind != jArr or cs.elems.len notin 1..200: raise newException(ValueError, "the job's codes are damaged")
     for c in cs.elems:
@@ -116,7 +130,10 @@ proc add*(q: PhotoQueue, p: Provider, rgb: openArray[byte], w, h: int, kks, capt
   ## then nothing is kept. `codes`: one photo of several codes (then `kks` is ignored: the first code)
   if q.wiped: raise newException(IOError, "this device was removed from the plant")
   if codes.len > 200: raise newException(ValueError, "at most 200 codes")
+  for c in codes:
+    if c.len == 0: raise newException(ValueError, "an empty code")
   let kks = if codes.len > 0: codes[0] else: kks
+  if kks.len == 0: raise newException(ValueError, "no code")
   if w <= 0 or h <= 0 or rgb.len != w * h * 3: raise newException(ValueError, "the picture's size doesn't match")
   var last = 0
   for r in q.store.db.rows("SELECT max(k) FROM rows WHERE tbl=?", t(JobTable)):
@@ -127,7 +144,7 @@ proc add*(q: PhotoQueue, p: Provider, rgb: openArray[byte], w, h: int, kks, capt
                        floor: floor, codes: codes, w: w, h: h, at: now)
   var raw = newString(rgb.len)
   if rgb.len > 0: copyMem(addr raw[0], unsafeAddr rgb[0], rgb.len)
-  let job = newObj(@[("v", newInt(1)), ("client_id", newStr(result.clientId)), ("kks", newStr(kks)),
+  let job = newObj(@[("v", newInt(if codes.len > 0: 2 else: 1)), ("client_id", newStr(result.clientId)), ("kks", newStr(kks)),
                      ("caption", newStr(caption)), ("note", newStr(note)), ("floor", newStr(floor)),
                      ("w", newInt(w)), ("h", newInt(h)), ("at", newInt(now))])
   if codes.len > 0:
@@ -163,11 +180,11 @@ proc next*(q: PhotoQueue, now: int64, reports: var seq[string]): (bool, QueuedPh
       q.busy = it.key
       return (true, it, px)
     except CryptoError, ValueError:       # damaged (the seal, base64, the size): it won't get better
-      reports.add "Photo of " & it.kks & " could not be read and was dropped (" & getCurrentExceptionMsg() & ")"
+      reports.add "Photo of " & it.name & " could not be read and was dropped (" & getCurrentExceptionMsg() & ")"
       q.remove(it.key)
       q.items.delete(i)
     except CatchableError as e:           # the store itself (I/O, busy): kept, tried again in a minute
-      reports.add "Photo of " & it.kks & " could not be read now (" & e.msg & "). It is kept and tried again in a minute."
+      reports.add "Photo of " & it.name & " could not be read now (" & e.msg & "). It is kept and tried again in a minute."
       q.items[i].readyAt = now + RetryMs
       inc i
 
@@ -184,18 +201,18 @@ proc finish*(q: PhotoQueue, key: string, outcome: Outcome, why: string, now: int
     try: q.remove(key)
     except CatchableError as e:          # kept: tried again in a minute (a resend is kept once, by its client_id)
       q.items[i].readyAt = now + RetryMs
-      return "Photo of " & it.kks & ": the queue could not be updated (" & e.msg & "). It is tried again in a minute."
+      return "Photo of " & it.name & ": the queue could not be updated (" & e.msg & "). It is tried again in a minute."
     q.drop(key)
-    if outcome == Refused: result = "Photo of " & it.kks & " was refused: " & why
+    if outcome == Refused: result = "Photo of " & it.name & " was refused: " & why
   of Failed:
     q.items.delete(i)
     inc it.tries
     if it.tries < Tries:
       it.readyAt = now + RetryMs
       q.items.add it                    # to the end: the photos after it still go
-      result = "Photo of " & it.kks & " was not sent (" & why & "). It is kept and tried again in a minute."
+      result = "Photo of " & it.name & " was not sent (" & why & "). It is kept and tried again in a minute."
     else:
-      result = "Photo of " & it.kks & " was not sent (" & why & "). It is kept and tried again when the app next starts."
+      result = "Photo of " & it.name & " was not sent (" & why & "). It is kept and tried again when the app next starts."
 
 proc wipe*(q: PhotoQueue) =
   ## a removed device: the store's wipe deleted the rows; forget the photos in memory and write nothing more

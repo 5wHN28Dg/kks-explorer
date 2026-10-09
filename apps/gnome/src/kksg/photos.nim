@@ -351,6 +351,10 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   body.add tools, area, caption
   if not w.isAdmin: body.add note
   let send = button("Add the photo", "suggested-action", proc () =
+    let bad = textProblem((if plate: PlateCaption & " · " else: "") & text(caption).strip, text(note).strip)
+    if bad.len > 0:                     # the core would refuse the photo for it, after it was queued
+      w.toast(bad)
+      return
     # flatten: picture + shapes at full output size, then RGB rows
     let outS = cairo_image_surface_create(CAIRO_FORMAT_RGB24, cint(ow), cint(oh))
     let c = cairo_create(outS)
@@ -414,10 +418,6 @@ proc encWorker() {.thread.} =
 
 proc codesOf(q: QueuedPhoto): seq[string] = (if q.codes.len > 0: q.codes else: @[q.kks])
 
-proc nameOf(q: QueuedPhoto): string =
-  ## how the queue names it: its code, or the first of several "and N more"
-  if q.codes.len > 1: q.codes[0] & " and " & $(q.codes.len - 1) & " more" else: q.kks
-
 iterator queued(): QueuedPhoto =
   if pq != nil:
     for q in pq.items: yield q
@@ -425,8 +425,8 @@ iterator queued(): QueuedPhoto =
 proc queueText(): string =
   if pq == nil or pq.count == 0: return ""
   let items = pq.items
-  "Compressing " & (if items.len == 1: "1 photo" else: $items.len & " photos") & " (" & items[0].nameOf &
-    (if items.len > 1: ", then " & items[1 .. ^1].mapIt(it.nameOf).join(", ") else: "") &
+  "Compressing " & (if items.len == 1: "1 photo" else: $items.len & " photos") & " (" & items[0].name &
+    (if items.len > 1: ", then " & items[1 .. ^1].mapIt(it.name).join(", ") else: "") &
     "). They are sent in order; you can keep working."
 
 proc showQueue(w: Win) =
@@ -456,9 +456,9 @@ proc sendMany(w: Win, q: QueuedPhoto, jxlData: string) =
   if r.get("results") != nil:
     for x in r["results"].elems:
       case s(x, "status")
-      of "approved": discard
+      of "pending": inc pending
       of "conflict": inc held
-      else: inc pending
+      else: discard
   var msg = "Photo sent for " & $q.codes.len & " codes"
   if pending > 0: msg.add " · " & $pending & " await approval"
   if held > 0: msg.add " · " & $held & " held (they clash with pending changes)"
@@ -504,7 +504,7 @@ proc received(w: Win, d: EncDone) =
     let r = pq.finish(d.key, outcome, why, nowMs())
     if r.len > 0: w.toast(r)
   except CatchableError as e:          # the store: the photo stays queued (a resend is kept once, by its client_id)
-    w.toast("Photo of " & it.kks & ": the queue could not be updated (" & e.msg & ")")
+    w.toast("Photo of " & it.name & ": the queue could not be updated (" & e.msg & ")")
 
 proc startNext(w: Win) =
   ## start compressing the next photo (the first one not waiting for a retry), if none is being worked on
@@ -681,7 +681,7 @@ proc photoForCodes*(w: Win, codes: seq[string], queued: proc ()) =
       w.toast("That file could not be read as a picture.")
       return
     w.annotate(px, iw, ih, proc (rgb: seq[byte], ow, oh: int, caption, note: string) =
-      if w.enqueue(rgb, ow, oh, "", caption, note, "", codes): queued()))
+      if w.enqueue(rgb, ow, oh, "", caption, note, "", codes): idle(proc () = queued())))   # not inside the click
 
 
 proc photoSection*(w: Win, kks: string): W =

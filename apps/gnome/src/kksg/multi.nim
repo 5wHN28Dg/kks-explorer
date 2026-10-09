@@ -218,8 +218,9 @@ proc photoForAll*(w: Win) =
     w.toast("A photo needs each code's floor. No floor yet: " & missing[0 ..< min(5, missing.len)].join(", ") &
             (if missing.len > 5: " and " & $(missing.len - 5) & " more" else: "") & ". Set it with Place for all first.")
     return
+  let n = w.picked.len
   w.photoForCodes(w.picked, proc () =
-    w.toast("Photo queued for " & $w.picked.len & " codes: it is sent once compressed")
+    w.toast("Photo queued for " & $n & " codes: it is sent once compressed")
     w.stopPicking()
     w.rebuildPanel())
 

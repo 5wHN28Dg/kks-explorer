@@ -206,4 +206,27 @@ suite "photo queue on disk":
     check q.resume().len == 1 and q.count == 1 and q.items[0].key == b.key
     s.close()
 
+  test "a code list is version 2 (a version 1 job with codes is damaged); empty codes are refused when queued":
+    var s = fresh()
+    var q = newPhotoQueue(s)
+    let a = q.add(p, pic(1, 1, 1), 1, 1, "", "", "", "", 1, @["A1", "B1"])
+    check s.getRow(JobTable, a.key)["v"].i == 2
+    check s.getRow(JobTable, q.add(p, pic(1, 1, 1), 1, 1, "C1", "", "", "", 2).key)["v"].i == 1
+    check a.name == "A1 and 1 more"
+    expect ValueError: discard q.add(p, pic(1, 1, 1), 1, 1, "", "", "", "", 3, @["A1", ""])
+    expect ValueError: discard q.add(p, pic(1, 1, 1), 1, 1, "", "", "", "", 3)
+    var j = s.getRow(JobTable, a.key)
+    j["v"] = newInt(1)
+    s.putRow(JobTable, a.key, j)
+    s = s.reopen()
+    q = newPhotoQueue(s)
+    check q.resume().len == 1 and q.count == 1 and q.items[0].kks == "C1"
+    s.close()
+
+  test "a caption or note the core would refuse is caught before queueing":
+    check textProblem("", "") == ""
+    check textProblem("é".repeat(500), "x".repeat(500)) == ""
+    check "caption" in textProblem("é".repeat(501), "")
+    check "note" in textProblem("", "x".repeat(501))
+
 removeDir(dir)
