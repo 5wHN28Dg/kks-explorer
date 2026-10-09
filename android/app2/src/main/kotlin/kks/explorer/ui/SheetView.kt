@@ -30,6 +30,9 @@ import kotlin.math.*
 class SheetView(ctx: Context) : View(ctx) {
     data class TagBox(val id: String, val x0: Float, val y0: Float, val x1: Float, val y1: Float, val status: String, val code: String = "",
                       val photos: String = "none")      // both · equipment · plate · none (the photo coverage view)
+    /** an off-page connector (C16, D2 …): its code, box in points, and its name for screen readers ("Connector C16,
+     *  continues on Sheet B") */
+    data class LinkBox(val label: String, val x0: Float, val y0: Float, val x1: Float, val y1: Float, val name: String)
 
     private class Sheet(b: ByteArray) {
         val buf: ByteBuffer = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN)
@@ -73,6 +76,17 @@ class SheetView(ctx: Context) : View(ctx) {
     var selected = ""; set(v) { field = v; invalidate(); a11y.invalidateRoot() }
     var highlight: Set<String> = emptySet(); set(v) { field = v; invalidate() }
     var dimmed: Set<String>? = null; set(v) { field = v; invalidate() }   // floor filter: tags not in the set are dimmed
+    var links: List<LinkBox> = emptyList(); set(v) { field = v; invalidate(); a11y.invalidateRoot() }
+    var linkSel = -1; set(v) { field = v; invalidate() }          // the connector just arrived at, drawn bold
+    var onLink: ((Int) -> Unit)? = null                             // a connector tapped: its index in `links`
+    /** the open panel's valve symbol (x0, y0, x1, y1 in points), outlined; null = none */
+    var symbolBox: List<Float>? = null; set(v) { field = v; invalidate() }
+
+    /** the connector under (x, y) in view px, -1 none (a little slack: they are small) */
+    private fun hitLink(x: Float, y: Float): Int {
+        val px = ox + x / z; val py = oy + y / z; val pad = 8f / z
+        return links.indexOfFirst { px >= it.x0 - pad && px <= it.x1 + pad && py >= it.y0 - pad && py <= it.y1 + pad }
+    }
 
     private var sheet: Sheet? = null
     private var scale0 = 2f
@@ -187,7 +201,11 @@ class SheetView(ctx: Context) : View(ctx) {
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean { ox += dx / z; oy += dy / z; invalidate(); a11y.invalidateRoot(); return true }
         override fun onDoubleTap(e: MotionEvent): Boolean { zoomAt(2f, e.x, e.y); return true }
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            // a connector opens where its line continues; not while selecting (a tap picks tags only)
             val px = ox + e.x / z; val py = oy + e.y / z; val pad = 8f / z
+            // (a tap right on a tag stays the tag's: the connectors' slack must not take it)
+            if (!selecting && tags.none { it.status != "pending" && px >= it.x0 && px <= it.x1 && py >= it.y0 && py <= it.y1 })
+                hitLink(e.x, e.y).takeIf { it >= 0 }?.let { onLink?.invoke(it); return true }
             val hit = tags.filter { it.status != "pending" && px >= it.x0 - pad && px <= it.x1 + pad && py >= it.y0 - pad && py <= it.y1 + pad }
                 .minByOrNull { (it.x1 - it.x0) * (it.y1 - it.y0) }
             if (hit != null) { if (selecting) onToggle?.invoke(hit.id) else { selected = hit.id; onTag?.invoke(hit.id) } }
@@ -254,20 +272,26 @@ class SheetView(ctx: Context) : View(ctx) {
     // ---------------------------------------------------------------- accessibility
 
     /** The tags inside the view, each a virtual view, through the platform's AccessibilityNodeProvider (no library):
-     *  TalkBack reads "11LAB70AA501, verified"; double tap selects. Ids are indices into `tags`. */
+     *  TalkBack reads "11LAB70AA501, verified"; double tap selects. Ids are indices into `tags`; the connectors follow
+     *  as LINK0 + their index in `links` ("Connector C16, continues on Sheet B"; double tap follows it). */
     private val a11y = Tags()
 
     private inner class Tags : AccessibilityNodeProvider() {
         private var focused = -1
         private var hovered = -1
         private fun screenRect(t: TagBox) = Rect(((t.x0 - ox) * z).toInt(), ((t.y0 - oy) * z).toInt(), ((t.x1 - ox) * z).toInt(), ((t.y1 - oy) * z).toInt())
-        /** in reading order: rows of about one tag height, top to bottom, each left to right */
-        private fun onScreen(): List<Int> = tags.indices.filter { i ->
-            val r = screenRect(tags[i]); r.right > 0 && r.bottom > 0 && r.left < width && r.top < height
-        }.sortedWith(compareBy({ (tags[it].y0 / 12f).toInt() }, { tags[it].x0 })).take(200)
+        private fun screenRect(l: LinkBox) = Rect(((l.x0 - ox) * z).toInt(), ((l.y0 - oy) * z).toInt(), ((l.x1 - ox) * z).toInt(), ((l.y1 - oy) * z).toInt())
+        private fun shown(r: Rect) = r.right > 0 && r.bottom > 0 && r.left < width && r.top < height
+        /** in reading order: rows of about one tag height, top to bottom, each left to right; then the connectors */
+        private fun onScreen(): List<Int> = tags.indices.filter { i -> shown(screenRect(tags[i])) }
+            .sortedWith(compareBy({ (tags[it].y0 / 12f).toInt() }, { tags[it].x0 })).take(200) +
+            links.indices.filter { i -> shown(screenRect(links[i])) }.take(50).map { LINK0 + it }
 
         fun at(x: Float, y: Float): Int {
             val px = ox + x / z; val py = oy + y / z
+            // a connector, unless the finger is right on a tag (the tap rule)
+            if (!selecting && !marking && tags.none { px in it.x0..it.x1 && py in it.y0..it.y1 })
+                hitLink(x, y).takeIf { it >= 0 }?.let { return LINK0 + it }
             return tags.indices.filter { val t = tags[it]; px in t.x0..t.x1 && py in t.y0..t.y1 }
                 .minByOrNull { (tags[it].x1 - tags[it].x0) * (tags[it].y1 - tags[it].y0) } ?: -1
         }
@@ -279,6 +303,7 @@ class SheetView(ctx: Context) : View(ctx) {
                 for (i in onScreen()) info.addChild(this@SheetView, i)
                 return info
             }
+            if (id >= LINK0) return linkInfo(id)
             val t = tags.getOrNull(id) ?: return null
             val info = AccessibilityNodeInfo.obtain(this@SheetView, id)
             info.packageName = context.packageName
@@ -304,8 +329,48 @@ class SheetView(ctx: Context) : View(ctx) {
             return info
         }
 
+        private fun linkInfo(id: Int): AccessibilityNodeInfo? {
+            val l = links.getOrNull(id - LINK0) ?: return null
+            val info = AccessibilityNodeInfo.obtain(this@SheetView, id)
+            info.packageName = context.packageName
+            info.className = "android.widget.Button"
+            info.setParent(this@SheetView)
+            info.contentDescription = l.name
+            val r = screenRect(l); r.intersect(0, 0, width, height)
+            info.setBoundsInParent(r)
+            val loc = IntArray(2); getLocationOnScreen(loc)
+            info.setBoundsInScreen(Rect(r).apply { offset(loc[0], loc[1]) })
+            info.isVisibleToUser = !r.isEmpty
+            info.isEnabled = !selecting && !marking
+            info.isClickable = !selecting && !marking
+            info.isFocusable = true
+            info.isAccessibilityFocused = focused == id
+            if (!selecting && !marking) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
+            info.addAction(if (focused == id) AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_ACCESSIBILITY_FOCUS
+                           else AccessibilityNodeInfo.AccessibilityAction.ACTION_ACCESSIBILITY_FOCUS)
+            return info
+        }
+
         override fun performAction(id: Int, action: Int, args: android.os.Bundle?): Boolean {
             if (id == HOST_VIEW_ID) return performAccessibilityAction(action, args)
+            if (id >= LINK0) {
+                if (links.getOrNull(id - LINK0) == null) return false
+                when (action) {
+                    AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                        if (focused == id) return false
+                        focused = id; invalidate(); send(id, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED); return true
+                    }
+                    AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                        if (focused != id) return false
+                        focused = -1; invalidate(); send(id, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED); return true
+                    }
+                    AccessibilityNodeInfo.ACTION_CLICK -> {
+                        if (selecting || marking) return false
+                        onLink?.invoke(id - LINK0); send(id, AccessibilityEvent.TYPE_VIEW_CLICKED); return true
+                    }
+                }
+                return false
+            }
             val t = tags.getOrNull(id) ?: return false
             when (action) {
                 AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
@@ -331,7 +396,8 @@ class SheetView(ctx: Context) : View(ctx) {
             e.packageName = context.packageName
             e.className = "android.widget.Button"
             e.setSource(this@SheetView, id)
-            tags.getOrNull(id)?.let { e.contentDescription = it.code.ifEmpty { "Unread tag" } }
+            if (id >= LINK0) links.getOrNull(id - LINK0)?.let { e.contentDescription = it.name }
+            else tags.getOrNull(id)?.let { e.contentDescription = it.code.ifEmpty { "Unread tag" } }
             parent?.requestSendAccessibilityEvent(this@SheetView, e)
         }
 
@@ -375,7 +441,12 @@ class SheetView(ctx: Context) : View(ctx) {
     private val tagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
-    private companion object { var firstLogged = false }
+    private companion object {
+        var firstLogged = false
+        const val LINK0 = 1_000_000          // the connectors' virtual view ids start here (the tags' are their indices)
+        val LINK = Color.rgb(140, 51, 217)    // an off-page connector's violet (GNOME's linkColor)
+        val SYMBOL = Color.rgb(176, 23, 158)  // the valve symbol's magenta (GNOME's viewer, the web's .vsym)
+    }
 
     // the drawing and its tags belong in the accessibility tree (explicit rather than "auto"). Open finding,
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { if (!fitted || ow == 0) fit() }
@@ -445,6 +516,31 @@ class SheetView(ctx: Context) : View(ctx) {
             c.drawRect(r, tagPaint)
         }
         tagPaint.pathEffect = null
+        // the open panel's valve symbol: dashed magenta, apart from every tag colour
+        symbolBox?.takeIf { it.size == 4 }?.let { b ->
+            val col = if (dark) DarkColor.lighten(SYMBOL) else SYMBOL
+            val r = RectF((b[0] - ox) * z, (b[1] - oy) * z, (b[2] - ox) * z, (b[3] - oy) * z)
+            r.inset(-3f * dens, -3f * dens)
+            fillPaint.color = col and 0xFFFFFF or (41 shl 24); c.drawRect(r, fillPaint)
+            tagPaint.color = col; tagPaint.strokeWidth = 2.5f * dens; tagPaint.pathEffect = dash
+            c.drawRect(r, tagPaint)
+            tagPaint.pathEffect = null
+        }
+        // off-page connectors: violet dashed circles, unlike the tags' rectangles; the one arrived at solid and bold
+        if (links.isNotEmpty()) {
+            val col = if (dark) DarkColor.lighten(LINK) else LINK
+            for ((i, l) in links.withIndex()) {
+                val cx = ((l.x0 + l.x1) / 2 - ox) * z; val cy = ((l.y0 + l.y1) / 2 - oy) * z
+                val rad = max(6f * dens, max(l.x1 - l.x0, l.y1 - l.y0) / 2 * z + 3f * dens)
+                if (cx + rad < 0 || cy + rad < 0 || cx - rad > width || cy - rad > height) continue
+                val sel = i == linkSel
+                fillPaint.color = col and 0xFFFFFF or ((if (sel) 77 else 31) shl 24); c.drawCircle(cx, cy, rad, fillPaint)
+                tagPaint.color = col; tagPaint.strokeWidth = (if (sel) 3.5f else 2f) * dens
+                tagPaint.pathEffect = if (sel) null else dash
+                c.drawCircle(cx, cy, rad, tagPaint)
+            }
+            tagPaint.pathEffect = null
+        }
         // the selection: a black and yellow ring (GNOME's), visible on any drawing and over any tag colour
         if (selection.isNotEmpty()) for (t in tags) if (t.id in selection) {
             val r = RectF((t.x0 - ox) * z, (t.y0 - oy) * z, (t.x1 - ox) * z, (t.y1 - oy) * z)

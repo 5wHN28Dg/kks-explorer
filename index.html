@@ -48,6 +48,12 @@ main{position:relative;flex:1;min-height:0;overflow:hidden}
 .hs.floor{background:rgba(79,156,255,.35);outline:3px solid var(--ok)}
 .hs.dim{opacity:.15}
 .hs.pendmark{outline:2px dashed var(--accent);background:rgba(255,122,26,.10);pointer-events:none}
+/* off-page connectors: violet dashed circles, unlike the tags' rectangles (GNOME's linkColor) */
+button.conn{position:absolute;border-radius:50%;border:2px dashed #8c33d9;background:rgba(140,51,217,.12);padding:0;margin:0;cursor:pointer;-webkit-appearance:none;appearance:none}
+button.conn.sel{border:3.5px solid #8c33d9;background:rgba(140,51,217,.3)}
+body.picking button.conn,#viewer.marking button.conn{pointer-events:none}
+.connrow{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;padding:8px 4px;border:0;border-bottom:1px solid var(--chrome3);background:none;color:inherit;font:inherit;cursor:pointer}
+.connrow:hover,.connrow:focus-visible{background:var(--chrome3)}
 .vsym{position:absolute;pointer-events:none;border-radius:2px;outline:3px dashed #b0189f;background:rgba(176,24,159,.14)}
 /* tags coloured by their photos (the same colours on every client): both green, the equipment only amber, the tag plate
    only blue, none red */
@@ -83,6 +89,7 @@ body.darkdwg #viewer{background:#3d3d42;--ok:#8dbfff;--review:#f7d05c;--accent:#
 body.darkdwg #sheetimg{background:#121212}
 body.darkdwg :is(.hs,.sw).p-both{--pc:#77c185} body.darkdwg :is(.hs,.sw).p-equipment{--pc:#efbb59} body.darkdwg :is(.hs,.sw).p-plate{--pc:#6da7ef} body.darkdwg :is(.hs,.sw).p-none{--pc:#e87373}
 /* the valve symbol's outline on dark drawings: lightenForDark (0.35) of #b0189f, like GNOME's viewer */
+body.darkdwg button.conn{border-color:#b47ae6;background:rgba(180,122,230,.16)} body.darkdwg button.conn.sel{background:rgba(180,122,230,.32)}
 body.darkdwg .vsym{outline-color:#cc69c1;background:rgba(204,105,193,.18)}
 body.hide-review .hs.review{display:none}
 .zoom{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;z-index:5}
@@ -182,6 +189,7 @@ dt{color:var(--muted)} dd{margin:0}
   <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
   <button class="btn" id="procBtn">Procedures</button>
   <button class="btn" id="revBtn">Review<span class="count" id="revCount">0</span></button>
+  <button class="btn" id="linksBtn" title="Where this sheet's lines continue on other drawings">Connectors</button>
   <button class="btn" id="notesBtn">Sheet notes</button>
   <span class="sync" id="syncStatus"></span>
   <a class="btn app-hide" href="learning.html" title="The three plant courses">Learning</a>
@@ -209,6 +217,7 @@ dt{color:var(--muted)} dd{margin:0}
   <aside class="drawer" id="revDrawer"><div class="head"><h2>Needs review</h2><button class="x" data-close="revDrawer">×</button></div>
     <div style="padding:8px 10px 0" class="sub">Tags the reader wasn't sure about. Check against the drawing, then confirm or mark “not a tag”. <label style="display:block;margin-top:6px"><input type="checkbox" id="hideRev"> Hide unreviewed tags on drawings</label></div>
     <div class="body" id="revBody"></div></aside>
+  <aside class="drawer" id="linksDrawer"><div class="head"><h2>Connectors on this sheet</h2><button class="x" data-close="linksDrawer" aria-label="Close the connectors">×</button></div><div class="body" id="linksBody"></div></aside>
   <aside class="drawer" id="notesDrawer"><div class="head"><h2>Markups on this sheet</h2><button class="x" data-close="notesDrawer">×</button></div><div class="body" id="notesBody"></div></aside>
   <aside id="panel"><div class="grip"></div><div id="panelBody"></div></aside>
 </main>

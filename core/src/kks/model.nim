@@ -87,7 +87,9 @@ proc parseSheets*(j: JNode): seq[SheetInfo] =
         if si.links.len >= MaxLinksPerSheet: break
         let b = if l.kind == jObj: l.get("bbox") else: nil
         if l.kind != jObj or l.s("label").len == 0 or l.s("label").len > MaxLinkLabel or b == nil or b.kind != jArr or b.elems.len != 4: continue
-        var k = Link(label: l.s("label"), conf: l.f("conf", 1.0))
+        # a conf the reader turned into Inf (1e999) would make the views' JSON unreadable ("inf"): taken as read
+        let c = l.get("conf")
+        var k = Link(label: l.s("label"), conf: if c != nil and c.isNum and classify(c.num) notin {fcInf, fcNegInf, fcNan}: c.num else: 1.0)
         var ok = true
         for i in 0 .. 3:
           if not b[i].isNum: ok = false

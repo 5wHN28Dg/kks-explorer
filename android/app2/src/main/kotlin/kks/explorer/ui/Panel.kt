@@ -114,6 +114,8 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                     if (d.optString("isa").isNotEmpty()) Field("Instrument", d.optString("isa")) else null,
                     Field("Reading", t.optString("reading"))))
             }
+            // the valve type (core tagView's valve_type), its symbol outlined on the drawing meanwhile (Root.kt)
+            t.optJSONObject("valve_type")?.let { ValveSection(it, rev, snack) }
             val rows = t.optJSONArray("location_list") ?: JSONArray()
             if (rows.length() > 0) {
                 Heading("Location list")
@@ -272,4 +274,77 @@ private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snac
             }
         }
     }
+}
+
+/** the custom field a confirmed or corrected valve type lives in (core model.nim ValveTypeKey) */
+const val VALVE_TYPE = "Valve type"
+
+/** the valve type (the user, 2026-10-09; GNOME's panel.nim valveSection, the web's valveSec): read from the drawn
+ *  symbol, unchecked, with Confirm type (the core's proposal as it is) and Correct type (the same proposal with the
+ *  person's value); or the confirmed type, and what the drawing says when that differs */
+@Composable
+private fun ValveSection(vt: JSONObject, rev: Int, snack: SnackbarHostState) {
+    val scope = rememberCoroutineScope()
+    val confirm = vt.optJSONObject("confirm")
+    val k = confirm?.optJSONObject("payload")?.str("kks").orEmpty()
+    var correcting by remember(k) { mutableStateOf(false) }
+    var value by remember(k, vt.str("text")) { mutableStateOf(vt.str("text")) }
+    var busy by remember(k, rev) { mutableStateOf(false) }      // one proposal per press: a second tap waits
+    Heading("Valve type")
+    Surface(color = if (vt.str("status") == "confirmed") MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.tertiaryContainer,
+        shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(vt.str("line"), style = MaterialTheme.typography.bodyLarge)
+            val mine = remember(k, rev) { if (confirm != null) myValveType(k) else "" }
+            fun send(v: String) {
+                if (busy || confirm == null) return
+                busy = true
+                val p = JSONObject(confirm.getJSONObject("payload").toString())
+                for (x in p.getJSONObject("changes").getJSONArray("custom").objects()) if (x.str("k") == VALVE_TYPE) x.put("v", v)
+                val (ok, m) = submit(confirm.str("kind"), p)     // no note: the approver sees the change itself
+                if (ok) correcting = false else busy = false
+                scope.launch { snack.showSnackbar(m) }
+            }
+            if (vt.str("status") == "confirmed") {
+                if (vt.optBoolean("drawn_differs")) Dim("The drawing's symbol reads: " + vt.str("drawn"))
+            } else {
+                Dim("Read from the valve symbol drawn next to the tag (outlined on the drawing)" +
+                    (if (vt.opt("conf") is Number) ", " + Math.round(vt.getDouble("conf") * 100) + " % sure" else "") +
+                    ". Confirm it, or correct it if the symbol says otherwise.")
+                if (confirm == null) Text("This equipment already has 100 custom fields: remove one to save the valve type.",
+                    color = MaterialTheme.colorScheme.error)
+                // your own proposal of a type, not live yet (a member's waits for approval): said, and no second one offered
+                else if (mine.isNotEmpty()) Dim("Your valve type “$mine” is waiting for approval.")
+                else if (!correcting) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { send(vt.str("text")) }, enabled = !busy) { Text("Confirm type") }
+                    OutlinedButton(onClick = { correcting = true; value = vt.str("text") }, enabled = !busy) { Text("Correct type") }
+                } else {
+                    OutlinedTextField(value, { value = it }, label = { Text("Valve type (as it really is)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            val v = value.trim()
+                            when {
+                                v.isEmpty() -> scope.launch { snack.showSnackbar("Type the valve type first") }
+                                v.codePointCount(0, v.length) > 200 -> scope.launch { snack.showSnackbar("At most 200 characters") }
+                                else -> send(v)
+                            }
+                        }, enabled = !busy) { Text("Send") }
+                        OutlinedButton(onClick = { correcting = false }) { Text("Cancel") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** the valve type in this person's own open proposal for the code k ("" = none) */
+private fun myValveType(k: String): String {
+    val q = mapOf("status" to "open", "mine" to "1", "kind" to "equipment")    // only mine: the list is paged
+    for (sub in call("GET", "/api/submissions", query = q).json.optJSONArray("submissions").objects()) {
+        val p = sub.optJSONObject("payload") ?: continue
+        if (!sub.optBoolean("mine") || sub.str("kind") != "equipment" || p.str("kks") != k) continue
+        val c = p.optJSONObject("changes")?.optJSONArray("custom") ?: continue
+        for (x in c.objects()) if (x.str("k") == VALVE_TYPE && x.str("v").isNotEmpty()) return x.str("v")
+    }
+    return ""
 }
