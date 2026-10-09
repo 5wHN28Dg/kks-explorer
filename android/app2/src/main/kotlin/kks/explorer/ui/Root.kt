@@ -81,6 +81,19 @@ class Ui {
     var floor by mutableStateOf("")
     var focusSeq by mutableIntStateOf(0)
     var fullView by mutableStateOf(false)                 // the drawing alone: no header, no search (more room)
+    var focusCy by mutableFloatStateOf(0.22f)              // where the focus lands (a fraction of the height)
+    var arrived by mutableStateOf<Triple<String, Float, Float>?>(null)   // the connector followed to: sheet, x0, y0
+
+    /** open where a connector's line continues: its sheet, centred on the connector (no panel in the way) */
+    fun goLink(t: LinkTarget) {
+        tab = "drawings"
+        selected = ""
+        sheet = t.sheet
+        arrived = Triple(t.sheet, t.box[0], t.box[1])
+        focus = t.box
+        focusCy = 0.5f
+        focusSeq++
+    }
 
     /** show a tag on its drawing (from search, a procedure, the review queue, "appears on") */
     fun show(tagId: String) {
@@ -90,6 +103,7 @@ class Ui {
         selected = tagId
         sheet = t.getString("sheet")
         focus = t.optJSONArray("box")?.let { a -> (0 until 4).map { a.getDouble(it).toFloat() } }
+        focusCy = 0.22f
         focusSeq++
     }
 }
@@ -187,6 +201,36 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
         if (current != null) v.setSheet(current.id, current.scale, current.levels)
     }
     LaunchedEffect(boxes, view) { view?.tags = boxes }
+    // the connectors (Links.kt): circles on the drawing, "Connectors on this sheet", a choice when there are several
+    val links = remember(ui.sheet, rev) { if (current != null) linksOf(current.id) else emptyList() }
+    val linkBoxes = remember(links) { links.map(::linkBox) }
+    var connectorsOpen by remember { mutableStateOf(false) }
+    var ask by remember { mutableStateOf<Follow.Ask?>(null) }
+    LaunchedEffect(linkBoxes, ui.arrived, view) {
+        val v = view ?: return@LaunchedEffect
+        v.links = linkBoxes
+        v.linkSel = ui.arrived?.takeIf { it.first == ui.sheet }?.let { a ->
+            linkBoxes.indexOfFirst { Math.abs(it.x0 - a.second) < 0.01f && Math.abs(it.y0 - a.third) < 0.01f } } ?: -1
+    }
+    val say: (String) -> Unit = { m -> scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(m) } }
+    val goLink: (LinkTarget) -> Unit = { t ->
+        if (sheets().none { it.id == t.sheet }) say("Connector ${t.label}: that drawing is no longer in the app")
+        else { ui.goLink(t); say("Connector ${t.label} on ${t.sheetName.ifEmpty { t.sheet }}") }
+    }
+    val followLink: (String, String, Float, Float) -> Unit = { sh, label, x0, y0 ->
+        when (val f = follow(sh, label, x0, y0)) {
+            is Follow.Say -> say(f.text)
+            is Follow.Go -> goLink(f.target)
+            is Follow.Ask -> ask = f
+        }
+    }
+    // the open panel's valve symbol, outlined on the drawing while the panel shows it
+    val symbolBox = remember(ui.selected, ui.sheet, rev) {
+        if (ui.selected.isEmpty()) null
+        else call("GET", "/native/tag", query = mapOf("id" to ui.selected)).json.takeIf { it.str("sheet") == ui.sheet }
+            ?.optJSONObject("valve_type")?.optJSONArray("box")?.takeIf { it.length() == 4 }?.let { a -> (0 until 4).map { a.getDouble(it).toFloat() } }
+    }
+    LaunchedEffect(symbolBox, view) { view?.symbolBox = symbolBox }
     LaunchedEffect(ui.selected, view) { view?.selected = ui.selected }
     LaunchedEffect(ui.coverage, view) { view?.coverage = ui.coverage }
     LaunchedEffect(ui.dark, view) { view?.dark = ui.dark }
@@ -198,7 +242,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
         val v = view ?: return@LaunchedEffect
         val b = ui.focus ?: return@LaunchedEffect
         ui.focus = null
-        v.post { v.centerOn(b[0], b[1], b[2], b[3], cy = 0.22f) }
+        val cy = ui.focusCy
+        v.post { v.centerOn(b[0], b[1], b[2], b[3], cy = cy) }
     }
     Column(Modifier.fillMaxSize()) {
         // long sheet names wrap to two lines in a smaller style, then end in "…" (the full name is in Sheets)
@@ -228,6 +273,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                         onClick = { marking = !marking; selecting = false; ui.selected = ""; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (selecting) "Stop selecting" else "Select tags") },
                         onClick = { selecting = !selecting; selection = emptySet(); marking = false; ui.selected = ""; floorMenu = false })
+                    if (current != null) DropdownMenuItem(text = { Text("Connectors on this sheet (${links.size})") },
+                        onClick = { connectorsOpen = true; floorMenu = false })
                     if (current != null && current.notes.isNotEmpty()) DropdownMenuItem(text = { Text("Notes on this sheet (${current.notes.size})") },
                         onClick = { notesOpen = true; floorMenu = false })
                     if (floors.length() > 0) {
@@ -240,6 +287,10 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             }
         })
         if (systemsOpen) SystemsScreen(ui) { systemsOpen = false }
+        if (connectorsOpen && current != null) ConnectorsDialog(current.name, links, onPick = { l ->
+            followLink(current.id, l.str("label"), l.optDouble("x0").toFloat(), l.optDouble("y0").toFloat())
+        }, onDismiss = { connectorsOpen = false })
+        ask?.let { a -> LinkChoice(a, onGo = goLink, onDismiss = { ask = null }) }
         if (notesOpen && current != null) AlertDialog(onDismissRequest = { notesOpen = false }, title = { Text("Notes on ${current.name}") },
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { current.notes.forEach { Text(it) } } },
             confirmButton = { TextButton(onClick = { notesOpen = false }) { Text("Close") } })
@@ -254,6 +305,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     if ((x1 - x0) * sc < 8 || (y1 - y0) * sc < 8) scope.launch { snack.showSnackbar("Box too small: drag across the whole tag") }
                     else marked = listOf(x0, y0, x1, y1)
                 }
+                v.onLink = { i -> v.links.getOrNull(i)?.let { l -> followLink(ui.sheet, l.label, l.x0, l.y0) } }
                 v.onToggle = { id ->
                     val t = boxes.firstOrNull { it.id == id }
                     if (t == null || t.code.isEmpty()) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("This tag has no code yet: it can't be selected") }

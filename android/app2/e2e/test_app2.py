@@ -708,6 +708,120 @@ class Phone(unittest.TestCase):
         finally:
             self.leave()
 
+    def test_links_and_valve(self):
+        """links between drawings (#106) and the valve type (#101, #108) on the phone, on plant data made for it: the
+        sample sheet's connectors as circles (TalkBack names them) and in "Connectors on this sheet"; one target opens
+        it, several ask, none says so. A valve tag's panel shows the type read from its symbol (outlined on the
+        drawing), Correct type saves the person's value; a member's Confirm type waits for approval."""
+        plant = os.path.join(self.dir, 'plant-data')
+        cfg = os.path.join(self.dir, 'config.json')
+        saved = {}
+        for n in ('sheets.json', 'tags.json'):
+            with open(os.path.join(plant, n)) as f:
+                saved[n] = f.read()
+
+        def publish():
+            r = subprocess.run([SERVER, 'publish-data', plant, '--config', cfg], cwd=self.dir, capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+        def conn(label, x, y):
+            return {'label': label, 'bbox': [x, y, x + 40, y + 40], 'conf': 0.9}
+
+        # a second sheet: the sample's drawing again; C16 continues there, D2 twice there, S3 nowhere
+        sheets = json.loads(saved['sheets.json'])
+        sample = next(s for s in sheets if s['id'] == 'sample')
+        sample['links'] = [conn('C16', 1300, 900), conn('D2', 1400, 900), conn('S3', 1500, 900)]
+        second = dict(sample, id='second', name='Second sheet', links=[conn('C16', 200, 200), conn('D2', 300, 200), conn('D2', 1200, 700)])
+        sheets.append(second)
+        copied = []
+        for f in os.listdir(os.path.join(plant, 'sheets')):
+            if f.startswith('sample.'):
+                shutil.copy(os.path.join(plant, 'sheets', f), os.path.join(plant, 'sheets', 'second.' + f[len('sample.'):]))
+                copied.append(os.path.join(plant, 'sheets', 'second.' + f[len('sample.'):]))
+        tags = json.loads(saved['tags.json'])
+
+        def valve(i, kks, x, typ, actuator):
+            return {'id': i, 'sheet': 'sample', 'kks': kks, 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto',
+                    'conf': 0.95, 'bbox': [x, 300, x + 120, 360], 'read': ['', ''],
+                    'symbol': {'type': typ, 'actuator': actuator, 'nc': False, 'conf': 0.9, 'bbox': [x + 20, 380, x + 100, 440]}}
+        tags += [valve('sample:v1', '11LAB70AA601', 700, 'gate valve', 'motor'), valve('sample:v2', '11LAB70AA602', 1000, 'globe valve', 'none')]
+        with open(os.path.join(plant, 'sheets.json'), 'w') as f: json.dump(sheets, f)
+        with open(os.path.join(plant, 'tags.json'), 'w') as f: json.dump(tags, f)
+        try:
+            publish()
+            self.join()
+            # the list: every connector with where it continues
+            ui.tap('More', exact=True)
+            ui.tap('Connectors on this sheet (3)', exact=True)
+            ui.find('continues on Second sheet')
+            ui.find("the other end isn't on any drawing in the app")
+            ui.tap('Connector S3', exact=True)
+            ui.find("Connector S3: the other end isn't on any drawing in the app", timeout=10)
+            # on the drawing (named for TalkBack): one target opens it
+            ui.tap('Connector C16, continues on Second sheet', exact=True)
+            ui.find('Connector C16 on Second sheet', timeout=10)
+            ui.find('Second sheet', exact=True)                  # the title
+            ui.tap('Connector C16, continues on Sample sheet', exact=True)
+            ui.find('Connector C16 on Sample sheet', timeout=10)
+            # several: asked which, numbered
+            ui.tap('Connector D2, continues on Second sheet', exact=True)
+            ui.find('Where does D2 continue?', exact=True)
+            ui.find('Second sheet (1 of 2)', exact=True)
+            ui.tap('Second sheet (2 of 2)', exact=True)
+            ui.find('Connector D2 on Second sheet', timeout=10)
+            ui.find('Connector D2, continues on Sample sheet, elsewhere on this sheet', exact=True)
+            # the valve type: read from the drawing, its symbol outlined while the panel is open
+            self.open_tag('11LAB70AA601')
+            ui.scroll_to('Valve type: gate valve, motor-operated (from the drawing, unchecked)', exact=True)
+            ui.scroll_to('90 % sure')
+            from PIL import Image
+            import io
+            im = Image.open(io.BytesIO(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)).convert('RGB')
+            os.makedirs(SHOTS, exist_ok=True)
+            im.save(os.path.join(SHOTS, 'valve-type.png'))
+            magenta = sum(1 for r, g, b in im.getdata() if 150 < r < 200 and g < 60 and 130 < b < 185)
+            self.assertGreater(magenta, 50, 'the valve symbol is not outlined')
+            ui.tap('Correct type', exact=True)
+            ui.scroll_to('gate valve, motor-operated', exact=True)      # the field, holding the drawing's reading
+            ui.type_into('gate valve, motor-operated', 'check valve', clear=True)
+            ui.scroll_to('Send', exact=True)
+            ui.tap('Send', exact=True)
+
+            def typed():
+                c = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA601', {}).get('custom') or []
+                return [x for x in c if x['k'] == 'Valve type']
+            self.assertEqual(self.wait_server(typed, 'the corrected valve type never reached the server'), [{'k': 'Valve type', 'v': 'check valve'}])
+            ui.find('Valve type: check valve (confirmed)', exact=True, timeout=20)
+            ui.find("The drawing's symbol reads: gate valve, motor-operated", exact=True)
+            self.assertFalse(ui.present('Confirm type', exact=True))
+        finally:
+            self.leave()
+        # a member: Confirm type is a proposal; the panel says it waits and offers no second one
+        self.member('vera', 'Vera Valve', 'vera password 1')
+        try:
+            self.join('vera', 'vera password 1')
+            self.open_tag('11LAB70AA602')
+            ui.scroll_to('Valve type: globe valve (from the drawing, unchecked)', exact=True)
+            ui.scroll_to('Confirm type', exact=True)
+            ui.tap('Confirm type', exact=True)
+            ui.find('Your valve type “globe valve” is waiting for approval.', exact=True, timeout=20)
+            self.assertFalse(ui.present('Confirm type', exact=True))
+            subs = self.wait_server(lambda: [x for x in self.boss.req('GET', '/api/submissions?status=open')['submissions']
+                                             if x['by'] == 'vera' and x['kind'] == 'equipment'], 'the proposal never reached the server')
+            time.sleep(3)      # a second one would have arrived with it
+            subs = [x for x in self.boss.req('GET', '/api/submissions?status=open')['submissions'] if x['by'] == 'vera' and x['kind'] == 'equipment']
+            self.assertEqual(len(subs), 1, subs)
+            self.assertEqual(subs[0]['payload']['changes']['custom'], [{'k': 'Valve type', 'v': 'globe valve'}])
+        finally:
+            for x in self.boss.req('GET', '/api/submissions')['submissions']:
+                if x['by'] == 'vera':
+                    self.boss.req('POST', f'/api/submissions/{x["id"]}/reject', {})
+            self.leave('vera')
+            for n, text in saved.items():
+                with open(os.path.join(plant, n), 'w') as f: f.write(text)
+            for c in copied: os.remove(c)
+            publish()
+
     @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
     def test_floor_first(self):
         """request 4: a code without a floor asks for it before the camera opens; Cancel opens no camera"""
