@@ -17,6 +17,11 @@ type Win* = ref object
   v*: Viewer
   split*, sheetList*, searchEntry*, resultList*, sheetTitle*, panelSplit*, panelBox*, markBtn*, status*: W
   sideNav*, banner*: W
+  picking*: bool               ## "Select tags" mode: one photo, place or note for several codes (multi.nim)
+  picked*: seq[string]         ## the selected codes, in the order they were picked
+  pickBar*, pickCount*, pickBtn*: W
+  pickSaidUnread*: bool        ## the "no code" toast was shown in this round of the mode
+  pickChanged*: proc ()        ## the selection changed (the bar's count, the drawing)
   linkProc*: string            ## link mode (R7): clicks on tags link them to this procedure step
   linkStep*: int
   activeProc*: string

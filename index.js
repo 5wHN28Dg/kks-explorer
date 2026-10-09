@@ -101,6 +101,7 @@ function mergeTags(){
 }
 const mark={on:false,start:null,box:null};
 function markMode(on){
+  if(on) pickMode(false);
   mark.on=on; $('#viewer').classList.toggle('marking',on); $('#zmark').classList.toggle('on',on);
   if(on){ linkTarget=null; closePanel(); $('#bannerText').textContent='Drag a box around the tag the app missed'; $('#bannerDone').textContent='Cancel'; $('#banner').style.display='flex' }
   else{ $('#banner').style.display='none'; $('#bannerDone').textContent='Done'; $('#markbox')?.remove(); mark.start=null }
@@ -186,8 +187,11 @@ function openSheet(id,then){
   cur=SHEETS.find(s=>s.id===id); $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
   const img=$('#sheetimg'); let first=true;
   img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
+  const s=cur, g=dark.gen;
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the sheet overview) can't run script
-  if(cur.levels){ const k=startLevel(); img.dataset.level=k; img.src=levelUrl(k) } else { delete img.dataset.level; img.src=cur.file }
+  const show=u=>{ if(cur===s&&dark.gen===g) img.src=u };   // only if neither the sheet nor dark drawings changed meanwhile
+  if(cur.levels){ const k=startLevel(); img.dataset.level=k; if(dark.on) levelSrc(k).then(show); else show(levelUrl(k)) }
+  else { delete img.dataset.level; show(cur.file) }
   loadVector();
   img.style.width=cur.w+'px'; img.style.height=cur.h+'px'; $('#stage').style.width=cur.w+'px';
   renderNotes();
@@ -205,12 +209,53 @@ function upgradeLevel(){
   if(!cur?.levels) return; const k=wantLevel(), img=$('#sheetimg'), shown=+(img.dataset.level??cur.levels-1);
   if(k>=shown) return;
   img.dataset.level=k;   // asked for: not asked again while it loads
-  const s=cur, url=levelUrl(k);
-  // swap once decoded; without JPEG XL in the browser, K.jxl decodes it (a detached image isn't watched)
+  const s=cur, g=dark.gen;
+  // swap once decoded (and only if neither the sheet nor dark drawings changed meanwhile)
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the overview pyramid) can't run script
-  K.jxl.native().then(n=>n?url:K.jxl.url(url)).then(u=>{ const pre=new Image(); pre.onload=()=>{ if(cur===s) img.src=u }; pre.src=u })
+  levelSrc(k).then(u=>{ const pre=new Image(); pre.onload=()=>{ if(cur===s&&dark.gen===g) img.src=u }; pre.src=u })
     .catch(e=>console.warn('overview level',k,e));
 }
+// a level's image URL: the file itself where the browser shows JPEG XL, else K.jxl's decode (a detached image isn't
+// watched); in dark drawings the tile worker decodes it with our libjxl and transforms every pixel (dark.js), off this
+// thread. Dark levels are kept per sheet (blob: URLs, freed when another sheet opens).
+function levelSrc(k){
+  if(dark.on) sharp.worker??=startTiles();
+  if(!dark.on||!sharp.worker||sharp.worker.failed){ const url=levelUrl(k); return K.jxl.native().then(n=>n?url:K.jxl.url(url)) }
+  // dark: at most ~4 megapixels (the vector tiles draw the detail when zoomed in): a level 0 of 6400 × 4800 would cost
+  // ~120 MB of decoder memory in the worker, a copy and a 92 MB BMP here, where light mode shows the file itself
+  while(k<cur.levels-1&&cur.w*cur.h/4**k>DARK_MAX_PX) k++;
+  const url=levelUrl(k);
+  if(dark.sheet!==cur.id){ dropDarkLevels(); dark.sheet=cur.id }
+  if(!dark.levels.has(url)){
+    const p=new Promise((res,rej)=>{ const id=++dark.seq; dark.wait.set(id,{res,rej}); sharp.worker.postMessage({t:'level',id,url}) })
+      .then(b=>URL.createObjectURL(b));
+    p.catch(()=>{ if(dark.levels.get(url)===p) dark.levels.delete(url) });   // a failure isn't kept: tried again next time
+    dark.levels.set(url,p);
+  }
+  // a failed dark decode shows the light level rather than nothing (the sheet must open, fit and take /?kks= links)
+  return dark.levels.get(url).catch(e=>{ console.warn('dark overview level',k,e);
+    if(!dark.warned){ dark.warned=true; toast('Dark drawings: the overview could not be made dark here; showing it light') }
+    return K.jxl.native().then(n=>n?url:K.jxl.url(url)) });
+}
+const DARK_MAX_PX=4e6;
+function dropDarkLevels(){ for(const p of dark.levels.values()) p.then(u=>URL.revokeObjectURL(u),()=>{}); dark.levels.clear() }
+// ---------- dark drawings: like a PDF reader's dark mode; remembered on this device ----------
+const dark={on:false,gen:0,sheet:null,levels:new Map(),wait:new Map(),seq:0,warned:false};
+function setDark(on){
+  dark.on=on; dark.gen++; document.body.classList.toggle('darkdwg',on);
+  const b=$('#zdark'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
+  try{ on?localStorage.setItem('darkDrawings','1'):localStorage.removeItem('darkDrawings') }catch(e){}
+  if(!on){ dropDarkLevels(); dark.sheet=null }      // their blob: URLs are freed with them
+  if(!cur?.levels) return;
+  sharp.worker??=startTiles();
+  // the overview level on screen again in the new colours, and the sharp layer redrawn now (not after the 150 ms pause)
+  const img=$('#sheetimg'), s=cur, g=dark.gen, k=+(img.dataset.level??cur.levels-1);
+  // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the overview pyramid) can't run script
+  levelSrc(k).then(u=>{ if(cur===s&&dark.gen===g) img.src=u }).catch(e=>console.warn('overview level',k,e));
+  clearTimeout(sharp.timer); drawSharp();
+}
+$('#zdark').onclick=()=>setDark(!dark.on);
+try{ if(localStorage.getItem('darkDrawings')==='1') setDark(true) }catch(e){}
 function apply(){ const t=`translate(${view.x}px,${view.y}px) scale(${view.s})`; $('#stage').style.transform=t; $('#stage2').style.transform=t; followSharp() }
 
 // ---------- sharp layer: the sheet's vector drawing, redrawn for the visible area once the view stops moving ----------
@@ -234,8 +279,14 @@ function startTiles(){
     w.onmessage=e=>{ const m=e.data;
       if(m.t==='opened'){ if(cur&&m.sheet===cur.id){ sharp.ready=cur.id; drawSharp() } }
       else if(m.t==='frame'){ if(sharp.pending&&m.key===sharp.pending.key) showFrame(m.bmp,sharp.pending.at); else m.bmp.close() }
+      else if(m.t==='level'){ const p=dark.wait.get(m.id); dark.wait.delete(m.id); if(!p) return;
+        if(m.blob){ dark.lastMs=m.ms; p.res(m.blob) } else p.rej(new Error(m.why)) }
       else if(m.t==='error') console.warn('drawing',m.sheet,m.why);
     };
+    // a worker that failed to load (or died) never answers: the overview levels it was asked for fall back to light
+    // (levelSrc), and no more are asked of it, rather than the sheet staying blank
+    w.onerror=e=>{ console.warn('tile worker',e.message||e); w.failed=true;
+      for(const p of dark.wait.values()) p.rej(new Error('the tile worker stopped')); dark.wait.clear() };
     return w;
   }catch(e){ console.warn('no tile worker: the overview only',e); return null }
 }
@@ -253,7 +304,7 @@ function drawSharp(){
     const W=Math.round(v.width*d), H=Math.round(v.height*d), sc=cur.scale||2;
     // the area in points: level-0 px = (screen − view.x) / view.s, points = px / scale
     const key=++sharp.key; sharp.pending={key,at:{...view}};
-    sharp.worker.postMessage({t:'render',key,sheet:cur.id,x0:-view.x/view.s/sc,y0:-view.y/view.s/sc,s:view.s*d*sc,W,H});
+    sharp.worker.postMessage({t:'render',key,sheet:cur.id,x0:-view.x/view.s/sc,y0:-view.y/view.s/sc,s:view.s*d*sc,W,H,dark:dark.on});
     return;
   }
   if(!sharp.img||view.s*d<0.7){ c.style.display='none'; sharp.at=null; return }  // zoomed out: the PNG is as sharp
@@ -287,27 +338,46 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
   el.addEventListener('wheel',e=>{e.preventDefault(); const r=el.getBoundingClientRect(); zoomAt(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top)},{passive:false});
   el.addEventListener('pointerdown',e=>{ if(mark.on&&!pts.size&&e.button===0){ e.preventDefault(); el.setPointerCapture?.(e.pointerId); markDraw(e,'start'); moved=true; return }
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); moved=false;
+    // select mode: one pointer drags a box (no panning); a second finger turns it into a pinch
+    if(multi.on){ if(pts.size===1&&e.button===0) multi.start={p:toStage(e),x:e.clientX,y:e.clientY}; else pickBox(null) }
     if(pts.size===1){last={x:e.clientX,y:e.clientY}; el.classList.add('drag')}
     if(pts.size===2){const [a,b]=[...pts.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y)}} });
   el.addEventListener('pointermove',e=>{ if(mark.start){ markDraw(e,'move'); return } if(!pts.has(e.pointerId))return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(multi.start&&pts.size===1){ if(multi.box||Math.abs(e.clientX-multi.start.x)+Math.abs(e.clientY-multi.start.y)>6){ moved=true; pickBox(toStage(e)) } return }
     if(pts.size===2&&pinch){const [a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y),r=el.getBoundingClientRect();
       zoomAt(d/pinch.d,(a.x+b.x)/2-r.left,(a.y+b.y)/2-r.top); pinch.d=d; moved=true; return}
     if(last){const dx=e.clientX-last.x,dy=e.clientY-last.y; if(Math.abs(dx)+Math.abs(dy)>3)moved=true; view.x+=dx; view.y+=dy; last={x:e.clientX,y:e.clientY}; apply()} });
-  const up=e=>{ if(mark.start){ markDraw(e,'end'); return } pts.delete(e.pointerId); if(pts.size<2)pinch=null; if(pts.size===1)last={...[...pts.values()][0]}; if(!pts.size){last=null; el.classList.remove('drag')} };
+  const up=e=>{ if(mark.start){ markDraw(e,'end'); return }
+    if(multi.start&&pts.size===1&&pts.has(e.pointerId)){ const b=multi.box; pickBox(null); if(b&&e.type==='pointerup') addBox(b) }
+    pts.delete(e.pointerId); if(pts.size<2)pinch=null; if(pts.size===1)last={...[...pts.values()][0]}; if(!pts.size){last=null; el.classList.remove('drag')} };
   el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
-  el.addEventListener('click',e=>{ if(moved){e.stopPropagation();e.preventDefault()} },true);
+  el.addEventListener('click',e=>{ if(moved&&e.detail){e.stopPropagation();e.preventDefault()} },true);
+  // a focused tag (the select mode's Tab order) must not scroll the viewer itself: the view pans to it instead
+  el.addEventListener('scroll',()=>{ el.scrollLeft=0; el.scrollTop=0 });
+  el.addEventListener('focusin',e=>{ const t=e.target; if(!t.classList?.contains('hs')||!t.matches(':focus-visible')) return;   // keyboard focus only
+    const r=t.getBoundingClientRect(), v=el.getBoundingClientRect(), m=24;
+    let dx=0, dy=0;
+    if(r.left<v.left+m) dx=v.left+m-r.left; else if(r.right>v.right-m) dx=v.right-m-r.right;
+    if(r.top<v.top+m) dy=v.top+m-r.top; else if(r.bottom>v.bottom-m) dy=v.bottom-m-r.bottom;
+    if(dx||dy){ view.x+=dx; view.y+=dy; apply() } });
 })();
 
 // a photo of the tag plate is a photo whose caption starts with "Tag plate" (PROTOCOL-v2 §9; core model.photoCover)
 const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
 function drawTags(){
-  const L=$('#layer'); L.replaceChildren();
+  // a box being dragged (select mode, or marking a missed tag) stays: a sync can redraw the tags mid-drag
+  const L=$('#layer'), fid=L.contains(document.activeElement)?document.activeElement.dataset.id:null, boxes=L.querySelectorAll('#selbox,#markbox');
+  L.replaceChildren();
   const covers=KSys.photoCovers(STATE.photos), photoCover=k=>covers.get(k)||'none';   // one pass over the photos
   const hl=new Set(activeProc?STATE.links.filter(l=>l.proc===activeProc).map(l=>l.kks):[]);
+  const picked=new Set(multi.on?multi.codes:[]);
   for(const t of tagsOf(cur.id)){
-    const d=document.createElement('div'), b=t.bbox, k=full(t);
-    d.className='hs'+(t.status==='review'?' review':'')+(t.id===selId?' sel':'')+(k&&hl.has(k)?' hl':'')+' p-'+photoCover(k);
+    // a button: Enter or Space acts like a click; in the tab order only while selecting tags
+    const d=document.createElement('button'), b=t.bbox, k=full(t);
+    d.type='button'; d.dataset.id=t.id; d.dataset.k=k; d.tabIndex=multi.on?0:-1; d.setAttribute('aria-label',k||'unreadable tag');
+    if(multi.on) d.setAttribute('aria-pressed',String(picked.has(k)));
+    d.className='hs'+(t.status==='review'?' review':'')+(t.id===selId?' sel':'')+(k&&hl.has(k)?' hl':'')+(k&&picked.has(k)?' picked':'')+' p-'+photoCover(k);
     if(floor){ const f=floorOf(t); d.classList.add(f.toLowerCase()===floor.toLowerCase()?'floor':'dim') }
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`;
     d.title=(k||'unreadable tag')+(document.body.classList.contains('cover')?' · '+COVER_WORDS[photoCover(k)]:''); d.onclick=e=>{e.stopPropagation(); tagClick(t)}; L.appendChild(d);
@@ -317,8 +387,11 @@ function drawTags(){
     if(p.sheet!==cur.id) continue; const b=p.bbox, d=document.createElement('div'); d.className='hs pendmark';
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; d.title='Your mark, awaiting approval'; L.appendChild(d);
   }
+  L.append(...boxes);
+  if(fid) for(const x of L.querySelectorAll('.hs')) if(x.dataset.id===fid){ x.focus({preventScroll:true}); break }
 }
 function tagClick(t){
+  if(multi.on){ togglePick(t); return }
   if(linkTarget){
     const k=full(t); if(!k){toast('This tag has no KKS yet — review it first');return}
     const lt=linkTarget;
@@ -429,6 +502,7 @@ K.back = () => {
   if ($('#panel').classList.contains('open')) { closePanel(); return true }
   const d = document.querySelector('.drawer.open');
   if (d) { d.classList.remove('open'); if (d.id === 'procDrawer') { activeProc = null; drawTags() } return true }
+  if (multi.on) { pickMode(false); return true }
   return false;
 };
 function cropStyle(t){ const S=SHEETS.find(s=>s.id===t.sheet), b=t.bbox, w=b[2]-b[0]+20, h=b[3]-b[1]+20, sc=Math.min(360/w,64/h);
@@ -466,32 +540,184 @@ async function review(id,status){
 }
 async function addPhoto(input,k,tid){
   const f=input.files[0]; input.value=''; if(!f) return;
+  const p=await photoData(f); if(!p) return;
+  const r=await send('photo',{kks:k,dataUrl:p.dataUrl},'photo for '+k,p.note);
+  if(r) select(eff(TAGS.find(x=>x.id===tid)));
+}
+// a picture file → scaled, marked up in the editor, encoded as the server wants it -> {dataUrl, note} or null
+async function photoData(f){
   const img=new Image(), url=URL.createObjectURL(f);
   try{ await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(new Error('That file could not be read as a picture.'));img.src=url}) }
-  catch(e){ toast(e.message); return } finally{ URL.revokeObjectURL(url) }
+  catch(e){ toast(e.message); return null } finally{ URL.revokeObjectURL(url) }
   const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
   c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
   const a=await K.annotate(c.toDataURL('image/png'),!canApprove());   // mark what matters, or just "Use photo"
-  if(!a) return;
+  if(!a) return null;
   const up=K.cfg?.photo_upload||{type:'image/jpeg',q:0.85};
   const mp=a.canvas.width*a.canvas.height/1e6;
   let dataUrl;
   if(up.type==='image/jxl'){   // the server stores JPEG XL only: encode here (decision 0037)
     const bar=K.progress('Converting the photo to JPEG XL…',(up.ms_per_mp||2500)*mp);
-    try{ dataUrl=await K.jxlEncode(a.canvas,up.distance||1.9,up.effort||7) }catch(e){ bar.done(); toast(e.message); return }
+    try{ dataUrl=await K.jxlEncode(a.canvas,up.distance||1.9,up.effort||7) }catch(e){ bar.done(); toast(e.message); return null }
     bar.done();
   } else {                     // the v1 server and the app convert it themselves (server/photos.py, the app's libjxl)
     const bar=up.ms_per_mp?K.progress('Converting the photo to JPEG XL…',up.ms_per_mp*mp+(up.type==='image/png'?0:1500)):null;
     dataUrl=a.canvas.toDataURL(up.type,up.q); bar?.done();
   }
-  const r=await send('photo',{kks:k,dataUrl},'photo for '+k,a.note);
-  if(r) select(eff(TAGS.find(x=>x.id===tid)));
+  return {dataUrl,note:a.note};
 }
 async function delPhoto(pid,tid){
   const a=await K.ask('Delete this photo?',canApprove()?'':'An admin decides.',!canApprove(),'Delete'); if(!a) return;
   if(await send('photo_delete',{photo_id:pid},'delete photo',a.note)) select(eff(TAGS.find(x=>x.id===tid)));
 }
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
+
+// ---------- several tags at once: one photo, place or note for all their codes (/api/submit-many) ----------
+// The "Select tags" mode: a click (or Enter / Space on a focused tag) toggles a tag's code, a dragged box adds every
+// tag it touches; every tag showing a selected code gets the ring. The bar under the drawing sends to all of them.
+const multi={on:false,codes:[],saidUnread:false,start:null,box:null};
+const PLACE_FIELDS=[['area','Building / area','a building / area'],['floor','Floor','a floor'],['elev','Elevation','an elevation'],
+                    ['near','Near / landmark','a landmark'],['loc','How to find it','directions']];
+const nCodes=n=>n+' code'+(n===1?'':'s');
+function pickMode(on){
+  if(on===multi.on) return;
+  if(on){ if(mark.on) markMode(false); if(linkTarget){ linkTarget=null; $('#banner').style.display='none' } }
+  multi.on=on; multi.codes=[]; multi.saidUnread=false; pickBox(null);
+  $('#viewer').classList.toggle('selecting',on); $('#zpick').classList.toggle('on',on); $('#zpick').setAttribute('aria-pressed',String(on));
+  $('#pickbar').classList.toggle('open',on); document.body.classList.toggle('picking',on); $('#pickCount').textContent='0 selected';
+  if(cur) drawTags();
+}
+// the ring and aria-pressed follow the codes, in place (a redraw would take the focus off the tag)
+function updatePick(){
+  $('#pickCount').textContent=multi.codes.length+' selected';
+  const on=new Set(multi.codes);
+  for(const d of $('#layer').querySelectorAll('.hs[data-id]')){ const p=!!d.dataset.k&&on.has(d.dataset.k);
+    d.classList.toggle('picked',p); d.setAttribute('aria-pressed',String(p)) }
+}
+function unreadOnce(){ if(!multi.saidUnread){ multi.saidUnread=true; toast("Tags without a code can't be selected: review them first") } }
+// at most this many codes in one selection: the server takes up to 200 per submit-many (core submitMany), and a set it
+// refused while queued offline would be dropped from the outbox
+const MAX_PICK=200;
+const fullOnce=()=>toast(`At most ${MAX_PICK} tags at once: send these first`);
+function togglePick(t){
+  const k=full(t); if(!k){ unreadOnce(); return }
+  const i=multi.codes.indexOf(k); if(i>=0) multi.codes.splice(i,1); else if(multi.codes.length<MAX_PICK) multi.codes.push(k); else fullOnce();
+  updatePick();
+}
+// the dragged box (sheet units), drawn while it moves; null removes it
+function pickBox(p){
+  if(!p){ multi.start=null; multi.box=null; $('#selbox')?.remove(); return }
+  const a=multi.start.p, b=multi.box=[Math.min(a.x,p.x),Math.min(a.y,p.y),Math.max(a.x,p.x),Math.max(a.y,p.y)];
+  let el=$('#selbox'); if(!el){ el=document.createElement('div'); el.id='selbox'; $('#layer').appendChild(el) }
+  el.style.cssText=`left:${b[0]}px;top:${b[1]}px;width:${b[2]-b[0]}px;height:${b[3]-b[1]}px`;
+}
+// every tag on this sheet whose box intersects b: added (never removed)
+function addBox(b){
+  const hidden=document.body.classList.contains('hide-review');
+  let added=0, unread=false, full_=false;
+  for(const t of tagsOf(cur.id)){
+    const r=t.bbox; if(hidden&&t.status==='review') continue;
+    if(!(r[0]<=b[2]&&r[2]>=b[0]&&r[1]<=b[3]&&r[3]>=b[1])) continue;
+    const k=full(t); if(!k){ unread=true; continue }
+    if(!multi.codes.includes(k)){ if(multi.codes.length>=MAX_PICK){ full_=true; break } multi.codes.push(k); added++ }
+  }
+  if(unread) unreadOnce(); if(full_) fullOnce();
+  updatePick();
+}
+function dialog(title,...kids){
+  const d=h('dialog',{class:'multi','aria-labelledby':'dlgT'},h('h2',{id:'dlgT'},title),kids);
+  d.addEventListener('close',()=>d.remove()); document.body.appendChild(d); d.showModal(); return d;
+}
+const dlgButtons=(d,label,go)=>h('div',{class:'btns'},h('button',{type:'button',class:'ghost',onclick:()=>d.close()},'Cancel'),
+  h('button',{type:'button',class:'primary','data-send':'',onclick:go},label));
+function pickList(){
+  const sheetName=id=>SHEETS.find(s=>s.id===id)?.name||id;
+  const where=k=>{ const t=TAGS.map(eff).find(x=>x&&full(x)===k); return t?kindName(t)+' · '+sheetName(t.sheet):'' };
+  const codes=[...multi.codes];
+  const d=dialog('Selected codes',
+    codes.length?[h('p',{class:'sub',style:'margin:0'},'Untick a code to leave it out.'),
+      h('ul',null,codes.map(k=>h('li',null,h('label',null,h('input',{type:'checkbox',checked:true,onchange:e=>{
+        const on=e.currentTarget.checked, i=multi.codes.indexOf(k);
+        if(on&&i<0) multi.codes.push(k); else if(!on&&i>=0) multi.codes.splice(i,1);
+        updatePick() }}),h('span',{class:'mono'},k),h('span',{class:'sub'},where(k))))))]
+      :h('p',null,'Nothing selected yet: click tags on the drawing, or drag a box around several.'),
+    h('div',{class:'btns'},h('button',{type:'button',class:'primary',onclick:()=>d.close()},'Close')));
+  d.querySelector('input,button')?.focus();
+}
+// one submit-many for the selected codes; says how it went and leaves the mode
+async function sendMany(kind,payload,note){
+  const codes=[...multi.codes]; if(!codes.length){ toast('Nothing selected'); return false }
+  if(kind==='equipment'){
+    // the values this page shows for the fields it changes: a value someone changed meanwhile (or before an offline
+    // send goes out) is then a clash (core submitMany bases), not overwritten silently
+    const fields=Object.keys(payload.changes||{});   // replaced fields only: an appended note can't lose anything
+    payload={...payload,bases:Object.fromEntries(codes.map(k=>[k,Object.fromEntries(fields.map(f=>[f,(STATE.equipment?.[k]||{})[f]??'']))]))};
+  }
+  let r; try{ r=await K.submitMany(kind,codes,payload,note) }catch(e){ toast('Not saved: '+e.message); return false }
+  pickMode(false);
+  if(r.status==='queued'){ toast(`Offline, queued for ${nCodes(codes.length)}`); updatePending(); drawTags(); return true }
+  const st=(r.results||[]).map(x=>x.status), held=st.filter(x=>x==='conflict').length, waiting=st.filter(x=>x!=='approved'&&x!=='conflict').length;
+  toast(`Sent for ${nCodes(codes.length)}`+(waiting?` · ${waiting} await approval`:'')+(held?` · ${held} held (they clash with pending changes)`:''));
+  await refreshState();
+  return true;
+}
+const approverNote=()=>canApprove()?null:h('div',{class:'field'},h('label',{for:'dlgNote'},'Note for the approver (optional)'),h('input',{id:'dlgNote',maxlength:500}));
+const noteValue=d=>d.querySelector('#dlgNote')?.value.trim()||'';
+function pickNothing(){ if(multi.codes.length) return false; toast('Select tags first'); return true }
+function photoForAll(){
+  if(pickNothing()) return;
+  const d=dialog('Photo for all',
+    h('p',{class:'sub',style:'margin:0 0 8px'},`One photo for ${nCodes(multi.codes.length)}: it is kept once, every code gets it.`),
+    h('div',{class:'field'},h('label',{for:'dlgCaption'},'Caption (optional)'),h('input',{id:'dlgCaption',maxlength:200,placeholder:'e.g. Tag plate, or what the photo shows'}),
+      h('div',{class:'sub'},'A caption starting “Tag plate” marks a photo of the tag plate.')),
+    h('div',{class:'btns'},h('button',{type:'button',class:'ghost',onclick:()=>d.close()},'Cancel'),
+      h('label',{class:'primary',style:'cursor:pointer'},'Choose photo…',h('input',{type:'file',id:'dlgFile',accept:'image/*',capture:'environment',style:'display:none',
+        onchange:async ev=>{ const f=ev.currentTarget.files[0], caption=$('#dlgCaption').value.trim(); d.close(); if(!f) return;
+          const p=await photoData(f); if(p) await sendMany('photo',{dataUrl:p.dataUrl,caption},p.note) }}))));
+  $('#dlgCaption').focus();
+}
+function placeForAll(){
+  if(pickNothing()) return;
+  let confirmed='';
+  const read=()=>{ const ch={}; for(const [f] of PLACE_FIELDS){ const v=d.querySelector('#dlg_'+f).value.trim(); if(v) ch[f]=v } return ch };
+  // how many codes already have a value in each filled field that differs: it will be replaced
+  const replaced=ch=>Object.entries(ch).map(([f,v])=>{ const n=multi.codes.filter(k=>{ const c=eq(k)[f]; return typeof c==='string'&&c.trim()&&c.trim()!==v }).length;
+    return n?`${n} of ${nCodes(multi.codes.length)} already ${n===1?'has':'have'} ${PLACE_FIELDS.find(x=>x[0]===f)[2]}; it will be replaced.`:null }).filter(Boolean);
+  const warn=h('div',{class:'warn',role:'status',style:'display:none'});
+  const update=()=>{ const L=replaced(read()); warn.textContent=L.join(' '); warn.style.display=L.length?'':'none';
+    if(confirmed!==JSON.stringify(read())){ confirmed=''; d.querySelector('[data-send]').textContent='Send' } };
+  const d=dialog('Place for all',
+    h('p',{class:'sub',style:'margin:0 0 8px'},`For ${nCodes(multi.codes.length)}. Only the fields you fill are sent; the others stay as they are for each code.`),
+    PLACE_FIELDS.map(([f,label])=>h('div',{class:'field'},h('label',{for:'dlg_'+f},label),
+      f==='loc'?h('textarea',{id:'dlg_'+f,rows:2,oninput:update}):h('input',{id:'dlg_'+f,oninput:update,...(f==='floor'?{type:'number',inputmode:'numeric',min:0,max:10,step:1,placeholder:'0–10'}:{})}))),
+    approverNote(),warn);
+  d.append(dlgButtons(d,'Send',async()=>{
+    const ch=read();
+    if(!Object.keys(ch).length){ toast('Fill at least one field'); return }
+    if('floor' in ch&&!/^(\d|10)$/.test(ch.floor)){ toast('Floor: a whole number from 0 to 10 (the height goes in Elevation)'); return }
+    const key=JSON.stringify(ch);
+    if(replaced(ch).length&&confirmed!==key){   // said above the button; the second press sends
+      confirmed=key; d.querySelector('[data-send]').textContent='Replace and send'; return }
+    if(await sendMany('equipment',{changes:ch},noteValue(d))) d.close() }));
+  $('#dlg_area').focus();
+}
+function noteForAll(){
+  if(pickNothing()) return;
+  const d=dialog('Note for all',
+    h('p',{class:'sub',style:'margin:0 0 8px'},`For ${nCodes(multi.codes.length)}. Added under each code's own notes; nothing already there is removed.`),
+    h('div',{class:'field'},h('label',{for:'dlgText'},'Note'),h('textarea',{id:'dlgText',rows:3})),
+    approverNote());
+  d.append(dlgButtons(d,'Send',async()=>{
+    const v=$('#dlgText').value.trim(); if(!v){ toast('Write the note first'); return }
+    if(await sendMany('equipment',{append:{notes:v}},noteValue(d))) d.close() }));
+  $('#dlgText').focus();
+}
+$('#zpick').onclick=()=>pickMode(!multi.on);
+$('#pickDone').onclick=()=>{ pickMode(false); $('#zpick').focus() };
+$('#pickList').onclick=pickList; $('#pickPhoto').onclick=photoForAll; $('#pickPlace').onclick=placeForAll; $('#pickNote').onclick=noteForAll;
+// Escape leaves the mode (a dialog's Escape closes the dialog only)
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&multi.on&&!document.querySelector('dialog[open]')&&
+  (e.target===document.body||e.target.closest?.('#viewer,#pickbar,.zoom'))){ pickMode(false); $('#zpick').focus() } });
 
 // ---------- search ----------
 let hits=[],hi=0;
@@ -574,7 +800,7 @@ function renderProcDetail(id){
   }
   put($('#procBody'),out);
 }
-function startLink(proc,step){ linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
+function startLink(proc,step){ pickMode(false); linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
   if(innerWidth<=720) $('#procDrawer').classList.remove('open') }
 $('#bannerDone').onclick=()=>{ if(mark.on){ markMode(false); closePanel(); return } const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
 async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags() }

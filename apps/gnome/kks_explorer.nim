@@ -4,8 +4,9 @@
 import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequtils]
 import kks/[json, api]
 import kks/model
+import kksl/dbstore
 import appstate
-import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, systems]
+import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
@@ -37,6 +38,7 @@ proc doShowSheet(w: Win, id: string) =
     if okL: levels.add data
   w.v.setSheet(si.name, kkp, si.raw, levels)
   w.v.tags = w.tagBoxes(id)
+  w.syncChosen()
   adw_navigation_split_view_set_show_content(w.split, 1)
   discard gtk_widget_grab_focus(w.v.widget)
 
@@ -71,10 +73,18 @@ proc runSearch(w: Win) =
       let title = if t.full.len > 0: t.full else: "(unread)"
       let id = t.id
       let sheet = t.sheet
+      let picking = w.picking     # the select mode: a result toggles its tag (the keyboard's way to select)
       gtk_list_box_append(w.resultList, navRow(title, w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet),
-        "Show " & title & " on " & (if okS: si.name else: t.sheet), proc () =
+        (if picking: "Select or unselect " else: "Show ") & title & " on " & (if okS: si.name else: t.sheet), proc () =
           if sheet != w.sheet: w.showSheet(sheet)
-          w.selectTag(id, true)))
+          if w.picking:
+            let (okT, tt) = w.m.tagById(id)
+            if okT:
+              let (okS2, si2) = w.m.sheetById(tt.sheet)
+              let sc = if okS2 and si2.scale > 0: si2.scale else: 2.0
+              w.v.centerOn(tt.bbox[0] / sc, tt.bbox[1] / sc, tt.bbox[2] / sc, tt.bbox[3] / sc)
+            w.togglePick(id)
+          else: w.selectTag(id, true)))
       w.v.hits.incl t.id
   if found.len == 0: gtk_list_box_append(w.resultList, row("Nothing found", "Try part of the code, or a word from the description"))
   gtk_widget_set_visible(w.resultList, 1)
@@ -107,6 +117,7 @@ proc refresh(w: Win) =
   w.fillSheets()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
+    w.syncChosen()
     gtk_widget_queue_draw(w.v.widget)
   if w.selected.len > 0:
     let (ok, t) = w.m.tagById(w.selected)
@@ -185,6 +196,7 @@ proc mainScreen(w: Win): W =
   let sidebar = page(w.sideNav, "Sheets")
   # content: viewer + tag panel
   w.v = newViewer()
+  w.v.setDark(w.a.store.getMeta("dark_drawings") == "1")    # per device (this device's store), like sync_peers
   w.showSheet = proc (id: string) = w.doShowSheet(id)
   w.selectTag = proc (id: string, center: bool) = w.doSelectTag(id, center)
   w.rebuildPanel = proc () =
@@ -201,7 +213,8 @@ proc mainScreen(w: Win): W =
     w.pushPage(w.procedurePage(id), id, "proc")
     adw_navigation_split_view_set_show_content(w.split, 0)
   w.v.onSelect = proc (id: string) =
-    if w.linkProc.len > 0:          # link mode (R7)
+    if w.picking: w.togglePick(id)  # the select mode (multi.nim)
+    elif w.linkProc.len > 0:          # link mode (R7)
       let (ok, t) = w.m.tagById(id)
       if not ok or t.full.len == 0:
         w.toast("This tag has no KKS yet: review it first")
@@ -213,17 +226,43 @@ proc mainScreen(w: Win): W =
     else: w.selectTag(id, false)
   w.v.onMark = proc (x0, y0, x1, y1: float) =
     w.markDialog(x0, y0, x1, y1)
+  w.v.onBox = proc (x0, y0, x1, y1: float) = w.addBox(x0, y0, x1, y1)
+  w.v.onEscape = proc () = w.stopPicking()
   w.sheetTitle = adw_window_title_new("", "")
   let contentHeader = headerBar(w.sheetTitle)
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-fit-best-symbolic", "Fit the sheet (0)", proc () = w.v.fit()))
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-in-symbolic", "Zoom in (+)", proc () = w.v.zoomBy(1.5)))
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-out-symbolic", "Zoom out (−)", proc () = w.v.zoomBy(1 / 1.5)))
+  # dark drawings: a PDF reader's dark mode for the sheets (lightness inverted, hue kept; photos never change)
+  let darkBtn = gtk_toggle_button_new()
+  gtk_button_set_icon_name(darkBtn, "weather-clear-night-symbolic")
+  gtk_widget_set_tooltip_text(darkBtn, "Dark drawings")
+  setAccessibleLabel(darkBtn, "Dark drawings")
+  gtk_toggle_button_set_active(darkBtn, cint(w.v.dark))
+  darkBtn.on("toggled", proc () =
+    let on = gtk_toggle_button_get_active(darkBtn) != 0
+    w.v.setDark(on)
+    w.a.store.setMeta("dark_drawings", if on: "1" else: ""))
+  adw_header_bar_pack_end(contentHeader, darkBtn)
   adw_header_bar_pack_end(contentHeader, iconButton("camera-photo-symbolic", "Colour tags by photos", proc () =
     w.v.coverage = not w.v.coverage
     gtk_widget_queue_draw(w.v.widget)
     w.toast(if w.v.coverage: "Tags by photos: green both · amber equipment only · blue tag plate only · red none"
             else: "Tags by how they were read")))
-  adw_header_bar_pack_end(contentHeader, iconButton("list-add-symbolic", "Mark a tag the app missed", proc () = w.startMarking()))
+  adw_header_bar_pack_end(contentHeader, iconButton("list-add-symbolic", "Mark a tag the app missed", proc () =
+    if w.picking: w.stopPicking()
+    w.startMarking()))
+  # the select mode: one photo, place or note for several tags (multi.nim); a toggle, so its state is exposed
+  w.pickBtn = gtk_toggle_button_new()
+  gtk_button_set_icon_name(w.pickBtn, "selection-mode-symbolic")
+  gtk_widget_set_tooltip_text(w.pickBtn, "Select tags")
+  setAccessibleLabel(w.pickBtn, "Select tags")
+  w.pickBtn.on("toggled", proc () =
+    let on = gtk_toggle_button_get_active(w.pickBtn) != 0
+    if on != w.picking:
+      if on: w.startPicking() else: w.stopPicking()
+    w.runSearch())              # the results' labels say what activating them does
+  adw_header_bar_pack_start(contentHeader, w.pickBtn)
   w.panelBox = vbox(12)
   margins(w.panelBox, 12)
   let panelHeader = headerBar(adw_window_title_new("Equipment", ""))
@@ -240,6 +279,7 @@ proc mainScreen(w: Win): W =
   w.banner.on("button-clicked", proc () =
     if w.bannerAction != nil: w.bannerAction())
   let contentView = toolbarView(contentHeader, w.panelSplit)
+  adw_toolbar_view_add_bottom_bar(contentView, w.pickBar())
   adw_toolbar_view_add_top_bar(contentView, w.banner)
   let content = page(contentView, "Drawing")
   w.split = adw_navigation_split_view_new()

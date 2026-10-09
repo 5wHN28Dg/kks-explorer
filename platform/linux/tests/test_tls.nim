@@ -49,6 +49,38 @@ suite "TLS through buffers, pinned device keys":
     discard c.handshake()
     expect TlsError: wire(c, s)
 
+  when defined(windows):
+    test "TLS 1.2 (Windows 10) negotiates AEAD with ECDHE; a peer offering only AES-CBC is refused (#41)":
+      tlsTestMode(1)
+      let ka2 = P.p256Generate()
+      let kb2 = P.p256Generate()
+      let ia = newIdentity(ka2)
+      let ib = newIdentity(kb2)
+      let c = newTlsConn(P, ia, client = true, expectPeer = P.peerId(kb2))
+      let s = newTlsConn(P, ib, client = false)
+      discard c.handshake()
+      wire(c, s)
+      check c.handshaken and s.handshaken
+      check c.version == "1.2"
+      echo "    TLS 1.2 cipher suite: ", c.cipher
+      check c.cipher.startsWith("TLS_ECDHE_")
+      check "_GCM_" in c.cipher
+      check s.cipher == c.cipher
+      c.close()
+      s.close()
+      tlsTestMode(2)                   # the client offers AES-CBC suites alone; our server has none of them
+      let ic = newIdentity(P.p256Generate())
+      tlsTestMode(0)
+      let c2 = newTlsConn(P, ic, client = true, expectPeer = P.peerId(kb2))
+      let s2 = newTlsConn(P, ib, client = false)
+      expect TlsError:
+        discard c2.handshake()
+        wire(c2, s2)
+      check not s2.handshaken
+      c2.close()
+      s2.close()
+      ia.free(); ib.free(); ic.free()
+
   test "a whole sync runs over it":
     let rootKey = P.p256Generate()
     var a = newNode(P, newMemStore(), ka)

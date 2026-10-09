@@ -375,7 +375,8 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   adw_dialog_set_child(d, toolbarView(header, body))
   present(d, w.window)
 
-proc addPhoto*(w: Win, kks: string) =
+proc takePhoto*(w: Win, send: proc (dataUrl, caption, note: string)) =
+  ## a picture from a file, marked up in the editor, compressed to JPEG XL: `send` gets its data URL
   # tests: KKS_PHOTO_FILE names the picture instead of the file chooser (as KKS_CAMERA_FILE for the camera)
   let pick = proc (title: string, fn: proc (path: string)) =
     if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
@@ -393,8 +394,12 @@ proc addPhoto*(w: Win, kks: string) =
         except JxlError as e:
           w.toast(e.msg)
           return
-        discard w.submit("photo", newObj(@[("kks", newStr(kks)), ("caption", newStr(caption)),
-                         ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))]), "photo of " & kks, note))))
+        send("data:image/jxl;base64," & encode(jxlData), caption, note))))
+
+proc addPhoto*(w: Win, kks: string) =
+  w.takePhoto(proc (dataUrl, caption, note: string) =
+    discard w.submit("photo", newObj(@[("kks", newStr(kks)), ("caption", newStr(caption)), ("dataUrl", newStr(dataUrl))]),
+                     "photo of " & kks, note))
 
 proc photoSection*(w: Win, kks: string): W =
   result = group("Photos")

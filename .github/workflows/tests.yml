@@ -47,6 +47,8 @@ jobs:
       - name: The Nim core's tests (no platform)
         working-directory: core
         run: nim test
+      - name: The dark-drawings colour vectors still match apps/common/darkcolor.nim (dark.js and DarkColor.kt are checked against them)
+        run: nim r --hints:off --path:apps/common tests/web/make_dark_vectors.nim | diff -u tests/web/dark-vectors.json -
 
   platform-linux:
     runs-on: ubuntu-26.04
@@ -205,6 +207,9 @@ jobs:
       - name: The browser client on v2 plant data (test_web_v2)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_web_v2.py -v -k ${{ matrix.engine }}
+      - name: Several tags at once in index.html (test_web_multi; /api/submit-many)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_multi.py -v -k ${{ matrix.engine }}
       - name: Equipment by system in index.html (test_web_systems)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_systems.py -v -k ${{ matrix.engine }}
@@ -216,6 +221,8 @@ jobs:
         run: .venv/bin/python platform/linux/e2e/test_course_web.py -v -k ${{ matrix.engine }} -k list_api
       - name: course-figure.js against the course vectors (tests/web)
         run: .venv/bin/python tests/web/test_course_figure.py -v -k ${{ matrix.engine }}
+      - name: dark.js against apps/common/darkcolor.nim's values (tests/web)
+        run: .venv/bin/python tests/web/test_dark.py -v -k ${{ matrix.engine }} -k tag_colours
       - name: systems.js against core views.systemsView's cases (tests/web)
         run: .venv/bin/python tests/web/test_systems.py -v -k ${{ matrix.engine }}
       - if: failure()
@@ -259,6 +266,9 @@ jobs:
       - name: The GNOME app
         working-directory: apps/gnome
         run: nim c -d:release -o:/tmp/kksgnome/kks_explorer kks_explorer.nim
+      - name: The GNOME app's unit tests (the dark-drawings colours and marker contrast)
+        working-directory: apps/gnome
+        run: nim test
       - name: The GNOME app through AT-SPI, in a private headless mutter (apps/gnome/e2e/headless.sh)
         run: |
           apps/gnome/e2e/headless.sh /usr/bin/python3 apps/gnome/e2e/test_gnome.py /tmp/kksgnome/kks_explorer \
@@ -425,6 +435,7 @@ jobs:
           NIM=nim sh apps/windows/build.sh "$PWD/out/Walkdown.exe"
           (cd core && KKS_WIN_OUT=/tmp/kkswin-core nim wintests) && cp /tmp/kkswin-core/*.exe out/core/
           (cd platform/linux && KKS_WIN_OUT=/tmp/kkswin-plat nim wintests) && cp /tmp/kkswin-plat/*.exe out/plat/
+          nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console --nimcache:/tmp/kkswin-jxl -o:out/plat/test_jxl_limit.exe apps/windows/tests/test_jxl_limit.nim
           ls -l out out/core out/plat
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

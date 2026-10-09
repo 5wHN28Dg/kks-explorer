@@ -4,7 +4,7 @@
 ## password accounts on top (it passes the signed-in account as the actor).
 
 import std/[algorithm, base64, math, sets, strutils, tables, unicode]
-import json, crypto, util, proto, replay, node, plant, progress, invites, extras, plantdata, diagnostics
+import json, crypto, util, proto, replay, node, plant, progress, invites, extras, plantdata, diagnostics, relaykey
 
 type
   Actor* = object
@@ -465,10 +465,12 @@ proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
   O(("id", newNull()), ("client_id", clientId), ("entry", newNull()), ("person", S(me.person)), ("kind", S(kind)),
     ("created", I(now div 1000)), ("held", newNull()), ("status", newNull()), ("note", newNull()), ("decided_at", newNull()))
 
-proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64): JNode =
+proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64,
+                 dupChecked = false): JNode =
   ## a change already in its §9 body form: the web/API submissions above and the server's submit-file (a repeated
-  ## client_id returns the first submission, so each is written once)
-  if cid.isStr:
+  ## client_id returns the first submission, so each is written once). `dupChecked`: the caller has looked for this
+  ## client_id already (submitMany: one pass over the submissions for the whole set, not one per code)
+  if cid.isStr and not dupChecked:
     for old in a.n.store.subs():
       if old["client_id"].isStr and old["client_id"].s == cid.s:
         let s = a.subStatus(old)
@@ -491,19 +493,96 @@ proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote:
   elif conflicts.len > 0: O(("id", I(sid)), ("status", S("conflict")), ("conflicts", conflictsOut(conflicts)))
   else: O(("id", I(sid)), ("status", S("pending")))
 
-proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64): JNode =
+proc submitPrep(a: Api, clientId, noteIn: JNode): (JNode, string, JNode) =
+  ## (client id, request note, the earlier submission's answer when this client id was already sent, else nil)
   if noteIn != nil and not noteIn.isNull and (noteIn.kind != jStr or noteIn.s.runeLen > 500): bad("note: up to 500 characters")
   let requestNote = if noteIn != nil and noteIn.isStr: noteIn.s.strip else: ""
   let cid = if clientId == nil: newNull() else: clientId
   if not cid.isNull and not (cid.kind == jStr and cid.s.len in 8..64 and
                              cid.s.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})): bad("bad client_id")
+  var dup: JNode = nil
   if cid.isStr:
     for old in a.n.store.subs():
       if old["client_id"].isStr and old["client_id"].s == cid.s:
         let s = a.subStatus(old)
-        return O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
+        dup = O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
+        break
+  (cid, requestNote, dup)
+
+proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64): JNode =
+  let (cid, requestNote, dup) = a.submitPrep(clientId, noteIn)
+  if dup != nil: return dup
   let p = a.normalize(kind, payload)
   a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
+
+proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, noteIn: JNode, now: int64): JNode =
+  ## One photo, or one change to the equipment fields (a note, a place), for several codes at once: an ordinary
+  ## submission per code, so every device reads them as before (PROTOCOL-v2 §9 has one kks per entry). A photo's image
+  ## is kept once and every entry points to it. `client_id` is a prefix: code i is sent as "<prefix>-<i>", so a retry
+  ## doesn't duplicate anything.
+  ##
+  ## Everything is checked before anything is written (a code that fails — e.g. a note over the field's length once
+  ## appended — leaves no half-sent set behind for a retry to duplicate). Equipment payload: `changes`, and/or `append`
+  ## (text added under each code's own current value), and `bases` {code: {field: value}}: the values the person was
+  ## shown, so a value changed meanwhile is a clash as in a single edit; a code without one gets its current values.
+  if kind notin ["photo", "equipment"]: bad("only photos and equipment fields go to several codes at once")
+  if codes == nil or codes.kind != jArr or codes.elems.len notin 1..200: bad("kks: a list of 1 to 200 codes")
+  var list: seq[string]
+  for c in codes.elems:
+    let k = kksOf(c)
+    if k notin list: list.add k
+  if payload == nil or payload.kind != jObj: bad("bad payload")
+  let prefix = if clientId == nil or clientId.isNull: "" else: (if clientId.isStr: clientId.s else: "\0")
+  if prefix.len > 0 and not (prefix.len in 8..56 and prefix.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})):
+    bad("bad client_id")
+  let (_, requestNote, _) = a.submitPrep(newNull(), noteIn)      # the note first: nothing is kept for a refused one
+  proc cidOf(i: int): JNode = (if prefix.len == 0: newNull() else: S(prefix & "-" & $i))
+  # earlier sends of this set (a retry): one pass over the submissions, not one per code
+  var dups = initTable[string, JNode]()
+  if prefix.len > 0:
+    for old in a.n.store.subs():
+      if old["client_id"].isStr and old["client_id"].s.startsWith(prefix & "-"):
+        let st = a.subStatus(old)
+        dups[old["client_id"].s] = O(("id", old["id"]), ("status", S(st.status)), ("note", S(st.note)), ("duplicate", B(true)))
+  # 1. every body, checked
+  var bodies: seq[JNode]
+  if kind == "photo":
+    var first = copy(payload)
+    first["kks"] = S(list[0])
+    let p = a.normalize("photo", first)        # the image is checked, converted and kept once
+    for i, k in list:
+      var pi = copy(p)
+      pi["kks"] = S(k)
+      if i > 0: pi["photo_id"] = S(a.newHexId)
+      bodies.add toBody("photo", pi)
+  else:
+    let app = payload.get("append")
+    if app != nil and app.kind != jObj: bad("bad append")
+    let bases = payload.get("bases")
+    if bases != nil and bases.kind != jObj: bad("bad bases")
+    for k in list:
+      let cur = a.n.run.equipment.getOrDefault(k)
+      var changes = if payload.get("changes") != nil and payload["changes"].kind == jObj: copy(payload["changes"]) else: newObj()
+      if app != nil:
+        for (f, v) in app.fields:
+          if not v.isStr: bad("bad append")
+          if changes.has(f): bad("append: " & f & " is also in changes")
+          let old = if cur != nil and cur.has(f) and cur[f].isStr: cur[f].s else: ""
+          changes[f] = S(if old.strip.len > 0: old & "\n" & v.s else: v.s)
+      let shown = if bases != nil: bases.get(k) else: nil
+      if shown != nil and shown.kind != jObj: bad("bad bases")
+      var bs = newObj()
+      for (f, _) in changes.fields:
+        bs[f] = (if shown != nil and shown.has(f): shown[f] elif cur != nil and cur.has(f): cur[f] else: defaultOf(f))
+      let p = a.normalize("equipment", O(("kks", S(k)), ("changes", changes), ("base", bs)))   # lengths, fields
+      bodies.add toBody("equipment", p)
+  # 2. written, all or (on a retry) the ones not sent before
+  var results = newArr()
+  for i, k in list:
+    let cid = cidOf(i)
+    if cid.isStr and cid.s in dups: results.elems.add dups[cid.s]
+    else: results.elems.add a.submitBody(me, kind, bodies[i], cid, requestNote, now, dupChecked = true)
+  O(("results", results))
 
 proc rebase(a: Api, kind: string, b: JNode): JNode =
   case kind
@@ -825,6 +904,18 @@ proc usersOut(a: Api, me: Actor): JNode =
       ("position", if p["position"].isNull: S("") else: p["position"]), ("no_account", B(true)), ("has_password", B(false)),
       ("role", S(a.roleOf(pid))), ("created", newNull()), ("active", B(active > 0)), ("devices", I(devs)))
 
+proc newRoomKey(a: Api, me: Actor, now: int64) =
+  ## a new relay room key (decision 0050): kept here, its public key the setting `relay_member`; the other devices get
+  ## it at their next sync with one that holds it, and the room moves with it
+  let k = a.n.p.p256Generate()
+  a.n.keepMemberKey(k, now)
+  discard a.write(me, "setting", O(("key", S("relay_member")), ("value", S(keyString(k.pub)))), now)
+  if a.relayChanged != nil: a.relayChanged()
+
+proc rotateRoomKey(a: Api, me: Actor, now: int64) =
+  ## after the manager removes a device: a removed device never syncs again, so it never learns the new key
+  if me.role == "manager" and a.n.relayMemberSetting.len > 0: a.newRoomKey(me, now)
+
 proc updatePerson(a: Api, me: Actor, pid: string, d: JNode, now: int64): Response =
   need(me, "admin")
   if pid notin a.n.run.persons: fail(404, "no such person")
@@ -850,6 +941,7 @@ proc updatePerson(a: Api, me: Actor, pid: string, d: JNode, now: int64): Respons
     for dev, v in a.n.run.devices:
       if v["person"].s == pid and dev notin a.n.run.cuts: devs.add dev
     for dev in devs: discard a.write(me, "revoke", revokeBody(dev, a.lastSeq(dev)), now)
+    if devs.len > 0: a.rotateRoomKey(me, now)
   elif act != nil and act.kind == jBool and act.b: bad("To come back they join again with a new join request.")
   ok()
 
@@ -860,7 +952,9 @@ proc revokeDevice(a: Api, me: Actor, dev: JNode, now: int64): Response =
   if not (me.role == "manager" or v["person"].s == me.person or (me.role == "admin" and tgt == "user")):
     fail(403, "not allowed for that device")
   if dev.s == me.device: bad("This is the device you are using; remove it from another one.")
-  if dev.s notin a.n.run.cuts: discard a.write(me, "revoke", revokeBody(dev.s, a.lastSeq(dev.s)), now)
+  if dev.s notin a.n.run.cuts:
+    discard a.write(me, "revoke", revokeBody(dev.s, a.lastSeq(dev.s)), now)
+    a.rotateRoomKey(me, now)
   ok()
 
 # ---------------------------------------------------------------- outputs
@@ -1028,6 +1122,9 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
   of "/api/submit":
     let kind = if d.get("kind") != nil and d["kind"].isStr: d["kind"].s else: ""
     return ok(a.submit(me, kind, d.get("payload"), d.get("client_id"), d.get("note"), now))
+  of "/api/submit-many":
+    let kind = if d.get("kind") != nil and d["kind"].isStr: d["kind"].s else: ""
+    return ok(a.submitMany(me, kind, d.get("kks"), d.get("payload"), d.get("client_id"), d.get("note"), now))
   of "/api/profile":
     let (fn, pos) = personFields(d)
     if fn != me.fullName or not pyEq(pos, me.position):
@@ -1052,7 +1149,8 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
                             url.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '.', '-', ':', '/', '_', '~'})):
       bad("The relay address looks like wss://kks-relay.example.workers.dev (ws:// only to this machine, for tests)")
     discard a.write(me, "setting", O(("key", S("relay")), ("value", orNull(url))), now)
-    if a.relayChanged != nil: a.relayChanged()
+    if url.len > 0: a.newRoomKey(me, now)   # every save makes a new room key (0050): the manager's way to rotate it
+    elif a.relayChanged != nil: a.relayChanged()
     return ok()
   of "/api/settings/plant":
     need(me, "manager")

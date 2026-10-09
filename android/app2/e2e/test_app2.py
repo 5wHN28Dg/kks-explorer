@@ -16,6 +16,7 @@ PKG = 'io.github.walkdown'
 # the emulator reaches this machine at 10.0.2.2; a real phone over USB uses `adb reverse` and 127.0.0.1
 # (choose the phone with ANDROID_SERIAL; KKS_PHONE_HOST=127.0.0.1)
 PHONE_HOST = os.environ.get('KKS_PHONE_HOST', '10.0.2.2')
+SHOTS = os.environ.get('KKS_SHOTS', os.path.expanduser('~/kks-work/shots-android'))
 
 
 def free_port():
@@ -137,6 +138,107 @@ class Phone(unittest.TestCase):
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
             time.sleep(3)
 
+    def test_multi(self):
+        """one place and one note for several codes (/api/submit-many): Select tags from the ⋮ menu, two tags tapped
+        and one taken by a box (hold, then drag), one unticked in the List; Place for all with a floor warns about the
+        code that already has one, and the server gets a submission for exactly the codes left; Note for all appends"""
+        for code, bb in (('11LAB70AA502', [1000, 300, 1120, 360]), ('11LAB70AA503', [400, 800, 520, 860]),
+                         ('11LAB70AA504', [1000, 800, 1120, 860])):
+            r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': code, 'isa': '', 'note': ''}})
+            assert r.get('status') == 'approved', r
+        self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '2'},
+                                                                              'base': {'floor': self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('floor', '')}}})
+
+        def tag(code):
+            for n in ui.nodes():
+                if ui.label(n).startswith(code + ','):
+                    return n
+            self.fail(f'{code} is not on screen')
+
+        def tap_tag(code):
+            x, y = ui.center(tag(code))
+            ui.sh('input', 'tap', str(x), str(y))
+            time.sleep(1)
+
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            ui.find('11LAB70AA504, ', timeout=30)
+            ui.tap('More', exact=True)
+            ui.tap('Select tags', exact=True)
+            ui.find('0 selected', exact=True)
+            tap_tag('11LAB70AA501')
+            tap_tag('11LAB70AA502')
+            ui.find('2 selected', exact=True)
+            self.assertTrue(ui.label(tag('11LAB70AA501')).endswith(', selected'), ui.label(tag('11LAB70AA501')))
+            # a box around 503: hold on the paper above-left of it, then drag past its lower-right corner
+            a, b, c, d = map(int, re.findall(r'\d+', tag('11LAB70AA503').get('bounds')))
+            x0, y0, x1, y1 = a - 25, b - 25, c + 25, d + 25
+            ui.sh('input', 'motionevent', 'DOWN', str(x0), str(y0))
+            time.sleep(1.2)                                         # longer than the long-press timeout
+            for k in range(1, 6):
+                ui.sh('input', 'motionevent', 'MOVE', str(x0 + (x1 - x0) * k // 5), str(y0 + (y1 - y0) * k // 5))
+            ui.sh('input', 'motionevent', 'UP', str(x1), str(y1))
+            ui.find('3 selected', exact=True, timeout=10)
+            self.assertTrue(ui.label(tag('11LAB70AA504')).endswith('not selected'))
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, 'android-multi-selected.png'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+            # the List: untick 502
+            ui.tap('List', exact=True)
+            ui.tap('11LAB70AA502', exact=True)
+            time.sleep(0.5)
+            self.assertFalse(ui.present('11LAB70AA502', exact=True), '502 is still in the list')
+            ui.tap('Close', exact=True)
+            ui.find('2 selected', exact=True)
+            # Place for all: a floor; 501 already has floor 2, so the dialog warns about one code
+            ui.tap('Place for all', exact=True)
+            ui.find('Place for 2 codes', exact=True)
+            ui.type_into('Floor', '3')
+            ui.find('1 of 2 codes already have another value here: it will be replaced.', exact=True)
+            ui.tap('Send', exact=True)
+            ui.find('Sent for 2 codes', timeout=10)
+
+            # the phone's entries reach the server by sync (approved at once: the manager's phone); exactly the two codes
+            def placed():
+                e = self.boss.req('GET', '/api/state')['equipment']
+                floor3 = sorted(k for k, v in e.items() if v.get('floor') == '3')
+                return floor3 if len(floor3) >= 2 else None
+            self.assertEqual(self.wait_server(placed, 'the place never reached the server', tries=80), ['11LAB70AA501', '11LAB70AA503'])
+            time.sleep(3)
+            st = self.boss.req('GET', '/api/state')['equipment']
+            self.assertEqual(sorted(k for k, v in st.items() if v.get('floor') == '3'), ['11LAB70AA501', '11LAB70AA503'])
+            # Note for all: appended under each code's own notes
+            old = st['11LAB70AA501'].get('notes', '')
+            ui.tap('More', exact=True)
+            ui.tap('Select tags', exact=True)
+            tap_tag('11LAB70AA501')
+            tap_tag('11LAB70AA504')
+            ui.find('2 selected', exact=True)
+            ui.tap('Note for all', exact=True)
+            ui.type_into('Note to add', 'Lagging checked')
+            ui.tap('Send', exact=True)
+            ui.find('Sent for 2 codes', timeout=10)
+
+            def noted():
+                e = self.boss.req('GET', '/api/state')['equipment']
+                return e if e.get('11LAB70AA504', {}).get('notes') and 'Lagging' in e.get('11LAB70AA501', {}).get('notes', '') else None
+            e = self.wait_server(noted, 'the note never reached the server', tries=80)
+            self.assertEqual(e['11LAB70AA501']['notes'], (old + '\n' if old.strip() else '') + 'Lagging checked')
+            self.assertEqual(e['11LAB70AA504']['notes'], 'Lagging checked')
+        finally:
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
+
     @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
     def test_photos(self):
         """the photo editor (the user's Honor 600, 2026-10-04): every button on screen above the navigation bar, undo,
@@ -224,6 +326,100 @@ class Phone(unittest.TestCase):
                 c = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501']
                 return c if len(c) == 1 else None
             self.wait_server(left, 'the deleted photo is still on the server', tries=60)
+        finally:
+            model = ui.sh('getprop', 'ro.product.model').strip()
+            for d in self.boss.req('GET', '/api/devices')['all']:
+                if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
+                    self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+            ui.sh('pm', 'clear', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            time.sleep(3)
+
+    def test_dark(self):
+        """dark drawings: DarkColor equals the Nim function (tests/web/dark-vectors.json, checked on the device by the
+        debug-only DebugDarkReceiver) and the markers keep 3:1; the ⋮ toggle turns the paper dark and the lines light
+        at once (a screenshot against the light one, pixel by pixel), and it is still on after the app restarts"""
+        from PIL import Image
+        import io
+
+        def shot(name):
+            png = subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, name), 'wb') as f:
+                f.write(png)
+            return Image.open(io.BytesIO(png)).convert('RGB')
+
+        def checked(text):   # the checkable node around a label (the menu item; the label itself is not checkable)
+            box = [int(v) for v in re.findall(r'\d+', ui.find(text, exact=True).get('bounds'))]
+            for n in ui.nodes():
+                b = [int(v) for v in re.findall(r'\d+', n.get('bounds', '[0,0][0,0]'))]
+                if n.get('checkable') == 'true' and b[0] <= box[0] and b[1] <= box[1] and b[2] >= box[2] and b[3] >= box[3]:
+                    return n.get('checked')
+            self.fail(f'nothing checkable around {text!r}: ' + repr([(n.get('class'), label(n), n.get('checkable'), n.get('bounds')) for n in ui.nodes()][-12:]))
+
+        def label(n):
+            return ui.label(n)
+
+        def region():        # the middle of the drawing: below the search field, clear of the buttons and the sides
+            a, b, c, d = map(int, re.findall(r'\d+', ui.find('Drawing sample').get('bounds')))
+            top = int(re.findall(r'\d+', ui.find('Search equipment by KKS code or description').get('bounds'))[3]) + 20
+            return a + (c - a) // 5, top, c - (c - a) // 5, top + (d - top) * 2 // 3
+        try:
+            ui.tap('Join through a server', exact=True)
+            ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+            ui.type_into('Username', 'boss')
+            ui.type_into('Password', 'a long password')
+            ui.tap('Join', exact=True)
+            ui.find('Sample sheet', timeout=40)
+            # the colour function on the device
+            with open(os.path.join(REPO, 'tests', 'web', 'dark-vectors.json'), 'rb') as f:
+                subprocess.run(ui.ADB + ['shell', 'run-as', PKG, 'sh', '-c', '"cat > files/dark-vectors.json"'], input=f.read(), check=True)
+            subprocess.run(ui.ADB + ['shell', 'run-as', PKG, 'rm', '-f', 'files/dark-check.txt'])
+            ui.adb('shell', 'am', 'broadcast', '-a', 'kks.explorer.DEBUG_DARK', '-p', PKG)
+            check = ''
+            for _ in range(30):
+                check = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/dark-check.txt'], capture_output=True, text=True).stdout
+                if check:
+                    break
+                time.sleep(0.5)
+            self.assertTrue(check.startswith('ok '), check)
+            # the sheet in light mode: which pixels are paper (white) and which are lines (dark grey/black)
+            time.sleep(3)
+            box = region()
+            light = shot('android-dark-before.png')
+            paper, lines = [], []
+            for y in range(box[1], box[3], 2):
+                for x in range(box[0], box[2], 2):
+                    r, g, b = light.getpixel((x, y))
+                    if min(r, g, b) >= 250:
+                        paper.append((x, y))
+                    elif max(r, g, b) <= 70 and max(r, g, b) - min(r, g, b) <= 10:
+                        lines.append((x, y))
+            self.assertGreater(len(paper), 1000, 'no paper in the light screenshot')
+            self.assertGreater(len(lines), 20, 'no lines in the light screenshot')
+            ui.tap('More', exact=True)
+            self.assertEqual(checked('Dark drawings'), 'false')
+            ui.tap('Dark drawings', exact=True)
+            time.sleep(4)
+
+            def judge(im):
+                dark_paper = sum(1 for p in paper if max(im.getpixel(p)) <= 40)
+                light_lines = sum(1 for p in lines if min(im.getpixel(p)) >= 150)
+                return dark_paper / len(paper), light_lines / len(lines)
+            pf, lf = judge(shot('android-dark-on.png'))
+            self.assertGreater(pf, 0.95, f'only {pf:.0%} of the paper turned dark')
+            self.assertGreater(lf, 0.8, f'only {lf:.0%} of the lines turned light')
+            # remembered: the app restarted shows the sheet dark, the menu item checked
+            ui.sh('am', 'force-stop', PKG)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.find('Sample sheet', timeout=40)
+            time.sleep(4)
+            pf, lf = judge(shot('android-dark-restarted.png'))
+            self.assertGreater(pf, 0.95, f'after a restart only {pf:.0%} of the paper is dark')
+            self.assertGreater(lf, 0.8, f'after a restart only {lf:.0%} of the lines are light')
+            ui.tap('More', exact=True)
+            self.assertEqual(checked('Dark drawings'), 'true')
+            ui.sh('input', 'keyevent', '4')
         finally:
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:
