@@ -167,8 +167,6 @@ proc markDialog(x0, y0, x1, y1: float) =
   p.layout()
   ShowWindow(hw, SW_SHOW)
 
-proc ShutdownBlockReasonCreate(h: HWND, reason: WideCString): BOOL {.importc, stdcall, header: "<windows.h>".}
-
 proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
   case m
   of WM_SIZE:
@@ -225,9 +223,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
                  ". " & how):
         return 0
   of 0x0011'u32:     # WM_QUERYENDSESSION: signing out or shutting down would lose them too; Windows then names the app
-    if w != nil and queuedCount() + failedCount() > 0:
-      discard ShutdownBlockReasonCreate(h, newWideCString("Photos are not sent yet: open Walkdown to send them"))
-      return 0
+    if w != nil and blockShutdown(h): return 0
   of WM_DESTROY:
     PostQuitMessage(0)
     return 0

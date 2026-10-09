@@ -4,6 +4,7 @@
 ## apps/windows/README.md.
 
 import std/[base64, strutils, tables, math, sequtils, os, times, random, typedthreads]
+from std/unicode import runeLen
 import kks/json
 import kks/model
 import appstate
@@ -176,7 +177,7 @@ proc takePhoto*(w: Win, send: proc (dataUrl, caption, note: string)) =
     var data = newString(int(n))
     copyMem(addr data[0], jxl, int(n))
     cfree(jxl)
-    send("data:image/jxl;base64," & encode(data), caption.strip, note.strip),
+    send("data:image/jxl;base64," & encode(data), capText(caption.strip, MaxCaption), capText(note.strip, MaxNote)),
     askNote = not w.isAdmin)
 
 # ---------------------------------------------------------------- the photo queue (the user, 2026-10-08: "background
@@ -255,7 +256,26 @@ proc queueText*(): string =
     (if queue.len > 1: ", then " & queue[1 .. ^1].mapIt(it.kks).join(", ") else: "") &
     "). They are sent in order; you can keep working."
 
+proc ShutdownBlockReasonCreate(h: HWND, reason: WideCString): BOOL {.importc, stdcall, header: "<windows.h>".}
+proc ShutdownBlockReasonDestroy(h: HWND): BOOL {.importc, stdcall, header: "<windows.h>".}
+
+var shutdownBlocked: HWND    ## the window whose shutdown block reason is set (nil: none)
+
+proc blockShutdown*(h: HWND): bool =
+  ## WM_QUERYENDSESSION: with photos waiting or not sent, signing out or shutting down would lose them. Windows names
+  ## the app with this reason; it is cleared once nothing waits (showQueue)
+  if queue.len + failed.len == 0: return false
+  if ShutdownBlockReasonCreate(h, newWideCString("Photos are not sent yet: open Walkdown to send them")) != 0:
+    shutdownBlocked = h
+  true
+
+proc unblockShutdown() =
+  if shutdownBlocked != nil and queue.len + failed.len == 0:
+    discard ShutdownBlockReasonDestroy(shutdownBlocked)
+    shutdownBlocked = nil
+
 proc showQueue(w: Win) =
+  unblockShutdown()
   if w.queueLabel == nil: return
   w.queueLabel.setText(queueText())
   w.failedButton.setText("Photos not sent (" & $failed.len & ")…")
@@ -268,6 +288,13 @@ proc clientId(): string =
   for _ in 0 ..< 12: result.add "0123456789abcdef"[rand(15)]
 
 proc sendQueued(w: Win, q: var Queued): bool =
+  if q.floor.len == 0:
+    # the floor was asked with an earlier photo of this code that is kept (not sent): it goes with this one too, or a
+    # photo would arrive without it (the core writes a floor only while the code has none)
+    for f in failed:
+      if f.kks == q.kks and f.floor.len > 0:
+        q.floor = f.floor
+        break
   var payload = newObj(@[("kks", newStr(q.kks)), ("caption", newStr(q.caption)),
                          ("dataUrl", newStr("data:image/jxl;base64," & encode(q.data)))])
   if q.floor.len > 0: payload["floor"] = newStr(q.floor)   # written first, only if the code still has no floor
@@ -335,10 +362,27 @@ proc enqueueJob(w: Win, q: Queued) =
 
 proc enqueue(w: Win, rgba: seq[byte], pw, ph: int, kks, caption, note, floor: string) =
   inc nextId
-  w.enqueueJob(Queued(id: nextId, kks: kks, caption: caption, note: note, floor: floor, clientId: clientId(),
+  # never over the core's limits: such a photo would fail on every Try again (the editor caps them already)
+  w.enqueueJob(Queued(id: nextId, kks: kks, caption: capText(caption, MaxCaption), note: capText(note, MaxNote),
+                      floor: floor, clientId: clientId(),
                       rgba: rgba, w: pw, h: ph))
   w.toast("Photo of " & kks & " queued: it is compressed and sent in the background")
   w.panelQuiet()
+
+proc floorKnown(w: Win, kks: string): bool
+
+proc floorAfterDiscard(w: Win, gone: Queued) =
+  ## a discarded photo may have carried the floor its code was asked for (the floor first): another photo of the code
+  ## still waiting takes it over; with none, the person is told, and the next photo of the code asks again
+  if gone.floor.len == 0: return
+  for l in [addr queue, addr failed]:
+    for q in l[].mitems:
+      if q.kks == gone.kks:
+        if q.floor.len == 0: q.floor = gone.floor
+        return
+  if not w.floorKnown(gone.kks):
+    w.toast("The floor of " & gone.kks & " (" & gone.floor & ") was to be sent with that photo: it was not saved. " &
+            "The next photo of " & gone.kks & " asks for it again.")
 
 proc retryFailed(w: Win, i: int) =
   if i < 0 or i >= failed.len: return
@@ -383,7 +427,10 @@ proc failedWindow*(w: Win) =
             if ask(h, "Discard this photo?", "It was never sent: it is lost."):
               var j = 0
               while j < failed.len and failed[j].id != id: inc j
-              if j < failed.len: failed.delete(j)
+              if j < failed.len:
+                let gone = failed[j]
+                failed.delete(j)
+                w.floorAfterDiscard(gone)
               w.showQueue()
               w.panelQuiet()))
     p.buttons(("Close", proc () = DestroyWindow(h)))
@@ -480,7 +527,8 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
           if askYesNo(w.hwnd, "And its tag plate?", "A photo of the metal plate with the KKS code helps the next " &
                       "person find this equipment. Add one now?"):
             w.addPhoto(kks, plate = true)),
-      askNote = not w.isAdmin)
+      askNote = not w.isAdmin,
+      captionMax = if plate: MaxCaption - (PlateCaption & " · ").runeLen else: MaxCaption)
   if w.floorKnown(kks): go("")
   else: w.askFloor(kks, go)
 

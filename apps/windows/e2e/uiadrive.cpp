@@ -395,6 +395,38 @@ int wmain(int argc, wchar_t **argv) {
                 Sleep(30);
             }
             send(x1, y1, POINTER_FLAG_UP);
+        } else if (cmd == "endsession") {
+            // what signing out does first: WM_QUERYENDSESSION to the element's top window; f[2]: the answer expected
+            // (0: the app asks to wait, 1: it lets the session end)
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            DWORD_PTR r = 0;
+            if (!SendMessageTimeoutW(GetAncestor((HWND)hw, GA_ROOT), WM_QUERYENDSESSION, 0, ENDSESSION_LOGOFF, SMTO_ABORTIFHUNG, 10000, &r)) {
+                say("ERROR: no answer to WM_QUERYENDSESSION"); return 1;
+            }
+            if (f.size() > 2 && std::to_string(r ? 1 : 0) != f[2]) { say("ERROR: WM_QUERYENDSESSION answered " + std::to_string(r)); return 1; }
+        } else if (cmd == "blockreason") {
+            // the shutdown block reason of the element's top window (what Windows shows when signing out): f[2] a part
+            // of it, or "-" for none. Waits up to 15 s for it to change
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            HWND root = GetAncestor((HWND)hw, GA_ROOT);
+            std::wstring want = wide(f.size() > 2 ? f[2] : "-");
+            std::wstring got;
+            bool ok = false;
+            for (int t = 0; t < 15000 && !ok; t += 300) {
+                WCHAR buf[512] = {};
+                DWORD n = 512;
+                got = ShutdownBlockReasonQuery(root, buf, &n) ? std::wstring(buf) : L"-";
+                ok = want == L"-" ? got == L"-" : got.find(want) != std::wstring::npos;
+                if (!ok) Sleep(300);
+            }
+            if (!ok) {
+                std::string g(got.begin(), got.end());
+                say("ERROR: the shutdown block reason is " + g + ", not " + (f.size() > 2 ? f[2] : "-")); return 1;
+            }
         } else if (cmd == "close") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);

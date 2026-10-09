@@ -4,7 +4,7 @@
 ## as WM_POINTER (Windows 8+): one finger draws and shows a loupe above it, the area under the finger magnified; pen
 ## and mouse draw without it.
 
-import std/[tables, math]
+import std/[tables, math, unicode]
 import w32, ui
 
 proc viewNew(h: HWND): pointer {.importc: "kks_view_new", cdecl.}
@@ -250,8 +250,20 @@ proc canvasProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
 
 var classDone = false
 
-proc annotate*(owner: HWND, rgba: seq[byte], w, h: int, done: proc (rgba: seq[byte], caption, note: string), askNote: bool) =
-  ## opens the editor; `done` gets the picture with the marks burned in
+const
+  MaxCaption* = 500   ## the core refuses a photo's caption over 500 characters (core/src/kks/api.nim, "caption")
+  MaxNote* = 500      ## and a note for the approver over 500 (api.nim submitPrep): such a photo could never be sent
+  EM_LIMITTEXT = 0x00C5'u32
+
+proc capText*(s: string, n: int): string =
+  ## at most n characters (code points, as the core counts them)
+  if s.runeLen <= n: s else: $s.toRunes[0 ..< n]
+
+proc annotate*(owner: HWND, rgba: seq[byte], w, h: int, done: proc (rgba: seq[byte], caption, note: string), askNote: bool,
+               captionMax = MaxCaption) =
+  ## opens the editor; `done` gets the picture with the marks burned in. The caption and the note are capped as they
+  ## are typed (EM_LIMITTEXT counts UTF-16 units: never more characters than the core takes) and cut again when sent
+  ## (a value set from outside, e.g. UI Automation, isn't capped by the field)
   if not classDone:
     let cls = newWideCString("KKSAnnotateCanvas")
     var wc = WNDCLASSEXW(cbSize: UINT(sizeof(WNDCLASSEXW)), lpfnWndProc: canvasProc, hInstance: hinst,
@@ -302,12 +314,14 @@ proc annotate*(owner: HWND, rgba: seq[byte], w, h: int, done: proc (rgba: seq[by
                  InvalidateRect(e.canvas, nil, 0)))
   let cap = page.field("Caption (optional)", "")
   let note = if askNote: page.field("Note for the approver (optional)", "") else: nil
+  SendMessageW(cap, EM_LIMITTEXT, WPARAM(captionMax), 0)
+  if note != nil: SendMessageW(note, EM_LIMITTEXT, WPARAM(MaxNote), 0)
   page.buttons(("Send", proc () =
     var marked = e.rgba
     if e.marks.len > 0:
       discard burnMarks(addr marked[0], cint(e.w), cint(e.h), addr e.marks[0], cint(e.marks.len))
-    let c = cap.text
-    let n = if note != nil: note.text else: ""
+    let c = capText(cap.text.strip, captionMax)
+    let n = capText((if note != nil: note.text else: "").strip, MaxNote)
     DestroyWindow(hw)
     done(marked, c, n)), ("Cancel", proc () = DestroyWindow(hw)))
   page.layout()

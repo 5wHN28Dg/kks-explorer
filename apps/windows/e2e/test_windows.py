@@ -303,7 +303,9 @@ class Windows(unittest.TestCase):
     def test_photo_queue(self):
         """photos are compressed on a worker thread through a queue, one after another, and sent as each is ready, while
         the panel closes; a photo that fails (KKS_TEST_ENCODE_FAIL: the first encode fails) is kept and reported, not
-        dropped, and Try again sends it; closing the window while one is kept asks first"""
+        dropped, and Try again sends it; closing the window while one is kept asks first, and so does signing out (the
+        shutdown block reason, cleared once every photo is sent); a caption over the core's 500 characters is cut
+        before the photo is queued (refused by the core, it could never be sent)"""
         self.add_tag('11LBA10AA101', [600, 900, 720, 960], floor='1')
         self.add_tag('11LBA10AA102', [800, 900, 920, 960], floor='1')
         self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1'})
@@ -314,22 +316,60 @@ class Windows(unittest.TestCase):
             'wait\t~1 photo of this equipment not sent\t10',
             # closing the window now would lose it: the app asks, Cancel keeps it open
             'close\tPhotos not sent (1)…', 'wait\tClose Walkdown?\t10', 'click\tCancel', 'gone\tClose Walkdown?',
-            'wait\tPhotos not sent (1)…\t10'])
+            'wait\tPhotos not sent (1)…\t10',
+            'endsession\tPhotos not sent (1)…\t0', 'blockreason\tPhotos not sent (1)…\tPhotos are not sent yet'])
+        long_caption = 'Queue B ' + 'x' * 592
         # another code's photo: compressed in the background while the panel closes, then sent
         self.check('queue1.uia', self.show('11LBA10AA102') + [
-            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tQueue B',
+            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\t' + long_caption,
             'click\tSend', 'wait\t~Compressing 1 photo (11LBA10AA102)\t10', 'wait\tAnd its tag plate?\t20', 'click\tNo',
             'click\tClose', 'wait\t~Saved: photo of 11LBA10AA102\t90', 'gone\t~Compressing 1 photo'])
         # the kept one: Try again
         self.check('queue2.uia', ['click\tPhotos not sent (1)…', 'wait\tPhotos not sent\t10', 'wait\t~Could not be compressed\t10',
                                   'click\tTry again', 'wait\t~Saved: photo of 11LBA10AA101\t90',
-                                  'wait\tEvery photo was sent or discarded.\t20', 'click\tClose'])
+                                  'wait\tEvery photo was sent or discarded.\t20', 'click\tClose',
+                                  # nothing waits any more: signing out is not held up
+                                  'blockreason\tPhotos not sent (0)…\t-', 'endsession\tPhotos not sent (0)…\t1'])
         def both():
             ph = {p['kks']: p for p in self.boss.req('GET', '/api/state').get('photos', []) if p.get('caption', '').startswith('Queue ')}
             return ph if set(ph) == {'11LBA10AA101', '11LBA10AA102'} else None
         ph = self.wait_server(both, 'the queued photos never reached the server', tries=80)
-        self.assertEqual((ph['11LBA10AA101']['caption'], ph['11LBA10AA102']['caption']), ('Queue A', 'Queue B'))
+        self.assertEqual(len(long_caption), 600)
+        self.assertEqual((ph['11LBA10AA101']['caption'], ph['11LBA10AA102']['caption']), ('Queue A', long_caption[:500]))
         self.assertEqual(ph['11LBA10AA101'].get('by_name'), 'The Manager')
+        self.leave()
+
+    def test_photo_floor_discard(self):
+        """the floor asked with a photo that is then kept (not sent) goes with the code's next photo; discarding a kept
+        photo that carried the code's only floor says so, and the next photo asks for the floor again"""
+        a, b = '11LBA20AA101', '11LBA20AA102'
+        self.add_tag(a, [600, 1000, 720, 1060])
+        self.add_tag(b, [800, 1000, 920, 1060])
+        self.join('fjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '2'})
+        def photo(code, floor=None, caption=''):
+            return self.show(code) + ['click\tAdd a photo from a file…'] + (
+                ['wait\tWhich floor is %s on?\t20' % code, 'set\tFloor of %s (0–10)\t%s' % (code, floor), 'click\tContinue']
+                if floor else []) + ['wait\tPhoto to mark up\t30', 'set\tCaption (optional)\t' + caption, 'click\tSend',
+                                     'wait\tAnd its tag plate?\t20', 'click\tNo']
+        self.check('floor0.uia', photo(a, '4', 'Floor A') + ['wait\t~The photo of %s could not be compressed\t30' % a,
+                                                             'wait\tPhotos not sent (1)…\t10'] +
+                   photo(b, '6', 'Floor B') + ['wait\t~The photo of %s could not be compressed\t30' % b,
+                                               'wait\tPhotos not sent (2)…\t10'] +
+                   # the floor is on its way with the kept photo: not asked again, and it goes with this one
+                   photo(b, None, 'Floor B2') + ['wait\t~Saved: photo of %s\t90' % b])
+        def floor_b():
+            e = self.boss.req('GET', '/api/state').get('equipment', {}).get(b) or {}
+            return e.get('floor')
+        self.assertEqual(self.wait_server(floor_b, 'the floor never went with the next photo', tries=60), '6')
+        # discard the kept photo of a (the first): its floor is lost, and the person is told
+        self.check('floor1.uia', ['click\tPhotos not sent (2)…', 'wait\tPhotos not sent\t10', 'click\tDiscard',
+                                  'wait\tDiscard this photo?\t10', 'click\tOK',
+                                  'wait\t~The floor of %s (4) was to be sent with that photo\t20' % a,
+                                  'click\tDiscard', 'wait\tDiscard this photo?\t10', 'click\tOK',
+                                  'wait\tEvery photo was sent or discarded.\t20', 'click\tClose'] +
+                   self.show(a) + ['click\tAdd a photo from a file…', 'wait\tWhich floor is %s on?\t20' % a,
+                                   'click\tCancel', 'gone\tWhich floor is %s on?' % a])
+        self.assertIsNone((self.boss.req('GET', '/api/state').get('equipment', {}).get(a) or {}).get('floor'))
         self.leave()
 
     def test_description(self):

@@ -305,7 +305,7 @@ var showHidden = false     ## Devices and People: also the removed ones an admin
 
 proc hide(w: Win, body: JNode, done: string) =
   ## POST /api/hidden (the user, 2026-10-08: "Remove deleted users and devices"): display only, a setting of this
-  ## device; the log, History and the leaderboard keep everything
+  ## device; the log and History keep everything. The leaderboard leaves the hidden people out (core leaderboardWalk)
   try:
     let r = w.a.call("POST", "/api/hidden", body)
     let n = if r.get("changed") != nil and r["changed"].kind == jInt: r["changed"].i else: -1
