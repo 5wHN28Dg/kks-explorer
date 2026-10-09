@@ -276,10 +276,20 @@ proc sendQueued(w: Win, q: var Queued): bool =
   q.why = "Not sent: " & err
   false
 
+proc GetClassNameW(h: HWND, buf: WideCString, n: cint): cint {.importc, stdcall, header: "<windows.h>".}
+
+proc typingIn(f: HWND): bool =
+  ## the keyboard is in a text field (a rebuild would lose what is being typed)
+  if f == nil: return false
+  var buf = newWideCString("", 32)
+  let n = GetClassNameW(f, buf, 32)
+  n > 0 and ($buf).toLowerAscii == "edit"
+
 proc panelQuiet(w: Win) =
-  ## the open panel shows the queue per code: rebuilt, but never under the keyboard (a field being typed in)
+  ## the open panel shows the queue per code: rebuilt, but never under a field being typed in
   let f = GetFocus()
-  if w.selected.len > 0 and not w.picking and (f == nil or GetParent(f) != w.panel.hwnd): w.rebuildPanel()
+  if w.selected.len > 0 and not w.picking and (f == nil or GetParent(f) != w.panel.hwnd or not typingIn(f)):
+    w.rebuildPanel()
 
 proc pollQueue(w: Win) =
   var changed = false
@@ -301,11 +311,12 @@ proc pollQueue(w: Win) =
       if not w.sendQueued(q):
         failed.add q
         w.toast("The photo of " & q.kks & " was not sent (" & q.why & "). It is kept: Photos not sent…")
+  # the next poll first: an error in the screen updates below must not stop the queue
+  polling = queue.len > 0
+  if polling: discard afterMs(200, proc () = w.pollQueue())
   if changed:
     w.showQueue()
     w.panelQuiet()
-  polling = queue.len > 0
-  if polling: discard afterMs(200, proc () = w.pollQueue())
 
 proc enqueueJob(w: Win, q: Queued) =
   if not encStarted:
@@ -317,10 +328,10 @@ proc enqueueJob(w: Win, q: Queued) =
   let fail = failLeft > 0
   if fail: dec failLeft
   encJobs.send(EncJob(id: q.id, rgba: q.rgba, w: q.w, h: q.h, fail: fail))
-  w.showQueue()
   if not polling:
     polling = true
     discard afterMs(200, proc () = w.pollQueue())
+  w.showQueue()
 
 proc enqueue(w: Win, rgba: seq[byte], pw, ph: int, kks, caption, note, floor: string) =
   inc nextId
@@ -439,10 +450,13 @@ proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
   SetFocus(e)
 
 proc hasPlate(w: Win, kks: string): bool =
-  ## the code has a tag plate photo, or one is on its way
+  ## the code has a tag plate photo, or one is on its way (queued, kept, or my proposal waiting for approval)
   for l in [addr queue, addr failed]:
     for q in l[]:
       if q.kks == kks and isPlate(q.caption): return true
+  for sub in w.myOpen():
+    let pl = sub.get("payload")
+    if sub["kind"].s == "photo" and pl != nil and s(pl, "kks") == kks and isPlate(s(pl, "caption")): return true
   let ph = if w.m.state != nil: w.m.state.get("photos") else: nil
   if ph != nil:
     for p in ph.elems:
