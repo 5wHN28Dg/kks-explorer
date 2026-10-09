@@ -152,12 +152,11 @@ class Windows(unittest.TestCase):
         ok, log = ui(name, lines, keep, sync_every, restart, env)
         self.assertTrue(ok, log)
 
-    JOIN = ['click\tJoin through a server', 'set\tServer address\t%s:%d', 'set\tUsername\t{user}',
-            'set\tPassword\t{password}', 'click\tJoin', 'wait\t~Sample sheet\t60']
+    JOIN = ['click\tJoin through a server', 'set\tServer address\t%s:%d', 'set\tUsername\tboss',
+            'set\tPassword\ta long password', 'click\tJoin', 'wait\t~Sample sheet\t60']
 
-    def join(self, name, user='boss', password='a long password', **kw):
-        self.check(name, [(l % (HOST, self.sport) if '%' in l else l).format(user=user, password=password) for l in self.JOIN],
-                   keep=False, **kw)
+    def join(self, name, **kw):
+        self.check(name, [l % (HOST, self.sport) if '%' in l else l for l in self.JOIN], keep=False, **kw)
 
     def leave(self, user='boss'):
         """the manager removes this VM's device on the server: test_flow finds the one it joins by its label"""
@@ -409,7 +408,9 @@ class Windows(unittest.TestCase):
                                                      'role': 'user'})
             Client(self.boss.base).req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1],
                                                                       'password': 'vali password 1'})
-        self.join('vjoin2.uia', user='vali', password='vali password 1', sync_every=3000)
+        self.check('vjoin2.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
+                                  'set\tUsername\tvali', 'set\tPassword\tvali password 1', 'click\tJoin',
+                                  'wait\t~Sample sheet\t60'], keep=False, sync_every=3000)
         self.check('valve2.uia', ['set\tSearch equipment by KKS code or description\tLAB70AA778', 'select\t~11LAB70AA778',
                                   'click\tShow on the drawing',
                                   'wait\tValve type: globe valve (from the drawing, unchecked)\t20',
