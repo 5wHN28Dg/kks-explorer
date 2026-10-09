@@ -54,7 +54,7 @@ def present(text, exact=False):
     return any(((label(n) == text) if exact else (text in label(n))) for n in nodes())
 
 
-def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=20):
+def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=15):
     """clear the app's data and start it, then wait until its window is on screen. `pm clear` returns before Android
     has finished with the cleared package: an app started at once had its new task removed and its process killed
     26 ms later ("remove task", "start not valid"), and the next test found the home screen (run 37903391890). So
@@ -62,7 +62,7 @@ def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=20):
     sh('pm', 'clear', pkg)
     for _ in range(4):
         sh('am', 'start', '-n', f'{pkg}/{activity}')
-        end = time.time() + 15
+        end = time.time() + timeout
         while time.time() < end:
             if any(n.get('package') == pkg for n in nodes()):
                 return

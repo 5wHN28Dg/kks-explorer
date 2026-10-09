@@ -396,10 +396,12 @@ function drawTags(){
     d.style.cssText=`left:${b[0]-3}px;top:${b[1]-3}px;width:${b[2]-b[0]+6}px;height:${b[3]-b[1]+6}px`; d.title='Your mark, awaiting approval'; want.push(d);
   }
   want.push(...L.querySelectorAll('#selbox,#markbox'));
-  // in this order; a node already in its place isn't moved (moving one takes its focus), the rest go
+  // the rest go first, then this order: a node already in its place isn't moved (a move is a removal: it would lose
+  // a press on it, and its focus)
+  const keep=new Set(want);
+  for(const x of [...L.childNodes]) if(!keep.has(x)) x.remove();
   let at=L.firstChild;
   for(const d of want){ if(d===at) at=at.nextSibling; else L.insertBefore(d,at) }
-  while(at){ const n=at.nextSibling; at.remove(); at=n }
   if(fe&&fe.isConnected&&document.activeElement!==fe) fe.focus({preventScroll:true});
 }
 function tagClick(t){
