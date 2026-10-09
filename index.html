@@ -49,7 +49,6 @@ main{position:relative;flex:1;min-height:0;overflow:hidden}
 .hs.dim{opacity:.15}
 .hs.pendmark{outline:2px dashed var(--accent);background:rgba(255,122,26,.10);pointer-events:none}
 .vsym{position:absolute;pointer-events:none;border-radius:2px;outline:3px dashed #b0189f;background:rgba(176,24,159,.14)}
-body.darkdwg .vsym{outline-color:#f07be0;background:rgba(240,123,224,.18)}
 /* tags coloured by their photos (the same colours on every client): both green, the equipment only amber, the tag plate
    only blue, none red */
 body.cover #layer .hs:not(.pendmark){outline:2px solid var(--pc);background:color-mix(in srgb,var(--pc) 28%,transparent)}
@@ -83,6 +82,8 @@ dialog.multi .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:10px
 body.darkdwg #viewer{background:#3d3d42;--ok:#8dbfff;--review:#f7d05c;--accent:#ffa96a}
 body.darkdwg #sheetimg{background:#121212}
 body.darkdwg :is(.hs,.sw).p-both{--pc:#77c185} body.darkdwg :is(.hs,.sw).p-equipment{--pc:#efbb59} body.darkdwg :is(.hs,.sw).p-plate{--pc:#6da7ef} body.darkdwg :is(.hs,.sw).p-none{--pc:#e87373}
+/* the valve symbol's outline on dark drawings: lightenForDark (0.35) of #b0189f, like GNOME's viewer */
+body.darkdwg .vsym{outline-color:#cc69c1;background:rgba(204,105,193,.18)}
 body.hide-review .hs.review{display:none}
 .zoom{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;z-index:5}
 .zoom button{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:var(--chrome2);font-size:19px;cursor:pointer}
