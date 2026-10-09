@@ -24,6 +24,27 @@ def free_port():
 CSP_WATCH = """document.addEventListener('securitypolicyviolation', e => {
   throw new Error('CSP violation: ' + e.violatedDirective + ' blocked ' + (e.blockedURI || 'inline')) })"""
 
+class PageErrors(list):
+    """The page's own errors (Playwright's pageerror). A navigation cancels the requests the page left in flight (the
+    sync poll, cacheSheets' fetches), and WebKit logs each one it cancels as the console error "Fetch API cannot load
+    URL due to access control checks.", which Playwright passes on as a page error (test_dark_webkit failed on one,
+    run 37895485771). Exactly that report, and only from the start of a navigation the test makes (leave(), before
+    reload, goto and close) until the new document commits, is the old document's teardown and isn't kept."""
+    def __init__(self, page):
+        super().__init__()
+        self.leaving = False
+        page.on('pageerror', self.add)
+        page.on('framenavigated', lambda f: f.parent_frame is None and self.arrived())
+
+    def leave(self): self.leaving = True
+    def arrived(self): self.leaving = False
+
+    def add(self, e):
+        if self.leaving and (e.name or '').startswith('Fetch API cannot load ') and e.message.endswith(' due to access control checks.'):
+            return
+        self.append(str(e))
+
+
 class Client:
     def __init__(self, base):
         self.base = base
@@ -85,8 +106,7 @@ class WebV2(unittest.TestCase):
                                  headers={'Origin': self.base})
             self.assertTrue(r.ok, r.text())
             page = ctx.new_page()
-            errors = []
-            page.on('pageerror', lambda e: errors.append(str(e)))
+            errors = PageErrors(page)
             page.goto(self.base + '/')
             # the overview: a pyramid level is shown (decoded natively or by K.jxl), hotspots are drawn
             page.wait_for_function("() => { const i = document.getElementById('sheetimg'); return i && i.complete && i.naturalWidth > 0 }",
@@ -110,6 +130,7 @@ class WebV2(unittest.TestCase):
             page.screenshot(path=os.path.join(SHOTS, name + '.png'))
             # keyboard and screen reader: the search is a combobox with a listbox; Enter opens the panel and moves
             # focus to its heading
+            errors.leave()
             page.goto(self.base + '/')
             page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length > 0", timeout=30000)
             box = page.get_by_role('combobox', name='Search equipment by KKS code or description')
@@ -123,6 +144,7 @@ class WebV2(unittest.TestCase):
             self.assertIn('11LAB70AA501', page.evaluate("document.activeElement.textContent"))
             self.assertEqual(page.get_by_role('button', name='Close the panel').count(), 1)
             # a course's KKS link: /?kks=CODE opens that equipment
+            errors.leave()
             page.goto(self.base + '/?kks=11LAB70AA501')
             page.wait_for_function("() => typeof selTag !== 'undefined' && selTag && full(selTag) === '11LAB70AA501'", timeout=30000)
             # the photo editor: a touch draw shows the loupe and hides it when lifted; a mouse draw never shows it; line
@@ -170,17 +192,20 @@ class WebV2(unittest.TestCase):
             self.assertGreater(red, 500, name + ': the marks were not burned in')
             # the plant's name next to Walkdown; the manager clears it in the admin page: then no name and no "·"
             self.assertEqual(page.text_content('#plantName'), '· Test plant')
+            errors.leave()
             page.goto(self.base + '/admin.html#devices')
             field = page.get_by_role('textbox', name='Plant name')
             self.assertEqual(field.input_value(), 'Test plant')
             field.fill('')
             field.press('Enter')
             page.wait_for_function("() => document.title === 'Walkdown'", timeout=15000)
+            errors.leave()
             page.goto(self.base + '/')
             page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length > 0", timeout=30000)
             self.assertEqual(page.text_content('#plantName'), '')
             self.assertEqual(page.title(), 'Walkdown')
             ctx.request.post(self.base + '/api/settings/plant', data={'name': 'Test plant'}, headers={'Origin': self.base})
+            errors.leave()
             browser.close()
             self.assertGreater(dark, 100, name + ': the sharp layer drew nothing dark')
             self.assertEqual(errors, [], name)
@@ -203,8 +228,7 @@ class WebV2(unittest.TestCase):
                                  headers={'Origin': self.base})
             self.assertTrue(r.ok, r.text())
             page = ctx.new_page()
-            errors = []
-            page.on('pageerror', lambda e: errors.append(str(e)))
+            errors = PageErrors(page)
             page.goto(self.base + '/')
             loaded = "() => { const i = document.getElementById('sheetimg'); return i && i.complete && i.naturalWidth > 0 }"
             page.wait_for_function(loaded, timeout=30000)
@@ -235,6 +259,7 @@ class WebV2(unittest.TestCase):
             page.click('#zcover')
             page.screenshot(path=os.path.join(SHOTS, name + '-dark.png'))
             # remembered: after a reload the drawing opens dark
+            errors.leave()
             page.reload()
             page.wait_for_function("() => document.getElementById('sheetimg').src.startsWith('blob:')", timeout=30000)
             page.wait_for_function(loaded, timeout=30000)
@@ -255,6 +280,7 @@ class WebV2(unittest.TestCase):
             self.assertEqual(off['bg'], '255,255,255', name + ': the sharp layer stayed dark')
             self.assertGreater(off['dark'], 100, name + ': no dark lines after turning it off')
             self.assertEqual(offimg['bg'], '255,255,255', name + ': the overview stayed dark')
+            errors.leave()
             page.reload()
             page.wait_for_function(loaded, timeout=30000)
             self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-pressed'), 'false')
@@ -281,6 +307,7 @@ class WebV2(unittest.TestCase):
               setTimeout(() => w.dispatchEvent(new ErrorEvent('error', {message: 'test'})), 200) }""")
             page.wait_for_function("() => sharp.worker.failed === true && dark.wait.size === 0", timeout=30000)
             page.wait_for_function("() => window.__opened === true", timeout=30000)
+            errors.leave()
             browser.close()
             self.assertEqual([e for e in errors if 'test: no dark level' not in e and 'test' != e], [], name)
 

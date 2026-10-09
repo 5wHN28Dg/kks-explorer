@@ -128,6 +128,21 @@ class WebMulti(unittest.TestCase):
             self.assertEqual(count(), '2 selected')
             self.assertFalse(page.is_visible('#panel'))
             self.assertEqual(hs('a:2').get_attribute('aria-pressed'), 'true')
+            # a sync redraws the tags at any moment: a press and a release around a redraw still click the tag, whose
+            # button is the same one (it was replaced: the click was lost, and the test's own measurements of a tag
+            # came back empty, run 37893946756)
+            a6 = hs('a:6').element_handle()
+            b6 = a6.bounding_box()
+            page.mouse.move(b6['x'] + b6['width'] / 2, b6['y'] + b6['height'] / 2)
+            page.mouse.down()
+            # (with something to remove ahead of the tags: the redraw removes it, and moves none of them)
+            page.evaluate("() => { document.getElementById('layer').prepend(document.createElement('i')); drawTags() }")
+            page.mouse.up()
+            self.assertEqual(count(), '3 selected')
+            self.assertTrue(a6.evaluate("e => e.isConnected"))
+            self.assertEqual(a6.get_attribute('aria-pressed'), 'true')
+            hs('a:6').click()
+            self.assertEqual(count(), '2 selected')
             # a tag without a code: refused, said once
             hs('a:3').click()
             toast("Tags without a code can't be selected")
@@ -234,7 +249,9 @@ class WebMulti(unittest.TestCase):
             self.assertTrue(photos[0]['file'].endswith('.jxl'), photos[0])
             # the tags show it: a tag plate photo only (blue) once colouring by photos is on
             page.click('#zcover')
-            page.wait_for_function("document.querySelector('#layer .hs[data-id=\"a:6\"]').classList.contains('p-plate')")
+            # (a predicate as a function: Playwright evaluates an expression again at every poll, which the page's
+            # Content-Security-Policy refuses, so it failed whenever the first check came too early)
+            page.wait_for_function("() => document.querySelector('#layer .hs[data-id=\"a:6\"]').classList.contains('p-plate')")
             # offline: queued like K.submit, shown per code, sent by the outbox's flush (the prefix dedupes a retry)
             btn.click()
             hs('a:6').click()
@@ -248,7 +265,7 @@ class WebMulti(unittest.TestCase):
                              [['equipment', '11LAB71AP001', 'notes + noted offline']])
             ctx.set_offline(False)
             page.evaluate("K.flush()")
-            page.wait_for_function("K.outbox.length === 0", timeout=15000)
+            page.wait_for_function("() => K.outbox.length === 0", timeout=15000)
             self.assertEqual(self.boss.req('GET', '/api/state')['equipment']['11LAB71AP001']['notes'], 'noted offline')
             # a finger drags a box too (synthetic touch pointer events, as the engines get them from a touch screen)
             btn.click()
