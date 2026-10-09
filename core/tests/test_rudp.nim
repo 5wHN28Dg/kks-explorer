@@ -101,3 +101,54 @@ suite "rudp (PROTOCOL-v2 §18)":
     for d in b.takeOut(): a.feed(d, 0.302)
     check "unacked=0 " in a.debugState      # all 4 acknowledged
     check a.rto <= rto0 + 1e-9
+
+  test "the side that only received for longer than `dead` may send again (2026-10-09)":
+    # Its wait for progress ran from the last ACK that moved its window, at the start: the first packet it sent after
+    # `dead` seconds of receiving (a device's FIN after a long sync) failed the stream at once
+    let a = newRudp("ABCDEFGH", 0.0, 15.0)
+    let b = newRudp("ABCDEFGH", 0.0, 15.0)
+    b.write("request", 0.0)
+    for d in b.takeOut(): a.feed(d, 0.001)
+    for d in a.takeOut(): b.feed(d, 0.002)        # acknowledged: b has nothing in flight
+    var now = 0.0
+    while now < 20.0:                             # a sends for 20 s; b receives and acknowledges
+      now += 0.01
+      a.write("x".repeat(100), now)
+      for d in a.takeOut(): b.feed(d, now)
+      for d in b.takeOut(): a.feed(d, now)
+      discard b.read()
+      a.tick(now); b.tick(now)
+    check b.error == ""
+    b.finish(now)                                 # b's first packet since the start
+    b.tick(now + 0.02)
+    check b.error == ""
+
+  test "packets past the ACK's 32-packet mask are not timed when the hole before them fills (2026-10-09)":
+    # They are never SACKed, so the SACK rule alone still timed their wait for the hole as a round trip
+    let a = newRudp("ABCDEFGH", 0.0)
+    let b = newRudp("ABCDEFGH", 0.0)
+    var now = 0.0
+    a.write("x".repeat(400 * Mss), now)
+    while (a.queued > 0 or "unacked=0 " notin a.debugState) and now < 5:   # a clean start: the window grows
+      now += 0.002
+      for d in a.takeOut(): b.feed(d, now)
+      discard b.read()
+      for d in b.takeOut(): a.feed(d, now + 0.001)
+    let rto0 = a.rto
+    now += 0.01
+    a.write("y".repeat(60 * Mss), now)            # the first packet of this burst is lost
+    var burst: seq[string]
+    for d in a.takeOut():
+      if d[0] == char(Data): burst.add d
+    check burst.len > 40
+    for d in burst[1 .. ^1]: b.feed(d, now + 0.001)
+    for d in b.takeOut(): a.feed(d, now + 0.002)
+    a.tick(now + 0.01)                            # the hole resent as lost
+    var again: seq[string]
+    for d in a.takeOut():
+      if d[0] == char(Data): again.add d
+    check again.len == 1
+    for d in again: b.feed(d, now + 0.19)         # and delayed: it fills the hole just before the others' timeout
+    for d in b.takeOut(): a.feed(d, now + 0.191)
+    check "unacked=0 " in a.debugState
+    check a.rto <= max(rto0, 0.2) + 1e-9

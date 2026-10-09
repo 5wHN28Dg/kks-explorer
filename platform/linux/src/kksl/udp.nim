@@ -22,12 +22,12 @@ const SocketBuffer* = 1 shl 20
   ## burst, and Windows' default receive buffer (64 kB) dropped most of it; Linux caps the request at
   ## net.core.rmem_max (~208 kB by default)
 when defined(windows):
-  const SoRcvBuf = cint(0x1002)
-  const SoSndBuf = cint(0x1001)
+  let SoRcvBuf = cint(0x1002)
+  let SoSndBuf = cint(0x1001)
 else:
   from std/posix import nil
-  const SoRcvBuf = posix.SO_RCVBUF
-  const SoSndBuf = posix.SO_SNDBUF
+  let SoRcvBuf = posix.SO_RCVBUF       # a variable (importc) on Linux CPUs other than amd64: not a const
+  let SoSndBuf = posix.SO_SNDBUF
 
 proc monoNow(): float = epochTime()
 
@@ -45,10 +45,8 @@ proc newUdp*(recvBuffer = SocketBuffer): Udp =
   ## receive buffer to ask for (tests shrink it to make a lossy link)
   let s = newAsyncSocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, buffered = false)
   # best effort: a system that refuses keeps its default, and the stream recovers what that drops
-  try:
-    setSockOptInt(s.getFd, SOL_SOCKET, SoRcvBuf, recvBuffer)
-    setSockOptInt(s.getFd, SOL_SOCKET, SoSndBuf, SocketBuffer)
-  except OSError: discard
+  try: setSockOptInt(s.getFd, SOL_SOCKET, SoRcvBuf, recvBuffer) except OSError: discard
+  try: setSockOptInt(s.getFd, SOL_SOCKET, SoSndBuf, SocketBuffer) except OSError: discard
   s.bindAddr(Port(0))
   result = Udp(sock: s, port: int(s.getLocalAddr()[1]))
   asyncCheck result.recvLoop()

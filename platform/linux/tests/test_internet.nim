@@ -278,7 +278,7 @@ suite "the direct stream":
     let sb = b.rudpStream("127.0.0.1", a.port, session)
     let data = P.randomBytes(4 * 1024 * 1024).toStr
     let t0 = epochTime()
-    let w = sa.write(data)
+    asyncCheck sa.write(data)             # returns once queued (back-pressure starts above 4 MB)
     var got = ""
     while got.len < data.len and epochTime() - t0 < 60:
       let f = sb.read()
@@ -288,7 +288,6 @@ suite "the direct stream":
       got.add part
     let seconds = epochTime() - t0
     echo "  ", got.len div 1024, " kB of 4096 through a 4 kB receive buffer in ", formatFloat(seconds, ffDecimal, 1), " s"
-    check w.finished and not w.failed
     let same = got == data                # not `check got == data`: it prints both on a failure
     check same
     check seconds < 30                    # 1-2 s here; before the fix the 60 s above moved under 1 MB
