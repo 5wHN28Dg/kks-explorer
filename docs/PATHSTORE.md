@@ -188,7 +188,9 @@ Images are few and small, so they are not in the grid. A viewer tests each image
   The overview, the tags and the .kkp all share that frame; kks-import gets the .kkp there with
   `from_pdf_page(page, extra)`, extra = −(rot + the page's /Rotate) mod 360 (`kkp.sheetExtra`).
 - `levels`: the number of pyramid files.
-- tags.json is unchanged from v1. A tag's `bbox` is in level-0 pixels.
+- tags.json is as in v1. A tag's `bbox` is in level-0 pixels. A valve tag may carry an optional `symbol`
+  (the drawn valve symbol's type, actuator and `nc`: hatched, meaning normally closed; importer/README "Valve
+  types"); readers ignore fields they don't know.
 
 ## Drawing a view (informative)
 

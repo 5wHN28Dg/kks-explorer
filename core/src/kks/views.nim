@@ -91,6 +91,14 @@ proc tagView*(m: Model, id: string): JNode =
   result["appears_on"] = where
   let s = m.scaleOf(t.sheet)
   result["box"] = newArr(@[F(t.bbox[0] / s), F(t.bbox[1] / s), F(t.bbox[2] / s), F(t.bbox[3] / s)])
+  # the valve type: confirmed, or from the drawing's symbol (its box in points, to highlight it); null = neither
+  let vt = m.valveTypeOf(t)
+  if vt != nil and t.symbol != nil and vt["status"].s == "drawing":
+    let b = t.symbol.get("bbox")
+    if b != nil and b.kind == jArr and b.elems.len == 4 and b[0].finiteNum and b[1].finiteNum and b[2].finiteNum and
+       b[3].finiteNum:
+      vt["box"] = newArr(@[F(b[0].num / s), F(b[1].num / s), F(b[2].num / s), F(b[3].num / s)])
+  result["valve_type"] = if vt == nil: newNull() else: vt
 
 proc reviewView*(m: Model): JNode =
   ## readings to confirm or correct, not yet decided
