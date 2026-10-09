@@ -41,7 +41,8 @@ writes them to the sheet's `links` in sheets.json (docs/PATHSTORE.md), in both m
   circles or more than `MaxSmallPaths` (2 000 000) small stroke paths is refused: the import stops with a message
   naming the limit, before anything is written. Both are about 10 times the most on the 17 real sheets (82 circles on
   one, 170 449 small stroke paths on another); with the limits in place every real sheet imports byte for byte as
-  before. A crowded 20 pt cell (more than `CellMax`, 400, small paths: hatching) is still skipped, not refused.
+  before. At both limits the matching takes about 6 s, and the up to 4000 label renders about 26 s on the largest real
+  page (they grow with the page's drawing, which only the server's timeout bounds). A crowded 20 pt cell (more than `CellMax`, 400, small paths: hatching) is still skipped, not refused.
 - **Checked on the real sheets** (2026-10-07, local): see the commit and decision notes; every tag the same as the
   previous importer on every sheet, in both modes.
 
@@ -95,7 +96,9 @@ sheet needed 3.2 GB of address space for 1.85 GB resident and crashed under 2560
 two arenas (`mallopt(M_ARENA_MAX, 2)`): the same sheet needs about 2 GB and imports the same files (2026-10-09).
 
 When memory runs out, the importer prints one line ("The importer ran out of memory (its address-space limit is N MB):
-the import stopped.") and exits with code 3; the server then adds which setting to raise. To import a larger drawing,
+the import stopped.") and exits with code 3; the server then adds which setting to raise. libjxl (C++) aborts
+instead when a buffer or a worker thread can't be had (`std::bad_alloc`, `std::system_error`); the server gives the
+same advice for an importer that died of a signal. To import a larger drawing,
 raise `import_memory_mb` and restart the server, keeping it below `MemoryMax` (or raise both).
 
 ## Build

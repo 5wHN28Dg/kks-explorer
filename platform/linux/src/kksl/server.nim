@@ -814,9 +814,11 @@ proc runImport(s: Server, job: JNode, args: seq[string], replace: bool) {.async.
         "and restart the server; keep it below the service's memory cap (MemoryMax in its systemd unit, 3G as " &
         "installed by deploy/install-server-user.sh), or raise that too.")
     elif not stopped and code > 128:
-      job["log"].elems.add S("The importer crashed (signal " & $(code - 128) & "). A very large drawing can do this " &
-        "when it reaches its memory limit of " & $s.cfg.importMemoryMb & " MB (import_memory_mb in the server's " &
-        "config.json; keep it below the service's MemoryMax).")
+      # libjxl (C++) aborts when an allocation or a thread fails under the limit (std::bad_alloc, std::system_error)
+      job["log"].elems.add S("The importer crashed (signal " & $(code - 128) & "). A large drawing does this when it " &
+        "reaches the importer's memory limit of " & $s.cfg.importMemoryMb & " MB (import_memory_mb in the server's " &
+        "config.json). If so, raise import_memory_mb and restart the server; keep it below the service's memory cap " &
+        "(MemoryMax in its systemd unit), or raise that too.")
   except CatchableError as e:
     job["log"].elems.add S("Importer crashed: " & e.msg)
   finally:

@@ -257,6 +257,29 @@ class ImportOutOfMemory(ImportFailure):
         self.assertIn('MemoryMax', hint[0])
 
 
+@unittest.skipUnless(os.path.exists(IMPORTER), 'the importer (kks_import) is not built')
+class ImportRealOutOfMemory(ImportFailure):
+    """the real importer at the smallest limit: whichever allocation fails first (Nim, MuPDF, or a libjxl thread or
+    buffer, which aborts), the log names the limit and the setting to raise"""
+    extra = {'import_memory_mb': 256}
+
+    def test_real_importer_out_of_memory(self):
+        boss = self.manager()
+        pdf = open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb').read()
+        st, r, _ = boss.req('POST', '/api/sheets/import?id=one&name=One', raw=pdf, headers={'Content-Type': 'application/pdf'})
+        self.assertEqual(st, 200, r)
+        for _ in range(600):
+            job = boss.req('GET', '/api/sheets/job')[1]['job']
+            if job['state'] != 'running':
+                break
+            time.sleep(0.2)
+        self.assertEqual(job['state'], 'failed', job['log'])
+        hint = [l for l in job['log'] if 'raise import_memory_mb' in l]
+        self.assertEqual(len(hint), 1, job['log'])
+        self.assertIn('256 MB', hint[0])
+        self.assertFalse(os.path.exists(os.path.join(self.dir, 'plant-data', 'sheets', 'one.kkp')))
+
+
 class ImportCrash(ImportFailure):
     extra = {'importer': CRASH_IMPORTER, 'import_memory_mb': 1000}
 
@@ -266,6 +289,7 @@ class ImportCrash(ImportFailure):
         self.assertEqual(len(hint), 1, log)
         self.assertIn('signal 11', hint[0])
         self.assertIn('1000 MB', hint[0])
+        self.assertIn('raise import_memory_mb', hint[0])
 
 
 class Cli(Base):
