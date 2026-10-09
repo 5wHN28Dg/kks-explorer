@@ -224,20 +224,18 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     MoveWindow(h, r.left, r.top, r.right - r.left, r.bottom - r.top, 1)
     return 0
   of WM_CLOSE:
-    # photos still in the queue, or kept because they were not sent, are lost when the app closes: ask first
+    # photos still waiting are kept on this computer (photos.nim) and sent when Walkdown next starts: say so, and
+    # offer to wait for them
     let n = (if w != nil: queuedCount() else: 0)
     let f = (if w != nil: failedCount() else: 0)
     if n + f > 0:
       var what: seq[string]
       if n > 0: what.add(if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared")
       if f > 0: what.add(if f == 1: "1 photo was not sent" else: $f & " photos were not sent")
-      let how = (if n > 0: "Cancel to wait until the photos being prepared are sent (a moment)" else: "Cancel to keep Walkdown open") &
-                (if f > 0: "; the ones not sent go with Photos not sent… → Try again" else: "") & ", or OK to close anyway."
-      if not ask(h, "Close Walkdown?", what.join(", and ") & ". Closing now loses " & (if n + f == 1: "it" else: "them") &
-                 ". " & how):
+      if not ask(h, "Close Walkdown?", what.join(", and ") & ". " & (if n + f == 1: "It is" else: "They are") &
+                 " kept on this computer and sent when Walkdown next starts. Cancel to keep Walkdown open " &
+                 "(sent in a moment), or OK to close now."):
         return 0
-  of 0x0011'u32:     # WM_QUERYENDSESSION: signing out or shutting down would lose them too; Windows then names the app
-    if w != nil and blockShutdown(h): return 0
   of WM_DESTROY:
     PostQuitMessage(0)
     return 0
@@ -290,6 +288,7 @@ proc showMain() =
   trace("laid out")
   if w.m.sheets.len > 0: doShowSheet(w.m.sheets[0].id)
   trace("sheet shown")
+  w.resumePhotos()          # the photos left from before (a crash, a kill, a logout) go first, in their order
 
 proc main() =
   SetProcessDpiAwarenessContext(-4)        # per-monitor v2
@@ -304,7 +303,9 @@ proc main() =
   let port = try: parseInt(getEnv("KKS_SYNC_PORT", $SyncPortDefault)) except ValueError: SyncPortDefault
   a.startSync(port, discovery = getEnv("KKS_NO_MDNS").len == 0)
   a.onChange.add proc (why: string) =
-    if why == "wiped": needsRestart = true
+    if why == "wiped":
+      photosWiped(a.store)      # the wipe deleted the queued photos: nothing more is written or sent
+      needsRestart = true
     elif why != "relay": changed = true   # presence only: the status line catches up on its timer
   let clsName = newWideCString("KKSMain")   # must outlive RegisterClassExW
   var wc = WNDCLASSEXW(cbSize: UINT(sizeof(WNDCLASSEXW)), lpfnWndProc: mainProc, hInstance: hinst,
