@@ -30,6 +30,7 @@ type Win* = ref object
   bannerAction*: proc ()
   sheet*: string
   selected*: string
+  panelEditing*: bool          ## the panel has an open form (Edit, a valve type's Correct): a sync doesn't rebuild it
   reloadQueued*: bool
   showSheet*: proc (id: string)
   selectTag*: proc (id: string, center: bool)

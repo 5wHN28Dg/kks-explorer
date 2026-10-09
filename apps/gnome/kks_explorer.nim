@@ -121,7 +121,7 @@ proc refresh(w: Win) =
     w.setLinks()
     w.syncChosen()
     gtk_widget_queue_draw(w.v.widget)
-  if w.selected.len > 0:
+  if w.selected.len > 0 and not w.panelEditing:   # never under an open form (it would lose what is typed)
     let (ok, t) = w.m.tagById(w.selected)
     if ok: w.buildPanel(t)
   w.refreshLive()
@@ -211,7 +211,9 @@ proc mainScreen(w: Win): W =
   w.closePanel = proc () =
     adw_overlay_split_view_set_show_sidebar(w.panelSplit, 0)
     w.selected = ""
+    w.panelEditing = false
     w.v.selected = ""
+    w.v.symbolBox = @[]
     gtk_widget_queue_draw(w.v.widget)
   w.openProc = proc (id: string) =
     w.pushPage(w.procedurePage(id), id, "proc")

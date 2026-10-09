@@ -72,6 +72,7 @@ type
     onMark*: proc (x0, y0, x1, y1: float)
     selecting*: bool             ## "Select tags" mode: a click toggles a tag, a dragged box adds the tags it touches
     chosen*: HashSet[string]     ## the selected tags (a distinct outline)
+    symbolBox*: seq[float]       ## the open panel's valve symbol (x0, y0, x1, y1 in points), outlined; empty = none
     onBox*: proc (x0, y0, x1, y1: float)   ## a box dragged in the select mode (points)
     onEscape*: proc ()           ## Escape in the select mode
 
@@ -180,6 +181,7 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
   v.levels = newSeq[W](levels.len)
   v.asked = newSeq[bool](levels.len)
   v.selected = ""
+  v.symbolBox = @[]
   v.hits.clear()
   v.links = @[]
   v.linkSel = -1
@@ -433,6 +435,20 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
       cairo_set_source_rgba(c, 1, 0.85, 0, 1)
       cairo_rectangle(c, x - 4, y - 4, tw + 8, th + 8)
       cairo_stroke(c)
+  if v.symbolBox.len == 4:
+    # the valve symbol the open panel's type was read from: dashed magenta, apart from every tag colour
+    let b = v.symbolBox
+    let (mr, mg, mb) = if v.dark: lightenForDark(0.69, 0.09, 0.62) else: (0.69, 0.09, 0.62)
+    cairo_set_source_rgba(c, mr, mg, mb, 0.16)
+    cairo_rectangle(c, (b[0] - v.ox) * v.z - 3, (b[1] - v.oy) * v.z - 3, (b[2] - b[0]) * v.z + 6, (b[3] - b[1]) * v.z + 6)
+    cairo_fill(c)
+    var dash = [5.0, 3.0]
+    cairo_set_dash(c, addr dash[0], 2, 0)
+    cairo_set_source_rgba(c, mr, mg, mb, 1.0)
+    cairo_set_line_width(c, 2.5)
+    cairo_rectangle(c, (b[0] - v.ox) * v.z - 3, (b[1] - v.oy) * v.z - 3, (b[2] - b[0]) * v.z + 6, (b[3] - b[1]) * v.z + 6)
+    cairo_stroke(c)
+    cairo_set_dash(c, nil, 0, 0)
   # off-page connectors: violet dashed circles, unlike the tags' rectangles
   for i, l in v.links:
     let cx = ((l.x0 + l.x1) / 2 - v.ox) * v.z
