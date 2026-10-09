@@ -50,6 +50,7 @@ class WebValve(unittest.TestCase):
         with open(cls.cfg, 'w') as f: json.dump(cfg, f)
         cls.server = subprocess.Popen([SERVER, 'serve', '--config', cls.cfg], cwd=cls.dir,
                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        cls.addClassCleanup(cls.stop)   # runs even when setUpClass fails below (tearDownClass doesn't)
         setup = None
         for _ in range(50):
             line = cls.server.stdout.readline()
@@ -59,7 +60,7 @@ class WebValve(unittest.TestCase):
         cls.base = 'http://127.0.0.1:%d' % cls.port
         cls.boss = Client(cls.base)
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                                   'full_name': 'The Manager'}).get('ok')
+                                                   'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         d = os.path.join(cls.dir, 'fixture')
         os.makedirs(os.path.join(d, 'sheets'))
         for name, obj in (('sheets.json', SHEETS), ('tags.json', TAGS)):
@@ -68,13 +69,13 @@ class WebValve(unittest.TestCase):
         r = subprocess.run([SERVER, 'publish-data', d, '--config', cls.cfg], cwd=cls.dir, capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, r.stdout + r.stderr
         # a member: their proposals wait for the manager
-        r = cls.boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Member', 'role': 'user'})
+        r = cls.boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Member', 'position': 'Technician', 'role': 'user'})
         ali = Client(cls.base)
         ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})
         os.makedirs(SHOTS, exist_ok=True)
 
     @classmethod
-    def tearDownClass(cls):
+    def stop(cls):
         cls.server.terminate()
         cls.server.wait(5)
         shutil.rmtree(cls.dir, ignore_errors=True)

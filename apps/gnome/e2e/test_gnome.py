@@ -635,6 +635,16 @@ class Gnome(unittest.TestCase):
                     pass
             self.fail(f'{button}: never got {then}')
 
+        def cancel_edit():
+            # the Edit form's Cancel (the panel's, not another page's): until the form is gone
+            for _ in range(5):
+                for c in [n for n in atspi.find_all(a, 'button', contains='Cancel') if n.get_name() == 'Cancel']:
+                    atspi.click(c)
+                    time.sleep(1)
+                    if not atspi.find_all(a, 'text', contains='Notes'):
+                        return
+            self.fail('the Edit form did not close')
+
         def open_tag(code):
             for _ in range(20):          # the new tags.json reaches the app by sync
                 atspi.set_text(q, code)
@@ -663,7 +673,7 @@ class Gnome(unittest.TestCase):
         time.sleep(1.5)
         self.assertTrue(atspi.find_all(a, 'text', contains='Notes'), 'Confirm type rebuilt the panel under the Edit form')
         self.assertIsNone(self.boss.req('GET', '/api/state')['equipment'].get('11LBA10AA102', {}).get('custom'))
-        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        cancel_edit()
         press('Correct type', ('text', 'Valve type'))
         # the sync rounds (every 2 s here) bring the confirmed gate valve back from the server: the open form stays
         time.sleep(5)
@@ -680,7 +690,7 @@ class Gnome(unittest.TestCase):
         self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LBA10AA101', 'changes': {'floor': '3'}}})
         time.sleep(6)
         self.assertTrue(atspi.find_all(a, 'text', contains='Notes'), 'a sync rebuilt the panel under the Edit form')
-        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        cancel_edit()
 
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a static and an
