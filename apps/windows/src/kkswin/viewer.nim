@@ -123,6 +123,21 @@ proc fit*(v: Viewer) =
   v.fitted = true
   v.invalidate()
 
+# Tile jobs carry a serial number (above 10^12, so they never collide with pyramid keys gen·100 + level); a side table
+# maps it back to the tile's generation and name.
+var tileSerial = 0
+var tileNames = initTable[int, (int, string)]()   # serial → (gen, name)
+
+proc newGeneration(v: Viewer) =
+  ## a new sheet or colour mode: queued jobs go, and so do the names of tiles of older generations (a dropped job never
+  ## reports back, so its entry would stay forever; one still running reports a serial no longer known: ignored)
+  inc v.gen
+  jobsClear()
+  var old: seq[int]
+  for serial, (g, _) in tileNames:
+    if g != v.gen: old.add serial
+  for serial in old: tileNames.del serial
+
 proc clearTiles(v: Viewer) =
   for k, t in v.tiles:
     if t[1] > 0: viewBitmapFree(v.v, t[1])
@@ -136,8 +151,7 @@ proc dropStale(v: Viewer) =
   v.stale = @[]
 
 proc setSheet*(v: Viewer, id: string, flat: string, scale: float, nLevels: int) =
-  inc v.gen
-  jobsClear()
+  v.newGeneration()
   v.clearTiles()
   for b in v.levelBmp:
     if b > 0: viewBitmapFree(v.v, b)
@@ -167,10 +181,6 @@ proc upload(v: Viewer, p: Pixels): cint =
   if p.w == 0: return 0
   viewBitmap(v.v, unsafeAddr p.px[0], cint(p.w), cint(p.h))
 
-# Tile jobs carry a serial number (above 10^12, so they never collide with pyramid keys gen·100 + level); a side table
-# maps it back to the tile's generation and name.
-var tileSerial = 0
-var tileNames = initTable[int, (int, string)]()   # serial → (gen, name)
 
 proc requestTile(v: Viewer, name: string, tz, x0, y0: float) =
   inc tileSerial
@@ -233,8 +243,7 @@ proc setDark*(v: Viewer, on: bool) =
   ## until this mode's arrive (never blank)
   if v.dark == on: return
   v.dark = on
-  inc v.gen
-  jobsClear()
+  v.newGeneration()
   v.clearTiles()
   if v.stale.len != v.levels.len: v.stale = newSeq[cint](v.levels.len)
   for k in 0 ..< v.levels.len:
@@ -437,6 +446,15 @@ proc centerOn*(v: Viewer, x0, y0, x1, y1: float) =
   v.fitted = true
   v.invalidate()
 
+proc endSelecting*(v: Viewer) =
+  ## the select mode ends (Escape, Done, a send): a box being dragged goes with it, and the rest of that drag does
+  ## nothing (no pan from where the box started)
+  v.selecting = false
+  if v.markOn or v.dragging:
+    v.markOn = false
+    v.dragging = false
+    v.invalidate()
+
 proc tagsIn*(v: Viewer, x0, y0, x1, y1: float): seq[string] =
   ## the tags whose box intersects the box (points)
   for t in v.tags:
@@ -530,6 +548,9 @@ proc viewProc0(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT =
     ReleaseCapture()
     let was = v.dragging
     v.dragging = false
+    if v.markOn and not (was and v.marking):    # whatever ended the drag, no box stays drawn
+      v.markOn = false
+      v.invalidate()
     if was and v.marking:
       v.markOn = false
       if v.onMark != nil and v.mark[2] > v.mark[0]: v.onMark(v.mark[0], v.mark[1], v.mark[2], v.mark[3])

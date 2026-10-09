@@ -20,6 +20,27 @@ let MaxPick = (try: max(1, min(200, parseInt(getEnv("KKS_MAX_PICK", "200")))) ex
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
 
+var
+  pickRound = 0           ## the selection round, new each time the mode starts or ends: a photo editor opened in an
+                          ## earlier round still sends for its own codes, but leaves a newer selection alone
+  roundWins: seq[HWND]    ## this round's List, Place for all and Note for all windows: closed when the round ends
+
+proc roundPopup(w: Win, title: string, width, height: int): (HWND, Page) =
+  ## a window that belongs to this selection round (closed with it, so an old one can't act on a newer selection)
+  var hw: HWND
+  let (h, p) = popup(w.hwnd, title, width, height, onClose = (proc () =
+    let i = roundWins.find(hw)
+    if i >= 0: roundWins.delete(i)), escape = true)
+  hw = h
+  roundWins.add h
+  (h, p)
+
+proc closeRoundWindows() =
+  let open = roundWins
+  roundWins.setLen(0)
+  for h in open:
+    if IsWindow(h) != 0: DestroyWindow(h)
+
 proc countText*(n: int): string = $n & " selected"
 
 proc syncChosen*(w: Win) =
@@ -79,8 +100,10 @@ proc addBox*(w: Win, x0, y0, x1, y1: float) =
 proc stopPicking*(w: Win) =
   if not w.picking: return
   w.picking = false
+  inc pickRound
+  closeRoundWindows()
   w.picked.setLen(0)
-  w.v.selecting = false
+  w.v.endSelecting()        # a box being dragged goes too
   w.syncChosen()
   w.relayout()
   w.rebuildPanel()
@@ -90,6 +113,8 @@ proc startPicking*(w: Win) =
   if w.picking: return
   w.v.marking = false
   w.picking = true
+  inc pickRound
+  closeRoundWindows()
   w.pickSaidUnread = false
   w.picked.setLen(0)
   w.v.selecting = true
@@ -103,7 +128,7 @@ proc listWindow(w: Win) =
   ## the selected codes, each with a check box: turn a mistake off (on again puts it back)
   let codes = w.picked
   var hw: HWND
-  let (h, p) = popup(w.hwnd, "Selected codes", 440, 480, escape = true)
+  let (h, p) = w.roundPopup("Selected codes", 440, 480)
   hw = h
   if codes.len == 0: p.dim("Nothing selected. Click tags on the drawing.")
   else: p.dim("Turn a code off to leave it out")
@@ -136,26 +161,28 @@ proc clientPrefix(): string =
   result = "wm" & $(getTime().toUnix) & "x"
   for _ in 0 ..< 10: result.add "0123456789abcdef"[rand(15)]
 
-proc sendMany(w: Win, codes: seq[string], kind: string, payload: JNode, note: string): bool =
+proc basesOf(w: Win, codes: seq[string], changes: JNode): JNode =
+  ## the values this device shows now for the fields `changes` replaces (core submitMany `bases`): a value someone
+  ## changed after this is a clash, not overwritten silently. Taken before any question is asked: while one is open
+  ## the timer keeps syncing and reloading the model, and a base read after it would be the newer value.
+  result = newObj()
+  for k in codes:
+    let e = w.m.equipment(k)
+    var b = newObj()
+    if changes != nil:                          # replaced fields only: an appended note can't lose anything
+      for (f, _) in changes.fields:
+        b[f] = (if e.get(f) != nil: e[f] else: newStr(""))
+    result[k] = b
+
+proc sendMany(w: Win, round: int, codes: seq[string], kind: string, payload: JNode, note: string): bool =
   ## one submit-many for these codes (the selection when the photo or form was opened: what its title said); says how
-  ## it went and leaves the mode
+  ## it went and leaves the mode if it is still the round the photo or form was opened in
   if codes.len == 0:
     w.toast("Nothing selected")
     return false
   var arr = newArr()
   for k in codes: arr.elems.add newStr(k)
-  if kind == "equipment":
-    # the values this device shows for the fields it changes: a value someone changed meanwhile is then a clash
-    # (core submitMany `bases`), not overwritten silently
-    var bases = newObj()
-    for k in codes:
-      let e = w.m.equipment(k)
-      var b = newObj()
-      if payload.get("changes") != nil:          # replaced fields only: an appended note can't lose anything
-        for (f, _) in payload["changes"].fields:
-          b[f] = (if e.get(f) != nil: e[f] else: newStr(""))
-      bases[k] = b
-    payload["bases"] = bases
+  if kind == "equipment" and payload.get("bases") == nil: payload["bases"] = w.basesOf(codes, payload.get("changes"))
   var body = newObj(@[("kind", newStr(kind)), ("kks", arr), ("payload", payload), ("client_id", newStr(clientPrefix()))])
   if note.strip.len > 0: body["note"] = newStr(note.strip)
   var r: JNode
@@ -177,7 +204,8 @@ proc sendMany(w: Win, codes: seq[string], kind: string, payload: JNode, note: st
   if pending == 0 and held == 0: msg.add " · saved"
   w.loadModel()
   if w.sheet.len > 0: w.v.tags = w.tagBoxes(w.sheet)
-  w.stopPicking()
+  if round == pickRound: w.stopPicking()
+  else: w.syncChosen()      # a photo from an earlier round: the selection made since stays
   w.toast(msg)
   true
 
@@ -185,18 +213,26 @@ proc photoForAll*(w: Win) =
   if w.picked.len == 0:
     w.toast("Select tags first")
     return
+  # the user's rule: a photo needs its equipment's floor (one editor can't ask for several, so set them first)
+  let missing = w.floorsMissing(w.picked)
+  if missing.len > 0:
+    w.toast("A photo needs each code's floor. No floor yet: " & missing[0 ..< min(5, missing.len)].join(", ") &
+            (if missing.len > 5: " and " & $(missing.len - 5) & " more" else: "") & ". Set it with Place for all first.")
+    return
   let codes = w.picked     # the editor is a window of its own: the selection may change while it is open
+  let round = pickRound
   w.takePhoto(proc (dataUrl, caption, note: string) =
-    discard w.sendMany(codes, "photo", newObj(@[("dataUrl", newStr(dataUrl)), ("caption", newStr(caption))]), note))
+    discard w.sendMany(round, codes, "photo", newObj(@[("dataUrl", newStr(dataUrl)), ("caption", newStr(caption))]), note))
 
 proc placeForAll*(w: Win) =
   if w.picked.len == 0:
     w.toast("Select tags first")
     return
   var hw: HWND
-  let (h, p) = popup(w.hwnd, "Place for all", 460, 520, escape = true)
+  let (h, p) = w.roundPopup("Place for all", 460, 520)
   hw = h
   let codes = w.picked     # the form is a window of its own: it sends for what its title says
+  let round = pickRound
   p.title(countText(codes.len))
   p.dim("Only the fields you fill are sent; the others stay as they are for each code.")
   var entries: seq[(string, string, HWND)]
@@ -222,8 +258,10 @@ proc placeForAll*(w: Win) =
     if changes.len == 0:
       w.toast("Fill at least one field")
       return
+    # what this device shows now, before the question: the sync goes on while it is open
+    let payload = newObj(@[("changes", changes), ("bases", w.basesOf(codes, changes))])
     if lines.len > 0 and not ask(hw, "Replace values?", lines.join("\n")): return
-    if w.sendMany(codes, "equipment", newObj(@[("changes", changes)]), if note != nil: note.text else: ""): DestroyWindow(hw)),
+    discard w.sendMany(round, codes, "equipment", payload, if note != nil: note.text else: "")),   # the round's end closes this
     ("Cancel", proc () = DestroyWindow(hw)))
   p.layout()
   ShowWindow(hw, SW_SHOW)
@@ -233,9 +271,10 @@ proc noteForAll*(w: Win) =
     w.toast("Select tags first")
     return
   var hw: HWND
-  let (h, p) = popup(w.hwnd, "Note for all", 460, 360, escape = true)
+  let (h, p) = w.roundPopup("Note for all", 460, 360)
   hw = h
   let codes = w.picked
+  let round = pickRound
   p.title(countText(codes.len))
   p.dim("Added under each code's own notes; nothing already there is removed.")
   let e = p.field("Note", "")
@@ -245,8 +284,8 @@ proc noteForAll*(w: Win) =
     if v.len == 0:
       w.toast("Write the note first")
       return
-    if w.sendMany(codes, "equipment", newObj(@[("append", newObj(@[("notes", newStr(v))]))]), if note != nil: note.text else: ""):
-      DestroyWindow(hw)),
+    discard w.sendMany(round, codes, "equipment", newObj(@[("append", newObj(@[("notes", newStr(v))]))]),
+                       if note != nil: note.text else: "")),    # the round's end closes this
     ("Cancel", proc () = DestroyWindow(hw)))
   p.layout()
   ShowWindow(hw, SW_SHOW)

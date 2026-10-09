@@ -2,7 +2,7 @@
 ## 1600 px → the annotation editor → JPEG XL d1.9 effort 9 → submit). Camera capture: see apps/windows/README.md.
 
 import std/[base64, strutils, tables, math, sequtils, os]
-import kks/json
+import kks/[json, api]
 import kks/model
 import appstate
 import kks/node
@@ -142,6 +142,27 @@ proc showPhoto*(w: Win, data, caption: string) =
   ShowWindow(p.hwnd, SW_SHOW)
 
 # ---------------------------------------------------------------- the panel section
+
+proc floorsMissing*(w: Win, codes: openArray[string]): seq[string] =
+  ## the codes with no floor yet (the user's rule: a photo needs its equipment's floor; the GNOME app's floorsMissing):
+  ## none in the loaded model, none in the core's own state (the model lags a change by a moment), and none in an open
+  ## proposal of mine. The core's state and my proposals are read once, and only if a code needs them.
+  var st: JNode = nil
+  var mine: seq[JNode]
+  for k in codes:
+    if s(w.m.equipment(k), "floor").strip.len > 0: continue
+    if st == nil:
+      try: st = w.a.call("GET", "/api/state")["equipment"]
+      except ApiError: st = newObj()
+      mine = w.myOpen()
+    if s(st.get(k), "floor").strip.len > 0: continue
+    var known = false
+    for sub in mine:
+      let p = sub.get("payload")
+      if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == k and p.get("changes") != nil and
+         s(p["changes"], "floor").strip.len > 0: known = true
+    if not known: result.add k
+
 
 proc takePhoto*(w: Win, send: proc (dataUrl, caption, note: string)) =
   ## a picture from a file: upright, at most 1600 px, then the annotation editor, then JPEG XL; `send` gets its data URL
