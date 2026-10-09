@@ -6,13 +6,15 @@ import std/[random, strutils]
 import kks/[json, model, views]
 
 var r = initRand(20261009)
-let types = ["gate valve", "globe valve", "check valve", "control valve", "butterfly valve", "x"]
+let types = ["gate valve", "globe valve", "check valve", "control valve", "butterfly valve", "x", "vanne à boisseau",
+              "é".repeat(50), "é".repeat(51)]   # 100 and 102 bytes: the limit is in bytes
 var tags = newArr()
 var equipment = newObj()
 var reviews = newObj()
 for i in 0 ..< 160:
   let comp = if r.rand(9) < 8: "AA" else: r.sample(["CP", "AP", "CT"])
-  let kks = "11LAB" & align($(10 + r.rand(80)), 2, '0') & comp & align($r.rand(999), 3, '0')
+  var kks = "11LAB" & align($(10 + r.rand(80)), 2, '0') & comp & align($r.rand(999), 3, '0')
+  if r.rand(19) == 0: kks.add "7"                      # not a 12-character code
   let suffix = if r.rand(9) == 0: "R" else: ""
   var sym: JNode = nil
   let shape = r.rand(19)
@@ -43,7 +45,7 @@ for i in 0 ..< 160:
   elif shape == 17: sym = newStr("gate valve")
   let id = "a:" & $i
   var t = newObj(@[("id", newStr(id)), ("sheet", newStr("a")), ("kks", newStr(kks)), ("suffix", newStr(suffix)),
-    ("isa", newNull()), ("kind", newStr("equipment")), ("status", newStr("auto")), ("conf", newFloat(0.9)),
+    ("isa", newNull()), ("kind", newStr("equipment")), ("status", newStr(if r.rand(9) == 0: "review" else: "auto")), ("conf", newFloat(0.9)),
     ("bbox", newArr(@[newInt(1), newInt(1), newInt(2), newInt(2)])), ("read", newArr(@[newStr(""), newStr("")]))])
   if sym != nil: t["symbol"] = sym
   tags.elems.add t
@@ -70,6 +72,7 @@ for i in 0 ..< 160:
   of 5: cs.elems.add newObj(@[("k", newStr("Valve type")), ("v", newInt(5))])
   else: discard
   if cs.elems.len > 0 and equipment.get(k) == nil: equipment[k] = newObj(@[("custom", cs), ("notes", newStr("n"))])
+  elif r.rand(14) == 0 and equipment.get(k) == nil: equipment[k] = newObj(@[("custom", newStr("not a list"))])
 let sheets = parseStrict("""[{"id":"a","name":"Sheet A","w":2000,"h":1000,"scale":2.0,"levels":1,"rot":0,"notes":[]}]""")
 var m = Model()
 m.sheets = parseSheets(sheets)

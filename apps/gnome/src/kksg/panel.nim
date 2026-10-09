@@ -145,7 +145,7 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
   let line = label(s(vt, "line"), selectable = true)
   if s(vt, "status") == "confirmed":
     result = group("Valve type", if vt.get("drawn_differs") != nil and vt["drawn_differs"].kind == jBool and
-                   vt["drawn_differs"].b: "The drawing's symbol reads: " & s(vt, "drawn") else: "")
+                   vt["drawn_differs"].b: "The drawing's symbol reads: " & esc(s(vt, "drawn")) else: "")   # markup
     adw_preferences_group_add(result, line)
     return
   let conf = vt.get("conf")
@@ -159,6 +159,15 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
     adw_preferences_group_add(g, label("This equipment already has 100 custom fields: remove one to save the valve type.",
                                        "warning"))
     return
+  # your own proposal of a type, not live yet (a member's waits for approval): said, and no second one offered
+  for sub in w.myOpen():
+    let p = sub.get("payload")
+    if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == k and p.get("changes") != nil and
+       p["changes"].get("custom") != nil and p["changes"]["custom"].kind == jArr:
+      for x in p["changes"]["custom"].elems:
+        if x.kind == jObj and s(x, "k") == ValveTypeKey and s(x, "v").len > 0:
+          adw_preferences_group_add(g, label("Your valve type “" & s(x, "v") & "” is waiting for approval.", "dim-label"))
+          return
   let text0 = s(vt, "text")
   let btns = hbox(8)
   gtk_widget_set_margin_top(btns, 8)
@@ -179,6 +188,9 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
       let v = text(e).strip
       if v.len == 0:
         w.toast("Type the valve type first")
+        return
+      if v.runeLen > 200:
+        w.toast("At most 200 characters")
         return
       let p = c["payload"].copy
       for x in p["changes"]["custom"].elems:

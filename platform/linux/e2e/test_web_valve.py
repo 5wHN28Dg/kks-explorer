@@ -31,7 +31,10 @@ for n, e in enumerate(ENGINES):
     x = 40 + n * 180
     TAGS += [valve(f'a:{e}1', f'11LAB70AA5{n}1', x, 'gate valve', 'motor'),
              valve(f'a:{e}2', f'11LAB70AA5{n}2', x + 62, 'globe valve', nc=True),
-             tag(f'a:{e}3', 'a', f'11LAB70CP5{n}3', x + 124)]
+             tag(f'a:{e}3', 'a', f'11LAB70CP5{n}3', x + 124),
+             valve(f'a:{e}4', f'11LAB70AA5{n}4', x, 'ball valve')]
+    TAGS[-1]['bbox'] = [x, 300, x + 60, 330]
+    TAGS[-1]['symbol']['bbox'] = [x + 10, 240, x + 46, 262]
 
 
 class WebValve(unittest.TestCase):
@@ -64,6 +67,10 @@ class WebValve(unittest.TestCase):
         with open(os.path.join(d, 'sheets', 'a.png'), 'wb') as f: f.write(png(100, 60))
         r = subprocess.run([SERVER, 'publish-data', d, '--config', cls.cfg], cwd=cls.dir, capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, r.stdout + r.stderr
+        # a member: their proposals wait for the manager
+        r = cls.boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Member', 'role': 'user'})
+        ali = Client(cls.base)
+        ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})
         os.makedirs(SHOTS, exist_ok=True)
 
     @classmethod
@@ -90,7 +97,7 @@ class WebValve(unittest.TestCase):
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))
             page.goto(self.base + '/')
-            page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length === 9 && typeof cur !== 'undefined' && cur", timeout=30000)
+            page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length === 12 && typeof cur !== 'undefined' && cur", timeout=30000)
             # the gate valve: its tag clicked on the drawing
             page.click(f'#layer .hs[data-id="a:{name}1"]')
             page.wait_for_selector('#vtLine')
@@ -107,7 +114,7 @@ class WebValve(unittest.TestCase):
             page.click(f'#layer .hs[data-id="a:{name}1"]')
             page.wait_for_selector('#layer .vsym')
             # Confirm: sent as it is
-            page.click('#valveSec button:text-is("Confirm")')
+            page.click('#valveSec button:text-is("Confirm type")')
             page.wait_for_function("() => document.getElementById('vtLine')?.textContent === 'Valve type: gate valve, motor-operated (confirmed)'",
                                    timeout=15000)
             self.assertEqual(self.custom(gate), [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}])
@@ -117,13 +124,13 @@ class WebValve(unittest.TestCase):
             page.click(f'#layer .hs[data-id="a:{name}2"]')
             page.wait_for_function("() => document.getElementById('vtLine')?.textContent === 'Valve type: globe valve, normally closed (from the drawing, unchecked)'")
             self.assertEqual(page.locator('#layer .vsym').count(), 1)
-            page.click('#valveSec button:text-is("Correct")')
+            page.click('#valveSec button:text-is("Correct type")')
             self.assertEqual(page.input_value('#vtValue'), 'globe valve, normally closed')
             self.assertEqual(page.evaluate("document.activeElement.id"), 'vtValue')
             # Cancel goes back to the two buttons; an empty value is refused
             page.click('#valveSec button:text-is("Cancel")')
             self.assertEqual(page.locator('#vtValue').count(), 0)
-            page.click('#valveSec button:text-is("Correct")')
+            page.click('#valveSec button:text-is("Correct type")')
             page.fill('#vtValue', '   ')
             page.click('#valveSec button:text-is("Send")')
             self.assertEqual(page.text_content('#toast'), 'Type the valve type first')
@@ -141,6 +148,27 @@ class WebValve(unittest.TestCase):
             page.wait_for_function(f"() => document.querySelector('#panelBody .phead .kks')?.textContent === '{cp}'")
             self.assertEqual(page.locator('#valveSec').count(), 0)
             self.assertEqual(page.locator('#layer .vsym').count(), 0)
+            # a member: Confirm sends a proposal; the panel says it waits, and offers no second one
+            mctx = browser.new_context(viewport={'width': 1200, 'height': 800})
+            mctx.add_init_script(CSP_WATCH)
+            r = mctx.request.post(self.base + '/api/login', data={'username': 'ali', 'password': 'ali password 1'},
+                                  headers={'Origin': self.base})
+            self.assertTrue(r.ok, r.text())
+            mp = mctx.new_page()
+            mp.on('pageerror', lambda e: errors.append(str(e)))
+            mp.goto(self.base + '/')
+            mp.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length === 12 && typeof cur !== 'undefined' && cur", timeout=30000)
+            mp.click(f'#layer .hs[data-id="a:{name}4"]')
+            mp.wait_for_function("() => document.getElementById('vtLine')?.textContent === 'Valve type: ball valve (from the drawing, unchecked)'")
+            mp.locator('#valveSec button:text-is("Confirm type")').dblclick()
+            mp.wait_for_selector('#vtMine', timeout=15000)
+            self.assertEqual(mp.text_content('#vtMine'), 'Your valve type “ball valve” is waiting for approval.')
+            self.assertEqual(mp.locator('#valveSec button').count(), 0)
+            self.assertIn('(from the drawing, unchecked)', mp.text_content('#vtLine'))
+            subs = [x for x in self.boss.req('GET', '/api/submissions?status=open')['submissions']
+                    if x['kind'] == 'equipment' and x['payload'].get('kks') == f'11LAB70AA5{n}4']
+            self.assertEqual(len(subs), 1, 'a double click sent the proposal twice')
+            self.assertEqual(subs[0]['payload']['changes']['custom'], [{'k': 'Valve type', 'v': 'ball valve'}])
             browser.close()
             self.assertEqual(errors, [], name)
 

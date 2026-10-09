@@ -139,7 +139,7 @@ const KSys = (() => {
                       drawn_differs: !!drawn && drawn !== have};
     if (!drawn || !k) return null;
     // the symbol belongs to the code the reader saw: a review that made it a non-valve (component not AA) drops it
-    if (!(t.kks.length === 12 && t.kks.slice(7, 9) === 'AA')) return null;
+    if (!((t.kks || '').length === 12 && t.kks.slice(7, 9) === 'AA')) return null;
     const base = Array.isArray(eq.custom) ? eq.custom.slice() : [];
     // an empty "Valve type" entry already there is replaced, never doubled; a full list can't take one more
     const isKey = x => x && typeof x === 'object' && !Array.isArray(x) && str(x, 'k') === VALVE_KEY;
