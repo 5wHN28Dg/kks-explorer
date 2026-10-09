@@ -86,10 +86,15 @@ proc esc*(s: string): string =
     of '\'': result.add "&#39;"
     else: result.add c
 
+proc newToast*(msg: string): W =
+  ## plain text: an AdwToast's title is Pango markup by default, and messages carry codes, typed values and plant
+  ## data ("Drains & vents" showed nothing; "<a href=…>" would be a link), so markup is off
+  result = adw_toast_new(msg.cstring)
+  adw_toast_set_use_markup(result, 0)
+
 proc toast*(overlay: W, msg: string) =
   if overlay == nil: return
-  # a toast's title is Pango markup: the text is escaped (codes, typed values and plant data go into toasts)
-  let t = adw_toast_new(esc(msg).cstring)
+  let t = newToast(msg)
   adw_toast_set_timeout(t, 4)
   adw_toast_overlay_add_toast(overlay, t)
 
