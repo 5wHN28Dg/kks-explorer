@@ -140,6 +140,15 @@ dt{color:var(--muted)} dd{margin:0}
 .sysrow:hover,.sysrow:focus-visible{background:var(--chrome3)}
 .sysrow .mono{flex:none} .sysrow .d{flex:1;min-width:0;color:var(--muted);font-size:12.5px}
 .sysdot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--pc);align-self:center}
+/* coverage: bars in the photo coverage colours, each with its numbers in words beside it */
+.covbar{flex:none;display:flex;width:56px;height:10px;border:1px solid var(--muted);border-radius:2px;overflow:hidden;align-self:center;background:var(--chrome)}
+.covbar span{display:block;background:var(--pc)} .covbar.wide{width:120px;margin:5px 0 3px}
+#covBody h3{font-size:13px;margin:14px 0 4px;color:var(--muted);font-weight:600}
+#covBody dl{grid-template-columns:150px 1fr}
+.covrow{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:7px 4px;border:0;border-bottom:1px solid var(--chrome3);background:none;color:inherit;font:inherit;cursor:pointer}
+.covrow:hover,.covrow:focus-visible{background:var(--chrome3)}
+.covrow .covbar{margin-top:5px} .covrow .t{flex:1;min-width:0} .covrow .d{display:block;color:var(--muted);font-size:12.5px}
+.covlegend{font-size:12px;color:var(--muted);margin-top:6px} .covlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px;background:var(--pc)}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .revitem{padding:8px 0;border-bottom:1px solid var(--chrome3);cursor:pointer}
 @media (max-width:720px){
@@ -168,6 +177,7 @@ dt{color:var(--muted)} dd{margin:0}
   <div class="brand">Walkdown <small id="plantName"></small></div>
   <div class="search"><input id="q" placeholder="KKS, e.g. 11LAB70AA501, LBA, CP101, or a location…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search equipment by KKS code or description" aria-autocomplete="list" aria-expanded="false" aria-controls="results"><div id="results" role="listbox" aria-label="Search results"></div></div>
   <button class="btn" id="sysBtn" title="Every KKS code on the drawings, by block and system" aria-controls="sysDrawer" aria-expanded="false">Systems</button>
+  <button class="btn" id="covBtn" title="How complete the plant's record is: checked tags, places, photos, per sheet and system" aria-controls="covDrawer" aria-expanded="false">Coverage</button>
   <select id="sheetSel" title="Drawing"></select>
   <select id="floorSel" title="Show equipment on a floor"><option value="">All floors</option></select>
   <button class="btn" id="procBtn">Procedures</button>
@@ -192,8 +202,10 @@ dt{color:var(--muted)} dd{margin:0}
     <div class="body" id="procBody"></div></aside>
   <aside class="drawer" id="sysDrawer" aria-labelledby="sysTitle"><div class="head"><h2 id="sysTitle">Equipment by system</h2><button class="x" data-close="sysDrawer" aria-label="Close equipment by system">×</button></div>
     <div style="padding:8px 10px 0"><input id="sysQ" type="search" aria-label="Filter equipment by system" aria-describedby="sysCount" placeholder="Filter: code, system, LAB70, valve, description…" autocomplete="off" spellcheck="false" style="width:100%;padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)">
-    <div class="sub" id="sysCount" aria-live="polite" style="margin-top:4px"></div></div>
+    <div class="sub" id="sysCount" aria-live="polite" style="margin-top:4px"></div><div id="sysOnlyBar"></div></div>
     <div class="body" id="sysBody"></div></aside>
+  <aside class="drawer" id="covDrawer" aria-labelledby="covTitle"><div class="head"><h2 id="covTitle" tabindex="-1">Coverage</h2><button class="x" data-close="covDrawer" aria-label="Close coverage">×</button></div>
+    <div class="body" id="covBody"></div></aside>
   <aside class="drawer" id="revDrawer"><div class="head"><h2>Needs review</h2><button class="x" data-close="revDrawer">×</button></div>
     <div style="padding:8px 10px 0" class="sub">Tags the reader wasn't sure about. Check against the drawing, then confirm or mark “not a tag”. <label style="display:block;margin-top:6px"><input type="checkbox" id="hideRev"> Hide unreviewed tags on drawings</label></div>
     <div class="body" id="revBody"></div></aside>

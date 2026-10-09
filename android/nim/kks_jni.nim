@@ -223,6 +223,7 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
   of "/native/proc": view(procView(c.model, arg("id")))
   of "/native/floors": view(floorsView(c.model))
   of "/native/systems": view(systemsView(c.model, arg("q")))
+  of "/native/coverage": view(coverageView(c.model))
   else: O(("status", newInt(404)), ("json", O(("error", newStr("not found")))))
 
 proc kks_api(h: int64, meth, path: cstring, query: ptr UncheckedArray[byte], qlen: cint, body: ptr UncheckedArray[byte],

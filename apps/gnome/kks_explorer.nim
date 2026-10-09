@@ -6,7 +6,7 @@ import kks/[json, api]
 import kks/model
 import kksl/dbstore
 import appstate
-import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, links, photos]
+import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, coverage, links, photos]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
@@ -149,6 +149,8 @@ proc sideRoot(w: Win): W =
     w.pushPage(w.proceduresPage(), "Procedures", "procs")))
   more.gtk_list_box_append(navRow("Equipment by system", "Every code on the drawings, by block, system and kind",
     "Open Equipment by system", proc () = w.pushPage(w.systemsPage(), "Equipment by system", "systems")))
+  more.gtk_list_box_append(navRow("Coverage", "What is checked, placed and photographed, per sheet and system",
+    "Open Coverage", proc () = w.pushPage(w.coveragePage(), "Coverage", "coverage")))
   more.gtk_list_box_append(navRow("Learning", "The courses, with your progress", "Open Learning", proc () =
     w.pushPage(w.learningPage(), "Learning", "learning")))
   more.gtk_list_box_append(navRow("Review queue", "Tag readings to confirm or correct", "Open the review queue", proc () =
@@ -253,11 +255,19 @@ proc mainScreen(w: Win): W =
     w.v.setDark(on)
     w.a.store.setMeta("dark_drawings", if on: "1" else: ""))
   adw_header_bar_pack_end(contentHeader, darkBtn)
-  adw_header_bar_pack_end(contentHeader, iconButton("camera-photo-symbolic", "Colour tags by photos", proc () =
-    w.v.coverage = not w.v.coverage
+  # a toggle: its pressed state is what Orca reads (and what the Coverage page turns on)
+  w.coverBtn = gtk_toggle_button_new()
+  gtk_button_set_icon_name(w.coverBtn, "camera-photo-symbolic")
+  gtk_widget_set_tooltip_text(w.coverBtn, "Colour tags by photos")
+  setAccessibleLabel(w.coverBtn, "Colour tags by photos")
+  w.coverBtn.on("toggled", proc () =
+    let on = gtk_toggle_button_get_active(w.coverBtn) != 0
+    if on == w.v.coverage: return
+    w.v.coverage = on
     gtk_widget_queue_draw(w.v.widget)
-    w.toast(if w.v.coverage: "Tags by photos: green both · amber equipment only · blue tag plate only · red none"
-            else: "Tags by how they were read")))
+    w.toast(if on: "Tags by photos: green both · amber equipment only · blue tag plate only · red none"
+            else: "Tags by how they were read"))
+  adw_header_bar_pack_end(contentHeader, w.coverBtn)
   adw_header_bar_pack_end(contentHeader, iconButton("list-add-symbolic", "Mark a tag the app missed", proc () =
     if w.picking: w.stopPicking()
     w.startMarking()))

@@ -31,10 +31,11 @@ private sealed class SysRow(val key: String) {
 }
 
 /** the core's systemsView as rows: what is open decides what is listed. Searching opens everything; otherwise
- *  blocks are open and systems closed, until the person opens or closes one (`toggled`) */
-private fun flatten(v: JSONObject, searching: Boolean, toggled: Map<String, Boolean>): List<SysRow> {
+ *  blocks are open and systems closed, until the person opens or closes one (`toggled`). `only`: one system's codes
+ *  (from Coverage; "" = the codes that don't decode), its system header open */
+private fun flatten(v: JSONObject, searching: Boolean, toggled: Map<String, Boolean>, only: String? = null): List<SysRow> {
     val out = ArrayList<SysRow>()
-    fun open(key: String, level: Int) = toggled[key] ?: (searching || level == 0)
+    fun open(key: String, level: Int) = toggled[key] ?: (searching || level == 0 || (only != null && level == 1))
     fun head(key: String, level: Int, code: String, name: String, count: Int): Boolean {
         val o = open(key, level)
         out.add(SysRow.Head(key, level, code, name, count, o))
@@ -42,9 +43,11 @@ private fun flatten(v: JSONObject, searching: Boolean, toggled: Map<String, Bool
     }
     for (b in v.optJSONArray("blocks").objects()) {
         val bk = "b:" + b.str("blk")
-        val bCount = b.optJSONArray("systems").objects().sumOf { it.optInt("count") }
+        val systems = b.optJSONArray("systems").objects().filter { only == null || it.str("sys") == only }
+        if (systems.isEmpty()) continue
+        val bCount = systems.sumOf { it.optInt("count") }
         if (!head(bk, 0, b.str("blk"), b.str("blk_name").ifEmpty { "Block " + b.str("blk") }, bCount)) continue
-        for (s in b.optJSONArray("systems").objects()) {
+        for (s in systems) {
             val sk = bk + "/" + s.str("sys")
             if (!head(sk, 1, s.str("sys"), s.str("sys_name"), s.optInt("count"))) continue
             for (f in s.optJSONArray("subsystems").objects()) {
@@ -58,17 +61,27 @@ private fun flatten(v: JSONObject, searching: Boolean, toggled: Map<String, Bool
             }
         }
     }
-    val other = v.optJSONArray("other").objects()
+    val other = if (only == null || only == "") v.optJSONArray("other").objects() else emptyList()
     if (other.isNotEmpty() && head("other", 1, "", "Other (codes that don't decode)", other.size))
         for (it in other) out.add(SysRow.Item("other/" + it.str("code"), it))
     return out
 }
 
+/** the codes the screen shows: all of the view's, or only one system's (or only the undecoded ones, `only` = "") */
+internal fun shownCount(v: JSONObject, only: String?): Int {
+    if (only == null) return v.optInt("total")
+    if (only == "") return v.optJSONArray("other")?.length() ?: 0
+    var n = 0
+    for (b in v.optJSONArray("blocks").objects()) for (y in b.optJSONArray("systems").objects()) if (y.str("sys") == only) n += y.optInt("count")
+    return n
+}
+
 /** every code on the drawings, by block → system → subsystem → component kind (core systemsView); a code opens its
  *  tag the way a search result does */
 @Composable
-fun SystemsScreen(ui: Ui, onClose: () -> Unit) {
+fun SystemsScreen(ui: Ui, sys: String? = null, onClose: () -> Unit) {
     val rev = Changes.rev
+    var only by remember { mutableStateOf(sys) }
     var query by remember { mutableStateOf("") }
     var view by remember { mutableStateOf<JSONObject?>(null) }
     val toggled = remember { mutableStateMapOf<String, Boolean>() }
@@ -77,7 +90,7 @@ fun SystemsScreen(ui: Ui, onClose: () -> Unit) {
         if (q.isNotEmpty()) delay(250)                  // typing: one core call once the person pauses
         view = withContext(Dispatchers.IO) { call("GET", "/native/systems", query = mapOf("q" to q)).json }
     }
-    val rows = remember(view, toggled.toMap()) { view?.let { flatten(it, q.isNotEmpty(), toggled) } ?: emptyList() }
+    val rows = remember(view, toggled.toMap(), only) { view?.let { flatten(it, q.isNotEmpty(), toggled, only) } ?: emptyList() }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         FullScreenDialogWindow()
         Surface(Modifier.fillMaxSize()) {
@@ -85,9 +98,16 @@ fun SystemsScreen(ui: Ui, onClose: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onClose, modifier = Modifier.semantics { contentDescription = "Close" }) { Icon(Glyphs.BACK, contentDescription = null) }
                     Text("Equipment by system", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                    view?.let { val n = it.optInt("total"); Dim("$n code" + if (n == 1) "" else "s"); Spacer(Modifier.width(12.dp)) }
+                    view?.let { val n = shownCount(it, only); Dim("$n code" + if (n == 1) "" else "s"); Spacer(Modifier.width(12.dp)) }
                 }
-                OutlinedTextField(query, { if (it.trim() != q) toggled.clear(); query = it }, placeholder = { Text("Filter: code, system, kind or description") }, singleLine = true,
+                only?.let { o ->
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (o.isEmpty()) "Only the codes that don't decode" else "Only system $o", Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick = { only = null; toggled.clear() }) { Text("Show all systems") }
+                    }
+                }
+                OutlinedTextField(query, { if (it.trim() != q) { toggled.clear(); if (it.isNotBlank()) only = null }; query = it }, placeholder = { Text("Filter: code, system, kind or description") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).semantics { contentDescription = "Filter equipment by system" })
                 if (view == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 else if (rows.isEmpty()) Dim("  " + if (q.isEmpty()) "No codes on the drawings yet." else "Nothing matches “$q”.")

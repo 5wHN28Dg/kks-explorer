@@ -104,6 +104,81 @@ const KSys = (() => {
     return {blocks, other: rest, total};
   }
 
+  // a place is known (core views.located): the location list has the code (by KKS without the unit), or a person filled
+  // one of the place fields (Nim's strip: only ASCII whitespace counts as empty)
+  const own = (o, k) => o != null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
+  const PLACE = ['area', 'floor', 'elev', 'near', 'loc'];
+  function located(t, loc, equipment) {
+    const body = (t.kks || '').length > 2 ? t.kks.slice(2) : '';
+    const rows = own(loc, body);
+    if (Array.isArray(rows) && rows.length) return true;
+    const e = own(equipment, (t.kks || '') + (t.suffix || ''));
+    return PLACE.some(f => { const v = own(e, f); return typeof v === 'string' && /[^ \t\v\r\n\f]/.test(v) });
+  }
+
+  // a of b (b > 0) as a whole percent (core views.coveragePct): to the nearest, but 100 only when all and 0 only when
+  // none (199 of 200 = 99, 1 of 300 = 1)
+  function pct(a, b) {
+    if (a <= 0) return 0;
+    if (a >= b) return 100;
+    return Math.min(99, Math.max(1, Math.floor((200 * a + b) / (2 * b))));
+  }
+
+  // How complete the plant's record is (core views.coverageView): totals, per sheet (the page's sheets first, in their
+  // order) and per system (sorted; "" = codes that don't decode). Codes are counted once per sheet, per system and in
+  // the totals; tags, review and marked are per tag, so system rows don't have them.
+  //   tags: the effective tags as for systemsView; sheets: [{id, name}]; kks: data/kks.json; loc: the location list by
+  //   KKS without the unit; equipment: state equipment (by full code); photos: state photos
+  // -> {total: counts, sheets: [counts + {id, name}], systems: [{sys, sys_name, codes, verified, located, photos}]};
+  //    counts = {tags, verified, review, marked, codes, located, photos: {both, equipment, plate, none}}
+  function coverageView({tags, sheets, kks, loc, equipment, photos}) {
+    const pcs = () => ({both: 0, equipment: 0, plate: 0, none: 0});
+    const blank = () => ({tags: 0, verified: 0, review: 0, marked: 0, codes: 0, located: 0, photos: pcs()});
+    const covers = photoCovers(photos);
+    const bySheet = new Map(), bySys = new Map(), seenSheet = new Map(), seenSys = new Set(), seenAll = new Set();
+    for (const s of sheets || []) bySheet.set(s.id, blank());
+    const all = blank();
+    const checked = t => t.status === 'verified' || t.status === 'confirmed';
+    // a code is checked when a person checked any of its tags (as the core: auto on one sheet, verified on another)
+    const checkedCodes = new Set(tags.filter(t => t.kks && checked(t)).map(t => t.kks + (t.suffix || '')));
+    // located once per (unit-less body, code), as the core: the code alone can't key it (a suffix typed into the code)
+    const placed = new Map();
+    const isLocated = t => {
+      const key = JSON.stringify([t.kks || '', t.suffix || '']);
+      if (!placed.has(key)) placed.set(key, located(t, loc, equipment));
+      return placed.get(key);
+    };
+    for (const t of tags) {
+      if (!bySheet.has(t.sheet)) bySheet.set(t.sheet, blank());
+      const c = bySheet.get(t.sheet);
+      c.tags++; all.tags++;
+      if (checked(t)) { c.verified++; all.verified++ }
+      if (t.status === 'review') { c.review++; all.review++ }
+      if (t.added) { c.marked++; all.marked++ }
+      if (!t.kks) continue;
+      const k = t.kks + (t.suffix || ''), p = covers.get(k) || 'none';
+      let seen = seenSheet.get(t.sheet);
+      if (!seen) seenSheet.set(t.sheet, seen = new Set());
+      if (!seen.has(k)) { seen.add(k); c.codes++; c.photos[p]++; if (isLocated(t)) c.located++ }
+      if (!seenAll.has(k)) { seenAll.add(k); all.codes++; all.photos[p]++; if (isLocated(t)) all.located++ }
+      if (!seenSys.has(k)) {
+        seenSys.add(k);
+        const d = decode(t, kks), sys = d ? d.sys : '';
+        let s = bySys.get(sys);
+        if (!s) bySys.set(sys, s = {codes: 0, verified: 0, located: 0, photos: pcs()});
+        s.codes++; s.photos[p]++;
+        if (isLocated(t)) s.located++;
+        if (checkedCodes.has(k)) s.verified++;
+      }
+    }
+    const sheetName = new Map((sheets || []).map(s => [s.id, typeof s.name === 'string' ? s.name : '']));
+    return {
+      total: all,
+      sheets: [...bySheet].map(([id, c]) => ({...c, id, name: sheetName.has(id) ? sheetName.get(id) : id})),
+      systems: [...bySys.keys()].sort(cmp).map(k => ({sys: k, sys_name: k ? name(kks, 'systems', k) : '', ...bySys.get(k)})),
+    };
+  }
+
   // ---- the valve type (a port of core model.drawnValveType / valveTypeOf and tagView's valve_type) ----
   const VALVE_KEY = 'Valve type';   // the equipment custom field ({k, v}) a confirmed or corrected type is kept in
   const CUSTOM_MAX = 100;           // custom fields per equipment (PROTOCOL-v2: `custom` is a list of at most 100)
@@ -166,5 +241,5 @@ const KSys = (() => {
     return c;
   }
 
-  return {decode, photoCover, photoCovers, systemsView, valveType, withValveType, VALVE_KEY};
+  return {decode, photoCover, photoCovers, systemsView, located, pct, coverageView, valveType, withValveType, VALVE_KEY};
 })();
