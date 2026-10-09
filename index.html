@@ -55,6 +55,24 @@ body.cover #layer .hs:not(.pendmark){outline:2px solid var(--pc);background:colo
 #coverlegend{display:none;position:absolute;left:8px;bottom:8px;z-index:5;background:var(--panel,#1c2730);color:inherit;padding:4px 8px;border-radius:6px;font-size:12px}
 body.cover #coverlegend{display:block}
 #coverlegend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;vertical-align:-1px;background:var(--pc)}
+/* tags are buttons: out of the tab order except while selecting tags */
+button.hs{border:0;padding:0;margin:0;font:inherit;color:inherit;-webkit-appearance:none;appearance:none}
+/* selected for "… for all": a yellow ring in a black one, whatever colouring is on */
+body #layer .hs.picked:not(.pendmark){outline:3px solid #ffd400;outline-offset:1px;box-shadow:0 0 0 6px rgba(0,0,0,.85)}
+#layer .hs:focus-visible{outline:3px solid #fff;outline-offset:3px}
+#viewer.selecting{cursor:crosshair}
+#selbox{position:absolute;outline:2px dashed #1e78e6;background:rgba(30,120,230,.15);pointer-events:none}
+#pickbar{position:absolute;left:8px;right:66px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:22;display:none;gap:6px;align-items:center;flex-wrap:wrap;background:var(--chrome2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+#pickbar.open{display:flex}
+body.picking #toast{bottom:84px}
+#pickCount{font-weight:650;margin-right:4px;white-space:nowrap}
+#pickbar .hint{flex:1;min-width:0;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+dialog.multi{background:var(--chrome2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:14px 16px;width:min(460px,94vw);max-height:86vh}
+dialog.multi::backdrop{background:rgba(0,0,0,.6)}
+dialog.multi h2{font-size:16px;margin:0 0 4px}
+dialog.multi ul{list-style:none;padding:0;margin:8px 0;max-height:52vh;overflow:auto}
+dialog.multi li label{display:flex;gap:8px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--chrome3);cursor:pointer}
+dialog.multi .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
 #markbox{position:absolute;outline:2px dashed var(--accent);background:rgba(255,122,26,.18);pointer-events:none}
 #viewer.marking,#viewer.marking .hs{cursor:crosshair}
 .zoom button.on{border-color:var(--accent);color:var(--accent)}
@@ -158,7 +176,11 @@ dt{color:var(--muted)} dd{margin:0}
 </header>
 <main>
   <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"></div><canvas id="sharp"></canvas><div id="stage2"><div id="layer"></div></div></div>
-  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button><button id="zdark" title="Dark drawings" aria-label="Dark drawings" aria-pressed="false">◐</button></div>
+  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button><button id="zdark" title="Dark drawings" aria-label="Dark drawings" aria-pressed="false">◐</button><button id="zpick" title="Select tags: one photo, place or note for several" aria-label="Select tags" aria-pressed="false">☑</button></div>
+  <div id="pickbar" role="region" aria-label="Selected tags"><span id="pickCount" aria-live="polite">0 selected</span>
+    <button type="button" class="ghost" id="pickList">List</button><span class="hint">Click tags or drag a box</span>
+    <button type="button" class="ghost" id="pickPhoto">Photo for all…</button><button type="button" class="ghost" id="pickPlace">Place for all…</button>
+    <button type="button" class="ghost" id="pickNote">Note for all…</button><button type="button" class="primary" id="pickDone">Done</button></div>
   <div id="coverlegend" role="note">Photos:<i class="sw p-both"></i>both<i class="sw p-equipment"></i>equipment only<i class="sw p-plate"></i>tag plate only<i class="sw p-none"></i>none</div>
   <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
   <div id="toast"></div>

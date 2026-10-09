@@ -103,7 +103,11 @@ K.idb = (() => {
 })();
 
 K.onChange = fn => K.listeners.push(fn);
-K.emit = async () => { K.outbox = (await K.idb.all()).filter(i => i.user === K.me?.user.id); K.renderStatus(); K.listeners.forEach(f => f()) };
+// K.outbox: one item per code, as the pages show them (a queued submit-many stands for one submission per code)
+K.emit = async () => {
+  K.outbox = (await K.idb.all()).filter(i => i.user === K.me?.user.id).flatMap(i => !i.many ? [i]
+    : i.kks.map((k, n) => ({client_id: i.client_id + '-' + n, kind: i.kind, payload: {...i.payload, kks: k}, ...(i.note ? {note: i.note} : {})})));
+  K.renderStatus(); K.listeners.forEach(f => f()) };
 
 // ---------- overlay screens (login, setup, password link, offline lock) ----------
 K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730);color:var(--ink,#e9eef2);display:flex;align-items:center;justify-content:center;font:14px/1.45 system-ui,sans-serif;padding:16px}
@@ -385,6 +389,19 @@ K.submit = async (kind, payload, note, cid) => {
     return {status: 'queued'};
   }
 };
+// One photo, or one change to the equipment fields ({changes} or {append}), for several codes: core api.submitMany
+// makes an ordinary submission per code. The client_id is a prefix (code i goes as "<prefix>-<i>"), so a retry from the
+// outbox duplicates nothing. -> {results: [{status, …} per code]}; offline it is queued like K.submit
+// ({status: 'queued'}).
+K.submitMany = async (kind, kks, payload, note) => {
+  const item = {client_id: K.uid(), kind, kks, payload, ...(note ? {note} : {})};
+  try { const r = await K.api('/api/submit-many', item); K.setOnline(true); return r }
+  catch (e) {
+    if (!K.isNetErr(e)) throw e;
+    await K.idb.queue({...item, many: true, user: K.me.user.id, ts: Date.now()}); K.setOnline(false); await K.emit(); K.flushSoon();
+    return {status: 'queued'};
+  }
+};
 let flushing = false, flushAgain = false, flushTimer = null;
 K.flushSoon = (ms = 20000) => { clearTimeout(flushTimer); flushTimer = setTimeout(K.flush, ms) };
 K.flush = async () => {
@@ -399,8 +416,15 @@ K.flush = async () => {
       if (it.raw) { if ((it.tries || 0) >= 3) continue; break }
       if (it.refused) continue;   // a photo the server refused waits for the person (Try again or Discard): it is never dropped
       try {
-        const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload, ...(it.note ? {note: it.note} : {})});
-        (it.fresh ? photos : res)[r.status] = ((it.fresh ? photos : res)[r.status] || 0) + 1; await K.idb.unqueue(it.client_id); K.setOnline(true);
+        const note = it.note ? {note: it.note} : {};
+        if (it.many) {   // a submit-many: a status per code
+          const r = await K.api('/api/submit-many', {client_id: it.client_id, kind: it.kind, kks: it.kks, payload: it.payload, ...note});
+          for (const x of r.results || []) res[x.status] = (res[x.status] || 0) + 1;
+        } else {
+          const r = await K.api('/api/submit', {client_id: it.client_id, kind: it.kind, payload: it.payload, ...note});
+          (it.fresh ? photos : res)[r.status] = ((it.fresh ? photos : res)[r.status] || 0) + 1;
+        }
+        await K.idb.unqueue(it.client_id); K.setOnline(true);
       } catch (e) {
         if (K.isNetErr(e)) { K.setOnline(false); break }
         if (e.status === 401) { location.reload(); return }
@@ -553,7 +577,8 @@ K.renderStatus = () => {
 
 // Human summary of a submission payload.
 K.describe = (kind, p) => ({
-  equipment: () => Object.entries(p.changes).map(([f, v]) => `${f} → ${f === 'custom' ? v.map(c => c.k + ': ' + c.v).join('; ') || '(none)' : v || '(empty)'}`).join(' · '),
+  equipment: () => [...Object.entries(p.changes || {}).map(([f, v]) => `${f} → ${f === 'custom' ? v.map(c => c.k + ': ' + c.v).join('; ') || '(none)' : v || '(empty)'}`),
+                     ...Object.entries(p.append || {}).map(([f, v]) => `${f} + ${v}`)].join(' · '),
   review: () => !p.data ? `tag ${p.tag_id}: clear the review decision` : p.data.status === 'rejected' ? `tag ${p.tag_id}: not a tag` : `tag ${p.tag_id}: confirm as ${p.data.kks}${p.data.suffix || ''}${p.data.isa ? ' (' + p.data.isa + ')' : ''}`,
   link: () => `${p.on === false ? 'unlink' : 'link'} ${p.kks} ${p.on === false ? 'from' : 'to'} procedure ${p.proc} step ${p.step}`,
   photo: () => `new ${String(p.caption || '').startsWith('Tag plate') ? 'tag plate photo' : 'photo'} for ${p.kks}${p.caption ? ': ' + p.caption : ''}${p.floor ? ` (floor ${p.floor})` : ''}`,

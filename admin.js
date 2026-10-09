@@ -41,13 +41,18 @@ async function init(){
   $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`;
   const t=location.hash.slice(1); show(TABS.some(x=>x[0]===t&&x[2]())?t:isAdmin()?'queue':'mine');
 }
+// Each show() gets a number; a view draws into #main only if no later show() started meanwhile (a sync and a filter
+// change, or two tabs clicked quickly: the older answer arriving last used to replace the newer page)
+let SHOW_GEN=0;
+const mainFor=g=>g===SHOW_GEN?$('#main'):document.createElement('div');
 async function show(t){
+  const g=++SHOW_GEN;
   if(t!==tab) SHOW_HIDDEN=false;   // (hidden items shown again: on the page where that was asked only)
   tab=t; history.replaceState(null,'','#'+t);
   put($('#tabs'),TABS.filter(x=>x[2]()).map(([id,label])=>h('button',{class:'btn'+(id===t?' on':''),onclick:()=>show(id)},label,
     id==='queue'?h('span',{class:'count',id:'qn',style:'display:none'}):null,id==='account'&&ME.transfer_offer?h('span',{class:'count'},'!'):null)));
-  if(!K.online&&t!=='account'){ put($('#main'),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
-  try{ await VIEWS[t]() }catch(e){ if(e.status===401) return location.reload(); put($('#main'),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
+  if(!K.online&&t!=='account'){ put(mainFor(g),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
+  try{ await VIEWS[t](g) }catch(e){ if(e.status===401) return location.reload(); put(mainFor(g),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
 }
 K.onChange(why=>{ if(why==='synced') show(tab) });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
@@ -86,13 +91,13 @@ const badge=s=>{ const st=String((s.conflicts?.length?'conflict':s.status)??'');
 
 // ---------- views ----------
 const VIEWS={
-  async queue(){
+  async queue(g){
     if(!SHEETS.length) SHEETS=await K.api('/data/sheets.json').catch(()=>[]);
     // grouped by code (core api groupSubmissions): per code, each kind of change is its own group, so an equipment photo
     // and a tag plate photo never compete; Pick and votes only where several of the same kind wait ("pick")
     const R=await K.api('/api/submissions?status=open&group=code'), groups=R.groups||[];
     const qn=$('#qn'); if(qn){qn.textContent=R.submissions.length; qn.style.display=R.submissions.length?'':'none'}
-    if(!groups.length){ put($('#main'),h('p',{class:'sub'},'Nothing waiting for approval.')); return }
+    if(!groups.length){ put(mainFor(g),h('p',{class:'sub'},'Nothing waiting for approval.')); return }
     const out=[h('p',{class:'sub'},'Grouped by code, oldest first. Approving applies the change and records it in History, where it can be reverted.')];
     const button=(cls,label,onclick)=>h('button',{class:cls,onclick},label);
     const oldest=g=>Math.min(...g.kinds.flatMap(k=>k.items.map(s=>s.created||0)));
@@ -120,9 +125,9 @@ const VIEWS={
             button('danger','Reject',()=>decide(s.id,'reject'))))));
       })));
     }
-    put($('#main'),out);
+    put(mainFor(g),out);
   },
-  async mine(){
+  async mine(g){
     // filtered by the server (/api/submissions: status, kind, field, mine), grouped here by code
     const F=MINE_F, q=new URLSearchParams({mine:'1',status:F.status,limit:'300'});
     const kf=MINE_KINDS.find(x=>x[0]===F.kind)||MINE_KINDS[0]; if(kf[2]) q.set('kind',kf[2]); if(kf[3]) q.set('field',kf[3]);
@@ -158,9 +163,9 @@ const VIEWS={
           h('td',null,['pending','conflict'].includes(s.status)?h('button',{class:'ghost',onclick:()=>withdraw(s.id)},'Withdraw'):null))))));
     }
     if(!mine.length) out.push(h('p',{class:'sub'},F.status==='all'&&F.kind==='all'?'You haven\'t submitted anything yet.':'Nothing matches these filters.'));
-    put($('#main'),out);
+    put(mainFor(g),out);
   },
-  async users(){
+  async users(g){
     // removed people an admin hid (POST /api/hidden) stay out of the list unless shown
     const all=(await K.api('/api/users?show_hidden=1')).users, nHidden=all.filter(u=>u.hidden).length, U=all.filter(u=>SHOW_HIDDEN||!u.hidden);
     const gone=u=>!u.active&&u.id!==ME.user.id&&u.person;
@@ -183,7 +188,7 @@ const VIEWS={
     const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); createUser(F) }},h('input',{name:'full_name',placeholder:'Full name',required:true,maxlength:80,style:'min-width:200px'}),
       h('input',{name:'position',placeholder:'Position (job title)',required:true,maxlength:80}),h('input',{name:'username',placeholder:'username',required:true,maxlength:40}),
       h('select',{name:'role'},h('option',{value:'user'},'user'),isManager()?h('option',{value:'admin'},'admin'):null),h('button',{class:'primary'},'Create and get link'));
-    put($('#main'),h('div',{class:'card server-only'},h('h3',null,'Add an account'),F,
+    put(mainFor(g),h('div',{class:'card server-only'},h('h3',null,'Add an account'),F,
         h('div',{class:'sub'},'There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.'),h('div',{id:'newlink'})),
       hiddenBar(true,nHidden),   // (whether a person still has a device is the server's to tell: Clear removed asks it)
       table(head('Name','Username','Role','Status',''),U.map(u=>h('tr',{class:u.hidden?'hidden-row':null},
@@ -195,7 +200,7 @@ const VIEWS={
         h('td',{class:'row'},actions(u))))),
       h('p',{class:'sub'},`Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).`));
   },
-  async devices(){
+  async devices(g){
     const D=await K.api('/api/devices'+(SHOW_HIDDEN?'?show_hidden=1':'')), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
     const devRow=(d,mine)=>h('tr',null,h('td',null,d.label||'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:null,mine?null:h('div',{class:'sub'},d.username)),
       h('td',{class:'mono sub'},`${d.device.slice(0,12)}…`),h('td',null,d.revoked?h('span',{class:'del'},'removed'):'active'),
@@ -237,10 +242,10 @@ const VIEWS={
         h('div',{class:'sub'},'Someone set up the app on their laptop and gave you a ',h('span',{class:'mono'},'.kksjoin'),' file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.'),
         h('label',{class:'primary',style:'display:inline-block;margin-top:8px;cursor:pointer'},'Import join request',h('input',{type:'file',accept:'.kksjoin,.json',hidden:true,onchange:e=>importJoin(e.currentTarget)}))),
       h('div',{class:'card',id:'allDevices'},h('h3',null,'All devices'),hiddenBar(D.all.some(d=>d.revoked&&!d.hidden),D.hidden||0),table(D.all.map(d=>devRow(d,false)))));
-    put($('#main'),out);
+    put(mainFor(g),out);
     if(isAdmin()) pollLobby();
   },
-  async history(before){
+  async history(g,before){
     const R=(await K.api('/api/revisions'+(before?`?before=${before}`:''))).revisions;
     const str=v=>String(v??''), add=t=>h('span',{class:'add'},t), del=t=>h('span',{class:'del'},t);
     const summary=r=>{ const a=r.after?JSON.parse(r.after):null, b=r.before?JSON.parse(r.before):null;
@@ -252,15 +257,15 @@ const VIEWS={
       if(r.entity==='equipment'){ const keys=[...new Set([...Object.keys(a||{}),...Object.keys(b||{})])].filter(k=>JSON.stringify((a||{})[k])!==JSON.stringify((b||{})[k]));
         return [`${str(r.key)}: `,keys.map((k,i)=>[i?' · ':'',`${k} `,val((b||{})[k]),' → ',val((a||{})[k])])] }
       return [`${str(r.entity)} ${str(r.key)}: `,val(b),' → ',val(a)] };
-    put($('#main'),h('p',{class:'sub'},'Every applied change, newest first. ',h('b',null,'Revert'),' undoes one change. ',h('b',null,'Restore to here'),' puts all data (notes, locations, photos, links, reviews) back to how it was right after that change. Both are new entries themselves, so they can be undone too. Accounts are not affected.'),
+    put(mainFor(g),h('p',{class:'sub'},'Every applied change, newest first. ',h('b',null,'Revert'),' undoes one change. ',h('b',null,'Restore to here'),' puts all data (notes, locations, photos, links, reviews) back to how it was right after that change. Both are new entries themselves, so they can be undone too. Accounts are not affected.'),
       table(head('Rev','When','By','Change',''),R.map(r=>h('tr',null,h('td',{class:'mono'},r.rev),h('td',{class:'sub'},when(r.ts)),h('td',null,r.full_name||r.username||'server console'),
         h('td',null,summary(r),r.note&&!['user','sheet'].includes(r.entity)?[' ',h('span',{class:'sub'},`(${r.note})`)]:null),
         h('td',{class:'row'},!['user','sheet'].includes(r.entity)?[h('button',{class:'ghost',onclick:()=>revert(String(r.hid))},'Revert'),h('button',{class:'ghost',onclick:()=>restoreTo(String(r.hid),r.rev)},'Restore to here')]:null)))),
-      R.length?h('div',{class:'row',style:'margin-top:10px'},R.length===100?h('button',{class:'ghost',onclick:()=>VIEWS.history(R[R.length-1].rev)},'Older →'):null,
+      R.length?h('div',{class:'row',style:'margin-top:10px'},R.length===100?h('button',{class:'ghost',onclick:()=>VIEWS.history(++SHOW_GEN,R[R.length-1].rev)},'Older →'):null,
                                                           isAdmin()?h('button',{class:'danger',onclick:()=>restoreTo(0)},'Restore to before any logged change'):null)
               :h('p',{class:'sub'},'No changes yet.'));
   },
-  async drawings(){
+  async drawings(g){
     const D=await K.api('/api/sheets'), imp=D.importer, job=D.job;
     const busy=job?.state==='running', ids=new Set(D.sheets.map(s=>s.id)), pd=D.plant_data||{};
     const rotations=(props,auto)=>h('select',props,h('option',{value:'auto'},auto),['0','90','180','270'].map(v=>h('option',{value:v},v+'°')));
@@ -277,7 +282,7 @@ const VIEWS={
           h('button',{class:'primary',disabled:busy},'Import')),
         h('div',{class:'sub',style:'margin-top:6px'},'Vector PDFs plotted from AutoCAD only (scans won\'t work); page 1 is read. Takes about a minute. The tag list is backed up first and put back if the import fails.'));
       card.append(F) }
-    put($('#main'),h('div',{class:'sub',style:'margin-bottom:8px'},`${pd.version?`Plant data version ${pd.version}`:'No plant data published yet'}: every import or removal publishes a new version, and every device gets it by sync.`),
+    put(mainFor(g),h('div',{class:'sub',style:'margin-bottom:8px'},`${pd.version?`Plant data version ${pd.version}`:'No plant data published yet'}: every import or removal publishes a new version, and every device gets it by sync.`),
       card,h('div',{id:'job'}),
       table(head('Drawing','Id','Tags',''),D.sheets.map(s=>{
         const rot=s.has_source&&imp.available?rotations({id:'rot-'+s.id},'auto'):null;
@@ -290,19 +295,19 @@ const VIEWS={
     window._sheetIds=ids; renderJob(job);
     if(busy) pollJob();
   },
-  async board(){
+  async board(g){
     // every member sees names and numbers only (core api leaderboard: no usernames, roles or IDs)
     const B=await K.api('/api/leaderboard'), kinds=B.kinds||{}, P=B.people||[];
     const pct=x=>x==null?'–':Math.round(x*100)+' %';
     const what=p=>Object.entries(p.kinds||{}).filter(([,v])=>v.total).map(([k,v])=>h('div',null,`${kinds[k]||k}: ${v.approved} approved`+(v.rejected?`, ${v.rejected} rejected`:'')+(v.pending?`, ${v.pending} waiting`:'')));
-    put($('#main'),h('p',{class:'sub'},'Everyone who contributed, by approved contributions. Approved changes include an admin\'s own (applied without review). Ratio: approved per rejected.'),
+    put(mainFor(g),h('p',{class:'sub'},'Everyone who contributed, by approved contributions. Approved changes include an admin\'s own (applied without review). Ratio: approved per rejected.'),
       P.length?table(head('#','Name','Approved','Rejected','Ratio','Approval rate','Waiting','What','Last contribution'),P.map(p=>h('tr',{'data-key':p.key},
         h('td',{class:'mono'},p.rank),h('td',null,p.name),h('td',null,h('b',null,p.approved)),h('td',null,p.rejected),
         h('td',null,p.ratio==null?(p.approved?'no rejections':'–'):p.ratio.toFixed(1)),h('td',null,pct(p.approval_rate)),h('td',null,p.pending),
         h('td',{class:'sub'},what(p)),h('td',{class:'sub'},p.last?`${when(p.last)} (${K.ago(p.last)})`:'')))):h('p',{class:'sub'},'No contributions yet.'));
   },
-  async updates(){ put($('#main'),h('div',{id:'upd'},h('p',{class:'sub'},'Checking…'))); await renderUpdate() },
-  async account(){
+  async updates(g){ put(mainFor(g),h('div',{id:'upd'},h('p',{class:'sub'},'Checking…'))); await renderUpdate() },
+  async account(g){
     if(K.online){ try{ ME=await K.api('/api/me') }catch(e){} }
     const sw=!!navigator.serviceWorker?.controller, secure=window.isSecureContext;
     const lease=await K.idb.get('me');
@@ -334,7 +339,7 @@ const VIEWS={
         h('tr',null,h('td',null,'Offline access until'),h('td',null,(lease?new Date(lease.lease_until).toLocaleString():'-')+' ',h('span',{class:'sub'},`(renewed each time you connect; ${ME.offline_days} days)`))),
         h('tr',null,h('td',null,'Queued changes'),h('td',null,K.outbox.length))),
       h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'ghost',onclick:()=>K.flush()},'Sync now'),h('button',{class:'danger',onclick:()=>K.logout()},'Log out and remove plant data from this device'))));
-    put($('#main'),out);
+    put(mainFor(g),out);
   },
 };
 

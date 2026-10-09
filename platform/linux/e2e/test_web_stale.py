@@ -91,7 +91,9 @@ class Stale(unittest.TestCase):
                     return rs.every(r => { const w = r.active || r.waiting || r.installing;
                                            return !w || new URL(w.scriptURL).pathname === '/sw.js' });
                 }""")
-                until(page, "async () => (await caches.keys()).every(k => k === 'kks-shell-v11' || k === 'kks-data-v2')")
+                # the cache names sw.js uses now (read from it: a version bump there must not break this test)
+                names = re.search(r"const SHELL = '([^']+)', DATA = '([^']+)'", open(os.path.join(REPO, 'sw.js')).read()).groups()
+                until(page, "async () => (await caches.keys()).every(k => k === '%s' || k === '%s')" % names)
             browser.close()
             return sw
 

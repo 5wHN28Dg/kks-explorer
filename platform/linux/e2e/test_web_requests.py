@@ -370,6 +370,17 @@ class WebRequests(unittest.TestCase):
         self.assertEqual(page.locator(f'#main .card.mine[data-code="{code}"]').count(), 0)
         pick('all', 'plate_photo')
         self.assertIn('new tag plate photo', page.text_content('#main'))
+        # two renders overlapping: the floor filter's answer is slow, the person picks Tag plate photos meanwhile;
+        # the older answer, arriving last, must not replace the newer page (before: the floor list came back)
+        page.evaluate("""() => { const api = K.api; let once = true;
+            K.api = async (u, ...a) => { if (once && String(u).includes('field=floor')) { once = false;
+                await new Promise(r => setTimeout(r, 1500)) } return api(u, ...a) } }""")
+        page.select_option('#mineFilters select[name=kind]', 'floor')
+        page.wait_for_timeout(100)
+        page.select_option('#mineFilters select[name=kind]', 'plate_photo')
+        page.wait_for_timeout(2500)
+        self.assertEqual(page.get_attribute('#mineFilters', 'data-f'), 'all|plate_photo')
+        self.assertIn('new tag plate photo', page.text_content('#main'))
         browser.close()
         self.assertEqual(errors, [], name)
 

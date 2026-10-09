@@ -551,6 +551,29 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
   if w.floorKnown(kks): go("")
   else: w.askFloor(kks, go)
 
+proc takePhoto*(w: Win, send: proc (dataUrl, caption, note: string)) =
+  ## a picture from a file, marked up in the editor, compressed to JPEG XL: `send` gets its data URL (a photo of
+  ## several codes at once, multi.nim; one code's photos go through the queue above)
+  # tests: KKS_PHOTO_FILE names the picture instead of the file chooser (as KKS_CAMERA_FILE for the camera)
+  let pick = proc (title: string, fn: proc (path: string)) =
+    if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
+  pick("Choose a photo", proc (path: string) =
+    if path.len == 0: return
+    let (iw, ih, px) = loadImage(path)
+    if iw == 0:
+      w.toast("That file could not be read as a picture.")
+      return
+    w.annotate(px, iw, ih, proc (rgb: seq[byte], ow, oh: int, caption, note: string) =
+      w.toast("Compressing…")
+      idle(proc () =
+        var jxlData: string
+        try: jxlData = encodeLossy(rgb, ow, oh, 3, 1.9, 9)
+        except JxlError as e:
+          w.toast(e.msg)
+          return
+        send("data:image/jxl;base64," & encode(jxlData), caption, note))))
+
+
 proc photoSection*(w: Win, kks: string): W =
   result = group("Photos")
   let g = result

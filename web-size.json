@@ -66,8 +66,8 @@
  "shell": {
   "files": {
    "admin.html": 4651,
-   "admin.js": 53922,
-   "common.js": 66875,
+   "admin.js": 54274,
+   "common.js": 68419,
    "course-bridge.js": 3846,
    "course-figure.js": 18968,
    "course.css": 15526,
@@ -77,8 +77,8 @@
    "icon-192.png": 709,
    "icon-512.png": 3047,
    "icon.svg": 303,
-   "index.html": 15804,
-   "index.js": 61181,
+   "index.html": 18189,
+   "index.js": 75166,
    "kks-wasm-worker.js": 479,
    "kks-wasm.js": 3590,
    "learning.html": 1792,
@@ -91,6 +91,6 @@
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1063071
+  "total": 1081337
  }
 }
