@@ -16,16 +16,14 @@ proc pump(a, b: Session) =
     inc guard
     if guard > 10000: raise newException(SyncError, "no progress")
     var moved = false
-    while a.outbox.len > 0:
-      let m = a.outbox[0]
-      a.outbox.delete(0)
-      for x in db.feed(frame(m)): b.receive(x)
-      moved = true
-    while b.outbox.len > 0:
-      let m = b.outbox[0]
-      b.outbox.delete(0)
-      for x in da.feed(frame(m)): a.receive(x)
-      moved = true
+    while a.sending:
+      for m in a.take():
+        for x in db.feed(frame(m)): b.receive(x)
+        moved = true
+    while b.sending:
+      for m in b.take():
+        for x in da.feed(frame(m)): a.receive(x)
+        moved = true
     if not moved: break
 
 proc sync(a, b: Node, adopt = ""): (Stats, Stats) =

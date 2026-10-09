@@ -62,9 +62,15 @@ UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 # issue #34: the server and the drawing importer it starts (which also has its own address-space limit and timeout,
-# import_memory_mb / import_timeout_s) together; a large sheet's import peaks near 1.8 GB. ProtectSystem/ProtectHome
-# are not set: a user unit can't apply them without user namespaces, and here they were silently ignored.
-MemoryMax=8G
+# import_memory_mb / import_timeout_s) together; a large sheet's import peaks near 1.8 GB, the server itself stays
+# in the low hundreds of MB (2026-10-09). A server that runs away anyway is killed at the cap and restarted
+# (Restart=on-failure) instead of crowding the desktop or a small VM: no swap for it, and never MemoryHigh (throttling
+# took the desktop down here). An importer killed at the cap fails only its import (OOMPolicy=continue).
+# ProtectSystem/ProtectHome are not set: a user unit can't apply them without user namespaces, and here they were
+# silently ignored.
+MemoryMax=3G
+MemorySwapMax=0
+OOMPolicy=continue
 LimitCORE=0
 
 [Install]

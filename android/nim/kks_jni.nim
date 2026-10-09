@@ -310,8 +310,8 @@ proc kks_sync_feed(sid: int64, data: ptr UncheckedArray[byte], n: cint, outlen: 
     except CatchableError as e:
       x.error = e.msg
       x.s.outbox.add errorMsg(e.msg)
-    for m in x.s.outbox: outp.add frame(m)
-    x.s.outbox.setLen(0)
+    while x.s.sending:   # the app sends what comes out at once: everything, as before blobs were made in `take`
+      for m in x.s.take(): outp.add frame(m)
   cbytes(outp, outlen)
 
 proc kks_sync_info(sid: int64, outlen: ptr cint): ptr UncheckedArray[byte] {.exportc, cdecl.} =

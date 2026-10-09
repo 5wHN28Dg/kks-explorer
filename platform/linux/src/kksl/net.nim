@@ -56,9 +56,11 @@ proc drive(sock: Stream, c: TlsConn, s: Session, deadline = 0'i64) {.async.} =
   var d: Deframer
   try:
     while true:
-      for m in s.outbox: c.send(frame(m))
-      s.outbox.setLen(0)
+      # a budget of blobs at a time, each sent before the next is read from the store: the whole want at once held
+      # a plant's drawings and photos several times over per device (2026-10-09)
+      for m in s.take(): c.send(frame(m))
       await sock.flush(c)
+      if s.sending: continue
       if s.done: break
       let plain = c.recv()
       if plain.len == 0:

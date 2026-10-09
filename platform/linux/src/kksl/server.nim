@@ -1237,6 +1237,13 @@ proc serve*(s: Server): Future[void] =
       try: discard s.n.maybeReport("server", version, os, "", nowS() * 1000)
       except CatchableError: discard
   asyncCheck reportLoop()
+  when defined(useMalloc) and defined(linux):   # kks_server.nims: hand freed memory back to the system
+    proc malloc_trim(pad: csize_t): cint {.importc, header: "<malloc.h>".}
+    proc trimLoop() {.async.} =
+      while true:
+        await sleepAsync(60_000)
+        discard malloc_trim(0)
+    asyncCheck trimLoop()
   s.api.relayChanged = proc () =
     s.internet.restart()
     s.internetPrev.restart()

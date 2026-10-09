@@ -92,7 +92,9 @@ proc sendFrame(w: Ws, opcode: int, payload: string) {.async.} =
   var mask: array[4, byte]
   if not urandom(mask): raise newException(WsError, "no randomness")
   for b in mask: f.add char(b)
-  for i in 0 ..< n: f.add char(uint8(payload[i]) xor mask[i mod 4])
+  let start = f.len
+  f.setLen(start + n)
+  for i in 0 ..< n: f[start + i] = char(uint8(payload[i]) xor mask[i mod 4])
   await w.rawSend(f)
 
 proc sendText*(w: Ws, s: string): Future[void] = w.sendFrame(1, s)

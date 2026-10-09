@@ -154,3 +154,37 @@ suite "sync over real TCP":
     for s in socks: s.close()
     waitFor sleepAsync(300)
     check capped.open == 0
+
+suite "memory of a sync that sends many blobs (2026-10-09)":
+  # A server answering a device that wants a plant's drawings and photos put every wanted blob in the outbox at once
+  # (raw, base64, framed, encrypted: about ten times the bytes), and Nim's allocator keeps what it once took: the
+  # deployed server held 7.4 GB. Blobs now go a budget at a time; what the sync takes grows no more with the data.
+  # Both nodes keep their blobs in SQLite (malloc), so the Nim heap measured here is the sync's own buffers.
+  test "the Nim heap a sync takes does not grow with the bytes it sends":
+    let rootKey = P.p256Generate()
+    let kS = P.p256Generate()
+    let dir = getTempDir() / "kks-net-memory"
+    removeDir(dir)
+    createDir(dir)
+    var srv = newNode(P, openDbStore(P, dir / "server.db", P.randomBytes(32)), kS)
+    let boss = P.newPersonId()
+    discard srv.append("genesis", P.genesisBody(rootKey, "Test plant", srv.device, boss, "boss", "The Manager"), nowMs())
+    srv.adopt(keyString(rootKey.pub))
+    # the plant data version written by hand, one blob at a time: the Nim heap stays small before the sync
+    var listed = newArr(@[newArr(@[newStr("sheets.json"), newStr(srv.keepBlob("[]")), newInt(2)])])
+    const nBlobs = 48
+    for i in 0 ..< nBlobs:
+      listed.elems.add newArr(@[newStr("sheets/s" & $i & ".jxl"), newStr(srv.keepBlob(P.randomBytes(1024 * 1024).toStr)),
+                                newInt(1024 * 1024)])
+    discard srv.append("setting", newObj(@[("key", newStr("plant_data")),
+                                           ("value", newObj(@[("version", newInt(1)), ("files", listed)]))]), nowMs())
+    let l = listen(srv, newIdentity(kS), 0, "127.0.0.1")
+    let before = getTotalMem()
+    let kD = P.p256Generate()
+    discard srv.append("device_cert", deviceCertBody(P.peerId(kD), boss, "phone"), nowMs())
+    var dev = newNode(P, openDbStore(P, dir / "device.db", P.randomBytes(32)), kD)
+    let st = waitFor dev.syncWith(newIdentity(kD), "127.0.0.1", l.port, srv.device, adoptRoot = srv.root)
+    check st.blobsReceived == nBlobs + 1
+    let grown = (getTotalMem() - before) div (1024 * 1024)
+    echo "  ", nBlobs, " MB of blobs: the Nim heap grew by ", grown, " MB"
+    check grown < nBlobs div 2   # was ~10 times the bytes: the whole want held several times over
