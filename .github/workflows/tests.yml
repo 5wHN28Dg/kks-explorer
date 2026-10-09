@@ -222,7 +222,7 @@ jobs:
       - name: Signing in on this machine (test_web_local_login)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_local_login.py -v -k ${{ matrix.engine }}
-      - name: Stale caches and service workers (test_web_stale)
+      - name: Stale caches and service workers (test_web_stale; the upgrade cases need an old build and skip here)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_stale.py -v -k ${{ matrix.engine }} -k test_logout
       - name: Views built as elements, never markup (test_common_sinks)
