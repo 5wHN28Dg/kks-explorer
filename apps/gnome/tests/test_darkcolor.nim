@@ -106,5 +106,7 @@ suite "markers on dark":
     for ph in ["both", "equipment", "plate", "none"]:
       let c = markerColor("auto", ph, true, true)
       check contrast(c, bg) >= 3.0
+    check contrast(linkColor(true), bg) >= 3.0     # the off-page connectors' circles
     # light mode unchanged
     check markerColor("auto", "", false, false) == (0.1, 0.4, 0.9)
+    check linkColor(false) == (0.55, 0.2, 0.85)

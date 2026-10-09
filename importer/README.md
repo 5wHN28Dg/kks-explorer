@@ -11,8 +11,32 @@ history) and **read exactly what that importer read**. That was the gate of deci
     kks-import DRAWING.pdf "Display name" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace]
                [--data-dir plant-data] [--glyphs importer/fontlib.kgl] [--effort 7] [--legend auto|hrsg|none]
 
-The last output line is `RESULT {json}`. Formats: docs/PATHSTORE.md (the files), docs/GLYPHLIB.md (the glyph
+The last output line is `RESULT {json}` (with `links`: the connectors found). Formats: docs/PATHSTORE.md (the files), docs/GLYPHLIB.md (the glyph
 library).
+
+## Off-page connectors (`src/kksi/connectors.nim`, 2026-10-07)
+
+The HRSG package sheets mark a line that continues on another drawing with a circle (about 21 pt) holding a code:
+`C` drain to the trench, `A` pressure discharge, `D` process line between sheets, `S` sampling, `V` vent. The importer
+writes them to the sheet's `links` in sheets.json (docs/PATHSTORE.md), in both modes; tags are untouched.
+
+- **Circles** from the drawing's vectors (the page the tags are read on, without annotations): one path with Bézier
+  curves (4+ items), or a polyline of 12+ segments with a width/height ratio of 0.8–1.25; 10–36 pt across.
+- **The label:** the stroke-only paths of at most 14 pt inside the circle (1 pt in from its box), merged into one blob
+  per character while their boxes touch (within 0.35 pt); blobs smaller than 0.15 × the circle are ignored. A circle
+  with 1–3 blobs is a candidate; a circle drawn twice counts once.
+- **Reading:** the label's box at 600 dpi, read with the tags' own `clean` / `splitChars` / `classify` and the same
+  glyph library (no new samples were needed). When the ink columns don't give one piece per character blob (bold
+  digits whose ink touches: an "A28" read as "A91"), the label is cut between the blobs' vector boxes instead, if
+  they lie side by side in that reading direction. Upright first, then turned clockwise, counter-clockwise and upside down;
+  the first reading that is a letter and 1–2 digits with as many characters as blobs wins (I/O in a digit place read
+  as 1/0, as in KKS codes). That filter drops the Block 1 sheets' numbered circles, the "90" / "R" marks and empty
+  circles.
+- **Tested:** `tests/test_connectors.nim`, a synthetic page with Hershey Simplex strokes (close to the drawings' SHX
+  font): codes upright and turned both ways, a bold label whose digits touch, the page itself turned, and circles
+  that are not connectors.
+- **Checked on the real sheets** (2026-10-07, local): see the commit and decision notes; every tag the same as the
+  previous importer on every sheet, in both modes.
 
 ## Valve types from the drawn symbols (`src/kksi/valves.nim`)
 

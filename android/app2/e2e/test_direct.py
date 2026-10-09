@@ -7,11 +7,12 @@ Needs a running emulator and .venv (the relay twin needs cryptography)."""
 import json, os, re, shutil, socket, subprocess, sys, tempfile, time, unittest
 sys.path.insert(0, os.path.dirname(__file__))
 import adbui as ui  # noqa: E402
+ARGS = sys.argv[1:3]   # read before test_app2 is imported: it takes (and deletes) the arguments as its own
 from test_app2 import Client, free_port  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-APK = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')
-SERVER = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkslinux/kks_server'
+APK = ARGS[0] if len(ARGS) > 0 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')
+SERVER = ARGS[1] if len(ARGS) > 1 else '/tmp/kkslinux/kks_server'
 del sys.argv[1:]
 PKG = 'io.github.walkdown'
 PY = os.path.join(REPO, '.venv/bin/python') if os.path.exists(os.path.join(REPO, '.venv/bin/python')) else 'python3'
@@ -54,8 +55,7 @@ class Direct(unittest.TestCase):
         subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)   # a newer test build (test_update's 9.9.9) blocks -r
         r = subprocess.run(ui.ADB + ['install', '-t', APK], capture_output=True, text=True)
         assert 'Success' in r.stdout, 'install failed: ' + r.stdout + r.stderr
-        ui.sh('pm', 'clear', PKG)
-        ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+        ui.fresh_app(PKG)
 
     def tearDown(self):
         ui.sh('am', 'force-stop', PKG)
