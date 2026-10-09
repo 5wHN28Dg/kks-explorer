@@ -32,10 +32,14 @@ proc setLinks*(w: Win) =
   for l in linksView(w.m, w.sheet).elems:
     boxes.add TagBox(id: s(l, "label"), x0: f(l, "x0"), y0: f(l, "y0"), x1: f(l, "x1"), y1: f(l, "y1"), label: linkName(l))
   w.v.links = boxes
+  w.v.linkSel = -1         # an index into the old list: a reload can reorder it (goTo sets it after this)
   gtk_widget_queue_draw(w.v.widget)
 
 proc goTo(w: Win, label: string, t: JNode) =
   let sheet = s(t, "sheet")
+  if not w.m.sheetById(sheet)[0]:     # a dialog left open while a new publish removed the sheet
+    w.toast("Connector " & label & ": that drawing is no longer in the app")
+    return
   if sheet != w.sheet: w.showSheet(sheet)
   else: adw_navigation_split_view_set_show_content(w.split, 1)
   let (x0, y0, x1, y1) = (f(t, "x0"), f(t, "y0"), f(t, "x1"), f(t, "y1"))

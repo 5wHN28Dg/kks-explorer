@@ -2,7 +2,7 @@
 ## plant-data files (sheets, tags, procedures, locations), the program's KKS tables, and the live state from the log.
 ## Pure logic, shared by every UI (GNOME, Android through views.nim, Windows). Tested in core/tests/test_model.nim.
 
-import std/[strutils, tables, sets, algorithm]
+import std/[strutils, tables, sets, algorithm, math]
 import json
 
 type
@@ -56,9 +56,20 @@ proc f(n: JNode, k: string, d = 0.0): float =
   let v = n.get(k)
   if v != nil and v.isNum: v.num else: d
 
-const MaxLinksPerSheet* = 500
+const
+  MaxLinksPerSheet* = 500
   ## sheets.json is published data but read as untrusted: a P&ID has tens of connectors, and every connector is
   ## matched against every other with its label (views.linksView), so a sheet keeps at most this many
+  MaxLinkLabel* = 16             ## a connector's code is a letter and a digit or two ("C16"); longer is not one
+  MaxLinkSide* = 100.0           ## points: the circles are 10-36 pt across
+
+proc linkBoxOk(b: array[4, float], scale: float): bool =
+  ## finite, ordered, at most MaxLinkSide across, and finite in points: a huge or reversed box would cover the whole
+  ## drawing (every click a connector) and an infinite one breaks the JSON and the view
+  let sc = if scale > 0: scale else: 2.0
+  for v in b:
+    if classify(v) in {fcNan, fcInf, fcNegInf} or classify(v / sc) in {fcNan, fcInf, fcNegInf}: return false
+  b[2] > b[0] and b[3] > b[1] and (b[2] - b[0]) / sc <= MaxLinkSide and (b[3] - b[1]) / sc <= MaxLinkSide
 
 proc parseSheets*(j: JNode): seq[SheetInfo] =
   for x in j.elems:
@@ -72,13 +83,13 @@ proc parseSheets*(j: JNode): seq[SheetInfo] =
       for l in ls.elems:
         if si.links.len >= MaxLinksPerSheet: break
         let b = if l.kind == jObj: l.get("bbox") else: nil
-        if l.kind != jObj or l.s("label").len == 0 or b == nil or b.kind != jArr or b.elems.len != 4: continue
+        if l.kind != jObj or l.s("label").len == 0 or l.s("label").len > MaxLinkLabel or b == nil or b.kind != jArr or b.elems.len != 4: continue
         var k = Link(label: l.s("label"), conf: l.f("conf", 1.0))
         var ok = true
         for i in 0 .. 3:
           if not b[i].isNum: ok = false
           else: k.bbox[i] = b[i].num
-        if ok: si.links.add k
+        if ok and linkBoxOk(k.bbox, si.scale): si.links.add k
     result.add si
 
 proc parseTag(x: JNode): Tag =

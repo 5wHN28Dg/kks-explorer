@@ -160,7 +160,7 @@ suite "links between sheets":
     check c[1]["targets"].elems.len == 2 and c[1]["targets"][0]["sheet"].s == "lp" and c[1]["targets"][1]["sheet"].s == "lp"
   test "untrusted sheets.json: links per sheet and targets per connector are capped (a label repeated everywhere)":
     var a = newSeq[string]()
-    for i in 0 ..< 3000: a.add """{"label":"A1","bbox":[""" & $i & """,0,10,10]}"""
+    for i in 0 ..< 3000: a.add """{"label":"A1","bbox":[""" & $i & """,0,""" & $(i + 10) & """,10]}"""
     let big = Model()
     big.sheets = parseSheets(j("""[{"id":"x","name":"X","scale":1.0,"links":[""" & a.join(",") & """]},
                                    {"id":"y","name":"Y","scale":1.0,"links":[""" & a.join(",") & """]}]"""))
@@ -175,3 +175,21 @@ suite "links between sheets":
     check findLink(v, "C47", 350, 100) == 3
     check findLink(v, "C16", 450, 100) == -1
     check findLink(v, "Z9", 50, 100) == -1
+  test "untrusted sheets.json: long labels, bad boxes and a huge sheet name don't get through":
+    let big = Model()
+    let longName = "Ä".repeat(150_000)       # 300 kB, 2-byte characters
+    big.sheets = parseSheets(j("""[{"id":"x","name":"X","scale":2.0,"links":[
+        {"label":"A1","bbox":[0,0,20,20]},
+        {"label":"AAAAAAAAAAAAAAAAA","bbox":[0,0,20,20]},
+        {"label":"A1","bbox":[0,0,1e12,1e12]},
+        {"label":"A1","bbox":[20,20,0,0]},
+        {"label":"A1","bbox":[1e308,0,1.7e308,20]},
+        {"label":"A1","bbox":[0,0,200,201]}]},
+      {"id":"y","name":"""" & longName & """","scale":1e-300,"links":[{"label":"A1","bbox":[1,1,2,2]}]},
+      {"id":"z","name":"""" & longName & """","scale":2.0,"links":[{"label":"A1","bbox":[0,0,20,20]}]}]"""))
+    check big.sheets[0].links.len == 1
+    check big.sheets[1].links.len == 0       # 1 px is 1e300 points at that scale
+    let v = linksView(big, "x")
+    check v[0]["targets"].elems.len == 1
+    let n = v[0]["targets"][0]["sheet_name"].s
+    check n.len <= MaxTargetName and n.len >= MaxTargetName - 1 and n == "Ä".repeat(n.len div 2)

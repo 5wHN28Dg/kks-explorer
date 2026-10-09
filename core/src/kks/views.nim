@@ -39,6 +39,15 @@ proc tagsView*(m: Model, sheet: string): JNode =
                        ("x0", F(t.bbox[0] / s)), ("y0", F(t.bbox[1] / s)), ("x1", F(t.bbox[2] / s)), ("y1", F(t.bbox[3] / s)),
                        ("photos", S(covers.getOrDefault(t.full, "none"))))
 
+const MaxTargetName* = 200  ## a target repeats its sheet's name: a huge name times every target would add up
+
+proc clip(s: string, n: int): string =
+  ## at most n bytes, cut at a character boundary (UTF-8)
+  if s.len <= n: return s
+  var e = n
+  while e > 0 and (ord(s[e]) and 0xC0) == 0x80: dec e
+  s[0 ..< e]
+
 const MaxLinkTargets* = 20   ## where one connector can continue, at most (a label repeated everywhere lists the first)
 
 proc linksView*(m: Model, sheet: string): JNode =
@@ -61,12 +70,12 @@ proc linksView*(m: Model, sheet: string): JNode =
     block fill:
       for pass in 0 .. 1:
         for (k, j) in same:
-          let o = m.sheets[k]
+          template o: untyped = m.sheets[k]     # not a copy of the sheet (its links) per step
           if (pass == 0) == (o.id == sheet) or (o.id == sheet and j == i): continue
           if targets.elems.len >= MaxLinkTargets: break fill
           let os = if o.scale > 0: o.scale else: 2.0
-          targets.elems.add newObj(@[("sheet", S(o.id)), ("sheet_name", S(o.name)), ("same_sheet", newBool(o.id == sheet))] &
-                                   box(o.links[j].bbox, os))
+          targets.elems.add newObj(@[("sheet", S(o.id)), ("sheet_name", S(clip(o.name, MaxTargetName))),
+                                     ("same_sheet", newBool(o.id == sheet))] & box(o.links[j].bbox, os))
     result.elems.add newObj(@[("label", S(l.label)), ("conf", F(l.conf))] & box(l.bbox, s) & @[("targets", targets)])
 
 proc findLink*(ls: JNode, label: string, x0, y0: float): int =
