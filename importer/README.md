@@ -96,7 +96,8 @@ sheet needed 3.2 GB of address space for 1.85 GB resident and crashed under 2560
 two arenas (`mallopt(M_ARENA_MAX, 2)`): the same sheet needs about 2 GB and imports the same files (2026-10-09).
 
 When memory runs out, the importer prints one line ("The importer ran out of memory (its address-space limit is N MB):
-the import stopped.") and exits with code 3; the server then adds which setting to raise. libjxl (C++) aborts
+the import stopped.") and exits with code 3 (also when libjxl reports a failed allocation through its memory
+manager); the server then adds which setting to raise. libjxl (C++) aborts
 instead when a buffer or a worker thread can't be had (`std::bad_alloc`, `std::system_error`); the server gives the
 same advice for an importer that died of a signal. To import a larger drawing,
 raise `import_memory_mb` and restart the server, keeping it below `MemoryMax` (or raise both).

@@ -309,3 +309,7 @@ except MupdfError as e:
     stderr.writeLine "  (MuPDF: " & e.msg & ")"
     quit ExitOutOfMemory
   raise
+except JxlOutOfMemory as e:
+  stderr.write $oomLine
+  stderr.writeLine "  (" & e.msg & ")"
+  quit ExitOutOfMemory
