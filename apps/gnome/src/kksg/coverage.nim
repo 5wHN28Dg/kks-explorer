@@ -2,7 +2,7 @@
 ## each with a bar of the photo coverage colours. A sheet row opens that sheet coloured by photos; a system row opens
 ## Equipment by system filtered to that system.
 
-import std/[strutils, math, tables]
+import std/[strutils, tables]
 import kks/json
 import kks/[views, model]
 import gtk, ui, viewer, win, sidepages, systems
@@ -14,7 +14,7 @@ proc n(node: JNode, k: string): int =
   if node != nil and node.get(k) != nil and node[k].isInt: int(node[k].i) else: 0
 
 proc pct(a, b: int): string =
-  if b == 0: "–" else: $int(round(100 * a / b)) & " %"
+  if b == 0: "–" else: $coveragePct(a, b) & " %"   # 100 % only when all, 0 % only when none
 
 proc plural(k: int, one, many: string): string = $k & " " & (if k == 1: one else: many)
 

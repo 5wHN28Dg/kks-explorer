@@ -244,9 +244,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
         if (systemsOpen) SystemsScreen(ui, systemsOnly) { systemsOpen = false }
         if (coverageOpen) CoverageScreen(
             onSheet = { id ->
-                // a hand-marked tag can outlive its sheet: its row is counted, but there is nothing to open
-                if (list.none { it.id == id }) scope.launch { snack.showSnackbar("That sheet is no longer in the plant data") }
-                else { coverageOpen = false; ui.tab = "drawings"; ui.selected = ""; ui.sheet = id; ui.coverage = true }
+                // false: the sheet is gone (a hand-marked tag can outlive it); the dashboard says so in its own window
+                if (list.none { it.id == id }) false
+                else { coverageOpen = false; ui.tab = "drawings"; ui.selected = ""; ui.sheet = id; ui.coverage = true; true }
             },
             onSystem = { sys -> coverageOpen = false; systemsOnly = sys; systemsOpen = true },
             onClose = { coverageOpen = false })

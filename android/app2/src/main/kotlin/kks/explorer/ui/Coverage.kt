@@ -19,12 +19,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 private val PHOTO_KINDS = listOf("both" to "both", "equipment" to "equipment only", "plate" to "tag plate only", "none" to "none")
 
-private fun pct(n: Int, of: Int) = if (of <= 0) "–" else "${Math.round(n * 100.0 / of)} %"
+/** n of [of] (> 0) as a whole percent (core views.coveragePct): to the nearest, but 100 only when all and 0 only when
+ *  none (199 of 200 = 99, 1 of 300 = 1): the dashboard is about what is still missing */
+internal fun coveragePct(n: Int, of: Int): Int = when {
+    n <= 0 -> 0
+    n >= of -> 100
+    else -> ((200L * n + of) / (2L * of)).toInt().coerceIn(1, 99)
+}
+private fun pct(n: Int, of: Int) = if (of <= 0) "–" else "${coveragePct(n, of)} %"
 /** the same for TalkBack: ", 40 % checked by a person", nothing when there is nothing to count (no "dash") */
 private fun pctW(n: Int, of: Int, what: String) = if (of <= 0) "" else ", ${pct(n, of)} $what"
 private fun plural(n: Int, one: String, many: String = one + "s") = "$n " + if (n == 1) one else many
@@ -37,13 +45,16 @@ private fun photoWords(p: JSONObject?): String =
  *  coverage as a bar in the drawing's coverage colours. A sheet opens on the drawing with the photo colours on; a
  *  system opens Equipment by system showing that system only. */
 @Composable
-fun CoverageScreen(onSheet: (String) -> Unit, onSystem: (String) -> Unit, onClose: () -> Unit) {
+fun CoverageScreen(onSheet: (String) -> Boolean, onSystem: (String) -> Unit, onClose: () -> Unit) {
     val rev = Changes.rev
+    // the dashboard is its own window (a Dialog): a message about it must show here, the app's snackbar is behind it
+    val snack = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var view by remember { mutableStateOf<JSONObject?>(null) }
     LaunchedEffect(rev) { view = withContext(Dispatchers.IO) { call("GET", "/native/coverage").json } }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         FullScreenDialogWindow()
-        Surface(Modifier.fillMaxSize()) {
+        Surface(Modifier.fillMaxSize()) { Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onClose, modifier = Modifier.semantics { contentDescription = "Close" }) { Icon(Glyphs.BACK, contentDescription = null) }
@@ -63,7 +74,10 @@ fun CoverageScreen(onSheet: (String) -> Unit, onSystem: (String) -> Unit, onClos
                             words = "${s.str("name")}: ${plural(codes, "code")} on ${plural(tags, "tag")}${pctW(s.optInt("verified"), tags, "of tags checked by a person")}" +
                                 "${pctW(s.optInt("located"), codes, "with a known place")}, ${photoWords(s.optJSONObject("photos"))}, " +
                                 "${s.optInt("review")} to review, ${s.optInt("marked")} missed tags marked",
-                            photos = s.optJSONObject("photos"), action = "Show the sheet with photo colours") { onSheet(s.str("id")) }
+                            photos = s.optJSONObject("photos"), action = "Show the sheet with photo colours") {
+                        // a hand-marked tag can outlive its sheet: its row is counted, but there is nothing to open
+                        if (!onSheet(s.str("id"))) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("That sheet is no longer in the plant data") }
+                    }
                     }
                     item(contentType = "head") { ListHead("By system", "Tap a system to list its equipment") }
                     items(v.optJSONArray("systems").objects(), key = { "y:" + it.str("sys") }, contentType = { "row" }) { y ->
@@ -77,7 +91,8 @@ fun CoverageScreen(onSheet: (String) -> Unit, onSystem: (String) -> Unit, onClos
                     }
                 }
             }
-        }
+            SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing))
+        } }
     }
 }
 

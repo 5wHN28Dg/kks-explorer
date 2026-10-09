@@ -848,7 +848,7 @@ function openSystem(code){ sysOnly=code||SYS_OTHER; $('#sysQ').value=''; openDra
 // Totals, then per sheet and per system, each with a bar of the photo coverage colours (its numbers in words beside it,
 // for screen readers). A sheet opens with the tags coloured by photos; a system opens in Equipment by system.
 const PHOTO_KINDS=['both','equipment','plate','none'];
-const pct=(a,b)=>b?Math.round(100*a/b)+' %':'–';
+const pct=(a,b)=>b?KSys.pct(a,b)+' %':'–';   // 100 % only when all, 0 % only when none
 const plural=(n,one,many)=>n+' '+(n===1?one:many);
 const photoWords=p=>`photos: ${p.both} equipment and tag plate, ${p.equipment} equipment only, ${p.plate} tag plate only, ${p.none} none`;
 function covBar(p,wide){

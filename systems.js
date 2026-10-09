@@ -116,6 +116,14 @@ const KSys = (() => {
     return PLACE.some(f => { const v = own(e, f); return typeof v === 'string' && /[^ \t\v\r\n\f]/.test(v) });
   }
 
+  // a of b (b > 0) as a whole percent (core views.coveragePct): to the nearest, but 100 only when all and 0 only when
+  // none (199 of 200 = 99, 1 of 300 = 1)
+  function pct(a, b) {
+    if (a <= 0) return 0;
+    if (a >= b) return 100;
+    return Math.min(99, Math.max(1, Math.floor((200 * a + b) / (2 * b))));
+  }
+
   // How complete the plant's record is (core views.coverageView): totals, per sheet (the page's sheets first, in their
   // order) and per system (sorted; "" = codes that don't decode). Codes are counted once per sheet, per system and in
   // the totals; tags, review and marked are per tag, so system rows don't have them.
@@ -133,6 +141,13 @@ const KSys = (() => {
     const checked = t => t.status === 'verified' || t.status === 'confirmed';
     // a code is checked when a person checked any of its tags (as the core: auto on one sheet, verified on another)
     const checkedCodes = new Set(tags.filter(t => t.kks && checked(t)).map(t => t.kks + (t.suffix || '')));
+    // located once per (unit-less body, code), as the core: the code alone can't key it (a suffix typed into the code)
+    const placed = new Map();
+    const isLocated = t => {
+      const key = JSON.stringify([t.kks || '', t.suffix || '']);
+      if (!placed.has(key)) placed.set(key, located(t, loc, equipment));
+      return placed.get(key);
+    };
     for (const t of tags) {
       if (!bySheet.has(t.sheet)) bySheet.set(t.sheet, blank());
       const c = bySheet.get(t.sheet);
@@ -141,18 +156,18 @@ const KSys = (() => {
       if (t.status === 'review') { c.review++; all.review++ }
       if (t.added) { c.marked++; all.marked++ }
       if (!t.kks) continue;
-      const k = t.kks + (t.suffix || ''), p = covers.get(k) || 'none', here = located(t, loc, equipment);
+      const k = t.kks + (t.suffix || ''), p = covers.get(k) || 'none';
       let seen = seenSheet.get(t.sheet);
       if (!seen) seenSheet.set(t.sheet, seen = new Set());
-      if (!seen.has(k)) { seen.add(k); c.codes++; c.photos[p]++; if (here) c.located++ }
-      if (!seenAll.has(k)) { seenAll.add(k); all.codes++; all.photos[p]++; if (here) all.located++ }
+      if (!seen.has(k)) { seen.add(k); c.codes++; c.photos[p]++; if (isLocated(t)) c.located++ }
+      if (!seenAll.has(k)) { seenAll.add(k); all.codes++; all.photos[p]++; if (isLocated(t)) all.located++ }
       if (!seenSys.has(k)) {
         seenSys.add(k);
         const d = decode(t, kks), sys = d ? d.sys : '';
         let s = bySys.get(sys);
         if (!s) bySys.set(sys, s = {codes: 0, verified: 0, located: 0, photos: pcs()});
         s.codes++; s.photos[p]++;
-        if (here) s.located++;
+        if (isLocated(t)) s.located++;
         if (checkedCodes.has(k)) s.verified++;
       }
     }
@@ -164,5 +179,5 @@ const KSys = (() => {
     };
   }
 
-  return {decode, photoCover, photoCovers, systemsView, located, coverageView};
+  return {decode, photoCover, photoCovers, systemsView, located, pct, coverageView};
 })();

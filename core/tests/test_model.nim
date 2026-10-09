@@ -133,6 +133,11 @@ suite "views":
     c.state["equipment"]["11LAB70AA504"] = j("""{"area":"pump house"}""")
     c.merge()
     check coverageView(c)["total"]["located"].i == 2
+  test "coverage percent: 100 only when all, 0 only when none, else to the nearest":
+    check coveragePct(0, 300) == 0 and coveragePct(1, 300) == 1 and coveragePct(1, 200) == 1
+    check coveragePct(199, 200) == 99 and coveragePct(299, 300) == 99 and coveragePct(200, 200) == 100
+    check coveragePct(1, 3) == 33 and coveragePct(2, 3) == 67 and coveragePct(1, 8) == 13 and coveragePct(1, 2) == 50
+    check coveragePct(3, 200) == 2 and coveragePct(197, 200) == 99   # halves round up (1.5 -> 2, 98.5 -> 99)
   test "the flat path store":
     var d = Drawing(width: 640, height: 320, gx: 1, gy: 1)
     d.styles.add Style(kind: Stroke, width: 64)

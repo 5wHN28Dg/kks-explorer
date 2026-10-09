@@ -512,6 +512,10 @@ class Phone(unittest.TestCase):
                     break
                 time.sleep(0.2)
             assert job['state'] == 'done', job['log']
+        # a hand-marked tag whose sheet is not in the plant data (a tag can outlive its sheet): counted, nothing to open
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'removed-sheet', 'bbox': [400, 300, 520, 360],
+                                                 'kks': '11LAB70AA509', 'isa': '', 'note': ''}})
+        assert r.get('status') == 'approved', r
         try:
             ui.tap('Join through a server', exact=True)
             ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
@@ -521,13 +525,19 @@ class Phone(unittest.TestCase):
             ui.find('Sample sheet', timeout=40)
             ui.tap('More', exact=True)
             ui.tap('Coverage', exact=True)
-            # the test plant: one code (11LAB70AA501, marked by the manager, so checked), no place, no photos
-            for t in ('Codes on the drawings: 1 (on 1 tag)', 'Checked by a person: 100 % (1 of 1 tag)',
-                      'Known place: 0 % (0 of 1 code)', 'To review: 0', 'Missed tags marked: 1'):
+            # the test plant: two codes marked by the manager (so checked), no place, no photos: 11LAB70AA501 on the
+            # sample sheet, 11LAB70AA509 on a sheet that isn't there
+            for t in ('Codes on the drawings: 2 (on 2 tags)', 'Checked by a person: 100 % (2 of 2 tags)',
+                      'Known place: 0 % (0 of 2 codes)', 'To review: 0', 'Missed tags marked: 2'):
                 ui.find(t, timeout=15)
             ui.find('Sample sheet: 1 code on 1 tag, 100 % of tags checked by a person, 0 % with a known place, photos: 0 both, '
                     '0 equipment only, 0 tag plate only, 1 none, 0 to review, 1 missed tags marked')
-            ui.find('LAB · Feed water piping system: 1 code, 100 % of codes checked by a person')
+            ui.find('LAB · Feed water piping system: 2 codes, 100 % of codes checked by a person')
+            # the missing sheet's row: the message shows in the dashboard, which stays open (it is its own window, so
+            # the app's snackbar behind it would never be seen)
+            ui.tap('removed-sheet: 1 code on 1 tag')
+            ui.find('That sheet is no longer in the plant data', exact=True, timeout=10)
+            self.assertTrue(ui.present('Codes on the drawings'), 'the dashboard closed')
             os.makedirs(SHOTS, exist_ok=True)
             with open(os.path.join(SHOTS, 'android-coverage.png'), 'wb') as f:
                 f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
@@ -543,6 +553,9 @@ class Phone(unittest.TestCase):
             ui.find('Only system LAB', exact=True, timeout=15)
             ui.find('LAB70, ', timeout=10)
         finally:
+            for a in self.boss.req('GET', '/api/state').get('added_tags', []):
+                if a.get('sheet') == 'removed-sheet':
+                    self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}})
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:
                 if d['username'] == 'boss' and d['label'] == model and not d['revoked']:

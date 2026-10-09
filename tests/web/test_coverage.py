@@ -22,7 +22,12 @@ RUN = r"""(S) => {
                             equipment: S.state.equipment || {}, photos: S.state.photos || []}) }"""
 
 
-def run(engine, cases):
+# core/tests/test_model.nim "coverage percent": 100 only when all, 0 only when none, else to the nearest (halves up)
+PCT = [((0, 300), 0), ((1, 300), 1), ((1, 200), 1), ((199, 200), 99), ((299, 300), 99), ((200, 200), 100), ((1, 3), 33),
+       ((2, 3), 67), ((1, 8), 13), ((1, 2), 50), ((3, 200), 2), ((197, 200), 99)]
+
+
+def run(engine, cases, pct=False):
     with open(os.path.join(REPO, 'systems.js'), encoding='utf-8') as f:
         js = f.read()
     with sync_playwright() as p:
@@ -31,6 +36,8 @@ def run(engine, cases):
         pg.set_content('<!doctype html><meta charset=utf-8><body></body>')
         pg.add_script_tag(content=js)
         out = [pg.evaluate(RUN, c) for c in cases]
+        if pct:
+            out.append(pg.evaluate('(P) => P.map(([a, b]) => KSys.pct(a, b))', [list(ab) for ab, _ in PCT]))
         b.close()
     return out
 
@@ -62,6 +69,13 @@ class Coverage(unittest.TestCase):
         got, = run(engine, [V])
         self.assertEqual(got, V['expected'])
 
+    def pct_rule(self, engine):
+        got, = run(engine, [], pct=True)
+        self.assertEqual(got, [want for _, want in PCT])
+
+    def test_pct_chromium(self): self.pct_rule('chromium')
+    def test_pct_firefox(self): self.pct_rule('firefox')
+    def test_pct_webkit(self): self.pct_rule('webkit')
     def test_chromium(self): self.check('chromium')
     def test_firefox(self): self.check('firefox')
     def test_webkit(self): self.check('webkit')

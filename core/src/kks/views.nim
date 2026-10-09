@@ -269,12 +269,23 @@ proc systemsView*(m: Model, q = ""): JNode =
       rest.elems.add item(k)
   O(("blocks", blocks), ("other", rest), ("total", I(total)))
 
-proc located*(m: Model, t: Tag): bool =
-  ## a place is known: from the plant's location list, or a person filled one of the place fields
-  if m.refLoc(t.bodyOf).rows.len > 0: return true
-  let e = m.equipment(t.full)
+proc placeTyped(e: JNode): bool =
+  ## a person filled one of the place fields
+  if e == nil: return false
   for f in ["area", "floor", "elev", "near", "loc"]:
     if e.str(f).strip.len > 0: return true
+
+proc located*(m: Model, t: Tag): bool =
+  ## a place is known: from the plant's location list, or a person filled one of the place fields
+  m.locations.getOrDefault(t.bodyOf).len > 0 or placeTyped(m.equipment(t.full))
+
+proc coveragePct*(a, b: int): int =
+  ## a of b (b > 0) as a whole percent for the coverage dashboard, where 100 % must mean all and 0 % none: to the
+  ## nearest, but never 100 while one is missing (199 of 200 = 99) and never 0 when there is one (1 of 300 = 1).
+  ## The web (systems.js KSys.pct) and Android (Coverage.kt pct) clients use the same rule.
+  if a <= 0: return 0
+  if a >= b: return 100
+  clamp((200 * a + b) div (2 * b), 1, 99)
 
 proc coverageView*(m: Model): JNode =
   ## How complete the plant's record is, per sheet and per system, to show where the team should go next: tags
@@ -304,6 +315,18 @@ proc coverageView*(m: Model): JNode =
   var all = Counts()
   var seenSheet = initTable[string, HashSet[string]]()
   var seenSys, seenAll: HashSet[string]
+  # located per tag, once per (code, unit-less body): the code alone can't key it, a suffix may be typed into the code;
+  # the equipment records looked up by a table built once (state.equipment is a list of fields)
+  var eqTab = initTable[string, JNode]()
+  let eq = if m.state != nil: m.state.get("equipment") else: nil
+  if eq != nil and eq.kind == jObj:
+    for (k, v) in eq.fields: discard eqTab.hasKeyOrPut(k, v)   # the first, as JNode.get
+  var placed = initTable[(string, string), bool]()
+  proc isLocated(t: Tag): bool =
+    let key = (t.bodyOf, t.full)
+    placed.withValue(key, v): return v[]
+    result = m.locations.getOrDefault(key[0]).len > 0 or placeTyped(eqTab.getOrDefault(key[1]))
+    placed[key] = result
   for t in m.tags:
     if t.sheet notin bySheet: bySheet[t.sheet] = Counts()
     var c = bySheet[t.sheet]
@@ -321,25 +344,24 @@ proc coverageView*(m: Model): JNode =
     let k = t.full
     if t.kks.len > 0:
       let p = photoIdx(covers.getOrDefault(k, "none"))
-      let here = m.located(t)
       if k notin seenSheet.mgetOrPut(t.sheet, initHashSet[string]()):
         seenSheet[t.sheet].incl k
         inc c.codes
         inc c.photos[p]
-        if here: inc c.located
+        if isLocated(t): inc c.located
       if k notin seenAll:
         seenAll.incl k
         inc all.codes
         inc all.photos[p]
-        if here: inc all.located
-      let (ok, d) = m.decode(t)
-      let sys = if ok: d.sys else: ""
+        if isLocated(t): inc all.located
       if k notin seenSys:
         seenSys.incl k
+        let (ok, d) = m.decode(t)
+        let sys = if ok: d.sys else: ""
         var s = bySys.getOrDefault(sys)
         inc s.codes
         inc s.photos[p]
-        if here: inc s.located
+        if isLocated(t): inc s.located
         if k in checkedCodes: inc s.verified
         bySys[sys] = s
     bySheet[t.sheet] = c
