@@ -61,6 +61,7 @@ class WebMulti(unittest.TestCase):
         self.log = open(os.path.join(self.dir, 'server.log'), 'w+')
         self.server = subprocess.Popen([SERVER, 'serve', '--config', self.cfg], cwd=self.dir, stdout=self.log,
                                        stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(self.stop)   # runs even when setUp fails below (tearDown doesn't: it left servers running)
         setup = None
         for _ in range(100):
             self.log.flush(); self.log.seek(0); out = self.log.read()
@@ -87,7 +88,7 @@ class WebMulti(unittest.TestCase):
         with open(self.photo, 'wb') as f: f.write(png(160, 120, b'\x30\x80\xc0'))
         os.makedirs(SHOTS, exist_ok=True)
 
-    def tearDown(self):
+    def stop(self):
         self.server.terminate()
         self.server.wait(5)
         self.log.close()
