@@ -1074,6 +1074,7 @@ class Phone(unittest.TestCase):
         ui.tap('Continue', exact=True)
         time.sleep(2)
         self.assertFalse(ui.present('Which floor is it on?', exact=True))
+        ui.sh('input', 'keyevent', '4')                    # out of the system's photo picker
 
     def test_approvals_grouped(self):
         """request 5: one card per code with the equipment and tag plate photos together; Approve/Reject only, unless

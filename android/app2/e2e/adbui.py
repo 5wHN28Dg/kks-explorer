@@ -86,11 +86,13 @@ def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=15):
     """clear the app's data and start it, then wait until its window is on screen. `pm clear` returns before Android
     has finished with the cleared package: an app started at once had its new task removed and its process killed
     26 ms later ("remove task", "start not valid"), and the next test found the home screen (run 37903391890). So
-    the app is started again until its own window shows."""
+    the app is started again until its own window shows. Its task is cleared with it: a test can end with another
+    app's screen on top of ours (the system's photo picker, the camera), and one time in three that screen was still
+    there after pm clear, with every start only bringing it to the front again (#150)."""
     sh('pm', 'clear', pkg)
-    waits = 0
+    waits, ns = 0, []
     for _ in range(4):
-        sh('am', 'start', '-n', f'{pkg}/{activity}')
+        sh('am', 'start', '--activity-clear-task', '-n', f'{pkg}/{activity}')
         end, seen = time.time() + timeout, 0
         while time.time() < end:
             ns = nodes()
@@ -102,7 +104,7 @@ def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=15):
             if seen >= 2:
                 return
             time.sleep(0.5)
-    raise AssertionError(f'{pkg} did not come up after pm clear')
+    raise AssertionError(f'{pkg} did not come up after pm clear' + failed(pkg, ns))
 
 
 def center(n):
