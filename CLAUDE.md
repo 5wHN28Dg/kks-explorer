@@ -202,8 +202,8 @@ in `CLAUDE.local.md` ("Deployment"), never in tracked files.
     and at 6.9 GiB).
   - Every test_app2 test starts its own server and clears the app (#150), so any order and any split is a valid
     run, and "the Android e2e passed" means every test did, in however many parts. With `KKS_E2E_DIAG=folder` each
-    test's time and the emulator's memory go to `diag.log` there, and a failed wait saves a screenshot and the
-    screens read before it; the failure message itself lists what was on screen.
+    test's time and the emulator's memory go to `diag.log` there, and a failed wait for something on screen (`find`,
+    `tap`, `scroll_to`) saves a screenshot and the screens read before it; its message lists what was on screen.
   - The e2e tests (`test_app2`, `test_direct`, `test_update`) uninstall and reinstall `io.github.walkdown`. Run them
     only with `ANDROID_SERIAL=emulator-…`: the user's Honor holds their real account; never install or clear anything
     on it.

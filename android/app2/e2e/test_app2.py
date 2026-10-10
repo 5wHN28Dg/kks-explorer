@@ -90,8 +90,8 @@ class Phone(unittest.TestCase):
         before = (len(result.failures) + len(result.errors), len(result.skipped)) if result else (0, 0)
         r = super().run(result)
         how = 'ok'
-        if result and len(result.skipped) > before[1]:
-            how = 'skipped'
+        if result and len(result.skipped) > before[1]:      # the test itself, or subtests of one that went on
+            how = f'ok or skipped ({len(result.skipped) - before[1]} skips)'
         if result and len(result.failures) + len(result.errors) > before[0]:
             how = 'FAILED'
         mem = emulator_memory()
@@ -253,6 +253,11 @@ class Phone(unittest.TestCase):
         self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '2'},
                                                                               'base': {'floor': self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('floor', '')}}})
 
+        # a note 501 already has: Note for all must add to it, not replace it
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'Seat lapped'},
+                                                                                  'base': {'notes': ''}}})
+        assert r.get('status') == 'approved', r
+
         def tag(code):
             for n in ui.nodes():
                 if ui.label(n).startswith(code + ','):
@@ -317,6 +322,7 @@ class Phone(unittest.TestCase):
         self.assertEqual(sorted(k for k, v in st.items() if v.get('floor') == '3'), ['11LAB70AA501', '11LAB70AA503'])
         # Note for all: appended under each code's own notes
         old = st['11LAB70AA501'].get('notes', '')
+        self.assertEqual(old, 'Seat lapped')
         ui.tap('More', exact=True)
         ui.tap('Select tags', exact=True)
         tap_tag('11LAB70AA501')
