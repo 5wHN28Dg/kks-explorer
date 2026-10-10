@@ -12,12 +12,18 @@ def adb(*a):
     return subprocess.run(ADB + list(a), capture_output=True, text=True).stdout
 
 
+recent = []       # the last screens read, oldest first: what led up to a failure
+
+
 def nodes():
     for _ in range(5):
         sh('uiautomator', 'dump', '/sdcard/kks-ui.xml')
         x = subprocess.run(ADB + ['exec-out', 'cat', '/sdcard/kks-ui.xml'], capture_output=True, text=True).stdout
         if '<' in x:
-            return list(ET.fromstring(x[x.index('<'):]).iter('node'))
+            ns = list(ET.fromstring(x[x.index('<'):]).iter('node'))
+            recent.append((time.strftime('%H:%M:%S'), ns))
+            del recent[:-8]
+            return ns
         time.sleep(0.5)
     return []
 
@@ -53,8 +59,23 @@ def find(text, timeout=15, exact=False):
             time.sleep(1)
             continue
         if time.time() > end:
-            raise AssertionError(f'not on screen: {text!r}')
+            raise AssertionError(f'not on screen: {text!r}' + failed(text, ns))
         time.sleep(0.7)
+
+
+on_fail = None      # a test file may set it: called with (text, nodes) when find gives up, before the test cleans up
+
+
+def failed(text, ns):
+    """what a failed find adds to its message: the texts that were on screen instead (#150: "not on screen" alone
+    could not tell a slow emulator from a screen showing something else)"""
+    if on_fail:
+        try:
+            on_fail(text, ns)
+        except Exception as e:      # the report must not hide the failure
+            print(f'on_fail: {e!r}')
+    seen = [label(n) for n in ns if label(n)]
+    return '; on screen: ' + ' | '.join(v if len(v) <= 80 else v[:77] + '...' for v in seen)[:3000]
 
 
 def present(text, exact=False):
