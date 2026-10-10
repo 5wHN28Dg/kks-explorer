@@ -428,6 +428,8 @@ int wmain(int argc, wchar_t **argv) {
             e->get_CurrentNativeWindowHandle(&hw);
             if (!hw) { say("ERROR: no window: " + arg); return 1; }
             std::wstring v = wide(f.size() > 2 ? f[2] : "");
+            // "\n" in the script is a line break (a script line can't hold one): a pasted column of codes
+            for (size_t i; (i = v.find(L"\\n")) != std::wstring::npos;) v.replace(i, 2, L"\r\n");
             if (!SendMessageW((HWND)hw, WM_SETTEXT, 0, (LPARAM)v.c_str())) { say("ERROR: WM_SETTEXT refused: " + arg); return 1; }
         } else if (cmd == "keys") {
             UIA_HWND hw = 0;

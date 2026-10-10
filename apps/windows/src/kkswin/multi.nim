@@ -3,6 +3,9 @@
 ## drawing or a search result toggles its tag), then one photo, place or note for all their codes, sent as one
 ## /api/submit-many (core api.submitMany: an ordinary submission per code; a photo's image is kept once).
 ## While the mode is on, the right-hand panel shows the selection and the "… for all" actions.
+## The selection is a list of codes, not of tags of one drawing (the user, 2026-10-10: equipment in one place is often
+## on different P&IDs): a search result of any sheet joins it without the drawing changing, the List takes typed or
+## pasted codes, and switching drawings keeps it.
 
 import std/[strutils, sets, os, random, times]
 import kks/[json, api]
@@ -53,14 +56,33 @@ proc syncChosen*(w: Win) =
       if t.status != "pending" and t.code in codes: w.v.chosen.incl t.id
   w.v.invalidate()
 
+var
+  listWin: HWND             ## the List, while it is open
+  listRefresh: proc ()      ## puts the selection as it is now into the open List
+  listActs = false          ## the List itself is changing the selection (its rows stay as they are)
+
 proc updatePick(w: Win) =
   w.syncChosen()
+  # the selection changed outside the open List (a tag, a search result, a photo queued for some): its rows follow
+  if not listActs and listRefresh != nil and listWin != nil and IsWindow(listWin) != 0: listRefresh()
   w.rebuildPanel()          # the panel shows the count and the actions while the mode is on
 
 proc unreadOnce(w: Win) =
   if not w.pickSaidUnread:
     w.pickSaidUnread = true
     w.toast("Tags without a code can't be selected: review them first")
+
+proc sheetsOf(w: Win, code: string): (string, seq[string]) =
+  ## what a code is (its first tag's kind) and the names of the drawings that show it, in the sheet list's order
+  var ids: seq[string]
+  for t in w.m.tags:
+    if t.full == code:
+      if result[0].len == 0: result[0] = w.m.kindName(t)
+      if t.sheet notin ids: ids.add t.sheet
+  for si in w.m.sheets:
+    if si.id in ids: result[1].add si.name
+  for id in ids:                      # a tag whose sheet isn't listed (not synced yet): its id
+    if not w.m.sheetById(id)[0]: result[1].add id
 
 proc togglePick*(w: Win, id: string) =
   let (ok, t) = w.m.tagById(id)
@@ -74,8 +96,48 @@ proc togglePick*(w: Win, id: string) =
     w.toast("At most " & $MaxPick & " tags at once: send these first")
     return
   if i >= 0: w.picked.delete(i) else: w.picked.add k
-  w.toast(k & (if i >= 0: " removed, " else: " selected, ") & countText(w.picked.len))
+  # a result of another drawing (the search): said, since nothing shows on this one
+  var here = false                    # (a code that is on this drawing too shows here: nothing to say)
+  for x in w.m.tags:
+    if x.full == k and x.sheet == w.sheet: here = true
+  let (okS, si) = w.m.sheetById(t.sheet)
+  let other = if not here: " (on " & (if okS: si.name else: t.sheet) & ")" else: ""
+  w.toast(k & other & (if i >= 0: " removed, " else: " selected, ") & countText(w.picked.len))
   w.updatePick()
+
+proc splitCodes*(text: string): seq[string] =
+  ## typed or pasted codes: separated by spaces, commas, semicolons or new lines; upper case; each once
+  # (a no-break space, as pasted from a table or a web page, separates too)
+  for part in text.replace("\xC2\xA0", " ").toUpperAscii.split({' ', '\t', '\r', '\n', ',', ';'}):
+    if part.len > 0 and part notin result: result.add part
+
+proc addCodes(w: Win, text: string): string =
+  ## "Add codes" (the List): each code that is on some drawing joins the selection; -> what happened, for the person
+  let want = splitCodes(text)
+  if want.len == 0: return "Type or paste KKS codes first"
+  var known: HashSet[string]
+  for t in w.m.tags:
+    if t.full.len > 0: known.incl t.full
+  var added, already, over = 0
+  var unknown: seq[string]
+  for k in want:
+    if k notin known: unknown.add k
+    elif k in w.picked: inc already
+    elif w.picked.len >= MaxPick: inc over
+    else:
+      w.picked.add k
+      inc added
+  var parts = @[(if added == 1: "1 code added" else: $added & " codes added")]
+  if already > 0: parts.add $already & " already selected"
+  if unknown.len > 0:
+    parts.add "not on any drawing, not added: " & unknown[0 ..< min(10, unknown.len)].join(", ") &
+              (if unknown.len > 10: " and " & $(unknown.len - 10) & " more" else: "")
+  if over > 0: parts.add $over & " left out (at most " & $MaxPick & " tags at once: send these first)"
+  result = parts.join(" · ") & " · " & countText(w.picked.len)
+  if added > 0:
+    listActs = true           # (the List fills itself again after this)
+    try: w.updatePick()
+    finally: listActs = false
 
 proc addBox*(w: Win, x0, y0, x1, y1: float) =
   ## a dragged box (points): adds every tag it touches (never removes)
@@ -125,34 +187,70 @@ proc startPicking*(w: Win) =
   w.rebuildSide()
 
 proc listWindow(w: Win) =
-  ## the selected codes, each with a check box: turn a mistake off (on again puts it back)
-  let codes = w.picked
+  ## the selected codes, each with a check box and the drawings it is on: turn a mistake off (on again puts it back);
+  ## "Add codes" takes codes typed or pasted, of any drawing
   var hw: HWND
-  let (h, p) = w.roundPopup("Selected codes", 440, 480)
+  let (h, p) = w.roundPopup("Selected codes", 480, 560)
   hw = h
-  if codes.len == 0: p.dim("Nothing selected. Click tags on the drawing.")
-  else: p.dim("Turn a code off to leave it out")
-  for i in 0 ..< codes.len:
-    closureScope:
-      let k = codes[i]
-      var where = ""
-      for t in w.m.tags:
-        if t.full == k:
-          let (okS, si) = w.m.sheetById(t.sheet)
-          where = w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet)
-          break
-      p.check(k & (if where.len > 0: "  (" & where & ")" else: ""), true, proc (on: bool) =
-        if not w.picking: return
-        let j = w.picked.find(k)
-        if on and j < 0:
-          if w.picked.len >= MaxPick:
-            w.toast("At most " & $MaxPick & " tags at once: send these first")
-            return
-          w.picked.add k
-        elif not on and j >= 0: w.picked.delete(j)
-        w.updatePick())
-  p.buttons(("Close the list", proc () = DestroyWindow(hw)))
-  p.layout()
+  var codes = w.picked        # the rows: a code turned off keeps its row (on again puts it back) until the next Add
+  var e: HWND
+  var said = ""
+  proc fill(typed: string) =
+    p.clear()
+    for k in w.picked:
+      if k notin codes: codes.add k
+    # several lines: a single-line field would keep only the first line of a pasted column of codes
+    let field = p.multiField("KKS codes to add (separated by spaces, commas or new lines)", typed, height = 64)
+    e = field
+    var addNow: proc ()
+    addNow = proc () =
+      # (a second click queued behind the first finds its field gone: the first one's answer stands)
+      if not w.picking or e != field or IsWindow(field) == 0: return
+      let msg = w.addCodes(e.text)
+      w.toast(msg)
+      # what was not added stays in the field, to be corrected
+      var rest: seq[string]
+      for k in splitCodes(e.text):
+        if k notin w.picked: rest.add k
+      codes = w.picked                # rows turned off before go: the list is the selection again
+      said = msg
+      fill(rest.join(" "))
+      SetFocus(e)
+    p.buttons(("Add codes", addNow))
+    if said.len > 0: p.label(said)
+    if codes.len == 0: p.dim("Nothing selected. Click tags on the drawing, pick search results, or add codes here.")
+    else: p.dim("Turn a code off to leave it out")
+    for i in 0 ..< codes.len:
+      closureScope:
+        let k = codes[i]
+        let (kind, sheets) = w.sheetsOf(k)
+        let where = (if kind.len > 0: kind & " · " else: "") & sheets.join(", ")
+        p.check(k & (if where.len > 0: "  (" & where & ")" else: ""), k in w.picked, proc (on: bool) =
+          if not w.picking: return
+          let j = w.picked.find(k)
+          if on and j < 0:
+            if w.picked.len >= MaxPick:
+              w.toast("At most " & $MaxPick & " tags at once: send these first")
+              return
+            w.picked.add k
+          elif not on and j >= 0: w.picked.delete(j)
+          listActs = true             # the row stays, off: on again puts the code back
+          try: w.updatePick()
+          finally: listActs = false)
+    p.buttons(("Close the list", proc () = DestroyWindow(hw)))
+    p.layout()
+  fill("")
+  SetFocus(e)
+  listWin = hw
+  listRefresh = proc () =
+    # codes that left the selection elsewhere (sent, or unselected on the drawing) leave the list; what is typed stays
+    if IsWindow(e) == 0: return
+    let typed = e.text
+    var rows: seq[string]
+    for k in codes:
+      if k in w.picked: rows.add k
+    codes = rows
+    fill(typed)
   ShowWindow(hw, SW_SHOW)
 
 proc clientPrefix(): string =
@@ -222,24 +320,39 @@ proc sendMany(w: Win, round: int, codes: seq[string], kind: string, payload: JNo
   w.toast(msg)
   true
 
+var floorAsk: HWND          ## Photo for all's floor question, while it is open
+
 proc photoForAll*(w: Win) =
   if w.picked.len == 0:
     w.toast("Select tags first")
     return
-  # the user's rule: a photo needs its equipment's floor (one editor can't ask for several, so set them first)
-  # (a floor still riding on a queued or kept photo doesn't count: this photo would go without it)
-  let missing = w.floorsMissing(w.picked, queued = false)
-  if missing.len > 0:
-    w.toast("A photo needs each code's floor. No floor yet: " & missing[0 ..< min(5, missing.len)].join(", ") &
-            (if missing.len > 5: " and " & $(missing.len - 5) & " more" else: "") & ". Set it with Place for all first.")
-    return
+  # asked already: one question, and for the selection as it is now (it may have changed since)
+  if floorAsk != nil and IsWindow(floorAsk) != 0: DestroyWindow(floorAsk)
   let codes = w.picked     # the editor is a window of its own: the selection may change while it is open
   let round = pickRound
   # kept on disk and compressed on the queue's worker thread like any photo (photos.nim), then one submit-many
-  w.photoForCodes(codes, proc () =
-    w.doneWith(round, codes)
-    w.toast("Photo queued for " & (if codes.len == 1: "1 code" else: $codes.len & " codes") &
-            ": it is sent once compressed"))
+  proc go(floor: string) =
+    w.photoForCodes(codes, floor, proc () =
+      w.doneWith(round, codes)
+      w.toast("Photo queued for " & (if codes.len == 1: "1 code" else: $codes.len & " codes") &
+              ": it is sent once compressed"))
+  # the user's rule: a photo needs its equipment's floor. Asked here, before the picture, for the codes that have
+  # none (as one photo of one code does), and sent with the photo: a member can't set a floor first (it needs
+  # approval before it counts), so nothing is refused for a missing floor
+  # A floor still riding on a queued or kept photo doesn't count here: the job keeps one floor for its codes and the
+  # core writes it for every code that has none when it arrives, so a code left out of the question could get this
+  # floor (its own photo failed and waits) or none (that photo discarded). Such a code is asked again
+  let missing = w.floorsMissing(codes, queued = false)
+  if missing.len == 0:
+    go("")
+    return
+  var hw: HWND
+  hw = w.askFloors(missing, codes.len, go, closed = proc () =
+    let i = roundWins.find(hw)
+    if i >= 0: roundWins.delete(i)
+    if floorAsk == hw: floorAsk = nil)
+  floorAsk = hw
+  roundWins.add hw           # the question belongs to this selection round: it closes with it
 
 proc placeForAll*(w: Win) =
   if w.picked.len == 0:
@@ -315,7 +428,8 @@ proc pickPanel*(w: Win, p: Page) =
   p.clear()
   p.title("Select tags")
   p.label(countText(w.picked.len))
-  p.dim("Click tags or drag a box · or search and pick results. Escape on the drawing ends the mode.")
+  p.dim("Click tags or drag a box · or search and pick results, on any drawing · or add codes in the List. " &
+        "Escape on the drawing ends the mode.")
   p.buttons(("List", proc () = w.listWindow()))
   p.buttons(("Photo for all…", proc () = w.photoForAll()))
   p.buttons(("Place for all…", proc () = w.placeForAll()))

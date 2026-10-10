@@ -32,10 +32,13 @@ which the `config.nims` of core/, platform/linux/, platform/windows/ and apps/wi
     A sheet is shared by its owner and its tile jobs and goes with the last of them, so a sheet switch never frees one
     a worker is still rendering (`tests/test_tiles.nim`);
   - `multi.nim`: "Select tags" (a check box in the sidebar): a click or a tag button toggles a tag, a dragged box adds
-    the tags it touches, a search result toggles its tag; the right-hand panel then has the count, the List and one
-    photo, place or note for all the codes (core `/api/submit-many`; Place for all asks before replacing values, and
-    sends as each code's base what it showed before asking; Photo for all needs every code's floor). The List and the
-    forms close when the mode ends; a tag opened from elsewhere asks before it drops a selection;
+    the tags it touches, a search result toggles its code whatever drawing it is on (the drawing stays, and the
+    selection survives switching drawings); the right-hand panel then has the count, the List (each code with its
+    drawings; "Add codes" takes typed or pasted codes that are on some drawing) and one photo, place or note for all
+    the codes (core `/api/submit-many`; Place for all asks before replacing values, and sends as each code's base
+    what it showed before asking; Photo for all asks the floor first when a code has none, names those codes, and
+    sends it with the photo: the core writes it for them only). The List, the forms and the floor question close
+    when the mode ends; a tag opened from elsewhere asks before it drops a selection;
   - `kks_uia.cpp`: the drawing's tags as UI Automation buttons;
   - `win.nim`, `panel.nim`, `side.nim` (search, sheets, floors, procedures with link mode, the review queue),
     `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView;
@@ -84,7 +87,9 @@ It covers:
 - an edit synced to the server;
 - a photo marked up with a box (the server's JPEG XL is decoded to check the box is in it);
 - dark drawings (the drawing's pixels as drawn, overview and tiles; the choice after a restart);
-- several tags at once (a dragged box, search results, a tag button; the List; place, note and photo for all);
+- several tags at once (a dragged box, search results, a tag button; the List; place, note and photo for all; a
+  member's photo for all on codes without a floor: the floor asked first and proposed with the photo; codes of
+  another drawing picked from the search and typed into the List);
 - the valve type from the drawing's symbol in the panel, confirmed with its button;
 - a member's proposal approved in Manage;
 - the floor asked before a photo and sent with it; who took each photo and set each field; My proposals' filters;
