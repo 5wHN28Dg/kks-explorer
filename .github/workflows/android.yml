@@ -7,7 +7,11 @@ name: Android
 on:
   push:
     branches: [main]
+    # prose-only changes (CLAUDE.md, READMEs, docs/) don't build or test anything; the two READMEs tests read do
+    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'vendor/fonts/README.md']
   pull_request:
+    # prose-only changes (CLAUDE.md, READMEs, docs/) don't build or test anything; the two READMEs tests read do
+    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'vendor/fonts/README.md']
   workflow_dispatch:
 
 jobs:
