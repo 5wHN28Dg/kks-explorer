@@ -92,9 +92,9 @@ proc myOpen*(w: Win): seq[JNode] =
   ## my own open proposals (pending or held)
   try:
     let r = w.a.call("GET", "/api/submissions", nil, {"status": "open"}.toTable)
-    let (_, me) = w.a.me
+    # "mine": the core's own word for it (a listed submission carries no person id; photos of others are listed too)
     for s in r["submissions"].elems:
-      if s.get("person") != nil and s["person"].isStr and s["person"].s == me.person: result.add s
+      if s.get("mine") != nil and s["mine"].kind == jBool and s["mine"].b: result.add s
   except ApiError: discard
 
 proc tagBoxes*(w: Win, sheet: string): seq[TagBox] =
