@@ -146,6 +146,49 @@ suite "a submission is written all at once":
     check userNode.count("equipment") == 3 and userNode.count("comment") == 5
     check consistent(userNode, userStore)
 
+  test "one photo for several codes with a floor: a code's photo row fails after its floor; the resend writes the rest once":
+    var body = newObj(@[("kind", newStr("photo")), ("client_id", newStr("many-floor-cid")),
+                        ("kks", newArr(@[newStr("11LAB70AA611"), newStr("11LAB70AA612"), newStr("11LAB70AA613")])),
+                        ("payload", newObj(@[("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0amany floor"))),
+                                             ("caption", newStr("")), ("floor", newStr("2"))]))])
+    let (eq0, ph0) = (userNode.count("equipment"), userNode.count("photo"))
+    userStore.subFail = 4            # rows: code 1's floor, its photo, code 2's floor, then code 2's photo fails
+    expect IOError: discard userApi.call(ali, "POST", "/api/submit-many", body)
+    check userNode.count("equipment") == eq0 + 2 and userNode.count("photo") == ph0 + 1
+    check consistent(userNode, userStore)
+    restartUser()
+    let r = userApi.call(ali, "POST", "/api/submit-many", body)
+    check r.status == 200
+    let res = r.json["results"]
+    check res[0]["duplicate"].b
+    # code 2's floor proposal is there from the first send: not proposed again, and its photo is written now
+    check res[1].get("duplicate") == nil and res[1]["floor"]["status"].s == "unchanged" and res[1]["floor"]["floor"].s == "2"
+    check res[2].get("duplicate") == nil and res[2]["floor"]["status"].s == "pending"
+    check userNode.count("equipment") == eq0 + 3 and userNode.count("photo") == ph0 + 3
+    check consistent(userNode, userStore)
+
+  test "the floor of a photo that failed is withdrawn before the resend: it is not proposed again, the photo is written":
+    const C = "11LAB70AA621"
+    var body = newObj(@[("kind", newStr("photo")), ("client_id", newStr("many-floor-wd")), ("kks", newArr(@[newStr(C)])),
+                        ("payload", newObj(@[("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0awithdrawn floor"))),
+                                             ("caption", newStr("")), ("floor", newStr("6"))]))])
+    let (eq0, ph0) = (userNode.count("equipment"), userNode.count("photo"))
+    userStore.subFail = 2            # the floor's row, then the photo's fails
+    expect IOError: discard userApi.call(ali, "POST", "/api/submit-many", body)
+    check userNode.count("equipment") == eq0 + 1 and userNode.count("photo") == ph0
+    var sid = 0'i64
+    for x in userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems:
+      if x["kind"].s == "equipment" and x["payload"]["kks"].s == C: sid = x["id"].i
+    check sid > 0
+    check userApi.call(ali, "POST", "/api/submissions/" & $sid & "/withdraw").status == 200
+    let r = userApi.call(ali, "POST", "/api/submit-many", body)
+    check r.status == 200
+    let res = r.json["results"][0]
+    check res.get("duplicate") == nil and res["status"].s == "pending"
+    check res["floor"]["duplicate"].b and res["floor"]["status"].s == "withdrawn" and res["floor"]["id"].i == sid
+    check userNode.count("equipment") == eq0 + 1 and userNode.count("photo") == ph0 + 1
+    check consistent(userNode, userStore)
+
   test "approving a held change: its row fails; approving again writes the change once":
     sync(userNode, mgrNode)
     let r = mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA701","changes":{"notes":"new"},"base":{"notes":"stale"}}}"""))

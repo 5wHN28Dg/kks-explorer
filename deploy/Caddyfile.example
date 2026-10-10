@@ -1,0 +1,16 @@
+# /etc/caddy/Caddyfile: HTTPS in front of the Walkdown server (https://caddyserver.com). Caddy gets and renews the
+# certificate itself (Let's Encrypt): the name must point at this machine, and ports 80 and 443 must be open.
+# In the server's config.json: "public_url": "https://walkdown.example.com", "secure_cookies": true,
+# "trusted_proxy": true. The server itself listens on 127.0.0.1 only; devices sync on its sync_port directly.
+{
+	email you@example.com
+}
+
+walkdown.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8420
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}
