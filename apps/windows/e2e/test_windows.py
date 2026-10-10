@@ -346,6 +346,10 @@ class Windows(unittest.TestCase):
             # the List: typed codes (lower case, commas, a line break), one unknown (named, left in the field), one
             # already there; each row names the code's drawings
             'click\tList', 'wait\tSelected codes\t10', 'state\t~%s  (\ton' % p4, 'state\t~Other drawing)\ton',
+            # the open List follows the selection: a code unselected from the search leaves it, and comes back
+            search + p1[2:], 'select\t~' + p1, 'click\tSelect or unselect', 'wait\t1 selected\t10',
+            'gone\t~%s  (' % p1, 'state\t~%s  (\ton' % p4,
+            'select\t~' + p1, 'click\tSelect or unselect', 'wait\t2 selected\t10', 'state\t~%s  (\ton' % p1,
             'settext\t%s\t%s, %s\\n11XXX99ZZ999 %s' % (codes_field, p2.lower(), p3, p1), 'click\tAdd codes',
             'wait\t~2 codes added · 1 already selected · not on any drawing, not added: 11XXX99ZZ999 · 4 selected\t10',
             'wait\t4 selected\t10', 'value\t%s\t11XXX99ZZ999' % codes_field,
@@ -771,13 +775,14 @@ class Windows(unittest.TestCase):
                                                'wait\tPhotos not sent (2)…\t10'] +
                    photo(c, '7', 'Floor C') + ['wait\t~Photo of %s was not sent (could not be compressed\t30' % c,
                                                'wait\tPhotos not sent (3)…\t10'] +
-                   # Photo for all takes "known" as a single photo does: the floor riding on the kept photo counts, so
-                   # nothing is asked
+                   # Photo for all doesn't count a floor riding on a kept photo (the job keeps one floor for all its
+                   # codes: a code left out of the question could get another code's floor, or none once the kept photo
+                   # is discarded): asked again, never refused
                    ['click\tDrawings', 'toggle\tSelect tags', 'wait\t0 selected\t10',
                     'set\tSearch equipment by KKS code or description\t' + a[2:], 'select\t~' + a,
                     'click\tSelect or unselect', 'wait\t1 selected\t10', 'click\tPhoto for all…',
-                    'wait\tPhoto to mark up\t30', 'gone\tWhich floor is %s on?' % a, 'click\tCancel',
-                    'gone\tPhoto to mark up', 'keys\tDrawing\t0x1B', 'state\tSelect tags\toff'] +
+                    'wait\tWhich floor is %s on?\t20' % a, 'gone\tPhoto to mark up',
+                    'keys\tDrawing\t0x1B', 'state\tSelect tags\toff', 'gone\tWhich floor is %s on?' % a] +
                    # the floor is on its way with the kept photo: not asked again, and it goes with this one
                    photo(b, None, 'Floor B2') + ['wait\t~Saved: photo of %s\t90' % b])
         def floor_b():

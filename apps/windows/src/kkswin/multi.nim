@@ -56,8 +56,15 @@ proc syncChosen*(w: Win) =
       if t.status != "pending" and t.code in codes: w.v.chosen.incl t.id
   w.v.invalidate()
 
+var
+  listWin: HWND             ## the List, while it is open
+  listRefresh: proc ()      ## puts the selection as it is now into the open List
+  listActs = false          ## the List itself is changing the selection (its rows stay as they are)
+
 proc updatePick(w: Win) =
   w.syncChosen()
+  # the selection changed outside the open List (a tag, a search result, a photo queued for some): its rows follow
+  if not listActs and listRefresh != nil and listWin != nil and IsWindow(listWin) != 0: listRefresh()
   w.rebuildPanel()          # the panel shows the count and the actions while the mode is on
 
 proc unreadOnce(w: Win) =
@@ -90,14 +97,18 @@ proc togglePick*(w: Win, id: string) =
     return
   if i >= 0: w.picked.delete(i) else: w.picked.add k
   # a result of another drawing (the search): said, since nothing shows on this one
+  var here = false                    # (a code that is on this drawing too shows here: nothing to say)
+  for x in w.m.tags:
+    if x.full == k and x.sheet == w.sheet: here = true
   let (okS, si) = w.m.sheetById(t.sheet)
-  let other = if t.sheet != w.sheet: " (on " & (if okS: si.name else: t.sheet) & ")" else: ""
+  let other = if not here: " (on " & (if okS: si.name else: t.sheet) & ")" else: ""
   w.toast(k & other & (if i >= 0: " removed, " else: " selected, ") & countText(w.picked.len))
   w.updatePick()
 
 proc splitCodes*(text: string): seq[string] =
   ## typed or pasted codes: separated by spaces, commas, semicolons or new lines; upper case; each once
-  for part in text.toUpperAscii.split({' ', '\t', '\r', '\n', ',', ';'}):
+  # (a no-break space, as pasted from a table or a web page, separates too)
+  for part in text.replace("\xC2\xA0", " ").toUpperAscii.split({' ', '\t', '\r', '\n', ',', ';'}):
     if part.len > 0 and part notin result: result.add part
 
 proc addCodes(w: Win, text: string): string =
@@ -123,7 +134,10 @@ proc addCodes(w: Win, text: string): string =
               (if unknown.len > 10: " and " & $(unknown.len - 10) & " more" else: "")
   if over > 0: parts.add $over & " left out (at most " & $MaxPick & " tags at once: send these first)"
   result = parts.join(" · ") & " · " & countText(w.picked.len)
-  if added > 0: w.updatePick()
+  if added > 0:
+    listActs = true           # (the List fills itself again after this)
+    try: w.updatePick()
+    finally: listActs = false
 
 proc addBox*(w: Win, x0, y0, x1, y1: float) =
   ## a dragged box (points): adds every tag it touches (never removes)
@@ -179,15 +193,19 @@ proc listWindow(w: Win) =
   let (h, p) = w.roundPopup("Selected codes", 480, 560)
   hw = h
   var codes = w.picked        # the rows: a code turned off keeps its row (on again puts it back) until the next Add
-  proc fill(said: string, typed: string) =
+  var e: HWND
+  var said = ""
+  proc fill(typed: string) =
     p.clear()
     for k in w.picked:
       if k notin codes: codes.add k
     # several lines: a single-line field would keep only the first line of a pasted column of codes
-    let e = p.multiField("KKS codes to add (separated by spaces, commas or new lines)", typed, height = 64)
+    let field = p.multiField("KKS codes to add (separated by spaces, commas or new lines)", typed, height = 64)
+    e = field
     var addNow: proc ()
     addNow = proc () =
-      if not w.picking: return
+      # (a second click queued behind the first finds its field gone: the first one's answer stands)
+      if not w.picking or e != field or IsWindow(field) == 0: return
       let msg = w.addCodes(e.text)
       w.toast(msg)
       # what was not added stays in the field, to be corrected
@@ -195,7 +213,9 @@ proc listWindow(w: Win) =
       for k in splitCodes(e.text):
         if k notin w.picked: rest.add k
       codes = w.picked                # rows turned off before go: the list is the selection again
-      fill(msg, rest.join(" "))
+      said = msg
+      fill(rest.join(" "))
+      SetFocus(e)
     p.buttons(("Add codes", addNow))
     if said.len > 0: p.label(said)
     if codes.len == 0: p.dim("Nothing selected. Click tags on the drawing, pick search results, or add codes here.")
@@ -214,11 +234,23 @@ proc listWindow(w: Win) =
               return
             w.picked.add k
           elif not on and j >= 0: w.picked.delete(j)
-          w.updatePick())
+          listActs = true             # the row stays, off: on again puts the code back
+          try: w.updatePick()
+          finally: listActs = false)
     p.buttons(("Close the list", proc () = DestroyWindow(hw)))
     p.layout()
-    SetFocus(e)
-  fill("", "")
+  fill("")
+  SetFocus(e)
+  listWin = hw
+  listRefresh = proc () =
+    # codes that left the selection elsewhere (sent, or unselected on the drawing) leave the list; what is typed stays
+    if IsWindow(e) == 0: return
+    let typed = e.text
+    var rows: seq[string]
+    for k in codes:
+      if k in w.picked: rows.add k
+    codes = rows
+    fill(typed)
   ShowWindow(hw, SW_SHOW)
 
 proc clientPrefix(): string =
@@ -294,9 +326,8 @@ proc photoForAll*(w: Win) =
   if w.picked.len == 0:
     w.toast("Select tags first")
     return
-  if floorAsk != nil and IsWindow(floorAsk) != 0:      # asked already: that window, not a second one
-    SetForegroundWindow(floorAsk)
-    return
+  # asked already: one question, and for the selection as it is now (it may have changed since)
+  if floorAsk != nil and IsWindow(floorAsk) != 0: DestroyWindow(floorAsk)
   let codes = w.picked     # the editor is a window of its own: the selection may change while it is open
   let round = pickRound
   # kept on disk and compressed on the queue's worker thread like any photo (photos.nim), then one submit-many
@@ -308,7 +339,10 @@ proc photoForAll*(w: Win) =
   # the user's rule: a photo needs its equipment's floor. Asked here, before the picture, for the codes that have
   # none (as one photo of one code does), and sent with the photo: a member can't set a floor first (it needs
   # approval before it counts), so nothing is refused for a missing floor
-  let missing = w.floorsMissing(codes)
+  # A floor still riding on a queued or kept photo doesn't count here: the job keeps one floor for its codes and the
+  # core writes it for every code that has none when it arrives, so a code left out of the question could get this
+  # floor (its own photo failed and waits) or none (that photo discarded). Such a code is asked again
+  let missing = w.floorsMissing(codes, queued = false)
   if missing.len == 0:
     go("")
     return
