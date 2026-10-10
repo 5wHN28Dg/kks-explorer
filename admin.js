@@ -50,13 +50,18 @@ async function show(t){
   if(t!==tab) SHOW_HIDDEN=false;   // (hidden items shown again: on the page where that was asked only)
   tab=t; history.replaceState(null,'','#'+t);
   put($('#tabs'),TABS.filter(x=>x[2]()).map(([id,label])=>h('button',{class:'btn'+(id===t?' on':''),onclick:()=>show(id)},label,
-    id==='queue'?h('span',{class:'count',id:'qn',style:'display:none'}):null,id==='account'&&ME.transfer_offer?h('span',{class:'count'},'!'):null)));
+    id==='queue'?h('span',{class:'count',id:'qn',style:'display:none'}):null,id==='users'?h('span',{class:'count',id:'un',style:'display:none'}):null,
+    id==='account'&&ME.transfer_offer?h('span',{class:'count'},'!'):null)));
+  if(t!=='users') signups().then(S=>signupBadge(S));   // account requests waiting: the Users tab shows how many (its own view fills it too)
   if(!K.online&&t!=='account'){ put(mainFor(g),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
   try{ await VIEWS[t](g) }catch(e){ if(e.status===401) return location.reload(); put(mainFor(g),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
 }
 K.onChange(why=>{ if(why==='synced') show(tab) });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
 
+// Account requests (sign-up with the plant's code): a plant server's admins only. -> {enabled, set, requests} or null
+const signups=async()=>K.cfg?.mode==='server'&&isAdmin()&&K.online?K.api('/api/signups').catch(()=>null):null;
+const signupBadge=S=>{ const b=$('#un'), n=S?.requests.length||0; if(b){ b.textContent=n; b.style.display=n?'':'none' } };
 // ---------- rendering a submission ----------
 const val=v=>v==null||v===''?h('span',{class:'sub'},'(empty)'):Array.isArray(v)?v.map(c=>c.k+': '+c.v).join('; ')||'(none)':typeof v==='object'?h('span',{class:'mono'},JSON.stringify(v)):String(v);
 const photoImg=file=>h('img',{src:'photos/'+file,alt:'',onclick:e=>lightbox(e.currentTarget.src)});
@@ -188,7 +193,25 @@ const VIEWS={
     const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); createUser(F) }},h('input',{name:'full_name',placeholder:'Full name',required:true,maxlength:80,style:'min-width:200px'}),
       h('input',{name:'position',placeholder:'Position (job title)',required:true,maxlength:80}),h('input',{name:'username',placeholder:'username',required:true,maxlength:40}),
       h('select',{name:'role'},h('option',{value:'user'},'user'),isManager()?h('option',{value:'admin'},'admin'):null),h('button',{class:'primary'},'Create and get link'));
-    put(mainFor(g),h('div',{class:'card server-only'},h('h3',null,'Add an account'),F,
+    // sign-up: people with the code ask for an account in the browser; each request is approved or rejected here
+    const S=await signups(); signupBadge(S);
+    const code=h('input',{name:'code','aria-label':'Sign-up code',placeholder:S?.enabled?'a new code':'a code, 6+ characters',autocomplete:'off',autocapitalize:'none',spellcheck:'false',minlength:6,maxlength:64,required:true});
+    const SU=S?[h('div',{class:'card',id:'signups'},h('h3',null,`Account requests (${S.requests.length})`),
+        S.requests.length?table(head('Name','Username','Asked',''),S.requests.map(r=>h('tr',{'data-user':r.username},
+          h('td',null,r.full_name,r.position?h('div',{class:'sub'},r.position):null),
+          h('td',{class:'mono'},r.username,r.taken?h('div',{class:'del'},'this username exists already: approve with another one'):null),
+          h('td',{class:'sub'},when(r.created),h('div',null,`expires ${when(r.expires)}`)),
+          h('td',{class:'row'},h('button',{class:'primary',onclick:()=>decideSignup(r,'approve')},'Approve'),h('button',{class:'danger',onclick:()=>decideSignup(r,'reject')},'Reject')))))
+          :h('div',{class:'sub'},S.enabled?'Nobody is waiting.':'Nobody is waiting, and sign-up is off.'),
+        h('div',{class:'sub',style:'margin-top:6px'},`Approving makes the account (role user) with the password the person chose; they can sign in at once. Rejecting deletes the request. A request nobody decides is dropped after ${S.days} days.`)),
+      h('div',{class:'card',id:'signupCode'},h('h3',null,'Sign-up code'),
+        h('div',{id:'signupState'},S.enabled?['Sign-up is ',h('b',null,'on'),` (code set ${when(S.set)}). The sign-in screen offers “Request an account” to whoever has the code.`]
+          :['Sign-up is ',h('b',null,'off'),': only an admin can add accounts.']),
+        isManager()?[h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); setSignupCode(code.value) }},code,h('button',{class:'primary'},S.enabled?'Change the code':'Switch sign-up on'),
+            S.enabled?h('button',{class:'ghost',type:'button',onclick:()=>confirm('Switch sign-up off? Requests already waiting stay until you decide them.')&&setSignupCode('')},'Switch sign-up off'):null),
+          h('div',{class:'sub'},'Give the code to your team only. It is not shown again, here or anywhere: if it is forgotten or got out, set a new one. Changing it does not touch accounts or requests already made.')]
+          :h('div',{class:'sub'},'The manager sets, changes or clears the code.'))]:null;
+    put(mainFor(g),SU,h('div',{class:'card server-only'},h('h3',null,'Add an account'),F,
         h('div',{class:'sub'},'There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.'),h('div',{id:'newlink'})),
       hiddenBar(true,nHidden),   // (whether a person still has a device is the server's to tell: Clear removed asks it)
       table(head('Name','Username','Role','Status',''),U.map(u=>h('tr',{class:u.hidden?'hidden-row':null},
@@ -409,6 +432,13 @@ async function createUser(f){
   if(r) put($('#newlink'),h('div',{class:'warn'},'Give this link to ',h('b',null,f.username.value),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link)));
 }
 const setUser=(id,d)=>act(()=>K.api(`/api/users/${id}`,d),'Updated');
+const setSignupCode=code=>act(()=>K.api('/api/signup-code',{code}),code?'Sign-up is on with the new code':'Sign-up is off');
+function decideSignup(r,action){
+  if(action==='reject') return confirm(`Reject the request of ${r.full_name} (${r.username})? It is deleted.`)&&act(()=>K.api(`/api/signups/${r.id}/reject`,{}),'Request rejected');
+  let username=r.username;
+  if(r.taken){ username=prompt(`The username ${r.username} exists already. Approve ${r.full_name} with which username? (Tell them: they sign in with it.)`,''); if(!username) return }
+  return act(()=>K.api(`/api/signups/${r.id}/approve`,{username}),`Approved: ${username} can sign in now`);
+}
 const exportBundle=photos=>{ if(!K.native) return true; K.native.saveApi('plant.kksbundle','/api/bundle'+(photos?'?photos=1':'')); return false };
 const setPerson=(pid,d)=>act(()=>K.api(`/api/persons/${pid}`,d),'Updated');
 const syncNow=address=>act(()=>K.api('/api/sync/now',{address}),'Synced');

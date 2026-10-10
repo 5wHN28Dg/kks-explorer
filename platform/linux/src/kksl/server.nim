@@ -10,6 +10,12 @@ import dbstore, tls, net, argon2, mdns, internet, httpserver, throttle
 const
   Cookie = "kks_session"
   MinPassword = 10
+  # sign-up with the plant's code, then an admin's approval (the user, 2026-10-10)
+  SignupMaxPending* = 50      ## requests waiting at once; further ones are refused
+  SignupDays* = 14            ## a request nobody decided is dropped after this long
+  SignupMaxBody = 4096        ## bytes of a request's JSON
+  SignupRefused = "The request was not accepted. Check the sign-up code with your manager, or try again later."
+  SignupWaiting = "Your account request is waiting for an admin's approval."
   Shell = {"/": "index.html", "/index.html": "index.html", "/admin.html": "admin.html", "/common.js": "common.js", "/tiles.js": "tiles.js", "/dark.js": "dark.js", "/systems.js": "systems.js",
            "/course-bridge.js": "course-bridge.js", "/learning.html": "learning.html",
            "/course.html": "course.html", "/course.js": "course.js", "/course-figure.js": "course-figure.js",
@@ -51,6 +57,7 @@ type
     api*: Api
     id*: Identity
     fails: Throttle               ## failed password and token checks (issue #39)
+    signupTries: Throttle         ## refused account requests (apart from `fails`: they never lock a sign-in out)
     listener*: Listener
     mdns*: Mdns
     internet*: Internet           ## presence on the plant's relay (§18), answers syncs through it
@@ -230,6 +237,52 @@ proc consumeToken(s: Server, raw: string) = s.store.delRow("tokens", hex(s.p.sha
 
 proc hashPw(s: Server, pw: string): string = hashPassword(pw, s.p.randomBytes(16).toStr)
 
+# ---- sign-up: anyone with the plant's sign-up code may ask for an account; an admin approves or rejects each ----
+# The code is the manager's (Manage → Users, or `kks-server set-signup-code`). Only a salted digest of it is kept, in
+# the sealed store: it is in no log entry, no response and no log line. No code = sign-up off.
+
+proc signupOn*(s: Server): bool = s.store.getRow("signup", "code") != nil
+
+proc setSignupCode*(s: Server, code0: string) =
+  ## "" switches sign-up off (requests already waiting stay until decided or expired)
+  let code = code0.strip
+  if code.len == 0:
+    s.store.delRow("signup", "code")
+    return
+  if code.len < 6 or code.len > 64 or code.anyIt(it < ' ' or it == '\x7f'):
+    raise newException(ValueError, "A sign-up code of 6 to 64 characters.")
+  let salt = s.p.randomBytes(16)
+  s.store.putRow("signup", "code", O(("salt", S(hex(salt))), ("digest", S(hex(s.p.sha256(salt & code.toBytes)))),
+                                     ("set", newInt(nowS()))))
+
+proc signupCodeOk(s: Server, code: string): bool =
+  ## in constant time: two digests are compared, whatever the lengths; with sign-up off the same work, never true
+  let row = s.store.getRow("signup", "code")
+  let salt = if row != nil: unhex(row["salt"].s) else: newSeq[byte](16)
+  let want = if row != nil: unhex(row["digest"].s) else: newSeq[byte](32)
+  let got = s.p.sha256(salt & code.strip.toBytes)
+  var diff = got.len xor want.len
+  for i in 0 ..< min(got.len, want.len): diff = diff or (int(got[i]) xor int(want[i]))
+  diff == 0 and row != nil
+
+proc signupRequests*(s: Server, now = nowS()): seq[JNode] =
+  ## the requests waiting, oldest first; expired ones are dropped here
+  for (k, v) in s.store.allRows("signups"):
+    if v["created"].i + SignupDays * 86400 <= now: s.store.delRow("signups", k)
+    else: result.add v
+  result.sort(proc (a, b: JNode): int = cmp(a["at"].i, b["at"].i))
+
+proc pendingSignup(s: Server, username: string): JNode =
+  ## the newest waiting request under this username
+  for r in s.signupRequests:
+    if r["username"].s == username: result = r
+
+proc usernameTaken(s: Server, name: string): bool =
+  if s.userByName(name) != nil: return true
+  if s.n.run != nil:
+    for _, pr in s.n.run.persons:
+      if pr["username"].s.toLowerAscii == name.toLowerAscii: return true
+
 proc login(s: Server, username, password: string, sources: openArray[string]): JNode =
   ## `sources`: where the attempt comes from ("ip:…" from `sourceKey`, "tls:<peer>"), the first one the most specific
   ## that can't be changed for free. The account is counted per source, and as a whole only under pressure (#39).
@@ -238,8 +291,12 @@ proc login(s: Server, username, password: string, sources: openArray[string]): J
   let now = epochTime()
   if s.fails.blocked(keys, now, [acct]): herr(429, "Too many failed attempts. Wait a few minutes.")
   let u = s.userByName(username)
+  let asked = s.pendingSignup(username)   # looked up for every name: an account's name costs the same as any other
   let ok = u != nil and checkPassword(password, if u["pw"].isStr: u["pw"].s else: "") and u["active"].b
-  if u == nil: discard checkPassword("x", "")
+  # no account by that name: one check all the same, against the waiting request's password if there is one. Whoever
+  # knows that password filed the request (or was given it): they are told it waits, which a wrong password never is.
+  if u == nil and checkPassword(password, if asked != nil: asked["pw"].s else: ""):
+    herr(403, SignupWaiting)              # (neither a failure nor a success for the throttle)
   s.fails.record(ok, keys, epochTime(), [acct])
   if not ok: herr(401, "Wrong username or password.")
   if needsRehash(u["pw"].s):   # v1 scrypt, or Argon2id below today's parameters (#40): replace it now
@@ -304,15 +361,74 @@ proc createPlant(s: Server, username, fullName: string, position: JNode, pw: str
              ("device", S(dev)))
   s.putUser(result)
 
-proc createAccount(s: Server, me: Actor, username, fullName: string, position: JNode, role: string): JNode =
+proc createAccount(s: Server, me: Actor, username, fullName: string, position: JNode, role: string, pw: JNode = newNull()): JNode =
+  ## `pw`: the password's hash when the person chose it already (an approved sign-up); else they set it by a link
   let pid = hex(s.p.randomBytes(16))
   discard s.n.appendAs(me.key, "person", personBody(pid, username, fullName, role, position), nowMs())
   let (dev, _) = s.newCustodial()
   discard s.n.appendAs(me.key, "device_cert", deviceCertBody(dev, pid, "server"), nowMs())
-  result = O(("id", newInt(s.newUserId)), ("username", S(username)), ("pw", newNull()), ("active", newBool(true)),
+  result = O(("id", newInt(s.newUserId)), ("username", S(username)), ("pw", pw), ("active", newBool(true)),
              ("created", newInt(nowS())), ("full_name", S(fullName)), ("position", position), ("person", S(pid)),
              ("device", S(dev)))
   s.putUser(result)
+
+proc requestAccount*(s: Server, d: JNode, sources: openArray[string], now = epochTime()) =
+  ## POST /api/signup, from anyone. The form's own rules are checked first and answered as they are (they depend on
+  ## nothing secret). After that every refusal is the same answer and costs the same work as a request that is filed:
+  ## a wrong code, sign-up off, too many requests waiting. A username somebody has is no refusal: the admin sees it
+  ## when approving, so the answer tells nothing about who has an account.
+  if s.signupTries.blocked(sources, now) or s.signupTries.underPressure(now):
+    herr(429, "Too many attempts. Wait a few minutes.")
+  proc str(k: string): string = (if d.get(k) != nil and d[k].isStr: d[k].s else: "")
+  let name = str("username").strip
+  if not validUsername(name): herr(400, "Username: 2-40 letters (a-z), digits, . _ - @")
+  let prob = passwordProblem(d.get("password"))
+  if prob.len > 0: herr(400, prob)
+  var fn: string
+  var pos: JNode
+  try:
+    (fn, pos) = personFields(d)
+    requirePosition(pos)
+  except ApiError as e: herr(400, e.msg)
+  let pw = s.hashPw(d["password"].s)       # before the code is looked at
+  let ok = s.signupCodeOk(str("code")) and s.signupRequests(int64(now)).len < SignupMaxPending
+  s.signupTries.record(ok, sources, now)
+  if not ok: herr(403, SignupRefused)
+  let id = hex(s.p.randomBytes(16))
+  s.store.putRow("signups", id, O(("id", S(id)), ("username", S(name)), ("full_name", S(fn)), ("position", pos),
+                                  ("pw", S(pw)), ("created", newInt(int64(now))), ("at", newInt(int64(now * 1000)))))
+
+proc signupsOut*(s: Server, now = nowS()): JNode =
+  ## for admins: whether sign-up is on (never the code) and the requests waiting (never a password's hash)
+  var reqs = newArr()
+  for r in s.signupRequests(now):
+    reqs.elems.add O(("id", r["id"]), ("username", r["username"]), ("full_name", r["full_name"]), ("position", r["position"]),
+                     ("created", r["created"]), ("expires", newInt(r["created"].i + SignupDays * 86400)),
+                     ("taken", newBool(s.usernameTaken(r["username"].s))))
+  let row = s.store.getRow("signup", "code")
+  O(("enabled", newBool(row != nil)), ("set", if row != nil: row["set"] else: newNull()), ("requests", reqs),
+    ("max", newInt(SignupMaxPending)), ("days", newInt(SignupDays)))
+
+proc decideSignup(s: Server, me: Actor, id, action: string, d: JNode): JNode =
+  ## approve: the account "Add an account" would make (a person with role user, a custodial device), with the
+  ## password the person chose; `username` in the body replaces a name somebody already has. reject: the request goes.
+  if not me.isAdmin: herr(403, "admin only")
+  var r: JNode
+  for x in s.signupRequests:
+    if x["id"].s == id: r = x
+  if r == nil: herr(404, "That request is gone: decided already, or expired.")
+  if action == "reject":
+    s.store.delRow("signups", id)
+    return O(("ok", newBool(true)))
+  let name = if d.get("username") != nil and d["username"].isStr and d["username"].s.strip.len > 0: d["username"].s.strip
+             else: r["username"].s
+  if not validUsername(name): herr(400, "Username: 2-40 letters (a-z), digits, . _ - @")
+  if s.usernameTaken(name): herr(409, "That username exists. Approve with another username, or reject the request.")
+  try: requirePosition(r["position"])
+  except ApiError as e: herr(400, e.msg)
+  let nu = s.createAccount(me, name, r["full_name"].s, r["position"], "user", r["pw"])
+  s.store.delRow("signups", id)
+  O(("ok", newBool(true)), ("id", nu["id"]), ("username", S(name)))
 
 proc handOverManager*(s: Server, to: JNode) =
   ## A root `manager` statement (needs the root key), written by the new manager's own device.
@@ -634,6 +750,12 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
     if args.len != 1: raise newException(ValueError, "usage: kks-server set-plant-name NAME   (\"\" for none)")
     s.setPlantName(args[0])
     if args[0].strip.len == 0: "The plant has no name now." else: "The plant is called " & args[0].strip & " now."
+  of "set-signup-code":
+    # the code people need to ask for an account ("" = sign-up off); what is printed never repeats it
+    if args.len != 1: raise newException(ValueError, "usage: kks-server set-signup-code CODE   (\"\" switches sign-up off)")
+    s.setSignupCode(args[0])
+    if s.signupOn: "Sign-up is on: whoever has the code can ask for an account, and an admin approves each one in Manage → Users."
+    else: "Sign-up is off."
   of "submit-file":
     # a list of ordinary submissions [{kind, payload, client_id?, note?}] made as the manager, through the same checks
     # as /api/submit: plant knowledge from a document (procedure links, photos, equipment fields). A client_id makes a
@@ -908,6 +1030,7 @@ proc handle(s: Server, req: Request) {.async.} =
       c["mode"] = S("server")
       c["offline_days"] = newInt(s.cfg.offlineDays)
       c["setup_needed"] = newBool(s.managerUser() == nil)
+      c["signup"] = newBool(s.signupOn)     # whether the sign-in screen offers "Request an account": nothing more
       c.del("node")
       # no encoder here: browsers encode JPEG XL themselves (decision 0037); the API refuses anything else
       c["photo_upload"] = O(("type", S("image/jxl")), ("distance", newFloat(1.9)), ("effort", newInt(7)))
@@ -949,6 +1072,7 @@ proc handle(s: Server, req: Request) {.async.} =
       await s.sendJson(req, 200, O(("ok", newBool(true)), ("job", job)))
       return
     if not ctype.startsWith("application/json"): herr(415, "JSON only")
+  if isPost and path == "/api/signup" and req.body.len > SignupMaxBody: herr(413, "That request is too large.")
   var d = newObj()
   if isPost and req.body.len > 0:
     try: d = parseStrict(req.body)
@@ -963,6 +1087,10 @@ proc handle(s: Server, req: Request) {.async.} =
                         if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", src)
       let raw = s.newSession(usr["id"].i)
       await s.sendJson(req, 200, O(("user", s.publicUser(usr))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
+      return
+    of "/api/signup":
+      s.requestAccount(d, src)
+      await s.sendJson(req, 200, O(("ok", newBool(true))))
       return
     of "/api/logout":
       # Clear-Site-Data: the HTTP cache goes too (it may hold photos from before the fix of finding #25, which were
@@ -1052,6 +1180,10 @@ proc handle(s: Server, req: Request) {.async.} =
       if not me.isAdmin: herr(403, "admin only")
       await s.sendJson(req, 200, O(("users", s.usersOut(q.getOrDefault("show_hidden") in ["1", "true"]))))
       return
+    of "/api/signups":
+      if not me.isAdmin: herr(403, "admin only")
+      await s.sendJson(req, 200, s.signupsOut)
+      return
     of "/api/sync/status":
       await s.sendJson(req, 200, O(("rev", newInt(s.api.rev)), ("mode", S("server")), ("internet", newNull()),
                                    ("plant_data", s.n.status)))
@@ -1120,12 +1252,16 @@ proc handle(s: Server, req: Request) {.async.} =
         (fn, pos) = personOf(d)
         requirePosition(pos)    # every new member needs one (existing ones keep what they have)
       except ApiError as e: herr(400, e.msg)
-      if s.userByName(name) != nil: herr(409, "That username exists.")
-      for _, pr in s.n.run.persons:
-        if pr["username"].s.toLowerAscii == name.toLowerAscii: herr(409, "That username exists.")
+      if s.usernameTaken(name): herr(409, "That username exists.")
       let nu = s.createAccount(me, name, fn, pos, role)
       await s.sendJson(req, 200, O(("ok", newBool(true)), ("id", nu["id"]),
         ("link", S(s.link("/#reset=" & s.makeToken("reset", nu["id"].i, 7 * 86400)))), ("expires_days", newInt(7))))
+      return
+    of "/api/signup-code":   # the manager sets, changes or clears ("") the sign-up code
+      if me.role != "manager": herr(403, "manager only")
+      try: s.setSignupCode(if d.get("code") != nil and d["code"].isStr: d["code"].s else: "")
+      except ValueError as e: herr(400, e.msg)
+      await s.sendJson(req, 200, O(("ok", newBool(true)), ("enabled", newBool(s.signupOn))))
       return
     of "/api/profile":
       let r = s.api.handle(me, "POST", path, q, d, nowMs())
@@ -1153,6 +1289,9 @@ proc handle(s: Server, req: Request) {.async.} =
       except CatchableError as e: herr(502, "sync with " & addr0 & " failed: " & e.msg)
       return
     else: discard
+    if parts.len == 5 and parts[2] == "signups" and parts[4] in ["approve", "reject"]:
+      await s.sendJson(req, 200, s.decideSignup(me, parts[3], parts[4], d))
+      return
     if parts.len >= 4 and parts[2] == "users":
       let uid = try: parseBiggestInt(parts[3]) except ValueError: herr(404, "not found")
       await s.sendJson(req, 200, s.updateUser(me, uid, d, parts.len == 5 and parts[4] == "reset"))

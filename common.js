@@ -125,13 +125,15 @@ K.overlay = (...nodes) => {
 // A box on the overlay: a title, a text, and optionally a button (its label, what it does).
 K.box = (title, text, button, onclick) => K.overlay(K.h('div', {class: 'box'}, K.h('h1', null, title), K.h('p', null, text),
   button ? K.h('button', {onclick}, button) : null));
-// back: optional; adds "← Back" (also Esc) for forms reached from a choice screen
-K.form = (title, sub, fields, button, onsubmit, back) => {
+// back: optional; adds "← Back" (also Esc) for forms reached from a choice screen. more: optional nodes under the
+// buttons. A field with `plain` is typed as it is (a username, a code): phones neither capitalise nor correct it.
+K.form = (title, sub, fields, button, onsubmit, back, more) => {
   const h = K.h;
   const o = K.overlay(h('form', {autocomplete: 'on'}, h('h1', null, title), sub ? h('p', null, sub) : null,
-    fields.map(f => h('input', {name: f.name, type: f.type || 'text', placeholder: f.label, autocomplete: f.ac || 'off',
-                                value: f.value || null, readonly: !!f.value, required: !f.optional})),
-    h('div', {class: 'err'}), h('button', null, button), back ? h('button', {type: 'button', class: 'back'}, '← Back') : null));
+    fields.map(f => h('input', {name: f.name, type: f.type || 'text', placeholder: f.label, 'aria-label': f.label || null, autocomplete: f.ac || 'off',
+                                value: f.value || null, readonly: !!f.value, required: !f.optional,
+                                autocapitalize: f.plain ? 'none' : null, autocorrect: f.plain ? 'off' : null, spellcheck: f.plain ? 'false' : null})),
+    h('div', {class: 'err', role: 'alert'}), h('button', null, button), back ? h('button', {type: 'button', class: 'back'}, '← Back') : null, more));
   const f = o.querySelector('form'); f.querySelector('input:not([readonly])')?.focus();
   if (back) { f.querySelector('.back').onclick = back; f.onkeydown = e => { if (e.key === 'Escape') back() } }
   f.onsubmit = async e => { e.preventDefault(); const v = Object.fromEntries(new FormData(f)); f.querySelector('.err').textContent = '';
@@ -139,7 +141,8 @@ K.form = (title, sub, fields, button, onsubmit, back) => {
 };
 const pwFields = [{name: 'password', type: 'password', label: 'New password (10+ characters)', ac: 'new-password'},
                   {name: 'password2', type: 'password', label: 'Repeat password', ac: 'new-password'}];
-const samePw = v => { if (v.password !== v.password2) throw new Error('Passwords differ.') };
+// (a status, so the form shows these words: an error without one reads as "Cannot reach the server.")
+const samePw = v => { if (v.password !== v.password2) throw Object.assign(new Error('Passwords differ.'), {status: 400}) };
 const done = () => { history.replaceState(null, '', location.pathname); location.reload() };
 
 // Resolves with /api/me when the app may proceed (online, or offline within the lease). Otherwise shows a screen.
@@ -174,9 +177,7 @@ K.start = async () => {
   } catch (e) {
     if (e.status === 401) {
       await K.wipe();
-      return new Promise(() => K.form(cfg?.plant_name || 'Walkdown', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
-        [{name: 'username', label: 'Username', ac: 'username'}, {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Sign in',
-        async v => { await K.api('/api/login', v); location.reload() }));
+      return new Promise(() => K.signIn(cfg));
     }
     const c = await K.idb.get('me');
     if (c && c.lease_until > Date.now()) { K.me = c; K.setOnline(false); await K.emit(); K.convertPhotos(); return c }
@@ -189,6 +190,21 @@ K.start = async () => {
     return new Promise(() => {});
   }
 };
+
+// The sign-in screen. Where the manager has set a sign-up code (/api/config: signup), it also leads to "Request an
+// account": the request waits for an admin (Manage → Users); until then signing in says so.
+K.signIn = cfg => K.form(cfg?.plant_name || 'Walkdown', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
+  [{name: 'username', label: 'Username', ac: 'username', plain: true}, {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Sign in',
+  async v => { await K.api('/api/login', v); location.reload() }, null,
+  cfg?.signup ? K.h('button', {type: 'button', class: 'back', id: 'signup', onclick: () => K.signUp(cfg)}, 'No account yet? Request one') : null);
+K.signUp = cfg => K.form('Request an account', 'You need the sign-up code your manager gives the team. An admin then approves the request before the account works.',
+  [{name: 'code', label: 'Sign-up code', plain: true}, {name: 'full_name', label: 'Your full name', ac: 'name'},
+   {name: 'position', label: 'Position at the company (job title)', ac: 'organization-title'},
+   {name: 'username', label: 'Username (letters, digits, . _ - @)', ac: 'username', plain: true}, ...pwFields], 'Send the request',
+  async v => { samePw(v);
+    await K.api('/api/signup', {code: v.code, username: v.username.trim(), full_name: v.full_name, position: v.position, password: v.password});
+    K.box('Request sent', `An admin has to approve it. After that, sign in as ${v.username.trim()} with the password you chose.`, 'Back to sign in', () => K.signIn(cfg)) },
+  () => K.signIn(cfg));
 
 // ---------- peer mode: this computer is one person's device; set it up before first use ----------
 K.download = (data, name, type = 'application/json') => {

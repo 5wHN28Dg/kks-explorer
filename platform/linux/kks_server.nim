@@ -2,9 +2,11 @@
 ##   kks-server [serve] [--config F]
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
 ##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json
+##   kks-server set-signup-code CODE: the code people need to ask for an account in the browser ("" = sign-up off);
+##     an admin then approves or rejects each request in Manage → Users
 ##   kks-server backup --out FILE: the plant (log and photos), encrypted with a key from the last export-root-key's
 ##     passphrase (decision 0051); kks-server open-backup --in FILE --out BUNDLE --passphrase-file F opens it anywhere
-##     (publish-data, set-plant-name, submit-file, reset-password and reset-manager run inside the server when it runs: its control
+##     (publish-data, set-plant-name, set-signup-code, submit-file, reset-password and reset-manager run inside the server when it runs: its control
 ##     socket next to the store, decision 0045)
 ##   kks-server export-root-key --out FILE [--passphrase-out FILE]: the plant root key, sealed with a generated
 ##     passphrase (80 bits, decision 0023, issue #29) that is printed, or written to --passphrase-out; the same file
@@ -60,7 +62,7 @@ proc main() =
   if cmd in ["reset-password", "reset-manager"]:        # --user NAME
     if "user" notin args: quit "usage: kks-server " & cmd & " --user NAME"
     rest = @[args["user"]]
-  if cmd in ["publish-data", "set-plant-name", "reset-password", "reset-manager", "submit-file"]:
+  if cmd in ["publish-data", "set-plant-name", "set-signup-code", "reset-password", "reset-manager", "submit-file"]:
     # a running server does it itself (see server.control); else this process, with the server stopped
     block forward:
       let c = newSocket(nativesockets.AF_UNIX, nativesockets.SOCK_STREAM, nativesockets.IPPROTO_IP)
@@ -111,7 +113,7 @@ proc main() =
     for (_, u) in s.store.allRows("users"):
       echo u["id"].i, "  ", u["username"].s.alignLeft(20), " ", (if s.n.run != nil: s.n.run.role(u["person"].s) else: "?").alignLeft(8),
            " ", (if u["active"].b: "active" else: "inactive"), "  ", u["full_name"].s
-  of "publish-data", "set-plant-name", "reset-password", "reset-manager", "submit-file":
+  of "publish-data", "set-plant-name", "set-signup-code", "reset-password", "reset-manager", "submit-file":
     try: echo s.control(cmd, rest)
     except ValueError as e: quit e.msg
   of "export-root-key":
