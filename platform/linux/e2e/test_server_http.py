@@ -382,6 +382,8 @@ class Cli(Base):
         roles = {u['username']: u['role'] for u in sara.req('GET', '/api/users')[1]['users']}
         self.assertEqual((roles['sara'], roles['boss']), ('manager', 'admin'))
         self.assertIn('already the manager', self.cli('reset-manager', '--user', 'sara')[1])
+        # the file run again as the new manager still adds nothing: the earlier manager's items are there (#136)
+        self.assertEqual(self.cli('submit-file', subs), (0, '2 submissions: 2 already there.'))
 
 
 class SecretFiles(Base):

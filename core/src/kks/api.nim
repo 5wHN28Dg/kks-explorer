@@ -623,25 +623,29 @@ proc subRow(a: Api, id: int64): JNode =
   for r in a.n.store.subs():
     if r["id"].i == id: return r
 
-proc sentBy(r: JNode, me: Actor): bool =
-  ## this person's own submission. A `client_id` names a send among its sender's only (#136): it is shown with an open
-  ## photo, and on a node several people submit through (the server, for everyone signed in to the web app) another
-  ## member sending under it must not make the owner's send, or one code of their set, a repeat that is never written.
-  ## The person, not the device: on the server every web user's device is the server's.
-  r["person"].isStr and r["person"].s == me.person
+proc sentBy(a: Api, r: JNode, me: Actor, anyAdmin = false): bool =
+  ## this person's own submission. A `client_id` names a send among its sender's only (#136). It is shown with an open
+  ## photo, and several people submit through one node on the server (everyone signed in to the web app): another
+  ## member sending under it must not turn the owner's send, or one code of their set, into a repeat that is never
+  ## written. The person, not the device: on the server every web user's device is the server's.
+  ## `anyAdmin` (the server's submit-file, which writes as whoever is the manager now): an admin's or the manager's
+  ## earlier send counts too, so a file run again after the manager changed still adds nothing (the manager it was
+  ## first run as is an admin since); a member's never does.
+  r["person"].isStr and (r["person"].s == me.person or
+                         (anyAdmin and me.isAdmin and a.n.run.role(r["person"].s) in ["admin", "manager"]))
 
 proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
   O(("id", newNull()), ("client_id", clientId), ("entry", newNull()), ("person", S(me.person)), ("kind", S(kind)),
     ("created", I(now div 1000)), ("held", newNull()), ("status", newNull()), ("note", newNull()), ("decided_at", newNull()))
 
 proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64,
-                 dupChecked = false): JNode =
+                 dupChecked = false, anyAdmin = false): JNode =
   ## a change already in its §9 body form: the web/API submissions above and the server's submit-file (a client_id
-  ## this person has sent before returns that submission, so each is written once). `dupChecked`: the caller has looked for this
-  ## client_id already (submitMany: one pass over the submissions for the whole set, not one per code)
+  ## this person has sent before returns that submission, so each is written once). `dupChecked`: the caller has
+  ## looked for this client_id already (submitMany: one pass over the submissions for the whole set, not one per code)
   if cid.isStr and not dupChecked:
     for old in a.n.store.subs():
-      if old["client_id"].isStr and old["client_id"].s == cid.s and old.sentBy(me):
+      if old["client_id"].isStr and old["client_id"].s == cid.s and a.sentBy(old, me, anyAdmin):
         let s = a.subStatus(old)
         return O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
   try: checkData(kind, body)
@@ -684,7 +688,7 @@ proc floorBody(kks, floor: string): JNode =
   ## the equipment change a floor sent with a photo is written as: it fills an empty floor, nothing else
   O(("kks", S(kks)), ("changes", O(("floor", S(floor)))), ("base", O(("floor", S("")))))
 
-proc submitPrep(a: Api, me: Actor, clientId, noteIn: JNode): (JNode, string, JNode) =
+proc submitPrep(a: Api, me: Actor, clientId, noteIn: JNode, anyAdmin = false): (JNode, string, JNode) =
   ## (client id, request note, the earlier submission's answer when this person already sent this client id, else nil)
   if noteIn != nil and not noteIn.isNull and (noteIn.kind != jStr or noteIn.s.runeLen > 500): bad("note: up to 500 characters")
   let requestNote = if noteIn != nil and noteIn.isStr: noteIn.s.strip else: ""
@@ -694,14 +698,15 @@ proc submitPrep(a: Api, me: Actor, clientId, noteIn: JNode): (JNode, string, JNo
   var dup: JNode = nil
   if cid.isStr:
     for old in a.n.store.subs():
-      if old["client_id"].isStr and old["client_id"].s == cid.s and old.sentBy(me):
+      if old["client_id"].isStr and old["client_id"].s == cid.s and a.sentBy(old, me, anyAdmin):
         let s = a.subStatus(old)
         dup = O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
         break
   (cid, requestNote, dup)
 
-proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64): JNode =
-  let (cid, requestNote, dup) = a.submitPrep(me, clientId, noteIn)
+proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64, anyAdmin = false): JNode =
+  ## `anyAdmin`: see `sentBy` (only the server's submit-file sets it; never a request)
+  let (cid, requestNote, dup) = a.submitPrep(me, clientId, noteIn, anyAdmin)
   if dup != nil: return dup
   var floorRes: JNode = nil
   var k, fl = ""
@@ -722,17 +727,17 @@ proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, 
     if live.len == 0 and mine.len == 0:
       # "." is refused in a client's client_id, so this one never matches a photo's
       let fcid = if cid.isStr: S("floor." & cid.s) else: newNull()
-      floorRes = a.submitBody(me, "equipment", floorBody(k, fl), fcid, "", now)
+      floorRes = a.submitBody(me, "equipment", floorBody(k, fl), fcid, "", now, anyAdmin = anyAdmin)
     else:
       floorRes = O(("status", S("unchanged")), ("floor", S(if live.len > 0: live else: mine[^1])))
-  result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
+  result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now, anyAdmin = anyAdmin)
   if floorRes != nil: result["floor"] = floorRes
 
 proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, noteIn: JNode, now: int64): JNode =
   ## One photo, or one change to the equipment fields (a note, a place), for several codes at once: an ordinary
   ## submission per code, so every device reads them as before (PROTOCOL-v2 §9 has one kks per entry). A photo's image
   ## is kept once and every entry points to it. `client_id` is a prefix: code i is sent as "<prefix>-<i>", so a retry
-  ## doesn't duplicate anything (a client_id is its sender's: only this person's earlier sends count).
+  ## doesn't duplicate anything (only this person's earlier sends count: a client_id is its sender's).
   ##
   ## A photo's payload may carry `floor`, as a single photo's does (`submit`), and the same rule holds for each code by
   ## itself: it is written as that code's floor proposal, before its photo, only when the code has no floor and this
@@ -765,7 +770,7 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
   var dups = initTable[string, JNode]()
   if prefix.len > 0:
     for old in a.n.store.subs():
-      if old["client_id"].isStr and old.sentBy(me) and (old["client_id"].s.startsWith(prefix & "-") or
+      if old["client_id"].isStr and a.sentBy(old, me) and (old["client_id"].s.startsWith(prefix & "-") or
                                                         old["client_id"].s.startsWith("floor." & prefix & "-")):
         let st = a.subStatus(old)
         dups[old["client_id"].s] = O(("id", old["id"]), ("status", S(st.status)), ("note", S(st.note)), ("duplicate", B(true)))

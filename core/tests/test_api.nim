@@ -659,6 +659,25 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     let r2 = mgrApi.call(omar, "POST", "/api/submit-many", many([A, B, C], "omar-set-01", "omar set", floor = "2"))
     for i, x in r2.json["results"].elems: check x["duplicate"].b and x["id"].i == ids[i]
     check mgrNode.entries.len == entries
+    # the server's submit-file (written as whoever is the manager now): what another admin sent under the id is
+    # there, as after a change of manager; what a member sent under it is not
+    proc filed(who: Actor, kks, cid: string): JNode =
+      mgrApi.submit(who, "equipment", j("""{"kks":"""" & kks & """","changes":{"near":"from the file"}}"""), newStr(cid),
+                    nil, now(), anyAdmin = true)
+    let ak = P.p256Generate()
+    let aid = mgrApi.call(mgr, "POST", "/api/devices/import-request", newObj(@[("request",
+      P.joinRequest(ak, "adm", "Ada Admin", newStr("Shift engineer"), "server", now() div 1000))])).json["person"].s
+    check mgrApi.call(mgr, "POST", "/api/persons/" & aid, j("""{"role":"admin"}""")).status == 200
+    let (_, ada) = mgrNode.actorOf(P.peerId(ak), ak)
+    check mgrApi.call(bea, "POST", "/api/submit", photoReq(B, "", "bea claims", cid = "imp-file-01")).json["status"].s == "pending"
+    let f1 = filed(ada, B, "imp-file-01")
+    check f1.get("duplicate") == nil and f1["status"].s == "approved"
+    let f2 = filed(mgr, B, "imp-file-01")
+    check f2["duplicate"].b and f2["id"].i == f1["id"].i
+    # an ordinary request never looks past its own sender
+    let own = mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("client_id", newStr("imp-file-01")),
+      ("payload", j("""{"kks":"11LAB90AA603","changes":{"near":"the manager's own"}}"""))]))
+    check own.json.get("duplicate") == nil
 
 import kks/bundle
 
