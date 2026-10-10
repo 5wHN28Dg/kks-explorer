@@ -14,6 +14,8 @@ const
   SignupMaxPending* = 50      ## requests waiting at once; further ones are refused
   SignupDays* = 14            ## a request nobody decided is dropped after this long
   SignupMaxBody = 4096        ## bytes of a request's JSON
+  SignupPerName* = 3          ## requests waiting under one username (signing in checks each one's password)
+  SignupPerSource* = 10       ## requests one source may file in a throttle Window
   SignupRefused = "The request was not accepted. Check the sign-up code with your manager, or try again later."
   SignupWaiting = "Your account request is waiting for an admin's approval."
   Shell = {"/": "index.html", "/index.html": "index.html", "/admin.html": "admin.html", "/common.js": "common.js", "/tiles.js": "tiles.js", "/dark.js": "dark.js", "/systems.js": "systems.js",
@@ -58,6 +60,7 @@ type
     id*: Identity
     fails: Throttle               ## failed password and token checks (issue #39)
     signupTries: Throttle         ## refused account requests (apart from `fails`: they never lock a sign-in out)
+    signupFiled: Table[string, seq[float]]   ## when each source filed its requests, within the last Window
     listener*: Listener
     mdns*: Mdns
     internet*: Internet           ## presence on the plant's relay (§18), answers syncs through it
@@ -272,10 +275,10 @@ proc signupRequests*(s: Server, now = nowS()): seq[JNode] =
     else: result.add v
   result.sort(proc (a, b: JNode): int = cmp(a["at"].i, b["at"].i))
 
-proc pendingSignup(s: Server, username: string): JNode =
-  ## the newest waiting request under this username
-  for r in s.signupRequests:
-    if r["username"].s == username: result = r
+proc pendingSignups(s: Server, username: string, now = nowS()): seq[JNode] =
+  ## the waiting requests under this username (at most SignupPerName)
+  for r in s.signupRequests(now):
+    if r["username"].s == username: result.add r
 
 proc usernameTaken(s: Server, name: string): bool =
   if s.userByName(name) != nil: return true
@@ -291,13 +294,18 @@ proc login(s: Server, username, password: string, sources: openArray[string]): J
   let now = epochTime()
   if s.fails.blocked(keys, now, [acct]): herr(429, "Too many failed attempts. Wait a few minutes.")
   let u = s.userByName(username)
-  let asked = s.pendingSignup(username)   # looked up for every name: an account's name costs the same as any other
-  let ok = u != nil and checkPassword(password, if u["pw"].isStr: u["pw"].s else: "") and u["active"].b
-  # no account by that name: one check all the same, against the waiting request's password if there is one. Whoever
-  # knows that password filed the request (or was given it): they are told it waits, which a wrong password never is.
-  if u == nil and checkPassword(password, if asked != nil: asked["pw"].s else: ""):
-    herr(403, SignupWaiting)              # (neither a failure nor a success for the throttle)
-  s.fails.record(ok, keys, epochTime(), [acct])
+  let asked = s.pendingSignups(username)
+  # one check against the account's password, or against nothing when the name has no account: the same work
+  let ok = checkPassword(password, if u != nil and u["pw"].isStr: u["pw"].s else: "") and u != nil and u["active"].b
+  # then one against each account request waiting under that name, whether the name has an account or not: whoever
+  # knows a request's password filed it, and is told it waits. So the answer and the work are the same for a name
+  # somebody has as for one nobody has (no way to learn who has an account by asking for their name).
+  var waits = false
+  if not ok:
+    for r in asked:
+      if checkPassword(password, r["pw"].s): waits = true
+  s.fails.record(ok, keys, epochTime(), [acct])   # "it waits" counts like a failure: asking again and again is slowed
+  if waits: herr(403, SignupWaiting)
   if not ok: herr(401, "Wrong username or password.")
   if needsRehash(u["pw"].s):   # v1 scrypt, or Argon2id below today's parameters (#40): replace it now
     u["pw"] = S(s.hashPw(password))
@@ -379,6 +387,14 @@ proc requestAccount*(s: Server, d: JNode, sources: openArray[string], now = epoc
   ## when approving, so the answer tells nothing about who has an account.
   if s.signupTries.blocked(sources, now) or s.signupTries.underPressure(now):
     herr(429, "Too many attempts. Wait a few minutes.")
+  # and what one source may file: SignupPerSource requests in a Window (a team behind one address fits; one person
+  # with the code can't fill the list, or keep the server hashing, in a moment)
+  let src0 = if sources.len > 0: sources[0] else: ""
+  var mine: seq[float]
+  for t in s.signupFiled.getOrDefault(src0):
+    if t > now - Window: mine.add t
+  if mine.len == 0: s.signupFiled.del src0 else: s.signupFiled[src0] = mine
+  if mine.len >= SignupPerSource: herr(429, "Too many attempts. Wait a few minutes.")
   proc str(k: string): string = (if d.get(k) != nil and d[k].isStr: d[k].s else: "")
   let name = str("username").strip
   if not validUsername(name): herr(400, "Username: 2-40 letters (a-z), digits, . _ - @")
@@ -391,9 +407,17 @@ proc requestAccount*(s: Server, d: JNode, sources: openArray[string], now = epoc
     requirePosition(pos)
   except ApiError as e: herr(400, e.msg)
   let pw = s.hashPw(d["password"].s)       # before the code is looked at
-  let ok = s.signupCodeOk(str("code")) and s.signupRequests(int64(now)).len < SignupMaxPending
+  # each test is made whatever the others say (no short cut: a wrong code does the same work as a right one)
+  let codeOk = s.signupCodeOk(str("code"))
+  let waiting = s.signupRequests(int64(now))
+  var sameName = 0
+  for r in waiting:
+    if r["username"].s == name: inc sameName
+  let ok = codeOk and waiting.len < SignupMaxPending and sameName < SignupPerName
   s.signupTries.record(ok, sources, now)
   if not ok: herr(403, SignupRefused)
+  if s.signupFiled.len > 10_000: s.signupFiled.clear()     # (bounded; it only forgets who filed how many)
+  s.signupFiled[src0] = mine & @[now]
   let id = hex(s.p.randomBytes(16))
   s.store.putRow("signups", id, O(("id", S(id)), ("username", S(name)), ("full_name", S(fn)), ("position", pos),
                                   ("pw", S(pw)), ("created", newInt(int64(now))), ("at", newInt(int64(now * 1000)))))
@@ -401,8 +425,10 @@ proc requestAccount*(s: Server, d: JNode, sources: openArray[string], now = epoc
 proc signupsOut*(s: Server, now = nowS()): JNode =
   ## for admins: whether sign-up is on (never the code) and the requests waiting (never a password's hash)
   var reqs = newArr()
-  for r in s.signupRequests(now):
-    reqs.elems.add O(("id", r["id"]), ("username", r["username"]), ("full_name", r["full_name"]), ("position", r["position"]),
+  let waiting = s.signupRequests(now)
+  for r in waiting:
+    # `same`: how many requests ask for this username (more than one: the admin must find out which is the person's)
+    reqs.elems.add O(("same", newInt(waiting.countIt(it["username"].s == r["username"].s))), ("id", r["id"]), ("username", r["username"]), ("full_name", r["full_name"]), ("position", r["position"]),
                      ("created", r["created"]), ("expires", newInt(r["created"].i + SignupDays * 86400)),
                      ("taken", newBool(s.usernameTaken(r["username"].s))))
   let row = s.store.getRow("signup", "code")

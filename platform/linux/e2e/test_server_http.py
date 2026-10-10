@@ -293,9 +293,9 @@ class ImportCrash(ImportFailure):
 
 
 class Cli(Base):
-    def cli(self, *args):
+    def cli(self, *args, stdin=None):
         r = subprocess.run([BIN, *args, '--config', os.path.join(self.dir, 'config.json')], capture_output=True, text=True,
-                           cwd=self.dir, timeout=60)
+                           cwd=self.dir, timeout=60, input=stdin)
         return r.returncode, (r.stdout + r.stderr).strip()
 
     def test_cli_through_the_running_server(self):
@@ -574,9 +574,9 @@ class Signup(Base):
     REFUSED = 'The request was not accepted. Check the sign-up code with your manager, or try again later.'
     WAITING = "Your account request is waiting for an admin's approval."
 
-    def cli(self, *args):
+    def cli(self, *args, stdin=None):
         r = subprocess.run([BIN, *args, '--config', os.path.join(self.dir, 'config.json')], capture_output=True, text=True,
-                           cwd=self.dir, timeout=60)
+                           cwd=self.dir, timeout=60, input=stdin)
         return r.returncode, (r.stdout + r.stderr).strip()
 
     def ask(self, ip, **over):
@@ -668,8 +668,10 @@ class Signup(Base):
         wrong = self.login('nadia', 'not her password')[:2]
         self.assertEqual(wrong, (401, {'error': 'Wrong username or password.'}))
         self.assertEqual(self.login('nobody', 'not her password')[:2], wrong)          # as for a name nobody asked for
-        # a request under a name that has an account: its password opens nothing and says nothing
-        self.assertEqual(self.login('boss', 'boss password 1')[:2], wrong)
+        # a request under a name that has an account answers as one under a name nobody has: it waits, to its own
+        # password; so asking for a name and then signing in tells nothing about who has an account
+        self.assertEqual(self.login('boss', 'boss password 1')[:2], (403, {'error': self.WAITING}))
+        self.assertEqual(self.login('boss', 'not the password', ip='10.9.9.7')[:2], wrong)
         self.assertEqual(self.login('boss', 'a long password')[0], 200)
 
         # the list: admins and the manager; never a password's hash, never the code
@@ -682,8 +684,9 @@ class Signup(Base):
                               ('ali', 'Ali Hassan', 'Operator', False), ('ali', 'Ali Hassan', 'Operator', False),
                               ('nadia', 'Ali Hassan', 'Operator', False)])
             for q in L['requests']:
-                self.assertEqual(sorted(q), ['created', 'expires', 'full_name', 'id', 'position', 'taken', 'username'])
+                self.assertEqual(sorted(q), ['created', 'expires', 'full_name', 'id', 'position', 'same', 'taken', 'username'])
                 self.assertEqual(q['expires'] - q['created'], 14 * 86400)
+                self.assertEqual(q['same'], 2 if q['username'] == 'ali' else 1)      # two asked for "ali": the list says so
                 self.assertLess(abs(q['created'] - time.time()), 120)
         ids = [q['id'] for q in L['requests']]
 
@@ -692,6 +695,10 @@ class Signup(Base):
         self.assertEqual(omar.req('POST', f'/api/signups/{ids[4]}/reject', {})[0], 403)
         self.assertEqual(anon.req('POST', f'/api/signups/{ids[4]}/approve', {})[0], 401)
         self.assertEqual(boss.req('POST', '/api/signups/nosuchid/approve', {})[0], 404)
+        # (another site's page can't decide a request or set the code with the admin's session)
+        for path, body in ((f'/api/signups/{ids[4]}/approve', {}), (f'/api/signups/{ids[4]}/reject', {}), ('/api/signup-code', {'code': 'evil-code-1'})):
+            self.assertEqual(boss.req('POST', path, body, headers={'Origin': 'https://evil.example'})[0], 403, path)
+        self.assertEqual(len(boss.req('GET', '/api/signups')[1]['requests']), 5)
         self.assertEqual(boss.req('POST', f'/api/signups/{ids[4]}/delete', {})[0], 404)
         # approving makes the account "Add an account" would: a person (role user, the position), a custodial device
         devs = lambda: boss.req('GET', '/api/devices')[1]['all']
@@ -716,6 +723,7 @@ class Signup(Base):
         self.assertEqual(boss.req('POST', f'/api/signups/{ids[0]}/approve', {'username': 'no good'})[0], 400)
         self.assertEqual(boss.req('POST', f'/api/signups/{ids[0]}/approve', {'username': 'boss2'})[0], 200)
         self.assertEqual(self.login('boss2', 'boss password 1')[0], 200)
+        self.assertEqual(self.login('boss', 'boss password 1', ip='10.9.9.8')[:2], wrong)    # no request waits under "boss" now
         self.assertEqual(self.login('boss', 'a long password')[0], 200)                       # the manager's own: untouched
         # two asked for "ali": the first approved takes it, the second then shows as taken
         self.assertEqual(boss.req('POST', f'/api/signups/{ids[2]}/approve', {})[0], 200)
@@ -737,6 +745,25 @@ class Signup(Base):
         self.assertEqual(boss.req('POST', f'/api/signups/{zid}/reject', {})[0], 200)
         self.assertEqual(self.login('zaid', 'zaid password 1')[:2], wrong)
 
+        # one username, several requests (each person's own password): at most 3 wait, a 4th is refused in the usual
+        # words; each of the three is told it waits (not only the newest), and the list tells the admin there are three
+        for i in range(3):
+            self.assertEqual(self.ask('10.0.8.%d' % i, username='dup', password='dup password %d' % i)[0], 200)
+        self.assertEqual(self.ask('10.0.8.9', username='dup', password='dup password 9')[:2], (403, {'error': self.REFUSED}))
+        for i in range(3):
+            self.assertEqual(self.login('dup', 'dup password %d' % i, ip='10.0.9.%d' % i)[:2], (403, {'error': self.WAITING}), i)
+        self.assertEqual(self.login('dup', 'dup password 9', ip='10.0.9.9')[:2], wrong)
+        dups = boss.req('GET', '/api/signups')[1]['requests']
+        self.assertEqual([(q['username'], q['same']) for q in dups], [('dup', 3)] * 3)
+        for q in dups:
+            self.assertEqual(boss.req('POST', '/api/signups/%s/reject' % q['id'], {})[0], 200)
+        # "it waits" is slowed like a wrong password: the sixth time in a row from one address has to wait
+        self.assertEqual(self.ask('10.0.8.20', username='keen', password='keen password 1')[0], 200)
+        codes = [self.login('keen', 'keen password 1', ip='10.0.9.20')[0] for _ in range(6)]
+        self.assertEqual(codes, [403] * 5 + [429])
+        kid = boss.req('GET', '/api/signups')[1]['requests'][0]['id']
+        self.assertEqual(boss.req('POST', f'/api/signups/{kid}/reject', {})[0], 200)
+
         # throttled per address like sign-in: after 5 refusals an address waits, the right code included; others don't
         codes = [self.ask('10.0.6.1', code='guess-%d' % i)[0] for i in range(7)]
         self.assertEqual(codes[:5], [403] * 5)
@@ -756,6 +783,14 @@ class Signup(Base):
         code, out = self.cli('set-signup-code', 'short')
         self.assertNotEqual(code, 0)
         self.seen.append(out)
+        # "-": the code comes on standard input, so it is in no process list and no shell history
+        code, out = self.cli('set-signup-code', '-', stdin='third-code-99\n')
+        self.assertEqual(code, 0, out)
+        self.assertIn('Sign-up is on', out)
+        self.seen.append(out)
+        self.assertEqual(self.ask('10.0.7.5', username='old2', code='second-code-88')[0], 403)
+        self.assertEqual(self.ask('10.0.7.6', username='new2', code='third-code-99')[0], 200)
+        self.assertEqual(self.ask('10.0.7.7', username='dash', code='-')[0], 403)             # "-" itself is not the code
         code, out = self.cli('set-signup-code', '')
         self.assertEqual((code, out), (0, 'Sign-up is off.'))
         self.assertIs(anon.req('GET', '/api/config')[1]['signup'], False)
@@ -765,7 +800,7 @@ class Signup(Base):
         self.assertEqual(boss.req('POST', '/api/signup-code', {'code': self.CODE})[0], 200)
         self.assertEqual(say(boss, 'POST', '/api/signup-code', {'code': ''}), {'ok': True, 'enabled': False})
         L = say(boss, 'GET', '/api/signups')
-        self.assertEqual((L['enabled'], L['set'], sorted(q['username'] for q in L['requests'])), (False, None, ['new', 'other']))
+        self.assertEqual((L['enabled'], L['set'], sorted(q['username'] for q in L['requests'])), (False, None, ['new', 'new2', 'other']))
 
         # the code is in no response, not in the plant's log (a bundle is the whole log), not in the server's output
         import gzip
@@ -819,6 +854,22 @@ class SignupCap(Base):
         # signing in is not held up by it
         self.assertEqual(Client(self.base).req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'},
                                                headers={'X-Forwarded-For': '10.1.3.1'})[0], 200)
+
+
+class SignupOneSource(Base):
+    extra = {'trusted_proxy': True}
+
+    def test_one_source(self):
+        """one address files at most 10 requests in 15 minutes (a person with the code can't fill the list at once);
+        another address is not held up, and nothing was filed by the refused ones"""
+        boss = self.manager()
+        self.assertEqual(boss.req('POST', '/api/signup-code', {'code': 'cap-code-123'})[0], 200)
+        ask = lambda ip, name: Client(self.base).req('POST', '/api/signup', {
+            'code': 'cap-code-123', 'username': name, 'full_name': 'Some One', 'position': 'Operator', 'password': 'a long password'},
+            headers={'X-Forwarded-For': ip})[0]
+        self.assertEqual([ask('10.4.0.1', 'one%d' % i) for i in range(12)], [200] * 10 + [429, 429])
+        self.assertEqual(ask('10.4.0.2', 'two'), 200)
+        self.assertEqual(len(boss.req('GET', '/api/signups')[1]['requests']), 11)
 
 
 class Limits(Base):

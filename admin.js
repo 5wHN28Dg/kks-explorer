@@ -199,7 +199,8 @@ const VIEWS={
     const SU=S?[h('div',{class:'card',id:'signups'},h('h3',null,`Account requests (${S.requests.length})`),
         S.requests.length?table(head('Name','Username','Asked',''),S.requests.map(r=>h('tr',{'data-user':r.username},
           h('td',null,r.full_name,r.position?h('div',{class:'sub'},r.position):null),
-          h('td',{class:'mono'},r.username,r.taken?h('div',{class:'del'},'this username exists already: approve with another one'):null),
+          h('td',{class:'mono'},r.username,r.taken?h('div',{class:'del'},'this username exists already: approve with another one'):null,
+            r.same>1?h('div',{class:'del'},`${r.same} requests ask for this username: ask the person which one is theirs before approving`):null),
           h('td',{class:'sub'},when(r.created),h('div',null,`expires ${when(r.expires)}`)),
           h('td',{class:'row'},h('button',{class:'primary',onclick:()=>decideSignup(r,'approve')},'Approve'),h('button',{class:'danger',onclick:()=>decideSignup(r,'reject')},'Reject')))))
           :h('div',{class:'sub'},S.enabled?'Nobody is waiting.':'Nobody is waiting, and sign-up is off.'),

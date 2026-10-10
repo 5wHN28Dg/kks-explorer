@@ -79,3 +79,16 @@ suite "sign-up":
     check not s.signupOn
     check s.refused(ask("bob", "plant-code-1"), "ip:10.6.0.2", epochTime()).len > 0
     check s.refused(ask("bob", ""), "ip:10.6.0.3", epochTime()).len > 0                   # off: no code is the code
+
+  test "one username: SignupPerName requests wait; one source: SignupPerSource in a Window":
+    let s = open("pername.db")
+    let t0 = epochTime()
+    s.setSignupCode("plant-code-1")
+    for i in 0 ..< SignupPerName: check s.refused(ask("ali", "plant-code-1"), "ip:10.7.0." & $i, t0) == ""
+    let more = s.refused(ask("ali", "plant-code-1"), "ip:10.7.0.9", t0)
+    check more.len > 0 and more == s.refused(ask("ali", "a wrong code"), "ip:10.7.0.10", t0)   # the usual words
+    check s.signupsOut(int64(t0))["requests"].elems[0]["same"].i == SignupPerName
+    for i in 0 ..< SignupPerSource: check s.refused(ask("p" & $i, "plant-code-1"), "ip:10.8.0.1", t0 + 1) == ""
+    check "Too many" in s.refused(ask("pz", "plant-code-1"), "ip:10.8.0.1", t0 + 2)
+    check s.refused(ask("pz", "plant-code-1"), "ip:10.8.0.2", t0 + 2) == ""
+    check s.refused(ask("py", "plant-code-1"), "ip:10.8.0.1", t0 + 3 + Window) == ""           # a Window later

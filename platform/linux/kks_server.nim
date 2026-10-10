@@ -3,7 +3,8 @@
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
 ##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json
 ##   kks-server set-signup-code CODE: the code people need to ask for an account in the browser ("" = sign-up off);
-##     an admin then approves or rejects each request in Manage → Users
+##     an admin then approves or rejects each request in Manage → Users. CODE "-" reads the code from standard input
+##     (one line), which keeps it out of the process list and the shell's history
 ##   kks-server backup --out FILE: the plant (log and photos), encrypted with a key from the last export-root-key's
 ##     passphrase (decision 0051); kks-server open-backup --in FILE --out BUNDLE --passphrase-file F opens it anywhere
 ##     (publish-data, set-plant-name, set-signup-code, submit-file, reset-password and reset-manager run inside the server when it runs: its control
@@ -62,6 +63,8 @@ proc main() =
   if cmd in ["reset-password", "reset-manager"]:        # --user NAME
     if "user" notin args: quit "usage: kks-server " & cmd & " --user NAME"
     rest = @[args["user"]]
+  if cmd == "set-signup-code" and rest == @["-"]:
+    rest = @[try: stdin.readLine() except EOFError: ""]
   if cmd in ["publish-data", "set-plant-name", "set-signup-code", "reset-password", "reset-manager", "submit-file"]:
     # a running server does it itself (see server.control); else this process, with the server stopped
     block forward:
