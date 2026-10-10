@@ -24,7 +24,8 @@ Gradle fetches and checks (SHA-256) libjxl v0.12.0 and zxing-cpp v3.1.1, and bui
   - `Discovery.kt`: NSD announce and browse, with one resolve at a time;
   - `SyncWorker.kt`: every 15 min while the app is closed.
   - `PhotoQueue.kt`: the photo queue (decision 0049): one WorkManager job per photo encodes it to JPEG XL and submits it,
-    in order, whether or not the panel or the app stays open.
+    in order, whether or not the panel or the app stays open. One photo of several codes (Photo for all) is one job
+    with its code list, sent as one submit-many.
 - `ui/`:
   - Setup: server, code or QR, nearby admin, file;
   - Drawings: `SheetView` (pyramid, vector tiles, hotspots, marking, accessibility), search, floor filter, notes;
@@ -33,6 +34,9 @@ Gradle fetches and checks (SHA-256) libjxl v0.12.0 and zxing-cpp v3.1.1, and bui
   - Review;
   - Manage: approvals, proposals, history, people, devices with the invite QR, account;
   - `Photos` (the floor first when the code has none, camera or gallery → annotate → the photo queue);
+  - `Select` (several tags at once): the selection is a set of codes that lasts across drawings, filled by taps and
+    boxes on the drawing, by search results and by codes typed into the List (which shows each code's drawings);
+    place, note and photo for all (the photo asks for the floor first when a code has none, then goes to the queue);
   - `ScanQr` (Camera2 + zxing-cpp).
 - `Qr.kt` + `src/main/cpp/qr_jni.cpp`: zxing-cpp.
 - `Jxl.kt` + `jxl_jni.cpp`: libjxl.

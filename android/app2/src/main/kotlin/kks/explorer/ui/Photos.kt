@@ -151,20 +151,8 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         }
     }
     askFloor?.let { then ->
-        var chosen by remember { mutableStateOf("") }
-        AlertDialog(onDismissRequest = { askFloor = null }, title = { Text("Which floor is it on?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("$kks has no floor yet. Every photo needs it first: it is sent with the photo.")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (f in 0..10) FilterChip(chosen == "$f", { chosen = "$f" }, label = { Text("$f") },
-                            modifier = Modifier.semantics { contentDescription = "Floor $f" + if (chosen == "$f") ", chosen" else "" })
-                    }
-                    Dim("A whole number from 0 to 10; the height in metres goes in Elevation.")
-                }
-            },
-            confirmButton = { TextButton(onClick = { floor = chosen; askFloor = null; then() }, enabled = chosen.isNotEmpty()) { Text("Continue") } },
-            dismissButton = { TextButton(onClick = { askFloor = null }) { Text("Cancel") } })
+        FloorDialog("Which floor is it on?", "$kks has no floor yet. Every photo needs it first: it is sent with the photo.",
+            onPick = { floor = it; askFloor = null; then() }, onClose = { askFloor = null })
     }
     if (askPlate) AlertDialog(onDismissRequest = { askPlate = false }, title = { Text("And its tag plate?") },
         text = { Text("A photo of the metal plate with the KKS code helps the next person find this equipment.") },
@@ -191,6 +179,26 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
             scope.launch { snack.showSnackbar("Photo queued: it is compressed and sent in the background") }
         }
     }
+}
+
+/** the floor asked for before a photo of a code (or codes) without one: a whole number 0 to 10 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun FloorDialog(title: String, text: String, onPick: (String) -> Unit, onClose: () -> Unit) {
+    var chosen by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = onClose, title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (f in 0..10) FilterChip(chosen == "$f", { chosen = "$f" }, label = { Text("$f") },
+                        modifier = Modifier.semantics { contentDescription = "Floor $f" + if (chosen == "$f") ", chosen" else "" })
+                }
+                Dim("A whole number from 0 to 10; the height in metres goes in Elevation.")
+            }
+        },
+        confirmButton = { TextButton(onClick = { onPick(chosen) }, enabled = chosen.isNotEmpty()) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } })
 }
 
 /** who took a photo and when ("by Ali User, 2026-10-08 09:12"): sent (submitted), else when it took effect */

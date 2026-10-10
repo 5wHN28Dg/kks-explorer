@@ -38,6 +38,10 @@ import java.util.concurrent.Executors
  * A job never fails the chain. A photo the core refuses, or whose files are damaged, is recorded in [failures] and
  * dropped; any other failure (out of memory while encoding, the Keystore, the core throwing) keeps the photo: it goes to
  * the end of the queue and is tried again a minute later, and after [TRIES] tries it waits for the next app start.
+ *
+ * One photo of several codes ("Photo for all") is a job like any other, with `codes` (2 to 200; `kks` is the first):
+ * sent as one /api/submit-many with the job ID as the `client_id` prefix, so a rerun sends no code twice; its `floor`
+ * is written by the core only for the codes that have none.
  */
 object PhotoQueue {
     const val WORK = "kks-photos"
@@ -87,8 +91,9 @@ object PhotoQueue {
     /** synchronized: the counts are posted in the order the folder was read */
     @Synchronized private fun refresh(ctx: Context) {
         val js = jobs(ctx)
-        val by = js.groupingBy { it.second.optString("kks") }.eachCount()
-        val floors = js.filter { it.second.optString("floor").isNotEmpty() }.associate { it.second.optString("kks") to it.second.optString("floor") }
+        val by = js.flatMap { codesOf(it.second) }.groupingBy { it }.eachCount()
+        val floors = js.filter { it.second.optString("floor").isNotEmpty() }
+            .flatMap { j -> codesOf(j.second).map { it to j.second.optString("floor") } }.toMap()
         main.post {
             pending = js.size
             pendingByCode.keys.retainAll(by.keys); pendingByCode.putAll(by)
@@ -96,11 +101,21 @@ object PhotoQueue {
         }
     }
 
-    /** queue one photo: returns at once; the pixels are written and the job enqueued on the queue's own thread */
-    fun add(ctx: Context, bmp: Bitmap, kks: String, caption: String, note: String, floor: String) {
+    /** the codes a job's photo is of: its `codes` (one photo of several codes), else the one `kks` */
+    private fun codesOf(job: JSONObject): List<String> =
+        job.optJSONArray("codes")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
+            ?.takeIf { it.isNotEmpty() } ?: listOf(job.optString("kks"))
+
+    /** how a job is named where it failed: "11LAB70AA501", or "11LAB70AA501 and 2 more" */
+    private fun nameOf(codes: List<String>) = codes.first() + if (codes.size > 1) " and ${codes.size - 1} more" else ""
+
+    /** queue one photo: returns at once; the pixels are written and the job enqueued on the queue's own thread.
+     *  `codes`: one photo of several codes (Photo for all; `kks` is then the first of them) */
+    fun add(ctx: Context, bmp: Bitmap, kks: String, caption: String, note: String, floor: String, codes: List<String> = emptyList()) {
         val app = ctx.applicationContext
         val id = UUID.randomUUID().toString().replace("-", "")       // also the submission's client_id: a rerun can't add it twice
-        main.post { pending += 1; pendingByCode[kks] = (pendingByCode[kks] ?: 0) + 1; if (floor.isNotEmpty()) queuedFloor[kks] = floor }
+        val all = codes.distinct().ifEmpty { listOf(kks) }
+        main.post { pending += 1; for (c in all) { pendingByCode[c] = (pendingByCode[c] ?: 0) + 1; if (floor.isNotEmpty()) queuedFloor[c] = floor } }
         io.execute {
             if (wiped) return@execute
             try {
@@ -111,8 +126,9 @@ object PhotoQueue {
                 buf.putInt(argb.width).putInt(argb.height)
                 argb.copyPixelsToBuffer(buf)
                 px.writeBytes(Keys.seal(buf.array(), aad("px", id)))
-                val job = JSONObject().put("kks", kks).put("caption", caption).put("note", note).put("floor", floor)
+                val job = JSONObject().put("kks", all.first()).put("caption", caption).put("note", note).put("floor", floor)
                     .put("at", System.currentTimeMillis())
+                if (all.size > 1) job.put("codes", JSONArray(all))
                 // the JSON last, through a rename: a job file is never seen half written
                 val tmp = File(dir(app), "$id.json.tmp"); tmp.writeBytes(Keys.seal(job.toString().toByteArray(), aad("job", id)))
                 if (!tmp.renameTo(File(dir(app), "$id.json"))) { tmp.delete(); throw java.io.IOException("could not write the job") }
@@ -121,7 +137,7 @@ object PhotoQueue {
             } catch (e: Throwable) {
                 Log.w(TAG, "could not queue a photo of $kks", e)
                 File(dir(app), "$id.px").delete()
-                fail(app, kks, "Could not keep the photo for sending (${e.message ?: e.javaClass.simpleName})")
+                fail(app, nameOf(all), "Could not keep the photo for sending (${e.message ?: e.javaClass.simpleName})")
                 refresh(app)
             }
         }
@@ -188,7 +204,8 @@ object PhotoQueue {
         val jf = File(dir(ctx), "$id.json"); val px = File(dir(ctx), "$id.px")
         if (!jf.exists()) { px.delete(); refresh(ctx); return }      // already done (a rerun)
         val job = runCatching { readJob(jf, id) }.getOrNull()
-        val kks = job?.optString("kks").orEmpty()
+        val codes = job?.let { codesOf(it) } ?: emptyList()
+        val kks = if (codes.isEmpty()) "" else nameOf(codes)      // for the log and the failures
         // a job file the Keystore can't open now may open after a restart: kept, and init() queues it again then
         if (job == null && px.exists()) { Log.w(TAG, "job $id unreadable, kept"); return }
         var keep = false
@@ -207,12 +224,15 @@ object PhotoQueue {
                 keep = retry(ctx, id, jf, job, kks, "Could not compress the photo"); return
             }
             bmp.recycle()
-            val payload = JSONObject().put("kks", kks).put("caption", job.optString("caption"))
+            val payload = JSONObject().put("caption", job.optString("caption"))
                 .put("dataUrl", "data:image/jxl;base64," + Base64.encodeToString(jxl, Base64.NO_WRAP))
             job.optString("floor").takeIf { it.isNotEmpty() }?.let { payload.put("floor", it) }
             val body = JSONObject().put("kind", "photo").put("payload", payload).put("client_id", id)
             job.optString("note").takeIf { it.isNotBlank() }?.let { body.put("note", it.trim()) }
-            val r = Core.api("POST", "/api/submit", body)
+            // several codes: one submit-many (the image kept once; the job ID is the client_id prefix, so a rerun
+            // after a crash sends no code twice); else the one submission it always was
+            val r = if (codes.size > 1) Core.api("POST", "/api/submit-many", body.put("kks", JSONArray(codes)))
+                    else { payload.put("kks", codes.first()); Core.api("POST", "/api/submit", body) }
             if (r.status >= 400) fail(ctx, kks, r.json.optString("error", "error ${r.status}"))
             else main.post { Changes.rev++ }
         } catch (e: IllegalArgumentException) {

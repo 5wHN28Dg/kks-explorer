@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -12,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,13 +20,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import kks.explorer.Jxl
 import kks.explorer.core.Core
 import kks.explorer.sync.PhotoQueue
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -36,16 +35,40 @@ import java.io.File
 /** codes in one selection: the server takes up to 200 per submit-many (core api.submitMany) */
 const val MAX_PICK = 200
 
-/** `sel` with the tag ids `add` added in order while the distinct codes stay within MAX_PICK; true = some were left out */
-fun addCapped(sel: Set<String>, add: List<String>, codeOf: (String) -> String): Pair<Set<String>, Boolean> {
+/** `sel` (codes, in the order picked) with `add` added while it stays within MAX_PICK; true = some were left out */
+fun addCapped(sel: Set<String>, add: List<String>): Pair<Set<String>, Boolean> {
     val out = LinkedHashSet(sel)
-    val codes = sel.map(codeOf).toMutableSet()
-    for (id in add) {
-        val c = codeOf(id)
-        if (c !in codes && codes.size >= MAX_PICK) return out to true
-        out.add(id); codes.add(c)
+    for (c in add) {
+        if (c in out) continue
+        if (out.size >= MAX_PICK) return out to true
+        out.add(c)
     }
     return out to false
+}
+
+/** one place a code is drawn: its tag, on which drawing */
+data class Drawn(val tag: String, val sheet: String, val sheetName: String)
+
+/** every code that is on a drawing, with where (the sheets' order): what a selection across drawings is checked
+ *  against and what its List shows. One core call per sheet: off the main thread. */
+fun codeIndex(): Map<String, List<Drawn>> {
+    val out = LinkedHashMap<String, MutableList<Drawn>>()
+    for (s in sheets()) for (t in call("GET", "/native/tags", query = mapOf("sheet" to s.id)).json.optJSONArray("tags").objects()) {
+        val c = t.optString("code")
+        if (c.isNotEmpty()) out.getOrPut(c) { mutableListOf() }.add(Drawn(t.optString("id"), s.id, s.name))
+    }
+    return out
+}
+
+/** the codes typed or pasted into Add codes: split at spaces, commas, semicolons and new lines; upper case; each once */
+fun typedCodes(text: String): List<String> =
+    text.split(Regex("[\\s,;]+")).map { it.trim().uppercase() }.filter { it.isNotEmpty() }.distinct()
+
+/** what the equipment says now for each code (the approved state): {} for a code nothing is known about. One core
+ *  call for all of them: off the main thread. */
+fun equipmentOf(codes: List<String>): Map<String, JSONObject> {
+    val eq = Core.api("GET", "/api/state").json.optJSONObject("equipment")
+    return codes.associateWith { eq?.optJSONObject(it) ?: JSONObject() }
 }
 
 /** One photo, place or note for several codes (core submitMany, /api/submit-many): an ordinary submission per code,
@@ -86,7 +109,8 @@ fun SelectBar(n: Int, modifier: Modifier, onList: () -> Unit, onPhoto: () -> Uni
                 TextButton(onClick = onDone) { Text("Done") }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onList, enabled = n > 0) { Text("List") }
+                // always on: its Add codes can start a selection
+                OutlinedButton(onClick = onList) { Text("List") }
                 OutlinedButton(onClick = onPhoto, enabled = n > 0) { Text("Photo for all") }
                 OutlinedButton(onClick = onPlace, enabled = n > 0) { Text("Place for all") }
                 OutlinedButton(onClick = onNote, enabled = n > 0) { Text("Note for all") }
@@ -95,21 +119,46 @@ fun SelectBar(n: Int, modifier: Modifier, onList: () -> Unit, onPhoto: () -> Uni
     }
 }
 
-/** the selected tags, each with a checkbox to leave a mistaken one out */
+/** the selected codes, each with the drawing(s) it is on and a checkbox to leave a mistaken one out; and Add codes:
+ *  codes typed or pasted, for tags that are in the same place but on other drawings. `places` is null while the
+ *  drawings' codes are being read. `onAdd` gets the codes that are on a drawing and returns what to say (the cap). */
 @Composable
-fun SelectList(selected: List<SheetView.TagBox>, onUntick: (String) -> Unit, onClose: () -> Unit) {
+fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUntick: (String) -> Unit,
+               onAdd: (List<String>) -> String, onClose: () -> Unit) {
+    var typed by remember { mutableStateOf("") }
+    var said by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest = onClose, title = { Text("Selected tags") }, text = {
-        if (selected.isEmpty()) Dim("Nothing selected.")
-        else LazyColumn(Modifier.heightIn(max = 420.dp)) {
-            items(selected, key = { it.id }) { t ->
-                // one switch per row: the whole row toggles, TalkBack says "11LAB70AA501, checkbox, checked"
-                Row(Modifier.fillMaxWidth().toggleable(value = true, role = Role.Checkbox, onValueChange = { onUntick(t.id) })
-                    .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = true, onCheckedChange = null)
-                    Spacer(Modifier.width(12.dp))
-                    Text(t.code, fontFamily = FontFamily.Monospace)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (selected.isEmpty()) Dim("Nothing selected.")
+            else LazyColumn(Modifier.heightIn(max = 260.dp)) {
+                items(selected, key = { it }) { code ->
+                    val on = places?.get(code)?.map { it.sheetName }?.distinct()
+                    // one switch per row: the whole row toggles, TalkBack says "11LAB70AA501, Sample sheet, checkbox, checked"
+                    Row(Modifier.fillMaxWidth().toggleable(value = true, role = Role.Checkbox, onValueChange = { onUntick(code) })
+                        .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = true, onCheckedChange = null)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(code, fontFamily = FontFamily.Monospace)
+                            if (places != null) Text(if (on.isNullOrEmpty()) "Not on a drawing any more" else on.joinToString(", "),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
+            OutlinedTextField(typed, { typed = it; said = "" }, label = { Text("Add codes") }, maxLines = 4, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
+                supportingText = { Text("KKS codes from any drawing, with spaces, commas or new lines between them.") })
+            if (said.isNotEmpty()) Text(said, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            OutlinedButton(enabled = typed.isNotBlank() && places != null, onClick = {
+                val index = places ?: return@OutlinedButton
+                val (known, unknown) = typedCodes(typed).partition { it in index }
+                val cap = if (known.isEmpty()) "" else onAdd(known)
+                // what could not be added stays in the field, to be corrected
+                typed = unknown.joinToString(" ")
+                said = listOf(if (unknown.isEmpty()) "" else "Not on any drawing, not added: " + unknown.joinToString(", "), cap)
+                    .filter { it.isNotEmpty() }.joinToString(" ")
+            }) { Text("Add") }
         }
     }, confirmButton = { TextButton(onClick = onClose) { Text("Close") } })
 }
@@ -119,18 +168,14 @@ private val PLACE = FIELDS.filter { it.first != "notes" }
 /** the same place fields for every code; only filled fields are sent. Says first how many codes already have another
  *  value in a filled field (it will be replaced). */
 @Composable
-fun PlaceForAll(tagIds: List<String>, codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
+fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
     val values = remember { mutableStateMapOf<String, String>() }
     var note by remember { mutableStateOf("") }
     // the values shown (the bases): Send waits for them, or every code with a value would be sent as a clash
     var current by remember { mutableStateOf<Map<String, JSONObject>?>(null) }
     var sending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(tagIds) {
-        current = withContext(Dispatchers.IO) {
-            tagIds.associate { id -> call("GET", "/native/tag", query = mapOf("id" to id)).json.let { it.optString("code") to (it.optJSONObject("equipment") ?: JSONObject()) } }
-        }
-    }
+    LaunchedEffect(codes) { current = withContext(Dispatchers.IO) { equipmentOf(codes) } }
     val filled = PLACE.map { it.first }.filter { (values[it] ?: "").isNotBlank() }
     val replaced = codes.count { c -> val e = current?.get(c); e != null && filled.any { f -> e.optString(f).isNotBlank() && e.optString(f) != values[f]!!.trim() } }
     AlertDialog(onDismissRequest = onClose, title = { Text("Place for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
@@ -175,24 +220,34 @@ fun NoteForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Uni
 }
 
 /** the selected codes that have no floor yet (none on the equipment, none queued with a photo): a photo needs its
- *  floor (the user, 2026-10-08), and one dialog can't ask for several, so Photo for all names them instead. Off the
- *  main thread: one core call per tag. */
-internal fun codesWithoutFloor(tagIds: List<String>): List<String> = tagIds.mapNotNull { id ->
-    val t = Core.api("GET", "/native/tag", query = mapOf("id" to id)).json
-    val code = t.optString("code")
-    val floor = t.optJSONObject("equipment")?.optString("floor").orEmpty()
-    if (code.isNotEmpty() && floor.isBlank() && PhotoQueue.queuedFloor[code].isNullOrEmpty()) code else null
-}.distinct()
+ *  floor (the user, 2026-10-08), so Photo for all asks for it first, for these codes. Off the main thread. */
+internal fun codesWithoutFloor(codes: List<String>): List<String> {
+    val eq = equipmentOf(codes)
+    return codes.filter { c -> eq[c]?.optString("floor").orEmpty().isBlank() && PhotoQueue.queuedFloor[c].isNullOrEmpty() }
+}
 
-/** one photo for every code: the panel's camera (or gallery) → mark-up editor → JPEG XL, sent once (the core keeps
- *  the image once and points every code's entry to it) */
+/** Photo for all asks for the floor before the camera opens, as one photo of one tag does (the user, 2026-10-10: a
+ *  member can't set floors by Place for all first, that needs approval). `missing`: the codes without one; the floor
+ *  goes with the photo and the core writes it as a proposal for those codes only. */
 @Composable
-fun PhotoForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
+fun FloorForAll(missing: List<String>, total: Int, onPick: (String) -> Unit, onClose: () -> Unit) {
+    val names = missing.take(5).joinToString(", ") + if (missing.size > 5) " and ${missing.size - 5} more" else ""
+    FloorDialog(if (missing.size == 1) "Which floor is it on?" else "Which floor are they on?",
+        (if (missing.size == 1) "$names has no floor yet." else "No floor yet: $names.") +
+            " Every photo needs it first: it is sent with the photo" + (if (missing.size == 1) "" else ", for these codes") + "." +
+            (if (missing.size < total) " The other codes keep the floor they have." else ""),
+        onPick, onClose)
+}
+
+/** one photo for every code: the panel's camera (or gallery) → mark-up editor → the photo queue (PhotoQueue: sealed on
+ *  disk, encoded and sent in the background as one /api/submit-many, kept if the app is killed). `floor`: the one
+ *  asked for first when a code had none, else empty. */
+@Composable
+fun PhotoForAll(codes: List<String>, floor: String, onSaid: (String) -> Unit, onQueued: () -> Unit, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Bitmap?>(null) }
     var fromCamera by remember { mutableStateOf(true) }
-    var busy by remember { mutableFloatStateOf(-1f) }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
     val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
     fun load(uri: Uri) = scope.launch {
@@ -201,49 +256,32 @@ fun PhotoForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Un
             if (uri == camUri) camFile.delete()
             orientedBitmap(raw)
         }
-        if (picked == null) onSent("Could not read that picture")
+        if (picked == null) onSaid("Could not read that picture")
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) load(camUri) }
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) camera.launch(camUri) else onSent("Without the camera permission, pick a photo from the gallery")
+        if (ok) camera.launch(camUri) else onSaid("Without the camera permission, pick a photo from the gallery")
     }
     fun shoot() {
         fromCamera = true
         if (ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(camUri) else perm.launch(Manifest.permission.CAMERA)
     }
     val title = "Photo for ${codes.size} code" + if (codes.size == 1) "" else "s"
-    if (picked == null) AlertDialog(onDismissRequest = { if (busy < 0f) onClose() }, title = { Text(title) }, text = {
+    if (picked == null) AlertDialog(onDismissRequest = onClose, title = { Text(title) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (busy >= 0f) {
-                Text("Compressing…")
-                LinearProgressIndicator(progress = { busy }, modifier = Modifier.fillMaxWidth())
-            } else {
-                Dim("One picture showing all of them; each code gets it.")
-                Button(onClick = { shoot() }, modifier = Modifier.fillMaxWidth()) { Text("Take a photo") }
-                OutlinedButton(onClick = { fromCamera = false; gallery.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("From the gallery") }
-            }
+            Dim("One picture showing all of them; each code gets it.")
+            Button(onClick = { shoot() }, modifier = Modifier.fillMaxWidth()) { Text("Take a photo") }
+            OutlinedButton(onClick = { fromCamera = false; gallery.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("From the gallery") }
         }
-    }, confirmButton = { if (busy < 0f) TextButton(onClick = onClose) { Text("Cancel") } })
+    }, confirmButton = { TextButton(onClick = onClose) { Text("Cancel") } })
     picked?.let { bmp ->
         Annotate(bmp, false, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
             onRetake = { picked = null; if (fromCamera) shoot() else gallery.launch("image/*") }) { out, caption, note ->
             picked = null
-            scope.launch {
-                val mp = out.width.toLong() * out.height / 1e6
-                val expect = (Jxl.msPerMp * mp).toLong().coerceAtLeast(500)
-                val t0 = System.currentTimeMillis()
-                busy = 0f
-                val tick = launch { while (true) { busy = ((System.currentTimeMillis() - t0).toFloat() / expect).coerceAtMost(0.95f); delay(100) } }
-                val jxl = withContext(Dispatchers.Default) { runCatching { Jxl.fromBitmap(out) }.getOrNull() }
-                tick.cancel(); busy = -1f
-                if (jxl == null) { onSent("Could not compress the photo"); return@launch }
-                val (ok, m) = withContext(Dispatchers.IO) {
-                    submitMany("photo", codes, JSONObject().put("caption", caption)
-                        .put("dataUrl", "data:image/jxl;base64," + Base64.encodeToString(jxl, Base64.NO_WRAP)), note)
-                }
-                onSent(m); if (ok) onClose()
-            }
+            // the queue encodes and sends it in the background, like any other photo, whether or not the app stays open
+            PhotoQueue.add(ctx, out, codes.first(), caption, note, floor, codes = if (codes.size > 1) codes else emptyList())
+            onQueued(); onClose()
         }
     }
 }
