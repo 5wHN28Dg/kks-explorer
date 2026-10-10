@@ -743,7 +743,7 @@ K.offline = {
     const draw = () => {
       const st = this.state, R = this.run, out = [h('h3', null, 'Offline copy')];
       if (!this.can()) out.push(h('div', {class: 'sub'}, 'Not available here: it needs HTTPS (or localhost).'));
-      else if (R) out.push(h('div', {id: 'offlineState', role: 'status'}, `Saving for offline: ${R.n} of ${R.of || '…'} files · ${mb(R.bytes)}`),
+      else if (R) out.push(h('div', {id: 'offlineState', role: 'status'}, `Saving for offline: ${R.n} of ${R.of || '…'} files · ${mb(R.bytes)}`), h('div', {class: 'sub'}, 'Keep Walkdown open until it says ready. If it is interrupted, it carries on where it stopped.'),
         h('div', {style: 'height:6px;border-radius:3px;background:var(--line);margin:8px 0;overflow:hidden'}, h('i', {style: `display:block;height:100%;background:var(--accent);width:${R.of ? 100 * R.n / R.of : 0}%`})));
       else if (st?.on && st.done) out.push(h('div', {id: 'offlineState'}, h('b', null, 'Ready for offline'), `: ${mb(st.bytes)} in ${st.files} files, updated ${new Date(st.at).toLocaleString()}.`),
         h('div', {class: 'sub'}, `Every drawing, tag, description, procedure, course and photo is on this device. It is brought up to date by itself whenever this app is open and connected. Without the server it works for ${K.me?.offline_days ?? '?'} days after the last connection`

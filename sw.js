@@ -53,7 +53,8 @@ async function keep(m) {
   const u = new URL(m.url, location.origin), r = route(u);
   if (!r) return {ok: false, error: 'not a file this app keeps'};
   const cache = await caches.open(r[0]);
-  if (!m.fresh) { const c = await cache.match(u.href); if (c) return {ok: true, had: true, bytes: await sizeOf(c)} }
+  // (a copy that is here: its length from the header only, not by reading it again; the page knows the listed size)
+  if (!m.fresh) { const c = await cache.match(u.href); if (c) return {ok: true, had: true, bytes: Number(c.headers.get('Content-Length')) || 0} }
   const resp = await fetch(u.href, {credentials: 'same-origin', cache: 'no-cache'});
   if (!resp.ok) return {ok: false, status: resp.status, error: 'the server answered ' + resp.status};
   const bytes = await sizeOf(resp);
