@@ -36,6 +36,7 @@ type
     trustedProxy*: bool        ## the HTTPS proxy in front appends the browser's address to X-Forwarded-For
     plantName*: string
     sessionDays*: int
+    sessionRenewEvery*: int       ## a session in use is extended at most this often, in seconds (a day)
     offlineDays*: int
     maxUploadMb*: int
     webDir*: string            ## the web UI (index.html, …)
@@ -81,7 +82,7 @@ proc isLoopback*(address: string): bool =
     parts.allIt(it.len in 1..3 and it.allCharsInSet(Digits) and (it.len == 1 or it[0] != '0') and parseInt(it) <= 255))
 
 proc defaultConfig*(): Config =
-  Config(address: "127.0.0.1", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30,
+  Config(address: "127.0.0.1", port: 8420, syncPort: 8421, plantName: "Walkdown", sessionDays: 30, sessionRenewEvery: 86400,
          offlineDays: 3, maxUploadMb: 15, plantDir: "plant-data", backupDir: "backups", maxPdfMb: 50,
          importer: getAppDir() / "kks-import", importTimeoutS: 1800, importMemoryMb: 2560)
 
@@ -114,6 +115,7 @@ proc loadConfig*(path: string): Config =
   result.trustedProxy = b("trusted_proxy", false)
   result.plantName = s("plant_name", result.plantName)
   result.sessionDays = i("session_days", result.sessionDays)
+  result.sessionRenewEvery = max(1, i("session_renew_seconds", result.sessionRenewEvery))
   result.offlineDays = i("offline_days", result.offlineDays)
   result.maxUploadMb = i("max_upload_mb", result.maxUploadMb)
   result.webDir = s("web_dir", "")
@@ -212,7 +214,7 @@ proc throttled(s: Server, keys: varargs[string]): bool = s.fails.blocked(keys, e
 
 proc record(s: Server, ok: bool, keys: varargs[string]) = s.fails.record(ok, keys, epochTime())
 
-proc newSession(s: Server, userId: int64): string =
+proc newSession*(s: Server, userId: int64): string =
   let raw = b64u(s.p.randomBytes(32))
   for (k, v) in s.store.allRows("sessions"):
     if v["expires"].i < nowS(): s.store.delRow("sessions", k)
@@ -220,7 +222,29 @@ proc newSession(s: Server, userId: int64): string =
                                                              ("expires", newInt(nowS() + s.cfg.sessionDays * 86400))))
   raw
 
-proc endSessions(s: Server, userId: int64) =
+proc renewSession*(s: Server, raw: string, now = nowS()): bool =
+  ## A sign-in renews while it is used (the user, 2026-10-10): the session_days start again, at most once a day per
+  ## session, when the signed-in page checks in (/api/me at its start, /api/sync/status while it is open). So whoever
+  ## uses the app at least that often is never signed out, and a session nobody uses still ends after session_days.
+  ## -> true when it was extended (the cookie then gets its lifetime again too). Never a session that is gone or has
+  ## expired: those stay ended.
+  if raw.len == 0: return false
+  let key = hex(s.p.sha256(raw.toBytes))
+  let ses = s.store.getRow("sessions", key)
+  if ses == nil or ses["expires"].i < now: return false
+  let last = if ses.get("renewed") != nil: ses["renewed"].i else: ses["created"].i
+  if now - last < s.cfg.sessionRenewEvery: return false
+  ses["renewed"] = newInt(now)
+  ses["expires"] = newInt(now + s.cfg.sessionDays * 86400)
+  s.store.putRow("sessions", key, ses)
+  true
+
+proc sessionEnds*(s: Server, raw: string): int64 =
+  ## when this session expires (0: there is none); for tests
+  let ses = s.store.getRow("sessions", hex(s.p.sha256(raw.toBytes)))
+  if ses != nil: ses["expires"].i else: 0
+
+proc endSessions*(s: Server, userId: int64) =
   for (k, v) in s.store.allRows("sessions"):
     if v["user_id"].i == userId: s.store.delRow("sessions", k)
 
@@ -570,15 +594,25 @@ proc hostAllowed(s: Server, req: Request): bool =
     allowed.add pu.hostname.toLowerAscii & (if pu.port.len > 0: ":" & pu.port else: "")
   h in allowed
 
-proc currentUser(s: Server, req: Request): JNode =
-  let raw = req.sessionRaw
-  if raw.len == 0: herr(401, "login required")
+proc sessionUser*(s: Server, raw: string, now = nowS()): JNode =
+  ## the account this session cookie stands for, or nil: no such session, expired, the account deactivated or without
+  ## a password, its device removed
+  if raw.len == 0: return nil
   let ses = s.store.getRow("sessions", hex(s.p.sha256(raw.toBytes)))
-  if ses == nil or ses["expires"].i < nowS(): herr(401, "login required")
+  if ses == nil or ses["expires"].i < now: return nil
   let u = s.userById(ses["user_id"].i)
-  if u == nil or not u["active"].b or not (u["pw"].isStr and u["pw"].s.len > 0): herr(401, "login required")
-  if s.n.run == nil or u["device"].s in s.n.run.cuts: herr(401, "login required")
+  if u == nil or not u["active"].b or not (u["pw"].isStr and u["pw"].s.len > 0): return nil
+  if s.n.run == nil or u["device"].s in s.n.run.cuts: return nil
   u
+
+proc currentUser(s: Server, req: Request): JNode =
+  result = s.sessionUser(req.sessionRaw)
+  if result == nil: herr(401, "login required")
+
+proc renewed(s: Server, req: Request): seq[(string, string)] =
+  ## for the answers to a signed-in page's check-ins: the cookie again when the session was just extended
+  let raw = req.sessionRaw
+  if s.renewSession(raw): result.add s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)
 
 proc queryOf(u: Uri): Table[string, string] =
   for k, v in decodeQuery(u.query): result[k] = v
@@ -821,6 +855,11 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
     let u = s.userByName(args[0])
     if u == nil or not u["active"].b: raise newException(ValueError, "No active account named " & args[0] & ".")
     if s.n.run != nil and s.n.run.manager == u["person"].s: raise newException(ValueError, args[0] & " is already the manager.")
+    # whoever is signed in as the old manager (the person who left, perhaps) or as the new one signs in again: a
+    # sign-in renews while used, so it would not end by itself
+    let old = s.managerUser()
+    if old != nil: s.endSessions(old["id"].i)
+    s.endSessions(u["id"].i)
     s.handOverManager(u)
     s.store.setMeta("transfer", "")                   # an offer waiting from the old manager is void
     args[0] & " is the manager now. If they need a new password, open this link once within 3 days:\n  " &
@@ -1200,7 +1239,7 @@ proc handle(s: Server, req: Request) {.async.} =
       let live = tr != nil and tr["expires"].i > nowS()
       await s.sendJson(req, 200, O(("user", s.publicUser(usr)), ("offline_days", newInt(s.cfg.offlineDays)),
         ("transfer_offer", newBool(live and tr["to"].i == usr["id"].i)),
-        ("transfer_pending", if live and me.role == "manager": tr else: newNull())))
+        ("transfer_pending", if live and me.role == "manager": tr else: newNull())), s.renewed(req))
       return
     of "/api/users":
       if not me.isAdmin: herr(403, "admin only")
@@ -1212,7 +1251,7 @@ proc handle(s: Server, req: Request) {.async.} =
       return
     of "/api/sync/status":
       await s.sendJson(req, 200, O(("rev", newInt(s.api.rev)), ("mode", S("server")), ("internet", newNull()),
-                                   ("plant_data", s.n.status)))
+                                   ("plant_data", s.n.status)), s.renewed(req))
       return
     of "/api/progress": herr(404, "Course progress stays in this browser on a server.")
     of "/api/courses":
