@@ -33,10 +33,12 @@ rm -rf "$APP.tmp" && mkdir -p "$APP.tmp"
 cp "$REPO/importer/fontlib.kgl" "$APP.tmp/"
 for f in index.html index.js admin.html admin.js common.js tiles.js dark.js systems.js course-bridge.js learning.html learning.js course.html course.js course-figure.js \
          course.css kks-wasm.js kks-wasm-worker.js sw.js manifest.webmanifest icon.svg icon-192.png icon-512.png apple-touch-icon.png; do
-  cp "$REPO/$f" "$APP.tmp/"
+  cp -p "$REPO/$f" "$APP.tmp/"
 done
-cp -r "$REPO/vendor" "$APP.tmp/vendor"
-mkdir -p "$APP.tmp/data" && cp "$REPO/data/kks.json" "$APP.tmp/data/" && cp -r "$REPO/data/courses" "$APP.tmp/data/courses"
+# -p: files keep their times. The offline list (GET /api/offline) versions each file by its time, so a file that did
+# not change is not downloaded again by every device after an update.
+cp -rp "$REPO/vendor" "$APP.tmp/vendor"
+mkdir -p "$APP.tmp/data" && cp -p "$REPO/data/kks.json" "$APP.tmp/data/" && cp -rp "$REPO/data/courses" "$APP.tmp/data/courses"
 chmod -R a-w "$APP.tmp"
 rm -rf "$APP" && mv "$APP.tmp" "$APP"
 [ -e "$HOME_DIR/app/current" ] && ln -sfn "$(readlink "$HOME_DIR/app/current")" "$HOME_DIR/app/previous"
