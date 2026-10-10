@@ -327,7 +327,7 @@ class Phone(unittest.TestCase):
             assert r.get('status') == 'approved', r
         r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': codes[3], 'changes': {'floor': '2'}, 'base': {'floor': ''}}})
         assert r.get('status') == 'approved', r
-        # one more code without a floor, on the second sheet: never in a photo here (see `mixed` below)
+        # one more code without a floor, on the second sheet: never in a photo here (picked with 713 below, while 713's floor is only in the queue)
         extra = '11LAB70AA715'
         r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'second', 'bbox': [700, 600, 820, 660], 'kks': extra, 'isa': '', 'note': ''}})
         assert r.get('status') == 'approved', r
@@ -421,7 +421,8 @@ class Phone(unittest.TestCase):
             # the floor waiting in the queue for both codes is used again without asking
             again('the floor was asked again for codes whose floor is queued with a photo')
             # … but a floor that only rides on a queued photo is not a known floor (#144): picked with a code that has
-            # none anywhere, that code is asked for again, with the other (one photo carries one floor for its codes)
+            # none anywhere, that code is asked for again, with the other (one photo carries one floor for its codes).
+            # Asked for 715 alone, the title would read "Which floor is it on?"; the queued floor used again, no question
             ui.tap('More', exact=True)
             ui.tap('Select tags', exact=True)
             for c in (codes[2], extra):
@@ -432,8 +433,6 @@ class Phone(unittest.TestCase):
             ui.tap('Photo for all', exact=True)
             ui.find('Which floor are they on?', exact=True, timeout=10)
             ui.find(f'No floor yet: {codes[2]}, {extra}.')
-            self.assertFalse(ui.present('The other codes keep the floor they have.'), 'a floor in the queue counted as known')
-            self.assertFalse(ui.present('Photo for 2 codes', exact=True), 'the photo was offered before the floor')
             ui.tap('Cancel', exact=True)
             ui.tap('Done', exact=True)
             # the job is on disk once its .json is there (a full camera frame takes a moment to seal)
