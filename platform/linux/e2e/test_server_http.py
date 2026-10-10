@@ -872,6 +872,63 @@ class SignupOneSource(Base):
         self.assertEqual(len(boss.req('GET', '/api/signups')[1]['requests']), 11)
 
 
+class OfflineList(Base):
+    """GET /api/offline: the files a browser saves to work without the server ("Download for offline")"""
+
+    def cli(self, *args):
+        r = subprocess.run([BIN, *args, '--config', os.path.join(self.dir, 'config.json')], capture_output=True, text=True,
+                           cwd=self.dir, timeout=60)
+        return r.returncode, (r.stdout + r.stderr).strip()
+
+    def test_offline_list(self):
+        anon = Client(self.base)
+        self.assertEqual(anon.req('GET', '/api/offline')[0], 401)             # the plant's file names: members only
+        self.assertEqual(anon.req('GET', '/apple-touch-icon.png')[0], 200)    # (the icon iOS asks for, before any sign-in)
+        boss = self.manager()
+        st, L, _ = boss.req('GET', '/api/offline')
+        self.assertEqual((st, L['plant_data']), (200, None), L)
+        urls = [f[0] for f in L['files']]
+        self.assertEqual(urls, sorted(set(urls)))
+        # the pages and scripts (not the worker's own script), the decoders and the encoder, the fonts, the program's data
+        for u in ('/', '/index.html', '/admin.js', '/common.js', '/tiles.js', '/course.html', '/manifest.webmanifest', '/apple-touch-icon.png',
+                  '/vendor/kks/kks-simd.wasm', '/vendor/kks/kks-dec.wasm', '/vendor/fonts/courses.css', '/data/kks.json', '/data/courses/fnd.json'):
+            self.assertIn(u, urls)
+        self.assertTrue(any(u.startswith('/vendor/fonts/') and u.endswith('.woff2') for u in urls))
+        self.assertTrue(any(u.startswith('/data/courses/') and u.endswith('.jxl') for u in urls))
+        self.assertNotIn('/sw.js', urls)
+        self.assertFalse([u for u in urls if u.endswith(('.md', '.txt', '.ttf')) or 'SHA256SUMS' in u or '..' in u])
+        # every one is served, and is as long as the list says
+        for u, n in L['files']:
+            st, body, _ = boss.req('GET', u)
+            self.assertEqual(st, 200, u)
+            if isinstance(body, bytes): self.assertEqual(len(body), n, u)      # (JSON comes back parsed)
+        self.assertEqual(boss.req('GET', '/api/offline')[1]['version'], L['version'])       # nothing changed: the same
+        # published plant data: its files are listed, the drawings' with ?v=<version>
+        d = os.path.join(self.dir, 'pd')
+        os.makedirs(os.path.join(d, 'sheets'))
+        open(os.path.join(d, 'sheets.json'), 'w').write(json.dumps([{'id': 'a', 'name': 'A', 'levels': 1, 'w': 10, 'h': 10}]))
+        open(os.path.join(d, 'tags.json'), 'w').write('[]')
+        open(os.path.join(d, 'sheets', 'a.kkp'), 'wb').write(b'KKP1 not really')
+        open(os.path.join(d, 'sheets', 'a.o0.jxl'), 'wb').write(b'\xff\x0a')
+        self.assertEqual(self.cli('publish-data', d)[0], 0)
+        L2 = boss.req('GET', '/api/offline')[1]
+        u2 = dict(map(tuple, L2['files']))
+        self.assertEqual(L2['plant_data'], 1)
+        self.assertNotEqual(L2['version'], L['version'])
+        self.assertEqual((u2['/data/sheets/a.kkp?v=1'], u2['/data/sheets/a.o0.jxl?v=1']), (15, 2))
+        self.assertIn('/data/sheets.json', u2)
+        self.assertEqual(u2['/data/tags.json'], 2)
+        for u in ('/data/sheets/a.kkp?v=1', '/data/tags.json', '/data/sheets.json'):
+            self.assertEqual(boss.req('GET', u)[0], 200, u)
+        # a change to one file changes the version
+        open(os.path.join(d, 'sheets', 'a.kkp'), 'wb').write(b'KKP1 not really!')
+        self.assertEqual(self.cli('publish-data', d)[0], 0)
+        L3 = boss.req('GET', '/api/offline')[1]
+        self.assertEqual(L3['plant_data'], 2)
+        self.assertNotEqual(L3['version'], L2['version'])
+        self.assertIn('/data/sheets/a.kkp?v=2', [f[0] for f in L3['files']])
+
+
 class Limits(Base):
     """finding #27 (advisory GHSA-xfj6-p785-whg5): request limits before authentication"""
 
