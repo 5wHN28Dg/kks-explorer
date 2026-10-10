@@ -11,6 +11,12 @@
 #   3. set public_url, secure_cookies and trusted_proxy in ~USER/kks-server/config.json, put an HTTPS proxy in front
 #      (deploy/Caddyfile.example), then: systemctl enable --now kks-server
 # Updating: step 1 again, then systemctl restart kks-server.
+# Commands that need the storage key (wiki: Server), as root:
+#   systemd-run --pipe --wait -q -p User=USER -E KKS_CONFIG=HOME/kks-server/config.json \
+#     -p LoadCredentialEncrypted=kks-storage-key:/etc/credstore.encrypted/kks-storage-key \
+#     -p WorkingDirectory=HOME/kks-server/state HOME/kks-server/app/current/kks-server COMMAND
+# The service has its own /tmp (PrivateTmp): a file handed to the running server (publish-data DIR, submit-file FILE)
+# must be somewhere it can read, e.g. under HOME/kks-server/state, not /tmp.
 # Usage: deploy/install-server-system.sh USER
 #        deploy/install-server-system.sh --print-unit USER HOME     (prints the unit, changes nothing; for the tests)
 set -eu
@@ -26,7 +32,6 @@ Wants=network-online.target
 
 [Service]
 User=$1
-Group=$1
 Environment=KKS_CONFIG=$2/config.json
 WorkingDirectory=$2/state
 ExecStart=$2/app/current/kks-server serve
@@ -49,6 +54,10 @@ ProtectHostname=true
 RestrictSUIDSGID=true
 RestrictRealtime=true
 LockPersonality=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+# AF_NETLINK: the server lists the machine's addresses (getifaddrs)
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 # the server and the importer it starts: the reasoning is in deploy/install-server-user.sh (never MemoryHigh)
 MemoryMax=3G
@@ -81,7 +90,13 @@ if [ -e "$USER_HOME/.config/systemd/user/kks-server.service" ] || [ -e "$HOME_DI
   exit 1
 fi
 if [ ! -f "$CRED" ]; then
-  mkdir -p "$(dirname "$CRED")" && chmod 700 "$(dirname "$CRED")"
+  if [ -e "$HOME_DIR/state/server.db" ]; then
+    echo "$HOME_DIR/state/server.db exists but $CRED does not: a new key could not open that database." >&2
+    echo "Bring the database's own storage key over first (wiki: Server, moving a server)." >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$CRED")"
+  chmod 700 "$(dirname "$CRED")"
   (umask 077 && head -c 32 /dev/urandom | systemd-creds encrypt --name=kks-storage-key - "$CRED")
   echo "sealed a new storage key into $CRED (this machine only)"
 fi

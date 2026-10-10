@@ -14,6 +14,12 @@
 set -eu
 UNIT_KIND="${KKS_SERVER_UNIT:-user}"
 case "$UNIT_KIND" in user|system) ;; *) echo "KKS_SERVER_UNIT must be user or system" >&2; exit 2;; esac
+SYSTEM_UNIT="${KKS_SYSTEM_UNIT_FILE:-/etc/systemd/system/kks-server.service}"   # the variable is for the tests
+if [ "$UNIT_KIND" = user ] && [ -e "$SYSTEM_UNIT" ]; then
+  echo "$SYSTEM_UNIT exists: this machine runs the server as a system service." >&2
+  echo "Run this with KKS_SERVER_UNIT=system (a user unit and a second key next to it must never exist)." >&2
+  exit 1
+fi
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 HOME_DIR="${KKS_SERVER_HOME:-$HOME/kks-server}"
 NIM="${NIM:-$HOME/.nimble/bin/nim}"

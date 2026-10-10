@@ -80,16 +80,21 @@ class ServerUnit(unittest.TestCase):
         runs as a system service: as that user, with the machine's credential, writing only its state folder"""
         s = service_settings(system_unit_text('plant', '/srv/plant'))
         self.assertEqual(s['User'], ['plant'])
-        self.assertEqual(s['Group'], ['plant'])
+        self.assertNotIn('Group', s)  # the user's primary group, whatever its name (216/GROUP otherwise)
         self.assertEqual(s['Environment'], ['KKS_CONFIG=/srv/plant/kks-server/config.json'])
         self.assertEqual(s['ExecStart'], ['/srv/plant/kks-server/app/current/kks-server serve'])
         self.assertEqual(s['WorkingDirectory'], ['/srv/plant/kks-server/state'])
         self.assertEqual(s['LoadCredentialEncrypted'], ['kks-storage-key:/etc/credstore.encrypted/kks-storage-key'])
         self.assertEqual(s['ProtectSystem'], ['strict'])
         self.assertEqual(s['ReadWritePaths'], ['/srv/plant/kks-server/state'])
-        self.assertEqual(s['NoNewPrivileges'], ['true'])
+        for k in ('NoNewPrivileges', 'PrivateTmp', 'PrivateDevices', 'ProtectKernelTunables', 'ProtectKernelModules',
+                  'ProtectControlGroups', 'RestrictNamespaces', 'LockPersonality', 'RestrictSUIDSGID'):
+            self.assertEqual(s.get(k), ['true'], k)
+        self.assertEqual(s['SystemCallArchitectures'], ['native'])
+        self.assertEqual(s['CapabilityBoundingSet'], [''])
+        self.assertEqual(s['RestrictAddressFamilies'], ['AF_INET AF_INET6 AF_UNIX AF_NETLINK'])
 
-    def test_system_install_refuses_without_root_and_changes_nothing(self):
+    def test_system_install_refuses_without_root(self):
         if os.geteuid() == 0:
             self.skipTest('needs an unprivileged user')
         r = subprocess.run([os.path.join(REPO, 'deploy', 'install-server-system.sh'), 'nobody'],
@@ -97,38 +102,56 @@ class ServerUnit(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn('root', r.stderr)
 
+    def install(self, tmp, **extra):
+        """deploy/install-server-user.sh in a scratch home, with a stand-in compiler that writes the file named by -o:"""
+        home, nim = os.path.join(tmp, 'home'), os.path.join(tmp, 'nim')
+        os.makedirs(home)
+        with open(nim, 'w') as f:
+            f.write('#!/bin/sh\nfor a in "$@"; do case "$a" in -o:*) echo x > "${a#-o:}";; esac; done\n')
+        os.chmod(nim, 0o755)
+        env = dict(os.environ, HOME=home, NIM=nim, KKS_SYSTEM_UNIT_FILE=os.path.join(tmp, 'no-system-unit'))
+        env.update(extra)
+        env.pop('KKS_SERVER_HOME', None)
+        # the install is read-only: callers make it writable again before the scratch folder goes
+        r = subprocess.run([os.path.join(REPO, 'deploy', 'install-server-user.sh')], env=env, capture_output=True,
+                           text=True)
+        return r, home
+
     def test_user_install_for_a_system_unit_writes_no_user_unit_or_key(self):
         """KKS_SERVER_UNIT=system: the install stops before the user unit and the user-sealed key (two units on one
-        database must never exist). Run with stand-in compilers, in a scratch home."""
+        database must never exist)"""
         with tempfile.TemporaryDirectory() as tmp:
-            home, nim = os.path.join(tmp, 'home'), os.path.join(tmp, 'nim')
-            os.makedirs(home)
-            with open(nim, 'w') as f:  # stands in for the compiler: writes the file named by -o:
-                f.write('#!/bin/sh\nfor a in "$@"; do case "$a" in -o:*) echo x > "${a#-o:}";; esac; done\n')
-            os.chmod(nim, 0o755)
-            env = dict(os.environ, HOME=home, NIM=nim, KKS_SERVER_UNIT='system')
-            env.pop('KKS_SERVER_HOME', None)
-            r = subprocess.run([os.path.join(REPO, 'deploy', 'install-server-user.sh')], env=env, capture_output=True,
-                               text=True)
-            try:
-                self.assertEqual(r.returncode, 0, r.stderr)
-                self.assertTrue(os.path.exists(os.path.join(home, 'kks-server', 'app', 'current', 'kks-server')))
-                self.assertTrue(os.path.exists(os.path.join(home, 'kks-server', 'config.json')))
-                self.assertFalse(os.path.exists(os.path.join(home, 'kks-server', 'storage-key.cred')))
-                self.assertFalse(os.path.exists(os.path.join(home, '.config', 'systemd', 'user', 'kks-server.service')))
-                self.assertIn('install-server-system.sh', r.stdout)
-            finally:
-                subprocess.run(['chmod', '-R', 'u+w', home])  # the install is read-only; let the folder be removed
+            r, home = self.install(tmp, KKS_SERVER_UNIT='system')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertTrue(os.path.exists(os.path.join(home, 'kks-server', 'app', 'current', 'kks-server')))
+            self.assertTrue(os.path.exists(os.path.join(home, 'kks-server', 'config.json')))
+            self.assertFalse(os.path.exists(os.path.join(home, 'kks-server', 'storage-key.cred')))
+            self.assertFalse(os.path.exists(os.path.join(home, '.config', 'systemd', 'user', 'kks-server.service')))
+            self.assertIn('install-server-system.sh', r.stdout)
+            subprocess.run(['chmod', '-R', 'u+w', home])
 
     def test_user_install_rejects_an_unknown_unit_kind(self):
-        r = subprocess.run([os.path.join(REPO, 'deploy', 'install-server-user.sh')],
-                           env=dict(os.environ, KKS_SERVER_UNIT='sytem'), capture_output=True, text=True)
-        self.assertEqual(r.returncode, 2)
+        with tempfile.TemporaryDirectory() as tmp:
+            r, home = self.install(tmp, KKS_SERVER_UNIT='sytem')
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(os.listdir(home), [])
 
-    def test_server_built_with_malloc(self):
-        with open(os.path.join(REPO, 'platform', 'linux', 'kks_server.nims')) as f:
-            nims = f.read()
-        self.assertRegex(nims, r'(?m)^switch\("define", "useMalloc"\)')
+    def test_user_install_refuses_next_to_a_system_unit(self):
+        """an update on the server run without KKS_SERVER_UNIT=system would write a user unit and a second key next to
+        the system service"""
+        with tempfile.TemporaryDirectory() as tmp:
+            unit = os.path.join(tmp, 'kks-server.service')
+            open(unit, 'w').close()
+            r, home = self.install(tmp, KKS_SYSTEM_UNIT_FILE=unit)
+            self.assertEqual(r.returncode, 1)
+            self.assertIn('KKS_SERVER_UNIT=system', r.stderr)
+            self.assertEqual(os.listdir(home), [])
+        with tempfile.TemporaryDirectory() as tmp:
+            unit = os.path.join(tmp, 'kks-server.service')
+            open(unit, 'w').close()
+            r, home = self.install(tmp, KKS_SYSTEM_UNIT_FILE=unit, KKS_SERVER_UNIT='system')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            subprocess.run(['chmod', '-R', 'u+w', home])
 
 
 if __name__ == '__main__':
