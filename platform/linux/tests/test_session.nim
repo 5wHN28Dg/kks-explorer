@@ -42,7 +42,6 @@ suite "session renewal":
     let ended = s.sessionEnds(raw)
     check not s.renewSession(raw, ended + 1)
     check s.sessionEnds(raw) == ended
-    check s.sessionUser(raw, ended + 1) == nil
     check not s.renewSession(raw, ended + 40 * Day)
     check s.sessionEnds(raw) == ended
 

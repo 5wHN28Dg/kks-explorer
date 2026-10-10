@@ -877,9 +877,9 @@ class SignupOneSource(Base):
 
 class SessionRenewal(Base):
     """A sign-in renews while it is used (the user, 2026-10-10): the session_days start again when the signed-in page
-    checks in (/api/me, /api/sync/status), at most once per session_renew_seconds (a day; one second here), and the
+    checks in (/api/me, /api/sync/status), at most once per session_renew_seconds (a day; two seconds here), and the
     cookie gets its lifetime again with it. A session that ended is not brought back by using its cookie."""
-    extra = {'session_renew_seconds': 1, 'session_days': 30}
+    extra = {'session_renew_seconds': 2, 'session_days': 30}
     cli = Cli.cli
 
     def cookie(self, hdr):
@@ -894,7 +894,7 @@ class SessionRenewal(Base):
         # just signed in: nothing to renew yet
         st, _, hdr = boss.req('GET', '/api/me')
         self.assertEqual((st, self.cookie(hdr)), (200, []))
-        time.sleep(1.2)
+        time.sleep(2.3)
         # other requests never renew (only the page's check-ins do)
         for path in ('/api/state', '/api/users', '/api/config', '/data/kks.json', '/'):
             st, _, hdr = boss.req('GET', path)
@@ -907,14 +907,14 @@ class SessionRenewal(Base):
         # once per interval: not again at once; again after it, from the poll too
         self.assertEqual(self.cookie(boss.req('GET', '/api/me')[2]), [])
         self.assertEqual(self.cookie(boss.req('GET', '/api/sync/status')[2]), [])
-        time.sleep(1.2)
+        time.sleep(2.3)
         st, _, hdr = boss.req('GET', '/api/sync/status')
         self.assertEqual((st, len(self.cookie(hdr))), (200, 1))
         self.assertIn('Max-Age=%d' % (30 * 86400), self.cookie(hdr)[0])
 
         # what ends a session still ends it at once, and its cookie renews nothing afterwards
         def dead(c):
-            time.sleep(1.2)
+            time.sleep(2.3)
             for path in ('/api/me', '/api/sync/status'):
                 st, _, hdr = c.req('GET', path)
                 self.assertEqual((st, self.cookie(hdr)), (401, []), path)
@@ -961,6 +961,31 @@ class SessionRenewal(Base):
         st, _, hdr = forged.req('GET', '/api/me', headers={'Cookie': 'kks_session=' + 'A' * 43})
         self.assertEqual((st, self.cookie(hdr)), (401, []))
         self.assertEqual(forged.req('GET', '/api/me', headers={'Cookie': 'kks_session=' + ali_tok})[0], 401)
+
+
+class SessionRenewalBehindHttps(Base):
+    """the cookie sent again keeps what it was given at sign-in under an https public_url: Secure for a page reached
+    through the public address, not Secure for a page on this machine's own http address (WebKit would drop it)"""
+    extra = {'session_renew_seconds': 2, 'public_url': 'https://plant.example'}
+
+    def test_secure_follows_the_page(self):
+        cookie = lambda hdr: [v for k, v in hdr.items() if k.lower() == 'set-cookie']
+        local = {'Origin': self.base}
+        boss = Client(self.base)
+        st, r, hdr = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
+                                                     'full_name': 'The Manager', 'position': 'Plant manager'}, headers=local)
+        self.assertEqual(st, 200, r)
+        self.assertNotIn('Secure', cookie(hdr)[0])
+        tok = [x.value for x in boss.jar if x.name == 'kks_session'][0]
+        time.sleep(2.3)
+        st, _, hdr = boss.req('GET', '/api/me')                     # a GET: no Origin, sent to 127.0.0.1
+        self.assertEqual((st, len(cookie(hdr))), (200, 1))
+        self.assertNotIn('Secure', cookie(hdr)[0])
+        time.sleep(2.3)
+        # the same check-in arriving for the public host (as the proxy passes it on): Secure
+        st, _, hdr = Client(self.base).req('GET', '/api/me', headers={'Host': 'plant.example', 'Cookie': 'kks_session=' + tok})
+        self.assertEqual((st, len(cookie(hdr))), (200, 1))
+        self.assertIn('; Secure', cookie(hdr)[0])
 
 
 class Limits(Base):

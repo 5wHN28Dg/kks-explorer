@@ -114,7 +114,7 @@ proc loadConfig*(path: string): Config =
   result.secureCookies = b("secure_cookies", false)
   result.trustedProxy = b("trusted_proxy", false)
   result.plantName = s("plant_name", result.plantName)
-  result.sessionDays = i("session_days", result.sessionDays)
+  result.sessionDays = clamp(i("session_days", result.sessionDays), 1, 3650)   # (0 or less would end a session as it renews)
   result.sessionRenewEvery = max(1, i("session_renew_seconds", result.sessionRenewEvery))
   result.offlineDays = i("offline_days", result.offlineDays)
   result.maxUploadMb = i("max_upload_mb", result.maxUploadMb)
@@ -560,10 +560,18 @@ proc localPage(s: Server, req: Request): bool =
   let o = parseUri(req.headers.getOrDefault("Origin"))
   o.scheme == "http" and o.hostname.toLowerAscii in ["127.0.0.1", "localhost", s.cfg.address]
 
-proc cookieHeader(s: Server, req: Request, raw: string, maxAge: int): (string, string) =
+proc localHost(s: Server, req: Request): bool =
+  ## the request was sent to this machine's own address (its Host), not to the public one a proxy passes on
+  let hs = req.headers.getOrDefault("Host").split(',')
+  hs.len == 1 and hs[0].strip.toLowerAscii in ["127.0.0.1:" & $s.cfg.port, "localhost:" & $s.cfg.port, s.cfg.address & ":" & $s.cfg.port]
+
+proc cookieHeader(s: Server, req: Request, raw: string, maxAge: int, renewal = false): (string, string) =
   ## Secure under an https public_url, except for a page on this machine's own http address: WebKit drops a Secure
   ## cookie set over http://127.0.0.1 (Chromium and Firefox keep it), and nothing crosses the network there.
-  let secure = s.cfg.secureCookies or (s.cfg.publicUrl.startsWith("https://") and not s.localPage(req))
+  ## `renewal`: the cookie sent again on a GET, which carries no Origin: the page is this machine's own when the
+  ## request came to this machine's own address (so the cookie keeps the attributes it was given at sign-in).
+  let local = s.localPage(req) or (renewal and req.headers.getOrDefault("Origin").len == 0 and s.localHost(req))
+  let secure = s.cfg.secureCookies or (s.cfg.publicUrl.startsWith("https://") and not local)
   ("Set-Cookie", Cookie & "=" & raw & "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" & $maxAge &
                  (if secure: "; Secure" else: ""))
 
@@ -612,7 +620,7 @@ proc currentUser(s: Server, req: Request): JNode =
 proc renewed(s: Server, req: Request): seq[(string, string)] =
   ## for the answers to a signed-in page's check-ins: the cookie again when the session was just extended
   let raw = req.sessionRaw
-  if s.renewSession(raw): result.add s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)
+  if s.renewSession(raw): result.add s.cookieHeader(req, raw, s.cfg.sessionDays * 86400, renewal = true)
 
 proc queryOf(u: Uri): Table[string, string] =
   for k, v in decodeQuery(u.query): result[k] = v
@@ -858,9 +866,9 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
     # whoever is signed in as the old manager (the person who left, perhaps) or as the new one signs in again: a
     # sign-in renews while used, so it would not end by itself
     let old = s.managerUser()
+    s.handOverManager(u)                              # (first: if it can't be done, nobody is signed out for nothing)
     if old != nil: s.endSessions(old["id"].i)
     s.endSessions(u["id"].i)
-    s.handOverManager(u)
     s.store.setMeta("transfer", "")                   # an offer waiting from the old manager is void
     args[0] & " is the manager now. If they need a new password, open this link once within 3 days:\n  " &
       s.link("/#reset=" & s.makeToken("reset", u["id"].i, 3 * 86400))
