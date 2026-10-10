@@ -10,10 +10,26 @@ const SHELL_FILES = ['/', '/index.html', '/index.js', '/admin.html', '/admin.js'
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES))); self.skipWaiting() });
 // Activation keeps only this version's two caches: any other (an older version's, or one a script made before the
-// stored-content fix) goes, and lookups below read only the cache they name.
-self.addEventListener('activate', e => e.waitUntil(caches.keys()
-  .then(ks => Promise.all(ks.filter(k => k !== SHELL && k !== DATA).map(k => caches.delete(k))))
-  .then(() => self.clients.claim())));
+// stored-content fix) goes, and lookups below read only the cache they name. What an older version of this worker
+// had saved beside the pages (the decoders, the photo encoder, the fonts, /api/config: "Download for offline" put
+// them there) moves into this version's cache first, so an update of the app takes nothing from the offline copy.
+self.addEventListener('activate', e => e.waitUntil((async () => {
+  const shell = await caches.open(SHELL);
+  for (const k of await caches.keys()) {
+    if (k === SHELL || k === DATA) continue;
+    if (k.startsWith('kks-shell-')) {
+      const old = await caches.open(k);
+      for (const req of await old.keys()) {
+        const u = new URL(req.url);
+        if (u.search || SHELL_FILES.includes(u.pathname) || await shell.match(req)) continue;   // (the pages are this version's own)
+        const r = await old.match(req);
+        if (r) await shell.put(req, r).catch(() => {});
+      }
+    }
+    await caches.delete(k);
+  }
+  await self.clients.claim();
+})()));
 
 // Where a URL's saved copy lives and how it is used: [cache, 'net' (network first) or 'kept' (the copy first)], or null
 // for what is never saved. One rule for the pages' own requests and for "Download for offline" (the `keep` message).
@@ -40,11 +56,12 @@ self.addEventListener('fetch', e => {
 //       fresh: fetch it even if a copy is here. had: the copy was here already (nothing fetched).
 //   {t: 'prune', keep: [urls]} -> {ok: true, removed}: drawings and photos saved here that are no longer on the list
 //       (an older plant data version, a deleted photo) go.
+//   {t: 'check', urls} -> {ok: true, missing: [urls]}: which of them this worker would not find offline
 //   {t: 'hello'} -> {ok: true, shell: SHELL}
 self.addEventListener('message', e => {
   const m = e.data || {}, port = e.ports && e.ports[0];
   if (!port || !e.source || new URL(e.source.url).origin !== location.origin) return;
-  const work = m.t === 'keep' ? keep(m) : m.t === 'prune' ? prune(m) : m.t === 'hello' ? Promise.resolve({ok: true, shell: SHELL}) : null;
+  const work = m.t === 'keep' ? keep(m) : m.t === 'prune' ? prune(m) : m.t === 'check' ? check(m) : m.t === 'hello' ? Promise.resolve({ok: true, shell: SHELL}) : null;
   if (work) e.waitUntil(work.catch(err => ({ok: false, error: String(err && err.message || err), quota: isQuota(err)})).then(r => port.postMessage(r)));
 });
 const isQuota = err => !!err && (err.name === 'QuotaExceededError' || /quota/i.test(String(err.message || '')));
@@ -61,6 +78,14 @@ async function keep(m) {
   await cache.put(u.href, resp);            // (awaited: the answer is "saved", or the error that stopped it)
   return {ok: true, bytes};
 }
+async function check(m) {
+  const missing = [];
+  for (const x of m.urls || []) {
+    const u = new URL(x, location.origin), r = route(u);
+    if (!r || !await (await caches.open(r[0])).match(u.href)) missing.push(x);
+  }
+  return {ok: true, missing};
+}
 async function prune(m) {
   const want = new Set((m.keep || []).map(x => new URL(x, location.origin).href)), cache = await caches.open(DATA);
   let removed = 0;
@@ -72,13 +97,15 @@ async function prune(m) {
 }
 
 async function networkFirst(req, name) {
+  // a page is saved under its path alone: /?kks=…, /course.html?c=… and /?sheet=… are the same file, and one copy
+  // of it (the newest) is what every one of them gets offline
+  const key = name === SHELL ? new URL(req.url).pathname : req;
   try {
     const r = await fetch(req);
-    if (r.ok) (await caches.open(name)).put(req, r.clone());
+    if (r.ok) (await caches.open(name)).put(key, r.clone());
     return r;
   } catch (err) {
-    // (a page is saved under its path: /?kks=…, /course.html?c=… and /?sheet=… are the same file)
-    const c = await (await caches.open(name)).match(req, {ignoreSearch: name === SHELL});
+    const c = await (await caches.open(name)).match(key);
     // a plant data list that is not saved: "not there", as the server says of one the plant never published
     // (procedures, descriptions and the location list are optional, and the pages know what a 404 means)
     if (!c && /^\/data\/[^/]+\.json$/.test(new URL(req.url).pathname))

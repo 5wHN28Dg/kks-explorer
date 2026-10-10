@@ -55,7 +55,15 @@ class WebOffline(unittest.TestCase):
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-web-offline-')
         cls.port = free_port()
-        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
+        # the web files as the server serves them, in a folder of the test's own: links to the repository's, and its
+        # own copy of sw.js (an update of the app is a changed sw.js)
+        cls.web = os.path.join(cls.dir, 'web')
+        os.makedirs(cls.web)
+        for n in os.listdir(REPO):
+            if n == 'vendor' or (os.path.isfile(os.path.join(REPO, n)) and n.endswith(('.html', '.js', '.css', '.png', '.svg', '.webmanifest')) and n != 'sw.js'):
+                os.symlink(os.path.join(REPO, n), os.path.join(cls.web, n))
+        shutil.copy(os.path.join(REPO, 'sw.js'), os.path.join(cls.web, 'sw.js'))
+        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': cls.web,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
@@ -96,6 +104,14 @@ class WebOffline(unittest.TestCase):
     def photos(self, kks):
         return [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == kks]
 
+    def until(self, page, js, arg=None, timeout=30000):
+        """wait for an async predicate (page.wait_for_function takes a pending promise for "true")"""
+        end = time.time() + timeout / 1000
+        while True:
+            if page.evaluate(js, arg): return
+            if time.time() > end: self.fail('timed out waiting for: ' + js[:200])
+            page.wait_for_timeout(250)
+
     def account(self, page):
         page.goto(self.base + '/admin.html#account')
         expect(page.locator('#offlineCard')).to_be_visible(timeout=30000)
@@ -104,21 +120,31 @@ class WebOffline(unittest.TestCase):
         A, B = CODES[name]
         if self.server.poll() is not None: self.start_server()     # (an engine that failed while "offline" left it stopped)
         with sync_playwright() as p:
-            browser = p[name].launch()
-            ctx = browser.new_context(viewport={'width': 1200, 'height': 800})
-            ctx.add_init_script(CSP_WATCH)
+            # a browser with a profile on disk, so that it can really be closed and started again
+            profile = tempfile.mkdtemp(prefix='profile-', dir=self.dir)
+            off = False
+            def launch():
+                c = p[name].launch_persistent_context(profile, viewport={'width': 1200, 'height': 800})
+                c.add_init_script(CSP_WATCH)
+                if off and name != 'webkit': c.set_offline(True)
+                return c
+            ctx = launch()
             r = ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': PW}, headers={'Origin': self.base})
             self.assertTrue(r.ok, r.text())
-            page = ctx.new_page()
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
             errors = PageErrors(page)
             # Offline here = the server is gone (stopped), and in Chromium and Firefox the browser is told it has no
             # network as well (context.set_offline). Not in WebKit: its offline emulation fails every navigation with
             # an internal error before the service worker is asked, and refuses blob: URLs; there the device "has a
             # network" and the server can't be reached, which is the other way a phone is offline.
             def offline():
+                nonlocal off
+                off = True
                 self.stop_server()
                 if name != 'webkit': ctx.set_offline(True)
             def online():
+                nonlocal off
+                off = False
                 self.start_server()
                 ctx.set_offline(False)
 
@@ -156,8 +182,14 @@ class WebOffline(unittest.TestCase):
             self.assertTrue(any(u.endswith('sample.kkp' + v) for u in missing['sheets']) and any(u.endswith('sample.o0.jxl' + v) for u in missing['sheets']), missing['sheets'])
             self.assertGreaterEqual(len(self.photos(A)), 1)
 
+            # (Chromium and WebKit have opened the drawings page once while connected, so they know the plant data
+            # version behind the drawings' ?v=; Firefox has not, and finds the saved files all the same)
+            if name != 'firefox':
+                errors.leave(); page.goto(self.base + '/')
+                page.wait_for_function(SHEET_SHOWN, timeout=30000)
+                self.until(page, "() => K.idb.get('pdv').then(v => !!v)")
             # ---- 2. offline: a new page (nothing in memory), the drawing, search, the tag, its photo
-            errors.leave(); page.close()
+            errors.leave()
             offline()
             failed = []
             def watch(pg):
@@ -166,7 +198,7 @@ class WebOffline(unittest.TestCase):
                     pg.on('console', lambda m: print('console:', m.type, m.text[:300], file=sys.stderr))
                     pg.on('requestfailed', lambda q: print('failed:', q.url, q.failure, file=sys.stderr))
                 return pg
-            page = watch(ctx.new_page())
+            np = watch(ctx.new_page()); page.close(); page = np
             errors = PageErrors(page)
             page.goto(self.base + '/')
             page.wait_for_function(SHEET_SHOWN, timeout=30000)
@@ -217,10 +249,15 @@ class WebOffline(unittest.TestCase):
             page.wait_for_function("() => location.pathname === '/course.html' && document.querySelectorAll('h1, h2').length > 0", timeout=30000)
             page.wait_for_function("() => [...document.fonts].some(f => f.status === 'loaded')", timeout=30000)   # its fonts, from the copy
 
-            # ---- 3. a restart while offline: the queue is there, the tag and its changes too
-            errors.leave(); page.close()
-            page = watch(ctx.new_page())
+            # ---- 3. a restart while offline (the browser closed and started again): the queue is there, the tag and
+            # its changes too, and Manage → Account still says the copy is ready
+            errors.leave(); ctx.close()
+            ctx = launch()
+            page = watch(ctx.pages[0] if ctx.pages else ctx.new_page())
             errors = PageErrors(page)
+            self.account(page)
+            expect(page.locator('#offlineState')).to_contain_text('Ready for offline')
+            errors.leave()
             page.goto(self.base + '/?kks=' + A)
             page.wait_for_function("k => typeof selTag !== 'undefined' && selTag && full(selTag) === k", arg=A, timeout=30000)
             self.assertEqual(page.evaluate("K.outbox.map(i => i.kind).sort()"), ['equipment', 'equipment', 'equipment', 'photo'])
@@ -248,12 +285,15 @@ class WebOffline(unittest.TestCase):
             page.clock.set_fixed_time(now + datetime.timedelta(days=31))
             expect(page.locator('#kov .box')).to_contain_text('Offline access on this device expired', timeout=40000)
 
-            # ---- 5. back online: everything queued arrives, once
-            online()
-            n_before = len(self.photos(B))
+            # ---- 5. back online, on a page that was started offline and stays open: it notices the server by itself
+            # and everything queued arrives, once
             page.clock.set_fixed_time(datetime.datetime.now())
             errors.leave(); page.reload()
-            page.wait_for_function("() => typeof K !== 'undefined' && K.me && K.online && K.outbox.length === 0 && !K.converting", timeout=120000)
+            page.wait_for_function(SHEET_SHOWN, timeout=30000)
+            self.assertEqual(page.evaluate("[K.online, K.outbox.length]"), [False, 4])
+            online()
+            n_before = len(self.photos(B))
+            page.wait_for_function("() => K.online && K.outbox.length === 0 && !K.converting", timeout=120000)
             page.wait_for_timeout(1500)
             page.evaluate("K.flush()")
             state = self.boss.req('GET', '/api/state')
@@ -269,13 +309,38 @@ class WebOffline(unittest.TestCase):
             self.add_photo(A, 'After the download, ' + name)
             new_file = self.photos(A)[-1]['file']
             self.import_sheet('more' + name, 'More ' + name)
-            page.wait_for_function("""async f => await caches.match('/photos/' + f) && (await caches.keys()).length
+            self.until(page, """async f => !!(await caches.match('/photos/' + f))
               && (await (await caches.open('kks-data-v2')).keys()).some(r => r.url.includes('/data/sheets/more') && r.url.includes('.kkp'))""",
-                                   arg=new_file, timeout=120000)
+                       arg=new_file, timeout=240000)
             # the older version's drawing files are gone (only the current ?v= stays)
-            page.wait_for_function("""async () => { const pd = (await (await fetch('/api/offline')).json()).plant_data;
+            self.until(page, """async () => { const pd = (await (await fetch('/api/offline')).json()).plant_data;
               const ks = (await (await caches.open('kks-data-v2')).keys()).map(r => r.url).filter(u => u.includes('/data/sheets/'));
-              return !K.offline.run && ks.length > 0 && ks.every(u => u.endsWith('?v=' + pd)) }""", timeout=60000)
+              return !K.offline.run && K.offline.state.done && K.offline.state.plant_data === pd && ks.length > 0 && ks.every(u => u.endsWith('?v=' + pd)) }""", timeout=120000)
+            expect(page.locator('#offlineState')).to_contain_text('Ready for offline', timeout=60000)
+            # the server (or its proxy) busy for a moment takes nothing from a copy that is ready
+            page.route('**/api/offline', lambda r: r.fulfill(status=502, content_type='application/json', body='{"error":"bad gateway"}'))
+            page.get_by_role('button', name='Update now').click()
+            page.wait_for_function("() => !K.offline.run && K.offline.ranAt > 0")
+            page.wait_for_timeout(300)
+            self.assertTrue(page.evaluate("K.offline.state.done"))
+            expect(page.locator('#offlineState')).to_contain_text('Ready for offline')
+            page.unroute('**/api/offline')
+            # an update of the app (a new service worker, which drops the older one's cache of pages): the decoders, the
+            # encoder, the fonts and the rest that was saved beside the pages are still there
+            with open(os.path.join(self.web, 'sw.js')) as f: sw = f.read()
+            new_shell = 'kks-shell-t' + name
+            with open(os.path.join(self.web, 'sw.js'), 'w') as f: f.write(re.sub(r"kks-shell-[a-z0-9]+'", new_shell + "'", sw, count=1))
+            old_shell = page.evaluate("K.offline.sw({t: 'hello'}).then(r => r.shell)")
+            self.assertNotEqual(old_shell, new_shell)
+            page.evaluate("navigator.serviceWorker.ready.then(r => r.update())")
+            self.until(page, "async ([s, old]) => (await K.offline.sw({t: 'hello'}, 2000)).shell === s && !(await caches.keys()).includes(old)",
+                       arg=[new_shell, old_shell], timeout=60000)      # (the new worker is the active one and has finished moving in)
+            left = page.evaluate("""async () => { const man = await (await fetch('/api/offline')).json();
+              const ck = await K.offline.sw({t: 'check', urls: [...man.files.map(f => f[0]), '/api/config', '/api/state', '/api/courses']});
+              return {missing: ck.missing, caches: await caches.keys(), n: man.files.length} }""")
+            self.assertEqual(left['missing'], [], left)
+            self.assertGreater(left['n'], 50)
+            self.assertEqual(sorted(left['caches']), ['kks-data-v2', new_shell])
             # a full disk is said in words, not hidden
             page.evaluate("""() => { const real = K.offline.sw.bind(K.offline);
               K.offline.sw = (m, ms) => m.t === 'keep' && m.url.startsWith('/data/sheets/') ? Promise.resolve({ok: false, quota: true, error: 'QuotaExceededError'}) : real(m, ms) }""")
@@ -287,10 +352,12 @@ class WebOffline(unittest.TestCase):
             expect(page.locator('#offlineCard')).to_be_visible(timeout=30000)
             page.get_by_role('button', name='Remove the offline copy').click()
             expect(page.locator('#offlineState')).to_contain_text('To work where there is no connection')
-            page.wait_for_function("""async () => !K.offline.run && (await (await caches.open('kks-data-v2')).keys()).filter(r => /\\/data\\/sheets\\/|\\/photos\\//.test(r.url)).length === 0""", timeout=30000)
+            self.until(page, """async () => !K.offline.run && (await (await caches.open('kks-data-v2')).keys()).filter(r => /\\/data\\/sheets\\/|\\/photos\\//.test(r.url)).length === 0""", timeout=30000)
             self.assertEqual(list(errors), [])
 
             # ---- 7. an iPhone in a Safari tab: told to add the app to the Home Screen first; from the Home Screen, not
+            ctx.close()
+            browser = p[name].launch()
             ictx = browser.new_context(viewport={'width': 390, 'height': 844}, user_agent=IPHONE)
             ictx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': PW}, headers={'Origin': self.base})
             ip = ictx.new_page()

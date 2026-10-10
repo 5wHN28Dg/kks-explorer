@@ -68,7 +68,7 @@
    "admin.html": 4954,
    "admin.js": 58272,
    "apple-touch-icon.png": 1057,
-   "common.js": 84189,
+   "common.js": 87616,
    "course-bridge.js": 3846,
    "course-figure.js": 18968,
    "course.css": 15526,
@@ -85,13 +85,13 @@
    "learning.html": 2095,
    "learning.js": 1645,
    "manifest.webmanifest": 477,
-   "sw.js": 7689,
+   "sw.js": 8920,
    "systems.js": 18414,
    "tiles.js": 11413,
    "vendor/fonts/courses.css": 6376,
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1143018
+  "total": 1147676
  }
 }

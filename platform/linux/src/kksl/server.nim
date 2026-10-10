@@ -615,6 +615,12 @@ proc courseList(s: Server): JNode =
   result = O(("courses", newArr(found)))
   s.courseCache = (key, result)
 
+proc encodeComponent(x: string): string =
+  ## as the pages' encodeURIComponent writes a path segment (Nim's encodeUrl also escapes ! ' ( ) *)
+  for c in x:
+    if c in {'a'..'z', 'A'..'Z', '0'..'9', '-', '_', '.', '~', '!', '\'', '(', ')', '*'}: result.add c
+    else: result.add '%' & toHex(ord(c), 2)
+
 proc offlineList(s: Server): JNode =
   ## GET /api/offline: every file a browser needs to work without the server (the web client's "Download for
   ## offline"): the pages and scripts, vendor/ (decoders, the photo encoder, fonts), the active plant data version
@@ -642,14 +648,14 @@ proc offlineList(s: Server): JNode =
       plantFiles.incl path
       # `x.json.gz` is served as `x.json` (Content-Encoding)
       let rel = if path.endsWith(".gz") and path[0 ..< path.len - 3] notin a.files: path[0 ..< path.len - 3] else: path
-      add("/data/" & rel.split('/').mapIt(encodeUrl(it, usePlus = false)).join("/") &
+      add("/data/" & rel.split('/').mapIt(encodeComponent(it)).join("/") &
           (if rel.startsWith("sheets/"): "?v=" & $a.version else: ""), size, sha)
   let droot = absolutePath(s.cfg.dataDir)
   if s.cfg.dataDir.len > 0 and dirExists(droot):
     for f in walkDirRec(droot):
       let rel = f[droot.len + 1 .. ^1].replace(DirSep, '/')
       if rel notin plantFiles and rel & ".gz" notin plantFiles and f.splitFile.ext in [".json", ".jxl"]:
-        addFile("/data/" & rel.split('/').mapIt(encodeUrl(it, usePlus = false)).join("/"), f)
+        addFile("/data/" & rel.split('/').mapIt(encodeComponent(it)).join("/"), f)
   files.sort(proc (x, y: (string, int64)): int = cmp(x[0], y[0]))
   var arr = newArr()
   for (u, n) in files: arr.elems.add newArr(@[S(u), newInt(n)])
