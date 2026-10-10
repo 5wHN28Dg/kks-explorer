@@ -48,26 +48,26 @@ Built here 2026-10-09 from the same commit, release mode, as `apps/windows/build
 - The libraries (zlib, libjxl, zxing-cpp) build for x86_64 with no source change; one run of `build-deps.sh` with
   4 jobs takes about 1.5 minutes here.
 
-**Speed** (2026-10-10, the Windows 11 26H2 VM of `docs/m6/MEASUREMENTS.md`, the GCC and clang builds of one commit;
-test programs: median of 3 runs, timed inside the VM):
+**Speed** (2026-10-10, the Windows 11 26H2 VM of `docs/m6/MEASUREMENTS.md`, startup and memory also in the Windows 10
+22H2 VM; the GCC and llvm-mingw builds of one commit; test programs: median of 3 runs, timed inside the VM):
 
 | | GCC 13 | llvm-mingw | |
 |---|---|---|---|
-| test_api / test_sync / test_replay (core: JSON, log, replay, sync sessions) | 663 / 647 / 638 ms | 590 / 626 / 528 ms | −4 to −17 % |
-| test_rudp / test_model | 215 / 67 ms | 128 / 35 ms | faster |
-| test_pathstore / test_extras | 1,144 / 431 ms | 1,211 / 417 ms | about equal |
+| test_api / test_sync / test_replay (core: JSON, log, replay, sync sessions) | 663 / 647 / 638 ms | 590 / 626 / 528 ms | −11 / −3 / −17 % |
+| test_rudp / test_model | 215 / 67 ms | 128 / 35 ms | −40 / −48 % |
+| test_pathstore / test_extras | 1,144 / 431 ms | 1,211 / 417 ms | +6 / −3 % |
 | test_dbstore (SQLite, DPAPI) | 369 ms | 320 ms | −13 % |
 | test_dark (libjxl decode, Direct2D) | 2,093 ms | 438 ms | −79 % |
 | test_tiles (12 tiles of 2048 px on WARP, Direct2D's software renderer) | 138.1 s | 137.1 s | equal (Direct2D's own code) |
-| test_net, test_internet (sync over TCP and the relay) | 18.1 s, 38.6 s | 13.9 s, 38.9 s | network-bound, timeouts |
+| test_net, test_internet (sync over TCP and the relay) | 18.1 s, 38.6 s | 13.9 s, 38.9 s | not comparable: their time is waits and timeouts (test_net's 3 runs: 8.0–18.1 s and 6.8–14.0 s) |
 | Start → first overview drawn (sample sheet, 5 starts, median), Windows 11 / 10 | 105 / 93 ms | 102 / 93 ms | equal |
 | Private bytes 15 s after start, Windows 11 / 10 | 20.4 / 19.4 MB | 20.8 / 19.6 MB | equal |
 | Join (enrolment + the first full sync of the sample sheet) | 1–2 s | 1–2 s | equal (the driver logs whole seconds) |
 
-Nothing is slower beyond noise; libjxl and the core's hot loops gain the most. Rough figures: one VM, small test data, no
-real sheet.
+libjxl (test_dark) and test_rudp/test_model gain the most; test_pathstore is the one slower program (+6 %, three runs
+each, spread 1,140–1,210 vs 1,211–1,265 ms). Rough figures: two VMs, small test data, no real sheet.
 
-**Checked in the VMs** (2026-10-10, the clang build): on Windows 10 22H2 and 11 26H2 every core, platform and app test
+**Checked in the VMs** (2026-10-10, the llvm-mingw build): on Windows 10 22H2 and 11 26H2 every core, platform and app test
 program passes, and so does the whole Windows e2e (19 tests). On Windows 10 the MSIX (`make-msix.sh`, a test
 certificate) builds (11.6 MB), installs, and passes the e2e as the installed package.
 
