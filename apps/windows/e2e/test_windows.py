@@ -897,8 +897,12 @@ class Windows(unittest.TestCase):
             return int(vm("@(Get-Content \"$env:LOCALAPPDATA\\Walkdown\\trace.log\", "
                           "\"$env:LOCALAPPDATA\\Packages\\Walkdown_*\\LocalCache\\Local\\Walkdown\\trace.log\" "
                           "-ErrorAction SilentlyContinue | Select-String 'systems: tree filled').Count").strip() or 0)
-        time.sleep(4)               # the rounds right after the join
-        before = fills()
+        before = -1
+        for _ in range(10):         # the rounds right after the join may still bring data: until a quiet 4 s
+            time.sleep(4)
+            now = fills()
+            if now == before: break
+            before = now
         self.assertGreater(before, 0, 'no trace from the app (KKS_TRACE)')
         time.sleep(10)              # three rounds
         self.assertEqual(fills(), before, 'sync rounds that brought nothing rebuilt Equipment by system')
