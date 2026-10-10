@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -184,13 +185,19 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     LaunchedEffect(marking, view) { view?.marking = marking }
     // selecting tags: one photo, place or note for several codes (Select.kt)
     var selecting by remember { mutableStateOf(false) }
-    var selection by remember { mutableStateOf<Set<String>>(emptySet()) }     // tag ids, on this sheet
-    var multi by remember { mutableStateOf("") }                              // the open dialog: list, photo, place, note
-    LaunchedEffect(ui.sheet) { selection = emptySet(); multi = "" }
+    // the selection is codes, in the order picked: it lasts across drawings (tags in the same place can be on
+    // different ones; the user, 2026-10-10), filled by taps and boxes here, by search and by typed codes (the List)
+    var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var multi by remember { mutableStateOf("") }                              // the open dialog: list, floor, photo, place, note
+    var noFloor by remember { mutableStateOf<List<String>>(emptyList()) }     // Photo for all: the codes its floor is asked for
+    var multiFloor by remember { mutableStateOf("") }                         // … and the floor chosen, sent with the photo
+    // every code on a drawing with its sheets (null until read): typed codes are checked against it, the List shows it
+    val places by produceState<Map<String, List<Drawn>>?>(null, rev, selecting) {
+        value = if (selecting) withContext(Dispatchers.IO) { codeIndex() } else null
+    }
     LaunchedEffect(selecting, view) { view?.selecting = selecting }
-    LaunchedEffect(selection, view) { view?.selection = selection }
-    val selectedTags = boxes.filter { it.id in selection }
-    val selectedCodes = selectedTags.map { it.code }.distinct()
+    LaunchedEffect(selection, boxes, view) { view?.selection = boxes.filter { it.code.isNotEmpty() && it.code in selection }.map { it.id }.toSet() }
+    val selectedCodes = selection.toList()
     val floors = remember(rev) { call("GET", "/native/floors").json }
     val linkedCodes = remember(ui.activeProc, rev) {
         if (ui.activeProc.isEmpty()) emptySet() else call("GET", "/native/proc", query = mapOf("id" to ui.activeProc)).json.optJSONArray("links").objects().map { it.getString("kks") }.toSet()
@@ -217,6 +224,11 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             linkBoxes.indexOfFirst { Math.abs(it.x0 - a.second) < 0.01f && Math.abs(it.y0 - a.third) < 0.01f } } ?: -1
     }
     val say: (String) -> Unit = { m -> scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(m) } }
+    val capped = "At most $MAX_PICK tags at once: send these first"
+    val toggleCode: (String) -> Unit = { code ->
+        if (code in selection) selection = selection - code
+        else { val (next, full) = addCapped(selection, listOf(code)); selection = next; if (full) say(capped) }
+    }
     val goLink: (LinkTarget) -> Unit = { t ->
         if (sheets().none { it.id == t.sheet }) say("Connector ${t.label}: that drawing is no longer in the app")
         else { ui.goLink(t); say("Connector ${t.label} on ${t.sheetName.ifEmpty { t.sheet }}") }
@@ -275,7 +287,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                             ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE).edit().putBoolean("dark_drawings", ui.dark).apply()
                         })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
-                        onClick = { marking = !marking; selecting = false; ui.selected = ""; floorMenu = false })
+                        onClick = { marking = !marking; selecting = false; selection = emptySet(); ui.selected = ""; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (selecting) "Stop selecting" else "Select tags") },
                         onClick = { selecting = !selecting; selection = emptySet(); marking = false; ui.selected = ""; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text("Connectors on this sheet (${links.size})") },
@@ -321,20 +333,14 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 v.onLink = { i -> v.links.getOrNull(i)?.let { l -> followLink(ui.sheet, l.label, l.x0, l.y0) } }
                 v.onToggle = { id ->
                     val t = boxes.firstOrNull { it.id == id }
-                    if (t == null || t.code.isEmpty()) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("This tag has no code yet: it can't be selected") }
-                    else if (id in selection) selection = selection - id
-                    else {
-                        val (next, full) = addCapped(selection, listOf(id)) { i -> boxes.firstOrNull { it.id == i }?.code.orEmpty() }
-                        selection = next
-                        if (full) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("At most $MAX_PICK tags at once: send these first") }
-                    }
+                    if (t == null || t.code.isEmpty()) say("This tag has no code yet: it can't be selected") else toggleCode(t.code)
                 }
                 v.onBox = { ids ->
                     val hit = boxes.filter { it.id in ids }
-                    val ok = hit.filter { it.code.isNotEmpty() }.map { it.id }
-                    val (next, full) = addCapped(selection, ok) { i -> boxes.firstOrNull { it.id == i }?.code.orEmpty() }
+                    val ok = hit.filter { it.code.isNotEmpty() }
+                    val (next, full) = addCapped(selection, ok.map { it.code })
                     selection = next
-                    if (full) scope.launch { snack.showSnackbar("At most $MAX_PICK tags at once: send these first") }
+                    if (full) scope.launch { snack.showSnackbar(capped) }
                     else if (ok.size < hit.size) scope.launch { snack.showSnackbar("${hit.size - ok.size} tag(s) without a code left out") }
                 }
                 v.onTag = { id ->
@@ -369,7 +375,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     }
                 }
                 if (selecting) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                    Text("Tap tags to select them. Hold, then drag, to add every tag in a box (one finger still moves the drawing).",
+                    Text("Tap tags to select them. Hold, then drag, to add every tag in a box (one finger still moves the drawing). " +
+                        "For tags on other drawings: search, open another sheet, or type codes in the List.",
                         Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
                 }
                 if (ui.linkProc.isNotEmpty()) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
@@ -379,6 +386,10 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     }
                 }
                 if (!ui.fullView) OutlinedTextField(query, { query = it }, placeholder = { Text("Search KKS or description") }, singleLine = true,
+                    // while selecting, the results stay open to pick several: this closes them
+                    trailingIcon = if (selecting && query.isNotEmpty()) ({
+                        IconButton(onClick = { query = "" }) { Icon(Glyphs.CLOSE, contentDescription = "Clear the search") }
+                    }) else null,
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search equipment by KKS code or description" },
                     colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface))
                 if (!ui.fullView && query.trim().length >= 2) {
@@ -387,7 +398,15 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                         if (res.isEmpty()) Text("Nothing found", Modifier.padding(16.dp))
                         LazyColumn {
                             items(res) { r ->
-                                ListItem(headlineContent = { Text(r.getString("code").ifEmpty { "(unread)" }) },
+                                val code = r.getString("code")
+                                // while selecting, a result (on any drawing) adds its code or takes it out again; the
+                                // mode and the drawing stay as they are
+                                if (selecting) ListItem(headlineContent = { Text(code.ifEmpty { "(unread)" }) },
+                                    supportingContent = { Text(r.getString("kind") + " · " + r.getString("sheet_name") + if (code.isEmpty()) " · no code: can't be selected" else "") },
+                                    trailingContent = { if (code.isNotEmpty()) Checkbox(code in selection, onCheckedChange = null) },
+                                    modifier = Modifier.toggleable(value = code in selection, enabled = code.isNotEmpty(),
+                                        role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = { toggleCode(code) }))
+                                else ListItem(headlineContent = { Text(code.ifEmpty { "(unread)" }) },
                                     supportingContent = { Text(r.getString("kind") + " · " + r.getString("sheet_name")) },
                                     modifier = Modifier.clickable { query = ""; ui.show(r.getString("id")) })
                             }
@@ -406,12 +425,14 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             }
             if (selecting) SelectBar(selection.size, Modifier.align(Alignment.BottomCenter),
                 onList = { multi = "list" }, onPhoto = {
-                    val ids = selectedTags.map { it.id }
+                    val codes = selectedCodes
                     scope.launch {
-                        val missing = withContext(Dispatchers.IO) { codesWithoutFloor(ids) }
-                        if (missing.isEmpty()) multi = "photo"
-                        else snack.showSnackbar("A photo needs each code's floor. No floor yet: " + missing.take(5).joinToString(", ") +
-                            (if (missing.size > 5) " and ${missing.size - 5} more" else "") + ". Set it with Place for all first.")
+                        // the floor first, as for one photo of one tag: asked only when a code has none, sent with the photo
+                        val missing = withContext(Dispatchers.IO) { codesWithoutFloor(codes) }
+                        // the selection changed (or ended) while the floors were read: the answer is for other codes
+                        if (!selecting || multi.isNotEmpty() || selection.toList() != codes || codes.isEmpty()) return@launch
+                        multiFloor = queuedFloorFor(missing); noFloor = missing
+                        multi = if (missing.isEmpty() || multiFloor.isNotEmpty()) "photo" else "floor"
                     }
                 }, onPlace = { multi = "place" }, onNote = { multi = "note" },
                 onDone = { selecting = false; selection = emptySet() })
@@ -420,9 +441,17 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 scope.launch { snack.showSnackbar(m) }
             }
             when (multi) {
-                "list" -> SelectList(selectedTags, onUntick = { selection = selection - it }, onClose = { multi = "" })
-                "photo" -> PhotoForAll(selectedCodes, sent) { multi = "" }
-                "place" -> PlaceForAll(selectedTags.map { it.id }, selectedCodes, sent) { multi = "" }
+                "list" -> SelectList(selectedCodes, places, onUntick = { selection = selection - it }, onAdd = { add ->
+                    val (next, _) = addCapped(selection, add)
+                    selection = next
+                    add.filter { it !in next }
+                }, onClose = { multi = "" })
+                "floor" -> FloorForAll(noFloor, selectedCodes.size, onPick = { multiFloor = it; multi = "photo" }, onClose = { multi = "" })
+                "photo" -> PhotoForAll(selectedCodes, multiFloor, noFloor, onSaid = say, onQueued = {
+                    selecting = false; selection = emptySet()
+                    say("Photo queued: it is compressed and sent in the background")
+                }) { multi = "" }
+                "place" -> PlaceForAll(selectedCodes, sent) { multi = "" }
                 "note" -> NoteForAll(selectedCodes, sent) { multi = "" }
             }
             marked?.let { b ->

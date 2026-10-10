@@ -266,15 +266,33 @@ class Phone(unittest.TestCase):
             e = self.wait_server(noted, 'the note never reached the server', tries=80)
             self.assertEqual(e['11LAB70AA501']['notes'], (old + '\n' if old.strip() else '') + 'Lagging checked')
             self.assertEqual(e['11LAB70AA504']['notes'], 'Lagging checked')
-            # Photo for all: a photo needs each code's floor; 504 has none, so the app says so and opens nothing
+            # Photo for all: a photo needs each code's floor; 504 has none, so it is asked for first, for that code
+            # (before 2026-10-10 the app refused here and sent the person to Place for all); Cancel opens nothing
             ui.tap('More', exact=True)
             ui.tap('Select tags', exact=True)
             tap_tag('11LAB70AA501')
             tap_tag('11LAB70AA504')
             ui.find('2 selected', exact=True)
             ui.tap('Photo for all', exact=True)
-            ui.find('No floor yet: 11LAB70AA504', timeout=10)
-            self.assertFalse(ui.present('Photo for 2 codes', exact=True), 'Photo for all opened without the floors')
+            ui.find('Which floor is it on?', exact=True, timeout=10)
+            ui.find('11LAB70AA504 has no floor yet.')
+            ui.find('The other codes keep the floor they have.')
+            ui.tap('Cancel', exact=True)
+            time.sleep(1)
+            self.assertFalse(ui.present('Photo for 2 codes', exact=True), 'Photo for all opened without the floor')
+            ui.find('2 selected', exact=True)
+            # with the floor chosen it goes on to the photo; all codes with a floor: no question
+            ui.tap('Photo for all', exact=True)
+            ui.tap('Floor 6', timeout=10)
+            ui.tap('Continue', exact=True)
+            ui.find('Photo for 2 codes', exact=True, timeout=10)
+            ui.tap('Cancel', exact=True)
+            tap_tag('11LAB70AA504')
+            ui.find('1 selected', exact=True)
+            ui.tap('Photo for all', exact=True)
+            ui.find('Photo for 1 code', exact=True, timeout=10)
+            self.assertFalse(ui.present('Which floor', exact=False), 'the floor was asked for a code that has one')
+            ui.tap('Cancel', exact=True)
         finally:
             model = ui.sh('getprop', 'ro.product.model').strip()
             for d in self.boss.req('GET', '/api/devices')['all']:
@@ -282,6 +300,167 @@ class Phone(unittest.TestCase):
                     self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
             ui.fresh_app(PKG)
             time.sleep(3)
+
+    @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
+    def test_multi_across(self):
+        """the user, 2026-10-10. Tags in the same place live on different drawings: in Select mode a search result (any
+        drawing) adds its code without leaving the mode or the drawing, the selection survives opening another sheet,
+        and the List takes typed codes (one that is on no drawing is named and left out) and shows each code's sheet.
+        Then a MEMBER's Photo for all on codes without a floor: the floor is asked first, for those codes; the photo
+        goes through the disk queue (it survives the app being stopped) and reaches the server for every code, with a
+        floor proposal for exactly the codes that had none."""
+        if not any(s.get('id') == 'second' for s in self.boss.req('GET', '/api/sheets').get('sheets', [])):
+            with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f:
+                pdf = f.read()
+            assert self.boss.req('POST', '/api/sheets/import?id=second&name=Second%20sheet', raw=pdf, ctype='application/pdf').get('ok')
+            for _ in range(300):
+                job = self.boss.req('GET', '/api/sheets/job')['job']
+                if job['state'] != 'running':
+                    break
+                time.sleep(0.2)
+            assert job['state'] == 'done', job['log']
+        codes = ['11LAB70AA711', '11LAB70AA712', '11LAB70AA713', '11LAB70AA714']
+        # 711 and 714 on the sample sheet, 712 and 713 on the second; only 714 has a floor
+        for code, sheet, bb in ((codes[0], 'sample', [700, 300, 820, 360]), (codes[1], 'second', [400, 300, 520, 360]),
+                                (codes[2], 'second', [1000, 300, 1120, 360]), (codes[3], 'sample', [700, 800, 820, 860])):
+            r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': sheet, 'bbox': bb, 'kks': code, 'isa': '', 'note': ''}})
+            assert r.get('status') == 'approved', r
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': codes[3], 'changes': {'floor': '2'}, 'base': {'floor': ''}}})
+        assert r.get('status') == 'approved', r
+        self.member('mira', 'Mira Member', 'mira password 1')
+        w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+
+        def tag(code):
+            for n in ui.nodes():
+                if ui.label(n).startswith(code + ','):
+                    return n
+            self.fail(f'{code} is not on screen')
+
+        def mine(kind):
+            return [x for x in self.boss.req('GET', '/api/submissions?status=open')['submissions'] if x['by'] == 'mira' and x['kind'] == kind]
+
+        def again(what):
+            """712 and 713 picked by search, Photo for all: no floor question (`what` says why); then out of the mode"""
+            ui.tap('More', exact=True)
+            ui.tap('Select tags', exact=True)
+            for c in codes[1:3]:
+                ui.type_into('Search KKS or description', c[2:])
+                ui.tap(c, exact=True)
+                ui.tap('Clear the search', exact=True)
+            ui.find('2 selected', exact=True)
+            ui.tap('Photo for all', exact=True)
+            ui.find('Photo for 2 codes', exact=True, timeout=10)
+            self.assertFalse(ui.present('Which floor'), what)
+            ui.tap('Cancel', exact=True)
+            ui.tap('Done', exact=True)
+        try:
+            self.join('mira', 'mira password 1')
+            ui.find(codes[0] + ', ', timeout=30)
+            ui.tap('More', exact=True)
+            ui.tap('Select tags', exact=True)
+            ui.find('0 selected', exact=True)
+            x, y = ui.center(tag(codes[0]))
+            ui.sh('input', 'tap', str(x), str(y))
+            ui.find('1 selected', exact=True)
+            # a search result on the other drawing: added; the mode and the drawing stay
+            ui.type_into('Search KKS or description', codes[1][2:])
+            ui.tap(codes[1], exact=True)
+            ui.find('2 selected', exact=True)
+            self.assertTrue(ui.present('Sample sheet', exact=True), 'the search result opened its drawing')
+            self.assertFalse(ui.present('Feed water piping system'), 'the search result opened its panel')
+            ui.tap('Clear the search', exact=True)
+            # the selection survives opening the other drawing, where the code picked by search shows as selected
+            ui.tap('Sheets', exact=True)
+            ui.tap('Second sheet', exact=True)
+            ui.find(codes[1] + ', ', timeout=30)
+            ui.find('2 selected', exact=True)
+            self.assertTrue(ui.label(tag(codes[1])).endswith(', selected'), ui.label(tag(codes[1])))
+            self.assertTrue(ui.label(tag(codes[2])).endswith(', not selected'), ui.label(tag(codes[2])))
+            # the List: each code with its drawing; typed codes (any case; one that is on no drawing is named, not added)
+            ui.tap('List', exact=True)
+            ui.find(codes[0], exact=True)
+            self.assertEqual(sorted(ui.label(n) for n in ui.nodes() if ui.label(n) in ('Sample sheet', 'Second sheet')),
+                             ['Sample sheet', 'Second sheet'], 'the list does not say which drawing each code is on')
+            ui.type_into('Add codes', f'{codes[2].lower()},{codes[3]},11XYZ99AA999')
+            ui.tap('Add', exact=True)
+            ui.find('Not on any drawing, not added: 11XYZ99AA999', timeout=10)
+            ui.find(codes[2], exact=True)
+            ui.find(codes[3], exact=True)
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, 'android-multi-list.png'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+            ui.tap('Close', exact=True)
+            ui.find('4 selected', exact=True)
+            # Photo for all: three codes have no floor, so it is asked first, naming them; 714 keeps its own
+            ui.tap('Photo for all', exact=True)
+            ui.find('Which floor are they on?', exact=True, timeout=10)
+            ui.find(f'No floor yet: {codes[0]}, {codes[1]}, {codes[2]}.')
+            ui.find('The other codes keep the floor they have.')
+            with open(os.path.join(SHOTS, 'android-multi-floor.png'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+            ui.tap('Floor 4')
+            ui.tap('Continue', exact=True)
+            ui.find('Photo for 4 codes', exact=True, timeout=10)
+            # held (debug builds): the job waits, so the app can be stopped with it queued
+            ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--ez', 'hold', 'true')
+            ui.tap('Take a photo', exact=True)
+            if ui.present('WHILE USING THE APP', exact=True):
+                ui.tap('WHILE USING THE APP', exact=True)
+            time.sleep(5)                                     # the emulator's camera app: shutter, then confirm
+            ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+            time.sleep(4)
+            ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+            ui.find('Send', exact=True, timeout=30)
+            ui.tap('Send', exact=True)
+            ui.find('1 photo being prepared', timeout=30)
+            self.assertFalse(ui.present('4 selected', exact=True), 'still selecting after the photo was queued')
+            # the floor waiting in the queue for both codes is used again without asking
+            again('the floor was asked again for codes whose floor is queued with a photo')
+            # the job is on disk once its .json is there (a full camera frame takes a moment to seal)
+            if ui.debuggable(PKG):
+                self.wait_server(lambda: any(n.endswith('.json') for n in ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()),
+                                 'the photo for all was never written to the queue', tries=60)
+            else:
+                time.sleep(5)
+            ui.sh('am', 'force-stop', PKG)
+            time.sleep(2)
+            self.assertEqual(mine('photo'), [], 'the held photo was sent')
+            with self.subTest('one sealed job for all four codes'):
+                if not ui.debuggable(PKG):
+                    self.skipTest('not a debuggable build (rehearsal/release): run-as cannot reach the queue\'s files')
+                names = ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
+                self.assertEqual(sorted(n.rsplit('.', 1)[1] for n in names), ['json', 'px'], f'the queued files: {names}')
+                for n in names:
+                    raw = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/photo-queue/' + n], capture_output=True).stdout
+                    self.assertTrue(raw.startswith(b'KSL1'), f'{n} is not sealed')
+                    for k in codes:
+                        self.assertNotIn(k.encode(), raw, f'{n} holds a code in clear text')
+            # the app starts again: the queue sends it, one photo for every code
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ph = self.wait_server(lambda: (lambda p: p if len(p) >= 4 else None)(mine('photo')),
+                                  'the photo for all never reached the server for every code', tries=360)
+            time.sleep(3)      # anything sent twice would have arrived with it
+            ph = mine('photo')
+            self.assertEqual(sorted(x['payload']['kks'] for x in ph), codes)
+            self.assertEqual(len({x['payload']['file'] for x in ph}), 1, 'the codes did not get the same image')
+            # a floor proposal for exactly the codes that had none, with the floor chosen
+            fl = [x for x in mine('equipment') if 'floor' in x['payload'].get('changes', {})]
+            self.assertEqual(sorted((x['payload']['kks'], x['payload']['changes']['floor']) for x in fl),
+                             [(codes[0], '4'), (codes[1], '4'), (codes[2], '4')])
+            ui.find('Sample sheet', timeout=20)
+            self.assertFalse(ui.present('photo being prepared'), 'the queue count stayed after the photo was sent')
+            self.assertFalse(ui.present('A photo was not sent'), 'the photo for all was reported as not sent')
+            # the member's floor proposals are still open: the core keeps them, so the floor is not asked again
+            again('the floor was asked again for codes this member has an open floor proposal for')
+        finally:
+            for x in self.boss.req('GET', '/api/submissions')['submissions']:
+                if x['by'] == 'mira':
+                    self.boss.req('POST', f'/api/submissions/{x["id"]}/reject', {})
+            # the later tests expect the drawings without these marks
+            for a in self.boss.req('GET', '/api/state').get('added_tags', []):
+                if a.get('kks') in codes:
+                    self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}})
+            self.leave('mira')
 
     @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
     def test_photos(self):
