@@ -154,5 +154,94 @@ class ServerUnit(unittest.TestCase):
             subprocess.run(['chmod', '-R', 'u+w', home])
 
 
+class SystemInstall(unittest.TestCase):
+    """deploy/install-server-system.sh's root path, under a scratch prefix with stand-ins for id, getent, systemctl and
+    systemd-creds on PATH (the stand-in "seals" by copying its input)"""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(subprocess.run, ['rm', '-rf', self.tmp])
+        self.home = os.path.join(self.tmp, 'home', 'plant')
+        self.server = os.path.join(self.home, 'kks-server')
+        os.makedirs(os.path.join(self.server, 'app', 'current'))
+        os.makedirs(os.path.join(self.server, 'state'))
+        exe = os.path.join(self.server, 'app', 'current', 'kks-server')
+        open(exe, 'w').close()
+        os.chmod(exe, 0o755)
+        self.bin = os.path.join(self.tmp, 'bin')
+        os.makedirs(self.bin)
+        self.tool('id', 'if [ "$#" -eq 1 ]; then echo 0; elif [ "$2" = root0 ]; then echo 0; else echo 1000; fi')
+        self.tool('getent', '[ "$2" = nobody-here ] && exit 2; echo "$2:x:1000:100::${FAKE_HOME}:/bin/sh"')
+        self.tool('systemctl', 'echo "$@" >> "$FAKE_LOG"')
+        self.tool('systemd-creds', '[ -n "${CREDS_FAIL:-}" ] && { head -c 5 > "$4"; exit 1; }; cat > "$4"')
+        self.prefix = os.path.join(self.tmp, 'root')
+        self.cred = self.prefix + '/etc/credstore.encrypted/kks-storage-key'
+        self.unit = self.prefix + '/etc/systemd/system/kks-server.service'
+
+    def tool(self, name, body):
+        with open(os.path.join(self.bin, name), 'w') as f:
+            f.write('#!/bin/sh\n' + body + '\n')
+        os.chmod(os.path.join(self.bin, name), 0o755)
+
+    def run_install(self, user='plant', home=None, **extra):
+        env = dict(os.environ, PATH=self.bin + ':' + os.environ['PATH'], KKS_SYSTEM_PREFIX=self.prefix,
+                   FAKE_HOME=home or self.home, FAKE_LOG=os.path.join(self.tmp, 'systemctl.log'))
+        env.update(extra)
+        return subprocess.run([os.path.join(REPO, 'deploy', 'install-server-system.sh'), user], env=env,
+                              capture_output=True, text=True)
+
+    def test_installs_the_unit_and_a_new_key_once(self):
+        r = self.run_install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(self.unit) as f:
+            self.assertEqual(f.read(), system_unit_text('plant', self.home))
+        self.assertEqual(os.path.getsize(self.cred), 32)
+        self.assertEqual(os.stat(self.cred).st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(os.path.dirname(self.cred)).st_mode & 0o777, 0o700)
+        with open(os.path.join(self.tmp, 'systemctl.log')) as f:
+            self.assertEqual(f.read(), 'daemon-reload\n')  # nothing is started or enabled
+        with open(self.cred, 'rb') as f:
+            key = f.read()
+        self.assertEqual(self.run_install().returncode, 0)
+        with open(self.cred, 'rb') as f:
+            self.assertEqual(f.read(), key, 'a second run made a new key')
+
+    def refused(self, r, word):
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn(word, r.stderr)
+        self.assertFalse(os.path.exists(self.unit))
+        self.assertFalse(os.path.exists(self.cred))
+
+    def test_refuses_a_new_key_for_an_existing_database(self):
+        open(os.path.join(self.server, 'state', 'server.db'), 'w').close()
+        self.refused(self.run_install(), 'server.db')
+
+    def test_refuses_next_to_a_user_unit_or_user_key_and_says_not_to_delete_a_databases_key(self):
+        open(os.path.join(self.server, 'storage-key.cred'), 'w').close()
+        r = self.run_install()
+        self.refused(r, 'do not delete')
+        os.remove(os.path.join(self.server, 'storage-key.cred'))
+        os.makedirs(os.path.join(self.home, '.config', 'systemd', 'user'))
+        open(os.path.join(self.home, '.config', 'systemd', 'user', 'kks-server.service'), 'w').close()
+        self.refused(self.run_install(), 'user unit')
+
+    def test_refuses_root_an_unknown_user_a_missing_install_and_an_odd_path(self):
+        self.refused(self.run_install(user='root0'), 'must not run as root')
+        self.refused(self.run_install(user='nobody-here'), 'no such user')
+        self.refused(self.run_install(home=os.path.join(self.tmp, 'empty')), 'install-server-user.sh')
+        odd = os.path.join(self.tmp, 'my %home')
+        os.makedirs(os.path.join(odd, 'kks-server', 'app', 'current'))
+        exe = os.path.join(odd, 'kks-server', 'app', 'current', 'kks-server')
+        open(exe, 'w').close()
+        os.chmod(exe, 0o755)
+        self.refused(self.run_install(home=odd), 'characters')
+
+    def test_a_failed_sealing_leaves_no_credential_and_no_unit(self):
+        self.refused(self.run_install(CREDS_FAIL='1'), '')
+        r = self.run_install()  # and the next run seals a whole one
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.path.getsize(self.cred), 32)
+
+
 if __name__ == '__main__':
     unittest.main()

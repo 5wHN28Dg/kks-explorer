@@ -21,6 +21,7 @@
 #        deploy/install-server-system.sh --print-unit USER HOME     (prints the unit, changes nothing; for the tests)
 set -eu
 CRED=/etc/credstore.encrypted/kks-storage-key
+P="${KKS_SYSTEM_PREFIX:-}"   # the tests write under a scratch folder instead of /
 
 unit() {  # $1 user, $2 the server's folder
   cat <<UNIT
@@ -84,22 +85,35 @@ USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
 HOME_DIR="$USER_HOME/kks-server"
 [ -x "$HOME_DIR/app/current/kks-server" ] || {
   echo "$HOME_DIR/app/current/kks-server is missing: run deploy/install-server-user.sh as $USER_NAME first" >&2; exit 1; }
+case "$USER_NAME$HOME_DIR" in *[!A-Za-z0-9._/-]*)
+  echo "a user name or home folder with characters outside A-Z a-z 0-9 . _ / - can't go into the unit" >&2; exit 1;;
+esac
 if [ -e "$USER_HOME/.config/systemd/user/kks-server.service" ] || [ -e "$HOME_DIR/storage-key.cred" ]; then
   echo "$USER_NAME also has a user unit or a user-sealed key (from install-server-user.sh without" >&2
-  echo "KKS_SERVER_UNIT=system). Two services on one database must never run: remove them first." >&2
+  echo "KKS_SERVER_UNIT=system). Two services on one database must never exist." >&2
+  echo "If $HOME_DIR/state/server.db exists, $HOME_DIR/storage-key.cred is the ONLY key that opens it:" >&2
+  echo "do not delete it. Stop the user service and move the key first (wiki: Server, moving a server)." >&2
+  echo "Otherwise remove both, then run this again." >&2
   exit 1
 fi
-if [ ! -f "$CRED" ]; then
+if [ ! -f "$P$CRED" ]; then
   if [ -e "$HOME_DIR/state/server.db" ]; then
     echo "$HOME_DIR/state/server.db exists but $CRED does not: a new key could not open that database." >&2
     echo "Bring the database's own storage key over first (wiki: Server, moving a server)." >&2
     exit 1
   fi
-  mkdir -p "$(dirname "$CRED")"
-  chmod 700 "$(dirname "$CRED")"
-  (umask 077 && head -c 32 /dev/urandom | systemd-creds encrypt --name=kks-storage-key - "$CRED")
+  mkdir -p "$(dirname "$P$CRED")"
+  chmod 700 "$(dirname "$P$CRED")"
+  KEY=$(head -c 32 /dev/urandom | base64 -w0)
+  [ "${#KEY}" -eq 44 ] || { echo "could not read 32 random bytes" >&2; exit 1; }
+  rm -f "$P$CRED.tmp"   # sealed into a temporary name: a failure never leaves a half-written credential in place
+  (umask 077 && printf %s "$KEY" | base64 -d | systemd-creds encrypt --name=kks-storage-key - "$P$CRED.tmp")
+  KEY=
+  [ -s "$P$CRED.tmp" ] || { echo "systemd-creds wrote no credential" >&2; exit 1; }
+  mv "$P$CRED.tmp" "$P$CRED"
   echo "sealed a new storage key into $CRED (this machine only)"
 fi
-unit "$USER_NAME" "$HOME_DIR" > /etc/systemd/system/kks-server.service
+mkdir -p "$P/etc/systemd/system"
+unit "$USER_NAME" "$HOME_DIR" > "$P/etc/systemd/system/kks-server.service"
 systemctl daemon-reload
 echo "installed. Not started. Start: systemctl enable --now kks-server"

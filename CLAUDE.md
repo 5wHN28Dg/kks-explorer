@@ -120,6 +120,8 @@ in `CLAUDE.local.md` ("Deployment"), never in tracked files.
 - **CLI, on the server:** `KKS_CONFIG=~/kks-server/config.json ~/kks-server/app/current/kks-server <cmd>` as the
   service's user. The commands `publish-data`, `set-plant-name`, `reset-password`, `reset-manager` and `submit-file`
   reach the running server through its 0600 control socket. Other commands need the sealed credential (wiki: Server).
+  The service has its own `/tmp`: a folder or file handed to the running server (`publish-data`, `submit-file`) must
+  be under `~/kks-server/state`, with an absolute path.
 - **Plant data working copy:** `~/kks-server/state/plant-data` on the server.
   - **New drawing:** back it up first, then `kks-import PDF "Name" id --data-dir … --glyphs
     ~/kks-server/app/current/fontlib.kgl`, check orientation and tags by eye (copy the result here to look at it),
