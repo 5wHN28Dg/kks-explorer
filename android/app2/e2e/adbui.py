@@ -22,7 +22,7 @@ def nodes():
         if '<' in x:
             ns = list(ET.fromstring(x[x.index('<'):]).iter('node'))
             recent.append((time.strftime('%H:%M:%S'), ns))
-            del recent[:-8]
+            del recent[:-40]
             return ns
         time.sleep(0.5)
     return []
@@ -144,13 +144,20 @@ def hide_keyboard():
 
 
 def scroll_to(text, exact=False, tries=8):
-    """swipe the lower half up until text is on screen"""
+    """drag the lower half up until text is on screen. A drag, not a swipe: the finger rests before it lifts, so
+    nothing is flung and each step moves the content by 0.3 of the screen, less than any scrolling area's height.
+    A swipe's fling carried a line that was just below a short panel's edge past its top in one step, how far
+    depending on how much content lay below (#150: test_description_and_credit after tests that had filled in the
+    code's fields)."""
     size = re.findall(r'(\d+)x(\d+)', sh('wm', 'size'))[-1]
     w, h = int(size[0]), int(size[1])
+    x, y0, y1 = w // 2, int(h * 0.8), int(h * 0.5)
     for _ in range(tries):
         if present(text, exact):
             return
-        sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.5)), '300')
+        # one shell for the whole gesture: each `input` takes about half a second to start, which is the rest
+        sh(f'input motionevent DOWN {x} {y0}; input motionevent MOVE {x} {(y0 + y1) // 2}; '
+           f'input motionevent MOVE {x} {y1}; input motionevent MOVE {x} {y1}; input motionevent UP {x} {y1}')
         time.sleep(0.5)
     find(text, timeout=2, exact=exact)
 
