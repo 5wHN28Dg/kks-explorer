@@ -254,8 +254,18 @@ class WebMulti(unittest.TestCase):
             dlg.get_by_label('Caption (optional)').fill('Tag plate · both')
             page.evaluate("document.getElementById('toast').textContent = ''")   # the note's toast may still show
             dlg.locator('#dlgFile').set_input_files(self.photo)
+            # "Sent" is said once the page knows what was sent, however slow the state is to come: Photo for all
+            # opened on seeing it must not ask for the floor that just went. The next refresh of the state is held here
+            page.evaluate("""() => { const o = refreshState; let go; const hold = new Promise(r => go = r); window.heldState = {go, asked: false};
+                refreshState = async () => { refreshState = o; heldState.asked = true; await hold; return o() } }""")
             page.locator('button[data-a="ok"]').click(timeout=15000)
+            page.wait_for_function("() => heldState.asked", timeout=30000)
+            self.assertFalse(page.evaluate("document.getElementById('toast').textContent.startsWith('Sent for 2 codes')"),
+                             '"Sent" was said before the page had the new state')
+            self.assertFalse(page.evaluate("floorKnown('11LAB71AP001')"))
+            page.evaluate("heldState.go()")
             toast('Sent for 2 codes')
+            self.assertTrue(page.evaluate("floorKnown('11LAB71AP001')"))
             allp = self.boss.req('GET', '/api/state')['photos']
             photos = [x for x in allp if x.get('caption') == 'Tag plate · both']
             self.assertEqual(sorted(x['kks'] for x in photos), ['11LAB70AA503', '11LAB71AP001'])
@@ -450,6 +460,33 @@ class WebMulti(unittest.TestCase):
             self.assertEqual([(x['payload']['changes'], x['status']) for x in self.subs('equipment') if x['payload']['kks'] == '11LAB72AP002'],
                              [({'floor': '6'}, 'pending')])
             self.assertEqual(len([x for x in self.subs('photo') if x['payload']['kks'] == '11LAB72AP002']), 1)
+            # #144: a floor that only rides on a kept photo is not known to Photo for all. One photo of a code without a
+            # floor is refused on the way (a proxy's 413) and kept in the outbox with the floor asked for it
+            kept, other = '12LBA10AA101', '11HAD70CT101R'
+            page.route('**/api/submit', lambda r: r.fulfill(status=413, content_type='text/plain', body='Request Entity Too Large'))
+            page.evaluate("""async k => { const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+                c.getContext('2d').fillRect(0, 0, 80, 50); await K.queuePhoto(c, {kks: k, caption: 'kept', floor: '7'}) }""", kept)
+            page.wait_for_function("() => K.outbox.length === 1 && K.outbox[0].refused && !K.converting", timeout=90000)
+            page.unroute('**/api/submit')
+            self.assertTrue(page.evaluate("k => floorKnown(k)", kept), 'another photo of that code alone would ask again')
+            # … so Photo for all asks for that code too (asked for the other only, its floor went to both)
+            btn.click()
+            hs('a:5').click()
+            hs('a:2').click()
+            self.assertEqual(count(), '2 selected')
+            page.click('#pickPhoto')
+            dlg = page.locator('dialog[open]')
+            self.assertEqual(dlg.locator('#dlgFloorLabel').text_content(), f'Floor for {kept}, {other}: they have none yet')
+            dlg.locator('#dlgFloor').fill('5')
+            dlg.get_by_label('Caption (optional)').fill('with the kept one')
+            clear_toast()
+            dlg.locator('#dlgFile').set_input_files(self.photo)
+            page.locator('button[data-a="ok"]').click(timeout=15000)
+            toast('Sent for 2 codes · 2 await approval')
+            self.assertEqual({x['payload']['kks']: x['payload']['changes'] for x in self.subs('equipment')
+                              if x['payload']['kks'] in (kept, other)}, {kept: {'floor': '5'}, other: {'floor': '5'}})
+            self.assertEqual(page.evaluate("K.outbox.map(i => [i.payload.kks, i.payload.floor, !!i.refused])"), [[kept, '7', True]],
+                             'the kept photo was dropped or sent')
             browser.close()
             self.assertEqual(errors, [], name)
 
