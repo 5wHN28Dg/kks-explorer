@@ -876,7 +876,8 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
   of "submit-file":
     # a list of ordinary submissions [{kind, payload, client_id?, note?}] made as the manager, through the same checks
     # as /api/submit: plant knowledge from a document (procedure links, photos, equipment fields). A client_id makes a
-    # second run add nothing.
+    # second run add nothing, also after the manager has changed: an item some admin (the earlier manager is one)
+    # already sent under it is there. A member's submission under the same id is their own and doesn't count (#136).
     if args.len != 1: raise newException(ValueError, "usage: kks-server submit-file FILE.json")
     let mgr = s.managerUser()
     if mgr == nil: raise newException(ValueError, "no manager yet")
@@ -890,7 +891,8 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
       if it.kind != jObj or it.get("kind") == nil or not it["kind"].isStr:
         raise newException(ValueError, "item " & $i & ": {kind, payload, client_id?, note?}")
       var r: JNode
-      try: r = s.api.submit(me, it["kind"].s, it.get("payload"), it.get("client_id"), it.get("note"), nowMs())
+      try: r = s.api.submit(me, it["kind"].s, it.get("payload"), it.get("client_id"), it.get("note"), nowMs(),
+                                anyAdmin = true)
       except CatchableError as e: raise newException(ValueError, "item " & $i & " (" & it["kind"].s & "): " & e.msg &
                                                      (if i > 0: " (the " & $i & " before it were submitted)" else: ""))
       count.inc(if r.get("duplicate") != nil and r["duplicate"].kind == jBool and r["duplicate"].b: "already there"
