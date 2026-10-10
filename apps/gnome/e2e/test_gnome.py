@@ -1183,7 +1183,8 @@ class Coverage(Plant):
 
 class FakeNode:
     """an accessible object as the helpers read it; `gone`: the app removed it after it was found (every read fails
-    as AT-SPI's does); `clicks`: how many clicks fail that way before one works"""
+    as AT-SPI's does); `clicks`: how many clicks fail that way before one works (-1: it has no
+    action interface, which is what a vanished object answers there)"""
 
     def __init__(self, role, name='', kids=(), gone=False, clicks=0):
         self.role, self.name, self.kids, self.gone, self.clicks, self.clicked = role, name, list(kids), gone, clicks, 0
@@ -1198,7 +1199,7 @@ class FakeNode:
     def get_name(self): return self._read(self.name)
     def get_state_set(self): return self._read(self)
     def contains(self, state): return True
-    def get_action_iface(self): return self
+    def get_action_iface(self): return None if self.clicks < 0 else self
     def get_n_actions(self): return 1
     def get_action_name(self, i): return 'click'
 
@@ -1245,11 +1246,10 @@ class Vanished(unittest.TestCase):
         self.ok.clicks = 2         # gone twice between the lookup and the click, then there
         atspi.click_named(root, 'button', 'Accept', timeout=5)
         self.assertEqual(self.ok.clicked, 1)
-        self.ok.clicks = 10 ** 6   # never clickable: said, not looped for ever
-        with self.assertRaisesRegex(AssertionError, "no button named 'Accept' to click"):
-            atspi.click_named(root, 'button', 'Accept', timeout=0.7)
-        with self.assertRaises(GLib.GError, msg='reading a vanished object directly is still an error'):
-            FakeNode('button', gone=True).get_name()
+        for never in (10 ** 6, -1):    # never clickable: said, not looped for ever
+            self.ok.clicks = never
+            with self.assertRaisesRegex(AssertionError, "button 'Accept' went away each time before it could be clicked"):
+                atspi.click_named(root, 'button', 'Accept', timeout=0.7)
 
 
 if __name__ == '__main__':

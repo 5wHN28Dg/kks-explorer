@@ -51,17 +51,23 @@ def nodes(root, role=None, maxdepth=60):
 
 def click_named(root, role, name, timeout=10, maxdepth=60):
     """click the node of this role with exactly this name (showing or not). One that vanishes between being found and
-    being clicked is looked up again; with none to click within `timeout` it fails."""
+    being clicked is looked up again; with none to click within `timeout` it fails. (For a name only one node has:
+    after a click that failed half-way, the next node of that name would be clicked.)"""
     t0 = time.time()
+    seen = False
     while True:
         for n, nm in nodes(root, role, maxdepth):
             if nm == name:
+                seen = True
                 try:
+                    if n.get_action_iface() is None:     # what a vanished node answers instead of failing
+                        break
                     return click(n)
                 except GLib.GError:
                     break            # rebuilt under us: look again
         if time.time() - t0 > timeout:
-            raise AssertionError(f'no {role} named {name!r} to click')
+            raise AssertionError(f'{role} {name!r} went away each time before it could be clicked' if seen
+                                 else f'no {role} named {name!r} to click')
         time.sleep(0.3)
 
 
