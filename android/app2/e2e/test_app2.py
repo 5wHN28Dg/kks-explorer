@@ -87,12 +87,16 @@ class Phone(unittest.TestCase):
         t0 = time.time()
         ui.nodes()
         dump = time.time() - t0
-        before = len(result.failures) + len(result.errors) if result else 0
+        before = (len(result.failures) + len(result.errors), len(result.skipped)) if result else (0, 0)
         r = super().run(result)
-        bad = (len(result.failures) + len(result.errors) - before) if result else 0
+        how = 'ok'
+        if result and len(result.skipped) > before[1]:
+            how = 'skipped'
+        if result and len(result.failures) + len(result.errors) > before[0]:
+            how = 'FAILED'
         mem = emulator_memory()
-        diag(f'{self._testMethodName} {"FAILED" if bad else "ok"} {time.time() - t0:.0f}s dump_before={dump:.2f}s '
-             f'emulator_now={mem[0] / 2**30:.2f}G peak={mem[1] / 2**30:.2f}G' if mem else f'{self._testMethodName} bad={bad} (no emulator cgroup)')
+        diag(f'{self._testMethodName} {how} {time.time() - t0:.0f}s dump_before={dump:.2f}s ' +
+             (f'emulator_now={mem[0] / 2**30:.2f}G peak={mem[1] / 2**30:.2f}G' if mem else '(no emulator cgroup found)'))
         return r
 
     @classmethod
@@ -792,6 +796,10 @@ class Phone(unittest.TestCase):
         ui.tap('LAB · Feed water piping system: ', timeout=15)
         ui.find('Only system LAB', exact=True, timeout=15)
         ui.find('LAB70, ', timeout=10)
+        # a mark on a sheet that is gone can still be removed
+        removed = [self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}})
+                   for a in self.boss.req('GET', '/api/state').get('added_tags', []) if a.get('sheet') == 'removed-sheet']
+        self.assertEqual([r.get('status') for r in removed], ['approved'], removed)
 
     def test_flow(self):
         # join through the server (PROTOCOL-v2 §16 enroll over TLS)

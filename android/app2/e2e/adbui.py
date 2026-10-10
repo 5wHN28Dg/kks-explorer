@@ -87,7 +87,7 @@ def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=15):
     has finished with the cleared package: an app started at once had its new task removed and its process killed
     26 ms later ("remove task", "start not valid"), and the next test found the home screen (run 37903391890). So
     the app is started again until its own window shows. Its task is cleared with it: a test can end with another
-    app's screen on top of ours (the system's photo picker, the camera), and one time in three that screen was still
+    app's screen on top of ours (the system's photo picker, the camera), and now and then that screen was still
     there after pm clear, with every start only bringing it to the front again (#150)."""
     sh('pm', 'clear', pkg)
     waits, ns = 0, []
@@ -146,20 +146,17 @@ def hide_keyboard():
 
 
 def scroll_to(text, exact=False, tries=8):
-    """drag the lower half up until text is on screen. A drag, not a swipe: the finger rests before it lifts, so
-    nothing is flung and each step moves the content by 0.3 of the screen, less than any scrolling area's height.
-    A swipe's fling carried a line that was just below a short panel's edge past its top in one step, how far
-    depending on how much content lay below (#150: test_description_and_credit after tests that had filled in the
-    code's fields)."""
+    """swipe the lower half up, slowly, until text is on screen. The speed matters: at 0.3 of the screen in 0.3 s
+    (before #150) the content was flung on by a third of a screen and more after the finger left, and a line just
+    below a short panel's edge went past its top in one step, depending on how much content lay below it
+    (test_description_and_credit after tests that had filled in the code's fields). In 1.5 s the fling is a few dozen
+    pixels, so a step stays well under the height of the tag panel, the shortest area the tests scroll."""
     size = re.findall(r'(\d+)x(\d+)', sh('wm', 'size'))[-1]
     w, h = int(size[0]), int(size[1])
-    x, y0, y1 = w // 2, int(h * 0.8), int(h * 0.5)
     for _ in range(tries):
         if present(text, exact):
             return
-        # one shell for the whole gesture: each `input` takes about half a second to start, which is the rest
-        sh(f'input motionevent DOWN {x} {y0}; input motionevent MOVE {x} {(y0 + y1) // 2}; '
-           f'input motionevent MOVE {x} {y1}; input motionevent MOVE {x} {y1}; input motionevent UP {x} {y1}')
+        sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.5)), '1500')
         time.sleep(0.5)
     find(text, timeout=2, exact=exact)
 
