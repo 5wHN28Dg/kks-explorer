@@ -109,7 +109,7 @@ What the evidence-first-engineering skill needs to know here:
   previous one in `app/previous`; installed by `deploy/install-server-user.sh`). The store's key is sealed with
   systemd-creds.
 - **CLI:** `KKS_CONFIG=~/kks-server/config.json ~/kks-server/app/current/kks-server <cmd>`. The commands
-  `publish-data`, `set-plant-name`, `reset-password`, `reset-manager` and `submit-file` reach the running server through
+  `publish-data`, `set-plant-name`, `set-signup-code`, `reset-password`, `reset-manager` and `submit-file` reach the running server through
   its 0600 control socket. Other commands need the sealed credential (wiki: Server).
 - **Plant data working copy:** `~/kks-server/state/plant-data`.
   - **New drawing:** back it up first, then `kks-import PDF "Name" id --data-dir … --glyphs
