@@ -287,7 +287,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                             ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE).edit().putBoolean("dark_drawings", ui.dark).apply()
                         })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
-                        onClick = { marking = !marking; selecting = false; ui.selected = ""; floorMenu = false })
+                        onClick = { marking = !marking; selecting = false; selection = emptySet(); ui.selected = ""; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (selecting) "Stop selecting" else "Select tags") },
                         onClick = { selecting = !selecting; selection = emptySet(); marking = false; ui.selected = ""; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text("Connectors on this sheet (${links.size})") },
@@ -431,8 +431,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                         val missing = withContext(Dispatchers.IO) { codesWithoutFloor(codes) }
                         // the selection changed (or ended) while the floors were read: the answer is for other codes
                         if (!selecting || multi.isNotEmpty() || selection.toList() != codes || codes.isEmpty()) return@launch
-                        multiFloor = ""; noFloor = missing
-                        multi = if (missing.isEmpty()) "photo" else "floor"
+                        multiFloor = queuedFloorFor(missing); noFloor = missing
+                        multi = if (missing.isEmpty() || multiFloor.isNotEmpty()) "photo" else "floor"
                     }
                 }, onPlace = { multi = "place" }, onNote = { multi = "note" },
                 onDone = { selecting = false; selection = emptySet() })

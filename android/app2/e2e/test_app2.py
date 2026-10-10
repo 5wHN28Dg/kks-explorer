@@ -338,6 +338,21 @@ class Phone(unittest.TestCase):
 
         def mine(kind):
             return [x for x in self.boss.req('GET', '/api/submissions?status=open')['submissions'] if x['by'] == 'mira' and x['kind'] == kind]
+
+        def again(what):
+            """712 and 713 picked by search, Photo for all: no floor question (`what` says why); then out of the mode"""
+            ui.tap('More', exact=True)
+            ui.tap('Select tags', exact=True)
+            for c in codes[1:3]:
+                ui.type_into('Search KKS or description', c[2:])
+                ui.tap(c, exact=True)
+                ui.tap('Clear the search', exact=True)
+            ui.find('2 selected', exact=True)
+            ui.tap('Photo for all', exact=True)
+            ui.find('Photo for 2 codes', exact=True, timeout=10)
+            self.assertFalse(ui.present('Which floor'), what)
+            ui.tap('Cancel', exact=True)
+            ui.tap('Done', exact=True)
         try:
             self.join('mira', 'mira password 1')
             ui.find(codes[0] + ', ', timeout=30)
@@ -399,6 +414,8 @@ class Phone(unittest.TestCase):
             ui.tap('Send', exact=True)
             ui.find('1 photo being prepared', timeout=30)
             self.assertFalse(ui.present('4 selected', exact=True), 'still selecting after the photo was queued')
+            # the floor waiting in the queue for both codes is used again without asking
+            again('the floor was asked again for codes whose floor is queued with a photo')
             # the job is on disk once its .json is there (a full camera frame takes a moment to seal)
             if ui.debuggable(PKG):
                 self.wait_server(lambda: any(n.endswith('.json') for n in ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()),
@@ -425,6 +442,7 @@ class Phone(unittest.TestCase):
             time.sleep(3)      # anything sent twice would have arrived with it
             ph = mine('photo')
             self.assertEqual(sorted(x['payload']['kks'] for x in ph), codes)
+            self.assertEqual(len({x['payload']['file'] for x in ph}), 1, 'the codes did not get the same image')
             # a floor proposal for exactly the codes that had none, with the floor chosen
             fl = [x for x in mine('equipment') if 'floor' in x['payload'].get('changes', {})]
             self.assertEqual(sorted((x['payload']['kks'], x['payload']['changes']['floor']) for x in fl),
@@ -432,6 +450,8 @@ class Phone(unittest.TestCase):
             ui.find('Sample sheet', timeout=20)
             self.assertFalse(ui.present('photo being prepared'), 'the queue count stayed after the photo was sent')
             self.assertFalse(ui.present('A photo was not sent'), 'the photo for all was reported as not sent')
+            # the member's floor proposals are still open: the core keeps them, so the floor is not asked again
+            again('the floor was asked again for codes this member has an open floor proposal for')
         finally:
             for x in self.boss.req('GET', '/api/submissions')['submissions']:
                 if x['by'] == 'mira':

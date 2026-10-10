@@ -60,9 +60,9 @@ fun codeIndex(): Map<String, List<Drawn>> {
     return out
 }
 
-/** the codes typed or pasted into Add codes: split at spaces, commas, semicolons and new lines; upper case; each once */
+/** the codes typed or pasted into Add codes: split at spaces (a pasted non-breaking one too), commas, semicolons and new lines; upper case; each once */
 fun typedCodes(text: String): List<String> =
-    text.split(Regex("[\\s,;]+")).map { it.trim().uppercase() }.filter { it.isNotEmpty() }.distinct()
+    text.split(Regex("[\\s\u00A0,;]+")).map { it.trim().uppercase() }.filter { it.isNotEmpty() }.distinct()
 
 /** what the equipment says now for each code (the approved state): {} for a code nothing is known about. One core
  *  call for all of them: off the main thread. */
@@ -222,11 +222,24 @@ fun NoteForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Uni
     }) { Text("Send") } }, dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } })
 }
 
-/** the selected codes that have no floor yet (none on the equipment, none queued with a photo): a photo needs its
- *  floor (the user, 2026-10-08), so Photo for all asks for it first, for these codes. Off the main thread. */
+/** the selected codes that have no floor yet: none on the equipment, and none this person has proposed that is still
+ *  open (the core keeps that one and would drop another). A photo needs its floor (the user, 2026-10-08), so Photo
+ *  for all asks for it first, for these codes. A floor only queued with another photo doesn't count here: the one
+ *  floor sent with this photo is written for every code that has none when it arrives (see [queuedFloorFor]). Off the
+ *  main thread: one core call. */
 internal fun codesWithoutFloor(codes: List<String>): List<String> {
-    val eq = equipmentOf(codes)
-    return codes.filter { c -> eq[c]?.optString("floor").orEmpty().isBlank() && PhotoQueue.queuedFloor[c].isNullOrEmpty() }
+    val st = Core.api("GET", "/api/state").json
+    val eq = st.optJSONObject("equipment")
+    val proposed = st.optJSONArray("mine").objects().filter { it.optString("kind") == "equipment" }.mapNotNull { it.optJSONObject("payload") }
+        .filter { it.optJSONObject("changes")?.optString("floor").orEmpty().isNotBlank() }.map { it.optString("kks") }.toSet()
+    return codes.filter { c -> eq?.optJSONObject(c)?.optString("floor").orEmpty().isBlank() && c !in proposed }
+}
+
+/** the floor already waiting in the photo queue for all of `missing` (the same one for each), else "": used again
+ *  without asking, as one photo of one tag does. Anything else is asked for, for all of them. */
+internal fun queuedFloorFor(missing: List<String>): String {
+    val fl = missing.map { PhotoQueue.queuedFloor[it].orEmpty() }.distinct()
+    return if (fl.size == 1) fl[0] else ""
 }
 
 /** Photo for all asks for the floor before the camera opens, as one photo of one tag does (the user, 2026-10-10: a
