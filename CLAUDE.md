@@ -165,7 +165,7 @@ dependency decisions, for native code and for what runs in a browser engine alik
     - `~/.local/share/keyrings`, `~/.local/share/flatpak/db`, `~/.config/dconf/user`;
     - a Flatpak app's sandbox starting.
 - **Windows:** apps/windows/README.
-  - Cross-built with mingw-w64 (and llvm-mingw for ARM64).
+  - Cross-built with llvm-mingw for x86_64 and ARM64 (decisions 0047, 0053).
   - VMs `kks-win10` and `kks-win11` under virsh, reached with `ssh -i ~/.ssh/kks_vm kks@IP` (PowerShell); find the
     address with `virsh domifaddr`.
   - e2e: `apps/windows/e2e/test_windows.py VM_IP APP UIADRIVE SERVER IMPORTER`.

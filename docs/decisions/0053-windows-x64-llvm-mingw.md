@@ -47,7 +47,25 @@ Built here 2026-10-09 from the same commit, release mode, as `apps/windows/build
 
 - The libraries (zlib, libjxl, zxing-cpp) build for x86_64 with no source change; one run of `build-deps.sh` with
   4 jobs takes about 1.5 minutes here.
-- Speed: see the VM runs in PR #123 (the same test programs timed in Windows 10 and 11, GCC and clang builds).
+
+**Speed** (2026-10-10, the Windows 11 26H2 VM of `docs/m6/MEASUREMENTS.md`, the GCC and clang builds of one commit;
+test programs: median of 3 runs, timed inside the VM):
+
+| | GCC 13 | llvm-mingw | |
+|---|---|---|---|
+| test_api / test_sync / test_replay (core: JSON, log, replay, sync sessions) | 663 / 647 / 638 ms | 590 / 626 / 528 ms | −4 to −17 % |
+| test_rudp / test_model | 215 / 67 ms | 128 / 35 ms | faster |
+| test_pathstore / test_extras | 1,144 / 431 ms | 1,211 / 417 ms | about equal |
+| test_dbstore (SQLite, DPAPI) | 369 ms | 320 ms | −13 % |
+| test_dark (libjxl decode, Direct2D) | 2,093 ms | 438 ms | −79 % |
+| test_tiles (12 tiles of 2048 px on WARP, Direct2D's software renderer) | 138.1 s | 137.1 s | equal (Direct2D's own code) |
+| test_net, test_internet (sync over TCP and the relay) | 18.1 s, 38.6 s | 13.9 s, 38.9 s | network-bound, timeouts |
+| Start → first overview drawn (sample sheet, 5 starts, median) | 105 ms | 102 ms | equal |
+| Private bytes 15 s after start | 20.4 MB | 20.8 MB | equal |
+| Join (enrolment + the first full sync of the sample sheet) | 1–2 s | 1–2 s | equal (the driver logs whole seconds) |
+
+Nothing is slower beyond noise; libjxl and the core's hot loops gain the most. Rough figures: one VM, small test data, no
+real sheet.
 
 **When to revisit:** if llvm-mingw stops releasing or falls behind LLVM's security fixes; if a Windows ABI or header
 gap appears that GCC or MSVC would not have; if the exe's size or speed regresses past the rules in
