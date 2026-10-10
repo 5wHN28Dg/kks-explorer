@@ -853,10 +853,10 @@ async function sendMany(kind,payload,note,codes=[...multi.codes]){
   pickMode(false);
   if(r.status==='queued'){ toast(`Offline, queued for ${nCodes(codes.length)}`); updatePending(); drawTags(); return true }
   const st=(r.results||[]).map(x=>x.status), held=st.filter(x=>x==='conflict').length, waiting=st.filter(x=>x!=='approved'&&x!=='conflict').length;
-  // said once the page knows what was sent (said first, a quick "Photo for all" still asked for a floor just sent);
-  // a refresh that fails doesn't hide the send
-  try{ await refreshState() }
-  finally{ toast(`Sent for ${nCodes(codes.length)}`+(waiting?` · ${waiting} await approval`:'')+(held?` · ${held} held (they clash with pending changes)`:'')) }
+  // said once the page knows what was sent (said first, a quick "Photo for all" still asked for a floor just sent).
+  // A refresh that fails, or takes more than 5 s, doesn't hide the send
+  await Promise.race([refreshState().catch(e=>console.warn('refresh after send',e)),new Promise(r=>setTimeout(r,5000))]);
+  toast(`Sent for ${nCodes(codes.length)}`+(waiting?` · ${waiting} await approval`:'')+(held?` · ${held} held (they clash with pending changes)`:''));
   return true;
 }
 const approverNote=()=>canApprove()?null:h('div',{class:'field'},h('label',{for:'dlgNote'},'Note for the approver (optional)'),h('input',{id:'dlgNote',maxlength:500}));

@@ -255,15 +255,18 @@ class WebMulti(unittest.TestCase):
             page.evaluate("document.getElementById('toast').textContent = ''")   # the note's toast may still show
             dlg.locator('#dlgFile').set_input_files(self.photo)
             # "Sent" is said once the page knows what was sent, however slow the state is to come: Photo for all
-            # opened on seeing it must not ask for the floor that just went. The next refresh of the state is held here
-            page.evaluate("""() => { const o = refreshState; let go; const hold = new Promise(r => go = r); window.heldState = {go, asked: false};
-                refreshState = async () => { refreshState = o; heldState.asked = true; await hold; return o() } }""")
+            # opened on seeing it must not ask for the floor that just went. Every refresh of the state that starts
+            # after the server took the photo is held here (one started before by the change poll goes through)
+            page.evaluate("""() => { const sm = K.submitMany, rs = refreshState; let go; const hold = new Promise(r => go = r);
+                window.heldState = {go, sent: false, asked: false, undo: () => { K.submitMany = sm; refreshState = rs }};
+                K.submitMany = async (...a) => { const r = await sm(...a); heldState.sent = true; return r };
+                refreshState = async () => { if (heldState.sent) { heldState.asked = true; await hold } return rs() } }""")
             page.locator('button[data-a="ok"]').click(timeout=15000)
             page.wait_for_function("() => heldState.asked", timeout=30000)
+            page.wait_for_timeout(300)
             self.assertFalse(page.evaluate("document.getElementById('toast').textContent.startsWith('Sent for 2 codes')"),
                              '"Sent" was said before the page had the new state')
-            self.assertFalse(page.evaluate("floorKnown('11LAB71AP001')"))
-            page.evaluate("heldState.go()")
+            page.evaluate("() => { heldState.undo(); heldState.go() }")
             toast('Sent for 2 codes')
             self.assertTrue(page.evaluate("floorKnown('11LAB71AP001')"))
             allp = self.boss.req('GET', '/api/state')['photos']
@@ -461,13 +464,12 @@ class WebMulti(unittest.TestCase):
                              [({'floor': '6'}, 'pending')])
             self.assertEqual(len([x for x in self.subs('photo') if x['payload']['kks'] == '11LAB72AP002']), 1)
             # #144: a floor that only rides on a kept photo is not known to Photo for all. One photo of a code without a
-            # floor is refused on the way (a proxy's 413) and kept in the outbox with the floor asked for it
+            # floor, with the floor asked for it, is in the outbox as K.flush keeps a photo that was refused on the way
+            # (a proxy's 413; test_web_requests shows that path): it waits there for Try again or Discard
             kept, other = '12LBA10AA101', '11HAD70CT101R'
-            page.route('**/api/submit', lambda r: r.fulfill(status=413, content_type='text/plain', body='Request Entity Too Large'))
-            page.evaluate("""async k => { const c = document.createElement('canvas'); c.width = 200; c.height = 150;
-                c.getContext('2d').fillRect(0, 0, 80, 50); await K.queuePhoto(c, {kks: k, caption: 'kept', floor: '7'}) }""", kept)
-            page.wait_for_function("() => K.outbox.length === 1 && K.outbox[0].refused && !K.converting", timeout=90000)
-            page.unroute('**/api/submit')
+            page.evaluate("""async k => { await K.idb.queue({client_id: K.uid(), kind: 'photo', payload: {kks: k, caption: 'kept', floor: '7',
+                dataUrl: 'data:image/jxl;base64,AA=='}, refused: 'Request Entity Too Large', user: K.me.user.id, ts: Date.now()}); await K.emit() }""", kept)
+            self.assertEqual(page.evaluate("K.outbox.map(i => [i.payload.kks, i.payload.floor, !!i.refused])"), [[kept, '7', True]])
             self.assertTrue(page.evaluate("k => floorKnown(k)", kept), 'another photo of that code alone would ask again')
             # … so Photo for all asks for that code too (asked for the other only, its floor went to both)
             btn.click()

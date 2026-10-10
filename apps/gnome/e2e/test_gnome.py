@@ -1136,6 +1136,7 @@ class Gnome(Plant):
         time.sleep(1)
         atspi.click(atspi.find(a, 'button', name=one, timeout=10))
         time.sleep(2)            # the panel is built for this code
+        dlg = None
         for _ in range(5):       # the panel rebuilds after a sync: a lost click is retried
             atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
             try:
@@ -1143,6 +1144,7 @@ class Gnome(Plant):
                 break
             except AssertionError:
                 continue
+        self.assertIsNotNone(dlg, 'the floor was never asked for the first photo')
         atspi.set_text(atspi.find(dlg, None, name=f'Floor of {one}'), '7')
         atspi.click(atspi.find(dlg, 'button', name='Continue'))
         atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), 'waits with its floor')
