@@ -570,7 +570,7 @@ class Signup(Base):
     """Sign-up with the plant's code, then an admin's approval (the user, 2026-10-10). The proxy's X-Forwarded-For
     gives each step its own address, as browsers have (the throttle counts per address)."""
     extra = {'trusted_proxy': True}
-    CODE = 'rumi-7391-plant'
+    CODE = 'team-7391-plant'
     REFUSED = 'The request was not accepted. Check the sign-up code with your manager, or try again later.'
     WAITING = "Your account request is waiting for an admin's approval."
 

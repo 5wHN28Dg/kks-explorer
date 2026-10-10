@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from test_web_v2 import free_port, Client, CSP_WATCH, PageErrors
 
 PW = 'a long password'
-CODE = 'rumi-7391-plant'
+CODE = 'team-7391-plant'
 # a full name that is markup: it must show as text in the manager's list
 NAME = 'Ali <b id=injected>H</b><img src=x onerror=pwned=1>'
 
