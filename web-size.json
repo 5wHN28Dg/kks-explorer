@@ -66,8 +66,8 @@
  "shell": {
   "files": {
    "admin.html": 4651,
-   "admin.js": 54274,
-   "common.js": 68969,
+   "admin.js": 58176,
+   "common.js": 70727,
    "course-bridge.js": 3846,
    "course-figure.js": 18968,
    "course.css": 15526,
@@ -91,6 +91,6 @@
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1117323
+  "total": 1122983
  }
 }

@@ -118,8 +118,8 @@ in `CLAUDE.local.md` ("Deployment"), never in tracked files.
   the other runs (they are the same device identity). A copy of the database and plant data is pulled daily into
   `~/kks-server/cold/`; its `README.txt` says how to fail over.
 - **CLI, on the server:** `KKS_CONFIG=~/kks-server/config.json ~/kks-server/app/current/kks-server <cmd>` as the
-  service's user. The commands `publish-data`, `set-plant-name`, `reset-password`, `reset-manager` and `submit-file`
-  reach the running server through its 0600 control socket. Other commands need the sealed credential (wiki: Server).
+  service's user. The commands `publish-data`, `set-plant-name`, `set-signup-code`, `reset-password`, `reset-manager`
+  and `submit-file` reach the running server through its 0600 control socket. Other commands need the sealed credential (wiki: Server).
   The service has its own `/tmp`: a folder or file handed to the running server (`publish-data`, `submit-file`) must
   be under `~/kks-server/state`, with an absolute path.
 - **Plant data working copy:** `~/kks-server/state/plant-data` on the server.
