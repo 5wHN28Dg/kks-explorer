@@ -167,6 +167,28 @@ suite "a submission is written all at once":
     check userNode.count("equipment") == eq0 + 3 and userNode.count("photo") == ph0 + 3
     check consistent(userNode, userStore)
 
+  test "the floor of a photo that failed is withdrawn before the resend: it is not proposed again, the photo is written":
+    const C = "11LAB70AA621"
+    var body = newObj(@[("kind", newStr("photo")), ("client_id", newStr("many-floor-wd")), ("kks", newArr(@[newStr(C)])),
+                        ("payload", newObj(@[("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0awithdrawn floor"))),
+                                             ("caption", newStr("")), ("floor", newStr("6"))]))])
+    let (eq0, ph0) = (userNode.count("equipment"), userNode.count("photo"))
+    userStore.subFail = 2            # the floor's row, then the photo's fails
+    expect IOError: discard userApi.call(ali, "POST", "/api/submit-many", body)
+    check userNode.count("equipment") == eq0 + 1 and userNode.count("photo") == ph0
+    var sid = 0'i64
+    for x in userApi.call(ali, "GET", "/api/submissions").json["submissions"].elems:
+      if x["kind"].s == "equipment" and x["payload"]["kks"].s == C: sid = x["id"].i
+    check sid > 0
+    check userApi.call(ali, "POST", "/api/submissions/" & $sid & "/withdraw").status == 200
+    let r = userApi.call(ali, "POST", "/api/submit-many", body)
+    check r.status == 200
+    let res = r.json["results"][0]
+    check res.get("duplicate") == nil and res["status"].s == "pending"
+    check res["floor"]["duplicate"].b and res["floor"]["status"].s == "withdrawn" and res["floor"]["id"].i == sid
+    check userNode.count("equipment") == eq0 + 1 and userNode.count("photo") == ph0 + 1
+    check consistent(userNode, userStore)
+
   test "approving a held change: its row fails; approving again writes the change once":
     sync(userNode, mgrNode)
     let r = mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA701","changes":{"notes":"new"},"base":{"notes":"stale"}}}"""))
