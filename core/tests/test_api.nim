@@ -182,6 +182,77 @@ suite "plant API":
     check st.json["results"][1]["status"].s != "conflict"
     # a field both set and appended to: refused (the append used to replace the change silently)
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA605"],"payload":{"changes":{"notes":"new"},"append":{"notes":"more"}}}""")).status == 400
+  test "one photo for several codes with a floor: the single photo's rule, for each code by itself":
+    let (_, ali) = userApi.owner
+    let (_, mgr) = mgrApi.owner
+    const NoFloor = "11LAB80AA701"
+    const NoFloor2 = "11LAB80AA702"
+    const HasFloor = "11LAB80AA703"
+    const MineOpen = "11LAB80AA704"
+    proc floorEntries(n: Node, kks: string): seq[string] =
+      for _, e in n.entries:
+        if e["type"].s == "equipment" and e["body"]["kks"].s == kks and e["body"]["changes"].get("floor") != nil:
+          result.add e["body"]["changes"]["floor"].s
+    proc many(codes: openArray[string], floor: string, cid = "", data = "shared"): JNode =
+      var p = newObj(@[("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0a" & data))), ("caption", newStr(""))])
+      if floor.len > 0: p["floor"] = newStr(floor)
+      var ks = newArr()
+      for c in codes: ks.elems.add newStr(c)
+      result = newObj(@[("kind", newStr("photo")), ("kks", ks), ("payload", p)])
+      if cid.len > 0: result["client_id"] = newStr(cid)
+    check mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("payload", newObj(@[
+      ("kks", newStr(HasFloor)), ("changes", newObj(@[("floor", newStr("5"))]))]))])).status == 200
+    sync(userNode, mgrNode)
+    check userApi.call(ali, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("payload", newObj(@[
+      ("kks", newStr(MineOpen)), ("changes", newObj(@[("floor", newStr("4"))]))]))])).json["status"].s == "pending"
+    # a floor that isn't one refuses the set before anything is written (as a single photo's does)
+    let before = userNode.entries.len
+    check userApi.call(ali, "POST", "/api/submit-many", many([NoFloor, HasFloor], "14 m")).status == 400
+    check userNode.entries.len == before
+    # mixed: no floor / has a floor / my own open proposal. No photo is refused; each code's result says what
+    # happened to its floor
+    let body = many([NoFloor, HasFloor, MineOpen, NoFloor2], "2", cid = "many-floor-1")
+    let r = userApi.call(ali, "POST", "/api/submit-many", body)
+    if r.status != 200: echo "  ", r.json
+    check r.status == 200
+    let res = r.json["results"]
+    check res.elems.len == 4
+    for x in res.elems: check x["status"].s == "pending" and x.get("duplicate") == nil
+    check res[0]["floor"]["status"].s == "pending" and res[0]["floor"]["id"].i != res[0]["id"].i
+    check res[1]["floor"]["status"].s == "unchanged" and res[1]["floor"]["floor"].s == "5"
+    check res[2]["floor"]["status"].s == "unchanged" and res[2]["floor"]["floor"].s == "4"
+    check res[3]["floor"]["status"].s == "pending"
+    check floorEntries(userNode, NoFloor) == @["2"] and floorEntries(userNode, NoFloor2) == @["2"]
+    check floorEntries(userNode, HasFloor) == @["5"] and floorEntries(userNode, MineOpen) == @["4"]
+    # the proposals are ordinary ones: this person's, open, for the floor field
+    var mine: seq[string]
+    for s in userApi.call(ali, "GET", "/api/submissions", q = {"status": "open", "kind": "equipment", "field": "floor",
+                                                              "mine": "1"}.toTable).json["submissions"].elems:
+      if s["payload"]["kks"].s in [NoFloor, NoFloor2]: mine.add s["payload"]["kks"].s & "=" & s["payload"]["changes"]["floor"].s
+    mine.sort()
+    check mine == @[NoFloor & "=2", NoFloor2 & "=2"]
+    # a retry writes nothing, floors neither
+    let n1 = userNode.entries.len
+    let again = userApi.call(ali, "POST", "/api/submit-many", body)
+    for x in again.json["results"].elems: check x["duplicate"].b and x.get("floor") == nil   # a duplicate says nothing of a floor
+    check userNode.entries.len == n1
+    # the next photo for the same codes, another floor typed: the open proposals stand, nothing competes with them
+    let next = userApi.call(ali, "POST", "/api/submit-many", many([NoFloor, NoFloor2], "7", data = "second"))
+    check next.status == 200
+    for x in next.json["results"].elems:
+      check x["status"].s == "pending" and x["floor"]["status"].s == "unchanged" and x["floor"]["floor"].s == "2"
+    check floorEntries(userNode, NoFloor) == @["2"] and floorEntries(userNode, NoFloor2) == @["2"]
+    # without a floor nothing is said about one
+    let plain = userApi.call(ali, "POST", "/api/submit-many", many([NoFloor, HasFloor], "", data = "third"))
+    for x in plain.json["results"].elems: check x.get("floor") == nil
+    # the manager's: set at once where there is none, kept where there is one
+    const M1 = "11LAB80AA711"
+    let m = mgrApi.call(mgr, "POST", "/api/submit-many", many([M1, HasFloor], "3", cid = "many-floor-mgr"))
+    check m.status == 200
+    check m.json["results"][0]["status"].s == "approved" and m.json["results"][0]["floor"]["status"].s == "approved"
+    check m.json["results"][1]["floor"]["status"].s == "unchanged" and m.json["results"][1]["floor"]["floor"].s == "5"
+    check mgrNode.run.equipment[M1]["floor"].s == "3" and mgrNode.run.equipment[HasFloor]["floor"].s == "5"
+
   test "a marked tag, corrected while approving":
     let (_, ali) = userApi.owner
     let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"tag_add","payload":{"sheet":"lp","bbox":[10,10,60.04,30],"kks":"11lab70aa501","isa":"","note":""}}"""))
