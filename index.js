@@ -790,19 +790,51 @@ function dialog(title,...kids){
 }
 const dlgButtons=(d,label,go)=>h('div',{class:'btns'},h('button',{type:'button',class:'ghost',onclick:()=>d.close()},'Cancel'),
   h('button',{type:'button',class:'primary','data-send':'',onclick:go},label));
+// the drawings a code is on (their names, in the sheets' order), and what it is
+const sheetsOf=k=>{ const ids=new Set(TAGS.map(eff).filter(x=>x&&full(x)===k).map(x=>x.sheet)); return SHEETS.filter(s=>ids.has(s.id)).map(s=>s.name) };
+// codes typed or pasted (spaces, commas, semicolons or new lines between them): each one that is on a drawing joins the
+// selection, up to MAX_PICK -> {added, unknown: not on any drawing, over: left out by the limit}
+function addCodes(text){
+  const known=new Set(TAGS.map(eff).filter(Boolean).map(full).filter(Boolean));
+  const out={added:[],unknown:[],over:[]};
+  for(const k of new Set(text.toUpperCase().split(/[\s,;]+/).filter(Boolean))){
+    if(!known.has(k)) out.unknown.push(k);
+    else if(multi.codes.includes(k)) continue;
+    else if(multi.codes.length>=MAX_PICK) out.over.push(k);
+    else{ multi.codes.push(k); out.added.push(k) }
+  }
+  updatePick();
+  return out;
+}
 function pickList(){
-  const sheetName=id=>SHEETS.find(s=>s.id===id)?.name||id;
-  const where=k=>{ const t=TAGS.map(eff).find(x=>x&&full(x)===k); return t?kindName(t)+' · '+sheetName(t.sheet):'' };
-  const codes=[...multi.codes];
-  const d=dialog('Selected codes',
-    codes.length?[h('p',{class:'sub',style:'margin:0'},'Untick a code to leave it out.'),
+  const where=k=>{ const t=TAGS.map(eff).find(x=>x&&full(x)===k); return t?kindName(t)+' · '+sheetsOf(k).join(', '):'' };
+  const list=h('div',{id:'pickCodes'});
+  const draw=()=>{ const codes=[...multi.codes];
+    put(list,codes.length?[h('p',{class:'sub',style:'margin:0'},'Untick a code to leave it out.'),
       h('ul',null,codes.map(k=>h('li',null,h('label',null,h('input',{type:'checkbox',checked:true,onchange:e=>{
         const on=e.currentTarget.checked, i=multi.codes.indexOf(k);
-        if(on&&i<0) multi.codes.push(k); else if(!on&&i>=0) multi.codes.splice(i,1);
+        if(on&&i<0){ if(multi.codes.length>=MAX_PICK){ e.currentTarget.checked=false; fullOnce(); return } multi.codes.push(k) }
+        else if(!on&&i>=0) multi.codes.splice(i,1);
         updatePick() }}),h('span',{class:'mono'},k),h('span',{class:'sub'},where(k))))))]
-      :h('p',null,'Nothing selected yet: click tags on the drawing, or drag a box around several.'),
-    h('div',{class:'btns'},h('button',{type:'button',class:'primary',onclick:()=>d.close()},'Close')));
-  d.querySelector('input,button')?.focus();
+      :h('p',null,'Nothing selected yet: click tags on the drawing, drag a box around several, pick search results, or add codes below.')) };
+  draw();
+  const said=h('div',{class:'warn',id:'pickAddSaid',role:'status',style:'display:none'});
+  const ta=h('textarea',{id:'pickAddText',rows:2,class:'mono',placeholder:'11LAB70AA501, 11LAB70AA502 …'});
+  const add=()=>{ const r=addCodes(ta.value); if(!r.added.length&&!r.unknown.length&&!r.over.length&&!ta.value.trim()){ toast('Type the codes first'); return }
+    const L=[];
+    if(r.added.length) L.push(`Added ${nCodes(r.added.length)}.`);
+    if(r.unknown.length) L.push(`Not on any drawing, not added: ${r.unknown.slice(0,20).join(', ')}${r.unknown.length>20?` and ${r.unknown.length-20} more`:''}.`);
+    if(r.over.length) L.push(`At most ${MAX_PICK} at once, not added: ${r.over.slice(0,20).join(', ')}${r.over.length>20?` and ${r.over.length-20} more`:''}.`);
+    if(!L.length) L.push('Already selected.');
+    said.textContent=L.join(' '); said.style.display='';
+    ta.value=r.unknown.concat(r.over).join(' ');     // what was not added stays, to be corrected
+    draw() };
+  const d=dialog('Selected codes',list,
+    h('div',{class:'field',style:'margin-top:10px'},h('label',{for:'pickAddText'},'Add codes (from any drawing)'),ta,
+      h('div',{class:'sub'},'Type or paste KKS codes, separated by spaces, commas or new lines.')),said,
+    h('div',{class:'btns'},h('button',{type:'button',class:'ghost',id:'pickAddBtn',onclick:add},'Add codes'),
+      h('button',{type:'button',class:'primary',onclick:()=>d.close()},'Close')));
+  d.querySelector('input,textarea,button')?.focus();
 }
 // one submit-many for the selected codes; says how it went and leaves the mode
 async function sendMany(kind,payload,note){
@@ -824,20 +856,30 @@ async function sendMany(kind,payload,note){
 const approverNote=()=>canApprove()?null:h('div',{class:'field'},h('label',{for:'dlgNote'},'Note for the approver (optional)'),h('input',{id:'dlgNote',maxlength:500}));
 const noteValue=d=>d.querySelector('#dlgNote')?.value.trim()||'';
 function pickNothing(){ if(multi.codes.length) return false; toast('Select tags first'); return true }
+// the codes of a selection with no floor known (floorKnown: the single photo's notion): the floor asked for them
+const floorless=codes=>codes.filter(k=>!floorKnown(k));
+const floorAsk=(missing,all)=>`Floor for ${missing.slice(0,5).join(', ')}${missing.length>5?` and ${missing.length-5} more`:''}: `+
+  (missing.length===all?(all===1?'it has none yet':'they have none yet'):(missing.length===1?'this one has':'these have')+' none yet; the others keep theirs');
 function photoForAll(){
   if(pickNothing()) return;
-  // the user's rule: a photo needs its equipment's floor (one dialog can't ask for several, so set them first)
-  const missing=multi.codes.filter(k=>!floorKnown(k));
-  if(missing.length){ toast(`A photo needs each code's floor. No floor yet: ${missing.slice(0,5).join(', ')}${missing.length>5?` and ${missing.length-5} more`:''}. Set it with Place for all first.`); return }
+  // the user's rule, as for one photo: the floor first when a code has none, sent with the photo (core submitMany
+  // writes it for the codes without one only; nobody has to wait for an approval before the photo)
+  const missing=floorless(multi.codes), okFloor=v=>/^(\d|10)$/.test(v.trim());
+  const choose=h('label',{class:'primary',id:'dlgChoose',style:'cursor:pointer'+(missing.length?';display:none':'')},'Choose photo…',h('input',{type:'file',id:'dlgFile',accept:'image/*',capture:'environment',style:'display:none',
+    onchange:async ev=>{ const f=ev.currentTarget.files[0], caption=$('#dlgCaption').value.trim(), fl=missing.length?$('#dlgFloor').value.trim():'';
+      if(missing.length&&!okFloor(fl)){ ev.currentTarget.value=''; toast('The floor first: a whole number from 0 to 10'); return }
+      d.close(); if(!f) return;
+      const p=await photoData(f); if(p) await sendMany('photo',{dataUrl:p.dataUrl,caption,...(fl?{floor:fl}:{})},p.note) }}));
   const d=dialog('Photo for all',
     h('p',{class:'sub',style:'margin:0 0 8px'},`One photo for ${nCodes(multi.codes.length)}: it is kept once, every code gets it.`),
+    missing.length?h('div',{class:'field'},h('label',{for:'dlgFloor',id:'dlgFloorLabel'},floorAsk(missing,multi.codes.length)),
+      h('input',{id:'dlgFloor',type:'number',inputmode:'numeric',min:0,max:10,step:1,placeholder:'0–10',style:'width:90px',
+        oninput:e=>{ choose.style.display=okFloor(e.currentTarget.value)?'':'none' }}),
+      h('div',{class:'sub'},'A photo needs its floor: a whole number from 0 (ground) to 10. It is sent with the photo.')):null,
     h('div',{class:'field'},h('label',{for:'dlgCaption'},'Caption (optional)'),h('input',{id:'dlgCaption',maxlength:200,placeholder:'e.g. Tag plate, or what the photo shows'}),
       h('div',{class:'sub'},'A caption starting “Tag plate” marks a photo of the tag plate.')),
-    h('div',{class:'btns'},h('button',{type:'button',class:'ghost',onclick:()=>d.close()},'Cancel'),
-      h('label',{class:'primary',style:'cursor:pointer'},'Choose photo…',h('input',{type:'file',id:'dlgFile',accept:'image/*',capture:'environment',style:'display:none',
-        onchange:async ev=>{ const f=ev.currentTarget.files[0], caption=$('#dlgCaption').value.trim(); d.close(); if(!f) return;
-          const p=await photoData(f); if(p) await sendMany('photo',{dataUrl:p.dataUrl,caption},p.note) }}))));
-  $('#dlgCaption').focus();
+    h('div',{class:'btns'},h('button',{type:'button',class:'ghost',onclick:()=>d.close()},'Cancel'),choose));
+  $(missing.length?'#dlgFloor':'#dlgCaption').focus();
 }
 function placeForAll(){
   if(pickNothing()) return;
@@ -917,7 +959,19 @@ $('#q').addEventListener('keydown',e=>{ const R=$('#results');
   if(e.key==='Enter'&&hits.length) pick(hi); if(e.key==='Escape'){ R.style.display='none'; $('#q').setAttribute('aria-expanded','false') } });
 // a pick moves keyboard focus into the panel it opens (screen readers then read the equipment)
 let focusPanel=false;
-function pick(i){ $('#results').style.display='none'; $('#q').setAttribute('aria-expanded','false'); focusPanel=true; hits[i].loc?selectLoc(hits[i].loc):goTo(hits[i].t.id) }
+function pick(i){ $('#results').style.display='none'; $('#q').setAttribute('aria-expanded','false');
+  if(multi.on){ pickHit(hits[i]); return }      // Select tags: the result joins the selection, the drawing stays
+  focusPanel=true; hits[i].loc?selectLoc(hits[i].loc):goTo(hits[i].t.id) }
+// a search result picked in the "Select tags" mode: its code is added (from any drawing), nothing else moves
+function pickHit(x){
+  if(x.loc){ toast(`${x.loc} is in the location list only, not on a drawing: it can't be selected`); return }
+  const k=full(x.t); if(!k){ unreadOnce(); return }
+  if(multi.codes.includes(k)){ toast(`${k} is already selected`); return }
+  if(multi.codes.length>=MAX_PICK){ fullOnce(); return }
+  multi.codes.push(k); updatePick();
+  const here=TAGS.map(eff).some(t=>t&&t.sheet===cur?.id&&full(t)===k);
+  toast(`${k} selected`+(here?'':` (on ${sheetsOf(k).join(', ')})`)+` · ${multi.codes.length} selected`);
+}
 document.addEventListener('click',e=>{ if(!e.target.closest('.search')) $('#results').style.display='none' });
 
 // ---------- floors ----------

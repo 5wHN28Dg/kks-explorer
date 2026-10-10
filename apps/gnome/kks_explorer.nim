@@ -77,15 +77,10 @@ proc runSearch(w: Win) =
       let picking = w.picking     # the select mode: a result toggles its tag (the keyboard's way to select)
       gtk_list_box_append(w.resultList, navRow(title, w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet),
         (if picking: "Select or unselect " else: "Show ") & title & " on " & (if okS: si.name else: t.sheet), proc () =
-          if sheet != w.sheet: w.showSheet(sheet)
-          if w.picking:
-            let (okT, tt) = w.m.tagById(id)
-            if okT:
-              let (okS2, si2) = w.m.sheetById(tt.sheet)
-              let sc = if okS2 and si2.scale > 0: si2.scale else: 2.0
-              w.v.centerOn(tt.bbox[0] / sc, tt.bbox[1] / sc, tt.bbox[2] / sc, tt.bbox[3] / sc)
-            w.togglePick(id)
-          else: w.selectTag(id, true)))
+          if w.picking: w.pickResult(id)      # the open drawing stays (multi.nim)
+          else:
+            if sheet != w.sheet: w.showSheet(sheet)
+            w.selectTag(id, true)))
       w.v.hits.incl t.id
   if found.len == 0: gtk_list_box_append(w.resultList, row("Nothing found", "Try part of the code, or a word from the description"))
   gtk_widget_set_visible(w.resultList, 1)

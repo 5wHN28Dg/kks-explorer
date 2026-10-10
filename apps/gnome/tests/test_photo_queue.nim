@@ -194,6 +194,14 @@ suite "photo queue on disk":
     check q.resume().len == 0
     check q.items[0].codes == @["11LAC10AP001", "11LAC10AP003"] and q.items[0].kks == "11LAC10AP001"
     check q.items[1].codes.len == 0 and q.items[1].key == b.key
+    # the floor asked before a photo of several codes (for the codes without one) is kept with the job
+    let c = q.add(p, pic(2, 2, 3), 2, 2, "", "", "", "4", 3, @["11LAC10AP002", "11LAC10AP004"])
+    check c.floor == "4"
+    s = s.reopen()
+    q = newPhotoQueue(s)
+    check q.resume().len == 0
+    check q.items[2].key == c.key and q.items[2].floor == "4" and q.items[2].codes == @["11LAC10AP002", "11LAC10AP004"]
+    discard q.finish(c.key, Sent, "", 4)
     expect ValueError:
       var many: seq[string]
       for i in 0 .. 200: many.add "11LAC10AP" & align($i, 3, '0')

@@ -1,6 +1,8 @@
 ## Several tags at once, the "Select tags" mode: pick tags on the drawing (a click toggles one, a dragged box adds every
-## tag it touches; from the keyboard, a search result in the sidebar toggles its tag), then one photo, place or note
-## for all their codes, sent as one /api/submit-many (core api.submitMany: an ordinary submission per code).
+## tag it touches), a search result in the sidebar (it toggles its tag's code, whichever drawing it is on: the open
+## drawing stays), or codes typed into the List dialog; then one photo, place or note for all their codes, sent as one
+## /api/submit-many (core api.submitMany: an ordinary submission per code). The selection is by code and survives a
+## change of drawing, so codes that are in one place but on different P&IDs go together.
 
 import std/[strutils, sets, os, random, times]
 import kks/[json, api]
@@ -60,6 +62,48 @@ proc togglePick*(w: Win, id: string) =
   w.updatePick()
   w.announce(k & (if i >= 0: " removed, " else: " selected, ") & countText(w.picked.len))
 
+proc sheetsOf(w: Win, k: string): seq[string] =
+  ## the drawings a code is on (their names)
+  for t in w.m.tags:
+    if t.full == k:
+      let (okS, si) = w.m.sheetById(t.sheet)
+      let n = if okS: si.name else: t.sheet
+      if n notin result: result.add n
+
+proc pickResult*(w: Win, id: string) =
+  ## a search result activated in the mode: its code joins (or leaves) the selection. The open drawing stays: a code
+  ## of another drawing is selected from here, and said (nothing on this drawing shows it)
+  let (ok, t) = w.m.tagById(id)
+  if not ok: return
+  if t.sheet == w.sheet:
+    let (okS, si) = w.m.sheetById(t.sheet)
+    let sc = if okS and si.scale > 0: si.scale else: 2.0
+    w.v.centerOn(t.bbox[0] / sc, t.bbox[1] / sc, t.bbox[2] / sc, t.bbox[3] / sc)
+  let before = w.picked.len
+  w.togglePick(id)
+  if t.sheet != w.sheet and w.picked.len != before:
+    w.toast(t.full & (if w.picked.len > before: " selected" else: " removed") & " (on " & w.sheetsOf(t.full).join(", ") &
+            ") · " & countText(w.picked.len))
+
+proc addCodes*(w: Win, text: string): tuple[added, unknown, over: seq[string]] =
+  ## codes typed or pasted (spaces, commas, semicolons or new lines between them): each one that is on a drawing joins
+  ## the selection, up to the cap. `unknown`: on no drawing; `over`: left out by the cap
+  var known = initHashSet[string]()
+  for t in w.m.tags:
+    if t.full.len > 0: known.incl t.full
+  var seen = initHashSet[string]()
+  for raw in text.toUpperAscii.split({' ', ',', ';', '\n', '\r', '\t'}):
+    let k = raw.strip
+    if k.len == 0 or k in seen: continue
+    seen.incl k
+    if k notin known: result.unknown.add k
+    elif k in w.picked: continue
+    elif w.picked.len >= MaxPick: result.over.add k
+    else:
+      w.picked.add k
+      result.added.add k
+  w.updatePick()
+
 proc addBox*(w: Win, x0, y0, x1, y1: float) =
   ## a dragged box (points): adds every tag it touches (never removes)
   var added = 0
@@ -117,42 +161,81 @@ proc startPicking*(w: Win) =
       false)
 
 proc listDialog*(w: Win) =
-  ## the selected codes, each with a switch: turn a mistake off (on again puts it back)
+  ## the selected codes, each with a switch (turn a mistake off; on again puts it back) and the drawings it is on;
+  ## below, codes typed or pasted join the selection
   let d = adw_dialog_new()
   adw_dialog_set_title(d, "Selected codes")
   adw_dialog_set_content_width(d, 420)
-  let g = group("", "Turn a code off to leave it out")
-  let codes = w.picked
-  if codes.len == 0: adw_preferences_group_add(g, row("Nothing selected", "Click tags on the drawing"))
-  for i in 0 ..< codes.len:
-    closureScope:
-      let k = codes[i]
-      var where = ""
-      for t in w.m.tags:
-        if t.full == k:
-          let (okS, si) = w.m.sheetById(t.sheet)
-          where = w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet)
-          break
-      let r = row(k, where)
-      # a switch, not a check button: GTK 4 gives a check button no accessibility action (AT-SPI can't toggle it);
-      # a switch has one ("Toggles the switch"), and Orca reads its state
-      let cb = gtk_switch_new()
-      gtk_switch_set_active(cb, 1)
-      gtk_widget_set_valign(cb, GTK_ALIGN_CENTER)
-      adw_action_row_add_suffix(r, cb)
-      adw_action_row_set_activatable_widget(r, cb)
-      cb.onPtr("notify::active", proc (p: W) =
-        let on = gtk_switch_get_active(cb) != 0
-        let j = w.picked.find(k)
-        if on and j < 0: w.picked.add k
-        elif not on and j >= 0: w.picked.delete(j)
-        w.updatePick())
-      adw_preferences_group_add(g, r)
+  let listBox = vbox(8)
+  proc fill() =
+    listBox.clear()
+    let g = group("", "Turn a code off to leave it out")
+    let codes = w.picked
+    if codes.len == 0: adw_preferences_group_add(g, row("Nothing selected", "Click tags on the drawing, pick search results, or add codes below"))
+    for i in 0 ..< codes.len:
+      closureScope:
+        let k = codes[i]
+        var where = ""
+        for t in w.m.tags:
+          if t.full == k:
+            where = w.m.kindName(t) & " · " & w.sheetsOf(k).join(", ")
+            break
+        let r = row(k, where)
+        # a switch, not a check button: GTK 4 gives a check button no accessibility action (AT-SPI can't toggle it);
+        # a switch has one ("Toggles the switch"), and Orca reads its state
+        let cb = gtk_switch_new()
+        gtk_switch_set_active(cb, 1)
+        gtk_widget_set_valign(cb, GTK_ALIGN_CENTER)
+        adw_action_row_add_suffix(r, cb)
+        adw_action_row_set_activatable_widget(r, cb)
+        cb.onPtr("notify::active", proc (p: W) =
+          let on = gtk_switch_get_active(cb) != 0
+          let j = w.picked.find(k)
+          if on and j < 0:
+            if w.picked.len >= MaxPick:
+              w.toast("At most " & $MaxPick & " tags at once: send these first")
+              idle(proc () = gtk_switch_set_active(cb, 0))
+              return
+            w.picked.add k
+          elif not on and j >= 0: w.picked.delete(j)
+          w.updatePick())
+        adw_preferences_group_add(g, r)
+    listBox.add g
+  fill()
+  let addG = group("Add codes", "From any drawing: type or paste KKS codes, separated by spaces or commas")
+  let e = entryRow("KKS codes", "")
+  adw_preferences_group_add(addG, e)
+  let said = label("", "dim-label")
+  gtk_widget_set_visible(said, 0)
+  proc addNow() =
+    let typed = text(e)
+    if typed.strip.len == 0:
+      w.toast("Type the codes first")
+      return
+    let r = w.addCodes(typed)
+    proc some(xs: seq[string]): string =
+      xs[0 ..< min(20, xs.len)].join(", ") & (if xs.len > 20: " and " & $(xs.len - 20) & " more" else: "")
+    var lines: seq[string]
+    if r.added.len > 0: lines.add "Added " & (if r.added.len == 1: "1 code" else: $r.added.len & " codes") & "."
+    if r.unknown.len > 0: lines.add "Not on any drawing, not added: " & some(r.unknown) & "."
+    if r.over.len > 0: lines.add "At most " & $MaxPick & " at once, not added: " & some(r.over) & "."
+    if lines.len == 0: lines.add "Already selected."
+    gtk_label_set_text(said, lines.join(" ").cstring)
+    gtk_widget_set_visible(said, 1)
+    w.announce(lines.join(" "))
+    gtk_editable_set_text(e, (r.unknown & r.over).join(" ").cstring)    # what was not added stays, to be corrected
+    # not inside the click (an AT-SPI action: rows built there have no accessibility contents)
+    idle(proc () = fill())
+  let addBtn = button("Add codes", "", addNow)
+  gtk_widget_set_halign(addBtn, GTK_ALIGN_END)
   let body = vbox(8)
   margins(body, 12)
-  body.add g
+  body.add listBox
+  body.add addG
+  body.add said
+  body.add addBtn
   adw_dialog_set_child(d, toolbarView(headerBar(adw_window_title_new("Selected codes", "")), scrolled(body)))
-  adw_dialog_set_content_height(d, 480)
+  adw_dialog_set_content_height(d, 520)
   present(d, w.window)
 
 proc clientPrefix(): string =
@@ -212,17 +295,17 @@ proc photoForAll*(w: Win) =
   if w.picked.len == 0:
     w.toast("Select tags first")
     return
-  # the user's rule: a photo needs its equipment's floor (one dialog can't ask for several, so set them first)
-  let missing = w.floorsMissing(w.picked)
-  if missing.len > 0:
-    w.toast("A photo needs each code's floor. No floor yet: " & missing[0 ..< min(5, missing.len)].join(", ") &
-            (if missing.len > 5: " and " & $(missing.len - 5) & " more" else: "") & ". Set it with Place for all first.")
-    return
-  let n = w.picked.len
-  w.photoForCodes(w.picked, proc () =
-    w.toast("Photo queued for " & $n & " codes: it is sent once compressed")
-    w.stopPicking()
-    w.rebuildPanel())
+  # the user's rule, as for one photo: the floor first when a code has none, sent with the photo (core submitMany
+  # writes it for the codes without one only; nobody has to wait for an approval before the photo)
+  let codes = w.picked
+  let missing = w.floorsMissing(codes)
+  proc go(floor: string) =
+    w.photoForCodes(codes, floor, proc () =
+      w.toast("Photo queued for " & $codes.len & " codes: it is sent once compressed")
+      w.stopPicking()
+      w.rebuildPanel())
+  if missing.len == 0: go("")
+  else: w.askFloorFor(missing, codes.len, go)
 
 proc approverNote(w: Win, g: W): W =
   result = entryRow("Note for the approver (optional)", "")
@@ -301,7 +384,7 @@ proc pickBar*(w: Win): W =
   w.pickCount = label(countText(0), "heading", wrap = false)
   gtk_action_bar_pack_start(bar, w.pickCount)
   gtk_action_bar_pack_start(bar, button("List", "flat", proc () = w.listDialog()))
-  let hint = label("Click tags or drag a box · or search and pick results", "dim-label", wrap = false)
+  let hint = label("Click tags or drag a box · or search and pick results (any drawing)", "dim-label", wrap = false)
   gtk_label_set_ellipsize(hint, 3)
   gtk_action_bar_pack_start(bar, hint)
   gtk_action_bar_pack_end(bar, button("Done", "", proc () = w.stopPicking()))

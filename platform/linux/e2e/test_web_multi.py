@@ -3,7 +3,11 @@
 two by a dragged box, a tag without a code refused, Space / Enter on a focused tag, one code unticked in the List dialog;
 "Place for all" with a floor (the warning about a floor it replaces first) gives exactly those codes that floor in
 /api/submissions; "Note for all" appends under an existing note; "Photo for all" (the mark-up editor, JPEG XL encoded in
-the browser) gives one photo entry per code, all sharing one file. A fresh server per engine.
+the browser) gives one photo entry per code, all sharing one file, and asks for the floor first when a code has none
+(sent with the photo: core submitMany writes it for those codes only). As a MEMBER (test_member_*): codes from another
+drawing join the selection from the search and from codes typed in the List dialog, the selection survives a change of
+drawing, and Photo for all with the floor asked first gives every code the photo and each code without a floor a floor
+proposal, online and queued offline. A fresh server per engine.
   /path/to/venv-with-playwright/bin/python platform/linux/e2e/test_web_multi.py [unittest arguments]
 $KKS_SERVER names the build (default /tmp/kkslinux/kks_server); screenshots go to $KKS_SHOTS (default /tmp/kks-web-shots)."""
 import json, os, re, shutil, struct, subprocess, tempfile, unittest, urllib.request, http.cookiejar, zlib
@@ -27,13 +31,19 @@ def png(w, h, rgb=b'\xff\xff\xff'):
 
 
 def tag(i, kks, x, suffix='', isa=None, status='auto'):
-    return {'id': i, 'sheet': 'a', 'kks': kks, 'suffix': suffix, 'isa': isa, 'kind': 'instrument' if isa else 'equipment',
+    return {'id': i, 'sheet': i.split(':')[0], 'kks': kks, 'suffix': suffix, 'isa': isa, 'kind': 'instrument' if isa else 'equipment',
             'status': status, 'conf': 0.9, 'bbox': [x, 100, x + 60, 130], 'read': ['?', '?']}
 
 
-SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/sheets/a.png', 'notes': []}]
+SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/sheets/a.png', 'notes': []},
+          {'id': 'b', 'name': 'Sheet B', 'w': 1000, 'h': 600, 'file': 'data/sheets/b.png', 'notes': []}]
 TAGS = [tag('a:1', '11LAB70AA501', 50), tag('a:2', '11HAD70CT101', 150, 'R', 'TIAC'), tag('a:3', None, 250, status='review'),
-        tag('a:4', '11LAB70AA503', 350), tag('a:5', '12LBA10AA101', 450), tag('a:6', '11LAB71AP001', 650)]
+        tag('a:4', '11LAB70AA503', 350), tag('a:5', '12LBA10AA101', 450), tag('a:6', '11LAB71AP001', 650),
+        tag('a:7', '11LAB72AP002', 800),
+        # another drawing: two codes of its own, and one that is on Sheet A too
+        tag('b:1', '12LBA20AA101', 50), tag('b:2', '12LBA20AA102', 150), tag('b:3', '11LAB70AA501', 250)]
+PW = 'a long password'
+
 
 
 class Client:
@@ -78,7 +88,8 @@ class WebMulti(unittest.TestCase):
         os.makedirs(os.path.join(d, 'sheets'))
         for name, obj in (('sheets.json', SHEETS), ('tags.json', TAGS)):
             with open(os.path.join(d, name), 'w') as f: json.dump(obj, f)
-        with open(os.path.join(d, 'sheets', 'a.png'), 'wb') as f: f.write(png(100, 60))
+        for n in 'ab':
+            with open(os.path.join(d, 'sheets', n + '.png'), 'wb') as f: f.write(png(100, 60))
         r = subprocess.run([SERVER, 'publish-data', d, '--config', self.cfg], cwd=self.dir, capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, r.stdout + r.stderr
         # what is there before: a note on AA501, a floor on AA503 (Place for all says it replaces it)
@@ -108,7 +119,7 @@ class WebMulti(unittest.TestCase):
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))
             page.goto(self.base + '/')
-            page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length === 6 && typeof cur !== 'undefined' && cur", timeout=30000)
+            page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length === 10 && typeof cur !== 'undefined' && cur", timeout=30000)
             hs = lambda i: page.locator(f'#layer .hs[data-id="{i}"]')
             count = lambda: page.text_content('#pickCount')
             picked = lambda: page.evaluate("[...document.querySelectorAll('#layer .hs.picked')].map(e => e.dataset.id)")
@@ -224,22 +235,17 @@ class WebMulti(unittest.TestCase):
             btn.click()
             hs('a:4').click()
             hs('a:6').click()
-            # a photo needs each code's floor: 11LAB71AP001 has none, so Photo for all says so and opens nothing
-            page.evaluate("document.getElementById('toast').textContent = ''")
-            page.click('#pickPhoto')
-            toast("A photo needs each code's floor. No floor yet: 11LAB71AP001.")
-            self.assertEqual(page.locator('dialog[open]').count(), 0)
-            page.click('#pickPlace')
-            dlg = page.locator('dialog[open]')
-            dlg.get_by_label('Floor').fill('2')
-            dlg.locator('[data-send]').click()   # AA503's floor 5 is replaced: the second press sends
-            dlg.locator('[data-send]').click()
-            toast('Sent for 2 codes')
-            btn.click()
-            hs('a:4').click()
-            hs('a:6').click()
+            # a photo needs each code's floor: 11LAB71AP001 has none, so Photo for all asks for it first (the photo
+            # can't be chosen before) and says which code it is for; AA503 keeps its floor 5
             page.click('#pickPhoto')
             dlg = page.locator('dialog[open]')
+            self.assertEqual(dlg.locator('#dlgFloorLabel').text_content(),
+                             'Floor for 11LAB71AP001: this one has none yet; the others keep theirs')
+            self.assertFalse(dlg.locator('#dlgChoose').is_visible())
+            dlg.locator('#dlgFloor').fill('11')
+            self.assertFalse(dlg.locator('#dlgChoose').is_visible())
+            dlg.locator('#dlgFloor').fill('2')
+            self.assertTrue(dlg.locator('#dlgChoose').is_visible())
             dlg.get_by_label('Caption (optional)').fill('Tag plate · both')
             page.evaluate("document.getElementById('toast').textContent = ''")   # the note's toast may still show
             dlg.locator('#dlgFile').set_input_files(self.photo)
@@ -251,6 +257,18 @@ class WebMulti(unittest.TestCase):
             self.assertEqual(len({x['file'] for x in photos}), 1, photos)
             self.assertEqual(len({x['id'] for x in photos}), 2)
             self.assertTrue(photos[0]['file'].endswith('.jxl'), photos[0])
+            st = self.boss.req('GET', '/api/state')['equipment']
+            self.assertEqual((st['11LAB71AP001']['floor'], st['11LAB70AA503']['floor']), ('2', '5'))
+            # every code has a floor now: Photo for all asks for none
+            btn.click()
+            hs('a:4').click()
+            hs('a:6').click()
+            page.click('#pickPhoto')
+            self.assertEqual(page.locator('dialog[open] #dlgFloor').count(), 0)
+            self.assertTrue(page.locator('dialog[open] #dlgChoose').is_visible())
+            page.locator('dialog[open]').get_by_role('button', name='Cancel').click()
+            page.click('#pickDone')
+            self.assertEqual(btn.get_attribute('aria-pressed'), 'false')
             # the tags show it: a tag plate photo only (blue) once colouring by photos is on
             page.click('#zcover')
             # (a predicate as a function: Playwright evaluates an expression again at every poll, which the page's
@@ -294,9 +312,135 @@ class WebMulti(unittest.TestCase):
             browser.close()
             self.assertEqual(errors, [], name)
 
+    def run_member(self, name):
+        """a member (their changes wait for approval): codes from two drawings, the floor asked with the photo"""
+        link = self.boss.req('POST', '/api/users', {'username': 'tom', 'full_name': 'Tom Tech', 'position': 'Technician', 'role': 'user'})['link']
+        assert Client(self.base).req('POST', '/api/password-reset', {'token': link.split('#reset=')[1], 'password': PW}).get('ok')
+        with sync_playwright() as p:
+            browser = getattr(p, name).launch()
+            ctx = browser.new_context(viewport={'width': 1200, 'height': 800})
+            r = ctx.request.post(self.base + '/api/login', data={'username': 'tom', 'password': PW}, headers={'Origin': self.base})
+            self.assertTrue(r.ok, r.text())
+            page = ctx.new_page()
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(self.base + '/')
+            page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length === 10 && typeof cur !== 'undefined' && cur", timeout=30000)
+            hs = lambda i: page.locator(f'#layer .hs[data-id="{i}"]')
+            count = lambda: page.text_content('#pickCount')
+            toast = lambda text: page.wait_for_function("t => document.getElementById('toast').textContent.startsWith(t)", arg=text, timeout=30000)
+            clear_toast = lambda: page.evaluate("document.getElementById('toast').textContent = ''")
+            btn = page.get_by_role('button', name='Select tags')
+            self.assertEqual(page.evaluate("cur.id"), 'a')
+            btn.click()
+            hs('a:6').click()
+            # a search result from another drawing joins the selection: the mode and the drawing stay
+            page.fill('#q', '12LBA20AA101')
+            page.locator('#results .res').first.click()
+            toast('12LBA20AA101 selected (on Sheet B)')
+            self.assertEqual(count(), '2 selected')
+            self.assertEqual(btn.get_attribute('aria-pressed'), 'true')
+            self.assertEqual(page.evaluate("cur.id"), 'a')
+            self.assertFalse(page.is_visible('#panel'))
+            # picked again: said, not added twice (and not removed)
+            page.fill('#q', '12LBA20AA101')
+            page.keyboard.press('Enter')
+            toast('12LBA20AA101 is already selected')
+            self.assertEqual(count(), '2 selected')
+            # the selection survives a change of drawing: Sheet B rings its tag, Sheet A's again on the way back
+            page.select_option('#sheetSel', 'b')
+            page.wait_for_function("() => cur.id === 'b' && document.querySelector('#layer .hs[data-id=\"b:1\"]')?.classList.contains('picked')")
+            self.assertEqual(count(), '2 selected')
+            self.assertEqual(btn.get_attribute('aria-pressed'), 'true')
+            hs('b:3').click()            # 11LAB70AA501, which is on Sheet A too
+            self.assertEqual(count(), '3 selected')
+            page.select_option('#sheetSel', 'a')
+            page.wait_for_function("() => cur.id === 'a' && document.querySelector('#layer .hs[data-id=\"a:1\"]')?.classList.contains('picked')")
+            self.assertTrue(page.evaluate("document.querySelector('#layer .hs[data-id=\"a:6\"]').classList.contains('picked')"))
+            # the List: codes typed or pasted; one that is on no drawing is named and not added
+            page.click('#pickList')
+            dlg = page.locator('dialog[open]')
+            self.assertIn('Sheet A, Sheet B', dlg.locator('li', has_text='11LAB70AA501').text_content())
+            self.assertIn('Sheet B', dlg.locator('li', has_text='12LBA20AA101').text_content())
+            self.assertNotIn('Sheet A', dlg.locator('li', has_text='12LBA20AA101').text_content())
+            dlg.locator('#pickAddText').fill('12lba20aa102, 99XXX99XX999\n11LAB70AA503 11LAB71AP001')
+            dlg.locator('#pickAddBtn').click()
+            said = dlg.locator('#pickAddSaid').text_content()
+            self.assertIn('Added 2 codes.', said)
+            self.assertIn('Not on any drawing, not added: 99XXX99XX999.', said)
+            self.assertEqual(count(), '5 selected')
+            self.assertEqual(dlg.locator('input[type=checkbox]').count(), 5)
+            self.assertIn('Sheet B', dlg.locator('li', has_text='12LBA20AA102').text_content())
+            self.assertEqual(dlg.locator('#pickAddText').input_value(), '99XXX99XX999')
+            # the limit holds for typed codes too
+            saved = page.evaluate("() => { const s = [...multi.codes]; multi.codes = Array.from({length: 200}, (_, i) => '11LAB70AA' + (700 + i)); return s }")
+            dlg.locator('#pickAddText').fill('11LAB72AP002')
+            dlg.locator('#pickAddBtn').click()
+            self.assertIn('At most 200 at once, not added: 11LAB72AP002.', dlg.locator('#pickAddSaid').text_content())
+            page.evaluate("s => { multi.codes = s; updatePick() }", saved)
+            dlg.get_by_role('button', name='Close').click()
+            self.assertEqual(count(), '5 selected')
+            page.screenshot(path=os.path.join(SHOTS, 'multi-member-' + name + '.png'))
+            # Photo for all, as a member: the floor is asked first, for the four codes without one (AA503 has floor 3)
+            page.click('#pickPhoto')
+            dlg = page.locator('dialog[open]')
+            self.assertEqual(dlg.locator('#dlgFloorLabel').text_content(),
+                             'Floor for 11LAB71AP001, 12LBA20AA101, 11LAB70AA501, 12LBA20AA102: these have none yet; the others keep theirs')
+            self.assertFalse(dlg.locator('#dlgChoose').is_visible())
+            dlg.locator('#dlgFloor').fill('4')
+            page.screenshot(path=os.path.join(SHOTS, 'multi-member-floor-' + name + '.png'))
+            dlg.get_by_label('Caption (optional)').fill('same corner')
+            clear_toast()
+            dlg.locator('#dlgFile').set_input_files(self.photo)
+            page.locator('button[data-a="ok"]').click(timeout=15000)
+            toast('Sent for 5 codes · 5 await approval')
+            five = ['11LAB70AA501', '11LAB70AA503', '11LAB71AP001', '12LBA20AA101', '12LBA20AA102']
+            photos = [x for x in self.subs('photo') if x['payload'].get('caption') == 'same corner']
+            self.assertEqual(sorted(x['payload']['kks'] for x in photos), five)
+            self.assertEqual({x['status'] for x in photos}, {'pending'})
+            self.assertEqual(len({x['payload']['file'] for x in photos}), 1)
+            floors = {x['payload']['kks']: (x['payload']['changes'], x['status']) for x in self.subs('equipment')
+                      if x.get('by') != 'boss' and x['status'] == 'pending'}
+            self.assertEqual(floors, {k: ({'floor': '4'}, 'pending') for k in five if k != '11LAB70AA503'})
+            # their own open proposals count as known: the next Photo for all for these codes asks for no floor
+            page.wait_for_function("() => !multi.on && floorKnown('11LAB71AP001') && floorKnown('12LBA20AA102')", timeout=15000)
+            btn.click()
+            hs('a:6').click()
+            page.click('#pickPhoto')
+            self.assertEqual(page.locator('dialog[open] #dlgFloor').count(), 0)
+            page.locator('dialog[open]').get_by_role('button', name='Cancel').click()
+            # offline: the floor is queued with the photo, counts as known meanwhile, and is proposed when it is sent
+            hs('a:6').click()
+            hs('a:7').click()
+            self.assertEqual(count(), '1 selected')
+            page.click('#pickPhoto')
+            dlg = page.locator('dialog[open]')
+            self.assertEqual(dlg.locator('#dlgFloorLabel').text_content(), 'Floor for 11LAB72AP002: it has none yet')
+            dlg.locator('#dlgFloor').fill('6')
+            clear_toast()
+            dlg.locator('#dlgFile').set_input_files(self.photo)
+            page.locator('button[data-a="ok"]').wait_for(timeout=15000)
+            ctx.set_offline(True)        # (once the editor is open: offline, Playwright's WebKit loads no blob: picture)
+            page.locator('button[data-a="ok"]').click(timeout=15000)
+            toast('Offline, queued for 1 code')
+            self.assertEqual(page.evaluate("K.outbox.map(i => [i.kind, i.payload.kks, i.payload.floor])"), [['photo', '11LAB72AP002', '6']])
+            self.assertTrue(page.evaluate("floorKnown('11LAB72AP002')"))
+            self.assertEqual([x for x in self.subs('equipment') if x['payload']['kks'] == '11LAB72AP002'], [])
+            ctx.set_offline(False)
+            page.evaluate("K.flush()")
+            page.wait_for_function("() => K.outbox.length === 0", timeout=15000)
+            self.assertEqual([(x['payload']['changes'], x['status']) for x in self.subs('equipment') if x['payload']['kks'] == '11LAB72AP002'],
+                             [({'floor': '6'}, 'pending')])
+            self.assertEqual(len([x for x in self.subs('photo') if x['payload']['kks'] == '11LAB72AP002']), 1)
+            browser.close()
+            self.assertEqual(errors, [], name)
+
     def test_chromium(self): self.run_engine('chromium')
     def test_firefox(self): self.run_engine('firefox')
     def test_webkit(self): self.run_engine('webkit')
+    def test_member_chromium(self): self.run_member('chromium')
+    def test_member_firefox(self): self.run_member('firefox')
+    def test_member_webkit(self): self.run_member('webkit')
 
 
 if __name__ == '__main__':
