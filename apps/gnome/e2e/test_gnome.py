@@ -1186,10 +1186,13 @@ class FakeNode:
     as AT-SPI's does); `clicks`: how many clicks fail that way before one works (-1: it has no
     action interface, which is what a vanished object answers there)"""
 
-    def __init__(self, role, name='', kids=(), gone=False, clicks=0):
+    def __init__(self, role, name='', kids=(), gone=False, clicks=0, hung=False, showing=True):
         self.role, self.name, self.kids, self.gone, self.clicks, self.clicked = role, name, list(kids), gone, clicks, 0
+        self.hung, self.showing = hung, showing
 
     def _read(self, v):
+        if self.hung:              # another error than "gone": the app does not answer
+            raise GLib.GError('atspi_error: Timeout was reached')
         if self.gone:
             raise GLib.GError('atspi_error: No such interface \u201corg.a11y.atspi.Accessible\u201d on object at path /x')
         return v
@@ -1198,7 +1201,7 @@ class FakeNode:
     def get_role_name(self): return self._read(self.role)
     def get_name(self): return self._read(self.name)
     def get_state_set(self): return self._read(self)
-    def contains(self, state): return True
+    def contains(self, state): return self.showing
     def get_action_iface(self): return None if self.clicks < 0 else self
     def get_n_actions(self): return 1
     def get_action_name(self, i): return 'click'
@@ -1241,6 +1244,16 @@ class Vanished(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "no button named 'Accept' to click"):
             atspi.click_named(root, 'button', 'Accept', timeout=0.5)
 
+    def test_other_errors_and_hidden_nodes_are_not_swallowed(self):
+        root = FakeNode('window', 'w', [FakeNode('box', '', [FakeNode('button', 'Accept', hung=True)])])
+        with self.assertRaisesRegex(GLib.GError, 'Timeout was reached'):
+            list(atspi.nodes(root, 'button'))
+        with self.assertRaisesRegex(GLib.GError, 'Timeout was reached'):
+            atspi.click_named(root, 'button', 'Accept', timeout=0.5)
+        hidden = FakeNode('window', 'w', [FakeNode('button', 'Accept', showing=False)])
+        self.assertEqual(atspi.find_all(hidden, 'button', name='Accept'), [], 'a node that is not showing was counted')
+        self.assertEqual(len(list(atspi.nodes(hidden, 'button'))), 1)
+
     def test_click_looks_again(self):
         root = self.tree()
         self.ok.clicks = 2         # gone twice between the lookup and the click, then there
@@ -1248,7 +1261,7 @@ class Vanished(unittest.TestCase):
         self.assertEqual(self.ok.clicked, 1)
         for never in (10 ** 6, -1):    # never clickable: said, not looped for ever
             self.ok.clicks = never
-            with self.assertRaisesRegex(AssertionError, "button 'Accept' went away each time before it could be clicked"):
+            with self.assertRaisesRegex(AssertionError, "button 'Accept' could not be clicked: each time it had gone"):
                 atspi.click_named(root, 'button', 'Accept', timeout=0.7)
 
 

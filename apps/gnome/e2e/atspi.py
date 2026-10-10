@@ -17,6 +17,13 @@ def app(name, timeout=15):
     raise AssertionError(f'application {name} not on the accessibility bus')
 
 
+def vanished(e):
+    """this AT-SPI error says the object is no longer there (the app removed the widget after we found it). Any other
+    error (a call that timed out on a hung app, a lost bus) is not ours to swallow."""
+    m = str(e)
+    return any(w in m for w in ('No such interface', 'Unknown object', 'UnknownObject', 'No such object path', 'does not exist'))
+
+
 def walk(node, depth=0, maxdepth=60):
     """`node` and everything under it. A node that goes away while it is walked (the app rebuilt that part of the
     screen) ends its own branch only: the rest of the tree is still walked."""
@@ -30,7 +37,9 @@ def walk(node, depth=0, maxdepth=60):
     for i in range(n):
         try:
             c = node.get_child_at_index(i)
-        except GLib.GError:      # gone between the count and the read
+        except GLib.GError as e:      # gone between the count and the read
+            if not vanished(e):
+                raise
             continue
         if c is not None:
             yield from walk(c, depth + 1, maxdepth)
@@ -45,14 +54,15 @@ def nodes(root, role=None, maxdepth=60):
             if role and n.get_role_name() != role:
                 continue
             yield n, n.get_name() or ''
-        except GLib.GError:
-            continue
+        except GLib.GError as e:
+            if not vanished(e):
+                raise
 
 
 def click_named(root, role, name, timeout=10, maxdepth=60):
     """click the node of this role with exactly this name (showing or not). One that vanishes between being found and
-    being clicked is looked up again; with none to click within `timeout` it fails. (For a name only one node has:
-    after a click that failed half-way, the next node of that name would be clicked.)"""
+    being clicked is looked up again; with none to click within `timeout` it fails. With several nodes of that name
+    it is the first in the tree, as `nodes` gives them."""
     t0 = time.time()
     seen = False
     while True:
@@ -63,10 +73,12 @@ def click_named(root, role, name, timeout=10, maxdepth=60):
                     if n.get_action_iface() is None:     # what a vanished node answers instead of failing
                         break
                     return click(n)
-                except GLib.GError:
+                except GLib.GError as e:
+                    if not vanished(e):
+                        raise
                     break            # rebuilt under us: look again
         if time.time() - t0 > timeout:
-            raise AssertionError(f'{role} {name!r} went away each time before it could be clicked' if seen
+            raise AssertionError(f'{role} {name!r} could not be clicked: each time it had gone, or had no action' if seen
                                  else f'no {role} named {name!r} to click')
         time.sleep(0.3)
 
