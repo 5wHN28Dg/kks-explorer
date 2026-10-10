@@ -25,7 +25,8 @@ from test_web_v2 import free_port, Client, CSP_WATCH, PageErrors
 from test_web_requests import png
 
 PW = 'a long password'
-A, B = '11LAB70AA501', '11LAB70AA503'
+# each engine has its own two codes (the server is shared): [the one with a photo, the one that gets a photo offline]
+CODES = {'chromium': ('11LAB70AA501', '11LAB70AA503'), 'firefox': ('11LAB71AA501', '11LAB71AA503'), 'webkit': ('11LAB72AA501', '11LAB72AA503')}
 JXL_1PX = 'data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA=='
 IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
 SHEET_SHOWN = "() => { const i = document.getElementById('sheetimg'); return i && i.complete && i.naturalWidth > 0 }"
@@ -66,10 +67,11 @@ class WebOffline(unittest.TestCase):
         assert boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': PW, 'full_name': 'The Manager',
                                                'position': 'Plant manager'}).get('ok')
         cls.import_sheet('sample', 'Sample sheet')
-        for i, k in enumerate((A, B)):
-            assert boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400 + 200 * i, 300, 520 + 200 * i, 360],
-                            'kks': k, 'isa': '', 'note': ''}}).get('status') == 'approved'
-        cls.add_photo(A, 'Before the download')
+        for j, pair in enumerate(CODES.values()):
+            for i, k in enumerate(pair):
+                assert boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400 + 200 * i, 300 + 80 * j, 520 + 200 * i, 360 + 80 * j],
+                                'kks': k, 'isa': '', 'note': ''}}).get('status') == 'approved'
+            cls.add_photo(pair[0], 'Before the download')
 
     @classmethod
     def import_sheet(cls, sid, name):
@@ -99,6 +101,8 @@ class WebOffline(unittest.TestCase):
         expect(page.locator('#offlineCard')).to_be_visible(timeout=30000)
 
     def engine(self, name):
+        A, B = CODES[name]
+        if self.server.poll() is not None: self.start_server()     # (an engine that failed while "offline" left it stopped)
         with sync_playwright() as p:
             browser = p[name].launch()
             ctx = browser.new_context(viewport={'width': 1200, 'height': 800})

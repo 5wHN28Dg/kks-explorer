@@ -71,6 +71,7 @@ missing.
 | Background work | ✅ Task Scheduler, startup apps, tray [K] | ✅ Background portal (run in background, autostart) [D]; systemd user units [K] | ✅ WorkManager [K] | ❌ Background Sync / Periodic Sync: Blink only, not Safari or Firefox [D] |
 | Notifications | ✅ app notifications (Windows App SDK) [K] | ✅ GNotification / notification portal [K] | ✅ [K] | 🟡 16.4+ only for Home Screen web apps [D] |
 | Storage kept, not evicted | ✅ | ✅ | ✅ | 🟡 `persist()` 15.2+; Home Screen web apps are exempt from the 7-day eviction [D] |
+| The whole plant kept for offline use (the web client's "Download for offline", 2026-10-10) | — (the app holds the data) | — | — | ✅ Service Worker + Cache API 11.1+, IndexedDB; storage quota per origin up to 60% of the disk from 17.0, the same for a Home Screen web app; `estimate()` 17.0+. In a Safari tab the data is deleted after 7 days of Safari use without a visit; a Home Screen web app has its own counter and its own storage (sign in and download inside it). What the pages also use: module workers 15+, `<dialog>` and Web Locks 15.4+, OffscreenCanvas 2D, DecompressionStream and WebAssembly SIMD 16.4+ (each with a fallback), JPEG XL shown natively 17+ [D] |
 
 ## 6. Plant data tooling (R21, R22)
 
@@ -124,6 +125,11 @@ The policy says measure on the target.
 
 - MDN browser-compat-data: SubtleCrypto, SyncManager, PeriodicSyncManager, StorageManager, WebTransport,
   RTCDataChannel, Notification, BarcodeDetector (https://github.com/mdn/browser-compat-data); caniuse jpegxl/webp/avif.
+  Read again 2026-10-10 for the offline web client: OffscreenCanvas, DecompressionStream, StorageManager, LockManager,
+  HTMLDialogElement, Worker (modules), CacheStorage, ServiceWorker, WebAssembly fixed-width SIMD.
+- WebKit on stored website data: the 7-day cap and Home Screen web apps
+  (https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/); quotas, eviction and `persist()`
+  (https://webkit.org/blog/14403/updates-to-storage-policy/).
 - Windows:
   - CNG algorithm identifiers: https://learn.microsoft.com/en-us/windows/win32/seccng/cng-algorithm-identifiers
   - CNG named curves: https://learn.microsoft.com/en-us/windows/win32/seccng/cng-named-elliptic-curves
