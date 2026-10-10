@@ -836,9 +836,10 @@ function pickList(){
       h('button',{type:'button',class:'primary',onclick:()=>d.close()},'Close')));
   d.querySelector('input,textarea,button')?.focus();
 }
-// one submit-many for the selected codes; says how it went and leaves the mode
-async function sendMany(kind,payload,note){
-  const codes=[...multi.codes]; if(!codes.length){ toast('Nothing selected'); return false }
+// one submit-many for the selected codes; says how it went and leaves the mode. `codes`: the selection as it was when
+// the person was asked (a photo is converted for seconds after its dialog closed, and the drawing stays live meanwhile)
+async function sendMany(kind,payload,note,codes=[...multi.codes]){
+  if(!codes.length){ toast('Nothing selected'); return false }
   if(kind==='equipment'){
     // the values this page shows for the fields it changes: a value someone changed meanwhile (or before an offline
     // send goes out) is then a clash (core submitMany bases), not overwritten silently
@@ -864,15 +865,15 @@ function photoForAll(){
   if(pickNothing()) return;
   // the user's rule, as for one photo: the floor first when a code has none, sent with the photo (core submitMany
   // writes it for the codes without one only; nobody has to wait for an approval before the photo)
-  const missing=floorless(multi.codes), okFloor=v=>/^(\d|10)$/.test(v.trim());
+  const codes=[...multi.codes], missing=floorless(codes), okFloor=v=>/^(\d|10)$/.test(v.trim());
   const choose=h('label',{class:'primary',id:'dlgChoose',style:'cursor:pointer'+(missing.length?';display:none':'')},'Choose photo…',h('input',{type:'file',id:'dlgFile',accept:'image/*',capture:'environment',style:'display:none',
     onchange:async ev=>{ const f=ev.currentTarget.files[0], caption=$('#dlgCaption').value.trim(), fl=missing.length?$('#dlgFloor').value.trim():'';
       if(missing.length&&!okFloor(fl)){ ev.currentTarget.value=''; toast('The floor first: a whole number from 0 to 10'); return }
       d.close(); if(!f) return;
-      const p=await photoData(f); if(p) await sendMany('photo',{dataUrl:p.dataUrl,caption,...(fl?{floor:fl}:{})},p.note) }}));
+      const p=await photoData(f); if(p) await sendMany('photo',{dataUrl:p.dataUrl,caption,...(fl?{floor:fl}:{})},p.note,codes) }}));
   const d=dialog('Photo for all',
-    h('p',{class:'sub',style:'margin:0 0 8px'},`One photo for ${nCodes(multi.codes.length)}: it is kept once, every code gets it.`),
-    missing.length?h('div',{class:'field'},h('label',{for:'dlgFloor',id:'dlgFloorLabel'},floorAsk(missing,multi.codes.length)),
+    h('p',{class:'sub',style:'margin:0 0 8px'},`One photo for ${nCodes(codes.length)}: it is kept once, every code gets it.`),
+    missing.length?h('div',{class:'field'},h('label',{for:'dlgFloor',id:'dlgFloorLabel'},floorAsk(missing,codes.length)),
       h('input',{id:'dlgFloor',type:'number',inputmode:'numeric',min:0,max:10,step:1,placeholder:'0–10',style:'width:90px',
         oninput:e=>{ choose.style.display=okFloor(e.currentTarget.value)?'':'none' }}),
       h('div',{class:'sub'},'A photo needs its floor: a whole number from 0 (ground) to 10. It is sent with the photo.')):null,
