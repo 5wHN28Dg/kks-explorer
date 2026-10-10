@@ -623,18 +623,25 @@ proc subRow(a: Api, id: int64): JNode =
   for r in a.n.store.subs():
     if r["id"].i == id: return r
 
+proc sentBy(r: JNode, me: Actor): bool =
+  ## this person's own submission. A `client_id` names a send among its sender's only (#136): it is shown with an open
+  ## photo, and on a node several people submit through (the server, for everyone signed in to the web app) another
+  ## member sending under it must not make the owner's send, or one code of their set, a repeat that is never written.
+  ## The person, not the device: on the server every web user's device is the server's.
+  r["person"].isStr and r["person"].s == me.person
+
 proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
   O(("id", newNull()), ("client_id", clientId), ("entry", newNull()), ("person", S(me.person)), ("kind", S(kind)),
     ("created", I(now div 1000)), ("held", newNull()), ("status", newNull()), ("note", newNull()), ("decided_at", newNull()))
 
 proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64,
                  dupChecked = false): JNode =
-  ## a change already in its §9 body form: the web/API submissions above and the server's submit-file (a repeated
-  ## client_id returns the first submission, so each is written once). `dupChecked`: the caller has looked for this
+  ## a change already in its §9 body form: the web/API submissions above and the server's submit-file (a client_id
+  ## this person has sent before returns that submission, so each is written once). `dupChecked`: the caller has looked for this
   ## client_id already (submitMany: one pass over the submissions for the whole set, not one per code)
   if cid.isStr and not dupChecked:
     for old in a.n.store.subs():
-      if old["client_id"].isStr and old["client_id"].s == cid.s:
+      if old["client_id"].isStr and old["client_id"].s == cid.s and old.sentBy(me):
         let s = a.subStatus(old)
         return O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
   try: checkData(kind, body)
@@ -677,8 +684,8 @@ proc floorBody(kks, floor: string): JNode =
   ## the equipment change a floor sent with a photo is written as: it fills an empty floor, nothing else
   O(("kks", S(kks)), ("changes", O(("floor", S(floor)))), ("base", O(("floor", S("")))))
 
-proc submitPrep(a: Api, clientId, noteIn: JNode): (JNode, string, JNode) =
-  ## (client id, request note, the earlier submission's answer when this client id was already sent, else nil)
+proc submitPrep(a: Api, me: Actor, clientId, noteIn: JNode): (JNode, string, JNode) =
+  ## (client id, request note, the earlier submission's answer when this person already sent this client id, else nil)
   if noteIn != nil and not noteIn.isNull and (noteIn.kind != jStr or noteIn.s.runeLen > 500): bad("note: up to 500 characters")
   let requestNote = if noteIn != nil and noteIn.isStr: noteIn.s.strip else: ""
   let cid = if clientId == nil: newNull() else: clientId
@@ -687,14 +694,14 @@ proc submitPrep(a: Api, clientId, noteIn: JNode): (JNode, string, JNode) =
   var dup: JNode = nil
   if cid.isStr:
     for old in a.n.store.subs():
-      if old["client_id"].isStr and old["client_id"].s == cid.s:
+      if old["client_id"].isStr and old["client_id"].s == cid.s and old.sentBy(me):
         let s = a.subStatus(old)
         dup = O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
         break
   (cid, requestNote, dup)
 
 proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64): JNode =
-  let (cid, requestNote, dup) = a.submitPrep(clientId, noteIn)
+  let (cid, requestNote, dup) = a.submitPrep(me, clientId, noteIn)
   if dup != nil: return dup
   var floorRes: JNode = nil
   var k, fl = ""
@@ -725,7 +732,7 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
   ## One photo, or one change to the equipment fields (a note, a place), for several codes at once: an ordinary
   ## submission per code, so every device reads them as before (PROTOCOL-v2 §9 has one kks per entry). A photo's image
   ## is kept once and every entry points to it. `client_id` is a prefix: code i is sent as "<prefix>-<i>", so a retry
-  ## doesn't duplicate anything.
+  ## doesn't duplicate anything (a client_id is its sender's: only this person's earlier sends count).
   ##
   ## A photo's payload may carry `floor`, as a single photo's does (`submit`), and the same rule holds for each code by
   ## itself: it is written as that code's floor proposal, before its photo, only when the code has no floor and this
@@ -748,18 +755,18 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
   let prefix = if clientId == nil or clientId.isNull: "" else: (if clientId.isStr: clientId.s else: "\0")
   if prefix.len > 0 and not (prefix.len in 8..56 and prefix.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})):
     bad("bad client_id")
-  let (_, requestNote, _) = a.submitPrep(newNull(), noteIn)      # the note first: nothing is kept for a refused one
+  let (_, requestNote, _) = a.submitPrep(me, newNull(), noteIn)      # the note first: nothing is kept for a refused one
   proc cidOf(i: int): JNode = (if prefix.len == 0: newNull() else: S(prefix & "-" & $i))
   var fl = ""
   if kind == "photo":
     fl = textOf(payload.get("floor"), 8)
     if not floorOk(fl): bad(FloorRule)
-  # earlier sends of this set (a retry): one pass over the submissions, not one per code
+  # this person's earlier sends of this set (a retry): one pass over the submissions, not one per code
   var dups = initTable[string, JNode]()
   if prefix.len > 0:
     for old in a.n.store.subs():
-      if old["client_id"].isStr and (old["client_id"].s.startsWith(prefix & "-") or
-                                     old["client_id"].s.startsWith("floor." & prefix & "-")):
+      if old["client_id"].isStr and old.sentBy(me) and (old["client_id"].s.startsWith(prefix & "-") or
+                                                        old["client_id"].s.startsWith("floor." & prefix & "-")):
         let st = a.subStatus(old)
         dups[old["client_id"].s] = O(("id", old["id"]), ("status", S(st.status)), ("note", S(st.note)), ("duplicate", B(true)))
   # 1. every body, checked

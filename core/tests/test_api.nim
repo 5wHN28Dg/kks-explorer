@@ -602,6 +602,64 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check b["people"].len == n0
     for x in b["people"].elems: check x["name"].s != "Quiet Member"
 
+  test "a client_id is its sender's: another member sending under it doesn't make the owner's send a repeat (#136)":
+    # two members on one node, as two people signed in to the server's web app are
+    proc member(user, full: string): Actor =
+      let sk = P.p256Generate()
+      check mgrApi.call(mgr, "POST", "/api/devices/import-request", newObj(@[("request",
+        P.joinRequest(sk, user, full, newStr("Technician"), "server", now() div 1000))])).status == 200
+      let (ok, a) = mgrNode.actorOf(P.peerId(sk), sk)
+      check ok and not a.isAdmin
+      a
+    let omar = member("omar", "Omar Owner")
+    let bea = member("bea", "Bea Other")
+    proc photosOf(who: Actor, kks: string): int =
+      for eid, e in mgrNode.entries:
+        if e["type"].s == "photo" and e["body"]["kks"].s == kks and mgrNode.run.authors.getOrDefault(eid) == who.person:
+          inc result
+    proc many(codes: openArray[string], cid, data: string, floor = ""): JNode =
+      var p = newObj(@[("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0a" & data))), ("caption", newStr(""))])
+      if floor.len > 0: p["floor"] = newStr(floor)
+      var ks = newArr()
+      for c in codes: ks.elems.add newStr(c)
+      newObj(@[("kind", newStr("photo")), ("kks", ks), ("payload", p), ("client_id", newStr(cid))])
+    const A = "11LAB90AA601"
+    const B = "11LAB90AA602"
+    const C = "11LAB90AA603"
+    # a single photo: Omar's is open, so Bea can read its client_id
+    let first = mgrApi.call(omar, "POST", "/api/submit", photoReq(A, "", "omar one", cid = "omar-photo-1"))
+    check first.json["status"].s == "pending"
+    var seen = ""
+    for s in mgrApi.call(bea, "GET", "/api/submissions").json["submissions"].elems:
+      if s["id"].i == first.json["id"].i and s["client_id"].isStr: seen = s["client_id"].s
+    check seen == "omar-photo-1"
+    # Bea's own send under it is hers: written, not answered with Omar's submission
+    let hers = mgrApi.call(bea, "POST", "/api/submit", photoReq(A, "", "bea one", cid = "omar-photo-1"))
+    check hers.json.get("duplicate") == nil and hers.json["id"].i != first.json["id"].i
+    check photosOf(bea, A) == 1
+    # and each one's resend is still a repeat of their own
+    let againO = mgrApi.call(omar, "POST", "/api/submit", photoReq(A, "", "omar one", cid = "omar-photo-1"))
+    check againO.json["duplicate"].b and againO.json["id"].i == first.json["id"].i
+    let againB = mgrApi.call(bea, "POST", "/api/submit", photoReq(A, "", "bea one", cid = "omar-photo-1"))
+    check againB.json["duplicate"].b and againB.json["id"].i == hers.json["id"].i
+    check photosOf(omar, A) == 1 and photosOf(bea, A) == 1
+    # a set of codes: Bea sends single photos under two of the set's ids before Omar's set arrives
+    check mgrApi.call(bea, "POST", "/api/submit", photoReq(B, "", "bea two", cid = "omar-set-01-1")).json["status"].s == "pending"
+    check mgrApi.call(bea, "POST", "/api/submit", photoReq(C, "", "bea three", floor = "3", cid = "omar-set-01-2")).json["floor"]["status"].s == "pending"
+    let r = mgrApi.call(omar, "POST", "/api/submit-many", many([A, B, C], "omar-set-01", "omar set", floor = "2"))
+    check r.status == 200
+    var ids: seq[int64]
+    for x in r.json["results"].elems:
+      check x.get("duplicate") == nil and x["status"].s == "pending"
+      check x["floor"]["status"].s == "pending" and x["floor"].get("duplicate") == nil
+      ids.add x["id"].i
+    check photosOf(omar, A) == 2 and photosOf(omar, B) == 1 and photosOf(omar, C) == 1
+    # Omar's retry of the set repeats his own, each one
+    let entries = mgrNode.entries.len
+    let r2 = mgrApi.call(omar, "POST", "/api/submit-many", many([A, B, C], "omar-set-01", "omar set", floor = "2"))
+    for i, x in r2.json["results"].elems: check x["duplicate"].b and x["id"].i == ids[i]
+    check mgrNode.entries.len == entries
+
 import kks/bundle
 
 suite "bundles":
