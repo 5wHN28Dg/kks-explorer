@@ -357,8 +357,9 @@ const VIEWS={
          :[h('div',{class:'sub'},'Only to an existing admin. They must accept; you then become an admin. If the manager account is ever lost, whoever runs the server can name another account manager with ',
              h('span',{class:'mono'},'kks-server reset-manager --user NAME'),'.'),T]));
     }
+    await K.offline.load(); out.push(K.offline.card());
     out.push(h('div',{class:'card server-only'},h('h3',null,'This device'),table(
-        h('tr',null,h('td',null,'Offline app'),h('td',null,sw?'installed: drawings and data you have opened work without the server':secure?'installing… reload once'
+        h('tr',null,h('td',null,'Offline app'),h('td',null,sw?'installed: drawings and data you have opened work without the server (all of it with the offline copy above)':secure?'installing… reload once'
           :[h('span',{class:'del'},'not available'),': needs HTTPS (or localhost). Over plain http on the LAN the page works only while connected.'])),
         h('tr',null,h('td',null,'Offline access until'),h('td',null,(lease?new Date(lease.lease_until).toLocaleString():'-')+' ',h('span',{class:'sub'},`(renewed each time you connect; ${ME.offline_days} days)`))),
         h('tr',null,h('td',null,'Queued changes'),h('td',null,K.outbox.length))),

@@ -70,7 +70,9 @@ async function load(){
     K.box(pd?'Waiting for the drawings':'Plant data not available',msg,'Retry',()=>location.reload());
     if(pd){ K.onChange(why=>{ if(why==='plantdata') location.reload() }); K.watchChanges() }
     return }
-  if(SHEETS.some(s=>s.levels)) PDV=String((await api('/api/sync/status').catch(()=>null))?.plant_data?.active??'');
+  if(SHEETS.some(s=>s.levels)){   // offline: the version this device last saw (the saved drawings carry it in their URLs)
+    const pd=(await api('/api/sync/status').catch(()=>null))?.plant_data;
+    if(pd){ PDV=String(pd.active??''); K.idb.set('pdv',PDV).catch(()=>{}) } else PDV=(await K.idb.get('pdv').catch(()=>null))||'' }
   try{ STATE={mine:[],...await api('/api/state')} }catch(e){ if(e.status===401) return location.reload(); toast('Offline: no saved copy of notes/photos on this device yet') }
   mergeTags();
   // drafted descriptions (optional plant data; core model.parseDescriptions): code -> {text, basis}
