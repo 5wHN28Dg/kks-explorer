@@ -130,6 +130,40 @@ class ServerUnit(unittest.TestCase):
             self.assertIn('install-server-system.sh', r.stdout)
             subprocess.run(['chmod', '-R', 'u+w', home])
 
+    def test_install_copies_every_page_file_the_server_serves(self):
+        """2026-10-10: apple-touch-icon.png was added to the server's list and the service worker's, not to the
+        installer's; the deployed server answered 404 for it, and a service worker whose list has a missing file does
+        not install at all (no offline)"""
+        with open(os.path.join(REPO, 'platform', 'linux', 'src', 'kksl', 'server.nim')) as f:
+            table = re.search(r'\n  Shell = \{(.*?)\}\.toTable', f.read(), re.S).group(1)
+        served = re.findall(r'"/[^"]*"\s*:\s*"([^"]+)"', table)
+        self.assertEqual(len(served), table.count(':'), 'an entry of the Shell table was not understood')
+        served = set(served)
+        self.assertIn('index.html', served)
+        self.assertIn('sw.js', served)
+        with open(os.path.join(REPO, 'sw.js')) as f:
+            shell = re.search(r'const SHELL_FILES = \[(.*?)\];', f.read(), re.S).group(1)
+        worker = re.findall(r"""['"](/[^'"]*)['"]""", shell)
+        self.assertEqual(len(worker), shell.count(',') + 1, 'an entry of SHELL_FILES was not understood')
+        worker = {p.lstrip('/') for p in worker} - {''}
+        self.assertIn('vendor/fonts/courses.css', worker)
+        with tempfile.TemporaryDirectory() as tmp:
+            r, home = self.install(tmp, KKS_SERVER_UNIT='system')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            app = os.path.join(home, 'kks-server', 'app', 'current')
+            # the program's own data, which the pages fetch by name (/data/kks.json) and the server reads (courses)
+            data = {'data/kks.json'} | {os.path.join('data', 'courses', c)
+                                        for c in os.listdir(os.path.join(REPO, 'data', 'courses'))}
+            self.assertGreater(len(data), 1)
+            missing = sorted(f for f in served | worker | data if not os.path.exists(os.path.join(app, f)))
+            # unchanged files keep their times: the offline list's version is made of them, and a new time makes every
+            # device with an offline copy fetch the file again
+            for f in ('index.html', 'vendor/fonts/courses.css', 'data/kks.json'):
+                self.assertEqual(int(os.path.getmtime(os.path.join(app, f))),
+                                 int(os.path.getmtime(os.path.join(REPO, f))), f)
+            subprocess.run(['chmod', '-R', 'u+w', home])
+            self.assertEqual(missing, [])
+
     def test_user_install_rejects_an_unknown_unit_kind(self):
         with tempfile.TemporaryDirectory() as tmp:
             r, home = self.install(tmp, KKS_SERVER_UNIT='sytem')
