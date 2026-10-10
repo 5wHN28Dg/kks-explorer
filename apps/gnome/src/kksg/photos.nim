@@ -450,6 +450,8 @@ proc sendMany(w: Win, q: QueuedPhoto, jxlData: string) =
   var body = newObj(@[("kind", newStr("photo")), ("kks", arr), ("client_id", newStr(q.clientId)),
                       ("payload", newObj(@[("caption", newStr(q.caption)),
                                            ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))]))])
+  # the floor asked before the picture: written first for each code that still has none (core submitMany)
+  if q.floor.len > 0: body["payload"]["floor"] = newStr(q.floor)
   if q.note.strip.len > 0: body["note"] = newStr(q.note.strip)
   let r = w.a.call("POST", "/api/submit-many", body)
   var pending, held = 0
@@ -603,13 +605,11 @@ proc floorsMissing*(w: Win, codes: openArray[string]): seq[string] =
            s(p["changes"], "floor").strip.len > 0: known = true
     if not known: result.add k
 
-proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
-  ## the user's rule: a photo needs its floor. Asked before the picture, sent with it.
-  let d = adw_alert_dialog_new(("Which floor is " & kks & " on?").cstring,
-    "A photo needs its floor, and this equipment has none yet. Enter the floor: a whole number from 0 (ground) to 10. It is sent with the photo.".cstring)
+proc askFloorDialog(w: Win, heading, body, entryLabel: string, fn: proc (floor: string)) =
+  let d = adw_alert_dialog_new(heading.cstring, body.cstring)
   let e = gtk_entry_new()
   gtk_entry_set_placeholder_text(e, "Floor, 0 to 10")
-  setAccessibleLabel(e, "Floor of " & kks)
+  setAccessibleLabel(e, entryLabel)
   adw_alert_dialog_set_extra_child(d, e)
   adw_alert_dialog_add_response(d, "cancel", "Cancel")
   adw_alert_dialog_add_response(d, "yes", "Continue")
@@ -624,6 +624,25 @@ proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
       return
     fn(f))
   present(d, w.window)
+
+proc askFloor(w: Win, kks: string, fn: proc (floor: string)) =
+  ## the user's rule: a photo needs its floor. Asked before the picture, sent with it.
+  w.askFloorDialog("Which floor is " & kks & " on?",
+    "A photo needs its floor, and this equipment has none yet. Enter the floor: a whole number from 0 (ground) to 10. It is sent with the photo.",
+    "Floor of " & kks, fn)
+
+proc floorAsk*(missing: openArray[string], all: int): string =
+  ## what the floor asked before one photo of several codes is for: the codes without one
+  result = "Floor for " & missing[0 ..< min(5, missing.len)].join(", ") &
+           (if missing.len > 5: " and " & $(missing.len - 5) & " more" else: "") & ": "
+  if missing.len == all: result.add (if all == 1: "it has none yet" else: "they have none yet")
+  else: result.add (if missing.len == 1: "this one has" else: "these have") & " none yet; the others keep theirs"
+
+proc askFloorFor*(w: Win, missing: seq[string], all: int, fn: proc (floor: string)) =
+  ## the same question before one photo of several codes ("Photo for all"): one floor, for the codes without one
+  w.askFloorDialog("Which floor are they on?",
+    floorAsk(missing, all) & ".\nA photo needs its floor: a whole number from 0 (ground) to 10. It is sent with the photo.",
+    "Floor of the codes without one", fn)
 
 proc hasPlate(w: Win, kks: string): bool =
   ## the code has a tag plate photo, or one is on its way
@@ -668,9 +687,10 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
   if w.floorKnown(kks): go("")
   else: w.askFloor(kks, go)
 
-proc photoForCodes*(w: Win, codes: seq[string], queued: proc ()) =
+proc photoForCodes*(w: Win, codes: seq[string], floor: string, queued: proc ()) =
   ## one picture for several codes ("Photo for all", multi.nim): from a file, marked up in the editor, then queued
-  ## like any photo (kept on disk, compressed on the worker thread, sent with submit-many); `queued` runs once it is
+  ## like any photo (kept on disk, compressed on the worker thread, sent with submit-many); `queued` runs once it is.
+  ## `floor`: asked first when a code has none ("" otherwise); it goes with the photo, for those codes
   # tests: KKS_PHOTO_FILE names the picture instead of the file chooser (as KKS_CAMERA_FILE for the camera)
   let pick = proc (title: string, fn: proc (path: string)) =
     if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
@@ -681,7 +701,7 @@ proc photoForCodes*(w: Win, codes: seq[string], queued: proc ()) =
       w.toast("That file could not be read as a picture.")
       return
     w.annotate(px, iw, ih, proc (rgb: seq[byte], ow, oh: int, caption, note: string) =
-      if w.enqueue(rgb, ow, oh, "", caption, note, "", codes): idle(proc () = queued())))   # not inside the click
+      if w.enqueue(rgb, ow, oh, "", caption, note, floor, codes): idle(proc () = queued())))   # not inside the click
 
 
 proc photoSection*(w: Win, kks: string): W =
