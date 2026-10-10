@@ -1,7 +1,7 @@
 # The project's test suites on x86-64 (issue #6): one job per suite, so
 # branch protection can require each. Linux jobs run on ubuntu-26.04, the maintainer's OS: its GTK 4.22,
 # libadwaita 1.9, libjxl 0.11 and zxing-cpp are the versions the apps are built against (apps/gnome/README,
-# importer/README). Windows is cross-built with mingw-w64 like on the maintainer's machine (apps/windows/README) and
+# importer/README). Windows is cross-built with llvm-mingw like on the maintainer's machine (apps/windows/README) and
 # tested on a windows-2022 runner. What is not covered here (the full Windows UIA e2e, real phones) is listed in the
 # PR that added this file and in the wiki's Development page.
 name: Tests
@@ -318,29 +318,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-nim
         with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; zlib, libjxl, zxing-cpp (pinned by SHA-256 in the script), SQLite
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; llvm-mingw, zlib, libjxl, zxing-cpp (pinned by SHA-256 in the scripts), SQLite
         with:
           path: |
-            ~/.local/kksdev/win64
+            ~/.local/kksdev/llvm-mingw
+            ~/.local/kksdev/winx64
             ~/.local/kksdev/src/sqlite-amalgamation-3530400
-          key: win64-${{ env.IMAGE }}-${{ hashFiles('platform/windows/build-deps.sh', 'android/nim/fetch_sqlite.sh') }}
-      - name: mingw-w64 13 (GCC 13, posix threads, decision 0033), the libraries
+          key: winx64-${{ env.IMAGE }}-${{ hashFiles('platform/windows/build-deps.sh', 'platform/windows/fetch-llvm-mingw.sh', 'android/nim/fetch_sqlite.sh') }}
+      - name: llvm-mingw (pinned, decisions 0047 and 0053), the libraries
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -yq --no-install-recommends g++-mingw-w64-x86-64-posix binutils-mingw-w64-x86-64 >/dev/null
-          x86_64-w64-mingw32-gcc --version | head -1
-          KKS_MINGW_BIN=/usr/bin sh platform/windows/build-deps.sh
+          sh platform/windows/build-deps.sh
+          ~/.local/kksdev/llvm-mingw/bin/x86_64-w64-mingw32-clang --version | head -1
       - name: The app, the UI Automation driver, the core and platform tests
-        env:
-          KKS_MINGW_BIN: /usr/bin
         run: |
           mkdir -p out/core out/plat
           NIM=nim sh apps/windows/build.sh "$PWD/out/Walkdown.exe"
           (cd core && KKS_WIN_OUT=/tmp/kkswin-core nim wintests) && cp /tmp/kkswin-core/*.exe out/core/
           (cd platform/linux && KKS_WIN_OUT=/tmp/kkswin-plat nim wintests) && cp /tmp/kkswin-plat/*.exe out/plat/
-          nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console --nimcache:/tmp/kkswin-jxl -o:out/plat/test_jxl_limit.exe apps/windows/tests/test_jxl_limit.nim
-          nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console --nimcache:/tmp/kkswin-dark -o:out/plat/test_dark.exe apps/windows/tests/test_dark.nim
-          nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console --nimcache:/tmp/kkswin-tiles -o:out/plat/test_tiles.exe apps/windows/tests/test_tiles.nim
+          nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-jxl -o:out/plat/test_jxl_limit.exe apps/windows/tests/test_jxl_limit.nim
+          nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-dark -o:out/plat/test_dark.exe apps/windows/tests/test_dark.nim
+          nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-tiles -o:out/plat/test_tiles.exe apps/windows/tests/test_tiles.nim
           ls -l out out/core out/plat
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

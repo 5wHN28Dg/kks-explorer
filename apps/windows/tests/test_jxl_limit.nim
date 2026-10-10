@@ -1,7 +1,7 @@
 ## The Windows app's JPEG XL decoding (kks_d2d.cpp) refuses pictures bigger than 100 MP before allocating (#37): a
 ## header that claims 100000 x 100000 px (40 GB of pixels) is refused; a real picture still decodes.
 ## Cross-built like the app (CI's windows-build puts it in out/plat, windows-test runs it); runs on Windows:
-##   nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console -o:test_jxl_limit.exe apps/windows/tests/test_jxl_limit.nim
+##   nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console -o:test_jxl_limit.exe apps/windows/tests/test_jxl_limit.nim
 import std/[unittest, strutils]
 
 {.compile("../src/kkswin/kks_d2d.cpp", "-std=c++17").}

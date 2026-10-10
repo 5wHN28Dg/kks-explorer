@@ -4,7 +4,9 @@
 - each listed source has what DEP-8 asks for: name, version, URL, a SHA-256-or-stronger hash or a full commit,
   a license;
 - wrangler is pinned exactly in relay/package.json and package-lock.json, with integrity hashes;
-- the Windows zlib is built without its gz* file functions (#58; needs the mingw-w64 toolchain, else skipped).
+- the Windows toolchain is llvm-mingw alone (0053): Ubuntu's mingw-w64/GCC/binutils packages are neither fetched nor
+  listed;
+- the Windows zlib is built without its gz* file functions (#58; needs the llvm-mingw toolchain, else skipped).
   .venv/bin/python -m unittest tests.test_pinned_sources"""
 import glob, json, os, re, shutil, subprocess, tempfile, unittest
 
@@ -77,8 +79,27 @@ class PinnedSources(unittest.TestCase):
     def test_known_sources_listed(self):
         names = {c['name'] for c in self.bom['components']}
         for n in ('libjxl', 'highway', 'brotli', 'skcms', 'zxing-cpp', 'zlib', 'mupdf', 'sqlite-amalgamation', 'emsdk',
-                  'nim', 'llvm-mingw', 'gcc-mingw-w64-x86-64-posix', 'osslsigncode'):
+                  'nim', 'llvm-mingw', 'osslsigncode'):
             self.assertIn(n, names)
+
+    def test_no_gcc_mingw_toolchain(self):
+        """0053: both Windows architectures build with llvm-mingw; the GCC cross toolchain from Ubuntu's packages is
+        gone from the list, the scripts and CI"""
+        gnu = re.compile(r'mingw-w64-(x86-64|common|base)|gcc-mingw|g\+\+-mingw|binutils-mingw|x86_64-w64-mingw32-g(cc|\+\+)'
+                         r'|-gcc-posix|\.windows\.gcc\.|KKS_MINGW_BIN|kksdev/mingw\b|kksdev/win64\b')
+        self.assertEqual([c['name'] for c in self.bom['components'] if gnu.search(c['name'])], [])
+        files = [f for pat in SCRIPTS + ['.github/workflows/*.yml', '**/config.nims', 'apps/windows/*.sh',
+                                         'platform/windows/*.nims']
+                 for f in glob.glob(os.path.join(REPO, pat), recursive=True)]
+        self.assertFalse(os.path.exists(os.path.join(REPO, 'platform', 'windows', 'fetch-mingw.sh')))
+        for f in sorted(set(files)):
+            with open(f, encoding='utf-8') as fh:
+                text = fh.read()
+            self.assertIsNone(gnu.search(text), os.path.relpath(f, REPO))
+            # a config.nims for Windows builds without the shared settings would fall back to Nim's default
+            # x86_64-w64-mingw32-gcc from PATH
+            if f.endswith('config.nims') and 'mingw' in text:
+                self.assertRegex(text, r'include "[./]*(platform/windows/|windows/)?toolchain\.nims"', os.path.relpath(f, REPO))
 
 
 class Relay(unittest.TestCase):
@@ -98,22 +119,24 @@ class Relay(unittest.TestCase):
         self.assertIn('npm ci', readme)
 
 
-MINGW = os.path.expanduser('~/.local/kksdev/mingw/usr/bin')
+LLVM_MINGW = os.path.expanduser('~/.local/kksdev/llvm-mingw/bin')
 
 
-@unittest.skipUnless(os.path.exists(os.path.join(MINGW, 'x86_64-w64-mingw32-gcc-posix')), 'no mingw-w64 toolchain')
+@unittest.skipUnless(os.path.exists(os.path.join(LLVM_MINGW, 'x86_64-w64-mingw32-clang')), 'no llvm-mingw toolchain')
 class WindowsZlib(unittest.TestCase):
     def test_no_gz_functions(self):
         d = tempfile.mkdtemp(prefix='kks-zlib-')
         try:
+            os.makedirs(os.path.join(d, 'src', 'dl'))
+            os.symlink(os.path.dirname(LLVM_MINGW), os.path.join(d, 'llvm-mingw'))   # (fetch-llvm-mingw.sh checks its version)
             cached = os.path.expanduser('~/.local/kksdev/src/dl/zlib.tar.gz')
             if os.path.exists(cached):   # (build-deps.sh checks its hash before use)
-                os.makedirs(os.path.join(d, 'src', 'dl'))
                 shutil.copy(cached, os.path.join(d, 'src', 'dl'))
-            env = dict(os.environ, KKS_DEV=d, KKS_MINGW_BIN=MINGW, KKS_WIN_LIBS='zlib')
+            env = dict(os.environ, KKS_DEV=d, KKS_WIN_LIBS='zlib')
+            env.pop('KKS_WIN_ARCH', None)
             subprocess.run(['sh', os.path.join(REPO, 'platform', 'windows', 'build-deps.sh')], env=env, check=True,
                            stdout=subprocess.DEVNULL, timeout=600)
-            members = subprocess.run([os.path.join(MINGW, 'x86_64-w64-mingw32-ar'), 't', os.path.join(d, 'win64', 'lib', 'libz.a')],
+            members = subprocess.run([os.path.join(LLVM_MINGW, 'llvm-ar'), 't', os.path.join(d, 'winx64', 'lib', 'libz.a')],
                                      capture_output=True, text=True, check=True).stdout.split()
             self.assertIn('deflate.o', members)
             self.assertIn('inflate.o', members)

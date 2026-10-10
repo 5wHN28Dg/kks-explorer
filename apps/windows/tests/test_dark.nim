@@ -1,7 +1,7 @@
 ## Dark drawings on Windows: kks_d2d.cpp's kks_dark_rgb (the worker threads turn tiles and overview levels with it) is
 ## a copy of apps/common/darkcolor.nim darkRgb; it must give the same colour for every 8-bit RGB colour.
 ## Cross-built like the app (CI's windows-build puts it in out/plat, windows-test runs it); runs on Windows:
-##   nim c --os:windows -d:mingw --cpu:amd64 -d:release --app:console -o:test_dark.exe apps/windows/tests/test_dark.nim
+##   nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console -o:test_dark.exe apps/windows/tests/test_dark.nim
 import std/unittest
 import ../../common/darkcolor
 

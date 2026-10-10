@@ -23,7 +23,7 @@ ARM64 hardware?
 
 - **Windows ARM64:** cross-built here with llvm-mingw (`KKS_WIN_ARCH=aarch64` for `platform/windows/build-deps.sh`,
   `apps/windows/build.sh`, `packaging/windows/make-msix.sh`); `Walkdown-arm64.msix` signed here like the x64 one (the
-  key never leaves this machine). x86_64 stays on mingw-w64's gcc, unchanged.
+  key never leaves this machine). x86_64 stays on mingw-w64's gcc, unchanged (until 0053 moved it to llvm-mingw too).
 - **Linux ARM64:** `walkdown-aarch64.flatpak` from the `ARM64` workflow (`flatpak-arm64` job) on an ARM64 runner;
   the release takes that artifact (Flatpak bundles are not signed; the signed release manifest lists its hash).
 - **Tests on the target:** the workflow runs the Windows platform tests and the app's start on `windows-11-arm`, and
