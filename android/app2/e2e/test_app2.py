@@ -327,6 +327,10 @@ class Phone(unittest.TestCase):
             assert r.get('status') == 'approved', r
         r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': codes[3], 'changes': {'floor': '2'}, 'base': {'floor': ''}}})
         assert r.get('status') == 'approved', r
+        # one more code without a floor, on the second sheet: never in a photo here (picked with 713 below, while 713's floor is only in the queue)
+        extra = '11LAB70AA715'
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'second', 'bbox': [700, 600, 820, 660], 'kks': extra, 'isa': '', 'note': ''}})
+        assert r.get('status') == 'approved', r
         self.member('mira', 'Mira Member', 'mira password 1')
         w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
 
@@ -416,6 +420,21 @@ class Phone(unittest.TestCase):
             self.assertFalse(ui.present('4 selected', exact=True), 'still selecting after the photo was queued')
             # the floor waiting in the queue for both codes is used again without asking
             again('the floor was asked again for codes whose floor is queued with a photo')
+            # … but a floor that only rides on a queued photo is not a known floor (#144): picked with a code that has
+            # none anywhere, that code is asked for again, with the other (one photo carries one floor for its codes).
+            # Asked for 715 alone, the title would read "Which floor is it on?"; the queued floor used again, no question
+            ui.tap('More', exact=True)
+            ui.tap('Select tags', exact=True)
+            for c in (codes[2], extra):
+                ui.type_into('Search KKS or description', c[2:])
+                ui.tap(c, exact=True)
+                ui.tap('Clear the search', exact=True)
+            ui.find('2 selected', exact=True)
+            ui.tap('Photo for all', exact=True)
+            ui.find('Which floor are they on?', exact=True, timeout=10)
+            ui.find(f'No floor yet: {codes[2]}, {extra}.')
+            ui.tap('Cancel', exact=True)
+            ui.tap('Done', exact=True)
             # the job is on disk once its .json is there (a full camera frame takes a moment to seal)
             if ui.debuggable(PKG):
                 self.wait_server(lambda: any(n.endswith('.json') for n in ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()),
@@ -458,7 +477,7 @@ class Phone(unittest.TestCase):
                     self.boss.req('POST', f'/api/submissions/{x["id"]}/reject', {})
             # the later tests expect the drawings without these marks
             for a in self.boss.req('GET', '/api/state').get('added_tags', []):
-                if a.get('kks') in codes:
+                if a.get('kks') in codes + [extra]:
                     self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': a['id']}})
             self.leave('mira')
 
