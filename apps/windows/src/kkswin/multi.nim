@@ -189,6 +189,9 @@ proc startPicking*(w: Win) =
 proc listWindow(w: Win) =
   ## the selected codes, each with a check box and the drawings it is on: turn a mistake off (on again puts it back);
   ## "Add codes" takes codes typed or pasted, of any drawing
+  if listWin != nil and IsWindow(listWin) != 0:       # one List: it follows the selection
+    SetForegroundWindow(listWin)
+    return
   var hw: HWND
   let (h, p) = w.roundPopup("Selected codes", 480, 560)
   hw = h
@@ -243,14 +246,10 @@ proc listWindow(w: Win) =
   SetFocus(e)
   listWin = hw
   listRefresh = proc () =
-    # codes that left the selection elsewhere (sent, or unselected on the drawing) leave the list; what is typed stays
+    # a code selected elsewhere gets a row, one unselected elsewhere keeps its row, off; what is typed stays
+    # (the field's line breaks are CR LF, and the field makes them from LF itself)
     if IsWindow(e) == 0: return
-    let typed = e.text
-    var rows: seq[string]
-    for k in codes:
-      if k in w.picked: rows.add k
-    codes = rows
-    fill(typed)
+    fill(e.text.replace("\r\n", "\n"))
   ShowWindow(hw, SW_SHOW)
 
 proc clientPrefix(): string =

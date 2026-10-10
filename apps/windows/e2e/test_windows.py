@@ -346,9 +346,9 @@ class Windows(unittest.TestCase):
             # the List: typed codes (lower case, commas, a line break), one unknown (named, left in the field), one
             # already there; each row names the code's drawings
             'click\tList', 'wait\tSelected codes\t10', 'state\t~%s  (\ton' % p4, 'state\t~Other drawing)\ton',
-            # the open List follows the selection: a code unselected from the search leaves it, and comes back
+            # the open List follows the selection: a code unselected from the search is off there, and on again
             search + p1[2:], 'select\t~' + p1, 'click\tSelect or unselect', 'wait\t1 selected\t10',
-            'gone\t~%s  (' % p1, 'state\t~%s  (\ton' % p4,
+            'state\t~%s  (\toff' % p1, 'state\t~%s  (\ton' % p4,
             'select\t~' + p1, 'click\tSelect or unselect', 'wait\t2 selected\t10', 'state\t~%s  (\ton' % p1,
             'settext\t%s\t%s, %s\\n11XXX99ZZ999 %s' % (codes_field, p2.lower(), p3, p1), 'click\tAdd codes',
             'wait\t~2 codes added · 1 already selected · not on any drawing, not added: 11XXX99ZZ999 · 4 selected\t10',
