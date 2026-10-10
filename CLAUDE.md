@@ -196,8 +196,14 @@ in `CLAUDE.local.md` ("Deployment"), never in tracked files.
     ```
 
     The default host GPU path crashed every few minutes on this Iris Xe; swiftshader was too slow (System UI ANR).
-    Its memory grows to the 8 GiB cap in about 18 minutes of tests, and it is then killed: restart it between long
-    runs (test_app2 in two halves).
+    Its memory grows by about 0.2 GiB for every minute of tests, from 3.7 GiB, and at the 8 GiB cap it is killed:
+    a fresh emulator for each half of test_app2 (17 tests, about 31 minutes in all; a 15-minute half ends near
+    6.7 GiB) and for test_direct. It does not slow down on the way (#150: reading the screen took 2.0 s at 3.7 GiB
+    and at 6.9 GiB).
+  - Every test_app2 test starts its own server and clears the app (#150), so any order and any split is a valid
+    run, and "the Android e2e passed" means every test did, in however many parts. With `KKS_E2E_DIAG=folder` each
+    test's time and the emulator's memory go to `diag.log` there, and a failed wait saves a screenshot and the
+    screens read before it; the failure message itself lists what was on screen.
   - The e2e tests (`test_app2`, `test_direct`, `test_update`) uninstall and reinstall `io.github.walkdown`. Run them
     only with `ANDROID_SERIAL=emulator-…`: the user's Honor holds their real account; never install or clear anything
     on it.
