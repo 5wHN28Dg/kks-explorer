@@ -234,7 +234,7 @@ suite "plant API":
     # a retry writes nothing, floors neither
     let n1 = userNode.entries.len
     let again = userApi.call(ali, "POST", "/api/submit-many", body)
-    for x in again.json["results"].elems: check x["duplicate"].b
+    for x in again.json["results"].elems: check x["duplicate"].b and x.get("floor") == nil   # a duplicate says nothing of a floor
     check userNode.entries.len == n1
     # the next photo for the same codes, another floor typed: the open proposals stand, nothing competes with them
     let next = userApi.call(ali, "POST", "/api/submit-many", many([NoFloor, NoFloor2], "7", data = "second"))
