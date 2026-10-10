@@ -471,6 +471,12 @@ class WebMulti(unittest.TestCase):
                 dataUrl: 'data:image/jxl;base64,AA=='}, refused: 'Request Entity Too Large', user: K.me.user.id, ts: Date.now()}); await K.emit() }""", kept)
             self.assertEqual(page.evaluate("K.outbox.map(i => [i.payload.kks, i.payload.floor, !!i.refused])"), [[kept, '7', True]])
             self.assertTrue(page.evaluate("k => floorKnown(k)", kept), 'another photo of that code alone would ask again')
+            # the same for a floor waiting in the outbox as a place change made offline: Photo for all is sent at once,
+            # ahead of the outbox, and its floor would be written for that code first
+            self.assertEqual(page.evaluate("""async ([a, b]) => { const id = K.uid();
+                await K.idb.queue({client_id: id, kind: 'equipment', payload: {kks: b, changes: {floor: '3'}, base: {floor: ''}}, user: K.me.user.id, ts: Date.now()});
+                await K.emit(); const r = [floorKnown(b), floorless([a, b])]; await K.discardQueued(id); return r }""", [kept, other]),
+                [True, [kept, other]])
             # … so Photo for all asks for that code too (asked for the other only, its floor went to both)
             btn.click()
             hs('a:5').click()

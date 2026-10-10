@@ -170,8 +170,8 @@ async function send(kind,payload,what,note){
 }
 function updateQueueBadge(){ const n=STATE.queue||0, b=$('#queueCount'); b.textContent=n; b.style.display=n?'':'none'; b.title=n+' change(s) waiting for approval' }
 // your own submissions that aren't live yet (server-side pending/conflict + offline outbox), shown in the panel
-function myPendingEq(k){ // your not-yet-approved equipment edits for k, oldest first
-  const L=[...(STATE.mine||[]).filter(s=>s.kind==='equipment').map(s=>s.payload),...K.outbox.filter(i=>i.kind==='equipment').map(i=>i.payload)];
+function myPendingEq(k,queued=true){ // your not-yet-approved equipment edits for k, oldest first (`queued` false: without the outbox's)
+  const L=[...(STATE.mine||[]).filter(s=>s.kind==='equipment').map(s=>s.payload),...(queued?K.outbox:[]).filter(i=>i.kind==='equipment').map(i=>i.payload)];
   return Object.assign({},...L.filter(p=>p.kks===k).map(p=>p.changes));
 }
 function pendingFor(t){
@@ -508,8 +508,8 @@ async function saveDesc(t,text){
 }
 
 // ---------- photos: the floor first, then the photo; converted and sent in the background (K.queuePhoto) ----------
-// `queued` false: a floor that only rides on a photo still in the outbox (waiting, or kept after it was refused) doesn't count
-const floorKnown=(k,queued=true)=>!!((eq(k).floor||'').trim()||String(myPendingEq(k).floor??'').trim()
+// `queued` false: a floor that is only in the outbox (with a photo waiting or kept after it was refused, or a place change) doesn't count
+const floorKnown=(k,queued=true)=>!!((eq(k).floor||'').trim()||String(myPendingEq(k,queued).floor??'').trim()
   ||[...(STATE.mine||[]).map(s=>s.payload),...(queued?K.outbox:[]).map(i=>i.payload)].some(p=>p&&p.kks===k&&p.floor));
 function photoAdd(k){
   const need=!floorKnown(k);
@@ -862,9 +862,9 @@ async function sendMany(kind,payload,note,codes=[...multi.codes]){
 const approverNote=()=>canApprove()?null:h('div',{class:'field'},h('label',{for:'dlgNote'},'Note for the approver (optional)'),h('input',{id:'dlgNote',maxlength:500}));
 const noteValue=d=>d.querySelector('#dlgNote')?.value.trim()||'';
 function pickNothing(){ if(multi.codes.length) return false; toast('Select tags first'); return true }
-// the codes of a selection with no floor known: the floor asked for them. A floor riding on a photo in the outbox
-// doesn't count here (#144): this photo keeps one floor for all its codes, so a code left out of the question would get
-// another code's floor when that photo is refused and kept, or none once it is discarded. Such a code is asked again.
+// the codes of a selection with no floor known: the floor asked for them. A floor that is only in the outbox doesn't
+// count here (#144): this photo keeps one floor for all its codes and is sent ahead of the outbox, so a code left out of
+// the question would get another code's floor, or none once a kept photo is discarded. Such a code is asked again.
 const floorless=codes=>codes.filter(k=>!floorKnown(k,false));
 const floorAsk=(missing,all)=>`Floor for ${missing.slice(0,5).join(', ')}${missing.length>5?` and ${missing.length-5} more`:''}: `+
   (missing.length===all?(all===1?'it has none yet':'they have none yet'):(missing.length===1?'this one has':'these have')+' none yet; the others keep theirs');
