@@ -24,7 +24,7 @@ const
            "/index.js": "index.js", "/admin.js": "admin.js", "/learning.js": "learning.js",
            "/course.css": "course.css", "/kks-wasm.js": "kks-wasm.js", "/kks-wasm-worker.js": "kks-wasm-worker.js",
            "/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest", "/icon.svg": "icon.svg",
-           "/icon-192.png": "icon-192.png", "/icon-512.png": "icon-512.png"}.toTable
+           "/icon-192.png": "icon-192.png", "/icon-512.png": "icon-512.png", "/apple-touch-icon.png": "apple-touch-icon.png"}.toTable
 
 type
   Config* = object
@@ -657,6 +657,55 @@ proc courseList(s: Server): JNode =
   result = O(("courses", newArr(found)))
   s.courseCache = (key, result)
 
+proc encodeComponent(x: string): string =
+  ## as the pages' encodeURIComponent writes a path segment (Nim's encodeUrl also escapes ! ' ( ) *)
+  for c in x:
+    if c in {'a'..'z', 'A'..'Z', '0'..'9', '-', '_', '.', '~', '!', '\'', '(', ')', '*'}: result.add c
+    else: result.add '%' & toHex(ord(c), 2)
+
+proc offlineList(s: Server): JNode =
+  ## GET /api/offline: every file a browser needs to work without the server (the web client's "Download for
+  ## offline"): the pages and scripts, vendor/ (decoders, the photo encoder, fonts), the active plant data version
+  ## (drawings, tags, descriptions, courses) and the program's own data/. -> {version, plant_data, files: [[url, bytes]]}.
+  ## The drawings' files carry ?v=<plant data version>, as the pages ask for them. `version` changes when any file does.
+  ## (What is the person's own, the state and the photos, the page adds itself.)
+  var files: seq[(string, int64)]
+  var key = ""
+  proc add(url: string, size: int64, mark: string) =
+    files.add((url, size))
+    key.add url & " " & $size & " " & mark & "\n"
+  proc addFile(url, full: string) =
+    if fileExists(full): add(url, getFileSize(full), $getLastModificationTime(full).toUnix)
+  for url, name in Shell:
+    if url != "/sw.js": addFile(url, s.cfg.webDir / name)     # (the browser keeps the worker's script itself)
+  let vroot = absolutePath(s.cfg.webDir / "vendor")
+  if dirExists(vroot):
+    for f in walkDirRec(vroot):
+      if f.splitFile.ext in [".js", ".wasm", ".woff2", ".css"]:
+        addFile("/vendor/" & f[vroot.len + 1 .. ^1].replace(DirSep, '/'), f)
+  var plantFiles: HashSet[string]
+  let (ok, a) = s.n.active
+  if ok:
+    for path, (sha, size) in a.files:
+      plantFiles.incl path
+      # `x.json.gz` is served as `x.json` (Content-Encoding)
+      let rel = if path.endsWith(".gz") and path[0 ..< path.len - 3] notin a.files: path[0 ..< path.len - 3] else: path
+      add("/data/" & rel.split('/').mapIt(encodeComponent(it)).join("/") &
+          (if rel.startsWith("sheets/"): "?v=" & $a.version else: ""), size, sha)
+  let droot = absolutePath(s.cfg.dataDir)
+  if s.cfg.dataDir.len > 0 and dirExists(droot):
+    for f in walkDirRec(droot):
+      let rel = f[droot.len + 1 .. ^1].replace(DirSep, '/')
+      if rel notin plantFiles and rel & ".gz" notin plantFiles and f.splitFile.ext in [".json", ".jxl"]:
+        addFile("/data/" & rel.split('/').mapIt(encodeComponent(it)).join("/"), f)
+  files.sort(proc (x, y: (string, int64)): int = cmp(x[0], y[0]))
+  var arr = newArr()
+  for (u, n) in files: arr.elems.add newArr(@[S(u), newInt(n)])
+  var lines = key.splitLines
+  lines.sort()
+  O(("version", S(hex(s.p.sha256(lines.join("\n").toBytes))[0 ..< 16])),
+    ("plant_data", if ok: newInt(a.version) else: newNull()), ("files", arr))
+
 proc staticFile(s: Server, req: Request, dir, rel, cache: string, ctype = "", extra: seq[(string, string)] = @[]) {.async.} =
   let root = absolutePath(dir)
   let full = absolutePath(root / rel)
@@ -1264,6 +1313,9 @@ proc handle(s: Server, req: Request) {.async.} =
     of "/api/progress": herr(404, "Course progress stays in this browser on a server.")
     of "/api/courses":
       await s.sendJson(req, 200, s.courseList)
+      return
+    of "/api/offline":
+      await s.sendJson(req, 200, s.offlineList)
       return
     of "/api/bundle":
       if not me.isAdmin: herr(403, "admin only")

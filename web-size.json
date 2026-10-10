@@ -65,32 +65,33 @@
  },
  "shell": {
   "files": {
-   "admin.html": 4651,
-   "admin.js": 58176,
-   "common.js": 70727,
+   "admin.html": 4954,
+   "admin.js": 58272,
+   "apple-touch-icon.png": 1057,
+   "common.js": 87616,
    "course-bridge.js": 3846,
    "course-figure.js": 18968,
    "course.css": 15526,
-   "course.html": 873,
+   "course.html": 1176,
    "course.js": 31617,
    "dark.js": 2138,
    "icon-192.png": 709,
    "icon-512.png": 3047,
    "icon.svg": 303,
-   "index.html": 21256,
-   "index.js": 95067,
+   "index.html": 21509,
+   "index.js": 95280,
    "kks-wasm-worker.js": 479,
    "kks-wasm.js": 3590,
-   "learning.html": 1792,
+   "learning.html": 2095,
    "learning.js": 1645,
-   "manifest.webmanifest": 459,
-   "sw.js": 3662,
+   "manifest.webmanifest": 477,
+   "sw.js": 8920,
    "systems.js": 18414,
    "tiles.js": 11413,
    "vendor/fonts/courses.css": 6376,
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1122983
+  "total": 1147676
  }
 }

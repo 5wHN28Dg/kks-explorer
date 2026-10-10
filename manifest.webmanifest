@@ -1,6 +1,7 @@
 {
   "name": "Walkdown",
-  "short_name": "KKS",
+  "short_name": "Walkdown",
+  "id": "/",
   "description": "Find plant equipment by KKS on the P&IDs",
   "start_url": "/",
   "scope": "/",

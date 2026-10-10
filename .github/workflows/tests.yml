@@ -231,6 +231,9 @@ jobs:
       - name: The Manage page (test_admin_web)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_admin_web.py -v -k ${{ matrix.engine }}
+      - name: The whole plant offline, the lease, back online (test_web_offline)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
+        run: .venv/bin/python platform/linux/e2e/test_web_offline.py -v -k ${{ matrix.engine }}
       - name: Sign-up with the plant's code, then the manager's approval (test_web_signup)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_signup.py -v -k ${{ matrix.engine }}

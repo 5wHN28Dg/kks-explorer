@@ -170,9 +170,9 @@ K.start = async () => {
   try {
     const me = await K.api('/api/me');
     K.me = me; K.setOnline(true);
-    await K.idb.set('me', {...me, lease_until: Date.now() + me.offline_days * 864e5});
+    await K.renewLease();
     await K.emit(); K.flushSoon(500); K.convertPhotos();   // (photos left converting by an earlier visit)
-    K.watchChanges();
+    K.watchChanges(); K.watchLease(); K.offline.auto();
     return me;
   } catch (e) {
     if (e.status === 401) {
@@ -180,15 +180,34 @@ K.start = async () => {
       return new Promise(() => K.signIn(cfg));
     }
     const c = await K.idb.get('me');
-    if (c && c.lease_until > Date.now()) { K.me = c; K.setOnline(false); await K.emit(); K.convertPhotos(); return c }
+    if (c && c.lease_until > Date.now()) {
+      K.me = c; K.lease = c.lease_until; K.setOnline(false); await K.emit(); K.convertPhotos();
+      K.watchChanges(); K.watchLease(); K.offline.auto();   // (the poll notices the server again, and sends what waits)
+      return c;
+    }
     if (K.reauth) {  // remote access sign-in expired and no usable offline copy: send them through the login
       K.box('Sign in again', 'Your remote-access sign-in has expired.', 'Continue', () => location.reload());
       return new Promise(() => {});
     }
-    K.box('Offline', c ? `Offline access on this device expired (it lasts ${c.offline_days} days after the last sign-in check). Connect to the server to continue.`
-                       : 'Cannot reach the server, and this device has no offline copy yet.', 'Retry', () => location.reload());
+    K.box('Offline', c ? K.leaseOver(c) : 'Cannot reach the server, and this device has no offline copy yet.', 'Retry', () => location.reload());
     return new Promise(() => {});
   }
+};
+// Offline access lasts offline_days after the last time the server confirmed the session (the start of a page, and
+// about hourly while a page is open and connected). Nothing else ends it: when the time is up the app says so and
+// waits for the server; what was queued stays on the device and is sent after that.
+K.leaseOver = c => `Offline access on this device expired (it lasts ${c.offline_days} days after the last sign-in check). Connect to the server to continue. Changes and photos you made offline are kept on this device and are sent then.`;
+K.renewLease = async () => {
+  K.lease = Date.now() + K.me.offline_days * 864e5; K.leaseAt = Date.now();
+  const {lease_until, ...me} = K.me;
+  await K.idb.set('me', {...me, lease_until: K.lease});
+};
+K.watchLease = () => {
+  if (K.leaseTimer || K.cfg?.mode === 'peer') return;
+  K.leaseTimer = setInterval(() => {
+    if (K.online || !K.lease || Date.now() < K.lease || document.getElementById('kov')) return;
+    K.box('Offline', K.leaseOver(K.me), 'Retry', () => location.reload());
+  }, 20000);
 };
 
 // The sign-in screen. Where the manager has set a sign-up code (/api/config: signup), it also leads to "Request an
@@ -540,7 +559,8 @@ K.convertPhotos = async () => {
     }
   } finally { bar?.done(); K.converting = null; K.renderStatus() }
 };
-K.setOnline = on => { if (K.online !== on) { K.online = on; K.renderStatus() } };
+// (the server is back: what waits is sent, whoever noticed first: the poll, or a change that went through)
+K.setOnline = on => { if (K.online !== on) { K.online = on; K.renderStatus(); if (on && K.me) { K.flushSoon(500); K.convertPhotos(); K.offline.soon(3000, true) } } };
 addEventListener('online', () => { K.flushSoon(500); K.convertPhotos() });
 addEventListener('offline', () => K.setOnline(false));
 
@@ -554,12 +574,16 @@ K.watchChanges = () => {
     try {
       const st = await K.api('/api/sync/status');
       K.syncStatus = st;
-      if (K.cfg?.mode !== 'peer') K.setOnline(true); else K.renderStatus();
-      if (K.rev != null && st.rev !== K.rev) K.listeners.forEach(f => f('synced'));
+      if (K.cfg?.mode !== 'peer') {
+        K.setOnline(true);
+        // the server answered with this session: offline access counts from now (at most once an hour)
+        if (K.me && Date.now() > (K.leaseAt || 0) + 3600e3) await K.renewLease().catch(() => {});
+      } else K.renderStatus();
+      if (K.rev != null && st.rev !== K.rev) { K.listeners.forEach(f => f('synced')); K.offline.soon() }
       K.rev = st.rev;
       // a new plant data version became complete on this device (PROTOCOL-v2.md §19): pages load the drawings again
       const pa = st.plant_data ? st.plant_data.active : undefined;
-      if (K.plantActive !== undefined && pa !== undefined && pa !== K.plantActive) K.listeners.forEach(f => f('plantdata'));
+      if (K.plantActive !== undefined && pa !== undefined && pa !== K.plantActive) { K.listeners.forEach(f => f('plantdata')); K.offline.soon() }
       if (pa !== undefined) K.plantActive = pa;
     } catch (e) { if (e.status === 401) return location.reload(); if (K.isNetErr(e)) K.setOnline(false) }
   };
@@ -589,8 +613,13 @@ K.renderStatus = () => {
     el.title = 'Your remote-access sign-in expired. Working from the copy on this device; changes are queued.';
     return;
   }
-  el.replaceChildren(K.h('span', {style: `color:${K.online ? 'var(--ok)' : 'var(--review)'}`}, '●'), ` ${K.online ? 'Online' : 'Offline'}${n ? ` · ${n} queued` : ''}${cv}`);
-  el.title = K.online ? 'Connected to the server' : 'Working from the copy on this device; changes are queued';
+  // offline: how long it still works, said in the line itself once a week or less is left
+  const days = K.lease ? Math.max(0, Math.floor((K.lease - Date.now()) / 864e5)) : null, R = K.offline.run;
+  const left = !K.online && days != null && days <= 7 ? ` · ${days} day${days === 1 ? '' : 's'} left` : '';
+  const dl = R ? ` · saving for offline ${R.of ? Math.floor(100 * R.n / R.of) : 0} %` : '';
+  el.replaceChildren(K.h('span', {style: `color:${K.online ? 'var(--ok)' : 'var(--review)'}`}, '●'), ` ${K.online ? 'Online' : 'Offline'}${left}${n ? ` · ${n} queued` : ''}${cv}${dl}`);
+  el.title = K.online ? 'Connected to the server' : 'Working from the copy on this device; changes are queued'
+    + (K.lease ? `. Offline access lasts until ${new Date(K.lease).toLocaleString()}.` : '');
 };
 
 // Human summary of a submission payload.
@@ -604,6 +633,187 @@ K.describe = (kind, p) => ({
   tag_add: () => `mark a missed tag on ${p.sheet}: ${p.kks ? (p.isa ? p.isa + ' ' : '') + p.kks + (p.suffix || '') : '(code not given)'}`,
   tag_remove: () => `remove hand-added tag ${p.id.slice(0, 8)}`,
 }[kind] || (() => kind))();
+
+// ---------- the whole plant on this device: "Download for offline" ----------
+// Pages keep what they happen to open (sw.js). This keeps everything, so that after one download any drawing, tag,
+// photo, procedure and course opens without the server: the list of the program's and the plant's files comes from
+// the server (GET /api/offline), the person's state and every photo in it are added here, and the service worker
+// fetches and stores each one (its `keep` message), answering only when the file is in its cache. Photos are kept as
+// they are stored (the full picture: there are no thumbnails, and the panel shows the picture itself).
+// - K.offline.state (IndexedDB 'offline'): {on, done, version, plant_data, files, bytes, at, error, quota, persisted}.
+// - Resumable: a file that is already there is not fetched again (drawings and photos never; the rest only when the
+//   server's list changed), so an interrupted download carries on where it stopped: by itself at the next start, when
+//   the server is reachable again, and after plant data or anyone's changes arrive.
+// - Honest: it is "ready" only when every file answered "saved". A full disk, a lost connection or a signed-out
+//   session stop it, and the card says which.
+K.offline = {
+  state: null, run: null, listeners: [], timer: null, again: false, agains: 0, ranAt: 0,
+  can: () => !K.native && K.cfg?.mode === 'server' && 'serviceWorker' in navigator && 'caches' in window,
+  onChange(f) { this.listeners.push(f) },
+  changed() { K.renderStatus(); this.draw?.(); this.listeners.forEach(f => f()) },
+  // an iPhone or iPad (iPadOS says "Macintosh"), and whether the app runs from the Home Screen
+  ios: () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1),
+  installed: () => navigator.standalone === true || !!window.matchMedia?.('(display-mode: standalone)').matches,
+  // one message to the service worker and its answer ({ok: false, …} when it does not answer in time: a worker the
+  // phone stopped in the background, or none ready)
+  sw(msg, ms = 180000) {
+    return new Promise(res => {
+      const t = setTimeout(() => res({ok: false, error: 'the app\'s background worker did not answer'}), ms);
+      navigator.serviceWorker.ready.then(reg => {
+        const ch = new MessageChannel();
+        ch.port1.onmessage = e => { clearTimeout(t); res(e.data) };
+        reg.active.postMessage(msg, [ch.port2]);
+      }).catch(e => { clearTimeout(t); res({ok: false, error: String(e.message || e)}) });
+    });
+  },
+  async load() { try { this.state = (await K.idb.get('offline')) || null } catch (e) { this.state = null } return this.state },
+  async save(st) { this.state = st; try { await K.idb.set('offline', st) } catch (e) {} this.changed() },
+  // at the start of a page: carry on, or bring the copy up to date
+  async auto() { if (!this.can()) return; await this.load(); this.changed(); if (this.state?.on) this.soon(3000, true) },
+  // by itself, later: at most one run a minute (every change anyone makes asks for one). A run that is going on
+  // is followed by another, so nothing that arrived meanwhile is left out.
+  soon(ms = 10000, now = false) {   // now: not held back by the last run (a page start, the server back)
+    if (!this.can() || !this.state?.on) return;
+    if (this.run) { this.again = true; return }
+    clearTimeout(this.timer); this.timer = setTimeout(() => this.download(), now ? ms : Math.max(ms, this.ranAt + 60000 - Date.now()));
+  },
+  // the button: asks the browser to keep this site's data (it may only say yes after a tap), then downloads
+  async start() {
+    await this.save({...(this.state || {}), on: true, error: null});
+    // (not waited for: Firefox asks the person, and answers only when they do)
+    try { navigator.storage?.persist?.().then(async p => { const cur = await this.load(); if (cur?.on) this.save({...cur, persisted: p}) }, () => {}) } catch (e) {}
+    return this.download(true);
+  },
+  async remove() {
+    clearTimeout(this.timer); this.again = false;
+    await this.save({on: false});
+    await this.sw({t: 'prune', keep: []}, 30000);
+  },
+  // asked: by the button (it then says why it can't); by itself it waits for the server
+  async download(asked) {
+    if (this.run) { this.again = true; return }
+    if (!this.can() || !K.me || !this.state?.on || (!asked && !K.online)) return;
+    // one tab downloads (two would fetch everything twice); without Web Locks, each on its own
+    if (navigator.locks) return navigator.locks.request('kks-offline', {ifAvailable: true}, l => {
+      if (l) return this.fetchAll();
+      if (asked) K.toast?.('Another Walkdown tab is saving the offline copy.') });
+    return this.fetchAll();
+  },
+  async fetchAll() {
+    const prev = this.state;
+    this.run = {n: 0, of: 0, bytes: 0}; this.again = false; this.changed();
+    let fail = null, bytes = 0, man = null, list = [], began = false;
+    // the files of the server's list fetched anew for this version by an earlier, interrupted run: not again
+    const got = new Set(prev.trying === undefined ? [] : prev.got || []);
+    try {
+      // (right after an update of the app the old worker may still be the active one for a moment: it knows no `keep`)
+      let hello = null;
+      for (let i = 0; i < 10 && !hello?.ok; i++) { hello = await this.sw({t: 'hello'}, 1500); if (!hello.ok) await new Promise(r => setTimeout(r, 500)) }
+      if (!hello?.ok) throw Object.assign(new Error(hello?.error || 'no worker'), {status: 1});
+      man = await K.api('/api/offline');
+      if (prev.trying !== man.version) got.clear();
+      // the state first, and the photos named by that very copy (so the saved state never names a photo not saved)
+      const s0 = await this.sw({t: 'keep', url: '/api/state', fresh: true});
+      if (!s0.ok) throw Object.assign(new Error(s0.error || 'state'), {status: s0.status, quota: s0.quota, net: !s0.status && !s0.quota});
+      began = true;
+      const st = await (await caches.match('/api/state')).json();
+      const photos = [...(st.photos || []).map(p => p.file), ...(st.mine || []).filter(x => x.kind === 'photo' && x.payload?.file).map(x => x.payload.file)];
+      const changed = man.version !== prev.version;
+      // [url, bytes if known, fetch even if a copy is here]
+      list = [...['/api/courses', '/api/config'].map(u => [u, 0, true]),
+              ...man.files.map(([u, n]) => [u, n, changed && !u.includes('?v=') && !got.has(u)]),
+              ...[...new Set(photos)].map(f => ['/photos/' + encodeURIComponent(f), 0, false])];
+      this.run.of = list.length + 1; this.run.n = 1; this.changed();
+      let i = 0, shown = 0, gone = [];
+      const one = async () => {
+        while (i < list.length && !fail && this.state?.on) {
+          const [url, n, fresh] = list[i++];
+          const r = await this.sw({t: 'keep', url, fresh});
+          // a photo the server no longer has (deleted meanwhile), or does not have yet (its device has not sent it)
+          if (!r.ok && r.status === 404 && url.startsWith('/photos/')) { gone.push(url); this.run.n++; continue }
+          if (!r.ok) { fail = fail || {...r, net: !r.status && !r.quota}; break }
+          if (fresh) got.add(url);
+          bytes += r.bytes || n; this.run.n++; this.run.bytes = bytes;
+          if (Date.now() - shown > 250) { shown = Date.now(); this.changed() }
+        }
+      };
+      await Promise.all([one(), one(), one(), one()]);
+      list = [['/api/state', 0, true], ...list.filter(x => !gone.includes(x[0]))];
+      if (!fail && this.state?.on) {
+        // "ready" only if the server's list is still the one that was fetched (plant data published meanwhile: again),
+        // and the worker that will serve the files finds every one (it may have been replaced by an update meanwhile)
+        const now = await K.api('/api/offline');
+        const ck = now.version === man.version ? await this.sw({t: 'check', urls: list.map(x => x[0])}, 60000) : null;
+        if (!ck) { this.again = true; fail = {again: true} }
+        else if (!ck.ok || ck.missing.length) { this.again = true; fail = {again: true, error: ck.error || `${ck.missing.length} files were not kept`} }
+        else await this.sw({t: 'prune', keep: list.map(x => x[0])}, 30000);
+      }
+    } catch (e) { fail = {error: e.message, status: e.status, quota: e.quota, net: e.net ?? K.isNetErr(e)} }
+    this.run = null; this.ranAt = Date.now();
+    // what is saved now (another tab may have removed the copy, or signed out, while this ran)
+    const cur = await this.load();
+    if (!cur?.on) { await this.sw({t: 'prune', keep: []}, 30000); return this.changed() }
+    // (at once, three times at most in a row; after that at the usual pace)
+    const again = () => { if (this.again) { this.again = false; this.soon(1000, ++this.agains <= 3) } };
+    if (!fail) {
+      const {trying, got: _g, ...rest} = cur;
+      if (!this.again) this.agains = 0;
+      await this.save({...rest, done: true, version: man.version, plant_data: man.plant_data, files: list.length, bytes, at: Date.now(), error: null, quota: false});
+      return again();
+    }
+    if (fail.status === 401) { this.changed(); return location.reload() }
+    // for now only (no connection, the server or its proxy busy, the worker asleep or being replaced, the list changed
+    // under the run): it is tried again by itself
+    const passing = fail.again || fail.net || fail.status === 1 || fail.status >= 500 || fail.status === 408 || fail.status === 429;
+    const progress = man ? {trying: man.version, got: [...got]} : {};
+    // nothing was touched yet: what is saved is as it was (a copy that was ready still is)
+    if (passing && !began && cur.done) { this.changed(); again(); return this.soon(60000) }
+    let error = fail.again ? (fail.error ? `Not everything was kept (${fail.error}). It is fetched again.` : 'The plant data changed while it was being saved. It is fetched again now.')
+      : fail.status === 1 ? 'The app is updating itself. It carries on in a moment; if not, close Walkdown and open it again.'
+      : fail.status > 1 && !passing ? `The server refused a file (${fail.error}).`
+      : 'The connection was lost before everything was saved. It continues by itself when the server can be reached.';
+    if (fail.quota) {
+      let room = '';
+      try { const q = await navigator.storage.estimate(); room = ` (${Math.round(q.usage / 1048576)} MB used of ${Math.round(q.quota / 1048576)} MB this browser allows)` } catch (e) {}
+      error = `This device has no room left for the offline copy${room}. Free some storage, then try again.`;
+    }
+    await this.save({...cur, ...progress, done: false, error, quota: !!fail.quota});
+    if (this.again) return again();
+    if (passing) this.soon(60000);
+  },
+  // The card for Manage → Account: the button, the progress, "Ready for offline: N MB, updated <when>".
+  card() {
+    const h = K.h, box = h('div', {class: 'card server-only', id: 'offlineCard'}), mb = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+    const btn = (label, cls, fn) => h('button', {type: 'button', class: cls, onclick: async e => { e.currentTarget.disabled = true; try { await fn() } finally { draw() } }}, label);
+    const draw = () => {
+      const st = this.state, R = this.run, out = [h('h3', null, 'Offline copy')];
+      if (!this.can()) out.push(h('div', {class: 'sub'}, 'serviceWorker' in navigator ? 'Not available right now.' : 'Not available here: it needs HTTPS (or localhost).'));
+      else if (R) out.push(h('div', {id: 'offlineState', role: 'status'}, `Saving for offline: ${R.n} of ${R.of || '…'} files · ${mb(R.bytes)}`), h('div', {class: 'sub'}, 'Keep Walkdown open until it says ready. If it is interrupted, it carries on where it stopped.'),
+        h('div', {style: 'height:6px;border-radius:3px;background:var(--line);margin:8px 0;overflow:hidden'}, h('i', {style: `display:block;height:100%;background:var(--accent);width:${R.of ? 100 * R.n / R.of : 0}%`})));
+      else if (st?.on && st.done) out.push(h('div', {id: 'offlineState'}, h('b', null, 'Ready for offline'), `: ${mb(st.bytes)} in ${st.files} files, updated ${new Date(st.at).toLocaleString()}.`),
+        h('div', {class: 'sub'}, `Every drawing, tag, description, procedure, course and photo is on this device. It is brought up to date by itself whenever this app is open and connected. Without the server it works for ${K.me?.offline_days ?? '?'} days after the last connection`
+          + (K.lease ? ` (now: until ${new Date(K.lease).toLocaleString()})` : '') + '; what you change or photograph meanwhile is kept here and sent when you are connected again.'),
+        h('div', {class: 'row', style: 'margin-top:8px'}, K.online ? btn('Update now', 'ghost', () => this.download(true)) : null, btn('Remove the offline copy', 'ghost', () => this.remove())));
+      else if (st?.on) out.push(h('div', {id: 'offlineState', class: 'warn bad'}, h('b', null, 'Not ready for offline yet. '), st.error || 'The download has not finished.'),
+        h('div', {class: 'row', style: 'margin-top:8px'}, K.online ? btn('Try again', 'primary', () => this.start()) : null, btn('Remove the offline copy', 'ghost', () => this.remove())));
+      else out.push(h('div', {id: 'offlineState', class: 'sub'}, 'To work where there is no connection: save every drawing, tag, description, procedure, course and photo on this device. Until then only what you have opened works offline.'),
+        h('div', {class: 'row', style: 'margin-top:8px'}, btn('Download for offline', 'primary', () => this.start())));
+      if (this.can() && st?.on && st.persisted === false && !(this.ios() && !this.installed()))
+        out.push(h('div', {class: 'sub', id: 'offlineEvict'}, 'This browser did not promise to keep the copy: it may delete it when the device runs short of storage.'));
+      // Safari on an iPhone deletes a site's data after seven days without a visit; an app on the Home Screen is exempt
+      if (this.can() && this.ios() && !this.installed())
+        out.push(h('div', {class: 'warn', id: 'offlineIos'}, h('b', null, 'On an iPhone or iPad, add Walkdown to the Home Screen first. '),
+          'In a Safari tab, iOS deletes a site\'s saved data after 7 days without a visit. Tap Share, then “Add to Home Screen”, open Walkdown from its icon, sign in there and download there: the Home Screen app keeps its own copy, and keeps it.'));
+      box.replaceChildren(...out.flat(Infinity).filter(Boolean));
+    };
+    this.draw = () => { if (box.isConnected) draw() };
+    draw();
+    return box;
+  },
+};
+
+// iPhone only: Safari zooms the page into a field whose text is smaller than 16 px, and does not zoom back
+if (K.offline.ios()) { const s = document.createElement('style'); s.textContent = 'input,select,textarea{font-size:16px!important}'; document.head.appendChild(s) }
 
 if ('serviceWorker' in navigator && !K.native) {
   navigator.serviceWorker.register('/sw.js').catch(e => console.warn('service worker not registered', e));
