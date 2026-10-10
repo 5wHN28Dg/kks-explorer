@@ -238,7 +238,7 @@ static IUIAutomationElement *wait_for(DWORD &pid, const std::string &spec, int m
 // by its spec. false (and the reason logged) if it never got there.
 static bool focus_on(DWORD &pid, IUIAutomationElement *&e, const std::string &spec, int ms, CONTROLTYPEID only,
                      CONTROLTYPEID only2, bool select) {
-    for (int t = 0; t < ms; t += 500) {
+    for (ULONGLONG end = GetTickCount64() + (ULONGLONG)ms; GetTickCount64() < end;) {   // a pass can take seconds
         if (select) {
             IUIAutomationSelectionItemPattern *sp = nullptr;
             if (SUCCEEDED(e->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sp)) && sp) {
