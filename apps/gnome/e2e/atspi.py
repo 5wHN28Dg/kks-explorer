@@ -2,7 +2,7 @@
 import os, time
 import gi
 gi.require_version('Atspi', '2.0')
-from gi.repository import Atspi
+from gi.repository import Atspi, GLib
 
 
 def app(name, timeout=15):
@@ -18,6 +18,8 @@ def app(name, timeout=15):
 
 
 def walk(node, depth=0, maxdepth=60):
+    """`node` and everything under it. A node that goes away while it is walked (the app rebuilt that part of the
+    screen) ends its own branch only: the rest of the tree is still walked."""
     yield node
     if depth >= maxdepth:
         return
@@ -26,9 +28,41 @@ def walk(node, depth=0, maxdepth=60):
     except Exception:
         return
     for i in range(n):
-        c = node.get_child_at_index(i)
+        try:
+            c = node.get_child_at_index(i)
+        except GLib.GError:      # gone between the count and the read
+            continue
         if c is not None:
             yield from walk(c, depth + 1, maxdepth)
+
+
+def nodes(root, role=None, maxdepth=60):
+    """(node, name) of every node of this role under `root`, showing or not. A node that vanished between being found
+    and being read (AT-SPI: 'No such interface "org.a11y.atspi.Accessible"') is no longer on the screen and is left
+    out: the caller polls, and still fails by its own timeout when the widget never shows."""
+    for n in walk(root, maxdepth=maxdepth):
+        try:
+            if role and n.get_role_name() != role:
+                continue
+            yield n, n.get_name() or ''
+        except GLib.GError:
+            continue
+
+
+def click_named(root, role, name, timeout=10, maxdepth=60):
+    """click the node of this role with exactly this name (showing or not). One that vanishes between being found and
+    being clicked is looked up again; with none to click within `timeout` it fails."""
+    t0 = time.time()
+    while True:
+        for n, nm in nodes(root, role, maxdepth):
+            if nm == name:
+                try:
+                    return click(n)
+                except GLib.GError:
+                    break            # rebuilt under us: look again
+        if time.time() - t0 > timeout:
+            raise AssertionError(f'no {role} named {name!r} to click')
+        time.sleep(0.3)
 
 
 def find(root, role=None, name=None, contains=None, timeout=10, showing=True):
@@ -53,13 +87,18 @@ def find(root, role=None, name=None, contains=None, timeout=10, showing=True):
         time.sleep(0.3)
 
 
-def find_all(root, role=None, contains=None):
+def find_all(root, role=None, contains=None, name=None):
+    """the showing nodes of this role whose name contains `contains` / is exactly `name`. A node that vanishes while
+    it is read is left out (it is not on the screen any more)."""
     out = []
     for n in walk(root):
         try:
             if role and n.get_role_name() != role:
                 continue
-            if contains and contains not in (n.get_name() or ''):
+            nm = n.get_name() or ''
+            if contains and contains not in nm:
+                continue
+            if name is not None and nm != name:
                 continue
             if n.get_state_set().contains(Atspi.StateType.SHOWING):
                 out.append(n)

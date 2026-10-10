@@ -6,7 +6,7 @@ with the accessibility bus (GNOME)."""
 import json, os, re, shutil, signal, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
 sys.path.insert(0, os.path.dirname(__file__))
 import atspi  # noqa: E402
-from gi.repository import Atspi  # noqa: E402
+from gi.repository import Atspi, GLib  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 APP = sys.argv[1] if len(sys.argv) > 1 else '/tmp/kksgnome/kks_explorer'
@@ -395,8 +395,7 @@ class Gnome(Plant):
         code = None
         for _ in range(20):
             time.sleep(0.5)
-            ls = [n.get_name() for n in atspi.walk(a, maxdepth=80)
-                  if n.get_role_name() == 'label' and (n.get_name() or '').startswith('{"kks_invite"')]
+            ls = [nm for _, nm in atspi.nodes(a, 'label', maxdepth=80) if nm.startswith('{"kks_invite"')]
             if ls:
                 code = ls[0]
                 break
@@ -414,13 +413,14 @@ class Gnome(Plant):
         acc = None
         for _ in range(30):
             time.sleep(0.5)
-            acc = [n for n in atspi.walk(a, maxdepth=80) if n.get_role_name() == 'button' and n.get_name() == 'Accept']
+            # (the Devices page is rebuilt when the request arrives: a button found may be gone when it is read, #143)
+            acc = [n for n, nm in atspi.nodes(a, 'button', maxdepth=80) if nm == 'Accept']
             if acc:
                 break
         self.assertTrue(acc, 'the admin never saw the request')
         # the admin sees the position the request carries
         atspi.find(a, 'label', contains='position Process engineer', timeout=10)
-        atspi.click(acc[0])
+        atspi.click_named(a, 'button', 'Accept', maxdepth=80)
         atspi.find(b, 'list item', contains='Sample sheet', timeout=30)
         # the manager removes the second device (Manage → Devices → Remove); it learns it at its next sync with this
         # laptop and wipes itself (§15), then starts over at the setup screen. The phone app is closed meanwhile: a
@@ -672,11 +672,11 @@ class Gnome(Plant):
         dots = [n.get_name() for n in atspi.walk(item) if n.get_role_name() == 'image']
         self.assertEqual(len(dots), 1)
         self.assertIn(dots[0], ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'))
-        before = len([n for n in atspi.find_all(a, 'label') if n.get_name() == '11LAB70AA501'])
+        before = len(atspi.find_all(a, 'label', name='11LAB70AA501'))
         atspi.click(atspi.find(a, 'button', name='11LAB70AA501', timeout=10))
         atspi.find(a, 'button', name='Close the panel', timeout=10)
         for _ in range(20):
-            after = len([n for n in atspi.find_all(a, 'label') if n.get_name() == '11LAB70AA501'])
+            after = len(atspi.find_all(a, 'label', name='11LAB70AA501'))
             if after > before:
                 break
             time.sleep(0.5)
@@ -768,7 +768,7 @@ class Gnome(Plant):
         def cancel_edit():
             # the Edit form's Cancel (the panel's, not another page's): until the form is gone
             for _ in range(5):
-                for c in [n for n in atspi.find_all(a, 'button', contains='Cancel') if n.get_name() == 'Cancel']:
+                for c in atspi.find_all(a, 'button', name='Cancel'):
                     atspi.click(c)
                     time.sleep(1)
                     if not atspi.find_all(a, 'text', contains='Notes'):
@@ -948,7 +948,7 @@ class Gnome(Plant):
         atspi.find(a, 'label', name='1 selected', timeout=10)
         atspi.click(atspi.find(a, 'button', name='Photo for all…'))
         atspi.find(a, 'text', name='Caption', timeout=10)
-        self.assertEqual([n for n in atspi.find_all(a, 'alert') if n.get_name() == 'Which floor are they on?'], [])
+        self.assertEqual(atspi.find_all(a, 'alert', name='Which floor are they on?'), [])
 
     def test_zz_requests(self):
         """the user's requests of 2026-10-08 (runs last: it adds codes test_systems would count). Who took the photo
@@ -1145,7 +1145,7 @@ class Coverage(Plant):
         words = (f"photos: {ph['both']} equipment and tag plate, {ph['equipment']} equipment only, {ph['plate']} tag "
                  f"plate only, {ph['none']} none")
         for _ in range(20):        # the bars' accessible names can arrive a moment after the labels
-            bars = [n for n in atspi.find_all(a, 'image') if n.get_name() == words]
+            bars = atspi.find_all(a, 'image', name=words)
             if len(bars) >= 3: break
             time.sleep(0.5)
         self.assertGreaterEqual(len(bars), 3, 'the totals, the sheet and the system each have a named bar')
@@ -1163,11 +1163,11 @@ class Coverage(Plant):
         # a sheet row opens that sheet (the first one is shown at the start) with the photo colours on
         tb = atspi.find(a, 'toggle button', name='Colour tags by photos', showing=False)
         self.assertFalse(tb.get_state_set().contains(Atspi.StateType.PRESSED))
-        before = len([n for n in atspi.find_all(a, 'label') if n.get_name() == 'Second sheet'])
+        before = len(atspi.find_all(a, 'label', name='Second sheet'))
         # (an AdwActionRow names its activatable button by the row's title; the sidebar's own row is not showing)
         atspi.click(atspi.find(a, 'button', name='Second sheet'))
         for _ in range(20):
-            after = len([n for n in atspi.find_all(a, 'label') if n.get_name() == 'Second sheet'])
+            after = len(atspi.find_all(a, 'label', name='Second sheet'))
             if after > before and tb.get_state_set().contains(Atspi.StateType.PRESSED):
                 break
             time.sleep(0.5)
@@ -1179,6 +1179,77 @@ class Coverage(Plant):
         atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
         atspi.click(atspi.find(a, 'button', name='Show all systems'))
         atspi.find(a, 'label', name='1 code on the drawings', timeout=10)
+
+
+class FakeNode:
+    """an accessible object as the helpers read it; `gone`: the app removed it after it was found (every read fails
+    as AT-SPI's does); `clicks`: how many clicks fail that way before one works"""
+
+    def __init__(self, role, name='', kids=(), gone=False, clicks=0):
+        self.role, self.name, self.kids, self.gone, self.clicks, self.clicked = role, name, list(kids), gone, clicks, 0
+
+    def _read(self, v):
+        if self.gone:
+            raise GLib.GError('atspi_error: No such interface \u201corg.a11y.atspi.Accessible\u201d on object at path /x')
+        return v
+
+    def get_child_count(self): return self._read(len(self.kids))
+    def get_role_name(self): return self._read(self.role)
+    def get_name(self): return self._read(self.name)
+    def get_state_set(self): return self._read(self)
+    def contains(self, state): return True
+    def get_action_iface(self): return self
+    def get_n_actions(self): return 1
+    def get_action_name(self, i): return 'click'
+
+    def get_child_at_index(self, i):
+        k = self.kids[i]
+        if k == 'gone':            # removed between the count and the read
+            raise GLib.GError('atspi_error: No such interface')
+        return k
+
+    def do_action(self, i):
+        if self.clicks > 0:
+            self.clicks -= 1
+            raise GLib.GError('atspi_error: No such interface')
+        self.clicked += 1
+        return True
+
+
+class Vanished(unittest.TestCase):
+    """#143: the app rebuilds parts of its screen (a sync, a request arriving), so an object the test found can be gone
+    when it is read. The helpers leave such an object out and look again; a widget that is really missing still fails."""
+
+    def tree(self):
+        self.ok = FakeNode('button', 'Accept')
+        return FakeNode('window', 'w', [FakeNode('button', 'Accept', gone=True), 'gone',
+                                        FakeNode('box', '', [self.ok, FakeNode('label', 'Accept')])])
+
+    def test_vanished_nodes_are_left_out(self):
+        root = self.tree()
+        self.assertEqual([n for n, nm in atspi.nodes(root, 'button') if nm == 'Accept'], [self.ok])
+        self.assertEqual(atspi.find_all(root, 'button', name='Accept'), [self.ok])
+        self.assertEqual(atspi.find_all(root, 'button', name='Accep'), [], 'an exact name, not a part of one')
+        self.assertIs(atspi.find(root, 'button', name='Accept', timeout=1), self.ok)
+
+    def test_a_missing_widget_still_fails(self):
+        root = FakeNode('window', 'w', [FakeNode('button', 'Accept', gone=True), 'gone'])
+        self.assertEqual(list(atspi.nodes(root, 'button')), [])
+        with self.assertRaisesRegex(AssertionError, "no button named 'Accept'"):
+            atspi.find(root, 'button', name='Accept', timeout=0.5)
+        with self.assertRaisesRegex(AssertionError, "no button named 'Accept' to click"):
+            atspi.click_named(root, 'button', 'Accept', timeout=0.5)
+
+    def test_click_looks_again(self):
+        root = self.tree()
+        self.ok.clicks = 2         # gone twice between the lookup and the click, then there
+        atspi.click_named(root, 'button', 'Accept', timeout=5)
+        self.assertEqual(self.ok.clicked, 1)
+        self.ok.clicks = 10 ** 6   # never clickable: said, not looped for ever
+        with self.assertRaisesRegex(AssertionError, "no button named 'Accept' to click"):
+            atspi.click_named(root, 'button', 'Accept', timeout=0.7)
+        with self.assertRaises(GLib.GError, msg='reading a vanished object directly is still an error'):
+            FakeNode('button', gone=True).get_name()
 
 
 if __name__ == '__main__':
