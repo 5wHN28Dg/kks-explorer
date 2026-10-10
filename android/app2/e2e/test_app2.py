@@ -399,7 +399,12 @@ class Phone(unittest.TestCase):
             ui.tap('Send', exact=True)
             ui.find('1 photo being prepared', timeout=30)
             self.assertFalse(ui.present('4 selected', exact=True), 'still selecting after the photo was queued')
-            time.sleep(1)
+            # the job is on disk once its .json is there (a full camera frame takes a moment to seal)
+            if ui.debuggable(PKG):
+                self.wait_server(lambda: any(n.endswith('.json') for n in ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()),
+                                 'the photo for all was never written to the queue', tries=60)
+            else:
+                time.sleep(5)
             ui.sh('am', 'force-stop', PKG)
             time.sleep(2)
             self.assertEqual(mine('photo'), [], 'the held photo was sent')
@@ -413,7 +418,7 @@ class Phone(unittest.TestCase):
                     self.assertTrue(raw.startswith(b'KSL1'), f'{n} is not sealed')
                     for k in codes:
                         self.assertNotIn(k.encode(), raw, f'{n} holds a code in clear text')
-            # the app starts again: the queue sends it, one photo for every code, the same image
+            # the app starts again: the queue sends it, one photo for every code
             ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
             ph = self.wait_server(lambda: (lambda p: p if len(p) >= 4 else None)(mine('photo')),
                                   'the photo for all never reached the server for every code', tries=360)

@@ -27,6 +27,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -189,7 +190,8 @@ internal fun FloorDialog(title: String, text: String, onPick: (String) -> Unit, 
     AlertDialog(onDismissRequest = onClose, title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text)
+                // a long list of codes (Photo for all) scrolls; the floors stay in view
+                Box(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) { Text(text) }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (f in 0..10) FilterChip(chosen == "$f", { chosen = "$f" }, label = { Text("$f") },
                         modifier = Modifier.semantics { contentDescription = "Floor $f" + if (chosen == "$f") ", chosen" else "" })

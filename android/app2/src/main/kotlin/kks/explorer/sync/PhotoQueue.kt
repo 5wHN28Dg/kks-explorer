@@ -41,7 +41,8 @@ import java.util.concurrent.Executors
  *
  * One photo of several codes ("Photo for all") is a job like any other, with `codes` (2 to 200; `kks` is the first):
  * sent as one /api/submit-many with the job ID as the `client_id` prefix, so a rerun sends no code twice; its `floor`
- * is written by the core only for the codes that have none.
+ * is written by the core only for the codes that have none; `floor_codes` are the codes it was asked for (the ones
+ * [queuedFloor] then answers for).
  */
 object PhotoQueue {
     const val WORK = "kks-photos"
@@ -93,7 +94,7 @@ object PhotoQueue {
         val js = jobs(ctx)
         val by = js.flatMap { codesOf(it.second) }.groupingBy { it }.eachCount()
         val floors = js.filter { it.second.optString("floor").isNotEmpty() }
-            .flatMap { j -> codesOf(j.second).map { it to j.second.optString("floor") } }.toMap()
+            .flatMap { j -> floorCodesOf(j.second).map { it to j.second.optString("floor") } }.toMap()
         main.post {
             pending = js.size
             pendingByCode.keys.retainAll(by.keys); pendingByCode.putAll(by)
@@ -106,16 +107,28 @@ object PhotoQueue {
         job.optJSONArray("codes")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
             ?.takeIf { it.isNotEmpty() } ?: listOf(job.optString("kks"))
 
+    /** the codes a job's floor was asked for: every code of a single photo's job, `floor_codes` of a job with several */
+    private fun floorCodesOf(job: JSONObject): List<String> =
+        if (job.optJSONArray("codes") == null) codesOf(job)
+        else job.optJSONArray("floor_codes")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } } ?: emptyList()
+
     /** how a job is named where it failed: "11LAB70AA501", or "11LAB70AA501 and 2 more" */
     private fun nameOf(codes: List<String>) = codes.first() + if (codes.size > 1) " and ${codes.size - 1} more" else ""
 
     /** queue one photo: returns at once; the pixels are written and the job enqueued on the queue's own thread.
-     *  `codes`: one photo of several codes (Photo for all; `kks` is then the first of them) */
-    fun add(ctx: Context, bmp: Bitmap, kks: String, caption: String, note: String, floor: String, codes: List<String> = emptyList()) {
+     *  `codes`: one photo of several codes (Photo for all; `kks` is then the first of them), and `floorCodes` the ones
+     *  among them the floor was asked for (the others have one already) */
+    fun add(ctx: Context, bmp: Bitmap, kks: String, caption: String, note: String, floor: String, codes: List<String> = emptyList(),
+            floorCodes: List<String> = emptyList()) {
         val app = ctx.applicationContext
         val id = UUID.randomUUID().toString().replace("-", "")       // also the submission's client_id: a rerun can't add it twice
         val all = codes.distinct().ifEmpty { listOf(kks) }
-        main.post { pending += 1; for (c in all) { pendingByCode[c] = (pendingByCode[c] ?: 0) + 1; if (floor.isNotEmpty()) queuedFloor[c] = floor } }
+        val asked = if (all.size > 1) floorCodes.filter { it in all } else all
+        main.post {
+            pending += 1
+            for (c in all) pendingByCode[c] = (pendingByCode[c] ?: 0) + 1
+            if (floor.isNotEmpty()) for (c in asked) queuedFloor[c] = floor
+        }
         io.execute {
             if (wiped) return@execute
             try {
@@ -128,7 +141,7 @@ object PhotoQueue {
                 px.writeBytes(Keys.seal(buf.array(), aad("px", id)))
                 val job = JSONObject().put("kks", all.first()).put("caption", caption).put("note", note).put("floor", floor)
                     .put("at", System.currentTimeMillis())
-                if (all.size > 1) job.put("codes", JSONArray(all))
+                if (all.size > 1) job.put("codes", JSONArray(all)).put("floor_codes", JSONArray(asked))
                 // the JSON last, through a rename: a job file is never seen half written
                 val tmp = File(dir(app), "$id.json.tmp"); tmp.writeBytes(Keys.seal(job.toString().toByteArray(), aad("job", id)))
                 if (!tmp.renameTo(File(dir(app), "$id.json"))) { tmp.delete(); throw java.io.IOException("could not write the job") }

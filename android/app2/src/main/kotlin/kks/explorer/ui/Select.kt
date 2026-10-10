@@ -121,14 +121,15 @@ fun SelectBar(n: Int, modifier: Modifier, onList: () -> Unit, onPhoto: () -> Uni
 
 /** the selected codes, each with the drawing(s) it is on and a checkbox to leave a mistaken one out; and Add codes:
  *  codes typed or pasted, for tags that are in the same place but on other drawings. `places` is null while the
- *  drawings' codes are being read. `onAdd` gets the codes that are on a drawing and returns what to say (the cap). */
+ *  drawings' codes are being read. `onAdd` gets the codes that are on a drawing and returns the ones the cap left out. */
 @Composable
 fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUntick: (String) -> Unit,
-               onAdd: (List<String>) -> String, onClose: () -> Unit) {
+               onAdd: (List<String>) -> List<String>, onClose: () -> Unit) {
     var typed by remember { mutableStateOf("") }
     var said by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest = onClose, title = { Text("Selected tags") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // scrolls as a whole: with the keyboard up on a small phone the field and Add must still be reachable
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (selected.isEmpty()) Dim("Nothing selected.")
             else LazyColumn(Modifier.heightIn(max = 260.dp)) {
                 items(selected, key = { it }) { code ->
@@ -149,14 +150,16 @@ fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUnti
             OutlinedTextField(typed, { typed = it; said = "" }, label = { Text("Add codes") }, maxLines = 4, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
                 supportingText = { Text("KKS codes from any drawing, with spaces, commas or new lines between them.") })
+            if (places == null) Dim("Reading the drawings' codes…")
             if (said.isNotEmpty()) Text(said, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             OutlinedButton(enabled = typed.isNotBlank() && places != null, onClick = {
                 val index = places ?: return@OutlinedButton
                 val (known, unknown) = typedCodes(typed).partition { it in index }
-                val cap = if (known.isEmpty()) "" else onAdd(known)
-                // what could not be added stays in the field, to be corrected
-                typed = unknown.joinToString(" ")
-                said = listOf(if (unknown.isEmpty()) "" else "Not on any drawing, not added: " + unknown.joinToString(", "), cap)
+                val over = if (known.isEmpty()) emptyList() else onAdd(known)
+                // what could not be added stays in the field: to be corrected, or sent after these
+                typed = (unknown + over).joinToString(" ")
+                said = listOf(if (unknown.isEmpty()) "" else "Not on any drawing, not added: " + unknown.joinToString(", ") + ".",
+                    if (over.isEmpty()) "" else "At most $MAX_PICK tags at once, not added: " + over.joinToString(", ") + ". Send these first.")
                     .filter { it.isNotEmpty() }.joinToString(" ")
             }) { Text("Add") }
         }
@@ -231,7 +234,7 @@ internal fun codesWithoutFloor(codes: List<String>): List<String> {
  *  goes with the photo and the core writes it as a proposal for those codes only. */
 @Composable
 fun FloorForAll(missing: List<String>, total: Int, onPick: (String) -> Unit, onClose: () -> Unit) {
-    val names = missing.take(5).joinToString(", ") + if (missing.size > 5) " and ${missing.size - 5} more" else ""
+    val names = missing.joinToString(", ")       // all of them: the dialog's text scrolls
     FloorDialog(if (missing.size == 1) "Which floor is it on?" else "Which floor are they on?",
         (if (missing.size == 1) "$names has no floor yet." else "No floor yet: $names.") +
             " Every photo needs it first: it is sent with the photo" + (if (missing.size == 1) "" else ", for these codes") + "." +
@@ -241,9 +244,9 @@ fun FloorForAll(missing: List<String>, total: Int, onPick: (String) -> Unit, onC
 
 /** one photo for every code: the panel's camera (or gallery) → mark-up editor → the photo queue (PhotoQueue: sealed on
  *  disk, encoded and sent in the background as one /api/submit-many, kept if the app is killed). `floor`: the one
- *  asked for first when a code had none, else empty. */
+ *  asked for first when a code had none, else empty; `floorCodes`: the codes it was asked for. */
 @Composable
-fun PhotoForAll(codes: List<String>, floor: String, onSaid: (String) -> Unit, onQueued: () -> Unit, onClose: () -> Unit) {
+fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, onSaid: (String) -> Unit, onQueued: () -> Unit, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Bitmap?>(null) }
@@ -280,7 +283,8 @@ fun PhotoForAll(codes: List<String>, floor: String, onSaid: (String) -> Unit, on
             onRetake = { picked = null; if (fromCamera) shoot() else gallery.launch("image/*") }) { out, caption, note ->
             picked = null
             // the queue encodes and sends it in the background, like any other photo, whether or not the app stays open
-            PhotoQueue.add(ctx, out, codes.first(), caption, note, floor, codes = if (codes.size > 1) codes else emptyList())
+            if (codes.isEmpty()) { onClose(); return@Annotate }
+            PhotoQueue.add(ctx, out, codes.first(), caption, note, floor, codes = if (codes.size > 1) codes else emptyList(), floorCodes = floorCodes)
             onQueued(); onClose()
         }
     }

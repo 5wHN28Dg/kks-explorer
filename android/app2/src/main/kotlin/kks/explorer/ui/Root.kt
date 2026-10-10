@@ -429,6 +429,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     scope.launch {
                         // the floor first, as for one photo of one tag: asked only when a code has none, sent with the photo
                         val missing = withContext(Dispatchers.IO) { codesWithoutFloor(codes) }
+                        // the selection changed (or ended) while the floors were read: the answer is for other codes
+                        if (!selecting || multi.isNotEmpty() || selection.toList() != codes || codes.isEmpty()) return@launch
                         multiFloor = ""; noFloor = missing
                         multi = if (missing.isEmpty()) "photo" else "floor"
                     }
@@ -440,12 +442,12 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             }
             when (multi) {
                 "list" -> SelectList(selectedCodes, places, onUntick = { selection = selection - it }, onAdd = { add ->
-                    val (next, full) = addCapped(selection, add)
+                    val (next, _) = addCapped(selection, add)
                     selection = next
-                    if (full) capped else ""
+                    add.filter { it !in next }
                 }, onClose = { multi = "" })
                 "floor" -> FloorForAll(noFloor, selectedCodes.size, onPick = { multiFloor = it; multi = "photo" }, onClose = { multi = "" })
-                "photo" -> PhotoForAll(selectedCodes, multiFloor, onSaid = say, onQueued = {
+                "photo" -> PhotoForAll(selectedCodes, multiFloor, noFloor, onSaid = say, onQueued = {
                     selecting = false; selection = emptySet()
                     say("Photo queued: it is compressed and sent in the background")
                 }) { multi = "" }
