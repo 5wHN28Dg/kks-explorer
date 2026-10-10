@@ -256,21 +256,38 @@ class Windows(unittest.TestCase):
             got = {k: eq.get(k, {}).get('notes', '') for k in want2}
             return got if got == want2 else None
         self.wait_server(notes, 'the notes never reached the server', tries=80)
-        # Photo for all: a photo needs each code's floor, and 11LAC10AP003 has none: said, nothing opens; Place for all
-        # sets it (11LAC10AP001 has floor 3 already: nothing to replace, no question)
+        # Photo for all: a photo needs each code's floor, and 11LAC10AP003 has none: asked first, for that code only
+        # (11LAC10AP001 keeps its floor 3), and sent with the photo. The question belongs to the selection: it closes
+        # when the mode ends, and a second click on Photo for all doesn't open a second one
+        ask = 'Which floor is 11LAC10AP003 on?'
         self.check('multi2.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) +
                    pick('11LAC10AP003', 2) + [
-                   'click\tPhoto for all…',
-                   'wait\t~A photo needs each code\'s floor. No floor yet: 11LAC10AP003. Set it with Place for all first.\t10',
-                   'gone\tPhoto to mark up', 'state\tSelect tags\ton',
-                   'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t3', 'click\tSend',
-                   'wait\t~Sent for 2 codes · saved\t20', 'state\tSelect tags\toff', 'gone\tPlace for all'])
+                   'click\tPhoto for all…', 'wait\t%s\t10' % ask,
+                   'wait\t~1 of the 2 selected codes has none yet: 11LAC10AP003. Enter its floor\t5',
+                   'wait\t~for this code only: the other code keeps its floor.\t5', 'gone\tPhoto to mark up',
+                   'keys\tDrawing\t0x1B', 'state\tSelect tags\toff', 'gone\t' + ask,
+                   'toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) + pick('11LAC10AP003', 2) + [
+                   'click\tPhoto for all…', 'wait\t%s\t10' % ask, 'click\tPhoto for all…', 'sleep\t500',
+                   # not a floor: said, the question stays
+                   'set\tFloor of the codes without one (0–10)\t12', 'click\tContinue',
+                   'wait\tFloor: a whole number from 0 to 10 (the height goes in Elevation).\t10',
+                   'set\tFloor of the codes without one (0–10)\t4', 'click\tContinue',
+                   'wait\tPhoto to mark up\t30', 'gone\t' + ask,       # (one question: none is left behind)
+                   'set\tCaption (optional)\tWith its floor', 'click\tSend', 'wait\t~Photo queued for 2 codes\t20',
+                   'state\tSelect tags\toff', 'wait\t~Photo sent for 2 codes · saved · floor 4 saved for 1\t90'])
+        want3 = {'11LAC10AP001': '3', '11LAC10AP003': '4'}
+        def floors3():
+            eq = b.req('GET', '/api/state')['equipment']
+            got = {k: eq.get(k, {}).get('floor', '') for k in want3}
+            return got if got == want3 else None
+        self.wait_server(floors3, 'the floor never went with the photo: %s' % b.req('GET', '/api/state')['equipment'], tries=80)
         # a round's windows close with it: the List and a form left open are gone once the mode ends
         self.check('multi3.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) + [
                    'click\tList', 'wait\tSelected codes\t10', 'click\tNote for all…', 'wait\tNote for all\t10',
                    'keys\tDrawing\t0x1B', 'state\tSelect tags\toff', 'gone\tSelected codes', 'gone\tNote for all'])
-        # one picture through the mark-up editor, sent once for both codes; the editor outlives its round (the mode
-        # ended, a new selection begun meanwhile): it sends for its own codes and leaves the new selection alone
+        # one picture through the mark-up editor, sent once for both codes (both have a floor now: nothing is asked);
+        # the editor outlives its round (the mode ended, a new selection begun meanwhile): it sends for its own codes
+        # and leaves the new selection alone
         self.check('multi4.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC10AP001', 1) +
                    pick('11LAC10AP003', 2) + [
                    'click\tPhoto for all…', 'wait\tPhoto to mark up\t30', 'keys\tDrawing\t0x1B', 'state\tSelect tags\toff',
@@ -292,6 +309,86 @@ class Windows(unittest.TestCase):
         ph = self.wait_server(photos, 'the photos never reached the server', tries=80)
         self.assertEqual(len({p['file'] for p in ph}), 1, 'one image for both codes: %s' % ph)
         self.leave()
+
+    def test_multi_member(self):
+        """A member's Photo for all on codes without a floor (the user, 2026-10-10: a member could not get past "set
+        the floors first", a floor needs approval before it counts): the floor is asked first, for the codes that have
+        none, and goes with the photo as the member's own floor proposals. The selection is of codes, not of one
+        drawing's tags: a search result of another drawing joins it and the drawing stays, switching drawings keeps
+        it, and the List takes typed codes (each must be on some drawing) and shows each code's drawings"""
+        b = self.boss
+        self.other_sheet()
+        p1, p2, p3, p4 = '11LAD10AP001', '11LAD10AP002', '11LAD10AP003', '11LAD10AP004'
+        for sheet, k, bb in (('sample', p1, [600, 800, 720, 860]), ('sample', p2, [800, 800, 920, 860]),
+                             ('sample', p3, [1000, 800, 1120, 860]), ('other', p4, [600, 800, 720, 860]),
+                             ('other', p3, [800, 800, 920, 860])):
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': sheet, 'bbox': bb, 'kks': k,
+                                                                             'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': p2, 'changes': {'floor': '2'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        if 'mona' not in [u['username'] for u in b.req('GET', '/api/users').get('users', [])]: self.member('mona', 'Mona Member')
+        self.check('mmjoin.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
+                                  'set\tUsername\tmona', 'set\tPassword\tmona password 1', 'click\tJoin',
+                                  'wait\t~Sample sheet\t60'], keep=False, sync_every=3000, env={'KKS_MAX_PICK': '4'})
+        search = 'set\tSearch equipment by KKS code or description\t'
+        codes_field = 'KKS codes to add (separated by spaces, commas or new lines)'
+        self.check('mmember0.uia', [
+            'wait\tSample sheet — Walkdown\t10', 'toggle\tSelect tags', 'wait\t0 selected\t10',
+            search + p1[2:], 'select\t~' + p1, 'click\tSelect or unselect', 'wait\t1 selected\t10',
+            # a result of the other drawing: its code joins the selection, this drawing and the mode stay
+            search + p4[2:], 'select\t~' + p4, 'click\tSelect or unselect',
+            'wait\t~%s (on Other drawing) selected, 2 selected\t10' % p4, 'wait\t2 selected\t10', 'sleep\t500',
+            'wait\tSample sheet — Walkdown\t5', 'gone\tOther drawing — Walkdown', 'state\tSelect tags\ton',
+            # the other drawing opened from the sheet list: the selection is kept, and its tag shows as selected there
+            'select\t~Other drawing  (', 'wait\tOther drawing — Walkdown\t20', 'wait\t2 selected\t5',
+            'state\tSelect tags\ton', 'wait\t~%s, \t20' % p4, 'wait\t~, in the selection\t10',
+            # the List: typed codes (lower case, commas, a line break), one unknown (named, left in the field), one
+            # already there; each row names the code's drawings
+            'click\tList', 'wait\tSelected codes\t10', 'state\t~%s  (\ton' % p4, 'state\t~Other drawing)\ton',
+            'settext\t%s\t%s, %s\\n11XXX99ZZ999 %s' % (codes_field, p2.lower(), p3, p1), 'click\tAdd codes',
+            'wait\t~2 codes added · 1 already selected · not on any drawing, not added: 11XXX99ZZ999 · 4 selected\t10',
+            'wait\t4 selected\t10', 'value\t%s\t11XXX99ZZ999' % codes_field,
+            'state\t~%s  (\ton' % p2, 'state\t~Sample sheet, Other drawing)\ton',       # (p3 is on both)
+            # the cap holds for typed codes too
+            'settext\t%s\t11LAB70AA601' % codes_field, 'click\tAdd codes',
+            'wait\t~0 codes added · 1 left out (at most 4 tags at once: send these first) · 4 selected\t10',
+            'click\tClose the list', 'gone\tSelected codes',
+            # Photo for all: three of the four have no floor: asked once, naming them; the other keeps its own
+            'click\tPhoto for all…', 'wait\tWhich floor are these 3 codes on?\t10',
+            'wait\t~3 of the 4 selected codes have none yet: %s, %s, %s. Enter their floor\t5' % (p1, p4, p3),
+            'wait\t~for these codes only: the other code keeps its floor.\t5',
+            'click\tContinue', 'wait\tFloor: a whole number from 0 to 10 (the height goes in Elevation).\t10',
+            'set\tFloor of the codes without one (0–10)\t5', 'click\tContinue', 'wait\tPhoto to mark up\t30',
+            'gone\tWhich floor are these 3 codes on?', 'set\tCaption (optional)\tSame corner', 'click\tSend',
+            'wait\t~Photo queued for 4 codes\t20', 'state\tSelect tags\toff',
+            'wait\t~Photo sent for 4 codes · 4 await approval · floor 5 proposed for 3 (awaits approval)\t90'])
+        def proposals():
+            subs = [x for x in b.req('GET', '/api/submissions?status=open')['submissions'] if x.get('by') == 'mona' or
+                    x.get('username') == 'mona' or x.get('by_name') == 'Mona Member']
+            ph = sorted(x['payload'].get('kks') for x in subs if x['kind'] == 'photo')
+            return subs if ph == [p1, p2, p3, p4] else None
+        subs = self.wait_server(proposals, 'the photo never reached the server for all four codes: %s'
+                                % b.req('GET', '/api/submissions?status=open'), tries=80)
+        fl = {x['payload']['kks']: x['payload'].get('changes', {}).get('floor') for x in subs if x['kind'] == 'equipment'}
+        self.assertEqual(fl, {p1: '5', p3: '5', p4: '5'}, 'a floor proposal for each code without a floor, none for the other')
+        # the floors are on their way (the member's own open proposals): the next Photo for all asks nothing
+        self.check('mmember1.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10',
+                                    search + p4[2:], 'select\t~' + p4, 'click\tSelect or unselect', 'wait\t1 selected\t10',
+                                    search + p2[2:], 'select\t~' + p2, 'click\tSelect or unselect', 'wait\t2 selected\t10',
+                                    'click\tPhoto for all…', 'wait\tPhoto to mark up\t30',
+                                    'gone\tWhich floor is %s on?' % p4, 'click\tCancel', 'gone\tPhoto to mark up',
+                                    'keys\tDrawing\t0x1B', 'state\tSelect tags\toff'])
+        for x in sorted(subs, key=lambda x: x['id']):
+            r = b.req('POST', '/api/submissions/%s/approve' % x['id'], {})
+            self.assertFalse(r.get('error'), r)
+        st = b.req('GET', '/api/state')
+        self.assertEqual({k: st['equipment'].get(k, {}).get('floor') for k in (p1, p2, p3, p4)},
+                         {p1: '5', p2: '2', p3: '5', p4: '5'})
+        ph = [x for x in st.get('photos', []) if x.get('caption') == 'Same corner']
+        self.assertEqual(sorted(x['kks'] for x in ph), [p1, p2, p3, p4])
+        self.assertEqual(len({x['file'] for x in ph}), 1, 'one image for the four codes: %s' % ph)
+        self.leave('mona')
 
     def test_multi_clash(self):
         """Place for all asks before replacing a floor. A floor changed on the server while that question is open (the
@@ -674,13 +771,13 @@ class Windows(unittest.TestCase):
                                                'wait\tPhotos not sent (2)…\t10'] +
                    photo(c, '7', 'Floor C') + ['wait\t~Photo of %s was not sent (could not be compressed\t30' % c,
                                                'wait\tPhotos not sent (3)…\t10'] +
-                   # Photo for all doesn't count a floor riding on a kept photo (its own photo would go without it,
-                   # and the kept one may be discarded): refused, naming the code
+                   # Photo for all takes "known" as a single photo does: the floor riding on the kept photo counts, so
+                   # nothing is asked
                    ['click\tDrawings', 'toggle\tSelect tags', 'wait\t0 selected\t10',
                     'set\tSearch equipment by KKS code or description\t' + a[2:], 'select\t~' + a,
                     'click\tSelect or unselect', 'wait\t1 selected\t10', 'click\tPhoto for all…',
-                    'wait\t~A photo needs each code\'s floor. No floor yet: %s.\t20' % a, 'gone\tPhoto to mark up',
-                    'keys\tDrawing\t0x1B', 'state\tSelect tags\toff'] +
+                    'wait\tPhoto to mark up\t30', 'gone\tWhich floor is %s on?' % a, 'click\tCancel',
+                    'gone\tPhoto to mark up', 'keys\tDrawing\t0x1B', 'state\tSelect tags\toff'] +
                    # the floor is on its way with the kept photo: not asked again, and it goes with this one
                    photo(b, None, 'Floor B2') + ['wait\t~Saved: photo of %s\t90' % b])
         def floor_b():

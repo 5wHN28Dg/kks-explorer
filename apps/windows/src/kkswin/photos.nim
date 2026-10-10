@@ -163,7 +163,7 @@ proc pickPicture(w: Win, title: string): (seq[byte], int, int) =
   cfree(px)
   (rgba, int(iw), int(ih))
 
-proc photoForCodes*(w: Win, codes: seq[string], queued: proc ())
+proc photoForCodes*(w: Win, codes: seq[string], floor: string, queued: proc ())
 
 # ---------------------------------------------------------------- the photo queue, kept on disk (the user, 2026-10-08:
 # "background compression and a photo queue"; since 2026-10-09 kept on disk like Android's, decision 0049, and the
@@ -278,11 +278,12 @@ proc TerminateProcess(p: pointer, code: cuint): BOOL {.importc, stdcall, header:
 proc submitOne(w: Win, q: var QueuedPhoto, data: string) =
   ## one code's photo through the core (§9 submit with the photo's client_id). Raises ApiError when the core refuses it
   if q.floor.len == 0:
-    # the floor was asked with an earlier photo of this code that is kept (not sent): it goes with this one too, or a
-    # photo would arrive without it (the core writes a floor only while the code has none)
+    # the floor was asked with an earlier photo of this code that is kept (not sent; its own, or one for several
+    # codes): it goes with this one too, or a photo would arrive without it (the core writes a floor only while the
+    # code has none)
     block find:
       for f in kept():
-        if f.key != q.key and f.codes.len == 0 and f.kks == q.kks and f.floor.len > 0:
+        if f.key != q.key and q.kks in f.codesOf and f.floor.len > 0:
           q.floor = f.floor
           break find
   var payload = newObj(@[("kks", newStr(q.kks)), ("caption", newStr(q.caption)),
@@ -300,24 +301,32 @@ proc submitOne(w: Win, q: var QueuedPhoto, data: string) =
 proc submitMany(w: Win, q: QueuedPhoto, data: string) =
   ## one photo of several codes ("Photo for all", multi.nim): one /api/submit-many, the job's client_id as the prefix
   ## (a resend after a crash skips the codes already sent). Raises ApiError when the core refuses it.
+  ## The floor asked before the photo goes in the payload: the core writes it, before the photo, for each code that
+  ## has no floor and no floor proposal of this person still open (as it does for one photo); the others keep theirs.
   var arr = newArr()
   for k in q.codes: arr.elems.add newStr(k)
-  var body = newObj(@[("kind", newStr("photo")), ("kks", arr), ("client_id", newStr(q.clientId)),
-                      ("payload", newObj(@[("caption", newStr(q.caption)),
-                                           ("dataUrl", newStr("data:image/jxl;base64," & encode(data)))]))])
+  var payload = newObj(@[("caption", newStr(q.caption)), ("dataUrl", newStr("data:image/jxl;base64," & encode(data)))])
+  if q.floor.len > 0: payload["floor"] = newStr(q.floor)
+  var body = newObj(@[("kind", newStr("photo")), ("kks", arr), ("client_id", newStr(q.clientId)), ("payload", payload)])
   if q.note.strip.len > 0: body["note"] = newStr(q.note.strip)
   let r = w.a.call("POST", "/api/submit-many", body)
-  var pending, held = 0
+  var pending, held, floorSet, floorWaits = 0
   if r.get("results") != nil:
     for x in r["results"].elems:
       case s(x, "status")
       of "approved": discard
       of "conflict": inc held
       else: inc pending
-  var msg = "Photo sent for " & $q.codes.len & " codes"
+      # this code's floor (the result's "floor"): {"status": "unchanged"} when it kept its own
+      let f = x.get("floor")
+      if f != nil and f.kind == jObj and s(f, "status") != "unchanged":
+        if s(f, "status") == "approved": inc floorSet else: inc floorWaits
+  var msg = "Photo sent for " & (if q.codes.len == 1: "1 code" else: $q.codes.len & " codes")
   if pending > 0: msg.add " · " & $pending & " await approval"
   if held > 0: msg.add " · " & $held & " held (they clash with pending changes)"
   if pending == 0 and held == 0: msg.add " · saved"
+  if floorSet > 0: msg.add " · floor " & q.floor & " saved for " & $floorSet
+  if floorWaits > 0: msg.add " · floor " & q.floor & " proposed for " & $floorWaits & " (awaits approval)"
   w.toast(msg)
 
 proc GetClassNameW(h: HWND, buf: WideCString, n: cint): cint {.importc, stdcall, header: "<windows.h>".}
@@ -378,7 +387,7 @@ proc received(w: Win, d: EncDone) =
   else:
     whyOf.del d.key
     # a refused photo may have carried the floor its code was asked for: another photo of the code takes it over
-    if outcome == Refused and it.codes.len == 0: w.floorAfterDiscard(it)
+    if outcome == Refused: w.floorAfterDiscard(it)
   if r.len > 0: w.toast(r)
 
 proc startNext(w: Win) =
@@ -470,23 +479,36 @@ proc enqueue(w: Win, rgba: seq[byte], pw, ph: int, kks, caption, note, floor: st
   true
 
 proc floorKnown(w: Win, kks: string): bool
+proc floorsMissing*(w: Win, codes: openArray[string], queued = true): seq[string]
 
 proc floorAfterDiscard(w: Win, gone: QueuedPhoto) =
-  ## a discarded photo may have carried the floor its code was asked for (the floor first): another photo of the code
-  ## still waiting takes it over (on disk too); with none, the person is told, and the next photo of the code asks again
+  ## a discarded photo may have carried the floor its code was asked for (the floor first; a photo for several codes:
+  ## the floor of those that had none): another photo of the code still waiting takes it over (on disk too); with
+  ## none, the person is told, and the next photo of the code asks again
   if gone.floor.len == 0: return
-  for q in kept():
-    if q.codes.len == 0 and q.kks == gone.kks:
-      if q.floor.len > 0: return
-      try:
-        pq.setFloor(q.key, gone.floor)
-        for p in parked.mitems:
-          if p.key == q.key: p.floor = gone.floor
-        return
-      except CatchableError as e: w.toast("The floor could not be kept with the next photo: " & e.msg)
-  if not w.floorKnown(gone.kks):
-    w.toast("The floor of " & gone.kks & " (" & gone.floor & ") was to be sent with that photo: it was not saved. " &
-            "The next photo of " & gone.kks & " asks for it again.")
+  var check: seq[string]
+  for code in gone.codesOf:
+    block one:
+      for q in kept():                    # another kept photo already carries a floor for it
+        if q.key != gone.key and code in q.codesOf and q.floor.len > 0: break one
+      for q in kept():                    # a photo of this code alone takes the floor over
+        if q.key != gone.key and q.codes.len == 0 and q.kks == code:
+          try:
+            pq.setFloor(q.key, gone.floor)
+            for p in parked.mitems:
+              if p.key == q.key: p.floor = gone.floor
+            break one
+          except CatchableError as e: w.toast("The floor could not be kept with the next photo: " & e.msg)
+      check.add code
+  if check.len == 0: return
+  let lost = w.floorsMissing(check)
+  if lost.len == 1:
+    w.toast("The floor of " & lost[0] & " (" & gone.floor & ") was to be sent with that photo: it was not saved. " &
+            "The next photo of " & lost[0] & " asks for it again.")
+  elif lost.len > 1:
+    w.toast("The floor (" & gone.floor & ") of " & lost[0 ..< min(5, lost.len)].join(", ") &
+            (if lost.len > 5: " and " & $(lost.len - 5) & " more" else: "") &
+            " was to be sent with that photo: it was not saved. Their next photo asks for it again.")
 
 proc retryNow(w: Win, key: string) =
   ## Try again: at once, with a fresh count of tries
@@ -607,18 +629,19 @@ proc floorKnown(w: Win, kks: string): bool = w.floorsMissing([kks]).len == 0
 
 proc validFloor(f: string): bool = f == "10" or (f.len == 1 and f[0] in Digits)
 
-proc askFloor(w: Win, kks: string, fn: proc (floor: string), cancelled: proc () = nil) =
-  ## a photo needs its floor: asked before the picture, sent with it (the core writes it first, as its own change).
-  ## `cancelled`: the window closed without a floor (Cancel, Escape, its close box)
+proc askFloorWith(w: Win, title, text, fieldName: string, height: int, fn: proc (floor: string),
+                  cancelled: proc () = nil, closed: proc () = nil): HWND =
+  ## the floor's window: `fn` gets a valid floor (the window is gone by then); `cancelled`: it closed without one
+  ## (Cancel, Escape, its close box, or closed from outside); `closed`: it closed, either way (before `fn`)
   var hw: HWND
   var answered = false
-  let (h, p) = popup(w.hwnd, "Which floor is " & kks & " on?", 480, 330, proc () =
+  let (h, p) = popup(w.hwnd, title, 480, height, proc () =
+    if closed != nil: closed()
     if not answered and cancelled != nil: later(cancelled), escape = true)
   hw = h
-  p.title("Which floor is " & kks & " on?")
-  p.dim("A photo needs its floor, and this equipment has none yet. Enter the floor: a whole number from 0 (ground) " &
-        "to 10. It is sent with the photo.")
-  let e = p.field("Floor of " & kks & " (0–10)", "")
+  p.title(title)
+  p.dim(text)
+  let e = p.field(fieldName, "")
   let msg = p.label("")
   p.buttons(("Continue", proc () =
     let f = e.text.strip
@@ -631,6 +654,37 @@ proc askFloor(w: Win, kks: string, fn: proc (floor: string), cancelled: proc () 
   p.layout()
   ShowWindow(hw, SW_SHOW)
   SetFocus(e)
+  hw
+
+proc askFloor(w: Win, kks: string, fn: proc (floor: string), cancelled: proc () = nil) =
+  ## a photo needs its floor: asked before the picture, sent with it (the core writes it first, as its own change).
+  ## `cancelled`: the window closed without a floor (Cancel, Escape, its close box)
+  discard w.askFloorWith("Which floor is " & kks & " on?",
+    "A photo needs its floor, and this equipment has none yet. Enter the floor: a whole number from 0 (ground) " &
+    "to 10. It is sent with the photo.", "Floor of " & kks & " (0–10)", 330, fn, cancelled)
+
+proc askFloors*(w: Win, missing: seq[string], total: int, fn: proc (floor: string), cancelled: proc () = nil,
+                closed: proc () = nil): HWND =
+  ## one photo for `total` codes, of which `missing` have no floor: asked once, before the picture, as for one code
+  ## (the user, 2026-10-10: a member can't set the floors first, a floor needs approval before it counts). The floor
+  ## goes with the photo and the core writes it for the codes that still have none; the others keep theirs
+  let n = missing.len
+  let text =
+    if n == 1 and total == 1:
+      "A photo needs its floor, and " & missing[0] & " has none yet. "
+    elif n == total:
+      "A photo needs its floor, and the " & $total & " selected codes have none yet: " & missing.join(", ") & ". "
+    else:
+      "A photo needs its floor, and " & $n & " of the " & $total & " selected codes " &
+      (if n == 1: "has" else: "have") & " none yet: " &
+      missing.join(", ") & ". "
+  let rest = total - n
+  w.askFloorWith(if n == 1: "Which floor is " & missing[0] & " on?" else: "Which floor are these " & $n & " codes on?",
+    text & "Enter " & (if n == 1: "its" else: "their") & " floor: a whole number from 0 (ground) to 10. " &
+    "It is sent with the photo" &
+    (if rest == 0: "." elif rest == 1: ", for " & (if n == 1: "this code" else: "these codes") & " only: the other code keeps its floor."
+     else: ", for " & (if n == 1: "this code" else: "these codes") & " only: the other " & $rest & " keep their floors."),
+    "Floor of the codes without one (0–10)", min(600, 340 + 6 * n), fn, cancelled, closed)
 
 proc hasPlate(w: Win, kks: string): bool =
   ## the code has a tag plate photo, or one is on its way (queued, kept, or my proposal waiting for approval)
@@ -675,13 +729,27 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
   if w.floorKnown(kks): go("")
   else: w.askFloor(kks, go)
 
-proc photoForCodes*(w: Win, codes: seq[string], queued: proc ()) =
+proc photoForCodes*(w: Win, codes: seq[string], floor: string, queued: proc ()) =
   ## one picture for several codes ("Photo for all", multi.nim): from a file, marked up in the editor, then queued like
-  ## any photo (kept on disk, compressed on the worker thread, sent with submit-many); `queued` runs once it is
+  ## any photo (kept on disk, compressed on the worker thread, sent with submit-many); `queued` runs once it is.
+  ## `floor`: asked before (askFloors) for the codes that have none; "" when every code's floor was known
   let (rgba, pw, ph) = w.pickPicture("Add a photo")
   if rgba.len == 0: return
   annotate(w.hwnd, rgba, pw, ph, proc (marked: seq[byte], caption, note: string) =
-    if w.enqueue(marked, pw, ph, codes[0], caption.strip, note.strip, "", codes): queued(),
+    let cap = caption.strip
+    let n = note.strip
+    if floor.len == 0:
+      # a kept photo that was to carry a code's floor was discarded while this editor was open: ask now. Without an
+      # answer the photo still goes (the marks are never lost), without a floor
+      let late = w.floorsMissing(codes)
+      if late.len > 0:
+        discard w.askFloors(late, codes.len,
+          proc (f: string) =
+            if w.enqueue(marked, pw, ph, codes[0], cap, n, f, codes): queued(),
+          proc () =
+            if w.enqueue(marked, pw, ph, codes[0], cap, n, "", codes): queued())
+        return
+    if w.enqueue(marked, pw, ph, codes[0], cap, n, floor, codes): queued(),
     askNote = not w.isAdmin)
 
 # ---------------------------------------------------------------- the panel section
