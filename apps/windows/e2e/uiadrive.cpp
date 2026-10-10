@@ -9,6 +9,8 @@
 //   touchdrag <name> x0 y0 x1 y1  the same with one finger, injected as real touch input (InjectTouchInput; works
 //                           without touch hardware), so the window gets WM_POINTER messages
 //   select <name>           select a list item (SelectionItem), e.g. before a button that opens the selection
+//   pick <name>             select a list item as a click on it does: the list box tells its parent (LBN_SELCHANGE),
+//                           which SelectionItem alone doesn't, e.g. the sheet list, which opens the selected sheet
 //   value <name> <text>     wait (15 s) until the field with this name holds a value containing text
 //   gone <name>             wait until no element has this name
 //   toggle <name>           flip a check box (Toggle)
@@ -296,7 +298,7 @@ int wmain(int argc, wchar_t **argv) {
         }
         int timeout = (cmd == "wait" && f.size() > 2) ? std::stoi(f[2]) * 1000 : 15000;
         CONTROLTYPEID only = (cmd == "set" || cmd == "settext" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
-                             (cmd == "enter" || cmd == "select") ? UIA_ListItemControlTypeId :
+                             (cmd == "enter" || cmd == "select" || cmd == "pick") ? UIA_ListItemControlTypeId :
                              (cmd == "toggle" || cmd == "state") ? UIA_CheckBoxControlTypeId :
                              (cmd == "choose" || cmd == "chosen") ? UIA_RadioButtonControlTypeId : 0;
         CONTROLTYPEID only2 = (cmd == "enter" || cmd == "select") ? UIA_TreeItemControlTypeId : 0;
@@ -428,6 +430,8 @@ int wmain(int argc, wchar_t **argv) {
             e->get_CurrentNativeWindowHandle(&hw);
             if (!hw) { say("ERROR: no window: " + arg); return 1; }
             std::wstring v = wide(f.size() > 2 ? f[2] : "");
+            // "\n" in the script is a line break (a script line can't hold one): a pasted column of codes
+            for (size_t i; (i = v.find(L"\\n")) != std::wstring::npos;) v.replace(i, 2, L"\r\n");
             if (!SendMessageW((HWND)hw, WM_SETTEXT, 0, (LPARAM)v.c_str())) { say("ERROR: WM_SETTEXT refused: " + arg); return 1; }
         } else if (cmd == "keys") {
             UIA_HWND hw = 0;
@@ -544,6 +548,19 @@ int wmain(int argc, wchar_t **argv) {
                 say("ERROR: not selectable: " + arg); return 1;
             }
             sp->Select(); sp->Release();
+        } else if (cmd == "pick") {
+            IUIAutomationSelectionItemPattern *sp = nullptr;
+            if (FAILED(e->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sp)) || !sp) {
+                say("ERROR: not selectable: " + arg); return 1;
+            }
+            sp->Select(); sp->Release();
+            IUIAutomationTreeWalker *tw = nullptr;
+            IUIAutomationElement *list = nullptr;
+            UIA_HWND hw = 0;
+            if (SUCCEEDED(ua->get_ControlViewWalker(&tw)) && tw) { tw->GetParentElement(e, &list); tw->Release(); }
+            if (list) { list->get_CurrentNativeWindowHandle(&hw); list->Release(); }
+            if (!hw) { say("ERROR: no list window: " + arg); return 1; }
+            PostMessageW(GetParent((HWND)hw), WM_COMMAND, MAKEWPARAM(GetDlgCtrlID((HWND)hw), LBN_SELCHANGE), (LPARAM)hw);
         } else if (cmd == "focus") {
             // the keyboard focus to this element (what Tab or a screen reader's navigation does); a list or tree item
             // is looked at afterwards (focus_on: the app may have rebuilt its list since it was found)
