@@ -59,7 +59,7 @@ Built here 2026-10-09 from the same commit, release mode, as `apps/windows/build
 | test_dbstore (SQLite, DPAPI) | 369 ms | 320 ms | −13 % |
 | test_dark (libjxl decode, Direct2D) | 2,093 ms | 438 ms | −79 % |
 | test_tiles (12 tiles of 2048 px on WARP, Direct2D's software renderer) | 138.1 s | 137.1 s | equal (Direct2D's own code) |
-| test_net, test_internet (sync over TCP and the relay) | 18.1 s, 38.6 s | 13.9 s, 38.9 s | not comparable: their time is waits and timeouts (test_net's 3 runs: 8.0–18.1 s and 6.8–14.0 s) |
+| test_net, test_internet (sync over TCP and the relay) | 17.5 s, 38.6 s | 6.9 s, 38.9 s | not comparable: their time is waits and timeouts (test_net's 3 runs: 8.0–18.1 s and 6.8–14.0 s) |
 | Start → first overview drawn (sample sheet, 5 starts, median), Windows 11 / 10 | 105 / 93 ms | 102 / 93 ms | equal |
 | Private bytes 15 s after start, Windows 11 / 10 | 20.4 / 19.4 MB | 20.8 / 19.6 MB | equal |
 | Join (enrolment + the first full sync of the sample sheet) | 1–2 s | 1–2 s | equal (the driver logs whole seconds) |
