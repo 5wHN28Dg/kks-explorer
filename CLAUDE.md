@@ -103,17 +103,27 @@ What the evidence-first-engineering skill needs to know here:
   on each platform and on the web.
 - **Photos and QR:** JPEG XL everywhere (libjxl, and our own WebAssembly build in `vendor/kks/`); zxing-cpp for QR.
 
-## Live deployment (on this laptop)
+## Live deployment
 
-- **Server:** runs as a user service from `~/kks-server` (`systemctl --user`, linger on; build in `app/current`, the
-  previous one in `app/previous`; installed by `deploy/install-server-user.sh`). The store's key is sealed with
-  systemd-creds.
-- **CLI:** `KKS_CONFIG=~/kks-server/config.json ~/kks-server/app/current/kks-server <cmd>`. The commands
-  `publish-data`, `set-plant-name`, `reset-password`, `reset-manager` and `submit-file` reach the running server through
-  its 0600 control socket. Other commands need the sealed credential (wiki: Server).
-- **Plant data working copy:** `~/kks-server/state/plant-data`.
+Since 2026-10-10 the server runs on a rented virtual server, not on this laptop. Its address, domain and SSH key are
+in `CLAUDE.local.md` ("Deployment"), never in tracked files.
+
+- **Server:** a system service (`kks-server.service`, an unprivileged user) from that user's `~/kks-server` (build in
+  `app/current`, the previous one in `app/previous`), behind Caddy for HTTPS. It is built on the server itself.
+  - Installed by `KKS_SERVER_UNIT=system deploy/install-server-user.sh` as that user, then
+    `deploy/install-server-system.sh USER` as root (a machine without a TPM can't load the sealed key in a user
+    service). Updating: pull, the first of the two again, `systemctl restart kks-server`, then check it is healthy.
+  - The store's key is sealed with systemd-creds in `/etc/credstore.encrypted/`.
+- **This laptop is the cold spare:** its own `kks-server` user service is stopped and disabled, and must stay so while
+  the other runs (they are the same device identity). A copy of the database and plant data is pulled daily into
+  `~/kks-server/cold/`; its `README.txt` says how to fail over.
+- **CLI, on the server:** `KKS_CONFIG=~/kks-server/config.json ~/kks-server/app/current/kks-server <cmd>` as the
+  service's user. The commands `publish-data`, `set-plant-name`, `reset-password`, `reset-manager` and `submit-file`
+  reach the running server through its 0600 control socket. Other commands need the sealed credential (wiki: Server).
+- **Plant data working copy:** `~/kks-server/state/plant-data` on the server.
   - **New drawing:** back it up first, then `kks-import PDF "Name" id --data-dir … --glyphs
-    ~/kks-server/app/current/fontlib.kgl`, check orientation and tags by eye, then `publish-data`.
+    ~/kks-server/app/current/fontlib.kgl`, check orientation and tags by eye (copy the result here to look at it),
+    then `publish-data`.
   - Backups are in `~/kks-server/state/backups/`.
 - **The plant root key** is inside the server. Encrypted backups and their passphrases are in
   `~/.config/kks-explorer/signing/`: `walkdown-root.{kksroot,passphrase}` and, since 2026-10-09,
@@ -129,7 +139,7 @@ What the evidence-first-engineering skill needs to know here:
 - **The relay** (redeployed 2026-10-10) admits only devices holding the plant's room key (decision 0050): apps
   before 0.10.0 can't use it.
 - **The service is capped** at `MemoryMax=3G` with a restart on failure; the importer's own limit
-  (`import_memory_mb`, 2560) stays below it.
+  (`import_memory_mb`, 2560) stays below it. Both units carry the cap (`tests/test_server_unit.py`).
 - The repository's history before the M5b rewrite (with plant data) is kept privately in
   `~/kks-explorer-history-before-M5b.bundle`.
 

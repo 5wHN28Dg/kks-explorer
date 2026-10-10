@@ -8,7 +8,12 @@
 #   ~/.config/systemd/user/kks-server.service
 # Editing the repo never changes the running server: updating it means running this script again on purpose.
 # Usage: deploy/install-server-user.sh            (build from this checkout and install; does not start anything)
+#        KKS_SERVER_UNIT=system deploy/install-server-user.sh    (the same without the user unit and its key: for a
+#                                                 machine without a TPM2, where deploy/install-server-system.sh
+#                                                 runs this install as a system service instead)
 set -eu
+UNIT_KIND="${KKS_SERVER_UNIT:-user}"
+case "$UNIT_KIND" in user|system) ;; *) echo "KKS_SERVER_UNIT must be user or system" >&2; exit 2;; esac
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 HOME_DIR="${KKS_SERVER_HOME:-$HOME/kks-server}"
 NIM="${NIM:-$HOME/.nimble/bin/nim}"
@@ -38,6 +43,11 @@ if [ ! -f "$HOME_DIR/config.json" ]; then
  "store": "$HOME_DIR/state/server.db", "plant_dir": "$HOME_DIR/state/plant-data", "backup_dir": "$HOME_DIR/state/backups"}
 CFG
   echo "wrote $HOME_DIR/config.json"
+fi
+if [ "$UNIT_KIND" = system ]; then
+  echo "installed. No user unit (KKS_SERVER_UNIT=system): as root, deploy/install-server-system.sh $(id -un)"
+  echo "Rollback: ln -sfn \$(readlink $HOME_DIR/app/previous) $HOME_DIR/app/current"
+  exit 0
 fi
 if [ ! -f "$HOME_DIR/storage-key.cred" ]; then
   head -c 32 /dev/urandom | systemd-creds --user encrypt --name=kks-storage-key - "$HOME_DIR/storage-key.cred"

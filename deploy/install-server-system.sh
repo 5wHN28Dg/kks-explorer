@@ -1,0 +1,90 @@
+#!/bin/sh
+# Run the server installed by deploy/install-server-user.sh as a SYSTEM service under an unprivileged user. For a
+# machine without a TPM2 (most rented virtual servers): there a user service cannot load the sealed storage key
+# ("Failed to determine local credential key: Permission denied", exit status 243/CREDENTIALS), because only the
+# system manager can read the machine's credential key (/var/lib/systemd/credential.secret).
+#   /etc/systemd/system/kks-server.service       the unit (User=USER; it can only write ~USER/kks-server/state)
+#   /etc/credstore.encrypted/kks-storage-key     the storage key, sealed to this machine (decision 0020); made once
+# Steps on a new machine:
+#   1. as USER:  KKS_SERVER_UNIT=system deploy/install-server-user.sh    (builds and installs; no user unit, no key)
+#   2. as root:  deploy/install-server-system.sh USER                    (this script; does not start anything)
+#   3. set public_url, secure_cookies and trusted_proxy in ~USER/kks-server/config.json, put an HTTPS proxy in front
+#      (deploy/Caddyfile.example), then: systemctl enable --now kks-server
+# Updating: step 1 again, then systemctl restart kks-server.
+# Usage: deploy/install-server-system.sh USER
+#        deploy/install-server-system.sh --print-unit USER HOME     (prints the unit, changes nothing; for the tests)
+set -eu
+CRED=/etc/credstore.encrypted/kks-storage-key
+
+unit() {  # $1 user, $2 the server's folder
+  cat <<UNIT
+# Walkdown v2 server as a system service running as the unprivileged user $1 (deploy/install-server-system.sh).
+[Unit]
+Description=Walkdown server (v2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$1
+Group=$1
+Environment=KKS_CONFIG=$2/config.json
+WorkingDirectory=$2/state
+ExecStart=$2/app/current/kks-server serve
+LoadCredentialEncrypted=kks-storage-key:$CRED
+Restart=on-failure
+RestartSec=5
+UMask=0077
+# hardening: the process can only write its state folder. ProtectHome is not set: the server lives in the user's home.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ReadWritePaths=$2/state
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+# the server and the importer it starts: the reasoning is in deploy/install-server-user.sh (never MemoryHigh)
+MemoryMax=3G
+MemorySwapMax=0
+OOMPolicy=continue
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
+
+if [ "${1:-}" = "--print-unit" ]; then
+  [ $# -eq 3 ] || { echo "usage: $0 --print-unit USER HOME" >&2; exit 2; }
+  unit "$2" "$3/kks-server"
+  exit 0
+fi
+[ $# -eq 1 ] || { echo "usage: $0 USER" >&2; exit 2; }
+[ "$(id -u)" -eq 0 ] || { echo "run this as root (it writes a system unit and the machine's credential)" >&2; exit 1; }
+USER_NAME=$1
+USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
+[ -n "$USER_HOME" ] || { echo "no such user: $USER_NAME" >&2; exit 1; }
+[ "$(id -u "$USER_NAME")" -ne 0 ] || { echo "the server must not run as root" >&2; exit 1; }
+HOME_DIR="$USER_HOME/kks-server"
+[ -x "$HOME_DIR/app/current/kks-server" ] || {
+  echo "$HOME_DIR/app/current/kks-server is missing: run deploy/install-server-user.sh as $USER_NAME first" >&2; exit 1; }
+if [ -e "$USER_HOME/.config/systemd/user/kks-server.service" ] || [ -e "$HOME_DIR/storage-key.cred" ]; then
+  echo "$USER_NAME also has a user unit or a user-sealed key (from install-server-user.sh without" >&2
+  echo "KKS_SERVER_UNIT=system). Two services on one database must never run: remove them first." >&2
+  exit 1
+fi
+if [ ! -f "$CRED" ]; then
+  mkdir -p "$(dirname "$CRED")" && chmod 700 "$(dirname "$CRED")"
+  (umask 077 && head -c 32 /dev/urandom | systemd-creds encrypt --name=kks-storage-key - "$CRED")
+  echo "sealed a new storage key into $CRED (this machine only)"
+fi
+unit "$USER_NAME" "$HOME_DIR" > /etc/systemd/system/kks-server.service
+systemctl daemon-reload
+echo "installed. Not started. Start: systemctl enable --now kks-server"
