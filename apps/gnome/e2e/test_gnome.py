@@ -1115,6 +1115,70 @@ class Gnome(Plant):
         atspi.find(f, 'label', name='founder', timeout=10)
         atspi.find(f, 'label', name='manager', timeout=10)
 
+    def test_zzzz_kept_floor(self):
+        """#144: a floor that only rides on a photo still in the queue is not a known floor for Photo for all. One
+        photo of a code without a floor is queued with the floor asked for it and stays in the queue (not compressed:
+        KKS_TEST_PHOTO_HOLD, the same list a photo kept after a failure waits in). Photo for all for that code and
+        another without a floor then asks for both: asked for the other only, its floor would be written for the
+        first code too when this photo is sent before the waiting one."""
+        b = self.boss
+        one, two = '11LAE10AP001', '11LAE10AP002'
+        for k, bb in ((one, [200, 700, 320, 760]), (two, [400, 700, 520, 760])):
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': k, 'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        from PIL import Image
+        pic = os.path.join(self.dir, 'kept.png')
+        Image.new('RGB', (320, 240), (120, 150, 90)).save(pic)
+        a = self.start_app('keptfloor', KKS_PHOTO_FILE=pic, KKS_TEST_PHOTO_HOLD='1')
+        self.join(a)
+        search = atspi.find(a, 'entry', contains='Search equipment')
+        atspi.set_text(search, one[2:])
+        time.sleep(1)
+        atspi.click(atspi.find(a, 'button', name=one, timeout=10))
+        time.sleep(2)            # the panel is built for this code
+        dlg = None
+        for _ in range(5):       # the panel rebuilds after a sync: a lost click is retried
+            atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+            try:
+                dlg = atspi.find(a, 'alert', name=f'Which floor is {one} on?', timeout=5)
+                break
+            except AssertionError:
+                continue
+        self.assertIsNotNone(dlg, 'the floor was never asked for the first photo')
+        atspi.set_text(atspi.find(dlg, None, name=f'Floor of {one}'), '7')
+        atspi.click(atspi.find(dlg, 'button', name='Continue'))
+        atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), 'waits with its floor')
+        atspi.click(atspi.find(a, 'button', name='Add the photo'))
+        atspi.click(atspi.find(atspi.find(a, 'alert', name='And its tag plate?', timeout=10), 'button', name='Not now'))
+        atspi.find(a, 'label', contains='Compressing 1 photo', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Close the panel'))
+        self.assertFalse(b.req('GET', '/api/state')['equipment'].get(one, {}).get('floor'), 'the floor is only in the queue')
+        mode = atspi.find(a, 'toggle button', name='Select tags')
+        atspi.click(mode)
+        atspi.find(a, 'label', name='0 selected', timeout=10)
+        for i, k in enumerate((one, two)):
+            atspi.set_text(search, k[2:])
+            atspi.click(atspi.find(a, 'button', name=k, timeout=10))
+            atspi.find(a, 'label', name=f'{i + 1} selected', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Photo for all…'))
+        dlg = atspi.find(a, 'alert', name='Which floor are they on?', timeout=10)
+        atspi.find(dlg, None, contains=f'Floor for {one}, {two}: they have none yet', timeout=5)
+        atspi.click(atspi.find(dlg, 'button', name='Cancel'))
+        # the first code alone: its floor rides on the waiting photo only, so it is asked (not sent without one)
+        atspi.click(atspi.find(a, 'button', name='List'))
+        ld = atspi.find(a, 'dialog', name='Selected codes', timeout=10)
+        atspi.click(atspi.find(ld, 'switch', name=two, timeout=10))
+        atspi.find(a, 'label', name='1 selected', timeout=10)
+        atspi.click(atspi.find(ld, 'button', name='Close'))
+        time.sleep(0.5)
+        atspi.click(atspi.find(a, 'button', name='Photo for all…'))
+        dlg = atspi.find(a, 'alert', name='Which floor are they on?', timeout=10)
+        atspi.find(dlg, None, contains=f'Floor for {one}: it has none yet', timeout=5)
+        atspi.click(atspi.find(dlg, 'button', name='Cancel'))
+        last = self.apps[-1]     # done (its photo stays held): its syncs must not rebuild other tests' screens
+        last.kill()
+        last.wait(10)
+
 
 class Coverage(Plant):
     """Coverage counts every code, tag, place and photo of the plant: on a server of its own, so the totals are the

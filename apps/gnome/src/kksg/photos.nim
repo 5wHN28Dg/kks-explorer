@@ -587,7 +587,11 @@ proc floorKnown(w: Win, kks: string): bool =
        s(p["changes"], "floor").strip.len > 0: return true
 
 proc floorsMissing*(w: Win, codes: openArray[string]): seq[string] =
-  ## the codes with no floor yet (as floorKnown, but the core's state is read once for all of them)
+  ## the codes "Photo for all" asks the floor for: none on the equipment, none I proposed that is still open (the
+  ## core's state is read once for all of them). Unlike floorKnown, a floor riding on a photo still in the queue
+  ## (waiting, or kept after it failed) doesn't count (#144): the new job keeps one floor for all its codes, so a
+  ## code left out of the question would get another code's floor when this photo arrives before the waiting one, or
+  ## none when that one is never sent. Such a code is asked again.
   var st: JNode = nil
   for k in codes:
     if s(w.m.equipment(k), "floor").strip.len > 0: continue
@@ -596,13 +600,10 @@ proc floorsMissing*(w: Win, codes: openArray[string]): seq[string] =
       except ApiError: st = newObj()
     if s(st.get(k), "floor").strip.len > 0: continue
     var known = false
-    for q in queued():
-      if k in q.codesOf and q.floor.len > 0: known = true
-    if not known:
-      for sub in w.myOpen():
-        let p = sub.get("payload")
-        if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == k and p.get("changes") != nil and
-           s(p["changes"], "floor").strip.len > 0: known = true
+    for sub in w.myOpen():
+      let p = sub.get("payload")
+      if sub["kind"].s == "equipment" and p != nil and s(p, "kks") == k and p.get("changes") != nil and
+         s(p["changes"], "floor").strip.len > 0: known = true
     if not known: result.add k
 
 proc askFloorDialog(w: Win, heading, body, entryLabel: string, fn: proc (floor: string)) =
