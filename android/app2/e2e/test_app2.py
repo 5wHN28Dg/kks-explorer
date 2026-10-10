@@ -1,6 +1,7 @@
 """End-to-end: the Android app (v2, Nim core) on an emulator, against the Nim server on this machine. No plant data:
 the drawing is importer/tests/vectors/kkp-sample.pdf. Driven through the accessibility tree (adbui.py).
-  python3 android/app2/e2e/test_app2.py [APK] [SERVER] [IMPORTER]
+  python3 android/app2/e2e/test_app2.py [APK] [SERVER] [IMPORTER] [-v] [Phone.test_…]
+KKS_E2E_PART=1|2|3 runs one of the three parts (PARTS, at the end); KKS_E2E_DIAG=folder records what happened.
 Needs a running emulator (adb devices); the app's data is cleared first. The emulator reaches this machine as
 10.0.2.2."""
 import json, os, re, shutil, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
@@ -1216,5 +1217,16 @@ class Phone(unittest.TestCase):
         ui.find('Nothing matches these filters.', timeout=10)
 
 
+# The suite in three parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2 or 3 runs
+# that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'courses'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos'),
+         ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
+          'description_and_credit', 'flow'))
+
 if __name__ == '__main__':
+    tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))
+    assert sorted(sum(PARTS, ())) == tests, f'PARTS must hold every test once: {sorted(set(tests) ^ set(sum(PARTS, ())))}'
+    if os.environ.get('KKS_E2E_PART'):
+        sys.argv += [f'Phone.test_{n}' for n in PARTS[int(os.environ['KKS_E2E_PART']) - 1]]
     unittest.main()
