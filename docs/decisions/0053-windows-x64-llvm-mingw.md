@@ -60,12 +60,16 @@ test programs: median of 3 runs, timed inside the VM):
 | test_dark (libjxl decode, Direct2D) | 2,093 ms | 438 ms | −79 % |
 | test_tiles (12 tiles of 2048 px on WARP, Direct2D's software renderer) | 138.1 s | 137.1 s | equal (Direct2D's own code) |
 | test_net, test_internet (sync over TCP and the relay) | 18.1 s, 38.6 s | 13.9 s, 38.9 s | network-bound, timeouts |
-| Start → first overview drawn (sample sheet, 5 starts, median) | 105 ms | 102 ms | equal |
-| Private bytes 15 s after start | 20.4 MB | 20.8 MB | equal |
+| Start → first overview drawn (sample sheet, 5 starts, median), Windows 11 / 10 | 105 / 93 ms | 102 / 93 ms | equal |
+| Private bytes 15 s after start, Windows 11 / 10 | 20.4 / 19.4 MB | 20.8 / 19.6 MB | equal |
 | Join (enrolment + the first full sync of the sample sheet) | 1–2 s | 1–2 s | equal (the driver logs whole seconds) |
 
 Nothing is slower beyond noise; libjxl and the core's hot loops gain the most. Rough figures: one VM, small test data, no
 real sheet.
+
+**Checked in the VMs** (2026-10-10, the clang build): on Windows 10 22H2 and 11 26H2 every core, platform and app test
+program passes, and so does the whole Windows e2e (19 tests). On Windows 10 the MSIX (`make-msix.sh`, a test
+certificate) builds (11.6 MB), installs, and passes the e2e as the installed package.
 
 **When to revisit:** if llvm-mingw stops releasing or falls behind LLVM's security fixes; if a Windows ABI or header
 gap appears that GCC or MSVC would not have; if the exe's size or speed regresses past the rules in
