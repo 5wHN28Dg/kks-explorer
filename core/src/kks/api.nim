@@ -659,14 +659,23 @@ proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote:
   elif conflicts.len > 0: O(("id", I(sid)), ("status", S("conflict")), ("conflicts", conflictsOut(conflicts)))
   else: O(("id", I(sid)), ("status", S("pending")))
 
-proc openFloors(a: Api, me: Actor, kks: string): seq[string] =
-  ## the floors this person has proposed for `kks` that are still open
+proc openFloorsOf(a: Api, me: Actor, only: HashSet[string]): Table[string, seq[string]] =
+  ## the floors this person has proposed that are still open, per code (the codes in `only`): one pass over the
+  ## submissions, however many codes
   for r in a.n.store.subs():
     if not (r["person"].isStr and r["person"].s == me.person) or r["kind"].s != "equipment": continue
     let (_, body) = a.kindBody(r)
     let fl = body["changes"].get("floor")
-    if body["kks"].s == kks and fl != nil and fl.isStr and fl.s.strip.len > 0 and a.subStatus(r).status in Open:
-      result.add fl.s
+    if body["kks"].s in only and fl != nil and fl.isStr and fl.s.strip.len > 0 and a.subStatus(r).status in Open:
+      result.mgetOrPut(body["kks"].s, @[]).add fl.s
+
+proc openFloors(a: Api, me: Actor, kks: string): seq[string] =
+  ## the floors this person has proposed for `kks` that are still open
+  a.openFloorsOf(me, [kks].toHashSet).getOrDefault(kks)
+
+proc floorBody(kks, floor: string): JNode =
+  ## the equipment change a floor sent with a photo is written as: it fills an empty floor, nothing else
+  O(("kks", S(kks)), ("changes", O(("floor", S(floor)))), ("base", O(("floor", S("")))))
 
 proc submitPrep(a: Api, clientId, noteIn: JNode): (JNode, string, JNode) =
   ## (client id, request note, the earlier submission's answer when this client id was already sent, else nil)
@@ -706,8 +715,7 @@ proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, 
     if live.len == 0 and mine.len == 0:
       # "." is refused in a client's client_id, so this one never matches a photo's
       let fcid = if cid.isStr: S("floor." & cid.s) else: newNull()
-      floorRes = a.submitBody(me, "equipment", O(("kks", S(k)), ("changes", O(("floor", S(fl)))), ("base", O(("floor", S(""))))),
-                              fcid, "", now)
+      floorRes = a.submitBody(me, "equipment", floorBody(k, fl), fcid, "", now)
     else:
       floorRes = O(("status", S("unchanged")), ("floor", S(if live.len > 0: live else: mine[^1])))
   result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now)
@@ -718,6 +726,13 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
   ## submission per code, so every device reads them as before (PROTOCOL-v2 §9 has one kks per entry). A photo's image
   ## is kept once and every entry points to it. `client_id` is a prefix: code i is sent as "<prefix>-<i>", so a retry
   ## doesn't duplicate anything.
+  ##
+  ## A photo's payload may carry `floor`, as a single photo's does (`submit`), and the same rule holds for each code by
+  ## itself: it is written as that code's floor proposal, before its photo, only when the code has no floor and this
+  ## person has no floor proposal for it still open; the other codes keep theirs. No photo is refused for a floor. Each
+  ## code's result says what happened to it in `floor`, as `submit`'s does ({"id", "status"} of the proposal, or
+  ## {"status": "unchanged", "floor": the one it keeps}); a result that is a `duplicate` has none. The proposal's
+  ## client_id is "floor.<prefix>-<i>".
   ##
   ## Everything is checked before anything is written (a code that fails — e.g. a note over the field's length once
   ## appended — leaves no half-sent set behind for a retry to duplicate). Equipment payload: `changes`, and/or `append`
@@ -735,11 +750,16 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
     bad("bad client_id")
   let (_, requestNote, _) = a.submitPrep(newNull(), noteIn)      # the note first: nothing is kept for a refused one
   proc cidOf(i: int): JNode = (if prefix.len == 0: newNull() else: S(prefix & "-" & $i))
+  var fl = ""
+  if kind == "photo":
+    fl = textOf(payload.get("floor"), 8)
+    if not floorOk(fl): bad(FloorRule)
   # earlier sends of this set (a retry): one pass over the submissions, not one per code
   var dups = initTable[string, JNode]()
   if prefix.len > 0:
     for old in a.n.store.subs():
-      if old["client_id"].isStr and old["client_id"].s.startsWith(prefix & "-"):
+      if old["client_id"].isStr and (old["client_id"].s.startsWith(prefix & "-") or
+                                     old["client_id"].s.startsWith("floor." & prefix & "-")):
         let st = a.subStatus(old)
         dups[old["client_id"].s] = O(("id", old["id"]), ("status", S(st.status)), ("note", S(st.note)), ("duplicate", B(true)))
   # 1. every body, checked
@@ -774,12 +794,36 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
         bs[f] = (if shown != nil and shown.has(f): shown[f] elif cur != nil and cur.has(f): cur[f] else: defaultOf(f))
       let p = a.normalize("equipment", O(("kks", S(k)), ("changes", changes), ("base", bs)))   # lengths, fields
       bodies.add toBody("equipment", p)
+  # a floor sent with the photo: what it means for each code, from the state before anything is written (the codes
+  # are distinct, so one code's floor doesn't change another's answer)
+  var floorFor = newSeq[JNode](list.len)       # nil: write the proposal; else the "unchanged" answer
+  if fl.len > 0:
+    let mine = a.openFloorsOf(me, list.toHashSet)
+    for i, k in list:
+      let cur = a.n.run.equipment.getOrDefault(k)
+      let live = if cur != nil and cur.get("floor") != nil and cur["floor"].isStr: cur["floor"].s else: ""
+      if live.len > 0: floorFor[i] = O(("status", S("unchanged")), ("floor", S(live)))
+      elif k in mine: floorFor[i] = O(("status", S("unchanged")), ("floor", S(mine[k][^1])))
+      else:
+        try: checkData("equipment", floorBody(k, fl))
+        except Ignore, KeyError: bad("invalid change")
   # 2. written, all or (on a retry) the ones not sent before
   var results = newArr()
   for i, k in list:
     let cid = cidOf(i)
-    if cid.isStr and cid.s in dups: results.elems.add dups[cid.s]
-    else: results.elems.add a.submitBody(me, kind, bodies[i], cid, requestNote, now, dupChecked = true)
+    if cid.isStr and cid.s in dups:
+      results.elems.add dups[cid.s]
+      continue
+    var floorRes = floorFor[i]
+    if fl.len > 0 and floorRes == nil:
+      # before its photo, as in `submit`. "." is refused in a client's client_id, so this one never matches a photo's
+      let fcid = if cid.isStr: "floor." & cid.s else: ""
+      floorRes = if fcid in dups: dups[fcid]
+                 else: a.submitBody(me, "equipment", floorBody(k, fl), (if fcid.len > 0: S(fcid) else: newNull()), "",
+                                    now, dupChecked = true)
+    var res = a.submitBody(me, kind, bodies[i], cid, requestNote, now, dupChecked = true)
+    if floorRes != nil: res["floor"] = floorRes
+    results.elems.add res
   O(("results", results))
 
 proc rebase(a: Api, kind: string, b: JNode): JNode =
