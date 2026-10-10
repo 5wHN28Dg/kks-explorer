@@ -68,6 +68,8 @@ What the evidence-first-engineering skill needs to know here:
   against `web-size.json`. Any change needs `python3 tools/web_size.py --update` in the same PR, and the PR says why
   growth is worth it.
 - `android.yml` and `arm64.yml` build the apps (actions pinned by SHA).
+- A change that touches only prose (`*.md` other than `relay/README.md` and `vendor/fonts/README.md`, which tests
+  read, and `docs/`) runs `policy.yml` alone: the three build and test workflows skip it.
 
 ## The system
 
