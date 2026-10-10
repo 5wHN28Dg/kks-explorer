@@ -341,7 +341,7 @@ class Windows(unittest.TestCase):
             'wait\t~%s (on Other drawing) selected, 2 selected\t10' % p4, 'wait\t2 selected\t10', 'sleep\t500',
             'wait\tSample sheet — Walkdown\t5', 'gone\tOther drawing — Walkdown', 'state\tSelect tags\ton',
             # the other drawing opened from the sheet list: the selection is kept, and its tag shows as selected there
-            'select\t~Other drawing  (', 'wait\tOther drawing — Walkdown\t20', 'wait\t2 selected\t5',
+            'pick\t~Other drawing  (', 'wait\tOther drawing — Walkdown\t20', 'wait\t2 selected\t5',
             'state\tSelect tags\ton', 'wait\t~%s, \t20' % p4, 'wait\t~, in the selection\t10',
             # the List: typed codes (lower case, commas, a line break), one unknown (named, left in the field), one
             # already there; each row names the code's drawings
@@ -360,7 +360,7 @@ class Windows(unittest.TestCase):
             'click\tClose the list', 'gone\tSelected codes',
             # Photo for all: three of the four have no floor: asked once, naming them; the other keeps its own
             'click\tPhoto for all…', 'wait\tWhich floor are these 3 codes on?\t10',
-            'wait\t~3 of the 4 selected codes have none yet: %s, %s, %s. Enter their floor\t5' % (p1, p4, p3),
+            'wait\t~3 of the 4 selected codes have none yet: %s, %s, %s. Enter their floor\t5' % (p4, p1, p3),       # (in the order picked)
             'wait\t~for these codes only: the other code keeps its floor.\t5',
             'click\tContinue', 'wait\tFloor: a whole number from 0 to 10 (the height goes in Elevation).\t10',
             'set\tFloor of the codes without one (0–10)\t5', 'click\tContinue', 'wait\tPhoto to mark up\t30',
