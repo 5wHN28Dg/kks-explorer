@@ -379,6 +379,9 @@ class Cli(Base):
         code, out = self.cli('reset-manager', '--user', 'sara')
         self.assertEqual(code, 0, out)
         self.assertIn('sara is the manager now', out)
+        # both sign in again: whoever sat in the old manager's session (it renews while used) is out at once
+        self.assertEqual(sara.req('GET', '/api/me')[0], 401)
+        self.assertEqual(sara.req('POST', '/api/login', {'username': 'sara', 'password': 'sara password 1'})[0], 200)
         roles = {u['username']: u['role'] for u in sara.req('GET', '/api/users')[1]['users']}
         self.assertEqual((roles['sara'], roles['boss']), ('manager', 'admin'))
         self.assertIn('already the manager', self.cli('reset-manager', '--user', 'sara')[1])
@@ -872,6 +875,117 @@ class SignupOneSource(Base):
         self.assertEqual(len(boss.req('GET', '/api/signups')[1]['requests']), 11)
 
 
+class SessionRenewal(Base):
+    """A sign-in renews while it is used (the user, 2026-10-10): the session_days start again when the signed-in page
+    checks in (/api/me, /api/sync/status), at most once per session_renew_seconds (a day; two seconds here), and the
+    cookie gets its lifetime again with it. A session that ended is not brought back by using its cookie."""
+    extra = {'session_renew_seconds': 2, 'session_days': 30}
+    cli = Cli.cli
+
+    def cookie(self, hdr):
+        return [v for k, v in hdr.items() if k.lower() == 'set-cookie']
+
+    def token(self, c):
+        return [x.value for x in c.jar if x.name == 'kks_session'][0]
+
+    def test_renewal(self):
+        boss = self.manager()
+        tok = self.token(boss)
+        # just signed in: nothing to renew yet
+        st, _, hdr = boss.req('GET', '/api/me')
+        self.assertEqual((st, self.cookie(hdr)), (200, []))
+        time.sleep(2.3)
+        # other requests never renew (only the page's check-ins do)
+        for path in ('/api/state', '/api/users', '/api/config', '/data/kks.json', '/'):
+            st, _, hdr = boss.req('GET', path)
+            self.assertEqual((st, self.cookie(hdr)), (200, []), path)
+        # the check-in does: the same cookie again, with the whole lifetime and the same attributes as at sign-in
+        st, _, hdr = boss.req('GET', '/api/me')
+        self.assertEqual(st, 200)
+        self.assertEqual(self.cookie(hdr), ['kks_session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d' % (tok, 30 * 86400)])
+        self.assertEqual(self.token(boss), tok)
+        # once per interval: not again at once; again after it, from the poll too
+        self.assertEqual(self.cookie(boss.req('GET', '/api/me')[2]), [])
+        self.assertEqual(self.cookie(boss.req('GET', '/api/sync/status')[2]), [])
+        time.sleep(2.3)
+        st, _, hdr = boss.req('GET', '/api/sync/status')
+        self.assertEqual((st, len(self.cookie(hdr))), (200, 1))
+        self.assertIn('Max-Age=%d' % (30 * 86400), self.cookie(hdr)[0])
+
+        # what ends a session still ends it at once, and its cookie renews nothing afterwards
+        def dead(c):
+            time.sleep(2.3)
+            for path in ('/api/me', '/api/sync/status'):
+                st, _, hdr = c.req('GET', path)
+                self.assertEqual((st, self.cookie(hdr)), (401, []), path)
+        # - signing out
+        other = Client(self.base)
+        self.assertEqual(other.req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'})[0], 200)
+        self.assertEqual(other.req('POST', '/api/logout', {})[0], 200)
+        dead(other)
+        # - an account deactivated, then removed from the plant
+        st, r, _ = boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Hassan', 'position': 'Operator', 'role': 'user'})
+        self.assertEqual(st, 200, r)
+        ali = Client(self.base)
+        self.assertEqual(ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})[0], 200)
+        self.assertEqual(ali.req('GET', '/api/me')[0], 200)
+        ali_tok = self.token(ali)
+        self.assertEqual(boss.req('POST', '/api/users/%d' % r['id'], {'active': False})[0], 200)
+        dead(ali)
+        self.assertEqual(boss.req('POST', '/api/users/%d' % r['id'], {'active': True})[0], 200)
+        dead(ali)                                # (activated again: the old sign-in stays ended)
+        # - a password changed elsewhere: every other sign-in of the account
+        second = Client(self.base)
+        self.assertEqual(second.req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'})[0], 200)
+        self.assertEqual(boss.req('POST', '/api/password', {'old': 'a long password', 'new': 'another long password'})[0], 200)
+        dead(second)
+        self.assertEqual(boss.req('GET', '/api/me')[0], 200)            # (the one that changed it carries on, with a new cookie)
+        self.assertNotEqual(self.token(boss), tok)
+        # - a password set by a reset link: every sign-in of the account
+        code, out = self.cli('reset-password', '--user', 'boss')
+        self.assertEqual(code, 0, out)
+        fresh = Client(self.base)
+        self.assertEqual(fresh.req('POST', '/api/password-reset', {'token': out.split('#reset=')[1].strip(), 'password': 'a third long password'})[0], 200)
+        dead(boss)
+        # - reset-manager: the old manager's and the new manager's sign-ins
+        st, r, _ = fresh.req('POST', '/api/users', {'username': 'sara', 'full_name': 'Sara Admin', 'position': 'Shift engineer', 'role': 'admin'})
+        self.assertEqual(st, 200, r)
+        sara = Client(self.base)
+        self.assertEqual(sara.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'sara password 1'})[0], 200)
+        self.assertEqual((fresh.req('GET', '/api/me')[0], sara.req('GET', '/api/me')[0]), (200, 200))
+        self.assertEqual(self.cli('reset-manager', '--user', 'sara')[0], 0)
+        dead(fresh)
+        dead(sara)
+        # a cookie nobody issued renews nothing
+        forged = Client(self.base)
+        st, _, hdr = forged.req('GET', '/api/me', headers={'Cookie': 'kks_session=' + 'A' * 43})
+        self.assertEqual((st, self.cookie(hdr)), (401, []))
+        self.assertEqual(forged.req('GET', '/api/me', headers={'Cookie': 'kks_session=' + ali_tok})[0], 401)
+
+
+class SessionRenewalBehindHttps(Base):
+    """the cookie sent again keeps what it was given at sign-in under an https public_url: Secure for a page reached
+    through the public address, not Secure for a page on this machine's own http address (WebKit would drop it)"""
+    extra = {'session_renew_seconds': 2, 'public_url': 'https://plant.example'}
+
+    def test_secure_follows_the_page(self):
+        cookie = lambda hdr: [v for k, v in hdr.items() if k.lower() == 'set-cookie']
+        local = {'Origin': self.base}
+        boss = Client(self.base)
+        st, r, hdr = boss.req('POST', '/api/setup', {'token': self.setup, 'username': 'boss', 'password': 'a long password',
+                                                     'full_name': 'The Manager', 'position': 'Plant manager'}, headers=local)
+        self.assertEqual(st, 200, r)
+        self.assertNotIn('Secure', cookie(hdr)[0])
+        tok = [x.value for x in boss.jar if x.name == 'kks_session'][0]
+        time.sleep(2.3)
+        st, _, hdr = boss.req('GET', '/api/me')                     # a GET: no Origin, sent to 127.0.0.1
+        self.assertEqual((st, len(cookie(hdr))), (200, 1))
+        self.assertNotIn('Secure', cookie(hdr)[0])
+        time.sleep(2.3)
+        # the same check-in arriving for the public host (as the proxy passes it on): Secure
+        st, _, hdr = Client(self.base).req('GET', '/api/me', headers={'Host': 'plant.example', 'Cookie': 'kks_session=' + tok})
+        self.assertEqual((st, len(cookie(hdr))), (200, 1))
+        self.assertIn('; Secure', cookie(hdr)[0])
 class OfflineList(Base):
     """GET /api/offline: the files a browser saves to work without the server ("Download for offline")"""
 
