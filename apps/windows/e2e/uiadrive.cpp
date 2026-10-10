@@ -233,6 +233,34 @@ static IUIAutomationElement *wait_for(DWORD &pid, const std::string &spec, int m
     return nullptr;
 }
 
+// The keyboard focus to e (select: also select it, as a click would), and look that it is there before going on, as
+// a user does: a list or tree the app rebuilt after e was found (new data from a sync) holds a new item, found again
+// by its spec. false (and the reason logged) if it never got there.
+static bool focus_on(DWORD &pid, IUIAutomationElement *&e, const std::string &spec, int ms, CONTROLTYPEID only,
+                     CONTROLTYPEID only2, bool select) {
+    for (int t = 0; t < ms; t += 500) {
+        if (select) {
+            IUIAutomationSelectionItemPattern *sp = nullptr;
+            if (SUCCEEDED(e->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sp)) && sp) {
+                sp->Select(); sp->Release();
+            }
+        }
+        e->SetFocus();
+        Sleep(200);
+        IUIAutomationElement *fe = nullptr;
+        BOOL same = FALSE;
+        if (SUCCEEDED(ua->GetFocusedElement(&fe)) && fe) { ua->CompareElements(fe, e, &same); fe->Release(); }
+        if (same) return true;
+        say("(" + spec + " is not focused: replaced since it was found; again)");
+        e->Release();
+        e = wait_for(pid, spec, 5000, only, only2);
+        if (!e) { say("ERROR: gone: " + spec); find(pid, "", true); return false; }
+        Sleep(300);
+    }
+    say("ERROR: can't focus " + spec); find(pid, "", true);
+    return false;
+}
+
 int wmain(int argc, wchar_t **argv) {
     if (argc < 4) { fprintf(stderr, "uiadrive <exe name> <script> <log>\n"); return 2; }
     logf = _wfopen(argv[3], L"a");
@@ -517,19 +545,18 @@ int wmain(int argc, wchar_t **argv) {
             }
             sp->Select(); sp->Release();
         } else if (cmd == "focus") {
-            // the keyboard focus to this element (what Tab or a screen reader's navigation does)
-            if (FAILED(e->SetFocus())) { say("ERROR: can't focus " + arg); return 1; }
+            // the keyboard focus to this element (what Tab or a screen reader's navigation does); a list or tree item
+            // is looked at afterwards (focus_on: the app may have rebuilt its list since it was found)
+            CONTROLTYPEID ct = 0; e->get_CurrentControlType(&ct);
+            if (ct == UIA_ListItemControlTypeId || ct == UIA_TreeItemControlTypeId) {
+                if (!focus_on(pid, e, arg, timeout, UIA_ListItemControlTypeId, UIA_TreeItemControlTypeId, false)) return 1;
+            } else if (FAILED(e->SetFocus())) { say("ERROR: can't focus " + arg); return 1; }
         } else if (cmd == "enter") {
             // what a keyboard (or screen reader) user does: the window in front, the item focused and selected, Enter
             UIA_HWND hw = 0;
             for (auto *r : roots(pid)) { if (!hw) r->get_CurrentNativeWindowHandle(&hw); r->Release(); }
             if (hw) { SetForegroundWindow((HWND)hw); Sleep(200); }
-            IUIAutomationSelectionItemPattern *sp = nullptr;
-            if (SUCCEEDED(e->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sp)) && sp) {
-                sp->Select(); sp->Release();
-            }
-            e->SetFocus();
-            Sleep(200);
+            if (!focus_on(pid, e, arg, timeout, only, only2, true)) return 1;
             INPUT k[2] = {};
             k[0].type = k[1].type = INPUT_KEYBOARD;
             k[0].ki.wVk = k[1].ki.wVk = VK_RETURN;

@@ -891,6 +891,17 @@ class Windows(unittest.TestCase):
         on = lambda k: f'{k} code{"" if k == 1 else "s"} on the drawings'
         self.check('systems0.uia', ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
                                     'wait\t%s\t20' % on(n)])
+        # sync rounds that bring nothing new leave the tree as it is (the app's trace counts its fills): each round
+        # rebuilt it, and an Enter on a code found just before went to another row (test_flow's flaky systems step)
+        def fills():
+            return int(vm("@(Get-Content \"$env:LOCALAPPDATA\\Walkdown\\trace.log\", "
+                          "\"$env:LOCALAPPDATA\\Packages\\Walkdown_*\\LocalCache\\Local\\Walkdown\\trace.log\" "
+                          "-ErrorAction SilentlyContinue | Select-String 'systems: tree filled').Count").strip() or 0)
+        time.sleep(4)               # the rounds right after the join
+        before = fills()
+        self.assertGreater(before, 0, 'no trace from the app (KKS_TRACE)')
+        time.sleep(10)              # three rounds
+        self.assertEqual(fills(), before, 'sync rounds that brought nothing rebuilt Equipment by system')
         # a code approved on the server appears without a search
         def add(code, bb):
             r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb,
