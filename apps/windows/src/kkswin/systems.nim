@@ -94,6 +94,8 @@ proc openSystems*(w: Win, only = "") =
   var q, status, tree: HWND
   var follower: Follower
   var pending: uint                        ## the search's timer
+  var shown: JNode                         ## what the last fill showed (core systemsView), its search and filter
+  var shownQuery, shownOnly: string
   proc fillTree(keep: bool)
   # typing searches once it pauses (each search rebuilds the whole tree: not on every key); what a search finds opens,
   # what was open before doesn't stay open
@@ -141,8 +143,18 @@ proc openSystems*(w: Win, only = "") =
     false)
 
   proc fillTree(keep: bool) =
-    ## keep: open the groups that were open and select the row that was selected (a rebuild after a sync)
+    ## keep: open the groups that were open and select the row that was selected (a rebuild after a sync). A sync
+    ## that changed nothing the tree shows leaves it as it is: every finished round (every 2 minutes, and each time
+    ## another device synced with this one) rebuilt it, and a row picked in between (by a screen reader, or the e2e
+    ## test's Enter on a code) was replaced under it, so Enter went to another row and opened nothing.
     if follower != nil: follower.stale = false
+    let query = q.text.strip
+    let v = systemsView(w.m, query)
+    if keep and shown != nil and v == shown and query == shownQuery and only == shownOnly: return
+    shown = v
+    shownQuery = query
+    shownOnly = only
+    trace("systems: tree filled")          # (KKS_TRACE) the e2e test counts the rebuilds
     var wasOpen: HashSet[string]
     var selKey = ""
     if keep:
@@ -160,8 +172,6 @@ proc openSystems*(w: Win, only = "") =
               if h == cur: selKey = k
     groups.setLen(0)
     var select: HTREEITEM
-    let query = q.text.strip
-    let v = systemsView(w.m, query)
     var total = n(v, "total")
     var blocks = v["blocks"].elems
     if only.len > 0:
