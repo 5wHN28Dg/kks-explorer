@@ -296,7 +296,8 @@ proc descriptionSection(w: Win, t: Tag): W =
 
 proc buildPanel*(w: Win, t: Tag) =
   w.panelEditing = false
-  w.panelKey = w.panelDataKey
+  let key = w.modelKey
+  w.panelKey = ""         # current only once it is built whole: a section that raised is tried again at the next reload
   w.panelBox.clear()
   let m = w.m
   let k = t.full
@@ -361,7 +362,9 @@ proc buildPanel*(w: Win, t: Tag) =
       confirm(w.window, "Remove this tag?", "The mark goes away on every device once approved.", "Remove", true, proc () =
         discard w.submit("tag_remove", newObj(@[("id", newStr(addedId))]), if k.len > 0: k else: "the mark"))))
     w.panelBox.add g
-  if k.len == 0: return
+  if k.len == 0:
+    w.panelKey = key
+    return
   var where: seq[W]
   var seen: HashSet[string]
   let items1 = toSeq(m.tags)
@@ -399,3 +402,4 @@ proc buildPanel*(w: Win, t: Tag) =
   if desc != nil: w.panelBox.add desc
   w.panelBox.add w.equipmentSection(t)
   w.panelBox.add w.photoSection(k)
+  w.panelKey = key

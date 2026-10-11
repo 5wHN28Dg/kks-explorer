@@ -37,6 +37,7 @@ proc doShowSheet(w: Win, id: string) =
     let (okL, data) = w.a.file("sheets/" & id & ".o" & $k & ".jxl")
     if okL: levels.add data
   w.v.setSheet(si.name, kkp, si.raw, levels)
+  w.panelKey = ""       # setSheet took the open panel's valve outline away: the next reload draws the panel again
   w.v.tags = w.tagBoxes(id)
   w.setLinks()
   w.syncChosen()
@@ -120,7 +121,7 @@ proc refresh(w: Win) =
   # finished sync round comes here, and a panel replaced each time lost the keyboard's place in it and any button
   # pressed just before: GTK sends "clicked" 250 ms after a keyboard or accessibility activation, and not at all
   # when the button has gone by then (#147; the same reason as refreshLive).
-  if w.selected.len > 0 and not w.panelEditing and w.panelKey != w.panelDataKey:
+  if w.selected.len > 0 and not w.panelEditing and w.panelKey != w.modelKey:
     let (ok, t) = w.m.tagById(w.selected)
     if ok: w.buildPanel(t)
   w.refreshLive()

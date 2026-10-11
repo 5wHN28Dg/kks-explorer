@@ -43,8 +43,9 @@ type Win* = ref object
   livePage*: W                 ## the open Manage page that rebuilds when the data changes (a ref is held)
   liveBuild*: proc (box: W)
   liveKey: string              ## liveDataKey when the live page was last built
-  modelKey: string             ## liveDataKey when the model (`m`) was last loaded
-  panelKey*: string            ## panelDataKey when the tag panel was last built
+  modelKey*: string            ## liveDataKey when the model (`m`) was last loaded
+  panelKey*: string            ## modelKey of the model the tag panel was built from; "" when something else it
+                               ## shows changed (the sheet on screen, the photo queue): the next reload rebuilds it
 
 proc toast*(w: Win, msg: string) = toast(w.toasts, msg)
 
@@ -73,11 +74,6 @@ proc loadModel*(w: Win) =
   m.merge()
   w.m = m
   w.modelKey = w.liveDataKey
-
-proc panelDataKey*(w: Win): string =
-  ## What the tag panel is built from: the model as last loaded, and the sheet on screen (the valve symbol is
-  ## outlined only on its own sheet). The same key as when the panel was built: nothing to rebuild.
-  w.modelKey & "|" & w.sheet
 
 proc isAdmin*(w: Win): bool =
   let (ok, me) = w.a.me
