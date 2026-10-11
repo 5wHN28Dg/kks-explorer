@@ -651,13 +651,15 @@ proc fileIdsAfter*(a: Api): int64 =
   for r in a.n.store.subs(): result = max(result, r["id"].i)
   a.n.store.setMeta(FileMark, $result)
 
-type FileItem = tuple[target, change: string]     ## what an item is about (`target`), and what it does to it
+type FileItem = tuple[target, change: string, anyTag: bool]
+  ## what an item is about (`target`) and what it does to it; `anyTag`: a marked tag sent without an id of its own
 
-proc changeOf(kind: string, b: JNode): string =
+proc changeOf(kind: string, b: JNode, anyTag = false): string =
   ## what a change does, for telling a file's item from another change to the same thing: canonical text, so the
   ## order of the keys in a file says nothing. Left out is what differs between two sends of one item: a photo's
   ## image and id (the item's image is not kept before it is known to be new; so a photo is its caption here, and a
-  ## floor sent with it is not looked at), a marked tag's id (made up when the item has none), and the values an
+  ## floor sent with it is not looked at), a marked tag's id when the item has none (`anyTag`: one is made up each
+  ## time it is read), and the values an
   ## equipment change or a review was based on (an approval after a clash writes the ones of then).
   try:
     case kind
@@ -667,7 +669,7 @@ proc changeOf(kind: string, b: JNode): string =
     of "tag_add":
       var x = newObj()
       for (k, v) in b.fields:
-        if k != "tag": x[k] = v
+        if k != "tag" or not anyTag: x[k] = v
       canonical(x)
     else: canonical(b)
   except CanonicalError: toText(b)
@@ -717,7 +719,7 @@ proc earlier(a: Api, me: Actor, cid: JNode, fileBare, kind: string, item: proc (
       result["target"] = S(target(k, b))
       let it = item()
       result["same_target"] = B(k == kind and target(k, b) == it.target)
-      result["same"] = B(k == kind and target(k, b) == it.target and changeOf(k, b) == it.change)
+      result["same"] = B(k == kind and target(k, b) == it.target and changeOf(k, b, it.anyTag) == it.change)
     return
 
 proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
@@ -732,7 +734,7 @@ proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote:
   ## `fileBare`: submit-file's item, `cid` being its id with the prefix and this the one without (see `fileSent`)
   if cid.isStr and not dupChecked:
     proc item(): FileItem =
-      try: result = (target(kind, body), changeOf(kind, body))
+      try: result = (target(kind, body), changeOf(kind, body), false)
       except KeyError: bad("invalid change")
     let dup = a.earlier(me, cid, fileBare, kind, item)
     if dup != nil: return dup
@@ -781,9 +783,10 @@ proc payloadItem(a: Api, kind: string, payload: JNode): FileItem =
   ## its image.
   if kind notin Kinds or payload == nil or payload.kind != jObj: bad("bad submission kind or payload")
   if kind == "photo":
-    return ("photo:" & kksOf(payload.get("kks")), changeOf(kind, O(("caption", S(textOf(payload.get("caption"), 500))))))
+    return ("photo:" & kksOf(payload.get("kks")), changeOf(kind, O(("caption", S(textOf(payload.get("caption"), 500))))), false)
   let b = toBody(kind, a.normalize(kind, payload))
-  (target(kind, b), changeOf(kind, b))
+  let anyTag = kind == "tag_add" and not (payload.get("id") != nil and payload["id"].kind == jStr)    # as tagPayload
+  (target(kind, b), changeOf(kind, b, anyTag), anyTag)
 
 proc submitPrep(a: Api, me: Actor, clientId, noteIn: JNode): (JNode, string) =
   ## (client id, request note), both checked

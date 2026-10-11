@@ -752,6 +752,11 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     let rev2 = filedAny("review", """{"tag_id":"t151","data":{"status":"rejected"}}""", "imp-151-review")
     check isDup(rev2)
     check rev2["same_target"].b and not rev2["same"].b
+    # the values a review was based on are not part of it (an approval after a clash writes the ones of then)
+    let rev3 = filedAny("review", """{"tag_id":"t151","data":{"status":"confirmed","kks":"11LAB90AA618","suffix":"","isa":null},
+                                      "base":{"status":"rejected"}}""", "imp-151-review")
+    check isDup(rev3)
+    check rev3["same"].b
     # a marked tag without an id of its own gets a new one each time it is read: still the same item
     const Mark = """{"sheet":"lp","bbox":[310,310,360,330],"kks":"11LAB90AA619","isa":"","note":"from the file"}"""
     check filedAny("tag_add", Mark, "imp-151-mark")["status"].s == "approved"
@@ -761,7 +766,14 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     let mark3 = filedAny("tag_add", Mark.replace("11LAB90AA619", "11LAB90AA620"), "imp-151-mark")
     check isDup(mark3)
     check not mark3["same"].b
-    # a link switched off, a photo's caption changed: not the same change
+    # one with an id of its own is that tag: another id is another change
+    const Own = """{"id":"000000000000000000000000000a0151","sheet":"lp","bbox":[410,310,460,330],"kks":"11LAB90AA619","isa":"","note":""}"""
+    check filedAny("tag_add", Own, "imp-151-mark-own")["status"].s == "approved"
+    check filedAny("tag_add", Own, "imp-151-mark-own")["same"].b
+    let own2 = filedAny("tag_add", Own.replace("a0151", "b0151"), "imp-151-mark-own")
+    check isDup(own2)
+    check not own2["same"].b
+    # a link switched off is not the same change
     check filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":true}""", "imp-151-link")["status"].s == "approved"
     check filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":true}""", "imp-151-link")["same"].b
     let off = filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":false}""", "imp-151-link")
