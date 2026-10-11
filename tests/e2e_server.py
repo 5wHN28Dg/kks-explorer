@@ -88,7 +88,8 @@ def _line(proc, deadline):
     from the pipe itself, so nothing after the line is taken and `proc.stdout` reads on from there."""
     fd, got = proc.stdout.fileno(), b''
     while not got.endswith(b'\n'):
-        if not select.select([fd], [], [], max(0, deadline - time.time()))[0]:
+        left = deadline - time.time()       # (checked for every byte: a server that never stops talking ends here too)
+        if left <= 0 or not select.select([fd], [], [], left)[0]:
             raise ServerStartError(got.decode(errors='replace'))
         b = os.read(fd, 1)
         if not b:
@@ -121,10 +122,13 @@ def _start_once(binary, folder, cfg, timeout, popen=subprocess.Popen, listening=
         # "server on" is said before a taken port ends the process (at its first poll), so the line alone is not
         # "up": wait until this process holds its ports, or is gone
         want = {p for p in (cfg['port'], cfg.get('sync_port', 0)) if p}
+        # one port for both: the sync listener has it, the web listener's failure ends the process at its first poll.
+        # Never "up", although the process listens on all it was given for a moment
+        doomed = cfg['port'] == cfg.get('sync_port', 0)
         while out and 'server on' in out[-1]:
             if proc.poll() is not None:
                 break
-            if want <= listening(proc.pid):
+            if not doomed and want <= listening(proc.pid):
                 return proc, setup, None
             if time.time() - t0 > timeout:
                 raise ServerStartError(f'the server said it was on, and after {timeout} s it does not listen on '

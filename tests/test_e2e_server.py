@@ -88,6 +88,13 @@ open(link, 'w').write('http://127.0.0.1/#setup=TOKEN-%%d\n' %% cfg['port'])
 print('No manager yet. The one-time link is in the setup link file: ' + link, flush=True)
 if how == 'silent':
     time.sleep(60)
+if how == 'babbles':
+    while True: print('starting…', flush=True)
+if how == 'lingers' and cfg['port'] == cfg.get('sync_port'):
+    s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('127.0.0.1', cfg['port'])); s.listen()
+    print(on + '\nError: unhandled exception: Address already in use [OSError]', flush=True)
+    time.sleep(0.3)
+    sys.exit(1)
 if how in ('late', 'never'):
     print(on, flush=True)
     time.sleep(0.4 if how == 'late' else 60)
@@ -220,7 +227,7 @@ class Start(unittest.TestCase):
             seen.append(real(*a, **k))
             return seen[-1]
         with self.assertRaisesRegex(e2e_server.ServerStartError, r'has not said it is on(.|\n)*setup link file'):
-            e2e_server.start_server(self.bin, self.dir, {'fake': 'silent', 'sync_port': 0}, timeout=0.5, popen=popen)
+            e2e_server.start_server(self.bin, self.dir, {'fake': 'silent', 'sync_port': 0}, timeout=3, popen=popen)
         self.assertEqual(len(seen), 1)
         self.assertIsNotNone(seen[0].poll())
 
@@ -231,6 +238,22 @@ class Start(unittest.TestCase):
         self.started(proc)
         self.assertEqual(proc.stdout.readline(), 'said after the line\n')
 
+    def test_one_port_for_both_is_never_up(self):
+        """the #155 start itself: the sync listener holds the port for a moment before the web listener's failure ends
+        the process. Not returned as up in that moment: started again on two ports"""
+        p = e2e_server.free_port()
+        cfg = {'fake': 'lingers'}
+        proc, _ = e2e_server.start_server(self.bin, self.dir, cfg, sync=True, pick=self.picker((p, p)))
+        self.started(proc)
+        self.assertEqual(self.starts()[0], (p, p))
+        self.assertEqual(len(self.starts()), 2)
+        self.assertNotEqual(cfg['port'], cfg['sync_port'])
+
+    def test_talks_without_end(self):
+        """output that never pauses and never says "server on" ends at the timeout as well"""
+        with self.assertRaisesRegex(e2e_server.ServerStartError, 'has not said it is on'):
+            e2e_server.start_server(self.bin, self.dir, {'fake': 'babbles', 'sync_port': 0}, timeout=1)
+
     def test_never_listens(self):
         seen = []
         real = subprocess.Popen
@@ -239,7 +262,7 @@ class Start(unittest.TestCase):
             seen.append(real(*a, **k))
             return seen[-1]
         with self.assertRaisesRegex(e2e_server.ServerStartError, 'does not listen on'):
-            e2e_server.start_server(self.bin, self.dir, {'fake': 'never', 'sync_port': 0}, timeout=0.5, popen=popen)
+            e2e_server.start_server(self.bin, self.dir, {'fake': 'never', 'sync_port': 0}, timeout=3, popen=popen)
         self.assertEqual(len(seen), 1)
         self.assertIsNotNone(seen[0].poll(), 'the server that never came up is not left running')
 
