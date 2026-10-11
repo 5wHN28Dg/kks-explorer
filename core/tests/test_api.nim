@@ -663,7 +663,7 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     # there, as after a change of manager; what a member sent under it is not
     proc filed(who: Actor, kks, cid: string): JNode =
       mgrApi.submit(who, "equipment", j("""{"kks":"""" & kks & """","changes":{"near":"from the file"}}"""), newStr(cid),
-                    nil, now(), anyAdmin = true)
+                    nil, now(), fromFile = true)
     let ak = P.p256Generate()
     let aid = mgrApi.call(mgr, "POST", "/api/devices/import-request", newObj(@[("request",
       P.joinRequest(ak, "adm", "Ada Admin", newStr("Shift engineer"), "server", now() div 1000))])).json["person"].s
@@ -678,6 +678,210 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     let own = mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("client_id", newStr("imp-file-01")),
       ("payload", j("""{"kks":"11LAB90AA603","changes":{"near":"the manager's own"}}"""))]))
     check own.json.get("duplicate") == nil
+
+  test "submit-file's re-run finds its own earlier rows, whoever sent them and whatever they are now (#151)":
+    proc person(user, full: string, admin = false): (Actor, string) =
+      let sk = P.p256Generate()
+      let pid = mgrApi.call(mgr, "POST", "/api/devices/import-request", newObj(@[("request",
+        P.joinRequest(sk, user, full, newStr("Technician"), "server", now() div 1000))])).json["person"].s
+      if admin: check mgrApi.call(mgr, "POST", "/api/persons/" & pid, j("""{"role":"admin"}""")).status == 200
+      let (ok, a) = mgrNode.actorOf(P.peerId(sk), sk)
+      check ok and a.isAdmin == admin
+      (a, pid)
+    proc setRole(pid, role: string): bool =
+      mgrApi.call(mgr, "POST", "/api/persons/" & pid, j("""{"role":"""" & role & """"}""")).status == 200
+    proc fieldItem(kks, near: string): JNode = j("""{"kks":"""" & kks & """","changes":{"near":"""" & near & """"}}""")
+    proc filed(who: Actor, kks, cid: string, near = "from the file"): JNode =
+      mgrApi.submit(who, "equipment", fieldItem(kks, near), newStr(cid), nil, now(), fromFile = true)
+    proc isDup(r: JNode): bool = r.get("duplicate") != nil and r["duplicate"].b    # (a nil node in `check` segfaults)
+    proc nearOf(kks: string): string =
+      let e = mgrNode.run.equipment.getOrDefault(kks)
+      if e != nil and e.get("near") != nil and e["near"].isStr: e["near"].s else: ""
+    # 1. the manager the file was first run as is a plain user now: the file run again still adds nothing
+    let (old, oldId) = person("old151", "Old Manager", admin = true)
+    let first = filed(old, "11LAB90AA611", "imp-151-demoted")
+    check not isDup(first)
+    check first["status"].s == "approved"
+    check setRole(oldId, "user")
+    let entries = mgrNode.entries.len
+    let again = filed(mgr, "11LAB90AA611", "imp-151-demoted")
+    check isDup(again)
+    check again["id"].i == first["id"].i
+    check mgrNode.entries.len == entries
+    # 2. a member sends under a file's id (they can be computed), it stays pending, the member is made an admin:
+    #    the manager's file item is written all the same
+    let (mem, memId) = person("mem151", "Mem Ber")
+    let claim = mgrApi.call(mem, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")),
+      ("client_id", newStr("imp-151-claimed")), ("payload", fieldItem("11LAB90AA612", "not the file's"))]))
+    check claim.json["status"].s == "pending"
+    check setRole(memId, "admin")
+    let item = filed(mgr, "11LAB90AA612", "imp-151-claimed")
+    check not isDup(item)
+    check item["status"].s == "approved"
+    check item["id"].i != claim.json["id"].i
+    check nearOf("11LAB90AA612") == "from the file"
+    # the rows a run writes keep their id where no request's can be; the answer for one says what the row is
+    proc cidOf(id: int64): string =
+      for r in mgrNode.store.subs():
+        if r["id"].i == id and r["client_id"].isStr: return r["client_id"].s
+    check cidOf(first["id"].i) == "file.imp-151-demoted"
+    check cidOf(claim.json["id"].i) == "imp-151-claimed"
+    check again["same"].b
+    check again["kind"].s == "equipment" and again["target"].s == "equipment:11LAB90AA611" and again["status"].s == "approved"
+    # an id used again for something else is answered by the earlier row, and says it is not this item
+    let other = filed(mgr, "11LAB90AA613", "imp-151-demoted")
+    check isDup(other)
+    check not other["same"].b and not other["same_target"].b
+    # as is another change to the same code
+    let changed = filed(mgr, "11LAB90AA611", "imp-151-demoted", near = "another text")
+    check isDup(changed)
+    check changed["same_target"].b and not changed["same"].b
+    check nearOf("11LAB90AA611") == "from the file"
+    # the order of the keys in the file is not a difference; what a review says is
+    proc filedAny(kind, payload, cid: string): JNode = mgrApi.submit(mgr, kind, j(payload), newStr(cid), nil, now(), fromFile = true)
+    check filedAny("equipment", """{"kks":"11LAB90AA617","changes":{"near":"n","notes":"t"}}""", "imp-151-order")["status"].s == "approved"
+    let swapped = filedAny("equipment", """{"kks":"11LAB90AA617","changes":{"notes":"t","near":"n"}}""", "imp-151-order")
+    check isDup(swapped)
+    check swapped["same"].b
+    check filedAny("review", """{"tag_id":"t151","data":{"status":"confirmed","kks":"11LAB90AA618","suffix":"","isa":null}}""",
+                   "imp-151-review")["status"].s == "approved"
+    let rev = filedAny("review", """{"tag_id":"t151","data":{"status":"confirmed","kks":"11LAB90AA618","suffix":"","isa":null}}""",
+                       "imp-151-review")
+    check isDup(rev)
+    check rev["same"].b
+    let rev2 = filedAny("review", """{"tag_id":"t151","data":{"status":"rejected"}}""", "imp-151-review")
+    check isDup(rev2)
+    check rev2["same_target"].b and not rev2["same"].b
+    # the values a review was based on are not part of it (an approval after a clash writes the ones of then)
+    let rev3 = filedAny("review", """{"tag_id":"t151","data":{"status":"confirmed","kks":"11LAB90AA618","suffix":"","isa":null},
+                                      "base":{"status":"rejected"}}""", "imp-151-review")
+    check isDup(rev3)
+    check rev3["same"].b
+    # a marked tag without an id of its own gets a new one each time it is read: still the same item
+    const Mark = """{"sheet":"lp","bbox":[310,310,360,330],"kks":"11LAB90AA619","isa":"","note":"from the file"}"""
+    check filedAny("tag_add", Mark, "imp-151-mark")["status"].s == "approved"
+    let mark2 = filedAny("tag_add", Mark, "imp-151-mark")
+    check isDup(mark2)
+    check mark2["same"].b
+    let mark3 = filedAny("tag_add", Mark.replace("11LAB90AA619", "11LAB90AA620"), "imp-151-mark")
+    check isDup(mark3)
+    check not mark3["same"].b
+    # one with an id of its own is that tag: another id is another change
+    const Own = """{"id":"000000000000000000000000000a0151","sheet":"lp","bbox":[410,310,460,330],"kks":"11LAB90AA619","isa":"","note":""}"""
+    check filedAny("tag_add", Own, "imp-151-mark-own")["status"].s == "approved"
+    check filedAny("tag_add", Own, "imp-151-mark-own")["same"].b
+    let own2 = filedAny("tag_add", Own.replace("a0151", "b0151"), "imp-151-mark-own")
+    check isDup(own2)
+    check not own2["same"].b
+    # a link switched off is not the same change
+    check filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":true}""", "imp-151-link")["status"].s == "approved"
+    check filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":true}""", "imp-151-link")["same"].b
+    let off = filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":false}""", "imp-151-link")
+    check off["same_target"].b and not off["same"].b
+    check other["target"].s == "equipment:11LAB90AA611"
+    check nearOf("11LAB90AA613") == ""
+    # no request can send such an id, alone or as a set's prefix (the same set under an id without "." is taken)
+    for bad in ["file.imp-151-demoted", "floor.file.imp-151-x", "floor.imp-151-xx"]:
+      check mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("client_id", newStr(bad)),
+        ("payload", fieldItem("11LAB90AA613", "a request"))])).status == 400
+      check mgrApi.call(mgr, "POST", "/api/submit-many", newObj(@[("kind", newStr("equipment")), ("client_id", newStr(bad)),
+        ("kks", j("""["11LAB90AA613"]""")), ("payload", j("""{"changes":{"near":"a request"}}"""))])).status == 400
+    check nearOf("11LAB90AA613") == ""
+    check mgrApi.call(mgr, "POST", "/api/submit-many", newObj(@[("kind", newStr("equipment")), ("client_id", newStr("req-151-set")),
+      ("kks", j("""["11LAB90AA613"]""")), ("payload", j("""{"changes":{"near":"a request"}}"""))])).status == 200
+    check nearOf("11LAB90AA613") == "a request"
+    # and the manager's own request under the file's bare id is a request's: written, and no repeat of the file's
+    let req = mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")),
+      ("client_id", newStr("imp-151-demoted")), ("payload", fieldItem("11LAB90AA611", "by hand"))]))
+    check not isDup(req.json)
+    check cidOf(req.json["id"].i) == "imp-151-demoted"
+    # a photo with a floor: both rows are the file's, and a run as someone else finds both
+    proc filedPhoto(who: Actor, kks, cid: string): JNode =
+      mgrApi.submit(who, "photo", photoReq(kks, "", "file photo " & cid, floor = "4")["payload"], newStr(cid), nil, now(),
+                    fromFile = true)
+    let (two, _) = person("two151", "Second Manager", admin = true)
+    let ph = filedPhoto(two, "11LAB90AA614", "imp-151-photo")
+    check not isDup(ph)
+    check ph["status"].s == "approved" and ph["floor"]["status"].s == "approved"
+    check cidOf(ph["id"].i) == "file.imp-151-photo"
+    check cidOf(ph["floor"]["id"].i) == "floor.file.imp-151-photo"
+    let rows = mgrNode.store.subs().len
+    let ph2 = filedPhoto(mgr, "11LAB90AA614", "imp-151-photo")
+    check isDup(ph2)
+    check ph2["same"].b and ph2["id"].i == ph["id"].i
+    check mgrNode.store.subs().len == rows
+    # the floor's row alone (the run stopped between the two): the floor proposal is not written a second time
+    let fl2 = mgrApi.submitBody(mgr, "equipment", j("""{"kks":"11LAB90AA614","changes":{"floor":"4"},"base":{"floor":""}}"""),
+                                newStr("floor.file.imp-151-photo"), "", now(), fileBare = "floor.imp-151-photo")
+    check isDup(fl2)
+    check fl2["id"].i == ph["floor"]["id"].i and fl2["same"].b
+    # a photo whose floor's id is taken by something else: the photo is written, and its floor's answer says so
+    check filed(mgr, "11LAB90AA615", "imp-151-photo-2")["status"].s == "approved"
+    discard mgrApi.submitBody(mgr, "equipment", j("""{"kks":"11LAB90AA615","changes":{"near":"x"},"base":{"near":"from the file"}}"""),
+                              newStr("floor.file.imp-151-photo-3"), "", now(), fileBare = "floor.imp-151-photo-3")
+    let ph3 = filedPhoto(mgr, "11LAB90AA616", "imp-151-photo-3")
+    check not isDup(ph3)
+    check isDup(ph3["floor"])
+    check not ph3["floor"]["same"].b
+
+  test "submit-file: rows from before its ids had a prefix (the legacy path, #151)":
+    proc person(user, full: string, admin = false): (Actor, string) =
+      let sk = P.p256Generate()
+      let pid = mgrApi.call(mgr, "POST", "/api/devices/import-request", newObj(@[("request",
+        P.joinRequest(sk, user, full, newStr("Technician"), "server", now() div 1000))])).json["person"].s
+      if admin: check mgrApi.call(mgr, "POST", "/api/persons/" & pid, j("""{"role":"admin"}""")).status == 200
+      let (ok, a) = mgrNode.actorOf(P.peerId(sk), sk)
+      check ok and a.isAdmin == admin
+      (a, pid)
+    proc fieldItem(kks, near: string): JNode = j("""{"kks":"""" & kks & """","changes":{"near":"""" & near & """"}}""")
+    proc sent(who: Actor, kks, cid: string, near = "from the file"): JNode =
+      # as the program before the prefix wrote a file's item: a row with the bare id (and as any request still does)
+      mgrApi.call(who, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("client_id", newStr(cid)),
+        ("payload", fieldItem(kks, near))])).json
+    proc filed(kks, cid: string): JNode =
+      mgrApi.submit(mgr, "equipment", fieldItem(kks, "from the file"), newStr(cid), nil, now(), fromFile = true)
+    proc isDup(r: JNode): bool = r.get("duplicate") != nil and r["duplicate"].b
+    # a store from before the prefix: no mark yet
+    mgrNode.store.setMeta("file_ids_after", "")
+    let (adm, _) = person("leg151a", "Legacy Admin", admin = true)
+    let (mem, memId) = person("leg151m", "Legacy Member")
+    let oldRun = sent(adm, "11LAB90AA621", "imp-151-legacy-1")           # an earlier run, as the manager of then
+    check oldRun["status"].s == "approved"
+    let claim = sent(mem, "11LAB90AA622", "imp-151-legacy-2", "not the file's")     # a member under a file's id
+    check claim["status"].s == "pending"
+    let elsewhere = sent(adm, "11LAB90AA629", "imp-151-legacy-3")       # an admin's, about another code
+    check elsewhere["status"].s == "approved"
+    # the program with the prefix starts: everything so far is old
+    let mark = mgrApi.fileIdsAfter
+    check mark == elsewhere["id"].i
+    check mgrNode.store.getMeta("file_ids_after") == $mark
+    # the earlier run's item is there
+    let entries = mgrNode.entries.len
+    let again = filed("11LAB90AA621", "imp-151-legacy-1")
+    check isDup(again)
+    check again["id"].i == oldRun["id"].i and again["same"].b
+    check mgrNode.entries.len == entries
+    # the member's row never was a file's, also once the member is an admin: the item is written
+    check mgrApi.call(mgr, "POST", "/api/persons/" & memId, j("""{"role":"admin"}""")).status == 200
+    let item = filed("11LAB90AA622", "imp-151-legacy-2")
+    check not isDup(item)
+    check item["status"].s == "approved"
+    # nor is an admin's row about something else
+    let item3 = filed("11LAB90AA623", "imp-151-legacy-3")
+    check not isDup(item3)
+    check item3["status"].s == "approved"
+    # nor anything written since, whoever sends it: the mark stays where it was
+    let late = sent(adm, "11LAB90AA624", "imp-151-legacy-4")
+    check late["status"].s == "approved"
+    check mgrApi.fileIdsAfter == mark
+    let item4 = filed("11LAB90AA624", "imp-151-legacy-4")
+    check not isDup(item4)
+    # and each of these is the file's from now on
+    for (k, c, r) in [("11LAB90AA622", "imp-151-legacy-2", item), ("11LAB90AA623", "imp-151-legacy-3", item3),
+                      ("11LAB90AA624", "imp-151-legacy-4", item4)]:
+      let rr = filed(k, c)
+      check isDup(rr)
+      check rr["id"].i == r["id"].i
 
 import kks/bundle
 
