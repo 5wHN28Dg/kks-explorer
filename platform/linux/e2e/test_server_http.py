@@ -1,5 +1,6 @@
-"""End-to-end: the Nim server binary over real HTTP, driven like the web pages do (stdlib only).
-  python3 platform/linux/e2e/test_server_http.py /path/to/kks_server
+"""End-to-end: the Nim server binary over real HTTP, driven like the web pages do (stdlib only, except WebSignIn:
+its people who joined with the app are made with the Python reference, which needs .venv's `cryptography`).
+  .venv/bin/python platform/linux/e2e/test_server_http.py /path/to/kks_server
 The Drawings test also needs the importer: KKS_IMPORT=/path/to/kks_import (default /tmp/kksimp/kks_import)."""
 import base64, http.cookiejar, json, os, re, socket, subprocess, sys, tempfile, time, unittest, urllib.request, urllib.error
 
@@ -827,6 +828,203 @@ class Signup(Base):
             db = f.read()
         for word in (self.CODE, 'second-code-88', 'nadia password 1', '$argon2id$'):
             self.assertNotIn(word.encode(), db)      # the store's rows are sealed
+
+
+class WebSignIn(Base):
+    """A web sign-in for someone who joined with the app (own devices, no account on the server): the admin's
+    "Web sign-in" (POST /api/persons/<id>/account, `kks-server web-sign-in`) and a sign-up request approved "as the
+    same person" make the account for the SAME person. The people come from app_person.py (the Python reference:
+    this class needs .venv)."""
+    extra = {'trusted_proxy': True}
+    CODE = 'team-7391-plant'
+
+    def cli(self, *args):
+        r = subprocess.run([BIN, *args, '--config', os.path.join(self.dir, 'config.json')], capture_output=True, text=True,
+                           cwd=self.dir, timeout=60)
+        return r.returncode, (r.stdout + r.stderr).strip()
+
+    def account(self, boss, username, role='user'):
+        st, r, _ = boss.req('POST', '/api/users', {'username': username, 'full_name': username.title() + ' Account',
+                                                   'position': 'Engineer', 'role': role})
+        self.assertEqual(st, 200, r)
+        return self.use_link(r['link'])
+
+    def use_link(self, link, password='a long password'):
+        c = Client(self.base)
+        st, r, _ = c.req('POST', '/api/password-reset', {'token': link.split('#reset=')[1], 'password': password})
+        self.assertEqual(st, 200, r)
+        return c
+
+    def login(self, username, password='a long password', ip='10.8.0.1'):
+        c = Client(self.base)
+        st, r, _ = c.req('POST', '/api/login', {'username': username, 'password': password}, headers={'X-Forwarded-For': ip})
+        return st, r, c
+
+    def rows(self, c, username):
+        return [u for u in c.req('GET', '/api/users?show_hidden=1')[1]['users'] if u['username'].lower() == username.lower()]
+
+    def test_web_sign_in(self):
+        from app_person import AppPerson
+        boss = self.manager()
+        admin = lambda m, path, body=None, raw=None, headers=None: boss.req(m, path, body, headers, raw)[:2]
+        me = lambda c: c.req('GET', '/api/me')[1]['user']
+        mine = lambda c: [x for x in c.req('GET', '/api/submissions?mine=1&status=all')[1]['submissions'] if x['mine']]
+        sara, omar = self.account(boss, 'sara', 'admin'), self.account(boss, 'omar')
+        ali = AppPerson(admin, 'ali', 'Ali Hassan', 'Operator')
+        ali.note('11LAB70AA501', 'seen from the phone')
+        row, = self.rows(boss, 'ali')
+        self.assertEqual((row['no_account'], row['id'], row['devices'], row['active'], row['person']), (True, None, 1, True, ali.person))
+        n_rows = len(boss.req('GET', '/api/users?show_hidden=1')[1]['users'])
+
+        # ---- the admin's Web sign-in: who may, and what it answers
+        path = f'/api/persons/{ali.person}/account'
+        self.assertEqual(Client(self.base).req('POST', path, {})[0], 401)
+        self.assertEqual(omar.req('POST', path, {})[0], 403)
+        self.assertEqual(sara.req('POST', '/api/persons/' + '0' * 32 + '/account', {})[0], 404)
+        self.assertEqual(sara.req('POST', '/api/persons/nobody/account', {})[0], 404)
+        self.assertEqual(self.rows(boss, 'ali'), [row])                     # nothing happened yet
+        st, r, _ = sara.req('POST', path, {})                               # an admin, for a user
+        self.assertEqual((st, r['ok'], r['username'], r['expires_days']), (200, True, 'ali', 3), r)
+        self.assertIn('/#reset=', r['link'])
+        # a second click (another admin at the same moment): told, and still one account for one person
+        st, again, _ = boss.req('POST', path, {})
+        self.assertEqual(st, 409, again)
+        self.assertIn('has a web sign-in already', again['error'])
+        acct, = self.rows(boss, 'ali')
+        self.assertEqual((acct['id'], acct.get('no_account'), acct['person'], acct['role'], acct['active'], acct['has_password'],
+                          acct['full_name'], acct['position']), (r['id'], None, ali.person, 'user', True, False, 'Ali Hassan', 'Operator'))
+        self.assertEqual(len(boss.req('GET', '/api/users?show_hidden=1')[1]['users']), n_rows)   # no second person
+        # nobody signs in before the link is used; with it they are that person, and the phone's change is theirs
+        self.assertEqual(self.login('ali', '')[0], 401)
+        web = self.use_link(r['link'], 'ali web password')
+        self.assertEqual((me(web)['person'], me(web)['username'], me(web)['role']), (ali.person, 'ali', 'user'))
+        got = mine(web)
+        self.assertEqual([(x['kind'], x['payload']['kks'], x['payload']['changes']) for x in got],
+                         [('equipment', '11LAB70AA501', {'notes': 'seen from the phone'})])
+        st, r, _ = web.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA502', 'changes': {'notes': 'from the web'}},
+                                                   'client_id': 'web-00001'})
+        self.assertEqual(st, 200, r)
+        self.assertEqual(len(mine(web)), 2)
+        board = [p for p in web.req('GET', '/api/leaderboard')[1]['people'] if p['name'] == 'Ali Hassan']
+        self.assertEqual([p['pending'] for p in board], [2])                 # one person on the leaderboard, with both
+        self.assertEqual(sorted(d['label'] for d in web.req('GET', '/api/devices')[1]['mine']), ['phone', 'server'])
+        # a normal account row from here on: Password link, and the CLI's
+        st, r, _ = sara.req('POST', f'/api/users/{acct["id"]}/reset', {})
+        self.assertEqual((st, r['expires_days']), (200, 3), r)
+        code, out = self.cli('reset-password', '--user', 'ali')
+        self.assertEqual(code, 0, out)
+        self.assertIn('/#reset=', out)
+        # a sign-in types the name as it likes; the account stays one
+        st, r, _ = self.login('ALI', 'ali web password')
+        self.assertEqual((st, r['user']['username'], r['user']['person']), (200, 'ali', ali.person), r)
+        self.assertEqual(self.login('ALI', 'not the password', ip='10.8.0.2')[0], 401)
+        for name in ('ali', 'ALI', 'Ali'):                                  # and no second account under the name
+            st, r, _ = boss.req('POST', '/api/users', {'username': name, 'full_name': 'Another Ali', 'position': 'Operator'})
+            self.assertEqual(st, 409, r)
+
+        # ---- roles: an admin's web sign-in is the manager's to give; the manager's person never
+        dana = AppPerson(admin, 'dana', 'Dana Admin', 'Shift engineer')
+        self.assertEqual(boss.req('POST', f'/api/persons/{dana.person}', {'role': 'admin'})[0], 200)
+        self.assertEqual(sara.req('POST', f'/api/persons/{dana.person}/account', {})[0], 403)
+        self.assertEqual(sara.req('POST', f'/api/persons/{me(boss)["person"]}/account', {})[0], 403)
+        self.assertEqual(boss.req('POST', f'/api/persons/{me(boss)["person"]}/account', {})[0], 403)
+        self.assertEqual(self.rows(boss, 'dana')[0]['no_account'], True)
+        st, r, _ = boss.req('POST', f'/api/persons/{dana.person}/account', {})
+        self.assertEqual(st, 200, r)
+        self.assertEqual((me(self.use_link(r['link']))['role'], self.rows(boss, 'dana')[0]['role']), ('admin', 'admin'))
+
+        # ---- the CLI, as the manager: by username in any case; once
+        noor = AppPerson(admin, 'noor', 'Noor Cli', 'Operator')
+        code, out = self.cli('web-sign-in')
+        self.assertNotEqual(code, 0)
+        self.assertIn('usage', out)
+        code, out = self.cli('web-sign-in', '--user', 'nobody-here')
+        self.assertEqual((code != 0, out), (True, 'Nobody is called nobody-here.'))
+        code, out = self.cli('web-sign-in', '--user', 'NOOR')
+        self.assertEqual(code, 0, out)
+        self.assertIn('noor can sign in on the web as the same person', out)
+        self.assertEqual(me(self.use_link(re.search(r'http\S+#reset=\S+', out)[0]))['person'], noor.person)
+        code, out = self.cli('web-sign-in', '--user', 'noor')
+        self.assertEqual((code != 0, out), (True, 'noor has a web sign-in already.'))
+        code, out = self.cli('web-sign-in', '--user', 'boss')
+        self.assertNotEqual(code, 0, out)
+
+        # ---- someone whose devices were all removed: the admin may let them in on the web
+        sam = AppPerson(admin, 'sam', 'Sam Gone')
+        self.assertEqual(boss.req('POST', f'/api/persons/{sam.person}', {'active': False})[0], 200)
+        self.assertEqual((self.rows(boss, 'sam')[0]['active'], self.rows(boss, 'sam')[0]['no_account']), (False, True))
+        st, r, _ = sara.req('POST', f'/api/persons/{sam.person}/account', {})
+        self.assertEqual(st, 200, r)
+        self.assertEqual((self.rows(boss, 'sam')[0]['active'], me(self.use_link(r['link']))['person']), (True, sam.person))
+        devs = {d['device']: d for d in boss.req('GET', '/api/devices?show_hidden=1')[1]['all'] if d['person'] == sam.person}
+        self.assertIs(devs[sam.device]['revoked'], True)                    # the phone stays removed
+
+        # ---- Remove devices and Deactivate, for someone with a phone and a web sign-in: the same end
+        self.assertEqual(me(web)['person'], ali.person)
+        self.assertEqual(sara.req('POST', f'/api/persons/{ali.person}', {'active': False})[0], 200)    # "Remove devices"
+        self.assertEqual(web.req('GET', '/api/me')[0], 401)                 # the web session is over
+        self.assertEqual(web.req('GET', '/api/state')[0], 401)
+        self.assertEqual(self.login('ali', 'ali web password', ip='10.8.0.3')[0], 401)
+        self.assertIs(self.rows(boss, 'ali')[0]['active'], False)           # and the list says deactivated
+        code, out = self.cli('reset-password', '--user', 'ali')
+        self.assertEqual((code != 0, out), (True, 'No active account named ali.'))
+        devs = [d for d in boss.req('GET', '/api/devices?show_hidden=1')[1]['all'] if d['person'] == ali.person]
+        self.assertEqual((len(devs), all(d['revoked'] for d in devs)), (2, True))
+        self.assertEqual(sara.req('POST', f'/api/users/{acct["id"]}', {'active': True})[0], 200)        # Activate
+        st, r, web = self.login('ali', 'ali web password', ip='10.8.0.3')
+        self.assertEqual((st, r['user']['person'], r['user']['active']), (200, ali.person, True), r)
+        self.assertEqual(len(mine(web)), 2)                                 # still the same person's
+        eva = AppPerson(admin, 'eva', 'Eva Both')
+        st, r, _ = sara.req('POST', f'/api/persons/{eva.person}/account', {})
+        evaweb = self.use_link(r['link'])
+        self.assertEqual(sara.req('POST', f'/api/users/{r["id"]}', {'active': False})[0], 200)          # Deactivate
+        self.assertEqual(evaweb.req('GET', '/api/me')[0], 401)
+        devs = [d for d in boss.req('GET', '/api/devices?show_hidden=1')[1]['all'] if d['person'] == eva.person]
+        self.assertEqual((len(devs), all(d['revoked'] for d in devs)), (2, True))                       # the phone too
+        self.assertIs(self.rows(boss, 'eva')[0]['active'], False)
+
+        # ---- a sign-up request under an app person's username
+        kim = AppPerson(admin, 'Kim', 'Kim Field')
+        self.assertEqual(boss.req('POST', '/api/signup-code', {'code': self.CODE})[0], 200)
+        answers = []
+        for i, name in enumerate(('kim', 'boss', 'fresh-name', 'ali')):     # an app person's, an account's, nobody's
+            st, r, hdr = Client(self.base).req('POST', '/api/signup', {'code': self.CODE, 'username': name, 'full_name': 'K. Field',
+                'position': 'Operator', 'password': 'the password kim chose'}, headers={'X-Forwarded-For': f'10.8.1.{i}'})
+            answers.append((st, r, hdr.get('Content-Length')))
+        self.assertEqual(answers, [(200, {'ok': True}, answers[0][2])] * 4)  # the answer tells nothing about who exists
+        waits = [self.login(n, 'the password kim chose', ip=f'10.8.2.{i}')[:2] for i, n in enumerate(('kim', 'boss', 'fresh-name'))]
+        self.assertEqual(waits, [(403, {'error': "Your account request is waiting for an admin's approval."})] * 3)
+        self.assertEqual(omar.req('GET', '/api/signups')[0], 403)
+        reqs = {r['username']: r for r in sara.req('GET', '/api/signups')[1]['requests']}
+        self.assertEqual(reqs['kim']['person'], {'person': kim.person, 'username': 'Kim', 'full_name': 'Kim Field', 'position': 'Technician',
+                                                 'role': 'user', 'devices': 1, 'removed': 0})
+        self.assertIs(reqs['kim']['taken'], True)
+        self.assertEqual([(reqs[n]['taken'], reqs[n]['person']) for n in ('boss', 'ali', 'fresh-name')], [(True, None), (True, None), (False, None)])
+        approve = lambda c, name, body: c.req('POST', f'/api/signups/{reqs[name]["id"]}/approve', body)[:2]
+        # never by itself, never for another person, never by a user
+        st, r = approve(sara, 'kim', {})
+        self.assertEqual(st, 409, r)
+        self.assertEqual(approve(sara, 'kim', {'username': 'kim'})[0], 409)
+        self.assertEqual(approve(sara, 'kim', {'person': dana.person})[0], 409)
+        self.assertEqual(approve(sara, 'kim', {'person': 'x'})[0], 409)
+        self.assertEqual(approve(sara, 'kim', {'person': 7})[0], 400)
+        self.assertEqual(approve(sara, 'kim', {'person': kim.person, 'username': 'kim2'})[0], 400)
+        self.assertEqual(approve(sara, 'fresh-name', {'person': kim.person})[0], 409)
+        self.assertEqual(approve(sara, 'ali', {'person': ali.person})[0], 409)       # ali has an account
+        self.assertEqual(approve(omar, 'kim', {'person': kim.person})[0], 403)
+        self.assertEqual((len(sara.req('GET', '/api/signups')[1]['requests']), self.rows(boss, 'kim')[0]['no_account']), (4, True))
+        self.assertEqual(self.login('kim', 'the password kim chose', ip='10.8.2.9')[0], 403)   # still waiting
+        # on the admin's word: the account of the person Kim, with the password the request chose
+        st, r = approve(sara, 'kim', {'person': kim.person})
+        self.assertEqual((st, r.get('username'), r.get('person')), (200, 'Kim', kim.person), r)
+        row, = self.rows(boss, 'kim')
+        self.assertEqual((row.get('no_account'), row['person'], row['username'], row['full_name'], row['has_password']),
+                         (None, kim.person, 'Kim', 'Kim Field', True))       # the person's own name, not the request's
+        for typed in ('kim', 'Kim'):                                        # they sign in with what they typed
+            st, r, c = self.login(typed, 'the password kim chose', ip='10.8.2.9')
+            self.assertEqual((st, me(c)['person']), (200, kim.person), r)
+        self.assertEqual(approve(sara, 'kim', {'person': kim.person})[0], 404)   # the request is gone
+        self.assertEqual(len(sara.req('GET', '/api/signups')[1]['requests']), 3)
 
 
 class SignupCap(Base):

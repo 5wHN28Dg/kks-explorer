@@ -140,10 +140,18 @@ jobs:
           tar xf linux-bin.tar -C /tmp
           sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends $APT_NIM >/dev/null
           test -x /tmp/kkslinux/kks_server && test -x /tmp/kksimp/kks_import   # else the Drawings tests would skip
-      - name: The server over HTTP (flow, login throttling, sign-up, Drawings through the importer)
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ env.IMAGE }}-${{ hashFiles('requirements-dev.txt') }}
+      - name: .venv from requirements-dev.txt (pinned; WebSignIn makes its app devices with the Python reference)
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -q -r requirements-dev.txt
+      - name: The server over HTTP (flow, login throttling, sign-up, web sign-in, Drawings through the importer)
         env:
           KKS_IMPORT: /tmp/kksimp/kks_import
-        run: python3 platform/linux/e2e/test_server_http.py /tmp/kkslinux/kks_server -v
+        run: .venv/bin/python platform/linux/e2e/test_server_http.py /tmp/kkslinux/kks_server -v
 
   python:
     runs-on: ubuntu-26.04
@@ -237,6 +245,9 @@ jobs:
       - name: Sign-up with the plant's code, then the manager's approval (test_web_signup)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_signup.py -v -k ${{ matrix.engine }}
+      - name: A web sign-in for someone who joined with the app (test_web_signin)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_signin.py -v -k ${{ matrix.engine }}
       - name: Signing in on this machine (test_web_local_login)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_local_login.py -v -k ${{ matrix.engine }}

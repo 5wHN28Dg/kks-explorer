@@ -344,7 +344,16 @@ proc login*(s: Server, username, password: string, sources: openArray[string]): 
   let keys = @sources & (acct & "@" & sources[0])
   let now = epochTime()
   if s.fails.blocked(keys, now, [acct]): herr(429, "Too many failed attempts. Wait a few minutes.")
-  let u = s.userByName(username)
+  var u = s.userByName(username)
+  if u == nil:
+    # Usernames are one name ignoring ASCII case (§9a), and people type them as their keyboard likes: "Ali" is ali.
+    # (Someone who asked for an account as "kim" and was approved as the person Kim signs in with what they typed.)
+    for x in s.users:
+      if x["username"].s.toLowerAscii == username.toLowerAscii:
+        if u != nil:      # two accounts under one name (one's person entry lost in the log): only the exact spelling
+          u = nil
+          break
+        u = x
   let asked = s.pendingSignups(username)
   # one check against the account's password, or against nothing when the name has no account: the same work
   let ok = checkPassword(password, if u != nil and u["pw"].isStr: u["pw"].s else: "") and u != nil and s.live(u)

@@ -180,7 +180,9 @@ const VIEWS={
       const out=[];
       if(u.no_account){ if(canEdit(u)){
           if(u.active) out.push(ghost('Remove devices',()=>confirm('Remove all devices of '+u.username+'? They stop syncing.')&&setPerson(u.person,{active:false})));
-          if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setPerson(u.person,{role:other(u)}))) } }
+          if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setPerson(u.person,{role:other(u)})));
+          // someone who joined with the app has no account on the server: this makes one for the same person
+          if(K.cfg?.mode==='server') out.push(ghost('Web sign-in',()=>webSignin(u))) } }
       else if(canEdit(u)&&u.id!==ME.user.id){
         out.push(ghost(u.active?'Deactivate':'Activate',()=>setUser(+u.id,{active:!u.active})));
         if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setUser(+u.id,{role:other(u)})));
@@ -199,10 +201,14 @@ const VIEWS={
     const SU=S?[h('div',{class:'card',id:'signups'},h('h3',null,`Account requests (${S.requests.length})`),
         S.requests.length?table(head('Name','Username','Asked',''),S.requests.map(r=>h('tr',{'data-user':r.username},
           h('td',null,r.full_name,r.position?h('div',{class:'sub'},r.position):null),
-          h('td',{class:'mono'},r.username,r.taken?h('div',{class:'del'},'this username exists already: approve with another one'):null,
+          h('td',{class:'mono'},r.username,r.person?h('div',{class:'del'},`this is the username of ${whoIs(r.person)}, who uses the app and has no web sign-in`,
+              canEdit(r.person)?null:' (only the manager can approve an admin as the same person)')
+            :r.taken?h('div',{class:'del'},'this username exists already: approve with another one'):null,
             r.same>1?h('div',{class:'del'},`${r.same} requests ask for this username: ask the person which one is theirs before approving`):null),
           h('td',{class:'sub'},when(r.created),h('div',null,`expires ${when(r.expires)}`)),
-          h('td',{class:'row'},h('button',{class:'primary',onclick:()=>decideSignup(r,'approve')},'Approve'),h('button',{class:'danger',onclick:()=>decideSignup(r,'reject')},'Reject')))))
+          h('td',{class:'row'},r.person?[canEdit(r.person)?h('button',{class:'primary',onclick:()=>decideSignup(r,'same')},'Approve as the same person'):null,
+              h('button',{class:'ghost',onclick:()=>decideSignup(r,'approve')},'Approve with another username')]
+            :h('button',{class:'primary',onclick:()=>decideSignup(r,'approve')},'Approve'),h('button',{class:'danger',onclick:()=>decideSignup(r,'reject')},'Reject')))))
           :h('div',{class:'sub'},S.enabled?'Nobody is waiting.':'Nobody is waiting, and sign-up is off.'),
         h('div',{class:'sub',style:'margin-top:6px'},`Approving makes the account (role user) with the password the person chose; they can sign in at once. Rejecting deletes the request. A request nobody decides is dropped after ${S.days} days.`)),
       h('div',{class:'card',id:'signupCode'},h('h3',null,'Sign-up code'),
@@ -222,6 +228,7 @@ const VIEWS={
         h('td',null,u.no_account?(u.active?[`own device${u.devices===1?'':'s'} `,h('span',{class:'sub'},`(${u.devices})`)]:h('span',{class:'del'},'all devices removed'))
                     :u.active?(u.has_password?'active':h('span',{class:'sub'},'link not used yet')):h('span',{class:'del'},'deactivated')),
         h('td',{class:'row'},actions(u))))),
+      h('p',{class:'sub server-only'},'Web sign-in is for someone who joined with the app (own devices) and also wants the web app: you get a one-time link for them, and they stay one person on both.'),
       h('p',{class:'sub'},`Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).`));
   },
   async devices(g){
@@ -435,8 +442,14 @@ async function createUser(f){
 }
 const setUser=(id,d)=>act(()=>K.api(`/api/users/${id}`,d),'Updated');
 const setSignupCode=code=>act(()=>K.api('/api/signup-code',{code}),code?'Sign-up is on with the new code':'Sign-up is off');
+// "Full Name (username, position, role, 2 devices)": who a person without an account is, for the admin to recognise
+const whoIs=p=>`${p.full_name} (${[p.username,p.position,p.role,(p.devices?`${p.devices} device${p.devices===1?'':'s'}`:'no device')+(p.removed?`, ${p.removed} removed`:'')].filter(x=>x).join(', ')})`;
 function decideSignup(r,action){
   if(action==='reject') return confirm(`Reject the request of ${r.full_name} (${r.username})? It is deleted.`)&&act(()=>K.api(`/api/signups/${r.id}/reject`,{}),'Request rejected');
+  const p=r.person;
+  // never by itself: the admin says the request is that person's own
+  if(action==='same') return confirm(`This request (sent as “${r.full_name}”) asks for the username of ${whoIs(p)}.\n\nApproving as the same person lets whoever sent it act as ${p.full_name}${p.role==='admin'?', an admin':''} on the web: their submissions, their name on every change. Anyone with the sign-up code can send such a request, so check with ${p.full_name} that it is theirs.\n\nApprove as the same person?`)
+    &&act(()=>K.api(`/api/signups/${r.id}/approve`,{person:p.person}),`Approved: ${p.username} can sign in on the web as the same person`);
   let username=r.username;
   if(r.taken){ username=prompt(`The username ${r.username} exists already. Approve ${r.full_name} with which username? (Tell them: they sign in with it.)`,''); if(!username) return }
   return act(()=>K.api(`/api/signups/${r.id}/approve`,{username}),`Approved: ${username} can sign in now`);
@@ -517,10 +530,14 @@ async function importJoin(inp,existing_ok){
       if(confirm(`${x.full_name} (${x.username}, ${x.role}) already exists. Add this computer as another device of theirs? Only if you know it is them.`)) return importJoin({request},true) }
     else toast(e.message) }
 }
+const linkBox=(name,r)=>r&&$('#main').prepend(h('div',{class:'warn'},'Password link for ',h('b',null,name),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link)));
 async function resetLink(id,name){
   if(!confirm(`Create a new password link for ${name}? Their current password keeps working until they use it.`)) return;
-  const r=await act(()=>K.api(`/api/users/${id}/reset`,{}));
-  if(r) $('#main').prepend(h('div',{class:'warn'},'Password link for ',h('b',null,name),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link)));
+  linkBox(name,await act(()=>K.api(`/api/users/${id}/reset`,{})));
+}
+async function webSignin(u){
+  if(!confirm(`Give ${u.full_name||u.username} (${u.username}${u.role==='admin'?', an admin':''}) a web sign-in? You get a one-time link to send them: with it they set a password and use the web app as the same person.`+(u.active?'':' Their devices were all removed: this lets them in again, on the web.'))) return;
+  linkBox(u.username,await act(()=>K.api(`/api/persons/${u.person}/account`,{}),'Web sign-in created'));
 }
 async function revert(rev,force){
   try{ await K.api(`/api/revisions/${rev}/revert`,{force:!!force}); toast('Reverted'); show('history') }
