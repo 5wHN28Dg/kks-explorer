@@ -359,6 +359,7 @@ proc openServer*(cfg: Config, p: Provider, storageKey: seq[byte]): Server =
   result = Server(cfg: cfg, p: p, store: st)
   result.n = newNode(p, st, key)
   result.api = newApi(result.n, mode = "server")
+  discard result.api.fileIdsAfter     # where submit-file's old rows end (#151): fixed before anything new is written
   result.api.plantName = cfg.plantName
   result.api.maxUpload = cfg.maxUploadMb * 1024 * 1024
   result.api.syncPort = cfg.syncPort
@@ -876,8 +877,9 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
   of "submit-file":
     # a list of ordinary submissions [{kind, payload, client_id?, note?}] made as the manager, through the same checks
     # as /api/submit: plant knowledge from a document (procedure links, photos, equipment fields). A client_id makes a
-    # second run add nothing, also after the manager has changed: an item some admin (the earlier manager is one)
-    # already sent under it is there. A member's submission under the same id is their own and doesn't count (#136).
+    # second run add nothing, also after the manager has changed: the rows a run writes keep their id where no
+    # request's can be ("file.<id>"), and the next run finds them whoever sent them (api `fileSent`, #151). An item
+    # answered by an earlier row that isn't that item, approved, is named: it wasn't written and isn't there.
     if args.len != 1: raise newException(ValueError, "usage: kks-server submit-file FILE.json")
     let mgr = s.managerUser()
     if mgr == nil: raise newException(ValueError, "no manager yet")
@@ -887,19 +889,43 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
     except CatchableError as e: raise newException(ValueError, args[0] & ": " & e.msg)
     if items.kind != jArr: raise newException(ValueError, args[0] & ": a JSON list of submissions")
     var count = initCountTable[string]()
+    var odd: seq[string]
     for i, it in items.elems:
       if it.kind != jObj or it.get("kind") == nil or not it["kind"].isStr:
         raise newException(ValueError, "item " & $i & ": {kind, payload, client_id?, note?}")
       var r: JNode
       try: r = s.api.submit(me, it["kind"].s, it.get("payload"), it.get("client_id"), it.get("note"), nowMs(),
-                                anyAdmin = true)
+                                fromFile = true)
       except CatchableError as e: raise newException(ValueError, "item " & $i & " (" & it["kind"].s & "): " & e.msg &
                                                      (if i > 0: " (the " & $i & " before it were submitted)" else: ""))
-      count.inc(if r.get("duplicate") != nil and r["duplicate"].kind == jBool and r["duplicate"].b: "already there"
-                elif r.get("status") != nil and r["status"].isStr: r["status"].s else: "done")
+      let status = if r.get("status") != nil and r["status"].isStr: r["status"].s else: "done"
+      proc flag(x: JNode, f: string): bool = x.get(f) != nil and x[f].kind == jBool and x[f].b
+      proc found(x: JNode): string =
+        # the earlier row an item was answered with, when it isn't that item approved: what it is
+        let st = if x["status"].s == "conflict": "held for a clash" else: x["status"].s
+        let c = x["target"].s.find(':')      # "<kind>:<what>" as "<kind> <what>"
+        let t = if c >= 0: x["target"].s[0 ..< c] & " " & x["target"].s[c + 1 .. ^1] else: x["target"].s
+        "its id belongs to submission " & $x["id"].i & ", " &
+          (if x.flag("same"): "the same change, which is " & st
+           elif x.flag("same_target"): "a different change to the same thing (" & st & ")"
+           else: "which is something else (" & t & ", " & st & ")") & "."
+      let what = "  item " & $i & " (" & it["kind"].s & (if it.get("client_id") != nil and it["client_id"].isStr:
+                   ", client_id " & it["client_id"].s else: "") & "): "
+      if r.flag("duplicate"):
+        # "already there" only for what the manager's own item would be: the same change, approved
+        if r.flag("same") and status == "approved": count.inc "already there"
+        else:
+          count.inc "not written"
+          odd.add what & "not written, " & found(r)
+      else:
+        count.inc status
+        # the floor sent with a photo is a row of its own: say so when it was answered by one that isn't it
+        let fl = r.get("floor")
+        if fl != nil and fl.kind == jObj and fl.flag("duplicate") and not (fl.flag("same") and fl["status"].s == "approved"):
+          odd.add what & "its floor was not written, " & found(fl)
     var parts: seq[string]
     for k, v in count: parts.add $v & " " & k
-    $items.elems.len & " submissions: " & parts.join(", ") & "."
+    $items.elems.len & " submissions: " & parts.join(", ") & "." & (if odd.len > 0: "\n" & odd.join("\n") else: "")
   of "reset-password":
     # a one-time link to set a new password (as the admin page's Users → Password link), for whoever runs the server
     if args.len != 1: raise newException(ValueError, "usage: kks-server reset-password --user NAME")
