@@ -12,12 +12,18 @@ def adb(*a):
     return subprocess.run(ADB + list(a), capture_output=True, text=True).stdout
 
 
+recent = []       # the last screens read, oldest first: what led up to a failure
+
+
 def nodes():
     for _ in range(5):
         sh('uiautomator', 'dump', '/sdcard/kks-ui.xml')
         x = subprocess.run(ADB + ['exec-out', 'cat', '/sdcard/kks-ui.xml'], capture_output=True, text=True).stdout
         if '<' in x:
-            return list(ET.fromstring(x[x.index('<'):]).iter('node'))
+            ns = list(ET.fromstring(x[x.index('<'):]).iter('node'))
+            recent.append((time.strftime('%H:%M:%S'), ns))
+            del recent[:-40]
+            return ns
         time.sleep(0.5)
     return []
 
@@ -53,8 +59,23 @@ def find(text, timeout=15, exact=False):
             time.sleep(1)
             continue
         if time.time() > end:
-            raise AssertionError(f'not on screen: {text!r}')
+            raise AssertionError(f'not on screen: {text!r}' + failed(text, ns))
         time.sleep(0.7)
+
+
+on_fail = None      # a test file may set it: called with (text, nodes) when find gives up, before the test cleans up
+
+
+def failed(text, ns):
+    """what a failed find adds to its message: the texts that were on screen instead (#150: "not on screen" alone
+    could not tell a slow emulator from a screen showing something else)"""
+    if on_fail:
+        try:
+            on_fail(text, ns)
+        except Exception as e:      # the report must not hide the failure
+            print(f'on_fail: {e!r}')
+    seen = [label(n) for n in ns if label(n)]
+    return '; on screen: ' + ' | '.join(v if len(v) <= 80 else v[:77] + '...' for v in seen)[:3000]
 
 
 def present(text, exact=False):
@@ -65,11 +86,13 @@ def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=15):
     """clear the app's data and start it, then wait until its window is on screen. `pm clear` returns before Android
     has finished with the cleared package: an app started at once had its new task removed and its process killed
     26 ms later ("remove task", "start not valid"), and the next test found the home screen (run 37903391890). So
-    the app is started again until its own window shows."""
+    the app is started again until its own window shows. Its task is cleared with it: a test can end with another
+    app's screen on top of ours (the system's photo picker, the camera), and now and then that screen was still
+    there after pm clear, with every start only bringing it to the front again (#150)."""
     sh('pm', 'clear', pkg)
-    waits = 0
+    waits, ns = 0, []
     for _ in range(4):
-        sh('am', 'start', '-n', f'{pkg}/{activity}')
+        sh('am', 'start', '--activity-clear-task', '-n', f'{pkg}/{activity}')
         end, seen = time.time() + timeout, 0
         while time.time() < end:
             ns = nodes()
@@ -81,7 +104,7 @@ def fresh_app(pkg, activity='kks.explorer.MainActivity', timeout=15):
             if seen >= 2:
                 return
             time.sleep(0.5)
-    raise AssertionError(f'{pkg} did not come up after pm clear')
+    raise AssertionError(f'{pkg} did not come up after pm clear' + failed(pkg, ns))
 
 
 def center(n):
@@ -94,14 +117,28 @@ def tap(text, **kw):
     sh('input', 'tap', str(x), str(y))
 
 
+retries = 0       # how often type_into had to empty a field again
+
+
 def type_into(field, value, clear=False):
     """ASCII only: `adb shell input text` can't type other scripts. clear: empty the field first (Ctrl+A, Delete),
-    else the text goes in where the cursor lands"""
+    else the text goes in where the cursor lands. The field is then read back, and emptied again if it still holds
+    something: the first key after the tap that opens the keyboard went nowhere in 2 of 16 tries (the keyboard was
+    up; the Delete half a second later arrived), and the new text landed in the middle of the old
+    ("gate valve, motor-operacheck valveed", #150)."""
+    global retries
     tap(field, exact=True)
     time.sleep(0.3)
     if clear:
-        sh('input', 'keycombination', '113', '29')   # Ctrl+A
-        sh('input', 'keyevent', '67')                # Delete
+        for attempt in range(3):
+            sh('input', 'keycombination', '113', '29')   # Ctrl+A
+            sh('input', 'keyevent', '67')                # Delete
+            ns = nodes()
+            if any(n.get('focused') == 'true' and n.get('class', '').endswith('EditText') and not n.get('text') for n in ns):
+                break
+            retries += 1
+        else:
+            raise AssertionError(f'the field {field!r} was not emptied' + failed(field, ns))
     sh('input', 'text', value.replace(' ', '%s'))
     hide_keyboard()
 
@@ -123,13 +160,17 @@ def hide_keyboard():
 
 
 def scroll_to(text, exact=False, tries=8):
-    """swipe the lower half up until text is on screen"""
+    """swipe the lower half up, slowly, until text is on screen. The speed matters: at 0.3 of the screen in 0.3 s
+    (before #150) the content was flung on by a third of a screen and more after the finger left, and a line just
+    below a short panel's edge went past its top in one step, depending on how much content lay below it
+    (test_description_and_credit after tests that had filled in the code's fields). In 1.5 s the fling is a few dozen
+    pixels, so a step stays well under the height of the tag panel, the shortest area the tests scroll."""
     size = re.findall(r'(\d+)x(\d+)', sh('wm', 'size'))[-1]
     w, h = int(size[0]), int(size[1])
     for _ in range(tries):
         if present(text, exact):
             return
-        sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.5)), '300')
+        sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.5)), '1500')
         time.sleep(0.5)
     find(text, timeout=2, exact=exact)
 
