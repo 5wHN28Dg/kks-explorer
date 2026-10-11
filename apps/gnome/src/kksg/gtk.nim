@@ -295,6 +295,17 @@ proc gtk_widget_get_width*(w: W): cint {.importc, header: HA.}
 proc gtk_widget_get_height*(w: W): cint {.importc, header: HA.}
 proc gtk_widget_get_root*(w: W): W {.importc, header: HA.}
 proc gtk_widget_get_mapped*(w: W): cint {.importc, header: HA.}
+proc idleFor*(wd: W, fn: proc ()): cuint {.discardable.} =
+  ## As `idle`, for work that belongs to a widget: fn runs only if `wd` is still in a window by then. Timers run
+  ## before an idle callback, and one of them (the reload after a sync, a photo leaving the queue) can replace the
+  ## part of the screen `wd` was in. fn's closure holds the widgets and the data of the part that was there when it
+  ## was queued: those widgets are freed by then, and what fn meant to do was about what the person saw, not about
+  ## what replaced it. So it does nothing (#160). A reference keeps `wd` itself alive until then.
+  g_object_ref(wd)
+  idle(proc () =
+    let there = gtk_widget_get_root(wd) != nil
+    g_object_unref(wd)
+    if there: fn())
 proc gtk_root_get_focus*(r: W): W {.importc, header: HA.}
 proc gtk_widget_is_ancestor*(w, ancestor: W): cint {.importc, header: HA.}
 proc gtk_event_controller_focus_new*(): W {.importc, header: HA.}

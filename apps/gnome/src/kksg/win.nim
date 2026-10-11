@@ -34,6 +34,7 @@ type Win* = ref object
   selected*: string
   panelEditing*: bool          ## the panel has an open form (Edit, a valve type's Correct): a sync doesn't rebuild it
   reloadQueued*: bool
+  sheetsKey*: string           ## what the sheet list's rows say (fillSheets): rebuilt only when that changed
   showSheet*: proc (id: string)
   selectTag*: proc (id: string, center: bool)
   rebuildPanel*: proc ()
