@@ -1025,6 +1025,11 @@ class WebSignIn(Base):
             st, r, c = self.login(typed, 'the password kim chose', ip='10.8.2.9')
             self.assertEqual((st, me(c)['person']), (200, kim.person), r)
         self.assertEqual(approve(sara, 'kim', {'person': kim.person})[0], 404)   # the request is gone
+        code, out = self.cli('reset-password', '--user', 'kim')              # the CLI takes the name in any case too
+        self.assertEqual(code, 0, out)
+        code, out = self.cli('users')
+        self.assertRegex(out, r'ali +user +active')
+        self.assertRegex(out, r'eva +user +inactive')                        # as the list says it
         self.assertEqual(len(sara.req('GET', '/api/signups')[1]['requests']), 3)
 
 

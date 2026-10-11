@@ -191,8 +191,16 @@ proc userById(s: Server, id: int64): JNode = s.store.getRow("users", align($id, 
 proc putUser(s: Server, u: JNode) = s.store.putRow("users", align($u["id"].i, 12, '0'), u)
 
 proc userByName*(s: Server, name: string): JNode =
-  for u in s.users:
+  ## Usernames are one name ignoring ASCII case (§9a), and people type them as their keyboard likes: "Ali" is ali.
+  ## (An account made for someone who joined with the app keeps their spelling, "Kim"; they type kim.) Should two
+  ## accounts differ only in case (one's person entry lost in the log), only the exact spelling finds one.
+  let users = s.users
+  for u in users:
     if u["username"].s == name: return u
+  for u in users:
+    if u["username"].s.toLowerAscii == name.toLowerAscii:
+      if result != nil: return nil
+      result = u
 
 proc managerUser(s: Server): JNode =
   for u in s.users:
@@ -224,9 +232,15 @@ proc publicUser(s: Server, u: JNode): JNode =
   let pr = if s.n.run != nil: s.n.run.persons.getOrDefault(u["person"].s) else: nil
   let fn = if pr != nil: pr["full_name"] else: u["full_name"]
   let pos = if pr != nil: pr["position"] else: u["position"]
+  var own = 0
+  if s.n.run != nil:
+    for d, v in s.n.run.devices:
+      if v["person"].s == u["person"].s and d != u["device"].s and d notin s.n.run.cuts: inc own
   O(("id", u["id"]), ("username", u["username"]), ("role", S(if role.len > 0: role else: "user")), ("active", newBool(s.live(u))),
     ("has_password", newBool(u["pw"].isStr and u["pw"].s.len > 0)), ("created", u["created"]),
-    ("full_name", fn), ("position", if pos.isNull: S("") else: pos), ("person", u["person"]))
+    ("full_name", fn), ("position", if pos.isNull: S("") else: pos), ("person", u["person"]),
+    # devices of their own still certified (a phone with the app): an account that is off while they sync says so
+    ("own_devices", newInt(own)))
 
 proc throttled(s: Server, keys: varargs[string]): bool = s.fails.blocked(keys, epochTime())
 
@@ -318,9 +332,9 @@ proc signupRequests*(s: Server, now = nowS()): seq[JNode] =
   result.sort(proc (a, b: JNode): int = cmp(a["at"].i, b["at"].i))
 
 proc pendingSignups(s: Server, username: string, now = nowS()): seq[JNode] =
-  ## the waiting requests under this username (at most SignupPerName)
+  ## the waiting requests under this username, in any case (at most SignupPerName)
   for r in s.signupRequests(now):
-    if r["username"].s == username: result.add r
+    if r["username"].s.toLowerAscii == username.toLowerAscii: result.add r
 
 proc usernameTaken(s: Server, name: string): bool =
   if s.userByName(name) != nil: return true
@@ -346,16 +360,7 @@ proc login*(s: Server, username, password: string, sources: openArray[string]): 
   let keys = @sources & (acct & "@" & sources[0])
   let now = epochTime()
   if s.fails.blocked(keys, now, [acct]): herr(429, "Too many failed attempts. Wait a few minutes.")
-  var u = s.userByName(username)
-  if u == nil:
-    # Usernames are one name ignoring ASCII case (§9a), and people type them as their keyboard likes: "Ali" is ali.
-    # (Someone who asked for an account as "kim" and was approved as the person Kim signs in with what they typed.)
-    for x in s.users:
-      if x["username"].s.toLowerAscii == username.toLowerAscii:
-        if u != nil:      # two accounts under one name (one's person entry lost in the log): only the exact spelling
-          u = nil
-          break
-        u = x
+  let u = s.userByName(username)     # in any case: who asked as "kim" and was approved as the person Kim types kim
   let asked = s.pendingSignups(username)
   # one check against the account's password, or against nothing when the name has no account: the same work
   let ok = checkPassword(password, if u != nil and u["pw"].isStr: u["pw"].s else: "") and u != nil and s.live(u)
@@ -507,7 +512,7 @@ proc requestAccount*(s: Server, d: JNode, sources: openArray[string], now = epoc
   let waiting = s.signupRequests(int64(now))
   var sameName = 0
   for r in waiting:
-    if r["username"].s == name: inc sameName
+    if r["username"].s.toLowerAscii == name.toLowerAscii: inc sameName     # "kim" and "KIM" ask for one name
   let ok = codeOk and waiting.len < SignupMaxPending and sameName < SignupPerName
   s.signupTries.record(ok, sources, now)
   if not ok: herr(403, SignupRefused)
@@ -537,7 +542,7 @@ proc signupsOut*(s: Server, now = nowS()): JNode =
                  ("position", if pr["position"].isNull: S("") else: pr["position"]), ("role", S(s.n.run.role(pid))),
                  ("devices", newInt(active)), ("removed", newInt(devs - active)))
     # `same`: how many requests ask for this username (more than one: the admin must find out which is the person's)
-    reqs.elems.add O(("same", newInt(waiting.countIt(it["username"].s == r["username"].s))), ("id", r["id"]), ("username", r["username"]), ("full_name", r["full_name"]), ("position", r["position"]),
+    reqs.elems.add O(("same", newInt(waiting.countIt(it["username"].s.toLowerAscii == r["username"].s.toLowerAscii))), ("id", r["id"]), ("username", r["username"]), ("full_name", r["full_name"]), ("position", r["position"]),
                      ("created", r["created"]), ("expires", newInt(r["created"].i + SignupDays * 86400)),
                      ("taken", newBool(s.usernameTaken(r["username"].s))), ("person", person))
   let row = s.store.getRow("signup", "code")
@@ -875,7 +880,10 @@ proc updateUser*(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode
     discard s.n.appendAs(me.key, "person", personBody(u["person"].s, u["username"].s, fn, newRole, pos), nowMs())
     u["full_name"] = S(fn)
     u["position"] = pos
-  if d.has("active") and d["active"].kind == jBool and d["active"].b != s.live(u):
+  # (Deactivate also when only this server's key for them was removed and a device of their own still syncs: the
+  # list shows that as "web sign-in off" with "Remove devices")
+  if d.has("active") and d["active"].kind == jBool and
+     (d["active"].b != s.live(u) or (not d["active"].b and s.n.run.personActive(u["person"].s))):
     if not d["active"].b:
       # All their keys stop: this server's and their own devices'. The same act as "Remove devices" for someone
       # without an account (core updatePerson), and done by it: the same revocations, and the relay's room key

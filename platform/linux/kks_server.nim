@@ -117,7 +117,7 @@ proc main() =
   of "users":
     for (_, u) in s.store.allRows("users"):
       echo u["id"].i, "  ", u["username"].s.alignLeft(20), " ", (if s.n.run != nil: s.n.run.role(u["person"].s) else: "?").alignLeft(8),
-           " ", (if u["active"].b: "active" else: "inactive"), "  ", u["full_name"].s
+           " ", (if s.live(u): "active" else: "inactive"), "  ", u["full_name"].s
   of "publish-data", "set-plant-name", "set-signup-code", "reset-password", "reset-manager", "web-sign-in", "submit-file":
     try: echo s.control(cmd, rest)
     except ValueError as e: quit e.msg

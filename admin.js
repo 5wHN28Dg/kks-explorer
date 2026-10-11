@@ -185,6 +185,8 @@ const VIEWS={
           if(K.cfg?.mode==='server') out.push(ghost('Web sign-in',()=>webSignin(u))) } }
       else if(canEdit(u)&&u.id!==ME.user.id){
         out.push(ghost(u.active?'Deactivate':'Activate',()=>setUser(+u.id,{active:!u.active})));
+        // the server's key for them was removed and a device of their own still syncs: Deactivate removes those too
+        if(!u.active&&u.own_devices) out.push(ghost('Remove devices',()=>confirm('Remove all devices of '+u.username+'? They stop syncing.')&&setUser(+u.id,{active:false})));
         if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setUser(+u.id,{role:other(u)})));
         out.push(ghost('Password link',()=>resetLink(u.id,u.username)));
       }
@@ -226,7 +228,7 @@ const VIEWS={
         h('td',{class:'mono'},u.username,u.id===ME.user.id?[' ',h('span',{class:'sub'},'(you)')]:null),
         h('td',null,u.role),
         h('td',null,u.no_account?(u.active?[`own device${u.devices===1?'':'s'} `,h('span',{class:'sub'},`(${u.devices})`)]:h('span',{class:'del'},'all devices removed'))
-                    :u.active?(u.has_password?'active':h('span',{class:'sub'},'link not used yet')):h('span',{class:'del'},'deactivated')),
+                    :u.active?(u.has_password?'active':h('span',{class:'sub'},'link not used yet')):h('span',{class:'del'},u.own_devices?`web sign-in off; own device${u.own_devices===1?'':'s'} (${u.own_devices}) still sync${u.own_devices===1?'s':''}`:'deactivated')),
         h('td',{class:'row'},actions(u))))),
       h('p',{class:'sub server-only'},'Web sign-in is for someone who joined with the app (own devices) and also wants the web app: you get a one-time link for them, and they stay one person on both.'),
       h('p',{class:'sub'},`Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).`));

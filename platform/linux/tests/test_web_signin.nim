@@ -244,3 +244,28 @@ suite "web sign-in for a person who joined with the app":
     check s.actorFor(s.login("lee", "the password kim chose", ["ip:10.0.0.2"])).role == "admin"
     sync(kim.n, s.n)
     check kim.a.owner[0]
+
+  test "only the server's key removed while the phone still syncs: shown, and Deactivate still removes the phone":
+    let u = s.userByName("omar")
+    let pid = u["person"].s
+    check s.live(u) and s.row("omar")["own_devices"].i == 1
+    check s.api.handle(mgr, "POST", "/api/devices/revoke", NoQuery, O(("device", u["device"])), now()).status == 200
+    check not s.live(u) and not s.row("omar")["active"].b
+    check s.row("omar")["own_devices"].i == 1 and s.n.run.devicesOf(pid).len == 1     # the phone is still theirs
+    check s.updateUser(mgr, u["id"].i, O(("active", newBool(false))), false)["ok"].b
+    check s.n.run.devicesOf(pid).len == 0 and s.row("omar")["own_devices"].i == 0
+    check not s.userByName("omar")["active"].b
+
+  test "requests that differ only in case ask for one username: counted together, and waiting in any case":
+    let zed = s.join(mgr, "Zed", "Zed Field")
+    for (name, src) in [("zed", "ip:10.0.1.1"), ("ZED", "ip:10.0.1.2")]:
+      s.requestAccount(O(("code", S("plant-code-1")), ("username", S(name)), ("full_name", S("Z. Field")),
+                         ("position", S("Operator")), ("password", S("the password zed chose"))), [src])
+    var n = 0
+    for r in s.signupsOut()["requests"].elems:
+      if r["username"].s in ["zed", "ZED"]:
+        inc n
+        check r["same"].i == 2 and r["person"]["person"].s == zed.person      # the admin is told to ask which is theirs
+    check n == 2
+    check refusal(proc () = discard s.login("Zed", "the password zed chose", ["ip:10.0.1.3"])) == 403   # waiting, as typed
+    check s.userByName("KIM")["username"].s == "Kim" and s.userByName("kIm")["person"].s == s.userByName("Kim")["person"].s
