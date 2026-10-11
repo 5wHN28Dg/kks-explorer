@@ -37,7 +37,11 @@ class Direct(unittest.TestCase):
                     'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),
                     'storage_key_file': os.path.join(self.dir, 'storage.key'),
                     'plant_dir': os.path.join(self.dir, 'plant-data'), 'backup_dir': os.path.join(self.dir, 'backups')}
-        setup = self.start_server()
+        try:
+            setup = self.start_server()
+        except BaseException:        # tearDown doesn't run after a failed setUp
+            self.relay.terminate(); self.relay.wait(5)
+            raise
         self.boss = Client(f'http://127.0.0.1:{self.port}')
         assert self.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
                                                     'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')

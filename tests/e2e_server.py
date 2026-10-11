@@ -10,7 +10,7 @@ and a server told to use one port for both exits at start (about 1 start in 150)
   again on new ports; one that exits for any other reason fails the test with its output.
 
 Imported by path (`sys.path.insert(0, <repo>/tests)`); Linux only, like the server."""
-import json, os, re, socket, subprocess, time
+import json, os, re, select, socket, subprocess, time
 
 TAKEN = 'Address already in use'      # what the server's unhandled OSError says when a port of its own is not free
 
@@ -36,6 +36,15 @@ def free_ports(n):
 def free_port():
     """one free port. For two or more that must differ use free_ports(n): two calls of this can return the same."""
     return free_ports(1)[0]
+
+
+def taken_port():
+    """-> (a socket listening on 127.0.0.1, its port): a port that is not free, for the tests of a taken one. Close
+    the socket to release it."""
+    s = socket.socket()
+    s.bind(('127.0.0.1', 0))
+    s.listen()
+    return s, s.getsockname()[1]
 
 
 def listening(pid):
@@ -74,6 +83,20 @@ def _setup_token(line):
     return m[1] if m else None
 
 
+def _line(proc, deadline):
+    """the next line of the process's output ('' at its end), or ServerStartError at the deadline. Read byte by byte
+    from the pipe itself, so nothing after the line is taken and `proc.stdout` reads on from there."""
+    fd, got = proc.stdout.fileno(), b''
+    while not got.endswith(b'\n'):
+        if not select.select([fd], [], [], max(0, deadline - time.time()))[0]:
+            raise ServerStartError(got.decode(errors='replace'))
+        b = os.read(fd, 1)
+        if not b:
+            break
+        got += b
+    return got.decode(errors='replace')
+
+
 def _start_once(binary, folder, cfg, timeout, popen=subprocess.Popen, listening=listening):
     """-> (process, setup token, None) when it is up, (None, None, its output) when it has exited"""
     path = os.path.join(folder, 'config.json')
@@ -84,7 +107,11 @@ def _start_once(binary, folder, cfg, timeout, popen=subprocess.Popen, listening=
     out, setup, t0 = [], None, time.time()
     try:
         while True:
-            line = proc.stdout.readline()
+            try:
+                line = _line(proc, t0 + timeout)
+            except ServerStartError as e:
+                raise ServerStartError(f'after {timeout} s the server has not said it is on, and has not exited:\n'
+                                       + ''.join(out) + str(e)) from None
             if not line:                     # its output ended: it is exiting
                 break
             out.append(line)

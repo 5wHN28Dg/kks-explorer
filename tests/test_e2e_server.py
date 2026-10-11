@@ -86,6 +86,8 @@ if how == 'refused':
 link = os.path.join(os.path.dirname(path), 'setup-link.txt')
 open(link, 'w').write('http://127.0.0.1/#setup=TOKEN-%%d\n' %% cfg['port'])
 print('No manager yet. The one-time link is in the setup link file: ' + link, flush=True)
+if how == 'silent':
+    time.sleep(60)
 if how in ('late', 'never'):
     print(on, flush=True)
     time.sleep(0.4 if how == 'late' else 60)
@@ -106,6 +108,7 @@ for i, p in enumerate((cfg['port'], cfg.get('sync_port', 0))):
     s.listen()
     socks.append(s)
 if how != 'late': print(on, flush=True)
+if how == 'talks': print('said after the line', flush=True)
 time.sleep(60)
 '''
 
@@ -118,16 +121,12 @@ class Start(unittest.TestCase):
         with open(self.bin, 'w') as f:
             f.write(FAKE % sys.executable)
         os.chmod(self.bin, os.stat(self.bin).st_mode | stat.S_IXUSR)
-        self.held = []
 
     def hold(self):
         """a port another process took between the pick and the server's bind (here: this test, listening on it)"""
-        s = socket.socket()
-        s.bind(('127.0.0.1', 0))
-        s.listen()
-        self.held.append(s)
+        s, port = e2e_server.taken_port()
         self.addCleanup(s.close)
-        return s.getsockname()[1]
+        return port
 
     def started(self, proc):
         self.addCleanup(lambda: (proc.kill(), proc.wait(), proc.stdout.close()))
@@ -211,6 +210,26 @@ class Start(unittest.TestCase):
         proc, _ = e2e_server.start_server(self.bin, self.dir, cfg)
         self.started(proc)
         self.assertIn(cfg['port'], e2e_server.listening(proc.pid))
+
+    def test_silent_server(self):
+        """no line and no exit: an error at the timeout, not a wait for ever; the process is not left running"""
+        seen = []
+        real = subprocess.Popen
+
+        def popen(*a, **k):
+            seen.append(real(*a, **k))
+            return seen[-1]
+        with self.assertRaisesRegex(e2e_server.ServerStartError, r'has not said it is on(.|\n)*setup link file'):
+            e2e_server.start_server(self.bin, self.dir, {'fake': 'silent', 'sync_port': 0}, timeout=0.5, popen=popen)
+        self.assertEqual(len(seen), 1)
+        self.assertIsNotNone(seen[0].poll())
+
+    def test_output_after_the_line_is_left(self):
+        """what the server says after its "server on" line is still there for the test to read (test_server_http
+        reads it at the end)"""
+        proc, _ = e2e_server.start_server(self.bin, self.dir, {'fake': 'talks', 'sync_port': 0})
+        self.started(proc)
+        self.assertEqual(proc.stdout.readline(), 'said after the line\n')
 
     def test_never_listens(self):
         seen = []

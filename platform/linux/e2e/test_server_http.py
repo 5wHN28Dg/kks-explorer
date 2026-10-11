@@ -9,7 +9,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 
 
 sys.path.append(os.path.join(REPO, 'tests'))
-from e2e_server import free_ports, start_server  # noqa: E402  (the ports and the server start of every e2e suite, #155)
+from e2e_server import free_ports, start_server, taken_port  # noqa: E402  (the ports and the server start of every e2e suite, #155)
 
 
 class Client:
@@ -1579,11 +1579,9 @@ class TakenPort(unittest.TestCase):
         return proc, cfg
 
     def hold(self):
-        s = socket.socket()
-        s.bind(('127.0.0.1', 0))
-        s.listen()
+        s, port = taken_port()
         self.addCleanup(s.close)
-        return s.getsockname()[1]
+        return port
 
     def test_started_again_on_other_ports(self):
         import e2e_server
@@ -1643,13 +1641,8 @@ class Address(unittest.TestCase):
     def test_public_url_default_port(self):
         d, cfg = self.config('127.0.0.1')
         cfg['public_url'] = 'https://Walk.Example:443/'
-        json.dump(cfg, open(os.path.join(d, 'config.json'), 'w'))
-        p = subprocess.Popen([BIN, 'serve', '--config', os.path.join(d, 'config.json')], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, text=True, cwd=d)
+        p, _ = start_server(BIN, d, cfg, sync=True)
         try:
-            for _ in range(20):
-                if 'server on' in p.stdout.readline(): break
-            time.sleep(0.3)
             c = Client('http://127.0.0.1:%d' % cfg['port'])
             self.assertEqual(c.req('GET', '/api/config', headers={'Host': 'walk.example'})[0], 200)
         finally:
@@ -1664,6 +1657,7 @@ class Address(unittest.TestCase):
                 self.serves(a, shown)
 
     def serves(self, address, shown):
+        # (its own start, not start_server: this is the test of the "server on" line itself)
         d, cfg = self.config(address)
         p = subprocess.Popen([BIN, 'serve', '--config', os.path.join(d, 'config.json')], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True, cwd=d)
