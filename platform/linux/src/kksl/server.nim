@@ -70,8 +70,8 @@ type
     job*: JNode                ## the drawing import running or last run (one at a time)
     courseCache: (string, JNode)   ## (what the list was built from, the list)
 
-  HttpErr = object of CatchableError
-    code: int
+  HttpErr* = object of CatchableError
+    code*: int
 
 proc isLoopback*(address: string): bool =
   ## the web listener's address must be this machine's own (finding #26: no plain-HTTP sign-in on the network)
@@ -190,7 +190,7 @@ proc users(s: Server): seq[JNode] =
 proc userById(s: Server, id: int64): JNode = s.store.getRow("users", align($id, 12, '0'))
 proc putUser(s: Server, u: JNode) = s.store.putRow("users", align($u["id"].i, 12, '0'), u)
 
-proc userByName(s: Server, name: string): JNode =
+proc userByName*(s: Server, name: string): JNode =
   for u in s.users:
     if u["username"].s == name: return u
 
@@ -204,11 +204,27 @@ proc newUserId(s: Server): int64 =
 
 
 
+proc live*(s: Server, u: JNode): bool =
+  ## An account that can sign in: not deactivated here, and its key on this server not removed. "Remove devices" (an
+  ## admin's app, or POST /api/persons/<id>) removes every device of a person, this server's key for them among them:
+  ## the account then counts as deactivated everywhere (the list, sign-in, the password link from the CLI) until an
+  ## admin activates it, which makes a new key.
+  u["active"].b and not (s.n.run != nil and u["device"].s in s.n.run.cuts)
+
+proc accountOf(s: Server, pid: string): JNode =
+  ## the account of this person, or nil
+  for u in s.users:
+    if u["person"].s == pid: return u
+
 proc publicUser(s: Server, u: JNode): JNode =
   let role = if s.n.run != nil: s.n.run.role(u["person"].s) else: "user"
-  O(("id", u["id"]), ("username", u["username"]), ("role", S(if role.len > 0: role else: "user")), ("active", u["active"]),
+  # the name and position as the log has them: the person may have changed them on a device of their own
+  let pr = if s.n.run != nil: s.n.run.persons.getOrDefault(u["person"].s) else: nil
+  let fn = if pr != nil: pr["full_name"] else: u["full_name"]
+  let pos = if pr != nil: pr["position"] else: u["position"]
+  O(("id", u["id"]), ("username", u["username"]), ("role", S(if role.len > 0: role else: "user")), ("active", newBool(s.live(u))),
     ("has_password", newBool(u["pw"].isStr and u["pw"].s.len > 0)), ("created", u["created"]),
-    ("full_name", u["full_name"]), ("position", if u["position"].isNull: S("") else: u["position"]), ("person", u["person"]))
+    ("full_name", fn), ("position", if pos.isNull: S("") else: pos), ("person", u["person"]))
 
 proc throttled(s: Server, keys: varargs[string]): bool = s.fails.blocked(keys, epochTime())
 
@@ -310,7 +326,18 @@ proc usernameTaken(s: Server, name: string): bool =
     for _, pr in s.n.run.persons:
       if pr["username"].s.toLowerAscii == name.toLowerAscii: return true
 
-proc login(s: Server, username, password: string, sources: openArray[string]): JNode =
+proc appPerson(s: Server, name: string): string =
+  ## the ID of the person with this username (ignoring ASCII case, as usernames are unique) who has no account on
+  ## this server: someone who joined with the app on a device of their own. "" when nobody has the name, or when an
+  ## account has it.
+  if s.n.run == nil: return ""
+  for u in s.users:
+    if u["username"].s.toLowerAscii == name.toLowerAscii: return ""
+  for pid, pr in s.n.run.persons:
+    if pr["username"].s.toLowerAscii == name.toLowerAscii:
+      return if s.accountOf(pid) == nil: pid else: ""
+
+proc login*(s: Server, username, password: string, sources: openArray[string]): JNode =
   ## `sources`: where the attempt comes from ("ip:…" from `sourceKey`, "tls:<peer>"), the first one the most specific
   ## that can't be changed for free. The account is counted per source, and as a whole only under pressure (#39).
   let acct = "u:" & username[0 ..< min(64, username.len)].toLowerAscii   # usernames are ≤ 40: no key grows with the body
@@ -320,7 +347,7 @@ proc login(s: Server, username, password: string, sources: openArray[string]): J
   let u = s.userByName(username)
   let asked = s.pendingSignups(username)
   # one check against the account's password, or against nothing when the name has no account: the same work
-  let ok = checkPassword(password, if u != nil and u["pw"].isStr: u["pw"].s else: "") and u != nil and u["active"].b
+  let ok = checkPassword(password, if u != nil and u["pw"].isStr: u["pw"].s else: "") and u != nil and s.live(u)
   # then one against each account request waiting under that name, whether the name has an account or not: whoever
   # knows a request's password filed it, and is told it waits. So the answer and the work are the same for a name
   # somebody has as for one nobody has (no way to learn who has an account by asking for their name).
@@ -340,7 +367,7 @@ proc passwordProblem(pw: JNode): string =
   if pw == nil or not pw.isStr or pw.s.len < MinPassword: "Password must be at least " & $MinPassword & " characters." else: ""
 
 
-proc actorFor(s: Server, u: JNode): Actor =
+proc actorFor*(s: Server, u: JNode): Actor =
   let (ok, a) = s.n.actorOf(u["device"].s, s.custodial(u["device"].s))
   if not ok: herr(401, "login required")
   a
@@ -378,7 +405,7 @@ proc setupLink*(s: Server): string =
 proc link(s: Server, path: string): string =
   (if s.cfg.publicUrl.len > 0: s.cfg.publicUrl.strip(chars = {'/'}, leading = false) else: "http://localhost:" & $s.cfg.port) & path
 
-proc createPlant(s: Server, username, fullName: string, position: JNode, pw: string): JNode =
+proc createPlant*(s: Server, username, fullName: string, position: JNode, pw: string): JNode =
   ## Setup: a new root key, the manager with a custodial device, the genesis, this server's device certified.
   let rk = s.p.p256Generate()
   s.store.putRow("keys", "root", keyJson(rk))
@@ -393,7 +420,7 @@ proc createPlant(s: Server, username, fullName: string, position: JNode, pw: str
              ("device", S(dev)))
   s.putUser(result)
 
-proc createAccount(s: Server, me: Actor, username, fullName: string, position: JNode, role: string, pw: JNode = newNull()): JNode =
+proc createAccount*(s: Server, me: Actor, username, fullName: string, position: JNode, role: string, pw: JNode = newNull()): JNode =
   ## `pw`: the password's hash when the person chose it already (an approved sign-up); else they set it by a link
   let pid = hex(s.p.randomBytes(16))
   discard s.n.appendAs(me.key, "person", personBody(pid, username, fullName, role, position), nowMs())
@@ -403,6 +430,39 @@ proc createAccount(s: Server, me: Actor, username, fullName: string, position: J
              ("created", newInt(nowS())), ("full_name", S(fullName)), ("position", position), ("person", S(pid)),
              ("device", S(dev)))
   s.putUser(result)
+
+proc linkAccount*(s: Server, me: Actor, pid: string, pw: JNode = newNull()): JNode =
+  ## A web sign-in for a person who has none: someone who joined with the app (a QR invite, "ask an admin") and has
+  ## devices of their own, or had. The account is made for that same person: its username, a new custodial device
+  ## certified for them by the acting admin's key (§9: the manager for anyone, an admin for a person with role
+  ## `user`), and no `person` entry. So what they did on their own devices and what they do on the web are one
+  ## person's. `pw` as in createAccount.
+  ## Who may: as for the other actions on a person (core `updatePerson`): never for the manager's person, and for an
+  ## admin only the manager, since the web sign-in then is an admin's.
+  if not me.isAdmin: herr(403, "admin only")
+  if s.n.run == nil or pid notin s.n.run.persons: herr(404, "no such person")
+  let role = s.n.run.role(pid)
+  if role == "manager" or (role == "admin" and me.role != "manager"): herr(403, "not allowed for this person")
+  let pr = s.n.run.persons[pid]
+  let name = pr["username"].s
+  if s.accountOf(pid) != nil: herr(409, name & " has a web sign-in already.")
+  for u in s.users:   # (an account whose own person entry lost against this person's: never two accounts under one name)
+    if u["username"].s.toLowerAscii == name.toLowerAscii: herr(409, "Another account is called " & u["username"].s & ".")
+  let (dev, _) = s.newCustodial()
+  discard s.n.appendAs(me.key, "device_cert", deviceCertBody(dev, pid, "server"), nowMs())
+  if dev notin s.n.run.devices or s.n.run.devices[dev]["person"].s != pid or dev in s.n.run.cuts:
+    s.store.delRow("custodial", dev)
+    herr(409, "This server's key for " & name & " was not accepted.")
+  result = O(("id", newInt(s.newUserId)), ("username", S(name)), ("pw", pw), ("active", newBool(true)),
+             ("created", newInt(nowS())), ("full_name", pr["full_name"]), ("position", pr["position"]), ("person", S(pid)),
+             ("device", S(dev)))
+  s.putUser(result)
+
+proc webSignIn*(s: Server, me: Actor, pid: string): JNode =
+  ## the admin's "Web sign-in": the account for this person, and the one-time link with which they set their password
+  let nu = s.linkAccount(me, pid)
+  O(("ok", newBool(true)), ("id", nu["id"]), ("username", nu["username"]),
+    ("link", S(s.link("/#reset=" & s.makeToken("reset", nu["id"].i, 3 * 86400)))), ("expires_days", newInt(3)))
 
 proc requestAccount*(s: Server, d: JNode, sources: openArray[string], now = epochTime()) =
   ## POST /api/signup, from anyone. The form's own rules are checked first and answered as they are (they depend on
@@ -451,17 +511,35 @@ proc signupsOut*(s: Server, now = nowS()): JNode =
   var reqs = newArr()
   let waiting = s.signupRequests(now)
   for r in waiting:
+    # `person`: the username is that of someone who joined with the app and has no web sign-in. Who they are, so the
+    # admin can tell whether the request is theirs: approving "as the same person" gives its sender that identity.
+    let pid = s.appPerson(r["username"].s)
+    var person = newNull()
+    if pid.len > 0:
+      let pr = s.n.run.persons[pid]
+      var devs, active = 0
+      for d, v in s.n.run.devices:
+        if v["person"].s == pid:
+          inc devs
+          if d notin s.n.run.cuts: inc active
+      person = O(("person", S(pid)), ("username", pr["username"]), ("full_name", pr["full_name"]),
+                 ("position", if pr["position"].isNull: S("") else: pr["position"]), ("role", S(s.n.run.role(pid))),
+                 ("devices", newInt(active)), ("removed", newInt(devs - active)))
     # `same`: how many requests ask for this username (more than one: the admin must find out which is the person's)
     reqs.elems.add O(("same", newInt(waiting.countIt(it["username"].s == r["username"].s))), ("id", r["id"]), ("username", r["username"]), ("full_name", r["full_name"]), ("position", r["position"]),
                      ("created", r["created"]), ("expires", newInt(r["created"].i + SignupDays * 86400)),
-                     ("taken", newBool(s.usernameTaken(r["username"].s))))
+                     ("taken", newBool(s.usernameTaken(r["username"].s))), ("person", person))
   let row = s.store.getRow("signup", "code")
   O(("enabled", newBool(row != nil)), ("set", if row != nil: row["set"] else: newNull()), ("requests", reqs),
     ("max", newInt(SignupMaxPending)), ("days", newInt(SignupDays)))
 
-proc decideSignup(s: Server, me: Actor, id, action: string, d: JNode): JNode =
+proc decideSignup*(s: Server, me: Actor, id, action: string, d: JNode): JNode =
   ## approve: the account "Add an account" would make (a person with role user, a custodial device), with the
   ## password the person chose; `username` in the body replaces a name somebody already has. reject: the request goes.
+  ## approve with `person` (an ID, as /api/signups gave it for this request): the request is that person's own, who
+  ## joined with the app and has no web sign-in. The account is made for them (linkAccount) with the password the
+  ## request chose; the name and position stay the person's. Only ever on the admin's word, and only for the person
+  ## whose username the request asks for.
   if not me.isAdmin: herr(403, "admin only")
   var r: JNode
   for x in s.signupRequests:
@@ -470,6 +548,15 @@ proc decideSignup(s: Server, me: Actor, id, action: string, d: JNode): JNode =
   if action == "reject":
     s.store.delRow("signups", id)
     return O(("ok", newBool(true)))
+  if d.get("person") != nil and not d["person"].isNull:
+    if not d["person"].isStr or (d.get("username") != nil and not d["username"].isNull):
+      herr(400, "Approve as the same person, or with another username: not both.")
+    let pid = d["person"].s
+    if pid.len == 0 or s.appPerson(r["username"].s) != pid:
+      herr(409, "That is no longer the person without a web sign-in this request names. Reload the list.")
+    let nu = s.linkAccount(me, pid, r["pw"])
+    s.store.delRow("signups", id)
+    return O(("ok", newBool(true)), ("id", nu["id"]), ("username", nu["username"]), ("person", S(pid)))
   let name = if d.get("username") != nil and d["username"].isStr and d["username"].s.strip.len > 0: d["username"].s.strip
              else: r["username"].s
   if not validUsername(name): herr(400, "Username: 2-40 letters (a-z), digits, . _ - @")
@@ -714,7 +801,7 @@ proc staticFile(s: Server, req: Request, dir, rel, cache: string, ctype = "", ex
 
 proc personOf(d: JNode): (string, JNode) = personFields(d)
 
-proc usersOut(s: Server, showHidden = false): JNode =
+proc usersOut*(s: Server, showHidden = false): JNode =
   ## accounts, then the people without one; a removed person an admin hid (POST /api/hidden) only with show_hidden
   result = newArr()
   var have: HashSet[string]
@@ -746,7 +833,7 @@ proc usersOut(s: Server, showHidden = false): JNode =
       ("has_password", newBool(false)), ("role", S(s.n.run.role(pid))), ("created", newNull()),
       ("active", newBool(active > 0)), ("devices", newInt(devs)), ("hidden", newBool(gone)))
 
-proc updateUser(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode =
+proc updateUser*(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode =
   if not me.isAdmin: herr(403, "admin only")
   var u = s.userById(uid)
   if u == nil: herr(404, "no such user")
@@ -771,14 +858,15 @@ proc updateUser(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode 
     discard s.n.appendAs(me.key, "person", personBody(u["person"].s, u["username"].s, fn, newRole, pos), nowMs())
     u["full_name"] = S(fn)
     u["position"] = pos
-  if d.has("active") and d["active"].kind == jBool and d["active"].b != u["active"].b:
-    if not d["active"].b:   # all their keys stop: this server's and their own devices'
-      var devs: seq[string]
-      for dev, v in s.n.run.devices:
-        if v["person"].s == u["person"].s and dev notin s.n.run.cuts: devs.add dev
-      for dev in devs:
-        let vvd = s.n.vv.get(dev)
-        discard s.n.appendAs(me.key, "revoke", revokeBody(dev, if vvd == nil: 0'i64 else: vvd[0].i), nowMs())
+  if d.has("active") and d["active"].kind == jBool and d["active"].b != s.live(u):
+    if not d["active"].b:
+      # All their keys stop: this server's and their own devices'. The same act as "Remove devices" for someone
+      # without an account (core updatePerson), and done by it: the same revocations, and the relay's room key
+      # changes when the manager does it (decision 0050).
+      if u["person"].s in s.n.run.persons:
+        let r = s.api.handle(me, "POST", "/api/persons/" & u["person"].s, initTable[string, string](),
+                             O(("active", newBool(false))), nowMs())
+        if r.status != 200: herr(r.status, if r.json != nil and r.json.get("error") != nil: r.json["error"].s else: "not done")
     else:   # a new key; the old one stays cut
       let (dev, _) = s.newCustodial()
       discard s.n.appendAs(me.key, "device_cert", deviceCertBody(dev, u["person"].s, "server"), nowMs())
@@ -904,15 +992,31 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
     # a one-time link to set a new password (as the admin page's Users → Password link), for whoever runs the server
     if args.len != 1: raise newException(ValueError, "usage: kks-server reset-password --user NAME")
     let u = s.userByName(args[0])
-    if u == nil or not u["active"].b: raise newException(ValueError, "No active account named " & args[0] & ".")
+    if u == nil or not s.live(u): raise newException(ValueError, "No active account named " & args[0] & ".")
     "Open this link once within 3 days to set a new password for " & args[0] & ":\n  " &
       s.link("/#reset=" & s.makeToken("reset", u["id"].i, 3 * 86400))
+  of "web-sign-in":
+    # as the admin page's Users → Web sign-in, done as the manager: an account for someone who joined with the app
+    # and has none (the same person: linkAccount), and the one-time link with which they set their password
+    if args.len != 1: raise newException(ValueError, "usage: kks-server web-sign-in --user NAME")
+    let mgr = s.managerUser()
+    if mgr == nil: raise newException(ValueError, "no manager yet")
+    var pid = ""
+    if s.n.run != nil:
+      for id, pr in s.n.run.persons:
+        if pr["username"].s.toLowerAscii == args[0].toLowerAscii: pid = id
+    if pid.len == 0: raise newException(ValueError, "Nobody is called " & args[0] & ".")
+    var r: JNode
+    try: r = s.webSignIn(s.actorFor(mgr), pid)
+    except HttpErr as e: raise newException(ValueError, e.msg)
+    r["username"].s & " can sign in on the web as the same person. Open this link once within 3 days to set the password:\n  " &
+      r["link"].s
   of "reset-manager":
     # the manager account was lost (forgotten password, the person left): the root key, which the server holds,
     # names another active account manager; the old manager becomes an admin (a root `manager` statement, §21)
     if args.len != 1: raise newException(ValueError, "usage: kks-server reset-manager --user NAME")
     let u = s.userByName(args[0])
-    if u == nil or not u["active"].b: raise newException(ValueError, "No active account named " & args[0] & ".")
+    if u == nil or not s.live(u): raise newException(ValueError, "No active account named " & args[0] & ".")
     if s.n.run != nil and s.n.run.manager == u["person"].s: raise newException(ValueError, args[0] & " is already the manager.")
     # whoever is signed in as the old manager (the person who left, perhaps) or as the new one signs in again: a
     # sign-in renews while used, so it would not end by itself
@@ -1416,6 +1520,9 @@ proc handle(s: Server, req: Request) {.async.} =
       except CatchableError as e: herr(502, "sync with " & addr0 & " failed: " & e.msg)
       return
     else: discard
+    if parts.len == 5 and parts[2] == "persons" and parts[4] == "account":
+      await s.sendJson(req, 200, s.webSignIn(me, parts[3]))
+      return
     if parts.len == 5 and parts[2] == "signups" and parts[4] in ["approve", "reject"]:
       await s.sendJson(req, 200, s.decideSignup(me, parts[3], parts[4], d))
       return
@@ -1431,7 +1538,7 @@ proc handle(s: Server, req: Request) {.async.} =
         if me.role != "manager": herr(403, "manager only")
         discard s.login(usr["username"].s, if d.get("password") != nil and d["password"].isStr: d["password"].s else: "", src)
         let to = s.userByName(if d.get("username") != nil and d["username"].isStr: d["username"].s else: "")
-        if to == nil or s.n.run.role(to["person"].s) != "admin" or not to["active"].b:
+        if to == nil or s.n.run.role(to["person"].s) != "admin" or not s.live(to):
           herr(400, "The new manager must be an active admin.")
         discard s.rootKey()   # the handover is signed with the root key: fail now, not at "accept"
         s.store.setMeta("transfer", toText(O(("from", usr["id"]), ("to", to["id"]), ("to_name", to["username"]),
