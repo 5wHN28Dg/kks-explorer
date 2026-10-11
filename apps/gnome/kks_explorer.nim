@@ -45,18 +45,25 @@ proc doShowSheet(w: Win, id: string) =
   discard gtk_widget_grab_focus(w.v.widget)
 
 proc fillSheets(w: Win) =
+  ## Every reload comes here (each finished sync round): the rows are replaced only when what they say changed. A
+  ## row replaced loses the keyboard's place and a press on it (GTK sends "clicked" 250 ms after a keyboard or
+  ## accessibility activation, and onClick drops the handler of a button that has gone: #147, #160).
+  var rows: seq[(string, string, string)]
+  var key = ""
+  for si in w.m.sheets:
+    var n, review = 0
+    for t in w.m.tagsOf(si.id):
+      inc n
+      if t.status == "review": inc review
+    rows.add((si.id, si.name, $n & " tags" & (if review > 0: ", " & $review & " to review" else: "")))
+    key.add si.id & "\x1f" & si.name & "\x1f" & rows[^1][2] & "\x1e"
+  if key == w.sheetsKey and gtk_widget_get_first_child(w.sheetList) != nil: return
   gtk_list_box_remove_all(w.sheetList)
-  let items1 = toSeq(w.m.sheets)
-  for i1 in 0 ..< items1.len:
+  for i1 in 0 ..< rows.len:
     closureScope:   # each pass gets its own copies of the captured variables
-      let si = items1[i1]
-      var n, review = 0
-      for t in w.m.tagsOf(si.id):
-        inc n
-        if t.status == "review": inc review
-      let id = si.id
-      gtk_list_box_append(w.sheetList, navRow(si.name, $n & " tags" & (if review > 0: ", " & $review & " to review" else: ""),
-                                              "Open " & si.name, proc () = w.showSheet(id)))
+      let (id, name, sub) = rows[i1]
+      gtk_list_box_append(w.sheetList, navRow(name, sub, "Open " & name, proc () = w.showSheet(id)))
+  w.sheetsKey = key
 
 proc runSearch(w: Win) =
   let q = text(w.searchEntry).strip
@@ -141,6 +148,7 @@ proc sideRoot(w: Win): W =
   gtk_widget_add_css_class(w.resultList, "boxed-list")
   gtk_widget_set_visible(w.resultList, 0)
   w.sheetList = gtk_list_box_new()
+  w.sheetsKey = ""
   gtk_widget_add_css_class(w.sheetList, "boxed-list")
   let more = gtk_list_box_new()
   gtk_widget_add_css_class(more, "boxed-list")
@@ -296,7 +304,13 @@ proc mainScreen(w: Win): W =
   adw_overlay_split_view_set_show_sidebar(w.panelSplit, 0)
   w.banner = adw_banner_new("")
   w.banner.on("button-clicked", proc () =
-    if w.bannerAction != nil: w.bannerAction())
+    # Kept in a second field while it runs: the action takes the banner down (setBanner clears bannerAction), and
+    # called through that field alone it freed its own closure, with everything it holds, under itself. (A local
+    # copy is not enough: Nim makes it a borrowed one.)
+    if w.bannerAction != nil:
+      w.bannerRunning = w.bannerAction
+      try: w.bannerRunning()
+      finally: w.bannerRunning = nil)
   let contentView = toolbarView(contentHeader, w.panelSplit)
   adw_toolbar_view_add_bottom_bar(contentView, w.pickBar())
   adw_toolbar_view_add_top_bar(contentView, w.banner)
@@ -448,6 +462,16 @@ proc activate(w: Win, app: W) =
     present(d, w.window)
     true)
   gtk_window_present(w.window)
+  # tests (#160): while the file KKS_TEST_STALE_CLICK names exists, the next button press is followed by a rebuild
+  # of the tag panel before the button's handler runs (what a sync's reload does when it falls in between), and the
+  # file is removed
+  let staleFlag = getEnv("KKS_TEST_STALE_CLICK")
+  if staleFlag.len > 0:
+    beforeClickHandler = proc () =
+      if fileExists(staleFlag) and w.rebuildPanel != nil:
+        removeFile(staleFlag)
+        w.rebuildPanel()
+        stderr.writeLine "KKS_TEST_STALE_CLICK: the panel was rebuilt before a button's handler"
   if getEnv("KKS_DEBUG_DIALOG").len > 0:      # accessibility check: a dialog over whatever screen is up
     timeout(3000, proc (): bool =
       confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard)

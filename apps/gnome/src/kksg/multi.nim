@@ -194,7 +194,7 @@ proc listDialog*(w: Win) =
           if on and j < 0:
             if w.picked.len >= MaxPick:
               w.toast("At most " & $MaxPick & " tags at once: send these first")
-              idle(proc () = gtk_switch_set_active(cb, 0))
+              idleFor(cb, proc () = gtk_switch_set_active(cb, 0))    # (fill may have replaced it)
               return
             w.picked.add k
           elif not on and j >= 0: w.picked.delete(j)
@@ -225,7 +225,7 @@ proc listDialog*(w: Win) =
     w.announce(lines.join(" "))
     gtk_editable_set_text(e, (r.unknown & r.over).join(" ").cstring)    # what was not added stays, to be corrected
     # not inside the click (an AT-SPI action: rows built there have no accessibility contents)
-    idle(proc () = fill())
+    idleFor(listBox, proc () = fill())       # (not once the dialog is closed)
   let addBtn = button("Add codes", "", addNow)
   gtk_widget_set_halign(addBtn, GTK_ALIGN_END)
   let body = vbox(8)

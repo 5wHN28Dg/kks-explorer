@@ -23,10 +23,19 @@ proc label*(text: string, css = "", wrap = true, xalign = 0.0, selectable = fals
   if selectable: gtk_label_set_selectable(result, 1)
   for c in css.splitWhitespace: gtk_widget_add_css_class(result, c.cstring)
 
+var beforeClickHandler*: proc ()
+  ## tests only (nil unless KKS_TEST_STALE_CLICK is set, kks_explorer.nim): runs between a button's "clicked" and its
+  ## handler, where a timer's callback can run
+
 proc onClick*(b: W, fn: proc ()) =
   ## Button handlers run from an idle callback: widgets built while GTK handles an accessibility action (a screen
   ## reader's or AT-SPI's "click") were missing from the accessibility tree (GTK 4.22, found 2026-10-01).
-  b.on("clicked", proc () = idle(fn))
+  ## A handler whose button has left the window by then is not run (idleFor, #160): the panel or list it was in was
+  ## rebuilt in between, and the handler would hide and read the freed widgets of the old one, or send what the old
+  ## one showed.
+  b.on("clicked", proc () =
+    if beforeClickHandler != nil: idle(beforeClickHandler)
+    idleFor(b, fn))
 
 proc button*(text: string, css = "", fn: proc () = nil): W =
   result = gtk_button_new_with_label(text.cstring)

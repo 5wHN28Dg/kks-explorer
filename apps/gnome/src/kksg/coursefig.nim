@@ -161,7 +161,8 @@ proc figureWidget*(f: JNode, scroller: W): FigView =
     let s = min(1.0, float(w) / fw)
     let want = cint(round(fh * s))
     if want != cint(h):
-      idle(proc () = gtk_drawing_area_set_content_height(v.area, want))
+      let area = v.area
+      idleFor(area, proc () = gtk_drawing_area_set_content_height(area, want))   # (the page may be rebuilt first)
     cairo_save(c)
     cairo_translate(c, (float(w) - fw * s) / 2, 0)
     cairo_scale(c, s, s)

@@ -191,8 +191,11 @@ proc myList(w: Win, box: W) =
         for (lab, v) in proposalRows(sub): adw_preferences_group_add(g, row(lab, v, selectable = true))
         if st in ["pending", "conflict"]:
           let wb = button("Withdraw", "", proc () =
+            let list = hold(box)    # a sync can rebuild the page (and free this list) while the question is up
             confirm(w.window, "Withdraw this proposal?", "", "Withdraw", true, proc () =
-              if w.act(id, "withdraw", newObj(), "Withdrawn"): w.refreshPage(box, proc (b: W) = w.myList(b))))
+              if w.act(id, "withdraw", newObj(), "Withdrawn"):
+                if list.shown: w.refreshPage(box, proc (b: W) = w.myList(b))
+                else: w.refreshLive()))     # the page that replaced it, brought up to date
           setAccessibleDescription(wb, proposalTitle(sub))
           adw_preferences_group_add(g, wb)
     box.add g
