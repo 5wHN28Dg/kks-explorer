@@ -118,13 +118,15 @@ def tap(text, **kw):
 
 
 def type_into(field, value, clear=False):
-    """ASCII only: `adb shell input text` can't type other scripts. clear: empty the field first (Ctrl+A, Delete),
-    else the text goes in where the cursor lands"""
-    tap(field, exact=True)
+    """ASCII only: `adb shell input text` can't type other scripts. clear: empty the field first, else the text goes
+    in where the cursor lands. Emptied with End and one Backspace per character it shows: Ctrl+A then Delete once
+    selected nothing, and the new text went into the middle of the old ("gate valve, motor-operacheck valveed", #150)."""
+    n = find(field, exact=True)
+    x, y = center(n)
+    sh('input', 'tap', str(x), str(y))
     time.sleep(0.3)
     if clear:
-        sh('input', 'keycombination', '113', '29')   # Ctrl+A
-        sh('input', 'keyevent', '67')                # Delete
+        sh('input', 'keyevent', '123', *['67'] * (len(n.get('text') or '') + 2))   # MOVE_END, then DEL (Backspace)
     sh('input', 'text', value.replace(' ', '%s'))
     hide_keyboard()
 
