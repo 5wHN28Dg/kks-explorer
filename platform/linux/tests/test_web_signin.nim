@@ -134,6 +134,18 @@ suite "web sign-in for a person who joined with the app":
     check "server" in labels and "phone" in labels
     for _, why in ali.n.run.ignored: check why != "not_certified"
 
+  test "a name they changed on the phone is the account's: an admin's edit of the position keeps it":
+    let (_, me) = ali.a.owner
+    check ali.a.handle(me, "POST", "/api/profile", NoQuery, O(("full_name", S("Ali Renamed")), ("position", S("Technician"))), now()).status == 200
+    sync(ali.n, s.n)
+    let u = s.userByName("ali")
+    check u["full_name"].s == "Ali User"                             # the row's copy is older than the log
+    check s.row("ali")["full_name"].s == "Ali Renamed"               # the list shows the log's
+    check s.updateUser(mgr, u["id"].i, O(("position", S("Operator"))), false)["ok"].b
+    check s.n.run.persons[ali.person]["full_name"].s == "Ali Renamed" and s.n.run.persons[ali.person]["position"].s == "Operator"
+    check s.userByName("ali")["full_name"].s == "Ali Renamed"
+    discard s.updateUser(mgr, u["id"].i, O(("full_name", S("Ali User")), ("position", S("Technician"))), false)
+
   test "who may: an admin only for users, the manager for admins, nobody for the manager":
     let dana = s.join(mgr, "dana", "Dana Admin")
     check s.api.handle(mgr, "POST", "/api/persons/" & dana.person, NoQuery, O(("role", S("admin"))), now()).status == 200

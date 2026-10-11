@@ -209,7 +209,9 @@ proc live*(s: Server, u: JNode): bool =
   ## admin's app, or POST /api/persons/<id>) removes every device of a person, this server's key for them among them:
   ## the account then counts as deactivated everywhere (the list, sign-in, the password link from the CLI) until an
   ## admin activates it, which makes a new key.
-  u["active"].b and not (s.n.run != nil and u["device"].s in s.n.run.cuts)
+  ## Nor one whose key was never accepted (its certificate lost in the order to its author's demotion): no session
+  ## could act with it.
+  u["active"].b and not (s.n.run != nil and (u["device"].s in s.n.run.cuts or u["device"].s notin s.n.run.devices))
 
 proc accountOf(s: Server, pid: string): JNode =
   ## the account of this person, or nil
@@ -856,6 +858,12 @@ proc updateUser*(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode
     if me.role != "manager" or not (d["role"].isStr and d["role"].s in ["user", "admin"]):
       herr(403, "only the manager can promote or demote admins")
     newRole = d["role"].s
+  # The name and position as the log has them: someone with a device of their own may have changed them there, and
+  # a change of only one of the two (or of the role) must not put the row's older copy back.
+  if u["person"].s in s.n.run.persons:
+    let pr = s.n.run.persons[u["person"].s]
+    u["full_name"] = pr["full_name"]
+    u["position"] = pr["position"]
   var fn = u["full_name"].s
   var pos = u["position"]
   if d.has("full_name") or d.has("position"):
