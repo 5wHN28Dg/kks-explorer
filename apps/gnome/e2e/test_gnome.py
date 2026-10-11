@@ -1202,6 +1202,71 @@ class Gnome(Plant):
         last.kill()
         last.wait(10)
 
+    def test_zzzzz_stale_click(self):
+        """#160: a button's handler runs a moment after the press (from an idle callback), and a reload can rebuild
+        the tag panel in between. The handler of the panel that is gone must then do nothing: it used to hide and
+        read that panel's freed widgets (a crash), leave the new panel marked as being edited (every Edit then said
+        "Save or cancel your edits first"), or send what the old form held. KKS_TEST_STALE_CLICK forces that order:
+        while the file it names exists, the next press is followed by a rebuild of the panel before its handler.
+        (Named to run last: it only reads the shared server's data, but must find it settled.)"""
+        flag = os.path.join(self.dir, 'stale-click')
+        a = self.start_app('stale', KKS_TEST_STALE_CLICK=flag, KKS_SYNC_EVERY='2000')
+        app = self.apps[-1]
+        self.join(a)
+        sheet_row = atspi.find(a, 'list item', contains='Sample sheet')
+        code = '11LAB70AA501'
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
+        time.sleep(1)
+        atspi.click(atspi.find(a, 'button', name=code))
+        atspi.find(a, 'button', name='Edit', timeout=15)
+        before = self.boss.req('GET', '/api/state')['equipment'].get(code)
+
+        def stale_press(button):
+            # press it with the rebuild forced in between (the app removes the file when it has done that)
+            for _ in range(5):       # (a press within GTK's 250 ms before a real reload is lost: again)
+                open(flag, 'w').close()
+                atspi.click(atspi.find(a, 'button', name=button, timeout=15))
+                t0 = time.time()
+                while os.path.exists(flag) and time.time() - t0 < 5:
+                    time.sleep(0.1)
+                if not os.path.exists(flag):
+                    break
+            else:
+                self.fail(f'{button}: the app never rebuilt the panel after the press')
+            time.sleep(1.5)          # the handler, had it run, is long done
+            self.assertIsNone(app.poll(), f'the app died after {button} was pressed on a panel that was then rebuilt')
+
+        # Edit, on the panel that is then replaced: no form opens, and the new panel's Edit works
+        stale_press('Edit')
+        self.assertFalse(atspi.find_all(a, 'text', contains='Notes'), 'the replaced panel\'s Edit opened a form')
+        atspi.click(atspi.find(a, 'button', name='Edit', timeout=15))
+        notes = atspi.find(a, 'text', name='Notes', timeout=10)      # (stuck, it said "Save or cancel your edits first")
+        # Save, on a form that is then replaced: nothing is sent, here or to the server
+        atspi.set_text(notes, 'typed into the form that was replaced')
+        atspi.set_text(atspi.find(a, 'text', name='Floor'), '7')
+        stale_press('Save')
+        self.assertFalse(atspi.find_all(a, 'text', contains='Notes'), 'the form is still there: the panel was not rebuilt')
+        time.sleep(6)                # three sync rounds: a change saved here would be on the server by now
+        self.assertIsNone(app.poll(), 'the app died')
+        self.assertFalse(atspi.find_all(a, None, contains='typed into the form that was replaced'),
+                         'the replaced form\'s Save was carried out')
+        self.assertFalse(atspi.find_all(a, None, contains='Saved: '), 'the replaced form\'s Save sent something')
+        self.assertEqual(self.boss.req('GET', '/api/state')['equipment'].get(code), before,
+                         'the replaced form\'s Save changed the equipment')
+        # and the panel still works: a form opens and closes
+        atspi.click(atspi.find(a, 'button', name='Edit', timeout=15))
+        atspi.find(a, 'text', name='Notes', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        atspi.find(a, 'button', name='Edit', timeout=15)
+        # the sheet list was reloaded by every sync round on the way (every 2 s) and nothing in it changed: its rows
+        # are the ones from before (a row replaced loses a press on it, as the panel's buttons did)
+        self.assertFalse(sheet_row.get_state_set().contains(Atspi.StateType.DEFUNCT),
+                         'sync rounds that changed nothing replaced the sheet list\'s rows')
+        self.assertEqual(atspi.find(a, 'list item', contains='Sample sheet', showing=False), sheet_row,
+                         'sync rounds that changed nothing replaced the sheet list\'s rows')
+        app.kill()                   # done: its syncs must not rebuild other tests' screens
+        app.wait(10)
+
 
 class Coverage(Plant):
     """Coverage counts every code, tag, place and photo of the plant: on a server of its own, so the totals are the

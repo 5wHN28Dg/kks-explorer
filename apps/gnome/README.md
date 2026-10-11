@@ -80,7 +80,8 @@ unpack Ubuntu's package next to the GTK headers (`apt-get download mutter && dpk
 `nim test` (in apps/gnome) runs `tests/test_*.nim`: the dark-drawings colour transform and the markers' contrast.
 
 `e2e/viewer_pinch.nim` checks that a touchpad pinch (a `begin` with a NULL sequence) doesn't crash the viewer; build
-it and run it under `headless.sh` (the header says how).
+it and run it under `headless.sh` (the header says how). `e2e/stale_click.nim`, run the same way, checks that a
+button's handler does not run once the panel it was in has been rebuilt (#160).
 
 `python3 apps/gnome/e2e/test_gnome.py` drives the app through its accessibility tree (AT-SPI), against the Nim server
 and the importer, with no plant data. In about 30 s it covers:

@@ -317,6 +317,11 @@ jobs:
       - name: The GNOME app's unit tests (the dark-drawings colours and marker contrast)
         working-directory: apps/gnome
         run: nim test
+      - name: A button's handler after its panel was rebuilt (#160), in the same headless mutter
+        working-directory: apps/gnome
+        run: |
+          nim c -d:release -o:/tmp/kksgnome/stale_click e2e/stale_click.nim
+          timeout 120 e2e/headless.sh /tmp/kksgnome/stale_click
       - name: The GNOME app through AT-SPI, in a private headless mutter (apps/gnome/e2e/headless.sh)
         run: |
           apps/gnome/e2e/headless.sh /usr/bin/python3 apps/gnome/e2e/test_gnome.py /tmp/kksgnome/kks_explorer \
