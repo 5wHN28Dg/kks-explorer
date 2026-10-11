@@ -117,16 +117,28 @@ def tap(text, **kw):
     sh('input', 'tap', str(x), str(y))
 
 
+retries = 0       # how often type_into had to empty a field again
+
+
 def type_into(field, value, clear=False):
-    """ASCII only: `adb shell input text` can't type other scripts. clear: empty the field first, else the text goes
-    in where the cursor lands. Emptied with End and one Backspace per character it shows: Ctrl+A then Delete once
-    selected nothing, and the new text went into the middle of the old ("gate valve, motor-operacheck valveed", #150)."""
-    n = find(field, exact=True)
-    x, y = center(n)
-    sh('input', 'tap', str(x), str(y))
+    """ASCII only: `adb shell input text` can't type other scripts. clear: empty the field first (Ctrl+A, Delete),
+    else the text goes in where the cursor lands. The field is then read back, and emptied again if it still holds
+    something: the first key after the tap that opens the keyboard went nowhere in 2 of 16 tries (the keyboard was
+    up; the Delete half a second later arrived), and the new text landed in the middle of the old
+    ("gate valve, motor-operacheck valveed", #150)."""
+    global retries
+    tap(field, exact=True)
     time.sleep(0.3)
     if clear:
-        sh('input', 'keyevent', '123', *['67'] * (len(n.get('text') or '') + 2))   # MOVE_END, then DEL (Backspace)
+        for attempt in range(3):
+            sh('input', 'keycombination', '113', '29')   # Ctrl+A
+            sh('input', 'keyevent', '67')                # Delete
+            ns = nodes()
+            if any(n.get('focused') == 'true' and n.get('class', '').endswith('EditText') and not n.get('text') for n in ns):
+                break
+            retries += 1
+        else:
+            raise AssertionError(f'the field {field!r} was not emptied' + failed(field, ns))
     sh('input', 'text', value.replace(' ', '%s'))
     hide_keyboard()
 
