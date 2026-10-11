@@ -901,11 +901,14 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
       let status = if r.get("status") != nil and r["status"].isStr: r["status"].s else: "done"
       proc flag(x: JNode, f: string): bool = x.get(f) != nil and x[f].kind == jBool and x[f].b
       proc found(x: JNode): string =
-        # an earlier row that isn't this item, approved: what it is
+        # the earlier row an item was answered with, when it isn't that item approved: what it is
+        let st = if x["status"].s == "conflict": "held for a clash" else: x["status"].s
+        let c = x["target"].s.find(':')      # "<kind>:<what>" as "<kind> <what>"
+        let t = if c >= 0: x["target"].s[0 ..< c] & " " & x["target"].s[c + 1 .. ^1] else: x["target"].s
         "its id belongs to submission " & $x["id"].i & ", " &
-          (if x.flag("same"): "the same change, which is " & x["status"].s
-           elif x.flag("same_target"): "a different change to the same thing (" & x["status"].s & ")"
-           else: "which is something else (" & x["target"].s.replace(":", " ") & ", " & x["status"].s & ")") & "."
+          (if x.flag("same"): "the same change, which is " & st
+           elif x.flag("same_target"): "a different change to the same thing (" & st & ")"
+           else: "which is something else (" & t & ", " & st & ")") & "."
       let what = "  item " & $i & " (" & it["kind"].s & (if it.get("client_id") != nil and it["client_id"].isStr:
                    ", client_id " & it["client_id"].s else: "") & "): "
       if r.flag("duplicate"):

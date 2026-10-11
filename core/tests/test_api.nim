@@ -752,6 +752,20 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     let rev2 = filedAny("review", """{"tag_id":"t151","data":{"status":"rejected"}}""", "imp-151-review")
     check isDup(rev2)
     check rev2["same_target"].b and not rev2["same"].b
+    # a marked tag without an id of its own gets a new one each time it is read: still the same item
+    const Mark = """{"sheet":"lp","bbox":[310,310,360,330],"kks":"11LAB90AA619","isa":"","note":"from the file"}"""
+    check filedAny("tag_add", Mark, "imp-151-mark")["status"].s == "approved"
+    let mark2 = filedAny("tag_add", Mark, "imp-151-mark")
+    check isDup(mark2)
+    check mark2["same"].b
+    let mark3 = filedAny("tag_add", Mark.replace("11LAB90AA619", "11LAB90AA620"), "imp-151-mark")
+    check isDup(mark3)
+    check not mark3["same"].b
+    # a link switched off, a photo's caption changed: not the same change
+    check filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":true}""", "imp-151-link")["status"].s == "approved"
+    check filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":true}""", "imp-151-link")["same"].b
+    let off = filedAny("link", """{"proc":"EP-151","step":1,"kks":"11LAB90AA619","on":false}""", "imp-151-link")
+    check off["same_target"].b and not off["same"].b
     check other["target"].s == "equipment:11LAB90AA611"
     check nearOf("11LAB90AA613") == ""
     # no request can send such an id, alone or as a set's prefix (the same set under an id without "." is taken)

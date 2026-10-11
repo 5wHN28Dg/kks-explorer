@@ -655,12 +655,20 @@ type FileItem = tuple[target, change: string]     ## what an item is about (`tar
 
 proc changeOf(kind: string, b: JNode): string =
   ## what a change does, for telling a file's item from another change to the same thing: canonical text, so the
-  ## order of the keys in a file says nothing. A photo's image and id are not part of it (the item's image is not
-  ## kept before it is known to be new); the values an equipment change was based on aren't either.
+  ## order of the keys in a file says nothing. Left out is what differs between two sends of one item: a photo's
+  ## image and id (the item's image is not kept before it is known to be new; so a photo is its caption here, and a
+  ## floor sent with it is not looked at), a marked tag's id (made up when the item has none), and the values an
+  ## equipment change or a review was based on (an approval after a clash writes the ones of then).
   try:
     case kind
     of "equipment": canonical(b["changes"])
     of "photo": canonical(b["caption"])
+    of "review": canonical(b["data"])
+    of "tag_add":
+      var x = newObj()
+      for (k, v) in b.fields:
+        if k != "tag": x[k] = v
+      canonical(x)
     else: canonical(b)
   except CanonicalError: toText(b)
 
