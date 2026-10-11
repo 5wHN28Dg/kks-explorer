@@ -16,9 +16,8 @@ SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 SHOTS = os.environ.get('KKS_SHOTS', '/tmp/kks-web-shots')
 
 
-def free_port():
-    import socket
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
+sys.path.append(os.path.join(REPO, 'tests'))
+from e2e_server import start_server  # noqa: E402  (the ports and the server start of every e2e suite, #155)
 
 
 def png(w, h):
@@ -59,21 +58,13 @@ class WebSystems(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-web-sys-')
-        cls.port = free_port()
-        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
+        cfg = {'address': '127.0.0.1', 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups')}
         cls.cfg = os.path.join(cls.dir, 'config.json')
-        with open(cls.cfg, 'w') as f: json.dump(cfg, f)
-        cls.server = subprocess.Popen([SERVER, 'serve', '--config', cls.cfg], cwd=cls.dir,
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        setup = None
-        for _ in range(50):
-            line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m: setup = m[1]
-            if 'server on' in line: break
+        cls.server, setup = start_server(SERVER, cls.dir, cfg)
+        cls.port = cfg['port']
         cls.base = 'http://127.0.0.1:%d' % cls.port
         boss = Client(cls.base)
         assert boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',

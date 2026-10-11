@@ -10,7 +10,7 @@ drawing, and Photo for all with the floor asked first gives every code the photo
 proposal, online and queued offline. A fresh server per engine.
   /path/to/venv-with-playwright/bin/python platform/linux/e2e/test_web_multi.py [unittest arguments]
 $KKS_SERVER names the build (default /tmp/kkslinux/kks_server); screenshots go to $KKS_SHOTS (default /tmp/kks-web-shots)."""
-import json, os, re, shutil, struct, subprocess, tempfile, unittest, urllib.request, http.cookiejar, zlib
+import json, os, re, shutil, struct, subprocess, tempfile, unittest, urllib.request, http.cookiejar, zlib, sys
 from playwright.sync_api import sync_playwright
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -18,9 +18,8 @@ SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 SHOTS = os.environ.get('KKS_SHOTS', '/tmp/kks-web-shots')
 
 
-def free_port():
-    import socket
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
+sys.path.append(os.path.join(REPO, 'tests'))
+from e2e_server import start_server  # noqa: E402  (the ports and the server start of every e2e suite, #155)
 
 
 def png(w, h, rgb=b'\xff\xff\xff'):
@@ -61,25 +60,14 @@ class Client:
 class WebMulti(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix='kks-web-multi-')
-        self.port = free_port()
-        cfg = {'address': '127.0.0.1', 'port': self.port, 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
+        cfg = {'address': '127.0.0.1', 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),
                'storage_key_file': os.path.join(self.dir, 'storage.key'), 'plant_dir': os.path.join(self.dir, 'plant-data'),
                'backup_dir': os.path.join(self.dir, 'backups')}
         self.cfg = os.path.join(self.dir, 'config.json')
-        with open(self.cfg, 'w') as f: json.dump(cfg, f)
-        self.log = open(os.path.join(self.dir, 'server.log'), 'w+')
-        self.server = subprocess.Popen([SERVER, 'serve', '--config', self.cfg], cwd=self.dir, stdout=self.log,
-                                       stderr=subprocess.STDOUT, text=True)
+        self.server, setup = start_server(SERVER, self.dir, cfg)
+        self.port = cfg['port']
         self.addCleanup(self.stop)   # runs even when setUp fails below (tearDown doesn't: it left servers running)
-        setup = None
-        for _ in range(100):
-            self.log.flush(); self.log.seek(0); out = self.log.read()
-            f = re.search(r'setup link file: (.+)', out)   # the link is in a 0600 file (#69)
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(f[1].strip()).read()) if f else None
-            if m: setup = m[1]
-            if 'server on' in out and setup: break
-            import time; time.sleep(0.1)
         self.base = 'http://127.0.0.1:%d' % self.port
         self.boss = Client(self.base)
         assert self.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
@@ -102,7 +90,7 @@ class WebMulti(unittest.TestCase):
     def stop(self):
         self.server.terminate()
         self.server.wait(5)
-        self.log.close()
+        self.server.stdout.close()
         shutil.rmtree(self.dir, ignore_errors=True)
 
     def subs(self, kind):

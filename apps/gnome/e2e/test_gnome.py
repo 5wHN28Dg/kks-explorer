@@ -19,9 +19,8 @@ SHOTS = os.environ.get('KKS_SHOTS', '/tmp/kks-gnome-shots')
 del sys.argv[1:]
 
 
-def free_port():
-    import socket
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
+sys.path.append(os.path.join(REPO, 'tests'))
+from e2e_server import free_port, start_server  # noqa: E402  (the ports and the server start of every e2e suite, #155)
 
 
 class Client:
@@ -43,23 +42,13 @@ class Plant(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-gnome-e2e-')
-        cls.port, cls.sport = free_port(), free_port()
-        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': cls.sport, 'plant_name': 'Test plant',
+        cfg = {'address': '127.0.0.1', 'plant_name': 'Test plant',
                'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
                'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl')}
-        json.dump(cfg, open(os.path.join(cls.dir, 'config.json'), 'w'))
-        cls.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(cls.dir, 'config.json')], cwd=cls.dir,
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        setup = None
-        for _ in range(50):
-            line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m:
-                setup = m[1]
-            if 'server on' in line:
-                break
+        cls.server, setup = start_server(SERVER, cls.dir, cfg, sync=True)
+        cls.port, cls.sport = cfg['port'], cfg['sync_port']
         cls.base = f'http://127.0.0.1:{cls.port}'
         cls.boss = Client(cls.base)
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',

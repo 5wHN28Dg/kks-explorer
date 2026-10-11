@@ -8,7 +8,7 @@ import json, os, re, shutil, socket, subprocess, sys, tempfile, time, unittest
 sys.path.insert(0, os.path.dirname(__file__))
 import adbui as ui  # noqa: E402
 ARGS = sys.argv[1:3]   # read before test_app2 is imported: it takes (and deletes) the arguments as its own
-from test_app2 import Client, free_port  # noqa: E402
+from test_app2 import Client, start_listener, start_server  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 APK = ARGS[0] if len(ARGS) > 0 else os.path.join(REPO, 'android/app2/build/outputs/apk/debug/app2-debug.apk')
@@ -19,32 +19,29 @@ PY = os.path.join(REPO, '.venv/bin/python') if os.path.exists(os.path.join(REPO,
 
 
 class Direct(unittest.TestCase):
-    def start_server(self, sync_port):
-        self.cfg['sync_port'] = sync_port
-        with open(os.path.join(self.dir, 'config.json'), 'w') as f:
-            json.dump(self.cfg, f)
-        self.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
-                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        setup = None
-        for _ in range(50):
-            line = self.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m:
-                setup = m[1]
-            if 'server on' in line:
-                break
+    def start_server(self, sync_port=None):
+        """None: the first start, on free ports (self.port, self.sport); a number: again on the same web port with
+        this sync port (0 = no listener)"""
+        if sync_port is not None:
+            self.cfg['sync_port'] = sync_port
+        self.server, setup = start_server(SERVER, self.dir, self.cfg, sync=True, fixed=sync_port is not None)
+        if sync_port is None:
+            self.port, self.sport = self.cfg['port'], self.cfg['sync_port']
         return setup
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix='kks-direct-')
-        self.port, self.sport, self.rport = free_port(), free_port(), free_port()
-        self.relay = subprocess.Popen([PY, os.path.join(REPO, 'relay', 'twin.py'), str(self.rport)], cwd=REPO,
-                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.cfg = {'address': '127.0.0.1', 'port': self.port, 'plant_name': 'Test plant', 'web_dir': REPO,
+        # (listening before the server's ports are picked: none of the three can be the same)
+        self.relay, self.rport = start_listener(lambda port: [PY, os.path.join(REPO, 'relay', 'twin.py'), str(port)], self.dir)
+        self.cfg = {'address': '127.0.0.1', 'plant_name': 'Test plant', 'web_dir': REPO,
                     'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),
                     'storage_key_file': os.path.join(self.dir, 'storage.key'),
                     'plant_dir': os.path.join(self.dir, 'plant-data'), 'backup_dir': os.path.join(self.dir, 'backups')}
-        setup = self.start_server(self.sport)
+        try:
+            setup = self.start_server()
+        except BaseException:        # tearDown doesn't run after a failed setUp
+            self.relay.terminate(); self.relay.wait(5)
+            raise
         self.boss = Client(f'http://127.0.0.1:{self.port}')
         assert self.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
                                                     'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')

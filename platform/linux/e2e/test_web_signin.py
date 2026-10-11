@@ -13,7 +13,7 @@ from playwright.sync_api import sync_playwright, expect
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import free_port, Client, CSP_WATCH, PageErrors
+from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors
 from app_person import AppPerson
 
 PW = 'a long password'
@@ -25,20 +25,12 @@ NAME = 'Ali <b id=injected>H</b><img src=x onerror=pwned=1>'
 class WebSignIn(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix='kks-web-signin-')
-        self.port = free_port()
-        cfg = {'address': '127.0.0.1', 'port': self.port, 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
+        cfg = {'address': '127.0.0.1', 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),
                'storage_key_file': os.path.join(self.dir, 'storage.key'), 'plant_dir': os.path.join(self.dir, 'plant-data'),
                'backup_dir': os.path.join(self.dir, 'backups')}
-        with open(os.path.join(self.dir, 'config.json'), 'w') as f: json.dump(cfg, f)
-        self.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
-                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        setup = None
-        for _ in range(50):
-            line = self.server.stdout.readline()
-            if 'setup link file: ' in line:
-                with open(line.split('setup link file: ', 1)[1].strip()) as f: setup = re.search(r'#setup=([A-Za-z0-9_-]+)', f.read())[1]
-            if 'server on' in line: break
+        self.server, setup = start_server(SERVER, self.dir, cfg)
+        self.port = cfg['port']
         self.base = 'http://127.0.0.1:%d' % self.port
         self.boss = Client(self.base)
         assert self.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': PW, 'full_name': 'The Manager',

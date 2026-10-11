@@ -21,7 +21,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 IMPORTER = os.environ.get('KKS_IMPORTER', '/tmp/kksimp/kks_import')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import free_port, Client, CSP_WATCH, PageErrors
+from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors
 from test_web_requests import png
 
 PW = 'a long password'
@@ -34,15 +34,10 @@ SHEET_SHOWN = "() => { const i = document.getElementById('sheetimg'); return i &
 
 class WebOffline(unittest.TestCase):
     @classmethod
-    def start_server(cls):
-        cls.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(cls.dir, 'config.json')], cwd=cls.dir,
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        setup = None
-        for _ in range(50):
-            line = cls.server.stdout.readline()
-            if 'setup link file: ' in line:
-                with open(line.split('setup link file: ', 1)[1].strip()) as f: setup = re.search(r'#setup=([A-Za-z0-9_-]+)', f.read())[1]
-            if 'server on' in line: break
+    def start_server(cls, fixed=True):
+        """fixed: again on the port the browsers know (a restart); else on a free one, in cls.port"""
+        cls.server, setup = start_server(SERVER, cls.dir, cls.cfg, fixed=fixed)
+        cls.port = cls.cfg['port']
         return setup
 
     @classmethod
@@ -54,7 +49,6 @@ class WebOffline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-web-offline-')
-        cls.port = free_port()
         # the web files as the server serves them, in a folder of the test's own: links to the repository's, and its
         # own copy of sw.js (an update of the app is a changed sw.js)
         cls.web = os.path.join(cls.dir, 'web')
@@ -63,13 +57,12 @@ class WebOffline(unittest.TestCase):
             if n == 'vendor' or (os.path.isfile(os.path.join(REPO, n)) and n.endswith(('.html', '.js', '.css', '.png', '.svg', '.webmanifest')) and n != 'sw.js'):
                 os.symlink(os.path.join(REPO, n), os.path.join(cls.web, n))
         shutil.copy(os.path.join(REPO, 'sw.js'), os.path.join(cls.web, 'sw.js'))
-        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': cls.web,
-               'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
-               'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
-               'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
-               'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl'), 'offline_days': 30}
-        with open(os.path.join(cls.dir, 'config.json'), 'w') as f: json.dump(cfg, f)
-        setup = cls.start_server()
+        cls.cfg = {'address': '127.0.0.1', 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': cls.web,
+                   'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
+                   'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
+                   'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
+                   'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl'), 'offline_days': 30}
+        setup = cls.start_server(fixed=False)
         cls.base = 'http://127.0.0.1:%d' % cls.port
         boss = cls.boss = Client(cls.base)
         assert boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': PW, 'full_name': 'The Manager',

@@ -6,7 +6,7 @@ data, and cleared on logout with Clear-Site-Data: "cache").
 $KKS_SERVER names the build (default /tmp/kkslinux/kks_server). `Upgrade` also needs a server from before the fix,
 $KKS_OLD_SERVER, built from commit af8bb3c (`git worktree add --detach D af8bb3c`, then `nim c -d:release` in
 D/platform/linux); it serves that commit's own web files, taken with `git archive`."""
-import base64, json, os, re, shutil, subprocess, tempfile, time, unittest
+import base64, json, os, re, shutil, subprocess, tempfile, time, unittest, sys
 from playwright.sync_api import sync_playwright
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -22,16 +22,14 @@ def until(page, js, timeout=20):
     raise AssertionError('timed out waiting for ' + js)
 
 
-def free_port():
-    import socket
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
+sys.path.append(os.path.join(REPO, 'tests'))
+from e2e_server import start_server  # noqa: E402  (the ports and the server start of every e2e suite, #155)
 
 
 class Stale(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-web-stale-')
-        cls.port = free_port()
         # the web folder with one more script under /vendor/, standing in for a planted service worker
         web = os.path.join(cls.dir, 'web')
         os.makedirs(os.path.join(web, 'vendor'))
@@ -42,19 +40,12 @@ class Stale(unittest.TestCase):
         with open(os.path.join(web, 'vendor', 'planted-sw.js'), 'w') as f:
             f.write("self.addEventListener('fetch', e => e.respondWith(new Response('<script>1</script>', "
                     "{headers: {'Content-Type': 'text/html'}})));\n")
-        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': 0, 'web_dir': web,
+        cfg = {'address': '127.0.0.1', 'sync_port': 0, 'web_dir': web,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups')}
-        with open(os.path.join(cls.dir, 'config.json'), 'w') as f: json.dump(cfg, f)
-        cls.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(cls.dir, 'config.json')], cwd=cls.dir,
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        cls.setup = None
-        for _ in range(50):
-            line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m: cls.setup = m[1]
-            if 'server on' in line: break
+        cls.server, cls.setup = start_server(SERVER, cls.dir, cfg)
+        cls.port = cfg['port']
         cls.base = 'http://127.0.0.1:%d' % cls.port
 
     @classmethod
@@ -122,20 +113,14 @@ class Upgrade(unittest.TestCase):
     cached as immutable for a year, and the old service worker kept a copy. After the upgrade, on the same origin,
     that URL no longer runs anything."""
 
-    def start(self, binary, web):
-        cfg = {'address': '127.0.0.1', 'port': self.port, 'sync_port': 0, 'web_dir': web,
+    def start(self, binary, web, port=None):
+        """port: the one the browser already knows (the upgraded server); None: a free one, in self.port"""
+        cfg = {'address': '127.0.0.1', 'port': port, 'sync_port': 0, 'web_dir': web,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),
                'storage_key_file': os.path.join(self.dir, 'storage.key'),
                'plant_dir': os.path.join(self.dir, 'plant-data'), 'backup_dir': os.path.join(self.dir, 'backups')}
-        with open(os.path.join(self.dir, 'config.json'), 'w') as f: json.dump(cfg, f)
-        proc = subprocess.Popen([binary, 'serve', '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        setup = None
-        for _ in range(50):
-            line = proc.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m: setup = m[1]
-            if 'server on' in line: break
+        proc, setup = start_server(binary, self.dir, cfg, fixed=port is not None)
+        self.port = cfg['port']
         time.sleep(0.3)
         return proc, setup
 
@@ -143,13 +128,12 @@ class Upgrade(unittest.TestCase):
         old = os.environ.get('KKS_OLD_SERVER')
         if not old: self.skipTest('set KKS_OLD_SERVER (see the module docstring)')
         self.dir = tempfile.mkdtemp(prefix='kks-web-upgrade-')
-        self.port = free_port()
-        base = 'http://127.0.0.1:%d' % self.port
         oldweb = os.path.join(self.dir, 'oldweb')
         os.makedirs(oldweb)
         tar = subprocess.run(['git', '-C', REPO, 'archive', OLD], capture_output=True, check=True).stdout
         subprocess.run(['tar', '-x', '-C', oldweb], input=tar, check=True)
         proc, setup = self.start(old, oldweb)
+        base = 'http://127.0.0.1:%d' % self.port
         try:
             with sync_playwright() as p:
                 browser = p[name].launch()
@@ -173,7 +157,7 @@ class Upgrade(unittest.TestCase):
                     await c.put('/photos/z.html', new Response('<script>window.pwned=2</script>', {headers: {'Content-Type': 'text/html'}}));
                 }""")
                 proc.terminate(); proc.wait(5)
-                proc, _ = self.start(SERVER, REPO)                     # the upgrade, same origin and store
+                proc, _ = self.start(SERVER, REPO, self.port)                     # the upgrade, same origin and store
                 page.goto(base + '/learning.html')
                 until(page, "async () => !(await caches.keys()).includes('kks-data')")
                 try:

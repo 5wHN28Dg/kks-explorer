@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.dirname(__file__))
 from test_web_v2 import CSP_WATCH
-from test_web_systems import Client, free_port, png, tag
+from test_web_systems import Client, start_server, png, tag
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
@@ -41,22 +41,14 @@ class WebValve(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-web-valve-')
-        cls.port = free_port()
-        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
+        cfg = {'address': '127.0.0.1', 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups')}
         cls.cfg = os.path.join(cls.dir, 'config.json')
-        with open(cls.cfg, 'w') as f: json.dump(cfg, f)
-        cls.server = subprocess.Popen([SERVER, 'serve', '--config', cls.cfg], cwd=cls.dir,
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        cls.server, setup = start_server(SERVER, cls.dir, cfg)
+        cls.port = cfg['port']
         cls.addClassCleanup(cls.stop)   # runs even when setUpClass fails below (tearDownClass doesn't)
-        setup = None
-        for _ in range(50):
-            line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m: setup = m[1]
-            if 'server on' in line: break
         cls.base = 'http://127.0.0.1:%d' % cls.port
         cls.boss = Client(cls.base)
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',

@@ -14,7 +14,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 IMPORTER = os.environ.get('KKS_IMPORTER', '/tmp/kksimp/kks_import')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import free_port, Client, CSP_WATCH
+from test_web_v2 import start_server, Client, CSP_WATCH
 
 # short enough for a name (80 characters): closes an attribute, an <img> whose onerror runs, an element with an id
 NAME = '"><img src=x onerror=pwned=1><b id=injected>N</b>\''
@@ -29,22 +29,14 @@ class AdminWeb(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-admin-web-')
-        cls.port = free_port()
         # a sync port: the invite QR needs one ("Sync is off on this device" otherwise)
-        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': free_port(), 'plant_name': 'Test plant', 'web_dir': REPO,
+        cfg = {'address': '127.0.0.1', 'plant_name': 'Test plant', 'web_dir': REPO,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
                'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl')}
-        with open(os.path.join(cls.dir, 'config.json'), 'w') as f: json.dump(cfg, f)
-        cls.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(cls.dir, 'config.json')], cwd=cls.dir,
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        setup = None
-        for _ in range(50):
-            line = cls.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m: setup = m[1]
-            if 'server on' in line: break
+        cls.server, setup = start_server(SERVER, cls.dir, cfg, sync=True)
+        cls.port = cfg['port']
         cls.base = 'http://127.0.0.1:%d' % cls.port
         boss = cls.boss = Client(cls.base)
         assert boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': PW, 'full_name': NAME,
