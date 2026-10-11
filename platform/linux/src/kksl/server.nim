@@ -899,17 +899,27 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
       except CatchableError as e: raise newException(ValueError, "item " & $i & " (" & it["kind"].s & "): " & e.msg &
                                                      (if i > 0: " (the " & $i & " before it were submitted)" else: ""))
       let status = if r.get("status") != nil and r["status"].isStr: r["status"].s else: "done"
-      if r.get("duplicate") != nil and r["duplicate"].kind == jBool and r["duplicate"].b:
+      proc flag(x: JNode, f: string): bool = x.get(f) != nil and x[f].kind == jBool and x[f].b
+      proc found(x: JNode): string =
+        # an earlier row that isn't this item, approved: what it is
+        "its id belongs to submission " & $x["id"].i & ", " &
+          (if x.flag("same"): "the same change, which is " & x["status"].s
+           elif x.flag("same_target"): "a different change to the same thing (" & x["status"].s & ")"
+           else: "which is something else (" & x["target"].s.replace(":", " ") & ", " & x["status"].s & ")") & "."
+      let what = "  item " & $i & " (" & it["kind"].s & (if it.get("client_id") != nil and it["client_id"].isStr:
+                   ", client_id " & it["client_id"].s else: "") & "): "
+      if r.flag("duplicate"):
         # "already there" only for what the manager's own item would be: the same change, approved
-        let same = r.get("same") != nil and r["same"].kind == jBool and r["same"].b
-        if same and status == "approved": count.inc "already there"
+        if r.flag("same") and status == "approved": count.inc "already there"
         else:
           count.inc "not written"
-          odd.add "  item " & $i & " (" & it["kind"].s & ", client_id " & it["client_id"].s & "): not written, its id " &
-                  "belongs to submission " & $r["id"].i & ", " &
-                  (if same: "the same change, which is " & status
-                   else: "which is something else (" & r["target"].s.replace(":", " ") & ", " & status & ")") & "."
-      else: count.inc status
+          odd.add what & "not written, " & found(r)
+      else:
+        count.inc status
+        # the floor sent with a photo is a row of its own: say so when it was answered by one that isn't it
+        let fl = r.get("floor")
+        if fl != nil and fl.kind == jObj and fl.flag("duplicate") and not (fl.flag("same") and fl["status"].s == "approved"):
+          odd.add what & "its floor was not written, " & found(fl)
     var parts: seq[string]
     for k, v in count: parts.add $v & " " & k
     $items.elems.len & " submissions: " & parts.join(", ") & "." & (if odd.len > 0: "\n" & odd.join("\n") else: "")

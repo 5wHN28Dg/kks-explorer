@@ -731,15 +731,24 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     # an id used again for something else is answered by the earlier row, and says it is not this item
     let other = filed(mgr, "11LAB90AA613", "imp-151-demoted")
     check isDup(other)
-    check not other["same"].b
+    check not other["same"].b and not other["same_target"].b
+    # as is another change to the same code
+    let changed = filed(mgr, "11LAB90AA611", "imp-151-demoted", near = "another text")
+    check isDup(changed)
+    check changed["same_target"].b and not changed["same"].b
+    check nearOf("11LAB90AA611") == "from the file"
     check other["target"].s == "equipment:11LAB90AA611"
     check nearOf("11LAB90AA613") == ""
-    # no request can send such an id, alone or as a set's prefix
+    # no request can send such an id, alone or as a set's prefix (the same set under an id without "." is taken)
     for bad in ["file.imp-151-demoted", "floor.file.imp-151-x", "floor.imp-151-xx"]:
       check mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")), ("client_id", newStr(bad)),
         ("payload", fieldItem("11LAB90AA613", "a request"))])).status == 400
       check mgrApi.call(mgr, "POST", "/api/submit-many", newObj(@[("kind", newStr("equipment")), ("client_id", newStr(bad)),
         ("kks", j("""["11LAB90AA613"]""")), ("payload", j("""{"changes":{"near":"a request"}}"""))])).status == 400
+    check nearOf("11LAB90AA613") == ""
+    check mgrApi.call(mgr, "POST", "/api/submit-many", newObj(@[("kind", newStr("equipment")), ("client_id", newStr("req-151-set")),
+      ("kks", j("""["11LAB90AA613"]""")), ("payload", j("""{"changes":{"near":"a request"}}"""))])).status == 200
+    check nearOf("11LAB90AA613") == "a request"
     # and the manager's own request under the file's bare id is a request's: written, and no repeat of the file's
     let req = mgrApi.call(mgr, "POST", "/api/submit", newObj(@[("kind", newStr("equipment")),
       ("client_id", newStr("imp-151-demoted")), ("payload", fieldItem("11LAB90AA611", "by hand"))]))
@@ -764,7 +773,15 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     let fl2 = mgrApi.submitBody(mgr, "equipment", j("""{"kks":"11LAB90AA614","changes":{"floor":"4"},"base":{"floor":""}}"""),
                                 newStr("floor.file.imp-151-photo"), "", now(), fileBare = "floor.imp-151-photo")
     check isDup(fl2)
-    check fl2["id"].i == ph["floor"]["id"].i
+    check fl2["id"].i == ph["floor"]["id"].i and fl2["same"].b
+    # a photo whose floor's id is taken by something else: the photo is written, and its floor's answer says so
+    check filed(mgr, "11LAB90AA615", "imp-151-photo-2")["status"].s == "approved"
+    discard mgrApi.submitBody(mgr, "equipment", j("""{"kks":"11LAB90AA615","changes":{"near":"x"},"base":{"near":"from the file"}}"""),
+                              newStr("floor.file.imp-151-photo-3"), "", now(), fileBare = "floor.imp-151-photo-3")
+    let ph3 = filedPhoto(mgr, "11LAB90AA616", "imp-151-photo-3")
+    check not isDup(ph3)
+    check isDup(ph3["floor"])
+    check not ph3["floor"]["same"].b
 
   test "submit-file: rows from before its ids had a prefix (the legacy path, #151)":
     proc person(user, full: string, admin = false): (Actor, string) =

@@ -419,20 +419,25 @@ class Cli(Base):
             self.assertEqual(sara.req('POST', '/api/submit-many', {'kind': 'equipment', 'client_id': bad, 'kks': ['11LAB70AA503'],
                                       'payload': {'changes': {'near': 'x'}}})[0], 400)
         # an item answered by an earlier row that isn't that item, approved, is named and not counted as there
-        # (here: an id used again for something else)
+        # (here: an id used again for something else, and for another value of the same field)
         subs3 = os.path.join(self.dir, 'subs3.json')
         with open(subs3, 'w') as f:
             json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 1, 'kks': '11LAB70AA501', 'on': True}, 'client_id': 'imp-test-link-1'},
-                       {'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 4, 'kks': '11LAB70AA504', 'on': True}, 'client_id': 'imp-test-field-1'}], f)
+                       {'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 4, 'kks': '11LAB70AA504', 'on': True}, 'client_id': 'imp-test-field-1'},
+                       {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'custom': [{'k': 'Before start-up', 'v': 'closed'}]},
+                                                         'base': {'custom': []}}, 'client_id': 'imp-test-field-1'}], f)
         code, out = self.cli('submit-file', subs3)
         self.assertEqual(code, 0, out)
         lines = out.split('\n')
-        self.assertEqual(lines[0], '2 submissions: 1 already there, 1 not written.')
-        self.assertEqual(len(lines), 2, out)
+        self.assertEqual(lines[0], '3 submissions: 1 already there, 2 not written.')
+        self.assertEqual(len(lines), 3, out)
         self.assertRegex(lines[1], r'^  item 1 \(link, client_id imp-test-field-1\): not written, its id belongs to submission \d+, '
                                    r'which is something else \(equipment 11LAB70AA501, approved\)\.$')
+        self.assertRegex(lines[2], r'^  item 2 \(equipment, client_id imp-test-field-1\): not written, its id belongs to submission \d+, '
+                                   r'a different change to the same thing \(approved\)\.$')
         st = sara.req('GET', '/api/state')[1]
         self.assertNotIn('11LAB70AA504', [l['kks'] for l in st['links']])
+        self.assertEqual(st['equipment']['11LAB70AA501']['custom'], [{'k': 'Before start-up', 'v': 'open'}])
 
 
 class SecretFiles(Base):

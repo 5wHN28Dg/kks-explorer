@@ -651,12 +651,23 @@ proc fileIdsAfter*(a: Api): int64 =
   for r in a.n.store.subs(): result = max(result, r["id"].i)
   a.n.store.setMeta(FileMark, $result)
 
+type FileItem = tuple[target, change: string]     ## what an item is about (`target`), and what it does to it
+
+proc changeOf(kind: string, b: JNode): string =
+  ## what a change does, for telling a file's item from another change to the same thing. A photo's image is not
+  ## part of it (the item's is not kept before it is known to be new).
+  case kind
+  of "equipment": toText(b["changes"])
+  of "link": $b["on"].b
+  of "photo": b["caption"].s
+  else: ""
+
 proc ownAuthority(a: Api, r: JNode): bool =
   ## written by an admin or the manager as one: applied directly, or held because it clashed. Never a member's
   ## proposal that waited for a decision, whatever the member has become since.
   r["entry"].isNull or (r["entry"].s notin a.n.run.proposals and r["entry"].s notin a.n.ignored)
 
-proc fileSent(a: Api, r: JNode, me: Actor, cid, bare, kind: string, tgt: proc (): string): bool =
+proc fileSent(a: Api, r: JNode, me: Actor, cid, bare, kind: string, item: proc (): FileItem): bool =
   ## is `r` what an earlier run of the file wrote for the item now sent as `cid` (`bare`: the id without the prefix)?
   let c = r["client_id"].s
   if c == cid: return true
@@ -667,23 +678,25 @@ proc fileSent(a: Api, r: JNode, me: Actor, cid, bare, kind: string, tgt: proc ()
   # request's row is taken for one as rarely as can be:
   # - older than the prefix (`fileIdsAfter`): no row written since can suppress a file's item, whoever sends it;
   # - written with an admin's own authority: a member's proposal isn't, also after the member was promoted;
-  # - the same kind of change to the same thing as the item.
+  # - the same kind of change to the same thing as the item (what it sets is not compared here: a row an earlier
+  #   program wrote need not spell it as this one does; `earlier` reports a difference instead).
   # What is left: an admin or manager (then, and still one now) who sent the same kind of change for the same code
   # under the file's bare id before the prefix existed.
   if c != bare or r["id"].i > a.fileIdsAfter or not r["person"].isStr or not a.ownAuthority(r): return false
   if r["person"].s != me.person and a.n.run.role(r["person"].s) notin ["admin", "manager"]: return false
   let (k, b) = a.kindBody(r)
-  k == kind and target(k, b) == tgt()
+  k == kind and target(k, b) == item().target
 
-proc earlier(a: Api, me: Actor, cid: JNode, fileBare, kind: string, tgt: proc (): string): JNode =
+proc earlier(a: Api, me: Actor, cid: JNode, fileBare, kind: string, item: proc (): FileItem): JNode =
   ## the answer for a client_id sent before (nil when it wasn't): the earlier submission, as a `duplicate`. A request's
   ## is its sender's own (`sentBy`). submit-file's (`fileBare`: its id without the prefix, "" for a request) is an
-  ## earlier run's (`fileSent`); that answer also says what the earlier row is ("kind", "target") and whether that is
-  ## the item sent now ("same"), for submit-file to report a row that is something else.
+  ## earlier run's (`fileSent`); that answer also says what the earlier row is ("kind", "target"), whether it is about
+  ## what the item is about ("same_target") and whether it is the item's change ("same"), for submit-file to report
+  ## a row that is something else.
   if not cid.isStr: return nil
   for old in a.n.store.subs():
     if not old["client_id"].isStr: continue
-    let hit = if fileBare.len > 0: a.fileSent(old, me, cid.s, fileBare, kind, tgt)
+    let hit = if fileBare.len > 0: a.fileSent(old, me, cid.s, fileBare, kind, item)
               else: old["client_id"].s == cid.s and a.sentBy(old, me)
     if not hit: continue
     let s = a.subStatus(old)
@@ -692,7 +705,9 @@ proc earlier(a: Api, me: Actor, cid: JNode, fileBare, kind: string, tgt: proc ()
       let (k, b) = a.kindBody(old)
       result["kind"] = S(k)
       result["target"] = S(target(k, b))
-      result["same"] = B(k == kind and target(k, b) == tgt())
+      let it = item()
+      result["same_target"] = B(k == kind and target(k, b) == it.target)
+      result["same"] = B(k == kind and target(k, b) == it.target and changeOf(k, b) == it.change)
     return
 
 proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
@@ -706,10 +721,10 @@ proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote:
   ## looked for this client_id already (submitMany: one pass over the submissions for the whole set, not one per code).
   ## `fileBare`: submit-file's item, `cid` being its id with the prefix and this the one without (see `fileSent`)
   if cid.isStr and not dupChecked:
-    proc tgt(): string =
-      try: result = target(kind, body)
+    proc item(): FileItem =
+      try: result = (target(kind, body), changeOf(kind, body))
       except KeyError: bad("invalid change")
-    let dup = a.earlier(me, cid, fileBare, kind, tgt)
+    let dup = a.earlier(me, cid, fileBare, kind, item)
     if dup != nil: return dup
   try: checkData(kind, body)
   except Ignore, KeyError: bad("invalid change")
@@ -751,11 +766,13 @@ proc floorBody(kks, floor: string): JNode =
   ## the equipment change a floor sent with a photo is written as: it fills an empty floor, nothing else
   O(("kks", S(kks)), ("changes", O(("floor", S(floor)))), ("base", O(("floor", S("")))))
 
-proc payloadTarget(a: Api, kind: string, payload: JNode): string =
-  ## what a payload is about, as `target` says it of a body. A photo's is read without keeping its image.
+proc payloadItem(a: Api, kind: string, payload: JNode): FileItem =
+  ## what a payload is about and does, as `target` and `changeOf` say it of a body. A photo's is read without keeping
+  ## its image.
   if kind notin Kinds or payload == nil or payload.kind != jObj: bad("bad submission kind or payload")
-  if kind == "photo": "photo:" & kksOf(payload.get("kks"))
-  else: target(kind, toBody(kind, a.normalize(kind, payload)))
+  if kind == "photo": return ("photo:" & kksOf(payload.get("kks")), textOf(payload.get("caption"), 500))
+  let b = toBody(kind, a.normalize(kind, payload))
+  (target(kind, b), changeOf(kind, b))
 
 proc submitPrep(a: Api, me: Actor, clientId, noteIn: JNode): (JNode, string) =
   ## (client id, request note), both checked
@@ -773,7 +790,7 @@ proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, 
   let (sent, requestNote) = a.submitPrep(me, clientId, noteIn)
   let file = fromFile and sent.isStr
   let cid = if file: S(FilePrefix & sent.s) else: sent
-  let dup = a.earlier(me, cid, (if file: sent.s else: ""), kind, proc (): string = a.payloadTarget(kind, payload))
+  let dup = a.earlier(me, cid, (if file: sent.s else: ""), kind, proc (): FileItem = a.payloadItem(kind, payload))
   if dup != nil: return dup
   var floorRes: JNode = nil
   var k, fl = ""
