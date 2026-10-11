@@ -690,7 +690,8 @@ class Signup(Base):
                               ('ali', 'Ali Hassan', 'Operator', False), ('ali', 'Ali Hassan', 'Operator', False),
                               ('nadia', 'Ali Hassan', 'Operator', False)])
             for q in L['requests']:
-                self.assertEqual(sorted(q), ['created', 'expires', 'full_name', 'id', 'position', 'same', 'taken', 'username'])
+                self.assertEqual(sorted(q), ['created', 'expires', 'full_name', 'id', 'person', 'position', 'same', 'taken', 'username'])
+                self.assertIsNone(q['person'])      # nobody here joined with the app (WebSignIn has the other case)
                 self.assertEqual(q['expires'] - q['created'], 14 * 86400)
                 self.assertEqual(q['same'], 2 if q['username'] == 'ali' else 1)      # two asked for "ali": the list says so
                 self.assertLess(abs(q['created'] - time.time()), 120)
