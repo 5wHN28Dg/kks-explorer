@@ -162,6 +162,10 @@ in `CLAUDE.local.md` ("Deployment"), never in tracked files.
   test). Web e2e: every `platform/linux/e2e/test_web_*.py`, `test_admin_web`, `test_course_web`, plus `tests/web/`.
   All run in Chromium, WebKit and Firefox (Playwright; `KKS_SERVER`, and `KKS_IMPORTER` where a sheet is imported).
   The server serves a fixed list of web files: rebuild it after adding one.
+- **Ports and server starts in the e2e suites** (web, GNOME, Windows, Android) come from `tests/e2e_server.py` (#155):
+  `start_server` picks the ports, waits until the server itself listens on them, and starts it again on other ports
+  when one was taken in between; `free_ports(n)` for n ports that must differ. No suite picks ports its own way
+  (`tests/test_e2e_server.py` checks).
 - **GNOME:**
   - build: apps/gnome/README;
   - e2e: run headless only, never on the user's desktop: `apps/gnome/e2e/headless.sh /usr/bin/python3
