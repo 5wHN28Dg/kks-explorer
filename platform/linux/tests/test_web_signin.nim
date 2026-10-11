@@ -168,8 +168,9 @@ suite "web sign-in for a person who joined with the app":
   test "Remove devices and Deactivate do the same to someone with both; Activate brings the web sign-in back":
     var u = s.userByName("ali")
     u["pw"] = S("x")                                                # (a password, so a session can exist)
-    discard s.updateUser(mgr, u["id"].i, O(("full_name", S("Ali User"))), false)
+    s.putUser(u)
     let raw = s.newSession(u["id"].i)
+    check s.sessionUser(raw) != nil and s.sessionUser(raw)["person"].s == ali.person
     # Remove devices (what an admin's app does, or POST /api/persons/<id>): the phone and the server's key
     check s.n.run.devicesOf(ali.person).len == 2
     check s.api.handle(mgr, "POST", "/api/persons/" & ali.person, NoQuery, O(("active", newBool(false))), now()).status == 200
@@ -275,7 +276,9 @@ suite "web sign-in for a person who joined with the app":
     discard s.webSignIn(mgr, nora.person)
     var u = s.userByName("nora")
     u["pw"] = S("x")
-    discard s.updateUser(mgr, u["id"].i, O(("position", S("Operator"))), false)     # (stores the row with a password)
+    s.putUser(u)
+    let live0 = s.newSession(u["id"].i)
+    check s.sessionUser(live0) != nil
     check s.api.handle(mgr, "POST", "/api/persons/" & nora.person, NoQuery, O(("active", newBool(false))), now()).status == 200
     let raw = s.newSession(u["id"].i)
     check s.userByName("nora")["active"].b and not s.live(s.userByName("nora"))     # off by the removal alone
@@ -291,3 +294,8 @@ suite "web sign-in for a person who joined with the app":
     let keys = s.store.allRows("custodial").len
     check refusal(proc () = discard s.updateUser(mgr, orphan["id"].i, O(("active", newBool(true))), false)) == 409
     check s.store.allRows("custodial").len == keys
+    let after = s.userByName("NORA")
+    check after["device"].s == orphan["device"].s and after["active"].b     # the row is as it was
+    # and Deactivate works on such a row too
+    check s.updateUser(mgr, orphan["id"].i, O(("active", newBool(false))), false)["ok"].b
+    check not s.userByName("NORA")["active"].b

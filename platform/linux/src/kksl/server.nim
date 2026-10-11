@@ -188,7 +188,7 @@ proc users(s: Server): seq[JNode] =
   for (_, v) in s.store.allRows("users"): result.add v
 
 proc userById(s: Server, id: int64): JNode = s.store.getRow("users", align($id, 12, '0'))
-proc putUser(s: Server, u: JNode) = s.store.putRow("users", align($u["id"].i, 12, '0'), u)
+proc putUser*(s: Server, u: JNode) = s.store.putRow("users", align($u["id"].i, 12, '0'), u)
 
 proc userByName*(s: Server, name: string): JNode =
   ## Usernames are one name ignoring ASCII case (§9a), and people type them as their keyboard likes: "Ali" is ali.
