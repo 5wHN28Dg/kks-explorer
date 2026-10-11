@@ -796,6 +796,35 @@ class Gnome(Plant):
         # the hatched globe valve: Correct, a value of the person's own, Send
         open_tag('11LBA10AA102')
         atspi.find(a, 'label', name='Valve type: globe valve, normally closed (from the drawing, unchecked)', timeout=15)
+        # #147: a sync round that brings nothing leaves the panel as it is. It used to be rebuilt after every round,
+        # and a button pressed within GTK's 250 ms before that was lost with the old panel (the presses below came
+        # in step with the rounds, five lost in a row). The rounds are read from the app's own output.
+        log = '/tmp/kks-gnome-e2e-valve.log'          # (start_app)
+        def rounds():
+            with open(log) as f:
+                return [tuple(int(x) for x in m.groups()) for m in
+                        re.finditer(r'sent (\d+), received (\d+) \(photos sent (\d+), received (\d+)\)', f.read())]
+        def until(cond, what, timeout=40):
+            t0 = time.time()
+            while not cond():
+                self.assertLess(time.time() - t0, timeout, what)
+                time.sleep(0.2)
+        quiet = lambda r: len(r) >= 2 and not any(r[-1]) and not any(r[-2])
+        for attempt in range(5):
+            until(lambda: quiet(rounds()), 'two sync rounds in a row that bring nothing')
+            time.sleep(0.6)                      # the reload comes 300 ms after a round
+            edit = atspi.find(a, 'button', name='Edit')
+            n = len(rounds())
+            until(lambda: len(rounds()) >= n + 2, 'two more sync rounds')
+            time.sleep(0.6)
+            if not any(x for r in rounds()[n:] for x in r):
+                break                            # (else something did arrive in between: once more)
+        else:
+            self.fail('the sync rounds never went quiet')
+        st = edit.get_state_set()
+        self.assertTrue(st.contains(Atspi.StateType.SHOWING) and not st.contains(Atspi.StateType.DEFUNCT),
+                        'two sync rounds that brought nothing replaced the panel (its Edit button is gone)')
+        self.assertEqual(atspi.find(a, 'button', name='Edit'), edit, 'the Edit button is another one than before the rounds')
         # not while the Edit form is open: sending rebuilds the panel, which would lose what is typed there
         press('Edit', ('text', 'Notes'))
         atspi.set_text(atspi.find(a, 'text', name='Notes'), 'half typed')
@@ -821,6 +850,10 @@ class Gnome(Plant):
         time.sleep(6)
         self.assertTrue(atspi.find_all(a, 'text', contains='Notes'), 'a sync rebuilt the panel under the Edit form')
         cancel_edit()
+        # and a round that does bring something for the open panel shows it (no form open now)
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LBA10AA102', 'changes': {'near': 'by the test pump'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        atspi.find(a, 'label', contains='by the test pump', timeout=20)
 
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a static and an

@@ -116,7 +116,11 @@ proc refresh(w: Win) =
     w.setLinks()
     w.syncChosen()
     gtk_widget_queue_draw(w.v.widget)
-  if w.selected.len > 0 and not w.panelEditing:   # never under an open form (it would lose what is typed)
+  # The panel: never under an open form (it would lose what is typed), and only when what it shows changed. Every
+  # finished sync round comes here, and a panel replaced each time lost the keyboard's place in it and any button
+  # pressed just before: GTK sends "clicked" 250 ms after a keyboard or accessibility activation, and not at all
+  # when the button has gone by then (#147; the same reason as refreshLive).
+  if w.selected.len > 0 and not w.panelEditing and w.panelKey != w.modelKey:
     let (ok, t) = w.m.tagById(w.selected)
     if ok: w.buildPanel(t)
   w.refreshLive()
