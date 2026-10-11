@@ -304,7 +304,13 @@ proc mainScreen(w: Win): W =
   adw_overlay_split_view_set_show_sidebar(w.panelSplit, 0)
   w.banner = adw_banner_new("")
   w.banner.on("button-clicked", proc () =
-    if w.bannerAction != nil: w.bannerAction())
+    # Kept in a second field while it runs: the action takes the banner down (setBanner clears bannerAction), and
+    # called through that field alone it freed its own closure, with everything it holds, under itself. (A local
+    # copy is not enough: Nim makes it a borrowed one.)
+    if w.bannerAction != nil:
+      w.bannerRunning = w.bannerAction
+      try: w.bannerRunning()
+      finally: w.bannerRunning = nil)
   let contentView = toolbarView(contentHeader, w.panelSplit)
   adw_toolbar_view_add_bottom_bar(contentView, w.pickBar())
   adw_toolbar_view_add_top_bar(contentView, w.banner)

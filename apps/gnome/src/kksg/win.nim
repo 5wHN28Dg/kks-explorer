@@ -30,6 +30,7 @@ type Win* = ref object
   activeProc*: string
   floor*: string               ## floor filter ("" = all)
   bannerAction*: proc ()
+  bannerRunning*: proc ()      ## the banner's action while it runs (kks_explorer.nim)
   sheet*: string
   selected*: string
   panelEditing*: bool          ## the panel has an open form (Edit, a valve type's Correct): a sync doesn't rebuild it
@@ -205,7 +206,8 @@ proc follow*(w: Win, area: W, rebuild: proc (), update: proc (): bool = nil): Fo
         f.stale = false
         f.rebuild()
   let fc = gtk_event_controller_focus_new()
-  fc.on("leave", proc () = idle(catchUp))       # after the focus has moved on
+  fc.on("leave", proc () = idleFor(area, catchUp))   # after the focus has moved on (not once the page is closed:
+                                                     # refreshFollowers gives the area up, #160)
   gtk_widget_add_controller(area, fc)
   area.on("map", catchUp)
   f

@@ -106,6 +106,13 @@ class Plant(unittest.TestCase):
             return None
         return atspi.app_pid(p.pid, name=('walkdown', 'kks_explorer'), before=before)
 
+    def criticals(self, name):
+        """GTK's complaints in the app's output (start_app's log): a call on a widget that was freed shows there as a
+        failed assertion (GTK_IS_WIDGET, GTK_IS_BOX …) when it doesn't crash. One is known and left out: main's app
+        already logs "gtk_widget_is_ancestor: assertion 'GTK_IS_WIDGET (widget)' failed" when a panel is rebuilt."""
+        with open(f'/tmp/kks-gnome-e2e-{name}.log', errors='replace') as f:
+            return [ln.strip() for ln in f if '-CRITICAL' in ln and 'gtk_widget_is_ancestor' not in ln]
+
     def join(self, a, user='boss', password='a long password'):
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
@@ -1213,13 +1220,23 @@ class Gnome(Plant):
         a = self.start_app('stale', KKS_TEST_STALE_CLICK=flag, KKS_SYNC_EVERY='2000')
         app = self.apps[-1]
         self.join(a)
-        sheet_row = atspi.find(a, 'list item', contains='Sample sheet')
         code = '11LAB70AA501'
         atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
         time.sleep(1)
         atspi.click(atspi.find(a, 'button', name=code))
         atspi.find(a, 'button', name='Edit', timeout=15)
+        time.sleep(3)                # (the first rounds' data is in: the sheet list's rows are the final ones)
+        sheet_row = atspi.find(a, 'list item', contains='Sample sheet', showing=False)
         before = self.boss.req('GET', '/api/state')['equipment'].get(code)
+
+        def press(button, then):     # (a press within GTK's 250 ms before a real reload is lost: again)
+            for _ in range(5):
+                atspi.click(atspi.find(a, 'button', name=button, timeout=15))
+                try:
+                    return atspi.find(a, *then, timeout=4)
+                except AssertionError:
+                    pass
+            self.fail(f'{button}: never got {then}')
 
         def stale_press(button):
             # press it with the rebuild forced in between (the app removes the file when it has done that)
@@ -1239,32 +1256,83 @@ class Gnome(Plant):
         # Edit, on the panel that is then replaced: no form opens, and the new panel's Edit works
         stale_press('Edit')
         self.assertFalse(atspi.find_all(a, 'text', contains='Notes'), 'the replaced panel\'s Edit opened a form')
-        atspi.click(atspi.find(a, 'button', name='Edit', timeout=15))
-        notes = atspi.find(a, 'text', name='Notes', timeout=10)      # (stuck, it said "Save or cancel your edits first")
+        notes = press('Edit', ('text', 'Notes'))      # (stuck, it said "Save or cancel your edits first")
         # Save, on a form that is then replaced: nothing is sent, here or to the server
         atspi.set_text(notes, 'typed into the form that was replaced')
         atspi.set_text(atspi.find(a, 'text', name='Floor'), '7')
         stale_press('Save')
+        self.assertFalse(atspi.find_all(a, None, contains='Saved: '), 'the replaced form\'s Save sent something')   # (its toast)
         self.assertFalse(atspi.find_all(a, 'text', contains='Notes'), 'the form is still there: the panel was not rebuilt')
         time.sleep(6)                # three sync rounds: a change saved here would be on the server by now
         self.assertIsNone(app.poll(), 'the app died')
         self.assertFalse(atspi.find_all(a, None, contains='typed into the form that was replaced'),
                          'the replaced form\'s Save was carried out')
-        self.assertFalse(atspi.find_all(a, None, contains='Saved: '), 'the replaced form\'s Save sent something')
         self.assertEqual(self.boss.req('GET', '/api/state')['equipment'].get(code), before,
                          'the replaced form\'s Save changed the equipment')
         # and the panel still works: a form opens and closes
-        atspi.click(atspi.find(a, 'button', name='Edit', timeout=15))
-        atspi.find(a, 'text', name='Notes', timeout=10)
-        atspi.click(atspi.find(a, 'button', name='Cancel'))
-        atspi.find(a, 'button', name='Edit', timeout=15)
+        press('Edit', ('text', 'Notes'))
+        press('Cancel', ('button', 'Edit'))
         # the sheet list was reloaded by every sync round on the way (every 2 s) and nothing in it changed: its rows
         # are the ones from before (a row replaced loses a press on it, as the panel's buttons did)
         self.assertFalse(sheet_row.get_state_set().contains(Atspi.StateType.DEFUNCT),
                          'sync rounds that changed nothing replaced the sheet list\'s rows')
         self.assertEqual(atspi.find(a, 'list item', contains='Sample sheet', showing=False), sheet_row,
                          'sync rounds that changed nothing replaced the sheet list\'s rows')
+        self.assertEqual(self.criticals('stale'), [], 'a handler worked on widgets that were gone')
         app.kill()                   # done: its syncs must not rebuild other tests' screens
+        app.wait(10)
+
+    def test_zzzzzz_link_done(self):
+        """Link mode's banner: Done takes the banner down and draws the procedure's page again, also after Back has
+        closed that page (#160's review: Done kept the closed page's widgets, and by taking the banner down freed
+        its own closure while it ran). (Named to run last: it publishes a procedure.)"""
+        pd = os.path.join(self.dir, 'plant-data')
+        with open(os.path.join(pd, 'procedures.json'), 'w') as f:
+            json.dump([{'id': 'P-1', 'title': 'Start the test pump', 'path': ['Test chapter'], 'page': 1, 'intro': '',
+                        'steps': [{'n': 1, 'text': 'Open the suction valve'}]}], f)
+        r = subprocess.run([SERVER, 'publish-data', pd, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        a = self.start_app('linkdone')
+        app = self.apps[-1]
+        self.join(a)
+
+        def press(button, then):     # (a press within GTK's 250 ms before a reload is lost: again)
+            for _ in range(5):
+                atspi.click(atspi.find(a, 'button', name=button, timeout=15))
+                try:
+                    return atspi.find(a, *then, timeout=4)
+                except AssertionError:
+                    pass
+            self.fail(f'{button}: never got {then}')
+
+        def gone(role, name, what):
+            for _ in range(30):
+                if not atspi.find_all(a, role, name=name):
+                    return
+                time.sleep(0.2)
+            self.fail(what)
+        press('Procedures', ('button', 'P-1  Start the test pump'))
+        press('P-1  Start the test pump', ('label', 'Open the suction valve'))
+        for _ in range(3):           # Done with the page open: the banner goes, the page is drawn again and works
+            press('+ Link equipment', ('button', 'Done'))
+            atspi.click(atspi.find(a, 'button', name='Done'))
+            gone('button', 'Done', 'Done left the banner up')
+            time.sleep(0.5)
+            self.assertIsNone(app.poll(), 'the app died at Done')
+            atspi.find(a, 'label', name='Open the suction valve', timeout=5)
+        for _ in range(3):           # Done after Back closed the page: the banner goes, the app lives, the page opens again
+            press('+ Link equipment', ('button', 'Done'))
+            atspi.click(atspi.find(a, 'button', name='Back'))
+            gone('label', 'Open the suction valve', 'Back did not close the procedure')
+            time.sleep(0.5)          # (the page's closing animation: it is freed after it)
+            atspi.click(atspi.find(a, 'button', name='Done'))
+            gone('button', 'Done', 'Done left the banner up')
+            time.sleep(0.5)
+            self.assertIsNone(app.poll(), 'the app died at Done after the procedure\'s page was closed')
+            press('P-1  Start the test pump', ('label', 'Open the suction valve'))
+        self.assertEqual(self.criticals('linkdone'), [], 'Done worked on widgets that were gone')
+        app.kill()
         app.wait(10)
 
 

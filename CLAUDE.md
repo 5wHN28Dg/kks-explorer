@@ -278,6 +278,11 @@ Lessons (don't repeat):
     the wrong trampoline crashed on pinch.
   - Never let a Nim exception unwind through GLib (the trampolines catch and log).
   - Dialogs built during an AT-SPI action have no accessibility contents: build from idle.
+  - A button's handler runs from an idle callback, and a timer can rebuild its panel first: `onClick` drops the
+    handler of a button that has left the window (#160). Other deferred work on a widget: `idleFor`, or `hold` and
+    `shown` for a dialog's answer or the banner's button.
+  - A closure kept in one field that clears that field while it runs frees itself (a local copy is only borrowed):
+    the banner's action is kept in a second field while it runs.
   - The tag panel and the Manage pages are rebuilt only when what they show changed (`panelKey`, `refreshLive`), not
     after every sync round: GTK sends "clicked" 250 ms after a keyboard or accessibility activation, and not at all
     if the button has gone by then (#147: the e2e's presses came in step with the rounds, five lost in a row).
