@@ -107,11 +107,14 @@ class Plant(unittest.TestCase):
         return atspi.app_pid(p.pid, name=('walkdown', 'kks_explorer'), before=before)
 
     def criticals(self, name):
-        """GTK's complaints in the app's output (start_app's log): a call on a widget that was freed shows there as a
-        failed assertion (GTK_IS_WIDGET, GTK_IS_BOX …) when it doesn't crash. One is known and left out: main's app
-        already logs "gtk_widget_is_ancestor: assertion 'GTK_IS_WIDGET (widget)' failed" when a panel is rebuilt."""
+        """What went wrong inside the app, from its output (start_app's log): GTK's complaints (a call on a widget
+        that was freed shows there as a failed assertion, GTK_IS_WIDGET, GTK_IS_BOX …, when it doesn't crash) and the
+        errors the app caught in a handler. One exact message is known and left out: main's app already logs it when
+        a panel is rebuilt (#163)."""
+        known = "gtk_widget_is_ancestor: assertion 'GTK_IS_WIDGET (widget)' failed"
         with open(f'/tmp/kks-gnome-e2e-{name}.log', errors='replace') as f:
-            return [ln.strip() for ln in f if '-CRITICAL' in ln and 'gtk_widget_is_ancestor' not in ln]
+            return [ln.strip() for ln in f
+                    if ('-CRITICAL' in ln and known not in ln) or 'error in a UI callback' in ln]
 
     def join(self, a, user='boss', password='a long password'):
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
@@ -1231,7 +1234,10 @@ class Gnome(Plant):
 
         def press(button, then):     # (a press within GTK's 250 ms before a real reload is lost: again)
             for _ in range(5):
-                atspi.click(atspi.find(a, 'button', name=button, timeout=15))
+                try:
+                    atspi.click(atspi.find(a, 'button', name=button, timeout=8))
+                except AssertionError:
+                    pass             # (the press before did work, late: the button has gone)
                 try:
                     return atspi.find(a, *then, timeout=4)
                 except AssertionError:
@@ -1299,7 +1305,10 @@ class Gnome(Plant):
 
         def press(button, then):     # (a press within GTK's 250 ms before a reload is lost: again)
             for _ in range(5):
-                atspi.click(atspi.find(a, 'button', name=button, timeout=15))
+                try:
+                    atspi.click(atspi.find(a, 'button', name=button, timeout=8))
+                except AssertionError:
+                    pass             # (the press before did work, late: the button has gone)
                 try:
                     return atspi.find(a, *then, timeout=4)
                 except AssertionError:
