@@ -881,9 +881,10 @@ proc updateUser*(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode
     u["full_name"] = S(fn)
     u["position"] = pos
   # (Deactivate also when only this server's key for them was removed and a device of their own still syncs: the
-  # list shows that as "web sign-in off" with "Remove devices")
+  # list shows that as "web sign-in off" with "Remove devices"; and for a row that is off only because its key was
+  # removed: the row itself then says so, whatever becomes of that removal)
   if d.has("active") and d["active"].kind == jBool and
-     (d["active"].b != s.live(u) or (not d["active"].b and s.n.run.personActive(u["person"].s))):
+     (d["active"].b != s.live(u) or (not d["active"].b and (u["active"].b or s.n.run.personActive(u["person"].s)))):
     if not d["active"].b:
       # All their keys stop: this server's and their own devices'. The same act as "Remove devices" for someone
       # without an account (core updatePerson), and done by it: the same revocations, and the relay's room key
@@ -895,6 +896,9 @@ proc updateUser*(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode
     else:   # a new key; the old one stays cut
       let (dev, _) = s.newCustodial()
       discard s.n.appendAs(me.key, "device_cert", deviceCertBody(dev, u["person"].s, "server"), nowMs())
+      if dev notin s.n.run.devices or dev in s.n.run.cuts:     # (an account whose person the log does not have)
+        s.store.delRow("custodial", dev)
+        herr(409, "A new key for " & u["username"].s & " was not accepted.")
       u["device"] = S(dev)
     u["active"] = d["active"]
     s.endSessions(uid)

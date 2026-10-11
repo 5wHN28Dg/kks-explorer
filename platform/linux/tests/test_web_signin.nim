@@ -5,7 +5,7 @@
 import std/[unittest, os, tables, strutils, times]
 import kks/[json, crypto, node, sync, api, extras, replay]
 import plat
-import kksl/server
+import kksl/[server, dbstore]
 
 let P = testProvider()
 var clock = int64(epochTime() * 1000)   # the server writes with the real time: a device far behind it would not follow its clock (§5)
@@ -269,3 +269,25 @@ suite "web sign-in for a person who joined with the app":
     check n == 2
     check refusal(proc () = discard s.login("Zed", "the password zed chose", ["ip:10.0.1.3"])) == 403   # waiting, as typed
     check s.userByName("KIM")["username"].s == "Kim" and s.userByName("kIm")["person"].s == s.userByName("Kim")["person"].s
+
+  test "Deactivate pins a row that is off only because its key was removed; Activate that the log refuses leaves nothing":
+    let nora = s.join(mgr, "nora", "Nora User")
+    discard s.webSignIn(mgr, nora.person)
+    var u = s.userByName("nora")
+    u["pw"] = S("x")
+    discard s.updateUser(mgr, u["id"].i, O(("position", S("Operator"))), false)     # (stores the row with a password)
+    check s.api.handle(mgr, "POST", "/api/persons/" & nora.person, NoQuery, O(("active", newBool(false))), now()).status == 200
+    let raw = s.newSession(u["id"].i)
+    check s.userByName("nora")["active"].b and not s.live(s.userByName("nora"))     # off by the removal alone
+    check s.updateUser(mgr, u["id"].i, O(("active", newBool(false))), false)["ok"].b
+    check not s.userByName("nora")["active"].b                      # now the row says so too
+    var left = 0
+    for (_, v) in s.store.allRows("sessions"):
+      if v["user_id"].i == u["id"].i: inc left
+    check left == 0 and s.sessionUser(raw) == nil
+    # an account whose person entry lost in the log (the name was a person's already): no key is kept for it
+    let orphan = s.createAccount(mgr, "NORA", "Not Nora", S("Operator"), "user")
+    check orphan["person"].s notin s.n.run.persons and not s.live(orphan)
+    let keys = s.store.allRows("custodial").len
+    check refusal(proc () = discard s.updateUser(mgr, orphan["id"].i, O(("active", newBool(true))), false)) == 409
+    check s.store.allRows("custodial").len == keys
