@@ -274,6 +274,8 @@ Lessons (don't repeat):
     the wrong trampoline crashed on pinch.
   - Never let a Nim exception unwind through GLib (the trampolines catch and log).
   - Dialogs built during an AT-SPI action have no accessibility contents: build from idle.
+  - A button's handler is deferred with `next` (first in the main loop's next turn), not `idle`: an idle callback
+    waits for the timers, and the reload after a sync rebuilt the panel between a click and its handler (#147).
   - The viewer draws vector tiles at every zoom (the overview is a placeholder); zoomed out, the thinnest line is half a
     device pixel.
 - **TLS and sync:**
