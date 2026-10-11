@@ -623,31 +623,94 @@ proc subRow(a: Api, id: int64): JNode =
   for r in a.n.store.subs():
     if r["id"].i == id: return r
 
-proc sentBy(a: Api, r: JNode, me: Actor, anyAdmin = false): bool =
+proc sentBy(a: Api, r: JNode, me: Actor): bool =
   ## this person's own submission. A `client_id` names a send among its sender's only (#136). It is shown with an open
   ## photo, and several people submit through one node on the server (everyone signed in to the web app): another
   ## member sending under it must not turn the owner's send, or one code of their set, into a repeat that is never
   ## written. The person, not the device: on the server every web user's device is the server's.
-  ## `anyAdmin` (the server's submit-file, which writes as whoever is the manager now): an admin's or the manager's
-  ## earlier send counts too, so a file run again after the manager changed still adds nothing (the manager it was
-  ## first run as is an admin since); a member's never does.
-  r["person"].isStr and (r["person"].s == me.person or
-                         (anyAdmin and me.isAdmin and a.n.run.role(r["person"].s) in ["admin", "manager"]))
+  r["person"].isStr and r["person"].s == me.person
+
+# The server's submit-file (`fromFile`) writes as whoever is the manager now, so "this person's earlier send" is the
+# wrong question for its re-run: the manager may have changed since. What it asks is "did an earlier run of the file
+# write this row" (#151). Its rows therefore keep their client_id under a prefix no request can send ("." is refused
+# in a client's client_id, by `submitPrep` and `submitMany`, the only places a request's id comes in; rows made for
+# entries that arrive by sync have none): "file.<id>", and "floor.file.<id>" for the floor proposal that rides on a
+# photo. Such a row is the file's whoever the person on it is, and whatever that person is now.
+const
+  FilePrefix = "file."
+  FileMark = "file_ids_after"     # store meta: the newest submission id from before the prefix (see `fileIdsAfter`)
+
+proc fileIdsAfter*(a: Api): int64 =
+  ## The id of the newest submission this store held when submit-file's rows got their prefix: only rows up to it can
+  ## be an earlier run's rows with a bare id (the legacy path in `fileSent`). Kept once, the first time it is asked
+  ## for; the server asks when it starts, so that every row written by the new program is after it.
+  let v = a.n.store.getMeta(FileMark)
+  if v.len > 0:
+    try: return parseBiggestInt(v)
+    except ValueError: return 0     # unreadable: no row counts as an old one
+  for r in a.n.store.subs(): result = max(result, r["id"].i)
+  a.n.store.setMeta(FileMark, $result)
+
+proc ownAuthority(a: Api, r: JNode): bool =
+  ## written by an admin or the manager as one: applied directly, or held because it clashed. Never a member's
+  ## proposal that waited for a decision, whatever the member has become since.
+  r["entry"].isNull or (r["entry"].s notin a.n.run.proposals and r["entry"].s notin a.n.ignored)
+
+proc fileSent(a: Api, r: JNode, me: Actor, cid, bare, kind: string, tgt: proc (): string): bool =
+  ## is `r` what an earlier run of the file wrote for the item now sent as `cid` (`bare`: the id without the prefix)?
+  let c = r["client_id"].s
+  if c == cid: return true
+  # LEGACY PATH. Rows written by submit-file before the prefix carry the bare id, as a request's rows do, and nothing
+  # on them says which they are. For those the rule stays the one it was (#142): an earlier send by this manager, or
+  # by anyone who is an admin or the manager now (the manager the file was first run as is one, unless demoted since:
+  # then such a file's items are written again). Narrowed by everything an earlier run's row must also be, so that a
+  # request's row is taken for one as rarely as can be:
+  # - older than the prefix (`fileIdsAfter`): no row written since can suppress a file's item, whoever sends it;
+  # - written with an admin's own authority: a member's proposal isn't, also after the member was promoted;
+  # - the same kind of change to the same thing as the item.
+  # What is left: an admin or manager (then, and still one now) who sent the same kind of change for the same code
+  # under the file's bare id before the prefix existed.
+  if c != bare or r["id"].i > a.fileIdsAfter or not r["person"].isStr or not a.ownAuthority(r): return false
+  if r["person"].s != me.person and a.n.run.role(r["person"].s) notin ["admin", "manager"]: return false
+  let (k, b) = a.kindBody(r)
+  k == kind and target(k, b) == tgt()
+
+proc earlier(a: Api, me: Actor, cid: JNode, fileBare, kind: string, tgt: proc (): string): JNode =
+  ## the answer for a client_id sent before (nil when it wasn't): the earlier submission, as a `duplicate`. A request's
+  ## is its sender's own (`sentBy`). submit-file's (`fileBare`: its id without the prefix, "" for a request) is an
+  ## earlier run's (`fileSent`); that answer also says what the earlier row is ("kind", "target") and whether that is
+  ## the item sent now ("same"), for submit-file to report a row that is something else.
+  if not cid.isStr: return nil
+  for old in a.n.store.subs():
+    if not old["client_id"].isStr: continue
+    let hit = if fileBare.len > 0: a.fileSent(old, me, cid.s, fileBare, kind, tgt)
+              else: old["client_id"].s == cid.s and a.sentBy(old, me)
+    if not hit: continue
+    let s = a.subStatus(old)
+    result = O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
+    if fileBare.len > 0:
+      let (k, b) = a.kindBody(old)
+      result["kind"] = S(k)
+      result["target"] = S(target(k, b))
+      result["same"] = B(k == kind and target(k, b) == tgt())
+    return
 
 proc newSubRow(me: Actor, kind: string, clientId: JNode, now: int64): JNode =
   O(("id", newNull()), ("client_id", clientId), ("entry", newNull()), ("person", S(me.person)), ("kind", S(kind)),
     ("created", I(now div 1000)), ("held", newNull()), ("status", newNull()), ("note", newNull()), ("decided_at", newNull()))
 
 proc submitBody*(a: Api, me: Actor, kind: string, body, cid: JNode, requestNote: string, now: int64,
-                 dupChecked = false, anyAdmin = false): JNode =
+                 dupChecked = false, fileBare = ""): JNode =
   ## a change already in its §9 body form: the web/API submissions above and the server's submit-file (a client_id
   ## this person has sent before returns that submission, so each is written once). `dupChecked`: the caller has
-  ## looked for this client_id already (submitMany: one pass over the submissions for the whole set, not one per code)
+  ## looked for this client_id already (submitMany: one pass over the submissions for the whole set, not one per code).
+  ## `fileBare`: submit-file's item, `cid` being its id with the prefix and this the one without (see `fileSent`)
   if cid.isStr and not dupChecked:
-    for old in a.n.store.subs():
-      if old["client_id"].isStr and old["client_id"].s == cid.s and a.sentBy(old, me, anyAdmin):
-        let s = a.subStatus(old)
-        return O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
+    proc tgt(): string =
+      try: result = target(kind, body)
+      except KeyError: bad("invalid change")
+    let dup = a.earlier(me, cid, fileBare, kind, tgt)
+    if dup != nil: return dup
   try: checkData(kind, body)
   except Ignore, KeyError: bad("invalid change")
   let conflicts = a.plan(kind, body)[1]
@@ -688,25 +751,29 @@ proc floorBody(kks, floor: string): JNode =
   ## the equipment change a floor sent with a photo is written as: it fills an empty floor, nothing else
   O(("kks", S(kks)), ("changes", O(("floor", S(floor)))), ("base", O(("floor", S("")))))
 
-proc submitPrep(a: Api, me: Actor, clientId, noteIn: JNode, anyAdmin = false): (JNode, string, JNode) =
-  ## (client id, request note, the earlier submission's answer when this person already sent this client id, else nil)
+proc payloadTarget(a: Api, kind: string, payload: JNode): string =
+  ## what a payload is about, as `target` says it of a body. A photo's is read without keeping its image.
+  if kind notin Kinds or payload == nil or payload.kind != jObj: bad("bad submission kind or payload")
+  if kind == "photo": "photo:" & kksOf(payload.get("kks"))
+  else: target(kind, toBody(kind, a.normalize(kind, payload)))
+
+proc submitPrep(a: Api, me: Actor, clientId, noteIn: JNode): (JNode, string) =
+  ## (client id, request note), both checked
   if noteIn != nil and not noteIn.isNull and (noteIn.kind != jStr or noteIn.s.runeLen > 500): bad("note: up to 500 characters")
   let requestNote = if noteIn != nil and noteIn.isStr: noteIn.s.strip else: ""
   let cid = if clientId == nil: newNull() else: clientId
+  # no "." in a client's id: "floor.<id>" and submit-file's "file.<id>" are ids no client can send
   if not cid.isNull and not (cid.kind == jStr and cid.s.len in 8..64 and
                              cid.s.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})): bad("bad client_id")
-  var dup: JNode = nil
-  if cid.isStr:
-    for old in a.n.store.subs():
-      if old["client_id"].isStr and old["client_id"].s == cid.s and a.sentBy(old, me, anyAdmin):
-        let s = a.subStatus(old)
-        dup = O(("id", old["id"]), ("status", S(s.status)), ("note", S(s.note)), ("duplicate", B(true)))
-        break
-  (cid, requestNote, dup)
+  (cid, requestNote)
 
-proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64, anyAdmin = false): JNode =
-  ## `anyAdmin`: see `sentBy` (only the server's submit-file sets it; never a request)
-  let (cid, requestNote, dup) = a.submitPrep(me, clientId, noteIn, anyAdmin)
+proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, now: int64, fromFile = false): JNode =
+  ## `fromFile`: the server's submit-file, never a request. Its rows keep their client_id as "file.<id>", and a second
+  ## run finds them whoever was the manager then (`fileSent`).
+  let (sent, requestNote) = a.submitPrep(me, clientId, noteIn)
+  let file = fromFile and sent.isStr
+  let cid = if file: S(FilePrefix & sent.s) else: sent
+  let dup = a.earlier(me, cid, (if file: sent.s else: ""), kind, proc (): string = a.payloadTarget(kind, payload))
   if dup != nil: return dup
   var floorRes: JNode = nil
   var k, fl = ""
@@ -725,12 +792,14 @@ proc submit*(a: Api, me: Actor, kind: string, payload, clientId, noteIn: JNode, 
     # the one set is a normal edit, never a side effect of a photo
     let mine = a.openFloors(me, k)
     if live.len == 0 and mine.len == 0:
-      # "." is refused in a client's client_id, so this one never matches a photo's
+      # "." is refused in a client's client_id, so this one never matches a photo's. A file photo's is
+      # "floor.file.<id>" (before the prefix: "floor.<id>")
       let fcid = if cid.isStr: S("floor." & cid.s) else: newNull()
-      floorRes = a.submitBody(me, "equipment", floorBody(k, fl), fcid, "", now, anyAdmin = anyAdmin)
+      floorRes = a.submitBody(me, "equipment", floorBody(k, fl), fcid, "", now,
+                              fileBare = (if file: "floor." & sent.s else: ""))
     else:
       floorRes = O(("status", S("unchanged")), ("floor", S(if live.len > 0: live else: mine[^1])))
-  result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now, anyAdmin = anyAdmin)
+  result = a.submitBody(me, kind, toBody(kind, p), cid, requestNote, now, fileBare = (if file: sent.s else: ""))
   if floorRes != nil: result["floor"] = floorRes
 
 proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, noteIn: JNode, now: int64): JNode =
@@ -760,7 +829,7 @@ proc submitMany*(a: Api, me: Actor, kind: string, codes, payload, clientId, note
   let prefix = if clientId == nil or clientId.isNull: "" else: (if clientId.isStr: clientId.s else: "\0")
   if prefix.len > 0 and not (prefix.len in 8..56 and prefix.allCharsInSet({'A'..'Z', 'a'..'z', '0'..'9', '_', '-'})):
     bad("bad client_id")
-  let (_, requestNote, _) = a.submitPrep(me, newNull(), noteIn)      # the note first: nothing is kept for a refused one
+  let (_, requestNote) = a.submitPrep(me, newNull(), noteIn)      # the note first: nothing is kept for a refused one
   proc cidOf(i: int): JNode = (if prefix.len == 0: newNull() else: S(prefix & "-" & $i))
   var fl = ""
   if kind == "photo":
