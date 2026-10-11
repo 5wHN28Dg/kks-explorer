@@ -521,6 +521,7 @@ proc startNext(w: Win) =
     var reports: seq[string]
     let (ok, it, px) = pq.next(nowMs(), reports)
     for r in reports: w.toast(r)
+    if reports.len > 0: w.panelKey = ""     # a photo was dropped or put off: the panel's queue line is out of date
     if ok: encJobs.send(EncJob(key: it.key, rgb: px, w: it.w, h: it.h))
   w.showQueue()
 

@@ -43,12 +43,23 @@ type Win* = ref object
   livePage*: W                 ## the open Manage page that rebuilds when the data changes (a ref is held)
   liveBuild*: proc (box: W)
   liveKey: string              ## liveDataKey when the live page was last built
+  modelKey*: string            ## liveDataKey when the model (`m`) was last loaded
+  panelKey*: string            ## modelKey of the model the tag panel was built from; "" when something else it
+                               ## shows changed (the sheet on screen, the photo queue): the next reload rebuilds it
 
 proc toast*(w: Win, msg: string) = toast(w.toasts, msg)
 
 proc fileOr*(w: Win, path: string, dflt: string): string =
   let (ok, data) = w.a.file(path)
   if ok: data else: dflt
+
+proc liveDataKey(w: Win): string =
+  ## Everything a live page shows changes this: the log (entries), the API's own writes (rev: submission rows,
+  ## notes, the hidden list), the devices asking to join (they come through a sync session, not the log), and the
+  ## photos still missing (an approval's picture arrives after its entry). A sync round that brought none of these
+  ## leaves it as it was.
+  result = $w.a.api.rev & "|" & $w.a.n.entries.len & "|" & $w.a.n.blobWants.len
+  for (k, ask) in w.a.api.invites.pending(nowMs() div 1000): result.add "|" & k & ":" & ask.device
 
 proc loadModel*(w: Win) =
   let m = Model()
@@ -62,6 +73,7 @@ proc loadModel*(w: Win) =
   except ApiError: m.state = newObj()
   m.merge()
   w.m = m
+  w.modelKey = w.liveDataKey
 
 proc isAdmin*(w: Win): bool =
   let (ok, me) = w.a.me
@@ -142,14 +154,6 @@ proc applyHighlights*(w: Win) =
       if e.get("floor") != nil and e["floor"].isStr and e["floor"].s.strip.toLowerAscii == w.floor.toLowerAscii:
         w.v.floorIds.incl t.id
   gtk_widget_queue_draw(w.v.widget)
-
-proc liveDataKey(w: Win): string =
-  ## Everything a live page shows changes this: the log (entries), the API's own writes (rev: submission rows,
-  ## notes, the hidden list), the devices asking to join (they come through a sync session, not the log), and the
-  ## photos still missing (an approval's picture arrives after its entry). A sync round that brought none of these
-  ## leaves it as it was.
-  result = $w.a.api.rev & "|" & $w.a.n.entries.len & "|" & $w.a.n.blobWants.len
-  for (k, ask) in w.a.api.invites.pending(nowMs() div 1000): result.add "|" & k & ":" & ask.device
 
 proc liveBuilt*(w: Win, box: W) =
   ## `box` was just (re)built by its page: if it is the live page, it shows the data as it is now. (A part of it
