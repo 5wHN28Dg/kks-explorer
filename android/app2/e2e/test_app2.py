@@ -20,9 +20,8 @@ PHONE_HOST = os.environ.get('KKS_PHONE_HOST', '10.0.2.2')
 SHOTS = os.environ.get('KKS_SHOTS', os.path.expanduser('~/kks-work/shots-android'))
 
 
-def free_port():
-    import socket
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
+sys.path.append(os.path.join(REPO, 'tests'))
+from e2e_server import start_listener, start_server  # noqa: E402  (the ports and the server start of every e2e suite, #155)
 
 
 class Client:
@@ -113,28 +112,14 @@ class Phone(unittest.TestCase):
         was pushed off the screen by the devices of the earlier tests' members. A server takes about a second."""
         self.dir = tempfile.mkdtemp(prefix='kks-app2-e2e-')
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.port, self.sport = free_port(), free_port()
-        cfg = {'address': '127.0.0.1', 'port': self.port, 'sync_port': self.sport, 'plant_name': 'Test plant',
+        cfg = {'address': '127.0.0.1', 'plant_name': 'Test plant',
                'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),
                'storage_key_file': os.path.join(self.dir, 'storage.key'), 'plant_dir': os.path.join(self.dir, 'plant-data'),
                'backup_dir': os.path.join(self.dir, 'backups'), 'importer': IMPORTER,
                'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl')}
-        with open(os.path.join(self.dir, 'config.json'), 'w') as f:
-            json.dump(cfg, f)
-        self.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
-                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.server, setup = start_server(SERVER, self.dir, cfg, sync=True)
         self.addCleanup(self.stop_server)
-        setup = None
-        for _ in range(50):
-            line = self.server.stdout.readline()
-            if 'setup link file: ' in line:      # the link is in a 0600 file (#69)
-                with open(line.split('setup link file: ', 1)[1].strip()) as f:
-                    line = f.read()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', line)
-            if m:
-                setup = m[1]
-            if 'server on' in line:
-                break
+        self.port, self.sport = cfg['port'], cfg['sync_port']
         self.base = f'http://127.0.0.1:{self.port}'
         self.boss = Client(self.base)
         assert self.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',

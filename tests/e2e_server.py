@@ -143,3 +143,33 @@ def start_server(binary, folder, cfg, sync=False, fixed=False, attempts=5, timeo
             raise ServerStartError(f'the server exited at start (port {cfg["port"]}, sync port {cfg.get("sync_port")}):\n{out}')
         said.append(out)
     raise ServerStartError(f'the server found its ports taken {attempts} times in a row; the last time:\n{said[-1]}')
+
+
+def start_listener(command, folder, attempts=5, timeout=30, pick=free_ports):
+    """Start a program that listens on the one port its command line names (the relay twin): `command(port)` is its
+    argv -> (the process, the port), once that process listens on it. Its output goes to `folder`/listener.log. As
+    with start_server: an exit that says the port was taken is tried again on another port, any other exit raises
+    ServerStartError with what it said."""
+    said, argv = '', None
+    for _ in range(attempts):
+        port, = pick(1)
+        with open(os.path.join(folder, 'listener.log'), 'w+') as log:
+            argv = command(port)
+            proc = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT)
+            t0 = time.time()
+            try:
+                while proc.poll() is None:
+                    if port in listening(proc.pid):
+                        return proc, port
+                    if time.time() - t0 > timeout:
+                        raise ServerStartError(f'{argv} does not listen on {port} after {timeout} s')
+                    time.sleep(0.01)
+            except BaseException:
+                proc.kill()
+                proc.wait()
+                raise
+            log.seek(0)
+            said = log.read() + f'(exit code {proc.returncode})'
+        if TAKEN not in said:
+            raise ServerStartError(f'{argv} exited at start:\n{said}')
+    raise ServerStartError(f'{argv} found its port taken {attempts} times in a row; the last time:\n{said}')

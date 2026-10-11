@@ -10,7 +10,7 @@ import adbui as ui  # noqa: E402
 # the test installed whatever debug APK was at the default path instead of the one named (the 0.10.0 rehearsal "failed"
 # because that path held the 9.9.9 build, to which 9.9.9 is not an update)
 ARGS = sys.argv[1:4]
-from test_app2 import Client, free_port  # noqa: E402
+from test_app2 import Client, start_server  # noqa: E402
 from fakegithub import FakeGitHub, calm, HOST  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -61,23 +61,12 @@ def newer(a, b):
 class Update(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix='kks-update-')
-        self.port, self.sport = free_port(), free_port()
-        cfg = {'address': '127.0.0.1', 'port': self.port, 'sync_port': self.sport, 'plant_name': 'Test plant', 'web_dir': REPO,
+        cfg = {'address': '127.0.0.1', 'plant_name': 'Test plant', 'web_dir': REPO,
                'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),
                'storage_key_file': os.path.join(self.dir, 'storage.key'), 'plant_dir': os.path.join(self.dir, 'plant-data'),
                'backup_dir': os.path.join(self.dir, 'backups')}
-        with open(os.path.join(self.dir, 'config.json'), 'w') as f:
-            json.dump(cfg, f)
-        self.server = subprocess.Popen([SERVER, 'serve', '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
-                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        setup = None
-        for _ in range(50):
-            line = self.server.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m:
-                setup = m[1]
-            if 'server on' in line:
-                break
+        self.server, setup = start_server(SERVER, self.dir, cfg, sync=True)
+        self.port, self.sport = cfg['port'], cfg['sync_port']
         assert Client(f'http://127.0.0.1:{self.port}').req('POST', '/api/setup', {
             'token': setup, 'username': 'boss', 'password': 'a long password', 'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         subprocess.run(ui.ADB + ['uninstall', PKG], capture_output=True)

@@ -224,6 +224,33 @@ class Start(unittest.TestCase):
         self.assertEqual(len(seen), 1)
         self.assertIsNotNone(seen[0].poll(), 'the server that never came up is not left running')
 
+    LISTENER = ('import socket, sys, time\n'
+                'if sys.argv[2] == "broken": sys.exit("ModuleNotFoundError: No module named cryptography")\n'
+                's = socket.create_server(("127.0.0.1", int(sys.argv[1])))\ntime.sleep(60)\n')
+
+    def test_listener(self):
+        """the relay twin's start: up when it listens; its port taken in between -> another port; another failure
+        -> said, and not started again"""
+        a = self.hold()
+        tried = []
+
+        def command(how):
+            def argv(port):
+                tried.append(port)
+                return [sys.executable, '-c', self.LISTENER, str(port), how]
+            return argv
+        proc, port = e2e_server.start_listener(command('ok'), self.dir, pick=self.picker((a,)))
+        self.addCleanup(lambda: (proc.kill(), proc.wait()))
+        self.assertEqual(tried[0], a)
+        self.assertNotEqual(port, a)
+        self.assertIn(port, e2e_server.listening(proc.pid))
+        del tried[:]
+        with self.assertRaisesRegex(e2e_server.ServerStartError, 'No module named cryptography'):
+            e2e_server.start_listener(command('broken'), self.dir)
+        self.assertEqual(len(set(tried)), 1, 'one port, one start')
+        with self.assertRaisesRegex(e2e_server.ServerStartError, 'taken 2 times in a row'):
+            e2e_server.start_listener(command('ok'), self.dir, attempts=2, pick=lambda n: (a,))
+
     def test_listening_is_per_process(self):
         port = self.hold()
         self.assertIn(port, e2e_server.listening(os.getpid()))

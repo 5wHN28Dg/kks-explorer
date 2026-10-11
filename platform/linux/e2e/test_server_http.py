@@ -8,8 +8,8 @@ BIN = sys.argv.pop(1) if len(sys.argv) > 1 else '/tmp/kkslinux/kks_server'
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 
-def free_port():
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
+sys.path.append(os.path.join(REPO, 'tests'))
+from e2e_server import free_ports, start_server  # noqa: E402  (the ports and the server start of every e2e suite, #155)
 
 
 class Client:
@@ -43,27 +43,14 @@ class Base(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-nim-server-')
-        cls.port, cls.sport = free_port(), free_port()
-        cfg = {'address': '127.0.0.1', 'port': cls.port, 'sync_port': cls.sport, 'plant_name': 'Test plant',
+        cfg = {'address': '127.0.0.1', 'plant_name': 'Test plant',
                'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(cls.dir, 'server.db'),
                'storage_key_file': os.path.join(cls.dir, 'storage.key'), 'plant_dir': os.path.join(cls.dir, 'plant-data'),
                'backup_dir': os.path.join(cls.dir, 'backups'), 'importer': IMPORTER,
                'glyphs': os.path.join(REPO, 'importer', 'fontlib.kgl')}
         cfg.update(cls.extra)
-        with open(os.path.join(cls.dir, 'config.json'), 'w') as f:
-            json.dump(cfg, f)
-        cls.proc = subprocess.Popen([BIN, 'serve', '--config', os.path.join(cls.dir, 'config.json')], stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, text=True, cwd=cls.dir)
-        cls.setup = None
-        t0 = time.time()
-        while time.time() - t0 < 10:
-            line = cls.proc.stdout.readline()
-            m = re.search(r'#setup=([A-Za-z0-9_-]+)', open(line.split('setup link file: ', 1)[1].strip()).read() if 'setup link file: ' in line else line)   # the link is in a 0600 file (#69)
-            if m:
-                cls.setup = m[1]
-            if 'server on' in line:
-                break
-        time.sleep(0.3)
+        cls.proc, cls.setup = start_server(BIN, cls.dir, cfg, sync=True)
+        cls.port, cls.sport = cfg['port'], cfg['sync_port']
         cls.base = f'http://127.0.0.1:{cls.port}'
 
     @classmethod
@@ -1569,13 +1556,64 @@ class Limits(Base):
         self.assertLess(time.time() - t0, 30)
         c.close()
 
+class TakenPort(unittest.TestCase):
+    """#155, with the real server: what it says when a port of its own is taken is what tests/e2e_server.py takes
+    as "start again on other ports" (its own tests use a stand-in). The web port fails after the "server on" line,
+    the sync port before it."""
+
+    def start(self, picks, **more):
+        d = tempfile.mkdtemp(prefix='kks-taken-')
+        self.addCleanup(shutil.rmtree, d, True)
+        cfg = {'address': '127.0.0.1', 'store': os.path.join(d, 'server.db'), 'storage_key_file': os.path.join(d, 'storage.key'),
+               'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data'), **more}
+        asked = []
+
+        def pick(n):
+            asked.append(n)
+            return picks.pop(0) if picks else free_ports(n)
+        try:
+            proc, _ = start_server(BIN, d, cfg, sync=True, pick=pick)
+        finally:
+            self.asked = len(asked)
+        self.addCleanup(lambda: (proc.terminate(), proc.wait(5), proc.stdout.close()))
+        return proc, cfg
+
+    def hold(self):
+        s = socket.socket()
+        s.bind(('127.0.0.1', 0))
+        s.listen()
+        self.addCleanup(s.close)
+        return s.getsockname()[1]
+
+    def test_started_again_on_other_ports(self):
+        import e2e_server
+        for which in ('web', 'sync', 'both the same'):
+            with self.subTest(which):
+                taken, free = self.hold(), free_ports(1)[0]
+                first = {'web': (taken, free), 'sync': (free, taken), 'both the same': (free, free)}[which]
+                proc, cfg = self.start([first])
+                self.assertEqual(self.asked, 2, 'one start on the taken port, one on new ports')
+                self.assertNotIn(taken, (cfg['port'], cfg['sync_port']))
+                self.assertNotEqual(cfg['port'], cfg['sync_port'])
+                self.assertLessEqual({cfg['port'], cfg['sync_port']}, e2e_server.listening(proc.pid))
+                self.assertEqual(Client(f'http://127.0.0.1:{cfg["port"]}').req('GET', '/api/config')[0], 200)
+
+    def test_another_failure_is_the_tests(self):
+        import e2e_server
+        with self.assertRaisesRegex(e2e_server.ServerStartError, 'plain HTTP') as e:
+            self.start([], address='0.0.0.0')
+        self.assertEqual(self.asked, 1, 'not started again')
+        self.assertNotIn('Address already in use', str(e.exception))
+
+
 class Address(unittest.TestCase):
     """finding #26 (advisory GHSA-m2gr-gcrf-xc6m): the web pages and sign-in are plain HTTP, so they listen on this
     machine only; a network address in the config is refused before anything starts"""
 
     def config(self, address):
         d = tempfile.mkdtemp(prefix='kks-addr-')
-        cfg = {'port': free_port(), 'sync_port': free_port(), 'store': os.path.join(d, 'server.db'),
+        port, sport = free_ports(2)
+        cfg = {'port': port, 'sync_port': sport, 'store': os.path.join(d, 'server.db'),
                'storage_key_file': os.path.join(d, 'storage.key'), 'web_dir': REPO, 'data_dir': os.path.join(REPO, 'data')}
         if address is not None:
             cfg['address'] = address
