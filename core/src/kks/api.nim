@@ -654,13 +654,15 @@ proc fileIdsAfter*(a: Api): int64 =
 type FileItem = tuple[target, change: string]     ## what an item is about (`target`), and what it does to it
 
 proc changeOf(kind: string, b: JNode): string =
-  ## what a change does, for telling a file's item from another change to the same thing. A photo's image is not
-  ## part of it (the item's is not kept before it is known to be new).
-  case kind
-  of "equipment": toText(b["changes"])
-  of "link": $b["on"].b
-  of "photo": b["caption"].s
-  else: ""
+  ## what a change does, for telling a file's item from another change to the same thing: canonical text, so the
+  ## order of the keys in a file says nothing. A photo's image and id are not part of it (the item's image is not
+  ## kept before it is known to be new); the values an equipment change was based on aren't either.
+  try:
+    case kind
+    of "equipment": canonical(b["changes"])
+    of "photo": canonical(b["caption"])
+    else: canonical(b)
+  except CanonicalError: toText(b)
 
 proc ownAuthority(a: Api, r: JNode): bool =
   ## written by an admin or the manager as one: applied directly, or held because it clashed. Never a member's
@@ -770,7 +772,8 @@ proc payloadItem(a: Api, kind: string, payload: JNode): FileItem =
   ## what a payload is about and does, as `target` and `changeOf` say it of a body. A photo's is read without keeping
   ## its image.
   if kind notin Kinds or payload == nil or payload.kind != jObj: bad("bad submission kind or payload")
-  if kind == "photo": return ("photo:" & kksOf(payload.get("kks")), textOf(payload.get("caption"), 500))
+  if kind == "photo":
+    return ("photo:" & kksOf(payload.get("kks")), changeOf(kind, O(("caption", S(textOf(payload.get("caption"), 500))))))
   let b = toBody(kind, a.normalize(kind, payload))
   (target(kind, b), changeOf(kind, b))
 

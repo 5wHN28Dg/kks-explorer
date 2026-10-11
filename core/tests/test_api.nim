@@ -737,6 +737,21 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check isDup(changed)
     check changed["same_target"].b and not changed["same"].b
     check nearOf("11LAB90AA611") == "from the file"
+    # the order of the keys in the file is not a difference; what a review says is
+    proc filedAny(kind, payload, cid: string): JNode = mgrApi.submit(mgr, kind, j(payload), newStr(cid), nil, now(), fromFile = true)
+    check filedAny("equipment", """{"kks":"11LAB90AA617","changes":{"near":"n","notes":"t"}}""", "imp-151-order")["status"].s == "approved"
+    let swapped = filedAny("equipment", """{"kks":"11LAB90AA617","changes":{"notes":"t","near":"n"}}""", "imp-151-order")
+    check isDup(swapped)
+    check swapped["same"].b
+    check filedAny("review", """{"tag_id":"t151","data":{"status":"confirmed","kks":"11LAB90AA618","suffix":"","isa":null}}""",
+                   "imp-151-review")["status"].s == "approved"
+    let rev = filedAny("review", """{"tag_id":"t151","data":{"status":"confirmed","kks":"11LAB90AA618","suffix":"","isa":null}}""",
+                       "imp-151-review")
+    check isDup(rev)
+    check rev["same"].b
+    let rev2 = filedAny("review", """{"tag_id":"t151","data":{"status":"rejected"}}""", "imp-151-review")
+    check isDup(rev2)
+    check rev2["same_target"].b and not rev2["same"].b
     check other["target"].s == "equipment:11LAB90AA611"
     check nearOf("11LAB90AA613") == ""
     # no request can send such an id, alone or as a set's prefix (the same set under an id without "." is taken)

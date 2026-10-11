@@ -387,6 +387,16 @@ class Cli(Base):
         self.assertIn('already the manager', self.cli('reset-manager', '--user', 'sara')[1])
         # the file run again as the new manager still adds nothing: the earlier manager's items are there (#136)
         self.assertEqual(self.cli('submit-file', subs), (0, '2 submissions: 2 already there.'))
+        # what anyone sends under a file's id from now on is not the file's, the manager's own included: old rows end
+        # where they did when the server started (#151)
+        st, r, _ = sara.req('POST', '/api/submit', {'kind': 'link', 'client_id': 'imp-test-link-5',
+                                                    'payload': {'proc': 'EP-1', 'step': 5, 'kks': '11LAB70AA505', 'on': True}})
+        self.assertEqual((st, r.get('status')), (200, 'approved'), r)
+        subs5 = os.path.join(self.dir, 'subs5.json')
+        with open(subs5, 'w') as f:
+            json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 5, 'kks': '11LAB70AA505', 'on': True}, 'client_id': 'imp-test-link-5'}], f)
+        self.assertEqual(self.cli('submit-file', subs5), (0, '1 submissions: 1 approved.'))
+        self.assertEqual(self.cli('submit-file', subs5), (0, '1 submissions: 1 already there.'))
         # also once the manager it was first run as is a plain user (#151): the rows are the file's, whoever sent them
         ids = {u['username']: u['id'] for u in sara.req('GET', '/api/users')[1]['users']}
         self.assertEqual(sara.req('POST', '/api/users/%d' % ids['boss'], {'role': 'user'})[0], 200)
@@ -410,7 +420,7 @@ class Cli(Base):
             json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 2, 'kks': '11LAB70AA502', 'on': True}, 'client_id': 'imp-test-link-2'}], f)
         self.assertEqual(self.cli('submit-file', subs2), (0, '1 submissions: 1 approved.'))
         st = sara.req('GET', '/api/state')[1]
-        self.assertEqual(sorted(l['kks'] for l in st['links'] if l['proc'] == 'EP-1'), ['11LAB70AA501', '11LAB70AA502'])
+        self.assertEqual(sorted(l['kks'] for l in st['links'] if l['proc'] == 'EP-1'), ['11LAB70AA501', '11LAB70AA502', '11LAB70AA505'])
         self.assertEqual(self.cli('submit-file', subs2), (0, '1 submissions: 1 already there.'))
         # no request can send a file's id
         for bad in ('file.imp-test-link-1', 'floor.file.imp-test-link-1'):
