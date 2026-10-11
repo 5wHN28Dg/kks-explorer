@@ -131,9 +131,12 @@ proc timeout*(ms: int, fn: proc (): bool): cuint {.discardable.} =
   GC_ref(e)
   g_timeout_add(cuint(ms), cast[pointer](trampBoolSrc), cast[pointer](e))
 proc idle*(fn: proc ()): cuint {.discardable.} =
+  ## fn runs once, also when it fails: a Defect that got past here left the source in place (trampBoolSrc keeps a
+  ## timer going after an error), and fn ran again and again
   let e = Env(fnB: proc (): bool =
     try: fn()
     except CatchableError as e: report(e)
+    except Defect as e: report(e)
     false)
   GC_ref(e)
   g_idle_add(cast[pointer](trampBoolSrc), cast[pointer](e))
@@ -306,6 +309,19 @@ proc idleFor*(wd: W, fn: proc ()): cuint {.discardable.} =
     let there = gtk_widget_get_root(wd) != nil
     g_object_unref(wd)
     if there: fn())
+
+type Held* = ref object
+  ## A widget kept alive for a callback that comes later and is not a button of the same part of the screen (a
+  ## dialog's answer, the banner's button): the part can be rebuilt or closed while the dialog or banner is up, and
+  ## the callback's own copy of the pointer would be a freed widget. The callback asks `shown` before it touches
+  ## it. The reference goes when the callback does.
+  w*: W
+proc release(h: Held) =
+  if h.w != nil: g_object_unref(h.w)
+proc hold*(wd: W): Held =
+  new(result, release)
+  result.w = g_object_ref(wd)
+proc shown*(h: Held): bool = gtk_widget_get_root(h.w) != nil
 proc gtk_root_get_focus*(r: W): W {.importc, header: HA.}
 proc gtk_widget_is_ancestor*(w, ancestor: W): cint {.importc, header: HA.}
 proc gtk_event_controller_focus_new*(): W {.importc, header: HA.}

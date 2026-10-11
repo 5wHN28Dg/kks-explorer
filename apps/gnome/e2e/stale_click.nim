@@ -6,6 +6,7 @@
 ##   e2e/headless.sh /tmp/kksgnome/stale_click
 import kksg/[gtk, ui]
 proc g_signal_emit_by_name(inst: W, sig: cstring) {.importc, header: "<glib-object.h>", varargs.}
+proc gtk_label_get_text(l: W): cstring {.importc, header: "<gtk/gtk.h>".}
 
 proc settle() =
   ## every queued idle callback (and whatever they queue)
@@ -94,7 +95,31 @@ proc checks() =
     settle()
     doAssert ran == 1, "idleFor ran for a widget that had left the window"
     inc checked
-  doAssert checked == makers.len + 1
+  # a handler that fails with a Defect ran once, not again and again (and its button was released once)
+  block:
+    var ran = 0
+    let b = button("Fails", "", proc () =
+      inc ran
+      var none: seq[int]
+      discard none[ran])          # IndexDefect
+    panel.add b
+    g_signal_emit_by_name(b, "clicked")
+    for _ in 0 ..< 5: discard g_main_context_iteration(nil, 0)
+    doAssert ran == 1, "a handler that raised a Defect ran " & $ran & " times"
+    panel.clear()
+    inc checked
+  # a widget held for a later callback (a dialog's answer, the banner's button): alive, and known to be gone
+  block:
+    let l = label("held")
+    panel.add l
+    let h = hold(l)
+    doAssert h.shown
+    panel.clear()
+    doAssert not h.shown, "a held widget that left the window still counts as shown"
+    gtk_label_set_text(l, "still a widget")      # (freed without the hold)
+    doAssert str(gtk_label_get_text(l)) == "still a widget"
+    inc checked
+  doAssert checked == makers.len + 3
 
 app.on("activate", proc () =
   # (a failed check must end the run: the signal's trampoline would log it and carry on)

@@ -89,10 +89,11 @@ proc procedureDetail(w: Win, id: string, box: W) =
       adw_wrap_box_append(wb, button("+ Link equipment", "flat", proc () =
         w.linkProc = id
         w.linkStep = n
+        let page = hold(box)      # link mode outlives this page (Back keeps it on): Done may come when it is gone
         w.setBanner("Click tags on the drawing (or Link in a tag's panel) to link them to step " & $n & " of " & id, "Done", proc () =
           w.linkProc = ""
           w.setBanner("", "", nil)
-          w.procedureDetail(id, box)
+          if page.shown: w.procedureDetail(id, box)
           w.rebuildPanel())
         w.rebuildPanel()))
       adw_preferences_group_add(g, wb)
