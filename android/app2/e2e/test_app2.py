@@ -1,6 +1,6 @@
 """End-to-end: the Android app (v2, Nim core) on an emulator, against the Nim server on this machine. No plant data:
 the drawing is importer/tests/vectors/kkp-sample.pdf. Driven through the accessibility tree (adbui.py).
-  python3 android/app2/e2e/test_app2.py [APK] [SERVER] [IMPORTER] [-v] [Phone.test_…]
+  python3 android/app2/e2e/test_app2.py APK SERVER IMPORTER [-v] [Phone.test_…]     (the three paths first, if any)
 KKS_E2E_PART=1|2|3 runs one of the three parts (PARTS, at the end); KKS_E2E_DIAG=folder records what happened.
 Needs a running emulator (adb devices); the app's data is cleared first. The emulator reaches this machine as
 10.0.2.2."""
@@ -96,7 +96,7 @@ class Phone(unittest.TestCase):
         if result and len(result.failures) + len(result.errors) > before[0]:
             how = 'FAILED'
         mem = emulator_memory()
-        diag(f'{self._testMethodName} {how} {time.time() - t0:.0f}s dump_before={dump:.2f}s ' +
+        diag(f'{self._testMethodName} {how} {time.time() - t0:.0f}s dump_before={dump:.2f}s fields_emptied_again={ui.retries} ' +
              (f'emulator_now={mem[0] / 2**30:.2f}G peak={mem[1] / 2**30:.2f}G' if mem else '(no emulator cgroup found)'))
         return r
 
@@ -1226,7 +1226,10 @@ PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'courses'),
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))
-    assert sorted(sum(PARTS, ())) == tests, f'PARTS must hold every test once: {sorted(set(tests) ^ set(sum(PARTS, ())))}'
-    if os.environ.get('KKS_E2E_PART'):
-        sys.argv += [f'Phone.test_{n}' for n in PARTS[int(os.environ['KKS_E2E_PART']) - 1]]
+    listed = sorted(sum(PARTS, ()))
+    assert listed == tests, f'PARTS must hold every test once: it has {listed}, the tests are {tests}'
+    part = os.environ.get('KKS_E2E_PART')
+    if part:
+        assert part in ('1', '2', '3'), f'KKS_E2E_PART is 1, 2 or 3, not {part!r}'
+        sys.argv += [f'Phone.test_{n}' for n in PARTS[int(part) - 1]]
     unittest.main()
