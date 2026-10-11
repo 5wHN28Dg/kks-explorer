@@ -23,15 +23,10 @@ proc label*(text: string, css = "", wrap = true, xalign = 0.0, selectable = fals
   if selectable: gtk_label_set_selectable(result, 1)
   for c in css.splitWhitespace: gtk_widget_add_css_class(result, c.cstring)
 
-proc deferred*(fn: proc ()): proc () =
-  ## What a button's "clicked" runs. Not fn itself: widgets built while GTK handles an accessibility action (a screen
-  ## reader's or AT-SPI's "click") were missing from the accessibility tree (GTK 4.22, found 2026-10-01). So fn runs
-  ## from the main loop's next turn, and first there (`next`). As an idle callback it waited for the timers: the
-  ## reload after a sync could rebuild the panel between a click and its handler, which then worked on widgets
-  ## that were freed (a crash, or `panelEditing` left set with no form: found by forcing that order, #147).
-  result = proc () = next(fn)
-
-proc onClick*(b: W, fn: proc ()) = b.on("clicked", deferred(fn))
+proc onClick*(b: W, fn: proc ()) =
+  ## Button handlers run from an idle callback: widgets built while GTK handles an accessibility action (a screen
+  ## reader's or AT-SPI's "click") were missing from the accessibility tree (GTK 4.22, found 2026-10-01).
+  b.on("clicked", proc () = idle(fn))
 
 proc button*(text: string, css = "", fn: proc () = nil): W =
   result = gtk_button_new_with_label(text.cstring)

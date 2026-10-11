@@ -25,7 +25,6 @@ proc g_object_unref*(o: W) {.importc, header: HA.}
 proc g_object_ref_sink*(o: W): W {.importc, header: HA, discardable.}
 proc g_timeout_add(ms: cuint, fn: pointer, data: pointer): cuint {.importc, header: HA.}
 proc g_idle_add(fn: pointer, data: pointer): cuint {.importc, header: HA.}
-proc g_idle_add_full(priority: cint, fn: pointer, data: pointer, notify: pointer): cuint {.importc, header: HA.}
 proc g_source_remove*(id: cuint): cint {.importc, header: HA, discardable.}
 proc g_unix_fd_add(fd: cint, cond: cint, fn: pointer, data: pointer): cuint {.importc, header: "<glib-unix.h>".}
 proc g_error_free*(e: ptr GError) {.importc, header: HA.}
@@ -138,16 +137,6 @@ proc idle*(fn: proc ()): cuint {.discardable.} =
     false)
   GC_ref(e)
   g_idle_add(cast[pointer](trampBoolSrc), cast[pointer](e))
-proc next*(fn: proc ()): cuint {.discardable.} =
-  ## fn from the main loop's next turn, before anything else that is ready there: G_PRIORITY_HIGH, above the timers,
-  ## the sockets and the input events (all at the default priority) and the redraw. `idle` waits until none of those
-  ## is ready, so any of them can run in between.
-  let e = Env(fnB: proc (): bool =
-    try: fn()
-    except CatchableError as e: report(e)
-    false)
-  GC_ref(e)
-  g_idle_add_full(-100, cast[pointer](trampBoolSrc), cast[pointer](e), nil)
 proc trampFd(fd: cint, cond: cint, data: pointer): cint {.cdecl.} =
   result = 1
   guard: result = cint(cast[Env](data).fnB())

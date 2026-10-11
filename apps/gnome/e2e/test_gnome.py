@@ -756,7 +756,8 @@ class Gnome(Plant):
         q = atspi.find(a, 'entry', contains='Search equipment')
 
         def press(button, then):
-            # the panel rebuilds after each sync round: a click on the button it just replaced is lost, so again
+            # the panel is rebuilt when a sync brings something for it: a click on the button it just replaced is
+            # lost, so again
             for _ in range(5):
                 atspi.click(atspi.find(a, 'button', name=button, timeout=15))
                 try:
@@ -813,8 +814,8 @@ class Gnome(Plant):
         for attempt in range(5):
             until(lambda: quiet(rounds()), 'two sync rounds in a row that bring nothing')
             time.sleep(0.6)                      # the reload comes 300 ms after a round
+            n = len(rounds())                    # (before the lookup: a round that ends during it counts as after)
             edit = atspi.find(a, 'button', name='Edit')
-            n = len(rounds())
             until(lambda: len(rounds()) >= n + 2, 'two more sync rounds')
             time.sleep(0.6)
             if not any(x for r in rounds()[n:] for x in r):

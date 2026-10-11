@@ -296,7 +296,7 @@ proc descriptionSection(w: Win, t: Tag): W =
 
 proc buildPanel*(w: Win, t: Tag) =
   w.panelEditing = false
-  w.panelKey = w.modelKey
+  w.panelKey = w.panelDataKey
   w.panelBox.clear()
   let m = w.m
   let k = t.full

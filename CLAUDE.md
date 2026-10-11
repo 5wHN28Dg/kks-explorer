@@ -274,11 +274,9 @@ Lessons (don't repeat):
     the wrong trampoline crashed on pinch.
   - Never let a Nim exception unwind through GLib (the trampolines catch and log).
   - Dialogs built during an AT-SPI action have no accessibility contents: build from idle.
-  - A page or panel is rebuilt only when what it shows changed (`refreshLive`, the tag panel's `panelKey`), never
+  - The tag panel and the Manage pages are rebuilt only when what they show changed (`panelKey`, `refreshLive`), not
     after every sync round: GTK sends "clicked" 250 ms after a keyboard or accessibility activation, and not at all
     if the button has gone by then (#147: the e2e's presses came in step with the rounds, five lost in a row).
-  - A button's handler is deferred with `next` (first in the main loop's next turn), not `idle`: an idle callback
-    waits for the timers, so a reload could free the panel between a click and its handler.
   - The viewer draws vector tiles at every zoom (the overview is a placeholder); zoomed out, the thinnest line is half a
     device pixel.
 - **TLS and sync:**
