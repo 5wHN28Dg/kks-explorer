@@ -32,6 +32,7 @@ class WebSignOut(unittest.TestCase):
                'storage_key_file': os.path.join(self.dir, 'storage.key'), 'plant_dir': os.path.join(self.dir, 'plant-data'),
                'backup_dir': os.path.join(self.dir, 'backups')}
         self.server, setup = start_server(SERVER, self.dir, cfg)
+        self.addCleanup(self.stop)               # (also when the rest of setUp fails: tearDown would not run)
         self.base = 'http://127.0.0.1:%d' % cfg['port']
         self.boss = Client(self.base)
         assert self.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': PW, 'full_name': 'The Manager',
@@ -44,7 +45,7 @@ class WebSignOut(unittest.TestCase):
                 assert c.req('POST', '/api/password-reset', {'token': link.split('#reset=')[1], 'password': PW}).get('ok')
                 assert c.req('POST', '/api/logout', {}).get('ok')
 
-    def tearDown(self):
+    def stop(self):
         self.server.terminate()
         self.server.wait(5)
         shutil.rmtree(self.dir, ignore_errors=True)
@@ -73,6 +74,12 @@ class WebSignOut(unittest.TestCase):
         """the notes proposed for KKS that reached the server"""
         return [s['payload']['changes']['notes'] for s in self.boss.req('GET', '/api/submissions')['submissions']
                 if s['payload'].get('kks') == KKS]
+
+    def polls(self, page):
+        """the check-ins this page makes from now on (/api/sync/status, every 15 s), as a list that fills"""
+        seen = []
+        page.on('request', lambda r: seen.append(r.url) if '/api/sync/status' in r.url else None)
+        return seen
 
     def sign_in_screen(self, page):
         expect(page.locator('#kov h1')).to_have_text('Test plant', timeout=30000)
@@ -162,11 +169,19 @@ class WebSignOut(unittest.TestCase):
             expect(a1.locator('#sessionCount')).to_have_text('Your account is signed in on the web here only.')
             # the other browser, opened a moment ago, at its next request (a tab is opened): the sign-in screen
             a3err.leave()
-            a3.evaluate("() => { window.sameDocument = true }")
+            polls = self.polls(a3)
             a3.locator('#tabs button', has_text='Account').click()
-            expect(a3.locator('#kov h1')).to_have_text('Test plant', timeout=8000)   # (well before its 15 s check-in)
             self.sign_in_screen(a3)
-            self.assertIsNone(a3.evaluate('window.sameDocument'))                    # (a fresh document, as on any sign-out)
+            self.assertEqual(polls, [])                  # (by the tab, not by the page's 15 s check-in)
+            # a wrong password typed into a form is a 401 as well: that is said, and the page stays as it is
+            form = a1.locator('#main form', has=a1.locator('input[name=old]'))
+            form.locator('input[name=old]').fill('not the password')
+            form.locator('input[name=new]').fill('a new long password')
+            a1.evaluate("() => { window.sameDocument = true }")
+            form.get_by_role('button', name='Change password').click()
+            expect(a1.locator('#toast')).to_have_text('Wrong username or password.')
+            self.assertEqual((a1.evaluate('window.sameDocument'), form.locator('input[name=new]').input_value(), self.status(a1)),
+                             (True, 'a new long password', 200))
             # this browser carries on, also after a reload; and with nobody else there, it says so
             a1err.leave(); a1.reload()
             a1.wait_for_function(SIGNED_IN % 'ali')
@@ -175,18 +190,24 @@ class WebSignOut(unittest.TestCase):
             expect(a1.locator('#toast')).to_have_text('No other sessions: you are signed in here only')
             self.assertEqual((self.status(a1), self.status(s), self.status(m)), (200, 200, 200))   # nobody else's
             # the manager's own account: the same button, and the manager stays in
-            b2, b2err = self.signed_in(browser, 'boss', '/admin.html#mine')
+            b2, b2err = self.signed_in(browser, 'boss', '/admin.html#account')
             merr.leave(); m.goto(self.base + '/admin.html#account')
             # (boss is signed in three times: this browser, the one just opened, and the test's own client)
             expect(m.locator('#sessionCount')).to_have_text('Your account is signed in 3 times on the web: here and in 2 other browsers or devices.')
             m.locator('#sessions').get_by_role('button', name='Sign out my other sessions').click()
             expect(m.locator('#toast')).to_have_text('Signed out 2 other sessions')
-            self.assertEqual((self.status(m), self.status(b2)), (200, 401))
+            self.assertEqual(self.status(m), 200)
+            # the other browser presses a button with the sign-in it no longer has: the sign-in screen, not an error
+            b2err.leave()
+            polls = self.polls(b2)
+            b2.locator('#sessions').get_by_role('button', name='Sign out my other sessions').click()
+            self.sign_in_screen(b2)
+            self.assertEqual(polls, [])
             merr.leave(); m.reload()
             m.wait_for_function(SIGNED_IN % 'boss')
             expect(m.locator('#who')).to_contain_text('manager')
 
-            for e in (merr, a1err, a2err, a3err, serr):
+            for e in (merr, a1err, a2err, a3err, serr, b2err):
                 self.assertEqual(list(e), [])
             browser.close()
 

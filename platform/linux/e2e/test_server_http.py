@@ -1363,7 +1363,15 @@ class SignOutEverywhere(Base):
         self.assertEqual(self.alive(omar), [200])
         boss = self.login('boss', self.PW)                                          # the password is as it was
         self.assertEqual(boss.req('GET', '/api/me')[1]['user']['role'], 'manager')
-        self.login('tom')
+        # only under /api
+        self.assertNotEqual(boss.req('POST', '/zzz/users/%d/sign-out' % ids['omar'], {})[0], 200)
+        self.assertEqual(self.alive(omar), [200])
+        # with the server stopped the command does it on the store itself
+        tom = self.login('tom')
+        self.proc.terminate(); self.proc.wait(5)
+        self.assertEqual(self.cli('sign-out', '--user', 'tom'),
+                         (0, 'Ended 1 web sign-in of tom. Their password and their devices with the app are unchanged.'))
+        self.assertEqual(self.cli('sign-out', '--user', 'tom')[1].split('.')[0], 'tom was not signed in on the web')
 
 
 class OfflineList(Base):

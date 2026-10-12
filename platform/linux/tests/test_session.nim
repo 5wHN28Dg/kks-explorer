@@ -152,12 +152,13 @@ suite "who may sign whom out, and the server's own command":
     check u["active"].b and u["pw"].isStr and u["pw"].s.len > 0 and s.live(u)
 
   test "kks-server sign-out --user NAME: any account, the manager's too":
+    for uid in [boss["id"].i, sara, omar, ali, tom]: s.endSessions(uid)     # (whatever the test above left)
     let raws = signIn()
     discard s.newSession(tom)
     expect ValueError: discard s.control("sign-out", @[])
     expect ValueError: discard s.control("sign-out", @["nobody-here"])
     check s.control("sign-out", @["TOM"]).startsWith("Ended 2 web sign-ins of tom.")
     check s.control("sign-out", @["tom"]).startsWith("tom was not signed in on the web.")
-    check s.control("sign-out", @["boss"]).startsWith("Ended 2 web sign-ins of boss.")   # (the one of the test above too)
+    check s.control("sign-out", @["boss"]).startsWith("Ended 1 web sign-in of boss.")
     check stillOpen(raws) == @[false, true, true, true, false]
     check s.sessionUser(raws[1]) != nil and s.sessionUser(raws[0]) == nil

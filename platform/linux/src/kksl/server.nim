@@ -1622,7 +1622,7 @@ proc handle(s: Server, req: Request) {.async.} =
     if parts.len == 5 and parts[2] == "signups" and parts[4] in ["approve", "reject"]:
       await s.sendJson(req, 200, s.decideSignup(me, parts[3], parts[4], d))
       return
-    if parts.len == 5 and parts[2] == "users" and parts[4] == "sign-out":
+    if parts.len == 5 and parts[1] == "api" and parts[2] == "users" and parts[4] == "sign-out":
       let uid = try: parseBiggestInt(parts[3]) except ValueError: herr(404, "not found")
       await s.sendJson(req, 200, s.signOutUser(me, uid))
       return

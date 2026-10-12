@@ -31,7 +31,9 @@ const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.u
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
-async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ if(e.status===401){ location.reload(); return null }   // signed out meanwhile: the sign-in screen
+async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){
+  // signed out meanwhile (from another browser, by an admin): the sign-in screen. A wrong password typed into a form here is a 401 too: that one is said
+  if(e.status===401&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return null }
   toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
 
 // Updates is its own tab, not part of Account (the Android app shows updates in its own screens)
