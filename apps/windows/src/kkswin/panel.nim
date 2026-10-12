@@ -38,10 +38,9 @@ var editing = ""      ## the tag whose fields are open for editing
 
 proc afterChange(w: Win, id: string, rebuild = true) =
   ## a change to tag `id` was sent from its panel. The tag has gone with it (rejected, removed): its panel closes,
-  ## emptied (a hidden form with typed text would hold the panel as it is: win.panelHeld), and the drawing loses its
-  ## box at once. Else, with `rebuild`, the panel is made again from the data (the reading that was typed was sent)
+  ## emptied (a hidden form with typed text would hold the panel as it is: win.panelHeld); the drawing follows with
+  ## the reload a moment later. Else, with `rebuild`, the panel is made again from the data (the typed reading was sent)
   w.loadModel()
-  if w.sheet.len > 0: w.v.tags = w.tagBoxes(w.sheet)
   if w.selected != id or w.picking: return
   if not w.m.tagById(id)[0]:
     w.panel.clear()
