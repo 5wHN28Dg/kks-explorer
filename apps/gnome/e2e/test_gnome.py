@@ -109,12 +109,35 @@ class Plant(unittest.TestCase):
     def criticals(self, name):
         """What went wrong inside the app, from its output (start_app's log): GTK's complaints (a call on a widget
         that was freed shows there as a failed assertion, GTK_IS_WIDGET, GTK_IS_BOX …, when it doesn't crash) and the
-        errors the app caught in a handler. One exact message is known and left out: main's app already logs it when
-        a panel is rebuilt (#163)."""
-        known = "gtk_widget_is_ancestor: assertion 'GTK_IS_WIDGET (widget)' failed"
+        errors the app caught in a handler. (Until #163 one message was left out: GTK logged "gtk_widget_is_ancestor:
+        assertion 'GTK_IS_WIDGET (widget)' failed" after every rebuild of a panel that held the focus.)"""
         with open(f'/tmp/kks-gnome-e2e-{name}.log', errors='replace') as f:
-            return [ln.strip() for ln in f
-                    if ('-CRITICAL' in ln and known not in ln) or 'error in a UI callback' in ln]
+            return [ln.strip() for ln in f if '-CRITICAL' in ln or 'error in a UI callback' in ln]
+
+    def press(self, a, button, then):
+        """press a button until what it leads to is there (a press within GTK's 250 ms before a reload is lost)"""
+        for _ in range(5):
+            try:
+                atspi.click(atspi.find(a, 'button', name=button, timeout=8))
+            except AssertionError:
+                pass                 # (the press before did work, late: the button has gone)
+            try:
+                return atspi.find(a, *then, timeout=4)
+            except AssertionError:
+                pass
+        self.fail(f'{button}: never got {then}')
+
+    @staticmethod
+    def typed(a, name):
+        """what the entry of this name holds now; None when there is no such entry on the screen"""
+        rows = atspi.find_all(a, 'text', name=name)
+        if not rows:
+            return None
+        for c in atspi.walk(rows[0]):
+            t = c.get_text_iface()
+            if t is not None:
+                return Atspi.Text.get_text(t, 0, t.get_character_count())
+        return None
 
     def join(self, a, user='boss', password='a long password'):
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
@@ -854,6 +877,9 @@ class Gnome(Plant):
         r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LBA10AA102', 'changes': {'near': 'by the test pump'}}})
         self.assertEqual(r.get('status'), 'approved', r)
         atspi.find(a, 'label', contains='by the test pump', timeout=20)
+        # GTK had nothing to complain about on the way (#163: it logged a failed assertion after each of the rebuilds
+        # above that took the focused button or entry away)
+        self.assertEqual(self.criticals('valve'), [])
 
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a static and an
@@ -1340,7 +1366,272 @@ class Gnome(Plant):
             time.sleep(0.5)
             self.assertIsNone(app.poll(), 'the app died at Done after the procedure\'s page was closed')
             press('P-1  Start the test pump', ('label', 'Open the suction valve'))
+        # #163: link mode ends with its banner, whoever takes the banner. The panel's "Link … to step" button is link
+        # mode as the keyboard sees it (the headless session has no pointer to click a tag with).
+        code = '11LAB70AA501'
+        link = f'Link {code} to step 1 of P-1'
+
+        def select_tag():            # from the sidebar's first page (the search is there)
+            for _ in range(3):
+                if atspi.find_all(a, 'entry', contains='Search equipment'):
+                    break
+                atspi.click(atspi.find(a, 'button', name='Back'))
+                time.sleep(0.7)
+            atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
+            self.press(a, code, ('button', 'Edit'))
+
+        def open_proc():
+            if not atspi.find_all(a, 'button', name='P-1  Start the test pump'):
+                self.press(a, 'Procedures', ('button', 'P-1  Start the test pump'))
+            self.press(a, 'P-1  Start the test pump', ('label', 'Open the suction valve'))
+        def banner_gone(what):       # link mode's banner (the select mode's bar has a Done of its own)
+            for _ in range(30):
+                if not atspi.find_all(a, 'label', contains='to link them to step'):
+                    return
+                time.sleep(0.2)
+            self.fail(what)
+        atspi.click(atspi.find(a, 'button', name='Back'))
+        gone('label', 'Open the suction valve', 'Back did not close the procedure')
+        select_tag()
+        self.assertFalse(atspi.find_all(a, 'button', name=link), 'link mode was still on after Done')
+        open_proc()
+        # link mode starting and ending under an open form: the form stays, the Link button comes and goes beside it
+        self.press(a, 'Edit', ('text', 'Notes'))
+        atspi.set_text(atspi.find(a, 'text', name='Notes'), 'typed before link mode')
+        self.press(a, '+ Link equipment', ('button', link))
+        self.assertEqual(self.typed(a, 'Notes'), 'typed before link mode', 'link mode started: the panel was rebuilt under the open form')
+        atspi.click(atspi.find(a, 'button', name='Done'))
+        gone('button', link, 'Done left the panel\'s Link button (a form is open)')
+        self.assertEqual(self.typed(a, 'Notes'), 'typed before link mode', 'link mode ended: the panel was rebuilt under the open form')
+        self.press(a, 'Cancel', ('button', 'Edit'))
+        # "Select tags" takes the banner down: link mode is over (it stayed on, with no Done to press)
+        self.press(a, '+ Link equipment', ('button', link))
+        mode = atspi.find(a, 'toggle button', name='Select tags')
+        atspi.click(mode)
+        atspi.find(a, 'label', name='0 selected', timeout=10)
+        banner_gone('Select tags left link mode\'s banner up')
+        gone('button', link, 'link mode outlived its banner: Select tags took the banner, the panel still links')
+        atspi.click(mode)
+        time.sleep(1)
+        # the other way round: link mode started while tags are being selected ends that mode
+        atspi.click(mode)
+        atspi.find(a, 'label', name='0 selected', timeout=10)
+        self.press(a, '+ Link equipment', ('button', link))
+        atspi.find(a, 'label', contains='to link them to step', timeout=5)
+        for _ in range(20):
+            if not self.pressed(mode):
+                break
+            time.sleep(0.2)
+        self.assertFalse(self.pressed(mode), 'link mode started with the select mode still on')
+        # "Mark a tag" replaces the banner (and closes the panel): link mode is over
+        atspi.click(atspi.find(a, 'button', name='Mark a tag the app missed'))
+        atspi.find(a, 'button', name='Cancel', timeout=10)
+        banner_gone('Mark a tag left link mode\'s banner up')
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        gone('button', 'Cancel', 'Cancel left the banner up')
+        select_tag()
+        time.sleep(1)
+        self.assertFalse(atspi.find_all(a, 'button', name=link),
+                         'link mode outlived its banner: Mark a tag replaced the banner, the panel still links')
+        # Done after Back and opening the procedure again: the page now on screen shows the link made meanwhile
+        open_proc()
+        self.press(a, '+ Link equipment', ('button', link))
+        atspi.click(atspi.find(a, 'button', name='Back'))
+        gone('label', 'Open the suction valve', 'Back did not close the procedure')
+        time.sleep(0.5)
+        self.press(a, 'P-1  Start the test pump', ('label', 'Open the suction valve'))
+        unlink = f'Unlink {code} from step 1'
+        self.assertFalse(atspi.find_all(a, 'button', name=unlink))
+        atspi.click(atspi.find(a, 'button', name=link))
+        for _ in range(40):
+            if any(l['kks'] == code and l['proc'] == 'P-1' for l in self.boss.req('GET', '/api/state')['links']):
+                break
+            time.sleep(0.5)
+        else:
+            self.fail('the panel\'s Link button linked nothing')
+        atspi.click(atspi.find(a, 'button', name='Done'))
+        gone('button', 'Done', 'Done left the banner up')
+        atspi.find(a, 'button', name=unlink, timeout=5)      # (the page was the one from before: not drawn again)
+        gone('button', link, 'Done left the panel\'s Link button')
+        self.assertIsNone(app.poll(), 'the app died')
         self.assertEqual(self.criticals('linkdone'), [], 'Done worked on widgets that were gone')
+        app.kill()
+        app.wait(10)
+
+    def test_zzzzzzz_form_kept(self):
+        """#163: nothing rebuilds the tag panel under an open form but the form's own Save and Cancel. A photo
+        leaving the queue (KKS_TEST_PHOTO_HOLD names a file: held while it exists) and a photo queued from the panel
+        rebuilt it; a sync round that changed the equipment and another sheet opened already left it alone, and stay
+        that way. What is typed stays, and the parts that must not wait are brought up to date beside the form (the
+        queue's line, the photo, a line saying what changed underneath). (Link mode under a form: test_zzzzzz_link_done.) Save then sends only what was typed, with the values the form was opened on: a field someone
+        else changed meanwhile is not written over (the core holds the change as a clash). The review form ("Check
+        this tag") keeps what is typed in it the same way. (Named to run last: it adds tags and photos.)"""
+        b = self.boss
+        code = '11LAE30AP001'
+        r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [600, 700, 720, 760],
+                                                                       'kks': code, 'isa': '', 'note': ''}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        # (with a floor: the photo is not asked for one)
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'floor': '3'}, 'base': {}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        # a reading the importer was not sure of (as it writes them), published: its panel has the review form and,
+        # since it has a code, the Edit form too
+        doubt = '11LAE32AP001'
+        pd = os.path.join(self.dir, 'plant-data')
+        with open(os.path.join(pd, 'tags.json')) as f:
+            tags = json.load(f)
+        tags.append({'id': 'sample:doubt', 'sheet': 'sample', 'kks': doubt, 'suffix': '', 'isa': None, 'kind': 'equipment',
+                     'status': 'review', 'conf': 0.4, 'bbox': [800, 700, 920, 760], 'read': ['11LAE32', 'AP001']})
+        with open(os.path.join(pd, 'tags.json'), 'w') as f:
+            json.dump(tags, f)
+        r = subprocess.run([SERVER, 'publish-data', pd, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        from PIL import Image
+        pic = os.path.join(self.dir, 'formkept.png')
+        Image.new('RGB', (320, 240), (150, 110, 90)).save(pic)
+        hold = os.path.join(self.dir, 'hold-photos')
+        open(hold, 'w').close()
+        a = self.start_app('formkept', KKS_PHOTO_FILE=pic, KKS_TEST_PHOTO_HOLD=hold, KKS_SYNC_EVERY='2000')
+        app = self.apps[-1]
+        self.join(a)
+
+        def equipment():
+            return b.req('GET', '/api/state')['equipment'].get(code, {})
+
+        def wait_for(what, fn, secs=30):
+            t0 = time.time()
+            while time.time() - t0 < secs:
+                if fn():
+                    return
+                time.sleep(0.3)
+            self.fail(what)
+        def tags_listed():           # the sheet list's count of the sample sheet's tags: what the app has loaded
+            n = [int(m.group(1)) for _, nm in atspi.nodes(a, 'label') for m in [re.match(r'(\d+) tags', nm)] if m]
+            return max(n) if n else -1
+
+        def round_arrives():
+            """the app has synced with the server and reloaded: a tag added there now is counted in its sheet list"""
+            was = tags_listed()
+            round_arrives.n += 1
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'kks': '', 'isa': '', 'note': '',
+                                              'bbox': [100 + 40 * round_arrives.n, 900, 130 + 40 * round_arrives.n, 930]}})
+            self.assertEqual(r.get('status'), 'approved', r)
+            wait_for('the app never showed a tag added on the server', lambda: tags_listed() == was + 1)
+            time.sleep(1)            # (the same reload's panel part is done)
+        round_arrives.n = 0
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
+        self.press(a, code, ('button', 'Edit'))
+        time.sleep(3)                # (the first rounds' data is in)
+
+        def add_photo(caption):
+            atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+            atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), caption)
+            atspi.click(atspi.find(a, 'button', name='Add the photo'))
+            atspi.click(atspi.find(atspi.find(a, 'alert', name='And its tag plate?', timeout=10), 'button', name='Not now'))
+        # 1. a photo leaves the queue while the form is open
+        add_photo('held first')
+        atspi.find(a, 'label', contains='1 photo of this equipment being compressed', timeout=10)
+        self.press(a, 'Edit', ('text', 'Notes'))
+        note = 'typed while the photo waits; ملاحظة'
+        atspi.set_text(atspi.find(a, 'text', name='Notes'), note)
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), note)
+        os.remove(hold)
+        wait_for('the photo was never sent', lambda: any(p['kks'] == code for p in b.req('GET', '/api/state')['photos']))
+        wait_for('the queue\'s line stayed in the panel',
+                 lambda: not atspi.find_all(a, 'label', contains='of this equipment being compressed'), 15)
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), note, 'a photo left the queue: the panel was rebuilt under the open form')
+        atspi.find(a, 'button', name='Open photo: held first', timeout=10)      # shown beside the form
+        # 2. a photo queued from the panel while the form is open (and sent: nothing holds it now)
+        add_photo('while editing')
+        wait_for('the second photo was never sent',
+                 lambda: sum(p['kks'] == code for p in b.req('GET', '/api/state')['photos']) == 2)
+        atspi.find(a, 'button', name='Open photo: while editing', timeout=15)
+        time.sleep(1)                # (the rebuild after a photo is queued is long done)
+        self.assertEqual(self.typed(a, 'Notes'), note, 'a photo was queued: the panel was rebuilt under the open form')
+        # 3. a sync round that changed this equipment (another field), 4. another sheet opened
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'near': 'by the north door'},
+                                                                         'base': {}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        said = atspi.find(a, 'label', contains='Changed since you opened this form', timeout=20)
+        self.assertIn('Near / landmark', said.get_name())
+        self.assertNotIn('Notes', said.get_name())
+        self.assertEqual(self.typed(a, 'Notes'), note, 'a sync changed the equipment: the panel was rebuilt under the open form')
+        atspi.click(atspi.find(a, 'button', name='Second sheet'))
+        round_arrives()
+        self.assertEqual(self.typed(a, 'Notes'), note, 'another sheet was opened: the panel was rebuilt under the open form')
+        self.assertEqual(equipment().get('notes', ''), '', 'nothing was saved yet')
+        # Save: what was typed goes, the field changed underneath stays as the other left it
+        atspi.click(atspi.find(a, 'button', name='Save'))
+        wait_for('Save sent nothing', lambda: equipment().get('notes') == note)
+        self.assertEqual(equipment().get('near'), 'by the north door', 'Save wrote over a field changed underneath')
+        atspi.find(a, 'button', name='Edit', timeout=10)       # the form closed, the panel is drawn again
+        atspi.find(a, 'label', contains='by the north door', timeout=10)
+        # 5. the same field changed underneath and in the form: held as a clash, not written over
+        self.press(a, 'Edit', ('text', 'Near / landmark'))
+        atspi.set_text(atspi.find(a, 'text', name='Near / landmark'), 'typed here')
+        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'near': 'set on the server'},
+                                                                         'base': {'near': 'by the north door'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        said = atspi.find(a, 'label', contains='Changed since you opened this form', timeout=20)
+        self.assertIn('Near / landmark', said.get_name())
+        self.assertEqual(self.typed(a, 'Near / landmark'), 'typed here')
+        atspi.click(atspi.find(a, 'button', name='Save'))
+        atspi.find(a, None, contains='Held: it clashes', timeout=10)
+        round_arrives()              # a change written here would be on the server by now
+        self.assertEqual(equipment().get('near'), 'set on the server', 'Save wrote over a change made underneath')
+        # 6. the review form ("Check this tag") and the Edit form in one panel: neither is lost to the other
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), doubt)
+        self.press(a, doubt, ('text', 'KKS (with suffix)'))
+        time.sleep(3)
+
+        def reviewed():
+            return b.req('GET', '/api/state')['reviews'].get('sample:doubt')
+        self.press(a, 'Edit', ('text', 'Notes'))
+        atspi.set_text(atspi.find(a, 'text', name='Notes'), 'typed under the review form')
+        atspi.click(atspi.find(a, 'button', name='Confirm'))       # (it would send, and rebuild the panel)
+        atspi.find(a, None, contains='Save or cancel your edits first', timeout=10)
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), 'typed under the review form', 'the review form\'s Confirm rebuilt the panel under the Edit form')
+        self.assertIsNone(reviewed(), 'Confirm sent the review with the Edit form open')
+        # the other way: the review form typed in while the Edit form is open, then Cancel (it rebuilds the panel)
+        atspi.set_text(atspi.find(a, 'text', name='KKS (with suffix)', timeout=10), '11LAE31AP001')
+        self.press(a, 'Cancel', ('button', 'Edit'))
+        self.assertEqual(self.typed(a, 'KKS (with suffix)'), '11LAE31AP001', 'the Edit form\'s Cancel put the reader\'s text back in the review form')
+        # what is typed in the review form stays through a sync round that brought a change (the reader's text came back)
+        round_arrives()
+        self.assertEqual(self.typed(a, 'KKS (with suffix)'), '11LAE31AP001', 'a sync round put the reader\'s text back in the review form')
+        atspi.click(atspi.find(a, 'button', name='Edit'))          # (a second form: its Save would rebuild the panel)
+        atspi.find(a, None, contains='Finish checking this tag first', timeout=10)
+        self.assertIsNone(self.typed(a, 'Notes'), 'an Edit form opened over a review form that holds something typed')
+        atspi.click(atspi.find(a, 'button', name='Confirm'))
+        wait_for('Confirm sent nothing', lambda: (reviewed() or {}).get('kks') == '11LAE31AP001')
+        wait_for('the review form stayed after Confirm', lambda: not atspi.find_all(a, 'text', name='KKS (with suffix)'), 10)
+        # 7. the tag itself goes (removed on the server) under an open form: the form stays for what is typed, and
+        # its Save closes the panel (it stayed open for good, each Save sending again)
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
+        time.sleep(1)
+        atspi.click(atspi.find(a, 'button', name=code))
+        atspi.find(a, 'label', contains='set on the server', timeout=10)       # this tag's panel
+        self.press(a, 'Edit', ('text', 'Notes'))
+        atspi.set_text(atspi.find(a, 'text', name='Notes'), 'typed on a tag that then goes')
+        mark = [t for t in b.req('GET', '/api/state')['added_tags'] if t.get('kks') == code]
+        self.assertEqual(len(mark), 1, mark)
+        was = tags_listed()
+        r = b.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': mark[0]['id']}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        wait_for('the app never dropped the removed tag', lambda: tags_listed() == was - 1)
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), 'typed on a tag that then goes', 'the tag was removed: the form went with what was typed')
+        atspi.click(atspi.find(a, 'button', name='Save'))
+        wait_for('Save sent nothing', lambda: equipment().get('notes') == 'typed on a tag that then goes')
+        wait_for('the panel of a tag that has gone stayed open after Save', lambda: not atspi.find_all(a, 'button', name='Save'), 10)
+        self.assertFalse(atspi.find_all(a, 'button', name='Close the panel'), 'the panel of a tag that has gone stayed open')
+        atspi.find(a, None, contains='no longer on the drawing', timeout=5)     # (said, not closed without a word)
+        self.assertIsNone(app.poll(), 'the app died')
+        self.assertEqual(self.criticals('formkept'), [])
         app.kill()
         app.wait(10)
 

@@ -262,7 +262,8 @@ Lessons (don't repeat):
 
 - **Nim:**
   - identifiers ignore case after the first letter (`jbool` clashed with `jBool`);
-  - closures in loops share variables (use `closureScope`);
+  - closures in loops share variables (use `closureScope`); all closures made in one proc share one environment,
+    which lives as long as any of them;
   - an array literal is built in place (`a = [x, a[0]]` reads the overwritten `a[0]`);
   - `gnutls_free` is a macro: call it as `(gnutls_free)(p)`;
   - GnuTLS can't import a bare P-256 scalar (PrivateKey = scalar + point).
@@ -283,6 +284,17 @@ Lessons (don't repeat):
     `shown` for a dialog's answer or the banner's button.
   - A closure kept in one field that clears that field while it runs frees itself (a local copy is only borrowed):
     the banner's action is kept in a second field while it runs.
+  - No reload rebuilds the tag panel under an open form (#163). A button of the panel that sends and then calls
+    `rebuildPanel` first refuses while another form is open (`busy`, `panelEditing`); anything outside the panel
+    calls `reloadPanel`, which under a form brings only the live parts up to date (`panelLive`: photos, link
+    mode's button, the line saying what changed underneath). A new form calls `openForm`.
+  - A button that sends something and closes its dialog is made with `once = true` (a second press before the
+    first one's handler ran sent twice).
+  - `timeout` is for repeating timers (it keeps going after an error); something done once, later, is `after`.
+  - `ui.clear` gives the keyboard focus up before it empties a container (`leaveFocus`; do the same before
+    `gtk_list_box_remove_all`): GTK otherwise moves the focus at the next frame and logs a failed
+    `gtk_widget_is_ancestor` assertion when it lands on a selectable label.
+  - Link mode ends with its banner: another mode that takes or replaces the banner calls `stopLinking` first.
   - The tag panel and the Manage pages are rebuilt only when what they show changed (`panelKey`, `refreshLive`), not
     after every sync round: GTK sends "clicked" 250 ms after a keyboard or accessibility activation, and not at all
     if the button has gone by then (#147: the e2e's presses came in step with the rounds, five lost in a row).

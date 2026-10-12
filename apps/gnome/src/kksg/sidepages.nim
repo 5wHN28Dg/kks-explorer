@@ -87,15 +87,34 @@ proc procedureDetail(w: Win, id: string, box: W) =
             w.procedureDetail(id, box))
           adw_wrap_box_append(wb, chip)
       adw_wrap_box_append(wb, button("+ Link equipment", "flat", proc () =
+        # one mode at a time on the drawing: marking a tag and selecting tags end here, as link mode ends when
+        # they start (stopLinking)
+        if w.v.marking:
+          w.v.marking = false
+          w.v.mark = (0.0, 0.0, 0.0, 0.0)
+          gtk_widget_set_cursor_from_name(w.v.widget, "grab")
+          gtk_widget_queue_draw(w.v.widget)
+        if w.picking and w.pickBtn != nil: gtk_toggle_button_set_active(w.pickBtn, 0)    # (its handler stops the mode)
         w.linkProc = id
         w.linkStep = n
-        let page = hold(box)      # link mode outlives this page (Back keeps it on): Done may come when it is gone
+        # Link mode outlives this page (Back keeps it on), so its end may come when the page is gone, or when the
+        # procedure was opened again on another page: the one on screen now is drawn again (procBox), with the
+        # links made meanwhile. With no procedure open any more, its highlights leave the drawing (the page's
+        # closing left them, for link mode).
+        # (`page`: this page itself, should procBox not be the one on screen: a page whose push was refused.)
+        let page = hold(box)
+        w.linkEnded = proc () =
+          if w.procBox != nil and w.procBox.shown:
+            if w.procBoxId == id: w.procedureDetail(id, w.procBox.w)
+          elif page.shown: w.procedureDetail(id, box)
+          elif w.activeProc.len > 0:      # no procedure open: whichever was opened last, its highlights go
+            w.activeProc = ""
+            w.applyHighlights()
+          w.reloadPanel()         # its Link button goes
         w.setBanner("Click tags on the drawing (or Link in a tag's panel) to link them to step " & $n & " of " & id, "Done", proc () =
-          w.linkProc = ""
-          w.setBanner("", "", nil)
-          if page.shown: w.procedureDetail(id, box)
-          w.rebuildPanel())
-        w.rebuildPanel()))
+          try: w.stopLinking()
+          finally: w.setBanner("", "", nil))
+        w.reloadPanel()))         # its Link button comes
       adw_preferences_group_add(g, wb)
       box.add g
 
@@ -103,6 +122,8 @@ proc procedurePage*(w: Win, id: string): W =
   let box = vbox(12)
   margins(box, 12)
   w.activeProc = id
+  w.procBox = hold(box)
+  w.procBoxId = id
   w.applyHighlights()
   w.procedureDetail(id, box)
   scrolled(box)
