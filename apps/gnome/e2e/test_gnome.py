@@ -906,6 +906,7 @@ class Gnome(Plant):
         inc_shot = shot.replace('.png', '-inc.png')
         if os.path.exists(inc_shot):
             os.remove(inc_shot)
+        time.sleep(1)                  # the page is laid out (SIGUSR2 scrolls nothing before that)
         os.kill(pid, signal.SIGUSR2)
         time.sleep(1.5)
         os.kill(pid, signal.SIGUSR1)

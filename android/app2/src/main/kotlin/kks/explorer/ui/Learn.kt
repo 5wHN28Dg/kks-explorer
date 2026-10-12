@@ -412,7 +412,8 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
         val avail = maxWidth - 16.dp
         val widths = remember(t, avail) {
             val natural = head.indices.map { i ->
-                val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to (if (i in num) numStyle else body) } }
+                // (text cells are measured in bold: a cell may be bold, as every glossary term is, and bold is wider)
+                val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to (if (i in num) numStyle else body.copy(fontWeight = FontWeight.Bold)) } }
                 val px = cells.maxOf { (c, st) -> measurer.measure(plain(c), st, softWrap = false, maxLines = 1).size.width }
                 with(density) { px.toDp() } + pad * 2 + 1.dp
             }
@@ -448,8 +449,8 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
     }
 }
 
-/** where a cell's text may wrap: at a space (not a no-break space), and after a hyphen */
-private val WORD_BREAK = Regex(" |(?<=-)")
+/** where a cell's text may wrap: at a space (not a no-break space), and after a hyphen or a slash */
+private val WORD_BREAK = Regex(" |(?<=[-/])")
 
 /** The widths of a table's columns. `natural`: each column with its widest cell on one line; `narrow`: a number
  *  column at its narrowest (its widest number, or its heading's longest word); `word`: a text column's longest word.
@@ -457,7 +458,8 @@ private val WORD_BREAK = Regex(" |(?<=-)")
  *  - One that doesn't: number columns go to their narrowest, and each text column keeps at least its longest word
  *    and 96 dp, or its natural width when that is less (a column of single letters stays that narrow, and its
  *    neighbours get the room); what is left over is shared in proportion to what each column still lacks.
- *  - When even those least widths don't fit, the table keeps them and scrolls sideways. */
+ *  - When those least widths don't fit but the longest words alone do, the 96 dp is given up and the table fits.
+ *  - When even the longest words don't fit, the table keeps the least widths of the second rule and scrolls sideways. */
 fun tableWidths(natural: List<androidx.compose.ui.unit.Dp>, narrow: List<androidx.compose.ui.unit.Dp>, word: List<androidx.compose.ui.unit.Dp>,
                 num: Set<Int>, avail: androidx.compose.ui.unit.Dp): List<androidx.compose.ui.unit.Dp> {
     fun sum(l: List<androidx.compose.ui.unit.Dp>) = l.fold(0.dp) { x, y -> x + y }
@@ -467,9 +469,11 @@ fun tableWidths(natural: List<androidx.compose.ui.unit.Dp>, narrow: List<android
     if (sum(capped) <= avail) { val extra = (avail - sum(capped)) / text.size; return capped.mapIndexed { i, w -> if (i in num) w else w + extra } }
     capped = capped.mapIndexed { i, w -> if (i in num) narrow[i] else w }
     if (sum(capped) <= avail) { val extra = (avail - sum(capped)) / text.size; return capped.mapIndexed { i, w -> if (i in num) w else w + extra } }
-    val least = capped.mapIndexed { i, w -> if (i in num) w else minOf(w, maxOf(word[i], 96.dp)) }
+    var least = capped.mapIndexed { i, w -> if (i in num) w else minOf(w, maxOf(word[i], 96.dp)) }
+    // 96 dp each is a wish, the longest word a must: when only the wish is in the way, the table still fits
+    if (sum(least) > avail) least = capped.mapIndexed { i, w -> if (i in num) w else minOf(w, word[i]) }
     val spare = avail - sum(least)
-    if (spare <= 0.dp) return least                                        // scrolls sideways
+    if (spare <= 0.dp) return capped.mapIndexed { i, w -> if (i in num) w else minOf(w, maxOf(word[i], 96.dp)) }     // scrolls sideways, with readable columns
     val lack = capped.mapIndexed { i, w -> w - least[i] }
     val lacking = sum(lack)
     return least.mapIndexed { i, w -> if (lacking > 0.dp) w + spare * (lack[i] / lacking) else w }
