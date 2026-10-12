@@ -118,6 +118,11 @@ proc statusText(w: Win): string =
     of "relay": result.add ", last sync through the relay"
     else: discard
 
+proc tagGone(w: Win) =
+  ## the tag whose panel is open is no longer there: the panel closes, and says why
+  w.closePanel()
+  w.toast("This tag is no longer on the drawing")
+
 proc refresh(w: Win) =
   ## the data changed underneath (sync, an approval): reload, keep the open sheet and selection (R20)
   w.loadModel()
@@ -137,7 +142,7 @@ proc refresh(w: Win) =
     elif w.panelKey != w.modelKey:
       let (ok, t) = w.m.tagById(w.selected)
       if ok: w.buildPanel(t)
-      else: w.closePanel()    # the tag has gone
+      else: w.tagGone()
   w.refreshLive()
   w.refreshFollowers()
 
@@ -227,8 +232,8 @@ proc mainScreen(w: Win): W =
       w.loadModel()
       let (ok, t) = w.m.tagById(w.selected)
       if ok: w.buildPanel(t)
-      else: w.closePanel()    # the tag has gone (removed, or decided "not a tag"): a panel left as it was kept its
-                              # form open for good, each Save sending again
+      else: w.tagGone()       # (removed, or decided "not a tag": a panel left as it was kept its form open for
+                              # good, each Save sending again)
   w.reloadPanel = proc () =
     # Every rebuild that is not a form's own Save or Cancel comes here (a photo queued or sent, link mode starting
     # or ending, a change sent from the select mode). Before #163 these rebuilt the panel under an open form: what
@@ -243,6 +248,11 @@ proc mainScreen(w: Win): W =
     adw_overlay_split_view_set_show_sidebar(w.panelSplit, 0)
     w.selected = ""
     w.noForm()
+    # emptied, not only hidden: its buttons would stay in the window, and a press already on its way (a second
+    # Save) would still run its handler on the closed panel's form
+    w.panelPhotos = nil
+    w.panelLink = nil
+    w.panelBox.clear()
     w.v.selected = ""
     w.v.symbolBox = @[]
     gtk_widget_queue_draw(w.v.widget)

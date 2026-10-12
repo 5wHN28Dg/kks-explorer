@@ -74,7 +74,8 @@ proc toast*(w: Win, msg: string) = toast(w.toasts, msg)
 proc formOpen*(w: Win): bool =
   ## Something typed in the tag panel is not saved yet: an Edit form is open (whatever it holds: the person opened
   ## it to type), or the review form's text was changed. No reload rebuilds the panel under it then (#163): only
-  ## the person's own doing does (a form's Save or Cancel, another tag chosen, the panel closed).
+  ## the person's own doing does (a form's Save or Cancel, another tag chosen outside the panel, the panel
+  ## closed).
   w.panelEditing or (w.panelDirty != nil and w.panelDirty())
 
 proc noForm*(w: Win) =

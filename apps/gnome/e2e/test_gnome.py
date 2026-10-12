@@ -1629,6 +1629,7 @@ class Gnome(Plant):
         wait_for('Save sent nothing', lambda: equipment().get('notes') == 'typed on a tag that then goes')
         wait_for('the panel of a tag that has gone stayed open after Save', lambda: not atspi.find_all(a, 'button', name='Save'), 10)
         self.assertFalse(atspi.find_all(a, 'button', name='Close the panel'), 'the panel of a tag that has gone stayed open')
+        atspi.find(a, None, contains='no longer on the drawing', timeout=5)     # (said, not closed without a word)
         self.assertIsNone(app.poll(), 'the app died')
         self.assertEqual(self.criticals('formkept'), [])
         app.kill()
