@@ -986,7 +986,8 @@ class Windows(unittest.TestCase):
         self.check('stale1.uia', self.show(code) + ['wait\tEdit\t20', 'click\tEdit', 'set\tNear / landmark\tbehind pump P1',
                                                     'focus\tDrawings'])
         # a change from elsewhere arrives (the side shows it: the floors in use)
-        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'floor': '9'}}})
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'floor': '9'},
+                                                                              'base': {'floor': '8'}}})
         self.assertEqual(r.get('status'), 'approved', r)
         self.check('stale2.uia', ['wait\tFloor 9\t60', 'value\tNear / landmark\tbehind pump P1', 'sleep\t2500',
                                   'value\tNear / landmark\tbehind pump P1', 'click\tSave', 'gone\tSave'])
