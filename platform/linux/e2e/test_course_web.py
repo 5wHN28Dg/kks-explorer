@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from test_web_v2 import start_server, Client, CSP_WATCH
 
 COURSES = {}
-for cid in ('ppt', 'fnd', 'hrsg'):
+for cid in ('ppt', 'fnd', 'hrsg', 'inc'):
     with open(os.path.join(REPO, 'data', 'courses', cid + '.json'), encoding='utf-8') as f:
         COURSES[cid] = json.load(f)
 
@@ -48,8 +48,8 @@ class CourseWeb(unittest.TestCase):
         c = Client(self.base)
         c.req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'})
         got = c.req('GET', '/api/courses')['courses']
-        self.assertEqual([x['id'] for x in got], ['ppt', 'fnd', 'hrsg'])
-        self.assertEqual([len(x['questions']) for x in got], [70, 76, 67])   # module questions (tests excluded)
+        self.assertEqual([x['id'] for x in got], ['ppt', 'fnd', 'hrsg', 'inc'])
+        self.assertEqual([len(x['questions']) for x in got], [70, 76, 67, 77])   # module questions (tests excluded)
 
     def run_engine(self, name):
         with sync_playwright() as p:
@@ -64,7 +64,7 @@ class CourseWeb(unittest.TestCase):
             page.on('pageerror', lambda e: errors.append(str(e)))
             page.goto(self.base + '/learning.html')
             page.wait_for_selector('a.course')
-            self.assertEqual(page.locator('a.course').count(), 3)
+            self.assertEqual(page.locator('a.course').count(), 4)
             self.assertIn('course.html?c=ppt', page.locator('a.course').first.get_attribute('href'))
             for cid, course in COURSES.items():
                 page.goto(f'{self.base}/course.html?c={cid}')

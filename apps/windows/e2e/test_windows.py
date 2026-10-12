@@ -948,7 +948,7 @@ class Windows(unittest.TestCase):
         # the program's own data next to the exe: data/courses (JSON + JPEG XL) and the course faces
         vm('New-Item -ItemType Directory -Force C:\\kks\\data\\courses, C:\\kks\\vendor\\fonts | Out-Null')
         cdir = os.path.join(REPO, 'data', 'courses')
-        files = [os.path.join(cdir, f) for f in os.listdir(cdir) if f.endswith('.jxl') or f in ('ppt.json', 'fnd.json', 'hrsg.json')]
+        files = [os.path.join(cdir, f) for f in os.listdir(cdir) if f.endswith('.jxl') or f in ('ppt.json', 'fnd.json', 'hrsg.json', 'inc.json')]
         subprocess.run(['scp', '-q'] + SSH + files + ['kks@%s:C:/kks/data/courses/' % VM], check=True, timeout=300)
         fdir = os.path.join(REPO, 'vendor', 'fonts')
         subprocess.run(['scp', '-q'] + SSH + [os.path.join(fdir, f) for f in os.listdir(fdir) if f.endswith('.woff2')] +

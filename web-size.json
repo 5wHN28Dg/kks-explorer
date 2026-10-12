@@ -4,6 +4,10 @@
    "data/courses/fnd-05.jxl": 190232,
    "data/courses/fnd.json": 213231,
    "data/courses/hrsg.json": 219373,
+   "data/courses/inc-01.jxl": 93483,
+   "data/courses/inc-02.jxl": 17703,
+   "data/courses/inc-05.jxl": 127025,
+   "data/courses/inc.json": 228418,
    "data/courses/ppt-01.jxl": 148027,
    "data/courses/ppt-02.jxl": 194452,
    "data/courses/ppt-03.jxl": 153548,
@@ -34,7 +38,7 @@
    "data/courses/ppt.json": 313075,
    "data/kks.json": 2537
   },
-  "total": 5407932
+  "total": 5874561
  },
  "on demand": {
   "files": {

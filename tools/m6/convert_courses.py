@@ -1,12 +1,12 @@
-"""Converts the three HTML courses (data/courses/*.html) to the JSON content model (docs/COURSES.md), decision 0025.
+"""Converts the HTML courses (data/courses/*.html) to the JSON content model (docs/COURSES.md), decision 0025.
 
   /path/to/venv-with-playwright/bin/python tools/m6/convert_courses.py dump RAWDIR
       evaluates each course's script in headless Chromium and writes RAWDIR/<course>.json: the modules with their
       bodies as HTML, the questions, glossary, tests, drills and the static pages as HTML
   /path/to/venv-with-pillow/bin/python tools/m6/convert_courses.py build RAWDIR OUTDIR
       converts the HTML to blocks and runs, the static SVG diagrams to static figures, attaches the 16 animated
-      figures (tools/m6/course_figures.py), writes OUTDIR/courses/<file>.json and the images as .jxl (cjxl), and
-      validates every course with ref/courses.py
+      figures (tools/m6/course_figures.py) and the figures of the fourth course (tools/m6/inc_figures.py), writes
+      OUTDIR/<course>.json and the images as .jxl (cjxl), and validates every course with ref/courses.py
 
 The dump holds the courses' text only; they are public (data/courses is in the repo)."""
 import base64, html, io, json, math, os, re, subprocess, sys, tempfile
@@ -20,6 +20,7 @@ COURSES = [  # (file, id, order)
     ('1-power-plant-technology.html', 'ppt', 1),
     ('2-plant-foundations.html', 'fnd', 2),
     ('3-hrsg-course.html', 'hrsg', 3),
+    ('4-instrumentation-and-control.html', 'inc', 4),
 ]
 
 # ---------------------------------------------------------------- stage 1: dump
@@ -637,13 +638,21 @@ TESTS = {   # the result texts, from each course's renderFinal (pass mark, on_pa
     'hrsg': (lambda n: n,
              '<p>Nothing to revisit. Keep the Reading drill going to hold on to it.</p>',
              ''),
+    'inc': (lambda n: math.ceil(n * 0.85),
+            '<p><b>Done.</b> Keep the vocabulary drill going, and keep the Quick reference at hand on the job.</p>',
+            '<p><b>Not yet.</b> Revisit the modules below, then try again.</p>'),
 }
 
 
 def convert(raw, cid, order, short):
     cv = Conv(cid)
     from course_figures import build as build_figures
+    from inc_figures import build as build_inc_figures
     cv.anim = build_figures()
+    for fid, f in build_inc_figures().items():     # drawn in the model directly; the course text names them
+        if fid in cv.anim:
+            raise Bad('figure id %s is used twice' % fid)
+        cv.anim[fid] = f
     pages, qids = [], set()
     mods = {m['id']: m for m in raw['modules']}
     for m in raw['modules']:
