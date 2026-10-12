@@ -969,6 +969,46 @@ class Windows(unittest.TestCase):
         subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, shot], capture_output=True)
         self.leave()       # leave no device behind for test_flow (it finds this VM's device by its label)
 
+    def test_stale_click(self):
+        """#162. What is typed into the panel's edit form stays when a sync arrives while the keyboard is elsewhere
+        (the panel was rebuilt from the data then, and the text was gone). And a button's handler does nothing when
+        its panel was rebuilt between the click and the handler (KKS_TEST_STALE_CLICK queues that rebuild while its
+        file exists): the old form's Save read its destroyed fields as empty and sent every field as cleared."""
+        code = '11LAB70AA881'
+        self.add_tag(code, [1000, 900, 1120, 960], floor='8')
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'near': 'pump P1'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        flag = 'C:\\kks\\stale.flag'
+        vm('Remove-Item %s -ErrorAction SilentlyContinue' % flag)
+        self.join('stjoin.uia', sync_every=3000, env={'KKS_TEST_STALE_CLICK': flag})
+        eq = lambda: self.boss.req('GET', '/api/state')['equipment'].get(code, {})
+        # typed, then the keyboard leaves the panel (a look at the drawing, another program)
+        self.check('stale1.uia', self.show(code) + ['wait\tEdit\t20', 'click\tEdit', 'set\tNear / landmark\tbehind pump P1',
+                                                    'focus\tDrawings'])
+        # a change from elsewhere arrives (the side shows it: the floors in use)
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'floor': '9'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.check('stale2.uia', ['wait\tFloor 9\t60', 'value\tNear / landmark\tbehind pump P1', 'sleep\t2500',
+                                  'value\tNear / landmark\tbehind pump P1', 'click\tSave', 'gone\tSave'])
+        self.wait_server(lambda: eq().get('near') == 'behind pump P1', 'the typed text never reached the server', tries=80)
+        self.assertEqual(eq().get('floor'), '9')
+        # the panel caught up once the form closed: Edit shows what the sync brought
+        self.check('stale3.uia', ['click\tEdit', 'value\tFloor (0–10)\t9', 'set\tNotes\tnot to be sent'])
+        vm('Set-Content %s 1' % flag, check=True)
+        try:
+            # Save is pressed and its panel rebuilt before the handler runs: nothing is sent, the form now on screen
+            # (made again from the data) stays open
+            self.check('stale4.uia', ['click\tSave', 'sleep\t2000', 'wait\tSave\t5', 'value\tNear / landmark\tbehind pump P1'])
+        finally:
+            vm('Remove-Item %s -ErrorAction SilentlyContinue' % flag)
+        # the form on screen works: its Save sends what it holds
+        self.check('stale5.uia', ['set\tNotes\tsecond save', 'click\tSave', 'gone\tSave'])
+        self.wait_server(lambda: eq().get('notes') == 'second save', 'the second save never reached the server', tries=80)
+        got = eq()
+        self.assertEqual((got.get('floor'), got.get('near'), got.get('notes')), ('9', 'behind pump P1', 'second save'),
+                         'the stale Save sent something: %s' % got)
+        self.leave()
+
     def test_systems_follows_sync(self):
         """Equipment by system follows a sync without a search, but never under the focus. Sync rounds every 3 s, in
         an app of its own: in the main flow such fast rounds rebuild the Manage pages under its clicks."""
