@@ -67,7 +67,7 @@ class CourseFiles(unittest.TestCase):
         def walk(x, name):
             if isinstance(x, dict):
                 im = x.get('image')
-                if isinstance(im, dict) and im['file'].startswith('inc-'):
+                if isinstance(im, dict):
                     credit = json.dumps(im['credit'])
                     self.assertIn('commons.wikimedia.org/wiki/File:', credit, im['file'])
                     self.assertIn('creativecommons.org/', credit, im['file'])
@@ -110,6 +110,7 @@ class Inc(unittest.TestCase):
         self.assertEqual(with_terms, {m['id'] for m in self.modules[1:]})        # every module has its vocabulary
 
     def test_figures_are_the_drawn_ones(self):
+        """a staleness check: the file was built from the figures as tools/m6/inc_figures.py draws them now"""
         import inc_figures
         drawn = inc_figures.build()
         own = {k: v for k, v in self.c['figures'].items() if k in drawn}
@@ -131,7 +132,6 @@ class Inc(unittest.TestCase):
     def test_signal_conversions_in_the_text(self):
         """every "X mA … Y psi / V / %" fact the course states follows the standard conversions"""
         ma = lambda f: 4 + 16 * f
-        self.assertEqual([ma(f) for f in (0, .25, .5, .75, 1)], [4, 8, 12, 16, 20])
         table = next(b['table'] for b in next(p for p in self.c['pages'] if p['id'] == 'ma')['body']
                      if 'table' in b and text(b['table']['head']).startswith('Percent'))
         for row in table['rows']:
@@ -141,16 +141,26 @@ class Inc(unittest.TestCase):
             self.assertAlmostEqual(volt, cur * 0.250)
             self.assertAlmostEqual(psi, 3 + 12 * f)
 
-    def right(self, qid):
+    def question(self, qid):
         for p in self.c['pages']:
             qs = ([p.get('warm')] + p.get('practice', [])) if p['kind'] == 'module' else \
                 [it['q'] for it in p.get('items', []) if 'q' in it]
             for q in qs:
                 if q and q['id'] == qid:
-                    r = [o for o in q['options'] if o['right']]
-                    self.assertEqual(len(r), 1, qid)
-                    return text(r[0]['text'])
+                    return q
         self.fail('no question ' + qid)
+
+    def right(self, qid):
+        r = [o for o in self.question(qid)['options'] if o['right']]
+        self.assertEqual(len(r), 1, qid)
+        return text(r[0]['text'])
+
+    def test_tests_do_not_always_put_the_right_option_first(self):
+        for kind in ('placement', 'test'):
+            page = next(p for p in self.c['pages'] if p['kind'] == kind)
+            where = [[o['right'] for o in it['q']['options']].index(True) for it in page['items']]
+            for pos in (0, 1, 2):
+                self.assertGreaterEqual(where.count(pos), len(where) // 5, f'{kind}: {where}')
 
     def test_worked_numbers(self):
         """the numeric answers, recomputed here from the question's own numbers"""
@@ -188,7 +198,15 @@ class Inc(unittest.TestCase):
         }
         for qid, want in checks.items():
             got = num(self.right(qid))
-            self.assertTrue(math.isclose(got, want, rel_tol=0.05, abs_tol=0.006), f'{qid}: the right option says {got}, computed {want}')
+            tol = 0.05 if qid in ('x1f', 'z19') else 0.01          # the two answers given as "about"
+            self.assertTrue(math.isclose(got, want, rel_tol=tol, abs_tol=0.006), f'{qid}: the right option says {got}, computed {want}')
+            if qid not in ('a1d', 'r1d', 'z9'):                    # no other option may give the same number (z9: the same number in volts)
+                q = self.question(qid)
+                others = [text(o['text']).replace('−', '-') for o in q['options'] if not o['right']]
+                for o in others:
+                    m = re.search(r'-?\d+(?:\.\d+)?', o)
+                    if m:
+                        self.assertFalse(math.isclose(float(m[0]), want, rel_tol=0.01), f'{qid}: a wrong option also says {m[0]}')
 
     def test_every_question_can_be_answered(self):
         ids = set()

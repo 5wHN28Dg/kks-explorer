@@ -310,7 +310,8 @@ def pickup():
             wheel.append([r4(cx + r0 * math.cos(a)), r4(cy + r0 * math.sin(a))])
     V = [('ang', tab('t', lambda t: 360 * t / nt * 3, [0, 1]))]      # three tooth pitches per loop: seamless
     s = [G([POLY(wheel, closed=True, fill='sunk', stroke='ink', sw=2), C(cx, cy, 16, fill='surface', stroke='ink', sw=1.5),
-            LN(cx, cy - 16, cx, cy - r0 + 8, stroke='muted', sw=1)], tf=[{'rotate': ['ang', cx, cy]}]),
+            *[LN(cx, cy - 16, cx, cy - r0 + 8, stroke='muted', sw=1, tf=[{'rotate': [q, cx, cy]}]) for q in (0, 90, 180, 270)]],
+           tf=[{'rotate': ['ang', cx, cy]}]),   # four marks: the picture repeats every quarter turn
          R(254, 138, 70, 24, rx=3, fill='surface', stroke='ink', sw=2), R(250, 143, 8, 14, fill='ink'),
          PATH([['M', 324, 150], ['C', 350, 150, 350, 120, 380, 120]], stroke='ink', sw=2),
          LAB('Pickup', 290, 138, 300, 100), LAB('Gap, about 1 mm', 248, 164, 256, 200),
@@ -371,7 +372,7 @@ def ipconv():
         T('Output, psi', 20, 54, size=11.5, fill='muted'),
         T('Supply air, 20 psi', 606, 318, 'end', 11.5, fill='muted'), T('To the valve', 48, 318, size=11.5, fill='muted'),
         G([LAB('Nozzle', 508, 130, 540, 60), LAB('Flapper', 400, 168, 380, 130), LAB('Pivot', 326, 198, 340, 226),
-           LAB('Coil', 202, 200, 232, 150, None), LAB('Feedback bellows', 106, 214, 150, 120),
+           LAB('Coil', 202, 200, 232, 150), LAB('Feedback bellows', 106, 214, 150, 120),
            LAB('Restriction', 572, 266, 474, 258)])]
     put('ipconv', 640, 330, 'Diagram of an I/P converter. A flapper beam on a pivot has a coil and a feedback bellows under '
         'its left end and a nozzle above its right end. Supply air reaches the nozzle through a restriction; the pressure '
