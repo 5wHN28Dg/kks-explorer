@@ -39,7 +39,7 @@ proc follow(cw: CW, uri: string): bool =
   ## our links; https ones return false so GTK opens them in the browser
   if uri.startsWith("page:"):
     let id = uri[5 .. ^1]
-    idle(proc () = cw.show(id))
+    idleFor(cw.pageBox, proc () = cw.show(id))    # (not once the window is closed: its widgets are freed, #163)
     return true
   if uri.startsWith("course:"):
     let rest = uri[7 .. ^1]

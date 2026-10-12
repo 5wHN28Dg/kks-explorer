@@ -33,9 +33,15 @@ proc onClick*(b: W, fn: proc ()) =
   ## A handler whose button has left the window by then is not run (idleFor, #160): the panel or list it was in was
   ## rebuilt in between, and the handler would hide and read the freed widgets of the old one, or send what the old
   ## one showed.
+  ## A second press that comes before the first one's handler has run is the same press as far as the person can
+  ## tell (the screen has not answered yet), and is dropped: both handlers would run, the second on what the first
+  ## left, and "Add the photo" or "Propose", which close their dialog, sent their photo or tag twice (#163).
+  var waiting = false
   b.on("clicked", proc () =
+    if waiting: return
+    waiting = true
     if beforeClickHandler != nil: idle(beforeClickHandler)
-    idleFor(b, fn))
+    idleFor(b, fn, proc () = waiting = false))
 
 proc button*(text: string, css = "", fn: proc () = nil): W =
   result = gtk_button_new_with_label(text.cstring)

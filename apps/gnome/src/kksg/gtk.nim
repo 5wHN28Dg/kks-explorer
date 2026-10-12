@@ -23,10 +23,10 @@ proc g_signal_handler_disconnect*(inst: W, id: culong) {.importc, header: HA.}
 proc g_object_ref*(o: W): W {.importc, header: HA, discardable.}
 proc g_object_unref*(o: W) {.importc, header: HA.}
 proc g_object_ref_sink*(o: W): W {.importc, header: HA, discardable.}
-proc g_timeout_add(ms: cuint, fn: pointer, data: pointer): cuint {.importc, header: HA.}
-proc g_idle_add(fn: pointer, data: pointer): cuint {.importc, header: HA.}
+proc g_timeout_add_full(priority: cint, ms: cuint, fn, data, destroy: pointer): cuint {.importc, header: HA.}
+proc g_idle_add_full(priority: cint, fn, data, destroy: pointer): cuint {.importc, header: HA.}
 proc g_source_remove*(id: cuint): cint {.importc, header: HA, discardable.}
-proc g_unix_fd_add(fd: cint, cond: cint, fn: pointer, data: pointer): cuint {.importc, header: "<glib-unix.h>".}
+proc g_unix_fd_add_full(priority: cint, fd: cint, cond: cint, fn, data, destroy: pointer): cuint {.importc, header: "<glib-unix.h>".}
 proc g_error_free*(e: ptr GError) {.importc, header: HA.}
 proc g_free*(p: pointer) {.importc, header: HA.}
 proc g_bytes_new*(data: pointer, size: csize_t): W {.importc, header: HA.}
@@ -125,28 +125,44 @@ proc onKey*(inst: W, fn: proc (keyval, state: cuint): bool): culong {.discardabl
 proc onScale*(inst: W, fn: proc (scale: float)): culong {.discardable.} =
   connect(inst, "scale-changed", cast[pointer](trampScale), Env(fnDD: proc (a, b: float) = fn(a)))
 
+proc srcDestroy(data: pointer) {.cdecl.} =
+  ## GLib calls this when a timer, an idle callback or a watch has ended (it returned false, or was removed): its
+  ## closure, and everything the closure holds, is released then. Before, they were kept for ever (#163): a little
+  ## for every button press and every sync round.
+  GC_unref(cast[Env](data))
+
 proc timeout*(ms: int, fn: proc (): bool): cuint {.discardable.} =
-  ## fn returns true to keep running
+  ## A repeating timer: fn returns true to keep running, and it keeps running after an error too (trampBoolSrc).
+  ## For something done once, later: `after`.
   let e = Env(fnB: fn)
   GC_ref(e)
-  g_timeout_add(cuint(ms), cast[pointer](trampBoolSrc), cast[pointer](e))
-proc idle*(fn: proc ()): cuint {.discardable.} =
-  ## fn runs once, also when it fails: a Defect that got past here left the source in place (trampBoolSrc keeps a
-  ## timer going after an error), and fn ran again and again
-  let e = Env(fnB: proc (): bool =
+  g_timeout_add_full(0, cuint(ms), cast[pointer](trampBoolSrc), cast[pointer](e), cast[pointer](srcDestroy))
+proc once(fn: proc ()): Env =
+  ## fn runs once, also when it fails: with trampBoolSrc alone, a source whose callback raises stays (right for a
+  ## repeating timer), and a one-shot ran again and again
+  Env(fnB: proc (): bool =
     try: fn()
     except CatchableError as e: report(e)
     except Defect as e: report(e)
     false)
+proc after*(ms: int, fn: proc ()): cuint {.discardable.} =
+  ## fn runs once, `ms` from now, also when it fails. (As `timeout` with a callback that returns false, the reload
+  ## after a change came back every 300 ms for good once it had raised, and each later change added another: #163.)
+  let e = once(fn)
   GC_ref(e)
-  g_idle_add(cast[pointer](trampBoolSrc), cast[pointer](e))
+  g_timeout_add_full(0, cuint(ms), cast[pointer](trampBoolSrc), cast[pointer](e), cast[pointer](srcDestroy))
+proc idle*(fn: proc ()): cuint {.discardable.} =
+  ## fn runs once, when the main loop has nothing more urgent, also when it fails
+  let e = once(fn)
+  GC_ref(e)
+  g_idle_add_full(200, cast[pointer](trampBoolSrc), cast[pointer](e), cast[pointer](srcDestroy))   # G_PRIORITY_DEFAULT_IDLE
 proc trampFd(fd: cint, cond: cint, data: pointer): cint {.cdecl.} =
   result = 1
   guard: result = cint(cast[Env](data).fnB())
 proc watchFd*(fd: int, fn: proc (): bool): cuint {.discardable.} =
   let e = Env(fnB: fn)
   GC_ref(e)
-  g_unix_fd_add(cint(fd), G_IO_IN, cast[pointer](trampFd), cast[pointer](e))
+  g_unix_fd_add_full(0, cint(fd), G_IO_IN, cast[pointer](trampFd), cast[pointer](e), cast[pointer](srcDestroy))
 
 # ---------------------------------------------------------------- libadwaita
 
@@ -298,16 +314,18 @@ proc gtk_widget_get_width*(w: W): cint {.importc, header: HA.}
 proc gtk_widget_get_height*(w: W): cint {.importc, header: HA.}
 proc gtk_widget_get_root*(w: W): W {.importc, header: HA.}
 proc gtk_widget_get_mapped*(w: W): cint {.importc, header: HA.}
-proc idleFor*(wd: W, fn: proc ()): cuint {.discardable.} =
+proc idleFor*(wd: W, fn: proc (), always: proc () = nil): cuint {.discardable.} =
   ## As `idle`, for work that belongs to a widget: fn runs only if `wd` is still in a window by then. Timers run
   ## before an idle callback, and one of them (the reload after a sync, a photo leaving the queue) can replace the
   ## part of the screen `wd` was in. fn's closure holds the widgets and the data of the part that was there when it
   ## was queued: those widgets are freed by then, and what fn meant to do was about what the person saw, not about
   ## what replaced it. So it does nothing (#160). A reference keeps `wd` itself alive until then.
+  ## `always`, if given, runs first whether `wd` is still there or not.
   g_object_ref(wd)
   idle(proc () =
     let there = gtk_widget_get_root(wd) != nil
     g_object_unref(wd)
+    if always != nil: always()
     if there: fn())
 
 type Held* = ref object

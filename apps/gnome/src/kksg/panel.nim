@@ -29,6 +29,56 @@ proc normKks(s: string): string =
   for c in s.toUpperAscii:
     if c notin Whitespace: result.add c
 
+const Fields = [("area", "Building / area"), ("floor", "Floor"), ("elev", "Elevation"), ("near", "Near / landmark"),
+                ("loc", "How to find it"), ("notes", "Notes")]
+
+proc busy(w: Win): bool =
+  ## Something typed in the panel is not saved yet (and it is said): what was pressed would rebuild the panel and
+  ## lose it, or open a second form over it. One form at a time.
+  if w.panelEditing:
+    w.toast("Save or cancel your edits first")
+    return true
+  if w.formOpen:
+    w.toast("Finish checking this tag first (Confirm or Not a tag)")
+    return true
+
+proc customOf(e: JNode): seq[(string, string)] =
+  if e != nil and e.kind == jObj and e.get("custom") != nil and e["custom"].kind == jArr:
+    for c in e["custom"].elems: result.add((s(c, "k"), s(c, "v")))
+
+proc formCheck(w: Win) =
+  ## Under an open form: has its equipment changed since the panel was built (a sync, a change sent from another
+  ## screen)? The form stays as it is, with what is typed in it, and says which fields changed. Its Save or Send
+  ## names the values the person saw as the base of each field it changes, so the core holds a change to a field
+  ## that was changed underneath as a clash (api.nim `plan`) and never overwrites it; fields the person left alone
+  ## are not sent at all. That rule is the core's and is unchanged: this line only says so before the press.
+  if not w.panelEditing or w.formNote == nil: return
+  let now = w.m.equipment(w.formKks)
+  var changed: seq[string]
+  for (f, title) in Fields:
+    if s(now, f) != s(w.formSeen, f): changed.add title
+  if customOf(now) != customOf(w.formSeen): changed.add "custom fields"
+  let text = if changed.len == 0: ""
+             else: "Changed since you opened this form: " & changed.join(", ") & ". Only what you change here is " &
+                   "sent; if that includes one of these, your change is held as a clash (see Approvals), not " &
+                   "written over the other."
+  if text == w.formSaid: return
+  w.formSaid = text
+  gtk_label_set_text(w.formNote, text.cstring)
+  gtk_widget_set_visible(w.formNote, cint(text.len > 0))
+  if text.len > 0: gtk_accessible_announce(w.formNote, text.cstring, 1)    # said without moving the focus
+
+proc openForm(w: Win, g: W, kks: string, seen: JNode) =
+  ## a form opens in group `g` of the panel, on the equipment values `seen` (what the panel was built from)
+  w.panelEditing = true
+  w.formKks = kks
+  w.formSeen = seen
+  w.formSaid = ""
+  w.formNote = label("", "warning")
+  gtk_widget_set_visible(w.formNote, 0)
+  adw_preferences_group_add(g, w.formNote)
+  w.formCheck()            # (the model can be newer than the panel already)
+
 proc reviewSection(w: Win, t: Tag): W =
   let sug = t.suggestion
   let sugNote = s(sug, "note")
@@ -37,8 +87,13 @@ proc reviewSection(w: Win, t: Tag): W =
                  (if sugNote.len > 0: " " & sugNote else: ""))
   let sugK = s(sug, "kks")
   let sugI = s(sug, "isa")
-  let k = entryRow("KKS (with suffix)", if sugK.len > 0: sugK else: t.full)
-  let isa = entryRow("Function letters (instruments)", if sugI.len > 0: sugI else: t.isa)
+  let k0 = if sugK.len > 0: sugK else: t.full
+  let isa0 = if sugI.len > 0: sugI else: t.isa
+  let k = entryRow("KKS (with suffix)", k0)
+  let isa = entryRow("Function letters (instruments)", isa0)
+  # this form is always open: once something is typed in it, the panel is not rebuilt under it (formOpen), as
+  # under an Edit form. Before #163 every sync round that brought a change put the reader's text back.
+  w.panelDirty = proc (): bool = text(k) != k0 or text(isa) != isa0
   adw_preferences_group_add(result, k)
   adw_preferences_group_add(result, isa)
   let btns = hbox(8)
@@ -56,14 +111,13 @@ proc reviewSection(w: Win, t: Tag): W =
     let isaV = text(isa).strip.toUpperAscii
     let data = newObj(@[("status", newStr("confirmed")), ("kks", newStr(code[0 ..< 12])), ("suffix", newStr(code[12 .. ^1])),
                         ("isa", if isaV.len > 0: newStr(isaV) else: newNull())])
-    discard w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", data), ("base", base)]), code))
+    if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", data), ("base", base)]), code).len > 0:
+      w.rebuildPanel())      # (what is typed is sent: the reload would leave the panel alone while it differs)
   btns.add button("Not a tag", "", proc () =
-    discard w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
-                                       ("base", base)]), "not a tag"))
+    if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
+                                  ("base", base)]), "not a tag").len > 0:
+      w.rebuildPanel())
   adw_preferences_group_add(result, btns)
-
-const Fields = [("area", "Building / area"), ("floor", "Floor"), ("elev", "Elevation"), ("near", "Near / landmark"),
-                ("loc", "How to find it"), ("notes", "Notes")]
 
 proc equipmentSection(w: Win, t: Tag): W =
   ## read-only rows; Edit turns them into entries (no accidental edits), Save sends only what changed, each field
@@ -95,10 +149,8 @@ proc equipmentSection(w: Win, t: Tag): W =
   let edit = button("Edit", "flat")
   adw_preferences_group_set_header_suffix(g, edit)
   edit.onClick(proc () =
-    if w.panelEditing:     # another form is open (a valve type, a description): one at a time, a save rebuilds the panel
-      w.toast("Save or cancel your edits first")
-      return
-    w.panelEditing = true
+    if w.busy: return      # another form is open (a valve type, a description): one at a time, a save rebuilds the panel
+    w.openForm(g, k, live)
     gtk_widget_set_visible(edit, 0)
     for r in shown & customRows: gtk_widget_set_visible(r, 0)
     var entries: seq[(string, W)]
@@ -162,6 +214,7 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
   ## the valve type (core tagView's valve_type): read from the drawn symbol, unchecked, with Confirm (the core's
   ## proposal as it is) and Correct (the same proposal with the person's value); or the confirmed type
   let k = t.full
+  let live = w.m.equipment(k)
   let line = label(s(vt, "line"), selectable = true)
   if s(vt, "status") == "confirmed":
     result = group("Valve type", if vt.get("drawn_differs") != nil and vt["drawn_differs"].kind == jBool and
@@ -193,18 +246,14 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
   gtk_widget_set_margin_top(btns, 8)
   # labelled by their own text (a GtkButton's label wins over an accessible label): distinct from the review's Confirm
   let ok = button("Confirm type", "suggested-action", proc () =
-    if w.panelEditing:     # another form is open: sending would rebuild the panel and lose what is typed there
-      w.toast("Save or cancel your edits first")
-      return
+    if w.busy: return      # another form is open: sending would rebuild the panel and lose what is typed there
     if w.submit(c["kind"].s, c["payload"], k & " valve type: " & text0).len > 0: w.rebuildPanel())
   let fix = button("Correct type", "")
   btns.add ok, fix
   adw_preferences_group_add(g, btns)
   fix.onClick(proc () =
-    if w.panelEditing:
-      w.toast("Save or cancel your edits first")
-      return
-    w.panelEditing = true
+    if w.busy: return
+    w.openForm(g, k, live)
     gtk_widget_set_visible(btns, 0)
     let e = entryRow("Valve type", text0)
     adw_preferences_group_add(g, e)
@@ -232,6 +281,7 @@ proc descriptionSection(w: Win, t: Tag): W =
   let d = tagView(w.m, t.id).get("description")
   if d == nil or d.kind != jObj: return nil
   let k = t.full
+  let live = w.m.equipment(k)
   if s(d, "status") == "confirmed":
     result = group("Description")
     let who = (if s(d, "by_name").len > 0: "Confirmed by " & s(d, "by_name") else: "Confirmed") &
@@ -259,9 +309,7 @@ proc descriptionSection(w: Win, t: Tag): W =
   gtk_widget_set_margin_top(btns, 8)
   let confirmB = button("Confirm description", "suggested-action", proc () =
     if conf == nil: return
-    if w.panelEditing:     # another form is open: sending would rebuild the panel and lose what is typed there
-      w.toast("Save or cancel your edits first")
-      return
+    if w.busy: return      # another form is open: sending would rebuild the panel and lose what is typed there
     if w.submit(s(conf, "kind"), conf["payload"], "description of " & k).len > 0: w.rebuildPanel())
   setAccessibleDescription(confirmB, "Sends the drafted description of " & k & " as it is")
   btns.add confirmB
@@ -270,10 +318,8 @@ proc descriptionSection(w: Win, t: Tag): W =
   btns.add editB
   adw_preferences_group_add(g, btns)
   editB.onClick(proc () =
-    if w.panelEditing:
-      w.toast("Save or cancel your edits first")
-      return
-    w.panelEditing = true   # a sync round doesn't rebuild the panel under it (kks_explorer refresh)
+    if w.busy: return
+    w.openForm(g, k, live)  # nothing rebuilds the panel under it (formOpen)
     gtk_widget_set_visible(btns, 0)
     let e = entryRow("Description", s(d, "text"))
     adw_preferences_group_add(g, e)
@@ -294,13 +340,49 @@ proc descriptionSection(w: Win, t: Tag): W =
     b2.add button("Cancel", "", proc () = w.rebuildPanel())
     adw_preferences_group_add(g, b2))
 
+proc linkNow(w: Win): string =
+  ## what link mode's button in the panel says ("" for none)
+  if w.linkProc.len > 0 and w.panelCode.len > 0: w.linkProc & "\x1f" & $w.linkStep else: ""
+
+proc fillLink(w: Win) =
+  ## link mode (R7), reachable without a pointer: a button linking the panel's code to the step
+  w.panelLink.clear()
+  w.linkKey = w.linkNow
+  gtk_widget_set_visible(w.panelLink, cint(w.linkKey.len > 0))      # (an empty box would still take its spacing)
+  if w.linkKey.len == 0: return
+  let k = w.panelCode
+  let lp = w.linkProc
+  let ls = w.linkStep
+  w.panelLink.add button("Link " & k & " to step " & $ls & " of " & lp, "suggested-action", proc () =
+    discard w.submit("link", newObj(@[("proc", newStr(lp)), ("step", newInt(ls)), ("kks", newStr(k)),
+                     ("on", newBool(true))]), k & " → step " & $ls)
+    w.loadModel()
+    w.applyHighlights())
+
+proc fillPhotos(w: Win) =
+  w.panelPhotos.clear()
+  w.photosKey = w.photoKey(w.panelCode)
+  w.panelPhotos.add w.photoSection(w.panelCode)
+
+proc panelLive*(w: Win) =
+  ## Under an open form the panel is not rebuilt (#163: what is typed would be lost, and a Save pressed at that
+  ## moment dropped). What must not wait for the form to close is brought up to date here, each in its own box and
+  ## only when what it shows changed, without touching the form: the photos with the queue's line (a photo queued,
+  ## sent, or arrived by sync), link mode's button, and the form's own line about changes underneath.
+  if w.panelLink != nil and w.linkNow != w.linkKey: w.fillLink()
+  if w.panelPhotos != nil and w.photoKey(w.panelCode) != w.photosKey: w.fillPhotos()
+  w.formCheck()
+
 proc buildPanel*(w: Win, t: Tag) =
-  w.panelEditing = false
+  w.noForm()
+  w.panelPhotos = nil     # (freed with the rest by clear)
+  w.panelLink = nil
   let key = w.modelKey
   w.panelKey = ""         # current only once it is built whole: a section that raised is tried again at the next reload
   w.panelBox.clear()
   let m = w.m
   let k = t.full
+  w.panelCode = k
   let head = vbox(2)
   head.add label(if k.len > 0: k else: "Unread tag", "title-2", selectable = true)
   head.add label((if t.isa.len > 0: t.isa & " · " else: "") & m.kindName(t), "dim-label")
@@ -314,14 +396,9 @@ proc buildPanel*(w: Win, t: Tag) =
        (sub["kind"].s == "review" and s(p, "tag_id") == t.id):
       mine.add sub["kind"].s & (if sub["status"].s == "conflict": " (held: clashes)" else: " (waiting for approval)")
   if mine.len > 0: w.panelBox.add label("Your pending changes: " & mine.join(", "), "dim-label")
-  if w.linkProc.len > 0 and k.len > 0:   # link mode (R7), reachable without a pointer
-    let lp = w.linkProc
-    let ls = w.linkStep
-    w.panelBox.add button("Link " & k & " to step " & $ls & " of " & lp, "suggested-action", proc () =
-      discard w.submit("link", newObj(@[("proc", newStr(lp)), ("step", newInt(ls)), ("kks", newStr(k)),
-                       ("on", newBool(true))]), k & " → step " & $ls)
-      w.loadModel()
-      w.applyHighlights())
+  w.panelLink = vbox(0)
+  w.panelBox.add w.panelLink
+  w.fillLink()
   if t.status == "review": w.panelBox.add w.reviewSection(t)
   let (ok, d) = m.decode(t)
   if ok:
@@ -401,5 +478,7 @@ proc buildPanel*(w: Win, t: Tag) =
   let desc = w.descriptionSection(t)
   if desc != nil: w.panelBox.add desc
   w.panelBox.add w.equipmentSection(t)
-  w.panelBox.add w.photoSection(k)
+  w.panelPhotos = vbox(0)
+  w.panelBox.add w.panelPhotos
+  w.fillPhotos()
   w.panelKey = key

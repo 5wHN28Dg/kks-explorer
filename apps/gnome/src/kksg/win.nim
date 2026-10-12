@@ -33,12 +33,29 @@ type Win* = ref object
   bannerRunning*: proc ()      ## the banner's action while it runs (kks_explorer.nim)
   sheet*: string
   selected*: string
-  panelEditing*: bool          ## the panel has an open form (Edit, a valve type's Correct): a sync doesn't rebuild it
+  panelEditing*: bool          ## the panel has an open form (Edit, a valve type's Correct): nothing rebuilds the
+                               ## panel under it but the form's own Save and Cancel (formOpen, reloadPanel)
+  panelDirty*: proc (): bool   ## the panel's review form ("Check this tag", always open) holds something typed
+  formKks*: string             ## the open form's code, and what its equipment held when the panel was built
+  formSeen*: JNode             ## (the values the form's Save names as the ones the person saw)
+  formNote*: W                 ## the open form's line saying what changed underneath; in the panel (not held)
+  formSaid*: string            ## what that line last said
+  panelCode*: string           ## the code the panel was built for
+  panelPhotos*, panelLink*: W  ## the parts of the panel kept up to date under an open form: the photo section,
+                               ## link mode's button (their boxes, in the panel: not held)
+  photosKey*, linkKey*: string ## what those two show (rebuilt only when it changed)
+  linkEnded*: proc ()          ## link mode's own ending (the page to draw again); run by stopLinking
+  procBox*: Held               ## the procedure page last opened, and its procedure
+  procBoxId*: string
   reloadQueued*: bool
   sheetsKey*: string           ## what the sheet list's rows say (fillSheets): rebuilt only when that changed
   showSheet*: proc (id: string)
   selectTag*: proc (id: string, center: bool)
-  rebuildPanel*: proc ()
+  rebuildPanel*: proc ()       ## the panel again from the data as it is now, whatever is open in it: for a form's
+                               ## own Save and Cancel (and the tests' forced rebuild)
+  reloadPanel*: proc ()        ## something the panel shows changed (a photo queued or sent, link mode, a change
+                               ## sent from another screen): rebuilt now, or, under an open form, only its live
+                               ## parts now and the rest when the form closes
   closePanel*: proc ()
   openProc*: proc (id: string)
   followers*: seq[Follower]    ## open sidebar pages that follow the plant's data (follow)
@@ -50,6 +67,29 @@ type Win* = ref object
                                ## shows changed (the sheet on screen, the photo queue): the next reload rebuilds it
 
 proc toast*(w: Win, msg: string) = toast(w.toasts, msg)
+
+proc formOpen*(w: Win): bool =
+  ## Something typed in the tag panel is not saved yet: an Edit form is open (whatever it holds: the person opened
+  ## it to type), or the review form's text was changed. The panel is then never rebuilt under it (#163).
+  w.panelEditing or (w.panelDirty != nil and w.panelDirty())
+
+proc noForm*(w: Win) =
+  ## the panel has no form any more (it is being rebuilt, or was closed)
+  w.panelEditing = false
+  w.panelDirty = nil
+  w.formKks = ""
+  w.formSeen = nil
+  w.formNote = nil
+  w.formSaid = ""
+
+proc stopLinking*(w: Win) =
+  ## Link mode ends: by Done, or because something else took its banner (Select tags, Mark a tag). Before #163 those
+  ## two left it on without a Done to press: every click on a tag still linked it to the step.
+  if w.linkProc.len == 0: return
+  w.linkProc = ""
+  if w.linkEnded != nil:
+    w.linkEnded()            # (it does not clear the field itself: a closure that did would free itself)
+    w.linkEnded = nil
 
 proc fileOr*(w: Win, path: string, dflt: string): string =
   let (ok, data) = w.a.file(path)

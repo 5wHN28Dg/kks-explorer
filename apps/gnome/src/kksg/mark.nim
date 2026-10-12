@@ -57,6 +57,7 @@ proc markDialog*(w: Win, x0, y0, x1, y1: float) =
 
 proc startMarking*(w: Win) =
   w.v.marking = true
+  w.stopLinking()         # the banner replaced below may be link mode's: the mode ends with it (#163)
   w.closePanel()
   w.setBanner("Drag a box around the tag the app missed", "Cancel", proc () =
     w.v.marking = false
