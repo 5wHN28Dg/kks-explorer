@@ -1008,6 +1008,21 @@ class Windows(unittest.TestCase):
         got = eq()
         self.assertEqual((got.get('floor'), got.get('near'), got.get('notes')), ('9', 'behind pump P1', 'second save'),
                          'the stale Save sent something: %s' % got)
+        # the value on the server changed while the form held typed text for the same field: Save does not replace it.
+        # The core holds the change as a clash (its base is what the form showed), to be decided under Approvals
+        self.check('stale7.uia', ['click\tEdit', 'set\tHow to find it\tfrom the app', 'focus\tDrawings'])
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {
+            'kks': code, 'changes': {'loc': 'from the server', 'floor': '6'}, 'base': {'loc': '', 'floor': '9'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.check('stale8.uia', ['wait\tFloor 6\t60', 'value\tHow to find it\tfrom the app', 'click\tSave',
+                                  'wait\t~Held: it clashes\t20', 'gone\tSave'])
+        def held():
+            return [x for x in self.boss.req('GET', '/api/submissions?status=conflict')['submissions']
+                    if x['kind'] == 'equipment' and x['payload'].get('kks') == code]
+        h = self.wait_server(held, 'the clashing change never reached the server', tries=80)
+        self.assertEqual((len(h), h[0]['payload']['changes']), (1, {'loc': 'from the app'}), h)
+        self.assertEqual(eq().get('loc'), 'from the server')
+        self.boss.req('POST', '/api/submissions/%s/reject' % h[0]['id'], {})
         # a reading corrected and confirmed: the panel, held as it is while the typed code was in its field, is made
         # again once the code was sent (no "Check this tag" left to confirm a second time)
         r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 1100, 1120, 1160],

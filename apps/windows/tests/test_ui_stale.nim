@@ -10,6 +10,7 @@ import kkswin/[w32, ui]
 const H = "<windows.h>"
 proc GetDlgCtrlID(h: HWND): int32 {.importc, stdcall, header: H.}
 proc SetForegroundWindow(h: HWND): BOOL {.importc, stdcall, header: H, discardable.}
+proc GetQueueStatus(flags: UINT): DWORD {.importc, stdcall, header: H.}
 const
   WM_SETTEXT = 0x000C'u32
   BM_CLICK = 0x00F5'u32
@@ -135,15 +136,28 @@ suite "the order of events between a click and its handler":
     fresh()
     var th: Thread[HWND]
     createThread(th, sender, main)
-    sleep(200)                              # it waits in SendMessage: this thread has not looked at its queue yet
+    # it waits in SendMessage: this thread has not looked at its queue yet (QS_SENDMESSAGE says one is waiting)
+    var waiting = false
+    for _ in 0 ..< 500:
+      if (GetQueueStatus(0x0040) shr 16) != 0:
+        waiting = true
+        break
+      sleep(10)
+    require waiting
     check order.len == 0
     press(saveBtn)                          # the click: its handler is queued behind a posted message
     check saved.len == 0
     onPosted = nil
     var msg: MSG
-    # the next message the loop gets is the queued handler's, but the sent message is delivered first
-    check PeekMessageW(addr msg, nil, 0, 0, PM_REMOVE) != 0
-    check msg.message == WM_KKS_LATER
+    # the loop asks for the queued handler's message: the sent message is delivered before it is handed out
+    var got = false
+    for _ in 0 ..< 100:
+      if PeekMessageW(addr msg, nil, 0, 0, PM_REMOVE) == 0: break
+      if msg.message == WM_KKS_LATER:
+        got = true
+        break
+      DispatchMessageW(addr msg)            # (anything else the system posted)
+    require got
     check order == @["sent"]
     check saved.len == 0
     DispatchMessageW(addr msg)
