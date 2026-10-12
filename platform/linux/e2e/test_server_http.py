@@ -1363,8 +1363,8 @@ class SignOutEverywhere(Base):
         self.assertEqual(self.alive(omar), [200])
         boss = self.login('boss', self.PW)                                          # the password is as it was
         self.assertEqual(boss.req('GET', '/api/me')[1]['user']['role'], 'manager')
-        # only under /api
-        self.assertNotEqual(boss.req('POST', '/zzz/users/%d/sign-out' % ids['omar'], {})[0], 200)
+        # only under /api (elsewhere the path is not this action, and ends nobody's sign-in)
+        self.assertNotIn('ended', boss.req('POST', '/zzz/users/%d/sign-out' % ids['omar'], {})[1])
         self.assertEqual(self.alive(omar), [200])
         # with the server stopped the command does it on the store itself
         tom = self.login('tom')
