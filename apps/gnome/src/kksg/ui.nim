@@ -35,9 +35,9 @@ proc onClick*(b: W, fn: proc (), once = false) =
   ## rebuilt in between, and the handler would hide and read the freed widgets of the old one, or send what the old
   ## one showed.
   ## `once`, for a button that sends something and closes its dialog ("Add the photo", "Propose"): a second press
-  ## that comes before the first one's handler has run is dropped. Both handlers ran, the second while the dialog
-  ## was closing, and the photo or tag was sent twice (#163). Not for every button: two quick presses of Zoom in
-  ## while tiles render are two steps.
+  ## that comes before the first one's handler has run is dropped; both handlers ran, and the photo or tag was sent
+  ## twice (#163). (A press that comes after it, while the dialog closes, is the handler's own to refuse: those two
+  ## keep a flag.) Not for every button: two quick presses of Zoom in while tiles render are two steps.
   var waiting = false
   b.on("clicked", proc () =
     if once and waiting: return

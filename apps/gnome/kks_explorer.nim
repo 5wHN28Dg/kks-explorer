@@ -137,6 +137,7 @@ proc refresh(w: Win) =
     elif w.panelKey != w.modelKey:
       let (ok, t) = w.m.tagById(w.selected)
       if ok: w.buildPanel(t)
+      else: w.closePanel()    # the tag has gone
   w.refreshLive()
   w.refreshFollowers()
 
@@ -226,6 +227,8 @@ proc mainScreen(w: Win): W =
       w.loadModel()
       let (ok, t) = w.m.tagById(w.selected)
       if ok: w.buildPanel(t)
+      else: w.closePanel()    # the tag has gone (removed, or decided "not a tag"): a panel left as it was kept its
+                              # form open for good, each Save sending again
   w.reloadPanel = proc () =
     # Every rebuild that is not a form's own Save or Cancel comes here (a photo queued or sent, link mode starting
     # or ending, a change sent from the select mode). Before #163 these rebuilt the panel under an open form: what

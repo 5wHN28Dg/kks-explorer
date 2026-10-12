@@ -79,6 +79,15 @@ proc openForm(w: Win, g: W, kks: string, seen: JNode) =
   adw_preferences_group_add(g, w.formNote)
   w.formCheck()            # (the model can be newer than the panel already)
 
+proc formDone(w: Win) =
+  ## An Edit form's own Save, Send or Cancel: the panel is drawn again from the data as it is now. What is typed
+  ## in the review form above it (it can be typed in while the other form is open) goes over to the new panel.
+  if w.panelDirty != nil and w.panelDirty() and w.reviewText != nil:
+    let (k, isa) = w.reviewText()
+    w.reviewCarry = (w.selected, k, isa)
+  try: w.rebuildPanel()
+  finally: w.reviewCarry = ("", "", "")
+
 proc reviewSection(w: Win, t: Tag): W =
   let sug = t.suggestion
   let sugNote = s(sug, "note")
@@ -94,6 +103,10 @@ proc reviewSection(w: Win, t: Tag): W =
   # this form is always open: once something is typed in it, the panel is not rebuilt under it (formOpen), as
   # under an Edit form. Before #163 every sync round that brought a change put the reader's text back.
   w.panelDirty = proc (): bool = text(k) != k0 or text(isa) != isa0
+  w.reviewText = proc (): (string, string) = (text(k), text(isa))
+  if t.id.len > 0 and w.reviewCarry[0] == t.id:      # typed before another form's Save or Cancel rebuilt the panel
+    gtk_editable_set_text(k, w.reviewCarry[1].cstring)
+    gtk_editable_set_text(isa, w.reviewCarry[2].cstring)
   adw_preferences_group_add(result, k)
   adw_preferences_group_add(result, isa)
   let btns = hbox(8)
@@ -212,8 +225,8 @@ proc equipmentSection(w: Win, t: Tag): W =
         w.toast("Nothing changed")
         return
       if w.submit("equipment", newObj(@[("kks", newStr(k)), ("changes", changes), ("base", base)]), k, text(note)).len > 0:
-        w.rebuildPanel())
-    btns.add button("Cancel", "", proc () = w.rebuildPanel())
+        w.formDone())
+    btns.add button("Cancel", "", proc () = w.formDone())
     adw_preferences_group_add(g, btns))
 
 proc valveSection(w: Win, t: Tag, vt: JNode): W =
@@ -276,8 +289,8 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
       let p = c["payload"].copy
       for x in p["changes"]["custom"].elems:
         if x.kind == jObj and s(x, "k") == ValveTypeKey: x["v"] = newStr(v)
-      if w.submit(c["kind"].s, p, k & " valve type: " & v).len > 0: w.rebuildPanel())
-    row2.add send, button("Cancel", "", proc () = w.rebuildPanel())
+      if w.submit(c["kind"].s, p, k & " valve type: " & v).len > 0: w.formDone())
+    row2.add send, button("Cancel", "", proc () = w.formDone())
     adw_preferences_group_add(g, row2)
     discard gtk_widget_grab_focus(e))
 
@@ -342,8 +355,8 @@ proc descriptionSection(w: Win, t: Tag): W =
       cs.elems.add newObj(@[("k", newStr(DescriptionKey)), ("v", newStr(v))])
       if w.submit("equipment", newObj(@[("kks", newStr(k)), ("changes", newObj(@[("custom", cs)])),
                                         ("base", newObj(@[("custom", base)]))]), "description of " & k).len > 0:
-        w.rebuildPanel())
-    b2.add button("Cancel", "", proc () = w.rebuildPanel())
+        w.formDone())
+    b2.add button("Cancel", "", proc () = w.formDone())
     adw_preferences_group_add(g, b2))
 
 proc linkNow(w: Win): string =
@@ -460,6 +473,7 @@ proc buildPanel*(w: Win, t: Tag) =
         let id = x.id
         let sheet = x.sheet
         where.add button(if okS: si.name else: x.sheet, "pill", proc () =
+          if id != w.selected and w.busy: return     # (another tag's panel would replace the open form)
           if sheet != w.sheet: w.showSheet(sheet)
           w.selectTag(id, true))
   if where.len > 1:

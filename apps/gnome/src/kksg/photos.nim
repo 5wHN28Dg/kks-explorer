@@ -350,7 +350,9 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   margins(body, 12)
   body.add tools, area, caption
   if not w.isAdmin: body.add note
-  let send = button("Add the photo", "suggested-action", proc () =
+  var sent = false        # once: the button stays in the window while the dialog closes, and a second press sent
+  let send = button("Add the photo", "suggested-action", proc () =    # the photo again (#163)
+    if sent: return
     let bad = textProblem((if plate: PlateCaption & " · " else: "") & text(caption).strip, text(note).strip)
     if bad.len > 0:                     # the core would refuse the photo for it, after it was queued
       w.toast(bad)
@@ -373,6 +375,7 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
         rgb[(y * ow + x) * 3 + 1] = data[p + 1]
         rgb[(y * ow + x) * 3 + 2] = data[p]
     cairo_surface_destroy(outS)
+    sent = true
     adw_dialog_close(d)
     done(rgb, ow, oh, text(caption).strip, text(note).strip), once = true)
   let header = headerBar(adw_window_title_new(if plate: "Add a tag plate photo" else: "Add a photo",

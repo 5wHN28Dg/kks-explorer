@@ -1506,6 +1506,20 @@ class Gnome(Plant):
                     return
                 time.sleep(0.3)
             self.fail(what)
+        def tags_listed():           # the sheet list's count of the sample sheet's tags: what the app has loaded
+            n = [int(m.group(1)) for _, nm in atspi.nodes(a, 'label') for m in [re.match(r'(\d+) tags', nm)] if m]
+            return max(n) if n else -1
+
+        def round_arrives():
+            """the app has synced with the server and reloaded: a tag added there now is counted in its sheet list"""
+            was = tags_listed()
+            round_arrives.n += 1
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'kks': '', 'isa': '', 'note': '',
+                                              'bbox': [100 + 40 * round_arrives.n, 900, 130 + 40 * round_arrives.n, 930]}})
+            self.assertEqual(r.get('status'), 'approved', r)
+            wait_for('the app never showed a tag added on the server', lambda: tags_listed() == was + 1)
+            time.sleep(1)            # (the same reload's panel part is done)
+        round_arrives.n = 0
         atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
         self.press(a, code, ('button', 'Edit'))
         time.sleep(3)                # (the first rounds' data is in)
@@ -1546,7 +1560,7 @@ class Gnome(Plant):
         self.assertNotIn('Notes', said.get_name())
         self.assertEqual(self.typed(a, 'Notes'), note, 'a sync changed the equipment: the panel was rebuilt under the open form')
         atspi.click(atspi.find(a, 'button', name='Second sheet'))
-        time.sleep(5)                # two sync rounds
+        round_arrives()
         self.assertEqual(self.typed(a, 'Notes'), note, 'another sheet was opened: the panel was rebuilt under the open form')
         self.assertEqual(equipment().get('notes', ''), '', 'nothing was saved yet')
         # Save: what was typed goes, the field changed underneath stays as the other left it
@@ -1566,7 +1580,7 @@ class Gnome(Plant):
         self.assertEqual(self.typed(a, 'Near / landmark'), 'typed here')
         atspi.click(atspi.find(a, 'button', name='Save'))
         atspi.find(a, None, contains='Held: it clashes', timeout=10)
-        time.sleep(5)                # two sync rounds: a change written here would be on the server by now
+        round_arrives()              # a change written here would be on the server by now
         self.assertEqual(equipment().get('near'), 'set on the server', 'Save wrote over a change made underneath')
         # 6. the review form ("Check this tag") and the Edit form in one panel: neither is lost to the other
         atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), doubt)
@@ -1582,12 +1596,12 @@ class Gnome(Plant):
         time.sleep(1)
         self.assertEqual(self.typed(a, 'Notes'), 'typed under the review form', 'the review form\'s Confirm rebuilt the panel under the Edit form')
         self.assertIsNone(reviewed(), 'Confirm sent the review with the Edit form open')
-        self.press(a, 'Cancel', ('button', 'Edit'))
-        # what is typed in the review form stays through a sync round that brought a change (the reader's text came back)
+        # the other way: the review form typed in while the Edit form is open, then Cancel (it rebuilds the panel)
         atspi.set_text(atspi.find(a, 'text', name='KKS (with suffix)', timeout=10), '11LAE31AP001')
-        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'area': 'Turbine hall'}, 'base': {}}})
-        self.assertEqual(r.get('status'), 'approved', r)
-        time.sleep(6)                # the change arrives, the reload runs
+        self.press(a, 'Cancel', ('button', 'Edit'))
+        self.assertEqual(self.typed(a, 'KKS (with suffix)'), '11LAE31AP001', 'the Edit form\'s Cancel put the reader\'s text back in the review form')
+        # what is typed in the review form stays through a sync round that brought a change (the reader's text came back)
+        round_arrives()
         self.assertEqual(self.typed(a, 'KKS (with suffix)'), '11LAE31AP001', 'a sync round put the reader\'s text back in the review form')
         atspi.click(atspi.find(a, 'button', name='Edit'))          # (a second form: its Save would rebuild the panel)
         atspi.find(a, None, contains='Finish checking this tag first', timeout=10)
@@ -1595,6 +1609,26 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='Confirm'))
         wait_for('Confirm sent nothing', lambda: (reviewed() or {}).get('kks') == '11LAE31AP001')
         wait_for('the review form stayed after Confirm', lambda: not atspi.find_all(a, 'text', name='KKS (with suffix)'), 10)
+        # 7. the tag itself goes (removed on the server) under an open form: the form stays for what is typed, and
+        # its Save closes the panel (it stayed open for good, each Save sending again)
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
+        time.sleep(1)
+        atspi.click(atspi.find(a, 'button', name=code))
+        atspi.find(a, 'label', contains='set on the server', timeout=10)       # this tag's panel
+        self.press(a, 'Edit', ('text', 'Notes'))
+        atspi.set_text(atspi.find(a, 'text', name='Notes'), 'typed on a tag that then goes')
+        mark = [t for t in b.req('GET', '/api/state')['added_tags'] if t.get('kks') == code]
+        self.assertEqual(len(mark), 1, mark)
+        was = tags_listed()
+        r = b.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': mark[0]['id']}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        wait_for('the app never dropped the removed tag', lambda: tags_listed() == was - 1)
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), 'typed on a tag that then goes', 'the tag was removed: the form went with what was typed')
+        atspi.click(atspi.find(a, 'button', name='Save'))
+        wait_for('Save sent nothing', lambda: equipment().get('notes') == 'typed on a tag that then goes')
+        wait_for('the panel of a tag that has gone stayed open after Save', lambda: not atspi.find_all(a, 'button', name='Save'), 10)
+        self.assertFalse(atspi.find_all(a, 'button', name='Close the panel'), 'the panel of a tag that has gone stayed open')
         self.assertIsNone(app.poll(), 'the app died')
         self.assertEqual(self.criticals('formkept'), [])
         app.kill()

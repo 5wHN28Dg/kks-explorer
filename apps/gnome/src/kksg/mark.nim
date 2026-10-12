@@ -36,7 +36,9 @@ proc markDialog*(w: Win, x0, y0, x1, y1: float) =
   for r in [code, isa, note]: adw_preferences_group_add(g, r)
   body.add g
   let sheet = w.sheet
+  var sent = false        # once: the button stays in the window while the dialog closes (#163)
   let send = button("Propose", "suggested-action", proc () =
+    if sent: return
     let bb = newArr(@[newFloat(round(x0 * sc * 10) / 10), newFloat(round(y0 * sc * 10) / 10),
                       newFloat(round(x1 * sc * 10) / 10), newFloat(round(y1 * sc * 10) / 10)])
     let k = text(code).strip.toUpperAscii
@@ -44,6 +46,7 @@ proc markDialog*(w: Win, x0, y0, x1, y1: float) =
                      ("isa", newStr(text(isa).strip.toUpperAscii)), ("note", newStr(text(note).strip))]),
                      if k.len > 0: k else: "an unread tag")
     if r.len > 0:
+      sent = true
       adw_dialog_close(d)
       w.v.marking = false
       w.setBanner("", "", nil)

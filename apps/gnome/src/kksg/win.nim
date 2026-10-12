@@ -36,6 +36,9 @@ type Win* = ref object
   panelEditing*: bool          ## the panel has an open form (Edit, a valve type's Correct): nothing rebuilds the
                                ## panel under it but the form's own Save and Cancel (formOpen, reloadPanel)
   panelDirty*: proc (): bool   ## the panel's review form ("Check this tag", always open) holds something typed
+  reviewText*: proc (): (string, string)   ## what that form holds now
+  reviewCarry*: (string, string, string)   ## a tag's id and its review form's text, over a rebuild of the panel
+                                           ## by another form's Save or Cancel (panel.nim formDone)
   formKks*: string             ## the open form's code, and what its equipment held when the panel was built
   formSeen*: JNode             ## (the values the form's Save names as the ones the person saw)
   formNote*: W                 ## the open form's line saying what changed underneath; in the panel (not held)
@@ -70,13 +73,15 @@ proc toast*(w: Win, msg: string) = toast(w.toasts, msg)
 
 proc formOpen*(w: Win): bool =
   ## Something typed in the tag panel is not saved yet: an Edit form is open (whatever it holds: the person opened
-  ## it to type), or the review form's text was changed. The panel is then never rebuilt under it (#163).
+  ## it to type), or the review form's text was changed. No reload rebuilds the panel under it then (#163): only
+  ## the person's own doing does (a form's Save or Cancel, another tag chosen, the panel closed).
   w.panelEditing or (w.panelDirty != nil and w.panelDirty())
 
 proc noForm*(w: Win) =
   ## the panel has no form any more (it is being rebuilt, or was closed)
   w.panelEditing = false
   w.panelDirty = nil
+  w.reviewText = nil
   w.formKks = ""
   w.formSeen = nil
   w.formNote = nil
@@ -88,8 +93,8 @@ proc stopLinking*(w: Win) =
   if w.linkProc.len == 0: return
   w.linkProc = ""
   if w.linkEnded != nil:
-    w.linkEnded()            # (it does not clear the field itself: a closure that did would free itself)
-    w.linkEnded = nil
+    try: w.linkEnded()       # (it does not clear the field itself: a closure that did would free itself)
+    finally: w.linkEnded = nil
 
 proc fileOr*(w: Win, path: string, dflt: string): string =
   let (ok, data) = w.a.file(path)
