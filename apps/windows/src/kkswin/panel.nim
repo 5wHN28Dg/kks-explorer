@@ -36,6 +36,14 @@ const Fields = [("area", "Building / area"), ("floor", "Floor"), ("elev", "Eleva
 
 var editing = ""      ## the tag whose fields are open for editing
 
+proc afterChange(w: Win, id: string) =
+  ## a change to tag `id` was sent from its panel: the panel is made again from the data (what was typed would hold
+  ## it as it is: win.panelHeld), or closed when the tag has gone with the change (rejected, removed)
+  w.loadModel()
+  if w.selected != id: return
+  if w.m.tagById(id)[0]: w.rebuildPanel()
+  else: w.selectTag("", false)
+
 proc reviewSection(w: Win, p: Page, t: Tag) =
   let sug = t.suggestion
   p.title("Check this tag")
@@ -54,15 +62,12 @@ proc reviewSection(w: Win, p: Page, t: Tag) =
     let isaV = isa.text.strip.toUpperAscii
     let data = newObj(@[("status", newStr("confirmed")), ("kks", newStr(code[0 ..< 12])), ("suffix", newStr(code[12 .. ^1])),
                         ("isa", if isaV.len > 0: newStr(isaV) else: newNull())])
-    # sent: the panel is made again from the data (what was typed would hold it as it is: win.panelHeld)
     if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", data), ("base", base)]), code).len > 0:
-      w.loadModel()
-      w.rebuildPanel()),
+      w.afterChange(id)),
     ("Not a tag", proc () =
       if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
                                     ("base", base)]), "not a tag").len > 0:
-        w.loadModel()
-        w.rebuildPanel()))
+        w.afterChange(id)))
 
 proc equipmentSection(w: Win, p: Page, t: Tag) =
   let k = t.full
@@ -275,9 +280,11 @@ proc buildPanel*(w: Win, t: Tag) =
     p.title("Added by hand")
     p.dim("The reader missed this tag; someone marked it on the drawing." & (if t.note.len > 0: " Note: " & t.note else: ""))
     let addedId = t.added
+    let tagId = t.id
     p.buttons(("Remove this tag", proc () =
-      if ask(w.hwnd, "Remove this tag?", "The mark goes away on every device once approved."):
-        discard w.submit("tag_remove", newObj(@[("id", newStr(addedId))]), if k.len > 0: k else: "the mark")))
+      if ask(w.hwnd, "Remove this tag?", "The mark goes away on every device once approved.") and
+         w.submit("tag_remove", newObj(@[("id", newStr(addedId))]), if k.len > 0: k else: "the mark").len > 0:
+        w.afterChange(tagId)))
   if k.len == 0: return
   var seen: HashSet[string]
   var where: seq[(string, string, string)]

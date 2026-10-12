@@ -1009,31 +1009,35 @@ class Windows(unittest.TestCase):
         self.assertEqual((got.get('floor'), got.get('near'), got.get('notes')), ('9', 'behind pump P1', 'second save'),
                          'the stale Save sent something: %s' % got)
         # the value on the server changed while the form held typed text for the same field: Save does not replace it.
-        # The core holds the change as a clash (its base is what the form showed), to be decided under Approvals
+        # The core holds the change as a clash (its base is what the form showed): a manager's stays on this device
+        # under Approvals, a member's goes to the approver marked as clashing
         self.check('stale7.uia', ['click\tEdit', 'set\tHow to find it\tfrom the app', 'focus\tDrawings'])
         r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {
-            'kks': code, 'changes': {'loc': 'from the server', 'floor': '6'}, 'base': {'loc': '', 'floor': '9'}}})
+            'kks': code, 'changes': {'loc': 'from the server', 'floor': '10'}, 'base': {'loc': '', 'floor': '9'}}})
         self.assertEqual(r.get('status'), 'approved', r)
-        self.check('stale8.uia', ['wait\tFloor 6\t60', 'value\tHow to find it\tfrom the app', 'click\tSave',
-                                  'wait\t~Held: it clashes\t20', 'gone\tSave'])
-        def held():
-            return [x for x in self.boss.req('GET', '/api/submissions?status=conflict')['submissions']
-                    if x['kind'] == 'equipment' and x['payload'].get('kks') == code]
-        h = self.wait_server(held, 'the clashing change never reached the server', tries=80)
-        self.assertEqual((len(h), h[0]['payload']['changes']), (1, {'loc': 'from the app'}), h)
-        self.assertEqual(eq().get('loc'), 'from the server')
-        self.boss.req('POST', '/api/submissions/%s/reject' % h[0]['id'], {})
+        self.check('stale8.uia', ['wait\tFloor 10\t60', 'value\tHow to find it\tfrom the app', 'click\tSave',
+                                  'wait\t~Held: it clashes\t20', 'gone\tSave',
+                                  'click\tManage', 'click\tApprovals', 'value\tHeld\tIt clashes with the current value', 'click\tDrawings'])
         # a reading corrected and confirmed: the panel, held as it is while the typed code was in its field, is made
-        # again once the code was sent (no "Check this tag" left to confirm a second time)
-        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 1100, 1120, 1160],
-                                                                              'kks': '', 'isa': '', 'note': ''}})
+        # again once the code was sent (no "Check this tag" left to confirm a second time). And "Not a tag" with a
+        # code typed: the tag goes, and its panel with it
+        for box in ([1000, 1100, 1120, 1160], [1000, 1200, 1120, 1260]):
+            r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': box, 'kks': '',
+                                                                                  'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        pick = ['click\tReview', 'wait\tReadings to check\t60', 'enter\t~Sample sheet · \t20', 'wait\tCheck this tag\t20']
+        self.check('stale6.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA884', 'click\tConfirm', 'gone\tCheck this tag',
+                                         'value\tNumber\t884'])
+        def confirmed():
+            return [k for k, v in self.boss.req('GET', '/api/state')['reviews'].items() if v.get('kks') == '11LAB70AA884']
+        ids = self.wait_server(confirmed, 'the confirmed reading never reached the server', tries=80)
+        # (that sync round came after the held Save: the server still has its own value)
+        self.assertEqual(eq().get('loc'), 'from the server')
+        self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag', 'gone\tCheck this tag',
+                                         'gone\tNot a tag', 'click\tDrawings'])
+        # the confirmed mark goes again: test_systems_follows_sync counts the codes on the drawings
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': ids[0].split(':', 1)[1]}})
         self.assertEqual(r.get('status'), 'approved', r)
-        self.check('stale6.uia', ['click\tReview', 'wait\tReadings to check\t60', 'select\t~Sample sheet · ',
-                                  'click\tCheck it on the drawing', 'wait\tCheck this tag\t20',
-                                  'set\tKKS (with suffix)\t11LAB70AA884', 'click\tConfirm', 'gone\tCheck this tag',
-                                  'click\tDrawings'])
-        self.wait_server(lambda: [1 for v in self.boss.req('GET', '/api/state')['reviews'].values() if v.get('kks') == '11LAB70AA884'],
-                         'the confirmed reading never reached the server', tries=80)
         self.leave()
 
     def test_systems_follows_sync(self):
