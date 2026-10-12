@@ -154,7 +154,7 @@ tasks.configureEach { if (name.startsWith("configureCMake") || name.startsWith("
 
 // the program's own data (KKS decode tables) ships in the app
 val copyData by tasks.registering(Sync::class) {
-    from(File(rootDir.parentFile, "data")) { include("kks.json", "courses/*.jxl", "courses/ppt.json", "courses/fnd.json", "courses/hrsg.json") }
+    from(File(rootDir.parentFile, "data")) { include("kks.json", "courses/*.jxl", "courses/ppt.json", "courses/fnd.json", "courses/hrsg.json", "courses/inc.json") }
     into(layout.buildDirectory.dir("assets/data"))
 }
 // the course faces as TTF (Android's Typeface can't read the vendored WOFF2; tools/build_courses.py --ttf)
