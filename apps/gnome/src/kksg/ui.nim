@@ -8,6 +8,7 @@ proc hbox*(spacing = 6): W = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, cint(spacin
 proc add*(box: W, ws: varargs[W]) =
   for w in ws: gtk_box_append(box, w)
 proc clear*(box: W) =
+  leaveFocus(box)
   var c = gtk_widget_get_first_child(box)
   while c != nil:
     let n = gtk_widget_get_next_sibling(c)

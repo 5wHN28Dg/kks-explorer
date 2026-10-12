@@ -670,6 +670,7 @@ proc glossaryPage(cw: CW, p: JNode, box: W) =
 # ---------------------------------------------------------------- the window
 
 proc fillRail(cw: CW) =
+  leaveFocus(cw.railList)
   gtk_list_box_remove_all(cw.railList)
   let (done, total) = cw.c.progress
   for pi in 0 ..< cw.c.pages.len:

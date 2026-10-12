@@ -342,6 +342,18 @@ proc hold*(wd: W): Held =
 proc shown*(h: Held): bool = gtk_widget_get_root(h.w) != nil
 proc gtk_root_get_focus*(r: W): W {.importc, header: HA.}
 proc gtk_widget_is_ancestor*(w, ancestor: W): cint {.importc, header: HA.}
+proc gtk_root_set_focus(r, w: W) {.importc, header: HA.}
+proc leaveFocus*(area: W) =
+  ## Before the children of `area` are removed: if the keyboard focus is in one of them, the window gives it up
+  ## first. Left to GTK, the window keeps the removed widget as its focus until the next frame and then moves the
+  ## focus on from the start of the window; when that lands on a selectable label, GtkLabel compares the old focus
+  ## widget, freed a moment earlier, with itself and logs "gtk_widget_is_ancestor: assertion 'GTK_IS_WIDGET
+  ## (widget)' failed" (GTK 4.22.4 gtk_label_grab_focus reads the window's focus, lets the window drop it, then
+  ## uses it; #163: logged at every rebuild of the tag panel with the focus in it, e.g. after Save).
+  let root = gtk_widget_get_root(area)
+  if root == nil: return
+  let f = gtk_root_get_focus(root)
+  if f != nil and f != area and gtk_widget_is_ancestor(f, area) != 0: gtk_root_set_focus(root, nil)
 proc gtk_event_controller_focus_new*(): W {.importc, header: HA.}
 proc gtk_widget_set_tooltip_text*(w: W, t: cstring) {.importc, header: HA.}
 proc gtk_widget_set_cursor_from_name*(w: W, n: cstring) {.importc, header: HA.}

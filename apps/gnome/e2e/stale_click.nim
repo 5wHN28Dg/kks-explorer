@@ -10,6 +10,7 @@ import std/[os, times]
 import kksg/[gtk, ui]
 proc g_signal_emit_by_name(inst: W, sig: cstring) {.importc, header: "<glib-object.h>", varargs.}
 proc gtk_label_get_text(l: W): cstring {.importc, header: "<gtk/gtk.h>".}
+proc gtk_widget_has_css_class(w: W, c: cstring): cint {.importc, header: "<gtk/gtk.h>".}
 
 proc settle() =
   ## every queued idle callback (and whatever they queue)
@@ -26,6 +27,15 @@ type Probe = ref object      ## held by a closure: gone when the closure is rele
 var probesFreed = 0
 proc probeGone(p: Probe) = inc probesFreed
 proc newProbe(): Probe = new(result, probeGone)
+
+# GTK's own complaints (a failed assertion is logged, not raised), counted
+var criticals = 0
+proc g_log_set_default_handler(fn: pointer, data: pointer): pointer {.importc, header: "<glib.h>".}
+proc g_log_default_handler(domain: cstring, level: cint, msg: cstring, data: pointer) {.importc, header: "<glib.h>".}
+proc logged(domain: cstring, level: cint, msg: cstring, data: pointer) {.cdecl.} =
+  if (level and 8) != 0: inc criticals       # G_LOG_LEVEL_CRITICAL
+  g_log_default_handler(domain, level, msg, data)
+discard g_log_set_default_handler(cast[pointer](logged), nil)
 
 let app = adw_application_new("org.kks.StaleClickTest", 32)
 
@@ -235,7 +245,53 @@ proc checks() =
     GC_fullCollect()
     doAssert probesFreed == 6, "a button's handler was not released with the button"
     inc checked
-  doAssert checked == 2 * makers.len + 5
+  # An area emptied with the keyboard focus in it (the tag panel after Save): the window gives the focus up first
+  # (ui.clear, gtk.leaveFocus). Left to GTK, it moved the focus on at the next frame, and when that landed on a
+  # selectable label (the panel's heading) GTK logged "gtk_widget_is_ancestor: assertion 'GTK_IS_WIDGET (widget)'
+  # failed" (it compared the freed button with the label). KKS_TEST_RAW_REMOVE: the same without leaveFocus, to
+  # see that message here.
+  block:
+    let area = vbox()
+    panel.add area
+    proc empty() =
+      if getEnv("KKS_TEST_RAW_REMOVE").len > 0:
+        var c = gtk_widget_get_first_child(area)
+        while c != nil:
+          let n = gtk_widget_get_next_sibling(c)
+          gtk_box_remove(area, c)
+          c = n
+      else: area.clear()
+    proc build() =
+      # as the tag panel: a heading that can be selected, then a form in a group, its Save rebuilding it all
+      empty()
+      area.add label("11LAB70AA501", "title-2", selectable = true)
+      let g = group("Location and notes")
+      let e = entryRow("Notes", "typed")
+      adw_preferences_group_add(g, e)
+      let btns = hbox(8)
+      btns.add button("Save", "suggested-action", proc () = build())
+      adw_preferences_group_add(g, btns)
+      area.add g
+    build()
+    for round in 0 ..< 3:
+      spin(80)
+      var save: W = nil
+      proc find(w: W) =
+        var c = gtk_widget_get_first_child(w)
+        while c != nil:
+          if gtk_widget_has_css_class(c, "suggested-action") != 0: save = c
+          find(c)
+          c = gtk_widget_get_next_sibling(c)
+      find(area)
+      doAssert save != nil and gtk_widget_grab_focus(save) != 0
+      spin(80)
+      doAssert gtk_root_get_focus(win) == save
+      g_signal_emit_by_name(save, "clicked")
+      spin(300)                     # the handler, then frames: GTK's own move of the focus would come here
+    doAssert criticals == 0, "GTK logged " & $criticals & " failed assertions after a focused area was emptied"
+    panel.clear()
+    inc checked
+  doAssert checked == 2 * makers.len + 6
 
 app.on("activate", proc () =
   # (a failed check must end the run: the signal's trampoline would log it and carry on)

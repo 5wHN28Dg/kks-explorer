@@ -59,6 +59,7 @@ proc fillSheets(w: Win) =
     rows.add((si.id, si.name, $n & " tags" & (if review > 0: ", " & $review & " to review" else: "")))
     key.add si.id & "\x1f" & si.name & "\x1f" & rows[^1][2] & "\x1e"
   if key == w.sheetsKey and gtk_widget_get_first_child(w.sheetList) != nil: return
+  leaveFocus(w.sheetList)
   gtk_list_box_remove_all(w.sheetList)
   for i1 in 0 ..< rows.len:
     closureScope:   # each pass gets its own copies of the captured variables
@@ -68,6 +69,7 @@ proc fillSheets(w: Win) =
 
 proc runSearch(w: Win) =
   let q = text(w.searchEntry).strip
+  leaveFocus(w.resultList)
   gtk_list_box_remove_all(w.resultList)
   w.v.hits.clear()
   if q.len == 0:

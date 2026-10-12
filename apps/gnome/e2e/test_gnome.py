@@ -109,12 +109,10 @@ class Plant(unittest.TestCase):
     def criticals(self, name):
         """What went wrong inside the app, from its output (start_app's log): GTK's complaints (a call on a widget
         that was freed shows there as a failed assertion, GTK_IS_WIDGET, GTK_IS_BOX …, when it doesn't crash) and the
-        errors the app caught in a handler. One exact message is known and left out: main's app already logs it when
-        a panel is rebuilt (#163)."""
-        known = "gtk_widget_is_ancestor: assertion 'GTK_IS_WIDGET (widget)' failed"
+        errors the app caught in a handler. (Until #163 one message was left out: GTK logged "gtk_widget_is_ancestor:
+        assertion 'GTK_IS_WIDGET (widget)' failed" after every rebuild of a panel that held the focus.)"""
         with open(f'/tmp/kks-gnome-e2e-{name}.log', errors='replace') as f:
-            return [ln.strip() for ln in f
-                    if ('-CRITICAL' in ln and known not in ln) or 'error in a UI callback' in ln]
+            return [ln.strip() for ln in f if '-CRITICAL' in ln or 'error in a UI callback' in ln]
 
     def press(self, a, button, then):
         """press a button until what it leads to is there (a press within GTK's 250 ms before a reload is lost)"""
@@ -879,6 +877,9 @@ class Gnome(Plant):
         r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LBA10AA102', 'changes': {'near': 'by the test pump'}}})
         self.assertEqual(r.get('status'), 'approved', r)
         atspi.find(a, 'label', contains='by the test pump', timeout=20)
+        # GTK had nothing to complain about on the way (#163: it logged a failed assertion after each of the rebuilds
+        # above that took the focused button or entry away)
+        self.assertEqual(self.criticals('valve'), [])
 
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a static and an
