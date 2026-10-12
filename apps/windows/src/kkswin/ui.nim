@@ -80,9 +80,9 @@ var
 
 # A control's handlers are kept by its window handle, which WM_COMMAND carries, never by its control id: the id in
 # WM_COMMAND is 16 bits, and a new id is used for every control of every rebuilt page (#162). After 64,535 controls
-# (by a count of the side's and the panel's controls, about a day of sync rounds with a tag open) a new button's
-# click arrived under the id of a control made at the start: it did nothing, or ran that one's handler, a tab's
-# button for instance.
+# a new button's click arrived under the id of a control made at the start: it did nothing, or ran that one's
+# handler, a tab's button for instance. (An estimate from the number of controls in the side and the panel: about a
+# day of sync rounds with a tag open.)
 # The Ctl object is the registration: a rebuilt page's controls have new ones, so a handler queued for a control that
 # has gone since (`deferred`) finds another object, or none, and does nothing.
 type Ctl = ref object

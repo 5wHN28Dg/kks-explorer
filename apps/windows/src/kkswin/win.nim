@@ -88,7 +88,9 @@ proc panelHeld*(w: Win, anyFocus = true): bool =
 proc panelChanged*(w: Win, anyFocus = true) =
   ## what the panel shows changed underneath (a sync, the photo queue): rebuilt now, or, while it is held, once it no
   ## longer is (panelCatchUp, every second; the form's own Save and Cancel rebuild it too)
-  if not w.picking and w.selected.len == 0: return
+  if not w.picking and w.selected.len == 0:
+    w.panelStale = false
+    return
   if w.panelHeld(anyFocus): w.panelStale = true
   else: w.rebuildPanel()
 

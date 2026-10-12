@@ -54,10 +54,15 @@ proc reviewSection(w: Win, p: Page, t: Tag) =
     let isaV = isa.text.strip.toUpperAscii
     let data = newObj(@[("status", newStr("confirmed")), ("kks", newStr(code[0 ..< 12])), ("suffix", newStr(code[12 .. ^1])),
                         ("isa", if isaV.len > 0: newStr(isaV) else: newNull())])
-    discard w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", data), ("base", base)]), code)),
+    # sent: the panel is made again from the data (what was typed would hold it as it is: win.panelHeld)
+    if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", data), ("base", base)]), code).len > 0:
+      w.loadModel()
+      w.rebuildPanel()),
     ("Not a tag", proc () =
-      discard w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
-                                         ("base", base)]), "not a tag")))
+      if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
+                                    ("base", base)]), "not a tag").len > 0:
+        w.loadModel()
+        w.rebuildPanel()))
 
 proc equipmentSection(w: Win, p: Page, t: Tag) =
   let k = t.full

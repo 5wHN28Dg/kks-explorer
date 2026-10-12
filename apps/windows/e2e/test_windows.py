@@ -1008,6 +1008,17 @@ class Windows(unittest.TestCase):
         got = eq()
         self.assertEqual((got.get('floor'), got.get('near'), got.get('notes')), ('9', 'behind pump P1', 'second save'),
                          'the stale Save sent something: %s' % got)
+        # a reading corrected and confirmed: the panel, held as it is while the typed code was in its field, is made
+        # again once the code was sent (no "Check this tag" left to confirm a second time)
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 1100, 1120, 1160],
+                                                                              'kks': '', 'isa': '', 'note': ''}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.check('stale6.uia', ['click\tReview', 'wait\tReadings to check\t60', 'select\t~Sample sheet · ',
+                                  'click\tCheck it on the drawing', 'wait\tCheck this tag\t20',
+                                  'set\tKKS (with suffix)\t11LAB70AA884', 'click\tConfirm', 'gone\tCheck this tag',
+                                  'click\tDrawings'])
+        self.wait_server(lambda: [1 for v in self.boss.req('GET', '/api/state')['reviews'].values() if v.get('kks') == '11LAB70AA884'],
+                         'the confirmed reading never reached the server', tries=80)
         self.leave()
 
     def test_systems_follows_sync(self):
