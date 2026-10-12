@@ -887,6 +887,44 @@ class Gnome(Plant):
         time.sleep(2)
         self.assertNotAlmostEqual(v1, v2, places=3)
         self.assertTrue(os.path.exists(shot.replace('.png', '-fnd.png')))
+        # the fourth course (Instrumentation and control) opens, and a page of it shows its figure
+        atspi.click(atspi.find(a, 'button', name='Instrumentation and control'))
+        atspi.click(atspi.find(a, 'button', name='1 · The loop', timeout=15))
+        atspi.find(a, 'image', name='A control loop: drum level', timeout=10)
+        # a table is as tall as its rows: the paragraph after it starts right below its last row. (A table with
+        # sentences in its cells was given thousands of pixels of empty card below the last row, 2026-10-12.)
+        def top(text):
+            return atspi.find(a, 'label', contains=text, showing=False).get_component_iface().get_extents(Atspi.CoordType.WINDOW).y
+        gap = top('A sensor is an input transducer') - top('pneumatic diaphragm, electric motor')
+        self.assertTrue(0 < gap < 150, f'{gap} px from the last row of "The parts" to the paragraph after the table')
+        # a photo keeps its shape: a 4:3 picture in the wider box the page gives it has the page's background left and
+        # right of it. (Every course photo was stretched to fill its box, 2026-10-13.) The page's animated figure is
+        # scrolled into view (SIGUSR2); the photo is the next block.
+        from PIL import Image
+        atspi.click(atspi.find(a, 'button', name='7 · The four measurements'))
+        pic = atspi.find(a, 'image', contains='Differential pressure transmitter', timeout=10, showing=False)
+        inc_shot = shot.replace('.png', '-inc.png')
+        if os.path.exists(inc_shot):
+            os.remove(inc_shot)
+        os.kill(pid, signal.SIGUSR2)
+        time.sleep(1.5)
+        os.kill(pid, signal.SIGUSR1)
+        for _ in range(40):
+            time.sleep(0.25)
+            if os.path.exists(inc_shot):
+                break
+        time.sleep(0.5)
+        e = pic.get_component_iface().get_extents(Atspi.CoordType.WINDOW)
+        im = Image.open(inc_shot).convert('L')
+        self.assertGreater(e.width, e.height * 1.5, 'the box is wider than 4:3, or this check proves nothing')
+        top, bottom = max(e.y, 60) + 10, min(e.y + e.height, im.height) - 10
+        self.assertGreater(bottom - top, 60, f'the photo is not on screen: {e.x},{e.y} {e.width}x{e.height} in {im.size}')
+        for x0 in (e.x + 6, e.x + e.width - 36):
+            band = im.crop((x0, top, x0 + 30, bottom))
+            lo, hi = band.getextrema()
+            self.assertLess(hi - lo, 12, f'the photo fills its box from edge to edge (greys {lo} to {hi} at x={x0}): stretched')
+        mid = im.crop((e.x + e.width // 2 - 100, top, e.x + e.width // 2 + 100, bottom)).getextrema()
+        self.assertGreater(mid[1] - mid[0], 40, 'no photo in the middle of its box')
 
     def test_zzz_multi_member(self):
         """A MEMBER's "Photo for all" (their changes wait for approval), with codes of two drawings (runs last: its

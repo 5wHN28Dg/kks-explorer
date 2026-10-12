@@ -92,19 +92,20 @@ proc table(cw: CW, t: JNode): W =
   for i in t["num"].elems: num.incl int(i.num)
   for (ci, h) in t["head"].elems.pairs:
     let l = cw.rl(h, "heading", false)
+    if ci in num: gtk_label_set_xalign(l, 1)     # over its right-aligned numbers
     gtk_grid_attach(g, l, cint(ci), 0, 1, 1)
   for (ri, row) in t["rows"].elems.pairs:
     for (ci, cell) in row.elems.pairs:
       let l = cw.rl(cell, if ci in num: "monospace numeric" else: "")
       if ci in num: gtk_label_set_xalign(l, 1)
       gtk_grid_attach(g, l, cint(ci), cint(ri + 1), 1, 1)
+  # The grid sits in the card itself, as wide as the page: every cell wraps, so it always fits. (Until 2026-10-12 it
+  # was inside a sideways-scrolling GtkScrolledWindow that passed on its child's natural height. A scrolled window
+  # asks that height for no particular width, and wrapping labels then answer with their height at their narrowest:
+  # a table with sentences in it was given thousands of pixels of empty card below its last row.)
   let frame = vbox(0)
   gtk_widget_add_css_class(frame, "card")
-  let sc = gtk_scrolled_window_new()
-  gtk_scrolled_window_set_policy(sc, GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER)
-  gtk_scrolled_window_set_propagate_natural_height(sc, 1)
-  gtk_scrolled_window_set_child(sc, g)
-  frame.add sc
+  frame.add g
   frame
 
 proc figure(cw: CW, id: string): W =
@@ -138,7 +139,7 @@ proc image(cw: CW, im: JNode): W =
     let pic = gtk_picture_new()
     gtk_picture_set_paintable(pic, tex)
     gtk_picture_set_can_shrink(pic, 1)
-    gtk_picture_set_content_fit(pic, 0)      # GTK_CONTENT_FIT_CONTAIN
+    gtk_picture_set_content_fit(pic, GTK_CONTENT_FIT_CONTAIN)   # (until 2026-10-13 a literal 0, which is FILL: every photo was stretched to 680:420)
     gtk_widget_set_size_request(pic, -1, cint(min(420, int(im["h"].num * 680 / im["w"].num))))
     setAccessibleLabel(pic, im["alt"].s)
     result.add pic
