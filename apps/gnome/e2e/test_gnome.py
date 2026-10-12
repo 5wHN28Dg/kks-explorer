@@ -1490,25 +1490,34 @@ class Gnome(Plant):
         atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
         self.press(a, code, ('button', 'Edit'))
         time.sleep(3)                # (the first rounds' data is in)
+
+        def add_photo(caption):
+            atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+            atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), caption)
+            atspi.click(atspi.find(a, 'button', name='Add the photo'))
+            atspi.click(atspi.find(atspi.find(a, 'alert', name='And its tag plate?', timeout=10), 'button', name='Not now'))
+        # 1. a photo leaves the queue while the form is open
+        add_photo('held first')
+        atspi.find(a, 'label', contains='1 photo of this equipment being compressed', timeout=10)
         self.press(a, 'Edit', ('text', 'Notes'))
-        note = 'typed before the photo; ملاحظة'
+        note = 'typed while the photo waits; ملاحظة'
         atspi.set_text(atspi.find(a, 'text', name='Notes'), note)
-        # 1. a photo queued from the panel while the form is open
-        atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
-        atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), 'while editing')
-        atspi.click(atspi.find(a, 'button', name='Add the photo'))
-        atspi.click(atspi.find(atspi.find(a, 'alert', name='And its tag plate?', timeout=10), 'button', name='Not now'))
-        atspi.find(a, 'label', contains='Compressing 1 photo', timeout=10)
-        time.sleep(1)                # (the rebuild after a photo is queued is long done)
-        self.assertEqual(self.typed(a, 'Notes'), note, 'a photo was queued: the panel was rebuilt under the open form')
-        atspi.find(a, 'label', contains='1 photo of this equipment being compressed', timeout=5)    # beside the form
-        # 2. the photo leaves the queue
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), note)
         os.remove(hold)
         wait_for('the photo was never sent', lambda: any(p['kks'] == code for p in b.req('GET', '/api/state')['photos']))
         wait_for('the queue\'s line stayed in the panel',
                  lambda: not atspi.find_all(a, 'label', contains='of this equipment being compressed'), 15)
+        time.sleep(1)
         self.assertEqual(self.typed(a, 'Notes'), note, 'a photo left the queue: the panel was rebuilt under the open form')
-        atspi.find(a, 'button', name='Open photo: while editing', timeout=10)                         # beside the form
+        atspi.find(a, 'button', name='Open photo: held first', timeout=10)      # shown beside the form
+        # 2. a photo queued from the panel while the form is open (and sent: nothing holds it now)
+        add_photo('while editing')
+        wait_for('the second photo was never sent',
+                 lambda: sum(p['kks'] == code for p in b.req('GET', '/api/state')['photos']) == 2)
+        atspi.find(a, 'button', name='Open photo: while editing', timeout=15)
+        time.sleep(1)                # (the rebuild after a photo is queued is long done)
+        self.assertEqual(self.typed(a, 'Notes'), note, 'a photo was queued: the panel was rebuilt under the open form')
         # 3. a sync round that changed this equipment (another field), 4. another sheet opened
         r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'near': 'by the north door'},
                                                                          'base': {}}})
