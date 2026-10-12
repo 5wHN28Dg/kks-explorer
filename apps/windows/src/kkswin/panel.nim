@@ -190,6 +190,7 @@ proc descriptionSection(w: Win, p: Page, t: Tag) =
 proc buildPanel*(w: Win, t: Tag) =
   let p = w.panel
   p.clear()
+  w.panelStale = false
   let m = w.m
   let k = t.full
   p.title((if k.len > 0: k else: "Unread tag"))

@@ -143,11 +143,7 @@ proc refresh() =
   let f = GetFocus()
   let typing = f != nil and GetParent(f) == w.side.hwnd and w.tab == "drawings"
   if not typing and (w.tab != "manage" or liveManage()): w.rebuildSide()
-  if w.picking:
-    if GetParent(GetFocus()) != w.panel.hwnd: w.pickPanel(w.panel)
-  elif w.selected.len > 0:
-    let (ok, t) = w.m.tagById(w.selected)
-    if ok and GetParent(GetFocus()) != w.panel.hwnd: w.buildPanel(t)
+  w.panelChanged()            # never under the keyboard, or over what was typed into a form (win.panelHeld)
   w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
   w.refreshFollowers()        # open windows that show the plant's data (Equipment by system), never under the focus
 
@@ -216,6 +212,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
         w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
       if w.v != nil and setupP == nil:
         guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
+        guard: w.panelCatchUp()         # the panel too, left alone under the keyboard or typed text
     return 0
   of WM_KKS_LATER:
     runLater()
@@ -256,8 +253,8 @@ proc showMain() =
     closureScope:
       let t = tabs[ti][0]
       let tid = tabs[ti][1]
-      let (b, bid) = control(w.hwnd, "BUTTON", t, WS_TABSTOP or BS_PUSHBUTTON)
-      onClick(bid, proc () = setTab(tid))
+      let (b, _) = control(w.hwnd, "BUTTON", t, WS_TABSTOP or BS_PUSHBUTTON)
+      onClick(b, proc () = setTab(tid))
       w.tabButtons.add b
   trace("tabs")
   w.side = newPage(w.hwnd)
@@ -265,9 +262,9 @@ proc showMain() =
   trace("viewer")
   w.panel = newPage(w.hwnd)
   w.queueLabel = control(w.hwnd, "STATIC", "", SS_LEFT or SS_NOPREFIX)[0]
-  let (fb, fbid) = control(w.hwnd, "BUTTON", "Photos not sent (0)…", WS_TABSTOP or BS_PUSHBUTTON)
+  let (fb, _) = control(w.hwnd, "BUTTON", "Photos not sent (0)…", WS_TABSTOP or BS_PUSHBUTTON)
   w.failedButton = fb
-  onClick(fbid, proc () = w.failedWindow())
+  onClick(fb, proc () = w.failedWindow())
   w.v.onTag = proc (id: string) =
     if w.picking: w.togglePick(id)       # the select mode (multi.nim)
     elif w.linkProc.len > 0:
@@ -331,11 +328,18 @@ proc main() =
       w.side.layout()
     else: w.buildSide(proc (p: Page) = w.manageTab(p))
   w.rebuildPanel = proc () =
+    w.panelStale = false
     if w.picking: w.pickPanel(w.panel)
     else:
       let (ok, t) = w.m.tagById(w.selected)
       if ok: w.buildPanel(t)
   w.relayout = layoutMain
+  # tests only (#162): while the file named by KKS_TEST_STALE_CLICK exists, the panel is rebuilt between a button's
+  # click and its handler. Without the variable nothing changes.
+  let staleFile = getEnv("KKS_TEST_STALE_CLICK")
+  if staleFile.len > 0:
+    beforeHandler = proc () =
+      if w.v != nil and setupP == nil and fileExists(staleFile): later(proc () = w.rebuildPanel())
   if a.joined: showMain()
   else:
     setupP = newPage(hw)

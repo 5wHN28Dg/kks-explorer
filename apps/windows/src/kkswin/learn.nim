@@ -773,6 +773,8 @@ proc courseProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
       if dispatchCommand(wp, lp): return 0
     of WM_DESTROY:
       if cw != nil:
+        forgetControl(cw.rail)        # its own two controls (the page forgets its own)
+        forgetControl(cw.railGo)
         courseWins.del h
         openById.del cw.c.id
       return 0
@@ -810,16 +812,16 @@ proc openCourseWindow*(w: Win, id: string, page = "") =
   openById[id] = cw
   cw.page = newPage(cw.hwnd)
   let pages = c.pages
-  let (rl, rid) = control(cw.hwnd, "LISTBOX", "Course contents", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT, WS_EX_CLIENTEDGE)
+  let (rl, _) = control(cw.hwnd, "LISTBOX", "Course contents", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT, WS_EX_CLIENTEDGE)
   cw.rail = rl
   proc go(i: int) =
     if i >= 0 and i < pages.len and pages[i]["id"].s != cw.pageId: cw.show(pages[i]["id"].s)
-  onSelectList(rid, go)
-  onActivateList(rid, go)
+  onSelectList(rl, go)
+  onActivateList(rl, go)
   # a list item has no Invoke for UI Automation: a button opens the selected page (as in the main window)
-  let (gb, gid) = control(cw.hwnd, "BUTTON", "Open the selected page", WS_TABSTOP or BS_PUSHBUTTON)
+  let (gb, _) = control(cw.hwnd, "BUTTON", "Open the selected page", WS_TABSTOP or BS_PUSHBUTTON)
   cw.railGo = gb
-  onClick(gid, proc () = go(int(SendMessageW(cw.rail, LB_GETCURSEL, 0, 0))))
+  onClick(gb, proc () = go(int(SendMessageW(cw.rail, LB_GETCURSEL, 0, 0))))
   ui.onLink = proc (target: string) =
     for _, x in courseWins:
       if GetForegroundWindow() == x.hwnd:

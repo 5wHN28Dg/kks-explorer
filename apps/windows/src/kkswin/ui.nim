@@ -76,12 +76,24 @@ var
   fontNormal*, fontTitle*, fontSmall*: HFONT
   dpi* = 96
   nextId = 1000
-  clicks = initTable[int, proc ()]()
-  changes = initTable[int, proc ()]()
-  selects = initTable[int, proc (i: int)]()
-  activates = initTable[int, proc (i: int)]()
   notifies = initTable[HWND, proc (code: UINT, l: LPARAM): bool]()   ## WM_NOTIFY from a control (tree views)
-  enters = initTable[HWND, proc ()]()                               ## Enter on a focused control that isn't a list
+
+# A control's handlers are kept by its window handle, which WM_COMMAND carries, never by its control id: the id in
+# WM_COMMAND is 16 bits, and a new id is used for every control of every rebuilt page (#162: after 64,535 controls,
+# a day or two of sync rounds with a tag open, a new button's click arrived under the id of a control made at the
+# start: it did nothing, or ran that one's handler, a tab's button for instance).
+# The Ctl object is the registration: a rebuilt page's controls have new ones, so a handler queued for a control that
+# has gone since (`deferred`) finds another object, or none, and does nothing.
+type Ctl = ref object
+  click, change, enter: proc ()
+  select, activate: proc (i: int)
+var ctls = initTable[HWND, Ctl]()
+
+proc ctl(h: HWND): Ctl =
+  result = ctls.getOrDefault(h)
+  if result == nil:
+    result = Ctl()
+    ctls[h] = result
 
 proc px*(v: int): int32 = int32(v * dpi div 96)
 
@@ -134,7 +146,9 @@ proc makeFonts*(d: int) =
   fontSmall = CreateFontIndirectW(addr lf)
 
 proc newId(): int =
-  inc nextId
+  ## a control id: what GetDlgCtrlID and UI Automation's AutomationId say, 16 bits like the id in WM_COMMAND. Nothing
+  ## here looks a control up by it, so the ids may repeat once they have gone round
+  nextId = if nextId >= 0xFFFF: 1001 else: nextId + 1
   nextId
 
 proc control*(parent: HWND, cls, text: string, style: uint32, ex = 0'u32, font: HFONT = nil): (HWND, int) =
@@ -142,17 +156,18 @@ proc control*(parent: HWND, cls, text: string, style: uint32, ex = 0'u32, font: 
   let h = CreateWindowExW(ex, newWideCString(cls), newWideCString(text), WS_CHILD or WS_VISIBLE or style, 0, 0, 10, 10,
                           parent, cast[HMENU](id), hinst, nil)
   SendMessageW(h, WM_SETFONT, cast[WPARAM](if font != nil: font else: fontNormal), 1)
+  ctls.del h      # (a window handle used again for a new control never brings an old control's handlers with it)
   (h, id)
 
-proc onClick*(id: int, f: proc ()) = clicks[id] = f
-proc onSelectList*(id: int, f: proc (i: int)) = selects[id] = f
-proc onActivateList*(id: int, f: proc (i: int)) = activates[id] = f
+proc onClick*(h: HWND, f: proc ()) = ctl(h).click = f
+proc onSelectList*(h: HWND, f: proc (i: int)) = ctl(h).select = f
+proc onActivateList*(h: HWND, f: proc (i: int)) = ctl(h).activate = f
 proc onNotify*(h: HWND, f: proc (code: UINT, l: LPARAM): bool) =
   ## WM_NOTIFY from this control reaches f (in the notification: queue real work with `later`); true = handled
   notifies[h] = f
 proc onEnter*(h: HWND, f: proc ()) =
   ## Enter while this control has the focus runs f (after the key's message, like a list's activation)
-  enters[h] = f
+  ctl(h).enter = f
 
 proc dispatchCommand0(w: WPARAM, l: LPARAM): bool
 
@@ -203,33 +218,42 @@ proc dispatchCommand*(w: WPARAM, l: LPARAM): bool =
     report(e)
     return true
 
+var beforeHandler*: proc ()
+  ## tests only (the app's KKS_TEST_STALE_CLICK): runs when a button's click arrives, before its handler is queued, so
+  ## that what it queues with `later` comes between the click and the handler
+
+proc deferred(h: HWND, c: Ctl, run: proc (c: Ctl)) =
+  ## `run` after the control's notification has returned (see above), and only if the control is still there by then.
+  ## Something else can run in between and rebuild its page: a handler queued before it (two presses that arrived as
+  ## sent messages, as UI Automation's Invoke does, are both queued before the first runs; multi.nim met this), or a
+  ## message posted earlier (a tag invoked by a screen reader). The handler would then act for a page that has gone:
+  ## its fields read as empty, so an edit form's Save sent every field as cleared (#162). It does nothing instead;
+  ## the page now on screen has its own controls and handlers.
+  later(proc () =
+    if ctls.getOrDefault(h) == c and IsWindow(h) != 0: run(c))
+
 proc dispatchCommand0(w: WPARAM, l: LPARAM): bool =
-  let id = loword(int(w))
+  let h = cast[HWND](l)
+  if h == nil: return false           # a menu or accelerator id, not a control
+  let c = ctls.getOrDefault(h)
+  if c == nil: return false
   let code = uint32(hiword(int(w)))
-  if code == BN_CLICKED and id in clicks:
-    later(clicks[id])
+  if code == BN_CLICKED and c.click != nil:
+    if beforeHandler != nil: beforeHandler()
+    deferred(h, c, proc (c: Ctl) = c.click())
     return true
-  if code == EN_CHANGE and id in changes:
-    changes[id]()
+  if code == EN_CHANGE and c.change != nil:
+    c.change()
     return true
-  if code == LBN_SELCHANGE and id in selects:
-    let i = int(SendMessageW(cast[HWND](l), LB_GETCURSEL, 0, 0))
-    let f = selects[id]
-    if i >= 0: later(proc () = f(i))
+  if code == LBN_SELCHANGE and c.select != nil:
+    let i = int(SendMessageW(h, LB_GETCURSEL, 0, 0))
+    if i >= 0: deferred(h, c, proc (c: Ctl) = c.select(i))
     return true
-  if code == LBN_DBLCLK and id in activates:
-    let i = int(SendMessageW(cast[HWND](l), LB_GETCURSEL, 0, 0))
-    let f = activates[id]
-    if i >= 0: later(proc () = f(i))
+  if code == LBN_DBLCLK and c.activate != nil:
+    let i = int(SendMessageW(h, LB_GETCURSEL, 0, 0))
+    if i >= 0: deferred(h, c, proc (c: Ctl) = c.activate(i))
     return true
   false
-
-proc forget*(ids: seq[int]) =
-  for id in ids:
-    clicks.del id
-    changes.del id
-    selects.del id
-    activates.del id
 
 # ---------------------------------------------------------------- a page
 
@@ -244,7 +268,7 @@ type
   Page* = ref object
     hwnd*: HWND
     items: seq[Item]
-    ids: seq[int]
+    typed: seq[(HWND, string)]    ## the fields a person can type into, each with the text it was made with
     scroll: int
     contentH: int
 
@@ -315,6 +339,15 @@ var
   richLinks = initTable[HWND, seq[(int32, int32, string)]]()
   relayoutWanted = false
   onLink*: proc (target: string)                       ## set by the screen that shows rich text
+
+proc forgetControl*(h: HWND) =
+  ## the control is going (its page is rebuilt or closed, its window destroyed): nothing queued for it runs any more
+  ctls.del h
+  notifies.del h
+  ownerDraws.del h
+  tracks.del h
+  richH.del h
+  richLinks.del h
 
 proc measure(p: Page, text: string, font: HFONT, width: int): int =
   let dc = GetDC(p.hwnd)
@@ -497,15 +530,10 @@ proc pageProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
       return 1
   of WM_DESTROY:
     if p != nil:
-      forget(p.ids)
       for it in p.items:
-        if it.kind == ikRich:
-          richH.del it.hwnds[0]
-          richLinks.del it.hwnds[0]
-        for c in it.hwnds:
-          notifies.del c
-          enters.del c
-          ownerDraws.del c
+        for c in it.hwnds: forgetControl(c)
+      p.items.setLen(0)
+      p.typed.setLen(0)
       pages.del h
   else: discard
   DefWindowProcW(h, m, w, l)
@@ -534,44 +562,45 @@ proc clear*(p: Page) =
   ## remove every control (the page is rebuilt)
   for it in p.items:
     for h in it.hwnds:
-      notifies.del h
-      enters.del h
-      ownerDraws.del h
+      forgetControl(h)
       DestroyWindow(h)
-  forget(p.ids)
   p.items.setLen(0)
-  p.ids.setLen(0)
+  p.typed.setLen(0)
   p.scroll = 0
 
-proc keep(p: Page, r: (HWND, int)): HWND =
-  p.ids.add r[1]
-  r[0]
+proc edited*(p: Page): bool =
+  ## something was typed into one of the page's fields and is still there: a rebuild now would lose it
+  if p == nil or p.hwnd == nil: return false
+  for (h, was) in p.typed:
+    if IsWindow(h) != 0 and h.text != was: return true
+
 
 proc label*(p: Page, text: string): HWND {.discardable.} =
-  result = p.keep(control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL))
+  result = control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL)[0]
   p.items.add Item(kind: ikLabel, hwnds: @[result], text: text)
 
 proc title*(p: Page, text: string): HWND {.discardable.} =
-  result = p.keep(control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX, font = fontTitle))
+  result = control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX, font = fontTitle)[0]
   p.items.add Item(kind: ikTitle, hwnds: @[result], text: text)
 
 proc dim*(p: Page, text: string): HWND {.discardable.} =
-  result = p.keep(control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL, font = fontSmall))
+  result = control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL, font = fontSmall)[0]
   p.items.add Item(kind: ikDim, hwnds: @[result], text: text)
 
 proc field*(p: Page, name, value: string, password = false, readonly = false, onChange: proc () = nil): HWND {.discardable.} =
-  let lab = p.keep(control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX))
-  let (e, id) = control(p.hwnd, "EDIT", value, WS_TABSTOP or ES_AUTOHSCROLL or (if password: ES_PASSWORD else: 0) or
-                        (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)
-  p.ids.add id
-  if onChange != nil: changes[id] = onChange
+  let lab = control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX)[0]
+  let (e, _) = control(p.hwnd, "EDIT", value, WS_TABSTOP or ES_AUTOHSCROLL or (if password: ES_PASSWORD else: 0) or
+                       (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)
+  if onChange != nil: ctl(e).change = onChange
+  if not readonly: p.typed.add (e, e.text)
   p.items.add Item(kind: ikField, hwnds: @[lab, e])
   e
 
 proc multiField*(p: Page, name, value: string, height = 90, readonly = false): HWND {.discardable.} =
-  let lab = p.keep(control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX))
-  result = p.keep(control(p.hwnd, "EDIT", value.replace("\n", "\r\n"), WS_TABSTOP or WS_VSCROLL or ES_MULTILINE or
-                          ES_AUTOVSCROLL or ES_WANTRETURN or (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE))
+  let lab = control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX)[0]
+  result = control(p.hwnd, "EDIT", value.replace("\n", "\r\n"), WS_TABSTOP or WS_VSCROLL or ES_MULTILINE or
+                          ES_AUTOVSCROLL or ES_WANTRETURN or (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)[0]
+  if not readonly: p.typed.add (result, result.text)
   p.items.add Item(kind: ikMulti, hwnds: @[lab, result], height: height)
 
 proc toSpec*[F](x: (string, F)): (string, proc ()) =
@@ -584,17 +613,15 @@ proc toSpec*[F](x: (string, F)): (string, proc ()) =
 
 proc buttons*(p: Page, specs: varargs[(string, proc ()), toSpec]): seq[HWND] {.discardable.} =
   for (t, f) in specs:
-    let (b, id) = control(p.hwnd, "BUTTON", t, WS_TABSTOP or BS_PUSHBUTTON)
-    p.ids.add id
-    clicks[id] = f
+    let (b, _) = control(p.hwnd, "BUTTON", t, WS_TABSTOP or BS_PUSHBUTTON)
+    onClick(b, f)
     result.add b
   p.items.add Item(kind: ikButtons, hwnds: result)
 
 proc check*(p: Page, text: string, on: bool, f: proc (on: bool)): HWND {.discardable.} =
-  let (b, id) = control(p.hwnd, "BUTTON", text, WS_TABSTOP or BS_AUTOCHECKBOX)
-  p.ids.add id
+  let (b, _) = control(p.hwnd, "BUTTON", text, WS_TABSTOP or BS_AUTOCHECKBOX)
   SendMessageW(b, BM_SETCHECK, WPARAM(ord(on)), 0)
-  clicks[id] = proc () = f(SendMessageW(b, BM_GETCHECK, 0, 0) == 1)
+  onClick(b, proc () = f(SendMessageW(b, BM_GETCHECK, 0, 0) == 1))
   p.items.add Item(kind: ikCheck, hwnds: @[b])
   b
 
@@ -602,18 +629,16 @@ proc list*(p: Page, rows: seq[string], height = 200, onSelect: proc (i: int) = n
            onActivate: proc (i: int) = nil, openLabel = ""): HWND {.discardable.} =
   ## onActivate runs on double-click and Enter; with openLabel, also from a button below the list (a list item has
   ## no Invoke for UI Automation, and a button is reachable the same way for every user)
-  let (l, id) = control(p.hwnd, "LISTBOX", "", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT, WS_EX_CLIENTEDGE)
-  p.ids.add id
+  let (l, _) = control(p.hwnd, "LISTBOX", "", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT, WS_EX_CLIENTEDGE)
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
-  if onSelect != nil: selects[id] = onSelect
-  if onActivate != nil: activates[id] = onActivate
+  if onSelect != nil: onSelectList(l, onSelect)
+  if onActivate != nil: onActivateList(l, onActivate)
   p.items.add Item(kind: ikList, hwnds: @[l], height: height)
   if onActivate != nil and openLabel.len > 0:
-    let (b, bid) = control(p.hwnd, "BUTTON", openLabel, WS_TABSTOP or BS_PUSHBUTTON)
-    p.ids.add bid
-    clicks[bid] = proc () =
+    let (b, _) = control(p.hwnd, "BUTTON", openLabel, WS_TABSTOP or BS_PUSHBUTTON)
+    onClick(b, proc () =
       let i = int(SendMessageW(l, LB_GETCURSEL, 0, 0))
-      if i >= 0: onActivate(i)
+      if i >= 0: onActivate(i))
     p.items.add Item(kind: ikButtons, hwnds: @[b])
   l
 
@@ -631,25 +656,23 @@ proc drawRow*(dc: HDC, r: RECT, text: string, selected: bool, indent: int) =
 proc pictureList*(p: Page, rows: seq[string], draw: OwnerDraw, height = 200, onActivate: proc (i: int) = nil,
                   openLabel = ""): HWND {.discardable.} =
   ## a list whose rows `draw` paints (a small picture, then drawRow); the rows' strings stay its UI Automation names
-  let (l, id) = control(p.hwnd, "LISTBOX", "", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT or
-                        LBS_OWNERDRAWFIXED or LBS_HASSTRINGS, WS_EX_CLIENTEDGE)
-  p.ids.add id
+  let (l, _) = control(p.hwnd, "LISTBOX", "", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT or
+                       LBS_OWNERDRAWFIXED or LBS_HASSTRINGS, WS_EX_CLIENTEDGE)
   ownerDraws[l] = draw
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
-  if onActivate != nil: activates[id] = onActivate
+  if onActivate != nil: onActivateList(l, onActivate)
   p.items.add Item(kind: ikList, hwnds: @[l], height: height)
   if onActivate != nil and openLabel.len > 0:
-    let (b, bid) = control(p.hwnd, "BUTTON", openLabel, WS_TABSTOP or BS_PUSHBUTTON)
-    p.ids.add bid
-    clicks[bid] = proc () =
+    let (b, _) = control(p.hwnd, "BUTTON", openLabel, WS_TABSTOP or BS_PUSHBUTTON)
+    onClick(b, proc () =
       let i = int(SendMessageW(l, LB_GETCURSEL, 0, 0))
-      if i >= 0: onActivate(i)
+      if i >= 0: onActivate(i))
     p.items.add Item(kind: ikButtons, hwnds: @[b])
   l
 
 proc picture*(p: Page, name: string, height: int, draw: OwnerDraw): HWND {.discardable.} =
   ## a small drawn picture whose text (its UI Automation name) says what it shows; `draw` gets item -1
-  result = p.keep(control(p.hwnd, "STATIC", name, SS_OWNERDRAW or SS_NOPREFIX))
+  result = control(p.hwnd, "STATIC", name, SS_OWNERDRAW or SS_NOPREFIX)[0]
   ownerDraws[result] = draw
   p.items.add Item(kind: ikCustom, hwnds: @[result], height: height)
 
@@ -674,7 +697,7 @@ proc rich*(p: Page, rtf: string, links: seq[(string, string)] = @[]): HWND {.dis
   if not richLoaded:
     discard LoadLibraryW(newWideCString("Msftedit.dll"))
     richLoaded = true
-  result = p.keep(control(p.hwnd, "RICHEDIT50W", "", WS_TABSTOP or ES_MULTILINE or ES_READONLY))
+  result = control(p.hwnd, "RICHEDIT50W", "", WS_TABSTOP or ES_MULTILINE or ES_READONLY)[0]
   SendMessageW(result, EM_SETBKGNDCOLOR, 0, LPARAM(GetSysColor(colorWindowIdx)))
   SendMessageW(result, EM_AUTOURLDETECT, 0, 0)
   var st = SETTEXTEX(flags: 0, codepage: 65001)
@@ -701,9 +724,8 @@ proc rich*(p: Page, rtf: string, links: seq[(string, string)] = @[]): HWND {.dis
 proc tallButtons*(p: Page, specs: seq[(string, proc ())]): seq[HWND] {.discardable.} =
   ## full-width buttons whose text wraps (answer options)
   for (t, f) in specs:
-    let (b, id) = control(p.hwnd, "BUTTON", t, WS_TABSTOP or BS_PUSHBUTTON or BS_MULTILINE or BS_LEFT)
-    p.ids.add id
-    clicks[id] = f
+    let (b, _) = control(p.hwnd, "BUTTON", t, WS_TABSTOP or BS_PUSHBUTTON or BS_MULTILINE or BS_LEFT)
+    onClick(b, f)
     result.add b
   p.items.add Item(kind: ikTall, hwnds: result)
 
@@ -735,7 +757,7 @@ proc aspect*(p: Page, h: HWND, natW, natH: int) =
 proc slider*(p: Page, name: string, value: float, f: proc (v: float)): HWND {.discardable.} =
   ## a trackbar 0–1 (steps of 0.001) under its label; its UIA name is the label before it
   discard p.label(name)
-  result = p.keep(control(p.hwnd, "msctls_trackbar32", name, WS_TABSTOP or TBS_HORZ))
+  result = control(p.hwnd, "msctls_trackbar32", name, WS_TABSTOP or TBS_HORZ)[0]
   SendMessageW(result, TBM_SETRANGEMAX, 1, 1000)
   SendMessageW(result, TBM_SETPOS, 1, LPARAM(int(value * 1000)))
   tracks[result] = f
@@ -747,10 +769,9 @@ proc radios*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq
   for i in 0 ..< labels.len:
     closureScope:
       let idx = i
-      let (b, id) = control(p.hwnd, "BUTTON", labels[i], WS_TABSTOP or BS_AUTORADIOBUTTON or (if i == 0: WS_GROUP else: 0))
-      p.ids.add id
+      let (b, _) = control(p.hwnd, "BUTTON", labels[i], WS_TABSTOP or BS_AUTORADIOBUTTON or (if i == 0: WS_GROUP else: 0))
       SendMessageW(b, BM_SETCHECK, WPARAM(ord(i == selected)), 0)
-      clicks[id] = proc () = f(idx)
+      onClick(b, proc () = f(idx))
       p.items.add Item(kind: ikCheck, hwnds: @[b])
       res.add b
   res
@@ -762,10 +783,9 @@ proc chips*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq[
   for i in 0 ..< labels.len:
     closureScope:
       let idx = i
-      let (b, id) = control(p.hwnd, "BUTTON", labels[i], WS_TABSTOP or BS_AUTORADIOBUTTON or (if i == 0: WS_GROUP else: 0))
-      p.ids.add id
+      let (b, _) = control(p.hwnd, "BUTTON", labels[i], WS_TABSTOP or BS_AUTORADIOBUTTON or (if i == 0: WS_GROUP else: 0))
       SendMessageW(b, BM_SETCHECK, WPARAM(ord(i == selected)), 0)
-      clicks[id] = proc () = f(idx)
+      onClick(b, proc () = f(idx))
       res.add b
   p.items.add Item(kind: ikButtons, hwnds: res)
   res
@@ -810,20 +830,18 @@ proc saveFile*(owner: HWND, title, filter, suggested, ext: string): string =
                         lpstrDefExt: e)
   if GetSaveFileNameW(addr o) != 0: $buf else: ""
 
-proc GetDlgCtrlID(h: HWND): int32 {.importc, stdcall, header: HG.}
-
 proc activateFocused*(): bool =
   ## Enter on a focused list opens its item (the keyboard equivalent of a double-click)
   let f = GetFocus()
   if f == nil: return false
-  if f in enters:
-    later(enters[f])
+  let c = ctls.getOrDefault(f)
+  if c == nil: return false
+  if c.enter != nil:
+    deferred(f, c, proc (c: Ctl) = c.enter())
     return true
-  let id = int(GetDlgCtrlID(f))
-  if id notin activates: return false
+  if c.activate == nil: return false
   let i = int(SendMessageW(f, LB_GETCURSEL, 0, 0))
-  let g = activates[id]
-  if i >= 0: later(proc () = g(i))
+  if i >= 0: deferred(f, c, proc (c: Ctl) = c.activate(i))
   true
 
 # ---------------------------------------------------------------- a popup window hosting a page
