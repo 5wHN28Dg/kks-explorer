@@ -109,6 +109,7 @@ class WebSignOut(unittest.TestCase):
             ali.get_by_role('button', name='Sign out everywhere').click()
             self.assertEqual(len(said), 1)
             for words in (f'Sign {NAME} (ali) out everywhere?', 'Every web sign-in of theirs ends now', 'They sign in again with their password',
+                          'stays readable on it until then (at most 3 days)',
                           'does not change their password', 'does not remove their devices with the app'):
                 self.assertIn(words, said[-1])
             m.wait_for_timeout(300)
@@ -119,10 +120,9 @@ class WebSignOut(unittest.TestCase):
             ali.get_by_role('button', name='Sign out everywhere').click()
             expect(m.locator('#toast')).to_have_text('ali: 2 web sign-ins ended')
             self.assertEqual(self.status(m), 200)
-            # ali's pages are at the sign-in screen at their next request: the drawings page by its own check-in,
-            # the Manage page when a tab is opened
+            # ali's pages are at the sign-in screen at their next request, by themselves: here the check-in every open
+            # page makes (every 15 s)
             a1err.leave(); a2err.leave()
-            a2.locator('#tabs button', has_text='Account').click()
             self.sign_in_screen(a2)
             self.sign_in_screen(a1)
             # as on any sign-out: what the browser kept of the plant is gone, what waited to be sent is kept
@@ -160,9 +160,13 @@ class WebSignOut(unittest.TestCase):
             card.get_by_role('button', name='Sign out my other sessions').click()
             expect(a1.locator('#toast')).to_have_text('Signed out 1 other session')
             expect(a1.locator('#sessionCount')).to_have_text('Your account is signed in on the web here only.')
+            # the other browser, opened a moment ago, at its next request (a tab is opened): the sign-in screen
             a3err.leave()
+            a3.evaluate("() => { window.sameDocument = true }")
             a3.locator('#tabs button', has_text='Account').click()
+            expect(a3.locator('#kov h1')).to_have_text('Test plant', timeout=8000)   # (well before its 15 s check-in)
             self.sign_in_screen(a3)
+            self.assertIsNone(a3.evaluate('window.sameDocument'))                    # (a fresh document, as on any sign-out)
             # this browser carries on, also after a reload; and with nobody else there, it says so
             a1err.leave(); a1.reload()
             a1.wait_for_function(SIGNED_IN % 'ali')
