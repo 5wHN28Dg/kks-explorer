@@ -335,20 +335,10 @@ proc submitMany(w: Win, q: QueuedPhoto, data: string) =
   if floorHeld > 0: msg.add " · floor " & q.floor & " held for " & $floorHeld & " (it clashes with pending changes)"
   w.toast(msg)
 
-proc GetClassNameW(h: HWND, buf: WideCString, n: cint): cint {.importc, stdcall, header: "<windows.h>".}
-
-proc typingIn(f: HWND): bool =
-  ## the keyboard is in a text field (a rebuild would lose what is being typed)
-  if f == nil: return false
-  var buf = newWideCString("", 32)
-  let n = GetClassNameW(f, buf, 32)
-  n > 0 and ($buf).toLowerAscii == "edit"
-
 proc panelQuiet(w: Win) =
-  ## the open panel shows the queue per code: rebuilt, but never under a field being typed in
-  let f = GetFocus()
-  if w.selected.len > 0 and not w.picking and (f == nil or GetParent(f) != w.panel.hwnd or not typingIn(f)):
-    w.rebuildPanel()
+  ## the open panel shows the queue per code: rebuilt, but never under a field being typed in, or over what was
+  ## typed into one (win.panelHeld; it catches up afterwards)
+  if w.selected.len > 0 and not w.picking: w.panelChanged(anyFocus = false)
 
 proc floorAfterDiscard(w: Win, gone: QueuedPhoto)
 
