@@ -195,7 +195,6 @@ class QState { var picked by mutableStateOf(listOf<Int>()); var chosen by mutabl
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseScreen(id: String, startPage: String, onClose: () -> Unit, onCourse: (String, String) -> Unit, ui: Ui) {
-    CourseColors.isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f     // the app's theme, as the figures
     val doc = remember(id) { call("GET", "/native/course", query = mapOf("id" to id)).json.optJSONObject("course") }
     if (doc == null) { Dim("This course is not available."); return }
     val pages = remember(doc) { doc.getJSONArray("pages").objects() }
@@ -342,19 +341,16 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
         }
         item {
             // each button takes at most its share of the row and wraps its label there (two long titles left no gap
-            // between the buttons, and the second was squeezed until its arrow stood alone on a line, 2026-10-13)
+            // between the buttons, 2026-10-13); the arrow stays with the word next to it
             Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 if (idx > 0) OutlinedButton(onClick = { nav.page(pages[idx - 1].getString("id")) }, modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)) { Text("←\u00a0" + title(pages[idx - 1])) }
                 else Spacer(Modifier)
-                if (idx + 1 < pages.size) Button(onClick = { nav.page(pages[idx + 1].getString("id")) }, modifier = Modifier.weight(1f, fill = false).padding(start = 6.dp)) { Text(title(pages[idx + 1]).replaceLastSpace() + "\u00a0→") }
+                if (idx + 1 < pages.size) Button(onClick = { nav.page(pages[idx + 1].getString("id")) }, modifier = Modifier.weight(1f, fill = false).padding(start = 6.dp)) { Text(title(pages[idx + 1]) + "\u00a0→") }
             }
         }
     }
     }
 }
-
-/** the last two words stay together, so a wrapped label never ends in a lone short word before its arrow */
-private fun String.replaceLastSpace(): String = lastIndexOf(' ').let { if (it < 0) this else substring(0, it) + "\u00a0" + substring(it + 1) }
 
 /** whether the course page is moving (figures show a still image meanwhile) */
 val LocalScrolling = staticCompositionLocalOf<State<Boolean>> { mutableStateOf(false) }
@@ -432,7 +428,8 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
             // "Photoelectri" / "c", found 2026-10-13)
             val word = head.indices.map { i ->
                 if (i in num) 0.dp else {
-                    val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to body } }
+                    // (measured in bold: a cell may hold bold words, and they are wider)
+                    val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to body.copy(fontWeight = FontWeight.Bold) } }
                     val px = cells.maxOf { (c, st) -> plain(c).split(WORD_BREAK).maxOf { measurer.measure(it, st, softWrap = false, maxLines = 1).size.width } }
                     with(density) { px.toDp() } + pad * 2 + 1.dp
                 }
@@ -451,8 +448,8 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
     }
 }
 
-/** where a cell's text may wrap: at a space, and after a hyphen */
-private val WORD_BREAK = Regex("[ \\u00a0]|(?<=-)")
+/** where a cell's text may wrap: at a space (not a no-break space), and after a hyphen */
+private val WORD_BREAK = Regex(" |(?<=-)")
 
 /** The widths of a table's columns. `natural`: each column with its widest cell on one line; `narrow`: a number
  *  column at its narrowest (its widest number, or its heading's longest word); `word`: a text column's longest word.

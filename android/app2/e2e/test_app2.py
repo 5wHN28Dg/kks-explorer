@@ -286,8 +286,8 @@ class Phone(unittest.TestCase):
             self.assertGreater(right, 30, f'night {now}: no link in this theme\'s accent on the page ({wrong} pixels of the other theme\'s)')
             self.assertLess(wrong, right // 5, f'night {now}: {wrong} pixels of the other theme\'s accent')
         grey = im.convert('L')
-        lo, hi = grey.crop((0, int(h * 0.008), w, int(h * 0.035))).getextrema()
-        ground = grey.getpixel((w // 2, int(h * 0.045)))
+        lo, hi = grey.crop((int(w * 0.02), int(h * 0.008), int(w * 0.3), int(h * 0.035))).getextrema()      # the clock, clear of the camera in the middle
+        ground = grey.getpixel((int(w * 0.15), int(h * 0.045)))
         with self.subTest('the status bar follows the theme'):
             self.assertGreater(max(hi - ground, ground - lo), 100, f'night {now}: the status bar\'s icons (greys {lo} to {hi}) do not stand out from the background ({ground})')
 

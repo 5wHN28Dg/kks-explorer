@@ -357,7 +357,7 @@ proc layout*(p: Page) =
     of ikButtons:
       var bx = int(x)
       for b in it.hwnds:
-        let bw = max(int(px(90)), p.textWidth(b.text, fontNormal) + int(px(28)))
+        let bw = max(int(px(90)), p.textWidth(b.text.replace("&&", "&"), fontNormal) + int(px(28)))
         if bx > int(x) and bx + bw > int(x) + w:        # wrap to the next line
           bx = int(x)
           y += px(38)
@@ -391,7 +391,7 @@ proc layout*(p: Page) =
     of ikTall:
       var bx = int(x)
       for b in it.hwnds:
-        let th = p.measure(b.text, fontNormal, w - int(px(28))) + int(px(16))
+        let th = p.measure(b.text.replace("&&", "&"), fontNormal, w - int(px(28))) + int(px(16))
         MoveWindow(b, int32(bx), int32(y), int32(w), int32(max(int(px(32)), th)), 1)
         y += max(int(px(32)), th) + px(6)
   p.contentH = y + p.scroll + px(12)

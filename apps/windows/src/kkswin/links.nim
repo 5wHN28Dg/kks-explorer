@@ -59,7 +59,7 @@ proc goTo(w: Win, label: string, t: JNode) =
 
 proc choiceLabels*(ts: seq[JNode]): seq[string] =
   ## the choice window's buttons, one per target: the sheet's name, numbered when one sheet has the code more than
-  ## once (else two identical buttons), with "&" doubled (a button's "&" underlines the letter after it)
+  ## once (else two identical buttons)
   var names: seq[string]
   for t in ts: names.add targetName(t)
   for i, n in names:
