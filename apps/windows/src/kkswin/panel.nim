@@ -36,13 +36,17 @@ const Fields = [("area", "Building / area"), ("floor", "Floor"), ("elev", "Eleva
 
 var editing = ""      ## the tag whose fields are open for editing
 
-proc afterChange(w: Win, id: string) =
-  ## a change to tag `id` was sent from its panel: the panel is made again from the data (what was typed would hold
-  ## it as it is: win.panelHeld), or closed when the tag has gone with the change (rejected, removed)
+proc afterChange(w: Win, id: string, rebuild = true) =
+  ## a change to tag `id` was sent from its panel. The tag has gone with it (rejected, removed): its panel closes,
+  ## emptied (a hidden form with typed text would hold the panel as it is: win.panelHeld), and the drawing loses its
+  ## box at once. Else, with `rebuild`, the panel is made again from the data (the reading that was typed was sent)
   w.loadModel()
-  if w.selected != id: return
-  if w.m.tagById(id)[0]: w.rebuildPanel()
-  else: w.selectTag("", false)
+  if w.sheet.len > 0: w.v.tags = w.tagBoxes(w.sheet)
+  if w.selected != id or w.picking: return
+  if not w.m.tagById(id)[0]:
+    w.panel.clear()
+    w.selectTag("", false)
+  elif rebuild: w.rebuildPanel()
 
 proc reviewSection(w: Win, p: Page, t: Tag) =
   let sug = t.suggestion
@@ -284,7 +288,7 @@ proc buildPanel*(w: Win, t: Tag) =
     p.buttons(("Remove this tag", proc () =
       if ask(w.hwnd, "Remove this tag?", "The mark goes away on every device once approved.") and
          w.submit("tag_remove", newObj(@[("id", newStr(addedId))]), if k.len > 0: k else: "the mark").len > 0:
-        w.afterChange(tagId)))
+        w.afterChange(tagId, rebuild = false)))     # still there (it waits for approval): the panel stays as it is
   if k.len == 0: return
   var seen: HashSet[string]
   var where: seq[(string, string, string)]

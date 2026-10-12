@@ -1033,10 +1033,12 @@ class Windows(unittest.TestCase):
         ids = self.wait_server(confirmed, 'the confirmed reading never reached the server', tries=80)
         # (that sync round came after the held Save: the server still has its own value)
         self.assertEqual(eq().get('loc'), 'from the server')
-        self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag', 'gone\tCheck this tag',
-                                         'gone\tNot a tag', 'click\tDrawings'])
-        # the confirmed mark goes again: test_systems_follows_sync counts the codes on the drawings
-        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': ids[0].split(':', 1)[1]}})
+        try:
+            self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag', 'gone\tCheck this tag',
+                                             'gone\tNot a tag', 'click\tDrawings'])
+        finally:
+            # the confirmed mark goes again: test_systems_follows_sync counts the codes on the drawings
+            r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': ids[0].split(':', 1)[1]}})
         self.assertEqual(r.get('status'), 'approved', r)
         self.leave()
 
