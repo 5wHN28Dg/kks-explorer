@@ -5,6 +5,8 @@
 //   set <name> <text>       set its value (edits; the name a field takes from its label)
 //   enter <name>            open a list item (its default action, else focus + Enter)
 //   keys <name> <vk,vk,…>   post key presses (virtual-key codes, hex or decimal) to the element's window
+//   slide <name> <vk,vk,…>  the same to the slider of that name (a slider is named by the label before it, so
+//                           `keys` finds the label): 0x24 Home = its lowest value, 0x23 End = its highest
 //   drag <name> x0 y0 x1 y1 a left-button drag inside the element (fractions of its size), posted to its window
 //   touchdrag <name> x0 y0 x1 y1  the same with one finger, injected as real touch input (InjectTouchInput; works
 //                           without touch hardware), so the window gets WM_POINTER messages
@@ -297,7 +299,7 @@ int wmain(int argc, wchar_t **argv) {
             continue;
         }
         int timeout = (cmd == "wait" && f.size() > 2) ? std::stoi(f[2]) * 1000 : 15000;
-        CONTROLTYPEID only = (cmd == "set" || cmd == "settext" || cmd == "value") ? UIA_EditControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
+        CONTROLTYPEID only = (cmd == "set" || cmd == "settext" || cmd == "value") ? UIA_EditControlTypeId : cmd == "slide" ? UIA_SliderControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
                              (cmd == "enter" || cmd == "select" || cmd == "pick") ? UIA_ListItemControlTypeId :
                              (cmd == "toggle" || cmd == "state") ? UIA_CheckBoxControlTypeId :
                              (cmd == "choose" || cmd == "chosen") ? UIA_RadioButtonControlTypeId : 0;
@@ -433,7 +435,7 @@ int wmain(int argc, wchar_t **argv) {
             // "\n" in the script is a line break (a script line can't hold one): a pasted column of codes
             for (size_t i; (i = v.find(L"\\n")) != std::wstring::npos;) v.replace(i, 2, L"\r\n");
             if (!SendMessageW((HWND)hw, WM_SETTEXT, 0, (LPARAM)v.c_str())) { say("ERROR: WM_SETTEXT refused: " + arg); return 1; }
-        } else if (cmd == "keys") {
+        } else if (cmd == "keys" || cmd == "slide") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);
             if (!hw) { say("ERROR: no window: " + arg); return 1; }

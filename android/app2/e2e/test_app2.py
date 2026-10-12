@@ -250,7 +250,14 @@ class Phone(unittest.TestCase):
         for _ in range(12):
             ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.2)), '120')
         time.sleep(1.5)
-        prv, nxt = box(ui.find('5 · Strain gauges', timeout=10)), box(ui.find('7 · The four', timeout=10))
+
+        def button(text):      # the button around a label: the smallest clickable node that holds it
+            t = box(ui.find(text, timeout=10))
+            around = [b for b in (box(n) for n in ui.nodes() if n.get('clickable') == 'true')
+                      if b[0] <= t[0] and b[1] <= t[1] and b[2] >= t[2] and b[3] >= t[3]]
+            self.assertTrue(around, f'no button around {text!r}')
+            return min(around, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+        prv, nxt = button('5 · Strain gauges'), button('7 · The four')
         with self.subTest('previous and next stand apart'):
             self.assertGreaterEqual(nxt[0] - prv[2], 20, f'the previous button ends at {prv[2]}, the next one starts at {nxt[0]}')
         # The phone changes between light and dark while the app is open: the course's link takes the other palette's

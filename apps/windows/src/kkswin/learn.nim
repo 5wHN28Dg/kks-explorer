@@ -155,16 +155,31 @@ proc figure(cw: CW, id: string, n: int) =
     let st = v.ev.status()
     if st.kind == jStr: v.status.setText(st.s)
     let ev = v.ev
+    # what the controls say, after a frame and after every control: the status line, the slider with its text, and
+    # Play or Pause. (Only a frame used to bring them up to date: with the figure paused, moving the slider redrew
+    # the picture under a status line of the old value, and a slider that pauses a playing figure left "Pause" on
+    # the button; found 2026-10-13.)
+    let refresh = proc () =
+      let s = ev.status()
+      if s.kind == jStr and v.status != nil: v.status.setText(s.s)
+      if v.slider != nil:
+        SendMessageW(v.slider, TBM_SETPOS, 1, LPARAM(int(ev.v * 1000)))
+        v.sliderOut.setText(ev.sliderText().s)
+      if v.playBtn != nil:
+        let want = if ev.playing: "Pause" else: "Play"
+        if v.playBtn.text != want: v.playBtn.setText(want)
     let playLabel = if ev.playing: "Pause" else: "Play"
     let btns = cw.page.buttons(@[(playLabel, proc () =
       if ev.playing: ev.pause() else: ev.play()
       cw.focusKey = k & "/play"
       cw.rebuild())])
     cw.key(k & "/play", btns[0])
+    v.playBtn = btns[0]
     if f.get("slider") != nil:
       let sl = cw.page.slider(f["slider"]["label"].s, ev.v, proc (x: float) =
         ev.setSlider(x)
         ev.tick(0)
+        refresh()
         InvalidateRect(v.hwnd, nil, 0))
       v.slider = sl
       v.sliderOut = cw.page.dim(ev.sliderText().s)
@@ -175,17 +190,14 @@ proc figure(cw: CW, id: string, n: int) =
           let kk = tgs[ti]["key"].s
           cw.page.check(tgs[ti]["label"].s, ev.toggles.getOrDefault(kk) >= 0.5, proc (on: bool) =
             ev.toggle(kk)
+            refresh()
             InvalidateRect(v.hwnd, nil, 0))
     if f.get("modes") != nil:
       cw.page.radios(f["modes"].elems.mapIt(it["label"].s), ev.mode, proc (i: int) =
         ev.setMode(i)
+        refresh()
         InvalidateRect(v.hwnd, nil, 0))
-    v.onTick = proc () =
-      let s = ev.status()
-      if s.kind == jStr and v.status != nil: v.status.setText(s.s)
-      if v.slider != nil:
-        SendMessageW(v.slider, TBM_SETPOS, 1, LPARAM(int(ev.v * 1000)))
-        v.sliderOut.setText(ev.sliderText().s)
+    v.onTick = refresh
   if f["caption"].len > 0:
     var fl = Flow()
     fl.para(f["caption"], "\\sa100\\fs19\\cf3")
