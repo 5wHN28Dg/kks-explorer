@@ -449,8 +449,9 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
     }
 }
 
-/** where a cell's text may wrap: at a space (not a no-break space), and after a hyphen or a slash */
-private val WORD_BREAK = Regex(" |(?<=[-/])")
+/** where a cell's text may wrap: at a space (not a no-break space), and after a hyphen or a slash that no digit
+ *  follows ("CT-101" and "1/2" stay whole) */
+private val WORD_BREAK = Regex(" |(?<=[-/])(?!\\d)")
 
 /** The widths of a table's columns. `natural`: each column with its widest cell on one line; `narrow`: a number
  *  column at its narrowest (its widest number, or its heading's longest word); `word`: a text column's longest word.
@@ -473,7 +474,7 @@ fun tableWidths(natural: List<androidx.compose.ui.unit.Dp>, narrow: List<android
     // 96 dp each is a wish, the longest word a must: when only the wish is in the way, the table still fits
     if (sum(least) > avail) least = capped.mapIndexed { i, w -> if (i in num) w else minOf(w, word[i]) }
     val spare = avail - sum(least)
-    if (spare <= 0.dp) return capped.mapIndexed { i, w -> if (i in num) w else minOf(w, maxOf(word[i], 96.dp)) }     // scrolls sideways, with readable columns
+    if (spare < 0.dp) return capped.mapIndexed { i, w -> if (i in num) w else minOf(w, maxOf(word[i], 96.dp)) }     // scrolls sideways, with readable columns
     val lack = capped.mapIndexed { i, w -> w - least[i] }
     val lacking = sum(lack)
     return least.mapIndexed { i, w -> if (lacking > 0.dp) w + spare * (lack[i] / lacking) else w }
