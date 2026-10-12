@@ -227,6 +227,62 @@ class Phone(unittest.TestCase):
         time.sleep(1.5)
         with open('/tmp/kks-android-course.png', 'wb') as f:
             f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+        # the fourth course (Instrumentation and control) opens, and a page of it shows its figure
+        ui.tap('Back', exact=True)
+        ui.tap('Instrumentation and control', exact=True, timeout=15)
+        ui.tap('Contents', exact=True, timeout=15)
+        ui.tap('6 · Capacitive, LVDT, proximity', exact=True)
+        ui.scroll_to('LVDT: core position and output. ', tries=30)
+
+        def box(n):
+            return [int(v) for v in re.findall(r'\d+', n.get('bounds'))]
+        # a table column is as wide as its longest word: "Photoelectric" stays on one line, like "Capacitive" above it
+        # (it was broken as "Photoelectri" / "c", 2026-10-13)
+        ui.scroll_to('Photoelectric', exact=True, tries=30)
+        size = re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1]
+        w, h = int(size[0]), int(size[1])
+        ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.7)), str(w // 2), str(int(h * 0.5)), '1500')   # clear of the bottom bar
+        time.sleep(0.5)
+        one, word = box(ui.find('Capacitive', exact=True)), box(ui.find('Photoelectric', exact=True))
+        with self.subTest('a table column holds its longest word'):
+            self.assertEqual(word[3] - word[1], one[3] - one[1], '"Photoelectric" takes more lines than "Capacitive"')
+        # the previous and next buttons at the end of the page stand apart, also with two long titles
+        for _ in range(12):
+            ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.2)), '120')
+        time.sleep(1.5)
+        prv, nxt = box(ui.find('5 · Strain gauges', timeout=10)), box(ui.find('7 · The four', timeout=10))
+        with self.subTest('previous and next stand apart'):
+            self.assertGreaterEqual(nxt[0] - prv[2], 20, f'the previous button ends at {prv[2]}, the next one starts at {nxt[0]}')
+        # The phone changes between light and dark while the app is open: the course's link takes the other palette's
+        # accent (docs/COURSES.md 9.3), and the status bar's icons stand out from the new background. (The light
+        # colours were used in both themes, and the bars kept the icons of the theme the app was started in.)
+        import io
+        from PIL import Image
+        was = 'yes' if 'yes' in ui.sh('cmd', 'uimode', 'night') else 'no'
+        now = 'no' if was == 'yes' else 'yes'
+        self.addCleanup(ui.sh, 'cmd', 'uimode', 'night', was)
+        ui.sh('cmd', 'uimode', 'night', now)
+        time.sleep(2)
+        ui.tap('Contents', exact=True, timeout=15)
+        ui.tap('0 · Start here', exact=True)
+        ui.scroll_to('Plant Foundations', tries=12)
+        ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.7)), str(w // 2), str(int(h * 0.5)), '1500')
+        time.sleep(1)
+        im = Image.open(io.BytesIO(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)).convert('RGB')
+        accents = {'yes': (0x6D, 0xAF, 0xDC), 'no': (0x1F, 0x5F, 0x8B)}
+        body = list(im.crop((0, int(h * 0.12), w, int(h * 0.88))).getdata())
+
+        def near(c):
+            return sum(1 for p in body if abs(p[0] - c[0]) < 9 and abs(p[1] - c[1]) < 9 and abs(p[2] - c[2]) < 9)
+        right, wrong = near(accents[now]), near(accents[was])
+        with self.subTest('the link has the theme\'s accent'):
+            self.assertGreater(right, 30, f'night {now}: no link in this theme\'s accent on the page ({wrong} pixels of the other theme\'s)')
+            self.assertLess(wrong, right // 5, f'night {now}: {wrong} pixels of the other theme\'s accent')
+        grey = im.convert('L')
+        lo, hi = grey.crop((0, int(h * 0.008), w, int(h * 0.035))).getextrema()
+        ground = grey.getpixel((w // 2, int(h * 0.045)))
+        with self.subTest('the status bar follows the theme'):
+            self.assertGreater(max(hi - ground, ground - lo), 100, f'night {now}: the status bar\'s icons (greys {lo} to {hi}) do not stand out from the background ({ground})')
 
     def test_multi(self):
         """one place and one note for several codes (/api/submit-many): Select tags from the ⋮ menu, two tags tapped

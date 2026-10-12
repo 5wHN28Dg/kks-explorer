@@ -4,7 +4,7 @@
 ## (WS_EX_CONTROLPARENT + IsDialogMessage in the message loop).
 
 import std/[tables, strutils, os]
-import w32
+import w32, labels
 
 const HG = "<windows.h>"
 type SIZE {.importc, header: HG.} = object
@@ -139,7 +139,8 @@ proc newId(): int =
 
 proc control*(parent: HWND, cls, text: string, style: uint32, ex = 0'u32, font: HFONT = nil): (HWND, int) =
   let id = newId()
-  let h = CreateWindowExW(ex, newWideCString(cls), newWideCString(text), WS_CHILD or WS_VISIBLE or style, 0, 0, 10, 10,
+  let shown = if cls == "BUTTON": buttonLabel(text) else: text      # a button's "&" is the character (labels.nim)
+  let h = CreateWindowExW(ex, newWideCString(cls), newWideCString(shown), WS_CHILD or WS_VISIBLE or style, 0, 0, 10, 10,
                           parent, cast[HMENU](id), hinst, nil)
   SendMessageW(h, WM_SETFONT, cast[WPARAM](if font != nil: font else: fontNormal), 1)
   (h, id)

@@ -164,7 +164,10 @@ def scale():
         for k, tk in enumerate(ticks):
             x = X0 + W * k / 4
             s += [LN(x, y + 9, x, y + 15, stroke='muted'), T(tk, x, y + 28, 'middle', 11, 'mono', fill='muted')]
-    s += [LN('cx', 30, 'cx', 272, stroke='act', sw=2), C('cx', 30, 4, fill='act')]
+    # the cursor: one stroke through each bar, not through the tick labels between the bars (a line through all five
+    # rows struck out every number it stood on)
+    s += [LN('cx', 30 if i == 0 else 50 + i * 50 - 14, 'cx', 50 + i * 50 + 14, stroke='act', sw=2) for i in range(len(rows))]
+    s.append(C('cx', 30, 4, fill='act'))
     put('scale', 640, 290, 'Five bars one under the other: percent, degrees Celsius for a 0 to 200 range, milliamps from '
         '4 to 20, volts from 1 to 5 and psi from 3 to 15. One vertical cursor crosses all five at the same position.', s,
         period=14, values=V, slider={'label': 'Measurement', 'init': 0.5, 'drive': PING, 'text': '{pct}%'},
@@ -220,7 +223,7 @@ def lvdt():
         s.append(T(name, x + 50, 66, 'middle', 12, weight=600 if c == 'accent' else 400, fill='accent' if c == 'accent' else 'ink'))
     s += [T('AC supply', 320, 50, 'middle', 11, fill='accent'),
           R('rodx', 121, 'rodw', 10, fill='muted'), R('cx', 112, 180, 28, rx=3, fill='ink', op=.75),
-          T('Iron core', 150, 200, size=12), LN(150, 190, 'cx', 142, stroke='muted'),
+          T('Iron core', 150, 202, size=12), LN(176, 188, 'cx', 142, stroke='muted'),
           T('to the stem', 560, 112, 'middle', 11, fill='muted'),
           LN(320, 92, 320, 160, stroke='act', dash=[3, 3]), T('centre (null)', 326, 200, size=11, fill='act'),
           T('Secondary 1', 20, 244, size=12), R(130, 232, 'b1', 14, fill='muted'),
@@ -413,9 +416,9 @@ def dva():
           T('Displacement', X0 + 8, YT - 6, size=12.5, weight=600, fill='accent'), T('Acceleration', X1 - 8, YT - 6, 'end', 12.5, weight=600, fill='act'),
           T('Velocity: 5 mm/s peak', (X0 + X1) / 2, YT + 10, 'middle', 12, weight=600), LN((X0 + X1) / 2, YT + 16, (X0 + X1) / 2, ymid - 4, stroke='ink'),
           T('159 µm', X0 + 8, YT + 10, size=11, font='mono', fill='accent'), T('1.6 µm', X1 + 8, YB - 16, size=11, font='mono', fill='accent'),
-          T('16 µm', lx(100) + 10, ymid + 22, size=11, font='mono', fill='accent'),
+          T('16 µm', lx(100) + 10, ymid + 31, size=11, font='mono', fill='accent'),
           T('0.03 g', X0 + 8, YB - 5, size=11, font='mono', fill='act'), T('3.2 g', X1 + 8, YT + 24, size=11, font='mono', fill='act'),
-          T('0.32 g', lx(100) + 10, ymid + 38, size=11, font='mono', fill='act'),
+          T('0.32 g', lx(100) + 10, ymid + 46, size=11, font='mono', fill='act'),
           T('larger', 60, YT + 4, 'middle', 11, fill='muted'), T('smaller', 60, YB - 4, 'middle', 11, fill='muted'),
           T('Displacement in µm peak-to-peak, acceleration in g peak', (X0 + X1) / 2, YB + 56, 'middle', 11, fill='muted')]
     put('dva', 660, 296, 'Chart against frequency from 10 to 1000 hertz. Velocity is a level line. Displacement falls '

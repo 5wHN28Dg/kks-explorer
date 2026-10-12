@@ -69,7 +69,7 @@ proc choiceLabels*(ts: seq[JNode]): seq[string] =
       for j in 0 .. i:
         if names[j] == n: inc k
       l.add " (" & $k & " of " & $names.count(n) & ")"
-    result.add l.replace("&", "&&")
+    result.add l          # (ui.control doubles a button's "&")
 
 proc followLink*(w: Win, sheet, label: string, x0, y0: float) =
   ## the connector `label` at (x0, y0) of `sheet`. The drawing's circles and the list's rows keep the connector they
