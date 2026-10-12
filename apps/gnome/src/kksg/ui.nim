@@ -28,26 +28,27 @@ var beforeClickHandler*: proc ()
   ## tests only (nil unless KKS_TEST_STALE_CLICK is set, kks_explorer.nim): runs between a button's "clicked" and its
   ## handler, where a timer's callback can run
 
-proc onClick*(b: W, fn: proc ()) =
+proc onClick*(b: W, fn: proc (), once = false) =
   ## Button handlers run from an idle callback: widgets built while GTK handles an accessibility action (a screen
   ## reader's or AT-SPI's "click") were missing from the accessibility tree (GTK 4.22, found 2026-10-01).
   ## A handler whose button has left the window by then is not run (idleFor, #160): the panel or list it was in was
   ## rebuilt in between, and the handler would hide and read the freed widgets of the old one, or send what the old
   ## one showed.
-  ## A second press that comes before the first one's handler has run is the same press as far as the person can
-  ## tell (the screen has not answered yet), and is dropped: both handlers would run, the second on what the first
-  ## left, and "Add the photo" or "Propose", which close their dialog, sent their photo or tag twice (#163).
+  ## `once`, for a button that sends something and closes its dialog ("Add the photo", "Propose"): a second press
+  ## that comes before the first one's handler has run is dropped. Both handlers ran, the second while the dialog
+  ## was closing, and the photo or tag was sent twice (#163). Not for every button: two quick presses of Zoom in
+  ## while tiles render are two steps.
   var waiting = false
   b.on("clicked", proc () =
-    if waiting: return
+    if once and waiting: return
     waiting = true
     if beforeClickHandler != nil: idle(beforeClickHandler)
     idleFor(b, fn, proc () = waiting = false))
 
-proc button*(text: string, css = "", fn: proc () = nil): W =
+proc button*(text: string, css = "", fn: proc () = nil, once = false): W =
   result = gtk_button_new_with_label(text.cstring)
   for c in css.splitWhitespace: gtk_widget_add_css_class(result, c.cstring)
-  if fn != nil: result.onClick(fn)
+  if fn != nil: result.onClick(fn, once)
 
 proc iconButton*(icon, tooltip: string, fn: proc () = nil): W =
   result = gtk_button_new_from_icon_name(icon.cstring)

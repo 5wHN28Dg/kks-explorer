@@ -374,7 +374,7 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
         rgb[(y * ow + x) * 3 + 2] = data[p]
     cairo_surface_destroy(outS)
     adw_dialog_close(d)
-    done(rgb, ow, oh, text(caption).strip, text(note).strip))
+    done(rgb, ow, oh, text(caption).strip, text(note).strip), once = true)
   let header = headerBar(adw_window_title_new(if plate: "Add a tag plate photo" else: "Add a photo",
                                               if plate: "The metal plate with the KKS code" else: "Draw to point things out"))
   adw_header_bar_pack_end(header, send)

@@ -284,9 +284,12 @@ Lessons (don't repeat):
     `shown` for a dialog's answer or the banner's button.
   - A closure kept in one field that clears that field while it runs frees itself (a local copy is only borrowed):
     the banner's action is kept in a second field while it runs.
-  - The tag panel is never rebuilt under an open form (#163): only the form's own Save and Cancel call
-    `rebuildPanel`; everything else calls `reloadPanel`, which under a form brings only the live parts up to date
-    (`panelLive`: photos, link mode's button, the line saying what changed underneath). A new form calls `openForm`.
+  - The tag panel is never rebuilt under an open form (#163). A button of the panel that sends and then calls
+    `rebuildPanel` first refuses while another form is open (`busy`, `panelEditing`); anything outside the panel
+    calls `reloadPanel`, which under a form brings only the live parts up to date (`panelLive`: photos, link
+    mode's button, the line saying what changed underneath). A new form calls `openForm`.
+  - A button that sends something and closes its dialog is made with `once = true` (a second press before the
+    first one's handler ran sent twice).
   - `timeout` is for repeating timers (it keeps going after an error); something done once, later, is `after`.
   - `ui.clear` gives the keyboard focus up before it empties a container (`leaveFocus`; do the same before
     `gtk_list_box_remove_all`): GTK otherwise moves the focus at the next frame and logs a failed

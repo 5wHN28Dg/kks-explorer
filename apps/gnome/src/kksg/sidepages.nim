@@ -100,10 +100,13 @@ proc procedureDetail(w: Win, id: string, box: W) =
         # procedure was opened again on another page: the one on screen now is drawn again (procBox), with the
         # links made meanwhile. With no procedure open any more, its highlights leave the drawing (the page's
         # closing left them, for link mode).
+        # (`page`: this page itself, should procBox not be the one on screen: a page whose push was refused.)
+        let page = hold(box)
         w.linkEnded = proc () =
           if w.procBox != nil and w.procBox.shown:
             if w.procBoxId == id: w.procedureDetail(id, w.procBox.w)
-          elif w.activeProc == id:
+          elif page.shown: w.procedureDetail(id, box)
+          elif w.activeProc.len > 0:      # no procedure open: whichever was opened last, its highlights go
             w.activeProc = ""
             w.applyHighlights()
           w.reloadPanel()         # its Link button goes

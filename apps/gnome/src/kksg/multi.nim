@@ -319,7 +319,7 @@ proc formDialog(w: Win, title: string, g: W, send: proc (d: W)) =
   margins(body, 12)
   body.add g
   let header = headerBar(adw_window_title_new(title.cstring, countText(w.picked.len).cstring))
-  adw_header_bar_pack_end(header, button("Send", "suggested-action", proc () = send(d)))
+  adw_header_bar_pack_end(header, button("Send", "suggested-action", proc () = send(d), once = true))
   adw_dialog_set_child(d, toolbarView(header, body))
   present(d, w.window)
 

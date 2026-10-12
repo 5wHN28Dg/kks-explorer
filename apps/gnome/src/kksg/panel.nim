@@ -102,6 +102,9 @@ proc reviewSection(w: Win, t: Tag): W =
   let base = if w.m.state != nil and w.m.state.get("reviews") != nil and w.m.state["reviews"].get(id) != nil:
                w.m.state["reviews"][id] else: newNull()
   btns.add button("Confirm", "suggested-action", proc () =
+    if w.panelEditing:     # an Edit form is open below: sending rebuilds the panel and would lose what is typed there
+      w.toast("Save or cancel your edits first")
+      return
     let code = normKks(text(k))
     if not (code.len >= 12 and code[0 .. 1].allCharsInSet(Digits) and code[2 .. 4].allCharsInSet(UppercaseLetters) and
             code[5 .. 6].allCharsInSet(Digits) and code[7 .. 8].allCharsInSet(UppercaseLetters) and
@@ -114,6 +117,9 @@ proc reviewSection(w: Win, t: Tag): W =
     if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", data), ("base", base)]), code).len > 0:
       w.rebuildPanel())      # (what is typed is sent: the reload would leave the panel alone while it differs)
   btns.add button("Not a tag", "", proc () =
+    if w.panelEditing:
+      w.toast("Save or cancel your edits first")
+      return
     if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
                                   ("base", base)]), "not a tag").len > 0:
       w.rebuildPanel())

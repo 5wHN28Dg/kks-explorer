@@ -4,7 +4,8 @@
 ## iconButton, navRow, onClick) and for idleFor itself. It opens a window, so it is not in `nim test`:
 ##   cd apps/gnome && nim c -d:release -o:/tmp/kksgnome/stale_click e2e/stale_click.nim
 ##   e2e/headless.sh /tmp/kksgnome/stale_click
-## Also here, for the same plumbing (#163): a second press before the first one's handler ran is dropped; a one-shot
+## Also here, for the same plumbing (#163): a second press of a `once` button before the first one's handler ran is
+## dropped; a one-shot
 ## timer (`after`) runs once even when it fails; and the closures of idle callbacks and timers are released.
 import std/[os, times]
 import kksg/[gtk, ui]
@@ -16,12 +17,30 @@ proc settle() =
   ## every queued idle callback (and whatever they queue)
   while g_main_context_iteration(nil, 0) != 0: discard
 
-proc spin(ms: int) =
-  ## the main loop for this long (timers come due)
-  let till = epochTime() + ms / 1000
-  while epochTime() < till:
+proc ticks(n: int) =
+  ## the main loop until a 5 ms timer started now has come due `n` times: any 5 ms timer started before it has
+  ## come due as often, however slow the machine is (a fixed wait saw a runaway timer only once on a busy one)
+  var seen = 0
+  timeout(5, proc (): bool =
+    inc seen
+    seen < n)
+  let till = epochTime() + 20
+  while seen < n and epochTime() < till:
     settle()
-    sleep(2)
+    sleep(1)
+  doAssert seen >= n, "the main loop ran no timers"
+
+proc frames(w: W, n: int) =
+  ## the main loop until `w` has been through `n` frames (GTK moves the focus at the end of one)
+  var seen = 0
+  w.onTick(proc (us: int64): bool =
+    inc seen
+    seen < n)
+  let till = epochTime() + 20
+  while seen < n and epochTime() < till:
+    settle()
+    sleep(1)
+  doAssert seen >= n, "no frames were drawn"
 
 type Probe = ref object      ## held by a closure: gone when the closure is released
 var probesFreed = 0
@@ -144,30 +163,39 @@ proc checks() =
     gtk_label_set_text(l, "still a widget")      # (freed without the hold)
     doAssert str(gtk_label_get_text(l)) == "still a widget"
     inc checked
-  # two presses before the first one's handler ran: one press (the handler ran twice: "Add the photo" and
-  # "Propose", which close their dialog, sent twice). The next press counts again, also after a press whose
-  # handler was dropped because the button had left the window.
-  for mk in makers:
+  # A button made with `once` (it sends something and closes its dialog: "Add the photo", "Propose"): two presses
+  # before the first one's handler ran are one press (the handler ran twice, and sent twice). The next press counts
+  # again, also after a press whose handler was dropped because the button had left the window. Any other button
+  # runs its handler for each press (two quick presses of Zoom in are two steps).
+  block:
     var ran = 0
-    let (top, btn) = mk.make(proc () = inc ran)
-    panel.add top
+    let btn = button("Add the photo", "suggested-action", (proc () = inc ran), once = true)
+    panel.add btn
     g_signal_emit_by_name(btn, "clicked")
     g_signal_emit_by_name(btn, "clicked")
     settle()
-    doAssert ran == 1, mk.name & ": two presses before the handler ran it " & $ran & " times"
+    doAssert ran == 1, "two presses before the handler ran it " & $ran & " times"
     g_signal_emit_by_name(btn, "clicked")
     settle()
-    doAssert ran == 2, mk.name & ": a press after the handler had run was dropped"
-    g_object_ref(top)
+    doAssert ran == 2, "a press after the handler had run was dropped"
+    g_object_ref(btn)
     g_signal_emit_by_name(btn, "clicked")
-    gtk_box_remove(panel, top)      # out of the window: this press's handler does not run
+    gtk_box_remove(panel, btn)      # out of the window: this press's handler does not run
     settle()
     doAssert ran == 2
-    panel.add top                   # (a page kept and shown again, like the setup screen's)
-    g_object_unref(top)
+    panel.add btn                   # (a page kept and shown again, like the setup screen's)
+    g_object_unref(btn)
     g_signal_emit_by_name(btn, "clicked")
     settle()
-    doAssert ran == 3, mk.name & ": a button shown again stayed dead after a dropped press"
+    doAssert ran == 3, "a button shown again stayed dead after a dropped press"
+    panel.clear()
+    var steps = 0
+    let zoom = iconButton("zoom-in-symbolic", "Zoom in", proc () = inc steps)
+    panel.add zoom
+    g_signal_emit_by_name(zoom, "clicked")
+    g_signal_emit_by_name(zoom, "clicked")
+    settle()
+    doAssert steps == 2, "an ordinary button ran its handler " & $steps & " times for two presses"
     panel.clear()
     inc checked
   # a one-shot timer runs once, also when it fails. (As a `timeout` whose callback returns false at its end, the
@@ -184,7 +212,7 @@ proc checks() =
       discard none[defect])       # IndexDefect
     var fine = 0
     after(5, proc () = inc fine)
-    spin(120)
+    ticks(10)
     doAssert ran == 1, "a one-shot timer that raised ran " & $ran & " times"
     doAssert defect == 1, "a one-shot timer that raised a Defect ran " & $defect & " times"
     doAssert fine == 1
@@ -194,7 +222,7 @@ proc checks() =
       inc rep
       if rep == 2: raise newException(ValueError, "fails once (on purpose)")
       rep < 4)
-    spin(200)
+    ticks(12)
     doAssert rep == 4, "a repeating timer ran " & $rep & " times (an error at the 2nd, stops itself at the 4th)"
     inc checked
   # the closures of idle callbacks and timers are released once they have run (or were dropped): before, each
@@ -238,7 +266,7 @@ proc checks() =
       viaIdleForGone()
       viaButton()
     queue()
-    spin(120)
+    ticks(6)
     GC_fullCollect()
     doAssert probesFreed == 5, $probesFreed & " of 5 closures were released after they ran"   # (f's: the button's own)
     panel.clear()
@@ -274,7 +302,7 @@ proc checks() =
       area.add g
     build()
     for round in 0 ..< 3:
-      spin(80)
+      frames(win, 3)
       var save: W = nil
       proc find(w: W) =
         var c = gtk_widget_get_first_child(w)
@@ -284,14 +312,15 @@ proc checks() =
           c = gtk_widget_get_next_sibling(c)
       find(area)
       doAssert save != nil and gtk_widget_grab_focus(save) != 0
-      spin(80)
+      frames(win, 2)
       doAssert gtk_root_get_focus(win) == save
       g_signal_emit_by_name(save, "clicked")
-      spin(300)                     # the handler, then frames: GTK's own move of the focus would come here
+      settle()                      # the handler
+      frames(win, 6)                # GTK's own move of the focus would come here
     doAssert criticals == 0, "GTK logged " & $criticals & " failed assertions after a focused area was emptied"
     panel.clear()
     inc checked
-  doAssert checked == 2 * makers.len + 6
+  doAssert checked == makers.len + 7
 
 app.on("activate", proc () =
   # (a failed check must end the run: the signal's trampoline would log it and carry on)

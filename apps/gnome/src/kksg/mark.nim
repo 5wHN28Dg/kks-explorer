@@ -49,7 +49,7 @@ proc markDialog*(w: Win, x0, y0, x1, y1: float) =
       w.setBanner("", "", nil)
       w.loadModel()
       w.v.tags = w.tagBoxes(sheet)
-      gtk_widget_queue_draw(w.v.widget))
+      gtk_widget_queue_draw(w.v.widget), once = true)
   let header = headerBar(adw_window_title_new("Mark a missing tag", si.name.cstring))
   adw_header_bar_pack_end(header, send)
   adw_dialog_set_child(d, toolbarView(header, body))

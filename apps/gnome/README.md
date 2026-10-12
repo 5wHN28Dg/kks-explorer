@@ -82,7 +82,7 @@ unpack Ubuntu's package next to the GTK headers (`apt-get download mutter && dpk
 `e2e/viewer_pinch.nim` checks that a touchpad pinch (a `begin` with a NULL sequence) doesn't crash the viewer; build
 it and run it under `headless.sh` (the header says how). `e2e/stale_click.nim`, run the same way, checks that a
 button's handler does not run once the panel it was in has been rebuilt (#160), and the rest of that plumbing (#163):
-two presses before the handler ran count once, a one-shot timer runs once even when it fails, the closures of idle
+two presses of a button that sends and closes its dialog count once, a one-shot timer runs once even when it fails, the closures of idle
 callbacks and timers are released, and GTK logs nothing when a container is emptied with the focus in it.
 
 `python3 apps/gnome/e2e/test_gnome.py` drives the app through its accessibility tree (AT-SPI), against the Nim server

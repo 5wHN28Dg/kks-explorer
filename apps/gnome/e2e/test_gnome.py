@@ -1395,6 +1395,15 @@ class Gnome(Plant):
         select_tag()
         self.assertFalse(atspi.find_all(a, 'button', name=link), 'link mode was still on after Done')
         open_proc()
+        # link mode starting and ending under an open form: the form stays, the Link button comes and goes beside it
+        self.press(a, 'Edit', ('text', 'Notes'))
+        atspi.set_text(atspi.find(a, 'text', name='Notes'), 'typed before link mode')
+        self.press(a, '+ Link equipment', ('button', link))
+        self.assertEqual(self.typed(a, 'Notes'), 'typed before link mode', 'link mode started: the panel was rebuilt under the open form')
+        atspi.click(atspi.find(a, 'button', name='Done'))
+        gone('button', link, 'Done left the panel\'s Link button (a form is open)')
+        self.assertEqual(self.typed(a, 'Notes'), 'typed before link mode', 'link mode ended: the panel was rebuilt under the open form')
+        self.press(a, 'Cancel', ('button', 'Edit'))
         # "Select tags" takes the banner down: link mode is over (it stayed on, with no Done to press)
         self.press(a, '+ Link equipment', ('button', link))
         mode = atspi.find(a, 'toggle button', name='Select tags')
@@ -1450,11 +1459,11 @@ class Gnome(Plant):
         app.wait(10)
 
     def test_zzzzzzz_form_kept(self):
-        """#163: nothing rebuilds the tag panel under an open form but the form's own Save and Cancel. A photo queued
-        from the panel, a photo leaving the queue (KKS_TEST_PHOTO_HOLD names a file: held while it exists), a sync
-        round that changed the equipment, and another sheet opened: what is typed stays, and the parts that must not
-        wait are brought up to date beside the form (the queue's line, the photo, a line saying what changed
-        underneath). Save then sends only what was typed, with the values the form was opened on: a field someone
+        """#163: nothing rebuilds the tag panel under an open form but the form's own Save and Cancel. A photo
+        leaving the queue (KKS_TEST_PHOTO_HOLD names a file: held while it exists) and a photo queued from the panel
+        rebuilt it; a sync round that changed the equipment and another sheet opened already left it alone, and stay
+        that way. What is typed stays, and the parts that must not wait are brought up to date beside the form (the
+        queue's line, the photo, a line saying what changed underneath). (Link mode under a form: test_zzzzzz_link_done.) Save then sends only what was typed, with the values the form was opened on: a field someone
         else changed meanwhile is not written over (the core holds the change as a clash). The review form ("Check
         this tag") keeps what is typed in it the same way. (Named to run last: it adds tags and photos.)"""
         b = self.boss
@@ -1465,10 +1474,19 @@ class Gnome(Plant):
         # (with a floor: the photo is not asked for one)
         r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'floor': '3'}, 'base': {}}})
         self.assertEqual(r.get('status'), 'approved', r)
-        # an unread mark: it waits in the review queue
-        r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [800, 700, 920, 760],
-                                                                       'kks': '', 'isa': '', 'note': ''}})
-        self.assertEqual(r.get('status'), 'approved', r)
+        # a reading the importer was not sure of (as it writes them), published: its panel has the review form and,
+        # since it has a code, the Edit form too
+        doubt = '11LAE32AP001'
+        pd = os.path.join(self.dir, 'plant-data')
+        with open(os.path.join(pd, 'tags.json')) as f:
+            tags = json.load(f)
+        tags.append({'id': 'sample:doubt', 'sheet': 'sample', 'kks': doubt, 'suffix': '', 'isa': None, 'kind': 'equipment',
+                     'status': 'review', 'conf': 0.4, 'bbox': [800, 700, 920, 760], 'read': ['11LAE32', 'AP001']})
+        with open(os.path.join(pd, 'tags.json'), 'w') as f:
+            json.dump(tags, f)
+        r = subprocess.run([SERVER, 'publish-data', pd, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         from PIL import Image
         pic = os.path.join(self.dir, 'formkept.png')
         Image.new('RGB', (320, 240), (150, 110, 90)).save(pic)
@@ -1550,23 +1568,32 @@ class Gnome(Plant):
         atspi.find(a, None, contains='Held: it clashes', timeout=10)
         time.sleep(5)                # two sync rounds: a change written here would be on the server by now
         self.assertEqual(equipment().get('near'), 'set on the server', 'Save wrote over a change made underneath')
-        # 6. the review form: what is typed in it stays through a sync round that brought a change
-        atspi.click(atspi.find(a, 'button', name='Sample sheet'))
-        self.press(a, 'Review queue', ('button', 'Back'))
-        time.sleep(1)
-        names = [nm for n, nm in atspi.nodes(a, 'button')]
-        rows = [n for n, nm in atspi.nodes(a, 'button') if ' / ' in nm]        # "top / bottom" as the reader saw it
-        self.assertTrue(rows, f'no tag to review among {names}')
-        atspi.click(rows[0])
-        atspi.find(a, 'text', name='KKS (with suffix)', timeout=10)
+        # 6. the review form ("Check this tag") and the Edit form in one panel: neither is lost to the other
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), doubt)
+        self.press(a, doubt, ('text', 'KKS (with suffix)'))
         time.sleep(3)
-        atspi.set_text(atspi.find(a, 'text', name='KKS (with suffix)'), '11LAE31AP001')
+
+        def reviewed():
+            return b.req('GET', '/api/state')['reviews'].get('sample:doubt')
+        self.press(a, 'Edit', ('text', 'Notes'))
+        atspi.set_text(atspi.find(a, 'text', name='Notes'), 'typed under the review form')
+        atspi.click(atspi.find(a, 'button', name='Confirm'))       # (it would send, and rebuild the panel)
+        atspi.find(a, None, contains='Save or cancel your edits first', timeout=10)
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), 'typed under the review form', 'the review form\'s Confirm rebuilt the panel under the Edit form')
+        self.assertIsNone(reviewed(), 'Confirm sent the review with the Edit form open')
+        self.press(a, 'Cancel', ('button', 'Edit'))
+        # what is typed in the review form stays through a sync round that brought a change (the reader's text came back)
+        atspi.set_text(atspi.find(a, 'text', name='KKS (with suffix)', timeout=10), '11LAE31AP001')
         r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'area': 'Turbine hall'}, 'base': {}}})
         self.assertEqual(r.get('status'), 'approved', r)
         time.sleep(6)                # the change arrives, the reload runs
         self.assertEqual(self.typed(a, 'KKS (with suffix)'), '11LAE31AP001', 'a sync round put the reader\'s text back in the review form')
+        atspi.click(atspi.find(a, 'button', name='Edit'))          # (a second form: its Save would rebuild the panel)
+        atspi.find(a, None, contains='Finish checking this tag first', timeout=10)
+        self.assertIsNone(self.typed(a, 'Notes'), 'an Edit form opened over a review form that holds something typed')
         atspi.click(atspi.find(a, 'button', name='Confirm'))
-        wait_for('Confirm sent nothing', lambda: any(v.get('kks') == '11LAE31AP001' for v in b.req('GET', '/api/state')['reviews'].values()))
+        wait_for('Confirm sent nothing', lambda: (reviewed() or {}).get('kks') == '11LAE31AP001')
         wait_for('the review form stayed after Confirm', lambda: not atspi.find_all(a, 'text', name='KKS (with suffix)'), 10)
         self.assertIsNone(app.poll(), 'the app died')
         self.assertEqual(self.criticals('formkept'), [])
