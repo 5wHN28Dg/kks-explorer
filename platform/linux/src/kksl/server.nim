@@ -276,9 +276,23 @@ proc sessionEnds*(s: Server, raw: string): int64 =
   let ses = s.store.getRow("sessions", hex(s.p.sha256(raw.toBytes)))
   if ses != nil: ses["expires"].i else: 0
 
-proc endSessions*(s: Server, userId: int64) =
+proc endSessions*(s: Server, userId: int64, keep = ""): int {.discardable.} =
+  ## End the account's web sign-ins at once: all of them, or all but `keep` (a session cookie's value: the sign-in
+  ## that asked, "Sign out my other sessions"). -> how many ended that were still good. The rows are deleted, and
+  ## renewSession reads the row again before it writes: a sign-in ended here is not brought back by its cookie, also
+  ## not by a check-in that arrives at the same moment (requests are handled one at a time).
+  let keepKey = if keep.len > 0: hex(s.p.sha256(keep.toBytes)) else: ""
+  let now = nowS()
   for (k, v) in s.store.allRows("sessions"):
-    if v["user_id"].i == userId: s.store.delRow("sessions", k)
+    if v["user_id"].i == userId and k != keepKey:
+      s.store.delRow("sessions", k)
+      if v["expires"].i >= now: inc result
+
+proc openSessions*(s: Server, userId: int64): int =
+  ## how many web sign-ins of this account are good now (the Account page says so)
+  let now = nowS()
+  for (_, v) in s.store.allRows("sessions"):
+    if v["user_id"].i == userId and v["expires"].i >= now: inc result
 
 proc makeToken(s: Server, kind: string, userId: int64, ttl: int64): string =
   let raw = b64u(s.p.randomBytes(24))
@@ -907,6 +921,19 @@ proc updateUser*(s: Server, me: Actor, uid: int64, d: JNode, reset: bool): JNode
   s.putUser(u)
   O(("ok", newBool(true)))
 
+proc signOutUser*(s: Server, me: Actor, uid: int64): JNode =
+  ## Manage → Users → "Sign out everywhere" (the user, 2026-10-12): every web sign-in of that account ends now. A
+  ## sign-in renews while used, so one on a lost phone or a shared computer would not end by itself. Who may: as for
+  ## the row's other actions (updateUser): an admin for a user, only the manager for an admin, nobody here for the
+  ## manager (the manager ends their own other sign-ins on their Account page, which keeps the one they are using:
+  ## nobody is locked out by it). The password and the person's devices with the app stay as they are.
+  if not me.isAdmin: herr(403, "admin only")
+  let u = s.userById(uid)
+  if u == nil: herr(404, "no such user")
+  let role = s.n.run.role(u["person"].s)
+  if role == "manager" or (role == "admin" and me.role != "manager"): herr(403, "not allowed for this account")
+  O(("ok", newBool(true)), ("ended", newInt(s.endSessions(uid))))
+
 # ---- enrolment: a device joining with its owner's password (PROTOCOL-v2 §16 "through a server") ----
 
 proc enrollDevice(s: Server, username, password, dev, label0: string, sources: openArray[string]) =
@@ -1066,6 +1093,15 @@ proc control*(s: Server, cmd: string, args: seq[string]): string =
     except HttpErr as e: raise newException(ValueError, e.msg)
     r["username"].s & " can sign in on the web as the same person. Open this link once within 3 days to set the password:\n  " &
       r["link"].s
+  of "sign-out":
+    # as Manage → Users → Sign out everywhere, for whoever runs the server: any account, the manager's too
+    if args.len != 1: raise newException(ValueError, "usage: kks-server sign-out --user NAME")
+    let u = s.userByName(args[0])
+    if u == nil: raise newException(ValueError, "No account named " & args[0] & ".")
+    let n = s.endSessions(u["id"].i)
+    (if n == 0: u["username"].s & " was not signed in on the web."
+     else: "Ended " & $n & " web sign-in" & (if n == 1: "" else: "s") & " of " & u["username"].s & ".") &
+      " Their password and their devices with the app are unchanged."
   of "reset-manager":
     # the manager account was lost (forgotten password, the person left): the root key, which the server holds,
     # names another active account manager; the old manager becomes an admin (a root `manager` statement, §21)
@@ -1457,7 +1493,8 @@ proc handle(s: Server, req: Request) {.async.} =
       let live = tr != nil and tr["expires"].i > nowS()
       await s.sendJson(req, 200, O(("user", s.publicUser(usr)), ("offline_days", newInt(s.cfg.offlineDays)),
         ("transfer_offer", newBool(live and tr["to"].i == usr["id"].i)),
-        ("transfer_pending", if live and me.role == "manager": tr else: newNull())), s.renewed(req))
+        ("transfer_pending", if live and me.role == "manager": tr else: newNull()),
+        ("sessions", newInt(s.openSessions(usr["id"].i)))), s.renewed(req))   # web sign-ins open, this one included
       return
     of "/api/users":
       if not me.isAdmin: herr(403, "admin only")
@@ -1518,6 +1555,10 @@ proc handle(s: Server, req: Request) {.async.} =
       s.endSessions(usr["id"].i)
       let raw = s.newSession(usr["id"].i)
       await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
+      return
+    of "/api/sign-out-others":
+      # Account → "Sign out my other sessions": every web sign-in of this account but the one that asks
+      await s.sendJson(req, 200, O(("ok", newBool(true)), ("ended", newInt(s.endSessions(usr["id"].i, keep = req.sessionRaw)))))
       return
     of "/api/sheets/reimport":   # the stored PDF again, e.g. with another rotation
       if me.role != "manager": herr(403, "manager only")
@@ -1580,6 +1621,10 @@ proc handle(s: Server, req: Request) {.async.} =
       return
     if parts.len == 5 and parts[2] == "signups" and parts[4] in ["approve", "reject"]:
       await s.sendJson(req, 200, s.decideSignup(me, parts[3], parts[4], d))
+      return
+    if parts.len == 5 and parts[2] == "users" and parts[4] == "sign-out":
+      let uid = try: parseBiggestInt(parts[3]) except ValueError: herr(404, "not found")
+      await s.sendJson(req, 200, s.signOutUser(me, uid))
       return
     if parts.len >= 4 and parts[2] == "users":
       let uid = try: parseBiggestInt(parts[3]) except ValueError: herr(404, "not found")

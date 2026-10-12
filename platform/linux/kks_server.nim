@@ -4,12 +4,14 @@
 ##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json
 ##   kks-server web-sign-in --user NAME: a web account for someone who joined with the app and has none (the same
 ##     person), and the one-time link with which they set their password (as Manage → Users → Web sign-in)
+##   kks-server sign-out --user NAME: ends every web sign-in of that account at once (as Manage → Users → Sign out
+##     everywhere; any account, the manager's too). The password and the person's devices with the app stay
 ##   kks-server set-signup-code CODE: the code people need to ask for an account in the browser ("" = sign-up off);
 ##     an admin then approves or rejects each request in Manage → Users. CODE "-" reads the code from standard input
 ##     (one line), which keeps it out of the process list and the shell's history
 ##   kks-server backup --out FILE: the plant (log and photos), encrypted with a key from the last export-root-key's
 ##     passphrase (decision 0051); kks-server open-backup --in FILE --out BUNDLE --passphrase-file F opens it anywhere
-##     (publish-data, set-plant-name, set-signup-code, submit-file, reset-password, reset-manager and web-sign-in run inside the server when it runs: its control
+##     (publish-data, set-plant-name, set-signup-code, submit-file, reset-password, reset-manager, web-sign-in and sign-out run inside the server when it runs: its control
 ##     socket next to the store, decision 0045)
 ##   kks-server export-root-key --out FILE [--passphrase-out FILE]: the plant root key, sealed with a generated
 ##     passphrase (80 bits, decision 0023, issue #29) that is printed, or written to --passphrase-out; the same file
@@ -62,12 +64,12 @@ proc main() =
   if cfg.webDir.len == 0: cfg.webDir = here / "web"
   if cfg.dataDir.len == 0: cfg.dataDir = here / "data"
   if cfg.storePath.len == 0: cfg.storePath = "kks-server.db"
-  if cmd in ["reset-password", "reset-manager", "web-sign-in"]:        # --user NAME
+  if cmd in ["reset-password", "reset-manager", "web-sign-in", "sign-out"]:        # --user NAME
     if "user" notin args: quit "usage: kks-server " & cmd & " --user NAME"
     rest = @[args["user"]]
   if cmd == "set-signup-code" and rest == @["-"]:
     rest = @[try: stdin.readLine() except EOFError: ""]
-  if cmd in ["publish-data", "set-plant-name", "set-signup-code", "reset-password", "reset-manager", "web-sign-in", "submit-file"]:
+  if cmd in ["publish-data", "set-plant-name", "set-signup-code", "reset-password", "reset-manager", "web-sign-in", "sign-out", "submit-file"]:
     # a running server does it itself (see server.control); else this process, with the server stopped
     block forward:
       let c = newSocket(nativesockets.AF_UNIX, nativesockets.SOCK_STREAM, nativesockets.IPPROTO_IP)
@@ -118,7 +120,7 @@ proc main() =
     for (_, u) in s.store.allRows("users"):
       echo u["id"].i, "  ", u["username"].s.alignLeft(20), " ", (if s.n.run != nil: s.n.run.role(u["person"].s) else: "?").alignLeft(8),
            " ", (if s.live(u): "active" else: "inactive"), "  ", u["full_name"].s
-  of "publish-data", "set-plant-name", "set-signup-code", "reset-password", "reset-manager", "web-sign-in", "submit-file":
+  of "publish-data", "set-plant-name", "set-signup-code", "reset-password", "reset-manager", "web-sign-in", "sign-out", "submit-file":
     try: echo s.control(cmd, rest)
     except ValueError as e: quit e.msg
   of "export-root-key":
