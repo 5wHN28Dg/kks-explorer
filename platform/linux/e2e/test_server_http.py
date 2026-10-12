@@ -1240,6 +1240,140 @@ class SessionRenewalBehindHttps(Base):
         st, _, hdr = Client(self.base).req('GET', '/api/me', headers={'Host': 'plant.example', 'Cookie': 'kks_session=' + tok})
         self.assertEqual((st, len(cookie(hdr))), (200, 1))
         self.assertIn('; Secure', cookie(hdr)[0])
+class SignOutEverywhere(Base):
+    """Ending web sign-ins at once (the user, 2026-10-12; a sign-in renews while used, so it has no maximum age):
+    Manage → Users → "Sign out everywhere" (POST /api/users/<id>/sign-out), Account → "Sign out my other sessions"
+    (POST /api/sign-out-others) and `kks-server sign-out --user NAME`. The password and the account stay."""
+    extra = {'session_renew_seconds': 2}
+    cli = Cli.cli
+    PW = 'a long password'
+
+    def cookie(self, hdr):
+        return [v for k, v in hdr.items() if k.lower() == 'set-cookie']
+
+    def token(self, c):
+        return [x.value for x in c.jar if x.name == 'kks_session'][0]
+
+    def login(self, name, pw=None):
+        c = Client(self.base)
+        st, r, _ = c.req('POST', '/api/login', {'username': name, 'password': pw or name + ' password 1'})
+        self.assertEqual(st, 200, r)
+        return c
+
+    def alive(self, *clients):
+        return [c.req('GET', '/api/me')[0] for c in clients]
+
+    def dead(self, *clients):
+        """ended, and not brought back by the renewal: past the interval the check-ins answer 401 without a cookie"""
+        time.sleep(2.3)
+        for c in clients:
+            for path in ('/api/me', '/api/sync/status'):
+                st, _, hdr = c.req('GET', path)
+                self.assertEqual((st, self.cookie(hdr)), (401, []), path)
+
+    def test_sign_out(self):
+        boss = self.manager()
+        ids = {}
+        for name, role in (('sara', 'admin'), ('omar', 'admin'), ('ali', 'user'), ('tom', 'user')):
+            st, r, _ = boss.req('POST', '/api/users', {'username': name, 'full_name': name.title() + ' Person', 'position': 'Operator', 'role': role})
+            self.assertEqual(st, 200, r)
+            ids[name] = r['id']
+            first = Client(self.base)            # (setting the password signs in: that sign-in is ended again here)
+            self.assertEqual(first.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1],
+                                                                       'password': name + ' password 1'})[0], 200)
+            self.assertEqual(first.req('POST', '/api/logout', {})[0], 200)
+        ids['boss'] = boss.req('GET', '/api/me')[1]['user']['id']
+        out = lambda c, who, **kw: c.req('POST', '/api/users/%s/sign-out' % ids.get(who, who), {}, **kw)[:2]
+        sara, sara2, omar, ali, ali2, tom = (self.login(n) for n in ('sara', 'sara', 'omar', 'ali', 'ali', 'tom'))
+        everyone = (boss, sara, sara2, omar, ali, ali2, tom)
+
+        # ---- who may not: nobody is signed out by any of these
+        anon = Client(self.base)
+        self.assertEqual(out(anon, 'ali')[0], 401)
+        self.assertEqual(anon.req('POST', '/api/sign-out-others', {})[0], 401)
+        for who in ('tom', 'ali', 'sara', 'boss'):                     # a member: nobody's, not their own either
+            self.assertEqual(out(ali, who), (403, {'error': 'admin only'}), who)
+        for who in ('omar', 'sara', 'boss'):                           # an admin: no admin's (their own too), not the manager's
+            self.assertEqual(out(sara, who), (403, {'error': 'not allowed for this account'}), who)
+        self.assertEqual(out(boss, 'boss'), (403, {'error': 'not allowed for this account'}))   # the manager's: the Account page
+        self.assertEqual(out(boss, 99999)[0], 404)
+        self.assertEqual(out(boss, 'x')[0], 404)
+        # a GET changes nothing; a page of another site can't send it; JSON only
+        self.assertNotEqual(boss.req('GET', '/api/users/%d/sign-out' % ids['ali'])[0], 200)
+        self.assertNotEqual(ali.req('GET', '/api/sign-out-others')[0], 200)
+        for path, c in (('/api/users/%d/sign-out' % ids['ali'], boss), ('/api/sign-out-others', ali)):
+            self.assertEqual(c.req('POST', path, {}, headers={'Origin': 'http://evil.example'})[0], 403)
+            self.assertEqual(c.req('POST', path, raw=b'{}', headers={'Content-Type': 'text/plain'})[0], 415)
+        self.assertEqual(self.alive(*everyone), [200] * 7)
+
+        # ---- an admin, for a user: both of ali's sign-ins end at once; nobody else's
+        self.assertEqual(out(sara, 'ali'), (200, {'ok': True, 'ended': 2}))
+        self.assertEqual(self.alive(ali, ali2), [401, 401])
+        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'x'}}})[0], 401)
+        self.dead(ali, ali2)
+        self.assertEqual(self.alive(boss, sara, sara2, omar, tom), [200] * 5)
+        self.assertEqual(out(sara, 'ali'), (200, {'ok': True, 'ended': 0}))         # none left: said as none
+        # the account is as it was: active, the same password signs in again
+        row = [u for u in boss.req('GET', '/api/users')[1]['users'] if u['username'] == 'ali'][0]
+        self.assertEqual((row['active'], row['has_password'], row['role']), (True, True, 'user'))
+        ali = self.login('ali')
+        self.assertEqual(out(sara, 'ali'), (200, {'ok': True, 'ended': 1}))
+        self.dead(ali)
+        # ---- the manager, for an admin
+        self.assertEqual(out(boss, 'sara'), (200, {'ok': True, 'ended': 2}))
+        self.dead(sara, sara2)
+        self.assertEqual(self.alive(boss, omar, tom), [200] * 3)
+
+        # ---- one's own other sessions: all but the one that asks
+        tom2, tom3 = self.login('tom'), self.login('tom')
+        tok = self.token(tom)
+        self.assertEqual(tom.req('GET', '/api/me')[1]['sessions'], 3)
+        st, r, hdr = tom.req('POST', '/api/sign-out-others', {})
+        self.assertEqual((st, r, self.cookie(hdr)), (200, {'ok': True, 'ended': 2}, []))
+        self.dead(tom2, tom3)
+        st, me, _ = tom.req('GET', '/api/me')                                       # the one that asked carries on,
+        self.assertEqual((st, me['sessions'], self.token(tom)), (200, 1, tok))      # with the cookie it had
+        self.assertEqual(tom.req('POST', '/api/sign-out-others', {})[1], {'ok': True, 'ended': 0})
+        self.assertEqual(self.alive(tom, omar, boss), [200] * 3)                    # nobody else's
+        # the manager too, and is not locked out by it
+        boss2 = self.login('boss', self.PW)
+        self.assertEqual(boss.req('POST', '/api/sign-out-others', {})[1], {'ok': True, 'ended': 1})
+        self.dead(boss2)
+        self.assertEqual(self.alive(boss), [200])
+        # a cookie that is no sign-in of the account spares nothing and ends nothing
+        st, r, _ = Client(self.base).req('POST', '/api/sign-out-others', {}, headers={'Cookie': 'kks_session=' + 'A' * 43})
+        self.assertEqual(st, 401, r)
+        self.assertEqual(self.alive(tom, boss), [200] * 2)
+
+        # ---- whoever runs the server: any account, the manager's too
+        code, text = self.cli('sign-out')
+        self.assertEqual((code != 0, 'usage: kks-server sign-out --user NAME' in text), (True, True), text)
+        code, text = self.cli('sign-out', '--user', 'nobody-here')
+        self.assertEqual((code != 0, text), (True, 'No account named nobody-here.'))
+        self.assertEqual(self.alive(tom, omar, boss), [200] * 3)
+        tom2 = self.login('tom')
+        self.assertEqual(self.cli('sign-out', '--user', 'TOM'),
+                         (0, 'Ended 2 web sign-ins of tom. Their password and their devices with the app are unchanged.'))
+        self.dead(tom, tom2)
+        self.assertEqual(self.cli('sign-out', '--user', 'tom'),
+                         (0, 'tom was not signed in on the web. Their password and their devices with the app are unchanged.'))
+        self.assertEqual(self.cli('sign-out', '--user', 'boss'),
+                         (0, 'Ended 1 web sign-in of boss. Their password and their devices with the app are unchanged.'))
+        self.dead(boss)
+        self.assertEqual(self.alive(omar), [200])
+        boss = self.login('boss', self.PW)                                          # the password is as it was
+        self.assertEqual(boss.req('GET', '/api/me')[1]['user']['role'], 'manager')
+        # only under /api (elsewhere the path is not this action, and ends nobody's sign-in)
+        self.assertNotIn('ended', boss.req('POST', '/zzz/users/%d/sign-out' % ids['omar'], {})[1])
+        self.assertEqual(self.alive(omar), [200])
+        # with the server stopped the command does it on the store itself
+        tom = self.login('tom')
+        self.proc.terminate(); self.proc.wait(5)
+        self.assertEqual(self.cli('sign-out', '--user', 'tom'),
+                         (0, 'Ended 1 web sign-in of tom. Their password and their devices with the app are unchanged.'))
+        self.assertEqual(self.cli('sign-out', '--user', 'tom')[1].split('.')[0], 'tom was not signed in on the web')
+
+
 class OfflineList(Base):
     """GET /api/offline: the files a browser saves to work without the server ("Download for offline")"""
 
