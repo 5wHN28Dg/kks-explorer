@@ -181,12 +181,13 @@ proc equipmentSection(w: Win, t: Tag): W =
     var custom: seq[(W, W)]
     var note: W
     w.openForm(g, k, live, proc (): bool =
+      # (as Save reads them: without the spaces around)
       for (f, e) in entries:
-        if text(e) != s(live, f): return true
+        if text(e).strip != s(live, f): return true
       var cs: seq[(string, string)]
       for (ek, ev) in custom:
-        if text(ek).len > 0 or text(ev).len > 0: cs.add((text(ek), text(ev)))
-      cs != customOf(live) or (note != nil and text(note).len > 0))
+        if text(ek).strip.len > 0 or text(ev).strip.len > 0: cs.add((text(ek).strip, text(ev).strip))
+      cs != customOf(live) or (note != nil and text(note).strip.len > 0))
     gtk_widget_set_visible(edit, 0)
     for r in shown & customRows: gtk_widget_set_visible(r, 0)
     for (f, title) in Fields:
@@ -288,7 +289,7 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
   fix.onClick(proc () =
     if w.busy: return
     let e = entryRow("Valve type", text0)
-    w.openForm(g, k, live, proc (): bool = text(e) != text0)
+    w.openForm(g, k, live, proc (): bool = text(e).strip != text0.strip)
     gtk_widget_set_visible(btns, 0)
     adw_preferences_group_add(g, e)
     let row2 = hbox(8)
@@ -354,7 +355,7 @@ proc descriptionSection(w: Win, t: Tag): W =
   editB.onClick(proc () =
     if w.busy: return
     let e = entryRow("Description", s(d, "text"))
-    w.openForm(g, k, live, proc (): bool = text(e) != s(d, "text"))  # nothing rebuilds the panel under it (formOpen)
+    w.openForm(g, k, live, proc (): bool = text(e).strip != s(d, "text").strip)  # nothing rebuilds the panel under it (formOpen)
     gtk_widget_set_visible(btns, 0)
     adw_preferences_group_add(g, e)
     let b2 = hbox(8)

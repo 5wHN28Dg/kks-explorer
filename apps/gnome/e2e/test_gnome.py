@@ -1842,6 +1842,11 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='Cancel'))
         edit_has_focus('Cancel')
         edit('saved, then the focus')
+        for _ in range(40):          # (the form's opening hid Edit: the focus has left it, so finding it there after Save is new)
+            if focus() != 'button Edit':
+                break
+            time.sleep(0.25)
+        self.assertNotEqual(focus(), 'button Edit')
         atspi.click(atspi.find(a, 'button', name='Save'))
         for _ in range(60):
             if notes() == 'saved, then the focus':

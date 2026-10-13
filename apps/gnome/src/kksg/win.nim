@@ -127,6 +127,10 @@ proc goToTag*(w: Win, sheet, id: string, center = true, kept: proc () = nil) =
   ## open the panel of tag `id` on `sheet`. The tag whose panel is open is only shown again (its form stays:
   ## doSelectTag); for another one, a form holding something typed is asked about first.
   proc go() =
+    if not w.m.tagById(id)[0]:       # (gone while the question was on screen: a sync, a new publish)
+      w.toast("That tag is no longer on the drawing")
+      if kept != nil: kept()
+      return
     if sheet != w.sheet: w.showSheet(sheet)
     w.selectTag(id, center)
   if id == w.selected: go() else: w.leaving(go, kept)

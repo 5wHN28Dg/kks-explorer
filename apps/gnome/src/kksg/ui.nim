@@ -145,7 +145,9 @@ proc ask*(parent: W, heading, body, yes, no: string, fn: proc (yes: bool)) =
     d.onResponse(proc (id: string) =
       if answered: return
       answered = true
-      fn(id == "yes"))
+      let yes = id == "yes"
+      idle(proc () = fn(yes)))       # (what it does builds widgets: not inside the response, which a screen
+                                     # reader's press sends from an accessibility action)
     adw_dialog_present(d, parent))
 
 proc page*(child: W, title: string): W = adw_navigation_page_new(child, title.cstring)
