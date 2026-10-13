@@ -77,8 +77,9 @@ td.v{font-family:var(--mono);font-size:13.5px;font-variant-numeric:tabular-nums;
 .figcap{font-size:13.5px;color:var(--muted);margin-top:6px}
 /* activity blocks */
 .act{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;margin:16px 0}
-.act .kind{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;display:flex;justify-content:space-between;gap:12px}
-.act .kind .src{letter-spacing:0;text-transform:none;font-weight:400}
+/* a question's heading, as written: in capitals a module's "4–20 mA" read "4–20 MA" */
+.act .kind{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.04em;color:var(--accent);margin-bottom:6px;display:flex;justify-content:space-between;gap:12px}
+.act .kind .src{letter-spacing:0;font-weight:400;font-size:12px}
 .act .q{font-weight:700;margin-bottom:10px;max-width:68ch}
 .opts{display:grid;gap:8px}
 .opt{all:unset;box-sizing:border-box;display:block;padding:10px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--ground);cursor:pointer;line-height:1.4}

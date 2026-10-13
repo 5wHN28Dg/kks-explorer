@@ -80,6 +80,14 @@ class CourseWeb(unittest.TestCase):
                         for i in range(canvases.count()):
                             self.assertGreater(canvases.nth(i).evaluate(DRAWN), 50, f'{cid}/{pg["id"]} figure {figs[i]}')
                 self.assertEqual(errors, [], f'{name} {cid}')
+            # a question's heading is shown as written: the placement test names each question's module, and in
+            # capitals "4 · 4–20 mA" read "4–20 MA" (innerText is the text as rendered, text-transform included)
+            page.goto(f'{self.base}/course.html?c=inc#place')
+            page.wait_for_selector('#main .act .kind')
+            kinds = page.locator('#main .act .kind > span:first-child').all_inner_texts()
+            self.assertTrue(any('4–20 mA' in k for k in kinds), kinds)
+            self.assertFalse(any('4–20 MA' in k for k in kinds), kinds)
+            page.screenshot(path=os.path.join(SHOTS, f'place-{name}.png'))
             # answering: the right option of fnd's first practice question, then a wrong one of the next
             fnd = COURSES['fnd']
             m = next(p for p in fnd['pages'] if p['kind'] == 'module' and p['practice'])
