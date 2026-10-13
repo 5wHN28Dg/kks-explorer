@@ -37,6 +37,10 @@ type Win* = ref object
                                ## panel under it but the form's own Save and Cancel (formOpen, reloadPanel)
   panelDirty*: proc (): bool   ## the panel's review form ("Check this tag", always open) holds something typed
   reviewText*: proc (): (string, string)   ## what that form holds now
+  formChanged*: proc (): bool  ## the open Edit form holds something that differs from what it was opened on
+  asking*: bool                ## "Discard your edits?" is on screen (leaving)
+  panelEdit*: W                ## the panel's Edit button (in the panel: not held): the keyboard's place after a
+                               ## form's Save or Cancel drew the panel again
   reviewCarry*: (string, string, string)   ## a tag's id and its review form's text, over a rebuild of the panel
                                            ## by another form's Save or Cancel (panel.nim formDone)
   formKks*: string             ## the open form's code, and what its equipment held when the panel was built
@@ -83,10 +87,49 @@ proc noForm*(w: Win) =
   w.panelEditing = false
   w.panelDirty = nil
   w.reviewText = nil
+  w.formChanged = nil
   w.formKks = ""
   w.formSeen = nil
   w.formNote = nil
   w.formSaid = ""
+
+proc focusInside(area: W): bool =
+  let root = gtk_widget_get_root(area)
+  if root == nil: return false
+  let f = gtk_root_get_focus(root)
+  f != nil and (f == area or gtk_widget_is_ancestor(f, area) != 0)
+
+proc formDirty*(w: Win): bool =
+  ## A form of the panel holds something the person typed: an Edit form whose text differs from what it was opened
+  ## on, or the review form. (formOpen is wider: an Edit form just opened, nothing typed, also keeps reloads off.)
+  (w.formChanged != nil and w.formChanged()) or (w.panelDirty != nil and w.panelDirty())
+
+proc leaving*(w: Win, go: proc (), kept: proc () = nil) =
+  ## The person does something that takes the panel's form away: picks another tag (on the drawing, in the search,
+  ## from a procedure, a system, a course), closes the panel, starts "Mark a tag". With something typed in the form
+  ## it asks first (the user, 2026-10-13; before, the text went without a word): Discard runs `go`; Keep editing
+  ## leaves everything as it was and runs `kept`. With nothing typed `go` runs at once. A second request while the
+  ## question is on screen is dropped.
+  if not w.formDirty:
+    go()
+    return
+  if w.asking:
+    if kept != nil: kept()
+    return
+  w.asking = true
+  ask(w.window, "Discard your edits?", "What you typed in the panel has not been saved.", "Discard", "Keep editing",
+      proc (yes: bool) =
+        w.asking = false
+        if yes: go()
+        elif kept != nil: kept())
+
+proc goToTag*(w: Win, sheet, id: string, center = true, kept: proc () = nil) =
+  ## open the panel of tag `id` on `sheet`. The tag whose panel is open is only shown again (its form stays:
+  ## doSelectTag); for another one, a form holding something typed is asked about first.
+  proc go() =
+    if sheet != w.sheet: w.showSheet(sheet)
+    w.selectTag(id, center)
+  if id == w.selected: go() else: w.leaving(go, kept)
 
 proc stopLinking*(w: Win) =
   ## Link mode ends: by Done, or because something else took its banner (Select tags, Mark a tag). Before #163 those
@@ -229,12 +272,6 @@ proc refreshLive*(w: Win) =
     w.livePage.clear()
     w.liveBuild(w.livePage)
     w.liveKey = key
-
-proc focusInside(area: W): bool =
-  let root = gtk_widget_get_root(area)
-  if root == nil: return false
-  let f = gtk_root_get_focus(root)
-  f != nil and (f == area or gtk_widget_is_ancestor(f, area) != 0)
 
 proc follow*(w: Win, area: W, rebuild: proc (), update: proc (): bool = nil): Follower =
   ## `area` shows data that syncs and approvals change (refreshFollowers rebuilds it), but never under the keyboard

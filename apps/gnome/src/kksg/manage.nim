@@ -42,8 +42,7 @@ proc openTag(w: Win, code, tag: string) =
     w.toast("That code is on no drawing")
     return
   let (_, t) = w.m.tagById(id)
-  if t.sheet != w.sheet: w.showSheet(t.sheet)
-  w.selectTag(id, true)
+  w.goToTag(t.sheet, id)
 
 proc codeHeader(w: Win, code, tag: string, subtitle: string): W =
   ## a code's heading in Approvals and My proposals; the button opens it on the drawing
