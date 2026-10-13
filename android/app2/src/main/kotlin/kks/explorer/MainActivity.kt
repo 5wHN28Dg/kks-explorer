@@ -14,6 +14,14 @@ class MainActivity : ComponentActivity() {
         setContent { Root() }
     }
 
+    /** The app follows the system's light or dark theme without restarting (uiMode is in the manifest's
+     *  configChanges), so the system bars are set again here: they kept the icons of the theme the app was started in,
+     *  white on white or dark on dark after the phone switched (2026-10-13). */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        enableEdgeToEdge()
+    }
+
     override fun onStart() {
         super.onStart()
         App.visible = true

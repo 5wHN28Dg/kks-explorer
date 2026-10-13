@@ -59,7 +59,7 @@ proc goTo(w: Win, label: string, t: JNode) =
 
 proc choiceLabels*(ts: seq[JNode]): seq[string] =
   ## the choice window's buttons, one per target: the sheet's name, numbered when one sheet has the code more than
-  ## once (else two identical buttons), with "&" doubled (a button's "&" underlines the letter after it)
+  ## once (else two identical buttons)
   var names: seq[string]
   for t in ts: names.add targetName(t)
   for i, n in names:
@@ -69,7 +69,7 @@ proc choiceLabels*(ts: seq[JNode]): seq[string] =
       for j in 0 .. i:
         if names[j] == n: inc k
       l.add " (" & $k & " of " & $names.count(n) & ")"
-    result.add l.replace("&", "&&")
+    result.add l          # (ui.control doubles a button's "&")
 
 proc followLink*(w: Win, sheet, label: string, x0, y0: float) =
   ## the connector `label` at (x0, y0) of `sheet`. The drawing's circles and the list's rows keep the connector they

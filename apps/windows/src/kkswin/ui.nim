@@ -4,7 +4,7 @@
 ## (WS_EX_CONTROLPARENT + IsDialogMessage in the message loop).
 
 import std/[tables, strutils, os]
-import w32
+import w32, labels
 
 const HG = "<windows.h>"
 type SIZE {.importc, header: HG.} = object
@@ -154,7 +154,8 @@ proc newId(): int =
 
 proc control*(parent: HWND, cls, text: string, style: uint32, ex = 0'u32, font: HFONT = nil): (HWND, int) =
   let id = newId()
-  let h = CreateWindowExW(ex, newWideCString(cls), newWideCString(text), WS_CHILD or WS_VISIBLE or style, 0, 0, 10, 10,
+  let shown = if cls == "BUTTON": buttonLabel(text) else: text      # a button's "&" is the character (labels.nim)
+  let h = CreateWindowExW(ex, newWideCString(cls), newWideCString(shown), WS_CHILD or WS_VISIBLE or style, 0, 0, 10, 10,
                           parent, cast[HMENU](id), hinst, nil)
   SendMessageW(h, WM_SETFONT, cast[WPARAM](if font != nil: font else: fontNormal), 1)
   ctls.del h      # (a window handle used again for a new control never brings an old control's handlers with it)
@@ -390,7 +391,7 @@ proc layout*(p: Page) =
     of ikButtons:
       var bx = int(x)
       for b in it.hwnds:
-        let bw = max(int(px(90)), p.textWidth(b.text, fontNormal) + int(px(28)))
+        let bw = max(int(px(90)), p.textWidth(b.text.replace("&&", "&"), fontNormal) + int(px(28)))
         if bx > int(x) and bx + bw > int(x) + w:        # wrap to the next line
           bx = int(x)
           y += px(38)
@@ -424,7 +425,7 @@ proc layout*(p: Page) =
     of ikTall:
       var bx = int(x)
       for b in it.hwnds:
-        let th = p.measure(b.text, fontNormal, w - int(px(28))) + int(px(16))
+        let th = p.measure(b.text.replace("&&", "&"), fontNormal, w - int(px(28))) + int(px(16))
         MoveWindow(b, int32(bx), int32(y), int32(w), int32(max(int(px(32)), th)), 1)
         y += max(int(px(32)), th) + px(6)
   p.contentH = y + p.scroll + px(12)

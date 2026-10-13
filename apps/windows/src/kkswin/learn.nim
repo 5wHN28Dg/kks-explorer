@@ -7,7 +7,7 @@
 import std/[strutils, tables, sets, sequtils, unicode, math]
 import kks/[json, courses, model]
 import appstate, coursestate
-import w32, ui, win, coursefig, photos
+import w32, ui, win, coursefig, photos, coursertf
 
 proc viewNew(h: HWND): pointer {.importc: "kks_view_new", cdecl.}
 proc viewFree(v: pointer) {.importc: "kks_view_free", cdecl.}
@@ -18,132 +18,6 @@ proc viewDrawBitmap(v: pointer, h: cint, x0, y0, x1, y1: cfloat, smooth: cint) {
 proc viewEnd(v: pointer): cint {.importc: "kks_view_end", cdecl.}
 proc jxlDecode(data: pointer, n: csize_t, w, h: ptr cint): pointer {.importc: "kks_jxl_decode", cdecl.}
 proc cfree(p: pointer) {.importc: "kks_free", cdecl.}
-
-# ---------------------------------------------------------------- RTF from runs and blocks
-
-const RtfHead = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}{\\f1\\fmodern Consolas;}}" &
-                "{\\colortbl;\\red22\\green34\\blue43;\\red31\\green95\\blue139;\\red86\\green100\\blue110;" &
-                "\\red179\\green38\\blue30;\\red46\\green122\\blue78;\\red154\\green100\\blue18;}\\f0\\fs22\\cf1 "
-  ## colours: 1 ink, 2 accent, 3 muted, 4 act, 5 ok, 6 alarm
-
-proc rtfEsc*(s: string): string =
-  for r in s.runes:
-    let c = int(r)
-    if c == ord('\\') or c == ord('{') or c == ord('}'): result.add "\\" & char(c)
-    elif c == 10: result.add "\\line "
-    elif c < 128: result.add char(c)
-    elif c < 0x10000: result.add "\\u" & $(if c > 32767: c - 65536 else: c) & "?"
-    else:
-      let v = c - 0x10000
-      for u in [0xD800 + (v shr 10), 0xDC00 + (v and 0x3FF)]: result.add "\\u" & $(u - 65536) & "?"
-
-proc linkTarget(to: JNode): string =
-  if to.get("url") != nil: return to["url"].s
-  if to.get("kks") != nil: return "kks:" & to["kks"].s
-  if to.get("course") != nil:
-    return "course:" & to["course"].s & (if to.get("page") != nil: "#" & to["page"].s else: "")
-  "page:" & to["page"].s
-
-type Flow = object
-  rtf: string
-  links: seq[(string, string)]
-
-proc runRtf(f: var Flow, r: JNode) =
-  for x in r.elems:
-    if x.kind == jStr: f.rtf.add rtfEsc(x.s)
-    elif x.get("b") != nil:
-      f.rtf.add "{\\b "
-      f.runRtf(x["b"])
-      f.rtf.add "}"
-    elif x.get("i") != nil:
-      f.rtf.add "{\\i "
-      f.runRtf(x["i"])
-      f.rtf.add "}"
-    elif x.get("small") != nil:
-      f.rtf.add "{\\fs19\\cf3 "
-      f.runRtf(x["small"])
-      f.rtf.add "}"
-    elif x.get("num") != nil: f.rtf.add "{\\f1\\fs20 " & rtfEsc(x["num"].s) & "}"
-    elif x.get("term") != nil:
-      f.rtf.add "{\\ul "
-      f.runRtf(x["term"])
-      f.rtf.add "}"
-    elif x.get("link") != nil:
-      f.links.add (plain(x["link"]), linkTarget(x["to"]))
-      f.rtf.add "{\\cf2 "
-      f.runRtf(x["link"])
-      f.rtf.add "}"
-
-proc para(f: var Flow, r: JNode, fmt = "\\sa120") =
-  f.rtf.add "\\pard" & fmt & " "
-  f.runRtf(r)
-  f.rtf.add "\\par\n"
-
-proc rowRtf(f: var Flow, cells: seq[JNode], n, w: int, num: HashSet[int], head: bool) =
-  f.rtf.add "\\trowd\\trgaph100\\trleft0"
-  for i in 0 ..< n: f.rtf.add "\\clbrdrb\\brdrs\\brdrw10\\cellx" & $(w * (i + 1))
-  f.rtf.add "\n"
-  for i, c in cells:
-    f.rtf.add "\\pard\\intbl" & (if i in num and not head: "\\qr" else: "") & (if head: "{\\b\\cf3 " else: "{")
-    f.runRtf(c)
-    f.rtf.add "}\\cell "
-  f.rtf.add "\\row\n"
-
-proc tableRtf(f: var Flow, t: JNode) =
-  let n = max(1, t["head"].len)
-  let w = 9600 div n
-  var num: HashSet[int]
-  for i in t["num"].elems: num.incl int(i.num)
-  f.rowRtf(t["head"].elems, n, w, num, true)
-  for r in t["rows"].elems: f.rowRtf(r.elems, n, w, num, false)
-  f.rtf.add "\\pard\\sa120\\par\n"
-
-proc blockRtf(f: var Flow, b: JNode) =
-  if b.get("h") != nil:
-    f.rtf.add "\\pard\\sb200\\sa80{\\b\\fs" & (if b["level"].num == 2: "30" else: "26") & " "
-    f.runRtf(b["h"])
-    f.rtf.add "}\\par\n"
-  elif b.get("p") != nil: f.para(b["p"])
-  elif b.get("ul") != nil or b.get("ol") != nil:
-    let items = if b.get("ul") != nil: b["ul"] else: b["ol"]
-    for i, it in items.elems:
-      f.rtf.add "\\pard\\fi-300\\li400\\sa60\\tx400 " & (if b.get("ul") != nil: "\\u8226?" else: $(i + 1) & ".") & "\\tab "
-      f.runRtf(it)
-      f.rtf.add "\\par\n"
-  elif b.get("table") != nil: f.tableRtf(b["table"])
-  elif b.get("callout") != nil:
-    let k = b["callout"].s
-    f.rtf.add "\\pard\\li300\\sb80\\sa40{\\b\\cf" & (if k == "flag": "6" else: "2") & " "
-    f.runRtf(b["label"])
-    f.rtf.add "}\\par\n"
-    for x in b["body"].elems:
-      if x.get("p") != nil: f.para(x["p"], "\\li300\\sa80")
-      else: f.blockRtf(x)
-  elif b.get("cards") != nil:
-    for c in b["cards"].elems:
-      f.rtf.add "\\pard\\li200\\sa20{\\b "
-      f.runRtf(c[0])
-      f.rtf.add "}\\par\n"
-      f.para(c[1], "\\li200\\sa100")
-  elif b.get("chain") != nil:
-    f.rtf.add "\\pard\\sa120 "
-    for i, r in b["chain"].elems:
-      if i > 0: f.rtf.add " {\\cf3 \\u8594?} "
-      f.rtf.add "{\\b "
-      f.runRtf(r)
-      f.rtf.add "}"
-    f.rtf.add "\\par\n"
-  elif b.get("issues") != nil:
-    for it in b["issues"].elems:
-      let sev = it[0].s
-      f.rtf.add "\\pard\\sa100{\\b\\cf" & (case sev
-        of "high": "4"
-        of "medium": "6"
-        else: "5") & " " & rtfEsc(sev.capitalizeAscii) & "} {\\b "
-      f.runRtf(it[1])
-      f.rtf.add ".} "
-      f.runRtf(it[2])
-      f.rtf.add "\\par\n"
 
 # ---------------------------------------------------------------- the course window
 
@@ -281,16 +155,31 @@ proc figure(cw: CW, id: string, n: int) =
     let st = v.ev.status()
     if st.kind == jStr: v.status.setText(st.s)
     let ev = v.ev
+    # what the controls say, after a frame and after every control: the status line, the slider with its text, and
+    # Play or Pause. (Only a frame used to bring them up to date: with the figure paused, moving the slider redrew
+    # the picture under a status line of the old value, and a slider that pauses a playing figure left "Pause" on
+    # the button; found 2026-10-13.)
+    let refresh = proc () =
+      let s = ev.status()
+      if s.kind == jStr and v.status != nil: v.status.setText(s.s)
+      if v.slider != nil:
+        SendMessageW(v.slider, TBM_SETPOS, 1, LPARAM(int(ev.v * 1000)))
+        v.sliderOut.setText(ev.sliderText().s)
+      if v.playBtn != nil:
+        let want = if ev.playing: "Pause" else: "Play"
+        if v.playBtn.text != want: v.playBtn.setText(want)
     let playLabel = if ev.playing: "Pause" else: "Play"
     let btns = cw.page.buttons(@[(playLabel, proc () =
       if ev.playing: ev.pause() else: ev.play()
       cw.focusKey = k & "/play"
       cw.rebuild())])
     cw.key(k & "/play", btns[0])
+    v.playBtn = btns[0]
     if f.get("slider") != nil:
       let sl = cw.page.slider(f["slider"]["label"].s, ev.v, proc (x: float) =
         ev.setSlider(x)
         ev.tick(0)
+        refresh()
         InvalidateRect(v.hwnd, nil, 0))
       v.slider = sl
       v.sliderOut = cw.page.dim(ev.sliderText().s)
@@ -301,17 +190,14 @@ proc figure(cw: CW, id: string, n: int) =
           let kk = tgs[ti]["key"].s
           cw.page.check(tgs[ti]["label"].s, ev.toggles.getOrDefault(kk) >= 0.5, proc (on: bool) =
             ev.toggle(kk)
+            refresh()
             InvalidateRect(v.hwnd, nil, 0))
     if f.get("modes") != nil:
       cw.page.radios(f["modes"].elems.mapIt(it["label"].s), ev.mode, proc (i: int) =
         ev.setMode(i)
+        refresh()
         InvalidateRect(v.hwnd, nil, 0))
-    v.onTick = proc () =
-      let s = ev.status()
-      if s.kind == jStr and v.status != nil: v.status.setText(s.s)
-      if v.slider != nil:
-        SendMessageW(v.slider, TBM_SETPOS, 1, LPARAM(int(ev.v * 1000)))
-        v.sliderOut.setText(ev.sliderText().s)
+    v.onTick = refresh
   if f["caption"].len > 0:
     var fl = Flow()
     fl.para(f["caption"], "\\sa100\\fs19\\cf3")
@@ -366,18 +252,8 @@ proc question(cw: CW, q: JNode, o: QOpts) =
   cw.page.dim((if o.label.len > 0: o.label elif typ == "scenario": "Scenario" elif typ == "order": "Put in order" else: "Practice").toUpperAscii &
               (if q["src"].len > 0: "   " & plain(q["src"]) else: ""))
   var f = Flow()
-  if typ == "scenario":
-    for r in q["panel"].elems:
-      f.rtf.add "\\pard\\li200\\sa20{\\cf3 "
-      f.runRtf(r["name"])
-      f.rtf.add "}\\tab {\\f1\\b" & (case r["state"].s
-        of "alarm": "\\cf6"
-        of "act": "\\cf4"
-        of "ok": "\\cf5"
-        else: "") & " "
-      f.runRtf(r["value"])
-      f.rtf.add "}\\par\n"
-  f.rtf.add "\\pard\\sa80{\\b "
+  if typ == "scenario": f.panelRtf(q["panel"])
+  f.rtf.add "\\pard" & (if typ == "scenario": "\\sb120" else: "") & "\\sa80{\\b "
   f.runRtf(q["q"])
   f.rtf.add "}\\par\n"
   cw.flowOut(f)
@@ -507,13 +383,7 @@ proc modulePage(cw: CW, m: JNode) =
   if m["worked"].kind != jNull:
     cw.section("Worked example")
     var f = Flow()
-    f.para(m["worked"]["case"], "\\sa80\\b")
-    for k in 0 ..< min(cw.worked, m["worked"]["steps"].len):
-      let s = m["worked"]["steps"][k]
-      f.rtf.add "\\pard\\sa20{\\fs19\\cf3 Step " & $(k + 1) & " \\u183? "
-      f.runRtf(s[0])
-      f.rtf.add "}\\par\n"
-      f.para(s[1])
+    f.workedRtf(m["worked"], cw.worked)
     cw.flowOut(f)
     let total = m["worked"]["steps"].len
     if cw.worked < total:

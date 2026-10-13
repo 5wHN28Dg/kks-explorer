@@ -84,6 +84,16 @@ fun plain(r: JSONArray?): String {
     return sb.toString()
 }
 
+/** The course colours with a meaning (docs/COURSES.md §9.3: accent for links, act / alarm / ok for states), light and
+ *  dark. Until 2026-10-13 the light ones were used in both themes: dark red on dark grey for the very reading a
+ *  scenario question hinges on. */
+object CourseColors {
+    private val light = mapOf("accent" to 0xFF1F5F8B, "act" to 0xFFB3261E, "alarm" to 0xFF9A6412, "ok" to 0xFF2E7A4E)
+    private val dark = mapOf("accent" to 0xFF6DAFDC, "act" to 0xFFF0776B, "alarm" to 0xFFE4AE45, "ok" to 0xFF62C08A)
+    var isDark by mutableStateOf(false)
+    fun of(token: String): androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color((if (isDark) dark else light).getValue(token))
+}
+
 fun AnnotatedString.Builder.run(r: JSONArray, nav: Nav, gloss: Map<String, String>) {
     for (x in r.list()) {
         if (x is String) { append(x); continue }
@@ -102,7 +112,7 @@ fun AnnotatedString.Builder.run(r: JSONArray, nav: Nav, gloss: Map<String, Strin
                     to.has("course") -> LinkAnnotation.Clickable("course") { nav.course(to.getString("course"), to.optString("page")) }
                     else -> LinkAnnotation.Clickable("page") { nav.page(to.getString("page")) }
                 }
-                withLink(link) { withStyle(SpanStyle(textDecoration = TextDecoration.Underline, color = androidx.compose.ui.graphics.Color(0xFF1F5F8B))) {
+                withLink(link) { withStyle(SpanStyle(textDecoration = TextDecoration.Underline, color = CourseColors.of("accent"))) {
                     run(o.getJSONArray("link"), nav, gloss) } }
             }
         }
@@ -112,7 +122,7 @@ fun AnnotatedString.Builder.run(r: JSONArray, nav: Nav, gloss: Map<String, Strin
 @Composable
 fun RunText(r: JSONArray, nav: Nav, gloss: Map<String, String> = emptyMap(), style: TextStyle = MaterialTheme.typography.bodyLarge,
             modifier: Modifier = Modifier) {
-    val text = remember(r, nav) { buildAnnotatedString { run(r, nav, gloss) } }
+    val text = remember(r, nav, CourseColors.isDark) { buildAnnotatedString { run(r, nav, gloss) } }
     Text(text, style = style, modifier = modifier)
 }
 
@@ -330,9 +340,12 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
             else -> { head(p.optString("eyebrow"), p.getJSONArray("title")); blocks(p.getJSONArray("intro"), "intro"); blocks(p.getJSONArray("body"), "page") }
         }
         item {
-            Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                if (idx > 0) OutlinedButton(onClick = { nav.page(pages[idx - 1].getString("id")) }) { Text("← " + title(pages[idx - 1])) } else Spacer(Modifier)
-                if (idx + 1 < pages.size) Button(onClick = { nav.page(pages[idx + 1].getString("id")) }) { Text(title(pages[idx + 1]) + " →") }
+            // each button takes at most its share of the row and wraps its label there (two long titles left no gap
+            // between the buttons, 2026-10-13); the arrow stays with the word next to it
+            Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                if (idx > 0) OutlinedButton(onClick = { nav.page(pages[idx - 1].getString("id")) }, modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)) { Text("←\u00a0" + title(pages[idx - 1])) }
+                else Spacer(Modifier)
+                if (idx + 1 < pages.size) Button(onClick = { nav.page(pages[idx + 1].getString("id")) }, modifier = Modifier.weight(1f, fill = false).padding(start = 6.dp)) { Text(title(pages[idx + 1]) + "\u00a0→") }
             }
         }
     }
@@ -373,7 +386,7 @@ fun Block(doc: JSONObject, b: JSONObject, nav: Nav, gloss: Map<String, String>, 
             b.has("issues") -> Column { b.getJSONArray("issues").list().forEach { it2 -> val it = it2 as JSONArray
                 val sev = it.getString(0)
                 Text(buildAnnotatedString {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = when (sev) { "high" -> androidx.compose.ui.graphics.Color(0xFFB3261E); "medium" -> androidx.compose.ui.graphics.Color(0xFF9A6412); else -> androidx.compose.ui.graphics.Color(0xFF2E7A4E) })) { append(sev.replaceFirstChar { c -> c.uppercase() } + " ") }
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = when (sev) { "high" -> CourseColors.of("act"); "medium" -> CourseColors.of("alarm"); else -> CourseColors.of("ok") })) { append(sev.replaceFirstChar { c -> c.uppercase() } + " ") }
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { run(it.getJSONArray(1), nav, gloss); append(". ") }
                     run(it.getJSONArray(2), nav, gloss)
                 }, modifier = Modifier.padding(vertical = 4.dp)) } }
@@ -399,7 +412,8 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
         val avail = maxWidth - 16.dp
         val widths = remember(t, avail) {
             val natural = head.indices.map { i ->
-                val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to (if (i in num) numStyle else body) } }
+                // (text cells are measured in bold: a cell may be bold, as every glossary term is, and bold is wider)
+                val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to (if (i in num) numStyle else body.copy(fontWeight = FontWeight.Bold)) } }
                 val px = cells.maxOf { (c, st) -> measurer.measure(plain(c), st, softWrap = false, maxLines = 1).size.width }
                 with(density) { px.toDp() } + pad * 2 + 1.dp
             }
@@ -411,20 +425,17 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
                     with(density) { maxOf(cells, word).toDp() } + pad * 2 + 1.dp
                 }
             }
-            var capped = natural.mapIndexed { i, w -> if (i in num) w else minOf(w, 240.dp) }
-            if (capped.fold(0.dp) { x, y -> x + y } > avail) capped = capped.mapIndexed { i, w -> if (i in num) narrow[i] else w }
-            val total = capped.fold(0.dp) { x, y -> x + y }
-            val text = head.indices.filter { it !in num }
-            val minText = 96.dp
-            val fixed = capped.filterIndexed { i, _ -> i in num }.fold(0.dp) { x, y -> x + y }
-            val textNat = text.fold(0.dp) { x, i -> x + capped[i] }
-            when {
-                text.isEmpty() -> capped
-                total <= avail -> { val extra = (avail - total) / text.size; capped.mapIndexed { i, w -> if (i in num) w else w + extra } }
-                // too wide: the text columns share what the number columns leave, in proportion, and wrap
-                avail - fixed >= minText * text.size -> capped.mapIndexed { i, w -> if (i in num) w else maxOf(minText, (avail - fixed) * (w / textNat)) }
-                else -> capped.mapIndexed { i, w -> if (i in num) w else minOf(w, minText) }     // scrolls sideways
+            // a text column is never narrower than its longest word (a narrower one broke words in the middle:
+            // "Photoelectri" / "c", found 2026-10-13)
+            val word = head.indices.map { i ->
+                if (i in num) 0.dp else {
+                    // (measured in bold: a cell may hold bold words, and they are wider)
+                    val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to body.copy(fontWeight = FontWeight.Bold) } }
+                    val px = cells.maxOf { (c, st) -> plain(c).split(WORD_BREAK).maxOf { measurer.measure(it, st, softWrap = false, maxLines = 1).size.width } }
+                    with(density) { px.toDp() } + pad * 2 + 1.dp
+                }
             }
+            tableWidths(natural, narrow, word, num, avail)
         }
         Column(Modifier.horizontalScroll(rememberScrollState()).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(8.dp)) {
             Row { head.forEachIndexed { i, h -> Box(Modifier.width(widths[i]).padding(horizontal = pad, vertical = 4.dp)) {
@@ -436,6 +447,37 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
             }
         }
     }
+}
+
+/** where a cell's text may wrap: at a space (not a no-break space), and after a hyphen or a slash that no digit
+ *  follows ("CT-101" and "1/2" stay whole) */
+private val WORD_BREAK = Regex(" |(?<=[-/])(?!\\d)")
+
+/** The widths of a table's columns. `natural`: each column with its widest cell on one line; `narrow`: a number
+ *  column at its narrowest (its widest number, or its heading's longest word); `word`: a text column's longest word.
+ *  - A table that fits gives the spare width to its text columns.
+ *  - One that doesn't: number columns go to their narrowest, and each text column keeps at least its longest word
+ *    and 96 dp, or its natural width when that is less (a column of single letters stays that narrow, and its
+ *    neighbours get the room); what is left over is shared in proportion to what each column still lacks.
+ *  - When those least widths don't fit but the longest words alone do, the 96 dp is given up and the table fits.
+ *  - When even the longest words don't fit, the table keeps the least widths of the second rule and scrolls sideways. */
+fun tableWidths(natural: List<androidx.compose.ui.unit.Dp>, narrow: List<androidx.compose.ui.unit.Dp>, word: List<androidx.compose.ui.unit.Dp>,
+                num: Set<Int>, avail: androidx.compose.ui.unit.Dp): List<androidx.compose.ui.unit.Dp> {
+    fun sum(l: List<androidx.compose.ui.unit.Dp>) = l.fold(0.dp) { x, y -> x + y }
+    var capped = natural.mapIndexed { i, w -> if (i in num) w else maxOf(minOf(w, 240.dp), minOf(w, word[i])) }
+    val text = natural.indices.filter { it !in num }
+    if (text.isEmpty()) return capped
+    if (sum(capped) <= avail) { val extra = (avail - sum(capped)) / text.size; return capped.mapIndexed { i, w -> if (i in num) w else w + extra } }
+    capped = capped.mapIndexed { i, w -> if (i in num) narrow[i] else w }
+    if (sum(capped) <= avail) { val extra = (avail - sum(capped)) / text.size; return capped.mapIndexed { i, w -> if (i in num) w else w + extra } }
+    var least = capped.mapIndexed { i, w -> if (i in num) w else minOf(w, maxOf(word[i], 96.dp)) }
+    // 96 dp each is a wish, the longest word a must: when only the wish is in the way, the table still fits
+    if (sum(least) > avail) least = capped.mapIndexed { i, w -> if (i in num) w else minOf(w, word[i]) }
+    val spare = avail - sum(least)
+    if (spare < 0.dp) return capped.mapIndexed { i, w -> if (i in num) w else minOf(w, maxOf(word[i], 96.dp)) }     // scrolls sideways, with readable columns
+    val lack = capped.mapIndexed { i, w -> w - least[i] }
+    val lacking = sum(lack)
+    return least.mapIndexed { i, w -> if (lacking > 0.dp) w + spare * (lack[i] / lacking) else w }
 }
 
 /** decoded course pictures, kept while there is room (a page scrolled back must not decode again) */
@@ -555,7 +597,7 @@ fun Question(q: JSONObject, label: String, st: QState, prog: Progress, id: Strin
             if (type == "scenario") Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp)).padding(8.dp).fillMaxWidth()) {
                 q.getJSONArray("panel").objects().forEach { r -> Row { RunText(r.getJSONArray("name"), nav, gloss, MaterialTheme.typography.bodyMedium, Modifier.weight(1f))
                     Text(plain(r.getJSONArray("value")), fontFamily = FontFamily.Monospace, fontWeight = if (r.getString("state").isNotEmpty()) FontWeight.Bold else null,
-                        color = when (r.getString("state")) { "alarm" -> androidx.compose.ui.graphics.Color(0xFF9A6412); "act" -> androidx.compose.ui.graphics.Color(0xFFB3261E); "ok" -> androidx.compose.ui.graphics.Color(0xFF2E7A4E); else -> androidx.compose.ui.graphics.Color.Unspecified }) } }
+                        color = when (r.getString("state")) { "alarm" -> CourseColors.of("alarm"); "act" -> CourseColors.of("act"); "ok" -> CourseColors.of("ok"); else -> androidx.compose.ui.graphics.Color.Unspecified }) } }
             }
             RunText(q.getJSONArray("q"), nav, gloss, MaterialTheme.typography.titleSmall)
             if (type == "order") {

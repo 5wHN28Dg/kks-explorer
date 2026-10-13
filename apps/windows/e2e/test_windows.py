@@ -964,6 +964,19 @@ class Windows(unittest.TestCase):
                                   'select\t6 · Valves & pumps', 'click\tOpen the selected page', 'wait\t~Gate valve cutaway.\t20',
                                   # pausing focuses the figure's button, which scrolls the figure into view; then play on
                                   'click\tPause', 'wait\tPlay\t10', 'click\tPlay', 'wait\tPause\t10', 'sleep\t1500'])
+        # the fourth course (Instrumentation and control) opens, and a page of it shows its figure; a button whose
+        # text has an "&" shows it (it was eaten as a shortcut marker: "5 · Strain gauges  RTDs →", 2026-10-13)
+        self.check('course4.uia', ['select\t~Instrumentation and control', 'click\tOpen the course',
+                                   'wait\t~Instrumentation and control — 0 of 77 solved\t30',
+                                   'select\t4 · 4–20 mA', 'click\tOpen the selected page', 'wait\tOne value, four signals\t20',
+                                   'wait\t5 · Strain gauges & RTDs →\t10',
+                                   # the figure's controls say what it shows: paused, the slider moved to its ends
+                                   # changes the status line (it kept the old value until the next frame of a
+                                   # playing figure); playing, moving the slider pauses it and the button says Play
+                                   'click\tPause', 'wait\tPlay\t10', 'slide\tMeasurement\t0x24',
+                                   'wait\t0% = 0 °C = 4.00 mA = 1.00 V across 250 Ω = 3.0 psi\t10',
+                                   'click\tPlay', 'wait\tPause\t10', 'slide\tMeasurement\t0x23',
+                                   'wait\tPlay\t10', 'wait\t100% = 200 °C = 20.00 mA = 5.00 V across 250 Ω = 15.0 psi\t10'])
         shot = os.path.join(tempfile.gettempdir(), 'kks-win-course.ppm')
         dom = 'kks-win11' if VM.endswith('.20') else 'kks-win10'
         subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, shot], capture_output=True)

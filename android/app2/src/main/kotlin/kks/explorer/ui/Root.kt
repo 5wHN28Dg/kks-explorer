@@ -34,7 +34,9 @@ import org.json.JSONObject
 
 @Composable
 fun Root() {
-    val scheme = if (androidx.compose.foundation.isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val scheme = if (dark) darkColorScheme() else lightColorScheme()
+    CourseColors.isDark = dark      // the course text's colours with a meaning (Learn.kt), for whoever draws course text
     val ctx = LocalContext.current
     DisposableEffect(Unit) {
         val l: (String) -> Unit = { Changes.rev++ }
