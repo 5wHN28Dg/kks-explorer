@@ -205,8 +205,9 @@ class Phone(unittest.TestCase):
         """A figure in a course is as wide as the phone and can be enlarged (the user, 2026-10-13): a double tap
         enlarges it where it is, the button opens it over the whole screen, where it goes on playing and Back closes
         it; at fit a drag over it still scrolls the page. And what else changed in the course pages that day: a
-        question's heading as written ("mA", not "MA"), a number on one line with its unit, the test's result line
-        before anything is answered, and the Contents sheet's last row above the navigation bar."""
+        question's heading as written ("mA", not "MA"), a number on one line with its unit, and the test's result
+        line before anything is answered. (The Contents sheet's last row above the navigation bar is only guarded:
+        it was reported under it, and stands above it on the emulator before and after.)"""
         import collections, io
         from PIL import Image
         os.makedirs(SHOTS, exist_ok=True)
@@ -382,16 +383,18 @@ class Phone(unittest.TestCase):
             self.assertLessEqual(last[3], nav[1], f'the last row ends at {last[3]}, the navigation bar starts at {nav[1]}')
         # a question's heading is shown as written
         ui.tap('Placement test', exact=True)
-        ui.scroll_to(' · 4 · 4–20 mA', tries=40)
-        shot('placement-heading.png')
-        self.assertFalse(ui.present('4–20 MA'), 'a question heading in capitals')
+        with self.subTest('a question heading as written'):
+            ui.scroll_to(' · 4 · 4–20 mA', tries=40)
+            shot('placement-heading.png')
+            self.assertFalse(ui.present('4–20 MA'), 'a question heading in capitals')
         # a number stays on one line with its unit: no-break spaces in what the paragraph lays out
         ui.tap('Contents', exact=True)
         ui.tap('5 · Strain gauges & RTDs', exact=True)
         ui.scroll_to('a platinum element with', tries=40)
         para = ui.label(ui.find('a platinum element with'))
         shot('num-run.png')
-        self.assertIn('0.385\u00a0Ω\u00a0per\u00a0°C', para)
+        with self.subTest('a number with its unit'):
+            self.assertIn('0.385\u00a0Ω\u00a0per\u00a0°C', para)
         # the final check before anything is answered: how many questions there are, not "0 / 0 right"
         ui.tap('Contents', exact=True)
         ui.scroll_to('Final check', exact=True)
@@ -403,8 +406,11 @@ class Phone(unittest.TestCase):
             for _ in range(10):
                 ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.2)), '120')
             time.sleep(1)
-        ui.scroll_to('0 / 20 answered', exact=True, tries=6)
+        ui.scroll_to('Result', exact=True, tries=6)
+        ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.7)), str(w // 2), str(int(h * 0.5)), '1500')
+        time.sleep(1)
         shot('final-result.png')
+        ui.find('0 / 20 answered', exact=True, timeout=5)
 
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course page; a figure as an image for TalkBack;

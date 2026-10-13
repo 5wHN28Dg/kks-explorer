@@ -261,8 +261,7 @@ fun CourseScreen(id: String, startPage: String, onClose: () -> Unit, onCourse: (
         key(pageId) { PageView(doc, page, pages, mods, prog, gloss, nav, ::title) }
     }
     if (contents) ModalBottomSheet(onDismissRequest = { contents = false }) {
-        // (the sheet reaches the bottom edge of the screen: its last row was drawn under the navigation bar)
-        LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())) {
+        LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             items(pages) { p ->
                 val pid = p.getString("id")
                 val mark = if (p.getString("kind") == "module" && moduleQs(p).all { it.getString("id") in prog.solved }) "  ✓" else ""
