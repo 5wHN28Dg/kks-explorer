@@ -51,9 +51,8 @@ proc follow(cw: CW, uri: string): bool =
     idle(proc () =
       for t in cw.w.m.tags:
         if t.full == code or t.kks == code:
-          if t.sheet != cw.w.sheet: cw.w.showSheet(t.sheet)
-          cw.w.selectTag(t.id, true)
-          gtk_window_present(cw.w.window)
+          gtk_window_present(cw.w.window)    # (first: a form holding something typed asks there before the tag opens)
+          cw.w.goToTag(t.sheet, t.id)
           return
       cw.w.toast(code & " is not on any sheet"))
     return true

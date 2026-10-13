@@ -68,9 +68,11 @@ proc formCheck(w: Win) =
   gtk_widget_set_visible(w.formNote, cint(text.len > 0))
   if text.len > 0: gtk_accessible_announce(w.formNote, text.cstring, 1)    # said without moving the focus
 
-proc openForm(w: Win, g: W, kks: string, seen: JNode) =
-  ## a form opens in group `g` of the panel, on the equipment values `seen` (what the panel was built from)
+proc openForm(w: Win, g: W, kks: string, seen: JNode, changed: proc (): bool) =
+  ## a form opens in group `g` of the panel, on the equipment values `seen` (what the panel was built from);
+  ## `changed` says whether it holds something typed (leaving it then asks first: win.nim `leaving`)
   w.panelEditing = true
+  w.formChanged = changed
   w.formKks = kks
   w.formSeen = seen
   w.formSaid = ""
@@ -87,6 +89,13 @@ proc formDone(w: Win) =
     w.reviewCarry = (w.selected, k, isa)
   try: w.rebuildPanel()
   finally: w.reviewCarry = ("", "", "")
+  # The keyboard's place: the Save or Cancel that held the focus has gone with the old panel (ui.clear gives the
+  # focus up), and the window had none after. It goes to the new panel's Edit button, not to its heading: GTK
+  # selects a selectable label whole when the focus lands on it. (Also when the press came from a screen reader's
+  # action with the focus elsewhere: the person is working in the panel.)
+  # (Not under the question "Discard your edits?": it can come up between a Save's press and its handler, and the
+  # focus is the dialog's then.)
+  if w.panelEdit != nil and not w.asking: discard gtk_widget_grab_focus(w.panelEdit)
 
 proc reviewSection(w: Win, t: Tag): W =
   let sug = t.suggestion
@@ -167,18 +176,29 @@ proc equipmentSection(w: Win, t: Tag): W =
       customRows.add r
   let edit = button("Edit", "flat")
   adw_preferences_group_set_header_suffix(g, edit)
+  w.panelEdit = edit
   edit.onClick(proc () =
     if w.busy: return      # another form is open (a valve type, a description): one at a time, a save rebuilds the panel
-    w.openForm(g, k, live)
+    var entries: seq[(string, W)]
+    var custom: seq[(W, W)]
+    var note: W
+    w.openForm(g, k, live, proc (): bool =
+      # (spaces around a value are nothing typed: a stored value can have some, and Save strips what it sends)
+      for (f, e) in entries:
+        if text(e).strip != s(live, f).strip: return true
+      var cs, was: seq[(string, string)]
+      for (ek, ev) in custom:
+        if text(ek).strip.len > 0 or text(ev).strip.len > 0: cs.add((text(ek).strip, text(ev).strip))
+      for (ck, cv) in customOf(live):
+        if ck.strip.len > 0 or cv.strip.len > 0: was.add((ck.strip, cv.strip))
+      cs != was or (note != nil and text(note).strip.len > 0))
     gtk_widget_set_visible(edit, 0)
     for r in shown & customRows: gtk_widget_set_visible(r, 0)
-    var entries: seq[(string, W)]
     for (f, title) in Fields:
       let e = entryRow(title, s(live, f))
       if f == "floor": gtk_widget_set_tooltip_text(e, "A whole number from 0 to 10")
       adw_preferences_group_add(g, e)
       entries.add((f, e))
-    var custom: seq[(W, W)]
     let customBox = vbox(4)
     proc addCustom(key, val: string) =
       let line = hbox(4)
@@ -198,7 +218,7 @@ proc equipmentSection(w: Win, t: Tag): W =
       for c in live["custom"].elems: addCustom(s(c, "k"), s(c, "v"))
     adw_preferences_group_add(g, customBox)
     adw_preferences_group_add(g, button("+ Custom field", "flat", proc () = addCustom("", "")))
-    let note = entryRow("Note for the approver (optional)", "")
+    note = entryRow("Note for the approver (optional)", "")
     if not w.isAdmin: adw_preferences_group_add(g, note)
     let btns = hbox(8)
     gtk_widget_set_margin_top(btns, 8)
@@ -272,9 +292,9 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
   adw_preferences_group_add(g, btns)
   fix.onClick(proc () =
     if w.busy: return
-    w.openForm(g, k, live)
-    gtk_widget_set_visible(btns, 0)
     let e = entryRow("Valve type", text0)
+    w.openForm(g, k, live, proc (): bool = text(e).strip != text0.strip)
+    gtk_widget_set_visible(btns, 0)
     adw_preferences_group_add(g, e)
     let row2 = hbox(8)
     gtk_widget_set_margin_top(row2, 8)
@@ -338,9 +358,9 @@ proc descriptionSection(w: Win, t: Tag): W =
   adw_preferences_group_add(g, btns)
   editB.onClick(proc () =
     if w.busy: return
-    w.openForm(g, k, live)  # nothing rebuilds the panel under it (formOpen)
-    gtk_widget_set_visible(btns, 0)
     let e = entryRow("Description", s(d, "text"))
+    w.openForm(g, k, live, proc (): bool = text(e).strip != s(d, "text").strip)  # nothing rebuilds the panel under it (formOpen)
+    gtk_widget_set_visible(btns, 0)
     adw_preferences_group_add(g, e)
     let b2 = hbox(8)
     b2.add button("Send", "suggested-action", proc () =
@@ -394,6 +414,7 @@ proc panelLive*(w: Win) =
 
 proc buildPanel*(w: Win, t: Tag) =
   w.noForm()
+  w.panelEdit = nil
   w.panelPhotos = nil     # (freed with the rest by clear)
   w.panelLink = nil
   let key = w.modelKey
@@ -473,9 +494,7 @@ proc buildPanel*(w: Win, t: Tag) =
         let id = x.id
         let sheet = x.sheet
         where.add button(if okS: si.name else: x.sheet, "pill", proc () =
-          if id != w.selected and w.busy: return     # (another tag's panel would replace the open form)
-          if sheet != w.sheet: w.showSheet(sheet)
-          w.selectTag(id, true))
+          w.goToTag(sheet, id))      # (another tag's panel replaces an open form: asked about first)
   if where.len > 1:
     let g = group("Appears on")
     let box = adw_wrap_box_new()

@@ -1674,6 +1674,197 @@ class Gnome(Plant):
         app.kill()
         app.wait(10)
 
+    def test_zzzzzzzz_form_ask(self):
+        """Leaving a form that holds something typed asks first (the user, 2026-10-13; before, the text went without
+        a word): another tag picked, the panel closed, "Mark a tag" started. Keep editing leaves everything as it
+        was (the other tag is not opened); Discard goes on. A form with nothing typed leaves without a question.
+        And after a form's Save or Cancel the keyboard's place is the new panel's Edit button (the window had no
+        focus). (Named to run after form_kept: it adds tags.)"""
+        b = self.boss
+        one, two, doubt = '11LAE40AP001', '11LAE41AP001', '11LAE42AP001'
+        for i, (code, near) in enumerate(((one, 'near the first'), (two, 'near the second'))):
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'kks': code, 'isa': '', 'note': '',
+                                              'bbox': [1000 + 200 * i, 300, 1120 + 200 * i, 360]}})
+            self.assertEqual(r.get('status'), 'approved', r)
+            r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'near': near}, 'base': {}}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        pd = os.path.join(self.dir, 'plant-data')
+        with open(os.path.join(pd, 'tags.json')) as f:
+            tags = json.load(f)
+        tags.append({'id': 'sample:doubt2', 'sheet': 'sample', 'kks': doubt, 'suffix': '', 'isa': None, 'kind': 'equipment',
+                     'status': 'review', 'conf': 0.4, 'bbox': [1000, 700, 1120, 760], 'read': ['11LAE42', 'AP001']})
+        with open(os.path.join(pd, 'tags.json'), 'w') as f:
+            json.dump(tags, f)
+        r = subprocess.run([SERVER, 'publish-data', pd, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        focus_file = os.path.join(self.dir, 'formask-focus')
+        a = self.start_app('formask', KKS_SYNC_EVERY='2000', KKS_TEST_FOCUS=focus_file)
+        app = self.apps[-1]
+        self.join(a)
+        question = 'Discard your edits?'
+
+        def pick(code):
+            atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
+            time.sleep(1)
+            atspi.click(atspi.find(a, 'button', name=code))
+
+        def shows(text):
+            return bool(atspi.find_all(a, 'label', contains=text))
+
+        def asked(secs=6):
+            """the question, if it comes within `secs`"""
+            t0 = time.time()
+            while time.time() - t0 < secs:
+                d = atspi.find_all(a, 'alert', name=question)
+                if d:
+                    return d[0]
+                time.sleep(0.3)
+            return None
+
+        def answer(d, button):
+            atspi.click(atspi.find(d, 'button', name=button))
+            for _ in range(40):
+                if not atspi.find_all(a, 'alert', name=question):
+                    return
+                time.sleep(0.25)
+            self.fail(f'the question stayed after {button}')
+
+        def notes():
+            return b.req('GET', '/api/state')['equipment'].get(one, {}).get('notes', '')
+
+        def edit(text):
+            self.press(a, 'Edit', ('text', 'Notes'))
+            if text:
+                atspi.set_text(atspi.find(a, 'text', name='Notes'), text)
+                time.sleep(0.5)
+                self.assertEqual(self.typed(a, 'Notes'), text)
+        pick(one)
+        atspi.find(a, 'label', contains='near the first', timeout=15)
+        time.sleep(3)                # (the first rounds' data is in)
+        # 1. a form with nothing typed: another tag opens without a question
+        edit('')
+        pick(two)
+        atspi.find(a, 'label', contains='near the second', timeout=10)
+        self.assertIsNone(asked(2), 'a form with nothing typed asked before leaving')
+        # 2. something typed, another tag picked in the search: asked; Keep editing leaves everything as it was
+        pick(one)
+        atspi.find(a, 'label', contains='near the first', timeout=10)
+        edit('typed, then another tag picked')
+        pick(two)
+        d = asked()
+        self.assertIsNotNone(d, 'another tag was picked: the form went without a question' if shows('near the second')
+                             else 'another tag was picked over a form holding something typed: no question')
+        self.assertFalse(shows('near the second'), 'the other tag opened before the answer')
+        self.assertEqual(self.typed(a, 'Notes'), 'typed, then another tag picked')
+        answer(d, 'Keep editing')
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), 'typed, then another tag picked', 'Keep editing lost what was typed')
+        self.assertFalse(shows('near the second'), 'Keep editing opened the other tag')
+        # … and Discard opens the other tag; nothing was sent
+        pick(two)
+        d = asked()
+        self.assertIsNotNone(d, 'the second pick did not ask')
+        answer(d, 'Discard')
+        atspi.find(a, 'label', contains='near the second', timeout=10)
+        self.assertIsNone(self.typed(a, 'Notes'), 'Discard left the form open')
+        time.sleep(5)                # (two sync rounds: something sent would be on the server by now)
+        self.assertEqual(notes(), '', 'Discard sent what was typed')
+        # 3. the panel closed
+        pick(one)
+        atspi.find(a, 'label', contains='near the first', timeout=10)
+        edit('typed, then the panel closed')
+        atspi.click(atspi.find(a, 'button', name='Close the panel'))
+        d = asked()
+        self.assertIsNotNone(d, 'closing the panel over a form holding something typed did not ask')
+        answer(d, 'Keep editing')
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), 'typed, then the panel closed', 'Keep editing lost what was typed')
+        atspi.click(atspi.find(a, 'button', name='Close the panel'))
+        d = asked()
+        self.assertIsNotNone(d, 'closing the panel a second time did not ask')
+        answer(d, 'Discard')
+        for _ in range(40):
+            if not atspi.find_all(a, 'button', name='Close the panel'):
+                break
+            time.sleep(0.25)
+        self.assertFalse(atspi.find_all(a, 'button', name='Close the panel'), 'Discard did not close the panel')
+        # 4. "Mark a tag" (it closes the panel)
+        pick(one)
+        atspi.find(a, 'label', contains='near the first', timeout=10)
+        edit('typed, then Mark a tag')
+        atspi.click(atspi.find(a, 'button', name='Mark a tag the app missed'))
+        d = asked()
+        self.assertIsNotNone(d, 'Mark a tag over a form holding something typed did not ask')
+        answer(d, 'Keep editing')
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'Notes'), 'typed, then Mark a tag', 'Keep editing lost what was typed')
+        self.assertFalse(atspi.find_all(a, None, contains='Drag a box around the tag'), 'Keep editing started marking')
+        atspi.click(atspi.find(a, 'button', name='Mark a tag the app missed'))
+        d = asked()
+        self.assertIsNotNone(d, 'Mark a tag a second time did not ask')
+        answer(d, 'Discard')
+        atspi.find(a, None, contains='Drag a box around the tag', timeout=10)
+        for _ in range(40):          # (the panel slides out)
+            if not atspi.find_all(a, 'button', name='Close the panel'):
+                break
+            time.sleep(0.25)
+        self.assertFalse(atspi.find_all(a, 'button', name='Close the panel'), 'marking started with the panel left open')
+        atspi.click(atspi.find(a, 'button', name='Cancel'))        # the banner's
+        # 5. the review form ("Check this tag") holding something typed
+        pick(doubt)
+        atspi.find(a, 'text', name='KKS (with suffix)', timeout=10)
+        time.sleep(1)
+        atspi.set_text(atspi.find(a, 'text', name='KKS (with suffix)'), '11LAE43AP001')
+        time.sleep(0.5)
+        pick(two)
+        d = asked()
+        self.assertIsNotNone(d, 'another tag picked over a review form holding something typed did not ask')
+        answer(d, 'Keep editing')
+        time.sleep(1)
+        self.assertEqual(self.typed(a, 'KKS (with suffix)'), '11LAE43AP001', 'Keep editing lost the review form\'s text')
+        pick(two)
+        d = asked()
+        self.assertIsNotNone(d, 'the second pick over the review form did not ask')
+        answer(d, 'Discard')
+        atspi.find(a, 'label', contains='near the second', timeout=10)
+        time.sleep(5)
+        self.assertIsNone(b.req('GET', '/api/state')['reviews'].get('sample:doubt2'), 'Discard sent the review')
+        # 6. the keyboard's place after Cancel and after Save: the new panel's Edit button
+
+        def focus():
+            with open(focus_file) as f:
+                return f.read()
+
+        def edit_has_focus(after):
+            for _ in range(40):
+                if focus() == 'button Edit':
+                    return
+                time.sleep(0.25)
+            self.fail(f'after {after} the keyboard focus is on {focus()!r}, not on the panel\'s Edit button')
+        pick(one)
+        atspi.find(a, 'label', contains='near the first', timeout=10)
+        edit('')
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        edit_has_focus('Cancel')
+        edit('saved, then the focus')
+        for _ in range(40):          # (the form's opening hid Edit: the focus has left it, so finding it there after Save is new)
+            if focus() != 'button Edit':
+                break
+            time.sleep(0.25)
+        self.assertNotEqual(focus(), 'button Edit')
+        atspi.click(atspi.find(a, 'button', name='Save'))
+        for _ in range(60):
+            if notes() == 'saved, then the focus':
+                break
+            time.sleep(0.25)
+        self.assertEqual(notes(), 'saved, then the focus')
+        edit_has_focus('Save')
+        self.assertIsNone(app.poll(), 'the app died')
+        self.assertEqual(self.criticals('formask'), [])
+        app.kill()
+        app.wait(10)
+
 
 class Coverage(Plant):
     """Coverage counts every code, tag, place and photo of the plant: on a server of its own, so the totals are the

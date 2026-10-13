@@ -76,8 +76,7 @@ proc procedureDetail(w: Win, id: string, box: W) =
           gtk_widget_add_css_class(chip, "linked")
           chip.add button(k, "", proc () =
             if ts.len > 0:
-              if ts[0].sheet != w.sheet: w.showSheet(ts[0].sheet)
-              w.selectTag(ts[0].id, true)
+              w.goToTag(ts[0].sheet, ts[0].id)
             else: w.toast(k & " is not on any sheet"))
           chip.add iconButton("window-close-symbolic", "Unlink " & k & " from step " & $n, proc () =
             discard w.submit("link", newObj(@[("proc", newStr(id)), ("step", newInt(n)), ("kks", newStr(k)), ("on", newBool(false))]),
@@ -200,8 +199,7 @@ proc reviewPage*(w: Win): W =
       let sheet = t.sheet
       adw_preferences_group_add(g, navRow(t.read[0] & " / " & t.read[1] & sug, "confidence " & $int(t.conf * 100) & " %",
         "Check the tag read as " & t.read[1], proc () =
-          if sheet != w.sheet: w.showSheet(sheet)
-          w.selectTag(id, true)))
+          w.goToTag(sheet, id)))
   scrolled(box)
 
 proc notesPage*(w: Win): W =
