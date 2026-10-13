@@ -365,7 +365,7 @@ const VIEWS={
       h('div',{class:'card server-only',id:'sessions'},h('h3',null,'Web sign-ins'),
         K.online&&ME.sessions?h('div',{id:'sessionCount'},ME.sessions>1?`Your account is signed in ${ME.sessions} times on the web: here and in ${ME.sessions-1} other browser${ME.sessions===2?'':'s'} or device${ME.sessions===2?'':'s'}.`:'Your account is signed in on the web here only.'):null,
         O,
-        h('div',{class:'sub'},`Ends every other web sign-in of yours at once, for example on a phone you lost or a computer others use. This one stays. It asks for your password, so that nobody who got hold of a sign-in of yours can end yours and keep theirs. Your password and your devices with the app are unchanged. A browser that is offline is signed out when it next reaches the server (within ${ME.offline_days} days: its offline copy lasts no longer).`))];
+        h('div',{class:'sub'},`Ends every other web sign-in of yours at once, for example on a phone you lost or a computer others use. It asks for your password, so that nobody who got hold of a sign-in of yours can end yours and keep theirs. This one stays. Your password and your devices with the app are unchanged. A browser that is offline is signed out when it next reaches the server (within ${ME.offline_days} days: its offline copy lasts no longer).`))];
     if(ME.transfer_offer) out.push(h('div',{class:'card'},h('h3',null,'The manager wants to hand the manager role to you'),
       h('div',{class:'sub'},'You would become the single top account. The current manager becomes an admin.'),
       h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'primary',onclick:()=>mgr('accept')},'Accept'),h('button',{class:'ghost',onclick:()=>mgr('decline')},'Decline'))));
