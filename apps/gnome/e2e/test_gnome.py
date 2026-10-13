@@ -1768,6 +1768,7 @@ class Gnome(Plant):
         answer(d, 'Discard')
         atspi.find(a, 'label', contains='near the second', timeout=10)
         self.assertIsNone(self.typed(a, 'Notes'), 'Discard left the form open')
+        time.sleep(5)                # (two sync rounds: something sent would be on the server by now)
         self.assertEqual(notes(), '', 'Discard sent what was typed')
         # 3. the panel closed
         pick(one)
@@ -1804,6 +1805,10 @@ class Gnome(Plant):
         self.assertIsNotNone(d, 'Mark a tag a second time did not ask')
         answer(d, 'Discard')
         atspi.find(a, None, contains='Drag a box around the tag', timeout=10)
+        for _ in range(40):          # (the panel slides out)
+            if not atspi.find_all(a, 'button', name='Close the panel'):
+                break
+            time.sleep(0.25)
         self.assertFalse(atspi.find_all(a, 'button', name='Close the panel'), 'marking started with the panel left open')
         atspi.click(atspi.find(a, 'button', name='Cancel'))        # the banner's
         # 5. the review form ("Check this tag") holding something typed
@@ -1823,6 +1828,7 @@ class Gnome(Plant):
         self.assertIsNotNone(d, 'the second pick over the review form did not ask')
         answer(d, 'Discard')
         atspi.find(a, 'label', contains='near the second', timeout=10)
+        time.sleep(5)
         self.assertIsNone(b.req('GET', '/api/state')['reviews'].get('sample:doubt2'), 'Discard sent the review')
         # 6. the keyboard's place after Cancel and after Save: the new panel's Edit button
 

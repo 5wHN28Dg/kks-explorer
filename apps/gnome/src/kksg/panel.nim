@@ -93,7 +93,9 @@ proc formDone(w: Win) =
   # focus up), and the window had none after. It goes to the new panel's Edit button, not to its heading: GTK
   # selects a selectable label whole when the focus lands on it. (Also when the press came from a screen reader's
   # action with the focus elsewhere: the person is working in the panel.)
-  if w.panelEdit != nil: discard gtk_widget_grab_focus(w.panelEdit)
+  # (Not under the question "Discard your edits?": it can come up between a Save's press and its handler, and the
+  # focus is the dialog's then.)
+  if w.panelEdit != nil and not w.asking: discard gtk_widget_grab_focus(w.panelEdit)
 
 proc reviewSection(w: Win, t: Tag): W =
   let sug = t.suggestion
@@ -181,13 +183,15 @@ proc equipmentSection(w: Win, t: Tag): W =
     var custom: seq[(W, W)]
     var note: W
     w.openForm(g, k, live, proc (): bool =
-      # (as Save reads them: without the spaces around)
+      # (spaces around a value are nothing typed: a stored value can have some, and Save strips what it sends)
       for (f, e) in entries:
-        if text(e).strip != s(live, f): return true
-      var cs: seq[(string, string)]
+        if text(e).strip != s(live, f).strip: return true
+      var cs, was: seq[(string, string)]
       for (ek, ev) in custom:
         if text(ek).strip.len > 0 or text(ev).strip.len > 0: cs.add((text(ek).strip, text(ev).strip))
-      cs != customOf(live) or (note != nil and text(note).strip.len > 0))
+      for (ck, cv) in customOf(live):
+        if ck.strip.len > 0 or cv.strip.len > 0: was.add((ck.strip, cv.strip))
+      cs != was or (note != nil and text(note).strip.len > 0))
     gtk_widget_set_visible(edit, 0)
     for r in shown & customRows: gtk_widget_set_visible(r, 0)
     for (f, title) in Fields:
