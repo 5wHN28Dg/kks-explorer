@@ -218,7 +218,7 @@ suite "who may sign whom out, and the server's own command":
       var d = newObj(@[("device", newStr(dev))])
       if password != nil: d = newObj(@[("device", newStr(dev)), ("password", password)])
       try:
-        s.ownDevicePassword(usr, d, [source])
+        s.ownDevicePassword(usr, s.actorFor(usr), d, [source])
         0
       except HttpErr as e: e.code
     check mine in s.n.run.devices and alis in s.n.run.devices
@@ -236,5 +236,5 @@ suite "who may sign whom out, and the server's own command":
     check ask(boss, alis, nil, "ip:192.0.2.11") == 0
     check ask(boss, mine, nil, "ip:192.0.2.11") == 0
     check ask(u, "no-such-device", nil, "ip:192.0.2.11") == 0
-    check (try: (s.ownDevicePassword(u, newObj(), ["ip:192.0.2.11"]); true) except HttpErr: false)
-    check (try: (s.ownDevicePassword(u, newObj(@[("device", newInt(7))]), ["ip:192.0.2.11"]); true) except HttpErr: false)
+    check (try: (s.ownDevicePassword(u, actor("tom"), newObj(), ["ip:192.0.2.11"]); true) except HttpErr: false)
+    check (try: (s.ownDevicePassword(u, actor("tom"), newObj(@[("device", newInt(7))]), ["ip:192.0.2.11"]); true) except HttpErr: false)

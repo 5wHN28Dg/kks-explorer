@@ -59,7 +59,12 @@ async function show(t){
   if(!K.online&&t!=='account'){ put(mainFor(g),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
   try{ await VIEWS[t](g) }catch(e){ if(e.status===401) return location.reload(); put(mainFor(g),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
 }
-K.onChange(why=>{ if(why==='synced') show(tab) });
+// A change elsewhere rebuilds the page, but not under a password being typed (the form in a device's row would close,
+// as a confirmation never did): then once the person has left that form
+let resyncT=0;
+const typing=()=>!!document.activeElement?.closest?.('#main form')?.querySelector('input[type=password]');
+const resync=()=>{ clearTimeout(resyncT); if(typing()) resyncT=setTimeout(resync,1000); else show(tab) };
+K.onChange(why=>{ if(why==='synced') resync() });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
 
 // Account requests (sign-up with the plant's code): a plant server's admins only. -> {enabled, set, requests} or null

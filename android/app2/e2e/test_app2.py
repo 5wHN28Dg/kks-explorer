@@ -174,11 +174,12 @@ class Phone(unittest.TestCase):
         ui.find('Sample sheet', timeout=40)
 
     def leave(self, user='boss'):
-        """remove this phone's device on the server and start the app fresh (to join again, or as someone else)"""
+        """remove this phone's device on the server and start the app fresh (to join again, or as someone else). The
+        manager's password goes with it: the server asks for it when the device is the manager's own."""
         model = ui.sh('getprop', 'ro.product.model').strip()
         for d in self.boss.req('GET', '/api/devices?show_hidden=1')['all']:
             if d['username'] == user and d['label'] == model and not d['revoked']:
-                self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+                self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
         ui.fresh_app(PKG)
         time.sleep(3)
 
@@ -899,7 +900,7 @@ class Phone(unittest.TestCase):
         model = ui.sh('getprop', 'ro.product.model').strip()
         phone = [d for d in devs if d['username'] == 'boss' and d['label'] == model and not d['revoked']]
         self.assertEqual(len(phone), 1, devs)
-        self.assertTrue(self.boss.req('POST', '/api/devices/revoke', {'device': phone[0]['device']}).get('ok'))
+        self.assertTrue(self.boss.req('POST', '/api/devices/revoke', {'device': phone[0]['device'], 'password': 'a long password'}).get('ok'))
         ui.sh('input', 'keyevent', '4')
         ui.tap('Drawings', exact=True)
         ui.tap('Sync', exact=True)
@@ -1210,7 +1211,7 @@ class Phone(unittest.TestCase):
         model = ui.sh('getprop', 'ro.product.model').strip()
         for d in self.boss.req('GET', '/api/devices')['all']:
             if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
-                self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+                self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
         ui.tap('Sync', exact=True)
         ui.find('removed from the plant', timeout=30)
         self.join()

@@ -296,6 +296,17 @@ class WebSignOut(unittest.TestCase):
             expect(a1.locator('#toast')).to_have_text('Wrong username or password.')
             self.assertEqual(a1.evaluate('[window.sameDocument, window.asked.length, window.confirmed]'), [True, 1, 0])
             self.assertEqual((self.status(a1), self.removed(admin), field.input_value()), (200, set(), 'not the password'))
+            # a change elsewhere (here: another device of ali's is added) does not rebuild the page under the password
+            # being typed, which would close the form; it is taken in once the person has left the form
+            self.phone(admin, 'ali', 'watch')
+            a1.evaluate("() => K.listeners.forEach(f => f('synced'))")
+            a1.wait_for_timeout(1500)
+            self.assertEqual((field.input_value(), mine.locator('tr', has_text='watch').count()), ('not the password', 0))
+            field.evaluate('e => e.blur()')
+            expect(mine.locator('tr', has_text='watch')).to_have_count(1)
+            expect(row.get_by_role('button', name='Remove', exact=True)).to_have_count(1)
+            self.assertEqual((row.locator('input').count(), a1.evaluate('window.sameDocument')), (0, True))
+            row.get_by_role('button', name='Remove', exact=True).click()
             # the right one, pressed twice before the first is answered: removed, sent once
             field.fill(PW)
             a1.evaluate("""() => { const i = document.querySelector('#main form input[name=password]');

@@ -150,11 +150,12 @@ class Windows(unittest.TestCase):
         self.check(name, [l % (HOST, self.sport) if '%' in l else l for l in self.JOIN], keep=False, **kw)
 
     def leave(self, user='boss'):
-        """the manager removes this VM's device on the server: test_flow finds the one it joins by its label"""
+        """the manager removes this VM's device on the server: test_flow finds the one it joins by its label. The
+        manager's password goes with it: the server asks for it when the device is the manager's own."""
         host = vm('$env:COMPUTERNAME').strip().lower()
         for d in self.boss.req('GET', '/api/devices')['all']:
             if d['username'] == user and d['label'].lower() == host and not d['revoked']:
-                self.boss.req('POST', '/api/devices/revoke', {'device': d['device']})
+                self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
 
     def test_dark_drawings(self):
         """Dark drawings: the check box turns the sheet light-on-dark at once (dark paper, light lines, as drawn on the
@@ -1201,7 +1202,7 @@ class Windows(unittest.TestCase):
         host = vm('$env:COMPUTERNAME').strip()
         mine = [d for d in devs if d['username'] == 'boss' and d['label'].lower() == host.lower() and not d['revoked']]
         self.assertEqual(len(mine), 1, (host, devs))
-        self.assertTrue(self.boss.req('POST', '/api/devices/revoke', {'device': mine[0]['device']}).get('ok'))
+        self.assertTrue(self.boss.req('POST', '/api/devices/revoke', {'device': mine[0]['device'], 'password': 'a long password'}).get('ok'))
         self.check('removed.uia', ['click\tManage', 'click\tAccount', 'click\tSync now',
                                    'wait\t~removed from the plant by The Manager\t60'])
 
