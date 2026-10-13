@@ -19,6 +19,10 @@ suite "Argon2id via OpenSSL":
     check checkPassword("correct horse", h)
     check not checkPassword("correct hors", h)
     check not checkPassword("x", "")
+    # no password at all: wrong like any other, for an account's hash and for none (not an error: the server
+    # answered 500 for a name that has an account, and so said who has one)
+    check not checkPassword("", h)
+    check not checkPassword("", "")
 
   test "v1 scrypt hashes still verify":
     let script = getTempDir() / "kks-mkscrypt.py"

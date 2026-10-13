@@ -59,7 +59,13 @@ async function show(t){
   if(!K.online&&t!=='account'){ put(mainFor(g),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
   try{ await VIEWS[t](g) }catch(e){ if(e.status===401) return location.reload(); put(mainFor(g),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
 }
-K.onChange(why=>{ if(why==='synced') show(tab) });
+// A change elsewhere rebuilds the page, but not under a password being typed (the form in a device's row would close,
+// as a confirmation never did): not while the focus is in a form's password field, or anywhere in a form that has a
+// password typed in. Then once the person has left that form.
+let resyncT=0;
+const typing=()=>{ const a=document.activeElement, f=a?.closest?.('#main form'); return !!f&&[...f.querySelectorAll('input[type=password]')].some(p=>p===a||p.value) };
+const resync=()=>{ clearTimeout(resyncT); if(typing()) resyncT=setTimeout(resync,1000); else show(tab) };
+K.onChange(why=>{ if(why==='synced') resync() });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
 
 // Account requests (sign-up with the plant's code): a plant server's admins only. -> {enabled, set, requests} or null
@@ -240,9 +246,19 @@ const VIEWS={
   },
   async devices(g){
     const D=await K.api('/api/devices'+(SHOW_HIDDEN?'?show_hidden=1':'')), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
+    // A device of one's own, on a server: removed only with the account's password (the user, 2026-10-13: a stolen
+    // sign-in alone must not cut the owner's phone off). The row's button opens the form in its place.
+    const own=d=>D.mode!=='peer'&&d.person===ME.user.person;
+    const ownRemove=d=>{ const c=h('td'), ask=()=>{
+        const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); once(F,()=>act(()=>K.api('/api/devices/revoke',{device:d.device,password:F.password.value}),'Device removed')) }},
+          h('input',{type:'password',name:'password',placeholder:'your password','aria-label':'Your password',autocomplete:'current-password',required:true}),
+          h('button',{class:'ghost'},'Remove this device'),h('button',{class:'ghost',type:'button',onclick:()=>idle()},'Cancel'));
+        put(c,F,h('div',{class:'sub'},'It stops syncing; what it already holds stays on it. Your password, so that nobody who got hold of a sign-in of yours can remove your devices.')); F.password.focus() },
+      idle=()=>put(c,h('button',{class:'ghost',onclick:ask},'Remove'));
+      idle(); return c };
     const devRow=(d,mine)=>h('tr',null,h('td',null,d.label||'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:null,mine?null:h('div',{class:'sub'},d.username)),
       h('td',{class:'mono sub'},`${d.device.slice(0,12)}…`),h('td',null,d.revoked?h('span',{class:'del'},'removed'):'active'),
-      h('td',null,!d.revoked&&!d.this_computer?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
+      !d.revoked&&!d.this_computer&&own(d)?ownRemove(d):h('td',null,!d.revoked&&!d.this_computer?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
         :d.revoked&&isAdmin()?h('button',{class:'ghost',onclick:()=>d.hidden?setHidden([d.device,d.person],false):setHidden([d.device],true)},d.hidden?'Show again':'Hide'):null));
     const N=S.internet||{}, syncs=Object.values(S.syncs);
     const addr=h('input',{name:'address',placeholder:'or an address, e.g. 192.168.1.20',style:'min-width:220px'});
@@ -355,14 +371,17 @@ const VIEWS={
     const P=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); changePw(P) }},
       h('input',{type:'password',name:'old',placeholder:'current password',autocomplete:'current-password',required:true}),
       h('input',{type:'password',name:'new',placeholder:'new password (10+)',autocomplete:'new-password',required:true,minlength:10}),h('button',{class:'primary'},'Change password'));
+    // "Sign out my other sessions" asks for the password (the user, 2026-10-13): a stolen sign-in alone must not end the owner's
+    const O=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); signOutOthers(O) }},
+      h('input',{type:'password',name:'password',placeholder:'your password','aria-label':'Your password',autocomplete:'current-password',required:true}),h('button',{class:'ghost'},'Sign out my other sessions'));
     const out=[h('div',{class:'card'},h('h3',null,'Your details'),ME.user.full_name?null:h('div',{class:'warn'},'Add your full name, so others can tell whose account this is.'),D,
         h('div',{class:'sub'},'Username ',h('span',{class:'mono'},ME.user.username),` · ${ME.user.role}`)),
       h('div',{class:'card server-only'},h('h3',null,'Password'),P),
       // every web sign-in of this account but this one (the count comes with /api/me: said only while connected)
       h('div',{class:'card server-only',id:'sessions'},h('h3',null,'Web sign-ins'),
         K.online&&ME.sessions?h('div',{id:'sessionCount'},ME.sessions>1?`Your account is signed in ${ME.sessions} times on the web: here and in ${ME.sessions-1} other browser${ME.sessions===2?'':'s'} or device${ME.sessions===2?'':'s'}.`:'Your account is signed in on the web here only.'):null,
-        h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'ghost',onclick:()=>signOutOthers()},'Sign out my other sessions')),
-        h('div',{class:'sub'},`Ends every other web sign-in of yours at once, for example on a phone you lost or a computer others use. This one stays. Your password and your devices with the app are unchanged. A browser that is offline is signed out when it next reaches the server (within ${ME.offline_days} days: its offline copy lasts no longer).`))];
+        O,
+        h('div',{class:'sub'},`Ends every other web sign-in of yours at once, for example on a phone you lost or a computer others use. It asks for your password, so that nobody who got hold of a sign-in of yours can end yours and keep theirs. This one stays. Your password and your devices with the app are unchanged. A browser that is offline is signed out when it next reaches the server (within ${ME.offline_days} days: its offline copy lasts no longer).`))];
     if(ME.transfer_offer) out.push(h('div',{class:'card'},h('h3',null,'The manager wants to hand the manager role to you'),
       h('div',{class:'sub'},'You would become the single top account. The current manager becomes an admin.'),
       h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'primary',onclick:()=>mgr('accept')},'Accept'),h('button',{class:'ghost',onclick:()=>mgr('decline')},'Decline'))));
@@ -552,8 +571,10 @@ async function signOutUser(u){
   const r=await act(()=>K.api(`/api/users/${u.id}/sign-out`,{}));
   if(r) toast(r.ended?`${u.username}: ${r.ended} web sign-in${r.ended===1?'':'s'} ended`:`${u.username} was not signed in on the web`);
 }
-async function signOutOthers(){
-  const r=await act(()=>K.api('/api/sign-out-others',{}));
+// A form sends once: a second press before the answer does nothing (its answer would replace the first one's)
+async function once(f,fn){ const b=f.querySelector('button'); if(b.disabled) return null; b.disabled=true; try{ return await fn() }finally{ b.disabled=false } }
+async function signOutOthers(f){
+  const r=await once(f,()=>act(()=>K.api('/api/sign-out-others',{password:f.password.value})));
   if(r) toast(r.ended?`Signed out ${r.ended} other session${r.ended===1?'':'s'}`:'No other sessions: you are signed in here only');
 }
 async function webSignin(u){
