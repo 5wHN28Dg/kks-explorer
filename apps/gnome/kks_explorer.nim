@@ -16,13 +16,14 @@ proc doSelectTag(w: Win, id: string, center: bool)
 proc doSelectTag(w: Win, id: string, center: bool) =
   let (ok, t) = w.m.tagById(id)
   if not ok: return
-  w.selected = id
+  let again = id == w.selected and w.formOpen     # the tag whose form is open, picked again (on the drawing, in the
+  w.selected = id                                 # search): shown, and its form left as it is
   w.v.selected = id
   if center:
     let (okS, si) = w.m.sheetById(t.sheet)
     let s = if okS and si.scale > 0: si.scale else: 2.0
     w.v.centerOn(t.bbox[0] / s, t.bbox[1] / s, t.bbox[2] / s, t.bbox[3] / s)
-  w.buildPanel(t)
+  if not again: w.buildPanel(t)
   adw_overlay_split_view_set_show_sidebar(w.panelSplit, 1)
   gtk_widget_queue_draw(w.v.widget)
 
@@ -58,6 +59,7 @@ proc fillSheets(w: Win) =
     rows.add((si.id, si.name, $n & " tags" & (if review > 0: ", " & $review & " to review" else: "")))
     key.add si.id & "\x1f" & si.name & "\x1f" & rows[^1][2] & "\x1e"
   if key == w.sheetsKey and gtk_widget_get_first_child(w.sheetList) != nil: return
+  leaveFocus(w.sheetList)
   gtk_list_box_remove_all(w.sheetList)
   for i1 in 0 ..< rows.len:
     closureScope:   # each pass gets its own copies of the captured variables
@@ -67,6 +69,7 @@ proc fillSheets(w: Win) =
 
 proc runSearch(w: Win) =
   let q = text(w.searchEntry).strip
+  leaveFocus(w.resultList)
   gtk_list_box_remove_all(w.resultList)
   w.v.hits.clear()
   if q.len == 0:
@@ -115,6 +118,11 @@ proc statusText(w: Win): string =
     of "relay": result.add ", last sync through the relay"
     else: discard
 
+proc tagGone(w: Win) =
+  ## the tag whose panel is open is no longer there: the panel closes, and says why
+  w.closePanel()
+  w.toast("This tag is no longer on the drawing")
+
 proc refresh(w: Win) =
   ## the data changed underneath (sync, an approval): reload, keep the open sheet and selection (R20)
   w.loadModel()
@@ -124,13 +132,17 @@ proc refresh(w: Win) =
     w.setLinks()
     w.syncChosen()
     gtk_widget_queue_draw(w.v.widget)
-  # The panel: never under an open form (it would lose what is typed), and only when what it shows changed. Every
-  # finished sync round comes here, and a panel replaced each time lost the keyboard's place in it and any button
-  # pressed just before: GTK sends "clicked" 250 ms after a keyboard or accessibility activation, and not at all
-  # when the button has gone by then (#147; the same reason as refreshLive).
-  if w.selected.len > 0 and not w.panelEditing and w.panelKey != w.modelKey:
-    let (ok, t) = w.m.tagById(w.selected)
-    if ok: w.buildPanel(t)
+  # The panel: never under an open form (it would lose what is typed: only its live parts are brought up to date,
+  # and the rest when the form closes), and only when what it shows changed. Every finished sync round comes here,
+  # and a panel replaced each time lost the keyboard's place in it and any button pressed just before: GTK sends
+  # "clicked" 250 ms after a keyboard or accessibility activation, and not at all when the button has gone by then
+  # (#147; the same reason as refreshLive).
+  if w.selected.len > 0:
+    if w.formOpen: w.panelLive()
+    elif w.panelKey != w.modelKey:
+      let (ok, t) = w.m.tagById(w.selected)
+      if ok: w.buildPanel(t)
+      else: w.tagGone()
   w.refreshLive()
   w.refreshFollowers()
 
@@ -203,6 +215,8 @@ proc mainScreen(w: Win): W =
   w.sideNav = adw_navigation_view_new()
   adw_navigation_view_add(w.sideNav, adw_navigation_page_new_with_tag(w.sideRoot(), "Sheets", "root"))
   w.sideNav.onPtr("popped", proc (p: W) =
+    # the procedure's page was closed: link mode's end has no page to draw again (sidepages.nim linkEnded)
+    if w.procBox != nil and gtk_widget_is_ancestor(w.procBox.w, p) != 0: w.procBox = nil
     # leaving a procedure stops highlighting its equipment, unless link mode is on (it ends with Done)
     if w.activeProc.len > 0 and w.linkProc.len == 0:
       w.activeProc = ""
@@ -218,10 +232,27 @@ proc mainScreen(w: Win): W =
       w.loadModel()
       let (ok, t) = w.m.tagById(w.selected)
       if ok: w.buildPanel(t)
+      else: w.tagGone()       # (removed, or decided "not a tag": a panel left as it was kept its form open for
+                              # good, each Save sending again)
+  w.reloadPanel = proc () =
+    # Every rebuild that is not a form's own Save or Cancel comes here (a photo queued or sent, link mode starting
+    # or ending, a change sent from the select mode). Before #163 these rebuilt the panel under an open form: what
+    # was typed was gone, and a Save pressed at that moment did nothing.
+    if w.selected.len == 0: return
+    if w.formOpen:
+      w.loadModel()
+      w.panelKey = ""       # the rest of the panel is out of date until the form closes (its Save and Cancel rebuild it)
+      w.panelLive()
+    else: w.rebuildPanel()
   w.closePanel = proc () =
     adw_overlay_split_view_set_show_sidebar(w.panelSplit, 0)
     w.selected = ""
-    w.panelEditing = false
+    w.noForm()
+    # emptied, not only hidden: its buttons would stay in the window, and a press already on its way (a second
+    # Save) would still run its handler on the closed panel's form
+    w.panelPhotos = nil
+    w.panelLink = nil
+    w.panelBox.clear()
     w.v.selected = ""
     w.v.symbolBox = @[]
     gtk_widget_queue_draw(w.v.widget)
@@ -431,7 +462,7 @@ proc activate(w: Win, app: W) =
     if why == "wiped":
       w.photosWiped()    # the queued photos went with the store's rows; nothing more is sent
       # the plant data is gone (§15); start over as a fresh process: new device key, the setup screen with the note
-      timeout(200, proc (): bool =
+      after(200, proc () =
         let args = allocCStringArray(@[getAppFilename()] & commandLineParams())
         discard execv(getAppFilename().cstring, args)
         quit(1))
@@ -440,10 +471,9 @@ proc activate(w: Win, app: W) =
     if why == "relay": return     # presence only: nothing to reload
     if not w.reloadQueued and w.a.joined and w.m != nil:
       w.reloadQueued = true
-      timeout(300, proc (): bool =
+      after(300, proc () =       # once, also when refresh fails (as a timer it then came back for good: #163)
         w.reloadQueued = false
-        w.refresh()
-        false)
+        w.refresh())
   var closing = false
   w.window.onCloseRequestStop(proc (): bool =
     # photos still in the queue are kept on disk and sent at the next start: say so, and offer to wait
@@ -463,8 +493,9 @@ proc activate(w: Win, app: W) =
     true)
   gtk_window_present(w.window)
   # tests (#160): while the file KKS_TEST_STALE_CLICK names exists, the next button press is followed by a rebuild
-  # of the tag panel before the button's handler runs (what a sync's reload does when it falls in between), and the
-  # file is removed
+  # of the tag panel before the button's handler runs (what a reload does when it falls in between; forced, also
+  # under an open form, where no reload rebuilds the panel since #163: the handler of a button that has gone must
+  # still do nothing), and the file is removed
   let staleFlag = getEnv("KKS_TEST_STALE_CLICK")
   if staleFlag.len > 0:
     beforeClickHandler = proc () =
@@ -473,9 +504,8 @@ proc activate(w: Win, app: W) =
         w.rebuildPanel()
         stderr.writeLine "KKS_TEST_STALE_CLICK: the panel was rebuilt before a button's handler"
   if getEnv("KKS_DEBUG_DIALOG").len > 0:      # accessibility check: a dialog over whatever screen is up
-    timeout(3000, proc (): bool =
-      confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard)
-      false)
+    after(3000, proc () =
+      confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard))
   timeout(30_000, proc (): bool =
     if w.status != nil: adw_window_title_set_subtitle(w.status, w.statusText().cstring)
     true)
@@ -483,10 +513,9 @@ proc activate(w: Win, app: W) =
   if shot.len > 0:
     let parts = shot.split(',')
     let secs = if parts.len > 1: parseFloat(parts[1]) else: 3.0
-    timeout(int(secs * 1000), proc (): bool =
+    after(int(secs * 1000), proc () =
       discard saveScreenshot(w.window, parts[0])
-      if parts.len > 2 and parts[2] == "quit": g_application_quit(app)
-      false)
+      if parts.len > 2 and parts[2] == "quit": g_application_quit(app))
 
 var shotRequested {.volatile.} = false
 proc onUsr1(sig: cint) {.noconv.} = shotRequested = true

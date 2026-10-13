@@ -350,7 +350,9 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   margins(body, 12)
   body.add tools, area, caption
   if not w.isAdmin: body.add note
-  let send = button("Add the photo", "suggested-action", proc () =
+  var sent = false        # once: the button stays in the window while the dialog closes, and a second press sent
+  let send = button("Add the photo", "suggested-action", proc () =    # the photo again (#163)
+    if sent: return
     let bad = textProblem((if plate: PlateCaption & " · " else: "") & text(caption).strip, text(note).strip)
     if bad.len > 0:                     # the core would refuse the photo for it, after it was queued
       w.toast(bad)
@@ -373,8 +375,9 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
         rgb[(y * ow + x) * 3 + 1] = data[p + 1]
         rgb[(y * ow + x) * 3 + 2] = data[p]
     cairo_surface_destroy(outS)
+    sent = true
     adw_dialog_close(d)
-    done(rgb, ow, oh, text(caption).strip, text(note).strip))
+    done(rgb, ow, oh, text(caption).strip, text(note).strip), once = true)
   let header = headerBar(adw_window_title_new(if plate: "Add a tag plate photo" else: "Add a photo",
                                               if plate: "The metal plate with the KKS code" else: "Draw to point things out"))
   adw_header_bar_pack_end(header, send)
@@ -516,8 +519,11 @@ proc startNext(w: Win) =
     encDone.open()
     createThread(encThread, encWorker)
     encStarted = true
-  # tests: KKS_TEST_PHOTO_HOLD keeps the photos queued without compressing them (the app is killed with photos queued)
-  if getEnv("KKS_TEST_PHOTO_HOLD").len == 0:
+  # tests: KKS_TEST_PHOTO_HOLD keeps the photos queued without compressing them (the app is killed with photos
+  # queued); when it names a file (an absolute path), only while that file exists (a photo that leaves the queue
+  # when the test says so)
+  let hold = getEnv("KKS_TEST_PHOTO_HOLD")
+  if hold.len == 0 or (hold[0] == '/' and not fileExists(hold)):
     var reports: seq[string]
     let (ok, it, px) = pq.next(nowMs(), reports)
     for r in reports: w.toast(r)
@@ -537,7 +543,7 @@ proc pump(w: Win) =
       if not got: break
       w.received(d)
       done = true
-    if done and w.selected.len > 0: w.rebuildPanel()   # its "being compressed" line
+    if done and w.selected.len > 0: w.reloadPanel()    # its "being compressed" line, the photo (never under a form)
     w.startNext()
     polling = pq.count > 0 and not pq.wiped
     polling)
@@ -569,7 +575,7 @@ proc enqueue(w: Win, rgb: seq[byte], ow, oh: int, kks, caption, note, floor: str
     return false
   result = true
   w.pump()
-  if w.selected.len > 0: idle(proc () = w.rebuildPanel())   # not inside the click (an AT-SPI action)
+  if w.selected.len > 0: idle(proc () = w.reloadPanel())    # not inside the click (an AT-SPI action)
 
 proc floorKnown(w: Win, kks: string): bool =
   ## the code has a floor, I proposed one that is still open, or a queued photo carries one
@@ -705,6 +711,20 @@ proc photoForCodes*(w: Win, codes: seq[string], floor: string, queued: proc ()) 
     w.annotate(px, iw, ih, proc (rgb: seq[byte], ow, oh: int, caption, note: string) =
       if w.enqueue(rgb, ow, oh, "", caption, note, floor, codes): idle(proc () = queued())))   # not inside the click
 
+
+proc photoKey*(w: Win, kks: string): string =
+  ## everything photoSection shows for this code: its photos (and whether this device holds each), the queue's
+  ## line, the tag plate button's name. The section is replaced only when this changed.
+  let ph = if w.m.state != nil: w.m.state.get("photos") else: nil
+  if ph != nil:
+    for p in ph.elems:
+      if s(p, "kks") != kks: continue
+      let have = w.a.n.store.blobHas(s(p, "file").split('.')[0])     # (as photoBytes, without reading it)
+      for f in ["id", "file", "caption", "by_name"]: result.add s(p, f) & "\x1f"
+      for f in ["submitted", "created"]:
+        result.add (if p.get(f) != nil and p[f].kind == jInt: $p[f].i else: "") & "\x1f"
+      result.add $have & "\x1e"
+  result.add $queuedFor(kks) & "\x1f" & $w.hasPlate(kks)
 
 proc photoSection*(w: Win, kks: string): W =
   result = group("Photos")

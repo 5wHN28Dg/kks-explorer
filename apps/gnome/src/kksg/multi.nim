@@ -137,6 +137,7 @@ proc stopPicking*(w: Win) =
 proc startPicking*(w: Win) =
   if w.picking: return
   w.v.marking = false
+  w.stopLinking()         # the banner taken down below may be link mode's: the mode ends with it (#163)
   w.setBanner("", "", nil)
   w.picking = true
   w.pickSaidUnread = false
@@ -152,13 +153,12 @@ proc startPicking*(w: Win) =
   let box = getEnv("KKS_SELECT_BOX")
   if box.len > 0 and not testBoxDone:
     testBoxDone = true
-    timeout(500, proc (): bool =
+    after(500, proc () =
       let p = box.split(',')
       let (ok, si) = w.m.sheetById(w.sheet)
       let sc = if ok and si.scale > 0: si.scale else: 2.0
       if p.len == 4 and w.picking:
-        w.addBox(parseFloat(p[0]) / sc, parseFloat(p[1]) / sc, parseFloat(p[2]) / sc, parseFloat(p[3]) / sc)
-      false)
+        w.addBox(parseFloat(p[0]) / sc, parseFloat(p[1]) / sc, parseFloat(p[2]) / sc, parseFloat(p[3]) / sc))
 
 proc listDialog*(w: Win) =
   ## the selected codes, each with a switch (turn a mistake off; on again puts it back) and the drawings it is on;
@@ -288,7 +288,7 @@ proc sendMany(w: Win, kind: string, payload: JNode, note: string): bool =
   w.loadModel()
   if w.sheet.len > 0: w.v.tags = w.tagBoxes(w.sheet)
   gtk_widget_queue_draw(w.v.widget)
-  w.rebuildPanel()
+  w.reloadPanel()          # (never under an open form: #163)
   true
 
 proc photoForAll*(w: Win) =
@@ -303,7 +303,7 @@ proc photoForAll*(w: Win) =
     w.photoForCodes(codes, floor, proc () =
       w.toast("Photo queued for " & $codes.len & " codes: it is sent once compressed")
       w.stopPicking()
-      w.rebuildPanel())
+      w.reloadPanel())
   if missing.len == 0: go("")
   else: w.askFloorFor(missing, codes.len, go)
 
@@ -319,7 +319,7 @@ proc formDialog(w: Win, title: string, g: W, send: proc (d: W)) =
   margins(body, 12)
   body.add g
   let header = headerBar(adw_window_title_new(title.cstring, countText(w.picked.len).cstring))
-  adw_header_bar_pack_end(header, button("Send", "suggested-action", proc () = send(d)))
+  adw_header_bar_pack_end(header, button("Send", "suggested-action", proc () = send(d), once = true))
   adw_dialog_set_child(d, toolbarView(header, body))
   present(d, w.window)
 

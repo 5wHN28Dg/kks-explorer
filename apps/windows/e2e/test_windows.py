@@ -982,6 +982,79 @@ class Windows(unittest.TestCase):
         subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, shot], capture_output=True)
         self.leave()       # leave no device behind for test_flow (it finds this VM's device by its label)
 
+    def test_stale_click(self):
+        """#162. What is typed into the panel's edit form stays when a sync arrives while the keyboard is elsewhere
+        (the panel was rebuilt from the data then, and the text was gone). And a button's handler does nothing when
+        its panel was rebuilt between the click and the handler (KKS_TEST_STALE_CLICK queues that rebuild while its
+        file exists): the old form's Save read its destroyed fields as empty and sent every field as cleared."""
+        code = '11LAB70AA881'
+        self.add_tag(code, [1000, 900, 1120, 960], floor='8')
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'near': 'pump P1'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        flag = 'C:\\kks\\stale.flag'
+        vm('Remove-Item %s -ErrorAction SilentlyContinue' % flag)
+        self.join('stjoin.uia', sync_every=3000, env={'KKS_TEST_STALE_CLICK': flag})
+        eq = lambda: self.boss.req('GET', '/api/state')['equipment'].get(code, {})
+        # typed, then the keyboard leaves the panel (a look at the drawing, another program)
+        self.check('stale1.uia', self.show(code) + ['wait\tEdit\t20', 'click\tEdit', 'set\tNear / landmark\tbehind pump P1',
+                                                    'focus\tDrawings'])
+        # a change from elsewhere arrives (the side shows it: the floors in use)
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'floor': '9'},
+                                                                              'base': {'floor': '8'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.check('stale2.uia', ['wait\tFloor 9\t60', 'value\tNear / landmark\tbehind pump P1', 'sleep\t2500',
+                                  'value\tNear / landmark\tbehind pump P1', 'click\tSave', 'gone\tSave'])
+        self.wait_server(lambda: eq().get('near') == 'behind pump P1', 'the typed text never reached the server', tries=80)
+        self.assertEqual(eq().get('floor'), '9')
+        # the panel caught up once the form closed: Edit shows what the sync brought
+        self.check('stale3.uia', ['click\tEdit', 'value\tFloor (0–10)\t9', 'set\tNotes\tnot to be sent'])
+        vm('Set-Content %s 1' % flag, check=True)
+        try:
+            # Save is pressed and its panel rebuilt before the handler runs: nothing is sent, the form now on screen
+            # (made again from the data) stays open
+            self.check('stale4.uia', ['click\tSave', 'sleep\t2000', 'wait\tSave\t5', 'value\tNear / landmark\tbehind pump P1'])
+        finally:
+            vm('Remove-Item %s -ErrorAction SilentlyContinue' % flag)
+        # the form on screen works: its Save sends what it holds
+        self.check('stale5.uia', ['set\tNotes\tsecond save', 'click\tSave', 'gone\tSave'])
+        self.wait_server(lambda: eq().get('notes') == 'second save', 'the second save never reached the server', tries=80)
+        got = eq()
+        self.assertEqual((got.get('floor'), got.get('near'), got.get('notes')), ('9', 'behind pump P1', 'second save'),
+                         'the stale Save sent something: %s' % got)
+        # the value on the server changed while the form held typed text for the same field: Save does not replace it.
+        # The core holds the change as a clash (its base is what the form showed): a manager's stays on this device
+        # under Approvals, a member's goes to the approver marked as clashing
+        self.check('stale7.uia', ['click\tEdit', 'set\tHow to find it\tfrom the app', 'focus\tDrawings'])
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {
+            'kks': code, 'changes': {'loc': 'from the server', 'floor': '10'}, 'base': {'loc': '', 'floor': '9'}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.check('stale8.uia', ['wait\tFloor 10\t60', 'value\tHow to find it\tfrom the app', 'click\tSave',
+                                  'wait\t~Held: it clashes\t20', 'gone\tSave',
+                                  'click\tManage', 'click\tApprovals', 'value\tHeld\tIt clashes with the current value', 'click\tDrawings'])
+        # a reading corrected and confirmed: the panel, held as it is while the typed code was in its field, is made
+        # again once the code was sent (no "Check this tag" left to confirm a second time). And "Not a tag" with a
+        # code typed: the tag goes, and its panel with it
+        for box in ([1000, 1100, 1120, 1160], [1000, 1200, 1120, 1260]):
+            r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': box, 'kks': '',
+                                                                                  'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        pick = ['click\tReview', 'wait\tReadings to check\t60', 'enter\t~Sample sheet · \t20', 'wait\tCheck this tag\t20']
+        self.check('stale6.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA884', 'click\tConfirm', 'gone\tCheck this tag',
+                                         'value\tNumber\t884'])
+        def confirmed():
+            return [k for k, v in self.boss.req('GET', '/api/state')['reviews'].items() if v.get('kks') == '11LAB70AA884']
+        ids = self.wait_server(confirmed, 'the confirmed reading never reached the server', tries=80)
+        # (that sync round came after the held Save: the server still has its own value)
+        self.assertEqual(eq().get('loc'), 'from the server')
+        try:
+            self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag', 'gone\tCheck this tag',
+                                             'gone\tNot a tag', 'click\tDrawings'])
+        finally:
+            # the confirmed mark goes again: test_systems_follows_sync counts the codes on the drawings
+            r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': ids[0].split(':', 1)[1]}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.leave()
+
     def test_systems_follows_sync(self):
         """Equipment by system follows a sync without a search, but never under the focus. Sync rounds every 3 s, in
         an app of its own: in the main flow such fast rounds rebuild the Manage pages under its clicks."""

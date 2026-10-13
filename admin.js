@@ -31,7 +31,10 @@ const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.u
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
-async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
+async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){
+  // signed out meanwhile (from another browser, by an admin): the sign-in screen. A wrong password typed into a form here is a 401 too: that one is said
+  if(e.status===401&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return null }
+  toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
 
 // Updates is its own tab, not part of Account (the Android app shows updates in its own screens)
 const canUpdate=()=>!K.cfg?.app&&(K.cfg?.mode==='peer'||isAdmin());
@@ -189,6 +192,8 @@ const VIEWS={
         if(!u.active&&u.own_devices) out.push(ghost('Remove devices',()=>confirm('Remove all devices of '+u.username+'? They stop syncing.')&&setUser(+u.id,{active:false})));
         if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setUser(+u.id,{role:other(u)})));
         out.push(ghost('Password link',()=>resetLink(u.id,u.username)));
+        // a web sign-in renews while used: this ends them all now (a lost phone, a shared computer)
+        if(u.active&&u.has_password) out.push(ghost('Sign out everywhere',()=>signOutUser(u)));
       }
       if(canEdit(u)&&u.id!==ME.user.id&&!u.no_account) out.push(ghost('Edit details',()=>editDetails(+u.id,u.full_name||'',u.position||'')));
       if(gone(u)) out.push(u.hidden?ghost('Show again',()=>setHidden([u.person],false)):ghost('Hide',()=>setHidden([u.person],true)));
@@ -230,8 +235,8 @@ const VIEWS={
         h('td',null,u.no_account?(u.active?[`own device${u.devices===1?'':'s'} `,h('span',{class:'sub'},`(${u.devices})`)]:h('span',{class:'del'},'all devices removed'))
                     :u.active?(u.has_password?'active':h('span',{class:'sub'},'link not used yet')):h('span',{class:'del'},u.own_devices?`web sign-in off; own device${u.own_devices===1?'':'s'} (${u.own_devices}) still sync${u.own_devices===1?'s':''}`:'deactivated')),
         h('td',{class:'row'},actions(u))))),
-      h('p',{class:'sub server-only'},'Web sign-in is for someone who joined with the app (own devices) and also wants the web app: you get a one-time link for them, and they stay one person on both.'),
-      h('p',{class:'sub'},`Deactivating signs the person out everywhere and stops syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).`));
+      h('p',{class:'sub server-only'},'Web sign-in is for someone who joined with the app (own devices) and also wants the web app: you get a one-time link for them, and they stay one person on both. Sign out everywhere ends every web sign-in of an account at once (a lost phone, a computer others use): the person signs in again with their password, which stays as it is, and so do their devices with the app.'),
+      h('p',{class:'sub'},`Deactivating ends the person's web sign-ins too, and stops their devices syncing. Plant data already saved on their device for offline use stays there until they next connect (at most ${ME.offline_days} days of offline access).`));
   },
   async devices(g){
     const D=await K.api('/api/devices'+(SHOW_HIDDEN?'?show_hidden=1':'')), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
@@ -341,7 +346,7 @@ const VIEWS={
   },
   async updates(g){ put(mainFor(g),h('div',{id:'upd'},h('p',{class:'sub'},'Checking…'))); await renderUpdate() },
   async account(g){
-    if(K.online){ try{ ME=await K.api('/api/me') }catch(e){} }
+    if(K.online){ try{ ME=await K.api('/api/me') }catch(e){ if(e.status===401) return location.reload() } }   // (signed out meanwhile, e.g. from another browser)
     const sw=!!navigator.serviceWorker?.controller, secure=window.isSecureContext;
     const lease=await K.idb.get('me');
     const D=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); saveDetails(D) }},
@@ -352,7 +357,12 @@ const VIEWS={
       h('input',{type:'password',name:'new',placeholder:'new password (10+)',autocomplete:'new-password',required:true,minlength:10}),h('button',{class:'primary'},'Change password'));
     const out=[h('div',{class:'card'},h('h3',null,'Your details'),ME.user.full_name?null:h('div',{class:'warn'},'Add your full name, so others can tell whose account this is.'),D,
         h('div',{class:'sub'},'Username ',h('span',{class:'mono'},ME.user.username),` · ${ME.user.role}`)),
-      h('div',{class:'card server-only'},h('h3',null,'Password'),P)];
+      h('div',{class:'card server-only'},h('h3',null,'Password'),P),
+      // every web sign-in of this account but this one (the count comes with /api/me: said only while connected)
+      h('div',{class:'card server-only',id:'sessions'},h('h3',null,'Web sign-ins'),
+        K.online&&ME.sessions?h('div',{id:'sessionCount'},ME.sessions>1?`Your account is signed in ${ME.sessions} times on the web: here and in ${ME.sessions-1} other browser${ME.sessions===2?'':'s'} or device${ME.sessions===2?'':'s'}.`:'Your account is signed in on the web here only.'):null,
+        h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'ghost',onclick:()=>signOutOthers()},'Sign out my other sessions')),
+        h('div',{class:'sub'},`Ends every other web sign-in of yours at once, for example on a phone you lost or a computer others use. This one stays. Your password and your devices with the app are unchanged. A browser that is offline is signed out when it next reaches the server (within ${ME.offline_days} days: its offline copy lasts no longer).`))];
     if(ME.transfer_offer) out.push(h('div',{class:'card'},h('h3',null,'The manager wants to hand the manager role to you'),
       h('div',{class:'sub'},'You would become the single top account. The current manager becomes an admin.'),
       h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'primary',onclick:()=>mgr('accept')},'Accept'),h('button',{class:'ghost',onclick:()=>mgr('decline')},'Decline'))));
@@ -536,6 +546,15 @@ const linkBox=(name,r)=>r&&$('#main').prepend(h('div',{class:'warn'},'Password l
 async function resetLink(id,name){
   if(!confirm(`Create a new password link for ${name}? Their current password keeps working until they use it.`)) return;
   linkBox(name,await act(()=>K.api(`/api/users/${id}/reset`,{})));
+}
+async function signOutUser(u){
+  if(!confirm(`Sign ${u.full_name||u.username} (${u.username}${u.role==='admin'?', an admin':''}) out everywhere? Every web sign-in of theirs ends now, in every browser and on every device; one that is offline ends when it next reaches the server, and what that device saved for offline use stays readable on it until then (at most ${ME.offline_days} days). They sign in again with their password.\n\nThis does not change their password and does not remove their devices with the app.`)) return;
+  const r=await act(()=>K.api(`/api/users/${u.id}/sign-out`,{}));
+  if(r) toast(r.ended?`${u.username}: ${r.ended} web sign-in${r.ended===1?'':'s'} ended`:`${u.username} was not signed in on the web`);
+}
+async function signOutOthers(){
+  const r=await act(()=>K.api('/api/sign-out-others',{}));
+  if(r) toast(r.ended?`Signed out ${r.ended} other session${r.ended===1?'':'s'}`:'No other sessions: you are signed in here only');
 }
 async function webSignin(u){
   if(!confirm(`Give ${u.full_name||u.username} (${u.username}${u.role==='admin'?', an admin':''}) a web sign-in? You get a one-time link to send them: with it they set a password and use the web app as the same person.`+(u.active?'':' Their devices were all removed: this lets them in again, on the web.'))) return;

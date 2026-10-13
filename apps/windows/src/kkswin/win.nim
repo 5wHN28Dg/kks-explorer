@@ -40,6 +40,7 @@ type Win* = ref object
   queueLabel*: HWND         ## the photo queue's line beside the status (photos.nim), hidden while it is empty
   failedButton*: HWND       ## "Photos not sent (n)…": photos that failed, kept until sent or discarded (photos.nim)
   followers*: seq[Follower]  ## open windows that follow the plant's data (follow)
+  panelStale*: bool         ## the panel was left as it is under the keyboard or typed text (panelChanged)
 
 proc focusInside(area: HWND): bool =
   let f = GetFocus()
@@ -71,6 +72,30 @@ proc catchUpFollowers*(w: Win) =
     if f.stale and IsWindow(f.area) != 0 and not focusInside(f.area):
       f.stale = false
       f.rebuild()
+
+proc panelHeld*(w: Win, anyFocus = true): bool =
+  ## the panel is not rebuilt now: something typed into one of its fields is still there (an edit form, a reading
+  ## being corrected: a rebuild makes the fields again from the data and what was typed is lost, wherever the
+  ## keyboard is by then, in another window too), or the keyboard is in it (`anyFocus`; else only in a text field)
+  if w.panel.edited: return true
+  let f = GetFocus()
+  if f == nil or GetParent(f) != w.panel.hwnd: return false
+  if anyFocus: return true
+  var buf = newWideCString("", 32)
+  let n = GetClassNameW(f, buf, 32)
+  n > 0 and ($buf).toLowerAscii == "edit"
+
+proc panelChanged*(w: Win, anyFocus = true) =
+  ## what the panel shows changed underneath (a sync, the photo queue): rebuilt now, or, while it is held, once it no
+  ## longer is (panelCatchUp, every second; the form's own Save and Cancel rebuild it too)
+  if not w.picking and w.selected.len == 0:
+    w.panelStale = false
+    return
+  if w.panelHeld(anyFocus): w.panelStale = true
+  else: w.rebuildPanel()
+
+proc panelCatchUp*(w: Win) =
+  if w.panelStale and not w.panelHeld(): w.panelChanged()
 
 proc toast*(w: Win, msg: string) =
   w.lastMsg = msg
