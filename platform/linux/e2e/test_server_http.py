@@ -1376,7 +1376,6 @@ class SignOutEverywhere(Base):
         self.assertEqual(self.cli('sign-out', '--user', 'tom')[1].split('.')[0], 'tom was not signed in on the web')
 
 
-
 class SignOutOthersPassword(Base):
     """Account → "Sign out my other sessions" asks for the account's password (the user, 2026-10-13): whoever holds a
     stolen sign-in could otherwise end the owner's sign-ins and keep their own. Checked and counted as Change password
@@ -1440,7 +1439,7 @@ class SignOutOthersPassword(Base):
         self.assertEqual(out(thief, {'password': 'tom password 1'})[0], 401)              # (no sign-in any more)
         self.assertEqual(self.alive(tom), [200])
         self.assertEqual(out(tom, {'password': 'tom password 1'})[1], {'ok': True, 'ended': 0})
-        self.login('tom')
+
 
 class OfflineList(Base):
     """GET /api/offline: the files a browser saves to work without the server ("Download for offline")"""

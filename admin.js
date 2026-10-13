@@ -356,7 +356,7 @@ const VIEWS={
       h('input',{type:'password',name:'old',placeholder:'current password',autocomplete:'current-password',required:true}),
       h('input',{type:'password',name:'new',placeholder:'new password (10+)',autocomplete:'new-password',required:true,minlength:10}),h('button',{class:'primary'},'Change password'));
     // "Sign out my other sessions" asks for the password (the user, 2026-10-13): a stolen sign-in alone must not end the owner's
-    const O=h('form',{class:'inline',style:'margin-top:8px',onsubmit:e=>{ e.preventDefault(); signOutOthers(O) }},
+    const O=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); signOutOthers(O) }},
       h('input',{type:'password',name:'password',placeholder:'your password','aria-label':'Your password',autocomplete:'current-password',required:true}),h('button',{class:'ghost'},'Sign out my other sessions'));
     const out=[h('div',{class:'card'},h('h3',null,'Your details'),ME.user.full_name?null:h('div',{class:'warn'},'Add your full name, so others can tell whose account this is.'),D,
         h('div',{class:'sub'},'Username ',h('span',{class:'mono'},ME.user.username),` · ${ME.user.role}`)),
