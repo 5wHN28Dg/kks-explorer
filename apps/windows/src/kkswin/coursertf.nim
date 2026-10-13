@@ -4,11 +4,56 @@
 
 import std/[strutils, sets, unicode]
 import kks/json
+import nobreak
+
+proc rtfEsc*(s: string): string
+
+# A `num` run stays on one line with its unit (§3; apps/common/nobreak.nim says which of its spaces may wrap).
+# RichEdit has no unbreakable span, and measured in Windows 11's (2026-10-13) it breaks a line in more places than
+# after a space: after ° or % before a letter ("200 °" / "C"), after a hyphen or dash before a letter, before a
+# superscript minus; and without advanced typography (ui.nim `rich` turns it on) between a digit and a no-break
+# space. A word joiner (U+2060) or U+FEFF does not help: a line ends before either, and U+2060 is drawn a character
+# wide in Consolas. What does hold two characters together is a no-break space between them, so where a break could
+# come it is one of 1 pt: a pixel wide, nothing to see. The text copied out of the control has a no-break space
+# there ("200 °C" is 200, nbsp, °, nbsp, C).
+const
+  NoBreakSpace = "\\~"
+  Joiner = "{\\fs2\\~}"
+
+proc isDigit(r: Rune): bool = r.int32 >= ord('0') and r.int32 <= ord('9')
+proc isWord(r: Rune): bool =
+  ## a letter, a digit, or a raised or lowered digit (m³, mm², H₂)
+  r.isAlpha or r.isDigit or r.int32 in [0xB2'i32, 0xB3, 0xB9, 0x2070] or (r.int32 >= 0x2074 and r.int32 <= 0x2079) or
+    (r.int32 >= 0x2080 and r.int32 <= 0x2089)
+
+proc sticks(a, b: Rune): bool =
+  ## RichEdit never ends a line between these two (each pair measured; anything else gets a joiner)
+  let (x, y) = (a.int32, b.int32)
+  if a.isWord and b.isWord: return true                                   # 100K, 20mA, µm
+  if a.isDigit and y in [int32(ord('.')), ord(','), ord('%')]: return true
+  if x in [int32(ord('.')), ord(',')] and b.isDigit: return true          # 0.385
+  if (a.isWord and y == ord('/')) or (x == ord('/') and b.isWord): return true        # kg/s, 1/2
+  if x in [int32(ord('-')), 0x2010, 0x2012, 0x2013] and b.isDigit: return true        # 4–20
+  if a.isWord and y in [int32(ord('-')), 0x2010, 0x2012, 0x2013]: return true
+  x == ord('(') or y == ord(')')
+
+proc numRun*(s: string, rtf = true): string =
+  ## a num run's text as RTF, or (`rtf = false`) as the control then holds it: what a search in the control finds
+  var rs: seq[Rune]
+  for r in unbroken(s).runes:
+    if r != Rune(0x2060): rs.add r             # the rule's word joiners: the pairs above and the joiner do that here
+  proc space(r: Rune): bool = r == Rune(32) or r == Rune(0xA0) or r == Rune(10)
+  for i, r in rs:
+    if r == Rune(0xA0): result.add (if rtf: NoBreakSpace else: Nbsp)
+    else: result.add (if rtf: rtfEsc($r) else: $r)
+    if i + 1 < rs.len and not space(r) and not space(rs[i + 1]) and not sticks(r, rs[i + 1]):
+      result.add (if rtf: Joiner else: Nbsp)
 
 proc plainRun(r: JNode): string =
+  ## a run as the control holds it (a link is found by its text)
   for x in r.elems:
     if x.kind == jStr: result.add x.s
-    elif x.get("num") != nil: result.add x["num"].s
+    elif x.get("num") != nil: result.add numRun(x["num"].s, rtf = false)
     else:
       for k in ["b", "i", "small", "term", "link"]:
         if x.get(k) != nil: result.add plainRun(x[k])
@@ -55,7 +100,7 @@ proc runRtf*(f: var Flow, r: JNode) =
       f.rtf.add "{\\fs19\\cf3 "
       f.runRtf(x["small"])
       f.rtf.add "}"
-    elif x.get("num") != nil: f.rtf.add "{\\f1 " & rtfEsc(x["num"].s) & "}"     # the mono face at the text's own size (at 10 pt in 11 pt text a capital V stood as low as a small letter)
+    elif x.get("num") != nil: f.rtf.add "{\\f1 " & numRun(x["num"].s) & "}"     # the mono face at the text's own size (at 10 pt in 11 pt text a capital V stood as low as a small letter)
     elif x.get("term") != nil:
       f.rtf.add "{\\ul "
       f.runRtf(x["term"])
@@ -167,3 +212,16 @@ proc panelRtf*(f: var Flow, panel: JNode) =
       else: "") & " "
     f.runRtf(r["value"])
     f.rtf.add "}\\par\n"
+
+# ---------------------------------------------------------------- lines that are not RTF (learn.nim's labels)
+
+proc questionHeading*(label, typ, src: string): string =
+  ## the small line over a question, as written: upper-cased it read "Q7 · 4 · 4–20 MA" (found 2026-10-13)
+  (if label.len > 0: label elif typ == "scenario": "Scenario" elif typ == "order": "Put in order" else: "Practice") &
+    (if src.len > 0: "   " & src else: "")
+
+proc testResult*(score, answered, total: int): string =
+  ## a test's Result line, in the GNOME app's words (apps/gnome/src/kksg/learn.nim testPage): untouched it says how
+  ## many questions there are (it said "0 / 0 right"), then how many of the answered ones were right
+  if answered == 0: "0 / " & $total & " answered"
+  else: $score & " / " & $answered & " right" & (if answered == total: " · finished" else: "")

@@ -977,6 +977,10 @@ class Windows(unittest.TestCase):
                                    'wait\t0% = 0 °C = 4.00 mA = 1.00 V across 250 Ω = 3.0 psi\t10',
                                    'click\tPlay', 'wait\tPause\t10', 'slide\tMeasurement\t0x23',
                                    'wait\tPlay\t10', 'wait\t100% = 200 °C = 20.00 mA = 5.00 V across 250 Ω = 15.0 psi\t10'])
+        # a question's heading is shown as written (upper-cased, the placement test's read "… · 4 · 4–20 MA"), and an
+        # untouched final check says how many questions it has (it said "0 / 0 right")
+        self.check('course5.uia', ['select\tPlacement test', 'click\tOpen the selected page', 'wait\t~ · 4 · 4–20 mA\t20',
+                                   'select\tFinal check', 'click\tOpen the selected page', 'wait\t0 / 20 answered\t20'])
         shot = os.path.join(tempfile.gettempdir(), 'kks-win-course.ppm')
         dom = 'kks-win11' if VM.endswith('.20') else 'kks-win10'
         subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, shot], capture_output=True)
