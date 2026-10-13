@@ -2,9 +2,10 @@
 ## window, the rail on the left, the page on the right. Runs become Pango markup in which every course string is
 ## escaped; links carry our own URIs (page:, course:, kks:) or https. Page logic is apps/common/coursestate.nim.
 
-import std/[math, strutils, tables, sets, sequtils, uri]
+import std/[math, os, strutils, tables, sets, sequtils]
+from std/unicode import runeLen
 import kks/[json, courses, model]
-import gtk, ui, win, photos, coursefig, coursestate, appstate
+import gtk, ui, win, photos, coursefig, coursestate, appstate, coursetext, nobreak
 
 type CW = ref object       ## one course window
   w: Win
@@ -12,28 +13,12 @@ type CW = ref object       ## one course window
   window, rail, railList, scroller, pageBox, title: W
   pageId: string
   figs: seq[FigView]
+  credits: seq[W]          ## the page's photo credits (in the page: not held); tests scroll to the first
 
 proc openCourse*(w: Win, id: string, page = "")
 proc show(cw: CW, id: string)
 
 # ---------------------------------------------------------------- runs (§3)
-
-proc linkUri(to: JNode): string =
-  if to.get("url") != nil: return to["url"].s
-  if to.get("kks") != nil: return "kks:" & to["kks"].s
-  if to.get("course") != nil:
-    return "course:" & to["course"].s & (if to.get("page") != nil: "#" & to["page"].s else: "")
-  "page:" & to["page"].s
-
-proc markup(cw: CW, r: JNode): string =
-  for x in r.elems:
-    if x.kind == jStr: result.add esc(x.s)
-    elif x.get("b") != nil: result.add "<b>" & cw.markup(x["b"]) & "</b>"
-    elif x.get("i") != nil: result.add "<i>" & cw.markup(x["i"]) & "</i>"
-    elif x.get("small") != nil: result.add "<small>" & cw.markup(x["small"]) & "</small>"
-    elif x.get("num") != nil: result.add "<span font_family=\"JetBrains Mono, monospace\">" & esc(x["num"].s) & "</span>"
-    elif x.get("term") != nil: result.add "<u>" & cw.markup(x["term"]) & "</u>"
-    elif x.get("link") != nil: result.add "<a href=\"" & esc(linkUri(x["to"])) & "\">" & cw.markup(x["link"]) & "</a>"
 
 proc follow(cw: CW, uri: string): bool =
   ## our links; https ones return false so GTK opens them in the browser
@@ -58,10 +43,22 @@ proc follow(cw: CW, uri: string): bool =
     return true
   not uri.startsWith("https://")
 
+var noteCss = false
+proc noteClass(): string =
+  ## A caption or a credit under a figure or photo: smaller, and lighter than the text by its colour, not by the
+  ## widget's opacity as libadwaita's dim-label does it. That dimmed a credit's licence link with the rest, and in
+  ## the dark theme both stood too faint on the page (2026-10-13). The link keeps the accent colour at full strength.
+  if not noteCss:
+    noteCss = true
+    let p = gtk_css_provider_new()
+    gtk_css_provider_load_from_string(p, ".course-note { color: alpha(currentColor, 0.72); }")
+    gtk_style_context_add_provider_for_display(gdk_display_get_default(), p, 600)      # (APPLICATION priority)
+  "course-note caption"
+
 proc rl(cw: CW, r: JNode, css = "", selectable = true): W =
   ## a run as a wrapping label
   result = gtk_label_new("")
-  gtk_label_set_markup(result, cw.markup(r).cstring)
+  gtk_label_set_markup(result, markup(r).cstring)
   gtk_label_set_xalign(result, 0)
   gtk_label_set_wrap(result, 1)
   gtk_label_set_wrap_mode(result, PANGO_WRAP_WORD_CHAR)
@@ -82,6 +79,11 @@ proc heading(text: string, level: int, css: string): W =
 
 proc blocks(cw: CW, bs: JNode, box: W)
 
+proc joined(r: JNode): JNode =
+  ## a short run's plain strings joined as a num run's text is (no-break spaces, no break after a dash or slash)
+  result = newArr()
+  for x in r.elems: result.elems.add (if x.kind == jStr: newStr(unbroken(x.s)) else: x)
+
 proc table(cw: CW, t: JNode): W =
   let g = gtk_grid_new()
   gtk_grid_set_row_spacing(g, 6)
@@ -95,7 +97,11 @@ proc table(cw: CW, t: JNode): W =
     gtk_grid_attach(g, l, cint(ci), 0, 1, 1)
   for (ri, row) in t["rows"].elems.pairs:
     for (ci, cell) in row.elems.pairs:
-      let l = cw.rl(cell, if ci in num: "monospace numeric" else: "")
+      # A number column's cell is plain text ("12 mA"), not a num run: a short one stays on one line as a num run
+      # does. Not every one, as the web has it (td.v, in a table that scrolls sideways): some hold a sentence, and
+      # this table has no scroller, so they wrap.
+      let l = cw.rl(if ci in num and plain(cell).runeLen <= WholeRun: joined(cell) else: cell,
+                    if ci in num: "monospace numeric" else: "")
       if ci in num: gtk_label_set_xalign(l, 1)
       gtk_grid_attach(g, l, cint(ci), cint(ri + 1), 1, 1)
   # The grid sits in the card itself, as wide as the page: every cell wraps, so it always fits. (Until 2026-10-12 it
@@ -125,7 +131,7 @@ proc figure(cw: CW, id: string): W =
   gtk_widget_set_margin_bottom(head, 0)
   result.add head, v.box
   if f["caption"].len > 0:
-    let cap = cw.rl(f["caption"], "dim-label caption")
+    let cap = cw.rl(f["caption"], noteClass())
     margins(cap, 12)
     gtk_widget_set_margin_top(cap, 0)
     result.add cap
@@ -143,8 +149,11 @@ proc image(cw: CW, im: JNode): W =
     setAccessibleLabel(pic, im["alt"].s)
     result.add pic
   else: result.add label("(picture not available: " & im["alt"].s & ")", "dim-label")
-  if im["caption"].len > 0: result.add cw.rl(im["caption"], "dim-label caption")
-  if im["credit"].len > 0: result.add cw.rl(im["credit"], "dim-label caption")
+  if im["caption"].len > 0: result.add cw.rl(im["caption"], noteClass())
+  if im["credit"].len > 0:
+    let credit = cw.rl(im["credit"], noteClass())
+    cw.credits.add credit
+    result.add credit
 
 proc kksTool(cw: CW): W =
   let box = vbox(8)
@@ -283,8 +292,8 @@ proc question(cw: CW, q: JNode, o: QOpts): W =
   card.add box
   let typ = q["type"].s
   let kind = hbox(8)
-  let kl = label((if o.label.len > 0: o.label elif typ == "scenario": "Scenario" elif typ == "order": "Put in order" else: "Practice").toUpperAscii,
-                 "caption-heading accent", wrap = false)
+  let kl = label((if o.label.len > 0: o.label elif typ == "scenario": "Scenario" elif typ == "order": "Put in order" else: "Practice"),
+                 "caption-heading accent", wrap = false)     # as written: in capitals "4–20 mA" read "4–20 MA"
   gtk_widget_set_hexpand(kl, 1)
   kind.add kl
   if q["src"].len > 0: kind.add cw.rl(q["src"], "dim-label caption", false)
@@ -691,6 +700,7 @@ proc show(cw: CW, id: string) =
   cw.pageId = id
   cw.c.setLast(id)
   cw.figs.setLen(0)
+  cw.credits.setLen(0)
   cw.pageBox.clear()
   case p["kind"].s
   of "module": cw.modulePage(p, cw.pageBox)
@@ -712,7 +722,13 @@ var windows: Table[string, CW]
 
 proc scrollToFigure*() =
   ## tests (AT-SPI can't scroll GTK 4 widgets): bring each course window's first animated figure on screen
+  ## (with KKS_TEST_SCROLL=credit: its first photo credit instead)
   for _, cw in windows:
+    if getEnv("KKS_TEST_SCROLL") == "credit":
+      if cw.credits.len > 0:
+        let y = yIn(cw.credits[0], cw.pageBox)
+        if not y.isNaN: gtk_adjustment_set_value(gtk_scrolled_window_get_vadjustment(cw.scroller), y - 400)
+      continue
     for v in cw.figs:
       if not v.ev.isStatic:
         let y = yIn(v.area, cw.pageBox)

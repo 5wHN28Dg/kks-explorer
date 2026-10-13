@@ -952,6 +952,62 @@ class Gnome(Plant):
             self.assertLess(hi - lo, 12, f'the photo fills its box from edge to edge (greys {lo} to {hi} at x={x0}): stretched')
         mid = im.crop((e.x + e.width // 2 - 100, top, e.x + e.width // 2 + 100, bottom)).getextrema()
         self.assertGreater(mid[1] - mid[0], 40, 'no photo in the middle of its box')
+        # a number stays on one line with its unit (docs/COURSES.md §3): the run's spaces are no-break spaces in what
+        # the label lays out (the layout itself at every width: tests/test_coursetext.nim)
+        atspi.click(atspi.find(a, 'button', name='5 · Strain gauges & RTDs'))
+        para = atspi.find(a, 'label', contains='a platinum element with', timeout=10, showing=False).get_name()
+        self.assertIn('0.385\u00a0Ω\u00a0per\u00a0°C', para)
+        self.assertIn('100.0\u00a0Ω', para)
+        # a question's heading is shown as written: the placement test names each question's module, and in capitals
+        # "4 · 4–20 mA" read "4–20 MA"
+        # (this course's window: the Foundations window is still open, with a Placement test of its own)
+        inc = [a.get_child_at_index(i) for i in range(a.get_child_count())
+               if atspi.find_all(a.get_child_at_index(i), 'button', name='4 · 4–20 mA')]
+        self.assertEqual(len(inc), 1, 'the Instrumentation and control window')
+        inc = inc[0]
+        # a number column's short cell is one line too ("12 mA" in a table of this course's module 4)
+        atspi.click(atspi.find(inc, 'button', name='4 · 4–20 mA'))
+        atspi.find(inc, 'label', name='12\u00a0mA', timeout=10, showing=False)
+        atspi.click(atspi.find(inc, 'button', name='Placement test'))
+        atspi.find(inc, 'label', contains=' · 4 · 4–20 mA', timeout=10, showing=False)
+        self.assertFalse(atspi.find_all(a, 'label', contains='4–20 MA') or
+                         [n for _, n in atspi.nodes(a, 'label') if '4–20 MA' in n], 'a question heading in capitals')
+        # In the dark theme a photo's credit can be read, and its licence link has the accent colour at full strength
+        # (as a dim label the whole line was drawn at 55 % opacity, the link with it: 2026-10-13). The same person's
+        # app again, dark; KKS_TEST_SCROLL=credit makes SIGUSR2 bring the page's first credit on screen.
+        self.apps[-1].terminate()
+        self.apps[-1].wait(10)
+        dark_shot = os.path.join(SHOTS, 'gnome-course-dark.png')
+        a = self.start_app('learner', KKS_SHOT_ON_SIGNAL=dark_shot, ADW_DEBUG_COLOR_SCHEME='prefer-dark', KKS_TEST_SCROLL='credit')
+        pid = self.apps[-1].pid
+        atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
+        atspi.click(atspi.find(a, 'button', name='Learning'))
+        atspi.click(atspi.find(a, 'button', name='Instrumentation and control', timeout=15))
+        atspi.click(atspi.find(a, 'button', name='5 · Strain gauges & RTDs', timeout=15))
+        credit = atspi.find(a, 'label', contains='Photo: Pleriche', timeout=10, showing=False)
+        inc_dark = dark_shot.replace('.png', '-inc.png')
+        if os.path.exists(inc_dark):
+            os.remove(inc_dark)
+        time.sleep(1)
+        os.kill(pid, signal.SIGUSR2)
+        time.sleep(1.5)
+        os.kill(pid, signal.SIGUSR1)
+        for _ in range(40):
+            time.sleep(0.25)
+            if os.path.exists(inc_dark):
+                break
+        time.sleep(0.5)
+        e = credit.get_component_iface().get_extents(Atspi.CoordType.WINDOW)
+        im = Image.open(inc_dark).convert('RGB')
+        self.assertTrue(0 < e.y < im.height - e.height and e.height > 8, f'the credit is not on screen: {e.x},{e.y} {e.width}x{e.height}')
+        crop = im.crop((e.x, e.y, e.x + e.width, e.y + e.height))
+        px = list(crop.get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(crop.getdata())
+        back = max(set(px), key=px.count)
+        self.assertLess(max(back), 90, f'not the dark theme: the page is {back}')
+        grey = max(min(p) for p in px if max(p) - min(p) < 12)           # the plain text at its lightest
+        link = max(px, key=lambda p: max(p) - min(p))                   # the link: the most coloured pixel
+        self.assertGreater(grey, 175, f'the credit\'s text is too faint on the dark page (lightest grey {grey} on {back})')
+        self.assertGreater(max(link), 165, f'the credit\'s link is dimmed with its line ({link})')
 
     def test_zzz_multi_member(self):
         """A MEMBER's "Photo for all" (their changes wait for approval), with codes of two drawings (runs last: its
