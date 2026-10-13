@@ -124,8 +124,9 @@ proc wrapsOnlyAtItsSpaces(nums: seq[string], widths: Slice[int]): seq[string] =
       let b = r.brokenAt(i, p)
       if b.len > 0 and not seen.containsOrIncl(p & b): result.add "\"" & p & "\" at " & b & ", " & $w & " px wide"
 
-proc courseNums(): seq[string] =
-  ## every num run of the courses that ship
+proc courseNums(panels = false): seq[string] =
+  ## every num run of the courses that ship; with `panels` the values of the scenarios' readings too (the mono face
+  ## as well)
   const docs = [staticRead("../../../data/courses/ppt.json"), staticRead("../../../data/courses/fnd.json"),
                 staticRead("../../../data/courses/hrsg.json"), staticRead("../../../data/courses/inc.json")]
   var res: seq[string]
@@ -135,6 +136,10 @@ proc courseNums(): seq[string] =
       if n.get("num") != nil and n["num"].kind == jStr:
         if n["num"].s notin res: res.add n["num"].s
       else:
+        if panels and n.get("panel") != nil and n["panel"].kind == jArr:
+          for r in n["panel"].elems:
+            for v in r["value"].elems:
+              if v.kind == jStr and v.s notin res: res.add v.s
         for (_, v) in n.fields: walk(v)
     of jArr:
       for v in n.elems: walk(v)
@@ -185,10 +190,10 @@ suite "the courses' text in RichEdit":
     check minus == numAt + "supply ".len
     check r.pos(minus + 1)[0] - r.pos(minus)[0] == r.pos(numAt + 1)[0] - r.pos(numAt)[0]
 
-  test "Consolas has every character the courses' numbers use":
+  test "Consolas has every character the courses' numbers and readings use":
     # (with no font binding a character Consolas lacks would be an empty box)
     var chars: seq[uint16]
-    for n in courseNums():
+    for n in courseNums(panels = true):
       for u in utf16(numRun(n, rtf = false)):
         if u > 126 and u notin chars: chars.add u
     check chars.len > 10
