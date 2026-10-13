@@ -73,6 +73,19 @@ A run is an array of items. An item is either:
 
 Runs are never empty. Whitespace is significant and not collapsed.
 
+**A `num` run on one line** (renderers' rule, 2026-10-13; `apps/common/nobreak.nim`, and the same in the Android
+app). The web keeps the whole run on one line (`white-space: nowrap`). The three native apps:
+- keep a run of up to 20 characters whole ("0.385 Ω per °C", "4–20 mA");
+- in a longer one, a formula or a phrase ("V at transmitter = supply − I × R"), keep only a number together with the
+  unit after it, and let it wrap at its other spaces: whole, it would leave half a line empty on a phone, or not fit;
+- never break after a hyphen, a dash or a slash inside a run;
+- break a run that is still wider than its line or table cell where the line fills up, as they do any word too
+  long for its line. Nothing overflows or is cut off. (On Android a table column is at least as wide as its widest
+  unbreakable piece, so there the table scrolls sideways instead.)
+
+**Question headings** ("Practice", "Q7 · 4 · 4–20 mA") are shown as written, never in capitals: a module's name can
+hold a unit.
+
 ## 4. Blocks
 
 A block is an object with exactly one kind key (other keys as listed):
