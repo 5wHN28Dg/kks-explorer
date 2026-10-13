@@ -249,8 +249,7 @@ proc question(cw: CW, q: JNode, o: QOpts) =
   let id = q["id"].s & o.suffix
   var st = cw.q.getOrDefault(id)
   let typ = q["type"].s
-  cw.page.dim((if o.label.len > 0: o.label elif typ == "scenario": "Scenario" elif typ == "order": "Put in order" else: "Practice").toUpperAscii &
-              (if q["src"].len > 0: "   " & plain(q["src"]) else: ""))
+  cw.page.dim(questionHeading(o.label, typ, plain(q["src"])))
   var f = Flow()
   if typ == "scenario": f.panelRtf(q["panel"])
   f.rtf.add "\\pard" & (if typ == "scenario": "\\sb120" else: "") & "\\sa80{\\b "
@@ -439,7 +438,7 @@ proc testPage(cw: CW, p: JNode) =
   cw.section("Result")
   let ans = cw.answersOf("_f")
   let score = ans.countIt(it[1])
-  cw.page.label($score & " / " & $ans.len & " right" & (if ans.len == cw.items.len: " · finished" else: ""))
+  cw.page.label(testResult(score, ans.len, cw.items.len))
   if ans.len == cw.items.len:
     cw.c.recordScore(score)
     cw.blocks(if score >= int(p["pass"].num): p["on_pass"] else: p["on_fail"])

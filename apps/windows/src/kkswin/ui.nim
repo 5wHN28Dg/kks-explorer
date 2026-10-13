@@ -316,6 +316,11 @@ var
   EM_SETCHARFORMAT {.importc, header: "<richedit.h>", nodecl.}: UINT
   EM_SETBKGNDCOLOR {.importc, header: "<richedit.h>", nodecl.}: UINT
   EM_AUTOURLDETECT {.importc, header: "<richedit.h>", nodecl.}: UINT
+  EM_SETTYPOGRAPHYOPTIONS {.importc, header: "<richedit.h>", nodecl.}: UINT
+  EM_GETLANGOPTIONS {.importc, header: "<richedit.h>", nodecl.}: UINT
+  EM_SETLANGOPTIONS {.importc, header: "<richedit.h>", nodecl.}: UINT
+  TO_ADVANCEDTYPOGRAPHY {.importc, header: "<richedit.h>", nodecl.}: WPARAM
+  IMF_AUTOFONT {.importc, header: "<richedit.h>", nodecl.}: int
   ENM_REQUESTRESIZE {.importc, header: "<richedit.h>", nodecl.}: uint32
   ENM_LINK {.importc, header: "<richedit.h>", nodecl.}: uint32
   EN_REQUESTRESIZE {.importc, header: "<richedit.h>", nodecl.}: UINT
@@ -323,7 +328,7 @@ var
   CFM_LINK {.importc, header: "<richedit.h>", nodecl.}: DWORD
   CFE_LINK {.importc, header: "<richedit.h>", nodecl.}: DWORD
   SCF_SELECTION {.importc, header: "<richedit.h>", nodecl.}: WPARAM
-  FR_DOWN {.importc, header: "<richedit.h>", nodecl.}: WPARAM
+  FR_DOWN {.importc, header: "<commdlg.h>", nodecl.}: WPARAM
   BS_MULTILINE {.importc, header: HG, nodecl.}: uint32
   BS_LEFT {.importc, header: HG, nodecl.}: uint32
   WM_LBUTTONUP {.importc, header: HG, nodecl.}: UINT
@@ -702,6 +707,16 @@ proc rich*(p: Page, rtf: string, links: seq[(string, string)] = @[]): HWND {.dis
   result = control(p.hwnd, "RICHEDIT50W", "", WS_TABSTOP or ES_MULTILINE or ES_READONLY)[0]
   SendMessageW(result, EM_SETBKGNDCOLOR, 0, LPARAM(GetSysColor(colorWindowIdx)))
   SendMessageW(result, EM_AUTOURLDETECT, 0, 0)
+  # Advanced typography: line breaking that keeps a no-break space with what stands before it (without it a line
+  # ended between a digit and a no-break space, "0.385" / " Ω per °C"), and breaks a word too long for its table
+  # cell where the cell is full.
+  SendMessageW(result, EM_SETTYPOGRAPHYOPTIONS, TO_ADVANCEDTYPOGRAPHY, cast[LPARAM](TO_ADVANCEDTYPOGRAPHY))
+  # No font binding: RichEdit took the minus sign (U+2212), the arrows and √ ≈ ≤ ≥ from Cambria Math whatever font
+  # the run has. Its minus is as long as a dash ("supply − I × R" read as "supply — I × R") and half a character
+  # wider than Consolas's cell (found 2026-10-13). Every character is now drawn in the face its run asks for; one
+  # that face lacks comes from the fonts Windows links to Segoe UI, and Consolas has what the courses' numbers use
+  # (tests/test_courserich.nim).
+  SendMessageW(result, EM_SETLANGOPTIONS, 0, LPARAM(int(SendMessageW(result, EM_GETLANGOPTIONS, 0, 0)) and not IMF_AUTOFONT))
   var st = SETTEXTEX(flags: 0, codepage: 65001)
   let raw = rtf & "\0"
   SendMessageW(result, EM_SETTEXTEX, cast[WPARAM](addr st), cast[LPARAM](cstring(raw)))
