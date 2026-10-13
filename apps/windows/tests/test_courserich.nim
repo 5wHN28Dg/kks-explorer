@@ -226,7 +226,7 @@ suite "the courses' text in RichEdit":
         if glyphs[i] == 0xFFFF'u16: result.add "U+" & toHex(int(chars[i]), 4)       # GGI_MARK_NONEXISTING_GLYPHS
       SelectObject(dc, old)
       DeleteObject(font)
-      ReleaseDC(main, dc)
+      discard ReleaseDC(main, dc)
     # the numbers and the scenarios' readings (bold): Consolas, which has no linked fonts
     var mono: seq[string]
     for n in courseNums(panels = true): mono.add numRun(n, rtf = false)
