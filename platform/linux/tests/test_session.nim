@@ -1,9 +1,9 @@
 ## A web sign-in renews while it is used (the user, 2026-10-10): what needs a clock. The answers over HTTP (the
 ## cookie sent again, what ends a session) are in e2e/test_server_http.py (SessionRenewal).
-import std/[unittest, os, times, strutils]
-import kks/[crypto, json, api]
+import std/[unittest, os, times, strutils, tables]
+import kks/[crypto, json, api, proto, plant, node]
 import plat
-import kksl/[server, dbstore]
+import kksl/[server, dbstore, argon2]
 
 let P = testProvider()
 
@@ -162,3 +162,79 @@ suite "who may sign whom out, and the server's own command":
     check s.control("sign-out", @["boss"]).startsWith("Ended 1 web sign-in of boss.")
     check stillOpen(raws) == @[false, true, true, true, false]
     check s.sessionUser(raws[1]) != nil and s.sessionUser(raws[0]) == nil
+
+  test "my other sessions: only with the account's password, checked and counted as Change password does":
+    for uid in [boss["id"].i, sara, omar, ali, tom]: s.endSessions(uid)     # (whatever the tests above left)
+    let u = s.userByName("tom")
+    let salt = repeat("ab", 8)
+    u["pw"] = S(hashPassword("a long password", salt))     # (the accounts above have no real hash)
+    s.putUser(u)
+    let here = s.newSession(tom)
+    let phone = s.newSession(tom)
+    let thief = s.newSession(tom)
+    let others = signIn()
+    proc ask(password: JNode, keep: string, source: string): int =
+      ## the HTTP status the server refuses with; 0 = it went through
+      try:
+        discard s.signOutOthers(u, password, keep, [source])
+        0
+      except HttpErr as e: e.code
+    # no password, one that is no string, a wrong one, another account's: refused, and nobody is signed out
+    check ask(nil, thief, "ip:192.0.2.1") == 401
+    check ask(newInt(1), thief, "ip:192.0.2.1") == 401
+    check ask(S(""), thief, "ip:192.0.2.1") == 401
+    check ask(S("not the password"), thief, "ip:192.0.2.1") == 401
+    check s.openSessions(tom) == 4
+    check stillOpen(@[here, phone, thief]) == @[true, true, true]
+    # each of those counted as a failed sign-in from there: after the fifth, also the right password waits
+    check ask(S("still not the password"), thief, "ip:192.0.2.1") == 401
+    check ask(S("a long password"), thief, "ip:192.0.2.1") == 429
+    check s.openSessions(tom) == 4
+    # ... and a sign-in with the right password from there waits too (one count, the one `login` keeps)
+    try:
+      discard s.login("tom", "a long password", ["ip:192.0.2.1"])
+      check false
+    except HttpErr as e: check e.code == 429
+    # from where nothing failed, with the password: the others end, the one that asks stays, nobody else's ends
+    check s.signOutOthers(u, S("a long password"), here, ["ip:192.0.2.2"]) == 3
+    check stillOpen(@[here, phone, thief]) == @[true, false, false]
+    check stillOpen(others) == @[true, true, true, true, false]
+    check s.signOutOthers(u, S("a long password"), here, ["ip:192.0.2.2"]) == 0      # none: said as none
+    # with no other session there the check is the same: refused and counted
+    for i in 1 .. 5: check ask(S("not the password"), here, "ip:192.0.2.3") == 401
+    check ask(S("a long password"), here, "ip:192.0.2.3") == 429
+    check s.sessionEnds(here) > 0
+
+  test "a device of one's own is removed from a web sign-in only with the password; somebody else's by the role rules":
+    for uid in [boss["id"].i, sara, omar, ali, tom]: s.endSessions(uid)
+    let u = s.userByName("tom")           # (has a real hash since the test above)
+    proc phone(owner: JNode): string =
+      result = P.peerId(P.p256Generate())
+      discard s.n.appendAs(mgr.key, "device_cert", deviceCertBody(result, owner["person"].s, "phone"), int64(epochTime() * 1000))
+    let mine = phone(u)
+    let alis = phone(s.userByName("ali"))
+    proc ask(usr: JNode, dev: string, password: JNode, source: string): int =
+      ## the HTTP status the check refuses with; 0 = it lets the request on to the core's rules
+      var d = newObj(@[("device", newStr(dev))])
+      if password != nil: d = newObj(@[("device", newStr(dev)), ("password", password)])
+      try:
+        s.ownDevicePassword(usr, s.actorFor(usr), d, [source])
+        0
+      except HttpErr as e: e.code
+    check mine in s.n.run.devices and alis in s.n.run.devices
+    # one's own: no password, not a string, empty, wrong
+    check ask(u, mine, nil, "ip:192.0.2.11") == 401
+    check ask(u, mine, newInt(1), "ip:192.0.2.11") == 401
+    check ask(u, mine, S(""), "ip:192.0.2.11") == 401
+    check ask(u, mine, S("not the password"), "ip:192.0.2.11") == 401
+    # counted as failed sign-ins from there: after the fifth the right password waits
+    check ask(u, mine, S("still not the password"), "ip:192.0.2.11") == 401
+    check ask(u, mine, S("a long password"), "ip:192.0.2.11") == 429
+    check ask(u, mine, S("a long password"), "ip:192.0.2.12") == 0
+    # somebody else's device, one nobody has, no device named: no password is asked for (the core's rules decide)
+    check ask(u, alis, nil, "ip:192.0.2.11") == 0
+    check ask(boss, alis, nil, "ip:192.0.2.11") == 0
+    check ask(boss, mine, nil, "ip:192.0.2.11") == 0
+    check ask(u, "no-such-device", nil, "ip:192.0.2.11") == 0
+    check (try: (s.ownDevicePassword(u, actor("tom"), newObj(), ["ip:192.0.2.11"]); true) except HttpErr: false)
+    check (try: (s.ownDevicePassword(u, actor("tom"), newObj(@[("device", newInt(7))]), ["ip:192.0.2.11"]); true) except HttpErr: false)

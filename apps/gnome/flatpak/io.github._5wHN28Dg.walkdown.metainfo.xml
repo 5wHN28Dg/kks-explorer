@@ -28,6 +28,9 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.10.2" date="2026-10-13">
+      <description><p>A fourth course, Instrumentation and control; an open form keeps what you typed when the panel refreshes, and a button press is no longer lost or misdirected.</p></description>
+    </release>
     <release version="0.10.1" date="2026-10-11">
       <description><p>Photo for all asks for the floor first; a selection can take codes from any drawing.</p></description>
     </release>

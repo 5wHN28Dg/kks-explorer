@@ -46,8 +46,7 @@ proc itemRow(w: Win, it: JNode): W =
   let sheet = s(it, "sheet")
   result = navRow(code, sub.join(" · "), "Show " & code & (if desc.len > 0: ", " & desc else: "") & ", on " & sheetName &
                   (if count > 1: ", appears " & $count & " times" else: ""), proc () =
-    if sheet != w.sheet: w.showSheet(sheet)
-    w.selectTag(tag, true))
+    w.goToTag(sheet, tag))
   adw_action_row_add_prefix(result, coverDot(s(it, "photos")))
 
 proc expander(title, subtitle: string, fill: proc (r: W), open: bool, key = "", opened: ref HashSet[string] = nil): W =
