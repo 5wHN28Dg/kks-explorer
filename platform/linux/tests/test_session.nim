@@ -3,7 +3,7 @@
 import std/[unittest, os, times, strutils]
 import kks/[crypto, json, api]
 import plat
-import kksl/[server, dbstore]
+import kksl/[server, dbstore, argon2]
 
 let P = testProvider()
 
@@ -162,3 +162,41 @@ suite "who may sign whom out, and the server's own command":
     check s.control("sign-out", @["boss"]).startsWith("Ended 1 web sign-in of boss.")
     check stillOpen(raws) == @[false, true, true, true, false]
     check s.sessionUser(raws[1]) != nil and s.sessionUser(raws[0]) == nil
+
+  test "my other sessions: only with the account's password, checked and counted as Change password does":
+    for uid in [boss["id"].i, sara, omar, ali, tom]: s.endSessions(uid)     # (whatever the tests above left)
+    let u = s.userByName("tom")
+    u["pw"] = S(hashPassword("a long password", "0123456789abcdef"))     # (the accounts above have no real hash)
+    s.putUser(u)
+    let here = s.newSession(tom)
+    let phone = s.newSession(tom)
+    let thief = s.newSession(tom)
+    let others = signIn()
+    proc ask(password: JNode, keep: string, source: string): int =
+      ## the HTTP status the server refuses with; 0 = it went through
+      try:
+        discard s.signOutOthers(u, password, keep, [source])
+        0
+      except HttpErr as e: e.code
+    # no password, one that is no string, a wrong one, another account's: refused, and nobody is signed out
+    check ask(nil, thief, "ip:192.0.2.1") == 401
+    check ask(newInt(1), thief, "ip:192.0.2.1") == 401
+    check ask(S(""), thief, "ip:192.0.2.1") == 401
+    check ask(S("not the password"), thief, "ip:192.0.2.1") == 401
+    check s.openSessions(tom) == 4
+    check stillOpen(@[here, phone, thief]) == @[true, true, true]
+    # each of those counted as a failed sign-in from there: after the fifth, also the right password waits
+    check ask(S("still not the password"), thief, "ip:192.0.2.1") == 401
+    check ask(S("a long password"), thief, "ip:192.0.2.1") == 429
+    check s.openSessions(tom) == 4
+    # ... and a sign-in with the right password from there waits too (one count, the one `login` keeps)
+    expect HttpErr: discard s.login("tom", "a long password", ["ip:192.0.2.1"])
+    # from where nothing failed, with the password: the others end, the one that asks stays, nobody else's ends
+    check s.signOutOthers(u, S("a long password"), here, ["ip:192.0.2.2"]) == 3
+    check stillOpen(@[here, phone, thief]) == @[true, false, false]
+    check stillOpen(others) == @[true, true, true, true, false]
+    check s.signOutOthers(u, S("a long password"), here, ["ip:192.0.2.2"]) == 0      # none: said as none
+    # with no other session there the check is the same: refused and counted
+    for i in 1 .. 5: check ask(S("not the password"), here, "ip:192.0.2.3") == 401
+    check ask(S("a long password"), here, "ip:192.0.2.3") == 429
+    check s.sessionEnds(here) > 0

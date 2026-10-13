@@ -934,6 +934,15 @@ proc signOutUser*(s: Server, me: Actor, uid: int64): JNode =
   if role == "manager" or (role == "admin" and me.role != "manager"): herr(403, "not allowed for this account")
   O(("ok", newBool(true)), ("ended", newInt(s.endSessions(uid))))
 
+proc signOutOthers*(s: Server, usr: JNode, password: JNode, keep: string, sources: openArray[string]): int =
+  ## Account → "Sign out my other sessions": every web sign-in of this account but `keep`, the one that asks. -> how
+  ## many ended. Only with the account's password (the user, 2026-10-13): whoever holds a stolen sign-in could
+  ## otherwise end the owner's sign-ins and keep their own. The password is checked as "Change password" checks the
+  ## current one, by `login`: the same hashing whatever is sent (nothing, or no string: checked as ""), the same
+  ## count of failures and the same refusals (401, 429 when throttled), before anything about the sessions is read.
+  discard s.login(usr["username"].s, if password != nil and password.isStr: password.s else: "", sources)
+  s.endSessions(usr["id"].i, keep = keep)
+
 # ---- enrolment: a device joining with its owner's password (PROTOCOL-v2 §16 "through a server") ----
 
 proc enrollDevice(s: Server, username, password, dev, label0: string, sources: openArray[string]) =
@@ -1557,8 +1566,7 @@ proc handle(s: Server, req: Request) {.async.} =
       await s.sendJson(req, 200, O(("ok", newBool(true))), @[s.cookieHeader(req, raw, s.cfg.sessionDays * 86400)])
       return
     of "/api/sign-out-others":
-      # Account → "Sign out my other sessions": every web sign-in of this account but the one that asks
-      await s.sendJson(req, 200, O(("ok", newBool(true)), ("ended", newInt(s.endSessions(usr["id"].i, keep = req.sessionRaw)))))
+      await s.sendJson(req, 200, O(("ok", newBool(true)), ("ended", newInt(s.signOutOthers(usr, d.get("password"), req.sessionRaw, src)))))
       return
     of "/api/sheets/reimport":   # the stored PDF again, e.g. with another rotation
       if me.role != "manager": herr(403, "manager only")

@@ -5,8 +5,10 @@ one on a lost phone or a shared computer would never end by itself.
    sign-in screen at their next request, by themselves; what the browser kept for offline use is gone, a change that
    was waiting to be sent is still there and is sent after they sign in again, with the password they had.
    Who sees the button: an admin on a user's row, the manager also on an admin's; nobody on the manager's or their own.
-2. Account: "Sign out my other sessions" says how many sign-ins are open, ends the others and says how many that
-   were; this browser stays signed in, the manager's too.
+2. Account: "Sign out my other sessions" says how many sign-ins are open, asks for the account's password (the
+   user, 2026-10-13: a stolen sign-in alone must not end the owner's), ends the others and says how many that were;
+   this browser stays signed in, the manager's too. Without the password the browser asks for it; a wrong one is
+   said, and nobody is signed out.
   /path/to/venv-with-playwright/bin/python platform/linux/e2e/test_web_signout.py [unittest arguments]
 $KKS_SERVER names the build (default /tmp/kkslinux/kks_server)."""
 import os, re, shutil, sys, tempfile, unittest
@@ -164,8 +166,31 @@ class WebSignOut(unittest.TestCase):
             card = a1.locator('#sessions')
             expect(card.locator('#sessionCount')).to_have_text('Your account is signed in 2 times on the web: here and in 1 other browser or device.')
             expect(card).to_contain_text('This one stays. Your password and your devices with the app are unchanged.')
+            expect(card).to_contain_text('It asks for your password')
+            # the password is asked for, in a field password managers fill and no page shows
+            field = card.locator('form input[name=password]')
+            self.assertEqual([field.get_attribute(a) for a in ('type', 'autocomplete', 'aria-label')],
+                             ['password', 'current-password', 'Your password'])
+            self.assertEqual(field.input_value(), '')
+            a1.evaluate("() => { window.sameDocument = true; window.asked = []; const f = window.fetch;"
+                        " window.fetch = (u, o) => { if (String(u).includes('/api/sign-out-others')) asked.push(o.body); return f(u, o) } }")
+            # without it nothing is sent: the browser points at the empty field
             card.get_by_role('button', name='Sign out my other sessions').click()
+            self.assertEqual(field.evaluate('e => [e.validity.valueMissing, e.matches(":invalid")]'), [True, True])
+            a1.wait_for_timeout(300)
+            self.assertEqual((a1.evaluate('window.asked'), self.status(a3)), ([], 200))
+            # a wrong one: said, the page stays as it is and nobody is signed out, this browser neither
+            field.fill('not the password')
+            card.get_by_role('button', name='Sign out my other sessions').click()
+            expect(a1.locator('#toast')).to_have_text('Wrong username or password.')
+            self.assertEqual(a1.evaluate('window.asked'), ['{"password":"not the password"}'])
+            self.assertEqual((a1.evaluate('window.sameDocument'), self.status(a1), self.status(a3)), (True, 200, 200))
+            expect(card.locator('#sessionCount')).to_have_text('Your account is signed in 2 times on the web: here and in 1 other browser or device.')
+            # the right one, sent with Enter as with the button: the other ends, and the field is empty again
+            field.fill(PW)
+            field.press('Enter')
             expect(a1.locator('#toast')).to_have_text('Signed out 1 other session')
+            expect(card.locator('form input[name=password]')).to_have_value('')
             expect(a1.locator('#sessionCount')).to_have_text('Your account is signed in on the web here only.')
             # the other browser, opened a moment ago, at its next request (a tab is opened): the sign-in screen
             a3err.leave()
@@ -186,6 +211,7 @@ class WebSignOut(unittest.TestCase):
             a1err.leave(); a1.reload()
             a1.wait_for_function(SIGNED_IN % 'ali')
             self.assertEqual(self.status(a1), 200)
+            a1.locator('#sessions input[name=password]').fill(PW)
             a1.locator('#sessions').get_by_role('button', name='Sign out my other sessions').click()
             expect(a1.locator('#toast')).to_have_text('No other sessions: you are signed in here only')
             self.assertEqual((self.status(a1), self.status(s), self.status(m)), (200, 200, 200))   # nobody else's
@@ -194,12 +220,14 @@ class WebSignOut(unittest.TestCase):
             merr.leave(); m.goto(self.base + '/admin.html#account')
             # (boss is signed in three times: this browser, the one just opened, and the test's own client)
             expect(m.locator('#sessionCount')).to_have_text('Your account is signed in 3 times on the web: here and in 2 other browsers or devices.')
+            m.locator('#sessions input[name=password]').fill(PW)
             m.locator('#sessions').get_by_role('button', name='Sign out my other sessions').click()
             expect(m.locator('#toast')).to_have_text('Signed out 2 other sessions')
             self.assertEqual(self.status(m), 200)
             # the other browser presses a button with the sign-in it no longer has: the sign-in screen, not an error
             b2err.leave()
             polls = self.polls(b2)
+            b2.locator('#sessions input[name=password]').fill(PW)
             b2.locator('#sessions').get_by_role('button', name='Sign out my other sessions').click()
             self.sign_in_screen(b2)
             self.assertEqual(polls, [])
