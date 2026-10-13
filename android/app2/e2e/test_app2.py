@@ -251,24 +251,67 @@ class Phone(unittest.TestCase):
             runs.sort()
             return runs[len(runs) // 2]
 
+        def doubled(im, b):
+            """The share of the figure's pixel rows in `b` that repeat the row above them, of those with something
+            drawn in them. A bitmap made for a smaller box and stretched into this one repeats rows; a picture
+            drawn for this box repeats one only where nothing slants."""
+            crop = im.crop((b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4))
+            cw, ch = crop.size
+            data = crop.tobytes()
+            rows = [data[y * cw * 3:(y + 1) * cw * 3] for y in range(ch)]
+            drawn = [y for y in range(1, ch) if rows[y] != rows[y][:3] * cw]
+            self.assertGreater(len(drawn), 100, 'nothing is drawn in the figure')
+            return sum(rows[y] == rows[y - 1] for y in drawn) / len(drawn)
+
         def double_tap(x, y, name, b, done):
             """two taps, until the figure in `b` is drawn as `done` says (each tap is a process of its own on the
             phone, and how far apart the two land varies); the screenshot and its stroke"""
             for _ in range(3):
                 ui.sh('sh', '-c', f'"input tap {x} {y} & sleep 0.12; input tap {x} {y}; wait"')
-                time.sleep(1.5)
-                got = stroke(shot(name), b)
-                if done(got):
-                    break
-                time.sleep(1)                # (two single taps: nothing pending when the next pair comes)
+                for _ in range(2):           # (looked at twice before tapping again: a pair that did land, but
+                    time.sleep(1.5)          # was not drawn yet, would be undone by the next pair)
+                    got = stroke(shot(name), b)
+                    if done(got):
+                        return got
             return got
+
+        def press(b):
+            ui.sh('input', 'tap', str((b[0] + b[2]) // 2), str((b[1] + b[3]) // 2))
+
+        def figure_delay(ms):
+            return ui.adb('shell', 'am', 'broadcast', '-a', 'kks.explorer.DEBUG_FIGURE', '-p', PKG, '--el', 'delay', str(ms))
+        self.addCleanup(ui.sh, 'wm', 'size', 'reset')
         with self.subTest('a figure can be enlarged'):      # (the checks after it are run whatever this one finds)
             # --- a figure (the gate valve: animated, with a slider that moves by itself)
             ui.tap('Rumaila Plant Foundations', exact=True, timeout=15)
             ui.tap('Contents', exact=True, timeout=15)
             ui.scroll_to('6 · Valves & pumps', exact=True)
+            # The figure opened over the whole screen before the core has made it (the core takes a few ms: the
+            # debug build's hook makes it wait): it is drawn there once it is made. It stayed empty, with no
+            # controls: its row had asked for it and no longer showed it.
+            hook = figure_delay(15000)
+            self.addCleanup(figure_delay, 0)
             ui.tap('6 · Valves & pumps', exact=True)
             ui.scroll_to('Gate valve cutaway. ', tries=30)
+            with self.subTest('a figure enlarged before the core has made it'):
+                self.assertIn('figure delay 15000', hook, 'this build has no DEBUG_FIGURE hook')
+                press(box(ui.find('Enlarge figure: Gate valve cutaway', exact=True)))
+                ui.find('Close figure', exact=True, timeout=10)
+                self.assertFalse(ui.present('Play', exact=True) or ui.present('Pause', exact=True),
+                                 'the figure was made already: the wait was too short to show anything')
+                for _ in range(15):
+                    if ui.present('Play', exact=True) or ui.present('Pause', exact=True):
+                        break
+                    time.sleep(1)
+                else:
+                    shot('figure-0-early.png')
+                    self.fail('the figure enlarged before it was made stayed empty')
+                time.sleep(1)
+                stroke(shot('figure-0-early.png'), box(ui.find('Gate valve cutaway. ')))      # (something is drawn)
+            figure_delay(0)
+            if ui.present('Close figure', exact=True):
+                ui.sh('input', 'keyevent', '4')
+                time.sleep(1.5)
             with open(os.path.join(REPO, 'data', 'courses', 'fnd.json'), encoding='utf-8') as f:
                 gate = json.load(f)['figures']['gate']
             def control(name, below):
@@ -276,8 +319,6 @@ class Phone(unittest.TestCase):
                 under = sorted((box(n) for n in ui.nodes() if ui.label(n) == name and box(n)[1] >= below - 4), key=lambda b: b[1])
                 return under[0] if under else None
 
-            def press(b):
-                ui.sh('input', 'tap', str((b[0] + b[2]) // 2), str((b[1] + b[3]) // 2))
             for _ in range(12):                  # all of it on screen, with its controls
                 fb = [box(n) for n in ui.nodes() if ui.label(n).startswith('Gate valve cutaway. ')]
                 if fb and (fb[0][3] - fb[0][1]) >= (fb[0][2] - fb[0][0]) * gate['h'] / gate['w'] - 4 and \
@@ -305,6 +346,13 @@ class Phone(unittest.TestCase):
             moved = box(ui.find('Gate valve cutaway. '))
             with self.subTest('a drag over a fitted figure scrolls the page'):
                 self.assertLess(moved[1], fig[1] - h * 0.04, f'the figure stayed at {moved[1]} (it was at {fig[1]})')
+            for _ in range(4):               # (all of it still on screen: under the top bar its box is cut)
+                if moved[3] - moved[1] >= fig[3] - fig[1] - 2:
+                    break
+                ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.80)), str(w // 2), str(int(h * 0.84)), '1500')
+                time.sleep(1)
+                moved = box(ui.find('Gate valve cutaway. '))
+            self.assertGreaterEqual(moved[3] - moved[1], fig[3] - fig[1] - 2, 'the figure is not whole on screen')
             fig = moved
             cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
             # a double tap enlarges it in its box, another puts it back
@@ -312,20 +360,38 @@ class Phone(unittest.TestCase):
             with self.subTest('a double tap enlarges the figure where it is'):
                 self.assertGreaterEqual(zoomed, fit * 1.6, f'lines and letters are {zoomed} px thick, {fit} px before')
                 self.assertEqual(box(ui.find('Gate valve cutaway. ')), fig, 'the figure\'s box changed')
+            # enlarged, a drag moves the figure in its box; once it is at its edge, the next drag that way is the
+            # page's again (a figure as high as the screen would otherwise hold the page)
+            ui.sh('input', 'swipe', str(cx), str(fig[1] + 60), str(cx), str(fig[1] + 60 + int(h * 0.3)), '1200')
+            time.sleep(1)
+            with self.subTest('a drag moves the enlarged figure, not the page'):
+                self.assertEqual(box(ui.find('Gate valve cutaway. ')), fig, 'the page moved')
+            shot('figure-2b-dragged.png')
+            ui.sh('input', 'swipe', str(cx), str(cy), str(cx), str(cy + int(h * 0.06)), '1200')
+            time.sleep(1)
+            at_edge = box(ui.find('Gate valve cutaway. '))
+            with self.subTest('at its edge, a drag over the enlarged figure scrolls the page'):
+                self.assertGreater(at_edge[1], fig[1] + h * 0.02, f'the figure stayed at {at_edge[1]} (it was at {fig[1]})')
+            self.assertGreaterEqual(at_edge[3] - at_edge[1], fig[3] - fig[1] - 2, 'the figure is not whole on screen')
+            fig = at_edge
+            cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
             again = double_tap(cx, cy, 'figure-3-fit-again.png', fig, lambda v: abs(v - fit) <= 1)
             with self.subTest('a second double tap fits it again'):
                 self.assertLessEqual(abs(again - fit), 1)
             # the button opens it over the whole screen
-            ui.tap('Enlarge figure', exact=True)
+            ui.tap('Enlarge figure: Gate valve cutaway', exact=True)
             ui.find('Close figure', exact=True, timeout=10)
             time.sleep(1)
             full = box(ui.find('Gate valve cutaway. '))
             self.assertGreater(full[2] - full[0], fig[2] - fig[0], 'over the whole screen the figure is no wider than in the page')
+            # its box is all the room there is, not the figure's shape: enlarged, it fills the screen
+            self.assertGreater(full[3] - full[1], h * 0.5, 'the enlarged figure\'s box is a strip of the screen')
             whole = stroke(shot('figure-4-full.png'), full)
             self.assertGreaterEqual(whole, fit)
             large = double_tap((full[0] + full[2]) // 2, (full[1] + full[3]) // 2, 'figure-5-full-zoomed.png', full, lambda v: v >= fit * 1.6)
             with self.subTest('enlarged over the whole screen, its letters are larger'):
                 self.assertGreaterEqual(large, fit * 1.6, f'lines and letters are {large} px thick, {fit} px in the page')
+            upright = doubled(shot('figure-5-full-zoomed.png'), full)
             # it is the same figure, and it works while enlarged: Play, and its slider moves by itself
             ui.tap('Play', exact=True)
             ui.find('Pause', exact=True, timeout=10)
@@ -353,8 +419,26 @@ class Phone(unittest.TestCase):
                 side = box(ui.find('Gate valve cutaway. '))
                 shot('figure-7-full-landscape.png')
                 self.assertGreater(side[2] - side[0], full[2] - full[0], 'on its side the figure is no wider than upright')
-                ui.find('Play', exact=True)      # its controls beside it
+                self.assertGreaterEqual(box(ui.find('Play', exact=True))[0], side[2] - 4, 'its controls are not beside it')
+            with self.subTest('turned, the figure is drawn for its new box'):
+                # (it showed the bitmap made for the upright box, stretched)
+                lying = doubled(Image.open(os.path.join(SHOTS, 'figure-7-full-landscape.png')), side)
+                self.assertLess(lying, upright + 0.08, f'{lying:.2f} of its rows repeat the row above, {upright:.2f} upright')
             ui.sh('settings', 'put', 'system', 'user_rotation', '0')
+            time.sleep(3)
+            ui.find('Close figure', exact=True, timeout=10)
+            # in a window wider than high (the bars taken off) but no wider than the phone (half of a split screen), the
+            # picture keeps the width: the controls stood beside it and left it a quarter
+            ui.sh('wm', 'size', f'{w}x{w}')
+            time.sleep(3)
+            with self.subTest('a low window: the picture keeps the width'):
+                ui.find('Close figure', exact=True, timeout=10)
+                low = box(ui.find('Gate valve cutaway. '))
+                shot('figure-8-low-window.png')
+                play = box(ui.find('Play', exact=True))
+                self.assertGreaterEqual(play[1], low[3] - 4, 'the controls are not under the picture')
+                self.assertGreater(low[2] - low[0], w * 0.4, 'the picture is a strip')
+            ui.sh('wm', 'size', 'reset')
             time.sleep(3)
             ui.find('Close figure', exact=True, timeout=10)
             # Back closes it; the page is as it was
@@ -375,10 +459,12 @@ class Phone(unittest.TestCase):
         for _ in range(6):
             ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.3)), '150')
         time.sleep(1.5)
-        last = box(ui.find('Source notes', exact=True))
-        nav = [int(v) for v in re.findall(r'type=navigationBars[^\n]*?frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]', ui.sh('dumpsys', 'window'))[0]]
-        shot('contents-end.png')
         with self.subTest('the Contents sheet ends above the navigation bar'):
+            last = box(ui.find('Source notes', exact=True))
+            bars = re.findall(r'type=navigationBars[^\n]*?frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]', ui.sh('dumpsys', 'window'))
+            self.assertTrue(bars, 'no navigation bar in dumpsys window: this check proves nothing')
+            nav = [int(v) for v in bars[0]]
+            shot('contents-end.png')
             self.assertGreater(nav[3] - nav[1], 0, 'no navigation bar: this check proves nothing')
             self.assertLessEqual(last[3], nav[1], f'the last row ends at {last[3]}, the navigation bar starts at {nav[1]}')
         # a question's heading is shown as written

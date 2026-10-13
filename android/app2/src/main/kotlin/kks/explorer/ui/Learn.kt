@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -284,7 +285,7 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
     fun q(id: String) = qs.getOrPut(id) { QState() }
     val fullKey = rememberSaveable { mutableStateOf("") }
     val figs = remember { PageFigs(fullKey) }                  // this page's live figures, freed when it closes
-    DisposableEffect(Unit) { onDispose { figs.runs.values.forEach { if (it.id >= 0) call("POST", "/native/fig-free", JSONObject().put("fig", it.id)) } } }
+    DisposableEffect(Unit) { onDispose { figs.runs.values.forEach { val fig = it.close(); if (fig >= 0) call("POST", "/native/fig-free", JSONObject().put("fig", fig)) } } }
     val kind = p.getString("kind")
     val recall = remember { if (kind == "module") mods.takeWhile { it !== p }.flatMap { m -> m.getJSONArray("practice").objects().filter { it.getString("type") != "order" } }.shuffled().take(2) else emptyList() }
     val items = remember {
@@ -853,19 +854,34 @@ private fun replay(c: android.graphics.Canvas, ops: ByteBuffer, face: (Int, Int)
     }
 }
 
-/** How a figure is looked at: at fit (scale 1, the whole figure in its box) or enlarged, and then which part is in the
- *  box. A point of the fitted figure at (x, y) is drawn at (x, y) · scale + off. */
+/** How a figure is looked at: at fit (scale 1, the whole figure in the middle of its box) or enlarged, and then which
+ *  part is in the box. A point of the fitted figure at (x, y) from its own corner is drawn at (x, y) · scale + off.
+ *  `box` is the box it is shown in and `fig` the figure's size at fit in it: the same in a page, where the box has the
+ *  figure's shape; over the whole screen the box is all the room there is, and the enlarged figure fills it (a figure
+ *  five times as wide as high was a strip there, and could only be enlarged inside the strip). */
 class FigZoom {
     var scale by mutableFloatStateOf(1f)
     var off by mutableStateOf(Offset.Zero)
     var moving by mutableStateOf(false)       // fingers are changing it: no bitmap is made meanwhile
     val enlarged get() = scale > 1.01f
-    private fun clamp(o: Offset, s: Float, w: Float, h: Float) = Offset(o.x.coerceIn(-(s - 1) * w, 0f), o.y.coerceIn(-(s - 1) * h, 0f))
-    /** to scale `ns`, the point under `p` staying where it is (w, h: the box) */
-    fun zoomAt(p: Offset, ns: Float, w: Float, h: Float) { val k = ns / scale; off = clamp(p - (p - off) * k, ns, w, h); scale = ns }
-    /** moved by `d`; false when it is at its edge and did not move */
-    fun pan(d: Offset, w: Float, h: Float): Offset { val was = off; off = clamp(off + d, scale, w, h); return off - was }
-    fun fit() { scale = 1f; off = Offset.Zero }
+    /** along a side the figure does not fill it stands in the middle, along the other inside the box's edges */
+    private fun clamp(o: Offset, s: Float, box: Size, fig: Size): Offset {
+        fun one(v: Float, b: Float, f: Float) = if (f * s <= b) (b - f * s) / 2 else v.coerceIn(b - f * s, 0f)
+        return Offset(one(o.x, box.width, fig.width), one(o.y, box.height, fig.height))
+    }
+    /** to scale `ns`, the point under `p` staying where it is */
+    fun zoomAt(p: Offset, ns: Float, box: Size, fig: Size) { val k = ns / scale; off = clamp(p - (p - off) * k, ns, box, fig); scale = ns }
+    /** moved by `d`: how far it went (not past its edges) */
+    fun pan(d: Offset, box: Size, fig: Size): Offset { val was = off; off = clamp(off + d, scale, box, fig); return off - was }
+    /** whether it can still move up or down by `dy` */
+    fun canPan(dy: Float, box: Size, fig: Size) = clamp(off + Offset(0f, dy), scale, box, fig).y != off.y
+    fun fit(box: Size, fig: Size) { scale = 1f; off = clamp(Offset.Zero, 1f, box, fig) }
+    /** another box (the phone turned): what was in the middle of the old one is in the middle of this one */
+    fun rebox(oldBox: Size, oldFig: Size, box: Size, fig: Size) {
+        if (oldFig.width <= 0f) { pan(Offset.Zero, box, fig); return }
+        val c = (Offset(oldBox.width / 2, oldBox.height / 2) - off) * (fig.width / oldFig.width)
+        off = clamp(Offset(box.width / 2, box.height / 2) - c, scale, box, fig)
+    }
     companion object { const val MAX = 6f }
 }
 
@@ -876,7 +892,7 @@ private fun readableZoom(viewBoxPx: Float, boxPx: Float) = (viewBoxPx / boxPx).c
 /** The figure's picture in a box of its shape, with the gestures that enlarge it (the user, 2026-10-13: a figure stays
  *  as wide as the phone, and can be zoomed into): pinch, drag while enlarged, double tap between fit and a readable
  *  size. At fit a one-finger drag is left to the page, so the page scrolls over a figure as over text; enlarged, a
- *  drag moves the figure until it is at its edge, and from there the page again.
+ *  drag moves the figure, and one up or down a figure that is at its edge that way is the page's again.
  *  Two ways to draw (measured on the Note 9, 2026-10-02):
  *  - `live` (playing and the page still), or while fingers change the zoom: the vector ops straight on the canvas
  *    (the GPU path, smooth playback);
@@ -887,13 +903,18 @@ private fun readableZoom(viewBoxPx: Float, boxPx: Float) = (viewBoxPx / boxPx).c
 private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, zoom: FigZoom, modifier: Modifier, hidden: Boolean = false) {
     val ctx = LocalContext.current
     val w = f.getDouble("w").toFloat()
+    val shape = w / f.getDouble("h").toFloat()
+    /** the figure at fit in a box: as large as the box lets it be */
+    fun figSize(b: androidx.compose.ui.unit.IntSize): Size { val fw = minOf(b.width.toFloat(), b.height * shape); return Size(fw, fw / shape) }
+    fun boxSize(b: androidx.compose.ui.unit.IntSize) = Size(b.width.toFloat(), b.height.toFloat())
     val unit = with(LocalDensity.current) { 1.dp.toPx() }
     var px by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     val raster = remember { FigureRaster() }
     val rasterLock = remember { kotlinx.coroutines.sync.Mutex() }
-    class Still(val ops: ByteBuffer, val scale: Float, val off: Offset, val bitmap: Bitmap)
+    // (with the box's size: a bitmap made for another box, the phone turned since, would be stretched into this one)
+    class Still(val ops: ByteBuffer, val size: androidx.compose.ui.unit.IntSize, val scale: Float, val off: Offset, val bitmap: Bitmap)
     val still = remember { mutableStateOf<Still?>(null) }
-    fun shows(b: Still?, o: ByteBuffer) = b != null && b.ops === o && b.scale == zoom.scale && b.off == zoom.off
+    fun shows(b: Still?, o: ByteBuffer) = b != null && b.ops === o && b.size == px && b.scale == zoom.scale && b.off == zoom.off
     val cur = ops.value
     val direct = live || zoom.moving
     // not drawn directly: make the bitmap of what is on screen (until it is ready, the ops are drawn directly)
@@ -901,13 +922,19 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
         if (direct || hidden || cur == null || px.width <= 0 || shows(still.value, cur)) return@LaunchedEffect
         val size = px; val sc = zoom.scale; val off = zoom.off
         // (one at a time: a cancelled effect's drawing still runs to its end, and the raster's buffers are not shared safely)
-        val b = withContext(Dispatchers.Default) { rasterLock.withLock { raster.draw(cur, size, w, sc, off) { role, wt -> Faces.of(ctx, role, wt) } } } ?: return@LaunchedEffect
-        still.value = Still(cur, sc, off, b)
+        val b = withContext(Dispatchers.Default) { rasterLock.withLock { raster.draw(cur, size, figSize(size).width / w * sc, off, still.value?.bitmap) { role, wt -> Faces.of(ctx, role, wt) } } } ?: return@LaunchedEffect
+        still.value = Still(cur, size, sc, off, b)
     }
-    Canvas(modifier.clipToBounds().onSizeChanged { px = it; zoom.pan(Offset.Zero, it.width.toFloat(), it.height.toFloat()) }    // (a new box: what it shows stays inside the figure)
-        .pointerInput(Unit) { detectTapGestures(onDoubleTap = { p ->
-            if (zoom.enlarged) zoom.fit() else zoom.zoomAt(p, readableZoom(w * unit, size.width.toFloat()), size.width.toFloat(), size.height.toFloat()) }) }
-        .pointerInput(Unit) { awaitEachGesture {
+    Canvas(modifier.clipToBounds().onSizeChanged {
+            // a new box (the phone turned): it shows the same part of the figure (`off` is in the box's pixels)
+            val old = px
+            px = it
+            zoom.rebox(boxSize(old), figSize(old), boxSize(it), figSize(it)) }
+        // (keyed: a row of the list is used again for another figure, and its handlers must not keep the old one's zoom)
+        .pointerInput(zoom, w, shape) { detectTapGestures(onDoubleTap = { p ->
+            val fig = figSize(size)
+            if (zoom.enlarged) zoom.fit(boxSize(size), fig) else zoom.zoomAt(p, readableZoom(w * unit, fig.width), boxSize(size), fig) }) }
+        .pointerInput(zoom, w, shape) { awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)
             var drift = Offset.Zero; var dragging = false
             do {
@@ -920,11 +947,12 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
                     if (fingers >= 2) dragging = true
                     else if (!dragging) { drift += pan; dragging = drift.getDistance() > viewConfiguration.touchSlop }
                     if (dragging && (z != 1f || pan != Offset.Zero)) {
-                        val bw = size.width.toFloat(); val bh = size.height.toFloat()
-                        if (fingers >= 2 && z != 1f) zoom.zoomAt(ev.calculateCentroid(useCurrent = false), (zoom.scale * z).coerceIn(1f, FigZoom.MAX), bw, bh)
-                        val moved = zoom.pan(pan, bw, bh)
-                        // one finger moving up or down a figure that is at its edge that way: the page's
-                        if (fingers >= 2 || moved.y != 0f || Math.abs(pan.x) > Math.abs(pan.y)) {
+                        val box = boxSize(size); val fig = figSize(size)
+                        // one finger moving up or down a figure that is at its edge that way: the page's, and the
+                        // figure stays as it is (moved sideways meanwhile, it was drawn anew at every step)
+                        if (fingers >= 2 || Math.abs(pan.x) > Math.abs(pan.y) || zoom.canPan(pan.y, box, fig)) {
+                            if (fingers >= 2 && z != 1f) zoom.zoomAt(ev.calculateCentroid(useCurrent = false), (zoom.scale * z).coerceIn(1f, FigZoom.MAX), box, fig)
+                            zoom.pan(pan, box, fig)
                             zoom.moving = true
                             ev.changes.forEach { if (it.positionChanged()) it.consume() }
                         }
@@ -932,13 +960,14 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
                 }
             } while (ev.changes.any { it.pressed })
             zoom.moving = false
-            if (!zoom.enlarged) zoom.fit()
+            if (!zoom.enlarged) zoom.fit(boxSize(size), figSize(size))
         } }
         .semantics { contentDescription = f.getString("title") + ". " + f.getString("alt"); role = Role.Image
             if (zoom.enlarged) stateDescription = "Enlarged ${Math.round(zoom.scale * 100)} %"
             // without a pinch or a double tap (TalkBack, a switch): the same step as an action
             customActions = listOf(CustomAccessibilityAction(if (zoom.enlarged) "Fit the figure" else "Zoom into the figure") {
-                if (zoom.enlarged) zoom.fit() else zoom.zoomAt(Offset(px.width / 2f, px.height / 2f), readableZoom(w * unit, px.width.toFloat()), px.width.toFloat(), px.height.toFloat()); true }) }) {
+                val fig = figSize(px)
+                if (zoom.enlarged) zoom.fit(boxSize(px), fig) else zoom.zoomAt(Offset(px.width / 2f, px.height / 2f), readableZoom(w * unit, fig.width), boxSize(px), fig); true }) }) {
         val o = ops.value ?: return@Canvas
         if (hidden) return@Canvas
         val sb = still.value
@@ -946,7 +975,7 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
         drawIntoCanvas { cv ->
             val nc = cv.nativeCanvas
             if (!direct && shows(sb, o)) nc.drawBitmap(sb!!.bitmap, null, android.graphics.Rect(0, 0, size.width.toInt(), size.height.toInt()), null)
-            else { nc.save(); nc.translate(off.x, off.y); val k = size.width / w * sc; nc.scale(k, k); replay(nc, o) { role, wt -> Faces.of(ctx, role, wt) }; nc.restore() }
+            else { nc.save(); nc.translate(off.x, off.y); val k = figSize(px).width / w * sc; nc.scale(k, k); replay(nc, o) { role, wt -> Faces.of(ctx, role, wt) }; nc.restore() }
         }
     }
 }
@@ -956,7 +985,14 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
  *  list. */
 class FigRun(val fid: String) {
     var id by mutableIntStateOf(-1)
-    @Volatile var making = false                       // asked of the core once (the row and the enlarged view both ask)
+    private var asked = false
+    private var closed = false
+    /** true for the one caller that is to make it in the core (the row and the enlarged view both ask) */
+    fun claim() = synchronized(this) { if (asked || closed) false else { asked = true; true } }
+    /** the core's figure, made; false when the page closed meanwhile: the caller frees it */
+    fun made(fig: Int) = synchronized(this) { if (closed) false else { id = fig; true } }
+    /** the page closes: the core's figure to free (-1: none yet, `made` will say so to whoever is making it) */
+    fun close(): Int = synchronized(this) { closed = true; id }
     val ops = mutableStateOf<ByteBuffer?>(null)        // read only while drawing
     var st by mutableStateOf<JSONObject?>(null)
     private var stText = ""
@@ -972,6 +1008,10 @@ class FigRun(val fid: String) {
     val playing get() = st?.optBoolean("playing") == true
 }
 
+/** A test's wait before a figure is made in the core, in ms (DebugFigureReceiver, in debug builds only; otherwise 0):
+ *  the core answers in a few ms, and what happens to a figure whose row leaves meanwhile could not be tested. */
+@Volatile var figNewDelayMs = 0L
+
 /** a page's figures by their place in it, and which one is enlarged over the whole screen ("" for none) */
 class PageFigs(val full: MutableState<String>) { val runs = mutableMapOf<String, FigRun>() }
 
@@ -985,12 +1025,18 @@ private fun figureDriver(doc: JSONObject, run: FigRun, still: Boolean): Boolean 
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f     // the app's theme, not the system's
     val reduce = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
     val animated = f.has("period")
-    LaunchedEffect(dark) {
-        // (not cancellable: a figure made in the core but not kept here would never be freed)
-        if (run.id < 0) withContext(Dispatchers.Default + kotlinx.coroutines.NonCancellable) {
-            if (run.making) return@withContext
-            run.making = true
-            run.id = call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", run.fid).put("reduce", reduce)).json.optInt("fig")
+    // Keyed on the figure's id too: whoever shows the figure when the core has made it draws its first frame. (The
+    // one that asked may have left by then, its row scrolled away or the figure opened over the whole screen, and the
+    // one showing it now found it asked for already: the figure stayed empty.)
+    LaunchedEffect(dark, run.id) {
+        if (run.id < 0) {
+            // (not cancellable: a figure made in the core but not kept here would never be freed)
+            if (run.claim()) withContext(Dispatchers.Default + kotlinx.coroutines.NonCancellable) {
+                if (figNewDelayMs > 0) Thread.sleep(figNewDelayMs)
+                val fig = call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", run.fid).put("reduce", reduce)).json.optInt("fig")
+                if (!run.made(fig)) call("POST", "/native/fig-free", JSONObject().put("fig", fig))
+            }
+            return@LaunchedEffect
         }
         run.step(JSONObject().put("dark", dark))
     }
@@ -1025,7 +1071,7 @@ fun FigureView(doc: JSONObject, fid: String, figs: PageFigs, key: String) {
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f)); if (animated) Dim("animated")
-            IconButton(onClick = { figs.full.value = place }, modifier = Modifier.padding(start = 4.dp)) { Icon(Glyphs.FULLSCREEN, contentDescription = "Enlarge figure") }
+            IconButton(onClick = { figs.full.value = place }, modifier = Modifier.padding(start = 4.dp)) { Icon(Glyphs.FULLSCREEN, contentDescription = "Enlarge figure: " + f.getString("title")) }
         }
         // as wide as the page (never above 1:1), whatever the figure's width: on a phone it is not scrolled sideways
         // below 520 as docs/COURSES.md §9.8 has it, but fitted, and zoomed into where it is or over the whole screen
@@ -1045,7 +1091,6 @@ private fun FigureFull(doc: JSONObject, run: FigRun, onClose: () -> Unit) {
         FullScreenDialogWindow()
         val f = doc.getJSONObject("figures").getJSONObject(run.fid)
         val zoom = remember { FigZoom() }
-        val w = f.getDouble("w").toFloat(); val h = f.getDouble("h").toFloat()
         val animated = f.has("period")
         val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
         val scope = rememberCoroutineScope()
@@ -1053,16 +1098,18 @@ private fun FigureFull(doc: JSONObject, run: FigRun, onClose: () -> Unit) {
         val send: (JSONObject) -> Unit = { cmd -> scope.launch { run.step(cmd.put("tick", 0).put("dark", dark)) } }
         val st = run.st
         // the card's own colour under it: the figures' "surface" and "ground" shapes are drawn for it
-        Surface(Modifier.fillMaxSize(), color = CardDefaults.cardColors().containerColor) {
+        Surface(Modifier.fillMaxSize().semantics { paneTitle = f.getString("title") }, color = CardDefaults.cardColors().containerColor) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp)) {
                 val head: @Composable () -> Unit = { Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).padding(start = 4.dp))
                     IconButton(onClick = onClose) { Icon(Glyphs.CLOSE, contentDescription = "Close figure") } } }
                 val picture: @Composable (Modifier) -> Unit = { m -> Box(m, contentAlignment = Alignment.Center) {
-                    FigureCanvas(f, run.ops, live, zoom, Modifier.aspectRatio(w / h)) } }
+                    FigureCanvas(f, run.ops, live, zoom, Modifier.fillMaxSize()) } }
                 val controls: @Composable () -> Unit = { if (animated && st != null) FigureControls(f, st, run.playing, send) }
                 val controlsMax = maxHeight * 0.45f
-                if (maxWidth > maxHeight) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // side by side only where there is the width for both (not in the upper half of a split screen, which
+                // is wider than high but no wider than the phone)
+                if (maxWidth > maxHeight && maxWidth >= 520.dp) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     picture(Modifier.weight(1f).fillMaxHeight())
                     Column(Modifier.width(if (animated) 300.dp else 160.dp).fillMaxHeight().verticalScroll(rememberScrollState())) { head(); controls() }
                 } else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1075,14 +1122,17 @@ private fun FigureFull(doc: JSONObject, run: FigRun, onClose: () -> Unit) {
     }
 }
 
-/** three bitmaps in turn: one on screen, one possibly still being uploaded by the render thread, one drawn into */
+/** three bitmaps in turn: one on screen, one possibly still being uploaded by the render thread, one drawn into
+ *  (never `keep`, the one on screen: drawings that were cancelled took turns too) */
 private class FigureRaster {
     private val bufs = arrayOfNulls<Bitmap>(3)
     private var next = 0
-    /** what a box of `size` shows of the figure (view box `w` wide) at this zoom */
-    fun draw(ops: ByteBuffer, size: androidx.compose.ui.unit.IntSize, w: Float, scale: Float, off: Offset, face: (Int, Int) -> Typeface): Bitmap? {
+    /** what a box of `size` shows of the figure: `k` pixels to a view-box unit, its corner at `off` */
+    fun draw(ops: ByteBuffer, size: androidx.compose.ui.unit.IntSize, k: Float, off: Offset, keep: Bitmap?, face: (Int, Int) -> Typeface): Bitmap? {
         if (size.width <= 0 || size.height <= 0) return null
-        val i = next; next = (next + 1) % bufs.size
+        var i = next
+        if (keep != null && bufs[i] === keep) i = (i + 1) % bufs.size
+        next = (i + 1) % bufs.size
         var b = bufs[i]
         if (b == null || b.width != size.width || b.height != size.height) {
             b = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888); bufs[i] = b
@@ -1090,7 +1140,7 @@ private class FigureRaster {
         b.eraseColor(0)
         val c = android.graphics.Canvas(b)
         c.translate(off.x, off.y)
-        c.scale(size.width / w * scale, size.width / w * scale)
+        c.scale(k, k)
         replay(c, ops, face)
         return b
     }

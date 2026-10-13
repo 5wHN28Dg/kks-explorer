@@ -28,5 +28,9 @@
             android:permission="android.permission.DUMP">
             <intent-filter><action android:name="kks.explorer.DEBUG_DARK" /></intent-filter>
         </receiver>
+        <receiver android:name="kks.explorer.DebugFigureReceiver" android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter><action android:name="kks.explorer.DEBUG_FIGURE" /></intent-filter>
+        </receiver>
     </application>
 </manifest>
