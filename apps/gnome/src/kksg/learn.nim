@@ -81,9 +81,9 @@ proc heading(text: string, level: int, css: string): W =
 proc blocks(cw: CW, bs: JNode, box: W)
 
 proc joined(r: JNode): JNode =
-  ## the run with every space of its plain strings a no-break space
+  ## a short run's plain strings joined as a num run's text is (no-break spaces, no break after a dash or slash)
   result = newArr()
-  for x in r.elems: result.elems.add (if x.kind == jStr: newStr(x.s.replace(" ", Nbsp)) else: x)
+  for x in r.elems: result.elems.add (if x.kind == jStr: newStr(unbroken(x.s)) else: x)
 
 proc table(cw: CW, t: JNode): W =
   let g = gtk_grid_new()
