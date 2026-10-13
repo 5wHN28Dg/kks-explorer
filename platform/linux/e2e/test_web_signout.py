@@ -148,12 +148,12 @@ class WebSignOut(unittest.TestCase):
             a1err.leave()
             a1.get_by_role('button', name='Sign in').click()
             a1.wait_for_function(SIGNED_IN % 'ali')
-            a1.wait_for_function("() => K.online && K.outbox.length === 0", timeout=30000)
-            # (the page's list is empty for a moment before it is read from the browser's store after a sign-in, so
-            # the wait above can end before the change went: seen in Firefox, where it then arrived within seconds)
+            # (the page's list of what waits is empty for a moment after a sign-in, before it is read from the browser's
+            # store: waiting for that list alone ended too early in Firefox. So first until the change has arrived.)
             for _ in range(60):
                 if self.sent(): break
                 a1.wait_for_timeout(500)
+            a1.wait_for_function("() => K.online && K.outbox.length === 0", timeout=30000)
             self.assertEqual(self.sent(), ['written before the sign-out'])
             row = [u for u in self.boss.req('GET', '/api/users')['users'] if u['username'] == 'ali'][0]
             self.assertEqual((row['active'], row['has_password']), (True, True))
@@ -186,18 +186,15 @@ class WebSignOut(unittest.TestCase):
             self.assertEqual((a1.evaluate('window.asked'), self.status(a3)), ([], 200))
             # a wrong one: said, the page stays as it is and nobody is signed out, this browser neither
             field.fill('not the password')
-            card.get_by_role('button', name='Sign out my other sessions').click()
+            field.press('Enter')                         # (Enter sends it, as the button does below)
             expect(a1.locator('#toast')).to_have_text('Wrong username or password.')
             self.assertEqual(a1.evaluate('window.asked'), ['{"password":"not the password"}'])
             self.assertEqual((a1.evaluate('window.sameDocument'), self.status(a1), self.status(a3)), (True, 200, 200))
             expect(card.locator('#sessionCount')).to_have_text('Your account is signed in 2 times on the web: here and in 1 other browser or device.')
-            # the right one, sent twice in a row (Enter, twice): it goes once, the other ends, and the field is empty again
+            # the right one, sent twice in a row (two presses before the first is answered): it goes once, the other ends, and the field is empty again
             field.fill(PW)
-            a1.evaluate("""() => { const i = document.querySelector('#sessions form input[name=password]');   // (Enter twice, at once)
+            a1.evaluate("""() => { const i = document.querySelector('#sessions form input[name=password]');   // (twice, at once)
                 for (const n of [1, 2]) i.form.requestSubmit() }""")
-            expect(a1.locator('#toast')).to_have_text('Signed out 1 other session')
-            a1.wait_for_timeout(300)
-            self.assertEqual(a1.evaluate('window.asked.length'), 2)      # (the wrong one and this one: sent once)
             expect(a1.locator('#toast')).to_have_text('Signed out 1 other session')
             expect(card.locator('form input[name=password]')).to_have_value('')
             expect(a1.locator('#sessionCount')).to_have_text('Your account is signed in on the web here only.')
@@ -207,6 +204,9 @@ class WebSignOut(unittest.TestCase):
             a3.locator('#tabs button', has_text='Account').click()
             self.sign_in_screen(a3)
             self.assertEqual(polls, [])                  # (by the tab, not by the page's 15 s check-in)
+            # (the two presses: the wrong password and this one went, so it was sent once, and said once)
+            self.assertEqual(a1.evaluate('window.asked.length'), 2)
+            expect(a1.locator('#toast')).to_have_text('Signed out 1 other session')
             # a wrong password typed into a form is a 401 as well: that is said, and the page stays as it is
             form = a1.locator('#main form', has=a1.locator('input[name=old]'))
             form.locator('input[name=old]').fill('not the password')
@@ -229,6 +229,7 @@ class WebSignOut(unittest.TestCase):
             merr.leave(); m.goto(self.base + '/admin.html#account')
             # (boss is signed in three times: this browser, the one just opened, and the test's own client)
             expect(m.locator('#sessionCount')).to_have_text('Your account is signed in 3 times on the web: here and in 2 other browsers or devices.')
+            b2.locator('#sessions input[name=password]').fill(PW)     # (typed already: see below)
             m.locator('#sessions input[name=password]').fill(PW)
             m.locator('#sessions').get_by_role('button', name='Sign out my other sessions').click()
             expect(m.locator('#toast')).to_have_text('Signed out 2 other sessions')
@@ -236,7 +237,6 @@ class WebSignOut(unittest.TestCase):
             # the other browser presses a button with the sign-in it no longer has: the sign-in screen, not an error
             b2err.leave()
             polls = self.polls(b2)
-            b2.locator('#sessions input[name=password]').fill(PW)
             b2.locator('#sessions').get_by_role('button', name='Sign out my other sessions').click()
             self.sign_in_screen(b2)
             self.assertEqual(polls, [])
