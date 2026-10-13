@@ -355,14 +355,17 @@ const VIEWS={
     const P=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); changePw(P) }},
       h('input',{type:'password',name:'old',placeholder:'current password',autocomplete:'current-password',required:true}),
       h('input',{type:'password',name:'new',placeholder:'new password (10+)',autocomplete:'new-password',required:true,minlength:10}),h('button',{class:'primary'},'Change password'));
+    // "Sign out my other sessions" asks for the password (the user, 2026-10-13): a stolen sign-in alone must not end the owner's
+    const O=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); signOutOthers(O) }},
+      h('input',{type:'password',name:'password',placeholder:'your password','aria-label':'Your password',autocomplete:'current-password',required:true}),h('button',{class:'ghost'},'Sign out my other sessions'));
     const out=[h('div',{class:'card'},h('h3',null,'Your details'),ME.user.full_name?null:h('div',{class:'warn'},'Add your full name, so others can tell whose account this is.'),D,
         h('div',{class:'sub'},'Username ',h('span',{class:'mono'},ME.user.username),` · ${ME.user.role}`)),
       h('div',{class:'card server-only'},h('h3',null,'Password'),P),
       // every web sign-in of this account but this one (the count comes with /api/me: said only while connected)
       h('div',{class:'card server-only',id:'sessions'},h('h3',null,'Web sign-ins'),
         K.online&&ME.sessions?h('div',{id:'sessionCount'},ME.sessions>1?`Your account is signed in ${ME.sessions} times on the web: here and in ${ME.sessions-1} other browser${ME.sessions===2?'':'s'} or device${ME.sessions===2?'':'s'}.`:'Your account is signed in on the web here only.'):null,
-        h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'ghost',onclick:()=>signOutOthers()},'Sign out my other sessions')),
-        h('div',{class:'sub'},`Ends every other web sign-in of yours at once, for example on a phone you lost or a computer others use. This one stays. Your password and your devices with the app are unchanged. A browser that is offline is signed out when it next reaches the server (within ${ME.offline_days} days: its offline copy lasts no longer).`))];
+        O,
+        h('div',{class:'sub'},`Ends every other web sign-in of yours at once, for example on a phone you lost or a computer others use. It asks for your password, so that nobody who got hold of a sign-in of yours can end yours and keep theirs. This one stays. Your password and your devices with the app are unchanged. A browser that is offline is signed out when it next reaches the server (within ${ME.offline_days} days: its offline copy lasts no longer).`))];
     if(ME.transfer_offer) out.push(h('div',{class:'card'},h('h3',null,'The manager wants to hand the manager role to you'),
       h('div',{class:'sub'},'You would become the single top account. The current manager becomes an admin.'),
       h('div',{class:'row',style:'margin-top:8px'},h('button',{class:'primary',onclick:()=>mgr('accept')},'Accept'),h('button',{class:'ghost',onclick:()=>mgr('decline')},'Decline'))));
@@ -552,8 +555,10 @@ async function signOutUser(u){
   const r=await act(()=>K.api(`/api/users/${u.id}/sign-out`,{}));
   if(r) toast(r.ended?`${u.username}: ${r.ended} web sign-in${r.ended===1?'':'s'} ended`:`${u.username} was not signed in on the web`);
 }
-async function signOutOthers(){
-  const r=await act(()=>K.api('/api/sign-out-others',{}));
+async function signOutOthers(f){
+  const b=f.querySelector('button'); if(b.disabled) return;   // (Enter twice: the second answer, "no other sessions", would replace the first)
+  b.disabled=true;
+  const r=await act(()=>K.api('/api/sign-out-others',{password:f.password.value})).finally(()=>{ b.disabled=false });
   if(r) toast(r.ended?`Signed out ${r.ended} other session${r.ended===1?'':'s'}`:'No other sessions: you are signed in here only');
 }
 async function webSignin(u){

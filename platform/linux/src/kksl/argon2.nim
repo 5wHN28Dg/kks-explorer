@@ -91,7 +91,12 @@ proc hashPassword*(password, salt: string): string =
   "$argon2id$v=19$m=" & $MemKiB & ",t=" & $Iter & ",p=" & $Lanes & "$" & b64(salt) & "$" & b64(derive(password, salt))
 
 proc checkPassword*(password, stored: string): bool =
-  ## Constant-time compare; an empty `stored` costs the same as a real check.
+  ## Constant-time compare; an empty `stored` costs the same as a real check. An empty `password` is never right and
+  ## costs the same as a wrong one: OpenSSL's Argon2id refuses to hash it (`derive` raises), which answered 500 for
+  ## an account with a password and 401 for a name without one.
+  if password.len == 0:
+    discard checkPassword("x", stored)
+    return false
   if stored.len == 0:
     discard derive("x", "0123456789abcdef")
     return false
