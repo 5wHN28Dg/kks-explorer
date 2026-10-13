@@ -64,6 +64,7 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kks.explorer.Jxl
 import kks.explorer.core.Core
@@ -395,7 +396,7 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
     // side the page shows other rows, the figure's own leaves the list, and the enlarged figure went with it.
     if (fullKey.value.isNotEmpty()) {
         val run = figs.runs[fullKey.value]
-        if (run == null) fullKey.value = ""            // (the app was restored: its figures are new)
+        if (run == null) SideEffect { fullKey.value = "" }     // (the app was restored: its figures are new)
         else FigureFull(doc, run) { fullKey.value = "" }
     }
     }
@@ -890,6 +891,7 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
     val unit = with(LocalDensity.current) { 1.dp.toPx() }
     var px by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     val raster = remember { FigureRaster() }
+    val rasterLock = remember { kotlinx.coroutines.sync.Mutex() }
     class Still(val ops: ByteBuffer, val scale: Float, val off: Offset, val bitmap: Bitmap)
     val still = remember { mutableStateOf<Still?>(null) }
     fun shows(b: Still?, o: ByteBuffer) = b != null && b.ops === o && b.scale == zoom.scale && b.off == zoom.off
@@ -899,20 +901,26 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
     LaunchedEffect(direct, cur, px, zoom.scale, zoom.off, hidden) {
         if (direct || hidden || cur == null || px.width <= 0 || shows(still.value, cur)) return@LaunchedEffect
         val size = px; val sc = zoom.scale; val off = zoom.off
-        val b = withContext(Dispatchers.Default) { raster.draw(cur, size, w, sc, off) { role, wt -> Faces.of(ctx, role, wt) } } ?: return@LaunchedEffect
+        // (one at a time: a cancelled effect's drawing still runs to its end, and the raster's buffers are not shared safely)
+        val b = withContext(Dispatchers.Default) { rasterLock.withLock { raster.draw(cur, size, w, sc, off) { role, wt -> Faces.of(ctx, role, wt) } } } ?: return@LaunchedEffect
         still.value = Still(cur, sc, off, b)
     }
-    Canvas(modifier.clipToBounds().onSizeChanged { px = it }
+    Canvas(modifier.clipToBounds().onSizeChanged { px = it; zoom.pan(Offset.Zero, it.width.toFloat(), it.height.toFloat()) }    // (a new box: what it shows stays inside the figure)
         .pointerInput(Unit) { detectTapGestures(onDoubleTap = { p ->
             if (zoom.enlarged) zoom.fit() else zoom.zoomAt(p, readableZoom(w * unit, size.width.toFloat()), size.width.toFloat(), size.height.toFloat()) }) }
         .pointerInput(Unit) { awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)
+            var drift = Offset.Zero; var dragging = false
             do {
                 val ev = awaitPointerEvent()
                 val fingers = ev.changes.count { it.pressed }
                 if (fingers >= 2 || zoom.enlarged) {
                     val z = ev.calculateZoom(); val pan = ev.calculatePan()
-                    if (z != 1f || pan != Offset.Zero) {
+                    // one finger moves the figure only once it has left the spot (the touch slop): a finger that
+                    // rolls a little while tapping twice is still a double tap
+                    if (fingers >= 2) dragging = true
+                    else if (!dragging) { drift += pan; dragging = drift.getDistance() > viewConfiguration.touchSlop }
+                    if (dragging && (z != 1f || pan != Offset.Zero)) {
                         val bw = size.width.toFloat(); val bh = size.height.toFloat()
                         if (fingers >= 2 && z != 1f) zoom.zoomAt(ev.calculateCentroid(useCurrent = false), (zoom.scale * z).coerceIn(1f, FigZoom.MAX), bw, bh)
                         val moved = zoom.pan(pan, bw, bh)
@@ -928,7 +936,10 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
             if (!zoom.enlarged) zoom.fit()
         } }
         .semantics { contentDescription = f.getString("title") + ". " + f.getString("alt"); role = Role.Image
-            if (zoom.enlarged) stateDescription = "Enlarged ${Math.round(zoom.scale * 100)} %" }) {
+            if (zoom.enlarged) stateDescription = "Enlarged ${Math.round(zoom.scale * 100)} %"
+            // without a pinch or a double tap (TalkBack, a switch): the same step as an action
+            customActions = listOf(CustomAccessibilityAction(if (zoom.enlarged) "Fit the figure" else "Zoom into the figure") {
+                if (zoom.enlarged) zoom.fit() else zoom.zoomAt(Offset(px.width / 2f, px.height / 2f), readableZoom(w * unit, px.width.toFloat()), px.width.toFloat(), px.height.toFloat()); true }) }) {
         val o = ops.value ?: return@Canvas
         if (hidden) return@Canvas
         val sb = still.value
@@ -946,6 +957,7 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
  *  list. */
 class FigRun(val fid: String) {
     var id by mutableIntStateOf(-1)
+    @Volatile var making = false                       // asked of the core once (the row and the enlarged view both ask)
     val ops = mutableStateOf<ByteBuffer?>(null)        // read only while drawing
     var st by mutableStateOf<JSONObject?>(null)
     private var stText = ""
@@ -975,8 +987,11 @@ private fun figureDriver(doc: JSONObject, run: FigRun, still: Boolean): Boolean 
     val reduce = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
     val animated = f.has("period")
     LaunchedEffect(dark) {
-        if (run.id < 0) run.id = withContext(Dispatchers.Default) {
-            call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", run.fid).put("reduce", reduce)).json.optInt("fig")
+        // (not cancellable: a figure made in the core but not kept here would never be freed)
+        if (run.id < 0) withContext(Dispatchers.Default + kotlinx.coroutines.NonCancellable) {
+            if (run.making) return@withContext
+            run.making = true
+            run.id = call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", run.fid).put("reduce", reduce)).json.optInt("fig")
         }
         run.step(JSONObject().put("dark", dark))
     }
@@ -1003,15 +1018,15 @@ fun FigureView(doc: JSONObject, fid: String, figs: PageFigs, key: String) {
     val scope = rememberCoroutineScope()
     val scrolling by LocalScrolling.current
     val place = "$key#$fid"                                         // (a test's result blocks share one key)
-    val run = remember { figs.runs.getOrPut(place) { FigRun(fid) } }
-    val zoom = remember { FigZoom() }
+    val run = remember(place) { figs.runs.getOrPut(place) { FigRun(fid) } }
+    val zoom = remember(place) { FigZoom() }
     val full = figs.full.value == place                             // enlarged over the whole screen (FigureFull, which drives it then)
     val live = if (full) false else figureDriver(doc, run, scrolling)
     fun send(cmd: JSONObject) { scope.launch { run.step(cmd.put("tick", 0).put("dark", dark)) } }
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f)); if (animated) Dim("animated")
-            IconButton(onClick = { figs.full.value = place }, modifier = Modifier.padding(start = 4.dp).size(40.dp)) { Icon(Glyphs.FULLSCREEN, contentDescription = "Enlarge figure") }
+            IconButton(onClick = { figs.full.value = place }, modifier = Modifier.padding(start = 4.dp)) { Icon(Glyphs.FULLSCREEN, contentDescription = "Enlarge figure") }
         }
         // as wide as the page (never above 1:1), whatever the figure's width: on a phone it is not scrolled sideways
         // below 520 as docs/COURSES.md §9.8 has it, but fitted, and zoomed into where it is or over the whole screen

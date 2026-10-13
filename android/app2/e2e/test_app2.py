@@ -207,7 +207,7 @@ class Phone(unittest.TestCase):
         it; at fit a drag over it still scrolls the page. And what else changed in the course pages that day: a
         question's heading as written ("mA", not "MA"), a number on one line with its unit, the test's result line
         before anything is answered, and the Contents sheet's last row above the navigation bar."""
-        import io
+        import collections, io
         from PIL import Image
         os.makedirs(SHOTS, exist_ok=True)
         ui.tap('Join through a server', exact=True)
@@ -235,7 +235,7 @@ class Phone(unittest.TestCase):
             crop = im.crop((b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4))
             cw, ch = crop.size
             px = list(crop.get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(crop.getdata())
-            back = max(set(px[::7]), key=px[::7].count)
+            back = collections.Counter(px[::7]).most_common(1)[0][0]
             ink = [sum(abs(c - d) for c, d in zip(p, back)) > 90 for p in px]
             runs = []
             for line in ([ink[y * cw:(y + 1) * cw] for y in range(0, ch, 2)] + [ink[x::cw] for x in range(0, cw, 2)]):
@@ -250,9 +250,17 @@ class Phone(unittest.TestCase):
             runs.sort()
             return runs[len(runs) // 2]
 
-        def double_tap(x, y):
-            ui.sh('sh', '-c', f'"input tap {x} {y} & sleep 0.12; input tap {x} {y}; wait"')
-            time.sleep(1.5)
+        def double_tap(x, y, name, b, done):
+            """two taps, until the figure in `b` is drawn as `done` says (each tap is a process of its own on the
+            phone, and how far apart the two land varies); the screenshot and its stroke"""
+            for _ in range(3):
+                ui.sh('sh', '-c', f'"input tap {x} {y} & sleep 0.12; input tap {x} {y}; wait"')
+                time.sleep(1.5)
+                got = stroke(shot(name), b)
+                if done(got):
+                    break
+                time.sleep(1)                # (two single taps: nothing pending when the next pair comes)
+            return got
         with self.subTest('a figure can be enlarged'):      # (the checks after it are run whatever this one finds)
             # --- a figure (the gate valve: animated, with a slider that moves by itself)
             ui.tap('Rumaila Plant Foundations', exact=True, timeout=15)
@@ -299,14 +307,13 @@ class Phone(unittest.TestCase):
             fig = moved
             cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
             # a double tap enlarges it in its box, another puts it back
-            double_tap(cx, cy)
-            zoomed = stroke(shot('figure-2-double-tap.png'), fig)
+            zoomed = double_tap(cx, cy, 'figure-2-double-tap.png', fig, lambda v: v >= fit * 1.6)
             with self.subTest('a double tap enlarges the figure where it is'):
                 self.assertGreaterEqual(zoomed, fit * 1.6, f'lines and letters are {zoomed} px thick, {fit} px before')
                 self.assertEqual(box(ui.find('Gate valve cutaway. ')), fig, 'the figure\'s box changed')
-            double_tap(cx, cy)
+            again = double_tap(cx, cy, 'figure-3-fit-again.png', fig, lambda v: abs(v - fit) <= 1)
             with self.subTest('a second double tap fits it again'):
-                self.assertLessEqual(abs(stroke(shot('figure-3-fit-again.png'), fig) - fit), 1)
+                self.assertLessEqual(abs(again - fit), 1)
             # the button opens it over the whole screen
             ui.tap('Enlarge figure', exact=True)
             ui.find('Close figure', exact=True, timeout=10)
@@ -315,8 +322,7 @@ class Phone(unittest.TestCase):
             self.assertGreater(full[2] - full[0], fig[2] - fig[0], 'over the whole screen the figure is no wider than in the page')
             whole = stroke(shot('figure-4-full.png'), full)
             self.assertGreaterEqual(whole, fit)
-            double_tap((full[0] + full[2]) // 2, (full[1] + full[3]) // 2)
-            large = stroke(shot('figure-5-full-zoomed.png'), full)
+            large = double_tap((full[0] + full[2]) // 2, (full[1] + full[3]) // 2, 'figure-5-full-zoomed.png', full, lambda v: v >= fit * 1.6)
             with self.subTest('enlarged over the whole screen, its letters are larger'):
                 self.assertGreaterEqual(large, fit * 1.6, f'lines and letters are {large} px thick, {fit} px in the page')
             # it is the same figure, and it works while enlarged: Play, and its slider moves by itself
@@ -335,6 +341,9 @@ class Phone(unittest.TestCase):
             ui.find('Play', exact=True, timeout=10)
             # turned on its side it stays, larger (its row leaves the page's list then: the enlarged figure went with it)
             self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
+            auto = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip()
+            if auto in ('0', '1'):
+                self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', auto)
             ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
             ui.sh('settings', 'put', 'system', 'user_rotation', '1')
             time.sleep(3)
@@ -388,10 +397,10 @@ class Phone(unittest.TestCase):
         ui.scroll_to('Final check', exact=True)
         ui.tap('Final check', exact=True)
         ui.find('Question 1 of 20', timeout=10)
-        for _ in range(60):
+        for _ in range(6):                   # (twenty questions down, fast)
             if ui.present('Result', exact=True):
                 break
-            for _ in range(4):
+            for _ in range(10):
                 ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.2)), '120')
             time.sleep(1)
         ui.scroll_to('0 / 20 answered', exact=True, tries=6)
