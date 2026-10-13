@@ -201,6 +201,164 @@ class Phone(unittest.TestCase):
         ui.tap(code, exact=True)
         ui.find('Feed water piping system', timeout=10)
 
+    def test_course_figures(self):
+        """A figure in a course is as wide as the phone and can be enlarged (the user, 2026-10-13): a double tap
+        enlarges it where it is, the button opens it over the whole screen, where it goes on playing and Back closes
+        it; at fit a drag over it still scrolls the page. And what else changed in the course pages that day: a
+        question's heading as written ("mA", not "MA"), a number on one line with its unit, the test's result line
+        before anything is answered, and the Contents sheet's last row above the navigation bar."""
+        import io
+        from PIL import Image
+        os.makedirs(SHOTS, exist_ok=True)
+        ui.tap('Join through a server', exact=True)
+        ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
+        ui.type_into('Username', 'boss')
+        ui.type_into('Password', 'a long password')
+        ui.tap('Join', exact=True)
+        ui.find('Sample sheet', timeout=40)
+        ui.tap('Learning', exact=True)
+        size = re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1]
+        w, h = int(size[0]), int(size[1])
+
+        def box(n):
+            return [int(v) for v in re.findall(r'\d+', n.get('bounds'))]
+
+        def shot(name):
+            im = Image.open(io.BytesIO(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)).convert('RGB')
+            im.save(os.path.join(SHOTS, name))
+            return im
+
+        def stroke(im, b):
+            """How thick the figure's lines and letters are drawn inside `b`: the median length of the runs of
+            pixels that are not the background, along the rows and the columns. Enlarged k times, it is k times
+            that."""
+            crop = im.crop((b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4))
+            cw, ch = crop.size
+            px = list(crop.get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(crop.getdata())
+            back = max(set(px[::7]), key=px[::7].count)
+            ink = [sum(abs(c - d) for c, d in zip(p, back)) > 90 for p in px]
+            runs = []
+            for line in ([ink[y * cw:(y + 1) * cw] for y in range(0, ch, 2)] + [ink[x::cw] for x in range(0, cw, 2)]):
+                n = 0
+                for v in line + [False]:
+                    if v:
+                        n += 1
+                    elif n:
+                        runs.append(n)
+                        n = 0
+            self.assertGreater(len(runs), 200, 'nothing is drawn in the figure')
+            runs.sort()
+            return runs[len(runs) // 2]
+
+        def double_tap(x, y):
+            ui.sh('sh', '-c', f'"input tap {x} {y} & sleep 0.12; input tap {x} {y}; wait"')
+            time.sleep(1.5)
+        # --- a figure (the gate valve: animated, with a slider that moves by itself)
+        ui.tap('Rumaila Plant Foundations', exact=True, timeout=15)
+        ui.tap('Contents', exact=True, timeout=15)
+        ui.scroll_to('6 · Valves & pumps', exact=True)
+        ui.tap('6 · Valves & pumps', exact=True)
+        ui.scroll_to('Gate valve cutaway. ', tries=30)
+        ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.7)), str(w // 2), str(int(h * 0.45)), '1500')   # all of it on screen
+        time.sleep(1)
+        ui.tap('Pause', exact=True)          # a still picture to measure
+        ui.find('Play', exact=True)
+        time.sleep(1)
+        fig = box(ui.find('Gate valve cutaway. '))
+        self.assertLess(fig[2] - fig[0], w, 'the figure is wider than the screen')
+        self.assertGreater(fig[2] - fig[0], w * 0.7)
+        fit = stroke(shot('figure-1-fit.png'), fig)
+        cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
+        # at fit, a drag that starts on the figure scrolls the page
+        ui.sh('input', 'swipe', str(cx), str(cy), str(cx), str(cy - int(h * 0.1)), '1200')
+        time.sleep(1)
+        moved = box(ui.find('Gate valve cutaway. '))
+        with self.subTest('a drag over a fitted figure scrolls the page'):
+            self.assertLess(moved[1], fig[1] - h * 0.04, f'the figure stayed at {moved[1]} (it was at {fig[1]})')
+        fig = moved
+        cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
+        # a double tap enlarges it in its box, another puts it back
+        double_tap(cx, cy)
+        zoomed = stroke(shot('figure-2-double-tap.png'), fig)
+        with self.subTest('a double tap enlarges the figure where it is'):
+            self.assertGreaterEqual(zoomed, fit * 1.6, f'lines and letters are {zoomed} px thick, {fit} px before')
+            self.assertEqual(box(ui.find('Gate valve cutaway. ')), fig, 'the figure\'s box changed')
+        double_tap(cx, cy)
+        with self.subTest('a second double tap fits it again'):
+            self.assertLessEqual(abs(stroke(shot('figure-3-fit-again.png'), fig) - fit), 1)
+        # the button opens it over the whole screen
+        ui.tap('Enlarge figure', exact=True)
+        ui.find('Close figure', exact=True, timeout=10)
+        time.sleep(1)
+        full = box(ui.find('Gate valve cutaway. '))
+        self.assertGreater(full[2] - full[0], fig[2] - fig[0], 'over the whole screen the figure is no wider than in the page')
+        whole = stroke(shot('figure-4-full.png'), full)
+        self.assertGreaterEqual(whole, fit)
+        double_tap((full[0] + full[2]) // 2, (full[1] + full[3]) // 2)
+        large = stroke(shot('figure-5-full-zoomed.png'), full)
+        with self.subTest('enlarged over the whole screen, its letters are larger'):
+            self.assertGreaterEqual(large, fit * 1.6, f'lines and letters are {large} px thick, {fit} px in the page')
+        # it is the same figure, and it works while enlarged: Play, and its slider moves by itself
+        ui.tap('Play', exact=True)
+        ui.find('Pause', exact=True, timeout=10)
+
+        def opening():
+            return next(ui.label(n) for n in ui.nodes() if ui.label(n).startswith('Opening: '))
+        a = opening()
+        time.sleep(1.5)
+        b = opening()
+        with self.subTest('the figure plays while enlarged'):
+            self.assertNotEqual(a, b, 'the slider did not move while playing')
+        shot('figure-6-full-playing.png')
+        ui.tap('Pause', exact=True)
+        ui.find('Play', exact=True, timeout=10)
+        # Back closes it; the page is as it was
+        ui.sh('input', 'keyevent', '4')
+        time.sleep(1.5)
+        self.assertFalse(ui.present('Close figure', exact=True), 'Back did not close the enlarged figure')
+        ui.find('Contents', exact=True, timeout=10)
+        ui.find('Gate valve cutaway. ')
+        # --- the Instrumentation and control course
+        ui.tap('Back', exact=True)
+        ui.tap('Instrumentation and control', exact=True, timeout=15)
+        # the Contents sheet's last row stands above the navigation bar
+        ui.tap('Contents', exact=True, timeout=15)
+        ui.find('0 · Start here', exact=True, timeout=10)
+        for _ in range(6):
+            ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.3)), '150')
+        time.sleep(1.5)
+        last = box(ui.find('Source notes', exact=True))
+        nav = [int(v) for v in re.findall(r'type=navigationBars[^\n]*?frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]', ui.sh('dumpsys', 'window'))[0]]
+        shot('contents-end.png')
+        with self.subTest('the Contents sheet ends above the navigation bar'):
+            self.assertGreater(nav[3] - nav[1], 0, 'no navigation bar: this check proves nothing')
+            self.assertLessEqual(last[3], nav[1], f'the last row ends at {last[3]}, the navigation bar starts at {nav[1]}')
+        # a question's heading is shown as written
+        ui.tap('Placement test', exact=True)
+        ui.scroll_to(' · 4 · 4–20 mA', tries=40)
+        shot('placement-heading.png')
+        self.assertFalse(ui.present('4–20 MA'), 'a question heading in capitals')
+        # a number stays on one line with its unit: no-break spaces in what the paragraph lays out
+        ui.tap('Contents', exact=True)
+        ui.tap('5 · Strain gauges & RTDs', exact=True)
+        ui.scroll_to('a platinum element with', tries=40)
+        para = ui.label(ui.find('a platinum element with'))
+        shot('num-run.png')
+        self.assertIn('0.385\u00a0Ω\u00a0per\u00a0°C', para)
+        # the final check before anything is answered: how many questions there are, not "0 / 0 right"
+        ui.tap('Contents', exact=True)
+        ui.scroll_to('Final check', exact=True)
+        ui.tap('Final check', exact=True)
+        ui.find('Question 1 of 20', timeout=10)
+        for _ in range(60):
+            if ui.present('Result', exact=True):
+                break
+            for _ in range(4):
+                ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.2)), '120')
+            time.sleep(1)
+        ui.scroll_to('0 / 20 answered', exact=True, tries=6)
+        shot('final-result.png')
+
     def test_courses(self):
         """the JSON courses (decision 0036): Learning lists them; a course page; a figure as an image for TalkBack;
         a question answered (progress shown); an animated figure on screen"""
@@ -1270,7 +1428,7 @@ class Phone(unittest.TestCase):
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'courses'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
-          'description_and_credit', 'flow'))
+          'description_and_credit', 'flow', 'course_figures'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))
