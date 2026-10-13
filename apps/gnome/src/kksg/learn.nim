@@ -3,8 +3,9 @@
 ## escaped; links carry our own URIs (page:, course:, kks:) or https. Page logic is apps/common/coursestate.nim.
 
 import std/[math, os, strutils, tables, sets, sequtils]
+from std/unicode import runeLen
 import kks/[json, courses, model]
-import gtk, ui, win, photos, coursefig, coursestate, appstate, coursetext
+import gtk, ui, win, photos, coursefig, coursestate, appstate, coursetext, nobreak
 
 type CW = ref object       ## one course window
   w: Win
@@ -79,6 +80,11 @@ proc heading(text: string, level: int, css: string): W =
 
 proc blocks(cw: CW, bs: JNode, box: W)
 
+proc joined(r: JNode): JNode =
+  ## the run with every space of its plain strings a no-break space
+  result = newArr()
+  for x in r.elems: result.elems.add (if x.kind == jStr: newStr(x.s.replace(" ", Nbsp)) else: x)
+
 proc table(cw: CW, t: JNode): W =
   let g = gtk_grid_new()
   gtk_grid_set_row_spacing(g, 6)
@@ -92,10 +98,12 @@ proc table(cw: CW, t: JNode): W =
     gtk_grid_attach(g, l, cint(ci), 0, 1, 1)
   for (ri, row) in t["rows"].elems.pairs:
     for (ci, cell) in row.elems.pairs:
-      let l = cw.rl(cell, if ci in num: "monospace numeric" else: "")
-      if ci in num:
-        gtk_label_set_xalign(l, 1)
-        gtk_label_set_wrap(l, 0)      # a number column's cell is one line ("12 mA"), as on the web (td.v)
+      # A number column's cell is plain text ("12 mA"), not a num run: a short one stays on one line as a num run
+      # does. Not every one, as the web has it (td.v, in a table that scrolls sideways): some hold a sentence, and
+      # this table has no scroller, so they wrap.
+      let l = cw.rl(if ci in num and plain(cell).runeLen <= WholeRun: joined(cell) else: cell,
+                    if ci in num: "monospace numeric" else: "")
+      if ci in num: gtk_label_set_xalign(l, 1)
       gtk_grid_attach(g, l, cint(ci), cint(ri + 1), 1, 1)
   # The grid sits in the card itself, as wide as the page: every cell wraps, so it always fits. (Until 2026-10-12 it
   # was inside a sideways-scrolling GtkScrolledWindow that passed on its child's natural height. A scrolled window

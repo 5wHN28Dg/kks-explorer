@@ -961,8 +961,13 @@ class Gnome(Plant):
         # a question's heading is shown as written: the placement test names each question's module, and in capitals
         # "4 · 4–20 mA" read "4–20 MA"
         # (this course's window: the Foundations window is still open, with a Placement test of its own)
-        inc = next(a.get_child_at_index(i) for i in range(a.get_child_count())
-                   if atspi.find_all(a.get_child_at_index(i), 'button', name='4 · 4–20 mA'))
+        inc = [a.get_child_at_index(i) for i in range(a.get_child_count())
+               if atspi.find_all(a.get_child_at_index(i), 'button', name='4 · 4–20 mA')]
+        self.assertEqual(len(inc), 1, 'the Instrumentation and control window')
+        inc = inc[0]
+        # a number column's short cell is one line too ("12 mA" in a table of this course's module 4)
+        atspi.click(atspi.find(inc, 'button', name='4 · 4–20 mA'))
+        atspi.find(inc, 'label', name='12\u00a0mA', timeout=10, showing=False)
         atspi.click(atspi.find(inc, 'button', name='Placement test'))
         atspi.find(inc, 'label', contains=' · 4 · 4–20 mA', timeout=10, showing=False)
         self.assertFalse(atspi.find_all(a, 'label', contains='4–20 MA') or
