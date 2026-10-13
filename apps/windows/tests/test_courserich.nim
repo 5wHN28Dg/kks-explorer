@@ -4,7 +4,7 @@
 ## (EM_POSFROMCHAR) at many widths, and the font each has (EM_GETCHARFORMAT).
 ## Cross-built like the app (CI's windows-build puts it in out/plat, windows-test runs it); runs on Windows:
 ##   nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console -o:test_courserich.exe apps/windows/tests/test_courserich.nim
-import std/[unittest, strutils, unicode, sets, sequtils]
+import std/[unittest, strutils, unicode, sets]
 import kks/json
 import kkswin/[w32, ui, coursertf]
 
@@ -16,11 +16,10 @@ type
     x, y: int32
   CHARRANGE {.importc, header: RH.} = object
     cpMin, cpMax: int32
-  TEXTRANGEW {.importc, header: RH.} = object
+  FINDTEXTEXW {.importc, header: RH.} = object
     chrg: CHARRANGE
-    lpstrText: pointer
-  GETTEXTLENGTHEX {.importc, header: RH.} = object
-    flags, codepage: uint32
+    lpstrText: WideCString
+    chrgText: CHARRANGE
   CHARFORMAT2W {.importc, header: RH.} = object
     cbSize, dwMask, dwEffects: uint32
     szFaceName: array[32, uint16]
@@ -29,8 +28,9 @@ var
   EM_EXSETSEL {.importc, header: RH, nodecl.}: UINT
   EM_GETCHARFORMAT {.importc, header: RH, nodecl.}: UINT
   EM_POSFROMCHAR {.importc, header: RH, nodecl.}: UINT
-  EM_GETTEXTRANGE {.importc, header: RH, nodecl.}: UINT
-  EM_GETTEXTLENGTHEX {.importc, header: RH, nodecl.}: UINT
+  EM_FINDTEXTEXW {.importc, header: RH, nodecl.}: UINT
+  FR_DOWN {.importc, header: "<commdlg.h>", nodecl.}: WPARAM
+  FR_MATCHCASE {.importc, header: "<commdlg.h>", nodecl.}: WPARAM
   SCF_SELECTION {.importc, header: RH, nodecl.}: WPARAM
   CFE_LINK {.importc, header: RH, nodecl.}: uint32
 proc GetDC(h: HWND): HDC {.importc, stdcall, header: H.}
@@ -51,19 +51,12 @@ const Tall = 30000       # the control is as tall as its text at any width: all 
 
 type Rich = object
   h: HWND
-  text: seq[uint16]
 
 proc show(rtf: string, links: seq[(string, string)] = @[]): Rich =
   ## the text in the app's control (ui.nim `rich`), as the course window makes it
   page.clear()
   result.h = page.rich(RtfHead & rtf & "}", links)
-  MoveWindow(result.h, 0, 0, 700, Tall, 0)
-  var gl = GETTEXTLENGTHEX(flags: 0, codepage: 1200)
-  let n = int(SendMessageW(result.h, EM_GETTEXTLENGTHEX, cast[WPARAM](addr gl), 0))
-  result.text = newSeq[uint16](n + 2)
-  var tr = TEXTRANGEW(chrg: CHARRANGE(cpMin: 0, cpMax: int32(n)), lpstrText: addr result.text[0])
-  SendMessageW(result.h, EM_GETTEXTRANGE, 0, cast[LPARAM](addr tr))
-  result.text.setLen(n)
+  discard MoveWindow(result.h, 0, 0, 700, Tall, 0)
 
 proc utf16(s: string): seq[uint16] =
   for r in s.runes:
@@ -71,11 +64,10 @@ proc utf16(s: string): seq[uint16] =
     result.add uint16(r.int32)
 
 proc find(r: Rich, s: string, start = 0): int =
-  ## where `s` stands in the control's text, from `start`; -1 when it does not
-  let w = utf16(s)
-  for i in start .. r.text.len - w.len:
-    if r.text[i ..< i + w.len] == w: return i
-  -1
+  ## where `s` stands in the control from `start` (a character position, as the app finds a link's text); -1 when
+  ## it does not
+  var ft = FINDTEXTEXW(chrg: CHARRANGE(cpMin: int32(start), cpMax: -1), lpstrText: newWideCString(s))
+  if SendMessageW(r.h, EM_FINDTEXTEXW, FR_DOWN or FR_MATCHCASE, cast[LPARAM](addr ft)) < 0: -1 else: int(ft.chrgText.cpMin)
 
 proc pos(r: Rich, i: int): (int, int) =
   var p: POINTL
@@ -175,16 +167,23 @@ suite "the courses' text in RichEdit":
   test "the minus sign, the arrows and the operators are drawn in their run's own font":
     # RichEdit's font binding took them from Cambria Math: a minus as long as a dash, and wider than Consolas's cell
     var f = Flow()
-    f.para(parseStrict("""["The drop is supply − I × R → about √2 ≈ 1.4 ≤ 2 ≥ 1 ↑ ↓, ", {"num": "M−M = supply − I ≈ √2 ≤ 3"}, "."]"""))
+    f.para(parseStrict("""["The drop is supply − I × R → about √2 ≈ 1.4 ≤ 2 ≥ 1 ↑ ↓, ", {"num": "V at transmitter = supply − I ≈ √2 ≤ 3"}, "."]"""))
     let r = show(f.rtf)
-    let numAt = r.find("M−M")
+    let numAt = r.find("supply", r.find("supply") + 1)        # the second one: in the number
     check numAt > 0
-    for i, u in r.text:
-      if u in [0x2212'u16, 0x2192, 0x221A, 0x2248, 0x2264, 0x2265, 0x2191, 0x2193]:
-        checkpoint "U+" & toHex(int(u), 4) & " at " & $i
+    var n = 0
+    for sym in ["−", "→", "√", "≈", "≤", "≥", "↑", "↓"]:
+      var i = r.find(sym)
+      while i >= 0:
+        checkpoint sym & " at " & $i
         check r.format(i)[0] == (if i >= numAt: "Consolas" else: "Segoe UI")
+        inc n
+        i = r.find(sym, i + 1)
+    check n == 12
     # in the mono face the minus is as wide as every other character
-    check r.pos(numAt + 2)[0] - r.pos(numAt + 1)[0] == r.pos(numAt + 1)[0] - r.pos(numAt)[0]
+    let minus = r.find("−", numAt)
+    check minus == numAt + "supply ".len
+    check r.pos(minus + 1)[0] - r.pos(minus)[0] == r.pos(numAt + 1)[0] - r.pos(numAt)[0]
 
   test "Consolas has every character the courses' numbers use":
     # (with no font binding a character Consolas lacks would be an empty box)
@@ -218,7 +217,8 @@ suite "the courses' text in RichEdit":
   test "a run too long for its table cell is broken where the cell is full, not cut off":
     # five columns of 1920 twips (128 px at 96 dpi); the run needs about 180 px
     var f = Flow()
-    f.tableRtf(parseStrict("""{"head": ["a", "b", "c", "d", "e"], "num": [], "rows": [["one", [{"num": "12.5 µm per metre"}], "three", "four", "five"]]}""".replace("\"one\"", "[\"one\"]").replace("\"three\", \"four\", \"five\"", "[\"three\"], [\"four\"], [\"five\"]").replace("[\"a\", \"b\", \"c\", \"d\", \"e\"]", "[[\"a\"], [\"b\"], [\"c\"], [\"d\"], [\"e\"]]")))
+    f.tableRtf(parseStrict("""{"head": [["a"], ["b"], ["c"], ["d"], ["e"]], "num": [],
+                              "rows": [[["one"], [{"num": "12.5 µm per metre"}], ["three"], ["four"], ["five"]]]}"""))
     let r = show(f.rtf)
     let i = r.find("12.5")
     let n = "12.5 µm per metre".runeLen
@@ -228,6 +228,7 @@ suite "the courses' text in RichEdit":
     for k in 0 ..< n:
       let (x, y) = r.pos(i + k)
       ys.incl y
+      checkpoint "character " & $k & " at " & $x
       check x >= left and x < left + 128        # every character stands inside its cell
     check ys.len == 2                           # on two lines
     check r.pos(r.find("three"))[0] >= left + 120
