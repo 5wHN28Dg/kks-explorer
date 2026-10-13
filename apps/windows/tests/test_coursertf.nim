@@ -51,6 +51,10 @@ suite "course text as RTF":
     check numRun("pk-pk = 2 × pk") == "pk-" & J & "pk\\~=\\~2\\~\\u215?\\~pk"
     check numRun("12 × 10⁻⁶ /°C") == "12\\~\\u215?\\~10" & J & "\\u8315?" & J & "\\u8310?\\~/" & J & "\\u176?" & J & "C"
     check numRun("646 kg/m³") == "646\\~kg/m\\u179?"
+    check numRun("11MBY10CS901.XQ01") == "11MBY10CS901.XQ01"       # a code is copied out as it is written
+    check numRun("12.44 MPa.a") == "12.44\\~MPa.a"
+    check numRun("−40 °C") == "\\u8722?" & J & "40\\~\\u176?" & J & "C"
+    check numRun("m\u0307 = 5") == "m\\u775?\\~=\\~5"                 # a combining mark stays on its letter
     # longer: a formula or a phrase wraps at its spaces, but a number keeps the unit after it
     check numRun("V at transmitter = supply − I × R") == "V at transmitter = supply \\u8722? I \\u215? R"
     check numRun("1 mm per metre per 100 K") == "1\\~mm per metre per 100\\~K"

@@ -22,20 +22,22 @@ const
 
 proc isDigit(r: Rune): bool = r.int32 >= ord('0') and r.int32 <= ord('9')
 proc isWord(r: Rune): bool =
-  ## a letter, a digit, or a raised or lowered digit (m³, mm², H₂)
-  r.isAlpha or r.isDigit or r.int32 in [0xB2'i32, 0xB3, 0xB9, 0x2070] or (r.int32 >= 0x2074 and r.int32 <= 0x2079) or
-    (r.int32 >= 0x2080 and r.int32 <= 0x2089)
+  ## a letter (Latin, Greek, Cyrillic: a line may end between two ideographs), a digit, or a raised 2 or 3 (m³, mm²)
+  (r.int32 < 0x500 and r.isAlpha) or r.isDigit or r.int32 in [0xB2'i32, 0xB3]
 
 proc sticks(a, b: Rune): bool =
-  ## RichEdit never ends a line between these two (each pair measured; anything else gets a joiner)
+  ## RichEdit never ends a line between these two. Only pairs that were measured (tests/test_courserich.nim lays
+  ## out every number of the courses at every width); anything else gets a joiner.
   let (x, y) = (a.int32, b.int32)
+  if b.isCombining: return true                                           # a mark stays on its letter
   if a.isWord and b.isWord: return true                                   # 100K, 20mA, µm
   if a.isDigit and y in [int32(ord('.')), ord(','), ord('%')]: return true
   if x in [int32(ord('.')), ord(',')] and b.isDigit: return true          # 0.385
+  if (a.isWord and y == ord('.')) or (x == ord('.') and b.isWord): return true        # MPa.a, 11MBY10CS901.XQ01
   if (a.isWord and y == ord('/')) or (x == ord('/') and b.isWord): return true        # kg/s, 1/2
-  if x in [int32(ord('-')), 0x2010, 0x2012, 0x2013] and b.isDigit: return true        # 4–20
-  if a.isWord and y in [int32(ord('-')), 0x2010, 0x2012, 0x2013]: return true
-  x == ord('(') or y == ord(')')
+  if x in [int32(ord('-')), 0x2013] and b.isDigit: return true                        # 4–20
+  if a.isWord and y in [int32(ord('-')), 0x2013]: return true                         # pk-pk (the joiner follows the hyphen)
+  (x == ord('(') and b.isWord) or (a.isWord and y == ord(')'))                        # (mA − 4)
 
 proc numRun*(s: string, rtf = true): string =
   ## a num run's text as RTF, or (`rtf = false`) as the control then holds it: what a search in the control finds

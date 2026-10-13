@@ -64,8 +64,8 @@ proc utf16(s: string): seq[uint16] =
     result.add uint16(r.int32)
 
 proc find(r: Rich, s: string, start = 0): int =
-  ## where `s` stands in the control from `start` (a character position, as the app finds a link's text); -1 when
-  ## it does not
+  ## where `s` stands in the control from `start` (a character position; EM_FINDTEXTEXW as for a link's text,
+  ## here matching case); -1 when it does not
   var ft = FINDTEXTEXW(chrg: CHARRANGE(cpMin: int32(start), cpMax: -1), lpstrText: newWideCString(s))
   if SendMessageW(r.h, EM_FINDTEXTEXW, FR_DOWN or FR_MATCHCASE, cast[LPARAM](addr ft)) < 0: -1 else: int(ft.chrgText.cpMin)
 
@@ -112,6 +112,8 @@ proc wrapsOnlyAtItsSpaces(nums: seq[string], widths: Slice[int]): seq[string] =
   var at: seq[(int, string)]
   var from0 = 0
   for n in nums:
+    from0 = r.find("Some filler words", from0)       # its own paragraph (a piece may be a word of the one before)
+    doAssert from0 >= 0
     for p in pieces(n):
       let i = r.find(p, from0)
       doAssert i >= 0, "not in the control: " & p
@@ -141,6 +143,22 @@ proc courseNums(panels = false): seq[string] =
             for v in r["value"].elems:
               if v.kind == jStr and v.s notin res: res.add v.s
         for (_, v) in n.fields: walk(v)
+    of jArr:
+      for v in n.elems: walk(v)
+    else: discard
+  for d in docs: walk(parseStrict(d))
+  res
+
+proc courseStrings(): seq[string] =
+  ## every string of the courses that ship (more than the text RichEdit shows: figure labels too)
+  const docs = [staticRead("../../../data/courses/ppt.json"), staticRead("../../../data/courses/fnd.json"),
+                staticRead("../../../data/courses/hrsg.json"), staticRead("../../../data/courses/inc.json")]
+  var res: seq[string]
+  proc walk(n: JNode) =
+    case n.kind
+    of jStr: res.add n.s
+    of jObj:
+      for (_, v) in n.fields: walk(v)
     of jArr:
       for v in n.elems: walk(v)
     else: discard
@@ -190,25 +208,34 @@ suite "the courses' text in RichEdit":
     check minus == numAt + "supply ".len
     check r.pos(minus + 1)[0] - r.pos(minus)[0] == r.pos(numAt + 1)[0] - r.pos(numAt)[0]
 
-  test "Consolas has every character the courses' numbers and readings use":
-    # (with no font binding a character Consolas lacks would be an empty box)
-    var chars: seq[uint16]
-    for n in courseNums(panels = true):
-      for u in utf16(numRun(n, rtf = false)):
-        if u > 126 and u notin chars: chars.add u
-    check chars.len > 10
-    let dc = GetDC(main)
-    let font = CreateFontW(-15, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 0, 0, newWideCString("Consolas"))
-    let old = SelectObject(dc, font)
-    var glyphs = newSeq[uint16](chars.len + 1)
-    chars.add 0
-    check GetGlyphIndicesW(dc, cast[WideCString](addr chars[0]), int32(chars.len - 1), addr glyphs[0], 1) == uint32(chars.len - 1)
-    for i in 0 ..< chars.len - 1:
-      checkpoint "U+" & toHex(int(chars[i]), 4)
-      check glyphs[i] != 0xFFFF'u16          # GGI_MARK_NONEXISTING_GLYPHS
-    SelectObject(dc, old)
-    DeleteObject(font)
-    ReleaseDC(main, dc)
+  test "the fonts have the characters the courses use":
+    # (with no font binding a character its font lacks is an empty box, unless Windows links another font to it)
+    proc lacking(face: string, weight: int32, texts: seq[string]): seq[string] =
+      var chars: seq[uint16]
+      for t in texts:
+        for u in utf16(t):
+          if u > 126 and u notin chars: chars.add u
+      doAssert chars.len > 10
+      let dc = GetDC(main)
+      let font = CreateFontW(-15, 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, 0, 0, newWideCString(face))
+      let old = SelectObject(dc, font)
+      var glyphs = newSeq[uint16](chars.len + 1)
+      chars.add 0
+      doAssert GetGlyphIndicesW(dc, cast[WideCString](addr chars[0]), int32(chars.len - 1), addr glyphs[0], 1) == uint32(chars.len - 1)
+      for i in 0 ..< chars.len - 1:
+        if glyphs[i] == 0xFFFF'u16: result.add "U+" & toHex(int(chars[i]), 4)       # GGI_MARK_NONEXISTING_GLYPHS
+      SelectObject(dc, old)
+      DeleteObject(font)
+      ReleaseDC(main, dc)
+    # the numbers and the scenarios' readings (bold): Consolas, which has no linked fonts
+    var mono: seq[string]
+    for n in courseNums(panels = true): mono.add numRun(n, rtf = false)
+    check lacking("Consolas", 400, mono) == newSeq[string]()
+    check lacking("Consolas", 700, mono) == newSeq[string]()
+    # everything else: Segoe UI. The proportional sign (U+221D, "DP ∝ flow²") is not in it and comes from a font
+    # Windows links to it (looked at in Windows 10 and 11); a new character missing here needs the same look
+    check lacking("Segoe UI", 400, courseStrings()) == @["U+221D"]
+    check lacking("Segoe UI", 700, courseStrings()) == @["U+221D"]
 
   test "a link with a number in it is found":
     var f = Flow()
@@ -218,6 +245,7 @@ suite "the courses' text in RichEdit":
     check i > 0
     check (r.format(i + 2)[1] and CFE_LINK) != 0 and (r.format(i + 10)[1] and CFE_LINK) != 0
     check (r.format(1)[1] and CFE_LINK) == 0
+    check (r.format(r.find("for more") + 1)[1] and CFE_LINK) == 0
 
   test "a run too long for its table cell is broken where the cell is full, not cut off":
     # five columns of 1920 twips (128 px at 96 dpi); the run needs about 180 px
