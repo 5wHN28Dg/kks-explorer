@@ -155,7 +155,8 @@ class Windows(unittest.TestCase):
         host = vm('$env:COMPUTERNAME').strip().lower()
         for d in self.boss.req('GET', '/api/devices')['all']:
             if d['username'] == user and d['label'].lower() == host and not d['revoked']:
-                self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
+                r = self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
+                assert r.get('ok'), r      # (a refusal would show later, as a join that finds the old device)
 
     def test_dark_drawings(self):
         """Dark drawings: the check box turns the sheet light-on-dark at once (dark paper, light lines, as drawn on the

@@ -179,7 +179,8 @@ class Phone(unittest.TestCase):
         model = ui.sh('getprop', 'ro.product.model').strip()
         for d in self.boss.req('GET', '/api/devices?show_hidden=1')['all']:
             if d['username'] == user and d['label'] == model and not d['revoked']:
-                self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
+                r = self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
+                assert r.get('ok'), r      # (a refusal would show later, as a join that finds the old device)
         ui.fresh_app(PKG)
         time.sleep(3)
 
@@ -1211,7 +1212,8 @@ class Phone(unittest.TestCase):
         model = ui.sh('getprop', 'ro.product.model').strip()
         for d in self.boss.req('GET', '/api/devices')['all']:
             if d['username'] == 'boss' and d['label'] == model and not d['revoked']:
-                self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
+                r = self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
+                assert r.get('ok'), r      # (a refusal would show later, as a join that finds the old device)
         ui.tap('Sync', exact=True)
         ui.find('removed from the plant', timeout=30)
         self.join()

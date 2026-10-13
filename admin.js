@@ -62,7 +62,7 @@ async function show(t){
 // A change elsewhere rebuilds the page, but not under a password being typed (the form in a device's row would close,
 // as a confirmation never did): then once the person has left that form
 let resyncT=0;
-const typing=()=>!!document.activeElement?.closest?.('#main form')?.querySelector('input[type=password]');
+const typing=()=>!!document.activeElement?.matches?.('#main form input[type=password]');
 const resync=()=>{ clearTimeout(resyncT); if(typing()) resyncT=setTimeout(resync,1000); else show(tab) };
 K.onChange(why=>{ if(why==='synced') resync() });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
