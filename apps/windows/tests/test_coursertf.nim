@@ -64,6 +64,20 @@ suite "course text as RTF":
     check f.rtf == "It is {\\f1 24.1\\~V}, see {\\cf2 the {\\f1 4\\u8211?20\\~mA} loop}"
     check f.links == @[("the 4–20\u00A0mA loop", "page:ma")]         # a link is found in the control by its text
 
+  test "a cell of a table's number column stays on one line when it fits the column":
+    let t = parseStrict("""{"head": [["Signal"], ["Live zero"], ["Note"]], "num": [1, 2],
+                            "rows": [[["Current loop, two wire"], ["4 mA at 0 °C"], ["HP feed pump > 6.6 MΩ; IP feed pump and circulating pump > 0.5 MΩ"]],
+                                     [["Pneumatic"], ["3 psi"], [{"num": "20 kPa"}, " gauge"]]]}""")
+    var f = Flow()
+    f.tableRtf(t)
+    check "\\qr{4\\~mA\\~at\\~0\\~\\u176?{\\fs2\\~}C}\\cell" in f.rtf and "\\qr{3\\~psi}\\cell" in f.rtf
+    check "\\qr{{\\f1 20\\~kPa}\\~gauge}\\cell" in f.rtf
+    # too long for a column of 3200 twips: it wraps at its spaces, a number keeping its unit (kept whole it would
+    # be cut wherever the column is full)
+    check "\\qr{HP feed pump > 6.6\\~M\\u937?{\\fs2\\~}; IP feed pump and circulating pump > 0.5\\~M\\u937?}\\cell" in f.rtf
+    check "{Current loop, two wire}\\cell" in f.rtf            # a text column wraps
+    check "{\\b\\cf3 Live zero}\\cell" in f.rtf              # and so does a heading
+
   test "a question's heading is shown as written":
     check questionHeading("Q7 · 4 · 4–20 mA", "choice", "") == "Q7 · 4 · 4–20 mA"        # it was "… 4–20 MA"
     check questionHeading("", "scenario", "Manual 5.2") == "Scenario   Manual 5.2"
