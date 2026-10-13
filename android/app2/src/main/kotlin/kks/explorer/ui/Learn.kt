@@ -42,7 +42,15 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
@@ -73,13 +81,44 @@ class Nav(val page: (String) -> Unit, val course: (String, String) -> Unit, val 
 
 private fun JSONArray.list(): List<Any> = (0 until length()).map { get(it) }
 
-fun plain(r: JSONArray?): String {
+/** a run's text; `shown`: as it is laid out, its num runs with their no-break joins (for measuring) */
+fun plain(r: JSONArray?, shown: Boolean = false): String {
     if (r == null) return ""
     val sb = StringBuilder()
     for (x in r.list()) when (x) {
         is String -> sb.append(x)
-        is JSONObject -> sb.append(if (x.has("num")) x.getString("num") else plain(
-            x.optJSONArray("b") ?: x.optJSONArray("i") ?: x.optJSONArray("small") ?: x.optJSONArray("term") ?: x.optJSONArray("link")))
+        is JSONObject -> sb.append(if (x.has("num")) x.getString("num").let { if (shown) unbroken(it) else it } else plain(
+            x.optJSONArray("b") ?: x.optJSONArray("i") ?: x.optJSONArray("small") ?: x.optJSONArray("term") ?: x.optJSONArray("link"), shown))
+    }
+    return sb.toString()
+}
+
+const val WHOLE_RUN = 20
+const val NBSP = '\u00A0'
+const val WORD_JOINER = '\u2060'
+
+/** A `num` run ("12.44 MPa.a": a number with its unit, docs/COURSES.md §3) is kept on one line; the same rule as
+ *  apps/common/nobreak.nim (the user, 2026-10-13: "0.385" ended one line and "Ω per °C" began the next):
+ *  - a run of up to WHOLE_RUN characters stays whole: every space becomes a no-break space;
+ *  - a longer one is a formula or a phrase ("V at transmitter = supply − I × R"): only a number stays with the unit
+ *    after it, and it may wrap at its other spaces;
+ *  - never a break after a hyphen, a dash or a slash inside a run: a word joiner follows it.
+ *  A run still wider than its line is broken where the line fills up, as any word too long for its line is; in a
+ *  table its column is at least as wide as the run's widest unbreakable piece (TableView). */
+fun unbroken(s: String): String {
+    val cps = s.codePoints().toArray()
+    val whole = cps.size <= WHOLE_RUN
+    fun unitStart(c: Int) = Character.isLetter(c) || c == 0xB0 || c == '%'.code
+    val sb = StringBuilder()
+    for ((i, c) in cps.withIndex()) {
+        val next = if (i + 1 < cps.size) cps[i + 1] else 0
+        val prev = if (i > 0) cps[i - 1] else 0
+        if (c == ' '.code) sb.append(if (whole || next == '%'.code || (prev in '0'.code..'9'.code && unitStart(next))) NBSP else ' ')
+        else {
+            if (c == 0x2014 && i > 0 && prev != ' '.code) sb.append(WORD_JOINER)     // (an em dash: before it too)
+            sb.appendCodePoint(c)
+            if ((c == '-'.code || c == 0x2010 || c == 0x2012 || c == 0x2013 || c == 0x2014 || c == '/'.code) && i + 1 < cps.size && next != ' '.code) sb.append(WORD_JOINER)
+        }
     }
     return sb.toString()
 }
@@ -102,7 +141,7 @@ fun AnnotatedString.Builder.run(r: JSONArray, nav: Nav, gloss: Map<String, Strin
             o.has("b") -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { run(o.getJSONArray("b"), nav, gloss) }
             o.has("i") -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { run(o.getJSONArray("i"), nav, gloss) }
             o.has("small") -> withStyle(SpanStyle(fontSize = 0.85.em)) { run(o.getJSONArray("small"), nav, gloss) }
-            o.has("num") -> withStyle(SpanStyle(fontFeatureSettings = "tnum")) { append(o.getString("num")) }   // even-width digits; a monospace face spread "691.5 kg/s" apart
+            o.has("num") -> withStyle(SpanStyle(fontFeatureSettings = "tnum")) { append(unbroken(o.getString("num"))) }   // even-width digits; a monospace face spread "691.5 kg/s" apart
             o.has("term") -> withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) { run(o.getJSONArray("term"), nav, gloss) }
             o.has("link") -> {
                 val to = o.getJSONObject("to")
@@ -221,7 +260,8 @@ fun CourseScreen(id: String, startPage: String, onClose: () -> Unit, onCourse: (
         key(pageId) { PageView(doc, page, pages, mods, prog, gloss, nav, ::title) }
     }
     if (contents) ModalBottomSheet(onDismissRequest = { contents = false }) {
-        LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        // (the sheet reaches the bottom edge of the screen: its last row was drawn under the navigation bar)
+        LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())) {
             items(pages) { p ->
                 val pid = p.getString("id")
                 val mark = if (p.getString("kind") == "module" && moduleQs(p).all { it.getString("id") in prog.solved }) "  ✓" else ""
@@ -315,7 +355,8 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
                 item {
                     val ans = items.mapNotNull { (m, qq) -> q(qq.getString("id") + "_f").picked.firstOrNull()?.let { m to qq.getJSONArray("options").getJSONObject(it).getBoolean("right") } }
                     val score = ans.count { it.second }
-                    Text("$score / ${ans.size} right" + if (ans.size == items.size) " · finished" else "", style = MaterialTheme.typography.titleMedium)
+                    // (nothing answered yet: how many there are, as on GNOME; it said "0 / 0 right")
+                    Text(if (ans.isEmpty()) "0 / ${items.size} answered" else "$score / ${ans.size} right" + if (ans.size == items.size) " · finished" else "", style = MaterialTheme.typography.titleMedium)
                     if (ans.size == items.size) {
                         LaunchedEffect(score) { prog.score(score) }
                         (if (score >= p.getInt("pass")) p.getJSONArray("on_pass") else p.getJSONArray("on_fail")).objects().forEach { b -> Block(doc, b, nav, gloss, figs, "result") }
@@ -431,7 +472,7 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
                 if (i in num) 0.dp else {
                     // (measured in bold: a cell may hold bold words, and they are wider)
                     val cells = listOf(head[i] to headStyle) + rows.mapNotNull { r -> r.getOrNull(i)?.let { it to body.copy(fontWeight = FontWeight.Bold) } }
-                    val px = cells.maxOf { (c, st) -> plain(c).split(WORD_BREAK).maxOf { measurer.measure(it, st, softWrap = false, maxLines = 1).size.width } }
+                    val px = cells.maxOf { (c, st) -> plain(c, shown = true).split(WORD_BREAK).maxOf { measurer.measure(it, st, softWrap = false, maxLines = 1).size.width } }
                     with(density) { px.toDp() } + pad * 2 + 1.dp
                 }
             }
@@ -450,8 +491,8 @@ fun TableView(t: JSONObject, nav: Nav, gloss: Map<String, String>) {
 }
 
 /** where a cell's text may wrap: at a space (not a no-break space), and after a hyphen or a slash that no digit
- *  follows ("CT-101" and "1/2" stay whole) */
-private val WORD_BREAK = Regex(" |(?<=[-/])(?!\\d)")
+ *  and no word joiner follows ("CT-101" and "1/2" stay whole, and so does a num run's "kg/s": `unbroken`) */
+private val WORD_BREAK = Regex(" |(?<=[-/])(?![\\d\u2060])")
 
 /** The widths of a table's columns. `natural`: each column with its widest cell on one line; `narrow`: a number
  *  column at its narrowest (its widest number, or its heading's longest word); `word`: a text column's longest word.
@@ -592,7 +633,8 @@ fun Question(q: JSONObject, label: String, st: QState, prog: Progress, id: Strin
     val type = q.getString("type")
     Card(Modifier.fillMaxWidth().padding(vertical = 6.dp).semantics(mergeDescendants = false) { contentDescription = plain(q.getJSONArray("q")) }) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row { Text(label.uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            // (as written: in capitals a module's "4–20 mA" read "4–20 MA")
+            Row { Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
                 if (q.getJSONArray("src").length() > 0) Dim(plain(q.getJSONArray("src"))) }
             if (type == "scenario") Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp)).padding(8.dp).fillMaxWidth()) {
                 q.getJSONArray("panel").objects().forEach { r -> Row { RunText(r.getJSONArray("name"), nav, gloss, MaterialTheme.typography.bodyMedium, Modifier.weight(1f))
@@ -803,6 +845,94 @@ private fun replay(c: android.graphics.Canvas, ops: ByteBuffer, face: (Int, Int)
     }
 }
 
+/** How a figure is looked at: at fit (scale 1, the whole figure in its box) or enlarged, and then which part is in the
+ *  box. A point of the fitted figure at (x, y) is drawn at (x, y) · scale + off. */
+class FigZoom {
+    var scale by mutableFloatStateOf(1f)
+    var off by mutableStateOf(Offset.Zero)
+    var moving by mutableStateOf(false)       // fingers are changing it: no bitmap is made meanwhile
+    val enlarged get() = scale > 1.01f
+    private fun clamp(o: Offset, s: Float, w: Float, h: Float) = Offset(o.x.coerceIn(-(s - 1) * w, 0f), o.y.coerceIn(-(s - 1) * h, 0f))
+    /** to scale `ns`, the point under `p` staying where it is (w, h: the box) */
+    fun zoomAt(p: Offset, ns: Float, w: Float, h: Float) { val k = ns / scale; off = clamp(p - (p - off) * k, ns, w, h); scale = ns }
+    /** moved by `d`; false when it is at its edge and did not move */
+    fun pan(d: Offset, w: Float, h: Float): Offset { val was = off; off = clamp(off + d, scale, w, h); return off - was }
+    fun fit() { scale = 1f; off = Offset.Zero }
+    companion object { const val MAX = 6f }
+}
+
+/** the zoom a double tap goes to: one view-box unit on one dp (the size the figure was drawn for, docs/COURSES.md
+ *  §9.8), at least twice the fitted size */
+private fun readableZoom(viewBoxPx: Float, boxPx: Float) = (viewBoxPx / boxPx).coerceIn(2f, FigZoom.MAX)
+
+/** The figure's picture in a box of its shape, with the gestures that enlarge it (the user, 2026-10-13: a figure stays
+ *  as wide as the phone, and can be zoomed into): pinch, drag while enlarged, double tap between fit and a readable
+ *  size. At fit a one-finger drag is left to the page, so the page scrolls over a figure as over text; enlarged, a
+ *  drag moves the figure until it is at its edge, and from there the page again.
+ *  Two ways to draw (measured on the Note 9, 2026-10-02):
+ *  - `live` (playing and the page still), or while fingers change the zoom: the vector ops straight on the canvas
+ *    (the GPU path, smooth playback);
+ *  - otherwise one bitmap of what the box shows, rasterized in the background. Drawing the vector ops while scrolling
+ *    made the render thread re-rasterize every path on every frame (13.6 ms per frame against 4.5 ms for a plain
+ *    list); rasterizing every animation frame on the CPU instead made playback stutter. */
+@Composable
+private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, zoom: FigZoom, modifier: Modifier, hidden: Boolean = false) {
+    val ctx = LocalContext.current
+    val w = f.getDouble("w").toFloat()
+    val unit = with(LocalDensity.current) { 1.dp.toPx() }
+    var px by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val raster = remember { FigureRaster() }
+    class Still(val ops: ByteBuffer, val scale: Float, val off: Offset, val bitmap: Bitmap)
+    val still = remember { mutableStateOf<Still?>(null) }
+    fun shows(b: Still?, o: ByteBuffer) = b != null && b.ops === o && b.scale == zoom.scale && b.off == zoom.off
+    val cur = ops.value
+    val direct = live || zoom.moving
+    // not drawn directly: make the bitmap of what is on screen (until it is ready, the ops are drawn directly)
+    LaunchedEffect(direct, cur, px, zoom.scale, zoom.off, hidden) {
+        if (direct || hidden || cur == null || px.width <= 0 || shows(still.value, cur)) return@LaunchedEffect
+        val size = px; val sc = zoom.scale; val off = zoom.off
+        val b = withContext(Dispatchers.Default) { raster.draw(cur, size, w, sc, off) { role, wt -> Faces.of(ctx, role, wt) } } ?: return@LaunchedEffect
+        still.value = Still(cur, sc, off, b)
+    }
+    Canvas(modifier.clipToBounds().onSizeChanged { px = it }
+        .pointerInput(Unit) { detectTapGestures(onDoubleTap = { p ->
+            if (zoom.enlarged) zoom.fit() else zoom.zoomAt(p, readableZoom(w * unit, size.width.toFloat()), size.width.toFloat(), size.height.toFloat()) }) }
+        .pointerInput(Unit) { awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            do {
+                val ev = awaitPointerEvent()
+                val fingers = ev.changes.count { it.pressed }
+                if (fingers >= 2 || zoom.enlarged) {
+                    val z = ev.calculateZoom(); val pan = ev.calculatePan()
+                    if (z != 1f || pan != Offset.Zero) {
+                        val bw = size.width.toFloat(); val bh = size.height.toFloat()
+                        if (fingers >= 2 && z != 1f) zoom.zoomAt(ev.calculateCentroid(useCurrent = false), (zoom.scale * z).coerceIn(1f, FigZoom.MAX), bw, bh)
+                        val moved = zoom.pan(pan, bw, bh)
+                        // one finger moving up or down a figure that is at its edge that way: the page's
+                        if (fingers >= 2 || moved.y != 0f || Math.abs(pan.x) > Math.abs(pan.y)) {
+                            zoom.moving = true
+                            ev.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    }
+                }
+            } while (ev.changes.any { it.pressed })
+            zoom.moving = false
+            if (!zoom.enlarged) zoom.fit()
+        } }
+        .semantics { contentDescription = f.getString("title") + ". " + f.getString("alt"); role = Role.Image
+            if (zoom.enlarged) stateDescription = "Enlarged ${Math.round(zoom.scale * 100)} %" }) {
+        val o = ops.value ?: return@Canvas
+        if (hidden) return@Canvas
+        val sb = still.value
+        val sc = zoom.scale; val off = zoom.off
+        drawIntoCanvas { cv ->
+            val nc = cv.nativeCanvas
+            if (!direct && shows(sb, o)) nc.drawBitmap(sb!!.bitmap, null, android.graphics.Rect(0, 0, size.width.toInt(), size.height.toInt()), null)
+            else { nc.save(); nc.translate(off.x, off.y); val k = size.width / w * sc; nc.scale(k, k); replay(nc, o) { role, wt -> Faces.of(ctx, role, wt) }; nc.restore() }
+        }
+    }
+}
+
 @Composable
 fun FigureView(doc: JSONObject, fid: String, figs: MutableMap<String, Int>, key: String) {
     val ctx = LocalContext.current
@@ -814,19 +944,13 @@ fun FigureView(doc: JSONObject, fid: String, figs: MutableMap<String, Int>, key:
     val scope = rememberCoroutineScope()
     val scrolling by LocalScrolling.current
     // The core computes frames on its own thread; we wait for it off the main thread, so the page never waits.
-    // Two ways to draw (measured on the Note 9, 2026-10-02):
-    // - playing and the page still: the vector ops straight on the canvas (the GPU path, smooth playback);
-    // - paused, still, or the page moving: one bitmap of the last frame, rasterized in the background. Drawing the
-    //   vector ops while scrolling made the render thread re-rasterize every path on every frame (13.6 ms per frame
-    //   against 4.5 ms for a plain list); rasterizing every animation frame on the CPU instead made playback stutter.
-    // Frames stop while the page moves and go on where they were.
+    // Frames stop while the page moves and go on where they were. (How a frame is drawn: FigureCanvas.)
     var id by remember { mutableIntStateOf(figs[key] ?: -1) }
     val ops = remember { mutableStateOf<ByteBuffer?>(null) }        // read only while drawing
-    val still = remember { mutableStateOf<Pair<ByteBuffer, Bitmap>?>(null) }   // a bitmap and the frame it shows
     var st by remember { mutableStateOf<JSONObject?>(null) }
     var stText = remember { "" }
-    var px by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
-    val raster = remember { FigureRaster() }
+    val zoom = remember { FigZoom() }
+    var full by rememberSaveable { mutableStateOf(false) }          // enlarged over the whole screen (FigureFull)
     suspend fun step(fig: Int, cmd: JSONObject) {
         val fr = withContext(Dispatchers.Default) { frame(fig, cmd) } ?: return
         ops.value = fr.ops
@@ -852,42 +976,64 @@ fun FigureView(doc: JSONObject, fid: String, figs: MutableMap<String, Int>, key:
             step(fig, JSONObject().put("tick", dt).put("dark", dark))
         }
     }
-    // not live: make the bitmap of the frame on screen (until it is ready, the ops are drawn directly)
-    val cur = ops.value
-    LaunchedEffect(live, cur, px) {
-        if (live || cur == null || px.width <= 0 || still.value?.first === cur) return@LaunchedEffect
-        val size = px
-        val b = withContext(Dispatchers.Default) { raster.draw(cur, size, w) { role, wt -> Faces.of(ctx, role, wt) } } ?: return@LaunchedEffect
-        still.value = cur to b
-    }
     fun send(cmd: JSONObject) {
         val fig = id
         if (fig >= 0) scope.launch { step(fig, cmd.put("tick", 0).put("dark", dark)) }
     }
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row { Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f)); if (animated) Dim("animated") }
-        Canvas(Modifier.widthIn(max = w.dp).fillMaxWidth().aspectRatio(w / h).align(Alignment.CenterHorizontally)
-            .onSizeChanged { px = it }
-            .semantics { contentDescription = f.getString("title") + ". " + f.getString("alt"); role = Role.Image }) {
-            val o = ops.value ?: return@Canvas
-            val sb = still.value
-            drawIntoCanvas { cv ->
-                val nc = cv.nativeCanvas
-                if (sb != null && sb.first === o) nc.drawBitmap(sb.second, null, android.graphics.Rect(0, 0, size.width.toInt(), size.height.toInt()), null)
-                else { nc.save(); nc.scale(size.width / w, size.width / w); replay(nc, o) { role, wt -> Faces.of(ctx, role, wt) }; nc.restore() }
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f)); if (animated) Dim("animated")
+            IconButton(onClick = { full = true }, modifier = Modifier.padding(start = 4.dp).size(40.dp)) { Icon(Glyphs.FULLSCREEN, contentDescription = "Enlarge figure") }
         }
+        // as wide as the page (never above 1:1), whatever the figure's width: on a phone it is not scrolled sideways
+        // below 520 as docs/COURSES.md §9.8 has it, but fitted, and zoomed into where it is or over the whole screen
+        FigureCanvas(f, ops, live, zoom, Modifier.widthIn(max = w.dp).fillMaxWidth().aspectRatio(w / h).align(Alignment.CenterHorizontally), hidden = full)
         val s = st
         if (animated && s != null) FigureControls(f, s, playing, ::send)
         if (f.getJSONArray("caption").length() > 0) Text(plain(f.getJSONArray("caption")), style = MaterialTheme.typography.bodySmall)
     } }
+    if (full) FigureFull(f, ops, live, st, playing, ::send) { full = false }
+}
+
+/** A figure over the whole screen: as large as the screen lets it be, upright or on its side (its controls then
+ *  stand beside it), pinched and dragged like the one in the page. It is the same figure: it goes on playing, and its
+ *  controls are the page's. Back or ✕ closes it. */
+@Composable
+private fun FigureFull(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, st: JSONObject?, playing: Boolean, send: (JSONObject) -> Unit, onClose: () -> Unit) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        FullScreenDialogWindow()
+        val zoom = remember { FigZoom() }
+        val w = f.getDouble("w").toFloat(); val h = f.getDouble("h").toFloat()
+        val animated = f.has("period")
+        // the card's own colour under it: the figures' "surface" and "ground" shapes are drawn for it
+        Surface(Modifier.fillMaxSize(), color = CardDefaults.cardColors().containerColor) {
+            BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp)) {
+                val head: @Composable () -> Unit = { Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                    IconButton(onClick = onClose) { Icon(Glyphs.CLOSE, contentDescription = "Close figure") } } }
+                val picture: @Composable (Modifier) -> Unit = { m -> Box(m, contentAlignment = Alignment.Center) {
+                    FigureCanvas(f, ops, live, zoom, Modifier.aspectRatio(w / h)) } }
+                val controls: @Composable () -> Unit = { if (animated && st != null) FigureControls(f, st, playing, send) }
+                val controlsMax = maxHeight * 0.45f
+                if (maxWidth > maxHeight) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    picture(Modifier.weight(1f).fillMaxHeight())
+                    Column(Modifier.width(if (animated) 300.dp else 160.dp).fillMaxHeight().verticalScroll(rememberScrollState())) { head(); controls() }
+                } else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    head()
+                    picture(Modifier.weight(1f).fillMaxWidth())
+                    Column(Modifier.heightIn(max = controlsMax).verticalScroll(rememberScrollState())) { controls() }
+                }
+            }
+        }
+    }
 }
 
 /** three bitmaps in turn: one on screen, one possibly still being uploaded by the render thread, one drawn into */
 private class FigureRaster {
     private val bufs = arrayOfNulls<Bitmap>(3)
     private var next = 0
-    fun draw(ops: ByteBuffer, size: androidx.compose.ui.unit.IntSize, w: Float, face: (Int, Int) -> Typeface): Bitmap? {
+    /** what a box of `size` shows of the figure (view box `w` wide) at this zoom */
+    fun draw(ops: ByteBuffer, size: androidx.compose.ui.unit.IntSize, w: Float, scale: Float, off: Offset, face: (Int, Int) -> Typeface): Bitmap? {
         if (size.width <= 0 || size.height <= 0) return null
         val i = next; next = (next + 1) % bufs.size
         var b = bufs[i]
@@ -896,7 +1042,8 @@ private class FigureRaster {
         }
         b.eraseColor(0)
         val c = android.graphics.Canvas(b)
-        c.scale(size.width / w, size.width / w)
+        c.translate(off.x, off.y)
+        c.scale(size.width / w * scale, size.width / w * scale)
         replay(c, ops, face)
         return b
     }
