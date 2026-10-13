@@ -282,8 +282,9 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
              gloss: Map<String, String>, nav: Nav, title: (JSONObject) -> String) {
     val qs = remember { mutableStateMapOf<String, QState>() }
     fun q(id: String) = qs.getOrPut(id) { QState() }
-    val figs = remember { mutableMapOf<String, Int>() }       // this page's live figures, freed when it closes
-    DisposableEffect(Unit) { onDispose { figs.values.forEach { call("POST", "/native/fig-free", JSONObject().put("fig", it)) } } }
+    val fullKey = rememberSaveable { mutableStateOf("") }
+    val figs = remember { PageFigs(fullKey) }                  // this page's live figures, freed when it closes
+    DisposableEffect(Unit) { onDispose { figs.runs.values.forEach { if (it.id >= 0) call("POST", "/native/fig-free", JSONObject().put("fig", it.id)) } } }
     val kind = p.getString("kind")
     val recall = remember { if (kind == "module") mods.takeWhile { it !== p }.flatMap { m -> m.getJSONArray("practice").objects().filter { it.getString("type") != "order" } }.shuffled().take(2) else emptyList() }
     val items = remember {
@@ -390,6 +391,13 @@ fun PageView(doc: JSONObject, p: JSONObject, pages: List<JSONObject>, mods: List
             }
         }
     }
+    // A figure enlarged over the whole screen. It is shown from here, not from its place in the list: turned on its
+    // side the page shows other rows, the figure's own leaves the list, and the enlarged figure went with it.
+    if (fullKey.value.isNotEmpty()) {
+        val run = figs.runs[fullKey.value]
+        if (run == null) fullKey.value = ""            // (the app was restored: its figures are new)
+        else FigureFull(doc, run) { fullKey.value = "" }
+    }
     }
 }
 
@@ -402,7 +410,7 @@ private val BLOCK_TYPES = listOf("h", "p", "ul", "ol", "table", "callout", "card
 fun blockType(b: JSONObject): String = BLOCK_TYPES.firstOrNull { b.has(it) } ?: "other"
 
 @Composable
-fun Block(doc: JSONObject, b: JSONObject, nav: Nav, gloss: Map<String, String>, figs: MutableMap<String, Int>, key: String) {
+fun Block(doc: JSONObject, b: JSONObject, nav: Nav, gloss: Map<String, String>, figs: PageFigs, key: String) {
     Box(Modifier.padding(vertical = 4.dp)) {
         when {
             b.has("h") -> Text(plain(b.getJSONArray("h")), style = if (b.getInt("level") == 2) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
@@ -933,78 +941,103 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
     }
 }
 
-@Composable
-fun FigureView(doc: JSONObject, fid: String, figs: MutableMap<String, Int>, key: String) {
-    val ctx = LocalContext.current
-    val f = doc.getJSONObject("figures").getJSONObject(fid)
-    val w = f.getDouble("w").toFloat(); val h = f.getDouble("h").toFloat()
-    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f     // the app's theme, not the system's
-    val reduce = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
-    val animated = f.has("period")
-    val scope = rememberCoroutineScope()
-    val scrolling by LocalScrolling.current
+/** One figure of a page while the page is open: the core's figure (`id`), its last frame and state. It is kept by
+ *  the page, not by the figure's row, so the figure enlarged over the whole screen goes on when its row has left the
+ *  list. */
+class FigRun(val fid: String) {
+    var id by mutableIntStateOf(-1)
+    val ops = mutableStateOf<ByteBuffer?>(null)        // read only while drawing
+    var st by mutableStateOf<JSONObject?>(null)
+    private var stText = ""
     // The core computes frames on its own thread; we wait for it off the main thread, so the page never waits.
-    // Frames stop while the page moves and go on where they were. (How a frame is drawn: FigureCanvas.)
-    var id by remember { mutableIntStateOf(figs[key] ?: -1) }
-    val ops = remember { mutableStateOf<ByteBuffer?>(null) }        // read only while drawing
-    var st by remember { mutableStateOf<JSONObject?>(null) }
-    var stText = remember { "" }
-    val zoom = remember { FigZoom() }
-    var full by rememberSaveable { mutableStateOf(false) }          // enlarged over the whole screen (FigureFull)
-    suspend fun step(fig: Int, cmd: JSONObject) {
+    suspend fun step(cmd: JSONObject) {
+        val fig = id
+        if (fig < 0) return
         val fr = withContext(Dispatchers.Default) { frame(fig, cmd) } ?: return
         ops.value = fr.ops
         val t = fr.state.toString()
         if (t != stText) { stText = t; st = fr.state }
     }
+    val playing get() = st?.optBoolean("playing") == true
+}
+
+/** a page's figures by their place in it, and which one is enlarged over the whole screen ("" for none) */
+class PageFigs(val full: MutableState<String>) { val runs = mutableMapOf<String, FigRun>() }
+
+/** Makes the figure in the core if it is not there yet, and steps it frame by frame while it plays and `still` is
+ *  false (the page is moving: frames stop and go on where they were). Called by whoever shows the figure, the row
+ *  or the enlarged view, never both. Returns whether it is playing live. */
+@Composable
+private fun figureDriver(doc: JSONObject, run: FigRun, still: Boolean): Boolean {
+    val ctx = LocalContext.current
+    val f = doc.getJSONObject("figures").getJSONObject(run.fid)
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f     // the app's theme, not the system's
+    val reduce = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
+    val animated = f.has("period")
     LaunchedEffect(dark) {
-        if (id < 0) id = withContext(Dispatchers.Default) {
-            call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", fid).put("reduce", reduce)).json.optInt("fig")
-        }.also { figs[key] = it }
-        step(id, JSONObject().put("dark", dark))
+        if (run.id < 0) run.id = withContext(Dispatchers.Default) {
+            call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", run.fid).put("reduce", reduce)).json.optInt("fig")
+        }
+        run.step(JSONObject().put("dark", dark))
     }
-    val playing = st?.optBoolean("playing") == true
-    val live = animated && playing && !scrolling
-    if (animated) LaunchedEffect(id, live, dark) {
-        if (id < 0 || !live) return@LaunchedEffect
-        val fig = id
+    val live = animated && run.playing && !still
+    if (animated) LaunchedEffect(run.id, live, dark) {
+        if (run.id < 0 || !live) return@LaunchedEffect
         var last = 0L
         while (isActive) {
             val t = withFrameNanos { it }
             val dt = if (last == 0L) 0.0 else (t - last) / 1e9
             last = t
-            step(fig, JSONObject().put("tick", dt).put("dark", dark))
+            run.step(JSONObject().put("tick", dt).put("dark", dark))
         }
     }
-    fun send(cmd: JSONObject) {
-        val fig = id
-        if (fig >= 0) scope.launch { step(fig, cmd.put("tick", 0).put("dark", dark)) }
-    }
+    return live
+}
+
+@Composable
+fun FigureView(doc: JSONObject, fid: String, figs: PageFigs, key: String) {
+    val f = doc.getJSONObject("figures").getJSONObject(fid)
+    val w = f.getDouble("w").toFloat(); val h = f.getDouble("h").toFloat()
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val animated = f.has("period")
+    val scope = rememberCoroutineScope()
+    val scrolling by LocalScrolling.current
+    val place = "$key#$fid"                                         // (a test's result blocks share one key)
+    val run = remember { figs.runs.getOrPut(place) { FigRun(fid) } }
+    val zoom = remember { FigZoom() }
+    val full = figs.full.value == place                             // enlarged over the whole screen (FigureFull, which drives it then)
+    val live = if (full) false else figureDriver(doc, run, scrolling)
+    fun send(cmd: JSONObject) { scope.launch { run.step(cmd.put("tick", 0).put("dark", dark)) } }
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f)); if (animated) Dim("animated")
-            IconButton(onClick = { full = true }, modifier = Modifier.padding(start = 4.dp).size(40.dp)) { Icon(Glyphs.FULLSCREEN, contentDescription = "Enlarge figure") }
+            IconButton(onClick = { figs.full.value = place }, modifier = Modifier.padding(start = 4.dp).size(40.dp)) { Icon(Glyphs.FULLSCREEN, contentDescription = "Enlarge figure") }
         }
         // as wide as the page (never above 1:1), whatever the figure's width: on a phone it is not scrolled sideways
         // below 520 as docs/COURSES.md §9.8 has it, but fitted, and zoomed into where it is or over the whole screen
-        FigureCanvas(f, ops, live, zoom, Modifier.widthIn(max = w.dp).fillMaxWidth().aspectRatio(w / h).align(Alignment.CenterHorizontally), hidden = full)
-        val s = st
-        if (animated && s != null) FigureControls(f, s, playing, ::send)
+        FigureCanvas(f, run.ops, live, zoom, Modifier.widthIn(max = w.dp).fillMaxWidth().aspectRatio(w / h).align(Alignment.CenterHorizontally), hidden = full)
+        val s = run.st
+        if (animated && s != null) FigureControls(f, s, run.playing, ::send)
         if (f.getJSONArray("caption").length() > 0) Text(plain(f.getJSONArray("caption")), style = MaterialTheme.typography.bodySmall)
     } }
-    if (full) FigureFull(f, ops, live, st, playing, ::send) { full = false }
 }
 
 /** A figure over the whole screen: as large as the screen lets it be, upright or on its side (its controls then
  *  stand beside it), pinched and dragged like the one in the page. It is the same figure: it goes on playing, and its
  *  controls are the page's. Back or ✕ closes it. */
 @Composable
-private fun FigureFull(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, st: JSONObject?, playing: Boolean, send: (JSONObject) -> Unit, onClose: () -> Unit) {
+private fun FigureFull(doc: JSONObject, run: FigRun, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         FullScreenDialogWindow()
+        val f = doc.getJSONObject("figures").getJSONObject(run.fid)
         val zoom = remember { FigZoom() }
         val w = f.getDouble("w").toFloat(); val h = f.getDouble("h").toFloat()
         val animated = f.has("period")
+        val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        val scope = rememberCoroutineScope()
+        val live = figureDriver(doc, run, still = false)
+        val send: (JSONObject) -> Unit = { cmd -> scope.launch { run.step(cmd.put("tick", 0).put("dark", dark)) } }
+        val st = run.st
         // the card's own colour under it: the figures' "surface" and "ground" shapes are drawn for it
         Surface(Modifier.fillMaxSize(), color = CardDefaults.cardColors().containerColor) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp)) {
@@ -1012,8 +1045,8 @@ private fun FigureFull(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, st
                     Text(f.getString("title"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).padding(start = 4.dp))
                     IconButton(onClick = onClose) { Icon(Glyphs.CLOSE, contentDescription = "Close figure") } } }
                 val picture: @Composable (Modifier) -> Unit = { m -> Box(m, contentAlignment = Alignment.Center) {
-                    FigureCanvas(f, ops, live, zoom, Modifier.aspectRatio(w / h)) } }
-                val controls: @Composable () -> Unit = { if (animated && st != null) FigureControls(f, st, playing, send) }
+                    FigureCanvas(f, run.ops, live, zoom, Modifier.aspectRatio(w / h)) } }
+                val controls: @Composable () -> Unit = { if (animated && st != null) FigureControls(f, st, run.playing, send) }
                 val controlsMax = maxHeight * 0.45f
                 if (maxWidth > maxHeight) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     picture(Modifier.weight(1f).fillMaxHeight())

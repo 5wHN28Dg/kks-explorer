@@ -253,71 +253,109 @@ class Phone(unittest.TestCase):
         def double_tap(x, y):
             ui.sh('sh', '-c', f'"input tap {x} {y} & sleep 0.12; input tap {x} {y}; wait"')
             time.sleep(1.5)
-        # --- a figure (the gate valve: animated, with a slider that moves by itself)
-        ui.tap('Rumaila Plant Foundations', exact=True, timeout=15)
-        ui.tap('Contents', exact=True, timeout=15)
-        ui.scroll_to('6 · Valves & pumps', exact=True)
-        ui.tap('6 · Valves & pumps', exact=True)
-        ui.scroll_to('Gate valve cutaway. ', tries=30)
-        ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.7)), str(w // 2), str(int(h * 0.45)), '1500')   # all of it on screen
-        time.sleep(1)
-        ui.tap('Pause', exact=True)          # a still picture to measure
-        ui.find('Play', exact=True)
-        time.sleep(1)
-        fig = box(ui.find('Gate valve cutaway. '))
-        self.assertLess(fig[2] - fig[0], w, 'the figure is wider than the screen')
-        self.assertGreater(fig[2] - fig[0], w * 0.7)
-        fit = stroke(shot('figure-1-fit.png'), fig)
-        cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
-        # at fit, a drag that starts on the figure scrolls the page
-        ui.sh('input', 'swipe', str(cx), str(cy), str(cx), str(cy - int(h * 0.1)), '1200')
-        time.sleep(1)
-        moved = box(ui.find('Gate valve cutaway. '))
-        with self.subTest('a drag over a fitted figure scrolls the page'):
-            self.assertLess(moved[1], fig[1] - h * 0.04, f'the figure stayed at {moved[1]} (it was at {fig[1]})')
-        fig = moved
-        cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
-        # a double tap enlarges it in its box, another puts it back
-        double_tap(cx, cy)
-        zoomed = stroke(shot('figure-2-double-tap.png'), fig)
-        with self.subTest('a double tap enlarges the figure where it is'):
-            self.assertGreaterEqual(zoomed, fit * 1.6, f'lines and letters are {zoomed} px thick, {fit} px before')
-            self.assertEqual(box(ui.find('Gate valve cutaway. ')), fig, 'the figure\'s box changed')
-        double_tap(cx, cy)
-        with self.subTest('a second double tap fits it again'):
-            self.assertLessEqual(abs(stroke(shot('figure-3-fit-again.png'), fig) - fit), 1)
-        # the button opens it over the whole screen
-        ui.tap('Enlarge figure', exact=True)
-        ui.find('Close figure', exact=True, timeout=10)
-        time.sleep(1)
-        full = box(ui.find('Gate valve cutaway. '))
-        self.assertGreater(full[2] - full[0], fig[2] - fig[0], 'over the whole screen the figure is no wider than in the page')
-        whole = stroke(shot('figure-4-full.png'), full)
-        self.assertGreaterEqual(whole, fit)
-        double_tap((full[0] + full[2]) // 2, (full[1] + full[3]) // 2)
-        large = stroke(shot('figure-5-full-zoomed.png'), full)
-        with self.subTest('enlarged over the whole screen, its letters are larger'):
-            self.assertGreaterEqual(large, fit * 1.6, f'lines and letters are {large} px thick, {fit} px in the page')
-        # it is the same figure, and it works while enlarged: Play, and its slider moves by itself
-        ui.tap('Play', exact=True)
-        ui.find('Pause', exact=True, timeout=10)
+        with self.subTest('a figure can be enlarged'):      # (the checks after it are run whatever this one finds)
+            # --- a figure (the gate valve: animated, with a slider that moves by itself)
+            ui.tap('Rumaila Plant Foundations', exact=True, timeout=15)
+            ui.tap('Contents', exact=True, timeout=15)
+            ui.scroll_to('6 · Valves & pumps', exact=True)
+            ui.tap('6 · Valves & pumps', exact=True)
+            ui.scroll_to('Gate valve cutaway. ', tries=30)
+            with open(os.path.join(REPO, 'data', 'courses', 'fnd.json'), encoding='utf-8') as f:
+                gate = json.load(f)['figures']['gate']
+            def control(name, below):
+                """the figure's own button of this name: the first one under its picture (the page has more figures)"""
+                under = sorted((box(n) for n in ui.nodes() if ui.label(n) == name and box(n)[1] >= below - 4), key=lambda b: b[1])
+                return under[0] if under else None
 
-        def opening():
-            return next(ui.label(n) for n in ui.nodes() if ui.label(n).startswith('Opening: '))
-        a = opening()
-        time.sleep(1.5)
-        b = opening()
-        with self.subTest('the figure plays while enlarged'):
-            self.assertNotEqual(a, b, 'the slider did not move while playing')
-        shot('figure-6-full-playing.png')
-        ui.tap('Pause', exact=True)
-        ui.find('Play', exact=True, timeout=10)
-        # Back closes it; the page is as it was
-        ui.sh('input', 'keyevent', '4')
-        time.sleep(1.5)
-        self.assertFalse(ui.present('Close figure', exact=True), 'Back did not close the enlarged figure')
-        ui.find('Contents', exact=True, timeout=10)
-        ui.find('Gate valve cutaway. ')
+            def press(b):
+                ui.sh('input', 'tap', str((b[0] + b[2]) // 2), str((b[1] + b[3]) // 2))
+            for _ in range(12):                  # all of it on screen, with its controls
+                fb = [box(n) for n in ui.nodes() if ui.label(n).startswith('Gate valve cutaway. ')]
+                if fb and (fb[0][3] - fb[0][1]) >= (fb[0][2] - fb[0][0]) * gate['h'] / gate['w'] - 4 and \
+                   (control('Pause', fb[0][3]) or control('Play', fb[0][3])):
+                    break
+                ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.7)), str(w // 2), str(int(h * 0.6)), '1500')
+                time.sleep(0.5)
+            fig = box(ui.find('Gate valve cutaway. '))
+            if control('Pause', fig[3]):         # a still picture to measure (with animations off it starts paused)
+                press(control('Pause', fig[3]))
+            for _ in range(20):
+                if control('Play', fig[3]):
+                    break
+                time.sleep(0.5)
+            self.assertTrue(control('Play', fig[3]), 'the figure did not pause')
+            time.sleep(1)
+            fig = box(ui.find('Gate valve cutaway. '))
+            self.assertLess(fig[2] - fig[0], w, 'the figure is wider than the screen')
+            self.assertGreater(fig[2] - fig[0], w * 0.7)
+            fit = stroke(shot('figure-1-fit.png'), fig)
+            cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
+            # at fit, a drag that starts on the figure scrolls the page
+            ui.sh('input', 'swipe', str(cx), str(cy), str(cx), str(cy - int(h * 0.1)), '1200')
+            time.sleep(1)
+            moved = box(ui.find('Gate valve cutaway. '))
+            with self.subTest('a drag over a fitted figure scrolls the page'):
+                self.assertLess(moved[1], fig[1] - h * 0.04, f'the figure stayed at {moved[1]} (it was at {fig[1]})')
+            fig = moved
+            cx, cy = (fig[0] + fig[2]) // 2, (fig[1] + fig[3]) // 2
+            # a double tap enlarges it in its box, another puts it back
+            double_tap(cx, cy)
+            zoomed = stroke(shot('figure-2-double-tap.png'), fig)
+            with self.subTest('a double tap enlarges the figure where it is'):
+                self.assertGreaterEqual(zoomed, fit * 1.6, f'lines and letters are {zoomed} px thick, {fit} px before')
+                self.assertEqual(box(ui.find('Gate valve cutaway. ')), fig, 'the figure\'s box changed')
+            double_tap(cx, cy)
+            with self.subTest('a second double tap fits it again'):
+                self.assertLessEqual(abs(stroke(shot('figure-3-fit-again.png'), fig) - fit), 1)
+            # the button opens it over the whole screen
+            ui.tap('Enlarge figure', exact=True)
+            ui.find('Close figure', exact=True, timeout=10)
+            time.sleep(1)
+            full = box(ui.find('Gate valve cutaway. '))
+            self.assertGreater(full[2] - full[0], fig[2] - fig[0], 'over the whole screen the figure is no wider than in the page')
+            whole = stroke(shot('figure-4-full.png'), full)
+            self.assertGreaterEqual(whole, fit)
+            double_tap((full[0] + full[2]) // 2, (full[1] + full[3]) // 2)
+            large = stroke(shot('figure-5-full-zoomed.png'), full)
+            with self.subTest('enlarged over the whole screen, its letters are larger'):
+                self.assertGreaterEqual(large, fit * 1.6, f'lines and letters are {large} px thick, {fit} px in the page')
+            # it is the same figure, and it works while enlarged: Play, and its slider moves by itself
+            ui.tap('Play', exact=True)
+            ui.find('Pause', exact=True, timeout=10)
+
+            def opening():
+                return next(ui.label(n) for n in ui.nodes() if ui.label(n).startswith('Opening: '))
+            a = opening()
+            time.sleep(1.5)
+            b = opening()
+            with self.subTest('the figure plays while enlarged'):
+                self.assertNotEqual(a, b, 'the slider did not move while playing')
+            shot('figure-6-full-playing.png')
+            ui.tap('Pause', exact=True)
+            ui.find('Play', exact=True, timeout=10)
+            # turned on its side it stays, larger (its row leaves the page's list then: the enlarged figure went with it)
+            self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
+            ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
+            ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+            time.sleep(3)
+            with self.subTest('the enlarged figure stays when the phone is turned'):
+                ui.find('Close figure', exact=True, timeout=10)
+                side = box(ui.find('Gate valve cutaway. '))
+                shot('figure-7-full-landscape.png')
+                self.assertGreater(side[2] - side[0], full[2] - full[0], 'on its side the figure is no wider than upright')
+                ui.find('Play', exact=True)      # its controls beside it
+            ui.sh('settings', 'put', 'system', 'user_rotation', '0')
+            time.sleep(3)
+            ui.find('Close figure', exact=True, timeout=10)
+            # Back closes it; the page is as it was
+            ui.sh('input', 'keyevent', '4')
+            time.sleep(1.5)
+            self.assertFalse(ui.present('Close figure', exact=True), 'Back did not close the enlarged figure')
+            ui.find('Contents', exact=True, timeout=10)
+            ui.find('Gate valve cutaway. ')
+        if ui.present('Close figure', exact=True):
+            ui.sh('input', 'keyevent', '4')
+            time.sleep(1.5)
         # --- the Instrumentation and control course
         ui.tap('Back', exact=True)
         ui.tap('Instrumentation and control', exact=True, timeout=15)
