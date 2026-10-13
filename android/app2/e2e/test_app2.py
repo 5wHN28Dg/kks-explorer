@@ -211,6 +211,7 @@ class Phone(unittest.TestCase):
         import collections, io
         from PIL import Image
         os.makedirs(SHOTS, exist_ok=True)
+        ui.sh('wm', 'size', 'reset')         # (a run that was killed with its low or narrow window on)
         ui.tap('Join through a server', exact=True)
         ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
         ui.type_into('Username', 'boss')
@@ -218,7 +219,6 @@ class Phone(unittest.TestCase):
         ui.tap('Join', exact=True)
         ui.find('Sample sheet', timeout=40)
         ui.tap('Learning', exact=True)
-        ui.sh('wm', 'size', 'reset')         # (a run that was killed with its low window on)
         size = re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1]
         w, h = int(size[0]), int(size[1])
 
@@ -255,7 +255,7 @@ class Phone(unittest.TestCase):
         def twinned(im, b):
             """The share of the figure's pixel rows in `b` that are the same as the row above or below them, of
             those with something drawn in them. In a bitmap made for a lower box and stretched into this one every
-            row has a twin; in a picture drawn for this box only where nothing slants or curves (0.1 to 0.2)."""
+            row has a twin (0.6 and more); in a picture drawn for this box only where nothing slants or curves (0.15)."""
             crop = im.crop((b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4))
             cw, ch = crop.size
             data = crop.tobytes()
@@ -437,18 +437,34 @@ class Phone(unittest.TestCase):
             ui.sh('wm', 'size', 'reset')
             time.sleep(3)
             ui.find('Close figure', exact=True, timeout=10)
-            with self.subTest('in a box that has grown, the figure is drawn for it'):
-                # (it showed the bitmap made for the low window's box, stretched to this one)
-                grown = box(ui.find('Gate valve cutaway. '))
-                self.assertGreater(grown[3] - grown[1], (low[3] - low[1]) * 2, 'the box is not twice as high as in the low window')
-                twins = twinned(shot('figure-9-window-back.png'), grown)
-                self.assertLess(twins, 0.6, f'{twins:.2f} of the picture\'s rows are the same as a row next to them')
             # Back closes it; the page is as it was
             ui.sh('input', 'keyevent', '4')
             time.sleep(1.5)
             self.assertFalse(ui.present('Close figure', exact=True), 'Back did not close the enlarged figure')
             ui.find('Contents', exact=True, timeout=10)
             ui.find('Gate valve cutaway. ')
+            # The page's figure, at fit, when the phone is turned: its box grows, and it is drawn for that box. It
+            # showed the bitmap made for the upright page, stretched. (Its card is first put at the top of the
+            # page: the list keeps its first row where it is, and a figure further down leaves the screen.)
+            with self.subTest('turned, the figure in the page is drawn for its new box'):
+                top = min(box(n)[1] for n in ui.nodes() if ui.label(n) in ('Contents', 'Back')) + 130      # under the top bar
+                for _ in range(5):
+                    was = box(ui.find('Gate valve cutaway. '))
+                    if was[1] <= top + 110:
+                        break
+                    ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.8) - min(was[1] - top - 60, int(h * 0.4))), '3000')
+                    time.sleep(1)
+                self.assertLessEqual(was[1], top + 110, 'the figure is not at the top of the page')
+                time.sleep(2)
+                shot('figure-10-page-upright.png')
+                ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+                time.sleep(3)
+                grown = box(ui.find('Gate valve cutaway. '))
+                self.assertGreater(grown[2] - grown[0], (was[2] - was[0]) * 1.3, 'the figure\'s box did not grow')
+                twins = twinned(shot('figure-11-page-turned.png'), grown)
+                self.assertLess(twins, 0.4, f'{twins:.2f} of the picture\'s rows are the same as a row next to them')
+            ui.sh('settings', 'put', 'system', 'user_rotation', '0')
+            time.sleep(3)
         if ui.present('Close figure', exact=True):
             ui.sh('input', 'keyevent', '4')
             time.sleep(1.5)
