@@ -492,6 +492,16 @@ template}]`. The first case whose `when` ≥ 0.5 wins; the last case has no `whe
 
 - **Scaling:** the view box is scaled to the available width, keeping its aspect ratio. It is never scaled above
   1:1 or below a width of min(w, 520); below that the figure scrolls sideways.
+  - **Android differs** (the user's decision, 2026-10-13): on a phone a figure is fitted to the page's width
+    whatever that is, also below 520, and is not scrolled sideways. It can be enlarged instead: a pinch or a
+    double tap zooms into it where it stands (a drag then moves it; at fit a drag scrolls the page), and a button
+    on the figure opens it over the whole screen, upright or on its side, where it is pinched and dragged the same
+    way and goes on playing with its controls. Back or the close button returns to the page.
+    Over the whole screen the figure is as large as the screen lets it be, also above 1:1; its controls stand
+    beside it where the screen is wider than high and at least 520 wide, else under it. In both places a double
+    tap goes to one view-box unit on one dp (at least twice and at most six times the fitted size) and back to
+    fit, and a pinch goes up to six times the fitted size. In the page, a drag up or down an enlarged figure that
+    is at its edge that way scrolls the page.
 - **Accessible name:** the figure is exposed as an image with `title` as its name and `alt` as its description.
 - **Controls:** native widgets, labelled with their `label`. The slider's accessible value is its `text`.
 - **Status line:** shown below the figure; not announced on every change (it changes every frame).
