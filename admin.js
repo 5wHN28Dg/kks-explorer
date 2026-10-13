@@ -60,9 +60,10 @@ async function show(t){
   try{ await VIEWS[t](g) }catch(e){ if(e.status===401) return location.reload(); put(mainFor(g),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
 }
 // A change elsewhere rebuilds the page, but not under a password being typed (the form in a device's row would close,
-// as a confirmation never did): then once the person has left that form
+// as a confirmation never did): not while the focus is in a form's password field, or anywhere in a form that has a
+// password typed in. Then once the person has left that form.
 let resyncT=0;
-const typing=()=>!!document.activeElement?.matches?.('#main form input[type=password]');
+const typing=()=>{ const a=document.activeElement, f=a?.closest?.('#main form'); return !!f&&[...f.querySelectorAll('input[type=password]')].some(p=>p===a||p.value) };
 const resync=()=>{ clearTimeout(resyncT); if(typing()) resyncT=setTimeout(resync,1000); else show(tab) };
 K.onChange(why=>{ if(why==='synced') resync() });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
