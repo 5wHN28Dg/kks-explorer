@@ -218,6 +218,7 @@ class Phone(unittest.TestCase):
         ui.tap('Join', exact=True)
         ui.find('Sample sheet', timeout=40)
         ui.tap('Learning', exact=True)
+        ui.sh('wm', 'size', 'reset')         # (a run that was killed with its low window on)
         size = re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1]
         w, h = int(size[0]), int(size[1])
 
@@ -251,17 +252,17 @@ class Phone(unittest.TestCase):
             runs.sort()
             return runs[len(runs) // 2]
 
-        def doubled(im, b):
-            """The share of the figure's pixel rows in `b` that repeat the row above them, of those with something
-            drawn in them. A bitmap made for a smaller box and stretched into this one repeats rows; a picture
-            drawn for this box repeats one only where nothing slants."""
+        def twinned(im, b):
+            """The share of the figure's pixel rows in `b` that are the same as the row above or below them, of
+            those with something drawn in them. In a bitmap made for a lower box and stretched into this one every
+            row has a twin; in a picture drawn for this box only where nothing slants or curves (0.1 to 0.2)."""
             crop = im.crop((b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4))
             cw, ch = crop.size
             data = crop.tobytes()
             rows = [data[y * cw * 3:(y + 1) * cw * 3] for y in range(ch)]
-            drawn = [y for y in range(1, ch) if rows[y] != rows[y][:3] * cw]
+            drawn = [y for y in range(1, ch - 1) if rows[y] != rows[y][:3] * cw]
             self.assertGreater(len(drawn), 100, 'nothing is drawn in the figure')
-            return sum(rows[y] == rows[y - 1] for y in drawn) / len(drawn)
+            return sum(rows[y] == rows[y - 1] or rows[y] == rows[y + 1] for y in drawn) / len(drawn)
 
         def double_tap(x, y, name, b, done):
             """two taps, until the figure in `b` is drawn as `done` says (each tap is a process of its own on the
@@ -278,8 +279,8 @@ class Phone(unittest.TestCase):
         def press(b):
             ui.sh('input', 'tap', str((b[0] + b[2]) // 2), str((b[1] + b[3]) // 2))
 
-        def figure_delay(ms):
-            return ui.adb('shell', 'am', 'broadcast', '-a', 'kks.explorer.DEBUG_FIGURE', '-p', PKG, '--el', 'delay', str(ms))
+        def hold_figures(on):
+            return ui.adb('shell', 'am', 'broadcast', '-a', 'kks.explorer.DEBUG_FIGURE', '-p', PKG, '--ez', 'hold', 'true' if on else 'false')
         self.addCleanup(ui.sh, 'wm', 'size', 'reset')
         with self.subTest('a figure can be enlarged'):      # (the checks after it are run whatever this one finds)
             # --- a figure (the gate valve: animated, with a slider that moves by itself)
@@ -287,19 +288,19 @@ class Phone(unittest.TestCase):
             ui.tap('Contents', exact=True, timeout=15)
             ui.scroll_to('6 · Valves & pumps', exact=True)
             # The figure opened over the whole screen before the core has made it (the core takes a few ms: the
-            # debug build's hook makes it wait): it is drawn there once it is made. It stayed empty, with no
+            # debug build's hook holds it back): it is drawn there once it is made. It stayed empty, with no
             # controls: its row had asked for it and no longer showed it.
-            hook = figure_delay(15000)
-            self.addCleanup(figure_delay, 0)
+            hook = hold_figures(True)
+            self.addCleanup(hold_figures, False)
             ui.tap('6 · Valves & pumps', exact=True)
             ui.scroll_to('Gate valve cutaway. ', tries=30)
             with self.subTest('a figure enlarged before the core has made it'):
-                self.assertIn('figure delay 15000', hook, 'this build has no DEBUG_FIGURE hook')
+                self.assertIn('figures held: true', hook, 'this build has no DEBUG_FIGURE hook')
                 press(box(ui.find('Enlarge figure: Gate valve cutaway', exact=True)))
                 ui.find('Close figure', exact=True, timeout=10)
-                self.assertFalse(ui.present('Play', exact=True) or ui.present('Pause', exact=True),
-                                 'the figure was made already: the wait was too short to show anything')
-                for _ in range(15):
+                self.assertFalse(ui.present('Play', exact=True) or ui.present('Pause', exact=True), 'the figure was made while held back')
+                hold_figures(False)
+                for _ in range(8):
                     if ui.present('Play', exact=True) or ui.present('Pause', exact=True):
                         break
                     time.sleep(1)
@@ -308,7 +309,7 @@ class Phone(unittest.TestCase):
                     self.fail('the figure enlarged before it was made stayed empty')
                 time.sleep(1)
                 stroke(shot('figure-0-early.png'), box(ui.find('Gate valve cutaway. ')))      # (something is drawn)
-            figure_delay(0)
+            hold_figures(False)
             if ui.present('Close figure', exact=True):
                 ui.sh('input', 'keyevent', '4')
                 time.sleep(1.5)
@@ -391,7 +392,6 @@ class Phone(unittest.TestCase):
             large = double_tap((full[0] + full[2]) // 2, (full[1] + full[3]) // 2, 'figure-5-full-zoomed.png', full, lambda v: v >= fit * 1.6)
             with self.subTest('enlarged over the whole screen, its letters are larger'):
                 self.assertGreaterEqual(large, fit * 1.6, f'lines and letters are {large} px thick, {fit} px in the page')
-            upright = doubled(shot('figure-5-full-zoomed.png'), full)
             # it is the same figure, and it works while enlarged: Play, and its slider moves by itself
             ui.tap('Play', exact=True)
             ui.find('Pause', exact=True, timeout=10)
@@ -420,10 +420,6 @@ class Phone(unittest.TestCase):
                 shot('figure-7-full-landscape.png')
                 self.assertGreater(side[2] - side[0], full[2] - full[0], 'on its side the figure is no wider than upright')
                 self.assertGreaterEqual(box(ui.find('Play', exact=True))[0], side[2] - 4, 'its controls are not beside it')
-            with self.subTest('turned, the figure is drawn for its new box'):
-                # (it showed the bitmap made for the upright box, stretched)
-                lying = doubled(Image.open(os.path.join(SHOTS, 'figure-7-full-landscape.png')), side)
-                self.assertLess(lying, upright + 0.08, f'{lying:.2f} of its rows repeat the row above, {upright:.2f} upright')
             ui.sh('settings', 'put', 'system', 'user_rotation', '0')
             time.sleep(3)
             ui.find('Close figure', exact=True, timeout=10)
@@ -441,6 +437,12 @@ class Phone(unittest.TestCase):
             ui.sh('wm', 'size', 'reset')
             time.sleep(3)
             ui.find('Close figure', exact=True, timeout=10)
+            with self.subTest('in a box that has grown, the figure is drawn for it'):
+                # (it showed the bitmap made for the low window's box, stretched to this one)
+                grown = box(ui.find('Gate valve cutaway. '))
+                self.assertGreater(grown[3] - grown[1], (low[3] - low[1]) * 2, 'the box is not twice as high as in the low window')
+                twins = twinned(shot('figure-9-window-back.png'), grown)
+                self.assertLess(twins, 0.6, f'{twins:.2f} of the picture\'s rows are the same as a row next to them')
             # Back closes it; the page is as it was
             ui.sh('input', 'keyevent', '4')
             time.sleep(1.5)

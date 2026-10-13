@@ -873,14 +873,21 @@ class FigZoom {
     fun zoomAt(p: Offset, ns: Float, box: Size, fig: Size) { val k = ns / scale; off = clamp(p - (p - off) * k, ns, box, fig); scale = ns }
     /** moved by `d`: how far it went (not past its edges) */
     fun pan(d: Offset, box: Size, fig: Size): Offset { val was = off; off = clamp(off + d, scale, box, fig); return off - was }
-    /** whether it can still move up or down by `dy` */
-    fun canPan(dy: Float, box: Size, fig: Size) = clamp(off + Offset(0f, dy), scale, box, fig).y != off.y
+    /** whether a finger's move by `d` is the figure's: one that is more sideways than up or down, one up or down
+     *  that it can still follow, and any at all where it is no higher than its box (over the whole screen a wide
+     *  figure is not, and nothing lies under it). Otherwise, at its upper or lower edge, the move is the page's. */
+    fun takes(d: Offset, box: Size, fig: Size) = Math.abs(d.x) > Math.abs(d.y) || fig.height * scale <= box.height ||
+        clamp(off + Offset(0f, d.y), scale, box, fig).y != off.y
     fun fit(box: Size, fig: Size) { scale = 1f; off = clamp(Offset.Zero, 1f, box, fig) }
-    /** another box (the phone turned): what was in the middle of the old one is in the middle of this one */
-    fun rebox(oldBox: Size, oldFig: Size, box: Size, fig: Size) {
-        if (oldFig.width <= 0f) { pan(Offset.Zero, box, fig); return }
-        val c = (Offset(oldBox.width / 2, oldBox.height / 2) - off) * (fig.width / oldFig.width)
+    private var lastBox = Size.Zero
+    private var lastFig = Size.Zero
+    /** its box, when that is known or has changed (the phone turned): what was in the middle of the last one is in
+     *  the middle of this one. (The last box is kept here: over the whole screen, upright and on its side are two
+     *  canvases.) */
+    fun rebox(box: Size, fig: Size) {
+        val c = if (lastFig.width > 0f) (Offset(lastBox.width / 2, lastBox.height / 2) - off) * (fig.width / lastFig.width) else Offset(fig.width / 2, fig.height / 2) * scale
         off = clamp(Offset(box.width / 2, box.height / 2) - c, scale, box, fig)
+        lastBox = box; lastFig = fig
     }
     companion object { const val MAX = 6f }
 }
@@ -927,9 +934,8 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
     }
     Canvas(modifier.clipToBounds().onSizeChanged {
             // a new box (the phone turned): it shows the same part of the figure (`off` is in the box's pixels)
-            val old = px
             px = it
-            zoom.rebox(boxSize(old), figSize(old), boxSize(it), figSize(it)) }
+            zoom.rebox(boxSize(it), figSize(it)) }
         // (keyed: a row of the list is used again for another figure, and its handlers must not keep the old one's zoom)
         .pointerInput(zoom, w, shape) { detectTapGestures(onDoubleTap = { p ->
             val fig = figSize(size)
@@ -950,7 +956,7 @@ private fun FigureCanvas(f: JSONObject, ops: State<ByteBuffer?>, live: Boolean, 
                         val box = boxSize(size); val fig = figSize(size)
                         // one finger moving up or down a figure that is at its edge that way: the page's, and the
                         // figure stays as it is (moved sideways meanwhile, it was drawn anew at every step)
-                        if (fingers >= 2 || Math.abs(pan.x) > Math.abs(pan.y) || zoom.canPan(pan.y, box, fig)) {
+                        if (fingers >= 2 || zoom.takes(pan, box, fig)) {
                             if (fingers >= 2 && z != 1f) zoom.zoomAt(ev.calculateCentroid(useCurrent = false), (zoom.scale * z).coerceIn(1f, FigZoom.MAX), box, fig)
                             zoom.pan(pan, box, fig)
                             zoom.moving = true
@@ -1008,9 +1014,10 @@ class FigRun(val fid: String) {
     val playing get() = st?.optBoolean("playing") == true
 }
 
-/** A test's wait before a figure is made in the core, in ms (DebugFigureReceiver, in debug builds only; otherwise 0):
- *  the core answers in a few ms, and what happens to a figure whose row leaves meanwhile could not be tested. */
-@Volatile var figNewDelayMs = 0L
+/** A test holds back the making of figures in the core (DebugFigureReceiver, in debug builds only; otherwise never
+ *  set): the core answers in a few ms, and what happens to a figure opened over the whole screen meanwhile could not
+ *  be tested. Held for a minute at most. */
+@Volatile var figNewHold = false
 
 /** a page's figures by their place in it, and which one is enlarged over the whole screen ("" for none) */
 class PageFigs(val full: MutableState<String>) { val runs = mutableMapOf<String, FigRun>() }
@@ -1031,8 +1038,9 @@ private fun figureDriver(doc: JSONObject, run: FigRun, still: Boolean): Boolean 
     LaunchedEffect(dark, run.id) {
         if (run.id < 0) {
             // (not cancellable: a figure made in the core but not kept here would never be freed)
-            if (run.claim()) withContext(Dispatchers.Default + kotlinx.coroutines.NonCancellable) {
-                if (figNewDelayMs > 0) Thread.sleep(figNewDelayMs)
+            if (run.claim()) withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                var waited = 0
+                while (figNewHold && waited++ < 1200) Thread.sleep(50)
                 val fig = call("POST", "/native/fig-new", JSONObject().put("course", doc.getString("id")).put("figure", run.fid).put("reduce", reduce)).json.optInt("fig")
                 if (!run.made(fig)) call("POST", "/native/fig-free", JSONObject().put("fig", fig))
             }
