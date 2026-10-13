@@ -70,7 +70,8 @@ li{margin-bottom:5px}
 table{border-collapse:collapse;width:100%;font-size:14.5px}
 th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
 tr:last-child td{border-bottom:none}
-th{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--sunk)}
+/* as written, like a question's heading: a column's heading can hold a unit ("Outlet pressure MPa.a") */
+th{font-family:var(--display);font-weight:600;font-size:13.5px;letter-spacing:.03em;color:var(--muted);background:var(--sunk)}
 td.v{font-family:var(--mono);font-size:13.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .figure{overflow-x:auto;margin:14px 0 20px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px}
 .figure svg{display:block}

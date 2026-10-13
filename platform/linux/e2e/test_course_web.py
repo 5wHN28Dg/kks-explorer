@@ -88,6 +88,18 @@ class CourseWeb(unittest.TestCase):
             self.assertTrue(any('4–20 mA' in k for k in kinds), kinds)
             self.assertFalse(any('4–20 MA' in k for k in kinds), kinds)
             page.screenshot(path=os.path.join(SHOTS, f'place-{name}.png'))
+            # … and so is a table column's heading: "Outlet pressure MPa.a" read "MPA.A"
+            def heads(blocks):
+                for b in blocks:
+                    if 'table' in b:
+                        yield from (''.join(x for x in hd if isinstance(x, str)) for hd in b['table']['head'])
+                    if 'callout' in b:
+                        yield from heads(b['body'])
+            cid, pg, head = next((c, p, hd) for c, course in COURSES.items() for p in course['pages']
+                                 for hd in heads(p.get('body', [])) if 'MPa' in hd)
+            page.goto(f'{self.base}/course.html?c={cid}#{pg["id"]}')
+            page.wait_for_selector('#main th')
+            self.assertIn(head, page.locator('#main th').all_inner_texts())
             # answering: the right option of fnd's first practice question, then a wrong one of the next
             fnd = COURSES['fnd']
             m = next(p for p in fnd['pages'] if p['kind'] == 'module' and p['practice'])

@@ -93,7 +93,9 @@ proc table(cw: CW, t: JNode): W =
   for (ri, row) in t["rows"].elems.pairs:
     for (ci, cell) in row.elems.pairs:
       let l = cw.rl(cell, if ci in num: "monospace numeric" else: "")
-      if ci in num: gtk_label_set_xalign(l, 1)
+      if ci in num:
+        gtk_label_set_xalign(l, 1)
+        gtk_label_set_wrap(l, 0)      # a number column's cell is one line ("12 mA"), as on the web (td.v)
       gtk_grid_attach(g, l, cint(ci), cint(ri + 1), 1, 1)
   # The grid sits in the card itself, as wide as the page: every cell wraps, so it always fits. (Until 2026-10-12 it
   # was inside a sideways-scrolling GtkScrolledWindow that passed on its child's natural height. A scrolled window

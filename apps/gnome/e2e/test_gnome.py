@@ -1002,7 +1002,7 @@ class Gnome(Plant):
         grey = max(min(p) for p in px if max(p) - min(p) < 12)           # the plain text at its lightest
         link = max(px, key=lambda p: max(p) - min(p))                   # the link: the most coloured pixel
         self.assertGreater(grey, 175, f'the credit\'s text is too faint on the dark page (lightest grey {grey} on {back})')
-        self.assertGreater(max(link), 150, f'the credit\'s link is dimmed with its line ({link})')
+        self.assertGreater(max(link), 165, f'the credit\'s link is dimmed with its line ({link})')
 
     def test_zzz_multi_member(self):
         """A MEMBER's "Photo for all" (their changes wait for approval), with codes of two drawings (runs last: its
