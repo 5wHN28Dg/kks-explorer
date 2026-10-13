@@ -1441,6 +1441,80 @@ class SignOutOthersPassword(Base):
         self.assertEqual(out(tom, {'password': 'tom password 1'})[1], {'ok': True, 'ended': 0})
 
 
+class OwnDevicePassword(Base):
+    """Devices → "Remove" on a device of one's own asks for the account's password when it comes from a web sign-in
+    (the user, 2026-10-13): whoever holds a stolen sign-in could otherwise cut the owner's phone off for good. Checked
+    and counted as for "Sign out my other sessions". An admin's removal of a member's device keeps its role rules."""
+    cookie, token, login, alive = (SignOutEverywhere.cookie, SignOutEverywhere.token, SignOutEverywhere.login,
+                                   SignOutEverywhere.alive)
+
+    def phone(self, boss, name, label):
+        """a device of their own for the account `name`, certified from its join request -> its ID"""
+        from app_person import crypto2, proto2      # (the Python reference, ref/)
+        key = proto2.key_from_seed(os.urandom(32))
+        st, r, _ = boss.req('POST', '/api/devices/import-request', {'existing_ok': True, 'request': crypto2.join_request(
+            key, name, name.title() + ' Person', 'Operator', label, int(time.time()))})
+        self.assertEqual(st, 200, r)
+        return proto2.peer_id(key)
+
+    def test_own_device(self):
+        boss = self.manager()
+        for name in ('ali', 'tom'):
+            st, r, _ = boss.req('POST', '/api/users', {'username': name, 'full_name': name.title() + ' Person', 'position': 'Operator', 'role': 'user'})
+            self.assertEqual(st, 200, r)
+            first = Client(self.base)
+            self.assertEqual(first.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1],
+                                                                       'password': name + ' password 1'})[0], 200)
+            self.assertEqual(first.req('POST', '/api/logout', {})[0], 200)
+        tom, thief, ali = self.login('tom'), self.login('tom'), self.login('ali')
+        phone, tablet, spare = (self.phone(boss, 'tom', x) for x in ('phone', 'tablet', 'spare'))
+        alis, alis2, bosss = self.phone(boss, 'ali', 'phone'), self.phone(boss, 'ali', 'tablet'), self.phone(boss, 'boss', 'phone')
+        mine = {d['device']: d for d in tom.req('GET', '/api/devices')[1]['mine']}
+        self.assertEqual({mine[d]['label'] for d in (phone, tablet, spare)}, {'phone', 'tablet', 'spare'})   # the same person's
+        self.assertEqual(mine[phone]['person'], tom.req('GET', '/api/me')[1]['user']['person'])
+        removed = lambda: {d['device'] for d in boss.req('GET', '/api/devices?show_hidden=1')[1]['all'] if d['revoked']}
+        rm = lambda c, dev, **more: c.req('POST', '/api/devices/revoke', dict(device=dev, **more))[:2]
+        WRONG = (401, {'error': 'Wrong username or password.'})
+        clear = lambda: self.assertEqual(self.login('tom').req('POST', '/api/logout', {})[0], 200)   # (this address, and tom from it)
+
+        # ---- one's own device: no password, one that is no text, a wrong one, another account's: refused, nothing removed
+        for n, more in enumerate(({}, {'password': None}, {'password': 12345678901}, {'password': ''},
+                                  {'password': 'not the password'}, {'old': 'tom password 1'}, {'password': 'ali password 1'})):
+            if n == 4: clear()     # (the fifth failure from one address makes the next attempt wait; a sign-in clears them)
+            self.assertEqual(rm(thief, phone, **more), WRONG, more)
+        clear()
+        self.assertEqual((removed(), self.alive(tom, thief)), (set(), [200, 200]))
+        # with it: removed, and whoever asked stays signed in
+        self.assertEqual(rm(tom, phone, password='tom password 1'), (200, {'ok': True}))
+        self.assertEqual((removed(), self.alive(tom, thief)), ({phone}, [200, 200]))
+        # ---- somebody else's: a member may not, password or none, and no password of theirs is counted for it
+        for _ in range(6):
+            self.assertEqual(rm(thief, alis, password='tom password 1')[0], 403)
+            self.assertEqual(rm(thief, alis)[0], 403)
+        self.assertEqual(rm(thief, 'A' * 64)[0], 404)
+        # the manager removes a member's device as before, with no password; their own only with it
+        self.assertEqual(rm(boss, alis), (200, {'ok': True}))
+        self.assertEqual(rm(boss, bosss), WRONG)
+        self.assertEqual(rm(boss, bosss, password='ali password 1'), WRONG)
+        self.assertEqual(removed(), {phone, alis})
+        self.assertEqual(rm(boss, bosss, password='a long password'), (200, {'ok': True}))
+        self.assertEqual(removed(), {phone, alis, bosss})
+        clear()
+
+        # ---- counted with the failed sign-ins, the other sessions' password and Change password's: three here, one
+        # at each of those are five, and then the right password waits too
+        for _ in range(3):
+            self.assertEqual(rm(thief, tablet, password='a guess of mine'), WRONG)
+        self.assertEqual(thief.req('POST', '/api/sign-out-others', {'password': 'another guess'})[:2], WRONG)
+        self.assertEqual(thief.req('POST', '/api/password', {'old': 'a third guess', 'new': 'another password 1'})[:2], WRONG)
+        LATER = (429, {'error': 'Too many failed attempts. Wait a few minutes.'})
+        self.assertEqual(rm(thief, tablet, password='tom password 1'), LATER)
+        self.assertEqual(rm(tom, tablet, password='tom password 1'), LATER)               # (the same address: this test's)
+        self.assertEqual(rm(ali, alis2, password='ali password 1'), LATER)
+        self.assertEqual(rm(boss, tablet), (200, {'ok': True}))                           # (not the manager for a member's)
+        self.assertEqual((removed(), self.alive(tom, thief, ali)), ({phone, alis, bosss, tablet}, [200] * 3))
+
+
 class OfflineList(Base):
     """GET /api/offline: the files a browser saves to work without the server ("Download for offline")"""
 

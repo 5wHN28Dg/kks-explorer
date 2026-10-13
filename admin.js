@@ -240,9 +240,19 @@ const VIEWS={
   },
   async devices(g){
     const D=await K.api('/api/devices'+(SHOW_HIDDEN?'?show_hidden=1':'')), S=D.sync, ago=t=>t?`${Math.max(0,Math.round((Date.now()/1000-t)/60))} min ago`:'';
+    // A device of one's own, on a server: removed only with the account's password (the user, 2026-10-13: a stolen
+    // sign-in alone must not cut the owner's phone off). The row's button opens the form in its place.
+    const own=d=>D.mode!=='peer'&&d.person===ME.user.person;
+    const ownRemove=d=>{ const c=h('td'), ask=()=>{
+        const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); once(F,()=>act(()=>K.api('/api/devices/revoke',{device:d.device,password:F.password.value}),'Device removed')) }},
+          h('input',{type:'password',name:'password',placeholder:'your password','aria-label':'Your password',autocomplete:'current-password',required:true}),
+          h('button',{class:'ghost'},'Remove this device'),h('button',{class:'ghost',type:'button',onclick:()=>idle()},'Cancel'));
+        put(c,F,h('div',{class:'sub'},'It stops syncing; what it already holds stays on it. Your password, so that nobody who got hold of a sign-in of yours can remove your devices.')); F.password.focus() },
+      idle=()=>put(c,h('button',{class:'ghost',onclick:ask},'Remove'));
+      idle(); return c };
     const devRow=(d,mine)=>h('tr',null,h('td',null,d.label||'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:null,mine?null:h('div',{class:'sub'},d.username)),
       h('td',{class:'mono sub'},`${d.device.slice(0,12)}…`),h('td',null,d.revoked?h('span',{class:'del'},'removed'):'active'),
-      h('td',null,!d.revoked&&!d.this_computer?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
+      !d.revoked&&!d.this_computer&&own(d)?ownRemove(d):h('td',null,!d.revoked&&!d.this_computer?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
         :d.revoked&&isAdmin()?h('button',{class:'ghost',onclick:()=>d.hidden?setHidden([d.device,d.person],false):setHidden([d.device],true)},d.hidden?'Show again':'Hide'):null));
     const N=S.internet||{}, syncs=Object.values(S.syncs);
     const addr=h('input',{name:'address',placeholder:'or an address, e.g. 192.168.1.20',style:'min-width:220px'});
@@ -555,10 +565,10 @@ async function signOutUser(u){
   const r=await act(()=>K.api(`/api/users/${u.id}/sign-out`,{}));
   if(r) toast(r.ended?`${u.username}: ${r.ended} web sign-in${r.ended===1?'':'s'} ended`:`${u.username} was not signed in on the web`);
 }
+// A form sends once: a second press before the answer does nothing (its answer would replace the first one's)
+async function once(f,fn){ const b=f.querySelector('button'); if(b.disabled) return null; b.disabled=true; try{ return await fn() }finally{ b.disabled=false } }
 async function signOutOthers(f){
-  const b=f.querySelector('button'); if(b.disabled) return;   // (Enter twice: the second answer, "no other sessions", would replace the first)
-  b.disabled=true;
-  const r=await act(()=>K.api('/api/sign-out-others',{password:f.password.value})).finally(()=>{ b.disabled=false });
+  const r=await once(f,()=>act(()=>K.api('/api/sign-out-others',{password:f.password.value})));
   if(r) toast(r.ended?`Signed out ${r.ended} other session${r.ended===1?'':'s'}`:'No other sessions: you are signed in here only');
 }
 async function webSignin(u){

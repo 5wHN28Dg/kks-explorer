@@ -9,15 +9,19 @@ one on a lost phone or a shared computer would never end by itself.
    user, 2026-10-13: a stolen sign-in alone must not end the owner's), ends the others and says how many that were;
    this browser stays signed in, the manager's too. Without the password the browser asks for it; a wrong one is
    said, and nobody is signed out.
+3. Devices: "Remove" on a device of one's own opens a small form that asks for the password too (a stolen sign-in
+   alone must not cut the owner's phone off); Cancel puts the button back. A wrong password is said and removes
+   nothing; the right one removes it, once. An admin removes a member's device as before, after the confirmation.
   /path/to/venv-with-playwright/bin/python platform/linux/e2e/test_web_signout.py [unittest arguments]
 $KKS_SERVER names the build (default /tmp/kkslinux/kks_server)."""
-import os, re, shutil, sys, tempfile, unittest
+import os, re, shutil, sys, tempfile, time, unittest
 from playwright.sync_api import sync_playwright, expect
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
 from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors
+from app_person import crypto2, proto2      # (the Python reference, ref/)
 
 PW = 'a long password'
 KKS = '11LAB70AA501'
@@ -65,6 +69,17 @@ class WebSignOut(unittest.TestCase):
         page.goto(self.base + path)
         page.wait_for_function(SIGNED_IN % user)
         return page, errors
+
+    def phone(self, admin, username, label):
+        """a device of their own for that account, certified from its join request -> its ID"""
+        key = proto2.key_from_seed(os.urandom(32))
+        r = admin.req('POST', '/api/devices/import-request', {'existing_ok': True, 'request': crypto2.join_request(
+            key, username, 'Somebody', 'Operator', label, int(time.time()))})
+        assert r.get('ok'), r
+        return proto2.peer_id(key)
+
+    def removed(self, admin):
+        return {d['device'] for d in admin.req('GET', '/api/devices?show_hidden=1')['all'] if d['revoked']}
 
     def row(self, page, username):
         return page.locator('#main > table tr', has=page.locator('td.mono', has_text=re.compile('^%s( |$)' % username)))
@@ -244,6 +259,68 @@ class WebSignOut(unittest.TestCase):
             merr.leave(); m.reload()
             m.wait_for_function(SIGNED_IN % 'boss')
             expect(m.locator('#who')).to_contain_text('manager')
+
+            # ---- 3. Devices: one's own device goes only with the password
+            admin = Client(self.base)                    # (the test's first client was one of the manager's other sessions)
+            admin.req('POST', '/api/login', {'username': 'boss', 'password': PW})     # (raises when refused)
+            phone, tablet, bphone = self.phone(admin, 'ali', 'phone'), self.phone(admin, 'ali', 'tablet'), self.phone(admin, 'boss', 'handheld')
+            a1err.leave(); a1.goto(self.base + '/admin.html#devices')
+            mine = a1.locator('#main .card', has=a1.locator('h3', has_text='Your devices'))
+            row = mine.locator('tr', has_text='phone')
+            expect(row).to_have_count(1)
+            expect(mine.locator('tr', has_text='tablet')).to_contain_text('active')
+            a1.evaluate("() => { window.sameDocument = true; window.asked = []; window.confirmed = 0; const f = window.fetch;"
+                        " window.confirm = () => { confirmed++; return true };"
+                        " window.fetch = (u, o) => { if (String(u).includes('/api/devices/revoke')) asked.push(o.body); return f(u, o) } }")
+            # the button opens the form in its place, with the field ready to type in; Cancel puts the button back
+            self.assertEqual(row.locator('input').count(), 0)
+            row.get_by_role('button', name='Remove', exact=True).click()
+            field = row.locator('form input[name=password]')
+            expect(field).to_be_focused()
+            expect(field).to_have_attribute('type', 'password')
+            expect(field).to_have_attribute('autocomplete', 'current-password')
+            expect(field).to_have_attribute('aria-label', 'Your password')
+            expect(row).to_contain_text('It stops syncing; what it already holds stays on it.')
+            self.assertEqual(row.get_by_role('button', name='Remove', exact=True).count(), 0)
+            field.fill(PW)
+            row.get_by_role('button', name='Cancel').click()
+            expect(row.get_by_role('button', name='Remove', exact=True)).to_have_count(1)
+            self.assertEqual(row.locator('input').count(), 0)
+            # without the password nothing is sent; a wrong one is said, the page stays and nothing is removed
+            row.get_by_role('button', name='Remove', exact=True).click()
+            self.assertEqual(field.input_value(), '')
+            row.get_by_role('button', name='Remove this device').click()
+            self.assertEqual(field.evaluate('e => e.validity.valueMissing'), True)
+            field.fill('not the password')
+            field.press('Enter')
+            expect(a1.locator('#toast')).to_have_text('Wrong username or password.')
+            self.assertEqual(a1.evaluate('[window.sameDocument, window.asked.length, window.confirmed]'), [True, 1, 0])
+            self.assertEqual((self.status(a1), self.removed(admin), field.input_value()), (200, set(), 'not the password'))
+            # the right one, pressed twice before the first is answered: removed, sent once
+            field.fill(PW)
+            a1.evaluate("""() => { const i = document.querySelector('#main form input[name=password]');
+                for (const n of [1, 2]) i.form.requestSubmit() }""")
+            expect(a1.locator('#toast')).to_have_text('Device removed')
+            expect(mine.locator('tr', has_text='phone')).to_contain_text('removed')
+            self.assertEqual(mine.locator('tr', has_text='phone').locator('button, input').count(), 0)
+            expect(mine.locator('tr', has_text='tablet')).to_contain_text('active')
+            self.assertEqual((a1.evaluate('window.asked.length'), self.removed(admin), self.status(a1)), (2, {phone}, 200))
+            # the manager: a member's device as before (the confirmation, no password); their own with the password
+            merr.leave(); m.goto(self.base + '/admin.html#devices')
+            other = m.locator('#allDevices tr', has_text='tablet')
+            expect(other).to_contain_text('ali')
+            n = len(said)
+            other.get_by_role('button', name='Remove', exact=True).click()
+            expect(m.locator('#toast')).to_have_text('Device removed')
+            self.assertEqual((len(said), said[-1][:19], m.locator('#main input[name=password]').count()), (n + 1, 'Remove this device?', 0))
+            own = m.locator('#main .card', has=m.locator('h3', has_text='Your devices')).locator('tr', has_text='handheld')
+            own.get_by_role('button', name='Remove', exact=True).click()
+            self.assertEqual(len(said), n + 1)                        # (no confirmation: the form asks)
+            own.locator('input[name=password]').fill(PW)
+            own.get_by_role('button', name='Remove this device').click()
+            expect(m.locator('#toast')).to_have_text('Device removed')
+            expect(m.locator('#main .card', has=m.locator('h3', has_text='Your devices')).locator('tr', has_text='handheld')).to_contain_text('removed')
+            self.assertEqual((self.removed(admin), self.status(m)), ({phone, tablet, bphone}, 200))
 
             for e in (merr, a1err, a2err, a3err, serr, b2err):
                 self.assertEqual(list(e), [])

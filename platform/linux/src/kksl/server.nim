@@ -943,6 +943,19 @@ proc signOutOthers*(s: Server, usr: JNode, password: JNode, keep: string, source
   discard s.login(usr["username"].s, if password != nil and password.isStr: password.s else: "", sources)
   s.endSessions(usr["id"].i, keep = keep)
 
+proc ownDevicePassword*(s: Server, usr: JNode, d: JNode, sources: openArray[string]) =
+  ## Devices → "Remove" on a device of one's own, from a web sign-in (POST /api/devices/revoke): only with the
+  ## account's password (the user, 2026-10-13), checked by `login` as for "Sign out my other sessions": whoever holds
+  ## a stolen sign-in could otherwise cut the owner's phone off, which is not undone. Raises 401 or 429; says
+  ## nothing for anybody else's device (an admin's removal of a member's device keeps the core's role rules, which
+  ## also judge everything else about the request). The apps do not come this way: a device speaks for itself there.
+  let dev = d.get("device")
+  if dev == nil or not dev.isStr or s.n.run == nil: return
+  let v = s.n.run.devices.getOrDefault(dev.s)
+  if v == nil or v["person"].s != usr["person"].s: return
+  let pw = d.get("password")
+  discard s.login(usr["username"].s, if pw != nil and pw.isStr: pw.s else: "", sources)
+
 # ---- enrolment: a device joining with its owner's password (PROTOCOL-v2 §16 "through a server") ----
 
 proc enrollDevice(s: Server, username, password, dev, label0: string, sources: openArray[string]) =
@@ -1568,6 +1581,8 @@ proc handle(s: Server, req: Request) {.async.} =
     of "/api/sign-out-others":
       await s.sendJson(req, 200, O(("ok", newBool(true)), ("ended", newInt(s.signOutOthers(usr, d.get("password"), req.sessionRaw, src)))))
       return
+    of "/api/devices/revoke":
+      s.ownDevicePassword(usr, d, src)     # (one's own device: the password first; then the core's rules, below)
     of "/api/sheets/reimport":   # the stored PDF again, e.g. with another rotation
       if me.role != "manager": herr(403, "manager only")
       let str = proc (k: string, dflt = ""): string = (if d.get(k) != nil and d[k].isStr: d[k].s elif d.get(k) != nil and d[k].kind == jInt: $d[k].i else: dflt)
