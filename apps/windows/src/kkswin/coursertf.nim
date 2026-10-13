@@ -37,8 +37,11 @@ proc sticks(a, b: Rune): bool =
   if a.isWord and y in [int32(ord('-')), 0x2010, 0x2012, 0x2013]: return true
   x == ord('(') or y == ord(')')
 
-proc glued(rs: seq[Rune], rtf: bool): string =
-  ## the characters with a joiner wherever RichEdit could end a line other than at a plain space
+proc numRun*(s: string, rtf = true): string =
+  ## a num run's text as RTF, or (`rtf = false`) as the control then holds it: what a search in the control finds
+  var rs: seq[Rune]
+  for r in unbroken(s).runes:
+    if r != Rune(0x2060): rs.add r             # the rule's word joiners: the pairs above and the joiner do that here
   proc space(r: Rune): bool = r == Rune(32) or r == Rune(0xA0) or r == Rune(10)
   for i, r in rs:
     if r == Rune(0xA0): result.add (if rtf: NoBreakSpace else: Nbsp)
@@ -46,40 +49,14 @@ proc glued(rs: seq[Rune], rtf: bool): string =
     if i + 1 < rs.len and not space(r) and not space(rs[i + 1]) and not sticks(r, rs[i + 1]):
       result.add (if rtf: Joiner else: Nbsp)
 
-proc numRun*(s: string, rtf = true): string =
-  ## a num run's text as RTF, or (`rtf = false`) as the control then holds it: what a search in the control finds
-  var rs: seq[Rune]
-  for r in unbroken(s).runes:
-    if r != Rune(0x2060): rs.add r             # the rule's word joiners: the pairs above and the joiner do that here
-  glued(rs, rtf)
-
-proc wholeText*(s: string, rtf = true): string =
-  ## text that stays on one line whatever its length (a cell of a table's number column: "12 mA", as the web's
-  ## `white-space: nowrap` there): every space a no-break space
-  var rs: seq[Rune]
-  for r in s.runes: rs.add (if r == Rune(32): Rune(0xA0) else: r)
-  glued(rs, rtf)
-
-type Keep* = enum
-  ## how much of a run stays on one line
-  kText,       ## running text: only its num runs
-  kUnits,      ## all of it as a long num run: a number with the unit after it
-  kWhole       ## all of it
-
-proc kept(s: string, keep: Keep, num: bool, rtf: bool): string =
-  case keep
-  of kWhole: wholeText(s, rtf)
-  of kUnits: numRun(s, rtf)
-  of kText: (if num: numRun(s, rtf) elif rtf: rtfEsc(s) else: s)
-
-proc plainRun(r: JNode, keep = kText): string =
+proc plainRun(r: JNode): string =
   ## a run as the control holds it (a link is found by its text)
   for x in r.elems:
-    if x.kind == jStr: result.add kept(x.s, keep, false, false)
-    elif x.get("num") != nil: result.add kept(x["num"].s, keep, true, false)
+    if x.kind == jStr: result.add x.s
+    elif x.get("num") != nil: result.add numRun(x["num"].s, rtf = false)
     else:
       for k in ["b", "i", "small", "term", "link"]:
-        if x.get(k) != nil: result.add plainRun(x[k], keep)
+        if x.get(k) != nil: result.add plainRun(x[k])
 
 const RtfHead* = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}{\\f1\\fmodern Consolas;}}" &
                 "{\\colortbl;\\red22\\green34\\blue43;\\red31\\green95\\blue139;\\red86\\green100\\blue110;" &
@@ -108,30 +85,30 @@ type Flow* = object
   rtf*: string
   links*: seq[(string, string)]   ## (the link's text, its target), in reading order
 
-proc runRtf*(f: var Flow, r: JNode, keep = kText) =
+proc runRtf*(f: var Flow, r: JNode) =
   for x in r.elems:
-    if x.kind == jStr: f.rtf.add kept(x.s, keep, false, true)
+    if x.kind == jStr: f.rtf.add rtfEsc(x.s)
     elif x.get("b") != nil:
       f.rtf.add "{\\b "
-      f.runRtf(x["b"], keep)
+      f.runRtf(x["b"])
       f.rtf.add "}"
     elif x.get("i") != nil:
       f.rtf.add "{\\i "
-      f.runRtf(x["i"], keep)
+      f.runRtf(x["i"])
       f.rtf.add "}"
     elif x.get("small") != nil:
       f.rtf.add "{\\fs19\\cf3 "
-      f.runRtf(x["small"], keep)
+      f.runRtf(x["small"])
       f.rtf.add "}"
-    elif x.get("num") != nil: f.rtf.add "{\\f1 " & kept(x["num"].s, keep, true, true) & "}"     # the mono face at the text's own size (at 10 pt in 11 pt text a capital V stood as low as a small letter)
+    elif x.get("num") != nil: f.rtf.add "{\\f1 " & numRun(x["num"].s) & "}"     # the mono face at the text's own size (at 10 pt in 11 pt text a capital V stood as low as a small letter)
     elif x.get("term") != nil:
       f.rtf.add "{\\ul "
-      f.runRtf(x["term"], keep)
+      f.runRtf(x["term"])
       f.rtf.add "}"
     elif x.get("link") != nil:
-      f.links.add (plainRun(x["link"], keep), linkTarget(x["to"]))
+      f.links.add (plainRun(x["link"]), linkTarget(x["to"]))
       f.rtf.add "{\\cf2 "
-      f.runRtf(x["link"], keep)
+      f.runRtf(x["link"])
       f.rtf.add "}"
 
 proc para*(f: var Flow, r: JNode, fmt = "\\sa120") =
@@ -144,13 +121,10 @@ proc rowRtf*(f: var Flow, cells: seq[JNode], n, w: int, num: HashSet[int], head:
   for i in 0 ..< n: f.rtf.add "\\clbrdrb\\brdrs\\brdrw10\\cellx" & $(w * (i + 1))
   f.rtf.add "\n"
   for i, c in cells:
+    # (A number column's cell is not kept on one line as the other apps do it: the columns here are of one fixed
+    # width, so a cell that fits is on one line already, and one that does not would be cut where the column is full.)
     f.rtf.add "\\pard\\intbl" & (if i in num and not head: "\\qr" else: "") & (if head: "{\\b\\cf3 " else: "{")
-    # A number column's cell stays on one line ("12" / "mA"; the web's `white-space: nowrap`) when it fits its column:
-    # the columns here are of one fixed width, and a cell kept whole that is wider than its column is cut wherever
-    # the column is full. One that long (a sentence in a number column) wraps, a number staying with its unit.
-    # 110 twips: a character of the 11 pt face, generously; 200: the cell's two margins.
-    let keep = if i notin num or head: kText elif plainRun(c).runeLen * 110 <= w - 200: kWhole else: kUnits
-    f.runRtf(c, keep)
+    f.runRtf(c)
     f.rtf.add "}\\cell "
   f.rtf.add "\\row\n"
 

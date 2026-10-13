@@ -214,18 +214,6 @@ suite "the courses' text in RichEdit":
     check (r.format(i + 2)[1] and CFE_LINK) != 0 and (r.format(i + 10)[1] and CFE_LINK) != 0
     check (r.format(1)[1] and CFE_LINK) == 0
 
-  test "a cell of a number column stays on one line":
-    # five columns of 128 px: "1250 kg per hour" (about 105 px) fits, and wrapped after "kg" before
-    var f = Flow()
-    f.tableRtf(parseStrict("""{"head": [["a"], ["b"], ["c"], ["d"], ["e"]], "num": [1, 2],
-                              "rows": [[["one"], ["1250 kg per hour"], ["12 mA"], ["four"], ["five"]]]}"""))
-    let r = show(f.rtf)
-    for cell in ["1250 kg per hour", "12 mA"]:
-      let text = wholeText(cell, rtf = false)
-      let i = r.find(text)
-      check i > 0
-      check r.brokenAt(i, text) == ""
-
   test "a run too long for its table cell is broken where the cell is full, not cut off":
     # five columns of 1920 twips (128 px at 96 dpi); the run needs about 180 px
     var f = Flow()
