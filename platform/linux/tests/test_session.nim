@@ -190,7 +190,10 @@ suite "who may sign whom out, and the server's own command":
     check ask(S("a long password"), thief, "ip:192.0.2.1") == 429
     check s.openSessions(tom) == 4
     # ... and a sign-in with the right password from there waits too (one count, the one `login` keeps)
-    expect HttpErr: discard s.login("tom", "a long password", ["ip:192.0.2.1"])
+    try:
+      discard s.login("tom", "a long password", ["ip:192.0.2.1"])
+      check false
+    except HttpErr as e: check e.code == 429
     # from where nothing failed, with the password: the others end, the one that asks stays, nobody else's ends
     check s.signOutOthers(u, S("a long password"), here, ["ip:192.0.2.2"]) == 3
     check stillOpen(@[here, phone, thief]) == @[true, false, false]

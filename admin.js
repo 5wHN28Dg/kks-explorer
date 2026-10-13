@@ -556,7 +556,9 @@ async function signOutUser(u){
   if(r) toast(r.ended?`${u.username}: ${r.ended} web sign-in${r.ended===1?'':'s'} ended`:`${u.username} was not signed in on the web`);
 }
 async function signOutOthers(f){
-  const r=await act(()=>K.api('/api/sign-out-others',{password:f.password.value}));
+  const b=f.querySelector('button'); if(b.disabled) return;   // (Enter twice: the second answer, "no other sessions", would replace the first)
+  b.disabled=true;
+  const r=await act(()=>K.api('/api/sign-out-others',{password:f.password.value})).finally(()=>{ b.disabled=false });
   if(r) toast(r.ended?`Signed out ${r.ended} other session${r.ended===1?'':'s'}`:'No other sessions: you are signed in here only');
 }
 async function webSignin(u){

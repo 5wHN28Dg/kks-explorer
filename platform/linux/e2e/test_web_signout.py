@@ -149,6 +149,11 @@ class WebSignOut(unittest.TestCase):
             a1.get_by_role('button', name='Sign in').click()
             a1.wait_for_function(SIGNED_IN % 'ali')
             a1.wait_for_function("() => K.online && K.outbox.length === 0", timeout=30000)
+            # (the page's list is empty for a moment before it is read from the browser's store after a sign-in, so
+            # the wait above can end before the change went: seen in Firefox, where it then arrived within seconds)
+            for _ in range(60):
+                if self.sent(): break
+                a1.wait_for_timeout(500)
             self.assertEqual(self.sent(), ['written before the sign-out'])
             row = [u for u in self.boss.req('GET', '/api/users')['users'] if u['username'] == 'ali'][0]
             self.assertEqual((row['active'], row['has_password']), (True, True))
@@ -186,9 +191,13 @@ class WebSignOut(unittest.TestCase):
             self.assertEqual(a1.evaluate('window.asked'), ['{"password":"not the password"}'])
             self.assertEqual((a1.evaluate('window.sameDocument'), self.status(a1), self.status(a3)), (True, 200, 200))
             expect(card.locator('#sessionCount')).to_have_text('Your account is signed in 2 times on the web: here and in 1 other browser or device.')
-            # the right one, sent with Enter as with the button: the other ends, and the field is empty again
+            # the right one, sent twice in a row (Enter, twice): it goes once, the other ends, and the field is empty again
             field.fill(PW)
-            field.press('Enter')
+            a1.evaluate("""() => { const i = document.querySelector('#sessions form input[name=password]');   // (Enter twice, at once)
+                for (const n of [1, 2]) i.form.requestSubmit() }""")
+            expect(a1.locator('#toast')).to_have_text('Signed out 1 other session')
+            a1.wait_for_timeout(300)
+            self.assertEqual(a1.evaluate('window.asked.length'), 2)      # (the wrong one and this one: sent once)
             expect(a1.locator('#toast')).to_have_text('Signed out 1 other session')
             expect(card.locator('form input[name=password]')).to_have_value('')
             expect(a1.locator('#sessionCount')).to_have_text('Your account is signed in on the web here only.')
