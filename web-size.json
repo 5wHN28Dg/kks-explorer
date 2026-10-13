@@ -75,7 +75,7 @@
    "common.js": 87616,
    "course-bridge.js": 3846,
    "course-figure.js": 18968,
-   "course.css": 15526,
+   "course.css": 15671,
    "course.html": 1176,
    "course.js": 31617,
    "dark.js": 2138,
@@ -96,6 +96,6 @@
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1156419
+  "total": 1156564
  }
 }

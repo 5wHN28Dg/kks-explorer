@@ -10,6 +10,9 @@ import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, 
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
+proc gObjectTypeName(o: W): cstring {.importc: "G_OBJECT_TYPE_NAME", header: "<glib-object.h>".}
+proc gtk_button_get_label(b: W): cstring {.importc, header: "<gtk/gtk.h>".}
+
 proc doShowSheet(w: Win, id: string)
 proc doSelectTag(w: Win, id: string, center: bool)
 
@@ -89,9 +92,7 @@ proc runSearch(w: Win) =
       gtk_list_box_append(w.resultList, navRow(title, w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet),
         (if picking: "Select or unselect " else: "Show ") & title & " on " & (if okS: si.name else: t.sheet), proc () =
           if w.picking: w.pickResult(id)      # the open drawing stays (multi.nim)
-          else:
-            if sheet != w.sheet: w.showSheet(sheet)
-            w.selectTag(id, true)))
+          else: w.goToTag(sheet, id)))
       w.v.hits.incl t.id
   if found.len == 0: gtk_list_box_append(w.resultList, row("Nothing found", "Try part of the code, or a word from the description"))
   gtk_widget_set_visible(w.resultList, 1)
@@ -252,6 +253,7 @@ proc mainScreen(w: Win): W =
     # Save) would still run its handler on the closed panel's form
     w.panelPhotos = nil
     w.panelLink = nil
+    w.panelEdit = nil
     w.panelBox.clear()
     w.v.selected = ""
     w.v.symbolBox = @[]
@@ -270,7 +272,11 @@ proc mainScreen(w: Win): W =
                        ("on", newBool(true))]), t.full & " → step " & $w.linkStep)
       w.loadModel()
       w.applyHighlights()
-    else: w.selectTag(id, false)
+    else:
+      # (the viewer has outlined the tag clicked: Keep editing puts the outline back on the panel's tag)
+      w.goToTag(w.sheet, id, false, proc () =
+        w.v.selected = w.selected
+        gtk_widget_queue_draw(w.v.widget))
   w.v.onLink = proc (i: int) =
     let b = w.v.links[i]
     w.followLink(w.sheet, b.id, b.x0, b.y0)
@@ -308,8 +314,9 @@ proc mainScreen(w: Win): W =
             else: "Tags by how they were read"))
   adw_header_bar_pack_end(contentHeader, w.coverBtn)
   adw_header_bar_pack_end(contentHeader, iconButton("list-add-symbolic", "Mark a tag the app missed", proc () =
-    if w.picking: w.stopPicking()
-    w.startMarking()))
+    w.leaving(proc () =       # (it closes the panel)
+      if w.picking: w.stopPicking()
+      w.startMarking())))
   # the select mode: one photo, place or note for several tags (multi.nim); a toggle, so its state is exposed
   w.pickBtn = gtk_toggle_button_new()
   gtk_button_set_icon_name(w.pickBtn, "selection-mode-symbolic")
@@ -325,7 +332,8 @@ proc mainScreen(w: Win): W =
   margins(w.panelBox, 12)
   let panelHeader = headerBar(adw_window_title_new("Equipment", ""))
   adw_header_bar_set_show_end_title_buttons(panelHeader, 0)
-  adw_header_bar_pack_start(panelHeader, iconButton("window-close-symbolic", "Close the panel", proc () = w.closePanel()))
+  adw_header_bar_pack_start(panelHeader, iconButton("window-close-symbolic", "Close the panel", proc () =
+    w.leaving(proc () = w.closePanel())))
   w.panelSplit = adw_overlay_split_view_new()
   adw_overlay_split_view_set_sidebar_position(w.panelSplit, GTK_PACK_END)
   adw_overlay_split_view_set_content(w.panelSplit, w.v.widget)
@@ -503,6 +511,22 @@ proc activate(w: Win, app: W) =
         removeFile(staleFlag)
         w.rebuildPanel()
         stderr.writeLine "KKS_TEST_STALE_CLICK: the panel was rebuilt before a button's handler"
+  # tests: the file KKS_TEST_FOCUS names holds what has the window's keyboard focus (a button's label, else the
+  # widget's type; "" for none), written when it changes. The headless test session has no keyboard, so its window
+  # is never the active one and AT-SPI reports no widget as focused.
+  let focusFile = getEnv("KKS_TEST_FOCUS")
+  if focusFile.len > 0:
+    var said = "\x00"
+    timeout(100, proc (): bool =
+      let f = gtk_root_get_focus(w.window)
+      var now = ""
+      if f != nil:
+        now = $gObjectTypeName(f)
+        if now == "GtkButton" and gtk_button_get_label(f) != nil: now = "button " & $gtk_button_get_label(f)
+      if now != said:
+        said = now
+        writeFile(focusFile, now)
+      true)
   if getEnv("KKS_DEBUG_DIALOG").len > 0:      # accessibility check: a dialog over whatever screen is up
     after(3000, proc () =
       confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard))

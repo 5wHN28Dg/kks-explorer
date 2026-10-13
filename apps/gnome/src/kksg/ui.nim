@@ -130,6 +130,26 @@ proc confirm*(parent: W, heading, body, yes: string, destructive: bool, fn: proc
     if id == "yes": fn())
   present(d, parent)
 
+proc ask*(parent: W, heading, body, yes, no: string, fn: proc (yes: bool)) =
+  ## A question with a destructive answer (`yes`) and a safe one (`no`: the default, and what Escape gives). `fn`
+  ## runs once, with the answer. Built from idle, like every dialog (see onClick): a pick on the drawing or a
+  ## course's link can come from inside an accessibility action.
+  idle(proc () =
+    let d = adw_alert_dialog_new(heading.cstring, body.cstring)
+    adw_alert_dialog_add_response(d, "no", no.cstring)
+    adw_alert_dialog_add_response(d, "yes", yes.cstring)
+    adw_alert_dialog_set_response_appearance(d, "yes", ADW_RESPONSE_DESTRUCTIVE)
+    adw_alert_dialog_set_default_response(d, "no")
+    adw_alert_dialog_set_close_response(d, "no")
+    var answered = false
+    d.onResponse(proc (id: string) =
+      if answered: return
+      answered = true
+      let yes = id == "yes"
+      idle(proc () = fn(yes)))       # (what it does builds widgets: not inside the response, which a screen
+                                     # reader's press sends from an accessibility action)
+    adw_dialog_present(d, parent))
+
 proc page*(child: W, title: string): W = adw_navigation_page_new(child, title.cstring)
 
 proc toolbarView*(header, content: W): W =
