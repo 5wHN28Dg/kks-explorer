@@ -211,7 +211,8 @@ class Phone(unittest.TestCase):
         import collections, io
         from PIL import Image
         os.makedirs(SHOTS, exist_ok=True)
-        ui.sh('wm', 'size', 'reset')         # (a run that was killed with its low or narrow window on)
+        ui.sh('wm', 'size', 'reset')         # (a run that was killed with its low window on, or turned)
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0')
         ui.tap('Join through a server', exact=True)
         ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
         ui.type_into('Username', 'boss')
@@ -454,7 +455,10 @@ class Phone(unittest.TestCase):
                         break
                     ui.sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.8) - min(was[1] - top - 60, int(h * 0.4))), '3000')
                     time.sleep(1)
+                was = box(ui.find('Gate valve cutaway. '))
                 self.assertLessEqual(was[1], top + 110, 'the figure is not at the top of the page')
+                # (playing, it is drawn from its shapes, not from a bitmap, and nothing would be seen)
+                self.assertTrue(control('Play', was[3]), 'the figure is not paused')
                 time.sleep(2)
                 shot('figure-10-page-upright.png')
                 ui.sh('settings', 'put', 'system', 'user_rotation', '1')
