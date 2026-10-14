@@ -8,7 +8,8 @@
 #   the desktop (2026-10-04): the private bus started a second xdg-document-portal, which took over
 #   /run/user/$UID/doc and unmounted it when the session ended;
 # - its own XDG data/config/cache/state folders (below), for the same reason: the user's keyring and settings;
-# - mutter --headless with one virtual monitor (1280x900, or $KKS_HEADLESS_SIZE), Wayland only;
+# - mutter --headless with one virtual monitor (1280x900, or $KKS_HEADLESS_SIZE), Wayland only, scaled by
+#   $KKS_HEADLESS_SCALE if set (2 with KKS_HEADLESS_SIZE=2560x1600: a HiDPI laptop panel);
 # - DISPLAY unset and GDK_BACKEND=wayland: the app can only reach that compositor; GTK_USE_PORTAL=0 as well.
 # mutter: $KKS_MUTTER, else `mutter` on PATH, else ~/.local/kksdev/root/usr/bin/mutter (Ubuntu's `mutter` package
 # unpacked there with `apt-get download mutter && dpkg-deb -x`: it is a thin launcher for the libmutter GNOME Shell uses).
@@ -56,6 +57,20 @@ dbus-run-session -- sh -c '
     i=$((i + 1)); [ $i -gt 100 ] && { echo "mutter did not start (/tmp/kks-headless-mutter.log)" >&2; kill $m; exit 2; }
     sleep 0.1
   done
+  if [ -n "${KKS_HEADLESS_SCALE:-}" ]; then
+    # a scaled monitor (2 = a HiDPI laptop panel; the monitor must be large enough: 2560x1600 for 2)
+    dc="--session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig"
+    serial=""
+    i=0
+    while [ -z "$serial" ] && [ $i -lt 50 ]; do
+      serial=$(gdbus call $dc --method org.gnome.Mutter.DisplayConfig.GetCurrentState 2>/dev/null | sed -n "s/^(uint32 \([0-9]*\),.*/\1/p")
+      [ -n "$serial" ] || sleep 0.1
+      i=$((i + 1))
+    done
+    gdbus call $dc --method org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig "$serial" 1 \
+      "[(0, 0, $KKS_HEADLESS_SCALE, 0, true, [(\"Meta-0\", \"${KKS_HEADLESS_SIZE:-1280x900}@60.000\", @a{sv} {})])]" "@a{sv} {}" >/dev/null ||
+      { echo "mutter refused scale $KKS_HEADLESS_SCALE" >&2; kill $m; exit 2; }
+  fi
   r=0
   "$@" || r=$?
   kill $m 2>/dev/null

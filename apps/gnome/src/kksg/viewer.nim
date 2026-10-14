@@ -1,10 +1,18 @@
 ## The drawing viewer (R1, R2; decisions 0016, 0031):
-## - the overview pyramid (JPEG XL levels, decoded on a worker thread), shown until the vector tiles are ready;
-## - vector tiles at every zoom, drawn from the .kkp by Cairo and cached as GPU textures;
-## - tag hotspots on top.
+## - the overview pyramid (JPEG XL levels, decoded on a worker thread), a placeholder until the vector tiles are ready;
+## - vector tiles at every zoom, drawn from the .kkp by Cairo on worker threads and cached as GPU textures;
+## - tag hotspots on top, as GSK nodes.
 ## Input: drag to pan, wheel or pinch to zoom, click a tag, keyboard (arrows, +/−, 0 to fit).
+##
+## Sharpness (2026-10-14: soft at every zoom on a scale-2 screen): tiles are drawn at the exact zoom in device pixels
+## (the surface's scale, fractional ones included) and placed on whole device pixels, so each tile pixel is one screen
+## pixel, unfiltered. Tiles drawn for a power of two above the zoom and shrunk by 0.5–1 with a mipmapped filter, at
+## fractional positions, were blurred to a fifth of the sharp picture's edge energy. While the zoom changes, the tiles
+## at hand are scaled; once it has stayed put for `SettleMs`, the tiles of the new zoom are drawn.
+## Smoothness: nothing is drawn by Cairo on the main thread any more (the tiles were, for up to a frame's budget at a
+## time, and two window-sized Cairo layers were rasterised every frame), so panning only moves textures.
 
-import std/[math, tables, sets, algorithm, strutils, times, typedthreads, atomics]
+import std/[math, tables, sets, algorithm, times, typedthreads, atomics]
 import kks/json
 import kksi/jxl
 import gtk, kkprender, darkcolor
@@ -14,8 +22,26 @@ proc kks_view_new(snap: pointer, user: pointer): W {.importc, cdecl.}
 
 const
   TileSize = 512                 ## device px
-  MaxTiles = 240
-  FrameBudgetMs = 18.0
+  MaxTiles = 96                  ## cached tiles (1 MiB each), at least twice what a view needs (`tileCap`)
+  TileWorkers = 2
+  MaxInflight = 2 * TileWorkers  ## tiles queued to the workers at once: a moving view's old wishes don't pile up
+  SettleMs = 120                 ## a zoom that has stayed put this long gets its own tiles
+
+type
+  TileKey = tuple[zb: uint64, ix, iy: int]   ## the tile zoom's bits (device px per point), the tile's column, row
+  Tile = object
+    tex: W
+    used: int                    ## the frame it was last drawn in (the least recently used goes first)
+  TileJob = object
+    gen: int
+    sheet: pointer               ## ptr SheetObj, kept alive by a GC_ref on the main thread until the job comes back
+    dark: bool
+    key: TileKey
+  TileDone = object
+    gen: int
+    sheet: pointer
+    key: TileKey
+    surf: Surface                ## nil: skipped (an older generation) or failed
 
 type
   TagBox* = object
@@ -47,10 +73,15 @@ type
     gen: int                     ## bumps when the sheet changes (late decodes are dropped)
     z*, ox*, oy*: float          ## logical px per point; the point at the widget's top-left
     fitted: bool
-    tiles: Table[(int, int, int), W]
-    lru: seq[(int, int, int)]
-    want: seq[(int, int, int)]
-    rendering: bool
+    tiles: Table[TileKey, Tile]
+    want: seq[TileKey]           ## tiles the view needs, the most wanted last
+    queued: HashSet[TileKey]     ## with the workers
+    inflight: int                ## jobs with the workers, of any generation
+    ticking: bool                ## a frame-clock callback collects finished tiles
+    frame: int
+    tileZ: float                 ## the zoom (device px per point) tiles are drawn at; follows the view's once it settles
+    lastDz: float                ## the view's zoom at the last frame
+    settle: cuint                ## the timer that adopts a new zoom (0 none)
     tags*: seq[TagBox]
     selected*: string
     hits*: HashSet[string]       ## search results to highlight
@@ -83,7 +114,11 @@ var
   results: Channel[DecodeDone]
   worker: Thread[void]
   workerStarted = false
-  liveGen: Atomic[int]          ## the viewer's current gen: the worker skips jobs queued for an older one
+  liveGen: Atomic[int]          ## the viewer's current gen: the workers skip jobs queued for an older one
+  tileJobs: Channel[TileJob]
+  tileResults: Channel[TileDone]
+  tileThreads: array[TileWorkers, Thread[void]]
+  tileStarted = false
 
 proc decodeWorker() {.thread.} =
   while true:
@@ -111,7 +146,40 @@ proc ensureWorker() =
     createThread(worker, decodeWorker)
     workerStarted = true
 
-proc sf(v: Viewer): float = float(max(1, gtk_widget_get_scale_factor(v.widget)))
+proc tileZoom(k: TileKey): float = cast[float](k.zb)
+
+proc tileWorker() {.thread.} =
+  ## draws tiles: the job's sheet is only read here (kkprender's thread rules)
+  while true:
+    let j = tileJobs.recv()
+    var d = TileDone(gen: j.gen, sheet: j.sheet, key: j.key)
+    if j.gen == liveGen.load:
+      let z = tileZoom(j.key)
+      let span = float(TileSize) / z
+      d.surf = renderTile(cast[ptr SheetObj](j.sheet), j.dark, z, float(j.key.ix) * span, float(j.key.iy) * span,
+                          TileSize, TileSize)
+    tileResults.send(d)
+
+proc ensureTileWorkers() =
+  if not tileStarted:
+    tileJobs.open()
+    tileResults.open()
+    for t in tileThreads.mitems: createThread(t, tileWorker)
+    tileStarted = true
+
+proc gtk_widget_get_native(w: W): W {.importc, header: "<gtk/gtk.h>".}
+proc gtk_native_get_surface(w: W): W {.importc, header: "<gtk/gtk.h>".}
+proc gdk_surface_get_scale(s: W): cdouble {.importc, header: "<gtk/gtk.h>".}
+
+proc sf(v: Viewer): float =
+  ## device px per logical px: the surface's scale, fractional ones included (1.25, 1.5 …); the widget's integer scale
+  ## factor before it is on screen
+  let n = gtk_widget_get_native(v.widget)
+  let surf = if n != nil: gtk_native_get_surface(n) else: nil
+  if surf != nil:
+    let s = float(gdk_surface_get_scale(surf))
+    if s > 0: return s
+  float(max(1, gtk_widget_get_scale_factor(v.widget)))
 
 proc fit*(v: Viewer) =
   if v.sheet == nil: return
@@ -160,10 +228,15 @@ proc centerOn*(v: Viewer, x0, y0, x1, y1: float, zoom = 0.0) =
   if v.onView != nil: v.onView()
 
 proc dropTiles(v: Viewer) =
-  for _, t in v.tiles: g_object_unref(t)
+  ## every cached tile goes; tiles still with the workers are of an older generation now and are dropped on arrival
+  for _, t in v.tiles: g_object_unref(t.tex)
   v.tiles.clear()
-  v.lru.setLen(0)
   v.want.setLen(0)
+  v.queued.clear()
+  v.tileZ = 0                   # the next frame's zoom is taken at once
+  if v.settle != 0:
+    g_source_remove(v.settle)
+    v.settle = 0
 
 proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[string]) =
   ## kkp: the path store; info: the sheets.json entry; levels: the pyramid files' bytes, level 0 first
@@ -240,30 +313,66 @@ proc setDark*(v: Viewer, on: bool) =
 
 proc levelScale(v: Viewer, k: int): float = v.scale0 / float(1 shl k)
 
-proc renderSome(v: Viewer) =
-  ## render wanted tiles for one frame's budget, then redraw
-  if v.sheet == nil: return
-  let t0 = epochTime()
-  while v.want.len > 0 and (epochTime() - t0) * 1000 < FrameBudgetMs:
-    let key = v.want.pop()
-    if key in v.tiles: continue
-    let (e, ix, iy) = key
-    let tz = pow(2.0, float(e))
-    let span = float(TileSize) / tz
-    let surf = v.sheet.renderTile(tz, float(ix) * span, float(iy) * span, TileSize, TileSize)
-    v.tiles[key] = textureOf(surf)
-    cairo_surface_destroy(surf)
-    v.lru.add key
-    while v.lru.len > MaxTiles:
-      let old = v.lru[0]
-      v.lru.delete(0)
-      if old in v.tiles:
-        g_object_unref(v.tiles[old])
-        v.tiles.del(old)
-  gtk_widget_queue_draw(v.widget)
-  if v.want.len == 0: v.rendering = false
-  else: idle(proc () = v.renderSome())
+proc tilesPending*(v: Viewer): int =
+  ## tiles the view still waits for (wanted, with the workers, or a zoom about to be adopted); tests wait for 0
+  v.want.len + v.queued.len + (if v.settle != 0: 1 else: 0)
 
+proc tileCap(v: Viewer): int =
+  ## the cache's size: MaxTiles, or twice a view's tiles on a very large screen (so a view never evicts its own)
+  let d = v.sf
+  let across = int(ceil(float(gtk_widget_get_width(v.widget)) * d / float(TileSize))) + 3
+  let down = int(ceil(float(gtk_widget_get_height(v.widget)) * d / float(TileSize))) + 3
+  max(MaxTiles, 2 * across * down)
+
+proc evict(v: Viewer) =
+  ## the least recently drawn tiles go, down to the cap
+  let cap = v.tileCap
+  if v.tiles.len <= cap: return
+  var order: seq[(int, TileKey)]
+  for k, t in v.tiles: order.add (t.used, k)
+  order.sort(proc (a, b: (int, TileKey)): int = cmp(a[0], b[0]))
+  for n in 0 ..< v.tiles.len - cap:
+    let k = order[n][1]
+    g_object_unref(v.tiles[k].tex)
+    v.tiles.del k
+
+proc pump(v: Viewer)
+
+proc collect(v: Viewer): bool =
+  ## take the tiles the workers finished (main thread); true if one of them belongs to the view
+  while true:
+    let (ok, d) = tileResults.tryRecv()
+    if not ok: break
+    dec v.inflight
+    GC_unref(cast[Sheet](d.sheet))
+    if d.gen == v.gen and d.surf != nil:
+      v.queued.excl d.key
+      if d.key in v.tiles: g_object_unref(v.tiles[d.key].tex)
+      v.tiles[d.key] = Tile(tex: textureTaking(d.surf), used: v.frame)
+      result = true
+    elif d.surf != nil: cairo_surface_destroy(d.surf)
+    elif d.gen == v.gen: v.queued.excl d.key
+  if result: v.evict()
+
+proc pump(v: Viewer) =
+  ## hand the most wanted tiles to the workers, a few at a time; collect finished ones on every frame until none is
+  ## out (a frame-clock callback: tiles arrive in step with drawing)
+  if v.sheet == nil: return
+  ensureTileWorkers()
+  while v.inflight < MaxInflight and v.want.len > 0:
+    let k = v.want.pop()
+    if k in v.tiles or k in v.queued: continue
+    v.queued.incl k
+    inc v.inflight
+    GC_ref(v.sheet)
+    tileJobs.send(TileJob(gen: v.gen, sheet: cast[pointer](v.sheet), dark: v.dark, key: k))
+  if v.inflight > 0 and not v.ticking:
+    v.ticking = true
+    onTick(v.widget, proc (us: int64): bool =
+      if v.collect(): gtk_widget_queue_draw(v.widget)
+      v.pump()
+      v.ticking = v.inflight > 0
+      v.ticking)
 
 proc coverColor*(photos: string): (float, float, float) =
   ## the photo coverage colours, the same on every client: both green, the equipment only amber, the tag plate only
@@ -291,164 +400,234 @@ proc markerColor*(status, photos: string, coverage, dark: bool): (float, float, 
   let (r, g, b) = if coverage and status != "pending": coverColor(photos) else: tagColor(status)
   if dark: lightenForDark(r, g, b) else: (r, g, b)
 
-proc snapshot(v: Viewer, s: W, w, h: int) =
+type
+  GdkRGBA {.importc, header: "<gtk/gtk.h>", bycopy.} = object
+    red, green, blue, alpha: cfloat
+  GskRoundedRect {.importc, header: "<gtk/gtk.h>", bycopy.} = object
+proc gtk_snapshot_append_color(s: W, c: ptr GdkRGBA, r: ptr GraphRect) {.importc, header: "<gtk/gtk.h>".}
+proc gsk_rounded_rect_init_from_rect(rr: ptr GskRoundedRect, r: ptr GraphRect, radius: cfloat): ptr GskRoundedRect
+  {.importc, header: "<gtk/gtk.h>", discardable.}
+proc gtk_snapshot_append_border(s: W, rr: ptr GskRoundedRect, widths: ptr array[4, cfloat],
+                                colors: ptr array[4, GdkRGBA]) {.importc, header: "<gtk/gtk.h>".}
+
+proc rgba(r, g, b: float, a = 1.0): GdkRGBA = GdkRGBA(red: cfloat(r), green: cfloat(g), blue: cfloat(b), alpha: cfloat(a))
+
+proc fillRect(s: W, c: GdkRGBA, x, y, w, h: float) =
   var r: GraphRect
-  graphene_rect_init(addr r, 0, 0, cfloat(w), cfloat(h))
-  let bg = gtk_snapshot_append_cairo(s, addr r)
-  if v.dark: cairo_set_source_rgb(bg, 0.24, 0.24, 0.26)     # around the sheet: lighter than the dark paper
-  else: cairo_set_source_rgb(bg, 0.82, 0.83, 0.85)
-  cairo_paint(bg)
-  cairo_destroy(bg)
+  var c = c
+  graphene_rect_init(addr r, cfloat(x), cfloat(y), cfloat(w), cfloat(h))
+  gtk_snapshot_append_color(s, addr c, addr r)
+
+proc strokeRect(s: W, c: GdkRGBA, x, y, w, h, lw: float) =
+  ## a rectangle's outline `lw` wide, centred on its edges as Cairo strokes it
+  var r: GraphRect
+  var rr: GskRoundedRect
+  graphene_rect_init(addr r, cfloat(x - lw / 2), cfloat(y - lw / 2), cfloat(w + lw), cfloat(h + lw))
+  gsk_rounded_rect_init_from_rect(addr rr, addr r, 0)
+  var widths = [cfloat(lw), cfloat(lw), cfloat(lw), cfloat(lw)]
+  var colors = [c, c, c, c]
+  gtk_snapshot_append_border(s, addr rr, addr widths, addr colors)
+
+template cairoIn(s: W, x, y, w, h: float, c, body: untyped) =
+  ## a small Cairo node over just this box (widget coordinates inside), for the few dashed or round marks
+  block:
+    var r: GraphRect
+    graphene_rect_init(addr r, cfloat(floor(x)), cfloat(floor(y)), cfloat(ceil(w) + 1), cfloat(ceil(h) + 1))
+    let c = gtk_snapshot_append_cairo(s, addr r)
+    body
+    cairo_destroy(c)
+
+proc adoptZoom(v: Viewer, dz: float) =
+  ## the zoom tiles are drawn at: the view's at once when nothing is drawn yet, else once it has stayed put for
+  ## SettleMs (a pinch or a run of wheel steps doesn't start tiles for every zoom on the way)
+  if v.tileZ == 0:
+    v.tileZ = dz
+    return
+  if dz == v.tileZ:
+    if v.settle != 0:
+      g_source_remove(v.settle)
+      v.settle = 0
+    return
+  if v.settle != 0: g_source_remove(v.settle)
+  v.settle = after(SettleMs, proc () =
+    v.settle = 0
+    v.tileZ = v.lastDz
+    gtk_widget_queue_draw(v.widget))
+
+proc snapshot(v: Viewer, s: W, w, h: int) =
+  inc v.frame
+  if v.dark: fillRect(s, rgba(0.24, 0.24, 0.26), 0, 0, float(w), float(h))   # around the sheet: lighter than the paper
+  else: fillRect(s, rgba(0.82, 0.83, 0.85), 0, 0, float(w), float(h))
   if v.sheet == nil and v.levels.len == 0: return
   if not v.fitted: v.fit()
   if v.z <= 0: return
   let wpt = if v.sheet != nil: v.sheet.widthPt else: 1.0
   let hpt = if v.sheet != nil: v.sheet.heightPt else: 1.0
-  let dz = v.z * v.sf                     # device px per point
-  # 1. the overview: the smallest level sharp enough for this zoom (asked for once), drawn when decoded; until then
-  #    the sharpest level already decoded
-  var want = 0
-  let odz = if v.fitZ > 0: min(dz, v.fitZ * v.sf) else: dz   # vector tiles cover the zooms beyond fit
-  for k in countdown(v.levels.len - 1, 0):
-    if v.levelScale(k) >= odz * 0.9:
-      want = k
-      break
-  if v.levels.len > 0 and not v.asked[want]:
-    v.asked[want] = true
-    jobs.send(DecodeJob(gen: v.gen, level: want, dark: v.dark, data: v.levelData[want]))
-  var best = -1
-  var tex: W = nil
-  if v.levels.len > 0 and v.levels[want] != nil: tex = v.levels[want]
-  elif want < v.stale.len and v.stale[want] != nil: tex = v.stale[want]   # shown before a dark switch: not blurrier
-  else:
-    for k in 0 ..< v.levels.len:
-      if v.levels[k] != nil:
-        tex = v.levels[k]
-        break
-    if tex == nil:
-      for k in 0 ..< v.stale.len:
-        if v.stale[k] != nil:
-          tex = v.stale[k]
-          break
-  if tex != nil: best = 0
-  v.dropSharperStale(want, tex)
-  graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
-  if best >= 0:
-    gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
-    if not timingReported and startedAt > 0:
-      timingReported = true
-      stderr.writeLine "timing: first sheet drawn " & $int((epochTime() - startedAt) * 1000) & " ms after launch"
-  else:
-    let c = gtk_snapshot_append_cairo(s, addr r)
-    if v.dark: cairo_set_source_rgb(c, DarkLo / 255, DarkLo / 255, DarkLo / 255)
-    else: cairo_set_source_rgb(c, 1, 1, 1)
-    cairo_paint(c)
-    cairo_destroy(c)
-  # 2. vector tiles at every zoom, over the overview (which shows until they are rendered): the overview shrunk to fit
-  #    made the lines soft (the user, 2026-10-07). Clipped to the sheet: at low zoom one tile reaches past its edge.
-  if v.sheet != nil:
-    graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
-    gtk_snapshot_push_clip(s, addr r)
-    let e = int(ceil(log2(dz)))
-    let tz = pow(2.0, float(e))
-    let span = float(TileSize) / tz         # points per tile
-    let x0 = max(0.0, v.ox)
-    let y0 = max(0.0, v.oy)
-    let x1 = min(wpt, v.ox + float(w) / v.z)
-    let y1 = min(hpt, v.oy + float(h) / v.z)
-    # while this level's tiles render, the neighbouring levels' cached tiles stand in (sharper than the overview)
-    for e2 in [e + 1, e - 1]:
-      let span2 = float(TileSize) / pow(2.0, float(e2))
-      for iy in int(floor(y0 / span2)) .. int(floor(y1 / span2)):
-        for ix in int(floor(x0 / span2)) .. int(floor(x1 / span2)):
-          if (e2, ix, iy) in v.tiles and (e, int(floor(float(ix) * span2 / span)), int(floor(float(iy) * span2 / span))) notin v.tiles:
-            graphene_rect_init(addr r, cfloat((float(ix) * span2 - v.ox) * v.z), cfloat((float(iy) * span2 - v.oy) * v.z),
-                               cfloat(span2 * v.z), cfloat(span2 * v.z))
-            gtk_snapshot_append_scaled_texture(s, v.tiles[(e2, ix, iy)], GSK_SCALING_FILTER_TRILINEAR, addr r)
-    var missing: seq[(int, int, int)]
-    for iy in int(floor(y0 / span)) .. int(floor(y1 / span)):
-      for ix in int(floor(x0 / span)) .. int(floor(x1 / span)):
-        let key = (e, ix, iy)
-        if key in v.tiles:
-          graphene_rect_init(addr r, cfloat((float(ix) * span - v.ox) * v.z), cfloat((float(iy) * span - v.oy) * v.z),
-                             cfloat(span * v.z), cfloat(span * v.z))
-          gtk_snapshot_append_scaled_texture(s, v.tiles[key], GSK_SCALING_FILTER_TRILINEAR, addr r)   # drawn at 0.5-1x
-        else: missing.add key
-    gtk_snapshot_pop(s)
-    if missing.len > 0:
-      # nearest the centre last, so it is popped (rendered) first
+  let sf = v.sf
+  let dz = v.z * sf                       # device px per point
+  v.lastDz = dz
+  # the vector tiles: which are at hand, and which the view still needs
+  var exact: seq[(TileKey, float, float)]   # tiles at this very zoom, with their place in device px
+  var standIns: seq[TileKey]
+  var covered = false                        # the view is all exact tiles: no overview under them
+  let x0 = max(0.0, v.ox)
+  let y0 = max(0.0, v.oy)
+  let x1 = min(wpt, v.ox + float(w) / v.z)
+  let y1 = min(hpt, v.oy + float(h) / v.z)
+  if v.sheet != nil and x1 > x0 and y1 > y0:
+    v.adoptZoom(dz)
+    if v.tileZ == dz:
+      let span = float(TileSize) / dz         # points per tile
+      let zb = cast[uint64](dz)
+      # the sheet's device pixel under the widget's left edge, rounded: every tile lands on whole device pixels
+      let bx = round(v.ox * dz)
+      let by = round(v.oy * dz)
+      let c0 = int(floor(x0 / span))
+      let c1 = int(floor(min(x1, wpt - 1e-9) / span))
+      let r0 = int(floor(y0 / span))
+      let r1 = int(floor(min(y1, hpt - 1e-9) / span))
+      var missing: seq[TileKey]
+      covered = true
+      for iy in r0 .. r1:
+        for ix in c0 .. c1:
+          let key = (zb, ix, iy)
+          if key in v.tiles: exact.add (key, float(ix * TileSize) - bx, float(iy * TileSize) - by)
+          else:
+            missing.add key
+            covered = false
+      # the most wanted last: the middle of the view first, then a ring around it (ready when the pan gets there)
       let cx = (x0 + x1) / 2 / span
       let cy = (y0 + y1) / 2 / span
-      missing.sort(proc (a, b: (int, int, int)): int =
-        cmp(abs(float(b[1]) + 0.5 - cx) + abs(float(b[2]) + 0.5 - cy), abs(float(a[1]) + 0.5 - cx) + abs(float(a[2]) + 0.5 - cy)))
-      v.want = missing
-      if not v.rendering:
-        v.rendering = true
-        idle(proc () = v.renderSome())
-  # 3. hotspots
-  graphene_rect_init(addr r, 0, 0, cfloat(w), cfloat(h))
-  let c = gtk_snapshot_append_cairo(s, addr r)
+      proc far(k: TileKey): float = abs(float(k.ix) + 0.5 - cx) + abs(float(k.iy) + 0.5 - cy)
+      missing.sort(proc (a, b: TileKey): int = cmp(far(b), far(a)))
+      var ring: seq[TileKey]
+      let cmax = int(ceil(wpt / span)) - 1
+      let rmax = int(ceil(hpt / span)) - 1
+      for iy in max(0, r0 - 1) .. min(rmax, r1 + 1):
+        for ix in max(0, c0 - 1) .. min(cmax, c1 + 1):
+          if (ix < c0 or ix > c1 or iy < r0 or iy > r1) and (zb, ix, iy) notin v.tiles: ring.add (zb, ix, iy)
+      ring.sort(proc (a, b: TileKey): int = cmp(far(b), far(a)))
+      v.want = ring & missing
+    else: v.want.setLen(0)                    # the zoom is changing: the tiles at hand stand in, scaled
+    if not covered:
+      for k, t in v.tiles:
+        if k.zb == cast[uint64](dz): continue
+        let span = float(TileSize) / tileZoom(k)
+        if float(k.ix + 1) * span < x0 or float(k.ix) * span > x1 or float(k.iy + 1) * span < y0 or
+           float(k.iy) * span > y1: continue
+        standIns.add k
+      # the furthest from this zoom first, so the nearest end up on top
+      standIns.sort(proc (a, b: TileKey): int = cmp(abs(log2(tileZoom(b) / dz)), abs(log2(tileZoom(a) / dz))))
+  when defined(viewerDebug):
+    stderr.writeLine "snap dz=", dz, " tileZ=", v.tileZ, " exact=", exact.len, " standIns=", standIns.len, " covered=", covered, " want=", v.want.len, " queued=", v.queued.len, " tiles=", v.tiles.len, " inflight=", v.inflight
+  var r: GraphRect
+  if not covered:
+    # the overview: the smallest level sharp enough for this zoom (asked for once), drawn when decoded; until then
+    # the sharpest level already decoded
+    var want = 0
+    let odz = if v.fitZ > 0: min(dz, v.fitZ * sf) else: dz   # vector tiles cover the zooms beyond fit
+    for k in countdown(v.levels.len - 1, 0):
+      if v.levelScale(k) >= odz * 0.9:
+        want = k
+        break
+    if v.levels.len > 0 and not v.asked[want]:
+      v.asked[want] = true
+      jobs.send(DecodeJob(gen: v.gen, level: want, dark: v.dark, data: v.levelData[want]))
+    var tex: W = nil
+    if v.levels.len > 0 and v.levels[want] != nil: tex = v.levels[want]
+    elif want < v.stale.len and v.stale[want] != nil: tex = v.stale[want]   # shown before a dark switch: not blurrier
+    else:
+      for k in 0 ..< v.levels.len:
+        if v.levels[k] != nil:
+          tex = v.levels[k]
+          break
+      if tex == nil:
+        for k in 0 ..< v.stale.len:
+          if v.stale[k] != nil:
+            tex = v.stale[k]
+            break
+    v.dropSharperStale(want, tex)
+    graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
+    if tex != nil:
+      gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
+      if not timingReported and startedAt > 0:
+        timingReported = true
+        stderr.writeLine "timing: first sheet drawn " & $int((epochTime() - startedAt) * 1000) & " ms after launch"
+    elif v.dark: fillRect(s, rgba(DarkLo / 255, DarkLo / 255, DarkLo / 255), -v.ox * v.z, -v.oy * v.z, wpt * v.z, hpt * v.z)
+    else: fillRect(s, rgba(1, 1, 1), -v.ox * v.z, -v.oy * v.z, wpt * v.z, hpt * v.z)
+  if v.sheet != nil:
+    # clipped to the sheet: at low zoom a tile reaches past its edge
+    graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
+    gtk_snapshot_push_clip(s, addr r)
+    for k in standIns:
+      let tz = tileZoom(k)
+      let span = float(TileSize) / tz
+      v.tiles[k].used = v.frame
+      graphene_rect_init(addr r, cfloat((float(k.ix) * span - v.ox) * v.z), cfloat((float(k.iy) * span - v.oy) * v.z),
+                         cfloat(span * v.z), cfloat(span * v.z))
+      # shrunk by more than half: mipmaps, else plain linear (sharper)
+      gtk_snapshot_append_scaled_texture(s, v.tiles[k].tex,
+        if dz / tz < 0.5: GSK_SCALING_FILTER_TRILINEAR else: GSK_SCALING_FILTER_LINEAR, addr r)
+    for (k, dx, dy) in exact:
+      v.tiles[k].used = v.frame
+      # one tile pixel per device pixel, on whole device pixels: nothing to filter
+      graphene_rect_init(addr r, cfloat(dx / sf), cfloat(dy / sf), cfloat(float(TileSize) / sf), cfloat(float(TileSize) / sf))
+      gtk_snapshot_append_scaled_texture(s, v.tiles[k].tex, GSK_SCALING_FILTER_NEAREST, addr r)
+    gtk_snapshot_pop(s)
+    v.pump()
+  # hotspots: colour and border nodes (GSK draws them on the GPU), small Cairo nodes for the few dashed or round ones
   for t in v.tags:
     let x = (t.x0 - v.ox) * v.z
     let y = (t.y0 - v.oy) * v.z
     let tw = (t.x1 - t.x0) * v.z
     let th = (t.y1 - t.y0) * v.z
-    if x + tw < 0 or y + th < 0 or x > float(w) or y > float(h): continue
+    if x + tw < -8 or y + th < -8 or x > float(w) + 8 or y > float(h) + 8: continue
     var (cr, cg, cb) = markerColor(t.status, t.photos, v.coverage, v.dark)
     let sel = t.id == v.selected
     let hit = t.id in v.hits
     let dim = v.floorOn and t.id notin v.floorIds
     if t.id in v.linked:
       (cr, cg, cb) = if v.dark: lightenForDark(0.1, 0.65, 0.3) else: (0.1, 0.65, 0.3)
-      cairo_set_source_rgba(c, cr, cg, cb, 0.3)
-      cairo_rectangle(c, x, y, tw, th)
-      cairo_fill(c)
+      fillRect(s, rgba(cr, cg, cb, 0.3), x, y, tw, th)
     if dim:
-      cairo_set_source_rgba(c, cr, cg, cb, 0.18)
-      cairo_set_line_width(c, 1)
-      cairo_rectangle(c, x, y, tw, th)
-      cairo_stroke(c)
+      strokeRect(s, rgba(cr, cg, cb, 0.18), x, y, tw, th, 1)
       continue
     if v.coverage and t.status != "pending" and not (sel or hit):
-      cairo_set_source_rgba(c, cr, cg, cb, 0.28)
-      cairo_rectangle(c, x, y, tw, th)
-      cairo_fill(c)
+      fillRect(s, rgba(cr, cg, cb, 0.28), x, y, tw, th)
     if sel or hit:
-      cairo_set_source_rgba(c, if hit and not sel: 1.0 else: cr, if hit and not sel: 0.85 else: cg, if hit and not sel: 0.0 else: cb, 0.28)
-      cairo_rectangle(c, x, y, tw, th)
-      cairo_fill(c)
-    cairo_set_source_rgba(c, cr, cg, cb, if sel or v.dark: 1.0 else: 0.75)
-    cairo_set_line_width(c, if sel: 3.0 else: 1.5)
+      if hit and not sel: fillRect(s, rgba(1.0, 0.85, 0.0, 0.28), x, y, tw, th)
+      else: fillRect(s, rgba(cr, cg, cb, 0.28), x, y, tw, th)
+    let lw = if sel: 3.0 else: 1.5
+    let a = if sel or v.dark: 1.0 else: 0.75
     if t.status == "pending":
-      var dash = [4.0, 3.0]
-      cairo_set_dash(c, addr dash[0], 2, 0)
-    cairo_rectangle(c, x, y, tw, th)
-    cairo_stroke(c)
-    cairo_set_dash(c, nil, 0, 0)
+      cairoIn(s, x - lw, y - lw, tw + 2 * lw, th + 2 * lw, c):
+        var dash = [4.0, 3.0]
+        cairo_set_dash(c, addr dash[0], 2, 0)
+        cairo_set_source_rgba(c, cr, cg, cb, a)
+        cairo_set_line_width(c, lw)
+        cairo_rectangle(c, x, y, tw, th)
+        cairo_stroke(c)
+    else: strokeRect(s, rgba(cr, cg, cb, a), x, y, tw, th, lw)
     if t.id in v.chosen:
       # selected for "… for all": a black and yellow ring outside the box, whatever colouring is on
-      cairo_set_line_width(c, 4)
-      cairo_set_source_rgba(c, 0, 0, 0, 0.9)
-      cairo_rectangle(c, x - 4, y - 4, tw + 8, th + 8)
-      cairo_stroke(c)
-      cairo_set_line_width(c, 2)
-      cairo_set_source_rgba(c, 1, 0.85, 0, 1)
-      cairo_rectangle(c, x - 4, y - 4, tw + 8, th + 8)
-      cairo_stroke(c)
+      strokeRect(s, rgba(0, 0, 0, 0.9), x - 4, y - 4, tw + 8, th + 8, 4)
+      strokeRect(s, rgba(1, 0.85, 0, 1), x - 4, y - 4, tw + 8, th + 8, 2)
   if v.symbolBox.len == 4:
     # the valve symbol the open panel's type was read from: dashed magenta, apart from every tag colour
     let b = v.symbolBox
     let (mr, mg, mb) = if v.dark: lightenForDark(0.69, 0.09, 0.62) else: (0.69, 0.09, 0.62)
-    cairo_set_source_rgba(c, mr, mg, mb, 0.16)
-    cairo_rectangle(c, (b[0] - v.ox) * v.z - 3, (b[1] - v.oy) * v.z - 3, (b[2] - b[0]) * v.z + 6, (b[3] - b[1]) * v.z + 6)
-    cairo_fill(c)
-    var dash = [5.0, 3.0]
-    cairo_set_dash(c, addr dash[0], 2, 0)
-    cairo_set_source_rgba(c, mr, mg, mb, 1.0)
-    cairo_set_line_width(c, 2.5)
-    cairo_rectangle(c, (b[0] - v.ox) * v.z - 3, (b[1] - v.oy) * v.z - 3, (b[2] - b[0]) * v.z + 6, (b[3] - b[1]) * v.z + 6)
-    cairo_stroke(c)
-    cairo_set_dash(c, nil, 0, 0)
+    let bx = (b[0] - v.ox) * v.z - 3
+    let by = (b[1] - v.oy) * v.z - 3
+    let bw = (b[2] - b[0]) * v.z + 6
+    let bh = (b[3] - b[1]) * v.z + 6
+    fillRect(s, rgba(mr, mg, mb, 0.16), bx, by, bw, bh)
+    cairoIn(s, bx - 3, by - 3, bw + 6, bh + 6, c):
+      var dash = [5.0, 3.0]
+      cairo_set_dash(c, addr dash[0], 2, 0)
+      cairo_set_source_rgba(c, mr, mg, mb, 1.0)
+      cairo_set_line_width(c, 2.5)
+      cairo_rectangle(c, bx, by, bw, bh)
+      cairo_stroke(c)
   # off-page connectors: violet dashed circles, unlike the tags' rectangles
   for i, l in v.links:
     let cx = ((l.x0 + l.x1) / 2 - v.ox) * v.z
@@ -457,31 +636,31 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     if cx + rad < 0 or cy + rad < 0 or cx - rad > float(w) or cy - rad > float(h): continue
     let sel = i == v.linkSel
     let (lr, lg, lb) = linkColor(v.dark)
-    cairo_new_sub_path(c)
-    cairo_arc(c, cx, cy, rad, 0, 2 * PI)
-    cairo_set_source_rgba(c, lr, lg, lb, if sel: 0.3 else: 0.12)
-    cairo_fill_preserve(c)
-    cairo_set_source_rgba(c, lr, lg, lb, 0.9)
-    cairo_set_line_width(c, if sel: 3.5 else: 2.0)
-    if not sel:
-      var dash = [5.0, 3.0]
-      cairo_set_dash(c, addr dash[0], 2, 0)
-    cairo_stroke(c)
-    cairo_set_dash(c, nil, 0, 0)
-  if v.selecting and v.mark[2] != v.mark[0]:
-    var dash = [6.0, 4.0]
-    cairo_set_dash(c, addr dash[0], 2, 0)
-    cairo_set_source_rgba(c, 0.1, 0.35, 0.85, 0.9)
-    cairo_set_line_width(c, 2)
-    cairo_rectangle(c, (v.mark[0] - v.ox) * v.z, (v.mark[1] - v.oy) * v.z, (v.mark[2] - v.mark[0]) * v.z, (v.mark[3] - v.mark[1]) * v.z)
-    cairo_stroke(c)
-    cairo_set_dash(c, nil, 0, 0)
-  if v.marking and v.mark[2] != v.mark[0]:
-    cairo_set_source_rgba(c, 0.85, 0.1, 0.1, 0.9)
-    cairo_set_line_width(c, 2)
-    cairo_rectangle(c, (v.mark[0] - v.ox) * v.z, (v.mark[1] - v.oy) * v.z, (v.mark[2] - v.mark[0]) * v.z, (v.mark[3] - v.mark[1]) * v.z)
-    cairo_stroke(c)
-  cairo_destroy(c)
+    cairoIn(s, cx - rad - 3, cy - rad - 3, 2 * rad + 6, 2 * rad + 6, c):
+      cairo_new_sub_path(c)
+      cairo_arc(c, cx, cy, rad, 0, 2 * PI)
+      cairo_set_source_rgba(c, lr, lg, lb, if sel: 0.3 else: 0.12)
+      cairo_fill_preserve(c)
+      cairo_set_source_rgba(c, lr, lg, lb, 0.9)
+      cairo_set_line_width(c, if sel: 3.5 else: 2.0)
+      if not sel:
+        var dash = [5.0, 3.0]
+        cairo_set_dash(c, addr dash[0], 2, 0)
+      cairo_stroke(c)
+  if (v.selecting or v.marking) and v.mark[2] != v.mark[0]:
+    let mx = (v.mark[0] - v.ox) * v.z
+    let my = (v.mark[1] - v.oy) * v.z
+    let mw = (v.mark[2] - v.mark[0]) * v.z
+    let mh = (v.mark[3] - v.mark[1]) * v.z
+    if v.selecting:
+      cairoIn(s, mx - 2, my - 2, mw + 4, mh + 4, c):
+        var dash = [6.0, 4.0]
+        cairo_set_dash(c, addr dash[0], 2, 0)
+        cairo_set_source_rgba(c, 0.1, 0.35, 0.85, 0.9)
+        cairo_set_line_width(c, 2)
+        cairo_rectangle(c, mx, my, mw, mh)
+        cairo_stroke(c)
+    if v.marking: strokeRect(s, rgba(0.85, 0.1, 0.1, 0.9), mx, my, mw, mh, 2)
 
 proc tagsIn*(v: Viewer, x0, y0, x1, y1: float): seq[string] =
   ## the tags whose box intersects the box (points)
