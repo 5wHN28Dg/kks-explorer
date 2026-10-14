@@ -409,16 +409,19 @@ class Windows(unittest.TestCase):
         def pick(code, n):
             return ['set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
                     'click\tSelect or unselect', 'wait\t%d selected\t10' % n]
-        # the question is left open
+        # the question is left open while the floor changes on the server; one script throughout: a new script's
+        # console window can come to the front, and a message box that is not active ignores its OK being pressed (#158)
+        def floor5():
+            r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC40AP002', 'changes': {'floor': '5'},
+                                                                                'base': {'floor': '1'}}})
+            self.assertEqual(r.get('status'), 'approved', r)
         self.check('mclash0.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10'] + pick('11LAC40AP001', 1) +
                    pick('11LAC40AP002', 2) + [
                    'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t3', 'click\tSend',
-                   'wait\t~1 of 2 already have a floor; it will be replaced.\t10'])
-        r = b.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAC40AP002', 'changes': {'floor': '5'},
-                                                                            'base': {'floor': '1'}}})
-        self.assertEqual(r.get('status'), 'approved', r)
-        time.sleep(12)          # several sync rounds: the app has the new floor under the open question
-        self.check('mclash1.uia', ['click\tOK', 'wait\t~Sent for 2 codes · 1 held (they clash with pending changes)\t20'])
+                   'wait\t~1 of 2 already have a floor; it will be replaced.\t10', 'sleep\t506',
+                   'sleep\t12000',     # several sync rounds: the app has the new floor under the open question
+                   'click\tOK', 'wait\t~Sent for 2 codes · 1 held (they clash with pending changes)\t20'],
+                   during=[('sleep\t506', floor5)])
         def floors():
             eq = b.req('GET', '/api/state')['equipment']
             got = (eq.get('11LAC40AP001', {}).get('floor'), eq.get('11LAC40AP002', {}).get('floor'))
@@ -532,6 +535,10 @@ class Windows(unittest.TestCase):
                                  'value\t%s\tLAB70AA79' % search, 'focused\t' + search, 'sleep\t504',
                                  'wait\t~11LAB70AA794   \t40', 'sleep\t2500', 'gone\tFloor %s' % floor,
                                  'value\t%s\tLAB70AA79' % search, 'focused\t' + search,
+                                 # a result selected stays selected when the results are put in place
+                                 'select\t~11LAB70AA791   ', 'sleep\t507', 'wait\t~11LAB70AA796   \t40',
+                                 'click\tShow on the drawing',
+                                 'wait\tValve type: globe valve (from the drawing, unchecked)\t10', 'focus\t' + search,
                                  'focus\tDrawings', 'wait\tFloor %s\t10' % floor, 'value\t%s\tLAB70AA79' % search,
                                  'wait\t~11LAB70AA794   \t5', 'wait\t~11LAB70AA791   \t5',
                                  # a button of the sidebar that makes it again keeps the search too
@@ -539,7 +546,8 @@ class Windows(unittest.TestCase):
                                  'click\tStop marking', 'wait\tMark a missing tag\t10', 'value\t%s\tLAB70AA79' % search,
                                  'select\t~11LAB70AA791   ', 'focus\tDrawings'],
                    during=[('sleep\t503', lambda: self.add_tag('11LAB70AA793', [1300, 900, 1420, 960])),
-                           ('sleep\t504', with_floor)])
+                           ('sleep\t504', with_floor),
+                           ('sleep\t507', lambda: self.add_tag('11LAB70AA796', [1300, 1200, 1420, 1260]))])
         # the Drawings search with the keyboard elsewhere when a sync arrives: made again, the search put back, and the
         # result that was selected still selected (Show on the drawing opens it: the race test_description met)
         self.add_tag('11LAB70AA795', [1300, 1100, 1420, 1160])
@@ -564,9 +572,9 @@ class Windows(unittest.TestCase):
                          [('Description', 'Feed water drain valve'), ('Valve type', 'globe valve')])
         # a reading being corrected: Edit under Location and notes, then that form's Cancel, keep the typed code
         self.check('kreview.uia', ['set\t%s\tLAB70AA792' % search, 'select\t~11LAB70AA792   ', 'click\tShow on the drawing',
-                                   'wait\tCheck this tag\t20', 'set\tKKS (with suffix)\t11LAB70AA796', 'click\tEdit',
-                                   'wait\tSave\t10', 'value\tKKS (with suffix)\t11LAB70AA796', 'set\tNotes\tdropped',
-                                   'click\tCancel', 'gone\tSave', 'value\tKKS (with suffix)\t11LAB70AA796', 'click\tClose'])
+                                   'wait\tCheck this tag\t20', 'set\tKKS (with suffix)\t11LAB70AA797', 'click\tEdit',
+                                   'wait\tSave\t10', 'value\tKKS (with suffix)\t11LAB70AA797', 'set\tNotes\tdropped',
+                                   'click\tCancel', 'gone\tSave', 'value\tKKS (with suffix)\t11LAB70AA797', 'click\tClose'])
         self.leave()
 
     def test_valve_type(self):

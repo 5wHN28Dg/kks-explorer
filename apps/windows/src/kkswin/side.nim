@@ -50,10 +50,14 @@ proc drawingsShape(w: Win): seq[string] =
 proc drawingsTab(w: Win, p: Page) =
   var results: seq[Tag]
   var resList: HWND
+  proc idAt(i: int): string = results[i].id
   proc fill(q: string, keep = false) =
     ## keep (a sync under the keyboard): the rows put in place, the selected result still selected
     let cur = int(SendMessageW(resList, LB_GETCURSEL, 0, 0))
-    let was = if keep and cur >= 0 and cur < results.len: results[cur].id else: ""
+    # (a copy, from a proc: `let was = results[cur].id` was a view into `results`, which is replaced just below, and
+    # read freed memory: the selection was dropped, seen in the e2e; `results` lives in the closures' environment, so
+    # the compiler did not see it change)
+    let was = if keep and cur >= 0 and cur < results.len: idAt(cur) else: ""
     results = if q.strip.len >= 2: w.m.search(q.strip) else: @[]
     var rows: seq[string]
     for t in results:
