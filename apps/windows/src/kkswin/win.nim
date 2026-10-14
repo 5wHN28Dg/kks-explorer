@@ -44,6 +44,8 @@ type Win* = ref object
   sideStale*: bool          ## the sidebar was left as it is under the keyboard (sideChanged)
   sideUpdate*: proc (): bool  ## the sidebar's page on screen: new data into its controls as they are (allowed under
                               ## the keyboard); false when its controls themselves would change. nil: it can't
+  sidePicked*: proc (): string    ## the page on screen: what is selected in its list (a tag's or procedure's id)
+  sideRepick*: proc (id: string)  ## the page on screen: select that again, if it is still there
 
 proc focusInside(area: HWND): bool =
   let f = GetFocus()
@@ -121,9 +123,12 @@ proc rebuildPanelKeeping*(w: Win, drop: openArray[HWND] = []) =
   w.keepTyped(w.panel, w.rebuildPanel, drop)
 
 proc rebuildSideKeeping*(w: Win) =
-  ## the sidebar made again on the same tab, keeping what was typed into its search field (keepTyped); a search whose
-  ## field went with the page (the procedures went with new plant data) is nothing to show the person
+  ## the sidebar made again on the same tab, keeping what was typed into its search field (keepTyped) and the result
+  ## selected in its list (a Show button acts on it); a search whose field went with the page (the procedures went
+  ## with new plant data) is nothing to show the person
+  let picked = if w.sidePicked != nil: w.sidePicked() else: ""
   w.keepTyped(w.side, w.rebuildSide, tell = false)
+  if picked.len > 0 and w.sideRepick != nil: w.sideRepick(picked)
 
 proc sideHeld*(w: Win): bool =
   ## the sidebar is not rebuilt now: the keyboard is in it (on the Drawings tab anywhere, in its lists too; on the

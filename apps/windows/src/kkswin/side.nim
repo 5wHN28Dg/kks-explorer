@@ -131,6 +131,11 @@ proc drawingsTab(w: Win, p: Page) =
       w.rebuildSideKeeping()))
   # a sync under the keyboard (#168): the search's results and the sheets' counts change in place; a change of the
   # controls themselves (a new sheet or floor, the open sheet's notes) waits until the keyboard has left
+  w.sidePicked = proc (): string =
+    let i = int(SendMessageW(resList, LB_GETCURSEL, 0, 0))
+    if IsWindow(resList) != 0 and i >= 0 and i < results.len: results[i].id else: ""
+  w.sideRepick = proc (id: string) =
+    if IsWindow(resList) != 0: resList.reselect(results.mapIt(it.id), id)
   let shape = w.drawingsShape
   let sheetIds = sheets.mapIt(it.id)
   w.sideUpdate = proc (): bool =
@@ -235,6 +240,11 @@ proc proceduresTab(w: Win, p: Page) =
   p.dim("Enter or double-click a procedure to open it.")
   fill("")
   # a sync while the search has the keyboard (#168: it was emptied under the typing): the list follows in place
+  w.sidePicked = proc (): string =
+    let i = int(SendMessageW(lst, LB_GETCURSEL, 0, 0))
+    if IsWindow(lst) != 0 and i >= 0 and i < shown.len: s(shown[i], "id") else: ""
+  w.sideRepick = proc (id: string) =
+    if IsWindow(lst) != 0: lst.reselect(shown.mapIt(s(it, "id")), id)
   w.sideUpdate = proc (): bool =
     if IsWindow(lst) == 0 or IsWindow(q) == 0 or w.m.procs == nil: return false
     fill(q.text, keep = true)

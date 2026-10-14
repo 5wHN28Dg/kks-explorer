@@ -536,13 +536,16 @@ class Windows(unittest.TestCase):
                                  'wait\t~11LAB70AA794   \t5', 'wait\t~11LAB70AA791   \t5',
                                  # a button of the sidebar that makes it again keeps the search too
                                  'click\tMark a missing tag', 'wait\tStop marking\t10', 'value\t%s\tLAB70AA79' % search,
-                                 'click\tStop marking', 'wait\tMark a missing tag\t10', 'value\t%s\tLAB70AA79' % search],
+                                 'click\tStop marking', 'wait\tMark a missing tag\t10', 'value\t%s\tLAB70AA79' % search,
+                                 'select\t~11LAB70AA791   ', 'focus\tDrawings'],
                    during=[('sleep\t503', lambda: self.add_tag('11LAB70AA793', [1300, 900, 1420, 960])),
                            ('sleep\t504', with_floor)])
-        # the Drawings search with the keyboard elsewhere when a sync arrives: made again, the search put back
+        # the Drawings search with the keyboard elsewhere when a sync arrives: made again, the search put back, and the
+        # result that was selected still selected (Show on the drawing opens it: the race test_description met)
         self.add_tag('11LAB70AA795', [1300, 1100, 1420, 1160])
         self.check('kdraw2.uia', ['wait\t~11LAB70AA795, \t40', 'sleep\t1500', 'value\t%s\tLAB70AA79' % search,
-                                  'wait\t~11LAB70AA795   \t5'])
+                                  'wait\t~11LAB70AA795   \t5', 'click\tShow on the drawing',
+                                  'wait\tValve type: globe valve (from the drawing, unchecked)\t10'])
         # the panel: text typed into the edit form stays through Confirm valve type and Confirm description, and is
         # then saved; the valve type and the description stay as confirmed
         code = '11LAB70AA791'

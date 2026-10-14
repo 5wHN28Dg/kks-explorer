@@ -326,6 +326,8 @@ proc main() =
   w.rebuildSide = proc () =
     w.sideStale = false
     w.sideUpdate = nil          # the page that is made sets its own
+    w.sidePicked = nil
+    w.sideRepick = nil
     if w.tab == "learning":
       w.side.clear()
       w.learningTab(w.side)
