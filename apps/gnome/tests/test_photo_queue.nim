@@ -259,4 +259,47 @@ suite "photo queue on disk":
     check q.count == 2 and q.items[0].key == b.key and q.items[0].floor == "4" and q.items[1].key == c.key
     s.close()
 
+  test "#149: a photo not asked for its floor sends the floor a queued photo of its code carries":
+    var s = fresh()
+    var q = newPhotoQueue(s)
+    let a = q.add(p, pic(2, 2, 1), 2, 2, "A1", "asked", "", "4", 1)
+    let b = q.add(p, pic(2, 2, 2), 2, 2, "A1", "not asked", "", "", 2)
+    let c = q.add(p, pic(2, 2, 3), 2, 2, "C1", "other code", "", "", 3)
+    let m = q.add(p, pic(2, 2, 4), 2, 2, "", "for all", "", "6", 4, @["B1", "D1"])
+    let d = q.add(p, pic(2, 2, 5), 2, 2, "D1", "after photo for all", "", "", 5)
+    var reports: seq[string]
+    discard q.next(10, reports)
+    check q.busy == a.key
+    discard q.finish(a.key, Failed, "the core", 10)     # to the end of the queue: b goes first
+    check q.items[0].key == b.key and q.items[^1].key == a.key
+    check q.floorToSend(q.items[0]) == "4"             # (it went without one, and a's floor came after it)
+    check q.floorToSend(a) == "4" and q.floorToSend(c) == "" and q.floorToSend(m) == "6"
+    check q.floorToSend(d) == "6"                      # a photo for several codes carries one for D1
+    s.close()
+
+  test "#149: a refused photo's floor goes to the next photo of its code (on disk), unless another carries one":
+    var s = fresh()
+    var q = newPhotoQueue(s)
+    let a = q.add(p, pic(2, 2, 1), 2, 2, "A1", "asked", "", "4", 1)
+    let b = q.add(p, pic(2, 2, 2), 2, 2, "A1", "not asked", "", "", 2)
+    let b2 = q.add(p, pic(2, 2, 3), 2, 2, "A1", "not asked either", "", "", 3)
+    let m = q.add(p, pic(2, 2, 4), 2, 2, "", "for all", "", "6", 4, @["B1", "C1"])
+    let c1 = q.add(p, pic(2, 2, 5), 2, 2, "C1", "has its own", "", "2", 5)
+    let b1 = q.add(p, pic(2, 2, 6), 2, 2, "B1", "after photo for all", "", "", 6)
+    var reports: seq[string]
+    discard q.next(10, reports)
+    q.handOverFloor(a)
+    discard q.finish(a.key, Refused, "no", 10)
+    check q.items[0].key == b.key and q.items[0].floor == "4"    # the first one left of the code takes it over
+    check q.items[1].key == b2.key and q.items[1].floor == ""
+    q.handOverFloor(m)                                  # C1's floor is carried by c1 still; B1's goes to b1
+    check q.items[3].key == c1.key and q.items[3].floor == "2"
+    check q.items[4].key == b1.key and q.items[4].floor == "6"
+    s = s.reopen()
+    q = newPhotoQueue(s)
+    check q.resume().len == 0
+    check q.items[0].key == b.key and q.items[0].floor == "4" and q.items[1].floor == ""
+    check q.items[4].key == b1.key and q.items[4].floor == "6"
+    s.close()
+
 removeDir(dir)

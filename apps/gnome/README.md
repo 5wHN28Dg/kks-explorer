@@ -52,8 +52,8 @@ system's.
   the panel is open: Confirm type, or Correct type with your own value (kept as the custom field "Valve type");
 - where the code appears, the procedures that use it;
 - reviewing uncertain readings.
-- a form holding something typed is not lost without a word: picking another tag, closing the panel or starting
-  "Mark a tag" asks "Discard your edits?" first (Discard, or Keep editing); after Save or Cancel the keyboard's
+- a form holding something typed is not lost without a word: picking another tag, closing the panel, starting
+  "Mark a tag" or closing the window asks "Discard your edits?" first (Discard, or Keep editing); after Save or Cancel the keyboard's
   place is the panel's Edit button.
 
 **Plant work:**
