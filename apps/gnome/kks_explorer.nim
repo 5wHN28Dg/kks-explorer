@@ -467,12 +467,12 @@ proc activate(w: Win, app: W) =
   if w.a.joined: w.showMain()
   else: adw_toast_overlay_set_child(w.toasts, w.setupScreen())
   # Once the window is destroyed (closed: the app quits a moment later, later still on a slow machine) nothing may
-  # reach it or its widgets: the reload after a change and the timers below stop, and the status line is let go
+  # reach it or its widgets (`gone`): the reload after a change, the photo queue's timer and the timers below stop,
+  # toasts are dropped, and the status line is let go
   # (the window's pointer dangles then: the test's focus timer called gtk_root_get_focus on it, a GTK critical on
   # CI's slower runners)
-  var windowGone = false
   w.window.on("destroy", proc () =
-    windowGone = true
+    w.gone = true
     w.status = nil)
   w.a.onChange.add proc (why: string) =
     if why == "wiped":
@@ -484,12 +484,12 @@ proc activate(w: Win, app: W) =
         quit(1))
       return
     if w.status != nil: adw_window_title_set_subtitle(w.status, w.statusText().cstring)
-    if why == "relay" or windowGone: return     # presence only: nothing to reload; or no window to reload
+    if why == "relay" or w.gone: return     # presence only: nothing to reload; or no window to reload
     if not w.reloadQueued and w.a.joined and w.m != nil:
       w.reloadQueued = true
       after(300, proc () =       # once, also when refresh fails (as a timer it then came back for good: #163)
         w.reloadQueued = false
-        if not windowGone: w.refresh())
+        if not w.gone: w.refresh())
   var closing = false
   var formLeft = false      # the person chose Discard: this close goes on past the panel's form
   w.window.onCloseRequestStop(proc (): bool =
@@ -541,7 +541,7 @@ proc activate(w: Win, app: W) =
   if focusFile.len > 0:
     var said = "\x00"
     timeout(100, proc (): bool =
-      if windowGone: return false
+      if w.gone: return false
       let f = gtk_root_get_focus(w.window)
       var now = ""
       if f != nil:
@@ -600,7 +600,7 @@ proc main() =
       if figRequested:
         figRequested = false
         scrollToFigure()
-      if shotRequested and w.window != nil:
+      if shotRequested and w.window != nil and not w.gone:
         shotRequested = false
         let ok = saveScreenshot(w.window, shotPath)
         stderr.writeLine "screenshot " & shotPath & ": " & (if ok: "saved" else: "FAILED")

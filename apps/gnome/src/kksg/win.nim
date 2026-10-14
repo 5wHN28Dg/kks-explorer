@@ -55,6 +55,8 @@ type Win* = ref object
   procBox*: Held               ## the procedure page last opened, and its procedure
   procBoxId*: string
   reloadQueued*: bool
+  gone*: bool                  ## the window was destroyed (closed; the app quits a moment later): nothing may reach
+                               ## it or its widgets any more (its pointers dangle)
   sheetsKey*: string           ## what the sheet list's rows say (fillSheets): rebuilt only when that changed
   showSheet*: proc (id: string)
   selectTag*: proc (id: string, center: bool)
@@ -73,7 +75,8 @@ type Win* = ref object
   panelKey*: string            ## modelKey of the model the tag panel was built from; "" when something else it
                                ## shows changed (the sheet on screen, the photo queue): the next reload rebuilds it
 
-proc toast*(w: Win, msg: string) = toast(w.toasts, msg)
+proc toast*(w: Win, msg: string) =
+  if not w.gone: toast(w.toasts, msg)
 
 proc formOpen*(w: Win): bool =
   ## Something typed in the tag panel is not saved yet: an Edit form is open (whatever it holds: the person opened
