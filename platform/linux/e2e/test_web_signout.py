@@ -274,7 +274,7 @@ class WebSignOut(unittest.TestCase):
             expect(mine.locator('tr', has_text='tablet')).to_contain_text('active')
             # the key this web sign-in itself uses (held by the server): shown as such, with no Remove (the server
             # refuses it: "This is the device you are using"), no form, nothing to press
-            signin = mine.locator('tr', has_text='(this web sign-in)')
+            signin = mine.locator('tr', has_text='(your web sign-in)')
             expect(signin).to_have_count(1)
             expect(signin).to_contain_text('active')
             self.assertEqual(signin.locator('button, input').count(), 0)

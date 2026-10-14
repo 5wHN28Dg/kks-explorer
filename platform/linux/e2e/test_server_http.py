@@ -1525,6 +1525,12 @@ class ThisSignIn(Base):
         self.assertEqual(st, 200, r)
         sara = Client(self.base)
         self.assertEqual(sara.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'sara password 1'})[0], 200)
+        st, r, _ = boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Person', 'position': 'Operator', 'role': 'user'})
+        ali = Client(self.base)
+        self.assertEqual(ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})[0], 200)
+        # a member: their own list only (no 'all'), their key marked
+        st, d, _ = ali.req('GET', '/api/devices')
+        self.assertEqual((st, d['all'], [x['this_signin'] for x in d['mine']]), (200, None, [True]))
         lists = {}
         for name, c in (('boss', boss), ('sara', sara)):
             st, d, _ = c.req('GET', '/api/devices')
