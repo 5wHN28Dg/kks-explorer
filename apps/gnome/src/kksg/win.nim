@@ -233,6 +233,27 @@ proc setBanner*(w: Win, text, button: string, action: proc ()) =
   w.bannerAction = action
   adw_banner_set_revealed(w.banner, 1)
 
+proc runBanner*(w: Win) =
+  ## What the banner's button does (pressed, or Escape for it: kks_explorer.nim endMode). The action is kept in a
+  ## second field while it runs: it takes the banner down (setBanner clears bannerAction), and called through that
+  ## field alone it freed its own closure, with everything it holds, under itself. (A local copy is not enough: Nim
+  ## makes it a borrowed one.)
+  if w.bannerAction != nil and w.bannerRunning == nil:
+    w.bannerRunning = w.bannerAction
+    try: w.bannerRunning()
+    finally: w.bannerRunning = nil
+
+proc stopMarking*(w: Win) =
+  ## Mark a tag ends, all of it: the viewer's mode, its box, the banner (the mode's own while it is on: whatever
+  ## takes the banner ends the mode first) and the crosshair. The banner's Cancel, Escape (#183), a mark proposed,
+  ## and another mode starting all end it here.
+  if not w.v.marking: return
+  w.v.marking = false
+  w.v.mark = (0.0, 0.0, 0.0, 0.0)
+  w.setBanner("", "", nil)
+  gtk_widget_set_cursor_from_name(w.v.widget, "grab")
+  gtk_widget_queue_draw(w.v.widget)
+
 proc linkedTags*(w: Win): HashSet[string] =
   ## tags whose code is linked to the open procedure
   if w.activeProc.len == 0 or w.m.state == nil or w.m.state.get("links") == nil: return

@@ -88,11 +88,7 @@ proc procedureDetail(w: Win, id: string, box: W) =
       adw_wrap_box_append(wb, button("+ Link equipment", "flat", proc () =
         # one mode at a time on the drawing: marking a tag and selecting tags end here, as link mode ends when
         # they start (stopLinking)
-        if w.v.marking:
-          w.v.marking = false
-          w.v.mark = (0.0, 0.0, 0.0, 0.0)
-          gtk_widget_set_cursor_from_name(w.v.widget, "grab")
-          gtk_widget_queue_draw(w.v.widget)
+        w.stopMarking()
         if w.picking and w.pickBtn != nil: gtk_toggle_button_set_active(w.pickBtn, 0)    # (its handler stops the mode)
         w.linkProc = id
         w.linkStep = n

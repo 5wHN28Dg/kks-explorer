@@ -1503,9 +1503,9 @@ class Gnome(Plant):
         """#183: Escape on the drawing ends its modes as their own buttons do. Mark a tag: the banner and the crosshair
         go, a drag pans again and marks nothing, a click on a tag opens its panel (before, Escape ended only the
         viewer's half of the mode: the banner and the crosshair stayed). The banner's Cancel leaves the same (it left
-        the crosshair). Link mode ends as its Done ends it, the select mode as its toggle. KKS_TEST_VIEWER drives the
-        drawing: the headless session has no pointer or keyboard. (Named to run before link_done: it publishes the
-        same procedure.)"""
+        the crosshair), and so does Escape with the focus elsewhere. Link mode ends as its Done ends it, the select mode
+        as its toggle. KKS_TEST_VIEWER drives the drawing: the headless session has no pointer or keyboard. (Named to
+        run before link_done: it publishes the same procedure.)"""
         pd = os.path.join(self.dir, 'plant-data')
         with open(os.path.join(pd, 'procedures.json'), 'w') as f:
             json.dump([{'id': 'P-1', 'title': 'Start the test pump', 'path': ['Test chapter'], 'page': 1, 'intro': '',
@@ -1587,6 +1587,16 @@ class Gnome(Plant):
         start_marking()
         atspi.click(atspi.find(a, 'button', name='Cancel'))
         mode_ended('Cancel')
+        # a drag while marking does mark (its dialog: closed, the mode stays), and Escape with the focus off the
+        # drawing (on the button that started the mode, say) ends the mode as well
+        start_marking()
+        drawing('drag 300 300 80 60')
+        atspi.find(a, 'label', contains='Type the code if you can read it', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Close'))
+        gone('label', 'the mark\'s dialog did not close', contains='Type the code if you can read it')
+        settles('closing the mark\'s dialog ended the mode', marking='1', cursor='crosshair')
+        drawing('window-key 0xff1b')
+        mode_ended('Escape with the focus off the drawing')
         # link mode: Escape ends it as Done does (the banner goes, the procedure's page stays, drawn again)
         self.press(a, 'Procedures', ('button', 'P-1  Start the test pump'))
         self.press(a, 'P-1  Start the test pump', ('label', 'Open the suction valve'))

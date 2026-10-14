@@ -105,7 +105,6 @@ type
     chosen*: HashSet[string]     ## the selected tags (a distinct outline)
     symbolBox*: seq[float]       ## the open panel's valve symbol (x0, y0, x1, y1 in points), outlined; empty = none
     onBox*: proc (x0, y0, x1, y1: float)   ## a box dragged in the select mode (points)
-    onEscape*: proc ()           ## Escape in the select mode
 
 var
   startedAt*: float             ## set by the app at launch (KKS_TIMING: the first drawn sheet is reported)
@@ -810,7 +809,8 @@ proc clickAt*(v: Viewer, x, y: float) =
 
 proc keyPress*(v: Viewer, keyval: cuint): bool =
   ## The drawing's own keys: panning and zooming. Escape is not one of them: it goes on to the window, which ends
-  ## whatever mode the drawing is in (Mark a tag, Select tags, link mode) the way that mode's own button does (#183).
+  ## whatever mode the drawing is in the way that mode's own button does (kks_explorer.nim endMode). Before #183 the
+  ## viewer ended Mark a tag here by itself, and the banner and the crosshair stayed.
   let w = float(gtk_widget_get_width(v.widget))
   let h = float(gtk_widget_get_height(v.widget))
   case keyval
@@ -821,12 +821,6 @@ proc keyPress*(v: Viewer, keyval: cuint): bool =
   of 0x2b, 0x3d, 0xffab: v.zoomAt(1.25, w / 2, h / 2)       # + = keypad+
   of 0x2d, 0xffad: v.zoomAt(0.8, w / 2, h / 2)              # - keypad-
   of 0x30, 0xffb0: v.fit()                                  # 0
-  of 0xff1b:                                                 # Escape
-    if v.selecting and v.onEscape != nil: v.onEscape()
-    elif v.marking:
-      v.marking = false
-      v.mark = (0.0, 0.0, 0.0, 0.0)
-    else: return false
   else: return false
   gtk_widget_queue_draw(v.widget)
   if v.onView != nil: v.onView()

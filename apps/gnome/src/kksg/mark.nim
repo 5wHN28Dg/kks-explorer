@@ -49,8 +49,7 @@ proc markDialog*(w: Win, x0, y0, x1, y1: float) =
     if r.len > 0:
       sent = true
       adw_dialog_close(d)
-      w.v.marking = false
-      w.setBanner("", "", nil)
+      w.stopMarking()
       w.loadModel()
       w.v.tags = w.tagBoxes(sheet)
       gtk_widget_queue_draw(w.v.widget), once = true)
@@ -63,9 +62,5 @@ proc startMarking*(w: Win) =
   w.v.marking = true
   w.stopLinking()         # the banner replaced below may be link mode's: the mode ends with it (#163)
   w.closePanel()
-  w.setBanner("Drag a box around the tag the app missed", "Cancel", proc () =
-    w.v.marking = false
-    w.v.mark = (0.0, 0.0, 0.0, 0.0)
-    w.setBanner("", "", nil)
-    gtk_widget_queue_draw(w.v.widget))
+  w.setBanner("Drag a box around the tag the app missed", "Cancel", proc () = w.stopMarking())
   gtk_widget_set_cursor_from_name(w.v.widget, "crosshair")
