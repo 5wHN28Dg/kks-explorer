@@ -466,8 +466,9 @@ proc endMode(w: Win): bool =
   true
 
 proc windowKey(w: Win, keyval: cuint): bool =
-  ## the keys the window takes when the widget with the focus left them: Escape ends the drawing's mode wherever the
-  ## focus is (after "Mark a tag" or "Select tags" it is on that button, not on the drawing)
+  ## the keys the window takes when the widget with the focus and its parents left them: Escape ends the drawing's
+  ## mode with the focus on the drawing or elsewhere (after "Mark a tag" or "Select tags" it is on that button). Some
+  ## widgets keep Escape for themselves first: dialogs and popovers close, a search field stops its search.
   if keyval == 0xff1b: w.endMode() else: false
 
 proc activate(w: Win, app: W) =
@@ -592,7 +593,8 @@ proc activate(w: Win, app: W) =
           let p = line.splitWhitespace
           if p.len == 0: continue
           case p[0]
-          of "key":                      # on the drawing: what it leaves goes on to the window, as GTK passes it
+          of "key":                      # on the drawing: what it leaves goes on to the window (GTK's own passing
+                                         # of the key between them is not tested: no keyboard in the test session)
             let k = cuint(parseHexInt(p[1]))
             if not w.v.keyPress(k): discard w.windowKey(k)
           of "window-key": discard w.windowKey(cuint(parseHexInt(p[1])))    # the focus elsewhere

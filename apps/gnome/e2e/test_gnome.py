@@ -1504,8 +1504,9 @@ class Gnome(Plant):
         go, a drag pans again and marks nothing, a click on a tag opens its panel (before, Escape ended only the
         viewer's half of the mode: the banner and the crosshair stayed). The banner's Cancel leaves the same (it left
         the crosshair), and so does Escape with the focus elsewhere. Link mode ends as its Done ends it, the select mode
-        as its toggle. KKS_TEST_VIEWER drives the drawing: the headless session has no pointer or keyboard. (Named to
-        run before link_done: it publishes the same procedure.)"""
+        as its toggle. KKS_TEST_VIEWER drives the drawing: the headless session has no pointer or keyboard, so a key
+        goes to the drawing's handler and then the window's directly, not through GTK's propagation, and "the focus
+        elsewhere" is the window's handler alone. (Named to run before link_done: it publishes the same procedure.)"""
         pd = os.path.join(self.dir, 'plant-data')
         with open(os.path.join(pd, 'procedures.json'), 'w') as f:
             json.dump([{'id': 'P-1', 'title': 'Start the test pump', 'path': ['Test chapter'], 'page': 1, 'intro': '',
