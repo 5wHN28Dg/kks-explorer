@@ -557,6 +557,9 @@ proc pump(w: Win) =
   if polling or pq == nil or pq.count == 0 or pq.wiped: return
   polling = true
   timeout(200, proc (): bool =
+    if w.gone:               # the window was closed: the photos left stay on disk, sent at the next start
+      polling = false
+      return false
     var done = false
     while true:
       let (got, d) = encDone.tryRecv()
