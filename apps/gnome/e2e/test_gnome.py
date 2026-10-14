@@ -1602,8 +1602,11 @@ class Gnome(Plant):
         self.press(a, 'Procedures', ('button', 'P-1  Start the test pump'))
         self.press(a, 'P-1  Start the test pump', ('label', 'Open the suction valve'))
         self.press(a, '+ Link equipment', ('button', 'Done'))
+        # (the focus stays on that button, in the sidebar: its Escape, going back a page, is off in link mode)
+        settles('the sidebar still goes back at Escape in link mode', pop_on_escape='0')
         drawing(escape)
         gone('label', 'Escape left link mode\'s banner up', contains='to link them to step')
+        settles('the sidebar does not go back at Escape after link mode', pop_on_escape='1')
         atspi.find(a, 'label', name='Open the suction valve', timeout=5)
         # the select mode: Escape ends it as its toggle does
         mode = atspi.find(a, 'toggle button', name='Select tags')

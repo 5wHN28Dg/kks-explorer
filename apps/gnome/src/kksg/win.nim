@@ -143,6 +143,7 @@ proc stopLinking*(w: Win) =
   ## two left it on without a Done to press: every click on a tag still linked it to the step.
   if w.linkProc.len == 0: return
   w.linkProc = ""
+  if w.sideNav != nil: adw_navigation_view_set_pop_on_escape(w.sideNav, 1)     # (off while it was on: sidepages)
   if w.linkEnded != nil:
     try: w.linkEnded()       # (it does not clear the field itself: a closure that did would free itself)
     finally: w.linkEnded = nil

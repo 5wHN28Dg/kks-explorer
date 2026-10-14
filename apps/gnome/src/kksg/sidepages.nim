@@ -92,6 +92,9 @@ proc procedureDetail(w: Win, id: string, box: W) =
         if w.picking and w.pickBtn != nil: gtk_toggle_button_set_active(w.pickBtn, 0)    # (its handler stops the mode)
         w.linkProc = id
         w.linkStep = n
+        # Escape ends link mode as Done does (kks_explorer.nim endMode), also from this button, where the focus
+        # stays: the sidebar's own Escape (going back a page) would take it first, and leave link mode on
+        adw_navigation_view_set_pop_on_escape(w.sideNav, 0)
         # Link mode outlives this page (Back keeps it on), so its end may come when the page is gone, or when the
         # procedure was opened again on another page: the one on screen now is drawn again (procBox), with the
         # links made meanwhile. With no procedure open any more, its highlights leave the drawing (the page's

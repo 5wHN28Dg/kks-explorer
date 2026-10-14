@@ -577,7 +577,7 @@ proc activate(w: Win, app: W) =
   # written to the file KKS_TEST_VIEWER names, plus ".do", one per line, go through the viewer's own gesture and key
   # procs: "key 0xff1b" (a key pressed on the drawing), "window-key 0xff1b" (with the focus elsewhere),
   # "drag x y dx dy" (widget pixels), "click-tag CODE". The file itself holds the drawing's state, written when it
-  # changes: "n=<commands done> marking=0|1 selecting=0|1 cursor=<name> ox=… oy=…".
+  # changes: "n=<commands done> marking=0|1 selecting=0|1 cursor=<name> ox=… oy=… pop_on_escape=0|1" (the sidebar's).
   let viewerFile = getEnv("KKS_TEST_VIEWER")
   if viewerFile.len > 0:
     var said = ""
@@ -616,7 +616,8 @@ proc activate(w: Win, app: W) =
       let c = gtk_widget_get_cursor(w.v.widget)
       let now = "n=" & $done & " marking=" & $int(w.v.marking) & " selecting=" & $int(w.v.selecting) &
                 " cursor=" & (if c != nil and gdk_cursor_get_name(c) != nil: $gdk_cursor_get_name(c) else: "") &
-                " ox=" & $w.v.ox & " oy=" & $w.v.oy
+                " ox=" & $w.v.ox & " oy=" & $w.v.oy &
+                " pop_on_escape=" & $adw_navigation_view_get_pop_on_escape(w.sideNav)
       if now != said:
         said = now
         writeFile(viewerFile & ".tmp", now)
