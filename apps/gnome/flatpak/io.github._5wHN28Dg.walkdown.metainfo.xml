@@ -28,6 +28,9 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.10.3" date="2026-10-15">
+      <description><p>Drawings are sharp and smooth on high-resolution screens; leaving a form with typed text asks first; Escape ends Mark a tag, link mode and Select tags the same way their buttons do; a second start of the app shows the open window; course text and photo floors fixed.</p></description>
+    </release>
     <release version="0.10.2" date="2026-10-13">
       <description><p>A fourth course, Instrumentation and control; an open form keeps what you typed when the panel refreshes, and a button press is no longer lost or misdirected.</p></description>
     </release>
