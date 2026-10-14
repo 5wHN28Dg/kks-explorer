@@ -184,9 +184,9 @@ class WebOffline(unittest.TestCase):
             # ---- 2. offline: a new page (nothing in memory), the drawing, search, the tag, its photo
             errors.leave()
             offline()
-            failed = []
+            failed = []     # (url, why) of every request that failed from here on
             def watch(pg):
-                pg.on('requestfailed', lambda q: failed.append(q.url))
+                pg.on('requestfailed', lambda q: failed.append((q.url, q.failure or '')))
                 if os.environ.get('KKS_DEBUG'):
                     pg.on('console', lambda m: print('console:', m.type, m.text[:300], file=sys.stderr))
                     pg.on('requestfailed', lambda q: print('failed:', q.url, q.failure, file=sys.stderr))
@@ -206,8 +206,15 @@ class WebOffline(unittest.TestCase):
             page.fill('#q', A)
             page.locator('#results .res').first.click()
             page.wait_for_function("k => typeof selTag !== 'undefined' && selTag && full(selTag) === k", arg=A, timeout=15000)
-            page.wait_for_function("""() => { const i = document.querySelector('#panel .photos img');
-              return i && i.complete && i.naturalWidth > 0 && getComputedStyle(i).visibility === 'visible' }""", timeout=30000)
+            photo_shown = """() => { const i = document.querySelector('#panel .photos img');
+              return i && i.complete && i.naturalWidth > 0 && getComputedStyle(i).visibility === 'visible' }"""
+            page.wait_for_function(photo_shown, timeout=30000)
+            # the panel drawn again (as a queued change or a sync round does): the photo shows again. Where the browser
+            # has no JPEG XL of its own (Firefox, Chromium) the page swaps its own decoded copy in for the file, and the
+            # browser's load of the file, started with the new <img>, is cancelled (reported as a failed request: #178)
+            for _ in range(3):
+                page.evaluate("() => select(selTag)")
+                page.wait_for_function(photo_shown, timeout=30000)
             # edit a place: queued
             page.get_by_role('button', name='Edit Near / landmark').click()
             page.fill('#f_near', 'pump hall, ' + name)
@@ -256,8 +263,13 @@ class WebOffline(unittest.TestCase):
             self.assertEqual(page.evaluate("K.outbox.map(i => i.kind).sort()"), ['equipment', 'equipment', 'equipment', 'photo'])
             expect(page.locator('#syncStatus')).to_contain_text('4 queued')
             expect(page.locator('#pendingSec')).to_contain_text('queued offline')
-            # nothing the pages asked for was missing offline (the server's own API can't answer, of course)
-            self.assertEqual([u for u in failed if '/api/' not in u], [])
+            # nothing the pages asked for was missing offline (the server's own API can't answer, of course). A load the
+            # page cancelled itself (the photo file above, once its decoded copy is shown) is no failure, but what it
+            # asked for must be in the offline copy all the same
+            cancelled = re.compile(r'^(NS_BINDING_ABORTED|net::ERR_ABORTED)$')
+            self.assertEqual([(u, why) for u, why in failed if '/api/' not in u and not cancelled.match(why)], [])
+            self.assertEqual(page.evaluate("us => Promise.all(us.map(u => caches.match(u).then(c => c ? null : u))).then(m => m.filter(x => x))",
+                                           sorted({u for u, why in failed if '/api/' not in u and cancelled.match(why)})), [])
 
             # ---- 4. the lease: 29 days on, still working and saying how long; 31 days on, expired, in words
             now = datetime.datetime.now()
