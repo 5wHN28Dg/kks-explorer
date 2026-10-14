@@ -12,6 +12,8 @@ const AppId = "io.github._5wHN28Dg.walkdown"
 
 proc gObjectTypeName(o: W): cstring {.importc: "G_OBJECT_TYPE_NAME", header: "<glib-object.h>".}
 proc gtk_button_get_label(b: W): cstring {.importc, header: "<gtk/gtk.h>".}
+proc gtk_widget_get_cursor(w: W): W {.importc, header: "<gtk/gtk.h>".}
+proc gdk_cursor_get_name(c: W): cstring {.importc, header: "<gtk/gtk.h>".}
 
 proc doShowSheet(w: Win, id: string)
 proc doSelectTag(w: Win, id: string, center: bool)
@@ -557,7 +559,52 @@ proc activate(w: Win, app: W) =
         said = now
         writeFile(focusFile, now)
       true)
-  if getEnv("KKS_DEBUG_DIALOG").len > 0:      # accessibility check: a dialog over whatever screen is up
+  # tests (#183): the drawing driven without a pointer or keyboard (the headless test session has neither). Commands
+  # written to the file KKS_TEST_VIEWER names, plus ".do", one per line, go through the viewer's own gesture and key
+  # procs: "key 0xff1b" (a key pressed on the drawing), "drag x y dx dy" (widget pixels), "click-tag CODE". The file
+  # itself holds the drawing's state, written when it changes: "n=<commands done> marking=0|1 selecting=0|1
+  # cursor=<name> ox=… oy=…".
+  let viewerFile = getEnv("KKS_TEST_VIEWER")
+  if viewerFile.len > 0:
+    var said = ""
+    var done = 0
+    timeout(100, proc (): bool =
+      if w.gone: return false
+      if w.v == nil: return true           # (not joined yet: no drawing)
+      let todo = viewerFile & ".do"
+      if fileExists(todo):
+        let cmds = readFile(todo)
+        removeFile(todo)
+        for line in cmds.splitLines:
+          let p = line.splitWhitespace
+          if p.len == 0: continue
+          case p[0]
+          of "key": discard w.v.keyPress(cuint(parseHexInt(p[1])))
+          of "drag":
+            let (x, y, dx, dy) = (parseFloat(p[1]), parseFloat(p[2]), parseFloat(p[3]), parseFloat(p[4]))
+            w.v.dragBegin(x, y)
+            w.v.dragUpdate(dx, dy)
+            w.v.dragEnd(dx, dy)
+          of "click-tag":                # the tag of this code on the sheet shown, at its middle
+            var ids: seq[string]
+            for t in w.m.tags:
+              if t.full == p[1]: ids.add t.id
+            for b in w.v.tags:
+              if b.id in ids:
+                w.v.clickAt(((b.x0 + b.x1) / 2 - w.v.ox) * w.v.z, ((b.y0 + b.y1) / 2 - w.v.oy) * w.v.z)
+                break
+          else: stderr.writeLine "KKS_TEST_VIEWER: unknown command " & line
+          inc done
+      let c = gtk_widget_get_cursor(w.v.widget)
+      let now = "n=" & $done & " marking=" & $int(w.v.marking) & " selecting=" & $int(w.v.selecting) &
+                " cursor=" & (if c != nil and gdk_cursor_get_name(c) != nil: $gdk_cursor_get_name(c) else: "") &
+                " ox=" & $w.v.ox & " oy=" & $w.v.oy
+      if now != said:
+        said = now
+        writeFile(viewerFile & ".tmp", now)
+        moveFile(viewerFile & ".tmp", viewerFile)
+      true)
+  if getEnv("KKS_DEBUG_DIALOG").len > 0:     # accessibility check: a dialog over whatever screen is up
     after(3000, proc () =
       confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard))
   timeout(30_000, proc (): bool =

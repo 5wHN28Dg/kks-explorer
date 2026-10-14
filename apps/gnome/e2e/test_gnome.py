@@ -1499,6 +1499,118 @@ class Gnome(Plant):
         app.kill()                   # done: its syncs must not rebuild other tests' screens
         app.wait(10)
 
+    def test_zzzzzz_escape(self):
+        """#183: Escape on the drawing ends its modes as their own buttons do. Mark a tag: the banner and the crosshair
+        go, a drag pans again and marks nothing, a click on a tag opens its panel (before, Escape ended only the
+        viewer's half of the mode: the banner and the crosshair stayed). The banner's Cancel leaves the same (it left
+        the crosshair). Link mode ends as its Done ends it, the select mode as its toggle. KKS_TEST_VIEWER drives the
+        drawing: the headless session has no pointer or keyboard. (Named to run before link_done: it publishes the
+        same procedure.)"""
+        pd = os.path.join(self.dir, 'plant-data')
+        with open(os.path.join(pd, 'procedures.json'), 'w') as f:
+            json.dump([{'id': 'P-1', 'title': 'Start the test pump', 'path': ['Test chapter'], 'page': 1, 'intro': '',
+                        'steps': [{'n': 1, 'text': 'Open the suction valve'}]}], f)
+        r = subprocess.run([SERVER, 'publish-data', pd, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        state = os.path.join(self.dir, 'escape-viewer')
+        a = self.start_app('escape', KKS_TEST_VIEWER=state)
+        app = self.apps[-1]
+        self.join(a)
+        sent = [0]
+
+        def read():
+            try:
+                with open(state) as f:
+                    return dict(kv.split('=', 1) for kv in f.read().split())
+            except FileNotFoundError:
+                return {}
+
+        def drawing(*cmds):          # commands for the drawing; returns its state once they are done
+            with open(state + '.do.tmp', 'w') as f:
+                f.write('\n'.join(cmds) + '\n')
+            os.replace(state + '.do.tmp', state + '.do')
+            sent[0] += len(cmds)
+            for _ in range(100):
+                s = read()
+                if s.get('n') == str(sent[0]):
+                    return s
+                time.sleep(0.1)
+            self.fail(f'the drawing did not take {cmds}: {read()}')
+
+        def settles(what, **want):   # the drawing's state comes to this
+            for _ in range(50):
+                s = read()
+                if all(s.get(k) == v for k, v in want.items()):
+                    return s
+                time.sleep(0.1)
+            self.fail(f'{what}: {read()}, wanted {want}')
+
+        def gone(role, what, **match):
+            for _ in range(30):
+                if not atspi.find_all(a, role, **match):
+                    return
+                time.sleep(0.2)
+            self.fail(what)
+
+        code = '11LAB70AA501'
+        banner = 'Drag a box around the tag the app missed'
+        escape = 'key 0xff1b'
+        settles('the drawing is not up', marking='0', cursor='grab')
+
+        def start_marking():
+            atspi.click(atspi.find(a, 'button', name='Mark a tag the app missed'))
+            atspi.find(a, 'label', name=banner, timeout=10)
+            settles('Mark a tag did not start', marking='1', cursor='crosshair')
+
+        def mode_ended(how):         # all of Mark a tag gone, and the drawing pans and clicks as usual again
+            gone('label', f'{how} left the banner up', name=banner)
+            gone('button', f'{how} left the banner\'s Cancel up', name='Cancel')
+            s = settles(f'{how} left the drawing in mark mode', marking='0', cursor='grab')
+            moved = drawing('drag 300 300 80 60')
+            self.assertNotEqual((moved['ox'], moved['oy']), (s['ox'], s['oy']), f'after {how} a drag did not pan')
+            time.sleep(1)
+            self.assertFalse(atspi.find_all(a, 'label', contains='Type the code if you can read it'),
+                             f'after {how} a drag still marked a tag')
+            drawing(f'click-tag {code}')
+            atspi.find(a, 'button', name='Edit', timeout=10)     # its panel
+            self.press(a, 'Close the panel', ('button', 'Mark a tag the app missed'))
+            gone('button', f'the panel did not close after {how}', name='Edit')
+
+        # while marking, a click on a tag does nothing (the mode is on)
+        start_marking()
+        drawing(f'click-tag {code}')
+        time.sleep(1)
+        self.assertFalse(atspi.find_all(a, 'button', name='Edit'), 'a click while marking opened a panel')
+        drawing(escape)
+        mode_ended('Escape')
+        start_marking()
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        mode_ended('Cancel')
+        # link mode: Escape ends it as Done does (the banner goes, the procedure's page stays, drawn again)
+        self.press(a, 'Procedures', ('button', 'P-1  Start the test pump'))
+        self.press(a, 'P-1  Start the test pump', ('label', 'Open the suction valve'))
+        self.press(a, '+ Link equipment', ('button', 'Done'))
+        drawing(escape)
+        gone('label', 'Escape left link mode\'s banner up', contains='to link them to step')
+        atspi.find(a, 'label', name='Open the suction valve', timeout=5)
+        # the select mode: Escape ends it as its toggle does
+        mode = atspi.find(a, 'toggle button', name='Select tags')
+        atspi.click(mode)
+        atspi.find(a, 'label', name='0 selected', timeout=10)
+        settles('Select tags did not start', selecting='1', cursor='crosshair')
+        drawing(escape)
+        settles('Escape left the select mode on', selecting='0', cursor='grab')
+        for _ in range(20):
+            if not self.pressed(mode):
+                break
+            time.sleep(0.2)
+        self.assertFalse(self.pressed(mode), 'Escape left the Select tags toggle pressed')
+        self.assertIsNone(app.poll(), 'the app died')
+        self.assertEqual(self.criticals('escape'), [])
+        app.kill()
+        app.wait(10)
+
     def test_zzzzzz_link_done(self):
         """Link mode's banner: Done takes the banner down and draws the procedure's page again, also after Back has
         closed that page (#160's review: Done kept the closed page's widgets, and by taking the banner down freed

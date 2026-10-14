@@ -764,6 +764,74 @@ proc hitLink*(v: Viewer, x, y: float): int =
   for i, l in v.links:
     if px >= l.x0 - pad and px <= l.x1 + pad and py >= l.y0 - pad and py <= l.y1 + pad: return i
 
+# What the viewer's gestures and keys do, as procs of their own: the tests (KKS_TEST_VIEWER) drive them, the headless
+# test session having no pointer or keyboard.
+proc dragBegin*(v: Viewer, x, y: float) =
+  v.dragOx = v.ox
+  v.dragOy = v.oy
+  if v.marking or v.selecting:
+    v.markStart = (v.ox + x / v.z, v.oy + y / v.z)
+    v.mark = (v.markStart[0], v.markStart[1], v.markStart[0], v.markStart[1])
+
+proc dragUpdate*(v: Viewer, dx, dy: float) =
+  if v.marking or v.selecting:
+    let (sx, sy) = v.markStart
+    let ex = sx + dx / v.z
+    let ey = sy + dy / v.z
+    v.mark = (min(sx, ex), min(sy, ey), max(sx, ex), max(sy, ey))
+  else:
+    v.ox = v.dragOx - dx / v.z
+    v.oy = v.dragOy - dy / v.z
+  gtk_widget_queue_draw(v.widget)
+
+proc dragEnd*(v: Viewer, dx, dy: float) =
+  if v.marking and abs(dx) + abs(dy) > 6:
+    if v.onMark != nil: v.onMark(v.mark[0], v.mark[1], v.mark[2], v.mark[3])
+  elif v.selecting:
+    let b = v.mark
+    v.mark = (0.0, 0.0, 0.0, 0.0)
+    gtk_widget_queue_draw(v.widget)
+    if abs(dx) + abs(dy) > 6 and v.onBox != nil: v.onBox(b[0], b[1], b[2], b[3])
+  elif v.onView != nil: v.onView()
+
+proc clickAt*(v: Viewer, x, y: float) =
+  if v.marking: return
+  let li = if v.selecting: -1 else: v.hitLink(x, y)   # the select mode: clicks pick tags only
+  if li >= 0:
+    if v.onLink != nil: v.onLink(li)
+    return
+  let id = v.hitTag(x, y)
+  if id.len > 0 and v.selecting:      # the select mode: the app toggles it (v.chosen), the panel stays as it is
+    if v.onSelect != nil: v.onSelect(id)
+  elif id.len > 0:
+    v.selected = id
+    gtk_widget_queue_draw(v.widget)
+    if v.onSelect != nil: v.onSelect(id)
+
+proc keyPress*(v: Viewer, keyval: cuint): bool =
+  ## The drawing's own keys: panning and zooming. Escape is not one of them: it goes on to the window, which ends
+  ## whatever mode the drawing is in (Mark a tag, Select tags, link mode) the way that mode's own button does (#183).
+  let w = float(gtk_widget_get_width(v.widget))
+  let h = float(gtk_widget_get_height(v.widget))
+  case keyval
+  of 0xff51: v.ox -= w * 0.15 / v.z            # Left
+  of 0xff53: v.ox += w * 0.15 / v.z            # Right
+  of 0xff52: v.oy -= h * 0.15 / v.z            # Up
+  of 0xff54: v.oy += h * 0.15 / v.z            # Down
+  of 0x2b, 0x3d, 0xffab: v.zoomAt(1.25, w / 2, h / 2)       # + = keypad+
+  of 0x2d, 0xffad: v.zoomAt(0.8, w / 2, h / 2)              # - keypad-
+  of 0x30, 0xffb0: v.fit()                                  # 0
+  of 0xff1b:                                                 # Escape
+    if v.selecting and v.onEscape != nil: v.onEscape()
+    elif v.marking:
+      v.marking = false
+      v.mark = (0.0, 0.0, 0.0, 0.0)
+    else: return false
+  else: return false
+  gtk_widget_queue_draw(v.widget)
+  if v.onView != nil: v.onView()
+  true
+
 proc newViewer*(): Viewer =
   let v = Viewer(z: 1, linkSel: -1)
   GC_ref(v)
@@ -771,31 +839,9 @@ proc newViewer*(): Viewer =
   gtk_widget_set_cursor_from_name(v.widget, "grab")
   # pan
   let drag = gtk_gesture_drag_new()
-  drag.onXY("drag-begin", proc (x, y: float) =
-    v.dragOx = v.ox
-    v.dragOy = v.oy
-    if v.marking or v.selecting:
-      v.markStart = (v.ox + x / v.z, v.oy + y / v.z)
-      v.mark = (v.markStart[0], v.markStart[1], v.markStart[0], v.markStart[1]))
-  drag.onXY("drag-update", proc (dx, dy: float) =
-    if v.marking or v.selecting:
-      let (sx, sy) = v.markStart
-      let ex = sx + dx / v.z
-      let ey = sy + dy / v.z
-      v.mark = (min(sx, ex), min(sy, ey), max(sx, ex), max(sy, ey))
-    else:
-      v.ox = v.dragOx - dx / v.z
-      v.oy = v.dragOy - dy / v.z
-    gtk_widget_queue_draw(v.widget))
-  drag.onXY("drag-end", proc (dx, dy: float) =
-    if v.marking and abs(dx) + abs(dy) > 6:
-      if v.onMark != nil: v.onMark(v.mark[0], v.mark[1], v.mark[2], v.mark[3])
-    elif v.selecting:
-      let b = v.mark
-      v.mark = (0.0, 0.0, 0.0, 0.0)
-      gtk_widget_queue_draw(v.widget)
-      if abs(dx) + abs(dy) > 6 and v.onBox != nil: v.onBox(b[0], b[1], b[2], b[3])
-    elif v.onView != nil: v.onView())
+  drag.onXY("drag-begin", proc (x, y: float) = v.dragBegin(x, y))
+  drag.onXY("drag-update", proc (dx, dy: float) = v.dragUpdate(dx, dy))
+  drag.onXY("drag-end", proc (dx, dy: float) = v.dragEnd(dx, dy))
   gtk_widget_add_controller(v.widget, drag)
   # wheel zoom around the pointer
   let motion = gtk_event_controller_motion_new()
@@ -821,42 +867,11 @@ proc newViewer*(): Viewer =
   let click = gtk_gesture_click_new()
   click.onPressed("released", proc (n: int, x, y: float) =
     discard gtk_widget_grab_focus(v.widget)
-    if v.marking: return
-    let li = if v.selecting: -1 else: v.hitLink(x, y)   # the select mode: clicks pick tags only
-    if li >= 0:
-      if v.onLink != nil: v.onLink(li)
-      return
-    let id = v.hitTag(x, y)
-    if id.len > 0 and v.selecting:      # the select mode: the app toggles it (v.chosen), the panel stays as it is
-      if v.onSelect != nil: v.onSelect(id)
-    elif id.len > 0:
-      v.selected = id
-      gtk_widget_queue_draw(v.widget)
-      if v.onSelect != nil: v.onSelect(id))
+    v.clickAt(x, y))
   gtk_widget_add_controller(v.widget, click)
   # keyboard
   let keys = gtk_event_controller_key_new()
-  keys.onKey(proc (keyval, state: cuint): bool =
-    let w = float(gtk_widget_get_width(v.widget))
-    let h = float(gtk_widget_get_height(v.widget))
-    case keyval
-    of 0xff51: v.ox -= w * 0.15 / v.z            # Left
-    of 0xff53: v.ox += w * 0.15 / v.z            # Right
-    of 0xff52: v.oy -= h * 0.15 / v.z            # Up
-    of 0xff54: v.oy += h * 0.15 / v.z            # Down
-    of 0x2b, 0x3d, 0xffab: v.zoomAt(1.25, w / 2, h / 2)       # + = keypad+
-    of 0x2d, 0xffad: v.zoomAt(0.8, w / 2, h / 2)              # - keypad-
-    of 0x30, 0xffb0: v.fit()                                  # 0
-    of 0xff1b:                                                 # Escape
-      if v.selecting and v.onEscape != nil: v.onEscape()
-      elif v.marking:
-        v.marking = false
-        v.mark = (0.0, 0.0, 0.0, 0.0)
-      else: return false
-    else: return false
-    gtk_widget_queue_draw(v.widget)
-    if v.onView != nil: v.onView()
-    true)
+  keys.onKey(proc (keyval, state: cuint): bool = v.keyPress(keyval))
   gtk_widget_add_controller(v.widget, keys)
   timeout(50, proc (): bool =
     v.pollDecodes()
