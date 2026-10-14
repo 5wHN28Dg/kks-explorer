@@ -1516,6 +1516,40 @@ class OwnDevicePassword(Base):
         self.assertEqual((removed(), self.alive(tom, thief, ali)), ({phone, alis, bosss, tablet}, [200] * 3))
 
 
+class ThisSignIn(Base):
+    """Devices: the key a web sign-in itself uses (the account's own, held by the server) is marked in GET /api/devices
+    as `this_signin`, so the page offers no Remove for it; removing it is still refused as before."""
+
+    def test_this_signin(self):
+        boss = self.manager()
+        st, r, _ = boss.req('POST', '/api/users', {'username': 'sara', 'full_name': 'Sara Person', 'position': 'Operator', 'role': 'admin'})
+        self.assertEqual(st, 200, r)
+        sara = Client(self.base)
+        self.assertEqual(sara.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'sara password 1'})[0], 200)
+        st, r, _ = boss.req('POST', '/api/users', {'username': 'ali', 'full_name': 'Ali Person', 'position': 'Operator', 'role': 'user'})
+        ali = Client(self.base)
+        self.assertEqual(ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})[0], 200)
+        # a member: their own list only (no 'all'), their key marked
+        st, d, _ = ali.req('GET', '/api/devices')
+        self.assertEqual((st, d['all'], [x['this_signin'] for x in d['mine']]), (200, None, [True]))
+        lists = {}
+        for name, c in (('boss', boss), ('sara', sara)):
+            st, d, _ = c.req('GET', '/api/devices')
+            self.assertEqual(st, 200, d)
+            lists[name] = d
+            marked = [x for x in d['mine'] if x['this_signin']]
+            self.assertEqual(len(marked), 1, d['mine'])
+            self.assertTrue(all(isinstance(x['this_signin'], bool) for x in d['mine'] + d['all']))
+            self.assertEqual([x['device'] for x in d['all'] if x['this_signin']], [marked[0]['device']])   # (nobody else's)
+            # still refused, as before: without the password as one's own device (#176), with it by the core
+            st, e, _ = c.req('POST', '/api/devices/revoke', {'device': marked[0]['device']})
+            self.assertEqual((st, e), (401, {'error': 'Wrong username or password.'}))
+            st, e, _ = c.req('POST', '/api/devices/revoke', {'device': marked[0]['device'],
+                                                              'password': 'sara password 1' if name == 'sara' else 'a long password'})
+            self.assertEqual((st, e), (400, {'error': 'This is the device you are using; remove it from another one.'}))
+        mine = lambda n: [x['device'] for x in lists[n]['mine'] if x['this_signin']][0]
+        self.assertNotEqual(mine('boss'), mine('sara'))
+        self.assertIn(mine('sara'), [x['device'] for x in lists['boss']['all'] if not x['this_signin']])
 @unittest.skipUnless(os.path.exists(IMPORTER), 'the importer (kks_import) is not built')
 class OwnDeviceAddPassword(Base):
     """A device for one's own person, added from a web sign-in, asks for the account's password (the user, 2026-10-14):
