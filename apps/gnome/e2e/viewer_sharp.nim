@@ -298,6 +298,9 @@ proc motion(v: Viewer, name: string, n: int, step: proc (i: int)): Motion =
   Motion(intervals: intervals, busy: busy, stall: stall)
 
 # ---------------------------------------------------------------- the run
+if not getEnv("WAYLAND_DISPLAY").startsWith("kks-headless-"):
+  echo "run it under e2e/headless.sh (a private compositor), never on the desktop"
+  quit 2
 let app = adw_application_new("org.kks.SharpTest", 32)
 var done = false
 app.on("activate", proc () =
@@ -362,6 +365,13 @@ app.on("activate", proc () =
   let w = float(gtk_widget_get_width(v.widget))
   let h = float(gtk_widget_get_height(v.widget))
   let zoom = v.motion("zoom", 90, proc (i: int) = v.zoomAt(1.03, w / 2, h / 2))
+  # a zoom, then a drag at once: the tiles of the new zoom are drawn while the drag goes on (the zoom has settled,
+  # though frames keep coming)
+  v.centerOn(1100, 800, 1101, 801, 1.5)
+  doAssert v.complete()
+  v.zoomAt(1.2, w / 2, h / 2)
+  discard v.motion("drag after a zoom", 40, proc (i: int) = v.ox += 2 / v.z)
+  check(v.tilesAtViewZoom, "tiles of the new zoom are wanted during a drag that follows it at once")
   if timing:
     # the main thread's share, which this code decides (the time between frames also holds the compositor and the
     # GPU, which other work on the machine slows down: reported above, not checked)

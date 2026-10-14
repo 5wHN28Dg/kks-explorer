@@ -331,6 +331,10 @@ proc setDark*(v: Viewer, on: bool) =
 
 proc levelScale(v: Viewer, k: int): float = v.scale0 / float(1 shl k)
 
+proc tilesAtViewZoom*(v: Viewer): bool =
+  ## the tiles are wanted at the zoom on screen (not still waiting for a zoom change to settle)
+  v.tileZ > 0 and v.tileZ == v.lastDz
+
 proc tilesPending*(v: Viewer): int =
   ## tiles the view still waits for (wanted, with the workers, or a zoom about to be adopted); tests wait for 0
   v.want.len + v.queued.len + (if v.settle != 0: 1 else: 0)
@@ -471,9 +475,11 @@ template cairoIn(s: W, x, y, w, h: float, c, body: untyped) =
     body
     cairo_destroy(c)
 
-proc adoptZoom(v: Viewer, dz: float) =
+proc adoptZoom(v: Viewer, dz, before: float) =
   ## the zoom tiles are drawn at: the view's at once when nothing is drawn yet, else once it has stayed put for
-  ## SettleMs (a pinch or a run of wheel steps doesn't start tiles for every zoom on the way)
+  ## SettleMs (a pinch or a run of wheel steps doesn't start tiles for every zoom on the way). `before` is the last
+  ## frame's zoom: only a change of zoom starts the wait again, not every frame (a drag right after a zoom drew no
+  ## tiles of the new zoom for as long as it lasted)
   if v.tileZ == 0:
     v.tileZ = dz
     return
@@ -482,7 +488,9 @@ proc adoptZoom(v: Viewer, dz: float) =
       g_source_remove(v.settle)
       v.settle = 0
     return
-  if v.settle != 0: g_source_remove(v.settle)
+  if v.settle != 0:
+    if dz == before: return
+    g_source_remove(v.settle)
   v.settle = after(SettleMs, proc () =
     v.settle = 0
     v.tileZ = v.lastDz
@@ -498,20 +506,25 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
   let wpt = if v.sheet != nil: v.sheet.widthPt else: 1.0
   let hpt = if v.sheet != nil: v.sheet.heightPt else: 1.0
   let sf = v.sf
-  let dz = v.z * sf                       # device px per point
+  var dz = v.z * sf                       # device px per point
+  # a zoom a rounding error away from the tiles' (a pinch's arithmetic) is theirs: the same picture, not a new set
+  if v.tileZ > 0 and abs(dz - v.tileZ) <= 1e-9 * v.tileZ: dz = v.tileZ
+  let before = v.lastDz
   v.lastDz = dz
   # the vector tiles: which are at hand, and which the view still needs
   var exact: seq[(TileKey, float, float)]   # tiles at this very zoom, with their place in device px
   var standIns: seq[TileKey]
   var holes: seq[(float, float, float, float)]   # the missing tiles' areas (points): where stand-ins show
   var covered = false                        # the view is all exact tiles: no overview under them
+  var hox = v.ox                             # where the hotspots are drawn from: the tiles' rounded place, so a
+  var hoy = v.oy                             # tag's box sits on its drawn symbol to the device pixel
   let x0 = max(0.0, v.ox)
   let y0 = max(0.0, v.oy)
   let x1 = min(wpt, v.ox + float(w) / v.z)
   let y1 = min(hpt, v.oy + float(h) / v.z)
   if v.sheet != nil and (x1 <= x0 or y1 <= y0): v.want.setLen(0)   # nothing of the sheet in view
   if v.sheet != nil and x1 > x0 and y1 > y0:
-    v.adoptZoom(dz)
+    v.adoptZoom(dz, before)
     if v.tileZ == dz:
       let span = float(TileSize) / dz         # points per tile
       let zb = cast[uint64](dz)
@@ -522,6 +535,8 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
       let fy = wy * sf - floor(wy * sf)
       let bx = round(v.ox * dz - fx) + fx
       let by = round(v.oy * dz - fy) + fy
+      hox = bx / dz
+      hoy = by / dz
       let c0 = int(floor(x0 / span))
       let c1 = int(floor(min(x1, wpt - 1e-9) / span))
       let r0 = int(floor(y0 / span))
@@ -596,7 +611,10 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     if tex != nil:
       inDevicePixels(s, sf):
         graphene_rect_init(addr r, cfloat(-v.ox * dz), cfloat(-v.oy * dz), cfloat(wpt * dz), cfloat(hpt * dz))
-        gtk_snapshot_append_texture(s, tex, addr r)
+        # shrunk by more than half (a sharper level not decoded yet): mipmapped, else a plain texture node
+        if wpt * dz < 0.5 * float(gdk_texture_get_width(tex)):
+          gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
+        else: gtk_snapshot_append_texture(s, tex, addr r)
       if not timingReported and startedAt > 0:
         timingReported = true
         stderr.writeLine "timing: first sheet drawn " & $int((epochTime() - startedAt) * 1000) & " ms after launch"
@@ -613,9 +631,10 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
         v.tiles[k].used = v.frame
         graphene_rect_init(addr r, cfloat((float(k.ix) * span - v.ox) * dz), cfloat((float(k.iy) * span - v.oy) * dz),
                            cfloat(span * dz), cfloat(span * dz))
-        # a plain texture node: GSK filters it as it draws (a scaled-texture node would go through a picture of its
-        # own every frame)
-        gtk_snapshot_append_texture(s, v.tiles[k].tex, addr r)
+        # a plain texture node: GSK filters it as it draws (a scaled-texture node goes through a picture of its own
+        # every frame); mipmapped only when shrunk by more than half, for the moment a zoom out takes to settle
+        if dz / tz < 0.5: gtk_snapshot_append_scaled_texture(s, v.tiles[k].tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
+        else: gtk_snapshot_append_texture(s, v.tiles[k].tex, addr r)
       for (k, dx, dy) in exact:
         v.tiles[k].used = v.frame
         # one tile pixel per device pixel, on whole device pixels: nothing to filter
@@ -625,8 +644,8 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     v.pump()
   # hotspots: colour and border nodes (GSK draws them on the GPU), small Cairo nodes for the few dashed or round ones
   for t in v.tags:
-    let x = (t.x0 - v.ox) * v.z
-    let y = (t.y0 - v.oy) * v.z
+    let x = (t.x0 - hox) * v.z
+    let y = (t.y0 - hoy) * v.z
     let tw = (t.x1 - t.x0) * v.z
     let th = (t.y1 - t.y0) * v.z
     if x + tw < -8 or y + th < -8 or x > float(w) + 8 or y > float(h) + 8: continue
@@ -664,8 +683,8 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     # the valve symbol the open panel's type was read from: dashed magenta, apart from every tag colour
     let b = v.symbolBox
     let (mr, mg, mb) = if v.dark: lightenForDark(0.69, 0.09, 0.62) else: (0.69, 0.09, 0.62)
-    let bx = (b[0] - v.ox) * v.z - 3
-    let by = (b[1] - v.oy) * v.z - 3
+    let bx = (b[0] - hox) * v.z - 3
+    let by = (b[1] - hoy) * v.z - 3
     let bw = (b[2] - b[0]) * v.z + 6
     let bh = (b[3] - b[1]) * v.z + 6
     fillRect(s, rgba(mr, mg, mb, 0.16), bx, by, bw, bh)
@@ -678,8 +697,8 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
       cairo_stroke(c)
   # off-page connectors: violet dashed circles, unlike the tags' rectangles
   for i, l in v.links:
-    let cx = ((l.x0 + l.x1) / 2 - v.ox) * v.z
-    let cy = ((l.y0 + l.y1) / 2 - v.oy) * v.z
+    let cx = ((l.x0 + l.x1) / 2 - hox) * v.z
+    let cy = ((l.y0 + l.y1) / 2 - hoy) * v.z
     let rad = max(6.0, max(l.x1 - l.x0, l.y1 - l.y0) / 2 * v.z + 3)
     if cx + rad < 0 or cy + rad < 0 or cx - rad > float(w) or cy - rad > float(h): continue
     let sel = i == v.linkSel
@@ -696,8 +715,8 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
         cairo_set_dash(c, addr dash[0], 2, 0)
       cairo_stroke(c)
   if (v.selecting or v.marking) and v.mark[2] != v.mark[0]:
-    let mx = (v.mark[0] - v.ox) * v.z
-    let my = (v.mark[1] - v.oy) * v.z
+    let mx = (v.mark[0] - hox) * v.z
+    let my = (v.mark[1] - hoy) * v.z
     let mw = (v.mark[2] - v.mark[0]) * v.z
     let mh = (v.mark[3] - v.mark[1]) * v.z
     if v.selecting:

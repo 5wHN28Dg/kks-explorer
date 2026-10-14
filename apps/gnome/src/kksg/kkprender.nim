@@ -15,6 +15,8 @@ type
     images: array[bool, seq[Surface]]    ## per mode (dark = true), index = image index; nil = not yet / failed
     decoded: array[bool, seq[bool]]
     lock: Lock                           ## guards images, decoded and dark
+    decoding: Lock                       ## one embedded image decoded at a time: two workers wanting the same one
+                                         ## decode it once (libjxl at full size, with its own threads)
     paint: Lock                          ## one embedded image painted at a time: Cairo may share the image's pixman
                                          ## image between paints, and pixman's reference count is not atomic
     dark*: bool                          ## the mode renderTile draws in; set through setDark
@@ -25,6 +27,7 @@ proc newSheet*(data: string): Sheet =
   result = Sheet(d: decode(data))
   initLock(result.lock)
   initLock(result.paint)
+  initLock(result.decoding)
   for m in [false, true]:
     result.images[m] = newSeq[Surface](result.d.images.len)
     result.decoded[m] = newSeq[bool](result.d.images.len)
@@ -56,14 +59,14 @@ proc heightPt*(s: Sheet): float = float(s.d.height) / float(Q)
 
 proc cairo_surface_reference(s: Surface): Surface {.importc, header: "<cairo.h>", discardable.}
 
-proc imageSurface(s: ptr SheetObj, dark: bool, i: int): Surface =
-  ## image i in this mode, with a reference for the caller (nil if it can't be decoded); any thread
+proc imageSurfaceLocked(s: ptr SheetObj, dark: bool, i: int): Surface =
   withLock s.lock:
     if dark != s.dark or s.released: return nil   # a tile of the mode or sheet just left: it is dropped
     if s.decoded[dark][i]:
       return (if s.images[dark][i] == nil: nil else: cairo_surface_reference(s.images[dark][i]))
   var sf: Surface = nil
   try:
+    if s.d.images[i].data.len == 0: raise newException(ValueError, "an empty image")
     var (w, h, _, px) = decodeRgba(s.d.images[i].data)
     if dark: darkenPixels(px, 4)
     sf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, cint(w), cint(h))
@@ -93,6 +96,11 @@ proc imageSurface(s: ptr SheetObj, dark: bool, i: int): Surface =
       s.decoded[dark][i] = true
       s.images[dark][i] = sf
     result = if s.images[dark][i] == nil: nil else: cairo_surface_reference(s.images[dark][i])
+
+proc imageSurface(s: ptr SheetObj, dark: bool, i: int): Surface =
+  ## image i in this mode, with a reference for the caller (nil if it can't be decoded); any thread
+  withLock s.decoding:
+    result = imageSurfaceLocked(s, dark, i)
 
 proc setColor(dark: bool, c: Cairo, rgb: openArray[uint8]) {.inline.} =
   if dark:
