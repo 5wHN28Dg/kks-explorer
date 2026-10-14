@@ -23,8 +23,9 @@ proc markDialog*(w: Win, x0, y0, x1, y1: float) =
     let tw = int(ceil((x1 - x0 + 2 * pad) * zoom))
     let th = int(ceil((y1 - y0 + 2 * pad) * zoom))
     let surf = w.v.sheet.renderTile(zoom, x0 - pad, y0 - pad, tw, th)
-    let pic = gtk_picture_new_for_paintable(textureOf(surf))
-    cairo_surface_destroy(surf)
+    let tex = textureTaking(surf)
+    let pic = gtk_picture_new_for_paintable(tex)
+    g_object_unref(tex)                 # the picture holds its own
     gtk_widget_set_size_request(pic, cint(tw), cint(th))
     setAccessibleLabel(pic, "The marked part of the drawing")
     body.add pic

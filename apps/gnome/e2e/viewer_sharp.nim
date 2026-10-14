@@ -6,17 +6,34 @@
 ## A synthetic sheet (A1, dense thin "text" and hairlines, as the P&IDs are) is shown at several zooms. Each view is
 ## captured at device pixels through GTK's own renderer and compared with the same area drawn directly by Cairo at
 ## that device resolution: the ratio of their gradient energy is 1 for an equally sharp picture and well below 1 for a
-## resampled one. Then a pan and a zoom run one step per frame, and the time between frames is measured.
+## resampled one. A settled view with tags is checked for what makes frames slow: no Cairo layer the size of the view
+## (rasterised on the CPU at every frame) and no scaled-texture nodes (GTK draws those through a picture at logical
+## size). Then a pan and a zoom run one step per frame, with 300 tags on the sheet, and the time between frames is
+## measured (KKS_SHARP_TIMING=0 skips those limits: a CI runner draws on the CPU). Last, the monitor's scale changes
+## to 1 and the view must be as sharp at the new scale.
 ## KKS_SHARP_OUT=folder keeps the pictures; KKS_SHARP_ASSERT=0 only measures (the default asserts).
-import std/[os, math, random, strutils, algorithm, times, sequtils]
+import std/[os, osproc, math, random, strutils, algorithm, times, sequtils, sets]
 import kks/[pathstore, json]
 import kksg/[gtk, viewer, kkprender]
 
 const HA = "<gtk/gtk.h>"
-proc gtk_widget_paintable_new(w: W): W {.importc, header: HA.}
 proc gtk_snapshot_new(): W {.importc, header: HA.}
 proc gtk_snapshot_scale(s: W, x, y: cfloat) {.importc, header: HA.}
-proc gdk_paintable_snapshot(p, s: W, w, h: cdouble) {.importc, header: HA.}
+proc gsk_render_node_get_node_type(n: W): cint {.importc, header: HA.}
+proc gsk_render_node_get_bounds(n: W, r: ptr GraphRect) {.importc, header: HA.}
+proc gsk_container_node_get_n_children(n: W): cuint {.importc, header: HA.}
+proc gsk_container_node_get_child(n: W, i: cuint): W {.importc, header: HA.}
+proc gsk_transform_node_get_child(n: W): W {.importc, header: HA.}
+proc gsk_clip_node_get_child(n: W): W {.importc, header: HA.}
+proc graphene_rect_get_width(r: ptr GraphRect): cfloat {.importc, header: HA.}
+proc graphene_rect_get_height(r: ptr GraphRect): cfloat {.importc, header: HA.}
+var
+  GSK_CONTAINER_NODE {.importc, header: HA, nodecl.}: cint
+  GSK_TRANSFORM_NODE {.importc, header: HA, nodecl.}: cint
+  GSK_CLIP_NODE {.importc, header: HA, nodecl.}: cint
+  GSK_CAIRO_NODE {.importc, header: HA, nodecl.}: cint
+  GSK_TEXTURE_NODE {.importc, header: HA, nodecl.}: cint
+  GSK_TEXTURE_SCALE_NODE {.importc, header: HA, nodecl.}: cint
 proc gtk_snapshot_free_to_node(s: W): W {.importc, header: HA.}
 proc gtk_widget_get_native(w: W): W {.importc, header: HA.}
 proc gtk_native_get_renderer(w: W): W {.importc, header: HA.}
@@ -33,6 +50,7 @@ proc gtk_application_add_window(a, w: W) {.importc, header: HA.}
 
 let outDir = getEnv("KKS_SHARP_OUT")
 let strict = getEnv("KKS_SHARP_ASSERT", "1") != "0"
+let timing = getEnv("KKS_SHARP_TIMING", "1") != "0"
 var failures: seq[string]
 
 proc check(ok: bool, what: string) =
@@ -97,17 +115,48 @@ proc synthSheet(): string =
   d.styles[3].fill = [0'u8, 0, 0]
   encode(d)
 
+proc synthTags(): (seq[TagBox], seq[TagBox]) =
+  ## 300 tags and 20 off-page connectors spread over the sheet, every kind of mark among them
+  var r = initRand(7)
+  for i in 0 ..< 300:
+    let x = 30 + r.rand(2300.0)
+    let y = 30 + r.rand(1600.0)
+    let st = ["auto", "verified", "review", "pending"][i mod 4]
+    result[0].add TagBox(id: "t" & $i, x0: x, y0: y, x1: x + 26, y1: y + 9, status: st, photos: "none", label: "t" & $i)
+  for i in 0 ..< 20:
+    let x = 30 + r.rand(2300.0)
+    let y = 30 + r.rand(1600.0)
+    result[1].add TagBox(id: "c" & $i, x0: x, y0: y, x1: x + 8, y1: y + 8, label: "C" & $i)
+
 # ---------------------------------------------------------------- pictures and the sharpness measure
+proc nodeOf(v: Viewer, sf: float): W =
+  ## the widget's own drawing under the window's scale, as GTK draws it on screen (a GtkWidgetPaintable would hand
+  ## over its last picture at logical size, scaled up)
+  let s = gtk_snapshot_new()
+  gtk_snapshot_scale(s, cfloat(sf), cfloat(sf))
+  v.drawInto(s)
+  gtk_snapshot_free_to_node(s)
+
+proc census(n: W, cairoMax: var float, textures, scaled: var int) =
+  ## the largest Cairo node's area (logical px²), the texture and scaled-texture nodes
+  if n == nil: return
+  let t = gsk_render_node_get_node_type(n)
+  if t == GSK_CONTAINER_NODE:
+    for i in 0'u32 ..< gsk_container_node_get_n_children(n): census(gsk_container_node_get_child(n, cuint(i)), cairoMax, textures, scaled)
+  elif t == GSK_TRANSFORM_NODE: census(gsk_transform_node_get_child(n), cairoMax, textures, scaled)
+  elif t == GSK_CLIP_NODE: census(gsk_clip_node_get_child(n), cairoMax, textures, scaled)
+  elif t == GSK_CAIRO_NODE:
+    var b: GraphRect
+    gsk_render_node_get_bounds(n, addr b)
+    cairoMax = max(cairoMax, float(graphene_rect_get_width(addr b)) * float(graphene_rect_get_height(addr b)))
+  elif t == GSK_TEXTURE_NODE: inc textures
+  elif t == GSK_TEXTURE_SCALE_NODE: inc scaled
+
 proc capture(v: Viewer, sf: float): (int, int, seq[byte]) =
   ## the viewer as GTK draws it at `sf` device px per logical px: (w, h, B G R A rows)
   let w = float(gtk_widget_get_width(v.widget))
   let h = float(gtk_widget_get_height(v.widget))
-  let p = gtk_widget_paintable_new(v.widget)
-  let s = gtk_snapshot_new()
-  gtk_snapshot_scale(s, cfloat(sf), cfloat(sf))
-  gdk_paintable_snapshot(p, s, w, h)
-  let node = gtk_snapshot_free_to_node(s)
-  g_object_unref(p)
+  let node = v.nodeOf(sf)
   var vp: GraphRect
   graphene_rect_init(addr vp, 0, 0, cfloat(round(w * sf)), cfloat(round(h * sf)))
   let tex = gsk_renderer_render_texture(gtk_native_get_renderer(gtk_widget_get_native(v.widget)), node, addr vp)
@@ -136,8 +185,10 @@ proc sharpness(v: Viewer, sf: float, name: string): float =
   ## the gradient energy of the middle of the view as drawn, over the same area drawn by Cairo at device pixels
   let (w, h, buf) = v.capture(sf)
   let dz = v.z * sf
-  let x0p = v.ox
-  let y0p = v.oy
+  # on the device pixel grid the viewer places its tiles on (a fraction of a pixel's shift changes how Cairo
+  # anti-aliases a hairline, not how sharp the drawing is)
+  let x0p = round(v.ox * dz) / dz
+  let y0p = round(v.oy * dz) / dz
   let refSurf = v.sheet.renderTile(dz, x0p, y0p, w, h)
   let rstride = int(cairo_image_surface_get_stride(refSurf))
   let rdata = cairo_image_surface_get_data(refSurf)
@@ -210,6 +261,9 @@ proc motion(v: Viewer, name: string, n: int, step: proc (i: int)): seq[float] =
 let app = adw_application_new("org.kks.SharpTest", 32)
 var done = false
 app.on("activate", proc () =
+  after(240_000, proc () =
+    echo "FAIL the test did not finish in 4 minutes"
+    quit 3)
   let v = newViewer()
   let win = gtk_window_new()
   gtk_window_set_default_size(win, 1200, 800)
@@ -233,9 +287,26 @@ app.on("activate", proc () =
     let s = v.sharpness(sf, name)
     check(s >= 0.85, "sharp at " & name & " (" & formatFloat(v.z * sf, ffDecimal, 2) & " device px/pt): gradient energy " &
       formatFloat(s, ffDecimal, 3) & " of Cairo's at device pixels")
-  # a pan across new parts of the sheet, one step per frame (a brisk drag: 30 logical px a frame)
+  # with tags on: what each frame is made of, in a settled view
+  (v.tags, v.links) = synthTags()
+  v.selected = "t1"
+  for i in countup(0, 299, 37): v.hits.incl "t" & $i
   v.centerOn(300, 800, 301, 801, 1.5)
   doAssert v.complete()
+  block:
+    let node = v.nodeOf(sf)
+    var cairoMax = 0.0
+    var textures, scaled = 0
+    census(node, cairoMax, textures, scaled)
+    gsk_render_node_unref(node)
+    let area = float(gtk_widget_get_width(v.widget) * gtk_widget_get_height(v.widget))
+    check(cairoMax <= area / 50, "no Cairo layer near the view's size (largest " & $int(cairoMax) & " of " & $int(area) & " px²)")
+    check(scaled == 0 and textures > 0, "a settled view is tiles at device pixels: " & $textures & " texture nodes, " &
+      $scaled & " scaled-texture nodes")
+    if outDir.len > 0:
+      discard v.capture(sf)
+      moveFile(outDir / "last-capture.png", outDir / "tags-viewer.png")
+  # a pan across new parts of the sheet, one step per frame (a brisk drag: 30 logical px a frame)
   let pan = v.motion("pan", 150, proc (i: int) = v.ox += 30 / v.z)
   # a zoom from fit, 3 % a frame
   v.fit()
@@ -243,10 +314,29 @@ app.on("activate", proc () =
   let w = float(gtk_widget_get_width(v.widget))
   let h = float(gtk_widget_get_height(v.widget))
   let zoom = v.motion("zoom", 90, proc (i: int) = v.zoomAt(1.03, w / 2, h / 2))
-  for (name, xs) in [("pan", pan), ("zoom", zoom)]:
-    check(percentile(xs, 0.95) <= 25.0, name & ": 95 % of frames within 25 ms (" &
-      formatFloat(percentile(xs, 0.95), ffDecimal, 1) & ")")
-    check(max(xs) <= 60.0, name & ": no frame over 60 ms (" & formatFloat(max(xs), ffDecimal, 1) & ")")
+  if timing:
+    for (name, xs) in [("pan", pan), ("zoom", zoom)]:
+      check(percentile(xs, 0.95) <= 25.0, name & ": 95 % of frames within 25 ms (" &
+        formatFloat(percentile(xs, 0.95), ffDecimal, 1) & ")")
+      check(max(xs) <= 60.0, name & ": no frame over 60 ms (" & formatFloat(max(xs), ffDecimal, 1) & ")")
+  # the monitor's scale changes (another screen): the tiles follow, as sharp at the new scale
+  if getEnv("KKS_HEADLESS_SCALE").len > 0:
+    v.tags = @[]
+    v.links = @[]
+    let dc = "gdbus call --session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig "
+    let st = execProcess(dc & "--method org.gnome.Mutter.DisplayConfig.GetCurrentState", options = {poEvalCommand})
+    let serial = st[st.find("uint32 ") + 7 ..< st.find(",")]
+    let size = getEnv("KKS_HEADLESS_SIZE", "1280x900")
+    doAssert execCmd(dc & "--method org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig " & serial & " 1 \"[(0, 0, 1.0, 0, true, [('Meta-0', '" &
+      size & "@60.000', @a{sv} {})])]\" \"@a{sv} {}\" >/dev/null") == 0
+    let surface = gtk_native_get_surface(gtk_widget_get_native(v.widget))
+    check(waitUntil(proc (): bool = gdk_surface_get_scale(surface) == 1.0, 20), "the window's scale is 1 now")
+    v.centerOn(1100, 800, 1101, 801, 2.9)
+    v.frames(3)
+    doAssert v.complete()
+    let s1 = v.sharpness(1.0, "scale1-z2.9")
+    check(s1 >= 0.85, "sharp after the scale changed to 1 (" & formatFloat(v.z, ffDecimal, 2) & " device px/pt): gradient energy " &
+      formatFloat(s1, ffDecimal, 3))
   done = true
   gtk_window_destroy(win)
   g_application_quit(app))

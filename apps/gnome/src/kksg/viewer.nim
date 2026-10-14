@@ -325,14 +325,16 @@ proc tileCap(v: Viewer): int =
   max(MaxTiles, 2 * across * down)
 
 proc evict(v: Viewer) =
-  ## the least recently drawn tiles go, down to the cap
+  ## down to the cap: tiles of other zooms first, then the least recently drawn (a tile of the view's own zoom never
+  ## gives way to a stand-in, or the view would draw the same tile again and again)
   let cap = v.tileCap
   if v.tiles.len <= cap: return
-  var order: seq[(int, TileKey)]
-  for k, t in v.tiles: order.add (t.used, k)
-  order.sort(proc (a, b: (int, TileKey)): int = cmp(a[0], b[0]))
+  let zb = cast[uint64](v.tileZ)
+  var order: seq[(int, int, TileKey)]
+  for k, t in v.tiles: order.add ((if k.zb == zb: 1 else: 0), t.used, k)
+  order.sort(proc (a, b: (int, int, TileKey)): int = cmp((a[0], a[1]), (b[0], b[1])))
   for n in 0 ..< v.tiles.len - cap:
-    let k = order[n][1]
+    let k = order[n][2]
     g_object_unref(v.tiles[k].tex)
     v.tiles.del k
 
@@ -410,6 +412,20 @@ proc gsk_rounded_rect_init_from_rect(rr: ptr GskRoundedRect, r: ptr GraphRect, r
 proc gtk_snapshot_append_border(s: W, rr: ptr GskRoundedRect, widths: ptr array[4, cfloat],
                                 colors: ptr array[4, GdkRGBA]) {.importc, header: "<gtk/gtk.h>".}
 
+proc gtk_snapshot_save(s: W) {.importc, header: "<gtk/gtk.h>".}
+proc gtk_snapshot_restore(s: W) {.importc, header: "<gtk/gtk.h>".}
+proc gtk_snapshot_scale(s: W, x, y: cfloat) {.importc, header: "<gtk/gtk.h>".}
+
+template inDevicePixels(s: W, sf: float, body: untyped) =
+  ## textures are placed in device pixels: GTK 4.22 draws a scaled texture (a texture-scale node) through a picture as
+  ## large as its rectangle in the node's own units, so under the window's scale 2 every tile and the overview was
+  ## sampled at half the screen's resolution and stretched back (all renderers: Vulkan, GL and Cairo; measured
+  ## 2026-10-14, e2e/viewer_sharp.nim). With one unit per device pixel the picture is the screen's resolution.
+  gtk_snapshot_save(s)
+  gtk_snapshot_scale(s, cfloat(1 / sf), cfloat(1 / sf))
+  body
+  gtk_snapshot_restore(s)
+
 proc rgba(r, g, b: float, a = 1.0): GdkRGBA = GdkRGBA(red: cfloat(r), green: cfloat(g), blue: cfloat(b), alpha: cfloat(a))
 
 proc fillRect(s: W, c: GdkRGBA, x, y, w, h: float) =
@@ -469,6 +485,7 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
   # the vector tiles: which are at hand, and which the view still needs
   var exact: seq[(TileKey, float, float)]   # tiles at this very zoom, with their place in device px
   var standIns: seq[TileKey]
+  var holes: seq[(float, float, float, float)]   # the missing tiles' areas (points): where stand-ins show
   var covered = false                        # the view is all exact tiles: no overview under them
   let x0 = max(0.0, v.ox)
   let y0 = max(0.0, v.oy)
@@ -494,6 +511,7 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
           if key in v.tiles: exact.add (key, float(ix * TileSize) - bx, float(iy * TileSize) - by)
           else:
             missing.add key
+            holes.add (float(ix) * span, float(iy) * span, float(ix + 1) * span, float(iy + 1) * span)
             covered = false
       # the most wanted last: the middle of the view first, then a ring around it (ready when the pan gets there)
       let cx = (x0 + x1) / 2 / span
@@ -513,13 +531,18 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
       for k, t in v.tiles:
         if k.zb == cast[uint64](dz): continue
         let span = float(TileSize) / tileZoom(k)
-        if float(k.ix + 1) * span < x0 or float(k.ix) * span > x1 or float(k.iy + 1) * span < y0 or
-           float(k.iy) * span > y1: continue
+        let (a0, b0, a1, b1) = (float(k.ix) * span, float(k.iy) * span, float(k.ix + 1) * span, float(k.iy + 1) * span)
+        if a1 < x0 or a0 > x1 or b1 < y0 or b0 > y1: continue
+        if v.tileZ == dz:             # settled: only where a tile of this zoom is still missing
+          var needed = false
+          for (h0, k0, h1, k1) in holes:
+            if a1 > h0 and a0 < h1 and b1 > k0 and b0 < k1:
+              needed = true
+              break
+          if not needed: continue
         standIns.add k
       # the furthest from this zoom first, so the nearest end up on top
       standIns.sort(proc (a, b: TileKey): int = cmp(abs(log2(tileZoom(b) / dz)), abs(log2(tileZoom(a) / dz))))
-  when defined(viewerDebug):
-    stderr.writeLine "snap dz=", dz, " tileZ=", v.tileZ, " exact=", exact.len, " standIns=", standIns.len, " covered=", covered, " want=", v.want.len, " queued=", v.queued.len, " tiles=", v.tiles.len, " inflight=", v.inflight
   var r: GraphRect
   if not covered:
     # the overview: the smallest level sharp enough for this zoom (asked for once), drawn when decoded; until then
@@ -547,33 +570,35 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
             tex = v.stale[k]
             break
     v.dropSharperStale(want, tex)
-    graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
     if tex != nil:
-      gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
+      inDevicePixels(s, sf):
+        graphene_rect_init(addr r, cfloat(-v.ox * dz), cfloat(-v.oy * dz), cfloat(wpt * dz), cfloat(hpt * dz))
+        gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
       if not timingReported and startedAt > 0:
         timingReported = true
         stderr.writeLine "timing: first sheet drawn " & $int((epochTime() - startedAt) * 1000) & " ms after launch"
     elif v.dark: fillRect(s, rgba(DarkLo / 255, DarkLo / 255, DarkLo / 255), -v.ox * v.z, -v.oy * v.z, wpt * v.z, hpt * v.z)
     else: fillRect(s, rgba(1, 1, 1), -v.ox * v.z, -v.oy * v.z, wpt * v.z, hpt * v.z)
   if v.sheet != nil:
-    # clipped to the sheet: at low zoom a tile reaches past its edge
-    graphene_rect_init(addr r, cfloat(-v.ox * v.z), cfloat(-v.oy * v.z), cfloat(wpt * v.z), cfloat(hpt * v.z))
-    gtk_snapshot_push_clip(s, addr r)
-    for k in standIns:
-      let tz = tileZoom(k)
-      let span = float(TileSize) / tz
-      v.tiles[k].used = v.frame
-      graphene_rect_init(addr r, cfloat((float(k.ix) * span - v.ox) * v.z), cfloat((float(k.iy) * span - v.oy) * v.z),
-                         cfloat(span * v.z), cfloat(span * v.z))
-      # shrunk by more than half: mipmaps, else plain linear (sharper)
-      gtk_snapshot_append_scaled_texture(s, v.tiles[k].tex,
-        if dz / tz < 0.5: GSK_SCALING_FILTER_TRILINEAR else: GSK_SCALING_FILTER_LINEAR, addr r)
-    for (k, dx, dy) in exact:
-      v.tiles[k].used = v.frame
-      # one tile pixel per device pixel, on whole device pixels: nothing to filter
-      graphene_rect_init(addr r, cfloat(dx / sf), cfloat(dy / sf), cfloat(float(TileSize) / sf), cfloat(float(TileSize) / sf))
-      gtk_snapshot_append_scaled_texture(s, v.tiles[k].tex, GSK_SCALING_FILTER_NEAREST, addr r)
-    gtk_snapshot_pop(s)
+    inDevicePixels(s, sf):
+      # clipped to the sheet: at low zoom a tile reaches past its edge
+      graphene_rect_init(addr r, cfloat(-v.ox * dz), cfloat(-v.oy * dz), cfloat(wpt * dz), cfloat(hpt * dz))
+      gtk_snapshot_push_clip(s, addr r)
+      for k in standIns:
+        let tz = tileZoom(k)
+        let span = float(TileSize) / tz
+        v.tiles[k].used = v.frame
+        graphene_rect_init(addr r, cfloat((float(k.ix) * span - v.ox) * dz), cfloat((float(k.iy) * span - v.oy) * dz),
+                           cfloat(span * dz), cfloat(span * dz))
+        # shrunk by more than half: mipmaps, else plain linear (sharper)
+        gtk_snapshot_append_scaled_texture(s, v.tiles[k].tex,
+          if dz / tz < 0.5: GSK_SCALING_FILTER_TRILINEAR else: GSK_SCALING_FILTER_LINEAR, addr r)
+      for (k, dx, dy) in exact:
+        v.tiles[k].used = v.frame
+        # one tile pixel per device pixel, on whole device pixels: nothing to filter
+        graphene_rect_init(addr r, cfloat(dx), cfloat(dy), cfloat(TileSize), cfloat(TileSize))
+        gtk_snapshot_append_texture(s, v.tiles[k].tex, addr r)
+      gtk_snapshot_pop(s)
     v.pump()
   # hotspots: colour and border nodes (GSK draws them on the GPU), small Cairo nodes for the few dashed or round ones
   for t in v.tags:
@@ -661,6 +686,10 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
         cairo_rectangle(c, mx, my, mw, mh)
         cairo_stroke(c)
     if v.marking: strokeRect(s, rgba(0.85, 0.1, 0.1, 0.9), mx, my, mw, mh, 2)
+
+proc drawInto*(v: Viewer, s: W) =
+  ## the view as the widget draws it, into a snapshot of the caller's (tests: a picture at device pixels)
+  v.snapshot(s, int(gtk_widget_get_width(v.widget)), int(gtk_widget_get_height(v.widget)))
 
 proc tagsIn*(v: Viewer, x0, y0, x1, y1: float): seq[string] =
   ## the tags whose box intersects the box (points)
