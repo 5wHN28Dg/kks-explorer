@@ -19,6 +19,7 @@ class WebSize(unittest.TestCase):
         os.makedirs(os.path.join(self.d, 'vendor', 'fonts'))
         os.makedirs(os.path.join(self.d, 'data', 'courses'))
         self.write('data/kks.json', '{}')
+        self.write('data/about.json', 'a' * 5)
         self.write('data/courses/ppt.json', 'c' * 40)
         self.write('data/courses/ppt-01.jxl', 'p' * 60)
         self.write('sw.js', "const SHELL_FILES = ['/', '/index.html', '/common.js', '/vendor/kks/kks-simd-dec.wasm'];\n")
@@ -39,8 +40,8 @@ class WebSize(unittest.TestCase):
     def test_groups(self):
         m = web_size.measure(self.d)
         self.assertEqual(sorted(m['shell']['files']), ['common.js', 'index.html', 'sw.js', 'vendor/kks/kks-simd-dec.wasm'])
-        self.assertEqual(sorted(m['on demand']['files']), ['vendor/fonts/a.woff2', 'vendor/kks/kks.wasm'])
-        self.assertEqual(m['on demand']['total'], 90)
+        self.assertEqual(sorted(m['on demand']['files']), ['data/about.json', 'vendor/fonts/a.woff2', 'vendor/kks/kks.wasm'])
+        self.assertEqual(m['on demand']['total'], 95)
         self.assertEqual(sorted(m['courses']['files']), ['data/courses/ppt-01.jxl', 'data/courses/ppt.json', 'data/kks.json'])
 
     def test_unchanged_passes_and_growth_fails(self):

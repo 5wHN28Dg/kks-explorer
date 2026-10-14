@@ -5,7 +5,7 @@
 import std/[asyncdispatch, asyncnet, base64, nativesockets, os, osproc, posix, strutils, tables, times, uri, sets, algorithm, sequtils]
 import kks/[json, util, crypto, proto, replay, node, sync, plant, api, plantdata, bundle, extras, invites, courses, diagnostics, relaykey]
 import kks/provider_gnutls
-import dbstore, tls, net, argon2, mdns, internet, httpserver, throttle
+import dbstore, tls, net, argon2, mdns, internet, httpserver, throttle, buildinfo
 
 const
   Cookie = "kks_session"
@@ -160,6 +160,17 @@ proc localAddrs(port: int): seq[string] =
   freeifaddrs(ifs)
 proc O(fields: varargs[(string, JNode)]): JNode = newObj(@fields)
 proc S(s: string): JNode = newStr(s)
+
+proc aboutAnswer*(): string =
+  ## GET /api/about (public: no sign-in): this server's version, the commit it was built from and where that
+  ## commit's source is (the AGPL's offer of the Corresponding Source to everyone who uses it over the network,
+  ## §13), its licence, and the shared About content (data/about.json) under "about"
+  let about = parseStrict(AboutJson)
+  toText(O(("name", S("Walkdown server")), ("version", S(Version)),
+           ("commit", if Commit.len > 0: S(Commit) else: newNull()), ("modified", newBool(Modified)),
+           ("license", about["license"]["id"]), ("source", S(SourceUrl)), ("about", about)))
+
+let aboutText = aboutAnswer()   # (made once: the same for every request)
 
 # ---------------------------------------------------------------- keys kept in the store
 
@@ -814,7 +825,10 @@ proc offlineList(s: Server): JNode =
   if s.cfg.dataDir.len > 0 and dirExists(droot):
     for f in walkDirRec(droot):
       let rel = f[droot.len + 1 .. ^1].replace(DirSep, '/')
-      if rel notin plantFiles and rel & ".gz" notin plantFiles and f.splitFile.ext in [".json", ".jxl"]:
+      # (not about.json: the pages read it through /api/about, which the service worker keeps when About opens. Not
+      # in this list either: it names the commit, and a list whose version changed with every deploy made every device
+      # fetch its whole offline copy again)
+      if rel notin plantFiles and rel & ".gz" notin plantFiles and f.splitFile.ext in [".json", ".jxl"] and rel != "about.json":
         addFile("/data/" & rel.split('/').mapIt(encodeComponent(it)).join("/"), f)
   files.sort(proc (x, y: (string, int64)): int = cmp(x[0], y[0]))
   var arr = newArr()
@@ -1405,6 +1419,9 @@ proc handle(s: Server, req: Request) {.async.} =
       # no encoder here: browsers encode JPEG XL themselves (decision 0037); the API refuses anything else
       c["photo_upload"] = O(("type", S("image/jxl")), ("distance", newFloat(1.9)), ("effort", newInt(7)))
       await s.sendJson(req, 200, c)
+      return
+    if path == "/api/about":
+      {.cast(gcsafe).}: await s.sendBytes(req, aboutText, "application/json", "no-cache")
       return
     if path == "/api/token-info":
       let kind = q.getOrDefault("kind")

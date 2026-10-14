@@ -1,5 +1,7 @@
 ## kks-server: the always-on peer for browser clients (M6, decisions 0026, 0030).
 ##   kks-server [serve] [--config F]
+##   kks-server --version | version: the version and the commit this program was built from, and where its source is
+##     (no config needed)
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
 ##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json
 ##   kks-server web-sign-in --user NAME: a web account for someone who joined with the app and has none (the same
@@ -21,7 +23,7 @@
 
 import std/[asyncdispatch, nativesockets, net, os, posix, strutils, tables, times]
 import kks/[json, util, crypto, node, replay, plantdata, bundle, provider_gnutls, extras]
-import kksl/[server, dbstore, privfile, passphrase, serverbackup]
+import kksl/[server, dbstore, privfile, passphrase, serverbackup, buildinfo]
 
 proc storageKey(cfgPath: string, p: Provider): seq[byte] =
   let credDir = getEnv("CREDENTIALS_DIRECTORY")
@@ -48,14 +50,20 @@ proc main() =
   var args: Table[string, string]
   var rest: seq[string]
   var i = 1
+  var wantVersion = false
   while i <= paramCount():
     let a = paramStr(i)
-    if a.startsWith("--") and i < paramCount():
+    if a == "--version": wantVersion = true   # (anywhere an option can be: `kks-server serve --version` starts nothing)
+    elif a.startsWith("--") and i < paramCount():
       args[a[2 .. ^1]] = paramStr(i + 1)
       inc i
     elif cmd == "serve" and i == 1: cmd = a
     else: rest.add a
     inc i
+  if wantVersion or cmd == "version":
+    echo versionLine("Walkdown server")
+    echo sourceLine()
+    return
   if "config" in args: cfgPath = args["config"]
   var cfg: Config
   try: cfg = loadConfig(cfgPath)

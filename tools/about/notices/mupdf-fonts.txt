@@ -1,0 +1,4 @@
+MuPDF 1.28.5 builds fonts into the drawing importer: Noto, the URW base 35 fonts, Charis SIL and Source Han Serif under
+the SIL Open Font License 1.1, and Droid Sans Fallback under the Apache License 2.0. Each font file carries its own
+copyright notice; the licence files and Droid's NOTICE are in resources/fonts/ of MuPDF's source:
+https://mupdf.com/downloads/archive/mupdf-1.28.5-source.tar.gz

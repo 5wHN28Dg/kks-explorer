@@ -36,7 +36,7 @@ self.addEventListener('activate', e => e.waitUntil((async () => {
 function route(u) {
   const p = u.pathname;
   if (u.origin !== location.origin) return null;
-  if (p === '/api/config') return [SHELL, 'net'];
+  if (p === '/api/config' || p === '/api/about') return [SHELL, 'net'];   // (public: no plant data)
   if (p.startsWith('/data/courses/')) return [DATA, 'net'];   // courses change with the app
   if (p.startsWith('/vendor/')) return [SHELL, 'net'];        // fonts, decoders (public)
   if (p === '/api/state' || p === '/api/courses' || (p.startsWith('/data/') && p.endsWith('.json'))) return [DATA, 'net'];

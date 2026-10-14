@@ -1188,6 +1188,7 @@ function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.class
 function closeDrawer(d,focus){ d.classList.remove('open'); const b=DRAWER_BTN[d.id]&&$(DRAWER_BTN[d.id]);
   if(b){ b.setAttribute('aria-expanded','false'); if(focus) b.focus() } if(d.id==='procDrawer'){ activeProc=null; drawTags() } }
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeDrawer($('#'+b.dataset.close),true));
+$('#aboutBtn').onclick=()=>K.about();
 $('#procBtn').onclick=()=>{ if($('#procDrawer').classList.contains('open')){$('#procDrawer').classList.remove('open');activeProc=null;drawTags()} else {openDrawer('procDrawer'); activeProc?renderProcDetail(activeProc):renderProcs()} };
 $('#sysBtn').onclick=()=>{ if($('#sysDrawer').classList.contains('open')) closeDrawer($('#sysDrawer'),false);
   else { sysOnly=''; openDrawer('sysDrawer'); renderSystems(); $('#sysQ').focus() } };

@@ -46,6 +46,7 @@ modules:
     build-commands:
       - cd apps/gnome && KKS_DEV=/app/dev PATH=/app/nim/bin:$PATH nim c -d:release -d:flatpak -o:/app/bin/walkdown kks_explorer.nim
       - install -Dm644 data/kks.json /app/share/walkdown/data/kks.json
+      - install -Dm644 data/about.json /app/share/walkdown/data/about.json
       - mkdir -p /app/share/walkdown/data/courses /app/share/walkdown/vendor/fonts
       - cp data/courses/*.json data/courses/*.jxl /app/share/walkdown/data/courses/
       - cp vendor/fonts/*.woff2 /app/share/walkdown/vendor/fonts/

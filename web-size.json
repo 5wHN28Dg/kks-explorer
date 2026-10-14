@@ -42,6 +42,7 @@
  },
  "on demand": {
   "files": {
+   "data/about.json": 148405,
    "vendor/fonts/AtkinsonHyperlegible-400-latin-ext.woff2": 9384,
    "vendor/fonts/AtkinsonHyperlegible-400-latin.woff2": 17208,
    "vendor/fonts/AtkinsonHyperlegible-400i-latin-ext.woff2": 9796,
@@ -65,14 +66,14 @@
    "vendor/kks/kks.js": 11986,
    "vendor/kks/kks.wasm": 3574745
   },
-  "total": 8238229
+  "total": 8386634
  },
  "shell": {
   "files": {
    "admin.html": 4954,
-   "admin.js": 70246,
+   "admin.js": 70414,
    "apple-touch-icon.png": 1057,
-   "common.js": 87616,
+   "common.js": 93523,
    "course-bridge.js": 3846,
    "course-figure.js": 18968,
    "course.css": 15671,
@@ -82,20 +83,20 @@
    "icon-192.png": 709,
    "icon-512.png": 3047,
    "icon.svg": 303,
-   "index.html": 21509,
-   "index.js": 96051,
+   "index.html": 21633,
+   "index.js": 96089,
    "kks-wasm-worker.js": 479,
    "kks-wasm.js": 3590,
    "learning.html": 2095,
    "learning.js": 1645,
    "manifest.webmanifest": 477,
-   "sw.js": 8920,
+   "sw.js": 8971,
    "systems.js": 18414,
    "tiles.js": 11413,
    "vendor/fonts/courses.css": 6376,
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1160566
+  "total": 1166854
  }
 }

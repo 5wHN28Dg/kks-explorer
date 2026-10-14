@@ -1632,6 +1632,47 @@ class OwnDeviceAddPassword(Base):
         self.assertEqual(self.alive(sara, thief, ali), [200] * 3)
 
 
+class About(Base):
+    """GET /api/about and kks-server --version (the user, 2026-10-15): the version, the commit this build is from and
+    the link to that commit's source (the AGPL's offer of the Corresponding Source to the server's users, §13), to
+    anyone, signed in or not; with the shared About content (data/about.json)"""
+
+    def test_about(self):
+        anon = Client(self.base)
+        st, a, h = anon.req('GET', '/api/about')
+        self.assertEqual(st, 200, a)
+        self.assertTrue(h['Content-Type'].startswith('application/json'))
+        with open(os.path.join(REPO, 'VERSION')) as f:
+            self.assertEqual(a['version'], f.read().strip())
+        self.assertEqual(a['license'], 'AGPL-3.0-or-later')
+        repo = 'https://github.com/5wHN28Dg/kks-explorer'
+        if a['commit'] is None:      # (built where git could not say)
+            self.assertEqual(a['source'], repo)
+        else:
+            self.assertRegex(a['commit'], r'^[0-9a-f]{40}$')
+            self.assertEqual(a['source'], repo + '/tree/' + a['commit'])
+        self.assertIsInstance(a['modified'], bool)
+        with open(os.path.join(REPO, 'data', 'about.json'), encoding='utf-8') as f:
+            self.assertEqual(a['about'], json.load(f))
+        # the command line says the same
+        r = subprocess.run([BIN, '--version'], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        line = f"Walkdown server {a['version']} (commit " + (a['commit'][:12] + (', with local changes' if a['modified'] else '') + ')'
+                                                            if a['commit'] else 'unknown)')
+        src = ('Source (the commit this build started from; its local changes are not published): ' if a['modified']
+               else 'Source: ') + a['source']
+        self.assertEqual(r.stdout.splitlines(), [line, src])
+        self.assertEqual(subprocess.run([BIN, 'version'], capture_output=True, text=True, timeout=30).stdout, r.stdout)
+        # anywhere on the line: it says the version and starts nothing
+        for args in (['serve', '--version'], ['--config', os.path.join(self.dir, 'config.json'), '--version'], ['--version', '--config', 'x']):
+            r2 = subprocess.run([BIN, *args], capture_output=True, text=True, timeout=30, cwd=self.dir)
+            self.assertEqual((r2.returncode, r2.stdout), (0, r.stdout), args)
+        # (no config or storage key needed: the version is said before either is read)
+        r = subprocess.run([BIN, '--version'], capture_output=True, text=True, timeout=30, cwd=self.dir,
+                           env=dict(os.environ, KKS_CONFIG=os.path.join(self.dir, 'no-such-config.json')))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+
 class OfflineList(Base):
     """GET /api/offline: the files a browser saves to work without the server ("Download for offline")"""
 
@@ -1656,6 +1697,10 @@ class OfflineList(Base):
         self.assertTrue(any(u.startswith('/vendor/fonts/') and u.endswith('.woff2') for u in urls))
         self.assertTrue(any(u.startswith('/data/courses/') and u.endswith('.jxl') for u in urls))
         self.assertNotIn('/sw.js', urls)
+        # not the About (its file, nor /api/about: it names the commit, so the list's version would change with every
+        # deploy, and every device would fetch its whole offline copy again; the service worker keeps it when opened)
+        self.assertNotIn('/data/about.json', urls)
+        self.assertNotIn('/api/about', urls)
         self.assertFalse([u for u in urls if u.endswith(('.md', '.txt', '.ttf')) or 'SHA256SUMS' in u or '..' in u])
         # every one is served, and is as long as the list says
         for u, n in L['files']:

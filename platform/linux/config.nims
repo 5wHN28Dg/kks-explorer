@@ -8,6 +8,9 @@ task test, "build and run every tests/test_*.nim":
   for f in listFiles(thisDir() & "/tests"):
     if f.extractFilename.startsWith("test_") and f.endsWith(".nim"):
       exec "nim c -r -d:release --outdir:" & getTempDir() & "kkslinux " & f
+  # buildinfo as deploy/install-server-user.sh builds the server: the commit and "with local changes" from the defines
+  exec "nim c -r -d:release -d:kksCommit=0123456789abcdef0123456789abcdef01234567 -d:kksDirty=true --outdir:" &
+       getTempDir() & "kkslinux-commit " & thisDir() & "/tests/test_buildinfo.nim"
 
 # Windows builds (decisions 0033, 0053): llvm-mingw from ~/.local/kksdev, SQLite compiled in, the Windows layer on the path
 include "../windows/toolchain.nims"
