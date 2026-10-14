@@ -511,7 +511,7 @@ async function pollLobby(){
           pw=>decideLobby(q.device,'accept',true,pw),()=>{ lobbySeen=''; pollLobby() }):decideLobby(q.device,'accept',!!q.existing)},'Accept'),
         h('button',{class:'ghost',onclick:()=>decideLobby(q.device,'refuse')},'Refuse')))})
       :h('div',{class:'sub',style:'margin-top:6px'},'Nobody is waiting.')) }
-  lobbyTimer=setTimeout(pollLobby,2000);
+  clearTimeout(lobbyTimer); lobbyTimer=setTimeout(pollLobby,2000);   // (one loop, also when a poll was started while another waited)
 }
 // every new member needs a position (core certify refuses one without): the request has to be sent again with it
 const noPosition=name=>`No position (job title) given. Every new member needs one: ask ${String(name??'them')} to send a new request with their position.`;
@@ -568,7 +568,7 @@ async function pollInvite(tok){
         h('button',{class:'ghost',onclick:()=>decideInvite(tok,'refuse')},'Refuse'))) } }
   else { const end={accepted:()=>['Accepted ',who(st.request),'. Their device is syncing the plant now.'],refused:()=>'Refused.',cancelled:()=>'Cancelled.',expired:()=>'Expired. Show a new code if they still need one.'};
     put(el,Object.prototype.hasOwnProperty.call(end,st.state)?end[st.state]():str(st.state)); return }
-  inviteTimer=setTimeout(()=>pollInvite(tok),1500);
+  clearTimeout(inviteTimer); inviteTimer=setTimeout(()=>pollInvite(tok),1500);   // (one loop, as above)
 }
 async function decideInvite(tok,action,existing,password){
   try{ await K.api(`/api/invites/${tok}`,{action,existing_ok:!!existing,...(password===undefined?{}:{password})}); clearTimeout(inviteTimer); pollInvite(tok) }catch(e){ await failed(e) }
