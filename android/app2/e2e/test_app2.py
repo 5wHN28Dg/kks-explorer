@@ -198,6 +198,16 @@ class Phone(unittest.TestCase):
         import base64
         return 'data:image/jxl;base64,' + base64.b64encode(b'\xff\x0a' + tag.encode() * 8).decode()
 
+    @staticmethod
+    def allow_camera():
+        """the camera permission's question, when it comes: it can take a moment after the tap (a look straight after
+        it missed it, and the camera never opened: test_multi_across, 2026-10-14)"""
+        for _ in range(8):           # (no question once granted: the camera app is then up, and the callers wait for it)
+            if ui.present('WHILE USING THE APP', exact=True):
+                ui.tap('WHILE USING THE APP', exact=True)
+                return
+            time.sleep(0.5)
+
     def open_tag(self, code='11LAB70AA501'):
         ui.type_into('Search KKS or description', code[2:])
         ui.tap(code, exact=True)
@@ -834,8 +844,7 @@ class Phone(unittest.TestCase):
         # held (debug builds): the job waits, so the app can be stopped with it queued
         ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--ez', 'hold', 'true')
         ui.tap('Take a photo', exact=True)
-        if ui.present('WHILE USING THE APP', exact=True):
-            ui.tap('WHILE USING THE APP', exact=True)
+        self.allow_camera()
         time.sleep(5)                                     # the emulator's camera app: shutter, then confirm
         ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
         time.sleep(4)
@@ -912,8 +921,7 @@ class Phone(unittest.TestCase):
             return sum(1 for r, g, b in im.getdata() if r > 230 and 100 < g < 145 and b < 60)
 
         def snap():          # the emulator's camera app: shutter, then confirm, both at the bottom centre
-            if ui.present('WHILE USING THE APP', exact=True):
-                ui.tap('WHILE USING THE APP', exact=True)
+            self.allow_camera()
             time.sleep(5)
             ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
             time.sleep(4)
@@ -1462,13 +1470,12 @@ class Phone(unittest.TestCase):
                '--es', 'caption', 'carries_the_floor', '--es', 'floor', '6')
         self.wait_server(lambda: [n for n in queue_files() if n.endswith('.json')], 'the held photo was never queued')
         self.open_tag()
-        ui.find('1 photo of this tag is being prepared', timeout=15)
+        ui.scroll_to('1 photo of this tag is being prepared', exact=True)
         ui.scroll_to('Take a photo', exact=True)
         ui.tap('Take a photo', exact=True)
         time.sleep(2)
         self.assertFalse(ui.present('Which floor is it on?', exact=True), 'asked for a floor a queued photo of the code carries')
-        if ui.present('WHILE USING THE APP', exact=True):
-            ui.tap('WHILE USING THE APP', exact=True)
+        self.allow_camera()
         time.sleep(5)
         ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))      # the emulator's camera app: shutter, then confirm
         time.sleep(4)
