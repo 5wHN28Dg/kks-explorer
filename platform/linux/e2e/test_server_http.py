@@ -1448,12 +1448,13 @@ class OwnDevicePassword(Base):
     cookie, token, login, alive = (SignOutEverywhere.cookie, SignOutEverywhere.token, SignOutEverywhere.login,
                                    SignOutEverywhere.alive)
 
-    def phone(self, boss, name, label):
-        """a device of their own for the account `name`, certified from its join request -> its ID"""
+    def phone(self, boss, name, label, **more):
+        """a device of their own for the account `name`, certified from its join request -> its ID (`more`: the
+        password, for a device of the certifying account's own person)"""
         from app_person import crypto2, proto2      # (the Python reference, ref/)
         key = proto2.key_from_seed(os.urandom(32))
         st, r, _ = boss.req('POST', '/api/devices/import-request', {'existing_ok': True, 'request': crypto2.join_request(
-            key, name, name.title() + ' Person', 'Operator', label, int(time.time()))})
+            key, name, name.title() + ' Person', 'Operator', label, int(time.time())), **more})
         self.assertEqual(st, 200, r)
         return proto2.peer_id(key)
 
@@ -1468,7 +1469,7 @@ class OwnDevicePassword(Base):
             self.assertEqual(first.req('POST', '/api/logout', {})[0], 200)
         tom, thief, ali = self.login('tom'), self.login('tom'), self.login('ali')
         phone, tablet, spare = (self.phone(boss, 'tom', x) for x in ('phone', 'tablet', 'spare'))
-        alis, alis2, bosss = self.phone(boss, 'ali', 'phone'), self.phone(boss, 'ali', 'tablet'), self.phone(boss, 'boss', 'phone')
+        alis, alis2, bosss = self.phone(boss, 'ali', 'phone'), self.phone(boss, 'ali', 'tablet'), self.phone(boss, 'boss', 'phone', password='a long password')
         mine = {d['device']: d for d in tom.req('GET', '/api/devices')[1]['mine']}
         self.assertEqual({mine[d]['label'] for d in (phone, tablet, spare)}, {'phone', 'tablet', 'spare'})   # the same person's
         self.assertEqual(mine[phone]['person'], tom.req('GET', '/api/me')[1]['user']['person'])
@@ -1513,6 +1514,88 @@ class OwnDevicePassword(Base):
         self.assertEqual(rm(ali, alis2, password='ali password 1'), LATER)
         self.assertEqual(rm(boss, tablet), (200, {'ok': True}))                           # (not the manager for a member's)
         self.assertEqual((removed(), self.alive(tom, thief, ali)), ({phone, alis, bosss, tablet}, [200] * 3))
+
+
+@unittest.skipUnless(os.path.exists(IMPORTER), 'the importer (kks_import) is not built')
+class OwnDeviceAddPassword(Base):
+    """A device for one's own person, added from a web sign-in, asks for the account's password (the user, 2026-10-14):
+    with an admin's or the manager's stolen sign-in alone, "Add a computer from a join request" (and accepting a QR
+    invite or a device waiting on the Wi-Fi, the same check: platform/linux/tests/test_session.nim) gave its holder a
+    device of that person, which may then remove the person's other devices. Checked and counted as for removing one's
+    own device. An admin adding somebody else's device keeps today's rules (no password)."""
+    cookie, token, login, alive = (SignOutEverywhere.cookie, SignOutEverywhere.token, SignOutEverywhere.login,
+                                   SignOutEverywhere.alive)
+
+    def test_own_device_add(self):
+        from app_person import crypto2, proto2      # (the Python reference, ref/)
+        boss = self.manager()
+        for name, role in (('sara', 'admin'), ('ali', 'user')):
+            st, r, _ = boss.req('POST', '/api/users', {'username': name, 'full_name': name.title() + ' Person', 'position': 'Operator', 'role': role})
+            self.assertEqual(st, 200, r)
+            first = Client(self.base)
+            self.assertEqual(first.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1],
+                                                                       'password': name + ' password 1'})[0], 200)
+            self.assertEqual(first.req('POST', '/api/logout', {})[0], 200)
+        sara, thief, ali = self.login('sara'), self.login('sara'), self.login('ali')
+        made = []
+        def add(c, username, **more):
+            """a new device's join request naming `username`, imported by `c` -> (status, answer), and whether that
+            device is certified now"""
+            key = proto2.key_from_seed(os.urandom(32))
+            made.append(proto2.peer_id(key))
+            st, r, hdr = c.req('POST', '/api/devices/import-request', {'request': crypto2.join_request(
+                key, username, 'Some Body', 'Operator', 'laptop', int(time.time())), **more})
+            known = made[-1] in {d['device'] for d in boss.req('GET', '/api/devices?show_hidden=1')[1]['all']}
+            self.assertEqual(self.cookie(hdr), [])
+            return (st, r), known
+        WRONG = (401, {'error': 'Wrong username or password.'})
+        clear = lambda: self.assertEqual(self.login('sara').req('POST', '/api/logout', {})[0], 200)   # (this address, and sara from it)
+
+        # ---- one's own person (the username in any case), with existing_ok or without: no password, one that is no
+        # text, empty, a wrong one, another account's: refused as a wrong password, and no device is added
+        for n, more in enumerate(({}, {'password': None}, {'password': 12345678901}, {'password': ''},
+                                  {'password': 'not the password'}, {'old': 'sara password 1'}, {'password': 'ali password 1'})):
+            clear()     # (the fifth failure from one address makes the next attempt wait; a sign-in clears them)
+            for ok in ({'existing_ok': True}, {}):
+                self.assertEqual(add(thief, 'SARA' if n % 2 else 'sara', **ok, **more), (WRONG, False), (more, ok))
+        clear()
+        self.assertEqual(self.alive(sara, thief), [200, 200])
+        # with it: added, as before (without existing_ok the core asks first whether it is that person's)
+        self.assertEqual(add(sara, 'sara', password='sara password 1')[0], (409, {'error': 'existing person', 'existing':
+                         {'username': 'sara', 'full_name': 'Sara Person', 'role': 'admin'}}))
+        (st, r), known = add(sara, 'sara', existing_ok=True, password='sara password 1')
+        self.assertEqual((st, r.get('username'), known), (200, 'sara', True), r)
+        mine = {d['device'] for d in sara.req('GET', '/api/devices')[1]['mine']}
+        self.assertIn(made[-1], mine)
+        # the manager's own: the same
+        self.assertEqual(add(boss, 'boss', existing_ok=True), (WRONG, False))
+        self.assertEqual(add(boss, 'boss', existing_ok=True, password='a long password')[1], True)
+        # ---- somebody else's keeps today's rules: an admin adds a member's, the manager an admin's, no password; an
+        # admin may not add the manager's (password or none, and no password is counted for it); a new person too
+        self.assertEqual(add(sara, 'ali', existing_ok=True)[1], True)
+        self.assertEqual(add(boss, 'sara', existing_ok=True)[1], True)
+        for _ in range(6):
+            self.assertEqual(add(thief, 'boss', existing_ok=True, password='sara password 1')[0][0], 403)
+        self.assertEqual(add(thief, 'newcomer')[1], True)
+        # a member may not certify at all: their own person's request asks for the password first, then the core says no
+        self.assertEqual(add(ali, 'ali', existing_ok=True), (WRONG, False))
+        self.assertEqual(add(ali, 'ali', existing_ok=True, password='ali password 1')[0][0], 403)
+        # an invite or a waiting device that is not there: answered as before (nothing to ask a password for)
+        for path in ('/api/invites/no-such-token', '/api/join-requests/' + 'A' * 64):
+            self.assertEqual(sara.req('POST', path, {'action': 'accept', 'existing_ok': True})[0], 409, path)
+        clear()
+
+        # ---- counted with the failed sign-ins and the other password checks: three here, one at each of two
+        # others are five, and then the right password waits too
+        for _ in range(3):
+            self.assertEqual(add(thief, 'sara', existing_ok=True, password='a guess of mine'), (WRONG, False))
+        self.assertEqual(thief.req('POST', '/api/sign-out-others', {'password': 'another guess'})[:2], WRONG)
+        self.assertEqual(Client(self.base).req('POST', '/api/login', {'username': 'sara', 'password': 'a third guess'})[:2], WRONG)
+        LATER = (429, {'error': 'Too many failed attempts. Wait a few minutes.'})
+        self.assertEqual(add(thief, 'sara', existing_ok=True, password='sara password 1'), (LATER, False))
+        self.assertEqual(add(sara, 'sara', existing_ok=True, password='sara password 1'), (LATER, False))
+        self.assertEqual(add(sara, 'ali', existing_ok=True)[1], True)                    # (somebody else's: no password)
+        self.assertEqual(self.alive(sara, thief, ali), [200] * 3)
 
 
 class OfflineList(Base):
