@@ -368,8 +368,9 @@ class WebSignOut(unittest.TestCase):
             def settled():
                 """until the rebuilds put off while a form above was open have come (none started for 2 s): one landing
                 later would replace what the next step opens"""
-                page.evaluate("""() => new Promise(r => { let g = SHOW_GEN, n = 0;
-                    const t = setInterval(() => { if (SHOW_GEN !== g) { g = SHOW_GEN; n = 0 } else if (++n >= 8) { clearInterval(t); r() } }, 250) })""")
+                self.assertTrue(page.evaluate("""() => new Promise(r => { let g = SHOW_GEN, n = 0, all = 0;
+                    const t = setInterval(() => { if (SHOW_GEN !== g) { g = SHOW_GEN; n = 0 } else n++;
+                      if (n >= 8 || ++all >= 80) { clearInterval(t); r(n >= 8) } }, 250) })"""), 'the page was still being rebuilt after 20 s')
             def mine():
                 return {d['device'] for d in self.sara.req('GET', '/api/devices')['mine']}
             self.sara = Client(self.base)
