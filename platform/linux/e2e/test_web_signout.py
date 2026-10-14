@@ -445,9 +445,18 @@ class WebSignOut(unittest.TestCase):
             page.locator('#tabs button', has_text='Devices').click()
             page.evaluate("() => { window.asked = [] }")
             own = page.locator('#lobby > div', has_text='123 456')
+            expect(own).to_have_count(1)
+            # a change elsewhere whose rebuild of the page began just before the form was opened (its answer slow)
+            # does not close the form either: it is dropped and comes again once the form is left
+            page.evaluate("""() => { window.slow = true; const f = window.fetch;
+                window.fetch = (u, o) => window.slow && /\\/api\\/devices(\\?|$)/.test(String(u)) ? new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o);
+                K.listeners.forEach(f => f('synced')) }""")
             own.get_by_role('button', name='Accept').click()
             field = own.locator('form input[name=password]')
             expect(field).to_be_focused()
+            page.wait_for_timeout(2500)
+            expect(field).to_be_focused()
+            page.evaluate("() => { window.slow = false }")
             expect(field).to_have_attribute('autocomplete', 'current-password')
             self.assertEqual(page.evaluate('window.asked'), [])
             # another device asking meanwhile does not rebuild the list under the form

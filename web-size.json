@@ -70,7 +70,7 @@
  "shell": {
   "files": {
    "admin.html": 4954,
-   "admin.js": 69017,
+   "admin.js": 69488,
    "apple-touch-icon.png": 1057,
    "common.js": 87616,
    "course-bridge.js": 3846,
@@ -96,6 +96,6 @@
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1159337
+  "total": 1159808
  }
 }

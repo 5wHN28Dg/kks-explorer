@@ -47,8 +47,12 @@ async function init(){
 }
 // Each show() gets a number; a view draws into #main only if no later show() started meanwhile (a sync and a filter
 // change, or two tabs clicked quickly: the older answer arriving last used to replace the newer page)
-let SHOW_GEN=0;
-const mainFor=g=>g===SHOW_GEN?$('#main'):document.createElement('div');
+let SHOW_GEN=0, QUIET=0;   // QUIET: the rebuild a change elsewhere asked for (resync, below)
+// where a view puts what it built: the page, unless a newer view was asked for, or this is a rebuild for a change
+// elsewhere and a password is being typed since it began (then the rebuild is dropped, and tried again later)
+const mainFor=g=>{ if(g!==SHOW_GEN) return document.createElement('div');
+  if(g===QUIET&&typing()){ clearTimeout(resyncT); resyncT=setTimeout(resync,1000); return document.createElement('div') }
+  return $('#main') };
 async function show(t){
   const g=++SHOW_GEN;
   if(t!==tab) SHOW_HIDDEN=false;   // (hidden items shown again: on the page where that was asked only)
@@ -65,7 +69,7 @@ async function show(t){
 // password typed in. Then once the person has left that form.
 let resyncT=0;
 const typing=()=>{ const a=document.activeElement, f=a?.closest?.('#main form'); return !!f&&[...f.querySelectorAll('input[type=password]')].some(p=>p===a||p.value) };
-const resync=()=>{ clearTimeout(resyncT); if(typing()) resyncT=setTimeout(resync,1000); else show(tab) };
+const resync=()=>{ clearTimeout(resyncT); if(typing()) resyncT=setTimeout(resync,1000); else { show(tab); QUIET=SHOW_GEN } };
 K.onChange(why=>{ if(why==='synced') resync() });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
 
