@@ -1438,6 +1438,58 @@ class Phone(unittest.TestCase):
         self.assertFalse(subs[0].get('note'), 'a note to the approver nobody wrote')
 
     @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
+    @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
+    def test_floor_kept_when_queued_goes(self):
+        """#149: a photo of a code whose floor rides on a photo still in the queue is not asked for it, and takes that
+        floor when the question is skipped. Before, the floor was read again when the photo was queued: if the queued
+        photo had left the queue meanwhile (refused, lost) while the person was in the camera or the editor, this one
+        went without a floor, and none was asked. (The queued photo is lost here: its picture file removed.)"""
+        if not ui.debuggable(PKG):
+            self.skipTest('not a debuggable build (rehearsal/release): the queued photo is lost through run-as')
+        w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+        code = '11LAB70AA501'
+
+        def queue_files():
+            return ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
+
+        def hold(on):
+            return ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--ez', 'hold',
+                          'true' if on else 'false')
+        self.join()
+        # a photo of the code with the floor asked for it, held in the queue (debug builds' hook)
+        hold(True)
+        self.addCleanup(hold, False)
+        ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--es', 'kks', code,
+               '--es', 'caption', 'carries_the_floor', '--es', 'floor', '6')
+        self.wait_server(lambda: [n for n in queue_files() if n.endswith('.json')], 'the held photo was never queued')
+        self.open_tag()
+        ui.find('1 photo of this tag is being prepared', timeout=15)
+        ui.scroll_to('Take a photo', exact=True)
+        ui.tap('Take a photo', exact=True)
+        time.sleep(2)
+        self.assertFalse(ui.present('Which floor is it on?', exact=True), 'asked for a floor a queued photo of the code carries')
+        if ui.present('WHILE USING THE APP', exact=True):
+            ui.tap('WHILE USING THE APP', exact=True)
+        time.sleep(5)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))      # the emulator's camera app: shutter, then confirm
+        time.sleep(4)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        ui.find('Send', exact=True, timeout=30)
+        # in the editor: the queued photo is lost (its picture gone), and the queue drops it
+        ui.adb('exec-out', 'run-as', PKG, 'sh', '-c', 'rm files/photo-queue/*.px')
+        hold(False)
+        self.wait_server(lambda: not [n for n in queue_files() if n.endswith('.json')], 'the lost photo stayed in the queue', tries=120)
+        time.sleep(2)            # (the queue's floors are brought up to date on the main thread)
+        ui.tap('Send', exact=True)
+        ui.find('And its tag plate?', exact=True, timeout=60)
+        ui.tap('Not now', exact=True)
+
+        def sent():
+            return [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == code] or None
+        self.assertEqual([p['caption'] for p in self.wait_server(sent, 'the photo never reached the server', tries=240)], [''])
+        self.assertEqual(self.boss.req('GET', '/api/state')['equipment'].get(code, {}).get('floor'), '6',
+                         'the photo went without the floor it was not asked for because a queued photo carried it')
+
     def test_floor_first(self):
         """request 4: a code without a floor asks for it before the camera opens; Cancel opens no camera"""
         self.join()
@@ -1589,7 +1641,7 @@ class Phone(unittest.TestCase):
 
 # The suite in three parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2 or 3 runs
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
-PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'courses'),
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'courses', 'floor_kept_when_queued_goes'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures'))
