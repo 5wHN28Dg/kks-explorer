@@ -265,10 +265,11 @@ class WebOffline(unittest.TestCase):
             expect(page.locator('#pendingSec')).to_contain_text('queued offline')
             # nothing the pages asked for was missing offline (the server's own API can't answer, of course). A load the
             # page cancelled itself (the photo file above, once its decoded copy is shown) is no failure, but what it
-            # asked for must be in the offline copy all the same
+            # asked for must be in the offline copy all the same (found as the worker finds it offline: a page is kept
+            # under its path alone, a drawing file under another ?v= is found without it)
             cancelled = re.compile(r'^(NS_BINDING_ABORTED|net::ERR_ABORTED)$')
             self.assertEqual([(u, why) for u, why in failed if '/api/' not in u and not cancelled.match(why)], [])
-            self.assertEqual(page.evaluate("us => Promise.all(us.map(u => caches.match(u).then(c => c ? null : u))).then(m => m.filter(x => x))",
+            self.assertEqual(page.evaluate("us => Promise.all(us.map(u => caches.match(u, {ignoreSearch: true}).then(c => c ? null : u))).then(m => m.filter(x => x))",
                                            sorted({u for u, why in failed if '/api/' not in u and cancelled.match(why)})), [])
 
             # ---- 4. the lease: 29 days on, still working and saying how long; 31 days on, expired, in words
