@@ -1336,64 +1336,78 @@ class Gnome(Plant):
     def test_zzzz_kept_floor_sent_later(self):
         """#149: a second photo of a code is not asked for the floor while a queued photo carries one. When that photo
         fails and waits at the end of the queue for its retry, the second goes first: it takes the floor with it
-        (before, it arrived without one, and the floor came only with the retry a minute later, or never if that
-        photo was then refused). KKS_TEST_PHOTO_FAIL fails the next send while its file exists."""
+        (before, it arrived without one, and the floor came only with the retry a minute later). When that photo is
+        refused, the second takes its floor over (before, the floor was lost and never asked). KKS_TEST_PHOTO_FAIL
+        fails the next send while its file exists ("refused" in it: the core refuses it)."""
         b = self.boss
-        code = '11LAE12AP001'
-        r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [200, 850, 320, 910],
-                                                                       'kks': code, 'isa': '', 'note': ''}})
-        self.assertEqual(r.get('status'), 'approved', r)
         from PIL import Image
         pic = os.path.join(self.dir, 'later.png')
         Image.new('RGB', (320, 240), (90, 120, 150)).save(pic)
         hold = os.path.join(self.dir, 'hold-later')
         fail = os.path.join(self.dir, 'fail-later')
+        rounds = (('11LAE12AP001', '7', 'failed', 200), ('11LAE13AP001', '5', 'refused', 400))
+        for code, _, _, x in rounds:
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [x, 850, x + 120, 910],
+                                                                           'kks': code, 'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
         open(hold, 'w').close()
-        open(fail, 'w').close()
         a = self.start_app('floorlater', KKS_PHOTO_FILE=pic, KKS_TEST_PHOTO_HOLD=hold, KKS_TEST_PHOTO_FAIL=fail)
         app = self.apps[-1]
         self.join(a)
         search = atspi.find(a, 'entry', contains='Search equipment')
-        atspi.set_text(search, code[2:])
-        time.sleep(1)
-        atspi.click(atspi.find(a, 'button', name=code, timeout=10))
-        time.sleep(2)            # the panel is built for this code
-        for cap in ('asked', 'not asked'):
-            caption = None
-            for _ in range(5):   # the panel rebuilds after a sync: a lost click is retried
-                atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
-                if cap == 'asked':
+
+        def photos(code):
+            return {p['caption'] for p in b.req('GET', '/api/state')['photos'] if p['kks'] == code}
+        for code, floor, how, _ in rounds:
+            open(hold, 'w').close()
+            with open(fail, 'w') as f:
+                f.write(how)
+            for i in range(30):      # (the tag reaches the app with a sync round; the text changes each time)
+                atspi.set_text(search, code[i % 2 * 2:])
+                time.sleep(1)
+                if atspi.find_all(a, 'button', name=code):
+                    break
+            atspi.click(atspi.find(a, 'button', name=code))
+            time.sleep(2)            # the panel is built for this code
+            for cap in ('asked', 'not asked'):
+                caption = None
+                for _ in range(5):   # the panel rebuilds after a sync: a lost click is retried
+                    atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+                    if cap == 'asked':
+                        try:
+                            dlg = atspi.find(a, 'alert', name=f'Which floor is {code} on?', timeout=5)
+                        except AssertionError:
+                            continue
+                        atspi.set_text(atspi.find(dlg, None, name=f'Floor of {code}'), floor)
+                        atspi.click(atspi.find(dlg, 'button', name='Continue'))
                     try:
-                        dlg = atspi.find(a, 'alert', name=f'Which floor is {code} on?', timeout=5)
+                        caption = atspi.find(a, 'text', name='Caption', timeout=8)
+                        break
                     except AssertionError:
                         continue
-                    atspi.set_text(atspi.find(dlg, None, name=f'Floor of {code}'), '7')
-                    atspi.click(atspi.find(dlg, 'button', name='Continue'))
-                try:
-                    caption = atspi.find(a, 'text', name='Caption', timeout=8)
+                self.assertIsNotNone(caption, f'the photo editor never opened ({cap}, {how})')
+                self.assertFalse(cap == 'not asked' and atspi.find_all(a, 'alert'), f'the floor was asked again ({how})')
+                atspi.set_text(caption, cap)
+                atspi.click(atspi.find(a, 'button', name='Add the photo'))
+                atspi.click(atspi.find(atspi.find(a, 'alert', name='And its tag plate?', timeout=10), 'button', name='Not now'))
+            atspi.find(a, 'label', contains='Compressing 2 photos', timeout=10)
+            os.remove(hold)          # the first fails (or is refused); the second goes first (or alone)
+            for _ in range(120):
+                if 'not asked' in photos(code):
                     break
-                except AssertionError:
-                    continue
-            self.assertIsNotNone(caption, f'the photo editor never opened ({cap})')
-            self.assertFalse(cap == 'not asked' and atspi.find_all(a, 'alert'), 'the floor was asked again')
-            atspi.set_text(caption, cap)
-            atspi.click(atspi.find(a, 'button', name='Add the photo'))
-            atspi.click(atspi.find(atspi.find(a, 'alert', name='And its tag plate?', timeout=10), 'button', name='Not now'))
-        atspi.find(a, 'label', contains='Compressing 2 photos', timeout=10)
-        os.remove(hold)          # the first fails (and waits a minute for its retry); the second goes first
-
-        def photos():
-            return {p['caption'] for p in b.req('GET', '/api/state')['photos'] if p['kks'] == code}
-        for _ in range(120):
-            if 'not asked' in photos():
-                break
-            time.sleep(0.5)
-        self.assertEqual(photos(), {'not asked'}, 'the second photo did not go first')
-        self.assertFalse(os.path.exists(fail), 'the first photo\'s send did not fail')
-        self.assertEqual(b.req('GET', '/api/state')['equipment'].get(code, {}).get('floor'), '7',
-                         'the photo not asked for its floor arrived without the floor a waiting photo of its code carries')
+                time.sleep(0.5)
+            self.assertEqual(photos(code), {'not asked'}, f'the second photo did not go first ({how})')
+            self.assertFalse(os.path.exists(fail), f'the first photo\'s send did not fail ({how})')
+            self.assertEqual(b.req('GET', '/api/state')['equipment'].get(code, {}).get('floor'), floor,
+                             f'the photo not asked for its floor arrived without the floor of the first photo ({how})')
+            if how == 'failed':      # its retry, a minute later: sent, so the next round's failure is not its
+                for _ in range(240):
+                    if 'asked' in photos(code):
+                        break
+                    time.sleep(0.5)
+                self.assertEqual(photos(code), {'asked', 'not asked'}, 'the failed photo was not sent at its retry')
         self.assertEqual(self.criticals('floorlater'), [])
-        app.kill()               # (the first photo stays queued for its retry: its syncs must not touch other tests)
+        app.kill()
         app.wait(10)
 
     def test_zzzzz_stale_click(self):

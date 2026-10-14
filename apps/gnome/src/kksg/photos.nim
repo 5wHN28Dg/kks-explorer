@@ -501,10 +501,16 @@ proc received(w: Win, d: EncDone) =
   else:
     try:
       # tests: while the file KKS_TEST_PHOTO_FAIL names exists, the next send fails as a passing error would (the
-      # photo goes to the end of the queue and waits for its retry), and the file is removed
+      # photo goes to the end of the queue and waits for its retry), or, when the file says "refused", the core
+      # refuses it; the file is removed
       let failFile = getEnv("KKS_TEST_PHOTO_FAIL")
       if failFile.len > 0 and fileExists(failFile):
+        let refuse = readFile(failFile).strip == "refused"
         removeFile(failFile)
+        if refuse:
+          let e = newException(ApiError, "a test's refusal")
+          e.status = 400
+          raise e
         raise newException(IOError, "a test's failure")
       w.sendPhoto(it, d.data)
       # tests: the app dies after the core took the photo, before the queue forgot it (the resend must not add it twice)
