@@ -459,6 +459,12 @@ proc showMain(w: Win) =
 # ---------------------------------------------------------------- the application
 
 proc activate(w: Win, app: W) =
+  # Walkdown started again while it runs (one instance per user): GApplication sends "activate" to this one. The
+  # window it has is shown, not a second one, which replaced the first's state (window, toasts, status line) and,
+  # when the first then closed, marked the live one as gone.
+  if w.window != nil:
+    if not w.gone: gtk_window_present(w.window)
+    return
   w.window = adw_application_window_new(app)
   gtk_window_set_title(w.window, "Walkdown")
   gtk_window_set_default_size(w.window, 1280, 820)
