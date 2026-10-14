@@ -82,6 +82,19 @@ unpack Ubuntu's package next to the GTK headers (`apt-get download mutter && dpk
 
 `nim test` (in apps/gnome) runs `tests/test_*.nim`: the dark-drawings colour transform and the markers' contrast.
 
+`e2e/viewer_sharp.nim` checks the drawing viewer on a scale-2 screen (2026-10-14: drawings were soft at every zoom
+and panning stuttered on a HiDPI laptop): every zoom as sharp as Cairo drawing the same area at device pixels, no
+view-sized Cairo layer and no scaled textures in a settled view, frame times during a pan and a zoom with 300 tags, and
+sharpness again after the monitor's scale changes to 1. Run it with a scaled headless monitor:
+
+    nim c -d:release -o:/tmp/kksgnome/viewer_sharp e2e/viewer_sharp.nim
+    KKS_HEADLESS_SIZE=2560x1600 KKS_HEADLESS_SCALE=2 e2e/headless.sh /tmp/kksgnome/viewer_sharp
+
+and again with `KKS_HEADLESS_SCALE=1.25` (a fractional scale: the widget's top-left falls on a fraction of a device
+pixel, which the tiles' placement makes up for).
+
+`KKS_SHARP_TIMING=0` leaves out the frame-time limits (CI draws on the CPU); `KKS_SHARP_OUT=folder` keeps the pictures.
+
 `e2e/viewer_pinch.nim` checks that a touchpad pinch (a `begin` with a NULL sequence) doesn't crash the viewer; build
 it and run it under `headless.sh` (the header says how). `e2e/stale_click.nim`, run the same way, checks that a
 button's handler does not run once the panel it was in has been rebuilt (#160), and the rest of that plumbing (#163):
@@ -121,5 +134,4 @@ bundle. Under Flatpak the accessibility bus reports the PID of the sandbox's pro
 the newly appeared app by name.
 
 **Not built or not verified yet:**
-- pan frame times;
 - Orca itself (the tree is checked through AT-SPI).
