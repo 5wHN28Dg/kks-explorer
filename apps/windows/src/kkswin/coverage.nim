@@ -115,7 +115,7 @@ proc openSheetCovered*(w: Win, id: string) =
   if id != w.sheet: w.showSheet(id)
   w.v.coverage = true
   InvalidateRect(w.v.hwnd, nil, 0)
-  w.rebuildSide()              # the sidebar's "Colour tags by photos" shows it on
+  w.rebuildSideKeeping()       # the sidebar's "Colour tags by photos" shows it on
   w.toast("Tags by photos: green both · amber equipment only · blue tag plate only · red none")
 
 proc rowBar(dc: HDC, r: RECT, c: Counts) =

@@ -34,10 +34,14 @@ def put(*files):
 MSIX, MSIX_CER = os.environ.get('KKS_WIN_MSIX'), os.environ.get('KKS_WIN_MSIX_CER')
 
 
-def ui(name, lines, keep=True, sync_every=0, restart=False, env=None):
+def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=()):
     """run uiadrive with these script lines in the desktop session; -> (passed, log). sync_every (ms): a fresh app's
     automatic sync rounds (KKS_SYNC_EVERY); restart: a new app process on the same data (not wiped); env: more
-    environment for a fresh app"""
+    environment for a fresh app. during: (line, action) pairs: when the script reaches that line (a sleep with a
+    number of its own, say), the action runs here while the script goes on: something changes on the server while
+    the focus is where the script put it (a new script would take it away: its console window comes to the front
+    first, #158)"""
+    during = list(during)
     path = os.path.join(tempfile.gettempdir(), name)
     with open(path, 'w') as f: f.write('\n'.join(lines) + '\n')
     put(path)
@@ -47,10 +51,13 @@ def ui(name, lines, keep=True, sync_every=0, restart=False, env=None):
         ' -Restart' if restart else '', ' -AppEnv "%s"' % ';'.join('%s=%s' % kv for kv in env.items()) if env else '')
     b64 = base64.b64encode(args.encode()).decode()
     vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kksuia' % b64)
-    for _ in range(120):
-        time.sleep(2)
+    end = time.time() + 300
+    while time.time() < end:
+        time.sleep(0.5 if during else 2)
         log = vm('[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Content C:\\kks\\uia.log -Encoding UTF8 -ErrorAction SilentlyContinue')
-        if ' done' in log: return ('PASSED' in log, log)
+        while during and ('> ' + during[0][0]) in log:
+            during.pop(0)[1]()
+        if ' done' in log: return ('PASSED' in log and not during, log + ''.join('\n(never reached: %s)' % a for a, _ in during))
     return (False, log)
 
 
@@ -139,8 +146,8 @@ class Windows(unittest.TestCase):
             time.sleep(0.5)
         self.fail(what)
 
-    def check(self, name, lines, keep=True, sync_every=0, restart=False, env=None):
-        ok, log = ui(name, lines, keep, sync_every, restart, env)
+    def check(self, name, lines, keep=True, sync_every=0, restart=False, env=None, during=()):
+        ok, log = ui(name, lines, keep, sync_every, restart, env, during)
         self.assertTrue(ok, log)
 
     JOIN = ['click\tJoin through a server', 'set\tServer address\t%s:%d', 'set\tUsername\tboss',
@@ -464,6 +471,93 @@ class Windows(unittest.TestCase):
                                    'wait\tOther drawing — Walkdown\t10', 'gone\t1 selected', 'click\tDrawings',
                                    'state\tSelect tags\toff'])
         self.assertIn('Walkdown', vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName'))
+        self.leave()
+
+    def test_typed_text_kept(self):
+        """#168. What is typed stays. The sidebar's search fields at a sync: under the keyboard the page is not made
+        again (what can change does so in place: the results, the sheets' counts, the procedures' links; the rest once
+        the keyboard has left), and a rebuild with the keyboard elsewhere puts the search back. And a button of the tag
+        panel that makes the panel again (Edit, Confirm valve type, Confirm description, Cancel) keeps what was typed
+        into its other parts"""
+        fix = os.path.join(self.dir, 'typed-fixture')
+        shutil.rmtree(fix, ignore_errors=True)
+        shutil.copytree(os.path.join(self.dir, 'plant-data'), fix)
+        tags = json.load(open(os.path.join(fix, 'tags.json')))
+        tags.append({'id': 'sample:k1', 'sheet': 'sample', 'kks': '11LAB70AA791', 'suffix': '', 'isa': None,
+                     'kind': 'equipment', 'status': 'auto', 'conf': 1, 'bbox': [1300, 700, 1420, 760],
+                     'read': ['11LAB70', 'AA791'], 'symbol': {'type': 'globe valve', 'conf': 0.9, 'bbox': [1300, 640, 1420, 690]}})
+        tags.append({'id': 'sample:k2', 'sheet': 'sample', 'kks': '11LAB70AA792', 'suffix': '', 'isa': None,
+                     'kind': 'equipment', 'status': 'review', 'conf': 0.42, 'bbox': [1300, 800, 1420, 860],
+                     'read': ['11LAB70', 'AA792']})
+        with open(os.path.join(fix, 'tags.json'), 'w') as f: json.dump(tags, f)
+        with open(os.path.join(fix, 'descriptions.json'), 'w') as f: json.dump({'11LAB70AA791': 'Feed water drain valve'}, f)
+        with open(os.path.join(fix, 'procedures.json'), 'w') as f:
+            json.dump([{'id': 'T-1', 'title': 'Start the feed water pump', 'path': ['Feed water'], 'page': 3,
+                        'steps': [{'n': 1, 'text': 'Open the suction valve'}, {'n': 2, 'text': 'Start the pump'}]},
+                       {'id': 'T-2', 'title': 'Drain the economiser', 'path': ['Boiler'], 'page': 9,
+                        'steps': [{'n': 1, 'text': 'Open the drain valve'}, {'n': 2, 'text': 'Close it when empty'}]}], f)
+        r = subprocess.run([SERVER, 'publish-data', fix, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.join('kjoin.uia', sync_every=3000)
+        search = 'Search equipment by KKS code or description'
+        # the Procedures search, with the keyboard in it while a sync arrives: it was emptied (the list with it, and
+        # the focus gone); now the list follows in place: the link made on the server shows in the found row
+        def link():
+            r = self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'T-2', 'step': 1,
+                                                      'kks': '11LAB70AA501', 'on': True}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        self.check('kproc.uia', ['click\tProcedures', 'set\tSearch procedures\tdrain', 'focus\tSearch procedures',
+                                 'wait\t~T-2  Drain the economiser   (2 steps)\t10', 'gone\t~T-1  ', 'sleep\t502',
+                                 'wait\t~T-2  Drain the economiser   (2 steps, 1 linked)\t40', 'sleep\t2000',
+                                 'value\tSearch procedures\tdrain', 'focused\tSearch procedures', 'gone\t~T-1  '],
+                   during=[('sleep\t502', link)])
+        # the Drawings search with the keyboard in it: a new tag joins the results and the sheet's count in place; a
+        # new floor waits (the controls would change) until the keyboard has left, then comes with the search kept
+        used = {str(e.get('floor', '')).strip() for e in self.boss.req('GET', '/api/state')['equipment'].values()}
+        floor = [f for f in [str(i) for i in range(11)] if f not in used]
+        self.assertTrue(floor, 'every floor 0–10 is in use already: %s' % used)
+        floor = floor[0]
+        ok, log = ui('kdraw0.uia', ['click\tDrawings', 'wait\t~Sample sheet  (\t10', 'dump'])
+        self.assertTrue(ok, log)
+        n_tags = int(re.search(r"ListItem 'Sample sheet  \((\d+) tags", log).group(1))
+        def with_floor():
+            # the floor first, then the tag: the floor is in use once the tag arrives, in the same round or later
+            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA794', 'changes': {'floor': floor}}})
+            self.assertEqual(r.get('status'), 'approved', r)
+            self.add_tag('11LAB70AA794', [1300, 1000, 1420, 1060])
+        self.check('kdraw.uia', ['click\tDrawings', 'set\t%s\tLAB70AA79' % search, 'focus\t' + search,
+                                 'wait\t~11LAB70AA791   \t10', 'sleep\t503',
+                                 'wait\t~11LAB70AA793   \t40', 'wait\t~Sample sheet  (%d tags\t5' % (n_tags + 1),
+                                 'value\t%s\tLAB70AA79' % search, 'focused\t' + search, 'sleep\t504',
+                                 'wait\t~11LAB70AA794   \t40', 'sleep\t2500', 'gone\tFloor %s' % floor,
+                                 'value\t%s\tLAB70AA79' % search, 'focused\t' + search,
+                                 'focus\tDrawings', 'wait\tFloor %s\t10' % floor, 'value\t%s\tLAB70AA79' % search,
+                                 'wait\t~11LAB70AA794   \t5', 'wait\t~11LAB70AA791   \t5'],
+                   during=[('sleep\t503', lambda: self.add_tag('11LAB70AA793', [1300, 900, 1420, 960])),
+                           ('sleep\t504', with_floor)])
+        # the Drawings search with the keyboard elsewhere when a sync arrives: made again, the search put back
+        self.add_tag('11LAB70AA795', [1300, 1100, 1420, 1160])
+        self.check('kdraw2.uia', ['wait\t~11LAB70AA795, \t40', 'sleep\t1500', 'value\t%s\tLAB70AA79' % search,
+                                  'wait\t~11LAB70AA795   \t5'])
+        # the panel: text typed into the edit form stays through Confirm valve type and Confirm description, and is
+        # then saved; the valve type and the description stay as confirmed
+        code = '11LAB70AA791'
+        self.check('kpanel.uia', ['select\t~11LAB70AA791   ', 'click\tShow on the drawing',
+                                  'wait\tValve type: globe valve (from the drawing, unchecked)\t20', 'click\tEdit',
+                                  'set\tNotes\ttyped before confirming', 'click\tConfirm valve type',
+                                  'wait\tValve type: globe valve (confirmed)\t20', 'value\tNotes\ttyped before confirming',
+                                  'click\tConfirm description', 'wait\t~Confirmed by The Manager\t20',
+                                  'value\tNotes\ttyped before confirming', 'click\tSave', 'gone\tSave'])
+        eq = lambda: self.boss.req('GET', '/api/state')['equipment'].get(code, {})
+        self.wait_server(lambda: eq().get('notes') == 'typed before confirming', 'the typed notes never reached the server', tries=80)
+        self.assertEqual(sorted((c['k'], c['v']) for c in eq().get('custom', [])),
+                         [('Description', 'Feed water drain valve'), ('Valve type', 'globe valve')])
+        # a reading being corrected: Edit under Location and notes, then that form's Cancel, keep the typed code
+        self.check('kreview.uia', ['set\t%s\tLAB70AA792' % search, 'select\t~11LAB70AA792   ', 'click\tShow on the drawing',
+                                   'wait\tCheck this tag\t20', 'set\tKKS (with suffix)\t11LAB70AA796', 'click\tEdit',
+                                   'wait\tSave\t10', 'value\tKKS (with suffix)\t11LAB70AA796', 'set\tNotes\tdropped',
+                                   'click\tCancel', 'gone\tSave', 'value\tKKS (with suffix)\t11LAB70AA796', 'click\tClose'])
         self.leave()
 
     def test_valve_type(self):
@@ -1097,13 +1191,18 @@ class Windows(unittest.TestCase):
                                                       'kks': code, 'isa': '', 'note': ''}})
             self.assertEqual(r.get('status'), 'approved', r)
         add('11PAB10AP001', [600, 700, 720, 760])
-        self.check('systems1.uia', ['wait\t%s\t40' % on(n + 1), 'wait\t~PAB (1)\t10', 'focus\t~PAB (1)'])
         # but never under the focus: with the focus in the tree a sync only marks it stale; it is rebuilt once the
-        # focus leaves the tree (here: to the search field)
-        add('11PAB10AP002', [600, 800, 720, 860])
-        time.sleep(10)          # three sync rounds
-        self.check('systems2.uia', ['wait\t%s\t1' % on(n + 1), 'focus\tSearch codes, systems, descriptions',
-                                    'wait\t%s\t15' % on(n + 2)])
+        # focus leaves the tree (here: to the search field). One script from the focus to the end: a new script takes
+        # the focus away from the app first (its console window comes to the front), and the tree then rightly caught
+        # up before the script could look at it (#158: "25 codes" where 24 were expected, on a freshly booted VM,
+        # where the console is slower to start)
+        self.check('systems1.uia', ['wait\t%s\t40' % on(n + 1), 'wait\t~PAB (1)\t10', 'focus\t~PAB (1)', 'sleep\t501',
+                                    # meanwhile a second code on the server; the drawing shows it once the app has it
+                                    'wait\t~11PAB10AP002, \t40', 'sleep\t7000',      # two more rounds, seven catch-up ticks
+                                    'focused\t~PAB (1)', 'wait\t%s\t1' % on(n + 1), 'wait\t~PAB (1)\t1',
+                                    'focus\tSearch codes, systems, descriptions', 'wait\t%s\t15' % on(n + 2),
+                                    'wait\t~PAB (2)\t5'],
+                   during=[('sleep\t501', lambda: add('11PAB10AP002', [600, 800, 720, 860]))])
         self.check('systems3.uia', ['keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
 
     def test_flow(self):

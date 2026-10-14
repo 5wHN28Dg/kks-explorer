@@ -270,7 +270,8 @@ type
   Page* = ref object
     hwnd*: HWND
     items: seq[Item]
-    typed: seq[(HWND, string)]    ## the fields a person can type into, each with the text it was made with
+    typed: seq[(HWND, string, string)]   ## the fields a person can type into: each with its label and the text it was
+                                         ## made with
     scroll: int
     contentH: int
 
@@ -578,8 +579,41 @@ proc clear*(p: Page) =
 proc edited*(p: Page): bool =
   ## something was typed into one of the page's fields and is still there: a rebuild now would lose it
   if p == nil or p.hwnd == nil: return false
-  for (h, was) in p.typed:
+  for (h, _, was) in p.typed:
     if IsWindow(h) != 0 and h.text != was: return true
+
+type KeptText* = seq[tuple[name, was: string, nth: int, text: string]]
+  ## what was typed into a page's fields, each by its label, the text it was made with and which of the fields with
+  ## both it was (so it finds its field again in the page made anew)
+
+proc keptText*(p: Page, drop: openArray[HWND] = []): KeptText =
+  ## what was typed into the page's fields and is still there, except in the fields in `drop` (what a button has just
+  ## sent, or a form it closes), to be put back with restoreText once the page is made again (#168)
+  if p == nil or p.hwnd == nil: return
+  for i, (h, name, was) in p.typed:
+    var nth = 0
+    for j in 0 ..< i:
+      if p.typed[j][1] == name and p.typed[j][2] == was: inc nth
+    if IsWindow(h) == 0 or h in drop: continue
+    let t = h.text
+    if t != was: result.add (name, was, nth, t)
+
+proc restoreText*(p: Page, kept: KeptText): KeptText =
+  ## each kept text back into the page's field with the same label made with the same text (the n-th such field for
+  ## the n-th); it still counts as typed (`edited`). -> what found no such field: its part of the page has gone, or the
+  ## value the field shows changed underneath (put back, it would be sent as a change of the new value)
+  if p == nil or p.hwnd == nil: return kept
+  for k in kept:
+    var nth = 0
+    var found = false
+    for (h, name, was) in p.typed:
+      if name == k.name and was == k.was and IsWindow(h) != 0:
+        if nth == k.nth:
+          h.setText(k.text)
+          found = true
+          break
+        inc nth
+    if not found: result.add k
 
 
 proc label*(p: Page, text: string): HWND {.discardable.} =
@@ -599,7 +633,7 @@ proc field*(p: Page, name, value: string, password = false, readonly = false, on
   let (e, _) = control(p.hwnd, "EDIT", value, WS_TABSTOP or ES_AUTOHSCROLL or (if password: ES_PASSWORD else: 0) or
                        (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)
   if onChange != nil: ctl(e).change = onChange
-  if not readonly: p.typed.add (e, e.text)
+  if not readonly: p.typed.add (e, name, e.text)
   p.items.add Item(kind: ikField, hwnds: @[lab, e])
   e
 
@@ -607,7 +641,7 @@ proc multiField*(p: Page, name, value: string, height = 90, readonly = false): H
   let lab = control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX)[0]
   result = control(p.hwnd, "EDIT", value.replace("\n", "\r\n"), WS_TABSTOP or WS_VSCROLL or ES_MULTILINE or
                           ES_AUTOVSCROLL or ES_WANTRETURN or (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)[0]
-  if not readonly: p.typed.add (result, result.text)
+  if not readonly: p.typed.add (result, name, result.text)
   p.items.add Item(kind: ikMulti, hwnds: @[lab, result], height: height)
 
 proc toSpec*[F](x: (string, F)): (string, proc ()) =

@@ -169,7 +169,7 @@ proc stopPicking*(w: Win) =
   w.syncChosen()
   w.relayout()
   w.rebuildPanel()
-  w.rebuildSide()           # the toggle, and what a search result does
+  w.rebuildSideKeeping()    # the toggle, and what a search result does (the search stays)
 
 proc startPicking*(w: Win) =
   if w.picking: return
@@ -184,7 +184,7 @@ proc startPicking*(w: Win) =
   w.syncChosen()
   w.relayout()
   w.rebuildPanel()
-  w.rebuildSide()
+  w.rebuildSideKeeping()
 
 proc listWindow(w: Win) =
   ## the selected codes, each with a check box and the drawings it is on: turn a mistake off (on again puts it back);

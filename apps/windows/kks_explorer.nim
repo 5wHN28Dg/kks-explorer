@@ -86,6 +86,8 @@ proc doShowSheet(id: string) =
   SetWindowTextW(w.hwnd, newWideCString(si.name & " — Walkdown"))
 
 proc doSelectTag(id: string, center: bool) =
+  # the tag whose panel is open, opened again (on the drawing, by a screen reader): what was typed into it stays
+  let again = id.len > 0 and id == w.selected and not w.picking
   if w.picking and id.len > 0:
     # a tag opened from elsewhere (Equipment by system, the review list, a procedure step, Learning) ends the mode;
     # a selection is never dropped without asking (nothing has been sent for it)
@@ -116,7 +118,7 @@ proc doSelectTag(id: string, center: bool) =
     let (okS, si) = w.m.sheetById(t.sheet)
     let s = if okS and si.scale > 0: si.scale else: 2.0
     w.v.centerOn(t.bbox[0] / s, t.bbox[1] / s, t.bbox[2] / s, t.bbox[3] / s)
-  w.buildPanel(t)
+  if again: w.rebuildPanelKeeping() else: w.buildPanel(t)
   w.v.invalidate()
 
 proc syncLine(): string =
@@ -140,9 +142,7 @@ proc refresh() =
     w.syncChosen()
     w.applyHighlights()
   elif w.m.sheets.len > 0: doShowSheet(w.m.sheets[0].id)
-  let f = GetFocus()
-  let typing = f != nil and GetParent(f) == w.side.hwnd and w.tab == "drawings"
-  if not typing and (w.tab != "manage" or liveManage()): w.rebuildSide()
+  if w.tab != "manage" or liveManage(): w.sideChanged()   # never under the keyboard; typed searches stay (#168)
   w.panelChanged()            # never under the keyboard, or over what was typed into a form (win.panelHeld)
   w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
   w.refreshFollowers()        # open windows that show the plant's data (Equipment by system), never under the focus
@@ -213,6 +213,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
       if w.v != nil and setupP == nil:
         guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
         guard: w.panelCatchUp()         # the panel too, left alone under the keyboard or typed text
+        guard: w.sideCatchUp()          # the sidebar, left alone under the keyboard
     return 0
   of WM_KKS_LATER:
     runLater()
@@ -322,6 +323,8 @@ proc main() =
   w.showSheet = doShowSheet
   w.selectTag = doSelectTag
   w.rebuildSide = proc () =
+    w.sideStale = false
+    w.sideUpdate = nil          # the page that is made sets its own
     if w.tab == "learning":
       w.side.clear()
       w.learningTab(w.side)
