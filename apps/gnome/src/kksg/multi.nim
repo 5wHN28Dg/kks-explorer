@@ -136,7 +136,7 @@ proc stopPicking*(w: Win) =
 
 proc startPicking*(w: Win) =
   if w.picking: return
-  w.v.marking = false
+  w.stopMarking()
   w.stopLinking()         # the banner taken down below may be link mode's: the mode ends with it (#163)
   w.setBanner("", "", nil)
   w.picking = true

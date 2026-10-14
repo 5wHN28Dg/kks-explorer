@@ -88,14 +88,13 @@ proc procedureDetail(w: Win, id: string, box: W) =
       adw_wrap_box_append(wb, button("+ Link equipment", "flat", proc () =
         # one mode at a time on the drawing: marking a tag and selecting tags end here, as link mode ends when
         # they start (stopLinking)
-        if w.v.marking:
-          w.v.marking = false
-          w.v.mark = (0.0, 0.0, 0.0, 0.0)
-          gtk_widget_set_cursor_from_name(w.v.widget, "grab")
-          gtk_widget_queue_draw(w.v.widget)
+        w.stopMarking()
         if w.picking and w.pickBtn != nil: gtk_toggle_button_set_active(w.pickBtn, 0)    # (its handler stops the mode)
         w.linkProc = id
         w.linkStep = n
+        # Escape ends link mode as Done does (kks_explorer.nim endMode), also from this button, where the focus
+        # stays: the sidebar's own Escape (going back a page) would take it first, and leave link mode on
+        adw_navigation_view_set_pop_on_escape(w.sideNav, 0)
         # Link mode outlives this page (Back keeps it on), so its end may come when the page is gone, or when the
         # procedure was opened again on another page: the one on screen now is drawn again (procBox), with the
         # links made meanwhile. With no procedure open any more, its highlights leave the drawing (the page's

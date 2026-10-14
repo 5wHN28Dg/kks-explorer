@@ -715,6 +715,8 @@ proc adw_banner_set_revealed*(b: W, v: cint) {.importc, header: HA.}
 proc adw_navigation_view_push_by_tag*(v: W, tag: cstring) {.importc, header: HA.}
 proc adw_navigation_view_pop_to_tag*(v: W, tag: cstring): cint {.importc, header: HA, discardable.}
 proc adw_navigation_view_add*(v, page: W) {.importc, header: HA.}
+proc adw_navigation_view_set_pop_on_escape*(v: W, on: cint) {.importc, header: HA.}
+proc adw_navigation_view_get_pop_on_escape*(v: W): cint {.importc, header: HA.}
 proc adw_navigation_page_set_tag*(p: W, t: cstring) {.importc, header: HA.}
 proc adw_navigation_page_new_with_tag*(child: W, title, tag: cstring): W {.importc, header: HA.}
 proc gtk_widget_get_parent*(w: W): W {.importc, header: HA.}

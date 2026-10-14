@@ -12,6 +12,8 @@ const AppId = "io.github._5wHN28Dg.walkdown"
 
 proc gObjectTypeName(o: W): cstring {.importc: "G_OBJECT_TYPE_NAME", header: "<glib-object.h>".}
 proc gtk_button_get_label(b: W): cstring {.importc, header: "<gtk/gtk.h>".}
+proc gtk_widget_get_cursor(w: W): W {.importc, header: "<gtk/gtk.h>".}
+proc gdk_cursor_get_name(c: W): cstring {.importc, header: "<gtk/gtk.h>".}
 
 proc doShowSheet(w: Win, id: string)
 proc doSelectTag(w: Win, id: string, center: bool)
@@ -283,7 +285,6 @@ proc mainScreen(w: Win): W =
   w.v.onMark = proc (x0, y0, x1, y1: float) =
     w.markDialog(x0, y0, x1, y1)
   w.v.onBox = proc (x0, y0, x1, y1: float) = w.addBox(x0, y0, x1, y1)
-  w.v.onEscape = proc () = w.stopPicking()
   w.sheetTitle = adw_window_title_new("", "")
   let contentHeader = headerBar(w.sheetTitle)
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-fit-best-symbolic", "Fit the sheet (0)", proc () = w.v.fit()))
@@ -343,13 +344,7 @@ proc mainScreen(w: Win): W =
   adw_overlay_split_view_set_show_sidebar(w.panelSplit, 0)
   w.banner = adw_banner_new("")
   w.banner.on("button-clicked", proc () =
-    # Kept in a second field while it runs: the action takes the banner down (setBanner clears bannerAction), and
-    # called through that field alone it freed its own closure, with everything it holds, under itself. (A local
-    # copy is not enough: Nim makes it a borrowed one.)
-    if w.bannerAction != nil:
-      w.bannerRunning = w.bannerAction
-      try: w.bannerRunning()
-      finally: w.bannerRunning = nil)
+    w.runBanner())
   let contentView = toolbarView(contentHeader, w.panelSplit)
   adw_toolbar_view_add_bottom_bar(contentView, w.pickBar())
   adw_toolbar_view_add_top_bar(contentView, w.banner)
@@ -458,6 +453,24 @@ proc showMain(w: Win) =
 
 # ---------------------------------------------------------------- the application
 
+proc endMode(w: Win): bool =
+  ## Escape: the drawing's mode ends as that mode's own button ends it (#183: Escape ended only the viewer's half of
+  ## Mark a tag, and its banner and crosshair stayed). False when no mode is on: the key is not ours then.
+  if w.v == nil: return false
+  if w.picking: w.stopPicking()                     # the Select tags toggle
+  elif w.v.marking: w.stopMarking()                 # the banner's Cancel
+  elif w.linkProc.len > 0:                          # the banner's Done
+    if w.bannerAction != nil: w.runBanner()
+    else: w.stopLinking()
+  else: return false
+  true
+
+proc windowKey(w: Win, keyval: cuint): bool =
+  ## the keys the window takes when the widget with the focus and its parents left them: Escape ends the drawing's
+  ## mode with the focus on the drawing or elsewhere (after "Mark a tag" or "Select tags" it is on that button). Some
+  ## widgets keep Escape for themselves first: dialogs and popovers close, a search field stops its search.
+  if keyval == 0xff1b: w.endMode() else: false
+
 proc activate(w: Win, app: W) =
   # Walkdown started again while it runs (one instance per user): GApplication sends "activate" to this one. The
   # window it has is shown, not a second one, which replaced the first's state (window, toasts, status line) and,
@@ -468,6 +481,9 @@ proc activate(w: Win, app: W) =
   w.window = adw_application_window_new(app)
   gtk_window_set_title(w.window, "Walkdown")
   gtk_window_set_default_size(w.window, 1280, 820)
+  let keys = gtk_event_controller_key_new()          # (bubble phase: after the focused widget and its parents)
+  keys.onKey(proc (keyval, state: cuint): bool = w.windowKey(keyval))
+  gtk_widget_add_controller(w.window, keys)
   w.toasts = adw_toast_overlay_new()
   adw_application_window_set_content(w.window, w.toasts)
   if w.a.joined: w.showMain()
@@ -557,7 +573,57 @@ proc activate(w: Win, app: W) =
         said = now
         writeFile(focusFile, now)
       true)
-  if getEnv("KKS_DEBUG_DIALOG").len > 0:      # accessibility check: a dialog over whatever screen is up
+  # tests (#183): the drawing driven without a pointer or keyboard (the headless test session has neither). Commands
+  # written to the file KKS_TEST_VIEWER names, plus ".do", one per line, go through the viewer's own gesture and key
+  # procs: "key 0xff1b" (a key pressed on the drawing), "window-key 0xff1b" (with the focus elsewhere),
+  # "drag x y dx dy" (widget pixels), "click-tag CODE". The file itself holds the drawing's state, written when it
+  # changes: "n=<commands done> marking=0|1 selecting=0|1 cursor=<name> ox=… oy=… pop_on_escape=0|1" (the sidebar's).
+  let viewerFile = getEnv("KKS_TEST_VIEWER")
+  if viewerFile.len > 0:
+    var said = ""
+    var done = 0
+    timeout(100, proc (): bool =
+      if w.gone: return false
+      if w.v == nil: return true           # (not joined yet: no drawing)
+      let todo = viewerFile & ".do"
+      if fileExists(todo):
+        let cmds = readFile(todo)
+        removeFile(todo)
+        for line in cmds.splitLines:
+          let p = line.splitWhitespace
+          if p.len == 0: continue
+          case p[0]
+          of "key":                      # on the drawing: what it leaves goes on to the window (GTK's own passing
+                                         # of the key between them is not tested: no keyboard in the test session)
+            let k = cuint(parseHexInt(p[1]))
+            if not w.v.keyPress(k): discard w.windowKey(k)
+          of "window-key": discard w.windowKey(cuint(parseHexInt(p[1])))    # the focus elsewhere
+          of "drag":
+            let (x, y, dx, dy) = (parseFloat(p[1]), parseFloat(p[2]), parseFloat(p[3]), parseFloat(p[4]))
+            w.v.dragBegin(x, y)
+            w.v.dragUpdate(dx, dy)
+            w.v.dragEnd(dx, dy)
+          of "click-tag":                # the tag of this code on the sheet shown, at its middle
+            var ids: seq[string]
+            for t in w.m.tags:
+              if t.full == p[1]: ids.add t.id
+            for b in w.v.tags:
+              if b.id in ids:
+                w.v.clickAt(((b.x0 + b.x1) / 2 - w.v.ox) * w.v.z, ((b.y0 + b.y1) / 2 - w.v.oy) * w.v.z)
+                break
+          else: stderr.writeLine "KKS_TEST_VIEWER: unknown command " & line
+          inc done
+      let c = gtk_widget_get_cursor(w.v.widget)
+      let now = "n=" & $done & " marking=" & $int(w.v.marking) & " selecting=" & $int(w.v.selecting) &
+                " cursor=" & (if c != nil and gdk_cursor_get_name(c) != nil: $gdk_cursor_get_name(c) else: "") &
+                " ox=" & $w.v.ox & " oy=" & $w.v.oy &
+                " pop_on_escape=" & $adw_navigation_view_get_pop_on_escape(w.sideNav)
+      if now != said:
+        said = now
+        writeFile(viewerFile & ".tmp", now)
+        moveFile(viewerFile & ".tmp", viewerFile)
+      true)
+  if getEnv("KKS_DEBUG_DIALOG").len > 0:     # accessibility check: a dialog over whatever screen is up
     after(3000, proc () =
       confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard))
   timeout(30_000, proc (): bool =
