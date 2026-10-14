@@ -112,11 +112,17 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     var askPlate by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf("") }
     // the floor comes first when the code has none (the user, 2026-10-08): asked before the camera opens, sent with the
-    // photo (the core writes it as its own change); a floor already queued with a photo of this code is used again
+    // photo (the core writes it as its own change); a floor already queued with a photo of this code is used again.
+    // That one is taken when the question is skipped, not read again when the photo is queued (#149): the photo that
+    // carried it may leave the queue meanwhile (refused, lost) while the person is in the camera or the editor, and
+    // this photo would then go without a floor that was never asked.
     var floor by rememberSaveable(kks) { mutableStateOf("") }
     var askFloor by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val sendFloor = if (floorNow.isNotBlank()) "" else floor.ifEmpty { PhotoQueue.queuedFloor[kks].orEmpty() }
-    fun withFloor(then: () -> Unit) { if (floorNow.isBlank() && sendFloor.isEmpty()) askFloor = then else then() }
+    val sendFloor = if (floorNow.isNotBlank()) "" else floor
+    fun withFloor(then: () -> Unit) {
+        if (floorNow.isBlank() && floor.isEmpty()) floor = PhotoQueue.queuedFloor[kks].orEmpty()
+        if (floorNow.isBlank() && floor.isEmpty()) askFloor = then else then()
+    }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
     val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
     fun load(uri: Uri) = scope.launch {
