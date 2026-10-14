@@ -1438,7 +1438,6 @@ class Phone(unittest.TestCase):
         self.assertFalse(subs[0].get('note'), 'a note to the approver nobody wrote')
 
     @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
-    @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
     def test_floor_kept_when_queued_goes(self):
         """#149: a photo of a code whose floor rides on a photo still in the queue is not asked for it, and takes that
         floor when the question is skipped. Before, the floor was read again when the photo was queued: if the queued
@@ -1486,10 +1485,12 @@ class Phone(unittest.TestCase):
 
         def sent():
             return [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == code] or None
+        # (only the new photo: the held one was lost before it was sent, so the floor can only have come with this one)
         self.assertEqual([p['caption'] for p in self.wait_server(sent, 'the photo never reached the server', tries=240)], [''])
         self.assertEqual(self.boss.req('GET', '/api/state')['equipment'].get(code, {}).get('floor'), '6',
                          'the photo went without the floor it was not asked for because a queued photo carried it')
 
+    @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
     def test_floor_first(self):
         """request 4: a code without a floor asks for it before the camera opens; Cancel opens no camera"""
         self.join()
