@@ -14,13 +14,17 @@ type
     d*: Drawing
     images: array[bool, seq[Surface]]    ## per mode (dark = true), index = image index; nil = not yet / failed
     decoded: array[bool, seq[bool]]
-    lock: Lock                           ## guards images and decoded
+    lock: Lock                           ## guards images, decoded and dark
+    paint: Lock                          ## one embedded image painted at a time: Cairo may share the image's pixman
+                                         ## image between paints, and pixman's reference count is not atomic
     dark*: bool                          ## the mode renderTile draws in; set through setDark
+    released: bool                       ## no longer shown: its images are freed, none is decoded again
   Sheet* = ref SheetObj
 
 proc newSheet*(data: string): Sheet =
   result = Sheet(d: decode(data))
   initLock(result.lock)
+  initLock(result.paint)
   for m in [false, true]:
     result.images[m] = newSeq[Surface](result.d.images.len)
     result.decoded[m] = newSeq[bool](result.d.images.len)
@@ -29,13 +33,23 @@ proc setDark*(s: Sheet, on: bool) =
   ## switch dark drawings; the embedded images are decoded again in the new mode (those of the old mode are freed;
   ## a tile being drawn holds its own reference to the one it uses)
   if s.dark == on: return
-  s.dark = on
   withLock s.lock:
+    s.dark = on
     let old = not on
     for i in 0 ..< s.images[old].len:
       if s.images[old][i] != nil: cairo_surface_destroy(s.images[old][i])
       s.images[old][i] = nil
       s.decoded[old][i] = false
+
+proc release*(s: Sheet) =
+  ## the viewer has let the sheet go: its decoded images (Cairo's memory, not Nim's) are freed now; a tile still being
+  ## drawn holds its own reference to the one it uses, and draws no other
+  withLock s.lock:
+    s.released = true
+    for m in [false, true]:
+      for i in 0 ..< s.images[m].len:
+        if s.images[m][i] != nil: cairo_surface_destroy(s.images[m][i])
+        s.images[m][i] = nil
 
 proc widthPt*(s: Sheet): float = float(s.d.width) / float(Q)
 proc heightPt*(s: Sheet): float = float(s.d.height) / float(Q)
@@ -45,6 +59,7 @@ proc cairo_surface_reference(s: Surface): Surface {.importc, header: "<cairo.h>"
 proc imageSurface(s: ptr SheetObj, dark: bool, i: int): Surface =
   ## image i in this mode, with a reference for the caller (nil if it can't be decoded); any thread
   withLock s.lock:
+    if dark != s.dark or s.released: return nil   # a tile of the mode or sheet just left: it is dropped
     if s.decoded[dark][i]:
       return (if s.images[dark][i] == nil: nil else: cairo_surface_reference(s.images[dark][i]))
   var sf: Surface = nil
@@ -69,6 +84,9 @@ proc imageSurface(s: ptr SheetObj, dark: bool, i: int): Surface =
     if sf != nil: cairo_surface_destroy(sf)
     sf = nil
   withLock s.lock:
+    if dark != s.dark or s.released:       # the mode changed, or the sheet went, while decoding: not kept
+      if sf != nil: cairo_surface_destroy(sf)
+      return nil
     if s.decoded[dark][i]:                 # another thread decoded it meanwhile: keep theirs
       if sf != nil: cairo_surface_destroy(sf)
     else:
@@ -130,9 +148,10 @@ proc drawImage(s: ptr SheetObj, dark: bool, c: Cairo, i: int) =
   cairo_save(c)
   cairo_translate(c, float(im.rect[0]), float(im.rect[1]))
   cairo_scale(c, float(im.rect[2] - im.rect[0]) / iw, float(im.rect[3] - im.rect[1]) / ih)
-  cairo_set_source_surface(c, sf, 0, 0)
-  cairo_paint(c)
-  cairo_restore(c)
+  withLock s.paint:
+    cairo_set_source_surface(c, sf, 0, 0)
+    cairo_paint(c)
+    cairo_restore(c)                       # the image is no longer the source
   cairo_surface_destroy(sf)
 
 proc renderTile*(s: ptr SheetObj, dark: bool, zoom: float, x0, y0: float, w, h: int): Surface =

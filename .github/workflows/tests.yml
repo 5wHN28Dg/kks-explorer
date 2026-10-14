@@ -325,12 +325,13 @@ jobs:
         run: |
           nim c -d:release -o:/tmp/kksgnome/stale_click e2e/stale_click.nim
           timeout 120 e2e/headless.sh /tmp/kksgnome/stale_click
-      - name: The drawing viewer on a scale-2 screen (sharp at every zoom, no view-sized Cairo layers, scale changes)
+      - name: The drawing viewer on scale-2 and scale-1.25 screens (sharp at every zoom, no view-sized Cairo layers, scale changes)
         working-directory: apps/gnome
         # frame-time limits only on the laptop: the runner draws on the CPU
         run: |
           nim c -d:release -o:/tmp/kksgnome/viewer_sharp e2e/viewer_sharp.nim
           KKS_HEADLESS_SIZE=2560x1600 KKS_HEADLESS_SCALE=2 KKS_SHARP_TIMING=0 timeout 300 e2e/headless.sh /tmp/kksgnome/viewer_sharp
+          KKS_HEADLESS_SIZE=2560x1600 KKS_HEADLESS_SCALE=1.25 KKS_SHARP_TIMING=0 timeout 300 e2e/headless.sh /tmp/kksgnome/viewer_sharp
       - name: The GNOME app through AT-SPI, in a private headless mutter (apps/gnome/e2e/headless.sh)
         run: |
           apps/gnome/e2e/headless.sh /usr/bin/python3 apps/gnome/e2e/test_gnome.py /tmp/kksgnome/kks_explorer \

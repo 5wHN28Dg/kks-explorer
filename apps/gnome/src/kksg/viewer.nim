@@ -171,6 +171,23 @@ proc gtk_widget_get_native(w: W): W {.importc, header: "<gtk/gtk.h>".}
 proc gtk_native_get_surface(w: W): W {.importc, header: "<gtk/gtk.h>".}
 proc gdk_surface_get_scale(s: W): cdouble {.importc, header: "<gtk/gtk.h>".}
 
+type GPoint {.importc: "graphene_point_t", header: "<gtk/gtk.h>", bycopy.} = object
+  x, y: cfloat
+proc gtk_widget_compute_point(w, target: W, p, res: ptr GPoint): bool {.importc, header: "<gtk/gtk.h>".}
+proc gtk_native_get_surface_transform(n: W, x, y: ptr cdouble) {.importc, header: "<gtk/gtk.h>".}
+
+proc originOnSurface*(v: Viewer): (float, float) =
+  ## the widget's top-left on its surface, logical px (its device pixel is this × the scale: a fraction of a device
+  ## pixel at scales like 1.25, which the tiles' placement makes up for)
+  let n = gtk_widget_get_native(v.widget)
+  if n == nil: return (0.0, 0.0)
+  var p0 = GPoint(x: 0, y: 0)
+  var p: GPoint
+  if not gtk_widget_compute_point(v.widget, n, addr p0, addr p): return (0.0, 0.0)
+  var tx, ty: cdouble
+  gtk_native_get_surface_transform(n, addr tx, addr ty)
+  (float(p.x) + float(tx), float(p.y) + float(ty))
+
 proc sf(v: Viewer): float =
   ## device px per logical px: the surface's scale, fractional ones included (1.25, 1.5 …); the widget's integer scale
   ## factor before it is on screen
@@ -247,6 +264,7 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
     if t != nil: g_object_unref(t)
   v.stale = @[]
   v.name = name
+  if v.sheet != nil: v.sheet.release()
   v.sheet = if kkp.len > 0: newSheet(kkp) else: nil
   if v.sheet != nil: v.sheet.setDark(v.dark)
   v.scale0 = if info.get("scale") != nil and info["scale"].isNum: info["scale"].num else: 2.0
@@ -491,14 +509,19 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
   let y0 = max(0.0, v.oy)
   let x1 = min(wpt, v.ox + float(w) / v.z)
   let y1 = min(hpt, v.oy + float(h) / v.z)
+  if v.sheet != nil and (x1 <= x0 or y1 <= y0): v.want.setLen(0)   # nothing of the sheet in view
   if v.sheet != nil and x1 > x0 and y1 > y0:
     v.adoptZoom(dz)
     if v.tileZ == dz:
       let span = float(TileSize) / dz         # points per tile
       let zb = cast[uint64](dz)
-      # the sheet's device pixel under the widget's left edge, rounded: every tile lands on whole device pixels
-      let bx = round(v.ox * dz)
-      let by = round(v.oy * dz)
+      # where the sheet's device pixel 0 is, relative to the widget: rounded so that every tile lands on whole device
+      # pixels of the surface (the widget's own origin may sit on a fraction of one at scales like 1.25)
+      let (wx, wy) = v.originOnSurface
+      let fx = wx * sf - floor(wx * sf)
+      let fy = wy * sf - floor(wy * sf)
+      let bx = round(v.ox * dz - fx) + fx
+      let by = round(v.oy * dz - fy) + fy
       let c0 = int(floor(x0 / span))
       let c1 = int(floor(min(x1, wpt - 1e-9) / span))
       let r0 = int(floor(y0 / span))
@@ -573,7 +596,7 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
     if tex != nil:
       inDevicePixels(s, sf):
         graphene_rect_init(addr r, cfloat(-v.ox * dz), cfloat(-v.oy * dz), cfloat(wpt * dz), cfloat(hpt * dz))
-        gtk_snapshot_append_scaled_texture(s, tex, GSK_SCALING_FILTER_TRILINEAR, addr r)
+        gtk_snapshot_append_texture(s, tex, addr r)
       if not timingReported and startedAt > 0:
         timingReported = true
         stderr.writeLine "timing: first sheet drawn " & $int((epochTime() - startedAt) * 1000) & " ms after launch"
@@ -590,9 +613,9 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
         v.tiles[k].used = v.frame
         graphene_rect_init(addr r, cfloat((float(k.ix) * span - v.ox) * dz), cfloat((float(k.iy) * span - v.oy) * dz),
                            cfloat(span * dz), cfloat(span * dz))
-        # shrunk by more than half: mipmaps, else plain linear (sharper)
-        gtk_snapshot_append_scaled_texture(s, v.tiles[k].tex,
-          if dz / tz < 0.5: GSK_SCALING_FILTER_TRILINEAR else: GSK_SCALING_FILTER_LINEAR, addr r)
+        # a plain texture node: GSK filters it as it draws (a scaled-texture node would go through a picture of its
+        # own every frame)
+        gtk_snapshot_append_texture(s, v.tiles[k].tex, addr r)
       for (k, dx, dy) in exact:
         v.tiles[k].used = v.frame
         # one tile pixel per device pixel, on whole device pixels: nothing to filter

@@ -90,6 +90,9 @@ sharpness again after the monitor's scale changes to 1. Run it with a scaled hea
     nim c -d:release -o:/tmp/kksgnome/viewer_sharp e2e/viewer_sharp.nim
     KKS_HEADLESS_SIZE=2560x1600 KKS_HEADLESS_SCALE=2 e2e/headless.sh /tmp/kksgnome/viewer_sharp
 
+and again with `KKS_HEADLESS_SCALE=1.25` (a fractional scale: the widget's top-left falls on a fraction of a device
+pixel, which the tiles' placement makes up for).
+
 `KKS_SHARP_TIMING=0` leaves out the frame-time limits (CI draws on the CPU); `KKS_SHARP_OUT=folder` keeps the pictures.
 
 `e2e/viewer_pinch.nim` checks that a touchpad pinch (a `begin` with a NULL sequence) doesn't crash the viewer; build

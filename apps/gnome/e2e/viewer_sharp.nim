@@ -3,6 +3,7 @@
 ## It opens a window, so it is not in `nim test`; run it under a headless mutter whose monitor has scale 2:
 ##   cd apps/gnome && nim c -d:release -o:/tmp/kksgnome/viewer_sharp e2e/viewer_sharp.nim
 ##   KKS_HEADLESS_SIZE=2560x1600 KKS_HEADLESS_SCALE=2 e2e/headless.sh /tmp/kksgnome/viewer_sharp
+## and with KKS_HEADLESS_SCALE=1.25 (a fractional scale).
 ## A synthetic sheet (A1, dense thin "text" and hairlines, as the P&IDs are) is shown at several zooms. Each view is
 ## captured at device pixels through GTK's own renderer and compared with the same area drawn directly by Cairo at
 ## that device resolution: the ratio of their gradient energy is 1 for an equally sharp picture and well below 1 for a
@@ -129,11 +130,18 @@ proc synthTags(): (seq[TagBox], seq[TagBox]) =
     result[1].add TagBox(id: "c" & $i, x0: x, y0: y, x1: x + 8, y1: y + 8, label: "C" & $i)
 
 # ---------------------------------------------------------------- pictures and the sharpness measure
+type GPoint {.importc: "graphene_point_t", header: HA, bycopy.} = object
+  x, y: cfloat
+proc gtk_snapshot_translate(s: W, p: ptr GPoint) {.importc, header: HA.}
+
 proc nodeOf(v: Viewer, sf: float): W =
-  ## the widget's own drawing under the window's scale, as GTK draws it on screen (a GtkWidgetPaintable would hand
-  ## over its last picture at logical size, scaled up)
+  ## the widget's own drawing under the window's scale, where it sits on its surface, as GTK draws it on screen (a
+  ## GtkWidgetPaintable would hand over its last picture at logical size, scaled up)
+  let (wx, wy) = v.originOnSurface
+  var p = GPoint(x: cfloat(wx), y: cfloat(wy))
   let s = gtk_snapshot_new()
   gtk_snapshot_scale(s, cfloat(sf), cfloat(sf))
+  gtk_snapshot_translate(s, addr p)
   v.drawInto(s)
   gtk_snapshot_free_to_node(s)
 
@@ -157,8 +165,10 @@ proc capture(v: Viewer, sf: float): (int, int, seq[byte]) =
   let w = float(gtk_widget_get_width(v.widget))
   let h = float(gtk_widget_get_height(v.widget))
   let node = v.nodeOf(sf)
+  # the surface's device pixels the widget covers, from the whole pixel its top-left is in
+  let (wx, wy) = v.originOnSurface
   var vp: GraphRect
-  graphene_rect_init(addr vp, 0, 0, cfloat(round(w * sf)), cfloat(round(h * sf)))
+  graphene_rect_init(addr vp, cfloat(floor(wx * sf)), cfloat(floor(wy * sf)), cfloat(round(w * sf)), cfloat(round(h * sf)))
   let tex = gsk_renderer_render_texture(gtk_native_get_renderer(gtk_widget_get_native(v.widget)), node, addr vp)
   gsk_render_node_unref(node)
   let tw = int(gdk_texture_get_width(tex))
@@ -187,8 +197,11 @@ proc sharpness(v: Viewer, sf: float, name: string): float =
   let dz = v.z * sf
   # on the device pixel grid the viewer places its tiles on (a fraction of a pixel's shift changes how Cairo
   # anti-aliases a hairline, not how sharp the drawing is)
-  let x0p = round(v.ox * dz) / dz
-  let y0p = round(v.oy * dz) / dz
+  let (wx, wy) = v.originOnSurface
+  let fx = wx * sf - floor(wx * sf)
+  let fy = wy * sf - floor(wy * sf)
+  let x0p = round(v.ox * dz - fx) / dz
+  let y0p = round(v.oy * dz - fy) / dz
   let refSurf = v.sheet.renderTile(dz, x0p, y0p, w, h)
   let rstride = int(cairo_image_surface_get_stride(refSurf))
   let rdata = cairo_image_surface_get_data(refSurf)
@@ -236,11 +249,34 @@ proc percentile(xs: seq[float], p: float): float =
   let s = xs.sorted
   s[min(s.len - 1, int(float(s.len - 1) * p + 0.5))]
 
-proc motion(v: Viewer, name: string, n: int, step: proc (i: int)): seq[float] =
-  ## one `step` per frame for `n` frames; returns the times between frames (ms)
+proc gtk_widget_get_frame_clock(w: W): W {.importc, header: HA.}
+
+type Motion = object
+  intervals: seq[float]          ## between frames (ms): what the eye sees, but also the compositor's and GPU's share
+  busy: seq[float]               ## the main thread's work for each frame, from the frame clock's update to its
+                                 ## after-paint (ms): snapshot, layout, rasterising Cairo nodes, handing over to GSK
+  stall: float                   ## the longest the main loop went without running a 2 ms timer (ms): work outside
+                                 ## the frames, as tiles drawn in idle callbacks were
+
+proc motion(v: Viewer, name: string, n: int, step: proc (i: int)): Motion =
+  ## one `step` per frame for `n` frames
   var last = 0.0
   var i = 0
-  var intervals: seq[float]
+  var intervals, busy: seq[float]
+  var began = 0.0
+  var stall = 0.0
+  var lastTimer = epochTime() * 1000
+  let clock = gtk_widget_get_frame_clock(v.widget)
+  let h1 = clock.on("update", proc () = began = epochTime() * 1000)
+  let h2 = clock.on("after-paint", proc () =
+    if began > 0 and i < n: busy.add epochTime() * 1000 - began
+    began = 0)
+  let t = timeout(2, proc (): bool =
+    let now = epochTime() * 1000
+    if i > 0: stall = max(stall, now - lastTimer)
+    lastTimer = now
+    i < n)
+  discard t
   onTick(v.widget, proc (us: int64): bool =
     let now = epochTime() * 1000
     if last > 0: intervals.add now - last
@@ -251,11 +287,15 @@ proc motion(v: Viewer, name: string, n: int, step: proc (i: int)): seq[float] =
       gtk_widget_queue_draw(v.widget)
     i < n)
   discard waitUntil(proc (): bool = i >= n, 120)
+  g_signal_handler_disconnect(clock, h1)
+  g_signal_handler_disconnect(clock, h2)
   let over = intervals.countIt(it > 25.0)
-  echo name & ": " & $intervals.len & " frames, median " & formatFloat(percentile(intervals, 0.5), ffDecimal, 1) &
-    " ms, p95 " & formatFloat(percentile(intervals, 0.95), ffDecimal, 1) & " ms, max " &
-    formatFloat(max(intervals), ffDecimal, 1) & " ms, " & $over & " over 25 ms"
-  intervals
+  let f = proc (x: float): string = formatFloat(x, ffDecimal, 1)
+  echo name & ": " & $intervals.len & " frames, between frames median " & f(percentile(intervals, 0.5)) & " ms, p95 " &
+    f(percentile(intervals, 0.95)) & " ms, max " & f(max(intervals)) & " ms, " & $over & " over 25 ms; main thread per frame median " &
+    f(percentile(busy, 0.5)) & " ms, p95 " & f(percentile(busy, 0.95)) & " ms, max " & f(max(busy)) &
+    " ms; longest main-loop stall " & f(stall) & " ms"
+  Motion(intervals: intervals, busy: busy, stall: stall)
 
 # ---------------------------------------------------------------- the run
 let app = adw_application_new("org.kks.SharpTest", 32)
@@ -274,7 +314,9 @@ app.on("activate", proc () =
   v.frames(5)
   let sf = float(gdk_surface_get_scale(gtk_native_get_surface(gtk_widget_get_native(v.widget))))
   echo "window ", gtk_widget_get_width(v.widget), "×", gtk_widget_get_height(v.widget), " logical px, scale ", sf
-  if strict: check(sf >= 2.0, "the screen is scaled (run under KKS_HEADLESS_SCALE=2): scale " & $sf)
+  let wantScale = parseFloat(getEnv("KKS_HEADLESS_SCALE", "2"))
+  if strict: check(sf > 1.0 and abs(sf - wantScale) < 0.01, "the screen is scaled as asked (KKS_HEADLESS_SCALE): scale " & $sf)
+  echo "the widget's top-left on its surface: ", v.originOnSurface, " logical px"
   if outDir.len > 0: createDir(outDir)
   let kkp = synthSheet()
   v.setSheet("synthetic", kkp, parseStrict("{\"scale\": 2}"), @[])
@@ -307,7 +349,13 @@ app.on("activate", proc () =
       discard v.capture(sf)
       moveFile(outDir / "last-capture.png", outDir / "tags-viewer.png")
   # a pan across new parts of the sheet, one step per frame (a brisk drag: 30 logical px a frame)
-  let pan = v.motion("pan", 150, proc (i: int) = v.ox += 30 / v.z)
+  # back and forth, always over the sheet
+  var dir = 1.0
+  let pan = v.motion("pan", 150, proc (i: int) =
+    let wide = float(gtk_widget_get_width(v.widget)) / v.z
+    if v.ox + wide + 30 / v.z > v.sheet.widthPt: dir = -1.0
+    elif v.ox - 30 / v.z < 0: dir = 1.0
+    v.ox += dir * 30 / v.z)
   # a zoom from fit, 3 % a frame
   v.fit()
   doAssert v.complete()
@@ -315,10 +363,12 @@ app.on("activate", proc () =
   let h = float(gtk_widget_get_height(v.widget))
   let zoom = v.motion("zoom", 90, proc (i: int) = v.zoomAt(1.03, w / 2, h / 2))
   if timing:
-    for (name, xs) in [("pan", pan), ("zoom", zoom)]:
-      check(percentile(xs, 0.95) <= 25.0, name & ": 95 % of frames within 25 ms (" &
-        formatFloat(percentile(xs, 0.95), ffDecimal, 1) & ")")
-      check(max(xs) <= 60.0, name & ": no frame over 60 ms (" & formatFloat(max(xs), ffDecimal, 1) & ")")
+    # the main thread's share, which this code decides (the time between frames also holds the compositor and the
+    # GPU, which other work on the machine slows down: reported above, not checked)
+    for (name, m) in [("pan", pan), ("zoom", zoom)]:
+      check(percentile(m.busy, 0.95) <= 8.0, name & ": the main thread's work for 95 % of frames within 8 ms (" &
+        formatFloat(percentile(m.busy, 0.95), ffDecimal, 1) & ")")
+      check(m.stall <= 40.0, name & ": the main loop never held up more than 40 ms (" & formatFloat(m.stall, ffDecimal, 1) & ")")
   # the monitor's scale changes (another screen): the tiles follow, as sharp at the new scale
   if getEnv("KKS_HEADLESS_SCALE").len > 0:
     v.tags = @[]
@@ -331,11 +381,11 @@ app.on("activate", proc () =
       size & "@60.000', @a{sv} {})])]\" \"@a{sv} {}\" >/dev/null") == 0
     let surface = gtk_native_get_surface(gtk_widget_get_native(v.widget))
     check(waitUntil(proc (): bool = gdk_surface_get_scale(surface) == 1.0, 20), "the window's scale is 1 now")
-    v.centerOn(1100, 800, 1101, 801, 2.9)
+    v.centerOn(1100, 800, 1101, 801, v.z)   # the same zoom: only the device pixels per point change
     v.frames(3)
     doAssert v.complete()
-    let s1 = v.sharpness(1.0, "scale1-z2.9")
-    check(s1 >= 0.85, "sharp after the scale changed to 1 (" & formatFloat(v.z, ffDecimal, 2) & " device px/pt): gradient energy " &
+    let s1 = v.sharpness(1.0, "scale1")
+    check(s1 >= 0.85, "sharp after the scale changed to 1 at the same zoom (" & formatFloat(v.z, ffDecimal, 2) & " device px/pt): gradient energy " &
       formatFloat(s1, ffDecimal, 3))
   done = true
   gtk_window_destroy(win)

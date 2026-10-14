@@ -192,7 +192,10 @@ class Plant(unittest.TestCase):
         e = atspi.find(a, 'image', contains='Drawing ').get_component_iface().get_extents(Atspi.CoordType.WINDOW)
         im = Image.open(shot).convert('RGB').crop((e.x, e.y, e.x + e.width, e.y + e.height))
         px = list(im.get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(im.getdata())
-        return sum(1 for r, g, b in px if abs(r - 176) < 30 and g < 70 and abs(b - 158) < 30)
+        # the outline's colour (176, 23, 158) within 30 on every channel: with the drawing sharp at device pixels, the
+        # anti-aliased pixel where a red and a blue markup line cross came out (170, 65, 150), which `g < 70` took
+        # for the outline
+        return sum(1 for r, g, b in px if abs(r - 176) < 30 and abs(g - 23) < 30 and abs(b - 158) < 30)
 
 
 class Gnome(Plant):
