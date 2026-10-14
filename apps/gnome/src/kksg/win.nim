@@ -106,8 +106,8 @@ proc formDirty*(w: Win): bool =
 
 proc leaving*(w: Win, go: proc (), kept: proc () = nil) =
   ## The person does something that takes the panel's form away: picks another tag (on the drawing, in the search,
-  ## from a procedure, a system, a course), closes the panel, starts "Mark a tag". With something typed in the form
-  ## it asks first (the user, 2026-10-13; before, the text went without a word): Discard runs `go`; Keep editing
+  ## from a procedure, a system, a course), closes the panel, starts "Mark a tag", closes the window. With something
+  ## typed in the form it asks first (the user, 2026-10-13; before, the text went without a word): Discard runs `go`; Keep editing
   ## leaves everything as it was and runs `kept`. With nothing typed `go` runs at once. A second request while the
   ## question is on screen is dropped.
   if not w.formDirty:

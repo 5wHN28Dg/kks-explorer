@@ -956,6 +956,35 @@ proc ownDevicePassword*(s: Server, usr: JNode, me: Actor, d: JNode, sources: ope
   let pw = d.get("password")
   discard s.login(usr["username"].s, if pw != nil and pw.isStr: pw.s else: "", sources)
 
+proc ownCertifyPassword*(s: Server, usr: JNode, me: Actor, path: string, d: JNode, sources: openArray[string]) =
+  ## Adding a device for one's own person from a web sign-in: "Add a computer from a join request" (POST
+  ## /api/devices/import-request), accepting a QR invite (/api/invites/<token>) or a device waiting on the Wi-Fi
+  ## (/api/join-requests/<device>) whose join request names the person asking. Only with the account's password (the
+  ## user, 2026-10-14): whoever holds an admin's or the manager's stolen sign-in could otherwise give that person a new
+  ## device, and a device of theirs may remove their others. Checked by `login` as for removing one's own device (the
+  ## same hashing, failure count and refusals: 401, 429), whether or not the request says `existing_ok`, before the
+  ## core's rules, which judge everything else. Says nothing for a request naming somebody else (an admin adding a
+  ## member's device keeps today's rules) or for anything but "accept"; the apps do not come this way.
+  if s.n.run == nil: return
+  let parts = path.split('/')
+  var req: JNode = nil
+  if path == "/api/devices/import-request":
+    req = d.get("request")
+  elif parts.len == 4 and parts[2] in ["invites", "join-requests"]:
+    let action = d.get("action")
+    if action == nil or not action.isStr or action.s != "accept": return
+    req = (if parts[2] == "invites": s.api.invites.items.getOrDefault(parts[3])
+           else: s.api.invites.lobby.getOrDefault(parts[3])).request      # (nil: no such invite or device)
+  else: return
+  if req == nil or req.kind != jObj: return
+  let name = req.get("username")
+  if name == nil or not name.isStr: return
+  # the core certifies for the person whose username is the request's, in any case: one's own, so the password
+  let mine = s.n.run.persons.getOrDefault(me.person)
+  if mine == nil or mine["username"].s.toLowerAscii != name.s.toLowerAscii: return
+  let pw = d.get("password")
+  discard s.login(usr["username"].s, if pw != nil and pw.isStr: pw.s else: "", sources)
+
 # ---- enrolment: a device joining with its owner's password (PROTOCOL-v2 §16 "through a server") ----
 
 proc enrollDevice(s: Server, username, password, dev, label0: string, sources: openArray[string]) =
@@ -1574,6 +1603,7 @@ proc handle(s: Server, req: Request) {.async.} =
     else: discard
   if isPost:
     let parts = path.split('/')
+    s.ownCertifyPassword(usr, me, path, d, src)   # (a device for one's own person: the password first; then the core)
     if parts.len == 5 and parts[1] == "api" and parts[2] == "sheets" and parts[4] == "remove":
       if me.role != "manager": herr(403, "manager only")
       await s.sendJson(req, 200, s.removeSheet(parts[3]))

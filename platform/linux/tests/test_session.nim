@@ -1,7 +1,7 @@
 ## A web sign-in renews while it is used (the user, 2026-10-10): what needs a clock. The answers over HTTP (the
 ## cookie sent again, what ends a session) are in e2e/test_server_http.py (SessionRenewal).
 import std/[unittest, os, times, strutils, tables]
-import kks/[crypto, json, api, proto, plant, node]
+import kks/[crypto, json, api, proto, plant, node, extras, invites]
 import plat
 import kksl/[server, dbstore, argon2]
 
@@ -238,3 +238,62 @@ suite "who may sign whom out, and the server's own command":
     check ask(u, "no-such-device", nil, "ip:192.0.2.11") == 0
     check (try: (s.ownDevicePassword(u, actor("tom"), newObj(), ["ip:192.0.2.11"]); true) except HttpErr: false)
     check (try: (s.ownDevicePassword(u, actor("tom"), newObj(@[("device", newInt(7))]), ["ip:192.0.2.11"]); true) except HttpErr: false)
+
+  test "a device for one's own person is added from a web sign-in only with the password; somebody else's by the role rules":
+    for uid in [boss["id"].i, sara, omar, ali, tom]: s.endSessions(uid)
+    let su = s.userByName("sara")         # an admin: may certify devices (the core's rule)
+    su["pw"] = S(hashPassword("sara's long password", repeat("cd", 8)))
+    s.putUser(su)
+    proc request(username: string): (string, JNode) =
+      let k = P.p256Generate()
+      (P.peerId(k), P.joinRequest(k, username, username & " person", S("Operator"), "laptop", int64(epochTime())))
+    proc ask(usr: JNode, path: string, d: JNode, source: string): int =
+      ## the HTTP status the check refuses with; 0 = it lets the request on to the core's rules
+      try:
+        s.ownCertifyPassword(usr, s.actorFor(usr), path, d, [source])
+        0
+      except HttpErr as e: e.code
+    proc O(f: varargs[(string, JNode)]): JNode = newObj(@f)
+    let now = int64(epochTime())
+    # "Add a computer from a join request" naming the person asking (in any case of the username), with existing_ok
+    # or without: no password, not a string, empty, wrong, another account's
+    let (_, own) = request("SARA")
+    for (i, pw) in [nil, newInt(1), S(""), S("not the password"), S("a long password")].pairs:
+      var d = O(("request", own), ("existing_ok", newBool(i mod 2 == 0)))
+      if pw != nil: d["password"] = pw
+      check ask(su, "/api/devices/import-request", d, "ip:192.0.2.21") == 401
+    # counted as failed sign-ins from there: after the fifth the right password waits; from elsewhere it goes on
+    let right = O(("request", own), ("existing_ok", newBool(true)), ("password", S("sara's long password")))
+    check ask(su, "/api/devices/import-request", right, "ip:192.0.2.21") == 429
+    check ask(su, "/api/devices/import-request", right, "ip:192.0.2.22") == 0
+    # a QR invite and a device waiting on the Wi-Fi: "accept" for one's own person asks for it too; refusing does not
+    let inv = s.api.invites.create(P, actor("sara").person, s.n.root, "plant", s.n.device, @["127.0.0.1:1"], now)
+    let (dev, viaInvite) = request("sara")
+    check s.api.invites.offer(P, dev, O(("token", inv["token"]), ("request", viaInvite)), now)["state"].s == "waiting"
+    let (ldev, inLobby) = request("sara")
+    check s.api.invites.offer(P, ldev, O(("request", inLobby)), now)["state"].s == "waiting"
+    for path in ["/api/invites/" & inv["token"].s, "/api/join-requests/" & ldev]:
+      check ask(su, path, O(("action", S("accept")), ("existing_ok", newBool(true))), "ip:192.0.2.23") == 401
+      check ask(su, path, O(("action", S("accept")), ("password", S("wrong"))), "ip:192.0.2.24") == 401
+      check ask(su, path, O(("action", S("accept")), ("password", S("sara's long password"))), "ip:192.0.2.25") == 0
+      check ask(su, path, O(("action", S("refuse"))), "ip:192.0.2.26") == 0
+      check ask(su, path, O(("action", S("cancel"))), "ip:192.0.2.26") == 0
+      check ask(su, path, newObj(), "ip:192.0.2.26") == 0
+    # nothing waiting under that token or device: nothing asked (the core says it is not waiting)
+    check ask(su, "/api/invites/no-such-token", O(("action", S("accept"))), "ip:192.0.2.26") == 0
+    check ask(su, "/api/join-requests/no-such-device", O(("action", S("accept"))), "ip:192.0.2.26") == 0
+    # somebody else's: a member's by an admin, an admin's by the manager, the manager's by an admin: no password
+    # asked (the core's role rules decide); nor for a request with no username or no request
+    check ask(su, "/api/devices/import-request", O(("request", request("ali")[1])), "ip:192.0.2.26") == 0
+    check ask(boss, "/api/devices/import-request", O(("request", request("sara")[1])), "ip:192.0.2.26") == 0
+    check ask(su, "/api/devices/import-request", O(("request", request("boss")[1])), "ip:192.0.2.26") == 0
+    check ask(boss, "/api/invites/" & inv["token"].s, O(("action", S("accept"))), "ip:192.0.2.26") == 0
+    check ask(su, "/api/devices/import-request", O(("request", O(("username", newInt(3))))), "ip:192.0.2.26") == 0
+    check ask(su, "/api/devices/import-request", O(("request", S("sara"))), "ip:192.0.2.26") == 0
+    check ask(su, "/api/devices/import-request", newObj(), "ip:192.0.2.26") == 0
+    # the manager's own: the same
+    check ask(boss, "/api/devices/import-request", O(("request", request("boss")[1])), "ip:192.0.2.27") == 401
+    check ask(boss, "/api/devices/import-request", O(("request", request("boss")[1]), ("password", S("a long password"))), "ip:192.0.2.27") == 0
+    # other routes: nothing asked
+    check ask(su, "/api/devices/revoke", O(("request", own)), "ip:192.0.2.26") == 0
+    check ask(su, "/api/invites", O(("request", own)), "ip:192.0.2.26") == 0

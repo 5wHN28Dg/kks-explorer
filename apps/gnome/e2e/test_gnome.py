@@ -192,7 +192,10 @@ class Plant(unittest.TestCase):
         e = atspi.find(a, 'image', contains='Drawing ').get_component_iface().get_extents(Atspi.CoordType.WINDOW)
         im = Image.open(shot).convert('RGB').crop((e.x, e.y, e.x + e.width, e.y + e.height))
         px = list(im.get_flattened_data()) if hasattr(Image.Image, 'get_flattened_data') else list(im.getdata())
-        return sum(1 for r, g, b in px if abs(r - 176) < 30 and g < 70 and abs(b - 158) < 30)
+        # the outline's colour (176, 23, 158) within 30 on every channel: with the drawing sharp at device pixels, the
+        # anti-aliased pixel where a red and a blue markup line cross came out (170, 65, 150), which `g < 70` took
+        # for the outline
+        return sum(1 for r, g, b in px if abs(r - 176) < 30 and abs(g - 23) < 30 and abs(b - 158) < 30)
 
 
 class Gnome(Plant):
@@ -1008,6 +1011,16 @@ class Gnome(Plant):
         link = max(px, key=lambda p: max(p) - min(p))                   # the link: the most coloured pixel
         self.assertGreater(grey, 175, f'the credit\'s text is too faint on the dark page (lightest grey {grey} on {back})')
         self.assertGreater(max(link), 165, f'the credit\'s link is dimmed with its line ({link})')
+        # closing the main window closes its course windows too (#163): they kept the app running, and a code's link
+        # in them then opened its tag in the main window that was gone
+        wins = [a.get_child_at_index(i) for i in range(a.get_child_count())]
+        main = [x for x in wins if not any(n.get_name() == '5 · Strain gauges & RTDs' for n in atspi.walk(x))]
+        self.assertEqual((len(wins), len(main)), (2, 1), 'the main window and the course window')
+        atspi.click(atspi.find(main[0], 'button', name='Close'))
+        try:
+            self.apps[-1].wait(15)
+        except subprocess.TimeoutExpired:
+            self.fail('the app kept running with its course window after the main window was closed')
 
     def test_zzz_multi_member(self):
         """A MEMBER's "Photo for all" (their changes wait for approval), with codes of two drawings (runs last: its
@@ -1332,6 +1345,83 @@ class Gnome(Plant):
         last = self.apps[-1]     # done (its photo stays held): its syncs must not rebuild other tests' screens
         last.kill()
         last.wait(10)
+
+    def test_zzzz_kept_floor_sent_later(self):
+        """#149: a second photo of a code is not asked for the floor while a queued photo carries one. When that photo
+        fails and waits at the end of the queue for its retry, the second goes first: it takes the floor with it
+        (before, it arrived without one, and the floor came only with the retry a minute later). When that photo is
+        refused, the second takes its floor over (before, the floor was lost and never asked). KKS_TEST_PHOTO_FAIL
+        fails the next send while its file exists ("refused" in it: the core refuses it)."""
+        b = self.boss
+        from PIL import Image
+        pic = os.path.join(self.dir, 'later.png')
+        Image.new('RGB', (320, 240), (90, 120, 150)).save(pic)
+        hold = os.path.join(self.dir, 'hold-later')
+        fail = os.path.join(self.dir, 'fail-later')
+        rounds = (('11LAE12AP001', '7', 'failed', 200), ('11LAE13AP001', '5', 'refused', 400))
+        for code, _, _, x in rounds:
+            r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [x, 850, x + 120, 910],
+                                                                           'kks': code, 'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        open(hold, 'w').close()
+        a = self.start_app('floorlater', KKS_PHOTO_FILE=pic, KKS_TEST_PHOTO_HOLD=hold, KKS_TEST_PHOTO_FAIL=fail)
+        app = self.apps[-1]
+        self.join(a)
+        search = atspi.find(a, 'entry', contains='Search equipment')
+
+        def photos(code):
+            return {p['caption'] for p in b.req('GET', '/api/state')['photos'] if p['kks'] == code}
+        for code, floor, how, _ in rounds:
+            open(hold, 'w').close()
+            with open(fail, 'w') as f:
+                f.write(how)
+            for i in range(30):      # (the tag reaches the app with a sync round; the text changes each time)
+                atspi.set_text(search, code[i % 2 * 2:])
+                time.sleep(1)
+                if atspi.find_all(a, 'button', name=code):
+                    break
+            atspi.click(atspi.find(a, 'button', name=code))
+            time.sleep(2)            # the panel is built for this code
+            for cap in ('asked', 'not asked'):
+                caption = None
+                for _ in range(5):   # the panel rebuilds after a sync: a lost click is retried
+                    atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+                    if cap == 'asked':
+                        try:
+                            dlg = atspi.find(a, 'alert', name=f'Which floor is {code} on?', timeout=5)
+                        except AssertionError:
+                            continue
+                        atspi.set_text(atspi.find(dlg, None, name=f'Floor of {code}'), floor)
+                        atspi.click(atspi.find(dlg, 'button', name='Continue'))
+                    try:
+                        caption = atspi.find(a, 'text', name='Caption', timeout=8)
+                        break
+                    except AssertionError:
+                        continue
+                self.assertIsNotNone(caption, f'the photo editor never opened ({cap}, {how})')
+                self.assertFalse(cap == 'not asked' and atspi.find_all(a, 'alert'), f'the floor was asked again ({how})')
+                atspi.set_text(caption, cap)
+                atspi.click(atspi.find(a, 'button', name='Add the photo'))
+                atspi.click(atspi.find(atspi.find(a, 'alert', name='And its tag plate?', timeout=10), 'button', name='Not now'))
+            atspi.find(a, 'label', contains='Compressing 2 photos', timeout=10)
+            os.remove(hold)          # the first fails (or is refused); the second goes first (or alone)
+            for _ in range(120):
+                if 'not asked' in photos(code):
+                    break
+                time.sleep(0.5)
+            self.assertEqual(photos(code), {'not asked'}, f'the second photo did not go first ({how})')
+            self.assertFalse(os.path.exists(fail), f'the first photo\'s send did not fail ({how})')
+            self.assertEqual(b.req('GET', '/api/state')['equipment'].get(code, {}).get('floor'), floor,
+                             f'the photo not asked for its floor arrived without the floor of the first photo ({how})')
+            if how == 'failed':      # its retry, a minute later: sent, so the next round's failure is not its
+                for _ in range(240):
+                    if 'asked' in photos(code):
+                        break
+                    time.sleep(0.5)
+                self.assertEqual(photos(code), {'asked', 'not asked'}, 'the failed photo was not sent at its retry')
+        self.assertEqual(self.criticals('floorlater'), [])
+        app.kill()
+        app.wait(10)
 
     def test_zzzzz_stale_click(self):
         """#160: a button's handler runs a moment after the press (from an idle callback), and a reload can rebuild
@@ -1727,8 +1817,26 @@ class Gnome(Plant):
         atspi.find(a, None, contains='no longer on the drawing', timeout=5)     # (said, not closed without a word)
         self.assertIsNone(app.poll(), 'the app died')
         self.assertEqual(self.criticals('formkept'), [])
-        app.kill()
-        app.wait(10)
+        # 8. the window closed over an Edit form with nothing typed: it closes without a question (#163; the one that
+        # asks: test_zzzzzzzz_form_ask)
+        last = '11LAE33AP001'
+        r = b.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 500, 1120, 560],
+                                                                       'kks': last, 'isa': '', 'note': ''}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        for i in range(30):          # (the tag reaches the app with a sync round; the text changes each time)
+            atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), last[i % 2 * 2:])
+            time.sleep(1)
+            if atspi.find_all(a, 'button', name=last):
+                break
+        atspi.click(atspi.find(a, 'button', name=last))
+        self.press(a, 'Edit', ('text', 'Notes'))
+        atspi.click(atspi.find(a, 'button', name='Close'))
+        try:
+            app.wait(15)
+        except subprocess.TimeoutExpired:
+            self.fail('the window did not close over a form with nothing typed' +
+                      (' (it asked)' if atspi.find_all(a, 'alert') else ''))
+        self.assertEqual(self.criticals('formkept'), [])
 
     def test_zzzzzzzz_form_ask(self):
         """Leaving a form that holds something typed asks first (the user, 2026-10-13; before, the text went without
@@ -1917,9 +2025,30 @@ class Gnome(Plant):
         self.assertEqual(notes(), 'saved, then the focus')
         edit_has_focus('Save')
         self.assertIsNone(app.poll(), 'the app died')
+        # 7. the window closed (#163): asked the same way; the close is refused while the question is up, Keep editing
+        # keeps the window and the text, Discard closes it without sending. (A form with nothing typed closes at
+        # once: test_zzzzzzz_form_kept's end.)
+        edit('typed, then the window closed')
+        atspi.click(atspi.find(a, 'button', name='Close'))
+        d = asked()
+        self.assertIsNotNone(d, 'closing the window over a form holding something typed did not ask'
+                             if app.poll() is None else 'the window closed over a form holding something typed')
+        self.assertIsNone(app.poll(), 'the window closed while the question was on screen')
+        answer(d, 'Keep editing')
+        time.sleep(1)
+        self.assertIsNone(app.poll(), 'Keep editing closed the window')
+        self.assertEqual(self.typed(a, 'Notes'), 'typed, then the window closed', 'Keep editing lost what was typed')
+        atspi.click(atspi.find(a, 'button', name='Close'))
+        d = asked()
+        self.assertIsNotNone(d, 'closing the window a second time did not ask')
         self.assertEqual(self.criticals('formask'), [])
-        app.kill()
-        app.wait(10)
+        atspi.click(atspi.find(d, 'button', name='Discard'))
+        try:
+            app.wait(15)
+        except subprocess.TimeoutExpired:
+            self.fail('Discard did not close the window')
+        self.assertEqual(notes(), 'saved, then the focus', 'Discard sent what was typed')
+        self.assertEqual(self.criticals('formask'), [])
 
 
 class Coverage(Plant):

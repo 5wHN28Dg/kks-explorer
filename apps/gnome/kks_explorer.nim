@@ -483,10 +483,25 @@ proc activate(w: Win, app: W) =
         w.reloadQueued = false
         w.refresh())
   var closing = false
+  var formLeft = false      # the person chose Discard: this close goes on past the panel's form
   w.window.onCloseRequestStop(proc (): bool =
+    if closing:
+      closeCourseWindows()
+      return false
+    # a form of the tag panel holding something typed: asked first, as leaving it inside the window is (#163). The
+    # close is refused meanwhile; Discard closes the window (the photos' question below still comes), Keep editing
+    # leaves everything as it was. (gtk_window_close sends close-request again at once, inside the call.)
+    if not formLeft and w.formDirty:
+      w.leaving(proc () =
+        formLeft = true
+        try: gtk_window_close(w.window)
+        finally: formLeft = false)
+      return true
     # photos still in the queue are kept on disk and sent at the next start: say so, and offer to wait
     let n = queuedCount()
-    if n == 0 or closing: return false
+    if n == 0:
+      closeCourseWindows()
+      return false
     let d = adw_alert_dialog_new((if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared").cstring,
                                  "Wait until they are sent (a moment), or close: they are kept on this computer and sent when Walkdown next starts.")
     adw_alert_dialog_add_response(d, "wait", "Wait")

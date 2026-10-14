@@ -301,7 +301,13 @@ Lessons (don't repeat):
     after every sync round: GTK sends "clicked" 250 ms after a keyboard or accessibility activation, and not at all
     if the button has gone by then (#147: the e2e's presses came in step with the rounds, five lost in a row).
   - The viewer draws vector tiles at every zoom (the overview is a placeholder); zoomed out, the thinnest line is half a
-    device pixel.
+    device pixel. Tiles are drawn on worker threads at the exact zoom in device pixels and placed on whole device
+    pixels; while the zoom changes the tiles at hand are scaled, and the new zoom's are drawn once it settles.
+  - GTK 4.22 draws a scaled texture (`append_scaled_texture`) through a picture as large as its rectangle in the
+    node's own units: under the window's scale 2 a texture stretched to a logical-size rectangle is sampled at half
+    the screen's resolution (every renderer). Draw textures under `gtk_snapshot_scale(1/scale)` with rectangles in
+    device pixels (the viewer's `inDevicePixels`). Never a window-sized Cairo node per frame: it is rasterised on the
+    CPU at device size every frame (it made panning 3x slower at scale 2). `e2e/viewer_sharp.nim` checks both.
 - **TLS and sync:**
   - GnuTLS says "again" after a TLS 1.3 session ticket while records wait (keep reading).
   - Send a TLS handshake step's output before waiting (TLS 1.2 hung on Windows 10).
