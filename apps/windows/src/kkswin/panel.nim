@@ -105,7 +105,10 @@ proc equipmentSection(w: Win, p: Page, t: Tag) =
   var custom: seq[(HWND, HWND)]
   if live.get("custom") != nil:
     for c in live["custom"].elems:
-      custom.add (p.field("Custom field name", s(c, "k")), p.field("Custom field value", s(c, "v")))
+      # keyed by the custom field's name: typed text goes back to the same field after the panel is made again,
+      # never to another one that moved into its place (#168)
+      custom.add (p.field("Custom field name", s(c, "k"), key = "custom name " & s(c, "k")),
+                  p.field("Custom field value", s(c, "v"), key = "custom value " & s(c, "k")))
   custom.add (p.field("New custom field name (optional)", ""), p.field("New custom field value", ""))
   let note = if not w.isAdmin: p.field("Note for the approver (optional)", "") else: nil
   # the form's own fields: Save sends them and Cancel drops them; what was typed elsewhere in the panel stays (#168)

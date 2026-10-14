@@ -376,4 +376,22 @@ suite "what was typed into a page":
     check not page.edited
     page.clear()
 
+  test "a keyed field goes back only to the field with its key; a password is never kept":
+    fresh()
+    page.clear()
+    let mn = page.field("Custom field value", "0", key = "custom value Min")
+    let mx = page.field("Custom field value", "0", key = "custom value Max")
+    let pw = page.field("Passphrase", "", password = true)
+    mn.setText("5")
+    pw.setText("secret words")
+    let kept = page.keptText()
+    check kept.len == 1 and kept[0].key == "custom value Min"
+    page.clear()                                    # Min was removed underneath: only Max is left, also made with "0"
+    let mx2 = page.field("Custom field value", "0", key = "custom value Max")
+    let lost = page.restoreText(kept)
+    check lost.len == 1 and lost[0].text == "5"
+    check mx2.text == "0"                           # not put into Max (Save would send it as Max's new value)
+    discard mx
+    page.clear()
+
 DestroyWindow(main)

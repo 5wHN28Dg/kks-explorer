@@ -102,7 +102,7 @@ proc panelChanged*(w: Win, anyFocus = true) =
 proc panelCatchUp*(w: Win) =
   if w.panelStale and not w.panelHeld(): w.panelChanged()
 
-proc keepTyped*(w: Win, p: Page, rebuild: proc (), drop: openArray[HWND] = []) =
+proc keepTyped*(w: Win, p: Page, rebuild: proc (), drop: openArray[HWND] = [], tell = true) =
   ## `rebuild` makes page `p` again for what it shows now (one of its own buttons, a mode turned on or off, a sync
   ## while the keyboard is elsewhere): what was typed into its fields goes back into the new ones, except into those in
   ## `drop` (what the button sent, the form it closes) (#168). Text that finds no field again (its part of the page went,
@@ -110,9 +110,9 @@ proc keepTyped*(w: Win, p: Page, rebuild: proc (), drop: openArray[HWND] = []) =
   let kept = p.keptText(drop)
   rebuild()
   let lost = p.restoreText(kept)
-  if lost.len > 0:
+  if lost.len > 0 and tell:
     var lines: seq[string]
-    for k in lost: lines.add k.name & ": " & k.text.replace("\r\n", "\n")
+    for k in lost: lines.add (if k.key != k.name: k.key else: k.name) & ": " & k.text.replace("\r\n", "\n")
     say(w.hwnd, "Typed text not kept", "This changed underneath while you were typing, so what you typed was not put " &
         "back (copy it from here if you need it):\n\n" & lines.join("\n"))
 
@@ -121,8 +121,9 @@ proc rebuildPanelKeeping*(w: Win, drop: openArray[HWND] = []) =
   w.keepTyped(w.panel, w.rebuildPanel, drop)
 
 proc rebuildSideKeeping*(w: Win) =
-  ## the sidebar made again on the same tab, keeping what was typed into its search field (keepTyped)
-  w.keepTyped(w.side, w.rebuildSide)
+  ## the sidebar made again on the same tab, keeping what was typed into its search field (keepTyped); a search whose
+  ## field went with the page (the procedures went with new plant data) is nothing to show the person
+  w.keepTyped(w.side, w.rebuildSide, tell = false)
 
 proc sideHeld*(w: Win): bool =
   ## the sidebar is not rebuilt now: the keyboard is in it (on the Drawings tab anywhere, in its lists too; on the
