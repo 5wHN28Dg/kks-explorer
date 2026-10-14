@@ -236,7 +236,7 @@ K.aboutView = a => {
   const link = (text, url) => { const l = h('a', {target: '_blank', rel: 'noopener noreferrer'}, text); l.href = K.safeUrl(url); return l };
   const licence = id => d.licenses[id] || {name: id, url: '', text: ''};
   const text = t => h('pre', {class: 'kab-text'}, t);
-  const part = (c, on) => h('li', null, link(c.name, c.url), c.platforms[on] === 'system' ? ' (the system\'s copy)' : c.version ? ' ' + c.version : '',
+  const part = (c, on) => h('li', null, link(c.name, c.url), c.platforms[on] === 'system' ? ' (the system\'s copy)' : c.version ? ' ' + (/^[0-9a-f]{40}$/.test(c.version) ? 'commit ' + c.version.slice(0, 12) : c.version) : '',
     ' · ', c.license_name, h('div', {class: 'kab-sub'}, c.use),
     c.notice ? h('details', null, h('summary', null, 'Copyright and licence notice'), text(c.notice)) : null);
   const parts = on => [h('h2', null, d.platforms[on].title), h('p', {class: 'kab-sub'}, d.platforms[on].note),
@@ -252,7 +252,7 @@ K.aboutView = a => {
     h('p', {class: 'kab-links'}, link('Home page', d.links.homepage), link('Report a problem', d.links.issues), link('Help', d.links.help)),
     parts('web'), parts('server'),
     h('h2', null, 'Course photos'),
-    h('ul', {class: 'kab-list'}, d.photos.map(p => h('li', null, p.text, p.links.length ? h('div', {class: 'kab-sub'}, p.links.map((l, i) => [i ? ' · ' : '', link(l.text, l.url)])) : null))),
+    h('ul', {class: 'kab-list'}, d.photos.map(p => h('li', null, h('span', null, p.text), p.links.length ? h('div', {class: 'kab-sub'}, p.links.map((l, i) => [i ? ' · ' : '', link(l.text, l.url)])) : null))),
     h('h2', null, 'Licences'),
     used.map(id => licence(id).text ? h('details', null, h('summary', null, licence(id).name), text(licence(id).text))
                                     : h('p', {class: 'kab-licence'}, link(licence(id).name, licence(id).url))));

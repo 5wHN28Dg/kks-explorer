@@ -64,7 +64,7 @@ async function show(t){
     id==='queue'?h('span',{class:'count',id:'qn',style:'display:none'}):null,id==='users'?h('span',{class:'count',id:'un',style:'display:none'}):null,
     id==='account'&&ME.transfer_offer?h('span',{class:'count'},'!'):null)));
   if(t!=='users') signups().then(S=>signupBadge(S));   // account requests waiting: the Users tab shows how many (its own view fills it too)
-  if(!K.online&&t!=='account'&&t!=='about'){   // (About: the copy the service worker kept) put(mainFor(g),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
+  if(!K.online&&t!=='account'&&t!=='about'){ put(mainFor(g),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
   try{ await VIEWS[t](g) }catch(e){ if(e.status===401) return location.reload(); put(mainFor(g),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
   if(LINK&&g===SHOW_GEN&&!$('#main').contains(LINK)) $('#main').prepend(LINK);
 }
@@ -119,7 +119,7 @@ const badge=s=>{ const st=String((s.conflicts?.length?'conflict':s.status)??'');
 
 // ---------- views ----------
 const VIEWS={
-  async about(g){ const v=await K.aboutPage(); put(mainFor(g),v) },
+  async about(g){ const v=await K.aboutPage(); put(mainFor(g),v) },   // (offline too: the copy the service worker kept)
   async queue(g){
     if(!SHEETS.length) SHEETS=await K.api('/data/sheets.json').catch(()=>[]);
     // grouped by code (core api groupSubmissions): per code, each kind of change is its own group, so an equipment photo
