@@ -1,0 +1,2 @@
+Portions of this software are copyright © 2026 The FreeType Project (https://freetype.org). All rights reserved.
+(FreeType 2.14.3, inside MuPDF, used under the FreeType License.)

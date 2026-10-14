@@ -215,7 +215,8 @@ K.watchLease = () => {
 K.signIn = cfg => K.form(cfg?.plant_name || 'Walkdown', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
   [{name: 'username', label: 'Username', ac: 'username', plain: true}, {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Sign in',
   async v => { await K.api('/api/login', v); location.reload() }, null,
-  cfg?.signup ? K.h('button', {type: 'button', class: 'back', id: 'signup', onclick: () => K.signUp(cfg)}, 'No account yet? Request one') : null);
+  [cfg?.signup ? K.h('button', {type: 'button', class: 'back', id: 'signup', onclick: () => K.signUp(cfg)}, 'No account yet? Request one') : null,
+   K.h('button', {type: 'button', class: 'back', id: 'signinAbout', onclick: () => K.about()}, 'About Walkdown')]);
 K.signUp = cfg => K.form('Request an account', 'You need the sign-up code your manager gives the team. An admin then approves the request before the account works.',
   [{name: 'code', label: 'Sign-up code', plain: true}, {name: 'full_name', label: 'Your full name', ac: 'name'},
    {name: 'position', label: 'Position at the company (job title)', ac: 'organization-title'},
@@ -224,6 +225,63 @@ K.signUp = cfg => K.form('Request an account', 'You need the sign-up code your m
     await K.api('/api/signup', {code: v.code, username: v.username.trim(), full_name: v.full_name, position: v.position, password: v.password});
     K.box('Request sent', `An admin has to approve it. After that, sign in as ${v.username.trim()} with the password you chose.`, 'Back to sign in', () => K.signIn(cfg)) },
   () => K.signIn(cfg));
+
+// ---------- About: the main page's About button, Manage → About, the sign-in screen ----------
+// What Walkdown is; this server's version and the commit it was built from, with a link to exactly that source (the
+// AGPL's offer of the Corresponding Source to everyone who uses the server over the network, §13); the third-party
+// parts of this web app and of the server with their licences; the course photos' credits. All from /api/about
+// (public; the shared content is data/about.json, made by tools/about.py), which the service worker keeps for offline.
+K.aboutView = a => {
+  const h = K.h, d = a.about;
+  const link = (text, url) => { const l = h('a', {target: '_blank', rel: 'noopener noreferrer'}, text); l.href = K.safeUrl(url); return l };
+  const licence = id => d.licenses[id] || {name: id, url: '', text: ''};
+  const text = t => h('pre', {class: 'kab-text'}, t);
+  const part = (c, on) => h('li', null, link(c.name, c.url), c.platforms[on] === 'system' ? ' (the system\'s copy)' : c.version ? ' ' + c.version : '',
+    ' · ', c.license_name, h('div', {class: 'kab-sub'}, c.use),
+    c.notice ? h('details', null, h('summary', null, 'Copyright and licence notice'), text(c.notice)) : null);
+  const parts = on => [h('h2', null, d.platforms[on].title), h('p', {class: 'kab-sub'}, d.platforms[on].note),
+    h('ul', {class: 'kab-list'}, d.components.filter(c => c.platforms[on]).map(c => part(c, on)))];
+  const used = [...new Set([d.license.id, ...d.components.filter(c => c.platforms.web || c.platforms.server).flatMap(c => c.license_ids)])].sort();
+  return h('div', {class: 'kab'},
+    h('h1', null, d.name), h('p', null, d.summary),
+    h('p', {class: 'kab-version'}, `Server version ${a.version}`,
+      a.commit ? [', commit ', h('code', null, a.commit.slice(0, 12)), a.modified ? ' with local changes' : ''] : ' (commit unknown)', '. ',
+      link(a.commit ? 'Source code of this version' : 'Source code', a.source), '.'),
+    h('p', null, `By ${d.developer}. Licence: `, link(d.license.name, d.license.url), '.'),
+    h('p', {class: 'kab-sub'}, d.notice),
+    h('p', {class: 'kab-links'}, link('Home page', d.links.homepage), link('Report a problem', d.links.issues), link('Help', d.links.help)),
+    parts('web'), parts('server'),
+    h('h2', null, 'Course photos'),
+    h('ul', {class: 'kab-list'}, d.photos.map(p => h('li', null, p.text, p.links.length ? h('div', {class: 'kab-sub'}, p.links.map((l, i) => [i ? ' · ' : '', link(l.text, l.url)])) : null))),
+    h('h2', null, 'Licences'),
+    used.map(id => licence(id).text ? h('details', null, h('summary', null, licence(id).name), text(licence(id).text))
+                                    : h('p', {class: 'kab-licence'}, link(licence(id).name, licence(id).url))));
+};
+K.aboutCss = `#kabout{width:min(720px,94vw);max-height:88vh;padding:0;border:1px solid var(--line,#3a5061);border-radius:10px;background:var(--chrome2,#243440);color:var(--ink,#e9eef2);font:14px/1.45 system-ui,sans-serif}
+#kabout::backdrop{background:rgba(0,0,0,.55)}#kabout .kab-close{position:sticky;top:8px;float:right;margin:8px;background:var(--chrome,#1c2730);color:inherit;border:1px solid var(--line,#3a5061);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
+.kab{padding:4px 18px 18px}.kab h1{font-size:20px;margin:14px 0 4px}.kab h2{font-size:15px;margin:18px 0 4px}.kab p{margin:6px 0}.kab a{color:var(--accent,#ff7a1a)}
+.kab-sub{color:var(--muted,#94a6b4);font-size:12.5px}.kab-links{display:flex;gap:14px;flex-wrap:wrap}.kab-list{margin:4px 0;padding-left:20px}.kab-list li{margin:4px 0}
+.kab details{margin:4px 0}.kab summary{cursor:pointer}.kab-text{white-space:pre-wrap;font-size:11.5px;max-height:40vh;overflow:auto;background:var(--chrome,#1c2730);padding:8px;border-radius:6px;border:1px solid var(--line,#3a5061)}`;
+K.aboutStyle = () => {
+  if (document.getElementById('kaboutcss')) return;
+  const s = document.createElement('style'); s.id = 'kaboutcss'; s.textContent = K.aboutCss; document.head.appendChild(s);
+};
+// what is shown when /api/about can't be had: offline, and never opened before on this device
+K.aboutUnsaved = () => K.h('div', {class: 'kab'}, K.h('h1', null, 'Walkdown'),
+  K.h('p', null, 'The About page is not saved on this device yet: open it once while the server can be reached.'));
+// -> the About for a page of its own (Manage → About)
+K.aboutPage = async () => { K.aboutStyle(); const a = await K.api('/api/about').catch(() => null); return a ? K.aboutView(a) : K.aboutUnsaved() };
+// the About in a dialog over the page (Escape or Close ends it)
+K.about = async () => {
+  const body = await K.aboutPage();
+  document.getElementById('kabout')?.remove();
+  const dlg = K.h('dialog', {id: 'kabout', 'aria-label': 'About Walkdown'});
+  const close = K.h('button', {type: 'button', class: 'kab-close', onclick: () => dlg.close()}, 'Close');
+  dlg.append(close, body);
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.appendChild(dlg); dlg.showModal(); close.focus();
+  return dlg;
+};
 
 // ---------- peer mode: this computer is one person's device; set it up before first use ----------
 K.download = (data, name, type = 'application/json') => {

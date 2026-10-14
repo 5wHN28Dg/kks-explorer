@@ -23,12 +23,17 @@ fi
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 HOME_DIR="${KKS_SERVER_HOME:-$HOME/kks-server}"
 NIM="${NIM:-$HOME/.nimble/bin/nim}"
-VER="$(cat "$REPO/VERSION")-$(git -C "$REPO" rev-parse --short HEAD)$(git -C "$REPO" diff --quiet HEAD -- . || echo -dirty)"
+COMMIT=$(git -C "$REPO" rev-parse HEAD)
+DIRTY=false; git -C "$REPO" diff --quiet HEAD -- . || DIRTY=true
+VER="$(cat "$REPO/VERSION")-$(git -C "$REPO" rev-parse --short HEAD)$([ "$DIRTY" = false ] || echo -dirty)"
 APP="$HOME_DIR/app/$VER"
 echo "installing $VER into $APP"
 mkdir -p "$HOME_DIR/state" && chmod 700 "$HOME_DIR"
 rm -rf "$APP.tmp" && mkdir -p "$APP.tmp"
-(cd "$REPO/platform/linux" && "$NIM" c -d:release --hints:off -o:"$APP.tmp/kks-server" kks_server.nim >/dev/null)
+# the commit and whether the checkout had changes go into the program: kks-server --version and /api/about say them,
+# and the About links that commit's source (platform/linux/src/kksl/buildinfo.nim)
+(cd "$REPO/platform/linux" && "$NIM" c -d:release --hints:off -d:kksCommit="$COMMIT" -d:kksDirty="$DIRTY" \
+   -o:"$APP.tmp/kks-server" kks_server.nim >/dev/null)
 (cd "$REPO/importer" && "$NIM" c -d:release --hints:off -o:"$APP.tmp/kks-import" kks_import.nim >/dev/null)
 cp "$REPO/importer/fontlib.kgl" "$APP.tmp/"
 for f in index.html index.js admin.html admin.js common.js tiles.js dark.js systems.js course-bridge.js learning.html learning.js course.html course.js course-figure.js \
@@ -38,7 +43,7 @@ done
 # -p: files keep their times. The offline list (GET /api/offline) versions each file by its time, so a file that did
 # not change is not downloaded again by every device after an update.
 cp -rp "$REPO/vendor" "$APP.tmp/vendor"
-mkdir -p "$APP.tmp/data" && cp -p "$REPO/data/kks.json" "$APP.tmp/data/" && cp -rp "$REPO/data/courses" "$APP.tmp/data/courses"
+mkdir -p "$APP.tmp/data" && cp -p "$REPO/data/kks.json" "$REPO/data/about.json" "$APP.tmp/data/" && cp -rp "$REPO/data/courses" "$APP.tmp/data/courses"
 chmod -R a-w "$APP.tmp"
 rm -rf "$APP" && mv "$APP.tmp" "$APP"
 [ -e "$HOME_DIR/app/current" ] && ln -sfn "$(readlink "$HOME_DIR/app/current")" "$HOME_DIR/app/previous"

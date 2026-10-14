@@ -1,0 +1,1304 @@
+{
+ "format": "walkdown-about",
+ "version": 1,
+ "name": "Walkdown",
+ "summary": "Find plant equipment on P&ID drawings by KKS code",
+ "developer": "Walkdown contributors",
+ "license": {
+  "id": "AGPL-3.0-or-later",
+  "name": "GNU Affero General Public License v3.0 or later",
+  "url": "https://www.gnu.org/licenses/agpl-3.0.html"
+ },
+ "notice": "Walkdown is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It comes with ABSOLUTELY NO WARRANTY.",
+ "links": {
+  "homepage": "https://github.com/5wHN28Dg/kks-explorer",
+  "issues": "https://github.com/5wHN28Dg/kks-explorer/issues",
+  "help": "https://github.com/5wHN28Dg/kks-explorer/wiki"
+ },
+ "source": {
+  "repository": "https://github.com/5wHN28Dg/kks-explorer",
+  "commit_url": "https://github.com/5wHN28Dg/kks-explorer/tree/{commit}"
+ },
+ "platforms": {
+  "server": {
+   "title": "The server",
+   "note": "Built from this source on the server's own machine. It uses the libraries marked as the system's from that machine; its drawing importer carries MuPDF and what MuPDF builds in."
+  },
+  "web": {
+   "title": "The web app",
+   "note": "What the server sends to browsers: Walkdown's own pages and scripts, and these parts."
+  },
+  "gnome": {
+   "title": "The Linux app",
+   "note": "Built in or packed with the app; the libraries marked as the system's come from the GNOME runtime of Flathub."
+  },
+  "windows": {
+   "title": "The Windows app",
+   "note": "Built into Walkdown.exe or packed with it."
+  },
+  "android": {
+   "title": "The Android app",
+   "note": "Built into the app."
+  }
+ },
+ "components": [
+  {
+   "id": "libjxl",
+   "name": "libjxl",
+   "version": "0.12.0",
+   "license": "BSD-3-Clause",
+   "license_name": "BSD 3-Clause License",
+   "license_ids": [
+    "BSD-3-Clause"
+   ],
+   "url": "https://github.com/libjxl/libjxl",
+   "use": "JPEG XL photos",
+   "platforms": {
+    "server": "system",
+    "web": "bundled",
+    "gnome": "system",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "Copyright (c) the JPEG XL Project Authors.\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its\n   contributors may be used to endorse or promote products derived from\n   this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nAdditional IP Rights Grant (Patents)\n\n\"This implementation\" means the copyrightable works distributed by\nGoogle as part of the JPEG XL project.\n\nGoogle hereby grants to You a perpetual, worldwide, non-exclusive,\nno-charge, royalty-free, irrevocable (except as stated in this section)\npatent license to make, have made, use, offer to sell, sell, import,\ntransfer and otherwise run, modify and propagate the contents of this\nimplementation of JPEG XL, where such license applies only to those patent\nclaims, both currently owned or controlled by Google and acquired in\nthe future, licensable by Google that are necessarily infringed by this\nimplementation of JPEG XL.  This grant does not include claims that would be\ninfringed only as a consequence of further modification of this\nimplementation.  If you or your agent or exclusive licensee institute or\norder or agree to the institution of patent litigation against any\nentity (including a cross-claim or counterclaim in a lawsuit) alleging\nthat this implementation of JPEG XL or any code incorporated within this\nimplementation of JPEG XL constitutes direct or contributory patent\ninfringement, or inducement of patent infringement, then any patent\nrights granted to you under this License for this implementation of JPEG XL\nshall terminate as of the date such litigation is filed.\n"
+  },
+  {
+   "id": "highway",
+   "name": "Highway",
+   "version": "457c891775a7397bdb0376bb1031e6e027af1c48",
+   "license": "Apache-2.0 OR BSD-3-Clause",
+   "license_name": "Apache License 2.0 or BSD 3-Clause License",
+   "license_ids": [
+    "BSD-3-Clause",
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/google/highway",
+   "use": "libjxl's SIMD library (used under BSD-3-Clause)",
+   "platforms": {
+    "web": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "Copyright (c) The Highway Project Authors. All rights reserved.\n\nRedistribution and use in source and binary forms, with or without modification,\nare permitted provided that the following conditions are met:\n\n1.  Redistributions of source code must retain the above copyright notice, this\n    list of conditions and the following disclaimer.\n\n2.  Redistributions in binary form must reproduce the above copyright notice,\n    this list of conditions and the following disclaimer in the documentation\n    and/or other materials provided with the distribution.\n\n3.  Neither the name of the copyright holder nor the names of its\n    contributors may be used to endorse or promote products derived from\n    this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
+  },
+  {
+   "id": "brotli",
+   "name": "Brotli",
+   "version": "028fb5a23661f123017c060daa546b55cf4bde29",
+   "license": "MIT",
+   "license_name": "MIT License",
+   "license_ids": [
+    "MIT"
+   ],
+   "url": "https://github.com/google/brotli",
+   "use": "libjxl's compression",
+   "platforms": {
+    "web": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n"
+  },
+  {
+   "id": "skcms",
+   "name": "skcms",
+   "version": "96d9171c94b937a1b5f0293de7309ac16311b722",
+   "license": "BSD-3-Clause",
+   "license_name": "BSD 3-Clause License",
+   "license_ids": [
+    "BSD-3-Clause"
+   ],
+   "url": "https://skia.googlesource.com/skcms",
+   "use": "libjxl's colour profiles",
+   "platforms": {
+    "web": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "// Copyright (c) 2018 Google Inc. All rights reserved.\n//\n// Redistribution and use in source and binary forms, with or without\n// modification, are permitted provided that the following conditions are\n// met:\n//\n//    * Redistributions of source code must retain the above copyright\n// notice, this list of conditions and the following disclaimer.\n//    * Redistributions in binary form must reproduce the above\n// copyright notice, this list of conditions and the following disclaimer\n// in the documentation and/or other materials provided with the\n// distribution.\n//    * Neither the name of Google Inc. nor the names of its\n// contributors may be used to endorse or promote products derived from\n// this software without specific prior written permission.\n//\n// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n// \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\n// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\n// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\n// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\n// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\n// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\n// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\n// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\n// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n--------------------------------------------------------------------------------\n"
+  },
+  {
+   "id": "zxing-cpp",
+   "name": "ZXing-C++",
+   "version": "3.1.1",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/zxing-cpp/zxing-cpp",
+   "use": "QR codes: reading them with the camera, drawing invites",
+   "platforms": {
+    "web": "bundled",
+    "gnome": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "libzueci",
+   "name": "libzueci (in ZXing-C++)",
+   "version": null,
+   "license": "BSD-3-Clause AND MIT",
+   "license_name": "BSD 3-Clause License and MIT License",
+   "license_ids": [
+    "BSD-3-Clause",
+    "MIT"
+   ],
+   "url": "https://github.com/zxing-cpp/zxing-cpp/tree/v3.1.1/core/src/libzueci",
+   "use": "ZXing-C++'s character sets",
+   "platforms": {
+    "web": "bundled",
+    "gnome": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "libzueci - an open source UTF-8 ECI library adapted from libzint\nCopyright (C) 2022 gitlost\n\nRedistribution and use in source and binary forms, with or without modification, are permitted provided that the\nfollowing conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following\n   disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following\n   disclaimer in the documentation and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products\n   derived from this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES,\nINCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,\nWHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF\nTHIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nIts UTF-8 decoder:\n\nCopyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the\nrights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit\npersons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the\nSoftware.\n"
+  },
+  {
+   "id": "zlib",
+   "name": "zlib",
+   "version": "1.3.2",
+   "license": "Zlib",
+   "license_name": "zlib License",
+   "license_ids": [
+    "Zlib"
+   ],
+   "url": "https://zlib.net",
+   "use": "compression (in the server's importer: MuPDF's copy)",
+   "platforms": {
+    "server": "bundled",
+    "gnome": "system",
+    "windows": "bundled",
+    "android": "system"
+   },
+   "notice": "Copyright notice:\n\n (C) 1995-2026 Jean-loup Gailly and Mark Adler\n\n  This software is provided 'as-is', without any express or implied\n  warranty.  In no event will the authors be held liable for any damages\n  arising from the use of this software.\n\n  Permission is granted to anyone to use this software for any purpose,\n  including commercial applications, and to alter it and redistribute it\n  freely, subject to the following restrictions:\n\n  1. The origin of this software must not be misrepresented; you must not\n     claim that you wrote the original software. If you use this software\n     in a product, an acknowledgment in the product documentation would be\n     appreciated but is not required.\n  2. Altered source versions must be plainly marked as such, and must not be\n     misrepresented as being the original software.\n  3. This notice may not be removed or altered from any source distribution.\n\n  Jean-loup Gailly        Mark Adler\n  jloup@gzip.org          madler@alumni.caltech.edu\n"
+  },
+  {
+   "id": "sqlite",
+   "name": "SQLite",
+   "version": "3.53.4",
+   "license": "blessing",
+   "license_name": "SQLite Blessing (public domain)",
+   "license_ids": [
+    "blessing"
+   ],
+   "url": "https://sqlite.org",
+   "use": "the store on the device",
+   "platforms": {
+    "server": "system",
+    "gnome": "system",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "nim",
+   "name": "Nim standard library",
+   "version": "2.2.12",
+   "license": "MIT",
+   "license_name": "MIT License",
+   "license_ids": [
+    "MIT"
+   ],
+   "url": "https://nim-lang.org",
+   "use": "compiled into every Walkdown program",
+   "platforms": {
+    "server": "bundled",
+    "gnome": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "=====================================================\nNim -- a Compiler for Nim. https://nim-lang.org/\n\nCopyright (C) 2006-2026 Andreas Rumpf. All rights reserved.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n\n[ MIT license: https://www.opensource.org/licenses/mit-license.php ]\n"
+  },
+  {
+   "id": "emscripten",
+   "name": "Emscripten runtime",
+   "version": "6.0.10",
+   "license": "MIT OR NCSA",
+   "license_name": "MIT License or University of Illinois/NCSA Open Source License",
+   "license_ids": [
+    "MIT",
+    "NCSA"
+   ],
+   "url": "https://emscripten.org",
+   "use": "the loader and runtime of the WebAssembly build (used under MIT)",
+   "platforms": {
+    "web": "bundled"
+   },
+   "notice": "Emscripten is available under 2 licenses, the MIT license and the\nUniversity of Illinois/NCSA Open Source License.\n\nBoth are permissive open source licenses, with little if any\npractical difference between them.\n\nThe reason for offering both is that (1) the MIT license is\nwell-known, while (2) the University of Illinois/NCSA Open Source\nLicense allows Emscripten's code to be integrated upstream into\nLLVM, which uses that license, should the opportunity arise.\n\nThe full text of both licenses follows.\n\n==============================================================================\n\nCopyright (c) 2010-2014 Emscripten authors, see AUTHORS file.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n\n==============================================================================\n\nCopyright (c) 2010-2014 Emscripten authors, see AUTHORS file.\nAll rights reserved.\n\nPermission is hereby granted, free of charge, to any person obtaining a\ncopy of this software and associated documentation files (the\n\"Software\"), to deal with the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\n    Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimers.\n\n    Redistributions in binary form must reproduce the above\n    copyright notice, this list of conditions and the following disclaimers\n    in the documentation and/or other materials provided with the\n    distribution.\n\n    Neither the names of Mozilla,\n    nor the names of its contributors may be used to endorse\n    or promote products derived from this Software without specific prior\n    written permission. \n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS\nOR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR\nANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS WITH THE SOFTWARE.\n\n==============================================================================\n\nThis program uses portions of Node.js source code located in src/library_path.js,\nin accordance with the terms of the MIT license. Node's license follows:\n\n    \"\"\"\n        Copyright Joyent, Inc. and other Node contributors. All rights reserved.\n        Permission is hereby granted, free of charge, to any person obtaining a copy\n        of this software and associated documentation files (the \"Software\"), to\n        deal in the Software without restriction, including without limitation the\n        rights to use, copy, modify, merge, publish, distribute, sublicense, and/or\n        sell copies of the Software, and to permit persons to whom the Software is\n        furnished to do so, subject to the following conditions:\n\n        The above copyright notice and this permission notice shall be included in\n        all copies or substantial portions of the Software.\n\n        THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\n        FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS\n        IN THE SOFTWARE.\n    \"\"\"\n\nThe musl libc project is bundled in this repo, and it has the MIT license, see\nsystem/lib/libc/musl/COPYRIGHT\n\nThe third_party/ subdirectory contains code with other licenses. None of it is\nused by default, but certain options use it (e.g., the optional closure compiler\nflag will run closure compiler from third_party/).\n\n"
+  },
+  {
+   "id": "musl",
+   "name": "musl libc (Emscripten's copy)",
+   "version": null,
+   "license": "MIT",
+   "license_name": "MIT License",
+   "license_ids": [
+    "MIT"
+   ],
+   "url": "https://musl.libc.org",
+   "use": "the C library of the WebAssembly build",
+   "platforms": {
+    "web": "bundled"
+   },
+   "notice": "musl as a whole is licensed under the following standard MIT license:\n\n----------------------------------------------------------------------\nCopyright © 2005-2020 Rich Felker, et al.\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n----------------------------------------------------------------------\n\nAuthors/contributors include:\n\nA. Wilcox\nAda Worcester\nAlex Dowad\nAlex Suykov\nAlexander Monakov\nAndre McCurdy\nAndrew Kelley\nAnthony G. Basile\nAric Belsito\nArvid Picciani\nBartosz Brachaczek\nBenjamin Peterson\nBobby Bingham\nBoris Brezillon\nBrent Cook\nChris Spiegel\nClément Vasseur\nDaniel Micay\nDaniel Sabogal\nDaurnimator\nDavid Carlier\nDavid Edelsohn\nDenys Vlasenko\nDmitry Ivanov\nDmitry V. Levin\nDrew DeVault\nEmil Renner Berthing\nFangrui Song\nFelix Fietkau\nFelix Janda\nGianluca Anzolin\nHauke Mehrtens\nHe X\nHiltjo Posthuma\nIsaac Dunham\nJaydeep Patil\nJens Gustedt\nJeremy Huntwork\nJo-Philipp Wich\nJoakim Sindholt\nJohn Spencer\nJulien Ramseier\nJustin Cormack\nKaarle Ritvanen\nKhem Raj\nKylie McClain\nLeah Neukirchen\nLuca Barbato\nLuka Perkov\nLynn Ochs\nM Farkas-Dyck (Strake)\nMahesh Bodapati\nMarkus Wichmann\nMasanori Ogino\nMichael Clark\nMichael Forney\nMikhail Kremnyov\nNatanael Copa\nNicholas J. Kain\norc\nPascal Cuoq\nPatrick Oppenlander\nPetr Hosek\nPetr Skocik\nPierre Carrier\nReini Urban\nRich Felker\nRichard Pennington\nRyan Fairfax\nSamuel Holland\nSegev Finer\nShiz\nsin\nSolar Designer\nStefan Kristiansson\nStefan O'Rear\nSzabolcs Nagy\nTimo Teräs\nTrutz Behn\nWill Dietz\nWilliam Haddon\nWilliam Pitcock\n\nPortions of this software are derived from third-party works licensed\nunder terms compatible with the above MIT license:\n\nThe TRE regular expression implementation (src/regex/reg* and\nsrc/regex/tre*) is Copyright © 2001-2008 Ville Laurikari and licensed\nunder a 2-clause BSD license (license text in the source files). The\nincluded version has been heavily modified by Rich Felker in 2012, in\nthe interests of size, simplicity, and namespace cleanliness.\n\nMuch of the math library code (src/math/* and src/complex/*) is\nCopyright © 1993,2004 Sun Microsystems or\nCopyright © 2003-2011 David Schultz or\nCopyright © 2003-2009 Steven G. Kargl or\nCopyright © 2003-2009 Bruce D. Evans or\nCopyright © 2008 Stephen L. Moshier or\nCopyright © 2017-2018 Arm Limited\nand labelled as such in comments in the individual source files. All\nhave been licensed under extremely permissive terms.\n\nThe ARM memcpy code (src/string/arm/memcpy.S) is Copyright © 2008\nThe Android Open Source Project and is licensed under a two-clause BSD\nlicense. It was taken from Bionic libc, used on Android.\n\nThe AArch64 memcpy and memset code (src/string/aarch64/*) are\nCopyright © 1999-2019, Arm Limited.\n\nThe implementation of DES for crypt (src/crypt/crypt_des.c) is\nCopyright © 1994 David Burren. It is licensed under a BSD license.\n\nThe implementation of blowfish crypt (src/crypt/crypt_blowfish.c) was\noriginally written by Solar Designer and placed into the public\ndomain. The code also comes with a fallback permissive license for use\nin jurisdictions that may not recognize the public domain.\n\nThe smoothsort implementation (src/stdlib/qsort.c) is Copyright © 2011\nLynn Ochs and is licensed under an MIT-style license.\n\nThe x86_64 port was written by Nicholas J. Kain and is licensed under\nthe standard MIT terms.\n\nThe mips and microblaze ports were originally written by Richard\nPennington for use in the ellcc project. The original code was adapted\nby Rich Felker for build system and code conventions during upstream\nintegration. It is licensed under the standard MIT terms.\n\nThe mips64 port was contributed by Imagination Technologies and is\nlicensed under the standard MIT terms.\n\nThe powerpc port was also originally written by Richard Pennington,\nand later supplemented and integrated by John Spencer. It is licensed\nunder the standard MIT terms.\n\nAll other files which have no copyright comments are original works\nproduced specifically for use as part of this library, written either\nby Rich Felker, the main author of the library, or by one or more\ncontibutors listed above. Details on authorship of individual files\ncan be found in the git version control history of the project. The\nomission of copyright and license comments in each file is in the\ninterest of source tree size.\n\nIn addition, permission is hereby granted for all public header files\n(include/* and arch/*/bits/*) and crt files intended to be linked into\napplications (crt/*, ldso/dlstart.c, and arch/*/crt_arch.h) to omit\nthe copyright notice and permission notice otherwise required by the\nlicense, and to use these files without any requirement of\nattribution. These files include substantial contributions from:\n\nBobby Bingham\nJohn Spencer\nNicholas J. Kain\nRich Felker\nRichard Pennington\nStefan Kristiansson\nSzabolcs Nagy\n\nall of whom have explicitly granted such permission.\n\nThis file previously contained text expressing a belief that most of\nthe files covered by the above exception were sufficiently trivial not\nto be subject to copyright, resulting in confusion over whether it\nnegated the permissions granted in the license. In the spirit of\npermissive licensing, and of not having licensing issues being an\nobstacle to adoption, that text has been removed.\n"
+  },
+  {
+   "id": "llvm-runtime",
+   "name": "LLVM libc++, libc++abi, libunwind, compiler-rt",
+   "version": null,
+   "license": "Apache-2.0 WITH LLVM-exception",
+   "license_name": "Apache License 2.0 with LLVM Exception to the Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0",
+    "LLVM-exception"
+   ],
+   "url": "https://llvm.org",
+   "use": "the C++ runtime of the libraries above",
+   "platforms": {
+    "web": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "mingw-w64",
+   "name": "MinGW-w64 runtime (llvm-mingw)",
+   "version": "20260922",
+   "license": "LicenseRef-MinGW-w64-runtime",
+   "license_name": "MinGW-w64 runtime licences (ZPL 2.1 and others, in the notice)",
+   "license_ids": [
+    "LicenseRef-MinGW-w64-runtime"
+   ],
+   "url": "https://www.mingw-w64.org",
+   "use": "the program's start-up code and the Windows C runtime's interface",
+   "platforms": {
+    "windows": "bundled"
+   },
+   "notice": "MinGW-w64 runtime licensing\n***************************\n\nThis program or library was built using MinGW-w64 and statically\nlinked against the MinGW-w64 runtime. Some parts of the runtime\nare under licenses which require that the copyright and license\nnotices are included when distributing the code in binary form.\nThese notices are listed below.\n\n\n========================\nOverall copyright notice\n========================\n\nCopyright (c) 2009, 2010, 2011, 2012, 2013 by the mingw-w64 project\n\nThis license has been certified as open source. It has also been designated\nas GPL compatible by the Free Software Foundation (FSF).\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n   1. Redistributions in source code must retain the accompanying copyright\n      notice, this list of conditions, and the following disclaimer.\n   2. Redistributions in binary form must reproduce the accompanying\n      copyright notice, this list of conditions, and the following disclaimer\n      in the documentation and/or other materials provided with the\n      distribution.\n   3. Names of the copyright holders must not be used to endorse or promote\n      products derived from this software without prior written permission\n      from the copyright holders.\n   4. The right to distribute this software or to use it for any purpose does\n      not give you the right to use Servicemarks (sm) or Trademarks (tm) of\n      the copyright holders.  Use of them is covered by separate agreement\n      with the copyright holders.\n   5. If any files are modified, you must cause the modified files to carry\n      prominent notices stating that you changed the files and the date of\n      any change.\n\nDisclaimer\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY EXPRESSED\nOR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES\nOF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO\nEVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY DIRECT, INDIRECT,\nINCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,\nOR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,\nEVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n======================================== \ngetopt, getopt_long, and getop_long_only\n======================================== \n\nCopyright (c) 2002 Todd C. Miller <Todd.Miller@courtesan.com> \n \nPermission to use, copy, modify, and distribute this software for any \npurpose with or without fee is hereby granted, provided that the above \ncopyright notice and this permission notice appear in all copies. \n \t \nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF\nOR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n\nSponsored in part by the Defense Advanced Research Projects\nAgency (DARPA) and Air Force Research Laboratory, Air Force\nMateriel Command, USAF, under agreement number F39502-99-1-0512.\n\n        *       *       *       *       *       *       * \n\nCopyright (c) 2000 The NetBSD Foundation, Inc.\nAll rights reserved.\n\nThis code is derived from software contributed to The NetBSD Foundation\nby Dieter Baron and Thomas Klausner.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions\nare met:\n 1. Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n 2. Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in the\n    documentation and/or other materials provided with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS\n``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\nTO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR\nPURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS\nBE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR\nCONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF\nSUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS\nINTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN\nCONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)\nARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE\nPOSSIBILITY OF SUCH DAMAGE.\n\n\n===============================================================\ngdtoa: Converting between IEEE floating point numbers and ASCII\n===============================================================\n\nThe author of this software is David M. Gay.\n\nCopyright (C) 1997, 1998, 1999, 2000, 2001 by Lucent Technologies\nAll Rights Reserved\n\nPermission to use, copy, modify, and distribute this software and\nits documentation for any purpose and without fee is hereby\ngranted, provided that the above copyright notice appear in all\ncopies and that both that the copyright notice and this\npermission notice and warranty disclaimer appear in supporting\ndocumentation, and that the name of Lucent or any of its entities\nnot be used in advertising or publicity pertaining to\ndistribution of the software without specific, written prior\npermission.\n\nLUCENT DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,\nINCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.\nIN NO EVENT SHALL LUCENT OR ANY OF ITS ENTITIES BE LIABLE FOR ANY\nSPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER\nIN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,\nARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n\n        *       *       *       *       *       *       *\n\nThe author of this software is David M. Gay.\n\nCopyright (C) 2005 by David M. Gay\nAll Rights Reserved\n\nPermission to use, copy, modify, and distribute this software and its\ndocumentation for any purpose and without fee is hereby granted,\nprovided that the above copyright notice appear in all copies and that\nboth that the copyright notice and this permission notice and warranty\ndisclaimer appear in supporting documentation, and that the name of\nthe author or any of his current or former employers not be used in\nadvertising or publicity pertaining to distribution of the software\nwithout specific, written prior permission.\n\nTHE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,\nINCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN\nNO EVENT SHALL THE AUTHOR OR ANY OF HIS CURRENT OR FORMER EMPLOYERS BE\nLIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY\nDAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,\nWHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,\nARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS\nSOFTWARE.\n\n        *       *       *       *       *       *       *\n\nThe author of this software is David M. Gay.\n\nCopyright (C) 2004 by David M. Gay.\nAll Rights Reserved\nBased on material in the rest of /netlib/fp/gdota.tar.gz,\nwhich is copyright (C) 1998, 2000 by Lucent Technologies.\n\nPermission to use, copy, modify, and distribute this software and\nits documentation for any purpose and without fee is hereby\ngranted, provided that the above copyright notice appear in all\ncopies and that both that the copyright notice and this\npermission notice and warranty disclaimer appear in supporting\ndocumentation, and that the name of Lucent or any of its entities\nnot be used in advertising or publicity pertaining to\ndistribution of the software without specific, written prior\npermission.\n\nLUCENT DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,\nINCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.\nIN NO EVENT SHALL LUCENT OR ANY OF ITS ENTITIES BE LIABLE FOR ANY\nSPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER\nIN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,\nARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n\n\n=========================\nParts of the math library\n=========================\n\nCopyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.\n\nDeveloped at SunSoft, a Sun Microsystems, Inc. business.\nPermission to use, copy, modify, and distribute this\nsoftware is freely granted, provided that this notice\nis preserved.\n\n        *       *       *       *       *       *       *\n\nCopyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.\n\nDeveloped at SunPro, a Sun Microsystems, Inc. business.\nPermission to use, copy, modify, and distribute this\nsoftware is freely granted, provided that this notice\nis preserved.\n\n        *       *       *       *       *       *       *\n\nFIXME: Cephes math lib\nCopyright (C) 1984-1998 Stephen L. Moshier\n\nIt sounds vague, but as to be found at\n<http://lists.debian.org/debian-legal/2004/12/msg00295.html>, it gives an\nimpression that the author could be willing to give an explicit\npermission to distribute those files e.g. under a BSD style license. So\nprobably there is no problem here, although it could be good to get a\npermission from the author and then add a license into the Cephes files\nin MinGW runtime. At least on follow-up it is marked that debian sees the\nversion a-like BSD one. As MinGW.org (where those cephes parts are coming\nfrom) distributes them now over 6 years, it should be fine.\n\n=================================================\nSome string, memory and time conversion functions\n=================================================\n\nCopyright © 2005-2020 Rich Felker, et al.\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n===================================\nHeaders and IDLs imported from Wine\n===================================\n\nSome header and IDL files were imported from the Wine project. These files\nare prominent maked in source. Their copyright belongs to contributors and\nthey are distributed under LGPL license.\n\nDisclaimer\n\nThis library is free software; you can redistribute it and/or\nmodify it under the terms of the GNU Lesser General Public\nLicense as published by the Free Software Foundation; either\nversion 2.1 of the License, or (at your option) any later version.\n\nThis library is distributed in the hope that it will be useful,\nbut WITHOUT ANY WARRANTY; without even the implied warranty of\nMERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU\nLesser General Public License for more details.\n"
+  },
+  {
+   "id": "atkinson-hyperlegible",
+   "name": "Atkinson Hyperlegible",
+   "version": null,
+   "license": "OFL-1.1",
+   "license_name": "SIL Open Font License 1.1",
+   "license_ids": [
+    "OFL-1.1"
+   ],
+   "url": "https://www.brailleinstitute.org/freefont",
+   "use": "the courses' text font",
+   "platforms": {
+    "web": "bundled",
+    "gnome": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "Copyright 2020 Braille Institute of America, Inc.\n"
+  },
+  {
+   "id": "barlow-semi-condensed",
+   "name": "Barlow Semi Condensed",
+   "version": null,
+   "license": "OFL-1.1",
+   "license_name": "SIL Open Font License 1.1",
+   "license_ids": [
+    "OFL-1.1"
+   ],
+   "url": "https://github.com/jpt/barlow",
+   "use": "the courses' headings",
+   "platforms": {
+    "web": "bundled",
+    "gnome": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)\n"
+  },
+  {
+   "id": "jetbrains-mono",
+   "name": "JetBrains Mono",
+   "version": null,
+   "license": "OFL-1.1",
+   "license_name": "SIL Open Font License 1.1",
+   "license_ids": [
+    "OFL-1.1"
+   ],
+   "url": "https://github.com/JetBrains/JetBrainsMono",
+   "use": "the courses' codes",
+   "platforms": {
+    "web": "bundled",
+    "gnome": "bundled",
+    "windows": "bundled",
+    "android": "bundled"
+   },
+   "notice": "Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)\n"
+  },
+  {
+   "id": "mupdf",
+   "name": "MuPDF",
+   "version": "1.28.5",
+   "license": "AGPL-3.0-or-later",
+   "license_name": "GNU Affero General Public License v3.0 or later",
+   "license_ids": [
+    "AGPL-3.0-or-later"
+   ],
+   "url": "https://mupdf.com",
+   "use": "the drawing importer: reads and renders the P&ID PDFs",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "extract",
+   "name": "extract (in MuPDF)",
+   "version": null,
+   "license": "AGPL-3.0-or-later",
+   "license_name": "GNU Affero General Public License v3.0 or later",
+   "license_ids": [
+    "AGPL-3.0-or-later"
+   ],
+   "url": "https://mupdf.com",
+   "use": "part of MuPDF",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "jbig2dec",
+   "name": "jbig2dec (in MuPDF)",
+   "version": "0.20",
+   "license": "AGPL-3.0-or-later",
+   "license_name": "GNU Affero General Public License v3.0 or later",
+   "license_ids": [
+    "AGPL-3.0-or-later"
+   ],
+   "url": "https://jbig2dec.com",
+   "use": "MuPDF's JBIG2 images",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "mujs",
+   "name": "MuJS (in MuPDF)",
+   "version": null,
+   "license": "ISC",
+   "license_name": "ISC License",
+   "license_ids": [
+    "ISC"
+   ],
+   "url": "https://mujs.com",
+   "use": "part of MuPDF",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "ISC License\n\nCopyright (c) 2013-2020 Artifex Software, Inc.\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY\nAND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM\nLOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE\nOR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR\nPERFORMANCE OF THIS SOFTWARE.\n\n"
+  },
+  {
+   "id": "freetype",
+   "name": "FreeType (in MuPDF)",
+   "version": "2.14.3",
+   "license": "FTL OR GPL-2.0-or-later",
+   "license_name": "FreeType Project License or GPL-2.0-or-later",
+   "license_ids": [
+    "FTL"
+   ],
+   "url": "https://freetype.org",
+   "use": "MuPDF's fonts (used under the FreeType License)",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "Portions of this software are copyright © 2026 The FreeType Project (https://freetype.org). All rights reserved.\n(FreeType 2.14.3, inside MuPDF, used under the FreeType License.)\n"
+  },
+  {
+   "id": "harfbuzz",
+   "name": "HarfBuzz (in MuPDF)",
+   "version": "13.0.1",
+   "license": "MIT-Modern-Variant",
+   "license_name": "MIT License (modern variant)",
+   "license_ids": [
+    "MIT-Modern-Variant"
+   ],
+   "url": "https://harfbuzz.github.io",
+   "use": "MuPDF's text shaping",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "HarfBuzz is licensed under the so-called \"Old MIT\" license.  Details follow.\nFor parts of HarfBuzz that are licensed under different licenses see individual\nfiles names COPYING in subdirectories where applicable.\n\nCopyright © 2010-2022  Google, Inc.\nCopyright © 2015-2020  Ebrahim Byagowi\nCopyright © 2019,2020  Facebook, Inc.\nCopyright © 2012,2015  Mozilla Foundation\nCopyright © 2011  Codethink Limited\nCopyright © 2008,2010  Nokia Corporation and/or its subsidiary(-ies)\nCopyright © 2009  Keith Stribley\nCopyright © 2011  Martin Hosken and SIL International\nCopyright © 2007  Chris Wilson\nCopyright © 2005,2006,2020,2021,2022,2023  Behdad Esfahbod\nCopyright © 2004,2007,2008,2009,2010,2013,2021,2022,2023  Red Hat, Inc.\nCopyright © 1998-2005  David Turner and Werner Lemberg\nCopyright © 2016  Igalia S.L.\nCopyright © 2022  Matthias Clasen\nCopyright © 2018,2021  Khaled Hosny\nCopyright © 2018,2019,2020  Adobe, Inc\nCopyright © 2013-2015  Alexei Podtelezhnikov\n\nFor full copyright notices consult the individual files in the package.\n\n\nPermission is hereby granted, without written agreement and without\nlicense or royalty fees, to use, copy, modify, and distribute this\nsoftware and its documentation for any purpose, provided that the\nabove copyright notice and the following two paragraphs appear in\nall copies of this software.\n\nIN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE TO ANY PARTY FOR\nDIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES\nARISING OUT OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN\nIF THE COPYRIGHT HOLDER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH\nDAMAGE.\n\nTHE COPYRIGHT HOLDER SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING,\nBUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS\nON AN \"AS IS\" BASIS, AND THE COPYRIGHT HOLDER HAS NO OBLIGATION TO\nPROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.\n"
+  },
+  {
+   "id": "lcms2mt",
+   "name": "Little CMS, MuPDF's lcms2mt",
+   "version": "2.19",
+   "license": "MIT",
+   "license_name": "MIT License",
+   "license_ids": [
+    "MIT"
+   ],
+   "url": "https://www.littlecms.com",
+   "use": "MuPDF's colour management",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "MIT License\n\nCopyright (c) 2023 Marti Maria Saguer\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject\nto the following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n"
+  },
+  {
+   "id": "libjpeg",
+   "name": "libjpeg of the Independent JPEG Group (in MuPDF)",
+   "version": "10",
+   "license": "IJG",
+   "license_name": "Independent JPEG Group License",
+   "license_ids": [
+    "IJG"
+   ],
+   "url": "https://ijg.org",
+   "use": "MuPDF's JPEG images",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "LEGAL ISSUES\n============\n\nIn plain English:\n\n1. We don't promise that this software works.  (But if you find any bugs,\n   please let us know!)\n2. You can use this software for whatever you want.  You don't have to pay us.\n3. You may not pretend that you wrote this software.  If you use it in a\n   program, you must acknowledge somewhere in your documentation that\n   you've used the IJG code.\n\nIn legalese:\n\nThe authors make NO WARRANTY or representation, either express or implied,\nwith respect to this software, its quality, accuracy, merchantability, or\nfitness for a particular purpose.  This software is provided \"AS IS\", and you,\nits user, assume the entire risk as to its quality and accuracy.\n\nThis software is copyright (C) 1991-2026, Thomas G. Lane, Guido Vollbeding.\nAll Rights Reserved except as specified below.\n\nPermission is hereby granted to use, copy, modify, and distribute this\nsoftware (or portions thereof) for any purpose, without fee, subject to these\nconditions:\n(1) If any part of the source code for this software is distributed, then this\nREADME file must be included, with this copyright and no-warranty notice\nunaltered; and any additions, deletions, or changes to the original files\nmust be clearly indicated in accompanying documentation.\n(2) If only executable code is distributed, then the accompanying\ndocumentation must state that \"this software is based in part on the work of\nthe Independent JPEG Group\".\n(3) Permission for use of this software is granted only if the user accepts\nfull responsibility for any undesirable consequences; the authors accept\nNO LIABILITY for damages of any kind.\n\nThese conditions apply to any software derived from or based on the IJG code,\nnot just to the unmodified library.  If you use our work, you ought to\nacknowledge us.\n\nPermission is NOT granted for the use of any IJG author's name or company name\nin advertising or publicity relating to this software or products derived from\nit.  This software may be referred to only as \"the Independent JPEG Group's\nsoftware\".\n\nWe specifically permit and encourage the use of this software as the basis of\ncommercial products, provided that all warranty or liability claims are\nassumed by the product vendor.\n\n\nThe Unix configuration script \"configure\" was produced with GNU Autoconf.\nIt is copyright by the Free Software Foundation but is freely distributable.\nThe same holds for its supporting scripts (config.guess, config.sub,\nltmain.sh).  Another support script, install-sh, is copyright by X Consortium\nbut is also freely distributable.\n\n\n"
+  },
+  {
+   "id": "openjpeg",
+   "name": "OpenJPEG (in MuPDF)",
+   "version": "2.5.3",
+   "license": "BSD-2-Clause",
+   "license_name": "BSD 2-Clause License",
+   "license_ids": [
+    "BSD-2-Clause"
+   ],
+   "url": "https://www.openjpeg.org",
+   "use": "MuPDF's JPEG 2000 images",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "/*\n * The copyright in this software is being made available under the 2-clauses \n * BSD License, included below. This software may be subject to other third \n * party and contributor rights, including patent rights, and no such rights\n * are granted under this license.\n *\n * Copyright (c) 2002-2014, Universite catholique de Louvain (UCL), Belgium\n * Copyright (c) 2002-2014, Professor Benoit Macq\n * Copyright (c) 2003-2014, Antonin Descampe\n * Copyright (c) 2003-2009, Francois-Olivier Devaux\n * Copyright (c) 2005, Herve Drolon, FreeImage Team\n * Copyright (c) 2002-2003, Yannick Verschueren\n * Copyright (c) 2001-2003, David Janssens\n * Copyright (c) 2011-2012, Centre National d'Etudes Spatiales (CNES), France \n * Copyright (c) 2012, CS Systemes d'Information, France\n *\n * All rights reserved.\n *\n * Redistribution and use in source and binary forms, with or without\n * modification, are permitted provided that the following conditions\n * are met:\n * 1. Redistributions of source code must retain the above copyright\n *    notice, this list of conditions and the following disclaimer.\n * 2. Redistributions in binary form must reproduce the above copyright\n *    notice, this list of conditions and the following disclaimer in the\n *    documentation and/or other materials provided with the distribution.\n *\n * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS `AS IS'\n * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\n * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE\n * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE\n * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR\n * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF\n * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS\n * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN\n * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)\n * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE\n * POSSIBILITY OF SUCH DAMAGE.\n */\n"
+  },
+  {
+   "id": "brotli-mupdf",
+   "name": "Brotli (in MuPDF)",
+   "version": "1.2.0",
+   "license": "MIT",
+   "license_name": "MIT License",
+   "license_ids": [
+    "MIT"
+   ],
+   "url": "https://github.com/google/brotli",
+   "use": "part of MuPDF",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n"
+  },
+  {
+   "id": "gumbo",
+   "name": "Gumbo (in MuPDF)",
+   "version": "0.10.1",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/google/gumbo-parser",
+   "use": "part of MuPDF",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "cmark-gfm",
+   "name": "cmark-gfm (in MuPDF)",
+   "version": "0.29.0",
+   "license": "BSD-2-Clause",
+   "license_name": "BSD 2-Clause License",
+   "license_ids": [
+    "BSD-2-Clause"
+   ],
+   "url": "https://github.com/github/cmark-gfm",
+   "use": "part of MuPDF",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "Copyright (c) 2014, John MacFarlane\n\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n    * Redistributions of source code must retain the above copyright\n      notice, this list of conditions and the following disclaimer.\n\n    * Redistributions in binary form must reproduce the above\n      copyright notice, this list of conditions and the following\n      disclaimer in the documentation and/or other materials provided\n      with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n-----\n\nhoudini.h, houdini_href_e.c, houdini_html_e.c, houdini_html_u.c\n\nderive from https://github.com/vmg/houdini (with some modifications)\n\nCopyright (C) 2012 Vicent Martí\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies\nof the Software, and to permit persons to whom the Software is furnished to do\nso, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n-----\n\nbuffer.h, buffer.c, chunk.h\n\nare derived from code (C) 2012 Github, Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies\nof the Software, and to permit persons to whom the Software is furnished to do\nso, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n-----\n\nutf8.c and utf8.c\n\nare derived from utf8proc\n(<http://www.public-software-group.org/utf8proc>),\n(C) 2009 Public Software Group e. V., Berlin, Germany.\n\nPermission is hereby granted, free of charge, to any person obtaining a\ncopy of this software and associated documentation files (the \"Software\"),\nto deal in the Software without restriction, including without limitation\nthe rights to use, copy, modify, merge, publish, distribute, sublicense,\nand/or sell copies of the Software, and to permit persons to whom the\nSoftware is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n\n-----\n\nThe normalization code in normalize.py was derived from the\nmarkdowntest project, Copyright 2013 Karl Dubost:\n\nThe MIT License (MIT)\n\nCopyright (c) 2013 Karl Dubost\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n-----\n\nThe CommonMark spec (test/spec.txt) is\n\nCopyright (C) 2014-15 John MacFarlane\n\nReleased under the Creative Commons CC-BY-SA 4.0 license:\n<http://creativecommons.org/licenses/by-sa/4.0/>.\n\n-----\n\nThe test software in test/ is\n\nCopyright (c) 2014, John MacFarlane\n\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n    * Redistributions of source code must retain the above copyright\n      notice, this list of conditions and the following disclaimer.\n\n    * Redistributions in binary form must reproduce the above\n      copyright notice, this list of conditions and the following\n      disclaimer in the documentation and/or other materials provided\n      with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n"
+  },
+  {
+   "id": "mupdf-fonts",
+   "name": "Fonts in MuPDF (Noto, URW base 35, Charis SIL, Source Han Serif, Droid Sans Fallback)",
+   "version": null,
+   "license": "OFL-1.1 AND Apache-2.0",
+   "license_name": "SIL Open Font License 1.1 and Apache License 2.0",
+   "license_ids": [
+    "OFL-1.1",
+    "Apache-2.0"
+   ],
+   "url": "https://mupdf.com",
+   "use": "MuPDF's fonts for drawings that don't embed theirs",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "MuPDF 1.28.5 builds fonts into the drawing importer: Noto, the URW base 35 fonts, Charis SIL and Source Han Serif under\nthe SIL Open Font License 1.1, and Droid Sans Fallback under the Apache License 2.0. Each font file carries its own\ncopyright notice; the licence files and Droid's NOTICE are in resources/fonts/ of MuPDF's source:\nhttps://mupdf.com/downloads/archive/mupdf-1.28.5-source.tar.gz\n"
+  },
+  {
+   "id": "hyphenation",
+   "name": "Hyphenation patterns of tex-hyphen (in MuPDF)",
+   "version": "CTAN-2025.06.02",
+   "license": "LicenseRef-tex-hyphen",
+   "license_name": "each language's own licence (MIT, LPPL, LGPL, MPL, BSD)",
+   "license_ids": [
+    "LicenseRef-tex-hyphen"
+   ],
+   "url": "https://github.com/hyphenation/tex-hyphen",
+   "use": "part of MuPDF",
+   "platforms": {
+    "server": "bundled"
+   },
+   "notice": "MuPDF 1.28.5 builds the hyphenation patterns of the tex-hyphen project (version CTAN-2025.06.02,\nhttps://github.com/hyphenation/tex-hyphen) into the drawing importer. Each language's patterns have their own authors\nand licence (MIT for most; also LPPL, LGPL, MPL and BSD-3-Clause): they are listed, with each copyright notice and\nlicence text, in resources/hyphen/license/ of MuPDF's source:\nhttps://mupdf.com/downloads/archive/mupdf-1.28.5-source.tar.gz\n"
+  },
+  {
+   "id": "gnutls",
+   "name": "GnuTLS",
+   "version": null,
+   "license": "LGPL-2.1-or-later",
+   "license_name": "GNU Lesser General Public License v2.1 or later",
+   "license_ids": [
+    "LGPL-2.1-or-later"
+   ],
+   "url": "https://gnutls.org",
+   "use": "TLS and cryptography",
+   "platforms": {
+    "server": "system",
+    "gnome": "system"
+   },
+   "notice": null
+  },
+  {
+   "id": "openssl",
+   "name": "OpenSSL (libcrypto)",
+   "version": null,
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://openssl-library.org",
+   "use": "Argon2id for web passwords",
+   "platforms": {
+    "server": "system"
+   },
+   "notice": null
+  },
+  {
+   "id": "glib",
+   "name": "GLib",
+   "version": null,
+   "license": "LGPL-2.1-or-later",
+   "license_name": "GNU Lesser General Public License v2.1 or later",
+   "license_ids": [
+    "LGPL-2.1-or-later"
+   ],
+   "url": "https://gitlab.gnome.org/GNOME/glib",
+   "use": "finding devices on the network (mDNS through Avahi), and the base of GTK",
+   "platforms": {
+    "server": "system",
+    "gnome": "system"
+   },
+   "notice": null
+  },
+  {
+   "id": "gtk",
+   "name": "GTK 4",
+   "version": null,
+   "license": "LGPL-2.1-or-later",
+   "license_name": "GNU Lesser General Public License v2.1 or later",
+   "license_ids": [
+    "LGPL-2.1-or-later"
+   ],
+   "url": "https://gtk.org",
+   "use": "the window and its controls",
+   "platforms": {
+    "gnome": "system"
+   },
+   "notice": null
+  },
+  {
+   "id": "libadwaita",
+   "name": "libadwaita",
+   "version": null,
+   "license": "LGPL-2.1-or-later",
+   "license_name": "GNU Lesser General Public License v2.1 or later",
+   "license_ids": [
+    "LGPL-2.1-or-later"
+   ],
+   "url": "https://gnome.pages.gitlab.gnome.org/libadwaita",
+   "use": "GNOME's controls and style",
+   "platforms": {
+    "gnome": "system"
+   },
+   "notice": null
+  },
+  {
+   "id": "libsecret",
+   "name": "libsecret",
+   "version": null,
+   "license": "LGPL-2.1-or-later",
+   "license_name": "GNU Lesser General Public License v2.1 or later",
+   "license_ids": [
+    "LGPL-2.1-or-later"
+   ],
+   "url": "https://gnome.pages.gitlab.gnome.org/libsecret",
+   "use": "keeping the storage key in the keyring",
+   "platforms": {
+    "gnome": "system"
+   },
+   "notice": null
+  },
+  {
+   "id": "gstreamer",
+   "name": "GStreamer",
+   "version": null,
+   "license": "LGPL-2.0-or-later",
+   "license_name": "GNU Library General Public License v2 or later",
+   "license_ids": [
+    "LGPL-2.0-or-later"
+   ],
+   "url": "https://gstreamer.freedesktop.org",
+   "use": "the camera",
+   "platforms": {
+    "gnome": "system"
+   },
+   "notice": null
+  },
+  {
+   "id": "compose",
+   "name": "Jetpack Compose",
+   "version": "1.7.6",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://developer.android.com/jetpack/compose",
+   "use": "the screens (with Material 3)",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "androidx",
+   "name": "AndroidX libraries (Activity, Core, Lifecycle, Room, WorkManager and what they use)",
+   "version": null,
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://developer.android.com/jetpack/androidx",
+   "use": "Android's support libraries",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "kotlin-stdlib",
+   "name": "Kotlin standard library",
+   "version": "2.4.20",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://kotlinlang.org",
+   "use": "the language's library",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "kotlinx-coroutines",
+   "name": "kotlinx.coroutines",
+   "version": "1.9.0",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/Kotlin/kotlinx.coroutines",
+   "use": "background work",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "listenablefuture",
+   "name": "Guava ListenableFuture",
+   "version": "1.0",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/google/guava",
+   "use": "used by AndroidX",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "jetbrains-annotations",
+   "name": "JetBrains Java Annotations",
+   "version": "23.0.0",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/JetBrains/java-annotations",
+   "use": "used by Kotlin",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "jspecify",
+   "name": "JSpecify",
+   "version": "1.0.0",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://jspecify.dev",
+   "use": "used by AndroidX",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  }
+ ],
+ "licenses": {
+  "AGPL-3.0-or-later": {
+   "name": "GNU Affero General Public License v3.0 or later",
+   "url": "https://www.gnu.org/licenses/agpl-3.0.html",
+   "text": "                    GNU AFFERO GENERAL PUBLIC LICENSE\n                       Version 3, 19 November 2007\n\n Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>\n Everyone is permitted to copy and distribute verbatim copies\n of this license document, but changing it is not allowed.\n\n                            Preamble\n\n  The GNU Affero General Public License is a free, copyleft license for\nsoftware and other kinds of works, specifically designed to ensure\ncooperation with the community in the case of network server software.\n\n  The licenses for most software and other practical works are designed\nto take away your freedom to share and change the works.  By contrast,\nour General Public Licenses are intended to guarantee your freedom to\nshare and change all versions of a program--to make sure it remains free\nsoftware for all its users.\n\n  When we speak of free software, we are referring to freedom, not\nprice.  Our General Public Licenses are designed to make sure that you\nhave the freedom to distribute copies of free software (and charge for\nthem if you wish), that you receive source code or can get it if you\nwant it, that you can change the software or use pieces of it in new\nfree programs, and that you know you can do these things.\n\n  Developers that use our General Public Licenses protect your rights\nwith two steps: (1) assert copyright on the software, and (2) offer\nyou this License which gives you legal permission to copy, distribute\nand/or modify the software.\n\n  A secondary benefit of defending all users' freedom is that\nimprovements made in alternate versions of the program, if they\nreceive widespread use, become available for other developers to\nincorporate.  Many developers of free software are heartened and\nencouraged by the resulting cooperation.  However, in the case of\nsoftware used on network servers, this result may fail to come about.\nThe GNU General Public License permits making a modified version and\nletting the public access it on a server without ever releasing its\nsource code to the public.\n\n  The GNU Affero General Public License is designed specifically to\nensure that, in such cases, the modified source code becomes available\nto the community.  It requires the operator of a network server to\nprovide the source code of the modified version running there to the\nusers of that server.  Therefore, public use of a modified version, on\na publicly accessible server, gives the public access to the source\ncode of the modified version.\n\n  An older license, called the Affero General Public License and\npublished by Affero, was designed to accomplish similar goals.  This is\na different license, not a version of the Affero GPL, but Affero has\nreleased a new version of the Affero GPL which permits relicensing under\nthis license.\n\n  The precise terms and conditions for copying, distribution and\nmodification follow.\n\n                       TERMS AND CONDITIONS\n\n  0. Definitions.\n\n  \"This License\" refers to version 3 of the GNU Affero General Public License.\n\n  \"Copyright\" also means copyright-like laws that apply to other kinds of\nworks, such as semiconductor masks.\n\n  \"The Program\" refers to any copyrightable work licensed under this\nLicense.  Each licensee is addressed as \"you\".  \"Licensees\" and\n\"recipients\" may be individuals or organizations.\n\n  To \"modify\" a work means to copy from or adapt all or part of the work\nin a fashion requiring copyright permission, other than the making of an\nexact copy.  The resulting work is called a \"modified version\" of the\nearlier work or a work \"based on\" the earlier work.\n\n  A \"covered work\" means either the unmodified Program or a work based\non the Program.\n\n  To \"propagate\" a work means to do anything with it that, without\npermission, would make you directly or secondarily liable for\ninfringement under applicable copyright law, except executing it on a\ncomputer or modifying a private copy.  Propagation includes copying,\ndistribution (with or without modification), making available to the\npublic, and in some countries other activities as well.\n\n  To \"convey\" a work means any kind of propagation that enables other\nparties to make or receive copies.  Mere interaction with a user through\na computer network, with no transfer of a copy, is not conveying.\n\n  An interactive user interface displays \"Appropriate Legal Notices\"\nto the extent that it includes a convenient and prominently visible\nfeature that (1) displays an appropriate copyright notice, and (2)\ntells the user that there is no warranty for the work (except to the\nextent that warranties are provided), that licensees may convey the\nwork under this License, and how to view a copy of this License.  If\nthe interface presents a list of user commands or options, such as a\nmenu, a prominent item in the list meets this criterion.\n\n  1. Source Code.\n\n  The \"source code\" for a work means the preferred form of the work\nfor making modifications to it.  \"Object code\" means any non-source\nform of a work.\n\n  A \"Standard Interface\" means an interface that either is an official\nstandard defined by a recognized standards body, or, in the case of\ninterfaces specified for a particular programming language, one that\nis widely used among developers working in that language.\n\n  The \"System Libraries\" of an executable work include anything, other\nthan the work as a whole, that (a) is included in the normal form of\npackaging a Major Component, but which is not part of that Major\nComponent, and (b) serves only to enable use of the work with that\nMajor Component, or to implement a Standard Interface for which an\nimplementation is available to the public in source code form.  A\n\"Major Component\", in this context, means a major essential component\n(kernel, window system, and so on) of the specific operating system\n(if any) on which the executable work runs, or a compiler used to\nproduce the work, or an object code interpreter used to run it.\n\n  The \"Corresponding Source\" for a work in object code form means all\nthe source code needed to generate, install, and (for an executable\nwork) run the object code and to modify the work, including scripts to\ncontrol those activities.  However, it does not include the work's\nSystem Libraries, or general-purpose tools or generally available free\nprograms which are used unmodified in performing those activities but\nwhich are not part of the work.  For example, Corresponding Source\nincludes interface definition files associated with source files for\nthe work, and the source code for shared libraries and dynamically\nlinked subprograms that the work is specifically designed to require,\nsuch as by intimate data communication or control flow between those\nsubprograms and other parts of the work.\n\n  The Corresponding Source need not include anything that users\ncan regenerate automatically from other parts of the Corresponding\nSource.\n\n  The Corresponding Source for a work in source code form is that\nsame work.\n\n  2. Basic Permissions.\n\n  All rights granted under this License are granted for the term of\ncopyright on the Program, and are irrevocable provided the stated\nconditions are met.  This License explicitly affirms your unlimited\npermission to run the unmodified Program.  The output from running a\ncovered work is covered by this License only if the output, given its\ncontent, constitutes a covered work.  This License acknowledges your\nrights of fair use or other equivalent, as provided by copyright law.\n\n  You may make, run and propagate covered works that you do not\nconvey, without conditions so long as your license otherwise remains\nin force.  You may convey covered works to others for the sole purpose\nof having them make modifications exclusively for you, or provide you\nwith facilities for running those works, provided that you comply with\nthe terms of this License in conveying all material for which you do\nnot control copyright.  Those thus making or running the covered works\nfor you must do so exclusively on your behalf, under your direction\nand control, on terms that prohibit them from making any copies of\nyour copyrighted material outside their relationship with you.\n\n  Conveying under any other circumstances is permitted solely under\nthe conditions stated below.  Sublicensing is not allowed; section 10\nmakes it unnecessary.\n\n  3. Protecting Users' Legal Rights From Anti-Circumvention Law.\n\n  No covered work shall be deemed part of an effective technological\nmeasure under any applicable law fulfilling obligations under article\n11 of the WIPO copyright treaty adopted on 20 December 1996, or\nsimilar laws prohibiting or restricting circumvention of such\nmeasures.\n\n  When you convey a covered work, you waive any legal power to forbid\ncircumvention of technological measures to the extent such circumvention\nis effected by exercising rights under this License with respect to\nthe covered work, and you disclaim any intention to limit operation or\nmodification of the work as a means of enforcing, against the work's\nusers, your or third parties' legal rights to forbid circumvention of\ntechnological measures.\n\n  4. Conveying Verbatim Copies.\n\n  You may convey verbatim copies of the Program's source code as you\nreceive it, in any medium, provided that you conspicuously and\nappropriately publish on each copy an appropriate copyright notice;\nkeep intact all notices stating that this License and any\nnon-permissive terms added in accord with section 7 apply to the code;\nkeep intact all notices of the absence of any warranty; and give all\nrecipients a copy of this License along with the Program.\n\n  You may charge any price or no price for each copy that you convey,\nand you may offer support or warranty protection for a fee.\n\n  5. Conveying Modified Source Versions.\n\n  You may convey a work based on the Program, or the modifications to\nproduce it from the Program, in the form of source code under the\nterms of section 4, provided that you also meet all of these conditions:\n\n    a) The work must carry prominent notices stating that you modified\n    it, and giving a relevant date.\n\n    b) The work must carry prominent notices stating that it is\n    released under this License and any conditions added under section\n    7.  This requirement modifies the requirement in section 4 to\n    \"keep intact all notices\".\n\n    c) You must license the entire work, as a whole, under this\n    License to anyone who comes into possession of a copy.  This\n    License will therefore apply, along with any applicable section 7\n    additional terms, to the whole of the work, and all its parts,\n    regardless of how they are packaged.  This License gives no\n    permission to license the work in any other way, but it does not\n    invalidate such permission if you have separately received it.\n\n    d) If the work has interactive user interfaces, each must display\n    Appropriate Legal Notices; however, if the Program has interactive\n    interfaces that do not display Appropriate Legal Notices, your\n    work need not make them do so.\n\n  A compilation of a covered work with other separate and independent\nworks, which are not by their nature extensions of the covered work,\nand which are not combined with it such as to form a larger program,\nin or on a volume of a storage or distribution medium, is called an\n\"aggregate\" if the compilation and its resulting copyright are not\nused to limit the access or legal rights of the compilation's users\nbeyond what the individual works permit.  Inclusion of a covered work\nin an aggregate does not cause this License to apply to the other\nparts of the aggregate.\n\n  6. Conveying Non-Source Forms.\n\n  You may convey a covered work in object code form under the terms\nof sections 4 and 5, provided that you also convey the\nmachine-readable Corresponding Source under the terms of this License,\nin one of these ways:\n\n    a) Convey the object code in, or embodied in, a physical product\n    (including a physical distribution medium), accompanied by the\n    Corresponding Source fixed on a durable physical medium\n    customarily used for software interchange.\n\n    b) Convey the object code in, or embodied in, a physical product\n    (including a physical distribution medium), accompanied by a\n    written offer, valid for at least three years and valid for as\n    long as you offer spare parts or customer support for that product\n    model, to give anyone who possesses the object code either (1) a\n    copy of the Corresponding Source for all the software in the\n    product that is covered by this License, on a durable physical\n    medium customarily used for software interchange, for a price no\n    more than your reasonable cost of physically performing this\n    conveying of source, or (2) access to copy the\n    Corresponding Source from a network server at no charge.\n\n    c) Convey individual copies of the object code with a copy of the\n    written offer to provide the Corresponding Source.  This\n    alternative is allowed only occasionally and noncommercially, and\n    only if you received the object code with such an offer, in accord\n    with subsection 6b.\n\n    d) Convey the object code by offering access from a designated\n    place (gratis or for a charge), and offer equivalent access to the\n    Corresponding Source in the same way through the same place at no\n    further charge.  You need not require recipients to copy the\n    Corresponding Source along with the object code.  If the place to\n    copy the object code is a network server, the Corresponding Source\n    may be on a different server (operated by you or a third party)\n    that supports equivalent copying facilities, provided you maintain\n    clear directions next to the object code saying where to find the\n    Corresponding Source.  Regardless of what server hosts the\n    Corresponding Source, you remain obligated to ensure that it is\n    available for as long as needed to satisfy these requirements.\n\n    e) Convey the object code using peer-to-peer transmission, provided\n    you inform other peers where the object code and Corresponding\n    Source of the work are being offered to the general public at no\n    charge under subsection 6d.\n\n  A separable portion of the object code, whose source code is excluded\nfrom the Corresponding Source as a System Library, need not be\nincluded in conveying the object code work.\n\n  A \"User Product\" is either (1) a \"consumer product\", which means any\ntangible personal property which is normally used for personal, family,\nor household purposes, or (2) anything designed or sold for incorporation\ninto a dwelling.  In determining whether a product is a consumer product,\ndoubtful cases shall be resolved in favor of coverage.  For a particular\nproduct received by a particular user, \"normally used\" refers to a\ntypical or common use of that class of product, regardless of the status\nof the particular user or of the way in which the particular user\nactually uses, or expects or is expected to use, the product.  A product\nis a consumer product regardless of whether the product has substantial\ncommercial, industrial or non-consumer uses, unless such uses represent\nthe only significant mode of use of the product.\n\n  \"Installation Information\" for a User Product means any methods,\nprocedures, authorization keys, or other information required to install\nand execute modified versions of a covered work in that User Product from\na modified version of its Corresponding Source.  The information must\nsuffice to ensure that the continued functioning of the modified object\ncode is in no case prevented or interfered with solely because\nmodification has been made.\n\n  If you convey an object code work under this section in, or with, or\nspecifically for use in, a User Product, and the conveying occurs as\npart of a transaction in which the right of possession and use of the\nUser Product is transferred to the recipient in perpetuity or for a\nfixed term (regardless of how the transaction is characterized), the\nCorresponding Source conveyed under this section must be accompanied\nby the Installation Information.  But this requirement does not apply\nif neither you nor any third party retains the ability to install\nmodified object code on the User Product (for example, the work has\nbeen installed in ROM).\n\n  The requirement to provide Installation Information does not include a\nrequirement to continue to provide support service, warranty, or updates\nfor a work that has been modified or installed by the recipient, or for\nthe User Product in which it has been modified or installed.  Access to a\nnetwork may be denied when the modification itself materially and\nadversely affects the operation of the network or violates the rules and\nprotocols for communication across the network.\n\n  Corresponding Source conveyed, and Installation Information provided,\nin accord with this section must be in a format that is publicly\ndocumented (and with an implementation available to the public in\nsource code form), and must require no special password or key for\nunpacking, reading or copying.\n\n  7. Additional Terms.\n\n  \"Additional permissions\" are terms that supplement the terms of this\nLicense by making exceptions from one or more of its conditions.\nAdditional permissions that are applicable to the entire Program shall\nbe treated as though they were included in this License, to the extent\nthat they are valid under applicable law.  If additional permissions\napply only to part of the Program, that part may be used separately\nunder those permissions, but the entire Program remains governed by\nthis License without regard to the additional permissions.\n\n  When you convey a copy of a covered work, you may at your option\nremove any additional permissions from that copy, or from any part of\nit.  (Additional permissions may be written to require their own\nremoval in certain cases when you modify the work.)  You may place\nadditional permissions on material, added by you to a covered work,\nfor which you have or can give appropriate copyright permission.\n\n  Notwithstanding any other provision of this License, for material you\nadd to a covered work, you may (if authorized by the copyright holders of\nthat material) supplement the terms of this License with terms:\n\n    a) Disclaiming warranty or limiting liability differently from the\n    terms of sections 15 and 16 of this License; or\n\n    b) Requiring preservation of specified reasonable legal notices or\n    author attributions in that material or in the Appropriate Legal\n    Notices displayed by works containing it; or\n\n    c) Prohibiting misrepresentation of the origin of that material, or\n    requiring that modified versions of such material be marked in\n    reasonable ways as different from the original version; or\n\n    d) Limiting the use for publicity purposes of names of licensors or\n    authors of the material; or\n\n    e) Declining to grant rights under trademark law for use of some\n    trade names, trademarks, or service marks; or\n\n    f) Requiring indemnification of licensors and authors of that\n    material by anyone who conveys the material (or modified versions of\n    it) with contractual assumptions of liability to the recipient, for\n    any liability that these contractual assumptions directly impose on\n    those licensors and authors.\n\n  All other non-permissive additional terms are considered \"further\nrestrictions\" within the meaning of section 10.  If the Program as you\nreceived it, or any part of it, contains a notice stating that it is\ngoverned by this License along with a term that is a further\nrestriction, you may remove that term.  If a license document contains\na further restriction but permits relicensing or conveying under this\nLicense, you may add to a covered work material governed by the terms\nof that license document, provided that the further restriction does\nnot survive such relicensing or conveying.\n\n  If you add terms to a covered work in accord with this section, you\nmust place, in the relevant source files, a statement of the\nadditional terms that apply to those files, or a notice indicating\nwhere to find the applicable terms.\n\n  Additional terms, permissive or non-permissive, may be stated in the\nform of a separately written license, or stated as exceptions;\nthe above requirements apply either way.\n\n  8. Termination.\n\n  You may not propagate or modify a covered work except as expressly\nprovided under this License.  Any attempt otherwise to propagate or\nmodify it is void, and will automatically terminate your rights under\nthis License (including any patent licenses granted under the third\nparagraph of section 11).\n\n  However, if you cease all violation of this License, then your\nlicense from a particular copyright holder is reinstated (a)\nprovisionally, unless and until the copyright holder explicitly and\nfinally terminates your license, and (b) permanently, if the copyright\nholder fails to notify you of the violation by some reasonable means\nprior to 60 days after the cessation.\n\n  Moreover, your license from a particular copyright holder is\nreinstated permanently if the copyright holder notifies you of the\nviolation by some reasonable means, this is the first time you have\nreceived notice of violation of this License (for any work) from that\ncopyright holder, and you cure the violation prior to 30 days after\nyour receipt of the notice.\n\n  Termination of your rights under this section does not terminate the\nlicenses of parties who have received copies or rights from you under\nthis License.  If your rights have been terminated and not permanently\nreinstated, you do not qualify to receive new licenses for the same\nmaterial under section 10.\n\n  9. Acceptance Not Required for Having Copies.\n\n  You are not required to accept this License in order to receive or\nrun a copy of the Program.  Ancillary propagation of a covered work\noccurring solely as a consequence of using peer-to-peer transmission\nto receive a copy likewise does not require acceptance.  However,\nnothing other than this License grants you permission to propagate or\nmodify any covered work.  These actions infringe copyright if you do\nnot accept this License.  Therefore, by modifying or propagating a\ncovered work, you indicate your acceptance of this License to do so.\n\n  10. Automatic Licensing of Downstream Recipients.\n\n  Each time you convey a covered work, the recipient automatically\nreceives a license from the original licensors, to run, modify and\npropagate that work, subject to this License.  You are not responsible\nfor enforcing compliance by third parties with this License.\n\n  An \"entity transaction\" is a transaction transferring control of an\norganization, or substantially all assets of one, or subdividing an\norganization, or merging organizations.  If propagation of a covered\nwork results from an entity transaction, each party to that\ntransaction who receives a copy of the work also receives whatever\nlicenses to the work the party's predecessor in interest had or could\ngive under the previous paragraph, plus a right to possession of the\nCorresponding Source of the work from the predecessor in interest, if\nthe predecessor has it or can get it with reasonable efforts.\n\n  You may not impose any further restrictions on the exercise of the\nrights granted or affirmed under this License.  For example, you may\nnot impose a license fee, royalty, or other charge for exercise of\nrights granted under this License, and you may not initiate litigation\n(including a cross-claim or counterclaim in a lawsuit) alleging that\nany patent claim is infringed by making, using, selling, offering for\nsale, or importing the Program or any portion of it.\n\n  11. Patents.\n\n  A \"contributor\" is a copyright holder who authorizes use under this\nLicense of the Program or a work on which the Program is based.  The\nwork thus licensed is called the contributor's \"contributor version\".\n\n  A contributor's \"essential patent claims\" are all patent claims\nowned or controlled by the contributor, whether already acquired or\nhereafter acquired, that would be infringed by some manner, permitted\nby this License, of making, using, or selling its contributor version,\nbut do not include claims that would be infringed only as a\nconsequence of further modification of the contributor version.  For\npurposes of this definition, \"control\" includes the right to grant\npatent sublicenses in a manner consistent with the requirements of\nthis License.\n\n  Each contributor grants you a non-exclusive, worldwide, royalty-free\npatent license under the contributor's essential patent claims, to\nmake, use, sell, offer for sale, import and otherwise run, modify and\npropagate the contents of its contributor version.\n\n  In the following three paragraphs, a \"patent license\" is any express\nagreement or commitment, however denominated, not to enforce a patent\n(such as an express permission to practice a patent or covenant not to\nsue for patent infringement).  To \"grant\" such a patent license to a\nparty means to make such an agreement or commitment not to enforce a\npatent against the party.\n\n  If you convey a covered work, knowingly relying on a patent license,\nand the Corresponding Source of the work is not available for anyone\nto copy, free of charge and under the terms of this License, through a\npublicly available network server or other readily accessible means,\nthen you must either (1) cause the Corresponding Source to be so\navailable, or (2) arrange to deprive yourself of the benefit of the\npatent license for this particular work, or (3) arrange, in a manner\nconsistent with the requirements of this License, to extend the patent\nlicense to downstream recipients.  \"Knowingly relying\" means you have\nactual knowledge that, but for the patent license, your conveying the\ncovered work in a country, or your recipient's use of the covered work\nin a country, would infringe one or more identifiable patents in that\ncountry that you have reason to believe are valid.\n\n  If, pursuant to or in connection with a single transaction or\narrangement, you convey, or propagate by procuring conveyance of, a\ncovered work, and grant a patent license to some of the parties\nreceiving the covered work authorizing them to use, propagate, modify\nor convey a specific copy of the covered work, then the patent license\nyou grant is automatically extended to all recipients of the covered\nwork and works based on it.\n\n  A patent license is \"discriminatory\" if it does not include within\nthe scope of its coverage, prohibits the exercise of, or is\nconditioned on the non-exercise of one or more of the rights that are\nspecifically granted under this License.  You may not convey a covered\nwork if you are a party to an arrangement with a third party that is\nin the business of distributing software, under which you make payment\nto the third party based on the extent of your activity of conveying\nthe work, and under which the third party grants, to any of the\nparties who would receive the covered work from you, a discriminatory\npatent license (a) in connection with copies of the covered work\nconveyed by you (or copies made from those copies), or (b) primarily\nfor and in connection with specific products or compilations that\ncontain the covered work, unless you entered into that arrangement,\nor that patent license was granted, prior to 28 March 2007.\n\n  Nothing in this License shall be construed as excluding or limiting\nany implied license or other defenses to infringement that may\notherwise be available to you under applicable patent law.\n\n  12. No Surrender of Others' Freedom.\n\n  If conditions are imposed on you (whether by court order, agreement or\notherwise) that contradict the conditions of this License, they do not\nexcuse you from the conditions of this License.  If you cannot convey a\ncovered work so as to satisfy simultaneously your obligations under this\nLicense and any other pertinent obligations, then as a consequence you may\nnot convey it at all.  For example, if you agree to terms that obligate you\nto collect a royalty for further conveying from those to whom you convey\nthe Program, the only way you could satisfy both those terms and this\nLicense would be to refrain entirely from conveying the Program.\n\n  13. Remote Network Interaction; Use with the GNU General Public License.\n\n  Notwithstanding any other provision of this License, if you modify the\nProgram, your modified version must prominently offer all users\ninteracting with it remotely through a computer network (if your version\nsupports such interaction) an opportunity to receive the Corresponding\nSource of your version by providing access to the Corresponding Source\nfrom a network server at no charge, through some standard or customary\nmeans of facilitating copying of software.  This Corresponding Source\nshall include the Corresponding Source for any work covered by version 3\nof the GNU General Public License that is incorporated pursuant to the\nfollowing paragraph.\n\n  Notwithstanding any other provision of this License, you have\npermission to link or combine any covered work with a work licensed\nunder version 3 of the GNU General Public License into a single\ncombined work, and to convey the resulting work.  The terms of this\nLicense will continue to apply to the part which is the covered work,\nbut the work with which it is combined will remain governed by version\n3 of the GNU General Public License.\n\n  14. Revised Versions of this License.\n\n  The Free Software Foundation may publish revised and/or new versions of\nthe GNU Affero General Public License from time to time.  Such new versions\nwill be similar in spirit to the present version, but may differ in detail to\naddress new problems or concerns.\n\n  Each version is given a distinguishing version number.  If the\nProgram specifies that a certain numbered version of the GNU Affero General\nPublic License \"or any later version\" applies to it, you have the\noption of following the terms and conditions either of that numbered\nversion or of any later version published by the Free Software\nFoundation.  If the Program does not specify a version number of the\nGNU Affero General Public License, you may choose any version ever published\nby the Free Software Foundation.\n\n  If the Program specifies that a proxy can decide which future\nversions of the GNU Affero General Public License can be used, that proxy's\npublic statement of acceptance of a version permanently authorizes you\nto choose that version for the Program.\n\n  Later license versions may give you additional or different\npermissions.  However, no additional obligations are imposed on any\nauthor or copyright holder as a result of your choosing to follow a\nlater version.\n\n  15. Disclaimer of Warranty.\n\n  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY\nAPPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT\nHOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM \"AS IS\" WITHOUT WARRANTY\nOF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,\nTHE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR\nPURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM\nIS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF\nALL NECESSARY SERVICING, REPAIR OR CORRECTION.\n\n  16. Limitation of Liability.\n\n  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING\nWILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS\nTHE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY\nGENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE\nUSE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF\nDATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD\nPARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),\nEVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF\nSUCH DAMAGES.\n\n  17. Interpretation of Sections 15 and 16.\n\n  If the disclaimer of warranty and limitation of liability provided\nabove cannot be given local legal effect according to their terms,\nreviewing courts shall apply local law that most closely approximates\nan absolute waiver of all civil liability in connection with the\nProgram, unless a warranty or assumption of liability accompanies a\ncopy of the Program in return for a fee.\n\n                     END OF TERMS AND CONDITIONS\n\n            How to Apply These Terms to Your New Programs\n\n  If you develop a new program, and you want it to be of the greatest\npossible use to the public, the best way to achieve this is to make it\nfree software which everyone can redistribute and change under these terms.\n\n  To do so, attach the following notices to the program.  It is safest\nto attach them to the start of each source file to most effectively\nstate the exclusion of warranty; and each file should have at least\nthe \"copyright\" line and a pointer to where the full notice is found.\n\n    <one line to give the program's name and a brief idea of what it does.>\n    Copyright (C) <year>  <name of author>\n\n    This program is free software: you can redistribute it and/or modify\n    it under the terms of the GNU Affero General Public License as published\n    by the Free Software Foundation, either version 3 of the License, or\n    (at your option) any later version.\n\n    This program is distributed in the hope that it will be useful,\n    but WITHOUT ANY WARRANTY; without even the implied warranty of\n    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n    GNU Affero General Public License for more details.\n\n    You should have received a copy of the GNU Affero General Public License\n    along with this program.  If not, see <https://www.gnu.org/licenses/>.\n\nAlso add information on how to contact you by electronic and paper mail.\n\n  If your software can interact with users remotely through a computer\nnetwork, you should also make sure that it provides a way for users to\nget its source.  For example, if your program is a web application, its\ninterface could display a \"Source\" link that leads users to an archive\nof the code.  There are many ways you could offer source, and different\nsolutions will be better for different programs; see section 13 for the\nspecific requirements.\n\n  You should also get your employer (if you work as a programmer) or school,\nif any, to sign a \"copyright disclaimer\" for the program, if necessary.\nFor more information on this, and how to apply and follow the GNU AGPL, see\n<https://www.gnu.org/licenses/>.\n"
+  },
+  "Apache-2.0": {
+   "name": "Apache License 2.0",
+   "url": "https://www.apache.org/licenses/LICENSE-2.0",
+   "text": "                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"{}\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright {yyyy} {name of copyright owner}\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n\n"
+  },
+  "BSD-2-Clause": {
+   "name": "BSD 2-Clause License",
+   "url": "https://spdx.org/licenses/BSD-2-Clause.html",
+   "text": null
+  },
+  "BSD-3-Clause": {
+   "name": "BSD 3-Clause License",
+   "url": "https://spdx.org/licenses/BSD-3-Clause.html",
+   "text": null
+  },
+  "FTL": {
+   "name": "FreeType Project License",
+   "url": "https://spdx.org/licenses/FTL.html",
+   "text": "                    The FreeType Project LICENSE\n                    ----------------------------\n\n                            2006-Jan-27\n\n                    Copyright 1996-2002, 2006 by\n          David Turner, Robert Wilhelm, and Werner Lemberg\n\n\n\nIntroduction\n============\n\n  The FreeType  Project is distributed in  several archive packages;\n  some of them may contain, in addition to the FreeType font engine,\n  various tools and  contributions which rely on, or  relate to, the\n  FreeType Project.\n\n  This  license applies  to all  files found  in such  packages, and\n  which do not  fall under their own explicit  license.  The license\n  affects  thus  the  FreeType   font  engine,  the  test  programs,\n  documentation and makefiles, at the very least.\n\n  This  license   was  inspired  by  the  BSD,   Artistic,  and  IJG\n  (Independent JPEG  Group) licenses, which  all encourage inclusion\n  and  use of  free  software in  commercial  and freeware  products\n  alike.  As a consequence, its main points are that:\n\n    o We don't promise that this software works. However, we will be\n      interested in any kind of bug reports. (`as is' distribution)\n\n    o You can  use this software for whatever you  want, in parts or\n      full form, without having to pay us. (`royalty-free' usage)\n\n    o You may not pretend that  you wrote this software.  If you use\n      it, or  only parts of it,  in a program,  you must acknowledge\n      somewhere  in  your  documentation  that  you  have  used  the\n      FreeType code. (`credits')\n\n  We  specifically  permit  and  encourage  the  inclusion  of  this\n  software, with  or without modifications,  in commercial products.\n  We  disclaim  all warranties  covering  The  FreeType Project  and\n  assume no liability related to The FreeType Project.\n\n\n  Finally,  many  people  asked  us  for  a  preferred  form  for  a\n  credit/disclaimer to use in compliance with this license.  We thus\n  encourage you to use the following text:\n\n   \"\"\"\n    Portions of this software are copyright © <year> The FreeType\n    Project (https://freetype.org).  All rights reserved.\n   \"\"\"\n\n  Please replace <year> with the value from the FreeType version you\n  actually use.\n\n\nLegal Terms\n===========\n\n0. Definitions\n--------------\n\n  Throughout this license,  the terms `package', `FreeType Project',\n  and  `FreeType  archive' refer  to  the  set  of files  originally\n  distributed  by the  authors  (David Turner,  Robert Wilhelm,  and\n  Werner Lemberg) as the `FreeType Project', be they named as alpha,\n  beta or final release.\n\n  `You' refers to  the licensee, or person using  the project, where\n  `using' is a generic term including compiling the project's source\n  code as  well as linking it  to form a  `program' or `executable'.\n  This  program is  referred to  as  `a program  using the  FreeType\n  engine'.\n\n  This  license applies  to all  files distributed  in  the original\n  FreeType  Project,   including  all  source   code,  binaries  and\n  documentation,  unless  otherwise  stated   in  the  file  in  its\n  original, unmodified form as  distributed in the original archive.\n  If you are  unsure whether or not a particular  file is covered by\n  this license, you must contact us to verify this.\n\n  The FreeType  Project is copyright (C) 1996-2000  by David Turner,\n  Robert Wilhelm, and Werner Lemberg.  All rights reserved except as\n  specified below.\n\n1. No Warranty\n--------------\n\n  THE FREETYPE PROJECT  IS PROVIDED `AS IS' WITHOUT  WARRANTY OF ANY\n  KIND, EITHER  EXPRESS OR IMPLIED,  INCLUDING, BUT NOT  LIMITED TO,\n  WARRANTIES  OF  MERCHANTABILITY   AND  FITNESS  FOR  A  PARTICULAR\n  PURPOSE.  IN NO EVENT WILL ANY OF THE AUTHORS OR COPYRIGHT HOLDERS\n  BE LIABLE  FOR ANY DAMAGES CAUSED  BY THE USE OR  THE INABILITY TO\n  USE, OF THE FREETYPE PROJECT.\n\n2. Redistribution\n-----------------\n\n  This  license  grants  a  worldwide, royalty-free,  perpetual  and\n  irrevocable right  and license to use,  execute, perform, compile,\n  display,  copy,   create  derivative  works   of,  distribute  and\n  sublicense the  FreeType Project (in  both source and  object code\n  forms)  and  derivative works  thereof  for  any  purpose; and  to\n  authorize others  to exercise  some or all  of the  rights granted\n  herein, subject to the following conditions:\n\n    o Redistribution of  source code  must retain this  license file\n      (`FTL.TXT') unaltered; any  additions, deletions or changes to\n      the original  files must be clearly  indicated in accompanying\n      documentation.   The  copyright   notices  of  the  unaltered,\n      original  files must  be  preserved in  all  copies of  source\n      files.\n\n    o Redistribution in binary form must provide a  disclaimer  that\n      states  that  the software is based in part of the work of the\n      FreeType Team,  in  the  distribution  documentation.  We also\n      encourage you to put an URL to the FreeType web page  in  your\n      documentation, though this isn't mandatory.\n\n  These conditions  apply to any  software derived from or  based on\n  the FreeType Project,  not just the unmodified files.   If you use\n  our work, you  must acknowledge us.  However, no  fee need be paid\n  to us.\n\n3. Advertising\n--------------\n\n  Neither the  FreeType authors and  contributors nor you  shall use\n  the name of the  other for commercial, advertising, or promotional\n  purposes without specific prior written permission.\n\n  We suggest,  but do not require, that  you use one or  more of the\n  following phrases to refer  to this software in your documentation\n  or advertising  materials: `FreeType Project',  `FreeType Engine',\n  `FreeType library', or `FreeType Distribution'.\n\n  As  you have  not signed  this license,  you are  not  required to\n  accept  it.   However,  as  the FreeType  Project  is  copyrighted\n  material, only  this license, or  another one contracted  with the\n  authors, grants you  the right to use, distribute,  and modify it.\n  Therefore,  by  using,  distributing,  or modifying  the  FreeType\n  Project, you indicate that you understand and accept all the terms\n  of this license.\n\n4. Contacts\n-----------\n\n  There are two mailing lists related to FreeType:\n\n    o freetype@nongnu.org\n\n      Discusses general use and applications of FreeType, as well as\n      future and  wanted additions to the  library and distribution.\n      If  you are looking  for support,  start in  this list  if you\n      haven't found anything to help you in the documentation.\n\n    o freetype-devel@nongnu.org\n\n      Discusses bugs,  as well  as engine internals,  design issues,\n      specific licenses, porting, etc.\n\n  Our home page can be found at\n\n    https://freetype.org\n\n\n--- end of FTL.TXT ---\n"
+  },
+  "IJG": {
+   "name": "Independent JPEG Group License",
+   "url": "https://spdx.org/licenses/IJG.html",
+   "text": null
+  },
+  "ISC": {
+   "name": "ISC License",
+   "url": "https://spdx.org/licenses/ISC.html",
+   "text": null
+  },
+  "LGPL-2.0-or-later": {
+   "name": "GNU Library General Public License v2 or later",
+   "url": "https://www.gnu.org/licenses/old-licenses/lgpl-2.0.html",
+   "text": null
+  },
+  "LGPL-2.1-or-later": {
+   "name": "GNU Lesser General Public License v2.1 or later",
+   "url": "https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html",
+   "text": null
+  },
+  "LLVM-exception": {
+   "name": "LLVM Exception to the Apache License 2.0",
+   "url": "https://spdx.org/licenses/LLVM-exception.html",
+   "text": "---- LLVM Exceptions to the Apache 2.0 License ----\n\nAs an exception, if, as a result of your compiling your source code, portions\nof this Software are embedded into an Object form of such source code, you\nmay redistribute such embedded portions in such Object form without complying\nwith the conditions of Sections 4(a), 4(b) and 4(d) of the License.\n\nIn addition, if you combine or link compiled forms of this Software with\nsoftware that is licensed under the GPLv2 (\"Combined Software\") and if a\ncourt of competent jurisdiction determines that the patent provision (Section\n3), the indemnity provision (Section 9) or other Section of the License\nconflicts with the conditions of the GPLv2, you may retroactively and\nprospectively choose to deem waived or otherwise exclude such Section(s) of\nthe License, but only in their entirety and only with respect to the Combined\nSoftware.\n\n"
+  },
+  "LicenseRef-MinGW-w64-runtime": {
+   "name": "MinGW-w64 runtime licences (ZPL 2.1 and others, in the notice)",
+   "url": "https://github.com/mingw-w64/mingw-w64/blob/master/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt",
+   "text": null
+  },
+  "LicenseRef-tex-hyphen": {
+   "name": "each language's own licence (MIT, LPPL, LGPL, MPL, BSD)",
+   "url": "https://github.com/hyphenation/tex-hyphen",
+   "text": null
+  },
+  "MIT": {
+   "name": "MIT License",
+   "url": "https://spdx.org/licenses/MIT.html",
+   "text": null
+  },
+  "MIT-Modern-Variant": {
+   "name": "MIT License (modern variant)",
+   "url": "https://spdx.org/licenses/MIT-Modern-Variant.html",
+   "text": null
+  },
+  "NCSA": {
+   "name": "University of Illinois/NCSA Open Source License",
+   "url": "https://spdx.org/licenses/NCSA.html",
+   "text": null
+  },
+  "OFL-1.1": {
+   "name": "SIL Open Font License 1.1",
+   "url": "https://openfontlicense.org",
+   "text": "SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\nThe goals of the Open Font License (OFL) are to stimulate worldwide\ndevelopment of collaborative font projects, to support the font creation\nefforts of academic and linguistic communities, and to provide a free and\nopen framework in which fonts may be shared and improved in partnership\nwith others.\n\nThe OFL allows the licensed fonts to be used, studied, modified and\nredistributed freely as long as they are not sold by themselves. The\nfonts, including any derivative works, can be bundled, embedded, \nredistributed and/or sold with any software provided that any reserved\nnames are not used by derivative works. The fonts and derivatives,\nhowever, cannot be released under any other type of license. The\nrequirement for fonts to remain under this license does not apply\nto any document created using the fonts or their derivatives.\n\nDEFINITIONS\n\"Font Software\" refers to the set of files released by the Copyright\nHolder(s) under this license and clearly marked as such. This may\ninclude source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such after the\ncopyright statement(s).\n\n\"Original Version\" refers to the collection of Font Software components as\ndistributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative made by adding to, deleting,\nor substituting -- in part or in whole -- any of the components of the\nOriginal Version, by changing formats or by porting the Font Software to a\nnew environment.\n\n\"Author\" refers to any designer, engineer, programmer, technical\nwriter or other person who contributed to the Font Software.\n\nPERMISSION & CONDITIONS\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the Font Software, to use, study, copy, merge, embed, modify,\nredistribute, and sell modified and unmodified copies of the Font\nSoftware, subject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions, may be sold by itself.\n\n2) Original or Modified Versions of the Font Software may be bundled,\nredistributed and/or sold with any software, provided that each copy\ncontains the above copyright notice and this license. These can be\nincluded either as stand-alone text files, human-readable headers or\nin the appropriate machine-readable metadata fields within text or\nbinary files as long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use the Reserved Font\nName(s) unless explicit written permission is granted by the corresponding\nCopyright Holder. This restriction only applies to the primary font name as\npresented to the users.\n\n4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\nSoftware shall not be used to promote, endorse or advertise any\nModified Version, except to acknowledge the contribution(s) of the\nCopyright Holder(s) and the Author(s) or with their explicit written\npermission.\n\n5) The Font Software, modified or unmodified, in part or in whole,\nmust be distributed entirely under this license, and must not be\ndistributed under any other license. The requirement for fonts to\nremain under this license does not apply to any document created\nusing the Font Software.\n\nTERMINATION\nThis license becomes null and void if any of the above conditions are\nnot met.\n\nDISCLAIMER\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE\nCOPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.\n"
+  },
+  "Zlib": {
+   "name": "zlib License",
+   "url": "https://spdx.org/licenses/Zlib.html",
+   "text": null
+  },
+  "blessing": {
+   "name": "SQLite Blessing (public domain)",
+   "url": "https://sqlite.org/copyright.html",
+   "text": null
+  }
+ },
+ "photos": [
+  {
+   "file": "fnd-05.jxl",
+   "text": "Photo: Didier Duforest, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Edna_reflex_water_gages_141-R.jpg"
+    }
+   ]
+  },
+  {
+   "file": "inc-01.jxl",
+   "text": "Photo: Alex P. Kok, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Fluke_87_multimeter.jpg"
+    }
+   ]
+  },
+  {
+   "file": "inc-02.jxl",
+   "text": "Photo: Pleriche, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Unmounted_strain_gauge.jpg"
+    }
+   ]
+  },
+  {
+   "file": "inc-05.jxl",
+   "text": "Photo: Bitjungle, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Control_valve_with_positioner.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-01.jxl",
+   "text": "Photo: Bitjungle, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Flow_measurement_with_dP_cell.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-02.jxl",
+   "text": "Photo: RomanM82, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Metal_expansion_joint_on_fiberglass_piping.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-03.jxl",
+   "text": "Photo: CEphoto, Uwe Aranas, CC BY-SA 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 3.0",
+     "url": "https://creativecommons.org/licenses/by-sa/3.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Cologne_Germany_Closed_Gate-Valve-01.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-04.jxl",
+   "text": "Photo: Heather Smith, CC BY 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY 3.0",
+     "url": "https://creativecommons.org/licenses/by/3.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Globe-valve.JPG"
+    }
+   ]
+  },
+  {
+   "file": "ppt-05.jxl",
+   "text": "Photo: Heather Smith, CC BY 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY 3.0",
+     "url": "https://creativecommons.org/licenses/by/3.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Swing_Check_valves.JPG"
+    }
+   ]
+  },
+  {
+   "file": "ppt-06.jxl",
+   "text": "Photo: Morty at de.wikipedia, CC BY-SA 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 3.0",
+     "url": "https://creativecommons.org/licenses/by-sa/3.0/"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Dh%C3%BCnntalsperre6.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-07.jxl",
+   "text": "Photo: Kees08, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Vented_ball_internal.png"
+    }
+   ]
+  },
+  {
+   "file": "ppt-08.jxl",
+   "text": "Photo: CEphoto, Uwe Aranas, CC BY-SA 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 3.0",
+     "url": "https://creativecommons.org/licenses/by-sa/3.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Cologne_Germany_Bopp%26Reutter-Safety-Relief-Valve-01.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-09.jxl",
+   "text": "Photo: TLV Co. Ltd, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Serbest_%C5%9Eamand%C4%B1ral%C4%B1_Buhar_Kapan%C4%B1.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-10.jxl",
+   "text": "Photo: S.J. de Waard, CC BY 2.5, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY 2.5",
+     "url": "https://creativecommons.org/licenses/by/2.5"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Internal_gear_pump_(cut-away)_(01).JPG"
+    }
+   ]
+  },
+  {
+   "file": "ppt-11.jxl",
+   "text": "Photo: Erik Axdahl (The original uploader was Axda0002 at English Wikipedia.) (Original text: Erik Axdahl en:User:Axda0002), CC BY-SA 2.5, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 2.5",
+     "url": "https://creativecommons.org/licenses/by-sa/2.5"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Cavitation_Propeller_Damage.JPG"
+    }
+   ]
+  },
+  {
+   "file": "ppt-12.jxl",
+   "text": "Photo: Meisam, CC BY-SA 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 3.0",
+     "url": "https://creativecommons.org/licenses/by-sa/3.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Pump_Impellers-1.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-13.jxl",
+   "text": "Photo: R. Henrik Nilsson, CC BY 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY 4.0",
+     "url": "https://creativecommons.org/licenses/by/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Second_half_of_20th_century_ball_bearing_6203_C3_M7_by_RKW.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-14.jxl",
+   "text": "Photo: ENERGY.GOV, Public domain, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Ultrananocrystalline_diamond-coated_pump_seals.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-15.jxl",
+   "text": "Photo: Harald the Bard, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Tube_bundle_of_a_shell_%26_tube_heat_exchanger_(before_assembly).jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-16.jxl",
+   "text": "Photo: Siemens, CC BY-SA 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 3.0",
+     "url": "https://creativecommons.org/licenses/by-sa/3.0/"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Turbogenerator01.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-17.jxl",
+   "text": "Photo: Yoshieslunchbox, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Substation_Power_Transformer_1.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-18.jxl",
+   "text": "Photo: Zonk43, Public domain, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Altbach_Power_Plant_Control_Room.JPG"
+    }
+   ]
+  },
+  {
+   "file": "ppt-19.jxl",
+   "text": "Photo: HAZLOC ELECTRICAL EQUIPMENTS, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:THERMOCOUPLE_HEAD.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-20.jxl",
+   "text": "Photo: GT1976, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:2019-05-19_(360)_Rotary_drive_for_gate_valve_from_AUMA-Armaturenantriebe_Ges.m.b.H._at_Fischwanderhilfe_Donaukraftwerk_Melk,_Austria.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-21.jxl",
+   "text": "Photo: Siemens Pressebild, http://www.siemens.com, CC BY-SA 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 3.0",
+     "url": "https://creativecommons.org/licenses/by-sa/3.0/"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Dampfturbine_Laeufer01.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-22.jxl",
+   "text": "Photo: Harald the Bard, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Natural_Draft_Cooling_Tower_2.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-23.jxl",
+   "text": "Photo: Wilfredor, CC0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC0",
+     "url": "https://creativecommons.org/publicdomain/zero/1.0/deed.en"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Axial_compressor_rotor_of_a_gas_turbine,_Deutsches_Museum.jpg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-24.jxl",
+   "text": "Photo: Rios, CC BY-SA 4.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 4.0",
+     "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Combustion_chamber_RD-45F.JPG"
+    }
+   ]
+  },
+  {
+   "file": "ppt-25.jxl",
+   "text": "Photo: Sphudson at English Wikipedia, CC BY-SA 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY-SA 3.0",
+     "url": "https://creativecommons.org/licenses/by-sa/3.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:ModularHRSG-Picture.JPG"
+    }
+   ]
+  },
+  {
+   "file": "ppt-26.jxl",
+   "text": "Photo: Sensenschmied, CC BY 3.0, via Wikimedia Commons",
+   "links": [
+    {
+     "text": "CC BY 3.0",
+     "url": "https://creativecommons.org/licenses/by/3.0"
+    },
+    {
+     "text": "Wikimedia Commons",
+     "url": "https://commons.wikimedia.org/wiki/File:Rippenrohre_DampfLUVO_Biomasseheizkraftwerk_Steyr.jpeg"
+    }
+   ]
+  },
+  {
+   "file": "ppt-27.jxl",
+   "text": "AI-generated illustration (Google Gemini), checked against the plant's flue gas P&ID",
+   "links": []
+  }
+ ]
+}

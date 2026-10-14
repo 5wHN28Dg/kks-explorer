@@ -9,7 +9,7 @@ it. A proxy in front (a tunnel, a CDN) may compress text files on the way; the s
 - shell: the service worker's SHELL_FILES (read from sw.js, so this list can't drift from it) and sw.js itself:
   every browser that opens the app fetches them.
 - on demand: the rest of vendor/kks (the photo encoder, the non-SIMD fallbacks) and the course fonts, fetched only
-  when a page needs them.
+  when a page needs them; data/about.json, which /api/about sends when the About page opens.
 - courses: the course content (data/courses: the JSON and its pictures) and data/kks.json, fetched by a course page.
 Any change, smaller or larger, needs the baseline updated, so the file always records what ships."""
 import argparse, json, os, re, sys
@@ -42,7 +42,7 @@ def on_demand_files(repo, shell):
             p = f'{d}/{n}'
             if keep(n) and os.path.isfile(os.path.join(repo, p)) and p not in shell:
                 out.append(p)
-    return out
+    return out + ['data/about.json']   # the About page (/api/about sends it, with the server's version)
 
 
 def course_files(repo):

@@ -107,7 +107,8 @@ class ServerUnit(unittest.TestCase):
         home, nim = os.path.join(tmp, 'home'), os.path.join(tmp, 'nim')
         os.makedirs(home)
         with open(nim, 'w') as f:
-            f.write('#!/bin/sh\nfor a in "$@"; do case "$a" in -o:*) echo x > "${a#-o:}";; esac; done\n')
+            f.write('#!/bin/sh\necho "$@" >> "$(dirname "$0")/nim.log"\n'
+                    'for a in "$@"; do case "$a" in -o:*) echo x > "${a#-o:}";; esac; done\n')
         os.chmod(nim, 0o755)
         env = dict(os.environ, HOME=home, NIM=nim, KKS_SYSTEM_UNIT_FILE=os.path.join(tmp, 'no-system-unit'))
         env.update(extra)
@@ -152,7 +153,7 @@ class ServerUnit(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             app = os.path.join(home, 'kks-server', 'app', 'current')
             # the program's own data, which the pages fetch by name (/data/kks.json) and the server reads (courses)
-            data = {'data/kks.json'} | {os.path.join('data', 'courses', c)
+            data = {'data/kks.json', 'data/about.json'} | {os.path.join('data', 'courses', c)
                                         for c in os.listdir(os.path.join(REPO, 'data', 'courses'))}
             self.assertGreater(len(data), 1)
             missing = sorted(f for f in served | worker | data if not os.path.exists(os.path.join(app, f)))
@@ -163,6 +164,24 @@ class ServerUnit(unittest.TestCase):
                                  int(os.path.getmtime(os.path.join(REPO, f))), f)
             subprocess.run(['chmod', '-R', 'u+w', home])
             self.assertEqual(missing, [])
+
+    def test_install_builds_the_commit_into_the_server(self):
+        """the server says the commit it was built from (kks-server --version, /api/about, the About's link to that
+        source): the install passes the commit it names the install after, and whether the checkout had changes"""
+        commit = subprocess.run(['git', '-C', REPO, 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(['git', '-C', REPO, 'diff', '--quiet', 'HEAD', '--', '.']).returncode != 0
+        with tempfile.TemporaryDirectory() as tmp:
+            r, home = self.install(tmp, KKS_SERVER_UNIT='system')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(tmp, 'nim.log')) as f:
+                server = [line.split() for line in f if 'kks_server.nim' in line]
+            self.assertEqual(len(server), 1)
+            self.assertIn('-d:kksCommit=' + commit, server[0])
+            self.assertIn('-d:kksDirty=' + ('true' if dirty else 'false'), server[0])
+            name = os.readlink(os.path.join(home, 'kks-server', 'app', 'current'))
+            self.assertTrue(name.startswith(commit[:7], name.index('-') + 1), name)
+            self.assertEqual(name.endswith('-dirty'), dirty, name)
+            subprocess.run(['chmod', '-R', 'u+w', home])
 
     def test_user_install_rejects_an_unknown_unit_kind(self):
         with tempfile.TemporaryDirectory() as tmp:
