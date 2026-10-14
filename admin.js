@@ -31,10 +31,11 @@ const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.u
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
-async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){
-  // signed out meanwhile (from another browser, by an admin): the sign-in screen. A wrong password typed into a form here is a 401 too: that one is said
+async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ return failed(e) } }
+// signed out meanwhile (from another browser, by an admin): the sign-in screen. A wrong password typed into a form here is a 401 too: that one is said
+async function failed(e){
   if(e.status===401&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return null }
-  toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null } }
+  toast(K.isNetErr(e)?'Offline: this needs the server.':e.message); return null }
 
 // Updates is its own tab, not part of Account (the Android app shows updates in its own screens)
 const canUpdate=()=>!K.cfg?.app&&(K.cfg?.mode==='peer'||isAdmin());
@@ -294,7 +295,7 @@ const VIEWS={
       h('div',{class:'card'},h('h3',null,'Waiting to join'),h('div',{class:'sub'},'Devices on this Wi-Fi that asked without a code (“Ask an admin on this Wi-Fi”). Accept only if the code next to the name is the one on their screen.'),h('div',{id:'lobby'})),
       h('div',{class:'card'},h('h3',null,'Add a computer from a join request'),
         h('div',{class:'sub'},'Someone set up the app on their laptop and gave you a ',h('span',{class:'mono'},'.kksjoin'),' file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.'),
-        h('label',{class:'primary',style:'display:inline-block;margin-top:8px;cursor:pointer'},'Import join request',h('input',{type:'file',accept:'.kksjoin,.json',hidden:true,onchange:e=>importJoin(e.currentTarget)}))),
+        h('label',{class:'primary',style:'display:inline-block;margin-top:8px;cursor:pointer'},'Import join request',h('input',{type:'file',accept:'.kksjoin,.json',hidden:true,onchange:e=>importJoin(e.currentTarget)})),h('div',{id:'joinOwn'})),
       h('div',{class:'card',id:'allDevices'},h('h3',null,'All devices'),hiddenBar(D.all.some(d=>d.revoked&&!d.hidden),D.hidden||0),table(D.all.map(d=>devRow(d,false)))));
     put(mainFor(g),out);
     if(isAdmin()) pollLobby();
@@ -499,20 +500,37 @@ async function pollLobby(){
   const el=$('#lobby'); if(!el) return;          // left the Devices page
   let r; try{ r=await K.api('/api/join-requests') }catch(e){ put(el,h('div',{class:'sub'},e.message)); return }
   const key=JSON.stringify(r.requests.map(q=>[q.device,q.existing?.username,q.needs_position])), str=v=>String(v??'');
-  if(key!==lobbySeen||!el.firstChild){ lobbySeen=key;
+  // (not under a password being typed for one's own device: once the form is gone)
+  if((key!==lobbySeen||!el.firstChild)&&!el.querySelector('form')){ lobbySeen=key;
     put(el,r.requests.length?r.requests.map(q=>{const x=q.request, c=str(q.code);return h('div',{class:'row',style:'margin-top:8px;align-items:center'},
       h('span',{style:'font-family:var(--mono);font-size:18px;letter-spacing:2px'},`${c.slice(0,3)} ${c.slice(3)}`),
       h('span',null,h('b',null,str(x.full_name)),` (${str(x.username)}${x.position?', '+x.position:''}) · “${x.label||'?'}”`,
         q.existing?[h('br'),h('span',{class:'sub'},`${str(q.existing.full_name)} (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null,
         q.needs_position?h('div',{class:'warn needs-position'},noPosition(x.full_name)):null),
-      h('button',{class:'primary',disabled:!!q.needs_position,onclick:()=>decideLobby(q.device,'accept',!!q.existing)},'Accept'),h('button',{class:'ghost',onclick:()=>decideLobby(q.device,'refuse')},'Refuse'))})
+      h('span',{class:'row'},h('button',{class:'primary',disabled:!!q.needs_position,onclick:e=>mineName(q.existing?.username)?ownPassword(e.currentTarget.parentNode,'Accept',
+          pw=>decideLobby(q.device,'accept',true,pw),()=>{ lobbySeen=''; pollLobby() }):decideLobby(q.device,'accept',!!q.existing)},'Accept'),
+        h('button',{class:'ghost',onclick:()=>decideLobby(q.device,'refuse')},'Refuse')))})
       :h('div',{class:'sub',style:'margin-top:6px'},'Nobody is waiting.')) }
   lobbyTimer=setTimeout(pollLobby,2000);
 }
 // every new member needs a position (core certify refuses one without): the request has to be sent again with it
 const noPosition=name=>`No position (job title) given. Every new member needs one: ask ${String(name??'them')} to send a new request with their position.`;
-async function decideLobby(device,action,existing){
-  try{ const r=await K.api(`/api/join-requests/${encodeURIComponent(device)}`,{action,existing_ok:!!existing}); toast(action==='accept'?`Accepted ${r.username}: their device gets the plant over the Wi-Fi now`:'Refused'); lobbySeen=''; pollLobby() }catch(e){ toast(e.message) }
+async function decideLobby(device,action,existing,password){
+  try{ const r=await K.api(`/api/join-requests/${encodeURIComponent(device)}`,{action,existing_ok:!!existing,...(password===undefined?{}:{password})}); toast(action==='accept'?`Accepted ${r.username}: their device gets the plant over the Wi-Fi now`:'Refused'); lobbySeen=''; $('#lobby')?.replaceChildren(); pollLobby() }catch(e){ await failed(e) }
+}
+// A device for one's own person, on a server, is added only with the account's password (the user, 2026-10-14): a
+// stolen sign-in of an admin or the manager must not give its holder a device of theirs, which could then remove
+// their other devices. The server decides (by the person the join request names); this only asks in time. The apps
+// (peer) ask nothing: there a device speaks for itself. An admin adding somebody else's device keeps the rules as
+// they were.
+const mineName=u=>K.cfg?.mode==='server'&&u!=null&&String(u).toLowerCase()===String(ME.user.username).toLowerCase();
+// the form in `box`: send(password) -> a promise (a wrong password: said, and the form stays); back: Cancel
+function ownPassword(box,label,send,back){
+  const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); once(F,()=>send(F.password.value)) }},
+    h('input',{type:'password',name:'password',placeholder:'your password','aria-label':'Your password',autocomplete:'current-password',required:true}),
+    h('button',{class:'primary'},label),h('button',{class:'ghost',type:'button',onclick:()=>{ put(box); back() }},'Cancel'));
+  put(box,F,h('div',{class:'sub'},'This adds a device of your own. Your password, so that nobody who got hold of a sign-in of yours can give themselves a device as you.'));
+  F.password.focus();
 }
 async function qrSvg(text){   // zxing-cpp in WebAssembly (decision 0037), error correction M, quiet zone included
   const {qrWrite}=await import('/kks-wasm.js'), q=await qrWrite(text), n=q.side; let d='';
@@ -545,17 +563,22 @@ async function pollInvite(tok){
       put(el,who(st.request),' wants to join.',st.existing?h('div',{class:'sub'},`${str(st.existing.full_name)} (${str(st.existing.username)}, ${str(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.`)
                                                     :h('div',{class:'sub'},'A new person (role: user).'),
         st.needs_position?h('div',{class:'warn needs-position'},noPosition(st.request.full_name)):null,
-        h('div',{class:'row',style:'margin-top:6px'},h('button',{class:'primary',disabled:!!st.needs_position,onclick:()=>decideInvite(tok,'accept',!!st.existing)},'Accept'),h('button',{class:'ghost',onclick:()=>decideInvite(tok,'refuse')},'Refuse'))) } }
+        h('div',{class:'row',style:'margin-top:6px'},h('button',{class:'primary',disabled:!!st.needs_position,onclick:e=>mineName(st.existing?.username)?ownPassword(e.currentTarget.parentNode,'Accept',
+          pw=>decideInvite(tok,'accept',true,pw),()=>{ delete el.dataset.asked; clearTimeout(inviteTimer); pollInvite(tok) }):decideInvite(tok,'accept',!!st.existing)},'Accept'),
+        h('button',{class:'ghost',onclick:()=>decideInvite(tok,'refuse')},'Refuse'))) } }
   else { const end={accepted:()=>['Accepted ',who(st.request),'. Their device is syncing the plant now.'],refused:()=>'Refused.',cancelled:()=>'Cancelled.',expired:()=>'Expired. Show a new code if they still need one.'};
     put(el,Object.prototype.hasOwnProperty.call(end,st.state)?end[st.state]():str(st.state)); return }
   inviteTimer=setTimeout(()=>pollInvite(tok),1500);
 }
-async function decideInvite(tok,action,existing){
-  try{ await K.api(`/api/invites/${tok}`,{action,existing_ok:!!existing}); clearTimeout(inviteTimer); pollInvite(tok) }catch(e){ toast(e.message) }
+async function decideInvite(tok,action,existing,password){
+  try{ await K.api(`/api/invites/${tok}`,{action,existing_ok:!!existing,...(password===undefined?{}:{password})}); clearTimeout(inviteTimer); pollInvite(tok) }catch(e){ await failed(e) }
 }
 async function cancelInvite(tok){ clearTimeout(inviteTimer); try{ await K.api(`/api/invites/${tok}`,{action:'cancel'}) }catch(e){} put($('#invite'),qrButton()) }
 async function importJoin(inp,existing_ok){
   const f=inp.files?inp.files[0]:null, request=inp.request||JSON.parse(await f.text());
+  if(inp.files) inp.value='';      // (the same file chosen again is a choice again)
+  if(mineName(request?.username)) return ownPassword($('#joinOwn'),'Add this device',
+    password=>act(()=>K.api('/api/devices/import-request',{request,existing_ok:true,password}),'Certified a device of yours. Now give it a bundle.'),()=>{});
   try{ const r=await K.api('/api/devices/import-request',{request,existing_ok:!!existing_ok}); toast(`Certified a device for ${r.username}. Now give them a bundle.`); show('devices') }
   catch(e){ if(e.status===409&&e.data?.existing){ const x=e.data.existing;
       if(confirm(`${x.full_name} (${x.username}, ${x.role}) already exists. Add this computer as another device of theirs? Only if you know it is them.`)) return importJoin({request},true) }

@@ -12,9 +12,13 @@ one on a lost phone or a shared computer would never end by itself.
 3. Devices: "Remove" on a device of one's own opens a small form that asks for the password too (a stolen sign-in
    alone must not cut the owner's phone off); Cancel puts the button back. A wrong password is said and removes
    nothing; the right one removes it, once. An admin removes a member's device as before, after the confirmation.
+4. Devices, adding one of one's own (test_add_*, the user, 2026-10-14: a stolen sign-in of an admin must not give its
+   holder a device of that person): "Import join request" with a request in the admin's own name, accepting a device
+   waiting on the Wi-Fi or a QR invite that is the admin's own: a form asks for the password, the same way; Cancel
+   leaves it. An admin adding a member's device: as before, no password.
   /path/to/venv-with-playwright/bin/python platform/linux/e2e/test_web_signout.py [unittest arguments]
 $KKS_SERVER names the build (default /tmp/kkslinux/kks_server)."""
-import os, re, shutil, sys, tempfile, time, unittest
+import json, os, re, shutil, sys, tempfile, time, unittest
 from playwright.sync_api import sync_playwright, expect
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -56,9 +60,9 @@ class WebSignOut(unittest.TestCase):
         self.server.wait(5)
         shutil.rmtree(self.dir, ignore_errors=True)
 
-    def signed_in(self, browser, user, path, said=None, answer=None):
+    def signed_in(self, browser, user, path, said=None, answer=None, **more):
         """a browser of its own signed in as `user`, on `path` -> (page, its errors)"""
-        ctx = browser.new_context(viewport={'width': 1300, 'height': 900})
+        ctx = browser.new_context(viewport={'width': 1300, 'height': 900}, **more)
         ctx.add_init_script(CSP_WATCH)
         r = ctx.request.post(self.base + '/api/login', data={'username': user, 'password': PW}, headers={'Origin': self.base})
         self.assertTrue(r.ok, r.text())
@@ -70,11 +74,12 @@ class WebSignOut(unittest.TestCase):
         page.wait_for_function(SIGNED_IN % user)
         return page, errors
 
-    def phone(self, admin, username, label):
-        """a device of their own for that account, certified from its join request -> its ID"""
+    def phone(self, admin, username, label, **more):
+        """a device of their own for that account, certified from its join request -> its ID (`more`: the password,
+        for a device of the certifying account's own person)"""
         key = proto2.key_from_seed(os.urandom(32))
         r = admin.req('POST', '/api/devices/import-request', {'existing_ok': True, 'request': crypto2.join_request(
-            key, username, 'Somebody', 'Operator', label, int(time.time()))})
+            key, username, 'Somebody', 'Operator', label, int(time.time())), **more})
         assert r.get('ok'), r
         return proto2.peer_id(key)
 
@@ -263,7 +268,7 @@ class WebSignOut(unittest.TestCase):
             # ---- 3. Devices: one's own device goes only with the password
             admin = Client(self.base)                    # (the test's first client was one of the manager's other sessions)
             admin.req('POST', '/api/login', {'username': 'boss', 'password': PW})     # (raises when refused)
-            phone, tablet, bphone = self.phone(admin, 'ali', 'phone'), self.phone(admin, 'ali', 'tablet'), self.phone(admin, 'boss', 'handheld')
+            phone, tablet, bphone = self.phone(admin, 'ali', 'phone'), self.phone(admin, 'ali', 'tablet'), self.phone(admin, 'boss', 'handheld', password=PW)
             a1err.leave(); a1.goto(self.base + '/admin.html#devices')
             mine = a1.locator('#main .card', has=a1.locator('h3', has_text='Your devices'))
             row = mine.locator('tr', has_text='phone')
@@ -339,6 +344,172 @@ class WebSignOut(unittest.TestCase):
             for e in (merr, a1err, a2err, a3err, serr, b2err):
                 self.assertEqual(list(e), [])
             browser.close()
+
+    def own_add(self, name):
+        with sync_playwright() as p:
+            browser = p[name].launch()
+            said = []
+            # (no service worker: WebKit's requests through one bypass the stand-in answers of 4b and 4c)
+            page, errors = self.signed_in(browser, 'sara', '/admin.html#devices', said, {'ok': True}, service_workers='block')
+            card = page.locator('#main .card', has=page.locator('h3', has_text='Add a computer from a join request'))
+            expect(card).to_be_visible()
+            page.evaluate("""() => { window.sameDocument = true; window.asked = []; const f = window.fetch;
+                window.fetch = (u, o) => { if (o && o.method === 'POST' && /import-request|join-requests\\/|invites\\//.test(String(u)))
+                  asked.push([String(u).replace(/^.*\\/api\\//, ''), JSON.parse(o.body)]); return f(u, o) } }""")
+            def mine():
+                return {d['device'] for d in self.sara.req('GET', '/api/devices')['mine']}
+            self.sara = Client(self.base)
+            self.sara.req('POST', '/api/login', {'username': 'sara', 'password': PW})
+            before = mine()
+            def join_file(username, label):
+                key = proto2.key_from_seed(os.urandom(32))
+                req = crypto2.join_request(key, username, 'Somebody', 'Operator', label, int(time.time()))
+                card.locator('input[type=file]').set_input_files(files=[{'name': label + '.kksjoin', 'mimeType': 'application/json',
+                                                                          'buffer': json.dumps(req).encode()}])
+                return proto2.peer_id(key)
+
+            # ---- 4a. a join request in one's own name (another case of the username): the form, nothing sent yet
+            laptop = join_file('SARA', 'laptop')
+            field = card.locator('form input[name=password]')
+            expect(field).to_be_focused()
+            expect(field).to_have_attribute('type', 'password')
+            expect(field).to_have_attribute('autocomplete', 'current-password')
+            expect(field).to_have_attribute('aria-label', 'Your password')
+            expect(card).to_contain_text('This adds a device of your own.')
+            self.assertEqual((page.evaluate('window.asked'), said), ([], []))
+            # Cancel: the form goes, nothing sent
+            card.get_by_role('button', name='Cancel').click()
+            expect(card.locator('form')).to_have_count(0)
+            # again (the same file chosen again): empty, nothing is sent; wrong: said, the page stays, nothing added
+            laptop = join_file('SARA', 'laptop')
+            card.get_by_role('button', name='Add this device').click()
+            self.assertEqual(field.evaluate('e => e.validity.valueMissing'), True)
+            field.fill('not the password')
+            field.press('Enter')
+            expect(page.locator('#toast')).to_have_text('Wrong username or password.')
+            self.assertEqual((page.evaluate('[window.sameDocument, window.asked.length]'), field.input_value()), ([True, 1], 'not the password'))
+            self.assertEqual(page.evaluate('window.asked[0][1].password'), 'not the password')
+            self.assertEqual((mine(), self.status(page)), (before, 200))
+            # a change elsewhere does not rebuild the page under the password being typed
+            self.phone(self.boss, 'ali', 'watch')
+            page.evaluate("() => K.listeners.forEach(f => f('synced'))")
+            page.wait_for_timeout(1500)
+            self.assertEqual(field.input_value(), 'not the password')
+            # the right one, pressed twice before the first is answered: added, sent once
+            field.fill(PW)
+            page.evaluate("""() => { const i = document.querySelector('#joinOwn form input[name=password]');
+                for (const n of [1, 2]) i.form.requestSubmit() }""")
+            expect(page.locator('#toast')).to_have_text('Certified a device of yours. Now give it a bundle.')
+            mycard = page.locator('#main .card', has=page.locator('h3', has_text='Your devices'))
+            expect(mycard.locator('tr', has_text='laptop')).to_contain_text('active')
+            self.assertEqual((page.evaluate('window.asked.length'), mine() - before, said), (2, {laptop}, []))
+            self.assertEqual(page.evaluate('window.asked[1]'), ['devices/import-request', {'request': page.evaluate('window.asked[1][1].request'),
+                                                                                           'existing_ok': True, 'password': PW}])
+            # a member's (somebody else's): as before, the confirmation and no password
+            n = len(page.evaluate('window.asked'))
+            alis = join_file('ali', 'tablet')
+            expect(page.locator('#toast')).to_have_text('Certified a device for ali. Now give them a bundle.')
+            self.assertEqual(len(said), 1)
+            self.assertIn('already exists. Add this computer as another device of theirs?', said[0])
+            self.assertEqual([x[1].get('password') for x in page.evaluate('window.asked')[n:]], [None, None])
+            self.assertIn(alis, {d['device'] for d in self.boss.req('GET', '/api/devices')['all']})
+            self.assertEqual(page.locator('#main input[type=password]').count(), 0)
+
+            # ---- 4b. a device waiting on the Wi-Fi in one's own name, beside a member's (the list and the answers are
+            # stand-ins: no device can ask on the Wi-Fi here; the server's check is in test_server_http.py)
+            lobby = {'requests': [
+                {'device': 'dev-own', 'code': '123456', 'request': {'full_name': 'Sara Admin', 'username': 'sara', 'label': 'phone'},
+                 'existing': {'username': 'sara', 'full_name': 'Sara Admin', 'role': 'admin'}, 'needs_position': False},
+                {'device': 'dev-ali', 'code': '654321', 'request': {'full_name': 'Ali', 'username': 'ali', 'label': 'phone'},
+                 'existing': {'username': 'ali', 'full_name': 'Ali', 'role': 'user'}, 'needs_position': False}]}
+            def answer(r):
+                if r.request.method == 'GET':
+                    return r.fulfill(status=200, content_type='application/json', body=json.dumps(lobby))
+                b = json.loads(r.request.post_data)
+                if r.request.url.endswith('dev-own') and b.get('password') != PW:
+                    return r.fulfill(status=401, content_type='application/json', body='{"error":"Wrong username or password."}')
+                lobby['requests'] = [q for q in lobby['requests'] if not r.request.url.endswith(q['device'])]
+                r.fulfill(status=200, content_type='application/json', body=json.dumps({'ok': True, 'username': 'sara' if 'own' in r.request.url else 'ali'}))
+            page.route(re.compile(r'.*/api/join-requests.*'), answer)
+            page.locator('#tabs button', has_text='Account').click()
+            page.wait_for_selector('#main input[name=full_name]')
+            page.locator('#tabs button', has_text='Devices').click()
+            page.evaluate("() => { window.asked = [] }")
+            own = page.locator('#lobby > div', has_text='123 456')
+            own.get_by_role('button', name='Accept').click()
+            field = own.locator('form input[name=password]')
+            expect(field).to_be_focused()
+            expect(field).to_have_attribute('autocomplete', 'current-password')
+            self.assertEqual(page.evaluate('window.asked'), [])
+            # another device asking meanwhile does not rebuild the list under the form
+            field.fill('not the password')
+            lobby['requests'].append({'device': 'dev-3', 'code': '111222', 'request': {'full_name': 'Third', 'username': 'third', 'label': 'x'},
+                                      'existing': None, 'needs_position': False})
+            page.wait_for_timeout(4500)
+            self.assertEqual((field.input_value(), page.locator('#lobby', has_text='111 222').count()), ('not the password', 0))
+            field.press('Enter')
+            expect(page.locator('#toast')).to_have_text('Wrong username or password.')
+            self.assertEqual(field.input_value(), 'not the password')
+            field.fill(PW)
+            own.get_by_role('button', name='Accept').click()
+            expect(page.locator('#toast')).to_have_text('Accepted sara: their device gets the plant over the Wi-Fi now')
+            expect(page.locator('#lobby')).to_contain_text('111 222')
+            expect(page.locator('#lobby')).not_to_contain_text('123 456')
+            page.locator('#lobby > div', has_text='654 321').get_by_role('button', name='Accept').click()
+            expect(page.locator('#toast')).to_have_text('Accepted ali: their device gets the plant over the Wi-Fi now')
+            self.assertEqual(page.evaluate('window.asked'), [
+                ['join-requests/dev-own', {'action': 'accept', 'existing_ok': True, 'password': 'not the password'}],
+                ['join-requests/dev-own', {'action': 'accept', 'existing_ok': True, 'password': PW}],
+                ['join-requests/dev-ali', {'action': 'accept', 'existing_ok': True}]])
+            # Cancel puts the buttons back
+            lobby['requests'].append(dict(lobby['requests'][0], device='dev-own2', code='333444',
+                                          existing={'username': 'sara', 'full_name': 'Sara Admin', 'role': 'admin'}))
+            own2 = page.locator('#lobby > div', has_text='333 444')
+            own2.get_by_role('button', name='Accept').click()
+            own2.get_by_role('button', name='Cancel').click()
+            expect(own2.locator('input')).to_have_count(0)
+            expect(own2.get_by_role('button', name='Accept')).to_have_count(1)
+            expect(own2.get_by_role('button', name='Refuse')).to_have_count(1)
+
+            # ---- 4c. a QR invite answered by a device of one's own (stand-ins again: no sync port here)
+            inv = {'state': 'asked', 'request': {'full_name': 'Sara Admin', 'username': 'sara', 'label': 'tablet', 'device': 'dev-qr'},
+                   'existing': {'username': 'sara', 'full_name': 'Sara Admin', 'role': 'admin'}, 'needs_position': False, 'exp': 0, 'seen': 0}
+            def invite(r):
+                if r.request.method == 'GET':
+                    return r.fulfill(status=200, content_type='application/json', body=json.dumps(inv))
+                if r.request.url.endswith('/api/invites'):
+                    return r.fulfill(status=200, content_type='application/json', body=json.dumps(
+                        {'ok': True, 'invite': {'token': 'tok1', 'plant': 'Test plant', 'addrs': ['127.0.0.1:8421']}, 'code': 'kks_invite test'}))
+                if json.loads(r.request.post_data).get('password') != PW:
+                    return r.fulfill(status=401, content_type='application/json', body='{"error":"Wrong username or password."}')
+                inv['state'] = 'accepted'
+                r.fulfill(status=200, content_type='application/json', body='{"ok":true}')
+            page.route(re.compile(r'.*/api/invites.*'), invite)
+            page.get_by_role('button', name='Show QR code').click()
+            box = page.locator('#invstate')
+            expect(box).to_contain_text('wants to join')
+            box.get_by_role('button', name='Accept').click()
+            field = box.locator('form input[name=password]')
+            expect(field).to_be_focused()
+            page.wait_for_timeout(2000)                  # (the invite is asked again meanwhile: the form stays)
+            box.get_by_role('button', name='Accept').click()
+            self.assertEqual(field.evaluate('e => e.validity.valueMissing'), True)
+            field.fill('a guess')
+            field.press('Enter')
+            expect(page.locator('#toast')).to_have_text('Wrong username or password.')
+            self.assertEqual(field.input_value(), 'a guess')
+            field.fill(PW)
+            field.press('Enter')
+            expect(box).to_contain_text('Accepted Sara Admin')
+            self.assertEqual([x for x in page.evaluate('window.asked') if x[0].startswith('invites/')], [
+                ['invites/tok1', {'action': 'accept', 'existing_ok': True, 'password': 'a guess'}],
+                ['invites/tok1', {'action': 'accept', 'existing_ok': True, 'password': PW}]])
+            self.assertEqual(list(errors), [])
+            browser.close()
+
+    def test_add_chromium(self): self.own_add('chromium')
+    def test_add_firefox(self): self.own_add('firefox')
+    def test_add_webkit(self): self.own_add('webkit')
 
     def test_chromium(self): self.engine('chromium')
     def test_firefox(self): self.engine('firefox')
