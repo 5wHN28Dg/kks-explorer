@@ -268,9 +268,10 @@ class WebOffline(unittest.TestCase):
             # asked for must be in the offline copy all the same (found as the worker finds it offline: a page is kept
             # under its path alone, a drawing file under another ?v= is found without it)
             cancelled = re.compile(r'^(NS_BINDING_ABORTED|net::ERR_ABORTED)$')
-            self.assertEqual([(u, why) for u, why in failed if '/api/' not in u and not cancelled.match(why)], [])
+            photo = lambda u: '/photos/' in u           # (the only load the page cancels on purpose: a photo's file)
+            self.assertEqual([(u, why) for u, why in failed if '/api/' not in u and not (photo(u) and cancelled.match(why))], [])
             self.assertEqual(page.evaluate("us => Promise.all(us.map(u => caches.match(u, {ignoreSearch: true}).then(c => c ? null : u))).then(m => m.filter(x => x))",
-                                           sorted({u for u, why in failed if '/api/' not in u and cancelled.match(why)})), [])
+                                           sorted({u for u, why in failed if photo(u) and cancelled.match(why)})), [])
 
             # ---- 4. the lease: 29 days on, still working and saying how long; 31 days on, expired, in words
             now = datetime.datetime.now()
