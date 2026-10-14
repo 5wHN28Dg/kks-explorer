@@ -51,7 +51,7 @@ def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=())
         ' -Restart' if restart else '', ' -AppEnv "%s"' % ';'.join('%s=%s' % kv for kv in env.items()) if env else '')
     b64 = base64.b64encode(args.encode()).decode()
     vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kksuia' % b64)
-    end = time.time() + 300
+    end = time.time() + 400
     while time.time() < end:
         time.sleep(0.5 if during else 2)
         log = vm('[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Content C:\\kks\\uia.log -Encoding UTF8 -ErrorAction SilentlyContinue')
@@ -533,7 +533,10 @@ class Windows(unittest.TestCase):
                                  'wait\t~11LAB70AA794   \t40', 'sleep\t2500', 'gone\tFloor %s' % floor,
                                  'value\t%s\tLAB70AA79' % search, 'focused\t' + search,
                                  'focus\tDrawings', 'wait\tFloor %s\t10' % floor, 'value\t%s\tLAB70AA79' % search,
-                                 'wait\t~11LAB70AA794   \t5', 'wait\t~11LAB70AA791   \t5'],
+                                 'wait\t~11LAB70AA794   \t5', 'wait\t~11LAB70AA791   \t5',
+                                 # a button of the sidebar that makes it again keeps the search too
+                                 'click\tMark a missing tag', 'wait\tStop marking\t10', 'value\t%s\tLAB70AA79' % search,
+                                 'click\tStop marking', 'wait\tMark a missing tag\t10', 'value\t%s\tLAB70AA79' % search],
                    during=[('sleep\t503', lambda: self.add_tag('11LAB70AA793', [1300, 900, 1420, 960])),
                            ('sleep\t504', with_floor)])
         # the Drawings search with the keyboard elsewhere when a sync arrives: made again, the search put back
@@ -545,7 +548,10 @@ class Windows(unittest.TestCase):
         code = '11LAB70AA791'
         self.check('kpanel.uia', ['select\t~11LAB70AA791   ', 'click\tShow on the drawing',
                                   'wait\tValve type: globe valve (from the drawing, unchecked)\t20', 'click\tEdit',
-                                  'set\tNotes\ttyped before confirming', 'click\tConfirm valve type',
+                                  'set\tNotes\ttyped before confirming',
+                                  # the open tag opened again (its search result): nothing typed is lost
+                                  'click\tShow on the drawing', 'sleep\t1500', 'value\tNotes\ttyped before confirming',
+                                  'click\tConfirm valve type',
                                   'wait\tValve type: globe valve (confirmed)\t20', 'value\tNotes\ttyped before confirming',
                                   'click\tConfirm description', 'wait\t~Confirmed by The Manager\t20',
                                   'value\tNotes\ttyped before confirming', 'click\tSave', 'gone\tSave'])
