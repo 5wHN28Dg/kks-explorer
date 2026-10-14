@@ -36,16 +36,17 @@ const Fields = [("area", "Building / area"), ("floor", "Floor"), ("elev", "Eleva
 
 var editing = ""      ## the tag whose fields are open for editing
 
-proc afterChange(w: Win, id: string, rebuild = true) =
+proc afterChange(w: Win, id: string, rebuild = true, sent: openArray[HWND] = []) =
   ## a change to tag `id` was sent from its panel. The tag has gone with it (rejected, removed): its panel closes,
   ## emptied (a hidden form with typed text would hold the panel as it is: win.panelHeld); the drawing follows with
-  ## the reload a moment later. Else, with `rebuild`, the panel is made again from the data (the typed reading was sent)
+  ## the reload a moment later. Else, with `rebuild`, the panel is made again from the data: the fields in `sent` (the
+  ## typed reading) start again from it, what was typed elsewhere in the panel stays (#168)
   w.loadModel()
   if w.selected != id or w.picking: return
   if not w.m.tagById(id)[0]:
     w.panel.clear()
     w.selectTag("", false)
-  elif rebuild: w.rebuildPanel()
+  elif rebuild: w.rebuildPanelKeeping(sent)
 
 proc reviewSection(w: Win, p: Page, t: Tag) =
   let sug = t.suggestion
@@ -66,11 +67,11 @@ proc reviewSection(w: Win, p: Page, t: Tag) =
     let data = newObj(@[("status", newStr("confirmed")), ("kks", newStr(code[0 ..< 12])), ("suffix", newStr(code[12 .. ^1])),
                         ("isa", if isaV.len > 0: newStr(isaV) else: newNull())])
     if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", data), ("base", base)]), code).len > 0:
-      w.afterChange(id)),
+      w.afterChange(id, sent = [k, isa])),
     ("Not a tag", proc () =
       if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
                                     ("base", base)]), "not a tag").len > 0:
-        w.afterChange(id)))
+        w.afterChange(id, sent = [k, isa])))
 
 proc equipmentSection(w: Win, p: Page, t: Tag) =
   let k = t.full
@@ -96,7 +97,7 @@ proc equipmentSection(w: Win, p: Page, t: Tag) =
     let id = t.id
     p.buttons(("Edit", proc () =
       editing = id
-      w.rebuildPanel()))
+      w.rebuildPanelKeeping()))     # a reading being corrected above keeps what was typed (#168)
     return
   var entries: seq[(string, HWND)]
   for (f, title) in Fields:
@@ -104,9 +105,17 @@ proc equipmentSection(w: Win, p: Page, t: Tag) =
   var custom: seq[(HWND, HWND)]
   if live.get("custom") != nil:
     for c in live["custom"].elems:
-      custom.add (p.field("Custom field name", s(c, "k")), p.field("Custom field value", s(c, "v")))
+      # keyed by the custom field's name: typed text goes back to the same field after the panel is made again,
+      # never to another one that moved into its place (#168)
+      custom.add (p.field("Custom field name", s(c, "k"), key = "Custom field name: " & s(c, "k")),
+                  p.field("Custom field value", s(c, "v"), key = "Custom field value: " & s(c, "k")))
   custom.add (p.field("New custom field name (optional)", ""), p.field("New custom field value", ""))
   let note = if not w.isAdmin: p.field("Note for the approver (optional)", "") else: nil
+  # the form's own fields: Save sends them and Cancel drops them; what was typed elsewhere in the panel stays (#168)
+  var form: seq[HWND]
+  for (_, e) in entries: form.add e
+  for (a, b) in custom: form.add [a, b]
+  if note != nil: form.add note
   p.buttons(("Save", proc () =
     var changes, base = newObj()
     for (f, e) in entries:
@@ -132,10 +141,10 @@ proc equipmentSection(w: Win, p: Page, t: Tag) =
     if w.submit("equipment", newObj(@[("kks", newStr(k)), ("changes", changes), ("base", base)]), k,
                 if note != nil: note.text else: "").len > 0:
       editing = ""
-      w.rebuildPanel()),
+      w.rebuildPanelKeeping(form)),
     ("Cancel", proc () =
       editing = ""
-      w.rebuildPanel()))
+      w.rebuildPanelKeeping(form)))
 
 var editingDesc = ""   ## the tag whose drafted description is open for editing
 
@@ -183,10 +192,10 @@ proc descriptionSection(w: Win, p: Page, t: Tag) =
                                         ("base", newObj(@[("custom", base)]))]), "description of " & k).len > 0:
         editingDesc = ""
         w.loadModel()
-        w.rebuildPanel()),
+        w.rebuildPanelKeeping([e])),
       ("Cancel", proc () =
         editingDesc = ""
-        w.rebuildPanel()))
+        w.rebuildPanelKeeping([e])))
     return
   p.dim("Drafted from the drawings, not checked by a person yet. Confirm it if it is right, or edit it first.")
   p.label(s(d, "text"))
@@ -195,10 +204,10 @@ proc descriptionSection(w: Win, p: Page, t: Tag) =
     if conf == nil: return
     if w.submit(s(conf, "kind"), conf["payload"], "description of " & k).len > 0:
       w.loadModel()
-      w.rebuildPanel()),
+      w.rebuildPanelKeeping()),     # the edit form's text stays (#168)
     ("Edit description", proc () =
       editingDesc = id
-      w.rebuildPanel()))
+      w.rebuildPanelKeeping()))
 
 proc buildPanel*(w: Win, t: Tag) =
   let p = w.panel
@@ -270,7 +279,7 @@ proc buildPanel*(w: Win, t: Tag) =
       p.buttons(("Confirm valve type", proc () =
         if w.submit(kind, payload, what).len > 0:
           w.loadModel()
-          w.rebuildPanel()))
+          w.rebuildPanelKeeping()))   # the edit form's text stays (#168)
   let rl = m.refLoc(t.bodyOf)
   if rl.rows.len > 0:
     p.title("Location list")

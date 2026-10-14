@@ -563,6 +563,21 @@ int wmain(int argc, wchar_t **argv) {
             if (list) { list->get_CurrentNativeWindowHandle(&hw); list->Release(); }
             if (!hw) { say("ERROR: no list window: " + arg); return 1; }
             PostMessageW(GetParent((HWND)hw), WM_COMMAND, MAKEWPARAM(GetDlgCtrlID((HWND)hw), LBN_SELCHANGE), (LPARAM)hw);
+        }
+        if (cmd == "focus" || cmd == "focused") {
+            // a field's label (a Text element) carries the field's name and comes first: the field itself is meant
+            CONTROLTYPEID ct = 0; e->get_CurrentControlType(&ct);
+            if (ct == UIA_TextControlTypeId) {
+                IUIAutomationElement *ed = find(pid, arg, false, UIA_EditControlTypeId);
+                if (ed) { e->Release(); e = ed; }
+            }
+        }
+        if (cmd == "focused") {
+            // the keyboard focus is on this element now: nothing has taken it away (another window in front, a rebuild)
+            IUIAutomationElement *fe = nullptr;
+            BOOL same = FALSE;
+            if (SUCCEEDED(ua->GetFocusedElement(&fe)) && fe) { ua->CompareElements(fe, e, &same); fe->Release(); }
+            if (!same) { say("ERROR: not focused: " + arg); find(pid, "", true); e->Release(); return 1; }
         } else if (cmd == "focus") {
             // the keyboard focus to this element (what Tab or a screen reader's navigation does); a list or tree item
             // is looked at afterwards (focus_on: the app may have rebuilt its list since it was found)

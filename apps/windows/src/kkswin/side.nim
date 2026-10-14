@@ -18,18 +18,58 @@ proc tagsWithCode(w: Win, code: string): seq[Tag] =
   for t in w.m.tags:
     if t.full == code: result.add t
 
+proc reselect(l: HWND, ids: seq[string], id: string) =
+  ## after the rows were put in place: the row of `id` selected again (none when it has gone)
+  let i = if id.len > 0: ids.find(id) else: -1
+  if i >= 0 or SendMessageW(l, LB_GETCURSEL, 0, 0) >= 0: SendMessageW(l, LB_SETCURSEL, cast[WPARAM](i), 0)
+
 # ---------------------------------------------------------------- drawings
+
+proc sheetRows(w: Win): seq[string] =
+  for si in w.m.sheets:
+    var n, review = 0
+    for t in w.m.tagsOf(si.id):
+      inc n
+      if t.status == "review": inc review
+    result.add si.name & "  (" & $n & " tags" & (if review > 0: ", " & $review & " to review" else: "") & ")"
+
+proc floorsInUse(w: Win): seq[string] =
+  for t in w.m.tags:
+    let f = s(w.m.equipment(t.full), "floor").strip
+    if f.len > 0 and f notin result: result.add f
+  result.sort(proc (a, b: string): int = cmp(try: parseInt(a) except ValueError: 99, try: parseInt(b) except ValueError: 99))
+
+proc drawingsShape(w: Win): seq[string] =
+  ## what decides which controls the Drawings tab has (not only their texts): the sheets, the floors in use, the open
+  ## sheet's notes and the modes
+  result = @[w.sheet, $w.picking, $w.v.marking, w.floorsInUse.join("\n")]
+  for si in w.m.sheets: result.add si.id
+  let (ok, si) = w.m.sheetById(w.sheet)
+  if ok: result.add si.notes
 
 proc drawingsTab(w: Win, p: Page) =
   var results: seq[Tag]
   var resList: HWND
-  proc fill(q: string) =
+  proc idAt(i: int): string = results[i].id
+  proc fill(q: string, keep = false) =
+    ## keep (a sync under the keyboard): the rows put in place, the selected result still selected
+    let cur = int(SendMessageW(resList, LB_GETCURSEL, 0, 0))
+    # (a copy, from a proc: `let was = results[cur].id` was a view into `results`, which is replaced just below, and
+    # read freed memory: the selection was dropped, seen in the e2e; `results` lives in the closures' environment, so
+    # the compiler did not see it change)
+    let was = if keep and cur >= 0 and cur < results.len: idAt(cur) else: ""
     results = if q.strip.len >= 2: w.m.search(q.strip) else: @[]
     var rows: seq[string]
     for t in results:
       let (ok, si) = w.m.sheetById(t.sheet)
       rows.add (if t.full.len > 0: t.full else: "(unread)") & "   " & w.m.kindName(t) & " · " & (if ok: si.name else: t.sheet)
-    resList.setRows(if q.strip.len >= 2 and rows.len == 0: @["Nothing found"] else: rows)
+    if q.strip.len >= 2 and rows.len == 0: rows = @["Nothing found"]
+    if keep:
+      resList.updateRows(rows)
+      var ids: seq[string]
+      for t in results: ids.add t.id
+      resList.reselect(ids, was)
+    else: resList.setRows(rows)
   var search: HWND
   search = p.field("Search equipment by KKS code or description", "", onChange = proc () = fill(search.text))
   sendText(search, EM_SETCUEBANNER, 1, "e.g. LAB70AA501 or feed water")
@@ -51,13 +91,7 @@ proc drawingsTab(w: Win, p: Page) =
   p.buttons(("Equipment by system…", proc () = w.openSystems()),   # every code, block → system → kind
             ("Coverage…", proc () = w.openCoverage()))           # what is checked, placed and photographed
   p.title("Sheets")
-  var rows: seq[string]
-  for si in w.m.sheets:
-    var n, review = 0
-    for t in w.m.tagsOf(si.id):
-      inc n
-      if t.status == "review": inc review
-    rows.add si.name & "  (" & $n & " tags" & (if review > 0: ", " & $review & " to review" else: "") & ")"
+  let rows = w.sheetRows
   if rows.len == 0: p.dim("Waiting for the drawings. They arrive with the next sync from a device that has them.")
   let sheets = w.m.sheets
   let sl = p.list(rows, 26 * min(10, max(1, rows.len)) + 6, onSelect = proc (i: int) =
@@ -65,11 +99,7 @@ proc drawingsTab(w: Win, p: Page) =
   for i, si in sheets:
     if si.id == w.sheet: SendMessageW(sl, LB_SETCURSEL, WPARAM(i), 0)
   # floors in use (R5)
-  var floors: seq[string]
-  for t in w.m.tags:
-    let f = s(w.m.equipment(t.full), "floor").strip
-    if f.len > 0 and f notin floors: floors.add f
-  floors.sort(proc (a, b: string): int = cmp(try: parseInt(a) except ValueError: 99, try: parseInt(b) except ValueError: 99))
+  let floors = w.floorsInUse
   if floors.len > 0:
     p.title("Floor")
     let fl = p.list(@["All floors"] & floors.mapIt("Floor " & it), 26 * min(6, floors.len + 1) + 6, onSelect = proc (i: int) =
@@ -102,7 +132,21 @@ proc drawingsTab(w: Win, p: Page) =
       if w.picking: w.stopPicking()
       w.v.marking = not w.v.marking
       w.toast(if w.v.marking: "Drag a box around the tag the app missed" else: "")
-      w.rebuildSide()))
+      w.rebuildSideKeeping()))
+  # a sync under the keyboard (#168): the search's results and the sheets' counts change in place; a change of the
+  # controls themselves (a new sheet or floor, the open sheet's notes) waits until the keyboard has left
+  w.sidePicked = proc (): string =
+    let i = int(SendMessageW(resList, LB_GETCURSEL, 0, 0))
+    if IsWindow(resList) != 0 and i >= 0 and i < results.len: results[i].id else: ""
+  w.sideRepick = proc (id: string) =
+    if IsWindow(resList) != 0: resList.reselect(results.mapIt(it.id), id)
+  let shape = w.drawingsShape
+  let sheetIds = sheets.mapIt(it.id)
+  w.sideUpdate = proc (): bool =
+    if IsWindow(sl) == 0 or IsWindow(resList) == 0 or IsWindow(search) == 0: return false
+    if w.m.sheets.mapIt(it.id) == sheetIds: sl.updateRows(w.sheetRows)    # (its rows open `sheets` by position)
+    fill(search.text, keep = true)
+    w.drawingsShape == shape
 
 # ---------------------------------------------------------------- procedures
 
@@ -131,7 +175,7 @@ proc procedureDetail(w: Win, p: Page, id: string) =
       w.linkProc = ""
       w.toast("")
       w.rebuildSide()
-      w.rebuildPanel()))
+      w.rebuildPanelKeeping()))
   let lp1 = toSeq(pr["steps"].elems)
   for lp1i in 0 ..< lp1.len:
     closureScope:
@@ -160,7 +204,7 @@ proc procedureDetail(w: Win, p: Page, id: string) =
         w.linkStep = n
         w.toast("Click tags on the drawing (or Link in a tag's panel) to link them to step " & $n & " of " & id)
         w.rebuildSide()
-        w.rebuildPanel())
+        w.rebuildPanelKeeping())
       p.buttons(specs)
 
 proc proceduresTab(w: Win, p: Page) =
@@ -176,13 +220,20 @@ proc proceduresTab(w: Win, p: Page) =
     result = (s(pr, "id") & " " & s(pr, "title")).toLowerAscii
     for x in pr["path"].elems: result.add " " & x.s.toLowerAscii
     for st in pr["steps"].elems: result.add " " & s(st, "text").toLowerAscii
-  proc fill(q: string) =
+  proc fill(q: string, keep = false) =
+    ## keep (a sync under the keyboard): the rows put in place, the selected procedure still selected
+    let cur = int(SendMessageW(lst, LB_GETCURSEL, 0, 0))
+    let was = if keep and cur >= 0 and cur < shown.len: s(shown[cur], "id") else: ""
     let query = q.strip.toLowerAscii
     shown = w.m.procs.elems.filterIt(query.len == 0 or query in hayOf(it))
     var counts = initCountTable[string]()
     for l in w.links: counts.inc l["proc"].s
-    lst.setRows(shown.mapIt(s(it, "id") & "  " & s(it, "title") & "   (" & $it["steps"].elems.len & " steps" &
-                            (if counts[s(it, "id")] > 0: ", " & $counts[s(it, "id")] & " linked" else: "") & ")"))
+    let rows = shown.mapIt(s(it, "id") & "  " & s(it, "title") & "   (" & $it["steps"].elems.len & " steps" &
+                           (if counts[s(it, "id")] > 0: ", " & $counts[s(it, "id")] & " linked" else: "") & ")")
+    if keep:
+      lst.updateRows(rows)
+      lst.reselect(shown.mapIt(s(it, "id")), was)
+    else: lst.setRows(rows)
   var q: HWND
   q = p.field("Search procedures", "", onChange = proc () = fill(q.text))
   lst = p.list(@[], 480, onActivate = (proc (i: int) =
@@ -192,6 +243,16 @@ proc proceduresTab(w: Win, p: Page) =
       w.rebuildSide()), openLabel = "Open the procedure")
   p.dim("Enter or double-click a procedure to open it.")
   fill("")
+  # a sync while the search has the keyboard (#168: it was emptied under the typing): the list follows in place
+  w.sidePicked = proc (): string =
+    let i = int(SendMessageW(lst, LB_GETCURSEL, 0, 0))
+    if IsWindow(lst) != 0 and i >= 0 and i < shown.len: s(shown[i], "id") else: ""
+  w.sideRepick = proc (id: string) =
+    if IsWindow(lst) != 0: lst.reselect(shown.mapIt(s(it, "id")), id)
+  w.sideUpdate = proc (): bool =
+    if IsWindow(lst) == 0 or IsWindow(q) == 0 or w.m.procs == nil: return false
+    fill(q.text, keep = true)
+    true
 
 # ---------------------------------------------------------------- the review queue
 

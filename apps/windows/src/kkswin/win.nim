@@ -41,6 +41,11 @@ type Win* = ref object
   failedButton*: HWND       ## "Photos not sent (n)…": photos that failed, kept until sent or discarded (photos.nim)
   followers*: seq[Follower]  ## open windows that follow the plant's data (follow)
   panelStale*: bool         ## the panel was left as it is under the keyboard or typed text (panelChanged)
+  sideStale*: bool          ## the sidebar was left as it is under the keyboard (sideChanged)
+  sideUpdate*: proc (): bool  ## the sidebar's page on screen: new data into its controls as they are (allowed under
+                              ## the keyboard); false when its controls themselves would change. nil: it can't
+  sidePicked*: proc (): string    ## the page on screen: what is selected in its list (a tag's or procedure's id)
+  sideRepick*: proc (id: string)  ## the page on screen: select that again, if it is still there
 
 proc focusInside(area: HWND): bool =
   let f = GetFocus()
@@ -73,6 +78,11 @@ proc catchUpFollowers*(w: Win) =
       f.stale = false
       f.rebuild()
 
+proc isEdit(h: HWND): bool =
+  var buf = newWideCString("", 32)
+  let n = GetClassNameW(h, buf, 32)
+  n > 0 and ($buf).toLowerAscii == "edit"
+
 proc panelHeld*(w: Win, anyFocus = true): bool =
   ## the panel is not rebuilt now: something typed into one of its fields is still there (an edit form, a reading
   ## being corrected: a rebuild makes the fields again from the data and what was typed is lost, wherever the
@@ -80,10 +90,7 @@ proc panelHeld*(w: Win, anyFocus = true): bool =
   if w.panel.edited: return true
   let f = GetFocus()
   if f == nil or GetParent(f) != w.panel.hwnd: return false
-  if anyFocus: return true
-  var buf = newWideCString("", 32)
-  let n = GetClassNameW(f, buf, 32)
-  n > 0 and ($buf).toLowerAscii == "edit"
+  anyFocus or isEdit(f)
 
 proc panelChanged*(w: Win, anyFocus = true) =
   ## what the panel shows changed underneath (a sync, the photo queue): rebuilt now, or, while it is held, once it no
@@ -96,6 +103,50 @@ proc panelChanged*(w: Win, anyFocus = true) =
 
 proc panelCatchUp*(w: Win) =
   if w.panelStale and not w.panelHeld(): w.panelChanged()
+
+proc keepTyped*(w: Win, p: Page, rebuild: proc (), drop: openArray[HWND] = [], tell = true) =
+  ## `rebuild` makes page `p` again for what it shows now (one of its own buttons, a mode turned on or off, a sync
+  ## while the keyboard is elsewhere): what was typed into its fields goes back into the new ones, except into those in
+  ## `drop` (what the button sent, the form it closes) (#168). Text that finds no field again (its part of the page went,
+  ## or the value its field shows changed underneath) is shown to the person, so it is never lost unseen
+  let kept = p.keptText(drop)
+  rebuild()
+  let lost = p.restoreText(kept)
+  if lost.len > 0 and tell:
+    var lines: seq[string]
+    for k in lost: lines.add (if k.key != k.name: k.key else: k.name) & ": " & k.text.replace("\r\n", "\n")
+    say(w.hwnd, "Typed text not kept", "This changed underneath while you were typing, so what you typed was not put " &
+        "back (copy it from here if you need it):\n\n" & lines.join("\n"))
+
+proc rebuildPanelKeeping*(w: Win, drop: openArray[HWND] = []) =
+  ## the panel made again by one of its own buttons, keeping what was typed into its other parts (keepTyped)
+  w.keepTyped(w.panel, w.rebuildPanel, drop)
+
+proc rebuildSideKeeping*(w: Win) =
+  ## the sidebar made again on the same tab, keeping what was typed into its search field (keepTyped) and the result
+  ## selected in its list (a Show button acts on it); a search whose field went with the page (the procedures went
+  ## with new plant data) is nothing to show the person
+  let picked = if w.sidePicked != nil: w.sidePicked() else: ""
+  w.keepTyped(w.side, w.rebuildSide, tell = false)
+  if picked.len > 0 and w.sideRepick != nil: w.sideRepick(picked)
+
+proc sideHeld*(w: Win): bool =
+  ## the sidebar is not rebuilt now: the keyboard is in it (on the Drawings tab anywhere, in its lists too; on the
+  ## others in a text field). A rebuild makes every control again: the focus would be lost, and the letters typed
+  ## while the field is made again (#168: the Procedures search emptied while typing)
+  let f = GetFocus()
+  f != nil and GetParent(f) == w.side.hwnd and (w.tab == "drawings" or isEdit(f))
+
+proc sideChanged*(w: Win) =
+  ## what the sidebar shows changed underneath (a sync, an approval). Under the keyboard only what can change in place
+  ## does (sideUpdate: the search's results, the sheets' counts, the procedures' links); the rest waits until the
+  ## keyboard has left (sideCatchUp, every second). Otherwise it is made again, keeping what was typed into its search
+  if w.sideHeld():
+    if w.sideUpdate == nil or not w.sideUpdate(): w.sideStale = true
+  else: w.rebuildSideKeeping()
+
+proc sideCatchUp*(w: Win) =
+  if w.sideStale and not w.sideHeld(): w.rebuildSideKeeping()
 
 proc toast*(w: Win, msg: string) =
   w.lastMsg = msg

@@ -335,4 +335,83 @@ suite "what was typed into a page":
     page.clear()
     check not page.edited
 
+  # #168: a page made again by one of its own buttons (the tag panel's Edit, Confirm valve type …) kept nothing typed
+  proc form(notes = "", custom = "x"): seq[HWND] =
+    page.clear()
+    result.add page.field("KKS (with suffix)", "11LAB70AA501")
+    result.add page.field("Custom field value", custom)
+    result.add page.field("Custom field value", custom)
+    result.add page.multiField("Notes", notes)
+
+  test "keptText and restoreText: typed text goes back into the new page's field with the same label and start":
+    fresh()
+    var f = form()
+    f[0].setText("11LAB70AA502")
+    f[2].setText("second")              # the second of two fields with the same label and start
+    f[3].setText("line one\r\nline two")
+    let kept = page.keptText()
+    check kept.len == 3
+    f = form()
+    check not page.edited
+    check page.restoreText(kept).len == 0
+    check f[0].text == "11LAB70AA502"
+    check f[1].text == "x"
+    check f[2].text == "second"
+    check f[3].text == "line one\r\nline two"
+    check page.edited                   # still counts as typed: a sync does not rebuild over it
+    page.clear()
+
+  test "keptText leaves out what a button sent; restoreText returns what found no field":
+    fresh()
+    var f = form()
+    f[0].setText("11LAB70AA502")
+    f[3].setText("my notes")
+    let kept = page.keptText(drop = [f[0]])       # the reading was sent: its field starts again from the data
+    check kept.len == 1 and kept[0].name == "Notes"
+    f = form(notes = "changed underneath")        # the stored notes changed meanwhile
+    let lost = page.restoreText(kept)
+    check lost.len == 1 and lost[0].text == "my notes"    # not put over the new value: Save would send it as a change of it
+    check f[3].text == "changed underneath"
+    check f[0].text == "11LAB70AA501"
+    check not page.edited
+    page.clear()
+
+  test "a keyed field goes back only to the field with its key; a password is never kept":
+    fresh()
+    page.clear()
+    let mn = page.field("Custom field value", "0", key = "custom value Min")
+    let mx = page.field("Custom field value", "0", key = "custom value Max")
+    let pw = page.field("Passphrase", "", password = true)
+    mn.setText("5")
+    pw.setText("secret words")
+    let kept = page.keptText()
+    check kept.len == 1 and kept[0].key == "custom value Min"
+    page.clear()                                    # Min was removed underneath: only Max is left, also made with "0"
+    let mx2 = page.field("Custom field value", "0", key = "custom value Max")
+    let lost = page.restoreText(kept)
+    check lost.len == 1 and lost[0].text == "5"
+    check mx2.text == "0"                           # not put into Max (Save would send it as Max's new value)
+    discard mx
+    page.clear()
+
+suite "a list's rows put in place (a sync under the keyboard)":
+  test "updateRows replaces only the rows whose text changed, keeping the selection":
+    # a row replaced is a new row for UI Automation: one picked by a screen reader or the e2e driver just before the
+    # sync no longer acts. Item data shows which rows are the same rows as before (it goes with a replaced row)
+    fresh()
+    page.clear()
+    let l = page.list(@["a", "b", "c"])
+    for i in 0 .. 2: SendMessageW(l, 0x019A'u32, WPARAM(i), LPARAM(100 + i))     # LB_SETITEMDATA
+    SendMessageW(l, LB_SETCURSEL, 1, 0)
+    l.updateRows(@["a", "b", "c"])                                                # nothing changed
+    check SendMessageW(l, 0x0199'u32, 0, 0) == 100 and SendMessageW(l, 0x0199'u32, 1, 0) == 101   # LB_GETITEMDATA
+    l.updateRows(@["a2", "b", "c"])                                               # one row's text changed
+    check SendMessageW(l, 0x0199'u32, 1, 0) == 101 and SendMessageW(l, 0x0199'u32, 2, 0) == 102
+    check SendMessageW(l, LB_GETCURSEL, 0, 0) == 1
+    check SendMessageW(l, LB_GETCOUNT, 0, 0) == 3
+    l.updateRows(@["a2", "b"])                                                    # a row went: all made again
+    check SendMessageW(l, LB_GETCOUNT, 0, 0) == 2
+    check SendMessageW(l, LB_GETCURSEL, 0, 0) == 1
+    page.clear()
+
 DestroyWindow(main)

@@ -267,10 +267,16 @@ type
     height: int          ## for lists, multi-line fields, custom
     natW, natH: int      ## ikAspect: natural size (DIPs)
     text: string         ## for labels (height is measured)
+  Typed = object                ## a field a person can type into
+    h: HWND
+    name: string                ## its label (what the person reads)
+    key: string                 ## what it holds: its label, or a key of its own (a custom field's name)
+    was: string                 ## the text it was made with
+    secret: bool                ## a password: never kept across a rebuild, never shown
   Page* = ref object
     hwnd*: HWND
     items: seq[Item]
-    typed: seq[(HWND, string)]    ## the fields a person can type into, each with the text it was made with
+    typed: seq[Typed]
     scroll: int
     contentH: int
 
@@ -347,10 +353,13 @@ var
   relayoutWanted = false
   onLink*: proc (target: string)                       ## set by the screen that shows rich text
 
+var listRows = initTable[HWND, seq[string]]()     ## each list's rows as last put in (updateRows compares)
+
 proc forgetControl*(h: HWND) =
   ## the control is going (its page is rebuilt or closed, its window destroyed): nothing queued for it runs any more
   ctls.del h
   notifies.del h
+  listRows.del h
   ownerDraws.del h
   tracks.del h
   richH.del h
@@ -578,8 +587,41 @@ proc clear*(p: Page) =
 proc edited*(p: Page): bool =
   ## something was typed into one of the page's fields and is still there: a rebuild now would lose it
   if p == nil or p.hwnd == nil: return false
-  for (h, was) in p.typed:
-    if IsWindow(h) != 0 and h.text != was: return true
+  for f in p.typed:
+    if IsWindow(f.h) != 0 and f.h.text != f.was: return true
+
+type KeptText* = seq[tuple[name, key, was: string, nth: int, text: string]]
+  ## what was typed into a page's fields, each by its label, what it holds (field's `key`), the text it was made with and
+  ## which of the fields with both it was (so it finds its field again in the page made anew)
+
+proc keptText*(p: Page, drop: openArray[HWND] = []): KeptText =
+  ## what was typed into the page's fields and is still there, except in the fields in `drop` (what a button has just
+  ## sent, or a form it closes), to be put back with restoreText once the page is made again (#168)
+  if p == nil or p.hwnd == nil: return
+  for i, f in p.typed:
+    var nth = 0
+    for j in 0 ..< i:
+      if p.typed[j].key == f.key and p.typed[j].was == f.was: inc nth
+    if IsWindow(f.h) == 0 or f.h in drop or f.secret: continue
+    let t = f.h.text
+    if t != f.was: result.add (f.name, f.key, f.was, nth, t)
+
+proc restoreText*(p: Page, kept: KeptText): KeptText =
+  ## each kept text back into the page's field with the same label made with the same text (the n-th such field for
+  ## the n-th); it still counts as typed (`edited`). -> what found no such field: its part of the page has gone, or the
+  ## value the field shows changed underneath (put back, it would be sent as a change of the new value)
+  if p == nil or p.hwnd == nil: return kept
+  for k in kept:
+    var nth = 0
+    var found = false
+    for f in p.typed:
+      if f.key == k.key and f.was == k.was and IsWindow(f.h) != 0:
+        if nth == k.nth:
+          f.h.setText(k.text)
+          found = true
+          break
+        inc nth
+    if not found: result.add k
 
 
 proc label*(p: Page, text: string): HWND {.discardable.} =
@@ -594,12 +636,15 @@ proc dim*(p: Page, text: string): HWND {.discardable.} =
   result = control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL, font = fontSmall)[0]
   p.items.add Item(kind: ikDim, hwnds: @[result], text: text)
 
-proc field*(p: Page, name, value: string, password = false, readonly = false, onChange: proc () = nil): HWND {.discardable.} =
+proc field*(p: Page, name, value: string, password = false, readonly = false, onChange: proc () = nil,
+            key = ""): HWND {.discardable.} =
+  ## key: what the field holds, where its label doesn't say (a custom field's value: its name), so that what was typed
+  ## goes back into the field for the same thing when the page is made again (restoreText)
   let lab = control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX)[0]
   let (e, _) = control(p.hwnd, "EDIT", value, WS_TABSTOP or ES_AUTOHSCROLL or (if password: ES_PASSWORD else: 0) or
                        (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)
   if onChange != nil: ctl(e).change = onChange
-  if not readonly: p.typed.add (e, e.text)
+  if not readonly: p.typed.add Typed(h: e, name: name, key: (if key.len > 0: key else: name), was: e.text, secret: password)
   p.items.add Item(kind: ikField, hwnds: @[lab, e])
   e
 
@@ -607,7 +652,7 @@ proc multiField*(p: Page, name, value: string, height = 90, readonly = false): H
   let lab = control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX)[0]
   result = control(p.hwnd, "EDIT", value.replace("\n", "\r\n"), WS_TABSTOP or WS_VSCROLL or ES_MULTILINE or
                           ES_AUTOVSCROLL or ES_WANTRETURN or (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)[0]
-  if not readonly: p.typed.add (result, result.text)
+  if not readonly: p.typed.add Typed(h: result, name: name, key: name, was: result.text)
   p.items.add Item(kind: ikMulti, hwnds: @[lab, result], height: height)
 
 proc toSpec*[F](x: (string, F)): (string, proc ()) =
@@ -638,6 +683,7 @@ proc list*(p: Page, rows: seq[string], height = 200, onSelect: proc (i: int) = n
   ## no Invoke for UI Automation, and a button is reachable the same way for every user)
   let (l, _) = control(p.hwnd, "LISTBOX", "", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT, WS_EX_CLIENTEDGE)
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  listRows[l] = rows
   if onSelect != nil: onSelectList(l, onSelect)
   if onActivate != nil: onActivateList(l, onActivate)
   p.items.add Item(kind: ikList, hwnds: @[l], height: height)
@@ -667,6 +713,7 @@ proc pictureList*(p: Page, rows: seq[string], draw: OwnerDraw, height = 200, onA
                        LBS_OWNERDRAWFIXED or LBS_HASSTRINGS, WS_EX_CLIENTEDGE)
   ownerDraws[l] = draw
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  listRows[l] = rows
   if onActivate != nil: onActivateList(l, onActivate)
   p.items.add Item(kind: ikList, hwnds: @[l], height: height)
   if onActivate != nil and openLabel.len > 0:
@@ -684,12 +731,24 @@ proc picture*(p: Page, name: string, height: int, draw: OwnerDraw): HWND {.disca
   p.items.add Item(kind: ikCustom, hwnds: @[result], height: height)
 
 proc updateRows*(l: HWND, rows: seq[string]) =
-  ## new texts for a list's rows, keeping the selection and the scroll position (a sync, under the focus)
+  ## new texts for a list's rows, keeping the selection and the scroll position (a sync, under the focus). Only the
+  ## rows whose text changed are replaced, and nothing when none did: a row replaced is a new row for UI Automation,
+  ## so what a screen reader (or the e2e driver) had found of it no longer acts (a sync under the keyboard made every
+  ## row anew, and a search result picked just then was not selected)
+  if listRows.hasKey(l) and listRows[l] == rows: return
   let sel = SendMessageW(l, LB_GETCURSEL, 0, 0)
   let top = SendMessageW(l, 0x018E'u32, 0, 0)         # LB_GETTOPINDEX
   SendMessageW(l, 0x000B'u32, 0, 0)                   # WM_SETREDRAW off
-  SendMessageW(l, LB_RESETCONTENT, 0, 0)
-  for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  let old = listRows.getOrDefault(l)
+  if listRows.hasKey(l) and old.len == rows.len:
+    for i in 0 ..< rows.len:
+      if old[i] != rows[i]:
+        SendMessageW(l, 0x0182'u32, WPARAM(i), 0)     # LB_DELETESTRING
+        discard sendText(l, 0x0181'u32, WPARAM(i), rows[i])    # LB_INSERTSTRING
+  else:
+    SendMessageW(l, LB_RESETCONTENT, 0, 0)
+    for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  listRows[l] = rows
   if sel >= 0 and sel < rows.len: SendMessageW(l, LB_SETCURSEL, WPARAM(sel), 0)
   if top >= 0: SendMessageW(l, 0x0197'u32, WPARAM(top), 0)    # LB_SETTOPINDEX
   SendMessageW(l, 0x000B'u32, 1, 0)
@@ -817,6 +876,7 @@ proc fill*(p: Page, h: HWND, minHeight: int) =
 proc setRows*(l: HWND, rows: seq[string]) =
   SendMessageW(l, LB_RESETCONTENT, 0, 0)
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  listRows[l] = rows
 
 proc ask*(owner: HWND, title, text: string): bool =
   MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OKCANCEL or MB_ICONQUESTION) == IDOK
