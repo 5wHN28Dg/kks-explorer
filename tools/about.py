@@ -149,18 +149,19 @@ def text(doc):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--check', action='store_true')
+    ap.add_argument('--file', default=os.path.join(REPO, OUT), help='the file to write or check (default: %(default)s)')
     a = ap.parse_args(argv)
     want = text(build())
-    path = os.path.join(REPO, OUT)
+    path = a.file
     if a.check:
         have = open(path, encoding='utf-8').read() if os.path.exists(path) else ''
         if have != want:
-            print(f'{OUT} is not current: run python3 tools/about.py', file=sys.stderr)
+            print(f'{path} is not current: run python3 tools/about.py', file=sys.stderr)
             return 1
         return 0
     with open(path, 'w', encoding='utf-8') as f:
         f.write(want)
-    print(f'wrote {OUT} ({len(want.encode())} bytes)')
+    print(f'wrote {path} ({len(want.encode())} bytes)')
     return 0
 
 

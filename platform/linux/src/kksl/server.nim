@@ -807,7 +807,6 @@ proc offlineList(s: Server): JNode =
     if fileExists(full): add(url, getFileSize(full), $getLastModificationTime(full).toUnix)
   for url, name in Shell:
     if url != "/sw.js": addFile(url, s.cfg.webDir / name)     # (the browser keeps the worker's script itself)
-  add("/api/about", aboutText.len, hex(s.p.sha256(aboutText.toBytes))[0 ..< 16])   # the About view, offline too
   let vroot = absolutePath(s.cfg.webDir / "vendor")
   if dirExists(vroot):
     for f in walkDirRec(vroot):
@@ -826,7 +825,9 @@ proc offlineList(s: Server): JNode =
   if s.cfg.dataDir.len > 0 and dirExists(droot):
     for f in walkDirRec(droot):
       let rel = f[droot.len + 1 .. ^1].replace(DirSep, '/')
-      # (about.json: the pages read it through /api/about, listed above)
+      # (not about.json: the pages read it through /api/about, which the service worker keeps when About opens. Not
+      # in this list either: it names the commit, and a list whose version changed with every deploy made every device
+      # fetch its whole offline copy again)
       if rel notin plantFiles and rel & ".gz" notin plantFiles and f.splitFile.ext in [".json", ".jxl"] and rel != "about.json":
         addFile("/data/" & rel.split('/').mapIt(encodeComponent(it)).join("/"), f)
   files.sort(proc (x, y: (string, int64)): int = cmp(x[0], y[0]))

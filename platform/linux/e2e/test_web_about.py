@@ -62,7 +62,8 @@ class WebAbout(unittest.TestCase):
         self.assertEqual(src.get_attribute('rel'), 'noopener noreferrer')
         if a['commit']:
             expect(dlg.locator('.kab-version code')).to_have_text(a['commit'][:12])
-            expect(src).to_have_text('Source code of this version')
+            expect(src).to_have_text("Source code of that commit, without this build's local changes (they are not published)"
+                                     if a['modified'] else 'Source code of this version')
             self.assertTrue(a['source'].endswith('/tree/' + a['commit']))
         expect(dlg).to_contain_text('By Walkdown contributors. Licence: GNU Affero General Public License v3.0 or later.')
         for name, url in (('Home page', d['links']['homepage']), ('Report a problem', d['links']['issues']), ('Help', d['links']['help'])):
@@ -107,6 +108,32 @@ class WebAbout(unittest.TestCase):
             page.keyboard.press('Escape')
             expect(dlg).to_have_count(0)
 
+            # (in a context of its own without the service worker: routes don't see what a worker answers)
+            rctx = browser.new_context(service_workers='block')
+            rctx.add_init_script(CSP_WATCH)
+            rp = rctx.new_page()
+            rerrors = PageErrors(rp)
+            rp.goto(self.base + '/')
+            rdlg = rp.locator('dialog#kabout')
+            # a build with local changes: the link says it is the commit the build started from, not this version
+            changed = dict(self.about, commit='0123456789abcdef0123456789abcdef01234567', modified=True,
+                           source='https://github.com/5wHN28Dg/kks-explorer/tree/0123456789abcdef0123456789abcdef01234567')
+            rp.route('**/api/about', lambda r: r.fulfill(status=200, content_type='application/json', body=json.dumps(changed)))
+            rp.get_by_role('button', name='About Walkdown').click()
+            expect(rdlg.locator('.kab-version')).to_contain_text('commit 0123456789ab with local changes')
+            expect(rdlg.locator('.kab-version a')).to_have_text("Source code of that commit, without this build's local changes (they are not published)")
+            self.assertEqual(rdlg.locator('.kab-version a').get_attribute('href'), changed['source'])
+            # an error from the server is said as one, not as "not saved"
+            rp.unroute('**/api/about')
+            rp.route('**/api/about', lambda r: r.fulfill(status=500, content_type='application/json', body='{"error": "internal error"}'))
+            rp.keyboard.press('Escape')
+            expect(rdlg).to_have_count(0)
+            rp.get_by_role('button', name='About Walkdown').click()
+            expect(rdlg).to_contain_text('The About page could not be loaded: internal error')
+            rp.unroute('**/api/about')
+            self.assertEqual(rerrors, [])
+            rctx.close()
+
             # ---- 2. signed in, the main page's About button
             f = page.locator('#kov form')
             f.locator('input[name=username]').fill('boss')
@@ -134,7 +161,9 @@ class WebAbout(unittest.TestCase):
 
             # ---- 4. offline: the service worker's copy
             page.wait_for_function("() => navigator.serviceWorker.controller")
-            page.evaluate("fetch('/api/about')")   # (through the worker, which keeps it)
+            page.locator('#tabs').get_by_role('button', name='Account').click()   # opened again, now through the worker
+            page.locator('#tabs').get_by_role('button', name='About').click()
+            expect(page.locator('#main .kab')).to_be_visible()
             page.wait_for_function("async () => !!(await caches.match('/api/about'))")
             self.server.terminate(); self.server.wait(5)
             if name != 'webkit': ctx.set_offline(True)

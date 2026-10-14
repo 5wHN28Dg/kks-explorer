@@ -41,7 +41,7 @@ async function failed(e){
 
 // Updates is its own tab, not part of Account (the Android app shows updates in its own screens)
 const canUpdate=()=>!K.cfg?.app&&(K.cfg?.mode==='peer'||isAdmin());
-const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['board','Leaderboard',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isManager()&&!K.cfg?.app],['history','History',isAdmin],['updates','Updates',canUpdate],['account','Account',()=>true],['about','About',()=>true]];
+const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['board','Leaderboard',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isManager()&&!K.cfg?.app],['history','History',isAdmin],['updates','Updates',canUpdate],['account','Account',()=>true],['about','About',()=>!K.cfg?.app]];
 async function init(){
   ME=await K.start(); K.toast=toast;
   $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`;

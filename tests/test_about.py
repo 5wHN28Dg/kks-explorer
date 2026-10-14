@@ -9,7 +9,7 @@
   notice of its own; nothing in it names a plant or a person of the project;
 - every build that packs data/ packs about.json too (Flatpak, MSIX, the server's install).
   .venv/bin/python -m unittest tests.test_about"""
-import json, os, re, subprocess, sys, unittest
+import json, os, re, subprocess, sys, tempfile, unittest, urllib.parse
 import xml.etree.ElementTree as ET
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -29,16 +29,18 @@ class About(unittest.TestCase):
         self.assertEqual(about.main(['--check']), 0, 'run python3 tools/about.py and commit data/about.json')
 
     def test_check_notices_a_stale_file(self):
-        """the check itself: a file that differs is reported"""
-        with open(ABOUT, encoding='utf-8') as f:
-            good = f.read()
-        try:
-            with open(ABOUT, 'w', encoding='utf-8') as f:
-                f.write(good.replace('"Walkdown contributors"', '"Someone else"', 1))
-            self.assertEqual(about.main(['--check']), 1)
-        finally:
-            with open(ABOUT, 'w', encoding='utf-8') as f:
-                f.write(good)
+        """the check itself, on a copy: the same file passes, a changed one or none is reported"""
+        with tempfile.TemporaryDirectory() as tmp:
+            f = os.path.join(tmp, 'about.json')
+            self.assertEqual(about.main(['--file', f]), 0)
+            self.assertEqual(about.main(['--check', '--file', f]), 0)
+            with open(f, encoding='utf-8') as fh:
+                good = fh.read()
+            with open(f, 'w', encoding='utf-8') as fh:
+                fh.write(good.replace('"Walkdown contributors"', '"Someone else"', 1))
+            self.assertEqual(about.main(['--check', '--file', f]), 1)
+            os.remove(f)
+            self.assertEqual(about.main(['--check', '--file', f]), 1)
 
     def test_settled_content(self):
         d = load()
@@ -127,8 +129,9 @@ class About(unittest.TestCase):
         commons = [p for p in d['photos'] if 'Wikimedia Commons' in p['text']]
         self.assertGreater(len(commons), 20)
         for p in commons:   # the licence (a link, or public domain) and the picture's page
-            self.assertTrue('creativecommons.org/' in json.dumps(p['links']) or 'Public domain' in p['text'], p['file'])
-            self.assertIn('commons.wikimedia.org/wiki/File:', json.dumps(p['links']), p['file'])
+            urls = [urllib.parse.urlsplit(link['url']) for link in p['links']]
+            self.assertTrue(any(u.hostname == 'creativecommons.org' for u in urls) or 'Public domain' in p['text'], p['file'])
+            self.assertTrue(any(u.hostname == 'commons.wikimedia.org' and u.path.startswith('/wiki/File:') for u in urls), p['file'])
 
     def test_names_no_plant_or_person(self):
         """public content: our side of it names no plant and no member of the project (third parties' copyright
@@ -147,6 +150,7 @@ class About(unittest.TestCase):
                       read('apps', 'gnome', 'flatpak', 'io.github._5wHN28Dg.walkdown.yml'))
         self.assertRegex(read('packaging', 'windows', 'make-msix.sh'), r'cp "\$REPO/data/about.json" "\$W/layout/data/"')
         self.assertIn('"$REPO/data/about.json"', read('deploy', 'install-server-user.sh'))
+        # (Android's assets: android/app2/build.gradle.kts copyData, added by the Android About change)
 
 
 if __name__ == '__main__':

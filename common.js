@@ -244,9 +244,11 @@ K.aboutView = a => {
   const used = [...new Set([d.license.id, ...d.components.filter(c => c.platforms.web || c.platforms.server).flatMap(c => c.license_ids)])].sort();
   return h('div', {class: 'kab'},
     h('h1', null, d.name), h('p', null, d.summary),
+    // (a build with local changes: the link is the commit it started from, and says so)
     h('p', {class: 'kab-version'}, `Server version ${a.version}`,
       a.commit ? [', commit ', h('code', null, a.commit.slice(0, 12)), a.modified ? ' with local changes' : ''] : ' (commit unknown)', '. ',
-      link(a.commit ? 'Source code of this version' : 'Source code', a.source), '.'),
+      link(!a.commit ? 'Source code' : a.modified ? 'Source code of that commit, without this build\'s local changes (they are not published)'
+                                                  : 'Source code of this version', a.source), '.'),
     h('p', null, `By ${d.developer}. Licence: `, link(d.license.name, d.license.url), '.'),
     h('p', {class: 'kab-sub'}, d.notice),
     h('p', {class: 'kab-links'}, link('Home page', d.links.homepage), link('Report a problem', d.links.issues), link('Help', d.links.help)),
@@ -266,11 +268,17 @@ K.aboutStyle = () => {
   if (document.getElementById('kaboutcss')) return;
   const s = document.createElement('style'); s.id = 'kaboutcss'; s.textContent = K.aboutCss; document.head.appendChild(s);
 };
-// what is shown when /api/about can't be had: offline, and never opened before on this device
-K.aboutUnsaved = () => K.h('div', {class: 'kab'}, K.h('h1', null, 'Walkdown'),
-  K.h('p', null, 'The About page is not saved on this device yet: open it once while the server can be reached.'));
+// what is shown when /api/about can't be had: offline and never opened before on this device, or the server's error
+K.aboutUnsaved = e => K.h('div', {class: 'kab'}, K.h('h1', null, 'Walkdown'),
+  K.h('p', null, e?.status ? `The About page could not be loaded: ${e.message}`
+                           : 'The About page is not saved on this device yet: open it once while the server can be reached.'));
 // -> the About for a page of its own (Manage → About)
-K.aboutPage = async () => { K.aboutStyle(); const a = await K.api('/api/about').catch(() => null); return a ? K.aboutView(a) : K.aboutUnsaved() };
+K.aboutPage = async () => {
+  K.aboutStyle();
+  let a, err;
+  try { a = await K.api('/api/about') } catch (e) { err = e }
+  return a?.about?.format === 'walkdown-about' ? K.aboutView(a) : K.aboutUnsaved(err || {status: 1, message: 'an answer this page does not know'});
+};
 // the About in a dialog over the page (Escape or Close ends it)
 K.about = async () => {
   const body = await K.aboutPage();
@@ -279,7 +287,9 @@ K.about = async () => {
   const close = K.h('button', {type: 'button', class: 'kab-close', onclick: () => dlg.close()}, 'Close');
   dlg.append(close, body);
   dlg.addEventListener('close', () => dlg.remove());
-  document.body.appendChild(dlg); dlg.showModal(); close.focus();
+  document.body.appendChild(dlg);
+  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');   // (Safari before 15.4: shown, not modal)
+  close.focus();
   return dlg;
 };
 

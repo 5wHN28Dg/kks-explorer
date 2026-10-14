@@ -1,6 +1,7 @@
 ## kks-server: the always-on peer for browser clients (M6, decisions 0026, 0030).
 ##   kks-server [serve] [--config F]
-##   kks-server --version | version: the version and the commit this program was built from (no config needed)
+##   kks-server --version | version: the version and the commit this program was built from, and where its source is
+##     (no config needed)
 ##   kks-server users | reset-password --user NAME | reset-manager --user NAME | setup-link
 ##   kks-server publish-data DIR | set-plant-name NAME | submit-file FILE.json
 ##   kks-server web-sign-in --user NAME: a web account for someone who joined with the app and has none (the same
@@ -57,9 +58,13 @@ proc main() =
     elif cmd == "serve" and i == 1: cmd = a
     else: rest.add a
     inc i
-  if cmd in ["--version", "version"]:
+  # (anywhere on the line: `kks-server serve --version` says the version too, it doesn't start a server)
+  var wantVersion = cmd == "version"
+  for k in 1 .. paramCount():
+    if paramStr(k) == "--version": wantVersion = true
+  if wantVersion:
     echo versionLine("Walkdown server")
-    echo "Source: ", SourceUrl
+    echo sourceLine()
     return
   if "config" in args: cfgPath = args["config"]
   var cfg: Config

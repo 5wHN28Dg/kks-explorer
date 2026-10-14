@@ -20,17 +20,27 @@ proc isCommit(s: string): bool =
   s.len == 40 and s.allCharsInSet(HexDigits) and s.toLowerAscii == s
 
 const
+  git = "git -C " & quoteShell(repoDir) & " "
+  # the source must be this repository's own checkout, not a folder inside some other one
+  gitTop = when kksCommit.len > 0: "" else: staticExec(git & "rev-parse --show-toplevel 2>/dev/null").strip
+  inGit = gitTop.len > 0 and staticExec(git & "rev-parse --show-prefix 2>/dev/null").strip.len == 0   # (repoDir is the top)
   gitCommit = when kksCommit.len > 0: kksCommit
-              else: staticExec("git -C " & quoteShell(repoDir) & " rev-parse HEAD 2>/dev/null").strip
+              elif inGit: staticExec(git & "rev-parse HEAD 2>/dev/null").strip
+              else: ""
   Commit* = when isCommit(gitCommit): gitCommit else: ""   ## "" when not known
   Modified* = when kksDirty.len > 0: kksDirty == "true"     ## the build had changes the commit doesn't hold
-              elif Commit.len == 0: false
-              else: gorgeEx("git -C " & quoteShell(repoDir) & " diff --quiet HEAD -- .").exitCode != 0
+              elif Commit.len == 0: false                  ## (changed or new files, as `git status` shows them)
+              else: staticExec(git & "status --porcelain -- . 2>/dev/null").strip.len > 0
   SourceUrl* = if Commit.len > 0: Repository & "/tree/" & Commit else: Repository   ## where this build's source is
+                                                                                    ## (without its local changes when Modified)
 
 static:
   doAssert kksDirty in ["", "true", "false"], "-d:kksDirty must be true or false"
   doAssert kksCommit.len == 0 or isCommit(kksCommit), "-d:kksCommit must be a full commit hash (40 lowercase hex digits)"
+
+proc sourceLine*(): string =
+  ## where the source is, said honestly for a build with local changes
+  (if Modified: "Source (the commit this build started from; its local changes are not published): " else: "Source: ") & SourceUrl
 
 proc versionLine*(program: string): string =
   ## "<program> 0.10.3 (commit 0123456789ab, with local changes)"

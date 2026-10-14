@@ -1659,8 +1659,14 @@ class About(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         line = f"Walkdown server {a['version']} (commit " + (a['commit'][:12] + (', with local changes' if a['modified'] else '') + ')'
                                                             if a['commit'] else 'unknown)')
-        self.assertEqual(r.stdout.splitlines(), [line, 'Source: ' + a['source']])
+        src = ('Source (the commit this build started from; its local changes are not published): ' if a['modified']
+               else 'Source: ') + a['source']
+        self.assertEqual(r.stdout.splitlines(), [line, src])
         self.assertEqual(subprocess.run([BIN, 'version'], capture_output=True, text=True, timeout=30).stdout, r.stdout)
+        # anywhere on the line: it says the version and starts nothing
+        for args in (['serve', '--version'], ['--config', os.path.join(self.dir, 'config.json'), '--version'], ['--version', '--config', 'x']):
+            r2 = subprocess.run([BIN, *args], capture_output=True, text=True, timeout=30, cwd=self.dir)
+            self.assertEqual((r2.returncode, r2.stdout), (0, r.stdout), args)
         # (no config or storage key needed: the version is said before either is read)
         r = subprocess.run([BIN, '--version'], capture_output=True, text=True, timeout=30, cwd=self.dir,
                            env=dict(os.environ, KKS_CONFIG=os.path.join(self.dir, 'no-such-config.json')))
@@ -1691,11 +1697,10 @@ class OfflineList(Base):
         self.assertTrue(any(u.startswith('/vendor/fonts/') and u.endswith('.woff2') for u in urls))
         self.assertTrue(any(u.startswith('/data/courses/') and u.endswith('.jxl') for u in urls))
         self.assertNotIn('/sw.js', urls)
-        # the About page (public), once: not also as the program's data file /api/about is made from
-        self.assertIn('/api/about', urls)
+        # not the About (its file, nor /api/about: it names the commit, so the list's version would change with every
+        # deploy, and every device would fetch its whole offline copy again; the service worker keeps it when opened)
         self.assertNotIn('/data/about.json', urls)
-        with urllib.request.urlopen(self.base + '/api/about') as r:
-            self.assertEqual(dict(map(tuple, L['files']))['/api/about'], len(r.read()))
+        self.assertNotIn('/api/about', urls)
         self.assertFalse([u for u in urls if u.endswith(('.md', '.txt', '.ttf')) or 'SHA256SUMS' in u or '..' in u])
         # every one is served, and is as long as the list says
         for u, n in L['files']:

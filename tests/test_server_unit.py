@@ -169,7 +169,9 @@ class ServerUnit(unittest.TestCase):
         """the server says the commit it was built from (kks-server --version, /api/about, the About's link to that
         source): the install passes the commit it names the install after, and whether the checkout had changes"""
         commit = subprocess.run(['git', '-C', REPO, 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True).stdout.strip()
-        dirty = subprocess.run(['git', '-C', REPO, 'diff', '--quiet', 'HEAD', '--', '.']).returncode != 0
+        # changed or new files (an untracked file would be built in or installed too)
+        dirty = subprocess.run(['git', '-C', REPO, 'status', '--porcelain', '--', '.'], capture_output=True, text=True,
+                               check=True).stdout.strip() != ''
         with tempfile.TemporaryDirectory() as tmp:
             r, home = self.install(tmp, KKS_SERVER_UNIT='system')
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -181,6 +183,21 @@ class ServerUnit(unittest.TestCase):
             name = os.readlink(os.path.join(home, 'kks-server', 'app', 'current'))
             self.assertTrue(name.startswith(commit[:7], name.index('-') + 1), name)
             self.assertEqual(name.endswith('-dirty'), dirty, name)
+            subprocess.run(['chmod', '-R', 'u+w', home])
+
+    def test_install_without_git(self):
+        """a source tree git can't read (no .git, or git refuses it) still installs, as <version>-unknown, and the
+        server is built without a commit (it then says "commit unknown"; before, `set -e` stopped the install)"""
+        with tempfile.TemporaryDirectory() as tmp:
+            r, home = self.install(tmp, KKS_SERVER_UNIT='system', GIT_DIR=os.path.join(tmp, 'no-repository'))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(REPO, 'VERSION')) as f:
+                self.assertEqual(os.readlink(os.path.join(home, 'kks-server', 'app', 'current')), f.read().strip() + '-unknown')
+            with open(os.path.join(tmp, 'nim.log')) as f:
+                server = [line for line in f if 'kks_server.nim' in line]
+            self.assertEqual(len(server), 1)
+            self.assertNotIn('kksCommit', server[0])
+            self.assertNotIn('kksDirty', server[0])
             subprocess.run(['chmod', '-R', 'u+w', home])
 
     def test_user_install_rejects_an_unknown_unit_kind(self):
