@@ -365,6 +365,11 @@ class WebSignOut(unittest.TestCase):
             page.evaluate("""() => { window.sameDocument = true; window.asked = []; const f = window.fetch;
                 window.fetch = (u, o) => { if (o && o.method === 'POST' && /import-request|join-requests\\/|invites\\//.test(String(u)))
                   asked.push([String(u).replace(/^.*\\/api\\//, ''), JSON.parse(o.body)]); return f(u, o) } }""")
+            def settled():
+                """until the rebuilds put off while a form above was open have come (none started for 2 s): one landing
+                later would replace what the next step opens"""
+                page.evaluate("""() => new Promise(r => { let g = SHOW_GEN, n = 0;
+                    const t = setInterval(() => { if (SHOW_GEN !== g) { g = SHOW_GEN; n = 0 } else if (++n >= 8) { clearInterval(t); r() } }, 250) })""")
             def mine():
                 return {d['device'] for d in self.sara.req('GET', '/api/devices')['mine']}
             self.sara = Client(self.base)
@@ -494,6 +499,7 @@ class WebSignOut(unittest.TestCase):
             expect(own2.get_by_role('button', name='Refuse')).to_have_count(1)
 
             # ---- 4c. a QR invite answered by a device of one's own (stand-ins again: no sync port here)
+            settled()
             inv = {'state': 'asked', 'request': {'full_name': 'Sara Admin', 'username': 'sara', 'label': 'tablet', 'device': 'dev-qr'},
                    'existing': {'username': 'sara', 'full_name': 'Sara Admin', 'role': 'admin'}, 'needs_position': False, 'exp': 0, 'seen': 0}
             def invite(r):
@@ -526,6 +532,59 @@ class WebSignOut(unittest.TestCase):
             self.assertEqual([x for x in page.evaluate('window.asked') if x[0].startswith('invites/')], [
                 ['invites/tok1', {'action': 'accept', 'existing_ok': True, 'password': 'a guess'}],
                 ['invites/tok1', {'action': 'accept', 'existing_ok': True, 'password': PW}]])
+
+            # ---- 4d. something done here whose answer, or the page drawn with it, comes while a password is being
+            # typed in another form: the form stays, and the page is drawn once the form is left
+            settled()
+            mycard = page.locator('#main .card', has=page.locator('h3', has_text='Your devices'))
+            STALE = "() => { const i = document.createElement('i'); i.id = 'stale'; document.querySelector('#main').append(i) }"
+            def meanwhile(start, check=None):
+                """start (script) does something; the own device's Remove form is opened and typed in meanwhile"""
+                expect(mycard.locator('tr', has_text='laptop').get_by_role('button', name='Remove', exact=True)).to_be_visible()
+                page.evaluate(start)
+                mycard.locator('tr', has_text='laptop').get_by_role('button', name='Remove', exact=True).click()
+                field = mycard.locator('form input[name=password]')
+                expect(field).to_be_focused()
+                field.fill('typing meanwhile')
+                page.evaluate(STALE)                                          # (gone when the page is drawn again)
+                page.wait_for_timeout(4000)
+                self.assertEqual((field.input_value(), page.locator('#stale').count()), ('typing meanwhile', 1))
+                if check: check()
+                mycard.get_by_role('button', name='Cancel').click()           # left: the page is drawn
+                expect(page.locator('#stale')).to_have_count(0, timeout=8000)
+                expect(mycard.locator('form')).to_have_count(0)
+            page.evaluate("""() => { const f = window.fetch;     // (slowly(re): those requests answered 2.5 s late; null: none)
+                window.slowly = re => { window.fetch = (u, o) => re && re.test(String(u)) ? new Promise(r => setTimeout(r, 2500)).then(() => f(u, o)) : f(u, o) } }""")
+            # answered at once, the page it draws slow (/api/devices): checked again when the page is drawn
+            meanwhile("() => { slowly(/\\/api\\/devices(\\?|$)/); act(() => Promise.resolve({}), 'Done at once') }")
+            # a bundle imported (its answer slow)
+            meanwhile("() => { slowly(null); K.importBundle = () => new Promise(r => setTimeout(() => r({entries: 3, photos: 0}), 1500)); importBundle({files: [{}]}) }",
+                      lambda: expect(page.locator('#toast')).to_have_text('Imported 3 entries, 0 photos'))
+            # a password link made meanwhile stays on the page through the rebuild after the form is left
+            meanwhile("""() => { act(() => new Promise(r => setTimeout(() => r({link: 'https://example.invalid/#reset=x', expires_days: 7}), 1500)))
+                .then(r => linkBox('somebody', r)) }""",
+                      lambda: expect(page.locator('#main > .warn', has_text='Password link for somebody')).to_have_count(1))
+            expect(page.locator('#main > .warn', has_text='Password link for somebody')).to_have_count(1)
+            # Your details saved (its answer slow), then Change password typed in: as above
+            page.locator('#tabs button', has_text='Account').click()
+            expect(page.locator('#main > .warn', has_text='Password link')).to_have_count(0)   # (on its own tab only)
+            details = page.locator('#main form', has=page.locator('input[name=full_name]'))
+            details.locator('input[name=full_name]').fill('Sara Admin Saved')
+            page.evaluate("() => slowly(/\\/api\\/profile/)")
+            details.locator('input[name=full_name]').press('Enter')
+            old = page.locator('#main input[name=old]')
+            old.click()
+            old.fill('typing meanwhile')
+            page.evaluate(STALE)
+            expect(page.locator('#toast')).to_have_text('Saved', timeout=5000)
+            expect(page.locator('#who')).to_contain_text('Sara Admin Saved')
+            page.wait_for_timeout(1500)
+            expect(old).to_be_focused()
+            self.assertEqual((old.input_value(), page.locator('#stale').count()), ('typing meanwhile', 1))
+            old.fill('')
+            page.evaluate('() => document.activeElement.blur()')
+            expect(page.locator('#stale')).to_have_count(0, timeout=8000)
+            expect(page.locator('#main input[name=full_name]')).to_have_value('Sara Admin Saved')
             self.assertEqual(list(errors), [])
             browser.close()
 

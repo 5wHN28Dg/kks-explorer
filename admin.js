@@ -31,10 +31,9 @@ const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.u
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
-// (the page is rebuilt with the answer, but not under a password typed meanwhile into another form than the one that
-// sent it: then as for a change elsewhere, once that form is left)
+// (the page is rebuilt with the answer: rebuild, below)
 async function act(fn,ok){ const from=document.activeElement?.closest?.('form');
-  try{ const r=await fn(); if(ok) toast(ok); if(typing()&&document.activeElement.closest('form')!==from) resync(); else await show(tab); return r }catch(e){ return failed(e) } }
+  try{ const r=await fn(); if(ok) toast(ok); await rebuild(from); return r }catch(e){ return failed(e) } }
 // signed out meanwhile (from another browser, by an admin): the sign-in screen. A wrong password typed into a form here is a 401 too: that one is said
 async function failed(e){
   if(e.status===401&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return null }
@@ -50,15 +49,16 @@ async function init(){
 }
 // Each show() gets a number; a view draws into #main only if no later show() started meanwhile (a sync and a filter
 // change, or two tabs clicked quickly: the older answer arriving last used to replace the newer page)
-let SHOW_GEN=0, QUIET=0;   // QUIET: the rebuild a change elsewhere asked for (resync, below)
-// where a view puts what it built: the page, unless a newer view was asked for, or this is a rebuild for a change
-// elsewhere and a password is being typed by then (then the rebuild is dropped, and tried again later)
+let SHOW_GEN=0, QUIET=0, QUIET_FROM=null, LINK=null;   // QUIET: the rebuild a change or an action asked for (rebuild, below)
+// where a view puts what it built: the page, unless a newer view was asked for, or this is such a rebuild and a password
+// is being typed by then in another form than the one that sent the action (then the rebuild is dropped, and tried
+// again later)
 const mainFor=g=>{ if(g!==SHOW_GEN) return document.createElement('div');
-  if(g===QUIET&&typing()){ clearTimeout(resyncT); resyncT=setTimeout(resync,1000); return document.createElement('div') }
+  if(g===QUIET&&busy(QUIET_FROM)){ clearTimeout(resyncT); resyncT=setTimeout(resync,1000); return document.createElement('div') }
   return $('#main') };
 async function show(t){
   const g=++SHOW_GEN;
-  if(t!==tab) SHOW_HIDDEN=false;   // (hidden items shown again: on the page where that was asked only)
+  if(t!==tab){ SHOW_HIDDEN=false; LINK=null }   // (hidden items shown again, a password link: on the page where they were asked only)
   tab=t; history.replaceState(null,'','#'+t);
   put($('#tabs'),TABS.filter(x=>x[2]()).map(([id,label])=>h('button',{class:'btn'+(id===t?' on':''),onclick:()=>show(id)},label,
     id==='queue'?h('span',{class:'count',id:'qn',style:'display:none'}):null,id==='users'?h('span',{class:'count',id:'un',style:'display:none'}):null,
@@ -66,13 +66,19 @@ async function show(t){
   if(t!=='users') signups().then(S=>signupBadge(S));   // account requests waiting: the Users tab shows how many (its own view fills it too)
   if(!K.online&&t!=='account'){ put(mainFor(g),h('div',{class:'warn'},'You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued and sent when you reconnect.')); return }
   try{ await VIEWS[t](g) }catch(e){ if(e.status===401) return location.reload(); put(mainFor(g),h('div',{class:'warn bad'},K.isNetErr(e)?'Cannot reach the server.':e.message)) }
+  if(LINK&&g===SHOW_GEN&&!$('#main').contains(LINK)) $('#main').prepend(LINK);
 }
 // A change elsewhere rebuilds the page, but not under a password being typed (the form in a device's row would close,
 // as a confirmation never did): not while the focus is in a form's password field, or anywhere in a form that has a
 // password typed in. Then once the person has left that form.
+// The same for the page after something done here (from: the form that sent it, rebuilt as before), checked when the
+// answer comes and again when the page is drawn.
 let resyncT=0;
 const typing=()=>{ const a=document.activeElement, f=a?.closest?.('#main form'); return !!f&&[...f.querySelectorAll('input[type=password]')].some(p=>p===a||p.value) };
-const resync=()=>{ clearTimeout(resyncT); if(typing()) resyncT=setTimeout(resync,1000); else { show(tab); QUIET=SHOW_GEN } };
+const busy=from=>typing()&&document.activeElement.closest('form')!==from;
+function rebuild(from=null){ clearTimeout(resyncT); if(busy(from)){ resyncT=setTimeout(resync,1000); return }
+  QUIET=SHOW_GEN+1; QUIET_FROM=from; return show(tab) }
+const resync=()=>rebuild();
 K.onChange(why=>{ if(why==='synced') resync() });
 addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==tab&&TABS.some(x=>x[0]===t&&x[2]())) show(t) });
 
@@ -501,7 +507,7 @@ const syncNow=address=>act(()=>K.api('/api/sync/now',{address}),'Synced');
 const setPlantName=name=>act(async()=>{await K.api('/api/settings/plant',{name}); if(K.cfg) K.cfg.plant_name=name.trim();
   document.title=(name.trim()?name.trim()+' — ':'')+'Walkdown'},name.trim()?'Plant name saved: every device shows it after its next sync':'Plant name removed');
 const setRelay=url=>act(()=>K.api('/api/settings/relay',{url}),url?'Relay saved: every device learns it at its next sync':'Relay removed');
-async function importBundle(inp){ const f=inp.files[0]; if(!f) return; try{ const r=await K.importBundle(f); toast(`Imported ${r.entries} entries, ${r.photos} photos`); show('devices') }catch(e){ toast(e.message) } }
+async function importBundle(inp){ const f=inp.files[0]; if(!f) return; try{ const r=await K.importBundle(f); toast(`Imported ${r.entries} entries, ${r.photos} photos`); rebuild() }catch(e){ toast(e.message) } }
 // ---------- join by invite (QR code, or asked on the Wi-Fi without one): PROTOCOL-v2.md §16 ----------
 let lobbyTimer=null, lobbySeen='';
 async function pollLobby(){
@@ -588,12 +594,13 @@ async function importJoin(inp,existing_ok){
   if(inp.files) inp.value='';      // (the same file chosen again is a choice again)
   if(mineName(request?.username)) return ownPassword($('#joinOwn'),'Add this device',
     password=>act(()=>K.api('/api/devices/import-request',{request,existing_ok:true,password}),'Certified a device of yours. Now give it a bundle.'),()=>{});
-  try{ const r=await K.api('/api/devices/import-request',{request,existing_ok:!!existing_ok}); toast(`Certified a device for ${r.username}. Now give them a bundle.`); show('devices') }
+  try{ const r=await K.api('/api/devices/import-request',{request,existing_ok:!!existing_ok}); toast(`Certified a device for ${r.username}. Now give them a bundle.`); rebuild() }
   catch(e){ if(e.status===409&&e.data?.existing){ const x=e.data.existing;
       if(confirm(`${x.full_name} (${x.username}, ${x.role}) already exists. Add this computer as another device of theirs? Only if you know it is them.`)) return importJoin({request},true) }
     else toast(e.message) }
 }
-const linkBox=(name,r)=>r&&$('#main').prepend(h('div',{class:'warn'},'Password link for ',h('b',null,name),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link)));
+// a one-time link stays on top of the page it was put on (through rebuilds of it) until another tab is shown (LINK)
+const linkBox=(name,r)=>r&&(LINK?.remove(),$('#main').prepend(LINK=h('div',{class:'warn'},'Password link for ',h('b',null,name),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link))));
 async function resetLink(id,name){
   if(!confirm(`Create a new password link for ${name}? Their current password keeps working until they use it.`)) return;
   linkBox(name,await act(()=>K.api(`/api/users/${id}/reset`,{})));
@@ -643,7 +650,8 @@ async function renderUpdate(u){
 }
 async function checkUpdate(){ try{ renderUpdate(await K.api('/api/update/check',{})) }catch(e){ toast(e.message) } }
 async function installUpdate(){ try{ renderUpdate(await K.api('/api/update/install',{})) }catch(e){ toast(e.message) } }
-async function saveDetails(f){ if(await act(()=>K.api('/api/profile',{full_name:f.full_name.value,position:f.position.value}),'Saved')){ ME=await K.api('/api/me'); $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`; show('account') } }
+async function saveDetails(f){ await act(async()=>{ const r=await K.api('/api/profile',{full_name:f.full_name.value,position:f.position.value});
+  ME=await K.api('/api/me').catch(()=>ME); $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`; return r },'Saved') }
 async function editDetails(id,name,pos){
   const n=prompt('Full name:',name); if(n===null) return; const p=prompt('Position (optional):',pos); if(p===null) return;
   await act(()=>K.api(`/api/users/${id}`,{full_name:n,position:p}),'Details updated');
