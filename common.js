@@ -284,11 +284,12 @@ K.about = async () => {
   const body = await K.aboutPage();
   document.getElementById('kabout')?.remove();
   const dlg = K.h('dialog', {id: 'kabout', 'aria-label': 'About Walkdown'});
-  const close = K.h('button', {type: 'button', class: 'kab-close', onclick: () => dlg.close()}, 'Close');
+  const close = K.h('button', {type: 'button', class: 'kab-close', onclick: () => dlg.close ? dlg.close() : dlg.remove()}, 'Close');
   dlg.append(close, body);
   dlg.addEventListener('close', () => dlg.remove());
   document.body.appendChild(dlg);
-  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');   // (Safari before 15.4: shown, not modal)
+  if (dlg.showModal) dlg.showModal();
+  else { dlg.setAttribute('open', ''); dlg.addEventListener('keydown', e => { if (e.key === 'Escape') dlg.remove() }) }   // (Safari before 15.4)
   close.focus();
   return dlg;
 };

@@ -25,7 +25,8 @@ HOME_DIR="${KKS_SERVER_HOME:-$HOME/kks-server}"
 NIM="${NIM:-$HOME/.nimble/bin/nim}"
 # the commit, and whether the checkout has changed or new files it doesn't hold (they would be built in or installed);
 # no commit (a source tree without git) installs as <version>-unknown
-COMMIT=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)
+# (only this repository's own checkout: not a repository the source tree happens to sit in, not one without commits)
+COMMIT=$( [ -z "$(git -C "$REPO" rev-parse --show-prefix 2>/dev/null || echo no)" ] && git -C "$REPO" rev-parse --verify -q HEAD || true)
 DIRTY=false; [ -z "$COMMIT" ] || [ -z "$(git -C "$REPO" status --porcelain -- .)" ] || DIRTY=true
 VER="$(cat "$REPO/VERSION")-$(echo "${COMMIT:-unknown}" | cut -c1-7)$([ "$DIRTY" = false ] || echo -dirty)"
 APP="$HOME_DIR/app/$VER"

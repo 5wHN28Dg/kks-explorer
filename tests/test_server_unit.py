@@ -5,7 +5,7 @@ TPM2, added 2026-10-10) and build (2026-10-09: the deployed server held 7.4 GB):
 - the importer's own address-space limit (import_memory_mb) is below that cap, so an import stops itself first;
 - the server is built with glibc's malloc (platform/linux/kks_server.nims), which gives freed memory back.
   .venv/bin/python -m unittest tests.test_server_unit"""
-import os, re, subprocess, tempfile, unittest
+import os, re, shutil, subprocess, tempfile, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -102,7 +102,7 @@ class ServerUnit(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn('root', r.stderr)
 
-    def install(self, tmp, **extra):
+    def install(self, tmp, repo=REPO, **extra):
         """deploy/install-server-user.sh in a scratch home, with a stand-in compiler that writes the file named by -o:"""
         home, nim = os.path.join(tmp, 'home'), os.path.join(tmp, 'nim')
         os.makedirs(home)
@@ -114,7 +114,7 @@ class ServerUnit(unittest.TestCase):
         env.update(extra)
         env.pop('KKS_SERVER_HOME', None)
         # the install is read-only: callers make it writable again before the scratch folder goes
-        r = subprocess.run([os.path.join(REPO, 'deploy', 'install-server-user.sh')], env=env, capture_output=True,
+        r = subprocess.run([os.path.join(repo, 'deploy', 'install-server-user.sh')], env=env, capture_output=True,
                            text=True)
         return r, home
 
@@ -198,6 +198,32 @@ class ServerUnit(unittest.TestCase):
             self.assertEqual(len(server), 1)
             self.assertNotIn('kksCommit', server[0])
             self.assertNotIn('kksDirty', server[0])
+            subprocess.run(['chmod', '-R', 'u+w', home])
+
+    def test_install_inside_another_repository(self):
+        """a source tree unpacked inside some other git repository must not take that repository's commit (the About
+        would link a commit that is not Walkdown's)"""
+        with tempfile.TemporaryDirectory() as tmp:
+            outer = os.path.join(tmp, 'outer')
+            src = os.path.join(outer, 'walkdown')
+            os.makedirs(os.path.join(src, 'importer'))
+            os.makedirs(os.path.join(src, 'platform', 'linux'))
+            for d in ('deploy', 'vendor', 'data'):
+                shutil.copytree(os.path.join(REPO, d), os.path.join(src, d))
+            for f in os.listdir(REPO):
+                if os.path.isfile(os.path.join(REPO, f)) and f != '.git':   # (a worktree's .git is a file)
+                    shutil.copy(os.path.join(REPO, f), src)
+            shutil.copy(os.path.join(REPO, 'importer', 'fontlib.kgl'), os.path.join(src, 'importer'))
+            git = ['git', '-C', outer, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid']
+            subprocess.run(git[:3] + ['init', '-q'], check=True)
+            subprocess.run(git + ['commit', '-q', '--allow-empty', '-m', 'another project'], check=True)
+            os.makedirs(os.path.join(tmp, 'run'))
+            r, home = self.install(os.path.join(tmp, 'run'), repo=src, KKS_SERVER_UNIT='system')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(REPO, 'VERSION')) as f:
+                self.assertEqual(os.readlink(os.path.join(home, 'kks-server', 'app', 'current')), f.read().strip() + '-unknown')
+            with open(os.path.join(tmp, 'run', 'nim.log')) as f:
+                self.assertNotIn('kksCommit', ''.join(line for line in f if 'kks_server.nim' in line))
             subprocess.run(['chmod', '-R', 'u+w', home])
 
     def test_user_install_rejects_an_unknown_unit_kind(self):

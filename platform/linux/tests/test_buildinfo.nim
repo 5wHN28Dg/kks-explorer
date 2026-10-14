@@ -7,9 +7,9 @@ import kksl/buildinfo
 const kksCommit {.strdefine.} = ""
 const kksDirty {.strdefine.} = ""
 const top = currentSourcePath().parentDir & "/../../.."
-const headCommit = staticExec("git -C " & top & " rev-parse HEAD 2>/dev/null").strip
+const headCommit = staticExec("git -C " & quoteShell(top) & " rev-parse HEAD 2>/dev/null").strip
 # the repository's own checkout (not a copy inside another repository, not a tree without git)
-const inCheckout = headCommit.len == 40 and staticExec("git -C " & top & " rev-parse --show-prefix 2>&1").strip.len == 0
+const inCheckout = headCommit.len == 40 and staticExec("git -C " & quoteShell(top) & " rev-parse --show-prefix 2>&1").strip.len == 0
 
 const versionFile = staticRead("../../../VERSION")
 doAssert Version == versionFile.strip

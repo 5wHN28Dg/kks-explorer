@@ -50,19 +50,17 @@ proc main() =
   var args: Table[string, string]
   var rest: seq[string]
   var i = 1
+  var wantVersion = false
   while i <= paramCount():
     let a = paramStr(i)
-    if a.startsWith("--") and i < paramCount():
+    if a == "--version": wantVersion = true   # (anywhere an option can be: `kks-server serve --version` starts nothing)
+    elif a.startsWith("--") and i < paramCount():
       args[a[2 .. ^1]] = paramStr(i + 1)
       inc i
     elif cmd == "serve" and i == 1: cmd = a
     else: rest.add a
     inc i
-  # (anywhere on the line: `kks-server serve --version` says the version too, it doesn't start a server)
-  var wantVersion = cmd == "version"
-  for k in 1 .. paramCount():
-    if paramStr(k) == "--version": wantVersion = true
-  if wantVersion:
+  if wantVersion or cmd == "version":
     echo versionLine("Walkdown server")
     echo sourceLine()
     return
