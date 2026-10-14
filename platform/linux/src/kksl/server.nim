@@ -1556,6 +1556,17 @@ proc handle(s: Server, req: Request) {.async.} =
       if me.role != "manager": herr(403, "manager only")
       await s.sendJson(req, 200, O(("job", if s.job == nil: newNull() else: s.job)))
       return
+    of "/api/devices":
+      # the core's list, with this web sign-in's own key (the account's custodial device, which the core's removal
+      # refuses: "This is the device you are using") marked, so that the page offers no Remove for it
+      let r = s.api.handle(me, meth, path, q, d, nowMs())
+      if r.status == 200 and r.json != nil:
+        for list in ["mine", "all"]:
+          let l = r.json.get(list)
+          if l != nil and l.kind == jArr:
+            for x in l.elems: x["this_signin"] = newBool(x["device"].s == me.device)
+      await s.sendJson(req, r.status, r.json)
+      return
     of "/api/update":
       await s.sendJson(req, 200, O(("available", newBool(false)), ("can_install", newBool(false)),
         ("note", S("This server is updated by its administrator (package manager)."))))

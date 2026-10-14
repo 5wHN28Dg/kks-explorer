@@ -110,6 +110,9 @@ class WebSignOut(unittest.TestCase):
             # ali in two browsers: one on the drawings with a change that could not be sent, one on Manage
             a1, a1err = self.signed_in(browser, 'ali', '/')
             a2, a2err = self.signed_in(browser, 'ali', '/admin.html#mine')
+            # (the service worker deletes every cache not its own when it moves in, at the end of which it takes the
+            # page: the test's cache is made after that, or it can be gone by the check below)
+            a1.wait_for_function("() => navigator.serviceWorker.controller")
             # (the page's own fetch fails for /api/submit, as without a connection, for as long as this document lives:
             # page.route does not see the requests WebKit's service worker makes)
             self.assertEqual(a1.evaluate("""async k => { await caches.open('kks-data-test');
@@ -269,6 +272,12 @@ class WebSignOut(unittest.TestCase):
             row = mine.locator('tr', has_text='phone')
             expect(row).to_have_count(1)
             expect(mine.locator('tr', has_text='tablet')).to_contain_text('active')
+            # the key this web sign-in itself uses (held by the server): shown as such, with no Remove (the server
+            # refuses it: "This is the device you are using"), no form, nothing to press
+            signin = mine.locator('tr', has_text='(this web sign-in)')
+            expect(signin).to_have_count(1)
+            expect(signin).to_contain_text('active')
+            self.assertEqual(signin.locator('button, input').count(), 0)
             a1.evaluate("() => { window.sameDocument = true; window.asked = []; window.confirmed = 0; const f = window.fetch;"
                         " window.confirm = () => { confirmed++; return true };"
                         " window.fetch = (u, o) => { if (String(u).includes('/api/devices/revoke')) asked.push(o.body); return f(u, o) } }")

@@ -256,9 +256,11 @@ const VIEWS={
         put(c,F,h('div',{class:'sub'},'It stops syncing; what it already holds stays on it. Your password, so that nobody who got hold of a sign-in of yours can remove your devices.')); F.password.focus() },
       idle=()=>put(c,h('button',{class:'ghost',onclick:ask},'Remove'));
       idle(); return c };
-    const devRow=(d,mine)=>h('tr',null,h('td',null,d.label||'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:null,mine?null:h('div',{class:'sub'},d.username)),
+    // (on a server, this web sign-in's own key: the server never removes the key the request comes with, so no Remove)
+    const isSelf=d=>d.this_computer||d.this_signin;
+    const devRow=(d,mine)=>h('tr',null,h('td',null,d.label||'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:d.this_signin?[' ',h('span',{class:'sub'},'(this web sign-in)')]:null,mine?null:h('div',{class:'sub'},d.username)),
       h('td',{class:'mono sub'},`${d.device.slice(0,12)}…`),h('td',null,d.revoked?h('span',{class:'del'},'removed'):'active'),
-      !d.revoked&&!d.this_computer&&own(d)?ownRemove(d):h('td',null,!d.revoked&&!d.this_computer?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
+      !d.revoked&&!isSelf(d)&&own(d)?ownRemove(d):h('td',null,!d.revoked&&!isSelf(d)?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
         :d.revoked&&isAdmin()?h('button',{class:'ghost',onclick:()=>d.hidden?setHidden([d.device,d.person],false):setHidden([d.device],true)},d.hidden?'Show again':'Hide'):null));
     const N=S.internet||{}, syncs=Object.values(S.syncs);
     const addr=h('input',{name:'address',placeholder:'or an address, e.g. 192.168.1.20',style:'min-width:220px'});
