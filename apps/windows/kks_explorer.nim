@@ -86,7 +86,8 @@ proc doShowSheet(id: string) =
   SetWindowTextW(w.hwnd, newWideCString(si.name & " — Walkdown"))
 
 proc doSelectTag(id: string, center: bool) =
-  # the tag whose panel is open, opened again (on the drawing, by a screen reader): what was typed into it stays
+  # the tag whose panel is open, opened again (on the drawing, by a screen reader): made again only if nothing typed
+  # into it would be lost (win.panelChanged; else it catches up later, as after a sync)
   let again = id.len > 0 and id == w.selected and not w.picking
   if w.picking and id.len > 0:
     # a tag opened from elsewhere (Equipment by system, the review list, a procedure step, Learning) ends the mode;
@@ -118,7 +119,7 @@ proc doSelectTag(id: string, center: bool) =
     let (okS, si) = w.m.sheetById(t.sheet)
     let s = if okS and si.scale > 0: si.scale else: 2.0
     w.v.centerOn(t.bbox[0] / s, t.bbox[1] / s, t.bbox[2] / s, t.bbox[3] / s)
-  if again: w.rebuildPanelKeeping() else: w.buildPanel(t)
+  if again: w.panelChanged() else: w.buildPanel(t)
   w.v.invalidate()
 
 proc syncLine(): string =

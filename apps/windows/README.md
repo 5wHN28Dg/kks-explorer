@@ -27,7 +27,11 @@ which the `config.nims` of core/, platform/linux/, platform/windows/ and apps/wi
     `crash.log`. A control's handlers are kept by its window handle (the id in `WM_COMMAND` is 16 bits, and every
     rebuilt page takes new ids). A handler runs after the control's notification has returned, and only if its
     control is still there: one whose page was rebuilt in between does nothing (#162, `tests/test_ui_stale.nim`,
-    which also pins what can come in between on Windows: sent messages and earlier posted ones, never a timer);
+    which also pins what can come in between on Windows: sent messages and earlier posted ones, never a timer). A
+    page made again by one of its own buttons gets back what was typed into its other fields (`keptText`,
+    `restoreText`, #168); text whose field went or changed underneath is shown to the person, never dropped unseen.
+    The sidebar is never made again under the keyboard: a sync then changes only what it can in place (the search's
+    results, the sheets' counts, the procedures' links), the rest once the keyboard has left;
   - `viewer.nim` + `kks_d2d.cpp`: the drawing (overview pyramid; vector tiles drawn by Direct2D into WIC bitmaps on
     worker threads; tag hotspots; marking). Dark drawings (the sidebar's check box, remembered per device): every
     colour's lightness inverted, its hue kept, on the worker threads (`kks_dark_rgb`, a copy of
@@ -107,6 +111,9 @@ It covers:
 - removed devices hidden (Clear removed, Show hidden, Show … again);
 - what is typed into the panel's edit form kept when a sync arrives with the keyboard elsewhere, and a Save whose
   panel was rebuilt before its handler ran sending nothing (`KKS_TEST_STALE_CLICK`);
+- what is typed kept elsewhere too (#168): the Procedures and Drawings searches through syncs, with the keyboard in
+  them (the list follows in place; a new floor waits until the keyboard has left) and away; the edit form through
+  Confirm valve type and Confirm description, a corrected reading through Edit and Cancel;
 - removal and the self-wipe.
 
 ## A real (borrowed) Windows laptop
