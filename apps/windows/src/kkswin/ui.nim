@@ -353,10 +353,13 @@ var
   relayoutWanted = false
   onLink*: proc (target: string)                       ## set by the screen that shows rich text
 
+var listRows = initTable[HWND, seq[string]]()     ## each list's rows as last put in (updateRows compares)
+
 proc forgetControl*(h: HWND) =
   ## the control is going (its page is rebuilt or closed, its window destroyed): nothing queued for it runs any more
   ctls.del h
   notifies.del h
+  listRows.del h
   ownerDraws.del h
   tracks.del h
   richH.del h
@@ -680,6 +683,7 @@ proc list*(p: Page, rows: seq[string], height = 200, onSelect: proc (i: int) = n
   ## no Invoke for UI Automation, and a button is reachable the same way for every user)
   let (l, _) = control(p.hwnd, "LISTBOX", "", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT, WS_EX_CLIENTEDGE)
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  listRows[l] = rows
   if onSelect != nil: onSelectList(l, onSelect)
   if onActivate != nil: onActivateList(l, onActivate)
   p.items.add Item(kind: ikList, hwnds: @[l], height: height)
@@ -709,6 +713,7 @@ proc pictureList*(p: Page, rows: seq[string], draw: OwnerDraw, height = 200, onA
                        LBS_OWNERDRAWFIXED or LBS_HASSTRINGS, WS_EX_CLIENTEDGE)
   ownerDraws[l] = draw
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  listRows[l] = rows
   if onActivate != nil: onActivateList(l, onActivate)
   p.items.add Item(kind: ikList, hwnds: @[l], height: height)
   if onActivate != nil and openLabel.len > 0:
@@ -726,12 +731,24 @@ proc picture*(p: Page, name: string, height: int, draw: OwnerDraw): HWND {.disca
   p.items.add Item(kind: ikCustom, hwnds: @[result], height: height)
 
 proc updateRows*(l: HWND, rows: seq[string]) =
-  ## new texts for a list's rows, keeping the selection and the scroll position (a sync, under the focus)
+  ## new texts for a list's rows, keeping the selection and the scroll position (a sync, under the focus). Only the
+  ## rows whose text changed are replaced, and nothing when none did: a row replaced is a new row for UI Automation,
+  ## so what a screen reader (or the e2e driver) had found of it no longer acts (a sync under the keyboard made every
+  ## row anew, and a search result picked just then was not selected)
+  if listRows.hasKey(l) and listRows[l] == rows: return
   let sel = SendMessageW(l, LB_GETCURSEL, 0, 0)
   let top = SendMessageW(l, 0x018E'u32, 0, 0)         # LB_GETTOPINDEX
   SendMessageW(l, 0x000B'u32, 0, 0)                   # WM_SETREDRAW off
-  SendMessageW(l, LB_RESETCONTENT, 0, 0)
-  for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  let old = listRows.getOrDefault(l)
+  if listRows.hasKey(l) and old.len == rows.len:
+    for i in 0 ..< rows.len:
+      if old[i] != rows[i]:
+        SendMessageW(l, 0x0182'u32, WPARAM(i), 0)     # LB_DELETESTRING
+        discard sendText(l, 0x0181'u32, WPARAM(i), rows[i])    # LB_INSERTSTRING
+  else:
+    SendMessageW(l, LB_RESETCONTENT, 0, 0)
+    for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  listRows[l] = rows
   if sel >= 0 and sel < rows.len: SendMessageW(l, LB_SETCURSEL, WPARAM(sel), 0)
   if top >= 0: SendMessageW(l, 0x0197'u32, WPARAM(top), 0)    # LB_SETTOPINDEX
   SendMessageW(l, 0x000B'u32, 1, 0)
@@ -859,6 +876,7 @@ proc fill*(p: Page, h: HWND, minHeight: int) =
 proc setRows*(l: HWND, rows: seq[string]) =
   SendMessageW(l, LB_RESETCONTENT, 0, 0)
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
+  listRows[l] = rows
 
 proc ask*(owner: HWND, title, text: string): bool =
   MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OKCANCEL or MB_ICONQUESTION) == IDOK

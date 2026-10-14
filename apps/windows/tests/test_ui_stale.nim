@@ -394,4 +394,24 @@ suite "what was typed into a page":
     discard mx
     page.clear()
 
+suite "a list's rows put in place (a sync under the keyboard)":
+  test "updateRows replaces only the rows whose text changed, keeping the selection":
+    # a row replaced is a new row for UI Automation: one picked by a screen reader or the e2e driver just before the
+    # sync no longer acts. Item data shows which rows are the same rows as before (it goes with a replaced row)
+    fresh()
+    page.clear()
+    let l = page.list(@["a", "b", "c"])
+    for i in 0 .. 2: SendMessageW(l, 0x019A'u32, WPARAM(i), LPARAM(100 + i))     # LB_SETITEMDATA
+    SendMessageW(l, LB_SETCURSEL, 1, 0)
+    l.updateRows(@["a", "b", "c"])                                                # nothing changed
+    check SendMessageW(l, 0x0199'u32, 0, 0) == 100 and SendMessageW(l, 0x0199'u32, 1, 0) == 101   # LB_GETITEMDATA
+    l.updateRows(@["a2", "b", "c"])                                               # one row's text changed
+    check SendMessageW(l, 0x0199'u32, 1, 0) == 101 and SendMessageW(l, 0x0199'u32, 2, 0) == 102
+    check SendMessageW(l, LB_GETCURSEL, 0, 0) == 1
+    check SendMessageW(l, LB_GETCOUNT, 0, 0) == 3
+    l.updateRows(@["a2", "b"])                                                    # a row went: all made again
+    check SendMessageW(l, LB_GETCOUNT, 0, 0) == 2
+    check SendMessageW(l, LB_GETCURSEL, 0, 0) == 1
+    page.clear()
+
 DestroyWindow(main)
