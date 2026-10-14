@@ -31,7 +31,10 @@ const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.u
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
-async function act(fn,ok){ try{ const r=await fn(); if(ok) toast(ok); await show(tab); return r }catch(e){ return failed(e) } }
+// (the page is rebuilt with the answer, but not under a password typed meanwhile into another form than the one that
+// sent it: then as for a change elsewhere, once that form is left)
+async function act(fn,ok){ const from=document.activeElement?.closest?.('form');
+  try{ const r=await fn(); if(ok) toast(ok); if(typing()&&document.activeElement.closest('form')!==from) resync(); else await show(tab); return r }catch(e){ return failed(e) } }
 // signed out meanwhile (from another browser, by an admin): the sign-in screen. A wrong password typed into a form here is a 401 too: that one is said
 async function failed(e){
   if(e.status===401&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return null }
@@ -49,7 +52,7 @@ async function init(){
 // change, or two tabs clicked quickly: the older answer arriving last used to replace the newer page)
 let SHOW_GEN=0, QUIET=0;   // QUIET: the rebuild a change elsewhere asked for (resync, below)
 // where a view puts what it built: the page, unless a newer view was asked for, or this is a rebuild for a change
-// elsewhere and a password is being typed since it began (then the rebuild is dropped, and tried again later)
+// elsewhere and a password is being typed by then (then the rebuild is dropped, and tried again later)
 const mainFor=g=>{ if(g!==SHOW_GEN) return document.createElement('div');
   if(g===QUIET&&typing()){ clearTimeout(resyncT); resyncT=setTimeout(resync,1000); return document.createElement('div') }
   return $('#main') };

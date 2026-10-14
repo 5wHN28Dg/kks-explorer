@@ -440,23 +440,27 @@ class WebSignOut(unittest.TestCase):
                 lobby['requests'] = [q for q in lobby['requests'] if not r.request.url.endswith(q['device'])]
                 r.fulfill(status=200, content_type='application/json', body=json.dumps({'ok': True, 'username': 'sara' if 'own' in r.request.url else 'ali'}))
             page.route(re.compile(r'.*/api/join-requests.*'), answer)
-            page.locator('#tabs button', has_text='Account').click()
-            page.wait_for_selector('#main input[name=full_name]')
-            page.locator('#tabs button', has_text='Devices').click()
+            # (the list is asked for again every 2 s: the stand-in comes with the next round)
             page.evaluate("() => { window.asked = [] }")
             own = page.locator('#lobby > div', has_text='123 456')
-            expect(own).to_have_count(1)
-            # a change elsewhere whose rebuild of the page began just before the form was opened (its answer slow)
-            # does not close the form either: it is dropped and comes again once the form is left
+            expect(own).to_have_count(1, timeout=15000)
+            # a change elsewhere whose rebuild of the page began just before the form was opened (its answer slow),
+            # and the answer to something else pressed just before (act: the page is rebuilt with it), do not close
+            # the form: they are taken in once the form is left
             page.evaluate("""() => { window.slow = true; const f = window.fetch;
                 window.fetch = (u, o) => window.slow && /\\/api\\/devices(\\?|$)/.test(String(u)) ? new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o);
-                K.listeners.forEach(f => f('synced')) }""")
+                K.listeners.forEach(f => f('synced'));
+                act(() => new Promise(r => setTimeout(() => r({}), 1000)), 'Something else done') }""")
             own.get_by_role('button', name='Accept').click()
             field = own.locator('form input[name=password]')
             expect(field).to_be_focused()
+            field.fill('typing meanwhile')
+            expect(page.locator('#toast')).to_have_text('Something else done')
             page.wait_for_timeout(2500)
             expect(field).to_be_focused()
+            self.assertEqual(field.input_value(), 'typing meanwhile')
             page.evaluate("() => { window.slow = false }")
+            field.fill('')
             expect(field).to_have_attribute('autocomplete', 'current-password')
             self.assertEqual(page.evaluate('window.asked'), [])
             # another device asking meanwhile does not rebuild the list under the form
