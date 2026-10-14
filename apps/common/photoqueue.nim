@@ -232,6 +232,31 @@ proc setFloor*(q: PhotoQueue, key, floor: string) =
   for it in q.items.mitems:
     if it.key == key: it.floor = floor
 
+proc covers(it: QueuedPhoto, code: string): bool = (if it.codes.len > 0: code in it.codes else: it.kks == code)
+
+proc floorToSend*(q: PhotoQueue, it: QueuedPhoto): string =
+  ## the floor to send with this photo: its own. A photo of one code that has none sends the floor another queued
+  ## photo of that code carries (#149): this photo's floor was not asked because that one carries it, but that one
+  ## may go after this one (it failed and waits at the end of the queue for its retry), and the core writes a floor
+  ## only while the code has none: this photo would arrive without it, and the waiting one's floor after it.
+  if it.floor.len > 0 or it.codes.len > 0: return it.floor
+  for o in q.items:
+    if o.key != it.key and o.covers(it.kks) and o.floor.len > 0: return o.floor
+
+proc handOverFloor*(q: PhotoQueue, gone: QueuedPhoto) =
+  ## a photo that leaves the queue without being sent (refused) may carry the floor asked for its codes: for each of
+  ## them that no other queued photo carries a floor for, a queued photo of that code alone takes it over (on disk
+  ## too), as the next photo of the code was not asked because of it (#149). Raises when the store can't be written.
+  if gone.floor.len == 0: return
+  for code in (if gone.codes.len > 0: gone.codes else: @[gone.kks]):
+    var carried = false
+    var takes = ""
+    for o in q.items:
+      if o.key == gone.key: continue
+      if o.covers(code) and o.floor.len > 0: carried = true
+      if takes.len == 0 and o.codes.len == 0 and o.kks == code: takes = o.key
+    if not carried and takes.len > 0: q.setFloor(takes, gone.floor)
+
 proc wipe*(q: PhotoQueue) =
   ## a removed device: the store's wipe deleted the rows; forget the photos in memory and write nothing more
   q.wiped = true

@@ -477,7 +477,10 @@ proc sendPhoto(w: Win, q: QueuedPhoto, jxlData: string) =
     return
   var payload = newObj(@[("kks", newStr(q.kks)), ("caption", newStr(q.caption)),
                          ("dataUrl", newStr("data:image/jxl;base64," & encode(jxlData)))])
-  if q.floor.len > 0: payload["floor"] = newStr(q.floor)   # written first, only if the code still has no floor
+  # written first, only if the code still has no floor; a floor another queued photo of the code carries goes with
+  # this one too (#149: that one may be waiting behind it for a retry)
+  let floor = pq.floorToSend(q)
+  if floor.len > 0: payload["floor"] = newStr(floor)
   discard w.trySubmit("photo", payload, "photo of " & q.kks, q.note, q.clientId)
 
 proc received(w: Win, d: EncDone) =
@@ -497,6 +500,18 @@ proc received(w: Win, d: EncDone) =
     why = "it could not be compressed: " & d.err
   else:
     try:
+      # tests: while the file KKS_TEST_PHOTO_FAIL names exists, the next send fails as a passing error would (the
+      # photo goes to the end of the queue and waits for its retry), or, when the file says "refused", the core
+      # refuses it; the file is removed
+      let failFile = getEnv("KKS_TEST_PHOTO_FAIL")
+      if failFile.len > 0 and fileExists(failFile):
+        let refuse = readFile(failFile).strip == "refused"
+        removeFile(failFile)
+        if refuse:
+          let e = newException(ApiError, "a test's refusal")
+          e.status = 400
+          raise e
+        raise newException(IOError, "a test's failure")
       w.sendPhoto(it, d.data)
       # tests: the app dies after the core took the photo, before the queue forgot it (the resend must not add it twice)
       if getEnv("KKS_TEST_PHOTO_DIE_AFTER_SEND").len > 0: discard posix.kill(getpid(), SIGKILL)
@@ -505,6 +520,11 @@ proc received(w: Win, d: EncDone) =
       else: (outcome, why) = (Failed, e.msg)
     except CatchableError as e:
       (outcome, why) = (Failed, e.msg)
+  if outcome == Refused:
+    # the floor it carried was asked for its codes: a later photo of one of them, not asked because of it, takes it
+    # over (#149)
+    try: pq.handOverFloor(it)
+    except CatchableError as e: w.toast("The floor of " & it.name & " could not be kept with its next photo (" & e.msg & ")")
   try:
     let r = pq.finish(d.key, outcome, why, nowMs())
     if r.len > 0: w.toast(r)
