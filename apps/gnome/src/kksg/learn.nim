@@ -739,6 +739,11 @@ proc courseWindows*(): seq[(string, W)] =
   ## the open course windows (tests take screenshots of them)
   for id, cw in windows: result.add (id, cw.window)
 
+proc closeCourseWindows*() =
+  ## the main window closes: its course windows go with it. They work on the main window (a code's link opens its
+  ## tag there), which is freed once closed; left open they kept the app running with a link that reached it.
+  for (_, cw) in courseWindows(): gtk_window_close(cw)
+
 proc openCourse*(w: Win, id: string, page = "") =
   if id in windows and windows[id].window != nil:
     let cw = windows[id]

@@ -1008,6 +1008,16 @@ class Gnome(Plant):
         link = max(px, key=lambda p: max(p) - min(p))                   # the link: the most coloured pixel
         self.assertGreater(grey, 175, f'the credit\'s text is too faint on the dark page (lightest grey {grey} on {back})')
         self.assertGreater(max(link), 165, f'the credit\'s link is dimmed with its line ({link})')
+        # closing the main window closes its course windows too (#163): they kept the app running, and a code's link
+        # in them then opened its tag in the main window that was gone
+        wins = [a.get_child_at_index(i) for i in range(a.get_child_count())]
+        main = [x for x in wins if not any(n.get_name() == '5 · Strain gauges & RTDs' for n in atspi.walk(x))]
+        self.assertEqual((len(wins), len(main)), (2, 1), 'the main window and the course window')
+        atspi.click(atspi.find(main[0], 'button', name='Close'))
+        try:
+            self.apps[-1].wait(15)
+        except subprocess.TimeoutExpired:
+            self.fail('the app kept running with its course window after the main window was closed')
 
     def test_zzz_multi_member(self):
         """A MEMBER's "Photo for all" (their changes wait for approval), with codes of two drawings (runs last: its
