@@ -279,6 +279,34 @@ var
   ADW_RESPONSE_SUGGESTED* {.importc, header: HA, nodecl.}: cint
   ADW_VIEW_SWITCHER_POLICY_WIDE* {.importc, header: HA, nodecl.}: cint
   GTK_PACK_END* {.importc, header: HA, nodecl.}: cint
+# the About dialog (libadwaita 1.5; about.nim)
+proc adw_about_dialog_new*(): W {.importc, header: HA.}
+proc adw_about_dialog_set_application_name*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_application_icon*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_version*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_developer_name*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_comments*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_copyright*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_license_type*(d: W, t: cint) {.importc, header: HA.}
+proc adw_about_dialog_set_website*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_issue_url*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_support_url*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_debug_info*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_set_debug_info_filename*(d: W, s: cstring) {.importc, header: HA.}
+proc adw_about_dialog_add_link*(d: W, title, url: cstring) {.importc, header: HA.}
+proc adw_about_dialog_add_legal_section*(d: W, title, copyright: cstring, licenseType: cint, license: cstring) {.importc, header: HA.}
+proc adw_about_dialog_add_acknowledgement_section_c(d: W, name: cstring, people: pointer) {.importc: "adw_about_dialog_add_acknowledgement_section", header: HA.}
+proc adw_about_dialog_add_acknowledgement_section*(d: W, name: cstring, people: cstringArray) =
+  adw_about_dialog_add_acknowledgement_section_c(d, name, cast[pointer](people))   # (const char **)
+proc adw_get_major_version*(): cuint {.importc, header: HA.}
+proc adw_get_minor_version*(): cuint {.importc, header: HA.}
+proc adw_get_micro_version*(): cuint {.importc, header: HA.}
+var
+  GTK_LICENSE_AGPL_3_0* {.importc, header: HA, nodecl.}: cint
+  GTK_LICENSE_CUSTOM* {.importc, header: HA, nodecl.}: cint
+  ADW_MAJOR_VERSION* {.importc, header: HA, nodecl.}: cint
+  ADW_MINOR_VERSION* {.importc, header: HA, nodecl.}: cint
+  ADW_MICRO_VERSION* {.importc, header: HA, nodecl.}: cint
 proc trampResponse(d: W, resp: cstring, data: pointer) {.cdecl.} =
   guard: cast[Env](data).fnP(cast[W](resp))
 proc onResponse*(d: W, fn: proc (id: string)): culong {.discardable.} =
@@ -455,6 +483,22 @@ proc gtk_stack_set_visible_child_name*(s: W, n: cstring) {.importc, header: HA.}
 proc gtk_menu_button_new*(): W {.importc, header: HA.}
 proc gtk_menu_button_set_icon_name*(b: W, n: cstring) {.importc, header: HA.}
 proc gtk_menu_button_set_popover*(b, p: W) {.importc, header: HA.}
+proc gtk_menu_button_set_menu_model*(b, m: W) {.importc, header: HA.}
+proc gtk_menu_button_set_primary*(b: W, v: cint) {.importc, header: HA.}
+proc g_menu_new*(): W {.importc, header: HA.}
+proc g_menu_append*(m: W, label, detailedAction: cstring) {.importc, header: HA.}
+proc g_simple_action_new*(name: cstring, paramType: pointer): W {.importc, header: HA.}
+proc g_action_map_add_action*(map, action: W) {.importc, header: HA.}
+proc gtk_get_major_version*(): cuint {.importc, header: HA.}
+proc gtk_get_minor_version*(): cuint {.importc, header: HA.}
+proc gtk_get_micro_version*(): cuint {.importc, header: HA.}
+var
+  GTK_MAJOR_VERSION* {.importc, header: HA, nodecl.}: cint
+  GTK_MINOR_VERSION* {.importc, header: HA, nodecl.}: cint
+  GTK_MICRO_VERSION* {.importc, header: HA, nodecl.}: cint
+proc gtk_icon_theme_get_for_display*(d: W): W {.importc, header: HA.}
+proc gtk_icon_theme_has_icon*(t: W, name: cstring): cint {.importc, header: HA.}
+proc gtk_icon_theme_add_search_path*(t: W, path: cstring) {.importc, header: HA.}
 proc gtk_popover_new*(): W {.importc, header: HA.}
 proc gtk_popover_set_child*(p, c: W) {.importc, header: HA.}
 proc gtk_popover_popdown*(p: W) {.importc, header: HA.}

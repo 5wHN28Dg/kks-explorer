@@ -6,7 +6,7 @@ import kks/[json, api]
 import kks/model
 import kksl/dbstore
 import appstate
-import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, coverage, links, photos]
+import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, coverage, links, photos, about]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
 
@@ -206,6 +206,7 @@ proc sideRoot(w: Win): W =
   let sideTitle = adw_window_title_new("Walkdown", w.a.plantName.cstring)
   w.status = sideTitle
   let sideHeader = headerBar(sideTitle)
+  adw_header_bar_pack_end(sideHeader, primaryMenu())     # (the first packed at the end is the outermost)
   adw_header_bar_pack_end(sideHeader, iconButton("view-refresh-symbolic", "Sync now", proc () =
     proc go() {.async.} =
       let n = await w.a.syncAll()
@@ -444,7 +445,9 @@ proc setupScreen(w: Win): W =
       adw_preferences_group_add(choices, navRow(pages[i][0], pages[i][1], pages[i][0], proc () = adw_navigation_view_push(nav, pgW)))
   let root = adw_preferences_page_new()
   adw_preferences_page_add(root, choices)
-  adw_navigation_view_add(nav, adw_navigation_page_new(toolbarView(headerBar(adw_window_title_new("Walkdown", "Set up this device")), root), "Set up"))
+  let setupHeader = headerBar(adw_window_title_new("Walkdown", "Set up this device"))
+  adw_header_bar_pack_end(setupHeader, primaryMenu())
+  adw_navigation_view_add(nav, adw_navigation_page_new(toolbarView(setupHeader, root), "Set up"))
   nav
 
 proc showMain(w: Win) =
@@ -495,6 +498,7 @@ proc activate(w: Win, app: W) =
   # CI's slower runners)
   w.window.on("destroy", proc () =
     w.gone = true
+    aboutForget()
     w.status = nil)
   w.a.onChange.add proc (why: string) =
     if why == "wiped":
@@ -623,6 +627,30 @@ proc activate(w: Win, app: W) =
         writeFile(viewerFile & ".tmp", now)
         moveFile(viewerFile & ".tmp", viewerFile)
       true)
+  # tests: the About dialog's pages (about.nim aboutGo). Lines written to the file KKS_TEST_ABOUT names, plus ".do",
+  # are page tags to show ("legal", "acknowledgements" …, or "back"); the file itself holds
+  # where the open dialog's links go (about.nim aboutTargets), one per line, then a last line "n=<lines done>
+  # page=<the visible page's tag, empty when the dialog is closed>", written when it changes.
+  let aboutFile = getEnv("KKS_TEST_ABOUT")
+  if aboutFile.len > 0:
+    var said = "\x00"
+    var done = 0
+    timeout(100, proc (): bool =
+      if w.gone: return false
+      let todo = aboutFile & ".do"
+      if fileExists(todo):
+        let cmds = readFile(todo)
+        removeFile(todo)
+        for line in cmds.splitLines:
+          if line.strip.len == 0: continue
+          aboutGo(line.strip)
+          inc done
+      let now = aboutTargets().join("\n") & "\nn=" & $done & " page=" & aboutPage()
+      if now != said:
+        said = now
+        writeFile(aboutFile & ".tmp", now)
+        moveFile(aboutFile & ".tmp", aboutFile)
+      true)
   if getEnv("KKS_DEBUG_DIALOG").len > 0:     # accessibility check: a dialog over whatever screen is up
     after(3000, proc () =
       confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard))
@@ -664,6 +692,12 @@ proc main() =
     id.add ".p" & toHex(h, 8)
   let app = adw_application_new(id.cstring, if custom.len > 0: 32 else: 0)   # 32 = G_APPLICATION_NON_UNIQUE
   app.on("activate", proc () = w.activate(app))
+  # About Walkdown: the primary menu's item, and the app.about action other parts of GNOME may call
+  let aboutAction = g_simple_action_new("about", nil)
+  aboutAction.onPtr("activate", proc (p: W) =
+    if w.window != nil and not w.gone: showAbout(w.window, AppId, proc (): bool = not w.gone))
+  g_action_map_add_action(app, aboutAction)
+  g_object_unref(aboutAction)
   let shotPath = getEnv("KKS_SHOT_ON_SIGNAL")   # tests: a screenshot of the window on SIGUSR1
   if shotPath.len > 0:
     signal(SIGUSR1, onUsr1)
