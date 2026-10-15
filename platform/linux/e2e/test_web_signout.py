@@ -522,6 +522,13 @@ class WebSignOut(unittest.TestCase):
             expect(own2.locator('input')).to_have_count(0)
             expect(own2.get_by_role('button', name='Accept')).to_have_count(1)
             expect(own2.get_by_role('button', name='Refuse')).to_have_count(1)
+            # a form opened and left empty: a rebuild of the page drops it, as before, so the list does not stay as it
+            # was under it (the waiting list is otherwise kept through a rebuild)
+            own2.get_by_role('button', name='Accept').click()
+            expect(own2.locator('input')).to_have_count(1)
+            page.evaluate("() => { document.activeElement.blur(); K.listeners.forEach(f => f('synced')) }")
+            expect(own2.locator('input')).to_have_count(0, timeout=15000)
+            expect(own2.get_by_role('button', name='Accept')).to_have_count(1)
 
             # ---- 4c. a QR invite answered by a device of one's own (stand-ins again: no sync port here)
             settled()

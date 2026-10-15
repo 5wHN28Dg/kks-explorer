@@ -313,12 +313,13 @@ const VIEWS={
           h('label',{class:'ghost',style:'cursor:pointer'},'Import a bundle',h('input',{type:'file',accept:'.kksbundle',hidden:true,onchange:e=>importBundle(e.currentTarget)}))))];
     // the QR code shown and the devices waiting on the Wi-Fi stay through a rebuild of the page (their own polls keep
     // them current): their buttons are what an admin presses one after the other, and a rebuild comes with every sync.
-    // An invite that has ended goes back to the button, as before.
+    // An invite that has ended goes back to the button, as before; so does a waiting list with a password form left
+    // open in it (being typed in, there is no rebuild): the list is not brought up to date under a form.
     const T=mainFor(g), kept=id=>T===$('#main')?$('#'+id)?.closest('#main > .card'):null;
     if(isAdmin()) out.push((!$('#invstate[data-ended]')&&kept('invite'))||h('div',{class:'card'},h('h3',null,'Add a device with a QR code'),
         h('div',{class:'sub'},`For someone next to you on the same network: they choose "Join with a QR code" when they set up the app and scan this. You then see who asks and accept; their device syncs the plant from this ${K.cfg?.app?'phone':D.mode==='peer'?'computer':'server'}. No files needed. The code works once, for 15 minutes.`),
         h('div',{id:'invite'},qrButton())),
-      kept('lobby')||h('div',{class:'card'},h('h3',null,'Waiting to join'),h('div',{class:'sub'},'Devices on this Wi-Fi that asked without a code (“Ask an admin on this Wi-Fi”). Accept only if the code next to the name is the one on their screen.'),h('div',{id:'lobby'})),
+      (!$('#lobby form')&&kept('lobby'))||h('div',{class:'card'},h('h3',null,'Waiting to join'),h('div',{class:'sub'},'Devices on this Wi-Fi that asked without a code (“Ask an admin on this Wi-Fi”). Accept only if the code next to the name is the one on their screen.'),h('div',{id:'lobby'})),
       h('div',{class:'card'},h('h3',null,'Add a computer from a join request'),
         h('div',{class:'sub'},'Someone set up the app on their laptop and gave you a ',h('span',{class:'mono'},'.kksjoin'),' file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.'),
         h('label',{class:'primary',style:'display:inline-block;margin-top:8px;cursor:pointer'},'Import join request',h('input',{type:'file',accept:'.kksjoin,.json',hidden:true,onchange:e=>importJoin(e.currentTarget)})),h('div',{id:'joinOwn'})),
