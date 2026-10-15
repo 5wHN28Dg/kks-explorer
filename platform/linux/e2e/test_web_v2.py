@@ -206,9 +206,9 @@ class WebV2(unittest.TestCase):
         reload, and turning it off restores the light drawing"""
         # An <img> is read once WebKit can copy it: it reports a big picture in the page complete, with its size, and
         # even decode() done, while drawImage still copies only transparent pixels for a moment (#199: '0,0,0' for the
-        # white overview, a WebKit run on CI; a second read a moment later had the right picture). The overview levels
-        # are opaque, so a copy with a pixel that is not is not the whole picture yet: read again, for at most 5 s (the
-        # checks then decide on what was read).
+        # white overview, a WebKit run on CI; here a second read a moment later had the right picture). The overview
+        # levels are opaque, so a copy with a pixel that is not is not the whole picture yet: read again, at most 100
+        # times 50 ms apart (the checks then decide on what was read).
         stats = """async (sel) => { const e = document.querySelector(sel); let c = e;
             if (e.tagName === 'IMG') { await e.decode().catch(() => {});
               c = document.createElement('canvas'); c.width = e.naturalWidth; c.height = e.naturalHeight;
