@@ -484,10 +484,20 @@ class WebSignOut(unittest.TestCase):
             expect(page.locator('#lobby')).to_contain_text('111 222')
             expect(page.locator('#lobby')).not_to_contain_text('123 456')
             # the rebuilds put off while the form was open (the change elsewhere, "Something else done") come now that
-            # it is gone, within about a second (0.3 s here): a press while #main is replaced is lost (#199: Accept for
-            # ali did nothing, a WebKit run on CI)
-            settled()
-            page.locator('#lobby > div', has_text='654 321').get_by_role('button', name='Accept').click()
+            # it is gone, within about a second (0.3 s here): a press on the next device's Accept across one still
+            # lands. Before, the page and the waiting list were made anew, and a press whose mouse-down and mouse-up fell
+            # on either side was lost (#199: Accept for ali did nothing, a WebKit run on CI). Mouse down, the page
+            # rebuilt (one more asked for here, so that one surely comes while the button is held) and the list there
+            # again, mouse up.
+            accept = page.locator('#lobby > div', has_text='654 321').get_by_role('button', name='Accept')
+            box = accept.bounding_box()
+            page.evaluate("() => { document.querySelector('#main > .card').dataset.before = '1' }")
+            page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+            page.mouse.down()
+            page.evaluate("() => K.listeners.forEach(f => f('synced'))")
+            page.wait_for_function("""() => !document.querySelector('#main > .card[data-before]')
+                && document.querySelector('#lobby')?.textContent.includes('654 321')""", timeout=15000)
+            page.mouse.up()
             expect(page.locator('#toast')).to_have_text('Accepted ali: their device gets the plant over the Wi-Fi now')
             self.assertEqual(page.evaluate('window.asked'), [
                 ['join-requests/dev-own', {'action': 'accept', 'existing_ok': True, 'password': 'not the password'}],
