@@ -71,9 +71,13 @@ fun openLink(ctx: Context, url: String) {
     }
 }
 
-/** a licence or notice as paragraphs that fit the screen: the files wrap their lines at 80 columns for a terminal */
+/** a licence or notice as paragraphs that fit the screen: the files wrap their lines at 80 columns for a terminal, and
+ *  some draw rules of dashes or equals signs, which mean nothing once the lines flow */
 fun paragraphs(text: String): List<String> = text.replace("\r\n", "\n").split(Regex("\n[ \t]*\n"))
-    .map { p -> p.lines().joinToString(" ") { it.trim() }.trim() }.filter { it.isNotEmpty() }
+    .map { p -> p.lines().map { it.trim() }.filter { it.isNotEmpty() && !rule.matches(it) }.joinToString(" ") }
+    .filter { it.isNotEmpty() }
+
+private val rule = Regex("[-=_*~]{3,}")
 
 private fun JSONObject.strings(k: String): List<String> = optJSONArray(k)?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
 

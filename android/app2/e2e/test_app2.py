@@ -1607,6 +1607,122 @@ class Phone(unittest.TestCase):
         ui.find('· removed', timeout=10)
         ui.find('Show', exact=True)
 
+    def test_about(self):
+        """About Walkdown (data/about.json, packed into the APK; the version and commit are the build's): before
+        joining and under Manage; the version line names the commit the APK was built from, the licence and the link to
+        that commit's source; a third-party part (libjxl) shows its copyright notice, a font the OFL's full text, the
+        app's licence its full text; a course photo's credit; light and dark (screenshots in KKS_SHOTS); a link opens
+        in the browser"""
+        import io
+        import urllib.parse
+        from PIL import Image
+        with open(os.path.join(REPO, 'data', 'about.json'), encoding='utf-8') as f:
+            about = json.load(f)
+        with open(os.path.join(REPO, 'VERSION'), encoding='utf-8') as f:
+            version = f.read().strip()
+
+        def paragraphs(t):      # the screen's reflow (About.kt paragraphs)
+            out = []
+            for p in re.split(r'\n[ \t]*\n', t.replace('\r\n', '\n')):
+                p = ' '.join(x.strip() for x in p.split('\n') if x.strip() and not re.fullmatch(r'[-=_*~]{3,}', x.strip()))
+                if p:
+                    out.append(p)
+            return out
+
+        def shot(name):
+            png = subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, name), 'wb') as f:
+                f.write(png)
+            return Image.open(io.BytesIO(png)).convert('L')
+
+        def night(on):
+            ui.sh('cmd', 'uimode', 'night', 'yes' if on else 'no')
+            time.sleep(2)
+
+        def back():
+            ui.sh('input', 'keyevent', '4')
+            time.sleep(1)
+
+        was = 'yes' if 'yes' in ui.sh('cmd', 'uimode', 'night') else 'no'
+        self.addCleanup(ui.sh, 'cmd', 'uimode', 'night', was)
+        night(False)
+
+        # before joining: the first screen's button
+        ui.tap('About Walkdown', exact=True)
+        line = ui.label(ui.find(f'Version {version} (commit', timeout=15))
+        m = re.fullmatch(r'Version (\S+) \(commit ([0-9a-f]{12})(, with local changes)?\)', line)
+        self.assertTrue(m, f'version line {line!r}')
+        commit = subprocess.run(['git', '-C', REPO, 'rev-parse', '--verify', '-q', m.group(2) + '^{commit}'],
+                                capture_output=True, text=True).stdout.strip()
+        self.assertTrue(commit.startswith(m.group(2)), f'the APK names commit {m.group(2)}, which this checkout does not have')
+        back()
+        ui.find('Join through a server', exact=True)
+
+        self.join()
+        ui.tap('Manage', exact=True)
+        ui.scroll_to('About Walkdown', exact=True, tries=12)
+        ui.tap('About Walkdown', exact=True)
+        ui.find(line, exact=True, timeout=15)
+        ui.find(about['summary'], exact=True)
+        ui.find('Licence: ' + about['license']['name'], exact=True)
+        light = shot('about-light.png')
+        night(True)       # the theme follows the phone's, while the screen is open
+        ui.find(line, exact=True)
+        dark = shot('about-dark.png')
+        w, h = light.size
+        mid = (0, int(h * 0.15), w, int(h * 0.85))
+        lmean, dmean = (sum(im.crop(mid).getdata()) / ((mid[2] - mid[0]) * (mid[3] - mid[1])) for im in (light, dark))
+        self.assertGreater(lmean, 150, f'the light About is not light (mean grey {lmean:.0f})')
+        self.assertLess(dmean, 100, f'the dark About is not dark (mean grey {dmean:.0f})')
+        night(False)
+
+        ui.tap('Full text of the licence', exact=True)
+        ui.find(paragraphs(about['licenses'][about['license']['id']]['text'])[0], exact=True, timeout=10)
+        back()
+        ui.scroll_to(about['notice'], exact=True)
+        source = about['source']['commit_url'].replace('{commit}', commit)
+        ui.scroll_to(source, exact=True)
+        ui.find('Source of the commit this build started from' if m.group(3) else 'Source of this version', exact=True)
+
+        lib = next(c for c in about['components'] if c['id'] == 'libjxl')
+        row = f'{lib["name"]} · {lib["version"]}'
+        ui.scroll_to(row, exact=True, tries=20)
+        ui.tap(row, exact=True)
+        ui.find(paragraphs(lib['notice'])[0], exact=True, timeout=10)
+        ui.find(lib['license_name'], exact=True)        # the licence's heading (its terms are in the notice)
+        shot('about-libjxl-light.png')
+        back()
+        font = next(c for c in about['components'] if 'OFL-1.1' in c['license_ids'] and c['platforms'].get('android'))
+        ui.scroll_to(font['name'], exact=True, tries=20)
+        ui.tap(font['name'], exact=True)
+        ui.find(paragraphs(font['notice'])[0], exact=True, timeout=10)
+        ui.scroll_to(paragraphs(about['licenses']['OFL-1.1']['text'])[1], exact=True)   # the OFL's own text
+        night(True)
+        shot('about-ofl-dark.png')
+        night(False)
+        back()
+
+        photo = about['photos'][0]
+        ui.scroll_to(photo['text'], exact=True, tries=40)
+        for link in photo['links']:
+            ui.find(link['text'], exact=True)
+        night(True)
+        shot('about-photos-dark.png')
+        night(False)
+
+        # a link goes to the browser, with the address from about.json (dumpsys may shorten it to its host)
+        url = photo['links'][-1]['url']
+        ui.tap(photo['links'][-1]['text'], exact=True)
+        host = 'dat=https://' + urllib.parse.urlsplit(url).hostname
+        for _ in range(20):
+            if host in ui.sh('dumpsys', 'activity', 'activities'):
+                break
+            time.sleep(0.5)
+        else:
+            self.fail(f'no activity was started for {url}')
+        ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+
     def test_member_pages(self):
         """requests 6, 9 and 10 as a member: the leaderboard; Updates on Manage's top level (not in Account); My
         proposals filtered by status and grouped by code"""
@@ -1649,8 +1765,9 @@ class Phone(unittest.TestCase):
 
 # The suite in three parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2 or 3 runs
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
-PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'courses', 'floor_kept_when_queued_goes'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos'),
+# test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB).
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures'))
 
