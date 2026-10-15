@@ -89,6 +89,47 @@ missing.
 | Code signing | 🟡 SmartScreen reputation needs a paid or managed certificate [K] | 🟡 Flatpak repo GPG key (ours) [K] | ✅ our own APK key [K] | ✅ HTTPS |
 | Languages the vendor supports | C/C++ (Win32, WinUI), C# (.NET; not preinstalled beyond .NET Framework 4.8) [K]; Rust through Microsoft's `windows-rs` (active) [D] | "C++, JavaScript, Python, Rust and Vala", C the default [D]; gtk4-rs active [D]; GJS 1.88 installed [V] | Kotlin/Java; C/C++ through the NDK (no UI) [K] | JavaScript / WebAssembly |
 
+## 8. Walkdown Plant, the 3D plant (wiki: 3D-plant R7–R10; decisions 0041, 0054)
+
+Added 2026-10-15. Targets: Android 10+ (the Note 9 minimum), Linux (GNOME), Windows 10/11. The browser and iPhone are
+not required now (R8). No platform has a 3D scene engine: rendering, LOD, physics for walking and spatial audio come
+from Godot 4 (0041), so the rows below say what the platform gives underneath and what Godot 4.7 builds on it.
+
+| Need | Windows | GNOME | Android |
+|---|---|---|---|
+| 3D graphics API | ✅ Direct3D 12, Vulkan through the GPU driver [D] | ✅ Vulkan (Mesa) [K] | ✅ Vulkan 1.0+ (Mali-G72: Vulkan 1.1), OpenGL ES 3.2 [D] |
+| Engine renderer on it | ✅ Forward+, D3D12 default since Godot 4.6, Vulkan fallback [D] | ✅ Forward+, Vulkan; X11 default, Wayland opt-in [D] | ✅ Mobile renderer; the export's minimum SDK is 29 with Vulkan [D], measured on the Note 9 [V, 0041] |
+| GPU texture compression | ✅ BC1–BC7 [D] | ✅ BC1–BC7 [D] | ✅ ETC2 with every OpenGL ES 3.0 device; 🟡 ASTC on > 80 % of devices (Mali-G72 has it) [D] |
+| Shaders compiled before the first frame | ✅ shader baker from a Windows editor (D3D12) or Linux (Vulkan); not in headless exports [D] | ✅ baker, Vulkan [D] | ✅ baker, Vulkan, from a Linux editor [D] |
+| Touch | 🟡 touch screens only [D] | 🟡 touch on Wayland since Godot 4.7 [D] | ✅ multi-touch; on-screen joystick `VirtualJoystick` (4.7) [D] |
+| Gamepad | ✅ SDL3 joypad driver (4.5) [D] | ✅ SDL3 [D] | ✅ Android's own input [D] |
+| Keyboard and mouse | ✅ [K] | ✅ [K] | 🟡 with a keyboard or mouse attached [K] |
+| Spatial audio, mixing | ✅ engine: AudioStreamPlayer3D, buses, Ogg Vorbis [D]; WASAPI underneath [K] | ✅ same; PulseAudio/PipeWire underneath [K] | ✅ same; output latency setting ignored on Android [D] |
+| Audio synthesis at run time | 🟡 AudioStreamGenerator, meant for C# or native code [D] | 🟡 same | 🟡 same (we make loops at build time instead, 0054) |
+| App-private storage (settings, progress) | ✅ `user://` in the package's folder [D] | ✅ `user://` in the sandbox [D] | ✅ `user://` in app-private storage [D] |
+| Link into the app (custom URI scheme) | ✅ MSIX `uap:Protocol`, Windows 10 1511+ [D] | ✅ `.desktop` `x-scheme-handler/…` [D] | 🟡 intent filter, but Godot gives no API for the launching Intent: a small Android plugin needed [D] |
+| Open a link out (to Walkdown) | ✅ `OS.shell_open` → ShellExecute [D] | ✅ OpenURI portal [D] | ✅ VIEW Intent [D] |
+| Thermal state (measurement rule) | — | — | ✅ `PowerManager.getCurrentThermalStatus()`, API 29+ [D]; read with adb during measurements (0041) |
+| Install size | ✅ no limit (MSIX, ours) | ✅ no limit (Flatpak bundle) | ✅ sideloaded APK: no limit; Google Play's limits don't apply (we don't publish there) [D] |
+| Extra content at run time | ✅ `.pck` resource packs [D] | ✅ same | ✅ same |
+
+Sources (Godot 4.7): https://docs.godotengine.org/en/stable/about/system_requirements.html ·
+https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html ·
+https://docs.godotengine.org/en/stable/tutorials/performance/pipeline_compilations.html ·
+https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_images.html ·
+https://docs.godotengine.org/en/stable/tutorials/platform/linux/wayland_x11.html ·
+https://docs.godotengine.org/en/stable/tutorials/export/exporting_pcks.html · https://godotengine.org/releases/4.7/ ·
+Godot's Android sources at the 4.7-stable tag (GodotPlugin.java, GodotActivity.kt). Platforms:
+https://developer.android.com/guide/playcore/asset-delivery/texture-compression ·
+https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus() ·
+https://support.google.com/googleplay/android-developer/answer/9859372 ·
+https://learn.microsoft.com/en-us/uwp/schemas/appxpackage/uapmanifestschema/element-uap-protocol ·
+https://specifications.freedesktop.org/desktop-entry-spec/latest/ ·
+https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.OpenURI.html
+
+**Gaps for Walkdown Plant:** the engine itself (Godot, 0041); the Android deep link (a plugin of ours, 0054); audio
+synthesis on the phone (loops made at build time); shader baking only outside CI (release builds on the laptop).
+
 ## Gaps: what no platform provides, or only some do
 
 These become decision records (docs/decisions/0014 and on):
