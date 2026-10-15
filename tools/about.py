@@ -8,7 +8,8 @@ Made from:
 - the Flatpak metainfo (apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.metainfo.xml): name, one-line summary,
   developer, licence, home page;
 - tools/about/components.json: the third-party parts each program ships or uses, their licences, and which program
-  has them (the versions of pinned sources come from pinned-sources.cdx.json);
+  has them (the versions of pinned sources come from pinned-sources.cdx.json; a part's "third_party" says what was
+  found of the code it carries from other projects, for the record: it is not shown);
 - tools/about/licenses/*.txt (the standard licence texts) and tools/about/notices/*.txt (a part's own licence file,
   with its copyright lines, as its source ships it, and the Apache NOTICE files, *-NOTICE.txt, verbatim);
 - the course photos' credits (data/courses/*.json).
