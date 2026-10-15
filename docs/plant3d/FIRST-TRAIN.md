@@ -251,7 +251,8 @@ long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
 - **The hotwell** has a makeup that opens below 0 mm and a spill to the demineralised water tank above +50 mm, so
   the level holds through the start.
 - **Trainer faults** (the scenario's faults without a condition, PLANT3D.md §7.8) make every trip and interlock
-  fire; the tests run each from the end of the cold start (`ref/vectors/plant3d-v1.json`, `forks`).
+  fire, each fan's and each pump's included; the tests run each, most from the end of the cold start and the CW
+  valve faults at the pump's start (`ref/vectors/plant3d-v1.json`, `forks`).
 
 | # | System (codes §1) | What the trainee does | Faked behaviour (values, lags) | What it teaches |
 |---|---|---|---|---|

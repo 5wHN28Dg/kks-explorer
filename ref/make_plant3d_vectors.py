@@ -172,6 +172,20 @@ def _raw(rel, text):
     return f
 
 
+def _put(rel, obj):
+    def f(F):
+        F[rel] = obj
+    return f
+
+
+def _all(*changes):
+    def f(F):
+        for c in changes:
+            c(F)
+    return f
+
+
+A2_MODEL = {'format': 'walkdown-plant-model', 'version': 1, 'area': 'a2'}
 EQ = ['areas/a1.json', 'equipment']
 PIPE = ['areas/a1.json', 'pipes', 0]
 ST = ['areas/a1.json', 'structures']
@@ -244,6 +258,27 @@ REJECTS = [
     ('a machine moving to a state it lacks', 'bad_ref', _set(MOD + ['machines'], [
         {'id': 'm', 'kks': '10LAC10AP001', 'init': 'off', 'commands': {'go': {'from': '*', 'to': 'on'}},
          'states': [{'id': 'off', 'next': [['p_high', 'away']]}, {'id': 'on'}]}])),
+    ('a value named like an earlier area\'s trip latch', 'dup_id',
+     _put('model/a2.json', dict(A2_MODEL, values=[['t1_latched', {'const': 1}]]))),
+    ('a value named like an earlier area\'s machine state', 'dup_id', _all(
+        _set(MOD + ['machines'], [{'id': 'm', 'kks': '10LAC10AP001', 'init': 'off', 'commands': {},
+                                   'states': [{'id': 'off'}]}]),
+        _put('model/a2.json', dict(A2_MODEL, values=[['m_state', {'const': 1}]])))),
+    ('an ext value named like a trip latch', 'dup_id', _all(
+        _set(['plant.json', 'ext'], ['ambient_t', 't1_latched']),
+        _set(['scenarios/s1.json', 'init', 't1_latched'], 0))),
+    ('a scenario setting a latch to neither 0 nor 1', 'bad_value', _all(
+        _app(MOD + ['values'], ['lt', {'latch': 'p_high', 'reset': 'valve_open'}]),
+        _set(['scenarios/s1.json', 'init', 'lt'], 0.5))),
+    ('a scenario setting an integrate outside its range', 'bad_value', _all(
+        _app(MOD + ['values'], ['lv', {'integrate': 'flow', 'gain': 1, 'min': 0, 'max': 2}]),
+        _set(['scenarios/s1.json', 'init', 'lv'], 3))),
+    ('a scenario setting a wrap outside [0, period)', 'bad_value', _all(
+        _app(MOD + ['values'], ['ang', {'wrap': 'flow', 'period': 1}]),
+        _set(['scenarios/s1.json', 'init', 'ang'], 1))),
+    ('a scenario setting a timer', 'bad_ref', _all(
+        _app(MOD + ['values'], ['tm', {'timer': 'p_high'}]),
+        _set(['scenarios/s1.json', 'init', 'tm'], 1))),
     ('a scenario setting a stateless value', 'bad_ref', _set(['scenarios/s1.json', 'init', 'p'], 3)),
     ('a scenario without an ext value', 'missing_key', _set(['scenarios/s1.json', 'init'], {})),
     ('a scenario latching a trip that does not exist', 'bad_ref', _set(['scenarios/s1.json', 'latched'], ['t2'])),
@@ -338,6 +373,17 @@ def unit_models():
                     'delay': 0.2, 'priority': 1, 'where': '10LAC10AP001', 'suppress': 'sup'},
                    {'id': 'al2', 'kks': '10LAB10BB001', 'text': 'C high', 'when': 'c_hi', 'priority': 3,
                     'where': '10LAB10BB001'}]}
+    first_out = {'values': [
+        ['a', {'state': 0}], ['b', {'state': 0}], ['x', {'state': 0}],
+        ['a_hi', {'cmp': ['a', '>=', 1]}], ['b_hi', {'cmp': ['b', '>=', 1]}]],
+        'ops': [{'kks': '10LAC10AP001', 'do': 'set', 'input': 'a', 'range': [0, 1], 'where': ['screen']},
+                {'kks': '10LAB10AA001', 'do': 'set', 'input': 'b', 'range': [0, 1], 'where': ['screen']},
+                {'kks': '10LAC10AP001', 'do': 'reset', 'trip': 'ta', 'where': ['screen']},
+                {'kks': '10LAB10AA001', 'do': 'reset', 'trip': 'tb', 'where': ['screen']}],
+        'trips': [{'id': 'ta', 'kks': '10LAC10AP001', 'text': 'A', 'when': 'a_hi', 'do': [{'set': {'x': 1}}],
+                   'first_out': 'g'},
+                  {'id': 'tb', 'kks': '10LAB10AA001', 'text': 'B', 'when': 'b_hi', 'do': [{'set': {'x': 2}}],
+                   'first_out': 'g'}]}
     return [
         ('every node kind', nodes, {'ambient_t': 21}, [], [
             [1, 'op', '10LAC10AP001', 'set', 1, None], [6, 'op', '10LAB10AA001', 'set', 1, None],
@@ -370,14 +416,28 @@ def unit_models():
             [29, 'ack', 'al'], [29, 'ack', 'al2'],
             [30, 'op', '10LAB10BB001', 'set', 0, None],
             [31, 'op', '10LAC10AP001', 'set', 2, None], [33, 'op', '10LAC10AP001', 'set', 0, None]], 36),
+        ('first out with a trip the scenario starts latched; inputs naming no alarm or fault', first_out,
+         {'ambient_t': 20, 'latched': ['ta']}, [], [
+            [1, 'op', '10LAB10AA001', 'set', 1, None],
+            [3, 'op', '10LAB10AA001', 'set', 0, None],
+            [4, 'op', '10LAB10AA001', 'reset', None, 'tb'],
+            [5, 'op', '10LAC10AP001', 'reset', None, 'ta'],
+            [6, 'op', '10LAB10AA001', 'set', 1, None],
+            [8, 'ack', 'none'], [8, 'shelve', 'none', 5], [8, 'unshelve', 'none'], [8, 'fault', 'none']], 10),
     ]
 
 
 def unit_bundle(model, init, faults):
+    """The synthetic plant with model/a1.json and scenarios/s1.json replaced and procedures/p1.json removed (its
+    steps name ops of the synthetic model). `init` may carry the scenario's `latched` list."""
     F = mini()
     F['model/a1.json'] = dict({'format': 'walkdown-plant-model', 'version': 1, 'area': 'a1'}, **model)
+    init = dict(init)
+    latched = init.pop('latched', None)
     F['scenarios/s1.json'] = {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 's1', 'title': 'Units',
                               'init': init, 'faults': faults}
+    if latched:
+        F['scenarios/s1.json']['latched'] = latched
     for rel in ('procedures/p1.json',):
         del F[rel]
     return F, check(F)
@@ -503,10 +563,39 @@ FORKS = [
      {'first_out': {'cw_c': 'cw_c_trip_valve'}, 'alarms': ['cw_c_valve_late']}),
     ('hotwell_low_low', 'end', [('fault', 'hw_leak'), ('run', 1200)],
      {'first_out': {'cep': 'cep_trip_hw'}, 'alarms': ['hw_low', 'hw_ll']}),
-    ('ct_fan_vibration', 'end', [('fault', 'ct_fan3_vib'), ('run', 60)],
-     {'first_out': {'ct_fans': 'ct_fan3_trip_vib'}, 'alarms': ['ct_fan3_vib_hh']}),
     ('ccw_pump_trip', 'end', [('fault', 'ccw_a_motor'), ('run', 30)],
      {'first_out': {'ccw': 'ccw_a_trip'}, 'interlocks': ['ccw_b_auto'], 'alarms': ['ccw_a_tripped']}),
+    ('ccw_standby_a', 'end', [('op', '00PGC10AP002', 'start', None, None), ('run', 10),
+                              ('op', '00PGC10AP001', 'stop', None, None), ('run', 10),
+                              ('fault', 'ccw_b_motor'), ('run', 30)],
+     {'first_out': {'ccw': 'ccw_b_trip'}, 'interlocks': ['ccw_a_auto'], 'alarms': ['ccw_b_tripped']}),
+    ('cw_b_overload', 'end', [('fault', 'cw_b_motor'), ('run', 120)],
+     {'first_out': {'cw_b': 'cw_b_trip_ol'}, 'interlocks': ['cw_b_v_close'], 'alarms': ['cw_b_tripped']}),
+    ('cw_c_overload', 'end', [('op', '30PAC10AA103', 'set', 0.15, None), ('until', 'cw_c_vstart', 60),
+                              ('op', '30PAC10AP003', 'start', None, None), ('run', 30), ('fault', 'cw_c_motor'),
+                              ('run', 60)],
+     {'first_out': {'cw_c': 'cw_c_trip_ol'}, 'interlocks': ['cw_c_v_close'], 'alarms': ['cw_c_tripped']}),
+    ('basin_low_low_three_pumps', 'end', [('op', '30PAC10AA103', 'set', 0.15, None), ('until', 'cw_c_vstart', 60),
+                                          ('op', '30PAC10AP003', 'start', None, None), ('run', 1),
+                                          ('op', '30PAC10AA103', 'open', None, None), ('run', 80),
+                                          ('fault', 'ct_drain_open'), ('run', 900)],
+     {'first_out': {'cw_a': 'cw_a_trip_ll', 'cw_b': 'cw_b_trip_ll', 'cw_c': 'cw_c_trip_ll'},
+      'alarms': ['ct_basin_ll']}),
+    ('cw_a_valve_late', 'basin', [('op', '30PAC10AA101', 'set', 0.15, None), ('until', 'cw_a_vstart', 60),
+                                  ('op', '30PAC10AP001', 'start', None, None), ('run', 1),
+                                  ('fault', 'cw_a_valve_stuck'), ('op', '30PAC10AA101', 'open', None, None),
+                                  ('run', 150)],
+     {'first_out': {'cw_a': 'cw_a_trip_valve'}, 'alarms': ['cw_a_valve_late']}),
+    ('cw_b_valve_late', 'gt_load', [('op', '30PAC10AA102', 'set', 0.15, None), ('until', 'cw_b_vstart', 60),
+                                    ('op', '30PAC10AP002', 'start', None, None), ('run', 1),
+                                    ('fault', 'cw_b_valve_stuck'), ('op', '30PAC10AA102', 'open', None, None),
+                                    ('run', 150)],
+     {'first_out': {'cw_b': 'cw_b_trip_valve'}, 'alarms': ['cw_b_valve_late']}),
+] + [  # every cooling tower fan (fans 6–10 stand at the end of the cold start: started first)
+    (f'ct_fan{i}_vibration', 'end',
+     ([] if i <= 5 else [('op', f'30PAD10AN{i:03d}', 'start', None, None), ('run', 60)]) +
+     [('fault', f'ct_fan{i}_vib'), ('run', 60)],
+     {'first_out': {'ct_fans': f'ct_fan{i}_trip_vib'}, 'alarms': [f'ct_fan{i}_vib_hh']}) for i in range(1, 11)
 ]
 
 
@@ -571,15 +660,42 @@ def build_train(b):
             'events': e.events, 'forks': forks}
 
 
+LINKS = [  # links read against the synthetic plant (§6)
+    'walkdown-plant://kks/10LAC10AP001',            # exact
+    'walkdown-plant://kks/10LAC10AP001KP01',        # a component-level code: cut to the grammar, then the A3 dropped
+    'walkdown-plant://kks/10LAC10AP0019999',        # cut to the longest beginning that matches the grammar
+    'walkdown-plant://kks/10LAC10AP002',            # same system and equipment letters
+    'walkdown-plant://kks/10LAB10AP005',            # same equipment letters only
+    'walkdown-plant://kks/20MAA10AP001',            # unit and system not in the key; same equipment letters
+    'walkdown-plant://kks/10MAA10AN001',            # nothing of that kind: the decoding only
+    'walkdown-plant://kks/10LAB10',                 # a system the plant has no system-level code for
+    'walkdown-plant://kks/10lac10ap001',            # lower case: not a link code
+    'walkdown-plant://kks/10IAC10AP001',            # no beginning matches the grammar (I is not a KKS letter)
+    'walkdown-plant://kks/10LAC10AP0019999999999999',  # 25 characters
+    'walkdown-plant://kks/10LAC10AP001?x=1',
+    'walkdown-plant://kks/',
+    'walkdown-plant://procedure/p1',
+    'walkdown-plant://procedure/p1/start',
+    'walkdown-plant://procedure/t1/s1',
+    'walkdown-plant://procedure/p1/nope',
+    'walkdown-plant://procedure/zz',
+    'walkdown-plant://course/ppt',
+    'walkdown://course/ppt',
+    'https://example.org/',
+]
+
+
 def build():
     F = mini()
     counts = check(F).counts
+    links = [{'link': u, 'expect': P.read_link(u, check(F))} for u in LINKS]
     return {'about': 'Walkdown Plant content format 1 vectors (docs/PLANT3D.md §12), made by '
                      'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6.',
             'valid': [{'why': 'the synthetic plant', 'files': {k: json.dumps(v, ensure_ascii=False)
                                                               for k, v in F.items()}, 'counts': counts}],
             'reject': build_rejects(),
             'steps': build_steps(),
+            'links': links,
             'train': build_train(train_bundle())}
 
 

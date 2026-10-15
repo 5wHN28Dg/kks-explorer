@@ -102,6 +102,7 @@ def sounds():
 
 FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)
     ('ccw_a_motor', {'ccw_a_fault': 1}, 'Closed cooling water pump A motor fails'),
+    ('ccw_b_motor', {'ccw_b_fault': 1}, 'Closed cooling water pump B motor fails'),
     ('gt1_lac_fails', {'gt1_lac_fault': 1}, 'GT 1 AC lube oil pump fails'),
     ('gt1_lube_both', {'gt1_lac_fault': 1, 'gt1_ldc_fault': 1}, 'Both GT 1 lube oil pumps fail'),
     ('gt1_flameout', {'gt1_flameout': 1}, 'GT 1 flame out (a fuel supply disturbance)'),
@@ -122,10 +123,14 @@ FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)
     ('st_thrust', {'st_thrust_fault': 1}, 'Steam turbine thrust bearing wear'),
     ('st_vib', {'st_vib_fault': 1}, 'Steam turbine bearing 3 damage'),
     ('cw_a_motor', {'cw_a_fault': 1}, 'CW pump A motor overload'),
+    ('cw_b_motor', {'cw_b_fault': 1}, 'CW pump B motor overload'),
+    ('cw_c_motor', {'cw_c_fault': 1}, 'CW pump C motor overload'),
     ('cw_ab_fail', {'cw_a_fault': 1, 'cw_b_fault': 1}, 'CW pumps A and B trip (a supply fault)'),
+    ('cw_a_valve_stuck', {'cw_a_v_stuck': 1}, 'CW pump A discharge valve actuator fails'),
+    ('cw_b_valve_stuck', {'cw_b_v_stuck': 1}, 'CW pump B discharge valve actuator fails'),
     ('cw_c_valve_stuck', {'cw_c_v_stuck': 1}, 'CW pump C discharge valve actuator fails'),
     ('ct_drain_open', {'ct_drain_open': 1}, 'Cooling tower basin drain left open'),
-    ('ct_fan3_vib', {'ct_fan3_vfault': 1}, 'Cooling tower fan 3 blade damage'),
+] + [(f'ct_fan{i}_vib', {f'ct_fan{i}_vfault': 1}, f'Cooling tower fan {i} blade damage') for i in range(1, 11)] + [
     ('hw_leak', {'hw_leak': 1, 'hw_mk_fail': 1}, 'Condensate leak with the hotwell makeup failed'),
 ]
 

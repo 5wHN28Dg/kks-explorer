@@ -241,8 +241,10 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
   message; links never carry anything but these paths.
 - **A code the plant doesn't have** (for example a real plant's code from Walkdown's drawings) shows the plant's
   equipment of the same kind instead, labelled as such: same system letters and equipment letters (`LAC` + `AP`:
-  "a feedwater pump in this plant: 10LAC10AP001"), else the same equipment letters, else the code's decoding only,
-  with letters the plant's tables don't have shown as "not in this plant's key". The code is not stored or sent
+  "a feedwater pump in this plant: 10LAC10AP001"; for a code without equipment letters, a system-level code of the
+  same system), else the same equipment letters, else the code's decoding only, with letters the plant's tables
+  don't have shown as "not in this plant's key". Of several codes of that kind the lowest in code order is shown.
+  The reference is `read_link` in `ref/plant3d.py`, and the vectors' `links` (§12) pin it. The code is not stored or sent
   anywhere: Walkdown Plant has no network access (0054).
 - **A link out with nothing to open it** (Walkdown not installed): the app says so instead of failing silently.
 
@@ -278,7 +280,7 @@ equipment it belongs to).
 | `{"cmp": [a, ">=", b]}` | 1 or 0; also `>`, `<=`, `<` |
 | `{"and": [ref, …]}`, `{"or": [ref, …]}`, `{"not": ref}` | logic on values ≥ 0.5 = true; result 1 or 0 |
 | `{"lag": ref, "tau": t, "tau_down": t2, "init": n}` | first-order lag (below) |
-| `{"ramp": ref, "rate": r, "rate_down": r2, "init": n}` | moves toward the input at most r units per second |
+| `{"ramp": ref, "rate": r, "rate_down": r2, "init": n}` | moves toward the input at most r units per second: y ← min(u, y + r · 0.1) when u ≥ y, else max(u, y − r2 · 0.1) (`rate_down` default `rate`; r · 0.1 computed once per node) |
 | `{"integrate": ref, "gain": g, "min": a, "max": b, "init": n}` | y ← clamp(y + g · input · dt, a, b): levels, inventories |
 | `{"latch": set, "reset": reset, "init": 0}` | 1 from the first step `set` is true until `reset` is true (reset wins) |
 | `{"delay": ref, "on": t, "off": t2}` | counts the consecutive steps in which it read its input true (the first counts 1); true when the count reaches t / 0.1 (on = 2 s: at the 20th such step); likewise false after t2 / 0.1 steps of reading false; `off` default 0 |
@@ -296,6 +298,10 @@ the end of the previous step, after its steps 3–6 (§7.10), before this step's
 `<trip id>_latched` (1 while latched, §7.5) are values too, read by any node anywhere in the list (they are not
 computed in step 2) and by conditions; no other value may have those names (`dup_id`). Trip IDs are at most 24
 characters, machine IDs at most 26.
+
+**Times as steps.** A time t (a `delay`'s `on` and `off`, a trip's or alarm's `delay`, a shelving time) counts
+round(t / 0.1) steps. t is a multiple of 0.1 s (`bad_time` otherwise), but t / 0.1 in double precision isn't always
+a whole number (0.3 / 0.1 = 2.9999…): round, never truncate.
 
 **Arithmetic:** IEEE 754 double precision; `sum` and `product` in list order, left to right; a lag's factor
 1 − e^(−0.1/τ) computed once per node. A value is true when ≥ 0.5; `cmp`, `and`, `or`, `not` give exactly 1 or 0.
@@ -330,9 +336,12 @@ room screens:
   - `reset`: `"trip": <trip id>`; refused while the trip is not latched (naming `<trip>_latched`) or while its
     `when` was true in the previous step (naming that value): the cause must have cleared;
   - a machine command: `"machine": <machine id>`, `do` one of its commands; refused when the machine's current
-    state doesn't take it (naming `<machine>_state`); an optional `set` is applied with it;
+    state doesn't take it (naming `<machine>_state`); an optional `set` is applied with it, before the machine
+    enters its new state (so the new state's `set` wins where both write a state);
   - every other `do` has a `set`.
   An op is named by its equipment, its `do` and (for a reset) its trip: two ops with the same three are `dup_id`.
+  An op that is done writes, in this order: a `set` op's number into its input; a reset's latch to 0 (restarting
+  its trip's count); the op's `set`; a machine command's new state (§7.4).
   A refused op lists the values that failed, permissives first, in order.
 - **`set`:** the states it writes. A valve's `state` is its **command**; its position is a `ramp` of the command at
   the valve's travel rate (a 2 m butterfly valve takes a minute: the trainee sees and hears it move).
@@ -395,7 +404,8 @@ so that the panel shows which of them came first, as real first-out annunciators
 latch while no trip of the group is latched is its first out; the record clears in the step the last latched trip
 of the group is reset. Trips that fire in the same step are ordered as they are listed in the model (plant.json's
 area order, then file order): the first one listed is "first out". Trips a scenario starts latched record no first
-out.
+out, and while one of them is latched no other trip of its group is first out; their `do` is not applied at step 0
+(the scenario's `init` describes the stopped plant as it stands).
 
 ### 7.6 Alarms and events
 
@@ -410,7 +420,8 @@ out.
 - **`suppress`** (optional): a value; while it is true the alarm is suppressed by design, as alarm management
   does for alarms that are expected in a plant state (condenser pressure high while no vacuum pump runs and the turbine
   is at standstill). A suppressed alarm is listed as such, never sounds and never changes state.
-- States per alarm, as the common alarm-management model (ISA-18.2) describes them: normal → active unacknowledged
+- States per alarm (named in events and snapshots `normal`, `active_unack`, `active_ack`, `cleared_unack`), as the
+  common alarm-management model (ISA-18.2) describes them: normal → active unacknowledged
   (flashing, horn) → active acknowledged (steady) → cleared unacknowledged → normal; and **shelved**: set aside for
   a while by the operator (a nuisance alarm, an instrument under repair), shown in a list of its own, no horn, until
   un-shelved or its shelving time ends. The trainee acknowledges at the panel; the
@@ -422,8 +433,9 @@ out.
   active unacknowledged → cleared unacknowledged when clear; active acknowledged → normal when clear; cleared
   unacknowledged → active unacknowledged when on. While suppressed or shelved it keeps its state and its count
   restarts. The trainee's inputs (step 1): acknowledge (active unacknowledged → active acknowledged, cleared
-  unacknowledged → normal; also on a suppressed alarm), shelve for a number of seconds, un-shelve; a shelf that
-  runs out ends in step 7 of the step it reaches, with an event.
+  unacknowledged → normal; also on a suppressed alarm), shelve for a number of seconds, un-shelve; a shelf made in
+  step n for t seconds ends in step 7 of step n + round(t / 0.1), with an event (shelving a shelved alarm again
+  sets a new end).
 - **`where`:** the equipment the alarm leads to (one tap from the alarm list highlights and walks there: R10).
 - **Events:** every operation, interlock, machine step, trip and alarm change goes into an event list with model
   time; procedures (§8) and the debrief read it.
@@ -461,7 +473,9 @@ out.
              "set": {"cw_b_motor_fault": 1}, "text": "Pump B trips on overcurrent at its first start"}]}
 ```
 
-`init` overrides the initial value of a `state`, a stateful node or an `ext` value (every `ext` value is set);
+`init` overrides the initial value of a `state`, a stateful node other than a `timer` (a timer always starts at 0:
+`bad_ref`) or an `ext` value (every `ext` value is set), under the same rules as a node's own `init` (§7.1:
+`bad_value`);
 `latched` names trips (by their `id`) that start latched, as they stand in a stopped plant; `faults` are set by a
 condition, so a trainer can make "the standby pump fails" happen at the moment that teaches most. A fault's `when`
 is a value name or a stateless node over values (`{"cmp": …}` as in the example); a fault **without `when`** is a
@@ -481,8 +495,10 @@ the Note 9 is measured (0054) and the top speed is capped by what the phone keep
 Each 0.1 s step, in this order (the reference and the app must agree to the vectors):
 1. The trainee's inputs queued since the last step, in the order made: operations (each refused if a permissive in
    `needs` is false, read as the previous step left it, else applied, §7.2; machine commands likewise),
-   acknowledgements, shelving, and the trainer's faults (noted here, applied in step 3). Then the first-out records
-   of groups with no latched trip are cleared.
+   acknowledgements, shelving, and the trainer's faults (noted here, applied in step 3). An acknowledgement or
+   shelving of an alarm the model doesn't have, and a press of a fault the scenario doesn't have, one with a `when`
+   or one already applied, do nothing and make no event (an unknown operation is an `"unknown"` event, §12). Then
+   the first-out records of groups with no latched trip are cleared.
 2. `values` are evaluated in order (stateful nodes read the previous step's values where §7.1 allows).
 3. Faults whose condition is true are applied (their `set`), once each.
 4. Interlocks on a rising edge of `when`, in list order; their `set` is applied.
@@ -493,7 +509,8 @@ Each 0.1 s step, in this order (the reference and the app must agree to the vect
 
 Every condition in steps 3–7 (`when`, `next`, permissive-like checks) reads the values as step 2 left them, not
 as an earlier part of steps 3–6 changed them; states changed in steps 3–6 are read by `values` in the next step.
-Step 0 is §7.1's. A cold start that takes hours in a real plant takes about 40 minutes of play (FIRST-TRAIN.md §4).
+Step 0 is §7.1's. A cold start that takes hours in a real plant takes far less (FIRST-TRAIN.md §4, "As built": 110
+minutes of model time, about 10 minutes of the trainee's time with fast-forward, walking and reading on top).
 
 ## 8. Procedures and tours (one format, R10)
 
@@ -667,9 +684,15 @@ Vectors (`ref/vectors/plant3d-v1.json`, made by `ref/make_plant3d_vectors.py` fr
 as for the courses):
 - **`valid`** and **`reject`:** a small synthetic plant as `{relative path: file text}`, and changes to it
   (`change`: the files replaced, `null` for one removed) that each break one rule, with the error code;
-- **`steps`:** small models (each replaces the synthetic plant's `model/a1.json` and `scenarios/s1.json`), their
-  `inputs`, and the state after every step from step 0. They pin every node kind, the permissive refusals,
-  interlock edges, machine moves, trips with first-out and reset, alarm states, suppression and shelving, faults;
+- **`steps`:** small models (each replaces the synthetic plant's `model/a1.json` and `scenarios/s1.json`, and
+  removes its `procedures/p1.json`, whose steps name ops of the synthetic model), their `inputs`, and the state
+  after every step from step 0. They pin every node kind, the permissive refusals,
+  interlock edges, machine moves, trips with first-out and reset (also against a trip the scenario starts latched),
+  alarm states, suppression and shelving, faults, and inputs naming no alarm or fault;
+- **`links`:** links (§6) and what each opens in the synthetic plant: `{"open": "kks", "code", "match", "decode"}`
+  (`match` one of `exact`, `without_a3`, `same_kind`, `same_equipment`, `decode`; `decode` the asked code's unit,
+  system and equipment names, `null` where not in the key), `{"open": "procedure", "id", "step"}` (`step` `null`
+  for the first) or `{"open": "start"}`;
 - **`train`:** the first train's cold start run by its procedure: its `inputs`, every `event`, a full `snapshot`
   every `snapshot_every` steps and at the end, the step at which each procedure step ended; and `forks` from it
   (each from `base_step` of the cold start: its `inputs`, its `events`, the state at `until`, and the `expect`ation

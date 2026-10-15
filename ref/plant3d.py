@@ -814,7 +814,8 @@ class Model:
             lst(pair, f'{rel}.values[{i}]', 2, 2)
             name = ident(pair[0], f'{rel}.values[{i}]')
             w = f'{rel}: value {name}'
-            need(name not in self.index and name not in self.ext, 'dup_id', f'{w}: name already used')
+            need(name not in self.known(), 'dup_id', f'{w}: name already used (a value, an ext value, a machine\'s '
+                 f'state or a trip\'s latch, §7.1)')
             kind = self.check_node(pair[1], w)
             self.index[name] = len(self.values)
             self.values.append((name, pair[1], kind))
@@ -944,7 +945,7 @@ class Model:
         need(isinstance(m['id'], str) and ID_RE.fullmatch(m['id']) and len(m['id']) <= 26, 'bad_id',
              f'{w}: id of at most 26 characters')
         need(m['id'] not in {x['id'] for x in self.machines}, 'dup_id', w)
-        need(m['id'] + '_state' not in self.index, 'dup_id', f'{w}: a value is named {m["id"]}_state')
+        need(m['id'] + '_state' not in self.index and m['id'] + '_state' not in self.ext, 'dup_id', f'{w}: a value is named {m["id"]}_state')
         self.kks_ref(m['kks'], w)
         ids = []
         for i, s in enumerate(lst(m['states'], f'{w}.states', 1, 64)):
@@ -982,7 +983,7 @@ class Model:
         need(isinstance(t['id'], str) and ID_RE.fullmatch(t['id']) and len(t['id']) <= 24, 'bad_id',
              f'{w}: id of at most 24 characters')
         need(t['id'] not in {x['id'] for x in self.trips}, 'dup_id', w)
-        need(t['id'] + '_latched' not in self.index, 'dup_id', f'{w}: a value is named {t["id"]}_latched')
+        need(t['id'] + '_latched' not in self.index and t['id'] + '_latched' not in self.ext, 'dup_id', f'{w}: a value is named {t["id"]}_latched')
         self.kks_ref(t['kks'], w)
         name_text(t['text'], w, 120)
         if 'isa' in t:
@@ -1115,8 +1116,16 @@ def check_scenario(s, m, rel):
     need(isinstance(s['init'], dict), 'bad_type', f'{rel}.init')
     for k, v in s['init'].items():
         num(v, f'{rel}.init.{k}')
-        ok = k in m.ext or (k in m.index and m.values[m.index[k]][2] in ('state',) + STATEFUL)
-        need(ok, 'bad_ref', f'{rel}.init.{k}: not a state, stateful value or ext value')
+        kind = m.values[m.index[k]][2] if k in m.index else None
+        ok = k in m.ext or kind in ('state',) + STATEFUL and kind != 'timer'
+        need(ok, 'bad_ref', f'{rel}.init.{k}: not a state, stateful value (other than a timer) or ext value')
+        n = m.values[m.index[k]][1] if k in m.index else None
+        if kind in ('latch', 'delay'):
+            need(v in (0, 1), 'bad_value', f'{rel}.init.{k}: 0 or 1')
+        elif kind == 'integrate':
+            need(n['min'] <= v <= n['max'], 'bad_value', f'{rel}.init.{k}: within min and max')
+        elif kind == 'wrap':
+            need(0 <= v < n['period'], 'bad_value', f'{rel}.init.{k}: within [0, period)')
     for e in m.ext:
         need(e in s['init'], 'missing_key', f'{rel}.init: the scenario sets every ext value ({e})')
     trips = {t['id'] for t in m.trips}
@@ -1511,6 +1520,8 @@ class Engine:
             kind = item[0]
             if kind == 'op':
                 self._op(item[1:], prev, moved)
+            elif kind in ('ack', 'shelve', 'unshelve') and item[1] not in self.astate:
+                continue        # an alarm the model doesn't have: nothing happens, no event (§7.10)
             elif kind == 'ack':
                 a = item[1]
                 if self.astate[a] == 'active_unack':
@@ -1578,7 +1589,9 @@ class Engine:
                 self.latched[tid] = True
                 cur[self.ix[tid + '_latched']] = 1.0
                 g = t.get('first_out')
-                first = bool(g) and g not in self.first_out
+                # first out: no other trip of its group is latched (also one a scenario started latched, §7.5)
+                first = bool(g) and not any(self.latched[x['id']] for x in self.trips
+                                            if x.get('first_out') == g and x['id'] != tid)
                 if first:
                     self.first_out[g] = tid
                 self.ev('trip', tid, first)
@@ -1738,3 +1751,59 @@ def run_procedure(b, pid, limit_s=3600, eng=None, until_step=None, on_step=None)
         if on_step:
             on_step(s['id'], e)
     return e, log
+
+
+# ---------------------------------------------------------------- links into the plant (§6)
+
+def decode(code, kks):
+    """A code's decoding from the plant's tables (§6): each level's name, or None when its letters are not in the
+    plant's key ("not in this plant's key")."""
+    g = kks_parts(code)
+    eq = None
+    if g[4]:
+        eq = kks['equipment'].get(g[4], kks['measurements'].get(g[4]))
+    return {'unit': kks['units'].get(g[0]), 'system': kks['systems'].get(g[2]),
+            'equipment': eq if g[4] else None}
+
+
+def read_link(url, b):
+    """What a link opens in Walkdown Plant (§6). Returns one of
+        {'open': 'kks', 'code', 'match', 'decode'}   match: 'exact', 'without_a3' (the A3 letter dropped),
+                                                       'same_kind' (same system and equipment letters),
+                                                       'same_equipment' (same equipment letters), or
+                                                       'decode' (no equipment of that kind: code is the one asked)
+        {'open': 'procedure', 'id', 'step'}             step None for the first step
+        {'open': 'start'}                               anything else: the app's start, with a short message
+    `decode` is always the decoding of the code asked (after cutting it to the grammar)."""
+    start = {'open': 'start'}
+    if not isinstance(url, str) or not url.startswith('walkdown-plant://'):
+        return start
+    path = url[len('walkdown-plant://'):].split('/')
+    if len(path) == 2 and path[0] == 'kks' and LINK_CODE.fullmatch(path[1]):
+        raw = path[1]
+        asked = next((raw[:n] for n in range(len(raw), 0, -1) if KKS_RE.fullmatch(raw[:n])), None)
+        if asked is None:
+            return start
+        codes = b.model.p.codes
+        out = {'open': 'kks', 'code': asked, 'match': 'exact', 'decode': decode(asked, b.plant['kks'])}
+        if asked in codes:
+            return out
+        g = kks_parts(asked)
+        if g[6] and asked[:-1] in codes:
+            return dict(out, code=asked[:-1], match='without_a3')
+        # a code the plant doesn't have: the lowest code (in code order) of the same kind
+        same = sorted(c for c in codes if kks_parts(c)[2] == g[2] and kks_parts(c)[4] == g[4])
+        if same:
+            return dict(out, code=same[0], match='same_kind')
+        if g[4]:
+            same = sorted(c for c in codes if kks_parts(c)[4] == g[4])
+            if same:
+                return dict(out, code=same[0], match='same_equipment')
+        return dict(out, match='decode')
+    if len(path) in (2, 3) and path[0] == 'procedure' and path[1] in b.procedures:
+        steps = [s['id'] for s in b.procedures[path[1]]['steps']]
+        if len(path) == 2:
+            return {'open': 'procedure', 'id': path[1], 'step': None}
+        if path[2] in steps:
+            return {'open': 'procedure', 'id': path[1], 'step': path[2]}
+    return start

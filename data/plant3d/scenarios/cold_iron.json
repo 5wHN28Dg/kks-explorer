@@ -17,6 +17,7 @@
  ],
  "faults": [
   {"id": "ccw_a_motor", "set": {"ccw_a_fault": 1}, "text": "Closed cooling water pump A motor fails"},
+  {"id": "ccw_b_motor", "set": {"ccw_b_fault": 1}, "text": "Closed cooling water pump B motor fails"},
   {"id": "gt1_lac_fails", "set": {"gt1_lac_fault": 1}, "text": "GT 1 AC lube oil pump fails"},
   {"id": "gt1_lube_both", "set": {"gt1_lac_fault": 1, "gt1_ldc_fault": 1}, "text": "Both GT 1 lube oil pumps fail"},
   {"id": "gt1_flameout", "set": {"gt1_flameout": 1}, "text": "GT 1 flame out (a fuel supply disturbance)"},
@@ -37,10 +38,23 @@
   {"id": "st_thrust", "set": {"st_thrust_fault": 1}, "text": "Steam turbine thrust bearing wear"},
   {"id": "st_vib", "set": {"st_vib_fault": 1}, "text": "Steam turbine bearing 3 damage"},
   {"id": "cw_a_motor", "set": {"cw_a_fault": 1}, "text": "CW pump A motor overload"},
+  {"id": "cw_b_motor", "set": {"cw_b_fault": 1}, "text": "CW pump B motor overload"},
+  {"id": "cw_c_motor", "set": {"cw_c_fault": 1}, "text": "CW pump C motor overload"},
   {"id": "cw_ab_fail", "set": {"cw_a_fault": 1, "cw_b_fault": 1}, "text": "CW pumps A and B trip (a supply fault)"},
+  {"id": "cw_a_valve_stuck", "set": {"cw_a_v_stuck": 1}, "text": "CW pump A discharge valve actuator fails"},
+  {"id": "cw_b_valve_stuck", "set": {"cw_b_v_stuck": 1}, "text": "CW pump B discharge valve actuator fails"},
   {"id": "cw_c_valve_stuck", "set": {"cw_c_v_stuck": 1}, "text": "CW pump C discharge valve actuator fails"},
   {"id": "ct_drain_open", "set": {"ct_drain_open": 1}, "text": "Cooling tower basin drain left open"},
+  {"id": "ct_fan1_vib", "set": {"ct_fan1_vfault": 1}, "text": "Cooling tower fan 1 blade damage"},
+  {"id": "ct_fan2_vib", "set": {"ct_fan2_vfault": 1}, "text": "Cooling tower fan 2 blade damage"},
   {"id": "ct_fan3_vib", "set": {"ct_fan3_vfault": 1}, "text": "Cooling tower fan 3 blade damage"},
+  {"id": "ct_fan4_vib", "set": {"ct_fan4_vfault": 1}, "text": "Cooling tower fan 4 blade damage"},
+  {"id": "ct_fan5_vib", "set": {"ct_fan5_vfault": 1}, "text": "Cooling tower fan 5 blade damage"},
+  {"id": "ct_fan6_vib", "set": {"ct_fan6_vfault": 1}, "text": "Cooling tower fan 6 blade damage"},
+  {"id": "ct_fan7_vib", "set": {"ct_fan7_vfault": 1}, "text": "Cooling tower fan 7 blade damage"},
+  {"id": "ct_fan8_vib", "set": {"ct_fan8_vfault": 1}, "text": "Cooling tower fan 8 blade damage"},
+  {"id": "ct_fan9_vib", "set": {"ct_fan9_vfault": 1}, "text": "Cooling tower fan 9 blade damage"},
+  {"id": "ct_fan10_vib", "set": {"ct_fan10_vfault": 1}, "text": "Cooling tower fan 10 blade damage"},
   {"id": "hw_leak", "set": {"hw_leak": 1, "hw_mk_fail": 1}, "text": "Condensate leak with the hotwell makeup failed"}
  ]
 }

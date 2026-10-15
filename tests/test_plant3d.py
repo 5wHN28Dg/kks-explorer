@@ -231,9 +231,39 @@ class Validator(unittest.TestCase):
         self.assertIn('segment', msg)
 
     def test_the_first_trains_stairs_keep_the_step_rules(self):
+        """Each stair of the first train, worked out here from §5's text (not with the validator's code): some number
+        of steps keeps the rise, going and step rules."""
         b = P.check_dir(DATA)
         stairs = [s for s in b.structures.values() if s['part'] == 'stair']
         self.assertGreaterEqual(len(stairs), 5)
+        for s in stairs:
+            prm = s['params']
+            foot, top = prm['foot'], prm['top']
+            width = prm.get('width', 1.0)
+            h = top[2] - foot[2]
+            dx, dy = abs(top[0] - foot[0]), abs(top[1] - foot[1])
+            f = math.ceil(round(h / 3.6, 9))
+            fits = []
+            for n in range(1, 400):
+                rise = h / n
+                if not 0.15 <= round(rise, 9) <= 0.20:
+                    continue
+                if prm.get('layout', 'straight') == 'straight':
+                    going = (math.hypot(dx, dy) - (f - 1) * width) / (n - f)
+                else:
+                    self.assertGreaterEqual(min(dx, dy), 2 * width, s['id'])
+                    going = (max(dx, dy) - 2 * width) / (math.ceil(n / f) - 1)
+                if round(going, 9) >= 0.25 and 0.60 <= round(going + 2 * rise, 9) <= 0.66:
+                    fits.append(n)
+            self.assertTrue(fits, f'{s["id"]}: no step count keeps the rules')
+
+    def test_new_rejects_fail_on_the_old_rules(self):
+        """Name clashes across areas (§7.1) and scenario init rules: the reject vectors of these exist."""
+        whys = {r['why'] for r in self.V['reject']}
+        for w in ('a value named like an earlier area\'s trip latch', 'a value named like an earlier area\'s machine '
+                  'state', 'an ext value named like a trip latch', 'a scenario setting a latch to neither 0 nor 1',
+                  'a scenario setting a timer'):
+            self.assertIn(w, whys)
 
 
 class Engine(unittest.TestCase):
@@ -254,6 +284,22 @@ class Engine(unittest.TestCase):
                 e.step()
                 states.append(e.snapshot())
             cls.runs[why[:5]] = (states, e.events)
+
+    def test_first_out_with_a_trip_latched_at_the_start(self):
+        """§7.5: a trip latching while another of its group is latched (here one the scenario started latched) is
+        not first out; once both are reset, the next one is. A latched-at-start trip's actions are not applied."""
+        states, ev = self.runs['first']
+        self.assertEqual(states[0]['tripped'], ['ta'])
+        self.assertEqual(states[0]['first_out'], {})
+        self.assertEqual(states[0]['values']['x'], 0)
+        self.assertIn([1, 'trip', 'tb', False], ev)
+        self.assertEqual(states[1]['first_out'], {})
+        self.assertIn([4, 'op', '10LAB10AA001', 'reset', 'done', []], ev)
+        self.assertIn([5, 'op', '10LAC10AP001', 'reset', 'done', []], ev)
+        self.assertIn([6, 'trip', 'tb', True], ev)
+        self.assertEqual(states[6]['first_out'], {'g': 'tb'})
+        # inputs naming an alarm or fault the model doesn't have do nothing and make no event
+        self.assertEqual([e for e in ev if e[0] == 8], [])
 
     def v(self, run, step, name):
         return self.runs[run][0][step]['values'][name]
@@ -295,7 +341,6 @@ class Engine(unittest.TestCase):
 
     def test_step_order_rules(self):
         states, ev = self.runs['permi']
-        kinds = [e for e in ev if e[1] != 'op' or e[4] != 'done']
         # permissives read the previous step: refused in step 1 (b = 0)
         self.assertIn([1, 'op', '10LAC10AP001', 'start', 'refused', ['b_hi']], ev)
         # a machine moved by a command does not move again by `next` in the same step
@@ -371,6 +416,25 @@ class Vectors(unittest.TestCase):
             d = close(got, s['states'])
             self.assertIsNone(d, d)
             self.assertEqual(plain(e.events), s['events'])
+
+    def test_links(self):
+        """§6: what each link opens in the synthetic plant, and the cases the rules name."""
+        b = P.check_files({k: t.encode() for k, t in self.V['valid'][0]['files'].items()})
+        for x in self.V['links']:
+            self.assertEqual(plain(P.read_link(x['link'], b)), x['expect'], x['link'])
+        got = {x['link'].split('://', 1)[1]: x['expect'] for x in self.V['links']}
+        self.assertEqual(got['kks/10LAC10AP001KP01']['match'], 'without_a3')
+        self.assertEqual(got['kks/10LAC10AP001KP01']['code'], '10LAC10AP001')
+        self.assertEqual(got['kks/10LAC10AP002'], {'open': 'kks', 'code': '10LAC10AP001', 'match': 'same_kind',
+                                                   'decode': {'unit': 'Unit 1', 'system': 'Feedwater pumps',
+                                                              'equipment': 'Pump'}})
+        self.assertEqual(got['kks/10LAB10AP005']['match'], 'same_equipment')
+        self.assertEqual(got['kks/20MAA10AP001']['decode'], {'unit': None, 'system': None, 'equipment': 'Pump'})
+        self.assertEqual(got['kks/10MAA10AN001']['match'], 'decode')
+        self.assertEqual(got['procedure/p1/start'], {'open': 'procedure', 'id': 'p1', 'step': 'start'})
+        for k in ('kks/10lac10ap001', 'kks/10IAC10AP001', 'kks/10LAC10AP0019999999999999', 'kks/10LAC10AP001?x=1',
+                  'procedure/p1/nope', 'course/ppt', 'example.org/'):
+            self.assertEqual(got[k], {'open': 'start'}, k)
 
     def test_train_replay(self):
         """The cold start's inputs alone reproduce its events, every snapshot (to 1e-6), and each fork."""
@@ -457,11 +521,6 @@ class ColdStart(unittest.TestCase):
         self.assertGreater(watched, 0)
 
 
-def norm(x):
-    """Siblings count as one: fan 3 for all fans, pump A for all pumps."""
-    return re.sub(r'(cw|ccw|cep|fw)_[abc]_', r'\1_X_', re.sub(r'fan\d+', 'fanN', x))
-
-
 class Forks(unittest.TestCase):
     """Each fork of the vectors against its expectation (written from FIRST-TRAIN §4–§5 in the generator), and
     together they make every trip and interlock of the model fire."""
@@ -494,11 +553,12 @@ class Forks(unittest.TestCase):
                     self.assertEqual([e for e in ev if e[1] == 'trip'], [])
 
     def test_every_trip_and_interlock_is_exercised(self):
-        fired_t = {norm(e[2]) for f in self.forks for e in f['events'] if e[1] == 'trip'}
-        fired_i = {norm(e[2]) for f in self.forks for e in f['events'] if e[1] == 'interlock'}
+        """Each one, siblings included (every fan, every pump)."""
+        fired_t = {e[2] for f in self.forks for e in f['events'] if e[1] == 'trip'}
+        fired_i = {e[2] for f in self.forks for e in f['events'] if e[1] == 'interlock'}
         m = self.b.model
-        self.assertEqual({norm(t['id']) for t in m.trips} - fired_t, set())
-        self.assertEqual({norm(x['id']) for x in m.interlocks} - fired_i, set())
+        self.assertEqual({t['id'] for t in m.trips} - fired_t, set())
+        self.assertEqual({x['id'] for x in m.interlocks} - fired_i, set())
 
 
 if __name__ == '__main__':
