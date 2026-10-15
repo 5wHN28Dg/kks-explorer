@@ -1,0 +1,33 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 1,
+ "id": "bop",
+ "title": "Auxiliary boiler, demineralised water, instrument air, closed cooling water",
+ "bounds": [
+  [85, -25],
+  [135, 25]
+ ],
+ "pack": "base",
+ "equipment": [
+  {"kks": "00QHA10", "name": "Auxiliary boiler", "part": "package_boiler", "at": [95, 0, 0], "yaw": 90, "params": {"d": 3, "length": 8, "steam_tph": 30}, "plate": "side", "parts": [{"kks": "00QHA10CP001", "name": "Auxiliary steam pressure", "part": "pressure_transmitter", "at": [1.8, 2, 2.5], "params": {"range": [0, 16], "unit": "bar"}}]},
+  {"kks": "00GHC10BB001", "name": "Demineralised water tank", "part": "tank_vertical", "at": [125, 15, 0], "params": {"d": 12, "height": 10, "roof": "cone"}, "plate": "side", "parts": [{"kks": "00GHC10CL001", "name": "Demineralised water tank level", "part": "level_transmitter", "at": [6.3, 0, 1], "params": {"range": [0, 10000], "unit": "mm"}}]},
+  {"kks": "00QFA10AN001", "name": "Instrument air compressor A", "part": "compressor_skid", "at": [110, -15, 0], "params": {"kw": 250, "length": 4, "width": 2}, "plate": "side", "parts": [{"kks": "00QFB10CP001", "name": "Instrument air header pressure", "part": "pressure_transmitter", "at": [1.2, 2.2, 1.5], "params": {"range": [0, 10], "unit": "bar"}}]},
+  {"kks": "00QFA10AN002", "name": "Instrument air compressor B", "part": "compressor_skid", "at": [116, -15, 0], "params": {"kw": 250, "length": 4, "width": 2}, "plate": "side"},
+  {"kks": "00PGC10AP001", "name": "Closed cooling water pump A", "part": "pump_horizontal", "at": [110, 5, 0], "params": {"flow_m3h": 900, "head_m": 45, "motor_kw": 160, "length": 3}, "plate": "motor_side"},
+  {"kks": "00PGC10AP002", "name": "Closed cooling water pump B", "part": "pump_horizontal", "at": [116, 5, 0], "params": {"flow_m3h": 900, "head_m": 45, "motor_kw": 160, "length": 3}, "plate": "motor_side"},
+  {"kks": "00PGB10AC001", "name": "Closed cooling water cooler", "part": "plate_hx", "at": [124, -8, 0], "params": {"plates": 300, "height": 2.5}, "plate": "frame"}
+ ],
+ "pipes": [
+  {"kks": "00LBG10BR001", "name": "Auxiliary steam to the gland steam supply", "medium": "steam_aux", "dn": 150, "from": {"kks": "00QHA10", "nozzle": "steam_out"}, "points": [[95, 0, 9], [67, 0, 9], [67, 1.5, 9]], "to": {"kks": "30MAA10", "nozzle": "gland_in"}, "insulation_mm": 80, "arrows": 10, "valves": [{"kks": "30MAW10AA001", "part": "valve_control", "at": 0.93, "name": "Gland steam supply control valve", "params": {"dn": 150, "actuator": "pneumatic"}}]}
+ ],
+ "structures": [
+  {"id": "bop_boiler_house", "part": "building", "at": [88, -8, 0], "params": {"outline": [[0, 0], [16, 0], [16, 16], [0, 16]], "height": 10, "cladding": "metal", "openings": [{"kind": "door", "at": [16, 4, 0], "width": 3, "height": 3.5}, {"kind": "pipe", "at": [7, 8, 9], "width": 0.5, "height": 0.5}]}},
+  {"id": "bop_boiler_door", "part": "door", "at": [104, -4, 0], "yaw": 90, "params": {"kind": "roller", "width": 3, "height": 3.5}}
+ ],
+ "signs": [
+  {"text": "Auxiliary boiler 00QHA10", "at": [104.1, 0, 3.5], "yaw": 90, "size": 0.4},
+  {"text": "Instrument air", "at": [113, -12, 2.5], "yaw": 0, "size": 0.4},
+  {"text": "Closed cooling water", "at": [113, 8, 2.5], "yaw": 0, "size": 0.4},
+  {"text": "Demineralised water 00GHC10", "at": [125, 8.5, 3], "yaw": 180, "size": 0.4}
+ ]
+}

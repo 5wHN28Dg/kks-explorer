@@ -1,0 +1,10 @@
+{
+ "format": "walkdown-plant-model",
+ "version": 1,
+ "area": "trafo1",
+ "bind": [
+  {"kks": "10BAT10", "sound": "transformer_hum", "gain": {"of": "gt1_mw", "table": [[0, 0.4], [250, 1]]}},
+  {"kks": "30BAT10", "sound": "transformer_hum", "gain": {"of": "st_mw", "table": [[0, 0.4], [135, 1]]}},
+  {"kks": "10BBT10", "sound": "transformer_hum", "gain": {"of": "ccw_n", "table": [[0, 0.3], [2, 0.5]]}}
+ ]
+}

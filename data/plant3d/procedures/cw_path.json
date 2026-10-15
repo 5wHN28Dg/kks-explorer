@@ -1,0 +1,19 @@
+{
+ "format": "walkdown-plant-procedure",
+ "version": 1,
+ "id": "cw_path",
+ "title": "Tour: the circulating water path",
+ "kind": "tour",
+ "intro": [
+  {"p": ["Follow the cooling water from the tower basin through the pumps and the condenser and back to the fans."]}
+ ],
+ "steps": [
+  {"id": "s1", "text": ["The cooling tower basin (", {"link": ["30PAD10BB001"], "to": {"kks": "30PAD10BB001"}}, "): cooled water collects here, under the fill."], "at": ["30PAD10BB001"], "go": "walk"},
+  {"id": "s2", "text": ["The pump house: three vertical pumps (", {"link": ["30PAC10AP001"], "to": {"kks": "30PAC10AP001"}}, ") lift water from the wet pit."], "at": ["30PAC10AP001", "30PAC10AP002", "30PAC10AP003"], "go": "walk"},
+  {"id": "s3", "text": ["Each pump discharges through a motor-operated butterfly valve (", {"link": ["30PAC10AA101"], "to": {"kks": "30PAC10AA101"}}, ")."], "at": ["30PAC10AA101"], "go": "walk"},
+  {"id": "s4", "text": ["The supply pipe (", {"link": ["30PAB10BR010"], "to": {"kks": "30PAB10BR010"}}, ") runs buried, 2.2 m across, to the turbine hall."], "at": ["30PAB10BR010"], "go": "walk"},
+  {"id": "s5", "text": ["The condenser (", {"link": ["30MAG10AC001"], "to": {"kks": "30MAG10AC001"}}, "): water passes through its tubes and takes the exhaust steam's heat."], "at": ["30MAG10AC001"], "go": "walk"},
+  {"id": "s6", "text": ["The return pipe (", {"link": ["30PAB20BR010"], "to": {"kks": "30PAB20BR010"}}, ") carries the warm water back to the tower."], "at": ["30PAB20BR010"], "go": "walk"},
+  {"id": "s7", "text": ["The fans on the deck (", {"link": ["30PAD10AN001"], "to": {"kks": "30PAD10AN001"}}, ") pull air up through the falling water."], "at": ["30PAD10AN001"], "go": "walk"}
+ ]
+}

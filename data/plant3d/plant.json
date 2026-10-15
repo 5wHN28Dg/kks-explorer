@@ -1,0 +1,45 @@
+{
+ "format": "walkdown-plant",
+ "version": 1,
+ "id": "ccpp",
+ "title": "Generic 2-2-1 combined-cycle plant",
+ "frequency_hz": 50,
+ "kks": {
+  "units": {"0": "Common to the whole plant", "1": "Gas turbine train 1 (GT 1, generator 1, HRSG 1)", "3": "Steam turbine unit (turbine, generator, condenser, cooling water)"},
+  "systems": {"BAC": "Generator circuit breaker", "BAT": "Generator step-up transformer", "BBT": "Unit auxiliary transformer", "GHC": "Demineralised water storage", "HAC": "Economiser", "HAD": "Evaporator and drum", "HAH": "Superheater", "HAJ": "Reheater", "HAN": "Boiler drains and vents", "HNA": "Flue gas ducts (HRSG inlet and casing)", "HNE": "Stack", "LAB": "Feedwater piping", "LAC": "Feedwater pumps", "LAE": "Superheater spray water", "LBA": "Main steam piping", "LBB": "Hot reheat piping", "LBC": "Cold reheat piping", "LBG": "Auxiliary steam", "LCA": "Main condensate piping", "LCB": "Condensate pumps", "LCE": "Condensate spray water", "LCQ": "Boiler blowdown", "MAA": "HP turbine", "MAB": "IP turbine", "MAD": "Steam turbine bearings", "MAG": "Condenser", "MAJ": "Condenser air extraction", "MAK": "Turning gear", "MAN": "Turbine bypass", "MAV": "Steam turbine lube oil", "MAW": "Gland steam", "MAY": "Steam turbine control and protection", "MBA": "Gas turbine: compressor and turbine", "MBD": "Gas turbine bearings", "MBJ": "Gas turbine start-up unit", "MBK": "Gas turbine gear and turning gear", "MBL": "Gas turbine intake air", "MBM": "Combustion system", "MBP": "Fuel gas", "MBR": "Gas turbine exhaust", "MBV": "Gas turbine lube oil", "MBY": "Gas turbine control and protection", "MKA": "Generator", "MKC": "Generator excitation", "PAB": "Circulating water piping", "PAC": "Circulating water pumps", "PAD": "Cooling tower", "PAR": "Cooling tower makeup water", "PGB": "Closed cooling water coolers", "PGC": "Closed cooling water pumps", "QFA": "Instrument air compressors", "QFB": "Instrument air distribution", "QHA": "Auxiliary boiler", "UCA": "Control building", "UHA": "HRSG structure", "UHN": "Stack structure", "UMA": "Turbine hall", "UMB": "Gas turbine hall", "UQA": "Circulating water pump house", "URA": "Cooling tower structure"},
+  "equipment": {"AA": "Valve or damper with its actuator", "AC": "Heat exchanger or heating surface", "AE": "Turning, driving or lifting gear", "AN": "Fan or compressor", "AP": "Pump unit", "AT": "Filter or cleaning unit", "BB": "Vessel or tank", "BR": "Pipe", "BS": "Silencer"},
+  "measurements": {"CB": "Radiation (flame)", "CF": "Flow", "CG": "Position or displacement", "CL": "Level", "CP": "Pressure", "CS": "Speed", "CT": "Temperature", "CY": "Vibration"},
+  "source": "Codes follow the public KKS key (sources: docs/plant3d/FIRST-TRAIN.md §1); only the letters this plant uses, with meanings in our own words."
+ },
+ "media": {
+  "cooling_water": {"group": "water", "band": "#2e7d32"},
+  "raw_water": {"group": "water", "band": "#558b2f"},
+  "feedwater": {"group": "water", "band": "#1b5e20"},
+  "condensate": {"group": "water", "band": "#43a047"},
+  "boiler_water": {"group": "water", "band": "#00695c"},
+  "steam_hp": {"group": "steam", "band": "#c62828"},
+  "steam_rh": {"group": "steam", "band": "#ad1457"},
+  "steam_crh": {"group": "steam", "band": "#e57373"},
+  "steam_lp": {"group": "steam", "band": "#ef6c00"},
+  "steam_aux": {"group": "steam", "band": "#d84315"},
+  "air": {"group": "air", "band": "#78909c"},
+  "fuel_gas": {"group": "gas", "band": "#f9a825"}
+ },
+ "areas": [
+  "control",
+  "bop",
+  "ct",
+  "cw",
+  "gt1",
+  "trafo1",
+  "hrsg1",
+  "st",
+  "rack"
+ ],
+ "ext": [
+  "ambient_t",
+  "ambient_wb",
+  "grid_frequency"
+ ],
+ "start": {"at": [-20, 0, 0], "yaw": 90}
+}

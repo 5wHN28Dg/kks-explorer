@@ -1,0 +1,23 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 1,
+ "id": "trafo1",
+ "title": "Transformer yard",
+ "bounds": [
+  [-30, 40],
+  [0, 60]
+ ],
+ "pack": "base",
+ "equipment": [
+  {"kks": "10BAT10", "name": "Step-up transformer 1", "part": "transformer", "at": [-23, 46, 0], "yaw": 90, "params": {"mva": 300, "kind": "gsu", "radiators": 8, "bushings": 6}, "plate": "tank"},
+  {"kks": "30BAT10", "name": "Steam turbine step-up transformer", "part": "transformer", "at": [-23, 55, 0], "yaw": 90, "params": {"mva": 170, "kind": "gsu", "radiators": 6, "bushings": 6}, "plate": "tank"},
+  {"kks": "10BBT10", "name": "Unit auxiliary transformer 1", "part": "transformer", "at": [-8, 50, 0], "yaw": 90, "params": {"mva": 25, "kind": "aux", "radiators": 2, "bushings": 6}, "plate": "tank"}
+ ],
+ "pipes": [],
+ "structures": [
+  {"id": "trafo_fence", "part": "fence", "at": [-30, 40, 0], "params": {"route": [[0.5, 0.5, 0], [29.5, 0.5, 0], [29.5, 19.5, 0], [0.5, 19.5, 0]], "height": 2.4}}
+ ],
+ "signs": [
+  {"text": "Transformer yard: danger, high voltage", "at": [-15, 40.4, 2], "yaw": 180, "size": 0.4}
+ ]
+}

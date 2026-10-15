@@ -1,0 +1,46 @@
+{
+ "format": "walkdown-plant-scenario",
+ "version": 1,
+ "id": "cold_iron",
+ "title": "Cold start after a long outage",
+ "init": {
+  "ambient_t": 35,
+  "ambient_wb": 25,
+  "grid_frequency": 50,
+  "hp_mass": -100,
+  "lp_lvl": -50
+ },
+ "latched": [
+  "gt1_trip_lube",
+  "st_trip_lube",
+  "st_trip_cond_p"
+ ],
+ "faults": [
+  {"id": "ccw_a_motor", "set": {"ccw_a_fault": 1}, "text": "Closed cooling water pump A motor fails"},
+  {"id": "gt1_lac_fails", "set": {"gt1_lac_fault": 1}, "text": "GT 1 AC lube oil pump fails"},
+  {"id": "gt1_lube_both", "set": {"gt1_lac_fault": 1, "gt1_ldc_fault": 1}, "text": "Both GT 1 lube oil pumps fail"},
+  {"id": "gt1_flameout", "set": {"gt1_flameout": 1}, "text": "GT 1 flame out (a fuel supply disturbance)"},
+  {"id": "gt1_fuel_ctrl", "set": {"gt1_fuel_fault": 1}, "text": "GT 1 fuel control fault: exhaust 80 K hotter"},
+  {"id": "gt1_tc7", "set": {"gt1_tc_fault": 1}, "text": "GT 1 burner fault: a cold spot at thermocouple 7"},
+  {"id": "gt1_load_rej", "set": {"gt1_brk_cmd": 0, "gt1_gov_fault": 1}, "text": "Load rejection with a stuck GT 1 fuel valve"},
+  {"id": "gt1_vib", "set": {"gt1_vib_fault": 1}, "text": "GT 1 bearing 2 damage"},
+  {"id": "gt1_surge", "set": {"gt1_surge": 1}, "text": "GT 1 compressor surge"},
+  {"id": "gt1_gas_low", "set": {"gt1_gas_low": 1}, "text": "Fuel gas supply pressure falls"},
+  {"id": "gt1_stator", "set": {"gt1_stator_fault": 1}, "text": "Generator 1 cooling fault"},
+  {"id": "hp_fwv_open", "set": {"hp_fwv_fail_open": 1}, "text": "HP feedwater control valve fails open"},
+  {"id": "hp_fwv_closed", "set": {"hp_fwv_fail_closed": 1}, "text": "HP feedwater control valve fails closed"},
+  {"id": "fw_recirc", "set": {"fw_recirc_fault": 1}, "text": "Feedwater pump recirculation valve stuck closed"},
+  {"id": "hp_spray_stuck", "set": {"hp_spray_stuck": 1}, "text": "HP superheater spray valve stuck open"},
+  {"id": "st_lac_fails", "set": {"st_lac_fault": 1}, "text": "Steam turbine AC lube oil pump fails"},
+  {"id": "st_lube_both", "set": {"st_lac_fault": 1, "st_ldc_fault": 1}, "text": "Both steam turbine lube oil pumps fail"},
+  {"id": "st_load_rej", "set": {"st_brk_cmd": 0, "st_gov_fault": 1}, "text": "Load rejection with stuck steam turbine control valves"},
+  {"id": "st_thrust", "set": {"st_thrust_fault": 1}, "text": "Steam turbine thrust bearing wear"},
+  {"id": "st_vib", "set": {"st_vib_fault": 1}, "text": "Steam turbine bearing 3 damage"},
+  {"id": "cw_a_motor", "set": {"cw_a_fault": 1}, "text": "CW pump A motor overload"},
+  {"id": "cw_ab_fail", "set": {"cw_a_fault": 1, "cw_b_fault": 1}, "text": "CW pumps A and B trip (a supply fault)"},
+  {"id": "cw_c_valve_stuck", "set": {"cw_c_v_stuck": 1}, "text": "CW pump C discharge valve actuator fails"},
+  {"id": "ct_drain_open", "set": {"ct_drain_open": 1}, "text": "Cooling tower basin drain left open"},
+  {"id": "ct_fan3_vib", "set": {"ct_fan3_vfault": 1}, "text": "Cooling tower fan 3 blade damage"},
+  {"id": "hw_leak", "set": {"hw_leak": 1, "hw_mk_fail": 1}, "text": "Condensate leak with the hotwell makeup failed"}
+ ]
+}
