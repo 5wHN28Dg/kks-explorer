@@ -888,6 +888,26 @@ proc askYesNo*(owner: HWND, title, text: string): bool =
 proc say*(owner: HWND, title, text: string) =
   discard MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OK)
 
+proc GlobalAlloc(flags: UINT, n: csize_t): pointer {.importc, stdcall, header: HG.}
+proc GlobalLock(h: pointer): pointer {.importc, stdcall, header: HG.}
+proc GlobalUnlock(h: pointer): BOOL {.importc, stdcall, header: HG, discardable.}
+proc GlobalFree(h: pointer): pointer {.importc, stdcall, header: HG, discardable.}
+proc SetClipboardData(fmt: UINT, h: pointer): pointer {.importc, stdcall, header: HG.}
+
+proc copyToClipboard*(owner: HWND, text: string): bool =
+  ## text to the clipboard as CF_UNICODETEXT (the clipboard owns the memory once SetClipboardData took it). -> it is there
+  let wide = newWideCString(text)
+  let bytes = (wide.len + 1) * 2
+  if OpenClipboard(owner) == 0: return false
+  EmptyClipboard()
+  let h = GlobalAlloc(0x0002, csize_t(bytes))      # GMEM_MOVEABLE
+  if h != nil:
+    copyMem(GlobalLock(h), cast[pointer](wide[0].addr), bytes)
+    GlobalUnlock(h)
+    result = SetClipboardData(13, h) != nil        # CF_UNICODETEXT
+    if not result: GlobalFree(h)
+  CloseClipboard()
+
 proc openFile*(owner: HWND, title, filter: string): string =
   ## filter like "Bundles|*.kksbundle|All files|*.*"
   var buf = newWideCString("", 1024)

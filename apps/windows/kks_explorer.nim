@@ -6,11 +6,13 @@ import kks/[json, api, pathstore, views]
 import kks/model
 import appstate
 import kksl/dbstore
-import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi, photos, links]
+import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi, photos, links, about]
 
 const
   TimerPump = 1'u
   TimerRefresh = 2'u
+  IdmAbout = 0x1010         ## "About Walkdown…" in the window's system menu (below 0xF000, low four bits 0)
+  VkF1 = 0x70
   TabH = 44
   SideW = 380
   PanelW = 420
@@ -180,8 +182,15 @@ proc markDialog(x0, y0, x1, y1: float) =
   p.layout()
   ShowWindow(hw, SW_SHOW)
 
+proc GetSystemMenu(h: HWND, revert: BOOL): pointer {.importc, stdcall, header: "<windows.h>".}
+proc AppendMenuW(m: pointer, flags: UINT, id: uint, text: WideCString): BOOL {.importc, stdcall, header: "<windows.h>", discardable.}
+
 proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
   case m
+  of 0x0112'u32:              # WM_SYSCOMMAND: the system menu's own item
+    if (int(wp) and 0xFFF0) == IdmAbout:
+      guard: openAbout(h)
+      return 0
   of WM_SIZE:
     if w != nil and w.v != nil or setupP != nil: layoutMain()
     return 0
@@ -318,6 +327,10 @@ proc main() =
                            WS_OVERLAPPEDWINDOW or WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 820, nil, nil, hinst, nil)
   makeFonts(int(GetDpiForWindow(hw)))
   laterWindow = hw
+  let sysMenu = GetSystemMenu(hw, 0)          # About in the window's system menu (Alt+Space, the icon's menu)
+  if sysMenu != nil:
+    AppendMenuW(sysMenu, 0x0800, 0, nil)      # MF_SEPARATOR
+    AppendMenuW(sysMenu, 0, uint(IdmAbout), newWideCString("About Walkdown…"))
   w = Win(a: a, hwnd: hw, tab: "drawings")
   w.status = control(hw, "STATIC", "", SS_LEFT or SS_NOPREFIX)[0]
   onError = proc (msg: string) = w.toast("Something went wrong: " & msg)
@@ -361,6 +374,9 @@ proc main() =
   var lastFocus: HWND
   while GetMessageW(addr msg, nil, 0, 0) > 0:
     if msg.message == WM_KEYDOWN and int(msg.wParam) == VK_RETURN and activateFocused(): continue
+    if msg.message == WM_KEYDOWN and int(msg.wParam) == VkF1:     # F1 anywhere in the app: About (help's usual key)
+      guard: openAbout(w.hwnd)
+      continue
     if msg.message == WM_MOUSEWHEEL and wheelToPage(msg.hwnd, msg.wParam, msg.lParam): continue
     let root = GetAncestor(msg.hwnd, 2)          # GA_ROOT: the main window or a popup
     if root != nil and IsDialogMessageW(root, addr msg) != 0:

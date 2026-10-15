@@ -11,10 +11,12 @@ import std/[os, strutils]
 const
   kksCommit {.strdefine.} = ""
   kksDirty {.strdefine.} = ""
-  repoDir = currentSourcePath().parentDir / ".." / ".." / ".." / ".."
+  # paths for the compiler's host, joined with "/" (std/os's `/` follows the target: a Windows cross-build made
+  # "\home\…\VERSION", which a Linux host can't open; "/" works on either host)
+  repoDir = currentSourcePath().parentDir & "/../../../.."
   Repository* = "https://github.com/5wHN28Dg/kks-explorer"
-  Version* = staticRead(repoDir / "VERSION").strip
-  AboutJson* = staticRead(repoDir / "data" / "about.json")   ## the shared About content, as text
+  Version* = staticRead(repoDir & "/VERSION").strip
+  AboutJson* = staticRead(repoDir & "/data/about.json")   ## the shared About content, as text
 
 proc isCommit(s: string): bool =
   s.len == 40 and s.allCharsInSet(HexDigits) and s.toLowerAscii == s
