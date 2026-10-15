@@ -5,7 +5,7 @@ import std/[sequtils, strutils, asyncdispatch, times]
 import kks/json
 import kksl/dbstore
 import appstate
-import w32, ui, win, camera
+import w32, ui, win, camera, about
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -90,6 +90,8 @@ proc buildSetup*(w: Win, p: Page, done: proc ()) =
           setupPage = title
           w.buildSetup(p, done)))
         p.dim(sub)
+    p.space(8)
+    p.buttons(("About Walkdown…", proc () = openAbout(w.hwnd)))
   of "Join through a server":
     p.dim("The server's name or IP, with its sync port if it isn't 8421.")
     let url = p.field("Server address", "")

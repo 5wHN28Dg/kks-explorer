@@ -57,6 +57,15 @@ which the `config.nims` of core/, platform/linux/, platform/windows/ and apps/wi
     `manage.nim` (approvals one card per code, my proposals with filters, the leaderboard, history, people, devices
     with the invite QR via `kks_qr.cpp` and hiding removed ones, account with the root key backup), `setup.nim` (all
     ways to join, each asking a new member's position, or a new plant);
+  - `about.nim` + `aboutinfo.nim`: About Walkdown (Manage → About Walkdown…, the setup screen's button, F1 anywhere,
+    the window's system menu): the version with the commit it was built from ("with local changes" for a build that
+    had some; `build.sh` passes `-d:kksCommit`/`-d:kksDirty` as the server's installer does), what Walkdown is, its
+    licence (with its full text), the home page, issues and help, the source of exactly this version, the
+    free-software and no-warranty notice, the Windows app's third-party parts (a list; the selected one's notice and
+    the full text of each of its licences beside it) and the course photos' credits with their links; Copy details
+    (version, commit, Windows version). All from the shared `data/about.json` compiled in (`kksl/buildinfo`);
+    `aboutinfo.nim` holds the logic without Win32 (`tests/test_about.nim`). Links open in the default browser, https
+    only;
   - `photos.nim` + `kks_img.cpp`: thumbnails with who took each, a viewer, adding from a file (the floor first when
     the code has none; WIC → upright → 1600 px → `annotate.nim`, the mark-up editor with arrow, box and circle in four
     colours plus undo, the marks burned in by Direct2D → the photo queue, kept on disk (`apps/common/photoqueue.nim`:
@@ -114,6 +123,8 @@ It covers:
 - what is typed kept elsewhere too (#168): the Procedures and Drawings searches through syncs, with the keyboard in
   them (the list follows in place; a new floor waits until the keyboard has left) and away; the edit form through
   Confirm valve type and Confirm description, a corrected reading through Edit and Cancel;
+- About Walkdown from the setup screen, F1 and Manage (the version and commit, the licence and its full text, the
+  source link, libjxl's and a font's notices and licences, a photo credit's links, Copy details, Esc);
 - removal and the self-wipe.
 
 ## A real (borrowed) Windows laptop
