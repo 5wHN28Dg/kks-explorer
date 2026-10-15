@@ -72,9 +72,13 @@ proc openAbout*(owner: HWND) =
             ("Help", proc () = openLink(hw, a.help)))
   if a.licenseText.len > 0:
     p.buttons(("Licence text…", proc () = textWindow(hw, a.license.text, a.licenseText)))
-  p.label(sourceLine())
+  # the link in a read-only field: a static text cut it off (one long word), and it can be selected and copied there
+  if Modified: p.dim("This build had local changes: the link is the commit it started from, without them (they are " &
+                     "not published).")
+  elif Commit.len == 0: p.dim("The commit this build was made from is not known: the link is the project's source.")
+  p.field("Source of this version", SourceUrl, readonly = true)
   let copied = p.dim("")
-  p.buttons(("Source of this version", proc () = openLink(hw, SourceUrl)),
+  p.buttons(("Open the source", proc () = openLink(hw, SourceUrl)),
             ("Copy details", proc () =
               copied.setText(if copyToClipboard(hw, supportDetails(windowsLine())):
                                "Copied the version, the commit and this Windows version, for a problem report."
@@ -94,9 +98,6 @@ proc openAbout*(owner: HWND) =
   p.buttons(("Open the selected part's home page", proc () =
     let i = int(SendMessageW(parts, LB_GETCURSEL, 0, 0))
     if i >= 0 and i < a.parts.len: openLink(hw, a.parts[i].url)))
-  if a.parts.len > 0:
-    SendMessageW(parts, LB_SETCURSEL, 0, 0)
-    detail.setText(a.parts[0].detail.replace("\n", "\r\n"))
 
   p.space(8)
   p.title("Course photos")
@@ -114,5 +115,9 @@ proc openAbout*(owner: HWND) =
   links = p.list(@[], 70, onActivate = proc (i: int) =
     if i >= 0 and i < shown.len: openLink(hw, shown[i].url), openLabel = "Open the selected link")
   p.layout()
+  if a.parts.len > 0:          # the first part shown at once (after the layout: a list made 10 px high and then
+    SendMessageW(parts, LB_SETCURSEL, 0, 0)          # grown kept its first row scrolled out of sight)
+    SendMessageW(parts, 0x0197'u32, 0, 0)            # LB_SETTOPINDEX
+    detail.setText(a.parts[0].detail.replace("\n", "\r\n"))
   ShowWindow(hw, SW_SHOW)
   SetFocus(parts)

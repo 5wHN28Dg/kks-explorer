@@ -190,12 +190,13 @@ class Windows(unittest.TestCase):
         notice = 'Notice and licences of the selected part'
         agpl = 'GNU Affero General Public License v3.0 or later'
         self.check('about0.uia', ['wait\tJoin through a server\t60', 'click\tAbout Walkdown…', 'wait\tAbout Walkdown\t20',
-                                  'wait\tFind plant equipment on P&ID drawings by KKS code',
+                                  # (UI Automation drops a static text's "&": "P&ID" is read as "PID")
+                                  'wait\t~Find plant equipment on P\t5', 'wait\t~ drawings by KKS code\t5',
                                   'wait\t~Version %s (commit %s' % (version, commit[:12]),
                                   'wait\tBy Walkdown contributors. Licence: %s.' % agpl,
                                   'wait\t~It comes with ABSOLUTELY NO WARRANTY.',
-                                  'wait\t~https://github.com/5wHN28Dg/kks-explorer/tree/' + commit,
-                                  'wait\tSource of this version',
+                                  'value\tSource of this version\thttps://github.com/5wHN28Dg/kks-explorer/tree/' + commit,
+                                  'wait\tOpen the source',
                                   # the first part is shown at once: libjxl with its BSD notice
                                   'wait\tlibjxl 0.12.0 · BSD 3-Clause License', 'value\t%s\tJPEG XL photos' % notice,
                                   'value\t%s\tCopyright (c) the JPEG XL Project Authors.' % notice,
