@@ -49,7 +49,7 @@ As COURSES.md §1, with these differences:
          "systems": {"MBA": "Gas turbine: turbine and compressor", …},
          "equipment": {"AA": "Valve, damper (with actuator)", "AP": "Pump unit", …},
          "measurements": {"CP": "Pressure", …},
-         "source": "VGB function and equipment unit keys as published in <public sources, FIRST-TRAIN.md §1>"},
+         "source": "Codes from the public KKS key (sources: docs/plant3d/FIRST-TRAIN.md §1); meanings in our own words"},
  "media": {"feedwater": {"group": "water", "band": "#2e7d32"}, "steam_hp": {"group": "steam", "band": "#c62828"}, …},
  "areas": ["gt1", "hrsg1", "st", "cw", "ct", "common"],
  "start": {"at": [-20, 0, 0], "yaw": 90}}
@@ -57,6 +57,8 @@ As COURSES.md §1, with these differences:
 
 - **`kks`** is the plant's own decoder table, written from the public key (FIRST-TRAIN.md §1). The app decodes a code
   with it (§6), so it never needs Walkdown's `data/kks.json`, whose tables come from a real plant's drawings (R1).
+  It holds **only the codes this plant uses**, each with a short meaning in our own words: VGB sells and licenses the
+  full key tables, also for use "in electronic systems" (FIRST-TRAIN.md §1), so they are not copied in.
 - **`media`:** the fluids and gases the pipes carry. `group` picks the colour group (water, steam, air, gas, oil,
   chemicals, flue gas); `band` the colour of the identification band and flow arrow painted on the pipe. The groups
   follow the idea of DIN 2403 (identification of pipelines by the medium carried: water green, steam red, air grey,
@@ -111,7 +113,7 @@ building, an HRSG, the turbine hall, the cooling tower.
  "from": {"kks": "30PAC10AP001", "nozzle": "discharge"},
  "points": [[128, -4, 3.5], [128, 4, 3.5], [60, 4, 3.5], [60, 4, -2]],
  "to": {"kks": "30MAG10AC001", "nozzle": "cw_inlet_a"},
- "valves": [{"kks": "30PAB10AA001", "part": "valve_butterfly", "at": 0.06,
+ "valves": [{"kks": "30PAC10AA101", "part": "valve_butterfly", "at": 0.06,
              "params": {"actuator": "electric"}}],
  "arrows": 25}
 ```
@@ -251,7 +253,7 @@ room screens:
 ```json
 {"kks": "30PAC10AP001", "do": "start", "set": {"30PAC10AP001": 1},
  "needs": [["cw_basin_level_ok", "Cooling tower basin level not above the minimum"],
-           ["cw_a_valve_at_start", "Discharge valve 30PAB10AA001 not at its start position"]],
+           ["cw_a_valve_at_start", "Discharge valve 30PAC10AA101 not at its start position"]],
  "where": ["local", "screen"]}
 ```
 
@@ -323,7 +325,7 @@ shows which of them came first, as real first-out annunciators do.
 
 ```json
 {"kks": "30PAC10AP001", "anim": "shaft", "of": "cw_a_speed", "scale": 24.75}
-{"kks": "30PAB10AA001", "anim": "disc", "of": "cw_a_valve_pos"}
+{"kks": "30PAC10AA101", "anim": "disc", "of": "cw_a_valve_pos"}
 {"kks": "30PAC10CP501", "show": "cw_a_disch_p"}
 {"kks": "30PAC10AP001", "sound": "motor_large", "gain": {"of": "cw_a_speed", "table": [[0, 0], [1, 1]]},
  "pitch": {"of": "cw_a_speed", "table": [[0, 0.5], [1, 1]]}}
@@ -369,7 +371,7 @@ appears. A cold start that takes hours in a real plant takes about 40 minutes of
  "steps": [
    {"id": "cw_a", "text": ["Start circulating water pump A (", {"link": ["30PAC10AP001"],
      "to": {"kks": "30PAC10AP001"}}, ") with its discharge valve at the start position."],
-    "at": ["30PAC10AP001", "30PAB10AA001"], "go": "walk",
+    "at": ["30PAC10AP001", "30PAC10AA101"], "go": "walk",
     "do": [{"kks": "30PAC10AP001", "do": "start"}],
     "done": "cw_a_run_stable", "why": ["Starting against a closed valve keeps the motor current and the
      pressure surge in the empty pipe low."]}]}
