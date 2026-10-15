@@ -13,6 +13,30 @@ plugins {
 val appVersion = (findProperty("kksVersion") as String?) ?: rootDir.parentFile.resolve("VERSION").readText().trim()
 val appVersionCode = appVersion.split('.').map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
 
+// The commit the app is built from, and whether the checkout had changes the commit doesn't hold (About shows both and
+// links that commit's source; the same rule as platform/linux/src/kksl/buildinfo.nim for the Nim programs).
+// -PkksCommit=<40 hex> -PkksDirty=true|false give them; otherwise git says, when the source is this repository's own
+// checkout; a source tree without git (or not its own) builds with the commit unknown ("").
+val repoDir: File = rootDir.parentFile
+fun git(vararg args: String): String? = runCatching {
+    val r = providers.exec { commandLine("git", "-C", repoDir.path, *args); isIgnoreExitValue = true }
+    if (r.result.get().exitValue == 0) r.standardOutput.asText.get().trim() else null
+}.getOrNull()
+fun isCommit(s: String) = s.length == 40 && s.all { it in '0'..'9' || it in 'a'..'f' }
+val givenCommit = (findProperty("kksCommit") as String?).orEmpty()
+val givenDirty = (findProperty("kksDirty") as String?).orEmpty()
+if (givenCommit.isNotEmpty() && !isCommit(givenCommit)) throw GradleException("-PkksCommit must be a full commit hash (40 lowercase hex digits)")
+if (givenDirty !in listOf("", "true", "false")) throw GradleException("-PkksDirty must be true or false")
+// (the source must be this repository's own checkout, not a folder inside some other one)
+val ownCheckout = givenCommit.isEmpty() && git("rev-parse", "--show-prefix") == ""
+val buildCommit = (if (givenCommit.isNotEmpty()) givenCommit else if (ownCheckout) git("rev-parse", "--verify", "-q", "HEAD").orEmpty() else "")
+    .takeIf(::isCommit).orEmpty()
+val buildModified = when {
+    givenDirty.isNotEmpty() -> givenDirty == "true"
+    buildCommit.isEmpty() -> false
+    else -> git("status", "--porcelain", "--", ".").let { it == null || it.isNotEmpty() }   // (unreadable: say modified)
+}
+
 android {
     namespace = "kks.explorer.v2"
     compileSdk = 36
@@ -22,6 +46,8 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersion
+        buildConfigField("String", "KKS_COMMIT", "\"$buildCommit\"")
+        buildConfigField("boolean", "KKS_MODIFIED", buildModified.toString())
         externalNativeBuild {
             cmake {
                 arguments += listOf("-DLIBJXL_SRC=${layout.buildDirectory.dir("third_party/libjxl").get().asFile}",
@@ -84,7 +110,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
 }
 
 // libjxl (JPEG XL, for photos) from pinned sources: the release tag and the submodule commits it names, each checked
@@ -152,9 +178,9 @@ val fetchZxing by tasks.registering {
 tasks.configureEach { if (name.startsWith("configureCMake") || name.startsWith("buildCMake")) dependsOn(fetchLibjxl, fetchZxing) }
 
 
-// the program's own data (KKS decode tables) ships in the app
+// the program's own data (KKS decode tables; About's content, made by tools/about.py) ships in the app
 val copyData by tasks.registering(Sync::class) {
-    from(File(rootDir.parentFile, "data")) { include("kks.json", "courses/*.jxl", "courses/ppt.json", "courses/fnd.json", "courses/hrsg.json", "courses/inc.json") }
+    from(File(rootDir.parentFile, "data")) { include("kks.json", "about.json","courses/*.jxl", "courses/ppt.json", "courses/fnd.json", "courses/hrsg.json", "courses/inc.json") }
     into(layout.buildDirectory.dir("assets/data"))
 }
 // the course faces as TTF (Android's Typeface can't read the vendored WOFF2; tools/build_courses.py --ttf)

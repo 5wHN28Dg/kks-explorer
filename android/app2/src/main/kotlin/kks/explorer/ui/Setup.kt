@@ -30,6 +30,14 @@ fun SetupScreen(onJoined: () -> Unit) {
     val ctx = LocalContext.current
     var page by remember { mutableStateOf("") }
     BackHandler(enabled = page.isNotEmpty()) { page = "" }
+    // (About scrolls by itself, so it stands outside the scrolling column)
+    if (page == "about") {
+        Column(Modifier.safeDrawingPadding().padding(horizontal = 20.dp)) {
+            TextButton(onClick = { page = "" }) { Text("Back") }
+            AboutScreen()
+        }
+        return
+    }
     Column(Modifier.safeDrawingPadding().padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Walkdown", style = MaterialTheme.typography.headlineMedium)
         when (page) {
@@ -47,6 +55,7 @@ fun SetupScreen(onJoined: () -> Unit) {
                     ListItem(headlineContent = { Text(title) }, supportingContent = { Text(sub) },
                         modifier = Modifier.fillMaxWidth().clickable { page = id })
                 }
+                TextButton(onClick = { page = "about" }) { Text("About Walkdown") }
             }
             "server" -> ServerJoin(onJoined)
             "code" -> CodeJoin(onJoined)
