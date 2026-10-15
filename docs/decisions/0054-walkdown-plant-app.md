@@ -99,7 +99,7 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    notices from `Engine.get_license_info()`.
 8. **Identity and packaging.** Android `io.github.walkdown.plant`, a Gradle-built export (needed for the deep-link
    plugin), arm64-v8a only (0046), `permissions/internet=false`: no network at all in format 1. Flatpak
-   `io.github._5wHN28Dg.walkdown.plant` (or a sibling ID: question below) on `org.godotengine.godot.BaseApp//4.7`. MSIX identity `WalkdownPlant`, exe
+   `io.github._5wHN28Dg.WalkdownPlant` (the user's choice, 2026-10-16) on `org.godotengine.godot.BaseApp//4.7`. MSIX identity `WalkdownPlant`, exe
    `WalkdownPlant.exe`, alias `walkdown-plant.exe`, publisher `CN=Walkdown` (the certificate IT already trusts,
    0043). Releases: tags `plant-vX.Y.Z` in this repository, published **not as latest**
    (`gh release create --latest=false`), so Walkdown's updater keeps finding Walkdown's release. Not left to memory: with
@@ -127,24 +127,17 @@ same repository would stop every phone's Walkdown updates. [V] the code.
     - Test runner: a small SceneTree script of our own that runs test functions and exits non-zero (no GUT or
       gdUnit4 dependency for now).
 
-## Questions for the user
+## Decided by the user (2026-10-16)
 
-- **Flatpak ID.** The ID asked for, `io.github._5wHN28Dg.walkdown.plant`, lies under Walkdown's own ID: Flatpak lets
-  an app own D-Bus names and export files that start with its ID, so Walkdown (`io.github._5wHN28Dg.walkdown`) could
-  claim names that belong to the plant app. A sibling ID (`io.github._5wHN28Dg.WalkdownPlant`) avoids it.
-  Recommended: the sibling ID; the Android and MSIX IDs are not affected (Android package names don't nest that way,
-  MSIX identities are separate names).
-
-- **Android signing key.** (a) the existing `kks-release.jks` (one key to keep safe; the two apps could later share
-  signature-level permissions), or (b) a **new key** for Walkdown Plant. Recommended: **(b)**. The Godot export reads
-  the key's password from environment variables and needs store and key passwords equal; Walkdown's key holds a
-  real plant's account, and a separate key means a mistake in the new, game-engine build path can never sign an
-  update of Walkdown. The two apps need nothing from sharing a key (they talk by links only). Losing either key has
-  the same cost (reinstall by hand), so it is kept and backed up as the other (wiki: Releasing). Windows keeps
-  `CN=Walkdown` either way, so IT trusts one certificate.
-- **Updates.** (a) by hand from the GitHub release (the plant app has no network permission); (b) later, Walkdown's
-  updater offers Walkdown Plant too (listed in Walkdown's signed `release.json`). Recommended: (a) for the first
-  train, (b) when trainees use it on their phones.
+- **Flatpak ID:** the sibling ID `io.github._5wHN28Dg.WalkdownPlant`, not one nested under Walkdown's ID (Flatpak
+  lets an app own names starting with its ID). Android `io.github.walkdown.plant` and the MSIX identity are
+  unaffected.
+- **Android signing key:** a **new key** for Walkdown Plant, kept and backed up like the others (wiki: Releasing).
+  The Godot export reads its password from the environment; Walkdown's key never enters that build path. Windows keeps
+  `CN=Walkdown`.
+- **Updates:** by hand from the GitHub release for the first train (the plant app has no network permission);
+  Walkdown's updater offers it later, when trainees use it on their phones. The release tools must keep a plant
+  release from becoming the release Walkdown's updater reads as "latest".
 
 **When to revisit:** if the Note 9 misses the frame rule with this content (0041; the question goes back to the
 user); when the plant app needs the core (progress kept in the plant's log, signed content): then a GDExtension

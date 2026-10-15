@@ -8,7 +8,8 @@ operation-manual procedures that use it. Also: pick a procedure and see its step
 safeguards are in the global instructions and are not repeated here: this file holds only what is specific to Walkdown,
 and where it differs from them it says so.
 
-**Public repository.** No plant name, plant data or plant-specific notes in tracked files. Those live in the manager's
+**Public repository.** No plant name, plant data or plant-specific notes in tracked files. One accepted exception (the user, 2026-10-16): the three plant courses (`fnd`, `hrsg`, `ppt` in
+`data/courses/`) keep the plant's name and plant-specific lines, and ship in the public apps; nothing else may. Those live in the manager's
 plant-data working copy (gitignored) and `CLAUDE.local.md` (gitignored: the plant, reader accuracy per sheet, findings on
 the drawings). The deployed relay's URL never goes in tracked files or the wiki. NEVER commit plant data, `plant.db`,
 `photos/`, `backups/`, `config.json` or `root.key`.
