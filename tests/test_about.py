@@ -8,7 +8,8 @@
 - every course picture has its credit; every licence a part names is there, with its full text where a part has no
   notice of its own; nothing in it names a plant or a person of the project;
 - every part used under Apache-2.0 that a program carries has its upstream NOTICE file with its notice, or is recorded
-  as having none, with where that was checked;
+  as having none, with where that was checked; the Kotlin libraries record what code from other projects the app
+  keeps of them;
 - every build that packs data/ packs about.json too (Flatpak, MSIX, the server's install).
   .venv/bin/python -m unittest tests.test_about"""
 import json, os, re, subprocess, sys, tempfile, unittest, urllib.parse
@@ -171,6 +172,30 @@ class About(unittest.TestCase):
                          'own\n\n\nIts NOTICE file, its NOTICE at v1:\n\nCopyright 2026 Someone\n')
         self.assertEqual(about.with_apache_notice(comp(apache_notice={'file': 'n', 'from': 'w'}), None, texts.__getitem__),
                          'Its NOTICE file, w:\n\nCopyright 2026 Someone\n')
+
+    def test_code_from_other_projects(self):
+        """the Kotlin standard library and kotlinx.coroutines each record, at the version that ships, what code derived
+        from other projects they hold and what of it the shrunk app keeps (the standard library's kotlin.time.Instant
+        comes from ThreeTen-Backport, BSD-3-Clause, whose licence asks for its notice with binaries), so a version
+        change is checked again (the user, 2026-10-15)"""
+        with open(os.path.join(REPO, about.SRC, 'components.json'), encoding='utf-8') as f:
+            src = {c['id']: c for c in json.load(f)['components']}
+        for cid in ('kotlin-stdlib', 'kotlinx-coroutines'):
+            rec = src[cid].get('third_party')
+            self.assertTrue(isinstance(rec, str) and len(rec) > 40, cid)
+            # checked at the version that ships (the whole version: 2.4.2 is not 2.4.20)
+            self.assertRegex(rec, r'(?<![\w.])v?' + re.escape(src[cid]['version']) + r'(?![\w]|\.\d)', cid)
+        self.assertIn('ThreeTen-Backport', src['kotlin-stdlib']['third_party'])
+        # the record holds while the app's own code doesn't use the ThreeTen-derived part (kotlin.time.Instant, Clock)
+        uses = []
+        for root, _, files in os.walk(os.path.join(REPO, 'android', 'app2', 'src')):
+            for n in files:
+                if n.endswith(('.kt', '.java')):
+                    with open(os.path.join(root, n), encoding='utf-8') as f:
+                        if re.search(r'kotlin\.time\.(\*|Instant|Clock)|\bClock\.System\b', f.read()):
+                            uses.append(n)
+        self.assertEqual(uses, [], 'the app uses kotlin.time.Instant or Clock (ThreeTen-Backport, BSD-3-Clause): '
+                                   'show its notice in About and update the record')
 
     def test_course_credits(self):
         d = load()
