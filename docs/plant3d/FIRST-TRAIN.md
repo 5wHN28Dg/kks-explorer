@@ -8,7 +8,9 @@ the laptop. The rest of the 2-2-1 plant (R2) comes later from the same kit.
 
 **Everything here is invented** (R1): the plant, its layout, its sizes and its codes. Codes follow the public KKS
 key (§1); sizes are round, typical values for the class of machine, chosen to be plausible, not taken from any
-plant. Content files cite this document for their codes until they exist; after that the content is the source.
+plant. The content exists since 2026-10-16 (`data/plant3d`, made by `tools/plant3d/make_content.py`) and is now the
+source of the codes, positions and numbers; "As built" notes below record where it settled what this plan left
+open.
 
 ## 1. KKS codes
 
@@ -24,6 +26,17 @@ the plant's decoder table holds only the codes this plant uses):
   and a manufacturer's KKS handbook. Lower confidence: to re-check against the printed key before the format freezes.
 - Licensing: vgbe, "KKS Documents and Licensing" (2023):
   https://www.vgbe.energy/wp-content/uploads/2023/04/KKS-Licensing-2023-01-01-EXT.pdf
+
+**As built (2026-10-16):** the content uses every code below, and more of the same kinds (pipes `…BR…`, transmitters
+and gauges, the auxiliary steam and demineralised water tank instruments `00QHA10CP001`, `00GHC10CL001`). Where the
+table leaves a choice:
+- the HRSG's inlet duct and casing are one piece of equipment, `10HNA10` (the kit's `hrsg` part); the heating
+  surfaces in it are `hrsg_module` pieces with their system codes (`10HAH30`, `10HAJ10`, …, `10HAC30AC001`/`AC002`);
+  `10UHA10` is the roof platform, `10UHN10` the stack platform;
+- the GT's exhaust diffuser (x 60–80) is `10MBR10`, carrying the twelve thermocouples;
+- the steam turbine is two pieces, `30MAA10` (HP) and `30MAB10` (the IP/LP casing); `30MAC10`, the LP section of
+  that casing, has no piece of its own (format 1 has no component level);
+- `10MBM10` and `10MBY10` are the systems of the flame detectors and speed probes, which are fixed to the GT.
 
 **Rules used** ([E1], [W]): code = G, F0, F1F2F3, FN, then A1A2, AN, A3.
 - **G** (level 0): `0` common plant, `1` gas turbine train 1 (GT1, its generator, HRSG 1), `2` train 2 (later),
@@ -78,6 +91,7 @@ the plant's decoder table holds only the codes this plant uses):
 | 10HAD30CP001 | HP drum pressure | |
 | 10HAJ10 | Reheater | HAJ [E2] |
 | 10HAN30AA401–404, 10HAN30AA001 | HP superheater drains; HP start-up vent (control valve) | HAN drains and vents [E2] |
+| 10HAN30BS001 | HP start-up vent silencer | BS silencer: as [H], to re-check against the printed key |
 | 10LAC10AP001, AP002 | HP/IP feedwater pumps A, B | LAC [E2] |
 | 10LAB30AA001 | HP feedwater control valve | LAB [E2] |
 | 10LAE30AA001 | HP superheater spray control valve | LAE [E2], [W] |
@@ -91,6 +105,7 @@ the plant's decoder table holds only the codes this plant uses):
 | 10UHA10 | HRSG 1 structure | UHA [E2] |
 | **Steam turbine unit (G = 3)** | | |
 | 30MAA10, 30MAB10, 30MAC10 | HP turbine; IP and LP turbines (one IP/LP casing) | MAA, MAB, MAC [E2], [W] |
+| 30MAD10CG001 | ST axial displacement (the thrust bearing's protection) | CG position [E2] |
 | 30MAA10AA201, AA001 | HP stop valve, HP control valve | |
 | 30MAD10CY001–008 | ST bearing vibration | MAD [E2]; CY |
 | 30MAG10AC001 | Condenser | MAG [E2], [W]; AC |
@@ -184,10 +199,15 @@ floor. Ground at z = 0. Train 2 is the mirror of train 1 across y = 0 (later).
 | `st` | 0, −25 – 80, 25 | turbine hall 80 × 50 m, 32 m high, crane; ground floor, mezzanine +6 m, operating floor +12 m; ST on a table foundation; condenser under the LP casing, its water boxes and the condensate extraction pumps in a pit down to −6 m; ST lube oil, gland steam and vacuum pumps; generator 3 at the west end; HP/LP bypass valves |
 | `gt1` | 0, 50 – 80, 92 | GT1 hall 80 × 30 m (y 50–80), 20 m high: generator 1 at the west (cold-end drive), GT1 at x 30–60 on axis y = 65, air intake filter house on the roof, exhaust diffuser out of the east wall; lube oil skid, SFC and excitation rooms, fuel gas skid north of the hall (y 82–90) |
 | `hrsg1` | 80, 45 – 175, 85 | inlet duct x 80–95; HRSG casing x 95–150, 22 m wide (y 54–76), 30 m high; drums on top at +32 (HP, IP, LP/deaerator); stack x 160, y 65, Ø 7 m, 60 m; feedwater pumps and blowdown tank at grade south of the casing; stairs to every drum platform |
-| `trafo1` | −30, 40 – 0, 60 | step-up transformer 1 and unit auxiliary transformer 1 behind fire walls |
+| `trafo1` | −30, 40 – 0, 60 | the transformer yard: step-up transformer 1, unit auxiliary transformer 1 and (as built) the steam turbine's step-up transformer 30BAT10 |
 | `bop` | 85, −25 – 135, 25 | auxiliary boiler house, demineralised water tank, instrument air compressors, closed cooling water pumps and heat exchangers |
 | `cw` | 140, −20 – 165, 20 | CW pump house: 3 vertical pumps in a wet pit fed from the tower basin, discharge valves, the CW supply and return headers |
 | `ct` | 170, −35 – 260, 35 | cooling tower: 2 rows of 5 cells (x 175–255, y −16–16), fan decks at +14, stair towers at both ends, basin −2 m, makeup and blowdown |
+| `rack` | 80, −25 – 85, 45 | (as built) the pipe rack between the turbine hall and `bop`, over the road: an area of its own so the rack has somewhere to stand |
+
+**As built:** the steam pipes enter the steam turbine from below the operating floor (the kit's turbine nozzles
+point down), so they run on the rack's tiers at +8 and +10 and under the +12 floor; the CW supply runs at −4.5 m
+along y = −30 and the return at −12 m along y = −33, so the two cross without meeting.
 
 The CW pipes (DN 2200) run buried along y ≈ −30, south of every area, from the pump house to the turbine hall and
 come up into the condenser pit (−6 m) from below (PLANT3D.md §4 has the supply pipe as its example); the return goes to the tower's hot water distribution at +12. The HRSG's main steam, hot and cold
@@ -208,6 +228,30 @@ start.
 
 The trainee works from the control room screens and in the field. About 40 minutes of play (fast-forward in the
 long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
+
+**As built (2026-10-16):**
+- **Time.** The cold start run by its procedure in the model alone takes 110 min of model time; with fast-forward
+  wherever §7.9 allows it that is about 10 min of the trainee's time, walking and reading on top. The HRSG warm-up
+  sets the pace: at minimum GT load the HP drum's saturation temperature rises about 3.5 K/min, and the steam
+  turbine may roll at 40 bar.
+- **Alarms of a system still being started** are suppressed by design until its value is first in the normal range
+  after a start (lube oil 2.0 bar, instrument air 6.5 bar, condenser below 13 kPa(a)), and again once the machine is
+  at standstill with its pumps off. Without this the low-pressure alarms would sound at every correct start.
+- **Step 4:** a CW pump's start is *refused* unless its discharge valve stands at 10–20 % (the permissive of
+  PLANT3D.md §7.2's example); the pressure surge of a start against an open valve is therefore not modelled, and has
+  no alarm in §5 either.
+- **Interlocks:** a stopped CW pump closes its discharge valve; low lube oil pressure with the AC pump selected
+  starts the DC pump (GT and ST); a tripped closed cooling water pump starts the standby one; condenser pressure
+  high-high, no CW flow or no condensate pump puts both bypass controllers in manual (closed).
+- **Trips beyond the list below:** the generator protection opens a generator breaker in the step after its machine
+  tripped (`gen1_trip_prot`, `gen3_trip_prot`, first-out group of their machine); a closed cooling water pump trips
+  on its motor fault. The GT's exhaust spread trips at 60 K for 3 s (the alarm of §5 is at 30 K); compressor surge is
+  a fall of compressor discharge pressure of 1.5 bar against its 5 s average; GT bearing vibration trips at 25 mm/s
+  on any bearing for 2 s.
+- **The hotwell** has a makeup that opens below 0 mm and a spill to the demineralised water tank above +50 mm, so
+  the level holds through the start.
+- **Trainer faults** (the scenario's faults without a condition, PLANT3D.md §7.8) make every trip and interlock
+  fire; the tests run each from the end of the cold start (`ref/vectors/plant3d-v1.json`, `forks`).
 
 | # | System (codes §1) | What the trainee does | Faked behaviour (values, lags) | What it teaches |
 |---|---|---|---|---|
@@ -255,7 +299,7 @@ round and invented; priority 1 is the most urgent (PLANT3D.md §7.6). Trip-level
 | 10MBP10CP001 | PAL | Fuel gas pressure low (start blocked) | < 25 bar | 2 |
 | 10MBM10CB001–002 | BAL | GT flame failure (trip) | flame lost after ignition | 1 |
 | 10MBR10CT001–012 | TAH / TAHH | GT exhaust temperature high / high-high (trip) | > 620 / > 640 °C | 2 / 1 |
-| 10MBR10CT001–012 | TDAH | GT exhaust temperature spread high | > 30 K | 2 |
+| 10MBR10CT001–012 | TDAH | GT exhaust temperature spread high (as built: that thermocouple more than 30 K from the mean) | > 30 K | 2 |
 | 10MBY10CS001–003 | SAHH | GT overspeed (trip) | > 110 % | 1 |
 | 10MBD10CY001–004 | VAH / VAHH | GT bearing vibration high / high-high (trip) | > 12 / > 25 mm/s | 2 / 1 |
 | 10MKA10CT001–006 | TAH | Generator 1 stator winding temperature high | > 120 °C | 2 |
