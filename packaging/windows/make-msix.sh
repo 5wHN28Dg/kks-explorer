@@ -47,6 +47,7 @@ echo "package $NAME $VERSION ($ARCH), publisher $SUBJECT"
 # 1. the app
 W=/tmp/kks-msix-$ARCH
 rm -rf "$W"; mkdir -p "$W/layout/Assets" "$W/layout/data/courses" "$W/layout/vendor/fonts"
+# (build.sh builds in the commit and whether the checkout had changes: About names them and links that source)
 sh "$REPO/apps/windows/build.sh" "$W/Walkdown.exe" >/dev/null
 cp "$W/Walkdown.exe" "$W/layout/"
 cp "$REPO"/data/courses/*.json "$REPO"/data/courses/*.jxl "$W/layout/data/courses/"

@@ -381,6 +381,7 @@ jobs:
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-coursertf -o:out/plat/test_coursertf.exe apps/windows/tests/test_coursertf.nim
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-courserich -o:out/plat/test_courserich.exe apps/windows/tests/test_courserich.nim
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-uistale -o:out/plat/test_ui_stale.exe apps/windows/tests/test_ui_stale.nim
+          nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-about -o:out/plat/test_about.exe apps/windows/tests/test_about.nim
           ls -l out out/core out/plat
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

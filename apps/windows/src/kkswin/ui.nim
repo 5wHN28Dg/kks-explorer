@@ -462,9 +462,17 @@ proc scrollTo*(p: Page, pos: int) =
     p.layout()
     InvalidateRect(p.hwnd, nil, 1)
 
+var escCloses: seq[HWND]      ## popups that Escape closes (IsDialogMessage turns it into IDCANCEL)
+
 proc pageProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
   let p = pages.getOrDefault(h)
   case m
+  of WM_CLOSE:
+    # a multi-line edit sends Escape to its parent as WM_CLOSE, and the default destroyed the page under its window
+    # (an empty licence window was left): the window it is in closes when Escape closes it, else nothing does
+    let root = GetAncestor(h, 2)        # GA_ROOT
+    if root != nil and root in escCloses: PostMessageW(root, WM_CLOSE, 0, 0)
+    return 0
   of WM_COMMAND:
     if dispatchCommand(w, l): return 0
     return SendMessageW(GetParent(h), m, w, l)     # unknown: to the parent
@@ -888,6 +896,32 @@ proc askYesNo*(owner: HWND, title, text: string): bool =
 proc say*(owner: HWND, title, text: string) =
   discard MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OK)
 
+proc GlobalAlloc(flags: UINT, n: csize_t): pointer {.importc, stdcall, header: HG.}
+proc GlobalLock(h: pointer): pointer {.importc, stdcall, header: HG.}
+proc GlobalUnlock(h: pointer): BOOL {.importc, stdcall, header: HG, discardable.}
+proc GlobalFree(h: pointer): pointer {.importc, stdcall, header: HG, discardable.}
+proc SetClipboardData(fmt: UINT, h: pointer): pointer {.importc, stdcall, header: HG.}
+
+proc copyToClipboard*(owner: HWND, text: string): bool =
+  ## text to the clipboard as CF_UNICODETEXT (the clipboard owns the memory once SetClipboardData took it). -> it is there
+  let wide = newWideCString(text)
+  let bytes = (wide.len + 1) * 2
+  let h = GlobalAlloc(0x0002, csize_t(bytes))      # GMEM_MOVEABLE (first: a failure leaves the clipboard as it was)
+  if h == nil: return false
+  let mem = GlobalLock(h)
+  if mem == nil:
+    GlobalFree(h)
+    return false
+  copyMem(mem, cast[pointer](wide[0].addr), bytes)
+  GlobalUnlock(h)
+  if OpenClipboard(owner) == 0:
+    GlobalFree(h)
+    return false
+  EmptyClipboard()
+  result = SetClipboardData(13, h) != nil          # CF_UNICODETEXT
+  if not result: GlobalFree(h)
+  CloseClipboard()
+
 proc openFile*(owner: HWND, title, filter: string): string =
   ## filter like "Bundles|*.kksbundle|All files|*.*"
   var buf = newWideCString("", 1024)
@@ -924,7 +958,6 @@ proc activateFocused*(): bool =
 # ---------------------------------------------------------------- a popup window hosting a page
 
 var popups = initTable[HWND, (Page, proc ())]()
-var escCloses: seq[HWND]      ## popups that Escape closes (IsDialogMessage turns it into IDCANCEL)
 
 proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
   case m

@@ -8,7 +8,7 @@ import kksl/[dbstore, passphrase]
 import kks/model
 import proposals
 import appstate
-import w32, ui, win, photos
+import w32, ui, win, photos, about
 
 {.compile("kks_qr.cpp", "-std=c++17").}
 {.passL: "-lZXing".}
@@ -580,24 +580,8 @@ proc account(w: Win, p: Page) =
     except CatchableError:
       w.toast("Wrong passphrase, or not a root key backup")))
 
-proc GlobalAlloc(flags: UINT, n: csize_t): pointer {.importc, stdcall, header: "<windows.h>".}
-proc GlobalLock(h: pointer): pointer {.importc, stdcall, header: "<windows.h>".}
-proc GlobalUnlock(h: pointer): BOOL {.importc, stdcall, header: "<windows.h>", discardable.}
-proc SetClipboardData(fmt: UINT, h: pointer): pointer {.importc, stdcall, header: "<windows.h>", discardable.}
-
 proc copyText(w: Win, text: string) =
-  ## text to the clipboard as CF_UNICODETEXT (the clipboard owns the memory after SetClipboardData)
-  let wide = newWideCString(text)
-  let bytes = (wide.len + 1) * 2
-  if OpenClipboard(w.hwnd) == 0: return
-  EmptyClipboard()
-  let h = GlobalAlloc(0x0002, csize_t(bytes))      # GMEM_MOVEABLE
-  if h != nil:
-    copyMem(GlobalLock(h), cast[pointer](wide[0].addr), bytes)
-    GlobalUnlock(h)
-    SetClipboardData(13, h)                        # CF_UNICODETEXT
-  CloseClipboard()
-  w.toast("Copied")
+  w.toast(if copyToClipboard(w.hwnd, text): "Copied" else: "The clipboard is busy: try again")
 
 proc diagnosticsSection(w: Win, p: Page) =
   ## decision 0040: everyone sees whether reports are on; the manager switches them from their own device
@@ -691,5 +675,7 @@ proc manageTab*(w: Win, p: Page) =
         managePage = t
         w.rebuildSide()))
       p.dim(sub)
+  p.buttons(("About Walkdown…", proc () = openAbout(w.hwnd)))
+  p.dim("Version, licences, the source of this version (also F1)")
 
 proc liveManage*(): bool = managePage in ["Approvals", "My proposals", "Leaderboard", "History", "Devices", "Diagnostics"]
