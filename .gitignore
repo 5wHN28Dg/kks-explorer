@@ -34,5 +34,10 @@ relay/node_modules/
 plant-data/
 # private notes about the plant for Claude Code (plant name, reader accuracy per sheet): never commit
 CLAUDE.local.md
+# the Flatpak build's state, output and bundles (else every later build would count as "with local changes")
+.flatpak-builder/
+/state/
+/build-flatpak/
+*.flatpak
 # the Flatpak build's commit (apps/gnome/flatpak/build.sh writes it and removes it after)
 apps/gnome/flatpak/buildinfo.flags

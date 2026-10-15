@@ -71,6 +71,12 @@ suite "about":
       for id in c["license_ids"].elems:
         let t = d["licenses"][id.s].get("text")
         if t.isStr: check t.s.strip(leading = false) in lic
+      # a part that comes with the app ships its licence: a notice or the licence's text (SQLite's blessing is
+      # public domain)
+      if how.s == "bundled" and c["license"].s != "blessing":
+        var hasText = notice.len > 300 or "\n\n" in notice
+        for id in c["license_ids"].elems: hasText = hasText or d["licenses"][id.s].get("text").isStr
+        check hasText
       # bundled parts name their version; the system's are whatever version the system has
       if how.s == "bundled" and c["version"].isStr: check c["version"].s in l.title
       if how.s == "system": check "system's copy" in cr

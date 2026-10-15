@@ -2260,6 +2260,8 @@ class Gnome(Plant):
         atspi.find(d, 'label', name='Course photos')
         atspi.find(d, 'link', name='Photo: Didier Duforest, CC BY-SA 4.0, via Wikimedia Commons')
         atspi.find(d, 'link', name='Photo: Siemens Pressebild, www.siemens.com, CC BY-SA 3.0, via Wikimedia Commons', showing=False)
+        # (a credit with & is shown as written: AdwAboutDialog's credit rows are plain text)
+        atspi.find(d, None, name="AI-generated illustration (Google Gemini), checked against the plant's flue gas P&ID", showing=False)
         atspi.find(d, 'label', name='Licences of the course photos', showing=False)
         self.assertEqual(len([n for n, nm in atspi.nodes(d, 'link') if nm == 'CC BY-SA 3.0']), 1)
         self.about_page(d, 'back', state)
@@ -2284,6 +2286,8 @@ class Gnome(Plant):
         else:
             self.fail('the About dialog did not close the second time')
         self.assertEqual(self.criticals('about'), [])
+        with open('/tmp/kks-gnome-e2e-about.log', errors='replace') as f:
+            self.assertEqual([ln for ln in f if 'markup' in ln], [], 'GTK could not read a markup string')
 
 
 class Coverage(Plant):

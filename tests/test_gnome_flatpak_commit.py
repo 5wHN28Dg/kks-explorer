@@ -48,6 +48,14 @@ class FlatpakCommit(unittest.TestCase):
         # never committed (a stale one would name the wrong commit)
         self.assertIn('apps/gnome/flatpak/buildinfo.flags', read('.gitignore').splitlines())
 
+    def test_a_builds_own_files_do_not_make_the_next_build_count_as_changed(self):
+        # build.sh counts untracked files as local changes: the builder's state, output and bundle must be ignored
+        # (the README's command builds with --state-dir=state into build/ in the repository's root)
+        for p in ('.flatpak-builder/cache/x', 'state/cache/x', 'build/files/x', 'build-flatpak/x', 'walkdown.flatpak',
+                  'walkdown-aarch64.flatpak', 'apps/gnome/flatpak/buildinfo.flags'):
+            r = subprocess.run(['git', '-C', REPO, 'check-ignore', '-q', '--no-index', p])
+            self.assertEqual(r.returncode, 0, p + ' is not ignored')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -12,7 +12,12 @@ REPO=$(cd "$HERE/../../.." && pwd)
 FLAGS="$HERE/buildinfo.flags"
 # only this repository's own checkout: not a repository the source tree happens to sit in, not one without commits
 COMMIT=$( [ -z "$(git -C "$REPO" rev-parse --show-prefix 2>/dev/null || echo no)" ] && git -C "$REPO" rev-parse --verify -q HEAD || true)
-DIRTY=false; [ -z "$COMMIT" ] || [ -z "$(git -C "$REPO" status --porcelain -- .)" ] || DIRTY=true
+# (a git status that fails counts as changed: it can't say the checkout is clean)
+DIRTY=false
+if [ -n "$COMMIT" ]; then
+  CHANGES=$(git -C "$REPO" status --porcelain -- .) || CHANGES=failed
+  [ -z "$CHANGES" ] || DIRTY=true
+fi
 trap 'rm -f "$FLAGS"' EXIT
 rm -f "$FLAGS"
 [ -z "$COMMIT" ] || echo "-d:kksCommit=$COMMIT -d:kksDirty=$DIRTY" > "$FLAGS"
