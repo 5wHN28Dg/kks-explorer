@@ -437,8 +437,13 @@ class WebSignOut(unittest.TestCase):
                  'existing': {'username': 'sara', 'full_name': 'Sara Admin', 'role': 'admin'}, 'needs_position': False},
                 {'device': 'dev-ali', 'code': '654321', 'request': {'full_name': 'Ali', 'username': 'ali', 'label': 'phone'},
                  'existing': {'username': 'ali', 'full_name': 'Ali', 'role': 'user'}, 'needs_position': False}]}
+            polls = [0]
             def answer(r):
                 if r.request.method == 'GET':
+                    # (as the server's: when each device last asked, which it does every 2 s, changes with every answer)
+                    for q in lobby['requests']:
+                        q['seen'] = q.get('seen', 1000) + 2
+                    polls[0] += 1
                     return r.fulfill(status=200, content_type='application/json', body=json.dumps(lobby))
                 b = json.loads(r.request.post_data)
                 if r.request.url.endswith('dev-own') and b.get('password') != PW:
@@ -488,7 +493,7 @@ class WebSignOut(unittest.TestCase):
             # lands. Before, the page and the waiting list were made anew, and a press whose mouse-down and mouse-up fell
             # on either side was lost (#199: Accept for ali did nothing, a WebKit run on CI). Mouse down, the page
             # rebuilt (one more asked for here, so that one surely comes while the button is held) and the list there
-            # again, mouse up.
+            # again, and two more rounds of the list's poll (the device's `seen` new in each), mouse up.
             accept = page.locator('#lobby > div', has_text='654 321').get_by_role('button', name='Accept')
             box = accept.bounding_box()
             page.evaluate("() => { document.querySelector('#main > .card').dataset.before = '1' }")
@@ -497,6 +502,11 @@ class WebSignOut(unittest.TestCase):
             page.evaluate("() => K.listeners.forEach(f => f('synced'))")
             page.wait_for_function("""() => !document.querySelector('#main > .card[data-before]')
                 && document.querySelector('#lobby')?.textContent.includes('654 321')""", timeout=15000)
+            n = polls[0]
+            for _ in range(200):
+                if polls[0] >= n + 2: break
+                page.wait_for_timeout(50)
+            self.assertGreaterEqual(polls[0], n + 2, 'the waiting list was not asked for again')
             page.mouse.up()
             expect(page.locator('#toast')).to_have_text('Accepted ali: their device gets the plant over the Wi-Fi now')
             self.assertEqual(page.evaluate('window.asked'), [
@@ -531,6 +541,13 @@ class WebSignOut(unittest.TestCase):
             page.get_by_role('button', name='Show QR code').click()
             box = page.locator('#invstate')
             expect(box).to_contain_text('wants to join')
+            # a rebuild of the page (a sync round) keeps the QR code shown, with the device asking (before, the card went
+            # back to its button: a press on Accept across it was lost, as in the waiting list)
+            page.evaluate("""() => { document.querySelector('#invstate').dataset.before = '1';
+                document.querySelector('#main > .card').dataset.before = '1'; K.listeners.forEach(f => f('synced')) }""")
+            page.wait_for_function("() => !document.querySelector('#main > .card[data-before]')", timeout=15000)
+            self.assertEqual(page.locator('#invstate[data-before]').count(), 1)
+            expect(box).to_contain_text('wants to join')
             box.get_by_role('button', name='Accept').click()
             field = box.locator('form input[name=password]')
             expect(field).to_be_focused()
@@ -544,6 +561,9 @@ class WebSignOut(unittest.TestCase):
             field.fill(PW)
             field.press('Enter')
             expect(box).to_contain_text('Accepted Sara Admin')
+            # once it has ended, a rebuild brings the button back for the next one
+            page.evaluate("() => K.listeners.forEach(f => f('synced'))")
+            expect(page.get_by_role('button', name='Show QR code')).to_have_count(1, timeout=15000)
             self.assertEqual([x for x in page.evaluate('window.asked') if x[0].startswith('invites/')], [
                 ['invites/tok1', {'action': 'accept', 'existing_ok': True, 'password': 'a guess'}],
                 ['invites/tok1', {'action': 'accept', 'existing_ok': True, 'password': PW}]])
