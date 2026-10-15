@@ -1,6 +1,7 @@
 # Flatpak manifest (decision 0022: Flathub). Build:
 #   flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50 org.flatpak.Builder
-#   flatpak run org.flatpak.Builder --user --install --force-clean build apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.yml
+#   apps/gnome/flatpak/build.sh --user --install --force-clean build
+# (build.sh runs org.flatpak.Builder on this manifest with the checkout's commit in buildinfo.flags, for About)
 # Status: built 2026-10-03 with org.flatpak.Builder and the GNOME 50 SDK (GTK 4.22.5, libadwaita 1.9.4, libjxl 0.11.2,
 # GStreamer 1.26 with the PipeWire plugin, sqlite, gnutls, libsecret all come from the runtime; only Nim and
 # zxing-cpp are built here). The camera comes through the camera portal (decision 0039): no device access needed.
@@ -44,7 +45,8 @@ modules:
   - name: walkdown
     buildsystem: simple
     build-commands:
-      - cd apps/gnome && KKS_DEV=/app/dev PATH=/app/nim/bin:$PATH nim c -d:release -d:flatpak -o:/app/bin/walkdown kks_explorer.nim
+      # the commit (About): -d:kksCommit and -d:kksDirty from build.sh or CI; without the file, "commit unknown"
+      - cd apps/gnome && KKS_DEV=/app/dev PATH=/app/nim/bin:$PATH nim c -d:release -d:flatpak $(cat flatpak/buildinfo.flags 2>/dev/null) -o:/app/bin/walkdown kks_explorer.nim
       - install -Dm644 data/kks.json /app/share/walkdown/data/kks.json
       - install -Dm644 data/about.json /app/share/walkdown/data/about.json
       - mkdir -p /app/share/walkdown/data/courses /app/share/walkdown/vendor/fonts
