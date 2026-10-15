@@ -14,6 +14,8 @@
 ##             tex1k  textures at 1024 px (the tier's texture size: the same files imported with a size limit)
 ##             texraw the earlier bench's import (2048 px, lossless, no mipmaps): to compare with the old numbers
 ##             lod    LOD bias 0.5: each part switches to its simpler LOD at half the distance
+##             half   (with full) 3D drawn at half the screen's width and height: a HiDPI laptop panel at its logical
+##                    resolution
 ##   prebuilt=1             load built/plant.scn (what a shipped app does) instead of building the plant by script
 ##   look=1                 capture the 10 "look" viewpoints as PNGs instead of walking
 ##   save=res://built/plant.scn   (desktop) build the plant, save it as a scene and quit
@@ -79,7 +81,7 @@ func _ready() -> void:
 	base = parts[0]
 	levers = parts.slice(1)
 	for l in levers:
-		if not l in ["vis", "tex1k", "texraw", "lod"]: _say("unknown lever " + l)
+		if not l in ["vis", "tex1k", "texraw", "lod", "half"]: _say("unknown lever " + l)
 	_apply_preset()
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_environment()
@@ -145,6 +147,9 @@ func _apply_preset() -> void:
 	if base != "full":
 		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
 		vp.scaling_3d_scale = 0.7 if base == "scaled" else 0.6
+	elif "half" in levers:   # a HiDPI laptop panel drawn at its logical resolution (1440x900 on 2880x1800)
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		vp.scaling_3d_scale = 0.5
 	if base.begins_with("lean"):   # lean, lean2, lean_noshadow
 		RenderingServer.directional_shadow_atlas_set_size(2048, true)
 		vp.mesh_lod_threshold = 4.0
@@ -225,7 +230,8 @@ func _dress() -> void:
 ## faded before its own distance. The fade (SELF) runs from end - margin to end + margin.
 func _range(gi: GeometryInstance3D, feature: float) -> void:
 	var d := feature * PX_PER_RAD   # 1 px
-	var half_diag := gi.get_aabb().size.length() / 2.0
+	var box: AABB = gi.get_meta("box")
+	var half_diag := box.size.length() / 2.0
 	var margin := d * 0.2
 	gi.visibility_range_end = d + half_diag + margin
 	gi.visibility_range_end_margin = margin
@@ -283,6 +289,7 @@ func _put(mesh: Mesh, mat: int, xf: Transform3D) -> void:
 	mi.mesh = mesh
 	mi.transform = xf
 	_tag(mi, part, mat)
+	mi.set_meta("box", xf * mesh.get_aabb())
 	root.add_child(mi)
 	nodes += 1
 
@@ -370,6 +377,11 @@ func _build() -> void:
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
 			_tag(mmi, e[0].get_meta("part"), e[1])
+			# the cell's box, computed here (the renderer's copy is not readable everywhere): what its range is
+			# measured from
+			var box: AABB = e[2][0] * e[0].get_aabb()
+			for xf in e[2]: box = box.merge(xf * e[0].get_aabb())
+			mmi.set_meta("box", box)
 			root.add_child(mmi)
 			nodes += 1
 	if variant == "merged":
