@@ -106,8 +106,10 @@ run() {
     a wait-for-device
     say "plugged in again"
   fi
+  sleep 10
   while ! sh_ ls "$FILES/result.txt" >/dev/null 2>&1; do
     [ "$(date +%s)" -lt "$deadline" ] || { say "$name: no result in time"; break; }
+    sh_ pidof "$PKG" >/dev/null 2>&1 || { say "$name: the bench has ended"; break; }
     local pss
     pss=$(sh_ dumpsys meminfo "$PKG" 2>/dev/null | sed -n 's/^ *TOTAL PSS: *\([0-9]*\).*/\1/p; s/^ *TOTAL *\([0-9][0-9]*\) .*/\1/p' | head -1)
     [ -n "$pss" ] && [ "$pss" -gt "$peak" ] && peak=$pss
@@ -119,6 +121,8 @@ run() {
   [ "$look" = 1 ] && a pull "$FILES/look" "$dir/" >/dev/null 2>&1 || true
   # the start and the first frame, both from the phone's log: time to the first walkable frame
   a logcat -d -v epoch -T "$t0.000" > "$dir/logcat.txt" 2>/dev/null || true
+  # the same lines are in the log, should the app not have been able to write its file
+  [ -s "$dir/result.txt" ] || sed -n 's/.*bench: //p' "$dir/logcat.txt" > "$dir/result.txt"
   local start first
   start=$(grep -m1 -E "START u0 .*$PKG" "$dir/logcat.txt" | awk '{print $1}')
   first=$(grep -m1 "bench: first frame" "$dir/logcat.txt" | awk '{print $1}')

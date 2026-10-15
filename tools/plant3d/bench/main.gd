@@ -230,7 +230,7 @@ func _dress() -> void:
 ## faded before its own distance. The fade (SELF) runs from end - margin to end + margin.
 func _range(gi: GeometryInstance3D, feature: float) -> void:
 	var d := feature * PX_PER_RAD   # 1 px
-	var box: AABB = gi.get_meta("box")
+	var box: AABB = gi.get_meta("box", gi.get_aabb())   # a plant saved before boxes were kept: the renderer's box
 	var half_diag := box.size.length() / 2.0
 	var margin := d * 0.2
 	gi.visibility_range_end = d + half_diag + margin
@@ -487,6 +487,7 @@ func _finish() -> void:
 		acc += d; k += 1; minute += d
 		if minute >= 60000.0:
 			per.append("%.1f" % (acc / k)); acc = 0.0; k = 0; minute = 0.0
+	if k > 0: per.append("%.1f" % (acc / k))   # the last, shorter stretch
 	_say("PER_MINUTE mean_ms=" + ",".join(per))
 	_write_out()
 	get_tree().quit()
