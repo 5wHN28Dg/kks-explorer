@@ -28,6 +28,9 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.10.4" date="2026-10-15">
+      <description><p>About Walkdown, in the header bar's menu: the version and the exact commit it was built from, the licence, links to the project, to report a problem and to help, every third-party part the app ships with its licence, and the course photo credits; Troubleshooting copies the version and system details for support.</p></description>
+    </release>
     <release version="0.10.3" date="2026-10-15">
       <description><p>Drawings are sharp and smooth on high-resolution screens; leaving a form with typed text asks first; Escape ends Mark a tag, link mode and Select tags the same way their buttons do; a second start of the app shows the open window; course text and photo floors fixed.</p></description>
     </release>
