@@ -10,7 +10,7 @@ Made from:
 - tools/about/components.json: the third-party parts each program ships or uses, their licences, and which program
   has them (the versions of pinned sources come from pinned-sources.cdx.json);
 - tools/about/licenses/*.txt (the standard licence texts) and tools/about/notices/*.txt (a part's own licence file,
-  with its copyright lines, as its source ships it);
+  with its copyright lines, as its source ships it, and the Apache NOTICE files, *-NOTICE.txt, verbatim);
 - the course photos' credits (data/courses/*.json).
 The version is not in it: each program knows its own (VERSION at build time) and the commit it was built from.
 
@@ -26,7 +26,9 @@ data/about.json (format "walkdown-about", version 1): an object with
                 url, use, platforms: {<platform>: "bundled" | "system"}, notice (string or null)}]
       "bundled": the program carries it (built in, or in its package); "system": it uses the copy the operating
       system or the Flatpak runtime provides (then `version` does not apply). notice: the part's own licence file
-      (copyright lines and terms) where its licence asks for them to go with the program.
+      (copyright lines and terms) where its licence asks for them to go with the program, followed by its
+      Apache NOTICE file where it is used under Apache-2.0 and has one ("Its NOTICE file, <where it comes from>:",
+      then the file as upstream ships it; see with_apache_notice).
   licenses: {<SPDX id>: {name, url, text}}   every licence a component is used under; text: its full text, or null
                                              where each component's notice carries its terms (BSD, MIT, ...)
   photos: [{file, text, links: [{text, url}]}]   the course pictures' credits (text: the credit as the course
@@ -110,6 +112,29 @@ def license_name(expr, known):
     return ' '.join(words.get(t) or (known[t]['name'] if t in known else t) for t in expr.split())
 
 
+def with_apache_notice(c, notice, read_notice):
+    """the component's notice with its Apache NOTICE file added (Apache License 2.0, 4(d): a work that includes a
+    NOTICE file is redistributed with a readable copy of it). A component used under Apache-2.0 (in any part of its
+    licence expression) that a program carries must say in "apache_notice" either {"file": <name in notices/,
+    without .txt>, "from": where that text comes from} or {"none": where it was checked that there is none}."""
+    rec = c.get('apache_notice')
+    if 'Apache-2.0' not in re.findall(r'[\w.+-]+', c['license']):
+        if rec is not None:
+            raise SystemExit(f'{c["id"]}: apache_notice on a component not under Apache-2.0')
+        return notice
+    if rec is None:
+        if 'bundled' in c['platforms'].values():
+            raise SystemExit(f'{c["id"]}: under Apache-2.0 and carried by a program: say in "apache_notice" whether it '
+                             'has a NOTICE file (and where that was checked)')
+        return notice
+    if set(rec) == {'none'} and isinstance(rec['none'], str) and rec['none'].strip():
+        return notice
+    if set(rec) != {'file', 'from'} or not all(isinstance(rec[k], str) and rec[k].strip() for k in rec):
+        raise SystemExit(f'{c["id"]}: apache_notice must be {{"none": "where checked"}} or {{"file": ..., "from": ...}}')
+    text = f'Its NOTICE file, {rec["from"]}:\n\n' + read_notice(rec['file'])
+    return notice.rstrip('\n') + '\n\n\n' + text if notice else text
+
+
 def build(repo=REPO):
     m = metainfo(repo)
     src = json.loads(read(repo, SRC, 'components.json'))
@@ -126,6 +151,7 @@ def build(repo=REPO):
             raise SystemExit(f'{c["id"]}: platforms must be among {PLATFORMS}, each "bundled" or "system"')
         version = versions[c['pinned']] if 'pinned' in c else c.get('version')
         notice = read(repo, SRC, 'notices', c['notice'] + '.txt') if c.get('notice') else None
+        notice = with_apache_notice(c, notice, lambda f: read(repo, SRC, 'notices', f + '.txt'))
         if not c['license_ids'] or any(i not in re.findall(r'[\w.+-]+', c['license']) for i in c['license_ids']):
             raise SystemExit(f'{c["id"]}: every one of license_ids must be in its licence expression')
         comps.append({'id': c['id'], 'name': c['name'], 'version': version, 'license': c['license'],

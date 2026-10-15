@@ -31,10 +31,12 @@ fun SetupScreen(onJoined: () -> Unit) {
     var page by remember { mutableStateOf("") }
     BackHandler(enabled = page.isNotEmpty()) { page = "" }
     // (About scrolls by itself, so it stands outside the scrolling column)
+    val aboutPage = remember(page) { mutableStateOf<Pair<String, String>?>(null) }
     if (page == "about") {
         Column(Modifier.safeDrawingPadding().padding(horizontal = 20.dp)) {
-            TextButton(onClick = { page = "" }) { Text("Back") }
-            AboutScreen()
+            // (a part's or a licence's page has its own back button, to About)
+            if (aboutPage.value == null) TextButton(onClick = { page = "" }) { Text("Back") }
+            AboutScreen(aboutPage)
         }
         return
     }

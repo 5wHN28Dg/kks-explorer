@@ -1611,7 +1611,8 @@ class Phone(unittest.TestCase):
         """About Walkdown (data/about.json, packed into the APK; the version and commit are the build's): before
         joining and under Manage; the version line names the commit the APK was built from, the licence and the link to
         that commit's source; a third-party part (libjxl) shows its copyright notice, a font the OFL's full text, the
-        app's licence its full text; a course photo's credit; light and dark (screenshots in KKS_SHOTS); a link opens
+        app's licence its full text, an Apache part its NOTICE file; a part's or a licence's page has one back button,
+        "‹ About Walkdown" (not Manage's or the first screen's as well); a course photo's credit; light and dark (screenshots in KKS_SHOTS); a link opens
         in the browser"""
         import io
         from PIL import Image, ImageStat
@@ -1656,6 +1657,18 @@ class Phone(unittest.TestCase):
         # the APK under test is built from this checkout's HEAD (a stale APK names another commit)
         commit = subprocess.run(['git', '-C', REPO, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
         self.assertEqual(m.group(2), commit[:12], f'the APK names commit {m.group(2)}, this checkout is at {commit[:12]}')
+        # a part's page has one back button, the one to About; About's own page the one to the first screen
+        lib = next(c for c in about['components'] if c['id'] == 'libjxl')
+        row = f'{lib["name"]} · {lib["version"]}'
+        ui.find('Back', exact=True)
+        ui.scroll_to(row, exact=True, tries=20)
+        ui.tap(row, exact=True)
+        ui.find(paragraphs(lib['notice'])[0], exact=True, timeout=10)
+        ui.find('‹ About Walkdown', exact=True)
+        self.assertFalse(ui.present('Back', exact=True), 'a part\'s page shows the first screen\'s Back too')
+        ui.tap('‹ About Walkdown', exact=True)
+        ui.find(row, exact=True, timeout=10)
+        ui.find('Back', exact=True)
         back()
         ui.find('Join through a server', exact=True)
 
@@ -1679,18 +1692,24 @@ class Phone(unittest.TestCase):
 
         ui.tap('Full text of the licence', exact=True)
         ui.find(paragraphs(about['licenses'][about['license']['id']]['text'])[0], exact=True, timeout=10)
+        ui.find('‹ About Walkdown', exact=True)
+        self.assertFalse(ui.present('‹ Manage', exact=True), 'a licence\'s page under Manage shows "‹ Manage" too')
+        ui.scroll_to(paragraphs(about['licenses'][about['license']['id']]['text'])[12], exact=True, tries=12)
+        ui.find('‹ About Walkdown', exact=True)   # still there, far down the text
         back()
         ui.scroll_to(about['notice'], exact=True)
         source = about['source']['commit_url'].replace('{commit}', commit)
         ui.scroll_to(source, exact=True)
         ui.find('Source of the commit this build started from' if m.group(3) else 'Source of this version', exact=True)   # (its row's title)
 
-        lib = next(c for c in about['components'] if c['id'] == 'libjxl')
-        row = f'{lib["name"]} · {lib["version"]}'
+        ui.find('‹ Manage', exact=True)
         ui.scroll_to(row, exact=True, tries=20)
         ui.tap(row, exact=True)
         ui.find(paragraphs(lib['notice'])[0], exact=True, timeout=10)
         ui.find('Licence: ' + lib['license_name'], exact=True)
+        # one back button, the one that goes back one level (not Manage's as well)
+        ui.find('‹ About Walkdown', exact=True)
+        self.assertFalse(ui.present('‹ Manage', exact=True), 'a part\'s page under Manage shows "‹ Manage" too')
         shot('about-libjxl-light.png')
         ui.scroll_to(lib['license_name'], exact=True, tries=12)       # the licence's heading below the notice
         ui.scroll_to(about['licenses'][lib['license_ids'][0]]['url'], exact=True, tries=4)   # (no text in about.json: its link)
@@ -1700,9 +1719,17 @@ class Phone(unittest.TestCase):
         ui.tap(font['name'], exact=True)
         ui.find(paragraphs(font['notice'])[0], exact=True, timeout=10)
         ui.scroll_to(paragraphs(about['licenses']['OFL-1.1']['text'])[1], exact=True)   # the OFL's own text
+        ui.find('‹ About Walkdown', exact=True)   # the back button stays at the top while the text scrolls
         night(True)
         shot('about-ofl-dark.png')
         night(False)
+        back()
+        ui.find('‹ Manage', exact=True)          # About's main page again: Manage's back button is back
+        # a part under the Apache licence with an upstream NOTICE file shows it (Apache License 2.0, 4(d))
+        co = next(c for c in about['components'] if c['id'] == 'kotlinx-coroutines')
+        ui.scroll_to(f'{co["name"]} · {co["version"]}', exact=True, tries=20)
+        ui.tap(f'{co["name"]} · {co["version"]}', exact=True)
+        ui.scroll_to(next(p for p in paragraphs(co['notice']) if 'Copyright 2016-2024 JetBrains' in p), exact=True, tries=4)
         back()
 
         photo = about['photos'][0]

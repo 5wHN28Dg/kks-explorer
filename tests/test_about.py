@@ -7,6 +7,8 @@
   lockfile, at the versions the lockfile has;
 - every course picture has its credit; every licence a part names is there, with its full text where a part has no
   notice of its own; nothing in it names a plant or a person of the project;
+- every part used under Apache-2.0 that a program carries has its upstream NOTICE file with its notice, or is recorded
+  as having none, with where that was checked;
 - every build that packs data/ packs about.json too (Flatpak, MSIX, the server's install).
   .venv/bin/python -m unittest tests.test_about"""
 import json, os, re, subprocess, sys, tempfile, unittest, urllib.parse
@@ -116,6 +118,59 @@ class About(unittest.TestCase):
                 self.assertTrue(c['notice'], c['id'])
         for lid in ('Apache-2.0', 'OFL-1.1', 'FTL', 'AGPL-3.0-or-later', 'LLVM-exception'):
             self.assertTrue(d['licenses'][lid]['text'], lid)
+
+    def test_apache_notices(self):
+        """Apache License 2.0, 4(d): a work that comes with a NOTICE file is passed on with a readable copy of it. Every
+        part used under Apache-2.0 that a program carries says whether it has one: its text (shown with the part's
+        notice, verbatim) and where it comes from, or where it was checked that there is none (the user, 2026-10-15)"""
+        with open(os.path.join(REPO, about.SRC, 'components.json'), encoding='utf-8') as f:
+            src = json.load(f)['components']
+        by = {c['id']: c for c in load()['components']}
+        used = set()
+        apache = [c for c in src if 'Apache-2.0' in re.findall(r'[\w.+-]+', c['license'])]
+        self.assertGreaterEqual(len(apache), 12)
+        for c in apache:
+            rec = c.get('apache_notice')
+            if 'bundled' not in c['platforms'].values():
+                continue
+            self.assertIsInstance(rec, dict, c['id'])
+            where = rec.get('from') or rec.get('none')
+            self.assertTrue(isinstance(where, str) and len(where) > 20, c['id'])
+            if c.get('version') or c.get('pinned'):
+                self.assertIn(by[c['id']]['version'], where, c['id'])   # checked at the version that ships
+            if 'file' in rec:
+                used.add(rec['file'] + '.txt')
+                with open(os.path.join(REPO, about.SRC, 'notices', rec['file'] + '.txt'), encoding='utf-8') as f:
+                    text = f.read()
+                self.assertIn('Its NOTICE file, ' + rec['from'] + ':\n\n' + text, by[c['id']]['notice'])
+            else:
+                self.assertEqual(set(rec), {'none'}, c['id'])
+        # the NOTICE files found (kept verbatim in tools/about/notices/*-NOTICE.txt) all go with their part
+        found = {n for n in os.listdir(os.path.join(REPO, about.SRC, 'notices')) if n.endswith('-NOTICE.txt')}
+        self.assertEqual(used, found)
+        self.assertGreaterEqual(found, {'kotlin-NOTICE.txt', 'kotlinx-coroutines-NOTICE.txt', 'mupdf-droid-NOTICE.txt'})
+        self.assertIn('Copyright (c) 2005-2008, The Android Open Source Project', by['mupdf-fonts']['notice'])
+        self.assertIn('Copyright 2016-2024 JetBrains s.r.o and contributors', by['kotlinx-coroutines']['notice'])
+
+    def test_apache_notice_required(self):
+        """the tool itself refuses a carried Apache-2.0 part that doesn't say, a malformed record, and a record on a
+        part that isn't under Apache-2.0; a part only the system provides needs none"""
+        def comp(**kw):
+            c = {'id': 'x', 'name': 'X', 'license': 'Apache-2.0 OR MIT', 'platforms': {'android': 'bundled'}}
+            c.update(kw)
+            return c
+        texts = {'n': 'Copyright 2026 Someone\n'}
+        for bad in (comp(), comp(apache_notice={}), comp(apache_notice={'none': ' '}),
+                    comp(apache_notice={'file': 'n'}), comp(apache_notice={'none': 'checked', 'file': 'n', 'from': 'x'}),
+                    comp(license='MIT', apache_notice={'none': 'checked'})):
+            with self.assertRaises(SystemExit, msg=bad):
+                about.with_apache_notice(bad, None, texts.__getitem__)
+        self.assertIsNone(about.with_apache_notice(comp(platforms={'server': 'system'}), None, texts.__getitem__))
+        self.assertEqual(about.with_apache_notice(comp(apache_notice={'none': 'checked here'}), 'own', texts.__getitem__), 'own')
+        self.assertEqual(about.with_apache_notice(comp(apache_notice={'file': 'n', 'from': 'its NOTICE at v1'}), 'own\n', texts.__getitem__),
+                         'own\n\n\nIts NOTICE file, its NOTICE at v1:\n\nCopyright 2026 Someone\n')
+        self.assertEqual(about.with_apache_notice(comp(apache_notice={'file': 'n', 'from': 'w'}), None, texts.__getitem__),
+                         'Its NOTICE file, w:\n\nCopyright 2026 Someone\n')
 
     def test_course_credits(self):
         d = load()

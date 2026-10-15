@@ -42,7 +42,7 @@
  },
  "on demand": {
   "files": {
-   "data/about.json": 148405,
+   "data/about.json": 160547,
    "vendor/fonts/AtkinsonHyperlegible-400-latin-ext.woff2": 9384,
    "vendor/fonts/AtkinsonHyperlegible-400-latin.woff2": 17208,
    "vendor/fonts/AtkinsonHyperlegible-400i-latin-ext.woff2": 9796,
@@ -66,7 +66,7 @@
    "vendor/kks/kks.js": 11986,
    "vendor/kks/kks.wasm": 3574745
   },
-  "total": 8386634
+  "total": 8398776
  },
  "shell": {
   "files": {

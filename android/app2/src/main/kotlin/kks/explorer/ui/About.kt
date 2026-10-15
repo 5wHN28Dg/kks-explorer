@@ -126,15 +126,17 @@ private fun LazyListScope.longText(key: String, text: String) {
     }
 }
 
-/** the About screen: Manage → About Walkdown, and the first screen's "About Walkdown" before the phone joins a plant */
+/** the About screen: Manage → About Walkdown, and the first screen's "About Walkdown" before the phone joins a plant.
+ *  [subpage] is the page open over the main one: ("part", component id) or ("licence", licence id), or null. The screen
+ *  that shows About holds it, so that it shows its own back button only on About's main page: a part's or a licence's
+ *  page has just "‹ About Walkdown", the one that goes back one level (as Manage's other pages have just "‹ Manage"). */
 @Composable
-fun AboutScreen() {
+fun AboutScreen(subpage: MutableState<Pair<String, String>?> = remember { mutableStateOf(null) }) {
     val ctx = LocalContext.current
     var loaded by remember { mutableStateOf(false) }
     var d by remember { mutableStateOf<JSONObject?>(null) }
     LaunchedEffect(Unit) { d = withContext(Dispatchers.IO) { About.load(ctx.applicationContext) }; loaded = true }
-    // a page over the main one: ("part", component id) or ("licence", licence id)
-    var page by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var page by subpage
     BackHandler(enabled = page != null) { page = null }
     val about = d
     // (the main list keeps its place while a part's or a licence's page is open over it)
@@ -248,26 +250,29 @@ private fun PartPage(d: JSONObject, id: String, onBack: () -> Unit) {
     val c = d.optJSONArray("components").objects().firstOrNull { it.str("id") == id }
         ?: run { LaunchedEffect(id) { onBack() }; return }     // (not during composition)
     val licences = d.optJSONObject("licenses") ?: JSONObject()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            BackRow(onBack)
-            Text(c.str("name"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-            partVersion(c).let { if (it.isNotEmpty()) Text(if (it.startsWith("the ") || it.startsWith("commit")) it.replaceFirstChar(Char::uppercase) else "Version $it") }
-            if (c.str("use").isNotEmpty()) Dim(c.str("use"))
-            Text("Licence: " + c.str("license_name"))
-            LinkRow("Project page", c.str("url"))
-        }
-        if (c.str("notice").isNotEmpty()) {
-            item { Heading("Copyright and licence notice") }
-            longText("notice", c.str("notice"))
-        }
-        for (lid in c.strings("license_ids").distinct()) {
-            val l = licences.optJSONObject(lid) ?: continue
-            item(key = "head:$lid") { Heading(l.str("name").ifEmpty { lid }) }
-            if (l.str("text").isNotEmpty()) longText(lid, l.str("text"))
-            // (no text here: a part's notice holds its own terms where it has one, but a part under several licences
-            // may not hold them all, so the licence itself is a tap away)
-            else if (l.str("url").isNotEmpty()) item(key = "link:$lid") { LinkRow("The licence on the web", l.str("url")) }
+    // (the back button stays at the top while the text scrolls under it, as Manage's own does)
+    Column(Modifier.fillMaxSize()) {
+        BackRow(onBack)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item {
+                Text(c.str("name"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+                partVersion(c).let { if (it.isNotEmpty()) Text(if (it.startsWith("the ") || it.startsWith("commit")) it.replaceFirstChar(Char::uppercase) else "Version $it") }
+                if (c.str("use").isNotEmpty()) Dim(c.str("use"))
+                Text("Licence: " + c.str("license_name"))
+                LinkRow("Project page", c.str("url"))
+            }
+            if (c.str("notice").isNotEmpty()) {
+                item { Heading("Copyright and licence notice") }
+                longText("notice", c.str("notice"))
+            }
+            for (lid in c.strings("license_ids").distinct()) {
+                val l = licences.optJSONObject(lid) ?: continue
+                item(key = "head:$lid") { Heading(l.str("name").ifEmpty { lid }) }
+                if (l.str("text").isNotEmpty()) longText(lid, l.str("text"))
+                // (no text here: a part's notice holds its own terms where it has one, but a part under several licences
+                // may not hold them all, so the licence itself is a tap away)
+                else if (l.str("url").isNotEmpty()) item(key = "link:$lid") { LinkRow("The licence on the web", l.str("url")) }
+            }
         }
     }
 }
@@ -276,12 +281,14 @@ private fun PartPage(d: JSONObject, id: String, onBack: () -> Unit) {
 @Composable
 private fun LicencePage(d: JSONObject, id: String, onBack: () -> Unit) {
     val l = d.optJSONObject("licenses")?.optJSONObject(id) ?: run { LaunchedEffect(id) { onBack() }; return }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            BackRow(onBack)
-            Text(l.str("name").ifEmpty { id }, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-            if (l.str("url").isNotEmpty()) LinkRow("This licence on the web", l.str("url"))
+    Column(Modifier.fillMaxSize()) {
+        BackRow(onBack)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item {
+                Text(l.str("name").ifEmpty { id }, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+                if (l.str("url").isNotEmpty()) LinkRow("This licence on the web", l.str("url"))
+            }
+            longText(id, l.str("text"))
         }
-        longText(id, l.str("text"))
     }
 }

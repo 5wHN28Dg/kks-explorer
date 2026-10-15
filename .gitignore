@@ -15,6 +15,9 @@ to-do.md
 FILE
 dist/
 build/
+# IDE state (Android Studio, IntelliJ): else a build from a checkout opened in the IDE says "with local changes"
+.idea/
+*.iml
 # Android build output
 android/.gradle/
 android/build/
