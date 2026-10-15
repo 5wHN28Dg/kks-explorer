@@ -165,6 +165,70 @@ class Windows(unittest.TestCase):
                 r = self.boss.req('POST', '/api/devices/revoke', {'device': d['device'], 'password': 'a long password'})
                 assert r.get('ok'), r      # (a refusal would show later, as a join that finds the old device)
 
+    def screenshot(self, name):
+        """the VM's screen as KKS_SHOTS/<name>.png, when KKS_SHOTS names a folder (to look at by eye); else nothing"""
+        out = os.environ.get('KKS_SHOTS')
+        if not out: return
+        os.makedirs(out, exist_ok=True)
+        ppm = os.path.join(self.dir, name + '.ppm')
+        dom = os.environ.get('KKS_VM_DOMAIN') or ('kks-win11' if VM.endswith('.20') else 'kks-win10')
+        subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, ppm], capture_output=True)
+        if os.path.exists(ppm):
+            from PIL import Image
+            Image.open(ppm).save(os.path.join(out, name + '.png'))
+
+    def test_about(self):
+        """About Walkdown (about.nim, from the compiled-in data/about.json): from the setup screen's button and F1, and
+        from Manage once joined. It says the version with the commit the exe was built from and links that commit's
+        source; Walkdown's licence and its full text; the Windows app's parts, each with its notice and licence texts
+        (libjxl's BSD notice, a font's OFL); the course photos' credits with their links; Copy details; Esc closes"""
+        with open(os.path.join(REPO, 'VERSION')) as f: version = f.read().strip()
+        with open(APP, 'rb') as f:
+            m = re.search(rb'kks-explorer/tree/([0-9a-f]{40})', f.read())
+        self.assertIsNotNone(m, 'the exe names no commit (apps/windows/build.sh passes -d:kksCommit)')
+        commit = m.group(1).decode()
+        notice = 'Notice and licences of the selected part'
+        agpl = 'GNU Affero General Public License v3.0 or later'
+        self.check('about0.uia', ['wait\tJoin through a server\t60', 'click\tAbout Walkdown…', 'wait\tAbout Walkdown\t20',
+                                  'wait\tFind plant equipment on P&ID drawings by KKS code',
+                                  'wait\t~Version %s (commit %s' % (version, commit[:12]),
+                                  'wait\tBy Walkdown contributors. Licence: %s.' % agpl,
+                                  'wait\t~It comes with ABSOLUTELY NO WARRANTY.',
+                                  'wait\t~https://github.com/5wHN28Dg/kks-explorer/tree/' + commit,
+                                  'wait\tSource of this version',
+                                  # the first part is shown at once: libjxl with its BSD notice
+                                  'wait\tlibjxl 0.12.0 · BSD 3-Clause License', 'value\t%s\tJPEG XL photos' % notice,
+                                  'value\t%s\tCopyright (c) the JPEG XL Project Authors.' % notice,
+                                  'sleep\t2001',
+                                  # a font: its copyright and the whole SIL Open Font License
+                                  'pick\t~Atkinson Hyperlegible', 'value\t%s\tCopyright 2020 Braille Institute' % notice,
+                                  'value\t%s\tSIL OPEN FONT LICENSE Version 1.1' % notice,
+                                  'pick\tlibjxl 0.12.0 · BSD 3-Clause License', 'value\t%s\tJPEG XL photos' % notice,
+                                  # a course photo's credit and its links
+                                  'pick\tPhoto: Didier Duforest, CC BY-SA 4.0, via Wikimedia Commons',
+                                  'wait\tCC BY-SA 4.0 · https://creativecommons.org/licenses/by-sa/4.0\t10',
+                                  'wait\t~Wikimedia Commons · https://commons.wikimedia.org/wiki/File:Edna_reflex',
+                                  'sleep\t2002',
+                                  'click\tCopy details', 'wait\t~Copied the version\t10',
+                                  # Walkdown's own licence, in full, in a window of its own
+                                  'click\tLicence text…', 'value\t%s\tGNU AFFERO GENERAL PUBLIC LICENSE' % agpl,
+                                  'value\t%s\tVersion 3, 19 November 2007' % agpl,
+                                  'keys\t%s\t0x1B' % agpl, 'gone\t' + agpl,
+                                  # Esc closes About; F1 opens it again
+                                  'keys\t%s\t0x1B' % notice, 'gone\tAbout Walkdown',
+                                  'keys\tJoin through a server\t0x70', 'wait\tAbout Walkdown\t20',
+                                  'wait\t~Version %s (commit %s' % (version, commit[:12]),
+                                  'keys\t%s\t0x1B' % notice, 'gone\tAbout Walkdown'], keep=False,
+                   during=[('sleep\t2001', lambda: self.screenshot('about-setup')),
+                           ('sleep\t2002', lambda: self.screenshot('about-photo'))])
+        # joined: Manage → About Walkdown…
+        self.join('ajoin.uia')
+        self.check('about1.uia', ['click\tManage', 'click\tAbout Walkdown…', 'wait\tAbout Walkdown\t20',
+                                  'wait\t~Version %s (commit %s' % (version, commit[:12]), 'sleep\t2003',
+                                  'keys\t%s\t0x1B' % notice, 'gone\tAbout Walkdown', 'wait\tManage'],
+                   during=[('sleep\t2003', lambda: self.screenshot('about-manage'))])
+        self.leave()
+
     def test_dark_drawings(self):
         """Dark drawings: the check box turns the sheet light-on-dark at once (dark paper, light lines, as drawn on the
         screen), off restores it, and the choice survives a restart of the app (this device's store)"""
