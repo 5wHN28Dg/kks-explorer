@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -135,30 +136,32 @@ fun AboutScreen() {
     var page by remember { mutableStateOf<Pair<String, String>?>(null) }
     BackHandler(enabled = page != null) { page = null }
     val about = d
+    // (the main list keeps its place while a part's or a licence's page is open over it)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     if (about == null) {
-        Column(Modifier.padding(vertical = 12.dp)) {
+        if (loaded) Column(Modifier.padding(vertical = 12.dp)) {
             Text("Walkdown", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
             Text(About.versionLine())
-            if (loaded) Dim("This app's About content is missing.")
+            Dim("This app's About content is missing.")
         }
         return
     }
     when (page?.first) {
         "part" -> PartPage(about, page!!.second) { page = null }
         "licence" -> LicencePage(about, page!!.second) { page = null }
-        else -> AboutMain(about) { page = it }
+        else -> AboutMain(about, listState) { page = it }
     }
 }
 
 @Composable
-private fun AboutMain(d: JSONObject, open: (Pair<String, String>) -> Unit) {
+private fun AboutMain(d: JSONObject, listState: androidx.compose.foundation.lazy.LazyListState, open: (Pair<String, String>) -> Unit) {
     val ctx = LocalContext.current
     val clip = LocalClipboardManager.current
     val lic = d.optJSONObject("license") ?: JSONObject()
     val links = d.optJSONObject("links") ?: JSONObject()
     val source = d.optJSONObject("source") ?: JSONObject()
     val licences = d.optJSONObject("licenses") ?: JSONObject()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 12.dp)) {
                 Text("About ${d.str("name")}", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
@@ -179,7 +182,7 @@ private fun AboutMain(d: JSONObject, open: (Pair<String, String>) -> Unit) {
             Dim(d.str("notice"))
         }
         item {
-            Heading("Source of this version")
+            Heading("Source code")
             val commit = About.commit
             when {
                 commit.isEmpty() -> {
@@ -213,7 +216,7 @@ private fun AboutMain(d: JSONObject, open: (Pair<String, String>) -> Unit) {
         item { Heading("Licences") }
         items(androidLicences(d), key = { "licence:$it" }) { id ->
             val l = licences.optJSONObject(id) ?: JSONObject()
-            if (l.str("text").isNotEmpty()) PageRow(l.str("name").ifEmpty { id }, "", "Show the licence") { open("licence" to id) }
+            if (l.str("text").isNotEmpty()) PageRow(l.str("name").ifEmpty { id }, "Full text", "Show the licence") { open("licence" to id) }
             else if (l.str("url").isNotEmpty()) LinkRow(l.str("name").ifEmpty { id }, l.str("url"))
             else ListItem(headlineContent = { Text(l.str("name").ifEmpty { id }) },
                 supportingContent = { Text("Its terms are in the notices of the parts under it.") })
@@ -224,7 +227,9 @@ private fun AboutMain(d: JSONObject, open: (Pair<String, String>) -> Unit) {
                 Text(p.str("text"))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (l in p.optJSONArray("links").objects()) if (httpsUri(l.str("url")) != null)
-                        TextButton(onClick = { openLink(ctx, l.str("url")) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        // (named with its photo: TalkBack moving between buttons hears which photo each is for)
+                        TextButton(onClick = { openLink(ctx, l.str("url")) }, contentPadding = PaddingValues(horizontal = 8.dp),
+                            modifier = Modifier.semantics { contentDescription = l.str("text") + ", for: " + p.str("text") }) {
                             Text(l.str("text"))
                         }
                 }
@@ -259,10 +264,9 @@ private fun PartPage(d: JSONObject, id: String, onBack: () -> Unit) {
             val l = licences.optJSONObject(lid) ?: continue
             item(key = "head:$lid") { Heading(l.str("name").ifEmpty { lid }) }
             if (l.str("text").isNotEmpty()) longText(lid, l.str("text"))
-            else item(key = "link:$lid") {
-                if (c.str("notice").isEmpty()) LinkRow("The licence", l.str("url"))
-                else Dim("Its terms are in the notice above.")
-            }
+            // (no text here: a part's notice holds its own terms where it has one, but a part under several licences
+            // may not hold them all, so the licence itself is a tap away)
+            else if (l.str("url").isNotEmpty()) item(key = "link:$lid") { LinkRow("The licence on the web", l.str("url")) }
         }
     }
 }

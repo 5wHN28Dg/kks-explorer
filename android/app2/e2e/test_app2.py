@@ -1614,8 +1614,7 @@ class Phone(unittest.TestCase):
         app's licence its full text; a course photo's credit; light and dark (screenshots in KKS_SHOTS); a link opens
         in the browser"""
         import io
-        import urllib.parse
-        from PIL import Image
+        from PIL import Image, ImageStat
         with open(os.path.join(REPO, 'data', 'about.json'), encoding='utf-8') as f:
             about = json.load(f)
         with open(os.path.join(REPO, 'VERSION'), encoding='utf-8') as f:
@@ -1653,9 +1652,9 @@ class Phone(unittest.TestCase):
         line = ui.label(ui.find(f'Version {version} (commit', timeout=15))
         m = re.fullmatch(r'Version (\S+) \(commit ([0-9a-f]{12})(, with local changes)?\)', line)
         self.assertTrue(m, f'version line {line!r}')
-        commit = subprocess.run(['git', '-C', REPO, 'rev-parse', '--verify', '-q', m.group(2) + '^{commit}'],
-                                capture_output=True, text=True).stdout.strip()
-        self.assertTrue(commit.startswith(m.group(2)), f'the APK names commit {m.group(2)}, which this checkout does not have')
+        # the APK under test is built from this checkout's HEAD (a stale APK names another commit)
+        commit = subprocess.run(['git', '-C', REPO, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(m.group(2), commit[:12], f'the APK names commit {m.group(2)}, this checkout is at {commit[:12]}')
         back()
         ui.find('Join through a server', exact=True)
 
@@ -1672,7 +1671,7 @@ class Phone(unittest.TestCase):
         dark = shot('about-dark.png')
         w, h = light.size
         mid = (0, int(h * 0.15), w, int(h * 0.85))
-        lmean, dmean = (sum(im.crop(mid).getdata()) / ((mid[2] - mid[0]) * (mid[3] - mid[1])) for im in (light, dark))
+        lmean, dmean = (ImageStat.Stat(im.crop(mid)).mean[0] for im in (light, dark))
         self.assertGreater(lmean, 150, f'the light About is not light (mean grey {lmean:.0f})')
         self.assertLess(dmean, 100, f'the dark About is not dark (mean grey {dmean:.0f})')
         night(False)
@@ -1683,15 +1682,17 @@ class Phone(unittest.TestCase):
         ui.scroll_to(about['notice'], exact=True)
         source = about['source']['commit_url'].replace('{commit}', commit)
         ui.scroll_to(source, exact=True)
-        ui.find('Source of the commit this build started from' if m.group(3) else 'Source of this version', exact=True)
+        ui.find('Source of the commit this build started from' if m.group(3) else 'Source of this version', exact=True)   # (its row's title)
 
         lib = next(c for c in about['components'] if c['id'] == 'libjxl')
         row = f'{lib["name"]} · {lib["version"]}'
         ui.scroll_to(row, exact=True, tries=20)
         ui.tap(row, exact=True)
         ui.find(paragraphs(lib['notice'])[0], exact=True, timeout=10)
-        ui.find(lib['license_name'], exact=True)        # the licence's heading (its terms are in the notice)
+        ui.find('Licence: ' + lib['license_name'], exact=True)
         shot('about-libjxl-light.png')
+        ui.scroll_to(lib['license_name'], exact=True, tries=12)       # the licence's heading below the notice
+        ui.scroll_to(about['licenses'][lib['license_ids'][0]]['url'], exact=True, tries=4)   # (no text in about.json: its link)
         back()
         font = next(c for c in about['components'] if 'OFL-1.1' in c['license_ids'] and c['platforms'].get('android'))
         ui.scroll_to(font['name'], exact=True, tries=20)
@@ -1705,22 +1706,22 @@ class Phone(unittest.TestCase):
 
         photo = about['photos'][0]
         ui.scroll_to(photo['text'], exact=True, tries=40)
-        for link in photo['links']:
-            ui.find(link['text'], exact=True)
+        for link in photo['links']:       # each named with its photo, for TalkBack
+            ui.scroll_to(f'{link["text"]}, for: {photo["text"]}', exact=True, tries=3)
         night(True)
         shot('about-photos-dark.png')
         night(False)
 
         # a link goes to the browser, with the address from about.json (dumpsys may shorten it to its host)
         url = photo['links'][-1]['url']
-        ui.tap(photo['links'][-1]['text'], exact=True)
-        host = 'dat=https://' + urllib.parse.urlsplit(url).hostname
+        ui.tap(f'{photo["links"][-1]["text"]}, for: {photo["text"]}', exact=True)
         for _ in range(20):
-            if host in ui.sh('dumpsys', 'activity', 'activities'):
+            if 'dat=' + url in ui.sh('dumpsys', 'activity', 'activities'):
                 break
             time.sleep(0.5)
         else:
-            self.fail(f'no activity was started for {url}')
+            self.fail(f'no activity was started for {url}: ' + ' | '.join(
+                x.strip() for x in ui.sh('dumpsys', 'activity', 'activities').splitlines() if 'dat=' in x)[:2000])
         ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
 
     def test_member_pages(self):

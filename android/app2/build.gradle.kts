@@ -34,7 +34,7 @@ val buildCommit = (if (givenCommit.isNotEmpty()) givenCommit else if (ownCheckou
 val buildModified = when {
     givenDirty.isNotEmpty() -> givenDirty == "true"
     buildCommit.isEmpty() -> false
-    else -> git("status", "--porcelain", "--", ".").let { it == null || it.isNotEmpty() }   // (unreadable: say modified)
+    else -> git("status", "--porcelain", "--", ".").orEmpty().isNotEmpty()     // (as buildinfo.nim: unreadable is not modified)
 }
 
 android {
@@ -180,7 +180,7 @@ tasks.configureEach { if (name.startsWith("configureCMake") || name.startsWith("
 
 // the program's own data (KKS decode tables; About's content, made by tools/about.py) ships in the app
 val copyData by tasks.registering(Sync::class) {
-    from(File(rootDir.parentFile, "data")) { include("kks.json", "about.json","courses/*.jxl", "courses/ppt.json", "courses/fnd.json", "courses/hrsg.json", "courses/inc.json") }
+    from(File(rootDir.parentFile, "data")) { include("kks.json", "about.json", "courses/*.jxl", "courses/ppt.json", "courses/fnd.json", "courses/hrsg.json", "courses/inc.json") }
     into(layout.buildDirectory.dir("assets/data"))
 }
 // the course faces as TTF (Android's Typeface can't read the vendored WOFF2; tools/build_courses.py --ttf)
