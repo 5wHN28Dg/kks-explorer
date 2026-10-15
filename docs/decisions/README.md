@@ -50,6 +50,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0051](0051-server-backup-encryption.md) | The server's backups are encrypted (AES-GCM) with a key derived from the root key export's generated passphrase, kept sealed for unattended runs; `open-backup` restores; join-by-file bundles stay plain | decided by the user 2026-10-08 (#28) |
 | [0052](0052-accepted-risks-68-70.md) | Accepted risks: the server holds the root key and custodial keys online (#70); the sync hello and mDNS TXT show a LAN stranger which plant and devices are there (#68) | accepted by the user 2026-10-08 |
 | [0053](0053-windows-x64-llvm-mingw.md) | The x86_64 Windows build moves to llvm-mingw like ARM64 (libc++, UCRT); the GCC packages from Ubuntu leave the build, CI and the BOM (#4) | decided by the user |
+| [0054](0054-walkdown-plant-app.md) | Walkdown Plant: a Godot project in `apps/plant3d`, content in `data/plant3d` (docs/PLANT3D.md) pre-built into scenes; KKS decoding from its own public tables, links by URI scheme (no core binding, no network); CC0 assets and sounds; one package for the first train; not marked latest on GitHub | proposed; signing key and updates are the user's questions |
 
 ## Audit of existing dependencies (2026-09-30)
 
