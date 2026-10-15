@@ -150,7 +150,7 @@ class About(unittest.TestCase):
                       read('apps', 'gnome', 'flatpak', 'io.github._5wHN28Dg.walkdown.yml'))
         self.assertRegex(read('packaging', 'windows', 'make-msix.sh'), r'cp "\$REPO/data/about.json" "\$W/layout/data/"')
         self.assertIn('"$REPO/data/about.json"', read('deploy', 'install-server-user.sh'))
-        # (Android's assets: android/app2/build.gradle.kts copyData, added by the Android About change)
+        self.assertRegex(read('android', 'app2', 'build.gradle.kts'), r'val copyData [^\n]*\n[^\n]*include\([^)]*"about\.json"')
 
 
 if __name__ == '__main__':

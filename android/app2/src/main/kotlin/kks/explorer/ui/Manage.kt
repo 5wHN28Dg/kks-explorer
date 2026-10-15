@@ -65,6 +65,7 @@ fun Manage(snack: SnackbarHostState, ui: Ui? = null) {
                         add(Triple("leaderboard", "Leaderboard", "Who added what, and how much was approved"))
                         add(Triple("account", "Account", "Your details, sync"))
                         if (cfg.optString("role") == "manager") add(Triple("diagnostics", "Diagnostics", "Error reports from the plant's devices"))
+                        add(Triple("about", "About Walkdown", "Version, licences, credits"))
                     }
                     // the number on the Manage tab is the approvals waiting: shown here too, so it's clear what it counts
                     val queue = remember(rev) { if (admin) call("GET", "/api/state").json.optInt("queue") else 0 }
@@ -84,6 +85,7 @@ fun Manage(snack: SnackbarHostState, ui: Ui? = null) {
                 "account" -> Account(rev, say)
                 "leaderboard" -> Leaderboard(rev)
                 "diagnostics" -> DiagnosticsReports(rev)
+                "about" -> AboutScreen()
             }
         }
     }
