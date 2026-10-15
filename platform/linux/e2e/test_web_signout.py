@@ -483,6 +483,10 @@ class WebSignOut(unittest.TestCase):
             expect(page.locator('#toast')).to_have_text('Accepted sara: their device gets the plant over the Wi-Fi now')
             expect(page.locator('#lobby')).to_contain_text('111 222')
             expect(page.locator('#lobby')).not_to_contain_text('123 456')
+            # the rebuilds put off while the form was open (the change elsewhere, "Something else done") come now that
+            # it is gone, ~0.3 s after the answer here: a press while #main is replaced is lost (#199: Accept for ali
+            # did nothing, a WebKit run on CI)
+            settled()
             page.locator('#lobby > div', has_text='654 321').get_by_role('button', name='Accept').click()
             expect(page.locator('#toast')).to_have_text('Accepted ali: their device gets the plant over the Wi-Fi now')
             self.assertEqual(page.evaluate('window.asked'), [

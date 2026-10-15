@@ -204,8 +204,12 @@ class WebV2(unittest.TestCase):
     def run_dark(self, name):
         """dark drawings: the toggle turns the sharp layer and the overview dark (lines light), is remembered across a
         reload, and turning it off restores the light drawing"""
-        stats = """(sel) => { const e = document.querySelector(sel); let c = e;
-            if (e.tagName === 'IMG') { c = document.createElement('canvas'); c.width = e.naturalWidth; c.height = e.naturalHeight;
+        # An <img> is read once decoded: WebKit reports a big picture in the page complete, with its size, before it has
+        # decoded it, and drawImage then copies transparent pixels (#199: '0,0,0' for the white overview, about 1 run
+        # in 20 here). decode() rejects if the picture changed meanwhile: then it is read as it is (the checks decide).
+        stats = """async (sel) => { const e = document.querySelector(sel); let c = e;
+            if (e.tagName === 'IMG') { await e.decode().catch(() => {});
+              c = document.createElement('canvas'); c.width = e.naturalWidth; c.height = e.naturalHeight;
               c.getContext('2d').drawImage(e, 0, 0) }
             const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, n = new Map(); let light = 0, dark = 0;
             for (let i = 0; i < d.length; i += 4) { const k = d[i] + ',' + d[i + 1] + ',' + d[i + 2]; n.set(k, (n.get(k) || 0) + 1);
