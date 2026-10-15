@@ -1622,8 +1622,9 @@ class Phone(unittest.TestCase):
 
         def paragraphs(t):      # the screen's reflow (About.kt paragraphs)
             out = []
-            for p in re.split(r'\n[ \t]*\n', t.replace('\r\n', '\n')):
-                p = ' '.join(x.strip() for x in p.split('\n') if x.strip() and not re.fullmatch(r'[-=_*~]{3,}', x.strip()))
+            t = '\n'.join(x.strip().removeprefix('//').strip() for x in t.replace('\r\n', '\n').split('\n'))
+            for p in re.split(r'\n[ \t]*\n', t):
+                p = ' '.join(x for x in p.split('\n') if x and not re.fullmatch(r'[-=_*~]{3,}', x))
                 if p:
                     out.append(p)
             return out
@@ -1712,8 +1713,14 @@ class Phone(unittest.TestCase):
         shot('about-photos-dark.png')
         night(False)
 
-        # a link goes to the browser, with the address from about.json (dumpsys may shorten it to its host)
+        # a link goes to the browser, with the address from about.json
         url = photo['links'][-1]['url']
+        # (the app that opens it is stopped first: one left from an earlier run would still hold the address)
+        opener = ui.sh('cmd', 'package', 'resolve-activity', '--brief', '-a', 'android.intent.action.VIEW',
+                       '-c', 'android.intent.category.BROWSABLE', '-d', url).strip().splitlines()[-1].split('/')[0]
+        if opener and opener != 'No activity found':
+            ui.sh('am', 'force-stop', opener)
+        self.assertNotIn('dat=' + url, ui.sh('dumpsys', 'activity', 'activities'))
         ui.tap(f'{photo["links"][-1]["text"]}, for: {photo["text"]}', exact=True)
         for _ in range(20):
             if 'dat=' + url in ui.sh('dumpsys', 'activity', 'activities'):

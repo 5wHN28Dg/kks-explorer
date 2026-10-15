@@ -1,6 +1,5 @@
 package kks.explorer.ui
 
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -67,15 +66,17 @@ fun openLink(ctx: Context, url: String) {
     val u = httpsUri(url) ?: return
     try {
         ctx.startActivity(Intent(Intent.ACTION_VIEW, u).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    } catch (e: ActivityNotFoundException) {
+    } catch (e: Exception) {     // no browser (ActivityNotFoundException), or one that refuses (SecurityException)
         Toast.makeText(ctx, "No browser on this phone to open $url", Toast.LENGTH_LONG).show()
     }
 }
 
 /** a licence or notice as paragraphs that fit the screen: the files wrap their lines at 80 columns for a terminal, and
  *  some draw rules of dashes or equals signs, which mean nothing once the lines flow */
-fun paragraphs(text: String): List<String> = text.replace("\r\n", "\n").split(Regex("\n[ \t]*\n"))
-    .map { p -> p.lines().map { it.trim() }.filter { it.isNotEmpty() && !rule.matches(it) }.joinToString(" ") }
+fun paragraphs(text: String): List<String> = text.replace("\r\n", "\n")
+    .lines().joinToString("\n") { it.trim().removePrefix("//").trim() }     // (a notice copied from a source file's // comment)
+    .split(Regex("\n[ \t]*\n"))
+    .map { p -> p.lines().filter { it.isNotEmpty() && !rule.matches(it) }.joinToString(" ") }
     .filter { it.isNotEmpty() }
 
 private val rule = Regex("[-=_*~]{3,}")
@@ -96,7 +97,7 @@ fun androidParts(d: JSONObject): List<JSONObject> =
 /** every licence the app is under or carries a part under: Walkdown's own first */
 fun androidLicences(d: JSONObject): List<String> {
     val own = d.optJSONObject("license")?.str("id").orEmpty()
-    return (listOf(own) + androidParts(d).flatMap { it.strings("license_ids") }.distinct().sorted()).filter { it.isNotEmpty() }.distinct()
+    return (listOf(own) + androidParts(d).flatMap { it.strings("license_ids") }.distinct().sortedBy { it.lowercase() }).filter { it.isNotEmpty() }.distinct()
 }
 
 @Composable
@@ -207,7 +208,7 @@ private fun AboutMain(d: JSONObject, listState: androidx.compose.foundation.lazy
             Dim(d.optJSONObject("platforms")?.optJSONObject("android")?.str("note").orEmpty() +
                 " Tap one for its copyright notice and licence.")
         }
-        items(androidParts(d), key = { "part:" + it.str("id") }) { c ->
+        items(androidParts(d)) { c ->
             PageRow(c.str("name") + partVersion(c).let { if (it.isEmpty()) "" else " · $it" },
                 c.str("license_name") + c.str("use").let { if (it.isEmpty()) "" else "\n$it" }, "Show its licence") {
                 open("part" to c.str("id"))
@@ -222,7 +223,7 @@ private fun AboutMain(d: JSONObject, listState: androidx.compose.foundation.lazy
                 supportingContent = { Text("Its terms are in the notices of the parts under it.") })
         }
         item { Heading("Course photos") }
-        items(d.optJSONArray("photos").objects(), key = { "photo:" + it.str("file") }) { p ->
+        items(d.optJSONArray("photos").objects()) { p ->
             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 Text(p.str("text"))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -260,7 +261,7 @@ private fun PartPage(d: JSONObject, id: String, onBack: () -> Unit) {
             item { Heading("Copyright and licence notice") }
             longText("notice", c.str("notice"))
         }
-        for (lid in c.strings("license_ids")) {
+        for (lid in c.strings("license_ids").distinct()) {
             val l = licences.optJSONObject(lid) ?: continue
             item(key = "head:$lid") { Heading(l.str("name").ifEmpty { lid }) }
             if (l.str("text").isNotEmpty()) longText(lid, l.str("text"))
