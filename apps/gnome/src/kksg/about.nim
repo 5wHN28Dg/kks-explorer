@@ -192,12 +192,16 @@ proc aboutDialog*(parent: W, appId: string): W =
 
 var aboutShown = false
 var shownDialog: W          ## the open About dialog (nil once it has closed)
-proc showAbout*(parent: W, appId: string) =
+proc showAbout*(parent: W, appId: string, alive: proc (): bool) =
   ## Built and shown from idle (the menu's item can be pressed through an accessibility action, and a dialog built
-  ## inside one has no accessible contents); one at a time.
+  ## inside one has no accessible contents); one at a time. `alive`: the window is still there when the idle
+  ## callback runs.
   if parent == nil or aboutShown: return
   aboutShown = true
   idle(proc () =
+    if not alive():
+      aboutShown = false
+      return
     try:
       let d = aboutDialog(parent, appId)
       d.on("closed", proc () =
@@ -208,6 +212,11 @@ proc showAbout*(parent: W, appId: string) =
     except CatchableError, Defect:
       aboutShown = false
       raise)
+
+proc aboutForget*() =
+  ## the window has gone, and the dialog with it (it may not say "closed" then)
+  shownDialog = nil
+  aboutShown = false
 
 # tests: the dialog's pages. Its rows (Legal, Acknowledgements …) have no accessibility action to press, and the
 # headless test session has no pointer or keyboard: the e2e opens them through the dialog's own navigation view.
@@ -231,6 +240,35 @@ proc aboutPage*(): string =
   if p == nil: "?"
   elif adw_navigation_page_get_tag(p) == nil: "main"      # (the first page has no tag)
   else: $adw_navigation_page_get_tag(p)
+
+proc adw_about_dialog_get_website(d: W): cstring {.importc, header: "<adwaita.h>".}
+proc adw_about_dialog_get_issue_url(d: W): cstring {.importc, header: "<adwaita.h>".}
+proc adw_about_dialog_get_support_url(d: W): cstring {.importc, header: "<adwaita.h>".}
+proc adw_about_dialog_get_debug_info(d: W): cstring {.importc, header: "<adwaita.h>".}
+proc adw_preferences_row_get_title(r: W): cstring {.importc, header: "<adwaita.h>".}
+proc gtk_widget_get_tooltip_text(w: W): cstring {.importc, header: "<gtk/gtk.h>".}
+
+proc linkRows(w: W, into: var seq[string]) =
+  if $gObjectTypeName(w) == "AdwLinkRow" and gtk_widget_get_tooltip_text(w) != nil:
+    into.add $adw_preferences_row_get_title(w) & "=" & $gtk_widget_get_tooltip_text(w)
+  var c = gtk_widget_get_first_child(w)
+  while c != nil:
+    linkRows(c, into)
+    c = gtk_widget_get_next_sibling(c)
+
+proc aboutTargets*(): seq[string] =
+  ## tests: where the open About dialog's links go, as it holds them: "website=…", "issues=…", "support=…", and
+  ## "link <title>=<address>" for the links added to it; "debug=<first line>" of its debugging information
+  if shownDialog == nil: return
+  let d = shownDialog
+  result.add "website=" & $adw_about_dialog_get_website(d)
+  result.add "issues=" & $adw_about_dialog_get_issue_url(d)
+  result.add "support=" & $adw_about_dialog_get_support_url(d)
+  var rows: seq[string]
+  linkRows(d, rows)
+  for r in rows: result.add "link " & r
+  let dbg = adw_about_dialog_get_debug_info(d)
+  result.add "debug=" & (if dbg == nil: "" else: ($dbg).splitLines[0])
 
 proc aboutGo*(tag: string) =
   ## shows the open About dialog's page of this tag; "back" goes back one page

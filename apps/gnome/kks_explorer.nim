@@ -498,6 +498,7 @@ proc activate(w: Win, app: W) =
   # CI's slower runners)
   w.window.on("destroy", proc () =
     w.gone = true
+    aboutForget()
     w.status = nil)
   w.a.onChange.add proc (why: string) =
     if why == "wiped":
@@ -628,7 +629,8 @@ proc activate(w: Win, app: W) =
       true)
   # tests: the About dialog's pages (about.nim aboutGo). Lines written to the file KKS_TEST_ABOUT names, plus ".do",
   # are page tags to show ("legal", "acknowledgements" …, or "back"); the file itself holds
-  # "n=<lines done> page=<the visible page's tag, empty when the dialog is closed>", written when it changes.
+  # where the open dialog's links go (about.nim aboutTargets), one per line, then a last line "n=<lines done>
+  # page=<the visible page's tag, empty when the dialog is closed>", written when it changes.
   let aboutFile = getEnv("KKS_TEST_ABOUT")
   if aboutFile.len > 0:
     var said = "\x00"
@@ -643,7 +645,7 @@ proc activate(w: Win, app: W) =
           if line.strip.len == 0: continue
           aboutGo(line.strip)
           inc done
-      let now = "n=" & $done & " page=" & aboutPage()
+      let now = aboutTargets().join("\n") & "\nn=" & $done & " page=" & aboutPage()
       if now != said:
         said = now
         writeFile(aboutFile & ".tmp", now)
@@ -693,7 +695,7 @@ proc main() =
   # About Walkdown: the primary menu's item, and the app.about action other parts of GNOME may call
   let aboutAction = g_simple_action_new("about", nil)
   aboutAction.onPtr("activate", proc (p: W) =
-    if w.window != nil and not w.gone: showAbout(w.window, AppId))
+    if w.window != nil and not w.gone: showAbout(w.window, AppId, proc (): bool = not w.gone))
   g_action_map_add_action(app, aboutAction)
   g_object_unref(aboutAction)
   let shotPath = getEnv("KKS_SHOT_ON_SIGNAL")   # tests: a screenshot of the window on SIGUSR1

@@ -2233,6 +2233,16 @@ class Gnome(Plant):
         self.assertRegex(v, '^' + re.escape(f'{version} (commit {head[:12]}') + r'(, with local changes)?\)$')
         atspi.find(d, 'link', name='Report an Issue')
         self.about_page(d, None, state, shot, pid)
+        # where its links go, as the dialog holds them (KKS_TEST_ABOUT): the AGPL's source offer is this commit's
+        about = json.load(open(os.path.join(REPO, 'data', 'about.json')))
+        targets = open(state).read().splitlines()[:-1]
+        self.assertIn('website=' + about['links']['homepage'], targets)
+        self.assertIn('issues=' + about['links']['issues'], targets)
+        self.assertIn('support=' + about['links']['help'], targets)
+        src_link = 'https://github.com/5wHN28Dg/kks-explorer/tree/' + head
+        self.assertTrue(any(t.startswith('link Source of this version') and t.endswith('=' + src_link) for t in targets),
+                        targets)
+        self.assertIn('debug=Walkdown ' + v, targets)
         # Details: the summary, the website and this version's source
         self.about_page(d, 'details', state)
         atspi.find(d, 'label', name='Find plant equipment on P&ID drawings by KKS code')
