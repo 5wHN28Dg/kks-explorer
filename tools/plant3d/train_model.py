@@ -593,10 +593,12 @@ def gt1():
         m.sum(f'gt1_tc{k}', refs, '°C', f'10MBR10CT{k:03d}')
         m.cmp(f'gt1_tc{k}_h', f'gt1_tc{k}', '>', 620)
         m.cmp(f'gt1_tc{k}_hh', f'gt1_tc{k}', '>', 640)
+        m.diff(f'gt1_tc{k}_d', f'gt1_tc{k}', 'gt1_exh_t')
+        m.tab(f'gt1_tc{k}_da', f'gt1_tc{k}_d', [[-100, 100], [0, 0], [100, 100]], 'K')
+        m.cmp(f'gt1_tc{k}_dev', f'gt1_tc{k}_da', '>', 30)
     m.max('gt1_tc_max', [f'gt1_tc{k}' for k in range(1, 13)])
     m.min('gt1_tc_min', [f'gt1_tc{k}' for k in range(1, 13)])
     m.diff('gt1_spread', 'gt1_tc_max', 'gt1_tc_min', 'K', '10MBR10')
-    m.cmp('gt1_spread_h', 'gt1_spread', '>', 30)
     m.cmp('gt1_spread_hh', 'gt1_spread', '>', 60)
     m.cmp('gt1_exh_hh', 'gt1_exh_t', '>', 640)
     m.tab('gt1_flow_spd', 'gt1_speed', [[0, 0], [1, 430]])
@@ -704,7 +706,8 @@ def gt1():
                 isa='TAH')
         m.alarm(f'gt1_tc{k}_hh', f'10MBR10CT{k:03d}', f'GT 1 exhaust temperature high-high ({k})', f'gt1_tc{k}_hh', 1,
                 isa='TAHH')
-    m.alarm('gt1_spread_h', '10MBR10', 'GT 1 exhaust temperature spread high', 'gt1_spread_h', 2, isa='TDAH')
+        m.alarm(f'gt1_tc{k}_dev', f'10MBR10CT{k:03d}', f'GT 1 exhaust temperature spread high: thermocouple {k} '
+                f'over 30 K from the mean', f'gt1_tc{k}_dev', 2, isa='TDAH')
     for k in (1, 2, 3):
         m.alarm(f'gt1_os{k}', f'10MBY10CS00{k}', f'GT 1 overspeed ({k})', 'gt1_os', 1, isa='SAHH')
     for k in (1, 2, 3, 4):
@@ -886,7 +889,7 @@ def hrsg1():
     m.prod('hp_shw_red', ['hp_shw', 250])
     m.diff('hp_sh_t2', 'hp_sh_t1', 'hp_shw_red')
     m.max('hp_sh_t3', ['hp_sh_t2', 'hp_tw'])
-    m.prod('hp_spray_err', ['hp_spray_stuck', 150])
+    m.prod('hp_spray_err', ['hp_spray_stuck', 300])
     m.diff('hp_sh_t4', 'hp_sh_t3', 'hp_spray_err')
     m.lag('hp_steam_t', 'hp_sh_t4', 120, init=35, unit='°C', kks='10LBA30CT001')
     m.cmp('hp_steam_th', 'hp_steam_t', '>', 575)

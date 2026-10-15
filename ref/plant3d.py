@@ -1265,7 +1265,7 @@ class Engine:
 
     def clone(self):
         """An independent copy at the same step (forks of a run: one cold start, many trip tests)."""
-        c = Engine.__new__(Engine)
+        c = type(self).__new__(type(self))
         c.__dict__.update(self.__dict__)
         c._compile()
         for k, v in self.mem.items():

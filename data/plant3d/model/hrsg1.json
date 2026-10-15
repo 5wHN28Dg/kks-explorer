@@ -139,7 +139,7 @@
   ["hp_shw_red", {"product": ["hp_shw", 250]}],
   ["hp_sh_t2", {"diff": ["hp_sh_t1", "hp_shw_red"]}],
   ["hp_sh_t3", {"max": ["hp_sh_t2", "hp_tw"]}],
-  ["hp_spray_err", {"product": ["hp_spray_stuck", 150]}],
+  ["hp_spray_err", {"product": ["hp_spray_stuck", 300]}],
   ["hp_sh_t4", {"diff": ["hp_sh_t3", "hp_spray_err"]}],
   ["hp_steam_t", {"lag": "hp_sh_t4", "tau": 120, "init": 35, "unit": "°C", "kks": "10LBA30CT001"}],
   ["hp_steam_th", {"cmp": ["hp_steam_t", ">", 575]}],
