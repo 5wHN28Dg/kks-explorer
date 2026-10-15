@@ -68,7 +68,8 @@ same repository would stop every phone's Walkdown updates. [V] the code.
 3. **Links by URI scheme.** `walkdown-plant://kks/<code>`, `…/procedure/<id>[/<step>]` into the plant app, and
    `walkdown://course/<course>[/<page>]` back into Walkdown (PLANT3D.md §6). Walkdown registers its scheme on its
    four platforms (the web client: an https URL instead); Walkdown's tag panel gets "Show in Walkdown Plant", which
-   opens the plant's equipment of the same kind when the code is not in the invented plant. Courses link in with a
+   opens the plant's equipment of the same kind when the code is not in the invented plant. A link whose app is not installed gives a
+   message, not a silent failure. Courses link in with a
    new `plant` target, which needs course format version 2 (COURSES.md is frozen at 1). Both are follow-up work in
    Walkdown, each with its own tests.
 4. **Description → pre-built scenes.** The content passes `ref/plant3d.py` (strict JSON), then a headless Godot
@@ -118,6 +119,8 @@ same repository would stop every phone's Walkdown updates. [V] the code.
     - **Frames:** the scripted walking path of the measurement rules writes a frame log on the devices (as the
       bench); measured by hand on the Note 9, the Honor 600 and the laptop per release, against the wiki's rules
       and the 1.2× regression rule. Not on CI (no GPU).
+    - **Model cost:** the time of one 0.1 s model step with the whole first train's model, on the Note 9 (fast-forward
+      at 60× runs 600 steps a second); the fast-forward cap is set from it.
     - Test runner: a small SceneTree script of our own that runs test functions and exits non-zero (no GUT or
       gdUnit4 dependency for now).
 

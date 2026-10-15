@@ -100,7 +100,7 @@ from Godot 4 (0041), so the rows below say what the platform gives underneath an
 | 3D graphics API | ✅ Direct3D 12, Vulkan through the GPU driver [D] | ✅ Vulkan (Mesa) [K] | ✅ Vulkan 1.0+ (Mali-G72: Vulkan 1.1), OpenGL ES 3.2 [D] |
 | Engine renderer on it | ✅ Forward+, D3D12 default since Godot 4.6, Vulkan fallback [D] | ✅ Forward+, Vulkan; X11 default, Wayland opt-in [D] | ✅ Mobile renderer; the export's minimum SDK is 29 with Vulkan [D], measured on the Note 9 [V, 0041] |
 | GPU texture compression | ✅ BC1–BC7 [D] | ✅ BC1–BC7 [D] | ✅ ETC2 with every OpenGL ES 3.0 device; 🟡 ASTC on > 80 % of devices (Mali-G72 has it) [D] |
-| Shaders compiled before the first frame | ✅ shader baker from a Windows editor (D3D12) or Linux (Vulkan); not in headless exports [D] | ✅ baker, Vulkan [D] | ✅ baker, Vulkan, from a Linux editor [D] |
+| Shaders compiled before the first frame | 🟡 the shader baker bakes D3D12 only from a Windows editor, Vulkan from Linux; our releases are built on Linux, so D3D12 compiles at load (0054); not in headless exports [D] | ✅ baker, Vulkan [D] | ✅ baker, Vulkan, from a Linux editor [D] |
 | Touch | 🟡 touch screens only [D] | 🟡 touch on Wayland since Godot 4.7 [D] | ✅ multi-touch; on-screen joystick `VirtualJoystick` (4.7) [D] |
 | Gamepad | ✅ SDL3 joypad driver (4.5) [D] | ✅ SDL3 [D] | ✅ Android's own input [D] |
 | Keyboard and mouse | ✅ [K] | ✅ [K] | 🟡 with a keyboard or mouse attached [K] |

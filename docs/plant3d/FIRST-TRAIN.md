@@ -76,8 +76,8 @@ the plant's decoder table holds only the codes this plant uses):
 | 10HAN30AA401–404, 10HAN30AA001 | HP superheater drains; HP start-up vent (control valve) | HAN drains and vents [E2] |
 | 10LAC10AP001, AP002 | HP/IP feedwater pumps A, B | LAC [E2] |
 | 10LAB30AA001 | HP feedwater control valve | LAB [E2] |
-| 10LAE10AA001 | HP superheater spray control valve | LAE [E2], [W] |
-| 10LBA10, 10LBA30 | HP steam, LP steam from HRSG 1 | LBA [E2] |
+| 10LAE30AA001 | HP superheater spray control valve | LAE [E2], [W] |
+| 10LBA30, 10LBA10 | HP steam, LP steam from HRSG 1 (decades as the HRSG: LP 10, HP 30) | LBA [E2] |
 | 10LBB10, 10LBC10 | Hot reheat, cold reheat (train 1 side) | LBB, LBC [E2] |
 | 10LCQ10BB001 | Blowdown tank | LCQ [E2] |
 | 10UHA10 | HRSG 1 structure | UHA [E2] |
@@ -137,7 +137,7 @@ the plant's decoder table holds only the codes this plant uses):
 | HRSG | HP 120 bar(a) / 560 °C, ~70 kg/s; reheat 28 bar(a) / 560 °C; LP 5 bar(a) / 250 °C; integral deaerator on the LP drum |
 | Steam turbine | ~135 MW with one train, ~270 MW with two; sliding pressure; HP and LP bypass to the condenser |
 | Condenser | about 10 kPa(a) at full load on a hot day (cold water ~30 °C); two halves (divided water boxes) |
-| Circulating water | 3 × 50 % vertical pumps, 15,000 m³/h each at ~22 m head, ~1.25 MW motors; ΔT ~10 K across the condenser |
+| Circulating water | 3 × 50 % vertical pumps, 15,000 m³/h each at ~22 m head, ~1.25 MW motors; ΔT ~12.6 K across the condenser at full load (below) |
 | Cooling tower | 10 cells (2 rows of 5), 16 × 16 m each, 9.5 m fans of ~200 kW; basin under the whole tower |
 | Electrical | generators to step-up transformers and the grid; unit auxiliary transformers; the gas turbine starts with a static frequency converter (the generator as a motor) |
 
@@ -157,13 +157,13 @@ floor. Ground at z = 0. Train 2 is the mirror of train 1 across y = 0 (later).
 ```
  y
  80 ┤                 ┌──────── GT1 hall ─────────┐┌─ HRSG 1 ────────────────┐ (stack)
- 60 ┤   [fuel gas]    │ GEN1   GT1  ▒intake▒      ││ ═════════════════════ ◯ │
+ 60 ┤                 │ GEN1   GT1  ▒intake▒      ││ ═════════════════════ ◯ │
     ┤                 └────────────────────────────┘└─────────────────────────┘
  45 ┤   [GSU1][UAT1]        [feed pumps 1]   [HRSG 1 platforms, drums at +32]
     ┤   ──────── road ────────────────────────────────────────────────────────────────── road ──
  25 ┤ ┌ control ┐  ┌────────── turbine hall (30UMA) ──────────┐  [demin tank]   ┌ CW pump house ┐┌────── cooling tower, 2 × 5 cells ──────┐
   0 ┤ │ building│  │ GEN3  ST (HP | IP/LP)   op. floor +12 m  │  [aux boiler]   │ 3 × CW pumps  ││ ▢ ▢ ▢ ▢ ▢                               │
-    ┤ └─────────┘  │ condenser below LP, CEPs in pit −4 m    │                  └──────────────┘│ ▢ ▢ ▢ ▢ ▢   basin                       │
+    ┤ └─────────┘  │ condenser below LP, CEPs in pit −6 m    │                  └──────────────┘│ ▢ ▢ ▢ ▢ ▢   basin                       │
 −25 ┤              └──────────────────────────────────────────┘ ═══ CW supply/return (DN 2200, buried) ═══╡└───────────────────────────────────────┘
     ┼──────┬───────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬── x
         −40      0        40        80       120       160       200       240       280
@@ -172,25 +172,28 @@ floor. Ground at z = 0. Train 2 is the mirror of train 1 across y = 0 (later).
 | Area (`id`) | Plan bounds (x0, y0 – x1, y1) | What is in it |
 |---|---|---|
 | `control` | −40, −15 – −10, 15 | control building: control room (the trainee's start), electrical rooms, battery room door |
-| `st` | 0, −25 – 80, 25 | turbine hall 80 × 50 m, 32 m high, crane; ground floor, mezzanine +6 m, operating floor +12 m; ST on a table foundation; condenser under the LP casing; condensate extraction pumps in a pit at −4 m; ST lube oil, gland steam and vacuum pumps; generator 3 at the west end; HP/LP bypass valves |
-| `gt1` | 0, 50 – 80, 80 | GT1 hall 80 × 30 m, 20 m high: generator 1 at the west (cold-end drive), GT1 at x 30–60 on axis y = 65, air intake filter house on the roof, exhaust diffuser out of the east wall; lube oil skid, SFC and excitation rooms, fuel gas skid outside the north wall |
+| `st` | 0, −25 – 80, 25 | turbine hall 80 × 50 m, 32 m high, crane; ground floor, mezzanine +6 m, operating floor +12 m; ST on a table foundation; condenser under the LP casing, its water boxes and the condensate extraction pumps in a pit down to −6 m; ST lube oil, gland steam and vacuum pumps; generator 3 at the west end; HP/LP bypass valves |
+| `gt1` | 0, 50 – 80, 92 | GT1 hall 80 × 30 m (y 50–80), 20 m high: generator 1 at the west (cold-end drive), GT1 at x 30–60 on axis y = 65, air intake filter house on the roof, exhaust diffuser out of the east wall; lube oil skid, SFC and excitation rooms, fuel gas skid north of the hall (y 82–90) |
 | `hrsg1` | 80, 45 – 175, 85 | inlet duct x 80–95; HRSG casing x 95–150, 22 m wide (y 54–76), 30 m high; drums on top at +32 (HP, IP, LP/deaerator); stack x 160, y 65, Ø 7 m, 60 m; feedwater pumps and blowdown tank at grade south of the casing; stairs to every drum platform |
 | `trafo1` | −30, 40 – 0, 60 | step-up transformer 1 and unit auxiliary transformer 1 behind fire walls |
 | `bop` | 85, −25 – 135, 25 | auxiliary boiler house, demineralised water tank, instrument air compressors, closed cooling water pumps and heat exchangers |
 | `cw` | 140, −20 – 165, 20 | CW pump house: 3 vertical pumps in a wet pit fed from the tower basin, discharge valves, the CW supply and return headers |
 | `ct` | 170, −35 – 260, 35 | cooling tower: 2 rows of 5 cells (x 175–255, y −16–16), fan decks at +14, stair towers at both ends, basin −2 m, makeup and blowdown |
 
-The CW pipes (DN 2200) run buried along y ≈ −20 from the pump house to the turbine hall and enter the condenser water
-boxes from below; the return goes to the tower's hot water distribution at +12. The HRSG's main steam, hot and cold
-reheat and LP steam leave the top of HRSG 1 and run on a pipe rack along x ≈ 85 south into the turbine hall at +12.
+The CW pipes (DN 2200) run buried along y ≈ −30, south of every area, from the pump house to the turbine hall and
+come up into the condenser pit (−6 m) from below (PLANT3D.md §4 has the supply pipe as its example); the return goes to the tower's hot water distribution at +12. The HRSG's main steam, hot and cold
+reheat and LP steam leave the top of HRSG 1 and run on a pipe rack along x ≈ 82 (between the turbine hall and `bop`) south into the turbine hall's east wall at +12.
+Pipes belong to the area where they start and may cross other areas (PLANT3D.md §3).
 Roads 7 m wide around every area, so every area has a way in on foot and the overview map reads like a plot plan.
 
 ## 4. The cold start: what must be operable, and how it is faked
 
 Starting state (`cold_iron` scenario): ambient 35 °C; grid available, the auxiliary transformers energised; every
 machine stopped; turning gears off; water systems filled; HRSG drums cold at their start-up level; condenser and
-turbine at atmospheric pressure; no alarms but the ones a stopped plant shows (CW flow low, vacuum low: in the
-"shelved for outage" state until the trainee un-shelves them, a real panel habit).
+turbine at atmospheric pressure; the alarms a stopped plant raises (condenser pressure high 30MAG10CP001–003, GT and ST lube oil
+pressure low 10MBV10CP101–103 and 30MAV10CP101–103) start **shelved** (PLANT3D.md §7.6), and the trainee un-shelves
+them once their system runs, a real panel habit; the lube oil low-low trips start latched and can be reset only
+once oil pressure is up.
 
 The trainee works from the control room screens and in the field. About 40 minutes of play (fast-forward in the
 long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
@@ -250,7 +253,7 @@ round and invented; priority 1 is the most urgent (PLANT3D.md §7.6). Trip-level
 | 10HAD10BB001 | LAL | LP drum level low | < −200 mm | 2 |
 | 10HAD30CP001 | — | HP drum warming too fast (saturation temperature from the drum pressure) | > 4 K/min | 3 |
 | 10LAC10AP001/2 | FAL | Feedwater pump flow below minimum (recirculation not open) | < 15 % for 10 s | 2 |
-| 10LBA10 | TAH | HP steam temperature high | > 575 °C | 2 |
+| 10LBA30 | TAH | HP steam temperature high | > 575 °C | 2 |
 | 30MAG10CP001–003 | PAH / PAHH | Condenser pressure high / high-high (ST trip, bypass blocked) | > 15 / > 25 kPa(a) | 2 / 1 |
 | 30MAG10CL001 | LAH / LAL / LALL | Hotwell level high / low / low-low (CEP trip) | +200 / −200 / −400 mm | 2 / 2 / 1 |
 | 30MAV10CP101–103 | PAL / PALL | ST lube oil pressure low / low-low (trip) | < 1.8 / < 1.2 bar | 2 / 1 |

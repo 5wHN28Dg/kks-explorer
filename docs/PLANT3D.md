@@ -18,6 +18,7 @@ follows the public KKS key, none comes from a real plant.
 | `data/plant3d/model/<area>.json` | that area's behaviour (§7) |
 | `data/plant3d/procedures/<id>.json` | one procedure or tour (§8) |
 | `data/plant3d/scenarios/<id>.json` | a starting state and its faults (§7.8) |
+| `data/plant3d/sounds.json` | the sound library (§11), format `walkdown-plant-sounds` |
 
 The app never reads these files at run time. They are checked by the reference validator (`ref/plant3d.py`,
 strict JSON as the repository's other readers: duplicate keys, trailing commas and the like are refused, which
@@ -31,7 +32,8 @@ As COURSES.md §1, with these differences:
 - **Identifiers** (area, part, value, procedure, step, scenario, sound names) match `[a-z_][a-z0-9_]{0,31}`.
 - **KKS codes** match the grammar of §6 and are written without spaces.
 - **Unknown keys are invalid**; every file names its format and version: `{"format": "walkdown-plant-<kind>",
-  "version": 1, …}`.
+  "version": 1, …}` (`walkdown-plant` for plant.json; `-area`, `-model`, `-scenario`, `-procedure`, `-sounds`).
+- **Times** in content (`tau`, `delay`, `on`, `off`, …) are multiples of the model step, 0.1 s (§7.10).
 - **Units:** metres, seconds, degrees, kilograms; process values in the unit named on the value (§7.1). Pipe sizes in
   millimetres (`dn`, `od_mm`, `insulation_mm`) because that is how they are written on drawings and data sheets.
 - **Coordinates:** plant coordinates, **x east, y north, z up**, in metres from the plant's origin (the plot plan's
@@ -51,7 +53,8 @@ As COURSES.md §1, with these differences:
          "measurements": {"CP": "Pressure", …},
          "source": "Codes from the public KKS key (sources: docs/plant3d/FIRST-TRAIN.md §1); meanings in our own words"},
  "media": {"feedwater": {"group": "water", "band": "#2e7d32"}, "steam_hp": {"group": "steam", "band": "#c62828"}, …},
- "areas": ["gt1", "hrsg1", "st", "cw", "ct", "common"],
+ "areas": ["control", "bop", "gt1", "trafo1", "hrsg1", "st", "cw", "ct"],
+ "ext": ["ambient_t", "grid_frequency"],
  "start": {"at": [-20, 0, 0], "yaw": 90}}
 ```
 
@@ -64,7 +67,10 @@ As COURSES.md §1, with these differences:
   follow the idea of DIN 2403 (identification of pipelines by the medium carried: water green, steam red, air grey,
   flammable gas yellow); the colours are ours, picked to stay distinguishable in daylight and dark scenes and to
   colour-blind eyes, and checked on every tier (the "look" rule).
+- **`areas`:** in this order the area files are read and their models joined (§7.1).
+- **`ext`:** the values the plant's surroundings set (ambient temperature, the grid), given by the scenario (§7.8).
 - **`start`:** where a trainee stands when the app opens (the control room).
+- The keys above are all the keys plant.json has (`…` in the example stands for more table entries).
 
 ## 3. Areas and equipment
 
@@ -73,19 +79,20 @@ building, an HRSG, the turbine hall, the cooling tower.
 
 ```json
 {"format": "walkdown-plant-area", "version": 1, "id": "cw", "title": "Circulating water pumps",
- "bounds": [[120, -20], [142, 20]], "pack": "base",
+ "bounds": [[140, -20], [165, 20]], "pack": "base",
  "equipment": [Equipment, …], "pipes": [Pipe, …], "structures": [Structure, …], "signs": [Sign, …]}
 ```
 
-- **`bounds`:** the area's plan rectangle (x0, y0, x1, y1). Areas don't overlap; everything in an area lies inside
-  it, apart from pipes, which may cross into the next area to reach their end.
+- **`bounds`:** the area's plan rectangle, `[[x0, y0], [x1, y1]]`. Areas don't overlap; everything in an area lies
+  inside it, apart from pipes and cable trays, which belong to the area of their `from` end and may run through other
+  areas and the ground between them to reach their end.
 - **`pack`:** the content pack the area ships in (`base` for everything in the first train; 0054).
 
 **Equipment** is one thing with a code:
 
 ```json
 {"kks": "30PAC10AP001", "name": "Circulating water pump A", "part": "pump_vertical",
- "at": [128, -8, 0], "yaw": 0,
+ "at": [150, -8, 0], "yaw": 0,
  "params": {"flow_m3h": 15000, "head_m": 22, "motor_kw": 1250, "pit_depth": 9},
  "plate": "motor_side",
  "parts": [{"kks": "30PAC10CP501", "name": "Discharge pressure gauge", "part": "pressure_gauge",
@@ -109,9 +116,9 @@ building, an HRSG, the turbine hall, the cooling tower.
 
 ```json
 {"kks": "30PAB10BR010", "name": "Circulating water supply", "medium": "cooling_water",
- "dn": 2000, "insulation_mm": 0, "buried": [[0, 2]],
+ "dn": 2200, "insulation_mm": 0, "buried": [[1, 2]],
  "from": {"kks": "30PAC10AP001", "nozzle": "discharge"},
- "points": [[128, -4, 3.5], [128, 4, 3.5], [60, 4, 3.5], [60, 4, -2]],
+ "points": [[150, -30, 1.5], [150, -30, -6], [40, -30, -6]],
  "to": {"kks": "30MAG10AC001", "nozzle": "cw_inlet_a"},
  "valves": [{"kks": "30PAC10AA101", "part": "valve_butterfly", "at": 0.06,
              "params": {"actuator": "electric"}}],
@@ -126,7 +133,10 @@ building, an HRSG, the turbine hall, the cooling tower.
   from `od_mm`. **`insulation_mm`:** 0 for bare pipe; insulated pipe is drawn with metal cladding.
 - **`medium`:** a key of the plant's `media`: the band colour and the flow arrows painted on the pipe every `arrows`
   metres (0 = none), pointing from `from` to `to` (or the other way when the model says the flow reversed).
-- **`buried`:** stretches (as segment index ranges) that run below ground: not drawn, shown on the overview map.
+- **`buried`:** stretches that run below ground: not drawn, shown on the overview map. The route's points are
+  numbered `from` = 0, then `points`, then `to`; segment i joins point i and point i + 1; `[a, b]` covers segments a
+  to b, both included. (In the example the pipe leaves the pump house at +1.5 m, goes down and runs buried along
+  y = −30, and comes up into the condenser pit at −6 m.)
 - **`valves`, `parts`:** inline equipment at a fraction of the route's length (`at` 0–1), turned to the pipe.
   Instruments on a pipe (a thermowell, a pressure tapping) are `parts` with a `side` (top, bottom, left, right).
 - **Supports** are made by the build (§9, `pipe_support`) at the spans of the kit's span table for that size,
@@ -142,22 +152,26 @@ hall is `30UMA`; a stair is just a stair), but every walkable one has an `id`.
 {"id": "st_floor_12", "part": "platform", "at": [10, -20, 12],
  "params": {"outline": [[0, 0], [70, 0], [70, 40], [0, 40]], "deck": "concrete", "edge": "handrail",
             "openings": [[[28, 14], [46, 26]]]}}
-{"id": "st_stair_n", "part": "stair", "params": {"from": [8, 18, 0], "to": [8, 4, 12], "width": 1.2}}
-{"id": "hrsg1_ladder_3", "part": "ladder", "params": {"foot": [96, 47, 30], "top": 36, "facing": 270}}
-{"id": "st_door_w", "part": "door", "at": [10, 0, 0], "yaw": 270, "params": {"kind": "personnel", "width": 1.0}}
+{"id": "st_stair_w", "part": "stair", "params": {"foot": [3, 12, 0], "top": [9.5, 16, 12], "layout": "switchback",
+ "width": 1.2}}
+{"id": "hrsg1_ladder_3", "part": "ladder", "params": {"foot": [96, 53, 30], "top": 34, "facing": 0}}
+{"id": "st_door_w", "part": "door", "at": [0, 0, 0], "yaw": 270, "params": {"kind": "personnel", "width": 1.0}}
 ```
 
 - **Walkable:** `platform`, `stair`, `ladder`, `floor` (inside a building), `road`, `grating`. The build makes the
   collision shapes from them; nothing else is walkable.
-- **Stairs** keep the rise of every step between 0.15 and 0.20 m and the going at least 0.25 m; a flight that would
+- **Stairs** go from `foot` to `top`; `layout` `straight` or `switchback` (flights folded inside the plan rectangle
+  that foot and top span, as in a stair tower: the example rises 12 m in four flights within 6.5 × 4 m). Stairs keep
+  the rise of every step between 0.15 and 0.20 m and the going at least 0.25 m; a flight that would
   rise more than 3.6 m gets a landing. **Ladders** above 3 m get a cage and, above 10 m, a rest platform. These are
   the common rules for fixed access to machinery (EN ISO 14122-3 and -4; the kit applies them, content doesn't
-  repeat them). A stair or ladder whose ends don't meet a walkable surface is an error.
+  repeat them). A stair or ladder whose ends don't meet a walkable surface, or whose flights don't fit, is an error. (The ladder
+  example stands on the HRSG's +30 m platform and reaches the drum platform at +34 m, so it gets a cage.)
 - **Doors** open when the trainee walks into them or presses them; `kind` is `personnel`, `double` or `roller`.
 - **Buildings** (`building`) are a shell: outline, height, roof, wall cladding, and openings for doors, louvres and
   pipes. Inside a building the walls are drawn from inside too.
 
-**Signs** are labels in the world: `{"text": "CW pump house", "at": [131, -12, 4], "yaw": 180, "size": 0.3}`.
+**Signs** are labels in the world: `{"text": "CW pump house", "at": [152, -16, 4], "yaw": 180, "size": 0.3}`.
 Area and system signs help a trainee find the way (R9a): they are drawn on every tier.
 
 ## 6. KKS codes and links
@@ -177,7 +191,8 @@ equipment with one code. This is a subset of what courses accept (`[0-9A-Z]{4,24
 code can be a course link.
 
 **Decoding** reads the plant's `kks` tables (§2): unit name, system name, equipment or measurement name, and the
-numbers, shown in the equipment card. A code whose letters are not in the tables is invalid.
+numbers, shown in the equipment card. A code in the plant's own content whose letters are not in
+the tables is invalid (`bad_kks`).
 
 **ISA tags.** Instruments carry, besides the KKS code, the ISA-5.1 function letters printed on the drawing bubble
 (`"isa": "PIA"`): first letter the measured variable (P, T, L, F, S, V for vibration, Z for position…), then the
@@ -192,12 +207,16 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
 | `walkdown-plant://procedure/<id>` and `…/<id>/<step>` | a procedure or tour (§8), at its first or that step |
 | `walkdown://course/<course>` and `…/<course>/<page>` | Walkdown's course renderer at that course or page |
 
-- Anything else (another path, a code outside the grammar, an unknown ID) opens the app at its start with a short
+- **Codes in links** are read leniently, the plant's own codes strictly: a link's code (`[0-9A-Z]{4,24}`, as in
+  courses) is cut to its first two levels when it is longer (a real sheet's `…CL503XB31` becomes `…CL503`), then
+  matched. Anything else (another path, a malformed code, an unknown ID) opens the app at its start with a short
   message; links never carry anything but these paths.
 - **A code the plant doesn't have** (for example a real plant's code from Walkdown's drawings) shows the plant's
   equipment of the same kind instead, labelled as such: same system letters and equipment letters (`LAC` + `AP`:
-  "a feedwater pump in this plant: 10LAC10AP001"), else the same equipment letters, else the code's decoding only.
-  The code is not stored or sent anywhere: Walkdown Plant has no network access (0054).
+  "a feedwater pump in this plant: 10LAC10AP001"), else the same equipment letters, else the code's decoding only,
+  with letters the plant's tables don't have shown as "not in this plant's key". The code is not stored or sent
+  anywhere: Walkdown Plant has no network access (0054).
+- **A link out with nothing to open it** (Walkdown not installed): the app says so instead of failing silently.
 
 ## 7. The behaviour model
 
@@ -209,7 +228,7 @@ magnitude and time scale of every effect they can cause, not the plant's real ph
 
 ```json
 {"format": "walkdown-plant-model", "version": 1, "area": "cw",
- "values": [[name, Node], …], "ops": [Op, …], "machines": [Machine, …],
+ "values": [[name, Node], …], "ops": [Op, …], "interlocks": [Interlock, …], "machines": [Machine, …],
  "alarms": [Alarm, …], "trips": [Trip, …], "bind": [Binding, …]}
 ```
 
@@ -223,7 +242,7 @@ equipment it belongs to).
 | node | result |
 |---|---|
 | `{"const": n}` | a constant (a design value) |
-| `{"state": "<kks>", "init": n}` | an operable state: valve position 0–1, pump or fan running 0/1, breaker closed 0/1, a setpoint. Only ops (§7.2), machines (§7.4) and trips change it |
+| `{"state": n, "kks": "<code>"}` | an operable state with initial value n: a valve's command 0–1, a pump or fan run command 0/1, a breaker 0/1, a setpoint. `kks` (optional) is the equipment it belongs to. Only ops (§7.2), interlocks, machines (§7.4), trips and faults change it |
 | `{"of": ref, "table": [[x, y], …]}` | piecewise linear (COURSES.md §9.2 table rules); `"step": true` for steps |
 | `{"sum": [ref, …]}`, `{"product": [ref, …]}`, `{"min": […]}`, `{"max": […]}` | |
 | `{"diff": [a, b]}` | a − b |
@@ -234,16 +253,19 @@ equipment it belongs to).
 | `{"ramp": ref, "rate": r, "rate_down": r2, "init": n}` | moves toward the input at most r units per second |
 | `{"integrate": ref, "gain": g, "min": a, "max": b, "init": n}` | y ← clamp(y + g · input · dt, a, b): levels, inventories |
 | `{"latch": set, "reset": reset, "init": 0}` | 1 from the first step `set` is true until `reset` is true (reset wins) |
-| `{"delay": ref, "on": t, "off": t2}` | a true input becomes true after t seconds of being true; false after t2 of being false |
-| `{"timer": ref}` | seconds the input has been true (0 while false) |
+| `{"delay": ref, "on": t, "off": t2}` | true once the input has been true for t / 0.1 consecutive steps (the step it turns true counts as the first: on = 2 s is true at the 20th step); false once it has been false for t2 / 0.1 steps; `off` default 0 |
+| `{"timer": ref}` | 0.1 × the number of consecutive steps the input has been true, this one included (0 while false) |
 | `{"wrap": ref, "period": p}` | integrated and kept in 0 ≤ y < p: synchroscope phase angle, turning-gear rotor angle |
 
 A *ref* is a number or a value name. **Every reference reads an earlier value**, except that a stateful node
 (`lag`, `ramp`, `integrate`, `latch`, `delay`, `timer`, `wrap`) may read any value, getting its value from the
 previous step: that is how loops (level → pump trip → level) close without an order problem.
 
-**First-order lag:** y ← y + (u − y) · (1 − e^(−dt/τ)), with τ = `tau` when u ≥ y, else `tau_down` (default `tau`).
-Exact for a step input at any dt, so the model doesn't change when time is fast-forwarded (§7.9). `tau` > 0.
+**First-order lag:** y ← y + (u − y) · (1 − e^(−dt/τ)), with dt = 0.1 s, τ = `tau` when u ≥ y, else `tau_down`
+(default `tau`). `tau` > 0. dt never changes: fast-forward runs more steps per frame (§7.9).
+
+**Names.** Every key of a `set` (in ops, interlocks, machines, faults) is the name of a `state` value; a machine's
+current state is the value `<machine id>_state` (§7.4); value names follow the identifier rule of §1.
 
 ### 7.2 Operations
 
@@ -251,7 +273,7 @@ What a trainee can do to a piece of equipment, at the equipment (local push butt
 room screens:
 
 ```json
-{"kks": "30PAC10AP001", "do": "start", "set": {"30PAC10AP001": 1},
+{"kks": "30PAC10AP001", "do": "start", "set": {"cw_a_run_cmd": 1},
  "needs": [["cw_basin_level_ok", "Cooling tower basin level not above the minimum"],
            ["cw_a_valve_at_start", "Discharge valve 30PAC10AA101 not at its start position"]],
  "where": ["local", "screen"]}
@@ -268,8 +290,8 @@ room screens:
 
 ### 7.3 Interlocks
 
-An interlock is an operation the plant does by itself: `{"when": ref, "do": Op}`, evaluated each step on the rising
-edge of `when` (a CW pump stops → its discharge valve closes; condenser pressure high → the turbine bypass is
+An interlock is an operation the plant does by itself: `{"id": id, "when": ref, "do": [Op, …]}`, done in the step
+where `when` is true and was false in the previous step (a rising edge; on the first step "previous" is false) (a CW pump stops → its discharge valve closes; condenser pressure high → the turbine bypass is
 blocked). They use the same op shape, without `needs` and `where`, and appear in the event list (§7.6) as
 "automatic".
 
@@ -281,40 +303,45 @@ A start sequence (gas turbine start, steam turbine roll) is a state machine:
 {"id": "gt1_start", "kks": "10MBA10", "init": "standstill",
  "commands": {"start": "standstill", "stop": "*"},
  "states": [
-   {"id": "standstill", "set": {"gt1_speed_sp": 0}},
+   {"id": "standstill", "set": {"gt1_speed_sp": 0}, "watch": false},
    {"id": "crank", "set": {"gt1_sfc_on": 1, "gt1_speed_sp": 0.25}, "next": [["gt1_purge_speed", "purge"]]},
    {"id": "purge", "next": [["gt1_purge_done", "coast"]], "say": "HRSG purge: 5 volume changes"},
    …]}
 ```
 
 - **`commands`:** the commands the machine takes, each with the state it must be in (`*` = any).
-- **`set`:** states written on entering. **`next`:** `[condition, state]`, the first true one moves on.
+- **`set`:** states written on entering. **`next`:** `[condition, state]`, the first true one moves on (at most one
+  move per step). **`watch`** (default true): fast-forward stops while the machine is in this state (§7.9).
 - **`say`:** the step text shown on the control room screen and spoken in the event list.
-- The machine's current state is itself a value (`gt1_start.state`, the index in `states`), so the model, the
+- The machine's current state is itself a value (`gt1_start_state`, the index in `states`), so the model, the
   displays and procedures can read it.
 
 ### 7.5 Trips
 
 ```json
-{"id": "gt1_trip_lube", "kks": "10MBV10CP101", "isa": "PSLL", "text": "GT lube oil pressure low-low",
+{"id": "gt1_trip_lube", "kks": "10MBV10CP101", "isa": "PALL", "text": "GT lube oil pressure low-low",
  "when": "gt1_lube_p_ll", "delay": 2, "do": [{"machine": "gt1_start", "to": "trip"}],
  "first_out": "gt1"}
 ```
 
 A trip latches (§7.1) until `reset` is done and its cause has cleared; `first_out` groups trips so that the panel
-shows which of them came first, as real first-out annunciators do.
+shows which of them came first, as real first-out annunciators do. Trips that fire in the same step are ordered as
+they are listed in the model (plant.json's area order, then file order): the first one listed is "first out".
 
 ### 7.6 Alarms and events
 
 ```json
-{"kks": "30MAG10CP001", "isa": "PAH", "text": "Condenser pressure high",
- "when": {"cmp": ["cond_p", ">", 20]}, "clear": {"cmp": ["cond_p", "<", 18]}, "delay": 5,
+{"id": "cond_p_high", "kks": "30MAG10CP001", "isa": "PAH", "text": "Condenser pressure high",
+ "when": "cond_p_h", "clear": "cond_p_h_clear", "delay": 5,
  "priority": 2, "where": "30MAG10"}
 ```
 
+- `when` and `clear` are value names (here `{"cmp": ["cond_p", ">", 15]}` and `{"cmp": ["cond_p", "<", 13]}` in
+  `values`: FIRST-TRAIN.md §5).
 - States per alarm, as the common alarm-management model (ISA-18.2) describes them: normal → active unacknowledged
-  (flashing, horn) → active acknowledged (steady) → cleared unacknowledged → normal. The trainee acknowledges at the
-  panel; the horn stops on acknowledge.
+  (flashing, horn) → active acknowledged (steady) → cleared unacknowledged → normal; and **shelved** (set aside by
+  the operator, shown in a list of its own, no horn) until un-shelved. The trainee acknowledges at the panel; the
+  horn stops on acknowledge.
 - **`priority`** 1 (high) – 3 (low) sets the colour and sound; **`clear`** gives a deadband so an alarm doesn't
   chatter; **`delay`** the seconds the condition must hold.
 - **`where`:** the equipment the alarm leads to (one tap from the alarm list highlights and walks there: R10).
@@ -333,48 +360,65 @@ shows which of them came first, as real first-out annunciators do.
 ```
 
 - **`anim`:** a named moving piece of the part (§9: a valve's `stem`, `disc` or `handwheel`; a pump's or fan's
-  `shaft`; a damper's `blades`; a gauge's `needle`), driven by a value (0–1 for positions; revolutions per second ×
-  `scale` for shafts).
+  `shaft`; a damper's `blades`; a gauge's `needle`), driven by a value: positions take the value 0–1; a shaft turns at
+  `of` × `scale` revolutions per second (`cw_a_speed` 0–1 × 24.75 = 1,485 rpm).
 - **`show`:** a gauge, level glass or local display shows the value in the part's range and unit.
 - **`sound`:** a sound of the library (§11) on the part, its gain and pitch tables of values. **`lamp`:** a lamp
   or beacon lit when the value is true.
 - **`shake`:** camera shake near the part from a vibration value (felt near a large machine; off when the platform
   asks for reduced motion).
-- `ext` values: `plant.json` lists `"ext": ["grid_frequency", …]`: the few values the plant's surroundings set
-  (ambient temperature, grid), set by the scenario.
+- `ext` values (plant.json, §2) are values without a node: the scenario sets them, and any area may read them.
 
 ### 7.8 Scenarios
 
 ```json
 {"format": "walkdown-plant-scenario", "version": 1, "id": "cold_iron", "title": "Cold start after a long outage",
- "init": {"ambient_t": 30, "hrsg1_hp_drum_level": -150, …},
+ "init": {"ambient_t": 35, "hrsg1_hp_drum_level": -150, …},
+ "shelved": ["cond_p_high", "gt1_lube_p_low", "st_lube_p_low"],
  "faults": [{"id": "cw_b_fails", "when": {"cmp": ["cw_b_start_count", ">=", 1]},
              "set": {"cw_b_motor_fault": 1}, "text": "Pump B trips on overcurrent at its first start"}]}
 ```
 
-`init` overrides any value's `init`; `faults` are set by a condition, so a trainer can make "the standby pump fails"
+`init` overrides any value's initial value and sets the `ext` values; `shelved` names alarms (by their `id`)
+that start shelved; `faults` are set by a condition, so a trainer can make "the standby pump fails"
 happen at the moment that teaches most.
 
 ### 7.9 Time
 
 Model time runs at 1× while anything is changing that the trainee should watch. A **fast-forward** (up to 60×) is
-offered while no alarm is active and no machine is in a state marked `"watch": true`; it stops by itself when one
-appears. A cold start that takes hours in a real plant takes about 40 minutes of play (FIRST-TRAIN.md §4).
+offered while no unshelved alarm is active and no machine is in a state with `"watch": true`; it stops by itself when
+one appears. Fast-forward runs more 0.1 s steps per frame (600 per second at 60×); the step never grows. Its cost on
+the Note 9 is measured (0054) and the top speed is capped by what the phone keeps within the frame rule.
+
+### 7.10 One step
+
+Each 0.1 s step, in this order (the reference and the app must agree to the vectors):
+1. The trainee's operations queued since the last step, in the order made: each is refused if a permissive in
+   `needs` is false (read as the previous step left it), else its `set` is applied. Machine commands likewise.
+2. `values` are evaluated in order (stateful nodes read the previous step's values where §7.1 allows).
+3. Faults whose condition is true are applied (their `set`), once each.
+4. Interlocks on a rising edge of `when`, in list order; their `set` is applied.
+5. Machines: each moves at most once, by its first true `next`; the new state's `set` is applied.
+6. Trips: a trip whose `when` has held for its `delay` latches; its `do` is applied; first-out as in §7.5.
+7. Alarms change state (with their `delay` and `clear`).
+8. Events of this step are written in the order above.
+
+States changed in steps 3–6 are read by `values` in the next step. A cold start that takes hours in a real plant takes about 40 minutes of play (FIRST-TRAIN.md §4).
 
 ## 8. Procedures and tours (one format, R10)
 
 ```json
-{"format": "walkdown-procedure", "version": 1, "id": "cold_start", "title": [ "Cold start of train 1" ],
+{"format": "walkdown-plant-procedure", "version": 1, "id": "cold_start", "title": "Cold start of train 1",
  "kind": "procedure", "scenario": "cold_iron",
  "intro": [{"p": ["Bring the train from cold iron to base load. ", {"link": ["Course: start-up"],
-            "to": {"course": "ppt", "page": "startup"}}]}],
+            "to": {"course": "ppt", "page": "ccpp"}}]}],
  "steps": [
    {"id": "cw_a", "text": ["Start circulating water pump A (", {"link": ["30PAC10AP001"],
      "to": {"kks": "30PAC10AP001"}}, ") with its discharge valve at the start position."],
     "at": ["30PAC10AP001", "30PAC10AA101"], "go": "walk",
     "do": [{"kks": "30PAC10AP001", "do": "start"}],
-    "done": "cw_a_run_stable", "why": ["Starting against a closed valve keeps the motor current and the
-     pressure surge in the empty pipe low."]}]}
+    "done": "cw_a_run_stable", "why": ["With the valve at its start position (about 15 % open) the empty
+     discharge pipe fills slowly, without a pressure surge."]}]}
 ```
 
 - **`text`, `intro`, `why`:** runs and blocks of COURSES.md §3–§4 (paragraphs, lists, tables, callouts; `figure`,
@@ -497,5 +541,8 @@ Vectors (`ref/vectors/plant3d-v1.json`, made by the reference `ref/plant3d.py`, 
 - No scripting or expressions in content (as in courses: content must not run code).
 - No component level (level 3) KKS codes; no RDS-PP codes.
 - No real process simulation: no flow network solving, no steam tables beyond sampled tables.
+- No choice of condensing end (R3: air-cooled condenser, wet cooling tower, once-through). Format 1 describes the
+  wet cooling tower only; version 2 adds alternative areas for one slot (`"slot": "cooling"`), one picked per
+  scenario, when the second cooling end is built.
 - No content loaded from outside the app (no downloads, no user content) while the engine's security response is a
   known weak point (0041).
