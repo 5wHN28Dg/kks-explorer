@@ -581,7 +581,7 @@ proc account(w: Win, p: Page) =
       w.toast("Wrong passphrase, or not a root key backup")))
 
 proc copyText(w: Win, text: string) =
-  if copyToClipboard(w.hwnd, text): w.toast("Copied")
+  w.toast(if copyToClipboard(w.hwnd, text): "Copied" else: "The clipboard is busy: try again")
 
 proc diagnosticsSection(w: Win, p: Page) =
   ## decision 0040: everyone sees whether reports are on; the manager switches them from their own device

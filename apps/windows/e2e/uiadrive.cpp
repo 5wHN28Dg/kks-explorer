@@ -30,6 +30,9 @@
 //   mouseup <name>          the left button up in the element's window
 //   pixels <name> <rrggbb> <max>  the element as drawn (PrintWindow) has at most <max> pixels of this colour (each
 //                           channel within 3): e.g. no box left on the drawing
+//   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
+//                           what a person's keyboard does there (an edit or list of that name before any other
+//                           element of it; `keys` posts to the first element, which may be the window or a label)
 //   sleep <ms>
 //   dump                    log every element (type, name)
 // Exits 0 when every line passed, 1 at the first failure (logged).
@@ -563,6 +566,26 @@ int wmain(int argc, wchar_t **argv) {
             if (list) { list->get_CurrentNativeWindowHandle(&hw); list->Release(); }
             if (!hw) { say("ERROR: no list window: " + arg); return 1; }
             PostMessageW(GetParent((HWND)hw), WM_COMMAND, MAKEWPARAM(GetDlgCtrlID((HWND)hw), LBN_SELCHANGE), (LPARAM)hw);
+        }
+        if (cmd == "press") {
+            IUIAutomationElement *c = find(pid, arg, false, UIA_EditControlTypeId);
+            if (!c) c = find(pid, arg, false, UIA_ListControlTypeId);
+            if (c) { e->Release(); e = c; }
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (hw) { SetForegroundWindow(GetAncestor((HWND)hw, GA_ROOT)); Sleep(200); }
+            if (FAILED(e->SetFocus())) { say("ERROR: can't focus " + arg); e->Release(); return 1; }
+            Sleep(200);
+            std::stringstream ks(f.size() > 2 ? f[2] : "");
+            std::string k;
+            while (std::getline(ks, k, ',')) {
+                INPUT in[2] = {};
+                in[0].type = in[1].type = INPUT_KEYBOARD;
+                in[0].ki.wVk = in[1].ki.wVk = (WORD)std::stoul(k, nullptr, 0);
+                in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                SendInput(2, in, sizeof(INPUT));
+                Sleep(80);
+            }
         }
         if (cmd == "focus" || cmd == "focused") {
             // a field's label (a Text element) carries the field's name and comes first: the field itself is meant

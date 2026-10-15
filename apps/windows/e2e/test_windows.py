@@ -185,7 +185,7 @@ class Windows(unittest.TestCase):
         with open(os.path.join(REPO, 'VERSION')) as f: version = f.read().strip()
         with open(APP, 'rb') as f:
             m = re.search(rb'kks-explorer/tree/([0-9a-f]{40})', f.read())
-        self.assertIsNotNone(m, 'the exe names no commit (apps/windows/build.sh passes -d:kksCommit)')
+        self.assertIsNotNone(m, 'the exe names no commit (kksl/buildinfo: -d:kksCommit from build.sh, or git at compile time)')
         commit = m.group(1).decode()
         notice = 'Notice and licences of the selected part'
         agpl = 'GNU Affero General Public License v3.0 or later'
@@ -214,9 +214,11 @@ class Windows(unittest.TestCase):
                                   # Walkdown's own licence, in full, in a window of its own
                                   'click\tLicence text…', 'value\t%s\tGNU AFFERO GENERAL PUBLIC LICENSE' % agpl,
                                   'value\t%s\tVersion 3, 19 November 2007' % agpl,
-                                  'keys\t%s\t0x1B' % agpl, 'gone\t' + agpl,
-                                  # Esc closes About; F1 opens it again
-                                  'keys\t%s\t0x1B' % notice, 'gone\tAbout Walkdown',
+                                  # Esc from the focused text closes its window (a multi-line edit sends its parent
+                                  # WM_CLOSE: the page went, an empty window stayed)
+                                  'press\t%s\t0x1B' % agpl, 'gone\t' + agpl, 'wait\tAbout Walkdown',
+                                  # Esc closes About, from the notice's text too; F1 opens it again
+                                  'press\t%s\t0x1B' % notice, 'gone\tAbout Walkdown',
                                   'keys\tJoin through a server\t0x70', 'wait\tAbout Walkdown\t20',
                                   'wait\t~Version %s (commit %s' % (version, commit[:12]),
                                   'keys\t%s\t0x1B' % notice, 'gone\tAbout Walkdown'], keep=False,

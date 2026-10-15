@@ -54,6 +54,7 @@ proc textWindow(owner: HWND, title, text: string) =
 
 proc openAbout*(owner: HWND) =
   if aboutWindow != nil and IsWindow(aboutWindow) != 0:
+    ShowWindow(aboutWindow, 9)          # SW_RESTORE: it may be minimised
     SetForegroundWindow(aboutWindow)
     return
   let (a, err) = content()
@@ -66,10 +67,10 @@ proc openAbout*(owner: HWND) =
   p.label("By " & a.developer & ". Licence: " & a.license.text & ".")
   p.dim(a.notice)
   p.dim("These buttons open pages in your web browser.")
-  p.buttons(("Licence", proc () = openLink(hw, a.license.url)),
+  let first = p.buttons(("Licence", proc () = openLink(hw, a.license.url)),
             ("Home page", proc () = openLink(hw, a.homepage)),
             ("Report a problem", proc () = openLink(hw, a.issues)),
-            ("Help", proc () = openLink(hw, a.help)))
+            ("Help", proc () = openLink(hw, a.help)))[0]
   if a.licenseText.len > 0:
     p.buttons(("Licence text…", proc () = textWindow(hw, a.license.text, a.licenseText)))
   # the link in a read-only field: a static text cut it off (one long word), and it can be selected and copied there
@@ -120,4 +121,4 @@ proc openAbout*(owner: HWND) =
     SendMessageW(parts, 0x0197'u32, 0, 0)            # LB_SETTOPINDEX
     detail.setText(a.parts[0].detail.replace("\n", "\r\n"))
   ShowWindow(hw, SW_SHOW)
-  SetFocus(parts)
+  SetFocus(first)               # the top of the window: a screen reader starts with the name and version above

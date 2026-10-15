@@ -462,9 +462,17 @@ proc scrollTo*(p: Page, pos: int) =
     p.layout()
     InvalidateRect(p.hwnd, nil, 1)
 
+var escCloses: seq[HWND]      ## popups that Escape closes (IsDialogMessage turns it into IDCANCEL)
+
 proc pageProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
   let p = pages.getOrDefault(h)
   case m
+  of WM_CLOSE:
+    # a multi-line edit sends Escape to its parent as WM_CLOSE, and the default destroyed the page under its window
+    # (an empty licence window was left): the window it is in closes when Escape closes it, else nothing does
+    let root = GetAncestor(h, 2)        # GA_ROOT
+    if root != nil and root in escCloses: PostMessageW(root, WM_CLOSE, 0, 0)
+    return 0
   of WM_COMMAND:
     if dispatchCommand(w, l): return 0
     return SendMessageW(GetParent(h), m, w, l)     # unknown: to the parent
@@ -944,7 +952,6 @@ proc activateFocused*(): bool =
 # ---------------------------------------------------------------- a popup window hosting a page
 
 var popups = initTable[HWND, (Page, proc ())]()
-var escCloses: seq[HWND]      ## popups that Escape closes (IsDialogMessage turns it into IDCANCEL)
 
 proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
   case m
