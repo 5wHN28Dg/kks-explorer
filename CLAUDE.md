@@ -201,10 +201,11 @@ in `CLAUDE.local.md` ("Deployment"), never in tracked files.
 
     The default host GPU path crashed every few minutes on this Iris Xe; swiftshader was too slow (System UI ANR).
     Its memory grows by 0.2 to 0.25 GiB for every minute of tests, from 3.7 GiB, and at the 8 GiB cap it is killed.
-    So test_app2 (18 tests, about 38 minutes) runs in three parts, each on a fresh emulator: `KKS_E2E_PART=1`, `2`
+    So test_app2 (20 tests, about 43 minutes) runs in three parts, each on a fresh emulator: `KKS_E2E_PART=1`, `2`
     and `3` (the lists are `PARTS` in the file, which refuses to run if a test is in none); test_direct on a fresh
-    one too. Measured 2026-10-13: about 12, 10 and 16 minutes, ending at 5.4 to 5.8, 6.2 and 6.3 to 6.6 GiB (part 3
-    holds test_course_figures, 5.5 minutes; a part that ends above 7 GiB gives a test to another). Two halves of
+    one too. Measured 2026-10-15 (after #190 moved test_courses from part 1 to part 2, which also holds test_about): about 11,
+    16 and 16 minutes, ending at 6.8, 6.2 and 6.4 GiB (part 3 holds test_course_figures, 5.5 minutes; a part that
+    ends above 7 GiB gives a test to another; part 1 had reached 7.8 GiB). Two halves of
     15 minutes had ended between 6.4 and 7.7 GiB: too close. The emulator
     does not slow down on the way (#150: reading the screen took 2.0 s at 3.7 GiB and at 7.5 GiB).
   - Every test_app2 test starts its own server and clears the app (#150), so any order and any split is a valid
