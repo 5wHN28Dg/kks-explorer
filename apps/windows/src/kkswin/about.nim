@@ -12,6 +12,8 @@ import w32, ui, aboutinfo
 
 var aboutWindow: HWND          ## the open window (one at a time)
 
+proc IsIconic(h: HWND): BOOL {.importc, stdcall, header: "<windows.h>".}
+
 proc RtlGetVersion(info: pointer): int32 {.importc, stdcall, dynlib: "ntdll.dll".}
 
 type OsVersionInfo = object    ## RTL_OSVERSIONINFOW
@@ -54,7 +56,7 @@ proc textWindow(owner: HWND, title, text: string) =
 
 proc openAbout*(owner: HWND) =
   if aboutWindow != nil and IsWindow(aboutWindow) != 0:
-    ShowWindow(aboutWindow, 9)          # SW_RESTORE: it may be minimised
+    if IsIconic(aboutWindow) != 0: ShowWindow(aboutWindow, 9)     # SW_RESTORE, only when minimised
     SetForegroundWindow(aboutWindow)
     return
   let (a, err) = content()
@@ -78,7 +80,8 @@ proc openAbout*(owner: HWND) =
                      "not published).")
   elif Commit.len == 0: p.dim("The commit this build was made from is not known: the link is the project's source.")
   p.field("Source of this version", SourceUrl, readonly = true)
-  let copied = p.dim("")
+  # (laid out for its first text: the one after a copy is no longer)
+  let copied = p.dim("Copy details puts the version, the commit and this Windows version on the clipboard.")
   p.buttons(("Open the source", proc () = openLink(hw, SourceUrl)),
             ("Copy details", proc () =
               copied.setText(if copyToClipboard(hw, supportDetails(windowsLine())):

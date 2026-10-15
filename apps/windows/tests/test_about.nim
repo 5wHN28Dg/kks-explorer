@@ -103,6 +103,10 @@ suite "about content":
     check windowsName(10, 0, 26200, "x64") == "Windows 11 (10.0.26200), x64"
     check windowsName(10, 0, 19045, "x64") == "Windows 10 (10.0.19045), x64"
     check windowsName(6, 3, 9600, "ARM64") == "Windows (6.3.9600), ARM64"
+    # built from a git checkout (CI, here): the commit is known even without -d:kksCommit, on a Windows target too
+    # (buildinfo's paths followed the target's separators there: git ran on "\home\…" and found nothing)
+    check Commit.len == 40
+    check SourceUrl == "https://github.com/5wHN28Dg/kks-explorer/tree/" & Commit
     let d = supportDetails("Windows 11 (10.0.26200), x64")
     check d.startsWith("Walkdown " & Version & " (commit ")
     check SourceUrl in d and "Windows 11 (10.0.26200), x64" in d

@@ -11,9 +11,11 @@ import std/[os, strutils]
 const
   kksCommit {.strdefine.} = ""
   kksDirty {.strdefine.} = ""
-  # paths for the compiler's host, joined with "/" (std/os's `/` follows the target: a Windows cross-build made
-  # "\home\…\VERSION", which a Linux host can't open; "/" works on either host)
-  repoDir = currentSourcePath().parentDir & "/../../../.."
+  # paths for the compiler's host, made with string operations: std/os (`/`, parentDir) follows the target, and a
+  # Windows cross-build turned this into "\home\…", which git on a Linux host could not find (the build said
+  # "commit unknown"; tests/test_about.nim on Windows). "/" works on either host
+  here = currentSourcePath()
+  repoDir = here[0 ..< max(here.rfind('/'), here.rfind('\\'))] & "/../../../.."
   Repository* = "https://github.com/5wHN28Dg/kks-explorer"
   Version* = staticRead(repoDir & "/VERSION").strip
   AboutJson* = staticRead(repoDir & "/data/about.json")   ## the shared About content, as text
