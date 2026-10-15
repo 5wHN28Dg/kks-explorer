@@ -31,11 +31,13 @@ the plant's decoder table holds only the codes this plant uses):
   alone). A unit is what can feed the grid on its own [E1].
 - **F0** `0`: no identical parallel systems in format 1.
 - **FN** in decades along the flow [E1]. **Our convention** where no public rule was found: in the HRSG the pressure
-  levels take decades, LP 10, IP 20, HP 30 (HAC30/HAC31 for the two HP economiser stages); the drums are `BB`
+  levels take decades, LP 10, IP 20, HP 30 (the two HP economiser stages are heating surfaces 10HAC30AC001 and
+  AC002 of one system, not two decades: decades go per process segment, units only for parallel streams [E1]); the drums are `BB`
   vessels under their evaporator (HAD); the HP bypass is placed under MAN with the LP bypass (MAN10 HP, MAN20 LP).
 - **AN for valves** [E1]: 001–099 control valves, 101–199 motor-operated on/off, 201–299 pneumatic, hydraulic or
-  solenoid, 401–499 drains and vents, 501–599 hand valves, 901–999 safety valves. **Our convention** for
-  measurements: 001–499 remote (transmitters, to the control room), 501–599 local (gauges, glasses). Pumps and fans
+  solenoid, 401–499 drains and vents, 501–599 hand valves, 901–999 safety valves. Measurements [E1]: 001–099
+  analogue to the control room (transmitters), 301–399 binary (switches), 401–499 test points, 501–599 local
+  (gauges, glasses). Pumps and fans
   of one duty: 001, 002, 003 = A, B, C.
 
 | Code | What (our words) | Key letters and source |
@@ -46,12 +48,13 @@ the plant's decoder table holds only the codes this plant uses):
 | 10MBJ10 | GT start-up system: static frequency converter (the generator as motor) | MBJ start-up unit [H] |
 | 10MBK10AE001 | GT turning gear | MBK gear incl. turning gear [H]; AE [E2] |
 | 10MBL10AT001 | Air intake filter house | MBL intake air [H]; AT [E2] |
-| 10MBM10 | Combustion system (flame monitoring at system level) | MBM [H] |
+| 10MBM10 | Combustion system | MBM [H] |
+| 10MBM10CB001–002 | Flame detectors | CB radiation, incl. flame monitoring [W] |
 | 10MBP10AA201, AA001 | Fuel gas stop valve, fuel gas control valve | MBP gaseous fuel [H] |
 | 10MBP10CP001 | Fuel gas pressure | CP [E2] |
 | 10MBR10CT001–012 | Exhaust temperature thermocouples (spread from them) | MBR exhaust [H]; CT [E2] |
 | 10MBV10AP001, AP002 | GT lube oil pumps (AC main, DC emergency) | MBV lube oil [H]; AP [E2] |
-| 10MBV10CP101–103 | GT lube oil header pressure (2 out of 3 for the trip) | |
+| 10MBV10CP001–003 | GT lube oil header pressure (2 out of 3 for the trip) | |
 | 10MBY10CS001–003 | GT speed | MBY electrical control and protection [H]; CS [E2] |
 | 10MKA10 | Generator 1 | MKA [E2] |
 | 10MKC10 | Generator 1 excitation | MKC [E2] |
@@ -65,9 +68,10 @@ the plant's decoder table holds only the codes this plant uses):
 | 10HNE10 | Stack | HNE [E2]; structure 10UHN10 |
 | 10HAC10, 10HAD10 | LP economiser, LP evaporator | HAC, HAD [E2] |
 | 10HAD10BB001 | LP drum with integral deaerator | BB [E2] |
+| 10HAD10CL001 | LP drum level | |
 | 10HAC20, 10HAD20, 10HAH20 | IP economiser, evaporator, superheater | HAH [E2] |
 | 10HAD20BB001 | IP drum | |
-| 10HAC30, 10HAC31, 10HAD30, 10HAH30 | HP economisers 1 and 2, HP evaporator, HP superheater | |
+| 10HAC30, 10HAD30, 10HAH30 | HP economiser (two stages: AC001, AC002), HP evaporator, HP superheater | |
 | 10HAD30BB001 | HP drum | |
 | 10HAD30CL001–003 | HP drum level (3 transmitters; 2 out of 3 for the trips) | CL [E2] |
 | 10HAD30CL501 | HP drum level glass (local) | |
@@ -78,6 +82,10 @@ the plant's decoder table holds only the codes this plant uses):
 | 10LAB30AA001 | HP feedwater control valve | LAB [E2] |
 | 10LAE30AA001 | HP superheater spray control valve | LAE [E2], [W] |
 | 10LBA30, 10LBA10 | HP steam, LP steam from HRSG 1 (decades as the HRSG: LP 10, HP 30) | LBA [E2] |
+| 10LBA30CT001 | HP steam temperature | |
+| 10LAC10CF001–002 | Feedwater pump A, B flow | CF [E2] |
+| 30MAA10CT001 | HP turbine inlet steam temperature (superheat computed from it and the pressure) | |
+| 30PAD10CY001–010 | Cooling tower fan vibration | CY [E2] |
 | 10LBB10, 10LBC10 | Hot reheat, cold reheat (train 1 side) | LBB, LBC [E2] |
 | 10LCQ10BB001 | Blowdown tank | LCQ [E2] |
 | 10UHA10 | HRSG 1 structure | UHA [E2] |
@@ -93,7 +101,7 @@ the plant's decoder table holds only the codes this plant uses):
 | 30MAK10AE001 | ST turning gear | MAK gear (incl. turning gear [H]) |
 | 30MAN10AA001, 30MAN20AA001 | HP bypass valve, LP bypass valve | MAN bypass station [E2] (our placement of the HP bypass) |
 | 30MAV10AP001, AP002, 30MAV20AP001 | ST lube oil pumps (AC, DC emergency), jacking oil pump | MAV [E2] |
-| 30MAV10CP101–103 | ST lube oil pressure | |
+| 30MAV10CP001–003 | ST lube oil pressure | |
 | 30MAW10AA001 | Gland steam supply control valve | MAW [E2] |
 | 30MAY10CS001–003 | ST speed | MAY [E2] |
 | 30MKA10, 30MKC10, 30BAC10, 30BAT10 | ST generator, excitation, breaker, step-up transformer | |
@@ -136,14 +144,15 @@ the plant's decoder table holds only the codes this plant uses):
 | Gas turbine | ~250 MW at 35 °C ambient; exhaust ~620 kg/s at ~600 °C; natural gas only |
 | HRSG | HP 120 bar(a) / 560 °C, ~70 kg/s; reheat 28 bar(a) / 560 °C; LP 5 bar(a) / 250 °C; integral deaerator on the LP drum |
 | Steam turbine | ~135 MW with one train, ~270 MW with two; sliding pressure; HP and LP bypass to the condenser |
-| Condenser | about 10 kPa(a) at full load on a hot day (cold water ~30 °C); two halves (divided water boxes) |
+| Condenser | about 10 kPa(a) at full load on a hot day (wet bulb ~25 °C, cold water ~30 °C); two halves (divided water boxes) |
 | Circulating water | 3 × 50 % vertical pumps, 15,000 m³/h each at ~22 m head, ~1.25 MW motors; ΔT ~12.6 K across the condenser at full load (below) |
 | Cooling tower | 10 cells (2 rows of 5), 16 × 16 m each, 9.5 m fans of ~200 kW; basin under the whole tower |
 | Electrical | generators to step-up transformers and the grid; unit auxiliary transformers; the gas turbine starts with a static frequency converter (the generator as a motor) |
 
 Heat balance check (order of magnitude, what a trainee might compute): the exhaust gives the HRSG about 620 kg/s ×
 1.1 kJ/kg·K × (600 − 90) K ≈ 350 MW; with ~135 MW made by the steam turbine, each train sends about 220 MW to the
-condenser. One train with one pump: 220 MW / (4.19 kJ/kg·K × 4,170 kg/s) ≈ 12.6 K across the condenser; two trains
+condenser. One train with one pump (on its curve it runs out a little past its 15,000 m³/h when it is alone; the model's
+flow table shows it): 220 MW / (4.19 kJ/kg·K × 4,170 kg/s) ≈ 12.6 K across the condenser; two trains
 with two pumps the same. Cold water at ~30 °C + 12.6 K + a terminal difference of ~4 K gives ~47 °C, about
 10 kPa(a). A second pump with one train lowers the rise to ~6 K and the pressure to ~7.5 kPa(a): a reason for the
 trainee to weigh pump power against vacuum (§4). Ten cells for ~440 MW and 30,000 m³/h are ~3,000 m³/h per cell, a
@@ -184,16 +193,18 @@ The CW pipes (DN 2200) run buried along y ≈ −30, south of every area, from t
 come up into the condenser pit (−6 m) from below (PLANT3D.md §4 has the supply pipe as its example); the return goes to the tower's hot water distribution at +12. The HRSG's main steam, hot and cold
 reheat and LP steam leave the top of HRSG 1 and run on a pipe rack along x ≈ 82 (between the turbine hall and `bop`) south into the turbine hall's east wall at +12.
 Pipes belong to the area where they start and may cross other areas (PLANT3D.md §3).
-Roads 7 m wide around every area, so every area has a way in on foot and the overview map reads like a plot plan.
+Roads at least 5 m wide between the areas (the 5 m strips between `st`, `bop`, `cw` and `ct`), except where machines join: GT1's exhaust diffuser runs straight into HRSG 1's inlet duct at x = 80. Every area has a way in on foot, and the overview map reads like a plot plan.
 
 ## 4. The cold start: what must be operable, and how it is faked
 
-Starting state (`cold_iron` scenario): ambient 35 °C; grid available, the auxiliary transformers energised; every
+Starting state (`cold_iron` scenario): ambient 35 °C, wet bulb 25 °C; grid available, the auxiliary transformers energised; every
 machine stopped; turning gears off; water systems filled; HRSG drums cold at their start-up level; condenser and
-turbine at atmospheric pressure; the alarms a stopped plant raises (condenser pressure high 30MAG10CP001–003, GT and ST lube oil
-pressure low 10MBV10CP101–103 and 30MAV10CP101–103) start **shelved** (PLANT3D.md §7.6), and the trainee un-shelves
-them once their system runs, a real panel habit; the lube oil low-low trips start latched and can be reset only
-once oil pressure is up.
+turbine at atmospheric pressure; the alarms a stopped plant would raise (condenser pressure high 30MAG10CP001–003, GT and ST lube oil
+pressure low 10MBV10CP001–003 and 30MAV10CP001–003) are **suppressed by design** while their machine is at
+standstill with its oil pumps or vacuum pumps off (PLANT3D.md §7.6 `suppress`), and come alive as each system
+starts; the lube oil low-low trips and the condenser pressure high-high trip start **latched** and can be reset only
+once their cause has cleared (the scenario's `latched`), so the trainee learns to read and reset trips before a
+start.
 
 The trainee works from the control room screens and in the field. About 40 minutes of play (fast-forward in the
 long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
@@ -206,9 +217,9 @@ long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
 | 4 | CW pump A | set its discharge valve to the start position (~15 %), start the pump, open the valve | motor current: inrush 6× for 4 s then a table of flow; discharge pressure surge if started with the valve open on an empty pipe (a spike alarm and a heavy thud); valve travel 60 s | starting large pumps against a nearly closed valve; filling a pipe slowly |
 | 5 | Condenser water boxes | open the vents until water shows, then close | water box "full" after a time ∝ flow; CW flow and condenser ΔT appear | air in the water boxes |
 | 6 | Hotwell, condensate | check hotwell level (demin makeup), start a condensate extraction pump on minimum flow recirculation | hotwell level integrates makeup + condensed steam − CEP flow; the pump trips on hotwell level low-low | minimum flow protection |
-| 7 | ST lube oil, jacking oil, turning gear | start the AC lube oil pump, then jacking oil, then the turning gear | oil pressure lag τ 3 s; the turning gear needs oil and jacking pressure (permissives); rotor eccentricity falls with time on turning gear (table, ~20 min of model time) | a hot or bent rotor; the order of the oil systems |
+| 7 | ST lube oil, jacking oil, turning gear | start the AC lube oil pump, then jacking oil, then the turning gear | oil pressure lag τ 3 s; the turning gear needs oil and jacking pressure (permissives); rotor eccentricity falls with time on turning gear (table; ~20 min of model time, compressed from hours) | a hot or bent rotor; the order of the oil systems |
 | 8 | GT lube oil, turning gear | the same for GT1 | as 7 | |
-| 9 | Auxiliary steam | start the auxiliary boiler | aux steam pressure ramp to 12 bar in ~10 min of model time | where the first steam comes from |
+| 9 | Auxiliary steam | start the auxiliary boiler | aux steam pressure ramp to 12 bar in ~10 min of model time (compressed: a real cold auxiliary boiler takes longer) | where the first steam comes from |
 | 10 | Gland steam | admit sealing steam to the ST glands | **refused unless the turning gear runs** (steam on a stopped rotor bows it) | an interlock with a reason |
 | 11 | Vacuum | start both vacuum pumps (hogging) | condenser pressure lag from 101 kPa: to ~30 kPa without gland steam (air leaks in at the glands), to ~8 kPa with it (limited by the cold water temperature); one pump kept for holding | why gland steam comes before vacuum |
 | 12 | HRSG | check drum levels, open the superheater drains and start-up vents, start a feedwater pump | drum level integrates feed − steam − blowdown; drain and vent positions; feedwater pump minimum flow | draining condensate from cold superheaters |
@@ -216,7 +227,7 @@ long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
 | 14 | GT1 generator | excitation on, synchronise (synchroscope: frequency and phase), close the breaker, take minimum load | voltage lag τ 2 s; synchroscope phase = integral of the frequency difference; the sync-check relay refuses a close outside ±10° phase, ±0.1 Hz and ±5 % voltage (permissive, with the reason shown) | synchronising |
 | 15 | HRSG warm-up | hold the GT at minimum load; close drains and vents as pressure rises; watch drum level | drum pressure lags toward a target set by exhaust heat (τ minutes); **swell**: drum level rises when boiling starts (a lag difference of heat input) — a trainee who drains it then gets low level when it settles | drum level swell and shrink |
 | 16 | Turbine bypass | put HP and LP bypass in automatic | bypass opens to hold pressure; **blocked unless condenser pressure < 25 kPa and CW flow is on** (interlock); spray water keeps bypass steam temperature down | the bypass needs the condenser |
-| 17 | Cooling tower fans | start fans as CW return temperature rises | CW cold-water temperature: a table of heat load, fans running and ambient; each fan's sound and its fan stack's spray | matching cooling to load |
+| 17 | Cooling tower fans | start fans as CW return temperature rises | CW cold-water temperature: a table of heat load, fans running and the wet-bulb temperature; each fan's sound and its fan stack's spray | matching cooling to load |
 | 18 | ST roll | when steam has ≥ 50 K superheat and is matched to the HP casing temperature: reset, open stop valves, roll | speed ramps: hold at ~800 rpm for warming, then through the critical speed band (~1,600–1,900 rpm) to 3,000 rpm; **bearing vibration rises in the band** (table) and trips if the trainee holds there | critical speeds; steam/metal matching |
 | 19 | ST generator | synchronise as 14, load | as 14 | |
 | 20 | Loading | raise GT load; bypass valves close as the ST takes the steam; start CW pump B when the condenser pressure rises | sliding pressure; condenser pressure a table of heat load, CW flow and cold-water temperature, lag τ 60 s | the plant as one system |
@@ -230,18 +241,19 @@ open after 120 s. CEP: hotwell level low-low. Cooling tower fan: vibration high-
 
 ## 5. Alarms
 
-Each alarm names its measurement's KKS code and the ISA-5.1 letters on its bubble (P pressure, T temperature, L level,
+Each alarm names its measurement's KKS code (or the equipment's own code for a drive's trip or state alarm); a
+range "001–003" stands for one alarm per code and the ISA-5.1 letters on its bubble (P pressure, T temperature, L level,
 F flow, S speed, V vibration, Z position, B burner flame; A alarm, H/L high/low, HH/LL the trip levels). Limits are
 round and invented; priority 1 is the most urgent (PLANT3D.md §7.6). Trip-level entries (HH/LL) are also trips (§4).
 
 | Code | ISA | Alarm | Limit | Prio |
 |---|---|---|---|---|
 | 00QFB10CP001 | PAL | Instrument air header pressure low | < 5.0 bar | 1 |
-| 00PGC10AP001/2 | — | Closed cooling water pump tripped | motor trip | 2 |
-| 10MBV10CP101–103 | PAL / PALL | GT lube oil pressure low / low-low (trip) | < 1.8 / < 1.2 bar | 2 / 1 |
+| 00PGC10AP001–002 | — | Closed cooling water pump tripped | motor trip | 2 |
+| 10MBV10CP001–003 | PAL / PALL | GT lube oil pressure low / low-low (trip) | < 1.8 / < 1.2 bar | 2 / 1 |
 | 10MBK10AE001 | — | GT turning gear not running with the rotor hot | stopped, wheel space > 150 °C | 2 |
 | 10MBP10CP001 | PAL | Fuel gas pressure low (start blocked) | < 25 bar | 2 |
-| 10MBM10 | BAL | GT flame failure (trip) | flame lost after ignition | 1 |
+| 10MBM10CB001–002 | BAL | GT flame failure (trip) | flame lost after ignition | 1 |
 | 10MBR10CT001–012 | TAH / TAHH | GT exhaust temperature high / high-high (trip) | > 620 / > 640 °C | 2 / 1 |
 | 10MBR10CT001–012 | TDAH | GT exhaust temperature spread high | > 30 K | 2 |
 | 10MBY10CS001–003 | SAHH | GT overspeed (trip) | > 110 % | 1 |
@@ -250,24 +262,24 @@ round and invented; priority 1 is the most urgent (PLANT3D.md §7.6). Trip-level
 | 10BAC10 | — | Generator 1 breaker tripped by protection | breaker trip | 1 |
 | 10HAD30CL001–003 | LAH / LAHH | HP drum level high / high-high (GT trip) | > +150 / > +250 mm | 2 / 1 |
 | 10HAD30CL001–003 | LAL / LALL | HP drum level low / low-low (GT trip) | < −150 / < −300 mm | 2 / 1 |
-| 10HAD10BB001 | LAL | LP drum level low | < −200 mm | 2 |
+| 10HAD10CL001 | LAL | LP drum level low | < −200 mm | 2 |
 | 10HAD30CP001 | — | HP drum warming too fast (saturation temperature from the drum pressure) | > 4 K/min | 3 |
-| 10LAC10AP001/2 | FAL | Feedwater pump flow below minimum (recirculation not open) | < 15 % for 10 s | 2 |
-| 10LBA30 | TAH | HP steam temperature high | > 575 °C | 2 |
+| 10LAC10CF001–002 | FAL | Feedwater pump flow below minimum (recirculation not open) | < 15 % for 10 s | 2 |
+| 10LBA30CT001 | TAH | HP steam temperature high | > 575 °C | 2 |
 | 30MAG10CP001–003 | PAH / PAHH | Condenser pressure high / high-high (ST trip, bypass blocked) | > 15 / > 25 kPa(a) | 2 / 1 |
 | 30MAG10CL001 | LAH / LAL / LALL | Hotwell level high / low / low-low (CEP trip) | +200 / −200 / −400 mm | 2 / 2 / 1 |
-| 30MAV10CP101–103 | PAL / PALL | ST lube oil pressure low / low-low (trip) | < 1.8 / < 1.2 bar | 2 / 1 |
-| 30MAK10AE001 | — | ST turning gear stopped with gland steam on | stopped and MAW10AA001 open | 1 |
-| 30MAD10CY001–008 | VAH / VAHH | ST bearing vibration high / high-high (trip) | > 80 / > 160 µm | 2 / 1 |
+| 30MAV10CP001–003 | PAL / PALL | ST lube oil pressure low / low-low (trip) | < 1.8 / < 1.2 bar | 2 / 1 |
+| 30MAK10AE001 | — | ST turning gear stopped with gland steam on | stopped and 30MAW10AA001 open | 1 |
+| 30MAD10CY001–008 | VAH / VAHH | ST bearing vibration high / high-high (trip) | > 125 / > 250 µm (shaft, peak to peak) | 2 / 1 |
 | 30MAY10CS001–003 | SAHH | ST overspeed (trip) | > 110 % | 1 |
-| 30MAA10 | TAL | HP steam superheat too low to roll | < 50 K | 3 |
+| 30MAA10CT001 | TAL | HP steam superheat too low to roll | < 50 K | 3 |
 | 30MAN10AA001 | ZAH | HP bypass wide open for over 30 min | > 90 % | 3 |
-| 30LCB10AP001/2 | FAL | Condensate pump on minimum flow too long (overheating) | > 30 min | 3 |
+| 30LCB10AP001–002 | — | Condensate pump on minimum flow too long (overheating) | > 30 min | 3 |
 | 30PAC10AP001–003 | — | CW pump tripped (overcurrent, basin level low-low) | motor trip | 1 |
 | 30PAC10AA101–103 | ZAL | CW pump discharge valve not open 120 s after start (pump trip) | < 95 % | 1 |
 | 30PAB10CF001 | FAL | CW flow low | < 10,000 m³/h with the ST running | 1 |
 | 30PAD10CL001 | LAL / LALL | Cooling tower basin level low / low-low | −0.3 / −0.6 m | 2 / 1 |
-| 30PAD10AN001–010 | VAHH | Cooling tower fan vibration high-high (fan trip) | > 10 mm/s | 2 |
+| 30PAD10CY001–010 | VAHH | Cooling tower fan vibration high-high (fan trip) | > 10 mm/s | 2 |
 | 30PAB20BR010 | TAH | CW return temperature high | > 48 °C | 2 |
 
 ## 6. Sounds

@@ -54,7 +54,7 @@ As COURSES.md §1, with these differences:
          "source": "Codes from the public KKS key (sources: docs/plant3d/FIRST-TRAIN.md §1); meanings in our own words"},
  "media": {"feedwater": {"group": "water", "band": "#2e7d32"}, "steam_hp": {"group": "steam", "band": "#c62828"}, …},
  "areas": ["control", "bop", "gt1", "trafo1", "hrsg1", "st", "cw", "ct"],
- "ext": ["ambient_t", "grid_frequency"],
+ "ext": ["ambient_t", "ambient_wb", "grid_frequency"],
  "start": {"at": [-20, 0, 0], "yaw": 90}}
 ```
 
@@ -116,11 +116,11 @@ building, an HRSG, the turbine hall, the cooling tower.
 
 ```json
 {"kks": "30PAB10BR010", "name": "Circulating water supply", "medium": "cooling_water",
- "dn": 2200, "insulation_mm": 0, "buried": [[1, 2]],
+ "dn": 2200, "insulation_mm": 0, "buried": [[1, 3]],
  "from": {"kks": "30PAC10AP001", "nozzle": "discharge"},
- "points": [[150, -30, 1.5], [150, -30, -6], [40, -30, -6]],
+ "points": [[150, -14, 1.5], [150, -14, -6], [150, -30, -6], [40, -30, -6]],
  "to": {"kks": "30MAG10AC001", "nozzle": "cw_inlet_a"},
- "valves": [{"kks": "30PAC10AA101", "part": "valve_butterfly", "at": 0.06,
+ "valves": [{"kks": "30PAC10AA101", "part": "valve_butterfly", "at": 0.02,
              "params": {"actuator": "electric"}}],
  "arrows": 25}
 ```
@@ -135,8 +135,8 @@ building, an HRSG, the turbine hall, the cooling tower.
   metres (0 = none), pointing from `from` to `to` (or the other way when the model says the flow reversed).
 - **`buried`:** stretches that run below ground: not drawn, shown on the overview map. The route's points are
   numbered `from` = 0, then `points`, then `to`; segment i joins point i and point i + 1; `[a, b]` covers segments a
-  to b, both included. (In the example the pipe leaves the pump house at +1.5 m, goes down and runs buried along
-  y = −30, and comes up into the condenser pit at −6 m.)
+  to b, both included. (In the example the pipe leaves the pump in the pump house at +1.5 m, standing on its floor, goes
+  down, runs buried along y = −30 at −6 m and enters the condenser pit at the same depth.)
 - **`valves`, `parts`:** inline equipment at a fraction of the route's length (`at` 0–1), turned to the pipe.
   Instruments on a pipe (a thermowell, a pressure tapping) are `parts` with a `side` (top, bottom, left, right).
 - **Supports** are made by the build (§9, `pipe_support`) at the spans of the kit's span table for that size,
@@ -146,7 +146,7 @@ building, an HRSG, the turbine hall, the cooling tower.
 ## 5. Structures
 
 Buildings, floors and the ways around them. Structures have no KKS code by default (`kks` is optional: the turbine
-hall is `30UMA`; a stair is just a stair), but every walkable one has an `id`.
+hall is `30UMA10`; a stair is just a stair), but every walkable one has an `id`.
 
 ```json
 {"id": "st_floor_12", "part": "platform", "at": [10, -20, 12],
@@ -185,7 +185,7 @@ Area and system signs help a trainee find the way (R9a): they are drawn on every
 | 2 Equipment unit | `A1A2` letters, `AN` three digits, `A3` optional letter | `AP001` |
 
 A code is level 0+1 (a whole system or machine: `1MBA10` would be read `1` + `MBA10` without F0, so codes always carry
-F0: `10MBA10`), or level 0+1+2 (`30PAC10AP001`). Regular expression: `[0-9][0-9][A-Z]{3}[0-9]{2}([A-Z]{2}[0-9]{3}[A-Z]?)?`.
+F0: `10MBA10`), or level 0+1+2 (`30PAC10AP001`). Regular expression, with L = `[A-HJ-NP-Z]` (the key uses no I or O): `[0-9][0-9]L{3}[0-9]{2}(L{2}[0-9]{3}L?)?`.
 Component level (level 3, e.g. a pump's motor) is not used in format 1: a pump and its motor are one piece of
 equipment with one code. This is a subset of what courses accept (`[0-9A-Z]{4,24}`, COURSES.md §3), so any plant
 code can be a course link.
@@ -208,8 +208,9 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
 | `walkdown://course/<course>` and `…/<course>/<page>` | Walkdown's course renderer at that course or page |
 
 - **Codes in links** are read leniently, the plant's own codes strictly: a link's code (`[0-9A-Z]{4,24}`, as in
-  courses) is cut to its first two levels when it is longer (a real sheet's `…CL503XB31` becomes `…CL503`), then
-  matched. Anything else (another path, a malformed code, an unknown ID) opens the app at its start with a short
+  courses) is cut to its longest beginning that matches the grammar, then matched; if that ends in an A3 letter and
+  is not found, it is tried again without it (a component-level `30PAC10AP001KP01` becomes `30PAC10AP001K`, then
+  `30PAC10AP001`). Anything else (another path, a malformed code, an unknown ID) opens the app at its start with a short
   message; links never carry anything but these paths.
 - **A code the plant doesn't have** (for example a real plant's code from Walkdown's drawings) shows the plant's
   equipment of the same kind instead, labelled as such: same system letters and equipment letters (`LAC` + `AP`:
@@ -253,13 +254,18 @@ equipment it belongs to).
 | `{"ramp": ref, "rate": r, "rate_down": r2, "init": n}` | moves toward the input at most r units per second |
 | `{"integrate": ref, "gain": g, "min": a, "max": b, "init": n}` | y ← clamp(y + g · input · dt, a, b): levels, inventories |
 | `{"latch": set, "reset": reset, "init": 0}` | 1 from the first step `set` is true until `reset` is true (reset wins) |
-| `{"delay": ref, "on": t, "off": t2}` | true once the input has been true for t / 0.1 consecutive steps (the step it turns true counts as the first: on = 2 s is true at the 20th step); false once it has been false for t2 / 0.1 steps; `off` default 0 |
-| `{"timer": ref}` | 0.1 × the number of consecutive steps the input has been true, this one included (0 while false) |
-| `{"wrap": ref, "period": p}` | integrated and kept in 0 ≤ y < p: synchroscope phase angle, turning-gear rotor angle |
+| `{"delay": ref, "on": t, "off": t2}` | counts the consecutive steps in which it read its input true (the first counts 1); true when the count reaches t / 0.1 (on = 2 s: at the 20th such step); likewise false after t2 / 0.1 steps of reading false; `off` default 0 |
+| `{"timer": ref}` | 0.1 × the number of consecutive steps in which it read its input true, this one included (0 when it reads false) |
+| `{"wrap": ref, "period": p}` | x = y + input · dt, then y = x − p · floor(x / p) (so 0 ≤ y < p also for negative input): synchroscope phase angle, turning-gear rotor angle |
 
-A *ref* is a number or a value name. **Every reference reads an earlier value**, except that a stateful node
-(`lag`, `ramp`, `integrate`, `latch`, `delay`, `timer`, `wrap`) may read any value, getting its value from the
-previous step: that is how loops (level → pump trip → level) close without an order problem.
+A *ref* is a number or a value name. A **stateless** node reads earlier values only, as this step computed them.
+A **stateful** node (`lag`, `ramp`, `integrate`, `latch`, `delay`, `timer`, `wrap`) reads **every** reference as the
+previous step left it, earlier or later in the list: that is how loops (level → pump trip → level) close without an
+order problem, and it makes the two readings of "earlier" the same.
+
+**Step 0** (when a scenario starts): every `state` and stateful node takes its initial value (`init`, or the
+scenario's; defaults: `lag`, `ramp`, `integrate`, `wrap` 0; `latch`, `delay`, `timer` 0), every `ext` value the
+scenario's, and the stateless nodes are evaluated once in order. Step 1 is the first 0.1 s step of §7.10.
 
 **First-order lag:** y ← y + (u − y) · (1 − e^(−dt/τ)), with dt = 0.1 s, τ = `tau` when u ≥ y, else `tau_down`
 (default `tau`). `tau` > 0. dt never changes: fast-forward runs more steps per frame (§7.9).
@@ -301,7 +307,7 @@ A start sequence (gas turbine start, steam turbine roll) is a state machine:
 
 ```json
 {"id": "gt1_start", "kks": "10MBA10", "init": "standstill",
- "commands": {"start": "standstill", "stop": "*"},
+ "commands": {"start": {"from": ["standstill"], "to": "crank"}, "stop": {"from": "*", "to": "coastdown"}},
  "states": [
    {"id": "standstill", "set": {"gt1_speed_sp": 0}, "watch": false},
    {"id": "crank", "set": {"gt1_sfc_on": 1, "gt1_speed_sp": 0.25}, "next": [["gt1_purge_speed", "purge"]]},
@@ -309,22 +315,26 @@ A start sequence (gas turbine start, steam turbine roll) is a state machine:
    …]}
 ```
 
-- **`commands`:** the commands the machine takes, each with the state it must be in (`*` = any).
+- **`commands`:** the commands the machine takes: the states it is accepted in (`*` = any) and the state it moves to.
+  A command in another state is refused like a failed permissive.
 - **`set`:** states written on entering. **`next`:** `[condition, state]`, the first true one moves on (at most one
   move per step). **`watch`** (default true): fast-forward stops while the machine is in this state (§7.9).
 - **`say`:** the step text shown on the control room screen and spoken in the event list.
 - The machine's current state is itself a value (`gt1_start_state`, the index in `states`), so the model, the
-  displays and procedures can read it.
+  displays and procedures can read it. A machine ID is at most 26 characters, and a declared value named like a
+  machine's state value is `dup_id`.
 
 ### 7.5 Trips
 
 ```json
-{"id": "gt1_trip_lube", "kks": "10MBV10CP101", "isa": "PALL", "text": "GT lube oil pressure low-low",
+{"id": "gt1_trip_lube", "kks": "10MBV10CP001", "isa": "PALL", "text": "GT lube oil pressure low-low",
  "when": "gt1_lube_p_ll", "delay": 2, "do": [{"machine": "gt1_start", "to": "trip"}],
  "first_out": "gt1"}
 ```
 
-A trip latches (§7.1) until `reset` is done and its cause has cleared; `first_out` groups trips so that the panel
+**Actions** (the `do` of interlocks, trips and faults, and what an op's `set` stands for) are `{"set": {name:
+value, …}}` or `{"machine": id, "to": state}` (forces the machine into that state, entering it as in §7.4). A trip
+latches (§7.1) until the op `{"do": "reset", "trip": id}` is made while its cause has cleared; `first_out` groups trips so that the panel
 shows which of them came first, as real first-out annunciators do. Trips that fire in the same step are ordered as
 they are listed in the model (plant.json's area order, then file order): the first one listed is "first out".
 
@@ -338,9 +348,13 @@ they are listed in the model (plant.json's area order, then file order): the fir
 
 - `when` and `clear` are value names (here `{"cmp": ["cond_p", ">", 15]}` and `{"cmp": ["cond_p", "<", 13]}` in
   `values`: FIRST-TRAIN.md §5).
+- **`suppress`** (optional): a value; while it is true the alarm is suppressed by design, as alarm management
+  does for alarms that are expected in a plant state (condenser pressure high while no vacuum pump runs and the turbine
+  is at standstill). A suppressed alarm is listed as such, never sounds and never changes state.
 - States per alarm, as the common alarm-management model (ISA-18.2) describes them: normal → active unacknowledged
-  (flashing, horn) → active acknowledged (steady) → cleared unacknowledged → normal; and **shelved** (set aside by
-  the operator, shown in a list of its own, no horn) until un-shelved. The trainee acknowledges at the panel; the
+  (flashing, horn) → active acknowledged (steady) → cleared unacknowledged → normal; and **shelved**: set aside for
+  a while by the operator (a nuisance alarm, an instrument under repair), shown in a list of its own, no horn, until
+  un-shelved or its shelving time ends. The trainee acknowledges at the panel; the
   horn stops on acknowledge.
 - **`priority`** 1 (high) – 3 (low) sets the colour and sound; **`clear`** gives a deadband so an alarm doesn't
   chatter; **`delay`** the seconds the condition must hold.
@@ -351,7 +365,7 @@ they are listed in the model (plant.json's area order, then file order): the fir
 ### 7.7 Bindings: what is seen and heard
 
 ```json
-{"kks": "30PAC10AP001", "anim": "shaft", "of": "cw_a_speed", "scale": 24.75}
+{"kks": "30PAC10AP001", "anim": "shaft", "of": "cw_a_speed", "scale": 8.25}
 {"kks": "30PAC10AA101", "anim": "disc", "of": "cw_a_valve_pos"}
 {"kks": "30PAC10CP501", "show": "cw_a_disch_p"}
 {"kks": "30PAC10AP001", "sound": "motor_large", "gain": {"of": "cw_a_speed", "table": [[0, 0], [1, 1]]},
@@ -361,7 +375,7 @@ they are listed in the model (plant.json's area order, then file order): the fir
 
 - **`anim`:** a named moving piece of the part (§9: a valve's `stem`, `disc` or `handwheel`; a pump's or fan's
   `shaft`; a damper's `blades`; a gauge's `needle`), driven by a value: positions take the value 0–1; a shaft turns at
-  `of` × `scale` revolutions per second (`cw_a_speed` 0–1 × 24.75 = 1,485 rpm).
+  `of` × `scale` revolutions per second (`cw_a_speed` 0–1 × 8.25 = 495 rpm, a large vertical pump's speed).
 - **`show`:** a gauge, level glass or local display shows the value in the part's range and unit.
 - **`sound`:** a sound of the library (§11) on the part, its gain and pitch tables of values. **`lamp`:** a lamp
   or beacon lit when the value is true.
@@ -373,20 +387,21 @@ they are listed in the model (plant.json's area order, then file order): the fir
 
 ```json
 {"format": "walkdown-plant-scenario", "version": 1, "id": "cold_iron", "title": "Cold start after a long outage",
- "init": {"ambient_t": 35, "hrsg1_hp_drum_level": -150, …},
- "shelved": ["cond_p_high", "gt1_lube_p_low", "st_lube_p_low"],
+ "init": {"ambient_t": 35, "ambient_wb": 25, "hrsg1_hp_drum_level": -150, …},
+ "latched": ["gt1_trip_lube", "st_trip_lube", "st_trip_cond_p"],
  "faults": [{"id": "cw_b_fails", "when": {"cmp": ["cw_b_start_count", ">=", 1]},
              "set": {"cw_b_motor_fault": 1}, "text": "Pump B trips on overcurrent at its first start"}]}
 ```
 
-`init` overrides any value's initial value and sets the `ext` values; `shelved` names alarms (by their `id`)
-that start shelved; `faults` are set by a condition, so a trainer can make "the standby pump fails"
+`init` overrides any value's initial value and sets the `ext` values; `latched` names trips (by
+their `id`) that start latched, as they stand in a stopped plant; `faults` are set by a condition, so a trainer can make "the standby pump fails"
 happen at the moment that teaches most.
 
 ### 7.9 Time
 
 Model time runs at 1× while anything is changing that the trainee should watch. A **fast-forward** (up to 60×) is
-offered while no unshelved alarm is active and no machine is in a state with `"watch": true`; it stops by itself when
+offered while no alarm is unacknowledged, no priority 1 alarm is active, and no machine is in a state with
+`"watch": true`; it stops by itself when
 one appears. Fast-forward runs more 0.1 s steps per frame (600 per second at 60×); the step never grows. Its cost on
 the Note 9 is measured (0054) and the top speed is capped by what the phone keeps within the frame rule.
 
@@ -403,7 +418,8 @@ Each 0.1 s step, in this order (the reference and the app must agree to the vect
 7. Alarms change state (with their `delay` and `clear`).
 8. Events of this step are written in the order above.
 
-States changed in steps 3–6 are read by `values` in the next step. A cold start that takes hours in a real plant takes about 40 minutes of play (FIRST-TRAIN.md §4).
+Every condition in steps 3–7 (`when`, `next`, permissive-like checks) reads the values as step 2 left them, not
+as an earlier part of steps 3–6 changed them; states changed in steps 3–6 are read by `values` in the next step. A cold start that takes hours in a real plant takes about 40 minutes of play (FIRST-TRAIN.md §4).
 
 ## 8. Procedures and tours (one format, R10)
 
@@ -491,8 +507,15 @@ plate is read up close, as in the field, and its code is also shown in the equip
 piece's visibility range from its size; the tier sets f and `min_px` (`detail`: 3 px on the phone, 1.5 px on
 laptops; `identify`: legible at 8 px, kept as a shape at any size).
 
-**Instancing.** Static pieces are grouped by part, LOD, material and 12 m cell into instanced meshes (0041: this cut
-the Note 9's draw calls by 93 %); moving pieces (`anim`) stay separate nodes.
+**Instancing.** Static pieces are grouped by part, LOD, material, visibility class, size bucket (a factor of 2) and
+12 m cell into instanced meshes (0041: grouping by cell cut the Note 9's draw calls by 93 %): Godot gives a
+visibility range per mesh instance, so pieces of one group share one range, that of the bucket's smallest size. The
+ranges are set when the plant loads, from the tier's resolution and field of view, and again when they change.
+Moving pieces (`anim`) stay separate nodes.
+
+**Tag plates** are `identify` in shape and colour (always drawn); only their text fades with legibility. A trainee
+reads a code by walking up to the plate, as in the field, or in the equipment card on any tier; the look rule's
+viewpoints for codes stand within 1.4 m of the plate, where every tier draws the text.
 
 **Materials** are PBR sets from the kit's library (CC0, 0054) at three texture sizes (2048, 1024, 512 px); a tier
 picks the size, never a different material. Paint colours (equipment colour, medium bands) are parameters, so one

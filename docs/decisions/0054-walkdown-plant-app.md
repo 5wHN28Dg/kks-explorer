@@ -93,16 +93,19 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    recordings released CC0), trimmed and looped by a script; machinery tones and broadband noise synthesised by our
    tools at build time into loops (PLANT3D.md §11). No CC-BY-NC/ND, no "royalty-free" packs whose licence forbids
    redistributing the files (they would sit in a public repository). Clips are committed (small, Ogg Vorbis, budget
-   10 MB; Freesound downloads need a login, so a fetch script can't pin them); each has its licence and source in
-   its sound entry, and `tools/about` lists them in the app's about data like `data/about.json`, with Godot's own
+   10 MB; Freesound downloads need a login, so a fetch script can't pin them); each has its licence, source URL,
+   uploader and download date in its sound entry (a "CC0" upload's provenance is the uploader's word), and our own
+   recordings are preferred for machinery, and `tools/about` lists them in the app's about data like `data/about.json`, with Godot's own
    notices from `Engine.get_license_info()`.
 8. **Identity and packaging.** Android `io.github.walkdown.plant`, a Gradle-built export (needed for the deep-link
    plugin), arm64-v8a only (0046), `permissions/internet=false`: no network at all in format 1. Flatpak
-   `io.github._5wHN28Dg.walkdown.plant` on `org.godotengine.godot.BaseApp//4.7`. MSIX identity `WalkdownPlant`, exe
+   `io.github._5wHN28Dg.walkdown.plant` (or a sibling ID: question below) on `org.godotengine.godot.BaseApp//4.7`. MSIX identity `WalkdownPlant`, exe
    `WalkdownPlant.exe`, alias `walkdown-plant.exe`, publisher `CN=Walkdown` (the certificate IT already trusts,
    0043). Releases: tags `plant-vX.Y.Z` in this repository, published **not as latest**
-   (`gh release create --latest=false`), so Walkdown's updater keeps finding Walkdown's release (a check to add to
-   `tools/release.py`: a plant release is never marked latest).
+   (`gh release create --latest=false`), so Walkdown's updater keeps finding Walkdown's release. Not left to memory: with
+   the first plant release, `tools/release.py` passes `--latest` explicitly for Walkdown and the plant's release tool
+   `--latest=false`, and both refuse when the current latest release is not a Walkdown `v*` tag; `policy.yml`'s tag
+   filter (`v*`) is extended to `plant-v*` so plant releases get the same checks.
 9. **CI** (when the code lands; `tests.yml` jobs): `plant3d` on Linux x86-64: `ref/plant3d.py` on the content and
    the vectors; the Godot build of every area; the model vectors through the app's evaluator (headless); the walking
    test (below); an Android and a Linux export with `--headless` (not baked, not signed) to catch export errors.
@@ -125,6 +128,12 @@ same repository would stop every phone's Walkdown updates. [V] the code.
       gdUnit4 dependency for now).
 
 ## Questions for the user
+
+- **Flatpak ID.** The ID asked for, `io.github._5wHN28Dg.walkdown.plant`, lies under Walkdown's own ID: Flatpak lets
+  an app own D-Bus names and export files that start with its ID, so Walkdown (`io.github._5wHN28Dg.walkdown`) could
+  claim names that belong to the plant app. A sibling ID (`io.github._5wHN28Dg.WalkdownPlant`) avoids it.
+  Recommended: the sibling ID; the Android and MSIX IDs are not affected (Android package names don't nest that way,
+  MSIX identities are separate names).
 
 - **Android signing key.** (a) the existing `kks-release.jks` (one key to keep safe; the two apps could later share
   signature-level permissions), or (b) a **new key** for Walkdown Plant. Recommended: **(b)**. The Godot export reads
