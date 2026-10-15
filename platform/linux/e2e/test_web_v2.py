@@ -204,13 +204,18 @@ class WebV2(unittest.TestCase):
     def run_dark(self, name):
         """dark drawings: the toggle turns the sharp layer and the overview dark (lines light), is remembered across a
         reload, and turning it off restores the light drawing"""
-        # An <img> is read once decoded: WebKit reports a big picture in the page complete, with its size, before it has
-        # decoded it, and drawImage then copies transparent pixels (#199: '0,0,0' for the white overview, about 1 run
-        # in 20 here). decode() rejects if the picture changed meanwhile: then it is read as it is (the checks decide).
+        # An <img> is read once WebKit can copy it: it reports a big picture in the page complete, with its size, and
+        # even decode() done, while drawImage still copies only transparent pixels for a moment (#199: '0,0,0' for the
+        # white overview, a WebKit run on CI; a second read a moment later had the right picture). The overview levels
+        # are opaque, so a copy with a pixel that is not is not the whole picture yet: read again, for at most 5 s (the
+        # checks then decide on what was read).
         stats = """async (sel) => { const e = document.querySelector(sel); let c = e;
             if (e.tagName === 'IMG') { await e.decode().catch(() => {});
               c = document.createElement('canvas'); c.width = e.naturalWidth; c.height = e.naturalHeight;
-              c.getContext('2d').drawImage(e, 0, 0) }
+              const x = c.getContext('2d'), opaque = () => { const a = x.getImageData(0, 0, c.width, c.height).data;
+                for (let i = 3; i < a.length; i += 4) if (a[i] !== 255) return false; return true };
+              for (let t = 0; t < 100; t++) { x.clearRect(0, 0, c.width, c.height); x.drawImage(e, 0, 0); if (opaque()) break;
+                await new Promise(r => setTimeout(r, 50)) } }
             const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, n = new Map(); let light = 0, dark = 0;
             for (let i = 0; i < d.length; i += 4) { const k = d[i] + ',' + d[i + 1] + ',' + d[i + 2]; n.set(k, (n.get(k) || 0) + 1);
               if (d[i] > 180 && d[i + 1] > 180 && d[i + 2] > 180) light++; if (d[i] < 60 && d[i + 1] < 60 && d[i + 2] < 60) dark++ }
