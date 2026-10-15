@@ -8,12 +8,14 @@ name: Tests
 
 on:
   pull_request:
-    # prose-only changes (CLAUDE.md, READMEs, docs/) don't build or test anything; the two READMEs tests read do
-    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'vendor/fonts/README.md']
+    # prose-only changes (CLAUDE.md, READMEs, docs/) don't build or test anything; the files tests read do
+    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'vendor/fonts/README.md',
+            'docs/plant3d/FIRST-TRAIN.md']
   push:
     branches: [main]
-    # prose-only changes (CLAUDE.md, READMEs, docs/) don't build or test anything; the two READMEs tests read do
-    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'vendor/fonts/README.md']
+    # prose-only changes (CLAUDE.md, READMEs, docs/) don't build or test anything; the files tests read do
+    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'vendor/fonts/README.md',
+            'docs/plant3d/FIRST-TRAIN.md']
   workflow_dispatch:
 
 permissions:
@@ -166,7 +168,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install -q -r requirements-dev.txt
-      - name: The protocol, strict JSON, path store and course vectors (the Python reference)
+      - name: The protocol, strict JSON, path store, course and Walkdown Plant vectors (the Python reference)
         run: .venv/bin/python -m unittest discover -s tests -v
 
   # the web client's download size against web-size.json (tools/web_size.py): any change needs the baseline updated in
