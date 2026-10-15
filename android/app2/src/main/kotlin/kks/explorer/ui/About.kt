@@ -250,26 +250,29 @@ private fun PartPage(d: JSONObject, id: String, onBack: () -> Unit) {
     val c = d.optJSONArray("components").objects().firstOrNull { it.str("id") == id }
         ?: run { LaunchedEffect(id) { onBack() }; return }     // (not during composition)
     val licences = d.optJSONObject("licenses") ?: JSONObject()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            BackRow(onBack)
-            Text(c.str("name"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-            partVersion(c).let { if (it.isNotEmpty()) Text(if (it.startsWith("the ") || it.startsWith("commit")) it.replaceFirstChar(Char::uppercase) else "Version $it") }
-            if (c.str("use").isNotEmpty()) Dim(c.str("use"))
-            Text("Licence: " + c.str("license_name"))
-            LinkRow("Project page", c.str("url"))
-        }
-        if (c.str("notice").isNotEmpty()) {
-            item { Heading("Copyright and licence notice") }
-            longText("notice", c.str("notice"))
-        }
-        for (lid in c.strings("license_ids").distinct()) {
-            val l = licences.optJSONObject(lid) ?: continue
-            item(key = "head:$lid") { Heading(l.str("name").ifEmpty { lid }) }
-            if (l.str("text").isNotEmpty()) longText(lid, l.str("text"))
-            // (no text here: a part's notice holds its own terms where it has one, but a part under several licences
-            // may not hold them all, so the licence itself is a tap away)
-            else if (l.str("url").isNotEmpty()) item(key = "link:$lid") { LinkRow("The licence on the web", l.str("url")) }
+    // (the back button stays at the top while the text scrolls under it, as Manage's own does)
+    Column(Modifier.fillMaxSize()) {
+        BackRow(onBack)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item {
+                Text(c.str("name"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+                partVersion(c).let { if (it.isNotEmpty()) Text(if (it.startsWith("the ") || it.startsWith("commit")) it.replaceFirstChar(Char::uppercase) else "Version $it") }
+                if (c.str("use").isNotEmpty()) Dim(c.str("use"))
+                Text("Licence: " + c.str("license_name"))
+                LinkRow("Project page", c.str("url"))
+            }
+            if (c.str("notice").isNotEmpty()) {
+                item { Heading("Copyright and licence notice") }
+                longText("notice", c.str("notice"))
+            }
+            for (lid in c.strings("license_ids").distinct()) {
+                val l = licences.optJSONObject(lid) ?: continue
+                item(key = "head:$lid") { Heading(l.str("name").ifEmpty { lid }) }
+                if (l.str("text").isNotEmpty()) longText(lid, l.str("text"))
+                // (no text here: a part's notice holds its own terms where it has one, but a part under several licences
+                // may not hold them all, so the licence itself is a tap away)
+                else if (l.str("url").isNotEmpty()) item(key = "link:$lid") { LinkRow("The licence on the web", l.str("url")) }
+            }
         }
     }
 }
@@ -278,12 +281,14 @@ private fun PartPage(d: JSONObject, id: String, onBack: () -> Unit) {
 @Composable
 private fun LicencePage(d: JSONObject, id: String, onBack: () -> Unit) {
     val l = d.optJSONObject("licenses")?.optJSONObject(id) ?: run { LaunchedEffect(id) { onBack() }; return }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            BackRow(onBack)
-            Text(l.str("name").ifEmpty { id }, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-            if (l.str("url").isNotEmpty()) LinkRow("This licence on the web", l.str("url"))
+    Column(Modifier.fillMaxSize()) {
+        BackRow(onBack)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item {
+                Text(l.str("name").ifEmpty { id }, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+                if (l.str("url").isNotEmpty()) LinkRow("This licence on the web", l.str("url"))
+            }
+            longText(id, l.str("text"))
         }
-        longText(id, l.str("text"))
     }
 }

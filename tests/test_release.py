@@ -89,6 +89,25 @@ class Release(unittest.TestCase):
         # on another branch of origin is pushed too (a release branch)
         self.git(self.repo, 'push', '-q', 'origin', 'HEAD:refs/heads/release-1.2.3')
         self.assertEqual(self.problems(), (head, []))
+        # ... until that branch is deleted on origin (the local copy of its ref doesn't count)
+        self.git(self.remote, 'branch', '-D', 'release-1.2.3')
+        self.assertIn('not pushed', self.problems()[1][0])
+        # ... and its tag on origin is enough (a lightweight one, as origin's are)
+        self.git(self.repo, 'tag', 'v1.2.3')
+        self.git(self.repo, 'push', '-q', 'origin', 'v1.2.3')
+        self.assertEqual(self.problems(), (head, []))
+
+    def test_a_detached_checkout_with_coloured_git_output(self):
+        """the wiki's `git checkout COMMIT` (a detached HEAD), with git set to colour its output always"""
+        self.write('c.txt', 'c')
+        later = self.commit('later')
+        self.git(self.repo, 'push', '-q', 'origin', 'HEAD:main')
+        self.git(self.repo, 'checkout', '-q', '--detach', self.head)
+        with mock.patch.dict(os.environ, {'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'color.ui',
+                                          'GIT_CONFIG_VALUE_0': 'always'}):
+            self.assertEqual(self.problems(), (self.head, []))
+            self.git(self.repo, 'checkout', '-q', '--detach', later)
+            self.assertEqual(self.problems(), (later, []))
 
     def test_a_tag_on_another_commit_stops_it(self):
         self.git(self.repo, 'tag', '-a', '-m', 'v', 'v1.2.3')     # annotated, on the release commit: fine
@@ -100,6 +119,11 @@ class Release(unittest.TestCase):
         h, out = self.problems()
         self.assertEqual(len(out), 1)
         self.assertIn(f"tag v1.2.3 names {self.head[:12]}, not the release commit {head[:12]}", out[0])
+        # a lightweight tag the same
+        self.git(self.repo, 'push', '-q', '--delete', 'origin', 'v1.2.3')
+        self.git(self.repo, 'tag', '-f', 'v1.2.3', self.head)
+        self.git(self.repo, 'push', '-q', 'origin', 'v1.2.3')
+        self.assertIn(f"tag v1.2.3 names {self.head[:12]}, not the release commit {head[:12]}", self.problems()[1][0])
 
     def test_packages_built_from_another_commit_are_refused(self):
         other = 'f' * 40

@@ -12,11 +12,12 @@ DIR holds the files to ship (FILES below). The key: $KKS_SIGNING/release-p256.pe
 
 The release is made of the commit this checkout is at (the release commit), and nothing is signed unless
 - the checkout is clean: no changed and no new files (ignored ones aside), so it is what the commit holds;
-- the commit is pushed (a branch of origin holds it, after fetching), and a tag vVERSION, if origin has one, names it;
+- the commit is pushed (a branch of origin holds it, after fetching, or origin's tag vVERSION names it), and a tag
+  vVERSION, if origin has one, names it;
   the GitHub release is created on that commit (gh --target), not on main's head;
 - walkdown.apk and the MSIX packages were built from it: each names the commit it was built from (About), and the
   release commit must be in their code (the Flatpak bundles are compressed: not checked; whether a build had local
-  changes is not readable from the files either: build from a clean checkout of the release commit)."""
+  changes is not checked from the files: build from a clean checkout of the release commit)."""
 import argparse, base64, hashlib, json, os, re, subprocess, sys, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -101,16 +102,18 @@ def checkout_problems(repo, version, remote='origin'):
     if changed:
         out.append(f'the checkout has changes or new files the commit does not hold ({len(changed)}, first: '
                    f'{changed[0].strip()}): a build from it says "with local changes"')
-    git(repo, 'fetch', '-q', remote)
-    if not [b for b in git(repo, 'branch', '-r', '--contains', head).split() if b.startswith(remote + '/')]:
-        out.append(f'commit {head[:12]} is not pushed: no branch of {remote} holds it')
+    git(repo, 'fetch', '-q', '--prune', remote)   # (a branch deleted on origin holds nothing)
+    on_branch = git(repo, 'for-each-ref', '--contains', head, '--format=%(refname)', f'refs/remotes/{remote}/').split()
     tag = [line.split() for line in git(repo, 'ls-remote', '--tags', remote, f'refs/tags/v{version}',
                                          f'refs/tags/v{version}^{{}}').splitlines()]
+    tagged = None
     if tag:
         named = dict((ref, sha) for sha, ref in tag)
-        sha = named.get(f'refs/tags/v{version}^{{}}', named.get(f'refs/tags/v{version}'))
-        if sha != head:
-            out.append(f'{remote}\'s tag v{version} names {sha[:12]}, not the release commit {head[:12]}')
+        tagged = named.get(f'refs/tags/v{version}^{{}}', named.get(f'refs/tags/v{version}'))
+        if tagged != head:
+            out.append(f'{remote}\'s tag v{version} names {tagged[:12]}, not the release commit {head[:12]}')
+    if not on_branch and tagged != head:
+        out.append(f'commit {head[:12]} is not pushed: no branch of {remote} holds it, nor its tag v{version}')
     return head, out
 
 

@@ -1694,6 +1694,8 @@ class Phone(unittest.TestCase):
         ui.find(paragraphs(about['licenses'][about['license']['id']]['text'])[0], exact=True, timeout=10)
         ui.find('‹ About Walkdown', exact=True)
         self.assertFalse(ui.present('‹ Manage', exact=True), 'a licence\'s page under Manage shows "‹ Manage" too')
+        ui.scroll_to(paragraphs(about['licenses'][about['license']['id']]['text'])[12], exact=True, tries=12)
+        ui.find('‹ About Walkdown', exact=True)   # still there, far down the text
         back()
         ui.scroll_to(about['notice'], exact=True)
         source = about['source']['commit_url'].replace('{commit}', commit)
@@ -1717,6 +1719,7 @@ class Phone(unittest.TestCase):
         ui.tap(font['name'], exact=True)
         ui.find(paragraphs(font['notice'])[0], exact=True, timeout=10)
         ui.scroll_to(paragraphs(about['licenses']['OFL-1.1']['text'])[1], exact=True)   # the OFL's own text
+        ui.find('‹ About Walkdown', exact=True)   # the back button stays at the top while the text scrolls
         night(True)
         shot('about-ofl-dark.png')
         night(False)
