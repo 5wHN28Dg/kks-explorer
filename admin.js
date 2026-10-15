@@ -5,8 +5,14 @@ const $=s=>document.querySelector(s);
 // full name with a quote ran script through an inline handler: fixed 2026-10-01; there are no such handlers now.)
 const h=K.h;
 $('#logout').addEventListener('click',()=>K.logout());
-// el's children := these (arrays flattened; null, undefined and false left out)
-const put=(el,...kids)=>el.replaceChildren(...kids.flat(Infinity).filter(c=>c!=null&&c!==false));
+// el's children := these (arrays flattened; null, undefined and false left out). One that is a child already stays
+// where it is, not taken out and put back: a press on it (mouse down, the page rebuilt, mouse up) still lands, which it
+// does not on an element taken out meanwhile (the waiting list on Devices, kept through a rebuild of the page)
+const put=(el,...kids)=>{ kids=kids.flat(Infinity).filter(c=>c!=null&&c!==false);
+  if(!kids.some(c=>c.parentNode===el)) return el.replaceChildren(...kids);
+  const keep=new Set(kids); for(const c of [...el.childNodes]) if(!keep.has(c)) c.remove();
+  let at=el.firstChild;
+  for(const c of kids){ if(c===at){ at=at.nextSibling; continue } el.insertBefore(c instanceof Node?c:document.createTextNode(String(c)),at) } };
 // a table of rows (in a tbody, as the HTML parser makes it)
 const table=(...rows)=>h('table',null,h('tbody',null,rows));
 const head=(...names)=>h('tr',null,names.map(n=>h('th',null,n)));
@@ -305,15 +311,20 @@ const VIEWS={
       h('div',{class:'card'},h('h3',null,'Bundle files'),h('div',{class:'sub'},'A bundle carries the plant log (optionally with photos) by USB or messaging, where Wi-Fi sync can\'t reach. It is not encrypted: treat it like a copy of the database.'),
         h('div',{class:'row',style:'margin-top:8px'},isAdmin()?[exportLink(0,'Export bundle'),exportLink(1,'Export with photos')]:null,
           h('label',{class:'ghost',style:'cursor:pointer'},'Import a bundle',h('input',{type:'file',accept:'.kksbundle',hidden:true,onchange:e=>importBundle(e.currentTarget)}))))];
-    if(isAdmin()) out.push(h('div',{class:'card'},h('h3',null,'Add a device with a QR code'),
+    // the QR code shown and the devices waiting on the Wi-Fi stay through a rebuild of the page (their own polls keep
+    // them current): their buttons are what an admin presses one after the other, and a rebuild comes with every sync.
+    // An invite that has ended goes back to the button, as before; so does a waiting list with a password form left
+    // open in it (being typed in, there is no rebuild): the list is not brought up to date under a form.
+    const T=mainFor(g), kept=id=>T===$('#main')?$('#'+id)?.closest('#main > .card'):null;
+    if(isAdmin()) out.push((!$('#invstate[data-ended]')&&kept('invite'))||h('div',{class:'card'},h('h3',null,'Add a device with a QR code'),
         h('div',{class:'sub'},`For someone next to you on the same network: they choose "Join with a QR code" when they set up the app and scan this. You then see who asks and accept; their device syncs the plant from this ${K.cfg?.app?'phone':D.mode==='peer'?'computer':'server'}. No files needed. The code works once, for 15 minutes.`),
         h('div',{id:'invite'},qrButton())),
-      h('div',{class:'card'},h('h3',null,'Waiting to join'),h('div',{class:'sub'},'Devices on this Wi-Fi that asked without a code (“Ask an admin on this Wi-Fi”). Accept only if the code next to the name is the one on their screen.'),h('div',{id:'lobby'})),
+      (!$('#lobby form')&&kept('lobby'))||h('div',{class:'card'},h('h3',null,'Waiting to join'),h('div',{class:'sub'},'Devices on this Wi-Fi that asked without a code (“Ask an admin on this Wi-Fi”). Accept only if the code next to the name is the one on their screen.'),h('div',{id:'lobby'})),
       h('div',{class:'card'},h('h3',null,'Add a computer from a join request'),
         h('div',{class:'sub'},'Someone set up the app on their laptop and gave you a ',h('span',{class:'mono'},'.kksjoin'),' file. Importing it certifies that laptop; then give them a bundle (export above) to import, or let it sync on the same Wi-Fi.'),
         h('label',{class:'primary',style:'display:inline-block;margin-top:8px;cursor:pointer'},'Import join request',h('input',{type:'file',accept:'.kksjoin,.json',hidden:true,onchange:e=>importJoin(e.currentTarget)})),h('div',{id:'joinOwn'})),
       h('div',{class:'card',id:'allDevices'},h('h3',null,'All devices'),hiddenBar(D.all.some(d=>d.revoked&&!d.hidden),D.hidden||0),table(D.all.map(d=>devRow(d,false)))));
-    put(mainFor(g),out);
+    put(T,out);
     if(isAdmin()) pollLobby();
   },
   async history(g,before){
@@ -510,29 +521,37 @@ const setPlantName=name=>act(async()=>{await K.api('/api/settings/plant',{name})
 const setRelay=url=>act(()=>K.api('/api/settings/relay',{url}),url?'Relay saved: every device learns it at its next sync':'Relay removed');
 async function importBundle(inp){ const f=inp.files[0]; if(!f) return; try{ const r=await K.importBundle(f); toast(`Imported ${r.entries} entries, ${r.photos} photos`); rebuild() }catch(e){ toast(e.message) } }
 // ---------- join by invite (QR code, or asked on the Wi-Fi without one): PROTOCOL-v2.md §16 ----------
-let lobbyTimer=null, lobbySeen='';
+let lobbyTimer=null;
+// Each device waiting is one row, kept as long as what it shows is the same (data-lk; not when it last asked, `seen`,
+// which changes with each of its asks, every 2 s), so that
+// a press on another row's button is not lost to the list being made again (an admin accepting one, then the next)
 async function pollLobby(){
   clearTimeout(lobbyTimer);
   const el=$('#lobby'); if(!el) return;          // left the Devices page
-  let r; try{ r=await K.api('/api/join-requests') }catch(e){ put(el,h('div',{class:'sub'},e.message)); return }
-  const key=JSON.stringify(r.requests.map(q=>[q.device,q.existing?.username,q.needs_position])), str=v=>String(v??'');
+  let r; try{ r=await K.api('/api/join-requests') }catch(e){ if(!el.querySelector('form')) put(el,h('div',{class:'sub'},e.message)); return }   // (not under a form, as below)
+  const str=v=>String(v??''), rows=new Map([...el.children].map(x=>[x.dataset.lk,x]));
   // (not under a password being typed for one's own device: once the form is gone)
-  if((key!==lobbySeen||!el.firstChild)&&!el.querySelector('form')){ lobbySeen=key;
-    put(el,r.requests.length?r.requests.map(q=>{const x=q.request, c=str(q.code);return h('div',{class:'row',style:'margin-top:8px;align-items:center'},
+  if(!el.querySelector('form')){
+    put(el,r.requests.length?r.requests.map(q=>{const x=q.request, c=str(q.code), lk=JSON.stringify([q.device,q.code,q.request,q.existing,q.needs_position]);return rows.get(lk)||h('div',{class:'row',style:'margin-top:8px;align-items:center','data-lk':lk,'data-device':str(q.device)},
       h('span',{style:'font-family:var(--mono);font-size:18px;letter-spacing:2px'},`${c.slice(0,3)} ${c.slice(3)}`),
       h('span',null,h('b',null,str(x.full_name)),` (${str(x.username)}${x.position?', '+x.position:''}) · “${x.label||'?'}”`,
         q.existing?[h('br'),h('span',{class:'sub'},`${str(q.existing.full_name)} (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null,
         q.needs_position?h('div',{class:'warn needs-position'},noPosition(x.full_name)):null),
-      h('span',{class:'row'},h('button',{class:'primary',disabled:!!q.needs_position,onclick:e=>mineName(q.existing?.username)?ownPassword(e.currentTarget.parentNode,'Accept',
-          pw=>decideLobby(q.device,'accept',true,pw),()=>{ lobbySeen=''; pollLobby() }):decideLobby(q.device,'accept',!!q.existing)},'Accept'),
+      h('span',{class:'row'},h('button',{class:'primary',disabled:!!q.needs_position,onclick:e=>{ const b=e.currentTarget.parentNode, row=b.parentNode;
+          // (Cancel: the row is made again with its buttons)
+          return mineName(q.existing?.username)?ownPassword(b,'Accept',pw=>decideLobby(q.device,'accept',true,pw),()=>{ delete row.dataset.lk; pollLobby() })
+            :decideLobby(q.device,'accept',!!q.existing) }},'Accept'),
         h('button',{class:'ghost',onclick:()=>decideLobby(q.device,'refuse')},'Refuse')))})
-      :h('div',{class:'sub',style:'margin-top:6px'},'Nobody is waiting.')) }
+      :rows.get('none')||h('div',{class:'sub',style:'margin-top:6px','data-lk':'none'},'Nobody is waiting.')) }
   clearTimeout(lobbyTimer); lobbyTimer=setTimeout(pollLobby,2000);   // (one loop, also when a poll was started while another waited)
 }
 // every new member needs a position (core certify refuses one without): the request has to be sent again with it
 const noPosition=name=>`No position (job title) given. Every new member needs one: ask ${String(name??'them')} to send a new request with their position.`;
 async function decideLobby(device,action,existing,password){
-  try{ const r=await K.api(`/api/join-requests/${encodeURIComponent(device)}`,{action,existing_ok:!!existing,...(password===undefined?{}:{password})}); toast(action==='accept'?`Accepted ${r.username}: their device gets the plant over the Wi-Fi now`:'Refused'); lobbySeen=''; $('#lobby')?.replaceChildren(); pollLobby() }catch(e){ await failed(e) }
+  try{ const r=await K.api(`/api/join-requests/${encodeURIComponent(device)}`,{action,existing_ok:!!existing,...(password===undefined?{}:{password})}); toast(action==='accept'?`Accepted ${r.username}: their device gets the plant over the Wi-Fi now`:'Refused');
+    // its row goes now (with the password form, if it had one); the others stay as they are
+    for(const x of $('#lobby')?.children||[]) if(x.dataset.device===device){ x.remove(); break }
+    pollLobby() }catch(e){ await failed(e) }
 }
 // A device for one's own person, on a server, is added only with the account's password (the user, 2026-10-14): a
 // stolen sign-in of an admin or the manager must not give its holder a device of theirs, which could then remove
@@ -572,7 +591,7 @@ async function startInvite(){
 }
 async function pollInvite(tok){
   const el=$('#invstate'); if(!el) return;            // left the Devices page
-  let st; try{ st=await K.api(`/api/invites/${tok}`) }catch(e){ el.textContent=e.message; return }
+  let st; try{ st=await K.api(`/api/invites/${tok}`) }catch(e){ el.dataset.ended='1'; el.textContent=e.message; return }
   const str=v=>String(v??''), who=q=>[h('b',null,str(q.full_name)),` (${str(q.username)}${q.position?', '+q.position:''}) · device “${q.label||'?'}”`];
   if(st.state==='open') el.textContent='Waiting for a device to scan it…';
   else if(st.state==='asked'){ if(el.dataset.asked!==st.request.device){ el.dataset.asked=st.request.device;
@@ -583,7 +602,7 @@ async function pollInvite(tok){
           pw=>decideInvite(tok,'accept',true,pw),()=>{ delete el.dataset.asked; clearTimeout(inviteTimer); pollInvite(tok) }):decideInvite(tok,'accept',!!st.existing)},'Accept'),
         h('button',{class:'ghost',onclick:()=>decideInvite(tok,'refuse')},'Refuse'))) } }
   else { const end={accepted:()=>['Accepted ',who(st.request),'. Their device is syncing the plant now.'],refused:()=>'Refused.',cancelled:()=>'Cancelled.',expired:()=>'Expired. Show a new code if they still need one.'};
-    put(el,Object.prototype.hasOwnProperty.call(end,st.state)?end[st.state]():str(st.state)); return }
+    el.dataset.ended='1'; put(el,Object.prototype.hasOwnProperty.call(end,st.state)?end[st.state]():str(st.state)); return }
   clearTimeout(inviteTimer); inviteTimer=setTimeout(()=>pollInvite(tok),1500);   // (one loop, as above)
 }
 async function decideInvite(tok,action,existing,password){

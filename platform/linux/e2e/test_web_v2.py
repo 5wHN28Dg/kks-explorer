@@ -220,7 +220,12 @@ class WebV2(unittest.TestCase):
             for (let i = 0; i < d.length; i += 4) { const k = d[i] + ',' + d[i + 1] + ',' + d[i + 2]; n.set(k, (n.get(k) || 0) + 1);
               if (d[i] > 180 && d[i + 1] > 180 && d[i + 2] > 180) light++; if (d[i] < 60 && d[i + 1] < 60 && d[i + 2] < 60) dark++ }
             return {bg: [...n].sort((a, b) => b[1] - a[1])[0][0], light, dark, src: e.currentSrc || e.src || ''} }"""
-        sharp_on = "() => { const c = document.getElementById('sharp'); return c && c.style.display === 'block' }"
+        # the sharp layer drawn for the view as it is now: the frame of the last render asked for is on the canvas, and
+        # that render was of this view (shown already is not enough: a frame of the view before the zoom, moved along
+        # with CSS, also shows; a fixed wait for the new one was a guess)
+        sharp_drawn = """() => { const c = document.getElementById('sharp'), a = sharp.at;
+            return !!c && c.style.display === 'block' && !!a && !!sharp.pending && a === sharp.pending.at
+              && a.s === view.s && a.x === view.x && a.y === view.y }"""
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context(viewport={'width': 1200, 'height': 800})
@@ -245,8 +250,7 @@ class WebV2(unittest.TestCase):
             self.assertEqual(img['bg'], '18,18,18', name + ': the overview paper is not #121212')
             self.assertGreater(img['light'], 50, name + ': no light lines on the dark overview')
             page.evaluate("() => zoomAt(8)")
-            page.wait_for_function(sharp_on, timeout=30000)
-            page.wait_for_timeout(500)
+            page.wait_for_function(sharp_drawn, timeout=30000)
             on = page.evaluate(stats, '#sharp')
             self.assertEqual(on['bg'], '18,18,18', name + ': the sharp layer\'s background is not #121212')
             self.assertGreater(on['light'], 100, name + ': no light lines on the dark sharp layer')
@@ -267,8 +271,7 @@ class WebV2(unittest.TestCase):
             self.assertEqual(page.evaluate(stats, '#sheetimg')['bg'], '18,18,18', name + ': not dark after a reload')
             # off: the light drawing again, at once
             page.evaluate("() => zoomAt(8)")
-            page.wait_for_function(sharp_on, timeout=30000)
-            page.wait_for_timeout(500)
+            page.wait_for_function(sharp_drawn, timeout=30000)
             self.assertEqual(page.evaluate(stats, '#sharp')['bg'], '18,18,18', name)
             page.get_by_role('button', name='Dark drawings').focus()   # by keyboard this time
             page.keyboard.press('Space')
