@@ -626,6 +626,29 @@ proc activate(w: Win, app: W) =
         writeFile(viewerFile & ".tmp", now)
         moveFile(viewerFile & ".tmp", viewerFile)
       true)
+  # tests: the About dialog's pages (about.nim aboutGo). Lines written to the file KKS_TEST_ABOUT names, plus ".do",
+  # are page tags to show ("legal", "acknowledgements" …, or "back"); the file itself holds
+  # "n=<lines done> page=<the visible page's tag, empty when the dialog is closed>", written when it changes.
+  let aboutFile = getEnv("KKS_TEST_ABOUT")
+  if aboutFile.len > 0:
+    var said = "\x00"
+    var done = 0
+    timeout(100, proc (): bool =
+      if w.gone: return false
+      let todo = aboutFile & ".do"
+      if fileExists(todo):
+        let cmds = readFile(todo)
+        removeFile(todo)
+        for line in cmds.splitLines:
+          if line.strip.len == 0: continue
+          aboutGo(line.strip)
+          inc done
+      let now = "n=" & $done & " page=" & aboutPage()
+      if now != said:
+        said = now
+        writeFile(aboutFile & ".tmp", now)
+        moveFile(aboutFile & ".tmp", aboutFile)
+      true)
   if getEnv("KKS_DEBUG_DIALOG").len > 0:     # accessibility check: a dialog over whatever screen is up
     after(3000, proc () =
       confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard))

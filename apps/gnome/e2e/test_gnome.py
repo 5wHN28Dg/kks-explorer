@@ -2176,6 +2176,115 @@ class Gnome(Plant):
         self.assertEqual(notes(), 'saved, then the focus', 'Discard sent what was typed')
         self.assertEqual(self.criticals('formask'), [])
 
+    def open_about(self, a):
+        """About Walkdown from the header bar's main menu; → the dialog's node"""
+        atspi.click(atspi.find(a, 'toggle button', name='Main menu'))
+        menu = atspi.find(a, 'menu', name='Main menu')
+        items = atspi.find_all(menu, 'menu item')
+        self.assertEqual(len(items), 1, 'the main menu holds About Walkdown alone')
+        atspi.click(items[0])        # (GTK names a menu's items through a relation only: there is one)
+        return atspi.find(a, 'dialog', name='About', timeout=10)
+
+    def about_page(self, d, page, state, shot=None, pid=None):
+        """show a page of the About dialog through the test hook (its rows have no accessibility action, and the
+        session has no pointer or keyboard: KKS_TEST_ABOUT, kks_explorer.nim; "back" goes back to the first page,
+        None stays), optionally with a screenshot"""
+        if page is not None:
+            with open(state + '.do', 'w') as f:
+                f.write(page + '\n')
+        want = 'page=' + ('main' if page in ('back', None) else page)
+        for _ in range(50):
+            time.sleep(0.2)
+            if os.path.exists(state) and open(state).read().endswith(want):
+                break
+        else:
+            self.fail(f'the About dialog did not show its page {page}: {open(state).read() if os.path.exists(state) else ""}')
+        time.sleep(0.8)        # (the page's slide)
+        page = page or 'main'
+        if shot:
+            if os.path.exists(shot):
+                os.remove(shot)
+            os.kill(pid, signal.SIGUSR1)
+            for _ in range(40):
+                time.sleep(0.25)
+                if os.path.exists(shot):
+                    break
+            time.sleep(0.5)
+            shutil.copy(shot, os.path.join(SHOTS, f'gnome-about-{page}.png'))
+
+    def test_zzzzzzzzz_about(self):
+        """About Walkdown (AdwAboutDialog, about.nim), from the main menu of the setup screen and of the main screen:
+        this build's version and commit, the link to its source, the legal page with every part's licence (libjxl's
+        BSD notice, the fonts' OFL, the app's AGPL), the course photos' credits; it closes with its Close button."""
+        os.makedirs(SHOTS, exist_ok=True)
+        shot = os.path.join(SHOTS, 'gnome-about-now.png')
+        state = os.path.join(self.dir, 'about-hook')
+        a = self.start_app('about', KKS_SHOT_ON_SIGNAL=shot, KKS_TEST_ABOUT=state)
+        pid = self.apps[-1].pid
+        version = open(os.path.join(REPO, 'VERSION')).read().strip()
+        head = subprocess.run(['git', '-C', REPO, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+        self.assertRegex(head, '^[0-9a-f]{40}$')
+        d = self.open_about(a)
+        # the main page: name, developer, version with the commit (and "with local changes" for a build from a
+        # changed checkout: whether it was changed when the app was built, not now)
+        atspi.find(d, 'label', name='Walkdown')
+        atspi.find(d, 'label', name='Walkdown contributors')
+        v = atspi.find(d, 'button', contains=f'{version} (commit ').get_name()
+        self.assertRegex(v, '^' + re.escape(f'{version} (commit {head[:12]}') + r'(, with local changes)?\)$')
+        atspi.find(d, 'link', name='Report an Issue')
+        self.about_page(d, None, state, shot, pid)
+        # Details: the summary, the website and this version's source
+        self.about_page(d, 'details', state)
+        atspi.find(d, 'label', name='Find plant equipment on P&ID drawings by KKS code')
+        atspi.find(d, 'link', name='Website')
+        src = atspi.find(d, 'link', contains='Source of this version')
+        self.assertEqual(src.get_name(), 'Source of this version' + (' (without its local changes)' if 'local changes' in v else ''))
+        self.about_page(d, 'back', state)
+        # Legal: the app's own licence, then every part with its licence text
+        self.about_page(d, 'legal', state, shot, pid)
+        own = atspi.find(d, 'label', contains='© Walkdown contributors').get_name()
+        self.assertIn('GNU Affero General Public License', own)
+        atspi.find(d, 'label', name='Third-party parts')
+        atspi.find(d, 'label', name='libjxl')
+        jxl = atspi.find(d, 'label', contains='JPEG XL photos.').get_name()
+        self.assertIn('Licence: BSD 3-Clause License', jxl)
+        self.assertIn('Copyright (c) the JPEG XL Project Authors.', jxl)
+        self.assertIn('Redistributions in binary form must reproduce the above copyright notice', jxl)
+        atspi.find(d, 'label', name='Atkinson Hyperlegible', showing=False)
+        font = atspi.find(d, 'label', contains='Copyright 2020 Braille Institute', showing=False).get_name()
+        self.assertIn('SIL OPEN FONT LICENSE Version 1.1', font)
+        atspi.find(d, 'label', name='GTK 4', showing=False)
+        self.about_page(d, 'back', state)
+        # Acknowledgements: the course photos' credits, and their licences
+        self.about_page(d, 'acknowledgements', state, shot, pid)
+        atspi.find(d, 'label', name='Course photos')
+        atspi.find(d, 'link', name='Photo: Didier Duforest, CC BY-SA 4.0, via Wikimedia Commons')
+        atspi.find(d, 'link', name='Photo: Siemens Pressebild, www.siemens.com, CC BY-SA 3.0, via Wikimedia Commons', showing=False)
+        atspi.find(d, 'label', name='Licences of the course photos', showing=False)
+        self.assertEqual(len([n for n, nm in atspi.nodes(d, 'link') if nm == 'CC BY-SA 3.0']), 1)
+        self.about_page(d, 'back', state)
+        # Close (the dialog's own button, not the window's)
+        atspi.click(atspi.find(d, 'button', name='Close'))
+        for _ in range(30):
+            time.sleep(0.3)
+            if not atspi.find_all(a, 'dialog', name='About'):
+                break
+        else:
+            self.fail('the About dialog did not close')
+        self.assertTrue(open(state).read().endswith('page='))
+        # once joined, the main screen's menu opens it again
+        self.join(a)
+        d = self.open_about(a)
+        atspi.find(d, 'button', contains=f'{version} (commit {head[:12]}')
+        atspi.click(atspi.find(d, 'button', name='Close'))
+        for _ in range(30):
+            time.sleep(0.3)
+            if not atspi.find_all(a, 'dialog', name='About'):
+                break
+        else:
+            self.fail('the About dialog did not close the second time')
+        self.assertEqual(self.criticals('about'), [])
+
 
 class Coverage(Plant):
     """Coverage counts every code, tag, place and photo of the plant: on a server of its own, so the totals are the

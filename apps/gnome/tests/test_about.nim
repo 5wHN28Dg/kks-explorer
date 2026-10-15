@@ -101,10 +101,12 @@ suite "about":
       check d["photos"][i]["text"].s.multiReplace(("https://", ""), ("http://", "")) in p
     check "Didier Duforest, CC BY-SA 4.0, via Wikimedia Commons https://commons.wikimedia.org/wiki/File:Edna_reflex_water_gages_141-R.jpg" in a.photos[0]
     check "CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0" in a.photoLicences
-    var dup = false
-    for i in 0 ..< a.photoLicences.len:
-      for j in i + 1 ..< a.photoLicences.len: dup = dup or a.photoLicences[i] == a.photoLicences[j]
-    check not dup
+    # each licence once (about.json writes CC BY-SA 3.0's address with and without a / at its end)
+    var names: seq[string]
+    for l in a.photoLicences:
+      check l.rsplit(' ', 1)[0] notin names
+      names.add l.rsplit(' ', 1)[0]
+    check "CC BY-SA 3.0" in names and "CC0" in names
 
   test "names and texts with & and < are shown as written":
     let t = aboutFrom("""{"name": "W", "summary": "s", "developer": "A & B <x>", "links": {}, "licenses":
@@ -127,3 +129,7 @@ suite "about":
     let info = debugInfo(nil)
     check info.startsWith(versionLine("Walkdown") & "\n")
     check "GTK: 4." in info and "libadwaita: 1." in info and "System: " in info
+
+  test "the dialog's code is compiled here too (it needs a display to run: the e2e opens it)":
+    let build = aboutDialog
+    check build != nil

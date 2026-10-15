@@ -101,10 +101,10 @@ proc aboutFrom*(text: string): About =
     for l in p["links"].elems:
       let u = l.str("url")
       if "creativecommons.org" in u:
-        let entry = plainCredit(l.str("text")) & " " & u
-        if entry notin seen:
-          seen.add entry
-          result.photoLicences.add entry
+        let key = u.strip(leading = false, chars = {'/'})     # (the same licence, written with and without a /)
+        if key notin seen:
+          seen.add key
+          result.photoLicences.add plainCredit(l.str("text")) & " " & u
       else: page = u
     result.photos.add plainCredit(p.str("text")) & (if page.len > 0: " " & page else: "")
 
@@ -170,7 +170,7 @@ proc aboutDialog*(parent: W, appId: string): W =
   adw_about_dialog_set_application_icon(d, appId.cstring)
   adw_about_dialog_set_version(d, a.version.cstring)
   adw_about_dialog_set_developer_name(d, a.developer.cstring)
-  adw_about_dialog_set_comments(d, a.summary.cstring)
+  adw_about_dialog_set_comments(d, esc(a.summary).cstring)     # (markup)
   adw_about_dialog_set_copyright(d, a.copyright.cstring)
   adw_about_dialog_set_license_type(d, GTK_LICENSE_AGPL_3_0)       # (or later)
   adw_about_dialog_set_website(d, a.website.cstring)
@@ -191,6 +191,7 @@ proc aboutDialog*(parent: W, appId: string): W =
   d
 
 var aboutShown = false
+var shownDialog: W          ## the open About dialog (nil once it has closed)
 proc showAbout*(parent: W, appId: string) =
   ## Built and shown from idle (the menu's item can be pressed through an accessibility action, and a dialog built
   ## inside one has no accessible contents); one at a time.
@@ -199,11 +200,46 @@ proc showAbout*(parent: W, appId: string) =
   idle(proc () =
     try:
       let d = aboutDialog(parent, appId)
-      d.on("closed", proc () = aboutShown = false)
+      d.on("closed", proc () =
+        aboutShown = false
+        shownDialog = nil)
+      shownDialog = d
       adw_dialog_present(d, parent)
     except CatchableError, Defect:
       aboutShown = false
       raise)
+
+# tests: the dialog's pages. Its rows (Legal, Acknowledgements …) have no accessibility action to press, and the
+# headless test session has no pointer or keyboard: the e2e opens them through the dialog's own navigation view.
+proc adw_navigation_view_get_visible_page(v: W): W {.importc, header: "<adwaita.h>".}
+proc adw_navigation_page_get_tag(p: W): cstring {.importc, header: "<adwaita.h>".}
+
+proc navigationOf(w: W): W =
+  if $gObjectTypeName(w) == "AdwNavigationView": return w
+  var c = gtk_widget_get_first_child(w)
+  while c != nil:
+    result = navigationOf(c)
+    if result != nil: return
+    c = gtk_widget_get_next_sibling(c)
+
+proc aboutPage*(): string =
+  ## the tag of the open About dialog's visible page ("legal" …, "main" for the first); "" when it is not open
+  if shownDialog == nil: return ""
+  let nav = navigationOf(shownDialog)
+  if nav == nil: return "?"
+  let p = adw_navigation_view_get_visible_page(nav)
+  if p == nil: "?"
+  elif adw_navigation_page_get_tag(p) == nil: "main"      # (the first page has no tag)
+  else: $adw_navigation_page_get_tag(p)
+
+proc aboutGo*(tag: string) =
+  ## shows the open About dialog's page of this tag; "back" goes back one page
+  if shownDialog == nil: return
+  let nav = navigationOf(shownDialog)
+  if nav == nil: return
+  if tag == "back": adw_navigation_view_pop(nav)
+  elif adw_navigation_view_find_page(nav, tag.cstring) != nil: adw_navigation_view_push_by_tag(nav, tag.cstring)
+  else: stderr.writeLine "About: no page " & tag
 
 proc primaryMenu*(): W =
   ## the header bar's main menu (GNOME's primary menu): About Walkdown (app.about)

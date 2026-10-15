@@ -295,7 +295,9 @@ proc adw_about_dialog_set_debug_info*(d: W, s: cstring) {.importc, header: HA.}
 proc adw_about_dialog_set_debug_info_filename*(d: W, s: cstring) {.importc, header: HA.}
 proc adw_about_dialog_add_link*(d: W, title, url: cstring) {.importc, header: HA.}
 proc adw_about_dialog_add_legal_section*(d: W, title, copyright: cstring, licenseType: cint, license: cstring) {.importc, header: HA.}
-proc adw_about_dialog_add_acknowledgement_section*(d: W, name: cstring, people: cstringArray) {.importc, header: HA.}
+proc adw_about_dialog_add_acknowledgement_section_c(d: W, name: cstring, people: pointer) {.importc: "adw_about_dialog_add_acknowledgement_section", header: HA.}
+proc adw_about_dialog_add_acknowledgement_section*(d: W, name: cstring, people: cstringArray) =
+  adw_about_dialog_add_acknowledgement_section_c(d, name, cast[pointer](people))   # (const char **)
 proc adw_get_major_version*(): cuint {.importc, header: HA.}
 proc adw_get_minor_version*(): cuint {.importc, header: HA.}
 proc adw_get_micro_version*(): cuint {.importc, header: HA.}
