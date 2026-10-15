@@ -126,15 +126,17 @@ private fun LazyListScope.longText(key: String, text: String) {
     }
 }
 
-/** the About screen: Manage → About Walkdown, and the first screen's "About Walkdown" before the phone joins a plant */
+/** the About screen: Manage → About Walkdown, and the first screen's "About Walkdown" before the phone joins a plant.
+ *  [subpage] is the page open over the main one: ("part", component id) or ("licence", licence id), or null. The screen
+ *  that shows About holds it, so that it shows its own back button only on About's main page: a part's or a licence's
+ *  page has just "‹ About Walkdown", the one that goes back one level (as Manage's other pages have just "‹ Manage"). */
 @Composable
-fun AboutScreen() {
+fun AboutScreen(subpage: MutableState<Pair<String, String>?> = remember { mutableStateOf(null) }) {
     val ctx = LocalContext.current
     var loaded by remember { mutableStateOf(false) }
     var d by remember { mutableStateOf<JSONObject?>(null) }
     LaunchedEffect(Unit) { d = withContext(Dispatchers.IO) { About.load(ctx.applicationContext) }; loaded = true }
-    // a page over the main one: ("part", component id) or ("licence", licence id)
-    var page by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var page by subpage
     BackHandler(enabled = page != null) { page = null }
     val about = d
     // (the main list keeps its place while a part's or a licence's page is open over it)

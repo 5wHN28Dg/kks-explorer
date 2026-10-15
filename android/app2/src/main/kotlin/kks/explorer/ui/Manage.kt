@@ -45,12 +45,14 @@ import org.json.JSONObject
 fun Manage(snack: SnackbarHostState, ui: Ui? = null) {
     var page by remember { mutableStateOf("") }
     BackHandler(enabled = page.isNotEmpty()) { page = "" }
+    // About's part or licence page, when one is open (a new one each time About opens): it has its own back button
+    val aboutPage = remember(page) { mutableStateOf<Pair<String, String>?>(null) }
     val rev = Changes.rev
     val cfg = remember(rev) { Sync.config() }
     val admin = cfg.optBoolean("admin")
     val say: (String) -> Unit = { m -> Changes.rev++; kotlinx.coroutines.MainScope().launch { snack.showSnackbar(m) } }
     Column(Modifier.fillMaxSize()) {
-        if (page.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+        if (page.isNotEmpty() && aboutPage.value == null) Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { page = "" }) { Text("‹ Manage") }
         }
         Box(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -85,7 +87,7 @@ fun Manage(snack: SnackbarHostState, ui: Ui? = null) {
                 "account" -> Account(rev, say)
                 "leaderboard" -> Leaderboard(rev)
                 "diagnostics" -> DiagnosticsReports(rev)
-                "about" -> AboutScreen()
+                "about" -> AboutScreen(aboutPage)
             }
         }
     }

@@ -8,8 +8,16 @@ Runs on the maintainer's machine only: the release key never goes into the repos
   python3 tools/release.py --new-key                           create the release key (once; back it up offline)
 
 DIR holds the files to ship (FILES below). The key: $KKS_SIGNING/release-p256.pem or
-~/.config/kks-explorer/signing/release-p256.pem (an unencrypted PEM P-256 private key)."""
-import argparse, base64, hashlib, json, os, subprocess, sys
+~/.config/kks-explorer/signing/release-p256.pem (an unencrypted PEM P-256 private key).
+
+The release is made of the commit this checkout is at (the release commit), and nothing is signed unless
+- the checkout is clean: no changed and no new files (ignored ones aside), so it is what the commit holds;
+- the commit is pushed (a branch of origin holds it, after fetching), and a tag vVERSION, if origin has one, names it;
+  the GitHub release is created on that commit (gh --target), not on main's head;
+- walkdown.apk and the MSIX packages were built from it: each names the commit it was built from (About), and the
+  release commit must be in their code (the Flatpak bundles are compressed: not checked; whether a build had local
+  changes is not readable from the files either: build from a clean checkout of the release commit)."""
+import argparse, base64, hashlib, json, os, re, subprocess, sys, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -78,7 +86,63 @@ def verify_p256(manifest_bytes, sig_b64, pub_b64=RELEASE_P256_PUB):
     pub.verify(base64.b64decode(sig_b64.strip()), DOMAIN2 + manifest_bytes, ec.ECDSA(hashes.SHA256()))
 
 
-def main():
+def git(repo, *args):
+    r = subprocess.run(['git', '-C', repo, *args], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f'git {" ".join(args)} failed in {repo}: {r.stderr.strip()}')
+    return r.stdout
+
+
+def checkout_problems(repo, version, remote='origin'):
+    """-> (the release commit = the checkout's HEAD, [what stops it being released]). Fetches from `remote`."""
+    head = git(repo, 'rev-parse', '--verify', 'HEAD^{commit}').strip()
+    out = []
+    changed = git(repo, 'status', '--porcelain', '--untracked-files=all').splitlines()
+    if changed:
+        out.append(f'the checkout has changes or new files the commit does not hold ({len(changed)}, first: '
+                   f'{changed[0].strip()}): a build from it says "with local changes"')
+    git(repo, 'fetch', '-q', remote)
+    if not [b for b in git(repo, 'branch', '-r', '--contains', head).split() if b.startswith(remote + '/')]:
+        out.append(f'commit {head[:12]} is not pushed: no branch of {remote} holds it')
+    tag = [line.split() for line in git(repo, 'ls-remote', '--tags', remote, f'refs/tags/v{version}',
+                                         f'refs/tags/v{version}^{{}}').splitlines()]
+    if tag:
+        named = dict((ref, sha) for sha, ref in tag)
+        sha = named.get(f'refs/tags/v{version}^{{}}', named.get(f'refs/tags/v{version}'))
+        if sha != head:
+            out.append(f'{remote}\'s tag v{version} names {sha[:12]}, not the release commit {head[:12]}')
+    return head, out
+
+
+# the files that say which commit they were built from, and where in them (About shows it)
+BUILT_FROM = {'walkdown.apk': re.compile(r'classes\d*\.dex'), 'Walkdown.msix': re.compile(r'Walkdown\.exe'),
+              'Walkdown-arm64.msix': re.compile(r'Walkdown\.exe')}
+
+
+def artifact_problems(files, commit):
+    """[what in the files to ship was not built from `commit`] ({name: path}): the APK's code and the MSIX packages'
+    Walkdown.exe carry the full commit they were built from; a build from another commit (or with the commit unknown)
+    doesn't carry this one"""
+    out = []
+    for name, path in sorted(files.items()):
+        where = BUILT_FROM.get(name)
+        if where is None:
+            continue
+        try:
+            with zipfile.ZipFile(path) as z:
+                parts = [n for n in z.namelist() if where.fullmatch(n)]
+                found = any(commit.encode() in z.read(n) for n in parts)
+        except (zipfile.BadZipFile, OSError) as e:
+            out.append(f'{name}: not readable ({e})')
+            continue
+        if not parts:
+            out.append(f'{name}: has no {where.pattern}')
+        elif not found:
+            out.append(f'{name} was not built from the release commit {commit[:12]} (another commit, or unknown)')
+    return out
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('version', nargs='?')
     ap.add_argument('dir', nargs='?')
@@ -86,7 +150,7 @@ def main():
     ap.add_argument('--publish', action='store_true')
     ap.add_argument('--yes', action='store_true', help='publish without asking again')
     ap.add_argument('--new-key', action='store_true')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if a.new_key:
         from cryptography.hazmat.primitives import serialization as s
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -105,12 +169,18 @@ def main():
         sys.exit('VERSION looks like 1.2.3')
     if updates.current() != a.version:
         sys.exit(f'The VERSION file says {updates.current()}, not {a.version}: bump it, commit, build, then release.')
+    commit, problems = checkout_problems(ROOT, a.version)
+    if problems:
+        sys.exit('Not released: ' + '; '.join(problems) + '.')
     files = {n: os.path.join(a.dir, n) for n in FILES if os.path.exists(os.path.join(a.dir, n))}
     missing = [n for n in FILES if n not in files]
     if missing:
         print('Missing (devices of that kind will not see this update):', ', '.join(missing))
     if not files:
         sys.exit('Nothing to release.')
+    problems = artifact_problems(files, commit)
+    if problems:
+        sys.exit('Not released: ' + '; '.join(problems) + '. Build them from a clean checkout of the release commit.')
     notes = open(a.notes).read().strip() if a.notes else ''
     m = manifest(a.version, files, notes)
     with open(os.path.join(a.dir, 'release.json'), 'wb') as f:
@@ -118,12 +188,13 @@ def main():
     with open(os.path.join(a.dir, 'release.json.p256'), 'w') as f:
         f.write(sign_p256(m) + '\n')
     verify_p256(m, open(os.path.join(a.dir, 'release.json.p256')).read())   # what the devices will check
-    print(f'Signed release.json for {a.version}: {", ".join(files)}')
+    print(f'Signed release.json for {a.version} (commit {commit}): {", ".join(files)}')
     if not a.publish:
         return
     if not a.yes and input(f'Create the public GitHub release v{a.version} with these files? [y/N] ').strip().lower() != 'y':
         return print('Not published.')
-    cmd = ['gh', 'release', 'create', f'v{a.version}', '--repo', updates.REPO, '--title', f'Walkdown {a.version}',
+    cmd = ['gh', 'release', 'create', f'v{a.version}', '--repo', updates.REPO, '--target', commit,
+           '--title', f'Walkdown {a.version}',
            '--notes', notes or f'Walkdown {a.version}', *files.values(),
            os.path.join(a.dir, 'release.json'), os.path.join(a.dir, 'release.json.p256')]
     subprocess.run(cmd, check=True)
