@@ -174,16 +174,17 @@ class About(unittest.TestCase):
                          'Its NOTICE file, w:\n\nCopyright 2026 Someone\n')
 
     def test_code_from_other_projects(self):
-        """the Kotlin standard library and kotlinx.coroutines carry code derived from other projects (Kotlin's
-        license/README.md: kotlin.time.Instant from ThreeTen-Backport, BSD-3-Clause, whose licence asks for its notice
-        with binaries). Each records at the version that ships what of that code the shrunk app keeps, so a version
+        """the Kotlin standard library and kotlinx.coroutines each record, at the version that ships, what code derived
+        from other projects they hold and what of it the shrunk app keeps (the standard library's kotlin.time.Instant
+        comes from ThreeTen-Backport, BSD-3-Clause, whose licence asks for its notice with binaries), so a version
         change is checked again (the user, 2026-10-15)"""
         with open(os.path.join(REPO, about.SRC, 'components.json'), encoding='utf-8') as f:
             src = {c['id']: c for c in json.load(f)['components']}
         for cid in ('kotlin-stdlib', 'kotlinx-coroutines'):
             rec = src[cid].get('third_party')
             self.assertTrue(isinstance(rec, str) and len(rec) > 40, cid)
-            self.assertIn(src[cid]['version'], rec, cid)   # checked at the version that ships
+            # checked at the version that ships (the whole version: 2.4.2 is not 2.4.20)
+            self.assertRegex(rec, r'(?<![\w.])v?' + re.escape(src[cid]['version']) + r'(?![\w]|\.\d)', cid)
         self.assertIn('ThreeTen-Backport', src['kotlin-stdlib']['third_party'])
 
     def test_course_credits(self):
