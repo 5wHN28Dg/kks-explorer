@@ -59,7 +59,9 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    tool. Godot pinned to one 4.7.x release; minor upgrades are a decision with a fresh 0041 measurement.
 2. **KKS decoding without the core.** The plant's own decoder tables live in its `plant.json`, written from the public
    KKS key (R1; Walkdown's `data/kks.json` comes from a real plant's drawings and is not used). Decoding is a split
-   by the fixed grammar and three table lookups: GDScript does it. **No GDExtension binding to the Nim core** now:
+   by the fixed grammar and three table lookups: GDScript does it. The tables hold only the codes the plant uses, with
+   meanings in our own words: VGB sells the key and licenses its use in electronic systems, the key tables included
+   (https://www.vgbe.energy/wp-content/uploads/2023/04/KKS-Licensing-2023-01-01-EXT.pdf). **No GDExtension binding to the Nim core** now:
    the plant app has no sync, no log, no keys and no network, so the core would add four native builds per release
    for a lookup. Revisit when the plant app needs something only the core has (progress through the plant's log,
    §"revisit").
