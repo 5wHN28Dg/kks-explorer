@@ -186,6 +186,16 @@ class About(unittest.TestCase):
             # checked at the version that ships (the whole version: 2.4.2 is not 2.4.20)
             self.assertRegex(rec, r'(?<![\w.])v?' + re.escape(src[cid]['version']) + r'(?![\w]|\.\d)', cid)
         self.assertIn('ThreeTen-Backport', src['kotlin-stdlib']['third_party'])
+        # the record holds while the app's own code doesn't use the ThreeTen-derived part (kotlin.time.Instant, Clock)
+        uses = []
+        for root, _, files in os.walk(os.path.join(REPO, 'android', 'app2', 'src')):
+            for n in files:
+                if n.endswith(('.kt', '.java')):
+                    with open(os.path.join(root, n), encoding='utf-8') as f:
+                        if re.search(r'kotlin\.time\.(\*|Instant|Clock)|\bClock\.System\b', f.read()):
+                            uses.append(n)
+        self.assertEqual(uses, [], 'the app uses kotlin.time.Instant or Clock (ThreeTen-Backport, BSD-3-Clause): '
+                                   'show its notice in About and update the record')
 
     def test_course_credits(self):
         d = load()
