@@ -22,6 +22,7 @@ system's.
 | `KKS_NO_MDNS` | no mDNS |
 | `KKS_SHOT=file.png[,secs[,quit]]` / `KKS_SHOT_ON_SIGNAL=file.png` | screenshots of the window through GTK's own renderer (tests; Wayland allows no outside capture) |
 | `KKS_TIMING` | prints the startup time (docs/m6/MEASUREMENTS.md) |
+| `KKS_TEST_ABOUT=file` | tests: shows pages of the About dialog (tags written to `file.do`), and says in `file` which one is up |
 
 ## What it does
 
@@ -71,6 +72,20 @@ system's.
 
 **Status:** devices reachable and the last sync. Screens refresh when the data changes underneath (R20).
 
+**About Walkdown** (the header bar's main menu, and the `app.about` action): libadwaita's About dialog, filled from
+the shared `data/about.json` compiled in (`kksl/buildinfo`):
+- the version with the commit it was built from (and "with local changes" for a build from a changed checkout), the
+  developer, the summary, the website, support (the wiki) and issue links, and a link to this version's source;
+- the legal page: Walkdown's AGPL, then every part the Linux app is built with or uses (about.json `platforms.gnome`)
+  with its copyright and the licence or notice text it asks to be shipped with (the fonts' OFL, the BSD, MIT and zlib
+  notices, Apache 2.0), and a link to each licence;
+- the acknowledgements: the course photos' credits, each linked to its page, and the photos' licences;
+- Troubleshooting: the version, commit, source, GTK and libadwaita versions, display and scale, and the system.
+
+A build run from the repository finds its icon in `icons/`. The Flatpak copies the source without `.git`, so
+`flatpak/build.sh` hands the manifest's build the commit (`flatpak/buildinfo.flags`, removed after; CI writes it from
+`$GITHUB_SHA`); flatpak-builder run directly gives "commit unknown".
+
 ## Tests
 
 Run the tests headless, so no window opens on the desktop: `apps/gnome/e2e/headless.sh` starts a private
@@ -80,7 +95,8 @@ the command inside: `apps/gnome/e2e/headless.sh python3 apps/gnome/e2e/test_gnom
 unpack Ubuntu's package next to the GTK headers (`apt-get download mutter && dpkg-deb -x mutter_*.deb
 ~/.local/kksdev/root`; it is a launcher for the libmutter GNOME Shell already has).
 
-`nim test` (in apps/gnome) runs `tests/test_*.nim`: the dark-drawings colour transform and the markers' contrast.
+`nim test` (in apps/gnome) runs `tests/test_*.nim`: the dark-drawings colour transform and the markers' contrast,
+and the About dialog's content (every part's licence text there, valid markup, the photo credits).
 
 `e2e/viewer_sharp.nim` checks the drawing viewer on a scale-2 screen (2026-10-14: drawings were soft at every zoom
 and panning stuttered on a HiDPI laptop): every zoom as sharp as Cairo drawing the same area at device pixels, no
@@ -107,7 +123,8 @@ and the importer, with no plant data. In about 30 s it covers:
 - search and the decoded panel;
 - an edit that syncs back to the server, Arabic text included;
 - a member's proposal approved in the app;
-- a second device joining by invite.
+- a second device joining by invite;
+- About Walkdown from the main menu (version and commit, source link, legal page, photo credits).
 
 ## Known limits and findings
 
@@ -121,8 +138,7 @@ and the importer, with no plant data. In about 30 s it covers:
 **Flatpak** (built and tested 2026-10-03): `flatpak/` holds the manifest (GNOME 50 runtime, zxing-cpp built in, Nim
 via `koch boot`), the desktop entry and the AppStream metadata. Build, install and make a single-file bundle:
 
-    flatpak run org.flatpak.Builder --user --install --disable-rofiles-fuse --state-dir=state --force-clean build \
-        apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.yml
+    apps/gnome/flatpak/build.sh --user --install --disable-rofiles-fuse --state-dir=state --force-clean build
     flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo state/cache \
         walkdown.flatpak io.github._5wHN28Dg.walkdown master
 
