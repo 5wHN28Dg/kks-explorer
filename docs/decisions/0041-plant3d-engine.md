@@ -190,7 +190,7 @@ That makes a 90 s loop.
 | full, plugged in | 3 min | 17.0 ms | 33.9 ms (29.5) | 62.4 / 35.5 / **2.1 %** | 0 | 90 ms | 17.4 / 22.3 ms | 664 | 599 MB | 28.9 → 29.9 °C |
 | **full, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | **33.8 ms (29.5)** | 61.9 / 36.4 / **1.7 %** | **1** | **122 ms** | 17.3 / 22.1 ms | 664 | not sampled | 98 → 93 %, 30.0 → 33.1 °C |
 | full, plugged in | 10 min | 17.1 ms | 33.8 ms (29.6) | 61.8 / 36.6 / 1.6 % | **2** (121.6 ms at 230.1 s, 119.4 ms at 410.1 s) | 122 ms | 17.4 / 22.1 ms | 664 | 511 MB | 32.9 → 35.3 °C |
-| **lean+vis, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | 33.8 ms (29.6) | 63.2 / 34.9 / **1.9 %** | **0** | **79 ms** | 14.5 / 18.7 ms | 479 | not sampled (504–630 MB plugged) | 100 → 97 %, 31.7 → 32.4 °C |
+| **lean+vis, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | 33.8 ms (29.6) | 63.2 / 34.9 / **1.9 %** | **0** | **79 ms** | 14.5 / 18.7 ms | 479 | not sampled (504–649 MB plugged) | 100 → 97 %, 31.7 → 32.4 °C |
 | **lean+vis**, plugged in | 10 min | 17.0 ms | 33.8 ms (29.6) | 64.4 / 33.7 / **1.9 %** | **0** | **52 ms** | 14.4 / 18.7 ms | 479 | 504 MB | 35.3 → 35.3 °C |
 
 **What the screen showed** (Android's own present times, `dumpsys SurfaceFlinger --latency` on the bench's
@@ -215,7 +215,7 @@ What this shows:
 - **`full` has an intermittent hitch of about 120 ms.** In the plugged 10-minute run it came twice, both times at the
   corner at (−5, 1.7, 4) where the walk turns to climb over the bay: at 230 and 410 s, 2 of the 7 times the walk
   passed there. The battery run had one frame of 122 ms too; that build did not yet log where. `lean+vis` never showed
-  it in 20 minutes (worst frame 79 ms). Its cause is not known yet: a shadow or LOD update when the whole plant comes into
+  it in three 10-minute walks (worst frame 88 ms by the loop, 83 ms on the screen). Its cause is not known yet: a shadow or LOD update when the whole plant comes into
   view is the first suspect.
 - **The lighter presets buy little margin against vsync.** `lean+vis` saves 3 ms of GPU time per frame (median
   14.4 ms, under one refresh) and shows a few more frames at 60 fps, but its slowest 5 % still take two refreshes, so
@@ -256,9 +256,10 @@ Findings:
   without mipmaps (script-made materials skip Godot's 3D detection). With VRAM-compressed, mipmapped textures the
   same scene goes from 44 to 80 fps (p95) on the laptop and from 28.8 to 35.4 fps on the Note 9 (`lean`), with
   a third less memory on the phone (768 → 501 MB) and no 100 ms frame.
-- **With that fixed, the Note 9 is at the edge of the rule**, not above it as the first pass said (see the
-  clock-timed table). 98 % of frames are shown at 30 fps or better on its 60 Hz screen, but by the clock the 95th
-  percentile is 33.8 ms (29.6 fps). `full` has a repeatable 120 ms hitch; `lean+vis` does not. There is no thermal
+- **With that fixed, the Note 9 meets the rule as the user reads it, with little margin**, not above it as the
+  first pass said (see the clock-timed table). With `lean+vis`, 99.9 % of frames are shown at 30 fps or better on its
+  60 Hz screen (SurfaceFlinger), but by the clock the 95th percentile is 33.8 ms (29.6 fps). `full` has an
+  intermittent 120 ms hitch; `lean+vis` does not. There is no thermal
   drop and memory is about 0.5 GB.
 - **Load time is no longer an issue**: 5.8 s on the Note 9 on a first start, 1.35 s after, with the pre-built plant
   and baked shaders (the round-1 20–28 s were mostly the bench reading every mesh back from the GPU).
@@ -275,16 +276,19 @@ Findings:
 60 Hz screen, and a frame held for two refreshes counts as 30 fps. By the clock such a frame measures 33.1–34 ms, so
 the 95th-percentile frame time alone (33.8 ms) is not the test. The test is the share of frames held for three
 refreshes or more, which must stay at or under 5 %. It is counted from Android's present times
-(`sf_frames.sh`), and the bench's loop-interval count is an upper bound.
+(`sf_frames.sh`). The bench's loop-interval count erred high in the one run measured both ways (2.1 % against
+0.10 %), but it is not a bound frame by frame. The SurfaceFlinger evidence is one plugged-in run (567 of its 600 s);
+on battery only the loop count exists (1.9 %), which is within the rule too.
 
 **The confirming runs** (`lean+vis`; the walk includes the heaviest views):
 - frames shown at 30 fps or better:
   - by SurfaceFlinger's present times (10 minutes plugged in): 99.9 %; 0.10 % were held for three refreshes or more,
     against the 5 % allowed;
   - by the game loop's conservative count, 10 minutes on battery: 98.1 % (1.9 % slower);
-- spikes: no frame over 100 ms after the first 5 s; the worst was 79 ms;
+- spikes: no frame over 100 ms after the first 5 s in three 10-minute walks; the worst was 79 ms on battery, 88 ms
+  plugged in;
 - heat: no thermal drop (per-minute means 20.7–21.4 ms); battery 100 → 97 %;
-- memory: 504–630 MB sampled plugged in, against 1.5 GB;
+- memory: 504–649 MB sampled plugged in, against 1.5 GB;
 - load: 7.6 s to the first drawn frame on the first start after a fresh install (data cleared too), 1.4 s after
   that, against 15 s.
 - Unrelated to the engine: the battery run's own start took 50 s, because the phone's screen was off when the app was

@@ -85,9 +85,6 @@ class Plant3dBench(unittest.TestCase):
                 self.assertIn('unknown lever vsi', f.read())
 
 
-if __name__ == '__main__':
-    unittest.main()
-
 
 class SurfaceFlingerFrames(unittest.TestCase):
     """sf_frames.py (what the Note 9's screen showed): frames are counted by the refreshes they stayed up, a frame
@@ -96,15 +93,14 @@ class SurfaceFlingerFrames(unittest.TestCase):
 
     def test_counts_refreshes_per_frame(self):
         per = 16_666_666
-        t, rows = 1_000_000_000, []
-        for held in [1, 1, 2, 1, 3, 1, 2, 1]:
+        t, first = 1_000_000_000, []
+        for held in [1, 1, 2, 1, 3, 1, 2, 1, 18]:   # the last: a 300 ms stall seen by one poll, a slow frame
             t += held * per
-            rows.append(f'{t - 5_000_000}\t{t}\t{t - 9_000_000}')
-        t += 2_000_000_000      # a hole in the polling (2 s)
-        rows.append(f'0\t{t}\t0')
-        t += per
-        rows.append(f'0\t{t}\t0')
-        text = f'{per}\n' + '\n'.join(rows) + '\n' + f'{per}\n' + '\n'.join(rows[:4]) + '\n0\t0\t0\n'
+            first.append(f'{t - 5_000_000}\t{t}\t{t - 9_000_000}')
+        t += 2_000_000_000                           # nothing polled for 2 s: a hole, not a frame
+        second = [f'0\t{t}\t0', f'0\t{t + per}\t0', '0\t9223372036854775807\t0']
+        # the first poll again (overlapping polls repeat frames: counted once), then the second
+        text = '\n'.join([str(per)] + first[:5] + [str(per)] + first + [str(per)] + second) + '\n'
         with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False) as f:
             f.write(text)
         try:
@@ -112,8 +108,14 @@ class SurfaceFlingerFrames(unittest.TestCase):
                                  text=True, check=True).stdout
         finally:
             os.unlink(f.name)
-        self.assertIn('coverage holes 1', out)
+        self.assertIn('presented frames 11 ', out)
+        self.assertIn('coverage holes 1 ', out)
         self.assertIn('held 1 refreshes: 5 ', out)
         self.assertIn('held 2 refreshes: 2 ', out)
         self.assertIn('held 3 refreshes: 1 ', out)
-        self.assertIn('frames shown below 30 fps (>=3 refreshes): 1 of 8 = 12.50 %', out)
+        self.assertIn('held 18 refreshes: 1 ', out)
+        self.assertIn('frames shown below 30 fps (>=3 refreshes): 2 of 9 = 22.22 %', out)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -116,7 +116,8 @@ screen_ready() {
   sleep 1
   local awake locked
   awake=$(sh_ dumpsys power | grep -c 'mWakefulness=Awake' || true)
-  # the keyguard's own "showing" line (Samsung keeps showingAndNotOccluded=true after an unlock)
+  # the keyguard's own "showing" line (Samsung keeps showingAndNotOccluded=true after an unlock; checked on the
+  # Note 9's Android 10 only: on another phone check the first run's frame count)
   locked=$(sh_ dumpsys window policy | grep -cE '^ +showing=true' || true)
   [ "$awake" -gt 0 ] && [ "$locked" = 0 ]
 }
@@ -139,7 +140,7 @@ run() {
     say "THE PHONE IS LOCKED OR ITS SCREEN IS OFF: unlock it (the bench keeps the screen on while it runs)"
     local w=0
     until screen_ready; do
-      w=$((w + 1)); [ $w -lt 300 ] || { say "$name: still locked after 5 minutes"; exit 6; }
+      w=$((w + 1)); [ $w -lt 300 ] || { say "$name: still locked after 300 checks (several minutes)"; exit 6; }
     done
   fi
   local t0; t0=$(sh_ date +%s)

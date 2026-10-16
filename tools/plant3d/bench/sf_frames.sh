@@ -7,10 +7,14 @@ set -eu
 S="${1:?serial}"; OUT="${2:?output file}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 : > "$OUT"
-L=""
+# The bench's SurfaceView layer: "SurfaceView - PKG/ACTIVITY@…#0" on Android 10, "SurfaceView[PKG/…](BLAST)#N" on
+# newer Android (not the "Background for -SurfaceView" colour layer). Two minutes at most.
+L=""; i=0
 until [ -n "$L" ]; do
-  L=$(adb -s "$S" shell dumpsys SurfaceFlinger --list | tr -d '\r' | grep -m1 '^SurfaceView - kks.plant3d.bench' || true)
-  [ -n "$L" ] || sleep 1
+  L=$(adb -s "$S" shell dumpsys SurfaceFlinger --list | tr -d '\r' | grep -m1 -E '^SurfaceView( - |\[)kks\.plant3d\.bench' || true)
+  [ -n "$L" ] && break
+  i=$((i + 1)); [ $i -lt 120 ] || { echo "no SurfaceView layer of the bench found (is it running, in front?)" >&2; exit 1; }
+  sleep 1
 done
 echo "layer: $L"
 while adb -s "$S" shell pidof kks.plant3d.bench >/dev/null 2>&1; do
