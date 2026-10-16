@@ -46,8 +46,12 @@ elif [ "$MODE" = release ]; then
 else
   echo "sounds: not made (no NumPy or FFmpeg here): the app stays silent"
 fi
-# the built scenes are resources the export must know
-$T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1
+# the built scenes and sounds are resources the export must know. Godot 4.7.2's headless import sometimes crashes
+# on its way out after importing the sound files (signal 11 or an abort, with every file imported, 2026-10-16): a
+# second run, which has nothing left to import, must succeed
+$T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1 ||
+  { echo "the import stopped (Godot crashed on its way out?): once more" >&2
+    $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1 || { tail -20 "$HERE/.import.log"; exit 1; }; }
 
 # 3. The tests (the walking tests need the plant just built)
 $T "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd >"$HERE/.test.log" 2>&1 ||
