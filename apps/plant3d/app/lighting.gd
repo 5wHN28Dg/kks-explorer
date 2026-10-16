@@ -29,6 +29,8 @@ static func sky_info() -> Dictionary:
 static func sky() -> Sky:
 	var s := Sky.new()
 	s.radiance_size = Sky.RADIANCE_SIZE_128
+	# the sky's light is worked out over the first frames, not all in the first (the Note 9's first start)
+	s.process_mode = Sky.PROCESS_MODE_INCREMENTAL
 	if ResourceLoader.exists(SKY) and not sky_info().is_empty():
 		var m := PanoramaSkyMaterial.new()
 		m.panorama = load(SKY)
@@ -77,6 +79,11 @@ static func lightmap_node() -> LightmapGI:
 ## (light bounced between nearby moving parts and their surroundings), volumetric fog (the sun's light in the air:
 ## shafts through a hall's doors) and a little glow on lamps. The Mobile renderer has none of SSAO, SSIL and
 ## volumetric fog; the phone's shade comes from the bake.
+## Effects switched off for a measurement (main.gd's `fx_off=ssao,ssil,volfog,glow,fog`): which costs what.
+static var off: PackedStringArray = []
+## Effects switched on for a measurement only (`fx_on=sdfgi,ssil,volfog,glow`): measured and left out (0057).
+static var on: PackedStringArray = []
+
 static func apply(tier: String, env: Environment) -> void:
 	var full := tier == "full"
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
@@ -90,21 +97,33 @@ static func apply(tier: String, env: Environment) -> void:
 	env.fog_aerial_perspective = 0.4
 	env.fog_sky_affect = 0.0
 	env.ssao_enabled = full
+	# Low quality at half size (0054 Realism: Medium cost the frame rule its margin on the Iris Xe), faded out by
+	# 120 m where its contact shade is under a pixel anyway
+	RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_LOW, true, 0.5, 2, 50.0, 120.0)
 	env.ssao_radius = 1.2
 	env.ssao_intensity = 1.6
 	env.ssao_power = 1.5
 	env.ssao_detail = 0.5
 	env.ssao_light_affect = 0.0
-	env.ssil_enabled = full
+	env.ssil_enabled = false
 	env.ssil_radius = 4.0
 	env.ssil_intensity = 0.8
-	env.volumetric_fog_enabled = full
+	env.volumetric_fog_enabled = false
 	env.volumetric_fog_density = 0.0012
 	env.volumetric_fog_albedo = Color(0.85, 0.87, 0.9)
 	env.volumetric_fog_anisotropy = 0.5
 	env.volumetric_fog_length = 96.0
 	env.volumetric_fog_sky_affect = 0.0
-	env.glow_enabled = full
+	env.glow_enabled = false
 	env.glow_intensity = 0.3
 	env.glow_bloom = 0.02
 	env.glow_hdr_threshold = 1.5
+	env.ssil_enabled = env.ssil_enabled or "ssil" in on
+	env.volumetric_fog_enabled = env.volumetric_fog_enabled or "volfog" in on
+	env.glow_enabled = env.glow_enabled or "glow" in on
+	env.sdfgi_enabled = "sdfgi" in on
+	env.ssao_enabled = env.ssao_enabled and not "ssao" in off
+	env.ssil_enabled = env.ssil_enabled and not "ssil" in off
+	env.volumetric_fog_enabled = env.volumetric_fog_enabled and not "volfog" in off
+	env.glow_enabled = env.glow_enabled and not "glow" in off
+	env.fog_enabled = env.fog_enabled and not "fog" in off

@@ -73,7 +73,6 @@ const EXPOSURE := {"paint_yellow": 1.0, "paint_red": 0.8, "paint_orange": 0.35, 
 const EXPOSURE_DEFAULT := 0.12
 const SHADER := "res://kit/weathered.gdshader"
 const SHADER_GRATING := "res://kit/weathered_grating.gdshader"
-const SHADER_TWO := "res://kit/weathered_two.gdshader"
 ## The weathering's noise (builder/weather.gd makes it at build time: our own, no licence).
 const NOISE := "res://built/weather/noise.res"
 
@@ -173,14 +172,14 @@ static func structure_spec(name: String) -> Dictionary:
 		spec["grating"] = true
 	return spec
 
+## A structure's material. Walls, roofs and fences are seen from both sides (PLANT3D.md §5): the build gives them
+## back faces of their own (builder/plant_builder.gd _mesh_node), which also gives each side its own lightmap texels
+## (a hall's lamp-lit inside, its sunlit outside), rather than a second, cull-less pipeline for every shader.
 static func make_structure(name: String) -> Material:
-	var spec := structure_spec(name)
-	if STRUCTURE_MATS[name][1]:
-		spec["two_sided"] = true
-	var m := make(name, spec)
-	if STRUCTURE_MATS[name][1] and m is StandardMaterial3D:
-		m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return m
+	return make(name, structure_spec(name))
+
+static func two_sided(name: String) -> bool:
+	return STRUCTURE_MATS.has(name) and STRUCTURE_MATS[name][1]
 
 ## The texture sets whose files are not there (not fetched, or not imported yet).
 static func missing_textures() -> PackedStringArray:
@@ -218,7 +217,7 @@ static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> Materi
 static func _make_weathered(name: String, spec: Dictionary, size: int) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.resource_name = name
-	mat.shader = load(SHADER_GRATING if spec.get("grating", false) else (SHADER_TWO if spec.get("two_sided", false) else SHADER))
+	mat.shader = load(SHADER_GRATING if spec.get("grating", false) else SHADER)
 	mat.set_shader_parameter("tint", spec.tint)
 	mat.set_shader_parameter("roughness_scale", spec.rough)
 	mat.set_shader_parameter("metallic", spec.metal)

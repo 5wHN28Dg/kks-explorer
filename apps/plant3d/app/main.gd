@@ -10,6 +10,8 @@
 ##                           data folder elsewhere)
 ##   shot=NAME@x,y,z,yaw,pitch[;NAME@…]   save the view from those points (plant coordinates, degrees) as PNGs, quit
 ##   map=1                   start on the overview map
+##   fx_off=ssao,fog         those effects off, fx_on=sdfgi,ssil,volfog,glow those on (measuring what each costs:
+##                           app/lighting.gd)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -108,6 +110,8 @@ func _options() -> void:
 				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality"]:   # nothing else from a shared folder
 					opts[kv[0]] = kv[1]
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
+	Lighting.off = String(opts.get("fx_off", "")).split(",", false)
+	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
 
 func _environment() -> void:
 	env = Environment.new()
@@ -217,6 +221,12 @@ func _first_frame() -> void:
 	await RenderingServer.frame_post_draw
 	first_frame_ms = Time.get_ticks_msec()
 	_say("first frame drawn %d ms after the engine started" % first_frame_ms)
+	# the pipelines compiled for it (what a phone's first start waits for: decision 0057)
+	_say("pipelines compiled: mesh %d, surface %d, draw %d, specialization %d" % [
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_MESH),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_DRAW),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)])
 
 func _start_walk() -> void:
 	var route: Array = Routes.frames(plant) if opts.walk == "frames" else Routes.climb(plant)

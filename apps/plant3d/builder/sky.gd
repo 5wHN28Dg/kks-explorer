@@ -89,8 +89,9 @@ static func make(src: String, out_dir: String) -> Dictionary:
 	var exr := out_dir.path_join("sky.exr")
 	if img.save_exr(ProjectSettings.globalize_path(exr), false) != OK:
 		return {"error": "cannot write " + exr}
+	# HDR kept as RGBE9995 (4 bytes a texel) on every GPU: the Note 9 has no ASTC HDR (builder/bake/bake_plugin.gd)
 	var imp := FileAccess.open(ProjectSettings.globalize_path(exr) + ".import", FileAccess.WRITE)
-	imp.store_string("[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\n\n[params]\n\ncompress/mode=2\ncompress/high_quality=false\ncompress/hdr_compression=1\nmipmaps/generate=false\nprocess/size_limit=0\ndetect_3d/compress_to=0\n")
+	imp.store_string("[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\n\n[params]\n\ncompress/mode=2\ncompress/high_quality=false\ncompress/hdr_compression=0\nmipmaps/generate=false\nprocess/size_limit=0\ndetect_3d/compress_to=0\n")
 	imp.close()
 	var info := {"sun_elevation": rad_to_deg(el_sun), "sun_azimuth": rad_to_deg(atan2(sun.x, -sun.z)),
 		"sky_to_sun": e_sky / (e_sun * maxf(sin(el_sun), 0.01)), "source": src.get_file()}

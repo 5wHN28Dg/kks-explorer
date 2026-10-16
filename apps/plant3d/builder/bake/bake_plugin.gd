@@ -34,6 +34,12 @@ func _bake() -> void:
 		_fail("no %s: run the content build first" % SCENE)
 		return
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(Lighting.LIGHTMAP.get_base_dir()))
+	# the lightmap's import settings, before the bake writes and imports its image (the bake keeps a mode it finds):
+	# HDR kept uncompressed as RGBE9995, 4 bytes a texel on every GPU. The Note 9's Mali-G72 has no ASTC HDR: Godot
+	# turned the ASTC lightmap into RGBA half floats at load (8 bytes a texel, measured 2026-10-16)
+	var imp := FileAccess.open(ProjectSettings.globalize_path(Lighting.LIGHTMAP.get_basename() + ".exr.import"), FileAccess.WRITE)
+	imp.store_string("[remap]\n\nimporter=\"2d_array_texture\"\ntype=\"CompressedTexture2DArray\"\n\n[params]\n\ncompress/mode=2\ncompress/hdr_compression=0\n")
+	imp.close()
 	var data := LightmapGIData.new()
 	if ResourceSaver.save(data, Lighting.LIGHTMAP) != OK:
 		_fail("cannot write " + Lighting.LIGHTMAP)
