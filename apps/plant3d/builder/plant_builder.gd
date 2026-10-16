@@ -1,9 +1,9 @@
 ## The content build (decision 0054 §4): data/plant3d (already checked by ref/plant3d.py) to one pre-built scene per
 ## area, the ground, the materials and a manifest the app loads. Nothing here runs when the app starts.
 ##
-## Equipment is drawn as placeholder boxes and cylinders sized from the kit's parameters (the parts kit is the next
-## step); pipes, platforms, floors, stairs, ladders, doors, buildings, pits, slabs, fences and the pipe rack are
-## real collision geometry at their described positions, so a trainee walks where the description says.
+## Equipment and pipes are made by the parts kit (apps/plant3d/kit, placed by builder/kit_place.gd); platforms,
+## floors, stairs, ladders, doors, buildings, pits, slabs, fences and the pipe rack are made here, as solid
+## geometry at their described positions, so a trainee walks where the description says.
 ##
 ## The build refuses what it can't draw (docs/PLANT3D.md §12): errors name the file, the item and the rule.
 extends RefCounted

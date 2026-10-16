@@ -3,14 +3,15 @@
 The walkable 3D plant (decision `docs/decisions/0054-walkdown-plant-app.md`; engine: `0041`; content format:
 `docs/PLANT3D.md`). A Godot 4.7.2 project, pinned by `tools/plant3d/bench/fetch_godot.sh` (SHA-512).
 
-This is the app's frame. Equipment is drawn as placeholder boxes and cylinders sized from the kit's parameters
-until the parts kit comes (`apps/plant3d/kit/`, the next step). Pipes, platforms, floors, stairs, ladders, doors,
-buildings, pits, slabs, fences and the pipe rack are solid geometry at their described positions.
+Equipment and pipes are made by the parts kit (`kit/`, its README: frames, node names, moving parts, budgets,
+materials). Platforms, floors, stairs, ladders, doors, buildings, pits, slabs, fences and the pipe rack are solid
+geometry at their described positions, made by the builder.
 
 ## Layout
 
 | Folder | What |
 |---|---|
+| `kit/` | the parts kit: every equipment part of `data/plant3d/kit.json` made from its parameters, the materials and their CC0 textures (fetched by `kit/fetch_textures.sh`) |
 | `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground, the materials, `plant.json`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) |
 | `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), scripted routes (`autopilot.gd`, `routes.gd`) |
 | `sim/` | the behaviour engine (the model's evaluator). It has its own owner; the project hosts it (`walkdown_plant/sim/path` in `project.godot`) |
@@ -102,6 +103,8 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_frames_route`: the phone's walk, once.
 - `test_builder`: geometry, stair layout, the build's refusals and cuts.
 - `test_quality`: picking the tier.
+- `test_kit`: every part of `kit.json` is made, with valid meshes at every LOD within its triangle budget, its moving
+  nodes and plate points.
 
 Physics runs with the headless renderer.
 

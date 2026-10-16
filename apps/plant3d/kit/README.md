@@ -137,9 +137,76 @@ The most triangles one instance of a part may have at full detail (LOD 0), with 
 uses, each number parameter at its minimum and maximum and every enum value). LODs are made by Godot's own
 simplifier (as for imported models, decision 0041), each no larger than the one before.
 
-BUDGETS_TABLE
+| Part | Budget | Most made (tests) |
+|---|---|---|
+| gas_turbine | 30,000 | 8,944 |
+| generator | 12,000 | 1,028 |
+| steam_turbine | 30,000 | 8,038 |
+| sfc | 4,000 | 1,116 |
+| turning_gear | 4,000 | 852 |
+| hrsg | 20,000 | 3,896 |
+| hrsg_module | 1,500 | 228 |
+| drum | 8,000 | 7,824 |
+| stack | 18,000 | 15,684 |
+| duct | 4,000 | 252 |
+| silencer | 3,000 | 1,044 |
+| filter_house | 8,000 | 3,792 |
+| pump_horizontal | 9,000 | 4,820 |
+| pump_vertical | 9,000 | 5,604 |
+| fan_axial | 6,000 | 1,424 |
+| compressor_skid | 8,000 | 1,456 |
+| vacuum_pump_skid | 8,000 | 2,850 |
+| condenser | 12,000 | 4,656 |
+| shell_tube_hx | 6,000 | 5,080 |
+| plate_hx | 4,000 | 1,992 |
+| cooling_tower | 40,000 | 25,376 |
+| package_boiler | 8,000 | 2,916 |
+| basin | 1,000 | 72 |
+| tank_vertical | 8,000 | 7,856 |
+| vessel_horizontal | 6,000 | 2,764 |
+| valve_gate | 5,000 | 4,452 |
+| valve_globe | 5,000 | 4,472 |
+| valve_butterfly | 4,000 | 2,064 |
+| valve_ball | 4,000 | 3,760 |
+| valve_check | 4,700 | 4,092 |
+| valve_control | 5,800 | 5,077 |
+| valve_safety | 4,600 | 4,038 |
+| damper | 4,000 | 1,504 |
+| pressure_gauge | 800 | 508 |
+| pressure_transmitter | 1,200 | 272 |
+| temperature_element | 600 | 272 |
+| temperature_gauge | 800 | 396 |
+| level_glass | 1,500 | 172 |
+| level_transmitter | 1,500 | 344 |
+| flow_element | 2,500 | 912 |
+| position_switch | 400 | 68 |
+| vibration_probe | 400 | 128 |
+| speed_probe | 400 | 92 |
+| flame_detector | 500 | 120 |
+| local_panel | 1,500 | 312 |
+| push_button_station | 800 | 292 |
+| transformer | 25,000 | 13,436 |
+| breaker | 6,000 | 2,520 |
+| switchgear_row | 8,000 | 5,556 |
+| cabinet | 1,500 | 924 |
+| junction_box | 400 | 120 |
+| cable_tray | 2,000 | 1,368 |
+| motor | 5,000 | 1,220 |
+| elbow | 3,000 | 2,560 |
+| tee | 2,000 | 384 |
+| reducer | 1,000 | 192 |
+| flange | 1,500 | 1,312 |
+| pipe_support | 400 | 60 |
+| tag_plate | 60 | 12 |
+| sign | 60 | 44 |
+| lamp | 300 | 188 |
+| beacon | 400 | 192 |
+| horn | 300 | 92 |
+| emergency_stop | 400 | 172 |
+| safety_shower | 1,500 | 296 |
 
-The first train: FIRST_TRAIN_LINE
+The first train (2026-10-16): 296,030 triangles at full detail in all, in 563 instanced or merged meshes; 176 pipe
+supports. The bench that decided the engine (0041) had 1.46 M triangles.
 
 ## Tables and their sources
 
