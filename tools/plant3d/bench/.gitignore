@@ -1,5 +1,9 @@
 tex/
+tex1k/
+texraw/
 .godot/
 export/
 *.import
 built/
+*.log
+results/

@@ -1,4 +1,4 @@
-; The 3D plant engine bench (docs/decisions/0041, https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant). Godot 4.7.
+; The 3D plant engine bench (docs/decisions/0041, https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant). Godot 4.7.2 (fetch_godot.sh). The editor rewrites this file when build.sh imports; what matters is unchanged.
 config_version=5
 
 [application]
