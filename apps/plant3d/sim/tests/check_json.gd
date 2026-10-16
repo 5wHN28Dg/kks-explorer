@@ -1,7 +1,8 @@
 extends SceneTree
 ## The strict JSON reader (json_strict.gd) against the protocol's strict JSON vectors (ref/vectors/v2-json.json, the
 ## same rules as ref/sjson.py): every accepted input gives the typed value, every rejected one is refused.
-##   godot --headless --script apps/plant3d/sim/tests/check_json.gd -- ref/vectors/v2-json.json
+##   godot --headless --script apps/plant3d/sim/tests/check_json.gd -- ref/vectors/v2-json.json [MORE.json …]
+## (more files of the same form: tests/test_plant3d_sim.py adds its own cases)
 ## Prints "JSON checked=N bad=M" and each failure; exit code 0 when none failed.
 const JsonStrict = preload("../json_strict.gd")
 

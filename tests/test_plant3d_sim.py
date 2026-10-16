@@ -266,9 +266,10 @@ class GdscriptEngine(unittest.TestCase):
         String can't hold it (ref/sjson.py accepts it; no content needs it)."""
         from ref import sjson
         accept = ['"\ufeffx"', '"a\ufeff"', '"\\n\ufeff"', '{"\ufeff":1,"a":2}', '"\\ufeff\ufeff"',
-                  '["\ufeff", "\\u00e9\ufeffz"]']
+                  '["\ufeff", "\\u00e9\ufeffz"]', '"\ufeff\ufeffx"', '"\\n\ufeff\ufeff"', '{"a":1,"\ufeffa":2}',
+                  '{"":1,"\ufeff":2}']
         extra = {'accept': [], 'reject': [{'why': 'an escaped NUL', 'hex': b'"a\\u0000"'.hex()},
-                                          {'why': 'an escaped NUL in a key', 'hex': b'{"a":1,"a\\u0000":2}'.hex()}]}
+                                          {'why': 'an escaped NUL in a key', 'hex': b'{"a\\u0000":1}'.hex()}]}
         for t in accept:
             b = t.encode()
             extra['accept'].append({'why': repr(t), 'hex': b.hex(), 'value': sjson.typed(sjson.loads(b))})
