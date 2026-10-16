@@ -48,6 +48,7 @@ var t_run := 0.0
 var seconds := 600.0
 var start_delay := 0.0     # seconds standing still, not measured, before the walk (time to pull the phone's cable)
 var waited := 0.0
+var last_us := 0
 ## The final phone run is measured on battery (charging heats the phone): with wait_battery=1 the walk starts only
 ## once Android says the battery is discharging, plus 30 s to settle, and the run is marked INVALID if the phone is
 ## plugged in again before it ends. Nobody has to pull the cable against a clock.
@@ -96,6 +97,9 @@ func _ready() -> void:
 				var kv := line.strip_edges().split("=", true, 1)
 				if kv.size() == 2: settings[kv[0]] = kv[1]
 	seconds = float(settings.get("seconds", "600"))
+	# Godot rounds each frame's delta to the display's refresh when vsync is on (delta smoothing): off, and the
+	# frame times are measured from the clock anyway (_process), so a frame held for two refreshes counts as such
+	OS.delta_smoothing = false
 	start_delay = float(settings.get("start_delay", "0"))
 	wait_battery = settings.get("wait_battery", "0") == "1"
 	# vsync=1: frames wait for the display, as a shipped app's would (the bench's default is off: the render rate)
@@ -153,8 +157,12 @@ func _ready() -> void:
 	cam.fov = 70
 	cam.far = 400
 	add_child(cam)
+	# 10 s per leg: along the rack, into the pump bay, along the platform, back; then (since 2026-10-16) up over
+	# the bay and along it at 12 m with everything in sight, and back down from the far corner looking over the
+	# whole plant: the heaviest views (look viewpoints 09 and 10) are part of the walk
 	path = [Vector3(-5, 1.7, -4), Vector3(65, 1.7, -4), Vector3(65, 1.7, 14), Vector3(30, 7.7, 14),
-			Vector3(-5, 7.7, 14), Vector3(-5, 1.7, 4), Vector3(-5, 1.7, -4)]
+			Vector3(-5, 7.7, 14), Vector3(-5, 1.7, 4), Vector3(-10, 12, -10), Vector3(130, 12, -15),
+			Vector3(130, 3, -15), Vector3(-5, 1.7, -4)]
 	ready_ms = Time.get_ticks_msec()
 	_say("%s preset=%s renderer=%s tris=%d nodes=%d ranged=%d device=%s screen=%s" % [variant, preset,
 		RenderingServer.get_current_rendering_method(), tris, nodes, ranged, RenderingServer.get_video_adapter_name(),
@@ -483,7 +491,7 @@ func _process(delta: float) -> void:
 		if waited >= start_delay: _say("walk starts at %s" % Time.get_datetime_string_from_system())
 		return
 	t_run += delta
-	var loop := 60.0
+	var loop := 10.0 * (path.size() - 1)
 	var u := fmod(t_run, loop) / loop * (path.size() - 1)
 	var i := int(u)
 	var p := path[i].lerp(path[i + 1], u - i)
@@ -495,8 +503,12 @@ func _process(delta: float) -> void:
 		if battery_poll >= 5.0:
 			battery_poll = 0.0
 			if _battery_status() != 3: replugged += 1
+	var now_us := Time.get_ticks_usec()
+	var raw_ms := (now_us - last_us) / 1000.0
+	last_us = now_us
 	if t_run > 5.0:
-		times.append(delta * 1000.0)
+		times.append(raw_ms)   # the wall-clock time between frames, not Godot's (possibly smoothed) delta
+		if raw_ms > 100.0: _say("SPIKE %.1f ms at %.1f s into the walk, camera at %s" % [raw_ms, t_run, str(cam.position)])
 		var vp := get_viewport().get_viewport_rid()
 		gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(vp))
 		cpu.append(RenderingServer.viewport_get_measured_render_time_cpu(vp))
@@ -534,6 +546,13 @@ func _finish() -> void:
 	for d in times:
 		if d > 33.4: over33 += 1
 		if d > 100.0: over100 += 1
+	# on a 60 Hz phone with vsync each frame stays up for whole refreshes: how many took one, two, more
+	var r1 := 0; var r2 := 0; var r3 := 0
+	for d in times:
+		if d <= 17.5: r1 += 1
+		elif d <= 34.2: r2 += 1
+		else: r3 += 1
+	_say("CADENCE up_to_17.5ms=%.1f%% up_to_34.2ms=%.1f%% longer=%.1f%%" % [100.0 * r1 / n, 100.0 * r2 / n, 100.0 * r3 / n])
 	var pm := _proc_mem()
 	_say("RESULT preset=%s variant=%s frames=%d median=%.1fms p95=%.1fms p99=%.1fms max=%.1fms fps_p95=%.1f over33=%.1f%% over100=%d peak_rss=%dMB rss=%dMB static_mem=%dMB vram=%dMB first_frame=%dms" % [
 		preset, variant, n, s[n / 2], s[int(n * 0.95)], s[int(n * 0.99)], s[n - 1], 1000.0 / s[int(n * 0.95)],

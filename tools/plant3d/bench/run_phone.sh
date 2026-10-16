@@ -29,6 +29,7 @@ APK="${APK:-$HERE/export/bench.apk}"
 SERIAL="${1:?serial}"; CMD="${2:?command}"; shift 2
 OUT="$HERE/results/$SERIAL"
 mkdir -p "$OUT"
+touch "$HERE/results/.gdignore"   # Godot leaves the folder out of the project (and the APK)
 a() { adb -s "$SERIAL" "$@"; }
 sh_() { adb -s "$SERIAL" shell "$@" | tr -d '\r'; }
 say() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -60,8 +61,11 @@ remove() {
     echo "!!! CANNOT REACH $SERIAL: the bench ($PKG) may still be installed there; remove it: $0 $SERIAL remove" >&2
     return 1
   fi
-  if installed; then say "removing $PKG"; a uninstall "$PKG" >/dev/null; fi
-  if installed; then echo "!!! could not remove $PKG from $SERIAL" >&2; return 1; fi
+  if (installed); then say "removing $PKG"; a uninstall "$PKG" >/dev/null; fi
+  if (installed) || [ "$(a get-state 2>/dev/null)" != device ]; then
+    echo "!!! could not remove $PKG from $SERIAL (or the phone went away): $0 $SERIAL remove" >&2
+    return 1
+  fi
 }
 
 # 50 % brightness, auto-brightness off, for the measured runs (wiki 3D-plant, measurement rules); put back after.

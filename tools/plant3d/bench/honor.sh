@@ -8,7 +8,9 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 S=AFAM026711005741
 export BENCH_KEEP=1
+# removed also on Ctrl-C or a closed terminal (dash runs no EXIT trap on a signal)
 trap '"$HERE/run_phone.sh" $S remove' EXIT
+trap 'exit 130' INT TERM HUP
 "$HERE/run_phone.sh" $S load full
 "$HERE/run_phone.sh" $S walk full 600
 C="$HERE/results/285d2a7c153f7ece/chosen.txt"
