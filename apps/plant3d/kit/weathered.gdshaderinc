@@ -35,6 +35,8 @@ uniform vec4 wet_zone = vec4(0.0);    // a box round water: centre x, z (Godot's
 uniform float wet = 0.0;              // how wet at the box's edge and inside (0: no zone)
 const float WET_FALLOFF = 9.0;        // metres beyond the box over which the ground dries
 uniform float detail = 1.0;   // the tier: 1 every sample, 0 the phone's
+uniform float joint_spacing = 0.0;    // concrete yards: joints this many metres apart (0: none)
+uniform vec4 line_box = vec4(0.0);    // a road's centre line: a box round the plant (centre x, z; half sizes), dashed
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -100,6 +102,23 @@ void fragment() {
 		base = mix(base, vec3(0.36, 0.36, 0.35), w);
 		metal = mix(metal, 0.8, w);
 		rough = mix(rough, 0.45, w);
+	}
+
+	// a yard's joints and a road's dashed centre line (on what faces up)
+	if (joint_spacing > 0.0 && up > 0.7) {
+		vec2 jg = abs(fract(wpos.xz / joint_spacing + 0.5) - 0.5) * joint_spacing;
+		float jw = 0.006 + fwidth(wpos.x) * 0.7;
+		float j = 1.0 - smoothstep(jw, jw * 2.0, min(jg.x, jg.y));
+		base *= mix(1.0, 0.5, j);
+	}
+	if (line_box.z > 0.0 && up > 0.7) {
+		vec2 q = abs(wpos.xz - line_box.xy) - line_box.zw;
+		float dist = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0);
+		float along = (q.x > q.y) ? wpos.z : wpos.x;
+		float lw = 0.06 + fwidth(dist);
+		float l = (1.0 - smoothstep(lw, lw * 1.5, abs(dist))) * step(0.5, fract(along / 6.0));
+		base = mix(base, vec3(0.80, 0.78, 0.70), l * 0.85);
+		rough = mix(rough, 0.7, l);
 	}
 
 	// dust on what faces up

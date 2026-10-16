@@ -12,8 +12,9 @@ const SUN_ROT := Vector3(-50, 35, 0)   # degrees: the sun without a built sky (a
 ## about six times its sky's light on a horizontal surface; the tonemapper's exposure brings both back.
 const SUN_ENERGY := 1.0
 const SUN_COLOUR := Color(1.0, 0.96, 0.9)   # a little warm: mid-afternoon
+const AGX_CONTRAST := 1.25   # a little more than AgX's own: the desert light is hard
 const SKY_ENERGY := 1.0   # the photograph's own sky-to-sun ratio (builder/sky.gd)
-const EXPOSURE := 1.15
+const EXPOSURE := 1.0
 
 ## The sky made by the build (builder/sky.gd): a photographed sky without its sun, in units where the sun's light
 ## is 1, and where its sun was. Without it (a build that could not fetch it) a physical sky and the old sun.
@@ -88,13 +89,14 @@ static func apply(tier: String, env: Environment) -> void:
 	var full := tier == "full"
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = EXPOSURE
+	env.tonemap_agx_contrast = AGX_CONTRAST
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_light_color = Color(0.70, 0.76, 0.84)
 	env.fog_light_energy = 1.0
 	env.fog_sun_scatter = 0.15
-	env.fog_density = 0.0005
-	env.fog_aerial_perspective = 0.4
+	env.fog_density = 0.0003
+	env.fog_aerial_perspective = 0.0   # the sky below the horizon is the ground: looking down it would wash the view
 	env.fog_sky_affect = 0.0
 	env.ssao_enabled = full
 	# Low quality at half size (0054 Realism: Medium cost the frame rule its margin on the Iris Xe), faded out by

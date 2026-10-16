@@ -13,6 +13,7 @@ const OUT_W := 2048
 const SUN_CLIP := 12.0
 const SUN_CONE := 0.2   # radians round the brightest point that may be clipped (clouds elsewhere keep their glare)
 const GROUND_ALBEDO := Color(0.30, 0.27, 0.22)   # dry sandy ground
+const HAZE_DEG := 8.0
 
 static func lum(c: Color) -> float:
 	return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
@@ -77,9 +78,14 @@ static func make(src: String, out_dir: String) -> Dictionary:
 	# the ground below the horizon: albedo × (sun + sky) on a horizontal surface, sent back evenly (radiance = E/π)
 	var e_ground := e_sun * maxf(sin(el_sun), 0.0) + e_sky
 	var g := GROUND_ALBEDO * (e_ground / PI)
+	# just below the horizon the far plain fades into the haze of the horizon's own sky (what a view from a height,
+	# past the terrain's edge, sees), over HAZE_DEG
+	var row0 := h / 2 - 1
 	for y in range(h / 2, h):
+		var dep := ((y + 0.5) / h - 0.5) * 180.0
+		var t := smoothstep(0.0, HAZE_DEG, dep)
 		for x in w:
-			img.set_pixel(x, y, g)
+			img.set_pixel(x, y, img.get_pixel(x, row0).lerp(g, t))
 	# scaled so the sun's light is 1: the sky as a panorama in those units
 	var k := 1.0 / e_sun
 	for y in h:

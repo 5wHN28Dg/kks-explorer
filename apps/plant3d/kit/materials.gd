@@ -170,6 +170,8 @@ static func structure_spec(name: String) -> Dictionary:
 		spec["wear"] = 0.9   # handrails, ladders and treads: worn where hands and feet go (no vertex colours here)
 	if name == "grating":
 		spec["grating"] = true
+	if name == "yard":
+		spec["joints"] = 6.0   # cast in 6 m bays
 	return spec
 
 ## A structure's material. Walls, roofs and fences are seen from both sides (PLANT3D.md §5): the build gives them
@@ -228,6 +230,8 @@ static func _make_weathered(name: String, spec: Dictionary, size: int) -> Shader
 		mat.set_shader_parameter(k, float(w[k]) * float(spec.get("weather_scale", 1.0)))
 	if spec.has("wear"):
 		mat.set_shader_parameter("wear", float(spec.wear))
+	if spec.has("joints"):
+		mat.set_shader_parameter("joint_spacing", float(spec.joints))
 	if ResourceLoader.exists(NOISE):
 		mat.set_shader_parameter("noise_tex", load(NOISE))
 	_textures(mat, spec.set, size)

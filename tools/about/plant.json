@@ -1,0 +1,102 @@
+{
+ "note": "The third-party assets Walkdown Plant carries, besides the Godot Engine (its own notices come from Engine.get_license_info() and Engine.get_copyright_info() at run time, decision 0054 §7) and the sounds (synthesised by tools/plant3d/sounds; any recorded clip has its licence in data/plant3d/sounds.json). Geometry and the weathering's noise are made by the build itself.",
+ "licenses": {
+  "CC0-1.0": {
+   "name": "Creative Commons Zero v1.0 Universal",
+   "url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+   "text": true
+  }
+ },
+ "assets": [
+  {
+   "id": "ambientcg-paintedmetal004",
+   "name": "PaintedMetal004 (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=PaintedMetal004",
+   "source": "https://ambientcg.com/get?file=PaintedMetal004_2K-JPG.zip",
+   "use": "painted steel's scratches and wear (normal, roughness)",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "ambientcg-metal032",
+   "name": "Metal032 (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=Metal032",
+   "source": "https://ambientcg.com/get?file=Metal032_2K-JPG.zip",
+   "use": "bare and galvanised steel",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "ambientcg-metal009",
+   "name": "Metal009 (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=Metal009",
+   "source": "https://ambientcg.com/get?file=Metal009_2K-JPG.zip",
+   "use": "aluminium insulation cladding",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "ambientcg-corrugatedsteel005",
+   "name": "CorrugatedSteel005 (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=CorrugatedSteel005",
+   "source": "https://ambientcg.com/get?file=CorrugatedSteel005_2K-JPG.zip",
+   "use": "wall cladding and casings",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "ambientcg-concrete034",
+   "name": "Concrete034 (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=Concrete034",
+   "source": "https://ambientcg.com/get?file=Concrete034_2K-JPG.zip",
+   "use": "concrete: foundations, yards, walls",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "ambientcg-metalwalkway010",
+   "name": "MetalWalkway010 (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=MetalWalkway010",
+   "source": "https://ambientcg.com/get?file=MetalWalkway010_2K-JPG.zip",
+   "use": "steel deck walkways",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "ambientcg-diamondplate008c",
+   "name": "DiamondPlate008C (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=DiamondPlate008C",
+   "source": "https://ambientcg.com/get?file=DiamondPlate008C_2K-JPG.zip",
+   "use": "chequer plate decks",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "ambientcg-gravel023",
+   "name": "Gravel023 (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=Gravel023",
+   "source": "https://ambientcg.com/get?file=Gravel023_2K-JPG.zip",
+   "use": "gravel ground and the country round the plant",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "ambientcg-asphalt031",
+   "name": "Asphalt031 (ambientCG)",
+   "license": "CC0-1.0",
+   "url": "https://ambientcg.com/view?id=Asphalt031",
+   "source": "https://ambientcg.com/get?file=Asphalt031_2K-JPG.zip",
+   "use": "the ring road",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "polyhaven-kloofendal-48d-partly-cloudy-puresky",
+   "name": "Kloofendal 48d Partly Cloudy (Pure Sky), by Greg Zaal and Jarod Guest (Poly Haven)",
+   "license": "CC0-1.0",
+   "url": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+   "source": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/kloofendal_48d_partly_cloudy_puresky_2k.hdr",
+   "use": "the sky; its sun becomes the plant's sun (apps/plant3d/builder/sky.gd)",
+   "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  }
+ ]
+}

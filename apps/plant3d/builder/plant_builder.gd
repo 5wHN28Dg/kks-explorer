@@ -425,6 +425,10 @@ func make_materials(out_dir: String) -> int:
 		print("build: warning: materials without their textures: ", ", ".join(missing))
 	for med in plant.get("media", {}):
 		list["medium_" + med] = Mat.make("medium_" + med, {"set": "", "tint": Color.html(plant.media[med].band), "rough": 0.5, "metal": 0.0})
+	# the ring road's centre line (builder/site.gd): a box in Godot's axes
+	var rr: Rect2 = Site.new(self).extent().grow(Site.ROAD_GAP + Site.ROAD_W * 0.5)
+	var rc := Geom.g([rr.get_center().x, rr.get_center().y, 0.0])
+	(list["road"] as ShaderMaterial).set_shader_parameter("line_box", Vector4(rc.x, rc.z, rr.size.x * 0.5, rr.size.y * 0.5))
 	var wz := _wet_zone()
 	Mat.set_wet_zone(list, wz, 0.85 if wz != Vector4.ZERO else 0.0)
 	for name in list:
@@ -613,6 +617,10 @@ func _near_ladder(p: Vector2, z: float) -> bool:
 
 func build_all(out_dir: String) -> int:
 	var err := make_materials(out_dir)
+	# the third-party assets' credits and licences (tools/about.py --plant), packed with the plant
+	if DirAccess.copy_absolute(ProjectSettings.globalize_path("res://about.json"), ProjectSettings.globalize_path(out_dir.path_join("about.json"))) != OK:
+		errors.append("cannot copy about.json (tools/about.py --plant) into the build")
+		return err + 1
 	var sky_src := ProjectSettings.globalize_path(SKY_SRC)
 	if FileAccess.file_exists(sky_src):
 		var t0 := Time.get_ticks_msec()

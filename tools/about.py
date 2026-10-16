@@ -15,6 +15,12 @@ Made from:
 - the course photos' credits (data/courses/*.json).
 The version is not in it: each program knows its own (VERSION at build time) and the commit it was built from.
 
+  python3 tools/about.py --plant [--check]   the same for Walkdown Plant: apps/plant3d/about.json (format
+                                             "walkdown-plant-about", version 1) from tools/about/plant.json: {note,
+                                             assets: [{id, name, license (SPDX), url, source, use, pinned_by}],
+                                             licenses: {<SPDX id>: {name, url, text}}} with each licence's full text
+                                             (tools/about/licenses/). The plant's build packs it (built/about.json).
+
 data/about.json (format "walkdown-about", version 1): an object with
   name, summary, developer: strings
   license: {id (SPDX), name, url}            Walkdown's own licence
@@ -173,13 +179,35 @@ def text(doc):
     return json.dumps(doc, ensure_ascii=False, indent=1) + '\n'
 
 
+PLANT_OUT = os.path.join('apps', 'plant3d', 'about.json')
+
+
+def build_plant(repo=REPO):
+    """Walkdown Plant's third-party assets (tools/about/plant.json) with their licences' texts."""
+    src = json.loads(read(repo, SRC, 'plant.json'))
+    licenses = {}
+    for a in src['assets']:
+        if a['license'] not in src['licenses']:
+            raise SystemExit(f'{SRC}/plant.json: {a["id"]}: licence {a["license"]} has no entry under "licenses"')
+        missing = {'id', 'name', 'license', 'url', 'source', 'use', 'pinned_by'} - set(a)
+        if missing:
+            raise SystemExit(f'{SRC}/plant.json: {a["id"]}: missing {sorted(missing)}')
+    for lid in sorted({a['license'] for a in src['assets']}):
+        meta = src['licenses'][lid]
+        licenses[lid] = {'name': meta['name'], 'url': meta['url'],
+                         'text': read(repo, SRC, 'licenses', lid + '.txt') if meta.get('text') else None}
+    return {'format': 'walkdown-plant-about', 'version': 1, 'note': src['note'], 'assets': src['assets'],
+            'licenses': licenses}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--check', action='store_true')
-    ap.add_argument('--file', default=os.path.join(REPO, OUT), help='the file to write or check (default: %(default)s)')
+    ap.add_argument('--plant', action='store_true', help="Walkdown Plant's about data instead (%s)" % PLANT_OUT)
+    ap.add_argument('--file', default=None, help='the file to write or check (default: %s, or %s with --plant)' % (OUT, PLANT_OUT))
     a = ap.parse_args(argv)
-    want = text(build())
-    path = a.file
+    want = text(build_plant() if a.plant else build())
+    path = a.file or os.path.join(REPO, PLANT_OUT if a.plant else OUT)
     if a.check:
         have = open(path, encoding='utf-8').read() if os.path.exists(path) else ''
         if have != want:
