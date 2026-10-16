@@ -1,4 +1,4 @@
-// The plant's textured materials (included by weathered.gdshader and, with GRATING, weathered_grating.gdshader) (kit/materials.gd): a CC0 PBR set (albedo, normal, roughness, tiled in metres
+// The plant's textured materials (weathered.gdshader includes it) (kit/materials.gd): a CC0 PBR set (albedo, normal, roughness, tiled in metres
 // along UV1) and the weathering a plant in service shows, from where a surface stands in the world (R9, R9a):
 //   grime    darker, browner blotches; heaviest in the splash zone near the ground and under overhangs
 //   streaks  run-off down vertical faces (rust-brown on steel, dark on concrete and paint)
@@ -10,7 +10,7 @@
 // All from one tileable noise texture made by the build (builder/weather.gd), sampled in world space on the face's
 // main plane (one sample per scale): the same asset set serves every tier, the phone reads two noise samples fewer
 // (`detail` = 0 drops the streaks' and wear's own samples).
-// Gratings (GRATING, their own shader: only they discard pixels, so every other surface keeps early depth): open bar grating drawn from UV1 (30 mm bars, 100 mm cross rods), see-through near, and its
+// Gratings (`grating`): an open bar grating drawn from UV1 (30 mm bars, 100 mm cross rods), its gaps dark, and its
 // mean colour where the bars get smaller than a pixel (no shimmer at a distance).
 
 uniform vec4 tint : source_color = vec4(1.0);
@@ -35,6 +35,7 @@ uniform vec4 wet_zone = vec4(0.0);    // a box round water: centre x, z (Godot's
 uniform float wet = 0.0;              // how wet at the box's edge and inside (0: no zone)
 const float WET_FALLOFF = 9.0;        // metres beyond the box over which the ground dries
 uniform float detail = 1.0;   // the tier: 1 every sample, 0 the phone's
+uniform float grating = 0.0;          // 1: an open bar grating (drawn)
 uniform float joint_spacing = 0.0;    // concrete yards: joints this many metres apart (0: none)
 uniform vec4 line_box = vec4(0.0);    // a road's centre line: a box round the plant (centre x, z; half sizes), dashed
 
@@ -135,20 +136,20 @@ void fragment() {
 		rough = mix(rough, 0.1, wz);
 	}
 
-#ifdef GRATING
-	{
-		// open bar grating: bearing bars every 30 mm along U, cross rods every 100 mm along V (UV1 in metres)
+	if (grating > 0.5) {
+		// bar grating drawn, not cut out (a discarding shader was 7 more pipelines on a phone's first start:
+		// decision 0057): bearing bars every 30 mm along U, cross rods every 100 mm along V (UV1 in metres), the
+		// gaps the dark below; where the bars get smaller than a pixel, their mean
 		vec2 m = UV;
 		vec2 fw = fwidth(m);
 		float bar = smoothstep(0.0, fw.x * 1.5, 0.004 - abs(fract(m.x / 0.03 + 0.5) - 0.5) * 0.03);
 		float rod = smoothstep(0.0, fw.y * 1.5, 0.003 - abs(fract(m.y / 0.1 + 0.5) - 0.5) * 0.1);
 		float solid = max(bar, rod);
-		float far_ = smoothstep(0.004, 0.012, max(fw.x, fw.y));   // bars under a pixel: the mean
-		ALPHA = mix(solid, 1.0, far_);
-		ALPHA_SCISSOR_THRESHOLD = 0.5;
-		base *= mix(1.0, 0.45, far_);   // seen from afar, a grating is mostly the dark below it
+		float far_ = smoothstep(0.004, 0.012, max(fw.x, fw.y));
+		float open_ = mix(1.0 - solid, 0.6, far_);
+		base = mix(base, base * 0.08, open_);
+		rough = mix(rough, 1.0, open_);
 	}
-#endif
 
 	ALBEDO = base;
 	ROUGHNESS = clamp(rough, 0.04, 1.0);

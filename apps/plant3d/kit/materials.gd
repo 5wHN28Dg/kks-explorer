@@ -72,7 +72,6 @@ const EXPOSURE := {"paint_yellow": 1.0, "paint_red": 0.8, "paint_orange": 0.35, 
 	"paint_green": 0.3}
 const EXPOSURE_DEFAULT := 0.12
 const SHADER := "res://kit/weathered.gdshader"
-const SHADER_GRATING := "res://kit/weathered_grating.gdshader"
 ## The weathering's noise (builder/weather.gd makes it at build time: our own, no licence).
 const NOISE := "res://built/weather/noise.res"
 
@@ -219,7 +218,8 @@ static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> Materi
 static func _make_weathered(name: String, spec: Dictionary, size: int) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.resource_name = name
-	mat.shader = load(SHADER_GRATING if spec.get("grating", false) else SHADER)
+	mat.shader = load(SHADER)
+	mat.set_shader_parameter("grating", 1.0 if spec.get("grating", false) else 0.0)
 	mat.set_shader_parameter("tint", spec.tint)
 	mat.set_shader_parameter("roughness_scale", spec.rough)
 	mat.set_shader_parameter("metallic", spec.metal)

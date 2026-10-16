@@ -4,7 +4,7 @@
 ##   LightmapGI beside them (its users' paths hold in the app); an unbaked data file is not attached;
 ## - walls, roofs and fences have their back faces as geometry (each side its own lightmap texels);
 ## - the photographed sky's sun is the light's direction, and the sky is the panorama;
-## - the textured materials are the weathered shader with the noise, the gratings its see-through variant, the yards
+## - the textured materials are the weathered shader with the noise, the gratings drawn as bar gratings, the yards
 ##   jointed, the road's centre line round the plant, the ground wet round the cooling tower;
 ## - the site: gravel, yards, the ring road with kerbs and its drain, the boundary wall, the terrain;
 ## - each tier's environment: AgX and the haze on both, SSAO on laptops only, the measured-and-dropped effects off.
@@ -74,8 +74,8 @@ func run(tree: SceneTree) -> Array:
 	if paint == null or paint.shader.resource_path != Mat.SHADER or paint.get_shader_parameter("noise_tex") == null:
 		p.append("paint is the weathered shader with its noise")
 	var grating := load("res://built/materials/grating.tres") as ShaderMaterial
-	if grating == null or grating.shader.resource_path != Mat.SHADER_GRATING:
-		p.append("gratings are see-through")
+	if grating == null or float(grating.get_shader_parameter("grating")) != 1.0:
+		p.append("gratings are drawn as bar gratings")
 	var yard := load("res://built/materials/yard.tres") as ShaderMaterial
 	if yard == null or float(yard.get_shader_parameter("joint_spacing")) <= 0.0:
 		p.append("the yards are jointed")
