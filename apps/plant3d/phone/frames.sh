@@ -68,7 +68,8 @@ sh_ mkdir -p "$FILES"
 printf 'walk=frames\nseconds=%s\n' "$SECONDS_" > "$OUT/walk.txt"
 a push "$OUT/walk.txt" "$FILES/walk.txt" >/dev/null
 # in front and unlocked, or nothing is drawn (0041)
-[ "$SERIAL" = "$NOTE9" ] && sh_ input keyevent KEYCODE_WAKEUP
+# (the Note 9 has no screen lock: wake it and dismiss the keyguard; the screen times out normally after)
+if [ "$SERIAL" = "$NOTE9" ]; then sh_ input keyevent KEYCODE_WAKEUP; sleep 1; sh_ wm dismiss-keyguard; fi
 sleep 1
 if [ "$(sh_ dumpsys power | grep -c 'mWakefulness=Awake' || true)" = 0 ] || [ "$(sh_ dumpsys window policy | grep -cE '^ +showing=true' || true)" != 0 ]; then
   echo "the phone is locked or its screen is off: unlock it and run this again" >&2
