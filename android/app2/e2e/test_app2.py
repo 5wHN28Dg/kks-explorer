@@ -1257,9 +1257,11 @@ class Phone(unittest.TestCase):
             time.sleep(2)
 
         def main_activities():
-            # MainActivity's records in the activity manager (each is listed in several places: told apart by its id)
-            return len(set(re.findall(r'ActivityRecord\{(\w+) [^}]*' + re.escape(PKG) + r'/kks\.explorer\.MainActivity',
-                                      ui.sh('dumpsys', 'activity', 'activities'))))
+            # MainActivity's records in the tasks' histories ("Hist #n" lines: dumpsys also lists earlier records in
+            # logs, such as the orientation's sources); what dumpsys said goes with a failure
+            d = ui.sh('dumpsys', 'activity', 'activities')
+            ids = set(re.findall(r'Hist +#\d+: ActivityRecord\{(\w+) [^}]*' + re.escape(PKG) + r'/kks\.explorer\.MainActivity', d))
+            return len(ids) if len(ids) == 1 else '%d: %s' % (len(ids), '\n'.join(l.strip() for l in d.splitlines() if 'MainActivity' in l or 'Task{' in l))
         link('walkdown://kks/11LAB70AA501')
         ui.find('Join through a server', exact=True)
         self.join()
@@ -1272,19 +1274,19 @@ class Phone(unittest.TestCase):
         # while the app runs: the tag, in the same activity
         link('walkdown://kks/11LAB70AA501')
         ui.find('Feed water piping system', timeout=15)
-        self.assertEqual(main_activities(), 1)
+        n = main_activities(); self.assertTrue(n == 1, n)
         # a cold start
         ui.sh('am', 'force-stop', PKG)
         link('walkdown://kks/11LAB70AA501')
         ui.find('Feed water piping system', timeout=20)
-        self.assertEqual(main_activities(), 1)
+        n = main_activities(); self.assertTrue(n == 1, n)
         # in the background (Home): the task comes to the front and opens the link: a course, at a page
         ui.sh('input', 'keyevent', '3')
         time.sleep(2)
         link('walkdown://course/inc/loop')
         ui.find('Instrumentation and control', exact=True, timeout=15)
         ui.scroll_to('A control loop: drum level', tries=30)
-        self.assertEqual(main_activities(), 1)
+        n = main_activities(); self.assertTrue(n == 1, n)
         # with the camera open over Walkdown for a photo: the camera stays, the photo is kept, and the link waits until
         # the photo's editor is closed; a code on no drawing then says so
         link('walkdown://kks/11LAB70AA501')
@@ -1307,7 +1309,7 @@ class Phone(unittest.TestCase):
         self.assertFalse(ui.present('is not on any drawing'), 'the link acted while the photo was being marked up')
         ui.tap('Cancel', exact=True)
         ui.find('11LAB70AA599 is not on any drawing', timeout=10)
-        self.assertEqual(main_activities(), 1)
+        n = main_activities(); self.assertTrue(n == 1, n)
 
     def test_photo_queue(self):
         """request 1: photos go through a background queue (WorkManager): sent in order with the panel closed, kept
