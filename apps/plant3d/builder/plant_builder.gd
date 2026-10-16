@@ -479,12 +479,29 @@ func _slope_panel(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, za: float
 		lo.append(Geom.g([q[0].x, q[0].y, q[1]]))
 		hi.append(Geom.g([q[0].x, q[0].y, q[1] + h]))
 		pts.append(lo[-1]); pts.append(hi[-1])
-	for i in 4:
-		var j := (i + 1) % 4
-		Geom._quad(st, lo[j], lo[i], hi[i], hi[j])
-		Geom._quad(st, lo[i], lo[j], hi[j], hi[i])
+	if st != null:
+		for i in 4:
+			var j := (i + 1) % 4
+			Geom._quad(st, lo[j], lo[i], hi[i], hi[j])
+			Geom._quad(st, lo[i], lo[j], hi[j], hi[i])
 	if body != null:
 		_convex(body, pts)
+
+## A handrail from (a, za) to (b, zb) (level or sloped): solid for the walker (a panel RAIL_H high), drawn as a top
+## rail, a knee rail, a toe board and posts at most 1.5 m apart.
+func _rail(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, za: float, zb: float) -> void:
+	if a.distance_to(b) < 0.01:
+		return
+	_slope_panel(null, body, a, b, za, zb, RAIL_H, 0.05)
+	_slope_panel(st, null, a, b, za + RAIL_H - 0.05, zb + RAIL_H - 0.05, 0.05, 0.05)
+	_slope_panel(st, null, a, b, za + 0.5, zb + 0.5, 0.04, 0.04)
+	_slope_panel(st, null, a, b, za, zb, 0.1, 0.02)
+	var n := int(ceil(a.distance_to(b) / 1.5))
+	for k in n + 1:
+		var f := float(k) / n
+		var p := a.lerp(b, f)
+		var z := lerpf(za, zb, f)
+		Geom.add_prism(st, Geom.rect(p.x - 0.025, p.y - 0.025, p.x + 0.025, p.y + 0.025), z, z + RAIL_H)
 
 ## Rails along the boundary of a walkable region, except where the walker can go on (another walkable surface at
 ## the same height, a stair's landing or flight end, a ladder) or a building's wall stands.
@@ -517,7 +534,7 @@ func _rails(st: SurfaceTool, body: Node, sf: Dictionary) -> int:
 				if on and run_start < 0.0:
 					run_start = t0
 				elif not on and run_start >= 0.0:
-					_panel(st, body, a + d * run_start, a + d * t0, sf.z, sf.z + RAIL_H, 0.05)
+					_rail(st, body, a + d * run_start, a + d * t0, sf.z, sf.z)
 					count += 1
 					run_start = -1.0
 	return count
@@ -655,8 +672,12 @@ func _area(root: Node3D, a: Dictionary) -> void:
 		l.pixel_size = float(sg.get("size", 0.3)) / 64.0
 		l.font_size = 64
 		l.outline_size = 12
-		l.position = Geom.g(sg.at)
+		# yaw is the way the sign's face points: it stands a little in front of the wall it is fixed to, and its
+		# back is blank
+		var fd := Geom.heading(float(sg.get("yaw", 0)))
+		l.position = Geom.g([sg.at[0] + fd.x * 0.25, sg.at[1] + fd.y * 0.25, sg.at[2]])
 		l.rotation.y = Geom.yaw_rad(float(sg.get("yaw", 0))) + PI
+		l.double_sided = false
 		signs.add_child(l)
 
 # ------------------------------------------------------------------ equipment placeholders
@@ -924,7 +945,7 @@ func _stair(parent: Node3D, s: Dictionary) -> void:
 		_convex(body, Geom.ramp_points(fl.a, fl.b, fl.side, fl.width, fl.z0, fl.z1, 0.25))
 		for sgn in [-1.0, 1.0]:
 			var off: Vector2 = fl.side * (fl.width * 0.5 * sgn)
-			_slope_panel(rails, body, fl.a + off, fl.b + off, fl.z0, fl.z1, RAIL_H, 0.05)
+			_rail(rails, body, fl.a + off, fl.b + off, fl.z0, fl.z1)
 	for l in s.lay.landings:
 		var c := Vector2.ZERO
 		for p in l.poly: c += p

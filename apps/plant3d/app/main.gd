@@ -100,7 +100,10 @@ func _options() -> void:
 func _environment() -> void:
 	env = Environment.new()
 	var sky := Sky.new()
-	sky.sky_material = ProceduralSkyMaterial.new()
+	var sm := ProceduralSkyMaterial.new()
+	sm.ground_horizon_color = Color(0.55, 0.53, 0.49)   # the plant's ground runs on to the horizon
+	sm.ground_bottom_color = Color(0.42, 0.40, 0.36)
+	sky.sky_material = sm
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
@@ -152,6 +155,7 @@ func _probe() -> void:
 	g.sort()
 	var med := g[g.size() / 2]
 	var t := Quality.record_probe(cf, med)
+	Quality.save(cf)
 	_say("probe: full tier GPU median %.2f ms on the heaviest view -> %s" % [med, t])
 	cam.queue_free()
 	player.camera.make_current()

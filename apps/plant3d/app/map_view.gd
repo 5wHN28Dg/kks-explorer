@@ -43,7 +43,7 @@ func setup(p, plant) -> void:
 		l.text = a.title
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		l.no_depth_test = true
-		l.pixel_size = 0.08
+		l.pixel_size = 0.05
 		l.font_size = 48
 		l.outline_size = 10
 		l.layers = 1 << (LAYER - 1)

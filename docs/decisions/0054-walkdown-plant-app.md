@@ -73,7 +73,7 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    new `plant` target, which needs course format version 2 (COURSES.md is frozen at 1). Both are follow-up work in
    Walkdown, each with its own tests.
 4. **Description → pre-built scenes.** The content passes `ref/plant3d.py` (strict JSON), then a headless Godot
-   script (`godot --headless --script apps/plant3d/build/build.gd`) makes one scene per area from the kit (instanced
+   script (`godot --headless --script apps/plant3d/builder/build_plant.gd`; the folder is `builder/` because the repository ignores every `build/`) makes one scene per area from the kit (instanced
    per part, LOD, material and 12 m cell: 0041) and the compiled model, saved as binary resources that the export
    packs. The app does no geometry generation at startup (0041: building by script took 20–28 s of the Note 9's
    first frame; the pre-built bench plant is 327 KB). Shaders: the shader baker at export (Vulkan from Linux, D3D12

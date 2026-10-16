@@ -56,13 +56,12 @@ static func choose(cf: ConfigFile, forced := "") -> Dictionary:
 		return {"tier": cf.get_value("probe", "tier"), "why": "measured on this GPU (%.1f ms)" % float(cf.get_value("probe", "gpu_ms", 0.0))}
 	return {"tier": "", "why": "probe"}
 
-## Records a probe's result (the median GPU time of the full tier on the heaviest view).
+## Records a probe's result in cf (the caller saves it) (the median GPU time of the full tier on the heaviest view).
 static func record_probe(cf: ConfigFile, gpu_ms: float) -> String:
 	var tier := "full" if gpu_ms <= PROBE_LIMIT_MS else "lean+vis"
 	cf.set_value("probe", "adapter", RenderingServer.get_video_adapter_name())
 	cf.set_value("probe", "gpu_ms", snappedf(gpu_ms, 0.01))
 	cf.set_value("probe", "tier", tier)
-	save(cf)
 	return tier
 
 ## Applies a tier to the viewport, the sun and the environment.
