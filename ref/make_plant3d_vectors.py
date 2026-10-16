@@ -107,7 +107,7 @@ def mini():
              'trips': [{'id': 't1', 'kks': '10LAB10CP501', 'text': 'Pressure high', 'when': 'p_high', 'delay': 0.5,
                         'do': [{'set': {'pump_cmd': 0}}], 'first_out': 'g'}],
              'alarms': [{'id': 'a1', 'kks': '10LAB10CP501', 'isa': 'PAH', 'text': 'Pressure high', 'when': 'p_high',
-                         'priority': 2, 'where': '10LAC10AP001'}],
+                         'priority': 2.0, 'where': '10LAC10AP001'}],      # 2.0 is 2 to any JSON reader
              'bind': [{'kks': '10LAC10AP001', 'anim': 'shaft', 'of': 'flow', 'scale': 25},
                       {'kks': '10LAB10CP501', 'show': 'p'},
                       {'kks': '10LAC10AP001', 'sound': 'hum', 'gain': {'of': 'flow', 'table': [[0, 0], [1, 1]]}}]}
@@ -433,8 +433,8 @@ def unit_models():
             [5, 'op', '10LAC10AP001', 'reset', None, 'ta'],
             [6, 'op', '10LAB10AA001', 'set', 1, None],
             [8, 'ack', 'none'], [8, 'shelve', 'none', 5], [8, 'unshelve', 'none'], [8, 'fault', 'none'],
-            [8, 'shelve', 'al', 0], [8, 'shelve', 'al', -1], [8, 'shelve', 'al', 1e6], [8, 'shelve', 'al', 0.25]],
-         12),
+            [8, 'shelve', 'al', 0], [8, 'shelve', 'al', -1], [8, 'shelve', 'al', 1e6], [8, 'shelve', 'al', 0.25],
+            [11, 'shelve', 'al', 999999.9]], 12),
     ]
 
 
@@ -539,6 +539,8 @@ FORKS = [
       'alarms': ['gt1_lp1_ll', 'gen1_brk_trip']}),
     ('gt_lac_fails', 'end', [('fault', 'gt1_lac_fails'), ('run', 60)],
      {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
+    ('gt_lube_stopped_at_rest', 'gt_lube_reset', [('op', '10MBV10AP001', 'stop', None, None), ('run', 60)],
+     {'no_interlocks': ['gt1_dc_auto']}),
     ('gt_lube_ac_stopped_on_tg', 'gt_tg', [('run', 120), ('op', '10MBV10AP001', 'stop', None, None), ('run', 60)],
      {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
     ('st_lube_ac_stopped_on_tg', 'st_tg', [('run', 120), ('op', '30MAV10AP001', 'stop', None, None), ('run', 60)],

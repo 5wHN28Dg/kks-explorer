@@ -74,7 +74,7 @@ def flag(x, where):
 
 
 def steps(t):
-    """A time in seconds as a count of 0.1 s steps (§7.1): rounded half away from zero, never truncated."""
+    """A time in seconds as a count of 0.1 s steps (§7.1): rounded half up, never truncated."""
     return math.floor(t / STEP + 0.5)
 
 

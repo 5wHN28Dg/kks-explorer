@@ -300,11 +300,14 @@ class Engine(unittest.TestCase):
         self.assertIn([5, 'op', '10LAC10AP001', 'reset', 'done', []], ev)
         self.assertIn([6, 'trip', 'tb', True], ev)
         self.assertEqual(states[6]['first_out'], {'g': 'tb'})
-        # inputs naming an alarm or fault the model doesn't have, and shelving for 0 s or less, do nothing and make no
-        # event; 0.25 s is round(2.5) = 3 steps, half away from zero (§7.1), so the shelf ends in step 11
+        # inputs naming an alarm or fault the model doesn't have, and shelving outside 0 < t < 10⁶ s, do nothing and
+        # make no event; 0.25 s is 3 steps, rounded half up (§7.1), so the shelf ends in step 11
         self.assertEqual([e for e in ev if e[0] == 8], [[8, 'shelve', 'al', 0.25]])
-        self.assertIn([11, 'unshelve', 'al'], ev)
         self.assertEqual(states[10]['shelved'], ['al'])
+        # a shelf just under 10⁶ s is made (in step 1 of step 11, replacing the first before it ends in step 7)
+        self.assertIn([11, 'shelve', 'al', 999999.9], ev)
+        self.assertNotIn([11, 'unshelve', 'al'], ev)
+        self.assertEqual(states[12]['shelved'], ['al'])
 
     def v(self, run, step, name):
         return self.runs[run][0][step]['values'][name]
@@ -554,6 +557,8 @@ class Forks(unittest.TestCase):
                     self.assertIn(['alarm', a, 'active_unack'], [e[1:4] for e in ev if e[1] == 'alarm'])
                 for il in ex.get('interlocks', []):
                     self.assertIn(['interlock', il], [e[1:3] for e in ev if e[1] == 'interlock'])
+                for il in ex.get('no_interlocks', []):
+                    self.assertNotIn(['interlock', il], [e[1:3] for e in ev if e[1] == 'interlock'])
                 if ex.get('no_trip'):
                     self.assertEqual([e for e in ev if e[1] == 'trip'], [])
 
