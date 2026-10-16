@@ -91,6 +91,19 @@ case "$TARGETS" in
     grep -q 'gradle-8.11.1-bin.zip$' "$W" || { echo "the template's Gradle is not 8.11.1: pin its checksum here first" >&2; exit 2; }
     grep -q '^distributionSha256Sum=' "$W" ||
       echo 'distributionSha256Sum=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6' >> "$W"
+    # Gradle's dependency verification: every artifact the build downloads must match the SHA-256 recorded in
+    # android-gradle-verification.xml (made once with PLANT_GRADLE_WRITE_VERIFICATION=1, then reviewed and committed)
+    GW="$HERE/android/build/gradlew"
+    grep -q PLANT_GRADLE_EXTRA "$GW" ||
+      sed -i 's|^APP_ARGS=`save "\$@"`|[ -n "${PLANT_GRADLE_EXTRA:-}" ] \&\& set -- "$@" $PLANT_GRADLE_EXTRA\nAPP_ARGS=`save "$@"`|' "$GW"
+    grep -q PLANT_GRADLE_EXTRA "$GW" || { echo "could not add the verification option to the template's gradlew" >&2; exit 2; }
+    VM="$HERE/android/build/gradle/verification-metadata.xml"
+    if [ -n "${PLANT_GRADLE_WRITE_VERIFICATION:-}" ]; then
+      rm -f "$VM"
+      export PLANT_GRADLE_EXTRA="--write-verification-metadata sha256"
+    else
+      cp "$HERE/android-gradle-verification.xml" "$VM"
+    fi
     GP="$HERE/android/build/gradle.properties"
     sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2g/' "$GP"
     grep -q '^org.gradle.daemon=' "$GP" || printf 'org.gradle.daemon=false\norg.gradle.workers.max=2\n' >> "$GP"

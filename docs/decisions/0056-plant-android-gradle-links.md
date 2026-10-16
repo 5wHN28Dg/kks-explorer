@@ -28,12 +28,17 @@ that need from the build?
   (`distributionSha256Sum`), caps Gradle (`-Xmx2g`, 2 workers, no daemon), and runs it on Eclipse Temurin 17 fetched
   by `tools/plant3d/fetch_jdk.sh` (pinned version and SHA-256, under `~/.local/kksdev`, nothing system-wide). CI does
   the same.
-- **The signing key never reaches Gradle:** Gradle's dependencies are not pinned (no dependency verification yet), so
-  the release is exported unsigned and then aligned and signed by `build.sh` with the SDK's `zipalign` and `apksigner`
-  (password through the environment of apksigner alone), as the plain export did before.
+- **Gradle's dependency verification:** every artifact the build resolves (the Android Gradle plugin, Kotlin, AndroidX:
+  320 components) must match the SHA-256 in `apps/plant3d/android-gradle-verification.xml`, recorded once from the
+  artifacts downloaded here on 2026-10-16 (trust on first use; `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export
+  android-debug android-release` records it again). A changed artifact fails the build [V: one altered checksum
+  failed it].
+- **The signing key never reaches Gradle:** the release is exported unsigned and then aligned and signed by
+  `build.sh` with the SDK's `zipalign` and `apksigner` (password through the environment of apksigner alone), as the
+  plain export did before.
 - On the desktops the link comes after `--` (`Exec=godot-runner -- %u`, MSIX `Parameters="-- "%1""`), so that a
   crafted URI is never read as one of Godot's own options.
 
 **When to revisit:** when Godot's template moves to a Gradle that runs on the JDK Walkdown uses (drop the second JDK);
-if Godot gives a plain export a way to add intent filters (drop Gradle); if the template's repositories change (the
-snapshot repository is a source we don't control: Gradle dependency verification would pin every artifact).
+if Godot gives a plain export a way to add intent filters (drop Gradle); when Godot's template changes its dependencies (record the
+verification file again and review what changed).

@@ -121,8 +121,8 @@ The Android presets are Gradle builds, so that the export plugin can add the int
 `build.sh` installs Godot's template into `android/` (ignored by git) from the export templates, pins its Gradle by
 SHA-256 and runs it on a JDK 17 (`tools/plant3d/fetch_jdk.sh`; Gradle 8.11 doesn't run on JDK 25). The release is
 exported unsigned and signed afterwards with `apksigner` (Android SDK build-tools 35 or later, for `zipalign -P`), so
-the key never reaches Gradle; every APK is checked for the intent filter (`aapt2`). The template's own build
-dependencies (the Android Gradle plugin, AndroidX) are not pinned (0056). On the desktops a link opens a second
+the key never reaches Gradle; every APK is checked for the intent filter (`aapt2`). Every build dependency Gradle
+resolves is checked against `android-gradle-verification.xml` (0056). On the desktops a link opens a second
 instance when the app already runs.
 `phone/links.sh` checks links on the Note 9 (a cold start and a running app).
 
