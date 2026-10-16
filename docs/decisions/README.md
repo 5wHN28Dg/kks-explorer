@@ -38,7 +38,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0038](0038-v2-relay-pipe.md) | Internet sync on the native apps through the relay pipe first; hole punching later (done 2026-10-03, 0028) | decided |
 | [0039](0039-webcam-qr.md) | Webcam QR: camera portal + PipeWire/GStreamer on GNOME, Media Foundation (loaded at run time) on Windows | decided, verified |
 | [0040](0040-diagnostics-reports.md) | Diagnostics reports to the manager: sealed `report` entries through the plant's own log | accepted by the user |
-| [0041](0041-plant3d-engine.md) | The 3D plant's engine: Godot 4; the Note 9 tier at lean+vis (98 % of frames shown at ≥ 30 fps on battery over 10 min) | decided |
+| [0041](0041-plant3d-engine.md) | The 3D plant's engine: Godot 4; the Note 9 tier at lean+vis (99.9 % of frames shown at ≥ 30 fps) | decided |
 | [0042](0042-v1-phone-migration.md) | Phones move from the v1 app by a bridge update; v1 proofs checked by the server, open changes handed over | accepted by the user; retired 2026-10-05 (0048) |
 | [0043](0043-msix-packaging.md) | MSIX: Microsoft's MakeAppx (NuGet, in a Windows VM), signed on the host with osslsigncode | accepted |
 | [0044](0044-walkdown-android-updates.md) | Walkdown updates itself on Android: the same signed release, a second P-256 signature, PackageInstaller | accepted |

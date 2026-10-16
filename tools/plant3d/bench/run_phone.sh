@@ -109,6 +109,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The bench must be in front: behind the lock screen Android stops it and nothing is drawn (2026-10-16: a walk
+# started on a dozing Note 9). The Note 9 is woken; a locked phone needs a person to unlock it.
+screen_ready() {
+  [ "$SERIAL" = "$NOTE9" ] && sh_ input keyevent KEYCODE_WAKEUP
+  sleep 1
+  local awake locked
+  awake=$(sh_ dumpsys power | grep -c 'mWakefulness=Awake' || true)
+  # the keyguard's own "showing" line (Samsung keeps showingAndNotOccluded=true after an unlock)
+  locked=$(sh_ dumpsys window policy | grep -cE '^ +showing=true' || true)
+  [ "$awake" -gt 0 ] && [ "$locked" = 0 ]
+}
+
 activity() { sh_ cmd package resolve-activity --brief "$PKG" | tail -1; }
 
 # run NAME PRESET SECONDS PREBUILT LOOK [WAIT_UNPLUG]: one start of the bench; prints the RESULT line
@@ -123,6 +135,13 @@ run() {
   printf 'preset=%s\nseconds=%s\nvariant=cells\nprebuilt=%s\nlook=%s\nwait_battery=%s\nvsync=%s\n' "$preset" "$seconds" "$prebuilt" "$look" "$unplug" "${VSYNC:-0}" > "$dir/preset.txt"
   a push "$dir/preset.txt" "$FILES/preset.txt" >/dev/null
   echo "before: $(state)" > "$dir/state.txt"
+  if ! screen_ready; then
+    say "THE PHONE IS LOCKED OR ITS SCREEN IS OFF: unlock it (the bench keeps the screen on while it runs)"
+    local w=0
+    until screen_ready; do
+      w=$((w + 1)); [ $w -lt 300 ] || { say "$name: still locked after 5 minutes"; exit 6; }
+    done
+  fi
   local t0; t0=$(sh_ date +%s)
   say "$name: preset=$preset seconds=$seconds prebuilt=$prebuilt look=$look ($(state))"
   sh_ am start -W -n "$(activity)" > "$dir/am_start.txt"

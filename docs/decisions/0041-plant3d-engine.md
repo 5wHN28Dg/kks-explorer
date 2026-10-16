@@ -4,7 +4,8 @@ Date 2026-10-03 · Scope: https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant
 **decided: Godot 4** (2026-10-16), with the Note 9 tier at the `lean+vis` preset. The user decided on 2026-10-15:
 Godot 4 if the Note 9 meets the frame rule. On 2026-10-16 the user settled how the rule is read: count the frames
 the 60 Hz screen shows, and a frame held for two refreshes is 30 fps. Read so, the Note 9 meets the rule on battery
-with `lean+vis` (Conclusion below).
+with `lean+vis`: 99.9 % of frames shown at 30 fps or better by Android's own present times, 98.1 % by the
+bench's more conservative count on battery (Conclusion below).
 
 **Question:** which engine (or none) renders a generic, photo-realistic, walkable combined-cycle plant on laptops
 (Windows, Linux) and phones, with the Samsung Galaxy Note 9 (Exynos 9810, Mali-G72 MP18, Android 10, Vulkan 1.1) as
@@ -179,8 +180,9 @@ loop's intervals: with vsync on (Android forces it) the loop waits for the displ
 frame stays on the 60 Hz screen, though not frame for frame (a one-off check against SurfaceFlinger's present times
 would confirm it). The bench sorts them into one refresh (≤ 17.5 ms, 60 fps), two (≤ 34.2 ms, 30 fps) or more.
 Two-refresh frames with jitter past 34.2 ms land in "more", so that count errs high (p99 is 34.3–34.5 ms). It also
-logs every frame over 100 ms with where the camera was. The walk now also takes in the heaviest views: up over the
-pump bay at 12 m, along it with everything in sight, and down from the far corner looking over the whole plant.
+logs every frame over 100 ms with where the camera was. The walk now also takes in the heaviest views: up to 12 m
+beside the rack, along the whole plant at that height with most of it in sight, and down from the far corner looking
+over the whole plant (look viewpoint 10; viewpoint 09, looking down across the bay, is only partly matched).
 That makes a 90 s loop.
 
 | Preset | Run | Median | p95 (fps) | Frames 1 / 2 / ≥ 3 refreshes | > 100 ms | Max | GPU median / p95 | Draw calls p95 | Peak PSS | Battery |
@@ -191,13 +193,25 @@ That makes a 90 s loop.
 | **lean+vis, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | 33.8 ms (29.6) | 63.2 / 34.9 / **1.9 %** | **0** | **79 ms** | 14.5 / 18.7 ms | 479 | not sampled (504–630 MB plugged) | 100 → 97 %, 31.7 → 32.4 °C |
 | **lean+vis**, plugged in | 10 min | 17.0 ms | 33.8 ms (29.6) | 64.4 / 33.7 / **1.9 %** | **0** | **52 ms** | 14.4 / 18.7 ms | 479 | 504 MB | 35.3 → 35.3 °C |
 
+**What the screen showed** (Android's own present times, `dumpsys SurfaceFlinger --latency` on the bench's
+SurfaceView, polled every second by `sf_frames.sh`): one 10-minute `lean+vis` walk plugged in (2026-10-16 13:21), of
+which 567 s were covered, with no holes in the polling. 27,346 frames were presented:
+- 76.0 % stayed up for one refresh (60 fps);
+- 23.9 % for two (30 fps);
+- **0.10 %** (28 frames) for three or more (below 30 fps); the longest was 83 ms.
+
+So **99.9 % of frames were shown at 30 fps or better**. The game loop's own binning of the same walk said 65.2 /
+32.8 / 2.1 %. The loop runs ahead of the display (frames are queued), so its intervals overstate both the two-refresh
+and the slower share. The bins in the table above are a conservative stand-in, not what the screen shows.
+
 What this shows:
-- **The phone draws at 60 or 30 fps, nothing in between.** A frame takes about 21 ms on average (GPU 14–22 ms plus
-  the rest of the loop): more than one refresh (16.7 ms) and far less than two. So about 62–64 % of frames are shown
-  for one refresh and 34–37 % for two. A
+- **The phone shows frames at 60 or 30 fps, nothing in between.** A frame takes about 21 ms on average (GPU 14–22 ms
+  plus the rest of the loop): more than one refresh (16.7 ms) and far less than two. On the screen about 76 % of
+  frames stay up for one refresh and 24 % for two (SurfaceFlinger, above). A
   frame held for two refreshes is exactly 30 fps on the screen, but by the clock it measures 33.1–34 ms. So the
   95th-percentile frame is 33.8 ms (29.6 fps) in every run, whatever the preset. The share of frames slower than
-  30 fps on the screen (three refreshes or more) is 1.6–2.1 %, against the 5 % the rule allows.
+  30 fps on the screen (three refreshes or more) is 0.1 % by SurfaceFlinger, and 1.6–2.1 % by the loop's
+  conservative count, against the 5 % the rule allows.
 - **`full` has an intermittent hitch of about 120 ms.** In the plugged 10-minute run it came twice, both times at the
   corner at (−5, 1.7, 4) where the walk turns to climb over the bay: at 230 and 410 s, 2 of the 7 times the walk
   passed there. The battery run had one frame of 122 ms too; that build did not yet log where. `lean+vis` never showed
@@ -260,11 +274,14 @@ Findings:
 **The rule, as the user reads it (2026-10-16):** at least 95 % of frames are shown at 30 fps or better on the Note 9's
 60 Hz screen, and a frame held for two refreshes counts as 30 fps. By the clock such a frame measures 33.1–34 ms, so
 the 95th-percentile frame time alone (33.8 ms) is not the test. The test is the share of frames held for three
-refreshes or more, which must stay at or under 5 %.
+refreshes or more, which must stay at or under 5 %. It is counted from Android's present times
+(`sf_frames.sh`), and the bench's loop-interval count is an upper bound.
 
-**The confirming run** (`lean+vis`, 10 minutes on battery; the walk includes the heaviest views):
-- frames shown at 30 fps or better: 98.1 % (63.2 % for one refresh, 34.9 % for two), so 1.9 % slower, against the
-  5 % allowed;
+**The confirming runs** (`lean+vis`; the walk includes the heaviest views):
+- frames shown at 30 fps or better:
+  - by SurfaceFlinger's present times (10 minutes plugged in): 99.9 %; 0.10 % were held for three refreshes or more,
+    against the 5 % allowed;
+  - by the game loop's conservative count, 10 minutes on battery: 98.1 % (1.9 % slower);
 - spikes: no frame over 100 ms after the first 5 s; the worst was 79 ms;
 - heat: no thermal drop (per-minute means 20.7–21.4 ms); battery 100 → 97 %;
 - memory: 504–630 MB sampled plugged in, against 1.5 GB;
@@ -272,6 +289,10 @@ refreshes or more, which must stay at or under 5 %.
   that, against 15 s.
 - Unrelated to the engine: the battery run's own start took 50 s, because the phone's screen was off when the app was
   launched. Its log shows the window stopped right away and shown 43 s later.
+
+`lean+vis` was chosen by the user from the measured presets. `full+vis` and `scaled+vis`, which sit between it and
+`full` on the ladder, were not measured with the clock timing; `note9.sh` (whose ladder now confirms each rung over
+10 minutes) would try them first.
 
 **What `lean+vis` gives up next to `full`:**
 - the screen is drawn at 60 % of its resolution with FSR, so textures and far edges are softer;
