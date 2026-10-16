@@ -74,7 +74,7 @@ func _bake() -> void:
 	lm.environment_mode = LightmapGI.ENVIRONMENT_MODE_SCENE
 	await _frames(60)
 	# the guard: the sky's light as the bake will read it must not be black
-	var sky_light := sky_mean(sky)
+	var sky_light := sky_mean(env)
 	_say("the sky's light as the bake reads it: %.3f" % sky_light)
 	if sky_light < MIN_SKY:
 		_fail("the sky's light reads black (its radiance was never processed): the bake would miss it")
@@ -112,12 +112,12 @@ func _bake() -> void:
 	_say("baked %d meshes into %d texture(s), %d texels, in %d s" % [users, tex.size(), px, (Time.get_ticks_msec() - t0) / 1000])
 	get_tree().quit(0)
 
-## The sky's irradiance panorama as Godot bakes it for LightmapGI (RenderingServer.sky_bake_panorama, what the bake
-## calls): its mean luminance. The photograph's sky, scaled to a sun of 1, gives tenths; an unprocessed sky gives 0.
+## The scene environment's irradiance panorama exactly as the bake takes it (RenderingServer.environment_bake_panorama,
+## what LightmapGI calls in scene mode): its mean luminance. The photograph's sky gives tenths; an unprocessed sky 0.
 const MIN_SKY := 0.02
 
-static func sky_mean(sky: Sky) -> float:
-	var img := RenderingServer.sky_bake_panorama(sky.get_rid(), Lighting.SKY_ENERGY, true, Vector2i(64, 32))
+static func sky_mean(env: Environment) -> float:
+	var img := RenderingServer.environment_bake_panorama(env.get_rid(), true, Vector2i(128, 64))   # what the bake calls
 	if img == null or img.is_empty():
 		return 0.0
 	img.convert(Image.FORMAT_RGBAF)

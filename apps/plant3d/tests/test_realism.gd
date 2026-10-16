@@ -49,6 +49,20 @@ func run(tree: SceneTree) -> Array:
 	for n in tree.get_nodes_in_group("kit_static"):
 		if "_identify_" in String(n.name):
 			p.append("%s: an identify piece is not baked" % n.get_path())
+	# light inside: the halls' lamps reach the floor and a pit below it; every pit has lamps of its own (the turbine
+	# hall's pit was black before)
+	var lamps := tree.get_nodes_in_group("baked_lights")
+	var pit_lamps := lamps.filter(func(l): return String(l.name).begins_with("pit_lamp_"))
+	if pit_lamps.is_empty():
+		p.append("the pits have lamps")
+	for l in lamps:
+		if String(l.name).begins_with("lamp_"):
+			var hall := l.get_parent().get_node_or_null("roof") as MeshInstance3D
+			var h := hall.mesh.get_aabb().position.y if hall != null else 0.0
+			if (l as OmniLight3D).omni_range < h * 2.0:
+				p.append("%s reaches the floor and below (range %.1f, hall %.1f m)" % [l.get_path(), l.omni_range, h])
+	if Lighting.SKY_ENERGY < 3.0:
+		p.append("the sky's energy is π in Godot's light units (the photograph's ratio)")
 	# materials
 	var paint := load("res://built/materials/paint.tres") as ShaderMaterial
 	if paint == null or paint.shader.resource_path != Mat.SHADER or paint.get_shader_parameter("noise_tex") == null:

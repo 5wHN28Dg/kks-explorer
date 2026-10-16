@@ -683,9 +683,9 @@ func _bake_scene(out_dir: String, scenes: Array) -> int:
 	lm.interior = false
 	lm.texel_scale = 1.0
 	lm.max_texture_size = 4096   # the Note 9's Mali-G72 reads 8192 px; half that leaves room
-	lm.environment_mode = LightmapGI.ENVIRONMENT_MODE_CUSTOM_SKY
-	lm.environment_custom_sky = Lighting.sky()
-	lm.environment_custom_energy = Lighting.SKY_ENERGY
+	# the scene's environment: the bake plugin adds the sky in a WorldEnvironment the editor draws (a sky no viewport
+	# has drawn reads black to the bake: builder/bake/bake_plugin.gd)
+	lm.environment_mode = LightmapGI.ENVIRONMENT_MODE_SCENE
 	lm.generate_probes_subdiv = LightmapGI.GENERATE_PROBES_SUBDIV_8
 	lm.shadowmask_mode = LightmapGIData.SHADOWMASK_MODE_REPLACE   # the sun's shadow beyond the real-time distance
 	root.add_child(lm)
