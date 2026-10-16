@@ -42,6 +42,7 @@ var walk_seconds := 600.0
 var first_frame_ms := -1
 var lines := PackedStringArray()
 var stuck_count := 0
+var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
 
 func _ready() -> void:
 	_options()
@@ -80,6 +81,8 @@ func _ready() -> void:
 	if opts.has("shot"):
 		_shots.call_deferred()
 	elif opts.has("walk"):
+		while probing:
+			await get_tree().process_frame
 		_start_walk()
 	elif opts.get("map", "") == "1":
 		toggle_map()
@@ -118,6 +121,8 @@ func _environment() -> void:
 
 ## Picks the tier (app/quality.gd) and applies it; a desktop without a measurement of its GPU measures it first.
 func choose_tier() -> void:
+	if probing:
+		return   # the probe ends by choosing (the settings' choice, saved, is read then)
 	var c := Quality.choose(cf, opts.get("quality", ""))
 	if c.tier == "":
 		if DisplayServer.get_name() == "headless":
@@ -128,6 +133,8 @@ func choose_tier() -> void:
 	tier = c.tier
 	tier_why = c.why
 	Quality.apply(tier, get_viewport(), sun, env)
+	if hud:
+		hud.refresh()
 	_say("tier %s (%s), renderer %s, %s" % [tier, tier_why, Quality.renderer(), RenderingServer.get_video_adapter_name()])
 	if hud:
 		hud.refresh()
@@ -135,10 +142,11 @@ func choose_tier() -> void:
 ## The probe (R9, measured on the device): the full tier on the heaviest view (the whole plant from above its
 ## south-west corner) for PROBE_FRAMES frames; the median GPU time decides (app/quality.gd).
 func _probe() -> void:
+	probing = true
+	player.input_enabled = false
 	tier = "full"
 	tier_why = "measuring this device"
 	Quality.apply("full", get_viewport(), sun, env)
-	var keep: Transform3D = player.camera.global_transform
 	var cam := Camera3D.new()
 	cam.fov = 70
 	cam.far = 800
@@ -159,18 +167,20 @@ func _probe() -> void:
 	_say("probe: full tier GPU median %.2f ms on the heaviest view -> %s" % [med, t])
 	cam.queue_free()
 	player.camera.make_current()
-	player.camera.global_transform = keep
+	probing = false
 	choose_tier()
 
 func toggle_map() -> void:
+	if probing:
+		return
 	map.show_map(not map.active)
 	if map.active:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	hud.refresh()
 
 func _on_jump(to: Vector3) -> void:
-	player.set_mode(Player.Mode.WALK)
 	player.global_position = to + Vector3.UP * 0.05
+	player.set_mode(Player.Mode.WALK)   # lands on the floor just found
 	player.velocity = Vector3.ZERO
 	toggle_map()
 

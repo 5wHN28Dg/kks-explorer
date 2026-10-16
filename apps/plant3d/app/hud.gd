@@ -148,7 +148,7 @@ func touch_on() -> bool:
 	return t == "on" or (t == "auto" and DisplayServer.is_touchscreen_available())
 
 func refresh() -> void:
-	main.player.input_enabled = not (main.map.active or panel.visible)
+	main.player.input_enabled = not (main.map.active or panel.visible or main.probing)
 	var touch := touch_on()
 	for s in sticks:
 		s.visible = touch and not main.map.active

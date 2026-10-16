@@ -78,6 +78,8 @@ func _process(_delta: float) -> void:
 func _unhandled_input(e: InputEvent) -> void:
 	if not active:
 		return
+	if (e is InputEventMouseButton or e is InputEventMouseMotion) and e.device == InputEvent.DEVICE_ID_EMULATION:
+		return   # a mouse event Godot made from a touch: the touch itself is handled
 	if e is InputEventMouseButton and e.pressed:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP: dist = maxf(20.0, dist * 0.9)
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN: dist = minf(900.0, dist * 1.1)
@@ -138,7 +140,8 @@ func _jump(screen: Vector2) -> void:
 			break
 		if down.normal.y > 0.7:
 			q.transform = Transform3D(Basis(), down.position + Vector3.UP * 0.95)
-			if space.intersect_shape(q, 1).is_empty():
+			# below ground only when nothing free is at or above it (a pit's floor under its grating is no landing)
+			if space.intersect_shape(q, 1).is_empty() and (best == null or down.position.y > -0.5):
 				best = down.position
 		top = down.position.y - 0.05
 	if best != null:

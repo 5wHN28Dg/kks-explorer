@@ -28,6 +28,7 @@ var scripted := false
 var drive := Vector2.ZERO
 var aim := NAN
 var run := false
+## The lowest the feet have been (tests: nobody falls through)
 var lowest_y := INF
 ## Off while the map or the settings have the controls (they read the same actions)
 var input_enabled := true              # the lowest the feet have been (tests: nobody falls through)
@@ -204,7 +205,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("use"):
 		press_door()
 
-## Presses the nearest door in front of the walker, within 3 m.
+## Presses the nearest door within 3 m.
 func press_door() -> void:
 	var best: Node = null
 	var bd := 3.0

@@ -276,6 +276,10 @@ func _check() -> void:
 	# every stair and ladder end meets ground a walker can stand on (ref/plant3d.py checks the description; this
 	# checks the drawn result, after stairwells and hatches were cut)
 	for s in stairs:
+		# an even number of switchback flights starts at the far end: the walker goes there under the first landing
+		# and the second flight, which must leave room to stand
+		if s.layout == "switchback" and s.st.flights % 2 == 0 and (s.top.z - s.foot.z) / s.st.flights - 0.25 < HEADROOM:
+			_err("not_walkable", s.id, "%d flights of %.2f m leave no headroom on the way to the first flight" % [s.st.flights, (s.top.z - s.foot.z) / s.st.flights])
 		var path: Array = s.lay.path
 		var foot: Vector3 = path[0]
 		var top: Vector3 = path[-1]
@@ -507,7 +511,7 @@ func _rail(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, za: float, zb: f
 ## the same height, a stair's landing or flight end, a ladder) or a building's wall stands.
 func _rails(st: SurfaceTool, body: Node, sf: Dictionary) -> int:
 	var count := 0
-	var polys: Array = [sf.outline]
+	var polys: Array = [] if sf.get("holes_only", false) else [sf.outline]
 	polys.append_array(sf.holes)
 	for pg in polys:
 		for i in pg.size():
@@ -625,8 +629,9 @@ func _ground() -> Node3D:
 	var st := _st()
 	var body := _body(root, "pit_rails")
 	var n := 0
-	for p in pits:
-		n += _rails(st, body, {"id": "ground", "z": 0.0, "outline": outline, "holes": [p.outline]})
+	var pit_holes: Array = pits.map(func(p): return p.outline)
+	if not pit_holes.is_empty():   # the ground's own outer edge, far out, gets none
+		n += _rails(st, body, {"id": "ground", "z": 0.0, "outline": outline, "holes": pit_holes, "holes_only": true})
 	if n > 0:
 		_mesh_node(body, "mesh", st, _mat("rail"))
 	else:
@@ -942,7 +947,9 @@ func _stair(parent: Node3D, s: Dictionary) -> void:
 			var pc := Geom._strip(fl.a + dir * t0, fl.a + dir * (t0 + going), fl.side, fl.width)
 			Geom.add_prism(steps, pc, fl.z0 + rise * j, fl.z0 + rise * (j + 1))
 		# what the walker stands on: a smooth slope from landing to landing (a walker climbs a slope, not ledges)
-		_convex(body, Geom.ramp_points(fl.a, fl.b, fl.side, fl.width, fl.z0, fl.z1, 0.25))
+		# from one going before the first riser, so the slope is the stair's own pitch (rise / going, at most about
+		# 39 degrees) and not steeper on short flights; that first going lies on the landing below
+		_convex(body, Geom.ramp_points(fl.a - dir * going, fl.b, fl.side, fl.width, fl.z0, fl.z1, 0.25))
 		for sgn in [-1.0, 1.0]:
 			var off: Vector2 = fl.side * (fl.width * 0.5 * sgn)
 			_rail(rails, body, fl.a + off, fl.b + off, fl.z0, fl.z1)
@@ -1055,8 +1062,31 @@ func _pit(parent: Node3D, p: Dictionary) -> void:
 	var body := _body(parent, p.id + "_walls")
 	var st := _st()
 	var pg: PackedVector2Array = p.outline
+	# where a stair leaves the pit its wall is open (the flight's slope would otherwise end against the wall's top)
+	var strips: Array = []
+	for s in stairs:
+		for fl in s.lay.flights:
+			if fl.z0 < -TOL:
+				strips.append(Geom._strip(fl.a, fl.b, fl.side, fl.width))
 	for i in pg.size():
-		_panel(st, body, pg[i], pg[(i + 1) % pg.size()], -float(p.depth), 0.0, 0.3)
+		var a := pg[i]
+		var b := pg[(i + 1) % pg.size()]
+		var len := a.distance_to(b)
+		var n := maxi(1, int(ceil(len / 0.1)))
+		var start := -1.0
+		for k in n + 1:
+			var open := false
+			if k < n:
+				var m := a.lerp(b, (k + 0.5) / n)
+				for sp in strips:
+					if _near_poly(m, sp, 0.2):
+						open = true
+			var t := float(k) / n
+			if not open and k < n and start < 0.0:
+				start = t
+			elif (open or k == n) and start >= 0.0:
+				_panel(st, body, a.lerp(b, start), a.lerp(b, t), -float(p.depth), 0.0, 0.3)
+				start = -1.0
 	_mesh_node(body, "mesh", st, _mat("pit"))
 
 func _door(parent: Node3D, s: Dictionary) -> void:

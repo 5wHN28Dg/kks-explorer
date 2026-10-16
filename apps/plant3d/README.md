@@ -22,7 +22,7 @@ buildings, pits, slabs, fences and the pipe rack are solid geometry at their des
 
 ```
 apps/plant3d/build.sh                       # content check (ref/plant3d.py), content build, tests
-apps/plant3d/build.sh export                # and the exports, headless and unbaked (CI does this)
+apps/plant3d/build.sh export                # and the exports, headless, unbaked, unsigned, into export/check/ (CI)
 tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release   # release exports, shaders baked
 apps/plant3d/flatpak/build.sh BUILD_DIR     # the Flatpak from the release's .pck; installs nothing
 ```

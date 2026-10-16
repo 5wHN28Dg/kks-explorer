@@ -18,6 +18,7 @@ func run(_tree: SceneTree) -> Array:
 	_decompose()
 	_stairs()
 	_refusals()
+	_headroom()
 	_cuts()
 	return problems
 
@@ -90,6 +91,23 @@ func _refusals() -> void:
 		if "walking space of s1" in e:
 			hit = true
 	check(hit, "a pipe through a stair's walking space is refused: %s" % str(b.errors))
+
+func _headroom() -> void:
+	var b := _plant(true, true, false)
+	b.stairs.clear()
+	b.errors.clear()
+	var foot := Vector3(14, 30, 0)
+	var top := Vector3(19.1, 34, 4)
+	var st := Geom.stair_steps(foot, top, "switchback", 1.2)
+	check(not st.is_empty() and st.flights == 2, "a 4 m switchback in two flights keeps the step rules")
+	b.stairs.append({"id": "low", "area": "a1", "foot": foot, "top": top, "layout": "switchback", "width": 1.2, "st": st,
+		"lay": Geom.stair_layout(foot, top, "switchback", 1.2, st)})
+	b._check()
+	var hit := false
+	for e in b.errors:
+		if "low" in e and "headroom" in e:
+			hit = true
+	check(hit, "two 2 m flights leave no headroom under the first landing: refused (%s)" % str(b.errors))
 
 func _cuts() -> void:
 	var b := _plant(true, true, false)

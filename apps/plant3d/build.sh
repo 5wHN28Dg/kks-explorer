@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds Walkdown Plant (decision 0054): checks the content, makes the pre-built plant, runs the tests, exports.
 #   apps/plant3d/build.sh                     the content check, the plant (built/) and the tests
-#   apps/plant3d/build.sh export [TARGET…]    and the exports, unbaked (a check that they work: CI)
+#   apps/plant3d/build.sh export [TARGET…]    and the exports, unbaked and unsigned, into export/check/ (CI)
 #   tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release [TARGET…]
 #                                             the release exports, shaders baked (needs a rendering device: the
 #                                             private display offscreen.sh gives; never --headless, decision 0041)
@@ -44,7 +44,9 @@ case "$MODE" in
     GPU="--display-driver x11 --rendering-driver vulkan" ;;
   *) echo "unknown mode $MODE (export or release)" >&2; exit 2 ;;
 esac
-mkdir -p "$HERE/export/linux" "$HERE/export/windows"
+# export mode writes to export/check/: never over a baked, signed release that the phone scripts install
+OUTD="$HERE/export"; [ "$MODE" = export ] && OUTD="$HERE/export/check"
+mkdir -p "$OUTD/linux" "$OUTD/windows"
 # The editor's settings for the export (Android SDK, JDK, debug key) in a folder of the project's own: the user's
 # Godot editor settings are left alone.
 JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/temurin-25-jdk-amd64}"
@@ -72,12 +74,12 @@ exp() {  # renderer debug|release preset output
 : > "$HERE/.export.log"
 for t in $TARGETS; do
   case "$t" in
-    android-debug) exp mobile debug Android "$HERE/export/walkdown-plant-debug.apk" ;;
+    android-debug) exp mobile debug Android "$OUTD/walkdown-plant-debug.apk" ;;
     android-release)
       PROPS="${PLANT_SIGNING:-$HOME/.config/kks-explorer/signing/walkdown-plant.properties}"
-      if [ "$MODE" = export ] && [ ! -f "$PROPS" ]; then
-        # CI has no key (it never gets one): the release build is still exported, unsigned, to check it
-        exp mobile release "Android unsigned" "$HERE/export/walkdown-plant-unsigned.apk"
+      if [ "$MODE" = export ]; then
+        # a check, never signed (CI has no key and never gets one): the release build exported unsigned
+        exp mobile release "Android unsigned" "$OUTD/walkdown-plant-unsigned.apk"
         continue
       fi
       [ -f "$PROPS" ] || { echo "no signing properties at $PROPS: the release APK needs the plant's key" >&2; exit 2; }
@@ -94,8 +96,8 @@ for t in $TARGETS; do
       "$APKSIGNER" verify --print-certs "$HERE/export/walkdown-plant.apk" 2>/dev/null |
         grep -q "Signer #1 certificate DN: CN=Walkdown Plant$" || { echo "walkdown-plant.apk is not signed with the plant's key" >&2; exit 1; }
       ;;
-    linux) exp forward_plus release Linux "$HERE/export/linux/walkdown-plant.x86_64" ;;
-    windows) exp forward_plus release Windows "$HERE/export/windows/WalkdownPlant.exe" ;;
+    linux) exp forward_plus release Linux "$OUTD/linux/walkdown-plant.x86_64" ;;
+    windows) exp forward_plus release Windows "$OUTD/windows/WalkdownPlant.exe" ;;
     *) echo "unknown target $t" >&2; exit 2 ;;
   esac
 done

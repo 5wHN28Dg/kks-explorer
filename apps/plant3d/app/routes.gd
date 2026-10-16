@@ -1,6 +1,7 @@
 ## Scripted routes (app/autopilot.gd steps) through the first train, in plant coordinates (x east, y north, z up).
 ##   climb   up HRSG 1's stair tower (30 m, nine flights), across the roof to the stack and up its ladder to the
 ##           stack platform at +40, then back down the same way: the walking test's route
+##   pit     up the turbine hall's condenser pit stair (-6 m to the ground) and back down
 ##   frames  the frame-time walk (wiki measurement rules): out of the control room, through the turbine hall
 ##           (its west and east doors), along the road, up and down HRSG 1's stair tower, and back; looped
 extends RefCounted
@@ -28,6 +29,15 @@ static func climb(plant) -> Array:
 	r.append_array([_to(155, 63.8, 30), _to(149, 63.8, 30), _to(149, 56, 30), _to(101.4, 56, 30), _to(101.4, 52.5, 30), _to(101.4, 49.5, 30)])
 	r.append_array(_stair(plant, "hrsg1_stair", true))
 	r.append(_to(93.5, 44.5))
+	return r
+
+## Out of the turbine hall's condenser pit (-6 m) by its straight stair, and back down.
+static func pit(plant) -> Array:
+	var r: Array = [_to(57, 2.5, -6)]
+	r.append_array(_stair(plant, "st_pit_stair"))
+	r.append(_to(57, 13.5, 0))
+	r.append_array(_stair(plant, "st_pit_stair", true))
+	r.append(_to(57, 2.5, -6))
 	return r
 
 static func frames(plant) -> Array:

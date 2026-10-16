@@ -46,14 +46,13 @@ cleanup() {
     if (installed); then echo "!!! $PKG is still on $SERIAL: adb -s $SERIAL uninstall $PKG" >&2; fi
   fi
 }
-trap cleanup EXIT
 
 # on someone's own phone, a plant app already there may hold their own progress: never clear or remove it
 if [ "$SERIAL" != "$NOTE9" ] && installed; then
-  trap - EXIT
   echo "$PKG is already installed on $SERIAL; this run would clear and then remove it. Remove it yourself first if that is fine." >&2
   exit 7
 fi
+trap cleanup EXIT
 # install (an earlier build signed with another key is replaced: it is only ever this app)
 a install -r "$APK" >/dev/null 2>&1 || { a uninstall "$PKG" >/dev/null 2>&1 || true; a install "$APK" >/dev/null; }
 installed || { echo "install failed" >&2; exit 1; }

@@ -52,4 +52,4 @@ jobs:
       - name: Content check, content build, the app's tests, headless exports
         run: apps/plant3d/build.sh export
       - name: Sizes
-        run: ls -l apps/plant3d/export apps/plant3d/export/linux apps/plant3d/export/windows | tee -a "$GITHUB_STEP_SUMMARY"
+        run: ls -l apps/plant3d/export/check apps/plant3d/export/check/linux apps/plant3d/export/check/windows | tee -a "$GITHUB_STEP_SUMMARY"
