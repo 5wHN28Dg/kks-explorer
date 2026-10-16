@@ -14,72 +14,88 @@ A run takes about 15 s.
 
 ## What the app gets
 
-The output folder holds one file per layer, `<sound>.<layer>.ogg`, and `sounds.json`
-(format `walkdown-plant-sound-files`, version 1). For each sound that file gives:
+The output folder holds one file per layer, `<sound>.<layer>.ogg`, and `index.json`
+(format `walkdown-plant-sound-files`, version 1). For each sound the index gives:
 
 - `loop`: true for a loop, false for a one-shot;
-- `lufs`: the planned loudness;
+- `level`: its A-weighted level in dBFS at gain 1;
 - `layers`: a list of the sound's layers.
 
 Each layer has:
 
-- `layer`, `file`, `seconds`, `bytes`;
+- `layer`, `file`, `samples`, `seconds`, `bytes`;
+- `pitch`: whether the binding's pitch applies to it;
 - for loops, the Vorbis `quality` and the measured `click_db` at the loop point;
 - for a tone whose frequency follows a value, `of`, `table` and `ref_hz`.
 
 Playing a sound:
 
-- **Every layer at once.** Play all of a sound's layers together, each with the binding's gain and pitch. A loop's
-  layers are independent loops, so they don't need to stay in step.
+- **Every layer at once.** Play all of a sound's layers together, each with the binding's gain, and with its pitch
+  where the layer's `pitch` is true. A loop's layers are independent loops, so they don't need to stay in step.
 - **Looping.** A loop is the whole file: set `loop = true` on the `AudioStreamOggVorbis`, with `loop_offset` 0.
 - **Levels.** The files are already levelled against each other. At gain 1 and pitch 1, each sound plays at its
-  `lufs`. Don't normalise them.
+  `level`. Don't normalise them.
 - **Layer kinds:**
-  - `tones`: the steady tones;
+  - `mains`: an electrical hum at multiples of twice the 50 Hz grid frequency. It is never pitched: a motor's hum
+    stays at 100 Hz whatever its speed;
+  - `tones`: the other steady tones;
   - `noise`: the band noise. Tones below 30 Hz are in it as a rate (a blade or tooth passing);
   - `tone<i>`: a tone whose frequency follows a value. Set its pitch to `hz(value) / ref_hz` (none in the first
     train);
   - `once`: a one-shot, meant for an event: `breaker` for a breaker closing, `breaker_open` for one opening,
-    `motor_start` for a large motor started direct on line (its `motor_large` loop then takes over), `horn_ack`
-    for an alarm acknowledged. Format 1 has no binding that says "on this edge" (PLANT3D.md §7.7): today only
-    `breaker` is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays, and the other three wait
-    for it.
+    `motor_start` for a large motor started direct on line (its `motor_large` loop then takes over at the same
+    level), `horn_ack` for an alarm acknowledged. Format 1 has no binding that says "on this edge" (PLANT3D.md
+    §7.7): today only `breaker` is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays, and
+    the other three wait for it.
 
 ## How each sound is made
 
-The library declares each sound's spectrum: its `tones` and its `noise` band. `VOICES` in the script adds three
+The library declares each sound's spectrum: its `tones` and its `noise` band. `VOICES` in the script adds four
 things for each sound:
 
 - `why`: the physics behind the spectrum;
 - `spl`: the typical level at 1 m, in dB(A);
+- `mains`: which tones are electrical hum;
 - the time structure: modulation, clicks, sounder patterns, or the one-shot event.
 
 **The tones:**
 
 | Sound | What sets the tones |
 |---|---|
-| `gt_whine` | Compressor blade passing: blades × speed. 57 blades × 50 rev/s = 2,850 Hz, with its harmonic and a later stage at 3,550 Hz. Everything scales with speed, so pitch = speed covers the run from turning gear to full speed. |
+| `gt_whine` | Compressor blade passing: blades × speed. 57 blades × 50 rev/s = 2,850 Hz, with its harmonic and a later stage at 3,550 Hz. All of it scales with speed. |
 | `gen_hum`, `transformer_hum` | Twice the 50 Hz grid frequency (100 Hz) and its harmonics. For a transformer that is magnetostriction (IEC 60076-10). |
-| `sfc_whine` | A 12-pulse converter's harmonics, 12k ± 1 of 50 Hz (550, 650, 1,150, 1,250 Hz), and its 600 Hz ripple. |
-| `motor_large`, `motor_small` | Magnetic hum at 100 Hz, rotor-slot whine (slots × speed, ± 100 Hz sidebands) and vane or fan blade passing. The large motor is lower and louder. |
+| `sfc_whine` | A 12-pulse converter draws currents at 12k ± 1 of 50 Hz. Its transformer and reactors buzz with the current squared: 600 and 1,200 Hz and their neighbours 500, 700, 1,100 and 1,300 Hz. |
+| `motor_large`, `motor_small` | Magnetic hum at 100 Hz, rotor-slot whine (slots × speed, ± 100 Hz sidebands) and vane or fan blade passing. The shaft speeds are the ones the model turns the shafts at: 8.25 rev/s for the CW pumps, 24.7 for the small four-pole motors. The large motor is lower and louder. |
 | `fan_large`, `turning_gear`, `liquid_ring` | Blade, tooth or ring passing at 16, 8 and 25 Hz. These are rates, not pitches: a swell, steel clicks, a gurgle. |
 | `water_rain` | Rain noise, plus single drops ringing at their bubble's Minnaert frequency. |
 | `breaker`, `breaker_open` | Modal synthesis: an impact rings the mechanism's and the cubicle's modes. The close is followed by the spring-charging motor. |
-| `motor_start` | Direct-on-line run-up: an inrush growl at 100 Hz, and slot whine and fan noise rising with speed. |
+| `motor_start` | Direct-on-line run-up: an inrush growl at 100 Hz, a run-up that is fastest near full speed, and slot whine and fan noise rising with speed. |
 | `horn_p1`, `horn_p2`, `horn_p3` | A different pattern for each priority (ISA-18.2, EEMUA 191): fast pulses, slow pulses, a chime. |
 
 The other sounds are band noise: combustion, exhaust, steam flow, vent, rain, burner.
 
 **Seamless loops.** Every component of a loop has a whole number of cycles in it, and the noise is made periodic in
-the frequency domain, so the synthesised loop is seamless to the sample. Vorbis can still leave a small tick where the
-stream's end meets its start, because its coding errors at the two ends are independent. The generator tries 8
-starting points of the loop at qualities 4, 6 and 8, and keeps the first one whose decoded seam is 60 dB under the
-sound. It refuses a loop whose best is louder than −45 dB. The tick of each layer is `click_db` in the index.
+the frequency domain, so the synthesised loop is seamless to the sample.
 
-**Levels:** a recorded clip added later must follow the same rule, not a fixed −23 LUFS. LUFS = −18 − 0.5 × (105 − spl), from the vent (105 dB(A), −18 LUFS) down to the valve motor (72 dB(A),
-−34.5 LUFS). This keeps the site's order with half its range. A one-shot is measured by its loudest 400 ms.
+Vorbis can still leave a small tick where the stream's end meets its start, because its coding errors at the two
+ends are independent. The generator tries 8 starting points of the loop at qualities 4, 6 and 8, and keeps the first
+one whose decoded seam is 60 dB under the sound. It refuses a loop whose best is louder than −45 dB. Each layer's
+tick is its `click_db` in the index.
+
+The tests can measure a tick in tones and in noise up to about 1.5 kHz. In noise reaching several kHz (steam, the
+vent, rain) a jump at the seam can't be told from the noise itself, by any measure or by ear: `click_db` −300 means
+nothing measurable.
+
+**Levels.** Each file is levelled by A-weighted level, the weighting of its dB(A) figure:
+level = −26 − 0.5 × (105 − spl) dBFS(A). That runs from the vent (105 dB(A), −26) down to the valve motor
+(72 dB(A), −42.5), keeping the site's order with half its range. The top is −26 rather than higher because the
+rumbles carry most of their energy in the bass that A weighting discounts, and they must not clip. A one-shot is
+measured by its loudest 400 ms. A recorded clip added later must follow the same rule, not a fixed loudness.
 
 ## Measured (2026-10-16)
 
-24 sounds in 35 files, 1.47 MB of Ogg Vorbis in total. Decision 0054's budget is 150 MB for the whole package (10 MB
-for clips). A loop's tone layer is 2 s (7–23 KiB) and its noise layer 8 s (35–74 KiB).
+24 sounds in 41 files, 1.57 MB of Ogg Vorbis in total. Decision 0054's budget is 150 MB for the whole package (10 MB
+for clips). A loop's tone layers are 2 s (8–22 KiB) and its noise layer 8 s (34–74 KiB). The worst loop-point tick
+after Vorbis is −54.7 dB under its sound; 24 of the 37 loop layers have nothing measurable.
+
+Not checked: Godot's own decoder. The seams and lengths are measured with FFmpeg's.

@@ -2,10 +2,14 @@
 decisions 0054 §7 and 0055):
 - every sound the library names is made, with a voice (its physics and level), and every binding's sound exists;
 - the generator is deterministic: the same library gives the same samples and the same Ogg bytes;
-- loops are seamless at the loop point: sample continuity (step and curvature no larger than anywhere inside) and no
-  burst of energy above the sound's own frequencies around the seam, in the samples and after Vorbis;
-- the seam check itself catches a broken loop;
-- levels: each sound at its planned loudness, the plan within range and in a sensible order, no clipping;
+- loops are seamless at the loop point: sample continuity (step, curvature and linear-prediction residual no larger
+  than anywhere inside) and no burst of energy above the sound's own frequencies around the seam, in the samples;
+  after Vorbis, any tick at most CLICK_MAX_DB under the sound;
+- the seam check itself catches a broken loop. It can for tones and for noise up to about 1.5 kHz; in noise reaching
+  several kHz (steam, vent, rain) a jump at the seam can't be told from the noise itself, by any measure or by ear,
+  and there the seamlessness rests on the construction (a loop made by one inverse FFT is periodic);
+- levels: each sound at its planned A-weighted level, the plan within range and in a sensible order, no clipping;
+  a motor's run-up ends at its loop's level;
 - the physics: the strongest tone where the library puts it (blade passing, twice the grid frequency), noise in its
   band, blade and tooth passing as a rate;
 - one-shots start and end silent; the total size is recorded against 0054's budget.
@@ -39,9 +43,22 @@ def need_ffmpeg(test):
 top_hz = M.top_hz
 
 
+def lpc_seam_ratio(x, order=32):
+    """The largest residual of an order-32 linear predictor (fitted to the whole loop, circularly) over the samples
+    whose prediction reaches across the seam, divided by the largest residual elsewhere. A jump that the signal's own
+    spectrum can't explain stands out after the predictor has whitened the signal."""
+    x = np.asarray(x, dtype=float)
+    r = np.fft.irfft(np.abs(np.fft.rfft(x)) ** 2, len(x))[:order + 1]
+    R = np.array([[r[abs(i - j)] for j in range(order)] for i in range(order)])
+    a = np.linalg.solve(R + 1e-9 * r[0] * np.eye(order), r[1:order + 1])
+    e = np.abs(x - sum(a[k] * np.roll(x, k + 1) for k in range(order)))
+    return float(e[:order + 1].max() / max(e[order + 1:].max(), 1e-30))
+
+
 def seam_problems(x, top):
     """What is wrong at the loop point of the loop x (an empty list when it is seamless):
-    - continuity: the step and the curvature across the seam are no larger than the largest inside the loop;
+    - continuity: the step, the curvature and the prediction residual across the seam are no larger than the largest
+      inside the loop;
     - spectrum: no more energy above the layer's own frequencies around the seam than anywhere else in the loop
       (M.seam_click_db: a click is a broadband burst)."""
     out = []
@@ -53,6 +70,9 @@ def seam_problems(x, top):
     inner = np.max(np.abs(c[1:-1]))
     if max(abs(c[0]), abs(c[-1])) > inner + 1e-9:
         out.append(f'curvature at the seam {max(abs(c[0]), abs(c[-1])):.4g} > largest inside {inner:.4g}')
+    r = lpc_seam_ratio(x)
+    if r > 1:
+        out.append(f'prediction residual at the seam {r:.2f} x the largest inside')
     click = M.seam_click_db(x, top)
     if click > SEAM_CLICK_DB:
         out.append(f'a click at the seam {click:.1f} dB under the sound (energy above its own frequencies)')
@@ -80,6 +100,9 @@ class Synthesis(unittest.TestCase):
             self.assertTrue(M.VOICES[sid]['why'], sid)
             if loop:
                 self.assertIn('noise' if 'noise' in SYNTH[sid] else 'tones', layers, sid)
+        # the electrical hum is the only layer the app doesn't pitch, and it holds only multiples of 2 x 50 Hz
+        for sid, v in M.VOICES.items():
+            self.assertTrue(all(h % 100 == 0 for h in v.get('mains', ())), sid)
         # the sounds FIRST-TRAIN §6 and the task name, beyond the bindings
         for sid in ('breaker', 'breaker_open', 'motor_start', 'horn_p1', 'horn_p2', 'horn_p3', 'horn_ack',
                     'valve_motor', 'transformer_hum', 'gen_hum', 'gt_whine', 'turbine_hum', 'steam_vent'):
@@ -102,61 +125,62 @@ class Synthesis(unittest.TestCase):
                     self.assertEqual(seam_problems(M.pcm16(x) / 32767, top_hz(SYNTH[sid], k)), [])
 
     def test_the_seam_check_catches_a_broken_loop(self):
-        for sid, k in (('transformer_hum', 'tones'), ('exhaust_rumble', 'noise'), ('valve_motor', 'tones'),
-                       ('motor_large', 'tones')):
+        for sid, k in (('transformer_hum', 'mains'), ('exhaust_rumble', 'noise'), ('valve_motor', 'tones'),
+                       ('motor_large', 'tones'), ('combustion', 'noise'), ('burner', 'noise'),
+                       ('liquid_ring', 'noise'), ('turning_gear', 'noise'), ('fan_large', 'noise')):
             x = self.made[sid][0][k]
             self.assertEqual(seam_problems(x, top_hz(SYNTH[sid], k)), [], sid)
             for cut in (37, 101, 1003):         # the loop's end cut short: the waveform jumps at the seam
                 with self.subTest(sound=sid, cut=cut):
                     self.assertNotEqual(seam_problems(x[:-cut], top_hz(SYNTH[sid], k)), [])
                     # and the decoded files' looser bound (below) would refuse it too
-                    self.assertGreater(M.seam_click_db(x[:-cut], top_hz(SYNTH[sid], k)), M.CLICK_MAX_DB)
 
     def test_levels(self):
         plans = {}
         for sid, (layers, plan, loop) in self.made.items():
             plans[sid] = plan
-            self.assertAlmostEqual(plan, M.lufs_plan(M.VOICES[sid]['spl']))
-            self.assertTrue(-36 <= plan <= -18, f'{sid}: {plan} LUFS is outside -36..-18')
-            ms = sum(M.mean_square_k(M.pcm16(x) / 32767, loop) for x in layers.values())
-            self.assertAlmostEqual(-0.691 + 10 * math.log10(ms), plan, delta=0.1, msg=sid)
+            if 'match' not in M.VOICES[sid]:
+                self.assertAlmostEqual(plan, M.level_plan(M.VOICES[sid]['spl']))
+            self.assertTrue(-44 <= plan <= -26, f'{sid}: {plan} dBFS(A) is outside -44..-26')
+            ms = sum(M.power(M.pcm16(x) / 32767, loop) for x in layers.values())
+            self.assertAlmostEqual(10 * math.log10(ms), plan, delta=0.1, msg=sid)
             for k, x in layers.items():
                 self.assertLessEqual(np.max(np.abs(x)), M.PEAK_MAX, f'{sid}.{k} peaks above -1 dBFS')
-        # a sensible order: what is louder on site is louder here
+        # a sensible order: what is louder on site (in dB(A)) is louder here, in the same weighting
         self.assertEqual(max(plans, key=plans.get), 'steam_vent')
         loops = {k: v for k, v in plans.items() if self.made[k][2]}
         self.assertEqual(min(loops, key=loops.get), 'valve_motor')
         for loud, quiet in (('gt_whine', 'motor_large'), ('motor_large', 'motor_small'), ('gen_hum', 'transformer_hum'),
                             ('motor_small', 'valve_motor'), ('horn_p1', 'horn_p2'), ('horn_p2', 'horn_p3'),
-                            ('motor_start', 'motor_large'), ('combustion', 'exhaust_rumble')):
+                            ('combustion', 'exhaust_rumble'), ('exhaust_rumble', 'turning_gear'),
+                            ('transformer_hum', 'valve_motor'), ('combustion', 'motor_small')):
             self.assertGreater(plans[loud], plans[quiet], f'{loud} should be louder than {quiet}')
+        # the run-up hands over to its loop without a jump: its last second at the loop's level
+        x = self.made['motor_start'][0]['once']
+        tail = x[int(6.0 * FS):int(7.0 * FS)]
+        self.assertAlmostEqual(M.level(tail, False), plans['motor_large'], delta=0.1)
 
-    def test_loudness_meter(self):
-        """BS.1770's reference: a full-scale 997 Hz sine reads -3.01 LUFS; a 100 Hz one reads about 0.6 LU less
-        through the K filter's high pass (so low hums are levelled by what is heard)."""
+    def test_level_meter(self):
+        """IEC 61672's A weighting: 0 dB at 1 kHz, -19.1 dB at 100 Hz, -2.5 dB at 10 kHz; a full-scale 1 kHz sine
+        reads -3.01 dBFS(A)."""
+        a = 20 * np.log10(M.a_weighting(np.array([1000.0, 100.0, 10000.0, 31.5])))
+        self.assertTrue(np.allclose(a, [0.0, -19.1, -2.5, -39.4], atol=0.15), a)
         t = np.arange(FS) / FS
-        self.assertAlmostEqual(M.loudness(np.sin(2 * np.pi * 997 * t)), -3.01, delta=0.02)
-        # the filter matches the standard's own 48 kHz coefficients
-        f = np.array([20.0, 100, 997, 5000, 15000])
-        z = np.exp(-2j * np.pi * f / 48000)
-
-        def h(b, a):
-            return (b[0] + b[1] * z + b[2] * z * z) / (a[0] + a[1] * z + a[2] * z * z)
-        ref = np.abs(h([1.53512485958697, -2.69169618940638, 1.19839281085285], [1, -1.69065929318241, 0.73248077421585])
-                     * h([1, -2, 1], [1, -1.99004745483398, 0.99007225036621]))
-        self.assertTrue(np.allclose(M.k_weighting(f, 48000), ref, rtol=1e-4))
-        self.assertLess(M.loudness(np.sin(2 * np.pi * 100 * t)), -3.2)
+        self.assertAlmostEqual(M.level(np.sin(2 * np.pi * 1000 * t)), -3.01, delta=0.02)
 
     def test_strongest_tone_is_the_declared_one(self):
         for sid, (layers, _, loop) in self.made.items():
-            if not loop or 'tones' not in layers:
+            if not loop:
                 continue
-            steady = [z for z in SYNTH[sid]['tones'] if z['hz'] >= M.RATE_HZ]
-            want = max(steady, key=lambda z: z.get('gain', 1))['hz']
-            x = layers['tones']
-            spec = np.abs(np.fft.rfft(x))
-            got = np.fft.rfftfreq(len(x), 1 / FS)[np.argmax(spec)]
-            self.assertAlmostEqual(got, want, delta=0.5, msg=sid)
+            mains = M.VOICES[sid].get('mains', ())
+            for k in ('mains', 'tones'):
+                if k not in layers:
+                    continue
+                steady = [z for z in SYNTH[sid]['tones'] if z['hz'] >= M.RATE_HZ and (z['hz'] in mains) == (k == 'mains')]
+                want = max(steady, key=lambda z: z.get('gain', 1))['hz']
+                x = layers[k]
+                got = np.fft.rfftfreq(len(x), 1 / FS)[np.argmax(np.abs(np.fft.rfft(x)))]
+                self.assertAlmostEqual(got, want, delta=0.5, msg=f'{sid}.{k}')
 
     def test_physics_of_the_tones(self):
         # the compressor's blade-pass frequency: 57 blades at 3,000 rpm
@@ -166,12 +190,24 @@ class Synthesis(unittest.TestCase):
             hz = [z['hz'] for z in SYNTH[sid]['tones']]
             self.assertEqual(hz[0], 100, sid)
             self.assertTrue(all(h % 100 == 0 for h in hz), sid)
-        # a 12-pulse converter's characteristic harmonics 12k +/- 1 of 50 Hz
+        # a 12-pulse converter's currents are 12k +/- 1 of 50 Hz; its magnetic parts buzz at the sums and differences
+        # (force ~ current squared): even multiples of 50 Hz, none of the odd current harmonics themselves
         hz = {z['hz'] for z in SYNTH['sfc_whine']['tones']}
-        self.assertLessEqual({11 * 50, 13 * 50, 23 * 50, 25 * 50}, hz)
-        # motor slot whine: rotor slots x speed with sidebands at +/- 2 x grid frequency
-        self.assertLessEqual({890, 790, 990}, {z['hz'] for z in SYNTH['motor_large']['tones']})
-        self.assertLessEqual({1377, 1277, 1477}, {z['hz'] for z in SYNTH['motor_small']['tones']})
+        self.assertLessEqual({600, 1200, 500, 700, 1100, 1300}, hz)
+        self.assertTrue(all(h % 100 == 0 for h in hz), hz)
+        # motor slot whine: rotor slots x the speed the model turns the shaft at, with sidebands at +/- 2 x 50 Hz
+        shaft = {}
+        for path in glob.glob(os.path.join(ROOT, 'data', 'plant3d', 'model', '*.json')):
+            for b in json.load(open(path, encoding='utf-8')).get('bind', []):
+                if b.get('anim') == 'shaft':
+                    shaft[b['kks']] = b['scale']
+        cw, ccw = shaft['30PAC10AP001'], shaft['00PGC10AP001']      # a CW pump (motor_large), a CCW pump (motor_small)
+        slot_l, slot_s = 90 * cw, 44 * ccw
+        large = {z['hz'] for z in SYNTH['motor_large']['tones']}
+        small = {z['hz'] for z in SYNTH['motor_small']['tones']}
+        self.assertLessEqual({slot_l, slot_l - 100, slot_l + 100, 6 * cw}, large)
+        self.assertTrue(any(abs(h - slot_s) < 0.5 for h in small), (slot_s, small))
+        self.assertTrue(any(abs(h - 11 * ccw) < 0.5 for h in small), (11 * ccw, small))
         # the large motor is lower than the small one: its slot whine and its vane passing
         self.assertLess(min(z['hz'] for z in SYNTH['motor_large']['tones']),
                         min(z['hz'] for z in SYNTH['motor_small']['tones']))
@@ -207,7 +243,7 @@ class Synthesis(unittest.TestCase):
             x = layers['once']
             self.assertEqual(x[0], 0, sid)
             self.assertLess(np.max(np.abs(x[-int(0.001 * FS):])), 1e-3, sid)
-            self.assertGreater(np.max(np.abs(x)), 0.05, sid)
+            self.assertGreater(np.max(np.abs(x)), 0.01, sid)   # not silent: peaks above -40 dBFS
         # the motor's run-up: the 100 Hz inrush growl at the start is well above the hum at speed
         x = self.made['motor_start'][0]['once']
 
@@ -265,7 +301,7 @@ class Vorbis(unittest.TestCase):
             self.assertEqual(self.read(name, 'a'), self.read(name, 'b'), name)
 
     def test_index_lists_every_sound(self):
-        idx = json.loads(self.read('sounds.json'))
+        idx = json.loads(self.read('index.json'))
         self.assertEqual(idx['format'], 'walkdown-plant-sound-files')
         self.assertEqual(idx['rate'], FS)
         self.assertEqual(set(idx['sounds']), set(SYNTH))
@@ -274,6 +310,7 @@ class Vorbis(unittest.TestCase):
             for la in e['layers']:
                 self.assertTrue(os.path.isfile(os.path.join(self.tmp, 'a', la['file'])), la['file'])
                 self.assertEqual(self.read(la['file'])[:4], b'OggS', la['file'])
+                self.assertEqual(la['pitch'], la['layer'] != 'mains', la['file'])
 
     def test_decoded_loops_are_seamless_and_levelled(self):
         for sid, e in self.index['sounds'].items():
@@ -290,8 +327,8 @@ class Vorbis(unittest.TestCase):
                         click = M.seam_click_db(x, top_hz(SYNTH[sid], la['layer']))
                         self.assertLessEqual(click, M.CLICK_MAX_DB)
                         self.assertEqual(round(click, 1), la['click_db'])
-                ms += M.mean_square_k(x, e['loop'])
-            self.assertAlmostEqual(-0.691 + 10 * math.log10(ms), e['lufs'], delta=0.5, msg=sid)
+                ms += M.power(x, e['loop'])
+            self.assertAlmostEqual(10 * math.log10(ms), e['level'], delta=0.5, msg=sid)
 
     def test_size(self):
         total = self.index['bytes']

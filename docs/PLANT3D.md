@@ -671,8 +671,8 @@ walls (a wall between halves its loudness: a simple rule, not acoustics).
   time (Godot's AudioStreamGenerator) is meant for C# or native code, not script (0054), and costs the phone CPU for
   nothing a pitched loop can't do.
 - **Levels:** every sound, recorded or synthesised, is levelled by how loud its source is on site, not to one fixed
-  loudness: LUFS = −18 − 0.5 × (105 − its dB(A) at 1 m) (`tools/plant3d/sounds/README.md`). The −23 LUFS in the
-  example above is a placeholder.
+  loudness: its A-weighted level = −26 − 0.5 × (105 − its dB(A) at 1 m) dBFS (`tools/plant3d/sounds/README.md`).
+  The −23 LUFS in the example above is a placeholder.
 - The sound library and what each machine sounds like: FIRST-TRAIN.md §6.
 
 ## 12. Validation and vectors

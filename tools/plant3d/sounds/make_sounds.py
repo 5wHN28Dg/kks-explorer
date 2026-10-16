@@ -4,7 +4,7 @@
 
     python3 tools/plant3d/sounds/make_sounds.py [--out DIR] [--wav]
 
-DIR defaults to apps/plant3d/built/sounds (the app's build output). It gets one file per layer and `sounds.json`
+DIR defaults to apps/plant3d/built/sounds (the app's build output). It gets one file per layer and `index.json`
 (format `walkdown-plant-sound-files`), which tells the app each sound's layers, whether they loop, and how a layer's
 pitch follows a value. `--wav` writes 16-bit WAV files instead (for listening without Vorbis; not for the app).
 
@@ -16,15 +16,16 @@ How a sound is made:
   of 1 / its length), the noise is made in the frequency domain and transformed back (inherently periodic), every
   modulation rate is a multiple of 1 / the loop's length, and anything that rings past the end (a click's decay)
   wraps around to the start. So the loop point is like any other sample;
-- layers: `tones` (the steady tones), `tone<i>` (a tone whose frequency follows a value: played at `ref_hz`, the app
+- layers: `mains` (an electrical hum at multiples of 2 x the 50 Hz grid frequency: the app doesn't pitch it with
+  the machine's speed), `tones` (the other steady tones), `tone<i>` (a tone whose frequency follows a value: played at `ref_hz`, the app
   sets pitch = hz(value) / ref_hz), `noise` (the band noise, plus tones below 30 Hz, which are a rate, not a pitch:
   blade passes, gear teeth, a liquid ring's churn, rendered as modulation or clicks of the noise), or `once` for
-  one-shot events (breakers, a motor's run-up, the acknowledge tone). The app applies the binding's gain and pitch
-  to every layer of a sound;
-- levels: each sound's loudness (ITU-R BS.1770 K-weighted, in LUFS as PLANT3D.md §11 levels recorded clips) is set
-  from its typical sound pressure level at 1 m, compressed by half around the loudest:
-  LUFS = -18 - 0.5 * (105 - spl). One-shots by their loudest 400 ms (momentary loudness), loops over the whole loop.
-  The layers of a sound share one scale, so the declared gains keep their balance.
+  one-shot events (breakers, a motor's run-up, the acknowledge tone). The app applies the binding's gain to every
+  layer of a sound and its pitch to every layer but `mains`;
+- levels: each sound's A-weighted level in dBFS (the same weighting as its dB(A) figure) is set from its typical
+  sound pressure level at 1 m, compressed by half around the loudest: level = -26 - 0.5 * (105 - spl). One-shots by
+  their loudest 400 ms, loops over the whole loop. The layers of a sound share one scale, so the declared gains keep
+  their balance. A one-shot that hands over to a loop (`match`) is levelled so that its end matches that loop.
 
 Deterministic: the noise comes from NumPy's PCG64 seeded by the sound's and layer's names, and the encoder runs
 bit-exact (0055): the same library gives the same bytes on the same machine.
@@ -47,13 +48,14 @@ ROTATIONS = 8               # loop starting points tried per quality (a loop may
 CLICK_GOAL_DB = -60         # stop searching when the seam's click is this far below the sound
 CLICK_MAX_DB = -45          # and refuse a loop whose best is louder than this
 NO_CLICK = -300.0           # nothing at the seam that isn't elsewhere in the loop
-LOUDEST_LUFS = -18.0    # the loudest source (a vent at 105 dB(A)) at full gain
+LOUDEST_LEVEL = -26.0   # dBFS(A) of the loudest source (a vent at 105 dB(A)) at full gain: low enough that the
+                        # rumbles, whose energy is mostly below the bass that A weighting discounts, don't clip
 LOUDEST_SPL = 105.0
 PEAK_MAX = 10 ** (-1 / 20)   # no layer above -1 dBFS (Vorbis overshoots a little)
 
 
-def lufs_plan(spl):
-    return LOUDEST_LUFS - 0.5 * (LOUDEST_SPL - spl)
+def level_plan(spl):
+    return LOUDEST_LEVEL - 0.5 * (LOUDEST_SPL - spl)
 
 
 # --------------------------------------------------------------------------------------------------- the voices
@@ -67,21 +69,26 @@ VOICES = {
         '(50 rev/s); a front stage of 57 blades gives 2,850 Hz, its second harmonic 5,700 Hz, a later stage of '
         '71 blades 3,550 Hz; 50 Hz is the once-per-revolution component. Pink broadband noise 200-4,000 Hz is the '
         'turbulent flow through the stages. Every part scales with speed (blade passing directly, the broadband '
-        'noise by Strouhal scaling), so the binding\'s pitch = speed covers turning gear to full speed')),
+        'noise by Strouhal scaling), so a pitch proportional to speed is right; the first train\'s binding pitches '
+        'it from 0.1 at standstill to 1 at full speed (silent below 10 % by its gain)')),
     'combustion': dict(spl=95, noise_am=[(0.375, 0.2), (0.75, 0.15), (1.375, 0.1)], why=(
         'Turbulent combustion roar: broadband, strongest at low frequencies (brown, 30-600 Hz), flickering slowly as '
         'the flames fluctuate (amplitude modulation at 0.4-1.4 Hz)')),
-    'exhaust_rumble': dict(spl=90, noise_am=[(0.25, 0.15), (0.625, 0.1)], why=(
-        'Low-frequency exhaust duct rumble (brown, 20-200 Hz): large ducts radiate mostly below 200 Hz; heard more '
-        'through headphones than a phone speaker')),
-    'sfc_whine': dict(spl=82, why=(
-        'Static frequency converter: a 12-pulse thyristor converter on a 50 Hz grid draws characteristic harmonics '
-        'of order 12k +/- 1 (550, 650, 1,150, 1,250 Hz) that make its transformer and reactors buzz, the DC link '
-        'ripples at 12 x 50 = 600 Hz, the converter transformer hums at 100 Hz; pink noise is the cubicle fans')),
-    'gen_hum': dict(spl=92, why=(
+    'exhaust_rumble': dict(spl=86, noise_am=[(0.25, 0.15), (0.625, 0.1)], why=(
+        'Low-frequency exhaust duct rumble (brown, 20-200 Hz): large ducts radiate mostly below 200 Hz, so their '
+        'dB(A) is modest (86 at the casing) while their dB(C) is some 20 dB higher; heard more through headphones '
+        'than a phone speaker')),
+    'sfc_whine': dict(spl=82, mains=(100, 500, 600, 700, 1100, 1200, 1300), why=(
+        'Static frequency converter: a 12-pulse thyristor converter on a 50 Hz grid draws currents of order '
+        '12k +/- 1 (550, 650, 1,150, 1,250 Hz); the forces in its transformer and reactors go with the current '
+        'squared, so they buzz at the sums and differences: even multiples of 50 Hz around 600 and 1,200 Hz (500, '
+        '600, 700, 1,100, 1,200, 1,300 Hz), and the DC reactor at the 600 Hz ripple; the converter transformer hums '
+        'at 100 Hz; pink noise is the cubicle fans. (The machine-side bridge\'s ripple, 6 x the generator\'s '
+        'frequency, sweeps up during the start: not modelled, the binding has no speed)')),
+    'gen_hum': dict(spl=92, mains=(100, 200, 300, 400, 600), why=(
         'Generator electromagnetic hum: the magnetic forces pulse at twice the 50 Hz grid frequency (100 Hz) with '
         'harmonics at multiples of 100 Hz; pink noise 300-3,000 Hz is the windage and the cooling fans')),
-    'transformer_hum': dict(spl=80, why=(
+    'transformer_hum': dict(spl=80, mains=(100, 200, 300, 400, 500, 600), why=(
         'Transformer hum: core magnetostriction and winding forces at twice the 50 Hz grid frequency, 100 Hz, and its '
         'harmonics (the magnetostriction is non-linear, so 200-600 Hz are strong too, IEC 60076-10); pink noise is '
         'the cooler fans')),
@@ -95,20 +102,22 @@ VOICES = {
     'steam_vent': dict(spl=105, noise_am=[(0.375, 0.06)], why=(
         'Steam vented to atmosphere through a silencer: a choked jet, broadband hiss to roar 300-10,000 Hz; the '
         'loudest thing in the plant (a silenced vent is still above 100 dB(A) close by)')),
-    'turning_gear': dict(spl=75, rates='clicks', click_hz=2200, why=(
-        'Turning gear: the rotor turned slowly by a motor through a worm gear. The 8 Hz "tone" is the tooth-meshing '
-        'rate of the last stage (e.g. 20 teeth at 24 rpm), heard as steel clicks; 100 Hz is the motor\'s magnetic '
-        'hum, 600 Hz the worm gear\'s mesh; brown noise 50-400 Hz is the gearbox')),
-    'motor_large': dict(spl=92, noise_am=[(0.5, 0.05)], why=(
-        'Large induction motor driving a pump (a CW pump: 10 poles, 595 rpm, 9.9 rev/s): magnetic hum at twice the '
-        'grid frequency, 100 Hz, and 200 Hz; rotor-slot whine at slots x speed (90 x 9.9 = 890 Hz) with sidebands '
-        'at +/- 100 Hz; the pump\'s vane-passing at 5 vanes x 9.9 = 50 Hz; pink noise 100-2,500 Hz is the motor fan '
-        'and the water. Lower and louder than motor_small')),
-    'motor_small': dict(spl=82, why=(
-        'Small two-pole induction motor (2,950 rpm, 49.2 rev/s): magnetic hum 100 and 200 Hz; rotor-slot whine at '
-        '28 slots x 49.2 = 1,377 Hz with +/- 100 Hz sidebands; its cooling fan\'s blade pass 11 x 49.2 = 541 Hz; '
-        'pink noise 200-4,000 Hz is the fan')),
-    'fan_large': dict(spl=88, rates='swell', noise_am=[(0.25, 0.08)], why=(
+    'turning_gear': dict(spl=75, rates='clicks', click_hz=2200, mains=(100,), why=(
+        'Turning gear: the rotor turned slowly by a motor through a reduction gear. The 8 Hz "tone" is the '
+        'tooth-meshing rate of the last stage (e.g. 20 teeth at 24 rpm), heard as steel clicks; 100 Hz is the '
+        'motor\'s magnetic hum, 600 Hz the mesh of the fast spur stage after the motor; brown noise 50-400 Hz is the '
+        'gearbox')),
+    'motor_large': dict(spl=92, noise_am=[(0.5, 0.05)], mains=(100, 200), why=(
+        'Large induction motor driving a pump (a CW pump: 12 poles, 495 rpm, 8.25 rev/s as the model turns it): '
+        'magnetic hum at twice the grid frequency, 100 Hz, and 200 Hz, which stays put whatever the speed; '
+        'rotor-slot whine at slots x speed (90 x 8.25 = 742.5 Hz) with sidebands at +/- 100 Hz; the pump\'s '
+        'vane passing at 6 vanes x 8.25 = 49.5 Hz; pink noise 100-2,500 Hz is the motor fan and the water. Lower '
+        'and louder than motor_small. (The feedwater pumps use it too: their 2-pole motors would whine higher)')),
+    'motor_small': dict(spl=82, mains=(100, 200), why=(
+        'Small four-pole induction motor (1,480 rpm, 24.7 rev/s, as the model turns the air compressors and cooling '
+        'water pumps): magnetic hum 100 and 200 Hz; rotor-slot whine at 44 slots x 24.7 = 1,087 Hz with +/- 100 Hz '
+        'sidebands; its cooling fan\'s blade pass 11 x 24.7 = 271.5 Hz; pink noise 200-4,000 Hz is the fan')),
+    'fan_large': dict(spl=88, rates='swell', noise_am=[(0.25, 0.08)], mains=(100,), why=(
         'Cooling tower fan: a large axial fan of 8 blades at 120 rpm passes a blade 16 times a second: a whoosh, '
         'not a pitch (the noise swells at 16 Hz); its right-angle gearbox meshes at 420 Hz; motor hum 100 Hz; pink '
         'noise 60-1,500 Hz is the air')),
@@ -116,14 +125,15 @@ VOICES = {
         'Cooling tower rain: water falling into the basin, broadband white noise 400-9,000 Hz, plus single drops: '
         'each traps a bubble that rings at its Minnaert frequency (about 3.3 kHz / radius in mm: 1-4 kHz for 1-3 mm '
         'drops)')),
-    'liquid_ring': dict(spl=85, rates='gurgle', why=(
+    'liquid_ring': dict(spl=85, rates='gurgle', mains=(100,), why=(
         'Liquid ring vacuum pump: the water ring churns once per shaft revolution (1,500 rpm, 25 Hz), heard as a '
         'gurgle; 12 impeller blades pass at 300 Hz; motor hum 100 Hz; brown noise 80-1,200 Hz is the water')),
     'burner': dict(spl=88, noise_am=[(0.5, 0.18), (1.125, 0.1), (2.25, 0.06)], why=(
         'Auxiliary boiler burner: combustion roar (brown, 40-800 Hz) flickering, plus the combustion air fan')),
-    'valve_motor': dict(spl=72, tone_am=[(4, 0.12)], why=(
-        'Motor-operated valve actuator: a small motor (100 Hz magnetic hum) driving a worm gear whose mesh whines '
-        'at 400 Hz with its harmonic at 800 Hz, the load rippling with each tooth (4 Hz); pink noise is the gear')),
+    'valve_motor': dict(spl=72, tone_am=[(4, 0.12)], mains=(100,), why=(
+        'Motor-operated valve actuator: a small motor (100 Hz magnetic hum) and the spur stage in front of its worm '
+        'gear, whose mesh whines at 400 Hz with its harmonic at 800 Hz; the load ripples a few times a second (4 Hz) '
+        'as the stem nut turns; pink noise is the gearbox')),
     'breaker': dict(spl=94, once=dict(kind='close'), why=(
         'Circuit breaker closing: the closing latch releases with a small click, then the spring drives the '
         'contacts shut with a heavy bang: the mechanism and cubicle ring at their modes (160, 410, 1,150, '
@@ -133,11 +143,13 @@ VOICES = {
         'Circuit breaker opening (a trip or an open command): the trip coil releases the opening spring: a sharper, '
         'shorter bang than the close (modes 210, 530, 1,400, 3,100 Hz) and a damped rebound; no charging motor (the '
         'closing charged the opening spring)')),
-    'motor_start': dict(spl=95, once=dict(kind='run_up', seconds=6.0), why=(
+    'motor_start': dict(spl=95, match=('motor_large', 6.0), once=dict(kind='run_up', seconds=6.0), why=(
         'A large induction motor started direct on line (a CW pump): the inrush current (about 6 x rated) makes a '
-        'loud 100 Hz magnetic growl that drops when the motor nears full speed; the rotor-slot whine (890 Hz at '
-        'full speed) and the vane-passing tone (50 Hz) rise with speed; the fan noise grows with speed. Played '
-        'once when the motor starts; the motor_large loop takes over')),
+        'loud 100 Hz magnetic growl (about +9 dB here; the force goes with the current squared, but the run-up '
+        'masks part of it) that drops when the motor nears full speed; it accelerates fastest near the end, where '
+        'its torque peaks; the rotor-slot whine (742.5 Hz at full speed) and the vane passing (49.5 Hz) rise with '
+        'speed; the fan noise grows with speed. Played once when the motor starts; its last second is levelled to '
+        'the motor_large loop, which takes over')),
     'horn_p1': dict(spl=85, pattern=dict(period=0.25, on=0.15, at=0.05), why=(
         'Control room alarm sounder, priority 1 (high): fast pulses (4 a second) of an 880 Hz tone with harmonics '
         '(an electronic sounder\'s square-ish wave). Each priority sounds different (ISA-18.2, EEMUA 191)')),
@@ -151,49 +163,35 @@ VOICES = {
 
 
 # --------------------------------------------------------------------------------------------------- measurement
-def _biquad_response(b, a, f, fs):
-    z = np.exp(-2j * np.pi * f / fs)
-    return (b[0] + b[1] * z + b[2] * z * z) / (a[0] + a[1] * z + a[2] * z * z)
+def a_weighting(f):
+    """|A(f)| of IEC 61672-1's A weighting (the analogue response, 0 dB at 1 kHz): what the dB(A) figures of the
+    voices are measured with, so the files are levelled the same way."""
+    f2 = np.asarray(f, dtype=float) ** 2
+    ra = 12194.0 ** 2 * f2 * f2 / ((f2 + 20.6 ** 2) * np.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194.0 ** 2))
+    return ra * 10 ** (2.0 / 20)
 
 
-def k_weighting(f, fs=FS):
-    """|H(f)| of ITU-R BS.1770's K filter (its high shelf and high pass) designed for the sample rate fs by
-    Brecht De Man's formulas (as pyloudnorm does), which give the standard's 48 kHz coefficients exactly."""
-    K = math.tan(math.pi * 1681.974450955533 / fs)
-    q = 0.7071752369554196
-    vh = 10 ** (3.999843853973347 / 20)
-    vb = vh ** 0.4996667741545416
-    a0 = 1 + K / q + K * K
-    shelf = _biquad_response([(vh + vb * K / q + K * K) / a0, 2 * (K * K - vh) / a0, (vh - vb * K / q + K * K) / a0],
-                             [1, 2 * (K * K - 1) / a0, (1 - K / q + K * K) / a0], f, fs)
-    K = math.tan(math.pi * 38.13547087602444 / fs)
-    q = 0.5003270373238773
-    a0 = 1 + K / q + K * K
-    hp = _biquad_response([1, -2, 1], [1, 2 * (K * K - 1) / a0, (1 - K / q + K * K) / a0], f, fs)
-    return np.abs(shelf * hp)
-
-
-def k_weighted(x, periodic):
-    """x through the K filter: circularly for a loop (exact for a periodic signal), with zero padding for a one-shot."""
+def a_weighted(x, periodic):
+    """x through the A weighting: circularly for a loop (exact for a periodic signal), zero padded for a one-shot."""
     n = len(x) if periodic else len(x) + FS
-    spec = np.fft.rfft(x, n) * k_weighting(np.fft.rfftfreq(n, 1 / FS))
+    spec = np.fft.rfft(x, n) * a_weighting(np.fft.rfftfreq(n, 1 / FS))
     return np.fft.irfft(spec, n)[:len(x)]
 
 
-def loudness(x, periodic=True):
-    """LUFS (BS.1770, mono, ungated): a loop's over the whole loop; a one-shot's loudest 400 ms window (100 ms hop),
-    the momentary loudness of a short event."""
-    y = k_weighted(np.asarray(x, dtype=float), periodic)
+def level(x, periodic=True):
+    """A-weighted level in dBFS (RMS; a full-scale 1 kHz sine reads -3.0): a loop's over the whole loop, a one-shot's
+    over its loudest 400 ms (100 ms hop), like a sound level meter's reading of a short event."""
+    y = a_weighted(np.asarray(x, dtype=float), periodic)
     if periodic:
         ms = float(np.mean(y * y))
     else:
         w, hop = int(0.4 * FS), int(0.1 * FS)
         ms = max(float(np.mean(y[i:i + w] ** 2)) for i in range(0, max(1, len(y) - w + 1), hop))
-    return -0.691 + 10 * math.log10(max(ms, 1e-20))
+    return 10 * math.log10(max(ms, 1e-20))
 
 
-def mean_square_k(x, periodic=True):
-    return 10 ** ((loudness(x, periodic) + 0.691) / 10)
+def power(x, periodic=True):
+    return 10 ** (level(x, periodic) / 10)
 
 
 # --------------------------------------------------------------------------------------------------- synthesis
@@ -277,6 +275,14 @@ def render_loop(s, v):
     steady = [x for x in s.get('tones', []) if isinstance(x['hz'], (int, float)) and x['hz'] >= RATE_HZ]
     rates = [x for x in s.get('tones', []) if isinstance(x['hz'], (int, float)) and x['hz'] < RATE_HZ]
     varying = [(i, x) for i, x in enumerate(s.get('tones', [])) if not isinstance(x['hz'], (int, float))]
+    mains = [x for x in steady if x['hz'] in v.get('mains', ())]
+    steady = [x for x in steady if x['hz'] not in v.get('mains', ())]
+    if mains:   # the electrical hum: fixed by the grid, not by the machine's speed (the app doesn't pitch it)
+        n = TONE_SECONDS * FS
+        t = times(n)
+        rng = rng_for(sid, 'mains')
+        layers['mains'] = sum(tone(t, whole(z['hz'], TONE_SECONDS, sid), z.get('gain', 1), rng.uniform(0, 2 * np.pi))
+                              for z in mains)
     if steady:
         n = TONE_SECONDS * FS
         t = times(n)
@@ -383,14 +389,15 @@ def render_once(s, v):
         total = tr + 1.0
         n = int(total * FS)
         t = times(n)
-        speed = np.where(t < tr, 1 - (1 - np.minimum(t, tr) / tr) ** 2, 1.0)
+        u = np.minimum(t, tr) / tr
+        speed = np.where(t < tr, u ** 1.6, 1.0)   # slow at first, fastest near full speed (the torque peak)
         # current: about 6 x rated until the motor nears full speed, then down to rated
         edge = np.clip((speed - 0.8) / 0.18, 0, 1)
         current = 1 + 5 * (1 - edge * edge * (3 - 2 * edge))
         steady_hz = [z for z in tones if z['hz'] == 100]
         moving = [z for z in tones if z['hz'] != 100]
         x = np.zeros(n)
-        for z in steady_hz:   # magnetic force ~ current: a growl of about +12 dB at inrush
+        for z in steady_hz:   # the magnetic hum grows with the current: about +9 dB at inrush (6 ** 0.6)
             x += tone(t, 100, z.get('gain', 1), 0) * (current / 6) ** 0.6 * 2.9
         for z in moving:      # slot whine and vane passing rise with speed
             phase = 2 * np.pi * np.cumsum(z['hz'] * speed) / FS
@@ -410,25 +417,35 @@ def render_once(s, v):
     else:
         raise ValueError(f'{sid}: unknown event {ev["kind"]}')
     # every one-shot starts and ends at silence
-    k = int(0.01 * FS)
+    k = int(0.03 * FS)   # a 30 ms fade
     x[-k:] *= np.cos(np.linspace(0, np.pi / 2, k)) ** 2
     x[0] = 0.0
     return {'once': x}
 
 
-def make(s):
-    """{layer: float samples at the planned level}, the plan in LUFS, and whether it loops."""
+def make(s, lib=None):
+    """{layer: float samples at the planned level}, the level in dBFS(A), and whether it loops. A one-shot with
+    `match` (e.g. a motor's run-up) is levelled so that its last second before the fade matches that loop at gain 1,
+    so the hand-over to the loop is even; its level is then what that gives."""
     v = VOICES[s['id']]
     once = 'once' in v
     layers = render_once(s, v) if once else render_loop(s, v)
-    plan = lufs_plan(v['spl'])
-    total = sum(mean_square_k(x, not once) for x in layers.values())
-    scale = 10 ** (((plan + 0.691) - 10 * math.log10(total)) / 20)
-    layers = {k: x * scale for k, x in layers.items()}
+    if 'match' in v:
+        other, at = v['match']
+        tail = layers['once'][int(at * FS):int((at + 1) * FS)]
+        want = level_plan(VOICES[other]['spl'])
+        scale = 10 ** ((want - level(tail, False)) / 20)
+        layers = {k: x * scale for k, x in layers.items()}
+        plan = level(layers['once'], False)
+    else:
+        plan = level_plan(v['spl'])
+        total = sum(power(x, not once) for x in layers.values())
+        scale = 10 ** ((plan - 10 * math.log10(total)) / 20)
+        layers = {k: x * scale for k, x in layers.items()}
     for k, x in layers.items():
         peak = float(np.max(np.abs(x)))
         if peak > PEAK_MAX:
-            raise ValueError(f'{s["id"]}.{k}: peak {20 * math.log10(peak):.1f} dBFS at {plan} LUFS: lower its spl')
+            raise ValueError(f'{s["id"]}.{k}: peak {20 * math.log10(peak):.1f} dBFS at {plan:.1f} dBFS(A): lower its spl')
     return layers, plan, not once
 
 
@@ -541,7 +558,7 @@ def build(out, wav=False, lib=LIBRARY):
     index = {'format': 'walkdown-plant-sound-files', 'version': 1, 'rate': FS, 'sounds': {}}
     for s in library(lib):
         layers, plan, loop = make(s)
-        entry = {'loop': loop, 'lufs': round(plan, 1), 'layers': []}
+        entry = {'loop': loop, 'level': round(plan, 1), 'layers': []}
         for name, x in layers.items():
             samples = pcm16(x)
             fname = f'{s["id"]}.{name}.{"wav" if wav else "ogg"}'
@@ -556,6 +573,7 @@ def build(out, wav=False, lib=LIBRARY):
             with open(os.path.join(out, fname), 'wb') as f:
                 f.write(data)
             layer['bytes'] = len(data)
+            layer['pitch'] = name != 'mains'   # the mains hum stays at 2 x grid frequency whatever the speed
             if name.startswith('tone') and name != 'tones':
                 z = s['tones'][int(name[4:])]
                 layer.update({'of': z['hz']['of'], 'table': z['hz']['table'],
@@ -563,7 +581,7 @@ def build(out, wav=False, lib=LIBRARY):
             entry['layers'].append(layer)
         index['sounds'][s['id']] = entry
     index['bytes'] = sum(la['bytes'] for e in index['sounds'].values() for la in e['layers'])
-    with open(os.path.join(out, 'sounds.json'), 'w', encoding='utf-8') as f:
+    with open(os.path.join(out, 'index.json'), 'w', encoding='utf-8') as f:
         json.dump(index, f, indent=1, sort_keys=True)
         f.write('\n')
     return index
@@ -576,7 +594,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     index = build(a.out, a.wav)
     for sid, e in index['sounds'].items():
-        print(f'{sid:16} {"loop" if e["loop"] else "once"} {e["lufs"]:6.1f} LUFS  '
+        print(f'{sid:16} {"loop" if e["loop"] else "once"} {e["level"]:6.1f} dBFS(A)  '
               + '  '.join(f'{la["layer"]} {la["seconds"]:g} s {la["bytes"] / 1024:.0f} KiB' for la in e['layers']))
     print(f'{len(index["sounds"])} sounds, {index["bytes"] / 1e6:.2f} MB in {a.out}')
     return 0
