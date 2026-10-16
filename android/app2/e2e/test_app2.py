@@ -1864,9 +1864,10 @@ class Phone(unittest.TestCase):
 
 # The suite in three parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2 or 3 runs
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
-# test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB).
-PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'app_links'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
+# test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 2: at the
+# end of part 1 it took the emulator to 7.25 GiB (2026-10-16).
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures'))
 
