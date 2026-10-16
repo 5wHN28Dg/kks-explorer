@@ -1,4 +1,4 @@
-# 0057 Walkdown takes walkdown:// links from other apps
+# 0058 Walkdown takes walkdown:// links from other apps
 
 Date 2026-10-16 · Scope: Walkdown's Android, GNOME and Windows apps, the core (the link's reader), Walkdown Plant's
 links out (`apps/plant3d/ui/links_in.gd`) · Status: **decided by the user** ("Add it", 2026-10-16) · Follows 0054 §3

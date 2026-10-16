@@ -1,4 +1,4 @@
-## Links from other apps into Walkdown (docs/PLANT3D.md §6 "Links into Walkdown", decision 0057):
+## Links from other apps into Walkdown (docs/PLANT3D.md §6 "Links into Walkdown", decision 0058):
 ## `walkdown://kks/<code>` and `walkdown://course/<course>[/<page>]`. Every link is untrusted input: it is read
 ## strictly, and anything that is not exactly one of these forms reads as nothing (kind ""), so the app does nothing.
 ## A link only ever names a code or a course page; what the app does with it is to show that, never more.

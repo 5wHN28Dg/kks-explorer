@@ -28,7 +28,7 @@ proc openCode*(w: Win, code: string) =
   w.goToTag(t.sheet, t.id)
 
 proc openAppLink*(w: Win, uri: string) =
-  ## a walkdown:// link from another app (decision 0057; GApplication "open"): read by the core, strictly; a code
+  ## a walkdown:// link from another app (decision 0058; GApplication "open"): read by the core, strictly; a code
   ## opens its tag, a course its window; anything else, or a device that hasn't joined, does nothing
   let l = parseAppLink(uri)
   if l.kind == "" or w.window == nil or w.gone or not w.a.joined or w.m == nil: return

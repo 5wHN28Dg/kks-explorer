@@ -284,7 +284,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     return 0
   of WM_COPYDATA:
     # a walkdown:// link handed over by a second start (handOver): only its text, at most MaxLinkLen bytes, read by
-    # the core like any other (decision 0057)
+    # the core like any other (decision 0058)
     let cd = cast[ptr COPYDATASTRUCT](lp)
     if w != nil and cd != nil and cd.dwData == LinkMagic and int(cd.cbData) in 1 .. MaxLinkLen and cd.lpData != nil:
       var link = newString(int(cd.cbData))
@@ -366,7 +366,7 @@ proc showMain() =
   w.resumePhotos()          # the photos left from before (a crash, a kill, a logout) go first, in their order
 
 proc main() =
-  # a walkdown:// link on the command line (MSIX's protocol activation, decision 0057): the first one is taken
+  # a walkdown:// link on the command line (MSIX's protocol activation, decision 0058): the first one is taken
   var link = ""
   for p in commandLineParams():
     if isLinkArg(p):

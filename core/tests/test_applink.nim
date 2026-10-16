@@ -1,4 +1,4 @@
-## Links from other apps (docs/PLANT3D.md §6, decision 0057): the two forms Walkdown opens, and everything else,
+## Links from other apps (docs/PLANT3D.md §6, decision 0058): the two forms Walkdown opens, and everything else,
 ## hostile input included, reading as nothing. Synthetic data.
 import std/[unittest, strutils]
 import kks/[json, model, applink]

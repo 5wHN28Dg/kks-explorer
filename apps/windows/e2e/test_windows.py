@@ -834,7 +834,7 @@ class Windows(unittest.TestCase):
         self.leave()
 
     def test_app_links(self):
-        """walkdown:// links from other apps (decision 0057): on the command line of a start (what MSIX's protocol
+        """walkdown:// links from other apps (decision 0058): on the command line of a start (what MSIX's protocol
         activation does), or handed to the running app by a second start, which then ends. Before joining a link
         does nothing; a code opens its tag with the panel; a course link that course at that page; a code on no
         drawing says so; a malformed link does nothing"""

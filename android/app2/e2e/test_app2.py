@@ -1247,7 +1247,7 @@ class Phone(unittest.TestCase):
 
     @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
     def test_app_links(self):
-        """walkdown:// links from other apps (decision 0057), sent as Walkdown Plant sends them (a VIEW Intent, no
+        """walkdown:// links from other apps (decision 0058), sent as Walkdown Plant sends them (a VIEW Intent, no
         NEW_TASK): before joining a link does nothing, now or after; a code opens its tag with the panel, at a cold
         start and while the app runs, in the app's one MainActivity; a course link opens that course at that page; a
         code on no drawing says so; a malformed or other link does nothing"""

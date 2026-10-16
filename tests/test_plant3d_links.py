@@ -46,7 +46,7 @@ class PlantLinks(unittest.TestCase):
                 self.assertIn('gradle_build/use_gradle_build=true', opts)   # the plugin's manifest needs Gradle
 
     def test_walkdown_takes_what_it_registers(self):
-        """Walkdown registers walkdown:// on Android, GNOME (and its Flatpak) and Windows (decision 0057), and the
+        """Walkdown registers walkdown:// on Android, GNOME (and its Flatpak) and Windows (decision 0058), and the
         plant offers links out of exactly the kinds Walkdown's reader (core/src/kks/applink.nim) opens"""
         takes = re.search(r'const WALKDOWN_TAKES: Array = \[(.*?)\]', read(PLANT, 'ui', 'links_in.gd')).group(1)
         takes = re.findall(r'"([a-z]+)"', takes)
@@ -66,7 +66,7 @@ class PlantLinks(unittest.TestCase):
                     self.assertEqual(sorted(c.get(A + 'name') for c in f.findall('category')),
                                      ['android.intent.category.BROWSABLE', 'android.intent.category.DEFAULT'])
                     self.assertEqual(act.get(A + 'exported'), 'true')
-        # one windowless activity takes links and hands them to MainActivity (0057), not the launcher activity itself
+        # one windowless activity takes links and hands them to MainActivity (0058), not the launcher activity itself
         self.assertEqual(with_scheme, ['kks.explorer.LinkActivity'])
 
         d = read(ROOT, 'apps', 'gnome', 'flatpak', 'io.github._5wHN28Dg.walkdown.desktop')

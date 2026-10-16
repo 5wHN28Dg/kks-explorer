@@ -6,7 +6,7 @@
 ##   apps/plant3d/android), read through Godot's AndroidRuntime plugin.
 ## What a link opens is sim/links.gd `read_link`, the reference's rule; nothing else is read from it.
 ##
-## Links out go to Walkdown (`walkdown://…`, PLANT3D.md §6 "Links into Walkdown", decision 0057). Walkdown's Android,
+## Links out go to Walkdown (`walkdown://…`, PLANT3D.md §6 "Links into Walkdown", decision 0058). Walkdown's Android,
 ## GNOME and Windows apps take `walkdown://kks/<code>` and `walkdown://course/<course>[/<page>]` (its web client takes
 ## none); WALKDOWN_TAKES lists those kinds. A link of another kind, or with Walkdown not installed, says so instead of
 ## failing silently.

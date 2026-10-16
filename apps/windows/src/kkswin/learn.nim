@@ -66,7 +66,7 @@ proc openCode*(w: Win, code: string) =
   toFront(w.hwnd)
 
 proc openAppLink*(w: Win, uri: string, joined: bool) =
-  ## a walkdown:// link from another app (decision 0057: on the command line, or handed over by a second start):
+  ## a walkdown:// link from another app (decision 0058: on the command line, or handed over by a second start):
   ## read by the core, strictly; a code opens its tag, a course its window; anything else, or a device that hasn't
   ## joined (`joined` false: the setup screen is up), does nothing
   let l = parseAppLink(uri)

@@ -270,7 +270,7 @@ class Gnome(Plant):
         atspi.find(a, 'label', name='Connector A3 on Sample sheet', timeout=10)
 
     def test_app_links(self):
-        """walkdown:// links from other apps (decision 0057), as the .desktop file's `%u` hands them over: a code opens
+        """walkdown:// links from other apps (decision 0058), as the .desktop file's `%u` hands them over: a code opens
         its tag on its drawing with the panel, a course link that course at that page; a link of any other kind or
         form, or on a device that hasn't joined, opens nothing"""
         a = self.start_app('linked', args=['walkdown://kks/11LAB70AA501', 'walkdown://kks/../../etc', 'walkdown://join/x'])

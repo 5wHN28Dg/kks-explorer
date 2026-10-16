@@ -25,7 +25,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- walkdown:// links from other apps (decision 0057): a windowless activity that hands the link to
+        <!-- walkdown:// links from other apps (decision 0058): a windowless activity that hands the link to
              MainActivity in Walkdown's own task -->
         <activity android:name="kks.explorer.LinkActivity" android:exported="true"
             android:theme="@android:style/Theme.NoDisplay" android:excludeFromRecents="true" android:noHistory="true"

@@ -218,7 +218,7 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
   of "/native/links": view(O(("links", linksView(c.model, arg("sheet")))))
   of "/native/search": view(O(("results", searchView(c.model, arg("q")))))
   of "/native/link":
-    # a link from another app (decision 0057): what it opens, read by the core; it opens nothing by itself
+    # a link from another app (decision 0058): what it opens, read by the core; it opens nothing by itself
     let l = parseAppLink(arg("url"))
     case l.kind
     of "kks":

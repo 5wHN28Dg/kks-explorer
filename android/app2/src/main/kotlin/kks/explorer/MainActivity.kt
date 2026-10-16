@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
         takeLink(intent)
     }
 
-    /** a walkdown:// link (decision 0057): only its text is kept, for the main screen to ask the core what it opens */
+    /** a walkdown:// link (decision 0058): only its text is kept, for the main screen to ask the core what it opens */
     private fun takeLink(i: Intent?) {
         val data = i?.dataString ?: return
         if (i.action == Intent.ACTION_VIEW && data.length <= MAX_LINK) AppLinks.pending = data

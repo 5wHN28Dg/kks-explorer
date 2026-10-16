@@ -6,7 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import kks.explorer.ui.AppLinks
 
-/** Links from other apps (walkdown://…, decision 0057): the only activity with the scheme's intent filter. It has no
+/** Links from other apps (walkdown://…, decision 0058): the only activity with the scheme's intent filter. It has no
  *  window and finishes at once.
  *  - Walkdown's task is there: the link is queued (AppLinks) and the task comes to the front as it is. Whatever is open
  *    above MainActivity stays open, a photo being taken or a file being picked (CLEAR_TOP or `singleTask` would

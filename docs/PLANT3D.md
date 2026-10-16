@@ -249,7 +249,7 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
   anywhere: Walkdown Plant has no network access (0054).
 - **A link out with nothing to open it** (Walkdown not installed): the app says so instead of failing silently.
 
-**Links into Walkdown** (0057). Walkdown's Android, GNOME and Windows apps register the `walkdown` scheme; the web client
+**Links into Walkdown** (0058). Walkdown's Android, GNOME and Windows apps register the `walkdown` scheme; the web client
 takes no links. Walkdown reads a link more strictly than the plant does, because it holds a real plant's data and
 acts for a signed-in person (`core/src/kks/applink.nim`, its tests in `core/tests/test_applink.nim`):
 

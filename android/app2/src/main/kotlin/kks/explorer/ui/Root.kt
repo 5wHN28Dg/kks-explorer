@@ -47,7 +47,7 @@ fun Root() {
     MaterialTheme(colorScheme = scheme) {
         Surface(Modifier.fillMaxSize()) {
             var joined by remember { mutableStateOf(Sync.joined()) }
-            // a link that came before the phone joined a plant opens nothing, now or later (decision 0057)
+            // a link that came before the phone joined a plant opens nothing, now or later (decision 0058)
             if (!joined) LaunchedEffect(AppLinks.pending) { AppLinks.pending = null }
             if (joined) MainScreen() else SetupScreen { joined = true }
         }
@@ -72,7 +72,7 @@ fun tagBoxes(sheet: String, scale: Float): List<SheetView.TagBox> = call("GET", 
             (b.getDouble(2) / scale).toFloat(), (b.getDouble(3) / scale).toFloat(), "pending", "")
     }
 
-/** A walkdown:// link from another app (decision 0057), as MainActivity received it: the main screen asks the core
+/** A walkdown:// link from another app (decision 0058), as MainActivity received it: the main screen asks the core
  *  what it opens (`/native/link`, core/src/kks/applink.nim) and shows that. Nothing else reads it. */
 object AppLinks {
     var pending by mutableStateOf<String?>(null)

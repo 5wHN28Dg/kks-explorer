@@ -3,7 +3,7 @@ param([string]$Script, [switch]$Keep, [switch]$Msix, [int]$SyncEvery = 0, [switc
       [string]$AppArgs = "", [string]$Link = "", [switch]$Burst)
 # -Msix: the installed MSIX (decision 0043), started through its alias; its LOCALAPPDATA lives in the package folder
 # -Restart: a new process on the same data (what survives a restart); -AppEnv "K=V;K2=V2": extra environment for the app
-# -AppArgs: the fresh app's command line (a walkdown:// link, decision 0057); -Link: a walkdown:// link opened before
+# -AppArgs: the fresh app's command line (a walkdown:// link, decision 0058); -Link: a walkdown:// link opened before
 # the script runs, as a second start of the exe (which hands it to the running app and ends), or with -Msix through
 # the shell (the package's protocol activation); -Burst: the link opened twice at once (two starts racing)
 $log = "C:\kks\uia.log"

@@ -114,7 +114,7 @@ from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.
   `lamp_<kind>`. Until the kit has them, small markers stand in. Local displays show their value within 8 m.
 - **Sounds:** played from `built/sounds` (tools/plant3d/sounds) when it is there; silent otherwise.
 - **Links out:** a course link in a procedure opens Walkdown's course (`walkdown://course/…`); Walkdown takes
-  `kks` and `course` links on Android, GNOME and Windows (decision 0057; `ui/links_in.gd` `WALKDOWN_TAKES`). Without
+  `kks` and `course` links on Android, GNOME and Windows (decision 0058; `ui/links_in.gd` `WALKDOWN_TAKES`). Without
   Walkdown installed, the plant says so.
 
 ## Android: a Gradle export

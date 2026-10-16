@@ -681,7 +681,7 @@ proc main() =
     var h = 0'u32
     for c in custom: h = h * 31 + uint32(c)
     id.add ".p" & toHex(h, 8)
-  # 4 = G_APPLICATION_HANDLES_OPEN: walkdown:// links (decision 0057) come to "open", in the running instance
+  # 4 = G_APPLICATION_HANDLES_OPEN: walkdown:// links (decision 0058) come to "open", in the running instance
   # (KKS_TEST_UNIQUE: a test's app on its own data folder stays unique, so that a second start hands its links over)
   let nonUnique = custom.len > 0 and getEnv("KKS_TEST_UNIQUE").len == 0
   let app = adw_application_new(id.cstring, cint(4 or (if nonUnique: 32 else: 0)))   # 32 = G_APPLICATION_NON_UNIQUE
