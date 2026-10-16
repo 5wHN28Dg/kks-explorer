@@ -170,14 +170,17 @@ fun MainScreen() {
     val link = AppLinks.pending
     LaunchedEffect(link) {
         if (link == null) return@LaunchedEffect
-        AppLinks.pending = null
+        AppLinks.pending = null       // (taken once: the same link again is a new request)
         val r = call("GET", "/native/link", query = mapOf("url" to link))
         if (!r.ok) return@LaunchedEffect
         when (r.json.str("kind")) {
             "kks" -> {
                 val tag = r.json.str("tag")
                 if (tag.isNotEmpty()) ui.show(tag)
-                else { ui.tab = "drawings"; snack.showSnackbar(r.json.str("code") + " is not on any drawing") }
+                else {      // (in the screen's scope: this effect ends as soon as the link is cleared)
+                    ui.tab = "drawings"
+                    scope.launch { snack.showSnackbar(r.json.str("code") + " is not on any drawing") }
+                }
             }
             "course" -> {
                 ui.courseLink = r.json.str("course") to r.json.str("page")

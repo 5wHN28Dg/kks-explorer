@@ -1245,6 +1245,47 @@ class Phone(unittest.TestCase):
 
     # ---------------------------------------------------------------- the user's requests of 2026-10-08
 
+    def test_app_links(self):
+        """walkdown:// links from other apps (decision 0057), sent as Walkdown Plant sends them (a VIEW Intent, no
+        NEW_TASK): before joining a link does nothing, now or after; a code opens its tag with the panel, at a cold
+        start and while the app runs, in the app's one MainActivity; a course link opens that course at that page; a
+        code on no drawing says so; a malformed or other link does nothing"""
+        def link(u):
+            out = ui.sh('am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', f"'{u}'", '-p', PKG)
+            self.assertNotIn('Error', out, out)
+            time.sleep(2)
+
+        def main_activities():
+            # MainActivity's records in the activity manager (each is listed in several places: told apart by its id)
+            return len(set(re.findall(r'ActivityRecord\{(\w+) [^}]*' + re.escape(PKG) + r'/kks\.explorer\.MainActivity',
+                                      ui.sh('dumpsys', 'activity', 'activities'))))
+        link('walkdown://kks/11LAB70AA501')
+        ui.find('Join through a server', exact=True)
+        self.join()
+        time.sleep(3)
+        self.assertFalse(ui.present('Feed water piping system'), 'a link from before joining opened its tag')
+        for bad in ('walkdown://kks/11LAB70AA501?x=1', 'walkdown://delete/11LAB70AA501', 'walkdown://kks/11lab70aa501',
+                    'walkdown://course/../../etc'):
+            link(bad)
+        self.assertFalse(ui.present('Feed water piping system'), 'a malformed link opened a tag')
+        # while the app runs: the tag, in the same activity
+        link('walkdown://kks/11LAB70AA501')
+        ui.find('Feed water piping system', timeout=15)
+        self.assertEqual(main_activities(), 1)
+        # a cold start
+        ui.sh('am', 'force-stop', PKG)
+        link('walkdown://kks/11LAB70AA501')
+        ui.find('Feed water piping system', timeout=20)
+        self.assertEqual(main_activities(), 1)
+        # a code on no drawing says so
+        link('walkdown://kks/11LAB70AA599')
+        ui.find('11LAB70AA599 is not on any drawing', timeout=10)
+        # a course, at a page
+        link('walkdown://course/inc/loop')
+        ui.find('Instrumentation and control', exact=True, timeout=15)
+        ui.scroll_to('A control loop: drum level', tries=30)
+        self.assertEqual(main_activities(), 1)
+
     def test_photo_queue(self):
         """request 1: photos go through a background queue (WorkManager): sent in order with the panel closed, kept
         across the app being stopped, a floor sent with the first photo of a code without one, failures shown"""
@@ -1801,7 +1842,7 @@ class Phone(unittest.TestCase):
 # The suite in three parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2 or 3 runs
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB).
-PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes'),
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'app_links'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures'))
