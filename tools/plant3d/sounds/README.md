@@ -78,13 +78,19 @@ The other sounds are band noise: combustion, exhaust, steam flow, vent, rain, bu
 the frequency domain, so the synthesised loop is seamless to the sample.
 
 Vorbis can still leave a small tick where the stream's end meets its start, because its coding errors at the two
-ends are independent. The generator tries 8 starting points of the loop at qualities 4, 6 and 8, and keeps the first
-one whose decoded seam is 60 dB under the sound. It refuses a loop whose best is louder than −45 dB. Each layer's
-tick is its `click_db` in the index.
+ends are independent. The tick is measured on that error (the decoded file minus the samples it was made from):
+its energy above the sound's own band, in the window at the seam, beyond the loudest window elsewhere. The
+generator tries 8 starting points of the loop at qualities 4, 6 and 8, and keeps the first one whose tick is 60 dB
+under the sound. It refuses a loop whose best is louder than −45 dB. Each layer's tick is its `click_db` in the
+index (−300: nothing beyond the rest of the loop), with the `rotation` it chose.
 
-The tests can measure a tick in tones and in noise up to about 1.5 kHz. In noise reaching several kHz (steam, the
-vent, rain) a jump at the seam can't be told from the noise itself, by any measure or by ear: `click_db` −300 means
-nothing measurable.
+The measure sees a tick of 0.01–0.5 × the sound's RMS in tones and in noise up to about 1.2 kHz. In noise reaching
+several kHz (steam, the vent, rain, the motors' fans) Vorbis's own error is as rough from sample to sample as a tick
+of 1–2 × RMS, so a seam jump, typically a twentieth of that, is lost in it, by measure and by ear.
+
+Before encoding, the tests check the synthesised loops sample by sample: step, curvature, the residual of a linear
+predictor, and the high-band energy at the seam. A loop cut short by even a few samples fails them, except in noise
+reaching several kHz, where a jump can't be told from the noise itself.
 
 **Levels.** Each file is levelled by A-weighted level, the weighting of its dB(A) figure:
 level = −26 − 0.5 × (105 − spl) dBFS(A). That runs from the vent (105 dB(A), −26) down to the valve motor
@@ -94,8 +100,8 @@ measured by its loudest 400 ms. A recorded clip added later must follow the same
 
 ## Measured (2026-10-16)
 
-24 sounds in 41 files, 1.55 MB of Ogg Vorbis in total. Decision 0054's budget is 150 MB for the whole package (10 MB
+24 sounds in 41 files, 1.57 MB of Ogg Vorbis in total. Decision 0054's budget is 150 MB for the whole package (10 MB
 for clips). A loop's tone layers are 2 s (8–22 KiB) and its noise layer 8 s (34–74 KiB). The worst loop-point tick
-after Vorbis is −55.5 dB under its sound; 30 of the 37 loop layers have nothing measurable.
+after Vorbis is −54.2 dB under its sound; 22 of the 37 loop layers have nothing beyond the rest of the loop.
 
 Not checked: Godot's own decoder. The seams and lengths are measured with FFmpeg's.

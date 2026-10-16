@@ -4,7 +4,8 @@ decisions 0054 §7 and 0055):
 - the generator is deterministic: the same library gives the same samples and the same Ogg bytes;
 - loops are seamless at the loop point: sample continuity (step, curvature and linear-prediction residual no larger
   than anywhere inside) and no burst of energy above the sound's own frequencies around the seam, in the samples;
-  after Vorbis, any tick at most CLICK_MAX_DB under the sound;
+  after Vorbis, any tick (measured on the codec's error against the samples it was made from) at most CLICK_MAX_DB
+  under the sound, and a tick of half the sound's RMS refused where the measure can see one;
 - the seam check itself catches a broken loop. It can for tones and for noise up to about 1.5 kHz; in noise reaching
   several kHz (steam, vent, rain) a jump at the seam can't be told from the noise itself, by any measure or by ear,
   and there the seamlessness rests on the construction (a loop made by one inverse FFT is periodic);
@@ -67,7 +68,7 @@ def seam_problems(x, top):
     - continuity: the step, the curvature and the prediction residual across the seam are no larger than the largest
       inside the loop;
     - spectrum: no more energy above the layer's own frequencies around the seam than anywhere else in the loop
-      (M.seam_click_db: a click is a broadband burst)."""
+      (M.seam_click_db at twice the loudest window elsewhere: a click is a broadband burst)."""
     out = []
     x = np.asarray(x, dtype=float)
     d = np.diff(np.concatenate([x, x[:1]]))           # d[-1] is the step across the seam
@@ -80,7 +81,7 @@ def seam_problems(x, top):
     r = lpc_seam_ratio(x)
     if r > 1:
         out.append(f'prediction residual at the seam {r:.2f} x the largest inside')
-    click = M.seam_click_db(x, top)
+    click = M.seam_click_db(x, top, factor=2)   # twice the loudest window elsewhere: never by chance
     if click > SEAM_CLICK_DB:
         out.append(f'a click at the seam {click:.1f} dB under the sound (energy above its own frequencies)')
     return out
@@ -134,7 +135,8 @@ class Synthesis(unittest.TestCase):
                     self.assertEqual(seam_problems(M.pcm16(x) / 32767, top_hz(SYNTH[sid], k)), [])
 
     def test_a_seamless_loop_passes_wherever_it_starts(self):
-        """The seam check doesn't fail a seamless loop by chance: every loop layer, started at 16 other points."""
+        """The seam check doesn't fail a seamless loop by chance: every loop layer, started at 16 other points. (A
+        sounder's onset landing on the seam window would read as a click: the voices keep onsets off the seam.)"""
         for sid, (layers, _, loop) in self.made.items():
             if not loop:
                 continue
@@ -301,6 +303,7 @@ class Vorbis(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix='plant3d-sounds-')
         cls.index = None
+        cls.made = {sid: M.make(s) for sid, s in SYNTH.items()}
         if HAVE_FFMPEG:
             cls.index = M.build(os.path.join(cls.tmp, 'a'))
 
@@ -347,9 +350,19 @@ class Vorbis(unittest.TestCase):
                         # Vorbis's error at the stream's end and at its start are independent, so the samples
                         # can't be continuous to the bit across the seam as the synthesis is; the click this
                         # leaves must be at least CLICK_MAX_DB under the sound (the generator searched for it)
-                        click = M.seam_click_db(x, top_hz(SYNTH[sid], la['layer']))
+                        # measured on the codec's error against the samples it was made from, rotated as stored
+                        ref = np.roll(M.pcm16(self.made[sid][0][la['layer']]), -la['rotation']) / 32767
+                        click = M.seam_click_db(x, top_hz(SYNTH[sid], la['layer']), ref=ref)
                         self.assertLessEqual(click, M.CLICK_MAX_DB)
                         self.assertEqual(round(click, 1), la['click_db'])
+                        # and the bound refuses a real tick there (one sample off by half the sound's RMS) where
+                        # the measure can see one: tones, and noise up to 1.2 kHz. In noise reaching several kHz
+                        # Vorbis's own error is as rough sample to sample as a tick of 1-2 x RMS (and as inaudible)
+                        top = top_hz(SYNTH[sid], la['layer'])
+                        if la['layer'] != 'noise' or top <= 1200:
+                            ticked = x.copy()
+                            ticked[0] += 0.5 * np.sqrt(np.mean(ref * ref))
+                            self.assertGreater(M.seam_click_db(ticked, top, ref=ref), M.CLICK_MAX_DB)
                 ms += M.power(x, e['loop'])
             self.assertAlmostEqual(10 * math.log10(ms), e['level'], delta=0.5, msg=sid)
 

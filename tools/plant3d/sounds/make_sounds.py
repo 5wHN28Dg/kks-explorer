@@ -497,12 +497,17 @@ def top_hz(s, layer):
     return max(z['hz'] for z in s['tones'] if isinstance(z['hz'], (int, float)))
 
 
-def seam_click_db(x, top):
+def seam_click_db(x, top, ref=None, factor=1.0):
     """How loud a click at the loop point of the loop x is, in dB under the sound around it: the energy above the
     layer's own frequencies (from 1.5 x its top frequency to 16 kHz) in a 512-sample window centred on the seam,
-    beyond twice the largest of 63 windows elsewhere, over the mean energy of a window. A click is a broadband burst; a
-    seamless loop has nothing there that the rest of the loop doesn't have (NO_CLICK)."""
+    beyond `factor` x the largest of 63 windows elsewhere, over the mean energy of a window of the sound. A click is a
+    broadband burst; a seamless loop has nothing there that the rest of the loop doesn't have (NO_CLICK).
+    With `ref` (the samples x was encoded from) it measures the codec's error x - ref instead: inside a Vorbis stream
+    that error is smooth and quiet above the sound's band, so a jump in it where the stream's end meets its start
+    stands out whatever the sound is, broadband noise included."""
     x = np.asarray(x, dtype=float)
+    sound = x if ref is None else np.asarray(ref, dtype=float)
+    sig = x if ref is None else x - sound
     w = 512
     win = np.hanning(w)
     f = np.fft.rfftfreq(w, 1 / FS)
@@ -510,11 +515,10 @@ def seam_click_db(x, top):
     n = len(x)
     hf, total = [], []
     for k in range(64):
-        c = k * n // 64
-        spec = np.abs(np.fft.rfft(np.take(x, np.arange(c - w // 2, c + w // 2), mode='wrap') * win)) ** 2
-        hf.append(float(spec[band].sum()))
-        total.append(float(spec.sum()))
-    excess = hf[0] - 2 * max(hf[1:])   # twice: a seamless loop's seam window is the largest by chance 1 time in 64
+        idx = np.arange(k * n // 64 - w // 2, k * n // 64 + w // 2)
+        hf.append(float((np.abs(np.fft.rfft(np.take(sig, idx, mode='wrap') * win)) ** 2)[band].sum()))
+        total.append(float((np.abs(np.fft.rfft(np.take(sound, idx, mode='wrap') * win)) ** 2).sum()))
+    excess = hf[0] - factor * max(hf[1:])
     if excess <= 0:
         return NO_CLICK
     return max(NO_CLICK, 10 * math.log10(excess / max(float(np.mean(total)), 1e-30)))
@@ -523,15 +527,17 @@ def seam_click_db(x, top):
 def vorbis_loop(samples, top, what):
     """Ogg Vorbis for a loop. Vorbis's error is smooth inside a stream, but the error at its end and at its start are
     independent, so the jump between them can tick at the loop point. The loop may start anywhere (it is periodic):
-    try ROTATIONS starting points at each quality, keep the first whose decoded seam's click is CLICK_GOAL_DB under
-    the sound, else the quietest. Returns (bytes, quality, rotation in samples, click dB)."""
+    try ROTATIONS starting points at each quality, keep the first whose decoded seam's click (the codec's error
+    jumping there) is CLICK_GOAL_DB under the sound, else the quietest. Returns (bytes, quality, rotation in samples,
+    click dB)."""
     best = None
     n = len(samples)
     for q in VORBIS_QUALITIES:
         for r in range(ROTATIONS):
             rot = r * n // ROTATIONS
-            data = vorbis(np.roll(samples, -rot), q)
-            click = seam_click_db(decode(data), top)
+            rolled = np.roll(samples, -rot)
+            data = vorbis(rolled, q)
+            click = seam_click_db(decode(data), top, ref=rolled / 32767)
             if best is None or click < best[3] - 0.05:
                 best = (data, q, rot, click)
             if click <= CLICK_GOAL_DB:
@@ -568,7 +574,7 @@ def build(out, wav=False, lib=LIBRARY):
                 data = wav_bytes(samples)
             elif loop:
                 data, q, rot, click = vorbis_loop(samples, top_hz(s, name), fname)
-                layer.update({'quality': q, 'click_db': round(click, 1)})
+                layer.update({'quality': q, 'rotation': rot, 'click_db': round(click, 1)})
             else:
                 data = vorbis(samples)
             with open(os.path.join(out, fname), 'wb') as f:
