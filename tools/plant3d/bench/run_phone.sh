@@ -4,8 +4,9 @@
 # removed. Only on the Note 9 (NOTE9 below) are settings changed; on any other phone (the Honor is the user's own) no
 # setting is changed and the bench is removed at the end of every command.
 #
-#   run_phone.sh SERIAL ladder           the presets below for 3 minutes each, then the first that keeps 95 % of
-#                                        frames >= 30 fps with 10 % to spare runs the whole 10 minutes (plugged in)
+#   run_phone.sh SERIAL ladder           the presets below for 3 minutes each, then the first that shows at most 3 %
+#                                        of frames below 30 fps on the screen (held for three refreshes or more; the
+#                                        rule allows 5 %) and no frame over 100 ms runs the whole 10 minutes
 #   run_phone.sh SERIAL walk PRESET [SECONDS]   one walk (default 600 s) with the pre-built plant
 #   run_phone.sh SERIAL walkvsync PRESET [SECONDS]   the same with vsync on, as a shipped app (frames wait for the display)
 #   run_phone.sh SERIAL load PRESET      load time: the bench's data cleared, then a first start (no shader cache, as
@@ -162,8 +163,9 @@ run() {
   grep -E 'RESULT|SPLIT|PER_MINUTE|first frame|loaded|built' "$dir/result.txt" 2>/dev/null || say "$name: no result.txt (see $dir/logcat.txt)"
   local r; r=$(grep RESULT "$dir/result.txt" 2>/dev/null || true)
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F_%T)" "$model" "$name" "$(tr '\n' ' ' < "$dir/state.txt")" "$r" "$dir" >> "$OUT/summary.tsv"
-  LAST_P95=$(echo "$r" | sed -n 's/.* p95=\([0-9.]*\)ms.*/\1/p')
   LAST_OVER100=$(echo "$r" | sed -n 's/.* over100=\([0-9]*\) .*/\1/p')
+  # frames held for three refreshes or more (below 30 fps on the 60 Hz screen: the rule as the user reads it)
+  LAST_SLOW=$(sed -n 's/^CADENCE .* longer=\([0-9.]*\)%.*/\1/p' "$dir/result.txt" 2>/dev/null | head -1)
 }
 
 case "$CMD" in
@@ -175,7 +177,7 @@ case "$CMD" in
     chosen=""
     for p in full full+vis scaled+vis lean+vis lean+vis+tex1k lean+vis+tex1k+lod lean2+vis+tex1k+lod; do
       run "ladder_$p" "$p" 180 1 0
-      if [ -n "$LAST_P95" ] && [ "$(echo "$LAST_P95 <= 30.0" | bc)" = 1 ] && [ "$LAST_OVER100" = 0 ]; then chosen=$p; break; fi
+      if [ -n "$LAST_SLOW" ] && [ "$(echo "$LAST_SLOW <= 3.0" | bc)" = 1 ] && [ "$LAST_OVER100" = 0 ]; then chosen=$p; break; fi
       sleep 60
     done
     [ -n "$chosen" ] || { say "no preset kept p95 <= 30 ms for 3 minutes"; exit 4; }

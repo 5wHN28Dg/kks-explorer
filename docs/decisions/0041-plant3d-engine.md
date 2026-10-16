@@ -1,10 +1,10 @@
 # 0041 The 3D plant: which engine
 
 Date 2026-10-03 · Scope: https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant (R8 devices, R9 photo-realistic and scaling) · Status:
-**back to the user** (2026-10-16). The user decided on 2026-10-15: Godot 4 if the Note 9 meets the frame rule.
-Measured strictly, it just misses: the slowest 5 % of frames start at 33.8 ms (29.6 fps) and the `full` preset
-shows a repeatable 120 ms hitch. Read on the phone's 60 Hz screen, 98 % of frames are shown at 30 fps or better.
-The numbers and the choice are in the Conclusion below.
+**decided: Godot 4** (2026-10-16), with the Note 9 tier at the `lean+vis` preset. The user decided on 2026-10-15:
+Godot 4 if the Note 9 meets the frame rule. On 2026-10-16 the user settled how the rule is read: count the frames
+the 60 Hz screen shows, and a frame held for two refreshes is 30 fps. Read so, the Note 9 meets the rule on battery
+with `lean+vis` (Conclusion below).
 
 **Question:** which engine (or none) renders a generic, photo-realistic, walkable combined-cycle plant on laptops
 (Windows, Linux) and phones, with the Samsung Galaxy Note 9 (Exynos 9810, Mali-G72 MP18, Android 10, Vulkan 1.1) as
@@ -182,6 +182,7 @@ That makes a 90 s loop.
 | full, plugged in | 3 min | 17.0 ms | 33.9 ms (29.5) | 62.4 / 35.5 / **2.1 %** | 0 | 90 ms | 17.4 / 22.3 ms | 664 | 599 MB | 28.9 → 29.9 °C |
 | **full, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | **33.8 ms (29.5)** | 61.9 / 36.4 / **1.7 %** | **1** | **122 ms** | 17.3 / 22.1 ms | 664 | not sampled | 98 → 93 %, 30.0 → 33.1 °C |
 | full, plugged in | 10 min | 17.1 ms | 33.8 ms (29.6) | 61.8 / 36.6 / 1.6 % | **2** (121.6 ms at 230.1 s, 119.4 ms at 410.1 s) | 122 ms | 17.4 / 22.1 ms | 664 | 511 MB | 32.9 → 35.3 °C |
+| **lean+vis, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | 33.8 ms (29.6) | 63.2 / 34.9 / **1.9 %** | **0** | **79 ms** | 14.5 / 18.7 ms | 479 | not sampled (505–630 MB plugged) | 100 → 97 %, 31.7 → 32.4 °C |
 | **lean+vis**, plugged in | 10 min | 17.0 ms | 33.8 ms (29.6) | 64.4 / 33.7 / **1.9 %** | **0** | **52 ms** | 14.4 / 18.7 ms | 479 | 504 MB | 35.3 → 35.3 °C |
 
 What this shows:
@@ -245,45 +246,43 @@ Findings:
 
 ## Conclusion
 
-**Whether Godot meets the frame rule on the Note 9 depends on how the rule is read. That reading is the user's call,
-so the decision goes back to the user.**
+**Decided: Godot 4.** The Note 9 tier uses the `lean+vis` preset.
 
-- **Read on the screen:** a frame held for two refreshes of the 60 Hz display is 30 fps. Then 98.1–98.4 % of frames
-  run at 30 fps or better over 10 minutes, on battery and plugged in. The rule allows 5 % slower frames; it is met
-  with about 3 points to spare.
-  - With `lean+vis` the spike rule is met too (worst frame 52 ms; measured plugged in for 10 minutes, still to
-    repeat on battery).
-  - With `full` it is not: a repeatable 120 ms hitch at one place on the walk.
-- **Read by the clock:** the 95th-percentile frame is 33.8 ms (29.6 fps) for every preset, because two-refresh
-  frames measure just over 33.3 ms. That misses ≥ 30 fps by a hair, and no lever in the bench changes it.
+**The rule, as the user reads it (2026-10-16):** at least 95 % of frames are shown at 30 fps or better on the Note 9's
+60 Hz screen, and a frame held for two refreshes counts as 30 fps. By the clock such a frame measures 33.1–34 ms, so
+the 95th-percentile frame time alone (33.8 ms) is not the test. The test is the share of frames held for three
+refreshes or more, which must stay at or under 5 %.
 
-`lean+vis` cuts nothing R9a protects: only bolts and motor fins, beyond the distance where they are under a pixel,
-with a fade. What it gives up next to `full`:
+**The confirming run** (`lean+vis`, 10 minutes on battery; the walk includes the heaviest views):
+- frames shown at 30 fps or better: 98.1 % (63.2 % for one refresh, 34.9 % for two), so 1.9 % slower, against the
+  5 % allowed;
+- spikes: no frame over 100 ms after the first 5 s; the worst was 79 ms;
+- heat: no thermal drop (per-minute means 20.7–21.4 ms); battery 100 → 97 %;
+- memory: 505–630 MB sampled plugged in, against 1.5 GB;
+- load: 7.6 s to the first drawn frame right after a fresh install, 1.4 s after that, against 15 s.
+- Unrelated to the engine: the battery run's own start took 50 s, because the phone's screen was off when the app was
+  launched. Its log shows the window stopped right away and shown 43 s later.
+
+**What `lean+vis` gives up next to `full`:**
 - the screen is drawn at 60 % of its resolution with FSR, so textures and far edges are softer;
-- shadows reach 40 m instead of 80 m.
+- shadows reach 40 m instead of 80 m;
+- bolts and motor fins are not drawn beyond the distance where they are under a pixel, with a fade.
 
-The look viewpoints drawn with that preset show the same equipment, handwheels, bonnets and pipe colours as `full`.
-The phone's own look captures are for `full`. Against the laptop tier, `full` on the phone lacks only ambient
-occlusion and has blockier shadow edges; neither hides a part, a label or a state.
+None of that is what R9a protects. The look viewpoints drawn with that preset show the same equipment, handwheels,
+bonnets and pipe colours as `full`. On the phone, `full` differs from the laptop tier only by the missing ambient
+occlusion and blockier shadow edges; neither hides a part, a label or a state.
 
-Ways forward, for the user to choose:
-1. **Accept the screen reading.** Decide Godot 4, with `lean+vis` as the Note 9 preset, after one 10-minute battery
-   run of `lean+vis`. Find the cause of `full`'s 120 ms hitch before it is used on phones.
-2. **Cap the phone at a steady 30 fps.** Every frame held for two refreshes, so there is margin against the 33.3 ms
-   line. Measure it the same way.
-3. **Make the frame cheaper than one refresh** (about 25 % less GPU time) for real 60 fps headroom: shadows,
-   resolution, materials. This is more work and gives up more look.
-4. **Treat the result as a miss** and look at another engine (0041's early reading: Unreal's phone tier looks like a
-   different product).
+**`full` is not for the Note 9:** it has a repeatable hitch of about 120 ms at one corner of the walk, every 180 s, on
+battery and plugged in. Its cause is not known yet; find it before `full` is used on any phone.
 
-The rest of the rule is met with room: load time 5.8 s on a first start and 1.35 s after (≤ 15 s), memory about
-0.5–0.6 GB sampled (≤ 1.5 GB), no thermal drop. The laptop tier meets its rule at 1600×900.
+**Margin:** small. Any heavier content shows first as more frames held for three refreshes. The real plant must be
+measured the same way as it grows (R9; the regression rule).
 
-Still to measure, whatever the user chooses:
-- the Honor 600 (`honor.sh`; the user connects it later);
+Still to measure, none of it bearing on the decision:
+- the Honor 600 (`honor.sh`; to do, the user connects it later);
 - the laptop's full-screen preset at its native 2880×1800, on the real display;
 - a Windows laptop;
-- battery drain over 30 minutes (a 10-minute walk took 5–7 %).
+- battery drain over 30 minutes (a 10-minute walk took 3–7 %).
 
 **When to revisit:** after the measurements; if Godot's security response does not improve and the app starts to
 load content from others.
