@@ -56,8 +56,29 @@ func _bake() -> void:
 		_fail("the bake scene has no LightmapGI")
 		return
 	lm.light_data = load(Lighting.LIGHTMAP)
-	# the sky and its sun as the app has them: the content build ran before the sky's import
-	lm.environment_custom_sky = Lighting.sky()
+	# the sky and its sun as the app has them: the content build ran before the sky's import. The bake reads the
+	# sky's light from its processed radiance, which Godot makes only for a sky some viewport draws: a sky handed
+	# to the LightmapGI alone baked almost no sky light (the shade came out a tenth of what the sky gives, measured
+	# 2026-10-16). So the sky goes into a WorldEnvironment in the edited scene, the editor's viewport draws it, and
+	# the bake takes the scene's environment.
+	var sky := Lighting.sky()
+	sky.process_mode = Sky.PROCESS_MODE_QUALITY
+	var env := Environment.new()
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	var we := WorldEnvironment.new()
+	we.name = "bake_environment"
+	we.environment = env
+	root.add_child(we)
+	lm.environment_mode = LightmapGI.ENVIRONMENT_MODE_SCENE
+	await _frames(60)
+	# the guard: the sky's light as the bake will read it must not be black
+	var sky_light := sky_mean(sky)
+	_say("the sky's light as the bake reads it: %.3f" % sky_light)
+	if sky_light < MIN_SKY:
+		_fail("the sky's light reads black (its radiance was never processed): the bake would miss it")
+		return
 	var sun := root.get_node_or_null("sun") as DirectionalLight3D
 	if sun != null:
 		var want := Lighting.sun()
@@ -90,6 +111,22 @@ func _bake() -> void:
 			px += tl.get_width() * tl.get_height() * tl.get_layers()
 	_say("baked %d meshes into %d texture(s), %d texels, in %d s" % [users, tex.size(), px, (Time.get_ticks_msec() - t0) / 1000])
 	get_tree().quit(0)
+
+## The sky's irradiance panorama as Godot bakes it for LightmapGI (RenderingServer.sky_bake_panorama, what the bake
+## calls): its mean luminance. The photograph's sky, scaled to a sun of 1, gives tenths; an unprocessed sky gives 0.
+const MIN_SKY := 0.02
+
+static func sky_mean(sky: Sky) -> float:
+	var img := RenderingServer.sky_bake_panorama(sky.get_rid(), Lighting.SKY_ENERGY, true, Vector2i(64, 32))
+	if img == null or img.is_empty():
+		return 0.0
+	img.convert(Image.FORMAT_RGBAF)
+	var sum := 0.0
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			sum += 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+	return sum / (img.get_width() * img.get_height())
 
 func _find_button(n: Node) -> Button:
 	if n is Button and (n as Button).text == "Bake Lightmaps":

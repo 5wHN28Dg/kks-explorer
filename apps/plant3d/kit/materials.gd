@@ -169,7 +169,7 @@ static func structure_spec(name: String) -> Dictionary:
 	if name == "wall_brick":
 		spec.tint = Color(0.72, 0.42, 0.33)
 	if name in ["rail", "ladder", "stair"]:
-		spec["wear"] = 0.9   # handrails, ladders and treads: worn where hands and feet go (no vertex colours here)
+		spec["wear"] = 0.5   # handrails, ladders and treads: worn spots where hands and feet go, never bare (R9a: safety yellow)
 	if name == "grating":
 		spec["grating"] = true
 	if name == "yard":

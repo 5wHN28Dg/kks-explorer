@@ -11,3 +11,5 @@
 *.exe
 .*.log
 /kit/tex/
+# the behaviour engine's .uid files: Godot writes them; sim/ has its own owner, who keeps them out (as on main)
+/sim/*.uid

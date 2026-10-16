@@ -13,8 +13,12 @@ const SUN_ROT := Vector3(-50, 35, 0)   # degrees: the sun without a built sky (a
 const SUN_ENERGY := 1.0
 const SUN_COLOUR := Color(1.0, 0.96, 0.9)   # a little warm: mid-afternoon
 const AGX_CONTRAST := 1.25   # a little more than AgX's own: the desert light is hard
-const SKY_ENERGY := 1.0   # the photograph's own sky-to-sun ratio (builder/sky.gd)
-const EXPOSURE := 1.0
+## The sky panorama's energy: the build scales it so the sun's irradiance is 1, and Godot's lights shine π times
+## what a sky of the same irradiance gives (a light's energy is an irradiance, the sky's ambient a radiance): π keeps
+## the photograph's own sky-to-sun ratio (measured on screen, linear output: shade 0.35 of sun on open ground,
+## the photograph says 0.31).
+const SKY_ENERGY := PI
+const EXPOSURE := 0.85
 
 ## The sky made by the build (builder/sky.gd): a photographed sky without its sun, in units where the sun's light
 ## is 1, and where its sun was. Without it (a build that could not fetch it) a physical sky and the old sun.
@@ -129,3 +133,6 @@ static func apply(tier: String, env: Environment) -> void:
 	env.volumetric_fog_enabled = env.volumetric_fog_enabled and not "volfog" in off
 	env.glow_enabled = env.glow_enabled and not "glow" in off
 	env.fog_enabled = env.fog_enabled and not "fog" in off
+	if "tonemap" in off:   # linear output, for measuring light ratios on screen
+		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+		env.tonemap_exposure = 0.5

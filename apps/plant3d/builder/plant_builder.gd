@@ -685,7 +685,7 @@ func _bake_scene(out_dir: String, scenes: Array) -> int:
 	lm.max_texture_size = 4096   # the Note 9's Mali-G72 reads 8192 px; half that leaves room
 	lm.environment_mode = LightmapGI.ENVIRONMENT_MODE_CUSTOM_SKY
 	lm.environment_custom_sky = Lighting.sky()
-	lm.environment_custom_energy = 1.0
+	lm.environment_custom_energy = Lighting.SKY_ENERGY
 	lm.generate_probes_subdiv = LightmapGI.GENERATE_PROBES_SUBDIV_8
 	lm.shadowmask_mode = LightmapGIData.SHADOWMASK_MODE_REPLACE   # the sun's shadow beyond the real-time distance
 	root.add_child(lm)
@@ -1018,6 +1018,9 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 ## (BAKE_STATIC: its light and shadow are in the lightmap; the app drops the light node once a bake is there, the
 ## pieces that move take the sky's light: app/main.gd).
 const LAMP_LUX := 2.0   # light energy of one lamp (Godot's units), set by eye against the outdoor exposure
+## A lamp's reach: the hall's height and as far again, so the floor and a pit below it are lit (a reach of 1.4 × the
+## height left the turbine hall's pit black: adversarial review, 2026-10-16)
+const LAMP_REACH := 2.4
 func _lamps(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var h: float = b.height
@@ -1041,8 +1044,8 @@ func _lamps(body: Node, b: Dictionary) -> int:
 			var l := OmniLight3D.new()
 			l.name = "lamp_%d" % n
 			l.position = Geom.g([c.x, c.y, z - 0.2])
-			l.omni_range = h * 1.4
-			l.omni_attenuation = 1.0
+			l.omni_range = h * LAMP_REACH
+			l.omni_attenuation = 0.7
 			l.light_energy = LAMP_LUX
 			l.light_color = Color(1.0, 0.95, 0.86)
 			l.light_bake_mode = Light3D.BAKE_STATIC
@@ -1055,8 +1058,42 @@ func _lamps(body: Node, b: Dictionary) -> int:
 		_mesh_node(body, "lamp_lenses", lens, _mat("lamp_white"))
 	return n
 
+## Lamps along a pit's walls just under its rim, every 6 m (a pit is out of reach of the roof's lamps' direct light):
+## baked like the halls' lamps.
+func _pit_lamps(body: Node, p: Dictionary) -> int:
+	var pg: PackedVector2Array = p.outline
+	var n := 0
+	var lens := _st()
+	for i in pg.size():
+		var a := pg[i]
+		var c := pg[(i + 1) % pg.size()]
+		var k := maxi(1, int(round(a.distance_to(c) / 6.0)))
+		var inward := Vector2((c - a).y, -(c - a).x).normalized()
+		if not Geom.in_poly((a + c) * 0.5 + inward * 0.5, pg):
+			inward = -inward
+		for j in k:
+			var q := a.lerp(c, (j + 0.5) / k) + inward * 0.35
+			var z := -0.4
+			Geom.add_prism(lens, Geom.rect(q.x - 0.15, q.y - 0.15, q.x + 0.15, q.y + 0.15), z - 0.05, z)
+			var l := OmniLight3D.new()
+			l.name = "pit_lamp_%d" % n
+			l.position = Geom.g([q.x, q.y, z - 0.1])
+			l.omni_range = float(p.depth) * 2.5 + 4.0
+			l.omni_attenuation = 0.7
+			l.light_energy = LAMP_LUX * 0.6
+			l.light_color = Color(1.0, 0.95, 0.86)
+			l.light_bake_mode = Light3D.BAKE_STATIC
+			l.shadow_enabled = false
+			l.add_to_group("baked_lights", true)
+			body.add_child(l)
+			n += 1
+	if n > 0:
+		_mesh_node(body, "lamp_lenses", lens, _mat("lamp_white"))
+	return n
+
 func _pit(parent: Node3D, p: Dictionary) -> void:
 	var body := _body(parent, p.id + "_walls")
+	_pit_lamps(body, p)
 	var st := _st()
 	var pg: PackedVector2Array = p.outline
 	# where a stair leaves the pit its wall is open (the flight's slope would otherwise end against the wall's top)

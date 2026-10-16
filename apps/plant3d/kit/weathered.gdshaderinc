@@ -108,7 +108,7 @@ void fragment() {
 	// a yard's joints and a road's dashed centre line (on what faces up)
 	if (joint_spacing > 0.0 && up > 0.7) {
 		vec2 jg = abs(fract(wpos.xz / joint_spacing + 0.5) - 0.5) * joint_spacing;
-		float jw = 0.006 + fwidth(wpos.x) * 0.7;
+		float jw = 0.006 + length(fwidth(wpos.xz)) * 0.7;
 		float j = 1.0 - smoothstep(jw, jw * 2.0, min(jg.x, jg.y));
 		base *= mix(1.0, 0.5, j);
 	}
