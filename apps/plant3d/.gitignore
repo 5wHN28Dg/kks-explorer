@@ -1,0 +1,10 @@
+# made by build.sh: the content build, Godot's import cache, exports, phone results
+/built/
+/.godot/
+/export/
+/results/
+*.apk
+*.idsig
+*.pck
+*.x86_64
+*.exe

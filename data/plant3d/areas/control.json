@@ -11,7 +11,7 @@
  "equipment": [],
  "pipes": [],
  "structures": [
-  {"id": "ctl_building", "part": "building", "kks": "00UCA10", "at": [-40, -15, 0], "params": {"outline": [[0, 0], [30, 0], [30, 30], [0, 30]], "height": 12, "cladding": "concrete", "openings": [{"kind": "door", "at": [30, 15, 0], "width": 1.2, "height": 2.4}]}},
+  {"id": "ctl_building", "part": "building", "kks": "00UCA10", "at": [-40, -15, 0], "params": {"outline": [[0, 0], [30, 0], [30, 30], [0, 30]], "height": 12, "cladding": "concrete", "openings": [{"kind": "door", "at": [30, 15, 0], "width": 1.8, "height": 2.4}]}},
   {"id": "ctl_door", "part": "door", "at": [-10, 0, 0], "yaw": 90, "params": {"kind": "double", "width": 1.8}},
   {"id": "ctl_floor_6", "part": "floor", "at": [-40, -15, 6], "params": {"outline": [[0, 0], [30, 0], [30, 30], [0, 30]], "openings": [[[1, 1], [8.5, 1], [8.5, 5], [1, 5]]]}},
   {"id": "ctl_stair", "part": "stair", "params": {"foot": [-39, -14, 0], "top": [-31.4, -10, 6], "layout": "switchback", "width": 1.2}}

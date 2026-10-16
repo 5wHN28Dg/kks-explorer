@@ -1,0 +1,51 @@
+## Loads the pre-built plant (made by builder/, decision 0054 §4): the manifest, the ground and every area's scene.
+## Loading only: no geometry is made at start.
+extends Node3D
+
+const BUILT := "res://built/plant.json"
+
+var manifest: Dictionary = {}
+var load_ms := 0
+
+## Loads everything; returns "" or what went wrong.
+func load_plant() -> String:
+	var t0 := Time.get_ticks_msec()
+	var f := FileAccess.open(BUILT, FileAccess.READ)
+	if f == null:
+		return "no built plant (%s): run apps/plant3d/build.sh" % BUILT
+	var m = JSON.parse_string(f.get_as_text())
+	if not m is Dictionary or m.get("format", "") != "walkdown-plant-built":
+		return "the built plant's manifest is not one this app reads"
+	manifest = m
+	var scenes: Array = [m.ground]
+	for a in m.areas:
+		scenes.append(a.scene)
+	for path in scenes:
+		var ps := load(path) as PackedScene
+		if ps == null:
+			return "cannot load " + path
+		add_child(ps.instantiate())
+	load_ms = Time.get_ticks_msec() - t0
+	return ""
+
+static func v3(a) -> Vector3:
+	return Vector3(float(a[0]), float(a[1]), float(a[2]))
+
+## The start (plant.json `start`): position and heading (radians about the up axis).
+func start() -> Array:
+	return [v3(manifest.start.at), -deg_to_rad(float(manifest.start.yaw))]
+
+## Plant coordinates (x east, y north, z up) to Godot's.
+static func g(x: float, y: float, z: float) -> Vector3:
+	return Vector3(x, z, -y)
+
+func stair_path(id: String) -> Array:
+	for s in manifest.stairs:
+		if s.id == id:
+			return s.path.map(func(p): return v3(p))
+	return []
+
+## The center of the plant's extent, in Godot's axes, and its size.
+func extent() -> Rect2:
+	var e: Array = manifest.extent
+	return Rect2(Vector2(e[0][0], e[0][1]), Vector2(e[1][0] - e[0][0], e[1][1] - e[0][1]))
