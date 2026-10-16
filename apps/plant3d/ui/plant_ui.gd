@@ -174,8 +174,12 @@ func _build() -> void:
 func _build_toast() -> void:
 	_toast = W.label("", 22, Color.WHITE)
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast.add_theme_constant_override("outline_size", 8)
-	_toast.add_theme_color_override("font_outline_color", Color.BLACK)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.05, 0.05, 0.06, 0.88)
+	bg.set_corner_radius_all(8)
+	bg.set_content_margin_all(10)
+	_toast.add_theme_stylebox_override("normal", bg)
+	_toast.visible = false
 	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_toast)
 	_layout_toast()
@@ -194,14 +198,14 @@ func _layout() -> void:
 	var top := 88.0 + 56.0 * W.scale + 16.0
 	var w := minf(560.0 * W.scale, vs.x * 0.45)
 	card.position = Vector2(vs.x - w - 16.0, top)
+	_max_h = vs.y - top - 16.0
 	card.size = Vector2(w, vs.y - top - 16.0)
 	procedure.position = Vector2(16.0, top)
 	procedure.size = Vector2(w, vs.y - top - 16.0)
-	var aw := minf(1200.0 * W.scale, vs.x - 32.0)
-	alarms.position = Vector2((vs.x - aw) * 0.5, top)
-	alarms.size = Vector2(aw, vs.y - top - 16.0)
-	trainer.position = alarms.position
-	trainer.size = alarms.size
+	alarms.position = card.position
+	alarms.size = card.size
+	trainer.position = card.position
+	trainer.size = card.size
 	_hint.position = Vector2(vs.x * 0.5 - 400.0, vs.y * 0.5 + 24.0)
 	_hint.size = Vector2(800.0, 60.0)
 	_layout_toast()
@@ -209,8 +213,13 @@ func _layout() -> void:
 
 func _layout_toast() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
-	_toast.position = Vector2(vs.x * 0.2, vs.y - 180.0 * W.scale)
-	_toast.size = Vector2(vs.x * 0.6, 80.0)
+	# between the side panels when they are open (on a phone it may reach over them: it has its own background)
+	var side := 0.0
+	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible):
+		side = card.size.x + 32.0
+	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))
+	_toast.position = Vector2((vs.x - w) * 0.5, vs.y - 200.0 * W.scale)
+	_toast.size = Vector2(w, 0)
 
 
 ## The layer's rows in the settings panel (app/hud.gd), kept in the app's settings file.
@@ -343,8 +352,8 @@ func restart(scenario: String) -> void:
 # ------------------------------------------------------------------ cards, pointing, moving
 
 func open_card(code: String, note := "") -> void:
-	if alarms.visible:
-		alarms.visible = false
+	alarms.visible = false
+	trainer.visible = false
 	card.open(code, note)
 	if index.has(code):
 		show_me(code)
@@ -378,8 +387,11 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 	dir = dir.normalized()
 	var r := maxf(b.size.x, b.size.z) * 0.5
 	var to := c + dir * minf(r + 2.5, 40.0)
-	to.y = b.position.y + 0.05
-	var look := c - (to + Vector3.UP * 1.65)
+	# stand on the floor beside it (a platform, a grating, the ground), not at the foot of a column in a pit
+	var hit: Dictionary = player.floor_below(Vector3(to.x, b.end.y + 1.0, to.z), b.size.y + 40.0)
+	to.y = (hit.position.y if not hit.is_empty() else maxf(b.position.y, 0.0)) + 0.05
+	var aim := Vector3(c.x, clampf(c.y, to.y + 0.3, to.y + 3.0), c.z)
+	var look := aim - (to + Vector3.UP * 1.65)
 	var yaw := atan2(-look.x, -look.z)
 	var pitch := atan2(look.y, Vector2(look.x, look.z).length())
 	if main.map.active:
@@ -422,18 +434,31 @@ func toast(text: String, seconds := 4.0) -> void:
 	if _toast == null or text == "":
 		return
 	_toast.text = text
+	_layout_toast()
+	_toast.visible = true
+	_toast.size.y = 0
 	_toast_t = seconds
 
 
 # ------------------------------------------------------------------ panels
 
+## The right-hand side holds one of the card, the alarm list and the instructor's panel; procedures stay on the left.
+func _right_open(p) -> void:
+	for q in [card, alarms, trainer]:
+		if q != p and q.visible:
+			if q == card:
+				close_card()
+			else:
+				q.visible = false
+	p.open()
+	_release_mouse()
+
+
 func toggle_alarms() -> void:
 	if alarms.visible:
 		close_alarms()
 	else:
-		trainer.visible = false
-		alarms.open()
-		_release_mouse()
+		_right_open(alarms)
 
 
 func close_alarms() -> void:
@@ -456,9 +481,7 @@ func toggle_trainer() -> void:
 	if trainer.visible:
 		close_trainer()
 	else:
-		alarms.visible = false
-		trainer.open()
-		_release_mouse()
+		_right_open(trainer)
 
 
 func close_trainer() -> void:
@@ -474,14 +497,17 @@ func set_instructor(on: bool) -> void:
 
 ## Closes the topmost panel; false when none was open.
 func close_top() -> bool:
-	for p in [trainer, alarms, card, procedure]:
-		if p.visible:
-			if p == card:
-				close_card()
-			else:
-				p.visible = false
-			return true
-	return false
+	if trainer.visible:
+		close_trainer()
+	elif alarms.visible:
+		close_alarms()
+	elif card.visible:
+		close_card()
+	elif procedure.visible:
+		close_procedure()
+	else:
+		return false
+	return true
 
 
 func start_procedure(id: String, step_id = null, restart_scenario := false) -> void:
@@ -523,6 +549,7 @@ func _on_step_changed(_i: int) -> void:
 
 func handle_link(url: String) -> void:
 	var r: Dictionary = Links.read_link(url, model)
+	print("plant: link %s opens %s" % [url.left(80), JSON.stringify(r)])
 	match r["open"]:
 		"kks":
 			var asked := url.get_slice("/", 3).left(24)
@@ -589,6 +616,21 @@ func _process(delta: float) -> void:
 		_look_hint()
 	sounds.listener_at = eye()
 	arrows.queue_redraw()
+	_fit_t += delta
+	if _fit_t >= 0.25:
+		_fit_t = 0.0
+		_fit()
+
+
+var _fit_t := 0.0
+var _max_h := 0.0
+
+
+## The side panels as tall as their content (up to the bottom of the screen), so the view and the sticks stay free.
+func _fit() -> void:
+	for pnl in [card, procedure, alarms, trainer]:
+		if pnl.visible:
+			W.fit(pnl, _max_h)
 
 
 func _toast_tick(delta: float) -> void:
@@ -596,6 +638,7 @@ func _toast_tick(delta: float) -> void:
 		_toast_t -= delta
 		if _toast_t <= 0.0:
 			_toast.text = ""
+			_toast.visible = false
 
 
 func _follow_events(evs: Array, from: int) -> void:

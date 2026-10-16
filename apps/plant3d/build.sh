@@ -58,6 +58,31 @@ mkdir -p "$OUTD/linux" "$OUTD/windows"
 # Godot editor settings are left alone.
 JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/temurin-25-jdk-amd64}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+case "$TARGETS" in
+  *android*)
+    # The Android exports are Gradle builds (the intent filter for walkdown-plant:// links, decision 0056): Godot's
+    # template from the export templates (checked by SHA-512 when fetched), the Gradle it downloads pinned by
+    # SHA-256, run by a JDK 17 (Gradle 8.11 doesn't run on 25), small and without a daemon left behind.
+    JAVA_HOME="${PLANT_JAVA_HOME:-$("$ROOT/tools/plant3d/fetch_jdk.sh")}"
+    TV=$("$GODOT" --version | sed 's/^\([0-9.]*\.stable\).*/\1/')
+    TZIP="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$TV/android_source.zip"
+    if [ "$(cat "$HERE/android/.build_version" 2>/dev/null)" != "$TV" ]; then
+      [ -f "$TZIP" ] || { echo "no $TZIP: GODOT_TEMPLATES must include android_source.zip" >&2; exit 2; }
+      rm -rf "$HERE/android"
+      mkdir -p "$HERE/android/build"
+      unzip -q "$TZIP" -d "$HERE/android/build"
+      printf '%s' "$TV" > "$HERE/android/.build_version"
+      : > "$HERE/android/build/.gdignore"
+    fi
+    W="$HERE/android/build/gradle/wrapper/gradle-wrapper.properties"
+    grep -q 'gradle-8.11.1-bin.zip$' "$W" || { echo "the template's Gradle is not 8.11.1: pin its checksum here first" >&2; exit 2; }
+    grep -q '^distributionSha256Sum=' "$W" ||
+      echo 'distributionSha256Sum=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6' >> "$W"
+    GP="$HERE/android/build/gradle.properties"
+    sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2g/' "$GP"
+    grep -q '^org.gradle.daemon=' "$GP" || printf 'org.gradle.daemon=false\norg.gradle.workers.max=2\n' >> "$GP"
+    ;;
+esac
 CFG="$HERE/.godot/editor-config"
 mkdir -p "$CFG/godot"
 DEBUG_KS="${XDG_DATA_HOME:-$HOME/.local/share}/godot/keystores/debug.keystore"

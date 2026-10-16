@@ -31,6 +31,18 @@ static func make_theme() -> Theme:
 	focus.border_color = Color(1.0, 0.75, 0.2)
 	focus.set_border_width_all(3)
 	focus.set_corner_radius_all(int(6 * scale))
+	for st in [["normal", Color(0.2, 0.23, 0.28)], ["hover", Color(0.27, 0.31, 0.37)], ["pressed", Color(0.36, 0.41, 0.5)],
+			["disabled", Color(0.13, 0.14, 0.16)], ["hover_pressed", Color(0.36, 0.41, 0.5)]]:
+		var b := StyleBoxFlat.new()
+		b.bg_color = st[1]
+		b.set_corner_radius_all(int(6 * scale))
+		b.content_margin_left = 12 * scale
+		b.content_margin_right = 12 * scale
+		b.content_margin_top = 6 * scale
+		b.content_margin_bottom = 6 * scale
+		t.set_stylebox(st[0], "Button", b)
+		t.set_stylebox(st[0], "MenuButton", b)
+	t.set_color("font_disabled_color", "Button", Color(0.5, 0.5, 0.5))
 	t.set_stylebox("focus", "Button", focus)
 	t.set_stylebox("focus", "LineEdit", focus)
 	t.set_stylebox("focus", "CheckBox", focus)
@@ -99,6 +111,23 @@ static func panel(title: String, on_close: Callable) -> Array:
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(body)
 	return [p, body, t]
+
+
+## Sizes a panel (made by `panel`) to its content, at most `max_h` high: on a phone the view stays visible below it.
+static func fit(p: Control, max_h: float) -> void:
+	var v: Control = p.get_child(0)
+	var h := 0.0
+	var sep := float(v.get_theme_constant("separation"))
+	for c in v.get_children():
+		if not c.visible:
+			continue
+		if c is ScrollContainer:
+			h += (c.get_child(0) as Control).get_combined_minimum_size().y
+		else:
+			h += c.get_combined_minimum_size().y
+		h += sep
+	h += 2.0 * 14.0 * scale + 4.0
+	p.size.y = minf(max_h, h)
 
 
 static func model_time(step_no: int) -> String:

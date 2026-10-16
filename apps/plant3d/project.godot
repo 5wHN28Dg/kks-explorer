@@ -28,6 +28,10 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=4
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/walkdown_plant_android/plugin.cfg")
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

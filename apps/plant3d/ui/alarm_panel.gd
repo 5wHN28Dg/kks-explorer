@@ -29,7 +29,7 @@ func setup(u) -> void:
 	add_child(v)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	body = parts[1]
-	var bar := HBoxContainer.new()
+	var bar := HFlowContainer.new()
 	v.add_child(bar)
 	v.move_child(bar, 1)
 	for t in [["active", "Active"], ["shelved", "Shelved"], ["suppressed", "Suppressed"], ["trips", "Trips"]]:
@@ -176,33 +176,38 @@ static func _first(n: Node) -> Button:
 
 func _row(e, k: int) -> void:
 	var a: Dictionary = ui.info.m.alarms[k]
-	var row := HBoxContainer.new()
-	body.add_child(row)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", int(2 * W.scale))
+	body.add_child(box)
+	var head := HBoxContainer.new()
+	box.add_child(head)
 	var pr := int(e._al[k][5])
 	var badge := W.label(" %d " % pr, 20, Color.BLACK, false)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = W.PRIO_COLOURS.get(pr, Color.WHITE)
 	sb.set_corner_radius_all(4)
 	badge.add_theme_stylebox_override("normal", sb)
-	row.add_child(badge)
+	head.add_child(badge)
 	var code: String = a.get("kks", a.get("where", ""))
-	var text := W.label("%s  %s\n%s" % [a.get("isa", "—"), code, a["text"]], 18)
-	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text.custom_minimum_size.x = 300 * W.scale
-	row.add_child(text)
 	var st: String = e.astate[k]
-	var when := W.model_time(since.get(a["id"], 0))
+	var state_words := {"active_unack": "ACTIVE, not acknowledged", "active_ack": "active", "cleared_unack": "cleared, not acknowledged", "normal": "normal"}
 	var extra := ""
 	if tab == "shelved":
-		extra = "\nback in %s" % W.model_time(maxi(0, e.shelved[k] - e.step_no))
-	var state_words := {"active_unack": "ACTIVE, not acknowledged", "active_ack": "active", "cleared_unack": "cleared, not acknowledged", "normal": "normal"}
-	row.add_child(W.label("%s\n%s%s" % [when, state_words.get(st, st), extra], 16, W.DIM, false))
+		extra = " · back in %s" % W.model_time(maxi(0, e.shelved[k] - e.step_no))
+	var id := W.label("%s  %s · %s · %s%s" % [a.get("isa", "—"), code, W.model_time(since.get(a["id"], 0)),
+			state_words.get(st, st), extra], 17, W.DIM)
+	id.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(id)
+	box.add_child(W.label(a["text"], 19))
+	var row := HBoxContainer.new()
+	box.add_child(row)
 	if tab == "active":
 		var ack := W.button("Ack", func(): ui.ack(a["id"]))
 		ack.disabled = not st.ends_with("unack")
 		row.add_child(ack)
 		var sh := MenuButton.new()
 		sh.text = "Shelve"
+		sh.flat = false
 		sh.focus_mode = Control.FOCUS_ALL
 		sh.custom_minimum_size = Vector2(0, 52 * W.scale)
 		for i in SHELF_TIMES.size():
@@ -213,7 +218,7 @@ func _row(e, k: int) -> void:
 		row.add_child(W.button("Un-shelve", func(): ui.unshelve(a["id"])))
 	if code != "":
 		row.add_child(W.button("Go to", func(): ui.open_card(a.get("where", code))))
-	_rows.append([row, k])
+	_rows.append([box, k])
 
 
 func _trips(e) -> void:
@@ -245,6 +250,7 @@ func _trips(e) -> void:
 				row.add_child(fo)
 			var l := W.label("%s  %s\n%s" % [t.get("isa", "—"), t.get("kks", ""), t.get("text", t["id"])], 18)
 			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			l.custom_minimum_size.x = 200 * W.scale
 			row.add_child(l)
 			for o in ui.info.m.ops:
 				if o["do"] == "reset" and o.get("trip") == t["id"]:

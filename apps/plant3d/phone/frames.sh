@@ -5,6 +5,7 @@
 # (SurfaceFlinger's present times, tools/plant3d/bench/sf_frames.sh).
 #   apps/plant3d/phone/frames.sh [SERIAL] [SECONDS]      default: the Note 9, 600 s
 #   APK=path  another APK (default export/walkdown-plant.apk, build.sh release)
+#   WALK_EXTRA="procedure=cold_start\npanels=alarms,procedure\nspeed=fast\n"   more options for the walk (app/main.gd)
 # Only io.github.walkdown.plant is installed, started, cleared or removed: never Walkdown (io.github.walkdown), never
 # anything else. Only on the Note 9 is a setting changed (50 % brightness, put back after). Any other phone (the Honor
 # is the user's own) keeps its settings, the run refuses to start when the plant app is already there (it would
@@ -65,7 +66,7 @@ fi
 sh_ am force-stop "$PKG"
 sh_ pm clear "$PKG" >/dev/null   # a first start: no shader cache, no saved settings (as after an install)
 sh_ mkdir -p "$FILES"
-printf 'walk=frames\nseconds=%s\n' "$SECONDS_" > "$OUT/walk.txt"
+printf 'walk=frames\nseconds=%s\n%b' "$SECONDS_" "${WALK_EXTRA:-}" > "$OUT/walk.txt"
 a push "$OUT/walk.txt" "$FILES/walk.txt" >/dev/null
 # in front and unlocked, or nothing is drawn (0041)
 # (the Note 9 has no screen lock: wake it and dismiss the keyguard; the screen times out normally after)

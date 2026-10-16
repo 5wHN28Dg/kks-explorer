@@ -63,4 +63,7 @@ func _process(delta: float) -> void:
 	var s := maxf(1.0, box.size.length() * 0.08)
 	_arrow.scale = Vector3.ONE * s
 	_arrow.global_position = top() + Vector3.UP * (0.8 * s + 0.25 * sin(_t * 4.0))
-	(_frame.material_override as StandardMaterial3D).albedo_color.a = 0.14 + 0.1 * (0.5 + 0.5 * sin(_t * 5.0))
+	# the frame shows where it is from afar; up close (or inside it) only the arrow, so the part itself stays visible
+	var cam := get_viewport().get_camera_3d()
+	_frame.visible = cam == null or box.grow(3.0).has_point(cam.global_position) == false
+	(_frame.material_override as StandardMaterial3D).albedo_color.a = 0.1 + 0.08 * (0.5 + 0.5 * sin(_t * 5.0))

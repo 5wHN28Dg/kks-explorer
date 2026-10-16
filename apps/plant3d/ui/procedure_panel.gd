@@ -231,7 +231,7 @@ func refresh() -> void:
 			var what: String = ui.info.op_label(o) if o != null else String(d["do"])
 			if d.has("value") and o != null:
 				what += " to %s" % (("%s %%" % str(float(d["value"]) * 100.0).trim_suffix(".0")) if o["range"] == [0, 1] else str(d["value"]))
-			lines.append("%s %s[url=kks:%s][color=#7fc8ff]%s[/color][/url] %s" % ["☑" if done else "☐",
+			lines.append("%s %s[url=kks:%s][color=#7fc8ff]%s[/color][/url] %s" % ["✓" if done else "·",
 					("%d. " % (k + 1)) if tr.current().get("ordered", false) else "", d["kks"], d["kks"], Runs.esc(what)])
 		var txt := "\n".join(lines)
 		if _ops_label.text != txt:

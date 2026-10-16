@@ -75,11 +75,9 @@ func run(tree: SceneTree) -> Array:
 	var ack: Button = null
 	var shelve: MenuButton = null
 	for row in ui.alarms.body.get_children():
-		if row is HBoxContainer and App.texts(row).contains("Closed cooling water pump A tripped"):
+		if row is Container and App.texts(row).contains("Closed cooling water pump A tripped"):
 			ack = App.find_button(row, "Ack")
-			for c in row.get_children():
-				if c is MenuButton:
-					shelve = c
+			shelve = App.find_button(row, "Shelve") as MenuButton
 	if ack == null or shelve == null:
 		main.free()
 		return p + ["the alarm's row has no Ack or Shelve"]
@@ -93,10 +91,8 @@ func run(tree: SceneTree) -> Array:
 	# shelve for 10 min of plant time: off the active list, on the shelved one, back when un-shelved
 	ui.alarms.refresh()
 	for row in ui.alarms.body.get_children():
-		if row is HBoxContainer and App.texts(row).contains("Closed cooling water pump A tripped"):
-			for c in row.get_children():
-				if c is MenuButton:
-					shelve = c
+		if row is Container and App.texts(row).contains("Closed cooling water pump A tripped"):
+			shelve = App.find_button(row, "Shelve") as MenuButton
 	shelve.get_popup().id_pressed.emit(0)
 	ui.clock.run_steps(1)
 	if e.shelved[k] != e.step_no + 6000:     # made in this step, for 6000 steps

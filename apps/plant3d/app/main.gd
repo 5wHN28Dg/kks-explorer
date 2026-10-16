@@ -13,6 +13,7 @@
 ##   scenario=ID             the scenario the plant starts in (default cold_iron)
 ##   procedure=ID            follow that procedure or tour from the start
 ##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
+##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
 extends Node3D
 
@@ -48,6 +49,10 @@ var walk_seconds := 600.0
 var first_frame_ms := -1
 var lines := PackedStringArray()
 var stuck_count := 0
+var sim_max_ms := 0.0      # the model's busiest second during a walk (ms of model time per s: 250 = a quarter core)
+var sim_sum_ms := 0.0
+var sim_n := 0
+var sim_t := 0.0
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
 
 func _ready() -> void:
@@ -90,6 +95,8 @@ func _ready() -> void:
 		ui.start_procedure(opts.procedure, null, false)
 	for p in String(opts.get("panels", "")).split(",", false):
 		ui.open_panel(p)
+	if opts.get("speed", "") == "fast" and ui.clock != null:
+		ui.fast_forward()
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	choose_tier()
 	_first_frame()
@@ -111,7 +118,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario"]:   # nothing else from a shared folder
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed"]:   # nothing else from a shared folder
 					opts[kv[0]] = kv[1]
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 
@@ -259,6 +266,17 @@ func _process(delta: float) -> void:
 		gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
 		if ms > 100.0:
 			_say("SPIKE %.1f ms at %.1f s, at %s" % [ms, t_walk, str(player.global_position)])
+		if ui != null and ui.clock != null:
+			sim_t += delta
+			if sim_t >= 1.0:
+				sim_t = 0.0
+				var c = ui.clock
+				sim_max_ms = maxf(sim_max_ms, c.model_ms_per_s)
+				sim_sum_ms += c.model_ms_per_s
+				sim_n += 1
+				if sim_n % 60 == 0:
+					_say("SIM at %.0f s: %.0f steps/s, %.0f ms of model per s, %.2f ms a step, speed %d, cap %.1fx" % [
+						t_walk, c.steps_per_s, c.model_ms_per_s, c.step_ms, c.speed, c.ff_cap()])
 	if t_walk > walk_seconds + 5.0:
 		_finish()
 
@@ -285,6 +303,9 @@ func _finish() -> void:
 			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576, first_frame_ms, plant.load_ms])
 	else:
 		_say("RESULT no frames (stuck=%d)" % stuck_count)
+	if sim_n > 0:
+		_say("SIM_RESULT model_ms_per_s_mean=%.1f model_ms_per_s_max=%.1f step_ms=%.3f ff_cap=%.1f model_time=%s" % [
+			sim_sum_ms / sim_n, sim_max_ms, ui.clock.step_ms, ui.clock.ff_cap(), ui.clock.clock_text()])
 	_write_out()
 	get_tree().quit()
 
