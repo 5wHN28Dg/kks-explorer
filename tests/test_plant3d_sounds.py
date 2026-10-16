@@ -81,7 +81,7 @@ def seam_problems(x, top):
     r = lpc_seam_ratio(x)
     if r > 1:
         out.append(f'prediction residual at the seam {r:.2f} x the largest inside')
-    click = M.seam_click_db(x, top, factor=2)   # twice the loudest window elsewhere: never by chance
+    click = M.seam_click_db(x, top, factor=2)   # twice the loudest window elsewhere: rarely by chance (a rumble can reach 2.3 x)
     if click > SEAM_CLICK_DB:
         out.append(f'a click at the seam {click:.1f} dB under the sound (energy above its own frequencies)')
     return out
