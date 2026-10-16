@@ -116,12 +116,30 @@ func _pan(rel: Vector2) -> void:
 	var k := dist * 0.0015
 	target += Basis(Vector3.UP, yaw) * Vector3(-rel.x * k, 0, -rel.y * k)
 
-## A tap on a floor: the trainee goes there (on the floor hit, walking).
+## A tap: the trainee goes to the lowest floor under that point with room to stand (inside a building, not onto
+## its roof; on the ground beside a placeholder, not on top of it). Nothing free there: nothing happens.
 func _jump(screen: Vector2) -> void:
+	var space := get_world_3d().direct_space_state
 	var from := cam.project_ray_origin(screen)
-	var to := from + cam.project_ray_normal(screen) * 3000.0
-	var q := PhysicsRayQueryParameters3D.create(from, to)
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	if hit.is_empty() or hit.normal.y < 0.7:
+	var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen) * 3000.0))
+	if hit.is_empty():
 		return
-	jumped.emit(hit.position)
+	var at: Vector3 = hit.position
+	var best = null
+	var top := at.y + 0.5
+	var shape := CapsuleShape3D.new()
+	shape.radius = 0.3
+	shape.height = 1.8
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	for i in 32:   # every surface below, top to bottom
+		var down := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(at.x, top, at.z), Vector3(at.x, -60.0, at.z)))
+		if down.is_empty():
+			break
+		if down.normal.y > 0.7:
+			q.transform = Transform3D(Basis(), down.position + Vector3.UP * 0.95)
+			if space.intersect_shape(q, 1).is_empty():
+				best = down.position
+		top = down.position.y - 0.05
+	if best != null:
+		jumped.emit(best)

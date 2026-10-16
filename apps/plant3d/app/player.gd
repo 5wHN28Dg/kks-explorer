@@ -28,7 +28,9 @@ var scripted := false
 var drive := Vector2.ZERO
 var aim := NAN
 var run := false
-var lowest_y := INF              # the lowest the feet have been (tests: nobody falls through)
+var lowest_y := INF
+## Off while the map or the settings have the controls (they read the same actions)
+var input_enabled := true              # the lowest the feet have been (tests: nobody falls through)
 
 signal mode_changed(mode: int)
 
@@ -97,13 +99,15 @@ func floor_below(from: Vector3, depth := 400.0) -> Dictionary:
 func _wish() -> Vector2:
 	if scripted:
 		return drive
+	if not input_enabled:
+		return Vector2.ZERO
 	return Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 
 func _physics_process(delta: float) -> void:
 	if scripted:
 		if not is_nan(aim):
 			rotation.y = aim
-	else:
+	elif input_enabled:
 		var lv := Input.get_vector("look_left", "look_right", "look_up", "look_down")
 		if lv.length() > 0.0:
 			look(lv.x * LOOK_RATE * delta, lv.y * LOOK_RATE * delta)
@@ -133,7 +137,7 @@ func _walk(wish: Vector2, fast: bool, delta: float) -> void:
 
 func _fly(wish: Vector2, fast: bool, delta: float) -> void:
 	var up := 0.0
-	if not scripted:
+	if not scripted and input_enabled:
 		up = Input.get_action_strength("up") - Input.get_action_strength("down")
 	var b := camera.global_transform.basis
 	var dir := b * Vector3(wish.x, 0, -wish.y) + Vector3.UP * up
@@ -191,7 +195,7 @@ func _climb(wish: Vector2, delta: float) -> void:
 	global_position = Vector3(foot.x, maxf(y, foot.y), foot.z)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if scripted:
+	if scripted or not input_enabled:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		look(event.relative.x * mouse_sensitivity, event.relative.y * mouse_sensitivity)

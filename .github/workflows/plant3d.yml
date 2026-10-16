@@ -9,11 +9,15 @@ name: Walkdown Plant
 on:
   pull_request:
     paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/sjson.py', 'ref/courses.py',
-            'tools/plant3d/**', '.github/workflows/plant3d.yml']
+            'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'tests/test_plant3d.py',
+            'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
+            '.github/workflows/plant3d.yml']
   push:
     branches: [main]
     paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/sjson.py', 'ref/courses.py',
-            'tools/plant3d/**', '.github/workflows/plant3d.yml']
+            'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'tests/test_plant3d.py',
+            'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
+            '.github/workflows/plant3d.yml']
   workflow_dispatch:
 
 permissions:

@@ -5,7 +5,7 @@
 ##   look      mouse (captured: click the view), right stick, the right touch stick
 ##   run       Shift, left stick press
 ##   fly       F, gamepad Y: free flight on and off
-##   up, down  Space and C (or E/Q in flight), gamepad RB and LB: in flight
+##   up, down  Space and C, gamepad RB and LB: in flight
 ##   map       M, Tab, gamepad Back: the overview map
 ##   use       E, gamepad A: press a door
 ##   menu      Escape, gamepad Start: settings

@@ -127,4 +127,4 @@ func _place_after(s: Dictionary) -> void:
 		if l:
 			player.global_position = (l.get_meta("exit") if s.get("dir", "up") == "up" else l.get_meta("foot")) + Vector3.UP * 0.05
 	if player.mode == Player.Mode.CLIMB:
-		player.mode = Player.Mode.WALK
+		player.set_mode(Player.Mode.WALK)

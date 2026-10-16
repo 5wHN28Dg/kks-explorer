@@ -93,9 +93,9 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2:
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality"]:   # nothing else from a shared folder
 					opts[kv[0]] = kv[1]
-	out_dir = opts.get("out", ANDROID_FILES if OS.get_name() == "Android" else OS.get_user_data_dir())
+	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 
 func _environment() -> void:
 	env = Environment.new()

@@ -6,8 +6,9 @@
 #   apps/plant3d/phone/frames.sh [SERIAL] [SECONDS]      default: the Note 9, 600 s
 #   APK=path  another APK (default export/walkdown-plant.apk, build.sh release)
 # Only io.github.walkdown.plant is installed, started, cleared or removed: never Walkdown (io.github.walkdown), never
-# anything else. Only on the Note 9 is a setting changed (50 % brightness, put back after); on any other phone (the
-# Honor is the user's own) nothing is changed and the plant app is removed again at the end.
+# anything else. Only on the Note 9 is a setting changed (50 % brightness, put back after). Any other phone (the Honor
+# is the user's own) keeps its settings, the run refuses to start when the plant app is already there (it would
+# clear it), and the plant app is removed again at the end.
 # Results: apps/plant3d/results/SERIAL/<time>/ (result.txt, sf.txt, state.txt, logcat.txt).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -47,6 +48,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# on someone's own phone, a plant app already there may hold their own progress: never clear or remove it
+if [ "$SERIAL" != "$NOTE9" ] && installed; then
+  trap - EXIT
+  echo "$PKG is already installed on $SERIAL; this run would clear and then remove it. Remove it yourself first if that is fine." >&2
+  exit 7
+fi
 # install (an earlier build signed with another key is replaced: it is only ever this app)
 a install -r "$APK" >/dev/null 2>&1 || { a uninstall "$PKG" >/dev/null 2>&1 || true; a install "$APK" >/dev/null; }
 installed || { echo "install failed" >&2; exit 1; }

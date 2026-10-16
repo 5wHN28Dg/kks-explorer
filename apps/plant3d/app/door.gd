@@ -12,7 +12,6 @@ const HOLD := 3.0        # seconds it stays open after the walker has gone
 
 var openness := 0.0      # 0 closed, 1 open
 var hold := 0.0
-var pressed := false
 var closed_xf: Transform3D
 
 func _ready() -> void:
@@ -21,21 +20,18 @@ func _ready() -> void:
 
 ## Opens the door now (the trainee pressed it), and keeps it open for a while.
 func press() -> void:
-	pressed = true
 	hold = HOLD
 
 func _physics_process(delta: float) -> void:
-	var want := pressed
+	var want := false
 	for p in get_tree().get_nodes_in_group("walkers"):
 		var local: Vector3 = closed_xf.affine_inverse() * (p as Node3D).global_position
 		if absf(local.x) < width * 0.5 + 1.0 and absf(local.z) < NEAR and local.y > -1.0 and local.y < height:
 			want = true
 			hold = HOLD
 	if not want and hold > 0.0:
-		hold -= delta
+		hold -= delta   # pressed, or walked away from: open a while longer
 		want = hold > 0.0
-	if not want:
-		pressed = false
 	openness = move_toward(openness, 1.0 if want else 0.0, SPEED * delta / maxf(height if kind == "roller" else width, 0.5))
 	var off := Vector3(0, openness * height, 0) if kind == "roller" else Vector3(openness * width, 0, 0)
 	transform = closed_xf.translated_local(off)

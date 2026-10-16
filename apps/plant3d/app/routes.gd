@@ -15,7 +15,7 @@ static func _stair(plant, id: String, down := false) -> Array:
 	var path: Array = plant.stair_path(id)
 	if down:
 		path.reverse()
-	return path.map(func(p): return {"to": p})
+	return path.map(func(p): return {"to": p, "floor": p.y})
 
 static func climb(plant) -> Array:
 	var r: Array = [_to(93.5, 44.5)]
