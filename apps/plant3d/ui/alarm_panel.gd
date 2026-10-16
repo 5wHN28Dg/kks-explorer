@@ -57,6 +57,7 @@ func on_events(evs: Array, from: int) -> void:
 
 func open() -> void:
 	visible = true
+	tab = "active"
 	_sig = ""
 	refresh()
 	if ui.wants_focus():

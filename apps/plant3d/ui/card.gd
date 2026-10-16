@@ -206,9 +206,19 @@ func refresh() -> void:
 			else:
 				note = "At the equipment only: walk up to it"
 		(row[5] as Label).text = note
+		# a permissive's sentence says what is wrong when it is false (§7.2): those are listed, the others counted
 		var plines := PackedStringArray()
-		for pm in info.permissives(o, e):
-			plines.append(("✓ " if pm[1] else "✗ ") + pm[0])
+		var met := 0
+		var perms: Array = info.permissives(o, e)
+		for pm in perms:
+			if pm[1]:
+				met += 1
+			else:
+				plines.append("✗ " + pm[0])
+		if not perms.is_empty() and met == perms.size():
+			plines.append("✓ every permissive met")
+		elif met > 0:
+			plines.append("✓ %d other%s met" % [met, "" if met == 1 else "s"])
 		(row[2] as Label).text = "\n".join(plines)
 		var res: Dictionary = ui.op_result(o)
 		var fb: Label = row[3]

@@ -160,7 +160,7 @@ func _step() -> void:
 	if tr.can_next():
 		row2.add_child(W.button("Next", func(): tr.next(ui.clock.engine)))
 	elif s.has("done"):
-		row2.add_child(W.label("Ends by itself when it is done.", 16, W.DIM))
+		row2.add_child(W.label("Ends by itself when it is done.", 16, W.DIM, false))
 	row2.add_child(W.button("Stop", func(): ui.stop_procedure()))
 	if tr.is_tour():
 		body.add_child(fly_box)

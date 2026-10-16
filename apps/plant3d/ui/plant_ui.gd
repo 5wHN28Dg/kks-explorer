@@ -138,6 +138,11 @@ func _build() -> void:
 	_time.add_theme_color_override("font_outline_color", Color.BLACK)
 	bar.add_child(_time)
 	bar.move_child(_time, 0)
+	arrows = Control.new()
+	arrows.set_anchors_preset(Control.PRESET_FULL_RECT)
+	arrows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arrows.draw.connect(_draw_arrows)
+	root.add_child(arrows)
 	card = Card.new()
 	card.name = "card"
 	root.add_child(card)
@@ -160,11 +165,6 @@ func _build() -> void:
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_hint)
-	arrows = Control.new()
-	arrows.set_anchors_preset(Control.PRESET_FULL_RECT)
-	arrows.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	arrows.draw.connect(_draw_arrows)
-	root.add_child(arrows)
 	_build_toast()
 	root.get_viewport().size_changed.connect(_layout)
 	_layout()
@@ -604,7 +604,7 @@ func _follow_events(evs: Array, from: int) -> void:
 		var ev: Array = evs[i]
 		match ev[1]:
 			"op":
-				for k in range(_pending.size() - 1, -1, -1):
+				for k in _pending.size():         # the events come in the order the inputs were made
 					var p: Array = _pending[k]
 					if p[1]["kks"] == ev[2] and p[1]["do"] == ev[3] and ev[0] >= p[2]:
 						var o: Dictionary = p[1]

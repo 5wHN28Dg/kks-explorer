@@ -19,16 +19,25 @@ var _horn: AudioStreamPlayer
 var _horn_prio := 0
 var _t := 0.0
 var listener_at := Vector3.ZERO
+var dir := DIR
 
 
 func _ready() -> void:
 	set_meta("ui", true)
-	var f := FileAccess.open(DIR + "/sounds.json", FileAccess.READ)
+	load_index(dir)
+
+
+## Reads the generator's index in `d`; an absent or foreign one leaves the plant silent.
+func load_index(d: String) -> void:
+	dir = d
+	index = {}
+	_streams.clear()
+	var f := FileAccess.open(d + "/sounds.json", FileAccess.READ)
 	if f == null:
 		return
-	var d = JSON.parse_string(f.get_as_text())     # the generator's own output: no strictness needed
-	if d is Dictionary and d.get("format", "") == "walkdown-plant-sound-files":
-		index = d.get("sounds", {})
+	var j = JSON.parse_string(f.get_as_text())     # the generator's own output: no strictness needed
+	if j is Dictionary and j.get("format", "") == "walkdown-plant-sound-files" and j.get("sounds") is Dictionary:
+		index = j["sounds"]
 
 
 func available() -> bool:
@@ -38,17 +47,31 @@ func available() -> bool:
 func _stream(file: String, loop: bool) -> AudioStream:
 	if _streams.has(file):
 		return _streams[file]
-	var p := DIR + "/" + file
+	var p := dir + "/" + file
 	var s: AudioStream = null
 	if ResourceLoader.exists(p):
 		s = load(p)
-	elif FileAccess.file_exists(p):
+	elif FileAccess.file_exists(p) and file.ends_with(".ogg"):
 		s = AudioStreamOggVorbis.load_from_file(p)
+	elif FileAccess.file_exists(p) and file.ends_with(".wav"):      # the generator's --wav output
+		s = AudioStreamWAV.load_from_file(p)
 	if s is AudioStreamOggVorbis:
 		s.loop = loop
 		s.loop_offset = 0.0
+	elif s is AudioStreamWAV and loop:
+		s.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		s.loop_begin = 0
+		s.loop_end = int(s.get_length() * s.mix_rate)
 	_streams[file] = s
 	return s
+
+
+func unbind_all() -> void:
+	for b in _bound:
+		if b[4] != null:
+			for pl in b[4]:
+				pl.queue_free()
+	_bound.clear()
 
 
 ## A sound binding (§7.7) on its equipment's node.

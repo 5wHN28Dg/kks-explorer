@@ -129,10 +129,31 @@ static func num(x: float) -> String:
 	return "%.3f" % x
 
 
-## The value's name in words (its alarms' and its own: "cw_a_amps" reads as "amps").
+const WORDS := {"hp": "HP", "ip": "IP", "lp": "LP", "st": "ST", "gt1": "GT 1", "cw": "CW", "ct": "cooling tower",
+	"fw": "feedwater", "ccw": "closed cooling water", "ia": "instrument air", "aux": "auxiliary steam", "cep": "condensate pump",
+	"spd": "speed", "rpm": "speed", "pos": "position", "q": "flow", "p": "pressure", "t": "temperature",
+	"tsat": "saturation temperature", "tw": "metal temperature", "vib": "vibration", "amps": "current", "lvl": "level",
+	"exh": "exhaust", "sp": "set point", "tgt": "target", "rt": "run time", "f": "frequency", "ph": "phase",
+	"mw": "power", "ecc": "eccentricity", "cond": "condenser", "lube": "lube oil", "evap": "evaporation",
+	"gen": "steam made", "cap": "capacity", "da": "deviation", "cpd": "compressor discharge", "ws": "wheel space",
+	"byp": "bypass", "mk": "makeup", "hw": "hotwell", "vac": "vacuum", "brk": "breaker", "v": "valve", "l1": "level 1",
+	"l2": "level 2", "l3": "level 3", "p1": "pressure 1", "p2": "pressure 2", "p3": "pressure 3", "psat": "saturation pressure"}
+
+
+## The value's name in words ("cw_a_amps" reads as "CW A current").
 static func value_label(name: String) -> String:
-	var parts := name.split("_")
-	return " ".join(parts).capitalize()
+	var out := PackedStringArray()
+	for w in name.split("_"):
+		if WORDS.has(w):
+			out.append(WORDS[w])
+		elif w.begins_with("tc") and w.substr(2).is_valid_int():
+			out.append("thermocouple " + w.substr(2))
+		elif w.length() == 1:
+			out.append(w.to_upper())
+		else:
+			out.append(w)
+	var s := " ".join(out)
+	return s.left(1).to_upper() + s.substr(1)
 
 
 func op_label(o: Dictionary) -> String:
@@ -165,6 +186,8 @@ func failed_text(o: Dictionary, failed: String, engine) -> String:
 	if o["do"] == "reset":
 		return "The cause of the trip is still there: it can be reset only once it has cleared"
 	if o["do"] == "set" and failed == o["input"]:
+		if o["range"][0] == 0 and o["range"][1] == 1:
+			return "The value must be between 0 and 100 %"
 		return "The value must be between %s and %s" % [num(o["range"][0]), num(o["range"][1])]
 	return failed
 

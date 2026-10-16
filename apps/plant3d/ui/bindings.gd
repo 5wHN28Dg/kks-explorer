@@ -35,6 +35,8 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 	_info = info
 	cam = camera
 	_anims.clear(); _lamps.clear(); _shows.clear(); _shakes.clear()
+	if sounds != null:
+		sounds.unbind_all()
 	for b in info.m.bind:
 		var n: Node3D = idx.nodes.get(b["kks"])
 		if b.has("sound"):
@@ -50,6 +52,9 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 			var lamp := _lamp(n, b["lamp"], idx.box(b["kks"]))
 			_lamps.append([lamp, e.ix[b["of"]], b["lamp"], _mat(b["lamp"], true), _mat(b["lamp"], false), -1])
 		elif b.has("show"):
+			var old := n.find_child("ui_show", false, false)
+			if old != null:
+				old.free()
 			var l := Label3D.new()
 			l.set_meta("ui", true)
 			l.name = "ui_show"
@@ -74,8 +79,8 @@ func use_engine(e) -> void:
 
 func _piece(n: Node3D, channel: String, bx: AABB) -> Node3D:
 	var found := n.find_child(channel, true, false)
-	if found is Node3D and not found.has_meta("ui"):
-		return found
+	if found is Node3D:
+		return found            # the kit's piece, or the placeholder made by an earlier setup
 	# a placeholder: a marker on top of the part, in the part's frame
 	var mk := MeshInstance3D.new()
 	mk.name = channel
