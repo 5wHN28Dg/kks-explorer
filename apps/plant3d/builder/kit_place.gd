@@ -20,8 +20,9 @@ const P_HX = preload("res://kit/parts_heat.gd")
 
 const CELL := 12.0          # the instancing cell (0041)
 const SMALL_CELL := 6.0     # for `detail` pieces: a smaller box keeps their range close to the rule
-const PLATE := {"small": Vector3(0.16, 0.002, 0.045), "large": Vector3(0.6, 0.004, 0.16)}   # w, thickness, h
-const PLATE_CHAR := {"small": 0.02, "large": 0.08}   # the code's character height (§10: legible at 8 px)
+## w, thickness, h: wide enough for a 12-character code in the characters below
+const PLATE := {"small": Vector3(0.26, 0.002, 0.06), "large": Vector3(0.9, 0.004, 0.18)}
+const PLATE_CHAR := {"small": 0.025, "large": 0.08}   # the code's character height (§10: 25 mm, legible at 8 px)
 const WIDE_DECK := 8.0      # a deck at least this wide both ways is a roof or a floor: posts may stand on it
 const MAX_POST := 40.0       # the tallest support post (steel trestles beside an HRSG reach its roof)
 const SHAFT_MACHINES := ["gas_turbine", "generator", "turning_gear", "steam_turbine", "motor"]
@@ -191,6 +192,7 @@ func xform(e: Dictionary) -> Transform3D:
 		var h := Geom.heading(float(e.yaw))
 		yf = Vector3(h.x, h.y, 0)
 	var xr := yf.cross(zu).normalized()
+	zu = xr.cross(yf).normalized()   # square to the pipe on a sloped run
 	var basis := Basis(_gd(xr), _gd(zu), -_gd(yf))
 	return Transform3D(basis, Geom.g([e.pos.x, e.pos.y, e.pos.z]))
 
@@ -217,7 +219,7 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 	if not Kit.has_part(e.part):
 		b._err("unsupported", kks, "the parts kit has no part '%s'" % e.part)
 		return null
-	if e.has("parent"):
+	if e.has("parent") and Kit.kit_json().parts.get(e.part, {}).get("group", "") == "instruments":
 		_child_out(kks, e)
 	var res := Kit.make(e.part, e.params, ctx_for(kks, e), seg_scale)
 	res_of[kks] = res
@@ -433,7 +435,8 @@ func flush(root: Node3D) -> int:
 		var arr := st.commit_to_arrays()
 		var im := ImporterMesh.new()
 		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arr)
-		im.generate_lods(25.0, 60.0, [])
+		if group[0].cls != "identify":   # identify pieces keep every triangle (§10)
+			im.generate_lods(25.0, 60.0, [])
 		var mesh := im.get_mesh()
 		var size := INF
 		for c in group:

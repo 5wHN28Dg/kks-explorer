@@ -50,9 +50,9 @@ const MAKERS := {
 ## parameters and the limits of its size parameters).
 const BUDGET := {
 	"gas_turbine": 30000, "generator": 12000, "steam_turbine": 30000, "sfc": 4000, "turning_gear": 4000,
-	"filter_house": 8000, "hrsg": 20000, "hrsg_module": 1500, "drum": 8000, "stack": 18000, "duct": 4000,
-	"silencer": 3000, "tank_vertical": 8000, "vessel_horizontal": 6000, "package_boiler": 8000, "basin": 1000,
-	"pump_horizontal": 9000, "pump_vertical": 9000, "fan_axial": 6000, "compressor_skid": 8000,
+	"filter_house": 8000, "hrsg": 20000, "hrsg_module": 1500, "drum": 9000, "stack": 26000, "duct": 4000,
+	"silencer": 3000, "tank_vertical": 9000, "vessel_horizontal": 6000, "package_boiler": 8000, "basin": 1000,
+	"pump_horizontal": 9000, "pump_vertical": 11000, "fan_axial": 6000, "compressor_skid": 8000,
 	"vacuum_pump_skid": 8000, "motor": 5000, "condenser": 12000, "shell_tube_hx": 6000, "plate_hx": 4000,
 	"cooling_tower": 40000, "valve_gate": 5000, "valve_globe": 5000, "valve_butterfly": 4000, "valve_ball": 4000,
 	"valve_check": 4700, "valve_control": 5800, "valve_safety": 4600, "damper": 4000, "pressure_gauge": 800,
@@ -224,7 +224,7 @@ static func _meshes(layers: Dictionary, origin: Vector3) -> Dictionary:
 			arr[Mesh.ARRAY_VERTEX] = v
 		var im := ImporterMesh.new()
 		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arr)
-		if L.tris >= 64:
+		if L.tris >= 64 and L.cls != "identify":
 			im.generate_lods(25.0, 60.0, [])
 		var lods: Array = [L.tris]
 		for i in im.get_surface_lod_count(0):
@@ -246,3 +246,4 @@ static func tris_of(res: Dictionary) -> int:
 
 static func clear_cache() -> void:
 	_cache.clear()
+	_kit_json = {}

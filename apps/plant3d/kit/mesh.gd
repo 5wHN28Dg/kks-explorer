@@ -19,15 +19,15 @@ var xf := Transform3D.IDENTITY   # applied to every primitive (part frame), for 
 var seg_scale := 1.0             # the kit's segment density (1 = full detail)
 
 ## Selects the layer the next primitives go to. A named material (kit/materials.gd) is drawn with the material it
-## resolves to, its colour in the vertices; `form` and `identify` pieces share a layer (both are always drawn), a
-## `detail` piece's layer is its size bucket's.
+## resolves to, its colour in the vertices; a `detail` piece's layer is its size bucket's. `identify` pieces get no
+## LODs (a simplifier measures shape, not colour: a band or an arrow could go while it is still seen).
 func use(name: String, cls := "form", size := 0.0) -> void:
 	assert(cls in CLASSES)
 	var r: Array = Mat.resolve(name)
 	var mat: String = r[0]
 	colour = r[1]
 	var bucket := 0
-	var lk := "main"
+	var lk := "id" if cls == "identify" else "main"
 	if cls == "detail":
 		bucket = int(floor(log(maxf(size, 0.001)) / log(2.0)))   # a factor of 2 (§10): pieces of one bucket share a range
 		lk = "detail"
@@ -36,8 +36,6 @@ func use(name: String, cls := "form", size := 0.0) -> void:
 		layers[key] = {"mat": mat, "cls": cls, "size": size, "v": PackedVector3Array(), "n": PackedVector3Array(),
 			"uv": PackedVector2Array(), "c": PackedColorArray(), "idx": PackedInt32Array()}
 	cur = layers[key]
-	if cls == "identify":
-		cur.cls = "identify"   # the layer holds pieces that must stay: never removed
 	if cls == "detail":
 		cur.size = minf(cur.size, size) if cur.size > 0.0 else size
 

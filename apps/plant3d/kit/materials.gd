@@ -120,11 +120,42 @@ static func resolve(name: String) -> Array:
 				return ["plain_metal" if s.metal > 0.5 else "plain", s.tint]
 	return [name, Color(1, 1, 1)]
 
+## The structures' materials (the builder's walkable and building geometry): name -> [the kit material it is made
+## as, both faces drawn (buildings are seen from inside too: PLANT3D.md §5)].
+const STRUCTURE_MATS := {
+	"ground": ["gravel", false], "concrete": ["concrete", false], "grating": ["grating", false],
+	"deck_steel": ["chequer", false], "rail": ["paint_yellow", false], "stair": ["galvanised", false],
+	"wall_metal": ["corrugated", true], "wall_concrete": ["concrete", true], "wall_brick": ["concrete", true],
+	"roof": ["corrugated_casing", true], "door": ["paint_motor", false], "fence": ["galvanised", true],
+	"pit": ["concrete", false], "ladder": ["paint_yellow", false], "rack": ["galvanised", false],
+}
+
+static func structure_spec(name: String) -> Dictionary:
+	var spec: Dictionary = specs()[STRUCTURE_MATS[name][0]].duplicate()
+	if name == "wall_brick":
+		spec.tint = Color(0.72, 0.42, 0.33)
+	return spec
+
+static func make_structure(name: String) -> StandardMaterial3D:
+	var m := make(name, structure_spec(name))
+	if STRUCTURE_MATS[name][1]:
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+## The texture sets whose files are not there (not fetched, or not imported yet).
+static func missing_textures() -> PackedStringArray:
+	var out := PackedStringArray()
+	for s in SETS:
+		for m in SETS[s]:
+			if not ResourceLoader.exists(tex_path(s, m, DEFAULT_SIZE)):
+				out.append("%s_%s" % [s, m])
+	return out
+
 static func tex_path(set_name: String, map: String, size: int) -> String:
 	return "%s/%d/%s_%s.jpg" % [TEX, size, set_name, map]
 
 ## Makes a material from its spec with textures of `size` px (when they were fetched; else plain, which the build
-## reports once).
+## warns).
 static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.resource_name = name
@@ -176,6 +207,8 @@ static func size_for(tier: String) -> int:
 static func apply_tier(tier: String, mats_dir := "res://built/materials") -> int:
 	var size := size_for(tier)
 	var all := specs()
+	for name in STRUCTURE_MATS:
+		all[name] = structure_spec(name)
 	var n := 0
 	for name in all:
 		var p := mats_dir.path_join(name + ".tres")

@@ -6,6 +6,7 @@
 extends RefCounted
 
 const Kit = preload("res://kit/kit.gd")
+const KitPlace = preload("res://builder/kit_place.gd")
 
 var problems: Array = []
 var report := PackedStringArray()
@@ -51,7 +52,43 @@ func run(_tree: SceneTree) -> Array:
 				check(res.plates.has(pl), "%s: the plate point %s exists (has %s)" % [part, pl, str(res.plates.keys())])
 		report.append("%s %d" % [part, worst])
 	print("kit: worst triangles per part: ", ", ".join(report))
+	_states()
+	_frames()
 	return problems
+
+## As built (value 0) a quarter-turn valve is closed: its lever or indicator lies across the pipe (x), not along it.
+func _states() -> void:
+	for part in ["valve_butterfly", "valve_ball"]:
+		for act in ["manual", "gear", "electric", "pneumatic"]:
+			for dn in [100, 600]:
+				var res := Kit.make(part, Kit.params_of(part, {"dn": dn, "actuator": act}), {})
+				for mv in res.moving:
+					if mv.name != "disc":
+						continue
+					for k in mv.layers:
+						if mv.layers[k].mat != "paint":
+							continue
+						# the lever (red) or the indicator's arrow (black), not the round yellow dial under it
+						var arr: Array = mv.layers[k].mesh.surface_get_arrays(0)
+						var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+						var cs: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+						var bb := AABB()
+						var first := true
+						for i in vs.size():
+							if cs[i].g < 0.5:
+								bb = AABB(vs[i], Vector3.ZERO) if first else bb.expand(vs[i])
+								first = false
+						check(not first and bb.size.x > bb.size.z, "%s DN %d %s: at 0 (closed) the indicator lies across the pipe (x %.2f, along %.2f)" % [part, dn, act, bb.size.x, bb.size.z])
+
+## A part on a sloped pipe stands square to it (an orthonormal frame, its forward along the pipe).
+func _frames() -> void:
+	var kp = KitPlace.new(null)
+	for fwd in [Vector3(1, 0, 1).normalized(), Vector3(0, 1, -0.3).normalized(), Vector3(0, 1, 0)]:
+		var t: Transform3D = kp.xform({"pos": Vector3.ZERO, "yaw": 0.0, "fwd": fwd, "up": Vector3(0, 0, 1)})
+		var bs := t.basis
+		check(absf(bs.x.dot(bs.y)) < 1e-5 and absf(bs.y.dot(bs.z)) < 1e-5 and absf(bs.x.dot(bs.z)) < 1e-5 and absf(bs.determinant() - 1.0) < 1e-4,
+			"the frame on a pipe along %s is square" % str(fwd))
+		check((-bs.z).distance_to(Vector3(fwd.x, fwd.z, -fwd.y)) < 1e-4, "its forward runs along the pipe %s" % str(fwd))
 
 ## Every mesh at every LOD: indices in range and in threes, finite vertices, unit normals, LODs shrinking.
 func _valid(part: String, key: String, L: Dictionary) -> void:
@@ -80,6 +117,8 @@ func _valid(part: String, key: String, L: Dictionary) -> void:
 	for i in range(1, t.size()):
 		check(t[i] <= t[i - 1], "%s %s: LOD %d (%d triangles) no larger than LOD %d (%d)" % [part, key, i, t[i], i - 1, t[i - 1]])
 	check(L.cls in ["form", "identify", "detail"], "%s %s: a visibility class" % [part, key])
+	if L.cls == "identify":
+		check(t.size() == 1, "%s %s: identify pieces get no LODs (§10: never removed)" % [part, key])
 	if L.cls == "detail":
 		check(L.size > 0.0, "%s %s: a detail piece has its size" % [part, key])
 
@@ -106,9 +145,17 @@ func _first_train() -> Dictionary:
 			out[e.part].append(e.get("params", {}))
 	return out
 
-## Each number parameter at its min and its max (the others at their defaults), and every enum value.
+## Each number parameter at its min and its max (the others at their defaults), every enum value, and every number
+## parameter at its max at once.
 func _limits(part: String, spec: Dictionary) -> Array:
 	var out: Array = []
+	var all_max := {}
+	for k in spec.params:
+		if spec.params[k].type in ["num", "int"]:
+			all_max[k] = spec.params[k].max
+	var pm := Kit.params_of(part, all_max)
+	if not all_max.is_empty() and _complete(part, spec, pm):
+		out.append(pm)
 	for k in spec.params:
 		var ps: Dictionary = spec.params[k]
 		match ps.type:

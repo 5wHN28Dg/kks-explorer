@@ -61,5 +61,21 @@ func run(tree: SceneTree) -> Array:
 	for l in tree.get_nodes_in_group("legible"):
 		if not l.has_meta("legible_size"):
 			p.append("%s: a plate's code has its legibility size" % l.get_path())
+	# a tier switches every material with textures to its size, structures' too, each keeping its own set
+	const Mat = preload("res://kit/materials.gd")
+	if Mat.missing_textures().is_empty():
+		# held here as the app's meshes hold theirs (a material nobody holds is loaded afresh from its file)
+		var held: Array = []
+		for name in ["deck_steel", "ground", "paint", "metal"]:
+			held.append(load("res://built/materials/%s.tres" % name))
+		Mat.apply_tier("full")
+		var want := Mat.size_for("full")
+		for name in ["deck_steel", "ground", "paint", "metal"]:
+			var m := load("res://built/materials/%s.tres" % name) as StandardMaterial3D
+			var path := m.normal_texture.resource_path if m != null and m.normal_texture != null else ""
+			var set_name: String = {"deck_steel": "DiamondPlate008C", "ground": "Gravel023", "paint": "PaintedMetal004", "metal": "Metal032"}[name]
+			if not ("/%d/" % want in path and set_name in path):
+				p.append("%s after the full tier: %s (want %s at %d px)" % [name, path, set_name, want])
+		Mat.apply_tier("lean+vis")
 	plant.free()
 	return p

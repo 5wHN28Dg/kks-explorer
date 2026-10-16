@@ -11,6 +11,7 @@ extends RefCounted
 const Geom = preload("res://builder/geom.gd")
 const KitPlace = preload("res://builder/kit_place.gd")
 const Mat = preload("res://kit/materials.gd")
+const Kit = preload("res://kit/kit.gd")
 
 const SURFACE_PARTS := ["platform", "floor", "grating", "road"]
 const TOL := 0.05
@@ -56,6 +57,7 @@ func _read_json(path: String):
 
 ## Reads plant.json, kit.json and the areas in plant.json's order.
 func read(data_dir: String) -> bool:
+	Kit.clear_cache()
 	var p = _read_json(data_dir.path_join("plant.json"))
 	var k = _read_json(data_dir.path_join("kit.json"))
 	if not (p is Dictionary and k is Dictionary):
@@ -63,6 +65,7 @@ func read(data_dir: String) -> bool:
 		return false
 	plant = p
 	kit = k
+	Kit.use_kit(kit)   # the parts kit reads the same kit.json as the build
 	for aid in plant.areas:
 		var rel := "areas/%s.json" % aid
 		var a = _read_json(data_dir.path_join(rel))
@@ -74,6 +77,8 @@ func read(data_dir: String) -> bool:
 func use(plant_d: Dictionary, kit_d: Dictionary, area_list: Array) -> void:
 	plant = plant_d
 	kit = kit_d
+	Kit.clear_cache()
+	Kit.use_kit(kit)
 	for a in area_list:
 		areas.append({"id": a.id, "rel": "areas/%s.json" % a.id, "data": a})
 
@@ -396,16 +401,6 @@ func _wall_edge(b: Dictionary, p: Vector2, tol: float) -> Array:
 
 # ------------------------------------------------------------------ materials
 
-## The structures' materials, from the kit's (kit/materials.gd): every name the builder uses, with the kit's
-## material it is made as and whether both faces are drawn (buildings are seen from inside too: §5).
-const STRUCTURE_MATS := {
-	"ground": ["gravel", false], "concrete": ["concrete", false], "grating": ["grating", false],
-	"steel": ["chequer", false], "rail": ["paint_yellow", false], "stair": ["galvanised", false],
-	"wall_metal": ["corrugated", true], "wall_concrete": ["concrete", true], "wall_brick": ["concrete", true],
-	"roof": ["corrugated_casing", true], "door": ["paint_motor", false], "fence": ["galvanised", true],
-	"pit": ["concrete", false], "ladder": ["paint_yellow", false], "rack": ["galvanised", false],
-}
-
 ## Saves every material the kit and the structures use to out_dir/materials (the 1024 px textures: decision 0041,
 ## kit/materials.gd), and the media's band colours. Returns the sum of the save errors.
 func make_materials(out_dir: String) -> int:
@@ -416,13 +411,12 @@ func make_materials(out_dir: String) -> int:
 	var list := {}
 	for name in specs:
 		list[name] = Mat.make(name, specs[name])
-	for name in STRUCTURE_MATS:
-		var m: StandardMaterial3D = Mat.make(name, specs[STRUCTURE_MATS[name][0]])
-		if name == "wall_brick":
-			m.albedo_color = Color(0.72, 0.42, 0.33)
-		if STRUCTURE_MATS[name][1]:
-			m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		list[name] = m
+	for name in Mat.STRUCTURE_MATS:
+		list[name] = Mat.make_structure(name)
+	var missing := Mat.missing_textures()
+	if not missing.is_empty():
+		warnings.append("no textures (kit/fetch_textures.sh, then Godot's import): %s" % ", ".join(missing))
+		print("build: warning: materials without their textures: ", ", ".join(missing))
 	for med in plant.get("media", {}):
 		list["medium_" + med] = Mat.make("medium_" + med, {"set": "", "tint": Color.html(plant.media[med].band), "rough": 0.5, "metal": 0.0})
 	for name in list:
@@ -787,7 +781,7 @@ func _along(a: Vector3, b: Vector3) -> Transform3D:
 # ------------------------------------------------------------------ structures
 
 func _surface(parent: Node3D, sf: Dictionary) -> void:
-	var mat := _mat("grating" if sf.deck == "grating" else ("steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else "concrete")))
+	var mat := _mat("grating" if sf.deck == "grating" else ("deck_steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else "concrete")))
 	_slab(parent, sf.id, sf.outline, sf.holes, sf.z, sf.thick, mat)
 	if sf.rails:
 		var st := _st()

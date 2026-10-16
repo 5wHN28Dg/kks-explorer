@@ -254,11 +254,11 @@ static func _quarter(g, part: String) -> void:
 		disc.cyl(Vector3(0, -0.01 - od * 0.02, 0), Vector3(0, 0.01 + od * 0.02, 0), r * 0.98, -1.0)
 	var zt := top + 0.02
 	if act == "manual" and od < 0.22:
-		# a lever: lies along the pipe when open, across it when closed
+		# a lever: lies along the pipe when open, across it when closed (as built: value 0 is closed)
 		disc.use("paint_red", "identify")
 		var L := clampf(0.15 + od * 1.8, 0.15, 0.6)
-		disc.box(Vector3(0, -L * 0.45, zt + 0.02), Vector3(0.03, L, 0.015))
-		disc.box(Vector3(0, -L * 0.9, zt + 0.02), Vector3(0.04, 0.08, 0.03))
+		disc.box(Vector3(L * 0.45, 0, zt + 0.02), Vector3(L, 0.03, 0.015))
+		disc.box(Vector3(L * 0.9, 0, zt + 0.02), Vector3(0.08, 0.04, 0.03))
 		_no_wheel(g, zt)
 		g.axis_line = [Vector3(0, -F, 0), Vector3(0, F, 0)]
 		return
@@ -282,13 +282,13 @@ static func _quarter(g, part: String) -> void:
 		m.cyl(Vector3(-s * 1.0, 0, zt + s * 0.35), Vector3(s * 1.0, 0, zt + s * 0.35), s * 0.33)
 		m.box(Vector3(0, 0, zt + s * 0.35), Vector3(s * 0.7, s * 0.75, s * 0.7))
 		zt += s * 0.7
-	# the position indicator on top: an arrow along the disc (the pointer says open along the pipe, closed across)
+	# the position indicator on top: an arrow along the disc (along the pipe = open, across = closed; built closed)
 	disc.use("paint_yellow", "identify")
 	var ir := clampf(s * 0.35, 0.05, 0.2)
 	disc.cyl(Vector3(0, 0, zt), Vector3(0, 0, zt + ir * 0.5), ir, -1.0, 16)
 	disc.use("paint_black", "identify")
-	disc.box(Vector3(0, 0, zt + ir * 0.5 + 0.004), Vector3(ir * 0.25, ir * 1.9, 0.008))
-	disc.box(Vector3(0, ir * 0.85, zt + ir * 0.5 + 0.004), Vector3(ir * 0.6, ir * 0.25, 0.008))
+	disc.box(Vector3(0, 0, zt + ir * 0.5 + 0.004), Vector3(ir * 1.9, ir * 0.25, 0.008))
+	disc.box(Vector3(ir * 0.85, 0, zt + ir * 0.5 + 0.004), Vector3(ir * 0.25, ir * 0.6, 0.008))
 	_no_wheel(g, zt)
 	g.axis_line = [Vector3(0, -F, 0), Vector3(0, F, 0)]
 

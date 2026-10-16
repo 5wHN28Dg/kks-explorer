@@ -57,7 +57,8 @@ node's origin is the pivot; at value 0 the node is as built. Kinds:
   means it turns freely: a shaft turns at `of × scale` revolutions per second (§7.7);
 - `translate`: move it along `anim_axis` by `value × anim_travel` metres;
 - `scale`: scale it along `anim_axis` by `value` (0 empty, 1 full);
-- `lamp`: the node holds the unlit lens; its child `on` is the lit lens, hidden until the lamp is on.
+- `lamp`: the node holds the unlit lens; its child `on` is the lit lens, hidden until the lamp is on;
+- `group`: the node only holds others that move (a damper's blades): move its children.
 
 | Part | Node | Kind, axis (node axes) | 0 → 1 | Travel |
 |---|---|---|---|---|
@@ -71,13 +72,13 @@ node's origin is the pivot; at value 0 the node is as built. Kinds:
 | damper | `blades` (a group) with `blade_0` … `blade_n` | each blade rotates about +x | closed → open | π/2 |
 | pressure_gauge, temperature_gauge | `needle` | rotate about the dial's inward normal (clockwise as read) | the scale's start → its end | 3π/2 |
 | level_glass | `level` | scale along +y from the glass's bottom | empty → full | 1 |
-| breaker | `contacts` | rotate (the flag behind the mechanism's window) | open (green) → closed (red "I") | π/2 |
+| breaker | `contacts` | rotate about −z for a GCB (the part's +y), −x for an MV breaker (the flag behind the mechanism's window) | open (green) → closed (red "I") | π/2 |
 | lamp, beacon | `light`, `light/on` | lamp | off → on | 0 |
 
 ## Visibility classes and ranges (§10)
 
-Every piece is `form`, `identify` or `detail`. Form and identify pieces share a layer and are drawn to the far plane
-on every tier (mesh LOD only); detail pieces (bolts, fins, stiffeners, seams, small brackets) are grouped by size
+Every piece is `form`, `identify` or `detail`. Form and identify pieces are drawn to the far plane on every tier;
+form pieces get LODs, identify pieces none (a simplifier measures shape, not colour); detail pieces (bolts, fins, stiffeners, seams, small brackets) are grouped by size
 (a factor of 2) and drawn while they cover the tier's `detail_min_px` (`app/quality.gd`: 1.5 px on laptops, 3 px on
 phones): `d = size × f / min_px` plus half the diagonal of their cell's box (Godot measures a range to the box's
 centre), with a fade. Tag plates and their codes are identify; the code's text is drawn while a character covers
