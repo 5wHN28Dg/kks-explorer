@@ -1,0 +1,43 @@
+# Walkdown Plant: the behaviour engine (GDScript)
+
+The plant's behaviour model (docs/PLANT3D.md §7) as the app runs it, bit for bit with the reference
+(`ref/plant3d.py`) on `ref/vectors/plant3d-v1.json` (decision 0054 §10).
+
+| File | What it is |
+|---|---|
+| `json_strict.gd` | strict JSON reader (the rules of `ref/sjson.py`), numbers correctly rounded like Python's `float()`: Godot's `JSON` and `String.to_float` are off by a unit in the last place for some 17-digit numbers, one of which is in the first train's model |
+| `plant_model.gd` | loads `data/plant3d` (or a `{path: text}` set of files): the joined model, scenarios, procedures and the plant's codes |
+| `engine.gd` | the 0.1 s step of §7.10: values, operations and permissives, interlocks, machines, trips with first-out, alarms with suppression and shelving, faults; snapshots and fast-forward |
+| `procedure.gd` | a procedure run in the model alone, as a trainee who does each step |
+| `links.gd` | `walkdown-plant://` links (§6) |
+
+```gdscript
+const PlantModel = preload("res://sim/plant_model.gd")
+const PlantEngine = preload("res://sim/engine.gd")
+var m = PlantModel.from_dir("res://…/plant3d")     # m.error is "" when it loaded
+var e = PlantEngine.new(m, "cold_iron")
+e.op("30PAC10AP001", "start")                    # takes effect in the next step
+e.step()
+```
+
+The scripts preload each other by relative path, so they work from the app's project (`res://sim/`) and from the
+test runner, which loads them by file path without a project.
+
+## Tests
+
+With the pinned Godot (`tools/plant3d/bench/fetch_godot.sh`; CI: `.github/workflows/plant3d.yml`):
+
+```sh
+python3 -m unittest -v tests.test_plant3d_sim        # everything below, against the Python reference
+godot --headless --script apps/plant3d/sim/tests/run_vectors.gd     # the vectors alone (about 1.5 minutes here)
+godot --headless --script apps/plant3d/sim/tests/bench_step.gd      # the model's step time
+```
+
+`run_vectors.gd` compares events exactly and snapshots to the vector file's precision (it rounds to 9 decimals); the
+Python test compares a SHA-256 of every value at every step with the reference's, so a single different bit fails
+and is reported at its step and value. `tests/` holds a `.gdignore`: the app's editor and exports leave it out.
+
+**Bit-exactness and the platform.** Every operation is an IEEE double operation in the reference's order, except a
+lag's factor 1 − e^(−0.1/τ), which calls the C library's `exp` on both sides (glibc on Linux, where it is verified).
+On Android (bionic) and Windows it may differ in the last bit; the build (0054) can store the factors computed on
+Linux in the compiled model if a phone run shows a difference.

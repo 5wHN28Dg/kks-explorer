@@ -19,8 +19,9 @@ const PlantModel = preload("plant_model.gd")
 
 const STEP := 0.1
 
-enum {K_CONST, K_OF, K_SUM, K_PRODUCT, K_MIN, K_MAX, K_AND, K_OR, K_DIFF, K_SELECT, K_GE, K_GT, K_LE, K_LT, K_NOT,
-		K_LAG, K_RAMP, K_INTEGRATE, K_LATCH, K_DELAY, K_TIMER, K_WRAP}
+# node kinds, the commonest first (the evaluator tests them in this order)
+enum {K_GE, K_GT, K_LE, K_LT, K_OF, K_PRODUCT, K_AND, K_SUM, K_NOT, K_DIFF, K_MAX, K_SELECT, K_OR, K_MIN, K_CONST,
+		K_LAG, K_INTEGRATE, K_RAMP, K_TIMER, K_LATCH, K_DELAY, K_WRAP}
 const FIRST_STATEFUL := K_LAG
 
 var m                               # PlantModel
@@ -40,7 +41,8 @@ var _fa := PackedFloat64Array()         # float arguments (tables, factors)
 var _nprog := 0
 var _init_vals := PackedFloat64Array()
 var _nmem := 0
-var _fault_node := {}                   # fault id -> program entry of its `when` node (evaluated on its own)
+var _fault_nodes := PackedInt32Array()  # program entries of faults' `when` nodes (evaluated on their own)
+var _scratch := 0                       # the slot a fault's `when` node writes
 
 # compiled conditions and actions
 var _il: Array = []          # [id, when slot, actions]
@@ -70,6 +72,8 @@ var queue: Array = []
 var events: Array = []
 var inputs: Array = []
 var step_no := 0
+var timing := false                 # when set, every step's time in microseconds goes to step_us (tests/bench_step.gd)
+var step_us := PackedInt64Array()
 
 
 func _init(model = null, scenario = null) -> void:
@@ -242,7 +246,9 @@ func _compile() -> void:
 			_faults.append([f["id"], 0, ix[f["when"]], fs])
 		else:
 			var kind := PlantModel.node_kind(f["when"])
-			_faults.append([f["id"], 1, _node(-1, f["when"], kind), fs])
+			var fp := _node(-1, f["when"], kind)
+			_fault_nodes.append(fp)
+			_faults.append([f["id"], 1, fp, fs])
 	for key in m.op_keys:
 		var o = m.op_keys[key]
 		var needs := PackedInt32Array()
@@ -260,6 +266,10 @@ func _compile() -> void:
 		_ops[key] = c
 	# the constants live after the values, in cur and prev alike
 	_init_vals.append_array(PackedFloat64Array(_consts))
+	_scratch = _init_vals.size()
+	_init_vals.append(0.0)
+	for fp in _fault_nodes:
+		_prog_out[fp] = _scratch
 	mem.resize(_nmem)
 
 
@@ -290,9 +300,7 @@ func _step0() -> void:
 	shelved.fill(-1)
 	il_prev.resize(_il.size())
 	prev = cur.duplicate()
-	for p in _nprog:
-		if _prog_kind[p] < FIRST_STATEFUL:
-			cur[_prog_out[p]] = _stateless(p, cur)
+	_run(0, _nprog, cur, prev, true)
 
 
 # ---------------------------------------------------------------- trainee inputs
@@ -379,75 +387,158 @@ func _do_actions(acts: Array, moved: Dictionary) -> void:
 # ---------------------------------------------------------------- the step (§7.10)
 
 func step(count: int = 1) -> void:
+	if timing:
+		for _k in count:
+			var t0 := Time.get_ticks_usec()
+			_step()
+			step_us.append(Time.get_ticks_usec() - t0)
+		return
 	for _k in count:
 		_step()
 
 
-## A stateless node read from `vals` (the current step's values, or step 2's for a fault's condition).
-func _stateless(p: int, vals: PackedFloat64Array) -> float:
-	var a := _prog_a[p]
-	match _prog_kind[p]:
-		K_GE:
-			return 1.0 if vals[_ia[a]] >= vals[_ia[a + 1]] else 0.0
-		K_GT:
-			return 1.0 if vals[_ia[a]] > vals[_ia[a + 1]] else 0.0
-		K_LE:
-			return 1.0 if vals[_ia[a]] <= vals[_ia[a + 1]] else 0.0
-		K_LT:
-			return 1.0 if vals[_ia[a]] < vals[_ia[a + 1]] else 0.0
-		K_PRODUCT:
+## Evaluates program entries p0 … p1 − 1 into c: stateless nodes read c (this step's values), stateful ones pv (the
+## previous step's); stateless_only skips the stateful ones (step 0). The one evaluator of every node, inlined for
+## speed: GDScript calls and Variant arrays cost more than the arithmetic.
+func _run(p0: int, p1: int, c: PackedFloat64Array, pv: PackedFloat64Array, stateless_only: bool) -> void:
+	var kinds := _prog_kind
+	var outs := _prog_out
+	var pa := _prog_a
+	var pn := _prog_na
+	var pf := _prog_f
+	var ia := _ia
+	var fa := _fa
+	for p in range(p0, p1):
+		var kind := kinds[p]
+		var a := pa[p]
+		if kind == K_GE:
+			c[outs[p]] = 1.0 if c[ia[a]] >= c[ia[a + 1]] else 0.0
+		elif kind == K_GT:
+			c[outs[p]] = 1.0 if c[ia[a]] > c[ia[a + 1]] else 0.0
+		elif kind == K_LE:
+			c[outs[p]] = 1.0 if c[ia[a]] <= c[ia[a + 1]] else 0.0
+		elif kind == K_LT:
+			c[outs[p]] = 1.0 if c[ia[a]] < c[ia[a + 1]] else 0.0
+		elif kind == K_OF:
+			c[outs[p]] = _table(p, c[ia[a]])
+		elif kind == K_PRODUCT:
 			var s := 1.0
-			for k in range(a, a + _prog_na[p]):
-				s = s * vals[_ia[k]]
-			return s
-		K_SUM:
+			for k in range(a, a + pn[p]):
+				s = s * c[ia[k]]
+			c[outs[p]] = s
+		elif kind == K_AND:
+			var r := 1.0
+			for k in range(a, a + pn[p]):
+				if not c[ia[k]] >= 0.5:
+					r = 0.0
+					break
+			c[outs[p]] = r
+		elif kind == K_SUM:
 			var s := 0.0
-			for k in range(a, a + _prog_na[p]):
-				s = s + vals[_ia[k]]
-			return s
-		K_AND:
-			for k in range(a, a + _prog_na[p]):
-				if not vals[_ia[k]] >= 0.5:
-					return 0.0
-			return 1.0
-		K_OR:
-			for k in range(a, a + _prog_na[p]):
-				if vals[_ia[k]] >= 0.5:
-					return 1.0
-			return 0.0
-		K_NOT:
-			return 0.0 if vals[_ia[a]] >= 0.5 else 1.0
-		K_OF:
-			return _table(p, vals[_ia[a]])
-		K_DIFF:
-			return vals[_ia[a]] - vals[_ia[a + 1]]
-		K_MIN:
-			var s := vals[_ia[a]]
-			for k in range(a + 1, a + _prog_na[p]):
-				var x := vals[_ia[k]]
-				if x < s:
-					s = x
-			return s
-		K_MAX:
-			var s := vals[_ia[a]]
-			for k in range(a + 1, a + _prog_na[p]):
-				var x := vals[_ia[k]]
+			for k in range(a, a + pn[p]):
+				s = s + c[ia[k]]
+			c[outs[p]] = s
+		elif kind == K_NOT:
+			c[outs[p]] = 0.0 if c[ia[a]] >= 0.5 else 1.0
+		elif kind == K_DIFF:
+			c[outs[p]] = c[ia[a]] - c[ia[a + 1]]
+		elif kind == K_MAX:
+			var s := c[ia[a]]
+			for k in range(a + 1, a + pn[p]):
+				var x := c[ia[k]]
 				if x > s:
 					s = x
-			return s
-		K_SELECT:
-			var x := vals[_ia[a]]
-			var cases := _prog_na[p] - 1
-			var c := 0
+			c[outs[p]] = s
+		elif kind == K_SELECT:
+			var x := c[ia[a]]
+			var cases := pn[p] - 1
+			var w := 0
 			if x >= cases:
-				c = cases - 1
+				w = cases - 1
 			elif x >= 0.0:
-				c = int(floor(x))
-			return vals[_ia[a + 1 + c]]
-		K_CONST:
-			return _fa[_prog_f[p]]
-	push_error("engine: not a stateless node")
-	return 0.0
+				w = int(floor(x))
+			c[outs[p]] = c[ia[a + 1 + w]]
+		elif kind == K_OR:
+			var r := 0.0
+			for k in range(a, a + pn[p]):
+				if c[ia[k]] >= 0.5:
+					r = 1.0
+					break
+			c[outs[p]] = r
+		elif kind == K_MIN:
+			var s := c[ia[a]]
+			for k in range(a + 1, a + pn[p]):
+				var x := c[ia[k]]
+				if x < s:
+					s = x
+			c[outs[p]] = s
+		elif kind == K_CONST:
+			c[outs[p]] = fa[pf[p]]
+		elif stateless_only:
+			continue
+		elif kind == K_LAG:
+			var i := outs[p]
+			var f := pf[p]
+			var x := pv[ia[a]]
+			var y := pv[i]
+			c[i] = y + (x - y) * (fa[f] if x >= y else fa[f + 1])
+		elif kind == K_INTEGRATE:
+			var i := outs[p]
+			var f := pf[p]
+			var y := pv[i] + fa[f] * pv[ia[a]] * STEP
+			if fa[f + 1] > y:
+				y = fa[f + 1]
+			if fa[f + 2] < y:
+				y = fa[f + 2]
+			c[i] = y
+		elif kind == K_RAMP:
+			var i := outs[p]
+			var f := pf[p]
+			var x := pv[ia[a]]
+			var y := pv[i]
+			if x >= y:
+				var up := y + fa[f]
+				c[i] = up if up < x else x
+			else:
+				var dn := y - fa[f + 1]
+				c[i] = dn if dn > x else x
+		elif kind == K_TIMER:
+			var slot := ia[a + 1]
+			if pv[ia[a]] >= 0.5:
+				mem[slot] += 1
+			else:
+				mem[slot] = 0
+			c[outs[p]] = float(mem[slot]) / 10.0
+		elif kind == K_LATCH:
+			var i := outs[p]
+			if pv[ia[a + 1]] >= 0.5:
+				c[i] = 0.0
+			elif pv[ia[a]] >= 0.5:
+				c[i] = 1.0
+			else:
+				c[i] = pv[i]
+		elif kind == K_DELAY:
+			var i := outs[p]
+			var slot := ia[a + 3]
+			var y := pv[i]
+			if pv[ia[a]] >= 0.5:
+				mem[slot] += 1
+				mem[slot + 1] = 0
+				if y < 0.5 and mem[slot] >= ia[a + 1]:
+					y = 1.0
+			else:
+				mem[slot + 1] += 1
+				mem[slot] = 0
+				if y >= 0.5 and mem[slot + 1] >= ia[a + 2]:
+					y = 0.0
+			c[i] = y
+		elif kind == K_WRAP:
+			var i := outs[p]
+			var x := pv[i] + pv[ia[a]] * STEP
+			var per := fa[pf[p]]
+			c[i] = x - per * floor(x / per)
+		else:
+			push_error("engine: unknown node kind %d" % kind)
 
 
 ## COURSES.md §9.2 tables, as ref/courses.py table_at.
@@ -525,70 +616,7 @@ func _step() -> void:
 		if not any:
 			first_out.erase(g)
 	# 2. values, in order (stateful nodes read the previous step's values)
-	var c := cur
-	var pv := prev
-	for p in _nprog:
-		var kind := _prog_kind[p]
-		var i := _prog_out[p]
-		if kind < FIRST_STATEFUL:
-			c[i] = _stateless(p, c)
-			continue
-		var a := _prog_a[p]
-		var f := _prog_f[p]
-		match kind:
-			K_LAG:
-				var x := pv[_ia[a]]
-				var y := pv[i]
-				c[i] = y + (x - y) * (_fa[f] if x >= y else _fa[f + 1])
-			K_RAMP:
-				var x := pv[_ia[a]]
-				var y := pv[i]
-				if x >= y:
-					var up := y + _fa[f]
-					c[i] = up if up < x else x
-				else:
-					var dn := y - _fa[f + 1]
-					c[i] = dn if dn > x else x
-			K_INTEGRATE:
-				var y := pv[i] + _fa[f] * pv[_ia[a]] * STEP
-				if _fa[f + 1] > y:
-					y = _fa[f + 1]
-				if _fa[f + 2] < y:
-					y = _fa[f + 2]
-				c[i] = y
-			K_LATCH:
-				if pv[_ia[a + 1]] >= 0.5:
-					c[i] = 0.0
-				elif pv[_ia[a]] >= 0.5:
-					c[i] = 1.0
-				else:
-					c[i] = pv[i]
-			K_DELAY:
-				var slot := _ia[a + 3]
-				var y := pv[i]
-				if pv[_ia[a]] >= 0.5:
-					mem[slot] += 1
-					mem[slot + 1] = 0
-					if y < 0.5 and mem[slot] >= _ia[a + 1]:
-						y = 1.0
-				else:
-					mem[slot + 1] += 1
-					mem[slot] = 0
-					if y >= 0.5 and mem[slot + 1] >= _ia[a + 2]:
-						y = 0.0
-				c[i] = y
-			K_TIMER:
-				var slot := _ia[a + 1]
-				if pv[_ia[a]] >= 0.5:
-					mem[slot] += 1
-				else:
-					mem[slot] = 0
-				c[i] = float(mem[slot]) / 10.0
-			K_WRAP:
-				var x := pv[i] + pv[_ia[a]] * STEP
-				var per := _fa[f]
-				c[i] = x - per * floor(x / per)
-	cur = c
+	_run(0, _nprog, cur, prev, false)
 	var vals := cur.duplicate()     # conditions in steps 3–7 read the values as step 2 left them
 	# 3. faults
 	for fl in _faults:
@@ -600,7 +628,8 @@ func _step() -> void:
 			0:
 				hit = vals[fl[2]] >= 0.5
 			1:
-				hit = _stateless(fl[2], vals) >= 0.5
+				_run(fl[2], fl[2] + 1, vals, vals, true)
+				hit = vals[_scratch] >= 0.5
 			2:
 				hit = pressed.has(fid)
 		if hit:
@@ -791,7 +820,7 @@ func value_array() -> PackedFloat64Array:
 func clone():
 	var c = get_script().new()
 	for k in ["m", "sc", "names", "ix", "n", "_prog_kind", "_prog_out", "_prog_a", "_prog_na", "_prog_f", "_ia",
-			"_fa", "_nprog", "_init_vals", "_nmem", "_il", "_mc", "_mc_ix", "_tr", "_tr_ix", "_al", "_al_ix",
+			"_fa", "_nprog", "_fault_nodes", "_scratch", "_init_vals", "_nmem", "_il", "_mc", "_mc_ix", "_tr", "_tr_ix", "_al", "_al_ix",
 			"_faults", "_ops", "step_no"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev"]:

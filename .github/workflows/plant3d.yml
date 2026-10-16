@@ -1,0 +1,73 @@
+# Walkdown Plant (decision 0054): the behaviour engine in GDScript (apps/plant3d/sim) against the reference
+# (ref/plant3d.py) on ref/vectors/plant3d-v1.json, with the pinned Godot (0041) headless. Runs when the engine, the
+# content, the reference, the vectors or this file change; tests/test_plant3d_sim.py says what it checks.
+name: Walkdown Plant
+
+on:
+  pull_request:
+    paths:
+      - 'apps/plant3d/sim/**'
+      - 'data/plant3d/**'
+      - 'ref/plant3d.py'
+      - 'ref/courses.py'
+      - 'ref/sjson.py'
+      - 'ref/vectors/plant3d-v1.json'
+      - 'ref/vectors/v2-json.json'
+      - 'tests/test_plant3d_sim.py'
+      - 'tools/plant3d/bench/fetch_godot.sh'
+      - '.github/workflows/plant3d.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/plant3d/sim/**'
+      - 'data/plant3d/**'
+      - 'ref/plant3d.py'
+      - 'ref/courses.py'
+      - 'ref/sjson.py'
+      - 'ref/vectors/plant3d-v1.json'
+      - 'ref/vectors/v2-json.json'
+      - 'tests/test_plant3d_sim.py'
+      - 'tools/plant3d/bench/fetch_godot.sh'
+      - '.github/workflows/plant3d.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plant3d-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  engine-vectors:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the editor's zip only (no export templates): checked by SHA-512 on every run, cached or not
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/godot-dl
+          key: godot-editor-${{ hashFiles('tools/plant3d/bench/fetch_godot.sh') }}
+      - name: Godot (the version and SHA-512 pinned in tools/plant3d/bench/fetch_godot.sh)
+        run: |
+          set -eu
+          F=tools/plant3d/bench/fetch_godot.sh
+          VERSION=$(sed -n 's/^VERSION=//p' "$F")
+          SHA=$(sed -n 's/^EDITOR_SHA512=//p' "$F")
+          ZIP="Godot_v$VERSION-stable_linux.x86_64.zip"
+          mkdir -p ~/godot-dl ~/godot
+          if [ ! -f ~/godot-dl/"$ZIP" ]; then
+            curl -sSLf -o ~/godot-dl/"$ZIP" "https://github.com/godotengine/godot/releases/download/$VERSION-stable/$ZIP"
+          fi
+          echo "$SHA  $HOME/godot-dl/$ZIP" | sha512sum -c -
+          unzip -oq ~/godot-dl/"$ZIP" -d ~/godot
+          G=~/godot/Godot_v$VERSION-stable_linux.x86_64
+          "$G" --headless --version | grep -q "^$VERSION.stable"
+          echo "KKS_GODOT=$G" >> "$GITHUB_ENV"
+      - name: The engine against the reference (every vector; every value at every step bit for bit; numbers; strict JSON)
+        run: KKS_REQUIRE_GODOT=1 python3 -m unittest -v tests.test_plant3d_sim
+      - name: The model's step time on this runner (not a gate; the phone's is measured by hand, 0054)
+        run: |
+          "$KKS_GODOT" --headless --script apps/plant3d/sim/tests/bench_step.gd | tee "$RUNNER_TEMP/bench.txt"
+          { echo '### Walkdown Plant model step'; echo '```'; grep -E '^(LOAD|STEP|BATCH)' "$RUNNER_TEMP/bench.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
