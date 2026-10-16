@@ -62,8 +62,13 @@ remove() {
     echo "!!! CANNOT REACH $SERIAL: the bench ($PKG) may still be installed there; remove it: $0 $SERIAL remove" >&2
     return 1
   fi
-  if (installed); then say "removing $PKG"; a uninstall "$PKG" >/dev/null; fi
-  if (installed) || [ "$(a get-state 2>/dev/null)" != device ]; then
+  # installed: 0 yes, 1 no, 5 adb failed (in a subshell, so its exit does not end this one): only 1 is "not there"
+  local st=0
+  (installed) || st=$?
+  if [ "$st" = 0 ]; then say "removing $PKG"; a uninstall "$PKG" >/dev/null || true; fi
+  st=0
+  (installed) || st=$?
+  if [ "$st" != 1 ]; then
     echo "!!! could not remove $PKG from $SERIAL (or the phone went away): $0 $SERIAL remove" >&2
     return 1
   fi
@@ -174,16 +179,25 @@ case "$CMD" in
     # each lever on its own against lean, and the ladder from the most detail down (R9a: vis first, it cuts nothing a
     # trainee needs; then texture size; then LOD bias)
     for p in lean lean+texraw lean+vis lean+tex1k lean+lod; do run "lever_$p" "$p" 180 1 0; sleep 60; done
+    # A rung passes its 3 minutes (at most 3 % of frames below 30 fps on the screen, no frame over 100 ms), then must
+    # pass the whole 10 minutes too (at most 5 %, no frame over 100 ms): `full`'s hitch came only twice in 10 minutes
+    # (2026-10-16), which 3 minutes can miss. A rung that fails either step gives way to the next.
     chosen=""
     for p in full full+vis scaled+vis lean+vis lean+vis+tex1k lean+vis+tex1k+lod lean2+vis+tex1k+lod; do
       run "ladder_$p" "$p" 180 1 0
-      if [ -n "$LAST_SLOW" ] && [ "$(echo "$LAST_SLOW <= 3.0" | bc)" = 1 ] && [ "$LAST_OVER100" = 0 ]; then chosen=$p; break; fi
+      if [ -n "$LAST_SLOW" ] && [ "$(echo "$LAST_SLOW <= 3.0" | bc)" = 1 ] && [ "$LAST_OVER100" = 0 ]; then
+        say "$p passed 3 minutes; cooling down 5 minutes, then the 10-minute walk"
+        sleep 300
+        run "walk600_$p" "$p" 600 1 0
+        if [ -n "$LAST_SLOW" ] && [ "$(echo "$LAST_SLOW <= 5.0" | bc)" = 1 ] && [ "$LAST_OVER100" = 0 ]; then
+          chosen=$p; break
+        fi
+        say "$p did not hold for 10 minutes"
+      fi
       sleep 60
     done
-    [ -n "$chosen" ] || { say "no preset kept p95 <= 30 ms for 3 minutes"; exit 4; }
-    say "chosen: $chosen; cooling down 5 minutes, then the 10-minute walk"
-    sleep 300
-    run "walk600_$chosen" "$chosen" 600 1 0
+    [ -n "$chosen" ] || { say "no preset met the rule (frames below 30 fps on the screen, frames over 100 ms)"; exit 4; }
+    say "chosen: $chosen"
     echo "$chosen" > "$OUT/chosen.txt"
     ;;
   walk) install; brightness_50; run "walk${2:-600}_$1" "$1" "${2:-600}" 1 0 ;;

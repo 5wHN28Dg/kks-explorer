@@ -152,7 +152,8 @@ rows still compare the levers with each other (GPU time, memory, load), but not 
 
 **Note 9** (SM-N960F, Android 10, Mali-G72, 2220×1080, Mobile renderer, release build, pre-built plant, 50 %
 brightness (backlight setting 128 of 255, auto-brightness off), room temperature; 2026-10-16). The bench draws with
-vsync off, as on the laptop; one 10-minute run with vsync on (as a shipped app draws) gave the same numbers. Peak memory is the app's PSS from `dumpsys meminfo`, sampled every 20 s (the app's own reading of /proc is
+vsync off, as on the laptop, but Android forced vsync on in every run (see the warning above), so the run with vsync
+explicitly on gave the same numbers. Peak memory is the app's PSS from `dumpsys meminfo`, sampled every 20 s (the app's own reading of /proc is
 refused on Android), so a short peak between samples can be missed; the start's peak is measured separately below.
 
 | Preset | Run | Median | p95 (fps) | > 33 ms | > 100 ms | Max | GPU median / p95 | CPU median | Draw calls p95 | Peak PSS | Battery temp |
@@ -170,9 +171,14 @@ refused on Android), so a short peak between samples can be missed; the start's 
 
 Mean frame time per minute over the 10-minute plugged run: 21.9, 21.8, 21.7, 21.7, 22.1, 21.6, 21.9, 22.1, 22.0,
 21.9 ms; on battery 21.9, 22.0, 22.0, 22.0, 21.9, 21.9, 21.7, 21.9, 21.8, 22.1 ms (no thermal drop in either). A first
-battery run that started the walk before the cable was out was discarded. **Note 9, frame times by the clock (the measurement that counts).** Since 2026-10-16 11:40 the bench times each
-frame with the wall clock (`Time.get_ticks_usec` between frames, Godot's delta smoothing off). It reports how many
-frames stayed on the 60 Hz screen for one refresh (≤ 17.5 ms, 60 fps), two (≤ 34.2 ms, 30 fps) or more, and it
+battery run that started the walk before the cable was out was discarded.
+
+**Note 9, frame times by the clock (the measurement that counts).** Since 2026-10-16 11:40 the bench times each
+frame with the wall clock (`Time.get_ticks_usec` between frames, Godot's delta smoothing off). These are the game
+loop's intervals: with vsync on (Android forces it) the loop waits for the display, so they follow how long each
+frame stays on the 60 Hz screen, though not frame for frame (a one-off check against SurfaceFlinger's present times
+would confirm it). The bench sorts them into one refresh (≤ 17.5 ms, 60 fps), two (≤ 34.2 ms, 30 fps) or more.
+Two-refresh frames with jitter past 34.2 ms land in "more", so that count errs high (p99 is 34.3–34.5 ms). It also
 logs every frame over 100 ms with where the camera was. The walk now also takes in the heaviest views: up over the
 pump bay at 12 m, along it with everything in sight, and down from the far corner looking over the whole plant.
 That makes a 90 s loop.
@@ -182,22 +188,25 @@ That makes a 90 s loop.
 | full, plugged in | 3 min | 17.0 ms | 33.9 ms (29.5) | 62.4 / 35.5 / **2.1 %** | 0 | 90 ms | 17.4 / 22.3 ms | 664 | 599 MB | 28.9 → 29.9 °C |
 | **full, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | **33.8 ms (29.5)** | 61.9 / 36.4 / **1.7 %** | **1** | **122 ms** | 17.3 / 22.1 ms | 664 | not sampled | 98 → 93 %, 30.0 → 33.1 °C |
 | full, plugged in | 10 min | 17.1 ms | 33.8 ms (29.6) | 61.8 / 36.6 / 1.6 % | **2** (121.6 ms at 230.1 s, 119.4 ms at 410.1 s) | 122 ms | 17.4 / 22.1 ms | 664 | 511 MB | 32.9 → 35.3 °C |
-| **lean+vis, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | 33.8 ms (29.6) | 63.2 / 34.9 / **1.9 %** | **0** | **79 ms** | 14.5 / 18.7 ms | 479 | not sampled (505–630 MB plugged) | 100 → 97 %, 31.7 → 32.4 °C |
+| **lean+vis, on battery** (walk started 30 s after Android reported discharging; on battery throughout) | **10 min** | 17.1 ms | 33.8 ms (29.6) | 63.2 / 34.9 / **1.9 %** | **0** | **79 ms** | 14.5 / 18.7 ms | 479 | not sampled (504–630 MB plugged) | 100 → 97 %, 31.7 → 32.4 °C |
 | **lean+vis**, plugged in | 10 min | 17.0 ms | 33.8 ms (29.6) | 64.4 / 33.7 / **1.9 %** | **0** | **52 ms** | 14.4 / 18.7 ms | 479 | 504 MB | 35.3 → 35.3 °C |
 
 What this shows:
-- **The phone draws at 60 or 30 fps, nothing in between.** The GPU needs 14–22 ms per frame. That is more than one
-  refresh (16.7 ms) and far less than two, so about 62 % of frames are shown for one refresh and 36 % for two. A
+- **The phone draws at 60 or 30 fps, nothing in between.** A frame takes about 21 ms on average (GPU 14–22 ms plus
+  the rest of the loop): more than one refresh (16.7 ms) and far less than two. So about 62–64 % of frames are shown
+  for one refresh and 34–37 % for two. A
   frame held for two refreshes is exactly 30 fps on the screen, but by the clock it measures 33.1–34 ms. So the
   95th-percentile frame is 33.8 ms (29.6 fps) in every run, whatever the preset. The share of frames slower than
   30 fps on the screen (three refreshes or more) is 1.6–2.1 %, against the 5 % the rule allows.
-- **`full` has a repeatable hitch of about 120 ms.** It came at exactly the same place twice, 180 s apart: the corner
-  at (−5, 1.7, 4), where the walk turns to climb over the bay. The battery run had the same one. `lean+vis` never
-  showed it (worst frame 52 ms). Its cause is not known yet: a shadow or LOD update when the whole plant comes into
+- **`full` has an intermittent hitch of about 120 ms.** In the plugged 10-minute run it came twice, both times at the
+  corner at (−5, 1.7, 4) where the walk turns to climb over the bay: at 230 and 410 s, 2 of the 7 times the walk
+  passed there. The battery run had one frame of 122 ms too; that build did not yet log where. `lean+vis` never showed
+  it in 20 minutes (worst frame 79 ms). Its cause is not known yet: a shadow or LOD update when the whole plant comes into
   view is the first suspect.
-- **The lighter presets do not buy margin against vsync.** `lean+vis` saves 3 ms of GPU time per frame but still
-  needs more than one refresh, so its p95 stays at 33.8 ms. Real headroom would need either frames under 16.7 ms
-  (about 25 % less GPU time than `lean+vis`), or a steady 30 fps cap: every frame held for two refreshes, by design.
+- **The lighter presets buy little margin against vsync.** `lean+vis` saves 3 ms of GPU time per frame (median
+  14.4 ms, under one refresh) and shows a few more frames at 60 fps, but its slowest 5 % still take two refreshes, so
+  its p95 stays at 33.8 ms. Real headroom needs the whole loop under 16.7 ms (about a fifth less than the 21 ms
+  average now), or a steady 30 fps cap: every frame held for two refreshes, by design.
 
 **Load time** (`full`, pre-built plant, baked shaders), from the launch in the phone's log until the first frame
 has been drawn: first start after clearing the app's data 5.8 s (2.1 s of it the first frame's pipeline compiles;
@@ -232,7 +241,7 @@ Findings:
 - **The texture import was the biggest cost**, not geometry. The round-1 bench imported its textures lossless and
   without mipmaps (script-made materials skip Godot's 3D detection). With VRAM-compressed, mipmapped textures the
   same scene goes from 44 to 80 fps (p95) on the laptop and from 28.8 to 35.4 fps on the Note 9 (`lean`), with
-  a third less memory on the phone (768 → 502 MB) and no 100 ms frame.
+  a third less memory on the phone (768 → 501 MB) and no 100 ms frame.
 - **With that fixed, the Note 9 is at the edge of the rule**, not above it as the first pass said (see the
   clock-timed table). 98 % of frames are shown at 30 fps or better on its 60 Hz screen, but by the clock the 95th
   percentile is 33.8 ms (29.6 fps). `full` has a repeatable 120 ms hitch; `lean+vis` does not. There is no thermal
@@ -258,8 +267,9 @@ refreshes or more, which must stay at or under 5 %.
   5 % allowed;
 - spikes: no frame over 100 ms after the first 5 s; the worst was 79 ms;
 - heat: no thermal drop (per-minute means 20.7–21.4 ms); battery 100 → 97 %;
-- memory: 505–630 MB sampled plugged in, against 1.5 GB;
-- load: 7.6 s to the first drawn frame right after a fresh install, 1.4 s after that, against 15 s.
+- memory: 504–630 MB sampled plugged in, against 1.5 GB;
+- load: 7.6 s to the first drawn frame on the first start after a fresh install (data cleared too), 1.4 s after
+  that, against 15 s.
 - Unrelated to the engine: the battery run's own start took 50 s, because the phone's screen was off when the app was
   launched. Its log shows the window stopped right away and shown 43 s later.
 
@@ -272,8 +282,8 @@ None of that is what R9a protects. The look viewpoints drawn with that preset sh
 bonnets and pipe colours as `full`. On the phone, `full` differs from the laptop tier only by the missing ambient
 occlusion and blockier shadow edges; neither hides a part, a label or a state.
 
-**`full` is not for the Note 9:** it has a repeatable hitch of about 120 ms at one corner of the walk, every 180 s, on
-battery and plugged in. Its cause is not known yet; find it before `full` is used on any phone.
+**`full` is not for the Note 9:** it has an intermittent hitch of about 120 ms at one corner of the walk (2 of 7
+passes in 10 minutes plugged in; one such frame on battery). Its cause is not known yet; find it before `full` is used on any phone.
 
 **Margin:** small. Any heavier content shows first as more frames held for three refreshes. The real plant must be
 measured the same way as it grows (R9; the regression rule).
