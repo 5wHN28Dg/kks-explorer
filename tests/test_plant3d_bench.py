@@ -1,7 +1,8 @@
 """The 3D plant engine bench (tools/plant3d/bench, decision 0041), run headless with the pinned Godot:
 - a walk with the phone tier's levers ends with its RESULT, SPLIT and PER_MINUTE lines in result.txt;
 - the visibility-range lever (vis) gives a range only to the parts R9a lets go far away (bolts, motor fins), and never
-  fades one before the distance where its smallest feature is still 1 px on the Note 9's screen, counted from the
+  fades one before the distance where its smallest feature is still 1 px on the screen (at least the Note 9's
+  1080 px), counted from the
   farthest corner of its cell (Godot measures a range to the centre of the instance's box);
 - an unknown lever is reported, not ignored silently.
 Needs the Godot editor (KKS_GODOT, else the path tools/plant3d/bench/fetch_godot.sh installs it to); skipped without.
@@ -18,8 +19,9 @@ func _initialize() -> void:
 	var bench = load("res://main.tscn").instantiate()
 	root.add_child(bench)
 	await process_frame
-	var px := 540.0 / tan(deg_to_rad(35.0))
+	var px := maxf(bench.get_viewport().get_visible_rect().size.y, 1080.0) / 2.0 / tan(deg_to_rad(35.0))
 	var bad := 0
+	if px < 771.0: bad += 1000
 	var parts := {}
 	for n in bench.root.get_children():
 		var gi := n as GeometryInstance3D

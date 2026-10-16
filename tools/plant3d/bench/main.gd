@@ -10,13 +10,15 @@
 ##     bases:  full (native resolution, 4 shadow cascades to 80 m) | scaled (70 % + FSR) | lean (60 % + FSR, 2048
 ##             shadow atlas, 40 m shadows, mesh LOD threshold 4 px) | lean2 (lean, 2 cascades) | lean_noshadow
 ##     levers: vis    small parts that carry no information far away (bolts, motor fins) are not drawn beyond the
-##                    distance where their smallest feature is under 1 px on the Note 9's screen, with a fade (R9a)
+##                    distance where their smallest feature is under 1 px on the screen (at least 1080 px high),
+##                    with a fade (R9a)
 ##             tex1k  textures at 1024 px (the tier's texture size: the same files imported with a size limit)
 ##             texraw the earlier bench's import (2048 px, lossless, no mipmaps): to compare with the old numbers
 ##             lod    LOD bias 0.5: each part switches to its simpler LOD at half the distance
 ##             half   (with full) 3D drawn at half the screen's width and height: a HiDPI laptop panel at its logical
 ##                    resolution
 ##   start_delay=120        stand still this long first, unmeasured
+##   vsync=1                frames wait for the display (default off: the bench measures the render rate)
 ##   wait_battery=1         (Android) stand still until the phone runs on battery, then 30 s more, then walk
 ##   prebuilt=1             load built/plant.scn (what a shipped app does) instead of building the plant by script
 ##   look=1                 capture the 10 "look" viewpoints as PNGs instead of walking
@@ -28,8 +30,9 @@ extends Node3D
 const ANDROID_FILES := "/storage/emulated/0/Android/data/kks.plant3d.bench/files"
 const CELL := 12.0        # instancing cell (m)
 const SMALL_CELL := 6.0   # cell for parts with a visibility range: a smaller box keeps the range close to the rule
-## The Note 9's screen: 1080 px over the camera's 70 degree vertical field of view.
-const PX_PER_RAD := 540.0 / 0.7002075382   # = 540 / tan(35 deg), about 771
+## Pixels per radian at the screen's centre: half the screen's height over tan(half the camera's 70 degree vertical
+## field of view). On the Note 9 (1080 px) about 771. Taken from the window, so a taller screen keeps parts longer.
+var px_per_rad := 540.0 / tan(deg_to_rad(35.0))
 ## Parts not drawn beyond a distance (R9a): only parts whose information the larger part they sit on carries already
 ## (a flange shows the joint, a motor body the motor). Handwheels and bonnets show a valve's type and state and are
 ## never cut; they get simpler with distance through LOD only. Value = the part's smallest feature in metres.
@@ -95,6 +98,9 @@ func _ready() -> void:
 	seconds = float(settings.get("seconds", "600"))
 	start_delay = float(settings.get("start_delay", "0"))
 	wait_battery = settings.get("wait_battery", "0") == "1"
+	# vsync=1: frames wait for the display, as a shipped app's would (the bench's default is off: the render rate)
+	if settings.get("vsync", "0") == "1": DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+	_say("vsync mode %d" % DisplayServer.window_get_vsync_mode())
 	if OS.get_name() == "Android": _say("battery status at start: %d (2 charging, 3 discharging, 4 not charging, 5 full)" % _battery_status())
 	variant = settings.get("variant", "cells")
 	preset = settings.get("preset", "full")
@@ -235,6 +241,7 @@ func _environment() -> void:
 ## The levers that work on the built plant: materials by index, visibility ranges, LOD bias. The same for a plant
 ## built now and one loaded from built/plant.scn (which carries no materials, only each instance's part and material).
 func _dress() -> void:
+	px_per_rad = maxf(get_viewport().get_visible_rect().size.y, 1080.0) / 2.0 / tan(deg_to_rad(35.0))
 	for n in root.get_children():
 		var gi := n as GeometryInstance3D
 		if gi == null: continue
@@ -249,12 +256,13 @@ func _dress() -> void:
 		if "vis" in levers and FEATURE.has(part):
 			_range(gi, FEATURE[part])
 
-## Not drawn beyond the distance where the part's smallest feature is under 1 px on the Note 9's screen. Godot
+## Not drawn beyond the distance where the part's smallest feature is under 1 px on the screen (at least the Note 9's
+## 1080 px: a smaller window never shortens the range). Godot
 ## measures the range to the centre of the instance's box (here a whole cell of instances: servers/rendering/
 ## renderer_scene_cull.cpp, _visibility_range_check), so the box's half diagonal is added: no instance in it is
 ## faded before its own distance. The fade (SELF) runs from end - margin to end + margin.
 func _range(gi: GeometryInstance3D, feature: float) -> void:
-	var d := feature * PX_PER_RAD   # 1 px
+	var d := feature * px_per_rad   # 1 px
 	var box: AABB = gi.get_meta("box", gi.get_aabb())   # a plant saved before boxes were kept: the renderer's box
 	var half_diag := box.size.length() / 2.0
 	var margin := d * 0.2
@@ -452,9 +460,9 @@ func _look() -> void:
 # ------------------------------------------------------------------ the walk and the log
 
 func _process(delta: float) -> void:
-	if first_frame_ms < 0:
-		first_frame_ms = Time.get_ticks_msec()
-		_say("first frame %d ms after the engine started (%d ms after the scene was ready)" % [first_frame_ms, first_frame_ms - ready_ms])
+	if first_frame_ms == -1:
+		first_frame_ms = -2
+		_first_frame_drawn()
 	if wait_battery and battery_seen < 0.0:
 		waited += delta
 		battery_poll += delta
@@ -494,6 +502,12 @@ func _process(delta: float) -> void:
 		cpu.append(RenderingServer.viewport_get_measured_render_time_cpu(vp))
 		calls.append(int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
 	if t_run > seconds + 5.0: _finish()
+
+## The load time ends when the first frame has been drawn (with its pipeline compiles), not when it is processed.
+func _first_frame_drawn() -> void:
+	await RenderingServer.frame_post_draw
+	first_frame_ms = Time.get_ticks_msec()
+	_say("first frame %d ms after the engine started (%d ms after the scene was ready)" % [first_frame_ms, first_frame_ms - ready_ms])
 
 ## Peak and current resident memory of this process (kB), from /proc (Linux and Android): VmHWM is the peak RSS, an
 ## upper bound of the PSS the rule names.

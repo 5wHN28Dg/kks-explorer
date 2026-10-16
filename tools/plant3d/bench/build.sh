@@ -57,9 +57,15 @@ else
   exit 2
 fi
 # the pre-built plant (instanced cells), as the shipped app would carry it
+rm -f "$HERE/built/plant.scn"   # a scene from an earlier build must not pass for this one
 # shellcheck disable=SC2086
-"$GODOT" $GPU --path "$HERE" -- --variant=cells --save=res://built/plant.scn | grep '^bench:'
-[ -s "$HERE/built/plant.scn" ]
+"$GODOT" $GPU --path "$HERE" -- --variant=cells --save=res://built/plant.scn > "$HERE/save.log" 2>&1 || true
+grep '^bench:' "$HERE/save.log"
+if ! grep -q '^bench: saved res://built/plant.scn: error 0$' "$HERE/save.log" ||
+   ! grep -q '^bench: saved 40 materials to res://built/mats: errors 0$' "$HERE/save.log"; then
+  echo "saving the plant failed (save.log)" >&2
+  exit 1
+fi
 # Godot imports nothing more for it, but it must be known before the export packs it
 "$GODOT" --headless --path "$HERE" --import >>"$HERE/import.log" 2>&1
 

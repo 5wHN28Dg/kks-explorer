@@ -1,9 +1,8 @@
-# 0041 The 3D plant: which engine (investigation)
+# 0041 The 3D plant: which engine
 
 Date 2026-10-03 · Scope: https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant (R8 devices, R9 photo-realistic and scaling) · Status:
-**investigating**: desk research done; the laptop meets its rule (round 2 below); the Note 9 runs with the remaining
-levers are prepared but not yet measured. The user decided on 2026-10-15: Godot 4 if the Note 9 meets the frame rule,
-else the question goes back to the user.
+**decided: Godot 4** (2026-10-16). The user decided on 2026-10-15: Godot 4 if the Note 9 meets the frame rule.
+It does, with the highest preset (Conclusion below).
 
 **Question:** which engine (or none) renders a generic, photo-realistic, walkable combined-cycle plant on laptops
 (Windows, Linux) and phones, with the Samsung Galaxy Note 9 (Exynos 9810, Mali-G72 MP18, Android 10, Vulkan 1.1) as
@@ -145,27 +144,32 @@ and export templates by SHA-512 (from the release's SHA512-SUMS.txt).
 The 10-minute laptop run held steady (mean frame time per minute 8.9–9.1 ms).
 
 **Note 9** (SM-N960F, Android 10, Mali-G72, 2220×1080, Mobile renderer, release build, pre-built plant, 50 %
-brightness, room temperature; 2026-10-16). Peak memory is the app's PSS sampled every 20 s with `dumpsys meminfo`
-(the app's own reading of /proc is refused on Android).
+brightness (backlight setting 128 of 255, auto-brightness off), room temperature; 2026-10-16). The bench draws with
+vsync off, as on the laptop; one 10-minute run with vsync on (as a shipped app draws) gave the same numbers. Peak memory is the app's PSS from `dumpsys meminfo`, sampled every 20 s (the app's own reading of /proc is
+refused on Android), so a short peak between samples can be missed; the start's peak is measured separately below.
 
 | Preset | Run | Median | p95 (fps) | > 33 ms | > 100 ms | Max | GPU median / p95 | CPU median | Draw calls p95 | Peak PSS | Battery temp |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | lean | 3 min | 21.2 ms | 28.3 ms (35.4) | 0.2 % | 0 | 57 ms | 14.0 / 18.4 ms | 1.8 ms | 526 | 502 MB | 31.9 → 32.8 °C |
-| lean+texraw (the round-1 import) | 3 min | 22.9 ms | 34.7 ms (28.8) | 8.2 % | 1 | 103 ms | 18.9 / 33.7 ms | 1.6 ms | 515 | 768 MB | 31.9 → 32.8 °C |
+| lean+texraw (the round-1 import; bolts and fins now in 6 m cells) | 3 min | 22.9 ms | 34.7 ms (28.8) | 8.2 % | 1 | 103 ms | 18.9 / 33.7 ms | 1.6 ms | 515 | 768 MB | 31.9 → 32.8 °C |
 | lean+vis | 3 min | 19.7 ms | 26.9 ms (37.2) | 0.2 % | 0 | 48 ms | 13.4 / 18.1 ms | 1.7 ms | 462 | 500 MB | 33.0 → 33.4 °C |
 | lean+tex1k | 3 min | 21.4 ms | 27.9 ms (35.9) | 0.2 % | 0 | 50 ms | 13.8 / 18.2 ms | 1.7 ms | 527 | 373 MB | 33.8 → 34.2 °C |
 | lean+lod | 3 min | 21.2 ms | 28.1 ms (35.6) | 0.1 % | 0 | 49 ms | 13.7 / 18.4 ms | 1.7 ms | 526 | 502 MB | 34.3 → 34.7 °C |
 | **full** (first rung of the ladder) | 3 min | 22.2 ms | 28.3 ms (35.3) | 0.2 % | 0 | 61 ms | 17.6 / 21.9 ms | 1.9 ms | 606 | 499 MB | 34.7 → 35.5 °C |
 | **full**, plugged in | **10 min** | 22.2 ms | **27.7 ms (36.1)** | 0.2 % | **0** | 51 ms | 17.7 / 22.2 ms | 1.9 ms | 606 | 498 MB | 35.2 → 38.2 °C, thermal status 0 → 1 |
-| **full**, on battery | **10 min** | RUN3 |
-| full, on battery except the first ~3 s of the walk (supporting) | 10 min | 22.2 ms | 28.4 ms (35.2) | 0.3 % | 0 | 80 ms | 17.8 / 22.2 ms | 1.9 ms | 606 | — | 33.0 °C at start |
+| **full**, on battery (the app started the walk 30 s after Android reported discharging; on battery throughout, checked every 5 s) | **10 min** | 22.2 ms | **28.4 ms (35.2)** | 0.3 % | **0** | 67 ms | 17.8 / 22.2 ms | 1.9 ms | 603 | not sampled (no adb on battery) | 31.3 °C at start; battery 95 → 88 % |
+| **full**, plugged in, **vsync on** (as a shipped app) | **10 min** | 22.2 ms | **28.3 ms (35.3)** | 0.4 % | **0** | 84 ms | 17.7 / 22.2 ms | 1.9 ms | 606 | 503 MB | 28.8 → 32.6 °C, thermal status 0 |
+| full, on battery except the first ~3 s of the walk (supporting only) | 10 min | 22.2 ms | 28.4 ms (35.2) | 0.3 % | 0 | 80 ms | 17.8 / 22.2 ms | 1.9 ms | 606 | — | 33.0 °C at start |
 
 Mean frame time per minute over the 10-minute plugged run: 21.9, 21.8, 21.7, 21.7, 22.1, 21.6, 21.9, 22.1, 22.0,
-21.9 ms (no drop). **Load time** (`full`, pre-built plant, baked shaders), from the launch to the first walkable
-frame in the phone's log: first start after clearing the app's data 3.3 s (peak PSS 574 MB), second start 1.3 s, the
-plant built by script instead 1.3 s. Rule ≤ 15 s: met. **APK** of the bench: 182 MB, of which the engine is 71 MB
+21.9 ms; on battery 21.9, 22.0, 22.0, 22.0, 21.9, 21.9, 21.7, 21.9, 21.8, 22.1 ms (no thermal drop in either). A first
+battery run that started the walk before the cable was out was discarded. **Load time** (`full`, pre-built plant, baked shaders), from the launch in the phone's log until the first frame
+has been drawn: first start after clearing the app's data 5.8 s (2.1 s of it the first frame's pipeline compiles;
+peak PSS 597 MB, sampled every second), second start 1.35 s (500 MB), the plant built by script instead 1.4 s.
+Rule ≤ 15 s: met. (A first measurement stopped the clock when the first frame was processed rather than drawn: 3.3 s
+and 1.3 s.) **APK** of the bench: 182 MB, of which the engine is 71 MB
 and the three texture tiers 69 MB (2048 px ETC2), 17 MB (1024 px) and 55 MB (the lossless comparison set); a
-shipped app carries one or two tiers.
+shipped app carries one or two tiers (sizes uncompressed; the APK compresses the engine).
 
 **Look on the Note 9:** the 10 viewpoints captured on the phone (`full`, Mobile renderer, 2220×1080) and looked at
 side by side with the laptop tier (Forward+, `full`). Everything a trainee needs is the same on both: the valves with
@@ -174,9 +178,10 @@ the pipes on the rack by colour, the rack's structure, the platforms, the whole 
 laptop's ambient occlusion (the Mobile renderer has none) and its shadow edges are blockier; neither hides a part,
 a label or a state.
 
-**Load time (laptop, exported release build, pre-built plant, baked shaders):** first start with no shader cache
-1.26 s from engine start to the first walkable frame (the plant loads in 9 ms; peak RSS 657 MB during the first
-pipeline compiles), second start 0.72 s (236 MB). Rule ≤ 5 s: met.
+**Load time (laptop, exported release build, pre-built plant, baked shaders):** from engine start until the first
+frame has been drawn: first start with no shader cache 2.66 s (the plant loads in 9 ms; the first frame's pipeline
+compiles take 1.26 s; peak RSS 642 MB), second start 0.77 s (236 MB). Rule ≤ 5 s: met. (A first measurement stopped
+the clock when the first frame was processed rather than drawn: 1.26 and 0.72 s.)
 
 **Look of the lower presets (drawn on the laptop):** the 10 viewpoints compared side by side between the laptop
 tier (Forward+, full, 1600×900) and the phone presets drawn with the Mobile renderer at the Note 9's 2220×1080 on
@@ -194,10 +199,11 @@ Findings:
   a third less memory on the phone (768 → 502 MB) and no 100 ms frame.
 - **With that fixed, the Note 9 runs the `full` preset** (native 2220×1080, 4 shadow cascades to 80 m, 2048 px
   textures, every part at every distance) above the rule: 36.1 fps for 95 % of frames over 10 minutes plugged in,
-  no frame over 51 ms, no thermal drop, ≤ 0.6 GB. The levers (vis, tex1k, lod, resolution scaling) are not needed for
-  this scene and stay available for a heavier plant: on the phone each moved p95 by under 1.5 ms, because the frame is
-  no longer GPU-bound (GPU 14–18 ms of a 22 ms frame, CPU 2 ms).
-- **Load time is no longer an issue**: 3.3 s on the Note 9 on a first start, 1.3 s after, with the pre-built plant
+  no frame over 51 ms, no thermal drop, about 0.5 GB sampled. The levers (vis, tex1k, lod, resolution scaling) are
+  not needed for this scene and stay available for a heavier plant: on the phone each moved p95 by under 1.5 ms.
+  The GPU's own time is 14–18 ms of a 22 ms frame and the render thread's CPU time 2 ms; where the other 4–8 ms go
+  (presenting, the main thread) the bench does not measure.
+- **Load time is no longer an issue**: 5.8 s on the Note 9 on a first start, 1.35 s after, with the pre-built plant
   and baked shaders (the round-1 20–28 s were mostly the bench reading every mesh back from the GPU).
 - **The laptop tier meets its rule at 1600×900** (82 fps for 95 % of frames over 10 minutes). At this laptop's native
   2880×1800 the full preset is 29 fps (GPU-bound); drawing at the panel's logical 1440×900 gives 51 fps on the private
@@ -206,7 +212,33 @@ Findings:
 
 ## Conclusion
 
-CONCLUSION
+**Godot 4 meets the frame rule on the Note 9**, with the `full` preset: the highest one, with nothing cut.
+
+- **Frame rate:** 35.2 fps for 95 % of frames over 10 minutes on battery, and 36.1 fps plugged in (35.3 fps with
+  vsync on).
+- **Spikes:** no frame over 100 ms after the first 5 s; the worst was 84 ms.
+- **Heat:** no thermal drop; the mean per minute stayed at 21.7–22.1 ms throughout.
+- **Memory:** about 0.5 GB while walking, 0.6 GB at the cold start (both sampled), against the 1.5 GB rule.
+- **Load:** 5.8 s to the first drawn frame on a first start, 1.35 s after (rule ≤ 15 s).
+
+The preset gives up nothing R9a asks for. Every part is drawn at every distance, textures stay at 2048 px, and the
+screen is drawn at its native resolution. Looking at the same 10 viewpoints on the Note 9 and on the laptop's tier,
+the phone lacks only the laptop's ambient occlusion (the Mobile renderer has none) and has blockier shadow edges.
+Neither hides a part, a label or a state.
+
+What made the difference since round 1 was importing the textures the way a shipped game does (compressed, with
+mipmaps); the instanced cells and the pre-built plant with baked shaders account for the rest. The levers (`vis`,
+`tex1k`, `lod`, resolution scaling) cost little on the phone and stay ready for a heavier plant. Each was measured on
+its own and none cuts what a trainee needs. What the full plant will cost is not known yet: this bench is
+1.46 M triangles and 40 materials. Measure it again with the first train (R9: measured on the device, not guessed),
+and use the regression rule (1.2× baseline frame time needs a reason).
+
+**Status: decided, Godot 4** (the user's decision of 2026-10-15: Godot 4 if the Note 9 meets the frame rule; it
+does). Still to measure, without bearing on the decision:
+- the Honor 600 (`honor.sh`; the user connects it later);
+- the laptop's preset for a full-screen window at its native 2880×1800, on the real display;
+- a Windows laptop;
+- battery drain over 30 minutes (one 10-minute walk took 7 % of the battery, including the wait before and after).
 
 **When to revisit:** after the measurements; if Godot's security response does not improve and the app starts to
 load content from others.

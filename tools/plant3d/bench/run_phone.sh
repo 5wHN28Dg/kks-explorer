@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Runs the bench on a phone and pulls what it measured (decision 0041). One command per step; every adb call names
 # the phone (-s SERIAL), and nothing but the bench's own package (kks.plant3d.bench) is installed, started, cleared or
-# removed. On the Honor (the user's own phone, serial in HONOR below) no setting is changed and the bench is removed
-# at the end of every command.
+# removed. Only on the Note 9 (NOTE9 below) are settings changed; on any other phone (the Honor is the user's own) no
+# setting is changed and the bench is removed at the end of every command.
 #
 #   run_phone.sh SERIAL ladder           the presets below for 3 minutes each, then the first that keeps 95 % of
 #                                        frames >= 30 fps with 10 % to spare runs the whole 10 minutes (plugged in)
 #   run_phone.sh SERIAL walk PRESET [SECONDS]   one walk (default 600 s) with the pre-built plant
+#   run_phone.sh SERIAL walkvsync PRESET [SECONDS]   the same with vsync on, as a shipped app (frames wait for the display)
 #   run_phone.sh SERIAL load PRESET      load time: the bench's data cleared, then a first start (no shader cache, as
 #                                        after an install) and a second one, both with the pre-built plant
 #   run_phone.sh SERIAL look PRESET      the 10 look viewpoints as PNGs
@@ -20,7 +21,9 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 PKG=kks.plant3d.bench
 FILES=/storage/emulated/0/Android/data/$PKG/files
-HONOR=AFAM026711005741
+NOTE9=285d2a7c153f7ece   # the test phone: the only one whose settings are changed, and the bench may stay on it
+# every other phone (the Honor, AFAM026711005741, is the user's own) is treated as someone's phone: no settings
+# changed, and the bench removed when the command ends (BENCH_KEEP=1 holds that over to the caller, honor.sh)
 BENCH_VERSION=$(sed -n 's/^version\/code=//p' "$HERE/export_presets.cfg")
 APK="${APK:-$HERE/export/bench.apk}"
 SERIAL="${1:?serial}"; CMD="${2:?command}"; shift 2
@@ -34,7 +37,12 @@ say() { echo "[$(date +%H:%M:%S)] $*"; }
 model=$(sh_ getprop ro.product.model)
 say "phone $SERIAL: $model, Android $(sh_ getprop ro.build.version.release)"
 
-installed() { sh_ pm list packages "$PKG" | grep -qx "package:$PKG"; }
+# 0 installed, 1 not installed; adb failing (the phone gone) stops the script: never mistaken for "not installed"
+installed() {
+  local l
+  l=$(adb -s "$SERIAL" shell pm list packages "$PKG" | tr -d '\r') || { echo "adb cannot reach $SERIAL" >&2; exit 5; }
+  echo "$l" | grep -qx "package:$PKG"
+}
 install() {
   [ -f "$APK" ] || { echo "no $APK: run build.sh" >&2; exit 2; }
   # an older bench may be there already (the first round's, version 1): install unless this exact APK's version is
@@ -48,15 +56,19 @@ install() {
   fi
 }
 remove() {
+  if [ "$(a get-state 2>/dev/null)" != device ]; then
+    echo "!!! CANNOT REACH $SERIAL: the bench ($PKG) may still be installed there; remove it: $0 $SERIAL remove" >&2
+    return 1
+  fi
   if installed; then say "removing $PKG"; a uninstall "$PKG" >/dev/null; fi
-  installed && { echo "could not remove $PKG" >&2; exit 1; } || true
+  if installed; then echo "!!! could not remove $PKG from $SERIAL" >&2; return 1; fi
 }
 
 # 50 % brightness, auto-brightness off, for the measured runs (wiki 3D-plant, measurement rules); put back after.
 # Not on the Honor: the user's phone keeps its settings (its brightness is written down with each run instead).
 bright_mode=""; bright_level=""
 brightness_50() {
-  [ "$SERIAL" = "$HONOR" ] && return 0
+  [ "$SERIAL" = "$NOTE9" ] || return 0
   bright_mode=$(sh_ settings get system screen_brightness_mode)
   bright_level=$(sh_ settings get system screen_brightness)
   sh_ settings put system screen_brightness_mode 0
@@ -83,7 +95,7 @@ state() {  # battery level, temperature, plugged, thermal status, brightness
 
 cleanup() {
   brightness_back || true
-  if [ "$SERIAL" = "$HONOR" ]; then remove; fi
+  if [ "$SERIAL" != "$NOTE9" ] && [ "${BENCH_KEEP:-0}" != 1 ]; then remove || true; fi
 }
 trap cleanup EXIT
 
@@ -98,7 +110,7 @@ run() {
   sh_ mkdir -p "$FILES"
   sh_ rm -rf "$FILES/result.txt" "$FILES/look"
   # on battery: the app itself waits (unmeasured) until Android says it is discharging, then 30 s more
-  printf 'preset=%s\nseconds=%s\nvariant=cells\nprebuilt=%s\nlook=%s\nwait_battery=%s\n' "$preset" "$seconds" "$prebuilt" "$look" "$unplug" > "$dir/preset.txt"
+  printf 'preset=%s\nseconds=%s\nvariant=cells\nprebuilt=%s\nlook=%s\nwait_battery=%s\nvsync=%s\n' "$preset" "$seconds" "$prebuilt" "$look" "$unplug" "${VSYNC:-0}" > "$dir/preset.txt"
   a push "$dir/preset.txt" "$FILES/preset.txt" >/dev/null
   echo "before: $(state)" > "$dir/state.txt"
   local t0; t0=$(sh_ date +%s)
@@ -113,17 +125,23 @@ run() {
     say "plugged in again"
     deadline=$(( $(date +%s) + 240 ))
   fi
-  sleep 10
+  # memory: every second for the first 15 s (the start's pipeline compiles are the peak), then every 20 s
+  local i=0 pss
+  while [ $i -lt 15 ] && [ "$unplug" != 1 ]; do
+    pss=$(sh_ dumpsys meminfo "$PKG" 2>/dev/null | sed -n 's/^ *TOTAL PSS: *\([0-9]*\).*/\1/p; s/^ *TOTAL *\([0-9][0-9]*\) .*/\1/p' | head -1)
+    [ -n "$pss" ] && [ "$pss" -gt "$peak" ] && peak=$pss
+    sleep 1; i=$((i + 1))
+  done
   while ! sh_ ls "$FILES/result.txt" >/dev/null 2>&1; do
     [ "$(date +%s)" -lt "$deadline" ] || { say "$name: no result in time"; break; }
     sh_ pidof "$PKG" >/dev/null 2>&1 || { say "$name: the bench has ended"; break; }
-    local pss
     pss=$(sh_ dumpsys meminfo "$PKG" 2>/dev/null | sed -n 's/^ *TOTAL PSS: *\([0-9]*\).*/\1/p; s/^ *TOTAL *\([0-9][0-9]*\) .*/\1/p' | head -1)
     [ -n "$pss" ] && [ "$pss" -gt "$peak" ] && peak=$pss
     sleep 20
   done
   echo "after: $(state)" >> "$dir/state.txt"
-  echo "peak_pss_sampled=$((peak / 1024))MB" >> "$dir/state.txt"
+  [ "$unplug" = 1 ] && echo "memory: not sampled (adb is off while on battery)" >> "$dir/state.txt" ||
+    echo "peak_pss_sampled=$((peak / 1024))MB" >> "$dir/state.txt"
   a pull "$FILES/result.txt" "$dir/" >/dev/null 2>&1 || true
   [ "$look" = 1 ] && a pull "$FILES/look" "$dir/" >/dev/null 2>&1 || true
   # the start and the first frame, both from the phone's log: time to the first walkable frame
@@ -141,6 +159,7 @@ run() {
   local r; r=$(grep RESULT "$dir/result.txt" 2>/dev/null || true)
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F_%T)" "$model" "$name" "$(tr '\n' ' ' < "$dir/state.txt")" "$r" "$dir" >> "$OUT/summary.tsv"
   LAST_P95=$(echo "$r" | sed -n 's/.* p95=\([0-9.]*\)ms.*/\1/p')
+  LAST_OVER100=$(echo "$r" | sed -n 's/.* over100=\([0-9]*\) .*/\1/p')
 }
 
 case "$CMD" in
@@ -152,7 +171,7 @@ case "$CMD" in
     chosen=""
     for p in full full+vis scaled+vis lean+vis lean+vis+tex1k lean+vis+tex1k+lod lean2+vis+tex1k+lod; do
       run "ladder_$p" "$p" 180 1 0
-      if [ -n "$LAST_P95" ] && [ "$(echo "$LAST_P95 <= 30.0" | bc)" = 1 ]; then chosen=$p; break; fi
+      if [ -n "$LAST_P95" ] && [ "$(echo "$LAST_P95 <= 30.0" | bc)" = 1 ] && [ "$LAST_OVER100" = 0 ]; then chosen=$p; break; fi
       sleep 60
     done
     [ -n "$chosen" ] || { say "no preset kept p95 <= 30 ms for 3 minutes"; exit 4; }
@@ -162,6 +181,7 @@ case "$CMD" in
     echo "$chosen" > "$OUT/chosen.txt"
     ;;
   walk) install; brightness_50; run "walk${2:-600}_$1" "$1" "${2:-600}" 1 0 ;;
+  walkvsync) install; brightness_50; VSYNC=1 run "walkvsync${2:-600}_$1" "$1" "${2:-600}" 1 0 ;;
   load)
     install; brightness_50
     sh_ pm clear "$PKG" >/dev/null
