@@ -672,6 +672,28 @@ proc onUsr2(sig: cint) {.noconv.} = figRequested = true
 
 proc main() =
   if getEnv("KKS_TIMING").len > 0: viewer.startedAt = epochTime()
+  # one instance per user; a separate data folder (tests, a second profile) is its own application, with its own ID
+  # (two processes sharing an ID confuse the accessibility registry)
+  let custom = getEnv("KKS_DATA_DIR")
+  var id = AppId
+  if custom.len > 0:
+    var h = 0'u32
+    for c in custom: h = h * 31 + uint32(c)
+    id.add ".p" & toHex(h, 8)
+  # 4 = G_APPLICATION_HANDLES_OPEN: walkdown:// links (decision 0057) come to "open", in the running instance
+  # (KKS_TEST_UNIQUE: a test's app on its own data folder stays unique, so that a second start hands its links over)
+  let nonUnique = custom.len > 0 and getEnv("KKS_TEST_UNIQUE").len == 0
+  let app = adw_application_new(id.cstring, cint(4 or (if nonUnique: 32 else: 0)))   # 32 = G_APPLICATION_NON_UNIQUE
+  # GApplication sees only the program and the links: any other argument stays unread (it would take an unknown
+  # option for an error, and a file for something to open)
+  var args = @[getAppFilename()]
+  for p in commandLineParams():
+    if p.len <= MaxLinkLen and p.toLowerAscii.startsWith(LinkScheme & ":"): args.add p
+  let argv = allocCStringArray(args)
+  # Walkdown already runs (a second start, a link from another app): GApplication hands the links (or "activate") to
+  # it, and this start ends without opening the store or the sync port the running one holds
+  if g_application_register(app, nil, nil) != 0 and g_application_get_is_remote(app) != 0:
+    quit int(g_application_run(app, cint(args.len), argv))
   let w = Win(a: openApp())
   errorHook = proc (text: string) = w.a.diag("error", text)
   w.a.startSync(port = parseInt(getEnv("KKS_SYNC_PORT", "8421")), discovery = getEnv("KKS_NO_MDNS").len == 0)
@@ -682,16 +704,6 @@ proc main() =
   timeout(100, proc (): bool =
     pumpAsync()
     true)
-  # one instance per user; a separate data folder (tests, a second profile) is its own application, with its own ID
-  # (two processes sharing an ID confuse the accessibility registry)
-  let custom = getEnv("KKS_DATA_DIR")
-  var id = AppId
-  if custom.len > 0:
-    var h = 0'u32
-    for c in custom: h = h * 31 + uint32(c)
-    id.add ".p" & toHex(h, 8)
-  # 4 = G_APPLICATION_HANDLES_OPEN: walkdown:// links (decision 0057) come to "open", in the running instance
-  let app = adw_application_new(id.cstring, cint(4 or (if custom.len > 0: 32 else: 0)))   # 32 = G_APPLICATION_NON_UNIQUE
   app.on("activate", proc () = w.activate(app))
   app.onOpen(proc (uris: seq[string]) =
     w.activate(app)
@@ -720,12 +732,6 @@ proc main() =
           let pth = shotPath.changeFileExt("") & "-" & id & ".png"
           stderr.writeLine "screenshot " & pth & ": " & (if saveScreenshot(cwin, pth): "saved" else: "FAILED")
       true)
-  # GApplication sees only the program and the links: any other argument stays unread (it would take an unknown
-  # option for an error, and a file for something to open)
-  var args = @[getAppFilename()]
-  for p in commandLineParams():
-    if p.len <= MaxLinkLen and p.toLowerAscii.startsWith(LinkScheme & ":"): args.add p
-  let argv = allocCStringArray(args)
   let code = g_application_run(app, cint(args.len), argv)
   quit int(code)
 

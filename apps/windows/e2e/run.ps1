@@ -1,11 +1,11 @@
 # Run one UI script against a fresh Walkdown in this desktop session (started by a scheduled task, see e2e/README).
 param([string]$Script, [switch]$Keep, [switch]$Msix, [int]$SyncEvery = 0, [switch]$Restart, [string]$AppEnv = "",
-      [string]$AppArgs = "", [string]$Link = "")
+      [string]$AppArgs = "", [string]$Link = "", [switch]$Burst)
 # -Msix: the installed MSIX (decision 0043), started through its alias; its LOCALAPPDATA lives in the package folder
 # -Restart: a new process on the same data (what survives a restart); -AppEnv "K=V;K2=V2": extra environment for the app
 # -AppArgs: the fresh app's command line (a walkdown:// link, decision 0057); -Link: a walkdown:// link opened before
 # the script runs, as a second start of the exe (which hands it to the running app and ends), or with -Msix through
-# the shell (the package's protocol activation)
+# the shell (the package's protocol activation); -Burst: the link opened twice at once (two starts racing)
 $log = "C:\kks\uia.log"
 Set-Content $log ""
 if (-not $Keep) {
@@ -28,7 +28,11 @@ if (-not $Keep) {
   if ($Msix) { Start-Process "$env:LOCALAPPDATA\Microsoft\WindowsApps\walkdown.exe" -RedirectStandardError $err @extra }
   else { Start-Process C:\kks\Walkdown.exe -RedirectStandardError $err @extra }
 }
-if ($Link) {
+if ($Link -and $Burst) {
+  if ($Msix) { Start-Process $Link; Start-Process $Link }
+  else { Start-Process C:\kks\Walkdown.exe -ArgumentList $Link; Start-Process C:\kks\Walkdown.exe -ArgumentList $Link }
+  Start-Sleep -Seconds 5
+} elseif ($Link) {
   if ($Msix) { Start-Process $Link }
   else {
     $second = Start-Process C:\kks\Walkdown.exe -ArgumentList $Link -PassThru

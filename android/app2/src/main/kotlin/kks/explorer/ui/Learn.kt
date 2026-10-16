@@ -208,7 +208,7 @@ fun Learning(ui: Ui, snack: SnackbarHostState) {
         ui.courseLink = null
         open = link.first
         openPage = link.second
-        linkSeq = ui.courseSeq
+        linkSeq++                       // (a new key every time, also after the process was restored)
     }
     if (open.isNotEmpty()) {
         BackHandler { open = "" }

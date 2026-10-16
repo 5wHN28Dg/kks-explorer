@@ -34,7 +34,7 @@ def put(*files):
 MSIX, MSIX_CER = os.environ.get('KKS_WIN_MSIX'), os.environ.get('KKS_WIN_MSIX_CER')
 
 
-def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=(), app_args='', link=''):
+def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=(), app_args='', link='', burst=False):
     """run uiadrive with these script lines in the desktop session; -> (passed, log). sync_every (ms): a fresh app's
     automatic sync rounds (KKS_SYNC_EVERY); restart: a new app process on the same data (not wiped); env: more
     environment for a fresh app. during: (line, action) pairs: when the script reaches that line (a sleep with a
@@ -49,7 +49,7 @@ def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=(),
     args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\run.ps1 -Script %s%s%s%s%s%s' % (
         name, ' -Keep' if keep and not restart else '', ' -Msix' if MSIX else '', ' -SyncEvery %d' % sync_every if sync_every else '',
         ' -Restart' if restart else '', ' -AppEnv "%s"' % ';'.join('%s=%s' % kv for kv in env.items()) if env else '')
-    args += (' -AppArgs "%s"' % app_args if app_args else '') + (' -Link "%s"' % link if link else '')
+    args += (' -AppArgs "%s"' % app_args if app_args else '') + (' -Link "%s"' % link if link else '') + (' -Burst' if burst else '')
     b64 = base64.b64encode(args.encode()).decode()
     vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kksuia' % b64)
     end = time.time() + 400
@@ -147,8 +147,8 @@ class Windows(unittest.TestCase):
             time.sleep(0.5)
         self.fail(what)
 
-    def check(self, name, lines, keep=True, sync_every=0, restart=False, env=None, during=(), app_args='', link=''):
-        ok, log = ui(name, lines, keep, sync_every, restart, env, during, app_args, link)
+    def check(self, name, lines, keep=True, sync_every=0, restart=False, env=None, during=(), app_args='', link='', burst=False):
+        ok, log = ui(name, lines, keep, sync_every, restart, env, during, app_args, link, burst)
         self.assertTrue(ok, log)
         return log
 
@@ -863,6 +863,13 @@ class Windows(unittest.TestCase):
         self.check('applink7.uia', ['sleep\t2000', 'gone\t~11LAB70AA598'], link='walkdown://kks/11LAB70AA598/')
         self.check('applink8.uia', ['sleep\t2000', 'gone\t~11LAB70AA597'], link='WALKDOWN://kks/11LAB70AA597%00')
         # one Walkdown: every second start ended after handing its link over
+        self.assertEqual(vm('(Get-Process Walkdown -ErrorAction SilentlyContinue | Measure-Object).Count').strip(), '1')
+        # two starts with a link at once, Walkdown not running: one opens the store, the other waits for its window
+        # and hands the link over (never two on one store and one sync port)
+        vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Stop-Process -Force')
+        time.sleep(1)
+        self.check('applink9.uia', ['wait\tSample sheet — Walkdown\t30', 'value\tSystem\tFeed water piping system', 'sleep\t3000'],
+                   link=code, burst=True)
         self.assertEqual(vm('(Get-Process Walkdown -ErrorAction SilentlyContinue | Measure-Object).Count').strip(), '1')
         self.leave()
 

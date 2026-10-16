@@ -276,6 +276,8 @@ class Gnome(Plant):
         a = self.start_app('linked', args=['walkdown://kks/../../etc', 'walkdown://join/x'])
         atspi.find(a, 'button', name='Join through a server', timeout=15)      # not joined: the setup screen, nothing else
         self.join(a)
+        time.sleep(3)
+        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA501'), [], 'a link from before joining opened its tag')
         self.apps[-1].terminate()
         self.apps[-1].wait(10)
         # hostile and malformed links: the app starts as it always does, and nothing is selected
@@ -298,6 +300,19 @@ class Gnome(Plant):
         atspi.find(a, 'label', contains='11LAB70AA599 is not on any sheet', timeout=20)
         atspi.find(a, 'image', name='A control loop: drum level', timeout=20)
         self.assertEqual(self.criticals('linked'), [])
+        self.apps[-1].terminate()
+        self.apps[-1].wait(10)
+        # Walkdown running (one instance, as without a test's data folder): a second start hands its link over through
+        # GApplication (D-Bus) and ends; the running window opens the tag
+        a = self.start_app('linked', KKS_TEST_UNIQUE='1')
+        atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
+        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA501'), [])
+        d = os.path.join(self.dir, 'linked')
+        second = subprocess.run([APP, 'walkdown://kks/11LAB70AA501'], timeout=30, capture_output=True,
+                                env=dict(os.environ, KKS_DATA_DIR=d, KKS_STORAGE_KEY_FILE=os.path.join(d, 'key'),
+                                         KKS_NO_MDNS='1', KKS_SYNC_PORT=str(free_port()), KKS_TEST_UNIQUE='1'))
+        self.assertEqual(second.returncode, 0, second.stderr)
+        atspi.find(a, 'label', name='11LAB70AA501', timeout=20)
         self.apps[-1].terminate()
         self.apps[-1].wait(10)
 

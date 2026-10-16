@@ -190,6 +190,9 @@ proc PostQuitMessage*(code: int32) {.importc, stdcall, header: H.}
 proc PostMessageW*(h: HWND, m: UINT, w: WPARAM, l: LPARAM): BOOL {.importc, stdcall, header: H, discardable.}
 proc SendMessageW*(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.importc, stdcall, header: H, discardable.}
 proc IsIconic*(h: HWND): BOOL {.importc, stdcall, header: H.}
+proc CreateMutexW*(attrs: pointer, initialOwner: BOOL, name: WideCString): pointer {.importc, stdcall, header: H.}
+proc GetLastError*(): DWORD {.importc, stdcall, header: H.}
+const ErrorAlreadyExists* = 183'u32
 proc FindWindowW*(cls, title: WideCString): HWND {.importc, stdcall, header: H.}
 proc GetWindowThreadProcessId*(h: HWND, pid: ptr DWORD): DWORD {.importc, stdcall, header: H, discardable.}
 proc AllowSetForegroundWindow*(pid: DWORD): BOOL {.importc, stdcall, header: H, discardable.}

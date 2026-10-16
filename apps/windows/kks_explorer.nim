@@ -189,19 +189,25 @@ const LinkMagic = 0x4B4B534C'u       ## WM_COPYDATA's dwData for a link ("KKSL")
 
 proc isLinkArg(a: string): bool = a.len <= MaxLinkLen and a.toLowerAscii.startsWith(LinkScheme & ":")
 
-proc handOver(link: string): bool =
-  ## Walkdown already runs (its main window is there): the link goes to it, and this start ends (true). MSIX starts
-  ## a new process for every link; two of them on one store and one sync port would not work.
-  let hw = FindWindowW(newWideCString("KKSMain"), nil)
-  if hw == nil: return false
-  var pid: DWORD
-  GetWindowThreadProcessId(hw, addr pid)
-  AllowSetForegroundWindow(pid)       # (this process was started by the person's click: the window may come forward)
-  var data = link
-  var cd = COPYDATASTRUCT(dwData: LinkMagic, cbData: DWORD(data.len), lpData: addr data[0])
-  var res: uint
-  SendMessageTimeoutW(hw, WM_COPYDATA, 0, cast[LPARAM](addr cd), SMTO_ABORTIFHUNG, 5000, addr res)
-  true
+proc handOver(link: string, running: bool): bool =
+  ## Walkdown already runs (`running`: its named mutex was there): the link goes to its main window, and this start
+  ## ends (true). MSIX starts a new process for every link; two of them on one store and one sync port would not
+  ## work. The window comes a moment after the store and sync have opened (and answers once it is set up), so a
+  ## start right after another waits for it, up to 15 s. Not running: false, and this start goes on with the link.
+  if not running: return false
+  for _ in 0 ..< 60:
+    let hw = FindWindowW(newWideCString("KKSMain"), nil)
+    if hw != nil:
+      var pid: DWORD
+      GetWindowThreadProcessId(hw, addr pid)
+      AllowSetForegroundWindow(pid)   # (this process was started by the person's click: the window may come forward)
+      var data = link
+      var cd = COPYDATASTRUCT(dwData: LinkMagic, cbData: DWORD(data.len), lpData: addr data[0])
+      var res: uint
+      if SendMessageTimeoutW(hw, WM_COPYDATA, 0, cast[LPARAM](addr cd), SMTO_ABORTIFHUNG, 5000, addr res) != 0 and res == 1:
+        return true
+    sleep(250)
+  true        # a Walkdown runs but never took the link: this start ends all the same (not a second one on its store)
 
 proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
   case m
@@ -336,7 +342,11 @@ proc main() =
     if isLinkArg(p):
       link = p
       break
-  if link.len > 0 and handOver(link): quit(0)
+  # every start holds the named mutex while it runs: a start with a link finds out from it that Walkdown is starting or
+  # running, also before its window is there (the handle is closed when this process ends)
+  discard CreateMutexW(nil, 0, newWideCString("Local\\Walkdown-running"))
+  let running = GetLastError() == ErrorAlreadyExists
+  if link.len > 0 and handOver(link, running): quit(0)
   SetProcessDpiAwarenessContext(-4)        # per-monitor v2
   var icc = CommonControlsInit(dwSize: DWORD(sizeof(CommonControlsInit)), dwICC: 0xFFFF)
   InitCommonControlsEx(addr icc)

@@ -261,9 +261,12 @@ acts for a signed-in person (`core/src/kks/applink.nim`, its tests in `core/test
 - `walkdown://course/<course>` and `walkdown://course/<course>/<page>`, identifiers `[a-z_][a-z0-9_]{0,31}`
   (COURSES.md §1): that course, at that page, or where the learner left off; a course or page the device doesn't
   have opens as a course link to it does.
-- Anything else is ignored, with nothing done and nothing said: another kind, a query or fragment, an empty or extra
-  path segment, a user or port, a malformed code or identifier. A device that has not joined a plant ignores every
-  link. No link reaches anything else in Walkdown: signing in, joining, sending, deleting, importing or fetching.
+- Anything else opens nothing and says nothing: another kind, a query or fragment, an empty or extra path segment, a
+  user or port, a malformed code or identifier. Walkdown only comes to the front (or starts) as when it is opened
+  from the launcher. A device that has not joined a plant opens no link, now or after joining. No link reaches
+  anything else in Walkdown: signing in, joining, sending, deleting, importing or fetching.
+- A link waits while something unfinished is open over the main screen (the camera or a file picker, a photo being
+  marked up, a form being typed): it opens once that is closed, and never takes it away.
 
 ## 7. The behaviour model
 

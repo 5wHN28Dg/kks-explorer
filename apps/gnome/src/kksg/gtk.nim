@@ -33,6 +33,8 @@ proc g_bytes_new*(data: pointer, size: csize_t): W {.importc, header: HA.}
 proc g_bytes_unref*(b: W) {.importc, header: HA.}
 proc g_application_run*(app: W, argc: cint, argv: cstringArray): cint {.importc, header: HA.}
 proc g_application_quit*(app: W) {.importc, header: HA.}
+proc g_application_register*(app: W, cancellable: pointer, error: pointer): cint {.importc, header: HA.}
+proc g_application_get_is_remote*(app: W): cint {.importc, header: HA.}
 proc g_get_user_data_dir*(): cstring {.importc, header: HA.}
 proc g_main_context_iteration*(ctx: pointer, mayBlock: cint): cint {.importc, header: HA, discardable.}
 var G_IO_IN* {.importc, header: HA, nodecl.}: cint

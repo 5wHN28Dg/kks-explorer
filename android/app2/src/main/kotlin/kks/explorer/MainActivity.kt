@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
         setContent { Root() }
     }
 
-    /** a link while Walkdown runs (LinkActivity brings this activity forward with SINGLE_TOP) */
+    /** a VIEW Intent sent to this activity itself while it is on top (LinkActivity queues links instead) */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -38,6 +38,16 @@ class MainActivity : ComponentActivity() {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         enableEdgeToEdge()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AppLinks.resumed = true
+    }
+
+    override fun onPause() {
+        AppLinks.resumed = false
+        super.onPause()
     }
 
     override fun onStart() {

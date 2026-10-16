@@ -74,7 +74,21 @@ fun tagBoxes(sheet: String, scale: Float): List<SheetView.TagBox> = call("GET", 
 
 /** A walkdown:// link from another app (decision 0057), as MainActivity received it: the main screen asks the core
  *  what it opens (`/native/link`, core/src/kks/applink.nim) and shows that. Nothing else reads it. */
-object AppLinks { var pending by mutableStateOf<String?>(null) }
+object AppLinks {
+    var pending by mutableStateOf<String?>(null)
+    /** MainActivity is in front: a link waits while the camera or a picker is open over it (its result goes to the
+     *  panel that asked for it) */
+    var resumed by mutableStateOf(false)
+    /** screens holding something unfinished (a photo being marked up, a form being typed): a link waits for them */
+    var holds by mutableIntStateOf(0)
+}
+
+/** while this is on screen, a link waits (AppLinks.holds) */
+@Composable
+fun HoldLinks() = DisposableEffect(Unit) {
+    AppLinks.holds++
+    onDispose { AppLinks.holds-- }
+}
 
 /** what the screens share: the open sheet and tag, the active procedure, link mode (R7) */
 class Ui {
@@ -167,7 +181,7 @@ fun MainScreen() {
     }
     // a link from another app: a code opens its tag on its drawing (as a course's code link), a course opens on the
     // Learning tab; anything else does nothing (the core reads the link, strictly)
-    val link = AppLinks.pending
+    val link = if (AppLinks.resumed && AppLinks.holds == 0) AppLinks.pending else null
     LaunchedEffect(link) {
         if (link == null) return@LaunchedEffect
         AppLinks.pending = null       // (taken once: the same link again is a new request)
@@ -524,6 +538,7 @@ fun linkSubmit(proc: String, step: Int, kks: String, on: Boolean) =
 /** R6: propose a tag the reader missed; the code is optional (without one it goes to the review queue) */
 @Composable
 private fun MarkDialog(sheet: SheetInfo, b: List<Float>, view: SheetView?, snack: SnackbarHostState, onDone: (Boolean) -> Unit) {
+    HoldLinks()           // (a link waits: it would close this with what is typed or picked)
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf("") }
     var isa by remember { mutableStateOf("") }

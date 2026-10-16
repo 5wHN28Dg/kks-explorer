@@ -23,23 +23,31 @@ How does each Walkdown app register the scheme and receive the link, and what ma
   opens the tag with that code on its drawing, as a course's code link does; `walkdown://course/<course>[/<page>]`
   (identifiers as in COURSES.md) opens that course, at that page. Nothing else: a link never signs in, joins,
   sends, deletes, imports or fetches anything; anything else (another path, a query, a fragment, percent signs,
-  a malformed code, over 128 characters) is ignored, with nothing done. A device that hasn't joined does nothing.
+  a malformed code, over 128 characters) opens nothing: Walkdown only comes to the front, as when opened from the
+  launcher. A device that hasn't joined opens no link.
 - **One reader, in the core** (`core/src/kks/applink.nim`, unit tests with hostile input): the desktop apps call it
   directly, Android through the existing native call (`/native/link`), which also finds the tag.
-- **Android:** the filter is on `kks.explorer.LinkActivity` (exported, no window), which hands the link to
-  MainActivity with `NEW_TASK | CLEAR_TOP | SINGLE_TOP` and finishes: no second MainActivity, and the launcher keeps
-  its usual behaviour. MainActivity reads the link in `onCreate` (not when recreated, nor reopened from Recents) and
-  in `onNewIntent`.
-- **GNOME:** `HANDLES_OPEN`; the `.desktop` file (repository and Flatpak) registers the scheme.
-- **Windows:** `uap3:Protocol` with `Parameters="&quot;%1&quot;"`; a link on the command line goes to a running
-  Walkdown window through `WM_COPYDATA` (at most 128 bytes, read by the same reader), else the app starts with it.
+- **Android:** the filter is on `kks.explorer.LinkActivity` (exported, no window). With Walkdown's task there, it
+  queues the link and moves the task to the front as it is (`ActivityManager.AppTask.moveToFront`): no second
+  MainActivity, and nothing above MainActivity is finished (`CLEAR_TOP` would finish the camera taking a photo for
+  Walkdown, as `singleTask` would). Without a task it starts MainActivity in a new one with the link as its data;
+  MainActivity reads it in `onCreate` (not when recreated, nor reopened from Recents), and a VIEW Intent sent to it
+  directly in `onNewIntent`. The main screen opens a queued link only while it is in front and nothing unfinished
+  is open (a photo from the camera until its editor closes, a form being typed): it waits for them.
+- **GNOME:** `HANDLES_OPEN`; the Flatpak's `.desktop` file registers the scheme (a build run from the source tree
+  installs no `.desktop` file, so it registers none). The app registers with D-Bus before it opens its store: a
+  second start hands its links over and ends without touching the store or the sync port.
+- **Windows:** `uap3:Protocol` with `Parameters="&quot;%1&quot;"`; every start holds a named mutex while it runs. A
+  start with a link that finds the mutex taken waits (up to 15 s) for the main window and gives it the link through
+  `WM_COPYDATA` (at most 128 bytes, read by the same reader), then ends; two links at once with Walkdown closed
+  start one Walkdown. Without the mutex the app starts with the link.
 - Walkdown Plant's `WALKDOWN_TAKES` lists `kks` and `course`.
 
 **Verified** (2026-10-16): Android on the emulator (a cold start and a running app, one MainActivity, a link before
-joining dropped; `test_app_links` in test_app2.py); GNOME headless (cold starts with good and hostile links;
-test_gnome.py); Windows 11 in the VM, the plain exe and the installed test-signed MSIX through the shell (a cold start,
-second starts handing over and ending, hostile links; test_windows.py). Not tried: a running GNOME app receiving a
-link over D-Bus (the tests run each app with its own non-unique ID), real phones.
+joining dropped, the camera open for a photo left alone and the link opened after its editor closed;
+`test_app_links` in test_app2.py); GNOME headless (cold starts with good and hostile links, a second start handing its
+link to the running app over D-Bus; test_gnome.py); Windows 11 in the VM, the plain exe and the installed test-signed MSIX through the shell (a cold start,
+second starts handing over and ending, two at once, hostile links; test_windows.py). Not tried: real phones.
 
 **When to revisit:** when the web client should take links (an https path on the server instead of a scheme); when
 another kind is needed (a procedure: PLANT3D.md §6 first).

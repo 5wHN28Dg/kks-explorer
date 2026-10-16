@@ -1245,6 +1245,7 @@ class Phone(unittest.TestCase):
 
     # ---------------------------------------------------------------- the user's requests of 2026-10-08
 
+    @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
     def test_app_links(self):
         """walkdown:// links from other apps (decision 0057), sent as Walkdown Plant sends them (a VIEW Intent, no
         NEW_TASK): before joining a link does nothing, now or after; a code opens its tag with the panel, at a cold
@@ -1277,13 +1278,35 @@ class Phone(unittest.TestCase):
         link('walkdown://kks/11LAB70AA501')
         ui.find('Feed water piping system', timeout=20)
         self.assertEqual(main_activities(), 1)
-        # a code on no drawing says so
-        link('walkdown://kks/11LAB70AA599')
-        ui.find('11LAB70AA599 is not on any drawing', timeout=10)
-        # a course, at a page
+        # in the background (Home): the task comes to the front and opens the link: a course, at a page
+        ui.sh('input', 'keyevent', '3')
+        time.sleep(2)
         link('walkdown://course/inc/loop')
         ui.find('Instrumentation and control', exact=True, timeout=15)
         ui.scroll_to('A control loop: drum level', tries=30)
+        self.assertEqual(main_activities(), 1)
+        # with the camera open over Walkdown for a photo: the camera stays, the photo is kept, and the link waits until
+        # the photo's editor is closed; a code on no drawing then says so
+        link('walkdown://kks/11LAB70AA501')
+        ui.find('Feed water piping system', timeout=15)
+        ui.scroll_to('Take a photo', exact=True)
+        ui.tap('Take a photo', exact=True)
+        ui.find('Which floor is it on?', exact=True)
+        ui.tap('Floor 5')
+        ui.tap('Continue', exact=True)
+        self.allow_camera()
+        time.sleep(5)
+        link('walkdown://kks/11LAB70AA599')
+        self.assertFalse(any(n.get('package') == PKG for n in ui.nodes()), 'the link took the camera away')
+        w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))      # the emulator's camera: shutter, then confirm
+        time.sleep(4)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        ui.find('Send', exact=True, timeout=30)                       # the photo came back to its editor
+        time.sleep(2)
+        self.assertFalse(ui.present('is not on any drawing'), 'the link acted while the photo was being marked up')
+        ui.tap('Cancel', exact=True)
+        ui.find('11LAB70AA599 is not on any drawing', timeout=10)
         self.assertEqual(main_activities(), 1)
 
     def test_photo_queue(self):

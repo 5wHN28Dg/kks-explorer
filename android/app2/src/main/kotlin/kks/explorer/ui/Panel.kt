@@ -136,6 +136,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                     if (!editing) TextButton(onClick = { editing = true }) { Text("Edit") }
                 }
                 val eqBy = t.optJSONObject("equipment_by") ?: JSONObject()
+                if (editing) HoldLinks()        // (a link would take the panel, and what was typed, away)
                 if (!editing) {
                     // who set each field (the user, 2026-10-08: "show who … and the tag info they add")
                     Fields(FIELDS.map { (f, title) ->
@@ -245,6 +246,7 @@ private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snac
             if (d.str("basis").isNotEmpty() && (draft || editing)) Dim("Basis: " + d.str("basis"))
             if (!draft && d.optBoolean("draft_differs")) Dim("The plant data's draft says something else.")
             if (editing) {
+                HoldLinks()
                 OutlinedTextField(text, { text = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
