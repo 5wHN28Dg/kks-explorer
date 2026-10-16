@@ -43,5 +43,10 @@ the Note 9's bionic (Android 10, 2026-10-16: every value at every step of every 
 digests). Windows (its CRT's `exp`) is not run yet; if it ever differs, the build (0054) can store the factors
 computed on Linux in the compiled model.
 
+**Where there is no reference result.** The claim covers what the reference can run: content whose values stay finite
+(the validator bounds each number below 10⁹, but a product of many can overflow, and the reference then raises in a
+`select` or `wrap`), and inputs whose names are text or null and whose values are numbers, booleans or null (the
+reference raises on, for example, a list as an alarm name). There the GDScript keeps going without a defined result.
+
 **Step time** (`bench_step.gd`, the whole first train): about 0.28 ms a step on the laptop, 0.46 ms on CI's runner,
 1.4 ms on the Note 9 (fast-forward at 60× needs 600 steps a second: 0.85 of one of its cores).

@@ -77,8 +77,18 @@ func same(g, w) -> bool:
 
 func _init() -> void:
 	quit(1)         # stays the exit code if a script error stops this function
-	var path: String = OS.get_cmdline_user_args()[0]
-	var V: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value
+	var n := 0
+	var bad := 0
+	for path in OS.get_cmdline_user_args():     # the vector files: v2-json.json, and the test's own extra cases
+		var V: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value
+		var nb := _check(V)
+		n += nb[0]
+		bad += nb[1]
+	print("JSON checked=%d bad=%d" % [n, bad])
+	quit(1 if bad or n == 0 else 0)
+
+
+func _check(V: Dictionary) -> Array:
 	var n := 0
 	var bad := 0
 	for x in V["accept"]:
@@ -96,5 +106,4 @@ func _init() -> void:
 		if r.ok:
 			bad += 1
 			print("BAD reject %s: accepted" % x["why"])
-	print("JSON checked=%d bad=%d" % [n, bad])
-	quit(1 if bad or n == 0 else 0)
+	return [n, bad]

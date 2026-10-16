@@ -1,7 +1,8 @@
 extends RefCounted
 ## Strict JSON reading for the plant's content (docs/PLANT3D.md §1), as ref/sjson.py reads it: UTF-8 only, no
 ## byte-order mark, no duplicate keys, trailing commas, leading zeros, NaN or Infinity, control characters or unpaired
-## surrogates in strings, no bytes after the value, at most 128 levels deep.
+## surrogates in strings, no bytes after the value, at most 128 levels deep. One difference: an escaped U+0000 is
+## refused (ref/sjson.py accepts it), as a Godot String can't hold it; no content needs it. A U+FEFF in a string is kept.
 ##
 ## Numbers are read as Python reads them, which Godot's JSON parser does not do:
 ## - an integer token (no fraction, no exponent) within ±(2^63 − 1) is an int ("-0" is the int 0); a longer one is a
@@ -225,6 +226,18 @@ func _hex4(at: int) -> int:
 	return v
 
 
+## Bytes a … b − 1 (valid UTF-8) as text. get_string_from_utf8 drops a leading U+FEFF as a byte-order mark: it is
+## a character here, kept as Python keeps it.
+func _utf8(a: int, b: int) -> String:
+	var lead := ""
+	while a + 3 <= b and _b[a] == 0xEF and _b[a + 1] == 0xBB and _b[a + 2] == 0xBF:
+		lead += String.chr(0xFEFF)
+		a += 3
+	if a >= b:
+		return lead
+	return lead + _b.slice(a, b).get_string_from_utf8()
+
+
 func _string():
 	_p += 1
 	var out := ""
@@ -235,7 +248,7 @@ func _string():
 		var c: int = _b[_p]
 		if c == 0x22:
 			if _p > run:
-				out += _b.slice(run, _p).get_string_from_utf8()
+				out += _utf8(run, _p)
 			_p += 1
 			return out
 		if c < 0x20:
@@ -244,7 +257,7 @@ func _string():
 			_p += 1
 			continue
 		if _p > run:
-			out += _b.slice(run, _p).get_string_from_utf8()
+			out += _utf8(run, _p)
 		if _p + 1 >= _n:
 			return _fail("unclosed string")
 		var e: int = _b[_p + 1]
@@ -276,6 +289,8 @@ func _string():
 						return _fail("unpaired surrogate")
 				elif u >= 0xDC00 and u <= 0xDFFF:
 					return _fail("unpaired surrogate")
+				elif u == 0:
+					return _fail("an escaped NUL (a Godot String can't hold it)")
 				else:
 					out += String.chr(u)
 			_:

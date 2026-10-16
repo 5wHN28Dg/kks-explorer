@@ -261,7 +261,24 @@ class GdscriptEngine(unittest.TestCase):
         self.assertRegex(r.stdout, r'NUMBERS checked=\d+ bad=0')
 
     def test_strict_json_vectors(self):
-        r = godot('check_json.gd', os.path.join(REPO, 'ref', 'vectors', 'v2-json.json'), timeout=300)
+        """v2-json.json, and strings Godot's own string functions would change: a U+FEFF at a string's start (which
+        get_string_from_utf8 drops as a byte-order mark) or after an escape. An escaped U+0000 is refused: a Godot
+        String can't hold it (ref/sjson.py accepts it; no content needs it)."""
+        from ref import sjson
+        accept = ['"\ufeffx"', '"a\ufeff"', '"\\n\ufeff"', '{"\ufeff":1,"a":2}', '"\\ufeff\ufeff"',
+                  '["\ufeff", "\\u00e9\ufeffz"]']
+        extra = {'accept': [], 'reject': [{'why': 'an escaped NUL', 'hex': b'"a\\u0000"'.hex()},
+                                          {'why': 'an escaped NUL in a key', 'hex': b'{"a":1,"a\\u0000":2}'.hex()}]}
+        for t in accept:
+            b = t.encode()
+            extra['accept'].append({'why': repr(t), 'hex': b.hex(), 'value': sjson.typed(sjson.loads(b))})
+        with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False) as f:
+            json.dump(extra, f)
+            path = f.name
+        try:
+            r = godot('check_json.gd', os.path.join(REPO, 'ref', 'vectors', 'v2-json.json'), path, timeout=300)
+        finally:
+            os.unlink(path)
         no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:] + r.stderr[-2000:])
         self.assertRegex(r.stdout, r'JSON checked=\d+ bad=0')
