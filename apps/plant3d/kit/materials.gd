@@ -49,6 +49,35 @@ const PAINT := {
 	"paint_pipe": Color(0.50, 0.52, 0.53),       # bare pipe (its medium shows in its bands)
 }
 
+## Weathering per finish (kit/weathered.gdshaderinc): how much grime, run-off streaks, dust on top faces, rust and
+## paint wear each shows. Values set by eye against photographs of plants in service: bare steel rusts, paint wears
+## where it is touched, concrete stains, aluminium cladding streaks under its laps.
+const WEATHER := {
+	"paint": {"grime": 0.35, "streaks": 0.35, "dust": 0.35, "rust": 0.10, "wear": 0.8},
+	"metal": {"grime": 0.40, "streaks": 0.30, "dust": 0.30, "rust": 0.35, "wear": 0.0},
+	"galvanised": {"grime": 0.30, "streaks": 0.25, "dust": 0.30, "rust": 0.06, "wear": 0.0},
+	"cladding": {"grime": 0.30, "streaks": 0.45, "dust": 0.25, "rust": 0.0, "wear": 0.0},
+	"sheeting": {"grime": 0.10, "streaks": 0.45, "dust": 0.20, "rust": 0.06, "wear": 0.0},
+	"concrete": {"grime": 0.60, "streaks": 0.50, "dust": 0.30, "rust": 0.0, "wear": 0.0},
+	"ground": {"grime": 0.50, "streaks": 0.0, "dust": 0.15, "rust": 0.0, "wear": 0.0},
+	"deck": {"grime": 0.45, "streaks": 0.20, "dust": 0.40, "rust": 0.15, "wear": 0.5},
+	# small plain pieces (dials, tag plates, glass, the media's bands): kept clean, a trainee reads them
+	"none": {"grime": 0.0, "streaks": 0.0, "dust": 0.0, "rust": 0.0, "wear": 0.0},
+}
+## Which weathering a material takes (by its texture set).
+const WEATHER_OF := {"PaintedMetal004": "paint", "Metal032": "metal", "Metal009": "cladding",
+	"CorrugatedSteel005": "sheeting", "Concrete034": "concrete", "Gravel023": "ground", "Asphalt031": "ground",
+	"MetalWalkway010": "deck", "DiamondPlate008C": "deck"}
+## How much a piece of each paint colour is touched (the vertex colour's alpha: kit/mesh.gd, the shader's `wear`):
+## handrails, ladders and guards in yellow and handwheels in red most; a machine's casing hardly.
+## Capped where a colour identifies (a red handwheel, a yellow guard: R9a): worn spots, never a bare part.
+const EXPOSURE := {"paint_yellow": 0.6, "paint_red": 0.35, "paint_orange": 0.25, "paint_darkgrey": 0.3,
+	"paint_green": 0.25}
+const EXPOSURE_DEFAULT := 0.12
+const SHADER := "res://kit/weathered.gdshader"
+## The weathering's noise (builder/weather.gd makes it at build time: our own, no licence).
+const NOISE := "res://built/weather/noise.res"
+
 ## Every material: set (or "" for a plain one), tint, roughness, metallic, the texture's tile size in metres, and
 ## flags. A plain material's roughness and metallic are its values; with a set they scale the set's maps.
 static func specs() -> Dictionary:
@@ -61,11 +90,13 @@ static func specs() -> Dictionary:
 	m["cladding"] = {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "rough": 1.0, "metal": 0.8, "tile": 1.0}
 	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.6, "tile": 2.0}
 	m["corrugated_casing"] = {"set": "CorrugatedSteel005", "tint": Color(0.80, 0.82, 0.84), "rough": 1.0, "metal": 0.5, "tile": 3.0}
-	m["concrete"] = {"set": "Concrete034", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.0, "tile": 3.0}
+	m["concrete"] = {"set": "Concrete034", "tint": Color(0.72, 0.71, 0.69), "rough": 1.0, "metal": 0.0, "tile": 3.0}
 	m["grating"] = {"set": "MetalWalkway010", "tint": Color(0.75, 0.75, 0.72), "rough": 1.0, "metal": 0.6, "tile": 1.0}
 	m["chequer"] = {"set": "DiamondPlate008C", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.7, "tile": 1.0}
 	m["gravel"] = {"set": "Gravel023", "tint": Color(0.62, 0.60, 0.56), "rough": 1.0, "metal": 0.0, "tile": 3.0}
 	m["asphalt"] = {"set": "Asphalt031", "tint": Color(0.6, 0.6, 0.6), "rough": 1.0, "metal": 0.0, "tile": 4.0}
+	# the country beyond the wall: the gravel's set, sandier and larger (seen from tens to hundreds of metres)
+	m["terrain"] = {"set": "Gravel023", "tint": Color(0.78, 0.70, 0.56), "rough": 1.0, "metal": 0.0, "tile": 9.0}
 	# plain (no textures): small pieces, faces of dials, glass, rubber, porcelain, lamps
 	m["plate"] = {"set": "", "tint": Color(0.93, 0.93, 0.90), "rough": 0.4, "metal": 0.0}         # tag plates (white)
 	m["plate_border"] = {"set": "", "tint": Color(0.05, 0.05, 0.05), "rough": 0.6, "metal": 0.0}
@@ -106,7 +137,9 @@ static func resolve(name: String) -> Array:
 	if _specs.is_empty():
 		_specs = specs()
 	if PAINT.has(name):
-		return ["paint", PAINT[name]]
+		var c: Color = PAINT[name]
+		c.a = EXPOSURE.get(name, EXPOSURE_DEFAULT)
+		return ["paint", c]
 	if colours.has(name):
 		return ["plain", colours[name]]
 	var s: Dictionary = _specs.get(name, {})
@@ -128,19 +161,25 @@ const STRUCTURE_MATS := {
 	"wall_metal": ["corrugated", true], "wall_concrete": ["concrete", true], "wall_brick": ["concrete", true],
 	"roof": ["corrugated_casing", true], "door": ["paint_motor", false], "fence": ["galvanised", true],
 	"pit": ["concrete", false], "ladder": ["paint_yellow", false], "rack": ["galvanised", false],
+	"yard": ["concrete", false], "road": ["asphalt", false], "drain": ["dark", false], "terrain": ["terrain", false],
 }
 
 static func structure_spec(name: String) -> Dictionary:
 	var spec: Dictionary = specs()[STRUCTURE_MATS[name][0]].duplicate()
 	if name == "wall_brick":
 		spec.tint = Color(0.72, 0.42, 0.33)
+	if name in ["rail", "ladder", "stair"]:
+		spec["wear"] = 0.5   # handrails, ladders and treads: worn spots where hands and feet go, never bare (R9a: safety yellow)
+	if name == "grating":
+		spec["grating"] = true
+	if name == "yard":
+		spec["joints"] = 6.0   # cast in 6 m bays
 	return spec
 
-static func make_structure(name: String) -> StandardMaterial3D:
-	var m := make(name, structure_spec(name))
-	if STRUCTURE_MATS[name][1]:
-		m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return m
+## A structure's material. Walls, roofs and fences are closed prisms (their inside and outside each have faces of
+## their own), so one cull-back shader serves them.
+static func make_structure(name: String) -> Material:
+	return make(name, structure_spec(name))
 
 ## The texture sets whose files are not there (not fetched, or not imported yet).
 static func missing_textures() -> PackedStringArray:
@@ -155,17 +194,19 @@ static func tex_path(set_name: String, map: String, size: int) -> String:
 	return "%s/%d/%s_%s.jpg" % [TEX, size, set_name, map]
 
 ## Makes a material from its spec with textures of `size` px (when they were fetched; else plain, which the build
-## warns).
-static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> StandardMaterial3D:
+## warns). A material with a texture set is the weathered shader (kit/weathered.gdshaderinc); plain ones (small
+## pieces, lamps) stay Godot's standard material.
+static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> Material:
+	var s: String = spec.get("set", "")
+	if s != "" or not spec.get("emit", false):
+		# the plain ones too, without textures or weathering: one shader for every lit surface, so a phone's first
+		# start compiles its pipelines once, not again for Godot's standard shader (decision 0057)
+		return _make_weathered(name, spec, size)
 	var mat := StandardMaterial3D.new()
 	mat.resource_name = name
 	mat.albedo_color = spec.tint
 	mat.roughness = spec.rough
 	mat.metallic = spec.metal
-	var s: String = spec.get("set", "")
-	if s != "":
-		_textures(mat, s, size)
-		mat.uv1_scale = Vector3.ONE / float(spec.get("tile", 1.0))
 	if spec.get("vc", false):
 		mat.vertex_color_use_as_albedo = true
 		mat.vertex_color_is_srgb = true
@@ -175,7 +216,53 @@ static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> Standa
 		mat.emission_energy_multiplier = 2.0
 	return mat
 
-static func _textures(mat: StandardMaterial3D, set_name: String, size: int) -> bool:
+static func _make_weathered(name: String, spec: Dictionary, size: int) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.resource_name = name
+	mat.shader = load(SHADER)
+	mat.set_shader_parameter("grating", 1.0 if spec.get("grating", false) else 0.0)
+	mat.set_shader_parameter("tint", spec.tint)
+	mat.set_shader_parameter("roughness_scale", spec.rough)
+	mat.set_shader_parameter("metallic", spec.metal)
+	mat.set_shader_parameter("uv_scale", Vector2.ONE / float(spec.get("tile", 1.0)))
+	mat.set_shader_parameter("use_vertex_colour", spec.get("vc", false))
+	var w: Dictionary = WEATHER.get(spec.get("weather", WEATHER_OF.get(spec.set, "paint") if spec.set != "" else "none"), {})
+	for k in w:
+		mat.set_shader_parameter(k, float(w[k]) * float(spec.get("weather_scale", 1.0)))
+	if spec.has("wear"):
+		mat.set_shader_parameter("wear", float(spec.wear))
+	if spec.has("joints"):
+		mat.set_shader_parameter("joint_spacing", float(spec.joints))
+	if ResourceLoader.exists(NOISE):
+		mat.set_shader_parameter("noise_tex", load(NOISE))
+	if spec.set != "":
+		_textures(mat, spec.set, size)
+	return mat
+
+## The wet zone round water (the shader's `wet_zone`: centre x, z in Godot's axes, half sizes along x and z; `wet`
+## its strength) on every weathered material in `mats`.
+static func set_wet_zone(mats: Dictionary, zone: Vector4, strength: float) -> void:
+	for k in mats:
+		var m = mats[k]
+		# not on the clean plain pieces (tag plates, dials, the media's bands: a trainee reads them)
+		if m is ShaderMaterial and float(m.get_shader_parameter("grime")) > 0.0:
+			m.set_shader_parameter("wet_zone", zone)
+			m.set_shader_parameter("wet", strength)
+
+## The tier's share of the weathering's samples (the shader's `detail`: 0 drops the streaks and the paint wear).
+static func set_detail(mat: Material, on: bool) -> void:
+	if mat is ShaderMaterial:
+		mat.set_shader_parameter("detail", 1.0 if on else 0.0)
+
+## A material's texture of one map ("Color", "NormalGL", "Roughness"), whichever kind of material it is.
+static func texture_of(mat: Material, map: String) -> Texture2D:
+	if mat is ShaderMaterial:
+		return mat.get_shader_parameter({"Color": "albedo_tex", "NormalGL": "normal_tex", "Roughness": "rough_tex"}[map])
+	if mat is StandardMaterial3D:
+		return {"Color": mat.albedo_texture, "NormalGL": mat.normal_texture, "Roughness": mat.roughness_texture}[map]
+	return null
+
+static func _textures(mat: Material, set_name: String, size: int) -> bool:
 	var maps: Array = SETS[set_name]
 	var ok := true
 	for m in maps:
@@ -184,6 +271,11 @@ static func _textures(mat: StandardMaterial3D, set_name: String, size: int) -> b
 			ok = false
 			continue
 		var t := load(p) as Texture2D
+		if mat is ShaderMaterial:
+			var param: String = {"Color": "albedo_tex", "NormalGL": "normal_tex", "Roughness": "rough_tex"}[m]
+			mat.set_shader_parameter(param, t)
+			mat.set_shader_parameter({"Color": "use_albedo", "NormalGL": "use_normal", "Roughness": "use_rough"}[m], true)
+			continue
 		match m:
 			"Color": mat.albedo_texture = t
 			"NormalGL":
@@ -214,8 +306,9 @@ static func apply_tier(tier: String, mats_dir := "res://built/materials") -> int
 		var p := mats_dir.path_join(name + ".tres")
 		if not ResourceLoader.exists(p):
 			continue
-		var mat := load(p) as StandardMaterial3D
+		var mat := load(p) as Material
 		var s: String = all[name].get("set", "")
+		set_detail(mat, tier == "full")
 		if mat != null and s != "" and _textures(mat, s, size):
 			n += 1
 	return n

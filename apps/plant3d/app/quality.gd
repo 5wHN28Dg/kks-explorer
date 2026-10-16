@@ -13,6 +13,7 @@
 extends RefCounted
 
 const Mat = preload("res://kit/materials.gd")
+const Lighting = preload("res://app/lighting.gd")
 
 const PRESETS := {
 	"full": {"scale": 1.0, "fsr": false, "shadow_atlas": 4096, "shadow_distance": 80.0, "lod_threshold": 1.0,
@@ -77,7 +78,7 @@ static func apply(tier: String, vp: Viewport, sun: DirectionalLight3D, env: Envi
 	vp.mesh_lod_threshold = p.lod_threshold
 	RenderingServer.directional_shadow_atlas_set_size(p.shadow_atlas, true)
 	sun.directional_shadow_max_distance = p.shadow_distance
-	env.ssao_enabled = tier == "full"   # Forward+ only; the Mobile renderer ignores it anyway
+	Lighting.apply(tier, env)
 	vp.set_meta("detail_min_px", p.detail_min_px)
 	apply_ranges(vp)
 	if not vp.size_changed.is_connected(_on_resize.bind(vp)):

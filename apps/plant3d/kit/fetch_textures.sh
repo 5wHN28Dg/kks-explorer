@@ -36,6 +36,22 @@ fafd7cd3aee2b703abbb12b7810ef565ab76ac7ea3b1ea9a73b088e423e670b3 Concrete034 Col
 a6dd0aea7bcda95d6373c823734eda0cfa066e34c0eea9e1e07023926021bab5 Gravel023 Color NormalGL Roughness
 f2a02ea9ea1fd97d2a6d27f46ebac069a5851e3ae7c73fa991abf563b97786c7 Asphalt031 Color NormalGL Roughness
 LIST
+# The sky (builder/sky.gd): a CC0 photographed sky from Poly Haven (https://polyhaven.com/license: "CC0"), 2K
+# Radiance HDR, pinned by SHA-256 like the sets above. The build takes its sun out and writes built/sky/.
+SKY_SHA=5244534e9cf5b606f2ff513aa00ddb161b0a4826ffd88a0d3bd03ac29247d198
+SKY_NAME=kloofendal_48d_partly_cloudy_puresky_2k.hdr
+s="$CACHE/$SKY_NAME"
+if [ ! -f "$s" ] || ! echo "$SKY_SHA  $s" | sha256sum -c - >/dev/null 2>&1; then
+  d=$(mktemp -d "$CACHE/dl.XXXXXX")
+  curl -sSLf -o "$d/$SKY_NAME" "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/$SKY_NAME"
+  echo "$SKY_SHA  $d/$SKY_NAME" | sha256sum -c - >/dev/null || { rm -rf "$d"; echo "checksum mismatch: $SKY_NAME" >&2; exit 1; }
+  mv "$d/$SKY_NAME" "$s"
+  rmdir "$d"
+fi
+mkdir -p "$HERE/tex/sky"
+touch "$HERE/tex/sky/.gdignore"   # read by the build, never imported as it is
+[ -f "$HERE/tex/sky/$SKY_NAME" ] || cp -p "$s" "$HERE/tex/sky/$SKY_NAME"
+
 # the source maps are not resources of the project (Godot would import a fourth copy): .gdignore
 touch "$HERE/tex/src/.gdignore"
 for size in 2048 1024 512; do

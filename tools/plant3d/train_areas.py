@@ -2,6 +2,8 @@
 position, pipe routes, structures and signs. Everything is invented (R1); sizes are round, typical values."""
 import math
 
+import kit
+
 STAIR_GOING = 0.25
 
 
@@ -18,8 +20,16 @@ def eq(kks, name, part, at, yaw=0, params=None, plate=None, parts=None):
     return e
 
 
+def first_plate(part):
+    """The part's first tag plate point (kit.py), or None. Every valve and every piece of equipment with a code
+    carries its tag plate, as in the field (PLANT3D.md §4 `plate`, §10); instruments get theirs from the kit when the
+    content names none."""
+    plates = kit.PARTS[part].get('plates', [])
+    return plates[0] if plates and kit.PARTS[part]['group'] != 'instruments' else None
+
+
 def child(kks, name, part, at, params=None, yaw=0):
-    return eq(kks, name, part, at, yaw, params)
+    return eq(kks, name, part, at, yaw, params, first_plate(part))
 
 
 def pipe(kks, name, medium, dn, frm, points, to, **kw):
@@ -44,6 +54,9 @@ def valve(kks, part, at, name, **params):
     v = {'kks': kks, 'part': part, 'at': at, 'name': name}
     if params:
         v['params'] = params
+    plate = first_plate(part)
+    if plate:
+        v['plate'] = plate
     return v
 
 

@@ -12,7 +12,7 @@ geometry at their described positions, made by the builder.
 | Folder | What |
 |---|---|
 | `kit/` | the parts kit: every equipment part of `data/plant3d/kit.json` made from its parameters, the materials and their CC0 textures (fetched by `kit/fetch_textures.sh`) |
-| `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground, the materials, `plant.json`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) |
+| `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground and the site round the areas, the materials, the sky, the bake scene, `plant.json`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) `builder/bake/` is the editor plugin that bakes the lightmap |
 | `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), scripted routes (`autopilot.gd`, `routes.gd`) |
 | `ui/` | the interaction layer: the engine run at 0.1 s steps (`sim_clock.gd`), equipment cards (`card.gd`), alarms (`alarm_panel.gd`), procedures and tours (`procedure_panel.gd`, `procedure_tracker.gd`), the instructor's faults, bindings on the parts (`bindings.gd`), sounds (`sound_player.gd`), links (`links_in.gd`); `plant_ui.gd` ties them together |
 | `addons/walkdown_plant_android/` | editor-only: the export plugin that adds the `walkdown-plant://` intent filter to the Android manifest (decision 0056) |
@@ -27,11 +27,12 @@ geometry at their described positions, made by the builder.
 ```
 apps/plant3d/build.sh                       # content check (ref/plant3d.py), content build, tests
 apps/plant3d/build.sh export                # and the exports, headless, unbaked, unsigned, into export/check/ (CI)
+tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh bake      # and the lightmap's bake (a GPU, Godot's editor)
 tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release   # release exports, shaders baked
 apps/plant3d/flatpak/build.sh BUILD_DIR     # the Flatpak from the release's .pck; installs nothing
 ```
 
-`release` needs a rendering device. The shader baker and the export run under a private display
+`release` and `bake` need a rendering device; `release` bakes the lightmap before it exports. The shader baker and the export run under a private display
 (`offscreen.sh`), never with `--headless` (decision 0041). It makes:
 
 - `export/walkdown-plant.apk`: arm64-v8a, signed with the plant's own key;
@@ -71,6 +72,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--panels=alarms,procedure,card:CODE` | opens these panels |
 | `--speed=fast` | starts the plant in fast-forward |
 | `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line |
+| `--fx_off=ssao,fog`, `--fx_on=sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
 
 Controls (R7):
 
@@ -126,6 +128,25 @@ the key never reaches Gradle; every APK is checked for the intent filter (`aapt2
 resolves is checked against `android-gradle-verification.xml` (0056). On the desktops a link opens a second
 instance when the app already runs.
 `phone/links.sh` checks links on the Note 9 (a cold start and a running app).
+## Light, sky and materials (R9, decision 0057)
+
+- **The lightmap** (`builder/lightmap.gd`, `builder/bake/`): every static mesh gets lightmap UV2 at build time
+  (Godot's unwrapper, a texel of 0.33 m, 0.5 m on the ground); the bake (Godot bakes only in its editor, on a GPU)
+  lights them with the sky, the light the sun bounces, the halls' lamps and the sun's shadow beyond the real-time
+  distance (shadowmask). The sun's direct light and sharp shadow stay real-time. Instanced and moving pieces take
+  the sky's ambient light, not the bake's probes (one probe per 12 m cell left a blue motor or a red
+  handwheel almost black in shade: a trainee must see their colours). Kept as RGBE9995 (no ASTC HDR on the Note 9). A build without the bake (CI)
+  lights the plant by the sky and the sun alone.
+- **The sky** (`builder/sky.gd`): a CC0 photographed sky (Poly Haven) with its sun taken out; the sun becomes the
+  DirectionalLight3D at the photograph's own sky-to-sun ratio. AgX tonemapping, a thin haze.
+- **The materials** (`kit/weathered.gdshaderinc`): the CC0 sets with grime, run-off streaks, dust on top faces, rust,
+  paint wear where hands go, wet ground round the cooling tower, jointed yards, the road's centre line, drawn bar
+  gratings; from one build-made noise in world space.
+- **The site** (`builder/site.gd`): concrete yards in the areas' bounds, gravel between, a ring road with kerbs and a
+  drain, a boundary wall, the country to the far plane with low hills.
+- **Per tier:** laptops add SSAO (low, half size); SSIL, volumetric fog, glow and SDFGI were measured and left out
+  (0057). Phones get the bake and the haze.
+- `apps/plant3d/about.json` (from `tools/about.py --plant`) lists the CC0 assets; the build packs it.
 
 ## Quality tiers (R9)
 
@@ -166,6 +187,9 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 A test stopped by a script error counts as failed (the runner counts script errors). `tests/ui_shots.gd` saves
 screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script
 res://tests/ui_shots.gd -- --out=DIR`.
+- `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).
+- `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
+  site, each tier's effects.
 
 Physics runs with the headless renderer.
 

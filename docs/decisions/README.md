@@ -53,6 +53,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0054](0054-walkdown-plant-app.md) | Walkdown Plant: a Godot project in `apps/plant3d`, content in `data/plant3d` (docs/PLANT3D.md) pre-built into scenes; KKS decoding from its own public tables, links by URI scheme (no core binding, no network); CC0 assets and sounds; one package for the first train; not marked latest on GitHub | proposed; signing key and updates are the user's questions |
 | [0055](0055-plant-sound-encoder.md) | Walkdown Plant's synthesised sounds: NumPy for the samples, FFmpeg's libvorbis (bit-exact, 0.1 s pages) for the Ogg Vorbis files at build time; installed on CI's `python` job | decided under the task's go-ahead |
 | [0056](0056-plant-android-gradle-links.md) | Walkdown Plant on Android: a Gradle export whose export plugin adds the `walkdown-plant://` intent filter; the link read through Godot's AndroidRuntime plugin (no plugin of ours); the template's Gradle pinned and run on a pinned JDK 17 | accepted |
+| [0057](0057-plant-realism.md) | Walkdown Plant realism: a lightmap baked by the editor after the content build (RGBE9995: no ASTC HDR on the Note 9), a CC0 photographed sky with its sun taken out, one weathered shader for every lit surface (35 pipelines on a first start), the site round the areas; laptops add SSAO only (SSIL, volumetric fog, glow, SDFGI measured and left out) | decided under the task's go-ahead |
 
 ## Audit of existing dependencies (2026-09-30)
 

@@ -81,8 +81,8 @@ func _run() -> void:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(400, 400)
 	ground.mesh = pm
-	var gm: StandardMaterial3D = _mat("gravel").duplicate()
-	gm.uv1_scale = Vector3(400, 400, 1) / 3.0
+	var gm: ShaderMaterial = _mat("gravel").duplicate()   # the weathered shader (kit/materials.gd)
+	gm.set_shader_parameter("uv_scale", Vector2(400, 400) / 3.0)
 	ground.material_override = gm
 	root.add_child(ground)
 	var cam := Camera3D.new()

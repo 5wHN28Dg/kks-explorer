@@ -5,6 +5,9 @@
 #   tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release [TARGET…]
 #                                             the release exports, shaders baked (needs a rendering device: the
 #                                             private display offscreen.sh gives; never --headless, decision 0041)
+#   tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh bake
+#                                             the content build, the tests and the lightmap's bake (builder/bake/:
+#                                             Godot bakes only in its editor, on a GPU); `release` bakes too
 # TARGETs: android-debug android-release linux windows (default: all). Outputs in apps/plant3d/export/.
 # The Android release is signed with the plant's own key (0054: never Walkdown's), by apksigner after the export, so
 # that Gradle never sees it (0056): its properties file
@@ -76,13 +79,24 @@ fi
 
 [ -n "$MODE" ] || exit 0
 
-# 4. Exports
+# 4. The lightmap (release and bake): the editor on the private display bakes built/lit.scn into built/lightmap/
+#    (builder/bake/bake_plugin.gd), then Godot imports what it baked. An export without it lights the plant by the
+#    sky and the sun alone (CI's check exports).
+if [ "$MODE" = release ] || [ "$MODE" = bake ]; then
+  [ -n "${DISPLAY:-}" ] || { echo "build.sh $MODE needs a display: run it under tools/plant3d/bench/offscreen.sh" >&2; exit 2; }
+  LANG=C.UTF-8 $T "$GODOT" -e --display-driver x11 --rendering-driver vulkan --path "$HERE" -- --bake-lightmaps \
+    >"$HERE/.bake.log" 2>&1 || { grep -E "^bake:|ERROR" "$HERE/.bake.log" | tail -20; echo "the lightmap's bake failed (apps/plant3d/.bake.log)" >&2; exit 1; }
+  grep '^bake:' "$HERE/.bake.log"
+  $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1
+  [ "$MODE" = bake ] && exit 0
+fi
+
+# 5. Exports
 case "$MODE" in
   export) GPU="--headless" ;;
   release)
-    [ -n "${DISPLAY:-}" ] || { echo "build.sh release needs a display: run it under tools/plant3d/bench/offscreen.sh" >&2; exit 2; }
     GPU="--display-driver x11 --rendering-driver vulkan" ;;
-  *) echo "unknown mode $MODE (export or release)" >&2; exit 2 ;;
+  *) echo "unknown mode $MODE (export, bake or release)" >&2; exit 2 ;;
 esac
 # export mode writes to export/check/: never over a baked, signed release that the phone scripts install
 OUTD="$HERE/export"; [ "$MODE" = export ] && OUTD="$HERE/export/check"
