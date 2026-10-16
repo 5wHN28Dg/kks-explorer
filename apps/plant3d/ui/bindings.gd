@@ -2,7 +2,9 @@
 ## shake follow the engine's values every frame.
 ##
 ## The parts kit names each moving piece as a child node of its equipment's node (the node named by the KKS code),
-## called by its channel: `shaft`, `blades`, `handwheel` turn about the piece's own Y axis; `stem` and `contacts`
+## called by its channel, with the metas `anim_kind` (rotate, translate, scale, lamp, group), `anim_axis` and
+## `anim_travel` (apps/plant3d/kit/README.md "Moving parts"): those are followed. Without them (the placeholders):
+## `shaft`, `blades`, `handwheel` turn about the piece's own Y axis; `stem` and `contacts`
 ## move along their own Y axis by the value (0–1) times their `travel` meta (metres, default 0.2); `disc` turns about
 ## its own Y axis by the value times its `angle` meta (degrees, default 90); `needle` turns about its own Z axis
 ## from its `angle0` to its `angle1` meta (degrees, default 45 and −225) over the value's 0–1; `level` scales its
@@ -48,7 +50,12 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 			continue
 		if b.has("anim"):
 			var piece := _piece(n, b["anim"], idx.box(b["kks"]))
-			_anims.append([piece, b["anim"], e.ix[b["of"]], float(b.get("scale", 1.0)), piece.transform])
+			var kids := []
+			if piece.get_meta("anim_kind", "") == "group":
+				for ch in piece.get_children():
+					if ch is Node3D and ch.has_meta("anim_kind"):
+						kids.append([ch, ch.transform])
+			_anims.append([piece, b["anim"], e.ix[b["of"]], float(b.get("scale", 1.0)), piece.transform, kids])
 			if b["anim"] == "contacts" and sounds != null:
 				sounds.watch_breaker(n, e.ix[b["of"]])
 		elif b.has("lamp"):
@@ -112,6 +119,28 @@ func _piece(n: Node3D, channel: String, bx: AABB) -> Node3D:
 	return mk
 
 
+## A kit piece by its metas: free rotation at x × scale turns a second, or a position x (0–1) × its travel.
+static func _kit_move(piece: Node3D, base: Transform3D, x: float, scale: float, dt: float) -> void:
+	var axis: Vector3 = piece.get_meta("anim_axis", Vector3.UP)
+	var travel := float(piece.get_meta("anim_travel", 0.0))
+	var v := clampf(x, 0.0, 1.0)
+	match String(piece.get_meta("anim_kind")):
+		"rotate":
+			if travel == 0.0:
+				piece.rotate_object_local(axis.normalized(), fmod(x * scale * TAU * dt, TAU))
+			else:
+				piece.transform = base.rotated_local(axis.normalized(), v * travel)
+		"translate":
+			piece.transform = base.translated_local(axis * v * travel)
+		"scale":
+			var a := axis.abs()
+			piece.transform = base.scaled_local(Vector3.ONE - a + a * maxf(v, 0.001))
+		"lamp":
+			var on := piece.get_node_or_null("on")
+			if on is Node3D:
+				on.visible = x >= 0.5
+
+
 func _lamp(n: Node3D, kind: String, bx: AABB) -> MeshInstance3D:
 	var found := n.find_child("lamp_" + kind, true, false)
 	if found is MeshInstance3D:
@@ -157,6 +186,13 @@ func _process(delta: float) -> void:
 		if piece.global_position.distance_squared_to(eye) > RANGE * RANGE:
 			continue
 		var x: float = cur[a[2]]
+		if piece.has_meta("anim_kind"):
+			if piece.get_meta("anim_kind") == "group":
+				for ch in a[5]:
+					_kit_move(ch[0], ch[1], x, a[3], dt)
+			else:
+				_kit_move(piece, a[4], x, a[3], dt)
+			continue
 		match a[1]:
 			"shaft", "blades", "handwheel":
 				piece.rotate_object_local(Vector3.UP, fmod(x * a[3] * TAU * dt, TAU))

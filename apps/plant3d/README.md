@@ -3,14 +3,15 @@
 The walkable 3D plant (decision `docs/decisions/0054-walkdown-plant-app.md`; engine: `0041`; content format:
 `docs/PLANT3D.md`). A Godot 4.7.2 project, pinned by `tools/plant3d/bench/fetch_godot.sh` (SHA-512).
 
-This is the app's frame. Equipment is drawn as placeholder boxes and cylinders sized from the kit's parameters
-until the parts kit comes (`apps/plant3d/kit/`, the next step). Pipes, platforms, floors, stairs, ladders, doors,
-buildings, pits, slabs, fences and the pipe rack are solid geometry at their described positions.
+Equipment and pipes are made by the parts kit (`kit/`, its README: frames, node names, moving parts, budgets,
+materials). Platforms, floors, stairs, ladders, doors, buildings, pits, slabs, fences and the pipe rack are solid
+geometry at their described positions, made by the builder.
 
 ## Layout
 
 | Folder | What |
 |---|---|
+| `kit/` | the parts kit: every equipment part of `data/plant3d/kit.json` made from its parameters, the materials and their CC0 textures (fetched by `kit/fetch_textures.sh`) |
 | `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground, the materials, `plant.json`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) |
 | `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), scripted routes (`autopilot.gd`, `routes.gd`) |
 | `ui/` | the interaction layer: the engine run at 0.1 s steps (`sim_clock.gd`), equipment cards (`card.gd`), alarms (`alarm_panel.gd`), procedures and tours (`procedure_panel.gd`, `procedure_tracker.gd`), the instructor's faults, bindings on the parts (`bindings.gd`), sounds (`sound_player.gd`), links (`links_in.gd`); `plant_ui.gd` ties them together |
@@ -154,6 +155,8 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_frames_route`: the phone's walk, once.
 - `test_builder`: geometry, stair layout, the build's refusals and cuts.
 - `test_quality`: picking the tier.
+- `test_kit`: every part of `kit.json` is made, with valid meshes at every LOD within its triangle budget, its moving
+  nodes and plate points.
 - `test_ui_cold_start`: the cold start driven through the UI only (the procedure panel, cards, the time bar) to base
   load; the engine's inputs, events, step ends and final state must be the reference's (`ref/vectors/plant3d-v1.json`
   `train`).

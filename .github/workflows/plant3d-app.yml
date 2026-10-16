@@ -47,6 +47,10 @@ jobs:
             ~/.local/kksdev/jdk-17
             ~/.local/share/godot/export_templates
           key: godot-4.7.2-${{ hashFiles('tools/plant3d/bench/fetch_godot.sh', 'tools/plant3d/fetch_jdk.sh') }}-${{ hashFiles('.github/workflows/plant3d-app.yml') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; the parts kit's CC0 textures (checked by SHA-256 when fetched and on every run)
+        with:
+          path: ~/.cache/walkdown-plant/textures
+          key: kit-textures-${{ hashFiles('apps/plant3d/kit/fetch_textures.sh') }}
       - name: Godot 4.7.2 and the JDK 17 of its Android Gradle build (pinned)
         run: tools/plant3d/bench/fetch_godot.sh && tools/plant3d/fetch_jdk.sh
       - name: The content tests (the validator, the generator's output, the vectors)

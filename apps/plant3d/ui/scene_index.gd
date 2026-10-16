@@ -34,6 +34,10 @@ func box(code: String) -> AABB:
 	var n: Node3D = nodes.get(code)
 	if n == null:
 		return AABB()
+	if n.has_meta("aabb"):               # the parts kit's box in the node's own axes (its meshes are instanced per cell)
+		var bb: AABB = n.get_meta("aabb")
+		_boxes[code] = n.global_transform * bb
+		return _boxes[code]
 	var b := AABB()
 	var any := false
 	for mi in _meshes(n):

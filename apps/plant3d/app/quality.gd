@@ -12,6 +12,8 @@
 ## GPU once per graphics adapter at first start (probe below) and keeps the result in user://settings.cfg.
 extends RefCounted
 
+const Mat = preload("res://kit/materials.gd")
+
 const PRESETS := {
 	"full": {"scale": 1.0, "fsr": false, "shadow_atlas": 4096, "shadow_distance": 80.0, "lod_threshold": 1.0,
 		"detail_min_px": 1.5},
@@ -78,20 +80,50 @@ static func apply(tier: String, vp: Viewport, sun: DirectionalLight3D, env: Envi
 	env.ssao_enabled = tier == "full"   # Forward+ only; the Mobile renderer ignores it anyway
 	vp.set_meta("detail_min_px", p.detail_min_px)
 	apply_ranges(vp)
+	if not vp.size_changed.is_connected(_on_resize.bind(vp)):
+		vp.size_changed.connect(_on_resize.bind(vp))   # §10: the ranges again when the resolution changes
+	Mat.apply_tier(tier)   # the tier's texture size (kit/materials.gd): one material set, three sizes
 
-## Visibility ranges of `detail` pieces (PLANT3D.md §10): drawn while they cover at least the tier's min_px on the
-## screen: d_max = size × f / min_px, f the focal length in pixels at the drawn resolution. Pieces carry their size
-## in the meta "detail_size" and sit in the group "detail" (the parts kit makes them; the placeholders have none).
+## The legibility of a tag plate's code (PLANT3D.md §10): its text is drawn while a character covers 8 px.
+const LEGIBLE_PX := 8.0
+
+## Visibility ranges by size (PLANT3D.md §10): `detail` pieces are drawn while they cover at least the tier's min_px
+## on the screen, d_max = size × f / min_px, f the focal length in pixels at the drawn resolution; tag plates' codes
+## while a character covers LEGIBLE_PX. Detail pieces carry their size in the meta "detail_size" and sit in the
+## group "detail"; an instanced cell of them (builder/kit_place.gd) also carries "box_half", the half diagonal of its
+## box, which is added (Godot measures a range to the centre of the instance's box: decision 0041), so no piece in
+## it goes before its own distance. No fade: a piece under the tier's few pixels goes unseen, and a fading instance
+## is drawn through another (transparent) pipeline, compiled the first time anything fades (a 190 ms frame on the Note 9,
+## 2026-10-16). Codes are in the group "legible" with "legible_size", a character's height.
+static func _on_resize(vp: Viewport) -> void:
+	apply_ranges(vp)
+
+## The walker's field of view (app/player.gd): the ranges are for walking, whatever camera is current (the map's).
+const WALK_FOV := 70.0
+
+## The drawn height in pixels: the window's real pixels (with canvas_items stretching the viewport's visible rect is
+## the logical size, not the screen's), times the 3D scale.
+static func drawn_height(vp: Viewport) -> float:
+	var w := vp.get_window()
+	var px := float(w.size.y) if w != null and w.size.y > 0 else vp.get_visible_rect().size.y
+	return px * vp.scaling_3d_scale
+
 static func apply_ranges(vp: Viewport) -> void:
-	var cam := vp.get_camera_3d()
-	if cam == null or not vp.has_meta("detail_min_px"):
+	if not vp.has_meta("detail_min_px"):
 		return
-	var h := vp.get_visible_rect().size.y * vp.scaling_3d_scale
-	var f := (h * 0.5) / tan(deg_to_rad(cam.fov * 0.5))
+	var h := drawn_height(vp)
+	var f := (h * 0.5) / tan(deg_to_rad(WALK_FOV * 0.5))
 	var min_px: float = vp.get_meta("detail_min_px")
 	for n in vp.get_tree().get_nodes_in_group("detail"):
 		if n is GeometryInstance3D and n.has_meta("detail_size"):
 			var d: float = float(n.get_meta("detail_size")) * f / min_px
+			var margin := d * 0.1
+			n.visibility_range_end = d + float(n.get_meta("box_half", 0.0)) + margin
+			n.visibility_range_end_margin = margin
+			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+	for n in vp.get_tree().get_nodes_in_group("legible"):
+		if n is GeometryInstance3D and n.has_meta("legible_size"):
+			var d: float = float(n.get_meta("legible_size")) * f / LEGIBLE_PX
 			n.visibility_range_end = d
 			n.visibility_range_end_margin = d * 0.1
-			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED

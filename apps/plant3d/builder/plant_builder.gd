@@ -1,14 +1,17 @@
 ## The content build (decision 0054 §4): data/plant3d (already checked by ref/plant3d.py) to one pre-built scene per
 ## area, the ground, the materials and a manifest the app loads. Nothing here runs when the app starts.
 ##
-## Equipment is drawn as placeholder boxes and cylinders sized from the kit's parameters (the parts kit is the next
-## step); pipes, platforms, floors, stairs, ladders, doors, buildings, pits, slabs, fences and the pipe rack are
-## real collision geometry at their described positions, so a trainee walks where the description says.
+## Equipment and pipes are made by the parts kit (apps/plant3d/kit, placed by builder/kit_place.gd); platforms,
+## floors, stairs, ladders, doors, buildings, pits, slabs, fences and the pipe rack are made here, as solid
+## geometry at their described positions, so a trainee walks where the description says.
 ##
 ## The build refuses what it can't draw (docs/PLANT3D.md §12): errors name the file, the item and the rule.
 extends RefCounted
 
 const Geom = preload("res://builder/geom.gd")
+const KitPlace = preload("res://builder/kit_place.gd")
+const Mat = preload("res://kit/materials.gd")
+const Kit = preload("res://kit/kit.gd")
 
 const SURFACE_PARTS := ["platform", "floor", "grating", "road"]
 const TOL := 0.05
@@ -30,6 +33,8 @@ var stairs: Array = []           # {id, area, foot, top, layout, width, st, lay}
 var ladders: Array = []          # {id, area, foot, top, facing, exit}
 var buildings: Array = []        # {id, area, outline, height, openings, at}
 var pits: Array = []             # {id, area, outline, depth}
+var rack_tiers: Array = []       # pipe racks' tiers, where pipes rest: {outline, z}
+var kp                           # the parts kit's placement (builder/kit_place.gd)
 var mats := {}
 var inputs := PackedStringArray()   # every file read, for the manifest's content hash
 
@@ -52,6 +57,7 @@ func _read_json(path: String):
 
 ## Reads plant.json, kit.json and the areas in plant.json's order.
 func read(data_dir: String) -> bool:
+	Kit.clear_cache()
 	var p = _read_json(data_dir.path_join("plant.json"))
 	var k = _read_json(data_dir.path_join("kit.json"))
 	if not (p is Dictionary and k is Dictionary):
@@ -59,6 +65,7 @@ func read(data_dir: String) -> bool:
 		return false
 	plant = p
 	kit = k
+	Kit.use_kit(kit)   # the parts kit reads the same kit.json as the build
 	for aid in plant.areas:
 		var rel := "areas/%s.json" % aid
 		var a = _read_json(data_dir.path_join(rel))
@@ -70,6 +77,8 @@ func read(data_dir: String) -> bool:
 func use(plant_d: Dictionary, kit_d: Dictionary, area_list: Array) -> void:
 	plant = plant_d
 	kit = kit_d
+	Kit.clear_cache()
+	Kit.use_kit(kit)
 	for a in area_list:
 		areas.append({"id": a.id, "rel": "areas/%s.json" % a.id, "data": a})
 
@@ -96,17 +105,21 @@ func collect() -> bool:
 			var pr := params_of(e.part, e.get("params", {}))
 			var pos := _v3(e.at)
 			var yaw := float(e.get("yaw", 0))
-			equipment[e.kks] = {"pos": pos, "yaw": yaw, "part": e.part, "params": pr, "area": a.id, "name": e.get("name", "")}
+			equipment[e.kks] = {"pos": pos, "yaw": yaw, "part": e.part, "params": pr, "area": a.id, "name": e.get("name", ""),
+				"plate": e.get("plate", "none")}
 			for c in e.get("parts", []):
 				var cp := params_of(c.part, c.get("params", {}))
 				equipment[c.kks] = {"pos": pos + Geom.turn(_v3(c.at), yaw), "yaw": yaw + float(c.get("yaw", 0)),
-					"part": c.part, "params": cp, "area": a.id, "name": c.get("name", ""), "child": true}
+					"part": c.part, "params": cp, "area": a.id, "name": c.get("name", ""), "child": true,
+					"parent": e.kks, "at": _v3(c.at), "own_yaw": float(c.get("yaw", 0)), "plate": c.get("plate", "none")}
 		for s in d.get("structures", []):
 			_collect_structure(s, a)
 	if not errors.is_empty():
 		return false
 	_cut_access()
 	_check()
+	kp = KitPlace.new(self)
+	kp.prepare()
 	return errors.is_empty()
 
 func _collect_structure(s: Dictionary, a: Dictionary) -> void:
@@ -151,6 +164,15 @@ func _collect_structure(s: Dictionary, a: Dictionary) -> void:
 		pits.append({"id": s.id, "area": a.id, "outline": pg, "depth": float(pr.depth)})
 		surfaces.append({"id": s.id + "_floor", "kind": "pit_floor", "z": -float(pr.depth), "outline": pg, "holes": [],
 			"thick": 0.3, "rails": false, "deck": "concrete", "area": a.id})
+	elif part == "pipe_rack":
+		var fw := Geom.heading(yaw)
+		var right := Vector2(fw.y, -fw.x)
+		var c := Vector2(at.x, at.y)
+		var L := float(pr.length) * 0.5
+		var W := float(pr.width) * 0.5
+		var rect := PackedVector2Array([c - fw * L - right * W, c + fw * L - right * W, c + fw * L + right * W, c - fw * L + right * W])
+		for k in int(pr.tiers):
+			rack_tiers.append({"outline": rect, "z": at.z + float(pr.height) - 2.0 * (int(pr.tiers) - 1 - k)})
 
 ## Stairwells and ladder hatches: a walkable surface a stair or a ladder passes through gets an opening, except
 ## where the stair's own landing at that height joins it (the kit applies this, content doesn't repeat it: §5).
@@ -379,40 +401,33 @@ func _wall_edge(b: Dictionary, p: Vector2, tol: float) -> Array:
 
 # ------------------------------------------------------------------ materials
 
-const COLOURS := {
-	"ground": Color(0.42, 0.40, 0.36), "concrete": Color(0.62, 0.61, 0.58), "grating": Color(0.30, 0.31, 0.33),
-	"steel": Color(0.45, 0.47, 0.50), "rail": Color(0.95, 0.75, 0.10), "stair": Color(0.35, 0.36, 0.38),
-	"wall_metal": Color(0.78, 0.80, 0.82), "wall_concrete": Color(0.70, 0.69, 0.66), "wall_brick": Color(0.62, 0.36, 0.28),
-	"roof": Color(0.50, 0.52, 0.55), "door": Color(0.20, 0.40, 0.65), "fence": Color(0.55, 0.58, 0.55),
-	"pit": Color(0.50, 0.49, 0.46), "ladder": Color(0.95, 0.75, 0.10),
-	"machines": Color(0.25, 0.45, 0.70), "hrsg": Color(0.60, 0.62, 0.66), "rotating": Color(0.20, 0.50, 0.35),
-	"heat_exchange": Color(0.55, 0.60, 0.65), "vessels": Color(0.80, 0.80, 0.78), "valves": Color(0.75, 0.15, 0.12),
-	"instruments": Color(0.95, 0.85, 0.20), "electrical": Color(0.55, 0.55, 0.60), "cues": Color(0.90, 0.40, 0.10),
-	"pipes": Color(0.5, 0.5, 0.5), "structures": Color(0.6, 0.6, 0.6),
-}
-
+## Saves every material the kit and the structures use to out_dir/materials (the 1024 px textures: decision 0041,
+## kit/materials.gd), and the media's band colours. Returns the sum of the save errors.
 func make_materials(out_dir: String) -> int:
 	var dir := out_dir.path_join("materials")
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	var err := 0
-	var list := COLOURS.duplicate()
-	for m in plant.get("media", {}):
-		list["medium_" + m] = Color.html(plant.media[m].band)
+	var specs := Mat.specs()
+	var list := {}
+	for name in specs:
+		list[name] = Mat.make(name, specs[name])
+	for name in Mat.STRUCTURE_MATS:
+		list[name] = Mat.make_structure(name)
+	var missing := Mat.missing_textures()
+	if not missing.is_empty():
+		warnings.append("no textures (kit/fetch_textures.sh, then Godot's import): %s" % ", ".join(missing))
+		print("build: warning: materials without their textures: ", ", ".join(missing))
+	for med in plant.get("media", {}):
+		list["medium_" + med] = Mat.make("medium_" + med, {"set": "", "tint": Color.html(plant.media[med].band), "rough": 0.5, "metal": 0.0})
 	for name in list:
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = list[name]
-		mat.roughness = 0.85 if not name in ["steel", "rail", "ladder", "grating"] else 0.5
-		mat.metallic = 0.6 if name in ["steel", "grating", "ladder", "rail"] else 0.0
-		if name.begins_with("wall_") or name in ["roof", "fence"]:
-			mat.cull_mode = BaseMaterial3D.CULL_DISABLED   # buildings are seen from inside too (§5)
 		var path := dir.path_join(name + ".tres")
-		var e := ResourceSaver.save(mat, path, ResourceSaver.FLAG_CHANGE_PATH)
+		var e := ResourceSaver.save(list[name], path, ResourceSaver.FLAG_CHANGE_PATH)
 		err += e
 		mats[name] = load(path)
 	return err
 
 func _mat(name: String) -> Material:
-	return mats.get(name, mats.get("structures"))
+	return mats.get(name, mats.get("paint_grey"))
 
 # ------------------------------------------------------------------ scene helpers
 
@@ -438,6 +453,7 @@ func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material) -> M
 	var mi := MeshInstance3D.new()
 	mi.name = name
 	st.set_material(mat)
+	st.generate_tangents()
 	mi.mesh = st.commit()
 	parent.add_child(mi)
 	return mi
@@ -644,11 +660,11 @@ func _area(root: Node3D, a: Dictionary) -> void:
 	var sts := Node3D.new(); sts.name = "structures"; root.add_child(sts)
 	var signs := Node3D.new(); signs.name = "signs"; root.add_child(signs)
 	for e in a.data.get("equipment", []):
-		_equipment(eq, e.kks, true)
+		kp.equipment(eq, e.kks, true)
 		for c in e.get("parts", []):
-			_equipment(eq, c.kks, false)
+			kp.equipment(eq, c.kks, false)
 	for p in a.data.get("pipes", []):
-		_pipe(pipes, p)
+		kp.pipe(pipes, p)
 	for sf in surfaces:
 		if sf.area == a.id:
 			_surface(sts, sf)
@@ -684,11 +700,12 @@ func _area(root: Node3D, a: Dictionary) -> void:
 		l.rotation.y = Geom.yaw_rad(float(sg.get("yaw", 0))) + PI
 		l.double_sided = false
 		signs.add_child(l)
+	kp.flush(root)
 
-# ------------------------------------------------------------------ equipment placeholders
+# ------------------------------------------------------------------ equipment (made by the parts kit: kit_place.gd)
 
-## The placeholder's shape in the part's frame (x right, y forward, z up): {kind: box | vcyl | hcyl, size, z0}.
-## Sizes come from the part's parameters; the parts kit replaces all of this.
+## A part's rough shape in its frame (x right, y forward, z up): {kind: box | vcyl | hcyl, size, z0}, from its
+## parameters: the footprint the build looks for decks over (kit_place.gd _decks).
 func shape_of(part: String, p: Dictionary) -> Dictionary:
 	var n := func(k: String, d: float) -> float: return float(p.get(k, d))
 	match part:
@@ -730,92 +747,6 @@ func shape_of(part: String, p: Dictionary) -> Dictionary:
 		return {"kind": "box", "size": Vector3(0.15, 0.15, 0.25), "center": kit.parts.get(part, {}).get("inline", false)}
 	return {"kind": "box", "size": Vector3(0.5, 0.5, 0.5)}
 
-func _equipment(parent: Node3D, kks: String, top: bool) -> void:
-	var e: Dictionary = equipment[kks]
-	var sh := shape_of(e.part, e.params)
-	var node: Node3D
-	var size: Vector3 = sh.size
-	if e.part in ["duct", "cable_tray"]:
-		node = _route_part(parent, kks, e)
-	else:
-		node = StaticBody3D.new()
-		node.name = kks
-		node.position = Geom.g([e.pos.x, e.pos.y, e.pos.z])
-		node.rotation.y = Geom.yaw_rad(e.yaw)
-		parent.add_child(node)
-		var mi := MeshInstance3D.new()
-		mi.name = "placeholder"
-		var cs := CollisionShape3D.new()
-		var z0: float = sh.get("z0", -size.z * 0.5 if sh.get("center", false) else 0.0)
-		# part frame (x right, y forward, z up) to the node's Godot frame (x right, y up, -z forward)
-		match sh.kind:
-			"box":
-				var bm := BoxMesh.new(); bm.size = Vector3(size.x, size.z, size.y); mi.mesh = bm
-				var bs := BoxShape3D.new(); bs.size = bm.size; cs.shape = bs
-			"vcyl":
-				var cm := CylinderMesh.new(); cm.top_radius = size.x * 0.5; cm.bottom_radius = size.x * 0.5; cm.height = size.z; cm.radial_segments = 24; mi.mesh = cm
-				var c2 := CylinderShape3D.new(); c2.radius = size.x * 0.5; c2.height = size.z; cs.shape = c2
-			"hcyl":
-				var cm := CylinderMesh.new(); cm.top_radius = size.x * 0.5; cm.bottom_radius = size.x * 0.5; cm.height = size.y; cm.radial_segments = 24; mi.mesh = cm
-				var c2 := CylinderShape3D.new(); c2.radius = size.x * 0.5; c2.height = size.y; cs.shape = c2
-				mi.rotation.x = PI * 0.5
-				cs.rotation.x = PI * 0.5
-		mi.position.y = z0 + size.z * 0.5
-		cs.position = mi.position
-		mi.material_override = _mat(kit.parts.get(e.part, {}).get("group", "structures"))
-		node.add_child(mi)
-		if top or size.length() > 1.0:
-			node.add_child(cs)
-		else:
-			cs.free()
-		if e.part == "pump_vertical":   # the column down into the pit (seen through the grating), not solid
-			var col := MeshInstance3D.new()
-			var cm := CylinderMesh.new(); cm.top_radius = 0.4; cm.bottom_radius = 0.4; cm.height = float(e.params.get("pit_depth", 6))
-			col.mesh = cm
-			col.position.y = -cm.height * 0.5
-			col.material_override = mi.material_override
-			node.add_child(col)
-	node.set_meta("kks", kks)
-	node.add_to_group("equipment", true)
-	var lab := Label3D.new()
-	lab.name = "label"
-	lab.text = "%s\n%s" % [kks, e.name]
-	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lab.pixel_size = 0.004 if top else 0.0015
-	lab.font_size = 40
-	lab.outline_size = 8
-	lab.visibility_range_end = 30.0 if top else 6.0
-	lab.position = Vector3(0, (size.z if not sh.get("center", false) else size.z * 0.5) + (0.6 if top else 0.15), 0)
-	if e.part in ["duct", "cable_tray"]:
-		lab.position = Geom.g([e.pos.x, e.pos.y, e.pos.z + 2])
-	node.add_child(lab)
-
-func _route_part(parent: Node3D, kks: String, e: Dictionary) -> Node3D:
-	var body := StaticBody3D.new()
-	body.name = kks
-	parent.add_child(body)
-	var st := _st()
-	var pts: Array = e.params.get("route", [])
-	var w := float(e.params.get("width", 1))
-	var h := float(e.params.get("height", 0.1 if e.part == "cable_tray" else w))
-	for i in range(pts.size() - 1):
-		var a: Vector3 = e.pos + Geom.turn(_v3(pts[i]), e.yaw)
-		var b: Vector3 = e.pos + Geom.turn(_v3(pts[i + 1]), e.yaw)
-		var a2 := Vector2(a.x, a.y)
-		var b2 := Vector2(b.x, b.y)
-		var d := b2 - a2
-		if d.length() < 0.01:
-			continue
-		var across := Vector2(-d.y, d.x).normalized() * (w * 0.5)
-		var ext := d.normalized() * (w * 0.5)
-		var pc := PackedVector2Array([a2 - ext - across, b2 + ext - across, b2 + ext + across, a2 - ext + across])
-		var z0 := minf(a.z, b.z) - h * 0.5
-		var z1 := maxf(a.z, b.z) + h * 0.5
-		Geom.add_prism(st, pc, z0, z1)
-		_convex(body, Geom.prism_points(pc, z0, z1))
-	_mesh_node(body, "placeholder", st, _mat(kit.parts.get(e.part, {}).get("group", "structures")))
-	return body
-
 # ------------------------------------------------------------------ pipes
 
 func _od(dn: int) -> float:
@@ -840,75 +771,6 @@ func _end_point(end: Dictionary) -> Vector3:
 		return e.pos + Geom.turn(c, e.yaw)
 	return _v3(end.at)
 
-func _pipe(parent: Node3D, p: Dictionary) -> void:
-	var route: Array = [_end_point(p.from)]
-	for q in p.get("points", []):
-		route.append(_v3(q))
-	route.append(_end_point(p.to))
-	for q in route:
-		if q == Vector3.INF:
-			_err("bad_ref", p.kks, "a pipe end names a nozzle the kit doesn't have")
-			return
-	var od := (float(p.od_mm) if p.has("od_mm") else _od(int(p.dn))) / 1000.0 + 2.0 * float(p.get("insulation_mm", 0)) / 1000.0
-	var buried := {}
-	for r in p.get("buried", []):
-		for s in range(int(r[0]), int(r[1]) + 1):
-			buried[s] = true
-	var body := StaticBody3D.new()
-	body.name = p.kks
-	body.set_meta("kks", p.kks)
-	body.add_to_group("pipes", true)
-	parent.add_child(body)
-	var mat := _mat("medium_" + p.medium)
-	for i in range(route.size() - 1):
-		if buried.has(i):
-			continue
-		var a := Geom.g([route[i].x, route[i].y, route[i].z])
-		var b := Geom.g([route[i + 1].x, route[i + 1].y, route[i + 1].z])
-		var len := a.distance_to(b)
-		if len < 0.005:
-			continue
-		var xf := _along(a, b)
-		var mi := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = od * 0.5; cm.bottom_radius = od * 0.5; cm.height = len; cm.radial_segments = 16 if od > 0.3 else 10
-		mi.mesh = cm
-		mi.transform = xf
-		mi.material_override = mat
-		body.add_child(mi)
-		var cs := CollisionShape3D.new()
-		var sh := CylinderShape3D.new()
-		sh.radius = od * 0.5; sh.height = len
-		cs.shape = sh
-		cs.transform = xf
-		body.add_child(cs)
-		if i > 0 and not buried.has(i - 1):   # the corner
-			var sp := MeshInstance3D.new()
-			var sm := SphereMesh.new(); sm.radius = od * 0.5; sm.height = od; sm.radial_segments = 12; sm.rings = 6
-			sp.mesh = sm
-			sp.position = a
-			sp.material_override = mat
-			body.add_child(sp)
-	# inline valves and instruments at their fraction of the route's length
-	var total := 0.0
-	for i in range(route.size() - 1):
-		total += route[i].distance_to(route[i + 1])
-	for v in p.get("valves", []) + p.get("parts", []):
-		var want := float(v.at) * total
-		var acc := 0.0
-		for i in range(route.size() - 1):
-			var l: float = route[i].distance_to(route[i + 1])
-			if acc + l >= want or i == route.size() - 2:
-				var q: Vector3 = route[i].lerp(route[i + 1], clampf((want - acc) / maxf(l, 1e-6), 0, 1))
-				var d: Vector3 = (route[i + 1] - route[i]).normalized()
-				var yaw := rad_to_deg(atan2(d.x, d.y)) if Vector2(d.x, d.y).length() > 0.1 else 0.0
-				if v.has("side"):
-					q += {"top": Vector3(0, 0, 1), "bottom": Vector3(0, 0, -1)}.get(v.side, Geom.turn(Vector3(1 if v.side == "right" else -1, 0, 0), yaw)) * (od * 0.5 + 0.1)
-				equipment[v.kks] = {"pos": q, "yaw": yaw, "part": v.part, "params": params_of(v.part, v.get("params", {})), "area": "", "name": v.get("name", ""), "child": true}
-				_equipment(parent, v.kks, false)
-				break
-			acc += l
-
 ## A transform whose Y axis runs from a to b, centred between them (cylinders lie along Y).
 func _along(a: Vector3, b: Vector3) -> Transform3D:
 	var y := (b - a).normalized()
@@ -919,7 +781,7 @@ func _along(a: Vector3, b: Vector3) -> Transform3D:
 # ------------------------------------------------------------------ structures
 
 func _surface(parent: Node3D, sf: Dictionary) -> void:
-	var mat := _mat("grating" if sf.deck == "grating" else ("steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else "concrete")))
+	var mat := _mat("grating" if sf.deck == "grating" else ("deck_steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else "concrete")))
 	_slab(parent, sf.id, sf.outline, sf.holes, sf.z, sf.thick, mat)
 	if sf.rails:
 		var st := _st()
@@ -1164,4 +1026,4 @@ func _rack(parent: Node3D, s: Dictionary) -> void:
 		var p0: Vector2 = c - fw * (L * 0.5) + right * (W * sx)
 		var p1: Vector2 = c + fw * (L * 0.5) + right * (W * sx)
 		Geom.add_prism(st, Geom._strip(p0, p1, right, 0.2), at.z + H - 0.3, at.z + H)
-	_mesh_node(body, "mesh", st, _mat("steel"))
+	_mesh_node(body, "mesh", st, _mat("rack"))
