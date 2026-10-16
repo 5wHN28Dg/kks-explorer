@@ -505,7 +505,8 @@ proc activate(w: Win, app: W) =
       w.photosWiped()    # the queued photos went with the store's rows; nothing more is sent
       # the plant data is gone (§15); start over as a fresh process: new device key, the setup screen with the note
       after(200, proc () =
-        let args = allocCStringArray(@[getAppFilename()] & commandLineParams())
+        # (not the links it was started with: they were for the plant left behind)
+        let args = allocCStringArray(@[getAppFilename()] & commandLineParams().filterIt(not it.toLowerAscii.startsWith(LinkScheme & ":")))
         discard execv(getAppFilename().cstring, args)
         quit(1))
       return

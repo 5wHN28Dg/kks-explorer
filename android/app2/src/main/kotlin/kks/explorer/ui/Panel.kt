@@ -193,6 +193,8 @@ private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
     val sug = t.optJSONObject("suggestion")
     var code by remember(t.optString("id")) { mutableStateOf(sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) }
     var isa by remember(t.optString("id")) { mutableStateOf(sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa")) }
+    if (code != (sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) ||
+        isa != (sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa"))) HoldLinks()     // (a correction being typed)
     val read = t.optJSONArray("read")
     Text("Check this tag", style = MaterialTheme.typography.titleMedium)
     Text("The reader saw ${read?.optString(0)} / ${read?.optString(1)}, confidence ${(t.optDouble("conf") * 100).toInt()} %")
@@ -292,6 +294,7 @@ private fun ValveSection(vt: JSONObject, rev: Int, snack: SnackbarHostState) {
     var correcting by remember(k) { mutableStateOf(false) }
     var value by remember(k, vt.str("text")) { mutableStateOf(vt.str("text")) }
     var busy by remember(k, rev) { mutableStateOf(false) }      // one proposal per press: a second tap waits
+    if (correcting) HoldLinks()
     Heading("Valve type")
     Surface(color = if (vt.str("status") == "confirmed") MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.tertiaryContainer,
         shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {

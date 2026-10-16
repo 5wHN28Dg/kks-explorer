@@ -206,6 +206,7 @@ fun Learning(ui: Ui, snack: SnackbarHostState) {
     LaunchedEffect(ui.courseSeq) {      // a walkdown://course/… link (Root.kt): that course, at that page
         val link = ui.courseLink ?: return@LaunchedEffect
         ui.courseLink = null
+        if (link.first == open && link.second.isEmpty()) return@LaunchedEffect     // (that course, as it is)
         open = link.first
         openPage = link.second
         linkSeq++                       // (a new key every time, also after the process was restored)

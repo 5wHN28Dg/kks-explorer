@@ -189,6 +189,35 @@ const LinkMagic = 0x4B4B534C'u       ## WM_COPYDATA's dwData for a link ("KKSL")
 
 proc isLinkArg(a: string): bool = a.len <= MaxLinkLen and a.toLowerAscii.startsWith(LinkScheme & ":")
 
+var pendingLink = ""       ## a walkdown:// link that came while a form held typed text, or a dialog was up
+
+proc linkHeld(): bool =
+  ## a link waits while the panel holds something typed (win.panelHeld: it would rebuild the panel for another tag
+  ## and lose it) or a modal dialog has the main window disabled (a question being asked)
+  w.panelHeld(anyFocus = false) or IsWindowEnabled(w.hwnd) == 0
+
+proc takeLink() =
+  ## the waiting link, once nothing holds it (from linkArrived, and every second: TimerRefresh)
+  if pendingLink.len == 0: return
+  if setupP != nil or w.v == nil:
+    pendingLink = ""
+    return
+  if linkHeld(): return
+  let link = pendingLink
+  pendingLink = ""
+  w.openAppLink(link, true)
+
+proc linkArrived(link: string) =
+  ## a link from another app (the command line, or handed over): on a device that has joined, opened now or once the
+  ## form or dialog that holds it is done (never over what was typed)
+  if setupP != nil or w.v == nil: return
+  pendingLink = link
+  if linkHeld():
+    w.toast("A link from another app opens once the form is saved or cancelled")
+    if IsIconic(w.hwnd) != 0: ShowWindow(w.hwnd, SW_RESTORE)
+    discard SetForegroundWindow(w.hwnd)
+  else: later(takeLink)
+
 proc handOver(link: string, running: bool): bool =
   ## Walkdown already runs (`running`: its named mutex was there): the link goes to its main window, and this start
   ## ends (true). MSIX starts a new process for every link; two of them on one store and one sync port would not
@@ -248,6 +277,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
         guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
         guard: w.panelCatchUp()         # the panel too, left alone under the keyboard or typed text
         guard: w.sideCatchUp()          # the sidebar, left alone under the keyboard
+        guard: takeLink()               # a link that waited for a form or a dialog
     return 0
   of WM_KKS_LATER:
     runLater()
@@ -259,7 +289,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     if w != nil and cd != nil and cd.dwData == LinkMagic and int(cd.cbData) in 1 .. MaxLinkLen and cd.lpData != nil:
       var link = newString(int(cd.cbData))
       copyMem(addr link[0], cd.lpData, link.len)
-      later(proc () = w.openAppLink(link, setupP == nil and w.v != nil))
+      later(proc () = linkArrived(link))
       return 1
     return 0
   of WM_DPICHANGED:
@@ -406,7 +436,7 @@ proc main() =
       if w.v != nil and setupP == nil and fileExists(staleFile): later(proc () = w.rebuildPanel())
   if a.joined:
     showMain()
-    if link.len > 0: later(proc () = w.openAppLink(link, setupP == nil and w.v != nil))
+    if link.len > 0: later(proc () = linkArrived(link))
   else:
     setupP = newPage(hw)
     w.buildSetup(setupP, proc () =

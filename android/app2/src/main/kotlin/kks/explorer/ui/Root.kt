@@ -182,6 +182,10 @@ fun MainScreen() {
     // a link from another app: a code opens its tag on its drawing (as a course's code link), a course opens on the
     // Learning tab; anything else does nothing (the core reads the link, strictly)
     val link = if (AppLinks.resumed && AppLinks.holds == 0) AppLinks.pending else null
+    val waiting = AppLinks.resumed && AppLinks.holds > 0 && AppLinks.pending != null
+    LaunchedEffect(waiting) {
+        if (waiting) scope.launch { snack.showSnackbar("A link from another app opens once what is open here is sent or cancelled") }
+    }
     LaunchedEffect(link) {
         if (link == null) return@LaunchedEffect
         AppLinks.pending = null       // (taken once: the same link again is a new request)

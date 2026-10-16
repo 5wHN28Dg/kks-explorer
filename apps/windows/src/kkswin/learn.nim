@@ -675,7 +675,7 @@ var courseClass = false
 proc openCourseWindow*(w: Win, id: string, page = "") =
   if id in openById:
     let cw = openById[id]
-    if page.len > 0: cw.show(page)
+    if page.len > 0 and page != cw.pageId: cw.show(page)     # (the page shown: kept as it is, answers and all)
     discard SetForegroundWindow(cw.hwnd)
     return
   let c = openCourse(w.a, id)

@@ -761,7 +761,7 @@ proc closeCourseWindows*() =
 proc openCourse*(w: Win, id: string, page = "") =
   if id in windows and windows[id].window != nil:
     let cw = windows[id]
-    if page.len > 0: cw.show(page)
+    if page.len > 0 and page != cw.pageId: cw.show(page)     # (the page shown: kept as it is, answers and all)
     gtk_window_present(cw.window)
     return
   loadCourseFonts()

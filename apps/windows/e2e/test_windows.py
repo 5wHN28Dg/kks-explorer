@@ -839,6 +839,9 @@ class Windows(unittest.TestCase):
         does nothing; a code opens its tag with the panel; a course link that course at that page; a code on no
         drawing says so; a malformed link does nothing"""
         code = 'walkdown://kks/11LAB70AA501'
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [700, 300, 820, 360],
+                                                  'kks': '11LAB70AA602', 'isa': '', 'note': ''}})
+        self.assertEqual(r.get('status'), 'approved', r)
         self.check('applink0.uia', ['wait\tJoin through a server\t60', 'sleep\t2000'], keep=False, app_args=code)
         self.check('applink1.uia', [l % (HOST, self.sport) if '%' in l else l for l in self.JOIN] +
                    ['wait\tSample sheet — Walkdown\t20', 'sleep\t2000', 'gone\tPlant unit'])
@@ -857,6 +860,12 @@ class Windows(unittest.TestCase):
         if not MSIX: self.assertIn('second start ended: True', log)
         log = self.check('applink4.uia', ['wait\t~11LAB70AA599 is not on any sheet\t20'], link='walkdown://kks/11LAB70AA599')
         if not MSIX: self.assertIn('second start ended: True', log)
+        # typed into the open tag's form: a link to another tag waits (it would make the panel again for that tag and
+        # the text would be gone) and says so; it opens once the form is cancelled
+        self.check('applinkf0.uia', ['click\tEdit', 'set\tNotes\ttyped, not saved yet'])
+        self.check('applinkf1.uia', ['wait\t~A link from another app opens once the form is saved or cancelled\t20',
+                                     'value\tNotes\ttyped, not saved yet', 'sleep\t2500', 'value\tNotes\ttyped, not saved yet',
+                                     'click\tCancel', 'wait\t11LAB70AA602\t20'], link='walkdown://kks/11LAB70AA602')
         # malformed links do nothing: each would open something if it were read loosely
         self.check('applink5.uia', ['close\tThe control loop in one picture', 'gone\tThe control loop in one picture'])
         self.check('applink6.uia', ['sleep\t2000', 'gone\t~Instrumentation and control — '], link='walkdown://course/inc/loop?x=1')

@@ -273,7 +273,7 @@ class Gnome(Plant):
         """walkdown:// links from other apps (decision 0057), as the .desktop file's `%u` hands them over: a code opens
         its tag on its drawing with the panel, a course link that course at that page; a link of any other kind or
         form, or on a device that hasn't joined, opens nothing"""
-        a = self.start_app('linked', args=['walkdown://kks/../../etc', 'walkdown://join/x'])
+        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA501', 'walkdown://kks/../../etc', 'walkdown://join/x'])
         atspi.find(a, 'button', name='Join through a server', timeout=15)      # not joined: the setup screen, nothing else
         self.join(a)
         time.sleep(3)
