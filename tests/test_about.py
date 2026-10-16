@@ -233,5 +233,27 @@ class About(unittest.TestCase):
         self.assertRegex(read('android', 'app2', 'build.gradle.kts'), r'val copyData [^\n]*\n[^\n]*include\([^)]*"about\.json"')
 
 
+
+class PlantAbout(unittest.TestCase):
+    """apps/plant3d/about.json (tools/about.py --plant): current, and every asset the plant's build fetches is in
+    it, CC0 with the licence's full text."""
+    def test_current(self):
+        self.assertEqual(about.main(['--plant', '--check']), 0, 'run python3 tools/about.py --plant and commit it')
+
+    def test_every_fetched_asset_is_listed(self):
+        with open(os.path.join(REPO, 'apps', 'plant3d', 'about.json'), encoding='utf-8') as f:
+            d = json.load(f)
+        with open(os.path.join(REPO, 'apps', 'plant3d', 'kit', 'fetch_textures.sh'), encoding='utf-8') as f:
+            fetch = f.read()
+        fetched = set(re.findall(r'^[0-9a-f]{64} (\w+) ', fetch, re.M))
+        sky = re.search(r'^SKY_NAME=(\S+)$', fetch, re.M).group(1)
+        names = {a['source'].rsplit('/', 1)[-1] for a in d['assets']}
+        for n in fetched:
+            self.assertIn(n + '_2K-JPG.zip', {x.replace('get?file=', '') for x in names}, n)
+        self.assertIn(sky, names)
+        for a in d['assets']:
+            self.assertEqual(a['license'], 'CC0-1.0', a['id'])
+        self.assertIn('CC0 1.0 Universal', d['licenses']['CC0-1.0']['text'])
+
 if __name__ == '__main__':
     unittest.main()

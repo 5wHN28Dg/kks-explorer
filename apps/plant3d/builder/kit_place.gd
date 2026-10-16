@@ -17,6 +17,7 @@ const P_PIPE = preload("res://kit/parts_pipes.gd")
 const P_VAL = preload("res://kit/parts_valves.gd")
 const P_MACH = preload("res://kit/parts_machines.gd")
 const P_HX = preload("res://kit/parts_heat.gd")
+const Lightmap = preload("res://builder/lightmap.gd")
 
 const CELL := 12.0          # the instancing cell (0041)
 const SMALL_CELL := 6.0     # for `detail` pieces: a smaller box keeps their range close to the rule
@@ -277,6 +278,7 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 			mi.name = "mesh" if mv.layers.size() == 1 else ("mesh_" + L.mat)
 			mi.mesh = L.mesh
 			mi.material_override = b._mat(L.mat)
+			Lightmap.mark(mi, false)   # it moves: the sky's light (builder/lightmap.gd mark)
 			if L.cls == "detail":
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				mi.add_to_group("detail", true)
@@ -441,10 +443,13 @@ func flush(root: Node3D) -> int:
 			n += 1
 	for mk in merge:
 		var group: Array = merge[mk]
-		if group.size() == 1:
-			_emit(kit, group[0].mesh, group[0].mat, group[0].cls, group[0].size, group[0].xf, n)
-			n += 1
-			continue
+		var cls: String = "identify" if group.any(func(c): return c.cls == "identify") else group[0].cls
+		if cls == "detail":
+			# detail pieces are small (bolts, fins): the sky's light, never given lightmap texels
+			if group.size() == 1:
+				_emit(kit, group[0].mesh, group[0].mat, group[0].cls, group[0].size, group[0].xf, n)
+				n += 1
+				continue
 		# one mesh for them all, around the first one's origin
 		var o: Vector3 = group[0].xf[0].origin
 		var st := SurfaceTool.new()
@@ -452,15 +457,23 @@ func flush(root: Node3D) -> int:
 			var t: Transform3D = c.xf[0]
 			st.append_from(c.mesh, 0, Transform3D(t.basis, t.origin - o))
 		var arr := st.commit_to_arrays()
-		var im := ImporterMesh.new()
-		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arr)
-		if group[0].cls != "identify":   # identify pieces keep every triangle (§10)
-			im.generate_lods(25.0, 60.0, [])
-		var mesh := im.get_mesh()
 		var size := INF
 		for c in group:
 			size = minf(size, c.size)
-		_emit(kit, mesh, group[0].mat, "identify" if group.any(func(c): return c.cls == "identify") else group[0].cls, size, [Transform3D(Basis(), o)], n)
+		if cls == "form":
+			# a static mesh standing once in its cell: the bake lights it (builder/lightmap.gd). Identify pieces
+			# (tag plates, bands, arrows) are not: a texel of a third of a metre would grey a white plate behind
+			# its code; they take the sky's light like the instanced pieces
+			var lit := Lightmap.unwrap(arr, Lightmap.TEXEL, cls != "identify")
+			if lit != null:
+				_emit_static(kit, lit, group[0].mat, cls, o, n)
+				n += 1
+				continue
+		var im := ImporterMesh.new()
+		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arr)
+		if cls != "identify":   # identify pieces keep every triangle (§10)
+			im.generate_lods(25.0, 60.0, [])
+		_emit(kit, im.get_mesh(), group[0].mat, cls, size, [Transform3D(Basis(), o)], n)
 		n += 1
 	var groups := merge.size()
 	var widest := 0.0
@@ -472,6 +485,18 @@ func flush(root: Node3D) -> int:
 	cells.clear()
 	cells_made += n
 	return n
+
+## A static mesh with lightmap UV2, standing once (group "kit_static"): a MeshInstance3D, which LightmapGI bakes.
+func _emit_static(kit: Node3D, mesh: Mesh, mat: String, cls: String, o: Vector3, n: int) -> void:
+	var mi := MeshInstance3D.new()
+	mi.name = "%s_%s_%d" % [mat, cls, n]
+	mi.mesh = mesh
+	mi.position = o
+	mi.material_override = b._mat(mat)
+	mi.set_meta("box", Transform3D(Basis(), o) * mesh.get_aabb())
+	mi.add_to_group("kit_static", true)
+	Lightmap.mark(mi, true)
+	kit.add_child(mi)
 
 func _emit(kit: Node3D, mesh: Mesh, mat: String, cls: String, size: float, xfs: Array, n: int) -> void:
 	var mm := MultiMesh.new()
@@ -493,6 +518,7 @@ func _emit(kit: Node3D, mesh: Mesh, mat: String, cls: String, size: float, xfs: 
 	mmi.set_meta("count", xfs.size())
 	mmi.set_meta("box", box)
 	mmi.add_to_group("kit_cells", true)
+	Lightmap.mark(mmi, false)
 	if cls == "detail":
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mmi.add_to_group("detail", true)

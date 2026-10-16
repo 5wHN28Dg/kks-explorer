@@ -102,6 +102,8 @@ from Godot 4 (0041), so the rows below say what the platform gives underneath an
 | Engine renderer on it | ✅ Forward+, D3D12 default since Godot 4.6, Vulkan fallback [D] | ✅ Forward+, Vulkan; X11 default, Wayland opt-in [D] | ✅ Mobile renderer; the export's minimum SDK is 29 with Vulkan [D], measured on the Note 9 [V, 0041] |
 | GPU texture compression | ✅ BC1–BC7 [D] | ✅ BC1–BC7 [D] | ✅ ETC2 with every OpenGL ES 3.0 device; 🟡 ASTC on > 80 % of devices (Mali-G72 has it) [D] |
 | Shaders compiled before the first frame | 🟡 the shader baker bakes D3D12 only from a Windows editor, Vulkan from Linux; our releases are built on Linux, so D3D12 compiles at load (0054); not in headless exports [D] | ✅ baker, Vulkan [D] | ✅ baker, Vulkan, from a Linux editor [D] |
+| Baked lighting (lightmaps) | ✅ LightmapGI in Forward+ [D] | ✅ the same; baked here only in Godot's editor on a GPU (no script API) [S, V 0057] | ✅ LightmapGI in the Mobile renderer [D], measured on the Note 9 [V 0057] |
+| HDR textures (lightmap, sky) | ✅ BC6H [D] | ✅ BC6H [D] | 🟡 no ASTC HDR on the Mali-G72: Godot converts to half floats at load; kept as RGBE9995 instead [V 0057] |
 | Touch | 🟡 touch screens only [D] | 🟡 touch on Wayland since Godot 4.7 [D] | ✅ multi-touch; on-screen joystick `VirtualJoystick` (4.7) [D] |
 | Gamepad | ✅ SDL3 joypad driver (4.5) [D] | ✅ SDL3 [D] | ✅ Android's own input [D] |
 | Keyboard and mouse | ✅ [K] | ✅ [K] | 🟡 with a keyboard or mouse attached [K] |

@@ -20,6 +20,16 @@ func run(tree: SceneTree) -> Array:
 		nodes[n.name] = n
 		if not n.has_meta("aabb"):
 			p.append("%s has its box (meta aabb)" % n.name)
+	# every valve carries its tag plate, inline ones on pipes too (PLANT3D.md §4 `plate`, §10): the plate's code is
+	# a Label3D named "plate" on the valve's node
+	var valves := 0
+	for n in tree.get_nodes_in_group("equipment"):
+		if String(n.get_meta("part", "")).begins_with("valve_"):
+			valves += 1
+			if not n.get_node_or_null("plate") is Label3D:
+				p.append("%s (%s) carries its tag plate" % [n.name, n.get_meta("part")])
+	if valves < 15:
+		p.append("the plant's valves were found (%d)" % valves)
 	# the model's anim bindings
 	var dir := ProjectSettings.globalize_path("res://").path_join("../../data/plant3d/model").simplify_path()
 	var bound := 0
@@ -71,8 +81,9 @@ func run(tree: SceneTree) -> Array:
 		Mat.apply_tier("full")
 		var want := Mat.size_for("full")
 		for name in ["deck_steel", "ground", "paint", "metal"]:
-			var m := load("res://built/materials/%s.tres" % name) as StandardMaterial3D
-			var path := m.normal_texture.resource_path if m != null and m.normal_texture != null else ""
+			var m := load("res://built/materials/%s.tres" % name) as Material
+			var nt := Mat.texture_of(m, "NormalGL") if m != null else null
+			var path := nt.resource_path if nt != null else ""
 			var set_name: String = {"deck_steel": "DiamondPlate008C", "ground": "Gravel023", "paint": "PaintedMetal004", "metal": "Metal032"}[name]
 			if not ("/%d/" % want in path and set_name in path):
 				p.append("%s after the full tier: %s (want %s at %d px)" % [name, path, set_name, want])

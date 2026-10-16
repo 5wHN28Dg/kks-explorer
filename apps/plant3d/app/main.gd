@@ -15,6 +15,8 @@
 ##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
+##   fx_off=ssao,fog,tonemap those effects off (tonemap: linear output at half exposure), fx_on=sdfgi,ssil,volfog,glow those on (measuring what each costs:
+##                           app/lighting.gd)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -25,6 +27,7 @@ const Routes = preload("res://app/routes.gd")
 const Hud = preload("res://app/hud.gd")
 const MapView = preload("res://app/map_view.gd")
 const PlantUi = preload("res://ui/plant_ui.gd")
+const Lighting = preload("res://app/lighting.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -71,6 +74,16 @@ func _ready() -> void:
 		add_child(l)
 		return
 	_say("loaded the plant in %d ms (%d areas)" % [plant.load_ms, plant.manifest.areas.size()])
+	var lm := Lighting.lightmap_node()
+	if lm != null:
+		plant.add_child(lm)   # beside the areas: its users' paths are "../area_…" (app/lighting.gd)
+		# meshes made at run time (the UI's markers) are not in the bake: the sky's light, not its probes
+		get_tree().node_added.connect(_unbaked)
+		_say("lightmap: %d meshes baked" % lm.light_data.get_user_count())
+	else:
+		_say("lightmap: none in this build (the sky and the sun only)")
+	for l in get_tree().get_nodes_in_group("baked_lights"):
+		l.queue_free()   # the halls' lamps light through the bake only (forty real-time lights in a hall cost too much)
 	player = Player.new()
 	player.name = "player"
 	add_child(player)
@@ -109,6 +122,11 @@ func _ready() -> void:
 	elif opts.get("map", "") == "1":
 		toggle_map()
 
+func _unbaked(n: Node) -> void:
+	var g := n as GeometryInstance3D
+	if g != null and g.gi_mode == GeometryInstance3D.GI_MODE_STATIC and not (n is MeshInstance3D and n.is_in_group("kit_static")):
+		g.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+
 func _options() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
@@ -121,24 +139,18 @@ func _options() -> void:
 				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed"]:   # nothing else from a shared folder
 					opts[kv[0]] = kv[1]
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
+	Lighting.off = String(opts.get("fx_off", "")).split(",", false)
+	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
 
 func _environment() -> void:
 	env = Environment.new()
-	var sky := Sky.new()
-	var sm := ProceduralSkyMaterial.new()
-	sm.ground_horizon_color = Color(0.55, 0.53, 0.49)   # the plant's ground runs on to the horizon
-	sm.ground_bottom_color = Color(0.42, 0.40, 0.36)
-	sky.sky_material = sm
 	env.background_mode = Environment.BG_SKY
-	env.sky = sky
+	env.sky = Lighting.sky()
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, 35, 0)
-	sun.shadow_enabled = true
+	sun = Lighting.sun()
 	add_child(sun)
 
 ## Picks the tier (app/quality.gd) and applies it; a desktop without a measurement of its GPU measures it first.
@@ -237,6 +249,12 @@ func _first_frame() -> void:
 	await RenderingServer.frame_post_draw
 	first_frame_ms = Time.get_ticks_msec()
 	_say("first frame drawn %d ms after the engine started" % first_frame_ms)
+	# the pipelines compiled for it (what a phone's first start waits for: decision 0057)
+	_say("pipelines compiled: mesh %d, surface %d, draw %d, specialization %d" % [
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_MESH),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_DRAW),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)])
 
 func _start_walk() -> void:
 	var route: Array = Routes.frames(plant) if opts.walk == "frames" else Routes.climb(plant)
