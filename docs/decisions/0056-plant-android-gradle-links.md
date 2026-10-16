@@ -28,6 +28,11 @@ that need from the build?
   (`distributionSha256Sum`), caps Gradle (`-Xmx2g`, 2 workers, no daemon), and runs it on Eclipse Temurin 17 fetched
   by `tools/plant3d/fetch_jdk.sh` (pinned version and SHA-256, under `~/.local/kksdev`, nothing system-wide). CI does
   the same.
+- **The signing key never reaches Gradle:** Gradle's dependencies are not pinned (no dependency verification yet), so
+  the release is exported unsigned and then aligned and signed by `build.sh` with the SDK's `zipalign` and `apksigner`
+  (password through the environment of apksigner alone), as the plain export did before.
+- On the desktops the link comes after `--` (`Exec=godot-runner -- %u`, MSIX `Parameters="-- "%1""`), so that a
+  crafted URI is never read as one of Godot's own options.
 
 **When to revisit:** when Godot's template moves to a Gradle that runs on the JDK Walkdown uses (drop the second JDK);
 if Godot gives a plain export a way to add intent filters (drop Gradle); if the template's repositories change (the

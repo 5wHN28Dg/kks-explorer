@@ -76,10 +76,11 @@ func ff_blocked() -> String:
 		if e.shelved[k] != -1:
 			continue
 		var s: String = e.astate[k]
+		var txt: String = e.m.alarms[k].get("text", e._al[k][0])
 		if s == "active_unack" or s == "cleared_unack":
-			return "an alarm is not acknowledged"
+			return "an alarm is not acknowledged (%s)" % txt
 		if e._al[k][5] == 1 and s == "active_ack":
-			return "a priority 1 alarm is active"
+			return "a priority 1 alarm is active (%s)" % txt
 	for mi in e._mc.size():
 		if e._mc[mi][3][e.mstate[mi]][2]:
 			return "%s is in a step to watch (%s)" % [e._mc[mi][0].replace("_", " "), e._mc[mi][2][e.mstate[mi]].replace("_", " ")]
@@ -112,11 +113,11 @@ func run_steps(n: int) -> int:
 func _one() -> void:
 	var t0 := Time.get_ticks_usec()
 	engine.step()
+	stepped.emit(engine)                # what follows each step (events, the procedure) is the model's cost too
 	var us := Time.get_ticks_usec() - t0
 	_win_steps += 1
 	_win_us += us
 	step_ms = step_ms * 0.98 + (us / 1000.0) * 0.02
-	stepped.emit(engine)
 
 
 func _process(delta: float) -> void:
@@ -142,11 +143,14 @@ func _process(delta: float) -> void:
 	else:
 		acc -= n * STEP
 	hold = false
+	var ran := 0
+	var sp := speed
 	for i in n:
 		if speed == Speed.FAST and not engine.fast_forward():
 			set_speed(Speed.NORMAL, "Fast-forward stopped: " + ff_blocked())
 			break
 		_one()
+		ran += 1
 		if hold:
 			hold = false
 			if pause_on_hold:
@@ -157,6 +161,8 @@ func _process(delta: float) -> void:
 		if speed == Speed.FAST and not engine.fast_forward():
 			set_speed(Speed.NORMAL, "Fast-forward stopped: " + ff_blocked())
 			break
+	if speed == sp and ran < n:
+		acc += (n - ran) * STEP          # a hold at 1×: the steps not run this frame are still owed
 
 
 ## Model time as h:mm:ss.

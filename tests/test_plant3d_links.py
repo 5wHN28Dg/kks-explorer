@@ -19,7 +19,7 @@ class PlantLinks(unittest.TestCase):
     def test_flatpak_desktop_file(self):
         d = read(PLANT, 'flatpak', 'io.github._5wHN28Dg.WalkdownPlant.desktop')
         self.assertIn('MimeType=x-scheme-handler/walkdown-plant;', d.splitlines())
-        self.assertRegex(d, r'(?m)^Exec=godot-runner %u$')       # the URI arrives as an argument
+        self.assertRegex(d, r'(?m)^Exec=godot-runner -- %u$')    # an argument after --: never one of Godot's options
 
     def test_msix_manifest(self):
         ns = {'f': 'http://schemas.microsoft.com/appx/manifest/foundation/windows10',
@@ -29,7 +29,7 @@ class PlantLinks(unittest.TestCase):
         app = m.find('f:Applications/f:Application', ns)
         self.assertEqual(app.get('Executable'), 'WalkdownPlant.exe')
         p = app.find('f:Extensions/uap3:Extension/uap3:Protocol', ns)
-        self.assertEqual((p.get('Name'), p.get('Parameters')), ('walkdown-plant', '"%1"'))
+        self.assertEqual((p.get('Name'), p.get('Parameters')), ('walkdown-plant', '-- "%1"'))
         caps = [c.get('Name') for c in m.find('f:Capabilities', ns)]
         self.assertEqual(caps, ['runFullTrust'])                # no network: the plant app has none (0054)
 

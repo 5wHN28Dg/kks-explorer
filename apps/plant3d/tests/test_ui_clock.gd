@@ -71,6 +71,32 @@ func run(tree: SceneTree) -> Array:
 	c.set_speed(SimClock.Speed.FAST)
 	if c.speed == SimClock.Speed.FAST:
 		p.append("fast-forward was taken with an alarm unacknowledged")
+	# a hold at 1× (a procedure step done, no pause): the steps not run that frame come in the next
+	ui.restart("cold_iron")
+	c.set_speed(SimClock.Speed.NORMAL)
+	var held := [false]
+	var hold_once := func(_e):
+		if not held[0]:
+			held[0] = true
+			c.hold = true
+	c.stepped.connect(hold_once)
+	var s4: int = c.engine.step_no
+	c.acc = 0.0
+	c._process(0.25)          # two steps due (a frame counts at most 0.25 s), held after the first
+	c._process(1.0 / 60.0)
+	c.stepped.disconnect(hold_once)
+	if c.engine.step_no - s4 != 2:
+		p.append("0.27 s at 1× with a hold after the first step ran %d steps, not 2" % (c.engine.step_no - s4))
+	# a procedure step without `done` ends with Next, but only after one model step (as sim/procedure.gd)
+	var Tracker = load("res://ui/procedure_tracker.gd")
+	var tr = Tracker.new()
+	tr.begin({"kind": "procedure", "steps": [{"id": "a", "text": ["A"]}, {"id": "b", "text": ["B"]}]}, c.engine)
+	if tr.can_next(c.engine):
+		p.append("Next is offered before the plant has run a step")
+	c.run_steps(1)
+	tr.next(c.engine)
+	if tr.log != [["a", c.engine.step_no]] or tr.index != 1:
+		p.append("Next after a step logged %s" % str(tr.log))
 	# pause
 	c.set_speed(SimClock.Speed.PAUSED)
 	var s3: int = c.engine.step_no

@@ -26,9 +26,11 @@ static func row_of(card, d: Dictionary) -> Array:
 	return []
 
 
+## A visible button that can be pressed (a disabled one is a failure: the trainee couldn't press it).
 static func find_button(n: Node, text: String) -> Button:
 	for c in n.get_children():
 		if c is Button and c.text == text and c.visible:
+			assert(not c.disabled, "%s is disabled" % text)
 			return c
 		var f := find_button(c, text)
 		if f:
@@ -95,7 +97,10 @@ func run(tree: SceneTree) -> Array:
 			if where.has("screen"):
 				if not ui.in_control_room():
 					find_button(ui.root, "Control room").pressed.emit()
-			ui.open_card(d["kks"])
+			ui.procedure._link("kks:" + d["kks"])      # the code as linked in the step's checklist
+			if not ui.card.visible or ui.card.code != d["kks"]:
+				p.append("step %s: the step's link did not open the card of %s" % [s["id"], d["kks"]])
+				break
 			if not where.has("screen"):
 				var go := find_button(ui.card, "Go there")
 				if go == null:
@@ -127,13 +132,12 @@ func run(tree: SceneTree) -> Array:
 		# run: fast-forward where allowed, else 1×; the clock pauses itself when the step is done
 		var idx: int = ui.tracker.index
 		while ui.tracker.index == idx and p.is_empty():
-			if ui.clock.speed == SimClock.Speed.PAUSED:
-				if ui.clock.ff_blocked() == "":
-					find_button(ui.root, "Fast").pressed.emit()
-				else:
-					find_button(ui.root, "1×").pressed.emit()
-			elif ui.clock.speed == SimClock.Speed.NORMAL and ui.clock.ff_blocked() == "":
+			# as a trainee: Fast when the button can be pressed, else 1×
+			var fast: Button = ui._ff_btn
+			if ui.clock.speed != SimClock.Speed.FAST and not fast.disabled:
 				find_button(ui.root, "Fast").pressed.emit()
+			elif ui.clock.speed == SimClock.Speed.PAUSED:
+				find_button(ui.root, "1×").pressed.emit()
 			await tree.process_frame
 			guard += 1
 			if guard > 200000:

@@ -57,12 +57,17 @@ func _go(i: int, engine) -> void:
 
 
 ## The trainee's Next: ends a step that has no `done` (and every tour stop); a step with `done` ends by itself.
-func can_next() -> bool:
-	return index >= 0 and (is_tour() or not current().has("done"))
+func can_next(engine = null) -> bool:
+	if index < 0:
+		return false
+	if is_tour():
+		return true
+	# a procedure step without `done` lasts at least one model step, as in sim/procedure.gd
+	return not current().has("done") and (engine == null or engine.step_no > start_step)
 
 
 func next(engine) -> void:
-	if not can_next():
+	if not can_next(engine):
 		return
 	log.append([current()["id"], engine.step_no if engine != null else 0])
 	_go(index + 1, engine)

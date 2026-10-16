@@ -38,9 +38,14 @@ func run(tree: SceneTree) -> Array:
 			p.append("%s: the card does not say \"%s\"" % [c[0], c[2]])
 	if not App.texts(ui.card).contains("System PAC10: Circulating water pumps"):
 		p.append("the card does not decode the code in the plant's words: %s" % App.texts(ui.card).left(300))
+	# a procedure link only offers it: the trainee chooses (a running procedure is not dropped by a link)
+	ui.start_procedure("cw_path", null, false)
 	ui.handle_link("walkdown-plant://procedure/cold_start/cw_a_start")
+	if ui.tracker.proc["id"] != "cw_path" or not App.texts(ui.procedure.body).contains("This stops"):
+		p.append("a procedure link replaced the running tour, or did not say it would")
+	App.find_button(ui.procedure.body, "Follow it from here").pressed.emit()
 	if ui.tracker == null or ui.tracker.current().get("id", "") != "cw_a_start" or not ui.procedure.visible:
-		p.append("the procedure link did not open the cold start at cw_a_start")
+		p.append("following the procedure link did not open the cold start at cw_a_start")
 	ui.close_card()
 	ui.handle_link("walkdown-plant://kks/../../etc")
 	if ui.card.visible or not ui._toast.text.contains("not one Walkdown Plant opens"):

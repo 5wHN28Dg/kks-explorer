@@ -149,6 +149,8 @@ func _start(n: Node3D, id: String) -> Array:
 
 ## The control room horn: priority 1–3 while an alarm of that priority is unacknowledged, 0 for silence.
 func horn(priority: int) -> void:
+	if muted:
+		priority = 0                    # (recorded as silence, so that unmuting sounds it again)
 	if priority == _horn_prio:
 		return
 	_horn_prio = priority

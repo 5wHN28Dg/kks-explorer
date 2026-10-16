@@ -137,12 +137,25 @@ static func _shown(o: Dictionary, v) -> String:
 ## The trainee's number, read exactly (a JSON number: correctly rounded, an integer stays an integer); per cent for a
 ## 0–1 command. null when it isn't a number.
 static func read_number(o: Dictionary, text: String):
-	var r := JsonStrict.parse_text(text.strip_edges().replace(",", "."))
+	var t := text.strip_edges().replace(",", ".")
+	if _percent(o):
+		t = percent_to_fraction(t)      # "33.3" is read as 0.333, not as 33.3 / 100 (one rounding apart)
+	var r := JsonStrict.parse_text(t)
 	if not r.ok or not (typeof(r.value) == TYPE_INT or typeof(r.value) == TYPE_FLOAT):
 		return null
-	if _percent(o):
-		return float(r.value) / 100.0
-	return r.value
+	return float(r.value) if _percent(o) else r.value
+
+
+## A per cent as the decimal text of its fraction, by moving the point ("15" → "0.15"); "" when not a plain number.
+static func percent_to_fraction(t: String) -> String:
+	var re := RegEx.create_from_string("^(-?)([0-9]*)(?:\\.([0-9]*))?$")
+	var mt := re.search(t)
+	if mt == null or (mt.get_string(2) + mt.get_string(3)) == "":
+		return ""
+	var digits := mt.get_string(2).lpad(3, "0")
+	var ip := digits.left(digits.length() - 2).lstrip("0")
+	var fp := digits.right(2) + mt.get_string(3)
+	return "%s%s.%s" % [mt.get_string(1), ip if ip != "" else "0", fp]
 
 
 func _press(o: Dictionary, entry: LineEdit) -> void:

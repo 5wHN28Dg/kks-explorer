@@ -46,6 +46,7 @@ func _run() -> void:
 		var t = script.new()
 		var errors0 := errors.count
 		var problems: Array = await t.run(self)
+		Engine.time_scale = 1.0          # a test stopped half way must not leave its time scale to the next
 		# a script error stops the test function, which then returns an empty list: count it as a failure
 		if errors.count > errors0:
 			problems = problems + ["%d script error(s), above" % (errors.count - errors0)]

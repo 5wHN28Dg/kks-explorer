@@ -64,10 +64,12 @@ func open() -> void:
 		(_tabs[tab] as Button).grab_focus()
 
 
+## Every unacknowledged alarm that is not shelved: the active list's and those suppressed while unacknowledged
+## (they keep their state, §7.6, and would hold fast-forward back with nothing to press).
 func _ack_all() -> void:
 	var e = ui.clock.engine
 	for k in e._al.size():
-		if _listed(e, k, "active") and (e.astate[k] == "active_unack" or e.astate[k] == "cleared_unack"):
+		if e.shelved[k] == -1 and (e.astate[k] == "active_unack" or e.astate[k] == "cleared_unack"):
 			ui.ack(e._al[k][0])
 
 
@@ -201,6 +203,8 @@ func _row(e, k: int) -> void:
 	box.add_child(W.label(a["text"], 19))
 	var row := HBoxContainer.new()
 	box.add_child(row)
+	if tab == "suppressed" and st.ends_with("unack"):
+		row.add_child(W.button("Ack", func(): ui.ack(a["id"])))
 	if tab == "active":
 		var ack := W.button("Ack", func(): ui.ack(a["id"]))
 		ack.disabled = not st.ends_with("unack")

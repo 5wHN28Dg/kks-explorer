@@ -1,7 +1,7 @@
 ## Links into Walkdown Plant (docs/PLANT3D.md §6, decision 0054 §3): `walkdown-plant://kks/<code>` and
 ## `walkdown-plant://procedure/<id>[/<step>]`. They come
-## - on Linux and Windows on the command line (the Flatpak's .desktop file passes the URI as `%u`, the MSIX's
-##   `uap:Protocol` likewise);
+## - on Linux and Windows on the command line, after `--` (the Flatpak's .desktop file passes `-- %u`, the MSIX's
+##   `uap3:Protocol` `-- "%1"`), so that a crafted URI can't pass as one of Godot's own options;
 ## - on Android in the Intent that started or resumed the app (its intent filter is in the Gradle export, see
 ##   apps/plant3d/android), read through Godot's AndroidRuntime plugin.
 ## What a link opens is sim/links.gd `read_link`, the reference's rule; nothing else is read from it.

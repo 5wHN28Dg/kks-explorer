@@ -71,6 +71,14 @@ func run(tree: SceneTree) -> Array:
 	txt = ui.op_result(row[0]).get("text", "")
 	if txt != "Refused: The value must be between 0 and 100 %":
 		p.append("150 %% came back: %s" % txt)
+	var Card = load("res://ui/card.gd")
+	for c in [["33.3", 0.333], ["15", 0.15], ["0.5", 0.005], ["100", 1.0], [".5", 0.005]]:
+		var got = Card.read_number(row[0], c[0])
+		if var_to_str(got) != var_to_str(c[1]):
+			p.append("%s %% is read as %s, not %s" % [c[0], var_to_str(got), var_to_str(c[1])])
+	for bad in ["", "-", ".", "1e2", "15%"]:
+		if Card.read_number(row[0], bad) != null:
+			p.append("\"%s\" was read as a number" % bad)
 	entry.text = "15"
 	(row[1] as Button).pressed.emit()
 	var last: Array = ui.clock.engine.inputs[ui.clock.engine.inputs.size() - 1]

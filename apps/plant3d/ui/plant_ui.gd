@@ -249,9 +249,8 @@ func _setting(key: String, on: bool) -> void:
 		"reduced_motion": bindings.reduced_motion = on
 		"mute":
 			sounds.muted = on
-			if on:
-				horn_changed.emit(0)
-				_horn = 0
+			horn_changed.emit(0)
+			_horn = -1                  # the next tick sounds the horn again if an alarm wants it
 
 
 ## Opens a panel by name (the command line's panels=…): alarms, procedure, trainer, card:CODE.
@@ -563,7 +562,7 @@ func handle_link(url: String) -> void:
 					note = "%s is not in this plant, which has nothing of that kind: here is what the code means." % asked
 			open_card(r["code"], note)
 		"procedure":
-			start_procedure(r["id"], r["step"], false)
+			procedure.offer(r["id"], r["step"])
 		_:
 			toast("This link is not one Walkdown Plant opens.")
 

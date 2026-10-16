@@ -40,6 +40,8 @@ func run(tree: SceneTree) -> Array:
 	main.hud.show_settings(false)
 	if not ui.instructor:
 		p.append("instructor mode did not turn on from the settings")
+	main.cf.set_value("ui", "instructor", false)    # the settings file is the app's own: leave it as it was
+	load("res://app/quality.gd").save(main.cf)
 	App.find_button(ui.root, "Instructor").pressed.emit()
 	var apply: Button = null
 	for row in ui.trainer.body.get_children():
@@ -104,6 +106,19 @@ func run(tree: SceneTree) -> Array:
 	ui.clock.run_steps(1)
 	if e.shelved[k] != -1 or not ui.alarms.entries("active").has(k):
 		p.append("Un-shelve did not bring the alarm back")
-	inst.button_pressed = false        # the settings file is the app's own: leave it as it was
+	# an alarm still unacknowledged when its suppression began keeps that state (§7.6) and holds fast-forward back:
+	# the suppressed list offers its Ack, Acknowledge all takes it, the reason names it
+	var ks: int = ui.alarms.entries("suppressed")[0]
+	e.astate[ks] = "active_unack"          # (the state the engine leaves it in when suppression starts while unacknowledged)
+	var stext: String = ui.info.m.alarms[ks]["text"]
+	if not ui.clock.ff_blocked().contains(stext):
+		p.append("the fast-forward block does not name the suppressed alarm: %s" % ui.clock.ff_blocked())
+	App.find_button(ui.alarms, "Suppressed (…").pressed.emit()
+	if App.find_button(ui.alarms.body, "Ack") == null:
+		p.append("the suppressed list offers no Ack for an unacknowledged alarm")
+	App.find_button(ui.alarms, "Acknowledge all").pressed.emit()
+	ui.clock.run_steps(1)
+	if e.astate[ks] != "active_ack":
+		p.append("Acknowledge all left the suppressed alarm %s" % e.astate[ks])
 	main.free()
 	return p

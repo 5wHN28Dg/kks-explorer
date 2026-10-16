@@ -98,6 +98,15 @@ func run(tree: SceneTree) -> Array:
 	ui.sounds.horn(0)
 	if ui.sounds._horn != null:
 		p.append("the horn does not stop")
+	ui.sounds.muted = true
+	ui.sounds.horn(1)
+	if ui.sounds._horn != null:
+		p.append("the horn sounds while muted")
+	ui.sounds.muted = false
+	ui.sounds.horn(1)
+	if ui.sounds._horn == null:
+		p.append("the horn does not come back after unmuting")
+	ui.sounds.horn(0)
 	main.free()
 	for f in DirAccess.get_files_at(dir):
 		DirAccess.remove_absolute(dir.path_join(f))

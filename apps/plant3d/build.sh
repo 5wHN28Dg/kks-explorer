@@ -6,7 +6,8 @@
 #                                             the release exports, shaders baked (needs a rendering device: the
 #                                             private display offscreen.sh gives; never --headless, decision 0041)
 # TARGETs: android-debug android-release linux windows (default: all). Outputs in apps/plant3d/export/.
-# The Android release is signed with the plant's own key (0054: never Walkdown's): its properties file
+# The Android release is signed with the plant's own key (0054: never Walkdown's), by apksigner after the export, so
+# that Gradle never sees it (0056): its properties file
 # (storeFile, storePassword, keyAlias; key password = store password, as Godot requires) is
 # $PLANT_SIGNING (default ~/.config/kks-explorer/signing/walkdown-plant.properties). Without it a release APK is
 # not made. A debug APK is signed with a debug key (Godot's own or one made here, never published).
@@ -116,13 +117,19 @@ for t in $TARGETS; do
       fi
       [ -f "$PROPS" ] || { echo "no signing properties at $PROPS: the release APK needs the plant's key" >&2; exit 2; }
       prop() { sed -n "s/^$1=//p" "$PROPS" | head -1; }
-      GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$(prop storeFile)
-      case "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH" in /*) ;; *) GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$(dirname "$PROPS")/$GODOT_ANDROID_KEYSTORE_RELEASE_PATH" ;; esac
-      GODOT_ANDROID_KEYSTORE_RELEASE_USER=$(prop keyAlias)
-      GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$(prop storePassword)
-      export GODOT_ANDROID_KEYSTORE_RELEASE_PATH GODOT_ANDROID_KEYSTORE_RELEASE_USER GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD
-      exp mobile release Android "$HERE/export/walkdown-plant.apk"
-      unset GODOT_ANDROID_KEYSTORE_RELEASE_PATH GODOT_ANDROID_KEYSTORE_RELEASE_USER GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD
+      KS=$(prop storeFile)
+      case "$KS" in /*) ;; *) KS="$(dirname "$PROPS")/$KS" ;; esac
+      # Gradle and the build dependencies it downloads never see the key (decision 0056): the release is exported
+      # unsigned, then aligned and signed here with the SDK's own tools
+      exp mobile release "Android unsigned" "$HERE/export/walkdown-plant-unsigned.apk"
+      BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+      rm -f "$HERE/export/walkdown-plant.apk" "$HERE/export/walkdown-plant-aligned.apk"
+      "$BT/zipalign" -P 16 -f 4 "$HERE/export/walkdown-plant-unsigned.apk" "$HERE/export/walkdown-plant-aligned.apk"
+      PLANT_KS_PASS=$(prop storePassword) "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$(prop keyAlias)" \
+        --ks-pass env:PLANT_KS_PASS --key-pass env:PLANT_KS_PASS --out "$HERE/export/walkdown-plant.apk" \
+        "$HERE/export/walkdown-plant-aligned.apk"
+      rm -f "$HERE/export/walkdown-plant-aligned.apk" "$HERE/export/walkdown-plant-unsigned.apk" "$HERE/export/walkdown-plant.apk.idsig"
+      ls -l "$HERE/export/walkdown-plant.apk"
       # the APK must carry the plant's certificate, not a debug one
       APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
       "$APKSIGNER" verify --print-certs "$HERE/export/walkdown-plant.apk" 2>/dev/null |

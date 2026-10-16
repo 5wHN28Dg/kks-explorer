@@ -15,9 +15,11 @@ var pause_box: CheckBox
 var fly_box: CheckBox
 var _ops_label: RichTextLabel
 var _dev: Label
+var _next: Button
 var _at_i := 0
 var _t := 0.0
 var _confirm := ""              # a procedure waiting for the choice "restart or follow from here"
+var _offer: Array = []          # [procedure id, step id or null] a link asks for: shown, never started by itself
 
 
 func setup(u) -> void:
@@ -69,8 +71,11 @@ func rebuild() -> void:
 	W.clear(body)
 	_ops_label = null
 	_dev = null
+	_next = null
 	var tr = ui.tracker
-	if tr == null or tr.proc.is_empty():
+	if not _offer.is_empty():
+		_show_offer()
+	elif tr == null or tr.proc.is_empty():
 		_list()
 	elif tr.index < 0:
 		_finished()
@@ -108,6 +113,38 @@ func _list() -> void:
 			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(l)
 			row.add_child(W.button("Start", _start.bind(id)))
+
+
+## A link asks for a procedure (from outside the app: it only offers, the trainee decides).
+func offer(id: String, step) -> void:
+	_offer = [id, step]
+	open()
+
+
+func _show_offer() -> void:
+	var id: String = _offer[0]
+	var step = _offer[1]
+	var pr: Dictionary = ui.info.m.procedures[id]
+	title.text = "A link opens a procedure"
+	var at := "its start"
+	if step != null:
+		for k in pr["steps"].size():
+			if pr["steps"][k]["id"] == step:
+				at = "step %d of %d" % [k + 1, pr["steps"].size()]
+	body.add_child(W.label("%s, at %s." % [pr["title"], at], 20))
+	var tr = ui.tracker
+	if tr != null and tr.index >= 0:
+		body.add_child(W.label("This stops \"%s\", which is at step %d." % [tr.proc["title"], tr.index + 1], 18, Color(1.0, 0.8, 0.4)))
+	body.add_child(W.button("Follow it from here", func():
+		_offer = []
+		ui.start_procedure(id, step, false)))
+	if step == null and pr.has("scenario"):
+		body.add_child(W.button("Start from its scenario (the plant restarts)", func():
+			_offer = []
+			ui.start_procedure(id, null, true)))
+	body.add_child(W.button("Not now", func():
+		_offer = []
+		rebuild()))
 
 
 func _start(id: String) -> void:
@@ -157,8 +194,11 @@ func _step() -> void:
 		var back := W.button("Back", func(): tr.back(ui.clock.engine))
 		back.disabled = tr.index == 0
 		row2.add_child(back)
-	if tr.can_next():
-		row2.add_child(W.button("Next", func(): tr.next(ui.clock.engine)))
+	_next = null
+	if tr.is_tour() or not s.has("done"):
+		_next = W.button("Next", func(): tr.next(ui.clock.engine))
+		_next.disabled = not tr.can_next(ui.clock.engine)
+		row2.add_child(_next)
 	elif s.has("done"):
 		row2.add_child(W.label("Ends by itself when it is done.", 16, W.DIM, false))
 	row2.add_child(W.button("Stop", func(): ui.stop_procedure()))
@@ -221,6 +261,8 @@ func refresh() -> void:
 	var tr = ui.tracker
 	if tr == null or tr.index < 0:
 		return
+	if _next != null:
+		_next.disabled = not tr.can_next(ui.clock.engine)
 	if _ops_label != null:
 		var lines := PackedStringArray()
 		var want: Array = tr.current().get("do", [])

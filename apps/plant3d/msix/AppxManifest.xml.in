@@ -4,7 +4,7 @@
      @PUBLISHER@ (the signing certificate's subject, exactly), @VERSION@ (a.b.c.0) and @ARCH@ (x64 or arm64), as
      packaging/windows/make-msix.sh does for Walkdown. No network capability: the plant app has none (0054).
      walkdown-plant:// links (docs/PLANT3D.md §6) start the app with the URI as its argument (uap3:Protocol's
-     Parameters, Windows 10 1607+), which ui/links_in.gd reads from the command line. Not built or run on Windows yet. -->
+     Parameters, Windows 10 1607+), after the end-of-options marker, so that Godot's own options can't be injected through it; ui/links_in.gd reads it there. Not built or run on Windows yet. -->
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
@@ -36,7 +36,7 @@
           </uap3:AppExecutionAlias>
         </uap3:Extension>
         <uap3:Extension Category="windows.protocol">
-          <uap3:Protocol Name="walkdown-plant" Parameters="&quot;%1&quot;">
+          <uap3:Protocol Name="walkdown-plant" Parameters="-- &quot;%1&quot;">
             <uap:DisplayName>Walkdown Plant link</uap:DisplayName>
           </uap3:Protocol>
         </uap3:Extension>

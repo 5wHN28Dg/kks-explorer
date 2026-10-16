@@ -119,7 +119,8 @@ from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.
 
 The Android presets are Gradle builds, so that the export plugin can add the intent filter for links (decision 0056).
 `build.sh` installs Godot's template into `android/` (ignored by git) from the export templates, pins its Gradle by
-SHA-256 and runs it on a JDK 17 (`tools/plant3d/fetch_jdk.sh`; Gradle 8.11 doesn't run on JDK 25).
+SHA-256 and runs it on a JDK 17 (`tools/plant3d/fetch_jdk.sh`; Gradle 8.11 doesn't run on JDK 25). The release is
+exported unsigned and signed afterwards with `apksigner`, so the key never reaches Gradle.
 `phone/links.sh` checks links on the Note 9 (a cold start and a running app).
 
 ## Quality tiers (R9)
