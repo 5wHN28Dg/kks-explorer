@@ -69,6 +69,36 @@ class Hasher:
             self.cut()
 
 
+def steps_bundle(valid_files, s):
+    files = {rel: t.encode() for rel, t in valid_files.items()}
+    files['model/a1.json'] = json.dumps(s['model']).encode()
+    files['scenarios/s1.json'] = json.dumps(s['scenario']).encode()
+    del files['procedures/p1.json']
+    return P.check_files(files)
+
+
+def steps_runs(valid_files, steps, keep=None):
+    """The unit runs (the vectors' `steps`) on the reference, as reference_runs."""
+    out = {}
+    for i, s in enumerate(steps):
+        run = f'steps/{i}'
+        kk = (keep[1], keep[2]) if keep and keep[0] == run else None
+        e = P.Engine(steps_bundle(valid_files, s), 's1')
+        h = Hasher(0)
+        h.add(e, kk)
+        j = 0
+        while e.step_no < len(s['states']) - 1:
+            while j < len(s['inputs']) and s['inputs'][j][0] == e.step_no + 1:
+                apply(e, s['inputs'][j])
+                j += 1
+            e.step()
+            h.add(e, kk)
+        assert j == len(s['inputs']), f'{run}: inputs after the end'
+        h.end()
+        out[run] = (0, h.chunks, e.names, h.vals)
+    return out
+
+
 def reference_runs(V, keep=None):
     """Every run of run_vectors.gd on the reference: {run: (first step hashed, chunk digests, names, kept values)}.
     keep = (run, from, to) keeps that run's values at those steps."""
@@ -77,24 +107,8 @@ def reference_runs(V, keep=None):
     def k(run):
         return (keep[1], keep[2]) if keep and keep[0] == run else None
 
-    valid = {rel: t.encode() for rel, t in V['valid'][0]['files'].items()}
-    for i, s in enumerate(V['steps']):
-        files = dict(valid)
-        files['model/a1.json'] = json.dumps(s['model']).encode()
-        files['scenarios/s1.json'] = json.dumps(s['scenario']).encode()
-        del files['procedures/p1.json']
-        e = P.Engine(P.check_files(files), 's1')
-        h = Hasher(0)
-        h.add(e, k(f'steps/{i}'))
-        j = 0
-        while e.step_no < len(s['states']) - 1:
-            while j < len(s['inputs']) and s['inputs'][j][0] == e.step_no + 1:
-                apply(e, s['inputs'][j])
-                j += 1
-            e.step()
-            h.add(e, k(f'steps/{i}'))
-        h.end()
-        out[f'steps/{i}'] = (0, h.chunks, e.names, h.vals)
+    for run, r in steps_runs(V['valid'][0]['files'], V['steps'], keep).items():
+        out[run] = r
     t = V['train']
     e = P.Engine(P.check_dir(DATA), t['scenario'])
     base_steps = {f['base_step'] for f in t['forks']}
@@ -111,6 +125,7 @@ def reference_runs(V, keep=None):
             j += 1
         e.step()
         h.add(e, k('train'))
+    assert j == len(inputs), 'train: inputs after the end'
     h.end()
     if t['until'] in base_steps:
         bases[t['until']] = e.clone()
@@ -153,6 +168,10 @@ def number_corpus():
              '1e-999999999999', '1.00000000000000011102230246251565404236316680908203125',
              '1.00000000000000011102230246251565404236316680908203124',
              '1.00000000000000011102230246251565404236316680908203126', '0.016666666666666666', '999999.9'}
+    with open(os.path.join(REPO, 'ref', 'vectors', 'v2-json.json'), encoding='utf-8') as f:
+        for x in json.load(f)['accept']:
+            if x['value']['t'] in ('int', 'big', 'float'):
+                toks.add(bytes.fromhex(x['hex']).decode().strip())
     rnd = random.Random(20261016)
     for _ in range(4000):
         x = struct.unpack('<d', struct.pack('<Q', rnd.getrandbits(64)))[0]
@@ -187,6 +206,7 @@ class GdscriptEngine(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_every_vector_replays(self):
+        no_errors(self, self.result)
         out = self.result.stdout
         self.assertEqual(self.result.returncode, 0, out[-6000:] + self.result.stderr[-3000:])
         self.assertNotIn('FAIL', out)
@@ -236,13 +256,92 @@ class GdscriptEngine(unittest.TestCase):
             r = godot('check_numbers.gd', path, timeout=600)
         finally:
             os.unlink(path)
+        no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:] + r.stderr[-2000:])
         self.assertRegex(r.stdout, r'NUMBERS checked=\d+ bad=0')
 
     def test_strict_json_vectors(self):
         r = godot('check_json.gd', os.path.join(REPO, 'ref', 'vectors', 'v2-json.json'), timeout=300)
+        no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:] + r.stderr[-2000:])
         self.assertRegex(r.stdout, r'JSON checked=\d+ bad=0')
+
+
+def edge_steps():
+    """Unit runs the vectors don't hold, made here on the reference (same form as the vectors' `steps`): edges of
+    the arithmetic and of the inputs that the app's engine must also get right."""
+    A, B = '10LAC10AP001', '10LAB10AA001'
+    long_delay = {'values': [['u', {'state': 1}], ['d', {'delay': 'u', 'on': 300000000, 'off': 0.1}],
+                             ['d2', {'delay': 'u', 'on': 0, 'off': 300000000}]]}
+    inputs = {'values': [['u', {'state': 0}], ['k', {'state': 0}], ['on', {'cmp': ['u', '>=', 1]}],
+                         ['neg', {'product': ['u', -0.0]}], ['mn', {'min': ['neg', 0]}], ['mx', {'max': [0, 'neg']}],
+                         ['sm', {'sum': ['neg']}], ['sel', {'select': 'neg', 'cases': ['mn', 'mx']}]],
+              'ops': [{'kks': A, 'do': 'set', 'input': 'u', 'range': [0, 2], 'where': ['screen']},
+                      {'kks': B, 'do': 'start', 'set': {'k': 1}, 'where': ['local']}],
+              'alarms': [{'id': 'al', 'kks': A, 'text': 'U high', 'when': 'on', 'priority': 1, 'where': A}]}
+    return [
+        ('delays longer than 2^31 steps never fire (and an off delay that long never drops)', long_delay,
+         {'ambient_t': 20}, [], [], 4),
+        ('shelving times at the half step, a bool as a set value, refusals, unknown ops, -0.0 through min, max, '
+         'sum and select', inputs, {'ambient_t': 20}, [], [
+            [1, 'op', A, 'set', 1, None], [2, 'shelve', 'al', 0.05], [3, 'shelve', 'al', 0.15],
+            [3, 'op', A, 'set', True, None], [4, 'op', A, 'set', 3, None], [4, 'op', A, 'set', None, None],
+            [4, 'op', A, 'start', None, 't9'], [4, 'op', B, 'start', None, None], [4, 'op', B, 'start', 1, None],
+            [5, 'shelve', 'al', 5], [5, 'unshelve', 'al'], [6, 'shelve', 'al', 0.35], [6, 'ack', 'al'],
+            [7, 'shelve', 'al', 1e-9], [7, 'shelve', 'al', 999999.95], [8, 'unshelve', 'al'], [8, 'ack', 'al'],
+            [9, 'op', A, 'set', 0, None], [9, 'op', A, 'set', 2.0, None], [10, 'fault', 'none']], 14),
+    ]
+
+
+def build_edge_vectors(V):
+    """A vector file of edge_steps() in the vectors' form (valid plant, steps; no links, no train)."""
+    steps = []
+    for why, model, init, faults, inputs, n in edge_steps():
+        scen = {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 's1', 'title': 'Edges', 'init': init,
+                'faults': faults}
+        s = {'why': why, 'model': dict({'format': 'walkdown-plant-model', 'version': 1, 'area': 'a1'}, **model),
+             'scenario': scen, 'inputs': inputs}
+        e = P.Engine(steps_bundle(V['valid'][0]['files'], s), 's1')
+        states = [e.snapshot()]
+        i = 0
+        while e.step_no < n:
+            while i < len(inputs) and inputs[i][0] == e.step_no + 1:
+                apply(e, inputs[i])
+                i += 1
+            e.step()
+            states.append(e.snapshot())
+        s.update(states=states, events=e.events)
+        steps.append(s)
+    return {'valid': V['valid'], 'steps': steps, 'links': [], 'train': {'forks': []}}
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptEngineEdges(unittest.TestCase):
+    """edge_steps() through the app's engine: the snapshots, the events and every value's bits."""
+
+    def test_edges(self):
+        with open(VECTORS, encoding='utf-8') as f:
+            V = json.load(f)
+        E = build_edge_vectors(V)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'edges.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(E, f)
+            dig = os.path.join(d, 'digests.json')
+            r = godot('run_vectors.gd', f'--vectors={path}', '--only=steps', f'--digests={dig}', timeout=300)
+            no_errors(self, r)
+            self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+            self.assertIn(f'VECTORS passed={len(E["steps"])} failed=0', r.stdout)
+            with open(dig, encoding='utf-8') as f:
+                got = json.load(f)
+        for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], E['steps']).items():
+            self.assertEqual(got[run]['chunks'], chunks, run)
+
+
+def no_errors(case, r):
+    """Godot carries on after a script error or push_error: any of them fails the test."""
+    bad = [x for x in (r.stdout + r.stderr).splitlines() if 'SCRIPT ERROR' in x or x.startswith('ERROR:')]
+    case.assertEqual(bad, [], (r.stdout + r.stderr)[-4000:])
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')

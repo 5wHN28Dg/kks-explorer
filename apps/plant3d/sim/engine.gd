@@ -171,7 +171,9 @@ func _node(i: int, nd: Dictionary, kind: String) -> int:
 		"delay":
 			var slot := _nmem
 			_nmem += 2
-			return _emit(K_DELAY, i, [_ref(nd["delay"]), steps(nd["on"]), steps(nd.get("off", 0)), slot], [])
+			# the step counts as floats: content allows times up to 1e9 s (1e10 steps), past 32-bit refs; a count
+			# compares exactly with them below 2^53
+			return _emit(K_DELAY, i, [_ref(nd["delay"]), slot], [float(steps(nd["on"])), float(steps(nd.get("off", 0)))])
 		"timer":
 			var slot := _nmem
 			_nmem += 1
@@ -519,17 +521,18 @@ func _run(p0: int, p1: int, c: PackedFloat64Array, pv: PackedFloat64Array, state
 				c[i] = pv[i]
 		elif kind == K_DELAY:
 			var i := outs[p]
-			var slot := ia[a + 3]
+			var slot := ia[a + 1]
+			var f := pf[p]
 			var y := pv[i]
 			if pv[ia[a]] >= 0.5:
 				mem[slot] += 1
 				mem[slot + 1] = 0
-				if y < 0.5 and mem[slot] >= ia[a + 1]:
+				if y < 0.5 and mem[slot] >= fa[f]:
 					y = 1.0
 			else:
 				mem[slot + 1] += 1
 				mem[slot] = 0
-				if y >= 0.5 and mem[slot + 1] >= ia[a + 2]:
+				if y >= 0.5 and mem[slot + 1] >= fa[f + 1]:
 					y = 0.0
 			c[i] = y
 		elif kind == K_WRAP:

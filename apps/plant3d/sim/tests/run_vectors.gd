@@ -262,6 +262,8 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary) -> void:
 		_hash(e)
 		d = diff(e.snapshot(), states[e.step_no], "step %d" % e.step_no)
 	_hash_end()
+	if d == "" and i != s["inputs"].size():
+		d = "inputs after the last step"
 	if d == "":
 		d = diff(e.events, s["events"], "events")
 	_result(name, d)
@@ -318,6 +320,8 @@ func _train(t: Dictionary, m) -> void:
 	_hash_end()
 	if bases.has(until):
 		bases[until] = e.clone()
+	if d == "" and i != inputs.size():
+		d = "inputs after the last step"
 	if d == "" and si != snaps.size():
 		d = "%d snapshots, the reference %d" % [si, snaps.size()]
 	if d == "":

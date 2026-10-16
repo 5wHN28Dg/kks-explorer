@@ -38,6 +38,10 @@ Python test compares a SHA-256 of every value at every step with the reference's
 and is reported at its step and value. `tests/` holds a `.gdignore`: the app's editor and exports leave it out.
 
 **Bit-exactness and the platform.** Every operation is an IEEE double operation in the reference's order, except a
-lag's factor 1 − e^(−0.1/τ), which calls the C library's `exp` on both sides (glibc on Linux, where it is verified).
-On Android (bionic) and Windows it may differ in the last bit; the build (0054) can store the factors computed on
-Linux in the compiled model if a phone run shows a difference.
+lag's factor 1 − e^(−0.1/τ), which calls the C library's `exp` on both sides. Verified: glibc (this laptop, CI) and
+the Note 9's bionic (Android 10, 2026-10-16: every value at every step of every vector run gave the laptop's
+digests). Windows (its CRT's `exp`) is not run yet; if it ever differs, the build (0054) can store the factors
+computed on Linux in the compiled model.
+
+**Step time** (`bench_step.gd`, the whole first train): about 0.28 ms a step on the laptop, 0.46 ms on CI's runner,
+1.4 ms on the Note 9 (fast-forward at 60× needs 600 steps a second: 0.85 of one of its cores).
