@@ -1245,6 +1245,72 @@ class Phone(unittest.TestCase):
 
     # ---------------------------------------------------------------- the user's requests of 2026-10-08
 
+    @unittest.skipUnless(PHONE_HOST == '10.0.2.2', 'drives the emulator\'s camera app')
+    def test_app_links(self):
+        """walkdown:// links from other apps (decision 0058), sent as Walkdown Plant sends them (a VIEW Intent, no
+        NEW_TASK): before joining a link does nothing, now or after; a code opens its tag with the panel, at a cold
+        start and while the app runs, in the app's one MainActivity; a course link opens that course at that page; a
+        code on no drawing says so; a malformed or other link does nothing"""
+        def link(u):
+            out = ui.sh('am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', f"'{u}'", '-p', PKG)
+            self.assertNotIn('Error', out, out)
+            time.sleep(2)
+
+        def main_activities():
+            # MainActivity's records in the tasks' histories ("Hist #n" lines: dumpsys also lists earlier records in
+            # logs, such as the orientation's sources); what dumpsys said goes with a failure
+            d = ui.sh('dumpsys', 'activity', 'activities')
+            ids = set(re.findall(r'Hist +#\d+: ActivityRecord\{(\w+) [^}]*' + re.escape(PKG) + r'/kks\.explorer\.MainActivity', d))
+            return len(ids) if len(ids) == 1 else '%d: %s' % (len(ids), '\n'.join(l.strip() for l in d.splitlines() if 'MainActivity' in l or 'Task{' in l))
+        link('walkdown://kks/11LAB70AA501')
+        ui.find('Join through a server', exact=True)
+        self.join()
+        time.sleep(3)
+        self.assertFalse(ui.present('Feed water piping system'), 'a link from before joining opened its tag')
+        for bad in ('walkdown://kks/11LAB70AA501?x=1', 'walkdown://delete/11LAB70AA501', 'walkdown://kks/11lab70aa501',
+                    'walkdown://course/../../etc'):
+            link(bad)
+        self.assertFalse(ui.present('Feed water piping system'), 'a malformed link opened a tag')
+        # while the app runs: the tag, in the same activity
+        link('walkdown://kks/11LAB70AA501')
+        ui.find('Feed water piping system', timeout=15)
+        n = main_activities(); self.assertTrue(n == 1, n)
+        # a cold start
+        ui.sh('am', 'force-stop', PKG)
+        link('walkdown://kks/11LAB70AA501')
+        ui.find('Feed water piping system', timeout=20)
+        n = main_activities(); self.assertTrue(n == 1, n)
+        # in the background (Home): the task comes to the front and opens the link: a course, at a page
+        ui.sh('input', 'keyevent', '3')
+        time.sleep(2)
+        link('walkdown://course/inc/loop')
+        ui.find('Instrumentation and control', exact=True, timeout=15)
+        ui.scroll_to('A control loop: drum level', tries=30)
+        n = main_activities(); self.assertTrue(n == 1, n)
+        # with the camera open over Walkdown for a photo: the camera stays, the photo is kept, and the link waits until
+        # the photo's editor is closed; a code on no drawing then says so
+        link('walkdown://kks/11LAB70AA501')
+        ui.find('Feed water piping system', timeout=15)
+        ui.scroll_to('Take a photo', exact=True)
+        ui.tap('Take a photo', exact=True)
+        ui.find('Which floor is it on?', exact=True)
+        ui.tap('Floor 5')
+        ui.tap('Continue', exact=True)
+        self.allow_camera()
+        time.sleep(5)
+        link('walkdown://kks/11LAB70AA599')
+        self.assertFalse(any(n.get('package') == PKG for n in ui.nodes()), 'the link took the camera away')
+        w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))      # the emulator's camera: shutter, then confirm
+        time.sleep(4)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        ui.find('Send', exact=True, timeout=30)                       # the photo came back to its editor
+        time.sleep(2)
+        self.assertFalse(ui.present('is not on any drawing'), 'the link acted while the photo was being marked up')
+        ui.tap('Cancel', exact=True)
+        ui.find('11LAB70AA599 is not on any drawing', timeout=10)
+        n = main_activities(); self.assertTrue(n == 1, n)
+
     def test_photo_queue(self):
         """request 1: photos go through a background queue (WorkManager): sent in order with the panel closed, kept
         across the app being stopped, a floor sent with the first photo of a code without one, failures shown"""
@@ -1800,11 +1866,12 @@ class Phone(unittest.TestCase):
 
 # The suite in three parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2 or 3 runs
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
-# test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB).
+# test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
+# end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
-          'description_and_credit', 'flow', 'course_figures'))
+          'description_and_credit', 'flow', 'course_figures', 'app_links'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))

@@ -3,7 +3,7 @@
 
 import std/[tables, os, strutils, base64, times]
 import std/sets
-import kks/[json, crypto, proto, node, api, sync, bundle, extras, util, invites, plantdata, model, views, pathstore, courses, diagnostics, rudp, relaykey]
+import kks/[json, crypto, proto, node, api, sync, bundle, extras, util, invites, plantdata, model, views, pathstore, courses, diagnostics, rudp, relaykey, applink]
 import kksl/dbstore
 import kksa/[provider_jni, figops]
 
@@ -217,6 +217,15 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
   of "/native/tags": view(O(("tags", tagsView(c.model, arg("sheet")))))
   of "/native/links": view(O(("links", linksView(c.model, arg("sheet")))))
   of "/native/search": view(O(("results", searchView(c.model, arg("q")))))
+  of "/native/link":
+    # a link from another app (decision 0058): what it opens, read by the core; it opens nothing by itself
+    let l = parseAppLink(arg("url"))
+    case l.kind
+    of "kks":
+      let (ok, t) = c.model.findCode(l.code)
+      view(O(("kind", newStr("kks")), ("code", newStr(l.code)), ("tag", newStr(if ok: t.id else: ""))))
+    of "course": view(O(("kind", newStr("course")), ("course", newStr(l.course)), ("page", newStr(l.page))))
+    else: view(O(("kind", newStr(""))))
   of "/native/tag": view(tagView(c.model, arg("id")))
   of "/native/review": view(O(("tags", reviewView(c.model))))
   of "/native/procs": view(O(("procs", procsView(c.model))))

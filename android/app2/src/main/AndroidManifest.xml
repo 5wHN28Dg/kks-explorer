@@ -25,6 +25,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- walkdown:// links from other apps (decision 0058): a windowless activity that hands the link to
+             MainActivity in Walkdown's own task -->
+        <activity android:name="kks.explorer.LinkActivity" android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay" android:excludeFromRecents="true" android:noHistory="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="walkdown" />
+            </intent-filter>
+        </activity>
         <provider android:name="androidx.core.content.FileProvider" android:authorities="io.github.walkdown.files"
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />

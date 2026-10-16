@@ -47,6 +47,8 @@ fun Root() {
     MaterialTheme(colorScheme = scheme) {
         Surface(Modifier.fillMaxSize()) {
             var joined by remember { mutableStateOf(Sync.joined()) }
+            // a link that came before the phone joined a plant opens nothing, now or later (decision 0058)
+            if (!joined) LaunchedEffect(AppLinks.pending) { AppLinks.pending = null }
             if (joined) MainScreen() else SetupScreen { joined = true }
         }
     }
@@ -70,6 +72,24 @@ fun tagBoxes(sheet: String, scale: Float): List<SheetView.TagBox> = call("GET", 
             (b.getDouble(2) / scale).toFloat(), (b.getDouble(3) / scale).toFloat(), "pending", "")
     }
 
+/** A walkdown:// link from another app (decision 0058), as MainActivity received it: the main screen asks the core
+ *  what it opens (`/native/link`, core/src/kks/applink.nim) and shows that. Nothing else reads it. */
+object AppLinks {
+    var pending by mutableStateOf<String?>(null)
+    /** MainActivity is in front: a link waits while the camera or a picker is open over it (its result goes to the
+     *  panel that asked for it) */
+    var resumed by mutableStateOf(false)
+    /** screens holding something unfinished (a photo being marked up, a form being typed): a link waits for them */
+    var holds by mutableIntStateOf(0)
+}
+
+/** while this is on screen, a link waits (AppLinks.holds) */
+@Composable
+fun HoldLinks() = DisposableEffect(Unit) {
+    AppLinks.holds++
+    onDispose { AppLinks.holds-- }
+}
+
 /** what the screens share: the open sheet and tag, the active procedure, link mode (R7) */
 class Ui {
     var tab by mutableStateOf("drawings")
@@ -86,6 +106,8 @@ class Ui {
     var fullView by mutableStateOf(false)                 // the drawing alone: no header, no search (more room)
     var focusCy by mutableFloatStateOf(0.22f)              // where the focus lands (a fraction of the height)
     var arrived by mutableStateOf<Triple<String, Float, Float>?>(null)   // the connector followed to: sheet, x0, y0
+    var courseLink by mutableStateOf<Pair<String, String>?>(null)    // a link's course and page, for Learning to open
+    var courseSeq by mutableIntStateOf(0)
 
     /** open where a connector's line continues: its sheet, centred on the connector (no panel in the way) */
     fun goLink(t: LinkTarget) {
@@ -154,6 +176,34 @@ fun MainScreen() {
                 "learning" -> Learning(ui, snack)
                 "manage" -> Manage(snack, ui)
             }
+            }
+        }
+    }
+    // a link from another app: a code opens its tag on its drawing (as a course's code link), a course opens on the
+    // Learning tab; anything else does nothing (the core reads the link, strictly)
+    val link = if (AppLinks.resumed && AppLinks.holds == 0) AppLinks.pending else null
+    val waiting = AppLinks.resumed && AppLinks.holds > 0 && AppLinks.pending != null
+    LaunchedEffect(waiting) {
+        if (waiting) scope.launch { snack.showSnackbar("A link from another app opens once what is open here is sent or cancelled") }
+    }
+    LaunchedEffect(link) {
+        if (link == null) return@LaunchedEffect
+        AppLinks.pending = null       // (taken once: the same link again is a new request)
+        val r = call("GET", "/native/link", query = mapOf("url" to link))
+        if (!r.ok) return@LaunchedEffect
+        when (r.json.str("kind")) {
+            "kks" -> {
+                val tag = r.json.str("tag")
+                if (tag.isNotEmpty()) ui.show(tag)
+                else {      // (in the screen's scope: this effect ends as soon as the link is cleared)
+                    ui.tab = "drawings"
+                    scope.launch { snack.showSnackbar(r.json.str("code") + " is not on any drawing") }
+                }
+            }
+            "course" -> {
+                ui.courseLink = r.json.str("course") to r.json.str("page")
+                ui.courseSeq++
+                ui.tab = "learning"
             }
         }
     }
@@ -492,6 +542,7 @@ fun linkSubmit(proc: String, step: Int, kks: String, on: Boolean) =
 /** R6: propose a tag the reader missed; the code is optional (without one it goes to the review queue) */
 @Composable
 private fun MarkDialog(sheet: SheetInfo, b: List<Float>, view: SheetView?, snack: SnackbarHostState, onDone: (Boolean) -> Unit) {
+    HoldLinks()           // (a link waits: it would close this with what is typed or picked)
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf("") }
     var isa by remember { mutableStateOf("") }

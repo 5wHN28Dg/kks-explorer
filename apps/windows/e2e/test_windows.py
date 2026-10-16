@@ -34,13 +34,13 @@ def put(*files):
 MSIX, MSIX_CER = os.environ.get('KKS_WIN_MSIX'), os.environ.get('KKS_WIN_MSIX_CER')
 
 
-def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=()):
+def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=(), app_args='', link='', burst=False):
     """run uiadrive with these script lines in the desktop session; -> (passed, log). sync_every (ms): a fresh app's
     automatic sync rounds (KKS_SYNC_EVERY); restart: a new app process on the same data (not wiped); env: more
     environment for a fresh app. during: (line, action) pairs: when the script reaches that line (a sleep with a
     number of its own, say), the action runs here while the script goes on: something changes on the server while
     the focus is where the script put it (a new script would take it away: its console window comes to the front
-    first, #158)"""
+    first, #158). app_args: a fresh app's command line; link: a walkdown:// link opened before the script (run.ps1)"""
     during = list(during)
     path = os.path.join(tempfile.gettempdir(), name)
     with open(path, 'w') as f: f.write('\n'.join(lines) + '\n')
@@ -49,6 +49,7 @@ def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=())
     args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\run.ps1 -Script %s%s%s%s%s%s' % (
         name, ' -Keep' if keep and not restart else '', ' -Msix' if MSIX else '', ' -SyncEvery %d' % sync_every if sync_every else '',
         ' -Restart' if restart else '', ' -AppEnv "%s"' % ';'.join('%s=%s' % kv for kv in env.items()) if env else '')
+    args += (' -AppArgs "%s"' % app_args if app_args else '') + (' -Link "%s"' % link if link else '') + (' -Burst' if burst else '')
     b64 = base64.b64encode(args.encode()).decode()
     vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kksuia' % b64)
     end = time.time() + 400
@@ -146,9 +147,10 @@ class Windows(unittest.TestCase):
             time.sleep(0.5)
         self.fail(what)
 
-    def check(self, name, lines, keep=True, sync_every=0, restart=False, env=None, during=()):
-        ok, log = ui(name, lines, keep, sync_every, restart, env, during)
+    def check(self, name, lines, keep=True, sync_every=0, restart=False, env=None, during=(), app_args='', link='', burst=False):
+        ok, log = ui(name, lines, keep, sync_every, restart, env, during, app_args, link, burst)
         self.assertTrue(ok, log)
+        return log
 
     JOIN = ['click\tJoin through a server', 'set\tServer address\t%s:%d', 'set\tUsername\tboss',
             'set\tPassword\ta long password', 'click\tJoin', 'wait\t~Sample sheet\t60']
@@ -829,6 +831,55 @@ class Windows(unittest.TestCase):
             'click\tConnector A3, continues on Sample sheet, elsewhere on this sheet',
             'wait\tWhere does A3 continue?\t10', 'click\tSample sheet', 'gone\tWhere does A3 continue?',
             'wait\tSample sheet — Walkdown\t10', 'wait\t~Connector A3 on Sample sheet\t10'])
+        self.leave()
+
+    def test_app_links(self):
+        """walkdown:// links from other apps (decision 0058): on the command line of a start (what MSIX's protocol
+        activation does), or handed to the running app by a second start, which then ends. Before joining a link
+        does nothing; a code opens its tag with the panel; a course link that course at that page; a code on no
+        drawing says so; a malformed link does nothing"""
+        code = 'walkdown://kks/11LAB70AA501'
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [700, 300, 820, 360],
+                                                  'kks': '11LAB70AA602', 'isa': '', 'note': ''}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        self.check('applink0.uia', ['wait\tJoin through a server\t60', 'sleep\t2000'], keep=False, app_args=code)
+        self.check('applink1.uia', [l % (HOST, self.sport) if '%' in l else l for l in self.JOIN] +
+                   ['wait\tSample sheet — Walkdown\t20', 'sleep\t2000', 'gone\tPlant unit'])
+        # a start with the link: the tag, on its drawing, with the panel
+        self.check('applink2.uia', ['wait\tSample sheet — Walkdown\t30', 'value\tSystem\tFeed water piping system'],
+                   keep=False, restart=True, app_args=code)
+        if MSIX:
+            # the package's protocol activation (the shell opens the link), with Walkdown not running
+            vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Stop-Process -Force')
+            time.sleep(1)
+            self.check('applink2m.uia', ['wait\tSample sheet — Walkdown\t30', 'value\tSystem\tFeed water piping system'], link=code)
+        # handed over to the running app: a course at a page; a code on no drawing; a malformed link (with MSIX: each
+        # through the shell, which starts a second process that hands it over)
+        log = self.check('applink3.uia', ['wait\t~Instrumentation and control — \t30', 'wait\tThe control loop in one picture\t20'],
+                         link='walkdown://course/inc/loop')
+        if not MSIX: self.assertIn('second start ended: True', log)
+        log = self.check('applink4.uia', ['wait\t~11LAB70AA599 is not on any sheet\t20'], link='walkdown://kks/11LAB70AA599')
+        if not MSIX: self.assertIn('second start ended: True', log)
+        # typed into the open tag's form: a link to another tag waits (it would make the panel again for that tag and
+        # the text would be gone) and says so; it opens once the form is cancelled
+        self.check('applinkf0.uia', ['click\tEdit', 'set\tNotes\ttyped, not saved yet'])
+        self.check('applinkf1.uia', ['wait\t~A link from another app opens once the form is saved or cancelled\t20',
+                                     'value\tNotes\ttyped, not saved yet', 'sleep\t2500', 'value\tNotes\ttyped, not saved yet',
+                                     'click\tCancel', 'wait\t11LAB70AA602\t20'], link='walkdown://kks/11LAB70AA602')
+        # malformed links do nothing: each would open something if it were read loosely
+        self.check('applink5.uia', ['close\tThe control loop in one picture', 'gone\tThe control loop in one picture'])
+        self.check('applink6.uia', ['sleep\t2000', 'gone\t~Instrumentation and control — '], link='walkdown://course/inc/loop?x=1')
+        self.check('applink7.uia', ['sleep\t2000', 'gone\t~11LAB70AA598'], link='walkdown://kks/11LAB70AA598/')
+        self.check('applink8.uia', ['sleep\t2000', 'gone\t~11LAB70AA597'], link='WALKDOWN://kks/11LAB70AA597%00')
+        # one Walkdown: every second start ended after handing its link over
+        self.assertEqual(vm('(Get-Process Walkdown -ErrorAction SilentlyContinue | Measure-Object).Count').strip(), '1')
+        # two starts with a link at once, Walkdown not running: one opens the store, the other waits for its window
+        # and hands the link over (never two on one store and one sync port)
+        vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Stop-Process -Force')
+        time.sleep(1)
+        self.check('applink9.uia', ['wait\tSample sheet — Walkdown\t30', 'value\tSystem\tFeed water piping system', 'sleep\t3000'],
+                   link=code, burst=True)
+        self.assertEqual(vm('(Get-Process Walkdown -ErrorAction SilentlyContinue | Measure-Object).Count').strip(), '1')
         self.leave()
 
     def test_photo_queue(self):

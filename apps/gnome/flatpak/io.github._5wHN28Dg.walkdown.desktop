@@ -2,9 +2,10 @@
 Type=Application
 Name=Walkdown
 Comment=Find plant equipment on P&ID drawings by KKS code
-Exec=walkdown
+Exec=walkdown %u
 Icon=io.github._5wHN28Dg.walkdown
 Terminal=false
 Categories=Science;Engineering;
 Keywords=KKS;P&ID;plant;equipment;drawing;
 StartupNotify=true
+MimeType=x-scheme-handler/walkdown;

@@ -2,7 +2,7 @@
 ## underneath. One thread: GLib's main loop runs GTK, and asyncdispatch (sync, mDNS) is driven from it.
 
 import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequtils]
-import kks/[json, api]
+import kks/[json, api, applink]
 import kks/model
 import kksl/dbstore
 import appstate
@@ -505,7 +505,8 @@ proc activate(w: Win, app: W) =
       w.photosWiped()    # the queued photos went with the store's rows; nothing more is sent
       # the plant data is gone (§15); start over as a fresh process: new device key, the setup screen with the note
       after(200, proc () =
-        let args = allocCStringArray(@[getAppFilename()] & commandLineParams())
+        # (not the links it was started with: they were for the plant left behind)
+        let args = allocCStringArray(@[getAppFilename()] & commandLineParams().filterIt(not it.toLowerAscii.startsWith(LinkScheme & ":")))
         discard execv(getAppFilename().cstring, args)
         quit(1))
       return
@@ -672,6 +673,28 @@ proc onUsr2(sig: cint) {.noconv.} = figRequested = true
 
 proc main() =
   if getEnv("KKS_TIMING").len > 0: viewer.startedAt = epochTime()
+  # one instance per user; a separate data folder (tests, a second profile) is its own application, with its own ID
+  # (two processes sharing an ID confuse the accessibility registry)
+  let custom = getEnv("KKS_DATA_DIR")
+  var id = AppId
+  if custom.len > 0:
+    var h = 0'u32
+    for c in custom: h = h * 31 + uint32(c)
+    id.add ".p" & toHex(h, 8)
+  # 4 = G_APPLICATION_HANDLES_OPEN: walkdown:// links (decision 0058) come to "open", in the running instance
+  # (KKS_TEST_UNIQUE: a test's app on its own data folder stays unique, so that a second start hands its links over)
+  let nonUnique = custom.len > 0 and getEnv("KKS_TEST_UNIQUE").len == 0
+  let app = adw_application_new(id.cstring, cint(4 or (if nonUnique: 32 else: 0)))   # 32 = G_APPLICATION_NON_UNIQUE
+  # GApplication sees only the program and the links: any other argument stays unread (it would take an unknown
+  # option for an error, and a file for something to open)
+  var args = @[getAppFilename()]
+  for p in commandLineParams():
+    if p.len <= MaxLinkLen and p.toLowerAscii.startsWith(LinkScheme & ":"): args.add p
+  let argv = allocCStringArray(args)
+  # Walkdown already runs (a second start, a link from another app): GApplication hands the links (or "activate") to
+  # it, and this start ends without opening the store or the sync port the running one holds
+  if g_application_register(app, nil, nil) != 0 and g_application_get_is_remote(app) != 0:
+    quit int(g_application_run(app, cint(args.len), argv))
   let w = Win(a: openApp())
   errorHook = proc (text: string) = w.a.diag("error", text)
   w.a.startSync(port = parseInt(getEnv("KKS_SYNC_PORT", "8421")), discovery = getEnv("KKS_NO_MDNS").len == 0)
@@ -682,16 +705,12 @@ proc main() =
   timeout(100, proc (): bool =
     pumpAsync()
     true)
-  # one instance per user; a separate data folder (tests, a second profile) is its own application, with its own ID
-  # (two processes sharing an ID confuse the accessibility registry)
-  let custom = getEnv("KKS_DATA_DIR")
-  var id = AppId
-  if custom.len > 0:
-    var h = 0'u32
-    for c in custom: h = h * 31 + uint32(c)
-    id.add ".p" & toHex(h, 8)
-  let app = adw_application_new(id.cstring, if custom.len > 0: 32 else: 0)   # 32 = G_APPLICATION_NON_UNIQUE
   app.on("activate", proc () = w.activate(app))
+  app.onOpen(proc (uris: seq[string]) =
+    w.activate(app)
+    let links = uris
+    idle(proc () =        # (once the window is up)
+      for u in links: w.openAppLink(u)))
   # About Walkdown: the primary menu's item, and the app.about action other parts of GNOME may call
   let aboutAction = g_simple_action_new("about", nil)
   aboutAction.onPtr("activate", proc (p: W) =
@@ -714,7 +733,7 @@ proc main() =
           let pth = shotPath.changeFileExt("") & "-" & id & ".png"
           stderr.writeLine "screenshot " & pth & ": " & (if saveScreenshot(cwin, pth): "saved" else: "FAILED")
       true)
-  let code = g_application_run(app, 0, nil)
+  let code = g_application_run(app, cint(args.len), argv)
   quit int(code)
 
 main()
