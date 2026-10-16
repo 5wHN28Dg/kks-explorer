@@ -29,8 +29,9 @@ that need from the build?
   by `tools/plant3d/fetch_jdk.sh` (pinned version and SHA-256, under `~/.local/kksdev`, nothing system-wide). CI does
   the same.
 - **Gradle's dependency verification:** every artifact the build resolves (the Android Gradle plugin, Kotlin, AndroidX:
-  320 components) must match the SHA-256 in `apps/plant3d/android-gradle-verification.xml`, recorded once from the
-  artifacts downloaded here on 2026-10-16 (trust on first use; `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export
+  322 components) must match the SHA-256 in `apps/plant3d/android-gradle-verification.xml`, recorded once from the
+  artifacts downloaded here on 2026-10-16 into an empty Gradle cache (`GRADLE_USER_HOME`: a warm cache leaves out
+  metadata a fresh machine fetches; trust on first use; `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export
   android-debug android-release` records it again into that file, to review and commit). A changed artifact fails the build [V: one altered checksum
   failed it].
 - **The signing key never reaches Gradle:** the release is exported unsigned and then aligned and signed by

@@ -114,7 +114,8 @@ case "$TARGETS" in
     grep -q '^distributionSha256Sum=' "$W" ||
       echo 'distributionSha256Sum=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6' >> "$W"
     # Gradle's dependency verification: every artifact the build downloads must match the SHA-256 recorded in
-    # android-gradle-verification.xml (made once with PLANT_GRADLE_WRITE_VERIFICATION=1, then reviewed and committed)
+    # android-gradle-verification.xml (made with PLANT_GRADLE_WRITE_VERIFICATION=1 and an empty GRADLE_USER_HOME, so
+    # that everything a fresh machine fetches is in it; then reviewed and committed)
     GW="$HERE/android/build/gradlew"
     grep -q PLANT_GRADLE_EXTRA "$GW" ||
       sed -i 's|^APP_ARGS=`save "\$@"`|[ -n "${PLANT_GRADLE_EXTRA:-}" ] \&\& set -- "$@" $PLANT_GRADLE_EXTRA\nAPP_ARGS=`save "$@"`|' "$GW"
