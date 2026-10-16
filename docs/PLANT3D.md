@@ -458,7 +458,8 @@ out, and while one of them is latched no other trip of its group is first out; t
   `shaft`; a damper's `blades`; a gauge's `needle`), driven by a value: positions take the value 0–1; a shaft turns at
   `of` × `scale` revolutions per second (`cw_a_speed` 0–1 × 8.25 = 495 rpm, a large vertical pump's speed).
 - **`show`:** a gauge, level glass or local display shows the value in the part's range and unit.
-- **`sound`:** a sound of the library (§11) on the part, its gain and pitch tables of values. **`lamp`:** a lamp
+- **`sound`:** a sound of the library (§11) on the part, its gain and pitch tables of values (the pitch moves every
+  layer but a synth sound's electrical hum, §11). **`lamp`:** a lamp
   or beacon lit when the value is true.
 - **`shake`:** camera shake near the part from a vibration value (felt near a large machine; off when the platform
   asks for reduced motion).
@@ -665,11 +666,15 @@ walls (a wall between halves its loudness: a simple rule, not acoustics).
   (`CC0-1.0` only), its https `source`, how it was `made`, and optionally `uploader` and `date`; the about list
   (0054) is generated from these entries.
 - **`synth`** sounds are made from tones and filtered noise by the content tools at build time, as short seamless
-  loops (one per layer: the tone, the broadband noise): `tones` (up to 8, each `hz` a number or `{"of", "table"}`,
-  optional `gain` 0–1) and/or `noise` (`colour` white/pink/brown, `band` [low, high] Hz, optional `gain`), and the app sets each layer's pitch and gain from values: a
+  loops (one per layer: the tones, the broadband noise, and the electrical hum at multiples of twice the grid frequency,
+  which the app never pitches: `tools/plant3d/sounds/README.md`): `tones` (up to 8, each `hz` a number or `{"of", "table"}`,
+  optional `gain` 0–1) and/or `noise` (`colour` white/pink/brown, `band` [low, high] Hz, optional `gain`), and the app sets each layer's gain, and each layer's pitch but the hum's, from values: a
   turbine's blade-pass tone rises with its speed, which no recording of one speed can do. Making the samples at run
   time (Godot's AudioStreamGenerator) is meant for C# or native code, not script (0054), and costs the phone CPU for
   nothing a pitched loop can't do.
+- **Levels:** every sound, recorded or synthesised, is levelled by how loud its source is on site, not to one fixed
+  loudness: its A-weighted level = −26 − 0.5 × (105 − its dB(A) at 1 m) dBFS (`tools/plant3d/sounds/README.md`).
+  The −23 LUFS in the example above is a placeholder.
 - The sound library and what each machine sounds like: FIRST-TRAIN.md §6.
 
 ## 12. Validation and vectors

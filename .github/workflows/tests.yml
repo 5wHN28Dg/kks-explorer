@@ -168,7 +168,11 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install -q -r requirements-dev.txt
+      - name: FFmpeg with libvorbis (Walkdown Plant's sounds are encoded with it, decision 0055)
+        run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg >/dev/null
       - name: The protocol, strict JSON, path store, course and Walkdown Plant vectors (the Python reference)
+        env:
+          KKS_REQUIRE_FFMPEG: '1'
         run: .venv/bin/python -m unittest discover -s tests -v
 
   # the web client's download size against web-size.json (tools/web_size.py): any change needs the baseline updated in

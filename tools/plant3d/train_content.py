@@ -70,33 +70,52 @@ def synth(sid, tones=None, noise=None, made=None):
 
 
 def sounds():
-    """The sound library (FIRST-TRAIN §6). Synthesised layers only for now: the recorded CC0 clips come with the
-    app (0054), each with its licence and source."""
+    """The sound library (FIRST-TRAIN §6). All synthesised for now (tools/plant3d/sounds/make_sounds.py, which says
+    the physics behind each tone and band, each sound's level and its time structure); recorded CC0 clips may
+    replace some later (0054), each with its licence and source."""
+    def t(*pairs):
+        return [{'hz': hz, 'gain': g} for hz, g in pairs]
     return {'format': 'walkdown-plant-sounds', 'version': 1, 'sounds': [
-        synth('gt_whine', [{'hz': 2850, 'gain': 0.6}, {'hz': 5700, 'gain': 0.2}],
+        synth('gt_whine', t((2850, 0.6), (5700, 0.2), (3550, 0.25), (50, 0.2)),
               {'colour': 'pink', 'band': [200, 4000], 'gain': 0.5}, 'compressor blade-pass tone at full speed'),
         synth('combustion', None, {'colour': 'brown', 'band': [30, 600]}, 'combustion roar'),
         synth('exhaust_rumble', None, {'colour': 'brown', 'band': [20, 200]}),
-        synth('sfc_whine', [{'hz': 1200, 'gain': 0.4}, {'hz': 2400, 'gain': 0.2}]),
-        synth('gen_hum', [{'hz': 100, 'gain': 0.7}, {'hz': 200, 'gain': 0.3}, {'hz': 300, 'gain': 0.15}],
-              {'colour': 'pink', 'band': [300, 3000], 'gain': 0.3}),
-        synth('transformer_hum', [{'hz': 100, 'gain': 0.8}, {'hz': 200, 'gain': 0.3}]),
-        synth('turbine_hum', [{'hz': 50, 'gain': 0.6}, {'hz': 150, 'gain': 0.3}],
-              {'colour': 'pink', 'band': [100, 2000], 'gain': 0.3}),
+        synth('sfc_whine', t((600, 0.4), (1200, 0.3), (500, 0.15), (700, 0.15), (1100, 0.1), (1300, 0.1), (100, 0.3)),
+              {'colour': 'pink', 'band': [500, 4000], 'gain': 0.12}, '12-pulse converter buzz'),
+        synth('gen_hum', t((100, 0.7), (200, 0.35), (300, 0.2), (400, 0.15), (600, 0.08)),
+              {'colour': 'pink', 'band': [300, 3000], 'gain': 0.35}),
+        synth('transformer_hum', t((100, 0.8), (200, 0.45), (300, 0.3), (400, 0.2), (500, 0.12), (600, 0.1)),
+              {'colour': 'pink', 'band': [150, 2000], 'gain': 0.12}),
+        synth('turbine_hum', t((50, 0.5), (100, 0.4), (150, 0.25), (3600, 0.12)),
+              {'colour': 'pink', 'band': [100, 2000], 'gain': 0.35}),
         synth('steam_rush', None, {'colour': 'white', 'band': [500, 8000]}),
         synth('steam_vent', None, {'colour': 'white', 'band': [300, 10000]}),
-        synth('turning_gear', [{'hz': 8, 'gain': 0.5}], {'colour': 'brown', 'band': [50, 400], 'gain': 0.3}),
-        synth('motor_large', [{'hz': 100, 'gain': 0.6}], {'colour': 'pink', 'band': [100, 2500], 'gain': 0.5}),
-        synth('motor_small', [{'hz': 100, 'gain': 0.5}], {'colour': 'pink', 'band': [200, 4000], 'gain': 0.4}),
-        synth('fan_large', [{'hz': 16, 'gain': 0.4}], {'colour': 'pink', 'band': [60, 1500], 'gain': 0.6}),
+        synth('turning_gear', t((8, 0.5), (100, 0.3), (600, 0.12)),
+              {'colour': 'brown', 'band': [50, 400], 'gain': 0.3}),
+        synth('motor_large', t((100, 0.6), (200, 0.2), (742.5, 0.15), (642.5, 0.07), (842.5, 0.07), (49.5, 0.3)),
+              {'colour': 'pink', 'band': [100, 2500], 'gain': 0.5}),
+        synth('motor_small', t((100, 0.5), (200, 0.15), (1087, 0.12), (987, 0.06), (1187, 0.06), (271.5, 0.1)),
+              {'colour': 'pink', 'band': [200, 4000], 'gain': 0.4}),
+        synth('fan_large', t((16, 0.4), (420, 0.1), (100, 0.15)),
+              {'colour': 'pink', 'band': [60, 1500], 'gain': 0.6}),
         synth('water_rain', None, {'colour': 'white', 'band': [400, 9000]}),
-        synth('liquid_ring', [{'hz': 25, 'gain': 0.4}], {'colour': 'brown', 'band': [80, 1200], 'gain': 0.6}),
+        synth('liquid_ring', t((25, 0.4), (300, 0.15), (100, 0.25)),
+              {'colour': 'brown', 'band': [80, 1200], 'gain': 0.6}),
         synth('burner', None, {'colour': 'brown', 'band': [40, 800]}),
-        synth('valve_motor', [{'hz': 400, 'gain': 0.5}], {'colour': 'pink', 'band': [500, 3000], 'gain': 0.2}),
-        synth('breaker', None, {'colour': 'white', 'band': [100, 6000]}, 'a short clunk (played once)'),
-        synth('horn_p1', [{'hz': 880, 'gain': 0.8}, {'hz': 1760, 'gain': 0.3}]),
-        synth('horn_p2', [{'hz': 660, 'gain': 0.7}]),
-        synth('horn_p3', [{'hz': 440, 'gain': 0.5}]),
+        synth('valve_motor', t((400, 0.5), (800, 0.2), (100, 0.3)),
+              {'colour': 'pink', 'band': [500, 3000], 'gain': 0.2}),
+        synth('breaker', t((160, 0.6), (410, 0.5), (1150, 0.35), (2650, 0.2)),
+              {'colour': 'white', 'band': [100, 6000], 'gain': 0.8},
+              'a breaker closing, then its spring-charging motor (played once)'),
+        synth('breaker_open', t((210, 0.5), (530, 0.45), (1400, 0.3), (3100, 0.2)),
+              {'colour': 'white', 'band': [150, 7000], 'gain': 0.9}, 'a breaker opening (played once)'),
+        synth('motor_start', t((100, 0.6), (742.5, 0.15), (49.5, 0.3)),
+              {'colour': 'pink', 'band': [100, 2500], 'gain': 0.5},
+              'a large motor started direct on line (played once, then motor_large)'),
+        synth('horn_p1', t((880, 0.8), (1760, 0.3), (2640, 0.2))),
+        synth('horn_p2', t((660, 0.7), (1320, 0.25), (1980, 0.15))),
+        synth('horn_p3', t((440, 0.5), (880, 0.2), (1320, 0.1))),
+        synth('horn_ack', t((1000, 0.6), (2000, 0.2)), None, 'an alarm acknowledged (played once)'),
     ]}
 
 

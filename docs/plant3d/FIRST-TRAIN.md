@@ -356,6 +356,9 @@ round and invented; priority 1 is the most urgent (PLANT3D.md §7.6). Trip-level
 | People cues | footsteps on concrete, grating and steel stairs; doors | recorded one-shots |
 | Ambience | wind, distant plant hum (level from how much runs) | synth + recorded wind loop |
 
-Recorded clips: CC0 only (0054), each with its source and licence in the sound library. The plant gets loud where a
+Recorded clips: CC0 only (0054), each with its source and licence in the sound library. The first train's sounds
+are all synthesised for now, including the ones the table marks as recorded (`tools/plant3d/sounds`, which names the
+physics behind each). Recordings may replace the breakers, the turning gear and the liquid ring pumps later, if they
+sound wrong to someone who knows the real ones. The plant gets loud where a
 real plant is (the GT hall at full speed); the app caps its output level and shows a hearing-protection sign at the
 doors, as on site.
