@@ -79,11 +79,25 @@ static func apply(tier: String, vp: Viewport, sun: DirectionalLight3D, env: Envi
 	RenderingServer.directional_shadow_atlas_set_size(p.shadow_atlas, true)
 	sun.directional_shadow_max_distance = p.shadow_distance
 	Lighting.apply(tier, env)
+	_measure_overrides(sun)
 	vp.set_meta("detail_min_px", p.detail_min_px)
 	apply_ranges(vp)
 	if not vp.size_changed.is_connected(_on_resize.bind(vp)):
 		vp.size_changed.connect(_on_resize.bind(vp))   # §10: the ranges again when the resolution changes
 	Mat.apply_tier(tier)   # the tier's texture size (kit/materials.gd): one material set, three sizes
+
+## Measuring what the sun's shadow costs (main.gd's `fx_off=`): `shadow` no real-time shadow, `cascades2` two
+## cascades instead of four, `shadow40` shadows to 40 m, `shadowhard` no soft filtering.
+static func _measure_overrides(sun: DirectionalLight3D) -> void:
+	var off: PackedStringArray = Lighting.off
+	if "shadow" in off:
+		sun.shadow_enabled = false
+	if "cascades2" in off:
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	if "shadow40" in off:
+		sun.directional_shadow_max_distance = 40.0
+	if "shadowhard" in off:
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_HARD)
 
 ## The legibility of a tag plate's code (PLANT3D.md §10): its text is drawn while a character covers 8 px.
 const LEGIBLE_PX := 8.0

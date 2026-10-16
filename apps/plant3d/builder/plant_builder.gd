@@ -429,6 +429,15 @@ func make_materials(out_dir: String) -> int:
 	var rr: Rect2 = Site.new(self).extent().grow(Site.ROAD_GAP + Site.ROAD_W * 0.5)
 	var rc := Geom.g([rr.get_center().x, rr.get_center().y, 0.0])
 	(list["road"] as ShaderMaterial).set_shader_parameter("line_box", Vector4(rc.x, rc.z, rr.size.x * 0.5, rr.size.y * 0.5))
+	# the ground beside the road (ruts, compacted verges: the shader's `macro`), without the road's line
+	for gname in ["ground", "terrain"]:
+		var gm := list[gname] as ShaderMaterial
+		gm.set_shader_parameter("line_box", Vector4(rc.x, rc.z, rr.size.x * 0.5, rr.size.y * 0.5))
+		gm.set_shader_parameter("road_line", 0.0)
+	# a track out of the gate (the middle of the wall's south side) into the country, southwards (Godot's +z)
+	var wall := Site.new(self).wall_rect()
+	var gate := Geom.g([wall.get_center().x, wall.position.y, 0.0])
+	(list["terrain"] as ShaderMaterial).set_shader_parameter("track", Vector4(gate.x, gate.z, 0.0, 1.0))
 	var wz := _wet_zone()
 	Mat.set_wet_zone(list, wz, 0.85 if wz != Vector4.ZERO else 0.0)
 	for name in list:
@@ -477,8 +486,10 @@ func _convex(body: Node, pts: PackedVector3Array) -> void:
 	cs.shape = sh
 	body.add_child(cs)
 
-## A structure's mesh: static, with lightmap UV2 (builder/lightmap.gd) at `texel` metres.
-func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material, texel := Lightmap.TEXEL) -> MeshInstance3D:
+## A structure's mesh: static, with lightmap UV2 (builder/lightmap.gd) at `texel` metres. `baked` false: UV2 all the
+## same (one vertex format: one pipeline), but lit by the sky, not the bake (a thin sheet's two faces share their
+## lightmap's texels and baked as dark and brown blotches: the transformer yard's fence, second realism pass).
+func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material, texel := Lightmap.TEXEL, baked := true) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.name = name
 	st.generate_tangents()
@@ -493,7 +504,7 @@ func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material, texe
 	else:
 		st.set_material(mat)
 		mi.mesh = st.commit()
-	Lightmap.mark(mi, lit != null)
+	Lightmap.mark(mi, lit != null and baked)
 	parent.add_child(mi)
 	return mi
 
@@ -525,6 +536,17 @@ func _panel(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, z0: float, z1: 
 	Geom.add_prism(st, pc, z0, z1)
 	if body != null:
 		_convex(body, Geom.prism_points(pc, z0, z1))
+
+## The vertex colour that tells the weathered shader where a wall panel's top is (its `top_edge`: streaks hang from
+## there): r in quarter metres (to 63.75 m), g the fraction of a quarter. Vertex colours are stored as 8 bits.
+static func top_colour(z1: float) -> Color:
+	var q := clampf(z1, 0.0, 63.9) / 0.25
+	return Color(floorf(q) / 255.0, q - floorf(q), 0.0, 1.0)
+
+## A wall panel (as _panel) whose vertices carry its top (top_colour).
+func _wall_panel(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, z0: float, z1: float, t: float) -> void:
+	st.set_color(top_colour(z1))
+	_panel(st, body, a, b, z0, z1, t)
 
 ## A sloped rail: a thin panel from (a, za) to (b, zb), h high.
 func _slope_panel(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, za: float, zb: float, h: float, t: float) -> void:
@@ -873,7 +895,9 @@ func _along(a: Vector3, b: Vector3) -> Transform3D:
 # ------------------------------------------------------------------ structures
 
 func _surface(parent: Node3D, sf: Dictionary) -> void:
-	var mat := _mat("grating" if sf.deck == "grating" else ("deck_steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else "concrete")))
+	# a building's floors (an operating deck) are painted as its ground floor is (_hall_floor)
+	var inside: bool = sf.kind == "floor" or _in_building(sf)
+	var mat := _mat("grating" if sf.deck == "grating" else ("deck_steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else ("hall_floor" if inside else "concrete"))))
 	_slab(parent, sf.id, sf.outline, sf.holes, sf.z, sf.thick, mat)
 	if sf.rails:
 		var st := _st()
@@ -882,6 +906,17 @@ func _surface(parent: Node3D, sf: Dictionary) -> void:
 			_mesh_node(body, "mesh", st, _mat("rail"))
 		else:
 			body.free()
+
+## Whether a surface stands inside a building (its outline's centre in the building's plan, under its roof).
+func _in_building(sf: Dictionary) -> bool:
+	var mid := Vector2.ZERO
+	for q in sf.outline:
+		mid += q
+	mid /= sf.outline.size()
+	for b in buildings:
+		if sf.z < float(b.height) and Geom.in_poly(mid, b.outline):
+			return true
+	return false
 
 func _stair(parent: Node3D, s: Dictionary) -> void:
 	var body := _body(parent, s.id)
@@ -1004,23 +1039,59 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 			for q in pc:
 				r = r.expand(q)
 			if r.size.x > 0.01 and r.size.y > 0.01:
-				_panel(walls, body, a + u * r.position.x, a + u * r.end.x, r.position.y, r.end.y, 0.25)
+				_wall_panel(walls, body, a + u * r.position.x, a + u * r.end.x, r.position.y, r.end.y, 0.25)
 	_mesh_node(body, "walls", walls, _mat("wall_" + b.cladding))
 	var roof := _st()
 	for pc in Geom.decompose(pg, roof_holes):
 		Geom.add_prism(roof, pc, h, h + 0.3)
 		_convex(body, Geom.prism_points(pc, h, h + 0.3))
 	_mesh_node(body, "roof", roof, _mat("roof"))
+	_hall_floor(body, b)
 	_lamps(body, b)
+
+## A hall's floor on the ground (z = 0): painted, not the yard's bare concrete. Drawn only (the ground's slab is the
+## walkable one) 4 mm over it, less the pits and stairwells inside the hall.
+const HALL_FLOOR_T := 0.004
+func _hall_floor(body: Node, b: Dictionary) -> int:
+	var pg: PackedVector2Array = b.outline
+	var bb := Rect2(pg[0], Vector2.ZERO)
+	for q in pg:
+		bb = bb.expand(q)
+	var holes: Array = []
+	for h in pits.map(func(p): return p.outline) + ground_cuts():
+		var hb := Rect2(h[0], Vector2.ZERO)
+		for q in h:
+			hb = hb.expand(q)
+		if bb.grow(0.01).encloses(hb):
+			holes.append(h)
+	var st := _st()
+	var n := 0
+	for pc in Geom.decompose(pg, holes):
+		Geom.add_prism(st, pc, 0.0, HALL_FLOOR_T, false)
+		n += 1
+	if n > 0:
+		_mesh_node(body, "floor", st, _mat("hall_floor"), Lightmap.GROUND_TEXEL)
+	return n
 
 ## High-bay lamps under a building's roof (a hall is lit by its lamps, not by the sky through its walls): a grid
 ## about 0.6 × the height apart (6 to 10 m), each a housing, a lit lens and a light the bake takes in whole
 ## (BAKE_STATIC: its light and shadow are in the lightmap; the app drops the light node once a bake is there, the
-## pieces that move take the sky's light: app/main.gd).
-const LAMP_LUX := 2.0   # light energy of one lamp (Godot's units), set by eye against the outdoor exposure
+## pieces that move take the sky's light: app/main.gd). A high-bay luminaire throws its light down in a cone: pools
+## on the floor under each lamp, the walls and corners darker, lit by what the floor bounces (the omni lights of the
+## first pass lit every hall evenly and washed its floor out: second realism pass).
+## A lamp's light on the floor under it, as a share of the sun's irradiance (the sun's energy is 1): its energy is
+## this times the square of its height over the floor (inverse-square falloff, the lamp's `spot_attenuation` 2).
+## A hall reads darker than the yard outside, as it does to the eye coming in; set by eye against the exposure.
+const LAMP_FLOOR := 0.45
+## What the reflector lets out sideways (its open bottom, the lamp's glow): an even dim light round each lamp, so walls
+## and the space between pools are not black; as a share of the sun's irradiance at the floor.
+const LAMP_SPILL := 0.06
 ## A lamp's reach: the hall's height and as far again, so the floor and a pit below it are lit (a reach of 1.4 × the
 ## height left the turbine hall's pit black: adversarial review, 2026-10-16)
 const LAMP_REACH := 2.4
+## The cone: its pool on the floor about 0.6 of the lamps' spacing in radius (pools that meet but do not merge into
+## an even floor), 10 to 40 degrees from the axis to the edge.
+const LAMP_POOL := 0.85
 func _lamps(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var h: float = b.height
@@ -1041,12 +1112,26 @@ func _lamps(body: Node, b: Dictionary) -> int:
 			var z := h - 0.6
 			Geom.add_prism(housing, Geom.rect(c.x - 0.3, c.y - 0.3, c.x + 0.3, c.y + 0.3), z, z + 0.25)
 			Geom.add_prism(lens, Geom.rect(c.x - 0.25, c.y - 0.25, c.x + 0.25, c.y + 0.25), z - 0.03, z)
-			var l := OmniLight3D.new()
+			var l := SpotLight3D.new()
 			l.name = "lamp_%d" % n
 			l.position = Geom.g([c.x, c.y, z - 0.2])
-			l.omni_range = h * LAMP_REACH
-			l.omni_attenuation = 0.7
-			l.light_energy = LAMP_LUX
+			l.rotation_degrees = Vector3(-90, 0, 0)   # a spot shines along its -z: straight down
+			l.spot_range = h * LAMP_REACH
+			var d := z - 0.2
+			l.spot_attenuation = 2.0
+			l.spot_angle = clampf(rad_to_deg(atan(LAMP_POOL * gap / d)), 10.0, 40.0)
+			l.spot_angle_attenuation = 1.5
+			l.light_energy = LAMP_FLOOR * d * d
+			var spill := OmniLight3D.new()
+			spill.name = "spill"
+			spill.omni_range = l.spot_range
+			spill.omni_attenuation = 2.0
+			spill.light_energy = LAMP_SPILL * d * d
+			spill.light_color = Color(1.0, 0.95, 0.86)
+			spill.light_bake_mode = Light3D.BAKE_STATIC
+			spill.shadow_enabled = false
+			spill.add_to_group("baked_lights", true)
+			l.add_child(spill)
 			l.light_color = Color(1.0, 0.95, 0.86)
 			l.light_bake_mode = Light3D.BAKE_STATIC
 			l.shadow_enabled = false
@@ -1080,7 +1165,7 @@ func _pit_lamps(body: Node, p: Dictionary) -> int:
 			l.position = Geom.g([q.x, q.y, z - 0.1])
 			l.omni_range = float(p.depth) * 2.5 + 4.0
 			l.omni_attenuation = 0.7
-			l.light_energy = LAMP_LUX * 0.6
+			l.light_energy = 0.6
 			l.light_color = Color(1.0, 0.95, 0.86)
 			l.light_bake_mode = Light3D.BAKE_STATIC
 			l.shadow_enabled = false
@@ -1166,8 +1251,8 @@ func _fence(parent: Node3D, s: Dictionary) -> void:
 	for i in range(pts.size() - 1):
 		var a := at + Geom.turn(_v3(pts[i]), float(s.get("yaw", 0)))
 		var b := at + Geom.turn(_v3(pts[i + 1]), float(s.get("yaw", 0)))
-		_panel(st, body, Vector2(a.x, a.y), Vector2(b.x, b.y), a.z, a.z + float(pr.height), 0.05)
-	_mesh_node(body, "mesh", st, _mat("fence"))
+		_wall_panel(st, body, Vector2(a.x, a.y), Vector2(b.x, b.y), a.z, a.z + float(pr.height), 0.05)
+	_mesh_node(body, "mesh", st, _mat("fence"), Lightmap.TEXEL, false)   # 5 cm sheet: not baked (_mesh_node)
 
 func _rack(parent: Node3D, s: Dictionary) -> void:
 	var pr := params_of("pipe_rack", s.get("params", {}))

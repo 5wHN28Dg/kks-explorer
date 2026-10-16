@@ -20,7 +20,9 @@ const SETS := {
 	"PaintedMetal004": ["NormalGL", "Roughness"],     # paint: its scratches and wear only, the colour is the tint
 	"Metal032": ["Color", "NormalGL", "Roughness"],   # bare and galvanised steel: stems, flanges, frames
 	"Metal009": ["Color", "NormalGL", "Roughness"],   # brushed aluminium: insulation cladding
-	"CorrugatedSteel005": ["Color", "NormalGL", "Roughness"],  # wall cladding, casings
+	# wall cladding, casings: the ribs only. Its colour and roughness maps are large blotches that read as
+	# camouflage on a 40 m wall (second realism pass): the sheets' tone and gloss are drawn per sheet instead
+	"CorrugatedSteel005": ["NormalGL"],
 	"Concrete034": ["Color", "NormalGL", "Roughness"],
 	"MetalWalkway010": ["Color", "NormalGL", "Roughness"],     # grating decks and treads
 	"DiamondPlate008C": ["Color", "NormalGL", "Roughness"],    # chequer plate decks
@@ -49,18 +51,37 @@ const PAINT := {
 	"paint_pipe": Color(0.50, 0.52, 0.53),       # bare pipe (its medium shows in its bands)
 }
 
+## Bare pipe painted by the colour group of what it carries (plant.json `media`: `group`), after DIN 2403's idea of
+## a colour per group, in muted shades: the medium's own band and arrow (saturated, PLANT3D.md §2) must still stand out
+## on the pipe (tests/test_realism.gd checks the contrast for every medium of the plant). Insulated pipe is aluminium
+## cladding whatever it carries.
+const PIPE_PAINT := {
+	"water": Color(0.50, 0.53, 0.48),      # a grey green (RAL 7033-like)
+	"steam": Color(0.60, 0.61, 0.60),      # heat-resistant aluminium paint
+	"air": Color(0.84, 0.87, 0.90),        # a pale grey blue (the air band is a mid grey blue)
+	"gas": Color(0.90, 0.80, 0.36),        # a signal yellow, muted
+	"oil": Color(0.42, 0.33, 0.26),        # brown
+	"chemicals": Color(0.55, 0.50, 0.58),  # a grey violet
+	"flue gas": Color(0.30, 0.30, 0.30),   # dark grey
+}
+## The material name of bare pipe carrying a medium of `group` (resolve() knows it).
+static func pipe_paint(group: String) -> String:
+	return "pipe_" + group if PIPE_PAINT.has(group) else "paint_pipe"
+
 ## Weathering per finish (kit/weathered.gdshaderinc): how much grime, run-off streaks, dust on top faces, rust and
 ## paint wear each shows. Values set by eye against photographs of plants in service: bare steel rusts, paint wears
 ## where it is touched, concrete stains, aluminium cladding streaks under its laps.
 const WEATHER := {
-	"paint": {"grime": 0.35, "streaks": 0.35, "dust": 0.35, "rust": 0.10, "wear": 0.8},
-	"metal": {"grime": 0.40, "streaks": 0.30, "dust": 0.30, "rust": 0.35, "wear": 0.0},
-	"galvanised": {"grime": 0.30, "streaks": 0.25, "dust": 0.30, "rust": 0.06, "wear": 0.0},
-	"cladding": {"grime": 0.30, "streaks": 0.45, "dust": 0.25, "rust": 0.0, "wear": 0.0},
-	"sheeting": {"grime": 0.10, "streaks": 0.45, "dust": 0.20, "rust": 0.06, "wear": 0.0},
-	"concrete": {"grime": 0.60, "streaks": 0.50, "dust": 0.30, "rust": 0.0, "wear": 0.0},
+	"paint": {"grime": 0.35, "streaks": 0.30, "dust": 0.20, "rust": 0.10, "wear": 0.8},
+	"metal": {"grime": 0.40, "streaks": 0.30, "dust": 0.20, "rust": 0.30, "wear": 0.0},
+	"galvanised": {"grime": 0.30, "streaks": 0.30, "dust": 0.20, "rust": 0.04, "wear": 0.0},
+	"cladding": {"grime": 0.25, "streaks": 0.30, "dust": 0.12, "rust": 0.0, "wear": 0.0},
+	"sheeting": {"grime": 0.20, "streaks": 0.50, "dust": 0.15, "rust": 0.04, "wear": 0.0},
+	"concrete": {"grime": 0.45, "streaks": 0.55, "dust": 0.25, "rust": 0.0, "wear": 0.0},
 	"ground": {"grime": 0.50, "streaks": 0.0, "dust": 0.15, "rust": 0.0, "wear": 0.0},
-	"deck": {"grime": 0.45, "streaks": 0.20, "dust": 0.40, "rust": 0.15, "wear": 0.5},
+	"deck": {"grime": 0.45, "streaks": 0.20, "dust": 0.30, "rust": 0.15, "wear": 0.5},
+	# a hall's painted floor: kept fairly clean
+	"floor": {"grime": 0.20, "streaks": 0.0, "dust": 0.06, "rust": 0.0, "wear": 0.0},
 	# small plain pieces (dials, tag plates, glass, the media's bands): kept clean, a trainee reads them
 	"none": {"grime": 0.0, "streaks": 0.0, "dust": 0.0, "rust": 0.0, "wear": 0.0},
 }
@@ -87,16 +108,20 @@ static func specs() -> Dictionary:
 	m["steel"] = {"set": "Metal032", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.85, "tile": 1.0}
 	m["steel_dark"] = {"set": "Metal032", "tint": Color(0.45, 0.45, 0.47), "rough": 1.0, "metal": 0.7, "tile": 1.0}
 	m["galvanised"] = {"set": "Metal032", "tint": Color(0.85, 0.87, 0.88), "rough": 1.0, "metal": 0.75, "tile": 2.0}
-	m["cladding"] = {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "rough": 1.0, "metal": 0.8, "tile": 1.0}
-	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.6, "tile": 2.0}
-	m["corrugated_casing"] = {"set": "CorrugatedSteel005", "tint": Color(0.80, 0.82, 0.84), "rough": 1.0, "metal": 0.5, "tile": 3.0}
+	# insulation cladding: aluminium sheets lapped every metre along the pipe
+	m["cladding"] = {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "rough": 1.0, "metal": 0.8, "tile": 1.0, "lap": 1.0}
+	# wall cladding: painted (polyester-coated) steel sheets 1 m wide, the ribs from the set's normal map
+	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(0.50, 0.54, 0.58), "rough": 0.6, "metal": 0.1, "tile": 2.0, "sheet": 1.0}
+	m["corrugated_casing"] = {"set": "CorrugatedSteel005", "tint": Color(0.52, 0.54, 0.55), "rough": 0.6, "metal": 0.1, "tile": 3.0, "sheet": 1.0}
 	m["concrete"] = {"set": "Concrete034", "tint": Color(0.72, 0.71, 0.69), "rough": 1.0, "metal": 0.0, "tile": 3.0}
+	# a hall's floor: grey-green epoxy paint on concrete, the concrete's relief under it, satin
+	m["hall_floor"] = {"set": "Concrete034", "maps": ["NormalGL"], "tint": Color(0.42, 0.47, 0.44), "rough": 0.4, "metal": 0.0, "tile": 3.0, "weather": "floor"}
 	m["grating"] = {"set": "MetalWalkway010", "tint": Color(0.75, 0.75, 0.72), "rough": 1.0, "metal": 0.6, "tile": 1.0}
 	m["chequer"] = {"set": "DiamondPlate008C", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.7, "tile": 1.0}
-	m["gravel"] = {"set": "Gravel023", "tint": Color(0.62, 0.60, 0.56), "rough": 1.0, "metal": 0.0, "tile": 3.0}
+	m["gravel"] = {"set": "Gravel023", "tint": Color(0.62, 0.60, 0.56), "rough": 1.0, "metal": 0.0, "tile": 3.0, "macro": 0.6}
 	m["asphalt"] = {"set": "Asphalt031", "tint": Color(0.6, 0.6, 0.6), "rough": 1.0, "metal": 0.0, "tile": 4.0}
 	# the country beyond the wall: the gravel's set, sandier and larger (seen from tens to hundreds of metres)
-	m["terrain"] = {"set": "Gravel023", "tint": Color(0.78, 0.70, 0.56), "rough": 1.0, "metal": 0.0, "tile": 9.0}
+	m["terrain"] = {"set": "Gravel023", "tint": Color(0.78, 0.70, 0.56), "rough": 1.0, "metal": 0.0, "tile": 9.0, "macro": 1.0}
 	# plain (no textures): small pieces, faces of dials, glass, rubber, porcelain, lamps
 	m["plate"] = {"set": "", "tint": Color(0.93, 0.93, 0.90), "rough": 0.4, "metal": 0.0}         # tag plates (white)
 	m["plate_border"] = {"set": "", "tint": Color(0.05, 0.05, 0.05), "rough": 0.6, "metal": 0.0}
@@ -123,7 +148,7 @@ static func specs() -> Dictionary:
 	# draw calls are what the phone pays for)
 	m["paint"] = {"set": "PaintedMetal004", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.15, "tile": 1.5, "vc": true}
 	m["metal"] = {"set": "Metal032", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.8, "tile": 1.0, "vc": true}
-	m["sheeting"] = {"set": "CorrugatedSteel005", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.55, "tile": 2.5, "vc": true}
+	m["sheeting"] = {"set": "CorrugatedSteel005", "tint": Color(0.85, 0.85, 0.85), "rough": 0.6, "metal": 0.1, "tile": 2.5, "vc": true, "sheet": 1.0}
 	m["plain"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.6, "metal": 0.0, "vc": true}
 	m["plain_metal"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.3, "metal": 0.9, "vc": true}
 	return m
@@ -139,6 +164,10 @@ static func resolve(name: String) -> Array:
 	if PAINT.has(name):
 		var c: Color = PAINT[name]
 		c.a = EXPOSURE.get(name, EXPOSURE_DEFAULT)
+		return ["paint", c]
+	if name.begins_with("pipe_") and PIPE_PAINT.has(name.trim_prefix("pipe_")):
+		var c: Color = PIPE_PAINT[name.trim_prefix("pipe_")]
+		c.a = EXPOSURE_DEFAULT
 		return ["paint", c]
 	if colours.has(name):
 		return ["plain", colours[name]]
@@ -162,6 +191,7 @@ const STRUCTURE_MATS := {
 	"roof": ["corrugated_casing", true], "door": ["paint_motor", false], "fence": ["galvanised", true],
 	"pit": ["concrete", false], "ladder": ["paint_yellow", false], "rack": ["galvanised", false],
 	"yard": ["concrete", false], "road": ["asphalt", false], "drain": ["dark", false], "terrain": ["terrain", false],
+	"hall_floor": ["hall_floor", false],
 }
 
 static func structure_spec(name: String) -> Dictionary:
@@ -174,6 +204,8 @@ static func structure_spec(name: String) -> Dictionary:
 		spec["grating"] = true
 	if name == "yard":
 		spec["joints"] = 6.0   # cast in 6 m bays
+	if name in ["wall_metal", "wall_concrete", "wall_brick", "fence"]:
+		spec["top_edge"] = true   # streaks hang from each panel's top (its top in the vertex colour: the builder's _panel)
 	return spec
 
 ## A structure's material. Walls, roofs and fences are closed prisms (their inside and outside each have faces of
@@ -233,10 +265,14 @@ static func _make_weathered(name: String, spec: Dictionary, size: int) -> Shader
 		mat.set_shader_parameter("wear", float(spec.wear))
 	if spec.has("joints"):
 		mat.set_shader_parameter("joint_spacing", float(spec.joints))
+	mat.set_shader_parameter("sheet_width", float(spec.get("sheet", 0.0)))
+	mat.set_shader_parameter("lap_length", float(spec.get("lap", 0.0)))
+	mat.set_shader_parameter("macro", float(spec.get("macro", 0.0)))
+	mat.set_shader_parameter("top_edge", 1.0 if spec.get("top_edge", false) else 0.0)
 	if ResourceLoader.exists(NOISE):
 		mat.set_shader_parameter("noise_tex", load(NOISE))
 	if spec.set != "":
-		_textures(mat, spec.set, size)
+		_textures(mat, spec.set, size, spec.get("maps", []))
 	return mat
 
 ## The wet zone round water (the shader's `wet_zone`: centre x, z in Godot's axes, half sizes along x and z; `wet`
@@ -262,8 +298,9 @@ static func texture_of(mat: Material, map: String) -> Texture2D:
 		return {"Color": mat.albedo_texture, "NormalGL": mat.normal_texture, "Roughness": mat.roughness_texture}[map]
 	return null
 
-static func _textures(mat: Material, set_name: String, size: int) -> bool:
-	var maps: Array = SETS[set_name]
+## `only`: the maps of the set this material takes (all of them when empty).
+static func _textures(mat: Material, set_name: String, size: int, only: Array = []) -> bool:
+	var maps: Array = SETS[set_name] if only.is_empty() else only
 	var ok := true
 	for m in maps:
 		var p := tex_path(set_name, m, size)
@@ -309,6 +346,6 @@ static func apply_tier(tier: String, mats_dir := "res://built/materials") -> int
 		var mat := load(p) as Material
 		var s: String = all[name].get("set", "")
 		set_detail(mat, tier == "full")
-		if mat != null and s != "" and _textures(mat, s, size):
+		if mat != null and s != "" and _textures(mat, s, size, all[name].get("maps", [])):
 			n += 1
 	return n

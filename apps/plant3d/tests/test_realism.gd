@@ -55,12 +55,39 @@ func run(tree: SceneTree) -> Array:
 	var pit_lamps := lamps.filter(func(l): return String(l.name).begins_with("pit_lamp_"))
 	if pit_lamps.is_empty():
 		p.append("the pits have lamps")
+	var halls := 0
 	for l in lamps:
 		if String(l.name).begins_with("lamp_"):
 			var hall := l.get_parent().get_node_or_null("roof") as MeshInstance3D
 			var h := hall.mesh.get_aabb().position.y if hall != null else 0.0
-			if (l as OmniLight3D).omni_range < h * 2.0:
-				p.append("%s reaches the floor and below (range %.1f, hall %.1f m)" % [l.get_path(), l.omni_range, h])
+			# a high-bay lamp throws its light down in a cone (pools on the floor, darker corners: second pass)
+			var spot := l as SpotLight3D
+			if spot == null:
+				p.append("%s is a downlight (a spot), not an omni light that lights the hall evenly" % l.get_path())
+				continue
+			if spot.global_transform.basis.z.dot(Vector3.UP) < 0.99:
+				p.append("%s shines straight down" % l.get_path())
+			if spot.spot_range < h * 2.0:
+				p.append("%s reaches the floor and below (range %.1f, hall %.1f m)" % [l.get_path(), spot.spot_range, h])
+			if spot.spot_angle > 60.0:
+				p.append("%s throws a cone, not a flood (%.0f degrees)" % [l.get_path(), spot.spot_angle])
+	# every hall has its painted floor, darker than the yard outside (a floor as light as the yard washed out under
+	# the lamps: second pass)
+	var floor_mat := load("res://built/materials/hall_floor.tres") as ShaderMaterial
+	if floor_mat == null:
+		p.append("the halls' floor material is built")
+	else:
+		var t: Color = floor_mat.get_shader_parameter("tint")
+		var lum := 0.2126 * t.srgb_to_linear().r + 0.7152 * t.srgb_to_linear().g + 0.0722 * t.srgb_to_linear().b
+		if lum > 0.25 or float(floor_mat.get_shader_parameter("roughness_scale")) > 0.6:
+			p.append("a hall's floor is painted: a believable albedo (%.2f linear) and satin, not chalk" % lum)
+	for roof in plant.find_children("roof", "MeshInstance3D", true, false):
+		halls += 1
+		var fl := roof.get_parent().get_node_or_null("floor") as MeshInstance3D
+		if fl == null or fl.material_override != floor_mat:
+			p.append("%s: the hall has its painted floor" % roof.get_parent().get_path())
+	if halls < 3:
+		p.append("the halls are found (%d)" % halls)
 	if Lighting.SKY_ENERGY < 3.0:
 		p.append("the sky's energy is π in Godot's light units (the photograph's ratio)")
 	# materials
@@ -85,6 +112,58 @@ func run(tree: SceneTree) -> Array:
 	var pwz = plate.get_shader_parameter("wet_zone") if plate != null else null
 	if plate == null or (pwz != null and pwz != Vector4.ZERO):
 		p.append("tag plates are never darkened by the wet zone")
+	# corrugated cladding: the ribs from the normal map, a tone per sheet; no photographed colour or roughness (their
+	# large blotches read as camouflage on a wall: second pass)
+	for mname in ["corrugated", "corrugated_casing", "sheeting", "wall_metal", "roof"]:
+		var cm := load("res://built/materials/%s.tres" % mname) as ShaderMaterial
+		if cm == null or cm.get_shader_parameter("use_albedo") or cm.get_shader_parameter("use_rough") \
+				or not cm.get_shader_parameter("use_normal") or float(cm.get_shader_parameter("sheet_width")) <= 0.0:
+			p.append("%s: corrugated sheets drawn from the ribs' normal map and per sheet, no blotchy maps" % mname)
+	# walls' streaks hang from each panel's top: the vertex colour carries it
+	for mname in ["wall_metal", "wall_concrete", "fence"]:
+		var wm := load("res://built/materials/%s.tres" % mname) as ShaderMaterial
+		if wm == null or float(wm.get_shader_parameter("top_edge")) != 1.0:
+			p.append("%s: streaks hang from the panels' tops" % mname)
+	var wall_node := ground.find_child("boundary_wall", true, false) if ground != null else null
+	var panels := wall_node.get_node_or_null("panels") as MeshInstance3D if wall_node != null else null
+	if panels == null:
+		p.append("the boundary wall's panels are found")
+	else:
+		var cols: PackedColorArray = panels.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+		var ys: PackedVector3Array = panels.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var bad := 0
+		for i in cols.size():
+			var top := (roundf(cols[i].r * 255.0) + cols[i].g) * 0.25
+			if top + 0.02 < ys[i].y - panels.global_position.y - 0.2:   # pilasters stand 0.15 m higher
+				bad += 1
+		if cols.is_empty() or bad > 0:
+			p.append("the wall's vertices carry its top (%d vertices above it)" % bad)
+	# the ground varies (patches, ruts by the road, a track out of the gate); insulated pipe is lapped cladding
+	var terr := load("res://built/materials/terrain.tres") as ShaderMaterial
+	if terr == null or float(terr.get_shader_parameter("macro")) <= 0.0 or (terr.get_shader_parameter("track") as Vector4).length() < 1.0 \
+			or (terr.get_shader_parameter("line_box") as Vector4).z <= 0.0 or float(terr.get_shader_parameter("road_line")) != 0.0:
+		p.append("the terrain varies, with ruts by the road and a track out of the gate, and no centre line")
+	if float((load("res://built/materials/ground.tres") as ShaderMaterial).get_shader_parameter("macro")) <= 0.0:
+		p.append("the gravel varies")
+	if float((load("res://built/materials/cladding.tres") as ShaderMaterial).get_shader_parameter("lap_length")) <= 0.0:
+		p.append("insulation cladding is lapped sheets")
+	# bare pipe painted by what it carries, every medium's band still standing out on it
+	var media: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://built/content/plant.json")).media
+	for med in media:
+		var paint_name := Mat.pipe_paint(String(media[med].group))
+		var r: Array = Mat.resolve(paint_name)
+		if paint_name == "paint_pipe" or r[0] != "paint":
+			p.append("%s: bare pipe is painted by its group (%s)" % [med, paint_name])
+			continue
+		var de := delta_e(r[1], Color.html(media[med].band))
+		if de < 25.0:
+			p.append("%s: its band stands out on its pipe (ΔE %.1f)" % [med, de])
+	var water_pipes := 0
+	for n in tree.get_nodes_in_group("pipes"):
+		if n.get_meta("medium", "") == "cooling_water":
+			water_pipes += 1
+	if water_pipes == 0:
+		p.append("the plant has cooling water pipes")
 	# the bake scene
 	var ps := load("res://built/lit.scn") as PackedScene
 	if ps == null:
@@ -130,3 +209,17 @@ func run(tree: SceneTree) -> Array:
 		p.append("phones: no SSAO, the haze")
 	plant.free()
 	return p
+
+## CIE76 colour difference between two sRGB colours.
+static func delta_e(a: Color, b: Color) -> float:
+	var la := _lab(a)
+	var lb := _lab(b)
+	return la.distance_to(lb)
+
+static func _lab(c: Color) -> Vector3:
+	var l := c.srgb_to_linear()
+	var x := (0.4124 * l.r + 0.3576 * l.g + 0.1805 * l.b) / 0.95047
+	var y := 0.2126 * l.r + 0.7152 * l.g + 0.0722 * l.b
+	var z := (0.0193 * l.r + 0.1192 * l.g + 0.9505 * l.b) / 1.08883
+	var f := func(t: float) -> float: return pow(t, 1.0 / 3.0) if t > 0.008856 else 7.787 * t + 16.0 / 116.0
+	return Vector3(116.0 * f.call(y) - 16.0, 500.0 * (f.call(x) - f.call(y)), 200.0 * (f.call(y) - f.call(z)))

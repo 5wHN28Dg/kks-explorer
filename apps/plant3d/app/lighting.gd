@@ -67,7 +67,7 @@ static func sun() -> DirectionalLight3D:
 
 ## The lightmap node for a plant whose areas stand under `parent`, or null when the build carries no bake.
 static func lightmap_node() -> LightmapGI:
-	if not ResourceLoader.exists(LIGHTMAP):
+	if not ResourceLoader.exists(LIGHTMAP) or "lightmap" in off:   # fx_off=lightmap: without it, to compare
 		return null
 	var data := load(LIGHTMAP) as LightmapGIData
 	if data == null or data.get_user_count() == 0 or data.get_lightmap_textures().is_empty():
