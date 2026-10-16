@@ -61,6 +61,8 @@ const WEATHER := {
 	"concrete": {"grime": 0.60, "streaks": 0.50, "dust": 0.30, "rust": 0.0, "wear": 0.0},
 	"ground": {"grime": 0.50, "streaks": 0.0, "dust": 0.15, "rust": 0.0, "wear": 0.0},
 	"deck": {"grime": 0.45, "streaks": 0.20, "dust": 0.40, "rust": 0.15, "wear": 0.5},
+	# small plain pieces (dials, tag plates, glass, the media's bands): kept clean, a trainee reads them
+	"none": {"grime": 0.0, "streaks": 0.0, "dust": 0.0, "rust": 0.0, "wear": 0.0},
 }
 ## Which weathering a material takes (by its texture set).
 const WEATHER_OF := {"PaintedMetal004": "paint", "Metal032": "metal", "Metal009": "cladding",
@@ -199,7 +201,9 @@ static func tex_path(set_name: String, map: String, size: int) -> String:
 ## pieces, lamps) stay Godot's standard material.
 static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> Material:
 	var s: String = spec.get("set", "")
-	if s != "":
+	if s != "" or not spec.get("emit", false):
+		# the plain ones too, without textures or weathering: one shader for every lit surface, so a phone's first
+		# start compiles its pipelines once, not again for Godot's standard shader (decision 0057)
 		return _make_weathered(name, spec, size)
 	var mat := StandardMaterial3D.new()
 	mat.resource_name = name
@@ -225,7 +229,7 @@ static func _make_weathered(name: String, spec: Dictionary, size: int) -> Shader
 	mat.set_shader_parameter("metallic", spec.metal)
 	mat.set_shader_parameter("uv_scale", Vector2.ONE / float(spec.get("tile", 1.0)))
 	mat.set_shader_parameter("use_vertex_colour", spec.get("vc", false))
-	var w: Dictionary = WEATHER.get(spec.get("weather", WEATHER_OF.get(spec.set, "paint")), {})
+	var w: Dictionary = WEATHER.get(spec.get("weather", WEATHER_OF.get(spec.set, "paint") if spec.set != "" else "none"), {})
 	for k in w:
 		mat.set_shader_parameter(k, float(w[k]) * float(spec.get("weather_scale", 1.0)))
 	if spec.has("wear"):
@@ -234,7 +238,8 @@ static func _make_weathered(name: String, spec: Dictionary, size: int) -> Shader
 		mat.set_shader_parameter("joint_spacing", float(spec.joints))
 	if ResourceLoader.exists(NOISE):
 		mat.set_shader_parameter("noise_tex", load(NOISE))
-	_textures(mat, spec.set, size)
+	if spec.set != "":
+		_textures(mat, spec.set, size)
 	return mat
 
 ## The wet zone round water (the shader's `wet_zone`: centre x, z in Godot's axes, half sizes along x and z; `wet`

@@ -98,6 +98,12 @@ colours in a cell are one draw call:
 | `concrete`, `grating`, `chequer`, `gravel`, `asphalt` | Concrete034, MetalWalkway010, DiamondPlate008C, Gravel023, Asphalt031 | foundations, decks, the ground, roads |
 | `plain`, `plain_metal`, `lamp_*` | none | small pieces (dials, plates, rubber, glass, porcelain, the media's colour bands), lamps |
 
+Every material with a texture set is the weathered shader (`weathered.gdshader`, `weathered.gdshaderinc`, decision
+0057): the set's maps plus grime, run-off streaks, dust, rust and paint wear from world position and a build-made noise
+(`builder/weather.gd`), each finish its own amounts (`materials.gd WEATHER`). A piece's vertex colour alpha says how
+much it is touched (`EXPOSURE`: handrails, ladders and handwheels most), which is where paint wears to steel. The plain
+materials stay Godot's standard material.
+
 `fetch_textures.sh` downloads the 2K JPG sets (https://ambientcg.com, "all assets are CC0") into
 `~/.cache/walkdown-plant/textures`, checks each against its SHA-256 before unpacking, and lays out the three tiers in
 `kit/tex/2048`, `1024` and `512` (the same files, imported at three sizes, VRAM-compressed with mipmaps). The built

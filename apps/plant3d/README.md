@@ -12,7 +12,7 @@ geometry at their described positions, made by the builder.
 | Folder | What |
 |---|---|
 | `kit/` | the parts kit: every equipment part of `data/plant3d/kit.json` made from its parameters, the materials and their CC0 textures (fetched by `kit/fetch_textures.sh`) |
-| `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground, the materials, `plant.json`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) |
+| `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground and the site round the areas, the materials, the sky, the bake scene, `plant.json`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) `builder/bake/` is the editor plugin that bakes the lightmap |
 | `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), scripted routes (`autopilot.gd`, `routes.gd`) |
 | `sim/` | the behaviour engine (the model's evaluator). It has its own owner; the project hosts it (`walkdown_plant/sim/path` in `project.godot`) |
 | `tests/` | the app's tests: `run_tests.gd` runs every `test_*.gd` |
@@ -24,11 +24,12 @@ geometry at their described positions, made by the builder.
 ```
 apps/plant3d/build.sh                       # content check (ref/plant3d.py), content build, tests
 apps/plant3d/build.sh export                # and the exports, headless, unbaked, unsigned, into export/check/ (CI)
+tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh bake      # and the lightmap's bake (a GPU, Godot's editor)
 tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release   # release exports, shaders baked
 apps/plant3d/flatpak/build.sh BUILD_DIR     # the Flatpak from the release's .pck; installs nothing
 ```
 
-`release` needs a rendering device. The shader baker and the export run under a private display
+`release` and `bake` need a rendering device; `release` bakes the lightmap before it exports. The shader baker and the export run under a private display
 (`offscreen.sh`), never with `--headless` (decision 0041). It makes:
 
 - `export/walkdown-plant.apk`: arm64-v8a, signed with the plant's own key;
@@ -63,6 +64,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--walk=climb` | the test's route |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
 | `--map=1` | starts on the overview map |
+| `--fx_off=ssao,fog`, `--fx_on=sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
 
 Controls (R7):
 
@@ -74,6 +76,25 @@ Controls (R7):
 - **Ladders:** walk into a ladder facing it to climb it. To go down, step backwards over the edge at its top.
 - **Map:** drag to pan, use the wheel or pinch to zoom, and right-drag or turn two fingers to rotate. Tap a floor to
   go there.
+
+## Light, sky and materials (R9, decision 0057)
+
+- **The lightmap** (`builder/lightmap.gd`, `builder/bake/`): every static mesh gets lightmap UV2 at build time
+  (Godot's unwrapper, a texel of 0.33 m, 0.5 m on the ground); the bake (Godot bakes only in its editor, on a GPU)
+  lights them with the sky, the light the sun bounces, the halls' lamps and the sun's shadow beyond the real-time
+  distance (shadowmask). The sun's direct light and sharp shadow stay real-time. Instanced and moving pieces take
+  their light from the bake's probes. Kept as RGBE9995 (no ASTC HDR on the Note 9). A build without the bake (CI)
+  lights the plant by the sky and the sun alone.
+- **The sky** (`builder/sky.gd`): a CC0 photographed sky (Poly Haven) with its sun taken out; the sun becomes the
+  DirectionalLight3D at the photograph's own sky-to-sun ratio. AgX tonemapping, a thin haze.
+- **The materials** (`kit/weathered.gdshaderinc`): the CC0 sets with grime, run-off streaks, dust on top faces, rust,
+  paint wear where hands go, wet ground round the cooling tower, jointed yards, the road's centre line, drawn bar
+  gratings; from one build-made noise in world space.
+- **The site** (`builder/site.gd`): concrete yards in the areas' bounds, gravel between, a ring road with kerbs and a
+  drain, a boundary wall, the country to the far plane with low hills.
+- **Per tier:** laptops add SSAO (low, half size); SSIL, volumetric fog, glow and SDFGI were measured and left out
+  (0057). Phones get the bake and the haze.
+- `apps/plant3d/about.json` (from `tools/about.py --plant`) lists the CC0 assets; the build packs it.
 
 ## Quality tiers (R9)
 
@@ -105,6 +126,9 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_quality`: picking the tier.
 - `test_kit`: every part of `kit.json` is made, with valid meshes at every LOD within its triangle budget, its moving
   nodes and plate points.
+- `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).
+- `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
+  site, each tier's effects.
 
 Physics runs with the headless renderer.
 
