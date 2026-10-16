@@ -428,7 +428,7 @@ out, and while one of them is latched no other trip of its group is first out; t
   a while by the operator (a nuisance alarm, an instrument under repair), shown in a list of its own, no horn, until
   un-shelved or its shelving time ends. The trainee acknowledges at the panel; the
   horn stops on acknowledge.
-- **`priority`** 1 (high), 2 or 3 (low) sets the colour and sound; **`clear`** gives a deadband so an alarm doesn't
+- **`priority`** 1 (high), 2 or 3 (low) (a number: `2.0` is 2, as in any JSON reader) sets the colour and sound; **`clear`** gives a deadband so an alarm doesn't
   chatter; **`delay`** the seconds the condition must hold.
 - **Exactly, in step 7:** an alarm is *on* when `when` has been read true in max(1, `delay` / 0.1) consecutive steps,
   and *clear* when `clear` is true (without `clear`: when `when` is false). Normal → active unacknowledged when on;

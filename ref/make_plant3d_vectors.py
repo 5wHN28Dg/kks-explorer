@@ -539,7 +539,8 @@ FORKS = [
       'alarms': ['gt1_lp1_ll', 'gen1_brk_trip']}),
     ('gt_lac_fails', 'end', [('fault', 'gt1_lac_fails'), ('run', 60)],
      {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
-    ('gt_lube_stopped_at_rest', 'gt_lube_reset', [('op', '10MBV10AP001', 'stop', None, None), ('run', 60)],
+    ('gt_lube_stopped_at_rest', 'gt_lube_reset', [('until', 'gt1_lube_est', 30),   # the oil system in service first
+                                                  ('op', '10MBV10AP001', 'stop', None, None), ('run', 60)],
      {'no_interlocks': ['gt1_dc_auto']}),
     ('gt_lube_ac_stopped_on_tg', 'gt_tg', [('run', 120), ('op', '10MBV10AP001', 'stop', None, None), ('run', 60)],
      {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
