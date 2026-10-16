@@ -143,6 +143,7 @@ static func read_number(o: Dictionary, text: String):
 	else:
 		if not RegEx.create_from_string("[0-9]").search(t):
 			return null
+		t = RegEx.create_from_string("^(-?)0+(?=[0-9])").sub(t.trim_prefix("+"), "$1")   # "+5", "05"
 		if t.begins_with("."): t = "0" + t
 		elif t.begins_with("-."): t = "-0" + t.substr(1)
 		if t.ends_with("."): t += "0"

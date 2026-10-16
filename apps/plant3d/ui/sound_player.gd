@@ -18,7 +18,7 @@ var _bound: Array = []          # [node, sound id, gain spec, pitch spec, player
 var _streams := {}              # file -> AudioStream
 var _horn: AudioStreamPlayer
 var _horn_prio := 0
-var _hold := {}                 # node -> msec until which its loop waits (a one-shot run-up is playing)
+var _hold := {}                 # node -> model step until which its loop waits (a motor's run-up one-shot)
 var _edges: Array = []          # [node, value slot, last state]: breakers, by their contacts' value
 var _t := 0.0
 var listener_at := Vector3.ZERO
@@ -43,7 +43,8 @@ func load_index(d: String) -> void:
 	var j = JSON.parse_string(f.get_as_text())     # the generator's own output: no strictness needed
 	if j is Dictionary and j.get("format", "") == "walkdown-plant-sound-files" and j.get("sounds") is Dictionary:
 		index = j["sounds"]
-		var first: Dictionary = index.values()[0]["layers"][0] if not index.is_empty() else {}
+		var ls: Array = index.values()[0].get("layers", []) if not index.is_empty() else []
+		var first: Dictionary = ls[0] if not ls.is_empty() else {}
 		print("plant: sounds: %d in %s, the first file %s" % [index.size(), d,
 				"is there" if not first.is_empty() and (ResourceLoader.exists(d + "/" + first["file"]) or FileAccess.file_exists(d + "/" + first["file"])) else "is MISSING"])
 
@@ -96,6 +97,15 @@ func watch_breaker(n: Node3D, slot: int) -> void:
 	_edges.append([n, slot, -1])
 
 
+## After every model step: a breaker's contacts that changed in it (at fast-forward many steps pass in a frame).
+func on_step() -> void:
+	for ed in _edges:
+		var on := 1 if engine.cur[ed[1]] >= 0.5 else 0
+		if ed[2] != -1 and on != ed[2] and (ed[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
+			once("breaker" if on == 1 else "breaker_open", ed[0])
+		ed[2] = on
+
+
 ## A restarted plant: the breakers' last states are forgotten (no edge from the old run's state).
 func reset_edges() -> void:
 	for ed in _edges:
@@ -143,16 +153,11 @@ func _process(delta: float) -> void:
 	if _t < UPDATE:
 		return
 	_t = 0.0
-	for ed in _edges:
-		var on := 1 if engine.cur[ed[1]] >= 0.5 else 0
-		if ed[2] != -1 and on != ed[2] and (ed[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
-			once("breaker" if on == 1 else "breaker_open", ed[0])
-		ed[2] = on
 	for i in _bound.size():
 		var b: Array = _bound[i]
 		var n: Node3D = b[0]
 		var lv := level_of(i)
-		var held: bool = _hold.get(n, 0) > Time.get_ticks_msec()
+		var held: bool = _hold.get(n, -1) > engine.step_no
 		var near := n.global_position.distance_to(listener_at) < EARSHOT and lv.x > 0.001 and not muted and not held
 		if near and b[4] == null:
 			b[4] = _start(n, b[1])
@@ -219,7 +224,7 @@ func once(id: String, at: Node3D = null) -> void:
 		if st == null:
 			continue
 		if id == "motor_start" and at != null:          # the motor's loop takes over when the run-up has played
-			_hold[at] = Time.get_ticks_msec() + int(st.get_length() * 1000.0)
+			_hold[at] = engine.step_no + int(st.get_length() * 10.0)      # in plant time, as the motor's speed
 		var p
 		if at != null:
 			var p3 := AudioStreamPlayer3D.new()

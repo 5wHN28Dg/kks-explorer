@@ -77,7 +77,7 @@ func run(tree: SceneTree) -> Array:
 		if var_to_str(got) != var_to_str(c[1]):
 			p.append("%s %% is read as %s, not %s" % [c[0], var_to_str(got), var_to_str(c[1])])
 	var load_op := {"kks": "10MKA10", "do": "set", "input": "gt1_load_sp", "range": [10, 250]}
-	for c in [["250", "250"], [".5", "0.5"], ["5.", "5.0"], ["120.5", "120.5"]]:
+	for c in [["250", "250"], [".5", "0.5"], ["5.", "5.0"], ["120.5", "120.5"], ["+50", "50"], ["050", "50"], ["0.5", "0.5"]]:
 		if var_to_str(Card.read_number(load_op, c[0])) != c[1]:
 			p.append("%s MW is read as %s" % [c[0], var_to_str(Card.read_number(load_op, c[0]))])
 	if Card.read_number(load_op, "1,000") != null:

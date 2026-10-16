@@ -574,6 +574,7 @@ func handle_link(url: String) -> void:
 
 func _on_step(e) -> void:
 	_sync_events()
+	sounds.on_step()
 	if tracker != null:
 		tracker.on_step(e)
 

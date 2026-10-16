@@ -30,11 +30,12 @@ func run(tree: SceneTree) -> Array:
 	wav(dir.path_join("motor_large.tones.wav"), 0.5)
 	wav(dir.path_join("horn_p1.tones.wav"), 0.5)
 	wav(dir.path_join("breaker.once.wav"), 0.2)
+	wav(dir.path_join("breaker_open.once.wav"), 0.3)
 	var idx := {"format": "walkdown-plant-sound-files", "version": 1, "sounds": {
 		"motor_large": {"loop": true, "layers": [{"layer": "mains", "file": "motor_large.tones.wav", "pitch": false},
 			{"layer": "tones", "file": "motor_large.tones.wav", "pitch": true}]},
 		"breaker": {"loop": false, "layers": [{"layer": "once", "file": "breaker.once.wav", "pitch": false}]},
-		"breaker_open": {"loop": false, "layers": [{"layer": "once", "file": "breaker.once.wav", "pitch": false}]},
+		"breaker_open": {"loop": false, "layers": [{"layer": "once", "file": "breaker_open.once.wav", "pitch": false}]},
 		"horn_p1": {"loop": true, "layers": [{"layer": "tones", "file": "horn_p1.tones.wav"}]},
 		"horn_p2": {"loop": true, "layers": [{"layer": "tones", "file": "horn_p1.tones.wav"}]}}}
 	FileAccess.open(dir.path_join("index.json"), FileAccess.WRITE).store_string(JSON.stringify(idx))
@@ -106,12 +107,17 @@ func run(tree: SceneTree) -> Array:
 	ui.player.global_position = brk.global_position + Vector3(0, 1, 3)
 	for i in 10:
 		await tree.process_frame
-	var before := brk.find_children("*", "AudioStreamPlayer3D", true, false).size()
+	var close_s = ui.sounds._stream("breaker.once.wav", false)
+	var open_s = ui.sounds._stream("breaker_open.once.wav", false)
+	var playing := func(st): return brk.find_children("*", "AudioStreamPlayer3D", true, false).filter(func(x): return x.stream == st).size()
 	ui.clock.engine.cur[ui.clock.engine.ix["gt1_brk_cmd"]] = 1.0
-	for i in 10:
-		await tree.process_frame
-	if brk.find_children("*", "AudioStreamPlayer3D", true, false).size() <= before:
-		p.append("no breaker sound when the breaker's contacts close")
+	ui.sounds.on_step()
+	if playing.call(close_s) != 1 or playing.call(open_s) != 0:
+		p.append("closing the breaker did not play the closing sound alone")
+	ui.clock.engine.cur[ui.clock.engine.ix["gt1_brk_cmd"]] = 0.0
+	ui.sounds.on_step()
+	if playing.call(open_s) != 1:
+		p.append("opening the breaker did not play the opening sound")
 	ui.player.global_position = Vector3(-200, 0, 0)
 	for i in 30:
 		await tree.process_frame

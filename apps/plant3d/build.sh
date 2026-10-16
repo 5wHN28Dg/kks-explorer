@@ -23,7 +23,8 @@ T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godo
 (cd "$ROOT" && python3 -c "import sys; from ref import plant3d as P; b = P.check_dir('data/plant3d'); print('content: valid')")
 
 # 2. Godot's import of the project (scripts' class cache, the icon), then the content build
-$T "$GODOT" --headless --path "$HERE" --import >"$HERE/.import.log" 2>&1 || { tail -20 "$HERE/.import.log"; exit 1; }
+$T "$GODOT" --headless --path "$HERE" --import >"$HERE/.import.log" 2>&1 ||
+  $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1 || { tail -20 "$HERE/.import.log"; exit 1; }   # (the crash on exit below)
 $T "$GODOT" --headless --path "$HERE" --script res://builder/build_plant.gd >"$HERE/.build.log" 2>&1 ||
   { grep -E "^build:|ERROR|SCRIPT" "$HERE/.build.log" | head -40; echo "the content build failed (apps/plant3d/.build.log)" >&2; exit 1; }
 grep '^build:' "$HERE/.build.log"
@@ -81,6 +82,8 @@ case "$TARGETS" in
     # template from the export templates (checked by SHA-512 when fetched), the Gradle it downloads pinned by
     # SHA-256, run by a JDK 17 (Gradle 8.11 doesn't run on 25), small and without a daemon left behind.
     JAVA_HOME="${PLANT_JAVA_HOME:-$("$ROOT/tools/plant3d/fetch_jdk.sh")}"
+    BTD="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | grep -v -- '-rc' | sort -V | tail -1)"
+    case "$(basename "${BTD:-0}")" in 3[5-9]*|[4-9][0-9]*) ;; *) echo "Android SDK build-tools 35 or later needed (zipalign -P, aapt2): $ANDROID_HOME/build-tools" >&2; exit 2 ;; esac
     TV=$("$GODOT" --version | sed 's/^\([0-9.]*\.stable\).*/\1/')
     TZIP="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$TV/android_source.zip"
     if [ "$(cat "$HERE/android/.build_version" 2>/dev/null)" != "$TV" ]; then

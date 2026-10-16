@@ -18,6 +18,7 @@ var deviations: Array = []      # [model step, text]
 var log: Array = []             # [[step id, model step it ended], …] (as sim/procedure.gd's log)
 var _seen := 0                  # events read so far
 var _in_seen := 0               # inputs matched to their op events so far (the event has no value or trip)
+var _begin_inputs := 0          # inputs made before the procedure began
 
 
 static func op_key(kks, do, trip) -> String:
@@ -39,6 +40,7 @@ func begin(p: Dictionary, engine, step_id = null) -> void:
 		for inp in engine.inputs:
 			if inp[0] <= engine.step_no:
 				_in_seen += 1
+		_begin_inputs = engine.inputs.size()
 	var i := 0
 	if step_id != null:
 		for k in steps.size():
@@ -88,51 +90,82 @@ func back(engine) -> void:
 ## After each model step.
 func on_step(engine) -> void:
 	var evs: Array = engine.events
+	var ops := []                       # this step's operations done: [event, its input]
 	while _seen < evs.size():
 		var ev: Array = evs[_seen]
 		_seen += 1
 		if ev[1] == "op":
 			# the op events of a step come in the order its inputs were made: the input gives the value and trip
 			var inp := []
+			var made_before := false
 			while _in_seen < engine.inputs.size():
 				var cand: Array = engine.inputs[_in_seen]
 				_in_seen += 1
 				if cand[1] == "op" and cand[0] == ev[0]:
 					inp = cand
+					made_before = _in_seen <= _begin_inputs      # sent before the procedure began: not judged
 					break
-			if ev[4] == "done":
-				_op_done(ev, inp, engine)
-	if index < 0 or is_tour():
-		return
-	var s := current()
-	if s.has("done") and engine.step_no > start_step and engine.truth(s["done"]):
+			if ev[4] == "done" and not made_before:
+				ops.append([ev, inp])
+	var s := current() if index >= 0 and not is_tour() else {}
+	var completing: bool = s.has("done") and engine.step_no > start_step and engine.truth(s["done"])
+	# an operation of the next step made with the last of this one (both sent while paused) belongs to the next
+	var carried := []
+	for o in ops:
+		if completing and _find(s, o[0], o[1], false) == -1 and index + 1 < steps.size() \
+				and _find(steps[index + 1], o[0], o[1], false) != -1:
+			carried.append(o)
+		else:
+			_op_done(o[0], o[1], engine)
+	if completing:
 		log.append([s["id"], engine.step_no])
 		step_done.emit(s["id"])
 		_go(index + 1, engine)
+		for o in carried:
+			_op_done(o[0], o[1], engine)
+
+
+static func _num(v):
+	if typeof(v) == TYPE_BOOL:
+		return 1.0 if v else 0.0          # as the engine reads a bool
+	return float(v) if typeof(v) in [TYPE_INT, TYPE_FLOAT] else null
+
+
+## The position of the step's expected operation this one is (code, operation, trip; the value too when
+## `with_value`), or -1.
+func _find(step: Dictionary, ev: Array, inp: Array, with_value: bool) -> int:
+	var value = inp[4] if inp.size() > 5 else null
+	var trip = inp[5] if inp.size() > 5 else null
+	var want: Array = step.get("do", [])
+	for k in want.size():
+		var d: Dictionary = want[k]
+		if d["kks"] != ev[2] or d["do"] != ev[3] or (d.has("trip") and d["trip"] != trip):
+			continue
+		if with_value and d.has("value") and _num(value) != float(d["value"]):
+			continue
+		return k
+	return -1
 
 
 func _op_done(ev: Array, inp: Array, engine) -> void:
 	if is_tour() or index < 0:
 		return
 	var want: Array = current().get("do", [])
-	var value = inp[4] if inp.size() > 5 else null
-	var trip = inp[5] if inp.size() > 5 else null
-	for k in want.size():
-		var d: Dictionary = want[k]
-		if d["kks"] == ev[2] and d["do"] == ev[3] and (not d.has("trip") or d["trip"] == trip):
-			if d.has("value") and not (typeof(value) in [TYPE_INT, TYPE_FLOAT] and float(value) == float(d["value"])):
-				_deviate(engine, "%s set to %s; this step asks for %s" % [ev[2], str(value), str(d["value"])])
-				return
-			var key := op_key(d["kks"], d["do"], d.get("trip"))
-			if current().get("ordered", false):
-				for j in k:
-					var dj: Dictionary = want[j]
-					if not did.has(op_key(dj["kks"], dj["do"], dj.get("trip"))):
-						_deviate(engine, "%s %s done before %s %s (this step's order)" % [ev[2], ev[3], dj["kks"], dj["do"]])
-						break
-			did[key] = true
-			return
-	_deviate(engine, "%s %s is not part of this step" % [ev[2], ev[3]])
+	var k := _find(current(), ev, inp, true)
+	if k == -1:
+		var loose := _find(current(), ev, inp, false)
+		if loose != -1:
+			_deviate(engine, "%s set to %s; this step asks for %s" % [ev[2], str(inp[4] if inp.size() > 5 else null),
+					str(want[loose]["value"])])
+		else:
+			_deviate(engine, "%s %s is not part of this step" % [ev[2], ev[3]])
+		return
+	if current().get("ordered", false):
+		for j in k:
+			if not is_done_op(want[j]):
+				_deviate(engine, "%s %s done before %s %s (this step's order)" % [ev[2], ev[3], want[j]["kks"], want[j]["do"]])
+				break
+	did[_key(want[k])] = true
 
 
 func _deviate(engine, text: String) -> void:
@@ -149,4 +182,8 @@ func expected(kks: String, do: String) -> Dictionary:
 
 
 func is_done_op(d: Dictionary) -> bool:
-	return did.has(op_key(d["kks"], d["do"], d.get("trip")))
+	return did.has(_key(d))
+
+
+static func _key(d: Dictionary) -> String:
+	return op_key(d["kks"], d["do"], d.get("trip")) + "|" + str(d.get("value", ""))

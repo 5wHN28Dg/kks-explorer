@@ -97,6 +97,26 @@ func run(tree: SceneTree) -> Array:
 	tr.next(c.engine)
 	if tr.log != [["a", c.engine.step_no]] or tr.index != 1:
 		p.append("Next after a step logged %s" % str(tr.log))
+	# operations sent before a procedure began are not judged by it; one of the next step's, sent with the last of this
+	# one, counts for the next step; two entries of one code told apart by their values
+	var proc := {"kind": "procedure", "steps": [
+		{"id": "a", "text": ["A"], "do": [{"kks": "00QFA10AN001", "do": "start"}], "done": "ia_a_cmd"},
+		{"id": "b", "text": ["B"], "do": [{"kks": "30PAC10AA101", "do": "set", "value": 0.3},
+			{"kks": "30PAC10AA101", "do": "set", "value": 0.15}], "done": "cw_a_vstart"}]}
+	c.set_speed(SimClock.Speed.PAUSED)
+	ui.restart("cold_iron")
+	c.set_speed(SimClock.Speed.PAUSED)
+	c.engine.op("00PGC10AP001", "start")          # before the procedure
+	var t2 = Tracker.new()
+	t2.begin(proc, c.engine)
+	c.engine.op("00QFA10AN001", "start")          # step a's
+	c.engine.op("30PAC10AA101", "set", 0.15)      # step b's, in the same model step as a's done
+	c.run_steps(1)
+	t2.on_step(c.engine)
+	if not t2.deviations.is_empty():
+		p.append("operations before the procedure or of its next step counted as deviations: %s" % str(t2.deviations))
+	if t2.index != 1 or not t2.is_done_op(proc["steps"][1]["do"][1]) or t2.is_done_op(proc["steps"][1]["do"][0]):
+		p.append("the next step's 15 %% was not ticked on its own entry (step %d)" % t2.index)
 	# pause
 	c.set_speed(SimClock.Speed.PAUSED)
 	var s3: int = c.engine.step_no

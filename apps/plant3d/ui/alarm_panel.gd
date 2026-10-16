@@ -182,6 +182,8 @@ func refresh() -> void:
 						target = b
 		if target == null:
 			target = _first(body)
+		if target == null:
+			target = _tabs[tab]          # the list emptied: back to its tab
 		if target:
 			target.grab_focus()
 
