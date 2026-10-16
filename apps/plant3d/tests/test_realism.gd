@@ -2,7 +2,7 @@
 ## - the static meshes carry lightmap UV2 and are marked for the bake; instanced and moving ones take the sky's light (the probes lit them almost black: 0057);
 ## - the bake scene holds the ground and every area under names the app's plant node gives them, the sun and a
 ##   LightmapGI beside them (its users' paths hold in the app); an unbaked data file is not attached;
-## - walls, roofs and fences have their back faces as geometry (each side its own lightmap texels);
+## - identify pieces (tag plates, bands) are left out of the bake;
 ## - the photographed sky's sun is the light's direction, and the sky is the panorama;
 ## - the textured materials are the weathered shader with the noise, the gratings drawn as bar gratings, the yards
 ##   jointed, the road's centre line round the plant, the ground wet round the cooling tower;
@@ -45,30 +45,10 @@ func run(tree: SceneTree) -> Array:
 	var terrain := ground.find_child("terrain", true, false) as MeshInstance3D if ground != null else null
 	if terrain != null and terrain.mesh.get_aabb().size.x < 1000.0:
 		p.append("the terrain reaches the far plane (%.0f m across)" % terrain.mesh.get_aabb().size.x)
-	# walls with back faces of their own: every triangle has a twin at the same place facing the other way
-	var walls := 0
-	for n in plant.find_children("walls", "MeshInstance3D", true, false):
-		walls += 1
-		var arr: Array = (n as MeshInstance3D).mesh.surface_get_arrays(0)
-		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-		var faces := {}
-		for i in range(0, idx.size(), 3):
-			var a := v[idx[i]]
-			var b := v[idx[i + 1]]
-			var c := v[idx[i + 2]]
-			var key := str(((a + b + c) / 3.0).snappedf(0.01))
-			var nrm := (b - a).cross(c - a).normalized()
-			faces[key] = faces.get(key, []) + [nrm]
-		var single := 0
-		for k in faces:
-			var ns: Array = faces[k]
-			if not ns.any(func(x): return ns.any(func(y): return x.dot(y) < -0.99)):
-				single += 1
-		if single > 0:
-			p.append("%s: a wall has its back faces (%d of %d faces without)" % [n.get_path(), single, faces.size()])
-	if walls < 3:
-		p.append("the buildings' walls were found (%d)" % walls)
+	# identify pieces (plates, bands) are never baked: a coarse texel would grey a plate behind its code
+	for n in tree.get_nodes_in_group("kit_static"):
+		if "_identify_" in String(n.name):
+			p.append("%s: an identify piece is not baked" % n.get_path())
 	# materials
 	var paint := load("res://built/materials/paint.tres") as ShaderMaterial
 	if paint == null or paint.shader.resource_path != Mat.SHADER or paint.get_shader_parameter("noise_tex") == null:
@@ -87,6 +67,10 @@ func run(tree: SceneTree) -> Array:
 	# the cooling tower stands at plant (215, 0): Godot x 215, z 0
 	if gravel == null or float(gravel.get_shader_parameter("wet")) <= 0.0 or absf(wz.x - 215.0) > 1.0 or wz.z < 30.0:
 		p.append("the ground is wet round the cooling tower (%s)" % str(wz))
+	var plate := load("res://built/materials/plate.tres") as ShaderMaterial
+	var pwz = plate.get_shader_parameter("wet_zone") if plate != null else null
+	if plate == null or (pwz != null and pwz != Vector4.ZERO):
+		p.append("tag plates are never darkened by the wet zone")
 	# the bake scene
 	var ps := load("res://built/lit.scn") as PackedScene
 	if ps == null:

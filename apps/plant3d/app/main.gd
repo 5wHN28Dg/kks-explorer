@@ -77,11 +77,13 @@ func _ready() -> void:
 	var lm := Lighting.lightmap_node()
 	if lm != null:
 		plant.add_child(lm)   # beside the areas: its users' paths are "../area_…" (app/lighting.gd)
-		for l in get_tree().get_nodes_in_group("baked_lights"):
-			l.queue_free()   # their light is in the lightmap
+		# meshes made at run time (the UI's markers) are not in the bake: the sky's light, not its probes
+		get_tree().node_added.connect(_unbaked)
 		_say("lightmap: %d meshes baked" % lm.light_data.get_user_count())
 	else:
 		_say("lightmap: none in this build (the sky and the sun only)")
+	for l in get_tree().get_nodes_in_group("baked_lights"):
+		l.queue_free()   # the halls' lamps light through the bake only (forty real-time lights in a hall cost too much)
 	player = Player.new()
 	player.name = "player"
 	add_child(player)
@@ -120,6 +122,11 @@ func _ready() -> void:
 	elif opts.get("map", "") == "1":
 		toggle_map()
 
+func _unbaked(n: Node) -> void:
+	var g := n as GeometryInstance3D
+	if g != null and g.gi_mode == GeometryInstance3D.GI_MODE_STATIC and not (n is MeshInstance3D and n.is_in_group("kit_static")):
+		g.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+
 func _options() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
@@ -140,7 +147,6 @@ func _environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = Lighting.sky()
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)

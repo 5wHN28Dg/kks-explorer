@@ -173,7 +173,9 @@ func _height(p: Vector2, wall: Rect2, noise: FastNoiseLite) -> float:
 	var dy := maxf(maxf(wall.position.y - p.y, p.y - wall.end.y), 0.0)
 	var d := Vector2(dx, dy).length()   # outside the wall
 	if d <= 0.0:
-		return 0.0
+		# inside the wall: under the site's own ground (a terrain cell across the wall would otherwise lie in the
+		# gravel's plane and flicker against it)
+		return -0.3 if wall.grow(-0.5).has_point(p) else 0.0
 	var t := smoothstep(20.0, 120.0, d)
 	var hills := smoothstep(250.0, 650.0, d)
 	var nv := noise.get_noise_2d(p.x, p.y)   # -1 .. 1

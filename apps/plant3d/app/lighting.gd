@@ -1,5 +1,5 @@
 ## The plant's light (R9, R9a): one sun and sky for the bake and for every tier, the baked lightmap (builder/bake/)
-## attached when the build carries one, and what each tier adds at run time. Measured per tier (decision 0054,
+## attached when the build carries one, and what each tier adds at run time. Measured per tier (decision 0057,
 ## "Realism"): the lightmap is a texture read per pixel on every tier; SSAO, SSIL, volumetric fog and glow are the
 ## laptops' (Forward+); the phones get the bake, distance haze and nothing else.
 extends RefCounted
@@ -73,7 +73,7 @@ static func lightmap_node() -> LightmapGI:
 	lm.light_data = data
 	return lm
 
-## What a tier adds to the environment (measured: decision 0054 "Realism"). Both tiers: AgX tonemapping (a film-like curve that keeps the shade readable and the colours of paint true) with the
+## What a tier adds to the environment (measured: decision 0057). Both tiers: AgX tonemapping (a film-like curve that keeps the shade readable and the colours of paint true) with the
 ## same exposure, and a thin haze that grows with distance (aerial perspective: far equipment pales towards the
 ## sky's colour, as it does outdoors; Godot's depth fog, a few instructions per pixel). Laptops (Forward+) add
 ## SSAO (contact shade under what the lightmap is too coarse for: bolts, valves on pipes, a hand on a rail), SSIL
@@ -99,7 +99,7 @@ static func apply(tier: String, env: Environment) -> void:
 	env.fog_aerial_perspective = 0.0   # the sky below the horizon is the ground: looking down it would wash the view
 	env.fog_sky_affect = 0.0
 	env.ssao_enabled = full
-	# Low quality at half size (0054 Realism: Medium cost the frame rule its margin on the Iris Xe), faded out by
+	# Low quality at half size (0057: Medium cost the frame rule its margin on the Iris Xe), faded out by
 	# 120 m where its contact shade is under a pixel anyway
 	RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_LOW, true, 0.5, 2, 50.0, 120.0)
 	env.ssao_radius = 1.2

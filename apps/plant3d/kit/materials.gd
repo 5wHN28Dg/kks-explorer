@@ -70,8 +70,9 @@ const WEATHER_OF := {"PaintedMetal004": "paint", "Metal032": "metal", "Metal009"
 	"MetalWalkway010": "deck", "DiamondPlate008C": "deck"}
 ## How much a piece of each paint colour is touched (the vertex colour's alpha: kit/mesh.gd, the shader's `wear`):
 ## handrails, ladders and guards in yellow and handwheels in red most; a machine's casing hardly.
-const EXPOSURE := {"paint_yellow": 1.0, "paint_red": 0.8, "paint_orange": 0.35, "paint_darkgrey": 0.3,
-	"paint_green": 0.3}
+## Capped where a colour identifies (a red handwheel, a yellow guard: R9a): worn spots, never a bare part.
+const EXPOSURE := {"paint_yellow": 0.6, "paint_red": 0.35, "paint_orange": 0.25, "paint_darkgrey": 0.3,
+	"paint_green": 0.25}
 const EXPOSURE_DEFAULT := 0.12
 const SHADER := "res://kit/weathered.gdshader"
 ## The weathering's noise (builder/weather.gd makes it at build time: our own, no licence).
@@ -175,14 +176,10 @@ static func structure_spec(name: String) -> Dictionary:
 		spec["joints"] = 6.0   # cast in 6 m bays
 	return spec
 
-## A structure's material. Walls, roofs and fences are seen from both sides (PLANT3D.md §5): the build gives them
-## back faces of their own (builder/plant_builder.gd _mesh_node), which also gives each side its own lightmap texels
-## (a hall's lamp-lit inside, its sunlit outside), rather than a second, cull-less pipeline for every shader.
+## A structure's material. Walls, roofs and fences are closed prisms (their inside and outside each have faces of
+## their own), so one cull-back shader serves them.
 static func make_structure(name: String) -> Material:
 	return make(name, structure_spec(name))
-
-static func two_sided(name: String) -> bool:
-	return STRUCTURE_MATS.has(name) and STRUCTURE_MATS[name][1]
 
 ## The texture sets whose files are not there (not fetched, or not imported yet).
 static func missing_textures() -> PackedStringArray:
@@ -247,7 +244,8 @@ static func _make_weathered(name: String, spec: Dictionary, size: int) -> Shader
 static func set_wet_zone(mats: Dictionary, zone: Vector4, strength: float) -> void:
 	for k in mats:
 		var m = mats[k]
-		if m is ShaderMaterial:
+		# not on the clean plain pieces (tag plates, dials, the media's bands: a trainee reads them)
+		if m is ShaderMaterial and float(m.get_shader_parameter("grime")) > 0.0:
 			m.set_shader_parameter("wet_zone", zone)
 			m.set_shader_parameter("wet", strength)
 

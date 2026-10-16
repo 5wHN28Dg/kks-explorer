@@ -102,7 +102,7 @@ Every material with a texture set is the weathered shader (`weathered.gdshader`,
 0057): the set's maps plus grime, run-off streaks, dust, rust and paint wear from world position and a build-made noise
 (`builder/weather.gd`), each finish its own amounts (`materials.gd WEATHER`). A piece's vertex colour alpha says how
 much it is touched (`EXPOSURE`: handrails, ladders and handwheels most), which is where paint wears to steel. The plain
-materials stay Godot's standard material.
+materials use the same shader without textures or weathering; only the lamps stay Godot's standard material.
 
 `fetch_textures.sh` downloads the 2K JPG sets (https://ambientcg.com, "all assets are CC0") into
 `~/.cache/walkdown-plant/textures`, checks each against its SHA-256 before unpacking, and lays out the three tiers in

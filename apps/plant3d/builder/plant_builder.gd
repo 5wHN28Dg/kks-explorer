@@ -486,8 +486,6 @@ func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material, texe
 	var arr := st.commit_to_arrays()
 	var lit: Mesh = null
 	if not arr.is_empty() and arr[Mesh.ARRAY_INDEX] != null:
-		if Mat.two_sided(String(mat.resource_name)):
-			arr = Lightmap.with_back_faces(arr)
 		lit = Lightmap.unwrap(Lightmap.white(arr), texel, false)
 	if lit != null:
 		mi.mesh = lit

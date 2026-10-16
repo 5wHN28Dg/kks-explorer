@@ -460,8 +460,10 @@ func flush(root: Node3D) -> int:
 		var size := INF
 		for c in group:
 			size = minf(size, c.size)
-		if cls != "detail":
-			# a static mesh standing once in its cell: the bake lights it (builder/lightmap.gd)
+		if cls == "form":
+			# a static mesh standing once in its cell: the bake lights it (builder/lightmap.gd). Identify pieces
+			# (tag plates, bands, arrows) are not: a texel of a third of a metre would grey a white plate behind
+			# its code; they take the sky's light like the instanced pieces
 			var lit := Lightmap.unwrap(arr, Lightmap.TEXEL, cls != "identify")
 			if lit != null:
 				_emit_static(kit, lit, group[0].mat, cls, o, n)

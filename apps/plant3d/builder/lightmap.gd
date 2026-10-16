@@ -41,39 +41,6 @@ static func unwrap(arrays: Array, texel: float, lods: bool) -> Mesh:
 static func mark(gi: GeometryInstance3D, baked: bool) -> void:
 	gi.gi_mode = GeometryInstance3D.GI_MODE_STATIC if baked else GeometryInstance3D.GI_MODE_DISABLED
 
-## The arrays with every triangle again, facing the other way (normals and tangents turned): a wall seen from both
-## sides, each side with its own lightmap texels.
-static func with_back_faces(arr: Array) -> Array:
-	var out := arr.duplicate()
-	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-	var n0 := v.size()
-	var vv := v.duplicate()
-	vv.append_array(v)
-	out[Mesh.ARRAY_VERTEX] = vv
-	if arr[Mesh.ARRAY_NORMAL] != null:
-		var nn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-		var n2 := nn.duplicate()
-		for x in nn:
-			n2.append(-x)
-		out[Mesh.ARRAY_NORMAL] = n2
-	if arr[Mesh.ARRAY_TANGENT] != null:
-		var t: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT]
-		var t2 := t.duplicate()
-		for i in range(0, t.size(), 4):
-			t2.append_array([-t[i], -t[i + 1], -t[i + 2], t[i + 3]])
-		out[Mesh.ARRAY_TANGENT] = t2
-	for k in [Mesh.ARRAY_TEX_UV, Mesh.ARRAY_COLOR]:
-		if arr[k] != null:
-			var a = arr[k].duplicate()
-			a.append_array(arr[k])
-			out[k] = a
-	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-	var i2 := idx.duplicate()
-	for i in range(0, idx.size(), 3):
-		i2.append_array([idx[i] + n0, idx[i + 2] + n0, idx[i + 1] + n0])
-	out[Mesh.ARRAY_INDEX] = i2
-	return out
-
 ## The arrays with white vertex colours where they have none: the structures' meshes then share the kit's vertex
 ## format (colour, tangents, UV, UV2), so the weathered shader needs one pipeline per pass for both, not two (every
 ## pipeline is compiled on a phone's first start: decision 0057).
