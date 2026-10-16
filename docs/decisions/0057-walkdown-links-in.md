@@ -35,5 +35,11 @@ How does each Walkdown app register the scheme and receive the link, and what ma
   Walkdown window through `WM_COPYDATA` (at most 128 bytes, read by the same reader), else the app starts with it.
 - Walkdown Plant's `WALKDOWN_TAKES` lists `kks` and `course`.
 
+**Verified** (2026-10-16): Android on the emulator (a cold start and a running app, one MainActivity, a link before
+joining dropped; `test_app_links` in test_app2.py); GNOME headless (cold starts with good and hostile links;
+test_gnome.py); Windows 11 in the VM, the plain exe and the installed test-signed MSIX through the shell (a cold start,
+second starts handing over and ending, hostile links; test_windows.py). Not tried: a running GNOME app receiving a
+link over D-Bus (the tests run each app with its own non-unique ID), real phones.
+
 **When to revisit:** when the web client should take links (an https path on the server instead of a scheme); when
 another kind is needed (a procedure: PLANT3D.md §6 first).
