@@ -54,7 +54,7 @@ The library declares each sound's spectrum: its `tones` and its `noise` band. `V
 things for each sound:
 
 - `why`: the physics behind the spectrum;
-- `spl`: the typical level at 1 m, in dB(A);
+- `spl`: the typical level at 1 m, in dB(A) (a one-shot that hands over to a loop, `motor_start`, is levelled to that loop instead);
 - `mains`: which tones are electrical hum;
 - the time structure: modulation, clicks, sounder patterns, or the one-shot event.
 
@@ -94,8 +94,8 @@ measured by its loudest 400 ms. A recorded clip added later must follow the same
 
 ## Measured (2026-10-16)
 
-24 sounds in 41 files, 1.57 MB of Ogg Vorbis in total. Decision 0054's budget is 150 MB for the whole package (10 MB
+24 sounds in 41 files, 1.55 MB of Ogg Vorbis in total. Decision 0054's budget is 150 MB for the whole package (10 MB
 for clips). A loop's tone layers are 2 s (8–22 KiB) and its noise layer 8 s (34–74 KiB). The worst loop-point tick
-after Vorbis is −54.7 dB under its sound; 24 of the 37 loop layers have nothing measurable.
+after Vorbis is −55.5 dB under its sound; 30 of the 37 loop layers have nothing measurable.
 
 Not checked: Godot's own decoder. The seams and lengths are measured with FFmpeg's.

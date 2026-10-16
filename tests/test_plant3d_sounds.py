@@ -27,9 +27,16 @@ import make_sounds as M  # noqa: E402
 FS = M.FS
 HAVE_FFMPEG = shutil.which('ffmpeg') is not None
 REQUIRED = os.environ.get('KKS_REQUIRE_FFMPEG') == '1'
-LIBRARY = json.load(open(os.path.join(ROOT, 'data', 'plant3d', 'sounds.json'), encoding='utf-8'))
+
+
+def read_json(path):
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
+
+
+LIBRARY = read_json(os.path.join(ROOT, 'data', 'plant3d', 'sounds.json'))
 SYNTH = {s['id']: s for s in LIBRARY['sounds'] if s['kind'] == 'synth'}
-SEAM_CLICK_DB = -90         # the synthesised samples: nothing at the seam beyond rounding (a cut loop is > -45)
+SEAM_CLICK_DB = -90         # the synthesised samples: nothing at the seam beyond rounding
 BUDGET_BYTES = 10_000_000   # 0054 §7: 10 MB for the sounds within the 150 MB package; these are far below
 
 
@@ -89,7 +96,7 @@ class Synthesis(unittest.TestCase):
     def test_every_sound_named_is_made(self):
         bound = set()
         for path in glob.glob(os.path.join(ROOT, 'data', 'plant3d', 'model', '*.json')):
-            for b in json.load(open(path, encoding='utf-8')).get('bind', []):
+            for b in read_json(path).get('bind', []):
                 if 'sound' in b:
                     bound.add(b['sound'])
         self.assertTrue(bound, 'the model binds no sound: the test reads the wrong files')
@@ -103,6 +110,8 @@ class Synthesis(unittest.TestCase):
         # the electrical hum is the only layer the app doesn't pitch, and it holds only multiples of 2 x 50 Hz
         for sid, v in M.VOICES.items():
             self.assertTrue(all(h % 100 == 0 for h in v.get('mains', ())), sid)
+            declared = {z['hz'] for z in SYNTH[sid].get('tones', []) if isinstance(z['hz'], (int, float))}
+            self.assertLessEqual(set(v.get('mains', ())), declared, f'{sid}: a mains tone the library does not declare')
         # the sounds FIRST-TRAIN §6 and the task name, beyond the bindings
         for sid in ('breaker', 'breaker_open', 'motor_start', 'horn_p1', 'horn_p2', 'horn_p3', 'horn_ack',
                     'valve_motor', 'transformer_hum', 'gen_hum', 'gt_whine', 'turbine_hum', 'steam_vent'):
@@ -124,6 +133,17 @@ class Synthesis(unittest.TestCase):
                     self.assertEqual(len(x), seconds * FS)
                     self.assertEqual(seam_problems(M.pcm16(x) / 32767, top_hz(SYNTH[sid], k)), [])
 
+    def test_a_seamless_loop_passes_wherever_it_starts(self):
+        """The seam check doesn't fail a seamless loop by chance: every loop layer, started at 16 other points."""
+        for sid, (layers, _, loop) in self.made.items():
+            if not loop:
+                continue
+            for k, x in layers.items():
+                y = M.pcm16(x) / 32767
+                for j in range(1, 17):
+                    with self.subTest(sound=sid, layer=k, start=j):
+                        self.assertEqual(seam_problems(np.roll(y, -(j * len(y) // 17)), top_hz(SYNTH[sid], k)), [])
+
     def test_the_seam_check_catches_a_broken_loop(self):
         for sid, k in (('transformer_hum', 'mains'), ('exhaust_rumble', 'noise'), ('valve_motor', 'tones'),
                        ('motor_large', 'tones'), ('combustion', 'noise'), ('burner', 'noise'),
@@ -133,7 +153,6 @@ class Synthesis(unittest.TestCase):
             for cut in (37, 101, 1003):         # the loop's end cut short: the waveform jumps at the seam
                 with self.subTest(sound=sid, cut=cut):
                     self.assertNotEqual(seam_problems(x[:-cut], top_hz(SYNTH[sid], k)), [])
-                    # and the decoded files' looser bound (below) would refuse it too
 
     def test_levels(self):
         plans = {}
@@ -141,6 +160,8 @@ class Synthesis(unittest.TestCase):
             plans[sid] = plan
             if 'match' not in M.VOICES[sid]:
                 self.assertAlmostEqual(plan, M.level_plan(M.VOICES[sid]['spl']))
+            else:
+                self.assertNotIn('spl', M.VOICES[sid], f'{sid}: levelled by match, an spl would be ignored')
             self.assertTrue(-44 <= plan <= -26, f'{sid}: {plan} dBFS(A) is outside -44..-26')
             ms = sum(M.power(M.pcm16(x) / 32767, loop) for x in layers.values())
             self.assertAlmostEqual(10 * math.log10(ms), plan, delta=0.1, msg=sid)
@@ -156,9 +177,11 @@ class Synthesis(unittest.TestCase):
                             ('transformer_hum', 'valve_motor'), ('combustion', 'motor_small')):
             self.assertGreater(plans[loud], plans[quiet], f'{loud} should be louder than {quiet}')
         # the run-up hands over to its loop without a jump: its last second at the loop's level
+        # (measured against the loop's own samples, not the plan the generator levelled it to)
         x = self.made['motor_start'][0]['once']
-        tail = x[int(6.0 * FS):int(7.0 * FS)]
-        self.assertAlmostEqual(M.level(tail, False), plans['motor_large'], delta=0.1)
+        tail = x[int(6.0 * FS):int(6.95 * FS)]
+        loop = 10 * math.log10(sum(M.power(y) for y in self.made['motor_large'][0].values()))
+        self.assertAlmostEqual(10 * math.log10(np.mean(M.a_weighted(tail, False)[int(0.05 * FS):] ** 2)), loop, delta=0.5)
 
     def test_level_meter(self):
         """IEC 61672's A weighting: 0 dB at 1 kHz, -19.1 dB at 100 Hz, -2.5 dB at 10 kHz; a full-scale 1 kHz sine
@@ -198,7 +221,7 @@ class Synthesis(unittest.TestCase):
         # motor slot whine: rotor slots x the speed the model turns the shaft at, with sidebands at +/- 2 x 50 Hz
         shaft = {}
         for path in glob.glob(os.path.join(ROOT, 'data', 'plant3d', 'model', '*.json')):
-            for b in json.load(open(path, encoding='utf-8')).get('bind', []):
+            for b in read_json(path).get('bind', []):
                 if b.get('anim') == 'shaft':
                     shaft[b['kks']] = b['scale']
         cw, ccw = shaft['30PAC10AP001'], shaft['00PGC10AP001']      # a CW pump (motor_large), a CCW pump (motor_small)

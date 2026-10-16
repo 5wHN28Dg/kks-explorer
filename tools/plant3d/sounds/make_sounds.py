@@ -59,7 +59,7 @@ def level_plan(spl):
 
 
 # --------------------------------------------------------------------------------------------------- the voices
-# spl: typical A-weighted sound pressure level at 1 m from the source at full load/speed (estimates from the ranges
+# spl: typical A-weighted sound pressure level at 1 m (none for a one-shot levelled by `match`) from the source at full load/speed (estimates from the ranges
 # usually quoted for such machines; the app's attenuation does the rest). why: the physics of the declared tones and
 # noise. Time structure: noise_am / tone_am [(rate Hz, depth)], rates (how tones below 30 Hz are rendered: swell,
 # clicks, gurgle), drops (water drops), pattern (alarm sounders), once (a one-shot event).
@@ -114,8 +114,9 @@ VOICES = {
         'vane passing at 6 vanes x 8.25 = 49.5 Hz; pink noise 100-2,500 Hz is the motor fan and the water. Lower '
         'and louder than motor_small. (The feedwater pumps use it too: their 2-pole motors would whine higher)')),
     'motor_small': dict(spl=82, mains=(100, 200), why=(
-        'Small four-pole induction motor (1,480 rpm, 24.7 rev/s, as the model turns the air compressors and cooling '
-        'water pumps): magnetic hum 100 and 200 Hz; rotor-slot whine at 44 slots x 24.7 = 1,087 Hz with +/- 100 Hz '
+        'Small four-pole induction motor (1,482 rpm, 24.7 rev/s, as the model turns the cooling water pumps; the '
+        'air compressors turn at 25 rev/s, and the GT lube oil pumps\' two-pole motors would whine higher): magnetic '
+        'hum 100 and 200 Hz; rotor-slot whine at 44 slots x 24.7 = 1,087 Hz with +/- 100 Hz '
         'sidebands; its cooling fan\'s blade pass 11 x 24.7 = 271.5 Hz; pink noise 200-4,000 Hz is the fan')),
     'fan_large': dict(spl=88, rates='swell', noise_am=[(0.25, 0.08)], mains=(100,), why=(
         'Cooling tower fan: a large axial fan of 8 blades at 120 rpm passes a blade 16 times a second: a whoosh, '
@@ -133,7 +134,7 @@ VOICES = {
     'valve_motor': dict(spl=72, tone_am=[(4, 0.12)], mains=(100,), why=(
         'Motor-operated valve actuator: a small motor (100 Hz magnetic hum) and the spur stage in front of its worm '
         'gear, whose mesh whines at 400 Hz with its harmonic at 800 Hz; the load ripples a few times a second (4 Hz) '
-        'as the stem nut turns; pink noise is the gearbox')),
+        'as the stem nut turns (the hum, in its own layer, doesn\'t ripple); pink noise is the gearbox')),
     'breaker': dict(spl=94, once=dict(kind='close'), why=(
         'Circuit breaker closing: the closing latch releases with a small click, then the spring drives the '
         'contacts shut with a heavy bang: the mechanism and cubicle ring at their modes (160, 410, 1,150, '
@@ -143,7 +144,7 @@ VOICES = {
         'Circuit breaker opening (a trip or an open command): the trip coil releases the opening spring: a sharper, '
         'shorter bang than the close (modes 210, 530, 1,400, 3,100 Hz) and a damped rebound; no charging motor (the '
         'closing charged the opening spring)')),
-    'motor_start': dict(spl=95, match=('motor_large', 6.0), once=dict(kind='run_up', seconds=6.0), why=(
+    'motor_start': dict(match=('motor_large', 6.0), once=dict(kind='run_up', seconds=6.0), why=(
         'A large induction motor started direct on line (a CW pump): the inrush current (about 6 x rated) makes a '
         'loud 100 Hz magnetic growl (about +9 dB here; the force goes with the current squared, but the run-up '
         'masks part of it) that drops when the motor nears full speed; it accelerates fastest near the end, where '
@@ -425,7 +426,7 @@ def render_once(s, v):
 
 def make(s, lib=None):
     """{layer: float samples at the planned level}, the level in dBFS(A), and whether it loops. A one-shot with
-    `match` (e.g. a motor's run-up) is levelled so that its last second before the fade matches that loop at gain 1,
+    `match` (e.g. a motor's run-up) is levelled so that its last second (fade included) matches that loop at gain 1,
     so the hand-over to the loop is even; its level is then what that gives."""
     v = VOICES[s['id']]
     once = 'once' in v
@@ -499,7 +500,7 @@ def top_hz(s, layer):
 def seam_click_db(x, top):
     """How loud a click at the loop point of the loop x is, in dB under the sound around it: the energy above the
     layer's own frequencies (from 1.5 x its top frequency to 16 kHz) in a 512-sample window centred on the seam,
-    beyond the largest of 63 windows elsewhere, over the mean energy of a window. A click is a broadband burst; a
+    beyond twice the largest of 63 windows elsewhere, over the mean energy of a window. A click is a broadband burst; a
     seamless loop has nothing there that the rest of the loop doesn't have (NO_CLICK)."""
     x = np.asarray(x, dtype=float)
     w = 512
@@ -513,7 +514,7 @@ def seam_click_db(x, top):
         spec = np.abs(np.fft.rfft(np.take(x, np.arange(c - w // 2, c + w // 2), mode='wrap') * win)) ** 2
         hf.append(float(spec[band].sum()))
         total.append(float(spec.sum()))
-    excess = hf[0] - max(hf[1:])
+    excess = hf[0] - 2 * max(hf[1:])   # twice: a seamless loop's seam window is the largest by chance 1 time in 64
     if excess <= 0:
         return NO_CLICK
     return max(NO_CLICK, 10 * math.log10(excess / max(float(np.mean(total)), 1e-30)))
