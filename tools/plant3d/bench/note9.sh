@@ -11,7 +11,7 @@ S=285d2a7c153f7ece
 P=$(cat "$HERE/results/$S/chosen.txt")
 "$HERE/run_phone.sh" $S load "$P"
 "$HERE/run_phone.sh" $S look "$P"
-"$HERE/run_phone.sh" $S look full
+[ "$P" = full ] || "$HERE/run_phone.sh" $S look full
 [ "${1:-}" = --no-unplugged ] || "$HERE/run_phone.sh" $S unplugged "$P" 600
 "$HERE/run_phone.sh" $S remove
 echo "results: $HERE/results/$S/summary.tsv"

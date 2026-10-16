@@ -140,46 +140,73 @@ and export templates by SHA-512 (from the release's SHA512-SUMS.txt).
 | Laptop at its panel's 2880×1800 | cells / full | 60 s | 21.7 ms | 34.7 ms (29) | 6.7 % | 0 | 18.3 / 35.5 ms | 878 | 276 MB |
 | Laptop 2880×1800 | cells / scaled (70 % + FSR) | 60 s | 24.2 ms | 31.5 ms (32) | 0.8 % | 0 | 26.9 / 33.5 ms | 854 | 276 MB |
 | Laptop 2880×1800 | cells / full+half (1440×900 drawn) | 60 s | 15.2 ms | 19.4 ms (51) | 0 % | 0 | 6.5 / 22.7 ms | 836 | 276 MB |
-| Note 9 | all levers, ladder, 10 min plugged and unplugged | — | **not measured yet: the phones were not attached** | | | | | | |
-| Honor 600 | full 10 min, load, look | — | **not measured yet** | | | | | | |
+| Honor 600 | full 10 min, load, look | — | **to do: the user connects it later** (`honor.sh`) | | | | | | |
 
 The 10-minute laptop run held steady (mean frame time per minute 8.9–9.1 ms).
+
+**Note 9** (SM-N960F, Android 10, Mali-G72, 2220×1080, Mobile renderer, release build, pre-built plant, 50 %
+brightness, room temperature; 2026-10-16). Peak memory is the app's PSS sampled every 20 s with `dumpsys meminfo`
+(the app's own reading of /proc is refused on Android).
+
+| Preset | Run | Median | p95 (fps) | > 33 ms | > 100 ms | Max | GPU median / p95 | CPU median | Draw calls p95 | Peak PSS | Battery temp |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| lean | 3 min | 21.2 ms | 28.3 ms (35.4) | 0.2 % | 0 | 57 ms | 14.0 / 18.4 ms | 1.8 ms | 526 | 502 MB | 31.9 → 32.8 °C |
+| lean+texraw (the round-1 import) | 3 min | 22.9 ms | 34.7 ms (28.8) | 8.2 % | 1 | 103 ms | 18.9 / 33.7 ms | 1.6 ms | 515 | 768 MB | 31.9 → 32.8 °C |
+| lean+vis | 3 min | 19.7 ms | 26.9 ms (37.2) | 0.2 % | 0 | 48 ms | 13.4 / 18.1 ms | 1.7 ms | 462 | 500 MB | 33.0 → 33.4 °C |
+| lean+tex1k | 3 min | 21.4 ms | 27.9 ms (35.9) | 0.2 % | 0 | 50 ms | 13.8 / 18.2 ms | 1.7 ms | 527 | 373 MB | 33.8 → 34.2 °C |
+| lean+lod | 3 min | 21.2 ms | 28.1 ms (35.6) | 0.1 % | 0 | 49 ms | 13.7 / 18.4 ms | 1.7 ms | 526 | 502 MB | 34.3 → 34.7 °C |
+| **full** (first rung of the ladder) | 3 min | 22.2 ms | 28.3 ms (35.3) | 0.2 % | 0 | 61 ms | 17.6 / 21.9 ms | 1.9 ms | 606 | 499 MB | 34.7 → 35.5 °C |
+| **full**, plugged in | **10 min** | 22.2 ms | **27.7 ms (36.1)** | 0.2 % | **0** | 51 ms | 17.7 / 22.2 ms | 1.9 ms | 606 | 498 MB | 35.2 → 38.2 °C, thermal status 0 → 1 |
+| **full**, on battery | **10 min** | RUN3 |
+| full, on battery except the first ~3 s of the walk (supporting) | 10 min | 22.2 ms | 28.4 ms (35.2) | 0.3 % | 0 | 80 ms | 17.8 / 22.2 ms | 1.9 ms | 606 | — | 33.0 °C at start |
+
+Mean frame time per minute over the 10-minute plugged run: 21.9, 21.8, 21.7, 21.7, 22.1, 21.6, 21.9, 22.1, 22.0,
+21.9 ms (no drop). **Load time** (`full`, pre-built plant, baked shaders), from the launch to the first walkable
+frame in the phone's log: first start after clearing the app's data 3.3 s (peak PSS 574 MB), second start 1.3 s, the
+plant built by script instead 1.3 s. Rule ≤ 15 s: met. **APK** of the bench: 182 MB, of which the engine is 71 MB
+and the three texture tiers 69 MB (2048 px ETC2), 17 MB (1024 px) and 55 MB (the lossless comparison set); a
+shipped app carries one or two tiers.
+
+**Look on the Note 9:** the 10 viewpoints captured on the phone (`full`, Mobile renderer, 2220×1080) and looked at
+side by side with the laptop tier (Forward+, `full`). Everything a trainee needs is the same on both: the valves with
+their red handwheels and bonnets at 2 m and 10 m, the pumps' motors with their fins (near and on the next pumps),
+the pipes on the rack by colour, the rack's structure, the platforms, the whole plant from afar. The phone lacks the
+laptop's ambient occlusion (the Mobile renderer has none) and its shadow edges are blockier; neither hides a part,
+a label or a state.
 
 **Load time (laptop, exported release build, pre-built plant, baked shaders):** first start with no shader cache
 1.26 s from engine start to the first walkable frame (the plant loads in 9 ms; peak RSS 657 MB during the first
 pipeline compiles), second start 0.72 s (236 MB). Rule ≤ 5 s: met.
 
-**Look (laptop only so far):** the 10 viewpoints compared side by side between the laptop tier (Forward+, full,
-1600×900) and the phone presets drawn with the Mobile renderer at the Note 9's 2220×1080 on this laptop (`lean`,
+**Look of the lower presets (drawn on the laptop):** the 10 viewpoints compared side by side between the laptop
+tier (Forward+, full, 1600×900) and the phone presets drawn with the Mobile renderer at the Note 9's 2220×1080 on
+this laptop (`lean`,
 `lean+vis+tex1k+lod`). On every viewpoint the same equipment is there and recognisable: the valves with their red
 handwheels and bonnets at 2 m and 10 m, the motors' fins at 2 m and on the next pumps, the pipes on the rack by
 colour, the platforms, the rack's structure. What differs is sharpness (60 % resolution with FSR: textures and far
-edges softer) and the absence of SSAO in the Mobile renderer; no part a trainee needs is missing. The same check on
-the Note 9's own screen is still to do (the phones were not attached).
+edges softer) and the absence of SSAO in the Mobile renderer; no part a trainee needs is missing, so these presets
+stay usable should a heavier plant need them.
 
-Findings so far:
-- **The texture import was the biggest cost**, not geometry: on the laptop the same scene goes from 44 to 80 fps
-  (p95) with compressed, mipmapped textures. The earlier phone numbers were all measured with the lossless import, so
-  the Note 9 is expected to gain too (it is bandwidth-bound); how much is what the phone runs will show.
-- **The laptop tier meets its rule at 1600×900** (82 fps for 95 % of frames over 10 minutes, no frame over 28.5 ms).
-  At this laptop's native 2880×1800 the full preset is 29 fps (GPU-bound); drawing at the panel's logical 1440×900
-  gives 51 fps on the private display, where presenting a 2880×1800 frame through Xwayland costs about 9 ms more than
-  the GPU's 6.5 ms. The laptop's preset for a full-screen HiDPI window needs one run on the real display (and a
-  Windows laptop when there is one).
-- **Load time is no longer an issue on the laptop** with the pre-built plant and baked shaders (0.7–1.3 s).
+Findings:
+- **The texture import was the biggest cost**, not geometry. The round-1 bench imported its textures lossless and
+  without mipmaps (script-made materials skip Godot's 3D detection). With VRAM-compressed, mipmapped textures the
+  same scene goes from 44 to 80 fps (p95) on the laptop and from 28.8 to 35.4 fps on the Note 9 (`lean`), with
+  a third less memory on the phone (768 → 502 MB) and no 100 ms frame.
+- **With that fixed, the Note 9 runs the `full` preset** (native 2220×1080, 4 shadow cascades to 80 m, 2048 px
+  textures, every part at every distance) above the rule: 36.1 fps for 95 % of frames over 10 minutes plugged in,
+  no frame over 51 ms, no thermal drop, ≤ 0.6 GB. The levers (vis, tex1k, lod, resolution scaling) are not needed for
+  this scene and stay available for a heavier plant: on the phone each moved p95 by under 1.5 ms, because the frame is
+  no longer GPU-bound (GPU 14–18 ms of a 22 ms frame, CPU 2 ms).
+- **Load time is no longer an issue**: 3.3 s on the Note 9 on a first start, 1.3 s after, with the pre-built plant
+  and baked shaders (the round-1 20–28 s were mostly the bench reading every mesh back from the GPU).
+- **The laptop tier meets its rule at 1600×900** (82 fps for 95 % of frames over 10 minutes). At this laptop's native
+  2880×1800 the full preset is 29 fps (GPU-bound); drawing at the panel's logical 1440×900 gives 51 fps on the private
+  display, where presenting a 2880×1800 frame through Xwayland costs about 9 ms more than the GPU's 6.5 ms. The laptop
+  preset for a full-screen HiDPI window needs one run on the real display (and a Windows laptop when there is one).
 
-## Still to measure (needs the phones plugged in by USB)
+## Conclusion
 
-- `tools/plant3d/bench/note9.sh` (about 75 minutes): each lever on its own against `lean` (`lean+texraw`,
-  `lean+vis`, `lean+tex1k`, `lean+lod`, 3 minutes each), then the ladder from the most detail down (`full`,
-  `full+vis`, `scaled+vis`, `lean+vis`, `lean+vis+tex1k`, `lean+vis+tex1k+lod`, `lean2+vis+tex1k+lod`) until a preset
-  keeps p95 ≤ 30 ms for 3 minutes; that preset for 10 minutes plugged in, the load time (first start after
-  clearing, second start, built by script), the look viewpoints (chosen preset and `full`), and last the final
-  10 minutes **on battery** (it says when to pull the cable). 50 % brightness, put back after.
-- `tools/plant3d/bench/honor.sh` (about 25 minutes): `full` for 10 minutes, the Note 9's chosen preset for 3, load
-  time, look. Only the bench (`kks.plant3d.bench`) is installed there, no setting is changed, and it is removed after
-  every command.
-- Then: the conclusion for the Note 9 (rule met or not, with which preset and what it gives up), and the status.
+CONCLUSION
 
 **When to revisit:** after the measurements; if Godot's security response does not improve and the app starts to
 load content from others.

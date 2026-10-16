@@ -71,7 +71,9 @@ JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/temurin-25-jdk-amd64}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 CFG="$HERE/.godot/editor-config"
 mkdir -p "$CFG/godot"
-printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+# shutdown_adb_on_exit off: the editor otherwise stops the adb server when the export ends, cutting off a phone run
+# in progress (it did, 2026-10-16)
+printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/shutdown_adb_on_exit = false\n' \
   "$ANDROID_HOME" "$JAVA_HOME" > "$CFG/godot/editor_settings-4.7.tres"
 export XDG_CONFIG_HOME="$CFG"
 if [ -z "${GODOT_ANDROID_KEYSTORE_RELEASE_PATH:-}" ]; then

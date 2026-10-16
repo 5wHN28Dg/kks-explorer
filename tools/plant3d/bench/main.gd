@@ -16,6 +16,8 @@
 ##             lod    LOD bias 0.5: each part switches to its simpler LOD at half the distance
 ##             half   (with full) 3D drawn at half the screen's width and height: a HiDPI laptop panel at its logical
 ##                    resolution
+##   start_delay=120        stand still this long first, unmeasured
+##   wait_battery=1         (Android) stand still until the phone runs on battery, then 30 s more, then walk
 ##   prebuilt=1             load built/plant.scn (what a shipped app does) instead of building the plant by script
 ##   look=1                 capture the 10 "look" viewpoints as PNGs instead of walking
 ##   save=res://built/plant.scn   (desktop) build the plant, save it as a scene and quit
@@ -41,6 +43,26 @@ var cpu := PackedFloat32Array()
 var calls := PackedInt32Array()
 var t_run := 0.0
 var seconds := 600.0
+var start_delay := 0.0     # seconds standing still, not measured, before the walk (time to pull the phone's cable)
+var waited := 0.0
+## The final phone run is measured on battery (charging heats the phone): with wait_battery=1 the walk starts only
+## once Android says the battery is discharging, plus 30 s to settle, and the run is marked INVALID if the phone is
+## plugged in again before it ends. Nobody has to pull the cable against a clock.
+var wait_battery := false
+var battery_seen := -1.0   # seconds waited when the battery was first seen discharging
+var battery_poll := 0.0
+var replugged := 0
+const BATTERY_SETTLE := 30.0
+const BATTERY_TIMEOUT := 900.0
+
+## Android's BatteryManager.BATTERY_PROPERTY_STATUS (6) through Godot's Java bridge: 3 = discharging. -1 elsewhere.
+func _battery_status() -> int:
+	if not Engine.has_singleton("AndroidRuntime"): return -1
+	var ctx = Engine.get_singleton("AndroidRuntime").getApplicationContext()
+	if ctx == null: return -1
+	var bm = ctx.getSystemService("batterymanager")
+	if bm == null: return -1
+	return int(bm.getIntProperty(6))
 var variant := "cells"
 var preset := "full"
 var levers: PackedStringArray = []
@@ -71,6 +93,9 @@ func _ready() -> void:
 				var kv := line.strip_edges().split("=", true, 1)
 				if kv.size() == 2: settings[kv[0]] = kv[1]
 	seconds = float(settings.get("seconds", "600"))
+	start_delay = float(settings.get("start_delay", "0"))
+	wait_battery = settings.get("wait_battery", "0") == "1"
+	if OS.get_name() == "Android": _say("battery status at start: %d (2 charging, 3 discharging, 4 not charging, 5 full)" % _battery_status())
 	variant = settings.get("variant", "cells")
 	preset = settings.get("preset", "full")
 	prebuilt = settings.get("prebuilt", "0") == "1"
@@ -430,6 +455,25 @@ func _process(delta: float) -> void:
 	if first_frame_ms < 0:
 		first_frame_ms = Time.get_ticks_msec()
 		_say("first frame %d ms after the engine started (%d ms after the scene was ready)" % [first_frame_ms, first_frame_ms - ready_ms])
+	if wait_battery and battery_seen < 0.0:
+		waited += delta
+		battery_poll += delta
+		if battery_poll >= 1.0:
+			battery_poll = 0.0
+			if _battery_status() == 3:
+				battery_seen = waited
+				start_delay = waited + BATTERY_SETTLE
+				_say("on battery at %s; the walk starts in %d s" % [Time.get_datetime_string_from_system(), int(BATTERY_SETTLE)])
+			elif waited > BATTERY_TIMEOUT:
+				_say("RESULT INVALID: not on battery within %d s" % int(BATTERY_TIMEOUT))
+				_write_out()
+				get_tree().quit()
+		return
+	if waited < start_delay:
+		if waited == 0.0: _say("waiting %d s before the walk" % int(start_delay))
+		waited += delta
+		if waited >= start_delay: _say("walk starts at %s" % Time.get_datetime_string_from_system())
+		return
 	t_run += delta
 	var loop := 60.0
 	var u := fmod(t_run, loop) / loop * (path.size() - 1)
@@ -438,6 +482,11 @@ func _process(delta: float) -> void:
 	var q := path[i + 1] + (path[min(i + 2, path.size() - 1)] - path[i + 1]) * 0.3
 	cam.position = p
 	if p.distance_to(q) > 0.01: cam.look_at(q + Vector3(0, -0.2, 0), Vector3.UP)
+	if wait_battery:
+		battery_poll += delta
+		if battery_poll >= 5.0:
+			battery_poll = 0.0
+			if _battery_status() != 3: replugged += 1
 	if t_run > 5.0:
 		times.append(delta * 1000.0)
 		var vp := get_viewport().get_viewport_rid()
@@ -488,6 +537,9 @@ func _finish() -> void:
 		if minute >= 60000.0:
 			per.append("%.1f" % (acc / k)); acc = 0.0; k = 0; minute = 0.0
 	if k > 0: per.append("%.1f" % (acc / k))   # the last, shorter stretch
+	if wait_battery:
+		_say("walk ends at %s; %s" % [Time.get_datetime_string_from_system(),
+			"on battery throughout" if replugged == 0 else "INVALID: not on battery at %d checks (every 5 s)" % replugged])
 	_say("PER_MINUTE mean_ms=" + ",".join(per))
 	_write_out()
 	get_tree().quit()

@@ -21,6 +21,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 PKG=kks.plant3d.bench
 FILES=/storage/emulated/0/Android/data/$PKG/files
 HONOR=AFAM026711005741
+BENCH_VERSION=$(sed -n 's/^version\/code=//p' "$HERE/export_presets.cfg")
 APK="${APK:-$HERE/export/bench.apk}"
 SERIAL="${1:?serial}"; CMD="${2:?command}"; shift 2
 OUT="$HERE/results/$SERIAL"
@@ -36,9 +37,13 @@ say "phone $SERIAL: $model, Android $(sh_ getprop ro.build.version.release)"
 installed() { sh_ pm list packages "$PKG" | grep -qx "package:$PKG"; }
 install() {
   [ -f "$APK" ] || { echo "no $APK: run build.sh" >&2; exit 2; }
-  if ! installed || [ "${REINSTALL:-0}" = 1 ]; then
+  # an older bench may be there already (the first round's, version 1): install unless this exact APK's version is
+  local have
+  have=$(sh_ dumpsys package "$PKG" | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1)
+  if ! installed || [ "$have" != "$BENCH_VERSION" ] || [ "${REINSTALL:-0}" = 1 ]; then
     say "installing $APK"
-    a install -r "$APK" >/dev/null
+    # a bench signed with another key (the first round's) is removed first: it is only ever the bench
+    a install -r "$APK" >/dev/null 2>&1 || { a uninstall "$PKG" >/dev/null; a install "$APK" >/dev/null; }
     installed || { echo "install failed" >&2; exit 1; }
   fi
 }
@@ -92,7 +97,8 @@ run() {
   sh_ am force-stop "$PKG"
   sh_ mkdir -p "$FILES"
   sh_ rm -rf "$FILES/result.txt" "$FILES/look"
-  printf 'preset=%s\nseconds=%s\nvariant=cells\nprebuilt=%s\nlook=%s\n' "$preset" "$seconds" "$prebuilt" "$look" > "$dir/preset.txt"
+  # on battery: the app itself waits (unmeasured) until Android says it is discharging, then 30 s more
+  printf 'preset=%s\nseconds=%s\nvariant=cells\nprebuilt=%s\nlook=%s\nwait_battery=%s\n' "$preset" "$seconds" "$prebuilt" "$look" "$unplug" > "$dir/preset.txt"
   a push "$dir/preset.txt" "$FILES/preset.txt" >/dev/null
   echo "before: $(state)" > "$dir/state.txt"
   local t0; t0=$(sh_ date +%s)
@@ -100,11 +106,12 @@ run() {
   sh_ am start -W -n "$(activity)" > "$dir/am_start.txt"
   local peak=0 deadline=$(( $(date +%s) + seconds + 240 ))
   if [ "$unplug" = 1 ]; then
-    say "UNPLUG THE PHONE NOW; plug it back in after the run (about $(( (seconds + 60) / 60 )) minutes)"
+    say "UNPLUG THE PHONE WHENEVER READY; plug it back in $(( (seconds + 30 + 119) / 60 )) minutes after unplugging (the walk starts 30 s after the phone sees it is on battery)"
     a wait-for-disconnect
     say "unplugged; waiting for it to come back"
     a wait-for-device
     say "plugged in again"
+    deadline=$(( $(date +%s) + 240 ))
   fi
   sleep 10
   while ! sh_ ls "$FILES/result.txt" >/dev/null 2>&1; do
@@ -124,8 +131,9 @@ run() {
   # the same lines are in the log, should the app not have been able to write its file
   [ -s "$dir/result.txt" ] || sed -n 's/.*bench: //p' "$dir/logcat.txt" > "$dir/result.txt"
   local start first
-  start=$(grep -m1 -E "START u0 .*$PKG" "$dir/logcat.txt" | awk '{print $1}')
-  first=$(grep -m1 "bench: first frame" "$dir/logcat.txt" | awk '{print $1}')
+  # (a look run walks no frames and logs no first frame: an empty answer, not an error)
+  start=$(grep -m1 -E "START u0 .*$PKG" "$dir/logcat.txt" | awk '{print $1}' || true)
+  first=$(grep -m1 "bench: first frame" "$dir/logcat.txt" | awk '{print $1}' || true)
   [ -n "$start" ] && [ -n "$first" ] && echo "start_to_first_frame=$(echo "$first - $start" | bc)s" >> "$dir/state.txt"
   sh_ am force-stop "$PKG"
   cat "$dir/state.txt"
