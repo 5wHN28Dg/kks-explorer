@@ -1049,7 +1049,7 @@ class Model:
             if k in a:
                 self.cond(a[k], f'{w}.{k}')
         time(a.get('delay', 0), f'{w}.delay')
-        need(type(a['priority']) is int and a['priority'] in (1, 2, 3), 'bad_value', f'{w}.priority: 1, 2 or 3')
+        need(a['priority'] in (1, 2, 3) and not isinstance(a['priority'], bool), 'bad_value', f'{w}.priority: 1, 2 or 3')
         self.alarms.append(a)
 
     def check_bind(self, x, w):
@@ -1537,8 +1537,8 @@ class Engine:
                     self.astate[a] = 'normal'
                     self.ev('alarm', a, 'normal')
             elif kind == 'shelve':
-                if not (is_num(item[2]) and item[2] > 0):
-                    continue    # a shelving time of 0 s or less does nothing (§7.6)
+                if not (is_num(item[2]) and 0 < item[2] < 1e6):
+                    continue    # a shelving time outside (0, 10⁶) s does nothing (§7.6)
                 self.shelved[item[1]] = self.step_no + steps(item[2])
                 self.ev('shelve', item[1], item[2])
             elif kind == 'unshelve':

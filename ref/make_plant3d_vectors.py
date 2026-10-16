@@ -273,7 +273,7 @@ REJECTS = [
         _set(MOD + ['machines'], [{'id': 'm', 'kks': '10LAC10AP001', 'init': 'off', 'commands': {},
                                    'states': [{'id': 'off'}]}]))),
     ('a trip the scenario latches twice', 'dup_id', _set(['scenarios/s1.json', 'latched'], ['t1', 't1'])),
-    ('an alarm priority that is not a whole number', 'bad_value', _set(MOD + ['alarms', 0, 'priority'], 2.0)),
+    ('an alarm priority that is not 1, 2 or 3', 'bad_value', _set(MOD + ['alarms', 0, 'priority'], 2.5)),
     ('a scenario setting a latch to neither 0 nor 1', 'bad_value', _all(
         _app(MOD + ['values'], ['lt', {'latch': 'p_high', 'reset': 'valve_open'}]),
         _set(['scenarios/s1.json', 'init', 'lt'], 0.5))),
@@ -433,7 +433,8 @@ def unit_models():
             [5, 'op', '10LAC10AP001', 'reset', None, 'ta'],
             [6, 'op', '10LAB10AA001', 'set', 1, None],
             [8, 'ack', 'none'], [8, 'shelve', 'none', 5], [8, 'unshelve', 'none'], [8, 'fault', 'none'],
-            [8, 'shelve', 'al', 0], [8, 'shelve', 'al', -1], [8, 'shelve', 'al', 0.25]], 12),
+            [8, 'shelve', 'al', 0], [8, 'shelve', 'al', -1], [8, 'shelve', 'al', 1e6], [8, 'shelve', 'al', 0.25]],
+         12),
     ]
 
 
@@ -538,6 +539,10 @@ FORKS = [
       'alarms': ['gt1_lp1_ll', 'gen1_brk_trip']}),
     ('gt_lac_fails', 'end', [('fault', 'gt1_lac_fails'), ('run', 60)],
      {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
+    ('gt_lube_ac_stopped_on_tg', 'gt_tg', [('run', 120), ('op', '10MBV10AP001', 'stop', None, None), ('run', 60)],
+     {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
+    ('st_lube_ac_stopped_on_tg', 'st_tg', [('run', 120), ('op', '30MAV10AP001', 'stop', None, None), ('run', 60)],
+     {'interlocks': ['st_dc_auto'], 'no_trip': True}),
     ('gt_lube_ac_stopped', 'end', [('op', '10MBV10AP001', 'stop', None, None), ('run', 60)],
      {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
     ('gt_flameout', 'end', [('fault', 'gt1_flameout'), ('run', 30)], {'first_out': {'gt1': 'gt1_trip_flame'}}),

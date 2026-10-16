@@ -264,7 +264,7 @@ class Validator(unittest.TestCase):
                   'state', 'an ext value named like a trip latch', 'a scenario setting a latch to neither 0 nor 1',
                   'a scenario setting a timer', 'a scenario setting an integrate outside its range',
                   'a scenario setting a wrap outside [0, period)', 'an ext value named like a machine state',
-                  'a trip the scenario latches twice', 'an alarm priority that is not a whole number'):
+                  'a trip the scenario latches twice', 'an alarm priority that is not 1, 2 or 3'):
             self.assertIn(w, whys)
 
 

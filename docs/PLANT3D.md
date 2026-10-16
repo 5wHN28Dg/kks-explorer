@@ -301,7 +301,7 @@ computed in step 2) and by conditions; no other value may have those names (`dup
 characters, machine IDs at most 26.
 
 **Times as steps.** A time t (a `delay`'s `on` and `off`, a trip's or alarm's `delay`, a shelving time) counts
-round(t / 0.1) steps, rounded half away from zero (⌊t / 0.1 + 0.5⌋). A time in content is a multiple of 0.1 s (`bad_time` otherwise; a shelving time is the
+round(t / 0.1) steps, rounded half up (⌊t / 0.1 + 0.5⌋; t is never negative here). A time in content is a multiple of 0.1 s (`bad_time` otherwise; a shelving time is the
 trainee's and is only rounded), but t / 0.1 in double precision isn't always a whole number (0.3 / 0.1 =
 2.9999…): round, never truncate.
 
@@ -428,15 +428,15 @@ out, and while one of them is latched no other trip of its group is first out; t
   a while by the operator (a nuisance alarm, an instrument under repair), shown in a list of its own, no horn, until
   un-shelved or its shelving time ends. The trainee acknowledges at the panel; the
   horn stops on acknowledge.
-- **`priority`** 1 (high) – 3 (low) sets the colour and sound; **`clear`** gives a deadband so an alarm doesn't
+- **`priority`** 1 (high), 2 or 3 (low) sets the colour and sound; **`clear`** gives a deadband so an alarm doesn't
   chatter; **`delay`** the seconds the condition must hold.
 - **Exactly, in step 7:** an alarm is *on* when `when` has been read true in max(1, `delay` / 0.1) consecutive steps,
   and *clear* when `clear` is true (without `clear`: when `when` is false). Normal → active unacknowledged when on;
   active unacknowledged → cleared unacknowledged when clear; active acknowledged → normal when clear; cleared
   unacknowledged → active unacknowledged when on. While suppressed or shelved it keeps its state and its count
   restarts. The trainee's inputs (step 1): acknowledge (active unacknowledged → active acknowledged, cleared
-  unacknowledged → normal; also on a suppressed alarm), shelve for a number of seconds (0 or less: nothing happens,
-  no event), un-shelve; a shelf made in
+  unacknowledged → normal; also on a suppressed alarm), shelve for a number of seconds (a number outside 0 < t < 10⁶:
+  nothing happens, no event), un-shelve; a shelf made in
   step n for t seconds ends in step 7 of step n + round(t / 0.1), with an event (shelving a shelved alarm again
   sets a new end).
 - **`where`:** the equipment the alarm leads to (one tap from the alarm list highlights and walks there: R10).

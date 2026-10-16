@@ -242,7 +242,8 @@ is faster still ("Time" below).
   PLANT3D.md §7.2's example); the pressure surge of a start against an open valve is therefore not modelled, and has
   no alarm in §5 either.
 - **Interlocks:** a stopped CW pump closes its discharge valve; low lube oil pressure while the oil system is in
-  service (whichever pump was selected or stopped) starts the DC pump (GT and ST); a tripped closed cooling water pump starts the standby one; condenser pressure
+  service (the shaft turning, on the turning gear too; whichever pump was selected or stopped) starts the DC pump (GT and
+  ST); a tripped closed cooling water pump starts the standby one; condenser pressure
   high-high, no CW flow or no condensate pump puts both bypass controllers in manual (closed).
 - **Trips beyond the list below:** the generator protection opens a generator breaker in the step after its machine
   tripped (`gen1_trip_prot`, `gen3_trip_prot`, first-out group of their machine); a closed cooling water pump trips
@@ -251,9 +252,10 @@ is faster still ("Time" below).
   on any bearing for 2 s.
 - **The hotwell** has a makeup that opens below 0 mm and a spill to the demineralised water tank above +50 mm, so
   the level holds through the start.
-- **Instrument air (#1):** the ops that move a pneumatic valve (open, set, auto: the gland steam, HP
-  feedwater control, condensate minimum-flow and two spray valves) are refused below 4 bar. A valve already in place does
-  not fail to its safe position when the air is lost later.
+- **Instrument air (#1):** the ops that move a pneumatic valve (open, set, auto) are refused below 4 bar: the gland
+  steam valve, the condensate minimum-flow valve and the HP feedwater and HP spray controllers (the LP bypass spray
+  valve has no op of its own). Losing the air later changes nothing: a valve stays where it is and a controller in
+  auto keeps moving its valve (not built: fail-safe positions).
 - **Not built yet** (known gaps, for a later version): lube oil temperatures (#2: closed cooling water is a start
   permissive only, so losing it in operation has no effect); an HP safety valve and a GT runback on the loss of every
   steam sink (with the steam turbine tripped and the bypass blocked the HP pressure holds at 128 bar without an

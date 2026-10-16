@@ -532,7 +532,8 @@ def gt1():
         m.state(f, 0, code)
     m.ramp('gt1_speed', 'gt1_tgt', 0.005, 0.003, 0, 'pu', '10MBA10')
     m.cmp('gt1_still', 'gt1_speed', '<', 0.01)
-    m.lube('gt1', ['10MBV10CP001', '10MBV10CP002', '10MBV10CP003'], '10MBV10AP001', '10MBV10AP002', 'gt1_still')
+    m.cmp('gt1_at_rest', 'gt1_speed', '<', 0.0005)     # below turning gear speed: the oil may stop
+    m.lube('gt1', ['10MBV10CP001', '10MBV10CP002', '10MBV10CP003'], '10MBV10AP001', '10MBV10AP002', 'gt1_at_rest')
     m.NOT('gt1_lube_trip_clear', 'gt1_trip_lube_latched')
     # turning gear and speed
     m.cmp('gt1_slow', 'gt1_speed', '<', 0.05)
@@ -988,7 +989,8 @@ def st():
     m.NOT('st_cond_trip_clear', 'st_trip_cond_p_latched')
     # lube oil, jacking oil, turning gear, eccentricity, gland steam (FIRST-TRAIN §4 #7, #10)
     m.cmp('st_still', 'st_speed', '<', 0.01)
-    m.lube('st', ['30MAV10CP001', '30MAV10CP002', '30MAV10CP003'], '30MAV10AP001', '30MAV10AP002', 'st_still')
+    m.cmp('st_at_rest', 'st_speed', '<', 0.0005)     # below turning gear speed: the oil may stop
+    m.lube('st', ['30MAV10CP001', '30MAV10CP002', '30MAV10CP003'], '30MAV10AP001', '30MAV10AP002', 'st_at_rest')
     m.NOT('st_lube_trip_clear', 'st_trip_lube_latched')
     m.AND('st_jack_run', ['st_jack_cmd', 'st_lube_ok'])
     m.prod('st_jack_sp', ['st_jack_run', 140])
