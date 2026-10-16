@@ -45,8 +45,9 @@ Playing a sound:
   - `once`: a one-shot, meant for an event: `breaker` for a breaker closing, `breaker_open` for one opening,
     `motor_start` for a large motor started direct on line (its `motor_large` loop then takes over at the same
     level), `horn_ack` for an alarm acknowledged. Format 1 has no binding that says "on this edge" (PLANT3D.md
-    §7.7): today only `breaker` is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays, and
-    the other three wait for it.
+    §7.7): today only `breaker` is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays
+    (apps/plant3d/ui/sound_player.gd: a breaker's contacts closing and opening, a large motor's start command,
+    an acknowledge).
 
 ## How each sound is made
 

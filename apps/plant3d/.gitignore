@@ -1,5 +1,6 @@
 # made by build.sh: the content build, Godot's import cache, exports, phone results
 /built/
+/android/
 /.godot/
 /export/
 /results/

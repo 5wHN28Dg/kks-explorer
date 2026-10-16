@@ -4,7 +4,18 @@
 ## when every test passed, 1 otherwise. Needs the built plant (build.sh) for the walking tests.
 extends SceneTree
 
+## Counts script errors (a test function stopped by one returns as if it had passed).
+class ScriptErrors extends Logger:
+	var count := 0
+	func _log_error(_function: String, _file: String, _line: int, _code: String, _rationale: String,
+			_editor_notify: bool, error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if error_type == ERROR_TYPE_SCRIPT:
+			count += 1
+
+var errors := ScriptErrors.new()
+
 func _init() -> void:
+	OS.add_logger(errors)
 	_run.call_deferred()
 
 func _run() -> void:
@@ -18,6 +29,13 @@ func _run() -> void:
 			files.append(f)
 	files.sort()
 	var failed := 0
+	# the runner's own check: a script error inside a test function must be seen (it returns [] after one)
+	print("(the runner checks that it sees script errors: one is expected next)")
+	var e0 := errors.count
+	await load("res://tests/fixtures/script_error.gd").new().run(self)
+	if errors.count == e0:
+		print("FAIL run_tests.gd: a script error in a test goes unnoticed")
+		failed += 1
 	for f in files:
 		var t0 := Time.get_ticks_msec()
 		var script: GDScript = load("res://tests/" + f)
@@ -26,7 +44,12 @@ func _run() -> void:
 			failed += 1
 			continue
 		var t = script.new()
+		var errors0 := errors.count
 		var problems: Array = await t.run(self)
+		Engine.time_scale = 1.0          # a test stopped half way must not leave its time scale to the next
+		# a script error stops the test function, which then returns an empty list: count it as a failure
+		if errors.count > errors0:
+			problems = problems + ["%d script error(s), above" % (errors.count - errors0)]
 		if problems.is_empty():
 			print("ok   %s (%d ms)" % [f, Time.get_ticks_msec() - t0])
 		else:
