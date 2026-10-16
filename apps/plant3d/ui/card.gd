@@ -137,9 +137,13 @@ static func _shown(o: Dictionary, v) -> String:
 ## The trainee's number, read exactly (a JSON number: correctly rounded, an integer stays an integer); per cent for a
 ## 0–1 command. null when it isn't a number.
 static func read_number(o: Dictionary, text: String):
-	var t := text.strip_edges().replace(",", ".")
+	var t := text.strip_edges()             # a comma is refused: "1,000" must not pass as 1.0
 	if _percent(o):
 		t = percent_to_fraction(t)      # "33.3" is read as 0.333, not as 33.3 / 100 (one rounding apart)
+	else:
+		if t.begins_with("."): t = "0" + t
+		elif t.begins_with("-."): t = "-0" + t.substr(1)
+		if t.ends_with("."): t += "0"
 	var r := JsonStrict.parse_text(t)
 	if not r.ok or not (typeof(r.value) == TYPE_INT or typeof(r.value) == TYPE_FLOAT):
 		return null
@@ -163,7 +167,7 @@ func _press(o: Dictionary, entry: LineEdit) -> void:
 	if entry != null:
 		value = read_number(o, entry.text)
 		if value == null:
-			ui.toast("Type a number: %s" % _range_text(o))
+			ui.toast("Type a number (with a point for decimals): %s" % _range_text(o))
 			return
 	ui.do_op(o, value)
 	refresh()

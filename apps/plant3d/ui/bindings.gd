@@ -20,6 +20,7 @@ var index                       # ui/scene_index.gd
 var cam: Camera3D
 var reduced_motion := false
 var sounds                      # ui/sound_player.gd or null
+var clock                       # ui/sim_clock.gd: shafts turn with plant time (still while paused, faster at fast-forward)
 var _anims: Array = []          # [node, channel, slot, scale, base transform, meta]
 var _lamps: Array = []          # [node, slot, kind, lit material, unlit material, last]
 var _shows: Array = []          # [label, slot, value name, last text]
@@ -48,6 +49,8 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 		if b.has("anim"):
 			var piece := _piece(n, b["anim"], idx.box(b["kks"]))
 			_anims.append([piece, b["anim"], e.ix[b["of"]], float(b.get("scale", 1.0)), piece.transform])
+			if b["anim"] == "contacts" and sounds != null:
+				sounds.watch_breaker(n, e.ix[b["of"]])
 		elif b.has("lamp"):
 			var lamp := _lamp(n, b["lamp"], idx.box(b["kks"]))
 			_lamps.append([lamp, e.ix[b["of"]], b["lamp"], _mat(b["lamp"], true), _mat(b["lamp"], false), -1])
@@ -148,6 +151,7 @@ func _process(delta: float) -> void:
 		return
 	var eye := cam.global_position
 	var cur: PackedFloat64Array = engine.cur
+	var dt: float = delta * (clock.rate() if clock != null else 1.0)
 	for a in _anims:
 		var piece: Node3D = a[0]
 		if piece.global_position.distance_squared_to(eye) > RANGE * RANGE:
@@ -155,7 +159,7 @@ func _process(delta: float) -> void:
 		var x: float = cur[a[2]]
 		match a[1]:
 			"shaft", "blades", "handwheel":
-				piece.rotate_object_local(Vector3.UP, x * a[3] * TAU * delta)
+				piece.rotate_object_local(Vector3.UP, fmod(x * a[3] * TAU * dt, TAU))
 			"stem", "contacts":
 				var base: Transform3D = a[4]
 				piece.transform = base.translated_local(Vector3.UP * clampf(x * a[3], 0, 1) * float(piece.get_meta("travel", 0.2)))

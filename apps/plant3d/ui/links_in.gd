@@ -57,6 +57,8 @@ func _check_intent() -> void:
 	if id == _last_intent:
 		return
 	_last_intent = id
+	if int(intent.getFlags()) & 0x00100000:      # FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY: reopened from Recents, not a new link
+		return
 	var data = intent.getDataString()
 	if typeof(data) == TYPE_STRING and String(data).begins_with(PREFIX) and String(data).length() <= 256:
 		link.emit(String(data))

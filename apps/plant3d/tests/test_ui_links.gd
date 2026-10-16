@@ -27,7 +27,8 @@ func run(tree: SceneTree) -> Array:
 	for c in [["walkdown-plant://kks/30PAC10AP001", "30PAC10AP001", ""],
 			["walkdown-plant://kks/30PAC10AP001KP01", "30PAC10AP001", "belongs to"],
 			["walkdown-plant://kks/11LAC10AP002", "10LAC10AP001", "11LAC10AP002 is not in this plant"],
-			["walkdown-plant://kks/30PAC10AA101", "30PAC10AA101", ""]]:
+			["walkdown-plant://kks/30PAC10AA101", "30PAC10AA101", ""],
+			["walkdown-plant://kks/30PAC10AP0019", "30PAC10AP001", "the code it begins with"]]:
 		ui.close_card()
 		ui.handle_link(c[0])
 		if not ui.card.visible or ui.card.code != c[1]:

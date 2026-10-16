@@ -104,6 +104,7 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	bindings = Bindings.new()
 	bindings.name = "bindings"
 	bindings.sounds = sounds
+	bindings.clock = clock
 	add_child(bindings)
 	clock.start(model, scenario)
 	bindings.setup(clock.engine, index, info, player.camera)
@@ -253,7 +254,8 @@ func _setting(key: String, on: bool) -> void:
 			_horn = -1                  # the next tick sounds the horn again if an alarm wants it
 
 
-## Opens a panel by name (the command line's panels=…): alarms, procedure, trainer, card:CODE.
+## Opens a panel by name (the command line's panels=…): alarms, procedure, card:CODE. (Not the instructor's:
+## on Android these options can come from a shared folder.)
 func open_panel(p: String) -> void:
 	if clock == null:
 		return
@@ -261,9 +263,6 @@ func open_panel(p: String) -> void:
 		toggle_alarms()
 	elif p == "procedure" and not procedure.visible:
 		toggle_procedure()
-	elif p == "trainer":
-		set_instructor(true)
-		trainer.open()
 	elif p.begins_with("card:"):
 		open_card(p.substr(5))
 
@@ -342,6 +341,7 @@ func restart(scenario: String) -> void:
 	bindings.use_engine(clock.engine)
 	sounds.engine = clock.engine
 	alarms.since.clear()
+	alarms._sig = ""
 	results.clear()
 	_pending.clear()
 	_ev_seen = 0
@@ -553,6 +553,8 @@ func handle_link(url: String) -> void:
 		"kks":
 			var asked := url.get_slice("/", 3).left(24)
 			var note := ""
+			if asked != r["code"] and r["match"] == "exact":
+				note = "The link named %s: this is %s, the code it begins with." % [asked, r["code"]]
 			match r["match"]:
 				"without_a3":
 					note = "The link named %s: this is the equipment it belongs to." % asked
@@ -664,12 +666,10 @@ func _follow_events(evs: Array, from: int) -> void:
 						if ev[4] == "refused":
 							toast("%s %s refused: %s" % [ev[2], info.op_label(o).to_lower(), txt.trim_prefix("Refused: ")])
 						break
-				if ev[4] == "done":
+				if ev[4] == "done" and ev[3] == "start":
 					var n = index.nodes.get(ev[2])
-					if ev[3] == "close_breaker":
-						sounds.once("breaker", n)
-					elif ev[3] == "open_breaker":
-						sounds.once("breaker_open", n)
+					if n != null and sounds.sound_of(n) == "motor_large" and n.global_position.distance_to(eye()) < sounds.EARSHOT:
+						sounds.once("motor_start", n)
 			"trip":
 				var t = model.trip_by_id(ev[2])
 				toast("TRIP: %s%s" % [t.get("text", ev[2]) if t != null else ev[2], " (first out)" if ev[3] else ""], 6.0)
@@ -732,7 +732,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 		return
 	if main.map.active or main.hud.panel.visible:
 		return
-	if ev.is_action_pressed("use") and hover != "":
+	if ev.is_action_pressed("use") and hover != "" and not _door_near():
 		open_card(hover)
 		get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("alarms"):
@@ -754,6 +754,14 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if c != "":
 			open_card(c)
 			get_viewport().set_input_as_handled()
+
+
+## A door within reach: E (gamepad A) opens it, as before the cards.
+func _door_near() -> bool:
+	for d in get_tree().get_nodes_in_group("doors"):
+		if (d as Node3D).global_position.distance_to(player.global_position) < 2.5:
+			return true
+	return false
 
 
 ## The way to the equipment pointed at: an arrow at the screen's edge when it is out of view, and its distance.

@@ -1,6 +1,8 @@
 ## Plays the plant's sounds (docs/PLANT3D.md §11) from the files tools/plant3d/sounds makes into built/sounds:
-## its index `sounds.json` (format `walkdown-plant-sound-files`) names each sound's layers, all played together with
-## the binding's gain and pitch. Bound sounds play at their equipment while the trainee is within earshot; the
+## its index `index.json` (format `walkdown-plant-sound-files`, tools/plant3d/sounds/README.md) names each sound's
+## layers, all played together with the binding's gain, and with its pitch on the layers marked `pitch` (a motor's
+## mains hum never is). One-shots play on edges the app sees, since format 1 binds no edge: a breaker's closing and
+## opening (its `contacts` value), a large motor's start (its start operation done), an acknowledge. Bound sounds play at their equipment while the trainee is within earshot; the
 ## control room horn sounds per priority while an alarm is unacknowledged; one-shots follow events (breakers, a large
 ## motor's start, an acknowledge). Without built/sounds (the sounds not made yet) everything here is silent: the
 ## hooks (`bind`, `horn`, `event`) are called all the same.
@@ -17,6 +19,7 @@ var _bound: Array = []          # [node, sound id, gain spec, pitch spec, player
 var _streams := {}              # file -> AudioStream
 var _horn: AudioStreamPlayer
 var _horn_prio := 0
+var _edges: Array = []          # [node, value slot, last state]: breakers, by their contacts' value
 var _t := 0.0
 var listener_at := Vector3.ZERO
 var dir := DIR
@@ -32,12 +35,17 @@ func load_index(d: String) -> void:
 	dir = d
 	index = {}
 	_streams.clear()
-	var f := FileAccess.open(d + "/sounds.json", FileAccess.READ)
+	var f := FileAccess.open(d + "/index.json", FileAccess.READ)
+	if f == null:
+		f = FileAccess.open(d + "/sounds.json", FileAccess.READ)     # the generator's first name for it
 	if f == null:
 		return
 	var j = JSON.parse_string(f.get_as_text())     # the generator's own output: no strictness needed
 	if j is Dictionary and j.get("format", "") == "walkdown-plant-sound-files" and j.get("sounds") is Dictionary:
 		index = j["sounds"]
+		var first: Dictionary = index.values()[0]["layers"][0] if not index.is_empty() else {}
+		print("plant: sounds: %d in %s, the first file %s" % [index.size(), d,
+				"is there" if not first.is_empty() and (ResourceLoader.exists(d + "/" + first["file"]) or FileAccess.file_exists(d + "/" + first["file"])) else "is MISSING"])
 
 
 func available() -> bool:
@@ -70,13 +78,30 @@ func unbind_all() -> void:
 	for b in _bound:
 		if b[4] != null:
 			for pl in b[4]:
-				pl.queue_free()
+				pl[0].queue_free()
 	_bound.clear()
+	_edges.clear()
 
 
-## A sound binding (§7.7) on its equipment's node.
+## A sound binding (§7.7) on its equipment's node. A one-shot bound like a loop (`breaker`) is played on its edges
+## instead (`watch_breaker`), not as a sound that lasts while its gain is up.
 func bind(b: Dictionary, n: Node3D) -> void:
+	if not index.is_empty() and not index.get(b["sound"], {}).get("loop", true):
+		return
 	_bound.append([n, b["sound"], b.get("gain", 1.0), b.get("pitch", 1.0), null])
+
+
+## A breaker's contacts (a value 0–1): `breaker` when it closes, `breaker_open` when it opens.
+func watch_breaker(n: Node3D, slot: int) -> void:
+	_edges.append([n, slot, -1])
+
+
+## The loop bound to a piece of equipment ("" when none): a large motor's start plays `motor_start` first.
+func sound_of(n: Node3D) -> String:
+	for b in _bound:
+		if b[0] == n:
+			return b[1]
+	return ""
 
 
 static func table(x: float, t: Array) -> float:
@@ -112,6 +137,11 @@ func _process(delta: float) -> void:
 	if _t < UPDATE:
 		return
 	_t = 0.0
+	for ed in _edges:
+		var on := 1 if engine.cur[ed[1]] >= 0.5 else 0
+		if ed[2] != -1 and on != ed[2] and (ed[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
+			once("breaker" if on == 1 else "breaker_open", ed[0])
+		ed[2] = on
 	for i in _bound.size():
 		var b: Array = _bound[i]
 		var n: Node3D = b[0]
@@ -121,12 +151,17 @@ func _process(delta: float) -> void:
 			b[4] = _start(n, b[1])
 		elif not near and b[4] != null:
 			for p in b[4]:
-				p.queue_free()
+				p[0].queue_free()
 			b[4] = null
 		if b[4] != null:
 			for p in b[4]:
-				p.volume_db = linear_to_db(maxf(lv.x, 1e-5))
-				p.pitch_scale = clampf(lv.y, 0.05, 4.0)
+				var pl: AudioStreamPlayer3D = p[0]
+				pl.volume_db = linear_to_db(maxf(lv.x, 1e-5))
+				var layer: Dictionary = p[1]
+				if layer.has("ref_hz") and layer.has("of"):          # a tone that follows a value
+					pl.pitch_scale = clampf(table(engine.v(layer["of"]), layer["table"]) / float(layer["ref_hz"]), 0.05, 4.0)
+				elif layer.get("pitch", true):
+					pl.pitch_scale = clampf(lv.y, 0.05, 4.0)
 
 
 func _start(n: Node3D, id: String) -> Array:
@@ -143,7 +178,7 @@ func _start(n: Node3D, id: String) -> Array:
 		p.unit_size = 6.0
 		n.add_child(p)
 		p.play()
-		out.append(p)
+		out.append([p, layer])
 	return out
 
 

@@ -76,6 +76,12 @@ func run(tree: SceneTree) -> Array:
 		var got = Card.read_number(row[0], c[0])
 		if var_to_str(got) != var_to_str(c[1]):
 			p.append("%s %% is read as %s, not %s" % [c[0], var_to_str(got), var_to_str(c[1])])
+	var load_op := {"kks": "10MKA10", "do": "set", "input": "gt1_load_sp", "range": [10, 250]}
+	for c in [["250", "250"], [".5", "0.5"], ["5.", "5.0"], ["120.5", "120.5"]]:
+		if var_to_str(Card.read_number(load_op, c[0])) != c[1]:
+			p.append("%s MW is read as %s" % [c[0], var_to_str(Card.read_number(load_op, c[0]))])
+	if Card.read_number(load_op, "1,000") != null:
+		p.append("\"1,000\" was read as a number")
 	for bad in ["", "-", ".", "1e2", "15%"]:
 		if Card.read_number(row[0], bad) != null:
 			p.append("\"%s\" was read as a number" % bad)
@@ -109,8 +115,30 @@ func run(tree: SceneTree) -> Array:
 		ui.player.global_position = ui.index.center("30PAC10AP001") + Vector3(0, 0, 4)
 		for i in 5:
 			await tree.process_frame
+		if not shaft.transform.basis.is_equal_approx(b0):
+			p.append("CW pump A's shaft turns while the plant is paused")
+		ui.clock.set_speed(ui.clock.Speed.NORMAL)
+		for i in 5:
+			await tree.process_frame
+		ui.clock.set_speed(ui.clock.Speed.PAUSED)
 		if shaft.transform.basis.is_equal_approx(b0):
 			p.append("CW pump A's shaft does not turn while it runs")
+	# 6b. in the cold start's step "set the valve to 15 %", 30 % is not the step's operation
+	ui.start_procedure("cold_start", "cw_a_valve", false)
+	ui.open_card("30PAC10AA101")
+	row = App.op_row(ui.card, "30PAC10AA101", "set")
+	(row[4] as LineEdit).text = "30"
+	(row[1] as Button).pressed.emit()
+	ui.clock.run_steps(1)
+	var want: Dictionary = ui.tracker.current()["do"][0]
+	if ui.tracker.is_done_op(want) or ui.tracker.deviations.is_empty() or not String(ui.tracker.deviations[-1][1]).contains("asks for 0.15"):
+		p.append("30 %% counted for the step's 15 %%: %s" % str(ui.tracker.deviations))
+	(row[4] as LineEdit).text = "15"
+	(row[1] as Button).pressed.emit()
+	ui.clock.run_steps(1)
+	if not ui.tracker.is_done_op(want) and ui.tracker.current().get("id", "") == "cw_a_valve":
+		p.append("15 %% did not tick the step's operation")
+	ui.stop_procedure()
 	# 7. at the equipment its local controls are offered: the cooler from beside it
 	ui.open_card("00PGB10AC001")
 	App.find_button(ui.card, "Go there").pressed.emit()

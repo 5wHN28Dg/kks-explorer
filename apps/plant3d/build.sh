@@ -34,6 +34,18 @@ for d in areas model scenarios procedures; do
   mkdir -p "$HERE/built/content/$d"
   cp "$ROOT/data/plant3d/$d/"*.json "$HERE/built/content/$d/"
 done
+# the sounds (tools/plant3d/sounds, decision 0055: NumPy and FFmpeg with libvorbis): a release needs them; otherwise
+# they are made when the tools are there, and the app is silent without them (ui/sound_player.gd)
+PY="${PLANT_PYTHON:-$ROOT/.venv/bin/python}"; [ -x "$PY" ] || PY=python3
+if "$PY" -c "import numpy" 2>/dev/null && command -v ffmpeg >/dev/null; then
+  "$PY" "$ROOT/tools/plant3d/sounds/make_sounds.py" --out "$HERE/built/sounds" >"$HERE/.sounds.log" 2>&1 ||
+    { tail -20 "$HERE/.sounds.log"; echo "the sounds failed (apps/plant3d/.sounds.log)" >&2; exit 1; }
+  echo "sounds: $(ls "$HERE/built/sounds" | grep -c '\.ogg$') files"
+elif [ "$MODE" = release ]; then
+  echo "a release needs the sounds: NumPy and FFmpeg with libvorbis (tools/plant3d/sounds)" >&2; exit 2
+else
+  echo "sounds: not made (no NumPy or FFmpeg here): the app stays silent"
+fi
 # the built scenes are resources the export must know
 $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1
 
@@ -102,6 +114,11 @@ exp() {  # renderer debug|release preset output
   $T "$GODOT" $GPU --rendering-method "$1" --path "$HERE" "--export-$2" "$3" "$4" >>"$HERE/.export.log" 2>&1 ||
     { tail -30 "$HERE/.export.log"; echo "export $3 ($2) failed" >&2; exit 1; }
   [ -s "$4" ] || { tail -30 "$HERE/.export.log"; echo "export $3 ($2) made nothing" >&2; exit 1; }
+  case "$4" in *.apk)
+    # the export plugin's intent filter must be in the APK (a plugin that didn't run leaves no link handler)
+    "$(ls -d "$ANDROID_HOME"/build-tools/* | grep -v -- '-rc' | sort -V | tail -1)/aapt2" dump xmltree "$4" --file AndroidManifest.xml |
+      grep -q 'android:scheme(0x01010027)="walkdown-plant"' || { echo "$4 has no walkdown-plant:// intent filter" >&2; exit 1; } ;;
+  esac
   ls -l "$4"
 }
 : > "$HERE/.export.log"
@@ -122,7 +139,7 @@ for t in $TARGETS; do
       # Gradle and the build dependencies it downloads never see the key (decision 0056): the release is exported
       # unsigned, then aligned and signed here with the SDK's own tools
       exp mobile release "Android unsigned" "$HERE/export/walkdown-plant-unsigned.apk"
-      BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+      BT="$(ls -d "$ANDROID_HOME"/build-tools/* | grep -v -- '-rc' | sort -V | tail -1)"
       rm -f "$HERE/export/walkdown-plant.apk" "$HERE/export/walkdown-plant-aligned.apk"
       "$BT/zipalign" -P 16 -f 4 "$HERE/export/walkdown-plant-unsigned.apk" "$HERE/export/walkdown-plant-aligned.apk"
       PLANT_KS_PASS=$(prop storePassword) "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$(prop keyAlias)" \
@@ -131,7 +148,7 @@ for t in $TARGETS; do
       rm -f "$HERE/export/walkdown-plant-aligned.apk" "$HERE/export/walkdown-plant-unsigned.apk" "$HERE/export/walkdown-plant.apk.idsig"
       ls -l "$HERE/export/walkdown-plant.apk"
       # the APK must carry the plant's certificate, not a debug one
-      APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+      APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/* | grep -v -- '-rc' | sort -V | tail -1)/apksigner"
       "$APKSIGNER" verify --print-certs "$HERE/export/walkdown-plant.apk" 2>/dev/null |
         grep -q "Signer #1 certificate DN: CN=Walkdown Plant$" || { echo "walkdown-plant.apk is not signed with the plant's key" >&2; exit 1; }
       ;;

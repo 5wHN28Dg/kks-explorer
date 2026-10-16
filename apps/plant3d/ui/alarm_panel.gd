@@ -139,7 +139,8 @@ func refresh() -> void:
 	for k in e._tr.size():
 		tripped += e.latched[k]
 	(_tabs["trips"] as Button).text = "Trips (%d)" % tripped
-	var sig := tab + "|" + str(e.step_no / 10 if tab == "shelved" else 0)
+	_tick_times(e)
+	var sig := tab + "|" + str(since.size())
 	if tab == "trips":
 		sig += str(e.latched) + str(e.first_out)
 	else:
@@ -147,8 +148,20 @@ func refresh() -> void:
 			sig += "%d:%s;" % [k, e.astate[k]]
 	if sig == _sig:
 		return
+	# never pull a list out from under an open Shelve menu
+	for r in _rows:
+		for mb in (r[0] as Node).find_children("*", "MenuButton", true, false):
+			if (mb as MenuButton).get_popup().visible:
+				return
 	_sig = sig
-	var had_focus := get_viewport().gui_get_focus_owner() != null and is_ancestor_of(get_viewport().gui_get_focus_owner())
+	# the focus stays where it was: on the tab bar, or on the same row's same button
+	var fo := get_viewport().gui_get_focus_owner()
+	var had_focus := fo != null and body.is_ancestor_of(fo)
+	var focus_key := []
+	if had_focus:
+		for r in _rows:
+			if (r[0] as Node).is_ancestor_of(fo):
+				focus_key = [r[1], (fo as Button).text if fo is Button else ""]
 	W.clear(body)
 	_rows.clear()
 	if tab == "trips":
@@ -161,9 +174,27 @@ func refresh() -> void:
 		for k in list:
 			_row(e, k)
 	if had_focus:
-		var b := _first(body)
-		if b:
-			b.grab_focus()
+		var target: Button = null
+		for r in _rows:
+			if not focus_key.is_empty() and r[1] == focus_key[0]:
+				for b in (r[0] as Node).find_children("*", "Button", true, false):
+					if b.text == focus_key[1] and not b.disabled:
+						target = b
+		if target == null:
+			target = _first(body)
+		if target:
+			target.grab_focus()
+
+
+## The shelved list's "back in" times, every refresh, without rebuilding the rows.
+func _tick_times(e) -> void:
+	if tab != "shelved":
+		return
+	for r in _rows:
+		for l in (r[0] as Node).find_children("*", "Label", true, false):
+			if l.has_meta("head"):
+				var h: Array = l.get_meta("head")
+				l.text = "%s  %s · %s · %s · back in %s" % [h[0], h[1], h[2], h[3], W.model_time(maxi(0, e.shelved[r[1]] - e.step_no))]
 
 
 static func _first(n: Node) -> Button:
@@ -198,6 +229,7 @@ func _row(e, k: int) -> void:
 		extra = " · back in %s" % W.model_time(maxi(0, e.shelved[k] - e.step_no))
 	var id := W.label("%s  %s · %s · %s%s" % [a.get("isa", "—"), code, W.model_time(since.get(a["id"], 0)),
 			state_words.get(st, st), extra], 17, W.DIM)
+	id.set_meta("head", [a.get("isa", "—"), code, W.model_time(since.get(a["id"], 0)), state_words.get(st, st)])
 	id.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(id)
 	box.add_child(W.label(a["text"], 19))

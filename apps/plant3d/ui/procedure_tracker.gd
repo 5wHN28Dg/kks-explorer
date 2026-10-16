@@ -17,6 +17,7 @@ var did := {}                   # "kks|do|trip" -> true: the current step's oper
 var deviations: Array = []      # [model step, text]
 var log: Array = []             # [[step id, model step it ended], …] (as sim/procedure.gd's log)
 var _seen := 0                  # events read so far
+var _in_seen := 0               # inputs matched to their op events so far (the event has no value or trip)
 
 
 static func op_key(kks, do, trip) -> String:
@@ -33,6 +34,11 @@ func begin(p: Dictionary, engine, step_id = null) -> void:
 	log = []
 	deviations = []
 	_seen = engine.events.size() if engine != null else 0
+	_in_seen = 0
+	if engine != null:
+		for inp in engine.inputs:
+			if inp[0] <= engine.step_no:
+				_in_seen += 1
 	var i := 0
 	if step_id != null:
 		for k in steps.size():
@@ -85,8 +91,17 @@ func on_step(engine) -> void:
 	while _seen < evs.size():
 		var ev: Array = evs[_seen]
 		_seen += 1
-		if ev[1] == "op" and ev[4] == "done":
-			_op_done(ev, engine)
+		if ev[1] == "op":
+			# the op events of a step come in the order its inputs were made: the input gives the value and trip
+			var inp := []
+			while _in_seen < engine.inputs.size():
+				var cand: Array = engine.inputs[_in_seen]
+				_in_seen += 1
+				if cand[1] == "op" and cand[0] == ev[0]:
+					inp = cand
+					break
+			if ev[4] == "done":
+				_op_done(ev, inp, engine)
 	if index < 0 or is_tour():
 		return
 	var s := current()
@@ -96,14 +111,18 @@ func on_step(engine) -> void:
 		_go(index + 1, engine)
 
 
-func _op_done(ev: Array, engine) -> void:
+func _op_done(ev: Array, inp: Array, engine) -> void:
 	if is_tour() or index < 0:
 		return
 	var want: Array = current().get("do", [])
-	# the trip of a reset is not in the event: match on code and operation, and the trip when the step names one
+	var value = inp[4] if inp.size() > 5 else null
+	var trip = inp[5] if inp.size() > 5 else null
 	for k in want.size():
 		var d: Dictionary = want[k]
-		if d["kks"] == ev[2] and d["do"] == ev[3]:
+		if d["kks"] == ev[2] and d["do"] == ev[3] and (not d.has("trip") or d["trip"] == trip):
+			if d.has("value") and not (typeof(value) in [TYPE_INT, TYPE_FLOAT] and float(value) == float(d["value"])):
+				_deviate(engine, "%s set to %s; this step asks for %s" % [ev[2], str(value), str(d["value"])])
+				return
 			var key := op_key(d["kks"], d["do"], d.get("trip"))
 			if current().get("ordered", false):
 				for j in k:

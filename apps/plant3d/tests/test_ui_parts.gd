@@ -29,11 +29,15 @@ func run(tree: SceneTree) -> Array:
 	DirAccess.make_dir_recursive_absolute(dir)
 	wav(dir.path_join("motor_large.tones.wav"), 0.5)
 	wav(dir.path_join("horn_p1.tones.wav"), 0.5)
+	wav(dir.path_join("breaker.once.wav"), 0.2)
 	var idx := {"format": "walkdown-plant-sound-files", "version": 1, "sounds": {
-		"motor_large": {"loop": true, "layers": [{"layer": "tones", "file": "motor_large.tones.wav"}]},
+		"motor_large": {"loop": true, "layers": [{"layer": "mains", "file": "motor_large.tones.wav", "pitch": false},
+			{"layer": "tones", "file": "motor_large.tones.wav", "pitch": true}]},
+		"breaker": {"loop": false, "layers": [{"layer": "once", "file": "breaker.once.wav", "pitch": false}]},
+		"breaker_open": {"loop": false, "layers": [{"layer": "once", "file": "breaker.once.wav", "pitch": false}]},
 		"horn_p1": {"loop": true, "layers": [{"layer": "tones", "file": "horn_p1.tones.wav"}]},
 		"horn_p2": {"loop": true, "layers": [{"layer": "tones", "file": "horn_p1.tones.wav"}]}}}
-	FileAccess.open(dir.path_join("sounds.json"), FileAccess.WRITE).store_string(JSON.stringify(idx))
+	FileAccess.open(dir.path_join("index.json"), FileAccess.WRITE).store_string(JSON.stringify(idx))
 	var main := App.start(tree)
 	var ui = main.ui
 	if ui == null or ui.clock == null:
@@ -80,12 +84,29 @@ func run(tree: SceneTree) -> Array:
 		p.append("the discharge pressure gauge shows %s up close" % str(shows))
 	# the pump's motor sound plays near it, at the binding's gain (its speed), and stops far away
 	var players := pump.find_children("*", "AudioStreamPlayer3D", true, false)
-	if players.is_empty():
-		p.append("no sound plays at the running pump within earshot")
+	if players.size() < 2:
+		p.append("the running pump's two layers don't play within earshot (%d players)" % players.size())
 	else:
 		var want := linear_to_db(maxf(ui.clock.engine.v("cw_a_spd"), 1e-5))
 		if absf((players[0] as AudioStreamPlayer3D).volume_db - want) > 0.01:
 			p.append("the pump's sound is at %.2f dB, not its speed's %.2f dB" % [players[0].volume_db, want])
+		# the mains hum is never pitched; the other layer follows the binding's pitch (0.5–1 with speed)
+		var pitches := players.map(func(x): return snappedf(x.pitch_scale, 0.001))
+		var pw := snappedf(SoundPlayer.table(ui.clock.engine.v("cw_a_spd"), [[0, 0.5], [1, 1]]), 0.001)
+		if not (pitches.has(1.0) and pitches.has(pw)) and pw != 1.0:
+			p.append("the pump's layers play at pitches %s, not 1 (mains) and %s" % [str(pitches), pw])
+	# a breaker's contacts: a one-shot when they close (format 1 binds no edge: the app watches the value)
+	var brk: Node3D = ui.index.nodes["10BAC10"]
+	ui.player.set_mode(ui.player.Mode.FLY)
+	ui.player.global_position = brk.global_position + Vector3(0, 1, 3)
+	for i in 10:
+		await tree.process_frame
+	var before := brk.find_children("*", "AudioStreamPlayer3D", true, false).size()
+	ui.clock.engine.cur[ui.clock.engine.ix["gt1_brk_cmd"]] = 1.0
+	for i in 10:
+		await tree.process_frame
+	if brk.find_children("*", "AudioStreamPlayer3D", true, false).size() <= before:
+		p.append("no breaker sound when the breaker's contacts close")
 	ui.player.global_position = Vector3(-200, 0, 0)
 	for i in 30:
 		await tree.process_frame

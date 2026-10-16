@@ -91,7 +91,7 @@ func _ready() -> void:
 	add_child(ui)
 	ui.setup(self, opts.get("scenario", "cold_iron"))
 	ui.add_settings(hud.extra)
-	if opts.has("procedure") and ui.model != null and ui.model.procedures.has(opts.procedure):
+	if opts.has("procedure") and ui.clock != null and ui.model.procedures.has(opts.procedure):
 		ui.start_procedure(opts.procedure, null, false)
 	for p in String(opts.get("panels", "")).split(",", false):
 		ui.open_panel(p)
