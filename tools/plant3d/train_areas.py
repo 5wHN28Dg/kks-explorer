@@ -112,7 +112,7 @@ def pg(kks, name, rng, at, unit='bar'):
 def control():
     return area('control', 'Control building', [[-40, -15], [-10, 15]], structures=[
         st('ctl_building', 'building', [-40, -15, 0], kks='00UCA10', outline=rect(30, 30), height=12,
-           cladding='concrete', openings=[{'kind': 'door', 'at': [30, 15, 0], 'width': 1.2, 'height': 2.4}]),
+           cladding='concrete', openings=[{'kind': 'door', 'at': [30, 15, 0], 'width': 1.8, 'height': 2.4}]),
         st('ctl_door', 'door', [-10, 0, 0], 90, kind='double', width=1.8),
         st('ctl_floor_6', 'floor', [-40, -15, 6], outline=rect(30, 30), openings=[box(1, 1, 8.5, 5)]),
         stair_tower('ctl_stair', [-39, -14, 0], [-31.4, -10, 6]),
@@ -153,7 +153,7 @@ def bop():
         structures=[
             st('bop_boiler_house', 'building', [88, -8, 0], outline=rect(16, 16), height=10, cladding='metal',
                openings=[{'kind': 'door', 'at': [16, 4, 0], 'width': 3, 'height': 3.5},
-                         {'kind': 'pipe', 'at': [7, 8, 9], 'width': 0.5, 'height': 0.5}]),
+                         {'kind': 'pipe', 'at': [0, 8, 9], 'width': 0.5, 'height': 0.5}]),
             st('bop_boiler_door', 'door', [104, -4, 0], 90, kind='roller', width=3, height=3.5),
         ],
         signs=[sign('Auxiliary boiler 00QHA10', [104.1, 0, 3.5], 90), sign('Instrument air', [113, -12, 2.5], 0),
@@ -202,7 +202,7 @@ def ct():
             st('ct_fan_deck', 'platform', [175, -16, 14], kks='30URA10', outline=rect(80, 32), openings=openings,
                deck='concrete', edge='handrail'),
             stair_tower('ct_stair_w', [170.5, -20, 0], [175, -13, 14]),
-            stair_tower('ct_stair_e', [259.5, -7, 0], [255, 0, 14]),
+            stair_tower('ct_stair_e', [259.5, -7.5, 0], [255, -0.5, 14]),
         ],
         signs=[sign('Cooling tower 30PAD10', [215, -16.5, 3], 180), sign('Fan deck +14 m', [176, -15, 15.5], 90)])
 
@@ -236,7 +236,8 @@ def cw():
     return area('cw', 'Circulating water pump house', [[140, -20], [165, 20]], equipment=equipment, pipes=pipes,
         structures=[
             st('cw_house', 'building', [140, -12, 0], kks='30UQA10', outline=rect(25, 20), height=12,
-               openings=[{'kind': 'door', 'at': [12, 20, 0], 'width': 4, 'height': 4}]),
+               openings=[{'kind': 'door', 'at': [12, 20, 0], 'width': 4, 'height': 4},
+                     {'kind': 'pipe', 'at': [10, 0, 1.5], 'width': 14, 'height': 1.6}]),
             st('cw_pit', 'pit', [142, -8, 0], outline=rect(16, 5), depth=9),
             st('cw_pit_cover', 'grating', [142, -8, 0], outline=rect(16, 5)),
             st('cw_door', 'door', [152, 8, 0], 0, kind='roller', width=4, height=4),
@@ -336,9 +337,9 @@ def st_area():
     ]
     structures = [
         st('st_hall', 'building', [0, -25, 0], kks='30UMA10', outline=rect(80, 50), height=32, cladding='metal',
-           openings=[{'kind': 'door', 'at': [80, 5, 0], 'width': 6, 'height': 6},
-                     {'kind': 'door', 'at': [0, 20, 0], 'width': 1.2, 'height': 2.4},
-                     {'kind': 'pipe', 'at': [80, 4, 10], 'width': 6, 'height': 3}]),
+           openings=[{'kind': 'door', 'at': [80, 30, 0], 'width': 6, 'height': 6},
+                     {'kind': 'door', 'at': [0, 45, 0], 'width': 1.2, 'height': 2.4},
+                     {'kind': 'pipe', 'at': [80, 27, 9], 'width': 14, 'height': 4}]),
         st('st_floor_12', 'platform', [10, -20, 12], outline=rect(70, 40), deck='concrete', edge='handrail'),
         st('st_floor_6', 'floor', [0, -25, 6], outline=rect(10, 50)),
         stair_tower('st_stair_w', [3, 12, 0], [10, 16, 12]),
@@ -413,7 +414,9 @@ def gt1():
         st('gt1_hall', 'building', [0, 50, 0], kks='10UMB10', outline=rect(80, 30), height=20, cladding='metal',
            openings=[{'kind': 'door', 'at': [40, 0, 0], 'width': 6, 'height': 6},
                      {'kind': 'louvre', 'at': [40, 15, 20], 'width': 14, 'height': 16},
-                     {'kind': 'pipe', 'at': [80, 15, 5], 'width': 9, 'height': 10}]),
+                     {'kind': 'pipe', 'at': [80, 15, 5], 'width': 9, 'height': 10},
+                     {'kind': 'door', 'at': [30, 30, 0], 'width': 1.0, 'height': 2.1},
+                     {'kind': 'pipe', 'at': [40, 30, 1], 'width': 0.6, 'height': 0.6}]),
         st('gt1_door_s', 'door', [40, 50, 0], 180, kind='roller', width=6, height=6),
         st('gt1_door_n', 'door', [30, 80, 0], 0, kind='personnel'),
         st('gt1_skid_slab', 'slab', [8, 82, 0], outline=rect(36, 8), thickness=0.3),
@@ -479,7 +482,7 @@ def hrsg1():
     for i, (code, name, kind) in enumerate(HRSG_MODULES):
         equipment.append(eq(code, name, 'hrsg_module', [98 + 5 * i, 65, 2], 90,
                             {'kind': kind, 'width': 20, 'depth': 2.5, 'height': 26}, 'door'))
-    hp_steam = [[98, 61, 33], [98, 47, 33], [98, 47, 10], [81, 47, 10], [81, 4, 10], [65, 4, 10], [65, 0, 10]]
+    hp_steam = [[98, 61, 33], [98, 47, 33], [93.5, 47, 33], [93.5, 47, 10], [81, 47, 10], [81, 4, 10], [65, 4, 10], [65, 0, 10]]
     pipes = [
         pipe('10LBA30BR001', 'HP steam to the steam turbine', 'steam_hp', 300, nz('10HNA10', 'hp_steam'), hp_steam,
              nz('30MAA10', 'hp_inlet'), insulation_mm=250, arrows=15,
@@ -492,10 +495,10 @@ def hrsg1():
                     inst('30MAA10CT001', 'temperature_element', 0.95, 'top', 'HP turbine inlet steam temperature',
                          range=[0, 650])]),
         pipe('10LBB10BR001', 'Hot reheat steam to the steam turbine', 'steam_rh', 450, nz('10HNA10', 'hrh_out'),
-             [[102, 69, 35], [102, 48, 35], [102, 48, 10], [82, 48, 10], [82, 6, 10], [43, 6, 10], [43, 1.5, 10]],
+             [[102, 69, 35], [102, 48, 35], [92.5, 48, 35], [92.5, 48, 10], [82, 48, 10], [82, 6, 10], [43, 6, 10], [43, 1.5, 10]],
              nz('30MAB10', 'hrh_in'), insulation_mm=250, arrows=15),
         pipe('10LBA10BR001', 'LP steam to the steam turbine', 'steam_lp', 600, nz('10HNA10', 'lp_steam'),
-             [[140, 61, 36], [140, 46, 36], [140, 46, 8], [84, 46, 8], [84, 8, 8], [38, 8, 8], [38, 0, 8]],
+             [[140, 61, 36], [140, 45, 36], [140, 45, 8], [84, 45, 8], [84, 8, 8], [38, 8, 8], [38, 0, 8]],
              nz('30MAB10', 'lp_in'), insulation_mm=120, arrows=15),
         pipe('10LAB10BR001', 'Feedwater pump A suction from the LP drum', 'feedwater', 300,
              nz('10HAD10BB001', 'water_out'),
@@ -514,10 +517,10 @@ def hrsg1():
              valves=[valve('10LAE30AA001', 'valve_control', 0.7, 'HP superheater spray control valve', dn=80,
                            rating='pn250', actuator='pneumatic')]),
         pipe('10LCQ10BR001', 'HP drum blowdown', 'boiler_water', 80, nz('10HAD30BB001', 'blowdown'),
-             [[100.5, 65, 32.6], [100.5, 52.5, 32.6], [100.5, 52.5, 3.6], [100.5, 46, 3.6], [152, 46, 3.6]],
+             [[100.5, 65, 32.6], [100.5, 52.5, 32.6], [100.5, 52.5, 3.6], [104, 52.5, 3.6], [104, 46, 3.6], [152, 46, 3.6]],
              nz('10LCQ10BB001', 'inlet')),
         pipe('10HAN30BR401', 'HP superheater drains', 'boiler_water', 50, nz('10HNA10', 'sh_drain'),
-             [[99, 48, 1.5], [99, 48, 3.6]], jn('10LCQ10BR001', [100.5, 48, 3.6]),
+             [[99, 52.5, 1.5], [99, 52.5, 3.6]], jn('10LCQ10BR001', [100.5, 52.5, 3.6]),
              valves=[valve(f'10HAN30AA40{k}', 'valve_globe', 0.1 + 0.15 * k, f'HP superheater drain valve {k}', dn=50,
                            rating='pn160', actuator='electric') for k in (1, 2, 3, 4)]),
         pipe('10HAN30BR001', 'HP start-up vent', 'steam_hp', 150, jn('10LBA30BR001', [98, 55, 33]), [[98, 55, 30.8]],

@@ -1,0 +1,33 @@
+# Walkdown Plant's Flatpak (decision 0054: the sibling ID io.github._5wHN28Dg.WalkdownPlant, the user's choice of
+# 2026-10-16) on Godot's own base app, which brings the engine (godot-runner, Godot 4.7.2); the app is its .pck.
+#   apps/plant3d/flatpak/build.sh BUILD_DIR      builds it (the .pck from build.sh release first), installs nothing
+# No network permission: the plant app has none on any platform (0054).
+app-id: io.github._5wHN28Dg.WalkdownPlant
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.godotengine.godot.BaseApp
+base-version: '4.7'
+command: godot-runner
+finish-args:
+  - --share=ipc
+  - --socket=x11               # Godot's default display driver (Wayland is opt-in in 4.7)
+  - --socket=pulseaudio
+  - --device=all               # the GPU, and gamepads
+modules:
+  - name: walkdown-plant
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 walkdown-plant.pck ${FLATPAK_DEST}/bin/godot-runner.pck
+      - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 icon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+    sources:
+      - type: file
+        path: ../export/linux/walkdown-plant.pck
+      - type: file
+        path: io.github._5wHN28Dg.WalkdownPlant.desktop
+      - type: file
+        path: io.github._5wHN28Dg.WalkdownPlant.metainfo.xml
+      - type: file
+        path: ../icon.svg

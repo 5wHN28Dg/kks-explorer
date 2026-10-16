@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github._5wHN28Dg.WalkdownPlant</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <name>Walkdown Plant</name>
+  <summary>Walk through a generic combined-cycle power plant</summary>
+  <description>
+    <p>
+      Walkdown Plant is an invented combined-cycle power plant to walk through and learn from: every piece of
+      equipment carries its KKS code, and stairs, platforms, ladders and doors take you where an operator goes.
+      Fly over it or look at it from above on the overview map.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github._5wHN28Dg.WalkdownPlant.desktop</launchable>
+  <url type="homepage">https://github.com/5wHN28Dg/kks-explorer</url>
+  <developer id="io.github.walkdown">
+    <name>Walkdown contributors</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>gamepad</control>
+    <control>touch</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-10-16">
+      <description><p>The app's frame: the first train's plant to walk through (stairs, platforms, ladders, doors), free flight, the overview map, touch, keyboard, mouse and gamepad controls; equipment shown as placeholders for now.</p></description>
+    </release>
+  </releases>
+</component>

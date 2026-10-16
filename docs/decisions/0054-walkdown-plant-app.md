@@ -73,7 +73,7 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    new `plant` target, which needs course format version 2 (COURSES.md is frozen at 1). Both are follow-up work in
    Walkdown, each with its own tests.
 4. **Description → pre-built scenes.** The content passes `ref/plant3d.py` (strict JSON), then a headless Godot
-   script (`godot --headless --script apps/plant3d/build/build.gd`) makes one scene per area from the kit (instanced
+   script (`godot --headless --script apps/plant3d/builder/build_plant.gd`; the folder is `builder/` because the repository ignores every `build/`) makes one scene per area from the kit (instanced
    per part, LOD, material and 12 m cell: 0041) and the compiled model, saved as binary resources that the export
    packs. The app does no geometry generation at startup (0041: building by script took 20–28 s of the Note 9's
    first frame; the pre-built bench plant is 327 KB). Shaders: the shader baker at export (Vulkan from Linux, D3D12
@@ -122,6 +122,12 @@ same repository would stop every phone's Walkdown updates. [V] the code.
     - **Frames:** the scripted walking path of the measurement rules writes a frame log on the devices (as the
       bench); measured by hand on the Note 9, the Honor 600 and the laptop per release, against the wiki's rules
       and the 1.2× regression rule. Not on CI (no GPU).
+    - **First frames of the app (2026-10-16)**: the app's skeleton (placeholder equipment, the real loader, the
+      walker on its own controls along `apps/plant3d/app/routes.gd` `frames`), Note 9, release build with baked
+      shaders, `lean+vis` chosen by the app itself, 10 minutes plugged in: 99.84 % of frames shown at 30 fps or
+      better (SurfaceFlinger; 0.16 % held for three refreshes or more), no frame over 100 ms after the start,
+      GPU median 17.0 ms, peak PSS 620 MB, 7.6 s from launch to the first drawn frame on a first start. The
+      game loop's own count (21.8 % "longer") errs high, as in 0041. To repeat with the parts kit.
     - **Model cost:** the time of one 0.1 s model step with the whole first train's model, on the Note 9 (fast-forward
       at 60× runs 600 steps a second); the fast-forward cap is set from it.
     - Test runner: a small SceneTree script of our own that runs test functions and exits non-zero (no GUT or

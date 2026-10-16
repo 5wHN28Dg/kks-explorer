@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Walkdown Plant
+Comment=Walk through and operate a generic combined-cycle power plant
+Exec=godot-runner
+Icon=io.github._5wHN28Dg.WalkdownPlant
+Terminal=false
+Categories=Education;Science;Engineering;
+Keywords=KKS;plant;power;training;3D;
+StartupNotify=true
