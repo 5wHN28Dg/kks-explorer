@@ -144,13 +144,16 @@ static func breaker(_part: String, g) -> void:
 		win = Vector3(0.0, 0.75, 1.5)
 		g.plate("side", Vector3(0.0, 0.752, 2.0), Vector3(0, 1, 0), "large")
 		g.solid_box(Vector3(-0.4, -0.75, 0), Vector3(0.4, 0.75, 2.3))
-	# the window and the flag behind it
+	# the position indicator: an open-fronted housing on the cabinet's face, the flag in it (in front of the face)
 	var out := Vector3(1, 0, 0) if gcb else Vector3(0, 1, 0)
-	m.use("glass", "identify")
-	m.box(win + out * 0.002, (Vector3(0.004, 0.004, 0.004) + (Vector3(0, 1, 1) if gcb else Vector3(1, 0, 1)) * 0.16))
-	# turning by +PI/2 brings the top (green) face round to the window
-	var flag = g.move("contacts", win - out * 0.06, Vector3(0, 1, 0) if gcb else Vector3(-1, 0, 0), "rotate", PI * 0.5)
-	var c := win - out * 0.06
+	var across := Vector3(0, 1, 0) if gcb else Vector3(1, 0, 0)
+	m.use("paint_darkgrey", "identify")
+	for k: float in [-1.0, 1.0]:
+		m.box(win + out * 0.06 + Vector3(0, 0, 0.09 * k), (out * 0.12).abs() + across * 0.2 + Vector3(0, 0, 0.02))
+		m.box(win + out * 0.06 + across * (0.09 * k), (out * 0.12).abs() + across * 0.02 + Vector3(0, 0, 0.2))
+	# turning by +PI/2 brings the top (red) face round to the front
+	var c := win + out * 0.06
+	var flag = g.move("contacts", c, Vector3(0, 1, 0) if gcb else Vector3(-1, 0, 0), "rotate", PI * 0.5)
 	flag.use("paint_green", "identify")   # open (0): green
 	flag.box(c + out * 0.05, (out * 0.01).abs() + (Vector3(0, 0.12, 0.12) if gcb else Vector3(0.12, 0, 0.12)))
 	flag.use("paint_red", "identify")     # closed (1): red, on the face that turns to the window
@@ -218,6 +221,7 @@ static func junction_box(_part: String, g) -> void:
 	for i in 4:
 		m.cyl(Vector3(-0.15 + i * 0.1, 0.02, 0.8), Vector3(-0.15 + i * 0.1, 0.02, 0.76), 0.015, -1.0, 6)
 	g.plate("front", Vector3(0, 0.096, 1.15), Vector3(0, 1, 0), "small")
+	g.solid_box(Vector3(-0.2, -0.11, 0), Vector3(0.2, 0.1, 1.2))
 
 ## A ladder-type cable tray along its route, on posts where it runs low and on hangers otherwise.
 static func cable_tray(_part: String, g) -> void:
@@ -232,14 +236,17 @@ static func cable_tray(_part: String, g) -> void:
 			continue
 		var d := (b - a) / dl
 		var side := d.cross(Vector3(0, 0, 1)).normalized() if absf(d.z) < 0.9 else Vector3(1, 0, 0)
+		var up := side.cross(d).normalized()
+		var bs := Basis(side, d, up)
 		m.use("galvanised", "form")
-		for s: float in [-1.0, 1.0]:
-			m.box((a + b) * 0.5 + side * (w * 0.5 * s), Vector3(0.0, 0.0, 0.0) + (side * 0.01).abs() + (d * dl).abs() + Vector3(0, 0, 0.1))
+		for sg: float in [-1.0, 1.0]:
+			m.box((a + b) * 0.5 + side * (w * 0.5 * sg), Vector3(0.01, dl, 0.1), bs)
+		g.solid_obox((a + b) * 0.5, Vector3(w, dl, 0.1), bs)
 		m.use("galvanised", "detail", 0.03)
-		var k := int(dl / 0.3)
+		var k := clampi(int(dl / 0.3), 1, 80)   # rungs every 0.3 m, wider apart on a long run (the budget)
 		for j in k:
 			var p := a + d * (dl * (j + 0.5) / k)
-			m.box(p - Vector3(0, 0, 0.04), (side * w).abs() + (d * 0.025).abs() + Vector3(0, 0, 0.012))
+			m.box(p - up * 0.04, Vector3(w, 0.025, 0.012), bs)
 		m.use("galvanised", "form")
 		var np := int(dl / 3.0)
 		for j in np + 1:

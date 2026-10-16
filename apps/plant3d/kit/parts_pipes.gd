@@ -120,7 +120,10 @@ static func pipe(m, pts: Array, p: Dictionary, origin: Vector3) -> void:
 					m.ring(pb, d, r, rr, n)
 			else:
 				m.use(body, "form")
-				m.cyl(pa, pb, rr, -1.0, n, false)
+				# in pieces of at most 6 m, so the builder can give each its cell (decision 0041)
+				var np := maxi(1, int(ceil(pa.distance_to(pb) / 6.0)))
+				for q in np:
+					m.cyl(pa.lerp(pb, float(q) / np), pa.lerp(pb, float(q + 1) / np), rr, -1.0, n, false)
 				bands.append([pa, pb, d, run.s0 + c[0]])
 	# the cladding's end rings at the route's ends
 	if ins > 0.0 and local.size() >= 2:
@@ -192,11 +195,13 @@ static func _support(m, at: Vector3, z_to: float, r: float, kind: String, dir: V
 	var bottom := at.z - r
 	m.use("steel", "form")
 	var sw := clampf(r * 1.2, 0.12, 0.6)
-	m.box(Vector3(at.x, at.y, bottom - 0.05), (dir * clampf(r * 2.0, 0.2, 0.8)).abs() + (side * sw).abs() + Vector3(0, 0, 0.1))
+	var fl := Vector3(dir.x, dir.y, 0).normalized() if Vector2(dir.x, dir.y).length() > 0.01 else Vector3(0, 1, 0)
+	var bs := Basis(side, fl, Vector3(0, 0, 1))
+	m.box(Vector3(at.x, at.y, bottom - 0.05), Vector3(sw, clampf(r * 2.0, 0.2, 0.8), 0.1), bs)
 	if kind == "guide":
 		m.use("steel", "detail", 0.05)
 		for s: float in [-1.0, 1.0]:
-			m.box(Vector3(at.x, at.y, bottom - 0.05) + side * (sw * 0.5 + 0.03) * s, (dir * 0.2).abs() + (side * 0.04).abs() + Vector3(0, 0, 0.12))
+			m.box(Vector3(at.x, at.y, bottom - 0.05) + side * (sw * 0.5 + 0.03) * s, Vector3(0.04, 0.2, 0.12), bs)
 	var h := bottom - 0.1 - z_to
 	if h > 0.05:
 		m.use("galvanised", "form")
@@ -206,10 +211,10 @@ static func _support(m, at: Vector3, z_to: float, r: float, kind: String, dir: V
 		if h > 8.0:   # a tall trestle: a second leg and its bracing
 			var o := side * 1.2
 			m.box(Vector3(at.x, at.y, z_to + h * 0.5) + o, Vector3(pw, pw, h))
-			m.box(Vector3(at.x, at.y, bottom - 0.25) + o * 0.5, (side * 1.4).abs() + (dir * pw).abs() + Vector3(0, 0, 0.2))
+			m.box(Vector3(at.x, at.y, bottom - 0.25) + o * 0.5, Vector3(1.4, pw, 0.2), bs)
 			var z := z_to + 3.0
 			while z < bottom - 2.0:
-				m.box(Vector3(at.x, at.y, z) + o * 0.5, (side * 1.2).abs() + (dir * 0.1).abs() + Vector3(0, 0, 0.12))
+				m.box(Vector3(at.x, at.y, z) + o * 0.5, Vector3(1.2, 0.1, 0.12), bs)
 				z += 3.0
 
 ## A pipe bridge: two legs beside the walkway, a beam under the pipe between them, the shoe on the beam.
@@ -226,7 +231,8 @@ static func _bridge(m, at: Vector3, r: float, legs: Array, dir: Vector3) -> void
 	m.cyl(Vector3(a.x, a.y, bz), Vector3(c.x, c.y, bz), 0.12, -1.0, 4)
 	m.use("steel", "form")
 	var side := dir.cross(Vector3(0, 0, 1)).normalized()
-	m.box(Vector3(at.x, at.y, bz + 0.1), (dir * clampf(r * 2.0, 0.2, 0.8)).abs() + (side * clampf(r * 1.2, 0.12, 0.6)).abs() + Vector3(0, 0, 0.08))
+	var fl := Vector3(dir.x, dir.y, 0).normalized() if Vector2(dir.x, dir.y).length() > 0.01 else Vector3(0, 1, 0)
+	m.box(Vector3(at.x, at.y, bz + 0.1), Vector3(clampf(r * 1.2, 0.12, 0.6), clampf(r * 2.0, 0.2, 0.8), 0.08), Basis(side, fl, Vector3(0, 0, 1)))
 
 # ------------------------------------------------------------------ the standalone pipe parts
 

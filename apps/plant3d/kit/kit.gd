@@ -60,7 +60,7 @@ const BUDGET := {
 	"level_transmitter": 1500, "flow_element": 2500, "position_switch": 400, "vibration_probe": 400,
 	"speed_probe": 400, "flame_detector": 500, "local_panel": 1500, "push_button_station": 800,
 	"transformer": 25000, "breaker": 6000, "switchgear_row": 8000, "cabinet": 1500, "junction_box": 400,
-	"cable_tray": 2000, "elbow": 3000, "tee": 2000, "reducer": 1000, "flange": 1500, "pipe_support": 400,
+	"cable_tray": 6000, "elbow": 3000, "tee": 2000, "reducer": 1000, "flange": 1500, "pipe_support": 400,
 	"tag_plate": 60, "sign": 60, "lamp": 300, "beacon": 400, "horn": 300, "emergency_stop": 400,
 	"safety_shower": 1500,
 }
@@ -74,6 +74,7 @@ class Gen:
 	var solids: Array = []
 	var axis_line: Array = [Vector3.ZERO, Vector3(0, 0, 1)]
 	var dn_table: Array = []
+	var seg_scale := 1.0
 
 	func _init(params: Dictionary, context: Dictionary, MBs) -> void:
 		p = params
@@ -103,7 +104,9 @@ class Gen:
 	##   kind "scale": the node's mesh is scaled along axis from pivot (travel 1: value 0 -> 0, 1 -> full)
 	func move(name: String, pivot: Vector3, axis: Vector3, kind: String, travel: float):
 		if not moving.has(name):
-			moving[name] = {"pivot": pivot, "axis": axis.normalized(), "kind": kind, "travel": travel, "mb": _mb_script.new()}
+			var mb = _mb_script.new()
+			mb.seg_scale = seg_scale
+			moving[name] = {"pivot": pivot, "axis": axis.normalized(), "kind": kind, "travel": travel, "mb": mb}
 		return moving[name].mb
 
 	func plate(name: String, at: Vector3, normal: Vector3, kind := "large") -> void:
@@ -111,6 +114,10 @@ class Gen:
 
 	func solid_box(lo: Vector3, hi: Vector3) -> void:
 		solids.append({"kind": "box", "lo": lo, "hi": hi})
+
+	## A box turned by basis bs (part frame), centre c, size s along the basis' axes.
+	func solid_obox(c: Vector3, s: Vector3, bs: Basis) -> void:
+		solids.append({"kind": "obox", "c": c, "size": s, "basis": bs})
 
 	func solid_cyl(a: Vector3, b: Vector3, r: float) -> void:
 		solids.append({"kind": "cyl", "a": a, "b": b, "r": r})
@@ -181,6 +188,7 @@ static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0) 
 	c["nozzles"] = kit_json().get("parts", {}).get(part, {}).get("nozzles", {})
 	var g := Gen.new(params, c, MB)
 	g.m.seg_scale = seg_scale
+	g.seg_scale = seg_scale
 	var s = _script(part)
 	if s == null:
 		return {}
@@ -189,7 +197,6 @@ static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0) 
 		"axis": [_gv(g.axis_line[0]), _gv(g.axis_line[1])]}
 	for n in g.moving:
 		var mv: Dictionary = g.moving[n]
-		mv.mb.seg_scale = seg_scale
 		res.moving.append({"name": n, "pivot": _gv(mv.pivot), "axis": _gv(mv.axis).normalized(), "kind": mv.kind,
 			"travel": mv.travel, "layers": _meshes(mv.mb.finish(), _gv(mv.pivot))})
 	for n in g.plates:

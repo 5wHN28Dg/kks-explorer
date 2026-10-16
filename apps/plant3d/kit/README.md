@@ -37,8 +37,8 @@ Each area's scene (`built/areas/<area>.scn`) holds:
   - `plate`: the tag plate's code, a `Label3D` on the plate (the plate itself is instanced with the static pieces);
   - `label`: the floating label over the part (code and name, as before the kit);
   - its collision shapes (small parts on pipes and machines are not solid).
-  Parts on pipes and parts fixed to equipment (`parts` in the content) are nodes of their own, named by their codes,
-  in the same `equipment` node.
+  Parts fixed to equipment (`parts` in the content) are nodes of their own, named by their codes, in the same
+  `equipment` node; parts on pipes (valves, instruments) are such nodes in the `pipes` node.
 - `pipes/<KKS>`: one `StaticBody3D` per pipe, in the group `pipes`, meta `medium`, with its collision; its meshes
   are with the static pieces.
 - `kit`: the static pieces, instanced (`MultiMeshInstance3D`, group `kit_cells`, decision 0041): per 12 m cell (6 m
@@ -81,7 +81,7 @@ Every piece is `form`, `identify` or `detail`. Form and identify pieces are draw
 form pieces get LODs, identify pieces none (a simplifier measures shape, not colour); detail pieces (bolts, fins, stiffeners, seams, small brackets) are grouped by size
 (a factor of 2) and drawn while they cover the tier's `detail_min_px` (`app/quality.gd`: 1.5 px on laptops, 3 px on
 phones): `d = size × f / min_px` plus half the diagonal of their cell's box (Godot measures a range to the box's
-centre), with a fade. Tag plates and their codes are identify; the code's text is drawn while a character covers
+centre), without a fade (a fading instance takes a transparent pipeline, compiled the first time anything fades). Tag plates and their codes are identify; the code's text is drawn while a character covers
 8 px (`legible`), the plate always. Detail pieces cast no shadow.
 
 ## Materials and textures
@@ -102,7 +102,8 @@ colours in a cell are one draw call:
 `~/.cache/walkdown-plant/textures`, checks each against its SHA-256 before unpacking, and lays out the three tiers in
 `kit/tex/2048`, `1024` and `512` (the same files, imported at three sizes, VRAM-compressed with mipmaps). The built
 materials name the 1024 px textures; `app/quality.gd` switches them to the tier's size: 2048 px for `full`, 1024 px
-for `lean+vis`. The Android export leaves the 2048 px set out (and carries only ETC2: checked in the release APK,
+for `lean+vis`. The 512 px set is imported but no tier uses it yet (kept for a heavier plant, 0054), so no export
+carries it; the Android export leaves the 2048 px set out too (and carries only ETC2: checked in the release APK,
 2026-10-16).
 
 ## Context (what the builder tells a part)
@@ -135,7 +136,9 @@ nothing to stand on is reported by the build as a warning.
 
 The most triangles one instance of a part may have at full detail (LOD 0), with any parameters the kit allows
 (`BUDGET` in `kit.gd`; `tests/test_kit.gd` checks each part with its defaults, every parameter set the first train
-uses, each number parameter at its minimum and maximum and every enum value). LODs are made by Godot's own
+uses, each number parameter at its minimum and maximum, every number parameter at its maximum at once with every
+enum and flag value, and a 300 m route for the parts along a path). Not covered: what the builder's context adds
+(couplings, nozzle stubs), and pipes, which have no budget of their own (a pipe's triangles grow with its route). LODs are made by Godot's own
 simplifier (as for imported models, decision 0041), each no larger than the one before.
 
 | Part | Budget | Most made (tests) |
@@ -145,30 +148,30 @@ simplifier (as for imported models, decision 0041), each no larger than the one 
 | steam_turbine | 30,000 | 8,038 |
 | sfc | 4,000 | 1,116 |
 | turning_gear | 4,000 | 852 |
-| hrsg | 20,000 | 3,896 |
+| hrsg | 20,000 | 4,064 |
 | hrsg_module | 1,500 | 228 |
-| drum | 8,000 | 7,824 |
-| stack | 18,000 | 15,684 |
-| duct | 4,000 | 252 |
+| drum | 9,000 | 8,316 |
+| stack | 26,000 | 25,136 |
+| duct | 4,000 | 1,296 |
 | silencer | 3,000 | 1,044 |
-| filter_house | 8,000 | 3,792 |
-| pump_horizontal | 9,000 | 4,820 |
-| pump_vertical | 9,000 | 5,604 |
-| fan_axial | 6,000 | 1,424 |
+| filter_house | 8,000 | 3,936 |
+| pump_horizontal | 9,000 | 6,952 |
+| pump_vertical | 11,000 | 10,036 |
+| fan_axial | 6,000 | 1,472 |
 | compressor_skid | 8,000 | 1,456 |
-| vacuum_pump_skid | 8,000 | 2,850 |
+| vacuum_pump_skid | 8,000 | 3,114 |
 | condenser | 12,000 | 4,656 |
 | shell_tube_hx | 6,000 | 5,080 |
 | plate_hx | 4,000 | 1,992 |
-| cooling_tower | 40,000 | 25,376 |
-| package_boiler | 8,000 | 2,916 |
+| cooling_tower | 40,000 | 31,232 |
+| package_boiler | 8,000 | 3,096 |
 | basin | 1,000 | 72 |
-| tank_vertical | 8,000 | 7,856 |
-| vessel_horizontal | 6,000 | 2,764 |
-| valve_gate | 5,000 | 4,452 |
-| valve_globe | 5,000 | 4,472 |
-| valve_butterfly | 4,000 | 2,064 |
-| valve_ball | 4,000 | 3,760 |
+| tank_vertical | 9,000 | 8,680 |
+| vessel_horizontal | 6,000 | 2,812 |
+| valve_gate | 5,000 | 4,712 |
+| valve_globe | 5,000 | 4,732 |
+| valve_butterfly | 4,000 | 2,104 |
+| valve_ball | 4,000 | 3,800 |
 | valve_check | 4,700 | 4,092 |
 | valve_control | 5,800 | 5,077 |
 | valve_safety | 4,600 | 4,038 |
@@ -186,12 +189,12 @@ simplifier (as for imported models, decision 0041), each no larger than the one 
 | flame_detector | 500 | 120 |
 | local_panel | 1,500 | 312 |
 | push_button_station | 800 | 292 |
-| transformer | 25,000 | 13,436 |
-| breaker | 6,000 | 2,520 |
+| transformer | 25,000 | 17,100 |
+| breaker | 6,000 | 2,556 |
 | switchgear_row | 8,000 | 5,556 |
 | cabinet | 1,500 | 924 |
 | junction_box | 400 | 120 |
-| cable_tray | 2,000 | 1,368 |
+| cable_tray | 6,000 | 3,900 |
 | motor | 5,000 | 1,220 |
 | elbow | 3,000 | 2,560 |
 | tee | 2,000 | 384 |
@@ -206,7 +209,8 @@ simplifier (as for imported models, decision 0041), each no larger than the one 
 | emergency_stop | 400 | 172 |
 | safety_shower | 1,500 | 296 |
 
-The first train (2026-10-16): 296,030 triangles at full detail in all, in 563 instanced or merged meshes; 176 pipe
+The first train (2026-10-16): 302,944 triangles at full detail in all, in 1,112 instanced or merged meshes (cells of
+12 m, 6 m for detail; pipes and large parts cut by cell); 176 pipe
 supports. The bench that decided the engine (0041) had 1.46 M triangles.
 
 ## Tables and their sources

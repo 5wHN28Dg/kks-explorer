@@ -54,7 +54,48 @@ func run(_tree: SceneTree) -> Array:
 	print("kit: worst triangles per part: ", ", ".join(report))
 	_states()
 	_frames()
+	_solids(kit)
+	_breaker()
 	return problems
+
+## Parts a trainee could walk into are solid (the GT's exhaust duct, a basin's walls, trays, every machine).
+func _solids(kit: Dictionary) -> void:
+	for part in kit.parts:
+		var g: String = kit.parts[part].group
+		if not Kit.has_part(part) or g in ["structures", "instruments", "cues", "pipes"] or part == "hrsg_module":
+			continue
+		var p := Kit.params_of(part, {})
+		_complete(part, kit.parts[part], p)
+		var res := Kit.make(part, p, {"pipe_od": 0.3})
+		check(not res.solids.is_empty(), "%s is solid (it has collision shapes)" % part)
+
+## The breaker's position flag is seen: a ray from its face out through the window meets nothing static.
+func _breaker() -> void:
+	for kind in ["gcb", "mv"]:
+		var res := Kit.make("breaker", Kit.params_of("breaker", {"kind": kind}), {})
+		var out := Vector3(1, 0, 0) if kind == "gcb" else Vector3(0, 0, -1)   # in Godot's axes
+		for mv in res.moving:
+			if mv.name != "contacts":
+				continue
+			var face := -INF
+			var centre := Vector3.ZERO
+			for k in mv.layers:
+				var bb: AABB = mv.layers[k].mesh.get_aabb()
+				bb.position += mv.pivot
+				var f: float = bb.end.dot(out) if out.x > 0.0 else -bb.position.z
+				if f > face:
+					face = f
+					centre = bb.get_center()
+			var from := centre - out * centre.dot(out) + out * (face + 0.001)
+			var hit := false
+			for k in res.layers:
+				var arr: Array = res.layers[k].mesh.surface_get_arrays(0)
+				var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+				var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+				for t in range(0, idx.size(), 3):
+					if Geometry3D.ray_intersects_triangle(from, out, v[idx[t]], v[idx[t + 1]], v[idx[t + 2]]) != null:
+						hit = true
+			check(not hit, "the %s breaker's position flag is seen through its window (nothing static in front of it)" % kind)
 
 ## As built (value 0) a quarter-turn valve is closed: its lever or indicator lies across the pipe (x), not along it.
 func _states() -> void:
@@ -156,6 +197,20 @@ func _limits(part: String, spec: Dictionary) -> Array:
 	var pm := Kit.params_of(part, all_max)
 	if not all_max.is_empty() and _complete(part, spec, pm):
 		out.append(pm)
+		# and with every enum value and both values of every flag
+		for k in spec.params:
+			var ps: Dictionary = spec.params[k]
+			var vals: Array = ps.values if ps.type == "enum" else ([true, false] if ps.type == "bool" else [])
+			for v in vals:
+				var q := pm.duplicate()
+				q[k] = v
+				out.append(q)
+	# a long route for parts along a path
+	for k in spec.params:
+		if spec.params[k].type == "path":
+			var q := Kit.params_of(part, {k: [[0, 0, 5], [100, 0, 5], [100, 100, 5], [200, 100, 8]]})
+			if _complete(part, spec, q):
+				out.append(q)
 	for k in spec.params:
 		var ps: Dictionary = spec.params[k]
 		match ps.type:

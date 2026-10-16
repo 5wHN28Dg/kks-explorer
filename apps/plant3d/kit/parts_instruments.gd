@@ -172,12 +172,13 @@ static func level_glass(_part: String, g) -> void:
 		m.cyl(out * 0.2 + Vector3(0, 0, z) + side * 0.03, out * 0.2 + Vector3(0, 0, z) + side * 0.08, 0.006, -1.0, 6)
 		m.use("steel", "identify")
 	# the frame and the glass
-	m.box(c, (side * 0.09).abs() + (out * 0.05).abs() + Vector3(0, 0, h + 0.1))
+	var bg := Basis(side, out, Vector3(0, 0, 1))
+	m.box(c, Vector3(0.09, 0.05, h + 0.1), bg)
 	m.use("glass", "identify")
-	m.box(c + out * 0.026, (side * 0.04).abs() + Vector3(0.002, 0.002, h))
+	m.box(c + out * 0.026, Vector3(0.04, 0.002, h), bg)
 	var lv = g.move("level", c + out * 0.028 - Vector3(0, 0, h * 0.5), Vector3(0, 0, 1), "scale", 1.0)
 	lv.use("water", "identify")
-	lv.box(c + out * 0.028, (side * 0.03).abs() + Vector3(0.002, 0.002, h))
+	lv.box(c + out * 0.031, Vector3(0.03, 0.002, h), bg)
 	g.plate("body", c + out * 0.03 + Vector3(0, 0, h * 0.5 + 0.12), out, "small")
 	g.axis_line = [Vector3.ZERO, c]
 

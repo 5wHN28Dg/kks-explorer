@@ -46,6 +46,7 @@ func _init(builder) -> void:
 
 ## The nozzles pipes end on, the shaft lines, and what each part stands under or over.
 func prepare() -> void:
+	Mat.colours.clear()
 	for m in b.plant.get("media", {}):
 		Mat.colours["medium_" + m] = Color.html(b.plant.media[m].band)
 	for a in b.areas:
@@ -234,11 +235,22 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 	var box := AABB()
 	var first := true
 	for k in res.layers:
-		var L: Dictionary = res.layers[k]
-		_cell(L, k, xf)
-		var bb: AABB = L.mesh.get_aabb()
+		var bb: AABB = res.layers[k].mesh.get_aabb()
 		box = bb if first else box.merge(bb)
 		first = false
+	if box.size.length() > 2.0 * CELL:
+		# a large part (an HRSG, a cooling tower) stands in many cells: its pieces go to the cell they lie in
+		var arrays := {}
+		for k in res.layers:
+			var L: Dictionary = res.layers[k]
+			arrays[k] = {"mat": L.mat, "cls": L.cls, "size": L.size, "arrays": _turned(L.mesh.surface_get_arrays(0), xf.basis)}
+		for piece in split_cells(arrays, xf.origin):
+			var layers := Kit._meshes(piece.layers, Vector3.ZERO)
+			for k in layers:
+				_cell(layers[k], k, Transform3D(Basis(), piece.origin))
+	else:
+		for k in res.layers:
+			_cell(res.layers[k], k, xf)
 	tris_total += res.tris
 	instances += 1
 	# moving pieces: nodes of their own (kit/README.md "Moving parts")
@@ -287,7 +299,14 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 	if top or box.size.length() > 1.0:
 		for s in res.solids:
 			var cs := CollisionShape3D.new()
-			if s.kind == "box":
+			if s.kind == "obox":
+				var bs := BoxShape3D.new()
+				bs.size = s.size
+				cs.shape = bs
+				var B: Basis = s.basis
+				# the shape's own axes are the basis' (in Godot's terms), its size along them
+				cs.transform = Transform3D(Basis(Kit._gv(B.x), Kit._gv(B.y), Kit._gv(B.z)), Kit._gv(s.c))
+			elif s.kind == "box":
 				var lo: Vector3 = Kit._gv(s.lo)
 				var hi: Vector3 = Kit._gv(s.hi)
 				var bs := BoxShape3D.new()
@@ -368,7 +387,7 @@ func _plate(node: Node3D, _xf: Transform3D, pl: Dictionary, kks: String) -> void
 	lab.set_meta("legible_size", ch)
 	lab.visibility_range_end = ch * 640.0 / 8.0
 	lab.visibility_range_end_margin = lab.visibility_range_end * 0.1
-	lab.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	lab.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	node.add_child(lab)
 
 var _plates := {}
@@ -444,6 +463,11 @@ func flush(root: Node3D) -> int:
 		_emit(kit, mesh, group[0].mat, "identify" if group.any(func(c): return c.cls == "identify") else group[0].cls, size, [Transform3D(Basis(), o)], n)
 		n += 1
 	var groups := merge.size()
+	var widest := 0.0
+	for c in kit.get_children():
+		if c.is_in_group("detail"):
+			widest = maxf(widest, float(c.get_meta("box_half")))
+	print("build: area %s: widest detail cell %.1f m (half diagonal)" % [root.name, widest])
 	print("build: area %s: %d draw meshes (%d cells' merged groups)" % [root.name, n, groups])
 	cells.clear()
 	cells_made += n
@@ -561,11 +585,88 @@ func pipe(parent: Node3D, p: Dictionary) -> void:
 	P_PIPE.pipe(m, route, {"od": od, "ins": ins, "band": "medium_" + p.medium, "arrows": float(p.get("arrows", 0)),
 		"buried": buried, "gaps": gaps, "flanges": flanges, "supports": sup,
 		"bend": {"3d": 3.0, "5d": 5.0}.get(p.get("bend", ""), 1.5)}, origin)
-	var layers := Kit._meshes(m.finish(), Vector3.ZERO)
-	var xf := Transform3D(Basis(), Geom.g([origin.x, origin.y, origin.z]))
+	# a pipe runs through many cells: its triangles go to the cell they lie in (0041's grouping, culling and LOD per
+	# cell, a detail range measured from its own cell)
+	var o := Geom.g([origin.x, origin.y, origin.z])
+	for piece in split_cells(m.finish(), o):
+		var layers := Kit._meshes(piece.layers, Vector3.ZERO)
+		var xf := Transform3D(Basis(), piece.origin)
+		for k in layers:
+			_cell(layers[k], k, xf)
+			tris_total += layers[k].tris[0]
+
+## Mesh arrays turned by a basis (positions, normals, tangents).
+static func _turned(arr: Array, bs: Basis) -> Array:
+	var out := arr.duplicate()
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX].duplicate()
+	for i in v.size():
+		v[i] = bs * v[i]
+	out[Mesh.ARRAY_VERTEX] = v
+	if arr[Mesh.ARRAY_NORMAL] != null:
+		var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL].duplicate()
+		for i in n.size():
+			n[i] = (bs * n[i]).normalized()
+		out[Mesh.ARRAY_NORMAL] = n
+	if arr[Mesh.ARRAY_TANGENT] != null:
+		var t: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT].duplicate()
+		for i in range(0, t.size(), 4):
+			var q := (bs * Vector3(t[i], t[i + 1], t[i + 2])).normalized()
+			t[i] = q.x; t[i + 1] = q.y; t[i + 2] = q.z
+		out[Mesh.ARRAY_TANGENT] = t
+	return out
+
+## Mesh layers (finished arrays, around origin o in Godot's axes) cut by 12 m cell (6 m for detail) of each
+## triangle's centre: [{origin, layers}], each piece's vertices around its cell's corner.
+static func split_cells(layers: Dictionary, o: Vector3) -> Array:
+	var by_cell := {}
 	for k in layers:
-		_cell(layers[k], k, xf)
-		tris_total += layers[k].tris[0]
+		var L: Dictionary = layers[k]
+		var arr: Array = L.arrays
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		var size := SMALL_CELL if L.cls == "detail" else CELL
+		var tris := {}
+		for t in range(0, idx.size(), 3):
+			var c := (v[idx[t]] + v[idx[t + 1]] + v[idx[t + 2]]) / 3.0 + o
+			var cell := Vector2i(int(floor(c.x / size)), int(floor(c.z / size)))
+			if not tris.has(cell):
+				tris[cell] = PackedInt32Array()
+			tris[cell].append_array([idx[t], idx[t + 1], idx[t + 2]])
+		for cell in tris:
+			var corner := Vector3(cell.x * size, o.y, cell.y * size)
+			var remap := {}
+			var out := []
+			out.resize(Mesh.ARRAY_MAX)
+			var nv := PackedVector3Array()
+			var ni := PackedInt32Array()
+			var chans := {}
+			for ch in [Mesh.ARRAY_NORMAL, Mesh.ARRAY_TANGENT, Mesh.ARRAY_TEX_UV, Mesh.ARRAY_COLOR]:
+				if arr[ch] != null:
+					chans[ch] = []
+			for i in tris[cell]:
+				if not remap.has(i):
+					remap[i] = nv.size()
+					nv.append(v[i] + o - corner)
+					for ch in chans:
+						if ch == Mesh.ARRAY_TANGENT:
+							for q in 4:
+								chans[ch].append(arr[ch][i * 4 + q])
+						else:
+							chans[ch].append(arr[ch][i])
+				ni.append(remap[i])
+			out[Mesh.ARRAY_VERTEX] = nv
+			out[Mesh.ARRAY_INDEX] = ni
+			for ch in chans:
+				match ch:
+					Mesh.ARRAY_NORMAL: out[ch] = PackedVector3Array(chans[ch])
+					Mesh.ARRAY_TANGENT: out[ch] = PackedFloat32Array(chans[ch])
+					Mesh.ARRAY_TEX_UV: out[ch] = PackedVector2Array(chans[ch])
+					Mesh.ARRAY_COLOR: out[ch] = PackedColorArray(chans[ch])
+			var key := "%d|%d" % [cell.x, cell.y] if L.cls != "detail" else "d%d|%d" % [cell.x, cell.y]
+			if not by_cell.has(key):
+				by_cell[key] = {"origin": corner, "layers": {}}
+			by_cell[key].layers[k] = {"mat": L.mat, "cls": L.cls, "size": L.size, "arrays": out, "tris": ni.size() / 3}
+	return by_cell.values()
 
 ## Supports at the span table's spacing along every horizontal run above ground, on the highest walkable surface,
 ## rack tier or the ground below (within MAX_POST), or hung from a roof or deck above (within 6 m).

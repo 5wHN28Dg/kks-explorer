@@ -219,7 +219,7 @@ static func stack(_part: String, g) -> void:
 		for i in 8:   # the brackets under it
 			var a := TAU * i / 8.0
 			var dir := Vector3(cos(a), sin(a), 0)
-			m.box(dir * (r + 0.6) + Vector3(0, 0, pz - 0.3), (dir * 1.2).abs() + Vector3(0.08, 0.08, 0.5) - (dir * 0.0).abs())
+			m.box(dir * (r + 0.6) + Vector3(0, 0, pz - 0.3), Vector3(0.08, 1.2, 0.5), Basis(Vector3(0, 0, 1).cross(dir).normalized() * -1.0, dir, Vector3(0, 0, 1)))
 		m.use("steel_dark", "detail", 0.1)
 		for i in 3:   # sampling ports
 			var a := TAU * i / 3.0 + 0.4
@@ -263,6 +263,7 @@ static func duct(_part: String, g) -> void:
 		var bs := Basis(side, dir, up)
 		m.use("corrugated_casing", "identify")
 		m.box((a + b) * 0.5, Vector3(W, dl, H), bs)
+		g.solid_obox((a + b) * 0.5, Vector3(W, dl, H), bs)
 		m.use("paint_grey", "form")
 		var k := maxi(1, int(dl / 3.0))
 		for j in k + 1:   # stiffening frames
@@ -454,4 +455,8 @@ static func basin(_part: String, g) -> void:
 	# the water stands just above the ground round it (a cooling tower's basin is at grade)
 	m.box_lh(Vector3(-L * 0.5, -W * 0.5, D + 0.03), Vector3(L * 0.5, W * 0.5, D + 0.05))
 	g.plate("edge", Vector3(L * 0.5 + t + 0.01, 0, D + 0.1), Vector3(1, 0, 0), "large")
+	g.solid_box(Vector3(-L * 0.5 - t, W * 0.5, 0), Vector3(L * 0.5 + t, W * 0.5 + t, D + 0.25))
+	g.solid_box(Vector3(-L * 0.5 - t, -W * 0.5 - t, 0), Vector3(L * 0.5 + t, -W * 0.5, D + 0.25))
+	g.solid_box(Vector3(L * 0.5, -W * 0.5, 0), Vector3(L * 0.5 + t, W * 0.5, D + 0.25))
+	g.solid_box(Vector3(-L * 0.5 - t, -W * 0.5, 0), Vector3(-L * 0.5, W * 0.5, D + 0.25))
 	g.axis_line = [Vector3(-L * 0.5, 0, D), Vector3(L * 0.5, 0, D)]
