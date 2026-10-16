@@ -2,7 +2,8 @@
 ## (headless) gives every mesh that never moves a second UV set laid out by Godot's own unwrapper (xatlas), sized by
 ## a texel in metres, and marks its node static for LightmapGI; the bake itself needs a GPU and runs after the build
 ## (builder/bake/bake_plugin.gd, build.sh `bake`). Meshes that stand in a cell more than once stay instanced
-## (MultiMesh): LightmapGI does not bake MultiMeshes, they are lit by the bake's probes, as are the moving pieces.
+## (MultiMesh): LightmapGI does not bake MultiMeshes; they and the moving pieces take
+## the environment's sky light (see mark).
 extends RefCounted
 
 ## Metres per lightmap texel. The bake carries what the sun's real-time shadows don't: the sky's light and its
@@ -33,9 +34,12 @@ static func unwrap(arrays: Array, texel: float, lods: bool) -> Mesh:
 	m.lightmap_size_hint = hint
 	return m
 
-## A node whose mesh the bake lights (UV2 present) or, without UV2, one the probes light.
+## A node whose mesh the bake lights (UV2 present) or, without UV2, one lit by the sky's ambient light. Not by the
+## bake's probes: Godot gives a MultiMesh one probe sample for its whole 12 m cell, and in shade or inside a hall that
+## sample left a blue motor, a red handwheel or an actuator almost black (2026-10-16 captures); their colours tell a
+## trainee what they are (R9a).
 static func mark(gi: GeometryInstance3D, baked: bool) -> void:
-	gi.gi_mode = GeometryInstance3D.GI_MODE_STATIC if baked else GeometryInstance3D.GI_MODE_DYNAMIC
+	gi.gi_mode = GeometryInstance3D.GI_MODE_STATIC if baked else GeometryInstance3D.GI_MODE_DISABLED
 
 ## The arrays with every triangle again, facing the other way (normals and tangents turned): a wall seen from both
 ## sides, each side with its own lightmap texels.

@@ -67,7 +67,7 @@ func _ready() -> void:
 	if lm != null:
 		plant.add_child(lm)   # beside the areas: its users' paths are "../area_…" (app/lighting.gd)
 		for l in get_tree().get_nodes_in_group("baked_lights"):
-			l.queue_free()   # their light is in the lightmap and, for what moves, in its probes
+			l.queue_free()   # their light is in the lightmap
 		_say("lightmap: %d meshes baked" % lm.light_data.get_user_count())
 	else:
 		_say("lightmap: none in this build (the sky and the sun only)")

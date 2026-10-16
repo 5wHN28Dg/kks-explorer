@@ -83,7 +83,8 @@ Controls (R7):
   (Godot's unwrapper, a texel of 0.33 m, 0.5 m on the ground); the bake (Godot bakes only in its editor, on a GPU)
   lights them with the sky, the light the sun bounces, the halls' lamps and the sun's shadow beyond the real-time
   distance (shadowmask). The sun's direct light and sharp shadow stay real-time. Instanced and moving pieces take
-  their light from the bake's probes. Kept as RGBE9995 (no ASTC HDR on the Note 9). A build without the bake (CI)
+  the sky's ambient light, not the bake's probes (one probe per 12 m cell left a blue motor or a red
+  handwheel almost black in shade: a trainee must see their colours). Kept as RGBE9995 (no ASTC HDR on the Note 9). A build without the bake (CI)
   lights the plant by the sky and the sun alone.
 - **The sky** (`builder/sky.gd`): a CC0 photographed sky (Poly Haven) with its sun taken out; the sun becomes the
   DirectionalLight3D at the photograph's own sky-to-sun ratio. AgX tonemapping, a thin haze.

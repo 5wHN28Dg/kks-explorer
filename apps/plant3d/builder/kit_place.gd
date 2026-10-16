@@ -278,7 +278,7 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 			mi.name = "mesh" if mv.layers.size() == 1 else ("mesh_" + L.mat)
 			mi.mesh = L.mesh
 			mi.material_override = b._mat(L.mat)
-			Lightmap.mark(mi, false)   # it moves: lit by the bake's probes
+			Lightmap.mark(mi, false)   # it moves: the sky's light (builder/lightmap.gd mark)
 			if L.cls == "detail":
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				mi.add_to_group("detail", true)
@@ -445,7 +445,7 @@ func flush(root: Node3D) -> int:
 		var group: Array = merge[mk]
 		var cls: String = "identify" if group.any(func(c): return c.cls == "identify") else group[0].cls
 		if cls == "detail":
-			# detail pieces are small (bolts, fins): lit by the bake's probes, never given lightmap texels
+			# detail pieces are small (bolts, fins): the sky's light, never given lightmap texels
 			if group.size() == 1:
 				_emit(kit, group[0].mesh, group[0].mat, group[0].cls, group[0].size, group[0].xf, n)
 				n += 1

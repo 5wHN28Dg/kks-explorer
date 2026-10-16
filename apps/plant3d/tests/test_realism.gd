@@ -1,5 +1,5 @@
 ## The realism pass (decision 0057, R9, R9a) in the built plant:
-## - the static meshes carry lightmap UV2 and are marked for the bake; instanced and moving ones are left to its probes;
+## - the static meshes carry lightmap UV2 and are marked for the bake; instanced and moving ones take the sky's light (the probes lit them almost black: 0057);
 ## - the bake scene holds the ground and every area under names the app's plant node gives them, the sun and a
 ##   LightmapGI beside them (its users' paths hold in the app); an unbaked data file is not attached;
 ## - walls, roofs and fences have their back faces as geometry (each side its own lightmap texels);
@@ -23,7 +23,7 @@ func run(tree: SceneTree) -> Array:
 	if err != "":
 		plant.free()
 		return ["the built plant loads: " + err]
-	# lightmap UV2 on what stands still, probes for what is instanced or moves
+	# lightmap UV2 on what stands still, the sky's light for what is instanced or moves
 	var lit := 0
 	for n in tree.get_nodes_in_group("kit_static"):
 		var mi := n as MeshInstance3D
@@ -35,8 +35,8 @@ func run(tree: SceneTree) -> Array:
 	if lit < 300:
 		p.append("most of the kit's meshes are baked (%d)" % lit)
 	for n in tree.get_nodes_in_group("kit_cells"):
-		if (n as GeometryInstance3D).gi_mode != GeometryInstance3D.GI_MODE_DYNAMIC:
-			p.append("%s: an instanced cell is lit by the probes" % n.get_path())
+		if (n as GeometryInstance3D).gi_mode != GeometryInstance3D.GI_MODE_DISABLED:
+			p.append("%s: an instanced cell takes the sky's light, not the probes'" % n.get_path())
 	# the site
 	var ground := plant.get_node_or_null("ground")
 	for want in ["ground", "yard_0", "road", "verge", "kerbs", "drain", "drain_cover", "boundary_wall", "terrain"]:

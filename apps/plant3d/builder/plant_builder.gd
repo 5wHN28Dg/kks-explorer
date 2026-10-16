@@ -1018,7 +1018,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 ## High-bay lamps under a building's roof (a hall is lit by its lamps, not by the sky through its walls): a grid
 ## about 0.6 × the height apart (6 to 10 m), each a housing, a lit lens and a light the bake takes in whole
 ## (BAKE_STATIC: its light and shadow are in the lightmap; the app drops the light node once a bake is there, the
-## probes carry its light to what moves: app/main.gd).
+## pieces that move take the sky's light: app/main.gd).
 const LAMP_LUX := 2.0   # light energy of one lamp (Godot's units), set by eye against the outdoor exposure
 func _lamps(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
@@ -1107,7 +1107,7 @@ func _door(parent: Node3D, s: Dictionary) -> void:
 	mi.mesh = bm
 	mi.position.y = float(pr.height) * 0.5
 	mi.material_override = _mat("door")
-	Lightmap.mark(mi, false)   # it moves: lit by the bake's probes
+	Lightmap.mark(mi, false)   # it moves: the sky's light
 	door.add_child(mi)
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
