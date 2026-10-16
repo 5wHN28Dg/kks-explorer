@@ -243,9 +243,9 @@ class M:
         self.latch(f'{p}_lube_est', f'{p}_lp_norm', f'{p}_lube_off')
         self.NOT(f'{p}_lube_sup', f'{p}_lube_est')
         self.cmp(f'{p}_lp_low', lp, '<', low)
-        self.AND(f'{p}_dc_auto_c', [f'{p}_lube_est', f'{p}_lp_low', f'{p}_lac_cmd'])
+        self.AND(f'{p}_dc_auto_c', [f'{p}_lube_est', f'{p}_lp_low'])
         self.interlock(f'{p}_dc_auto', f'{p}_dc_auto_c', [{'set': {f'{p}_ldc_cmd': 1}}], dc,
-                       'Lube oil pressure low with the AC pump selected: the DC emergency pump starts')
+                       'Lube oil pressure low while the oil system is in service: the DC emergency pump starts')
         self.start_stop(ac, f'{p}_lac')
         self.start_stop(dc, f'{p}_ldc')
         for k in (1, 2, 3):

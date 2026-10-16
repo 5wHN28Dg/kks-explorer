@@ -257,12 +257,14 @@ class Validator(unittest.TestCase):
                     fits.append(n)
             self.assertTrue(fits, f'{s["id"]}: no step count keeps the rules')
 
-    def test_new_rejects_fail_on_the_old_rules(self):
-        """Name clashes across areas (§7.1) and scenario init rules: the reject vectors of these exist."""
+    def test_name_clash_and_scenario_init_rejects_are_present(self):
+        """Name clashes across areas (§7.1) and scenario init rules have reject vectors (each is checked above)."""
         whys = {r['why'] for r in self.V['reject']}
         for w in ('a value named like an earlier area\'s trip latch', 'a value named like an earlier area\'s machine '
                   'state', 'an ext value named like a trip latch', 'a scenario setting a latch to neither 0 nor 1',
-                  'a scenario setting a timer'):
+                  'a scenario setting a timer', 'a scenario setting an integrate outside its range',
+                  'a scenario setting a wrap outside [0, period)', 'an ext value named like a machine state',
+                  'a trip the scenario latches twice', 'an alarm priority that is not a whole number'):
             self.assertIn(w, whys)
 
 
@@ -298,8 +300,11 @@ class Engine(unittest.TestCase):
         self.assertIn([5, 'op', '10LAC10AP001', 'reset', 'done', []], ev)
         self.assertIn([6, 'trip', 'tb', True], ev)
         self.assertEqual(states[6]['first_out'], {'g': 'tb'})
-        # inputs naming an alarm or fault the model doesn't have do nothing and make no event
-        self.assertEqual([e for e in ev if e[0] == 8], [])
+        # inputs naming an alarm or fault the model doesn't have, and shelving for 0 s or less, do nothing and make no
+        # event; 0.25 s is round(2.5) = 3 steps, half away from zero (§7.1), so the shelf ends in step 11
+        self.assertEqual([e for e in ev if e[0] == 8], [[8, 'shelve', 'al', 0.25]])
+        self.assertIn([11, 'unshelve', 'al'], ev)
+        self.assertEqual(states[10]['shelved'], ['al'])
 
     def v(self, run, step, name):
         return self.runs[run][0][step]['values'][name]

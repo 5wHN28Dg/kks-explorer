@@ -56,6 +56,36 @@ def codes(areas):
     return out
 
 
+AIR = ('ia_ok', 'Instrument air below 4 bar: an air-operated valve can\'t move')
+
+
+def air_operated(areas):
+    """The codes of the pneumatic valves of the areas (the part's `actuator`, or its default)."""
+    parts = kit.kit()['parts']
+    out = set()
+    for a in areas:
+        items = list(a['equipment'])
+        for e in a['equipment']:
+            items += e.get('parts', [])
+        for p in a['pipes']:
+            items += p.get('valves', []) + p.get('parts', [])
+        for it in items:
+            spec = parts.get(it.get('part'), {}).get('params', {}).get('actuator')
+            if spec and it.get('params', {}).get('actuator', spec.get('default')) == 'pneumatic':
+                out.add(it['kks'])
+    return out
+
+
+def add_air_permissives(areas, models):
+    """FIRST-TRAIN §4 #1: a pneumatic valve refuses to move below 4 bar of instrument air: the ops that move one
+    (open, set, auto) need `ia_ok`."""
+    pneumatic = air_operated(areas)
+    for m in models:
+        for o in m.ops:
+            if o['kks'] in pneumatic and o['do'] in ('open', 'set', 'auto'):
+                o['needs'] = list(o.get('needs', [])) + [list(AIR)]
+
+
 def build():
     """{relative path: text} for everything under data/plant3d."""
     areas = train_areas.areas()
@@ -63,7 +93,9 @@ def build():
              'sounds.json': train_content.sounds()}
     for a in areas:
         files[f'areas/{a["id"]}.json'] = a
-    for m in train_model.models():
+    models = train_model.models()
+    add_air_permissives(areas, models)
+    for m in models:
         files[f'model/{m.area}.json'] = m.file()
     for s in train_content.scenarios():
         files[f'scenarios/{s["id"]}.json'] = s

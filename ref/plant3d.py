@@ -73,6 +73,11 @@ def flag(x, where):
     return x
 
 
+def steps(t):
+    """A time in seconds as a count of 0.1 s steps (§7.1): rounded half away from zero, never truncated."""
+    return math.floor(t / STEP + 0.5)
+
+
 def kks_parts(code):
     m = KKS_RE.fullmatch(code) if isinstance(code, str) else None
     return m.groups() if m else None
@@ -945,7 +950,7 @@ class Model:
         need(isinstance(m['id'], str) and ID_RE.fullmatch(m['id']) and len(m['id']) <= 26, 'bad_id',
              f'{w}: id of at most 26 characters')
         need(m['id'] not in {x['id'] for x in self.machines}, 'dup_id', w)
-        need(m['id'] + '_state' not in self.index and m['id'] + '_state' not in self.ext, 'dup_id', f'{w}: a value is named {m["id"]}_state')
+        need(m['id'] + '_state' not in self.index and m['id'] + '_state' not in self.ext, 'dup_id', f'{w}: a value or ext value is named {m["id"]}_state')
         self.kks_ref(m['kks'], w)
         ids = []
         for i, s in enumerate(lst(m['states'], f'{w}.states', 1, 64)):
@@ -983,7 +988,7 @@ class Model:
         need(isinstance(t['id'], str) and ID_RE.fullmatch(t['id']) and len(t['id']) <= 24, 'bad_id',
              f'{w}: id of at most 24 characters')
         need(t['id'] not in {x['id'] for x in self.trips}, 'dup_id', w)
-        need(t['id'] + '_latched' not in self.index and t['id'] + '_latched' not in self.ext, 'dup_id', f'{w}: a value is named {t["id"]}_latched')
+        need(t['id'] + '_latched' not in self.index and t['id'] + '_latched' not in self.ext, 'dup_id', f'{w}: a value or ext value is named {t["id"]}_latched')
         self.kks_ref(t['kks'], w)
         name_text(t['text'], w, 120)
         if 'isa' in t:
@@ -1044,7 +1049,7 @@ class Model:
             if k in a:
                 self.cond(a[k], f'{w}.{k}')
         time(a.get('delay', 0), f'{w}.delay')
-        need(a['priority'] in (1, 2, 3) and not isinstance(a['priority'], bool), 'bad_value', f'{w}.priority: 1–3')
+        need(type(a['priority']) is int and a['priority'] in (1, 2, 3), 'bad_value', f'{w}.priority: 1, 2 or 3')
         self.alarms.append(a)
 
     def check_bind(self, x, w):
@@ -1129,8 +1134,9 @@ def check_scenario(s, m, rel):
     for e in m.ext:
         need(e in s['init'], 'missing_key', f'{rel}.init: the scenario sets every ext value ({e})')
     trips = {t['id'] for t in m.trips}
-    for t in lst(s.get('latched', []), f'{rel}.latched'):
+    for i, t in enumerate(lst(s.get('latched', []), f'{rel}.latched')):
         need(t in trips, 'bad_ref', f'{rel}.latched: no trip {t!r}')
+        need(t not in s['latched'][:i], 'dup_id', f'{rel}.latched: {t} twice')
     seen = set()
     for i, f in enumerate(lst(s.get('faults', []), f'{rel}.faults', 0, 256)):
         w = f'{rel}: fault {f.get("id", i) if isinstance(f, dict) else i}'
@@ -1399,7 +1405,7 @@ class Engine:
             return lambda cur, prev: 0.0 if r(cur, prev) >= 0.5 else (1.0 if s(cur, prev) >= 0.5 else prev[i])
         if kind == 'delay':
             u = P(n['delay'])
-            n_on, n_off = round(n['on'] / STEP), round(n.get('off', 0) / STEP)
+            n_on, n_off = steps(n['on']), steps(n.get('off', 0))
             self.mem[i] = [0, 0]
             mem = self.mem[i]
             def g(cur, prev):
@@ -1531,7 +1537,9 @@ class Engine:
                     self.astate[a] = 'normal'
                     self.ev('alarm', a, 'normal')
             elif kind == 'shelve':
-                self.shelved[item[1]] = self.step_no + round(item[2] / STEP)
+                if not (is_num(item[2]) and item[2] > 0):
+                    continue    # a shelving time of 0 s or less does nothing (§7.6)
+                self.shelved[item[1]] = self.step_no + steps(item[2])
                 self.ev('shelve', item[1], item[2])
             elif kind == 'unshelve':
                 if self.shelved.pop(item[1], None) is not None:
@@ -1585,7 +1593,7 @@ class Engine:
                 self.trip_count[tid] += 1
             else:
                 self.trip_count[tid] = 0
-            if self.trip_count[tid] >= max(1, round(t.get('delay', 0) / STEP)):
+            if self.trip_count[tid] >= max(1, steps(t.get('delay', 0))):
                 self.latched[tid] = True
                 cur[self.ix[tid + '_latched']] = 1.0
                 g = t.get('first_out')
@@ -1608,7 +1616,7 @@ class Engine:
                 continue
             on = vals[self.ix[a['when']]] >= 0.5
             self.acount[aid] = self.acount[aid] + 1 if on else 0
-            active = self.acount[aid] >= max(1, round(a.get('delay', 0) / STEP))
+            active = self.acount[aid] >= max(1, steps(a.get('delay', 0)))
             clear = vals[self.ix[a['clear']]] >= 0.5 if 'clear' in a else not on
             s = self.astate[aid]
             new = s

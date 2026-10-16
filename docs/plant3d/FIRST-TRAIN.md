@@ -226,8 +226,9 @@ starts; the lube oil low-low trips and the condenser pressure high-high trip sta
 once their cause has cleared (the scenario's `latched`), so the trainee learns to read and reset trips before a
 start.
 
-The trainee works from the control room screens and in the field. About 40 minutes of play (fast-forward in the
-long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
+The trainee works from the control room screens and in the field. The plan was about 40 minutes of play
+(fast-forward in the long waits, PLANT3D.md §7.9) for about 4 hours of a real cold start; the first train as built
+is faster still ("Time" below).
 
 **As built (2026-10-16):**
 - **Time.** The cold start run by its procedure in the model alone takes 110 min of model time; with fast-forward
@@ -240,8 +241,8 @@ long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
 - **Step 4:** a CW pump's start is *refused* unless its discharge valve stands at 10–20 % (the permissive of
   PLANT3D.md §7.2's example); the pressure surge of a start against an open valve is therefore not modelled, and has
   no alarm in §5 either.
-- **Interlocks:** a stopped CW pump closes its discharge valve; low lube oil pressure with the AC pump selected
-  starts the DC pump (GT and ST); a tripped closed cooling water pump starts the standby one; condenser pressure
+- **Interlocks:** a stopped CW pump closes its discharge valve; low lube oil pressure while the oil system is in
+  service (whichever pump was selected or stopped) starts the DC pump (GT and ST); a tripped closed cooling water pump starts the standby one; condenser pressure
   high-high, no CW flow or no condensate pump puts both bypass controllers in manual (closed).
 - **Trips beyond the list below:** the generator protection opens a generator breaker in the step after its machine
   tripped (`gen1_trip_prot`, `gen3_trip_prot`, first-out group of their machine); a closed cooling water pump trips
@@ -250,9 +251,18 @@ long waits, PLANT3D.md §7.9) stand for about 4 hours of a real cold start.
   on any bearing for 2 s.
 - **The hotwell** has a makeup that opens below 0 mm and a spill to the demineralised water tank above +50 mm, so
   the level holds through the start.
+- **Instrument air (#1):** the ops that move a pneumatic valve (open, set, auto: the gland steam, HP
+  feedwater control, condensate minimum-flow and two spray valves) are refused below 4 bar. A valve already in place does
+  not fail to its safe position when the air is lost later.
+- **Not built yet** (known gaps, for a later version): lube oil temperatures (#2: closed cooling water is a start
+  permissive only, so losing it in operation has no effect); an HP safety valve and a GT runback on the loss of every
+  steam sink (with the steam turbine tripped and the bypass blocked the HP pressure holds at 128 bar without an
+  alarm); the steam-to-casing mismatch permissive of the roll (#18) is wide (steam at most 320 K above the HP casing),
+  so it only stops a grossly wrong start.
 - **Trainer faults** (the scenario's faults without a condition, PLANT3D.md §7.8) make every trip and interlock
-  fire, each fan's and each pump's included; the tests run each, most from the end of the cold start and the CW
-  valve faults at the pump's start (`ref/vectors/plant3d-v1.json`, `forks`).
+  fire, each fan's and each pump's included; the tests run each, most from the end of the cold start (a CW valve
+  fault from the point where the procedure is about to start that pump: the fork starts it itself)
+  (`ref/vectors/plant3d-v1.json`, `forks`).
 
 | # | System (codes §1) | What the trainee does | Faked behaviour (values, lags) | What it teaches |
 |---|---|---|---|---|

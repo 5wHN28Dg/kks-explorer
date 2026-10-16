@@ -264,8 +264,9 @@ magnitude and time scale of every effect they can cause, not the plant's real ph
 
 ### 7.1 Values
 
-Names are unique across the plant (area models are joined in `plant.json` order; a value may read values of areas
-listed before its own, and `ext` values named in `plant.json` cross the other way, §7.7). Each value may carry
+Names are unique across the plant (area models are joined in `plant.json` order into one list: a stateless node
+reads values earlier in that list, so of its own or earlier areas; a stateful node and every condition may read any
+value, of a later area too; `ext` values named in `plant.json` are read by any area, §7.7). Each value may carry
 `"unit"` (a display string such as `"kPa(a)"`, `"°C"`, `"%"`, `"rpm"`, `"m³/h"`) and `"kks"` (the measurement or
 equipment it belongs to).
 
@@ -300,8 +301,9 @@ computed in step 2) and by conditions; no other value may have those names (`dup
 characters, machine IDs at most 26.
 
 **Times as steps.** A time t (a `delay`'s `on` and `off`, a trip's or alarm's `delay`, a shelving time) counts
-round(t / 0.1) steps. t is a multiple of 0.1 s (`bad_time` otherwise), but t / 0.1 in double precision isn't always
-a whole number (0.3 / 0.1 = 2.9999…): round, never truncate.
+round(t / 0.1) steps, rounded half away from zero (⌊t / 0.1 + 0.5⌋). A time in content is a multiple of 0.1 s (`bad_time` otherwise; a shelving time is the
+trainee's and is only rounded), but t / 0.1 in double precision isn't always a whole number (0.3 / 0.1 =
+2.9999…): round, never truncate.
 
 **Arithmetic:** IEEE 754 double precision; `sum` and `product` in list order, left to right; a lag's factor
 1 − e^(−0.1/τ) computed once per node. A value is true when ≥ 0.5; `cmp`, `and`, `or`, `not` give exactly 1 or 0.
@@ -433,7 +435,8 @@ out, and while one of them is latched no other trip of its group is first out; t
   active unacknowledged → cleared unacknowledged when clear; active acknowledged → normal when clear; cleared
   unacknowledged → active unacknowledged when on. While suppressed or shelved it keeps its state and its count
   restarts. The trainee's inputs (step 1): acknowledge (active unacknowledged → active acknowledged, cleared
-  unacknowledged → normal; also on a suppressed alarm), shelve for a number of seconds, un-shelve; a shelf made in
+  unacknowledged → normal; also on a suppressed alarm), shelve for a number of seconds (0 or less: nothing happens,
+  no event), un-shelve; a shelf made in
   step n for t seconds ends in step 7 of step n + round(t / 0.1), with an event (shelving a shelved alarm again
   sets a new end).
 - **`where`:** the equipment the alarm leads to (one tap from the alarm list highlights and walks there: R10).
@@ -476,7 +479,7 @@ out, and while one of them is latched no other trip of its group is first out; t
 `init` overrides the initial value of a `state`, a stateful node other than a `timer` (a timer always starts at 0:
 `bad_ref`) or an `ext` value (every `ext` value is set), under the same rules as a node's own `init` (§7.1:
 `bad_value`);
-`latched` names trips (by their `id`) that start latched, as they stand in a stopped plant; `faults` are set by a
+`latched` names trips (by their `id`, each once) that start latched, as they stand in a stopped plant; `faults` are set by a
 condition, so a trainer can make "the standby pump fails" happen at the moment that teaches most. A fault's `when`
 is a value name or a stateless node over values (`{"cmp": …}` as in the example); a fault **without `when`** is a
 trainer's fault, applied when the trainer presses it (a trainee input, taking effect in step 3 of the next step).
@@ -500,7 +503,8 @@ Each 0.1 s step, in this order (the reference and the app must agree to the vect
    or one already applied, do nothing and make no event (an unknown operation is an `"unknown"` event, §12). Then
    the first-out records of groups with no latched trip are cleared.
 2. `values` are evaluated in order (stateful nodes read the previous step's values where §7.1 allows).
-3. Faults whose condition is true are applied (their `set`), once each.
+3. Faults whose condition is true, and the trainer's faults pressed in step 1, are applied (their `set`), once
+   each, in the scenario's list order (not the order they were pressed).
 4. Interlocks on a rising edge of `when`, in list order; their `set` is applied.
 5. Machines: each moves at most once, by its first true `next`; the new state's `set` is applied.
 6. Trips: a trip whose `when` has held for its `delay` latches; its `do` is applied; first-out as in §7.5.

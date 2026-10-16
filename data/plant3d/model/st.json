@@ -79,7 +79,7 @@
   ["st_lube_est", {"latch": "st_lp_norm", "reset": "st_lube_off"}],
   ["st_lube_sup", {"not": "st_lube_est"}],
   ["st_lp_low", {"cmp": ["st_lube_p", "<", 1.8]}],
-  ["st_dc_auto_c", {"and": ["st_lube_est", "st_lp_low", "st_lac_cmd"]}],
+  ["st_dc_auto_c", {"and": ["st_lube_est", "st_lp_low"]}],
   ["st_lube_trip_clear", {"not": "st_trip_lube_latched"}],
   ["st_jack_run", {"and": ["st_jack_cmd", "st_lube_ok"]}],
   ["st_jack_sp", {"product": ["st_jack_run", 140]}],
@@ -287,7 +287,7 @@
   {"kks": "30MAV20AP001", "do": "stop", "set": {"st_jack_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "30MAK10AE001", "do": "start", "set": {"st_tg_cmd": 1}, "needs": [["st_lube_ok", "Lube oil pressure below 1.8 bar"], ["st_jack_ok", "Jacking oil pressure below 80 bar"]], "where": ["local", "screen"]},
   {"kks": "30MAK10AE001", "do": "stop", "set": {"st_tg_cmd": 0}, "where": ["local", "screen"]},
-  {"kks": "30MAW10AA001", "do": "open", "set": {"st_gland_cmd": 1}, "needs": [["st_tg_run", "Turning gear not running: steam on a stopped rotor bows it"], ["aux_ok", "Auxiliary steam below 10 bar"]], "where": ["local", "screen"]},
+  {"kks": "30MAW10AA001", "do": "open", "set": {"st_gland_cmd": 1}, "needs": [["st_tg_run", "Turning gear not running: steam on a stopped rotor bows it"], ["aux_ok", "Auxiliary steam below 10 bar"], ["ia_ok", "Instrument air below 4 bar: an air-operated valve can't move"]], "where": ["local", "screen"]},
   {"kks": "30MAW10AA001", "do": "close", "set": {"st_gland_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "30MAJ10AP001", "do": "start", "set": {"vac_a_cmd": 1}, "needs": [["ccw_ok", "Closed cooling water not in service: the seal water cooler needs it"]], "where": ["local", "screen"]},
   {"kks": "30MAJ10AP001", "do": "stop", "set": {"vac_a_cmd": 0}, "where": ["local", "screen"]},
@@ -297,7 +297,7 @@
   {"kks": "30MAJ10AP002", "do": "stop", "set": {"vac_b_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "30LCB10AP002", "do": "start", "set": {"cep_b_cmd": 1}, "needs": [["hw_ok", "Hotwell level too low"], ["cep_mf_open", "Minimum flow valve 30LCA10AA001 not open"], ["cep_b_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
   {"kks": "30LCB10AP002", "do": "stop", "set": {"cep_b_cmd": 0}, "where": ["local", "screen"]},
-  {"kks": "30LCA10AA001", "do": "open", "set": {"cep_mf_cmd": 1}, "where": ["local", "screen"]},
+  {"kks": "30LCA10AA001", "do": "open", "set": {"cep_mf_cmd": 1}, "where": ["local", "screen"], "needs": [["ia_ok", "Instrument air below 4 bar: an air-operated valve can't move"]]},
   {"kks": "30LCA10AA001", "do": "close", "set": {"cep_mf_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "30MAN10AA001", "do": "auto", "machine": "hp_byp_ctrl", "needs": [["byp_permit", "Bypass blocked: condenser pressure over 25 kPa, no circulating water or no condensate pump"]], "where": ["screen"]},
   {"kks": "30MAN10AA001", "do": "manual", "machine": "hp_byp_ctrl", "where": ["screen"]},
@@ -313,7 +313,7 @@
   {"kks": "30MAG10CL001", "do": "reset", "trip": "cep_trip_hw", "where": ["screen"]}
  ],
  "interlocks": [
-  {"id": "st_dc_auto", "when": "st_dc_auto_c", "do": [{"set": {"st_ldc_cmd": 1}}], "kks": "30MAV10AP002", "text": "Lube oil pressure low with the AC pump selected: the DC emergency pump starts"},
+  {"id": "st_dc_auto", "when": "st_dc_auto_c", "do": [{"set": {"st_ldc_cmd": 1}}], "kks": "30MAV10AP002", "text": "Lube oil pressure low while the oil system is in service: the DC emergency pump starts"},
   {"id": "byp_blocked", "when": "byp_block_c", "do": [{"machine": "hp_byp_ctrl", "to": "manual"}, {"machine": "lp_byp_ctrl", "to": "manual"}], "kks": "30MAN10AA001", "text": "Condenser pressure high-high, no CW flow or no condensate pump: the bypass closes"}
  ],
  "machines": [

@@ -150,9 +150,9 @@
   {"kks": "10LAC10AP001", "do": "stop", "set": {"fw_a_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "10LAC10AP002", "do": "start", "set": {"fw_b_cmd": 1}, "needs": [["lp_lvl_ok", "LP drum (pump suction) level below −300 mm"], ["fw_b_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
   {"kks": "10LAC10AP002", "do": "stop", "set": {"fw_b_cmd": 0}, "where": ["local", "screen"]},
-  {"kks": "10LAB30AA001", "do": "auto", "machine": "hp_lvl_ctrl", "where": ["screen"]},
+  {"kks": "10LAB30AA001", "do": "auto", "machine": "hp_lvl_ctrl", "where": ["screen"], "needs": [["ia_ok", "Instrument air below 4 bar: an air-operated valve can't move"]]},
   {"kks": "10LAB30AA001", "do": "manual", "machine": "hp_lvl_ctrl", "where": ["screen"]},
-  {"kks": "10LAB30AA001", "do": "set", "input": "hp_fwv_cmd", "range": [0, 1], "needs": [["hp_lvl_man", "The feedwater control valve is in automatic"]], "where": ["screen"]},
+  {"kks": "10LAB30AA001", "do": "set", "input": "hp_fwv_cmd", "range": [0, 1], "needs": [["hp_lvl_man", "The feedwater control valve is in automatic"], ["ia_ok", "Instrument air below 4 bar: an air-operated valve can't move"]], "where": ["screen"]},
   {"kks": "10HAN30AA401", "do": "open", "set": {"hp_drn1": 1}, "where": ["local", "screen"]},
   {"kks": "10HAN30AA401", "do": "close", "set": {"hp_drn1": 0}, "where": ["local", "screen"]},
   {"kks": "10HAN30AA402", "do": "open", "set": {"hp_drn2": 1}, "where": ["local", "screen"]},
@@ -164,7 +164,7 @@
   {"kks": "10HAN30AA001", "do": "open", "set": {"hp_vent_cmd": 1}, "where": ["local", "screen"]},
   {"kks": "10HAN30AA001", "do": "close", "set": {"hp_vent_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "10HAN30AA001", "do": "set", "input": "hp_vent_cmd", "range": [0, 1], "where": ["local", "screen"]},
-  {"kks": "10LAE30AA001", "do": "auto", "machine": "hp_spray_ctrl", "where": ["screen"]},
+  {"kks": "10LAE30AA001", "do": "auto", "machine": "hp_spray_ctrl", "where": ["screen"], "needs": [["ia_ok", "Instrument air below 4 bar: an air-operated valve can't move"]]},
   {"kks": "10LAE30AA001", "do": "manual", "machine": "hp_spray_ctrl", "where": ["screen"]}
  ],
  "machines": [

@@ -55,7 +55,7 @@
   ["gt1_lube_est", {"latch": "gt1_lp_norm", "reset": "gt1_lube_off"}],
   ["gt1_lube_sup", {"not": "gt1_lube_est"}],
   ["gt1_lp_low", {"cmp": ["gt1_lube_p", "<", 1.8]}],
-  ["gt1_dc_auto_c", {"and": ["gt1_lube_est", "gt1_lp_low", "gt1_lac_cmd"]}],
+  ["gt1_dc_auto_c", {"and": ["gt1_lube_est", "gt1_lp_low"]}],
   ["gt1_lube_trip_clear", {"not": "gt1_trip_lube_latched"}],
   ["gt1_slow", {"cmp": ["gt1_speed", "<", 0.05]}],
   ["gt1_tg_run", {"and": ["gt1_tg_cmd", "gt1_lube_ok", "gt1_slow"]}],
@@ -291,7 +291,7 @@
   {"kks": "10BAC10", "do": "reset", "trip": "gen1_trip_prot", "where": ["screen"]}
  ],
  "interlocks": [
-  {"id": "gt1_dc_auto", "when": "gt1_dc_auto_c", "do": [{"set": {"gt1_ldc_cmd": 1}}], "kks": "10MBV10AP002", "text": "Lube oil pressure low with the AC pump selected: the DC emergency pump starts"}
+  {"id": "gt1_dc_auto", "when": "gt1_dc_auto_c", "do": [{"set": {"gt1_ldc_cmd": 1}}], "kks": "10MBV10AP002", "text": "Lube oil pressure low while the oil system is in service: the DC emergency pump starts"}
  ],
  "machines": [
   {"id": "gt1_start", "kks": "10MBA10", "init": "standstill", "commands": {"start": {"from": ["standstill"], "to": "crank"}, "stop": {"from": ["crank", "purge", "coast", "ignite", "accel", "accel_sfc_off", "fsnl"], "to": "coastdown"}}, "states": [{"id": "standstill", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "watch": false}, {"id": "crank", "set": {"gt1_sfc_on": 1, "gt1_speed_sp": 0.25}, "next": [["gt1_at_crank", "purge"]], "say": "Cranking: the static frequency converter drives the generator as a motor"}, {"id": "purge", "next": [["gt1_purge_done", "coast"]], "watch": false, "say": "HRSG purge: five volume changes of air through the gas path"}, {"id": "coast", "set": {"gt1_sfc_on": 0, "gt1_speed_sp": 0.15}, "next": [["gt1_at_coast", "ignite"]], "say": "Coasting down to ignition speed"}, {"id": "ignite", "set": {"gt1_sfc_on": 1, "gt1_ign": 1, "gt1_fuel_on": 1}, "next": [["gt1_flame", "accel"]], "say": "Ignition: fuel gas and igniters on"}, {"id": "accel", "set": {"gt1_ign": 0, "gt1_speed_sp": 1}, "next": [["gt1_at_sfc_off", "accel_sfc_off"]], "say": "Flame detected: accelerating with the SFC"}, {"id": "accel_sfc_off", "set": {"gt1_sfc_on": 0}, "next": [["gt1_at_full", "fsnl"]], "say": "SFC off at 70 % speed: the turbine accelerates on its own"}, {"id": "fsnl", "next": [["gt1_brk_cmd", "loaded"]], "watch": false, "say": "Full speed no load: ready to synchronise"}, {"id": "loaded", "next": [["gt1_brk_open", "fsnl"]], "watch": false, "say": "On the grid"}, {"id": "coastdown", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "next": [["gt1_still", "standstill"]], "say": "Stopping: fuel off"}, {"id": "trip", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "next": [["gt1_still", "standstill"]], "say": "TRIPPED: fuel off"}]}

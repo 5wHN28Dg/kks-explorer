@@ -267,6 +267,13 @@ REJECTS = [
     ('an ext value named like a trip latch', 'dup_id', _all(
         _set(['plant.json', 'ext'], ['ambient_t', 't1_latched']),
         _set(['scenarios/s1.json', 'init', 't1_latched'], 0))),
+    ('an ext value named like a machine state', 'dup_id', _all(
+        _set(['plant.json', 'ext'], ['ambient_t', 'm_state']),
+        _set(['scenarios/s1.json', 'init', 'm_state'], 0),
+        _set(MOD + ['machines'], [{'id': 'm', 'kks': '10LAC10AP001', 'init': 'off', 'commands': {},
+                                   'states': [{'id': 'off'}]}]))),
+    ('a trip the scenario latches twice', 'dup_id', _set(['scenarios/s1.json', 'latched'], ['t1', 't1'])),
+    ('an alarm priority that is not a whole number', 'bad_value', _set(MOD + ['alarms', 0, 'priority'], 2.0)),
     ('a scenario setting a latch to neither 0 nor 1', 'bad_value', _all(
         _app(MOD + ['values'], ['lt', {'latch': 'p_high', 'reset': 'valve_open'}]),
         _set(['scenarios/s1.json', 'init', 'lt'], 0.5))),
@@ -383,7 +390,9 @@ def unit_models():
         'trips': [{'id': 'ta', 'kks': '10LAC10AP001', 'text': 'A', 'when': 'a_hi', 'do': [{'set': {'x': 1}}],
                    'first_out': 'g'},
                   {'id': 'tb', 'kks': '10LAB10AA001', 'text': 'B', 'when': 'b_hi', 'do': [{'set': {'x': 2}}],
-                   'first_out': 'g'}]}
+                   'first_out': 'g'}],
+        'alarms': [{'id': 'al', 'kks': '10LAB10AA001', 'text': 'B high', 'when': 'b_hi', 'priority': 3,
+                    'where': '10LAB10AA001'}]}
     return [
         ('every node kind', nodes, {'ambient_t': 21}, [], [
             [1, 'op', '10LAC10AP001', 'set', 1, None], [6, 'op', '10LAB10AA001', 'set', 1, None],
@@ -423,7 +432,8 @@ def unit_models():
             [4, 'op', '10LAB10AA001', 'reset', None, 'tb'],
             [5, 'op', '10LAC10AP001', 'reset', None, 'ta'],
             [6, 'op', '10LAB10AA001', 'set', 1, None],
-            [8, 'ack', 'none'], [8, 'shelve', 'none', 5], [8, 'unshelve', 'none'], [8, 'fault', 'none']], 10),
+            [8, 'ack', 'none'], [8, 'shelve', 'none', 5], [8, 'unshelve', 'none'], [8, 'fault', 'none'],
+            [8, 'shelve', 'al', 0], [8, 'shelve', 'al', -1], [8, 'shelve', 'al', 0.25]], 12),
     ]
 
 
@@ -500,7 +510,9 @@ FORKS = [
                                       ('op', '30PAC10AP002', 'start', None, None), ('run', 1)],
      {'refused': [['30PAC10AP002', 'start', ['cw_b_vstart']]]}),
     ('gland_without_tg', 'start', [('op', '30MAW10AA001', 'open', None, None), ('run', 1)],
-     {'refused': [['30MAW10AA001', 'open', ['st_tg_run', 'aux_ok']]]}),
+     {'refused': [['30MAW10AA001', 'open', ['st_tg_run', 'aux_ok', 'ia_ok']]]}),
+    ('valve_without_air', 'start', [('op', '30LCA10AA001', 'open', None, None), ('run', 1)],
+     {'refused': [['30LCA10AA001', 'open', ['ia_ok']]]}),
     ('gt_start_cold', 'start', [('op', '10MBA10', 'start', None, None), ('run', 1)],
      {'refused': [['10MBA10', 'start', ['gt1_lube_ok', 'gt1_tg_run', 'ccw_ok', 'gt1_trips_clear', 'fw_avail']]]}),
     ('reset_with_cause', 'start', [('op', '30MAG10CP001', 'reset', None, 'st_trip_cond_p'), ('run', 1)],
@@ -525,6 +537,8 @@ FORKS = [
      {'first_out': {'gt1': 'gt1_trip_lube'}, 'tripped': ['gen1_trip_prot'], 'machines': {'gt1_start': 'trip'},
       'alarms': ['gt1_lp1_ll', 'gen1_brk_trip']}),
     ('gt_lac_fails', 'end', [('fault', 'gt1_lac_fails'), ('run', 60)],
+     {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
+    ('gt_lube_ac_stopped', 'end', [('op', '10MBV10AP001', 'stop', None, None), ('run', 60)],
      {'interlocks': ['gt1_dc_auto'], 'no_trip': True}),
     ('gt_flameout', 'end', [('fault', 'gt1_flameout'), ('run', 30)], {'first_out': {'gt1': 'gt1_trip_flame'}}),
     ('gt_exhaust_hot', 'end', [('fault', 'gt1_fuel_ctrl'), ('run', 300)],
