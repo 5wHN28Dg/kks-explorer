@@ -39,9 +39,11 @@ Playing a sound:
   - `noise`: the band noise. Tones below 30 Hz are in it as a rate (a blade or tooth passing);
   - `tone<i>`: a tone whose frequency follows a value. Set its pitch to `hz(value) / ref_hz` (none in the first
     train);
-  - `once`: a one-shot. Play it on the event: `breaker` when a breaker closes, `breaker_open` when one opens,
-    `motor_start` when a large motor starts direct on line (then its `motor_large` loop takes over),
-    `horn_ack` when an alarm is acknowledged.
+  - `once`: a one-shot, meant for an event: `breaker` for a breaker closing, `breaker_open` for one opening,
+    `motor_start` for a large motor started direct on line (its `motor_large` loop then takes over), `horn_ack`
+    for an alarm acknowledged. Format 1 has no binding that says "on this edge" (PLANT3D.md §7.7): today only
+    `breaker` is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays, and the other three wait
+    for it.
 
 ## How each sound is made
 
@@ -74,7 +76,7 @@ stream's end meets its start, because its coding errors at the two ends are inde
 starting points of the loop at qualities 4, 6 and 8, and keeps the first one whose decoded seam is 60 dB under the
 sound. It refuses a loop whose best is louder than −45 dB. The tick of each layer is `click_db` in the index.
 
-**Levels:** LUFS = −18 − 0.5 × (105 − spl), from the vent (105 dB(A), −18 LUFS) down to the valve motor (72 dB(A),
+**Levels:** a recorded clip added later must follow the same rule, not a fixed −23 LUFS. LUFS = −18 − 0.5 × (105 − spl), from the vent (105 dB(A), −18 LUFS) down to the valve motor (72 dB(A),
 −34.5 LUFS). This keeps the site's order with half its range. A one-shot is measured by its loudest 400 ms.
 
 ## Measured (2026-10-16)

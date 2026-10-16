@@ -21,7 +21,7 @@ How a sound is made:
   blade passes, gear teeth, a liquid ring's churn, rendered as modulation or clicks of the noise), or `once` for
   one-shot events (breakers, a motor's run-up, the acknowledge tone). The app applies the binding's gain and pitch
   to every layer of a sound;
-- levels: each sound's loudness (ITU-R BS.1770 K-weighted, the LUFS of PLANT3D.md §11's recorded clips) is set
+- levels: each sound's loudness (ITU-R BS.1770 K-weighted, in LUFS as PLANT3D.md §11 levels recorded clips) is set
   from its typical sound pressure level at 1 m, compressed by half around the loudest:
   LUFS = -18 - 0.5 * (105 - spl). One-shots by their loudest 400 ms (momentary loudness), loops over the whole loop.
   The layers of a sound share one scale, so the declared gains keep their balance.
@@ -264,8 +264,8 @@ def sounder_pattern(t, p, seconds):
     whole(1 / p['period'], seconds, 'pattern')
     ph = np.mod(t - p['at'], p['period'])
     if 'chime' in p:
-        # this period's chime and the previous one's tail (periodic to the sample)
-        return np.exp(-ph / p['chime']) * np.minimum(1, ph / 0.003)
+        # this period's chime plus the previous one's tail, so the envelope is periodic to the sample
+        return np.exp(-ph / p['chime']) * np.minimum(1, ph / 0.003) + np.exp(-(ph + p['period']) / p['chime'])
     r = 0.005
     return np.clip(np.minimum(ph / r, (p['on'] - ph) / r), 0, 1) * (ph < p['on'])
 
@@ -545,7 +545,7 @@ def build(out, wav=False, lib=LIBRARY):
         for name, x in layers.items():
             samples = pcm16(x)
             fname = f'{s["id"]}.{name}.{"wav" if wav else "ogg"}'
-            layer = {'layer': name, 'file': fname, 'seconds': round(len(samples) / FS, 3)}
+            layer = {'layer': name, 'file': fname, 'samples': len(samples), 'seconds': round(len(samples) / FS, 3)}
             if wav:
                 data = wav_bytes(samples)
             elif loop:

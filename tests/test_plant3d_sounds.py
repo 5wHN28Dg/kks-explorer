@@ -25,6 +25,7 @@ HAVE_FFMPEG = shutil.which('ffmpeg') is not None
 REQUIRED = os.environ.get('KKS_REQUIRE_FFMPEG') == '1'
 LIBRARY = json.load(open(os.path.join(ROOT, 'data', 'plant3d', 'sounds.json'), encoding='utf-8'))
 SYNTH = {s['id']: s for s in LIBRARY['sounds'] if s['kind'] == 'synth'}
+SEAM_CLICK_DB = -90         # the synthesised samples: nothing at the seam beyond rounding (a cut loop is > -45)
 BUDGET_BYTES = 10_000_000   # 0054 §7: 10 MB for the sounds within the 150 MB package; these are far below
 
 
@@ -53,7 +54,7 @@ def seam_problems(x, top):
     if max(abs(c[0]), abs(c[-1])) > inner + 1e-9:
         out.append(f'curvature at the seam {max(abs(c[0]), abs(c[-1])):.4g} > largest inside {inner:.4g}')
     click = M.seam_click_db(x, top)
-    if click > M.NO_CLICK:
+    if click > SEAM_CLICK_DB:
         out.append(f'a click at the seam {click:.1f} dB under the sound (energy above its own frequencies)')
     return out
 
@@ -214,6 +215,17 @@ class Synthesis(unittest.TestCase):
             return np.abs(np.fft.rfft(x[int(a * FS):int(a * FS) + FS]))[100]
         self.assertGreater(hum(0.5), 2 * hum(5.9))
 
+    def test_a_tone_that_follows_a_value(self):
+        """A tone whose hz follows a value gets its own layer at the table's highest frequency (the app pitches it)."""
+        s = {'id': 'probe', 'kind': 'synth', 'tones': [{'hz': {'of': 'speed', 'table': [[0, 0], [1, 1234.5]]}}]}
+        layers = M.render_loop(s, {})
+        self.assertEqual(list(layers), ['tone0'])
+        x = layers['tone0']
+        self.assertEqual(len(x), M.TONE_SECONDS * FS)
+        f = np.fft.rfftfreq(len(x), 1 / FS)[np.argmax(np.abs(np.fft.rfft(x)))]
+        self.assertAlmostEqual(f, 1234.5, delta=0.01)
+        self.assertEqual(seam_problems(x, 1234.5), [])
+
     def test_a_voice_needs_whole_cycles(self):
         with self.assertRaises(ValueError):
             M.whole(16.3, M.NOISE_SECONDS, 'x')
@@ -269,7 +281,7 @@ class Vorbis(unittest.TestCase):
             for la in e['layers']:
                 x = M.decode(self.read(la['file']))
                 with self.subTest(file=la['file']):
-                    self.assertEqual(len(x), round(la['seconds'] * FS), 'decoded length')
+                    self.assertEqual(len(x), la['samples'], 'decoded length')
                     self.assertLess(np.max(np.abs(x)), 0.99, 'clips after Vorbis')
                     if e['loop']:
                         # Vorbis's error at the stream's end and at its start are independent, so the samples
@@ -277,7 +289,7 @@ class Vorbis(unittest.TestCase):
                         # leaves must be at least CLICK_MAX_DB under the sound (the generator searched for it)
                         click = M.seam_click_db(x, top_hz(SYNTH[sid], la['layer']))
                         self.assertLessEqual(click, M.CLICK_MAX_DB)
-                        self.assertAlmostEqual(click, la['click_db'], delta=0.05)
+                        self.assertEqual(round(click, 1), la['click_db'])
                 ms += M.mean_square_k(x, e['loop'])
             self.assertAlmostEqual(-0.691 + 10 * math.log10(ms), e['lufs'], delta=0.5, msg=sid)
 
