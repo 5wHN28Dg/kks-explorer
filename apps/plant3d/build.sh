@@ -26,6 +26,13 @@ $T "$GODOT" --headless --path "$HERE" --import >"$HERE/.import.log" 2>&1 || { ta
 $T "$GODOT" --headless --path "$HERE" --script res://builder/build_plant.gd >"$HERE/.build.log" 2>&1 ||
   { grep -E "^build:|ERROR|SCRIPT" "$HERE/.build.log" | head -40; echo "the content build failed (apps/plant3d/.build.log)" >&2; exit 1; }
 grep '^build:' "$HERE/.build.log"
+# the behaviour model, scenarios and procedures the app runs (ui/plant_ui.gd reads them with sim/'s strict reader)
+mkdir -p "$HERE/built/content"
+cp "$ROOT/data/plant3d/plant.json" "$HERE/built/content/"
+for d in areas model scenarios procedures; do
+  mkdir -p "$HERE/built/content/$d"
+  cp "$ROOT/data/plant3d/$d/"*.json "$HERE/built/content/$d/"
+done
 # the built scenes are resources the export must know
 $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1
 

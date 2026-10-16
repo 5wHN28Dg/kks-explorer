@@ -8,13 +8,19 @@
 ##   up, down  Space and C, gamepad RB and LB: in flight
 ##   map       M, Tab, gamepad Back: the overview map
 ##   use       E, gamepad A: press a door
-##   menu      Escape, gamepad Start: settings
+##   menu      Escape, gamepad Start: settings (or closes the top panel of ui/)
+##   alarms    L, gamepad D-pad up: the alarm list (ui/plant_ui.gd)
+##   procedure P, gamepad D-pad left: procedures and tours
+##   pause     K, gamepad D-pad down: pause, and run again at 1×
+##   fast      . (full stop), gamepad D-pad right: fast-forward
+##   home      H: back to the control room
 extends Node
 
 const KEYS := {
 	"move_forward": [KEY_W, KEY_UP], "move_back": [KEY_S, KEY_DOWN], "move_left": [KEY_A, KEY_LEFT],
 	"move_right": [KEY_D, KEY_RIGHT], "run": [KEY_SHIFT], "fly": [KEY_F], "up": [KEY_SPACE],
 	"down": [KEY_C], "map": [KEY_M, KEY_TAB], "use": [KEY_E], "menu": [KEY_ESCAPE],
+	"alarms": [KEY_L], "procedure": [KEY_P], "pause": [KEY_K], "fast": [KEY_PERIOD], "home": [KEY_H],
 	"look_left": [], "look_right": [], "look_up": [], "look_down": [],
 }
 const AXES := {   # action: [axis, direction]
@@ -26,6 +32,8 @@ const AXES := {   # action: [axis, direction]
 const BUTTONS := {
 	"run": [JOY_BUTTON_LEFT_STICK], "fly": [JOY_BUTTON_Y], "up": [JOY_BUTTON_RIGHT_SHOULDER],
 	"down": [JOY_BUTTON_LEFT_SHOULDER], "map": [JOY_BUTTON_BACK], "use": [JOY_BUTTON_A], "menu": [JOY_BUTTON_START],
+	"alarms": [JOY_BUTTON_DPAD_UP], "procedure": [JOY_BUTTON_DPAD_LEFT], "pause": [JOY_BUTTON_DPAD_DOWN],
+	"fast": [JOY_BUTTON_DPAD_RIGHT],
 }
 
 func _init() -> void:

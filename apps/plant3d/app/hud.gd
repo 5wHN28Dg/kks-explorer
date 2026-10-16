@@ -16,6 +16,7 @@ var panel: PanelContainer
 var tier_opt: OptionButton
 var touch_opt: OptionButton
 var tier_note: Label
+var extra: VBoxContainer       # rows the interaction layer adds (ui/plant_ui.gd: instructor mode, motion, sound)
 
 func setup(m) -> void:
 	main = m
@@ -115,8 +116,10 @@ func _settings(root: Control) -> void:
 		touch_opt.add_item(s)
 	touch_opt.item_selected.connect(_on_touch)
 	row2.add_child(touch_opt)
+	extra = VBoxContainer.new()
+	v.add_child(extra)
 	var help := Label.new()
-	help.text = "Keyboard: W A S D to walk, Shift to run, mouse to look (click the view), F to fly (Space and C up and down), M for the map, E to open a door, Esc for this panel. Gamepad: sticks, Y fly, Back map, A use, Start settings."
+	help.text = "Keyboard: W A S D to walk, Shift to run, mouse to look (click the view), F to fly (Space and C up and down), M for the map, E to open a door or the card of the part in the middle of the view (or click or tap a part), L alarms, P procedures and tours, K pause and run, the full stop to fast-forward, H back to the control room, Esc for this panel or to close the top one. Gamepad: sticks, Y fly, Back map, A use, Start settings, D-pad up alarms, left procedures, down pause, right fast-forward, B closes a panel."
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size = Vector2(620, 0)
 	v.add_child(help)

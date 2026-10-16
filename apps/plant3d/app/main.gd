@@ -10,6 +10,10 @@
 ##                           data folder elsewhere)
 ##   shot=NAME@x,y,z,yaw,pitch[;NAME@…]   save the view from those points (plant coordinates, degrees) as PNGs, quit
 ##   map=1                   start on the overview map
+##   scenario=ID             the scenario the plant starts in (default cold_iron)
+##   procedure=ID            follow that procedure or tour from the start
+##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
+##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -19,6 +23,7 @@ const Autopilot = preload("res://app/autopilot.gd")
 const Routes = preload("res://app/routes.gd")
 const Hud = preload("res://app/hud.gd")
 const MapView = preload("res://app/map_view.gd")
+const PlantUi = preload("res://ui/plant_ui.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -29,6 +34,7 @@ var plant: Node3D
 var player
 var hud
 var map
+var ui      # ui/plant_ui.gd: the engine, the cards, alarms, procedures, links
 var sun: DirectionalLight3D
 var env: Environment
 var auto
@@ -75,6 +81,15 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(self)
 	player.mode_changed.connect(func(_m): hud.refresh())
+	ui = PlantUi.new()
+	ui.name = "ui"
+	add_child(ui)
+	ui.setup(self, opts.get("scenario", "cold_iron"))
+	ui.add_settings(hud.extra)
+	if opts.has("procedure") and ui.model != null and ui.model.procedures.has(opts.procedure):
+		ui.start_procedure(opts.procedure, null, false)
+	for p in String(opts.get("panels", "")).split(",", false):
+		ui.open_panel(p)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	choose_tier()
 	_first_frame()
@@ -96,7 +111,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality"]:   # nothing else from a shared folder
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario"]:   # nothing else from a shared folder
 					opts[kv[0]] = kv[1]
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 
