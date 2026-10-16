@@ -9,24 +9,35 @@
 ## `size` is the piece's smallest telling feature in metres; it decides a `detail` piece's range.
 extends RefCounted
 
+const Mat = preload("res://kit/materials.gd")
 const CLASSES := ["form", "identify", "detail"]
 
-var layers := {}          # key "mat|cls|bucket" -> {mat, cls, size, v: PackedVector3Array, n, uv, idx: PackedInt32Array}
+var layers := {}          # key "mat|cls|bucket" -> {mat, cls, size, v: PackedVector3Array, n, uv, c, idx}
 var cur: Dictionary = {}
+var colour := Color(1, 1, 1)
 var xf := Transform3D.IDENTITY   # applied to every primitive (part frame), for groups of pieces placed together
 var seg_scale := 1.0             # the kit's segment density (1 = full detail)
 
-## Selects the layer the next primitives go to.
-func use(mat: String, cls := "form", size := 0.0) -> void:
+## Selects the layer the next primitives go to. A named material (kit/materials.gd) is drawn with the material it
+## resolves to, its colour in the vertices; `form` and `identify` pieces share a layer (both are always drawn), a
+## `detail` piece's layer is its size bucket's.
+func use(name: String, cls := "form", size := 0.0) -> void:
 	assert(cls in CLASSES)
+	var r: Array = Mat.resolve(name)
+	var mat: String = r[0]
+	colour = r[1]
 	var bucket := 0
+	var lk := "main"
 	if cls == "detail":
 		bucket = int(floor(log(maxf(size, 0.001)) / log(2.0)))   # a factor of 2 (§10): pieces of one bucket share a range
-	var key := "%s|%s|%d" % [mat, cls, bucket]
+		lk = "detail"
+	var key := "%s|%s|%d" % [mat, lk, bucket]
 	if not layers.has(key):
 		layers[key] = {"mat": mat, "cls": cls, "size": size, "v": PackedVector3Array(), "n": PackedVector3Array(),
-			"uv": PackedVector2Array(), "idx": PackedInt32Array()}
+			"uv": PackedVector2Array(), "c": PackedColorArray(), "idx": PackedInt32Array()}
 	cur = layers[key]
+	if cls == "identify":
+		cur.cls = "identify"   # the layer holds pieces that must stay: never removed
 	if cls == "detail":
 		cur.size = minf(cur.size, size) if cur.size > 0.0 else size
 
@@ -48,6 +59,7 @@ func _vert(p: Vector3, n: Vector3, uv: Vector2) -> int:
 	cur.v.append(_pt(p))
 	cur.n.append(_nm(n))
 	cur.uv.append(uv)
+	cur.c.append(colour)
 	return cur.v.size() - 1
 
 ## A triangle a, b, c whose front face is counter-clockwise seen from outside (the normal side). Godot's front faces
@@ -377,6 +389,7 @@ func finish() -> Dictionary:
 		arr[Mesh.ARRAY_VERTEX] = L.v
 		arr[Mesh.ARRAY_NORMAL] = L.n
 		arr[Mesh.ARRAY_TEX_UV] = L.uv
+		arr[Mesh.ARRAY_COLOR] = L.c
 		arr[Mesh.ARRAY_INDEX] = L.idx
 		var st := SurfaceTool.new()
 		st.create_from_arrays(arr)

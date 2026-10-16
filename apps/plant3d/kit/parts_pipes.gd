@@ -64,7 +64,7 @@ static func pipe(m, pts: Array, p: Dictionary, origin: Vector3) -> void:
 	var rr := r + ins
 	var buried: Dictionary = p.get("buried", {})
 	var gaps: Array = p.get("gaps", [])
-	var body := "cladding" if ins > 0.0 else "paint_grey"
+	var body := "cladding" if ins > 0.0 else "paint_pipe"
 	var local: Array = []
 	for q in pts:
 		local.append(q - origin)
@@ -153,7 +153,10 @@ static func pipe(m, pts: Array, p: Dictionary, origin: Vector3) -> void:
 		C.flange(m, f[0] - origin - f[1] * C.flange_dims(od).tf, -f[1], od, "steel", p.get("rating", "pn16"), true)
 	# supports
 	for s in p.get("supports", []):
-		_support(m, s.at - origin, s.z_to - origin.z, rr, s.get("kind", "shoe"), s.get("dir", Vector3(1, 0, 0)))
+		if s.kind == "bridge":
+			_bridge(m, s.at - origin, rr, s.legs.map(func(l): return {"at": l.at - origin, "z": l.z - origin.z}), s.dir)
+		else:
+			_support(m, s.at - origin, s.z_to - origin.z, rr, s.get("kind", "shoe"), s.get("dir", Vector3(1, 0, 0)))
 
 ## A flow arrow lying on the pipe's surface on both sides (and on top for a horizontal run): a shaft and a head.
 static func _arrow(m, start: Vector3, d: Vector3, r: float, len: float) -> void:
@@ -208,6 +211,22 @@ static func _support(m, at: Vector3, z_to: float, r: float, kind: String, dir: V
 			while z < bottom - 2.0:
 				m.box(Vector3(at.x, at.y, z) + o * 0.5, (side * 1.2).abs() + (dir * 0.1).abs() + Vector3(0, 0, 0.12))
 				z += 3.0
+
+## A pipe bridge: two legs beside the walkway, a beam under the pipe between them, the shoe on the beam.
+static func _bridge(m, at: Vector3, r: float, legs: Array, dir: Vector3) -> void:
+	var bz := at.z - r - 0.15
+	m.use("galvanised", "form")
+	var a: Vector3 = legs[0].at
+	var c: Vector3 = legs[1].at
+	for l in legs:
+		var h: float = bz - l.z
+		if h > 0.05:
+			m.box(Vector3(l.at.x, l.at.y, l.z + h * 0.5), Vector3(0.2, 0.2, h))
+			m.box(Vector3(l.at.x, l.at.y, l.z + 0.01), Vector3(0.45, 0.45, 0.02))
+	m.cyl(Vector3(a.x, a.y, bz), Vector3(c.x, c.y, bz), 0.12, -1.0, 4)
+	m.use("steel", "form")
+	var side := dir.cross(Vector3(0, 0, 1)).normalized()
+	m.box(Vector3(at.x, at.y, bz + 0.1), (dir * clampf(r * 2.0, 0.2, 0.8)).abs() + (side * clampf(r * 1.2, 0.12, 0.6)).abs() + Vector3(0, 0, 0.08))
 
 # ------------------------------------------------------------------ the standalone pipe parts
 

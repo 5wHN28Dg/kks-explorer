@@ -46,6 +46,7 @@ const PAINT := {
 	"paint_black": Color(0.06, 0.06, 0.06),
 	"paint_beige": Color(0.78, 0.72, 0.58),      # GT and generator enclosures, filter house
 	"paint_ct": Color(0.66, 0.70, 0.72),         # the cooling tower's FRP casing
+	"paint_pipe": Color(0.50, 0.52, 0.53),       # bare pipe (its medium shows in its bands)
 }
 
 ## Every material: set (or "" for a plain one), tint, roughness, metallic, the texture's tile size in metres, and
@@ -66,7 +67,7 @@ static func specs() -> Dictionary:
 	m["gravel"] = {"set": "Gravel023", "tint": Color(0.62, 0.60, 0.56), "rough": 1.0, "metal": 0.0, "tile": 3.0}
 	m["asphalt"] = {"set": "Asphalt031", "tint": Color(0.6, 0.6, 0.6), "rough": 1.0, "metal": 0.0, "tile": 4.0}
 	# plain (no textures): small pieces, faces of dials, glass, rubber, porcelain, lamps
-	m["plate"] = {"set": "", "tint": Color(0.93, 0.93, 0.90), "rough": 0.35, "metal": 0.6}        # stainless tag plates
+	m["plate"] = {"set": "", "tint": Color(0.93, 0.93, 0.90), "rough": 0.4, "metal": 0.0}         # tag plates (white)
 	m["plate_border"] = {"set": "", "tint": Color(0.05, 0.05, 0.05), "rough": 0.6, "metal": 0.0}
 	m["dial"] = {"set": "", "tint": Color(0.97, 0.97, 0.95), "rough": 0.4, "metal": 0.0}
 	m["needle"] = {"set": "", "tint": Color(0.05, 0.05, 0.05), "rough": 0.5, "metal": 0.0}
@@ -86,7 +87,38 @@ static func specs() -> Dictionary:
 	m["lamp_white"] = {"set": "", "tint": Color(1.0, 0.97, 0.9), "rough": 0.3, "metal": 0.0, "emit": true}
 	m["sign_green"] = {"set": "", "tint": Color(0.0, 0.45, 0.25), "rough": 0.5, "metal": 0.0}
 	m["sign_yellow"] = {"set": "", "tint": Color(0.98, 0.80, 0.05), "rough": 0.5, "metal": 0.0}
+	# the materials the kit's meshes are drawn with: one per texture set and finish, the colour in the vertices
+	# (`resolve`), so a cell's pieces of every paint colour are one draw call, not one per colour (decision 0041:
+	# draw calls are what the phone pays for)
+	m["paint"] = {"set": "PaintedMetal004", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.15, "tile": 1.5, "vc": true}
+	m["metal"] = {"set": "Metal032", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.8, "tile": 1.0, "vc": true}
+	m["sheeting"] = {"set": "CorrugatedSteel005", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.55, "tile": 2.5, "vc": true}
+	m["plain"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.6, "metal": 0.0, "vc": true}
+	m["plain_metal"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.3, "metal": 0.9, "vc": true}
 	return m
+
+static var _specs := {}
+## Extra colours by name (the media's band colours: the builder sets them from plant.json).
+static var colours := {}
+
+## The material a piece named `name` is drawn with, and its colour in the vertices: [material, Color].
+static func resolve(name: String) -> Array:
+	if _specs.is_empty():
+		_specs = specs()
+	if PAINT.has(name):
+		return ["paint", PAINT[name]]
+	if colours.has(name):
+		return ["plain", colours[name]]
+	var s: Dictionary = _specs.get(name, {})
+	if s.is_empty() or s.get("vc", false):
+		return [name if not s.is_empty() else "plain", Color(1, 1, 1)]
+	match s.set:
+		"Metal032": return ["metal", s.tint]
+		"CorrugatedSteel005": return ["sheeting", s.tint]
+		"":
+			if not s.get("emit", false):
+				return ["plain_metal" if s.metal > 0.5 else "plain", s.tint]
+	return [name, Color(1, 1, 1)]
 
 static func tex_path(set_name: String, map: String, size: int) -> String:
 	return "%s/%d/%s_%s.jpg" % [TEX, size, set_name, map]
@@ -103,6 +135,9 @@ static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> Standa
 	if s != "":
 		_textures(mat, s, size)
 		mat.uv1_scale = Vector3.ONE / float(spec.get("tile", 1.0))
+	if spec.get("vc", false):
+		mat.vertex_color_use_as_albedo = true
+		mat.vertex_color_is_srgb = true
 	if spec.get("emit", false):
 		mat.emission_enabled = true
 		mat.emission = spec.tint

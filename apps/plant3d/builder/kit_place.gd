@@ -10,6 +10,7 @@
 extends RefCounted
 
 const Kit = preload("res://kit/kit.gd")
+const Mat = preload("res://kit/materials.gd")
 const Geom = preload("res://builder/geom.gd")
 const MB = preload("res://kit/mesh.gd")
 const P_PIPE = preload("res://kit/parts_pipes.gd")
@@ -21,6 +22,7 @@ const CELL := 12.0          # the instancing cell (0041)
 const SMALL_CELL := 6.0     # for `detail` pieces: a smaller box keeps their range close to the rule
 const PLATE := {"small": Vector3(0.16, 0.002, 0.045), "large": Vector3(0.6, 0.004, 0.16)}   # w, thickness, h
 const PLATE_CHAR := {"small": 0.02, "large": 0.08}   # the code's character height (§10: legible at 8 px)
+const WIDE_DECK := 8.0      # a deck at least this wide both ways is a roof or a floor: posts may stand on it
 const MAX_POST := 40.0       # the tallest support post (steel trestles beside an HRSG reach its roof)
 const SHAFT_MACHINES := ["gas_turbine", "generator", "turning_gear", "steam_turbine", "motor"]
 
@@ -43,6 +45,8 @@ func _init(builder) -> void:
 
 ## The nozzles pipes end on, the shaft lines, and what each part stands under or over.
 func prepare() -> void:
+	for m in b.plant.get("media", {}):
+		Mat.colours["medium_" + m] = Color.html(b.plant.media[m].band)
 	for a in b.areas:
 		for p in a.data.get("pipes", []):
 			var od: float = (float(p.od_mm) if p.has("od_mm") else b._od(int(p.dn))) / 1000.0
@@ -270,8 +274,11 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 			box = bb if first else box.merge(bb)
 			first = false
 	node.set_meta("aabb", box)
-	# the tag plate
+	# the tag plate; an instrument carries its own small tag with its code (as in the field) when the content names
+	# no plate point for it
 	var plate: String = e.get("plate", "none")
+	if plate == "none" and Kit.kit_json().parts.get(e.part, {}).get("group", "") == "instruments" and not res.plates.is_empty():
+		plate = res.plates.keys()[0]
 	if plate != "none" and res.plates.has(plate):
 		_plate(node, xf, res.plates[plate], kks)
 	# collision: the parts' solids (small parts on pipes and machines are not solid)
@@ -341,10 +348,9 @@ func _plate(node: Node3D, _xf: Transform3D, pl: Dictionary, kks: String) -> void
 	var y := n.cross(x).normalized()
 	var at: Vector3 = pl.at + n * (s.y * 0.5 + 0.004)
 	var pxf := Transform3D(Basis(x, y, n), at)
-	var mesh: Mesh = _plate_mesh(kind)
 	var world: Transform3D = node.transform * pxf
-	_cell({"mesh": mesh, "mat": "plate", "cls": "identify", "size": s.z}, "plate|identify|0", world)
-	_cell({"mesh": _plate_border(kind), "mat": "plate_border", "cls": "identify", "size": s.z}, "plate_border|identify|0", world)
+	var pm: Dictionary = _plate_mesh(kind)
+	_cell(pm, pm.mesh.resource_name, world)
 	var lab := Label3D.new()
 	lab.name = "plate"
 	lab.text = kks
@@ -364,31 +370,22 @@ func _plate(node: Node3D, _xf: Transform3D, pl: Dictionary, kks: String) -> void
 	node.add_child(lab)
 
 var _plates := {}
-func _plate_mesh(kind: String) -> Mesh:
+## A tag plate (white, a black border) in its own frame: x across, y up, z out of its face. Built in part axes
+## (x, y = -z, z = y), one mesh: both materials resolve to `plain`.
+func _plate_mesh(kind: String) -> Dictionary:
 	if not _plates.has(kind):
 		var s: Vector3 = PLATE[kind]
 		var m := MB.new()
 		m.use("plate", "identify")
-		# the plate in its own frame: x across, y up, z out (built in part axes: x, -z, y)
 		m.box(Vector3.ZERO, Vector3(s.x, s.y, s.z))
-		var L: Dictionary = Kit._meshes(m.finish(), Vector3.ZERO).values()[0]
-		_plates[kind] = L.mesh
-	return _plates[kind]
-
-func _plate_border(kind: String) -> Mesh:
-	var k := kind + "_border"
-	if not _plates.has(k):
-		var s: Vector3 = PLATE[kind]
-		var m := MB.new()
 		m.use("plate_border", "identify")
 		var t := s.z * 0.06
-		# on the plate's face (its +z in Godot's axes is the part frame's -y)
 		for z: float in [-1.0, 1.0]:
 			m.box(Vector3(0, -(s.y * 0.5 + 0.0005), z * (s.z * 0.5 - t * 0.5)), Vector3(s.x, 0.001, t))
 		for x: float in [-1.0, 1.0]:
 			m.box(Vector3(x * (s.x * 0.5 - t * 0.5), -(s.y * 0.5 + 0.0005), 0), Vector3(t, 0.001, s.z))
-		_plates[k] = Kit._meshes(m.finish(), Vector3.ZERO).values()[0].mesh
-	return _plates[k]
+		_plates[kind] = Kit._meshes(m.finish(), Vector3.ZERO).values()[0]
+	return _plates[kind]
 
 # ------------------------------------------------------------------ the cells
 
@@ -401,43 +398,80 @@ func _cell(L: Dictionary, key: String, xf: Transform3D) -> void:
 		cells[k] = {"mesh": L.mesh, "mat": L.mat, "cls": cls, "size": L.size, "xf": []}
 	cells[k].xf.append(xf)
 
-## The cells of an area as instanced meshes under its node "kit".
+## The cells of an area under its node "kit": in each cell, the meshes that stand there once are merged per material
+## and size bucket into one mesh (with LODs made again for it), those that stand there more than once are instanced
+## (MultiMesh). Either way one draw call per (mesh, cell) or per (material, bucket, cell).
 func flush(root: Node3D) -> int:
 	var kit := Node3D.new()
 	kit.name = "kit"
 	root.add_child(kit)
 	var n := 0
+	var merge := {}   # "layer|cell" -> [entries]
 	for k in cells:
 		var c: Dictionary = cells[k]
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = c.mesh
-		var buf := PackedFloat32Array()
-		var box := AABB()
-		var mb: AABB = c.mesh.get_aabb()
-		for i in c.xf.size():
-			var t: Transform3D = c.xf[i]
-			var bs := t.basis
-			buf.append_array([bs.x.x, bs.y.x, bs.z.x, t.origin.x, bs.x.y, bs.y.y, bs.z.y, t.origin.y, bs.x.z, bs.y.z, bs.z.z, t.origin.z])
-			box = (t * mb) if i == 0 else box.merge(t * mb)
-		var mmi := MultiMeshInstance3D.new()
-		mmi.name = "%s_%s_%d" % [c.mat, c.cls, n]
-		mmi.multimesh = mm
-		mmi.material_override = b._mat(c.mat)
-		mmi.set_meta("xforms", buf)
-		mmi.set_meta("count", c.xf.size())
-		mmi.set_meta("box", box)
-		mmi.add_to_group("kit_cells", true)
-		if c.cls == "detail":
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			mmi.add_to_group("detail", true)
-			mmi.set_meta("detail_size", c.size)
-			mmi.set_meta("box_half", box.size.length() * 0.5)
-		kit.add_child(mmi)
+		if c.xf.size() == 1:
+			var parts: PackedStringArray = k.split("|")
+			var mk := "|".join(parts.slice(1))
+			if not merge.has(mk):
+				merge[mk] = []
+			merge[mk].append(c)
+		else:
+			_emit(kit, c.mesh, c.mat, c.cls, c.size, c.xf, n)
+			n += 1
+	for mk in merge:
+		var group: Array = merge[mk]
+		if group.size() == 1:
+			_emit(kit, group[0].mesh, group[0].mat, group[0].cls, group[0].size, group[0].xf, n)
+			n += 1
+			continue
+		# one mesh for them all, around the first one's origin
+		var o: Vector3 = group[0].xf[0].origin
+		var st := SurfaceTool.new()
+		for c in group:
+			var t: Transform3D = c.xf[0]
+			st.append_from(c.mesh, 0, Transform3D(t.basis, t.origin - o))
+		var arr := st.commit_to_arrays()
+		var im := ImporterMesh.new()
+		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arr)
+		im.generate_lods(25.0, 60.0, [])
+		var mesh := im.get_mesh()
+		var size := INF
+		for c in group:
+			size = minf(size, c.size)
+		_emit(kit, mesh, group[0].mat, "identify" if group.any(func(c): return c.cls == "identify") else group[0].cls, size, [Transform3D(Basis(), o)], n)
 		n += 1
+	var groups := merge.size()
+	print("build: area %s: %d draw meshes (%d cells' merged groups)" % [root.name, n, groups])
 	cells.clear()
 	cells_made += n
 	return n
+
+func _emit(kit: Node3D, mesh: Mesh, mat: String, cls: String, size: float, xfs: Array, n: int) -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	var buf := PackedFloat32Array()
+	var box := AABB()
+	var mb: AABB = mesh.get_aabb()
+	for i in xfs.size():
+		var t: Transform3D = xfs[i]
+		var bs := t.basis
+		buf.append_array([bs.x.x, bs.y.x, bs.z.x, t.origin.x, bs.x.y, bs.y.y, bs.z.y, t.origin.y, bs.x.z, bs.y.z, bs.z.z, t.origin.z])
+		box = (t * mb) if i == 0 else box.merge(t * mb)
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "%s_%s_%d" % [mat, cls, n]
+	mmi.multimesh = mm
+	mmi.material_override = b._mat(mat)
+	mmi.set_meta("xforms", buf)
+	mmi.set_meta("count", xfs.size())
+	mmi.set_meta("box", box)
+	mmi.add_to_group("kit_cells", true)
+	if cls == "detail":
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.add_to_group("detail", true)
+		mmi.set_meta("detail_size", size)
+		mmi.set_meta("box_half", box.size.length() * 0.5)
+	kit.add_child(mmi)
 
 # ------------------------------------------------------------------ pipes
 
@@ -552,7 +586,18 @@ func _supports(p: Dictionary, route: Array, r: float, buried: Dictionary) -> Arr
 				continue   # in the soil (a run the content leaves unburied under the ground): nothing to draw
 			var base := _below(q, r)
 			if base > -INF:
-				out.append({"at": q, "z_to": base, "kind": "guide" if n_made % 3 == 2 else "shoe", "dir": d.normalized()})
+				var dn := d.normalized()
+				if _in_walkway(q, r, base):
+					# a post would stand in walking space (a deck, a landing, a stair): a bridge over it instead,
+					# its legs where the walkway ends on both sides
+					var br := _bridge(q, r, dn)
+					if br.is_empty():
+						unsupported.append("%s at %s (over a walkway)" % [p.kks, str(q.snapped(Vector3(0.1, 0.1, 0.1)))])
+					else:
+						out.append(br)
+						n_made += 1
+					continue
+				out.append({"at": q, "z_to": base, "kind": "guide" if n_made % 3 == 2 else "shoe", "dir": dn})
 				n_made += 1
 				continue
 			var above := _above(q, r)
@@ -563,6 +608,44 @@ func _supports(p: Dictionary, route: Array, r: float, buried: Dictionary) -> Arr
 				unsupported.append("%s at %s" % [p.kks, str(q.snapped(Vector3(0.1, 0.1, 0.1)))])
 	supports += n_made
 	return out
+
+## Would a post from the pipe at q down to `base` stand in walking space: on a walkway or a landing (a deck narrower
+## than WIDE_DECK; on a wide deck, a roof or a floor, posts stand as pipe sleepers do) more than a short leg high, or
+## through a stair?
+func _in_walkway(q: Vector3, r: float, base: float) -> bool:
+	var p2 := Vector2(q.x, q.y)
+	var h := q.z - r - base
+	for sf in b.surfaces:
+		if absf(sf.z - base) <= 0.05 and sf.kind in ["platform", "floor", "grating"] and h > 1.0 and Geom.in_region(p2, sf.outline, sf.holes):
+			var bb := Rect2(sf.outline[0], Vector2.ZERO)
+			for v in sf.outline:
+				bb = bb.expand(v)
+			if minf(bb.size.x, bb.size.y) < WIDE_DECK:
+				return true
+	for st in b.stairs:
+		if Geom.in_poly(p2, st.lay.rect) and st.top.z + 2.1 > base and st.foot.z < q.z:
+			return true
+	return false
+
+## A pipe bridge across a walkway: two legs beside it (perpendicular to the pipe, where neither leg stands in walking
+## space), a beam under the pipe between them. {} when there is no room within 8 m either side.
+func _bridge(q: Vector3, r: float, dn: Vector3) -> Dictionary:
+	var side := dn.cross(Vector3(0, 0, 1)).normalized()
+	var legs: Array = []
+	for s: float in [-1.0, 1.0]:
+		var t := 0.5
+		var found := false
+		while t <= 8.0:
+			var p := q + side * (t * s)
+			var base := _below(p, r)
+			if base > -INF and not _in_walkway(p, r, base):
+				legs.append({"at": p, "z": base})
+				found = true
+				break
+			t += 0.25
+		if not found:
+			return {}
+	return {"at": q, "kind": "bridge", "dir": dn, "legs": legs, "z_to": minf(legs[0].z, legs[1].z)}
 
 func _below(q: Vector3, r: float) -> float:
 	var best := -INF

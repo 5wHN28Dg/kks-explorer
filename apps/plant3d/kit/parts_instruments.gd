@@ -3,8 +3,8 @@
 ## the builder works it out), and the instrument is drawn from its origin along it. `ctx.floor_dz` (when given) is
 ## how far below the origin the floor is: a transmitter standing free beside a pump gets a 2" stand pipe down to it.
 ##
-## Moving nodes (kit/README.md "Moving parts"): `needle` (gauges: rotate about the dial's normal, travel 4.71 rad:
-## 0 = the scale's start, 1 = its end), `level` (a level glass's water column: kind scale along z, 0 empty, 1 full),
+## Moving nodes (kit/README.md "Moving parts"): `needle` (gauges: turns clockwise as the dial is read, about the
+## dial's inward normal, travel 4.71 rad: 0 = the scale's start, 1 = its end), `level` (a level glass's water column: kind scale along z, 0 empty, 1 full),
 ## `light` (lamps and beacons: its child `on` is the lit lens, hidden until the light is on).
 extends RefCounted
 
@@ -60,19 +60,24 @@ static func _gauge(g, temp: bool) -> void:
 	m.cyl(back, front, Rd, -1.0, 24)
 	m.use("dial", "identify")
 	m.disk(front + nrm * 0.001, nrm, Rd * 0.88, 24)
-	m.use("needle", "detail", Rd * 0.1)   # the scale's marks
-	var ax: Array = m.across(nrm)
+	# the scale: from 135 degrees left of the top to 135 degrees right of it, clockwise as the viewer sees it
+	var up_d := Vector3(0, 0, 1) if vertical else Vector3(0, 1, 0)
+	var right_d := up_d.cross(nrm)
+	var at_angle := func(deg: float) -> Vector3: return up_d * cos(deg_to_rad(deg)) + right_d * sin(deg_to_rad(deg))
+	m.use("needle", "detail", Rd * 0.1)
 	for i in 11:
-		var a := -PI * 0.75 + PI * 1.5 * i / 10.0 + PI * 0.5
-		var dir: Vector3 = ax[0] * cos(a) + ax[1] * sin(a)
-		m.box(front + nrm * 0.0015 + dir * Rd * 0.75, Vector3(0.002, 0.002, 0.002) + (dir * Rd * 0.12).abs() + (dir.cross(nrm) * 0.003).abs())
+		var dir: Vector3 = at_angle.call(-135.0 + 27.0 * i)
+		m.box(front + nrm * 0.0015 + dir * Rd * 0.75, Vector3(0.003, Rd * 0.14, 0.002), Basis(nrm.cross(dir), dir, nrm))
 	m.use("paint_red", "identify")   # the red mark at the limit
-	m.box(front + nrm * 0.002 + (ax[0] * cos(PI * 0.75 + PI * 0.5 - 0.3) + ax[1] * sin(PI * 0.75 + PI * 0.5 - 0.3)) * Rd * 0.72, Vector3(0.006, 0.006, 0.003))
-	var nd = g.move("needle", t * c, t.basis * nrm, "rotate", PI * 1.5)
+	m.box(front + nrm * 0.002 + at_angle.call(115.0) * Rd * 0.74, Vector3(0.007, Rd * 0.2, 0.003), Basis(nrm.cross(at_angle.call(115.0)), at_angle.call(115.0), nrm))
+	# the needle at the scale's start; it turns clockwise (about -normal) by 270 degrees from 0 to 1
+	var nd = g.move("needle", t * c, t.basis * -nrm, "rotate", PI * 1.5)
 	nd.xf = t
 	nd.use("needle", "identify")
-	nd.box(front + nrm * 0.004 + ax[1] * Rd * 0.3, (ax[1] * Rd * 0.75).abs() + (ax[0] * 0.006).abs() + (nrm * 0.002).abs())
-	g.plate("dial", t * (c - ax[1] * (Rd + 0.02)), t.basis * nrm, "small")
+	var nd_dir: Vector3 = at_angle.call(-135.0)
+	nd.box(front + nrm * 0.004 + nd_dir * Rd * 0.3, Vector3(0.005, Rd * 0.75, 0.002), Basis(nrm.cross(nd_dir), nd_dir, nrm))
+	nd.cyl(front + nrm * 0.002, front + nrm * 0.007, Rd * 0.08, -1.0, 8)
+	g.plate("dial", t * (c - up_d * (Rd + 0.02)), t.basis * nrm, "small")
 	g.axis_line = [t * Vector3.ZERO, t * c]
 
 static func pressure_gauge(_part: String, g) -> void:
