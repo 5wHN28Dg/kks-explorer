@@ -52,6 +52,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0053](0053-windows-x64-llvm-mingw.md) | The x86_64 Windows build moves to llvm-mingw like ARM64 (libc++, UCRT); the GCC packages from Ubuntu leave the build, CI and the BOM (#4) | decided by the user |
 | [0054](0054-walkdown-plant-app.md) | Walkdown Plant: a Godot project in `apps/plant3d`, content in `data/plant3d` (docs/PLANT3D.md) pre-built into scenes; KKS decoding from its own public tables, links by URI scheme (no core binding, no network); CC0 assets and sounds; one package for the first train; not marked latest on GitHub | proposed; signing key and updates are the user's questions |
 | [0055](0055-plant-sound-encoder.md) | Walkdown Plant's synthesised sounds: NumPy for the samples, FFmpeg's libvorbis (bit-exact, 0.1 s pages) for the Ogg Vorbis files at build time; installed on CI's `python` job | decided under the task's go-ahead |
+| [0056](0056-plant-android-gradle-links.md) | Walkdown Plant on Android: a Gradle export whose export plugin adds the `walkdown-plant://` intent filter; the link read through Godot's AndroidRuntime plugin (no plugin of ours); the template's Gradle pinned and run on a pinned JDK 17 | accepted |
 
 ## Audit of existing dependencies (2026-09-30)
 

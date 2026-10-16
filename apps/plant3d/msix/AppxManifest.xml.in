@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Walkdown Plant's MSIX manifest (decision 0054 §8: identity WalkdownPlant, exe WalkdownPlant.exe, alias
+     walkdown-plant.exe, publisher CN=Walkdown). The packaging script comes with the first plant release; it fills in
+     @PUBLISHER@ (the signing certificate's subject, exactly), @VERSION@ (a.b.c.0) and @ARCH@ (x64 or arm64), as
+     packaging/windows/make-msix.sh does for Walkdown. No network capability: the plant app has none (0054).
+     walkdown-plant:// links (docs/PLANT3D.md §6) start the app with the URI as its argument (uap3:Protocol's
+     Parameters, Windows 10 1607+), after the end-of-options marker, so that Godot's own options can't be injected through it; ui/links_in.gd reads it there. Not built or run on Windows yet. -->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+         xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap uap3 desktop rescap">
+  <Identity Name="WalkdownPlant" Publisher="@PUBLISHER@" Version="@VERSION@" ProcessorArchitecture="@ARCH@" />
+  <Properties>
+    <DisplayName>Walkdown Plant</DisplayName>
+    <PublisherDisplayName>Walkdown</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Walk through and operate a generic combined-cycle power plant.</Description>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="WalkdownPlant.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Walkdown Plant" Description="Walk through and operate a generic combined-cycle power plant."
+                          BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="WalkdownPlant.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="walkdown-plant.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+        <uap3:Extension Category="windows.protocol">
+          <uap3:Protocol Name="walkdown-plant" Parameters="-- &quot;%1&quot;">
+            <uap:DisplayName>Walkdown Plant link</uap:DisplayName>
+          </uap3:Protocol>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

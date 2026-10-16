@@ -14,6 +14,9 @@ geometry at their described positions, made by the builder.
 | `kit/` | the parts kit: every equipment part of `data/plant3d/kit.json` made from its parameters, the materials and their CC0 textures (fetched by `kit/fetch_textures.sh`) |
 | `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground, the materials, `plant.json`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) |
 | `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), scripted routes (`autopilot.gd`, `routes.gd`) |
+| `ui/` | the interaction layer: the engine run at 0.1 s steps (`sim_clock.gd`), equipment cards (`card.gd`), alarms (`alarm_panel.gd`), procedures and tours (`procedure_panel.gd`, `procedure_tracker.gd`), the instructor's faults, bindings on the parts (`bindings.gd`), sounds (`sound_player.gd`), links (`links_in.gd`); `plant_ui.gd` ties them together |
+| `addons/walkdown_plant_android/` | editor-only: the export plugin that adds the `walkdown-plant://` intent filter to the Android manifest (decision 0056) |
+| `msix/` | the MSIX manifest (identity, alias, the `walkdown-plant` protocol); the packaging comes with the first release |
 | `sim/` | the behaviour engine (the model's evaluator). It has its own owner; the project hosts it (`walkdown_plant/sim/path` in `project.godot`) |
 | `tests/` | the app's tests: `run_tests.gd` runs every `test_*.gd` |
 | `phone/frames.sh` | one frame-time run on a phone |
@@ -63,6 +66,11 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--walk=climb` | the test's route |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
 | `--map=1` | starts on the overview map |
+| `--scenario=ID` | the scenario the plant starts in (default `cold_iron`) |
+| `--procedure=ID` | follows that procedure or tour from the start |
+| `--panels=alarms,procedure,card:CODE` | opens these panels |
+| `--speed=fast` | starts the plant in fast-forward |
+| `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line |
 
 Controls (R7):
 
@@ -71,9 +79,53 @@ Controls (R7):
 - **Gamepad:** the sticks walk and look. Y flies, Back opens the map, A opens a door, Start shows the settings.
 - **Touch:** two sticks, Godot's own `VirtualJoystick`, driving the same actions as a gamepad's sticks: move on the
   left, look on the right. There are buttons for Fly, Map, Use, Settings, and Up and Down while flying.
+- **The plant (ui/):** E (gamepad A) or a click or tap on a part opens its card; L (D-pad up) the alarms, P (D-pad
+  left) procedures and tours, K (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H back to the
+  control room, Esc (B) closes the top panel. The bar under the buttons does the same by touch.
 - **Ladders:** walk into a ladder facing it to climb it. To go down, step backwards over the edge at its top.
 - **Map:** drag to pan, use the wheel or pinch to zoom, and right-drag or turn two fingers to rotate. Tap a floor to
   go there.
+
+## Operating the plant (ui/)
+
+The plant runs as soon as the app starts, in the `cold_iron` scenario, at 1×. The engine (`sim/`, unchanged)
+steps every 0.1 s of plant time whatever the frame rate. Fast-forward is offered while the engine allows it (no
+unacknowledged alarm, no active priority 1 alarm, no machine in a step to watch) and stops by itself when that
+changes, or when a procedure step is done. It is capped so that the model takes at most a quarter of one core,
+from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.4 ms a step).
+
+- **Cards:** the code with its meaning from the plant's key table, where it is (and "Go there"), its state and
+  values, its alarms and its operations. An operation is offered where the content's `where` says: within 6 m of the
+  equipment for `local`, in the control room for `screen`. Permissives that fail are listed in the content's words;
+  a refused operation says why (a failed permissive, the sequence's state, a trip whose cause is still there, a
+  value out of range). A 0–1 command is typed in per cent.
+- **Alarms:** active ones (unacknowledged first, flashing), shelved ones (10 min, 30 min or 1 h of plant time),
+  those suppressed by design, and the latched trips with each group's first out. The horn follows the highest
+  unacknowledged priority.
+- **Procedures and tours:** the current step's text with its links, the operations it expects (ticked when done),
+  why, the equipment pointed at in the plant (a frame and an arrow, and an arrow at the screen's edge with its
+  distance); a step ends by itself when its `done` value turns true. "Pause when a step is done" stops the plant
+  there. A tour's Next and Back fly to each stop, or the trainee walks with the arrow. Walking directions along the
+  walkways are not made yet.
+- **Instructor mode** (settings): the scenario to restart in and the scenario's trainer faults.
+- **Bindings:** the kit's moving pieces are children of the equipment's node named by their channel (`shaft`,
+  `blades`, `handwheel` turn about their own Y axis; `stem`, `contacts` move along it by the `travel` meta; `disc`
+  turns by the `angle` meta; `needle` from `angle0` to `angle1` about its own Z; `level` scales Y); lamps are
+  `lamp_<kind>`. Until the kit has them, small markers stand in. Local displays show their value within 8 m.
+- **Sounds:** played from `built/sounds` (tools/plant3d/sounds) when it is there; silent otherwise.
+- **Links out:** Walkdown registers no `walkdown://` scheme yet, so the plant offers none (`ui/links_in.gd`
+  `WALKDOWN_TAKES`); a course link in a procedure says so.
+
+## Android: a Gradle export
+
+The Android presets are Gradle builds, so that the export plugin can add the intent filter for links (decision 0056).
+`build.sh` installs Godot's template into `android/` (ignored by git) from the export templates, pins its Gradle by
+SHA-256 and runs it on a JDK 17 (`tools/plant3d/fetch_jdk.sh`; Gradle 8.11 doesn't run on JDK 25). The release is
+exported unsigned and signed afterwards with `apksigner` (Android SDK build-tools 35 or later, for `zipalign -P`), so
+the key never reaches Gradle; every APK is checked for the intent filter (`aapt2`). Every build dependency Gradle
+resolves is checked against `android-gradle-verification.xml` (0056). On the desktops a link opens a second
+instance when the app already runs.
+`phone/links.sh` checks links on the Note 9 (a cold start and a running app).
 
 ## Quality tiers (R9)
 
@@ -105,6 +157,15 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_quality`: picking the tier.
 - `test_kit`: every part of `kit.json` is made, with valid meshes at every LOD within its triangle budget, its moving
   nodes and plate points.
+- `test_ui_cold_start`: the cold start driven through the UI only (the procedure panel, cards, the time bar) to base
+  load; the engine's inputs, events, step ends and final state must be the reference's (`ref/vectors/plant3d-v1.json`
+  `train`).
+- `test_ui_operate`, `test_ui_alarms`, `test_ui_links`, `test_ui_clock`, `test_ui_parts`: operations offered and
+  refused, alarms acknowledged and shelved, links, the clock and its cap, moving parts and sounds.
+
+A test stopped by a script error counts as failed (the runner counts script errors). `tests/ui_shots.gd` saves
+screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script
+res://tests/ui_shots.gd -- --out=DIR`.
 
 Physics runs with the headless renderer.
 
