@@ -12,6 +12,12 @@ const Geom = preload("res://builder/geom.gd")
 const KitPlace = preload("res://builder/kit_place.gd")
 const Mat = preload("res://kit/materials.gd")
 const Kit = preload("res://kit/kit.gd")
+const Lightmap = preload("res://builder/lightmap.gd")
+const Lighting = preload("res://app/lighting.gd")
+const SkyBuild = preload("res://builder/sky.gd")
+const Weather = preload("res://builder/weather.gd")
+const Site = preload("res://builder/site.gd")
+const SKY_SRC := "res://kit/tex/sky/kloofendal_48d_partly_cloudy_puresky_2k.hdr"
 
 const SURFACE_PARTS := ["platform", "floor", "grating", "road"]
 const TOL := 0.05
@@ -406,7 +412,7 @@ func _wall_edge(b: Dictionary, p: Vector2, tol: float) -> Array:
 func make_materials(out_dir: String) -> int:
 	var dir := out_dir.path_join("materials")
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
-	var err := 0
+	var err := Weather.make(Mat.NOISE)
 	var specs := Mat.specs()
 	var list := {}
 	for name in specs:
@@ -419,12 +425,30 @@ func make_materials(out_dir: String) -> int:
 		print("build: warning: materials without their textures: ", ", ".join(missing))
 	for med in plant.get("media", {}):
 		list["medium_" + med] = Mat.make("medium_" + med, {"set": "", "tint": Color.html(plant.media[med].band), "rough": 0.5, "metal": 0.0})
+	var wz := _wet_zone()
+	Mat.set_wet_zone(list, wz, 0.85 if wz != Vector4.ZERO else 0.0)
 	for name in list:
 		var path := dir.path_join(name + ".tres")
 		var e := ResourceSaver.save(list[name], path, ResourceSaver.FLAG_CHANGE_PATH)
 		err += e
 		mats[name] = load(path)
 	return err
+
+## Where the ground is wet (the weathered materials' `wet_zone`): round a cooling tower's basin, which splashes and
+## drips on the ground and the walls at its foot. A box in Godot's axes (centre x, z, half sizes); none without a
+## tower.
+func _wet_zone() -> Vector4:
+	for k in equipment:
+		var e: Dictionary = equipment[k]
+		if e.part == "cooling_tower":
+			var sh := shape_of(e.part, e.params)
+			var sz: Vector3 = sh.get("size", Vector3(30, 30, 0))
+			var g := Geom.g([e.pos.x, e.pos.y, 0.0])
+			var turned := absf(sin(deg_to_rad(float(e.get("yaw", 0.0))))) > 0.7
+			var hx := (sz.y if turned else sz.x) * 0.5 + 2.0
+			var hz := (sz.x if turned else sz.y) * 0.5 + 2.0
+			return Vector4(g.x, g.z, hx, hz)
+	return Vector4.ZERO
 
 func _mat(name: String) -> Material:
 	return mats.get(name, mats.get("paint_grey"))
@@ -449,12 +473,19 @@ func _convex(body: Node, pts: PackedVector3Array) -> void:
 	cs.shape = sh
 	body.add_child(cs)
 
-func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material) -> MeshInstance3D:
+## A structure's mesh: static, with lightmap UV2 (builder/lightmap.gd) at `texel` metres.
+func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material, texel := Lightmap.TEXEL) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.name = name
-	st.set_material(mat)
 	st.generate_tangents()
-	mi.mesh = st.commit()
+	var lit := Lightmap.unwrap(st.commit_to_arrays(), texel, false)
+	if lit != null:
+		mi.mesh = lit
+		mi.material_override = mat
+	else:
+		st.set_material(mat)
+		mi.mesh = st.commit()
+	Lightmap.mark(mi, lit != null)
 	parent.add_child(mi)
 	return mi
 
@@ -464,7 +495,7 @@ func _st() -> SurfaceTool:
 	return st
 
 ## A slab: the region (outline less holes) from z - t to z, drawn and solid.
-func _slab(parent: Node, name: String, outline: PackedVector2Array, holes: Array, z: float, t: float, mat: Material) -> int:
+func _slab(parent: Node, name: String, outline: PackedVector2Array, holes: Array, z: float, t: float, mat: Material, texel := Lightmap.TEXEL) -> int:
 	var pieces := Geom.decompose(outline, holes)
 	if pieces.is_empty():
 		return 0
@@ -473,7 +504,7 @@ func _slab(parent: Node, name: String, outline: PackedVector2Array, holes: Array
 	for pc in pieces:
 		Geom.add_prism(st, pc, z - t, z)
 		_convex(body, Geom.prism_points(pc, z - t, z))
-	_mesh_node(body, "mesh", st, mat)
+	_mesh_node(body, "mesh", st, mat, texel)
 	return pieces.size()
 
 ## A thin vertical panel along plan segment a-b from z0 to z1 (rails, walls, fences), drawn into st and solid.
@@ -576,6 +607,17 @@ func _near_ladder(p: Vector2, z: float) -> bool:
 
 func build_all(out_dir: String) -> int:
 	var err := make_materials(out_dir)
+	var sky_src := ProjectSettings.globalize_path(SKY_SRC)
+	if FileAccess.file_exists(sky_src):
+		var t0 := Time.get_ticks_msec()
+		var si := SkyBuild.make(sky_src, out_dir.path_join("sky"))
+		if si.has("error"):
+			errors.append(si.error)
+			return err + 1
+		print("build: sky: the sun %.1f° up at %.1f°, sky to sun on the ground %.2f, %d ms" % [si.sun_elevation, si.sun_azimuth, si.sky_to_sun, Time.get_ticks_msec() - t0])
+	else:
+		warnings.append("no sky photograph (kit/fetch_textures.sh): a physical sky instead")
+		print("build: warning: no sky photograph, a physical sky instead")
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir.path_join("areas")))
 	var ground := _ground()
 	err += _save(ground, out_dir.path_join("ground.scn"))
@@ -588,6 +630,7 @@ func build_all(out_dir: String) -> int:
 		err += _save(root, path)
 		var bd: Array = a.data.bounds
 		manifest_areas.append({"id": a.id, "title": a.data.get("title", a.id), "scene": path, "bounds": bd})
+	err += _bake_scene(out_dir, [out_dir.path_join("ground.scn")] + manifest_areas.map(func(a): return a.scene))
 	var manifest := {
 		"format": "walkdown-plant-built", "version": 1, "title": plant.get("title", ""),
 		"start": {"at": _arr(Geom.g(plant.start.at)), "yaw": float(plant.start.get("yaw", 0))},
@@ -605,6 +648,44 @@ func build_all(out_dir: String) -> int:
 		return err + 1
 	f.store_string(JSON.stringify(manifest, " ", false))
 	return err
+
+## The scene the lightmap is baked in (builder/bake/, after this build, on a GPU): the ground and every area as
+## instances under one node named as the app's plant node holds them, the sun, the sky, and the LightmapGI beside
+## the areas, so the baked users' paths ("../area_…/…") hold in the app too (app/lighting.gd).
+func _bake_scene(out_dir: String, scenes: Array) -> int:
+	var root := Node3D.new()
+	root.name = "plant"
+	for path in scenes:
+		var inst := (load(path) as PackedScene).instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+		root.add_child(inst)
+		inst.owner = root
+	var sun := Lighting.sun()
+	root.add_child(sun)
+	sun.owner = root
+	var lm := LightmapGI.new()
+	lm.name = "lightmap"
+	lm.quality = LightmapGI.BAKE_QUALITY_MEDIUM
+	lm.bounces = 3
+	lm.use_denoiser = true
+	lm.directional = false
+	lm.interior = false
+	lm.texel_scale = 1.0
+	lm.max_texture_size = 4096   # the Note 9's Mali-G72 reads 8192 px; half that leaves room
+	lm.environment_mode = LightmapGI.ENVIRONMENT_MODE_CUSTOM_SKY
+	lm.environment_custom_sky = Lighting.sky()
+	lm.environment_custom_energy = 1.0
+	lm.generate_probes_subdiv = LightmapGI.GENERATE_PROBES_SUBDIV_8
+	lm.shadowmask_mode = LightmapGIData.SHADOWMASK_MODE_REPLACE   # the sun's shadow beyond the real-time distance
+	root.add_child(lm)
+	lm.owner = root
+	var ps := PackedScene.new()
+	var e := ps.pack(root)
+	if e == OK:
+		e = ResourceSaver.save(ps, out_dir.path_join("lit.scn"))
+	root.free()
+	if e != OK:
+		errors.append("save the bake scene: error %d" % e)
+	return e
 
 func _arr(v: Vector3) -> Array:
 	return [snappedf(v.x, 0.001), snappedf(v.y, 0.001), snappedf(v.z, 0.001)]
@@ -633,14 +714,13 @@ func _extent() -> Array:
 func _ground() -> Node3D:
 	var root := Node3D.new()
 	root.name = "ground"
-	var ex := _extent()
-	var m := 40.0
-	var outline := Geom.rect(ex[0][0] - m, ex[0][1] - m, ex[1][0] + m, ex[1][1] + m)
 	var holes: Array = []
 	for p in pits:
 		holes.append(p.outline)
 	holes.append_array(ground_cuts())
-	_slab(root, "ground", outline, holes, 0.0, 0.5, _mat("ground"))
+	var site := Site.new(self)
+	site.make(root, holes)
+	var outline := Site.poly_of(site.wall_rect())
 	# rails round open pits (a pit covered by a grating at z = 0 needs none)
 	var st := _st()
 	var body := _body(root, "pit_rails")
@@ -919,6 +999,49 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 		Geom.add_prism(roof, pc, h, h + 0.3)
 		_convex(body, Geom.prism_points(pc, h, h + 0.3))
 	_mesh_node(body, "roof", roof, _mat("roof"))
+	_lamps(body, b)
+
+## High-bay lamps under a building's roof (a hall is lit by its lamps, not by the sky through its walls): a grid
+## about 0.6 × the height apart (6 to 10 m), each a housing, a lit lens and a light the bake takes in whole
+## (BAKE_STATIC: its light and shadow are in the lightmap; the app drops the light node once a bake is there, the
+## probes carry its light to what moves: app/main.gd).
+const LAMP_LUX := 2.0   # light energy of one lamp (Godot's units), set by eye against the outdoor exposure
+func _lamps(body: Node, b: Dictionary) -> int:
+	var pg: PackedVector2Array = b.outline
+	var h: float = b.height
+	var r := Rect2(pg[0], Vector2.ZERO)
+	for q in pg:
+		r = r.expand(q)
+	var gap := clampf(h * 0.6, 6.0, 10.0)
+	var nx := maxi(1, int(round(r.size.x / gap)))
+	var ny := maxi(1, int(round(r.size.y / gap)))
+	var housing := _st()
+	var lens := _st()
+	var n := 0
+	for i in nx:
+		for j in ny:
+			var c := r.position + Vector2(r.size.x * (i + 0.5) / nx, r.size.y * (j + 0.5) / ny)
+			if not Geom.in_region(c, pg, []):
+				continue
+			var z := h - 0.6
+			Geom.add_prism(housing, Geom.rect(c.x - 0.3, c.y - 0.3, c.x + 0.3, c.y + 0.3), z, z + 0.25)
+			Geom.add_prism(lens, Geom.rect(c.x - 0.25, c.y - 0.25, c.x + 0.25, c.y + 0.25), z - 0.03, z)
+			var l := OmniLight3D.new()
+			l.name = "lamp_%d" % n
+			l.position = Geom.g([c.x, c.y, z - 0.2])
+			l.omni_range = h * 1.4
+			l.omni_attenuation = 1.0
+			l.light_energy = LAMP_LUX
+			l.light_color = Color(1.0, 0.95, 0.86)
+			l.light_bake_mode = Light3D.BAKE_STATIC
+			l.shadow_enabled = false
+			l.add_to_group("baked_lights", true)
+			body.add_child(l)
+			n += 1
+	if n > 0:
+		_mesh_node(body, "lamp_housings", housing, _mat("steel_dark"))
+		_mesh_node(body, "lamp_lenses", lens, _mat("lamp_white"))
+	return n
 
 func _pit(parent: Node3D, p: Dictionary) -> void:
 	var body := _body(parent, p.id + "_walls")
@@ -970,6 +1093,7 @@ func _door(parent: Node3D, s: Dictionary) -> void:
 	mi.mesh = bm
 	mi.position.y = float(pr.height) * 0.5
 	mi.material_override = _mat("door")
+	Lightmap.mark(mi, false)   # it moves: lit by the bake's probes
 	door.add_child(mi)
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()

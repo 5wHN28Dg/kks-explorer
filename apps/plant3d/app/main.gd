@@ -19,6 +19,7 @@ const Autopilot = preload("res://app/autopilot.gd")
 const Routes = preload("res://app/routes.gd")
 const Hud = preload("res://app/hud.gd")
 const MapView = preload("res://app/map_view.gd")
+const Lighting = preload("res://app/lighting.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -60,6 +61,14 @@ func _ready() -> void:
 		add_child(l)
 		return
 	_say("loaded the plant in %d ms (%d areas)" % [plant.load_ms, plant.manifest.areas.size()])
+	var lm := Lighting.lightmap_node()
+	if lm != null:
+		plant.add_child(lm)   # beside the areas: its users' paths are "../area_…" (app/lighting.gd)
+		for l in get_tree().get_nodes_in_group("baked_lights"):
+			l.queue_free()   # their light is in the lightmap and, for what moves, in its probes
+		_say("lightmap: %d meshes baked" % lm.light_data.get_user_count())
+	else:
+		_say("lightmap: none in this build (the sky and the sun only)")
 	player = Player.new()
 	player.name = "player"
 	add_child(player)
@@ -102,21 +111,14 @@ func _options() -> void:
 
 func _environment() -> void:
 	env = Environment.new()
-	var sky := Sky.new()
-	var sm := ProceduralSkyMaterial.new()
-	sm.ground_horizon_color = Color(0.55, 0.53, 0.49)   # the plant's ground runs on to the horizon
-	sm.ground_bottom_color = Color(0.42, 0.40, 0.36)
-	sky.sky_material = sm
 	env.background_mode = Environment.BG_SKY
-	env.sky = sky
+	env.sky = Lighting.sky()
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, 35, 0)
-	sun.shadow_enabled = true
+	sun = Lighting.sun()
 	add_child(sun)
 
 ## Picks the tier (app/quality.gd) and applies it; a desktop without a measurement of its GPU measures it first.
