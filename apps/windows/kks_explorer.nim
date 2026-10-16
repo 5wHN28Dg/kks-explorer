@@ -1,8 +1,8 @@
 ## Walkdown for Windows (M6 phase 7; decisions 0014, 0027, 0033): Win32 controls + a Direct2D drawing view on the
 ## Nim core. One thread owns the node: asyncdispatch is pumped from the window's timer.
 
-import std/[asyncdispatch, os, osproc, strutils, tables, sets, times, math]
-import kks/[json, api, pathstore, views]
+import std/[asyncdispatch, os, osproc, strutils, tables, sets, times, math, sequtils]
+import kks/[json, api, pathstore, views, applink]
 import kks/model
 import appstate
 import kksl/dbstore
@@ -185,6 +185,24 @@ proc markDialog(x0, y0, x1, y1: float) =
 proc GetSystemMenu(h: HWND, revert: BOOL): pointer {.importc, stdcall, header: "<windows.h>".}
 proc AppendMenuW(m: pointer, flags: UINT, id: uint, text: WideCString): BOOL {.importc, stdcall, header: "<windows.h>", discardable.}
 
+const LinkMagic = 0x4B4B534C'u       ## WM_COPYDATA's dwData for a link ("KKSL")
+
+proc isLinkArg(a: string): bool = a.len <= MaxLinkLen and a.toLowerAscii.startsWith(LinkScheme & ":")
+
+proc handOver(link: string): bool =
+  ## Walkdown already runs (its main window is there): the link goes to it, and this start ends (true). MSIX starts
+  ## a new process for every link; two of them on one store and one sync port would not work.
+  let hw = FindWindowW(newWideCString("KKSMain"), nil)
+  if hw == nil: return false
+  var pid: DWORD
+  GetWindowThreadProcessId(hw, addr pid)
+  AllowSetForegroundWindow(pid)       # (this process was started by the person's click: the window may come forward)
+  var data = link
+  var cd = COPYDATASTRUCT(dwData: LinkMagic, cbData: DWORD(data.len), lpData: addr data[0])
+  var res: uint
+  SendMessageTimeoutW(hw, WM_COPYDATA, 0, cast[LPARAM](addr cd), SMTO_ABORTIFHUNG, 5000, addr res)
+  true
+
 proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
   case m
   of 0x0112'u32:              # WM_SYSCOMMAND: the system menu's own item
@@ -213,7 +231,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
         # start over as a fresh process (new device key, the setup screen with the note). Close the store first and
         # leave at once, so the new process never opens a file this one is still closing.
         try: w.a.store.close() except CatchableError: discard
-        discard startProcess(getAppFilename(), args = commandLineParams(), options = {poParentStreams})
+        discard startProcess(getAppFilename(), args = commandLineParams().filterIt(not isLinkArg(it)), options = {poParentStreams})
         quit(0)
       elif changed and setupP == nil and w.v != nil:
         changed = false
@@ -227,6 +245,16 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     return 0
   of WM_KKS_LATER:
     runLater()
+    return 0
+  of WM_COPYDATA:
+    # a walkdown:// link handed over by a second start (handOver): only its text, at most MaxLinkLen bytes, read by
+    # the core like any other (decision 0057)
+    let cd = cast[ptr COPYDATASTRUCT](lp)
+    if w != nil and cd != nil and cd.dwData == LinkMagic and int(cd.cbData) in 1 .. MaxLinkLen and cd.lpData != nil:
+      var link = newString(int(cd.cbData))
+      copyMem(addr link[0], cd.lpData, link.len)
+      later(proc () = w.openAppLink(link, setupP == nil and w.v != nil))
+      return 1
     return 0
   of WM_DPICHANGED:
     makeFonts(hiword(int(wp)))
@@ -302,6 +330,13 @@ proc showMain() =
   w.resumePhotos()          # the photos left from before (a crash, a kill, a logout) go first, in their order
 
 proc main() =
+  # a walkdown:// link on the command line (MSIX's protocol activation, decision 0057): the first one is taken
+  var link = ""
+  for p in commandLineParams():
+    if isLinkArg(p):
+      link = p
+      break
+  if link.len > 0 and handOver(link): quit(0)
   SetProcessDpiAwarenessContext(-4)        # per-monitor v2
   var icc = CommonControlsInit(dwSize: DWORD(sizeof(CommonControlsInit)), dwICC: 0xFFFF)
   InitCommonControlsEx(addr icc)
@@ -359,7 +394,9 @@ proc main() =
   if staleFile.len > 0:
     beforeHandler = proc () =
       if w.v != nil and setupP == nil and fileExists(staleFile): later(proc () = w.rebuildPanel())
-  if a.joined: showMain()
+  if a.joined:
+    showMain()
+    if link.len > 0: later(proc () = w.openAppLink(link, setupP == nil and w.v != nil))
   else:
     setupP = newPage(hw)
     w.buildSetup(setupP, proc () =

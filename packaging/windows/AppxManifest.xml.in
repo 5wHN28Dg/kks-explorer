@@ -34,6 +34,13 @@
             <desktop:ExecutionAlias Alias="walkdown.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
+        <!-- walkdown:// links from other apps (decision 0057; docs/PLANT3D.md §6): the app is started with the URI as its
+             argument; a running Walkdown is handed the link and the new start ends -->
+        <uap3:Extension Category="windows.protocol">
+          <uap3:Protocol Name="walkdown" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Walkdown link</uap:DisplayName>
+          </uap3:Protocol>
+        </uap3:Extension>
       </Extensions>
     </Application>
   </Applications>

@@ -232,6 +232,7 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
 |---|---|
 | `walkdown-plant://kks/<code>` | Walkdown Plant at that equipment: highlighted, with its card; the trainee chooses to walk or fly there |
 | `walkdown-plant://procedure/<id>` and `…/<id>/<step>` | a procedure or tour (§8), at its first or that step |
+| `walkdown://kks/<code>` | Walkdown at the tag with that code, on its drawing (as a course's code link) |
 | `walkdown://course/<course>` and `…/<course>/<page>` | Walkdown's course renderer at that course or page |
 
 - **Codes in links** are read leniently, the plant's own codes strictly: a link's code (`[0-9A-Z]{4,24}`, as in
@@ -247,6 +248,22 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
   The reference is `read_link` in `ref/plant3d.py`, and the vectors' `links` (§12) pin it. The code is not stored or sent
   anywhere: Walkdown Plant has no network access (0054).
 - **A link out with nothing to open it** (Walkdown not installed): the app says so instead of failing silently.
+
+**Links into Walkdown** (0057). Walkdown's Android, GNOME and Windows apps register the `walkdown` scheme; the web client
+takes no links. Walkdown reads a link more strictly than the plant does, because it holds a real plant's data and
+acts for a signed-in person (`core/src/kks/applink.nim`, its tests in `core/tests/test_applink.nim`):
+
+- The whole link is at most 128 characters, taken as given: no trimming, no percent-decoding. The scheme
+  `walkdown://` is matched in any case (RFC 3986), everything after it exactly.
+- `walkdown://kks/<code>` with `<code>` = `[0-9A-Z]{4,24}`: the first tag, in the drawings' order, whose code with
+  its suffix is `<code>`, else the first whose code without the suffix is; its drawing opens with the tag selected
+  and its panel, as when a course's code link is followed. A code on no drawing says so, nothing more.
+- `walkdown://course/<course>` and `walkdown://course/<course>/<page>`, identifiers `[a-z_][a-z0-9_]{0,31}`
+  (COURSES.md §1): that course, at that page, or where the learner left off; a course or page the device doesn't
+  have opens as a course link to it does.
+- Anything else is ignored, with nothing done and nothing said: another kind, a query or fragment, an empty or extra
+  path segment, a user or port, a malformed code or identifier. A device that has not joined a plant ignores every
+  link. No link reaches anything else in Walkdown: signing in, joining, sending, deleting, importing or fetching.
 
 ## 7. The behaviour model
 

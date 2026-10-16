@@ -1,8 +1,7 @@
 ## Links into the app (docs/PLANT3D.md §6): a code opens its card and points at it; a component-level code opens
 ## the equipment it belongs to; a real plant's code opens the plant's equipment of the same kind, labelled as such;
 ## a procedure link opens that procedure at that step; anything else opens nothing and says so. The command line
-## (how the desktop files hand a link over) is read for links; links out to Walkdown say why they can't open while
-## Walkdown takes none.
+## (how the desktop files hand a link over) is read for links; a link out to Walkdown of a kind it doesn't take says so.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
@@ -16,8 +15,10 @@ func run(tree: SceneTree) -> Array:
 			"walkdown-plant://kks/" + "A".repeat(300)]))
 	if got != ["walkdown-plant://kks/30PAC10AP001", "walkdown-plant://procedure/cold_start"]:
 		p.append("links read from the command line: %s" % str(got))
-	if not LinksIn.open_walkdown("course", "ppt/ccpp").contains("can't open links from other apps yet"):
-		p.append("a link out to Walkdown, which takes none yet, does not say so")
+	if not LinksIn.open_walkdown("procedure", "cold_start").contains("doesn't open this kind of link"):
+		p.append("a link out to Walkdown of a kind it doesn't take does not say so")
+	if LinksIn.WALKDOWN_TAKES != ["kks", "course"]:
+		p.append("the link kinds Walkdown takes: %s" % str(LinksIn.WALKDOWN_TAKES))
 	var main := App.start(tree)
 	var ui = main.ui
 	if ui == null or ui.clock == null:

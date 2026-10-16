@@ -2,7 +2,7 @@
 ## underneath. One thread: GLib's main loop runs GTK, and asyncdispatch (sync, mDNS) is driven from it.
 
 import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequtils]
-import kks/[json, api]
+import kks/[json, api, applink]
 import kks/model
 import kksl/dbstore
 import appstate
@@ -690,8 +690,14 @@ proc main() =
     var h = 0'u32
     for c in custom: h = h * 31 + uint32(c)
     id.add ".p" & toHex(h, 8)
-  let app = adw_application_new(id.cstring, if custom.len > 0: 32 else: 0)   # 32 = G_APPLICATION_NON_UNIQUE
+  # 4 = G_APPLICATION_HANDLES_OPEN: walkdown:// links (decision 0057) come to "open", in the running instance
+  let app = adw_application_new(id.cstring, cint(4 or (if custom.len > 0: 32 else: 0)))   # 32 = G_APPLICATION_NON_UNIQUE
   app.on("activate", proc () = w.activate(app))
+  app.onOpen(proc (uris: seq[string]) =
+    w.activate(app)
+    let links = uris
+    idle(proc () =        # (once the window is up)
+      for u in links: w.openAppLink(u)))
   # About Walkdown: the primary menu's item, and the app.about action other parts of GNOME may call
   let aboutAction = g_simple_action_new("about", nil)
   aboutAction.onPtr("activate", proc (p: W) =
@@ -714,7 +720,13 @@ proc main() =
           let pth = shotPath.changeFileExt("") & "-" & id & ".png"
           stderr.writeLine "screenshot " & pth & ": " & (if saveScreenshot(cwin, pth): "saved" else: "FAILED")
       true)
-  let code = g_application_run(app, 0, nil)
+  # GApplication sees only the program and the links: any other argument stays unread (it would take an unknown
+  # option for an error, and a file for something to open)
+  var args = @[getAppFilename()]
+  for p in commandLineParams():
+    if p.len <= MaxLinkLen and p.toLowerAscii.startsWith(LinkScheme & ":"): args.add p
+  let argv = allocCStringArray(args)
+  let code = g_application_run(app, cint(args.len), argv)
   quit int(code)
 
 main()

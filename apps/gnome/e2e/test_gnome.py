@@ -91,16 +91,16 @@ class Plant(unittest.TestCase):
         cls.server.wait(5)
         shutil.rmtree(cls.dir, ignore_errors=True)
 
-    def start_app(self, name, wait=True, **extra):
+    def start_app(self, name, wait=True, args=(), **extra):
         """the app on its own data folder (the same one again for the same name); wait=False: don't wait for its
-        window (returns None; the process is self.apps[-1])"""
+        window (returns None; the process is self.apps[-1]); args: its command line (links)"""
         d = os.path.join(self.dir, name)
         os.makedirs(d, exist_ok=True)
         env = dict(os.environ, KKS_DATA_DIR=d, KKS_STORAGE_KEY_FILE=os.path.join(d, 'key'), KKS_NO_MDNS='1',
                    KKS_SYNC_PORT=str(free_port()), **extra)
         before = atspi.app_pids()
         log = open(f'/tmp/kks-gnome-e2e-{name}.log', 'w')       # the app's own output, for when a test fails
-        p = subprocess.Popen([APP], env=env, stdout=log, stderr=subprocess.STDOUT)
+        p = subprocess.Popen([APP, *args], env=env, stdout=log, stderr=subprocess.STDOUT)
         self.apps.append(p)
         if not wait:
             return None
@@ -268,6 +268,38 @@ class Gnome(Plant):
         ask = atspi.find(a, 'alert', name='Where does A3 continue?', timeout=10)
         atspi.click(atspi.find(ask, 'button', name='Sample sheet'))
         atspi.find(a, 'label', name='Connector A3 on Sample sheet', timeout=10)
+
+    def test_app_links(self):
+        """walkdown:// links from other apps (decision 0057), as the .desktop file's `%u` hands them over: a code opens
+        its tag on its drawing with the panel, a course link that course at that page; a link of any other kind or
+        form, or on a device that hasn't joined, opens nothing"""
+        a = self.start_app('linked', args=['walkdown://kks/../../etc', 'walkdown://join/x'])
+        atspi.find(a, 'button', name='Join through a server', timeout=15)      # not joined: the setup screen, nothing else
+        self.join(a)
+        self.apps[-1].terminate()
+        self.apps[-1].wait(10)
+        # hostile and malformed links: the app starts as it always does, and nothing is selected
+        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA501?x=1', 'walkdown://delete/11LAB70AA501',
+                                           'walkdown://kks/11lab70aa501', 'walkdown://course/../../etc'])
+        atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
+        time.sleep(2)
+        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA501'), [], 'a malformed link opened a tag')
+        self.assertEqual(atspi.find_all(a, 'label', contains='is not on any sheet'), [])
+        self.apps[-1].terminate()
+        self.apps[-1].wait(10)
+        # a code: its tag, on its drawing, with the panel
+        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA501'])
+        atspi.find(a, 'label', name='11LAB70AA501', timeout=20)
+        atspi.find(a, 'image', name='Drawing Sample sheet', timeout=10)
+        self.apps[-1].terminate()
+        self.apps[-1].wait(10)
+        # a code on no drawing says so; a course link opens that course at that page
+        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA599', 'walkdown://course/inc/loop'])
+        atspi.find(a, 'label', contains='11LAB70AA599 is not on any sheet', timeout=20)
+        atspi.find(a, 'image', name='A control loop: drum level', timeout=20)
+        self.assertEqual(self.criticals('linked'), [])
+        self.apps[-1].terminate()
+        self.apps[-1].wait(10)
 
     def test_photo_editor(self):
         """the photo editor's controls (line sizes, zoom) are reachable; a photo goes to the server; the drawing can be

@@ -189,6 +189,19 @@ proc IsDialogMessageW*(h: HWND, m: ptr MSG): BOOL {.importc, stdcall, header: H.
 proc PostQuitMessage*(code: int32) {.importc, stdcall, header: H.}
 proc PostMessageW*(h: HWND, m: UINT, w: WPARAM, l: LPARAM): BOOL {.importc, stdcall, header: H, discardable.}
 proc SendMessageW*(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.importc, stdcall, header: H, discardable.}
+proc IsIconic*(h: HWND): BOOL {.importc, stdcall, header: H.}
+proc FindWindowW*(cls, title: WideCString): HWND {.importc, stdcall, header: H.}
+proc GetWindowThreadProcessId*(h: HWND, pid: ptr DWORD): DWORD {.importc, stdcall, header: H, discardable.}
+proc AllowSetForegroundWindow*(pid: DWORD): BOOL {.importc, stdcall, header: H, discardable.}
+proc SendMessageTimeoutW*(h: HWND, m: UINT, w: WPARAM, l: LPARAM, flags, timeout: UINT, res: ptr uint): LRESULT {.importc, stdcall, header: H, discardable.}
+type COPYDATASTRUCT* {.importc, header: H.} = object
+  dwData*: uint
+  cbData*: DWORD
+  lpData*: pointer
+const
+  WM_COPYDATA* = 0x004A'u32
+  SW_RESTORE* = 9'i32
+  SMTO_ABORTIFHUNG* = 0x0002'u32
 proc SetWindowTextW*(h: HWND, s: WideCString): BOOL {.importc, stdcall, header: H, discardable.}
 proc GetWindowTextW*(h: HWND, s: WideCString, n: int32): int32 {.importc, stdcall, header: H.}
 proc GetWindowTextLengthW*(h: HWND): int32 {.importc, stdcall, header: H.}

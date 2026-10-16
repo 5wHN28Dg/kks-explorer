@@ -6,13 +6,14 @@
 ##   apps/plant3d/android), read through Godot's AndroidRuntime plugin.
 ## What a link opens is sim/links.gd `read_link`, the reference's rule; nothing else is read from it.
 ##
-## Links out go to Walkdown (`walkdown://…`). Walkdown takes no links from other apps yet (its four platforms register
-## no scheme: checked 2026-10-16), so WALKDOWN_TAKES is empty and the plant offers none; a course link in a procedure
-## says so instead of failing silently. Add a kind here when Walkdown registers it.
+## Links out go to Walkdown (`walkdown://…`, PLANT3D.md §6 "Links into Walkdown", decision 0057). Walkdown's Android,
+## GNOME and Windows apps take `walkdown://kks/<code>` and `walkdown://course/<course>[/<page>]` (its web client takes
+## none); WALKDOWN_TAKES lists those kinds. A link of another kind, or with Walkdown not installed, says so instead of
+## failing silently.
 extends Node
 
 const PREFIX := "walkdown-plant://"
-const WALKDOWN_TAKES: Array = []        # link kinds Walkdown opens: "course" once it registers walkdown://course/…
+const WALKDOWN_TAKES: Array = ["kks", "course"]        # the link kinds Walkdown opens (core/src/kks/applink.nim)
 
 signal link(url: String)
 
@@ -67,7 +68,7 @@ func _check_intent() -> void:
 ## Opens a link to Walkdown when Walkdown takes that kind; otherwise returns why not, in words.
 static func open_walkdown(kind: String, path: String) -> String:
 	if not WALKDOWN_TAKES.has(kind):
-		return "Walkdown can't open links from other apps yet, so this %s can't be opened from here: open it in Walkdown." % kind
+		return "Walkdown doesn't open this kind of link (%s) from other apps: open it in Walkdown." % kind
 	var err := OS.shell_open("walkdown://%s/%s" % [kind, path.uri_encode().replace("%2F", "/")])
 	if err != OK:
 		return "Walkdown is not installed on this device (or doesn't open walkdown:// links)."

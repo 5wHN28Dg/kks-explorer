@@ -202,9 +202,19 @@ fun moduleQs(m: JSONObject): List<JSONObject> = listOf(m.getJSONObject("warm")) 
 fun Learning(ui: Ui, snack: SnackbarHostState) {
     var open by rememberSaveable { mutableStateOf("") }
     var openPage by rememberSaveable { mutableStateOf("") }
+    var linkSeq by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(ui.courseSeq) {      // a walkdown://course/… link (Root.kt): that course, at that page
+        val link = ui.courseLink ?: return@LaunchedEffect
+        ui.courseLink = null
+        open = link.first
+        openPage = link.second
+        linkSeq = ui.courseSeq
+    }
     if (open.isNotEmpty()) {
         BackHandler { open = "" }
-        CourseScreen(open, openPage, onClose = { open = "" }, onCourse = { c, p -> openPage = p; open = c }, ui = ui)
+        key(open, linkSeq) {     // (a link to the course already open moves it to the link's page)
+            CourseScreen(open, openPage, onClose = { open = "" }, onCourse = { c, p -> openPage = p; open = c }, ui = ui)
+        }
         return
     }
     val rev = Changes.rev

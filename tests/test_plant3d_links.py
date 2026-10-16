@@ -46,19 +46,42 @@ class PlantLinks(unittest.TestCase):
                 self.assertIn('gradle_build/use_gradle_build=true', opts)   # the plugin's manifest needs Gradle
 
     def test_walkdown_takes_what_it_registers(self):
+        """Walkdown registers walkdown:// on Android, GNOME (and its Flatpak) and Windows (decision 0057), and the
+        plant offers links out of exactly the kinds Walkdown's reader (core/src/kks/applink.nim) opens"""
         takes = re.search(r'const WALKDOWN_TAKES: Array = \[(.*?)\]', read(PLANT, 'ui', 'links_in.gd')).group(1)
-        registered = []
-        for path in ['android/app2/src/main/AndroidManifest.xml', 'packaging/windows/AppxManifest.xml.in']:
-            if re.search(r'scheme="walkdown"|Protocol Name="walkdown"', read(ROOT, path)):
-                registered.append(path)
-        for dirpath, _, files in os.walk(os.path.join(ROOT, 'apps')):
-            for f in files:
-                if f.endswith('.desktop') and 'x-scheme-handler/walkdown;' in read(dirpath, f):
-                    registered.append(f)
-        # Walkdown registers no walkdown:// scheme today: the plant offers no link out. When it does, say which
-        # kinds it opens in WALKDOWN_TAKES (and the other way round).
-        self.assertEqual(bool(takes.strip()), bool(registered), (takes, registered))
+        takes = re.findall(r'"([a-z]+)"', takes)
+        reader = re.findall(r'AppLink\(kind: "([a-z]+)"', read(ROOT, 'core', 'src', 'kks', 'applink.nim'))
+        self.assertEqual(sorted(takes), sorted(set(reader)))
+        self.assertEqual(sorted(takes), ['course', 'kks'])
 
+        ns = {'a': 'http://schemas.android.com/apk/res/android'}
+        A = '{http://schemas.android.com/apk/res/android}'
+        man = ET.fromstring(read(ROOT, 'android', 'app2', 'src', 'main', 'AndroidManifest.xml'))
+        with_scheme = []
+        for act in man.find('application').findall('activity'):
+            for f in act.findall('intent-filter'):
+                if any(d.get(A + 'scheme') == 'walkdown' for d in f.findall('data')):
+                    with_scheme.append(act.get(A + 'name'))
+                    self.assertEqual([x.get(A + 'name') for x in f.findall('action')], ['android.intent.action.VIEW'])
+                    self.assertEqual(sorted(c.get(A + 'name') for c in f.findall('category')),
+                                     ['android.intent.category.BROWSABLE', 'android.intent.category.DEFAULT'])
+                    self.assertEqual(act.get(A + 'exported'), 'true')
+        # one windowless activity takes links and hands them to MainActivity (0057), not the launcher activity itself
+        self.assertEqual(with_scheme, ['kks.explorer.LinkActivity'])
+
+        d = read(ROOT, 'apps', 'gnome', 'flatpak', 'io.github._5wHN28Dg.walkdown.desktop')
+        self.assertIn('MimeType=x-scheme-handler/walkdown;', d.splitlines())
+        self.assertRegex(d, r'(?m)^Exec=walkdown %u$')
+        y = read(ROOT, 'apps', 'gnome', 'flatpak', 'io.github._5wHN28Dg.walkdown.yml')
+        self.assertIn('apps/gnome/flatpak/io.github._5wHN28Dg.walkdown.desktop -t /app/share/applications', y)
+
+        wns = {'f': 'http://schemas.microsoft.com/appx/manifest/foundation/windows10',
+               'uap3': 'http://schemas.microsoft.com/appx/manifest/uap/windows10/3'}
+        m = ET.fromstring(read(ROOT, 'packaging', 'windows', 'AppxManifest.xml.in'))
+        app = m.find('f:Applications/f:Application', wns)
+        self.assertEqual(app.get('Executable'), 'Walkdown.exe')
+        protos = [(p.get('Name'), p.get('Parameters')) for p in app.findall('f:Extensions/uap3:Extension/uap3:Protocol', wns)]
+        self.assertEqual(protos, [('walkdown', '"%1"')])
 
 if __name__ == '__main__':
     unittest.main()

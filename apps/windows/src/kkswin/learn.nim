@@ -5,7 +5,7 @@
 ## the questions need no incremental widget updates. Page logic: apps/common/coursestate.nim.
 
 import std/[strutils, tables, sets, sequtils, unicode, math]
-import kks/[json, courses, model]
+import kks/[json, courses, model, applink]
 import appstate, coursestate
 import w32, ui, win, coursefig, photos, coursertf
 
@@ -52,19 +52,38 @@ var openById = initTable[string, CW]()
 proc show(cw: CW, id: string, keepScroll = false)
 proc openCourseWindow*(w: Win, id: string, page = "")
 
+proc toFront(h: HWND) =
+  if IsIconic(h) != 0: ShowWindow(h, SW_RESTORE)
+  discard SetForegroundWindow(h)
+
+proc openCode*(w: Win, code: string) =
+  ## a code's link (a course's, or walkdown://kks/…): its tag on its drawing, with the panel (core findCode)
+  let (ok, t) = w.m.findCode(code)
+  if not ok:
+    w.toast(code & " is not on any sheet")
+    return
+  w.selectTag(t.id, true)     # it shows the sheet (after asking whether to drop a selection)
+  toFront(w.hwnd)
+
+proc openAppLink*(w: Win, uri: string, joined: bool) =
+  ## a walkdown:// link from another app (decision 0057: on the command line, or handed over by a second start):
+  ## read by the core, strictly; a code opens its tag, a course its window; anything else, or a device that hasn't
+  ## joined (`joined` false: the setup screen is up), does nothing
+  let l = parseAppLink(uri)
+  if l.kind == "" or not joined or w.m == nil: return
+  toFront(w.hwnd)
+  case l.kind
+  of "kks": w.openCode(l.code)
+  of "course": openCourseWindow(w, l.course, l.page)
+  else: discard
+
 proc follow(cw: CW, target: string) =
   if target.startsWith("page:"): cw.show(target[5 .. ^1])
   elif target.startsWith("course:"):
     let parts = target[7 .. ^1].split('#', 1)
     openCourseWindow(cw.w, parts[0], if parts.len > 1: parts[1] else: "")
   elif target.startsWith("kks:"):
-    let code = target[4 .. ^1]
-    for t in cw.w.m.tags:
-      if t.full == code or t.kks == code:
-        cw.w.selectTag(t.id, true)     # it shows the sheet (after asking whether to drop a selection)
-        discard SetForegroundWindow(cw.w.hwnd)
-        return
-    cw.w.toast(code & " is not on any sheet")
+    cw.w.openCode(target[4 .. ^1])
   elif target.startsWith("https://"):
     discard ShellExecuteW(nil, newWideCString("open"), newWideCString(target), nil, nil, 1)
 
