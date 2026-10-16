@@ -31,7 +31,7 @@ that need from the build?
 - **Gradle's dependency verification:** every artifact the build resolves (the Android Gradle plugin, Kotlin, AndroidX:
   320 components) must match the SHA-256 in `apps/plant3d/android-gradle-verification.xml`, recorded once from the
   artifacts downloaded here on 2026-10-16 (trust on first use; `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export
-  android-debug android-release` records it again). A changed artifact fails the build [V: one altered checksum
+  android-debug android-release` records it again into that file, to review and commit). A changed artifact fails the build [V: one altered checksum
   failed it].
 - **The signing key never reaches Gradle:** the release is exported unsigned and then aligned and signed by
   `build.sh` with the SDK's `zipalign` and `apksigner` (password through the environment of apksigner alone), as the

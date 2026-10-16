@@ -82,6 +82,9 @@ func run(tree: SceneTree) -> Array:
 			p.append("%s MW is read as %s" % [c[0], var_to_str(Card.read_number(load_op, c[0]))])
 	if Card.read_number(load_op, "1,000") != null:
 		p.append("\"1,000\" was read as a number")
+	for bad in [".", "-.", "-"]:
+		if Card.read_number(load_op, bad) != null:
+			p.append("\"%s\" was read as a number of MW" % bad)
 	for bad in ["", "-", ".", "1e2", "15%"]:
 		if Card.read_number(row[0], bad) != null:
 			p.append("\"%s\" was read as a number" % bad)
@@ -123,20 +126,22 @@ func run(tree: SceneTree) -> Array:
 		ui.clock.set_speed(ui.clock.Speed.PAUSED)
 		if shaft.transform.basis.is_equal_approx(b0):
 			p.append("CW pump A's shaft does not turn while it runs")
-	# 6b. in the cold start's step "set the valve to 15 %", 30 % is not the step's operation
-	ui.start_procedure("cold_start", "cw_a_valve", false)
-	ui.open_card("30PAC10AA101")
-	row = App.op_row(ui.card, "30PAC10AA101", "set")
+	# 6b. in the cold start's step "set pump B's valve to 15 %" (the valve shut), 30 % is not the step's operation
+	ui.start_procedure("cold_start", "cw_b_valve", false)
+	var want: Dictionary = ui.tracker.current()["do"][0]
+	ui.open_card("30PAC10AA102")
+	row = App.op_row(ui.card, "30PAC10AA102", "set")
 	(row[4] as LineEdit).text = "30"
 	(row[1] as Button).pressed.emit()
 	ui.clock.run_steps(1)
-	var want: Dictionary = ui.tracker.current()["do"][0]
+	if ui.tracker.current().get("id", "") != "cw_b_valve":
+		p.append("the step ended at once: the check below would test nothing")
 	if ui.tracker.is_done_op(want) or ui.tracker.deviations.is_empty() or not String(ui.tracker.deviations[-1][1]).contains("asks for 0.15"):
 		p.append("30 %% counted for the step's 15 %%: %s" % str(ui.tracker.deviations))
 	(row[4] as LineEdit).text = "15"
 	(row[1] as Button).pressed.emit()
 	ui.clock.run_steps(1)
-	if not ui.tracker.is_done_op(want) and ui.tracker.current().get("id", "") == "cw_a_valve":
+	if ui.tracker.current().get("id", "") != "cw_b_valve" or not ui.tracker.is_done_op(want):
 		p.append("15 %% did not tick the step's operation")
 	ui.stop_procedure()
 	# 7. at the equipment its local controls are offered: the cooler from beside it

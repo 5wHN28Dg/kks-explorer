@@ -1,11 +1,10 @@
-## Plays the plant's sounds (docs/PLANT3D.md §11) from the files tools/plant3d/sounds makes into built/sounds:
-## its index `index.json` (format `walkdown-plant-sound-files`, tools/plant3d/sounds/README.md) names each sound's
-## layers, all played together with the binding's gain, and with its pitch on the layers marked `pitch` (a motor's
-## mains hum never is). One-shots play on edges the app sees, since format 1 binds no edge: a breaker's closing and
-## opening (its `contacts` value), a large motor's start (its start operation done), an acknowledge. Bound sounds play at their equipment while the trainee is within earshot; the
-## control room horn sounds per priority while an alarm is unacknowledged; one-shots follow events (breakers, a large
-## motor's start, an acknowledge). Without built/sounds (the sounds not made yet) everything here is silent: the
-## hooks (`bind`, `horn`, `event`) are called all the same.
+## Plays the plant's sounds (docs/PLANT3D.md §11) from the files tools/plant3d/sounds makes into built/sounds. Its
+## index `index.json` (format `walkdown-plant-sound-files`, tools/plant3d/sounds/README.md) names each sound's layers,
+## all played together with the binding's gain, and with its pitch on the layers marked `pitch` (a motor's mains hum
+## never is). Bound sounds play at their equipment while the trainee is within earshot; the control room horn sounds
+## per priority while an alarm is unacknowledged. One-shots play on edges the app sees, since format 1 binds none: a
+## breaker's contacts closing and opening, a large motor's start (its loop waits until the run-up has played), an
+## acknowledge. Without built/sounds (the sounds not made) everything here is silent; the hooks are called all the same.
 extends Node3D
 
 const DIR := "res://built/sounds"
@@ -19,6 +18,7 @@ var _bound: Array = []          # [node, sound id, gain spec, pitch spec, player
 var _streams := {}              # file -> AudioStream
 var _horn: AudioStreamPlayer
 var _horn_prio := 0
+var _hold := {}                 # node -> msec until which its loop waits (a one-shot run-up is playing)
 var _edges: Array = []          # [node, value slot, last state]: breakers, by their contacts' value
 var _t := 0.0
 var listener_at := Vector3.ZERO
@@ -96,6 +96,12 @@ func watch_breaker(n: Node3D, slot: int) -> void:
 	_edges.append([n, slot, -1])
 
 
+## A restarted plant: the breakers' last states are forgotten (no edge from the old run's state).
+func reset_edges() -> void:
+	for ed in _edges:
+		ed[2] = -1
+
+
 ## The loop bound to a piece of equipment ("" when none): a large motor's start plays `motor_start` first.
 func sound_of(n: Node3D) -> String:
 	for b in _bound:
@@ -146,7 +152,8 @@ func _process(delta: float) -> void:
 		var b: Array = _bound[i]
 		var n: Node3D = b[0]
 		var lv := level_of(i)
-		var near := n.global_position.distance_to(listener_at) < EARSHOT and lv.x > 0.001 and not muted
+		var held: bool = _hold.get(n, 0) > Time.get_ticks_msec()
+		var near := n.global_position.distance_to(listener_at) < EARSHOT and lv.x > 0.001 and not muted and not held
 		if near and b[4] == null:
 			b[4] = _start(n, b[1])
 		elif not near and b[4] != null:
@@ -211,6 +218,8 @@ func once(id: String, at: Node3D = null) -> void:
 		var st := _stream(layer["file"], false)
 		if st == null:
 			continue
+		if id == "motor_start" and at != null:          # the motor's loop takes over when the run-up has played
+			_hold[at] = Time.get_ticks_msec() + int(st.get_length() * 1000.0)
 		var p
 		if at != null:
 			var p3 := AudioStreamPlayer3D.new()

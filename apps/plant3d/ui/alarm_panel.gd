@@ -145,7 +145,7 @@ func refresh() -> void:
 		sig += str(e.latched) + str(e.first_out)
 	else:
 		for k in entries(tab):
-			sig += "%d:%s;" % [k, e.astate[k]]
+			sig += "%d:%s:%d;" % [k, e.astate[k], since.get(e._al[k][0], -1)]
 	if sig == _sig:
 		return
 	# never pull a list out from under an open Shelve menu

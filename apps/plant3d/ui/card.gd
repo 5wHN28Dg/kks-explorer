@@ -141,6 +141,8 @@ static func read_number(o: Dictionary, text: String):
 	if _percent(o):
 		t = percent_to_fraction(t)      # "33.3" is read as 0.333, not as 33.3 / 100 (one rounding apart)
 	else:
+		if not RegEx.create_from_string("[0-9]").search(t):
+			return null
 		if t.begins_with("."): t = "0" + t
 		elif t.begins_with("-."): t = "-0" + t.substr(1)
 		if t.ends_with("."): t += "0"

@@ -37,7 +37,7 @@ done
 # the sounds (tools/plant3d/sounds, decision 0055: NumPy and FFmpeg with libvorbis): a release needs them; otherwise
 # they are made when the tools are there, and the app is silent without them (ui/sound_player.gd)
 PY="${PLANT_PYTHON:-$ROOT/.venv/bin/python}"; [ -x "$PY" ] || PY=python3
-if "$PY" -c "import numpy" 2>/dev/null && command -v ffmpeg >/dev/null; then
+if "$PY" -c "import numpy" 2>/dev/null && command -v ffmpeg >/dev/null && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libvorbis; then
   "$PY" "$ROOT/tools/plant3d/sounds/make_sounds.py" --out "$HERE/built/sounds" >"$HERE/.sounds.log" 2>&1 ||
     { tail -20 "$HERE/.sounds.log"; echo "the sounds failed (apps/plant3d/.sounds.log)" >&2; exit 1; }
   echo "sounds: $(ls "$HERE/built/sounds" | grep -c '\.ogg$') files"
@@ -106,6 +106,7 @@ case "$TARGETS" in
       rm -f "$VM"
       export PLANT_GRADLE_EXTRA="--write-verification-metadata sha256"
     else
+      unset PLANT_GRADLE_EXTRA
       cp "$HERE/android-gradle-verification.xml" "$VM"
     fi
     GP="$HERE/android/build/gradle.properties"
@@ -177,4 +178,8 @@ done
 if [ "$MODE" = release ]; then
   # the baker must have baked (0041: a headless or display-less editor silently bakes nothing)
   grep -qi "shader baker\|baking" "$HERE/.export.log" || echo "warning: the export log does not mention the shader baker; check .export.log" >&2
+fi
+if [ -n "${PLANT_GRADLE_WRITE_VERIFICATION:-}" ] && [ -f "$HERE/android/build/gradle/verification-metadata.xml" ]; then
+  cp "$HERE/android/build/gradle/verification-metadata.xml" "$HERE/android-gradle-verification.xml"
+  echo "recorded apps/plant3d/android-gradle-verification.xml: review its diff before committing it"
 fi

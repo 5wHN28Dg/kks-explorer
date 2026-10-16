@@ -340,6 +340,7 @@ func restart(scenario: String) -> void:
 	clock.start(model, scenario)
 	bindings.use_engine(clock.engine)
 	sounds.engine = clock.engine
+	sounds.reset_edges()
 	alarms.since.clear()
 	alarms._sig = ""
 	results.clear()
@@ -759,7 +760,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 ## A door within reach: E (gamepad A) opens it, as before the cards.
 func _door_near() -> bool:
 	for d in get_tree().get_nodes_in_group("doors"):
-		if (d as Node3D).global_position.distance_to(player.global_position) < 2.5:
+		if (d as Node3D).global_position.distance_to(player.global_position) < 3.0:     # player.press_door's reach
 			return true
 	return false
 

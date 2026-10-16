@@ -90,11 +90,16 @@ func run(tree: SceneTree) -> Array:
 		var want := linear_to_db(maxf(ui.clock.engine.v("cw_a_spd"), 1e-5))
 		if absf((players[0] as AudioStreamPlayer3D).volume_db - want) > 0.01:
 			p.append("the pump's sound is at %.2f dB, not its speed's %.2f dB" % [players[0].volume_db, want])
-		# the mains hum is never pitched; the other layer follows the binding's pitch (0.5–1 with speed)
-		var pitches := players.map(func(x): return snappedf(x.pitch_scale, 0.001))
-		var pw := snappedf(SoundPlayer.table(ui.clock.engine.v("cw_a_spd"), [[0, 0.5], [1, 1]]), 0.001)
-		if not (pitches.has(1.0) and pitches.has(pw)) and pw != 1.0:
-			p.append("the pump's layers play at pitches %s, not 1 (mains) and %s" % [str(pitches), pw])
+		# the mains hum is never pitched; the other layer follows the binding's pitch (here made 0.7 whatever the speed)
+		for b in ui.sounds._bound:
+			if b[0] == pump:
+				b[3] = 0.7
+		for i in 12:
+			await tree.process_frame
+		for pl in ui.sounds._bound.filter(func(b): return b[0] == pump)[0][4]:
+			var want_pitch := 0.7 if pl[1].get("pitch", true) else 1.0
+			if absf(pl[0].pitch_scale - want_pitch) > 1e-6:
+				p.append("the pump's %s layer plays at pitch %.3f, not %.1f" % [pl[1]["layer"], pl[0].pitch_scale, want_pitch])
 	# a breaker's contacts: a one-shot when they close (format 1 binds no edge: the app watches the value)
 	var brk: Node3D = ui.index.nodes["10BAC10"]
 	ui.player.set_mode(ui.player.Mode.FLY)
