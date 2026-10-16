@@ -127,7 +127,13 @@ same repository would stop every phone's Walkdown updates. [V] the code.
       shaders, `lean+vis` chosen by the app itself, 10 minutes plugged in: 99.84 % of frames shown at 30 fps or
       better (SurfaceFlinger; 0.16 % held for three refreshes or more), no frame over 100 ms after the start,
       GPU median 17.0 ms, peak PSS 620 MB, 7.6 s from launch to the first drawn frame on a first start. The
-      game loop's own count (21.8 % "longer") errs high, as in 0041. To repeat with the parts kit.
+      game loop's own count (21.8 % "longer") errs high, as in 0041.
+    - **With the parts kit (2026-10-16)**: the same walk and build settings with every part made by the kit
+      (303 k triangles at full detail, 1,112 instanced or merged meshes in 12 m cells, CC0 textures at 1024 px):
+      99.79 % of frames shown at 30 fps or better (0.21 % held for three refreshes), no frame over 100 ms (worst
+      54.8 ms), GPU median 17.5 ms, peak PSS 683 MB, 10.2 s from launch to the first drawn frame on a first start.
+      A run with visibility-range fades had one 193 ms frame (a pipeline compiled the first time an instance faded):
+      the kit's ranges cut without a fade. APK 71 MB.
     - **Model cost:** the time of one 0.1 s model step with the whole first train's model, on the Note 9 (fast-forward
       at 60× runs 600 steps a second); the fast-forward cap is set from it.
     - Test runner: a small SceneTree script of our own that runs test functions and exits non-zero (no GUT or

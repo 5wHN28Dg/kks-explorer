@@ -25,6 +25,14 @@ func run(_tree: SceneTree) -> Array:
 	var lean: Dictionary = Quality.PRESETS["lean+vis"]
 	if not (lean.scale == 0.6 and lean.fsr and lean.shadow_atlas == 2048 and lean.shadow_distance == 40.0 and lean.lod_threshold == 4.0):
 		p.append("lean+vis is the bench's measured preset (0041)")
+	# the ranges count the screen's pixels, not the logical size a stretched canvas reports
+	var vp := _tree.root
+	var keep := vp.content_scale_size
+	vp.content_scale_size = Vector2i(800, 450)
+	var want := float(vp.get_window().size.y) * vp.scaling_3d_scale
+	if absf(Quality.drawn_height(vp) - want) > 0.5:
+		p.append("the drawn height is the window's pixels (%.0f, want %.0f)" % [Quality.drawn_height(vp), want])
+	vp.content_scale_size = keep
 	var full: Dictionary = Quality.PRESETS["full"]
 	if not (full.scale == 1.0 and full.shadow_distance == 80.0):
 		p.append("full is the bench's measured preset (0041)")
