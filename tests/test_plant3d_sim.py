@@ -267,14 +267,16 @@ class GdscriptEngine(unittest.TestCase):
         from ref import sjson
         accept = ['"\ufeffx"', '"a\ufeff"', '"\\n\ufeff"', '{"\ufeff":1,"a":2}', '"\\ufeff\ufeff"',
                   '["\ufeff", "\\u00e9\ufeffz"]', '"\ufeff\ufeffx"', '"\\n\ufeff\ufeff"', '{"a":1,"\ufeffa":2}',
-                  '{"":1,"\ufeff":2}']
+                  '{"":1,"\ufeff":2}',
+                  '"\ufffe\uffff"', '"\\ufffe\\uffff"']
         extra = {'accept': [], 'reject': [{'why': 'an escaped NUL', 'hex': b'"a\\u0000"'.hex()},
                                           {'why': 'an escaped NUL in a key', 'hex': b'{"a\\u0000":1}'.hex()}]}
         for t in accept:
             b = t.encode()
             extra['accept'].append({'why': repr(t), 'hex': b.hex(), 'value': sjson.typed(sjson.loads(b))})
         with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False) as f:
-            json.dump(extra, f)
+            # ASCII only: the expected strings then arrive as \u escapes, built apart from the raw bytes under test
+            json.dump(extra, f, ensure_ascii=True)
             path = f.name
         try:
             r = godot('check_json.gd', os.path.join(REPO, 'ref', 'vectors', 'v2-json.json'), path, timeout=300)
