@@ -30,6 +30,10 @@ func _init() -> void:
 		return
 	print("build: %d areas, %d equipment, %d stairs, %d ladders, %d walkable surfaces in %d ms -> %s" % [b.areas.size(),
 		b.equipment.size(), b.stairs.size(), b.ladders.size(), b.surfaces.size(), Time.get_ticks_msec() - t0, out])
+	print("build: parts kit: %d parts placed, %d triangles at full detail, %d instanced meshes, %d pipe supports" % [
+		b.kp.instances, b.kp.tris_total, b.kp.cells_made, b.kp.supports])
+	for u in b.kp.unsupported:
+		print("build: warning: nothing to stand a pipe support on under ", u)
 	quit(0)
 
 func _clear(dir: String) -> void:

@@ -12,6 +12,8 @@
 ## GPU once per graphics adapter at first start (probe below) and keeps the result in user://settings.cfg.
 extends RefCounted
 
+const Mat = preload("res://kit/materials.gd")
+
 const PRESETS := {
 	"full": {"scale": 1.0, "fsr": false, "shadow_atlas": 4096, "shadow_distance": 80.0, "lod_threshold": 1.0,
 		"detail_min_px": 1.5},
@@ -78,10 +80,17 @@ static func apply(tier: String, vp: Viewport, sun: DirectionalLight3D, env: Envi
 	env.ssao_enabled = tier == "full"   # Forward+ only; the Mobile renderer ignores it anyway
 	vp.set_meta("detail_min_px", p.detail_min_px)
 	apply_ranges(vp)
+	Mat.apply_tier(tier)   # the tier's texture size (kit/materials.gd): one material set, three sizes
 
-## Visibility ranges of `detail` pieces (PLANT3D.md §10): drawn while they cover at least the tier's min_px on the
-## screen: d_max = size × f / min_px, f the focal length in pixels at the drawn resolution. Pieces carry their size
-## in the meta "detail_size" and sit in the group "detail" (the parts kit makes them; the placeholders have none).
+## The legibility of a tag plate's code (PLANT3D.md §10): its text is drawn while a character covers 8 px.
+const LEGIBLE_PX := 8.0
+
+## Visibility ranges by size (PLANT3D.md §10): `detail` pieces are drawn while they cover at least the tier's min_px
+## on the screen, d_max = size × f / min_px, f the focal length in pixels at the drawn resolution; tag plates' codes
+## while a character covers LEGIBLE_PX. Detail pieces carry their size in the meta "detail_size" and sit in the
+## group "detail"; an instanced cell of them (builder/kit_place.gd) also carries "box_half", the half diagonal of its
+## box, which is added (Godot measures a range to the centre of the instance's box: decision 0041), so no piece in
+## it fades before its own distance. Codes are in the group "legible" with "legible_size", a character's height.
 static func apply_ranges(vp: Viewport) -> void:
 	var cam := vp.get_camera_3d()
 	if cam == null or not vp.has_meta("detail_min_px"):
@@ -92,6 +101,13 @@ static func apply_ranges(vp: Viewport) -> void:
 	for n in vp.get_tree().get_nodes_in_group("detail"):
 		if n is GeometryInstance3D and n.has_meta("detail_size"):
 			var d: float = float(n.get_meta("detail_size")) * f / min_px
+			var margin := d * 0.1
+			n.visibility_range_end = d + float(n.get_meta("box_half", 0.0)) + margin
+			n.visibility_range_end_margin = margin
+			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	for n in vp.get_tree().get_nodes_in_group("legible"):
+		if n is GeometryInstance3D and n.has_meta("legible_size"):
+			var d: float = float(n.get_meta("legible_size")) * f / LEGIBLE_PX
 			n.visibility_range_end = d
 			n.visibility_range_end_margin = d * 0.1
 			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF

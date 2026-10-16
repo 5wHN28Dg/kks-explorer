@@ -289,9 +289,18 @@ static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 	var nrm := (b - a).cross(c - a).normalized()
 	# Godot's front faces are clockwise: the normal points away from the viewer that sees them clockwise
 	st.set_normal(-nrm)
-	st.add_vertex(a)
-	st.add_vertex(b)
-	st.add_vertex(c)
+	for p in [a, b, c]:
+		st.set_uv(_uv(p, nrm))
+		st.add_vertex(p)
+
+## Texture coordinates in metres, projected along the face's main axis (the materials scale them).
+static func _uv(p: Vector3, n: Vector3) -> Vector2:
+	var an := n.abs()
+	if an.y >= an.x and an.y >= an.z:
+		return Vector2(p.x, p.z)
+	if an.x >= an.z:
+		return Vector2(p.z, -p.y)
+	return Vector2(p.x, -p.y)
 
 static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
 	_tri(st, a, b, c)

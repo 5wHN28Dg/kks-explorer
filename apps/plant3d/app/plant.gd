@@ -24,9 +24,28 @@ func load_plant() -> String:
 		var ps := load(path) as PackedScene
 		if ps == null:
 			return "cannot load " + path
-		add_child(ps.instantiate())
+		var area := ps.instantiate()
+		add_child(area)
+		fill_cells(area)
 	load_ms = Time.get_ticks_msec() - t0
 	return ""
+
+## The parts kit's instanced cells (builder/kit_place.gd): the build saves their transforms as meta (Godot's headless
+## renderer, which the build runs in, keeps no MultiMesh data); here they go to the MultiMeshes.
+static func fill_cells(area: Node) -> int:
+	var kit := area.get_node_or_null("kit")
+	if kit == null:
+		return 0
+	var n := 0
+	for c in kit.get_children():
+		var mmi := c as MultiMeshInstance3D
+		if mmi == null or mmi.multimesh == null or not mmi.has_meta("xforms"):
+			continue
+		var mm := mmi.multimesh
+		mm.instance_count = int(mmi.get_meta("count"))
+		mm.buffer = mmi.get_meta("xforms")
+		n += mm.instance_count
+	return n
 
 static func v3(a) -> Vector3:
 	return Vector3(float(a[0]), float(a[1]), float(a[2]))

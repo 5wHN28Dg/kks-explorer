@@ -21,7 +21,9 @@ T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godo
 # 1. The content, strictly (Godot's own JSON reader is not strict: PLANT3D.md §1)
 (cd "$ROOT" && python3 -c "import sys; from ref import plant3d as P; b = P.check_dir('data/plant3d'); print('content: valid')")
 
-# 2. Godot's import of the project (scripts' class cache, the icon), then the content build
+# 2. The parts kit's textures (CC0, pinned by SHA-256, kit/fetch_textures.sh), Godot's import of the project
+#    (scripts' class cache, the icon, the textures in their three sizes), then the content build
+"$HERE/kit/fetch_textures.sh"
 $T "$GODOT" --headless --path "$HERE" --import >"$HERE/.import.log" 2>&1 || { tail -20 "$HERE/.import.log"; exit 1; }
 $T "$GODOT" --headless --path "$HERE" --script res://builder/build_plant.gd >"$HERE/.build.log" 2>&1 ||
   { grep -E "^build:|ERROR|SCRIPT" "$HERE/.build.log" | head -40; echo "the content build failed (apps/plant3d/.build.log)" >&2; exit 1; }
@@ -33,6 +35,12 @@ $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1
 $T "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd >"$HERE/.test.log" 2>&1 ||
   { grep -vE "^$|Jolt Physics job|jolt_job_system" "$HERE/.test.log" | tail -30; echo "tests failed (apps/plant3d/.test.log)" >&2; exit 1; }
 grep -E "^(ok|FAIL)|passed" "$HERE/.test.log"
+# a script error inside a test ends that test's function early without a failure of its own: never a pass
+if grep -q "SCRIPT ERROR" "$HERE/.test.log"; then
+  grep -A2 "SCRIPT ERROR" "$HERE/.test.log" | head -20
+  echo "a test hit a script error (apps/plant3d/.test.log)" >&2
+  exit 1
+fi
 
 [ -n "$MODE" ] || exit 0
 
