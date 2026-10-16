@@ -112,6 +112,7 @@ from Godot 4 (0041), so the rows below say what the platform gives underneath an
 | Thermal state (measurement rule) | — | — | ✅ `PowerManager.getCurrentThermalStatus()`, API 29+ [D]; read with adb during measurements (0041) |
 | Install size | ✅ no limit (MSIX, ours) | ✅ no limit (Flatpak bundle) | ✅ sideloaded APK: no limit; Google Play's limits don't apply (we don't publish there) [D] |
 | Extra content at run time | ✅ `.pck` resource packs [D] | ✅ same | ✅ same |
+| Behaviour model bit for bit with the reference (apps/plant3d/sim) | 🟡 GDScript `float` is an IEEE double on every platform [D]; not run here yet: a lag's factor uses the C library's `exp` (the Windows build's CRT) | ✅ every value at every step of every vector equal to ref/plant3d.py's, glibc `exp` on both sides [V, 2026-10-16] | ✅ the same on the Note 9 (Android 10, bionic `exp`): every vector's digests equal the laptop's [V, 2026-10-16]; a step takes 1.4 ms there |
 
 Sources (Godot 4.7): https://docs.godotengine.org/en/stable/about/system_requirements.html ·
 https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html ·

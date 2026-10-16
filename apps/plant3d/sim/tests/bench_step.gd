@@ -1,0 +1,68 @@
+extends SceneTree
+## The model's cost (decision 0054 §10 "Model cost"): the time of one 0.1 s step of the whole first train's model,
+## over the cold start run by its procedure and then at base load, headless.
+##   godot --headless --script apps/plant3d/sim/tests/bench_step.gd [-- --data=PATH --base-steps=N]
+## Prints "STEP phase=… steps=N mean_us=… p50_us=… p99_us=… max_us=… ff_max=…x": ff_max is the fast-forward speed one
+## core could keep up with at that mean (10 steps per second of model time).
+
+const PlantModel = preload("../plant_model.gd")
+const Procedure = preload("../procedure.gd")
+
+var times := PackedInt64Array()
+
+
+func _init() -> void:
+	quit(1)         # stays the exit code if a script error stops this function
+	var opts := {}
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--") and a.contains("="):
+			opts[a.substr(2, a.find("=") - 2)] = a.substr(a.find("=") + 1)
+	var repo := ProjectSettings.globalize_path(get_script().resource_path).get_base_dir().path_join("../../../..")
+	var t0 := Time.get_ticks_usec()
+	var m = PlantModel.from_dir(opts.get("data", repo.simplify_path().path_join("data/plant3d")))
+	if m.error != "":
+		print("ERROR ", m.error)
+		return
+	var t1 := Time.get_ticks_usec()
+	print("LOAD values=%d alarms=%d trips=%d machines=%d us=%d" % [m.values.size(), m.alarms.size(), m.trips.size(),
+			m.machines.size(), t1 - t0])
+	var e = load(get_script().resource_path.get_base_dir().path_join("../engine.gd")).new(m, "cold_iron")
+	print("COMPILE us=%d" % (Time.get_ticks_usec() - t1))
+	# the cold start: time every step the procedure makes
+	e.timing = true
+	var r := Procedure.run(m, "cold_start", 3600, e, null, Callable())
+	e.timing = false
+	times = e.step_us
+	if r.error != "":
+		print("ERROR ", r.error)
+		return
+	_report("cold_start", times)
+	# base load: the busiest state (every machine running, every loop closed)
+	var n := int(opts.get("base-steps", "6000"))
+	var t := PackedInt64Array()
+	t.resize(n)
+	for k in n:
+		var s := Time.get_ticks_usec()
+		e.step()
+		t[k] = Time.get_ticks_usec() - s
+	_report("base_load", t)
+	var s2 := Time.get_ticks_usec()
+	e.step(n)
+	var per := float(Time.get_ticks_usec() - s2) / n
+	print("BATCH steps=%d mean_us=%.1f ff_max=%dx" % [n, per, int(1e6 / per / 10.0)])
+	quit(0)
+
+
+func _report(phase: String, t: PackedInt64Array) -> void:
+	if t.is_empty():
+		print("STEP phase=%s steps=0" % phase)
+		return
+	var s := Array(t)
+	s.sort()
+	var total := 0
+	for x in t:
+		total += x
+	var mean := float(total) / t.size()
+	print("STEP phase=%s steps=%d mean_us=%.1f p50_us=%d p99_us=%d max_us=%d ff_max=%dx" % [phase, t.size(), mean,
+			s[s.size() / 2], s[int(s.size() * 0.99)], s[-1], int(1e6 / mean / 10.0)])
+
