@@ -1,0 +1,19 @@
+{
+ "format": "walkdown-plant-procedure",
+ "version": 1,
+ "id": "water_steam",
+ "title": "Tour: the water-steam cycle",
+ "kind": "tour",
+ "intro": [
+  {"p": ["From the condenser through the HRSG to the turbine and back."]}
+ ],
+ "steps": [
+  {"id": "s1", "text": ["The hotwell under the condenser (", {"link": ["30MAG10BB001"], "to": {"kks": "30MAG10BB001"}}, ") collects the condensate."], "at": ["30MAG10BB001"], "go": "walk"},
+  {"id": "s2", "text": ["Condensate pumps (", {"link": ["30LCB10AP001"], "to": {"kks": "30LCB10AP001"}}, ") push it to the HRSG's LP drum."], "at": ["30LCB10AP001"], "go": "walk"},
+  {"id": "s3", "text": ["The LP drum with its deaerator (", {"link": ["10HAD10BB001"], "to": {"kks": "10HAD10BB001"}}, ") feeds the feedwater pumps."], "at": ["10HAD10BB001"], "go": "walk"},
+  {"id": "s4", "text": ["Feedwater pumps (", {"link": ["10LAC10AP001"], "to": {"kks": "10LAC10AP001"}}, ") raise it to 130 bar."], "at": ["10LAC10AP001"], "go": "walk"},
+  {"id": "s5", "text": ["The HP drum (", {"link": ["10HAD30BB001"], "to": {"kks": "10HAD30BB001"}}, ") separates steam from water. Its level glass is ", {"link": ["10HAD30CL501"], "to": {"kks": "10HAD30CL501"}}, "."], "at": ["10HAD30BB001", "10HAD30CL501"], "go": "walk"},
+  {"id": "s6", "text": ["HP steam (", {"link": ["10LBA30BR001"], "to": {"kks": "10LBA30BR001"}}, ") runs down the pipe rack to the HP turbine (", {"link": ["30MAA10"], "to": {"kks": "30MAA10"}}, ")."], "at": ["10LBA30BR001", "30MAA10"], "go": "walk"},
+  {"id": "s7", "text": ["The IP/LP turbine (", {"link": ["30MAB10"], "to": {"kks": "30MAB10"}}, ") exhausts down into the condenser."], "at": ["30MAB10"], "go": "walk"}
+ ]
+}

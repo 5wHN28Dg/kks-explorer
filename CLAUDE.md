@@ -71,6 +71,7 @@ What the evidence-first-engineering skill needs to know here:
 - `android.yml` and `arm64.yml` build the apps (actions pinned by SHA).
 - A change that touches only prose (`*.md` other than `relay/README.md` and `vendor/fonts/README.md`, which tests
   read, and `docs/`) runs `policy.yml` alone: the three build and test workflows skip it.
+  `docs/plant3d/FIRST-TRAIN.md` is read by tests too (`tests/test_plant3d.py`), so a change to it runs `tests.yml`.
 
 ## The system
 

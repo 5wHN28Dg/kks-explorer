@@ -1,0 +1,37 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 1,
+ "id": "ct",
+ "title": "Cooling tower",
+ "bounds": [
+  [170, -35],
+  [260, 35]
+ ],
+ "pack": "base",
+ "equipment": [
+  {"kks": "30PAD10", "name": "Cooling tower", "part": "cooling_tower", "at": [215, 0, 0], "params": {"cells_x": 5, "cells_y": 2, "length": 80, "width": 32, "height": 14, "fan_d": 9.5, "basin_depth": 2, "fill": "film"}, "plate": "basin"},
+  {"kks": "30PAD10BB001", "name": "Cooling tower basin", "part": "basin", "at": [215, 0, -2], "params": {"length": 80, "width": 32, "depth": 2}, "plate": "edge", "parts": [{"kks": "30PAD10CL001", "name": "Cooling tower basin level", "part": "level_transmitter", "at": [-41, 10, 2], "params": {"range": [-1.5, 0.5], "unit": "m"}}]},
+  {"kks": "30PAD10AN001", "name": "Cooling tower fan 1", "part": "fan_axial", "at": [183, -8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY001", "name": "Cooling tower fan 1 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN002", "name": "Cooling tower fan 2", "part": "fan_axial", "at": [199, -8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY002", "name": "Cooling tower fan 2 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN003", "name": "Cooling tower fan 3", "part": "fan_axial", "at": [215, -8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY003", "name": "Cooling tower fan 3 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN004", "name": "Cooling tower fan 4", "part": "fan_axial", "at": [231, -8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY004", "name": "Cooling tower fan 4 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN005", "name": "Cooling tower fan 5", "part": "fan_axial", "at": [247, -8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY005", "name": "Cooling tower fan 5 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN006", "name": "Cooling tower fan 6", "part": "fan_axial", "at": [183, 8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY006", "name": "Cooling tower fan 6 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN007", "name": "Cooling tower fan 7", "part": "fan_axial", "at": [199, 8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY007", "name": "Cooling tower fan 7 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN008", "name": "Cooling tower fan 8", "part": "fan_axial", "at": [215, 8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY008", "name": "Cooling tower fan 8 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN009", "name": "Cooling tower fan 9", "part": "fan_axial", "at": [231, 8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY009", "name": "Cooling tower fan 9 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAD10AN010", "name": "Cooling tower fan 10", "part": "fan_axial", "at": [247, 8, 14], "params": {"d": 9.5, "blades": 8, "motor_kw": 200, "stack_height": 3}, "plate": "deck", "parts": [{"kks": "30PAD10CY010", "name": "Cooling tower fan 10 vibration", "part": "vibration_probe", "at": [5.5, 0, 0.5], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]}
+ ],
+ "pipes": [
+  {"kks": "30PAR10BR001", "name": "Cooling tower makeup water", "medium": "raw_water", "dn": 300, "from": {"at": [258, 0, -1]}, "points": [[258, 0, 0.5]], "to": {"kks": "30PAD10", "nozzle": "makeup_in"}, "valves": [{"kks": "30PAR10AA001", "part": "valve_control", "at": 0.7, "name": "Cooling tower makeup control valve", "params": {"dn": 300, "actuator": "electric"}}]}
+ ],
+ "structures": [
+  {"id": "ct_fan_deck", "part": "platform", "kks": "30URA10", "at": [175, -16, 14], "params": {"outline": [[0, 0], [80, 0], [80, 32], [0, 32]], "openings": [[[3, 3], [13, 3], [13, 13], [3, 13]], [[19, 3], [29, 3], [29, 13], [19, 13]], [[35, 3], [45, 3], [45, 13], [35, 13]], [[51, 3], [61, 3], [61, 13], [51, 13]], [[67, 3], [77, 3], [77, 13], [67, 13]], [[3, 19], [13, 19], [13, 29], [3, 29]], [[19, 19], [29, 19], [29, 29], [19, 29]], [[35, 19], [45, 19], [45, 29], [35, 29]], [[51, 19], [61, 19], [61, 29], [51, 29]], [[67, 19], [77, 19], [77, 29], [67, 29]]], "deck": "concrete", "edge": "handrail"}},
+  {"id": "ct_stair_w", "part": "stair", "params": {"foot": [170.5, -20, 0], "top": [175, -13, 14], "layout": "switchback", "width": 1.2}},
+  {"id": "ct_stair_e", "part": "stair", "params": {"foot": [259.5, -7, 0], "top": [255, 0, 14], "layout": "switchback", "width": 1.2}}
+ ],
+ "signs": [
+  {"text": "Cooling tower 30PAD10", "at": [215, -16.5, 3], "yaw": 180, "size": 0.4},
+  {"text": "Fan deck +14 m", "at": [176, -15, 15.5], "yaw": 90, "size": 0.4}
+ ]
+}

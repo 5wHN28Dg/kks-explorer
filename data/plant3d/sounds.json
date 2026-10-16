@@ -1,0 +1,27 @@
+{
+ "format": "walkdown-plant-sounds",
+ "version": 1,
+ "sounds": [
+  {"id": "gt_whine", "kind": "synth", "tones": [{"hz": 2850, "gain": 0.6}, {"hz": 5700, "gain": 0.2}], "noise": {"colour": "pink", "band": [200, 4000], "gain": 0.5}, "made": "compressor blade-pass tone at full speed"},
+  {"id": "combustion", "kind": "synth", "noise": {"colour": "brown", "band": [30, 600]}, "made": "combustion roar"},
+  {"id": "exhaust_rumble", "kind": "synth", "noise": {"colour": "brown", "band": [20, 200]}},
+  {"id": "sfc_whine", "kind": "synth", "tones": [{"hz": 1200, "gain": 0.4}, {"hz": 2400, "gain": 0.2}]},
+  {"id": "gen_hum", "kind": "synth", "tones": [{"hz": 100, "gain": 0.7}, {"hz": 200, "gain": 0.3}, {"hz": 300, "gain": 0.15}], "noise": {"colour": "pink", "band": [300, 3000], "gain": 0.3}},
+  {"id": "transformer_hum", "kind": "synth", "tones": [{"hz": 100, "gain": 0.8}, {"hz": 200, "gain": 0.3}]},
+  {"id": "turbine_hum", "kind": "synth", "tones": [{"hz": 50, "gain": 0.6}, {"hz": 150, "gain": 0.3}], "noise": {"colour": "pink", "band": [100, 2000], "gain": 0.3}},
+  {"id": "steam_rush", "kind": "synth", "noise": {"colour": "white", "band": [500, 8000]}},
+  {"id": "steam_vent", "kind": "synth", "noise": {"colour": "white", "band": [300, 10000]}},
+  {"id": "turning_gear", "kind": "synth", "tones": [{"hz": 8, "gain": 0.5}], "noise": {"colour": "brown", "band": [50, 400], "gain": 0.3}},
+  {"id": "motor_large", "kind": "synth", "tones": [{"hz": 100, "gain": 0.6}], "noise": {"colour": "pink", "band": [100, 2500], "gain": 0.5}},
+  {"id": "motor_small", "kind": "synth", "tones": [{"hz": 100, "gain": 0.5}], "noise": {"colour": "pink", "band": [200, 4000], "gain": 0.4}},
+  {"id": "fan_large", "kind": "synth", "tones": [{"hz": 16, "gain": 0.4}], "noise": {"colour": "pink", "band": [60, 1500], "gain": 0.6}},
+  {"id": "water_rain", "kind": "synth", "noise": {"colour": "white", "band": [400, 9000]}},
+  {"id": "liquid_ring", "kind": "synth", "tones": [{"hz": 25, "gain": 0.4}], "noise": {"colour": "brown", "band": [80, 1200], "gain": 0.6}},
+  {"id": "burner", "kind": "synth", "noise": {"colour": "brown", "band": [40, 800]}},
+  {"id": "valve_motor", "kind": "synth", "tones": [{"hz": 400, "gain": 0.5}], "noise": {"colour": "pink", "band": [500, 3000], "gain": 0.2}},
+  {"id": "breaker", "kind": "synth", "noise": {"colour": "white", "band": [100, 6000]}, "made": "a short clunk (played once)"},
+  {"id": "horn_p1", "kind": "synth", "tones": [{"hz": 880, "gain": 0.8}, {"hz": 1760, "gain": 0.3}]},
+  {"id": "horn_p2", "kind": "synth", "tones": [{"hz": 660, "gain": 0.7}]},
+  {"id": "horn_p3", "kind": "synth", "tones": [{"hz": 440, "gain": 0.5}]}
+ ]
+}

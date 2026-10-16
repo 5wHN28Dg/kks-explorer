@@ -1,0 +1,19 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 1,
+ "id": "rack",
+ "title": "Pipe rack between the turbine hall and the auxiliaries",
+ "bounds": [
+  [80, -25],
+  [85, 45]
+ ],
+ "pack": "base",
+ "equipment": [],
+ "pipes": [],
+ "structures": [
+  {"id": "rack_main", "part": "pipe_rack", "at": [82.5, 10, 0], "params": {"length": 70, "width": 4, "height": 10, "tiers": 2, "bays": 10}}
+ ],
+ "signs": [
+  {"text": "Pipe rack: steam and condensate to and from HRSG 1", "at": [84.9, 30, 3], "yaw": 90, "size": 0.4}
+ ]
+}
