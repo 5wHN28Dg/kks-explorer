@@ -84,9 +84,11 @@ generator tries 8 starting points of the loop at qualities 4, 6 and 8, and keeps
 under the sound. It refuses a loop whose best is louder than −45 dB. Each layer's tick is its `click_db` in the
 index (−300: nothing beyond the rest of the loop), with the `rotation` it chose.
 
-The measure sees a tick of 0.01–0.5 × the sound's RMS in tones and in noise up to about 1.2 kHz. In noise reaching
-several kHz (steam, the vent, rain, the motors' fans) Vorbis's own error is as rough from sample to sample as a tick
-of 1–2 × RMS, so a seam jump, typically a twentieth of that, is lost in it, by measure and by ear.
+The bound refuses a single-sample tick of about 0.1 × the sound's RMS in tones, and of 0.5 × RMS in noise up to
+about 1.2 kHz (the tests inject 0.5). In noise reaching several kHz (steam, the vent, rain, the motors' fans) Vorbis's
+own error is as rough from sample to sample as a tick of 1–2 × RMS or more, so a seam jump, typically a twentieth of
+that, is lost in it, by measure and by ear. (The check of the synthesised samples below works up to about 1.5 kHz:
+a different measure.)
 
 Before encoding, the tests check the synthesised loops sample by sample: step, curvature, the residual of a linear
 predictor, and the high-band energy at the seam. A loop cut short by even a few samples fails them, except in noise
