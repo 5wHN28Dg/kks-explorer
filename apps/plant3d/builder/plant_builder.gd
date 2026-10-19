@@ -1082,12 +1082,12 @@ func _hall_floor(body: Node, b: Dictionary) -> int:
 ## A lamp's light on the floor under it, as a share of the sun's irradiance (the sun's energy is 1): its energy is
 ## this times the square of its height over the floor (inverse-square falloff, the lamp's `spot_attenuation` 2).
 ## A hall reads darker than the yard outside, as it does to the eye coming in; set by eye against the exposure.
-const LAMP_FLOOR := 0.45
+const LAMP_FLOOR := 1.0
 ## What the reflector lets out sideways (its open bottom, the lamp's glow): an even dim light round each lamp, so walls
 ## and the space between pools are not black; as a share of the sun's irradiance at the floor. A wide cone down, not an
 ## omni light: an omni lit the ceiling a few tenths of a metre from each lamp, and those hot spots, met by few of the
 ## bake's bounce rays, came out as bright blotches over every floor and wall of the halls (second realism pass).
-const LAMP_SPILL := 0.1
+const LAMP_SPILL := 0.08
 ## The spill's cone, degrees from the axis: down to the walls' foot and up them, never the ceiling.
 const LAMP_SPILL_ANGLE := 80.0
 ## A lamp's reach: the hall's height and as far again, so the floor and a pit below it are lit (a reach of 1.4 × the
@@ -1095,7 +1095,7 @@ const LAMP_SPILL_ANGLE := 80.0
 const LAMP_REACH := 2.4
 ## The cone: its pool on the floor about 0.6 of the lamps' spacing in radius (pools that meet but do not merge into
 ## an even floor), 10 to 40 degrees from the axis to the edge.
-const LAMP_POOL := 0.85
+const LAMP_POOL := 0.6
 func _lamps(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var h: float = b.height
@@ -1124,14 +1124,14 @@ func _lamps(body: Node, b: Dictionary) -> int:
 			var d := z - 0.2
 			l.spot_attenuation = 2.0
 			l.spot_angle = clampf(rad_to_deg(atan(LAMP_POOL * gap / d)), 10.0, 40.0)
-			l.spot_angle_attenuation = 1.5
+			l.spot_angle_attenuation = 3.0
 			l.light_energy = LAMP_FLOOR * d * d
 			var spill := SpotLight3D.new()
 			spill.name = "spill"
 			spill.spot_range = l.spot_range
 			spill.spot_attenuation = 2.0
 			spill.spot_angle = LAMP_SPILL_ANGLE
-			spill.spot_angle_attenuation = 0.5
+			spill.spot_angle_attenuation = 1.5
 			spill.light_energy = LAMP_SPILL * d * d
 			spill.light_color = Color(1.0, 0.95, 0.86)
 			spill.light_bake_mode = Light3D.BAKE_STATIC

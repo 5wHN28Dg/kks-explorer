@@ -69,7 +69,7 @@ func _run() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.ssao_enabled = tier == "full"
+	env.ssao_enabled = false   # as the app (app/lighting.gd)
 	var we := WorldEnvironment.new()
 	we.environment = env
 	root.add_child(we)

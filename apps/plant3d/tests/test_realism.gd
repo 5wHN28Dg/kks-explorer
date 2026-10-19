@@ -7,7 +7,7 @@
 ## - the textured materials are the weathered shader with the noise, the gratings drawn as bar gratings, the yards
 ##   jointed, the road's centre line round the plant, the ground wet round the cooling tower;
 ## - the site: gravel, yards, the ring road with kerbs and its drain, the boundary wall, the terrain;
-## - each tier's environment: AgX and the haze on both, SSAO on laptops only, the measured-and-dropped effects off.
+## - each tier's environment: AgX and the haze on both, no SSAO (it cost the laptop its frame rule), the measured-and-dropped effects off.
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -206,9 +206,10 @@ func run(tree: SceneTree) -> Array:
 	# the tiers' environments
 	var env := Environment.new()
 	Lighting.apply("full", env)
-	if not (env.ssao_enabled and env.fog_enabled and env.tonemap_mode == Environment.TONE_MAPPER_AGX):
-		p.append("laptops: SSAO, haze, AgX")
-	if env.ssil_enabled or env.volumetric_fog_enabled or env.sdfgi_enabled or env.glow_enabled:
+	if not (env.fog_enabled and env.tonemap_mode == Environment.TONE_MAPPER_AGX):
+		p.append("laptops: haze, AgX")
+	# SSAO cost the full tier its 60 fps on the Iris Xe (second realism pass, 0057)
+	if env.ssao_enabled or env.ssil_enabled or env.volumetric_fog_enabled or env.sdfgi_enabled or env.glow_enabled:
 		p.append("laptops: SSIL, volumetric fog, SDFGI and glow stay off (measured: 0057)")
 	Lighting.apply("lean+vis", env)
 	if env.ssao_enabled or not env.fog_enabled:

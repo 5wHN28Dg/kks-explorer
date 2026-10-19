@@ -15,7 +15,7 @@
 ##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
-##   fx_off=ssao,fog,tonemap those effects off (tonemap: linear output at half exposure), fx_on=sdfgi,ssil,volfog,glow those on (measuring what each costs:
+##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow those on (measuring what each costs:
 ##                           app/lighting.gd); fx_off=shadow,cascades2,shadow40,shadowhard the sun's shadow's parts
 ##                           (app/quality.gd), fx_off=lightmap the plant without its bake
 extends Node3D

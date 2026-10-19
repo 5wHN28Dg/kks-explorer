@@ -72,7 +72,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--panels=alarms,procedure,card:CODE` | opens these panels |
 | `--speed=fast` | starts the plant in fast-forward |
 | `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line |
-| `--fx_off=ssao,fog`, `--fx_on=sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
+| `--fx_off=fog,lightmap,shadow`, `--fx_on=ssao,sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
 
 Controls (R7):
 
@@ -144,8 +144,8 @@ instance when the app already runs.
   gratings; from one build-made noise in world space.
 - **The site** (`builder/site.gd`): concrete yards in the areas' bounds, gravel between, a ring road with kerbs and a
   drain, a boundary wall, the country to the far plane with low hills.
-- **Per tier:** laptops add SSAO (low, half size); SSIL, volumetric fog, glow and SDFGI were measured and left out
-  (0057). Phones get the bake and the haze.
+- **Per tier:** both get the bake and the haze. SSAO, SSIL, volumetric fog, glow and SDFGI were measured on the
+  laptop and left out (0057; SSAO cost the full tier its 60 fps).
 - `apps/plant3d/about.json` (from `tools/about.py --plant`) lists the CC0 assets; the build packs it.
 
 ## Quality tiers (R9)
