@@ -529,8 +529,8 @@ FORKS = [
     ('gt_load_too_early', 'gt_brk', [('op', '10MKA10', 'set', 250, None), ('run', 900)],
      {'alarms': ['hp_warm_fast']}),
     ('roll_too_early', 'drains_close', [('op', '30MAA10', 'roll', None, None), ('run', 1)],
-     {'refused': [['30MAA10', 'roll', ['st_p_ok']]]}),
-    ('hold_in_critical_band', 'roll_ready', [('op', '30MAA10', 'roll', None, None), ('until', 'st_inband', 900),
+     {'refused': [['30MAA10', 'roll', ['st_p_ok', 'st_warm_shut']]]}),
+    ('hold_in_critical_band', 'warm_close', [('op', '30MAA10', 'roll', None, None), ('until', 'st_inband', 900),
                                              ('op', '30MAA10', 'hold', None, None), ('run', 400)],
      {'first_out': {'st': 'st_trip_vib'}, 'alarms': ['st_vib4_hh']}),
     # trips and interlocks at base load
@@ -613,6 +613,61 @@ FORKS = [
                                     ('fault', 'cw_b_valve_stuck'), ('op', '30PAC10AA102', 'open', None, None),
                                     ('run', 150)],
      {'first_out': {'cw_b': 'cw_b_trip_valve'}, 'alarms': ['cw_b_valve_late']}),
+    # FIRST-TRAIN §4 "As built" (2026-10-19): CCW, the lube oil temperatures, instrument air and the valves'
+    # fail-safe positions, the valves' power, the surge of a start against an open valve, the HP safety valve and
+    # the GT runback, the HP casing warm-up
+    ('warm_without_tg', 'start', [('op', '30MAA10AA101', 'open', None, None), ('run', 1)],
+     {'refused': [['30MAA10AA101', 'open', ['st_tg_run', 'aux_ok']]]}),
+    ('roll_with_warmup_open', 'roll_ready', [('op', '30MAA10', 'roll', None, None), ('run', 1)],
+     {'refused': [['30MAA10', 'roll', ['st_warm_shut']]]}),
+    ('gt_load_without_sink', 'gt_brk', [('op', '10MKA10', 'set', 60, None), ('run', 330),
+                                        ('op', '30MAN10AA001', 'manual', None, None), ('run', 60),
+                                        ('op', '10MKA10', 'set', 250, None), ('run', 60)],
+     {'alarms': ['gt1_runback'], 'max': {'gt1_mw': [60, 60]},
+      'end': {'gt1_mw': [20, 20], 'gt1_load_sp': [250, 250]}}),
+    ('runback_never_raises_load', 'gt_brk', [('op', '10MKA10', 'set', 10, None), ('run', 120),
+                                             ('op', '30MAN10AA001', 'manual', None, None), ('run', 60)],
+     {'alarms': ['gt1_runback'], 'end': {'gt1_mw': [10, 10]}}),
+    ('cw_b_normal_stop', 'end', [('op', '30PAC10AP002', 'stop', None, None), ('run', 180)],
+     {'interlocks': ['cw_b_v_close'], 'no_alarms': ['cw_flow_low', 'cond_p1_h']}),
+    # the spray in manual: nothing holds the steam near the casing, so the roll is refused on the match
+    ('roll_steam_too_hot', 'warm_close', [('op', '10LAE30AA001', 'manual', None, None), ('run', 600),
+                                          ('op', '30MAA10', 'roll', None, None), ('run', 1)],
+     {'refused': [['30MAA10', 'roll', ['st_match']]]}),
+    ('ia_stopped_at_load', 'end', [('op', '00QFA10AN001', 'stop', None, None), ('run', 200)],
+     {'alarms': ['ia_p_low']}),
+    ('ccw_lost', 'end', [('fault', 'ccw_both'), ('run', 900)],
+     {'first_out': {'ccw': 'ccw_a_trip', 'gt1': 'gt1_trip_oil_temp', 'st': 'st_trip_oil_temp'},
+      'alarms': ['ccw_t_high', 'gt1_oil_t_h', 'gt1_oil_t_hh', 'st_oil_t_h', 'st_oil_t_hh', 'cond_p1_h'],
+      'max': {'gt1_oil_t': [70, 80], 'ccw_t': [45, 60], 'cond_p': [15, 25]}}),
+    ('instrument_air_lost', 'end', [('fault', 'ia_lost'), ('run', 900)],
+     {'alarms': ['ia_p_low', 'ia_a_tripped', 'cond_p1_hh', 'gt1_runback', 'hp_sv_open', 'hp_l1_hh'],
+      'first_out': {'st': 'st_trip_cond_p', 'gt1': 'gt1_trip_drum_hh'}, 'interlocks': ['byp_blocked'],
+      'end': {'hp_fwv_pos': [1, 1], 'cep_mf_pos': [1, 1], 'st_gland_pos': [0, 0], 'hp_spray_on': [0, 0]},
+      'max': {'hp_p': [135, 137]}}),
+    ('st_trip_no_bypass', 'end', [('fault', 'st_trip_no_bypass'), ('run', 600)],
+     {'first_out': {'st': 'st_trip_vib'}, 'interlocks': ['byp_blocked'],
+      'alarms': ['gt1_runback', 'hp_p_high', 'hp_sv_open'], 'machines': {'hp_byp_ctrl': 'manual'},
+      'max': {'hp_p': [135, 137]}, 'end': {'gt1_mw': [20, 20], 'hp_sv_open': [1, 1]}}),
+    ('safety_valve_reseats_after_gt_trip', 'end', [('fault', 'st_trip_no_bypass'), ('run', 300),
+                                                   ('fault', 'gt1_vib'), ('run', 1200),
+                                                   ('op', '10HAN30AA001', 'open', None, None), ('run', 600)],
+     {'alarms': ['hp_sv_open'], 'end': {'hp_sv_open': [0, 0], 'hp_p': [0, 100]}}),
+    ('bypass_hydraulics_lost', 'end', [('fault', 'byp_hyd'), ('run', 60)],
+     {'interlocks': ['byp_blocked'], 'no_trip': True, 'alarms': ['byp_hyd']}),
+    ('cw_valve_power_lost', 'end', [('fault', 'cw_valve_power'), ('run', 10), ('fault', 'cw_b_motor'), ('run', 300)],
+     {'first_out': {'cw_b': 'cw_b_trip_ol'}, 'interlocks': ['cw_b_v_close'],
+      'alarms': ['cw_flow_low', 'cw_a_v_fault', 'cw_b_v_fault'],
+      'end': {'cw_b_v_pos': [1, 1], 'cw_flow': [7000, 8000]}}),
+    ('cw_a_start_open_valve', 'basin', [('fault', 'cw_a_ls'), ('op', '30PAC10AA101', 'open', None, None),
+                                        ('run', 70), ('op', '30PAC10AP001', 'start', None, None), ('run', 20)],
+     {'alarms': ['cw_a_surge'], 'max': {'cw_a_pt': [7, 9]}}),
+    ('cw_b_start_open_valve', 'gt_load', [('fault', 'cw_b_ls'), ('op', '30PAC10AA102', 'open', None, None),
+                                          ('run', 70), ('op', '30PAC10AP002', 'start', None, None), ('run', 20)],
+     {'alarms': ['cw_b_surge']}),
+    ('cw_c_start_open_valve', 'end', [('fault', 'cw_c_ls'), ('op', '30PAC10AA103', 'open', None, None),
+                                      ('run', 70), ('op', '30PAC10AP003', 'start', None, None), ('run', 20)],
+     {'alarms': ['cw_c_surge'], 'max': {'cw_c_pt': [3.5, 6]}}),
 ] + [  # every cooling tower fan (fans 6–10 stand at the end of the cold start: started first)
     (f'ct_fan{i}_vibration', 'end',
      ([] if i <= 5 else [('op', f'30PAD10AN{i:03d}', 'start', None, None), ('run', 60)]) +
@@ -638,24 +693,35 @@ def run_cold_start(b):
     return e, log, bases
 
 
-def run_fork(base, actions):
+def run_fork(base, actions, probes=()):
+    """Runs a fork's actions; for each value named in `probes` also keeps its highest value over the fork and its
+    value at the end (the expectations `max` and `end` check them)."""
     e = base.clone()
     start = e.step_no
     n_in = len(e.inputs)
     n_ev = len(e.events)
+    seen = {n: {'max': e.v(n)} for n in probes}
+
+    def step(k=1):
+        for _ in range(k):
+            e.step()
+            for n in probes:
+                seen[n]['max'] = max(seen[n]['max'], e.v(n))
     for a in actions:
         if a[0] == 'op':
             e.op(*a[1:])
         elif a[0] == 'fault':
             e.fault(a[1])
         elif a[0] == 'run':
-            e.step(round(a[1] * 10))
+            step(round(a[1] * 10))
         elif a[0] == 'until':
             t0 = e.step_no
             while not e.truth(a[1]):
                 assert e.step_no - t0 < a[2] * 10, f'{a[1]} not true within {a[2]} s'
-                e.step()
-    return e, start, e.inputs[n_in:], e.events[n_ev:]
+                step()
+    for n in probes:
+        seen[n]['end'] = e.v(n)
+    return e, start, e.inputs[n_in:], e.events[n_ev:], seen
 
 
 def build_train(b):
@@ -674,9 +740,13 @@ def build_train(b):
     assert r.events == e.events, 'replaying the recorded inputs gives other events'
     forks = []
     for fid, base, actions, expect in FORKS:
-        f, start, fin, fev = run_fork(bases[base], actions)
-        forks.append({'id': fid, 'base_step': start, 'inputs': fin, 'until': f.step_no, 'events': fev,
-                      'end': f.snapshot(values=False), 'expect': expect})
+        probes = sorted(set(expect.get('max', {})) | set(expect.get('end', {})))
+        f, start, fin, fev, seen = run_fork(bases[base], actions, probes)
+        fork = {'id': fid, 'base_step': start, 'inputs': fin, 'until': f.step_no, 'events': fev,
+                'end': f.snapshot(values=False), 'expect': expect}
+        if probes:
+            fork['seen'] = seen
+        forks.append(fork)
     return {'scenario': 'cold_iron', 'procedure': 'cold_start', 'inputs': inputs, 'until': e.step_no,
             'steps': [[sid, n] for sid, n in log], 'snapshot_every': SNAP_EVERY, 'snapshots': snaps,
             'events': e.events, 'forks': forks}
