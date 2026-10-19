@@ -1095,9 +1095,9 @@ const LAMP_SPILL_ANGLE := 80.0
 ## A lamp's reach: the hall's height and as far again, so the floor and a pit below it are lit (a reach of 1.4 × the
 ## height left the turbine hall's pit black: adversarial review, 2026-10-16)
 const LAMP_REACH := 2.4
-## The cone: its pool on the floor about 0.6 of the lamps' spacing in radius (pools that meet but do not merge into
-## an even floor), 10 to 40 degrees from the axis to the edge.
-const LAMP_POOL := 0.6
+## The cone: its pool on the floor about 0.4 of the lamps' spacing in radius (pools apart, darker floor between them,
+## not an even floor: 0.6 merged them in the lower halls), 10 to 40 degrees from the axis to the edge.
+const LAMP_POOL := 0.42
 ## The height of the floor under plan point p and below height z: the highest walkable surface there at least 2 m
 ## below z (a deck, a mezzanine), else the ground (0). A lamp's energy is set from its height over that floor: from
 ## the ground, a lamp over the turbine hall's 12 m deck put 2.6 × the light meant on it (adversarial review).
