@@ -13,7 +13,7 @@
 ##   procedure P, gamepad D-pad left: procedures and tours
 ##   pause     K, gamepad D-pad down: pause, and run again at 1×
 ##   fast      . (full stop), gamepad D-pad right: fast-forward
-##   home      H: back to the control room
+##   home      H, gamepad X: back to the control room (B is Godot's ui_cancel: it closes the top panel)
 extends Node
 
 const KEYS := {
@@ -33,7 +33,7 @@ const BUTTONS := {
 	"run": [JOY_BUTTON_LEFT_STICK], "fly": [JOY_BUTTON_Y], "up": [JOY_BUTTON_RIGHT_SHOULDER],
 	"down": [JOY_BUTTON_LEFT_SHOULDER], "map": [JOY_BUTTON_BACK], "use": [JOY_BUTTON_A], "menu": [JOY_BUTTON_START],
 	"alarms": [JOY_BUTTON_DPAD_UP], "procedure": [JOY_BUTTON_DPAD_LEFT], "pause": [JOY_BUTTON_DPAD_DOWN],
-	"fast": [JOY_BUTTON_DPAD_RIGHT],
+	"fast": [JOY_BUTTON_DPAD_RIGHT], "home": [JOY_BUTTON_X],
 }
 
 func _init() -> void:
