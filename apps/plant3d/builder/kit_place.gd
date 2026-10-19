@@ -416,7 +416,7 @@ const SIGN_BACK := 0.13      # metres out from the wall's line: its face (walls 
 const SIGN_THICK := 0.02     # the board
 const SIGN_SYMBOLS := ["M003"]
 
-## The sign's layout for text `text_w` wide in a font of `size` (its line's height): {w, h, lo (the board's bottom
+## The sign's layout for text `text_w` wide in a font of `size` (its em, as Label3D's pixel_size × font_size): {w, h, lo (the board's bottom
 ## below the text's centre line), disc (the symbol's centre above it), r (its radius), face (the board's face out
 ## from the wall's line)}. As ISO 3864-1 lays a sign out: the symbol above its supplementary text, on one white
 ## board. The symbol is three lines of text across, so it is made out at least as far away as the text is read.
@@ -430,7 +430,9 @@ static func sign_layout(text_w: float, size: float) -> Dictionary:
 
 ## The sign's board with its symbol, in its own frame (x across, y up, z out of the wall, metres from the point on
 ## the wall's line), drawn by us (no artwork: CC0 by construction). Built in part axes (x, y = -z, z = y), one mesh:
-## its colours all resolve to `plain`, so in its cell it merges with the tag plates' (no draw call of its own).
+## its colours all resolve to `plain`, so in its cell it merges with the other plain pieces where there are any;
+## alone it is one draw call, the one the sign's text gave up with its outline (a Label3D's outline is a surface of
+## its own).
 ## M003 ("wear ear protection", ISO 7010): a blue disc, and on it in white a head with ear defenders: the head and
 ## its neck, the shoulders, two ear cups clear of the head and the headband over it, clear of the head's top.
 static func sign_mesh(symbol: String, text_w: float, size: float) -> MB:
@@ -484,7 +486,7 @@ func sign_board(xf: Transform3D, symbol: String, text_w: float, size: float) -> 
 	var key := "sign|%s|%.3f|%.3f" % [symbol, text_w, size]
 	if not _signs.has(key):
 		_signs[key] = Kit._meshes(sign_mesh(symbol, text_w, size).finish(), Vector3.ZERO).values()[0]
-	_cell(_signs[key], _signs[key].mesh.resource_name, xf)       # merged with the plates' layer in its cell
+	_cell(_signs[key], _signs[key].mesh.resource_name, xf)       # merged with its cell's plain layer
 
 # ------------------------------------------------------------------ the cells
 

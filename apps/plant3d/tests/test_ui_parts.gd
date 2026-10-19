@@ -167,6 +167,27 @@ func run(tree: SceneTree) -> Array:
 	if ui.sounds.played.get("surge_thud", 0) != 2:
 		p.append("a restart in the middle of a surge played a thud")
 	e.cur[surge] = 0.0
+	ui.sounds.on_step()
+	# and the model's own: pump A running from a start with its valve 60 % open (as the trainer's fault `cw_a_ls`
+	# lets it start), stepped by the clock: one thud, through the app's step handler
+	var cmd: int = e.ix["cw_a_cmd"]
+	var vpos: int = e.ix["cw_a_v_pos"]
+	var shook := 0.0
+	var was: float = e.cur[vpos]
+	e.cur[cmd] = 0.0             # (it runs from its start above, with its valve at its start position: stopped first)
+	ui.clock.run_steps(5)
+	e.cur[vpos] = 0.6
+	e.cur[cmd] = 1.0
+	for i in 40:
+		ui.clock.run_steps(1)
+		shook = maxf(shook, e.cur[surge])
+	if ui.sounds.played.get("surge_thud", 0) != 3:
+		p.append("the model's surge (%.1f bar) at CW pump A played %d thuds, not one" % [shook,
+			ui.sounds.played.get("surge_thud", 0) - 2])
+	e.cur[vpos] = was            # running on as before
+	ui.clock.run_steps(200)
+	if e.cur[surge] >= ui.sounds.THUD_REARM or ui.sounds.played.get("surge_thud", 0) != 3:
+		p.append("the surge did not die down without another thud (%.2f bar)" % e.cur[surge])
 	# the horn: on with an unacknowledged priority 1 alarm, off when silenced
 	ui.sounds.horn(1)
 	if ui.sounds._horn == null or not ui.sounds._horn.playing:

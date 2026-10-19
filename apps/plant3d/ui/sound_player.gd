@@ -4,7 +4,8 @@
 ## never is). Bound sounds play at their equipment while the trainee is within earshot; the control room horn sounds
 ## per priority while an alarm is unacknowledged. One-shots play on edges the app sees, since format 1 binds none: a
 ## breaker's contacts closing and opening, a large motor's start (its loop waits until the run-up has played), a
-## surge's thud when a shake binding's value jumps (a CW pump started against an open valve), an acknowledge. Without built/sounds (the sounds not made) everything here is silent; the hooks are called all the same.
+## surge's thud when a shake binding's value jumps (a CW pump started against an open valve), an acknowledge.
+## Without built/sounds (the sounds not made) everything here is silent; the hooks are called all the same.
 ##
 ## The people cues and the ambience (FIRST-TRAIN §6): a footstep once a stride while the trainee walks, by the floor
 ## underfoot (the content build marks each walkable slab with its deck, a stair's body as a stair: concrete, steel

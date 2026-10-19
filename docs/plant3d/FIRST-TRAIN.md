@@ -458,4 +458,6 @@ As built (apps/plant3d/ui/sound_player.gd):
   a machine of 85 dB(A) or more at 1 m inside (the upper exposure action value of EU Directive 2003/10/EC): the GT
   hall, the turbine hall, the CW pump house and the boiler house. The content generator places them
   (`tools/plant3d/train_areas.py`); the build draws the symbol as geometry of its own (`builder/kit_place.gd`
-  `sign_mesh`, no artwork), merged into its cell with the tag plates, and the text at the size it had.
+  `sign_mesh`, no artwork), merged into its cell's plain pieces where it has any, and
+  the text at the size it had, black without an outline: the sign is never more draw calls than the outlined
+  label was.

@@ -223,6 +223,24 @@ class Validator(unittest.TestCase):
                   'area_overlap', 'limit'):
             self.assertIn(c, codes)
 
+    def test_a_sign_symbol_the_app_does_not_draw_is_refused(self):
+        """A safety sign's `symbol` is one the app draws (ISO 7010 M003, apps/plant3d/builder/kit_place.gd
+        SIGN_SYMBOLS): the app's own check is an assert, which a release build drops."""
+        files = {k: t.encode() for k, t in self.V['valid'][0]['files'].items()}
+        name = next(k for k in sorted(files) if k.startswith('areas/'))
+        for symbol, ok in (('M003', True), ('W012', False)):
+            a = json.loads(files[name])
+            a['signs'] = a.get('signs', []) + [{'text': 'Hearing protection required', 'at': [0, 0, 1.8], 'yaw': 0,
+                                                'size': 0.3, 'symbol': symbol}]
+            changed = dict(files, **{name: json.dumps(a).encode()})
+            if ok:
+                P.check_files(changed)
+            else:
+                with self.assertRaises(P.FormatError) as cm:
+                    P.check_files(changed)
+                self.assertEqual(cm.exception.code, 'bad_value')
+                self.assertIn('W012', str(cm.exception))
+
     def test_error_messages_name_the_file_and_item(self):
         r = next(x for x in self.V['reject'] if x['why'] == 'a bend that does not fit')
         files = {k: t.encode() for k, t in self.V['valid'][0]['files'].items()}

@@ -45,11 +45,11 @@ Playing a sound:
   - `once`: a one-shot, meant for an event: `breaker` for a breaker closing, `breaker_open` for one opening,
     `motor_start` for a large motor started direct on line (its `motor_large` loop then takes over at the same
     level), `surge_thud` for a pressure surge's slam (a CW pump started against an open valve), `horn_ack` for an
-    alarm acknowledged. Format 1 has no binding that says "on this edge" (PLANT3D.md
-    §7.7): today only `breaker` is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays
-    (apps/plant3d/ui/sound_player.gd: a breaker's contacts closing and opening, a large motor's start command,
-    a shake binding driven by a pressure jumping, an acknowledge). The people cues are played by name too: `step_concrete`, `step_grating` and `step_stair` once
-    a stride by the floor underfoot (with a little random pitch and level), `door_slide` as a sliding door starts,
+    alarm acknowledged. Format 1 has no binding that says "on this edge" (PLANT3D.md §7.7): today only `breaker`
+    is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays (apps/plant3d/ui/sound_player.gd:
+    a breaker's contacts closing and opening, a large motor's start command, a shake binding driven by a pressure
+    jumping, an acknowledge). The people cues are played by name too: `step_concrete`, `step_grating` and
+    `step_stair` once a stride by the floor underfoot (with a little random pitch and level), `door_slide` as a sliding door starts,
     the `door_roller` loop while a roller door moves, and the `wind` and `plant_distant` loops outdoors.
 
 ## How each sound is made
