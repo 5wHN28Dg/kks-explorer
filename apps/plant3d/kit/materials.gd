@@ -97,6 +97,8 @@ const EXPOSURE := {"paint_yellow": 0.6, "paint_red": 0.35, "paint_orange": 0.25,
 	"paint_green": 0.25}
 const EXPOSURE_DEFAULT := 0.12
 const SHADER := "res://kit/weathered.gdshader"
+## The same compiled with LEAN, for the phone's tiers (set_detail)
+const SHADER_LEAN := "res://kit/weathered_lean.gdshader"
 ## The weathering's noise (builder/weather.gd makes it at build time: our own, no licence).
 const NOISE := "res://built/weather/noise.res"
 
@@ -287,9 +289,16 @@ static func set_wet_zone(mats: Dictionary, zone: Vector4, strength: float) -> vo
 			m.set_shader_parameter("wet", strength)
 
 ## The tier's share of the weathering's samples (the shader's `detail`: 0 drops the streaks and the paint wear).
+## Off, the weathered materials draw with the LEAN program (SHADER_LEAN: fewer instructions for each pipeline a
+## phone compiles at its first start); the parameters are kept, the two shaders have the same uniforms.
 static func set_detail(mat: Material, on: bool) -> void:
 	if mat is ShaderMaterial:
 		mat.set_shader_parameter("detail", 1.0 if on else 0.0)
+		var sh: Shader = mat.shader
+		if sh != null and sh.resource_path in [SHADER, SHADER_LEAN]:
+			var want := SHADER if on else SHADER_LEAN
+			if sh.resource_path != want:
+				mat.shader = load(want)
 
 ## A material's texture of one map ("Color", "NormalGL", "Roughness"), whichever kind of material it is.
 static func texture_of(mat: Material, map: String) -> Texture2D:

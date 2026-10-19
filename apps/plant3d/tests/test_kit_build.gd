@@ -87,6 +87,14 @@ func run(tree: SceneTree) -> Array:
 			var set_name: String = {"deck_steel": "DiamondPlate008C", "ground": "Gravel023", "paint": "PaintedMetal004", "metal": "Metal032"}[name]
 			if not ("/%d/" % want in path and set_name in path):
 				p.append("%s after the full tier: %s (want %s at %d px)" % [name, path, set_name, want])
+		# the phone's tiers draw with the LEAN program, its parameters kept; the full tier with the whole one
+		var g := held[1] as ShaderMaterial
+		var tint = g.get_shader_parameter("tint")
+		if g.shader.resource_path != Mat.SHADER:
+			p.append("the full tier draws with the whole weathered shader (%s)" % g.shader.resource_path)
 		Mat.apply_tier("lean+vis")
+		if g.shader.resource_path != Mat.SHADER_LEAN or g.get_shader_parameter("tint") != tint \
+				or g.get_shader_parameter("noise_tex") == null:
+			p.append("the phone's tier draws with the LEAN shader, the parameters kept (%s)" % g.shader.resource_path)
 	plant.free()
 	return p
