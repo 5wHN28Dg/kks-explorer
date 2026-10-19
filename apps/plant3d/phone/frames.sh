@@ -6,6 +6,7 @@
 #   apps/plant3d/phone/frames.sh [SERIAL] [SECONDS]      default: the Note 9, 600 s
 #   APK=path  another APK (default export/walkdown-plant.apk, build.sh release)
 #   WALK_EXTRA="procedure=cold_start\npanels=alarms,procedure\nspeed=fast\n"   more options for the walk (app/main.gd)
+#   WALK_EXTRA="walk=screens\n"   the control room's screens instead of the walk, each in turn for 10 s (their cost)
 # Only io.github.walkdown.plant is installed, started, cleared or removed: never Walkdown (io.github.walkdown), never
 # anything else. Only on the Note 9 is a setting changed (50 % brightness, put back after). Any other phone (the Honor
 # is the user's own) keeps its settings, the run refuses to start when the plant app is already there (it would

@@ -69,6 +69,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--quality=full` or `--quality=lean+vis` | uses that tier |
 | `--walk=frames --seconds=600` | the scripted frame-time walk |
 | `--walk=climb` | the test's route |
+| `--walk=screens` | the control room's screens, each in turn for 10 s: their frame cost (`MIMIC` line) |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
 | `--map=1` | starts on the overview map |
 | `--scenario=ID` | the scenario the plant starts in (default `cold_iron`) |
@@ -280,7 +281,9 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_ui_screens`: the control room screens: every code of the model on exactly one screen or left out with its
   reason, a value added to the model landing on its screen, reached only in the control room (button, desks, Esc),
   redrawn at a few hertz, states and alarms that follow the plant, and operating from a screen through the card
-  (a refused start, then the same start done). `test_ui_screens_cold_start`: `test_ui_cold_start` with every
+  (a refused start, then the same start done); legible: every code whole, every name in two lines, a readable zoom
+  at opening (the overview at its key values on a phone), no word over the screens just opened; `walk=screens`.
+  `test_ui_screens_cold_start`: `test_ui_cold_start` with every
   operation the screens offer made by a click on its screen.
 - `test_run_save`: saved runs: a run saved and put back into a fresh engine continues bit for bit (also with state
   the engine doesn't have yet), damaged and foreign files refused, the atomic write, Continue and New run at start.
@@ -292,6 +295,9 @@ A test stopped by a script error counts as failed (the runner counts script erro
 screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script
 res://tests/ui_shots.gd -- --out=DIR`; `tests/mimic_shots.gd` (same arguments, `--phone` at
 `--resolution 2960x1440` for the phone's scale) saves every control room screen and prints what drawing them costs.
+On the Note 9 (2026-10-19, debug build, `WALK_EXTRA="walk=screens\n" phone/frames.sh`, 100 s): frames median
+16.7 ms, 99.95 % at 30 fps or more; the screens' drawing 0.38 ms a frame on average, 71 of 5,969 frames over 2 ms,
+13 ms at most (a screen's first drawing when it is shown).
 - `test_about`: About from the settings (gamepad A), what it shows (version, commit, the assets with their licence,
   Godot's notices), scrolling by D-pad, stick, Page Down and Home, and back by Esc, B and Back.
 - `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).
