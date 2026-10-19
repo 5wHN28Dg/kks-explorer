@@ -1,11 +1,13 @@
 ## Walking directions (docs/PLANT3D.md §8 `"go": "walk"`, decision 0059): the way on foot from the trainee to a piece
 ## of equipment, over the navigation mesh the content build baked from the walkable surfaces (builder/nav_bake.gd),
-## with the ladders joined by navigation links. Drawn as chevrons a little above the floor, from the trainee onwards;
-## the HUD's screen-edge arrow (ui/plant_ui.gd) still points at the equipment.
+## with the stairs and ladders joined by navigation links and walked along their own paths. Drawn as chevrons a
+## little above the floor, from the trainee onwards; the HUD's screen-edge arrow (ui/plant_ui.gd) still points at the
+## equipment, and its distance is then the walk's.
 ##
 ## Frame cost (the Note 9's lean tier): a route is found when the target changes, and again only when the trainee has
 ## left it by more than OFF_ROUTE (checked every CHECK_S, at most one search per REFIND_S); the chevrons are rebuilt
-## only when the trainee has walked DRAW_STEP along the route. Nothing is searched or rebuilt in other frames.
+## only when the trainee has walked DRAW_STEP along the route. The target's point, a search and a redraw each take
+## a physics tick of their own; nothing is searched or rebuilt in other frames.
 extends Node3D
 
 const NAV := "res://built/nav.res"
@@ -13,7 +15,7 @@ const CHECK_S := 0.25           # how often the trainee's place on the route is 
 const REFIND_S := 1.0           # at most one search a second
 const OFF_ROUTE := 2.5          # metres from the route at which it is found again
 const DRAW_STEP := 1.0          # metres walked along the route before the chevrons are redrawn
-const DRAW_AHEAD := 120.0       # metres of route drawn ahead of the trainee
+const DRAW_AHEAD := 60.0        # metres of route drawn ahead of the trainee
 const SPACING := 1.2            # metres between chevrons
 const LIFT := 0.1               # metres above the route (the mesh lies a little above the floor; stairs are walked
                                 # on slopes under the drawn steps)
@@ -31,19 +33,23 @@ var _ready := false
 var player                      # app/player.gd
 var target := Vector3.INF       # the equipment's walkable point the route leads to
 var route := {}                 # find()'s result for the current target
-var stats := {"finds": 0, "find_us_max": 0, "find_us_sum": 0, "draws": 0, "draw_us_max": 0, "draw_us_sum": 0}
+var left := 0.0                 # metres still to walk along it, from the last check
+var chevrons := 0               # how many are drawn
+var stats := {"setup_us": 0, "finds": 0, "find_us_max": 0, "find_us_sum": 0, "draws": 0, "draw_us_max": 0, "draw_us_sum": 0}
 
-var _mesh: ImmediateMesh
+var _mesh: ArrayMesh
 var _mi: MeshInstance3D
 var _t := 0.0
 var _since_find := INF
 var _drawn_from := -INF         # metres along the route the chevrons were drawn from
 var _box := AABB()
+var _pending := ""              # "find" or "draw" on the next physics tick
 
 
 ## Loads the pre-built navigation mesh into this world's navigation map and joins the ends of every stair and ladder
 ## with a link (builder/nav_bake.gd leaves them out of the mesh).
 func setup(_plant = null) -> String:
+	var t0 := Time.get_ticks_usec()
 	var nm := load(NAV) as NavigationMesh if ResourceLoader.exists(NAV) else null
 	if nm == null:
 		error = "no navigation mesh (%s): run apps/plant3d/build.sh" % NAV
@@ -67,7 +73,7 @@ func setup(_plant = null) -> String:
 			for i in range(1, path.size()):
 				along += path[i - 1].distance_to(path[i])
 			_link("stair", w.id, path, STAIR_COST * along / maxf(path[0].distance_to(path[-1]), 0.1))
-	_mesh = ImmediateMesh.new()
+	_mesh = ArrayMesh.new()
 	_mi = MeshInstance3D.new()
 	_mi.name = "route"
 	_mi.mesh = _mesh
@@ -82,6 +88,7 @@ func setup(_plant = null) -> String:
 	_mi.material_override = mat
 	add_child(_mi)
 	_mi.visible = false
+	stats.setup_us = Time.get_ticks_usec() - t0
 	return ""
 
 
@@ -107,7 +114,8 @@ func _exit_tree() -> void:
 ## True once the navigation server has taken the mesh in (it does so on a physics frame after setup).
 func ready_to_find() -> bool:
 	if not _ready and map.is_valid() and NavigationServer3D.map_get_iteration_id(map) > 0:
-		_ready = NavigationServer3D.map_get_closest_point(map, _probe).distance_to(_probe) < 0.5
+		# this region's own mesh (an earlier one leaving the map may still be there for a tick)
+		_ready = NavigationServer3D.map_get_closest_point_owner(map, _probe) == region
 	return _ready
 
 
@@ -209,7 +217,7 @@ func guide(p, box: AABB) -> void:
 	_box = box
 	target = Vector3.INF          # found on the next check, once the map is ready
 	route = {}
-	_since_find = INF
+	_pending = ""
 	_t = CHECK_S
 
 
@@ -217,6 +225,7 @@ func clear() -> void:
 	_box = AABB()
 	target = Vector3.INF
 	route = {}
+	_pending = ""
 	if _mi:
 		_mi.visible = false
 
@@ -225,12 +234,9 @@ func active() -> bool:
 	return _box.size != Vector3.ZERO
 
 
-## Metres still to walk (0 when no route is shown).
-func remaining() -> float:
-	if route.is_empty():
-		return 0.0
-	var pr := _progress(player.global_position)
-	return maxf(route.length - pr[1], 0.0)
+## A route is on screen (`left` is then the metres still to walk along it).
+func shown() -> bool:
+	return _mi != null and _mi.visible and not route.is_empty()
 
 
 func _physics_process(delta: float) -> void:
@@ -238,6 +244,18 @@ func _physics_process(delta: float) -> void:
 		return
 	_t += delta
 	_since_find += delta
+	# the work of one check is spread over the physics ticks after it: the target's point, the search, the drawing
+	if _pending == "find":
+		_pending = "draw"
+		route = find(player.global_position, target)
+		_drawn_from = -INF
+		return
+	if _pending == "draw":
+		_pending = ""
+		var pr := _progress(player.global_position)
+		left = maxf(route.length - pr[1], 0.0)
+		_draw(pr)
+		return
 	if _t < CHECK_S:
 		return
 	_t = 0.0
@@ -249,23 +267,25 @@ func _physics_process(delta: float) -> void:
 		return                  # on a ladder: the route goes on from its end
 	if not ready_to_find():
 		return
-	var at: Vector3 = player.global_position
 	if target == Vector3.INF:
 		target = point_for(_box)
-	var refind := route.is_empty()
+		_since_find = REFIND_S
+		_t = CHECK_S            # searched from the next tick
+		route = {}
+		return
 	var pr := [0, 0.0, 0.0]
+	var refind := route.is_empty()
 	if not refind:
-		pr = _progress(at)
+		pr = _progress(player.global_position)
 		refind = pr[2] > OFF_ROUTE
 	if refind:
-		if _since_find < REFIND_S:
-			return
-		_since_find = 0.0
-		route = find(at, target)
-		_drawn_from = -INF
-		pr = _progress(at)
+		if _since_find >= REFIND_S:
+			_since_find = 0.0
+			_pending = "find"
+		return
+	left = maxf(route.length - pr[1], 0.0)
 	if absf(pr[1] - _drawn_from) >= DRAW_STEP:
-		_draw(pr)
+		_pending = "draw"
 
 
 ## Where the walker is along the route: [segment index, metres along, metres off it].
@@ -290,46 +310,49 @@ func _progress(at: Vector3) -> Array:
 	return best
 
 
-## Chevrons along the route from the walker onwards, pointing the way.
+## Chevrons along the route from the walker onwards, pointing the way: one array, one upload.
 func _draw(pr: Array) -> void:
 	var t0 := Time.get_ticks_usec()
 	_drawn_from = pr[1]
-	_mesh.clear_surfaces()
-	var pts: PackedVector3Array = route.points
+	var pts: PackedVector3Array = route.get("points", PackedVector3Array())
 	var start: float = pr[1] + 1.0
-	var stop: float = minf(start + DRAW_AHEAD, route.length)
-	var n := 0
+	var stop: float = minf(start + DRAW_AHEAD, route.get("length", 0.0))
+	var v := PackedVector3Array()
 	var along := 0.0
 	var next := start
 	for i in range(1, pts.size()):
 		var a := pts[i - 1]
 		var b := pts[i]
 		var l := a.distance_to(b)
+		if next > stop:
+			break
 		var flat := Vector3(b.x - a.x, 0, b.z - a.z)
-		while next <= along + l and next <= stop and l > 0.01:
-			if n == 0:
-				_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+		var ladder: bool = String(route.marks[i]).begins_with("ladder ") and route.marks[i] == route.marks[i - 1]
+		if ladder or l <= 0.01:   # up or down a ladder: nothing drawn on its rungs, the way goes on at its other end
+			next = maxf(next, along + l)
+			along += l
+			continue
+		var f := flat.normalized() if flat.length() > 0.05 else Vector3.FORWARD
+		var sd := Vector3(-f.z, 0, f.x) * 0.3
+		var fu := (f + Vector3.UP * ((b.y - a.y) / maxf(flat.length(), 0.05))).normalized()   # along a stair's slope
+		var tip_off := fu * 0.25
+		var tail_off := fu * -0.15
+		var w := fu * 0.12
+		while next <= along + l and next <= stop:
 			var p := a.lerp(b, (next - along) / l) + Vector3.UP * LIFT
-			var f := flat.normalized() if flat.length() > 0.05 else Vector3.FORWARD
-			var s := Vector3(-f.z, 0, f.x)
-			var climb := (b.y - a.y) / maxf(flat.length(), 0.05)
-			var fu := (f + Vector3.UP * climb).normalized()      # along a stair's slope
-			for k in [-1.0, 1.0]:   # a chevron: two bars meeting at the point ahead
-				var tip: Vector3 = p + fu * 0.25
-				var tail: Vector3 = p - fu * 0.15 + s * (0.3 * k)
-				var w: Vector3 = fu * 0.12
-				_mesh.surface_add_vertex(tip)
-				_mesh.surface_add_vertex(tail)
-				_mesh.surface_add_vertex(tail - w)
-				_mesh.surface_add_vertex(tip)
-				_mesh.surface_add_vertex(tail - w)
-				_mesh.surface_add_vertex(tip - w)
-			n += 1
+			var tip := p + tip_off
+			for tail in [p + tail_off + sd, p + tail_off - sd]:   # a chevron: two bars meeting at the point ahead
+				v.append_array([tip, tail, tail - w, tip, tail - w, tip - w])
 			next += SPACING
 		along += l
-	if n > 0:
-		_mesh.surface_end()
-	_mi.visible = n > 0
+	_mesh.clear_surfaces()
+	if not v.is_empty():
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = v
+		_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	chevrons = v.size() / 12
+	_mi.visible = chevrons > 0
 	var us := Time.get_ticks_usec() - t0
 	stats.draws += 1
 	stats.draw_us_sum += us

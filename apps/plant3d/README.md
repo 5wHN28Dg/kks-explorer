@@ -12,8 +12,8 @@ geometry at their described positions, made by the builder.
 | Folder | What |
 |---|---|
 | `kit/` | the parts kit: every equipment part of `data/plant3d/kit.json` made from its parameters, the materials and their CC0 textures (fetched by `kit/fetch_textures.sh`) |
-| `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground and the site round the areas, the materials, the sky, the bake scene, `plant.json`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) `builder/bake/` is the editor plugin that bakes the lightmap |
-| `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), scripted routes (`autopilot.gd`, `routes.gd`) |
+| `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground and the site round the areas, the materials, the sky, the bake scene, `plant.json`, the walking directions' navigation mesh `nav.res` from `nav_bake.gd`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) `builder/bake/` is the editor plugin that bakes the lightmap |
+| `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), scripted routes (`autopilot.gd`, `routes.gd`), walking directions (`walk_route.gd`) |
 | `ui/` | the interaction layer: the engine run at 0.1 s steps (`sim_clock.gd`), equipment cards (`card.gd`), alarms (`alarm_panel.gd`), procedures and tours (`procedure_panel.gd`, `procedure_tracker.gd`), the instructor's faults, bindings on the parts (`bindings.gd`), sounds (`sound_player.gd`), links (`links_in.gd`); `plant_ui.gd` ties them together |
 | `addons/walkdown_plant_android/` | editor-only: the export plugin that adds the `walkdown-plant://` intent filter to the Android manifest (decision 0056) |
 | `msix/` | the MSIX manifest (identity, alias, the `walkdown-plant` protocol); the packaging comes with the first release |
@@ -78,12 +78,13 @@ Controls (R7):
 
 - **Keyboard and mouse:** W A S D to walk, Shift to run. Click the view to capture the mouse, then the mouse looks
   around. F flies (Space and C for up and down), M opens the map, E opens a door, Esc shows the settings.
-- **Gamepad:** the sticks walk and look. Y flies, Back opens the map, A opens a door, Start shows the settings.
+- **Gamepad:** the sticks walk and look. Y flies, Back opens the map, A opens a door, Start shows the settings, X goes
+  back to the control room.
 - **Touch:** two sticks, Godot's own `VirtualJoystick`, driving the same actions as a gamepad's sticks: move on the
   left, look on the right. There are buttons for Fly, Map, Use, Settings, and Up and Down while flying.
 - **The plant (ui/):** E (gamepad A) or a click or tap on a part opens its card; L (D-pad up) the alarms, P (D-pad
-  left) procedures and tours, K (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H back to the
-  control room, Esc (B) closes the top panel. The bar under the buttons does the same by touch.
+  left) procedures and tours, K (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H (X) back to
+  the control room, Esc (B) closes the top panel. The bar under the buttons does the same by touch.
 - **Ladders:** walk into a ladder facing it to climb it. To go down, step backwards over the edge at its top.
 - **Map:** drag to pan, use the wheel or pinch to zoom, and right-drag or turn two fingers to rotate. Tap a floor to
   go there.
@@ -107,8 +108,9 @@ from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.
 - **Procedures and tours:** the current step's text with its links, the operations it expects (ticked when done),
   why, the equipment pointed at in the plant (a frame and an arrow, and an arrow at the screen's edge with its
   distance); a step ends by itself when its `done` value turns true. "Pause when a step is done" stops the plant
-  there. A tour's Next and Back fly to each stop, or the trainee walks with the arrow. Walking directions along the
-  walkways are not made yet.
+  there. A tour's Next and Back fly to each stop, or the trainee walks with the arrow. A step with `"go": "walk"`
+  (every tour stop, most procedure steps) shows the way on foot to what it points at: chevrons on the floors, up and
+  down stairs and ladders, from wherever the trainee stands, and the arrow's distance is then the walk's.
 - **Instructor mode** (settings): the scenario to restart in and the scenario's trainer faults.
 - **Bindings:** the kit's moving pieces are children of the equipment's node named by their channel (`shaft`,
   `blades`, `handwheel` turn about their own Y axis; `stem`, `contacts` move along it by the `travel` meta; `disc`
@@ -173,7 +175,12 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 ```
 
 - `test_walk`: up the 30 m stair tower of HRSG 1, across the roof, up the stack's ladder to +40, and back down to the
-  ground. It fails if the walker is stuck for 5 s or falls below the floor it walks on.
+  ground; the condenser pit's stair; every stair and ladder both ways; and the walking directions: from the control
+  room the path finder reaches every tour stop and the equipment of every procedure step with `"go": "walk"`, and the
+  walker follows those routes, procedure by procedure, stop after stop (about 5 km, 2.5 minutes). It fails if the
+  walker is stuck for 5 s, falls below the floor it walks on, or ends out of reach of the equipment.
+- `test_ui_walk_route`: the walking directions in the app (shown, redrawn, found again off the way, hidden in flight
+  and by other steps) and the gamepad's X for the control room.
 - `test_frames_route`: the phone's walk, once.
 - `test_builder`: geometry, stair layout, the build's refusals and cuts.
 - `test_quality`: picking the tier.

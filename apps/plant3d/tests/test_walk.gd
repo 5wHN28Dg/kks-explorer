@@ -7,7 +7,8 @@
 ##   every ladder    up from its foot and down from its top
 ##   every route     the walking directions (app/walk_route.gd, PLANT3D.md §8): from the control room, the path finder
 ##                   reaches every stop of every tour and the equipment of every procedure step with "go": "walk", and
-##                   the walker follows its routes in the order a trainee meets them, stop after stop
+##                   the walker follows its routes in the order a trainee meets them, stop after stop, and the
+##                   path finder's way to the top of every ladder
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -248,6 +249,15 @@ func routes(tree: SceneTree) -> Array:
 		var d := index.distance(t[2], player.global_position + Vector3.UP * 1.0)
 		if d > REACH:
 			problems.append("%s/%s: the walker ended %.1f m from %s" % [t[0], t[1], d, t[2]])
-	print("  walked %.0f m along the routes to %d targets in %d ms" % [walked, tg.size(), Time.get_ticks_msec() - t0])
+	# and the way the path finder knows to the top of each ladder, walked and climbed from the control room
+	for l in plant.manifest.ladders:
+		if not problems.is_empty():
+			break
+		await _place(tree, player, start)
+		var rt: Dictionary = nav.find(player.global_position, plant.v3(l.exit))
+		walked += rt.length
+		problems.append_array(await _follow(tree, world, player, nav.steps(rt), "the way to the top of %s" % l.id, 0.5, 0.5))
+	print("  walked %.0f m along the routes to %d targets and %d ladders' tops in %d ms" % [walked, tg.size(),
+		plant.manifest.ladders.size(), Time.get_ticks_msec() - t0])
 	world.free()
 	return problems
