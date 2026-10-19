@@ -73,6 +73,7 @@ var _horn := 0
 var _hint: Label
 var _toast: Label
 var _toast_t := 0.0
+var _toast_beside_card := false
 var _alarm_btn: Button
 var _time: Label
 var _ff_btn: Button
@@ -265,6 +266,7 @@ func _layout_toast() -> void:
 	var side := 0.0
 	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible):
 		side = card.size.x + 32.0
+	_toast_beside_card = card != null and card.visible
 	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))
 	# over the screens, at their bottom edge: the middle of a screen is where the plant is read
 	var y := vs.y - (70.0 if screens_open() else 200.0) * W.scale
@@ -782,6 +784,9 @@ func _fit() -> void:
 
 func _toast_tick(delta: float) -> void:
 	if _toast_t > 0.0:
+		if card != null and card.visible != _toast_beside_card:
+			_toast_beside_card = card.visible
+			_layout_toast()                  # a card opened under the word: the word moves clear of it
 		_toast_t -= delta
 		if _toast_t <= 0.0:
 			_toast.text = ""

@@ -117,6 +117,14 @@ func _legible(tree: SceneTree, ui) -> Array:
 	mim._layouts.clear()
 	mim._view.clear()
 	mim.show_screen(-1)
+	# a word shown, then a card opened from the screen: the word moves clear of the card (its permissives)
+	ui.toast("A word about the plant")
+	ui.open_card("00PGC10AP001")
+	for k in 3:
+		await tree.process_frame
+	if ui._toast.visible and ui._toast.get_global_rect().intersects(ui.card.get_global_rect()):
+		p.append("the word covers the card: %s over %s" % [str(ui._toast.get_global_rect()), str(ui.card.get_global_rect())])
+	ui.close_card()
 	ui.close_screens()
 	return p
 
