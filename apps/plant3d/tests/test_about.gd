@@ -9,6 +9,12 @@ const UiApp = preload("res://tests/ui_app.gd")
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
+	# (packaging, decision 0056) a link's start takes no options: a crafted link can't add `--out=…` on Windows
+	var Main = load("res://app/main.gd")
+	if Main.parse_options(PackedStringArray(["--walk=frames", "--seconds=5"])) != {"walk": "frames", "seconds": "5"}:
+		p.append("options after -- are not read")
+	if Main.parse_options(PackedStringArray(["walkdown-plant://kks/A", "--out=//host/share"])) != {}:
+		p.append("a link's start takes options from the link's text")
 	var main: Node = UiApp.start(tree)
 	for i in 10:
 		await tree.process_frame

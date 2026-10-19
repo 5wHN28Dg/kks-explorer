@@ -4,7 +4,8 @@
 #   apps/plant3d/flatpak/build.sh BUILD_DIR [flatpak-builder options]
 #   apps/plant3d/flatpak/build.sh --bundle OUT.flatpak BUILD_DIR [flatpak-builder options]
 #                                   and the single-file bundle a release ships (walkdown-plant.flatpak), from a
-#                                   repository of its own under export/flatpak/
+#                                   repository of its own under export/flatpak/ (only from a .pck of this commit,
+#                                   built without local changes)
 #   apps/plant3d/flatpak/build.sh --metainfo OUT.xml
 #                                   only the AppStream file with this version's release entry
 # The AppStream file's release entry is made from the app's version (project.godot application/config/version) and
@@ -42,9 +43,16 @@ case "${1:-}" in
   *) BUNDLE="" ;;
 esac
 DIR="${1:?build dir}"; shift
-[ -s "$APP/export/linux/walkdown-plant.pck" ] || { echo "no export/linux/walkdown-plant.pck: run build.sh release linux" >&2; exit 2; }
+PCK="$APP/export/linux/walkdown-plant.pck"   # (the manifest's source; PLANT_PCK only for the check's own test)
+[ -n "${PLANT_PCK:-}" ] && PCK="$PLANT_PCK"
+[ -s "$PCK" ] || { echo "no export/linux/walkdown-plant.pck: run build.sh release linux" >&2; exit 2; }
 metainfo "$GEN/$ID.metainfo.xml"
 if [ -n "$BUNDLE" ]; then
+  # a release's bundle carries the .pck of this very commit, made without local changes (build.sh wrote
+  # built/build_info.json into it): never an older export under the new version
+  HEAD=$(git -C "$APP" rev-parse HEAD)
+  grep -aq "\"commit\": \"$HEAD\", \"changes\": false" "$PCK" ||
+    { echo "export/linux/walkdown-plant.pck was not built from $HEAD without changes: build.sh release linux from a clean checkout" >&2; exit 2; }
   rm -rf "$GEN/repo"
   flatpak run org.flatpak.Builder --user --install-deps-from=flathub --force-clean --state-dir="$GEN/state" \
     --repo="$GEN/repo" "$@" "$DIR" "$HERE/$ID.yml"

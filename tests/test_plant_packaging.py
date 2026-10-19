@@ -123,6 +123,20 @@ class FlatpakMetainfo(unittest.TestCase):
             if shutil.which('appstreamcli'):
                 subprocess.run(['appstreamcli', 'validate', '--no-net', out], check=True, capture_output=True)
 
+    def test_a_bundle_needs_the_pck_of_this_commit_without_changes(self):
+        """the bundle refuses (before flatpak-builder runs) a .pck of another commit or built with changes"""
+        head = subprocess.run(['git', '-C', REPO, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+        with tempfile.TemporaryDirectory() as tmp:
+            pck = os.path.join(tmp, 'p.pck')
+            for commit, changes in (('f' * 40, 'false'), (head, 'true')):
+                with open(pck, 'wb') as f:
+                    f.write(b'GDPC\0' + ('{"format": "walkdown-plant-build", "commit": "%s", "changes": %s}' % (commit, changes)).encode())
+                r = subprocess.run(['sh', os.path.join(APP, 'flatpak', 'build.sh'), '--bundle', os.path.join(tmp, 'o.flatpak'),
+                                    os.path.join(tmp, 'b')], capture_output=True, text=True, env={**os.environ, 'PLANT_PCK': pck})
+                self.assertEqual(r.returncode, 2, r.stderr)
+                self.assertIn('was not built from %s without changes' % head, r.stderr)
+                self.assertFalse(os.path.exists(os.path.join(tmp, 'o.flatpak')))
+
     def test_no_hand_written_release_and_the_manifest_takes_the_made_one(self):
         d = os.path.join(APP, 'flatpak')
         with open(os.path.join(d, 'io.github._5wHN28Dg.WalkdownPlant.metainfo.xml')) as f:

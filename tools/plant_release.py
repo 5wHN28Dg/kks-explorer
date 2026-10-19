@@ -19,12 +19,13 @@ must stay Walkdown's. Nothing is published unless
 - the packages were built from that commit without local changes: build.sh writes the commit and whether the
   checkout had changes into built/build_info.json, which the APK and the MSIX packages' WalkdownPlant.exe carry (the
   Flatpak bundle is compressed: not checked; build it from the same clean checkout);
-- the MSIX packages are Walkdown's (publisher CN=Walkdown, never a test certificate) and for the architecture their
-  name says;
+- the MSIX packages are Walkdown's (publisher CN=Walkdown, never a test certificate), signed, of this version and for
+  the architecture their name says (the manifest and the exe), windows-msix.cer is CN=Walkdown, and the APK is
+  signed with the plant's key (CN=Walkdown Plant: never a debug or unsigned build; apksigner from the Android SDK);
 - every CI run on the commit has finished and passed, the Walkdown Plant app workflow among them (a hard gate);
 - GitHub's latest release is a Walkdown vX.Y.Z before, and still the same one after (if publishing made the plant's
   release latest after all, the Walkdown release is made latest again and the tool fails)."""
-import argparse, os, re, subprocess, sys, zipfile
+import argparse, glob, os, re, struct, subprocess, sys, zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import release  # noqa: E402  (the shared checks: checkout, CI, latest)
@@ -96,11 +97,24 @@ def bump(version, root=None):
 
 
 MSIX_ARCH = {'WalkdownPlant.msix': 'x64', 'WalkdownPlant-arm64.msix': 'arm64'}
+PE_MACHINE = {'x64': 0x8664, 'arm64': 0xAA64}
+APK_SIGNER_DN = 'CN=Walkdown Plant'   # the plant's own key (0054), never a debug key or Walkdown's
 PUBLISHER = 'CN=Walkdown'   # the certificate IT trusts (0043); never a test certificate's
 
 
-def msix_problems(name, z):
-    """[what is wrong with an MSIX's identity]: Walkdown's publisher, the architecture its name says"""
+def pe_machine(data):
+    """the machine field of a Windows exe's PE header (None when it is not one)"""
+    if data[:2] != b'MZ' or len(data) < 0x40:
+        return None
+    off = struct.unpack_from('<I', data, 0x3C)[0]
+    if data[off:off + 4] != b'PE\0\0':
+        return None
+    return struct.unpack_from('<H', data, off + 4)[0]
+
+
+def msix_problems(name, z, version=None):
+    """[what is wrong with an MSIX]: Walkdown's publisher, the architecture its name says (the manifest's and the
+    exe's), the version, a signature"""
     try:
         m = z.read('AppxManifest.xml').decode('utf-8', 'replace')
     except KeyError:
@@ -114,14 +128,56 @@ def msix_problems(name, z):
         out.append(f'{name}: publisher is {pub.group(1) if pub else "missing"}, not {PUBLISHER} (a test package?)')
     if not arch or arch.group(1) != MSIX_ARCH[name]:
         out.append(f'{name}: is for {arch.group(1) if arch else "no architecture"}, not {MSIX_ARCH[name]}')
+    ver = re.search(r'Version="([^"]*)"', ident)
+    if version and (not ver or ver.group(1) != version + '.0'):
+        out.append(f'{name}: version {ver.group(1) if ver else "missing"}, not {version}.0')
+    if 'AppxSignature.p7x' not in z.namelist():
+        out.append(f'{name}: is not signed')
+    try:
+        machine = pe_machine(z.read('WalkdownPlant.exe'))
+    except KeyError:
+        machine = None
+    if machine != PE_MACHINE[MSIX_ARCH[name]]:
+        out.append(f'{name}: its WalkdownPlant.exe is not an {MSIX_ARCH[name]} program')
     return out
 
 
-def artifact_problems(files, commit):
-    """[what in the packages was not built from `commit` without changes] ({name: path})"""
+def apk_signer(path):
+    """the APK's first signer's DN, by the Android SDK's apksigner (newest build-tools); None when it can't tell"""
+    sdk = os.environ.get('ANDROID_HOME') or os.path.expanduser('~/Android/Sdk')
+    tools = sorted((p for p in glob.glob(os.path.join(sdk, 'build-tools', '*', 'apksigner')) if '-rc' not in p),
+                   key=lambda p: [int(x) for x in re.findall(r'\d+', os.path.basename(os.path.dirname(p)))])
+    if not tools:
+        return None
+    r = subprocess.run([tools[-1], 'verify', '--print-certs', path], capture_output=True, text=True)
+    m = re.search(r'^Signer #1 certificate DN: (.*)$', r.stdout, re.M) if r.returncode == 0 else None
+    return m.group(1).strip() if m else None
+
+
+def cert_problems(path):
+    """[what is wrong with windows-msix.cer]: it must be Walkdown's certificate, not a test one"""
+    from cryptography import x509
+    try:
+        with open(path, 'rb') as f:
+            data = f.read()
+        c = x509.load_der_x509_certificate(data) if not data.startswith(b'-----') else x509.load_pem_x509_certificate(data)
+    except (OSError, ValueError) as e:
+        return [f'windows-msix.cer: not readable ({e})']
+    subject = c.subject.rfc4514_string()
+    return [] if subject == PUBLISHER else [f'windows-msix.cer is {subject}, not {PUBLISHER}']
+
+
+def artifact_problems(files, commit, version=None):
+    """[what in the packages was not built from `commit` without changes, or is not what its name says] ({name: path})"""
     good = f'"commit": "{commit}", "changes": false'.encode()
     changed = f'"commit": "{commit}", "changes": true'.encode()
     out = []
+    if 'windows-msix.cer' in files:
+        out += cert_problems(files['windows-msix.cer'])
+    if 'walkdown-plant.apk' in files:
+        dn = apk_signer(files['walkdown-plant.apk'])
+        if dn != APK_SIGNER_DN:
+            out.append(f'walkdown-plant.apk is signed by {dn or "nobody apksigner could verify"}, not {APK_SIGNER_DN}')
     for name, path in sorted(files.items()):
         where = BUILT_FROM.get(name)
         if where is None:
@@ -131,7 +187,7 @@ def artifact_problems(files, commit):
                 parts = [n for n in z.namelist() if where.fullmatch(n)]
                 data = [z.read(n) for n in parts]
                 if name in MSIX_ARCH:
-                    out += msix_problems(name, z)
+                    out += msix_problems(name, z, version)
         except (zipfile.BadZipFile, OSError) as e:
             out.append(f'{name}: not readable ({e})')
             continue
@@ -161,7 +217,7 @@ def problems(version, files, root=None, remote='origin'):
         out.append(f'commit {commit[:12]} is not on {remote}/main: release a merged commit')
     if not any(n in BUILT_FROM for n in files):
         out.append('nothing to release in DIR: no APK or MSIX package')
-    out += artifact_problems(files, commit)
+    out += artifact_problems(files, commit, version)
     out += release.ci_problems(commit, required=('Walkdown Plant app',))
     out += release.latest_problems()
     return commit, out

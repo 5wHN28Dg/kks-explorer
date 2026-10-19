@@ -60,6 +60,25 @@ class FakeGh:
         return [c for c in self.calls if c[1:3] == ['release', 'create']]
 
 
+def pe(machine, tail=b''):
+    """a stand-in Windows exe: the DOS header pointing at a PE header with this machine, then `tail`"""
+    return b'MZ' + bytes(0x3A) + (0x40).to_bytes(4, 'little') + b'PE\0\0' + machine.to_bytes(2, 'little') + tail
+
+
+def cert(cn):
+    """a throwaway self-signed certificate (DER) with this CN: never a real key"""
+    import datetime
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    k = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, cn)])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    c = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
+         .serial_number(1).not_valid_before(now).not_valid_after(now + datetime.timedelta(days=1)).sign(k, hashes.SHA256()))
+    return c.public_bytes(serialization.Encoding.DER)
+
+
 def green(*names):
     return [{'workflowName': n, 'status': 'completed', 'conclusion': 'success', 'url': 'u'} for n in names]
 
@@ -82,6 +101,7 @@ class PlantRelease(unittest.TestCase):
         self.head = self.commit('1.2.3')
         self.git(self.repo, 'push', '-q', 'origin', 'HEAD:main')
         self.gh = FakeGh()
+        self.apk_dn = 'CN=Walkdown Plant'
         self.gh.runs[self.head] = green('Tests', 'Policy', 'Walkdown Plant app')
 
     def git(self, where, *args):
@@ -98,7 +118,8 @@ class PlantRelease(unittest.TestCase):
         self.git(self.repo, 'commit', '-qm', msg)
         return self.git(self.repo, 'rev-parse', 'HEAD')
 
-    def packages(self, commit=None, changes=False, publisher='CN=Walkdown', arch='x64'):
+    def packages(self, commit=None, changes=False, publisher='CN=Walkdown', arch='x64', machine=0x8664, signed=True,
+                 cer='Walkdown'):
         """stand-ins for the APK and the MSIX: zips carrying build.sh's build_info.json where Godot puts it"""
         info = ('{"format": "walkdown-plant-build", "commit": "%s", "changes": %s}\n'
                 % (commit or self.head, 'true' if changes else 'false')).encode()
@@ -111,9 +132,11 @@ class PlantRelease(unittest.TestCase):
         with zipfile.ZipFile(os.path.join(d, 'WalkdownPlant.msix'), 'w') as z:
             z.writestr('AppxManifest.xml', ('<Package><Identity Name="WalkdownPlant" Publisher="%s" Version="1.2.3.0" '
                                             'ProcessorArchitecture="%s" /></Package>' % (publisher, arch)).encode())
-            z.writestr('WalkdownPlant.exe', b'MZ\0engine\0GDPC\0' + info + b'\0more')
+            z.writestr('WalkdownPlant.exe', pe(machine, b'\0engine\0GDPC\0' + info + b'\0more'))
+            if signed:
+                z.writestr('AppxSignature.p7x', b'PKCX')
         with open(os.path.join(d, 'windows-msix.cer'), 'wb') as f:
-            f.write(b'0\x82cert')
+            f.write(cert(cer))
         return d
 
     def run_main(self, args):
@@ -129,6 +152,7 @@ class PlantRelease(unittest.TestCase):
             return real_run(cmd, *a, **kw)
         out = io.StringIO()
         with mock.patch.object(plant_release, 'ROOT', self.repo), \
+                mock.patch.object(plant_release, 'apk_signer', side_effect=lambda p: self.apk_dn), \
                 mock.patch.object(subprocess, 'run', side_effect=run), redirect_stdout(out):
             try:
                 plant_release.main(args)
@@ -211,6 +235,18 @@ class PlantRelease(unittest.TestCase):
         shutil.copy(os.path.join(d, 'WalkdownPlant.msix'), os.path.join(d, 'WalkdownPlant-arm64.msix'))
         err, _ = self.run_main(['1.2.3', d])
         self.assertIn('WalkdownPlant-arm64.msix: is for x64, not arm64', err)
+
+    def test_packages_must_be_what_their_names_say(self):
+        for kw, says in (({'machine': 0xAA64}, 'WalkdownPlant.exe is not an x64 program'),
+                         ({'signed': False}, 'WalkdownPlant.msix: is not signed'),
+                         ({'cer': 'KKS Explorer Test'}, 'windows-msix.cer is CN=KKS Explorer Test, not CN=Walkdown')):
+            err, _ = self.run_main(['1.2.3', self.packages(**kw)])
+            self.assertIn(says, err or '', kw)
+        for dn in ('CN=Android Debug,O=Android,C=US', None):
+            self.apk_dn = dn
+            err, _ = self.run_main(['1.2.3', self.packages()])
+            self.assertIn('walkdown-plant.apk is signed by', err or '')
+            self.assertIn('not CN=Walkdown Plant', err)
 
     def test_a_dir_without_a_package_is_refused(self):
         d = self.packages()

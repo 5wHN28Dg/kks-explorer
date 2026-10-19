@@ -75,7 +75,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--procedure=ID` | follows that procedure or tour from the start |
 | `--panels=alarms,procedure,card:CODE` | opens these panels |
 | `--speed=fast` | starts the plant in fast-forward |
-| `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line |
+| `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line; a start with a link takes none of the options above (a crafted link could add its own) |
 | `--fx_off=ssao,fog`, `--fx_on=sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
 
 Controls (R7):
@@ -232,3 +232,8 @@ procedure, with the keys, is on the wiki's Releasing page. In short, from a clea
    on the commit has passed, and GitHub's latest release is a Walkdown `vX.Y.Z`; it creates the release with
    `--latest=false` and checks afterwards that the latest release is still Walkdown's (and makes it latest again if
    not). `tools/release.py` makes Walkdown's own releases latest explicitly, behind the same checks.
+   The release commit must have had the Walkdown Plant app workflow run on it (it runs only when plant files change):
+   release the merge that bumped the version, or start the workflow on a branch whose head is that commit
+   (`gh workflow run plant3d-app.yml --ref BRANCH`). The tools also check the APK's signer (`CN=Walkdown Plant`,
+   with the Android SDK's apksigner), the MSIX packages' publisher, architecture, version and signature, and
+   `windows-msix.cer`; the bundle refuses a `.pck` not built from the checkout's commit without changes.

@@ -174,7 +174,9 @@ def ci_problems(commit, repo=None, required=('Tests',)):
     names = {r.get('workflowName') for r in runs}
     for w in required:
         if w not in names:
-            out.append(f'CI {w} never ran on {commit[:12]}: release a commit that went through it (merged to main)')
+            out.append(f'CI {w} never ran on {commit[:12]} (its paths left it out, or the commit came only as a tag): '
+                       f'release a commit it ran on, or run it on this one (gh workflow run, on a branch whose head is '
+                       f'{commit[:12]})')
     return out
 
 
