@@ -200,7 +200,9 @@ placed by their `foot` and `top` alone.
   pipes. Inside a building the walls are drawn from inside too.
 
 **Signs** are labels in the world: `{"text": "CW pump house", "at": [152, -16, 4], "yaw": 180, "size": 0.3}`.
-Area and system signs help a trainee find the way (R9a): they are drawn on every tier.
+Area and system signs help a trainee find the way (R9a): they are drawn on every tier. A safety sign adds its
+ISO 7010 `symbol` (`M003`, wear ear protection, is the one the app draws): the symbol above the text on a white
+board fixed to the wall at `at` (on the wall's line), the text black under it.
 
 ## 6. KKS codes and links
 

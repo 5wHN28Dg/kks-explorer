@@ -29,6 +29,6 @@
   {"text": "Instrument air", "at": [113, -12, 2.5], "yaw": 0, "size": 0.4},
   {"text": "Closed cooling water", "at": [113, 8, 2.5], "yaw": 0, "size": 0.4},
   {"text": "Demineralised water 00GHC10", "at": [125, 8.5, 3], "yaw": 180, "size": 0.4},
-  {"text": "Hearing protection required", "at": [104.0, 0.027, 1.8], "yaw": 90, "size": 0.3}
+  {"text": "Hearing protection required", "at": [104.0, 0.147, 1.8], "yaw": 90, "size": 0.3, "symbol": "M003"}
  ]
 }

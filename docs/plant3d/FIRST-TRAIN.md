@@ -251,7 +251,7 @@ is faster still ("Time" below).
   an empty pipe and by 3 bar into a full header (on top of the pump's own 2.2–2.9 bar; faked as one spike at the
   start, where a real empty pipe slams when it has filled), pinning the local gauge (0–4 bar) at its stop and
   shown on the new transmitter `30PAC10CP00n` (0–10 bar), whose alarm (§5) is set at 3.5 bar; the camera shakes at
-  the pump. The heavy thud of the table's row 4 is the sound library's to add (not built yet). Opening a
+  the pump, and the pipe slams with a heavy thud there (the sound `surge_thud`, §6). Opening a
   stopped pump's valve while another pump runs is wrong too: water flows back through the idle pump (below).
 - **Backflow:** a stopped CW pump whose discharge valve is open passes water back to the basin, up to 7,500 m³/h
   (half a pump's flow) at full header pressure, in proportion to its valve's opening. The interlock that closes
@@ -321,7 +321,7 @@ is faster still ("Time" below).
   later). The roll on a cold casing, or with the spray in manual at minimum load (`roll_steam_too_hot`), is refused;
   so is a roll with steam over 50 K colder than a hot casing, a case only a hot restart reaches (no scenario yet).
 - **Not built yet:** in the model, nothing the plan above asks for (its gaps of 2026-10-16 were closed on
-  2026-10-19); the surge's heavy thud is a sound still to make. Still
+  2026-10-19). Still
   simplified: the HRSG's IP and LP pressures, the reheater's steam, the LP bypass spray valve and the hydraulic
   supplies have no behaviour of their own; a valve's fail action is immediate once the air is below 4 bar.
 - **Trainer faults** (the scenario's faults without a condition, PLANT3D.md §7.8) make every trip and interlock
@@ -449,7 +449,16 @@ As built (apps/plant3d/ui/sound_player.gd):
 - **Doors:** a sliding door's run as it starts to move; a roller door's motor and rattling slats while it moves.
 - **Ambience:** the wind and the distant plant, outdoors only (a building's roof above the trainee fades them out
   over a second); the distant plant's level follows how much of the plant runs (the bound sounds' mean gain).
+- **The surge:** a CW pump started against an open discharge valve (step 4 of §4) slams with a heavy thud at the
+  pump as its surge begins, with the camera's shake (`surge_thud`: the water hammer in the DN 1400 pipe, a 40 Hz
+  bounce on its supports and its shell's lower modes, and the column's rebound 0.35 s later). The app plays it when
+  a shake binding driven by a pressure jumps (`watch_surge`; a machine's vibration never thuds), once a surge.
 - **The cap:** a hard limiter, ceiling −6 dBFS, last on the master bus.
-- **The signs:** "Hearing protection required" beside every door of a building with a machine of 85 dB(A) or more
-  at 1 m inside (the upper exposure action value of EU Directive 2003/10/EC): the GT hall, the turbine hall, the CW
-  pump house and the boiler house; the content generator places them (`tools/plant3d/train_areas.py`).
+- **The signs:** the mandatory sign ISO 7010 M003 (wear ear protection: a blue disc, in white a head with ear
+  defenders) above the text "Hearing protection required", on a white board beside every door of a building with
+  a machine of 85 dB(A) or more at 1 m inside (the upper exposure action value of EU Directive 2003/10/EC): the GT
+  hall, the turbine hall, the CW pump house and the boiler house. The content generator places them
+  (`tools/plant3d/train_areas.py`); the build draws the symbol as geometry of its own (`builder/kit_place.gd`
+  `sign_mesh`, no artwork), merged into its cell's plain pieces where it has any, and
+  the text at the size it had, black without an outline: the sign is never more draw calls than the outlined
+  label was.

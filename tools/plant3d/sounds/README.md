@@ -44,11 +44,12 @@ Playing a sound:
     train);
   - `once`: a one-shot, meant for an event: `breaker` for a breaker closing, `breaker_open` for one opening,
     `motor_start` for a large motor started direct on line (its `motor_large` loop then takes over at the same
-    level), `horn_ack` for an alarm acknowledged. Format 1 has no binding that says "on this edge" (PLANT3D.md
-    §7.7): today only `breaker` is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays
-    (apps/plant3d/ui/sound_player.gd: a breaker's contacts closing and opening, a large motor's start command,
-    an acknowledge). The people cues are played by name too: `step_concrete`, `step_grating` and `step_stair` once
-    a stride by the floor underfoot (with a little random pitch and level), `door_slide` as a sliding door starts,
+    level), `surge_thud` for a pressure surge's slam (a CW pump started against an open valve), `horn_ack` for an
+    alarm acknowledged. Format 1 has no binding that says "on this edge" (PLANT3D.md §7.7): today only `breaker`
+    is bound (`gt1_brk_cmd`), so the app's wiring decides when a one-shot plays (apps/plant3d/ui/sound_player.gd:
+    a breaker's contacts closing and opening, a large motor's start command, a shake binding driven by a pressure
+    jumping, an acknowledge). The people cues are played by name too: `step_concrete`, `step_grating` and
+    `step_stair` once a stride by the floor underfoot (with a little random pitch and level), `door_slide` as a sliding door starts,
     the `door_roller` loop while a roller door moves, and the `wind` and `plant_distant` loops outdoors.
 
 ## How each sound is made
@@ -72,6 +73,7 @@ things for each sound:
 | `fan_large`, `turning_gear`, `liquid_ring` | Blade, tooth or ring passing at 16, 8 and 25 Hz. These are rates, not pitches: a swell, steel clicks, a gurgle. |
 | `water_rain` | Rain noise, plus single drops ringing at their bubble's Minnaert frequency. |
 | `breaker`, `breaker_open` | Modal synthesis: an impact rings the mechanism's and the cubicle's modes. The close is followed by the spring-charging motor. |
+| `surge_thud` | Water hammer in a CW pump's DN 1400 pipe: a soft-attack (water-cushioned) slam ringing the pipe's bounce on its supports (40 Hz, the longest), its shell's lower modes (90, 230 Hz) and briefly its ring frequency (1,130 Hz) over a brown blow; the column rebounds once at a third of the force. |
 | `motor_start` | Direct-on-line run-up: an inrush growl at 100 Hz, a run-up that is fastest near full speed, and slot whine and fan noise rising with speed. |
 | `horn_p1`, `horn_p2`, `horn_p3` | A different pattern for each priority (ISA-18.2, EEMUA 191): fast pulses, slow pulses, a chime. |
 | `step_concrete`, `step_grating`, `step_stair` | A heel strike and a toe 80–90 ms later, each an impact ringing the floor's modes: concrete barely rings (a 90 Hz thump and grit); grating's bearing bars ring at 420–3,700 Hz and the panel rattles; a stair tread rings lower and longer (260–3,050 Hz). |

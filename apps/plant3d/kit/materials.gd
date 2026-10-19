@@ -117,6 +117,7 @@ static func specs() -> Dictionary:
 	m["lamp_blue"] = {"set": "", "tint": Color(0.1, 0.3, 1.0), "rough": 0.3, "metal": 0.0, "emit": true}
 	m["lamp_white"] = {"set": "", "tint": Color(1.0, 0.97, 0.9), "rough": 0.3, "metal": 0.0, "emit": true}
 	m["sign_green"] = {"set": "", "tint": Color(0.0, 0.45, 0.25), "rough": 0.5, "metal": 0.0}
+	m["sign_blue"] = {"set": "", "tint": Color(0.08, 0.28, 0.54), "rough": 0.5, "metal": 0.0}       # ISO 3864-4 safety blue
 	m["sign_yellow"] = {"set": "", "tint": Color(0.98, 0.80, 0.05), "rough": 0.5, "metal": 0.0}
 	# the materials the kit's meshes are drawn with: one per texture set and finish, the colour in the vertices
 	# (`resolve`), so a cell's pieces of every paint colour are one draw call, not one per colour (decision 0041:

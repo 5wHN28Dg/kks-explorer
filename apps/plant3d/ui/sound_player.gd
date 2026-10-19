@@ -3,8 +3,9 @@
 ## all played together with the binding's gain, and with its pitch on the layers marked `pitch` (a motor's mains hum
 ## never is). Bound sounds play at their equipment while the trainee is within earshot; the control room horn sounds
 ## per priority while an alarm is unacknowledged. One-shots play on edges the app sees, since format 1 binds none: a
-## breaker's contacts closing and opening, a large motor's start (its loop waits until the run-up has played), an
-## acknowledge. Without built/sounds (the sounds not made) everything here is silent; the hooks are called all the same.
+## breaker's contacts closing and opening, a large motor's start (its loop waits until the run-up has played), a
+## surge's thud when a shake binding's value jumps (a CW pump started against an open valve), an acknowledge.
+## Without built/sounds (the sounds not made) everything here is silent; the hooks are called all the same.
 ##
 ## The people cues and the ambience (FIRST-TRAIN §6): a footstep once a stride while the trainee walks, by the floor
 ## underfoot (the content build marks each walkable slab with its deck, a stair's body as a stair: concrete, steel
@@ -25,6 +26,9 @@ const STRIDE := 0.75            # metres between footsteps walking (a step of a 
 const RUN_STRIDE := 1.1         # and running
 const RUNG := 0.3               # metres between a ladder's rungs (builder/plant_builder.gd _ladder)
 const FADE := 1.0               # seconds the ambience takes to follow the trainee in or out of a building
+const THUD := 0.05              # a shake binding's value × scale jumping by this from its lowest is a slam: `surge_thud`
+const THUD_REARM := 0.5         # and it can slam again once fallen below this share of its peak (a pump restarted
+								# while the last surge dies away slams again)
 const STEP_SOUNDS := {"concrete": "step_concrete", "grating": "step_grating", "stair": "step_stair"}
 
 var index := {}                 # the generator's index: sounds: {id: {loop, layers: [{layer, file, …}]}}
@@ -36,6 +40,8 @@ var _horn: AudioStreamPlayer
 var _horn_prio := 0
 var _hold := {}                 # node -> model step until which its loop waits (a motor's run-up one-shot)
 var _edges: Array = []          # [node, value slot, last state]: breakers, by their contacts' value
+var _surges: Array = []         # [node, value slot, scale, armed (1), fired (0) or not seen yet (-1), level]: the
+								# level is the lowest since armed, the highest since fired
 var _t := 0.0
 var listener_at := Vector3.ZERO
 var dir := DIR
@@ -132,6 +138,7 @@ func unbind_all() -> void:
 				pl[0].queue_free()
 	_bound.clear()
 	_edges.clear()
+	_surges.clear()
 
 
 ## A sound binding (§7.7) on its equipment's node. A one-shot bound like a loop (`breaker`) is played on its edges
@@ -147,19 +154,53 @@ func watch_breaker(n: Node3D, slot: int) -> void:
 	_edges.append([n, slot, -1])
 
 
-## After every model step: a breaker's contacts that changed in it (at fast-forward many steps pass in a frame).
+## A shake binding driven by a pressure is a pressure surge (the others are a machine's vibration, which never
+## slams): `bindings.gd` hands those to watch_surge.
+static func is_surge(unit: String) -> bool:
+	return unit in ["bar", "mbar", "Pa", "kPa", "MPa"]
+
+
+## A pressure surge's shake binding (§7.7): its value jumping by THUD is the slam heard with it, `surge_thud` at
+## its equipment (FIRST-TRAIN §4 step 4: a CW pump started against an open valve).
+func watch_surge(n: Node3D, slot: int, scale: float) -> void:
+	_surges.append([n, slot, scale, -1, 0.0])
+
+
+## After every model step: a breaker's contacts that changed in it (at fast-forward many steps pass in a frame), and
+## a surge that began in it.
 func on_step() -> void:
 	for ed in _edges:
 		var on := 1 if engine.cur[ed[1]] >= 0.5 else 0
 		if ed[2] != -1 and on != ed[2] and (ed[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
 			once("breaker" if on == 1 else "breaker_open", ed[0])
 		ed[2] = on
+	for sg in _surges:
+		var v: float = absf(engine.cur[sg[1]] * sg[2])
+		if sg[3] == -1:                  # first seen (a restart, a loaded run): no slam from the past, a jump from here
+			sg[3] = 1
+			sg[4] = v
+		elif sg[3] == 1:
+			if v >= sg[4] + THUD:
+				sg[3] = 0
+				sg[4] = v
+				if (sg[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
+					played["surge_thud"] = played.get("surge_thud", 0) + 1
+					once("surge_thud", sg[0])
+			else:
+				sg[4] = minf(sg[4], v)
+		else:
+			sg[4] = maxf(sg[4], v)
+			if v < sg[4] * THUD_REARM:
+				sg[3] = 1
+				sg[4] = v
 
 
 ## A restarted plant: the breakers' last states are forgotten (no edge from the old run's state).
 func reset_edges() -> void:
 	for ed in _edges:
 		ed[2] = -1
+	for sg in _surges:
+		sg[3] = -1
 
 
 ## The loop bound to a piece of equipment ("" when none): a large motor's start plays `motor_start` first.
@@ -272,7 +313,7 @@ func horn(priority: int) -> void:
 	_horn.play()
 
 
-## A one-shot for an engine event at a place: `breaker`, `breaker_open`, `motor_start`, `horn_ack`.
+## A one-shot for an engine event at a place: `breaker`, `breaker_open`, `motor_start`, `surge_thud`, `horn_ack`.
 func once(id: String, at: Node3D = null) -> void:
 	played[id] = played.get(id, 0) + 1
 	if index.is_empty() or muted or not index.has(id):

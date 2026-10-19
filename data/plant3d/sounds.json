@@ -22,6 +22,7 @@
   {"id": "breaker", "kind": "synth", "tones": [{"hz": 160, "gain": 0.6}, {"hz": 410, "gain": 0.5}, {"hz": 1150, "gain": 0.35}, {"hz": 2650, "gain": 0.2}], "noise": {"colour": "white", "band": [100, 6000], "gain": 0.8}, "made": "a breaker closing, then its spring-charging motor (played once)"},
   {"id": "breaker_open", "kind": "synth", "tones": [{"hz": 210, "gain": 0.5}, {"hz": 530, "gain": 0.45}, {"hz": 1400, "gain": 0.3}, {"hz": 3100, "gain": 0.2}], "noise": {"colour": "white", "band": [150, 7000], "gain": 0.9}, "made": "a breaker opening (played once)"},
   {"id": "motor_start", "kind": "synth", "tones": [{"hz": 100, "gain": 0.6}, {"hz": 742.5, "gain": 0.15}, {"hz": 49.5, "gain": 0.3}], "noise": {"colour": "pink", "band": [100, 2500], "gain": 0.5}, "made": "a large motor started direct on line (played once, then motor_large)"},
+  {"id": "surge_thud", "kind": "synth", "tones": [{"hz": 40, "gain": 0.8}, {"hz": 90, "gain": 0.5}, {"hz": 230, "gain": 0.3}, {"hz": 1130, "gain": 0.12}], "noise": {"colour": "brown", "band": [25, 1500], "gain": 0.9}, "made": "a CW pump started against an open valve: the water slamming in its pipe (played once)"},
   {"id": "horn_p1", "kind": "synth", "tones": [{"hz": 880, "gain": 0.8}, {"hz": 1760, "gain": 0.3}, {"hz": 2640, "gain": 0.2}]},
   {"id": "horn_p2", "kind": "synth", "tones": [{"hz": 660, "gain": 0.7}, {"hz": 1320, "gain": 0.25}, {"hz": 1980, "gain": 0.15}]},
   {"id": "horn_p3", "kind": "synth", "tones": [{"hz": 440, "gain": 0.5}, {"hz": 880, "gain": 0.2}, {"hz": 1320, "gain": 0.1}]},

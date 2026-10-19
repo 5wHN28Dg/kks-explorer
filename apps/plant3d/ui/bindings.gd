@@ -80,6 +80,8 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 			_shows.append([l, e.ix[b["show"]], b["show"], ""])
 		elif b.has("shake"):
 			_shakes.append([idx.center(b["kks"]), e.ix[b["shake"]], float(b.get("scale", 1.0))])
+			if sounds != null and sounds.is_surge(info.units.get(b["shake"], "")):
+				sounds.watch_surge(n, e.ix[b["shake"]], float(b.get("scale", 1.0)))
 
 
 ## Points the bindings at another engine (a restarted scenario) without rebuilding the nodes: slots are the same.
