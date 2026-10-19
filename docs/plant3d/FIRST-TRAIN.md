@@ -68,6 +68,7 @@ table leaves a choice:
 | 10MBR10CT001–012 | Exhaust temperature thermocouples (spread from them) | MBR exhaust [H]; CT [E2] |
 | 10MBV10AP001, AP002 | GT lube oil pumps (AC main, DC emergency) | MBV lube oil [H]; AP [E2] |
 | 10MBV10CP001–003 | GT lube oil header pressure (2 out of 3 for the trip) | |
+| 10MBV10CT001 | GT lube oil temperature after the cooler | CT [E2] |
 | 10MBY10CS001–003 | GT speed | MBY electrical control and protection [H]; CS [E2] |
 | 10MKA10 | Generator 1 | MKA [E2] |
 | 10MKC10 | Generator 1 excitation | MKC [E2] |
@@ -97,6 +98,7 @@ table leaves a choice:
 | 10LAE30AA001 | HP superheater spray control valve | LAE [E2], [W] |
 | 10LBA30, 10LBA10 | HP steam, LP steam from HRSG 1 (decades as the HRSG: LP 10, HP 30) | LBA [E2] |
 | 10LBA30CT001 | HP steam temperature | |
+| 10LBA30AA901 | HP superheater outlet safety valve (set 135 bar) | AN 901–999 safety valves [E1] |
 | 10LAC10CF001–002 | Feedwater pump A, B flow | CF [E2] |
 | 30MAA10CT001 | HP turbine inlet steam temperature (superheat computed from it and the pressure) | |
 | 30PAD10CY001–010 | Cooling tower fan vibration | CY [E2] |
@@ -107,6 +109,7 @@ table leaves a choice:
 | 30MAA10, 30MAB10, 30MAC10 | HP turbine; IP and LP turbines (one IP/LP casing) | MAA, MAB, MAC [E2], [W] |
 | 30MAD10CG001 | ST axial displacement (the thrust bearing's protection) | CG position [E2] |
 | 30MAA10AA201, AA001 | HP stop valve, HP control valve | |
+| 30MAA10AA101 | HP casing warm-up valve (auxiliary steam, motor-operated) | AN 101–199 [E1] |
 | 30MAD10CY001–008 | ST bearing vibration | MAD [E2]; CY |
 | 30MAG10AC001 | Condenser | MAG [E2], [W]; AC |
 | 30MAG10BB001 | Hotwell | |
@@ -117,6 +120,7 @@ table leaves a choice:
 | 30MAN10AA001, 30MAN20AA001 | HP bypass valve, LP bypass valve | MAN bypass station [E2] (our placement of the HP bypass) |
 | 30MAV10AP001, AP002, 30MAV20AP001 | ST lube oil pumps (AC, DC emergency), jacking oil pump | MAV [E2] |
 | 30MAV10CP001–003 | ST lube oil pressure | |
+| 30MAV10CT001 | ST lube oil temperature after the cooler | |
 | 30MAW10AA001 | Gland steam supply control valve | MAW [E2] |
 | 30MAY10CS001–003 | ST speed | MAY [E2] |
 | 30MKA10, 30MKC10, 30BAC10, 30BAT10 | ST generator, excitation, breaker, step-up transformer | |
@@ -126,6 +130,7 @@ table leaves a choice:
 | 30PAC10AP001–003 | Circulating water pumps A, B, C | PAC [E2], [W] |
 | 30PAC10AA101–103 | CW pump discharge valves (motor-operated butterfly) | |
 | 30PAC10CP501–503 | CW pump discharge pressure gauges | |
+| 30PAC10CP001–003 | CW pump discharge pressure transmitters (the surge alarm) | |
 | 30PAB10BR010, 30PAB20BR010 | CW supply, CW return | PAB [E2], [W] |
 | 30PAB10AA401–404 | Condenser water box vents | |
 | 30PAB10CF001 | CW flow | CF [E2] |
@@ -139,6 +144,7 @@ table leaves a choice:
 | 00QFB10CP001 | Instrument air header pressure | QFB [E2] |
 | 00PGC10AP001, AP002 | Closed cooling water pumps | PGC [E2] |
 | 00PGB10AC001 | Closed cooling water cooler | PGB [E2] |
+| 00PGB10CT001 | Closed cooling water supply temperature | |
 | 00QHA10 | Auxiliary boiler | QHA [E2] |
 | 00LBG10 | Auxiliary steam header | LBG [E2] |
 | 00GHC10BB001 | Demineralised water tank | GHC [E2] |
@@ -230,7 +236,7 @@ The trainee works from the control room screens and in the field. The plan was a
 (fast-forward in the long waits, PLANT3D.md §7.9) for about 4 hours of a real cold start; the first train as built
 is faster still ("Time" below).
 
-**As built (2026-10-16):**
+**As built (2026-10-16; the gaps closed 2026-10-19):**
 - **Time.** The cold start run by its procedure in the model alone takes 110 min of model time; with fast-forward
   wherever §7.9 allows it that is about 10 min of the trainee's time, walking and reading on top. The HRSG warm-up
   sets the pace: at minimum GT load the HP drum's saturation temperature rises about 3.5 K/min, and the steam
@@ -238,14 +244,22 @@ is faster still ("Time" below).
 - **Alarms of a system still being started** are suppressed by design until its value is first in the normal range
   after a start (lube oil 2.0 bar, instrument air 6.5 bar, condenser below 13 kPa(a)), and again once the machine is
   at standstill with its pumps off. Without this the low-pressure alarms would sound at every correct start.
-- **Step 4:** a CW pump's start is *refused* unless its discharge valve stands at 10–20 % (the permissive of
-  PLANT3D.md §7.2's example); the pressure surge of a start against an open valve is therefore not modelled, and has
-  no alarm in §5 either.
+- **Step 4:** a CW pump's start is *refused* unless the start-position limit switch of its discharge valve reports
+  10–20 % (the permissive of PLANT3D.md §7.2's example). The trainer's fault `cw_a_ls` (`_b_`, `_c_`) sticks that
+  switch made, so the start passes with the valve open: in the first 3 s the discharge pressure jumps by 6 bar into
+  an empty pipe and by 3 bar into a full header (on top of the pump's own 2.2–2.9 bar; faked as one spike at the
+  start, where a real empty pipe slams when it has filled), pinning the local gauge (0–4 bar) at its stop and
+  shown on the new transmitter `30PAC10CP00n` (0–10 bar), whose alarm (§5) is set at 3.5 bar; the camera shakes at
+  the pump. The heavy thud of the table's row 4 is the sound library's to add (not built yet). Opening a
+  stopped pump's valve while another pump runs is wrong too: water flows back through the idle pump (below).
+- **Backflow:** a stopped CW pump whose discharge valve is open passes water back to the basin, up to 7,500 m³/h
+  (half a pump's flow) at full header pressure, in proportion to its valve's opening. The interlock that closes
+  a stopped pump's valve (60 s of travel) limits this to a short dip of flow.
 - **Interlocks:** a stopped CW pump closes its discharge valve; low lube oil pressure while the oil system is in
   service (the shaft turning, on the turning gear too; whichever pump was selected or stopped) starts the DC pump (GT and
   ST); a tripped closed cooling water pump starts the standby one; condenser pressure
   high-high, no CW flow or no condensate pump puts both bypass controllers in manual (closed).
-- **Trips beyond the list below:** the generator protection opens a generator breaker in the step after its machine
+- **Trips beyond the list below:** the lube oil temperature high-high of each machine (below); the generator protection opens a generator breaker in the step after its machine
   tripped (`gen1_trip_prot`, `gen3_trip_prot`, first-out group of their machine); a closed cooling water pump trips
   on its motor fault. The GT's exhaust spread trips at 60 K for 3 s (the alarm of §5 is at 30 K); compressor surge is
   a fall of compressor discharge pressure of 1.5 bar against its 5 s average; GT bearing vibration trips at 25 mm/s
@@ -254,22 +268,75 @@ is faster still ("Time" below).
   the level holds through the start.
 - **Instrument air (#1):** the ops that move a pneumatic valve (open, set, auto) are refused below 4 bar: the gland
   steam valve, the condensate minimum-flow valve and the HP feedwater and HP spray controllers (the LP bypass spray
-  valve has no op of its own). Losing the air later changes nothing: a valve stays where it is and a controller in
-  auto keeps moving its valve (not built: fail-safe positions).
-- **Not built yet** (known gaps, for a later version): lube oil temperatures (#2: closed cooling water is a start
-  permissive only, so losing it in operation has no effect); an HP safety valve and a GT runback on the loss of every
-  steam sink (with the steam turbine tripped and the bypass blocked the HP pressure holds at 128 bar without an
-  alarm); the steam-to-casing mismatch permissive of the roll (#18) is wide (steam at most 320 K above the HP casing),
-  so it only stops a grossly wrong start.
+  valve has no op of its own). Below 4 bar every pneumatic valve goes to its **fail-safe position**, whatever its
+  command or controller says, the usual textbook choices: the HP feedwater control valve fails **open** (the drum
+  must never run dry; it floods instead, and the GT trips on drum level high-high), the condensate minimum-flow valve
+  fails **open** (the pump keeps its minimum flow), the HP spray valve fails **closed** (no water into the steam: the
+  steam temperature runs up to its uncontrolled value) and the gland steam valve fails **closed** (the vacuum is
+  lost and the steam turbine trips on condenser pressure). At cold iron, before the compressors run, the two
+  fail-open valves stand open. The auxiliary boiler's burner stops without air. The compressors can trip (the
+  trainer's `ia_lost`): the header falls at 0.02 bar/s from 7 bar, the low-pressure alarm sounds at 5 bar, and the valves reach their fail positions about
+  2.5 minutes after the trip. Each compressor's trip has its own alarm; the low-pressure alarm is suppressed only
+  while both compressors are stopped by the operator with both turbines at rest.
+- **Power and hydraulics:** the motor-operated valves fail **as is**: on a loss of their supply they stay where they
+  are. Only the CW pump discharge valves have that fault so far (the trainer's `cw_valve_power`, which also leaves
+  no handwheel to the trainee: format 1 has no local manual operation of a motor valve, and the trainer's faults
+  have no repair, as the motor faults before them; a CW pump that trips then keeps its valve open, and with one pump left the backflow
+  halves what reaches the condenser: CW flow low, CW return temperature and condenser pressure high). The hydraulic valves (fuel gas, HP stop and control, bypass) have their own oil
+  supplies, not modelled; their fail-safe action is the trip itself (the fuel and the turbine valves close). The
+  bypass's hydraulic unit can fail (`byp_hyd`, with its alarm): the bypass is blocked and both controllers drop to
+  manual. A CW discharge valve whose actuator has failed or lost its supply has an alarm of its own.
+- **Closed cooling water (#2):** the CCW cooler is cooled by circulating water; the machines' oil, generator and
+  seal water coolers heat the CCW, so its supply temperature `00PGB10CT001` is the cold CW temperature plus 8 K with
+  both machines at full speed (the heat is taken as the two shafts' speeds, a fair stand-in for their bearing and
+  cooler loads) (about 38 °C on the design day), or plus 25 K when the CCW or its cooling is lost (lag τ 5 min); alarm
+  at 45 °C. Each lube oil system's temperature after its cooler (`10MBV10CT001`, `30MAV10CT001`) is the CCW
+  temperature plus 12 K at full speed (about 50 °C, a usual bearing oil supply temperature) with CCW flow, plus
+  60 K without it, through the oil tank's lag (τ 10 min): alarm at 60 °C, trip at 70 °C for 2 s. Losing both CCW
+  pumps at base load (the trainer's `ccw_both`) gives the oil alarms after about 2.5 minutes and trips both
+  machines after about 5. Without CCW the generator 1 air coolers lose their water (stator up to 40 K hotter at
+  base load, lag τ 10 min) and the vacuum pumps' seal water warms, so they hold 12 kPa less vacuum (lag τ 2 min:
+  the condenser pressure alarm, not its trip).
+- **HP safety valve and GT runback:** with a steam sink (the steam turbine on load, or both bypass controllers in
+  automatic) the HP pressure slides with the GT load as before. Without one the pressure rises toward 150 bar at the
+  rate the exhaust heat allows; the HP superheater outlet safety valve `10LBA30AA901` lifts at 135 bar (about 12 %
+  above the 120 bar of base load, the drum below its design pressure), holds 136 bar while open (its accumulation)
+  and reseats below 130 bar (a 4 % blowdown), or once the HRSG makes almost no steam (below 2 kg/s, after a GT
+  trip), roaring through its stack. With no heat from the GT the boxed-up drum cools by itself, about 10 K an hour
+  near full pressure, and the trainee lets the pressure down through the start-up vent (3 K/min) or the
+  superheater drains (1.2 K/min). One valve stands for the drum's and
+  the superheater's safety valves, so it lifts on the drum pressure. The saturation table above 330 °C is
+  IAPWS-IF97's, rounded. The HRSG protection runs GT 1 back to minimum load (20 MW, at its unloading rate of 2 MW/s)
+  2 s after it is on load with no sink: its load is capped at 20 MW (never raised: a GT below 20 MW stays where it
+  is) whatever the setpoint, and goes back to the setpoint at the loading rate once a sink returns.
+  At base load a steam turbine trip with the bypass hydraulics failed (`st_trip_no_bypass`) lifts the safety valve
+  after about 1.5 minutes; the steam lost through it then empties the hotwell.
+- **HP casing warm-up and the steam/metal match (#18):** before the roll the HP casing is warmed with auxiliary steam
+  through `30MAA10AA101` (only with the rotor on its turning gear: refused otherwise, and the bowing alarm counts it
+  like gland steam); the casing heads for 220 °C with τ 15 min (cooling, τ 2 h): the auxiliary boiler's steam is
+  taken as superheated to about 250 °C. The roll needs the steam within −50 to +150 K of the casing and the warm-up
+  valve shut; the HP spray, in automatic, holds the steam at most 140 K above the casing, before the roll and while
+  loading, so the steam temperature climbs with the casing (about 520 °C when the train reaches base load, 560 °C
+  later). The roll on a cold casing, or with the spray in manual at minimum load (`roll_steam_too_hot`), is refused;
+  so is a roll with steam over 50 K colder than a hot casing, a case only a hot restart reaches (no scenario yet).
+- **Not built yet:** in the model, nothing the plan above asks for (its gaps of 2026-10-16 were closed on
+  2026-10-19); the surge's heavy thud is a sound still to make. Still
+  simplified: the HRSG's IP and LP pressures, the reheater's steam, the LP bypass spray valve and the hydraulic
+  supplies have no behaviour of their own; a valve's fail action is immediate once the air is below 4 bar.
 - **Trainer faults** (the scenario's faults without a condition, PLANT3D.md §7.8) make every trip and interlock
   fire, each fan's and each pump's included; the tests run each, most from the end of the cold start (a CW valve
   fault from the point where the procedure is about to start that pump: the fork starts it itself)
-  (`ref/vectors/plant3d-v1.json`, `forks`).
+  (`ref/vectors/plant3d-v1.json`, `forks`). The forks of 2026-10-19 show each new behaviour: `ccw_lost`,
+  `instrument_air_lost` (the fail-safe positions, then the vacuum, the steam turbine trip, the runback, the safety
+  valve and the drum flooding, in that order), `st_trip_no_bypass`, `bypass_hydraulics_lost`, `cw_valve_power_lost`,
+  `cw_a_start_open_valve` (into the empty pipe during the cold start) with `_b_` and `_c_` (into a full header),
+  `gt_load_without_sink`, `runback_never_raises_load`, `cw_b_normal_stop`, `warm_without_tg`, `roll_with_warmup_open`, `roll_steam_too_hot`, `ia_stopped_at_load`
+  and `safety_valve_reseats_after_gt_trip`.
 
 | # | System (codes §1) | What the trainee does | Faked behaviour (values, lags) | What it teaches |
 |---|---|---|---|---|
 | 1 | Instrument air | start a compressor | header pressure ramps 0 → 7 bar in ~60 s; pneumatic valves refuse to move below 4 bar (permissive) | air-operated valves need air first |
-| 2 | Closed cooling water | start a CCW pump, open the cooler | flow lag τ 5 s; lube oil temperatures stay cool only with CCW | why the auxiliaries start first |
+| 2 | Closed cooling water | start a CCW pump, open the cooler | flow lag τ 5 s; lube oil temperatures stay cool only with CCW (as built: oil at ~50 °C with it, alarm 60 °C, trip 70 °C) | why the auxiliaries start first |
 | 3 | Cooling tower basin | check level, open makeup if needed | basin level integrates makeup − evaporation − blowdown | the source of all CW |
 | 4 | CW pump A | set its discharge valve to the start position (~15 %), start the pump, open the valve | motor current: inrush 6× for 4 s then a table of flow; discharge pressure surge if started with the valve open on an empty pipe (a spike alarm and a heavy thud); valve travel 60 s | starting large pumps against a nearly closed valve; filling a pipe slowly |
 | 5 | Condenser water boxes | open the vents until water shows, then close | water box "full" after a time ∝ flow; CW flow and condenser ΔT appear | air in the water boxes |
@@ -283,16 +350,17 @@ is faster still ("Time" below).
 | 13 | GT1 start | check the start permissives on the screen, then Start | machine: crank by the SFC to ~25 % speed, **HRSG purge** (5 volume changes, ~8 min model time), coast to ~15 %, ignition, flame detected, acceleration, SFC off at ~70 %, full speed no load; exhaust temperature table of speed and fuel; GT sound rises in pitch with speed | the purge; the start sequence stages |
 | 14 | GT1 generator | excitation on, synchronise (synchroscope: frequency and phase), close the breaker, take minimum load | voltage lag τ 2 s; synchroscope phase = integral of the frequency difference; the sync-check relay refuses a close outside ±10° phase, ±0.1 Hz and ±5 % voltage (permissive, with the reason shown) | synchronising |
 | 15 | HRSG warm-up | hold the GT at minimum load; close drains and vents as pressure rises; watch drum level | drum pressure lags toward a target set by exhaust heat (τ minutes); **swell**: drum level rises when boiling starts (a lag difference of heat input) — a trainee who drains it then gets low level when it settles | drum level swell and shrink |
-| 16 | Turbine bypass | put HP and LP bypass in automatic | bypass opens to hold pressure; **blocked unless condenser pressure < 25 kPa and CW flow is on** (interlock); spray water keeps bypass steam temperature down | the bypass needs the condenser |
+| 16 | Turbine bypass | put HP and LP bypass in automatic | bypass opens to hold pressure; **blocked unless condenser pressure < 25 kPa and CW flow is on** (interlock; as built also with a condensate pump and its hydraulic unit working); spray water keeps bypass steam temperature down | the bypass needs the condenser |
 | 17 | Cooling tower fans | start fans as CW return temperature rises | CW cold-water temperature: a table of heat load, fans running and the wet-bulb temperature; each fan's sound and its fan stack's spray | matching cooling to load |
-| 18 | ST roll | when steam has ≥ 50 K superheat and is matched to the HP casing temperature: reset, open stop valves, roll | speed ramps: hold at ~800 rpm for warming, then through the critical speed band (~1,600–1,900 rpm) to 3,000 rpm; **bearing vibration rises in the band** (table) and trips if the trainee holds there | critical speeds; steam/metal matching |
+| 18 | ST roll | warm the HP casing with auxiliary steam; when steam has ≥ 50 K superheat and is matched to the HP casing temperature (−50 to +150 K): close the warm-up valve, reset, open stop valves, roll | speed ramps: hold at ~800 rpm for warming, then through the critical speed band (~1,600–1,900 rpm) to 3,000 rpm; **bearing vibration rises in the band** (table) and trips if the trainee holds there | critical speeds; steam/metal matching |
 | 19 | ST generator | synchronise as 14, load | as 14 | |
 | 20 | Loading | raise GT load; bypass valves close as the ST takes the steam; start CW pump B when the condenser pressure rises | sliding pressure; condenser pressure a table of heat load, CW flow and cold-water temperature, lag τ 60 s | the plant as one system |
 
 **Interlocks and trips of the first train** (each a model trip or interlock with its code, §5):
-GT: lube oil pressure low-low; flame failure; exhaust temperature high-high; exhaust temperature spread high;
+GT: lube oil pressure low-low; lube oil temperature high-high; flame failure; exhaust temperature high-high; exhaust temperature spread high;
 overspeed; HRSG drum level high-high or low-low (HRSG protection trips the GT); compressor surge (fast pressure
-drop). ST: lube oil pressure low-low; condenser pressure high-high; overspeed; axial displacement; bearing vibration
+drop); runback to minimum load on the loss of every steam sink (a load cap, not an interlock). ST: lube oil pressure low-low; lube oil temperature
+high-high; condenser pressure high-high; overspeed; axial displacement; bearing vibration
 high-high; HP steam temperature low (wet steam). CW pump: motor overload; basin level low-low; discharge valve not
 open after 120 s. CEP: hotwell level low-low. Cooling tower fan: vibration high-high.
 
@@ -306,9 +374,13 @@ round and invented; priority 1 is the most urgent (PLANT3D.md §7.6). Trip-level
 | Code | ISA | Alarm | Limit | Prio |
 |---|---|---|---|---|
 | 00QFB10CP001 | PAL | Instrument air header pressure low | < 5.0 bar | 1 |
+| 00QFA10AN001–002 | — | Instrument air compressor tripped | motor trip | 2 |
 | 00PGC10AP001–002 | — | Closed cooling water pump tripped | motor trip | 2 |
+| 00PGB10CT001 | TAH | Closed cooling water supply temperature high | > 45 °C | 2 |
 | 10MBV10CP001–003 | PAL / PALL | GT lube oil pressure low / low-low (trip) | < 1.8 / < 1.2 bar | 2 / 1 |
+| 10MBV10CT001 | TAH / TAHH | GT lube oil temperature high / high-high (trip) | > 60 / > 70 °C | 2 / 1 |
 | 10MBK10AE001 | — | GT turning gear not running with the rotor hot | stopped, wheel space > 150 °C | 2 |
+| 10MBA10 | — | GT 1 runback: no steam sink (steam turbine off load, bypass not in automatic) | GT on load for 2 s | 1 |
 | 10MBP10CP001 | PAL | Fuel gas pressure low (start blocked) | < 25 bar | 2 |
 | 10MBM10CB001–002 | BAL | GT flame failure (trip) | flame lost after ignition | 1 |
 | 10MBR10CT001–012 | TAH / TAHH | GT exhaust temperature high / high-high (trip) | > 620 / > 640 °C | 2 / 1 |
@@ -321,12 +393,15 @@ round and invented; priority 1 is the most urgent (PLANT3D.md §7.6). Trip-level
 | 10HAD30CL001–003 | LAL / LALL | HP drum level low / low-low (GT trip) | < −150 / < −300 mm | 2 / 1 |
 | 10HAD10CL001 | LAL | LP drum level low | < −200 mm | 2 |
 | 10HAD30CP001 | — | HP drum warming too fast (saturation temperature from the drum pressure) | > 4 K/min | 3 |
+| 10HAD30CP001 | PAH | HP drum pressure high | > 130 bar | 2 |
+| 10LBA30AA901 | ZAH | HP safety valve open | lifted (135 bar) | 1 |
 | 10LAC10CF001–002 | FAL | Feedwater pump flow below minimum (recirculation not open) | < 15 % for 10 s | 2 |
 | 10LBA30CT001 | TAH | HP steam temperature high | > 575 °C | 2 |
 | 30MAG10CP001–003 | PAH / PAHH | Condenser pressure high / high-high (ST trip, bypass blocked) | > 15 / > 25 kPa(a) | 2 / 1 |
 | 30MAG10CL001 | LAH / LAL / LALL | Hotwell level high / low / low-low (CEP trip) | +200 / −200 / −400 mm | 2 / 2 / 1 |
 | 30MAV10CP001–003 | PAL / PALL | ST lube oil pressure low / low-low (trip) | < 1.8 / < 1.2 bar | 2 / 1 |
-| 30MAK10AE001 | — | ST turning gear stopped with gland steam on | stopped and 30MAW10AA001 open | 1 |
+| 30MAV10CT001 | TAH / TAHH | ST lube oil temperature high / high-high (trip) | > 60 / > 70 °C | 2 / 1 |
+| 30MAK10AE001 | — | ST turning gear stopped with gland or warm-up steam on | stopped and 30MAW10AA001 or 30MAA10AA101 open | 1 |
 | 30MAD10CY001–008 | VAH / VAHH | ST bearing vibration high / high-high (trip) | > 125 / > 250 µm (shaft, peak to peak) | 2 / 1 |
 | 30MAY10CS001–003 | SAHH | ST overspeed (trip) | > 110 % | 1 |
 | 30MAA10CT001 | TAL | HP steam superheat too low to roll | < 50 K | 3 |
@@ -334,6 +409,9 @@ round and invented; priority 1 is the most urgent (PLANT3D.md §7.6). Trip-level
 | 30LCB10AP001–002 | — | Condensate pump on minimum flow too long (overheating) | > 30 min | 3 |
 | 30PAC10AP001–003 | — | CW pump tripped (overcurrent, basin level low-low) | motor trip | 1 |
 | 30PAC10AA101–103 | ZAL | CW pump discharge valve not open 120 s after start (pump trip) | < 95 % | 1 |
+| 30PAC10AA101–103 | — | CW pump discharge valve actuator fault (or its supply lost) | actuator failed | 2 |
+| 30MAN10AA001 | — | Bypass hydraulic unit failed (bypass blocked) | unit failed | 2 |
+| 30PAC10CP001–003 | PAH | CW pump discharge pressure surge (started against an open valve) | > 3.5 bar | 2 |
 | 30PAB10CF001 | FAL | CW flow low | < 10,000 m³/h with the ST running | 1 |
 | 30PAD10CL001 | LAL / LALL | Cooling tower basin level low / low-low | −0.3 / −0.6 m | 2 / 1 |
 | 30PAD10CY001–010 | VAHH | Cooling tower fan vibration high-high (fan trip) | > 10 mm/s | 2 |

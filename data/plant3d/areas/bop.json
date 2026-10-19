@@ -15,7 +15,7 @@
   {"kks": "00QFA10AN002", "name": "Instrument air compressor B", "part": "compressor_skid", "at": [116, -15, 0], "params": {"kw": 250, "length": 4, "width": 2}, "plate": "side"},
   {"kks": "00PGC10AP001", "name": "Closed cooling water pump A", "part": "pump_horizontal", "at": [110, 5, 0], "params": {"flow_m3h": 900, "head_m": 45, "motor_kw": 160, "length": 3}, "plate": "motor_side"},
   {"kks": "00PGC10AP002", "name": "Closed cooling water pump B", "part": "pump_horizontal", "at": [116, 5, 0], "params": {"flow_m3h": 900, "head_m": 45, "motor_kw": 160, "length": 3}, "plate": "motor_side"},
-  {"kks": "00PGB10AC001", "name": "Closed cooling water cooler", "part": "plate_hx", "at": [124, -8, 0], "params": {"plates": 300, "height": 2.5}, "plate": "frame"}
+  {"kks": "00PGB10AC001", "name": "Closed cooling water cooler", "part": "plate_hx", "at": [124, -8, 0], "params": {"plates": 300, "height": 2.5}, "plate": "frame", "parts": [{"kks": "00PGB10CT001", "name": "Closed cooling water supply temperature", "part": "temperature_element", "at": [0, 1.4, 1.2], "params": {"range": [0, 100]}}]}
  ],
  "pipes": [
   {"kks": "00LBG10BR001", "name": "Auxiliary steam to the gland steam supply", "medium": "steam_aux", "dn": 150, "from": {"kks": "00QHA10", "nozzle": "steam_out"}, "points": [[95, 0, 9], [67, 0, 9], [67, 1.5, 9]], "to": {"kks": "30MAA10", "nozzle": "gland_in"}, "insulation_mm": 80, "arrows": 10, "valves": [{"kks": "30MAW10AA001", "part": "valve_control", "at": 0.93, "name": "Gland steam supply control valve", "params": {"dn": 150, "actuator": "pneumatic"}, "plate": "body"}]}

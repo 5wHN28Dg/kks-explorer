@@ -99,7 +99,7 @@ class Content(unittest.TestCase):
         with open(FIRST_TRAIN, encoding='utf-8') as f:
             text = f.read().split('## 5. Alarms')[1].split('## 6.')[0]
         rows = re.findall(r'^\| ([0-9][0-9A-Z–-]+) \| ([^|]*) \| ([^|]*) \| ([^|]*) \| ([^|]*) \|$', text, re.M)
-        self.assertEqual(len(rows), 33)
+        self.assertEqual(len(rows), 43)
         alarms = self.m.alarms
         for code, isa, what, limit, prio in rows:
             isas = [x.strip() for x in isa.split('/')] if isa.strip() not in ('—', '') else [None]
@@ -117,8 +117,9 @@ class Content(unittest.TestCase):
         for t in ('gt1_trip_lube', 'gt1_trip_flame', 'gt1_trip_exh', 'gt1_trip_spread', 'gt1_trip_os', 'gt1_trip_vib',
                   'gt1_trip_surge', 'gt1_trip_drum_hh', 'gt1_trip_drum_ll', 'st_trip_lube', 'st_trip_cond_p',
                   'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t', 'cw_a_trip_ol', 'cw_a_trip_ll',
-                  'cw_a_trip_valve', 'cep_trip_hw', 'ct_fan1_trip_vib'):
+                  'cw_a_trip_valve', 'cep_trip_hw', 'ct_fan1_trip_vib', 'gt1_trip_oil_temp', 'st_trip_oil_temp'):
             self.assertIn(t, trips)
+        self.assertIn('gt1_runback', {a['id'] for a in self.m.alarms})         # §4 "As built": the GT runback
         ops = self.m.op_keys
         needs = lambda kks, do: [n[0] for n in ops[(kks, do, None)].get('needs', [])]
         self.assertIn('st_tg_run', needs('30MAW10AA001', 'open'))           # #10 gland steam needs the turning gear
@@ -128,6 +129,9 @@ class Content(unittest.TestCase):
         self.assertIn('st_jack_ok', needs('30MAK10AE001', 'start'))         # #7 order of the oil systems
         self.assertIn('st_ecc_ok', needs('30MAA10', 'roll'))                # #7, #18
         self.assertIn('st_sh_ok', needs('30MAA10', 'roll'))                 # #18 superheat ≥ 50 K
+        self.assertIn('st_match', needs('30MAA10', 'roll'))                 # #18 matched to the HP casing
+        self.assertIn('st_warm_shut', needs('30MAA10', 'roll'))             # #18 the casing warm-up closed first
+        self.assertIn('st_tg_run', needs('30MAA10AA101', 'open'))           # #18 warm-up only on the turning gear
 
     def test_codes_are_unique_and_decode(self):
         k = self.b.plant['kks']
@@ -557,10 +561,16 @@ class Forks(unittest.TestCase):
                     self.assertIn(['alarm', a, 'active_unack'], [e[1:4] for e in ev if e[1] == 'alarm'])
                 for il in ex.get('interlocks', []):
                     self.assertIn(['interlock', il], [e[1:3] for e in ev if e[1] == 'interlock'])
+                for a in ex.get('no_alarms', []):
+                    self.assertNotIn(a, [e[2] for e in ev if e[1] == 'alarm'])
                 for il in ex.get('no_interlocks', []):
                     self.assertNotIn(['interlock', il], [e[1:3] for e in ev if e[1] == 'interlock'])
                 if ex.get('no_trip'):
                     self.assertEqual([e for e in ev if e[1] == 'trip'], [])
+                for kind in ('max', 'end'):       # a value's highest over the fork, or its value at the end
+                    for n, (lo, hi) in ex.get(kind, {}).items():
+                        got = f['seen'][n][kind]
+                        self.assertTrue(lo - 1e-9 <= got <= hi + 1e-9, f'{n} {kind} {got} not in [{lo}, {hi}]')
 
     def test_every_trip_and_interlock_is_exercised(self):
         """Each one, siblings included (every fan, every pump)."""

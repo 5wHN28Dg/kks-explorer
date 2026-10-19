@@ -343,6 +343,11 @@ func _finish() -> void:
 	if sim_n > 0:
 		_say("SIM_RESULT model_ms_per_s_mean=%.1f model_ms_per_s_max=%.1f step_ms=%.3f ff_cap=%.1f model_time=%s" % [
 			sim_sum_ms / sim_n, sim_max_ms, ui.clock.step_ms, ui.clock.ff_cap(), ui.clock.clock_text()])
+	if ui != null and ui.route != null and ui.route.stats.finds > 0:
+		var rs: Dictionary = ui.route.stats
+		_say("ROUTE finds=%d find_mean=%.2fms find_max=%.2fms builds=%d build_mean=%.2fms build_max=%.2fms moves=%d points=%d point_max=%.2fms" % [
+			rs.finds, rs.find_us_sum / 1000.0 / rs.finds, rs.find_us_max / 1000.0, rs.draws,
+			rs.draw_us_sum / 1000.0 / maxi(rs.draws, 1), rs.draw_us_max / 1000.0, rs.moves, rs.points, rs.point_us_max / 1000.0])
 	_write_out()
 	get_tree().quit()
 

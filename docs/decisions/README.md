@@ -55,6 +55,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0056](0056-plant-android-gradle-links.md) | Walkdown Plant on Android: a Gradle export whose export plugin adds the `walkdown-plant://` intent filter; the link read through Godot's AndroidRuntime plugin (no plugin of ours); the template's Gradle pinned and run on a pinned JDK 17 | accepted |
 | [0057](0057-plant-realism.md) | Walkdown Plant realism: a lightmap baked by the editor after the content build (RGBE9995: no ASTC HDR on the Note 9), a CC0 photographed sky with its sun taken out, one weathered shader for every lit surface (35 pipelines on a first start), the site round the areas; laptops add SSAO only (SSIL, volumetric fog, glow, SDFGI measured and left out) | decided under the task's go-ahead |
 | [0058](0058-walkdown-links-in.md) | Walkdown takes `walkdown://kks/<code>` and `walkdown://course/<course>[/<page>]` from other apps on Android, GNOME and Windows; read strictly by the core (`applink.nim`); a link only selects a tag or opens a course page | decided by the user 2026-10-16 ("Add it") |
+| [0059](0059-plant-walking-directions.md) | Walkdown Plant's walking directions: a navigation mesh baked by the content build (stairs as links walked along their own paths, unreachable flat tops dropped), searched only when the target changes or the trainee leaves the way; the walking test walks every route | decided under the task's go-ahead |
 
 ## Audit of existing dependencies (2026-09-30)
 
