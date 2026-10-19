@@ -98,6 +98,16 @@ func _lamp_floor() -> void:
 	check(is_equal_approx(b.floor_below(Vector2(5, 5), 19.0), 0.0), "a lamp over a deck's opening: the ground")
 	check(is_equal_approx(b.floor_below(Vector2(25, 5), 19.0), 0.0), "a lamp over a pit: the ground (the pit has its own lamps)")
 	check(is_equal_approx(b.floor_below(Vector2(2, 2), 25.0), 18.0), "the highest floor under the lamp")
+	# a lamp right over a deck's edge is set for the deck (the edge's point counted as off the deck on one side)
+	check(is_equal_approx(b.lamp_floor(Vector2(10, 2), 15.0), 12.0), "a lamp over a deck's edge: the deck's floor")
+	check(is_equal_approx(b.lamp_floor(Vector2(0, 2), 15.0), 12.0), "a lamp over a deck's other edge: the deck's floor")
+	check(is_equal_approx(b.lamp_floor(Vector2(12, 2), 15.0), 0.0), "a lamp clear of the deck: the ground")
+	# a wall piece's streaks start at the opening above it, else at the wall's top
+	var cuts := [[2.0, 4.0, 1.0, 3.0]]
+	check(is_equal_approx(Builder.piece_top(Rect2(2, 0, 2, 1), cuts, 10.0), 1.0), "a piece under an opening: its bottom")
+	check(is_equal_approx(Builder.piece_top(Rect2(0, 0, 2, 3), cuts, 10.0), 10.0), "a piece beside an opening: the wall's top")
+	check(is_equal_approx(Builder.piece_top(Rect2(0, 3, 10, 7), cuts, 10.0), 10.0), "the piece over the openings: the wall's top")
+	check(is_equal_approx(Builder.piece_top(Rect2(0, 0, 10, 1), cuts, 10.0), 1.0), "a slab under an opening: the opening's bottom")
 
 ## A synthetic plant: one area with a building (door and pipe openings), a door, a pump, a pipe and a stair.
 func _plant(door_open: bool, pipe_open: bool, pipe_over_stair: bool) -> Builder:

@@ -545,9 +545,10 @@ static func top_colour(z1: float) -> Color:
 	var q := clampf(z1, 0.0, 63.9) / 0.25
 	return Color(floorf(q) / 255.0, q - floorf(q), 0.0, 1.0)
 
-## A wall panel (as _panel) whose vertices carry its top (top_colour).
-func _wall_panel(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, z0: float, z1: float, t: float) -> void:
-	st.set_color(top_colour(z1))
+## A wall panel (as _panel) whose vertices carry its top (top_colour): z1, or `top` where the face goes on above the
+## panel (a wall cut into pieces round its openings: a piece beside or under an opening is not the wall's top).
+func _wall_panel(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, z0: float, z1: float, t: float, top := -1.0) -> void:
+	st.set_color(top_colour(top if top >= 0.0 else z1))
 	_panel(st, body, a, b, z0, z1, t)
 
 ## A sloped rail: a thin panel from (a, za) to (b, zb), h high.
@@ -1044,7 +1045,8 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 			for q in pc:
 				r = r.expand(q)
 			if r.size.x > 0.01 and r.size.y > 0.01:
-				_wall_panel(walls, body, a + u * r.position.x, a + u * r.end.x, r.position.y, r.end.y, 0.25)
+				_wall_panel(walls, body, a + u * r.position.x, a + u * r.end.x, r.position.y, r.end.y, 0.25,
+					piece_top(r, cuts, h))
 	_mesh_node(body, "walls", walls, _mat("wall_" + b.cladding))
 	var roof := _st()
 	for pc in Geom.decompose(pg, roof_holes):
@@ -1053,6 +1055,16 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	_mesh_node(body, "roof", roof, _mat("roof"))
 	_hall_floor(body, b)
 	_lamps(body, b)
+
+## Where water running down a wall piece (r: along the edge x, up y) comes from: the bottom of the lowest opening
+## above it, else the wall's top h. The wall is cut into slabs at every opening's height, so each slab's own top
+## made a dark band and new streaks at a door's head along the whole wall (adversarial review, second pass).
+static func piece_top(r: Rect2, cuts: Array, h: float) -> float:
+	var top := h
+	for cu in cuts:
+		if cu[0] < r.end.x - 0.001 and cu[1] > r.position.x + 0.001 and cu[2] >= r.end.y - 0.001:
+			top = minf(top, cu[2])
+	return top
 
 ## A hall's floor on the ground (z = 0): painted, not the yard's bare concrete. Drawn only (the ground's slab is the
 ## walkable one) 4 mm over it, less the pits and stairwells inside the hall.
@@ -1113,55 +1125,92 @@ func floor_below(p: Vector2, z: float) -> float:
 func _lamps(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var h: float = b.height
-	var r := Rect2(pg[0], Vector2.ZERO)
-	for q in pg:
-		r = r.expand(q)
-	var gap := clampf(h * 0.6, 6.0, 10.0)
-	var nx := maxi(1, int(round(r.size.x / gap)))
-	var ny := maxi(1, int(round(r.size.y / gap)))
 	var housing := _st()
 	var lens := _st()
 	var n := 0
-	for i in nx:
-		for j in ny:
-			var c := r.position + Vector2(r.size.x * (i + 0.5) / nx, r.size.y * (j + 0.5) / ny)
-			if not Geom.in_region(c, pg, []):
-				continue
-			var z := h - 0.6
-			Geom.add_prism(housing, Geom.rect(c.x - 0.3, c.y - 0.3, c.x + 0.3, c.y + 0.3), z, z + 0.25)
-			Geom.add_prism(lens, Geom.rect(c.x - 0.25, c.y - 0.25, c.x + 0.25, c.y + 0.25), z - 0.03, z)
-			var l := SpotLight3D.new()
-			l.name = "lamp_%d" % n
-			l.position = Geom.g([c.x, c.y, z - 0.2])
-			l.rotation_degrees = Vector3(-90, 0, 0)   # a spot shines along its -z: straight down
-			l.spot_range = h * LAMP_REACH
-			var d := z - 0.2 - floor_below(c, z - 0.2)   # to the floor under it: a deck's, or the ground
-			l.spot_attenuation = 2.0
-			l.spot_angle = clampf(rad_to_deg(atan(LAMP_POOL * gap / d)), 10.0, 40.0)
-			l.spot_angle_attenuation = 3.0
-			l.light_energy = LAMP_FLOOR * d * d
-			var spill := SpotLight3D.new()
-			spill.name = "spill"
-			spill.spot_range = l.spot_range
-			spill.spot_attenuation = 2.0
-			spill.spot_angle = LAMP_SPILL_ANGLE
-			spill.spot_angle_attenuation = 1.5
-			spill.light_energy = LAMP_SPILL * d * d
-			spill.light_color = Color(1.0, 0.95, 0.86)
-			spill.light_bake_mode = Light3D.BAKE_STATIC
-			spill.shadow_enabled = false
-			spill.add_to_group("baked_lights", true)
-			l.add_child(spill)
-			l.light_color = Color(1.0, 0.95, 0.86)
-			l.light_bake_mode = Light3D.BAKE_STATIC
-			l.shadow_enabled = false
-			l.add_to_group("baked_lights", true)
-			body.add_child(l)
+	# under the roof, over the whole hall
+	for c in _lamp_grid(pg, [], clampf(h * 0.6, 6.0, 10.0)):
+		if Geom.in_region(c, pg, []):
+			_lamp(body, housing, lens, c, h - 0.6, clampf(h * 0.6, 6.0, 10.0), h, n)
 			n += 1
+	# under each deck of the hall (an operating floor, a building's upper floor): the floor below it is out of the
+	# roof lamps' reach, as a real hall's ground floor is lit by lamps under the deck (adversarial review)
+	for sf in surfaces:
+		var z: float = sf.z - float(sf.get("thick", 0.2)) - 0.3
+		if sf.z < 2.5 or sf.z > h - 2.0 or not Geom.in_region(_mean(sf.outline), pg, []):
+			continue
+		var gap := clampf(z * 0.8, 4.0, 10.0)
+		var cs := _lamp_grid(sf.outline, sf.holes, gap)
+		if cs.size() < 2:
+			continue           # a small platform: the roof's lamps reach round it
+		for c in cs:
+			if Geom.in_region(c, sf.outline, sf.holes) and Geom.in_region(c, pg, []):
+				_lamp(body, housing, lens, c, z, gap, h, n)
+				n += 1
 	if n > 0:
 		_mesh_node(body, "lamp_housings", housing, _mat("steel_dark"))
 		_mesh_node(body, "lamp_lenses", lens, _mat("lamp_white"))
 	return n
+
+static func _mean(pg: PackedVector2Array) -> Vector2:
+	var m := Vector2.ZERO
+	for q in pg:
+		m += q
+	return m / maxf(1.0, pg.size())
+
+## A grid of lamp places over an outline's box, about `gap` apart, the outer ones half a gap in.
+static func _lamp_grid(pg: PackedVector2Array, _holes: Array, gap: float) -> Array:
+	var r := Rect2(pg[0], Vector2.ZERO)
+	for q in pg:
+		r = r.expand(q)
+	var nx := maxi(1, int(round(r.size.x / gap)))
+	var ny := maxi(1, int(round(r.size.y / gap)))
+	var out: Array = []
+	for i in nx:
+		for j in ny:
+			out.append(r.position + Vector2(r.size.x * (i + 0.5) / nx, r.size.y * (j + 0.5) / ny))
+	return out
+
+## The floor a lamp at c, height z, lights: the highest floor under it or within half a metre (a lamp right over a
+## deck's edge is set for the deck: from the ground, the deck's half of its pool got 2.6 × the light meant on it).
+func lamp_floor(c: Vector2, z: float) -> float:
+	var f := floor_below(c, z)
+	for o in [Vector2(0.5, 0), Vector2(-0.5, 0), Vector2(0, 0.5), Vector2(0, -0.5)]:
+		f = maxf(f, floor_below(c + o, z))
+	return f
+
+## One high-bay lamp at c, its housing's underside at height z: housing, lit lens, the downlight and its spill.
+func _lamp(body: Node, housing: SurfaceTool, lens: SurfaceTool, c: Vector2, z: float, gap: float, h: float, n: int) -> void:
+	Geom.add_prism(housing, Geom.rect(c.x - 0.3, c.y - 0.3, c.x + 0.3, c.y + 0.3), z, z + 0.25)
+	Geom.add_prism(lens, Geom.rect(c.x - 0.25, c.y - 0.25, c.x + 0.25, c.y + 0.25), z - 0.03, z)
+	var l := SpotLight3D.new()
+	l.name = "lamp_%d" % n
+	l.position = Geom.g([c.x, c.y, z - 0.2])
+	l.rotation_degrees = Vector3(-90, 0, 0)   # a spot shines along its -z: straight down
+	l.spot_range = h * LAMP_REACH
+	var d := z - 0.2 - lamp_floor(c, z - 0.2)   # to the floor under it: a deck's, or the ground
+	l.spot_attenuation = 2.0
+	l.spot_angle = clampf(rad_to_deg(atan(LAMP_POOL * gap / d)), 10.0, 40.0)
+	l.spot_angle_attenuation = 3.0
+	l.light_energy = LAMP_FLOOR * d * d
+	l.set_meta("floor", z - 0.2 - d)
+	var spill := SpotLight3D.new()
+	spill.name = "spill"
+	spill.spot_range = l.spot_range
+	spill.spot_attenuation = 2.0
+	spill.spot_angle = LAMP_SPILL_ANGLE
+	spill.spot_angle_attenuation = 1.5
+	spill.light_energy = LAMP_SPILL * d * d
+	spill.light_color = Color(1.0, 0.95, 0.86)
+	spill.light_bake_mode = Light3D.BAKE_STATIC
+	spill.shadow_enabled = false
+	spill.add_to_group("baked_lights", true)
+	l.add_child(spill)
+	l.light_color = Color(1.0, 0.95, 0.86)
+	l.light_bake_mode = Light3D.BAKE_STATIC
+	l.shadow_enabled = false
+	l.add_to_group("baked_lights", true)
+	body.add_child(l)
 
 ## Lamps along a pit's walls just under its rim, every 6 m (a pit is out of reach of the roof's lamps' direct light):
 ## baked like the halls' lamps.

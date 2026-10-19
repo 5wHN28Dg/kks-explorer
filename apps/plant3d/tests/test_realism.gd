@@ -70,6 +70,19 @@ func run(tree: SceneTree) -> Array:
 	var pit_lamps := lamps.filter(func(l): return String(l.name).begins_with("pit_lamp_"))
 	if pit_lamps.is_empty():
 		p.append("the pits have lamps")
+	# a lamp is set from the floor under it: over the turbine hall's deck the deck's, and the floor under the deck has
+	# lamps of its own (both were lit from the ground: adversarial reviews, second pass)
+	var on_deck := 0
+	var under_deck := 0
+	for l in lamps:
+		if String(l.name).begins_with("lamp_") and String(l.get_parent().name).begins_with("st_hall"):
+			var f := float(l.get_meta("floor", 0.0))
+			if f > 2.0:
+				on_deck += 1
+			elif l.global_position.y < 15.0:
+				under_deck += 1
+	if on_deck == 0 or under_deck == 0:
+		p.append("the turbine hall's lamps are set for the floor under them (%d over the deck, %d under it)" % [on_deck, under_deck])
 	var halls := 0
 	for l in lamps:
 		if String(l.name).begins_with("lamp_"):
