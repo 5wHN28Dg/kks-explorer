@@ -568,6 +568,10 @@ minutes of model time, about 10 minutes of the trainee's time with fast-forward,
   way with every op accepted.
 - **Procedure mode** checks the trainee: the event list (§7.6) shows an operation outside the expected step as a
   deviation (not refused: the plant reacts as it would). **Free mode** has no procedure.
+- **The debrief** (the app's, from the event list): the run's events in order with their model time (operations,
+  alarm changes, shelving, trips with their first out, faults, interlocks, sequence steps, and the procedure's steps
+  as they ended), each deviation with the step it was made in and the step it belongs to, and a summary (time
+  taken, steps, operations, alarms, trips). Shown at the end of a procedure and from the alarm list during a run.
 
 **Walkdown's procedures.** Walkdown's own `procedures.json` (from a plant's operation manual) holds steps of text with
 linked codes. They map onto this format (`text` → `text`, linked codes → `at`), so one renderer can show both; the

@@ -53,6 +53,8 @@
   {"text": "Operating floor +12 m", "at": [11, 15, 13.6], "yaw": 90, "size": 0.4},
   {"text": "Condenser 30MAG10AC001", "at": [44, -8.5, 1], "yaw": 180, "size": 0.4},
   {"text": "Condensate pumps", "at": [54, -10, -4.5], "yaw": 180, "size": 0.4},
-  {"text": "Steam turbine lube oil", "at": [64, 22, 2.5], "yaw": 0, "size": 0.4}
+  {"text": "Steam turbine lube oil", "at": [64, 22, 2.5], "yaw": 0, "size": 0.4},
+  {"text": "Hearing protection required", "at": [80.0, 1.2, 1.8], "yaw": 90, "size": 0.3},
+  {"text": "Hearing protection required", "at": [0.0, 21.3, 1.8], "yaw": 270, "size": 0.3}
  ]
 }

@@ -1,0 +1,252 @@
+## The debrief (docs/PLANT3D.md §7.6 and §8): what happened in a run, read from the engine's event list. Every
+## operation (done, refused, or not one of the plant's), alarm change (raised, acknowledged, cleared, shelved and
+## back), trip (with its group's first out), trainer's fault, interlock and sequence step, in order with its model
+## time; with a procedure, the steps as they ended, and each operation made outside its step marked as a deviation
+## with the step it was made in and the one it belongs to. The run is the procedure's (from when it began) or, with
+## none, the plant's since it (re)started. Pure data: ui/debrief_panel.gd shows it.
+extends RefCounted
+
+const W = preload("res://ui/widgets.gd")
+
+const ALARM_WORDS := {
+	"normal>active_unack": "raised", "cleared_unack>active_unack": "raised again",
+	"active_unack>active_ack": "acknowledged", "cleared_unack>normal": "acknowledged after it cleared",
+	"active_unack>cleared_unack": "cleared, not yet acknowledged", "active_ack>normal": "cleared",
+}
+
+
+## {entries: [{step, kind, text, code, dev, prio}], summary: {…}, title}. `kind`: op, alarm, shelve, unshelve, trip,
+## fault, interlock, machine, step (a procedure step that ended), start (the procedure began). `dev` is "" or the
+## deviation in words; `prio` an alarm's or trip's priority (0 otherwise).
+static func collect(engine, info, tracker) -> Dictionary:
+	var m = info.m
+	var proc: Dictionary = tracker.proc if tracker != null else {}
+	var from := 0
+	var from_step := 0
+	if not proc.is_empty():
+		from = tracker.ev_from
+		from_step = tracker.begin_step
+	var alarm_by := {}
+	for a in m.alarms:
+		alarm_by[a["id"]] = a
+	var devs := {}
+	if tracker != null:
+		for d in tracker.deviations:
+			if d.size() > 4 and int(d[2]) >= 0:
+				devs[int(d[2])] = d
+	var sm := {"ops": 0, "refused": 0, "deviations": 0, "raised": 0, "prio": {1: 0, 2: 0, 3: 0}, "acked": 0,
+			"shelved": 0, "trips": 0, "first_out": PackedStringArray(), "faults": 0}
+	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
+	var inputs: Array = engine.inputs
+	var in_i := 0
+	var out: Array = []
+	var evs: Array = engine.events
+	for i in evs.size():
+		var ev: Array = evs[i]
+		var inp := []
+		if ev[1] == "op":               # the op events of a step come in the order their inputs were made
+			while in_i < inputs.size():
+				var c: Array = inputs[in_i]
+				in_i += 1
+				if c[1] == "op" and c[0] == ev[0]:
+					inp = c
+					break
+		var prev: String = state.get(ev[2], "normal") if ev[1] == "alarm" else ""
+		if ev[1] == "alarm":
+			state[ev[2]] = ev[3]
+		if i < from:
+			continue
+		var e := {"step": int(ev[0]), "kind": String(ev[1]), "text": "", "code": "", "dev": "", "prio": 0}
+		match ev[1]:
+			"op":
+				e.code = String(ev[2])
+				var o = m.op_keys.get(m.op_key(ev[2], ev[3], inp[5] if inp.size() > 5 else null))
+				var what: String = info.op_label(o) if o != null else String(ev[3])
+				if o != null and inp.size() > 4 and inp[4] != null and o["do"] == "set":
+					what += " to " + value_text(o, inp[4])
+				match ev[4]:
+					"done":
+						e.text = "%s %s" % [ev[2], what]
+						sm.ops += 1
+					"refused":
+						var why := PackedStringArray()
+						for f in ev[5]:
+							why.append(refusal(info, o, String(f), engine))
+						e.text = "%s %s: refused (%s)" % [ev[2], what, "; ".join(why)]
+						sm.refused += 1
+					_:
+						e.text = "%s %s: not an operation of this plant" % [ev[2], ev[3]]
+				if devs.has(i):
+					e.dev = deviation_text(devs[i], proc)
+					sm.deviations += 1
+			"alarm":
+				var a: Dictionary = alarm_by.get(ev[2], {})
+				e.code = String(a.get("kks", a.get("where", "")))
+				e.prio = int(a.get("priority", 3))
+				var how: String = ALARM_WORDS.get(prev + ">" + String(ev[3]), String(ev[3]).replace("_", " "))
+				e.text = "Alarm %s: %s" % [how, _alarm_name(a, ev[2])]
+				if how.begins_with("raised"):
+					sm.raised += 1
+					sm.prio[e.prio] = sm.prio.get(e.prio, 0) + 1
+				elif how.begins_with("acknowledged"):
+					sm.acked += 1
+			"shelve":
+				var a: Dictionary = alarm_by.get(ev[2], {})
+				e.code = String(a.get("kks", a.get("where", "")))
+				e.text = "Alarm shelved for %s: %s" % [W.model_time(int(round(float(ev[3]) * 10.0))), _alarm_name(a, ev[2])]
+				sm.shelved += 1
+			"unshelve":
+				var a: Dictionary = alarm_by.get(ev[2], {})
+				e.code = String(a.get("kks", a.get("where", "")))
+				e.text = "Alarm back from the shelf: %s" % _alarm_name(a, ev[2])
+			"trip":
+				var t = m.trip_by_id(ev[2])
+				e.code = String(t.get("kks", "")) if t != null else ""
+				e.prio = 1
+				var name: String = t.get("text", ev[2]) if t != null else String(ev[2])
+				e.text = "TRIP: %s%s" % [name, " (first out)" if ev[3] else ""]
+				sm.trips += 1
+				if ev[3]:
+					sm.first_out.append(name)
+			"fault":
+				e.text = "Fault: %s" % fault_text(m, String(ev[2]))
+				sm.faults += 1
+			"interlock":
+				var il := {}
+				for x in m.interlocks:
+					if x["id"] == ev[2]:
+						il = x
+				e.code = String(il.get("kks", ""))
+				e.text = "Interlock: %s" % il.get("text", ev[2])
+			"machine":
+				var mi: int = info.machine_index(ev[2])
+				var say := ""
+				if mi >= 0:
+					var k: int = m.machines[mi]["_ids"].find(ev[4])
+					if k >= 0:
+						say = m.machines[mi]["states"][k].get("say", "")
+				e.text = say if say != "" else "%s: %s" % [String(ev[2]).replace("_", " "), String(ev[4]).replace("_", " ")]
+			_:
+				e.text = " ".join(ev.slice(1).map(func(x): return str(x)))
+		out.append(e)
+	var steps: Array = proc.get("steps", [])
+	if not proc.is_empty():
+		out.push_front({"step": from_step, "kind": "start", "text": "Began: %s" % proc.get("title", proc.get("id", "")),
+				"code": "", "dev": "", "prio": 0})
+		# each step that ended, after the events of the model step it ended in
+		var j := 0
+		for lg in tracker.log:
+			var k := -1
+			for s in steps.size():
+				if steps[s]["id"] == lg[0]:
+					k = s
+			var se := {"step": int(lg[1]), "kind": "step", "code": "", "dev": "", "prio": 0,
+					"text": "Step %d of %d done: %s" % [k + 1, steps.size(), step_name(steps[k]) if k >= 0 else lg[0]]}
+			while j < out.size() and out[j].step <= se.step:
+				j += 1
+			out.insert(j, se)
+			j += 1
+	var end: int = engine.step_no
+	if tracker != null and tracker.finished():
+		end = int(tracker.log[tracker.log.size() - 1][1])
+	sm["time"] = maxi(0, end - from_step)
+	sm["steps_done"] = tracker.log.size() if not proc.is_empty() else 0
+	sm["steps"] = steps.size()
+	sm["finished"] = tracker != null and tracker.finished()
+	var title := ("Debrief: " + String(proc.get("title", ""))) if not proc.is_empty() else "Events since the plant started"
+	return {"entries": out, "summary": sm, "title": title, "procedure": not proc.is_empty()}
+
+
+static func _alarm_name(a: Dictionary, id) -> String:
+	if a.is_empty():
+		return String(id)
+	return "%s %s %s" % [a.get("isa", "—"), a.get("kks", a.get("where", "")), a.get("text", id)]
+
+
+## A set value as the trainee typed it: per cent for a 0–1 command, the number otherwise.
+static func value_text(o: Dictionary, v) -> String:
+	if typeof(v) not in [TYPE_INT, TYPE_FLOAT]:
+		return str(v)
+	if o.get("range", []) == [0, 1]:
+		return "%s %%" % str(snappedf(float(v) * 100.0, 0.01)).trim_suffix(".0")
+	return str(v)
+
+
+## Why an op was refused, as it stood then (a permissive's sentence; a sequence's state is not kept, so no state).
+static func refusal(info, o, failed: String, engine) -> String:
+	if o == null:
+		return failed
+	if o.has("machine") and failed == o["machine"] + "_state":
+		return "the sequence was not at a state that takes \"%s\"" % o["do"]
+	return info.failed_text(o, failed, engine)
+
+
+static func fault_text(m, fid: String) -> String:
+	for sc in m.scenarios.values():
+		for f in sc.get("faults", []):
+			if f.get("id", "") == fid:
+				return String(f.get("text", fid))
+	return fid
+
+
+## A procedure step in a few words: the start of its text, as plain text.
+static func step_name(s: Dictionary) -> String:
+	var t := plain(s.get("text", [])).strip_edges()
+	return t if t.length() <= 70 else t.left(67).strip_edges() + "…"
+
+
+static func plain(r) -> String:
+	if typeof(r) == TYPE_STRING:
+		return r
+	if typeof(r) == TYPE_DICTIONARY:
+		for k in ["b", "i", "small", "term", "link"]:
+			if r.has(k):
+				return plain(r[k])
+		return String(r.get("num", ""))
+	if typeof(r) != TYPE_ARRAY:
+		return ""
+	var out := ""
+	for it in r:
+		out += plain(it)
+	return out
+
+
+## A deviation in words: the step it was made in and the one it belongs to (tracker.deviations' row).
+static func deviation_text(d: Array, proc: Dictionary) -> String:
+	var steps: Array = proc.get("steps", [])
+	var made: int = int(d[3])
+	var home: int = int(d[4])
+	var n := steps.size()
+	if home >= 0 and home != made and home < n:
+		return "DEVIATION in step %d of %d: this belongs to step %d (%s)" % [made + 1, n, home + 1, step_name(steps[home])]
+	if home == made and made >= 0:
+		return "DEVIATION in step %d of %d: %s" % [made + 1, n, d[1]]
+	return "DEVIATION in step %d of %d: no step of the procedure asks for it" % [made + 1, n]
+
+
+## The summary in a few lines.
+static func summary_lines(d: Dictionary) -> PackedStringArray:
+	var sm: Dictionary = d.summary
+	var out := PackedStringArray()
+	out.append("Time: %s of plant time" % W.model_time(sm.time))
+	if d.procedure:
+		out.append("Steps: %d of %d done%s" % [sm.steps_done, sm.steps, "" if sm.finished else " so far"])
+	out.append("Operations: %d done%s; %d outside their step" % [sm.ops,
+			(", %d refused" % sm.refused) if sm.refused > 0 else "", sm.deviations] if d.procedure else
+			"Operations: %d done%s" % [sm.ops, (", %d refused" % sm.refused) if sm.refused > 0 else ""])
+	if sm.raised == 0:
+		out.append("Alarms: none raised")
+	else:
+		var by := PackedStringArray()
+		for p in [1, 2, 3]:
+			if sm.prio.get(p, 0) > 0:
+				by.append("priority %d: %d" % [p, sm.prio[p]])
+		out.append("Alarms: %d raised (%s), %d acknowledged%s" % [sm.raised, ", ".join(by), sm.acked,
+				(", %d shelved" % sm.shelved) if sm.shelved > 0 else ""])
+	if sm.trips == 0:
+		out.append("Trips: none")
+	else:
+		out.append("Trips: %d%s" % [sm.trips, (" (first out: %s)" % ", ".join(sm.first_out)) if not sm.first_out.is_empty() else ""])
+	if sm.faults > 0:
+		out.append("Trainer's faults: %d" % sm.faults)
+	return out

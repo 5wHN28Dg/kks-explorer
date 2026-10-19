@@ -115,8 +115,15 @@ class Synthesis(unittest.TestCase):
             self.assertLessEqual(set(v.get('mains', ())), declared, f'{sid}: a mains tone the library does not declare')
         # the sounds FIRST-TRAIN §6 and the task name, beyond the bindings
         for sid in ('breaker', 'breaker_open', 'motor_start', 'horn_p1', 'horn_p2', 'horn_p3', 'horn_ack',
-                    'valve_motor', 'transformer_hum', 'gen_hum', 'gt_whine', 'turbine_hum', 'steam_vent'):
+                    'valve_motor', 'transformer_hum', 'gen_hum', 'gt_whine', 'turbine_hum', 'steam_vent',
+                    'step_concrete', 'step_grating', 'step_stair', 'door_slide', 'door_roller', 'wind',
+                    'plant_distant'):
             self.assertIn(sid, self.made)
+        # the app plays these by name (apps/plant3d/ui/sound_player.gd): one-shots and loops as it expects
+        for sid in ('step_concrete', 'step_grating', 'step_stair', 'door_slide'):
+            self.assertFalse(self.made[sid][2], f'{sid} is a one-shot')
+        for sid in ('door_roller', 'wind', 'plant_distant'):
+            self.assertTrue(self.made[sid][2], f'{sid} loops')
 
     def test_deterministic_samples(self):
         for sid, s in SYNTH.items():
@@ -130,7 +137,7 @@ class Synthesis(unittest.TestCase):
                 continue
             for k, x in layers.items():
                 with self.subTest(sound=sid, layer=k):
-                    seconds = M.NOISE_SECONDS if k == 'noise' else M.TONE_SECONDS
+                    seconds = M.loop_seconds(sid, k)
                     self.assertEqual(len(x), seconds * FS)
                     self.assertEqual(seam_problems(M.pcm16(x) / 32767, top_hz(SYNTH[sid], k)), [])
 
@@ -276,6 +283,43 @@ class Synthesis(unittest.TestCase):
             return np.abs(np.fft.rfft(x[int(a * FS):int(a * FS) + FS]))[100]
         self.assertGreater(hum(0.5), 2 * hum(5.9))
 
+    def test_footsteps_by_surface(self):
+        """A footstep is two impacts (heel, then toe); concrete is a dull thump that is over at once, steel rings:
+        grating higher, a stair tread lower and longer. Each starts at the heel, not after a silence."""
+        def ring_time(x):         # how long the step's sound stays within 30 dB of its peak (10 ms envelope)
+            env = np.sqrt(np.convolve(x * x, np.ones(441) / 441, 'same'))
+            return np.flatnonzero(env > env.max() * 10 ** (-30 / 20))[-1] / FS
+
+        def centroid(x):
+            p = np.abs(np.fft.rfft(x)) ** 2
+            return float((np.fft.rfftfreq(len(x), 1 / FS) * p).sum() / p.sum())
+        steps = {sid: self.made[sid][0]['once'] for sid in ('step_concrete', 'step_grating', 'step_stair')}
+        for sid, x in steps.items():
+            env = np.abs(x)
+            first = np.flatnonzero(env > env.max() * 0.1)[0] / FS
+            self.assertLess(first, 0.015, f'{sid}: the heel strikes at once')
+            # the toe: a second burst 80-90 ms after the heel
+            seg = lambda a, b: float(np.max(env[int(a * FS):int(b * FS)]))
+            self.assertGreater(seg(0.085, 0.11), 3 * seg(0.07, 0.085) if sid == 'step_concrete' else 0, sid)
+        self.assertLess(ring_time(steps['step_concrete']), ring_time(steps['step_grating']))
+        self.assertLess(ring_time(steps['step_grating']), ring_time(steps['step_stair']))
+        self.assertGreater(centroid(steps['step_grating']), centroid(steps['step_stair']))
+        # louder on steel than on concrete, as heard on site
+        self.assertLess(self.made['step_concrete'][1], self.made['step_grating'][1])
+
+    def test_ambience(self):
+        """The wind blows in gusts over a 16 s loop (its envelope's slowest swell is the loop's 1/16 Hz); the
+        distant plant is a low roar under the grid's hum."""
+        x = self.made['wind'][0]['noise']
+        self.assertEqual(len(x), 16 * FS)
+        env = np.array([np.sqrt(np.mean(x[i:i + FS // 4] ** 2)) for i in range(0, len(x), FS // 4)])
+        self.assertGreater(env.max() / env.min(), 2.5, 'gusts: the wind rises and falls')
+        layers = self.made['plant_distant'][0]
+        self.assertEqual(set(layers), {'mains', 'noise'})
+        p = np.abs(np.fft.rfft(layers['noise'])) ** 2
+        f = np.fft.rfftfreq(len(layers['noise']), 1 / FS)
+        self.assertGreater(p[f < 700].sum() / p.sum(), 0.95, 'far away, little is left above 700 Hz')
+
     def test_a_tone_that_follows_a_value(self):
         """A tone whose hz follows a value gets its own layer at the table's highest frequency (the app pitches it)."""
         s = {'id': 'probe', 'kind': 'synth', 'tones': [{'hz': {'of': 'speed', 'table': [[0, 0], [1, 1234.5]]}}]}
@@ -294,6 +338,67 @@ class Synthesis(unittest.TestCase):
         del bad['noise']
         with self.assertRaises(ValueError):    # a 16 Hz rate with no noise to carry it
             M.render_loop(bad, M.VOICES['fan_large'])
+
+
+class HearingProtection(unittest.TestCase):
+    """FIRST-TRAIN §6: a hearing-protection sign at the doors of loud areas, as on site. A building is loud where a
+    machine bound inside it sounds at 85 dB(A) or more at 1 m (its voice's `spl`; the upper exposure action value of
+    EU Directive 2003/10/EC); each of its doors has the sign beside it, facing out, and no quiet building's door has
+    one."""
+    LOUD = 85
+
+    def test_signs_at_the_doors_of_loud_buildings(self):
+        bound = {}
+        for path in glob.glob(os.path.join(ROOT, 'data', 'plant3d', 'model', '*.json')):
+            for b in read_json(path).get('bind', []):
+                if 'sound' in b and 'once' not in M.VOICES[b['sound']]:
+                    bound[b['kks']] = max(bound.get(b['kks'], 0), M.VOICES[b['sound']]['spl'])
+
+        def inside(p, poly):
+            c = False
+            for i in range(len(poly)):
+                (x1, y1), (x2, y2) = poly[i], poly[(i + 1) % len(poly)]
+                if (y1 > p[1]) != (y2 > p[1]) and p[0] < x1 + (p[1] - y1) * (x2 - x1) / (y2 - y1):
+                    c = not c
+            return c
+
+        def on_edge(p, poly):
+            for i in range(len(poly)):
+                a, b = np.array(poly[i], float), np.array(poly[(i + 1) % len(poly)], float)
+                t = np.clip(np.dot(p - a, b - a) / np.dot(b - a, b - a), 0, 1)
+                if np.linalg.norm(a + t * (b - a) - p) < 0.1:
+                    return True
+            return False
+        loud_doors, quiet_doors = 0, 0
+        for path in sorted(glob.glob(os.path.join(ROOT, 'data', 'plant3d', 'areas', '*.json'))):
+            a = read_json(path)
+            things = []
+
+            def walk(e):
+                things.append(e)
+                for c in e.get('parts', []):
+                    walk(c)
+            for e in a['equipment']:
+                walk(e)
+            signs = [g for g in a['signs'] if g['text'] == 'Hearing protection required']
+            for b in (x for x in a['structures'] if x['part'] == 'building'):
+                poly = [[b['at'][0] + q[0], b['at'][1] + q[1]] for q in b['params']['outline']]
+                spl = max([bound.get(e['kks'], 0) for e in things if 'at' in e and inside(e['at'], poly)] + [0])
+                for d in (x for x in a['structures'] if x['part'] == 'door' and on_edge(np.array(x['at'][:2], float), poly)):
+                    near = [g for g in signs if math.dist(g['at'][:2], d['at'][:2]) < 4.0]
+                    with self.subTest(area=a['id'], building=b['id'], door=d['id'], spl=spl):
+                        if spl >= self.LOUD:
+                            loud_doors += 1
+                            self.assertEqual(len(near), 1, 'a loud building\'s door has one hearing-protection sign')
+                            self.assertEqual(near[0]['yaw'], d.get('yaw', 0), 'the sign faces out, as the door does')
+                            self.assertTrue(on_edge(np.array(near[0]['at'][:2], float), poly), 'on the wall')
+                            self.assertTrue(1.5 <= near[0]['at'][2] <= 2.2, 'at eye height')
+                        else:
+                            quiet_doors += 1
+                            self.assertEqual(near, [], 'a quiet building\'s door has no hearing-protection sign')
+        # the first train: the GT hall, the turbine hall, the CW pump house and the boiler house are loud (six
+        # doors); the control building is quiet
+        self.assertEqual((loud_doors, quiet_doors), (6, 1))
 
 
 class Vorbis(unittest.TestCase):

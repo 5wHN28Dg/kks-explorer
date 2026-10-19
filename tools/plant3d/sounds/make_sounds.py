@@ -160,7 +160,45 @@ VOICES = {
         'Alarm sounder, priority 3 (low): a single 440 Hz chime every 2 s, decaying')),
     'horn_ack': dict(spl=75, once=dict(kind='beeps', count=2, on=0.07, gap=0.05), why=(
         'Acknowledge: two short 1 kHz beeps when an alarm is acknowledged')),
+    # people cues (FIRST-TRAIN §6): the app plays a footstep once a stride, by the floor underfoot
+    'step_concrete': dict(spl=70, once=dict(kind='step', seconds=0.35, taus=[0.025], noise_tau=0.006, toe=0.5,
+                                            roll=0.09, rattle=0, scuff=0.12), why=(
+        'A safety boot on concrete: the heel strikes, then the sole rolls onto the toe about 90 ms later. A massive '
+        'slab barely rings, so the sound is the impact itself: a dull thump of the boot and floor (a 90 Hz mode that '
+        'dies in 25 ms) under a short broadband click (pink 80-5,000 Hz, 6 ms), and a little grit scuffing at the '
+        'toe')),
+    'step_grating': dict(spl=76, once=dict(kind='step', seconds=0.45, taus=[0.05, 0.035, 0.025, 0.018],
+                                           noise_tau=0.004, toe=0.55, roll=0.09, rattle=4, scuff=0), why=(
+        'A boot on steel bar grating: the bearing bars, about 30 x 3 mm on a 30 mm pitch, ring at their bending '
+        'modes (420, 1,180, 2,350 and 3,700 Hz, the higher ones dying faster) and the loose panel rattles on its '
+        'supports (a few small impacts in the 70 ms after the heel); the impact\'s click is white 200-6,000 Hz')),
+    'step_stair': dict(spl=78, once=dict(kind='step', seconds=0.6, taus=[0.09, 0.06, 0.04, 0.025], noise_tau=0.006,
+                                         toe=0.45, roll=0.08, rattle=1, scuff=0), why=(
+        'A boot on a steel stair tread (or chequer plate, or a ladder rung): a plate or tread fixed at its ends '
+        'rings lower and longer than grating, a hollow clang at 260, 690, 1,560 and 3,050 Hz (90 ms for the lowest), '
+        'with one rattle of the tread on its bolts')),
+    'door_slide': dict(spl=76, once=dict(kind='slide', seconds=1.0, run=0.7), why=(
+        'A sliding door: its rollers run along the top track for the 0.7 s a door of a metre or two takes at the '
+        'app\'s 1.5 m/s (pink rumble 60-2,500 Hz, uneven as the wheels cross the track\'s joints at 12 Hz), then '
+        'the leaf hits its stop and the panel rings at 180 and 520 Hz')),
+    'door_roller': dict(spl=80, rates='clicks', click_hz=1800, mains=(100,), why=(
+        'A roller door moving: the slats rattle in their side guides as they pass, about 15 a second at 1.5 m/s '
+        '(clicks), the drive motor hums at 100 Hz and its chain and gear mesh at 350 Hz; pink noise 150-5,000 Hz is '
+        'the curtain rubbing in the guides')),
+    # ambience outdoors (the app sets their gains: wind outdoors, the distant plant by how much of it runs)
+    'wind': dict(spl=74, seconds=16, noise_am=[(0.0625, 0.45), (0.1875, 0.25), (0.4375, 0.12)], why=(
+        'Wind at the ear: turbulence round the head and the plant\'s structures, broadband and low (pink 30-1,500 Hz), '
+        'rising and falling in gusts of several seconds (a 16 s loop, so the gusts don\'t repeat every few)')),
+    'plant_distant': dict(spl=74, noise_am=[(0.125, 0.1)], mains=(100, 200), why=(
+        'The plant heard from a few hundred metres: the air and the buildings take the high frequencies away, '
+        'leaving a low roar (brown 30-700 Hz: fans, flows, combustion) and the electrical hum of the transformers '
+        'and generators at twice the 50 Hz grid frequency and its harmonic')),
 }
+
+
+def loop_seconds(sid, layer):
+    """How long a loop's layer is: tones 2 s, noise 8 s or the voice's own `seconds` (the wind's gusts need 16)."""
+    return VOICES[sid].get('seconds', NOISE_SECONDS) if layer == 'noise' else TONE_SECONDS
 
 
 # --------------------------------------------------------------------------------------------------- measurement
@@ -304,13 +342,14 @@ def render_loop(s, v):
         layers[f'tone{i}'] = tone(times(n), ref, z.get('gain', 1), rng_for(sid, f'tone{i}').uniform(0, 2 * np.pi))
     if 'noise' in s:
         nz = s['noise']
-        n = NOISE_SECONDS * FS
+        noise_seconds = loop_seconds(sid, 'noise')
+        n = noise_seconds * FS
         t = times(n)
         rng = rng_for(sid, 'noise')
         g = nz.get('gain', 1)
         x = band_noise(rng, n, nz['colour'], nz['band'])
         for z in rates:
-            r = whole(z['hz'], NOISE_SECONDS, sid)
+            r = whole(z['hz'], noise_seconds, sid)
             d = z.get('gain', 1)
             style = v.get('rates', 'swell')
             if style == 'swell':      # blade passing: the noise swells r times a second
@@ -324,7 +363,7 @@ def render_loop(s, v):
                 clicks = np.zeros(n)
                 kern = ring(v['click_hz'], 0.004, 0.08) + 0.6 * ring(650, 0.012, 0.08)
                 kern *= np.minimum(1, times(len(kern)) / 0.0003)
-                for k in range(int(r * NOISE_SECONDS)):
+                for k in range(int(r * noise_seconds)):
                     wrap_add(clicks, int(round(k * FS / r)) + int(rng.integers(0, 40)), kern * rng.uniform(0.6, 1))
                 x = x + clicks / np.sqrt(np.mean(clicks * clicks)) * d / g
             else:
@@ -332,13 +371,13 @@ def render_loop(s, v):
         if 'drops' in v:              # single drops ringing at their bubble's frequency
             per_s, d = v['drops']
             drops = np.zeros(n)
-            for _ in range(per_s * NOISE_SECONDS):
+            for _ in range(per_s * noise_seconds):
                 hz = rng.uniform(1000, 4000)
                 kern = ring(hz, rng.uniform(0.003, 0.008), 0.04) * np.minimum(1, times(int(0.04 * FS)) / 0.0005)
                 wrap_add(drops, int(rng.integers(0, n)), kern * rng.uniform(0.2, 1))
             x = x + drops / np.sqrt(np.mean(drops * drops)) * d / g
         if 'noise_am' in v:
-            x = x * am(t, v['noise_am'], rng, NOISE_SECONDS, sid)
+            x = x * am(t, v['noise_am'], rng, noise_seconds, sid)
         layers['noise'] = x * g
     elif rates:
         raise ValueError(f'{sid}: a tone below {RATE_HZ} Hz is rendered in the noise, and there is none')
@@ -406,6 +445,43 @@ def render_once(s, v):
         if nz:
             x += nz.get('gain', 1) * band_noise(rng, n, nz['colour'], nz['band']) * speed ** 2.5
         x *= np.minimum(1, t / 0.02)
+    elif ev['kind'] == 'step':
+        # heel, toe (and a rattle of the floor on its supports): each an impact ringing the floor's modes over a short
+        # broadband click
+        n = int(ev['seconds'] * FS)
+        x = np.zeros(n)
+
+        def hit(at, scale, taus, noise_tau):
+            seg = n - int(at * FS)
+            t = times(seg)
+            y = sum(z.get('gain', 1) * math.sqrt(2) * np.exp(-t / taus[i % len(taus)])
+                    * np.sin(2 * np.pi * z['hz'] * t + rng.uniform(0, 2 * np.pi)) for i, z in enumerate(tones))
+            y = y + nz.get('gain', 1) * 2.5 * np.exp(-t / noise_tau) * band_noise(rng, seg, nz['colour'], nz['band'])
+            x[int(at * FS):] += scale * np.minimum(1, t / 0.0006) * y
+
+        heel = 0.01
+        hit(heel, 1.0, ev['taus'], ev['noise_tau'])
+        for _ in range(ev['rattle']):
+            hit(heel + rng.uniform(0.012, 0.07), rng.uniform(0.1, 0.25), [tau * 0.4 for tau in ev['taus']], 0.002)
+        hit(heel + ev['roll'], ev['toe'], ev['taus'], ev['noise_tau'])
+        if ev['scuff']:            # grit under the sole as it rolls: a short hiss
+            a, b = int((heel + ev['roll']) * FS), int((heel + ev['roll'] + 0.06) * FS)
+            env = np.sin(np.linspace(0, np.pi, b - a)) ** 2
+            x[a:b] += ev['scuff'] * env * band_noise(rng, b - a, 'white', [1500, 7000])
+    elif ev['kind'] == 'slide':
+        # the rollers' rumble for `run` seconds (uneven at the track's joints), then the leaf hits its stop
+        n = int(ev['seconds'] * FS)
+        t = times(n)
+        run = ev['run']
+        env = np.minimum(1, t / 0.05) * np.clip((run - t) / 0.03, 0, 1)
+        joints = 1 + 0.35 * np.sin(2 * np.pi * 12 * t + rng.uniform(0, 2 * np.pi))
+        x = 0.5 * nz.get('gain', 1) * env * joints * band_noise(rng, n, nz['colour'], nz['band'])
+        k = int(run * FS)
+        tt = times(n - k)
+        stop = sum(z.get('gain', 1) * math.sqrt(2) * np.exp(-tt / (0.08 if i == 0 else 0.05))
+                   * np.sin(2 * np.pi * z['hz'] * tt + rng.uniform(0, 2 * np.pi)) for i, z in enumerate(tones))
+        stop = stop + 1.5 * np.exp(-tt / 0.005) * band_noise(rng, n - k, 'white', [200, 6000])
+        x[k:] += 1.2 * np.minimum(1, tt / 0.0006) * stop
     elif ev['kind'] == 'beeps':
         total = 0.02 + ev['count'] * (ev['on'] + ev['gap']) + 0.05
         n = int(total * FS)
