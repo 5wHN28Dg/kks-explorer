@@ -110,6 +110,31 @@ def sign(text, at, yaw=0, size=0.4):
     return {'text': text, 'at': at, 'yaw': yaw, 'size': size}
 
 
+HEARING = 'Hearing protection required'
+HEARING_SIZE = 0.3
+HEARING_HALF = 0.55 * HEARING_SIZE * len(HEARING) / 2   # half its text's width: about 0.55 em a character
+
+
+def hearing_signs(structures, flip=()):
+    """The mandatory sign (ISO 7010 M003, wear ear protection) at every door in `structures`, as on site
+    (FIRST-TRAIN §6): on the wall beside the opening at eye height, facing out (a door's yaw points out of its
+    building), its text clear of the opening: to the door's right seen from outside, or its left for the doors in
+    `flip` (where the wall's corner is nearer). The areas call it for their loud buildings, those with a machine of
+    85 dB(A) or more inside (the upper exposure action value of EU Directive 2003/10/EC); tests/test_plant3d_sounds.py
+    checks that these are exactly the loud ones and that each sign sits on its wall clear of the opening."""
+    out = []
+    for d in structures:
+        if d['part'] != 'door':
+            continue
+        yaw = d.get('yaw', 0)
+        r = math.radians(yaw)
+        fx, fy = math.sin(r), math.cos(r)
+        k = (d['params'].get('width', 1.0) / 2 + HEARING_HALF + 0.3) * (-1 if d['id'] in flip else 1)
+        out.append(sign(HEARING, [round(d['at'][0] + fy * k, 3) + 0.0, round(d['at'][1] - fx * k, 3) + 0.0, 1.8],
+                        yaw, HEARING_SIZE))
+    return out
+
+
 def area(aid, title, bounds, equipment=(), pipes=(), structures=(), signs=()):
     return {'format': 'walkdown-plant-area', 'version': 1, 'id': aid, 'title': title, 'bounds': bounds,
             'pack': 'base', 'equipment': list(equipment), 'pipes': list(pipes), 'structures': list(structures),
@@ -135,6 +160,12 @@ def control():
 # ---------------------------------------------------------------- common auxiliaries (bop)
 
 def bop():
+    structures = [
+        st('bop_boiler_house', 'building', [88, -8, 0], outline=rect(16, 16), height=10, cladding='metal',
+           openings=[{'kind': 'door', 'at': [16, 4, 0], 'width': 3, 'height': 3.5},
+                     {'kind': 'pipe', 'at': [0, 8, 9], 'width': 0.5, 'height': 0.5}]),
+        st('bop_boiler_door', 'door', [104, -4, 0], 90, kind='roller', width=3, height=3.5),
+    ]
     return area('bop', 'Auxiliary boiler, demineralised water, instrument air, closed cooling water',
                 [[85, -25], [135, 25]],
         equipment=[
@@ -163,14 +194,10 @@ def bop():
                  valves=[valve('30MAW10AA001', 'valve_control', 0.93, 'Gland steam supply control valve',
                                dn=150, actuator='pneumatic')]),
         ],
-        structures=[
-            st('bop_boiler_house', 'building', [88, -8, 0], outline=rect(16, 16), height=10, cladding='metal',
-               openings=[{'kind': 'door', 'at': [16, 4, 0], 'width': 3, 'height': 3.5},
-                         {'kind': 'pipe', 'at': [0, 8, 9], 'width': 0.5, 'height': 0.5}]),
-            st('bop_boiler_door', 'door', [104, -4, 0], 90, kind='roller', width=3, height=3.5),
-        ],
+        structures=structures,
         signs=[sign('Auxiliary boiler 00QHA10', [104.1, 0, 3.5], 90), sign('Instrument air', [113, -12, 2.5], 0),
-               sign('Closed cooling water', [113, 8, 2.5], 0), sign('Demineralised water 00GHC10', [125, 8.5, 3], 180)])
+               sign('Closed cooling water', [113, 8, 2.5], 0), sign('Demineralised water 00GHC10', [125, 8.5, 3], 180)]
+        + hearing_signs(structures, flip=('bop_boiler_door',)))
 
 
 # ---------------------------------------------------------------- cooling tower
@@ -246,16 +273,18 @@ def cw():
                           parts=[inst(f'30PAC10CP50{n}', 'pressure_gauge', 0.1, 'top',
                                       f'Circulating water pump {letter} discharge pressure', range=[0, 4],
                                       unit='bar')]))
-    return area('cw', 'Circulating water pump house', [[140, -20], [165, 20]], equipment=equipment, pipes=pipes,
-        structures=[
-            st('cw_house', 'building', [140, -12, 0], kks='30UQA10', outline=rect(25, 20), height=12,
-               openings=[{'kind': 'door', 'at': [12, 20, 0], 'width': 4, 'height': 4},
+    structures = [
+        st('cw_house', 'building', [140, -12, 0], kks='30UQA10', outline=rect(25, 20), height=12,
+           openings=[{'kind': 'door', 'at': [12, 20, 0], 'width': 4, 'height': 4},
                      {'kind': 'pipe', 'at': [10, 0, 1.5], 'width': 14, 'height': 1.6}]),
-            st('cw_pit', 'pit', [142, -8, 0], outline=rect(16, 5), depth=9),
-            st('cw_pit_cover', 'grating', [142, -8, 0], outline=rect(16, 5)),
-            st('cw_door', 'door', [152, 8, 0], 0, kind='roller', width=4, height=4),
-        ],
-        signs=[sign('CW pump house 30UQA10', [152, 8.1, 4.6], 0), sign('CW pumps A B C', [150, -2, 3], 180)])
+        st('cw_pit', 'pit', [142, -8, 0], outline=rect(16, 5), depth=9),
+        st('cw_pit_cover', 'grating', [142, -8, 0], outline=rect(16, 5)),
+        st('cw_door', 'door', [152, 8, 0], 0, kind='roller', width=4, height=4),
+    ]
+    return area('cw', 'Circulating water pump house', [[140, -20], [165, 20]], equipment=equipment, pipes=pipes,
+        structures=structures,
+        signs=[sign('CW pump house 30UQA10', [152, 8.1, 4.6], 0), sign('CW pumps A B C', [150, -2, 3], 180)]
+        + hearing_signs(structures))
 
 
 # ---------------------------------------------------------------- turbine hall
@@ -363,7 +392,7 @@ def st_area():
     ]
     signs = [sign('Turbine hall 30UMA10', [79.9, 12, 7], 90), sign('Operating floor +12 m', [11, 15, 13.6], 90),
              sign('Condenser 30MAG10AC001', [44, -8.5, 1], 180), sign('Condensate pumps', [54, -10, -4.5], 180),
-             sign('Steam turbine lube oil', [64, 22, 2.5], 0)]
+             sign('Steam turbine lube oil', [64, 22, 2.5], 0)] + hearing_signs(structures, flip=('st_door_w',))
     return area('st', 'Turbine hall', [[0, -25], [80, 25]], equipment, pipes, structures, signs)
 
 
@@ -435,8 +464,7 @@ def gt1():
         st('gt1_skid_slab', 'slab', [8, 82, 0], outline=rect(36, 8), thickness=0.3),
     ]
     signs = [sign('GT 1 hall 10UMB10', [40, 50, 7], 180), sign('Gas turbine 1 10MBA10', [45, 61, 3], 180),
-             sign('Hearing protection required', [42, 50.1, 2.2], 0, 0.3),
-             sign('GT 1 auxiliaries: SFC, excitation, lube oil', [25, 81, 2.5], 0)]
+             sign('GT 1 auxiliaries: SFC, excitation, lube oil', [25, 81, 2.5], 0)] + hearing_signs(structures)
     return area('gt1', 'Gas turbine 1 hall and auxiliaries', [[0, 50], [80, 92]], equipment, pipes, structures, signs)
 
 
