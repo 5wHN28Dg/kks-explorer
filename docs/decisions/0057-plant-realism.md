@@ -40,7 +40,10 @@ memory, load and size rules (wiki: 3D-plant, measurement rules), and with nothin
 - **Materials:** one weathered shader for every lit surface: the CC0 sets plus grime, run-off streaks, dust on top
   faces, rust, paint wear where hands go (vertex alpha by colour), wet ground round the cooling tower, jointed yards,
   the road's centre line, drawn bar gratings; the plain pieces (plates, dials, bands) the same shader kept clean. The
-  phone skips the streaks' and wear's samples.
+  phone skips the wear's sample and the ruts' two (its ground has the patches but no broken ruts or wandering track);
+  it draws the streaks, which read no texture of their own. A second, smaller program for the phone (compiled with
+  the wear and the ruts left out, swapped onto the materials at start) made its first start slower, not faster (16.6
+  and 16.8 s against 14.9 and 15.0 s), and was taken out.
 - **The site:** concrete yards in the areas' bounds, gravel between, a ring road with kerbs and a drain, a boundary
   wall, the country to the far plane with low hills.
 - **Per tier:** both tiers get the bake and the haze. SSAO (low, half size) was the laptops' at first; the second
@@ -51,7 +54,10 @@ memory, load and size rules (wiki: 3D-plant, measurement rules), and with nothin
   lamps' spacing) plus a wide dim cone for what its reflector lets out sideways; the floor is grey-green epoxy paint.
   Pools under the lamps, darker corners. An omni light per lamp (the first pass) washed the floor out evenly; an omni
   "spill" lit the ceiling close to each lamp, and the bake turned those hot spots into blotches over every floor and
-  wall (too few of its bounce rays meet them), so no lamp's light reaches the ceiling.
+  wall (too few of its bounce rays meet them), so no lamp's light reaches the ceiling. A lamp's energy is set from its
+  height over the floor under it (a deck's where there is one, the deck's too for a lamp over its edge), and a deck
+  of a hall has lamps under it for the floor below. Walls' streaks hang from the top of the face above them: the wall's,
+  or an opening's head.
 - **Tag plates:** every valve on a pipe and every child part with a plate point carries its tag plate (content).
 
 ## Measured (2026-10-16)
@@ -77,21 +83,41 @@ the rest not yet broken down). The laptop missed the 60 fps rule before this cha
 82 fps was measured on a quiet machine); this change costs about 2 ms at the 95th percentile, mostly SSAO's. A quiet
 laptop run is still to be made; if the laptop then misses, SSAO is the first lever.
 
-## Measured, second realism pass (2026-10-19)
+## Measured, second realism pass (2026-10-20)
 
-Same rules. The laptop: `full` at 1600×900 for 10 minutes, the branch then main (11f0e4b) back to back. Not a quiet
-machine: another task's Windows VM used about 3 cores and a browser was open (load average 9); main on a quiet machine
-(2026-10-17) is in the first column.
+Same rules, on the merged code (main c80e71d against this pass on top of it). The laptop: `full` at 1600×900 for 10
+minutes, main and the branch back to back, then again in the other order. Not a quiet machine: other agents' Godot
+test and screenshot runs came and went (4 to 10 other Godot processes, load average 2.4 to 3.1); main on a quiet
+machine (2026-10-17, older main) is in the first column. The Note 9: release builds, first start each (app data
+cleared), plugged in, `frames.sh` (SurfaceFlinger), the phone let cool to about 33 °C between runs.
 
-| | Rule | Main, quiet | Main, loaded | Second pass, loaded |
+| | Rule | Main, quiet (older) | Main, now | Second pass |
 |---|---|---|---|---|
-| Laptop, frames ≤ 17.5 ms | 95 % | 85.5 % | 67.4 % | 96.7 % |
-| Laptop, frame p95 / median | ≤ 16.7 ms | 23.2 / 9.1 ms | 38.2 / 14.6 ms | 15.7 / 11.6 ms |
-| Laptop, GPU p95 / median | | 21.4 / 8.5 ms | 31.2 / 13.7 ms | 10.9 / 9.3 ms |
-| Laptop, pipelines for the first frame (surface + specialization) | | 27 + 16 | 27 + 16 | 20 + 13 |
+| Laptop, frames ≤ 17.5 ms | 95 % | 85.5 % | 65.7 / 73.5 % | 97.1 / 93.1 % |
+| Laptop, frame p95 / median | ≤ 16.7 ms | 23.2 / 9.1 ms | 34.9 / 12.0, 26.7 / 10.8 ms | 11.0 / 8.3, 24.0 / 8.7 ms |
+| Laptop, GPU p95 / median | | 21.4 / 8.5 ms | 30.9 / 11.1, 24.5 / 9.9 ms | 8.5 / 7.1, 8.8 / 7.3 ms |
+| Laptop, pipelines for the first frame (surface + specialization) | | 27 + 16 | 27 + 16 | 20 + 12 |
+| Mobile renderer (lean+vis on the laptop), pipelines | | 30 + 10 | 30 + 10 | 30 + 10 |
+| Note 9, frames shown at ≥ 30 fps (SurfaceFlinger), 10 minutes | ≥ 95 % | | 99.08 % | 99.65 % |
+| Note 9, frames over 100 ms after 5 s | none | | none (worst 91.9 ms) | none (worst 56.6 ms) |
+| Note 9, peak PSS | ≤ 1.5 GB | | 1,029 MB | 1,052 MB |
+| Note 9, GPU time median / p95 | | | 19.5 / 27.9 ms | 18.8 / 25.3 ms |
+| Note 9, launch to first frame, first start (each run) | ≤ 15 s | | 14.95, 14.85, 14.76, 19.66 s | 15.75, 14.99, 19.76 s |
+| Note 9, pipelines for the first frame | | | 30 + 10 | 30 + 10 |
 
-What each part of the sun's shadow and SSAO cost (150 s walks, loaded, GPU p95): everything 16.6 ms; SSAO off 10.7;
-shadow off 11.5; two cascades 14.7; shadow to 40 m 16.6. SSAO was the lever; the shadow stays as it was.
+The full tier's GPU time at the 95th percentile fell from 25 to 31 ms to under 9 ms, and the branch's frame p95 met
+the rule in one run (11.0 ms). In the other (24.0 ms) its GPU p95 was the same 8.8 ms: the long frames there waited on
+something other than this app's GPU work (the other agents' screenshot runs shared the GPU; a frame's render CPU time
+was under 2 ms). A quiet run is still to be made before the laptop's 60 fps is called met.
+
+The Note 9 meets its frame, memory and spike rules. The launch rule is not met reliably by either build: both sit at
+the 15 s line and both had a start near 20 s (the phone at 29 to 30 °C, plugged in); this pass compiles the same 40
+pipelines and its starts are within that spread of main's. The first start waits for those pipelines; what else takes
+the rest of the 15 s is not yet broken down, and is the next lever (the launch rule has no margin left).
+
+What each part of the sun's shadow and SSAO cost (150 s walks, loaded, GPU p95, before the merge): everything
+16.6 ms; SSAO off 10.7; shadow off 11.5; two cascades 14.7; shadow to 40 m 16.6. SSAO was the lever; the shadow stays
+as it was.
 
 **When to revisit:** when Godot binds LightmapGI baking to scripts (bake headless, on CI); if a phone in the
 measurement set has ASTC HDR; when the plant outgrows one lightmap texture (4096 px slices); if a trainee needs light
