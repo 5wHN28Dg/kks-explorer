@@ -1082,12 +1082,12 @@ func _hall_floor(body: Node, b: Dictionary) -> int:
 ## A lamp's light on the floor under it, as a share of the sun's irradiance (the sun's energy is 1): its energy is
 ## this times the square of its height over the floor (inverse-square falloff, the lamp's `spot_attenuation` 2).
 ## A hall reads darker than the yard outside, as it does to the eye coming in; set by eye against the exposure.
-const LAMP_FLOOR := 1.0
+const LAMP_FLOOR := 1.1
 ## What the reflector lets out sideways (its open bottom, the lamp's glow): an even dim light round each lamp, so walls
 ## and the space between pools are not black; as a share of the sun's irradiance at the floor. A wide cone down, not an
 ## omni light: an omni lit the ceiling a few tenths of a metre from each lamp, and those hot spots, met by few of the
 ## bake's bounce rays, came out as bright blotches over every floor and wall of the halls (second realism pass).
-const LAMP_SPILL := 0.08
+const LAMP_SPILL := 0.1
 ## The spill's cone, degrees from the axis: down to the walls' foot and up them, never the ceiling.
 const LAMP_SPILL_ANGLE := 80.0
 ## A lamp's reach: the hall's height and as far again, so the floor and a pit below it are lit (a reach of 1.4 × the
