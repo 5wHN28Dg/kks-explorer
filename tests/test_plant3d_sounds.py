@@ -117,10 +117,10 @@ class Synthesis(unittest.TestCase):
         for sid in ('breaker', 'breaker_open', 'motor_start', 'horn_p1', 'horn_p2', 'horn_p3', 'horn_ack',
                     'valve_motor', 'transformer_hum', 'gen_hum', 'gt_whine', 'turbine_hum', 'steam_vent',
                     'step_concrete', 'step_grating', 'step_stair', 'door_slide', 'door_roller', 'wind',
-                    'plant_distant'):
+                    'plant_distant', 'surge_thud'):
             self.assertIn(sid, self.made)
         # the app plays these by name (apps/plant3d/ui/sound_player.gd): one-shots and loops as it expects
-        for sid in ('step_concrete', 'step_grating', 'step_stair', 'door_slide'):
+        for sid in ('step_concrete', 'step_grating', 'step_stair', 'door_slide', 'surge_thud'):
             self.assertFalse(self.made[sid][2], f'{sid} is a one-shot')
         for sid in ('door_roller', 'wind', 'plant_distant'):
             self.assertTrue(self.made[sid][2], f'{sid} loops')
@@ -307,6 +307,38 @@ class Synthesis(unittest.TestCase):
         # louder on steel than on concrete, as heard on site
         self.assertLess(self.made['step_concrete'][1], self.made['step_grating'][1])
 
+    def test_surge_thud(self):
+        """FIRST-TRAIN §4 step 4: a CW pump started against an open valve slams with a heavy thud. Heavy: most of its
+        power below 300 Hz, lower than a breaker's bang, and among the loudest one-shots; a thud, not a rumble: it
+        strikes at once and is over within a second, with the water column's rebound after it."""
+        x = self.made['surge_thud'][0]['once']
+        p = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / FS)
+        self.assertGreater(p[f < 300].sum() / p.sum(), 0.8)
+
+        def centroid(y):
+            q = np.abs(np.fft.rfft(y)) ** 2
+            return float((np.fft.rfftfreq(len(y), 1 / FS) * q).sum() / q.sum())
+        self.assertLess(centroid(x), centroid(self.made['breaker'][0]['once']) / 2)
+        self.assertGreaterEqual(self.made['surge_thud'][1], self.made['breaker'][1])
+        env = np.sqrt(np.convolve(x * x, np.ones(441) / 441, 'same'))
+        self.assertLess(np.flatnonzero(env > env.max() * 0.5)[0] / FS, 0.03, 'it strikes at once')
+        self.assertLess(np.flatnonzero(env > env.max() * 10 ** (-40 / 20))[-1] / FS, 1.5, 'and is over')
+        # the rebound: a second onset 0.35 s after the slam (the envelope over one cycle of the 40 Hz bounce)
+        slow = np.sqrt(np.convolve(x * x, np.ones(FS // 40) / (FS // 40), 'same'))
+        span = lambda a, b: float(np.max(slow[int(a * FS):int(b * FS)]))
+        self.assertGreater(span(0.36, 0.40), 1.4 * span(0.30, 0.34), 'the water column rebounds')
+        # the app plays it at a shake binding driven by a pressure (apps/plant3d/ui/sound_player.gd is_surge; the
+        # other shakes are vibration): the CW pumps' surges are those, and nothing else is
+        units, shakes = {}, []
+        for path in glob.glob(os.path.join(ROOT, 'data', 'plant3d', 'model', '*.json')):
+            m = read_json(path)
+            units.update({v[0]: v[1].get('unit') for v in m.get('values', []) if isinstance(v[1], dict)})
+            shakes += [b for b in m.get('bind', []) if 'shake' in b]
+        surges = {b['kks'] for b in shakes if units.get(b['shake']) in ('bar', 'mbar', 'Pa', 'kPa', 'MPa')}
+        self.assertEqual(surges, {'30PAC10AP001', '30PAC10AP002', '30PAC10AP003'})
+        self.assertGreater(len(shakes), len(surges), 'the vibration shakes are read too')
+
     def test_ambience(self):
         """The wind blows in gusts over a 16 s loop (its envelope's slowest swell is the loop's 1/16 Hz); the
         distant plant is a low roar under the grid's hum."""
@@ -344,7 +376,9 @@ class HearingProtection(unittest.TestCase):
     """FIRST-TRAIN §6: a hearing-protection sign at the doors of loud areas, as on site. A building is loud where a
     machine bound inside it sounds at 85 dB(A) or more at 1 m (its voice's `spl`; the upper exposure action value of
     EU Directive 2003/10/EC); each of its doors has the sign beside it, facing out, and no quiet building's door has
-    one."""
+    one. The sign is the mandatory sign ISO 7010 M003 (wear ear protection) with its text under it, on a board
+    (apps/plant3d/builder/kit_place.gd sign_layout: the text's width and 0.4 lines either side) that sits on the
+    wall, clear of the door's opening."""
     LOUD = 85
 
     def test_signs_at_the_doors_of_loud_buildings(self):
@@ -393,16 +427,21 @@ class HearingProtection(unittest.TestCase):
                             self.assertEqual(near[0]['yaw'], d.get('yaw', 0), 'the sign faces out, as the door does')
                             self.assertTrue(on_edge(np.array(near[0]['at'][:2], float), poly), 'on the wall')
                             self.assertTrue(1.5 <= near[0]['at'][2] <= 2.2, 'at eye height')
-                            # its text (about 0.55 em a character) clear of the opening, and all of it on the wall
+                            self.assertEqual(near[0].get('symbol'), 'M003', 'the sign is ISO 7010 M003')
+                            # its board (its text, about 0.55 em a character, and its margins) clear of the opening,
+                            # and all of it on the wall
                             g = near[0]
-                            half = 0.55 * g['size'] * len(g['text']) / 2
+                            half = 0.55 * g['size'] * len(g['text']) / 2 + 0.4 * g['size']
                             gap = math.dist(g['at'][:2], d['at'][:2]) - half - d['params'].get('width', 1.0) / 2
-                            self.assertGreater(gap, 0.1, 'the sign\'s text reaches over the door\'s opening')
+                            self.assertGreater(gap, 0.1, 'the sign\'s board reaches over the door\'s opening')
+                            # the symbol (three lines across) and the margins above the text, under the roof
+                            self.assertLess(g['at'][2] + 4.3 * g['size'], b['at'][2] + b['params']['height'],
+                                            'the sign\'s board reaches over the wall\'s top')
                             r = math.radians(g['yaw'])
                             along = np.array([math.cos(r), -math.sin(r)])
                             for end in (-half, half):
                                 self.assertTrue(on_edge(np.array(g['at'][:2], float) + end * along, poly),
-                                                'the sign\'s text runs off its wall')
+                                                'the sign\'s board runs off its wall')
                         else:
                             quiet_doors += 1
                             self.assertEqual(near, [], 'a quiet building\'s door has no hearing-protection sign')

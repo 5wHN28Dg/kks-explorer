@@ -151,6 +151,13 @@ VOICES = {
         'its torque peaks; the rotor-slot whine (742.5 Hz at full speed) and the vane passing (49.5 Hz) rise with '
         'speed; the fan noise grows with speed. Played once when the motor starts; its last second is levelled to '
         'the motor_large loop, which takes over')),
+    'surge_thud': dict(spl=96, once=dict(kind='thud', seconds=2.0, rebound=0.35), why=(
+        'A CW pump started against an open discharge valve (FIRST-TRAIN §4, step 4): the water column rushes into the '
+        'empty DN 1400 pipe and slams when it has filled (water hammer). A heavy, low thud: the pipe bouncing on its '
+        'supports (40 Hz, the longest ring, 0.35 s) and its lower shell modes (90, 230 Hz) under a brown broadband '
+        'impact, the pipe wall ringing at its ring frequency (steel\'s 5,050 m/s / (pi x 1.42 m) = 1,130 Hz) briefly; '
+        'the column rebounds once, about 0.35 s later, at a third of the force. The water cushions the blow: a 2 ms '
+        'attack, softer than metal on metal')),
     'horn_p1': dict(spl=85, pattern=dict(period=0.25, on=0.15, at=0.05), why=(
         'Control room alarm sounder, priority 1 (high): fast pulses (4 a second) of an 880 Hz tone with harmonics '
         '(an electronic sounder\'s square-ish wave). Each priority sounds different (ISA-18.2, EEMUA 191)')),
@@ -385,7 +392,7 @@ def render_loop(s, v):
 
 
 def render_once(s, v):
-    """One-shot events: a breaker closing or opening, a motor's run-up, the acknowledge beeps."""
+    """One-shot events: a breaker closing or opening, a motor's run-up, a pipe's surge, the acknowledge beeps."""
     sid = s['id']
     ev = v['once']
     rng = rng_for(sid, 'once')
@@ -482,6 +489,23 @@ def render_once(s, v):
                    * np.sin(2 * np.pi * z['hz'] * tt + rng.uniform(0, 2 * np.pi)) for i, z in enumerate(tones))
         stop = stop + 1.5 * np.exp(-tt / 0.005) * band_noise(rng, n - k, 'white', [200, 6000])
         x[k:] += 1.2 * np.minimum(1, tt / 0.0006) * stop
+    elif ev['kind'] == 'thud':
+        # the slam, then the water column's rebound: each an impact with a soft (water-cushioned) attack ringing the
+        # pipe's modes, the low ones longest, over a brown broadband blow
+        n = int(ev['seconds'] * FS)
+        x = np.zeros(n)
+        taus = [0.35, 0.2, 0.08, 0.03]
+
+        def slam(at, scale):
+            seg = n - int(at * FS)
+            t = times(seg)
+            y = sum(z.get('gain', 1) * math.sqrt(2) * np.exp(-t / taus[i % len(taus)])
+                    * np.sin(2 * np.pi * z['hz'] * t + rng.uniform(0, 2 * np.pi)) for i, z in enumerate(tones))
+            y = y + nz.get('gain', 1) * 2.5 * np.exp(-t / 0.03) * band_noise(rng, seg, nz['colour'], nz['band'])
+            x[int(at * FS):] += scale * np.minimum(1, t / 0.002) * y
+
+        slam(0.01, 1.0)
+        slam(0.01 + ev['rebound'], 0.33)
     elif ev['kind'] == 'beeps':
         total = 0.02 + ev['count'] * (ev['on'] + ev['gap']) + 0.05
         n = int(total * FS)

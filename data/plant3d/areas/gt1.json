@@ -33,7 +33,7 @@
   {"text": "GT 1 hall 10UMB10", "at": [40, 50, 7], "yaw": 180, "size": 0.4},
   {"text": "Gas turbine 1 10MBA10", "at": [45, 61, 3], "yaw": 180, "size": 0.4},
   {"text": "GT 1 auxiliaries: SFC, excitation, lube oil", "at": [25, 81, 2.5], "yaw": 0, "size": 0.4},
-  {"text": "Hearing protection required", "at": [34.472, 50.0, 1.8], "yaw": 180, "size": 0.3},
-  {"text": "Hearing protection required", "at": [33.028, 80.0, 1.8], "yaw": 0, "size": 0.3}
+  {"text": "Hearing protection required", "at": [34.352, 50.0, 1.8], "yaw": 180, "size": 0.3, "symbol": "M003"},
+  {"text": "Hearing protection required", "at": [33.148, 80.0, 1.8], "yaw": 0, "size": 0.3, "symbol": "M003"}
  ]
 }
