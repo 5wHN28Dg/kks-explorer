@@ -33,17 +33,23 @@ func run(tree: SceneTree) -> Array:
 	c.set_speed(SimClock.Speed.FAST)
 	if c.speed != SimClock.Speed.FAST:
 		p.append("fast-forward refused at cold iron: %s" % c.ff_blocked())
+	# Every step updates the measured cost (step_ms) from the real time it took, so on a loaded machine the cap
+	# would fall during the second and the outcome would depend on the load: each frame starts from the cost of a
+	# laptop's step, and the steps it may run are added up from the rate in force for that frame.
 	var t0 := Time.get_ticks_usec()
 	var s1: int = c.engine.step_no
+	var allowed := 0.0
 	for i in 60:
+		c.step_ms = 0.28
+		allowed += c.ff_rate() * (1.0 / 60.0) / SimClock.STEP
 		c._process(1.0 / 60.0)
 	var spent := (Time.get_ticks_usec() - t0) / 1e6
 	var steps: int = c.engine.step_no - s1
 	if steps <= 60:
 		p.append("fast-forward ran %d steps in a second of frames" % steps)
-	if steps > ceili(c.ff_rate() * 10.0) + 1:
-		p.append("fast-forward ran %d steps, more than its rate %.1f× allows" % [steps, c.ff_rate()])
-	print("  fast-forward: %d steps for 1 s of frames, %.0f ms of model time on this machine, cap %.0f×" % [steps, spent * 1000.0, c.ff_cap()])
+	if steps > ceili(allowed) + 1:
+		p.append("fast-forward ran %d steps, more than its rate (%.1f steps in that second) allows" % [steps, allowed])
+	print("  fast-forward: %d steps for 1 s of frames (%.1f allowed), %.0f ms of model time on this machine" % [steps, allowed, spent * 1000.0])
 	# the budget: with a step said to cost 4 ms, a 60 fps frame (16.7 ms) may run one step (a quarter is 4.2 ms)
 	c.step_ms = 4.0
 	var s2: int = c.engine.step_no
@@ -82,6 +88,7 @@ func run(tree: SceneTree) -> Array:
 	c.stepped.connect(hold_once)
 	var s4: int = c.engine.step_no
 	c.acc = 0.0
+	c.step_ms = 0.3            # a laptop's step (the measured cost may have grown under load): the hold, not the budget, ends the frame
 	c._process(0.25)          # two steps due (a frame counts at most 0.25 s), held after the first
 	c._process(1.0 / 60.0)
 	c.stepped.disconnect(hold_once)
