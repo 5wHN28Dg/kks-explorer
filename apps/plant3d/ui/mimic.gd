@@ -14,7 +14,7 @@ const ScreensModel = preload("res://ui/screens_model.gd")
 const Trends = preload("res://ui/trends.gd")
 
 const REFRESH := 0.25           # seconds between redraws of the values (4 Hz)
-const CELL_W := 214.0
+const CELL_W := 248.0          # a cell: its KKS code is never cut, its name takes up to two lines
 const PAD := 10.0
 const GAP := 52.0               # between the groups: room for the flow lines
 const TREND := Vector2(300, 96)
@@ -332,10 +332,43 @@ static func _compact(it: Dictionary) -> bool:
 	return it.kind == "measure" and it.lamps.is_empty() and it.values.size() == 1 and it.ops.is_empty()
 
 
+## The item's name in at most two lines of the cell's width (cut with an ellipsis only beyond that).
+func _name_lines(it: Dictionary) -> PackedStringArray:
+	var size := 14 if _compact(it) else 15
+	var key := "%s|%d" % [it.code, size]
+	if _names.has(key):
+		return _names[key]
+	var f := _font()
+	var w := CELL_W - PAD * 2
+	var out := PackedStringArray()
+	var words: PackedStringArray = String(it.name).split(" ", false)
+	var line := ""
+	var k := 0
+	while k < words.size():
+		var t := words[k] if line == "" else line + " " + words[k]
+		if line != "" and f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > w:
+			if out.size() == 1:
+				break                              # the second line is full: the rest goes on it, cut
+			out.append(line)
+			line = ""
+			continue
+		line = t
+		k += 1
+	if k < words.size():
+		line += " " + " ".join(words.slice(k))
+	out.append(line)
+	_names[key] = out
+	return out
+
+
+var _names := {}
+
+
 func _cell_h(it: Dictionary) -> float:
+	var extra_line := 18.0 * (_name_lines(it).size() - 1)
 	if _compact(it):
-		return PAD * 0.6 + 22.0 + 20.0 + PAD * 0.6
-	var h := PAD + 18.0 + 20.0                 # the code, the name
+		return PAD * 0.6 + 22.0 + 20.0 + extra_line + PAD * 0.6
+	var h := PAD + 18.0 + 20.0 + extra_line    # the code, the name
 	if it.kind != "measure":
 		h += 46.0                              # the symbol and its state
 	elif not it.lamps.is_empty():
@@ -482,7 +515,7 @@ func fit(whole := false) -> void:
 	_unsized = canvas.size.x <= 10
 	var cs := canvas.size if not _unsized else Vector2(1200, 600)
 	var z := minf(cs.x / L.size.x, cs.y / L.size.y)
-	zoom = clampf(z, 0.35 if whole else 0.7 * readable_zoom(), 1.3 * readable_zoom())
+	zoom = clampf(z, 0.35 if whole else 0.9 * readable_zoom(), 1.3 * readable_zoom())
 	offset = Vector2(maxf(0.0, (cs.x - L.size.x * zoom) * 0.5), 0.0)
 	_clamp_offset()
 	_place_pieces()
@@ -867,7 +900,7 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 	var w := r.size.x - PAD * 2
 	if _compact(it):
 		var txt: String = ui.info.fmt(it.values[0], e.v(it.values[0]))
-		_text(_ci, Vector2(x, y + 3), it.code, 13, INK_DIM, w * 0.5)
+		_text(_ci, Vector2(x, y + 3), it.code, 13, INK_DIM)
 		if not al.is_empty():
 			var col: Color = PRIO[clampi(al[0][0], 1, 3)]
 			var vw := _font().get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
@@ -878,15 +911,20 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 				_ci.draw_rect(box, col, false, 2.0)
 			_text(_ci, box.position + Vector2(5, 1), str(al[0][0]), 15, INK)
 		_right(Vector2(x, y), w, txt, 17, INK)
-		_text(_ci, Vector2(x, y + 22), it.name, 14, INK, w - (44.0 if tk >= 0 else 0.0))
+		var nl := _name_lines(it)
+		for i in nl.size():
+			var last := i == nl.size() - 1
+			_text(_ci, Vector2(x, y + 22 + 18 * i), nl[i], 14, INK, w - (44.0 if tk >= 0 and last else 0.0))
 		if tk >= 0:
-			_text(_ci, Vector2(r.end.x - PAD - 38, y + 23), "TRIP", 13, TRIP)
+			_text(_ci, Vector2(r.end.x - PAD - 38, y + 23 + 18 * (nl.size() - 1)), "TRIP", 13, TRIP)
 		return
-	_text(_ci, Vector2(x, y), it.code, 13, INK_DIM, w - 70.0)
+	_text(_ci, Vector2(x, y), it.code, 13, INK_DIM)
 	_alarm_badges(r, al)
 	y += 18.0
-	_text(_ci, Vector2(x, y), it.name, 15, INK, w)
-	y += 20.0
+	for line in _name_lines(it):
+		_text(_ci, Vector2(x, y), line, 15, INK, w)
+		y += 18.0
+	y += 2.0
 	if it.kind != "measure":
 		var state := _draw_symbol(Vector2(x + 20, y + 22), it, e)
 		var sx := x + 48.0

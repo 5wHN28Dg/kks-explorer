@@ -29,7 +29,77 @@ func run(tree: SceneTree) -> Array:
 	p.append_array(await _reach(tree, ui))
 	p.append_array(await _live(tree, ui))
 	p.append_array(await _operate(tree, ui))
+	p.append_array(await _legible(tree, ui))
 	main.free()
+	p.append_array(await _measure(tree))
+	return p
+
+
+## The phone's measurement of the screens (app/main.gd walk=screens, phone/frames.sh): the screens open in the
+## control room, each shown in turn, the frames and the screens' drawing counted.
+func _measure(tree: SceneTree) -> Array:
+	var p: Array = []
+	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
+	main.opts = {"walk": "screens", "seconds": "600"}
+	tree.root.add_child(main)
+	for i in 600:
+		if main.screens_walk:
+			break
+		await tree.process_frame
+	if not main.screens_walk or not main.ui.screens_open():
+		main.free()
+		return ["walk=screens did not open the screens"]
+	var first: int = main.ui.mimic.current
+	for i in 30:
+		await tree.process_frame
+	main._process(10.0)                       # 10 s on: the next screen
+	for i in 30:
+		await tree.process_frame
+	if main.ui.mimic.current == first:
+		p.append("walk=screens did not go on to the next screen")
+	if main.times.is_empty() or main.ui.mimic.frames == 0:
+		p.append("walk=screens counted no frames (%d, the screens %d)" % [main.times.size(), main.ui.mimic.frames])
+	main.free()
+	return p
+
+
+## Every cell's KKS code is drawn whole (a compact cell's beside its value), every name in at most two lines of the
+## cell, and a screen opens at a zoom whose text is read (on a phone's scale too: the Fit button alone goes smaller).
+func _legible(tree: SceneTree, ui) -> Array:
+	var p: Array = []
+	var mim = ui.mimic
+	var sm = ui.screens
+	var f: Font = mim._font()
+	var w: float = mim.CELL_W - mim.PAD * 2
+	for c in sm.items:
+		var it: Dictionary = sm.items[c]
+		var cw := f.get_string_size(c, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		var room := w - (90.0 if mim._compact(it) else 72.0)   # a value of 9 characters, or three alarm badges
+		if cw > room:
+			p.append("%s's code needs %.0f px of %.0f in its cell" % [c, cw, room])
+		var nl: PackedStringArray = mim._name_lines(it)
+		var size := 14 if mim._compact(it) else 15
+		if nl.size() > 2 or f.get_string_size(nl[nl.size() - 1], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > w:
+			p.append("%s's name does not fit two lines of its cell: %s" % [c, str(nl)])
+	if mim._name_lines({"code": "x", "name": "HP superheater spray control valve", "kind": "valve", "lamps": [],
+			"values": [], "ops": [1]}).size() != 2:
+		p.append("a long name is not set on two lines")
+	ui.open_screens()
+	for i in sm.screens.size():
+		mim.show_screen(i)
+		mim.fit()
+		await tree.process_frame
+		if mim.zoom < 0.9 * mim.readable_zoom() - 1e-4:
+			p.append("screen %s opens at zoom %.2f, below the readable %.2f" % [sm.screens[i].id, mim.zoom, 0.9 * mim.readable_zoom()])
+		# all of it drawn: no code was cut to a width (the text cut with an ellipsis is kept in the fit cache)
+		mim.fit(true)
+		for k in 20:
+			await tree.process_frame
+	for key in mim._fit_cache:
+		var txt := String(key).get_slice("|", 0)
+		if sm.items.has(txt) and String(mim._fit_cache[key]).ends_with("…"):
+			p.append("the code %s is drawn cut: %s" % [txt, mim._fit_cache[key]])
+	ui.close_screens()
 	return p
 
 
@@ -149,6 +219,8 @@ func _reach(tree: SceneTree, ui) -> Array:
 		p.append("the trainee still walks with the screens open")
 	if not ui.get_viewport().disable_3d:
 		p.append("the plant is still drawn behind the screens")
+	if ui._toast.visible and ui._toast.text.contains("operations are offered"):
+		p.append("the control room's word covers the screens just opened: %s" % ui._toast.text)
 	App.find_button(ui.root, "Control room").pressed.emit()
 	if ui.screens_open():
 		p.append("the Control room button in the control room did not close the screens")

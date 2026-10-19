@@ -4,7 +4,9 @@
 ## Options, after `--` on the command line (desktop) or one per line in walk.txt in the app's external files folder
 ## (Android: phone/frames.sh pushes it):
 ##   quality=full|lean+vis   this tier, whatever the settings say
-##   walk=frames|climb       walk a scripted route (app/routes.gd) and log frame times; `frames` loops
+##   walk=frames|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` loops;
+##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
+##                           (the screens' cost, ui/mimic.gd)
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
 ##                           data folder elsewhere)
@@ -56,6 +58,8 @@ var sim_max_ms := 0.0      # the model's busiest second during a walk (ms of mod
 var sim_sum_ms := 0.0
 var sim_n := 0
 var sim_t := 0.0
+var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
+var _screen_t := 0.0
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
 
 func _ready() -> void:
@@ -137,7 +141,11 @@ func _unbaked(n: Node) -> void:
 		g.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 
 func _options() -> void:
+	var preset := opts                  # set before the start by a test or a shots script (never by a link or a file)
 	opts = parse_options(OS.get_cmdline_user_args())
+	for k in preset:
+		if not opts.has(k):
+			opts[k] = preset[k]
 	if OS.get_name() == "Android":
 		var f := FileAccess.open(ANDROID_FILES + "/walk.txt", FileAccess.READ)
 		if f:
@@ -276,8 +284,14 @@ func _first_frame() -> void:
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)])
 
 func _start_walk() -> void:
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else Routes.climb(plant)
 	walk_seconds = float(opts.get("seconds", "600"))
+	if opts.walk == "screens":
+		ui.open_panel("screens")
+		screens_walk = true
+		ui.mimic.reset_cost()
+		last_us = Time.get_ticks_usec()
+		return
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else Routes.climb(plant)
 	auto = Autopilot.new()
 	auto.skip_stuck = true
 	add_child(auto)
@@ -292,9 +306,17 @@ func _start_walk() -> void:
 	last_us = Time.get_ticks_usec()
 
 func _process(delta: float) -> void:
-	if auto == null or not auto.running:
+	if not screens_walk and (auto == null or not auto.running):
 		return
 	t_walk += delta
+	if screens_walk:
+		if t_walk - delta <= 5.0 and t_walk > 5.0:
+			ui.mimic.reset_cost()       # measured as the frames are: after the first 5 s
+		_screen_t += delta
+		if _screen_t >= 10.0:
+			_screen_t = 0.0
+			var m = ui.mimic
+			m.show_screen(m.current + 1 if m.current + 1 < ui.screens.screens.size() else -1)
 	var now := Time.get_ticks_usec()
 	var ms := (now - last_us) / 1000.0
 	last_us = now
@@ -340,6 +362,10 @@ func _finish() -> void:
 			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576, first_frame_ms, plant.load_ms])
 	else:
 		_say("RESULT no frames (stuck=%d)" % stuck_count)
+	if screens_walk:
+		var m = ui.mimic
+		_say("MIMIC screens_open=%s frames=%d draw_max_us=%d draw_mean_us=%d frames_over_2ms=%d longest_piece_us=%d" % [
+			str(ui.screens_open()), m.frames, m.frame_us_max, m.frame_us_sum / maxi(1, m.frames), m.frames_over_2ms, m.draw_us])
 	if sim_n > 0:
 		_say("SIM_RESULT model_ms_per_s_mean=%.1f model_ms_per_s_max=%.1f step_ms=%.3f ff_cap=%.1f model_time=%s" % [
 			sim_sum_ms / sim_n, sim_max_ms, ui.clock.step_ms, ui.clock.ff_cap(), ui.clock.clock_text()])

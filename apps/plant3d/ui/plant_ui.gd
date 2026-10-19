@@ -314,7 +314,7 @@ func open_panel(p: String) -> void:
 		open_card(p.substr(5))
 	elif p == "screens" or p.begins_with("screens:"):
 		if not in_control_room():
-			go_control_room()
+			go_control_room(false)
 		open_screens(p.substr(8) if p.begins_with("screens:") else "")
 
 
@@ -461,7 +461,7 @@ func control_room() -> void:
 		else:
 			open_screens()
 		return
-	go_control_room()
+	go_control_room(false)
 	open_screens()
 
 
@@ -516,7 +516,9 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 			done.call())
 
 
-func go_control_room() -> void:
+## To the control room (`say`: with a word on what is offered there; not when the screens open at once, which it
+## would cover).
+func go_control_room(say := true) -> void:
 	var st: Array = main.plant.start()
 	if _flight:
 		_flight.kill()
@@ -525,7 +527,8 @@ func go_control_room() -> void:
 	player.global_position = st[0]
 	player.set_heading(st[1])
 	player.set_mode(player.Mode.WALK)
-	toast("In the control room: the screens' operations are offered here.")
+	if say:
+		toast("In the control room: the screens' operations are offered here.")
 
 
 func _release_mouse() -> void:

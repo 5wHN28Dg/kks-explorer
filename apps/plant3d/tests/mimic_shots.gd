@@ -12,6 +12,7 @@ const Procedure = preload("res://sim/procedure.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const W = preload("res://ui/widgets.gd")
+const App = preload("res://tests/ui_app.gd")
 
 var out := ""
 var phone := false
@@ -73,7 +74,12 @@ func _run() -> void:
 	ui = main.ui
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	await process_frame
-	ui.go_control_room()
+	# a saved run of another build offered at start (the shots' own file, from an earlier run): a new one
+	var nr: Button = App.find_button(root, "New run")
+	if nr != null and nr.is_visible_in_tree():
+		nr.pressed.emit()
+		await process_frame
+	ui.go_control_room(false)
 	await every_screen("cold")
 	# the desks, seen from the start
 	ui.close_screens()
@@ -84,7 +90,7 @@ func _run() -> void:
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	Procedure.run(ui.model, "cold_start", 3600, ui.clock.engine)
 	ui.clock.run_steps(9000)               # 15 minutes at base load through the clock: the trends fill
-	ui.go_control_room()
+	ui.go_control_room(false)
 	await every_screen("base")
 	# the cost: the control room's view with the screens shut, then the busiest screens open, the plant running
 	ui.clock.set_speed(SimClock.Speed.NORMAL)
