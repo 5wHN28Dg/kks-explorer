@@ -33,6 +33,8 @@ proc g_bytes_new*(data: pointer, size: csize_t): W {.importc, header: HA.}
 proc g_bytes_unref*(b: W) {.importc, header: HA.}
 proc g_application_run*(app: W, argc: cint, argv: cstringArray): cint {.importc, header: HA.}
 proc g_application_quit*(app: W) {.importc, header: HA.}
+proc g_application_register*(app: W, cancellable: pointer, error: pointer): cint {.importc, header: HA.}
+proc g_application_get_is_remote*(app: W): cint {.importc, header: HA.}
 proc g_get_user_data_dir*(): cstring {.importc, header: HA.}
 proc g_main_context_iteration*(ctx: pointer, mayBlock: cint): cint {.importc, header: HA, discardable.}
 var G_IO_IN* {.importc, header: HA, nodecl.}: cint
@@ -47,6 +49,7 @@ type Env = ref object
   fnKey: proc (keyval: cuint, state: cuint): bool
   fnB: proc (): bool
   fnS: proc (s: Surface, w, h: int)
+  fnU: proc (uris: seq[string])
 
 proc envDestroy(data: pointer, closure: pointer) {.cdecl.} = GC_unref(cast[Env](data))
 
@@ -90,6 +93,17 @@ proc trampStop(inst: W, data: pointer): cint {.cdecl.} =
   ## close-request whose handler may keep the window open: fnB returns true to stop the close
   result = 0
   guard: result = cint(cast[Env](data).fnB())
+proc g_file_get_uri(f: W): cstring {.importc, header: HA.}
+proc trampAppOpen(app: W, files: ptr UncheckedArray[W], n: cint, hint: cstring, data: pointer) {.cdecl.} =
+  ## GApplication "open": the URIs of the GFiles, as given (a scheme GVfs doesn't know is a GDummyFile: its text)
+  guard:
+    var uris: seq[string]
+    for i in 0 ..< int(n):
+      let u = g_file_get_uri(files[i])
+      if u != nil:
+        uris.add $u
+        g_free(cast[pointer](u))
+    cast[Env](data).fnU(uris)
 proc trampBoolSrc(data: pointer): cint {.cdecl.} =
   ## timers keep running after an error (fnB returns false to stop on purpose)
   result = 1
@@ -122,6 +136,10 @@ proc onPressed*(inst: W, sig: string, fn: proc (n: int, x, y: float)): culong {.
   connect(inst, sig, cast[pointer](trampPressed), Env(fnI: proc (i: int) = nn = i, fnDD: proc (x, y: float) = fn(nn, x, y)))
 proc onKey*(inst: W, fn: proc (keyval, state: cuint): bool): culong {.discardable.} =
   connect(inst, "key-pressed", cast[pointer](trampKey), Env(fnKey: fn))
+proc onOpen*(app: W, fn: proc (uris: seq[string])): culong {.discardable.} =
+  ## GApplication "open" (G_APPLICATION_HANDLES_OPEN): the files or URIs Walkdown was started with, in the primary
+  ## instance (a second start hands them over)
+  connect(app, "open", cast[pointer](trampAppOpen), Env(fnU: fn))
 proc onScale*(inst: W, fn: proc (scale: float)): culong {.discardable.} =
   connect(inst, "scale-changed", cast[pointer](trampScale), Env(fnDD: proc (a, b: float) = fn(a)))
 

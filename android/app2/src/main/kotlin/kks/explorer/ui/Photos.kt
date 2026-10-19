@@ -107,6 +107,10 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Bitmap?>(null) }
+    // from the camera or gallery opening until the photo is in its editor: a link waits (it could change the panel,
+    // and the photo would come back to nothing)
+    var awaiting by remember { mutableStateOf(false) }
+    if (awaiting) HoldLinks()
     var fromCamera by remember { mutableStateOf(true) }       // for Retake: the camera again, or the gallery
     var plate by remember { mutableStateOf(false) }           // this picture is of the equipment's tag plate
     var askPlate by remember { mutableStateOf(false) }
@@ -131,16 +135,17 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
             if (uri == camUri) camFile.delete()
             orientedBitmap(raw)
         }
+        awaiting = false
         if (picked == null) snack.showSnackbar("Could not read that picture")
     }
-    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) load(camUri) }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) else awaiting = false }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) load(camUri) else awaiting = false }
     // the CAMERA permission is declared (QR scanning), so the camera app may only be asked once it is granted
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) camera.launch(camUri) else scope.launch { snack.showSnackbar("Without the camera permission, pick a photo from the gallery") }
+        if (ok) camera.launch(camUri) else scope.launch { awaiting = false; snack.showSnackbar("Without the camera permission, pick a photo from the gallery") }
     }
     fun shoot(ofPlate: Boolean) {
-        plate = ofPlate; fromCamera = true
+        plate = ofPlate; fromCamera = true; awaiting = true
         if (ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(camUri) else perm.launch(Manifest.permission.CAMERA)
     }
     val hasPlate = photos.any { isPlate(it.str("caption")) }
@@ -173,11 +178,11 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { withFloor { shoot(false) } }) { Text("Take a photo") }
         OutlinedButton(onClick = { withFloor { shoot(true) } }) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
-        OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; gallery.launch("image/*") } }) { Text("From the gallery") }
+        OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; awaiting = true; gallery.launch("image/*") } }) { Text("From the gallery") }
     }
     picked?.let { bmp ->
         Annotate(bmp, plate, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
-            onRetake = { picked = null; if (fromCamera) shoot(plate) else gallery.launch("image/*") }) { out, caption0, note ->
+            onRetake = { picked = null; if (fromCamera) shoot(plate) else { awaiting = true; gallery.launch("image/*") } }) { out, caption0, note ->
             picked = null
             val caption = if (plate) plateCaption(caption0) else caption0
             // the queue encodes and sends it in the background, in order, whether or not this panel stays open
@@ -255,6 +260,7 @@ private val COLORS = listOf(0xFFE53935.toInt(), 0xFFFDD835.toInt(), 0xFF1E88E5.t
 @Composable
 internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () -> Unit, onRetake: () -> Unit,
                      onDone: (Bitmap, String, String) -> Unit) {
+    HoldLinks()           // (a link would take the photo being marked up away with the panel)
     val marks = remember { mutableStateListOf<Mark>() }
     var kind by remember { mutableStateOf("arrow") }
     var color by remember { mutableIntStateOf(COLORS[0]) }

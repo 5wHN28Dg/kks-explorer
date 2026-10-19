@@ -38,6 +38,7 @@ func setup(u) -> void:
 		bar.add_child(b)
 		_tabs[t[0]] = b
 	bar.add_child(W.button("Acknowledge all", _ack_all))
+	bar.add_child(W.button("Events", func(): ui.open_debrief()))      # the run's debrief (ui/debrief_panel.gd)
 	visible = false
 
 

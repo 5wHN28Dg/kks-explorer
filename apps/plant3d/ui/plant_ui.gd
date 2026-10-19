@@ -4,7 +4,8 @@
 ##
 ## Keys and buttons (app/controls.gd): E or a tap at a part opens its card (gamepad A), L the alarms (D-pad up),
 ## P procedures and tours (D-pad left), K pause and run (D-pad down), the full stop key fast-forward (D-pad right),
-## H back to the control room, Esc or B closes the top panel.
+## H back to the control room, Esc or B closes the top panel. The debrief (what happened in the run) opens at the end
+## of a procedure and from the alarm list's Events button.
 extends CanvasLayer
 
 const W = preload("res://ui/widgets.gd")
@@ -23,6 +24,8 @@ const Card = preload("res://ui/card.gd")
 const AlarmPanel = preload("res://ui/alarm_panel.gd")
 const ProcedurePanel = preload("res://ui/procedure_panel.gd")
 const TrainerPanel = preload("res://ui/trainer_panel.gd")
+const Autosave = preload("res://ui/autosave.gd")
+const DebriefPanel = preload("res://ui/debrief_panel.gd")
 
 const CONTENT := "res://built/content"
 const REACH := 6.0              # metres: within this a trainee works the equipment's local controls
@@ -45,6 +48,9 @@ var card
 var alarms
 var procedure
 var trainer
+var autosave                    # ui/autosave.gd: the run saved to user://, offered again at start
+var debrief
+var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var root: Control
 var arrows: Control
 var instructor := false
@@ -99,6 +105,7 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	m.add_child(pointer)
 	sounds = SoundPlayer.new()
 	sounds.name = "sounds"
+	sounds.walker = player
 	m.add_child(sounds)
 	horn_changed.connect(sounds.horn)
 	bindings = Bindings.new()
@@ -114,6 +121,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	links.name = "links"
 	links.link.connect(handle_link)
 	add_child(links)
+	autosave = Autosave.new()
+	autosave.name = "autosave"
+	add_child(autosave)
+	autosave.setup(self, content)
 
 
 # ------------------------------------------------------------------ building the overlay
@@ -160,6 +171,10 @@ func _build() -> void:
 	trainer.name = "trainer"
 	root.add_child(trainer)
 	trainer.setup(self)
+	debrief = DebriefPanel.new()
+	debrief.name = "debrief"
+	root.add_child(debrief)
+	debrief.setup(self)
 	_hint = W.label("", 20, Color.WHITE, false)
 	_hint.add_theme_constant_override("outline_size", 8)
 	_hint.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -207,6 +222,8 @@ func _layout() -> void:
 	alarms.size = card.size
 	trainer.position = card.position
 	trainer.size = card.size
+	debrief.position = card.position
+	debrief.size = card.size
 	_hint.position = Vector2(vs.x * 0.5 - 400.0, vs.y * 0.5 + 24.0)
 	_hint.size = Vector2(800.0, 60.0)
 	_layout_toast()
@@ -216,7 +233,7 @@ func _layout_toast() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
 	# between the side panels when they are open (on a phone it may reach over them: it has its own background)
 	var side := 0.0
-	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible):
+	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible):
 		side = card.size.x + 32.0
 	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))
 	_toast.position = Vector2((vs.x - w) * 0.5, vs.y - 200.0 * W.scale)
@@ -335,8 +352,9 @@ func fast_forward() -> void:
 	clock.set_speed(SimClock.Speed.FAST)
 
 
-func restart(scenario: String) -> void:
+func restart(scenario: String, quiet := false) -> void:
 	stop_procedure()
+	run_tracker = null
 	clock.start(model, scenario)
 	bindings.use_engine(clock.engine)
 	sounds.engine = clock.engine
@@ -346,7 +364,8 @@ func restart(scenario: String) -> void:
 	results.clear()
 	_pending.clear()
 	_ev_seen = 0
-	toast("The plant restarted: %s." % model.scenarios[scenario].get("title", scenario))
+	if not quiet:
+		toast("The plant restarted: %s." % model.scenarios[scenario].get("title", scenario))
 
 
 # ------------------------------------------------------------------ cards, pointing, moving
@@ -354,6 +373,7 @@ func restart(scenario: String) -> void:
 func open_card(code: String, note := "") -> void:
 	alarms.visible = false
 	trainer.visible = false
+	debrief.visible = false
 	card.open(code, note)
 	if index.has(code):
 		show_me(code)
@@ -444,7 +464,7 @@ func toast(text: String, seconds := 4.0) -> void:
 
 ## The right-hand side holds one of the card, the alarm list and the instructor's panel; procedures stay on the left.
 func _right_open(p) -> void:
-	for q in [card, alarms, trainer]:
+	for q in [card, alarms, trainer, debrief]:
 		if q != p and q.visible:
 			if q == card:
 				close_card()
@@ -463,6 +483,19 @@ func toggle_alarms() -> void:
 
 func close_alarms() -> void:
 	alarms.visible = false
+
+
+## The debrief of the run: the procedure's (followed now or last), else the plant's since it started.
+func open_debrief() -> void:
+	_right_open(debrief)
+
+
+func close_debrief() -> void:
+	debrief.visible = false
+
+
+func debrief_tracker():
+	return tracker if tracker != null and not tracker.is_tour() else run_tracker
 
 
 func toggle_procedure() -> void:
@@ -499,6 +532,8 @@ func set_instructor(on: bool) -> void:
 func close_top() -> bool:
 	if trainer.visible:
 		close_trainer()
+	elif debrief.visible:
+		close_debrief()
 	elif alarms.visible:
 		close_alarms()
 	elif card.visible:
@@ -514,16 +549,26 @@ func start_procedure(id: String, step_id = null, restart_scenario := false) -> v
 	var pr: Dictionary = model.procedures[id]
 	if restart_scenario and pr.has("scenario"):
 		restart(pr["scenario"])
+	if tracker != null:
+		tracker.stop(clock.engine)          # the one followed until now ends here
 	tracker = Tracker.new()
 	tracker.step_changed.connect(_on_step_changed)
 	tracker.step_done.connect(func(_id): clock.hold = true)
 	tracker.deviation.connect(func(t): toast("Outside the procedure: " + t))
 	tracker.begin(pr, clock.engine, step_id)
+	if not tracker.is_tour():               # a tour has no debrief: the last procedure's stays
+		run_tracker = tracker
+	if debrief.visible:
+		debrief.refresh(true)
 	procedure.open()
 
 
 func stop_procedure() -> void:
+	if tracker != null:
+		tracker.stop(clock.engine)
 	tracker = null
+	if debrief != null and debrief.visible:
+		debrief.refresh(true)
 	if pointer:
 		pointer.clear()
 	if procedure:
@@ -631,7 +676,7 @@ var _max_h := 0.0
 
 ## The side panels as tall as their content (up to the bottom of the screen), so the view and the sticks stay free.
 func _fit() -> void:
-	for pnl in [card, procedure, alarms, trainer]:
+	for pnl in [card, procedure, alarms, trainer, debrief]:
 		if pnl.visible:
 			W.fit(pnl, _max_h)
 

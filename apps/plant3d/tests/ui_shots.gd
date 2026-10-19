@@ -8,6 +8,8 @@ extends SceneTree
 const App = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Procedure = preload("res://sim/procedure.gd")
+const Autosave = preload("res://ui/autosave.gd")
+const RunSave = preload("res://ui/run_save.gd")
 
 var out := ""
 var main: Node
@@ -49,6 +51,8 @@ func press(row: Array) -> void:
 
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(out)
+	Autosave.default_path = "user://shots-run.save"      # never the trainee's run, and no offer in the shots
+	RunSave.remove(Autosave.default_path)
 	main = (load("res://app/main.tscn") as PackedScene).instantiate()
 	main.opts["quality"] = "full"
 	root.add_child(main)

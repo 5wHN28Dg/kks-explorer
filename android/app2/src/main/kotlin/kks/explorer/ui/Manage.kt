@@ -274,6 +274,7 @@ private fun People(rev: Int, say: (String) -> Unit) {
     var un by remember { mutableStateOf("") }
     var fn by remember { mutableStateOf("") }
     var pos by remember { mutableStateOf("") }
+    if (un.isNotBlank() || fn.isNotBlank() || pos.isNotBlank()) HoldLinks()       // (a person being added)
     Column(Modifier.verticalScroll(rememberScrollState())) {
         if (!r.ok) Dim(r.error!!)
         Section("People", "Everyone who has an identity in this plant. Devices are added under Devices.") {
@@ -462,7 +463,9 @@ private fun Account(rev: Int, say: (String) -> Unit) {
     var pos by remember(me.str("position")) { mutableStateOf(me.str("position")) }
     var addr by remember { mutableStateOf("") }
     var metered by remember { mutableStateOf(SyncWorker.metered(ctx)) }
-    var relay by remember(rev) { mutableStateOf(Sync.config().optString("relay_url")) }
+    val relay0 = remember(rev) { Sync.config().optString("relay_url") }
+    var relay by remember(rev) { mutableStateOf(relay0) }
+    if (fn != me.str("full_name") || pos != me.str("position") || addr.isNotBlank() || relay != relay0) HoldLinks()   // (typed, not saved)
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(5000); tick++ } }
     Column(Modifier.verticalScroll(rememberScrollState())) {

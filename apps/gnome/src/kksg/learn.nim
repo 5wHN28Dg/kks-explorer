@@ -4,7 +4,7 @@
 
 import std/[math, os, strutils, tables, sets, sequtils]
 from std/unicode import runeLen
-import kks/[json, courses, model]
+import kks/[json, courses, model, applink]
 import gtk, ui, win, photos, coursefig, coursestate, appstate, coursetext, nobreak
 
 type CW = ref object       ## one course window
@@ -17,6 +17,26 @@ type CW = ref object       ## one course window
 
 proc openCourse*(w: Win, id: string, page = "")
 proc show(cw: CW, id: string)
+
+proc openCode*(w: Win, code: string) =
+  ## a code's link (a course's, or walkdown://kks/…): its tag on its drawing, with the panel (core findCode)
+  let (ok, t) = w.m.findCode(code)
+  if not ok:
+    w.toast(code & " is not on any sheet")
+    return
+  gtk_window_present(w.window)    # (first: a form holding something typed asks there before the tag opens)
+  w.goToTag(t.sheet, t.id)
+
+proc openAppLink*(w: Win, uri: string) =
+  ## a walkdown:// link from another app (decision 0058; GApplication "open"): read by the core, strictly; a code
+  ## opens its tag, a course its window; anything else, or a device that hasn't joined, does nothing
+  let l = parseAppLink(uri)
+  if l.kind == "" or w.window == nil or w.gone or not w.a.joined or w.m == nil: return
+  gtk_window_present(w.window)
+  case l.kind
+  of "kks": w.openCode(l.code)
+  of "course": openCourse(w, l.course, l.page)
+  else: discard
 
 # ---------------------------------------------------------------- runs (§3)
 
@@ -33,13 +53,7 @@ proc follow(cw: CW, uri: string): bool =
     return true
   if uri.startsWith("kks:"):
     let code = uri[4 .. ^1]
-    idle(proc () =
-      for t in cw.w.m.tags:
-        if t.full == code or t.kks == code:
-          gtk_window_present(cw.w.window)    # (first: a form holding something typed asks there before the tag opens)
-          cw.w.goToTag(t.sheet, t.id)
-          return
-      cw.w.toast(code & " is not on any sheet"))
+    idle(proc () = cw.w.openCode(code))
     return true
   not uri.startsWith("https://")
 
@@ -747,7 +761,7 @@ proc closeCourseWindows*() =
 proc openCourse*(w: Win, id: string, page = "") =
   if id in windows and windows[id].window != nil:
     let cw = windows[id]
-    if page.len > 0: cw.show(page)
+    if page.len > 0 and page != cw.pageId: cw.show(page)     # (the page shown: kept as it is, answers and all)
     gtk_window_present(cw.window)
     return
   loadCourseFonts()

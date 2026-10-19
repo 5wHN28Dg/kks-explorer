@@ -232,6 +232,7 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
 |---|---|
 | `walkdown-plant://kks/<code>` | Walkdown Plant at that equipment: highlighted, with its card; the trainee chooses to walk or fly there |
 | `walkdown-plant://procedure/<id>` and `…/<id>/<step>` | a procedure or tour (§8), at its first or that step |
+| `walkdown://kks/<code>` | Walkdown at the tag with that code, on its drawing (as a course's code link) |
 | `walkdown://course/<course>` and `…/<course>/<page>` | Walkdown's course renderer at that course or page |
 
 - **Codes in links** are read leniently, the plant's own codes strictly: a link's code (`[0-9A-Z]{4,24}`, as in
@@ -247,6 +248,25 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
   The reference is `read_link` in `ref/plant3d.py`, and the vectors' `links` (§12) pin it. The code is not stored or sent
   anywhere: Walkdown Plant has no network access (0054).
 - **A link out with nothing to open it** (Walkdown not installed): the app says so instead of failing silently.
+
+**Links into Walkdown** (0058). Walkdown's Android, GNOME and Windows apps register the `walkdown` scheme; the web client
+takes no links. Walkdown reads a link more strictly than the plant does, because it holds a real plant's data and
+acts for a signed-in person (`core/src/kks/applink.nim`, its tests in `core/tests/test_applink.nim`):
+
+- The whole link is at most 128 characters, taken as given: no trimming, no percent-decoding. The scheme
+  `walkdown://` is matched in any case (RFC 3986), everything after it exactly.
+- `walkdown://kks/<code>` with `<code>` = `[0-9A-Z]{4,24}`: the first tag, in the drawings' order, whose code with
+  its suffix is `<code>`, else the first whose code without the suffix is; its drawing opens with the tag selected
+  and its panel, as when a course's code link is followed. A code on no drawing says so, nothing more.
+- `walkdown://course/<course>` and `walkdown://course/<course>/<page>`, identifiers `[a-z_][a-z0-9_]{0,31}`
+  (COURSES.md §1): that course, at that page, or where the learner left off; a course or page the device doesn't
+  have opens as a course link to it does.
+- Anything else opens nothing and says nothing: another kind, a query or fragment, an empty or extra path segment, a
+  user or port, a malformed code or identifier. Walkdown only comes to the front (or starts) as when it is opened
+  from the launcher. A device that has not joined a plant opens no link, now or after joining. No link reaches
+  anything else in Walkdown: signing in, joining, sending, deleting, importing or fetching.
+- A link waits while something unfinished is open over the main screen (the camera or a file picker, a photo being
+  marked up, a form being typed): it opens once that is closed, and never takes it away.
 
 ## 7. The behaviour model
 
@@ -548,6 +568,10 @@ minutes of model time, about 10 minutes of the trainee's time with fast-forward,
   way with every op accepted.
 - **Procedure mode** checks the trainee: the event list (§7.6) shows an operation outside the expected step as a
   deviation (not refused: the plant reacts as it would). **Free mode** has no procedure.
+- **The debrief** (the app's, from the event list): the run's events in order with their model time (operations,
+  alarm changes, shelving, trips with their first out, faults, interlocks, sequence steps, and the procedure's steps
+  as they ended), each deviation with the step it was made in and the step it belongs to, and a summary (time
+  taken, steps, operations, alarms, trips). Shown at the end of a procedure and from the alarm list during a run.
 
 **Walkdown's procedures.** Walkdown's own `procedures.json` (from a plant's operation manual) holds steps of text with
 linked codes. They map onto this format (`text` → `text`, linked codes → `at`), so one renderer can show both; the
@@ -675,6 +699,10 @@ walls (a wall between halves its loudness: a simple rule, not acoustics).
 - **Levels:** every sound, recorded or synthesised, is levelled by how loud its source is on site, not to one fixed
   loudness: its A-weighted level = −26 − 0.5 × (105 − its dB(A) at 1 m) dBFS (`tools/plant3d/sounds/README.md`).
   The −23 LUFS in the example above is a placeholder.
+- **People cues and ambience** are the app's, not bound: footsteps by the floor underfoot (the content build marks
+  each walkable slab's deck and each stair), doors as they run, and outdoors (no building's roof above) the wind and
+  the distant plant, its level from how much of the plant runs. They are non-positional but for the doors. A hard
+  limiter on the master bus caps the output level.
 - The sound library and what each machine sounds like: FIRST-TRAIN.md §6.
 
 ## 12. Validation and vectors

@@ -781,7 +781,10 @@ func _area(root: Node3D, a: Dictionary) -> void:
 		kp.pipe(pipes, p)
 	for sf in surfaces:
 		if sf.area == a.id:
+			var n0 := sts.get_child_count()
 			_surface(sts, sf)
+			if sts.get_child_count() > n0:     # its slab's body (made first): what footsteps on it sound like
+				sts.get_child(n0).set_meta("deck", sf.deck)
 	for s in stairs:
 		if s.area == a.id:
 			_stair(sts, s)

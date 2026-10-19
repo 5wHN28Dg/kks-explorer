@@ -172,6 +172,7 @@ private val PLACE = FIELDS.filter { it.first != "notes" }
  *  value in a filled field (it will be replaced). */
 @Composable
 fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
+    HoldLinks()           // (a link waits: it would close this with what is typed or picked)
     val values = remember { mutableStateMapOf<String, String>() }
     var note by remember { mutableStateOf("") }
     // the values shown (the bases): Send waits for them, or every code with a value would be sent as a clash
@@ -203,6 +204,7 @@ fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Un
 /** one note added under each code's own notes (never replacing them) */
 @Composable
 fun NoteForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
+    HoldLinks()           // (a link waits: it would close this with what is typed or picked)
     var text by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
@@ -260,6 +262,7 @@ fun FloorForAll(missing: List<String>, total: Int, onPick: (String) -> Unit, onC
  *  asked for first when a code had none, else empty; `floorCodes`: the codes it was asked for. */
 @Composable
 fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, onSaid: (String) -> Unit, onQueued: () -> Unit, onClose: () -> Unit) {
+    HoldLinks()           // (a link waits: it would close this with what is typed or picked)
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Bitmap?>(null) }

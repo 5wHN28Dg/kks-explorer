@@ -7,6 +7,7 @@ extends PanelContainer
 const W = preload("res://ui/widgets.gd")
 const Runs = preload("res://ui/runs.gd")
 const LinksIn = preload("res://ui/links_in.gd")
+const Debrief = preload("res://ui/debrief.gd")
 
 var ui
 var body: VBoxContainer
@@ -231,9 +232,12 @@ func _finished() -> void:
 	var tr = ui.tracker
 	title.text = tr.proc["title"]
 	var end: int = tr.log[tr.log.size() - 1][1] if not tr.log.is_empty() else 0
-	body.add_child(W.label("Done: every step, in %s of plant time." % W.model_time(end), 22, W.OK_COLOUR))
+	body.add_child(W.label("Done: %s, in %s of plant time." % ["every step" if tr.begin_index == 0 else
+			"step %d to the last" % (tr.begin_index + 1), W.model_time(end - tr.begin_step)], 22, W.OK_COLOUR))
 	if not tr.is_tour():
-		body.add_child(W.label("%d operations outside their step." % tr.deviations.size(), 18, W.DIM))
+		var d := Debrief.collect(ui.clock.engine, ui.info, tr)
+		body.add_child(W.label("\n".join(Debrief.summary_lines(d)), 18, W.DIM))
+		body.add_child(W.button("Debrief: every event", func(): ui.open_debrief()))
 	body.add_child(W.button("Close the procedure", func(): ui.stop_procedure()))
 
 
