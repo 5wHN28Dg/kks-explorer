@@ -327,6 +327,14 @@ REJECTS = [
     ('an unknown key on a screen', 'unknown_key', _set(SCR + ['colour'], 'grey')),
     ('a left-out entry that leaves out nothing', 'bad_ref', _app(['screens.json', 'left_out'], {
         'codes': ['10LAC10AP002'], 'why': 'Nothing'})),
+    ("a group beyond the screen's grid", 'bad_number', _set(SCR + ['groups', 1, 'at'], [8, 0])),
+    ("a screen's name over 16 characters", 'bad_type', _set(SCR + ['short'], 'Feedwater pumps 1')),
+    ('a screen called overview', 'dup_id', _set(SCR + ['id'], 'overview')),
+    ('a line carrying no medium of the plant', 'bad_ref', _set(SCR + ['lines', 0, 'medium'], 'lava')),
+    ('a key value twice on the overview', 'dup_id', _set(['screens.json', 'overview', 'key'], ['p', 'p'])),
+    ('more than 6 trends on a screen', 'bad_length', _set(SCR + ['trend'], ['p'] * 7)),
+    ('an extra value twice', 'dup_id', _set(SCR + ['groups', 0, 'extra'], ['flow', 'flow'])),
+    ('an extra value without a unit', 'bad_ref', _set(SCR + ['groups', 0, 'extra'], ['valve_cmd'])),
     ('a recorded sound that is not CC0', 'bad_value', _set(['sounds.json', 'sounds'], [
         {'id': 'x', 'kind': 'loop', 'file': 'x.ogg', 'licence': 'CC-BY-4.0', 'source': 'https://example.org/x',
          'made': 'trimmed'}])),

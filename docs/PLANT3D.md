@@ -573,9 +573,12 @@ model lands on its screen by the beginning of its code. A model that gains a pum
   and row to its largest group. **`lines`:** flow lines between two groups of the screen, optionally naming the
   `medium` (plant.json) they carry, which is written on the line. **`trend`:** at most 6 values with a unit,
   drawn as sparklines on the screen. **`overview.key`:** 1–12 values with a unit, shown big on the overview with
-  a tile per screen. Limits: 16 screens, 16 groups a screen, 16 codes a group, 32 lines a screen.
-- **What the app draws** (decision 0054, high-performance HMI style, ISA-101): a grey background and grey
-  equipment, colour only for what is abnormal. A drive (a code with a `lamp` or a `start` op) is filled when it
+  a tile per screen. **`left_out`:** each entry's `codes` (1–16) and `why`, its reason (1–200 characters). Limits:
+  16 screens, 16 groups a screen, 16 codes a group, 16 `extra` values a group, 32 lines a screen, 64 `left_out`
+  entries; a screen's `id` is never `overview`.
+- **What the app draws** (high-performance HMI style, ISA-101): a grey background and grey
+  equipment, colour only for what is abnormal. A drive (a code with a `running` lamp, or a `start` op that sets a
+  state; a valve's position or a breaker's `closed` lamp make it a valve or a breaker first) is filled when it
   runs and hollow when stopped, by its `running` lamp's value or else the first state its `start` op sets; a valve
   shows its position and moves; a breaker is filled when closed (its `closed` lamp); a machine shows its state and
   `say`; a code whose trip is latched (a trip with its `kks`, or one whose actions stop it) is marked TRIP. Values

@@ -6,7 +6,9 @@
 ## Tap or click a drive, valve, breaker or measurement: its card (ui/card.gd) opens beside the screen, with the ops the
 ## content offers on the screens and their permissives: everything goes through the card and the engine, as from the
 ## field. Drag to pan, pinch or the mouse wheel to zoom; keyboard and gamepad: the arrows or D-pad move from item to
-## item, Enter or A opens it, Page Up/Down or the shoulder buttons change screen, + and − zoom, Esc or B closes.
+## item (on a gamepad the left stick: the D-pad keeps its own jobs), Enter or A opens it, Page Up/Down or the shoulder
+## buttons change screen, + and − or the triggers zoom, F or the right stick's click fits the whole screen, Space or Y
+## acknowledges the screen's alarms, Esc or B closes.
 extends Control
 
 const W = preload("res://ui/widgets.gd")
@@ -54,20 +56,22 @@ var _banner_rows: Array = []    # [rect, alarm position]
 var _press_at := Vector2.ZERO
 var _dragging := false
 var _moved := 0.0
+var _trigger := {}              # gamepad trigger axis -> held past halfway
 var _touches := {}              # index -> position (two fingers: pinch)
 var _pinch0 := 0.0
 var redraws := 0                # pieces drawn (tests: each a few times a second, not every frame)
+var piece_us_max := 0           # the longest piece since reset_cost() (whatever screens were shown)
 var draw_us := 0                # the longest piece's drawing time since the screen was shown, in microseconds
 var _pieces: Array = []         # the screen's pieces, each drawn on its own: [Control, layout rect]
 var _ci: CanvasItem             # the piece being drawn
 var _rr := 0                    # the next piece to redraw (round robin: a few each frame, each at REFRESH)
 var _rr_acc := 0.0
-var _fit_cache := {}
+var _fit_cache := {}            # text cut to a width: the same names every redraw
 var _frame_us := 0              # drawing time in this frame
 var frame_us_max := 0           # the most one frame spent drawing the screens (the frame rule's measure)
 var frame_us_sum := 0
 var frames := 0
-var frames_over_2ms := 0            # text cut to a width: the same names every redraw
+var frames_over_2ms := 0
 
 ## A layout: {size, title, groups: [{rect, title}], cells: [{rect, code or value name, kind: item | extra | tile}],
 ## lines: [[from rect, to rect, label]], trends: [[value, rect]], keys: [[value, rect]]}
@@ -151,7 +155,7 @@ func canvas_top() -> float:
 func open(screen := -1) -> void:
 	visible = true
 	show_screen(screen)
-	if ui.wants_focus():
+	if ui.wants_focus() or not Input.get_connected_joypads().is_empty():   # a touch device with a gamepad too
 		canvas.grab_focus()
 
 
@@ -198,17 +202,17 @@ func _build_pieces() -> void:
 	for g in L.groups:
 		_piece(g.rect, _draw_group.bind(g), false)      # its panel and title: drawn once
 		for c in g.cells:
-			_piece(c.rect, _draw_cell.bind(c))
+			_piece(c.rect, _draw_cell.bind(c), true, c.id)
 	for c in L.cells:
 		if c.kind == "tile":
-			_piece(c.rect, _draw_tile_piece.bind(c))
+			_piece(c.rect, _draw_tile_piece.bind(c), true, c.id)
 	for t in L.trends:
 		_piece(t[1], _draw_trend.bind(t[1], t[0], 13))
 	for t in L["keys"]:
 		_piece(t[1], _draw_key.bind(t[1], t[0]))
 
 
-func _piece(rect: Rect2, f: Callable, live := true) -> void:
+func _piece(rect: Rect2, f: Callable, live := true, id := "") -> void:
 	var c := Control.new()
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	c.size = rect.size
@@ -222,9 +226,10 @@ func _piece(rect: Rect2, f: Callable, live := true) -> void:
 		redraws += 1
 		var us := Time.get_ticks_usec() - t0
 		draw_us = maxi(draw_us, us)
+		piece_us_max = maxi(piece_us_max, us)
 		_frame_us += us)
 	canvas.add_child(c)
-	_pieces.append([c, rect, live])
+	_pieces.append([c, rect, live, id])
 
 
 func _place_pieces() -> void:
@@ -244,6 +249,7 @@ func pieces_count() -> int:
 
 
 func reset_cost() -> void:
+	piece_us_max = 0
 	frames_over_2ms = 0
 	frame_us_max = 0
 	frame_us_sum = 0
@@ -316,6 +322,8 @@ func _layout_of(i: int) -> Dictionary:
 		else:
 			# as many items a row in the big groups as lets the whole screen show largest on this canvas
 			var cs := canvas.size if canvas.size.x > 10 else Vector2(1600, 560) * W.scale
+			if canvas.size.x > 10:
+				_laid_for = canvas.size
 			var best := {}
 			var best_z := -1.0
 			for maxc in range(1, 7):
@@ -502,11 +510,24 @@ func _on_resized() -> void:
 		fit()
 		if selected != "" and _picked:
 			reveal(selected)          # a target picked before the canvas had its size (a link to a code)
+		_laid_for = canvas.size
+	elif _laid_for.x > 10 and canvas.size.y > 10 and absf(canvas.size.aspect() - _laid_for.aspect()) > 0.3:
+		# a turned phone: the groups a row are chosen again for the new shape, the view fitted again
+		_laid_for = canvas.size
+		_layouts.clear()
+		_view.clear()
+		_build_pieces()
+		fit()
+		if selected != "":
+			reveal(selected)
 	else:
 		_clamp_offset()
+		_place_pieces()           # the pieces follow the offset, as the lines and the title do
 
 
 var _unsized := false
+var drawn := {}                 # code -> the state or value its cell showed when last drawn (tests: what is on screen)
+var _laid_for := Vector2.ZERO   # the canvas size the layouts were chosen for
 var _picked := false            # the selection was picked (select()), not the screen's first target by default
 
 
@@ -637,17 +658,36 @@ func _canvas_input(ev: InputEvent) -> void:
 		canvas.accept_event()
 		return
 	if ev is InputEventJoypadButton and ev.pressed:
-		if ev.button_index == JOY_BUTTON_LEFT_SHOULDER:
-			show_screen(_prev_screen()); canvas.accept_event(); return
-		if ev.button_index == JOY_BUTTON_RIGHT_SHOULDER:
-			show_screen(_next_screen()); canvas.accept_event(); return
+		match ev.button_index:
+			JOY_BUTTON_LEFT_SHOULDER: show_screen(_prev_screen()); canvas.accept_event(); return
+			JOY_BUTTON_RIGHT_SHOULDER: show_screen(_next_screen()); canvas.accept_event(); return
+			JOY_BUTTON_Y: ack_screen(); canvas.accept_event(); return
+			JOY_BUTTON_RIGHT_STICK: fit(true); canvas.accept_event(); return
+	if ev is InputEventJoypadMotion and (ev.axis == JOY_AXIS_TRIGGER_LEFT or ev.axis == JOY_AXIS_TRIGGER_RIGHT):
+		# the triggers zoom, once each time one is pressed past halfway
+		var down: bool = ev.axis_value > 0.5
+		if down and not _trigger.get(ev.axis, false):
+			zoom_by(1.25 if ev.axis == JOY_AXIS_TRIGGER_RIGHT else 1.0 / 1.25)
+		_trigger[ev.axis] = down
+		canvas.accept_event()
+		return
 	if ev is InputEventKey and ev.pressed:
 		match ev.physical_keycode:
 			KEY_PAGEUP: show_screen(_prev_screen()); canvas.accept_event(); return
 			KEY_PAGEDOWN: show_screen(_next_screen()); canvas.accept_event(); return
-			KEY_EQUAL, KEY_KP_ADD: zoom_by(1.25); canvas.accept_event(); return
-			KEY_MINUS, KEY_KP_SUBTRACT: zoom_by(1.0 / 1.25); canvas.accept_event(); return
+			KEY_SPACE: ack_screen(); canvas.accept_event(); return
+			KEY_F: fit(true); canvas.accept_event(); return
+			KEY_KP_ADD: zoom_by(1.25); canvas.accept_event(); return
+			KEY_KP_SUBTRACT: zoom_by(1.0 / 1.25); canvas.accept_event(); return
+		# + and − by the character typed, whatever the keyboard's layout
+		if ev.unicode == 43 or ev.unicode == 61:            # + (or = beside it on a US keyboard)
+			zoom_by(1.25); canvas.accept_event(); return
+		if ev.unicode == 45 or ev.unicode == 0x2212:        # - or −
+			zoom_by(1.0 / 1.25); canvas.accept_event(); return
 	for d in [["ui_left", Vector2.LEFT], ["ui_right", Vector2.RIGHT], ["ui_up", Vector2.UP], ["ui_down", Vector2.DOWN]]:
+		# the D-pad keeps its own jobs on the screens (alarms, procedure, pause, fast): the stick moves the selection
+		if ev is InputEventJoypadButton:
+			break
 		if ev.is_action_pressed(d[0], true):
 			move_selection(d[1])
 			canvas.accept_event()
@@ -697,11 +737,13 @@ func activate(id: String) -> void:
 
 
 func select(id: String) -> void:
+	var old := selected
 	selected = id
 	_picked = true
 	reveal(id)
-	for pc in _pieces:
-		(pc[0] as Control).queue_redraw()
+	for pc in _pieces:                 # the outline moves: only the two pieces it leaves and enters are drawn again
+		if pc[3] == old or pc[3] == id:
+			(pc[0] as Control).queue_redraw()
 
 
 ## The nearest target in a direction from the selected one (the arrows, the D-pad).
@@ -738,7 +780,8 @@ func ack_screen() -> void:
 	var ks: Array = []
 	if current < 0:
 		for k in e._al.size():
-			ks.append(k)
+			if not ScreensModel.suppressed(e, k):
+				ks.append(k)
 	else:
 		ks = sm.screen_alarms(current, e).alarms
 	for k in ks:
@@ -912,6 +955,7 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 	var w := r.size.x - PAD * 2
 	if _compact(it):
 		var txt: String = ui.info.fmt(it.values[0], e.v(it.values[0]))
+		drawn[it.code] = txt
 		_text(_ci, Vector2(x, y + 3), it.code, 13, INK_DIM)
 		if not al.is_empty():
 			var col: Color = PRIO[clampi(al[0][0], 1, 3)]
@@ -939,6 +983,7 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 	y += 2.0
 	if it.kind != "measure":
 		var state := _draw_symbol(Vector2(x + 20, y + 22), it, e)
+		drawn[it.code] = state.words
 		var sx := x + 48.0
 		if tk >= 0:
 			var tb := Rect2(sx, y + 4, 52, 20)

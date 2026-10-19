@@ -262,11 +262,15 @@ func next_op(it: Dictionary, e) -> Dictionary:
 		for o in it.ops:
 			if o["do"] == d and not o.has("machine"):
 				return o
-	# a sequence's or controller's command it takes in its present state
+	# a sequence's or controller's command it takes in its present state; else one it takes in any state ("*")
+	var any := {}
 	for o in it.ops:
 		if o.has("machine"):
 			var mi: int = info.machine_index(o["machine"])
 			var from = m.machines[mi]["commands"][o["do"]]["from"]
-			if typeof(from) != TYPE_STRING and from.has(info.state_name(mi, e)):
+			if typeof(from) == TYPE_STRING:
+				if from == "*" and any.is_empty():
+					any = o
+			elif from.has(info.state_name(mi, e)):
 				return o
-	return {}
+	return any

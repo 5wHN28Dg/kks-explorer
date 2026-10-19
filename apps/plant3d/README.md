@@ -296,8 +296,9 @@ screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path app
 res://tests/ui_shots.gd -- --out=DIR`; `tests/mimic_shots.gd` (same arguments, `--phone` at
 `--resolution 2960x1440` for the phone's scale) saves every control room screen and prints what drawing them costs.
 On the Note 9 (2026-10-19, debug build, `WALK_EXTRA="walk=screens\n" phone/frames.sh`, 100 s): frames median
-16.7 ms, 99.95 % at 30 fps or more; the screens' drawing 0.38 ms a frame on average, 71 of 5,969 frames over 2 ms,
-13 ms at most (a screen's first drawing when it is shown).
+16.7 ms, 99.95 % at 30 fps or more; the screens' pieces drew in 0.38 ms a frame on average, 71 of 5,969 frames over
+2 ms, 13 ms at most (a screen's first drawing when it is shown). That counts the pieces only: the tabs, the alarm
+banner and the flow lines are drawn besides, so the frame times above are the measure.
 - `test_about`: About from the settings (gamepad A), what it shows (version, commit, the assets with their licence,
   Godot's notices), scrolling by D-pad, stick, Page Down and Home, and back by Esc, B and Back.
 - `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).

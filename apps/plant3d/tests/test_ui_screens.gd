@@ -30,9 +30,173 @@ func run(tree: SceneTree) -> Array:
 	p.append_array(await _live(tree, ui))
 	p.append_array(await _operate(tree, ui))
 	p.append_array(await _legible(tree, ui))
+	p.append_array(_any_state(ui))
+	p.append_array(await _keys(tree, ui))
+	p.append_array(await _resize(tree, ui))
 	main.free()
 	p.append_array(await _measure(tree))
 	return p
+
+
+static func _key(code: Key, uni := 0) -> InputEventKey:
+	var k := InputEventKey.new()
+	k.pressed = true
+	k.physical_keycode = code
+	k.keycode = code
+	k.unicode = uni
+	return k
+
+
+static func _joy(b: JoyButton) -> InputEventJoypadButton:
+	var j := InputEventJoypadButton.new()
+	j.pressed = true
+	j.button_index = b
+	return j
+
+
+static func _axis(a: JoyAxis, v: float) -> InputEventJoypadMotion:
+	var m := InputEventJoypadMotion.new()
+	m.axis = a
+	m.axis_value = v
+	return m
+
+
+## The screens' keys and gamepad: Space and Y acknowledge the screen's alarms, F and the right stick's click fit it,
+## + by the character typed and the triggers zoom, the stick moves the selection, the D-pad is left to its own jobs.
+func _keys(tree: SceneTree, ui) -> Array:
+	var p: Array = []
+	var mim = ui.mimic
+	var e = ui.clock.engine
+	ui.open_screens("aux")
+	await tree.process_frame
+	var unack := func() -> int:
+		var n := 0
+		for k in sm_alarms(ui, "aux"):
+			if e.astate[k] == "active_unack" or e.astate[k] == "cleared_unack":
+				n += 1
+		return n
+	# closed cooling water pump A started, then lost: alarms on the screen, acknowledged by Y
+	ui.do_op({"kks": "00PGC10AP001", "do": "start"}, null)
+	ui.clock.run_steps(30)
+	ui.fault("ccw_both")
+	ui.clock.run_steps(50)
+	if unack.call() == 0:
+		p.append("losing the running closed cooling water pump raised no alarm on the auxiliaries' screen")
+	mim._canvas_input(_joy(JOY_BUTTON_Y))
+	ui.clock.run_steps(1)
+	if unack.call() != 0:
+		p.append("Y did not acknowledge the screen's alarms (%d left)" % unack.call())
+	mim.zoom_by(2.0)
+	var z0: float = mim.zoom
+	mim._canvas_input(_key(KEY_F, 102))
+	if mim.zoom >= z0:
+		p.append("F did not fit the whole screen (zoom %.2f from %.2f)" % [mim.zoom, z0])
+	z0 = mim.zoom
+	mim._canvas_input(_key(KEY_BRACKETRIGHT, 43))         # + where another layout puts it
+	if mim.zoom <= z0:
+		p.append("+ (typed) did not zoom in")
+	z0 = mim.zoom
+	mim._canvas_input(_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0))
+	mim._canvas_input(_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0))   # held: once
+	mim._canvas_input(_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0))
+	if absf(mim.zoom - z0 * 1.25) > 1e-3:
+		p.append("the right trigger did not zoom in once (%.3f from %.3f)" % [mim.zoom, z0])
+	z0 = mim.zoom
+	mim.zoom_by(2.0)
+	mim._canvas_input(_joy(JOY_BUTTON_RIGHT_STICK))
+	if mim.zoom >= z0 * 2.0 - 1e-3:
+		p.append("the right stick's click did not fit the screen")
+	var sel: String = mim.selected
+	mim._canvas_input(_joy(JOY_BUTTON_DPAD_RIGHT))
+	if mim.selected != sel:
+		p.append("the D-pad moved the selection: it keeps its own jobs on the screens")
+	mim._canvas_input(_axis(JOY_AXIS_LEFT_X, 1.0))
+	if mim.selected == sel:
+		p.append("the left stick did not move the selection")
+	# Space acknowledges too: instrument air compressor A started, then both compressors lost
+	ui.do_op({"kks": "00QFA10AN001", "do": "start"}, null)
+	ui.clock.run_steps(1)
+	App.run_until(ui, "ia_p_norm", 20000)
+	ui.fault("ia_lost")
+	ui.clock.run_steps(50)
+	if unack.call() == 0:
+		p.append("losing instrument air raised no alarm on the auxiliaries' screen")
+	mim._canvas_input(_key(KEY_SPACE, 32))
+	ui.clock.run_steps(1)
+	if unack.call() != 0:
+		p.append("Space did not acknowledge the screen's alarms")
+	# moving the selection draws the two pieces it leaves and enters, not the whole screen
+	ui.open_screens("ct")
+	for k in 3:
+		await tree.process_frame
+	var tg: Array = mim._targets()
+	var r0: int = mim.redraws
+	mim.select(tg[tg.size() / 2].id)
+	await tree.process_frame
+	if mim.redraws - r0 > 8:
+		p.append("moving the selection drew %d pieces of %d" % [mim.redraws - r0, mim._pieces.size()])
+	# the map opens over the plant: the screens close (their keys would reach nothing under it)
+	ui.main.toggle_map()
+	if ui.screens_open():
+		p.append("the screens stayed open under the map")
+	ui.main.toggle_map()
+	ui.close_screens()
+	return p
+
+
+func sm_alarms(ui, screen: String) -> Array:
+	return ui.screens.screen_alarms(ui.screens.screen_index(screen), ui.clock.engine).alarms
+
+
+## A resize keeps every piece where the view puts it; a turned phone lays the screen out again for its shape.
+func _resize(tree: SceneTree, ui) -> Array:
+	var p: Array = []
+	var mim = ui.mimic
+	ui.open_screens("ct")
+	await tree.process_frame
+	var check := func(why: String) -> void:
+		for pc in mim._pieces:
+			var want: Vector2 = mim.offset + (pc[1] as Rect2).position * mim.zoom
+			if (pc[0] as Control).position.distance_to(want) > 0.5:
+				p.append("%s: a piece stands at %s, the view puts it at %s" % [why, str((pc[0] as Control).position), str(want)])
+				return
+	mim.offset += Vector2(-200, -100)
+	mim._place_pieces()
+	var sz: Vector2 = mim.canvas.size
+	mim.canvas.size = sz * 0.9                 # the same shape, smaller: the offset is clamped again
+	check.call("after a resize")
+	var L0 = mim._layout_of(mim.current)
+	mim.canvas.size = Vector2(sz.y, sz.x)     # turned
+	if is_same(mim._layout_of(mim.current), L0):
+		p.append("a turned canvas kept the layout chosen for the other shape")
+	check.call("after turning")
+	mim.canvas.size = sz
+	ui.close_screens()
+	return p
+
+
+## A machine's command taken in any state (`"from": "*"`, PLANT3D.md) is what its item offers next when no command of
+## its present state is there.
+func _any_state(ui) -> Array:
+	var sm = ui.screens
+	for c in sm.items:
+		var it: Dictionary = sm.items[c]
+		for o in it.ops:
+			if not o.has("machine"):
+				continue
+			var cmds: Dictionary = ui.model.machines[ui.info.machine_index(o["machine"])]["commands"]
+			var keep := {}
+			for k in cmds:
+				keep[k] = cmds[k]["from"]
+				cmds[k]["from"] = ["no such state"]
+			cmds[o["do"]]["from"] = "*"
+			var nx: Dictionary = sm.next_op(it, ui.clock.engine)
+			for k in keep:
+				cmds[k]["from"] = keep[k]
+			if nx.get("do", "") != o["do"]:
+				return ["%s's command %s, taken in any state, is not offered next (%s)" % [c, o["do"], str(nx)]]
+			return []
+	return ["no item with a machine's command"]
 
 
 ## The phone's measurement of the screens (app/main.gd walk=screens, phone/frames.sh): the screens open in the
@@ -310,13 +474,23 @@ func _live(tree: SceneTree, ui) -> Array:
 	var drive: Dictionary = sm.items["30PAC10AP001"]
 	if drive.kind != "drive" or mim.item_state(drive, e).words != "STOPPED":
 		p.append("CW pump A is not a stopped drive: %s %s" % [drive.kind, mim.item_state(drive, e).words])
-	# alarms on the screen, its tab and the banner: the instrument air low-pressure alarm (priority 1) at cold iron
+	# alarms on the screen, its tab and the banner: instrument air compressor A started, then both lost
+	ui.do_op({"kks": "00QFA10AN001", "do": "start"}, null)
 	ui.clock.run_steps(1)
-	var air: Dictionary = sm.items["00QFB10CP001"]
+	if not App.run_until(ui, "ia_p_norm", 20000):
+		p.append("instrument air did not come up")
+	ui.fault("ia_lost")
+	ui.clock.run_steps(50)
+	var air: Dictionary = sm.items["00QFA10AN001"]
 	var al: Array = sm.alarms_now(air, e)
-	var k_air: int = ui.model.alarms.find(ui.model.alarms.filter(func(a): return a.get("kks", "") == "00QFB10CP001")[0])
-	if e.astate[k_air] != "normal" and (al.is_empty() or al[0][0] != 1):
-		p.append("the instrument air alarm is not on its item: %s" % str(al))
+	var want_p := 0
+	for a in ui.model.alarms:
+		if a.get("kks", a.get("where", "")) == "00QFA10AN001":
+			want_p = int(a.get("priority", 0)) if want_p == 0 else mini(want_p, int(a.get("priority", 9)))
+	if al.is_empty():
+		p.append("the tripped compressor's alarm is not on its item")
+	elif al[0][0] != want_p:
+		p.append("the compressor's alarm shows priority %d, its alarms' highest is %d" % [al[0][0], want_p])
 	var aux: int = sm.screen_index("aux")
 	var counts: Dictionary = sm.screen_alarms(aux, e)
 	var listed: Array = ui.alarms.entries("active")
@@ -407,6 +581,10 @@ func _operate(tree: SceneTree, ui) -> Array:
 		p.append("with its valve at the start position the start from the screen came back %s" % str(ui.op_result(row[0])))
 	if mim.item_state(it, e).words != "RUNNING":
 		p.append("the running pump is shown %s" % mim.item_state(it, e).words)
+	for k in 30:                                     # what the screen drew, at its next redraws
+		await tree.process_frame
+	if mim.drawn.get("30PAC10AP001", "") != "RUNNING":
+		p.append("the screen drew the running pump as %s" % mim.drawn.get("30PAC10AP001", "nothing"))
 	# moving between items with the arrows
 	var before: String = mim.selected
 	mim.move_selection(Vector2.RIGHT)
