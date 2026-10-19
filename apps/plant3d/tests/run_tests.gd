@@ -36,6 +36,7 @@ func _run() -> void:
 	files.sort()
 	var failed := 0
 	# the runner's own check: a script error inside a test function must be seen (it returns [] after one)
+	print("tests' user data: %s" % OS.get_user_data_dir())   # build.sh checks it is the run's own folder
 	print("(the runner checks that it sees script errors: one is expected next)")
 	var e0 := errors.count
 	await load("res://tests/fixtures/script_error.gd").new().run(self)
