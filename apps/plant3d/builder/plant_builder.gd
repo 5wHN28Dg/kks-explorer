@@ -1084,8 +1084,12 @@ func _hall_floor(body: Node, b: Dictionary) -> int:
 ## A hall reads darker than the yard outside, as it does to the eye coming in; set by eye against the exposure.
 const LAMP_FLOOR := 0.45
 ## What the reflector lets out sideways (its open bottom, the lamp's glow): an even dim light round each lamp, so walls
-## and the space between pools are not black; as a share of the sun's irradiance at the floor.
-const LAMP_SPILL := 0.06
+## and the space between pools are not black; as a share of the sun's irradiance at the floor. A wide cone down, not an
+## omni light: an omni lit the ceiling a few tenths of a metre from each lamp, and those hot spots, met by few of the
+## bake's bounce rays, came out as bright blotches over every floor and wall of the halls (second realism pass).
+const LAMP_SPILL := 0.1
+## The spill's cone, degrees from the axis: down to the walls' foot and up them, never the ceiling.
+const LAMP_SPILL_ANGLE := 80.0
 ## A lamp's reach: the hall's height and as far again, so the floor and a pit below it are lit (a reach of 1.4 × the
 ## height left the turbine hall's pit black: adversarial review, 2026-10-16)
 const LAMP_REACH := 2.4
@@ -1122,10 +1126,12 @@ func _lamps(body: Node, b: Dictionary) -> int:
 			l.spot_angle = clampf(rad_to_deg(atan(LAMP_POOL * gap / d)), 10.0, 40.0)
 			l.spot_angle_attenuation = 1.5
 			l.light_energy = LAMP_FLOOR * d * d
-			var spill := OmniLight3D.new()
+			var spill := SpotLight3D.new()
 			spill.name = "spill"
-			spill.omni_range = l.spot_range
-			spill.omni_attenuation = 2.0
+			spill.spot_range = l.spot_range
+			spill.spot_attenuation = 2.0
+			spill.spot_angle = LAMP_SPILL_ANGLE
+			spill.spot_angle_attenuation = 0.5
 			spill.light_energy = LAMP_SPILL * d * d
 			spill.light_color = Color(1.0, 0.95, 0.86)
 			spill.light_bake_mode = Light3D.BAKE_STATIC

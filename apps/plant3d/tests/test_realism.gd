@@ -71,6 +71,12 @@ func run(tree: SceneTree) -> Array:
 				p.append("%s reaches the floor and below (range %.1f, hall %.1f m)" % [l.get_path(), spot.spot_range, h])
 			if spot.spot_angle > 60.0:
 				p.append("%s throws a cone, not a flood (%.0f degrees)" % [l.get_path(), spot.spot_angle])
+			# no baked light of a lamp reaches the ceiling round it: hot spots there came out of the bake as blotches
+			# over every floor and wall (an omni "spill", second pass)
+			for c in spot.get_children():
+				var cs := c as SpotLight3D
+				if c is Light3D and (cs == null or cs.spot_angle >= 85.0):
+					p.append("%s: a lamp's spill lights the ceiling (an omni or a spot wider than 85 degrees)" % c.get_path())
 	# every hall has its painted floor, darker than the yard outside (a floor as light as the yard washed out under
 	# the lamps: second pass)
 	var floor_mat := load("res://built/materials/hall_floor.tres") as ShaderMaterial
