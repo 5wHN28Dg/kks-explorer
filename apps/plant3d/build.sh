@@ -46,6 +46,13 @@ for d in areas model scenarios procedures; do
   mkdir -p "$HERE/built/content/$d"
   cp "$ROOT/data/plant3d/$d/"*.json "$HERE/built/content/$d/"
 done
+# what About shows (app/about.gd): the third-party assets' notices, and the commit this build is made of and whether
+# the checkout had changes (tools/plant_release.py finds the commit in the packages: the release's own)
+cp "$HERE/about.json" "$HERE/built/about.json"
+COMMIT=$(git -C "$ROOT" rev-parse --verify -q HEAD 2>/dev/null || true)
+CHANGES=false
+[ -n "$COMMIT" ] && [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ] && CHANGES=true
+printf '{"format": "walkdown-plant-build", "commit": "%s", "changes": %s}\n' "$COMMIT" "$CHANGES" > "$HERE/built/build_info.json"
 # the sounds (tools/plant3d/sounds, decision 0055: NumPy and FFmpeg with libvorbis): a release needs them; otherwise
 # they are made when the tools are there, and the app is silent without them (ui/sound_player.gd)
 PY="${PLANT_PYTHON:-$ROOT/.venv/bin/python}"; [ -x "$PY" ] || PY=python3

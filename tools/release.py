@@ -17,7 +17,9 @@ The release is made of the commit this checkout is at (the release commit), and 
   the GitHub release is created on that commit (gh --target), not on main's head;
 - walkdown.apk and the MSIX packages were built from it: each names the commit it was built from (About), and the
   release commit must be in their code (the Flatpak bundles are compressed: not checked; whether a build had local
-  changes is not checked from the files: build from a clean checkout of the release commit)."""
+  changes is not checked from the files: build from a clean checkout of the release commit);
+- with --publish: every CI run on the commit has finished and passed, and GitHub's latest release is a Walkdown
+  vX.Y.Z (the new one is made latest explicitly; Walkdown Plant's releases never are: tools/plant_release.py)."""
 import argparse, base64, hashlib, json, os, re, subprocess, sys, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -94,8 +96,10 @@ def git(repo, *args):
     return r.stdout
 
 
-def checkout_problems(repo, version, remote='origin'):
-    """-> (the release commit = the checkout's HEAD, [what stops it being released]). Fetches from `remote`."""
+def checkout_problems(repo, version, remote='origin', tag_name=None):
+    """-> (the release commit = the checkout's HEAD, [what stops it being released]). Fetches from `remote`.
+    The release's tag is vVERSION (Walkdown) or `tag_name` (Walkdown Plant: plant-vVERSION)."""
+    tag_name = tag_name or f'v{version}'
     head = git(repo, 'rev-parse', '--verify', 'HEAD^{commit}').strip()
     out = []
     changed = git(repo, 'status', '--porcelain', '--untracked-files=all').splitlines()
@@ -104,17 +108,69 @@ def checkout_problems(repo, version, remote='origin'):
                    f'{changed[0].strip()}): a build from it says "with local changes"')
     git(repo, 'fetch', '-q', '--prune', remote)   # (a branch deleted on origin holds nothing)
     on_branch = git(repo, 'for-each-ref', '--contains', head, '--format=%(refname)', f'refs/remotes/{remote}/').split()
-    tag = [line.split() for line in git(repo, 'ls-remote', '--tags', remote, f'refs/tags/v{version}',
-                                         f'refs/tags/v{version}^{{}}').splitlines()]
+    tag = [line.split() for line in git(repo, 'ls-remote', '--tags', remote, f'refs/tags/{tag_name}',
+                                         f'refs/tags/{tag_name}^{{}}').splitlines()]
     tagged = None
     if tag:
         named = dict((ref, sha) for sha, ref in tag)
-        tagged = named.get(f'refs/tags/v{version}^{{}}', named.get(f'refs/tags/v{version}'))
+        tagged = named.get(f'refs/tags/{tag_name}^{{}}', named.get(f'refs/tags/{tag_name}'))
         if tagged != head:
-            out.append(f'{remote}\'s tag v{version} names {tagged[:12]}, not the release commit {head[:12]}')
+            out.append(f'{remote}\'s tag {tag_name} names {tagged[:12]}, not the release commit {head[:12]}')
     if not on_branch and tagged != head:
-        out.append(f'commit {head[:12]} is not pushed: no branch of {remote} holds it, nor its tag v{version}')
+        out.append(f'commit {head[:12]} is not pushed: no branch of {remote} holds it, nor its tag {tag_name}')
     return head, out
+
+
+# GitHub's "latest" release is what Walkdown's updater reads (sync/Updates.kt: releases/latest): it must always be a
+# Walkdown release, never one of Walkdown Plant's (plant-vX.Y.Z, decision 0054 §8)
+WALKDOWN_TAG_RE = re.compile(r'v\d{1,4}\.\d{1,4}\.\d{1,4}')
+# a workflow run's conclusions that count as passed (skipped: a job whose condition left it out)
+CI_PASSED = ('success', 'skipped', 'neutral')
+
+
+def gh(*args, repo=None):
+    """runs the gh CLI; -> its stdout. Raises SystemExit with gh's message when it fails."""
+    cmd = ['gh', *args] + (['--repo', repo] if repo else [])
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f'{" ".join(cmd[:3])} failed: {(r.stderr or r.stdout).strip()}')
+    return r.stdout
+
+
+def latest_release(repo=None):
+    """-> the tag of GitHub's latest release ('' when the repository has none)"""
+    r = subprocess.run(['gh', 'api', f'repos/{repo or updates.REPO}/releases/latest', '--jq', '.tag_name'],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        if 'Not Found' in (r.stderr or '') or 'HTTP 404' in (r.stderr or ''):
+            return ''
+        raise SystemExit(f'gh api releases/latest failed: {(r.stderr or r.stdout).strip()}')
+    return r.stdout.strip()
+
+
+def latest_problems(repo=None):
+    """[what stops a release while GitHub's latest is not a Walkdown vX.Y.Z]"""
+    tag = latest_release(repo)
+    if not WALKDOWN_TAG_RE.fullmatch(tag):
+        return [f'GitHub\'s latest release is {tag or "missing"}, not a Walkdown vX.Y.Z: Walkdown\'s updater reads it. '
+                'Make the newest Walkdown release latest first (gh release edit vX.Y.Z --latest)']
+    return []
+
+
+def ci_problems(commit, repo=None):
+    """[what stops a release of `commit` on CI]: every workflow run on it must have finished and passed (a hard gate:
+    a red or unfinished run is never published past), and there must be runs at all"""
+    runs = json.loads(gh('run', 'list', '--commit', commit, '--limit', '200', '--json',
+                         'workflowName,status,conclusion,url', repo=repo or updates.REPO) or '[]')
+    if not runs:
+        return [f'no CI run on commit {commit[:12]}: push it and wait for CI']
+    out = []
+    for r in runs:
+        if r.get('status') != 'completed':
+            out.append(f'CI {r.get("workflowName")} on {commit[:12]} has not finished ({r.get("status")})')
+        elif r.get('conclusion') not in CI_PASSED:
+            out.append(f'CI {r.get("workflowName")} on {commit[:12]} is {r.get("conclusion")}: {r.get("url")}')
+    return out
 
 
 # the files that say which commit they were built from, and where in them (About shows it)
@@ -184,6 +240,12 @@ def main(argv=None):
     problems = artifact_problems(files, commit)
     if problems:
         sys.exit('Not released: ' + '; '.join(problems) + '. Build them from a clean checkout of the release commit.')
+    if a.publish:
+        # hard gates before anything is signed: CI green on the release commit, and GitHub's latest release a
+        # Walkdown one (a Walkdown Plant release must never have become latest, decision 0054 §8)
+        problems = ci_problems(commit) + latest_problems()
+        if problems:
+            sys.exit('Not released: ' + '; '.join(problems) + '.')
     notes = open(a.notes).read().strip() if a.notes else ''
     m = manifest(a.version, files, notes)
     with open(os.path.join(a.dir, 'release.json'), 'wb') as f:
@@ -196,7 +258,8 @@ def main(argv=None):
         return
     if not a.yes and input(f'Create the public GitHub release v{a.version} with these files? [y/N] ').strip().lower() != 'y':
         return print('Not published.')
-    cmd = ['gh', 'release', 'create', f'v{a.version}', '--repo', updates.REPO, '--target', commit,
+    # --latest explicitly: Walkdown's release is the one its updater reads (Walkdown Plant's use --latest=false)
+    cmd = ['gh', 'release', 'create', f'v{a.version}', '--repo', updates.REPO, '--target', commit, '--latest',
            '--title', f'Walkdown {a.version}',
            '--notes', notes or f'Walkdown {a.version}', *files.values(),
            os.path.join(a.dir, 'release.json'), os.path.join(a.dir, 'release.json.p256')]

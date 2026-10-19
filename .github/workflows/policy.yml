@@ -10,7 +10,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ['v*', 'plant-v*']   # Walkdown's releases and Walkdown Plant's (decision 0054 §8)
   workflow_dispatch:
 
 permissions:
