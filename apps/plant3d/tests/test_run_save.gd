@@ -212,7 +212,7 @@ func _file(m, p: Array) -> void:
 static func _payload(e, saved_unix := 1) -> Dictionary:
 	return {"app": "", "content": "c", "scenario": "cold_iron", "saved_unix": saved_unix,
 			"engine": RunSave.capture(e, RunSave.engine_fields(e)), "clock": {}, "procedure": "", "tracker": {},
-			"ui": {}, "player": {}}
+			"ui": {}, "player": {}, "run": {}}
 
 
 ## A file of the right header and hash around any payload bytes.
@@ -384,6 +384,21 @@ func _app(tree: SceneTree, p: Array) -> void:
 		rp = RunSave.read(path)
 		if not rp["ok"] or rp["payload"]["engine"]["step_no"] != ui.clock.engine.step_no:
 			p.append("notification %d (background, close, focus out, Back) did not save the run" % what)
+	# a procedure stopped: kept for the debrief, and so after a restore
+	if ui.run_tracker != ui.tracker:
+		p.append("after Continue the debrief does not follow the restored procedure")
+	ui.stop_procedure()
+	var want_log := var_to_bytes([ui.run_tracker.log, ui.run_tracker.deviations, ui.run_tracker.index])
+	ui.autosave.save_now()
+	rp = RunSave.read(path)
+	var why: String = ui.autosave.check(rp["payload"]) if rp["ok"] else rp["text"]
+	if why != "" or rp["payload"]["run"].get("same", true):
+		p.append("a stopped procedure kept for the debrief was not saved: %s" % why)
+	else:
+		ui.autosave.restore(rp["payload"])
+		if ui.tracker != null or ui.run_tracker == null \
+				or var_to_bytes([ui.run_tracker.log, ui.run_tracker.deviations, ui.run_tracker.index]) != want_log:
+			p.append("a stopped procedure kept for the debrief did not come back")
 	main.free()
 	# New run: a fresh plant, and the save replaced
 	main = App.start(tree)

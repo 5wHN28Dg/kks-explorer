@@ -135,7 +135,8 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
   first-outs, alarm states with their delay counts, acknowledgements and shelves with their end steps, the faults
   applied, the inputs queued for the next step, every input made and the event log the debrief reads); the
   scenario; the clock's speed, the fast-forward asked for and "pause when a step is done"; the procedure or tour
-  (its id) and the tracker's whole state (every script variable but `proc` and `steps`); the operations' results
+  (its id) and the tracker's whole state (every script variable but `proc` and `steps`); the last procedure
+  followed, kept for the debrief after it was closed (`run`: its id, whether it is the current one, its tracker); the operations' results
   on the cards and those sent and not yet answered; the trainee's position, heading, pitch and whether flying.
   The alarm list's times are rebuilt from the event log. New state in the engine or the tracker is saved with no
   change to the save (`tests/test_run_save.gd`).
@@ -166,7 +167,8 @@ scripts only compiled, so the app can't hash its code itself. A new build theref
 before), `content`
 (SHA-256 over every file of `built/content`, by sorted path, with its length), `scenario`, `saved_unix`, `engine`
 (field → value), `clock` (`speed` 0 paused, 1 1×, 2 fast-forward; `ff_want`; `pause_on_hold`), `procedure` (an id,
-or `""`), `tracker` (field → value, `{}` without a procedure), `ui` (`results`, `pending`), `player` (`pos` a
+or `""`), `tracker` (field → value, `{}` without a procedure), `run` (`{}`, or `procedure`, `same`, `tracker`:
+`{}` when `same`), `ui` (`results`, `pending`), `player` (`pos` a
 Vector3 in Godot's axes, `yaw`, `pitch`, `fly`).
 
 **Written atomically:** the bytes go to `run.save.tmp.<pid>`, which is then renamed over `run.save`: a reader finds the

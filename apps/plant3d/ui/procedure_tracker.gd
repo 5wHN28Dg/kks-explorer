@@ -14,7 +14,15 @@ var steps: Array = []
 var index := -1                 # the current step, -1 when none (finished or not started)
 var start_step := 0             # the model step at which the current step began
 var did := {}                   # "kks|do|trip" -> true: the current step's operations done
-var deviations: Array = []      # [model step, text]
+var deviations: Array = []      # [model step, text, its op event's position in the event list, the step it was made
+                                # in, the step it belongs to (-1: none; the step it was made in: a wrong value or order)]
+var ev_from := 0                # the event list's length when the procedure began: its run's events follow
+var begin_step := 0             # the model step at which it began
+var ev_to := -1                 # the event list's length when it ended (finished or stopped); -1 while it runs
+var end_step := -1              # the model step at which it ended
+var stopped := false            # stopped by the trainee before its last step
+var stopped_at := -1            # the step it was at then
+var begin_index := 0            # the step it began at (a link or "follow from here" can begin part-way)
 var log: Array = []             # [[step id, model step it ended], …] (as sim/procedure.gd's log)
 var _seen := 0                  # events read so far
 var _in_seen := 0               # inputs matched to their op events so far (the event has no value or trip)
@@ -35,6 +43,8 @@ func begin(p: Dictionary, engine, step_id = null) -> void:
 	log = []
 	deviations = []
 	_seen = engine.events.size() if engine != null else 0
+	ev_from = _seen
+	begin_step = engine.step_no if engine != null else 0
 	_in_seen = 0
 	if engine != null:
 		for inp in engine.inputs:
@@ -46,6 +56,7 @@ func begin(p: Dictionary, engine, step_id = null) -> void:
 		for k in steps.size():
 			if steps[k]["id"] == step_id:
 				i = k
+	begin_index = i
 	_go(i, engine)
 
 
@@ -57,8 +68,21 @@ func finished() -> bool:
 	return not steps.is_empty() and index == -1 and log.size() > 0
 
 
+## The trainee stopped it (or another took its place): its run, and its debrief, end here.
+func stop(engine) -> void:
+	if ev_to != -1:
+		return
+	stopped = index >= 0
+	stopped_at = index
+	ev_to = _seen if engine == null else engine.events.size()
+	end_step = engine.step_no if engine != null else 0
+
+
 func _go(i: int, engine) -> void:
 	index = i if i < steps.size() else -1
+	if index == -1 and ev_to == -1 and not steps.is_empty():
+		ev_to = _seen                   # the events read so far: the run ends with the step that ended it
+		end_step = engine.step_no if engine != null else 0
 	start_step = engine.step_no if engine != null else 0
 	did = {}
 	step_changed.emit(index)
@@ -93,6 +117,7 @@ func on_step(engine) -> void:
 	var ops := []                       # this step's operations done: [event, its input]
 	while _seen < evs.size():
 		var ev: Array = evs[_seen]
+		var at := _seen
 		_seen += 1
 		if ev[1] == "op":
 			# the op events of a step come in the order its inputs were made: the input gives the value and trip
@@ -106,7 +131,7 @@ func on_step(engine) -> void:
 					made_before = _in_seen <= _begin_inputs      # sent before the procedure began: not judged
 					break
 			if ev[4] == "done" and not made_before:
-				ops.append([ev, inp])
+				ops.append([ev, inp, at])
 	var s := current() if index >= 0 and not is_tour() else {}
 	var completing: bool = s.has("done") and engine.step_no > start_step and engine.truth(s["done"])
 	# an operation of the next step made with the last of this one (both sent while paused) belongs to the next
@@ -116,13 +141,13 @@ func on_step(engine) -> void:
 				and _find(steps[index + 1], o[0], o[1], false) != -1:
 			carried.append(o)
 		else:
-			_op_done(o[0], o[1], engine)
+			_op_done(o[0], o[1], engine, o[2])
 	if completing:
 		log.append([s["id"], engine.step_no])
 		step_done.emit(s["id"])
 		_go(index + 1, engine)
 		for o in carried:
-			_op_done(o[0], o[1], engine)
+			_op_done(o[0], o[1], engine, o[2])
 
 
 static func _num(v):
@@ -147,7 +172,7 @@ func _find(step: Dictionary, ev: Array, inp: Array, with_value: bool) -> int:
 	return -1
 
 
-func _op_done(ev: Array, inp: Array, engine) -> void:
+func _op_done(ev: Array, inp: Array, engine, at := -1) -> void:
 	if is_tour() or index < 0:
 		return
 	var want: Array = current().get("do", [])
@@ -156,20 +181,35 @@ func _op_done(ev: Array, inp: Array, engine) -> void:
 		var loose := _find(current(), ev, inp, false)
 		if loose != -1:
 			_deviate(engine, "%s set to %s; this step asks for %s" % [ev[2], str(inp[4] if inp.size() > 5 else null),
-					str(want[loose]["value"])])
+					str(want[loose]["value"])], at, index)
 		else:
-			_deviate(engine, "%s %s is not part of this step" % [ev[2], ev[3]])
+			var home := belongs(ev, inp)
+			_deviate(engine, "%s %s is not part of this step%s" % [ev[2], ev[3],
+					(" (step %d's)" % (home + 1)) if home != -1 else ""], at, home)
 		return
 	if current().get("ordered", false):
 		for j in k:
 			if not is_done_op(want[j]):
-				_deviate(engine, "%s %s done before %s %s (this step's order)" % [ev[2], ev[3], want[j]["kks"], want[j]["do"]])
+				_deviate(engine, "%s %s done before %s %s (this step's order)" % [ev[2], ev[3], want[j]["kks"], want[j]["do"]],
+						at, index)
 				break
 	did[_key(want[k])] = true
 
 
-func _deviate(engine, text: String) -> void:
-	deviations.append([engine.step_no, text])
+## The step an operation made outside its step belongs to: the next one that expects it, else the last earlier one
+## (-1: no step does).
+func belongs(ev: Array, inp: Array) -> int:
+	for j in range(index + 1, steps.size()):
+		if _find(steps[j], ev, inp, false) != -1:
+			return j
+	for j in range(index - 1, -1, -1):
+		if _find(steps[j], ev, inp, false) != -1:
+			return j
+	return -1
+
+
+func _deviate(engine, text: String, at := -1, home := -1) -> void:
+	deviations.append([engine.step_no, text, at, index, home])
 	deviation.emit(text)
 
 

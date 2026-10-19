@@ -13,6 +13,7 @@ const HOLD := 3.0        # seconds it stays open after the walker has gone
 var openness := 0.0      # 0 closed, 1 open
 var hold := 0.0
 var closed_xf: Transform3D
+var moving := false      # running open or shut: the sounds (ui/sound_player.gd, group plant_sounds) hear it
 
 func _ready() -> void:
 	closed_xf = transform
@@ -32,6 +33,11 @@ func _physics_process(delta: float) -> void:
 	if not want and hold > 0.0:
 		hold -= delta   # pressed, or walked away from: open a while longer
 		want = hold > 0.0
+	var was := openness
 	openness = move_toward(openness, 1.0 if want else 0.0, SPEED * delta / maxf(height if kind == "roller" else width, 0.5))
+	var now := openness != was
+	if now != moving:
+		moving = now
+		get_tree().call_group("plant_sounds", "door_moving", self, moving)
 	var off := Vector3(0, openness * height, 0) if kind == "roller" else Vector3(openness * width, 0, 0)
 	transform = closed_xf.translated_local(off)

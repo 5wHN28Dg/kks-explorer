@@ -22,7 +22,7 @@ const ENGINE_BUILT := ["m", "sc", "names", "ix", "n", "timing", "step_us"]
 const TRACKER_BUILT := ["proc", "steps"]
 const PAYLOAD_KEYS := {"app": TYPE_STRING, "content": TYPE_STRING, "scenario": TYPE_STRING, "saved_unix": TYPE_INT,
 		"engine": TYPE_DICTIONARY, "clock": TYPE_DICTIONARY, "procedure": TYPE_STRING, "tracker": TYPE_DICTIONARY,
-		"ui": TYPE_DICTIONARY, "player": TYPE_DICTIONARY}
+		"ui": TYPE_DICTIONARY, "player": TYPE_DICTIONARY, "run": TYPE_DICTIONARY}
 
 
 ## The app's version: its configured version and the hash of the code that makes and reads a run's state, which

@@ -106,12 +106,18 @@ func payload() -> Dictionary:
 	if tr != null and typeof(tr.proc.get("id")) == TYPE_STRING and ui.model.procedures.has(tr.proc["id"]):
 		pid = tr.proc["id"]
 		td = RunSave.capture(tr, RunSave.tracker_fields(tr))
+	# the last procedure followed, kept for the debrief after it was closed (ui/plant_ui.gd run_tracker)
+	var run := {}
+	var rt = ui.run_tracker
+	if rt != null and typeof(rt.proc.get("id")) == TYPE_STRING and ui.model.procedures.has(rt.proc["id"]):
+		run = {"procedure": rt.proc["id"], "same": rt == tr,
+				"tracker": {} if rt == tr else RunSave.capture(rt, RunSave.tracker_fields(rt))}
 	return {
 		"app": RunSave.app_version(), "content": content, "scenario": ui.clock.scenario,
 		"saved_unix": int(Time.get_unix_time_from_system()),
 		"engine": RunSave.capture(e, RunSave.engine_fields(e)),
 		"clock": {"speed": ui.clock.speed, "ff_want": ui.clock.ff_want, "pause_on_hold": ui.clock.pause_on_hold},
-		"procedure": pid, "tracker": td,
+		"procedure": pid, "tracker": td, "run": run,
 		"ui": {"results": ui.results.duplicate(true), "pending": ui._pending.duplicate(true)},
 		"player": {"pos": pl.global_position, "yaw": pl.rotation.y, "pitch": pl.pivot.rotation.x,
 				"fly": pl.mode == pl.Mode.FLY},
@@ -149,6 +155,20 @@ func check(p: Dictionary) -> String:
 			return "its procedure's progress is damaged"
 	elif not p["tracker"].is_empty():
 		return "its procedure's progress is damaged"
+	var run: Dictionary = p["run"]
+	if not run.is_empty():
+		if run.size() != 3 or typeof(run.get("procedure")) != TYPE_STRING or typeof(run.get("same")) != TYPE_BOOL \
+				or typeof(run.get("tracker")) != TYPE_DICTIONARY or not ui.model.procedures.has(run["procedure"]):
+			return "its debrief's procedure is damaged"
+		if run["same"]:
+			if run["procedure"] != p["procedure"] or not run["tracker"].is_empty():
+				return "its debrief's procedure is damaged"
+		else:
+			var t2 = Tracker.new()
+			bad = RunSave.check(t2, RunSave.tracker_fields(t2), run["tracker"])
+			if bad != "" or not _tracker_contents(run["tracker"], p["engine"]) \
+					or run["tracker"]["index"] >= ui.model.procedures[run["procedure"]].get("steps", []).size():
+				return "its debrief's procedure is damaged"
 	var u: Dictionary = p["ui"]
 	if u.size() != 2 or typeof(u.get("results")) != TYPE_DICTIONARY or typeof(u.get("pending")) != TYPE_ARRAY \
 			or not _ui_contents(u):
@@ -247,6 +267,17 @@ func restore(p: Dictionary) -> void:
 			ui.show_me(at[0])
 		else:
 			ui.pointer.clear()
+	var run: Dictionary = p["run"]
+	if run.is_empty():
+		ui.run_tracker = null
+	elif run["same"]:
+		ui.run_tracker = ui.tracker
+	else:
+		var rt = Tracker.new()
+		rt.proc = ui.model.procedures[run["procedure"]]
+		rt.steps = rt.proc.get("steps", [])
+		RunSave.apply(rt, run["tracker"])
+		ui.run_tracker = rt
 	var c: Dictionary = p["clock"]
 	ui.clock.ff_want = c["ff_want"]
 	ui.clock.pause_on_hold = c["pause_on_hold"]
