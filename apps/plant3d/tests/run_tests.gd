@@ -13,12 +13,18 @@ class ScriptErrors extends Logger:
 			count += 1
 
 var errors := ScriptErrors.new()
+## The app's saved run (ui/autosave.gd) goes to a file of the tests' own, removed before each test file: no test
+## starts with a run another one saved, and the user's own saved run is never touched.
+const Autosave = preload("res://ui/autosave.gd")
+const RunSave = preload("res://ui/run_save.gd")
+const TEST_SAVE := "user://tests-run.save"
 
 func _init() -> void:
 	OS.add_logger(errors)
 	_run.call_deferred()
 
 func _run() -> void:
+	Autosave.default_path = TEST_SAVE
 	var only := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--only="):
@@ -43,6 +49,7 @@ func _run() -> void:
 			print("FAIL %s: does not compile" % f)
 			failed += 1
 			continue
+		RunSave.remove(TEST_SAVE)
 		var t = script.new()
 		var errors0 := errors.count
 		var problems: Array = await t.run(self)
@@ -56,5 +63,6 @@ func _run() -> void:
 			failed += 1
 			for p in problems:
 				print("FAIL %s: %s" % [f, p])
+	RunSave.remove(TEST_SAVE)
 	print("%d of %d test files passed" % [files.size() - failed, files.size()])
 	quit(1 if failed > 0 or files.is_empty() else 0)
