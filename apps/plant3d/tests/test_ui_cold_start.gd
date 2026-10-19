@@ -10,6 +10,7 @@ extends RefCounted
 
 const JsonStrict = preload("res://sim/json_strict.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const W = preload("res://ui/widgets.gd")
 
 
 static func vectors() -> Dictionary:
@@ -170,9 +171,57 @@ func run(tree: SceneTree) -> Array:
 				break
 		if not ui.procedure.visible or ui.tracker.index != -1:
 			p.append("the procedure panel does not show the procedure as finished")
+		p.append_array(_debrief(ui, e, t))
 		print("  cold start through the UI: %d steps of model time (%s), %d operations, %d procedure steps" % [e.step_no,
-				ui.clock.clock_text(), e.inputs.size(), ui.tracker.log.size()])
+				ui.clock.clock_text(), e.inputs.size(), ui.run_tracker.log.size()])
 	main.free()
+	return p
+
+
+## The end of the procedure: its summary and the debrief (ui/debrief.gd) list what happened, as the reference has it:
+## every operation, every step at the model step it ended, nothing outside its step; it stays after the procedure is
+## closed (the alarm list's Events).
+static func _debrief(ui, e, t: Dictionary) -> Array:
+	var p: Array = []
+	var shown := ""
+	for c in ui.procedure.body.get_children():
+		if c is Label:
+			shown += c.text + "\n"
+	var last := int(t["steps"][t["steps"].size() - 1][1])
+	for w in ["Steps: %d of %d done\n" % [t["steps"].size(), t["steps"].size()],
+			"Operations: %d done; 0 outside their step" % t["inputs"].size(), "Time: %s of plant time" % W.model_time(last)]:
+		if not shown.contains(w):
+			p.append("the finished procedure's summary does not say \"%s\": %s" % [w, shown])
+	var b := find_button(ui.procedure, "Debrief: every event")
+	if b == null:
+		return p + ["the finished procedure offers no debrief"]
+	b.pressed.emit()
+	var d = ui.debrief
+	if not d.visible:
+		return p + ["the debrief did not open"]
+	var ents: Array = d.data["entries"]
+	var ops := ents.filter(func(x): return x.kind == "op")
+	var steps := ents.filter(func(x): return x.kind == "step")
+	if ops.size() != t["inputs"].size() or ops.any(func(x): return x.dev != ""):
+		p.append("the debrief lists %d operations (the reference made %d), deviations: %s" % [ops.size(), t["inputs"].size(),
+				str(ops.filter(func(x): return x.dev != ""))])
+	if steps.size() != t["steps"].size():
+		p.append("the debrief lists %d steps done, the reference %d" % [steps.size(), t["steps"].size()])
+	else:
+		for i in steps.size():
+			if steps[i].step != int(t["steps"][i][1]):
+				p.append("the debrief has step %d ending at %d, the reference at %s" % [i + 1, steps[i].step, t["steps"][i][1]])
+				break
+	if ents.size() != t["events"].size() + t["steps"].size() + 1:
+		p.append("the debrief has %d rows: %d events, %d steps and its start expected" % [ents.size(), t["events"].size(), t["steps"].size()])
+	if d._list.get_child_count() != ents.size():
+		p.append("the debrief shows %d rows of %d" % [d._list.get_child_count(), ents.size()])
+	ui.stop_procedure()
+	ui.close_debrief()
+	ui.toggle_alarms()
+	find_button(ui.alarms, "Events").pressed.emit()
+	if not d.visible or not d.title.text.begins_with("Debrief: " + String(ui.model.procedures[t["procedure"]]["title"])):
+		p.append("after the procedure was closed the debrief is not the procedure's: %s" % d.title.text)
 	return p
 
 

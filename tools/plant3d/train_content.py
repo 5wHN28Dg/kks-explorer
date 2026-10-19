@@ -116,6 +116,23 @@ def sounds():
         synth('horn_p2', t((660, 0.7), (1320, 0.25), (1980, 0.15))),
         synth('horn_p3', t((440, 0.5), (880, 0.2), (1320, 0.1))),
         synth('horn_ack', t((1000, 0.6), (2000, 0.2)), None, 'an alarm acknowledged (played once)'),
+        # people cues: a footstep on each kind of floor (played once a stride), the doors
+        synth('step_concrete', t((90, 0.6)), {'colour': 'pink', 'band': [80, 5000], 'gain': 0.8},
+              'a footstep on concrete (played once a stride)'),
+        synth('step_grating', t((420, 0.5), (1180, 0.4), (2350, 0.3), (3700, 0.2)),
+              {'colour': 'white', 'band': [200, 6000], 'gain': 0.6},
+              'a footstep on steel bar grating (played once a stride)'),
+        synth('step_stair', t((260, 0.6), (690, 0.45), (1560, 0.3), (3050, 0.15)),
+              {'colour': 'pink', 'band': [100, 5000], 'gain': 0.5},
+              'a footstep on a steel stair tread, chequer plate or a ladder rung (played once)'),
+        synth('door_slide', t((180, 0.4), (520, 0.25)), {'colour': 'pink', 'band': [60, 2500], 'gain': 0.7},
+              'a sliding door running on its rollers to its stop (played once)'),
+        synth('door_roller', t((15, 0.5), (100, 0.3), (350, 0.3)), {'colour': 'pink', 'band': [150, 5000], 'gain': 0.6},
+              'a roller door: its motor and the slats rattling in their guides (loops while it moves)'),
+        # ambience outdoors
+        synth('wind', None, {'colour': 'pink', 'band': [30, 1500]}, 'wind at the ear, in gusts'),
+        synth('plant_distant', t((100, 0.5), (200, 0.2)), {'colour': 'brown', 'band': [30, 700], 'gain': 0.8},
+              'the running plant heard from afar'),
     ]}
 
 
