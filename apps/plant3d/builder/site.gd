@@ -119,7 +119,7 @@ func _wall(root: Node3D, r: Rect2) -> void:
 			var pc := Geom.rect(p0.x - 0.2, p0.y - 0.2, p0.x + 0.2, p0.y + 0.2)
 			Geom.add_prism(st, pc, 0.0, WALL_H + 0.15)
 	b._mesh_node(body, "panels", st, b._mat("wall_concrete"), Lightmap.GROUND_TEXEL)
-	b._mesh_node(body, "gate", gate, b._mat("fence"), Lightmap.GROUND_TEXEL, false)   # a thin sheet: not baked
+	b._mesh_node(body, "gate", gate, b._mat("fence"), Lightmap.SHEET_TEXEL)   # a thin sheet: a fine texel
 
 ## The country beyond the wall: a grid out to FAR from the centre, its height 0 at the wall, a few metres of
 ## undulation within 250 m and low hills towards the far plane (FastNoiseLite: the same every build). Not walkable

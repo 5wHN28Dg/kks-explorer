@@ -37,6 +37,21 @@ func run(tree: SceneTree) -> Array:
 	for n in tree.get_nodes_in_group("kit_cells"):
 		if (n as GeometryInstance3D).gi_mode != GeometryInstance3D.GI_MODE_DISABLED:
 			p.append("%s: an instanced cell takes the sky's light, not the probes'" % n.get_path())
+	# thin sheets (the fences, the gate) are baked at a fine texel: left out of the bake, an unbaked static mesh cost
+	# the phone a pipeline of its own at the first frame (second realism pass)
+	var sheets := 0
+	for n in plant.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.material_override == null or mi.material_override.resource_path.get_file() != "fence.tres":
+			continue
+		sheets += 1
+		if mi.gi_mode != GeometryInstance3D.GI_MODE_STATIC:
+			p.append("%s: a thin sheet is baked (an unbaked static mesh is a pipeline of its own)" % mi.get_path())
+		var area := mi.mesh.get_aabb().get_longest_axis_size() * mi.mesh.get_aabb().size.y
+		if mi.mesh.lightmap_size_hint.x * mi.mesh.lightmap_size_hint.y < area / 0.1 / 0.1:
+			p.append("%s: a thin sheet's texel is fine (%s for %.0f m²)" % [mi.get_path(), mi.mesh.lightmap_size_hint, area])
+	if sheets < 2:
+		p.append("the fences and the gate are found (%d)" % sheets)
 	# the site
 	var ground := plant.get_node_or_null("ground")
 	for want in ["ground", "yard_0", "road", "verge", "kerbs", "drain", "drain_cover", "boundary_wall", "terrain"]:
@@ -138,12 +153,18 @@ func run(tree: SceneTree) -> Array:
 		var cols: PackedColorArray = panels.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
 		var ys: PackedVector3Array = panels.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 		var bad := 0
+		var high := 0
+		var top_y := -INF
+		for v in ys:
+			top_y = maxf(top_y, v.y)
 		for i in cols.size():
 			var top := (roundf(cols[i].r * 255.0) + cols[i].g) * 0.25
 			if top + 0.02 < ys[i].y - panels.global_position.y - 0.2:   # pilasters stand 0.15 m higher
 				bad += 1
-		if cols.is_empty() or bad > 0:
-			p.append("the wall's vertices carry its top (%d vertices above it)" % bad)
+			if top > top_y - panels.global_position.y + 0.02:   # nor above the wall: no streak would reach it
+				high += 1
+		if cols.is_empty() or bad > 0 or high > 0:
+			p.append("the wall's vertices carry its top (%d vertices above it, %d with a top over the wall)" % [bad, high])
 	# the ground varies (patches, ruts by the road, a track out of the gate); insulated pipe is lapped cladding
 	var terr := load("res://built/materials/terrain.tres") as ShaderMaterial
 	if terr == null or float(terr.get_shader_parameter("macro")) <= 0.0 or (terr.get_shader_parameter("track") as Vector4).length() < 1.0 \

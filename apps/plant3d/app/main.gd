@@ -17,7 +17,8 @@
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
 ##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow those on (measuring what each costs:
 ##                           app/lighting.gd); fx_off=shadow,cascades2,shadow40,shadowhard the sun's shadow's parts
-##                           (app/quality.gd), fx_off=lightmap the plant without its bake
+##                           (app/quality.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
+##                           light through the bake only)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")

@@ -1054,16 +1054,15 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 const HALL_FLOOR_T := 0.004
 func _hall_floor(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
-	var bb := Rect2(pg[0], Vector2.ZERO)
-	for q in pg:
-		bb = bb.expand(q)
 	var holes: Array = []
 	for h in pits.map(func(p): return p.outline) + ground_cuts():
-		var hb := Rect2(h[0], Vector2.ZERO)
-		for q in h:
-			hb = hb.expand(q)
-		if bb.grow(0.01).encloses(hb):
-			holes.append(h)
+		# a pit or stairwell inside the hall is a hole in its floor; one across the hall's wall would be covered by
+		# the floor (the outline test, not the boxes': an L-shaped hall's box holds what is outside it)
+		if not Geometry2D.intersect_polygons(pg, h).is_empty():
+			if Geometry2D.clip_polygons(h, pg).is_empty():
+				holes.append(h)
+			else:
+				_err("pit_across_hall", String(b.get("id", "")), "a pit or stairwell crosses the hall's outline: its painted floor would cover the opening")
 	var st := _st()
 	var n := 0
 	for pc in Geom.decompose(pg, holes):
@@ -1258,7 +1257,7 @@ func _fence(parent: Node3D, s: Dictionary) -> void:
 		var a := at + Geom.turn(_v3(pts[i]), float(s.get("yaw", 0)))
 		var b := at + Geom.turn(_v3(pts[i + 1]), float(s.get("yaw", 0)))
 		_wall_panel(st, body, Vector2(a.x, a.y), Vector2(b.x, b.y), a.z, a.z + float(pr.height), 0.05)
-	_mesh_node(body, "mesh", st, _mat("fence"), Lightmap.TEXEL, false)   # 5 cm sheet: not baked (_mesh_node)
+	_mesh_node(body, "mesh", st, _mat("fence"), Lightmap.SHEET_TEXEL)   # a 5 cm sheet: a fine texel
 
 func _rack(parent: Node3D, s: Dictionary) -> void:
 	var pr := params_of("pipe_rack", s.get("params", {}))
