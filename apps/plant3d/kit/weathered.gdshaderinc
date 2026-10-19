@@ -13,9 +13,6 @@
 // All from one tileable noise texture made by the build (builder/weather.gd), sampled in world space on the face's
 // main plane (one sample per scale): the same asset set serves every tier, the phone reads two noise samples fewer
 // (`detail` = 0 drops the wear's own sample and the ground's ruts' two: unbroken, the track straight).
-// The phone's tiers draw it compiled with LEAN (weathered_lean.gdshader, kit/materials.gd set_detail): no paint wear,
-// no ruts, verges or track, a smaller program for each of the pipelines its first start compiles (the second
-// realism pass's larger shader cost the Note 9 about 2 s of its 15 s launch).
 // Corrugated sheet (`sheet_width`): the set's normal map gives the ribs; the sheets are drawn from UV1, each a little
 // different in tone and gloss, with the lap between them, faded out where a sheet is under a few pixels.
 // Pipe cladding (`lap_length`): aluminium sheets lapped every lap_length along the pipe (UV1.y) with the seam along it.
@@ -167,7 +164,6 @@ void fragment() {
 	rough = mix(rough, 0.95, r);
 	metal = mix(metal, 0.0, r);
 
-#ifndef LEAN
 	// paint wear to bare steel where hands and feet go (more on top faces)
 	if (detail > 0.5 && wear > 0.0) {
 		float wn = texture(noise_tex, pl * 3.1 + 0.11).a;
@@ -176,7 +172,6 @@ void fragment() {
 		metal = mix(metal, 0.8, w);
 		rough = mix(rough, 0.45, w);
 	}
-#endif
 
 	float fwp = length(fwidth(wpos.xz));   // outside the branch below: derivatives in uniform control flow
 	// the ground: large patches, compacted bands and ruts beside the road and along a track
@@ -187,7 +182,6 @@ void fragment() {
 		base = mix(base, base * vec3(0.84, 0.81, 0.78), dark * macro);
 		base = mix(base, base * vec3(1.08, 1.06, 1.03), pale * macro * 0.8);
 		rough = mix(rough, rough * 0.9, dark * macro);
-#ifndef LEAN
 		float compact = 0.0;
 		float rut = 0.0;
 		if (line_box.z > 0.0) {
@@ -214,7 +208,6 @@ void fragment() {
 		base = mix(base, base * vec3(0.80, 0.78, 0.76), compact * 0.85);
 		rough = mix(rough, rough * 0.8, compact);
 		base = mix(base, base * 0.62, rut * 0.8);
-#endif
 	}
 
 	// a yard's joints and a road's dashed centre line (on what faces up)
