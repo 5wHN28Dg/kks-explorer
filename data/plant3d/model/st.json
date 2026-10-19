@@ -53,6 +53,7 @@
   ["st_vac_ok", {"cmp": ["cond_p", "<", 12]}],
   ["st_cond_trip_clear", {"not": "st_trip_cond_p_latched"}],
   ["st_still", {"cmp": ["st_speed", "<", 0.01]}],
+  ["ia_rest", {"and": ["ia_off", "gt1_still", "st_still"]}],
   ["st_at_rest", {"cmp": ["st_speed", "<", 0.0005]}],
   ["st_lac_ok", {"not": "st_lac_fault"}],
   ["st_lac_run", {"and": ["st_lac_cmd", "st_lac_ok"]}],
@@ -394,6 +395,7 @@
   {"id": "hp_byp_open_long", "kks": "30MAN10AA001", "text": "HP bypass wide open for over 30 min", "when": "hp_byp_wide", "priority": 3, "where": "30MAN10AA001", "isa": "ZAH", "delay": 1800},
   {"id": "cep_a_minflow", "kks": "30LCB10AP001", "text": "Condensate pump A on minimum flow too long", "when": "cep_a_onmin", "priority": 3, "where": "30LCB10AP001", "delay": 1800},
   {"id": "cep_b_minflow", "kks": "30LCB10AP002", "text": "Condensate pump B on minimum flow too long", "when": "cep_b_onmin", "priority": 3, "where": "30LCB10AP002", "delay": 1800},
+  {"id": "byp_hyd", "kks": "30MAN10AA001", "text": "Bypass hydraulic unit failed (bypass blocked)", "when": "byp_hyd_fault", "priority": 2, "where": "30MAN10AA001"},
   {"id": "cw_ret_high", "kks": "30PAB20BR010", "text": "CW return temperature high", "when": "cw_ret_h", "priority": 2, "where": "30PAB20BR010", "isa": "TAH"}
  ],
  "trips": [

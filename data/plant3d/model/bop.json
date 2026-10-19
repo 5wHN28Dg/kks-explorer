@@ -25,8 +25,10 @@
   ["ia_p_norm", {"cmp": ["ia_p", ">=", 6.5]}],
   ["ia_cmd_n", {"sum": ["ia_a_cmd", "ia_b_cmd"]}],
   ["ia_off", {"cmp": ["ia_cmd_n", "<", 0.5]}],
-  ["ia_est", {"latch": "ia_p_norm", "reset": "ia_off"}],
+  ["ia_est", {"latch": "ia_p_norm", "reset": "ia_rest"}],
   ["ia_sup", {"not": "ia_est"}],
+  ["ia_a_trip_c", {"and": ["ia_a_cmd", "ia_a_fault"]}],
+  ["ia_b_trip_c", {"and": ["ia_b_cmd", "ia_b_fault"]}],
   ["ccw_a_ok", {"not": "ccw_a_fault"}],
   ["ccw_a_run", {"and": ["ccw_a_cmd", "ccw_a_ok"]}],
   ["ccw_a_trip_c", {"and": ["ccw_a_cmd", "ccw_a_fault"]}],
@@ -80,6 +82,8 @@
   {"id": "ccw_a_tripped", "kks": "00PGC10AP001", "text": "Closed cooling water pump A tripped", "when": "ccw_a_trip_latched", "priority": 2, "where": "00PGC10AP001"},
   {"id": "ccw_b_tripped", "kks": "00PGC10AP002", "text": "Closed cooling water pump B tripped", "when": "ccw_b_trip_latched", "priority": 2, "where": "00PGC10AP002"},
   {"id": "ia_p_low", "kks": "00QFB10CP001", "text": "Instrument air header pressure low", "when": "ia_low", "priority": 1, "where": "00QFB10CP001", "isa": "PAL", "suppress": "ia_sup"},
+  {"id": "ia_a_tripped", "kks": "00QFA10AN001", "text": "Instrument air compressor A tripped", "when": "ia_a_trip_c", "priority": 2, "where": "00QFA10AN001"},
+  {"id": "ia_b_tripped", "kks": "00QFA10AN002", "text": "Instrument air compressor B tripped", "when": "ia_b_trip_c", "priority": 2, "where": "00QFA10AN002"},
   {"id": "ccw_t_high", "kks": "00PGB10CT001", "text": "Closed cooling water supply temperature high", "when": "ccw_t_h", "priority": 2, "where": "00PGB10AC001", "isa": "TAH", "clear": "ccw_t_hc"}
  ],
  "trips": [

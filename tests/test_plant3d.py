@@ -99,7 +99,7 @@ class Content(unittest.TestCase):
         with open(FIRST_TRAIN, encoding='utf-8') as f:
             text = f.read().split('## 5. Alarms')[1].split('## 6.')[0]
         rows = re.findall(r'^\| ([0-9][0-9A-Z–-]+) \| ([^|]*) \| ([^|]*) \| ([^|]*) \| ([^|]*) \|$', text, re.M)
-        self.assertEqual(len(rows), 40)
+        self.assertEqual(len(rows), 43)
         alarms = self.m.alarms
         for code, isa, what, limit, prio in rows:
             isas = [x.strip() for x in isa.split('/')] if isa.strip() not in ('—', '') else [None]

@@ -321,9 +321,11 @@ def bop():
     m.cmp('ia_low', 'ia_p', '<', 5)
     m.cmp('ia_p_norm', 'ia_p', '>=', 6.5)
     m.sum('ia_cmd_n', ['ia_a_cmd', 'ia_b_cmd'])
-    m.cmp('ia_off', 'ia_cmd_n', '<', 0.5)        # stopped by the operator: suppressed; tripped: it sounds
-    m.latch('ia_est', 'ia_p_norm', 'ia_off')
+    m.cmp('ia_off', 'ia_cmd_n', '<', 0.5)        # stopped by the operator (and the plant at rest, ia_rest): suppressed
+    m.latch('ia_est', 'ia_p_norm', 'ia_rest')      # ia_rest (st area): stopped with both machines at rest
     m.NOT('ia_sup', 'ia_est')
+    for x in ('a', 'b'):
+        m.AND(f'ia_{x}_trip_c', [f'ia_{x}_cmd', f'ia_{x}_fault'])
     for x in ('a', 'b'):
         m.drive_values(f'ccw_{x}')
         m.AND(f'ccw_{x}_trip_c', [f'ccw_{x}_cmd', f'ccw_{x}_fault'])
@@ -369,6 +371,8 @@ def bop():
         m.alarm(f'ccw_{x}_tripped', code, f'Closed cooling water pump {x.upper()} tripped', f'ccw_{x}_trip_latched', 2)
     m.alarm('ia_p_low', '00QFB10CP001', 'Instrument air header pressure low', 'ia_low', 1, isa='PAL',
             suppress='ia_sup')
+    for x, code in (('a', '00QFA10AN001'), ('b', '00QFA10AN002')):
+        m.alarm(f'ia_{x}_tripped', code, f'Instrument air compressor {x.upper()} tripped', f'ia_{x}_trip_c', 2)
     m.alarm('ccw_t_high', '00PGB10CT001', 'Closed cooling water supply temperature high', 'ccw_t_h', 2, '00PGB10AC001',
             'TAH', 'ccw_t_hc')
     for x, code in (('a', '00QFA10AN001'), ('b', '00QFA10AN002')):
@@ -549,6 +553,7 @@ def cw():
                 f'valve)', f'cw_{x}_surge_h', 2, ap, 'PAH')
         m.b(kks=ap, shake=f'cw_{x}_surge', scale=0.05)
         m.b(kks=f'30PAC10CP00{n}', show=f'cw_{x}_pt')
+        m.alarm(f'cw_{x}_v_fault', aa, f'CW pump {L} discharge valve actuator fault', f'cw_{x}_v_stuck', 2)
         m.alarm(f'cw_{x}_valve_late', aa, f'CW pump {L} discharge valve not open 120 s after start', f'cw_{x}_late',
                 1, isa='ZAL')
         m.b(kks=ap, anim='shaft', of=f'cw_{x}_spd', scale=8.25)
@@ -869,7 +874,7 @@ def hrsg1():
     m.tab('hp_p_auto', 'gt1_lf', [[0, 50], [1, 120]], 'bar')
     # no steam sink (FIRST-TRAIN §4 "As built"): the pressure rises toward 150 bar until the HP safety valve lifts
     # at 135 bar; open, it holds 136 bar (its accumulation) and reseats below 130 bar (its blowdown)
-    m.latch('hp_sv_open', 'hp_sv_lift', 'hp_sv_reseat')
+    m.latch('hp_sv_open', 'hp_sv_lift', 'hp_sv_shut_c')
     m.sel('hp_p_ns', 'hp_sv_open', [150, 136], 'bar')
     m.sel('hp_p_tgt', 'hp_slide', ['hp_p_ns', 'hp_p_auto'], 'bar')
     m.tab('hp_t_tgt', 'hp_p_tgt', inv(STEAM), '°C')
@@ -898,6 +903,8 @@ def hrsg1():
     m.tab('hp_gen_tgt', 'gt1_heat_mw', [[0, 0], [100, 4], [160, 12], [350, 70]])
     m.lag('hp_gen', 'hp_gen_tgt', 300, unit='kg/s')
     m.prod('hp_sv_flow', ['hp_sv_open', 'hp_gen'], 'kg/s')
+    m.cmp('hp_sv_noflow', 'hp_gen', '<', 2)                  # no steam left to relieve (GT tripped): it reseats
+    m.OR('hp_sv_shut_c', ['hp_sv_reseat', 'hp_sv_noflow'])
     m.lag('hp_hfast', 'gt1_heat_mw', 60)
     m.lag('hp_hslow', 'gt1_heat_mw', 600)
     m.diff('hp_hd', 'hp_hfast', 'hp_hslow')
@@ -1088,6 +1095,7 @@ def st():
     m.NOT('st_cond_trip_clear', 'st_trip_cond_p_latched')
     # lube oil, jacking oil, turning gear, eccentricity, gland steam (FIRST-TRAIN §4 #7, #10)
     m.cmp('st_still', 'st_speed', '<', 0.01)
+    m.AND('ia_rest', ['ia_off', 'gt1_still', 'st_still'])   # the air alarm's suppression (bop) ends only at rest
     m.cmp('st_at_rest', 'st_speed', '<', 0.0005)     # below turning gear speed: the oil may stop
     m.lube('st', ['30MAV10CP001', '30MAV10CP002', '30MAV10CP003'], '30MAV10AP001', '30MAV10AP002', 'st_at_rest',
            'st_speed', '30MAV10CT001')
@@ -1363,6 +1371,7 @@ def st():
     for x, n in (('a', 1), ('b', 2)):
         m.alarm(f'cep_{x}_minflow', f'30LCB10AP00{n}', f'Condensate pump {x.upper()} on minimum flow too long',
                 f'cep_{x}_onmin', 3, delay=1800)
+    m.alarm('byp_hyd', '30MAN10AA001', 'Bypass hydraulic unit failed (bypass blocked)', 'byp_hyd_fault', 2)
     m.alarm('cw_ret_high', '30PAB20BR010', 'CW return temperature high', 'cw_ret_h', 2, isa='TAH')
     # what is seen and heard
     for c in ('30MAA10', '30MAB10', '30MKA10'):

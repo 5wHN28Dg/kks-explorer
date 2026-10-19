@@ -3,7 +3,7 @@ the pinned Godot (decision 0041) headless:
 - every vector of ref/vectors/plant3d-v1.json replays through it (apps/plant3d/sim/tests/run_vectors.gd): events
   exactly, snapshots to the file's precision, the cold start run as a trainee by its procedure, every fork, every link;
 - bit for bit: the SHA-256 of every value at every step of every run (the unit runs, the 66,436-step cold start and
-  its 65 forks) equals the reference's; a difference is reported at its first step and value;
+  its 68 forks) equals the reference's; a difference is reported at its first step and value;
 - its strict JSON reader reads every number as Python's float() does (the content's, the vectors', and hard cases:
   halfway points, subnormals, the largest double, long decimals) and passes the strict JSON vectors (v2-json.json).
 Needs the Godot editor (KKS_GODOT, else the path tools/plant3d/bench/fetch_godot.sh installs it to); skipped without,

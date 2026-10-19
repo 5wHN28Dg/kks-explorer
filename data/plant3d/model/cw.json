@@ -211,12 +211,15 @@
  "alarms": [
   {"id": "cw_a_tripped", "kks": "30PAC10AP001", "text": "CW pump A tripped", "when": "cw_a_tripped", "priority": 1, "where": "30PAC10AP001"},
   {"id": "cw_a_surge", "kks": "30PAC10CP001", "text": "CW pump A discharge pressure surge (started against an open valve)", "when": "cw_a_surge_h", "priority": 2, "where": "30PAC10AP001", "isa": "PAH"},
+  {"id": "cw_a_v_fault", "kks": "30PAC10AA101", "text": "CW pump A discharge valve actuator fault", "when": "cw_a_v_stuck", "priority": 2, "where": "30PAC10AA101"},
   {"id": "cw_a_valve_late", "kks": "30PAC10AA101", "text": "CW pump A discharge valve not open 120 s after start", "when": "cw_a_late", "priority": 1, "where": "30PAC10AA101", "isa": "ZAL"},
   {"id": "cw_b_tripped", "kks": "30PAC10AP002", "text": "CW pump B tripped", "when": "cw_b_tripped", "priority": 1, "where": "30PAC10AP002"},
   {"id": "cw_b_surge", "kks": "30PAC10CP002", "text": "CW pump B discharge pressure surge (started against an open valve)", "when": "cw_b_surge_h", "priority": 2, "where": "30PAC10AP002", "isa": "PAH"},
+  {"id": "cw_b_v_fault", "kks": "30PAC10AA102", "text": "CW pump B discharge valve actuator fault", "when": "cw_b_v_stuck", "priority": 2, "where": "30PAC10AA102"},
   {"id": "cw_b_valve_late", "kks": "30PAC10AA102", "text": "CW pump B discharge valve not open 120 s after start", "when": "cw_b_late", "priority": 1, "where": "30PAC10AA102", "isa": "ZAL"},
   {"id": "cw_c_tripped", "kks": "30PAC10AP003", "text": "CW pump C tripped", "when": "cw_c_tripped", "priority": 1, "where": "30PAC10AP003"},
   {"id": "cw_c_surge", "kks": "30PAC10CP003", "text": "CW pump C discharge pressure surge (started against an open valve)", "when": "cw_c_surge_h", "priority": 2, "where": "30PAC10AP003", "isa": "PAH"},
+  {"id": "cw_c_v_fault", "kks": "30PAC10AA103", "text": "CW pump C discharge valve actuator fault", "when": "cw_c_v_stuck", "priority": 2, "where": "30PAC10AA103"},
   {"id": "cw_c_valve_late", "kks": "30PAC10AA103", "text": "CW pump C discharge valve not open 120 s after start", "when": "cw_c_late", "priority": 1, "where": "30PAC10AA103", "isa": "ZAL"},
   {"id": "cw_flow_low", "kks": "30PAB10CF001", "text": "CW flow low", "when": "cw_flow_low", "priority": 1, "where": "30PAB10CF001", "isa": "FAL"}
  ],
