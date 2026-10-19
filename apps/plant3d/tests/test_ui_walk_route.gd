@@ -80,6 +80,14 @@ func run(tree: SceneTree) -> Array:
 	player.global_position = keep + Vector3.UP * 0.05
 	await _wait(tree, 0.5)
 	finds = r.stats.finds
+	# 2c. a floor 4 m above or below the way is off it (a way along the ground, the trainee on a deck over it)
+	var saved: Dictionary = r.route
+	r.route = {"points": PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0)])}
+	var below: Array = r._progress(Vector3(5, -4, 0))
+	var beside: Array = r._progress(Vector3(5, 0.3, 0))
+	r.route = saved
+	if below[2] <= r.OFF_ROUTE or beside[2] > 0.5:
+		p.append("4 m below the way counts %.1f m off it, 0.3 m above it %.1f m" % [below[2], beside[2]])
 	# 3. off the way: a new one from where the trainee is
 	var off: Vector3 = NavigationServer3D.map_get_closest_point(r.map, player.global_position + Vector3(0, 0, 12))
 	if off.distance_to(player.global_position) < 5.0:

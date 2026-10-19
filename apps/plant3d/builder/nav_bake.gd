@@ -21,7 +21,7 @@ const AGENT_HEIGHT := 1.8
 const AGENT_CLIMB := 0.09
 const AGENT_SLOPE := 20.0
 const CELL := 0.1               # a 1 m personnel door less the radius on both sides leaves 0.3 m: three cells
-const CELL_H := 0.05
+const CELL_H := 0.03            # the climb, 0.09 m, is three of them (Recast floors it to whole cells)
 const LINK_REACH := 1.0         # how far from a stair's or a ladder's end its link finds the mesh (the app's map too)
 const APPROACH := 0.8           # metres in front of a stair's end where its link starts
 
@@ -225,6 +225,11 @@ static func reachable(nm: NavigationMesh, start: Vector3, links: Array) -> Dicti
 	for i in n:
 		if keep.has(comp[i]):
 			out[i] = true
+	# Godot's region joins an edge of two polygons only: one shared by more (the stair-tower fault, 0059) is no
+	# connection at run time, so a walkable one stops the build (unreachable islands may keep theirs: they go)
+	for key in by_edge:
+		if by_edge[key].size() > 2 and by_edge[key].any(func(i): return out.has(i)):
+			return {"error": "nav: an edge at %s is shared by %d polygons (overlapping floors?)" % [str(verts[key.x]), by_edge[key].size()]}
 	return {"polygons": out}
 
 ## The polygon nearest to `p` in plan within LINK_REACH, at most 0.6 m above or below it, or -1.

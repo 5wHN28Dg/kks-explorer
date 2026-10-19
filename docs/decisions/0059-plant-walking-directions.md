@@ -21,6 +21,8 @@ per-frame cost spikes on the lean tier? And how does the walking test prove ever
 | What the test found in the content | a cold reheat pipe crossed the drum platform's only walkway at 1.65 m headroom (raised to +35: 2.6 m); the drum stair's top ran 0.3 m into the HP drum's end in plan (moved 0.5 m north) | [V] `test_walk` |
 | Size and load | `nav.res` 17.6 KB; loading it and adding the links takes 3 ms on the laptop | [V] `test_ui_walk_route` |
 | Cost | (laptop, 120 s of the frames walk with a walking step the walker keeps leaving: the worst case) a search 0.44–0.47 ms mean, 0.6–1.1 ms worst; the target's point 0.9–1.8 ms, once per target. Rebuilding the chevrons after every metre walked cost 0.4 ms mean but up to 320 ms while another job held the GPU (the mesh upload waits for the renderer): so they are built once per search (24 builds, 1.3 ms mean, 9 ms worst under that load) and walking on only moves a shader's window (two parameters). The Note 9 runs GDScript about 3.3 times slower (the model step, README): a few ms, at most once a second | [V] `main.gd` `ROUTE` line |
+| The chevrons' first showing | their shader's pipeline compiled when the first walking step showed them: one frame held 87–346 ms (laptop, Mobile renderer, empty shader cache, a busy machine). Drawn once, invisible, 1.5 s after the start, the first walking step holds none over 35 ms | [V] |
+| What the build guards | Recast rounds the climb down to whole cells (0.09 m at 0.05 m cells was 0.05 m: 0.03 m cells keep 0.09). An edge of reachable floor shared by more than two polygons (the stair-tower fault) stops the build | [V] build log |
 
 Alternative: a waypoint graph from the content (stair paths, ladders, surface outlines). Exact on stairs and ladders,
 but on floors it needs the clearance round equipment, rails and walls that the navigation mesh computes; that is a
@@ -28,7 +30,7 @@ navigation mesh of our own.
 
 ## Choice
 
-- The content build bakes `built/nav.res` (cell 0.1 m, the walker's 0.3 m radius and 1.8 m height, climb 0.09 m:
+- The content build bakes `built/nav.res` (cell 0.1 m, 0.03 m high, the walker's 0.3 m radius and 1.8 m height, climb 0.09 m:
   what the walker's capsule rides up), doors left out, stairs left out and obstructed, unreachable islands dropped; the
   stairs' and ladders' ways (each stair's path plus the floor in front of each end, checked with the walker's capsule
   against the stair's rails) are kept in the mesh's metadata.
@@ -36,7 +38,8 @@ navigation mesh of our own.
   target changes and again only when the trainee leaves it by 2.5 m (checked 4 times a second, at most one search a
   second, none while the trainee is off the mesh on a stair), builds the chevrons for the whole way once per search
   and shows 60 m of them ahead by a shader window moved after each metre walked; target, search and build each in a
-  drawn frame of their own. A way on a ladder or a stair follows its own path.
+  drawn frame of their own. A way on a ladder or a stair follows its own path. The chevrons' shader is a file
+  (`app/walk_route.gdshader`, for the export's shader baker) and is drawn once, unseen, 1.5 s after the start.
 - `test_walk` proves every tour stop and every walking step reachable by the path finder from the control room and
   walks the walker along those routes (running); every stair and ladder is walked both ways along its own path, and
   again along the path finder's way through its link.

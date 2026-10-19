@@ -11,6 +11,9 @@
 extends Node3D
 
 const NAV := "res://built/nav.res"
+const WARM_UP_S := 1.5
+const ALPHA := 0.85
+const SHADER := preload("res://app/walk_route.gdshader")   # a file, so that the export's shader baker has it
 const CHECK_S := 0.25           # how often the trainee's place on the route is checked
 const REFIND_S := 1.0           # at most one search a second
 const OFF_ROUTE := 2.5          # metres from the route at which it is found again
@@ -28,7 +31,7 @@ var region := RID()
 var links := {}                 # link RID -> {kind: "stair" | "ladder", id, path: the way along it, foot first}
 var error := ""
 var _probe := Vector3.INF       # a vertex of the mesh: the map has taken the mesh in once a search finds it
-var _ready := false
+var _map_ready := false
 
 var player                      # app/player.gd
 var target := Vector3.INF       # the equipment's walkable point the route leads to
@@ -82,12 +85,38 @@ func setup(_plant = null) -> String:
 	_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	_mat = ShaderMaterial.new()
-	_mat.shader = _shader()
+	_mat.shader = SHADER
 	_mi.material_override = _mat
 	add_child(_mi)
 	_mi.visible = false
 	stats.setup_us = Time.get_ticks_usec() - t0
+	_warm_up.call_deferred()
 	return ""
+
+
+## The chevrons' pipeline compiled once, early: their first showing at a walking step otherwise held a frame for
+## 0.1–0.35 s on the laptop with an empty shader cache. One chevron, invisible (alpha 0), in front of the camera for a
+## few frames, WARM_UP_S after the start (not in the first frame, whose time the phone's start limit counts).
+func _warm_up() -> void:
+	await get_tree().create_timer(WARM_UP_S).timeout
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	if cam == null or active() or _mesh == null:
+		return
+	var p := cam.global_position - cam.global_transform.basis.z * 2.0
+	var v := PackedVector3Array([p, p + Vector3(0.3, 0, 0), p + Vector3(0, 0.3, 0)])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = v
+	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([Vector2(1, 0), Vector2(1, 0), Vector2(1, 0)])
+	_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_mat.set_shader_parameter("alpha", 0.0)
+	_mi.visible = true
+	for i in 3:
+		await RenderingServer.frame_post_draw
+	_mat.set_shader_parameter("alpha", ALPHA)
+	if not active():
+		_mi.visible = false
+		_mesh.clear_surfaces()
 
 
 func _link(kind: String, id: String, path: Array, cost: float) -> void:
@@ -111,10 +140,10 @@ func _exit_tree() -> void:
 
 ## True once the navigation server has taken the mesh in (it does so on a physics frame after setup).
 func ready_to_find() -> bool:
-	if not _ready and map.is_valid() and NavigationServer3D.map_get_iteration_id(map) > 0:
+	if not _map_ready and map.is_valid() and NavigationServer3D.map_get_iteration_id(map) > 0:
 		# this region's own mesh (an earlier one leaving the map may still be there for a tick)
-		_ready = NavigationServer3D.map_get_closest_point_owner(map, _probe) == region
-	return _ready
+		_map_ready = NavigationServer3D.map_get_closest_point_owner(map, _probe) == region
+	return _map_ready
 
 
 ## The walkable point nearest to the equipment's bounds: where a route to it ends.
@@ -253,7 +282,9 @@ func _process(delta: float) -> void:
 	_t += delta
 	_since_find += delta
 	if _pending != "" and player.mode != player.Mode.WALK:
-		_pending = ""               # took off or onto a ladder since the check: nothing to show from there
+		_pending = ""               # took off or onto a ladder since the check: nothing to show from there, and no
+		route = {}                  # way whose chevrons were never built: searched again once walking
+		_mi.visible = false
 	# the work of one check is spread over the frames after it: the target's point, the search, the drawing
 	if _pending == "find":
 		_pending = "build"
@@ -315,8 +346,9 @@ func _progress(at: Vector3) -> Array:
 		var l2 := ab.length_squared()
 		var t := 0.0 if l2 < 1e-6 else clampf((at - a).dot(ab) / l2, 0.0, 1.0)
 		var q := a + ab * t
-		# height counts less (the walker's feet on a stair's slope, the route a little above or below it)
-		var off := Vector3(at.x - q.x, (at.y - q.y) * 0.5, at.z - q.z).length()
+		# height counts in full: a floor below or above the way is off it (on a stair's slope the feet are within
+		# 0.3 m of its path)
+		var off := at.distance_to(q)
 		if off < best[2]:
 			best = [i - 1, along + sqrt(l2) * t, off]
 		along += sqrt(l2)
@@ -382,23 +414,3 @@ func _show_from(at: float) -> void:
 	chevrons = int(maxf(minf(DRAW_AHEAD, length - at - 1.0), 0.0) / SPACING)
 	_mi.visible = chevrons > 0
 	stats.moves += 1
-
-
-## Unshaded orange, a little see-through; chevrons outside the window collapse to a point in the vertex stage.
-static func _shader() -> Shader:
-	var sh := Shader.new()
-	sh.code = """shader_type spatial;
-render_mode unshaded, cull_disabled, shadows_disabled;
-uniform float from = 0.0;
-uniform float to = 1e9;
-void vertex() {
-	if (UV.x < from || UV.x > to) {
-		VERTEX = vec3(0.0);
-	}
-}
-void fragment() {
-	ALBEDO = vec3(1.0, 0.318, 0.01);   // the arrows' orange (1, 0.6, 0.1) in linear light
-	ALPHA = 0.85;
-}
-"""
-	return sh
