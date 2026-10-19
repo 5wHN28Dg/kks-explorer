@@ -225,7 +225,7 @@ procedure, with the keys, is on the wiki's Releasing page. In short, from a clea
 3. `apps/plant3d/msix/make-msix.sh VM_IP ~/.config/kks-explorer/signing/windows-msix.pfx WalkdownPlant.msix`
    (`KKS_MSIX_PASS` from `windows-msix.password`), and with `KKS_WIN_ARCH=aarch64` `WalkdownPlant-arm64.msix`; copy
    `windows-msix.cer` next to them. Tests use `make-msix.sh --test-cert DIR` only.
-4. `apps/plant3d/flatpak/build.sh --bundle walkdown-plant.flatpak BUILD_DIR`.
+4. `apps/plant3d/flatpak/build.sh --bundle walkdown-plant.flatpak BUILD_DIR --disable-rofiles-fuse` (the option where FUSE is not available to flatpak-builder, as for Walkdown).
 5. `python3 tools/plant_release.py X.Y.Z DIR --notes notes.md`: a dry run that checks everything; then the same with
    `--publish`. It refuses unless the version is the app's, the checkout is clean and pushed (and `plant-vX.Y.Z` on
    origin, if there, names it), the APK and both MSIX packages carry the commit without local changes, every CI run

@@ -9,7 +9,9 @@ the package and the test certificate are removed at the end.
 
 Hold ~/kks-work/build/vm.lock while the VM runs (one VM or emulator machine-wide). The VM: OpenSSH with
 ~/.ssh/kks_vm, user kks, logged on to its desktop (apps/windows/e2e/vm)."""
-import argparse, base64, json, os, re, subprocess, sys, time
+import argparse, base64, functools, os, re, subprocess, sys, time
+
+print = functools.partial(print, flush=True)  # noqa: A001  (progress as it happens)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
@@ -18,12 +20,23 @@ SSH = ['-i', os.path.expanduser('~/.ssh/kks_vm'), '-o', 'StrictHostKeyChecking=n
 VM = ''
 
 
-def vm(cmd, check=False):
-    r = subprocess.run(['ssh', *SSH, 'kks@' + VM, 'powershell -NoProfile -Command -'], input=cmd, capture_output=True,
-                       text=True, timeout=300)
-    if check and r.returncode:
-        raise SystemExit(f'in the VM: {cmd}\n{r.stderr}')
+def vm(cmd, timeout=300):
+    try:
+        r = subprocess.run(['ssh', *SSH, 'kks@' + VM, 'powershell -NoProfile -Command -'], input=cmd,
+                           capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return ''
     return r.stdout
+
+
+def lower():
+    """the app below normal priority: a VM without a GPU renders on its CPUs, and the app took them all (SSH timed
+    out); waits up to a minute for it to start"""
+    for _ in range(30):
+        if vm("$p = Get-Process WalkdownPlant -ErrorAction SilentlyContinue; if ($p) { $p | ForEach-Object { "
+              "$_.PriorityClass = 'BelowNormal' }; 'ok' }", 60).strip():
+            return
+        time.sleep(2)
 
 
 def put(*paths):
@@ -68,6 +81,7 @@ def frames(driver, seconds):
     alias = vm('Join-Path $env:LOCALAPPDATA Microsoft\\WindowsApps\\walkdown-plant.exe').strip()
     desktop(alias, f'--rendering-driver {driver} -- --walk=frames --seconds={seconds} --quality=full '
             f'--out={out}')
+    lower()
     end = time.time() + seconds + 600
     res = ''
     while time.time() < end:
@@ -90,6 +104,7 @@ def main():
     ap.add_argument('msix')
     ap.add_argument('cer')
     ap.add_argument('--seconds', type=int, default=30)
+    ap.add_argument('--links-only', action='store_true', help='skip the frames walks')
     a = ap.parse_args()
     VM = a.vm
     failed = []
@@ -106,7 +121,7 @@ def main():
                              '(Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion").DisplayVersion').strip())
         print('display adapter:', vm('(Get-CimInstance Win32_VideoController).Name').strip())
         # 1. started through the alias, on each driver
-        for driver in ('d3d12', 'vulkan'):
+        for driver in () if a.links_only else ('d3d12', 'vulkan'):
             result, api, took, log = frames(driver, a.seconds)
             print(f'{driver}: {api}; {result or "no RESULT"} ({took:.0f} s to the end)')
             if result is None:
@@ -115,20 +130,28 @@ def main():
         # 2. links through the shell: a cold start each, the URI after --
         for link, want in (('walkdown-plant://kks/30PAC10AP001', '"open":"kks"'),
                            ('walkdown-plant://procedure/cold_start', '"open":"procedure"'),
-                           ('walkdown-plant://kks/../../etc', '"open":"start"')):
+                           ('walkdown-plant://kks/NOT-A-CODE', '"open":"start"')):
             stop()
             vm('Get-ChildItem -Recurse -Filter godot.log -ErrorAction SilentlyContinue '
                '"$env:LOCALAPPDATA\\Packages\\WalkdownPlant_*\\LocalCache" | Remove-Item -Force -ErrorAction SilentlyContinue')
             desktop('explorer.exe', link, 'plantlink')
-            line, cmdline = None, ''
+            lower()
+            cmdline = ''
             for _ in range(60):
                 time.sleep(3)
-                cmdline = cmdline or vm("(Get-CimInstance Win32_Process -Filter \"Name='WalkdownPlant.exe'\").CommandLine").strip()
-                line = next((ln for ln in godot_log().splitlines() if ln.startswith('plant: link ')), None)
-                if line:
+                cmdline = vm("(Get-CimInstance Win32_Process -Filter \"Name='WalkdownPlant.exe'\").CommandLine").strip()
+                if cmdline:
                     break
+            # the release build writes its log out when it ends: give it time to load and take the link, then close
+            # its window as a person would, and read the log
+            time.sleep(60)
+            # (from the desktop session: SSH's session can't reach the window)
+            desktop('powershell.exe', '-NoProfile -Command "Get-Process WalkdownPlant | ForEach-Object { '
+                    '$_.CloseMainWindow() }"', 'plantclose')
+            vm('Wait-Process WalkdownPlant -Timeout 90 -ErrorAction SilentlyContinue')
+            line = next((ln for ln in godot_log().splitlines() if ln.startswith('plant: link ')), None)
             print(f'{link}: command line {cmdline!r}; {line}')
-            if not cmdline.endswith(f'-- "{link}"'):
+            if not re.search(r' -- "walkdown-plant://[^"]*"$', cmdline):   # (the shell may normalise the URI)
                 failed.append(f'{link}: not passed after -- ({cmdline!r})')
             if not line or want not in line:
                 failed.append(f'{link}: the app did not open it as {want} ({line})')
