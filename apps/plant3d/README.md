@@ -177,8 +177,9 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_walk`: up the 30 m stair tower of HRSG 1, across the roof, up the stack's ladder to +40, and back down to the
   ground; the condenser pit's stair; every stair and ladder both ways; and the walking directions: from the control
   room the path finder reaches every tour stop and the equipment of every procedure step with `"go": "walk"`, and the
-  walker follows those routes, procedure by procedure, stop after stop (about 5 km, 2.5 minutes). It fails if the
-  walker is stuck for 5 s, falls below the floor it walks on, or ends out of reach of the equipment.
+  walker follows those routes, procedure by procedure, stop after stop, and the path finder's ways up and down every
+  stair and ladder (about 6.7 km, run; 1.5 minutes). It fails if the walker is stuck for 5 s, falls below the floor
+  it walks on, or ends out of reach of the equipment.
 - `test_ui_walk_route`: the walking directions in the app (shown, redrawn, found again off the way, hidden in flight
   and by other steps) and the gamepad's X for the control room.
 - `test_frames_route`: the phone's walk, once.

@@ -54,6 +54,7 @@ func run(tree: SceneTree) -> Array:
 		p.append("the way ends %.1f m from the compressor, out of reach of its local controls" % target_gap)
 	# 2. walking along it: redrawn from the trainee onwards, no new search
 	var finds: int = r.stats.finds
+	var draws: int = r.stats.draws
 	var left0: float = r.left
 	var along := 0.0
 	var k := 1
@@ -62,12 +63,23 @@ func run(tree: SceneTree) -> Array:
 		k += 1
 	player.global_position = pts[k - 1] + Vector3.UP * 0.05
 	await _wait(tree, 0.5)
-	if r.stats.finds != finds:
-		p.append("walking along the way searched for a new one")
+	if r.stats.finds != finds or r.stats.draws != draws:
+		p.append("walking along the way searched for a new one or rebuilt the chevrons")
 	if absf((left0 - r.left) - along) > 3.0:
 		p.append("after %.0f m along the way, %.0f m are left of %.0f" % [along, r.left, left0])
 	if r._drawn_from < along - 3.0:
-		p.append("the chevrons were not redrawn from where the trainee is (%.0f m along, drawn from %.0f)" % [along, r._drawn_from])
+		p.append("the chevrons were not shown from where the trainee is (%.0f m along, drawn from %.0f)" % [along, r._drawn_from])
+	# 2b. off the mesh (half way up a stair tower the way doesn't take): no searching from a floor below, the way stays
+	var on_stair: Vector3 = main.plant.stair_path("hrsg1_stair")[10]
+	var keep: Vector3 = player.global_position
+	finds = r.stats.finds
+	player.global_position = on_stair + Vector3.UP * 0.05
+	await _wait(tree, 1.5)
+	if r.stats.finds != finds or not r.shown():
+		p.append("off the mesh on a stair the way was searched again (%d searches) or hidden" % (r.stats.finds - finds))
+	player.global_position = keep + Vector3.UP * 0.05
+	await _wait(tree, 0.5)
+	finds = r.stats.finds
 	# 3. off the way: a new one from where the trainee is
 	var off: Vector3 = NavigationServer3D.map_get_closest_point(r.map, player.global_position + Vector3(0, 0, 12))
 	if off.distance_to(player.global_position) < 5.0:
@@ -87,8 +99,8 @@ func run(tree: SceneTree) -> Array:
 	await _wait(tree, 1.5)
 	if not r.shown():
 		p.append("the way did not come back after landing")
-	print("  walking directions: loaded in %.2f ms, %d searches (longest %.2f ms), %d redraws (longest %.2f ms)" % [
-		r.stats.setup_us / 1000.0, r.stats.finds, r.stats.find_us_max / 1000.0, r.stats.draws, r.stats.draw_us_max / 1000.0])
+	print("  walking directions: loaded in %.2f ms, %d searches (longest %.2f ms), %d chevron builds (longest %.2f ms), %d moves" % [
+		r.stats.setup_us / 1000.0, r.stats.finds, r.stats.find_us_max / 1000.0, r.stats.draws, r.stats.draw_us_max / 1000.0, r.stats.moves])
 	# 5. a step that says "fly": no way on foot
 	ui.start_procedure("cold_start", "basin")
 	await _wait(tree, 0.5)
@@ -119,10 +131,16 @@ func run(tree: SceneTree) -> Array:
 	player.global_position = off + Vector3.UP * 0.05
 	if ui.in_control_room():
 		p.append("the test's trainee is still in the control room")
+	# through Godot's input, as a gamepad sends it
 	var ev := InputEventJoypadButton.new()
 	ev.button_index = JOY_BUTTON_X
 	ev.pressed = true
-	ui._unhandled_input(ev)
+	Input.parse_input_event(ev)
+	await tree.process_frame
+	await tree.process_frame
+	var up := ev.duplicate()
+	up.pressed = false
+	Input.parse_input_event(up)
 	if not ui.in_control_room():
 		p.append("the gamepad's X did not take the trainee back to the control room")
 	main.free()

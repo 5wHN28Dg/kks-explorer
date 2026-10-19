@@ -116,8 +116,8 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 static func stair_way(space: PhysicsDirectSpaceState3D, path: Array) -> Array:
 	var out := path.duplicate()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.3
-	cap.height = 1.6
+	cap.radius = AGENT_RADIUS
+	cap.height = AGENT_HEIGHT - 0.2
 	for end in [0, path.size() - 1]:
 		var p: Vector3 = path[end]
 		var k := 1 if end == 0 else path.size() - 2

@@ -8,7 +8,7 @@
 ##   every route     the walking directions (app/walk_route.gd, PLANT3D.md §8): from the control room, the path finder
 ##                   reaches every stop of every tour and the equipment of every procedure step with "go": "walk", and
 ##                   the walker follows its routes in the order a trainee meets them, stop after stop, and the
-##                   path finder's way to the top of every ladder
+##                   path finder's ways up and down every stair and ladder
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -226,7 +226,10 @@ func routes(tree: SceneTree) -> Array:
 	if not problems.is_empty():
 		world.free()
 		return problems
-	# 2. the walker on those routes, procedure by procedure from the control room, target after target
+	# 2. the walker on those routes, procedure by procedure from the control room, target after target. It runs (Shift,
+	# as a trainee crossing the plant does): 6.7 km at a walk would take the test four minutes of the build's ten; the
+	# stairs and the ladder are walked at a walk above
+	player.run = true
 	var t0 := Time.get_ticks_msec()
 	var walked := 0.0
 	var proc := ""
@@ -249,15 +252,28 @@ func routes(tree: SceneTree) -> Array:
 		var d := index.distance(t[2], player.global_position + Vector3.UP * 1.0)
 		if d > REACH:
 			problems.append("%s/%s: the walker ended %.1f m from %s" % [t[0], t[1], d, t[2]])
-	# and the way the path finder knows to the top of each ladder, walked and climbed from the control room
-	for l in plant.manifest.ladders:
+	# and every stair and ladder by the path finder's own ways: from the control room to the floor in front of its
+	# foot, up it to the floor in front of its top, and down again, each way through its link
+	await _place(tree, player, start)
+	for l in nav.links.values():
 		if not problems.is_empty():
 			break
-		await _place(tree, player, start)
-		var rt: Dictionary = nav.find(player.global_position, plant.v3(l.exit))
-		walked += rt.length
-		problems.append_array(await _follow(tree, world, player, nav.steps(rt), "the way to the top of %s" % l.id, 0.5, 0.5))
-	print("  walked %.0f m along the routes to %d targets and %d ladders' tops in %d ms" % [walked, tg.size(),
-		plant.manifest.ladders.size(), Time.get_ticks_msec() - t0])
+		var ends: Array = [l.path[0], l.path[-1]]
+		for leg in [[null, ends[0], ""], [ends[0], ends[1], "up"], [ends[1], ends[0], "down"]]:
+			var rt: Dictionary = nav.find(player.global_position, leg[1])
+			var what := "%s %s %s" % [l.kind, l.id, leg[2] if leg[2] != "" else "(the way to its foot)"]
+			if not rt.reached:
+				problems.append("%s: no way on foot" % what)
+				break
+			if leg[2] != "" and not Array(rt.marks).has("%s %s" % [l.kind, l.id]):
+				problems.append("%s: the path finder's way does not take it" % what)
+				break
+			walked += rt.length
+			var pb := await _follow(tree, world, player, nav.steps(rt), what, 0.5, 0.5)
+			if not pb.is_empty():
+				problems.append_array(pb)
+				break
+	print("  walked %.0f m along the routes to %d targets and up and down %d stairs and ladders in %d ms" % [walked,
+		tg.size(), nav.links.size(), Time.get_ticks_msec() - t0])
 	world.free()
 	return problems
