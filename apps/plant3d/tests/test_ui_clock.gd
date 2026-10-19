@@ -69,6 +69,7 @@ func run(tree: SceneTree) -> Array:
 	for i in 200:
 		if c.speed != SimClock.Speed.FAST:
 			break
+		c.step_ms = 0.3          # a laptop's step: the time to the alarm must not shrink with the machine's load
 		c._process(1.0 / 60.0)
 	if c.speed != SimClock.Speed.NORMAL:
 		p.append("fast-forward did not stop when the pump's alarm came up")
