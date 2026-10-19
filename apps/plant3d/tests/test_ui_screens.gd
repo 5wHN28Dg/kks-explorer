@@ -288,6 +288,13 @@ func _legible(tree: SceneTree, ui) -> Array:
 		await tree.process_frame
 	if ui._toast.visible and ui._toast.get_global_rect().intersects(ui.card.get_global_rect()):
 		p.append("the word covers the card: %s over %s" % [str(ui._toast.get_global_rect()), str(ui.card.get_global_rect())])
+	ui.toast("TRIP: Steam turbine generator breaker opened by protection")      # a long word, beside the card
+	await tree.process_frame
+	var vr: Rect2 = ui.root.get_viewport_rect()
+	var tr: Rect2 = ui._toast.get_global_rect()
+	if tr.end.y > vr.end.y + 0.5 or tr.intersects(ui.card.get_global_rect()):
+		p.append("a long word runs off the screen or over the card: %s (screen %s, card %s)" % [str(tr), str(vr),
+				str(ui.card.get_global_rect())])
 	ui.close_card()
 	ui.close_screens()
 	return p

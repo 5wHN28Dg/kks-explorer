@@ -268,10 +268,16 @@ func _layout_toast() -> void:
 		side = card.size.x + 32.0
 	_toast_beside_card = card != null and card.visible
 	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))
-	# over the screens, at their bottom edge: the middle of a screen is where the plant is read
-	var y := vs.y - (70.0 if screens_open() else 200.0) * W.scale
-	_toast.position = Vector2((vs.x - w) * 0.5, y)
+	var x := (vs.x - w) * 0.5
+	if screens_open():
+		# over the screens, at their bottom edge (the middle of a screen is where the plant is read), left of a card
+		var right: float = (card.position.x if card != null and card.visible else vs.x) - 16.0
+		w = clampf(right - 16.0, 360.0, 900.0)
+		x = maxf(16.0, (right + 16.0 - w) * 0.5)
+	_toast.position = Vector2(x, 0.0)
 	_toast.size = Vector2(w, 0)
+	var h := _toast.get_combined_minimum_size().y
+	_toast.position.y = (vs.y - h - 16.0) if screens_open() else vs.y - 200.0 * W.scale
 
 
 ## The layer's rows in the settings panel (app/hud.gd), kept in the app's settings file.
