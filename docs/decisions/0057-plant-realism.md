@@ -43,9 +43,15 @@ memory, load and size rules (wiki: 3D-plant, measurement rules), and with nothin
   phone skips the streaks' and wear's samples.
 - **The site:** concrete yards in the areas' bounds, gravel between, a ring road with kerbs and a drain, a boundary
   wall, the country to the far plane with low hills.
-- **Per tier:** laptops add SSAO (low, half size, faded by 120 m: contact shade on valves and fittings the lightmap is
-  too coarse for). SSIL, volumetric fog, glow and SDFGI are left out: measured above, none shows a trainee anything
-  the bake doesn't (R9a).
+- **Per tier:** both tiers get the bake and the haze. SSAO (low, half size) was the laptops' at first; the second
+  realism pass took it out: it cost the full tier about 6 ms of GPU time at the 95th percentile and with it the 60 fps
+  rule (measured below), and the bake carries the shade under equipment and in corners. SSIL, volumetric fog, glow and
+  SDFGI are left out: measured above, none shows a trainee anything the bake doesn't (R9a).
+- **Halls (second realism pass):** each high-bay lamp is a downlight (a spot, inverse-square, its cone sized to the
+  lamps' spacing) plus a wide dim cone for what its reflector lets out sideways; the floor is grey-green epoxy paint.
+  Pools under the lamps, darker corners. An omni light per lamp (the first pass) washed the floor out evenly; an omni
+  "spill" lit the ceiling close to each lamp, and the bake turned those hot spots into blotches over every floor and
+  wall (too few of its bounce rays meet them), so no lamp's light reaches the ceiling.
 - **Tag plates:** every valve on a pipe and every child part with a plate point carries its tag plate (content).
 
 ## Measured (2026-10-16)
@@ -70,6 +76,22 @@ counted (`pipelines compiled` in result.txt) before it is added. Its memory grew
 the rest not yet broken down). The laptop missed the 60 fps rule before this change too under the same load (0041's
 82 fps was measured on a quiet machine); this change costs about 2 ms at the 95th percentile, mostly SSAO's. A quiet
 laptop run is still to be made; if the laptop then misses, SSAO is the first lever.
+
+## Measured, second realism pass (2026-10-19)
+
+Same rules. The laptop: `full` at 1600×900 for 10 minutes, the branch then main (11f0e4b) back to back. Not a quiet
+machine: another task's Windows VM used about 3 cores and a browser was open (load average 9); main on a quiet machine
+(2026-10-17) is in the first column.
+
+| | Rule | Main, quiet | Main, loaded | Second pass, loaded |
+|---|---|---|---|---|
+| Laptop, frames ≤ 17.5 ms | 95 % | 85.5 % | 67.4 % | 96.7 % |
+| Laptop, frame p95 / median | ≤ 16.7 ms | 23.2 / 9.1 ms | 38.2 / 14.6 ms | 15.7 / 11.6 ms |
+| Laptop, GPU p95 / median | | 21.4 / 8.5 ms | 31.2 / 13.7 ms | 10.9 / 9.3 ms |
+| Laptop, pipelines for the first frame (surface + specialization) | | 27 + 16 | 27 + 16 | 20 + 13 |
+
+What each part of the sun's shadow and SSAO cost (150 s walks, loaded, GPU p95): everything 16.6 ms; SSAO off 10.7;
+shadow off 11.5; two cascades 14.7; shadow to 40 m 16.6. SSAO was the lever; the shadow stays as it was.
 
 **When to revisit:** when Godot binds LightmapGI baking to scripts (bake headless, on CI); if a phone in the
 measurement set has ASTC HDR; when the plant outgrows one lightmap texture (4096 px slices); if a trainee needs light
