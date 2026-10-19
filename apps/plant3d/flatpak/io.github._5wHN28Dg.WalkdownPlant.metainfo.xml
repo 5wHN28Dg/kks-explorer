@@ -24,9 +24,4 @@
     <control>gamepad</control>
     <control>touch</control>
   </supports>
-  <releases>
-    <release version="0.1.0" date="2026-10-16">
-      <description><p>The app's frame: the first train's plant to walk through (stairs, platforms, ladders, doors), free flight, the overview map, touch, keyboard, mouse and gamepad controls; equipment shown as placeholders for now.</p></description>
-    </release>
-  </releases>
 </component>
