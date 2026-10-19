@@ -20,7 +20,7 @@ per-frame cost spikes on the lean tier? And how does the walking test prove ever
 | Flat tops | machines' tops, roofs and fan stacks are flat and became islands of the mesh, where a route to a nearby code ended (Recast cannot know nobody walks there). Keeping only what is reached from the plant's start, on foot and by the links, drops 800 of 2543 polygons | [V] |
 | What the test found in the content | a cold reheat pipe crossed the drum platform's only walkway at 1.65 m headroom (raised to +35: 2.6 m); the drum stair's top ran 0.3 m into the HP drum's end in plan (moved 0.5 m north) | [V] `test_walk` |
 | Size and load | `nav.res` 17.6 KB; loading it and adding the links takes 3 ms on the laptop | [V] `test_ui_walk_route` |
-| Cost of a search and a redraw | a search 0.47 ms mean, 0.63–0.86 ms worst; the chevrons' redraw 0.4 ms mean, 0.8 ms worst (laptop, 120 s of the frames walk with a walking step that keeps leaving its way: 33 searches, 124 redraws). The Note 9 runs GDScript about 3.3 times slower (the model step, README): about 3 ms for each, once a second at most, never in the same frame | [V] `main.gd` `ROUTE` line |
+| Cost | (laptop, 120 s of the frames walk with a walking step the walker keeps leaving: the worst case) a search 0.44–0.47 ms mean, 0.6–1.1 ms worst; the target's point 0.9–1.8 ms, once per target. Rebuilding the chevrons after every metre walked cost 0.4 ms mean but up to 320 ms while another job held the GPU (the mesh upload waits for the renderer): so they are built once per search (24 builds, 1.3 ms mean, 9 ms worst under that load) and walking on only moves a shader's window (two parameters). The Note 9 runs GDScript about 3.3 times slower (the model step, README): a few ms, at most once a second | [V] `main.gd` `ROUTE` line |
 
 Alternative: a waypoint graph from the content (stair paths, ladders, surface outlines). Exact on stairs and ladders,
 but on floors it needs the clearance round equipment, rails and walls that the navigation mesh computes; that is a
@@ -34,11 +34,13 @@ navigation mesh of our own.
   against the stair's rails) are kept in the mesh's metadata.
 - The app loads it into the world's navigation map with one link per stair and ladder, finds a way when the step's
   target changes and again only when the trainee leaves it by 2.5 m (checked 4 times a second, at most one search a
-  second), draws 60 m of chevrons ahead, redrawn after each metre walked; target, search and redraw each in a physics
-  tick of their own. A way on a ladder or a stair follows its own path.
+  second, none while the trainee is off the mesh on a stair), builds the chevrons for the whole way once per search
+  and shows 60 m of them ahead by a shader window moved after each metre walked; target, search and build each in a
+  drawn frame of their own. A way on a ladder or a stair follows its own path.
 - `test_walk` proves every tour stop and every walking step reachable by the path finder from the control room and
-  walks the walker along those routes; every stair and ladder is walked both ways.
+  walks the walker along those routes (running); every stair and ladder is walked both ways along its own path, and
+  again along the path finder's way through its link.
 
 **When to revisit:** a Godot upgrade (the stair-tower behaviour and the region's edge merging may change); content
 with ramps or stairs not made as `stair` (they would need to be walkable slopes in the mesh); if the Note 9's frame
-log shows the redraw (then a shader that scrolls a fixed strip instead of rebuilding it).
+log shows the chevrons' build after a search.
