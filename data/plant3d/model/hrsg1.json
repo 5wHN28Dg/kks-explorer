@@ -38,7 +38,7 @@
   ["hp_p_ns", {"select": "hp_sv_open", "cases": [150, 136], "unit": "bar"}],
   ["hp_p_tgt", {"select": "hp_slide", "cases": ["hp_p_ns", "hp_p_auto"], "unit": "bar"}],
   ["hp_t_tgt", {"of": "hp_p_tgt", "table": [[1.01, 100], [1.99, 120], [3.61, 140], [6.18, 160], [10.0, 180], [15.5, 200], [20.0, 212], [30.0, 234], [39.7, 250], [50.0, 264], [60.0, 276], [80.0, 295], [100.0, 311], [120.0, 325], [128.0, 330], [137.1, 335], [146.0, 340], [155.4, 345]], "unit": "°C"}],
-  ["hp_tw", {"integrate": "hp_rate", "gain": 1, "min": 20, "max": 345, "init": 35, "unit": "°C", "kks": "10HAD30BB001"}],
+  ["hp_tw", {"integrate": "hp_rate_net", "gain": 1, "min": 20, "max": 345, "init": 35, "unit": "°C", "kks": "10HAD30BB001"}],
   ["hp_head", {"diff": ["hp_t_tgt", "hp_tw"], "unit": "K"}],
   ["hp_hf", {"of": "hp_head", "table": [[-20, -1], [0, 0], [3, 1]]}],
   ["hp_rmax", {"of": "gt1_heat_mw", "table": [[0, 0], [100, 0.033], [160, 0.058], [250, 0.085], [350, 0.11]]}],
@@ -131,6 +131,14 @@
   ["hp_vent_pos", {"ramp": "hp_vent_cmd", "rate": 0.05, "unit": "pu", "kks": "10HAN30AA001"}],
   ["hp_vent_ok", {"cmp": ["hp_vent_pos", ">=", 0.95]}],
   ["hp_drains_vent_open", {"and": ["hp_drains_open", "hp_vent_ok"]}],
+  ["hp_noheat", {"cmp": ["gt1_heat_mw", "<", 1]}],
+  ["hp_hot", {"cmp": ["hp_tw", ">", 100]}],
+  ["hp_cools", {"and": ["hp_noheat", "hp_hot"]}],
+  ["hp_vent_cool", {"product": ["hp_vent_pos", 0.05]}],
+  ["hp_drn_cool", {"product": ["hp_drn_frac", 0.02]}],
+  ["hp_cool_k", {"sum": [0.003, "hp_vent_cool", "hp_drn_cool"], "unit": "K/s"}],
+  ["hp_cool", {"product": ["hp_cools", "hp_cool_k"], "unit": "K/s"}],
+  ["hp_rate_net", {"diff": ["hp_rate", "hp_cool"], "unit": "K/s"}],
   ["hp_drn_shut", {"cmp": ["hp_drn_n", "<", 0.5]}],
   ["hp_vent_shut", {"cmp": ["hp_vent_pos", "<", 0.01]}],
   ["hp_drains_closed", {"and": ["hp_drn_shut", "hp_vent_shut"]}],
@@ -181,9 +189,6 @@
   {"kks": "10HAN30AA001", "do": "set", "input": "hp_vent_cmd", "range": [0, 1], "where": ["local", "screen"]},
   {"kks": "10LAE30AA001", "do": "auto", "machine": "hp_spray_ctrl", "where": ["screen"], "needs": [["ia_ok", "Instrument air below 4 bar: an air-operated valve can't move"]]},
   {"kks": "10LAE30AA001", "do": "manual", "machine": "hp_spray_ctrl", "where": ["screen"]}
- ],
- "interlocks": [
-  {"id": "gt1_runback", "when": "gt1_rb_c", "do": [{"set": {"gt1_load_sp": 20}}], "kks": "10MBA10", "text": "No steam sink (steam turbine off load, bypass not in automatic): GT 1 runs back to minimum load"}
  ],
  "machines": [
   {"id": "hp_lvl_ctrl", "kks": "10LAB30AA001", "init": "auto", "commands": {"auto": {"from": ["manual"], "to": "auto"}, "manual": {"from": ["auto"], "to": "manual"}}, "states": [{"id": "manual", "watch": false}, {"id": "auto", "watch": false, "say": "HP drum level control in automatic"}]},

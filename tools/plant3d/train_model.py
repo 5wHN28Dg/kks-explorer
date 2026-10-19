@@ -256,7 +256,7 @@ class M:
         self.tab(f'{p}_oil_k', 'ccw_ok', [[0, 60], [1, 12]], 'K')
         self.prod(f'{p}_oil_rise', [f'{p}_oil_heat', f'{p}_oil_k'], 'K')
         self.sum(f'{p}_oil_tgt', ['ccw_t', f'{p}_oil_rise'], '°C')
-        self.lag(f'{p}_oil_t', f'{p}_oil_tgt', 600, init=35, unit='°C', kks=tcode)
+        self.lag(f'{p}_oil_t', f'{p}_oil_tgt', 600, init=28, unit='°C', kks=tcode)
         self.cmp(f'{p}_oil_t_h', f'{p}_oil_t', '>', 60)
         self.cmp(f'{p}_oil_t_hc', f'{p}_oil_t', '<', 58)
         self.cmp(f'{p}_oil_t_hh', f'{p}_oil_t', '>', 70)
@@ -644,7 +644,12 @@ def gt1():
     m.NOT('gt1_noflame', 'gt1_flame')
     m.AND('gt1_flame_lost', ['gt1_fired', 'gt1_noflame'])
     # fuel and load
-    m.prod('gt1_mw_tgt', ['gt1_brk_cmd', 'gt1_load_sp'])
+    # the runback (hrsg1's gt1_rb_c, read as the previous step left it): the load is capped at minimum load while
+    # there is no steam sink, whatever the setpoint; it returns to the setpoint once a sink is back
+    m.delay('gt1_rb', 'gt1_rb_c', 0.1, 0.1)
+    m.tab('gt1_rb_cap', 'gt1_rb', [[0, 250], [1, 20]], 'MW')
+    m.min('gt1_load_eff', ['gt1_load_sp', 'gt1_rb_cap'], 'MW')
+    m.prod('gt1_mw_tgt', ['gt1_brk_cmd', 'gt1_load_eff'])
     m.ramp('gt1_mw', 'gt1_mw_tgt', 0.2, 2, 0, 'MW', '10MKA10')
     m.tab('gt1_lf', 'gt1_mw', [[0, 0], [250, 1]])
     m.tab('gt1_fuel_acc', 'gt1_speed', [[0.15, 0.12], [1, 0.25]])
@@ -752,9 +757,7 @@ def gt1():
         ('hp_lvl_ok', 'HP drum level outside ±150 mm'), ('fw_avail', 'No feedwater pump running')],
         ('screen',), machine='gt1_start')
     m.op('10MBA10', 'stop', None, (), ('screen',), machine='gt1_start')
-    m.op('10MKA10', 'set', None, [('hp_slide', 'No steam sink (steam turbine off load, bypass not in automatic): '
-                                              'GT 1 is held at minimum load')], ('screen',),
-         input='gt1_load_sp', range=[10, 250])
+    m.op('10MKA10', 'set', None, (), ('screen',), input='gt1_load_sp', range=[10, 250])
     m.op('10MBK10AE001', 'start', {'gt1_tg_cmd': 1}, [('gt1_lube_ok', 'Lube oil pressure below 1.8 bar')])
     m.op('10MBK10AE001', 'stop', {'gt1_tg_cmd': 0})
     # trips: each forces the start sequence to "trip"; the generator protection then opens the breaker
@@ -878,7 +881,7 @@ def hrsg1():
     m.sel('hp_p_ns', 'hp_sv_open', [150, 136], 'bar')
     m.sel('hp_p_tgt', 'hp_slide', ['hp_p_ns', 'hp_p_auto'], 'bar')
     m.tab('hp_t_tgt', 'hp_p_tgt', inv(STEAM), '°C')
-    m.integ('hp_tw', 'hp_rate', 1, 20, 345, 35, '°C', '10HAD30BB001')
+    m.integ('hp_tw', 'hp_rate_net', 1, 20, 345, 35, '°C', '10HAD30BB001')
     m.diff('hp_head', 'hp_t_tgt', 'hp_tw', 'K')
     m.tab('hp_hf', 'hp_head', [[-20, -1], [0, 0], [3, 1]])
     m.tab('hp_rmax', 'gt1_heat_mw', [[0, 0], [100, 0.033], [160, 0.058], [250, 0.085], [350, 0.11]])
@@ -963,6 +966,16 @@ def hrsg1():
     m.ramp('hp_vent_pos', 'hp_vent_cmd', 0.05, unit='pu', kks='10HAN30AA001')
     m.cmp('hp_vent_ok', 'hp_vent_pos', '>=', 0.95)
     m.AND('hp_drains_vent_open', ['hp_drains_open', 'hp_vent_ok'])
+    # with no heat from the GT the boxed-up drum cools by itself (~10 K/h near full pressure) and much faster
+    # through an open start-up vent (3 K/min) or the drains (1.2 K/min): how a trainee lets the pressure down
+    m.cmp('hp_noheat', 'gt1_heat_mw', '<', 1)
+    m.cmp('hp_hot', 'hp_tw', '>', 100)
+    m.AND('hp_cools', ['hp_noheat', 'hp_hot'])
+    m.prod('hp_vent_cool', ['hp_vent_pos', 0.05])
+    m.prod('hp_drn_cool', ['hp_drn_frac', 0.02])
+    m.sum('hp_cool_k', [0.003, 'hp_vent_cool', 'hp_drn_cool'], 'K/s')
+    m.prod('hp_cool', ['hp_cools', 'hp_cool_k'], 'K/s')
+    m.diff('hp_rate_net', 'hp_rate', 'hp_cool', 'K/s')
     m.cmp('hp_drn_shut', 'hp_drn_n', '<', 0.5)
     m.cmp('hp_vent_shut', 'hp_vent_pos', '<', 0.01)
     m.AND('hp_drains_closed', ['hp_drn_shut', 'hp_vent_shut'])
@@ -1018,8 +1031,6 @@ def hrsg1():
     m.alarm('hp_steam_t_high', '10LBA30CT001', 'HP steam temperature high', 'hp_steam_th', 2, isa='TAH')
     m.alarm('hp_p_high', '10HAD30CP001', 'HP drum pressure high', 'hp_p_h', 2, '10HAD30BB001', 'PAH', 'hp_p_hc')
     m.alarm('hp_sv_open', '10LBA30AA901', 'HP safety valve open', 'hp_sv_open', 1, isa='ZAH')
-    m.interlock('gt1_runback', 'gt1_rb_c', [{'set': {'gt1_load_sp': 20}}], '10MBA10',
-                'No steam sink (steam turbine off load, bypass not in automatic): GT 1 runs back to minimum load')
     m.alarm('gt1_runback', '10MBA10', 'GT 1 runback: no steam sink', 'gt1_rb_c', 1)
     m.b(kks='10LBA30AA901', anim='stem', of='hp_sv_pos')
     m.b(kks='10LBA30AA901', sound='steam_vent', gain={'of': 'hp_sv_flow', 'table': [[0, 0], [5, 0.6], [70, 1]]})
@@ -1132,7 +1143,7 @@ def st():
     m.sel('cond_floor0', 'st_gland_on', ['vac_floor_ng', 'vac_floor_g'], 'kPa(a)')
     # the vacuum pumps' seal water is cooled by closed cooling water: without it the liquid ring warms and the
     # pumps hold 12 kPa less vacuum (FIRST-TRAIN §4 #2)
-    m.lag('vac_seal', 'ccw_ok', 120, unit='pu')
+    m.lag('vac_seal', 'ccw_ok', 120, init=1, unit='pu')
     m.diff('vac_seal_loss', 1, 'vac_seal')
     m.prod('vac_seal_pen', ['vac_seal_loss', 12], 'kPa')
     m.sum('cond_floor1', ['cond_floor0', 'vac_seal_pen'])

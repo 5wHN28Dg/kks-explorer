@@ -255,7 +255,7 @@ is faster still ("Time" below).
 - **Backflow:** a stopped CW pump whose discharge valve is open passes water back to the basin, up to 7,500 m³/h
   (half a pump's flow) at full header pressure, in proportion to its valve's opening. The interlock that closes
   a stopped pump's valve (60 s of travel) limits this to a short dip of flow.
-- **Interlocks:** the GT runback (below); a stopped CW pump closes its discharge valve; low lube oil pressure while the oil system is in
+- **Interlocks:** a stopped CW pump closes its discharge valve; low lube oil pressure while the oil system is in
   service (the shaft turning, on the turning gear too; whichever pump was selected or stopped) starts the DC pump (GT and
   ST); a tripped closed cooling water pump starts the standby one; condenser pressure
   high-high, no CW flow or no condensate pump puts both bypass controllers in manual (closed).
@@ -275,13 +275,13 @@ is faster still ("Time" below).
   steam temperature runs up to its uncontrolled value) and the gland steam valve fails **closed** (the vacuum is
   lost and the steam turbine trips on condenser pressure). At cold iron, before the compressors run, the two
   fail-open valves stand open. The auxiliary boiler's burner stops without air. The compressors can trip (the
-  trainer's `ia_lost`): the header falls at 0.02 bar/s from 7 bar, the low-pressure alarm sounds at 5 bar (it is
-  suppressed only when the operator stopped both compressors), and the valves reach their fail positions about
+  trainer's `ia_lost`): the header falls at 0.02 bar/s from 7 bar, the low-pressure alarm sounds at 5 bar, and the valves reach their fail positions about
   2.5 minutes after the trip. Each compressor's trip has its own alarm; the low-pressure alarm is suppressed only
   while both compressors are stopped by the operator with both turbines at rest.
-- **Power and hydraulics:** the motor-operated valves (CW pump discharge valves, superheater drains, start-up vent,
-  makeup valve, casing warm-up valve) fail **as is**: on a loss of their supply they stay where they are (the
-  trainer's `cw_valve_power`; a CW pump that trips then keeps its valve open, and with one pump left the backflow
+- **Power and hydraulics:** the motor-operated valves fail **as is**: on a loss of their supply they stay where they
+  are. Only the CW pump discharge valves have that fault so far (the trainer's `cw_valve_power`, which also leaves
+  no handwheel to the trainee: format 1 has no local manual operation of a motor valve, and the trainer's faults
+  have no repair, as the motor faults before them; a CW pump that trips then keeps its valve open, and with one pump left the backflow
   halves what reaches the condenser: CW flow low, CW return temperature and condenser pressure high). The hydraulic valves (fuel gas, HP stop and control, bypass) have their own oil
   supplies, not modelled; their fail-safe action is the trip itself (the fuel and the turbine valves close). The
   bypass's hydraulic unit can fail (`byp_hyd`, with its alarm): the bypass is blocked and both controllers drop to
@@ -302,10 +302,13 @@ is faster still ("Time" below).
   rate the exhaust heat allows; the HP superheater outlet safety valve `10LBA30AA901` lifts at 135 bar (about 12 %
   above the 120 bar of base load, the drum below its design pressure), holds 136 bar while open (its accumulation)
   and reseats below 130 bar (a 4 % blowdown), or once the HRSG makes almost no steam (below 2 kg/s, after a GT
-  trip: the boxed-up HRSG then holds its pressure), roaring through its stack. One valve stands for the drum's and
+  trip), roaring through its stack. With no heat from the GT the boxed-up drum cools by itself, about 10 K an hour
+  near full pressure, and the trainee lets the pressure down through the start-up vent (3 K/min) or the
+  superheater drains (1.2 K/min). One valve stands for the drum's and
   the superheater's safety valves, so it lifts on the drum pressure. The saturation table above 330 °C is
   IAPWS-IF97's, rounded. The HRSG protection runs GT 1 back to minimum load (20 MW, at its unloading rate of 2 MW/s)
-  2 s after it is on load with no sink, and holds it there (its load setpoint is refused) until a sink returns.
+  2 s after it is on load with no sink: its load is capped at 20 MW (never raised: a GT below 20 MW stays where it
+  is) whatever the setpoint, and goes back to the setpoint at the loading rate once a sink returns.
   At base load a steam turbine trip with the bypass hydraulics failed (`st_trip_no_bypass`) lifts the safety valve
   after about 1.5 minutes; the steam lost through it then empties the hotwell.
 - **HP casing warm-up and the steam/metal match (#18):** before the roll the HP casing is warmed with auxiliary steam
@@ -314,7 +317,8 @@ is faster still ("Time" below).
   taken as superheated to about 250 °C. The roll needs the steam within −50 to +150 K of the casing and the warm-up
   valve shut; the HP spray, in automatic, holds the steam at most 140 K above the casing, before the roll and while
   loading, so the steam temperature climbs with the casing (about 520 °C when the train reaches base load, 560 °C
-  later). The roll on a cold casing, or with the spray in manual at minimum load (`roll_steam_too_hot`), is refused.
+  later). The roll on a cold casing, or with the spray in manual at minimum load (`roll_steam_too_hot`), is refused;
+  so is a roll with steam over 50 K colder than a hot casing, a case only a hot restart reaches (no scenario yet).
 - **Not built yet:** in the model, nothing the plan above asks for (its gaps of 2026-10-16 were closed on
   2026-10-19); the surge's heavy thud is a sound still to make. Still
   simplified: the HRSG's IP and LP pressures, the reheater's steam, the LP bypass spray valve and the hydraulic
@@ -326,7 +330,7 @@ is faster still ("Time" below).
   `instrument_air_lost` (the fail-safe positions, then the vacuum, the steam turbine trip, the runback, the safety
   valve and the drum flooding, in that order), `st_trip_no_bypass`, `bypass_hydraulics_lost`, `cw_valve_power_lost`,
   `cw_a_start_open_valve` (into the empty pipe during the cold start) with `_b_` and `_c_` (into a full header),
-  `gt_load_without_sink`, `warm_without_tg`, `roll_with_warmup_open`, `roll_steam_too_hot`, `ia_stopped_at_load`
+  `gt_load_without_sink`, `runback_never_raises_load`, `cw_b_normal_stop`, `warm_without_tg`, `roll_with_warmup_open`, `roll_steam_too_hot`, `ia_stopped_at_load`
   and `safety_valve_reseats_after_gt_trip`.
 
 | # | System (codes §1) | What the trainee does | Faked behaviour (values, lags) | What it teaches |
@@ -355,7 +359,7 @@ is faster still ("Time" below).
 **Interlocks and trips of the first train** (each a model trip or interlock with its code, §5):
 GT: lube oil pressure low-low; lube oil temperature high-high; flame failure; exhaust temperature high-high; exhaust temperature spread high;
 overspeed; HRSG drum level high-high or low-low (HRSG protection trips the GT); compressor surge (fast pressure
-drop); runback to minimum load on the loss of every steam sink. ST: lube oil pressure low-low; lube oil temperature
+drop); runback to minimum load on the loss of every steam sink (a load cap, not an interlock). ST: lube oil pressure low-low; lube oil temperature
 high-high; condenser pressure high-high; overspeed; axial displacement; bearing vibration
 high-high; HP steam temperature low (wet steam). CW pump: motor overload; basin level low-low; discharge valve not
 open after 120 s. CEP: hotwell level low-low. Cooling tower fan: vibration high-high.

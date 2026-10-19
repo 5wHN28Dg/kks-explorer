@@ -119,7 +119,7 @@ class Content(unittest.TestCase):
                   'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t', 'cw_a_trip_ol', 'cw_a_trip_ll',
                   'cw_a_trip_valve', 'cep_trip_hw', 'ct_fan1_trip_vib', 'gt1_trip_oil_temp', 'st_trip_oil_temp'):
             self.assertIn(t, trips)
-        self.assertIn('gt1_runback', {x['id'] for x in self.m.interlocks})     # §4 "As built": the GT runback
+        self.assertIn('gt1_runback', {a['id'] for a in self.m.alarms})         # §4 "As built": the GT runback
         ops = self.m.op_keys
         needs = lambda kks, do: [n[0] for n in ops[(kks, do, None)].get('needs', [])]
         self.assertIn('st_tg_run', needs('30MAW10AA001', 'open'))           # #10 gland steam needs the turning gear
@@ -132,7 +132,6 @@ class Content(unittest.TestCase):
         self.assertIn('st_match', needs('30MAA10', 'roll'))                 # #18 matched to the HP casing
         self.assertIn('st_warm_shut', needs('30MAA10', 'roll'))             # #18 the casing warm-up closed first
         self.assertIn('st_tg_run', needs('30MAA10AA101', 'open'))           # #18 warm-up only on the turning gear
-        self.assertIn('hp_slide', needs('10MKA10', 'set'))                  # GT load held without a steam sink
 
     def test_codes_are_unique_and_decode(self):
         k = self.b.plant['kks']
@@ -562,6 +561,8 @@ class Forks(unittest.TestCase):
                     self.assertIn(['alarm', a, 'active_unack'], [e[1:4] for e in ev if e[1] == 'alarm'])
                 for il in ex.get('interlocks', []):
                     self.assertIn(['interlock', il], [e[1:3] for e in ev if e[1] == 'interlock'])
+                for a in ex.get('no_alarms', []):
+                    self.assertNotIn(a, [e[2] for e in ev if e[1] == 'alarm'])
                 for il in ex.get('no_interlocks', []):
                     self.assertNotIn(['interlock', il], [e[1:3] for e in ev if e[1] == 'interlock'])
                 if ex.get('no_trip'):
