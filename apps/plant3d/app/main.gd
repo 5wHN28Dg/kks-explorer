@@ -110,6 +110,14 @@ func _ready() -> void:
 		ui.open_panel(p)
 	if opts.get("speed", "") == "fast" and ui.clock != null:
 		ui.fast_forward()
+	# the saved run (ui/autosave.gd): offered unless the command line asks for a start of its own; a measurement
+	# saves to a file of its own, never over a trainee's run
+	if ui.autosave != null:
+		if opts.has("walk") or opts.has("shot"):
+			ui.autosave.path = "user://run-walk.save"
+			ui.autosave.begin(false)
+		else:
+			ui.autosave.begin(not (opts.has("scenario") or opts.has("procedure") or opts.has("speed")))
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	choose_tier()
 	_first_frame()
