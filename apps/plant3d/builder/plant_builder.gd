@@ -1098,6 +1098,16 @@ const LAMP_REACH := 2.4
 ## The cone: its pool on the floor about 0.6 of the lamps' spacing in radius (pools that meet but do not merge into
 ## an even floor), 10 to 40 degrees from the axis to the edge.
 const LAMP_POOL := 0.6
+## The height of the floor under plan point p and below height z: the highest walkable surface there at least 2 m
+## below z (a deck, a mezzanine), else the ground (0). A lamp's energy is set from its height over that floor: from
+## the ground, a lamp over the turbine hall's 12 m deck put 2.6 × the light meant on it (adversarial review).
+func floor_below(p: Vector2, z: float) -> float:
+	var f := 0.0
+	for sf in surfaces:
+		if sf.z < z - 2.0 and sf.z > f and Geom.in_region(p, sf.outline, sf.holes):
+			f = sf.z
+	return f
+
 func _lamps(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var h: float = b.height
@@ -1123,7 +1133,7 @@ func _lamps(body: Node, b: Dictionary) -> int:
 			l.position = Geom.g([c.x, c.y, z - 0.2])
 			l.rotation_degrees = Vector3(-90, 0, 0)   # a spot shines along its -z: straight down
 			l.spot_range = h * LAMP_REACH
-			var d := z - 0.2
+			var d := z - 0.2 - floor_below(c, z - 0.2)   # to the floor under it: a deck's, or the ground
 			l.spot_attenuation = 2.0
 			l.spot_angle = clampf(rad_to_deg(atan(LAMP_POOL * gap / d)), 10.0, 40.0)
 			l.spot_angle_attenuation = 3.0

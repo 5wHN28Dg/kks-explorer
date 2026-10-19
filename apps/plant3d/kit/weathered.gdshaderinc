@@ -12,7 +12,7 @@
 //   wet      darker and glossier ground and walls near water (the cooling tower's basin): the box `wet_zone`
 // All from one tileable noise texture made by the build (builder/weather.gd), sampled in world space on the face's
 // main plane (one sample per scale): the same asset set serves every tier, the phone reads two noise samples fewer
-// (`detail` = 0 drops the streaks' and wear's own samples).
+// (`detail` = 0 drops the wear's own sample and the ground's ruts' two: unbroken, the track straight).
 // Corrugated sheet (`sheet_width`): the set's normal map gives the ribs; the sheets are drawn from UV1, each a little
 // different in tone and gloss, with the lap between them, faded out where a sheet is under a few pixels.
 // Pipe cladding (`lap_length`): aluminium sheets lapped every lap_length along the pipe (UV1.y) with the seam along it.
@@ -127,32 +127,39 @@ void fragment() {
 	}
 
 	// grime: faint patches, the splash zone near the ground, the undersides
-	float g = grime * clamp(smoothstep(0.45, 0.9, n_lo.r) * 0.2 + splash * (0.45 + 0.55 * n_hi.g) + max(-up, 0.0) * 0.5, 0.0, 1.0);
+	float g = grime * clamp(smoothstep(0.45, 0.9, n_lo.r) * 0.2 + splash * (0.45 + 0.55 * n_hi.g) * (0.7 + 0.6 * n_lo.g) + max(-up, 0.0) * 0.5, 0.0, 1.0);
 	base = mix(base, base * vec3(0.60, 0.57, 0.53), g);
 
-	// streaks: run-off down vertical faces
+	// streaks: run-off down vertical faces, in columns 0.18 m wide picked by a hash of the column (not a tiled noise:
+	// its 1.1 m period read as boarding, adversarial review), gathered where the few-metre noise says. No texture
+	// read of their own, so the phone draws them too; derivatives outside the branches.
+	float h = (abs(wnrm.x) > abs(wnrm.z)) ? wpos.z : wpos.x;
+	float hc = h / 0.18;
+	float fwc = fwidth(hc);
+	float k = floor(hc);
 	float s = 0.0;
-	if (detail > 0.5 && vert > 0.5) {
-		float h = (abs(wnrm.x) > abs(wnrm.z)) ? wpos.z : wpos.x;
-		float col = texture(noise_tex, vec2(h * 0.9, 0.31)).b;
+	if (vert > 0.5) {
+		float colw = smoothstep(0.50, 0.80, hash1(k * 1.37 + 11.0) * (0.55 + 0.9 * n_lo.g));
+		float shape = 1.0 - smoothstep(0.35, 1.0, abs(fract(hc) - 0.5) * 2.0);
+		float col = mix(colw * shape, colw * 0.65, smoothstep(0.25, 0.8, fwc));   // under a pixel: their mean
 		if (top_edge > 0.5) {
 			// hanging from the face's top edge, each column its own length
 			float top = (round(COLOR.r * 255.0) + COLOR.g) * 0.25;
 			float below = max(top - wpos.y, 0.0);
-			float len = 0.5 + 4.0 * texture(noise_tex, vec2(h * 0.17, 0.73)).g;
+			float len = 0.5 + 4.0 * hash1(k * 2.11 + 5.0);
 			float hang = 1.0 - smoothstep(0.0, len, below);
-			s = streaks * (smoothstep(0.48, 0.70, col) * hang + (1.0 - smoothstep(0.0, 0.25, below)) * 0.35);
+			s = streaks * (col * hang + (1.0 - smoothstep(0.0, 0.25, below)) * 0.35);
 		} else {
-			float sn = texture(noise_tex, vec2(h * 0.9, wpos.y * 0.035)).b;
-			s = streaks * smoothstep(0.55, 0.80, sn) * (0.5 + 0.5 * n_hi.g);
+			s = streaks * col * (0.4 + 0.6 * n_hi.g);
 		}
 		s *= vert;
 		vec3 run = mix(vec3(0.45, 0.42, 0.38), vec3(0.45, 0.26, 0.14), clamp(rust * 2.0, 0.0, 1.0));
 		base = mix(base, base * run * 1.5, s);
 	}
 
-	// rust: small spots, more where water runs
-	float r = rust * smoothstep(0.74, 0.88, n_hi.r * 0.75 + n_hi.a * 0.25 + s * 0.35);
+	// rust: small spots, more where water runs, gathered in patches of a few metres (the spots' own noise repeats
+	// every 1.8 m)
+	float r = rust * smoothstep(0.74, 0.88, n_hi.r * 0.75 + n_hi.a * 0.25 + s * 0.35) * smoothstep(0.30, 0.60, n_lo.b);
 	base = mix(base, vec3(0.30, 0.14, 0.06) * (0.7 + 0.6 * n_hi.a), r);
 	rough = mix(rough, 0.95, r);
 	metal = mix(metal, 0.0, r);
@@ -166,6 +173,7 @@ void fragment() {
 		rough = mix(rough, 0.45, w);
 	}
 
+	float fwp = length(fwidth(wpos.xz));   // outside the branch below: derivatives in uniform control flow
 	// the ground: large patches, compacted bands and ruts beside the road and along a track
 	if (macro > 0.0 && up > 0.7) {
 		vec4 m = texture(noise_tex, wpos.xz * 0.0021 + 0.21);   // soft patches of 50 to 200 m
@@ -176,7 +184,6 @@ void fragment() {
 		rough = mix(rough, rough * 0.9, dark * macro);
 		float compact = 0.0;
 		float rut = 0.0;
-		float fwp = length(fwidth(wpos.xz));
 		if (line_box.z > 0.0) {
 			vec2 q = abs(wpos.xz - line_box.xy) - line_box.zw;
 			float dist = abs(length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0));
@@ -184,7 +191,7 @@ void fragment() {
 			// the verge beside the road's edges: vehicles pull over there
 			float off = dist - 5.6;
 			compact = max(compact, 1.0 - smoothstep(1.2, 2.6, abs(off)));
-			float br = smoothstep(0.25, 0.42, texture(noise_tex, vec2(along * 0.013, 0.57)).r);
+			float br = detail > 0.5 ? smoothstep(0.25, 0.42, texture(noise_tex, vec2(along * 0.013, 0.57)).r) : 1.0;
 			rut = max(rut, ruts(off, along, fwp) * br);
 		}
 		if (dot(track.zw, track.zw) > 0.5) {
@@ -192,7 +199,7 @@ void fragment() {
 			float along = dot(o, track.zw);
 			float across = dot(o, vec2(-track.w, track.z));
 			if (along > 0.0) {
-				float wob = (texture(noise_tex, vec2(along * 0.004, 0.13)).g - 0.5) * 12.0 * smoothstep(20.0, 120.0, along);
+				float wob = detail > 0.5 ? (texture(noise_tex, vec2(along * 0.004, 0.13)).g - 0.5) * 12.0 * smoothstep(20.0, 120.0, along) : 0.0;
 				compact = max(compact, 1.0 - smoothstep(2.0, 3.5, abs(across - wob)));
 				rut = max(rut, ruts(across - wob, along, fwp));
 			}

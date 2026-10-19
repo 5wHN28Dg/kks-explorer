@@ -21,6 +21,7 @@ func run(_tree: SceneTree) -> Array:
 	_headroom()
 	_cuts()
 	_hall_floor()
+	_lamp_floor()
 	return problems
 
 func _decompose() -> void:
@@ -85,6 +86,18 @@ func _hall_floor() -> void:
 						area += n.length() / 2.0
 			check(absf(area - c[2]) < 0.01, "%s: the floor is %.1f m², not %.1f" % [c[4], area, c[2]])
 		body.free()
+
+## A hall's lamp is set from its height over the floor under it: a deck's where there is one (from the ground, the
+## turbine hall's 12 m deck got 2.6 × the light meant on it: adversarial review, second realism pass).
+func _lamp_floor() -> void:
+	var b := Builder.new()
+	b.surfaces = [{"id": "deck", "z": 12.0, "outline": Geom.rect(0, 0, 10, 10), "holes": [Geom.rect(4, 4, 6, 6)]},
+		{"id": "pit", "z": -4.0, "outline": Geom.rect(20, 0, 30, 10), "holes": []},
+		{"id": "high", "z": 18.0, "outline": Geom.rect(0, 0, 10, 10), "holes": []}]
+	check(is_equal_approx(b.floor_below(Vector2(2, 2), 19.0), 12.0), "a lamp over a deck: the deck's floor (1.0 m above the top deck counts nothing)")
+	check(is_equal_approx(b.floor_below(Vector2(5, 5), 19.0), 0.0), "a lamp over a deck's opening: the ground")
+	check(is_equal_approx(b.floor_below(Vector2(25, 5), 19.0), 0.0), "a lamp over a pit: the ground (the pit has its own lamps)")
+	check(is_equal_approx(b.floor_below(Vector2(2, 2), 25.0), 18.0), "the highest floor under the lamp")
 
 ## A synthetic plant: one area with a building (door and pipe openings), a door, a pump, a pipe and a stair.
 func _plant(door_open: bool, pipe_open: bool, pipe_over_stair: bool) -> Builder:

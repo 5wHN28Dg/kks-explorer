@@ -183,8 +183,9 @@ func run(tree: SceneTree) -> Array:
 			p.append("%s: bare pipe is painted by its group (%s)" % [med, paint_name])
 			continue
 		var de := delta_e(r[1], Color.html(media[med].band))
-		if de < 25.0:
-			p.append("%s: its band stands out on its pipe (ΔE %.1f)" % [med, de])
+		var dl := absf(_lab(r[1]).x - _lab(Color.html(media[med].band)).x)
+		if de < 25.0 or dl < 15.0:
+			p.append("%s: its band stands out on its pipe, in lightness too (ΔE %.1f, ΔL* %.1f)" % [med, de, dl])
 	var water_pipes := 0
 	for n in tree.get_nodes_in_group("pipes"):
 		if n.get_meta("medium", "") == "cooling_water":

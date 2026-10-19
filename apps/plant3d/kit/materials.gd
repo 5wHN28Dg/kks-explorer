@@ -53,13 +53,14 @@ const PAINT := {
 
 ## Bare pipe painted by the colour group of what it carries (plant.json `media`: `group`), after DIN 2403's idea of
 ## a colour per group, in muted shades: the medium's own band and arrow (saturated, PLANT3D.md §2) must still stand out
-## on the pipe (tests/test_realism.gd checks the contrast for every medium of the plant). Insulated pipe is aluminium
+## on the pipe, in lightness too, for a trainee who tells colours apart badly (tests/test_realism.gd checks both for
+## every medium of the plant: the yellow gas paint left the orange gas band 7 L* lighter only, adversarial review). Insulated pipe is aluminium
 ## cladding whatever it carries.
 const PIPE_PAINT := {
-	"water": Color(0.50, 0.53, 0.48),      # a grey green (RAL 7033-like)
-	"steam": Color(0.60, 0.61, 0.60),      # heat-resistant aluminium paint
+	"water": Color(0.74, 0.77, 0.71),      # a pale grey green
+	"steam": Color(0.78, 0.79, 0.78),      # heat-resistant aluminium paint, light
 	"air": Color(0.84, 0.87, 0.90),        # a pale grey blue (the air band is a mid grey blue)
-	"gas": Color(0.90, 0.80, 0.36),        # a signal yellow, muted
+	"gas": Color(0.55, 0.48, 0.26),        # an ochre, darker than the gas band
 	"oil": Color(0.42, 0.33, 0.26),        # brown
 	"chemicals": Color(0.55, 0.50, 0.58),  # a grey violet
 	"flue gas": Color(0.30, 0.30, 0.30),   # dark grey
