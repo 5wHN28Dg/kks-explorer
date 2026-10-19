@@ -23,9 +23,12 @@ static func collect(engine, info, tracker) -> Dictionary:
 	var proc: Dictionary = tracker.proc if tracker != null else {}
 	var from := 0
 	var from_step := 0
+	var to: int = engine.events.size()
 	if not proc.is_empty():
 		from = tracker.ev_from
 		from_step = tracker.begin_step
+		if tracker.ev_to != -1:
+			to = mini(to, tracker.ev_to)     # the procedure's run ends where it was finished or stopped
 	var alarm_by := {}
 	for a in m.alarms:
 		alarm_by[a["id"]] = a
@@ -41,7 +44,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 	var in_i := 0
 	var out: Array = []
 	var evs: Array = engine.events
-	for i in evs.size():
+	for i in to:
 		var ev: Array = evs[i]
 		var inp := []
 		if ev[1] == "op":               # the op events of a step come in the order their inputs were made
@@ -56,12 +59,12 @@ static func collect(engine, info, tracker) -> Dictionary:
 			state[ev[2]] = ev[3]
 		if i < from:
 			continue
-		var e := {"step": int(ev[0]), "kind": String(ev[1]), "text": "", "code": "", "dev": "", "prio": 0}
+		var e := {"step": int(ev[0]), "kind": str(ev[1]), "text": "", "code": "", "dev": "", "prio": 0}
 		match ev[1]:
 			"op":
-				e.code = String(ev[2])
+				e.code = str(ev[2])
 				var o = m.op_keys.get(m.op_key(ev[2], ev[3], inp[5] if inp.size() > 5 else null))
-				var what: String = info.op_label(o) if o != null else String(ev[3])
+				var what: String = info.op_label(o) if o != null else str(ev[3])
 				if o != null and inp.size() > 4 and inp[4] != null and o["do"] == "set":
 					what += " to " + value_text(o, inp[4])
 				match ev[4]:
@@ -75,7 +78,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 						e.text = "%s %s: refused (%s)" % [ev[2], what, "; ".join(why)]
 						sm.refused += 1
 					_:
-						e.text = "%s %s: not an operation of this plant" % [ev[2], ev[3]]
+						e.text = "%s %s: not an operation of this plant" % [str(ev[2]), str(ev[3])]
 				if devs.has(i):
 					e.dev = deviation_text(devs[i], proc)
 					sm.deviations += 1
@@ -83,7 +86,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 				var a: Dictionary = alarm_by.get(ev[2], {})
 				e.code = String(a.get("kks", a.get("where", "")))
 				e.prio = int(a.get("priority", 3))
-				var how: String = ALARM_WORDS.get(prev + ">" + String(ev[3]), String(ev[3]).replace("_", " "))
+				var how: String = ALARM_WORDS.get(prev + ">" + str(ev[3]), str(ev[3]).replace("_", " "))
 				e.text = "Alarm %s: %s" % [how, _alarm_name(a, ev[2])]
 				if how.begins_with("raised"):
 					sm.raised += 1
@@ -103,13 +106,13 @@ static func collect(engine, info, tracker) -> Dictionary:
 				var t = m.trip_by_id(ev[2])
 				e.code = String(t.get("kks", "")) if t != null else ""
 				e.prio = 1
-				var name: String = t.get("text", ev[2]) if t != null else String(ev[2])
+				var name: String = t.get("text", ev[2]) if t != null else str(ev[2])
 				e.text = "TRIP: %s%s" % [name, " (first out)" if ev[3] else ""]
 				sm.trips += 1
 				if ev[3]:
 					sm.first_out.append(name)
 			"fault":
-				e.text = "Fault: %s" % fault_text(m, String(ev[2]))
+				e.text = "Fault: %s" % fault_text(m, str(ev[2]))
 				sm.faults += 1
 			"interlock":
 				var il := {}
@@ -125,7 +128,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 					var k: int = m.machines[mi]["_ids"].find(ev[4])
 					if k >= 0:
 						say = m.machines[mi]["states"][k].get("say", "")
-				e.text = say if say != "" else "%s: %s" % [String(ev[2]).replace("_", " "), String(ev[4]).replace("_", " ")]
+				e.text = say if say != "" else "%s: %s" % [str(ev[2]).replace("_", " "), str(ev[4]).replace("_", " ")]
 			_:
 				e.text = " ".join(ev.slice(1).map(func(x): return str(x)))
 		out.append(e)
@@ -146,13 +149,18 @@ static func collect(engine, info, tracker) -> Dictionary:
 				j += 1
 			out.insert(j, se)
 			j += 1
+		if tracker.stopped:
+			out.append({"step": tracker.end_step, "kind": "start", "code": "", "dev": "", "prio": 0,
+					"text": "Stopped at step %d of %d" % [tracker.stopped_at + 1, steps.size()]})
 	var end: int = engine.step_no
-	if tracker != null and tracker.finished():
-		end = int(tracker.log[tracker.log.size() - 1][1])
+	if not proc.is_empty() and tracker.end_step != -1:
+		end = tracker.end_step
 	sm["time"] = maxi(0, end - from_step)
 	sm["steps_done"] = tracker.log.size() if not proc.is_empty() else 0
 	sm["steps"] = steps.size()
 	sm["finished"] = tracker != null and tracker.finished()
+	sm["stopped"] = tracker != null and tracker.stopped
+	sm["began_at"] = tracker.begin_index if not proc.is_empty() else 0
 	var title := ("Debrief: " + String(proc.get("title", ""))) if not proc.is_empty() else "Events since the plant started"
 	return {"entries": out, "summary": sm, "title": title, "procedure": not proc.is_empty()}
 
@@ -230,12 +238,15 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 	var out := PackedStringArray()
 	out.append("Time: %s of plant time" % W.model_time(sm.time))
 	if d.procedure:
-		out.append("Steps: %d of %d done%s" % [sm.steps_done, sm.steps, "" if sm.finished else " so far"])
+		out.append("Steps: %d of %d done%s%s" % [sm.steps_done, sm.steps,
+				(" (began at step %d)" % (sm.began_at + 1)) if sm.began_at > 0 else "",
+				"" if sm.finished else (", then stopped" if sm.stopped else " so far")])
 	out.append("Operations: %d done%s; %d outside their step" % [sm.ops,
 			(", %d refused" % sm.refused) if sm.refused > 0 else "", sm.deviations] if d.procedure else
 			"Operations: %d done%s" % [sm.ops, (", %d refused" % sm.refused) if sm.refused > 0 else ""])
 	if sm.raised == 0:
-		out.append("Alarms: none raised")
+		out.append("Alarms: none raised%s%s" % [(", %d acknowledged" % sm.acked) if sm.acked > 0 else "",
+				(", %d shelved" % sm.shelved) if sm.shelved > 0 else ""])
 	else:
 		var by := PackedStringArray()
 		for p in [1, 2, 3]:

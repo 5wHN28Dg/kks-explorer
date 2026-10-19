@@ -93,21 +93,24 @@ func refresh(full := false) -> void:
 		(_tabs[t] as Button).set_pressed_no_signal(t == tab)
 	var e = ui.clock.engine
 	var tr = ui.debrief_tracker()
+	if tr != null and tr.ev_to != -1 and _events == -2 and not full:
+		return                      # an ended procedure's debrief no longer changes
 	var n: int = e.events.size() + (tr.log.size() + tr.deviations.size() if tr != null else 0)
 	if n == _events and not full:
 		return
-	_events = n
+	_events = -2 if tr != null and tr.ev_to != -1 else n
 	var old: Array = entries() if not full else []
 	data = Debrief.collect(e, ui.info, tr)
 	title.text = data.title
 	_summary.text = "\n".join(Debrief.summary_lines(data))
 	var list := entries()
-	var same := not full and list.size() >= _shown
-	if same:
-		for i in _shown:
-			if var_to_str(list[i]) != var_to_str(old[i]):
-				same = false
-				break
+	# the run only grows at its end (a step's end and a deviation come with the events of their model step), so
+	# the rows shown stay as they are when the last one shown is unchanged: no comparison of every row
+	var same := not full and list.size() >= _shown and old.size() >= _shown
+	if same and _shown > 0:
+		var a: Dictionary = list[_shown - 1]
+		var b: Dictionary = old[_shown - 1]
+		same = a.step == b.step and a.text == b.text and a.dev == b.dev
 	if not same:
 		var focus_i := _focused_row()
 		W.clear(_list)

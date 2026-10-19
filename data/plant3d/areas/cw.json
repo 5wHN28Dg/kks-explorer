@@ -28,6 +28,6 @@
  "signs": [
   {"text": "CW pump house 30UQA10", "at": [152, 8.1, 4.6], "yaw": 0, "size": 0.4},
   {"text": "CW pumps A B C", "at": [150, -2, 3], "yaw": 180, "size": 0.4},
-  {"text": "Hearing protection required", "at": [154.8, 8.0, 1.8], "yaw": 0, "size": 0.3}
+  {"text": "Hearing protection required", "at": [156.528, 8.0, 1.8], "yaw": 0, "size": 0.3}
  ]
 }

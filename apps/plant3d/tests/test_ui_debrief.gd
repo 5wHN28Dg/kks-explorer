@@ -153,5 +153,35 @@ func run(tree: SceneTree) -> Array:
 	ui.close_top()
 	if d.visible:
 		p.append("closing the top panel left the debrief open")
+	# stopped half way: the procedure's debrief ends there; what the trainee does afterwards is not in it
+	ui.stop_procedure()
+	op(ui, "30PAD10AN001", "start")
+	ui.clock.run_steps(5)
+	ui.open_debrief()
+	var after := "\n".join(rows(d))
+	if after.contains("30PAD10AN001") or not after.contains("Stopped at step 3 of 44") \
+			or not d._summary.text.contains("Steps: 2 of 44 done, then stopped"):
+		p.append("after Stop the debrief is not the procedure's run up to there: %s\n%s" % [d._summary.text, after])
+	# a tour taken then does not replace the procedure's debrief, while it runs or after
+	for id in ui.model.procedures:
+		if ui.model.procedures[id].get("kind", "") == "tour":
+			ui.start_procedure(id)
+			break
+	ui.open_debrief()
+	if not d.title.text.begins_with("Debrief: Cold start"):
+		p.append("during a tour the debrief is not the procedure's: %s" % d.title.text)
+	ui.stop_procedure()
+	ui.open_debrief()
+	if not d.title.text.begins_with("Debrief: Cold start"):
+		p.append("a tour replaced the procedure's debrief: %s" % d.title.text)
+	# begun part-way (as a link can) and stopped: the step it stopped at, and the summary says where it began;
+	# the open panel follows the new run without waiting for an event
+	ui.start_procedure("cold_start", "ccw_cooler")
+	if not d.visible or not d.title.text.begins_with("Debrief: Cold start"):
+		p.append("the debrief closed or changed when a procedure began")
+	ui.stop_procedure()
+	var part := "\n".join(rows(d))
+	if not part.contains("Stopped at step 3 of 44") or not d._summary.text.contains("Steps: 0 of 44 done (began at step 3), then stopped"):
+		p.append("a run begun at step 3 and stopped: %s\n%s" % [d._summary.text, part])
 	main.free()
 	return p

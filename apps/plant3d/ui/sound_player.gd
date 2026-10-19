@@ -16,6 +16,7 @@
 ## every 0.1 s.
 extends Node3D
 
+const PlayerScript = preload("res://app/player.gd")
 const DIR := "res://built/sounds"
 const EARSHOT := 50.0           # metres: farther loops are stopped (nothing decodes for nobody)
 const UPDATE := 0.1             # seconds between gain and pitch updates
@@ -75,6 +76,15 @@ func load_index(d: String) -> void:
 	dir = d
 	index = {}
 	_streams.clear()
+	for k in _ambience:                 # nothing of the old files plays on
+		for pl in _ambience[k]:
+			(pl as Node).queue_free()
+	_ambience.clear()
+	for k in _steps:
+		(_steps[k] as Node).queue_free()
+	_steps.clear()
+	for dn in _doors.keys():
+		door_moving(dn, false)
 	var f := FileAccess.open(d + "/index.json", FileAccess.READ)
 	if f == null:
 		f = FileAccess.open(d + "/sounds.json", FileAccess.READ)     # the generator's first name for it
@@ -218,6 +228,9 @@ func _process(delta: float) -> void:
 					pl.pitch_scale = clampf(lv.y, 0.05, 4.0)
 	running = sum / maxf(1.0, _bound.size())
 	_ambience_tick()
+	if muted and not _doors.is_empty():          # muted while a roller door runs: its loop stops now
+		for d in _doors.keys():
+			door_moving(d, false)
 
 
 func _start(n: Node3D, id: String) -> Array:
@@ -326,10 +339,10 @@ func _physics_process(_delta: float) -> void:
 	var d: Vector3 = p - _last_at
 	_last_at = p
 	var mode: int = walker.get("mode")
-	if d.length() > 3.0 or mode == 1:          # a jump (the map, a flight, the control room key) or flying: no steps
+	if d.length() > 3.0 or mode == PlayerScript.Mode.FLY:          # a jump (the map, a flight, the control room key) or flying: no steps
 		_walked = 0.0
 		return
-	if mode == 2:                              # climbing a ladder: a rung at every RUNG
+	if mode == PlayerScript.Mode.CLIMB:              # climbing a ladder: a rung at every RUNG
 		_walked += absf(d.y)
 		if _walked >= RUNG:
 			_walked = 0.0
@@ -344,7 +357,7 @@ func _physics_process(_delta: float) -> void:
 
 
 ## One footstep on a surface (concrete, grating, stair), a little different each time (pitch and level), as no two
-## steps are alike. Two voices per surface, so a step never cuts the one before short.
+## steps are alike. Three voices per surface, so a step never cuts the ones before it short.
 func footstep(surface: String) -> void:
 	var id: String = STEP_SOUNDS.get(surface, "step_concrete")
 	played[id] = played.get(id, 0) + 1
@@ -360,7 +373,7 @@ func footstep(surface: String) -> void:
 			return
 		pl = AudioStreamPlayer.new()
 		pl.stream = st
-		pl.max_polyphony = 2
+		pl.max_polyphony = 3
 		add_child(pl)
 		_steps[id] = pl
 	pl.pitch_scale = _rng.randf_range(0.92, 1.08)
@@ -374,7 +387,8 @@ func door_moving(door: Node3D, moving: bool) -> void:
 	if not moving:
 		if _doors.has(door):
 			for p in _doors[door]:
-				(p[0] as Node).queue_free()
+				if is_instance_valid(p[0]):
+					(p[0] as Node).queue_free()
 			_doors.erase(door)
 		return
 	if door.global_position.distance_to(listener_at) >= EARSHOT:

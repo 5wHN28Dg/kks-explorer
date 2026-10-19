@@ -161,7 +161,7 @@ VOICES = {
     'horn_ack': dict(spl=75, once=dict(kind='beeps', count=2, on=0.07, gap=0.05), why=(
         'Acknowledge: two short 1 kHz beeps when an alarm is acknowledged')),
     # people cues (FIRST-TRAIN §6): the app plays a footstep once a stride, by the floor underfoot
-    'step_concrete': dict(spl=70, once=dict(kind='step', seconds=0.35, taus=[0.025], noise_tau=0.006, toe=0.5,
+    'step_concrete': dict(spl=70, once=dict(kind='step', seconds=0.4, taus=[0.025], noise_tau=0.006, toe=0.5,
                                             roll=0.09, rattle=0, scuff=0.12), why=(
         'A safety boot on concrete: the heel strikes, then the sole rolls onto the toe about 90 ms later. A massive '
         'slab barely rings, so the sound is the impact itself: a dull thump of the boot and floor (a 90 Hz mode that '

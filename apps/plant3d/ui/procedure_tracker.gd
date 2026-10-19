@@ -18,6 +18,11 @@ var deviations: Array = []      # [model step, text, its op event's position in 
                                 # in, the step it belongs to (-1: none; the step it was made in: a wrong value or order)]
 var ev_from := 0                # the event list's length when the procedure began: its run's events follow
 var begin_step := 0             # the model step at which it began
+var ev_to := -1                 # the event list's length when it ended (finished or stopped); -1 while it runs
+var end_step := -1              # the model step at which it ended
+var stopped := false            # stopped by the trainee before its last step
+var stopped_at := -1            # the step it was at then
+var begin_index := 0            # the step it began at (a link or "follow from here" can begin part-way)
 var log: Array = []             # [[step id, model step it ended], …] (as sim/procedure.gd's log)
 var _seen := 0                  # events read so far
 var _in_seen := 0               # inputs matched to their op events so far (the event has no value or trip)
@@ -51,6 +56,7 @@ func begin(p: Dictionary, engine, step_id = null) -> void:
 		for k in steps.size():
 			if steps[k]["id"] == step_id:
 				i = k
+	begin_index = i
 	_go(i, engine)
 
 
@@ -62,8 +68,21 @@ func finished() -> bool:
 	return not steps.is_empty() and index == -1 and log.size() > 0
 
 
+## The trainee stopped it (or another took its place): its run, and its debrief, end here.
+func stop(engine) -> void:
+	if ev_to != -1:
+		return
+	stopped = index >= 0
+	stopped_at = index
+	ev_to = _seen if engine == null else engine.events.size()
+	end_step = engine.step_no if engine != null else 0
+
+
 func _go(i: int, engine) -> void:
 	index = i if i < steps.size() else -1
+	if index == -1 and ev_to == -1 and not steps.is_empty():
+		ev_to = _seen                   # the events read so far: the run ends with the step that ended it
+		end_step = engine.step_no if engine != null else 0
 	start_step = engine.step_no if engine != null else 0
 	did = {}
 	step_changed.emit(index)

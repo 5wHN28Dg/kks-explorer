@@ -488,7 +488,7 @@ func close_debrief() -> void:
 
 
 func debrief_tracker():
-	return tracker if tracker != null else run_tracker
+	return tracker if tracker != null and not tracker.is_tour() else run_tracker
 
 
 func toggle_procedure() -> void:
@@ -542,17 +542,26 @@ func start_procedure(id: String, step_id = null, restart_scenario := false) -> v
 	var pr: Dictionary = model.procedures[id]
 	if restart_scenario and pr.has("scenario"):
 		restart(pr["scenario"])
+	if tracker != null:
+		tracker.stop(clock.engine)          # the one followed until now ends here
 	tracker = Tracker.new()
 	tracker.step_changed.connect(_on_step_changed)
 	tracker.step_done.connect(func(_id): clock.hold = true)
 	tracker.deviation.connect(func(t): toast("Outside the procedure: " + t))
 	tracker.begin(pr, clock.engine, step_id)
-	run_tracker = tracker
+	if not tracker.is_tour():               # a tour has no debrief: the last procedure's stays
+		run_tracker = tracker
+	if debrief.visible:
+		debrief.refresh(true)
 	procedure.open()
 
 
 func stop_procedure() -> void:
+	if tracker != null:
+		tracker.stop(clock.engine)
 	tracker = null
+	if debrief != null and debrief.visible:
+		debrief.refresh(true)
 	if pointer:
 		pointer.clear()
 	if procedure:

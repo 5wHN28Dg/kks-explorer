@@ -385,7 +385,7 @@ class HearingProtection(unittest.TestCase):
                 poly = [[b['at'][0] + q[0], b['at'][1] + q[1]] for q in b['params']['outline']]
                 spl = max([bound.get(e['kks'], 0) for e in things if 'at' in e and inside(e['at'], poly)] + [0])
                 for d in (x for x in a['structures'] if x['part'] == 'door' and on_edge(np.array(x['at'][:2], float), poly)):
-                    near = [g for g in signs if math.dist(g['at'][:2], d['at'][:2]) < 4.0]
+                    near = [g for g in signs if math.dist(g['at'][:2], d['at'][:2]) < 6.0]
                     with self.subTest(area=a['id'], building=b['id'], door=d['id'], spl=spl):
                         if spl >= self.LOUD:
                             loud_doors += 1
@@ -393,6 +393,16 @@ class HearingProtection(unittest.TestCase):
                             self.assertEqual(near[0]['yaw'], d.get('yaw', 0), 'the sign faces out, as the door does')
                             self.assertTrue(on_edge(np.array(near[0]['at'][:2], float), poly), 'on the wall')
                             self.assertTrue(1.5 <= near[0]['at'][2] <= 2.2, 'at eye height')
+                            # its text (about 0.55 em a character) clear of the opening, and all of it on the wall
+                            g = near[0]
+                            half = 0.55 * g['size'] * len(g['text']) / 2
+                            gap = math.dist(g['at'][:2], d['at'][:2]) - half - d['params'].get('width', 1.0) / 2
+                            self.assertGreater(gap, 0.1, 'the sign\'s text reaches over the door\'s opening')
+                            r = math.radians(g['yaw'])
+                            along = np.array([math.cos(r), -math.sin(r)])
+                            for end in (-half, half):
+                                self.assertTrue(on_edge(np.array(g['at'][:2], float) + end * along, poly),
+                                                'the sign\'s text runs off its wall')
                         else:
                             quiet_doors += 1
                             self.assertEqual(near, [], 'a quiet building\'s door has no hearing-protection sign')

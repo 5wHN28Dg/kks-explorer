@@ -232,7 +232,8 @@ func _finished() -> void:
 	var tr = ui.tracker
 	title.text = tr.proc["title"]
 	var end: int = tr.log[tr.log.size() - 1][1] if not tr.log.is_empty() else 0
-	body.add_child(W.label("Done: every step, in %s of plant time." % W.model_time(end), 22, W.OK_COLOUR))
+	body.add_child(W.label("Done: %s, in %s of plant time." % ["every step" if tr.begin_index == 0 else
+			"step %d to the last" % (tr.begin_index + 1), W.model_time(end - tr.begin_step)], 22, W.OK_COLOUR))
 	if not tr.is_tour():
 		var d := Debrief.collect(ui.clock.engine, ui.info, tr)
 		body.add_child(W.label("\n".join(Debrief.summary_lines(d)), 18, W.DIM))

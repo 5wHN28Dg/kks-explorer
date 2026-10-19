@@ -111,13 +111,17 @@ def sign(text, at, yaw=0, size=0.4):
 
 
 HEARING = 'Hearing protection required'
+HEARING_SIZE = 0.3
+HEARING_HALF = 0.55 * HEARING_SIZE * len(HEARING) / 2   # half its text's width: about 0.55 em a character
 
 
-def hearing_signs(structures):
-    """The mandatory sign (ISO 7010 M003, wear ear protection) at every door of a loud building, as on site
+def hearing_signs(structures, flip=()):
+    """The mandatory sign (ISO 7010 M003, wear ear protection) at every door in `structures`, as on site
     (FIRST-TRAIN §6): on the wall beside the opening at eye height, facing out (a door's yaw points out of its
-    building). A building is loud where a machine inside it is heard at 85 dB(A) or more, the upper exposure action
-    value of EU Directive 2003/10/EC (tests/test_plant3d_sounds.py checks which these are)."""
+    building), its text clear of the opening: to the door's right seen from outside, or its left for the doors in
+    `flip` (where the wall's corner is nearer). The areas call it for their loud buildings, those with a machine of
+    85 dB(A) or more inside (the upper exposure action value of EU Directive 2003/10/EC); tests/test_plant3d_sounds.py
+    checks that these are exactly the loud ones and that each sign sits on its wall clear of the opening."""
     out = []
     for d in structures:
         if d['part'] != 'door':
@@ -125,9 +129,9 @@ def hearing_signs(structures):
         yaw = d.get('yaw', 0)
         r = math.radians(yaw)
         fx, fy = math.sin(r), math.cos(r)
-        k = d['params'].get('width', 1.0) / 2 + 0.8
+        k = (d['params'].get('width', 1.0) / 2 + HEARING_HALF + 0.3) * (-1 if d['id'] in flip else 1)
         out.append(sign(HEARING, [round(d['at'][0] + fy * k, 3) + 0.0, round(d['at'][1] - fx * k, 3) + 0.0, 1.8],
-                        yaw, 0.3))
+                        yaw, HEARING_SIZE))
     return out
 
 
@@ -193,7 +197,7 @@ def bop():
         structures=structures,
         signs=[sign('Auxiliary boiler 00QHA10', [104.1, 0, 3.5], 90), sign('Instrument air', [113, -12, 2.5], 0),
                sign('Closed cooling water', [113, 8, 2.5], 0), sign('Demineralised water 00GHC10', [125, 8.5, 3], 180)]
-        + hearing_signs(structures))
+        + hearing_signs(structures, flip=('bop_boiler_door',)))
 
 
 # ---------------------------------------------------------------- cooling tower
@@ -388,7 +392,7 @@ def st_area():
     ]
     signs = [sign('Turbine hall 30UMA10', [79.9, 12, 7], 90), sign('Operating floor +12 m', [11, 15, 13.6], 90),
              sign('Condenser 30MAG10AC001', [44, -8.5, 1], 180), sign('Condensate pumps', [54, -10, -4.5], 180),
-             sign('Steam turbine lube oil', [64, 22, 2.5], 0)] + hearing_signs(structures)
+             sign('Steam turbine lube oil', [64, 22, 2.5], 0)] + hearing_signs(structures, flip=('st_door_w',))
     return area('st', 'Turbine hall', [[0, -25], [80, 25]], equipment, pipes, structures, signs)
 
 

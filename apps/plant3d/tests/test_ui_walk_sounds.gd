@@ -129,6 +129,12 @@ func run(tree: SceneTree) -> Array:
 		await tree.physics_frame
 	if s.played.get("door_roller", 0) != 1 or not s._doors.has(doors["gt1_door_s"]):
 		p.append("the roller door's loop does not play while it moves: %s" % str(s.played))
+	s.muted = true                          # muted while it runs: the loop stops at once
+	for i in 12:
+		await tree.process_frame
+	if s._doors.has(doors["gt1_door_s"]):
+		p.append("the roller door's loop plays on when muted")
+	s.muted = false
 	await place(tree, ui, Plant.g(10, 70, 0.05))      # away from it: it opens fully, waits and closes
 	for i in 900:
 		await tree.physics_frame
