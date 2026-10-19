@@ -5,6 +5,7 @@
 extends SceneTree
 
 const Builder = preload("res://builder/plant_builder.gd")
+const NavBake = preload("res://builder/nav_bake.gd")
 
 func _init() -> void:
 	var args := {}
@@ -34,6 +35,23 @@ func _init() -> void:
 		b.kp.instances, b.kp.tris_total, b.kp.cells_made, b.kp.supports])
 	for u in b.kp.unsupported:
 		print("build: warning: nothing to stand a pipe support on under ", u)
+	_nav.call_deferred(out, b)
+
+## The walking directions' navigation mesh, from the scenes just saved (builder/nav_bake.gd); deferred, so that the
+## scenes are parsed inside the running tree.
+func _nav(out: String, b) -> void:
+	var m = JSON.parse_string(FileAccess.get_file_as_string(out.path_join("plant.json")))
+	var scenes: Array = [m.ground]
+	for a in m.areas:
+		scenes.append(a.scene)
+	var st: Array = m.start.at
+	var r: Dictionary = await NavBake.bake(root, out, scenes, b.stairs, b.ladders, Vector3(st[0], st[1], st[2]))
+	if r.has("error"):
+		printerr("build: ", r.error)
+		quit(1)
+		return
+	print("build: navigation mesh: %d polygons (%d out of reach dropped), %d vertices, %d doors and %d stairs left out, %d bytes, %d ms" % [
+		r.polygons, r.dropped, r.vertices, r.doors, r.stairs, r.bytes, r.ms])
 	quit(0)
 
 func _clear(dir: String) -> void:

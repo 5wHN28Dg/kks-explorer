@@ -55,6 +55,14 @@
   {"id": "ct_fan8_vib", "set": {"ct_fan8_vfault": 1}, "text": "Cooling tower fan 8 blade damage"},
   {"id": "ct_fan9_vib", "set": {"ct_fan9_vfault": 1}, "text": "Cooling tower fan 9 blade damage"},
   {"id": "ct_fan10_vib", "set": {"ct_fan10_vfault": 1}, "text": "Cooling tower fan 10 blade damage"},
-  {"id": "hw_leak", "set": {"hw_leak": 1, "hw_mk_fail": 1}, "text": "Condensate leak with the hotwell makeup failed"}
+  {"id": "hw_leak", "set": {"hw_leak": 1, "hw_mk_fail": 1}, "text": "Condensate leak with the hotwell makeup failed"},
+  {"id": "ccw_both", "set": {"ccw_a_fault": 1, "ccw_b_fault": 1}, "text": "Both closed cooling water pumps trip (a supply fault)"},
+  {"id": "ia_lost", "set": {"ia_a_fault": 1, "ia_b_fault": 1}, "text": "Both instrument air compressors trip"},
+  {"id": "cw_valve_power", "set": {"cw_a_v_stuck": 1, "cw_b_v_stuck": 1, "cw_c_v_stuck": 1}, "text": "CW pump house valve power supply lost: the motor-operated discharge valves stay where they are"},
+  {"id": "cw_a_ls", "set": {"cw_a_ls_fault": 1}, "text": "CW pump A discharge valve: the start-position limit switch sticks made (the permissive passes with the valve open)"},
+  {"id": "cw_b_ls", "set": {"cw_b_ls_fault": 1}, "text": "CW pump B discharge valve: the start-position limit switch sticks made (the permissive passes with the valve open)"},
+  {"id": "cw_c_ls", "set": {"cw_c_ls_fault": 1}, "text": "CW pump C discharge valve: the start-position limit switch sticks made (the permissive passes with the valve open)"},
+  {"id": "byp_hyd", "set": {"byp_hyd_fault": 1}, "text": "Bypass valves' hydraulic unit fails: the bypass is blocked"},
+  {"id": "st_trip_no_bypass", "set": {"st_vib_fault": 1, "byp_hyd_fault": 1}, "text": "Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink"}
  ]
 }

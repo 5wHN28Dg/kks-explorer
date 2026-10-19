@@ -26,6 +26,7 @@ func run(tree: SceneTree) -> Array:
 		return ["the interaction layer did not start"]
 	await tree.process_frame
 	ui.start_procedure("cold_start")
+	var n := str(ui.model.procedures["cold_start"]["steps"].size())   # the cold start's step count, as the debrief says it
 	if ui.tracker == null or ui.tracker.index != 0:
 		main.free()
 		return ["the cold start did not begin at its first step"]
@@ -70,8 +71,8 @@ func run(tree: SceneTree) -> Array:
 	var all := rows(d)
 	var txt := "\n".join(all)
 	var want := ["Began: Cold start", "00QFA10AN001 Start", "30PAR10AA001 Auto",
-		"DEVIATION in step 1 of 44: this belongs to step 4", "Step 1 of 44 done", "00PGC10AP001 Start",
-		"Step 2 of 44 done", "Fault: Closed cooling water pump A motor fails", "TRIP: ", "(first out)",
+		("DEVIATION in step 1 of " + n + ": this belongs to step 4"), ("Step 1 of " + n + " done"), "00PGC10AP001 Start",
+		("Step 2 of " + n + " done"), "Fault: Closed cooling water pump A motor fails", "TRIP: ", "(first out)",
 		"Alarm raised: — 00PGC10AP001 Closed cooling water pump A tripped",
 		"Alarm acknowledged: — 00PGC10AP001", "Alarm shelved for 0:10:00"]
 	var at := -1
@@ -96,7 +97,7 @@ func run(tree: SceneTree) -> Array:
 		if r.contains("DEVIATION") and not r.contains("30PAR10AA001 Auto"):
 			p.append("the deviation is not on its operation's row: %s" % r)
 	var sm: String = d._summary.text
-	for w in ["Time: ", "Steps: 2 of 44 done so far", "Operations: 3 done; 1 outside their step",
+	for w in ["Time: ", ("Steps: 2 of " + n + " done so far"), "Operations: 3 done; 1 outside their step",
 			"Alarms: 1 raised (priority 2: 1), 1 acknowledged, 1 shelved", "Trips: 1 (first out: ", "Trainer's faults: 1"]:
 		if not sm.contains(w):
 			p.append("the summary does not say \"%s\": %s" % [w, sm])
@@ -159,8 +160,8 @@ func run(tree: SceneTree) -> Array:
 	ui.clock.run_steps(5)
 	ui.open_debrief()
 	var after := "\n".join(rows(d))
-	if after.contains("30PAD10AN001") or not after.contains("Stopped at step 3 of 44") \
-			or not d._summary.text.contains("Steps: 2 of 44 done, then stopped"):
+	if after.contains("30PAD10AN001") or not after.contains(("Stopped at step 3 of " + n)) \
+			or not d._summary.text.contains(("Steps: 2 of " + n + " done, then stopped")):
 		p.append("after Stop the debrief is not the procedure's run up to there: %s\n%s" % [d._summary.text, after])
 	# a tour taken then does not replace the procedure's debrief, while it runs or after
 	for id in ui.model.procedures:
@@ -181,7 +182,7 @@ func run(tree: SceneTree) -> Array:
 		p.append("the debrief closed or changed when a procedure began")
 	ui.stop_procedure()
 	var part := "\n".join(rows(d))
-	if not part.contains("Stopped at step 3 of 44") or not d._summary.text.contains("Steps: 0 of 44 done (began at step 3), then stopped"):
+	if not part.contains(("Stopped at step 3 of " + n)) or not d._summary.text.contains(("Steps: 0 of " + n + " done (began at step 3), then stopped")):
 		p.append("a run begun at step 3 and stopped: %s\n%s" % [d._summary.text, part])
 	main.free()
 	return p

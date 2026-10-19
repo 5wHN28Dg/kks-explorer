@@ -4,8 +4,9 @@
 ##
 ## Keys and buttons (app/controls.gd): E or a tap at a part opens its card (gamepad A), L the alarms (D-pad up),
 ## P procedures and tours (D-pad left), K pause and run (D-pad down), the full stop key fast-forward (D-pad right),
-## H back to the control room, Esc or B closes the top panel. The debrief (what happened in the run) opens at the end
-## of a procedure and from the alarm list's Events button.
+## H back to the control room (gamepad X), Esc or B closes the top panel. The debrief (what happened in the run) opens
+## at the end of a procedure and from the alarm list's Events button. A procedure's step with `"go": "walk"` shows the
+## way on foot to the equipment it points at (app/walk_route.gd).
 extends CanvasLayer
 
 const W = preload("res://ui/widgets.gd")
@@ -26,6 +27,7 @@ const ProcedurePanel = preload("res://ui/procedure_panel.gd")
 const TrainerPanel = preload("res://ui/trainer_panel.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
+const WalkRoute = preload("res://app/walk_route.gd")
 
 const CONTENT := "res://built/content"
 const REACH := 6.0              # metres: within this a trainee works the equipment's local controls
@@ -43,6 +45,8 @@ var tracker
 var bindings
 var sounds
 var pointer
+var route                       # app/walk_route.gd: the way on foot to what is pointed at, in a "walk" step
+var walking := false            # the current step says "go": "walk"
 var links
 var card
 var alarms
@@ -103,6 +107,12 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	pointer = Pointer.new()
 	pointer.name = "pointer"
 	m.add_child(pointer)
+	route = WalkRoute.new()
+	route.name = "walk_route"
+	m.add_child(route)
+	var nav_err: String = route.setup()
+	if nav_err != "":
+		push_warning(nav_err)      # no walking directions; everything else works
 	sounds = SoundPlayer.new()
 	sounds.name = "sounds"
 	sounds.walker = player
@@ -390,6 +400,8 @@ func show_me(code: String) -> void:
 		toast("%s is not drawn in the plant." % code)
 		return
 	pointer.point(code, index.box(code))
+	if walking:
+		route.guide(player, index.box(code))
 
 
 ## Puts the trainee beside the equipment, facing it: a short flight, then on the floor below when there is one.
@@ -567,6 +579,9 @@ func stop_procedure() -> void:
 	if tracker != null:
 		tracker.stop(clock.engine)
 	tracker = null
+	walking = false
+	if route:
+		route.clear()
 	if debrief != null and debrief.visible:
 		debrief.refresh(true)
 	if pointer:
@@ -580,6 +595,10 @@ func _on_step_changed(_i: int) -> void:
 	if tracker == null:
 		return
 	var at: Array = tracker.current().get("at", [])
+	# a step to walk to: the way on foot to what it points at (show_me), until the step ends
+	walking = tracker.current().get("go", "") == "walk" and not at.is_empty()
+	if not walking:
+		route.clear()
 	if at.is_empty():
 		return
 	if tracker.is_tour() and procedure.fly_box.button_pressed:
@@ -588,6 +607,7 @@ func _on_step_changed(_i: int) -> void:
 		show_me(at[0])
 	else:
 		pointer.clear()
+		route.clear()
 
 
 # ------------------------------------------------------------------ links in
@@ -819,14 +839,18 @@ func _draw_arrows() -> void:
 	var p: Vector3 = pointer.top()
 	var vs: Vector2 = root.get_viewport_rect().size
 	var d: float = index.distance(pointer.code, eye())
+	var unit := "m"
+	if route != null and route.shown():
+		d = route.left
+		unit = "m on foot"
 	var font := root.get_theme_default_font()
 	var fs := int(20 * W.scale)
 	var centre := vs * 0.5
 	var on_screen := not cam.is_position_behind(p)
 	var sp := cam.unproject_position(p) if on_screen else Vector2.ZERO
 	if on_screen and Rect2(Vector2(40, 40), vs - Vector2(80, 80)).has_point(sp):
-		arrows.draw_string_outline(font, sp + Vector2(-30, -20), "%.0f m" % d, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color.BLACK)
-		arrows.draw_string(font, sp + Vector2(-30, -20), "%.0f m" % d, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 0.7, 0.2))
+		arrows.draw_string_outline(font, sp + Vector2(-30, -20), "%.0f %s" % [d, unit], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color.BLACK)
+		arrows.draw_string(font, sp + Vector2(-30, -20), "%.0f %s" % [d, unit], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 0.7, 0.2))
 		return
 	# out of view: the direction in the camera's frame, flattened onto the screen
 	var local := cam.global_transform.affine_inverse() * p
@@ -839,5 +863,5 @@ func _draw_arrows() -> void:
 	var side := Vector2(-dir.y, dir.x)
 	var s := 26.0 * W.scale
 	arrows.draw_colored_polygon(PackedVector2Array([tip, tip - dir * s + side * s * 0.6, tip - dir * s - side * s * 0.6]), Color(1, 0.6, 0.1, 0.95))
-	arrows.draw_string_outline(font, tip - dir * s * 2.2 + Vector2(-30, 8), "%.0f m" % d, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color.BLACK)
-	arrows.draw_string(font, tip - dir * s * 2.2 + Vector2(-30, 8), "%.0f m" % d, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 0.7, 0.2))
+	arrows.draw_string_outline(font, tip - dir * s * 2.2 + Vector2(-30, 8), "%.0f %s" % [d, unit], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color.BLACK)
+	arrows.draw_string(font, tip - dir * s * 2.2 + Vector2(-30, 8), "%.0f %s" % [d, unit], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 0.7, 0.2))
