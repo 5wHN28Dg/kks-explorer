@@ -4,7 +4,7 @@
 ##
 ## Keys and buttons (app/controls.gd): E or a tap at a part opens its card (gamepad A), L the alarms (D-pad up),
 ## P procedures and tours (D-pad left), K pause and run (D-pad down), the full stop key fast-forward (D-pad right),
-## H back to the control room (gamepad X), Esc or B closes the top panel. The debrief (what happened in the run) opens
+## H back to the control room and its screens (gamepad X; ui/mimic.gd: one screen per system, PLANT3D §7.11), Esc or B closes the top panel. The debrief (what happened in the run) opens
 ## at the end of a procedure and from the alarm list's Events button. A procedure's step with `"go": "walk"` shows the
 ## way on foot to the equipment it points at (app/walk_route.gd).
 extends CanvasLayer
@@ -28,6 +28,9 @@ const TrainerPanel = preload("res://ui/trainer_panel.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
 const WalkRoute = preload("res://app/walk_route.gd")
+const Mimic = preload("res://ui/mimic.gd")
+const ScreensModel = preload("res://ui/screens_model.gd")
+const Trends = preload("res://ui/trends.gd")
 
 const CONTENT := "res://built/content"
 const REACH := 6.0              # metres: within this a trainee works the equipment's local controls
@@ -54,6 +57,9 @@ var procedure
 var trainer
 var autosave                    # ui/autosave.gd: the run saved to user://, offered again at start
 var debrief
+var screens                     # ui/screens_model.gd: the control room screens made from the model (PLANT3D §7.11)
+var trends                      # ui/trends.gd: the values the screens trend, sampled as the plant runs
+var mimic                       # ui/mimic.gd: the screens themselves
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var root: Control
 var arrows: Control
@@ -83,6 +89,8 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	player = m.player
 	layer = 2
 	W.pick_scale()
+	if m.opts.has("ui_scale"):               # the phone's scale on a desktop (tests/mimic_shots.gd --phone)
+		W.scale = clampf(float(m.opts["ui_scale"]), 0.5, 3.0)
 	root = Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -97,6 +105,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	if not model.scenarios.has(scenario):
 		scenario = model.scenarios.keys()[0] if not model.scenarios.is_empty() else ""
 	info = PlantInfo.new(model)
+	screens = ScreensModel.new(info, ScreensModel.load_file(content + "/screens.json"))
+	if screens.error != "":
+		push_warning("control room screens: " + screens.error)
+	trends = Trends.new(screens.trended)
 	index = SceneIndex.new()
 	index.scan(m.plant)
 	clock = SimClock.new()
@@ -148,7 +160,7 @@ func _build() -> void:
 	root.add_child(bar)
 	_alarm_btn = _bar_button(bar, "Alarms", func(): toggle_alarms())
 	_bar_button(bar, "Procedures", func(): toggle_procedure())
-	_bar_button(bar, "Control room", func(): go_control_room())
+	_bar_button(bar, "Control room", func(): control_room())
 	_trainer_btn = _bar_button(bar, "Instructor", func(): toggle_trainer())
 	_trainer_btn.visible = instructor
 	_pause_btn = _bar_button(bar, "Pause", func(): clock.set_speed(SimClock.Speed.PAUSED))
@@ -165,6 +177,10 @@ func _build() -> void:
 	arrows.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arrows.draw.connect(_draw_arrows)
 	root.add_child(arrows)
+	mimic = Mimic.new()
+	mimic.name = "screens"
+	root.add_child(mimic)
+	mimic.setup(self, screens, trends)
 	card = Card.new()
 	card.name = "card"
 	root.add_child(card)
@@ -234,6 +250,8 @@ func _layout() -> void:
 	trainer.size = card.size
 	debrief.position = card.position
 	debrief.size = card.size
+	mimic.position = Vector2(0.0, top)
+	mimic.size = Vector2(vs.x, vs.y - top)
 	_hint.position = Vector2(vs.x * 0.5 - 400.0, vs.y * 0.5 + 24.0)
 	_hint.size = Vector2(800.0, 60.0)
 	_layout_toast()
@@ -292,6 +310,10 @@ func open_panel(p: String) -> void:
 		toggle_procedure()
 	elif p.begins_with("card:"):
 		open_card(p.substr(5))
+	elif p == "screens" or p.begins_with("screens:"):
+		if not in_control_room():
+			go_control_room()
+		open_screens(p.substr(8) if p.begins_with("screens:") else "")
 
 
 # ------------------------------------------------------------------ where the trainee is
@@ -371,6 +393,7 @@ func restart(scenario: String, quiet := false) -> void:
 	sounds.reset_edges()
 	alarms.since.clear()
 	alarms._sig = ""
+	trends.clear()
 	results.clear()
 	_pending.clear()
 	_ev_seen = 0
@@ -381,6 +404,9 @@ func restart(scenario: String, quiet := false) -> void:
 # ------------------------------------------------------------------ cards, pointing, moving
 
 func open_card(code: String, note := "") -> void:
+	if info.part_of(code) == "operator_desk":       # an operator desk: its screens
+		open_screens()
+		return
 	alarms.visible = false
 	trainer.visible = false
 	debrief.visible = false
@@ -393,6 +419,43 @@ func open_card(code: String, note := "") -> void:
 func close_card() -> void:
 	card.visible = false
 	card.code = ""
+	if mimic.visible and wants_focus():
+		mimic.canvas.grab_focus()
+
+
+# ------------------------------------------------------------------ the control room screens
+
+func screens_open() -> bool:
+	return mimic != null and mimic.visible
+
+
+## Opens the screens at a screen (its id; "" the overview), in the control room only: they are its desks' screens.
+func open_screens(screen_id := "") -> void:
+	if screens.error != "" or not in_control_room():
+		toast("The screens are worked in the control room." if screens.error == "" else "No control room screens: " + screens.error)
+		return
+	_release_mouse()
+	mimic.open(screens.screen_index(screen_id) if screen_id != "" else -1)
+	main.hud.refresh()
+
+
+func close_screens() -> void:
+	if mimic == null or not mimic.visible:
+		return
+	mimic.visible = false
+	main.hud.refresh()
+
+
+## The Control room button (and H, gamepad X): to the control room and its screens; there, the screens on and off.
+func control_room() -> void:
+	if in_control_room() and not player.scripted:
+		if screens_open():
+			close_screens()
+		else:
+			open_screens()
+		return
+	go_control_room()
+	open_screens()
 
 
 func show_me(code: String) -> void:
@@ -410,6 +473,7 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 		toast("%s is not drawn in the plant." % code)
 		return
 	show_me(code)
+	close_screens()
 	var b: AABB = index.box(code)
 	var c := b.get_center()
 	var from: Vector3 = player.global_position
@@ -550,6 +614,8 @@ func close_top() -> bool:
 		close_alarms()
 	elif card.visible:
 		close_card()
+	elif screens_open():
+		close_screens()
 	elif procedure.visible:
 		close_procedure()
 	else:
@@ -638,6 +704,7 @@ func handle_link(url: String) -> void:
 # ------------------------------------------------------------------ every step and frame
 
 func _on_step(e) -> void:
+	trends.on_step(e)
 	_sync_events()
 	sounds.on_step()
 	if tracker != null:
@@ -782,12 +849,13 @@ func _horn_tick() -> void:
 func _look_hint() -> void:
 	hover = ""
 	var show := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or not Input.get_connected_joypads().is_empty()
-	if show and not main.map.active and not main.hud.panel.visible:
+	if show and not main.map.active and not main.hud.panel.visible and not screens_open():
 		var cam: Camera3D = player.camera
 		var c: String = index.pick(cam, root.get_viewport_rect().size * 0.5, player.get_world_3d().direct_space_state, [player.get_rid()])
 		if c != "" and index.distance(c, eye()) <= HINT_RANGE:
 			hover = c
-	_hint.text = ("+\n%s  %s\nE or A: its card" % [hover, info.name_of(hover)]) if hover != "" else ("+" if show else "")
+	var what := "the screens" if info.part_of(hover) == "operator_desk" else "its card"
+	_hint.text = ("+\n%s  %s\nE or A: %s" % [hover, info.name_of(hover), what]) if hover != "" else ("+" if show else "")
 
 
 func _unhandled_input(ev: InputEvent) -> void:
@@ -799,7 +867,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 		return
 	if main.map.active or main.hud.panel.visible:
 		return
-	if ev.is_action_pressed("use") and hover != "" and not _door_near():
+	if ev.is_action_pressed("home"):
+		control_room(); get_viewport().set_input_as_handled()
+		return
+	# with the screens open the view is theirs (ui/mimic.gd): no picking in the plant; the panels' keys still work
+	if ev.is_action_pressed("use") and hover != "" and not _door_near() and not screens_open():
 		open_card(hover)
 		get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("alarms"):
@@ -811,9 +883,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("fast"):
 		fast_forward(); get_viewport().set_input_as_handled()
-	elif ev.is_action_pressed("home"):
-		go_control_room(); get_viewport().set_input_as_handled()
-	elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+	elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and not screens_open():
 		var at: Vector2 = ev.position
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			at = root.get_viewport_rect().size * 0.5

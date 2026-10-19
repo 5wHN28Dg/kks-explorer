@@ -309,6 +309,34 @@ static func local_panel(_part: String, g) -> void:
 	g.plate("front", Vector3(0, D * 0.5 + 0.003, z0 + H * 0.92), Vector3(0, 1, 0), "small")
 	g.solid_box(Vector3(-W * 0.5, -D * 0.5, 0), Vector3(W * 0.5, D * 0.5, z0 + H))
 
+## An operator desk of the control room (PLANT3D.md §7.11): a worktop on its pedestals and modesty panel, a row of
+## `screens` monitors on their feet at the back, a keyboard before each; the operator stands at the front (+y).
+static func operator_desk(_part: String, g) -> void:
+	var m = g.m
+	var W: float = g.num("width", 3.2)
+	var n := int(g.p.get("screens", 4))
+	var D := 1.0
+	m.use("paint_darkgrey", "form")
+	m.box_lh(Vector3(-W * 0.5, -D * 0.5, 0), Vector3(-W * 0.5 + 0.04, D * 0.5 - 0.1, 0.72))    # the pedestals
+	m.box_lh(Vector3(W * 0.5 - 0.04, -D * 0.5, 0), Vector3(W * 0.5, D * 0.5 - 0.1, 0.72))
+	m.box_lh(Vector3(-W * 0.5, -D * 0.5, 0.1), Vector3(W * 0.5, -D * 0.5 + 0.03, 0.72))      # the modesty panel
+	m.use("paint_grey", "identify")
+	m.box_lh(Vector3(-W * 0.5, -D * 0.5, 0.72), Vector3(W * 0.5, D * 0.5, 0.76))              # the worktop
+	var cell := (W - 0.1) / float(n)
+	var sw := cell - 0.04
+	for i in n:
+		var x := -W * 0.5 + 0.05 + cell * (i + 0.5)
+		m.use("paint_black", "form")
+		m.box(Vector3(x, -D * 0.5 + 0.2, 0.84), Vector3(0.06, 0.06, 0.16))                    # the foot's post
+		m.box(Vector3(x, -D * 0.5 + 0.2, 0.765), Vector3(0.25, 0.18, 0.01))                   # and its base
+		m.box(Vector3(x, -D * 0.5 + 0.24, 1.12), Vector3(sw, 0.04, sw * 0.6))                # the bezel
+		m.use("glass", "identify")
+		m.box(Vector3(x, -D * 0.5 + 0.262, 1.12), Vector3(sw - 0.03, 0.004, sw * 0.6 - 0.03))   # the screen
+		m.use("paint_black", "form")
+		m.box(Vector3(x, D * 0.5 - 0.3, 0.77), Vector3(minf(0.44, sw * 0.8), 0.15, 0.02))     # the keyboard
+	g.plate("front", Vector3(0, D * 0.5 + 0.003, 0.6), Vector3(0, 1, 0), "small")
+	g.solid_box(Vector3(-W * 0.5, -D * 0.5, 0), Vector3(W * 0.5, D * 0.5, 0.76))
+
 ## A push button station on its post: start (green), stop (red), and an emergency stop (a red mushroom on yellow).
 static func push_button_station(_part: String, g) -> void:
 	var m = g.m

@@ -547,9 +547,9 @@ model lands on its screen by the beginning of its code. A model that gains a pum
 
 ```json
 {"format": "walkdown-plant-screens", "version": 1,
- "overview": {"title": "Train 1 overview", "key": ["gt1_mw", "st_mw", "hp_p", "cond_p"]},
+ "overview": {"title": "Train 1 overview", "short": "Overview", "key": ["gt1_mw", "st_mw", "hp_p", "cond_p"]},
  "screens": [
-   {"id": "cw", "title": "Circulating water",
+   {"id": "cw", "short": "CW", "title": "Circulating water",
     "groups": [{"id": "pumps", "title": "Pumps and discharge valves", "at": [0, 0], "codes": ["30PAC10"]},
                {"id": "flow", "title": "Supply and return", "at": [1, 0], "codes": ["30PAB"]}],
     "lines": [{"from": "pumps", "to": "flow", "medium": "cooling_water"}],
@@ -568,6 +568,7 @@ model lands on its screen by the beginning of its code. A model that gains a pum
 - **`codes`** and `left_out`'s `codes`: beginnings of codes, at least to the system letters (`30PAB`, `10MBV10`,
   `30MAG10CL`), each placed once in the file (`dup_id`). A group to which no shown code belongs and that has no
   `extra` shows nothing (`bad_ref`); so does a `left_out` entry that leaves nothing out.
+- **`short`:** the screen's name on its tab, 1–16 characters; **`title`** its heading.
 - **`at`:** the group's place, `[column, row]`, whole numbers 0–7; one group per place. The app sizes each column
   and row to its largest group. **`lines`:** flow lines between two groups of the screen, optionally naming the
   `medium` (plant.json) they carry, which is written on the line. **`trend`:** at most 6 values with a unit,

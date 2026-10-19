@@ -125,8 +125,9 @@ def mini():
             'steps': [{'id': 's1', 'text': ['The pump.'], 'at': ['10LAC10AP001'], 'go': 'walk'}]}
     sounds = {'format': 'walkdown-plant-sounds', 'version': 1,
               'sounds': [{'id': 'hum', 'kind': 'synth', 'tones': [{'hz': 100}]}]}
-    screens = {'format': 'walkdown-plant-screens', 'version': 1, 'overview': {'title': 'Overview', 'key': ['p']},
-               'screens': [{'id': 'feed', 'title': 'Feedwater',
+    screens = {'format': 'walkdown-plant-screens', 'version': 1, 'overview': {'title': 'Overview', 'short': 'Overview',
+                                                                                  'key': ['p']},
+               'screens': [{'id': 'feed', 'short': 'Feed', 'title': 'Feedwater',
                             'groups': [{'id': 'pumps', 'title': 'Pumps', 'at': [0, 0], 'codes': ['10LAC10'],
                                         'extra': ['flow']},
                                        {'id': 'pipe', 'title': 'Piping', 'at': [1, 0], 'codes': ['10LAB10']}],

@@ -1171,8 +1171,9 @@ def check_screens(s, m, b):
         need(isinstance(v, str) and v in units, 'bad_ref', f'{where}: {v!r} is no value with a unit')
 
     ov = s['overview']
-    keys(ov, ('title', 'key'), (), f'{w}.overview')
+    keys(ov, ('title', 'short', 'key'), (), f'{w}.overview')
     name_text(ov['title'], f'{w}.overview.title')
+    name_text(ov['short'], f'{w}.overview.short', 16)
     for v in lst(ov['key'], f'{w}.overview.key', 1, 12):
         shown_value(v, f'{w}.overview.key')
     need(len(set(ov['key'])) == len(ov['key']), 'dup_id', f'{w}.overview.key: a value twice')
@@ -1181,11 +1182,12 @@ def check_screens(s, m, b):
     seen_screens = set()
     for i, sc in enumerate(lst(s['screens'], f'{w}.screens', 1, 16)):
         ws = f'{w}: screen {sc.get("id", i) if isinstance(sc, dict) else i}'
-        keys(sc, ('id', 'title', 'groups'), ('lines', 'trend'), ws)
+        keys(sc, ('id', 'short', 'title', 'groups'), ('lines', 'trend'), ws)
         ident(sc['id'], ws)
         need(sc['id'] not in seen_screens and sc['id'] != 'overview', 'dup_id', f'{ws}: id used twice (or "overview")')
         seen_screens.add(sc['id'])
         name_text(sc['title'], f'{ws}.title')
+        name_text(sc['short'], f'{ws}.short', 16)
         gids, cells = set(), set()
         for j, gr in enumerate(lst(sc['groups'], f'{ws}.groups', 1, 16)):
             wg = f'{ws}: group {gr.get("id", j) if isinstance(gr, dict) else j}'

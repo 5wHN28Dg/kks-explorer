@@ -20,6 +20,7 @@ var machine_of := {}               # code -> machine position in m.machines
 var lamps_of := {}                 # code -> [[kind, value]]
 var position_of := {}              # code -> the value a stem, disc or blades binding moves (0–1)
 var units := {}                    # value name -> unit
+var parts := {}                    # code -> the kit part it is drawn with (equipment and its parts)
 
 
 func _init(model) -> void:
@@ -72,6 +73,12 @@ func _init(model) -> void:
 func _name(e: Dictionary, area: String) -> void:
 	names[e["kks"]] = e.get("name", "")
 	area_of[e["kks"]] = area
+	if e.has("part"):
+		parts[e["kks"]] = e["part"]
+
+
+func part_of(code: String) -> String:
+	return parts.get(code, "")
 
 
 static func _structure_name(s: Dictionary) -> String:

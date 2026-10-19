@@ -76,6 +76,26 @@ class Content(unittest.TestCase):
         self.assertEqual(c['procedures'], 1)
         self.assertLessEqual(c['values'], P.MAX['values'])
 
+    def test_screens_show_every_code_of_the_model(self):
+        """§7.11: every code the model has something for is on exactly one control room screen or left out, each
+        screen the user asked for (2026-10-19) has its systems, and the first train leaves out only hand valves."""
+        items = P.screen_items(self.m)
+        placed = self.b.screen_of
+        left = set(items) - set(placed)
+        self.assertEqual(left, {'30PAB10AA401', '30PAB10AA402', '30PAB10AA403', '30PAB10AA404'})
+        by_screen = {}
+        for code, (sid, _) in placed.items():
+            by_screen.setdefault(sid, set()).add(code)
+        for sid, code in (('gt', '10MBV10AP001'), ('gt', '10MBP10AA001'), ('hrsg', '10HAD30CL001'),
+                          ('hrsg', '10LAE30AA001'), ('hrsg', '10LBA30AA901'), ('st', '30MAJ10AP001'),
+                          ('condensate', '30LCB10AP001'), ('condensate', '30MAG10CL001'), ('cw', '30PAC10AP001'),
+                          ('ct', '30PAD10AN001'), ('aux', '00PGC10AP001'), ('el', '10BAC10'), ('el', '30MKC10')):
+            self.assertIn(code, by_screen.get(sid, set()), f'{code} on screen {sid}')
+        # every value with a unit and a code is on its code's screen
+        for name, node, _ in self.m.values:
+            if 'unit' in node and 'kks' in node:
+                self.assertTrue(node['kks'] in placed or node['kks'] in left, name)
+
     def test_every_first_train_code_is_in_the_plant(self):
         """Every code of FIRST-TRAIN §1 is a piece of equipment, a pipe or a structure, or (for a whole system) the
         system of one. The one exception is written down in FIRST-TRAIN §1."""
@@ -268,7 +288,8 @@ class Validator(unittest.TestCase):
                   'state', 'an ext value named like a trip latch', 'a scenario setting a latch to neither 0 nor 1',
                   'a scenario setting a timer', 'a scenario setting an integrate outside its range',
                   'a scenario setting a wrap outside [0, period)', 'an ext value named like a machine state',
-                  'a trip the scenario latches twice', 'an alarm priority that is not 1, 2 or 3'):
+                  'a trip the scenario latches twice', 'an alarm priority that is not 1, 2 or 3',
+                  'a code of the model on no screen and not left out', 'one beginning of a code in two groups'):
             self.assertIn(w, whys)
 
 
