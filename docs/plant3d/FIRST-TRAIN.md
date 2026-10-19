@@ -440,3 +440,15 @@ physics behind each). Recordings may replace the breakers, the turning gear and 
 sound wrong to someone who knows the real ones. The plant gets loud where a
 real plant is (the GT hall at full speed); the app caps its output level and shows a hearing-protection sign at the
 doors, as on site.
+
+As built (apps/plant3d/ui/sound_player.gd):
+- **Footsteps:** one a stride (0.75 m walking, 1.1 m running), by the floor underfoot as the content build marks it:
+  concrete (the ground, concrete decks), steel bar grating, and a steel stair tread (stairs, chequer plate, and a
+  ladder's rungs every 0.3 m). Each step varies a little in pitch and level. None in flight.
+- **Doors:** a sliding door's run as it starts to move; a roller door's motor and rattling slats while it moves.
+- **Ambience:** the wind and the distant plant, outdoors only (a building's roof above the trainee fades them out
+  over a second); the distant plant's level follows how much of the plant runs (the bound sounds' mean gain).
+- **The cap:** a hard limiter, ceiling −6 dBFS, last on the master bus.
+- **The signs:** "Hearing protection required" beside every door of a building with a machine of 85 dB(A) or more
+  at 1 m inside (the upper exposure action value of EU Directive 2003/10/EC): the GT hall, the turbine hall, the CW
+  pump house and the boiler house; the content generator places them (`tools/plant3d/train_areas.py`).

@@ -25,6 +25,13 @@
   {"id": "horn_p1", "kind": "synth", "tones": [{"hz": 880, "gain": 0.8}, {"hz": 1760, "gain": 0.3}, {"hz": 2640, "gain": 0.2}]},
   {"id": "horn_p2", "kind": "synth", "tones": [{"hz": 660, "gain": 0.7}, {"hz": 1320, "gain": 0.25}, {"hz": 1980, "gain": 0.15}]},
   {"id": "horn_p3", "kind": "synth", "tones": [{"hz": 440, "gain": 0.5}, {"hz": 880, "gain": 0.2}, {"hz": 1320, "gain": 0.1}]},
-  {"id": "horn_ack", "kind": "synth", "tones": [{"hz": 1000, "gain": 0.6}, {"hz": 2000, "gain": 0.2}], "made": "an alarm acknowledged (played once)"}
+  {"id": "horn_ack", "kind": "synth", "tones": [{"hz": 1000, "gain": 0.6}, {"hz": 2000, "gain": 0.2}], "made": "an alarm acknowledged (played once)"},
+  {"id": "step_concrete", "kind": "synth", "tones": [{"hz": 90, "gain": 0.6}], "noise": {"colour": "pink", "band": [80, 5000], "gain": 0.8}, "made": "a footstep on concrete (played once a stride)"},
+  {"id": "step_grating", "kind": "synth", "tones": [{"hz": 420, "gain": 0.5}, {"hz": 1180, "gain": 0.4}, {"hz": 2350, "gain": 0.3}, {"hz": 3700, "gain": 0.2}], "noise": {"colour": "white", "band": [200, 6000], "gain": 0.6}, "made": "a footstep on steel bar grating (played once a stride)"},
+  {"id": "step_stair", "kind": "synth", "tones": [{"hz": 260, "gain": 0.6}, {"hz": 690, "gain": 0.45}, {"hz": 1560, "gain": 0.3}, {"hz": 3050, "gain": 0.15}], "noise": {"colour": "pink", "band": [100, 5000], "gain": 0.5}, "made": "a footstep on a steel stair tread, chequer plate or a ladder rung (played once)"},
+  {"id": "door_slide", "kind": "synth", "tones": [{"hz": 180, "gain": 0.4}, {"hz": 520, "gain": 0.25}], "noise": {"colour": "pink", "band": [60, 2500], "gain": 0.7}, "made": "a sliding door running on its rollers to its stop (played once)"},
+  {"id": "door_roller", "kind": "synth", "tones": [{"hz": 15, "gain": 0.5}, {"hz": 100, "gain": 0.3}, {"hz": 350, "gain": 0.3}], "noise": {"colour": "pink", "band": [150, 5000], "gain": 0.6}, "made": "a roller door: its motor and the slats rattling in their guides (loops while it moves)"},
+  {"id": "wind", "kind": "synth", "noise": {"colour": "pink", "band": [30, 1500]}, "made": "wind at the ear, in gusts"},
+  {"id": "plant_distant", "kind": "synth", "tones": [{"hz": 100, "gain": 0.5}, {"hz": 200, "gain": 0.2}], "noise": {"colour": "brown", "band": [30, 700], "gain": 0.8}, "made": "the running plant heard from afar"}
  ]
 }
