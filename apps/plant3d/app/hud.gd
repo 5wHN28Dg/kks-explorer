@@ -1,11 +1,12 @@
 ## What lies over the view: the touch controls (two sticks: move on the left, look on the right, Godot's own
 ## VirtualJoystick driving the same actions as a gamepad's sticks), the buttons (walk/fly, map, use, up and down in
 ## flight, settings), a line saying where the trainee is and how, and the settings panel (the quality tier, with
-## "Automatic" saying what it chose and why).
+## "Automatic" saying what it chose and why, and About: app/about.gd).
 extends CanvasLayer
 
 const Quality = preload("res://app/quality.gd")
 const Player = preload("res://app/player.gd")
+const About = preload("res://app/about.gd")
 
 var main   # app/main.gd
 var status: Label
@@ -17,6 +18,10 @@ var tier_opt: OptionButton
 var touch_opt: OptionButton
 var tier_note: Label
 var extra: VBoxContainer       # rows the interaction layer adds (ui/plant_ui.gd: instructor mode, motion, sound)
+var settings_box: VBoxContainer
+var about: About               # shown in the settings panel in place of the settings, the panel made larger
+var about_btn: Button
+var _panel_offsets: Array = []
 
 func setup(m) -> void:
 	main = m
@@ -92,6 +97,10 @@ func _settings(root: Control) -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 14)
 	panel.add_child(v)
+	settings_box = v
+	about = About.new()
+	about.closed.connect(_about_closed)
+	panel.add_child(about)
 	var t := Label.new()
 	t.text = "Settings"
 	t.add_theme_font_size_override("font_size", 28)
@@ -123,12 +132,59 @@ func _settings(root: Control) -> void:
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size = Vector2(620, 0)
 	v.add_child(help)
-	_button(v, "Close", func(): show_settings(false))
+	var row3 := HBoxContainer.new()
+	row3.add_theme_constant_override("separation", 10)
+	v.add_child(row3)
+	# these two take the keyboard and gamepad focus (ui_accept presses them, the D-pad moves between them)
+	about_btn = _button(row3, "About", show_about)
+	about_btn.focus_mode = Control.FOCUS_ALL
+	_button(row3, "Close", func(): show_settings(false)).focus_mode = Control.FOCUS_ALL
+
+## Gamepad A acts as ui_accept on the focused control of the settings panel (Godot's ui_accept has no gamepad button;
+## the walker's "use" is off while the panel shows): a button is pressed, a check box toggled, a disabled one left.
+func _input(e: InputEvent) -> void:
+	if panel == null or not panel.visible or not (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A):
+		return
+	var fo := panel.get_viewport().gui_get_focus_owner()
+	if fo == null or not panel.is_ancestor_of(fo) or not fo.is_visible_in_tree():
+		return
+	get_viewport().set_input_as_handled()
+	var a := InputEventAction.new()
+	a.action = "ui_accept"
+	a.pressed = e.pressed
+	get_viewport().push_input(a)
+
+## About in the settings panel: the panel fills the screen but for a margin while it shows.
+func show_about() -> void:
+	if about.visible:
+		return
+	if not panel.visible:
+		show_settings(true)
+	_panel_offsets = [panel.anchor_left, panel.anchor_top, panel.anchor_right, panel.anchor_bottom,
+		panel.offset_left, panel.offset_top, panel.offset_right, panel.offset_bottom]
+	settings_box.visible = false
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 40)
+	about.open()
+
+func _about_closed() -> void:
+	settings_box.visible = true
+	if _panel_offsets.size() == 8:
+		panel.anchor_left = _panel_offsets[0]; panel.anchor_top = _panel_offsets[1]
+		panel.anchor_right = _panel_offsets[2]; panel.anchor_bottom = _panel_offsets[3]
+		panel.offset_left = _panel_offsets[4]; panel.offset_top = _panel_offsets[5]
+		panel.offset_right = _panel_offsets[6]; panel.offset_bottom = _panel_offsets[7]
+	panel.reset_size()
+	if panel.visible:
+		about_btn.grab_focus()
 
 func show_settings(on: bool) -> void:
+	if not on and about.visible:
+		about.close()
 	panel.visible = on
 	refresh()
 	if on:
+		if not about.visible:
+			about_btn.grab_focus()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var mode: String = main.cf.get_value("quality", "mode", "auto")
 		tier_opt.selected = ["auto", "full", "lean+vis"].find(mode)

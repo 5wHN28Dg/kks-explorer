@@ -13,14 +13,14 @@ geometry at their described positions, made by the builder.
 |---|---|
 | `kit/` | the parts kit: every equipment part of `data/plant3d/kit.json` made from its parameters, the materials and their CC0 textures (fetched by `kit/fetch_textures.sh`) |
 | `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground and the site round the areas, the materials, the sky, the bake scene, `plant.json`, the walking directions' navigation mesh `nav.res` from `nav_bake.gd`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) `builder/bake/` is the editor plugin that bakes the lightmap |
-| `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), scripted routes (`autopilot.gd`, `routes.gd`), walking directions (`walk_route.gd`) |
+| `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), About (`about.gd`), scripted routes (`autopilot.gd`, `routes.gd`), walking directions (`walk_route.gd`) |
 | `ui/` | the interaction layer: the engine run at 0.1 s steps (`sim_clock.gd`), equipment cards (`card.gd`), alarms (`alarm_panel.gd`), procedures and tours (`procedure_panel.gd`, `procedure_tracker.gd`), the instructor's faults, bindings on the parts (`bindings.gd`), sounds (`sound_player.gd`), links (`links_in.gd`), the saved run (`autosave.gd`, `run_save.gd`); `plant_ui.gd` ties them together |
 | `addons/walkdown_plant_android/` | editor-only: the export plugin that adds the `walkdown-plant://` intent filter to the Android manifest (decision 0056) |
-| `msix/` | the MSIX manifest (identity, alias, the `walkdown-plant` protocol); the packaging comes with the first release |
+| `msix/` | the MSIX: its manifest (identity, alias, the `walkdown-plant` protocol), `make-msix.sh` (the package, as Walkdown's), `logos.gd` (the logos from `icon.svg`) |
 | `sim/` | the behaviour engine (the model's evaluator). It has its own owner; the project hosts it (`walkdown_plant/sim/path` in `project.godot`) |
 | `tests/` | the app's tests: `run_tests.gd` runs every `test_*.gd` |
 | `phone/frames.sh` | one frame-time run on a phone |
-| `flatpak/` | the Flatpak (`io.github._5wHN28Dg.WalkdownPlant`, on `org.godotengine.godot.BaseApp//4.7`) |
+| `flatpak/` | the Flatpak (`io.github._5wHN28Dg.WalkdownPlant`, on `org.godotengine.godot.BaseApp//4.7`); `build.sh` makes its AppStream release entry from the version |
 
 ## Build
 
@@ -30,6 +30,7 @@ apps/plant3d/build.sh export                # and the exports, headless, unbaked
 tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh bake      # and the lightmap's bake (a GPU, Godot's editor)
 tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release   # release exports, shaders baked
 apps/plant3d/flatpak/build.sh BUILD_DIR     # the Flatpak from the release's .pck; installs nothing
+apps/plant3d/msix/make-msix.sh VM_IP CERT.pfx OUT.msix   # the MSIX from the release's exe (a Windows VM packs it)
 ```
 
 `release` and `bake` need a rendering device; `release` bakes the lightmap before it exports. The shader baker and the export run under a private display
@@ -38,8 +39,11 @@ apps/plant3d/flatpak/build.sh BUILD_DIR     # the Flatpak from the release's .pc
 - `export/walkdown-plant.apk`: arm64-v8a, signed with the plant's own key;
 - `export/walkdown-plant-debug.apk`;
 - `export/linux/walkdown-plant.x86_64` and `.pck`;
-- `export/windows/WalkdownPlant.exe`: the `.pck` is embedded, the exe is not signed. MSIX comes with the first
-  release.
+- `export/windows/WalkdownPlant.exe` and `export/windows-arm64/WalkdownPlant.exe`: the `.pck` is embedded, the exe
+  is not signed; the MSIX packages carry them.
+
+Every build writes `built/build_info.json`: the commit it was made of and whether the checkout had changes. About
+shows it, and the release tool finds it inside the APK and the exe.
 
 The Android key is `~/.config/kks-explorer/signing/walkdown-plant.jks`, with its passwords in
 `walkdown-plant.properties` next to it. It is not Walkdown's key (0054). Godot needs the store and key passwords to
@@ -71,7 +75,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--procedure=ID` | follows that procedure or tour from the start |
 | `--panels=alarms,procedure,card:CODE` | opens these panels |
 | `--speed=fast` | starts the plant in fast-forward |
-| `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line |
+| `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line; a start with a link takes none of the options above (a crafted link could add its own) |
 | `--fx_off=fog,lightmap,shadow`, `--fx_on=ssao,sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
 
 Controls (R7):
@@ -272,6 +276,8 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 A test stopped by a script error counts as failed (the runner counts script errors). `tests/ui_shots.gd` saves
 screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script
 res://tests/ui_shots.gd -- --out=DIR`.
+- `test_about`: About from the settings (gamepad A), what it shows (version, commit, the assets with their licence,
+  Godot's notices), scrolling by D-pad, stick, Page Down and Home, and back by Esc, B and Back.
 - `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).
 - `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
   site, each tier's effects.
@@ -280,3 +286,38 @@ Physics runs with the headless renderer.
 
 Frame times on the Note 9: `flock ~/kks-work/build/vm.lock sh -c 'apps/plant3d/phone/frames.sh 285d2a7c153f7ece 600;
 adb kill-server'`. Only `io.github.walkdown.plant` is ever installed. The script refuses a locked phone.
+
+## About
+
+Settings → About (gamepad: A on the focused button) shows the version (`application/config/version` in
+`project.godot`), the commit of the build and whether it had local changes, the licence and source, the CC0 assets
+of `about.json` (from `tools/about.py --plant`; the build copies it to `built/about.json`) with the CC0 text, and the
+Godot Engine's licence, copyright notices and third-party licences (`Engine.get_license_text()`,
+`get_copyright_info()`, `get_license_info()`). It scrolls by touch, the wheel, arrows or W/S, Page Up/Down, Home and
+End, the D-pad and either stick; Esc, B, Start or Back returns to the settings.
+
+## Releasing
+
+A plant release is a GitHub release of this repository tagged `plant-vX.Y.Z`, published **not as latest**:
+GitHub's latest release is what Walkdown's updater reads, so it must stay Walkdown's (decision 0054 §8). The whole
+procedure, with the keys, is on the wiki's Releasing page. In short, from a clean checkout of the release commit:
+
+1. `python3 tools/plant_release.py bump X.Y.Z` (project.godot and the Android version name and code), commit, push,
+   merge; wait for CI.
+2. `tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release`: the signed APK, the Linux `.pck`, both Windows
+   exes, baked.
+3. `apps/plant3d/msix/make-msix.sh VM_IP ~/.config/kks-explorer/signing/windows-msix.pfx WalkdownPlant.msix`
+   (`KKS_MSIX_PASS` from `windows-msix.password`), and with `KKS_WIN_ARCH=aarch64` `WalkdownPlant-arm64.msix`; copy
+   `windows-msix.cer` next to them. Tests use `make-msix.sh --test-cert DIR` only.
+4. `apps/plant3d/flatpak/build.sh --bundle walkdown-plant.flatpak BUILD_DIR --disable-rofiles-fuse` (the option where FUSE is not available to flatpak-builder, as for Walkdown).
+5. `python3 tools/plant_release.py X.Y.Z DIR --notes notes.md`: a dry run that checks everything; then the same with
+   `--publish`. It refuses unless the version is the app's, the checkout is clean and on origin/main (and `plant-vX.Y.Z` on
+   origin, if there, names it), the APK and both MSIX packages carry the commit without local changes (the MSIX signed as `CN=Walkdown`, for the architecture its name says), every CI run
+   on the commit has passed, and GitHub's latest release is a Walkdown `vX.Y.Z`; it creates the release with
+   `--latest=false` and checks afterwards that the latest release is still Walkdown's (and makes it latest again if
+   not). `tools/release.py` makes Walkdown's own releases latest explicitly, behind the same checks.
+   The release commit must have had the Walkdown Plant app workflow run on it (it runs only when plant files change):
+   release the merge that bumped the version, or start the workflow on a branch whose head is that commit
+   (`gh workflow run plant3d-app.yml --ref BRANCH`). The tools also check the APK's signer (`CN=Walkdown Plant`,
+   with the Android SDK's apksigner), the MSIX packages' publisher, architecture, version and signature, and
+   `windows-msix.cer`; the bundle refuses a `.pck` not built from the checkout's commit without changes.

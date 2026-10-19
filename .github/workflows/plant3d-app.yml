@@ -1,7 +1,7 @@
 # Walkdown Plant (decision 0054): on every change to the app, its content or the tools that make the content: the
 # content through the reference validator (ref/plant3d.py, strict JSON), the content build (apps/plant3d/builder),
 # the app's headless tests (walking up and down stairs and a ladder) and the exports (Android debug and unsigned
-# release, Linux, Windows) made headless, unbaked and unsigned, to catch export errors; the Android ones are Gradle
+# release, Linux, Windows x86_64 and ARM64) made headless, unbaked and unsigned, to catch export errors; the Android ones are Gradle
 # builds (the walkdown-plant:// intent filter, decision 0056) on a pinned JDK 17 (tools/plant3d/fetch_jdk.sh). The baked, signed release
 # build is made on the maintainer's laptop (build.sh release): the shader baker needs a GPU (0041) and the key never
 # comes to CI. Godot 4.7.2 and its export templates are fetched by tools/plant3d/bench/fetch_godot.sh (SHA-512).
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-24.04            # its image has the Android SDK (apksigner) the Android export needs
     timeout-minutes: 40
     env:
-      GODOT_TEMPLATES: android_debug.apk android_release.apk android_source.zip linux_release.x86_64 linux_debug.x86_64 windows_release_x86_64.exe windows_debug_x86_64.exe icudt_godot.dat
+      GODOT_TEMPLATES: android_debug.apk android_release.apk android_source.zip linux_release.x86_64 linux_debug.x86_64 windows_release_x86_64.exe windows_debug_x86_64.exe windows_release_arm64.exe windows_debug_arm64.exe icudt_godot.dat
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -58,4 +58,4 @@ jobs:
       - name: Content check, content build, the app's tests, headless exports
         run: apps/plant3d/build.sh export
       - name: Sizes
-        run: ls -l apps/plant3d/export/check apps/plant3d/export/check/linux apps/plant3d/export/check/windows | tee -a "$GITHUB_STEP_SUMMARY"
+        run: ls -l apps/plant3d/export/check apps/plant3d/export/check/linux apps/plant3d/export/check/windows apps/plant3d/export/check/windows-arm64 | tee -a "$GITHUB_STEP_SUMMARY"
