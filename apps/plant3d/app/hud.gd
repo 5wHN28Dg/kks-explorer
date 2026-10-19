@@ -12,6 +12,7 @@ var main   # app/main.gd
 var status: Label
 var sticks: Array = []
 var fly_btn: Button
+var use_btn: Button
 var updown: Array = []
 var panel: PanelContainer
 var tier_opt: OptionButton
@@ -59,7 +60,7 @@ func setup(m) -> void:
 	root.add_child(bar)
 	fly_btn = _button(bar, "Fly", func(): main.player.toggle_fly())
 	_button(bar, "Map", func(): main.toggle_map())
-	_button(bar, "Use", func(): main.player.press_door())
+	use_btn = _button(bar, "Use", func(): main.player.press_door())
 	_button(bar, "Settings", func(): show_settings(not panel.visible))
 	var ud := VBoxContainer.new()
 	ud.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -214,8 +215,10 @@ func refresh() -> void:
 		s.visible = touch and not main.map.active and not screens
 	var flying: bool = main.player.mode == Player.Mode.FLY
 	fly_btn.text = "Walk" if flying else "Fly"
+	fly_btn.visible = not screens            # walking and flying do nothing on the screens
+	use_btn.visible = not screens
 	for b in updown:
-		b.visible = touch and flying and not main.map.active
+		b.visible = touch and flying and not main.map.active and not screens
 
 func _process(_d: float) -> void:
 	var p: Vector3 = main.player.global_position

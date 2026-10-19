@@ -40,7 +40,7 @@ var _t := 0.0
 var listener_at := Vector3.ZERO
 var dir := DIR
 var walker: CharacterBody3D = null      # the trainee (app/player.gd): footsteps and whether they are outdoors
-var played := {}                # sound id -> how many times it was started (the tests read it)
+var played := {}                # sound id -> how many times it was asked for (the tests read it)
 var outdoors := 1.0             # 0 inside a building … 1 outdoors, faded over FADE
 var running := 0.0              # how much of the plant runs: the bound loops' mean gain (0–1)
 var _walked := 0.0              # metres since the last footstep (or rung)
@@ -274,6 +274,7 @@ func horn(priority: int) -> void:
 
 ## A one-shot for an engine event at a place: `breaker`, `breaker_open`, `motor_start`, `horn_ack`.
 func once(id: String, at: Node3D = null) -> void:
+	played[id] = played.get(id, 0) + 1
 	if index.is_empty() or muted or not index.has(id):
 		return
 	for layer in index[id].get("layers", []):

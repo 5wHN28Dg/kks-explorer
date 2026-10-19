@@ -567,7 +567,8 @@ model lands on its screen by the beginning of its code. A model that gains a pum
   and never one with a code (it is shown by its code).
 - **`codes`** and `left_out`'s `codes`: beginnings of codes, at least to the system letters (`30PAB`, `10MBV10`,
   `30MAG10CL`), each placed once in the file (`dup_id`). A group to which no shown code belongs and that has no
-  `extra` shows nothing (`bad_ref`); so does a `left_out` entry that leaves nothing out.
+  `extra` shows nothing (`bad_ref`); so does a `left_out` entry that leaves nothing out, and one that leaves out a
+  code with an alarm or an op worked from the screens (`where` holds `screen`): those need a screen.
 - **`short`:** the screen's name on its tab, 1–16 characters; **`title`** its heading.
 - **`at`:** the group's place, `[column, row]`, whole numbers 0–7; one group per place. The app sizes each column
   and row to its largest group. **`lines`:** flow lines between two groups of the screen, optionally naming the

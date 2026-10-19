@@ -18,7 +18,7 @@ var overview := {}                 # {title, short, key: [values]}
 var items := {}                    # code -> item (below), in the model's order
 var screen_of := {}                # code -> [screen index, group index]
 var left_out := {}                 # code -> why
-var unplaced: Array = []           # codes on no screen and not left out (content the reference refuses: shown as a warning)
+var unplaced: Array = []           # codes on no screen and not left out: content the reference refuses (build.sh checks it first), so never in a build; the tests check it is empty
 var internal: Array = []           # values with a unit and no code that no group names (the model's workings)
 var trended: Array = []            # every value a screen trends or the overview shows (ui/trends.gd samples them)
 

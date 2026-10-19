@@ -18,6 +18,9 @@ const Trends = preload("res://ui/trends.gd")
 const REFRESH := 0.25           # seconds between redraws of the values (4 Hz)
 const CELL_W := 248.0          # a cell: its KKS code is never cut, its name takes up to two lines
 const PAD := 10.0
+const TAP_SLOP := 14.0          # a press that moves less than this (times the UI's scale) is a tap, not a pan
+const MOVE_STEPS := 2           # a valve moves when its position changed over at least this many model steps
+const MOVE_STALE_MS := 1500     # a valve's last look older than this (wall time) is not compared with
 const GAP := 52.0               # between the groups: room for the flow lines
 const TREND := Vector2(300, 96)
 # the high-performance palette: greys, colour only for the abnormal
@@ -51,7 +54,9 @@ var zoom := 1.0
 var offset := Vector2.ZERO
 var _t := 0.0
 var _blink := true
-var _last_pos := {}             # valve code -> position at the last redraw (moving when it changed)
+var _last_pos := {}             # valve code -> [position, model step, position it was compared with, msec] (_valve_was)
+var _pos_engine = null          # the engine _last_pos was taken from (a restart or restore makes another)
+var _stick := {}                # left stick axis -> -1, 0 or 1 past the deadzone (one move each time it crosses)
 var _banner_rows: Array = []    # [rect, alarm position]
 var _press_at := Vector2.ZERO
 var _dragging := false
@@ -155,7 +160,14 @@ func canvas_top() -> float:
 func open(screen := -1) -> void:
 	visible = true
 	show_screen(screen)
-	if ui.wants_focus() or not Input.get_connected_joypads().is_empty():   # a touch device with a gamepad too
+	take_focus()
+
+
+## The keys and the gamepad work the canvas: it takes the focus when the screens open and when a panel over them
+## (the card, the alarm list, the procedure, the instructor, the debrief) closes. Without it nothing holds the focus
+## and a gamepad reaches nothing on the screens.
+func take_focus() -> void:
+	if visible and (ui.wants_focus() or not Input.get_connected_joypads().is_empty()):   # a touch device with a gamepad too
 		canvas.grab_focus()
 
 
@@ -277,7 +289,9 @@ func _process(delta: float) -> void:
 		banner.queue_redraw()
 	# the pieces in turn: each one every REFRESH, spread over the frames
 	if not _pieces.is_empty():
-		_rr_acc += _pieces.size() * delta / REFRESH
+		# at most one round in hand: a long frame (a hitch, an Android resume) draws the screen once, not once a frame
+		# until the time it missed is made up
+		_rr_acc = minf(_rr_acc + _pieces.size() * delta / REFRESH, _pieces.size())
 		var n := mini(int(_rr_acc), _pieces.size())
 		_rr_acc -= n
 		for k in n:
@@ -610,6 +624,8 @@ func _canvas_input(ev: InputEvent) -> void:
 	if ev is InputEventScreenTouch:
 		if ev.pressed:
 			_touches[ev.index] = ev.position
+			if _touches.size() >= 2:
+				_moved = 999.0                   # two fingers down is never a tap, whichever lifts first
 		else:
 			_touches.erase(ev.index)
 		_pinch0 = _pinch_dist()
@@ -646,7 +662,7 @@ func _canvas_input(ev: InputEvent) -> void:
 				_moved = 0.0
 			elif _dragging:
 				_dragging = false
-				if _moved < 14.0 and _touches.size() < 2:
+				if _moved < TAP_SLOP * W.scale and _touches.size() < 2:
 					tap(ev.position)
 		canvas.accept_event()
 		return
@@ -669,6 +685,14 @@ func _canvas_input(ev: InputEvent) -> void:
 		if down and not _trigger.get(ev.axis, false):
 			zoom_by(1.25 if ev.axis == JOY_AXIS_TRIGGER_RIGHT else 1.0 / 1.25)
 		_trigger[ev.axis] = down
+		canvas.accept_event()
+		return
+	if ev is InputEventJoypadMotion and (ev.axis == JOY_AXIS_LEFT_X or ev.axis == JOY_AXIS_LEFT_Y):
+		# the stick moves the selection once each time it is pushed past the deadzone (it sends many events a push)
+		var s: int = 0 if absf(ev.axis_value) < 0.5 else signi(int(signf(ev.axis_value)))
+		if s != 0 and s != _stick.get(ev.axis, 0):
+			move_selection(Vector2(s, 0) if ev.axis == JOY_AXIS_LEFT_X else Vector2(0, s))
+		_stick[ev.axis] = s
 		canvas.accept_event()
 		return
 	if ev is InputEventKey and ev.pressed:
@@ -784,10 +808,14 @@ func ack_screen() -> void:
 				ks.append(k)
 	else:
 		ks = sm.screen_alarms(current, e).alarms
+	var any := false
 	for k in ks:
 		var s: String = e.astate[k]
 		if e.shelved[k] == -1 and (s == "active_unack" or s == "cleared_unack"):
-			ui.ack(e._al[k][0])
+			ui.ack(e._al[k][0], false)
+			any = true
+	if any:
+		ui.sounds.once("horn_ack")          # one acknowledge, one sound (not one for each alarm)
 	refresh()
 
 
@@ -880,16 +908,23 @@ func _draw_cell(c: Dictionary) -> void:
 	else:
 		_draw_extra(cr, c.id, e)
 	if c.id == selected:
-		_ci.draw_rect(cr.grow(-1.5), SELECT, false, 3.0)
+		_ci.draw_rect(select_rect(cr), SELECT, false, 3.0)
 
 
 func _draw_tile_piece(c: Dictionary) -> void:
 	_draw_tile(c.rect, int(String(c.id).substr(7)), ui.clock.engine)
 	if c.id == selected:
-		_ci.draw_rect((c.rect as Rect2).grow(-1.5), SELECT, false, 3.0)
+		_ci.draw_rect(select_rect(c.rect), SELECT, false, 3.0)
 
 
-func _draw_line(a: Rect2, b: Rect2, label: String) -> void:
+## Where the selection's outline (3 px wide) is drawn in a cell: inside the cell's own edge, so that a tripped
+## item's red edge (2 px) still shows when it is selected.
+static func select_rect(r: Rect2) -> Rect2:
+	return r.grow(-4.0)
+
+
+## A flow line's points from group a to group b: an elbow through the gap between them, or straight down or up.
+static func line_points(a: Rect2, b: Rect2) -> PackedVector2Array:
 	var p0: Vector2
 	var p1: Vector2
 	var pts: PackedVector2Array
@@ -912,22 +947,48 @@ func _draw_line(a: Rect2, b: Rect2, label: String) -> void:
 			p0 = Vector2(x, a.position.y)
 			p1 = Vector2(x, b.end.y)
 		pts = PackedVector2Array([p0, p1])
+	return pts
+
+
+func _draw_line(a: Rect2, b: Rect2, label: String) -> void:
+	var pts := line_points(a, b)
+	var p1 := pts[pts.size() - 1]
 	canvas.draw_polyline(pts, LINE, 3.0)
 	var d := (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()
 	var s := Vector2(-d.y, d.x)
 	canvas.draw_colored_polygon(PackedVector2Array([p1, p1 - d * 14 + s * 7, p1 - d * 14 - s * 7]), LINE)
 	if label != "":
-		# beside the line's longest segment, never on it: above a horizontal one, right of a vertical one
-		var k := 0
-		for i in pts.size() - 1:
-			if pts[i].distance_to(pts[i + 1]) > pts[k].distance_to(pts[k + 1]):
-				k = i
-		var q0 := pts[k]
-		var q1 := pts[k + 1]
-		if absf(q0.y - q1.y) < 0.5:
-			_text(canvas, Vector2(minf(q0.x, q1.x) + 10.0, q0.y - 20.0), label, 13, INK_DIM)
+		var at := line_label(pts, label)
+		if at[2]:      # turned: read upwards, beside the line's vertical run in the gap between the groups
+			canvas.draw_set_transform(offset + at[0] * zoom, -PI * 0.5, Vector2(zoom, zoom))
+			_text(canvas, Vector2.ZERO, label, 13, INK_DIM)
+			canvas.draw_set_transform(offset, 0.0, Vector2(zoom, zoom))
 		else:
-			_text(canvas, Vector2(q0.x + 6.0, (q0.y + q1.y) * 0.5 - 8.0), label, 13, INK_DIM)
+			_text(canvas, at[0], label, 13, INK_DIM)
+
+
+## Where a flow line's label goes: [top left, its size, turned]. Never over a group: a line between stacked groups
+## has it right of its vertical run; an elbow between groups side by side (the gap is too narrow for a word) has it
+## turned to read upwards in the gap, on the side of the run that goes on to the next group, above that run.
+## The size is the label's box on the screen (turned: as it stands).
+func line_label(pts: PackedVector2Array, label: String) -> Array:
+	var tw := _font().get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+	var th := _font().get_height(13)
+	if pts.size() == 2:
+		return [Vector2(pts[0].x + 6.0, (pts[0].y + pts[1].y) * 0.5 - th * 0.5), Vector2(tw, th), false]
+	var mx := pts[1].x
+	var p1 := pts[pts.size() - 1]
+	var bottom := p1.y - 6.0
+	if p1.x > mx:          # turned, its top (the text's start) at the bottom
+		return [Vector2(mx + 3.0, bottom), Vector2(th, tw), true]
+	return [Vector2(mx - 3.0 - th, bottom), Vector2(th, tw), true]
+
+
+## The box a label takes on the layout (line_label's answer).
+static func label_rect(at: Array) -> Rect2:
+	if at[2]:
+		return Rect2(Vector2(at[0].x, at[0].y - at[1].y), at[1])
+	return Rect2(at[0], at[1])
 
 
 func _alarm_badges(r: Rect2, al: Array) -> void:
@@ -1048,7 +1109,7 @@ func item_state(it: Dictionary, e, was = null) -> Dictionary:
 			var w: float = pos if was == null else float(was)
 			var moving: bool = absf(pos - w) > 0.002     # more than 0.2 % since the last look (a quarter second)
 			var words := "CLOSED" if pos < 0.02 else ("OPEN" if pos > 0.98 else "%.0f %%" % (pos * 100.0))
-			if moving:
+			if moving and pos >= 0.02 and pos <= 0.98:      # at an end stop it says where it is
 				words = ("OPENING " if pos > w else "CLOSING ") + "%.0f %%" % (pos * 100.0)
 			var second := ""
 			if it.machine >= 0:
@@ -1067,13 +1128,33 @@ func item_state(it: Dictionary, e, was = null) -> Dictionary:
 	return {"words": "", "second": "", "on": false}
 
 
+## The position a valve is compared with to say whether it moves: the one at a redraw at least MOVE_STEPS model
+## steps ago. Redraws closer together (a selection, a refresh) keep the last verdict instead of comparing two
+## positions a step apart (which made OPENING and the bare position take turns). After a restart, a restore or
+## a long absence (the screen not shown, the plant run on) there is nothing to compare with: not moving.
+func _valve_was(it: Dictionary, e):
+	if not is_same(_pos_engine, e):
+		_last_pos.clear()
+		_pos_engine = e
+	var pos: float = e.v(it.pos)
+	var s: int = e.step_no
+	var now := Time.get_ticks_msec()
+	var last = _last_pos.get(it.code)
+	if last == null or s < last[1] or now - last[3] > MOVE_STALE_MS:
+		_last_pos[it.code] = [pos, s, pos, now]
+		return pos
+	if s - last[1] >= MOVE_STEPS:
+		_last_pos[it.code] = [pos, s, last[0], now]
+		return last[0]
+	return last[2]
+
+
 ## Draws the item's symbol centred at c; returns its state (item_state).
 func _draw_symbol(c: Vector2, it: Dictionary, e) -> Dictionary:
 	var letters: String = it.code.substr(7, 2) if it.code.length() >= 9 else ""
-	var st := item_state(it, e, _last_pos.get(it.code))
+	var st := item_state(it, e, _valve_was(it, e) if it.kind == "valve" else null)
 	match it.kind:
 		"valve":
-			_last_pos[it.code] = st.pos
 			var fill := HOLLOW if st.pos < 0.02 else (EQUIP if st.pos > 0.98 else EQUIP.lerp(HOLLOW, 0.55))
 			var l := PackedVector2Array([c + Vector2(-16, -11), c + Vector2(0, 0), c + Vector2(-16, 11)])
 			var rr := PackedVector2Array([c + Vector2(16, -11), c + Vector2(0, 0), c + Vector2(16, 11)])
@@ -1137,11 +1218,16 @@ func _draw_trend(r: Rect2, vn: String, size: int) -> void:
 	_sparkline(Rect2(r.position + Vector2(8, 26), r.size - Vector2(16, 34)), vn)
 
 
+## Where the sparkline's span ("20 min") is written: inside the plot, on its base line (not over the tile's edge).
+func spark_label_at(plot: Rect2) -> Vector2:
+	return Vector2(plot.position.x, plot.end.y - _font().get_height(11) - 1.0)
+
+
 ## A value's last 20 minutes of plant time as a line, scaled to its own range, with the time it spans.
 func _sparkline(plot: Rect2, vn: String) -> void:
 	var s: PackedFloat32Array = trends.series(vn)
 	_ci.draw_line(Vector2(plot.position.x, plot.end.y), plot.end, EDGE, 1.0)
-	_text(_ci, Vector2(plot.position.x, plot.end.y - 1), "%d min" % (Trends.SIZE * Trends.EVERY / 600), 11, INK_DIM)
+	_text(_ci, spark_label_at(plot), "%d min" % (Trends.SIZE * Trends.EVERY / 600), 11, INK_DIM)
 	if s.size() < 2:
 		return
 	var lo := s[0]

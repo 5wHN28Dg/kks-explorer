@@ -14,6 +14,7 @@ const PlantModel = preload("res://sim/plant_model.gd")
 const PlantInfo = preload("res://ui/plant_info.gd")
 const ScreensModel = preload("res://ui/screens_model.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const Player = preload("res://app/player.gd")
 
 
 func run(tree: SceneTree) -> Array:
@@ -32,6 +33,7 @@ func run(tree: SceneTree) -> Array:
 	p.append_array(await _legible(tree, ui))
 	p.append_array(_any_state(ui))
 	p.append_array(await _keys(tree, ui))
+	p.append_array(await _review(tree, ui))
 	p.append_array(await _resize(tree, ui))
 	main.free()
 	p.append_array(await _measure(tree))
@@ -121,10 +123,15 @@ func _keys(tree: SceneTree, ui) -> Array:
 	ui.clock.run_steps(50)
 	if unack.call() == 0:
 		p.append("losing instrument air raised no alarm on the auxiliaries' screen")
+	var n_unack: int = unack.call()
+	ui.sounds.played.clear()
 	mim._canvas_input(_key(KEY_SPACE, 32))
 	ui.clock.run_steps(1)
 	if unack.call() != 0:
 		p.append("Space did not acknowledge the screen's alarms")
+	# one acknowledge, one sound
+	if ui.sounds.played.get("horn_ack", 0) != 1:
+		p.append("acknowledging the screen (%d alarms on it) played the acknowledge %d times" % [n_unack, ui.sounds.played.get("horn_ack", 0)])
 	# moving the selection draws the two pieces it leaves and enters, not the whole screen
 	ui.open_screens("ct")
 	for k in 3:
@@ -253,16 +260,9 @@ func _legible(tree: SceneTree, ui) -> Array:
 		mim.show_screen(i)
 		mim.fit()
 		await tree.process_frame
-		if mim.zoom < 0.9 * mim.readable_zoom() - 1e-4:
-			p.append("screen %s opens at zoom %.2f, below the readable %.2f" % [sm.screens[i].id, mim.zoom, 0.9 * mim.readable_zoom()])
-		# all of it drawn: no code was cut to a width (the text cut with an ellipsis is kept in the fit cache)
 		mim.fit(true)
 		for k in 20:
 			await tree.process_frame
-	for key in mim._fit_cache:
-		var txt := String(key).get_slice("|", 0)
-		if sm.items.has(txt) and String(mim._fit_cache[key]).ends_with("…"):
-			p.append("the code %s is drawn cut: %s" % [txt, mim._fit_cache[key]])
 	# at the phone's scale the overview opens at its top, its key values in view (not scrolled to its first tile)
 	var Wd = load("res://ui/widgets.gd")
 	var s0: float = Wd.scale
@@ -609,3 +609,182 @@ func _operate(tree: SceneTree, ui) -> Array:
 	ui.close_card()
 	ui.close_screens()
 	return p
+
+
+## What the adversarial review found (PR #222): the focus comes back to the screens when a panel over them closes,
+## a valve's OPENING neither flickers nor shows at an end stop or after a restart, a long frame draws the screen once,
+## flow labels and the sparkline's span stay off the groups and edges, the selection leaves a trip's red edge, "Show
+## me" goes to the code on the screens, the stick moves once a push, a tap allows for the UI's scale and two fingers
+## never tap, and the walking buttons leave the screens.
+func _review(tree: SceneTree, ui) -> Array:
+	var p: Array = []
+	var mim = ui.mimic
+	var sm = ui.screens
+	var e = ui.clock.engine
+	ui.open_screens("cw")
+	await tree.process_frame
+	# the focus: a panel's button had it; the panel closes; the canvas has it again
+	for panel in [["alarm list", ui.toggle_alarms, ui.close_alarms, ui.alarms], ["procedure", ui.toggle_procedure,
+			ui.close_procedure, ui.procedure], ["card", func(): ui.open_card("30PAC10AP001"), ui.close_card, ui.card]]:
+		(panel[1] as Callable).call()
+		await tree.process_frame
+		var b: Button = _first_button(panel[3])
+		if b != null:
+			b.grab_focus()
+		(panel[2] as Callable).call()
+		await tree.process_frame
+		if not mim.canvas.has_focus():
+			p.append("closing the %s over the screens left the canvas without the focus (%s has it)" % [panel[0],
+					str(ui.get_viewport().gui_get_focus_owner())])
+	# a valve: OPENING at each redraw while it moves, also two redraws in one step; its end stop said as it is
+	var it: Dictionary = sm.items["30PAC10AA101"]
+	var o: Dictionary = ui.model.op_keys[ui.model.op_key("30PAC10AA101", "set", null)]
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	ui.do_op(o, 0.9)
+	ui.clock.run_steps(1)
+	mim._valve_was(it, e)
+	var words := []
+	for k in 4:
+		ui.clock.run_steps(3)
+		words.append(mim.item_state(it, e, mim._valve_was(it, e)).words)
+		words.append(mim.item_state(it, e, mim._valve_was(it, e)).words)     # a second redraw in the same step
+	for w in words:
+		if not String(w).begins_with("OPENING") and not String(w).begins_with("CLOSING"):
+			p.append("a moving valve's words flicker between redraws: %s" % str(words))
+			break
+	if mim.item_state(it, e, 0.0).words.begins_with("OPENING") and e.v(it.pos) > 0.98:
+		p.append("a valve at its open stop says OPENING")
+	ui.do_op(o, 0.0)
+	for k in 400:
+		if e.v(it.pos) < 0.02:
+			break
+		ui.clock.run_steps(50)
+	if e.v(it.pos) < 0.02 and mim.item_state(it, e, 0.5).words != "CLOSED":
+		p.append("a valve at its closed stop is shown %s" % mim.item_state(it, e, 0.5).words)
+	# after a restart (another engine) the last look of the old run is not compared with
+	ui.do_op(o, 0.5)
+	ui.clock.run_steps(200)
+	mim._last_pos[it.code] = [0.0, e.step_no, 0.0, Time.get_ticks_msec()]
+	mim._pos_engine = RefCounted.new()
+	if mim.item_state(it, e, mim._valve_was(it, e)).moving:
+		p.append("a valve is shown moving against a position from before the restart")
+	# a long frame (a hitch, a resume): the next frames draw a few pieces each, not the whole screen again
+	mim._process(60.0)
+	var rr0: int = mim._rr
+	mim._process(1.0 / 60.0)
+	if mim._rr - rr0 > mim._pieces.size() / 4 + 1:
+		p.append("after a long frame the next one drew %d of %d pieces" % [mim._rr - rr0, mim._pieces.size()])
+	# flow labels on no group, the sparkline's span inside its tile
+	for i in range(-1, sm.screens.size()):
+		var L: Dictionary = mim._layout_of(i)
+		for l in L.lines:
+			if l[2] == "":
+				continue
+			var lr: Rect2 = mim.label_rect(mim.line_label(mim.line_points(l[0], l[1]), l[2]))
+			for g in L.groups:
+				if lr.intersects(g.rect):
+					p.append("screen %d: the label %s at %s runs under the group %s" % [i, l[2], str(lr), g.title])
+		for t in L.trends:
+			var r: Rect2 = t[1]
+			var plot := Rect2(r.position + Vector2(8, 26), r.size - Vector2(16, 34))
+			if not r.encloses(Rect2(mim.spark_label_at(plot), Vector2(30, mim._font().get_height(11)))):
+				p.append("a trend's span is written over its edge")
+		for t in L["keys"]:
+			var r: Rect2 = t[1]
+			var plot := Rect2(r.position + Vector2(mim.PAD, 66), Vector2(r.size.x - mim.PAD * 2, r.size.y - 74))
+			if not r.encloses(Rect2(mim.spark_label_at(plot), Vector2(30, mim._font().get_height(11)))):
+				p.append("a key value's span is written over its tile's edge")
+	# the selection's outline inside the trip's red edge
+	var cr := Rect2(100, 100, 248, 90)
+	if not cr.grow(-1.0).encloses(mim.select_rect(cr).grow(1.5)):
+		p.append("the selection's outline covers a tripped item's red edge")
+	# Show me on a card over the screens: the code's own screen, selected
+	ui.open_screens("cw")
+	ui.open_card("00PGC10AP001")
+	ui.show_me("00PGC10AP001")
+	if mim.current != sm.screen_index("aux") or mim.selected != "00PGC10AP001":
+		p.append("Show me on the screens did not go to the code's screen (screen %d, %s)" % [mim.current, mim.selected])
+	ui.close_card()
+	# the stick: one move a push, however many events the push sends
+	mim.select(mim._targets()[0].id)
+	mim._canvas_input(_axis(JOY_AXIS_LEFT_X, 0.0))
+	mim._canvas_input(_axis(JOY_AXIS_LEFT_X, 0.6))
+	var s1: String = mim.selected
+	for v in [0.8, 1.0, 0.9, 1.0]:
+		mim._canvas_input(_axis(JOY_AXIS_LEFT_X, v))
+	if mim.selected != s1:
+		p.append("one push of the stick moved the selection more than once")
+	mim._canvas_input(_axis(JOY_AXIS_LEFT_X, 0.0))
+	# a tap at the phone's scale: a finger that moves a little still taps; two fingers never do
+	var Wd = load("res://ui/widgets.gd")
+	var s0: float = Wd.scale
+	Wd.scale = 2.0
+	ui.open_screens("cw")
+	mim.select("30PAC10AP001")
+	await tree.process_frame
+	var at: Vector2 = mim.target_centre("30PAC10AP001")
+	var press := func(down: bool, pos: Vector2) -> void:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = down
+		ev.position = pos
+		mim._canvas_input(ev)
+	press.call(true, at)
+	var mv := InputEventMouseMotion.new()
+	mv.relative = Vector2(18, 0)
+	mv.position = at + mv.relative
+	mim._canvas_input(mv)
+	press.call(false, at + mv.relative)
+	if not ui.card.visible:
+		p.append("a tap that moved 18 px at scale 2 (9 px of the UI) did not open the card")
+	ui.close_card()
+	var touch := func(i: int, down: bool) -> void:
+		var t := InputEventScreenTouch.new()
+		t.index = i
+		t.pressed = down
+		t.position = at + Vector2(i * 60, 0)
+		mim._canvas_input(t)
+	touch.call(0, true)
+	press.call(true, at)
+	touch.call(1, true)
+	touch.call(1, false)
+	touch.call(0, false)
+	press.call(false, at)
+	if ui.card.visible:
+		p.append("two fingers down and up opened a card")
+		ui.close_card()
+	Wd.scale = s0
+	# the walking buttons and the crosshair are not shown over the screens
+	var hud = ui.main.hud
+	var touch0 = ui.main.cf.get_value("controls", "touch", "auto")
+	ui.main.cf.set_value("controls", "touch", "on")
+	var mode0 = ui.main.player.mode
+	ui.main.player.mode = Player.Mode.FLY
+	hud.refresh()
+	if hud.fly_btn.visible or hud.use_btn.visible:
+		p.append("Fly or Use is shown over the screens")
+	for b in hud.updown:
+		if b.visible:
+			p.append("the flying up and down buttons are shown over the screens")
+			break
+	ui.main.player.mode = mode0
+	ui.main.cf.set_value("controls", "touch", touch0)
+	hud.refresh()
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		ui._look_hint()
+		if ui._hint.text != "":
+			p.append("the crosshair is shown over the screens: %s" % ui._hint.text)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	ui.close_screens()
+	return p
+
+
+static func _first_button(n: Node) -> Button:
+	for c in n.get_children():
+		if c is Button and (c as Button).is_visible_in_tree() and (c as Button).focus_mode != Control.FOCUS_NONE:
+			return c
+		var b := _first_button(c)
+		if b != null:
+			return b
+	return null

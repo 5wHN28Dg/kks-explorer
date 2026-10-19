@@ -369,9 +369,10 @@ func op_result(o: Dictionary) -> Dictionary:
 	return results.get(Tracker.op_key(o["kks"], o["do"], o.get("trip")), {})
 
 
-func ack(alarm: String) -> void:
+func ack(alarm: String, sound := true) -> void:
 	clock.engine.ack(alarm)
-	sounds.once("horn_ack")
+	if sound:
+		sounds.once("horn_ack")
 
 
 func shelve(alarm: String, seconds: float) -> void:
@@ -423,7 +424,7 @@ func open_card(code: String, note := "") -> void:
 	trainer.visible = false
 	debrief.visible = false
 	card.open(code, note)
-	if index.has(code):
+	if screens_open() and screens.screen_of.has(code) or not screens_open() and index.has(code):
 		show_me(code)
 	_release_mouse()
 
@@ -431,8 +432,7 @@ func open_card(code: String, note := "") -> void:
 func close_card() -> void:
 	card.visible = false
 	card.code = ""
-	if mimic.visible and wants_focus():
-		mimic.canvas.grab_focus()
+	mimic.take_focus()
 
 
 # ------------------------------------------------------------------ the control room screens
@@ -476,6 +476,15 @@ func control_room() -> void:
 
 
 func show_me(code: String) -> void:
+	if screens_open():
+		# the plant is not drawn under the screens: the code is shown on its screen instead (or why it is not)
+		if screens.screen_of.has(code):
+			if mimic.current != screens.screen_of[code][0]:
+				mimic.show_screen(screens.screen_of[code][0])
+			mimic.select(code)
+		else:
+			toast("%s is on no screen: close the screens to see it in the plant." % code)
+		return
 	if not index.has(code):
 		toast("%s is not drawn in the plant." % code)
 		return
@@ -489,8 +498,8 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 	if not index.has(code):
 		toast("%s is not drawn in the plant." % code)
 		return
+	close_screens()             # first: show_me points in the plant only with the screens closed
 	show_me(code)
-	close_screens()
 	var b: AABB = index.box(code)
 	var c := b.get_center()
 	var from: Vector3 = player.global_position
@@ -579,6 +588,7 @@ func toggle_alarms() -> void:
 
 func close_alarms() -> void:
 	alarms.visible = false
+	mimic.take_focus()          # the screens' canvas again (a hidden panel's focused button lets the focus go)
 
 
 ## The debrief of the run: the procedure's (followed now or last), else the plant's since it started.
@@ -588,6 +598,7 @@ func open_debrief() -> void:
 
 func close_debrief() -> void:
 	debrief.visible = false
+	mimic.take_focus()
 
 
 func debrief_tracker():
@@ -604,6 +615,7 @@ func toggle_procedure() -> void:
 
 func close_procedure() -> void:
 	procedure.visible = false
+	mimic.take_focus()
 
 
 func toggle_trainer() -> void:
@@ -615,6 +627,7 @@ func toggle_trainer() -> void:
 
 func close_trainer() -> void:
 	trainer.visible = false
+	mimic.take_focus()
 
 
 func set_instructor(on: bool) -> void:
@@ -878,7 +891,7 @@ func _look_hint() -> void:
 		if c != "" and index.distance(c, eye()) <= HINT_RANGE:
 			hover = c
 	var what := "the screens" if info.part_of(hover) == "operator_desk" else "its card"
-	_hint.text = ("+\n%s  %s\nE or A: %s" % [hover, info.name_of(hover), what]) if hover != "" else ("+" if show else "")
+	_hint.text = ("+\n%s  %s\nE or A: %s" % [hover, info.name_of(hover), what]) if hover != "" else ("+" if show and not screens_open() else "")
 
 
 func _unhandled_input(ev: InputEvent) -> void:

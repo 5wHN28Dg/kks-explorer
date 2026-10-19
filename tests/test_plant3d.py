@@ -96,6 +96,19 @@ class Content(unittest.TestCase):
             if 'unit' in node and 'kks' in node:
                 self.assertTrue(node['kks'] in placed or node['kks'] in left, name)
 
+    def test_screens_never_leave_out_what_only_they_work(self):
+        """§7.11: a code with an alarm or an op from the screens can't be left out (on no tab, never acknowledged)."""
+        files = P.load_dir(DATA)
+        for code in ('30PAR10AA001', '00QFB10CP001'):      # the makeup valve's screen ops; the air header's alarm
+            s = json.loads(files['screens.json'])
+            s['left_out'].append({'codes': [code], 'why': 'A test of what may not be left out'})
+            files['screens.json'] = json.dumps(s).encode()
+            with self.assertRaises(P.FormatError, msg=code) as cm:
+                P.check_files(files)
+            self.assertEqual(cm.exception.code, 'bad_ref')
+            self.assertIn(f'leaves out {code}', str(cm.exception))
+            files = P.load_dir(DATA)
+
     def test_every_first_train_code_is_in_the_plant(self):
         """Every code of FIRST-TRAIN §1 is a piece of equipment, a pipe or a structure, or (for a whole system) the
         system of one. The one exception is written down in FIRST-TRAIN §1."""

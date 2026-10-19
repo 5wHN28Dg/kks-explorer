@@ -1233,9 +1233,15 @@ def check_screens(s, m, b):
             need(p not in prefixes, 'dup_id', f'{wl}.codes: {p} is already placed')
             prefixes[p] = (None, j)
     used = set()
-    for code in screen_items(m):
+    on_screen_ops = {o['kks'] for o in m.ops if 'screen' in o['where']}
+    for code, why in screen_items(m).items():
         p = owner(code, prefixes)
         need(p is not None, 'unplaced', f'{w}: {code} is on no screen and not left out (§7.11)')
+        if prefixes[p][0] is None:
+            # what only the screens work, or an alarm (counted on the screens' tabs, acknowledged there), needs a screen
+            need(code not in on_screen_ops and 'alarm' not in why, 'bad_ref',
+                 f'{w}: left_out {prefixes[p][1]} leaves out {code}, which has an alarm or an operation from the '
+                 f'screens (§7.11)')
         used.add(prefixes[p])
         if prefixes[p][0] is not None:
             b.screen_of[code] = prefixes[p]
