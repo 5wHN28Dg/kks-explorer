@@ -689,8 +689,11 @@ func _canvas_input(ev: InputEvent) -> void:
 		return
 	if ev is InputEventJoypadMotion and (ev.axis == JOY_AXIS_LEFT_X or ev.axis == JOY_AXIS_LEFT_Y):
 		# the stick moves the selection once each time it is pushed past the deadzone (it sends many events a push)
-		var s: int = 0 if absf(ev.axis_value) < 0.5 else signi(int(signf(ev.axis_value)))
-		if s != 0 and s != _stick.get(ev.axis, 0):
+		# past 0.6 it is pushed, back under 0.3 released: a stick held near the line does not move it on each wobble
+		var was: int = _stick.get(ev.axis, 0)
+		var a := absf(ev.axis_value)
+		var s: int = signi(int(signf(ev.axis_value))) if a >= 0.6 else (was if a > 0.3 else 0)
+		if s != 0 and s != was:
 			move_selection(Vector2(s, 0) if ev.axis == JOY_AXIS_LEFT_X else Vector2(0, s))
 		_stick[ev.axis] = s
 		canvas.accept_event()

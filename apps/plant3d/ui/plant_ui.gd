@@ -424,7 +424,7 @@ func open_card(code: String, note := "") -> void:
 	trainer.visible = false
 	debrief.visible = false
 	card.open(code, note)
-	if screens_open() and screens.screen_of.has(code) or not screens_open() and index.has(code):
+	if index.has(code) or screens_open() and screens.screen_of.has(code):
 		show_me(code)
 	_release_mouse()
 
@@ -476,16 +476,16 @@ func control_room() -> void:
 
 
 func show_me(code: String) -> void:
-	if screens_open():
-		# the plant is not drawn under the screens: the code is shown on its screen instead (or why it is not)
-		if screens.screen_of.has(code):
-			if mimic.current != screens.screen_of[code][0]:
-				mimic.show_screen(screens.screen_of[code][0])
-			mimic.select(code)
-		else:
-			toast("%s is on no screen: close the screens to see it in the plant." % code)
-		return
+	var on_screens: bool = screens_open() and screens.screen_of.has(code)
+	if on_screens:
+		# the plant is not drawn under the screens: the code is shown on its screen too (the pointer and the route
+		# below are there when the screens close)
+		if mimic.current != screens.screen_of[code][0]:
+			mimic.show_screen(screens.screen_of[code][0])
+		mimic.select(code)
 	if not index.has(code):
+		if on_screens:
+			return
 		toast("%s is not drawn in the plant." % code)
 		return
 	pointer.point(code, index.box(code))

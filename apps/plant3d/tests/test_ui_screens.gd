@@ -652,8 +652,13 @@ func _review(tree: SceneTree, ui) -> Array:
 		if not String(w).begins_with("OPENING") and not String(w).begins_with("CLOSING"):
 			p.append("a moving valve's words flicker between redraws: %s" % str(words))
 			break
-	if mim.item_state(it, e, 0.0).words.begins_with("OPENING") and e.v(it.pos) > 0.98:
-		p.append("a valve at its open stop says OPENING")
+	ui.do_op(o, 1.0)
+	for k in 400:
+		if e.v(it.pos) > 0.99:
+			break
+		ui.clock.run_steps(50)
+	if e.v(it.pos) <= 0.98 or mim.item_state(it, e, 0.5).words != "OPEN":
+		p.append("a valve at its open stop (%.3f) is shown %s" % [e.v(it.pos), mim.item_state(it, e, 0.5).words])
 	ui.do_op(o, 0.0)
 	for k in 400:
 		if e.v(it.pos) < 0.02:
@@ -704,13 +709,15 @@ func _review(tree: SceneTree, ui) -> Array:
 	ui.show_me("00PGC10AP001")
 	if mim.current != sm.screen_index("aux") or mim.selected != "00PGC10AP001":
 		p.append("Show me on the screens did not go to the code's screen (screen %d, %s)" % [mim.current, mim.selected])
+	if ui.index.has("00PGC10AP001") and ui.pointer.code != "00PGC10AP001":
+		p.append("Show me on the screens left the plant's pointer at %s (a procedure's step changes it there)" % ui.pointer.code)
 	ui.close_card()
 	# the stick: one move a push, however many events the push sends
 	mim.select(mim._targets()[0].id)
 	mim._canvas_input(_axis(JOY_AXIS_LEFT_X, 0.0))
 	mim._canvas_input(_axis(JOY_AXIS_LEFT_X, 0.6))
 	var s1: String = mim.selected
-	for v in [0.8, 1.0, 0.9, 1.0]:
+	for v in [0.8, 1.0, 0.9, 1.0, 0.55, 0.62, 0.45, 0.61]:     # and a wobble near the line while held
 		mim._canvas_input(_axis(JOY_AXIS_LEFT_X, v))
 	if mim.selected != s1:
 		p.append("one push of the stick moved the selection more than once")
@@ -754,6 +761,24 @@ func _review(tree: SceneTree, ui) -> Array:
 		p.append("two fingers down and up opened a card")
 		ui.close_card()
 	Wd.scale = s0
+	# the settings closed over the screens: the canvas has the focus again
+	ui.main.hud.show_settings(true)
+	await tree.process_frame
+	ui.main.hud.show_settings(false)
+	await tree.process_frame
+	if not mim.canvas.has_focus():
+		p.append("closing the settings over the screens left the canvas without the focus")
+	# Acknowledge all in the alarm list: one sound
+	var ks: Array = []
+	for k in e._al.size():
+		if e.shelved[k] == -1 and ks.size() < 3:
+			ks.append(k)
+	for k in ks:
+		e.astate[k] = "active_unack"
+	ui.sounds.played.clear()
+	ui.alarms._ack_all()
+	if ui.sounds.played.get("horn_ack", 0) != 1:
+		p.append("Acknowledge all (%d alarms) played the acknowledge %d times" % [ks.size(), ui.sounds.played.get("horn_ack", 0)])
 	# the walking buttons and the crosshair are not shown over the screens
 	var hud = ui.main.hud
 	var touch0 = ui.main.cf.get_value("controls", "touch", "auto")

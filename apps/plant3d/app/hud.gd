@@ -183,6 +183,8 @@ func show_settings(on: bool) -> void:
 		about.close()
 	panel.visible = on
 	refresh()
+	if not on and main.ui != null and main.ui.mimic != null:
+		main.ui.mimic.take_focus()          # the screens' canvas again, when they are open
 	if on:
 		if not about.visible:
 			about_btn.grab_focus()
