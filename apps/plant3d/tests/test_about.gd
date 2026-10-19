@@ -102,6 +102,20 @@ func run(tree: SceneTree) -> Array:
 	await tree.process_frame
 	if hud.about.visible or not hud.panel.visible:
 		p.append("gamepad B in About does not go back to the settings")
+	# gamepad A on a check box of the settings toggles it (and leaves a disabled one)
+	var cb := CheckBox.new()
+	cb.focus_mode = Control.FOCUS_ALL
+	hud.extra.add_child(cb)
+	cb.grab_focus()
+	_press(tree, _joy(JOY_BUTTON_A))
+	if not cb.button_pressed:
+		p.append("gamepad A does not toggle a check box in the settings")
+	cb.disabled = true
+	_press(tree, _joy(JOY_BUTTON_A))
+	if not cb.button_pressed:
+		p.append("gamepad A toggled a disabled check box")
+	cb.free()
+	btn.grab_focus()
 	# Back by touch or mouse, and closing the settings while About shows
 	hud.show_about()
 	UiApp.find_button(hud.about, "Back").pressed.emit()

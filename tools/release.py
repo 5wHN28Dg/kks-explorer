@@ -157,9 +157,10 @@ def latest_problems(repo=None):
     return []
 
 
-def ci_problems(commit, repo=None):
+def ci_problems(commit, repo=None, required=('Tests',)):
     """[what stops a release of `commit` on CI]: every workflow run on it must have finished and passed (a hard gate:
-    a red or unfinished run is never published past), and there must be runs at all"""
+    a red or unfinished run is never published past), and the `required` workflows must be among them (only Policy
+    runs on a tag push: a commit pushed only as a tag would otherwise pass on Policy alone)"""
     runs = json.loads(gh('run', 'list', '--commit', commit, '--limit', '200', '--json',
                          'workflowName,status,conclusion,url', repo=repo or updates.REPO) or '[]')
     if not runs:
@@ -170,6 +171,10 @@ def ci_problems(commit, repo=None):
             out.append(f'CI {r.get("workflowName")} on {commit[:12]} has not finished ({r.get("status")})')
         elif r.get('conclusion') not in CI_PASSED:
             out.append(f'CI {r.get("workflowName")} on {commit[:12]} is {r.get("conclusion")}: {r.get("url")}')
+    names = {r.get('workflowName') for r in runs}
+    for w in required:
+        if w not in names:
+            out.append(f'CI {w} never ran on {commit[:12]}: release a commit that went through it (merged to main)')
     return out
 
 

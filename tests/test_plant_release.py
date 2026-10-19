@@ -34,6 +34,7 @@ class FakeGh:
         self.runs = {}            # commit -> [run]
         self.calls = []
         self.create_makes_latest = False
+        self.create_fails = False
 
     def __call__(self, cmd):
         self.calls.append(cmd)
@@ -47,6 +48,8 @@ class FakeGh:
         if cmd[1:3] == ['release', 'create']:
             if self.create_makes_latest:
                 self.latest = cmd[3]
+            if self.create_fails:
+                return subprocess.CompletedProcess(cmd, 1, '', 'upload failed')
             return ok()
         if cmd[1:3] == ['release', 'edit'] and '--latest' in cmd:
             self.latest = cmd[3]
@@ -95,7 +98,7 @@ class PlantRelease(unittest.TestCase):
         self.git(self.repo, 'commit', '-qm', msg)
         return self.git(self.repo, 'rev-parse', 'HEAD')
 
-    def packages(self, commit=None, changes=False):
+    def packages(self, commit=None, changes=False, publisher='CN=Walkdown', arch='x64'):
         """stand-ins for the APK and the MSIX: zips carrying build.sh's build_info.json where Godot puts it"""
         info = ('{"format": "walkdown-plant-build", "commit": "%s", "changes": %s}\n'
                 % (commit or self.head, 'true' if changes else 'false')).encode()
@@ -106,7 +109,8 @@ class PlantRelease(unittest.TestCase):
             z.writestr('AndroidManifest.xml', b'\0manifest')
             z.writestr('assets/built/build_info.json', info)
         with zipfile.ZipFile(os.path.join(d, 'WalkdownPlant.msix'), 'w') as z:
-            z.writestr('AppxManifest.xml', b'<Package/>')
+            z.writestr('AppxManifest.xml', ('<Package><Identity Name="WalkdownPlant" Publisher="%s" Version="1.2.3.0" '
+                                            'ProcessorArchitecture="%s" /></Package>' % (publisher, arch)).encode())
             z.writestr('WalkdownPlant.exe', b'MZ\0engine\0GDPC\0' + info + b'\0more')
         with open(os.path.join(d, 'windows-msix.cer'), 'wb') as f:
             f.write(b'0\x82cert')
@@ -181,9 +185,44 @@ class PlantRelease(unittest.TestCase):
             self.assertIn(says, err or '')
             self.assertEqual(self.gh.created(), [])
         # a job left out by its condition is fine
-        self.gh.runs[self.head] = green('Tests') + [{'workflowName': 'X', 'status': 'completed',
+        self.gh.runs[self.head] = green('Walkdown Plant app') + [{'workflowName': 'X', 'status': 'completed',
                                                        'conclusion': 'skipped', 'url': 'u'}]
         self.assertIsNone(self.run_main(['1.2.3', d])[0])
+
+    def test_ci_must_have_run_the_plants_workflow(self):
+        """a tag push runs only Policy: green Policy alone is no proof"""
+        self.gh.runs[self.head] = green('Policy')
+        err, _ = self.run_main(['1.2.3', self.packages()])
+        self.assertIn('CI Walkdown Plant app never ran', err)
+
+    def test_a_commit_pushed_only_as_its_tag_is_refused(self):
+        self.write('c.txt', 'c')
+        local = self.commit('only tagged')
+        self.git(self.repo, 'tag', 'plant-v1.2.3')
+        self.git(self.repo, 'push', '-q', 'origin', 'plant-v1.2.3')
+        self.gh.runs[local] = green('Policy', 'Walkdown Plant app')
+        err, _ = self.run_main(['1.2.3', self.packages(commit=local)])
+        self.assertIn('is not on origin/main', err)
+
+    def test_msix_must_be_walkdowns_and_of_its_architecture(self):
+        err, _ = self.run_main(['1.2.3', self.packages(publisher='CN=KKS Explorer Test')])
+        self.assertIn('publisher is CN=KKS Explorer Test, not CN=Walkdown', err)
+        d = self.packages()
+        shutil.copy(os.path.join(d, 'WalkdownPlant.msix'), os.path.join(d, 'WalkdownPlant-arm64.msix'))
+        err, _ = self.run_main(['1.2.3', d])
+        self.assertIn('WalkdownPlant-arm64.msix: is for x64, not arm64', err)
+
+    def test_a_dir_without_a_package_is_refused(self):
+        d = self.packages()
+        os.remove(os.path.join(d, 'walkdown-plant.apk'))
+        os.remove(os.path.join(d, 'WalkdownPlant.msix'))
+        self.assertIn('no APK or MSIX package', self.run_main(['1.2.3', d])[0])
+
+    def test_a_failed_create_still_checks_latest(self):
+        self.gh.create_makes_latest = self.gh.create_fails = True
+        err, _ = self.run_main(['1.2.3', self.packages(), '--publish', '--yes'])
+        self.assertIn('was made latest again', err or '')
+        self.assertEqual(self.gh.latest, 'v0.10.4')
 
     def test_packages_of_another_commit_or_with_changes_are_refused(self):
         err, _ = self.run_main(['1.2.3', self.packages(commit='e' * 40)])

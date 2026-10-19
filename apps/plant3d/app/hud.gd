@@ -140,15 +140,19 @@ func _settings(root: Control) -> void:
 	about_btn.focus_mode = Control.FOCUS_ALL
 	_button(row3, "Close", func(): show_settings(false)).focus_mode = Control.FOCUS_ALL
 
-## Gamepad A presses the focused button of the settings panel (Godot's ui_accept has no gamepad button; the walker's
-## "use" is off while the panel shows).
+## Gamepad A acts as ui_accept on the focused control of the settings panel (Godot's ui_accept has no gamepad button;
+## the walker's "use" is off while the panel shows): a button is pressed, a check box toggled, a disabled one left.
 func _input(e: InputEvent) -> void:
-	if panel == null or not panel.visible or not (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A and e.pressed):
+	if panel == null or not panel.visible or not (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A):
 		return
 	var fo := panel.get_viewport().gui_get_focus_owner()
-	if fo is Button and not fo is OptionButton and panel.is_ancestor_of(fo) and fo.is_visible_in_tree():
-		get_viewport().set_input_as_handled()
-		(fo as Button).pressed.emit()
+	if fo == null or not panel.is_ancestor_of(fo) or not fo.is_visible_in_tree():
+		return
+	get_viewport().set_input_as_handled()
+	var a := InputEventAction.new()
+	a.action = "ui_accept"
+	a.pressed = e.pressed
+	get_viewport().push_input(a)
 
 ## About in the settings panel: the panel fills the screen but for a margin while it shows.
 func show_about() -> void:

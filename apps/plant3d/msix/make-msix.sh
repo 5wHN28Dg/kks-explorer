@@ -26,7 +26,7 @@ if [ "${1:-}" = "--test-cert" ]; then
   exec sh "$WIN/make-msix.sh" --test-cert "$2"
 fi
 
-ARCH=$([ "${KKS_WIN_ARCH:-x86_64}" = aarch64 ] && echo arm64 || echo x64)
+case "${KKS_WIN_ARCH:-x86_64}" in x86_64) ARCH=x64 ;; aarch64) ARCH=arm64 ;; *) echo "KKS_WIN_ARCH is x86_64 or aarch64, not $KKS_WIN_ARCH" >&2; exit 2 ;; esac
 EXPORT_DIR=$([ "$ARCH" = arm64 ] && echo windows-arm64 || echo windows)
 EXE="${PLANT_EXE:-$APP/export/$EXPORT_DIR/WalkdownPlant.exe}"
 VERSION=$(sed -n 's/^config\/version="\([0-9]*\.[0-9]*\.[0-9]*\)"$/\1/p' "$APP/project.godot").0

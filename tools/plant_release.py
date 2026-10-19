@@ -14,12 +14,14 @@ The release is a GitHub release of this repository tagged plant-vVERSION and pub
 (gh release create --latest=false): GitHub's latest release is what Walkdown's updater reads (sync/Updates.kt), so it
 must stay Walkdown's. Nothing is published unless
 - VERSION is the app's version (project.godot application/config/version, and the export presets agree);
-- the checkout is clean and at a commit origin holds (a branch, or origin's tag plant-vVERSION; that tag, if origin
-  has one, names it); the release is created on that commit (gh --target);
+- the checkout is clean and at a commit of origin/main (origin's tag plant-vVERSION, if it has one, names it); the
+  release is created on that commit (gh --target);
 - the packages were built from that commit without local changes: build.sh writes the commit and whether the
   checkout had changes into built/build_info.json, which the APK and the MSIX packages' WalkdownPlant.exe carry (the
   Flatpak bundle is compressed: not checked; build it from the same clean checkout);
-- every CI run on the commit has finished and passed (a hard gate);
+- the MSIX packages are Walkdown's (publisher CN=Walkdown, never a test certificate) and for the architecture their
+  name says;
+- every CI run on the commit has finished and passed, the Walkdown Plant app workflow among them (a hard gate);
 - GitHub's latest release is a Walkdown vX.Y.Z before, and still the same one after (if publishing made the plant's
   release latest after all, the Walkdown release is made latest again and the tool fails)."""
 import argparse, os, re, subprocess, sys, zipfile
@@ -93,6 +95,28 @@ def bump(version, root=None):
         f.write(s)
 
 
+MSIX_ARCH = {'WalkdownPlant.msix': 'x64', 'WalkdownPlant-arm64.msix': 'arm64'}
+PUBLISHER = 'CN=Walkdown'   # the certificate IT trusts (0043); never a test certificate's
+
+
+def msix_problems(name, z):
+    """[what is wrong with an MSIX's identity]: Walkdown's publisher, the architecture its name says"""
+    try:
+        m = z.read('AppxManifest.xml').decode('utf-8', 'replace')
+    except KeyError:
+        return [f'{name}: has no AppxManifest.xml']
+    ident = re.search(r'<Identity\b[^>]*>', m)
+    ident = ident.group(0) if ident else ''
+    pub = re.search(r'Publisher="([^"]*)"', ident)
+    arch = re.search(r'ProcessorArchitecture="([^"]*)"', ident)
+    out = []
+    if not pub or pub.group(1) != PUBLISHER:
+        out.append(f'{name}: publisher is {pub.group(1) if pub else "missing"}, not {PUBLISHER} (a test package?)')
+    if not arch or arch.group(1) != MSIX_ARCH[name]:
+        out.append(f'{name}: is for {arch.group(1) if arch else "no architecture"}, not {MSIX_ARCH[name]}')
+    return out
+
+
 def artifact_problems(files, commit):
     """[what in the packages was not built from `commit` without changes] ({name: path})"""
     good = f'"commit": "{commit}", "changes": false'.encode()
@@ -106,6 +130,8 @@ def artifact_problems(files, commit):
             with zipfile.ZipFile(path) as z:
                 parts = [n for n in z.namelist() if where.fullmatch(n)]
                 data = [z.read(n) for n in parts]
+                if name in MSIX_ARCH:
+                    out += msix_problems(name, z)
         except (zipfile.BadZipFile, OSError) as e:
             out.append(f'{name}: not readable ({e})')
             continue
@@ -131,10 +157,12 @@ def problems(version, files, root=None, remote='origin'):
                    f'tools/plant_release.py bump {version}, commit, build, then release')
     commit, p = release.checkout_problems(root, version, remote, tag_name=tag(version))
     out += p
-    if not files:
-        out.append('nothing to release in DIR')
+    if not p and not release.git(root, 'branch', '-r', '--contains', commit, f'{remote}/main').strip():
+        out.append(f'commit {commit[:12]} is not on {remote}/main: release a merged commit')
+    if not any(n in BUILT_FROM for n in files):
+        out.append('nothing to release in DIR: no APK or MSIX package')
     out += artifact_problems(files, commit)
-    out += release.ci_problems(commit)
+    out += release.ci_problems(commit, required=('Walkdown Plant app',))
     out += release.latest_problems()
     return commit, out
 
@@ -177,12 +205,15 @@ def main(argv=None):
         return print('Dry run: nothing published. Would run: ' + ' '.join(cmd[:9]) + ' …')
     if not a.yes and input(f'Create the public GitHub release {tag(a.version)} with these files? [y/N] ').strip().lower() != 'y':
         return print('Not published.')
-    subprocess.run(cmd, check=True)
-    after = release.latest_release()
-    if after != before:
-        # never leave Walkdown's updater reading the plant's release
-        subprocess.run(['gh', 'release', 'edit', before, '--repo', release.updates.REPO, '--latest'], check=True)
-        sys.exit(f'GitHub made {after} the latest release; {before} was made latest again. Check both releases.')
+    try:
+        subprocess.run(cmd, check=True)
+    finally:
+        # even when gh failed half way (the release made, an upload failed): never leave Walkdown's updater reading
+        # the plant's release
+        after = release.latest_release()
+        if after != before:
+            subprocess.run(['gh', 'release', 'edit', before, '--repo', release.updates.REPO, '--latest'], check=True)
+            sys.exit(f'GitHub made {after} the latest release; {before} was made latest again. Check both releases.')
     print(f'Published {tag(a.version)}; the latest release is still {after}.')
 
 

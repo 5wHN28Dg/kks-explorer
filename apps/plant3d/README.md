@@ -227,8 +227,8 @@ procedure, with the keys, is on the wiki's Releasing page. In short, from a clea
    `windows-msix.cer` next to them. Tests use `make-msix.sh --test-cert DIR` only.
 4. `apps/plant3d/flatpak/build.sh --bundle walkdown-plant.flatpak BUILD_DIR --disable-rofiles-fuse` (the option where FUSE is not available to flatpak-builder, as for Walkdown).
 5. `python3 tools/plant_release.py X.Y.Z DIR --notes notes.md`: a dry run that checks everything; then the same with
-   `--publish`. It refuses unless the version is the app's, the checkout is clean and pushed (and `plant-vX.Y.Z` on
-   origin, if there, names it), the APK and both MSIX packages carry the commit without local changes, every CI run
+   `--publish`. It refuses unless the version is the app's, the checkout is clean and on origin/main (and `plant-vX.Y.Z` on
+   origin, if there, names it), the APK and both MSIX packages carry the commit without local changes (the MSIX signed as `CN=Walkdown`, for the architecture its name says), every CI run
    on the commit has passed, and GitHub's latest release is a Walkdown `vX.Y.Z`; it creates the release with
    `--latest=false` and checks afterwards that the latest release is still Walkdown's (and makes it latest again if
    not). `tools/release.py` makes Walkdown's own releases latest explicitly, behind the same checks.
