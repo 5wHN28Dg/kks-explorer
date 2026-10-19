@@ -415,6 +415,7 @@ class Vectors(unittest.TestCase):
             F['model/a1.json'] = s['model']
             F['scenarios/s1.json'] = s['scenario']
             del F['procedures/p1.json']
+            del F['screens.json']
             e = P.Engine(G.check(F), 's1')
             got = [plain(e.snapshot())]
             i = 0

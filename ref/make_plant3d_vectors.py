@@ -96,7 +96,7 @@ def mini():
           'pack': 'base', 'equipment': [], 'pipes': [], 'structures': [], 'signs': []}
     model = {'format': 'walkdown-plant-model', 'version': 1, 'area': 'a1',
              'values': [['pump_cmd', {'state': 0, 'kks': '10LAC10AP001'}], ['valve_cmd', {'state': 0}],
-                        ['flow', {'lag': 'pump_cmd', 'tau': 2}], ['p', {'product': ['flow', 5], 'unit': 'bar',
+                        ['flow', {'lag': 'pump_cmd', 'tau': 2, 'unit': 'm³/h'}], ['p', {'product': ['flow', 5], 'unit': 'bar',
                                                                          'kks': '10LAB10CP501'}],
                         ['p_high', {'cmp': ['p', '>', 4]}], ['valve_open', {'cmp': ['valve_cmd', '>=', 0.5]}]],
              'ops': [{'kks': '10LAC10AP001', 'do': 'start', 'set': {'pump_cmd': 1},
@@ -125,7 +125,15 @@ def mini():
             'steps': [{'id': 's1', 'text': ['The pump.'], 'at': ['10LAC10AP001'], 'go': 'walk'}]}
     sounds = {'format': 'walkdown-plant-sounds', 'version': 1,
               'sounds': [{'id': 'hum', 'kind': 'synth', 'tones': [{'hz': 100}]}]}
-    return {'kit.json': kit, 'plant.json': plant, 'sounds.json': sounds, 'areas/a1.json': a1, 'areas/a2.json': a2,
+    screens = {'format': 'walkdown-plant-screens', 'version': 1, 'overview': {'title': 'Overview', 'key': ['p']},
+               'screens': [{'id': 'feed', 'title': 'Feedwater',
+                            'groups': [{'id': 'pumps', 'title': 'Pumps', 'at': [0, 0], 'codes': ['10LAC10'],
+                                        'extra': ['flow']},
+                                       {'id': 'pipe', 'title': 'Piping', 'at': [1, 0], 'codes': ['10LAB10']}],
+                            'lines': [{'from': 'pumps', 'to': 'pipe', 'medium': 'water'}], 'trend': ['p']}],
+               'left_out': [{'codes': ['10LAB10AA'], 'why': 'A hand valve without position feedback'}]}
+    return {'kit.json': kit, 'plant.json': plant, 'sounds.json': sounds, 'screens.json': screens,
+            'areas/a1.json': a1, 'areas/a2.json': a2,
             'model/a1.json': model, 'scenarios/s1.json': scen, 'procedures/p1.json': proc, 'procedures/t1.json': tour}
 
 
@@ -190,6 +198,7 @@ EQ = ['areas/a1.json', 'equipment']
 PIPE = ['areas/a1.json', 'pipes', 0]
 ST = ['areas/a1.json', 'structures']
 MOD = ['model/a1.json']
+SCR = ['screens.json', 'screens', 0]
 REJECTS = [
     ('a duplicate key', 'bad_json', _raw('plant.json', '{"format": "walkdown-plant", "format": "x"}')),
     ('a trailing comma', 'bad_json', _raw('sounds.json', '{"format": "walkdown-plant-sounds", "version": 1, '
@@ -303,6 +312,20 @@ REJECTS = [
     ('a procedure without a scenario', 'missing_key', _del(['procedures/p1.json', 'scenario'])),
     ('a procedure over the step limit', 'limit', _set(['procedures/t1.json', 'steps'], [
         {'id': f's{i}', 'text': ['x'], 'at': ['10LAC10AP001'], 'go': 'walk'} for i in range(201)])),
+    # the control room screens (§7.11)
+    ('a code of the model on no screen and not left out', 'unplaced', _all(
+        _del(['screens.json', 'left_out']), _set(SCR + ['groups', 1, 'codes'], ['10LAB10CP']))),
+    ('a group whose codes begin no code of the model', 'bad_ref', _app(SCR + ['groups'], {
+        'id': 'none', 'title': 'Nothing', 'at': [2, 0], 'codes': ['10LAC20']})),
+    ('one beginning of a code in two groups', 'dup_id', _set(SCR + ['groups', 1, 'codes'], ['10LAB10', '10LAC10'])),
+    ('an extra value that has a code', 'bad_ref', _set(SCR + ['groups', 1, 'extra'], ['p'])),
+    ('a beginning of a code without its system letters', 'bad_kks', _set(SCR + ['groups', 1, 'codes'], ['10LA'])),
+    ('a line to a group of no screen', 'bad_ref', _set(SCR + ['lines', 0, 'to'], 'tank')),
+    ('a trend of a value without a unit', 'bad_ref', _set(SCR + ['trend'], ['valve_cmd'])),
+    ('two groups in one place on the screen', 'dup_id', _set(SCR + ['groups', 1, 'at'], [0, 0])),
+    ('an unknown key on a screen', 'unknown_key', _set(SCR + ['colour'], 'grey')),
+    ('a left-out entry that leaves out nothing', 'bad_ref', _app(['screens.json', 'left_out'], {
+        'codes': ['10LAC10AP002'], 'why': 'Nothing'})),
     ('a recorded sound that is not CC0', 'bad_value', _set(['sounds.json', 'sounds'], [
         {'id': 'x', 'kind': 'loop', 'file': 'x.ogg', 'licence': 'CC-BY-4.0', 'source': 'https://example.org/x',
          'made': 'trimmed'}])),
@@ -439,8 +462,8 @@ def unit_models():
 
 
 def unit_bundle(model, init, faults):
-    """The synthetic plant with model/a1.json and scenarios/s1.json replaced and procedures/p1.json removed (its
-    steps name ops of the synthetic model). `init` may carry the scenario's `latched` list."""
+    """The synthetic plant with model/a1.json and scenarios/s1.json replaced and procedures/p1.json and screens.json
+    removed (they name ops and values of the synthetic model). `init` may carry the scenario's `latched` list."""
     F = mini()
     F['model/a1.json'] = dict({'format': 'walkdown-plant-model', 'version': 1, 'area': 'a1'}, **model)
     init = dict(init)
@@ -449,7 +472,7 @@ def unit_bundle(model, init, faults):
                               'init': init, 'faults': faults}
     if latched:
         F['scenarios/s1.json']['latched'] = latched
-    for rel in ('procedures/p1.json',):
+    for rel in ('procedures/p1.json', 'screens.json'):
         del F[rel]
     return F, check(F)
 

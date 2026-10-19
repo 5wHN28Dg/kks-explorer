@@ -148,7 +148,11 @@ def pg(kks, name, rng, at, unit='bar'):
 # ---------------------------------------------------------------- control building
 
 def control():
-    return area('control', 'Control building', [[-40, -15], [-10, 15]], structures=[
+    # the operator desks behind the trainee's start (plant.json `start`, facing the door), their screens facing east:
+    # the control room's overview screens (PLANT3D.md §7.11) are worked from them
+    desks = [eq('00CWA10', 'Main control desk A', 'operator_desk', [-25, -2.2, 0], 90, {'width': 3.2, 'screens': 4}),
+             eq('00CWB10', 'Main control desk B', 'operator_desk', [-25, 2.2, 0], 90, {'width': 3.2, 'screens': 4})]
+    return area('control', 'Control building', [[-40, -15], [-10, 15]], equipment=desks, structures=[
         st('ctl_building', 'building', [-40, -15, 0], kks='00UCA10', outline=rect(30, 30), height=12,
            cladding='concrete', openings=[{'kind': 'door', 'at': [30, 15, 0], 'width': 1.8, 'height': 2.4}]),
         st('ctl_door', 'door', [-10, 0, 0], 90, kind='double', width=1.8),

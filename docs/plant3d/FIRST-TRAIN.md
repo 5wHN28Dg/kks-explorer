@@ -149,6 +149,7 @@ table leaves a choice:
 | 00LBG10 | Auxiliary steam header | LBG [E2] |
 | 00GHC10BB001 | Demineralised water tank | GHC [E2] |
 | 00UCA10 | Control building | UCA [E2] |
+| 00CWA10, 00CWB10 | Main control desks A and B: the operator desks, where the control room screens are worked (PLANT3D.md §7.11) | CWA, CWB [E2] |
 
 ## 2. The plant and the train
 
@@ -201,7 +202,7 @@ floor. Ground at z = 0. Train 2 is the mirror of train 1 across y = 0 (later).
 
 | Area (`id`) | Plan bounds (x0, y0 – x1, y1) | What is in it |
 |---|---|---|
-| `control` | −40, −15 – −10, 15 | control building: control room (the trainee's start), electrical rooms, battery room door |
+| `control` | −40, −15 – −10, 15 | control building: control room (the trainee's start) with two operator desks behind the start, electrical rooms, battery room door |
 | `st` | 0, −25 – 80, 25 | turbine hall 80 × 50 m, 32 m high, crane; ground floor, mezzanine +6 m, operating floor +12 m; ST on a table foundation; condenser under the LP casing, its water boxes and the condensate extraction pumps in a pit down to −6 m; ST lube oil, gland steam and vacuum pumps; generator 3 at the west end; HP/LP bypass valves |
 | `gt1` | 0, 50 – 80, 92 | GT1 hall 80 × 30 m (y 50–80), 20 m high: generator 1 at the west (cold-end drive), GT1 at x 30–60 on axis y = 65, air intake filter house on the roof, exhaust diffuser out of the east wall; lube oil skid, SFC and excitation rooms, fuel gas skid north of the hall (y 82–90) |
 | `hrsg1` | 80, 45 – 175, 85 | inlet duct x 80–95; HRSG casing x 95–150, 22 m wide (y 54–76), 30 m high; drums on top at +32 (HP, IP, LP/deaerator); stack x 160, y 65, Ø 7 m, 60 m; feedwater pumps and blowdown tank at grade south of the casing; stairs to every drum platform |

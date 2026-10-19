@@ -30,7 +30,9 @@ TOL = 0.05          # metres: a stair's or ladder's end meets a surface within t
 BLOCKS = ('h', 'p', 'ul', 'ol', 'table', 'callout', 'cards', 'chain')
 FORMATS = {'plant': 'walkdown-plant', 'area': 'walkdown-plant-area', 'model': 'walkdown-plant-model',
            'scenario': 'walkdown-plant-scenario', 'procedure': 'walkdown-plant-procedure',
-           'sounds': 'walkdown-plant-sounds', 'kit': 'walkdown-plant-kit'}
+           'sounds': 'walkdown-plant-sounds', 'kit': 'walkdown-plant-kit', 'screens': 'walkdown-plant-screens'}
+# the beginning of a code (§7.11): unit, F0 and the system letters at least, then as far as the grammar of §6 goes
+PREFIX_RE = re.compile(rf'[0-9]{{2}}{L}{{3}}(?:[0-9](?:[0-9](?:{L}(?:{L}(?:[0-9](?:[0-9](?:[0-9]{L}?)?)?)?)?)?)?)?')
 
 
 # ---------------------------------------------------------------- small checks
@@ -268,7 +270,8 @@ class Bundle:
     """A checked plant: everything the engine and the tests need, with the counts."""
 
     def __init__(self):
-        self.plant = self.kit = self.sounds = None
+        self.plant = self.kit = self.sounds = self.screens = None
+        self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
         self.areas, self.models = [], []          # in plant.json order
         self.scenarios, self.procedures = {}, {}
         self.equipment = {}                        # code -> {kks, part, params, at, yaw, area, ...}
@@ -306,7 +309,7 @@ def check_files(files):
     """Check a plant given as {relative path: bytes} (the layout of PLANT3D's file table)."""
     b = Bundle()
     for rel in files:
-        need(rel in ('plant.json', 'kit.json', 'sounds.json') or re.fullmatch(
+        need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios)/[a-z_][a-z0-9_]{0,31}\.json|sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg', rel),
             'unknown_key', f'{rel}: not a file of the format')
     for rel in ('plant.json', 'kit.json', 'sounds.json'):
@@ -370,6 +373,8 @@ class Plant:
                 need(pr['id'] == rel[11:-5], 'bad_id', f'{rel}: id must be the file name')
                 b.procedures[pr['id']] = pr
         b.model = m
+        if 'screens.json' in files:
+            check_screens(parse(files, 'screens.json'), m, b)
         c = b.counts
         c.update(areas=len(b.areas), codes=len(self.codes), equipment=len(self.equipment), pipes=len(b.pipes),
                  structures=len(b.structures), stairs=len(self.stairs), ladders=len(self.ladders),
@@ -378,7 +383,7 @@ class Plant:
                  bindings=len(m.bind), scenarios=len(b.scenarios),
                  procedures=sum(1 for x in b.procedures.values() if x['kind'] == 'procedure'),
                  tours=sum(1 for x in b.procedures.values() if x['kind'] == 'tour'),
-                 sounds=len(b.sounds['sounds']))
+                 sounds=len(b.sounds['sounds']), screens=len(b.screens['screens']) if b.screens else 0)
 
     # --- plant.json
     def check_plant(self, p):
@@ -1111,6 +1116,134 @@ class Model:
             need(t in trips, 'bad_ref', f'{w}: no trip {t!r}')
         for name, sw in self.p.sound_refs:
             need(name in known, 'bad_ref', f'{sw}: no value {name!r}')
+
+
+# ---------------------------------------------------------------- the control room screens (screens.json, §7.11)
+
+def screen_items(m):
+    """{code: [what the model has for it]}: every code the screens show (§7.11), in the model's order."""
+    out = {}
+
+    def add(code, why):
+        if isinstance(code, str):
+            out.setdefault(code, [])
+            if why not in out[code]:
+                out[code].append(why)
+    for name, node, _ in m.values:
+        if 'unit' in node and 'kks' in node:
+            add(node['kks'], 'value')
+    for x in m.bind:
+        if 'show' in x:
+            add(x['kks'], 'value')
+        elif 'lamp' in x:
+            add(x['kks'], 'lamp')
+        elif x.get('anim') in ('stem', 'disc', 'blades'):
+            add(x['kks'], 'position')
+    for o in m.ops:
+        add(o['kks'], 'op')
+    for mc in m.machines:
+        if 'kks' in mc:
+            add(mc['kks'], 'machine')
+    for a in m.alarms:
+        add(a.get('kks', a.get('where')), 'alarm')
+    for t in m.trips:
+        if 'kks' in t:
+            add(t['kks'], 'trip')
+    return out
+
+
+def owner(code, prefixes):
+    """The longest of the prefixes the code begins with, or None."""
+    best = None
+    for p in prefixes:
+        if code.startswith(p) and (best is None or len(p) > len(best)):
+            best = p
+    return best
+
+
+def check_screens(s, m, b):
+    w = 'screens.json'
+    keys(s, ('format', 'version', 'overview', 'screens'), ('left_out',), w)
+    fmt(s, 'screens', w)
+    units = {name: node for name, node, _ in m.values if 'unit' in node}
+
+    def shown_value(v, where):
+        need(isinstance(v, str) and v in units, 'bad_ref', f'{where}: {v!r} is no value with a unit')
+
+    ov = s['overview']
+    keys(ov, ('title', 'key'), (), f'{w}.overview')
+    name_text(ov['title'], f'{w}.overview.title')
+    for v in lst(ov['key'], f'{w}.overview.key', 1, 12):
+        shown_value(v, f'{w}.overview.key')
+    need(len(set(ov['key'])) == len(ov['key']), 'dup_id', f'{w}.overview.key: a value twice')
+    prefixes = {}                         # prefix -> (screen id, group id), or (None, index) for left_out
+    extras = set()
+    seen_screens = set()
+    for i, sc in enumerate(lst(s['screens'], f'{w}.screens', 1, 16)):
+        ws = f'{w}: screen {sc.get("id", i) if isinstance(sc, dict) else i}'
+        keys(sc, ('id', 'title', 'groups'), ('lines', 'trend'), ws)
+        ident(sc['id'], ws)
+        need(sc['id'] not in seen_screens and sc['id'] != 'overview', 'dup_id', f'{ws}: id used twice (or "overview")')
+        seen_screens.add(sc['id'])
+        name_text(sc['title'], f'{ws}.title')
+        gids, cells = set(), set()
+        for j, gr in enumerate(lst(sc['groups'], f'{ws}.groups', 1, 16)):
+            wg = f'{ws}: group {gr.get("id", j) if isinstance(gr, dict) else j}'
+            keys(gr, ('id', 'title', 'at', 'codes'), ('extra',), wg)
+            ident(gr['id'], wg)
+            need(gr['id'] not in gids, 'dup_id', f'{wg}: id used twice on the screen')
+            gids.add(gr['id'])
+            name_text(gr['title'], f'{wg}.title')
+            lst(gr['at'], f'{wg}.at', 2, 2)
+            for c in gr['at']:
+                num(c, f'{wg}.at', 0, 7)
+                need(isinstance(c, int) and not isinstance(c, bool), 'bad_type', f'{wg}.at: whole numbers')
+            need(tuple(gr['at']) not in cells, 'dup_id', f'{wg}.at: another group of the screen stands there')
+            cells.add(tuple(gr['at']))
+            for p in lst(gr['codes'], f'{wg}.codes', 1, 16):
+                need(isinstance(p, str) and PREFIX_RE.fullmatch(p), 'bad_kks', f'{wg}.codes: {p!r} is not the '
+                     f'beginning of a code (unit, F0 and the system letters at least)')
+                need(p not in prefixes, 'dup_id', f'{wg}.codes: {p} is already placed')
+                prefixes[p] = (sc['id'], gr['id'])
+            for v in lst(gr.get('extra', []), f'{wg}.extra', 0, 16):
+                shown_value(v, f'{wg}.extra')
+                need('kks' not in units[v], 'bad_ref', f'{wg}.extra: {v} has a code: it is shown by its code')
+                need(v not in extras, 'dup_id', f'{wg}.extra: {v} is shown twice')
+                extras.add(v)
+        for j, x in enumerate(lst(sc.get('lines', []), f'{ws}.lines', 0, 32)):
+            wl = f'{ws}: line {j}'
+            keys(x, ('from', 'to'), ('medium',), wl)
+            need(x['from'] in gids and x['to'] in gids and x['from'] != x['to'], 'bad_ref',
+                 f'{wl}: from and to are two groups of the screen')
+            if 'medium' in x:
+                need(x['medium'] in b.plant['media'], 'bad_ref', f'{wl}: no medium {x["medium"]!r} in plant.json')
+        tr = lst(sc.get('trend', []), f'{ws}.trend', 0, 6)
+        for v in tr:
+            shown_value(v, f'{ws}.trend')
+        need(len(set(tr)) == len(tr), 'dup_id', f'{ws}.trend: a value twice')
+    for j, x in enumerate(lst(s.get('left_out', []), f'{w}.left_out', 0, 64)):
+        wl = f'{w}: left_out {j}'
+        keys(x, ('codes', 'why'), (), wl)
+        name_text(x['why'], f'{wl}.why', 200)
+        for p in lst(x['codes'], f'{wl}.codes', 1, 16):
+            need(isinstance(p, str) and PREFIX_RE.fullmatch(p), 'bad_kks', f'{wl}.codes: {p!r} is not the beginning '
+                 f'of a code')
+            need(p not in prefixes, 'dup_id', f'{wl}.codes: {p} is already placed')
+            prefixes[p] = (None, j)
+    used = set()
+    for code in screen_items(m):
+        p = owner(code, prefixes)
+        need(p is not None, 'unplaced', f'{w}: {code} is on no screen and not left out (§7.11)')
+        used.add(prefixes[p])
+        if prefixes[p][0] is not None:
+            b.screen_of[code] = prefixes[p]
+    for sc in s['screens']:
+        for gr in sc['groups']:
+            need((sc['id'], gr['id']) in used or gr.get('extra'), 'bad_ref',
+                 f'{w}: screen {sc["id"]} group {gr["id"]} shows nothing (no code of the model begins with its codes)')
+    for j, _ in enumerate(s.get('left_out', [])):
+        need((None, j) in used, 'bad_ref', f'{w}: left_out {j} leaves out nothing')
+    b.screens = s
 
 
 def check_scenario(s, m, rel):

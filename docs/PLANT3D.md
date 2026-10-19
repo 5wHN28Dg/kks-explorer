@@ -21,6 +21,7 @@ follows the public KKS key, none comes from a real plant.
 | `data/plant3d/sounds.json` | the sound library (§11), format `walkdown-plant-sounds` |
 | `data/plant3d/sounds/<file>.ogg` | the recorded clips the library names (§11) |
 | `data/plant3d/kit.json` | the parts kit's interface (§9), format `walkdown-plant-kit`: what the validator knows of each part |
+| `data/plant3d/screens.json` | the control room screens (§7.11), format `walkdown-plant-screens`: which systems each screen shows and where (optional) |
 
 The first train's files are made by `tools/plant3d/make_content.py` (repeated pieces such as twelve thermocouples or
 ten fans stay consistent), and the tests check that the committed files are exactly what it makes.
@@ -537,6 +538,55 @@ as an earlier part of steps 3–6 changed them; states changed in steps 3–6 ar
 Step 0 is §7.1's. A cold start that takes hours in a real plant takes far less (FIRST-TRAIN.md §4, "As built": 110
 minutes of model time, about 10 minutes of the trainee's time with fast-forward, walking and reading on top).
 
+### 7.11 Control room screens
+
+The control room has an overview screen per system, as a plant's control system does (operator mimics). They are made
+from the model, not drawn value by value: `screens.json` says only which systems each screen shows, where each
+system's group stands on the screen, the flow lines between the groups and the values trended, and every code of the
+model lands on its screen by the beginning of its code. A model that gains a pump gains it on its screen.
+
+```json
+{"format": "walkdown-plant-screens", "version": 1,
+ "overview": {"title": "Train 1 overview", "key": ["gt1_mw", "st_mw", "hp_p", "cond_p"]},
+ "screens": [
+   {"id": "cw", "title": "Circulating water",
+    "groups": [{"id": "pumps", "title": "Pumps and discharge valves", "at": [0, 0], "codes": ["30PAC10"]},
+               {"id": "flow", "title": "Supply and return", "at": [1, 0], "codes": ["30PAB"]}],
+    "lines": [{"from": "pumps", "to": "flow", "medium": "cooling_water"}],
+    "trend": ["cw_flow", "cw_ret_t"]}],
+ "left_out": [{"codes": ["30PAB10AA40"], "why": "Hand vents without position feedback: seen at the condenser"}]}
+```
+
+- **What a screen shows.** A code is *shown* when the model has anything for it: a value with a `unit` and that
+  `kks`, a `show`, `lamp` or position binding (`anim` `stem`, `disc` or `blades`, §7.7), an op, a machine, an alarm
+  (its `kks`, else its `where`) or a trip. Each shown code belongs to the group whose `codes` hold the **longest
+  beginning** of it (`30PAD10AN` wins over `30PAD10` for `30PAD10AN001`), or is in `left_out` the same way. A shown
+  code that no beginning matches is `unplaced`: every value, drive and valve of the model is on exactly one screen or
+  deliberately left out, with the reason. Values without a `kks` are the model's workings and are not shown, except
+  those a group names in `extra` (a generator's frequency and phase for synchronising): each value at most once,
+  and never one with a code (it is shown by its code).
+- **`codes`** and `left_out`'s `codes`: beginnings of codes, at least to the system letters (`30PAB`, `10MBV10`,
+  `30MAG10CL`), each placed once in the file (`dup_id`). A group to which no shown code belongs and that has no
+  `extra` shows nothing (`bad_ref`); so does a `left_out` entry that leaves nothing out.
+- **`at`:** the group's place, `[column, row]`, whole numbers 0–7; one group per place. The app sizes each column
+  and row to its largest group. **`lines`:** flow lines between two groups of the screen, optionally naming the
+  `medium` (plant.json) they carry, which is written on the line. **`trend`:** at most 6 values with a unit,
+  drawn as sparklines on the screen. **`overview.key`:** 1–12 values with a unit, shown big on the overview with
+  a tile per screen. Limits: 16 screens, 16 groups a screen, 16 codes a group, 32 lines a screen.
+- **What the app draws** (decision 0054, high-performance HMI style, ISA-101): a grey background and grey
+  equipment, colour only for what is abnormal. A drive (a code with a `lamp` or a `start` op) is filled when it
+  runs and hollow when stopped, by its `running` lamp's value or else the first state its `start` op sets; a valve
+  shows its position and moves; a breaker is filled when closed (its `closed` lamp); a machine shows its state and
+  `say`; a code whose trip is latched (a trip with its `kks`, or one whose actions stop it) is marked TRIP. Values
+  are shown with their unit; an alarm not normal is marked at its code with its priority (1 red, 2 amber, 3 yellow;
+  flashing while unacknowledged), and the screen's tab and the overview's tile carry the count of its alarms by
+  priority. Under a drive or valve stands what its next operation needs: ready, or how many permissives are
+  missing. The alarm banner at the top lists the newest unacknowledged alarms of the highest priority.
+- **Operating from a screen** opens the code's card (§6), which offers the ops whose `where` holds `screen`, with
+  their permissives: the same refusals as anywhere (§7.2). Nothing on a screen bypasses an op.
+- The screens are reached in the control room, from its operator desks (`operator_desk` parts) and the app's
+  Control room button; the values on them are refreshed a few times a second, not every frame.
+
 ## 8. Procedures and tours (one format, R10)
 
 ```json
@@ -713,7 +763,8 @@ rule. Error codes follow COURSES.md §10 (`bad_type`, `missing_key`, `unknown_ke
 the tables), `bad_route` (a bend that doesn't fit, a route that leaves its nozzle at an angle, a junction off the
 other pipe, a free end above ground), `unsupported` (a pipe span with nothing below, a pipe on a tilted part),
 `not_walkable` (a stair or ladder whose end meets no walkable surface), `bad_stair` (no step count keeps the stair
-rules), `bad_time` (a time that isn't a multiple of 0.1 s), `outside_area`, `area_overlap`. The reference
+rules), `bad_time` (a time that isn't a multiple of 0.1 s), `outside_area`, `area_overlap`, `unplaced` (a code the
+screens show that is on no screen and not left out, §7.11). The reference
 (`ref/plant3d.py`) checks the rules above that need no geometry of the parts; the pipe supports and the part
 geometry (a span with nothing below, a pipe through a part) are the Godot build's.
 
@@ -722,7 +773,8 @@ as for the courses):
 - **`valid`** and **`reject`:** a small synthetic plant as `{relative path: file text}`, and changes to it
   (`change`: the files replaced, `null` for one removed) that each break one rule, with the error code;
 - **`steps`:** small models (each replaces the synthetic plant's `model/a1.json` and `scenarios/s1.json`, and
-  removes its `procedures/p1.json`, whose steps name ops of the synthetic model), their `inputs`, and the state
+  removes its `procedures/p1.json` and `screens.json`, which name ops and values of the synthetic model), their
+  `inputs`, and the state
   after every step from step 0. They pin every node kind, the permissive refusals,
   interlock edges, machine moves, trips with first-out and reset (also against a trip the scenario starts latched),
   alarm states, suppression and shelving, faults, and inputs naming no alarm or fault;

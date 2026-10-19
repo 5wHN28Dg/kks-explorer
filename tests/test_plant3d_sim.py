@@ -74,6 +74,7 @@ def steps_bundle(valid_files, s):
     files['model/a1.json'] = json.dumps(s['model']).encode()
     files['scenarios/s1.json'] = json.dumps(s['scenario']).encode()
     del files['procedures/p1.json']
+    del files['screens.json']
     return P.check_files(files)
 
 
