@@ -12,6 +12,7 @@ var main   # app/main.gd
 var status: Label
 var sticks: Array = []
 var fly_btn: Button
+var use_btn: Button
 var updown: Array = []
 var panel: PanelContainer
 var tier_opt: OptionButton
@@ -59,7 +60,7 @@ func setup(m) -> void:
 	root.add_child(bar)
 	fly_btn = _button(bar, "Fly", func(): main.player.toggle_fly())
 	_button(bar, "Map", func(): main.toggle_map())
-	_button(bar, "Use", func(): main.player.press_door())
+	use_btn = _button(bar, "Use", func(): main.player.press_door())
 	_button(bar, "Settings", func(): show_settings(not panel.visible))
 	var ud := VBoxContainer.new()
 	ud.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -128,7 +129,7 @@ func _settings(root: Control) -> void:
 	extra = VBoxContainer.new()
 	v.add_child(extra)
 	var help := Label.new()
-	help.text = "Keyboard: W A S D to walk, Shift to run, mouse to look (click the view), F to fly (Space and C up and down), M for the map, E to open a door or the card of the part in the middle of the view (or click or tap a part), L alarms, P procedures and tours, K pause and run, the full stop to fast-forward, H back to the control room, Esc for this panel or to close the top one. Gamepad: sticks, Y fly, Back map, A use, Start settings, D-pad up alarms, left procedures, down pause, right fast-forward, B closes a panel."
+	help.text = "Keyboard: W A S D to walk, Shift to run, mouse to look (click the view), F to fly (Space and C up and down), M for the map, E to open a door or the card of the part in the middle of the view (or click or tap a part), L alarms, P procedures and tours, K pause and run, the full stop to fast-forward, H to the control room and its screens (there: the arrows move between items, Enter opens one, Page Up and Down change screen, + and − zoom), Esc for this panel or to close the top one. Gamepad: sticks, Y fly, Back map, A use, Start settings, D-pad up alarms, left procedures, down pause, right fast-forward, X the control room's screens (D-pad between items, A opens one, LB and RB change screen), B closes a panel."
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size = Vector2(620, 0)
 	v.add_child(help)
@@ -182,6 +183,8 @@ func show_settings(on: bool) -> void:
 		about.close()
 	panel.visible = on
 	refresh()
+	if not on and main.ui != null and main.ui.mimic != null:
+		main.ui.mimic.take_focus()          # the screens' canvas again, when they are open
 	if on:
 		if not about.visible:
 			about_btn.grab_focus()
@@ -207,14 +210,17 @@ func touch_on() -> bool:
 	return t == "on" or (t == "auto" and DisplayServer.is_touchscreen_available())
 
 func refresh() -> void:
-	main.player.input_enabled = not (main.map.active or panel.visible or main.probing)
+	var screens: bool = main.ui != null and main.ui.screens_open()      # the control room screens take the view
+	main.player.input_enabled = not (main.map.active or panel.visible or main.probing or screens)
 	var touch := touch_on()
 	for s in sticks:
-		s.visible = touch and not main.map.active
+		s.visible = touch and not main.map.active and not screens
 	var flying: bool = main.player.mode == Player.Mode.FLY
 	fly_btn.text = "Walk" if flying else "Fly"
+	fly_btn.visible = not screens            # walking and flying do nothing on the screens
+	use_btn.visible = not screens
 	for b in updown:
-		b.visible = touch and flying and not main.map.active
+		b.visible = touch and flying and not main.map.active and not screens
 
 func _process(_d: float) -> void:
 	var p: Vector3 = main.player.global_position

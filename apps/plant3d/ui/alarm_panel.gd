@@ -69,9 +69,13 @@ func open() -> void:
 ## (they keep their state, §7.6, and would hold fast-forward back with nothing to press).
 func _ack_all() -> void:
 	var e = ui.clock.engine
+	var any := false
 	for k in e._al.size():
 		if e.shelved[k] == -1 and (e.astate[k] == "active_unack" or e.astate[k] == "cleared_unack"):
-			ui.ack(e._al[k][0])
+			ui.ack(e._al[k][0], false)
+			any = true
+	if any:
+		ui.sounds.once("horn_ack")           # one acknowledge, one sound
 
 
 static func suppressed(e, k: int) -> bool:

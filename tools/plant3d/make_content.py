@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_areas, train_model, train_content  # noqa: E402
+import kit, train_areas, train_model, train_content, train_screens  # noqa: E402
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 
@@ -90,7 +90,7 @@ def build():
     """{relative path: text} for everything under data/plant3d."""
     areas = train_areas.areas()
     files = {'kit.json': kit.kit(), 'plant.json': train_content.plant(codes(areas)),
-             'sounds.json': train_content.sounds()}
+             'sounds.json': train_content.sounds(), 'screens.json': train_screens.screens()}
     for a in areas:
         files[f'areas/{a["id"]}.json'] = a
     models = train_model.models()

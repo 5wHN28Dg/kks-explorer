@@ -69,6 +69,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--quality=full` or `--quality=lean+vis` | uses that tier |
 | `--walk=frames --seconds=600` | the scripted frame-time walk |
 | `--walk=climb` | the test's route |
+| `--walk=screens` | the control room's screens, each in turn for 10 s: their frame cost (`MIMIC` line) |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
 | `--map=1` | starts on the overview map |
 | `--scenario=ID` | the scenario the plant starts in (default `cold_iron`) |
@@ -87,8 +88,10 @@ Controls (R7):
 - **Touch:** two sticks, Godot's own `VirtualJoystick`, driving the same actions as a gamepad's sticks: move on the
   left, look on the right. There are buttons for Fly, Map, Use, Settings, and Up and Down while flying.
 - **The plant (ui/):** E (gamepad A) or a click or tap on a part opens its card; L (D-pad up) the alarms, P (D-pad
-  left) procedures and tours, K (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H (X) back to
-  the control room, Esc (B) closes the top panel. The bar under the buttons does the same by touch.
+  left) procedures and tours, K (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H (X) to the
+  control room and its screens, Esc (B) closes the top panel. The bar under the buttons does the same by touch.
+- **The control room screens:** the arrows (D-pad) move between items, Enter (A) opens one, Page Up and Down (LB
+  and RB) change screen, + and − zoom; by touch, drag to pan, pinch to zoom, tap to open.
 - **Ladders:** walk into a ladder facing it to climb it. To go down, step backwards over the edge at its top.
 - **Map:** drag to pan, use the wheel or pinch to zoom, and right-drag or turn two fingers to rotate. Tap a floor to
   go there.
@@ -106,6 +109,14 @@ from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.
   equipment for `local`, in the control room for `screen`. Permissives that fail are listed in the content's words;
   a refused operation says why (a failed permissive, the sequence's state, a trip whose cause is still there, a
   value out of range). A 0–1 command is typed in per cent.
+- **Control room screens** (`ui/mimic.gd`, `ui/screens_model.gd`, `ui/trends.gd`; docs/PLANT3D.md §7.11): the
+  Control room button (H, gamepad X) and the operator desks open them, in the control room only. An overview of the
+  train (key values with their trends, a tile per screen with its drives and alarms) and a screen per system, made
+  from the model and `screens.json`: drives, valves, breakers and sequences with their state, values with their
+  units, what the next operation needs, alarms by priority (on the item, the tab and the banner), trends. Grey,
+  with colour only for the abnormal (ISA-101). A tap on an item opens its card beside the screen: the same
+  operations, permissives and refusals. Redrawn 4 times a second, not every frame; a trend keeps 20 minutes of plant
+  time, a sample every 5 s.
 - **Alarms:** active ones (unacknowledged first, flashing), shelved ones (10 min, 30 min or 1 h of plant time),
   those suppressed by design, and the latched trips with each group's first out. The horn follows the highest
   unacknowledged priority.
@@ -267,6 +278,13 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_ui_cold_start`: the cold start driven through the UI only (the procedure panel, cards, the time bar) to base
   load; the engine's inputs, events, step ends and final state must be the reference's (`ref/vectors/plant3d-v1.json`
   `train`).
+- `test_ui_screens`: the control room screens: every code of the model on exactly one screen or left out with its
+  reason, a value added to the model landing on its screen, reached only in the control room (button, desks, Esc),
+  redrawn at a few hertz, states and alarms that follow the plant, and operating from a screen through the card
+  (a refused start, then the same start done); legible: every code whole, every name in two lines, a readable zoom
+  at opening (the overview at its key values on a phone), no word over the screens just opened; `walk=screens`.
+  `test_ui_screens_cold_start`: `test_ui_cold_start` with every
+  operation the screens offer made by a click on its screen.
 - `test_run_save`: saved runs: a run saved and put back into a fresh engine continues bit for bit (also with state
   the engine doesn't have yet), damaged and foreign files refused, the atomic write, Continue and New run at start.
   `tests/bench_save.gd` measures a save's cost.
@@ -275,7 +293,12 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 
 A test stopped by a script error counts as failed (the runner counts script errors). `tests/ui_shots.gd` saves
 screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script
-res://tests/ui_shots.gd -- --out=DIR`.
+res://tests/ui_shots.gd -- --out=DIR`; `tests/mimic_shots.gd` (same arguments, `--phone` at
+`--resolution 2960x1440` for the phone's scale) saves every control room screen and prints what drawing them costs.
+On the Note 9 (2026-10-19, debug build, `WALK_EXTRA="walk=screens\n" phone/frames.sh`, 100 s): frames median
+16.7 ms, 99.95 % at 30 fps or more; the screens' pieces drew in 0.38 ms a frame on average, 71 of 5,969 frames over
+2 ms, 13 ms at most (a screen's first drawing when it is shown). That counts the pieces only: the tabs, the alarm
+banner and the flow lines are drawn besides, so the frame times above are the measure.
 - `test_about`: About from the settings (gamepad A), what it shows (version, commit, the assets with their licence,
   Godot's notices), scrolling by D-pad, stick, Page Down and Home, and back by Esc, B and Back.
 - `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).

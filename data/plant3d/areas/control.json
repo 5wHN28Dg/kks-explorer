@@ -8,7 +8,10 @@
   [-10, 15]
  ],
  "pack": "base",
- "equipment": [],
+ "equipment": [
+  {"kks": "00CWA10", "name": "Main control desk A", "part": "operator_desk", "at": [-25, -2.2, 0], "yaw": 90, "params": {"width": 3.2, "screens": 4}},
+  {"kks": "00CWB10", "name": "Main control desk B", "part": "operator_desk", "at": [-25, 2.2, 0], "yaw": 90, "params": {"width": 3.2, "screens": 4}}
+ ],
  "pipes": [],
  "structures": [
   {"id": "ctl_building", "part": "building", "kks": "00UCA10", "at": [-40, -15, 0], "params": {"outline": [[0, 0], [30, 0], [30, 30], [0, 30]], "height": 12, "cladding": "concrete", "openings": [{"kind": "door", "at": [30, 15, 0], "width": 1.8, "height": 2.4}]}},

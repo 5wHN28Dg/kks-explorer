@@ -21,7 +21,8 @@ SYSTEMS = {
     'MKC': 'Generator excitation', 'PAB': 'Circulating water piping', 'PAC': 'Circulating water pumps',
     'PAD': 'Cooling tower', 'PAR': 'Cooling tower makeup water', 'PGB': 'Closed cooling water coolers',
     'PGC': 'Closed cooling water pumps', 'QFA': 'Instrument air compressors', 'QFB': 'Instrument air distribution',
-    'QHA': 'Auxiliary boiler', 'UCA': 'Control building', 'UHA': 'HRSG structure', 'UHN': 'Stack structure',
+    'QHA': 'Auxiliary boiler', 'CWA': 'Main control desk A', 'CWB': 'Main control desk B',
+    'UCA': 'Control building', 'UHA': 'HRSG structure', 'UHN': 'Stack structure',
     'UMA': 'Turbine hall', 'UMB': 'Gas turbine hall', 'UQA': 'Circulating water pump house',
     'URA': 'Cooling tower structure'}
 EQUIPMENT = {'AA': 'Valve or damper with its actuator', 'AC': 'Heat exchanger or heating surface',

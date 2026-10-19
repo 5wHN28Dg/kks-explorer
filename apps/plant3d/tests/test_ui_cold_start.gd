@@ -47,6 +47,40 @@ static func settle(tree: SceneTree, ui) -> void:
 		await tree.process_frame
 
 
+## The screens' way (tests/test_ui_screens_cold_start.gd): every operation the control room offers is made from its
+## screen (ui/mimic.gd): the screen with the equipment, a click on it, its card; the local ones as before.
+var via_screens := false
+
+
+## Opens a code's card from the control room screens as a trainee does: the screens on, the code's screen, a click
+## on its symbol. "" when the card is open, else what went wrong.
+static func _from_screen(tree: SceneTree, ui, code: String) -> String:
+	if not ui.screens_open():
+		find_button(ui.root, "Control room").pressed.emit()
+	if not ui.screens_open():
+		ui.control_room()
+	if not ui.screens_open():
+		return "the screens did not open in the control room"
+	var at = ui.screens.screen_of.get(code)
+	if at == null:
+		return "%s is on no screen" % code
+	var mim = ui.mimic
+	mim.show_screen(at[0])
+	await tree.process_frame
+	mim.select(code)
+	await tree.process_frame
+	var c: Vector2 = mim.target_centre(code)
+	if not Rect2(Vector2.ZERO, mim.canvas.size).has_point(c):
+		return "%s is not in view on its screen (%s)" % [code, str(c)]
+	for pressed in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = pressed
+		ev.position = c
+		mim._canvas_input(ev)
+	return "" if ui.card.visible and ui.card.code == code else "a click on %s did not open its card" % code
+
+
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	var V := vectors()
@@ -98,7 +132,13 @@ func run(tree: SceneTree) -> Array:
 			if where.has("screen"):
 				if not ui.in_control_room():
 					find_button(ui.root, "Control room").pressed.emit()
-			ui.procedure._link("kks:" + d["kks"])      # the code as linked in the step's checklist
+			if via_screens and where.has("screen"):
+				var why := await _from_screen(tree, ui, d["kks"])
+				if why != "":
+					p.append("step %s: %s" % [s["id"], why])
+					break
+			else:
+				ui.procedure._link("kks:" + d["kks"])      # the code as linked in the step's checklist
 			if not ui.card.visible or ui.card.code != d["kks"]:
 				p.append("step %s: the step's link did not open the card of %s" % [s["id"], d["kks"]])
 				break

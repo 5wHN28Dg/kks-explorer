@@ -1,0 +1,144 @@
+## Screenshots of the control room screens (docs/PLANT3D.md §7.11, ui/mimic.gd), to look at, and their cost (not a
+## test: it needs a display):
+##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/mimic_shots.gd -- --out=DIR [--phone]
+## Every screen at cold iron, at base load, and with a trip and alarms (the instructor's loss of both closed cooling
+## water pumps at base load); --phone draws them at the phone's UI scale (run it at the phone's resolution,
+## `--resolution 2960x1440`). Prints each screen's drawing time and the frame's CPU and GPU time with the screens
+## open and shut.
+extends SceneTree
+
+const SimClock = preload("res://ui/sim_clock.gd")
+const Procedure = preload("res://sim/procedure.gd")
+const Autosave = preload("res://ui/autosave.gd")
+const RunSave = preload("res://ui/run_save.gd")
+const W = preload("res://ui/widgets.gd")
+const App = preload("res://tests/ui_app.gd")
+
+var out := ""
+var phone := false
+var main: Node
+var ui
+
+
+func _init() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--out="):
+			out = a.substr(6)
+		elif a == "--phone":
+			phone = true
+	_run.call_deferred()
+
+
+func shot(name: String, frames := 12) -> void:
+	for i in frames:
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var img := root.get_viewport().get_texture().get_image()
+	var p := out.path_join(("phone_" if phone else "") + name + ".png")
+	print("shot %s: %d" % [p, img.save_png(p)])
+
+
+## The frame's CPU and GPU time (ms) over n frames, as the renderer measures them.
+func frame_ms(n := 90) -> Array:
+	var vp := root.get_viewport().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(vp, true)
+	var cpu := 0.0
+	var gpu := 0.0
+	var proc := 0.0
+	for i in n:
+		await process_frame
+		cpu += RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp)
+		proc += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	return [cpu / n, gpu / n, proc / n]
+
+
+func every_screen(stage: String) -> void:
+	ui.open_screens()
+	await shot("%s_0_overview" % stage)
+	for i in ui.screens.screens.size():
+		ui.mimic.show_screen(i)
+		await shot("%s_%d_%s" % [stage, i + 1, ui.screens.screens[i].id])
+		print("  draw %s: %d µs" % [ui.screens.screens[i].id, ui.mimic.draw_us])
+
+
+func _run() -> void:
+	DirAccess.make_dir_recursive_absolute(out)
+	Autosave.default_path = "user://shots-run.save"
+	RunSave.remove(Autosave.default_path)
+	main = (load("res://app/main.tscn") as PackedScene).instantiate()
+	main.opts["quality"] = "lean+vis" if phone else "full"
+	if phone:
+		main.opts["ui_scale"] = "1.35"
+	root.add_child(main)
+	ui = main.ui
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	await process_frame
+	# a saved run of another build offered at start (the shots' own file, from an earlier run): a new one
+	var nr: Button = App.find_button(root, "New run")
+	if nr != null and nr.is_visible_in_tree():
+		nr.pressed.emit()
+		await process_frame
+	ui.go_control_room(false)
+	await every_screen("cold")
+	# the desks, seen from the start
+	ui.close_screens()
+	ui.player.set_heading(deg_to_rad(90.0), deg_to_rad(-10.0))
+	await shot("desks", 30)
+	# base load: the cold start run by its procedure in the model
+	ui.restart("cold_iron", true)
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	Procedure.run(ui.model, "cold_start", 3600, ui.clock.engine)
+	ui.clock.run_steps(9000)               # 15 minutes at base load through the clock: the trends fill
+	ui.go_control_room(false)
+	await every_screen("base")
+	# the cost: the control room's view with the screens shut, then the busiest screens open, the plant running
+	ui.clock.set_speed(SimClock.Speed.NORMAL)
+	ui.close_screens()
+	await frame_ms(60)
+	var shut := await frame_ms()
+	ui.open_screens("ct")
+	await frame_ms(30)
+	ui.mimic.reset_cost()
+	var ct := await frame_ms()
+	var ct_cost := "%d µs a frame at most, %d on average" % [ui.mimic.frame_us_max, ui.mimic.frame_us_sum / maxi(1, ui.mimic.frames)]
+	ui.mimic.show_screen(-1)
+	await frame_ms(30)
+	ui.mimic.reset_cost()
+	var ov := await frame_ms()
+	var ov_cost := "%d µs a frame at most, %d on average" % [ui.mimic.frame_us_max, ui.mimic.frame_us_sum / maxi(1, ui.mimic.frames)]
+	ui.close_screens()
+	var shut2 := await frame_ms()
+	print("cost (cpu ms, gpu ms, process ms a frame): screens shut %s, cooling tower %s, overview %s, shut again %s; longest piece %d µs" % [
+			str(shut), str(ct), str(ov), str(shut2), ui.mimic.draw_us])
+	print("screens' drawing: cooling tower %s; overview %s" % [ct_cost, ov_cost])
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	# each screen's drawing as the plant runs at 1×: after a second to settle, 4 seconds of frames
+	for i in range(-1, ui.screens.screens.size()):
+		ui.open_screens()
+		ui.mimic.show_screen(i)
+		for k in 60:
+			await process_frame
+		ui.mimic.reset_cost()
+		for k in 240:
+			await process_frame
+		var m = ui.mimic
+		print("screen %s: drawing %d µs a frame at most, %d on average, %d of %d frames over 2 ms" % [
+				"overview" if i < 0 else ui.screens.screens[i].id, m.frame_us_max, m.frame_us_sum / maxi(1, m.frames),
+				m.frames_over_2ms, m.frames])
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	# a trip and alarms: both closed cooling water pumps lost at base load
+	ui.fault("ccw_both")
+	ui.clock.run_steps(3600)
+	ui.open_screens("aux")
+	await shot("trip_aux")
+	ui.mimic.show_screen(-1)
+	await shot("trip_overview")
+	ui.mimic.show_screen(ui.screens.screen_index("gt"))
+	await shot("trip_gt")
+	# a card opened from a screen
+	ui.mimic.show_screen(ui.screens.screen_index("aux"))
+	ui.mimic.activate("00PGC10AP001")
+	await shot("trip_aux_card")
+	main.free()
+	quit(0)

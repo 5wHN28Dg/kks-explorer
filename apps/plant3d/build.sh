@@ -41,7 +41,7 @@ if grep -q "SCRIPT ERROR" "$HERE/.build.log"; then
 fi
 # the behaviour model, scenarios and procedures the app runs (ui/plant_ui.gd reads them with sim/'s strict reader)
 mkdir -p "$HERE/built/content"
-cp "$ROOT/data/plant3d/plant.json" "$HERE/built/content/"
+cp "$ROOT/data/plant3d/plant.json" "$ROOT/data/plant3d/screens.json" "$HERE/built/content/"
 for d in areas model scenarios procedures; do
   mkdir -p "$HERE/built/content/$d"
   cp "$ROOT/data/plant3d/$d/"*.json "$HERE/built/content/$d/"
@@ -79,10 +79,20 @@ $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1 ||
   { echo "the import stopped (Godot crashed on its way out?): once more" >&2
     $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1 || { tail -20 "$HERE/.import.log"; exit 1; }; }
 
-# 3. The tests (the walking tests need the plant just built)
-$T "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd >"$HERE/.test.log" 2>&1 ||
+# 3. The tests (the walking tests need the plant just built), in a data folder of their own: user:// (the saved run
+#    and its lock, the settings) is per project name, so two runs at once (two checkouts) would share it otherwise.
+#    Godot's other folders (shader cache, templates) are linked in.
+TDATA=$(mktemp -d "${TMPDIR:-/tmp}/plant-tests.XXXXXX")
+trap 'rm -rf "$TDATA"' EXIT
+mkdir -p "$TDATA/godot"
+for d in "${XDG_DATA_HOME:-$HOME/.local/share}/godot"/*; do
+  if [ -e "$d" ] && [ "$(basename "$d")" != app_userdata ]; then ln -s "$d" "$TDATA/godot/"; fi
+done
+XDG_DATA_HOME="$TDATA" $T "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd >"$HERE/.test.log" 2>&1 ||
   { grep -vE "^$|Jolt Physics job|jolt_job_system" "$HERE/.test.log" | tail -30; echo "tests failed (apps/plant3d/.test.log)" >&2; exit 1; }
 grep -E "^(ok|FAIL)|passed" "$HERE/.test.log"
+grep -qF "tests' user data: $TDATA/" "$HERE/.test.log" ||
+  { grep "tests' user data" "$HERE/.test.log"; echo "the tests did not run in their own data folder" >&2; exit 1; }
 # a script error inside a test ends that test's function early without a failure of its own: never a pass
 # (the runner's own check makes one on purpose, in tests/fixtures/script_error.gd: that one doesn't count)
 if awk '/SCRIPT ERROR/ { e = 1; next } e { if ($0 !~ /fixtures\/script_error\.gd/) bad = 1; e = 0 } END { exit !bad }' "$HERE/.test.log"; then

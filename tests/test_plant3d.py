@@ -76,6 +76,39 @@ class Content(unittest.TestCase):
         self.assertEqual(c['procedures'], 1)
         self.assertLessEqual(c['values'], P.MAX['values'])
 
+    def test_screens_show_every_code_of_the_model(self):
+        """§7.11: every code the model has something for is on exactly one control room screen or left out, each
+        screen the user asked for (2026-10-19) has its systems, and the first train leaves out only hand valves."""
+        items = P.screen_items(self.m)
+        placed = self.b.screen_of
+        left = set(items) - set(placed)
+        self.assertEqual(left, {'30PAB10AA401', '30PAB10AA402', '30PAB10AA403', '30PAB10AA404'})
+        by_screen = {}
+        for code, (sid, _) in placed.items():
+            by_screen.setdefault(sid, set()).add(code)
+        for sid, code in (('gt', '10MBV10AP001'), ('gt', '10MBP10AA001'), ('hrsg', '10HAD30CL001'),
+                          ('hrsg', '10LAE30AA001'), ('hrsg', '10LBA30AA901'), ('st', '30MAJ10AP001'),
+                          ('condensate', '30LCB10AP001'), ('condensate', '30MAG10CL001'), ('cw', '30PAC10AP001'),
+                          ('ct', '30PAD10AN001'), ('aux', '00PGC10AP001'), ('el', '10BAC10'), ('el', '30MKC10')):
+            self.assertIn(code, by_screen.get(sid, set()), f'{code} on screen {sid}')
+        # every value with a unit and a code is on its code's screen
+        for name, node, _ in self.m.values:
+            if 'unit' in node and 'kks' in node:
+                self.assertTrue(node['kks'] in placed or node['kks'] in left, name)
+
+    def test_screens_never_leave_out_what_only_they_work(self):
+        """§7.11: a code with an alarm or an op from the screens can't be left out (on no tab, never acknowledged)."""
+        files = P.load_dir(DATA)
+        for code in ('30PAR10AA001', '00QFB10CP001'):      # the makeup valve's screen ops; the air header's alarm
+            s = json.loads(files['screens.json'])
+            s['left_out'].append({'codes': [code], 'why': 'A test of what may not be left out'})
+            files['screens.json'] = json.dumps(s).encode()
+            with self.assertRaises(P.FormatError, msg=code) as cm:
+                P.check_files(files)
+            self.assertEqual(cm.exception.code, 'bad_ref')
+            self.assertIn(f'leaves out {code}', str(cm.exception))
+            files = P.load_dir(DATA)
+
     def test_every_first_train_code_is_in_the_plant(self):
         """Every code of FIRST-TRAIN §1 is a piece of equipment, a pipe or a structure, or (for a whole system) the
         system of one. The one exception is written down in FIRST-TRAIN §1."""
@@ -286,7 +319,8 @@ class Validator(unittest.TestCase):
                   'state', 'an ext value named like a trip latch', 'a scenario setting a latch to neither 0 nor 1',
                   'a scenario setting a timer', 'a scenario setting an integrate outside its range',
                   'a scenario setting a wrap outside [0, period)', 'an ext value named like a machine state',
-                  'a trip the scenario latches twice', 'an alarm priority that is not 1, 2 or 3'):
+                  'a trip the scenario latches twice', 'an alarm priority that is not 1, 2 or 3',
+                  'a code of the model on no screen and not left out', 'one beginning of a code in two groups'):
             self.assertIn(w, whys)
 
 
@@ -433,6 +467,7 @@ class Vectors(unittest.TestCase):
             F['model/a1.json'] = s['model']
             F['scenarios/s1.json'] = s['scenario']
             del F['procedures/p1.json']
+            del F['screens.json']
             e = P.Engine(G.check(F), 's1')
             got = [plain(e.snapshot())]
             i = 0

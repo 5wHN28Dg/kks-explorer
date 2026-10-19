@@ -212,6 +212,7 @@ PARTS = {
     'speed_probe': part('instruments', {'range': T('pair'), 'unit': TXT('rpm')}, None, None, ['body']),
     'flame_detector': part('instruments', {}, None, None, ['body']),
     'local_panel': part('instruments', {'width': N(0.3, 6, 0.8), 'height': N(0.3, 3, 1.8)}, None, None, ['front']),
+    'operator_desk': part('instruments', {'width': N(1.2, 8, 3.2), 'screens': I(1, 8, 4)}, None, None, ['front']),
     'push_button_station': part('instruments', {'buttons': E(['start_stop', 'start_stop_emergency'], 'start_stop')},
                                 None, None, ['front']),
     # electrical

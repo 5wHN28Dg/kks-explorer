@@ -13,7 +13,8 @@
 ##   procedure P, gamepad D-pad left: procedures and tours
 ##   pause     K, gamepad D-pad down: pause, and run again at 1×
 ##   fast      . (full stop), gamepad D-pad right: fast-forward
-##   home      H, gamepad X: back to the control room (B is Godot's ui_cancel: it closes the top panel)
+##   home      H, gamepad X: to the control room and its screens, and the screens off again there (B is Godot's
+##             ui_cancel: it closes the top panel)
 extends Node
 
 const KEYS := {

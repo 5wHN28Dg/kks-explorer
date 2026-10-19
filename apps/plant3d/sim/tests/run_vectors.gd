@@ -244,6 +244,7 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary) -> void:
 	files["model/a1.json"] = s["model"]
 	files["scenarios/s1.json"] = s["scenario"]
 	files.erase("procedures/p1.json")
+	files.erase("screens.json")
 	var name := "steps/%d (%s)" % [k, s["why"]]
 	var m = PlantModel.from_files(files)
 	if m.error != "":

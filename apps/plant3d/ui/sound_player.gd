@@ -46,7 +46,7 @@ var _t := 0.0
 var listener_at := Vector3.ZERO
 var dir := DIR
 var walker: CharacterBody3D = null      # the trainee (app/player.gd): footsteps and whether they are outdoors
-var played := {}                # sound id -> how many times it was started (the tests read it)
+var played := {}                # sound id -> how many times it was asked for (the tests read it)
 var outdoors := 1.0             # 0 inside a building … 1 outdoors, faded over FADE
 var running := 0.0              # how much of the plant runs: the bound loops' mean gain (0–1)
 var _walked := 0.0              # metres since the last footstep (or rung)
@@ -184,7 +184,6 @@ func on_step() -> void:
 				sg[3] = 0
 				sg[4] = v
 				if (sg[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
-					played["surge_thud"] = played.get("surge_thud", 0) + 1
 					once("surge_thud", sg[0])
 			else:
 				sg[4] = minf(sg[4], v)
@@ -315,6 +314,7 @@ func horn(priority: int) -> void:
 
 ## A one-shot for an engine event at a place: `breaker`, `breaker_open`, `motor_start`, `surge_thud`, `horn_ack`.
 func once(id: String, at: Node3D = null) -> void:
+	played[id] = played.get(id, 0) + 1
 	if index.is_empty() or muted or not index.has(id):
 		return
 	for layer in index[id].get("layers", []):
@@ -439,8 +439,7 @@ func door_moving(door: Node3D, moving: bool) -> void:
 		if not muted and index.has("door_roller") and not _doors.has(door):
 			_doors[door] = _start(door, "door_roller")
 	else:
-		played["door_slide"] = played.get("door_slide", 0) + 1
-		once("door_slide", door)
+		once("door_slide", door)           # (once counts it in played)
 
 
 ## How loud the plant heard from afar is, from how much of it runs (the bound loops' mean gain): silent when

@@ -849,6 +849,7 @@ func shape_of(part: String, p: Dictionary) -> Dictionary:
 		"breaker": return {"kind": "box", "size": Vector3(2.0, n.call("length", 6), 2.5)}
 		"cabinet": return {"kind": "box", "size": Vector3(n.call("width", 1.2), n.call("depth", 0.8), n.call("height", 2.2))}
 		"local_panel": return {"kind": "box", "size": Vector3(n.call("width", 0.8), 0.4, n.call("height", 1.8))}
+		"operator_desk": return {"kind": "box", "size": Vector3(n.call("width", 3.2), 1.0, 1.4)}
 		"motor": return {"kind": "box", "size": Vector3(1.0, 1.5, 1.0)}
 		"damper": return {"kind": "box", "size": Vector3(n.call("width", 5), 0.6, n.call("height", 5)), "center": true}
 	var g: String = kit.parts.get(part, {}).get("group", "")
