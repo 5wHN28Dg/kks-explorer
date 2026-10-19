@@ -24,6 +24,7 @@ const Card = preload("res://ui/card.gd")
 const AlarmPanel = preload("res://ui/alarm_panel.gd")
 const ProcedurePanel = preload("res://ui/procedure_panel.gd")
 const TrainerPanel = preload("res://ui/trainer_panel.gd")
+const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
 
 const CONTENT := "res://built/content"
@@ -47,6 +48,7 @@ var card
 var alarms
 var procedure
 var trainer
+var autosave                    # ui/autosave.gd: the run saved to user://, offered again at start
 var debrief
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var root: Control
@@ -119,6 +121,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	links.name = "links"
 	links.link.connect(handle_link)
 	add_child(links)
+	autosave = Autosave.new()
+	autosave.name = "autosave"
+	add_child(autosave)
+	autosave.setup(self, content)
 
 
 # ------------------------------------------------------------------ building the overlay
@@ -346,7 +352,7 @@ func fast_forward() -> void:
 	clock.set_speed(SimClock.Speed.FAST)
 
 
-func restart(scenario: String) -> void:
+func restart(scenario: String, quiet := false) -> void:
 	stop_procedure()
 	run_tracker = null
 	clock.start(model, scenario)
@@ -358,7 +364,8 @@ func restart(scenario: String) -> void:
 	results.clear()
 	_pending.clear()
 	_ev_seen = 0
-	toast("The plant restarted: %s." % model.scenarios[scenario].get("title", scenario))
+	if not quiet:
+		toast("The plant restarted: %s." % model.scenarios[scenario].get("title", scenario))
 
 
 # ------------------------------------------------------------------ cards, pointing, moving
