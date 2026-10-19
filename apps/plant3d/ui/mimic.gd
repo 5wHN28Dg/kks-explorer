@@ -14,9 +14,9 @@ const ScreensModel = preload("res://ui/screens_model.gd")
 const Trends = preload("res://ui/trends.gd")
 
 const REFRESH := 0.25           # seconds between redraws of the values (4 Hz)
-const CELL_W := 236.0
+const CELL_W := 214.0
 const PAD := 10.0
-const GAP := 64.0               # between the groups: room for the flow lines
+const GAP := 52.0               # between the groups: room for the flow lines
 const TREND := Vector2(300, 96)
 # the high-performance palette: greys, colour only for the abnormal
 const BG := Color(0.80, 0.81, 0.82)
@@ -30,6 +30,8 @@ const HOLLOW := Color(0.97, 0.97, 0.97)      # a stopped drive, a closed valve: 
 const LINE := Color(0.40, 0.41, 0.43)
 const TRIP := Color(0.85, 0.10, 0.10)
 const SELECT := Color(0.05, 0.25, 0.65)
+const STATE_WORDS := {"active_unack": "unacknowledged", "active_ack": "acknowledged",
+	"cleared_unack": "cleared, unacknowledged", "normal": "normal"}
 const PRIO := {1: Color(0.86, 0.10, 0.10), 2: Color(1.0, 0.55, 0.0), 3: Color(0.95, 0.85, 0.10)}
 
 var ui                          # ui/plant_ui.gd
@@ -60,7 +62,12 @@ var _pieces: Array = []         # the screen's pieces, each drawn on its own: [C
 var _ci: CanvasItem             # the piece being drawn
 var _rr := 0                    # the next piece to redraw (round robin: a few each frame, each at REFRESH)
 var _rr_acc := 0.0
-var _fit_cache := {}            # text cut to a width: the same names every redraw
+var _fit_cache := {}
+var _frame_us := 0              # drawing time in this frame
+var frame_us_max := 0           # the most one frame spent drawing the screens (the frame rule's measure)
+var frame_us_sum := 0
+var frames := 0
+var frames_over_2ms := 0            # text cut to a width: the same names every redraw
 
 ## A layout: {size, title, groups: [{rect, title}], cells: [{rect, code or value name, kind: item | extra | tile}],
 ## lines: [[from rect, to rect, label]], trends: [[value, rect]], keys: [[value, rect]]}
@@ -99,7 +106,7 @@ func setup(u, screens_model, trend_buffer) -> void:
 		b.name = "tab_" + ("overview" if i == 0 else sm.screens[i - 1].id)
 		tabs.add_child(b)
 		_tab_btns.append(b)
-	for z in [["−", func(): zoom_by(1.0 / 1.25)], ["+", func(): zoom_by(1.25)], ["Fit", func(): fit()],
+	for z in [["−", func(): zoom_by(1.0 / 1.25)], ["+", func(): zoom_by(1.25)], ["Fit", func(): fit(true)],
 			["Close", func(): ui.close_screens()]]:
 		var b := W.button(z[0], z[1], 52)
 		b.focus_mode = Control.FOCUS_NONE
@@ -133,6 +140,12 @@ func setup(u, screens_model, trend_buffer) -> void:
 	canvas.gui_input.connect(_canvas_input)
 	canvas.resized.connect(_on_resized)
 	v.add_child(canvas)
+
+
+## Where the canvas begins, in the layer's coordinates (below the tabs and the banner).
+func canvas_top() -> float:
+	var y := canvas.position.y if canvas.position.y > 0.0 else (44.0 + 3 * 26.0 + 20.0) * W.scale
+	return position.y + y
 
 
 func open(screen := -1) -> void:
@@ -182,17 +195,19 @@ func _build_pieces() -> void:
 	_pieces.clear()
 	var L: Dictionary = _layout_of(current)
 	for g in L.groups:
-		_piece(g.rect, _draw_group.bind(g))
+		_piece(g.rect, _draw_group.bind(g), false)      # its panel and title: drawn once
+		for c in g.cells:
+			_piece(c.rect, _draw_cell.bind(c))
 	for c in L.cells:
 		if c.kind == "tile":
 			_piece(c.rect, _draw_tile_piece.bind(c))
 	for t in L.trends:
 		_piece(t[1], _draw_trend.bind(t[1], t[0], 13))
 	for t in L["keys"]:
-		_piece(t[1], _draw_trend.bind(t[1], t[0], 15))
+		_piece(t[1], _draw_key.bind(t[1], t[0]))
 
 
-func _piece(rect: Rect2, f: Callable) -> void:
+func _piece(rect: Rect2, f: Callable, live := true) -> void:
 	var c := Control.new()
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	c.size = rect.size
@@ -204,9 +219,11 @@ func _piece(rect: Rect2, f: Callable) -> void:
 		c.draw_set_transform(-rect.position, 0.0, Vector2.ONE)
 		f.call()
 		redraws += 1
-		draw_us = maxi(draw_us, Time.get_ticks_usec() - t0))
+		var us := Time.get_ticks_usec() - t0
+		draw_us = maxi(draw_us, us)
+		_frame_us += us)
 	canvas.add_child(c)
-	_pieces.append([c, rect])
+	_pieces.append([c, rect, live])
 
 
 func _place_pieces() -> void:
@@ -220,13 +237,28 @@ func _place_pieces() -> void:
 	canvas.queue_redraw()
 
 
+## The pieces redrawn as the plant runs (a group's frame is drawn once).
 func pieces_count() -> int:
-	return _pieces.size()
+	return _pieces.filter(func(pc): return pc[2]).size()
+
+
+func reset_cost() -> void:
+	frames_over_2ms = 0
+	frame_us_max = 0
+	frame_us_sum = 0
+	frames = 0
 
 
 func _process(delta: float) -> void:
 	if not visible:
 		return
+	# what the screens cost the last frame (their drawing happens after _process: it is counted here a frame late)
+	frame_us_max = maxi(frame_us_max, _frame_us)
+	frame_us_sum += _frame_us
+	frames += 1
+	if _frame_us > 2000:
+		frames_over_2ms += 1
+	_frame_us = 0
 	if ui.clock == null or not ui.in_control_room():
 		ui.close_screens()
 		return
@@ -242,9 +274,9 @@ func _process(delta: float) -> void:
 		var n := mini(int(_rr_acc), _pieces.size())
 		_rr_acc -= n
 		for k in n:
-			var c: Control = _pieces[_rr % _pieces.size()][0]
-			if c.visible:
-				c.queue_redraw()
+			var pc: Array = _pieces[_rr % _pieces.size()]
+			if pc[2] and (pc[0] as Control).visible:
+				(pc[0] as Control).queue_redraw()
 			_rr += 1
 
 
@@ -278,11 +310,31 @@ func _font() -> Font:
 
 func _layout_of(i: int) -> Dictionary:
 	if not _layouts.has(i):
-		_layouts[i] = _make_overview() if i < 0 else _make_screen(i)
+		if i < 0:
+			_layouts[i] = _make_overview()
+		else:
+			# as many items a row in the big groups as lets the whole screen show largest on this canvas
+			var cs := canvas.size if canvas.size.x > 10 else Vector2(1600, 560) * W.scale
+			var best := {}
+			var best_z := -1.0
+			for maxc in range(1, 7):
+				var L := _make_screen(i, maxc)
+				var z := minf(cs.x / L.size.x, cs.y / L.size.y)
+				if z > best_z + 1e-6:
+					best_z = z
+					best = L
+			_layouts[i] = best
 	return _layouts[i]
 
 
+## A measurement with one value and nothing else: the code and the value on one line, the name under them.
+static func _compact(it: Dictionary) -> bool:
+	return it.kind == "measure" and it.lamps.is_empty() and it.values.size() == 1 and it.ops.is_empty()
+
+
 func _cell_h(it: Dictionary) -> float:
+	if _compact(it):
+		return PAD * 0.6 + 22.0 + 20.0 + PAD * 0.6
 	var h := PAD + 18.0 + 20.0                 # the code, the name
 	if it.kind != "measure":
 		h += 46.0                              # the symbol and its state
@@ -299,14 +351,14 @@ static func _cell_values(it: Dictionary) -> Array:
 	return it.values.filter(func(v): return v != it.pos)
 
 
-func _make_screen(si: int) -> Dictionary:
+func _make_screen(si: int, maxc := 5) -> Dictionary:
 	var sc: Dictionary = sm.screens[si]
 	var groups := []
 	var cols := {}
 	var rows := {}
 	for gr in sc.groups:
 		var n: int = gr.items.size() + gr.extra.size()
-		var per := clampi(int(ceil(sqrt(n * 1.6))), 1, 5)
+		var per := clampi(int(ceil(sqrt(n * 1.6))), 1, maxc)
 		var heights := []
 		for c in gr.items:
 			heights.append(_cell_h(sm.items[c]))
@@ -382,10 +434,12 @@ func _make_overview() -> Dictionary:
 	var y := 64.0
 	var keys: Array = sm.overview.get("key", [])
 	var per := 6
+	var kw := 252.0
+	var kh := 128.0
 	for i in keys.size():
-		var r := Rect2(24.0 + (i % per) * (TREND.x * 0.8 + PAD * 2), y + (i / per) * (128.0 + PAD * 2), TREND.x * 0.8, 128.0)
+		var r := Rect2(24.0 + (i % per) * (kw + PAD * 2), y + (i / per) * (kh + PAD * 2), kw, kh)
 		out["keys"].append([keys[i], r])
-	y += ceili(keys.size() / float(per)) * (128.0 + PAD * 2) + 24.0
+	y += ceili(keys.size() / float(per)) * (kh + PAD * 2) + 24.0
 	var tw := 372.0
 	var th := 170.0
 	var tper := 4
@@ -393,7 +447,7 @@ func _make_overview() -> Dictionary:
 		var r := Rect2(24.0 + (i % tper) * (tw + PAD * 2), y + (i / tper) * (th + PAD * 2), tw, th)
 		out.cells.append({"rect": r, "id": "screen:%d" % i, "kind": "tile"})
 	y += ceili(sm.screens.size() / float(tper)) * (th + PAD * 2)
-	x = 24.0 + mini(maxi(keys.size(), 1), per) * (TREND.x * 0.8 + PAD * 2)
+	x = 24.0 + mini(maxi(keys.size(), 1), per) * (kw + PAD * 2)
 	out.size = Vector2(maxf(x, 24.0 + tper * (tw + PAD * 2)), y + 16.0)
 	return out
 
@@ -408,6 +462,9 @@ func readable_zoom() -> float:
 ## The canvas got its size (the first layout after opening, a turned phone): a view fitted before then is fitted again.
 func _on_resized() -> void:
 	if _unsized and canvas.size.x > 10:
+		_layouts.clear()              # chosen for a guessed size: again for the real one
+		_view.clear()
+		_build_pieces()
 		fit()
 		if selected != "":
 			reveal(selected)
@@ -418,12 +475,14 @@ func _on_resized() -> void:
 var _unsized := false
 
 
-func fit() -> void:
+## Fits the screen to the canvas: at most so small that its text stays readable (`whole`: all of it, however
+## small: the Fit button).
+func fit(whole := false) -> void:
 	var L: Dictionary = _layout_of(current)
 	_unsized = canvas.size.x <= 10
 	var cs := canvas.size if not _unsized else Vector2(1200, 600)
 	var z := minf(cs.x / L.size.x, cs.y / L.size.y)
-	zoom = clampf(z, 0.75 * readable_zoom(), 1.3 * readable_zoom())
+	zoom = clampf(z, 0.35 if whole else 0.7 * readable_zoom(), 1.3 * readable_zoom())
 	offset = Vector2(maxf(0.0, (cs.x - L.size.x * zoom) * 0.5), 0.0)
 	_clamp_offset()
 	_place_pieces()
@@ -682,13 +741,35 @@ func _text(ci: CanvasItem, at: Vector2, s: String, size: int, col: Color, width 
 			s = _fit_cache[key]
 		else:
 			if f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width:
-				while s.length() > 1 and f.get_string_size(s + "…", HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width:
-					s = s.left(s.length() - 1)
-				s += "…"
+				# the longest beginning that fits with its ellipsis, by halving (each try shapes a string: few tries)
+				var lo := 0
+				var hi := s.length() - 1
+				while lo < hi:
+					var mid := (lo + hi + 1) / 2
+					if f.get_string_size(s.left(mid) + "…", HORIZONTAL_ALIGNMENT_LEFT, -1, size).x <= width:
+						lo = mid
+					else:
+						hi = mid - 1
+				s = s.left(lo).strip_edges(false, true) + "…"
 			if _fit_cache.size() > 4000:
 				_fit_cache.clear()
 			_fit_cache[key] = s
 	ci.draw_string(f, at + Vector2(0, f.get_ascent(size)), s, align, width, size, col)
+
+
+## A value right-aligned in a width (drawn as shaped once: no measuring first).
+func _right(at: Vector2, width: float, s: String, size: int, col: Color) -> void:
+	var f := _font()
+	_ci.draw_string(f, at + Vector2(0, f.get_ascent(size)), s, HORIZONTAL_ALIGNMENT_RIGHT, width, size, col)
+
+
+var _labels := {}
+
+
+func _label(vn: String) -> String:
+	if not _labels.has(vn):
+		_labels[vn] = ui.info.value_label(vn)
+	return _labels[vn]
 
 
 func _draw_canvas() -> void:
@@ -704,27 +785,29 @@ func _draw_canvas() -> void:
 	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-## A group: its panel, title and items.
+## A group: its panel and title (its items are pieces of their own).
 func _draw_group(g: Dictionary) -> void:
 	var r: Rect2 = g.rect
 	_ci.draw_rect(r, PANEL)
 	_ci.draw_rect(r, EDGE, false, 1.5)
 	_text(_ci, r.position + Vector2(PAD, 9), g.title, 18, INK, r.size.x - PAD * 2)
+
+
+func _draw_cell(c: Dictionary) -> void:
+	var cr: Rect2 = c.rect
 	var e = ui.clock.engine
-	for c in g.cells:
-		var cr: Rect2 = c.rect
-		if c.kind == "item":
-			_draw_item(cr, sm.items[c.id], e)
-		else:
-			_draw_extra(cr, c.id, e)
-		if c.id == selected:
-			_ci.draw_rect(cr.grow(3), SELECT, false, 3.0)
+	if c.kind == "item":
+		_draw_item(cr, sm.items[c.id], e)
+	else:
+		_draw_extra(cr, c.id, e)
+	if c.id == selected:
+		_ci.draw_rect(cr.grow(-1.5), SELECT, false, 3.0)
 
 
 func _draw_tile_piece(c: Dictionary) -> void:
 	_draw_tile(c.rect, int(String(c.id).substr(7)), ui.clock.engine)
 	if c.id == selected:
-		_ci.draw_rect((c.rect as Rect2).grow(3), SELECT, false, 3.0)
+		_ci.draw_rect((c.rect as Rect2).grow(-1.5), SELECT, false, 3.0)
 
 
 func _draw_line(a: Rect2, b: Rect2, label: String) -> void:
@@ -782,6 +865,23 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 	var x := r.position.x + PAD
 	var y := r.position.y + PAD * 0.6
 	var w := r.size.x - PAD * 2
+	if _compact(it):
+		var txt: String = ui.info.fmt(it.values[0], e.v(it.values[0]))
+		_text(_ci, Vector2(x, y + 3), it.code, 13, INK_DIM, w * 0.5)
+		if not al.is_empty():
+			var col: Color = PRIO[clampi(al[0][0], 1, 3)]
+			var vw := _font().get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+			var box := Rect2(r.end.x - PAD - vw - 30, y, vw + 36, 22)
+			if not al[0][1] or _blink:
+				_ci.draw_rect(box, col)
+			else:
+				_ci.draw_rect(box, col, false, 2.0)
+			_text(_ci, box.position + Vector2(5, 1), str(al[0][0]), 15, INK)
+		_right(Vector2(x, y), w, txt, 17, INK)
+		_text(_ci, Vector2(x, y + 22), it.name, 14, INK, w - (44.0 if tk >= 0 else 0.0))
+		if tk >= 0:
+			_text(_ci, Vector2(r.end.x - PAD - 38, y + 23), "TRIP", 13, TRIP)
+		return
 	_text(_ci, Vector2(x, y), it.code, 13, INK_DIM, w - 70.0)
 	_alarm_badges(r, al)
 	y += 18.0
@@ -809,16 +909,16 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 		y += 22.0
 	var vals: Array = _cell_values(it)
 	for vn in vals:
-		var label: String = ui.info.value_label(vn) if vals.size() > 1 or it.kind != "measure" else ""
+		var label: String = _label(vn) if vals.size() > 1 or it.kind != "measure" else ""
 		var txt: String = ui.info.fmt(vn, e.v(vn))
-		var vw := _font().get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
 		if label != "":
-			_text(_ci, Vector2(x, y + 2), label, 13, INK_DIM, w - vw - 10.0)
+			_text(_ci, Vector2(x, y + 2), label, 13, INK_DIM, w * 0.6)    # a fixed width: cut once, not as the value moves
 		if it.kind == "measure" and not al.is_empty() and vals.size() == 1:
 			var col: Color = PRIO[clampi(al[0][0], 1, 3)]
 			if not al[0][1] or _blink:
+				var vw := _font().get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
 				_ci.draw_rect(Rect2(r.end.x - PAD - vw - 6, y - 1, vw + 12, 22), col)
-		_text(_ci, Vector2(r.end.x - PAD - vw, y), txt, 17, INK)
+		_right(Vector2(x, y), w, txt, 17, INK)
 		if tk >= 0 and it.kind == "measure" and it.lamps.is_empty():
 			_text(_ci, Vector2(x, y), "TRIP", 14, TRIP)
 		y += 22.0
@@ -851,7 +951,7 @@ func item_state(it: Dictionary, e, was = null) -> Dictionary:
 		"valve":
 			var pos: float = e.v(it.pos)
 			var w: float = pos if was == null else float(was)
-			var moving: bool = absf(pos - w) > 1e-6
+			var moving: bool = absf(pos - w) > 0.002     # more than 0.2 % since the last look (a quarter second)
 			var words := "CLOSED" if pos < 0.02 else ("OPEN" if pos > 0.98 else "%.0f %%" % (pos * 100.0))
 			if moving:
 				words = ("OPENING " if pos > w else "CLOSING ") + "%.0f %%" % (pos * 100.0)
@@ -929,23 +1029,24 @@ func _draw_extra(r: Rect2, vn: String, e) -> void:
 	_ci.draw_rect(r, CELL)
 	_ci.draw_rect(r, EDGE, false, 1.0)
 	var x := r.position.x + PAD
-	_text(_ci, Vector2(x, r.position.y + PAD), ui.info.value_label(vn), 14, INK_DIM, r.size.x - PAD * 2)
-	var txt: String = ui.info.fmt(vn, e.v(vn))
-	var vw := _font().get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
-	_text(_ci, Vector2(r.end.x - PAD - vw, r.position.y + PAD + 20), txt, 17, INK)
+	_text(_ci, Vector2(x, r.position.y + PAD), _label(vn), 14, INK_DIM, r.size.x - PAD * 2)
+	_right(Vector2(x, r.position.y + PAD + 20), r.size.x - PAD * 2, ui.info.fmt(vn, e.v(vn)), 17, INK)
 
 
 func _draw_trend(r: Rect2, vn: String, size: int) -> void:
 	_ci.draw_rect(r, CELL)
 	_ci.draw_rect(r, EDGE, false, 1.0)
 	var e = ui.clock.engine
-	var txt: String = ui.info.fmt(vn, e.v(vn))
-	_text(_ci, r.position + Vector2(8, 4), ui.info.value_label(vn), size, INK_DIM, r.size.x - 100.0)
-	var vw := _font().get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size + 3).x
-	_text(_ci, Vector2(r.end.x - 8 - vw, r.position.y + 3), txt, size + 3, INK)
+	_text(_ci, r.position + Vector2(8, 4), _label(vn), size, INK_DIM, r.size.x - 110.0)
+	_right(r.position + Vector2(8, 3), r.size.x - 16.0, ui.info.fmt(vn, e.v(vn)), size + 3, INK)
+	_sparkline(Rect2(r.position + Vector2(8, 26), r.size - Vector2(16, 34)), vn)
+
+
+## A value's last 20 minutes of plant time as a line, scaled to its own range, with the time it spans.
+func _sparkline(plot: Rect2, vn: String) -> void:
 	var s: PackedFloat32Array = trends.series(vn)
-	var plot := Rect2(r.position + Vector2(8, 26), r.size - Vector2(16, 34))
 	_ci.draw_line(Vector2(plot.position.x, plot.end.y), plot.end, EDGE, 1.0)
+	_text(_ci, Vector2(plot.position.x, plot.end.y - 1), "%d min" % (Trends.SIZE * Trends.EVERY / 600), 11, INK_DIM)
 	if s.size() < 2:
 		return
 	var lo := s[0]
@@ -953,19 +1054,25 @@ func _draw_trend(r: Rect2, vn: String, size: int) -> void:
 	for v in s:
 		lo = minf(lo, v)
 		hi = maxf(hi, v)
-	if hi - lo < 1e-6:
-		hi = lo + 1.0
+	if hi - lo < 1e-6 * maxf(1.0, absf(hi)):
+		lo -= 0.5
+		hi += 0.5
 	var pts := PackedVector2Array()
 	var n := float(Trends.SIZE - 1)
 	var x0 := plot.end.x - plot.size.x * (s.size() - 1) / n
 	for k in s.size():
-		pts.append(Vector2(x0 + plot.size.x * k / n, plot.end.y - plot.size.y * (s[k] - lo) / (hi - lo)))
+		pts.append(Vector2(x0 + plot.size.x * k / n, plot.end.y - 2.0 - (plot.size.y - 4.0) * (s[k] - lo) / (hi - lo)))
 	_ci.draw_polyline(pts, INK, 2.0)
-	_text(_ci, Vector2(plot.position.x, plot.end.y - 2), "%s min" % (Trends.SIZE * Trends.EVERY / 600), 11, INK_DIM)
 
 
+## A key value of the overview: its name, the value big, its trend under it.
 func _draw_key(r: Rect2, vn: String) -> void:
-	_draw_trend(r, vn, 15)
+	_ci.draw_rect(r, CELL)
+	_ci.draw_rect(r, EDGE, false, 1.0)
+	var e = ui.clock.engine
+	_text(_ci, r.position + Vector2(PAD, 6), _label(vn), 15, INK_DIM, r.size.x - PAD * 2)
+	_text(_ci, r.position + Vector2(PAD, 26), ui.info.fmt(vn, e.v(vn)), 26, INK, r.size.x - PAD * 2)
+	_sparkline(Rect2(r.position + Vector2(PAD, 66), Vector2(r.size.x - PAD * 2, r.size.y - 74)), vn)
 
 
 func _draw_tile(r: Rect2, si: int, e) -> void:
@@ -1005,13 +1112,15 @@ func _draw_tile(r: Rect2, si: int, e) -> void:
 		y += 20.0
 	var bx := x
 	var by: Array = a.by
+	_text(_ci, Vector2(bx, r.end.y - PAD - 22), "Alarms", 14, INK_DIM)
+	bx += 56.0
 	for p in 3:
-		var box := Rect2(bx, r.end.y - PAD - 22, 54, 22)
+		var box := Rect2(bx, r.end.y - PAD - 24, 76, 24)
 		if by[p] > 0:
 			_ci.draw_rect(box, PRIO[p + 1])
 		_ci.draw_rect(box, EDGE, false, 1.0)
-		_text(_ci, box.position + Vector2(6, 2), "%d: %d" % [p + 1, by[p]], 14, INK)
-		bx += 60.0
+		_text(_ci, box.position + Vector2(7, 2), "P%d: %d" % [p + 1, by[p]], 15, INK)
+		bx += 84.0
 
 
 func _draw_banner() -> void:
@@ -1040,7 +1149,7 @@ func _draw_banner() -> void:
 		_text(banner, box.position + Vector2(9 * W.scale, 0), str(p), fs, Color.BLACK if (not unack or _blink) else PRIO[p])
 		var since: int = ui.alarms.since.get(a["id"], 0)
 		var line := "%s  %s %s  %s  · %s" % [W.model_time(since), a.get("kks", a.get("where", "")), a.get("isa", ""),
-				a.get("text", a["id"]), String(e.astate[k]).replace("_", " ").replace("unack", "unacknowledged").replace("ack", "acknowledged")]
+				a.get("text", a["id"]), STATE_WORDS.get(String(e.astate[k]), String(e.astate[k]))]
 		var more := 160.0 * W.scale if list.size() > 3 and i == 2 else 0.0
 		_text(banner, Vector2(box.end.x + 10, y + 1), line, fs, Color.WHITE, banner.size.x - box.end.x - 20 - more)
 		_banner_rows.append([Rect2(0, y, banner.size.x, rh), k])

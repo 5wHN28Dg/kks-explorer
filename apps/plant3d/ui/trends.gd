@@ -8,7 +8,7 @@ const SIZE := 240                  # samples kept: 20 min of plant time
 
 var names: Array = []
 var _slot := {}                    # value name -> [index in names]
-var _buf: Array = []               # per value a PackedFloat32Array ring
+var _data := PackedFloat32Array()  # the rings, one after the other: value i's sample k at i * SIZE + k
 var _n := 0                        # samples taken (the ring's write position is _n % SIZE)
 var last_step := -1
 
@@ -17,9 +17,7 @@ func _init(value_names: Array) -> void:
 	names = value_names.duplicate()
 	for i in names.size():
 		_slot[names[i]] = i
-		var b := PackedFloat32Array()
-		b.resize(SIZE)
-		_buf.append(b)
+	_data.resize(names.size() * SIZE)
 
 
 func clear() -> void:
@@ -34,7 +32,7 @@ func on_step(e) -> void:
 	last_step = e.step_no
 	var w := _n % SIZE
 	for i in names.size():
-		(_buf[i] as PackedFloat32Array)[w] = e.v(names[i])
+		_data[i * SIZE + w] = e.v(names[i])
 	_n += 1
 
 
@@ -47,10 +45,10 @@ func series(name: String) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	if not _slot.has(name):
 		return out
-	var b: PackedFloat32Array = _buf[_slot[name]]
+	var base: int = _slot[name] * SIZE
 	var count := mini(_n, SIZE)
 	out.resize(count)
 	var start := _n - count
 	for k in count:
-		out[k] = b[(start + k) % SIZE]
+		out[k] = _data[base + (start + k) % SIZE]
 	return out

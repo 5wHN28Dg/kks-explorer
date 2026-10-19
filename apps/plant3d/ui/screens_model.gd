@@ -167,7 +167,9 @@ func _place() -> void:
 	for x in data.get("left_out", []):
 		for p in x["codes"]:
 			prefixes[p] = ["left", x["why"]]
-	for c in items:
+	var codes := items.keys()
+	codes.sort()                      # in a group by code, as on the drawings: fan 1 to 10, then their probes
+	for c in codes:
 		var p := _owner(c, prefixes)
 		if p == "":
 			unplaced.append(c)

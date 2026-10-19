@@ -237,7 +237,9 @@ func _bar_button(bar: Control, text: String, f: Callable) -> Button:
 
 func _layout() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
-	var top := 88.0 + 56.0 * W.scale + 16.0
+	var top0 := 88.0 + 56.0 * W.scale + 16.0
+	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach
+	var top := maxf(top0, mimic.canvas_top() + 8.0) if screens_open() else top0
 	var w := minf(560.0 * W.scale, vs.x * 0.45)
 	card.position = Vector2(vs.x - w - 16.0, top)
 	_max_h = vs.y - top - 16.0
@@ -250,8 +252,8 @@ func _layout() -> void:
 	trainer.size = card.size
 	debrief.position = card.position
 	debrief.size = card.size
-	mimic.position = Vector2(0.0, top)
-	mimic.size = Vector2(vs.x, vs.y - top)
+	mimic.position = Vector2(0.0, top0)
+	mimic.size = Vector2(vs.x, vs.y - top0)
 	_hint.position = Vector2(vs.x * 0.5 - 400.0, vs.y * 0.5 + 24.0)
 	_hint.size = Vector2(800.0, 60.0)
 	_layout_toast()
@@ -436,14 +438,19 @@ func open_screens(screen_id := "") -> void:
 		return
 	_release_mouse()
 	mimic.open(screens.screen_index(screen_id) if screen_id != "" else -1)
+	# the screens cover the view: the plant is not drawn behind them (the phone's GPU, decision 0041); its sounds go on
+	get_viewport().disable_3d = true
 	main.hud.refresh()
+	_layout()
 
 
 func close_screens() -> void:
 	if mimic == null or not mimic.visible:
 		return
 	mimic.visible = false
+	get_viewport().disable_3d = false
 	main.hud.refresh()
+	_layout()
 
 
 ## The Control room button (and H, gamepad X): to the control room and its screens; there, the screens on and off.

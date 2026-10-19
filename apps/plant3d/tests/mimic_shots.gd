@@ -83,18 +83,43 @@ func _run() -> void:
 	ui.restart("cold_iron", true)
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	Procedure.run(ui.model, "cold_start", 3600, ui.clock.engine)
+	ui.clock.run_steps(9000)               # 15 minutes at base load through the clock: the trends fill
 	ui.go_control_room()
 	await every_screen("base")
 	# the cost: the control room's view with the screens shut, then the busiest screens open, the plant running
 	ui.clock.set_speed(SimClock.Speed.NORMAL)
 	ui.close_screens()
+	await frame_ms(60)
 	var shut := await frame_ms()
 	ui.open_screens("ct")
+	await frame_ms(30)
+	ui.mimic.reset_cost()
 	var ct := await frame_ms()
+	var ct_cost := "%d µs a frame at most, %d on average" % [ui.mimic.frame_us_max, ui.mimic.frame_us_sum / maxi(1, ui.mimic.frames)]
 	ui.mimic.show_screen(-1)
+	await frame_ms(30)
+	ui.mimic.reset_cost()
 	var ov := await frame_ms()
-	print("cost (cpu ms, gpu ms, process ms per frame): screens shut %s, cooling tower %s, overview %s; redraws %d" % [
-			str(shut), str(ct), str(ov), ui.mimic.redraws])
+	var ov_cost := "%d µs a frame at most, %d on average" % [ui.mimic.frame_us_max, ui.mimic.frame_us_sum / maxi(1, ui.mimic.frames)]
+	ui.close_screens()
+	var shut2 := await frame_ms()
+	print("cost (cpu ms, gpu ms, process ms a frame): screens shut %s, cooling tower %s, overview %s, shut again %s; longest piece %d µs" % [
+			str(shut), str(ct), str(ov), str(shut2), ui.mimic.draw_us])
+	print("screens' drawing: cooling tower %s; overview %s" % [ct_cost, ov_cost])
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	# each screen's drawing as the plant runs at 1×: after a second to settle, 4 seconds of frames
+	for i in range(-1, ui.screens.screens.size()):
+		ui.open_screens()
+		ui.mimic.show_screen(i)
+		for k in 60:
+			await process_frame
+		ui.mimic.reset_cost()
+		for k in 240:
+			await process_frame
+		var m = ui.mimic
+		print("screen %s: drawing %d µs a frame at most, %d on average, %d of %d frames over 2 ms" % [
+				"overview" if i < 0 else ui.screens.screens[i].id, m.frame_us_max, m.frame_us_sum / maxi(1, m.frames),
+				m.frames_over_2ms, m.frames])
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	# a trip and alarms: both closed cooling water pumps lost at base load
 	ui.fault("ccw_both")

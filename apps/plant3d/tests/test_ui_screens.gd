@@ -147,11 +147,15 @@ func _reach(tree: SceneTree, ui) -> Array:
 		p.append("the Control room button did not open the screens in the control room")
 	if ui.player.input_enabled:
 		p.append("the trainee still walks with the screens open")
+	if not ui.get_viewport().disable_3d:
+		p.append("the plant is still drawn behind the screens")
 	App.find_button(ui.root, "Control room").pressed.emit()
 	if ui.screens_open():
 		p.append("the Control room button in the control room did not close the screens")
 	if not ui.player.input_enabled:
 		p.append("walking did not come back when the screens closed")
+	if ui.get_viewport().disable_3d:
+		p.append("the plant is not drawn again when the screens closed")
 	# an operator desk: its card is the screens
 	for desk in ["00CWA10", "00CWB10"]:
 		if not ui.index.has(desk):
@@ -202,7 +206,7 @@ func _live(tree: SceneTree, ui) -> Array:
 	var st: Dictionary = mim.item_state(it, e)
 	if st.words != "15 %" or st.on:
 		p.append("the valve at its start position is shown as %s" % st.words)
-	var st_moving: Dictionary = mim.item_state(it, e, 0.10)
+	var st_moving: Dictionary = mim.item_state(it, e, 0.10)       # it stood at 10 % at the last look
 	if not st_moving.words.begins_with("OPENING"):
 		p.append("a valve whose position rose since the last look is not shown opening: %s" % st_moving.words)
 	var drive: Dictionary = sm.items["30PAC10AP001"]
