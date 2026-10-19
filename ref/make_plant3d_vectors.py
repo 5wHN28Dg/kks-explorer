@@ -620,7 +620,7 @@ FORKS = [
      {'refused': [['30MAA10AA101', 'open', ['st_tg_run', 'aux_ok']]]}),
     ('roll_with_warmup_open', 'roll_ready', [('op', '30MAA10', 'roll', None, None), ('run', 1)],
      {'refused': [['30MAA10', 'roll', ['st_warm_shut']]]}),
-    ('gt_load_without_sink', 'gt_brk', [('op', '10MKA10', 'set', 60, None), ('run', 240),
+    ('gt_load_without_sink', 'gt_brk', [('op', '10MKA10', 'set', 60, None), ('run', 330),
                                         ('op', '30MAN10AA001', 'manual', None, None), ('run', 60),
                                         ('op', '10MKA10', 'set', 250, None), ('run', 60)],
      {'alarms': ['gt1_runback'], 'max': {'gt1_mw': [60, 60]},
