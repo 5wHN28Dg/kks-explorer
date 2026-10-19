@@ -53,6 +53,13 @@ COMMIT=$(git -C "$ROOT" rev-parse --verify -q HEAD 2>/dev/null || true)
 CHANGES=false
 [ -n "$COMMIT" ] && [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ] && CHANGES=true
 printf '{"format": "walkdown-plant-build", "commit": "%s", "changes": %s}\n' "$COMMIT" "$CHANGES" > "$HERE/built/build_info.json"
+# the code that makes and reads a saved run's state, each file by name and length (ui/run_save.gd app_version: a save
+# of another build is refused)
+(cd "$HERE" && for f in sim/*.gd ui/run_save.gd ui/autosave.gd ui/procedure_tracker.gd ui/plant_ui.gd ui/sim_clock.gd \
+    app/player.gd; do [ -f "$f" ] || { echo "build.sh: no $f for the code hash" >&2; exit 1; }
+  printf '%s %s\n' "$f" "$(wc -c <"$f")"; cat "$f"; done) >"$HERE/built/.code"
+sha256sum <"$HERE/built/.code" | cut -d' ' -f1 >"$HERE/built/code.sha256"
+rm -f "$HERE/built/.code"
 # the sounds (tools/plant3d/sounds, decision 0055: NumPy and FFmpeg with libvorbis): a release needs them; otherwise
 # they are made when the tools are there, and the app is silent without them (ui/sound_player.gd)
 PY="${PLANT_PYTHON:-$ROOT/.venv/bin/python}"; [ -x "$PY" ] || PY=python3
