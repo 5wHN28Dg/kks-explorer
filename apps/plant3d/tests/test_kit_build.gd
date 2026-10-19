@@ -187,6 +187,9 @@ func _safety_signs(tree: SceneTree) -> Array:
 		var sz := lab.pixel_size * 64.0
 		if lab.outline_size != 0 or lab.modulate.v > 0.1:
 			p.append("%s: a safety sign's text is black, without an outline" % lab.get_path())
+		# blended as the old label (smooth far off), and no shadow (a cut-out label casts one: a draw call more)
+		if lab.alpha_cut != Label3D.ALPHA_CUT_DISABLED or lab.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			p.append("%s: a safety sign's text is cut out or casts a shadow" % lab.get_path())
 		if tw > 0.55 * sz * lab.text.length() or tw < 0.3 * sz * lab.text.length():
 			p.append("%s: its text is %.2f m wide, outside the content's estimate" % [lab.get_path(), tw])
 		var disc: Vector3 = lab.global_position + Vector3.UP * KitPlace.sign_layout(tw, sz).disc
@@ -216,6 +219,8 @@ func _safety_signs(tree: SceneTree) -> Array:
 							p.append("%s: the sign's board is %d draw calls" % [lab.get_path(), mesh.get_surface_count()])
 						boards += 1
 						merged += 1 if cols.size() > alone else 0
+						if cols.size() <= alone and c.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+							p.append("%s: a board alone in its cell casts a shadow (a draw call more)" % lab.get_path())
 		if not found:
 			p.append("%s: no board with its blue disc behind the sign's text" % lab.get_path())
 	if boards != signs:

@@ -184,9 +184,18 @@ func run(tree: SceneTree) -> Array:
 	if ui.sounds.played.get("surge_thud", 0) != 3:
 		p.append("the model's surge (%.1f bar) at CW pump A played %d thuds, not one" % [shook,
 			ui.sounds.played.get("surge_thud", 0) - 2])
+	# stopped and started again 4 s later, the last surge still dying away (about 1 bar): it slams again
+	e.cur[cmd] = 0.0
+	ui.clock.run_steps(40)
+	var left: float = e.cur[surge]
+	e.cur[cmd] = 1.0
+	ui.clock.run_steps(40)
+	if ui.sounds.played.get("surge_thud", 0) != 4:
+		p.append("a restart against the open valve with the last surge at %.1f bar played %d thuds, not one" % [left,
+			ui.sounds.played.get("surge_thud", 0) - 3])
 	e.cur[vpos] = was            # running on as before
 	ui.clock.run_steps(200)
-	if e.cur[surge] >= ui.sounds.THUD_REARM or ui.sounds.played.get("surge_thud", 0) != 3:
+	if e.cur[surge] >= 0.2 or ui.sounds.played.get("surge_thud", 0) != 4:
 		p.append("the surge did not die down without another thud (%.2f bar)" % e.cur[surge])
 	# the horn: on with an unacknowledged priority 1 alarm, off when silenced
 	ui.sounds.horn(1)

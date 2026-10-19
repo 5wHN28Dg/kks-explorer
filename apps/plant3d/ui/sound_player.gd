@@ -26,8 +26,9 @@ const STRIDE := 0.75            # metres between footsteps walking (a step of a 
 const RUN_STRIDE := 1.1         # and running
 const RUNG := 0.3               # metres between a ladder's rungs (builder/plant_builder.gd _ladder)
 const FADE := 1.0               # seconds the ambience takes to follow the trainee in or out of a building
-const THUD := 0.05              # a shake binding's value × scale rising past this is a slam: `surge_thud` at its node
-const THUD_REARM := 0.01        # and it sounds again only once the shake has died down below this
+const THUD := 0.05              # a shake binding's value × scale jumping by this from its lowest is a slam: `surge_thud`
+const THUD_REARM := 0.5         # and it can slam again once fallen below this share of its peak (a pump restarted
+								# while the last surge dies away slams again)
 const STEP_SOUNDS := {"concrete": "step_concrete", "grating": "step_grating", "stair": "step_stair"}
 
 var index := {}                 # the generator's index: sounds: {id: {loop, layers: [{layer, file, …}]}}
@@ -39,7 +40,8 @@ var _horn: AudioStreamPlayer
 var _horn_prio := 0
 var _hold := {}                 # node -> model step until which its loop waits (a motor's run-up one-shot)
 var _edges: Array = []          # [node, value slot, last state]: breakers, by their contacts' value
-var _surges: Array = []         # [node, value slot, scale, armed (1), fired (0) or not seen yet (-1)]: shakes
+var _surges: Array = []         # [node, value slot, scale, armed (1), fired (0) or not seen yet (-1), level]: the
+								# level is the lowest since armed, the highest since fired
 var _t := 0.0
 var listener_at := Vector3.ZERO
 var dir := DIR
@@ -158,10 +160,10 @@ static func is_surge(unit: String) -> bool:
 	return unit in ["bar", "mbar", "Pa", "kPa", "MPa"]
 
 
-## A pressure surge's shake binding (§7.7): its value jumping past THUD is the slam heard with it, `surge_thud` at
+## A pressure surge's shake binding (§7.7): its value jumping by THUD is the slam heard with it, `surge_thud` at
 ## its equipment (FIRST-TRAIN §4 step 4: a CW pump started against an open valve).
 func watch_surge(n: Node3D, slot: int, scale: float) -> void:
-	_surges.append([n, slot, scale, -1])
+	_surges.append([n, slot, scale, -1, 0.0])
 
 
 ## After every model step: a breaker's contacts that changed in it (at fast-forward many steps pass in a frame), and
@@ -173,16 +175,24 @@ func on_step() -> void:
 			once("breaker" if on == 1 else "breaker_open", ed[0])
 		ed[2] = on
 	for sg in _surges:
-		var v: float = engine.cur[sg[1]] * sg[2]
-		if sg[3] == 1 and v >= THUD:
-			sg[3] = 0
-			if (sg[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
-				played["surge_thud"] = played.get("surge_thud", 0) + 1
-				once("surge_thud", sg[0])
-		elif v < THUD_REARM:
+		var v: float = absf(engine.cur[sg[1]] * sg[2])
+		if sg[3] == -1:                  # first seen (a restart, a loaded run): no slam from the past, a jump from here
 			sg[3] = 1
-		elif sg[3] == -1:                # first seen mid-surge (a restart, a loaded run): no slam from the past
-			sg[3] = 0
+			sg[4] = v
+		elif sg[3] == 1:
+			if v >= sg[4] + THUD:
+				sg[3] = 0
+				sg[4] = v
+				if (sg[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
+					played["surge_thud"] = played.get("surge_thud", 0) + 1
+					once("surge_thud", sg[0])
+			else:
+				sg[4] = minf(sg[4], v)
+		else:
+			sg[4] = maxf(sg[4], v)
+			if v < sg[4] * THUD_REARM:
+				sg[3] = 1
+				sg[4] = v
 
 
 ## A restarted plant: the breakers' last states are forgotten (no edge from the old run's state).

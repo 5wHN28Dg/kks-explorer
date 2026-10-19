@@ -486,11 +486,13 @@ func sign_board(xf: Transform3D, symbol: String, text_w: float, size: float) -> 
 	var key := "sign|%s|%.3f|%.3f" % [symbol, text_w, size]
 	if not _signs.has(key):
 		_signs[key] = Kit._meshes(sign_mesh(symbol, text_w, size).finish(), Vector3.ZERO).values()[0]
-	_cell(_signs[key], _signs[key].mesh.resource_name, xf)       # merged with its cell's plain layer
+	# merged with its cell's plain layer; a group of signs' boards alone casts no shadow (flat on its wall: the shadow
+	# pass would draw it for nothing)
+	cells[_cell(_signs[key], _signs[key].mesh.resource_name, xf)]["sign"] = true
 
 # ------------------------------------------------------------------ the cells
 
-func _cell(L: Dictionary, key: String, xf: Transform3D) -> void:
+func _cell(L: Dictionary, key: String, xf: Transform3D) -> String:
 	var cls: String = L.cls
 	var size := SMALL_CELL if cls == "detail" else CELL
 	var c := Vector2i(int(floor(xf.origin.x / size)), int(floor(xf.origin.z / size)))
@@ -498,6 +500,7 @@ func _cell(L: Dictionary, key: String, xf: Transform3D) -> void:
 	if not cells.has(k):
 		cells[k] = {"mesh": L.mesh, "mat": L.mat, "cls": cls, "size": L.size, "xf": []}
 	cells[k].xf.append(xf)
+	return k
 
 ## The cells of an area under its node "kit": in each cell, the meshes that stand there once are merged per material
 ## and size bucket into one mesh (with LODs made again for it), those that stand there more than once are instanced
@@ -517,10 +520,12 @@ func flush(root: Node3D) -> int:
 				merge[mk] = []
 			merge[mk].append(c)
 		else:
+			_quiet = c.get("sign", false)
 			_emit(kit, c.mesh, c.mat, c.cls, c.size, c.xf, n)
 			n += 1
 	for mk in merge:
 		var group: Array = merge[mk]
+		_quiet = group.all(func(c): return c.get("sign", false))
 		var cls: String = "identify" if group.any(func(c): return c.cls == "identify") else group[0].cls
 		if cls == "detail":
 			# detail pieces are small (bolts, fins): the sky's light, never given lightmap texels
@@ -553,6 +558,7 @@ func flush(root: Node3D) -> int:
 			im.generate_lods(25.0, 60.0, [])
 		_emit(kit, im.get_mesh(), group[0].mat, cls, size, [Transform3D(Basis(), o)], n)
 		n += 1
+	_quiet = false
 	var groups := merge.size()
 	var widest := 0.0
 	for c in kit.get_children():
@@ -564,6 +570,8 @@ func flush(root: Node3D) -> int:
 	cells_made += n
 	return n
 
+var _quiet := false   # what flush emits now is signs' boards alone: no shadow
+
 ## A static mesh with lightmap UV2, standing once (group "kit_static"): a MeshInstance3D, which LightmapGI bakes.
 func _emit_static(kit: Node3D, mesh: Mesh, mat: String, cls: String, o: Vector3, n: int) -> void:
 	var mi := MeshInstance3D.new()
@@ -574,6 +582,8 @@ func _emit_static(kit: Node3D, mesh: Mesh, mat: String, cls: String, o: Vector3,
 	mi.set_meta("box", Transform3D(Basis(), o) * mesh.get_aabb())
 	mi.add_to_group("kit_static", true)
 	Lightmap.mark(mi, true)
+	if _quiet:
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	kit.add_child(mi)
 
 func _emit(kit: Node3D, mesh: Mesh, mat: String, cls: String, size: float, xfs: Array, n: int) -> void:
@@ -597,6 +607,8 @@ func _emit(kit: Node3D, mesh: Mesh, mat: String, cls: String, size: float, xfs: 
 	mmi.set_meta("box", box)
 	mmi.add_to_group("kit_cells", true)
 	Lightmap.mark(mmi, false)
+	if _quiet:
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if cls == "detail":
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mmi.add_to_group("detail", true)

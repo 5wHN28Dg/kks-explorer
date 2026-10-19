@@ -806,8 +806,9 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			kp.sign_board(xf, symbol, w, size)
 			l.outline_size = 0
 			l.modulate = Color(0.02, 0.02, 0.02)
-			l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
-			l.position = base + xf.basis.z * (kp.sign_layout(w, size).face + 0.005)
+			# blended as the outlined label was (smooth glyph edges far off; a cut-out label would cast a shadow)
+			l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			l.position = base + xf.basis.z * (kp.sign_layout(w, size).face + 0.015)   # clear of the disc's face
 			l.set_meta("symbol", symbol)
 			l.set_meta("text_width", w)
 		signs.add_child(l)
