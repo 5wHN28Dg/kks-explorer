@@ -79,6 +79,18 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    first frame; the pre-built bench plant is 327 KB). Shaders: the shader baker at export (Vulkan from Linux, D3D12
    only from a Windows editor: the Windows build ships Vulkan-baked and D3D12 compiled at load, measured before
    choosing its default driver), plus ubershaders.
+   **Windows driver (2026-10-19):** Vulkan, falling back to Direct3D 12. That is what this project gets: its
+   project.godot sets no `rendering/rendering_device/driver.windows`, so Godot's own default (Vulkan) holds; "D3D12
+   for new projects" is a value the 4.6+ editor writes into a new project's file [V: the app's log in the VM, "Your
+   video card drivers seem not to support Vulkan, switching to Direct3D 12"]. It also matches the shaders, which are
+   baked for Vulkan only (from the Linux editor). Measured with the test-signed MSIX in the Windows 11 VM
+   (`apps/plant3d/msix/test_msix_vm.py`), whose only adapter is the Microsoft Basic Display Adapter: no Vulkan device
+   there, so both `--rendering-driver vulkan` and `d3d12` ran on D3D12's Basic Render Driver (WARP, on the CPU):
+   first frame 8.2 s and 7.6 s, median frame 1.67 s and 1.41 s (the same path both times: the VM's own variation).
+   The VM shows that the package runs and that the fallback works, not which driver is faster: frame times there say
+   nothing about a real GPU. To measure on a Windows machine with a GPU (load time with the Vulkan-baked shaders
+   against D3D12 compiled at load, and frame times) before the first train is used on Windows; set
+   `driver.windows="d3d12"` only if D3D12 wins there.
 5. **Assets.** Geometry is all ours, from the kit (R5). Materials are CC0 PBR sets (ambientCG, as the bench),
    fetched by a pinned script with SHA-256 checksums, never committed; the build makes three sizes (2048, 1024,
    512 px) and the tier picks one (PLANT3D.md §10). Compression: ETC2 by default on Android (ASTC 4×4 measured on the
@@ -105,7 +117,11 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    (`gh release create --latest=false`), so Walkdown's updater keeps finding Walkdown's release. Not left to memory: with
    the first plant release, `tools/release.py` passes `--latest` explicitly for Walkdown and the plant's release tool
    `--latest=false`, and both refuse when the current latest release is not a Walkdown `v*` tag; `policy.yml`'s tag
-   filter (`v*`) is extended to `plant-v*` so plant releases get the same checks.
+   filter (`v*`) is extended to `plant-v*` so plant releases get the same checks. **Built 2026-10-19:**
+   `tools/plant_release.py` (a dry run by default; `--publish` checks GitHub's latest again afterwards and makes the
+   Walkdown release latest again if it moved), `apps/plant3d/msix/make-msix.sh` (x64 and ARM64: Godot 4.7.2 ships
+   both Windows templates), the Flatpak bundle with its AppStream release entry made from the version, and About in
+   the settings (§7). Both release tools also refuse unless every CI run on the release commit has passed.
 9. **CI** (when the code lands; `tests.yml` jobs): `plant3d` on Linux x86-64: `ref/plant3d.py` on the content and
    the vectors; the Godot build of every area; the model vectors through the app's evaluator (headless); the walking
    test (below); an Android and a Linux export with `--headless` (not baked, not signed) to catch export errors.
