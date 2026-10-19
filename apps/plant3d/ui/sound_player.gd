@@ -399,8 +399,7 @@ func door_moving(door: Node3D, moving: bool) -> void:
 		if not muted and index.has("door_roller") and not _doors.has(door):
 			_doors[door] = _start(door, "door_roller")
 	else:
-		played["door_slide"] = played.get("door_slide", 0) + 1
-		once("door_slide", door)
+		once("door_slide", door)           # (once counts it in played)
 
 
 ## How loud the plant heard from afar is, from how much of it runs (the bound loops' mean gain): silent when
