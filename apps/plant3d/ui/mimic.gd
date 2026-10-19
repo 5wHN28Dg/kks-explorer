@@ -172,7 +172,8 @@ func show_screen(i: int) -> void:
 		fit()
 	var targets := _targets()
 	if not targets.is_empty() and not targets.any(func(c): return c.id == selected):
-		selected = targets[0].id
+		selected = targets[0].id       # by default: the view stays where the screen begins (the overview's key values)
+		_picked = false
 	refresh()
 
 
@@ -499,13 +500,14 @@ func _on_resized() -> void:
 		_view.clear()
 		_build_pieces()
 		fit()
-		if selected != "":
-			reveal(selected)
+		if selected != "" and _picked:
+			reveal(selected)          # a target picked before the canvas had its size (a link to a code)
 	else:
 		_clamp_offset()
 
 
 var _unsized := false
+var _picked := false            # the selection was picked (select()), not the screen's first target by default
 
 
 ## Fits the screen to the canvas: at most so small that its text stays readable (`whole`: all of it, however
@@ -696,6 +698,7 @@ func activate(id: String) -> void:
 
 func select(id: String) -> void:
 	selected = id
+	_picked = true
 	reveal(id)
 	for pc in _pieces:
 		(pc[0] as Control).queue_redraw()
@@ -871,8 +874,17 @@ func _draw_line(a: Rect2, b: Rect2, label: String) -> void:
 	var s := Vector2(-d.y, d.x)
 	canvas.draw_colored_polygon(PackedVector2Array([p1, p1 - d * 14 + s * 7, p1 - d * 14 - s * 7]), LINE)
 	if label != "":
-		var mid := (pts[1] + pts[pts.size() - 2]) * 0.5 if pts.size() > 2 else (p0 + p1) * 0.5
-		_text(canvas, mid + Vector2(6, -20), label, 13, INK_DIM)
+		# beside the line's longest segment, never on it: above a horizontal one, right of a vertical one
+		var k := 0
+		for i in pts.size() - 1:
+			if pts[i].distance_to(pts[i + 1]) > pts[k].distance_to(pts[k + 1]):
+				k = i
+		var q0 := pts[k]
+		var q1 := pts[k + 1]
+		if absf(q0.y - q1.y) < 0.5:
+			_text(canvas, Vector2(minf(q0.x, q1.x) + 10.0, q0.y - 20.0), label, 13, INK_DIM)
+		else:
+			_text(canvas, Vector2(q0.x + 6.0, (q0.y + q1.y) * 0.5 - 8.0), label, 13, INK_DIM)
 
 
 func _alarm_badges(r: Rect2, al: Array) -> void:

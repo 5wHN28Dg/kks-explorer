@@ -99,6 +99,24 @@ func _legible(tree: SceneTree, ui) -> Array:
 		var txt := String(key).get_slice("|", 0)
 		if sm.items.has(txt) and String(mim._fit_cache[key]).ends_with("…"):
 			p.append("the code %s is drawn cut: %s" % [txt, mim._fit_cache[key]])
+	# at the phone's scale the overview opens at its top, its key values in view (not scrolled to its first tile)
+	var Wd = load("res://ui/widgets.gd")
+	var s0: float = Wd.scale
+	Wd.scale = 1.35
+	mim._layouts.clear()
+	mim._view.clear()
+	mim.selected = ""
+	mim.show_screen(-1)
+	mim.canvas.size = Vector2(1850, 600)      # the Note 9's canvas below the bars (its 2960 × 1440 at 1.6)
+	mim._unsized = true
+	mim._on_resized()
+	var k0: Rect2 = mim._layout_of(-1)["keys"][0][1]
+	if mim.to_screen(k0.position).y < 0.0:
+		p.append("the overview opens scrolled past its key values (at %.0f)" % mim.to_screen(k0.position).y)
+	Wd.scale = s0
+	mim._layouts.clear()
+	mim._view.clear()
+	mim.show_screen(-1)
 	ui.close_screens()
 	return p
 

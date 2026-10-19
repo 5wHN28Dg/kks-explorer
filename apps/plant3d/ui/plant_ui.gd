@@ -266,7 +266,9 @@ func _layout_toast() -> void:
 	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible):
 		side = card.size.x + 32.0
 	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))
-	_toast.position = Vector2((vs.x - w) * 0.5, vs.y - 200.0 * W.scale)
+	# over the screens, at their bottom edge: the middle of a screen is where the plant is read
+	var y := vs.y - (70.0 if screens_open() else 200.0) * W.scale
+	_toast.position = Vector2((vs.x - w) * 0.5, y)
 	_toast.size = Vector2(w, 0)
 
 
