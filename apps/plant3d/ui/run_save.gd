@@ -183,10 +183,13 @@ static func _no(why: String, text: String) -> Dictionary:
 	return {"ok": false, "why": why, "text": text}
 
 
-## Writes atomically: the bytes to path.tmp, then renamed over path (a reader sees the old file or the new one,
-## never half of one; where a rename cannot replace a file (Windows), read() falls back to a complete path.tmp: Godot removes the old file first there).
+## Writes atomically: the bytes to a .tmp of this process's own (two app windows never write one file at once),
+## then renamed over path: a reader sees the old file or the new one, never half of one. Where a rename cannot
+## replace a file in one step (Windows: Godot removes the old file first), read() falls back to a complete .tmp.
 static func write(path: String, bytes: PackedByteArray) -> Error:
-	var tmp := path + ".tmp"
+	if bytes.size() > MAX_BYTES:
+		return ERR_FILE_CANT_WRITE         # read() would refuse it
+	var tmp := "%s.tmp.%d" % [path, OS.get_process_id()]
 	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
 		return FileAccess.get_open_error()
@@ -200,11 +203,25 @@ static func write(path: String, bytes: PackedByteArray) -> Error:
 	return DirAccess.rename_absolute(ProjectSettings.globalize_path(tmp), ProjectSettings.globalize_path(path))
 
 
-## The newest complete save at path (or its .tmp when path is missing or damaged): decode()'s result, or
-## {"ok": false, "why": "missing"} when there is none.
+## path and every .tmp beside it (path.tmp, path.tmp.<pid>).
+static func _files(path: String) -> Array:
+	var out := [path]
+	var dir := path.get_base_dir()
+	var stem := path.get_file() + ".tmp"
+	var names := Array(DirAccess.get_files_at(dir)) if DirAccess.dir_exists_absolute(dir) else []
+	names.sort()
+	for nm in names:
+		if nm.begins_with(stem):
+			out.append(dir.path_join(nm))
+	return out
+
+
+## The newest complete save at path or a .tmp beside it (a rename that did not happen, Windows), by the time it was
+## saved (path when equal): decode()'s result, or {"ok": false, "why": "missing"} when there is none.
 static func read(path: String) -> Dictionary:
 	var first := {}
-	for p in [path, path + ".tmp"]:
+	var best := {}
+	for p in _files(path):
 		if not FileAccess.file_exists(p):
 			continue
 		var f := FileAccess.open(p, FileAccess.READ)
@@ -218,13 +235,22 @@ static func read(path: String) -> Dictionary:
 			r = decode(f.get_buffer(len))
 		f.close()
 		if r["ok"]:
-			return r
-		if first.is_empty():
+			if best.is_empty() or r["payload"]["saved_unix"] > best["payload"]["saved_unix"]:
+				best = r
+		elif first.is_empty():
 			first = r
+	if not best.is_empty():
+		return best
 	return first if not first.is_empty() else _no("missing", "there is no saved run")
 
 
 static func remove(path: String) -> void:
-	for p in [path, path + ".tmp"]:
+	for p in _files(path):
 		if FileAccess.file_exists(p):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+
+
+## Keeps the save at path as path.prev (a new run replaces a run: one step back stays possible by hand).
+static func keep_previous(path: String) -> void:
+	if FileAccess.file_exists(path):
+		DirAccess.rename_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(path + ".prev"))

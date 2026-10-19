@@ -29,6 +29,7 @@ var last_error := ""            # why the last load was refused ("" when it was 
 var saves := 0                  # saves written (tests)
 var capture_us := 0             # the main thread's part of the last periodic save
 var _t := 0.0
+var _lt := 0.0
 var _sig := ""
 var _thread: Thread
 
@@ -41,6 +42,12 @@ func setup(u, content_dir: String, save_path := "") -> void:
 
 ## At start: offers a saved run (the plant waits, paused), or arms the saving at once when there is none.
 func begin(offer := true) -> void:
+	if other_window():
+		# a second window (a link opened on a desktop starts one): its run is kept apart, the first one's is untouched
+		path = path.get_base_dir().path_join("run-second.save")
+		offer = false
+		ui.toast("Walkdown Plant is open in another window: this window's run is saved apart and not offered again.", 8.0)
+	_claim()
 	if not offer:
 		armed = true
 		return
@@ -55,6 +62,33 @@ func begin(offer := true) -> void:
 	else:
 		why = r["text"]
 	_show_offer(r["payload"] if r["ok"] and why == "" else {}, why)
+
+
+## Another instance of the app saves to this path now: its pid is in path.lock, it runs, and it renewed the lock
+## lately (a pid alone can be reused). Android runs one instance only: never there.
+func other_window() -> bool:
+	if OS.has_feature("mobile"):
+		return false
+	var lp := path + ".lock"
+	if not FileAccess.file_exists(lp):
+		return false
+	var pid := FileAccess.get_file_as_string(lp).strip_edges().to_int()
+	var age := Time.get_unix_time_from_system() - FileAccess.get_modified_time(lp)
+	return pid > 0 and pid != OS.get_process_id() and age < 3.0 * INTERVAL and OS.is_process_running(pid)
+
+
+func _claim() -> void:
+	if OS.has_feature("mobile"):
+		return
+	var f := FileAccess.open(path + ".lock", FileAccess.WRITE)
+	if f != null:
+		f.store_string(str(OS.get_process_id()))
+
+
+func _release() -> void:
+	var lp := path + ".lock"
+	if FileAccess.file_exists(lp) and FileAccess.get_file_as_string(lp).strip_edges().to_int() == OS.get_process_id():
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(lp))
 
 
 func offering() -> bool:
@@ -87,18 +121,20 @@ func payload() -> Dictionary:
 ## Why this payload can't be continued here, or "".
 func check(p: Dictionary) -> String:
 	if p["app"] != RunSave.app_version():
-		return "it was saved by another version of the app (%s)" % (p["app"] if p["app"] != "" else "a development build")
+		return "it was saved by another version of the app (%s)" % p["app"]
 	if p["content"] != content:
 		return "the plant's content has changed since"
 	if not ui.model.scenarios.has(p["scenario"]):
 		return "its scenario is not in this plant"
 	var fresh = PlantEngine.new(ui.model, p["scenario"])
 	var bad := RunSave.check(fresh, RunSave.engine_fields(fresh), p["engine"])
+	if bad == "":
+		bad = _engine_contents(fresh, p["engine"])
 	if bad != "":
 		return "the plant's state does not fit this version: " + bad
 	var c: Dictionary = p["clock"]
 	if c.size() != 3 or typeof(c.get("speed")) != TYPE_INT or not c["speed"] in [0, 1, 2] \
-			or typeof(c.get("ff_want")) != TYPE_FLOAT or not is_finite(c["ff_want"]) \
+			or typeof(c.get("ff_want")) != TYPE_FLOAT or not (c["ff_want"] >= 1.0 and c["ff_want"] <= SimClock.FF_MAX) \
 			or typeof(c.get("pause_on_hold")) != TYPE_BOOL:
 		return "its clock is damaged"
 	if p["procedure"] != "":
@@ -109,12 +145,13 @@ func check(p: Dictionary) -> String:
 		if bad != "":
 			return "its procedure's progress does not fit this version: " + bad
 		var nsteps: int = ui.model.procedures[p["procedure"]].get("steps", []).size()
-		if p["tracker"]["index"] < -1 or p["tracker"]["index"] >= nsteps:
+		if p["tracker"]["index"] < -1 or p["tracker"]["index"] >= nsteps or not _tracker_contents(p["tracker"], p["engine"]):
 			return "its procedure's progress is damaged"
 	elif not p["tracker"].is_empty():
 		return "its procedure's progress is damaged"
 	var u: Dictionary = p["ui"]
-	if u.size() != 2 or typeof(u.get("results")) != TYPE_DICTIONARY or typeof(u.get("pending")) != TYPE_ARRAY:
+	if u.size() != 2 or typeof(u.get("results")) != TYPE_DICTIONARY or typeof(u.get("pending")) != TYPE_ARRAY \
+			or not _ui_contents(u):
 		return "its panels' state is damaged"
 	var pl: Dictionary = p["player"]
 	if pl.size() != 4 or typeof(pl.get("pos")) != TYPE_VECTOR3 or not pl["pos"].is_finite() \
@@ -122,6 +159,72 @@ func check(p: Dictionary) -> String:
 			or typeof(pl.get("pitch")) != TYPE_FLOAT or not is_finite(pl["pitch"]) or typeof(pl.get("fly")) != TYPE_BOOL:
 		return "the trainee's place is damaged"
 	return ""
+
+
+## What the app indexes with inside the engine's state (the generic check sees only fields, types and lengths): a
+## file whose hash matches but whose contents were changed must not break the session. "" when it fits.
+func _engine_contents(fresh, d: Dictionary) -> String:
+	if d.get("step_no", 0) < 0:
+		return "a negative step"
+	if d.has("mstate"):
+		for mi in d["mstate"].size():
+			if d["mstate"][mi] < 0 or d["mstate"][mi] >= fresh._mc[mi][2].size():
+				return "a machine in a state it doesn't have"
+	if d.has("astate"):
+		for s in d["astate"]:
+			if not s in ["normal", "active_unack", "active_ack", "cleared_unack"]:
+				return "an alarm in a state that doesn't exist"
+	if d.has("shelved"):
+		for x in d["shelved"]:
+			if x < -1:
+				return "a shelf that ends before it began"
+	for k in ["first_out", "faults_done"]:
+		if d.has(k):
+			for key in d[k]:
+				if typeof(key) != TYPE_STRING or (k == "first_out" and typeof(d[k][key]) != TYPE_STRING):
+					return "a damaged %s" % k
+	if d.has("queue"):
+		for q in d["queue"]:
+			if typeof(q) != TYPE_ARRAY or q.is_empty() or not q[0] in ["op", "ack", "shelve", "unshelve", "fault"] \
+					or q.size() != {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2}[q[0]]:
+				return "a damaged input"
+	for k in ["inputs", "events"]:
+		if d.has(k):
+			for x in d[k]:
+				if typeof(x) != TYPE_ARRAY or x.size() < 2 or typeof(x[0]) != TYPE_INT or typeof(x[1]) != TYPE_STRING:
+					return "a damaged %s" % k
+	return ""
+
+
+static func _tracker_contents(t: Dictionary, e: Dictionary) -> bool:
+	var nev: int = e.get("events", []).size()
+	var nin: int = e.get("inputs", []).size()
+	if t.get("_seen", 0) < 0 or t.get("_seen", 0) > nev or t.get("_in_seen", 0) < 0 or t.get("_in_seen", 0) > nin \
+			or t.get("_begin_inputs", 0) < 0 or t.get("_begin_inputs", 0) > nin:
+		return false
+	for x in t.get("log", []):
+		if typeof(x) != TYPE_ARRAY or x.size() != 2 or typeof(x[0]) != TYPE_STRING or typeof(x[1]) != TYPE_INT:
+			return false
+	for x in t.get("deviations", []):
+		if typeof(x) != TYPE_ARRAY or x.size() != 2 or typeof(x[0]) != TYPE_INT or typeof(x[1]) != TYPE_STRING:
+			return false
+	for key in t.get("did", {}):
+		if typeof(key) != TYPE_STRING:
+			return false
+	return true
+
+
+static func _ui_contents(u: Dictionary) -> bool:
+	for key in u["results"]:
+		var r = u["results"][key]
+		if typeof(key) != TYPE_STRING or typeof(r) != TYPE_DICTIONARY or typeof(r.get("state")) != TYPE_STRING \
+				or typeof(r.get("text")) != TYPE_STRING:
+			return false
+	for x in u["pending"]:
+		if typeof(x) != TYPE_ARRAY or x.size() != 3 or typeof(x[0]) != TYPE_STRING or typeof(x[1]) != TYPE_DICTIONARY \
+				or typeof(x[1].get("kks")) != TYPE_STRING or typeof(x[1].get("do")) != TYPE_STRING or typeof(x[2]) != TYPE_INT:
+			return false
+	return true
 
 
 ## Puts the run back (a payload check() passed): the plant, its clock, the procedure and its progress, the panels'
@@ -238,6 +341,7 @@ func _choose(p: Dictionary) -> void:
 		offer_panel = null
 		ui.player.scripted = false
 	if p.is_empty():
+		RunSave.keep_previous(path)             # the run given up stays as run.save.prev until the next one
 		ui.restart(ui.clock.scenario, true)     # afresh (the plant waited at step 0: this is the same start)
 		ui.clock.set_speed(SimClock.Speed.NORMAL)
 	else:
@@ -254,12 +358,16 @@ func _signature() -> String:
 	var tr = ui.tracker
 	var pl = ui.player
 	var pos: Vector3 = pl.global_position.snapped(Vector3(0.25, 0.25, 0.25))
-	return "%d|%d|%d|%s|%d|%s|%s|%.2f|%.2f|%s" % [e.step_no, e.inputs.size(), ui.clock.speed, str(ui.clock.ff_want), int(ui.clock.pause_on_hold),
+	return "%s|%s|%d|%d|%d|%s|%d|%s|%s|%.2f|%.2f|%s" % [ui.clock.scenario, str(tr.proc.get("id", "")) if tr != null else "", e.step_no, e.inputs.size(), ui.clock.speed, str(ui.clock.ff_want), int(ui.clock.pause_on_hold),
 			str([tr.index, tr.did.size(), tr.log.size()]) if tr != null else "-", str(pos), pl.rotation.y,
 			pl.pivot.rotation.x, str(ui.results.size())]
 
 
 func _process(delta: float) -> void:
+	_lt += delta
+	if _lt >= INTERVAL:
+		_lt = 0.0
+		_claim()                        # renewed (the offer too): another window sees this one is alive
 	if not armed or ui.clock == null or ui.clock.engine == null:
 		return
 	if _thread != null and not _thread.is_alive():
@@ -320,3 +428,4 @@ func _notification(what: int) -> void:
 func _exit_tree() -> void:
 	if _thread != null:
 		_finish_thread()
+	_release()

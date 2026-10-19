@@ -144,7 +144,10 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
   The plant waits, paused, behind the offer (nothing can be walked or worked) and nothing is saved until the trainee
   chooses. A save that can't be continued says why and offers only a new run. A start the command line asks for
   (`walk`, `shot`, `scenario`, `procedure`, `speed`) offers nothing and saves to `user://run-options.save`, never
-  over a trainee's run.
+  over a trainee's run. New run keeps the run it replaces as `run.save.prev` (one step back, by hand).
+- **A second window** (a link opened on a desktop while the app runs starts one): `run.save.lock` holds the pid of
+  the window that saves to `run.save`, renewed every 5 s; while that window runs, another one offers nothing and saves
+  to `run-second.save`. Each process writes its own `.tmp` (`run.save.tmp.<pid>`). Not on Android (one instance).
 
 **The file** (`ui/run_save.gd`), little-endian:
 
@@ -157,16 +160,19 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
 | … | the payload: one Dictionary in Godot's binary Variant encoding (`var_to_bytes`, no objects), so doubles keep every bit |
 
 The payload's parts, each required, no others: `app` (the app's version: `application/config/version`, `+`, the first 16 hex digits of `built/code.sha256`,
-which `build.sh` makes from `sim/*.gd`, `ui/run_save.gd`, `ui/autosave.gd` and `ui/procedure_tracker.gd`: an export
-keeps scripts only compiled, so the app can't hash its code itself), `content`
+which `build.sh` makes from `sim/*.gd` and the scripts whose state is saved or read back: `ui/run_save.gd`,
+`ui/autosave.gd`, `ui/procedure_tracker.gd`, `ui/plant_ui.gd`, `ui/sim_clock.gd`, `app/player.gd`; an export keeps
+scripts only compiled, so the app can't hash its code itself. A new build therefore refuses the saves of the one
+before), `content`
 (SHA-256 over every file of `built/content`, by sorted path, with its length), `scenario`, `saved_unix`, `engine`
 (field → value), `clock` (`speed` 0 paused, 1 1×, 2 fast-forward; `ff_want`; `pause_on_hold`), `procedure` (an id,
 or `""`), `tracker` (field → value, `{}` without a procedure), `ui` (`results`, `pending`), `player` (`pos` a
 Vector3 in Godot's axes, `yaw`, `pitch`, `fly`).
 
-**Written atomically:** the bytes go to `run.save.tmp`, which is then renamed over `run.save`: a reader finds the
+**Written atomically:** the bytes go to `run.save.tmp.<pid>`, which is then renamed over `run.save`: a reader finds the
 previous save or the new one, never half of one, whenever the app is stopped. Where a rename can't replace a file
-in one step (Windows), a missing or damaged `run.save` with a complete `run.save.tmp` loads the `.tmp`. There is no
+in one step (Windows), a complete `.tmp` beside `run.save` is read too: the newest complete one (by `saved_unix`)
+is taken. There is no
 fsync (Godot has none): after a power cut right after a save, a file system may hold neither file whole; the app
 then says so and starts a new run.
 
@@ -175,7 +181,9 @@ a payload that is not a Dictionary of exactly those parts of those types is refu
 another app version or other content is refused as such; so is engine or tracker state whose fields are not this
 version's, of other types (where the field is typed: an untyped field takes any value but an object), or (an array the fresh engine holds non-empty, sized by the model) of another length, a
 procedure or scenario the plant doesn't have, a step index outside the procedure, a clock, panel record or place
-that is not of its kind or not finite. Nothing of a refused save is applied.
+that is not of its kind or not finite; and contents the app indexes with (a machine state or alarm state that
+doesn't exist, malformed inputs, events, operations' records or procedure log, a tracker position past the logs)
+even under a matching hash. Nothing of a refused save is applied. A save over 64 MiB is not written.
 
 **Cost:** measured by `tests/bench_save.gd` at the end of the cold start (76 events, 37 KB): on this laptop the
 copy on the main thread takes 0.11–0.15 ms, encoding 0.5 ms and writing 0.15–0.23 ms. The Note 9 runs the model

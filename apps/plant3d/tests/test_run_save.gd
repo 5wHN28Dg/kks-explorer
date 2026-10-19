@@ -74,6 +74,9 @@ func _round_trip(m, script, p: Array):
 	e.ack(e._al[0][0])
 	var name: String = script.resource_path.get_file()
 	var fields := RunSave.engine_fields(e)
+	for f in fields:
+		if typeof(e.get(f)) == TYPE_OBJECT:
+			p.append("%s: the engine's state %s holds an object, which a save can't keep (keep its state in values)" % [name, f])
 	for f in ["cur", "prev", "mem", "mstate", "latched", "astate", "shelved", "events", "inputs", "queue", "step_no"]:
 		if not f in fields:
 			p.append("%s: the save leaves out the engine's %s" % [name, f])
@@ -246,8 +249,9 @@ func _atomic(m, p: Array) -> void:
 	var two := RunSave.encode(_payload(e, 2))
 	RunSave.write(path, one)
 	RunSave.write(path, two)
-	if FileAccess.file_exists(path + ".tmp"):
-		p.append("a write left its .tmp behind")
+	for nm in DirAccess.get_files_at(DIR):
+		if nm.begins_with("at.save.tmp"):
+			p.append("a write left its .tmp behind (%s)" % nm)
 	if FileAccess.get_file_as_bytes(path) != two:
 		p.append("a second write did not replace the first")
 	# killed while writing the next one: half a .tmp; the save read is the last complete one
@@ -267,6 +271,13 @@ func _atomic(m, p: Array) -> void:
 	RunSave.write(path + ".tmp", one)
 	if not RunSave.read(path)["ok"]:
 		p.append("a complete .tmp alone (the save renamed away) was not loaded")
+	RunSave.remove(path)
+	# an older save and a newer complete .tmp beside it (a rename that failed): the newer is taken
+	RunSave.write(path, one)
+	RunSave.write(path + ".tmp", two)
+	r = RunSave.read(path)
+	if not r["ok"] or r["payload"]["saved_unix"] != 2:
+		p.append("an older save hid a newer complete .tmp")
 	RunSave.remove(path)
 	# a failed write (no such folder) returns its error
 	if RunSave.write(DIR.path_join("no/such/folder.save"), one) == OK:
@@ -304,10 +315,11 @@ func _app(tree: SceneTree, p: Array) -> void:
 	var saved_since: Dictionary = ui.alarms.since.duplicate()
 	var saved_results: Dictionary = ui.results.duplicate(true)
 	var saved_step: int = ui.clock.engine.step_no
-	# the uninterrupted run, 300 steps on
-	ui.clock.run_steps(300)
+	# the uninterrupted run, 300 steps on (or to a procedure step's end)
+	var want_ran: int = ui.clock.run_steps(300)
 	var want := _bytes(ui.clock.engine)
 	var want_tr: int = ui.tracker.index
+	var want_ui := var_to_bytes([ui.results, ui._pending, ui.alarms.since, ui.tracker.deviations, ui.tracker.log])
 	main.free()
 	# started again: Continue
 	main = App.start(tree)
@@ -339,7 +351,10 @@ func _app(tree: SceneTree, p: Array) -> void:
 		p.append("Continue did not put the trainee back: %s" % str(ui.player.global_position))
 	if not ui.autosave.armed or ui.autosave.offer_panel != null:
 		p.append("after Continue the offer stayed or the saving did not start")
-	ui.clock.run_steps(300)
+	if ui.clock.run_steps(300) != want_ran:
+		p.append("the continued run ran another number of steps than the uninterrupted one")
+	if var_to_bytes([ui.results, ui._pending, ui.alarms.since, ui.tracker.deviations, ui.tracker.log]) != want_ui:
+		p.append("after Continue the operations' results, alarm times or procedure log differ from the uninterrupted run")
 	if _bytes(ui.clock.engine) != want:
 		p.append("the continued run differs from the one that never stopped")
 	if ui.tracker.index != want_tr:
@@ -362,10 +377,13 @@ func _app(tree: SceneTree, p: Array) -> void:
 		p.append("the periodic save is not the state of the step it was taken at")
 	# going to the background saves at once
 	ui.clock.run_steps(7)
-	ui.autosave.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
-	rp = RunSave.read(path)
-	if not rp["ok"] or rp["payload"]["engine"]["step_no"] != ui.clock.engine.step_no:
-		p.append("going to the background did not save the run")
+	for what in [Node.NOTIFICATION_APPLICATION_PAUSED, Node.NOTIFICATION_WM_CLOSE_REQUEST,
+			Node.NOTIFICATION_APPLICATION_FOCUS_OUT, Node.NOTIFICATION_WM_GO_BACK_REQUEST]:
+		ui.clock.run_steps(7)
+		ui.autosave.notification(what)
+		rp = RunSave.read(path)
+		if not rp["ok"] or rp["payload"]["engine"]["step_no"] != ui.clock.engine.step_no:
+			p.append("notification %d (background, close, focus out, Back) did not save the run" % what)
 	main.free()
 	# New run: a fresh plant, and the save replaced
 	main = App.start(tree)
@@ -382,8 +400,13 @@ func _app(tree: SceneTree, p: Array) -> void:
 	# a save of other content, then a damaged one: refused with the reason, a new run starts
 	var pl: Dictionary = ui.autosave.payload()
 	main.free()
-	for c in [["content", "content has changed"], ["app", "another version of the app"], ["damaged", "cut short"]]:
-		if c[0] == "content":
+	for c in [["content", "content has changed"], ["app", "another version of the app"],
+			["contents", "a machine in a state it doesn't have"], ["damaged", "cut short"]]:
+		if c[0] == "contents":
+			var q := pl.duplicate(true)
+			q["engine"]["mstate"][0] = 99         # under a matching hash
+			RunSave.write(path, RunSave.encode(q))
+		elif c[0] == "content":
 			var q := pl.duplicate(true)
 			q["content"] = "0".repeat(64)
 			RunSave.write(path, RunSave.encode(q))
@@ -407,4 +430,21 @@ func _app(tree: SceneTree, p: Array) -> void:
 			if not ui.autosave.armed or ui.clock.engine.step_no != 0:
 				p.append("after a refused save the new run did not start")
 		main.free()
+	if not FileAccess.file_exists(path + ".prev"):
+		p.append("New run did not keep the run it replaced")
+	# a second window while another one saves to the run: it offers nothing and saves apart
+	var other := OS.create_process("sleep", ["60"])
+	FileAccess.open(path + ".lock", FileAccess.WRITE).store_string(str(other))
+	main = App.start(tree)
+	ui = main.ui
+	if App.find_button(ui, "Continue") != null or App.find_button(ui, "New run") != null \
+			or not ui.autosave.path.ends_with("run-second.save") or not ui.autosave.armed:
+		p.append("a second window offered the run or saves over the first one's (%s)" % ui.autosave.path)
+	main.free()
+	OS.kill(other)
+	if FileAccess.get_file_as_string(path + ".lock") != str(other):
+		p.append("the second window took the first one's lock")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path + ".lock"))
 	RunSave.remove(path)
+	RunSave.remove(path.get_base_dir().path_join("run-second.save"))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path + ".prev"))
