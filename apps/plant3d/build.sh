@@ -8,7 +8,7 @@
 #   tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh bake
 #                                             the content build, the tests and the lightmap's bake (builder/bake/:
 #                                             Godot bakes only in its editor, on a GPU); `release` bakes too
-# TARGETs: android-debug android-release linux windows (default: all). Outputs in apps/plant3d/export/.
+# TARGETs: android-debug android-release linux windows windows-arm64 (default: all). Outputs in apps/plant3d/export/.
 # The Android release is signed with the plant's own key (0054: never Walkdown's), by apksigner after the export, so
 # that Gradle never sees it (0056): its properties file
 # (storeFile, storePassword, keyAlias; key password = store password, as Godot requires) is
@@ -18,7 +18,7 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 MODE="${1:-}"; [ $# -gt 0 ] && shift
-TARGETS="${*:-android-debug android-release linux windows}"
+TARGETS="${*:-android-debug android-release linux windows windows-arm64}"
 GODOT="${GODOT:-$("$ROOT/tools/plant3d/bench/fetch_godot.sh")}"
 T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godot running: never wait for ever
 
@@ -107,7 +107,7 @@ case "$MODE" in
 esac
 # export mode writes to export/check/: never over a baked, signed release that the phone scripts install
 OUTD="$HERE/export"; [ "$MODE" = export ] && OUTD="$HERE/export/check"
-mkdir -p "$OUTD/linux" "$OUTD/windows"
+mkdir -p "$OUTD/linux" "$OUTD/windows" "$OUTD/windows-arm64"
 # The editor's settings for the export (Android SDK, JDK, debug key) in a folder of the project's own: the user's
 # Godot editor settings are left alone.
 JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/temurin-25-jdk-amd64}"
@@ -212,6 +212,7 @@ for t in $TARGETS; do
       ;;
     linux) exp forward_plus release Linux "$OUTD/linux/walkdown-plant.x86_64" ;;
     windows) exp forward_plus release Windows "$OUTD/windows/WalkdownPlant.exe" ;;
+    windows-arm64) exp forward_plus release "Windows ARM64" "$OUTD/windows-arm64/WalkdownPlant.exe" ;;
     *) echo "unknown target $t" >&2; exit 2 ;;
   esac
 done
