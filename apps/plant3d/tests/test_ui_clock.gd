@@ -35,14 +35,19 @@ func run(tree: SceneTree) -> Array:
 		p.append("fast-forward refused at cold iron: %s" % c.ff_blocked())
 	var t0 := Time.get_ticks_usec()
 	var s1: int = c.engine.step_no
+	# the rate each frame runs at, summed: the cap follows the step's measured cost as it runs, so a busy machine
+	# lowers it during the second (the rate read after it under-counted what the frames were allowed: 306 steps
+	# against 29.7× on a loaded laptop, second realism pass)
+	var allowed := 0.0
 	for i in 60:
+		allowed += c.ff_rate() / 60.0 / SimClock.STEP
 		c._process(1.0 / 60.0)
 	var spent := (Time.get_ticks_usec() - t0) / 1e6
 	var steps: int = c.engine.step_no - s1
 	if steps <= 60:
 		p.append("fast-forward ran %d steps in a second of frames" % steps)
-	if steps > ceili(c.ff_rate() * 10.0) + 1:
-		p.append("fast-forward ran %d steps, more than its rate %.1f× allows" % [steps, c.ff_rate()])
+	if steps > ceili(allowed) + 1:
+		p.append("fast-forward ran %d steps, more than its rate allows (%.1f steps)" % [steps, allowed])
 	print("  fast-forward: %d steps for 1 s of frames, %.0f ms of model time on this machine, cap %.0f×" % [steps, spent * 1000.0, c.ff_cap()])
 	# the budget: with a step said to cost 4 ms, a 60 fps frame (16.7 ms) may run one step (a quarter is 4.2 ms)
 	c.step_ms = 4.0
