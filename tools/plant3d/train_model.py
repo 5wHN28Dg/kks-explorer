@@ -8,7 +8,7 @@ PSAT = [[10, 1.23], [20, 2.34], [25, 3.17], [30, 4.25], [35, 5.63], [40, 7.38], 
         [55, 15.76], [60, 19.95], [65, 25.0], [70, 31.2], [80, 47.4], [90, 70.1], [100, 101.3]]   # °C → kPa(a)
 STEAM = [[100, 1.01], [120, 1.99], [140, 3.61], [160, 6.18], [180, 10.0], [200, 15.5], [212, 20.0], [234, 30.0],
          [250, 39.7], [264, 50.0], [276, 60.0], [295, 80.0], [311, 100.0], [325, 120.0], [330, 128.0],
-         [335, 137.7], [340, 146.0], [345, 154.7]]  # °C → bar
+         [335, 137.1], [340, 146.0], [345, 155.4]]  # °C → bar (IAPWS-IF97, rounded)
 
 
 def inv(points):
@@ -501,7 +501,7 @@ def cw():
     # (why its valve closes when it stops; on a loss of the valves' power supply they stay where they are)
     m.tab('cw_hdr', 'cw_pot', [[0, 0], [15000, 1]], 'pu')
     for x, n in pumps:
-        m.prod(f'cw_{x}_back', [f'cw_{x}_nrun', f'cw_{x}_v_pos', 'cw_hdr', 9000], 'm³/h')
+        m.prod(f'cw_{x}_back', [f'cw_{x}_nrun', f'cw_{x}_v_pos', 'cw_hdr', 7500], 'm³/h')
     m.sum('cw_back', [f'cw_{x}_back' for x, _ in pumps], 'm³/h')
     m.diff('cw_net0', 'cw_pot', 'cw_back')
     m.max('cw_net', ['cw_net0', 0], 'm³/h')
