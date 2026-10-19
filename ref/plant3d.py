@@ -28,6 +28,7 @@ SURFACES = ('platform', 'floor', 'grating', 'road')     # an outline at the part
 STAIR = {'rise': (0.15, 0.20), 'going': 0.25, 'step_rule': (0.60, 0.66), 'flight': 3.6}
 TOL = 0.05          # metres: a stair's or ladder's end meets a surface within this height and plan distance
 BLOCKS = ('h', 'p', 'ul', 'ol', 'table', 'callout', 'cards', 'chain')
+SIGN_SYMBOLS = ('M003',)   # safety signs' symbols the app draws (ISO 7010; PLANT3D.md §5)
 FORMATS = {'plant': 'walkdown-plant', 'area': 'walkdown-plant-area', 'model': 'walkdown-plant-model',
            'scenario': 'walkdown-plant-scenario', 'procedure': 'walkdown-plant-procedure',
            'sounds': 'walkdown-plant-sounds', 'kit': 'walkdown-plant-kit'}
@@ -494,7 +495,8 @@ class Plant:
             self.check_structure(s, aid, bounds, f'{rel}: structure {s.get("id", i) if isinstance(s, dict) else i}')
         for i, s in enumerate(lst(a['signs'], f'{rel}.signs', 0, 2000)):
             w = f'{rel}: sign {i}'
-            keys(s, ('text', 'at', 'yaw'), ('size',), w)
+            keys(s, ('text', 'at', 'yaw'), ('size', 'symbol'), w)
+            need(s.get('symbol', 'M003') in SIGN_SYMBOLS, 'bad_value', f'{w}: the symbol {s.get("symbol")!r} is none of {SIGN_SYMBOLS}')
             name_text(s['text'], w)
             xyz(s['at'], w)
             num(s['yaw'], w, 0, 360)

@@ -31,11 +31,13 @@ func run(tree: SceneTree) -> Array:
 	wav(dir.path_join("horn_p1.tones.wav"), 0.5)
 	wav(dir.path_join("breaker.once.wav"), 0.2)
 	wav(dir.path_join("breaker_open.once.wav"), 0.3)
+	wav(dir.path_join("surge_thud.once.wav"), 0.4)
 	var idx := {"format": "walkdown-plant-sound-files", "version": 1, "sounds": {
 		"motor_large": {"loop": true, "layers": [{"layer": "mains", "file": "motor_large.tones.wav", "pitch": false},
 			{"layer": "tones", "file": "motor_large.tones.wav", "pitch": true}]},
 		"breaker": {"loop": false, "layers": [{"layer": "once", "file": "breaker.once.wav", "pitch": false}]},
 		"breaker_open": {"loop": false, "layers": [{"layer": "once", "file": "breaker_open.once.wav", "pitch": false}]},
+		"surge_thud": {"loop": false, "layers": [{"layer": "once", "file": "surge_thud.once.wav", "pitch": false}]},
 		"horn_p1": {"loop": true, "layers": [{"layer": "tones", "file": "horn_p1.tones.wav"}]},
 		"horn_p2": {"loop": true, "layers": [{"layer": "tones", "file": "horn_p1.tones.wav"}]}}}
 	FileAccess.open(dir.path_join("index.json"), FileAccess.WRITE).store_string(JSON.stringify(idx))
@@ -123,6 +125,48 @@ func run(tree: SceneTree) -> Array:
 		await tree.process_frame
 	if not pump.find_children("*", "AudioStreamPlayer3D", true, false).filter(func(x): return not x.is_queued_for_deletion()).is_empty():
 		p.append("the pump's sound still plays out of earshot")
+	# a pump started against an open valve: the surge that shakes the camera slams with a thud at the pump
+	# (FIRST-TRAIN §4 step 4), once a surge, and not out of earshot
+	var e = ui.clock.engine
+	var surging: Array = ui.sounds._surges.map(func(sg): return String(sg[0].name))
+	surging.sort()
+	if surging != ["30PAC10AP001", "30PAC10AP002", "30PAC10AP003"]:
+		p.append("the surges watched for a thud are %s, not the CW pumps' (a vibration never thuds)" % str(surging))
+	var thud_s = ui.sounds._stream("surge_thud.once.wav", false)
+	var thuds := func(): return pump.find_children("*", "AudioStreamPlayer3D", true, false).filter(func(x): return x.stream == thud_s and not x.is_queued_for_deletion()).size()
+	var surge: int = e.ix["cw_a_surge"]
+	e.cur[surge] = 0.0
+	ui.sounds.on_step()
+	e.cur[surge] = 6.0
+	ui.sounds.on_step()
+	if thuds.call() != 0 or ui.sounds.played.get("surge_thud", 0) != 0:
+		p.append("a surge's thud plays out of earshot")
+	e.cur[surge] = 0.0
+	ui.sounds.on_step()
+	ui.player.global_position = ui.index.center("30PAC10AP001") + Vector3(0, 1.0, 4.0)
+	for i in 10:
+		await tree.process_frame
+	e.cur[surge] = 0.5          # building up: 0.5 bar × 0.05 is below the slam
+	ui.sounds.on_step()
+	if thuds.call() != 0:
+		p.append("a surge's thud plays before the surge")
+	e.cur[surge] = 6.0
+	ui.sounds.on_step()
+	e.cur[surge] = 4.0          # dying down: the same surge
+	ui.sounds.on_step()
+	if thuds.call() != 1 or ui.sounds.played.get("surge_thud", 0) != 1:
+		p.append("CW pump A's start surge did not play one thud at the pump (%d)" % thuds.call())
+	e.cur[surge] = 0.0
+	ui.sounds.on_step()
+	e.cur[surge] = 6.0
+	ui.sounds.on_step()
+	if ui.sounds.played.get("surge_thud", 0) != 2:
+		p.append("a second surge after the first had died down did not thud again")
+	ui.sounds.reset_edges()     # a restarted plant seen mid-surge: no thud from the old run
+	ui.sounds.on_step()
+	if ui.sounds.played.get("surge_thud", 0) != 2:
+		p.append("a restart in the middle of a surge played a thud")
+	e.cur[surge] = 0.0
 	# the horn: on with an unacknowledged priority 1 alarm, off when silenced
 	ui.sounds.horn(1)
 	if ui.sounds._horn == null or not ui.sounds._horn.playing:

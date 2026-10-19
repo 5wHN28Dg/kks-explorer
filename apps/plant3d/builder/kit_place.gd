@@ -410,6 +410,82 @@ func _plate_mesh(kind: String) -> Dictionary:
 		_plates[kind] = Kit._meshes(m.finish(), Vector3.ZERO).values()[0]
 	return _plates[kind]
 
+# ------------------------------------------------------------------ safety signs
+
+const SIGN_BACK := 0.13      # metres out from the wall's line: its face (walls are 0.25 thick on it), and a gap
+const SIGN_THICK := 0.02     # the board
+const SIGN_SYMBOLS := ["M003"]
+
+## The sign's layout for text `text_w` wide in a font of `size` (its line's height): {w, h, lo (the board's bottom
+## below the text's centre line), disc (the symbol's centre above it), r (its radius), face (the board's face out
+## from the wall's line)}. As ISO 3864-1 lays a sign out: the symbol above its supplementary text, on one white
+## board. The symbol is three lines of text across, so it is made out at least as far away as the text is read.
+static func sign_layout(text_w: float, size: float) -> Dictionary:
+	var m := 0.4 * size
+	var r := 1.5 * size
+	var w := maxf(text_w, 2.0 * r) + 2.0 * m
+	var lo := size * 0.5 + m
+	return {"w": w, "h": lo + size * 0.5 + m + 2.0 * r + m, "lo": lo, "disc": size * 0.5 + m + r, "r": r,
+		"face": SIGN_BACK + SIGN_THICK}
+
+## The sign's board with its symbol, in its own frame (x across, y up, z out of the wall, metres from the point on
+## the wall's line), drawn by us (no artwork: CC0 by construction). Built in part axes (x, y = -z, z = y), one mesh:
+## its colours all resolve to `plain`, so in its cell it merges with the tag plates' (no draw call of its own).
+## M003 ("wear ear protection", ISO 7010): a blue disc, and on it in white a head with ear defenders: the head and
+## its neck, the shoulders, two ear cups clear of the head and the headband over it, clear of the head's top.
+static func sign_mesh(symbol: String, text_w: float, size: float) -> MB:
+	assert(symbol in SIGN_SYMBOLS)
+	var L := sign_layout(text_w, size)
+	var m := MB.new()
+	var f: float = L.face
+	m.use("plate", "identify")
+	m.box(Vector3(0, -(SIGN_BACK + SIGN_THICK * 0.5), -L.lo + L.h * 0.5), Vector3(L.w, SIGN_THICK, L.h))
+	var out := Vector3(0, -1, 0)
+	var R: float = L.r
+	var cy: float = L.disc
+	# a point of the symbol (in its radii, x across, y up) at depth d in front of the board, in part axes
+	var at := func(x: float, y: float, d: float) -> Vector3: return Vector3(x * R, -(f + d), cy + y * R)
+	var ellipse := func(cx: float, cy2: float, rx: float, ry: float, d: float) -> Array:
+		var pts := []
+		for i in 32:
+			var t := TAU * i / 32.0
+			pts.append(at.call(cx + rx * cos(t), cy2 + ry * sin(t), d))
+		return pts
+	m.use("sign_blue", "identify")
+	m.disk(at.call(0, 0, 0.005), out, R, 48)
+	m.use("plate", "identify")
+	var d := 0.01
+	# the shoulders: inside the disc's 0.86 below a gentle rise to the neck (convex: one fan)
+	var sh := []
+	var xe := sqrt(0.86 * 0.86 - 0.62 * 0.62)
+	var a0 := atan2(-0.62, -xe)
+	var a1 := atan2(-0.62, xe)
+	for i in 17:
+		var t := lerpf(a0, a1, i / 16.0)
+		sh.append(at.call(0.86 * cos(t), 0.86 * sin(t), d))
+	for i in range(1, 12):
+		var x := lerpf(xe, -xe, i / 12.0)
+		sh.append(at.call(x, -0.62 + 0.10 * cos(PI * 0.5 * x / xe), d))
+	m.poly(sh, out)
+	m.poly([at.call(-0.12, -0.6, d), at.call(0.12, -0.6, d), at.call(0.12, -0.2, d), at.call(-0.12, -0.2, d)], out)
+	m.poly(ellipse.call(0.0, 0.02, 0.25, 0.34, d), out)                      # the head
+	for sx: float in [-1.0, 1.0]:
+		m.poly(ellipse.call(sx * 0.39, 0.0, 0.10, 0.17, d), out)            # an ear cup
+	for i in 16:                                                             # the headband
+		var t0 := PI * i / 16.0
+		var t1 := PI * (i + 1) / 16.0
+		m.poly([at.call(0.43 * cos(t0), 0.43 * sin(t0), d), at.call(0.50 * cos(t0), 0.50 * sin(t0), d),
+			at.call(0.50 * cos(t1), 0.50 * sin(t1), d), at.call(0.43 * cos(t1), 0.43 * sin(t1), d)], out)
+	return m
+
+var _signs := {}
+## A safety sign's board and symbol at `xf` (the sign's frame on the wall's line), into the cells.
+func sign_board(xf: Transform3D, symbol: String, text_w: float, size: float) -> void:
+	var key := "sign|%s|%.3f|%.3f" % [symbol, text_w, size]
+	if not _signs.has(key):
+		_signs[key] = Kit._meshes(sign_mesh(symbol, text_w, size).finish(), Vector3.ZERO).values()[0]
+	_cell(_signs[key], _signs[key].mesh.resource_name, xf)       # merged with the plates' layer in its cell
+
 # ------------------------------------------------------------------ the cells
 
 func _cell(L: Dictionary, key: String, xf: Transform3D) -> void:

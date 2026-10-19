@@ -106,19 +106,23 @@ def stair_tower(sid, foot, top, width=1.2):
     return st(sid, 'stair', params={'foot': foot, 'top': top, 'layout': 'switchback', 'width': width})
 
 
-def sign(text, at, yaw=0, size=0.4):
-    return {'text': text, 'at': at, 'yaw': yaw, 'size': size}
+def sign(text, at, yaw=0, size=0.4, symbol=None):
+    s = {'text': text, 'at': at, 'yaw': yaw, 'size': size}
+    if symbol:
+        s['symbol'] = symbol
+    return s
 
 
 HEARING = 'Hearing protection required'
 HEARING_SIZE = 0.3
 HEARING_HALF = 0.55 * HEARING_SIZE * len(HEARING) / 2   # half its text's width: about 0.55 em a character
+HEARING_MARGIN = 0.4 * HEARING_SIZE                       # its board's beyond the text (kit_place.gd sign_layout)
 
 
 def hearing_signs(structures, flip=()):
     """The mandatory sign (ISO 7010 M003, wear ear protection) at every door in `structures`, as on site
     (FIRST-TRAIN §6): on the wall beside the opening at eye height, facing out (a door's yaw points out of its
-    building), its text clear of the opening: to the door's right seen from outside, or its left for the doors in
+    building), its board (the symbol above the text) clear of the opening: to the door's right seen from outside, or its left for the doors in
     `flip` (where the wall's corner is nearer). The areas call it for their loud buildings, those with a machine of
     85 dB(A) or more inside (the upper exposure action value of EU Directive 2003/10/EC); tests/test_plant3d_sounds.py
     checks that these are exactly the loud ones and that each sign sits on its wall clear of the opening."""
@@ -129,9 +133,9 @@ def hearing_signs(structures, flip=()):
         yaw = d.get('yaw', 0)
         r = math.radians(yaw)
         fx, fy = math.sin(r), math.cos(r)
-        k = (d['params'].get('width', 1.0) / 2 + HEARING_HALF + 0.3) * (-1 if d['id'] in flip else 1)
+        k = (d['params'].get('width', 1.0) / 2 + HEARING_HALF + HEARING_MARGIN + 0.3) * (-1 if d['id'] in flip else 1)
         out.append(sign(HEARING, [round(d['at'][0] + fy * k, 3) + 0.0, round(d['at'][1] - fx * k, 3) + 0.0, 1.8],
-                        yaw, HEARING_SIZE))
+                        yaw, HEARING_SIZE, 'M003'))
     return out
 
 

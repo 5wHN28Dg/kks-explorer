@@ -785,15 +785,31 @@ func _area(root: Node3D, a: Dictionary) -> void:
 		var l := Label3D.new()
 		l.name = "sign"
 		l.text = sg.text
-		l.pixel_size = float(sg.get("size", 0.3)) / 64.0
+		var size := float(sg.get("size", 0.3))
+		l.pixel_size = size / 64.0
 		l.font_size = 64
-		l.outline_size = 12
+		l.double_sided = false
 		# yaw is the way the sign's face points: it stands a little in front of the wall it is fixed to, and its
 		# back is blank
 		var fd := Geom.heading(float(sg.get("yaw", 0)))
-		l.position = Geom.g([sg.at[0] + fd.x * 0.25, sg.at[1] + fd.y * 0.25, sg.at[2]])
 		l.rotation.y = Geom.yaw_rad(float(sg.get("yaw", 0))) + PI
-		l.double_sided = false
+		var symbol: String = sg.get("symbol", "")
+		if symbol == "":
+			l.outline_size = 12
+			l.position = Geom.g([sg.at[0] + fd.x * 0.25, sg.at[1] + fd.y * 0.25, sg.at[2]])
+		else:
+			# a safety sign (PLANT3D.md §5): its symbol above the text on a white board fixed to the wall, the text
+			# black on it (no outline: the label is one draw call, and the board merges into its cell's)
+			var w := ThemeDB.fallback_font.get_string_size(sg.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 64).x * l.pixel_size
+			var base := Geom.g([sg.at[0], sg.at[1], sg.at[2]])
+			var xf := Transform3D(Basis(Vector3.UP, l.rotation.y), base)      # the label's frame: x along its text, z out
+			kp.sign_board(xf, symbol, w, size)
+			l.outline_size = 0
+			l.modulate = Color(0.02, 0.02, 0.02)
+			l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+			l.position = base + xf.basis.z * (kp.sign_layout(w, size).face + 0.005)
+			l.set_meta("symbol", symbol)
+			l.set_meta("text_width", w)
 		signs.add_child(l)
 	kp.flush(root)
 
