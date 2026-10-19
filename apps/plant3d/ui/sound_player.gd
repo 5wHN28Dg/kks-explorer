@@ -184,7 +184,6 @@ func on_step() -> void:
 				sg[3] = 0
 				sg[4] = v
 				if (sg[0] as Node3D).global_position.distance_to(listener_at) < EARSHOT:
-					played["surge_thud"] = played.get("surge_thud", 0) + 1
 					once("surge_thud", sg[0])
 			else:
 				sg[4] = minf(sg[4], v)
