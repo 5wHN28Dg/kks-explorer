@@ -117,6 +117,7 @@ func _wall(root: Node3D, r: Rect2) -> void:
 			else:
 				b._wall_panel(st, body, p0, p1, 0.0, WALL_H, 0.2)
 			var pc := Geom.rect(p0.x - 0.2, p0.y - 0.2, p0.x + 0.2, p0.y + 0.2)
+			st.set_color(b.top_colour(WALL_H + 0.15))   # its own top (it stands higher than the panels: review)
 			Geom.add_prism(st, pc, 0.0, WALL_H + 0.15)
 	b._mesh_node(body, "panels", st, b._mat("wall_concrete"), Lightmap.GROUND_TEXEL)
 	b._mesh_node(body, "gate", gate, b._mat("fence"), Lightmap.SHEET_TEXEL)   # a thin sheet: a fine texel

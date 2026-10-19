@@ -539,6 +539,8 @@ func _panel(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, z0: float, z1: 
 
 ## The vertex colour that tells the weathered shader where a wall panel's top is (its `top_edge`: streaks hang from
 ## there): r in quarter metres (to 63.75 m), g the fraction of a quarter. Vertex colours are stored as 8 bits.
+## The top is the builder's z, which the shader compares with the world's y: right while every area and building
+## stands at grade 0 (none is placed higher); one placed higher would need its offset added here.
 static func top_colour(z1: float) -> Color:
 	var q := clampf(z1, 0.0, 63.9) / 0.25
 	return Color(floorf(q) / 255.0, q - floorf(q), 0.0, 1.0)

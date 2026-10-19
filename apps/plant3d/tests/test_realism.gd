@@ -159,7 +159,7 @@ func run(tree: SceneTree) -> Array:
 			top_y = maxf(top_y, v.y)
 		for i in cols.size():
 			var top := (roundf(cols[i].r * 255.0) + cols[i].g) * 0.25
-			if top + 0.02 < ys[i].y - panels.global_position.y - 0.2:   # pilasters stand 0.15 m higher
+			if top + 0.02 < ys[i].y - panels.global_position.y:   # a pier's own top too (they stand 0.15 m higher)
 				bad += 1
 			if top > top_y - panels.global_position.y + 0.02:   # nor above the wall: no streak would reach it
 				high += 1
