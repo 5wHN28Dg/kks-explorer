@@ -57,6 +57,14 @@
   ["gt1_lube_sup", {"not": "gt1_lube_est"}],
   ["gt1_lp_low", {"cmp": ["gt1_lube_p", "<", 1.8]}],
   ["gt1_dc_auto_c", {"and": ["gt1_lube_est", "gt1_lp_low"]}],
+  ["gt1_oil_heat", {"of": "gt1_speed", "table": [[0, 0], [0.01, 0.1], [1, 1]]}],
+  ["gt1_oil_k", {"of": "ccw_ok", "table": [[0, 60], [1, 12]], "unit": "K"}],
+  ["gt1_oil_rise", {"product": ["gt1_oil_heat", "gt1_oil_k"], "unit": "K"}],
+  ["gt1_oil_tgt", {"sum": ["ccw_t", "gt1_oil_rise"], "unit": "°C"}],
+  ["gt1_oil_t", {"lag": "gt1_oil_tgt", "tau": 600, "init": 35, "unit": "°C", "kks": "10MBV10CT001"}],
+  ["gt1_oil_t_h", {"cmp": ["gt1_oil_t", ">", 60]}],
+  ["gt1_oil_t_hc", {"cmp": ["gt1_oil_t", "<", 58]}],
+  ["gt1_oil_t_hh", {"cmp": ["gt1_oil_t", ">", 70]}],
   ["gt1_lube_trip_clear", {"not": "gt1_trip_lube_latched"}],
   ["gt1_slow", {"cmp": ["gt1_speed", "<", 0.05]}],
   ["gt1_tg_run", {"and": ["gt1_tg_cmd", "gt1_lube_ok", "gt1_slow"]}],
@@ -225,7 +233,9 @@
   ["gt1_vib_hh", {"or": ["gt1_vib1_hh", "gt1_vib2_hh", "gt1_vib3_hh", "gt1_vib4_hh"]}],
   ["gt1_st_rise", {"of": "gt1_mw", "table": [[0, 10], [250, 70]]}],
   ["gt1_st_f", {"product": ["gt1_stator_fault", 50]}],
-  ["gt1_st_tgt", {"sum": ["ambient_t", "gt1_st_rise", "gt1_st_f"]}],
+  ["gt1_st_cl", {"of": "ccw_ok", "table": [[0, 40], [1, 0]]}],
+  ["gt1_st_c", {"product": ["gt1_st_cl", "gt1_lf"]}],
+  ["gt1_st_tgt", {"sum": ["ambient_t", "gt1_st_rise", "gt1_st_f", "gt1_st_c"]}],
   ["gt1_stator_t", {"lag": "gt1_st_tgt", "tau": 600, "init": 35, "unit": "°C"}],
   ["gt1_st1", {"sum": ["gt1_stator_t", 0], "unit": "°C", "kks": "10MKA10CT001"}],
   ["gt1_st1_h", {"cmp": ["gt1_st1", ">", 120]}],
@@ -260,7 +270,7 @@
   ["gt1_sync_ok", {"and": ["gt1_ph_ok", "gt1_slip_ok", "gt1_v_ok"]}],
   ["gt1_spd95", {"cmp": ["gt1_speed", ">=", 0.95]}],
   ["gt1_brk_open", {"not": "gt1_brk_cmd"}],
-  ["gt1_any_trip", {"or": ["gt1_trip_lube_latched", "gt1_trip_flame_latched", "gt1_trip_exh_latched", "gt1_trip_spread_latched", "gt1_trip_os_latched", "gt1_trip_vib_latched", "gt1_trip_surge_latched", "gt1_trip_drum_hh_latched", "gt1_trip_drum_ll_latched"]}],
+  ["gt1_any_trip", {"or": ["gt1_trip_lube_latched", "gt1_trip_flame_latched", "gt1_trip_exh_latched", "gt1_trip_spread_latched", "gt1_trip_os_latched", "gt1_trip_vib_latched", "gt1_trip_surge_latched", "gt1_trip_drum_hh_latched", "gt1_trip_drum_ll_latched", "gt1_trip_oil_temp_latched"]}],
   ["gt1_trips_clear", {"not": "gt1_any_trip"}],
   ["gen1_prot_c", {"and": ["gt1_any_trip", "gt1_brk_cmd"]}],
   ["gt1_at_base", {"cmp": ["gt1_mw", ">=", 249]}]
@@ -277,7 +287,7 @@
   {"kks": "10MBY10CS001", "do": "set", "input": "gt1_bias", "range": [-0.01, 0.01], "where": ["screen"]},
   {"kks": "10MBA10", "do": "start", "machine": "gt1_start", "needs": [["gt1_lube_ok", "Lube oil pressure below 1.8 bar"], ["gt1_tg_run", "Turning gear not running"], ["gt1_gas_ok", "Fuel gas pressure below 25 bar"], ["ccw_ok", "Closed cooling water not in service"], ["gt1_trips_clear", "A GT trip is latched: reset it first"], ["hp_lvl_ok", "HP drum level outside ±150 mm"], ["fw_avail", "No feedwater pump running"]], "where": ["screen"]},
   {"kks": "10MBA10", "do": "stop", "machine": "gt1_start", "where": ["screen"]},
-  {"kks": "10MKA10", "do": "set", "input": "gt1_load_sp", "range": [10, 250], "where": ["screen"]},
+  {"kks": "10MKA10", "do": "set", "input": "gt1_load_sp", "range": [10, 250], "needs": [["hp_slide", "No steam sink (steam turbine off load, bypass not in automatic): GT 1 is held at minimum load"]], "where": ["screen"]},
   {"kks": "10MBK10AE001", "do": "start", "set": {"gt1_tg_cmd": 1}, "needs": [["gt1_lube_ok", "Lube oil pressure below 1.8 bar"]], "where": ["local", "screen"]},
   {"kks": "10MBK10AE001", "do": "stop", "set": {"gt1_tg_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "10MBV10CP001", "do": "reset", "trip": "gt1_trip_lube", "where": ["screen"]},
@@ -289,6 +299,7 @@
   {"kks": "10MBA10", "do": "reset", "trip": "gt1_trip_surge", "where": ["screen"]},
   {"kks": "10HAD30CL001", "do": "reset", "trip": "gt1_trip_drum_hh", "where": ["screen"]},
   {"kks": "10HAD30CL002", "do": "reset", "trip": "gt1_trip_drum_ll", "where": ["screen"]},
+  {"kks": "10MBV10CT001", "do": "reset", "trip": "gt1_trip_oil_temp", "where": ["screen"]},
   {"kks": "10BAC10", "do": "reset", "trip": "gen1_trip_prot", "where": ["screen"]}
  ],
  "interlocks": [
@@ -298,6 +309,8 @@
   {"id": "gt1_start", "kks": "10MBA10", "init": "standstill", "commands": {"start": {"from": ["standstill"], "to": "crank"}, "stop": {"from": ["crank", "purge", "coast", "ignite", "accel", "accel_sfc_off", "fsnl"], "to": "coastdown"}}, "states": [{"id": "standstill", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "watch": false}, {"id": "crank", "set": {"gt1_sfc_on": 1, "gt1_speed_sp": 0.25}, "next": [["gt1_at_crank", "purge"]], "say": "Cranking: the static frequency converter drives the generator as a motor"}, {"id": "purge", "next": [["gt1_purge_done", "coast"]], "watch": false, "say": "HRSG purge: five volume changes of air through the gas path"}, {"id": "coast", "set": {"gt1_sfc_on": 0, "gt1_speed_sp": 0.15}, "next": [["gt1_at_coast", "ignite"]], "say": "Coasting down to ignition speed"}, {"id": "ignite", "set": {"gt1_sfc_on": 1, "gt1_ign": 1, "gt1_fuel_on": 1}, "next": [["gt1_flame", "accel"]], "say": "Ignition: fuel gas and igniters on"}, {"id": "accel", "set": {"gt1_ign": 0, "gt1_speed_sp": 1}, "next": [["gt1_at_sfc_off", "accel_sfc_off"]], "say": "Flame detected: accelerating with the SFC"}, {"id": "accel_sfc_off", "set": {"gt1_sfc_on": 0}, "next": [["gt1_at_full", "fsnl"]], "say": "SFC off at 70 % speed: the turbine accelerates on its own"}, {"id": "fsnl", "next": [["gt1_brk_cmd", "loaded"]], "watch": false, "say": "Full speed no load: ready to synchronise"}, {"id": "loaded", "next": [["gt1_brk_open", "fsnl"]], "watch": false, "say": "On the grid"}, {"id": "coastdown", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "next": [["gt1_still", "standstill"]], "say": "Stopping: fuel off"}, {"id": "trip", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "next": [["gt1_still", "standstill"]], "say": "TRIPPED: fuel off"}]}
  ],
  "alarms": [
+  {"id": "gt1_oil_t_h", "kks": "10MBV10CT001", "text": "GT 1 lube oil temperature high", "when": "gt1_oil_t_h", "priority": 2, "where": "10MBV10AP001", "isa": "TAH", "clear": "gt1_oil_t_hc"},
+  {"id": "gt1_oil_t_hh", "kks": "10MBV10CT001", "text": "GT 1 lube oil temperature high-high", "when": "gt1_oil_t_hh", "priority": 1, "where": "10MBV10AP001", "isa": "TAHH"},
   {"id": "gt1_lp1_low", "kks": "10MBV10CP001", "text": "GT 1 lube oil pressure low (1)", "when": "gt1_lp_1_l", "priority": 2, "where": "10MBV10CP001", "isa": "PAL", "suppress": "gt1_lube_sup"},
   {"id": "gt1_lp1_ll", "kks": "10MBV10CP001", "text": "GT 1 lube oil pressure low-low (1)", "when": "gt1_lp_1_ll", "priority": 1, "where": "10MBV10CP001", "isa": "PALL", "suppress": "gt1_lube_sup"},
   {"id": "gt1_lp2_low", "kks": "10MBV10CP002", "text": "GT 1 lube oil pressure low (2)", "when": "gt1_lp_2_l", "priority": 2, "where": "10MBV10CP002", "isa": "PAL", "suppress": "gt1_lube_sup"},
@@ -373,9 +386,11 @@
   {"id": "gt1_trip_surge", "kks": "10MBA10", "text": "GT 1 compressor surge", "when": "gt1_surge_c", "do": [{"machine": "gt1_start", "to": "trip"}], "isa": "PDAHH", "delay": 0.2, "first_out": "gt1"},
   {"id": "gt1_trip_drum_hh", "kks": "10HAD30CL001", "text": "HRSG 1 HP drum level high-high", "when": "hp_lvl_hh", "do": [{"machine": "gt1_start", "to": "trip"}], "isa": "LAHH", "delay": 1, "first_out": "gt1"},
   {"id": "gt1_trip_drum_ll", "kks": "10HAD30CL002", "text": "HRSG 1 HP drum level low-low", "when": "hp_lvl_ll", "do": [{"machine": "gt1_start", "to": "trip"}], "isa": "LALL", "delay": 1, "first_out": "gt1"},
+  {"id": "gt1_trip_oil_temp", "kks": "10MBV10CT001", "text": "GT 1 lube oil temperature high-high", "when": "gt1_oil_t_hh", "do": [{"machine": "gt1_start", "to": "trip"}], "isa": "TAHH", "delay": 2, "first_out": "gt1"},
   {"id": "gen1_trip_prot", "kks": "10BAC10", "text": "Generator 1 breaker opened by protection (GT tripped)", "when": "gen1_prot_c", "do": [{"set": {"gt1_brk_cmd": 0}}], "first_out": "gt1"}
  ],
  "bind": [
+  {"kks": "10MBV10CT001", "show": "gt1_oil_t"},
   {"kks": "10MBA10", "anim": "shaft", "of": "gt1_speed", "scale": 50},
   {"kks": "10MBA10", "sound": "gt_whine", "gain": {"of": "gt1_speed", "table": [[0, 0], [0.1, 0.3], [1, 1]]}, "pitch": {"of": "gt1_speed", "table": [[0, 0.1], [1, 1]]}},
   {"kks": "10MBA10", "sound": "combustion", "gain": {"of": "gt1_fuel", "table": [[0, 0], [1, 1]]}},

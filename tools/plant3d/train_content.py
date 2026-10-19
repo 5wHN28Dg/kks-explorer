@@ -151,6 +151,17 @@ FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)
     ('ct_drain_open', {'ct_drain_open': 1}, 'Cooling tower basin drain left open'),
 ] + [(f'ct_fan{i}_vib', {f'ct_fan{i}_vfault': 1}, f'Cooling tower fan {i} blade damage') for i in range(1, 11)] + [
     ('hw_leak', {'hw_leak': 1, 'hw_mk_fail': 1}, 'Condensate leak with the hotwell makeup failed'),
+    # FIRST-TRAIN §4 "As built": closed cooling water lost, instrument air lost (the valves' fail-safe positions),
+    # the valves' power lost, a start against an open valve, the loss of every steam sink
+    ('ccw_both', {'ccw_a_fault': 1, 'ccw_b_fault': 1}, 'Both closed cooling water pumps trip (a supply fault)'),
+    ('ia_lost', {'ia_a_fault': 1, 'ia_b_fault': 1}, 'Both instrument air compressors trip'),
+    ('cw_valve_power', {'cw_a_v_stuck': 1, 'cw_b_v_stuck': 1, 'cw_c_v_stuck': 1},
+     'CW pump house valve power supply lost: the motor-operated discharge valves stay where they are'),
+] + [(f'cw_{x}_ls', {f'cw_{x}_ls_fault': 1}, f'CW pump {x.upper()} discharge valve: the start-position limit switch '
+      f'sticks made (the permissive passes with the valve open)') for x in 'abc'] + [
+    ('byp_hyd', {'byp_hyd_fault': 1}, 'Bypass valves\' hydraulic unit fails: the bypass is blocked'),
+    ('st_trip_no_bypass', {'st_vib_fault': 1, 'byp_hyd_fault': 1},
+     'Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink'),
 ]
 
 
@@ -243,6 +254,11 @@ def cold_start():
     S.append(step('gland', ['Admit gland steam (', k('30MAW10AA001'), ').'], ['30MAW10AA001'],
                   [op('30MAW10AA001', 'open')], 'st_gland_on',
                   ['Only with the rotor turning: steam on a stopped rotor heats one side and bows it.']))
+    S.append(step('casing_warm', ['Open the HP casing warm-up valve (', k('30MAA10AA101'), ').'], ['30MAA10AA101'],
+                  [op('30MAA10AA101', 'open')], 'st_warm_on',
+                  ['Auxiliary steam warms the cold HP casing while the rotor turns, so that the first steam from the '
+                   'HRSG can be matched to the metal: steam much hotter than the casing cracks it, colder steam '
+                   'quenches it.']))
     S.append(step('vacuum', ['Start both vacuum pumps (', k('30MAJ10AP001'), ', ', k('30MAJ10AP002'),
                              ') and wait for the condenser pressure to fall below 12 kPa(a).'],
                   ['30MAJ10AP001', '30MAJ10AP002'], [op('30MAJ10AP001', 'start'), op('30MAJ10AP002', 'start')],
@@ -287,8 +303,13 @@ def cold_start():
                   ['10HAN30AA401', '10HAN30AA001'],
                   [op(f'10HAN30AA40{n}', 'close') for n in (1, 2, 3, 4)] + [op('10HAN30AA001', 'close')],
                   'hp_drains_closed'))
+    S.append(step('casing_hot', ['Wait for the HP casing (', k('30MAA10'), ') to reach 190 °C.'], ['30MAA10'], (),
+                  'st_casing_warm', go='none'))
     S.append(step('roll_ready', ['Wait until the steam turbine may roll: pressure, superheat, matching, eccentricity '
                                  'and vacuum.'], ['30MAA10'], (), 'st_roll_ready', go='none'))
+    S.append(step('warm_close', ['Close the HP casing warm-up valve (', k('30MAA10AA101'), '): the steam itself '
+                                 'warms the casing from now on.'], ['30MAA10AA101'],
+                  [op('30MAA10AA101', 'close')], 'st_warm_shut', go='none'))
     S.append(step('st_roll', ['Roll the steam turbine (', k('30MAA10'), ').'], ['30MAA10'],
                   [op('30MAA10', 'roll')], 'st_in_fsnl',
                   ['It warms at 800 rpm, then accelerates through the critical speeds without stopping.'], 'fly'))

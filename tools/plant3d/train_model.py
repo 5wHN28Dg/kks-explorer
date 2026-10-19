@@ -7,7 +7,8 @@ the plant's physics. Every number is invented, round and plausible for the class
 PSAT = [[10, 1.23], [20, 2.34], [25, 3.17], [30, 4.25], [35, 5.63], [40, 7.38], [45, 9.59], [50, 12.35],
         [55, 15.76], [60, 19.95], [65, 25.0], [70, 31.2], [80, 47.4], [90, 70.1], [100, 101.3]]   # °C → kPa(a)
 STEAM = [[100, 1.01], [120, 1.99], [140, 3.61], [160, 6.18], [180, 10.0], [200, 15.5], [212, 20.0], [234, 30.0],
-         [250, 39.7], [264, 50.0], [276, 60.0], [295, 80.0], [311, 100.0], [325, 120.0], [330, 128.0]]  # °C → bar
+         [250, 39.7], [264, 50.0], [276, 60.0], [295, 80.0], [311, 100.0], [325, 120.0], [330, 128.0],
+         [335, 137.7], [340, 146.0], [345, 154.7]]  # °C → bar
 
 
 def inv(points):
@@ -219,9 +220,10 @@ class M:
         self.op(kks, 'auto', None, needs, ('screen',), machine=mid)
         self.op(kks, 'manual', None, (), ('screen',), machine=mid)
 
-    def lube(self, p, codes, ac, dc, stillref, low=1.8, ll=1.2):
+    def lube(self, p, codes, ac, dc, stillref, speed, tcode, low=1.8, ll=1.2):
         """Lube oil: AC and DC pumps, header pressure lag τ 3 s, three transmitters (2 out of 3 for the trip),
-        alarms suppressed by design until the pressure is first established after a start (FIRST-TRAIN §4)."""
+        alarms suppressed by design until the pressure is first established after a start (FIRST-TRAIN §4); the oil's
+        temperature after its cooler, which the closed cooling water holds near 50 °C at full speed (§4 #2)."""
         self.drive_values(f'{p}_lac')
         self.drive_values(f'{p}_ldc')
         self.prod(f'{p}_ldc_q', [f'{p}_ldc_run', 0.85])
@@ -248,6 +250,21 @@ class M:
                        'Lube oil pressure low while the oil system is in service: the DC emergency pump starts')
         self.start_stop(ac, f'{p}_lac')
         self.start_stop(dc, f'{p}_ldc')
+        # oil temperature: the bearings' heat grows with speed; the cooler takes it out into the closed cooling
+        # water, ~12 K above it at full speed; without CCW flow ~60 K above, reached with the oil tank's τ of 10 min
+        self.tab(f'{p}_oil_heat', speed, [[0, 0], [0.01, 0.1], [1, 1]])
+        self.tab(f'{p}_oil_k', 'ccw_ok', [[0, 60], [1, 12]], 'K')
+        self.prod(f'{p}_oil_rise', [f'{p}_oil_heat', f'{p}_oil_k'], 'K')
+        self.sum(f'{p}_oil_tgt', ['ccw_t', f'{p}_oil_rise'], '°C')
+        self.lag(f'{p}_oil_t', f'{p}_oil_tgt', 600, init=35, unit='°C', kks=tcode)
+        self.cmp(f'{p}_oil_t_h', f'{p}_oil_t', '>', 60)
+        self.cmp(f'{p}_oil_t_hc', f'{p}_oil_t', '<', 58)
+        self.cmp(f'{p}_oil_t_hh', f'{p}_oil_t', '>', 70)
+        label = 'GT 1' if p == 'gt1' else 'Steam turbine'
+        self.alarm(f'{p}_oil_t_h', tcode, f'{label} lube oil temperature high', f'{p}_oil_t_h', 2, ac, 'TAH',
+                   f'{p}_oil_t_hc')
+        self.alarm(f'{p}_oil_t_hh', tcode, f'{label} lube oil temperature high-high', f'{p}_oil_t_hh', 1, ac, 'TAHH')
+        self.b(kks=tcode, show=f'{p}_oil_t')
         for k in (1, 2, 3):
             self.alarm(f'{p}_lp{k}_low', codes[k - 1], f'{"GT 1" if p == "gt1" else "Steam turbine"} lube oil '
                        f'pressure low ({k})', f'{p}_lp_{k}_l', 2, isa='PAL', suppress=f'{p}_lube_sup')
@@ -289,19 +306,22 @@ class M:
 
 def bop():
     m = M('bop')
-    m.drive('ia_a', '00QFA10AN001', fault=False)
-    m.drive('ia_b', '00QFA10AN002', fault=False)
+    m.drive('ia_a', '00QFA10AN001')
+    m.drive('ia_b', '00QFA10AN002')
     m.drive('ccw_a', '00PGC10AP001')
     m.drive('ccw_b', '00PGC10AP002')
     m.state('ccw_cooler', 0, '00PGB10AC001')
     m.drive('aux', '00QHA10', fault=False)
-    m.sum('ia_n', ['ia_a_cmd', 'ia_b_cmd'])
+    m.drive_values('ia_a')
+    m.drive_values('ia_b')
+    m.sum('ia_n', ['ia_a_run', 'ia_b_run'])
     m.tab('ia_p_sp', 'ia_n', [[0, 0], [1, 7], [2, 7.5]])
     m.ramp('ia_p', 'ia_p_sp', 0.12, 0.02, 0, 'bar', '00QFB10CP001')
     m.cmp('ia_ok', 'ia_p', '>=', 4)
     m.cmp('ia_low', 'ia_p', '<', 5)
     m.cmp('ia_p_norm', 'ia_p', '>=', 6.5)
-    m.cmp('ia_off', 'ia_n', '<', 0.5)
+    m.sum('ia_cmd_n', ['ia_a_cmd', 'ia_b_cmd'])
+    m.cmp('ia_off', 'ia_cmd_n', '<', 0.5)        # stopped by the operator: suppressed; tripped: it sounds
     m.latch('ia_est', 'ia_p_norm', 'ia_off')
     m.NOT('ia_sup', 'ia_est')
     for x in ('a', 'b'):
@@ -312,12 +332,28 @@ def bop():
     m.lag('ccw_flow', 'ccw_flow_sp', 5, unit='pu')
     m.cmp('ccw_flow_ok', 'ccw_flow', '>=', 0.8)
     m.AND('ccw_ok', ['ccw_flow_ok', 'ccw_cooler'])
+    # the closed cooling water's supply temperature (FIRST-TRAIN §4 #2): the cooler is cooled by circulating water;
+    # the heat comes from the machines' oil and generator coolers. The values of later areas (machine speeds, the
+    # CW) are read through stateful nodes, as the previous step left them (PLANT3D §7.1)
+    m.lag('ccw_gt_heat', 'gt1_speed', 120)
+    m.lag('ccw_st_heat', 'st_speed', 120)
+    m.sum('ccw_heat', ['ccw_gt_heat', 'ccw_st_heat'])
+    m.prod('ccw_load', ['ccw_heat', 0.5], 'pu')
+    m.delay('ccw_cw_ok', 'cw_flow_on', 0.1)
+    m.lag('ccw_cw_t', 'cw_cold_t', 60, init=28, unit='°C')
+    m.AND('ccw_cooling', ['ccw_ok', 'ccw_cw_ok'])
+    m.tab('ccw_rise_k', 'ccw_cooling', [[0, 25], [1, 8]], 'K')
+    m.prod('ccw_rise', ['ccw_load', 'ccw_rise_k'], 'K')
+    m.sum('ccw_t_tgt', ['ccw_cw_t', 'ccw_rise'], '°C')
+    m.lag('ccw_t', 'ccw_t_tgt', 300, init=28, unit='°C', kks='00PGB10CT001')
+    m.cmp('ccw_t_h', 'ccw_t', '>', 45)
+    m.cmp('ccw_t_hc', 'ccw_t', '<', 43)
     m.AND('aux_run', ['aux_cmd', 'ia_ok'])
     m.prod('aux_p_sp', ['aux_run', 12])
     m.ramp('aux_p', 'aux_p_sp', 0.02, 0.005, 0, 'bar', '00QHA10CP001')
     m.cmp('aux_ok', 'aux_p', '>=', 10)
-    m.start_stop('00QFA10AN001', 'ia_a', ok=False)
-    m.start_stop('00QFA10AN002', 'ia_b', ok=False)
+    m.start_stop('00QFA10AN001', 'ia_a')
+    m.start_stop('00QFA10AN002', 'ia_b')
     m.start_stop('00PGC10AP001', 'ccw_a')
     m.start_stop('00PGC10AP002', 'ccw_b')
     m.op('00PGB10AC001', 'open', {'ccw_cooler': 1}, (), ('local',))
@@ -333,15 +369,18 @@ def bop():
         m.alarm(f'ccw_{x}_tripped', code, f'Closed cooling water pump {x.upper()} tripped', f'ccw_{x}_trip_latched', 2)
     m.alarm('ia_p_low', '00QFB10CP001', 'Instrument air header pressure low', 'ia_low', 1, isa='PAL',
             suppress='ia_sup')
+    m.alarm('ccw_t_high', '00PGB10CT001', 'Closed cooling water supply temperature high', 'ccw_t_h', 2, '00PGB10AC001',
+            'TAH', 'ccw_t_hc')
     for x, code in (('a', '00QFA10AN001'), ('b', '00QFA10AN002')):
-        m.b(kks=code, anim='shaft', of=f'ia_{x}_cmd', scale=25)
-        m.b(kks=code, sound='motor_small', gain={'of': f'ia_{x}_cmd', 'table': [[0, 0], [1, 0.8]]})
-        m.b(kks=code, lamp='running', of=f'ia_{x}_cmd')
+        m.b(kks=code, anim='shaft', of=f'ia_{x}_run', scale=25)
+        m.b(kks=code, sound='motor_small', gain={'of': f'ia_{x}_run', 'table': [[0, 0], [1, 0.8]]})
+        m.b(kks=code, lamp='running', of=f'ia_{x}_run')
     for x, code in (('a', '00PGC10AP001'), ('b', '00PGC10AP002')):
         m.b(kks=code, anim='shaft', of=f'ccw_{x}_run', scale=24.7)
         m.b(kks=code, sound='motor_small', gain={'of': f'ccw_{x}_run', 'table': [[0, 0], [1, 0.7]]})
         m.b(kks=code, lamp='running', of=f'ccw_{x}_run')
     m.b(kks='00QFB10CP001', show='ia_p')
+    m.b(kks='00PGB10CT001', show='ccw_t')
     m.b(kks='00QHA10CP001', show='aux_p')
     m.b(kks='00QHA10', sound='burner', gain={'of': 'aux_run', 'table': [[0, 0], [1, 1]]})
     m.b(kks='00QHA10', lamp='running', of='aux_run')
@@ -420,6 +459,7 @@ def cw():
         m.drive(f'cw_{x}', f'30PAC10AP00{n}')
         m.state(f'cw_{x}_v_cmd', 0, f'30PAC10AA10{n}')
         m.state(f'cw_{x}_v_stuck', 0, f'30PAC10AA10{n}')
+        m.state(f'cw_{x}_ls_fault', 0, f'30PAC10AA10{n}')
     for k in (1, 2, 3, 4):
         m.state(f'cw_vent{k}', 0, f'30PAB10AA40{k}')
     for x, n in pumps:
@@ -429,12 +469,14 @@ def cw():
         m.mov(f'cw_{x}_v', 60, kks=f'30PAC10AA10{n}', unit='pu')
         m.cmp(f'cw_{x}_v_ge', f'cw_{x}_v_pos', '>=', 0.10)
         m.cmp(f'cw_{x}_v_le', f'cw_{x}_v_pos', '<=', 0.20)
-        m.AND(f'cw_{x}_vstart', [f'cw_{x}_v_ge', f'cw_{x}_v_le'])
+        m.AND(f'cw_{x}_vwin', [f'cw_{x}_v_ge', f'cw_{x}_v_le'])
+        # what the start-position limit switch reports (the permissive reads it): stuck made, it lies
+        m.OR(f'cw_{x}_vstart', [f'cw_{x}_vwin', f'cw_{x}_ls_fault'])
         m.cmp(f'cw_{x}_vfull', f'cw_{x}_v_pos', '>=', 0.99)
         m.tab(f'cw_{x}_vq', f'cw_{x}_v_pos', [[0, 0], [0.15, 1500], [0.5, 11000], [1, 15000]])
         m.prod(f'cw_{x}_pot', [f'cw_{x}_spd', f'cw_{x}_vq'], 'm³/h')
         m.tab(f'cw_{x}_dpc', f'cw_{x}_v_pos', [[0, 2.9], [1, 2.2]])
-        m.prod(f'cw_{x}_dp', [f'cw_{x}_spd', f'cw_{x}_dpc'], 'bar', f'30PAC10CP50{n}')
+        m.prod(f'cw_{x}_dp0', [f'cw_{x}_spd', f'cw_{x}_dpc'], 'bar')
         m.tab(f'cw_{x}_inr', f'cw_{x}_rt', [[0, 0], [0.1, 840], [4, 840], [4.5, 0]])
         m.tab(f'cw_{x}_ld', f'cw_{x}_pot', [[0, 60], [15000, 140]])
         m.max(f'cw_{x}_amax', [f'cw_{x}_inr', f'cw_{x}_ld'])
@@ -446,12 +488,32 @@ def cw():
         m.AND(f'cw_{x}_ll_c', [f'cw_{x}_run', 'ct_ll'])
         m.NOT(f'cw_{x}_nrun', f'cw_{x}_run')
         m.delay(f'cw_{x}_was', f'cw_{x}_run', 0.1, 0.1)
+        # a start against an open valve: the column in the discharge pipe is accelerated at once and slams into the
+        # standing water (or the closed far end of an empty pipe): a pressure surge in the first seconds
+        m.cmp(f'cw_{x}_new', f'cw_{x}_rt', '<=', 3)
+        m.cmp(f'cw_{x}_vopen', f'cw_{x}_v_pos', '>', 0.3)
+        m.AND(f'cw_{x}_surge_c', [f'cw_{x}_run', f'cw_{x}_new', f'cw_{x}_vopen'])
         m.AND(f'cw_{x}_fell', [f'cw_{x}_nrun', f'cw_{x}_was'])
         m.OR(f'cw_{x}_tripped', [f'cw_{x}_trip_ol_latched', f'cw_{x}_trip_ll_latched', f'cw_{x}_trip_valve_latched'])
         m.NOT(f'cw_{x}_trips_clear', f'cw_{x}_tripped')
     m.sum('cw_pot', [f'cw_{x}_pot' for x, _ in pumps])
-    m.tab('cw_flow_sp', 'cw_pot', [[0, 0], [15000, 15000], [30000, 29000], [45000, 40000]])
+    # backflow: a stopped pump whose discharge valve stands open passes water back from the header to the basin
+    # (why its valve closes when it stops; on a loss of the valves' power supply they stay where they are)
+    m.tab('cw_hdr', 'cw_pot', [[0, 0], [15000, 1]], 'pu')
+    for x, n in pumps:
+        m.prod(f'cw_{x}_back', [f'cw_{x}_nrun', f'cw_{x}_v_pos', 'cw_hdr', 9000], 'm³/h')
+    m.sum('cw_back', [f'cw_{x}_back' for x, _ in pumps], 'm³/h')
+    m.diff('cw_net0', 'cw_pot', 'cw_back')
+    m.max('cw_net', ['cw_net0', 0], 'm³/h')
+    m.tab('cw_flow_sp', 'cw_net', [[0, 0], [15000, 15000], [30000, 29000], [45000, 40000]])
     m.lag('cw_flow', 'cw_flow_sp', 10, unit='m³/h', kks='30PAB10CF001')
+    m.tab('cw_surge_k', 'cw_flow', [[0, 6], [15000, 3]], 'bar')    # an empty pipe hits hardest
+    for x, n in pumps:
+        m.prod(f'cw_{x}_surge_t', [f'cw_{x}_surge_c', 'cw_surge_k'])
+        m.lag(f'cw_{x}_surge', f'cw_{x}_surge_t', 0.3, 2, unit='bar')
+        m.sum(f'cw_{x}_dp', [f'cw_{x}_dp0', f'cw_{x}_surge'], 'bar', f'30PAC10CP50{n}')
+        m.prod(f'cw_{x}_pt', [f'cw_{x}_dp', 1], 'bar', f'30PAC10CP00{n}')
+        m.cmp(f'cw_{x}_surge_h', f'cw_{x}_pt', '>', 3.5)
     m.cmp('cw_flow_on', 'cw_flow', '>=', 5000)
     m.sum('cw_vents', [f'cw_vent{k}' for k in (1, 2, 3, 4)])
     m.tab('cw_wb_cap', 'cw_vents', [[0, 0.75], [1, 1]])
@@ -483,6 +545,10 @@ def cw():
         m.trip(f'cw_{x}_trip_valve', aa, f'CW pump {L}: discharge valve not open 120 s after the start',
                f'cw_{x}_late', [{'set': {f'cw_{x}_cmd': 0}}], 'ZAL', None, f'cw_{x}')
         m.alarm(f'cw_{x}_tripped', ap, f'CW pump {L} tripped', f'cw_{x}_tripped', 1)
+        m.alarm(f'cw_{x}_surge', f'30PAC10CP00{n}', f'CW pump {L} discharge pressure surge (started against an open '
+                f'valve)', f'cw_{x}_surge_h', 2, ap, 'PAH')
+        m.b(kks=ap, shake=f'cw_{x}_surge', scale=0.05)
+        m.b(kks=f'30PAC10CP00{n}', show=f'cw_{x}_pt')
         m.alarm(f'cw_{x}_valve_late', aa, f'CW pump {L} discharge valve not open 120 s after start', f'cw_{x}_late',
                 1, isa='ZAL')
         m.b(kks=ap, anim='shaft', of=f'cw_{x}_spd', scale=8.25)
@@ -509,7 +575,7 @@ GT_STATES = ['standstill', 'crank', 'purge', 'coast', 'ignite', 'accel', 'accel_
 ST_STATES = ['standstill', 'roll', 'soak', 'accel', 'fsnl', 'loaded', 'hold', 'coastdown', 'trip']
 TC_OFF = [-4, 2, -1, 5, 0, -3, 3, -5, 1, 4, -2, 0]
 GT_TRIPS = ['gt1_trip_lube', 'gt1_trip_flame', 'gt1_trip_exh', 'gt1_trip_spread', 'gt1_trip_os', 'gt1_trip_vib',
-            'gt1_trip_surge', 'gt1_trip_drum_hh', 'gt1_trip_drum_ll']
+            'gt1_trip_surge', 'gt1_trip_drum_hh', 'gt1_trip_drum_ll', 'gt1_trip_oil_temp']
 
 
 def gt1():
@@ -533,7 +599,8 @@ def gt1():
     m.ramp('gt1_speed', 'gt1_tgt', 0.005, 0.003, 0, 'pu', '10MBA10')
     m.cmp('gt1_still', 'gt1_speed', '<', 0.01)
     m.cmp('gt1_at_rest', 'gt1_speed', '<', 0.0005)     # below turning gear speed: the oil may stop
-    m.lube('gt1', ['10MBV10CP001', '10MBV10CP002', '10MBV10CP003'], '10MBV10AP001', '10MBV10AP002', 'gt1_at_rest')
+    m.lube('gt1', ['10MBV10CP001', '10MBV10CP002', '10MBV10CP003'], '10MBV10AP001', '10MBV10AP002', 'gt1_at_rest',
+           'gt1_speed', '10MBV10CT001')
     m.NOT('gt1_lube_trip_clear', 'gt1_trip_lube_latched')
     # turning gear and speed
     m.cmp('gt1_slow', 'gt1_speed', '<', 0.05)
@@ -629,7 +696,9 @@ def gt1():
     # generator stator temperatures
     m.tab('gt1_st_rise', 'gt1_mw', [[0, 10], [250, 70]])
     m.prod('gt1_st_f', ['gt1_stator_fault', 50])
-    m.sum('gt1_st_tgt', ['ambient_t', 'gt1_st_rise', 'gt1_st_f'])
+    m.tab('gt1_st_cl', 'ccw_ok', [[0, 40], [1, 0]])          # the air coolers lose their closed cooling water
+    m.prod('gt1_st_c', ['gt1_st_cl', 'gt1_lf'])
+    m.sum('gt1_st_tgt', ['ambient_t', 'gt1_st_rise', 'gt1_st_f', 'gt1_st_c'])
     m.lag('gt1_stator_t', 'gt1_st_tgt', 600, init=35, unit='°C')
     for k in range(1, 7):
         m.sum(f'gt1_st{k}', ['gt1_stator_t', (0, 1, -1, 2, -2, 0.5)[k - 1]], '°C', f'10MKA10CT00{k}')
@@ -678,7 +747,9 @@ def gt1():
         ('hp_lvl_ok', 'HP drum level outside ±150 mm'), ('fw_avail', 'No feedwater pump running')],
         ('screen',), machine='gt1_start')
     m.op('10MBA10', 'stop', None, (), ('screen',), machine='gt1_start')
-    m.op('10MKA10', 'set', None, (), ('screen',), input='gt1_load_sp', range=[10, 250])
+    m.op('10MKA10', 'set', None, [('hp_slide', 'No steam sink (steam turbine off load, bypass not in automatic): '
+                                              'GT 1 is held at minimum load')], ('screen',),
+         input='gt1_load_sp', range=[10, 250])
     m.op('10MBK10AE001', 'start', {'gt1_tg_cmd': 1}, [('gt1_lube_ok', 'Lube oil pressure below 1.8 bar')])
     m.op('10MBK10AE001', 'stop', {'gt1_tg_cmd': 0})
     # trips: each forces the start sequence to "trip"; the generator protection then opens the breaker
@@ -695,6 +766,8 @@ def gt1():
     m.trip('gt1_trip_drum_hh', '10HAD30CL001', 'HRSG 1 HP drum level high-high', 'hp_lvl_hh', to_trip, 'LAHH', 1,
            'gt1')
     m.trip('gt1_trip_drum_ll', '10HAD30CL002', 'HRSG 1 HP drum level low-low', 'hp_lvl_ll', to_trip, 'LALL', 1, 'gt1')
+    m.trip('gt1_trip_oil_temp', '10MBV10CT001', 'GT 1 lube oil temperature high-high', 'gt1_oil_t_hh', to_trip,
+           'TAHH', 2, 'gt1')
     m.trip('gen1_trip_prot', '10BAC10', 'Generator 1 breaker opened by protection (GT tripped)', 'gen1_prot_c',
            [{'set': {'gt1_brk_cmd': 0}}], None, None, 'gt1')
     # alarms (FIRST-TRAIN §5)
@@ -794,9 +867,13 @@ def hrsg1():
     m.eq('hp_st_loaded', 'st_start_state', ST_STATES.index('loaded'))
     m.OR('hp_slide', ['hp_byp_on', 'hp_st_loaded'])
     m.tab('hp_p_auto', 'gt1_lf', [[0, 50], [1, 120]], 'bar')
-    m.sel('hp_p_tgt', 'hp_slide', [128, 'hp_p_auto'], 'bar')
+    # no steam sink (FIRST-TRAIN §4 "As built"): the pressure rises toward 150 bar until the HP safety valve lifts
+    # at 135 bar; open, it holds 136 bar (its accumulation) and reseats below 130 bar (its blowdown)
+    m.latch('hp_sv_open', 'hp_sv_lift', 'hp_sv_reseat')
+    m.sel('hp_p_ns', 'hp_sv_open', [150, 136], 'bar')
+    m.sel('hp_p_tgt', 'hp_slide', ['hp_p_ns', 'hp_p_auto'], 'bar')
     m.tab('hp_t_tgt', 'hp_p_tgt', inv(STEAM), '°C')
-    m.integ('hp_tw', 'hp_rate', 1, 20, 330, 35, '°C', '10HAD30BB001')
+    m.integ('hp_tw', 'hp_rate', 1, 20, 345, 35, '°C', '10HAD30BB001')
     m.diff('hp_head', 'hp_t_tgt', 'hp_tw', 'K')
     m.tab('hp_hf', 'hp_head', [[-20, -1], [0, 0], [3, 1]])
     m.tab('hp_rmax', 'gt1_heat_mw', [[0, 0], [100, 0.033], [160, 0.058], [250, 0.085], [350, 0.11]])
@@ -808,9 +885,19 @@ def hrsg1():
     m.diff('hp_warm_rate', 'hp_tsat', 'hp_tsat_slow', 'K/min')
     m.cmp('hp_warm_fast', 'hp_warm_rate', '>', 4)
     m.cmp('hp_p_10', 'hp_p', '>=', 10)
+    m.cmp('hp_sv_lift', 'hp_p', '>=', 135)
+    m.cmp('hp_sv_reseat', 'hp_p', '<', 130)
+    m.lag('hp_sv_pos', 'hp_sv_open', 0.5, unit='pu', kks='10LBA30AA901')
+    m.cmp('hp_p_h', 'hp_p', '>', 130)
+    m.cmp('hp_p_hc', 'hp_p', '<', 128)
+    # the GT runback (HRSG protection): GT 1 on load with no steam sink is brought to minimum load
+    m.NOT('hp_nosink', 'hp_slide')
+    m.AND('gt1_rb_c0', ['gt1_in_loaded', 'hp_nosink'])
+    m.delay('gt1_rb_c', 'gt1_rb_c0', 2)
     # steam made, feed, level with swell and shrink
     m.tab('hp_gen_tgt', 'gt1_heat_mw', [[0, 0], [100, 4], [160, 12], [350, 70]])
     m.lag('hp_gen', 'hp_gen_tgt', 300, unit='kg/s')
+    m.prod('hp_sv_flow', ['hp_sv_open', 'hp_gen'], 'kg/s')
     m.lag('hp_hfast', 'gt1_heat_mw', 60)
     m.lag('hp_hslow', 'gt1_heat_mw', 600)
     m.diff('hp_hd', 'hp_hfast', 'hp_hslow')
@@ -826,7 +913,8 @@ def hrsg1():
     m.NOT('hp_fwv_nc', 'hp_fwv_fail_closed')
     m.min('hp_fwv_t2', ['hp_fwv_tgt', 'hp_fwv_nc'])
     m.max('hp_fwv_t3', ['hp_fwv_t2', 'hp_fwv_fail_open'])
-    m.ramp('hp_fwv_pos', 'hp_fwv_t3', 0.05, unit='pu', kks='10LAB30AA001')
+    m.sel('hp_fwv_t4', 'ia_ok', [1, 'hp_fwv_t3'])           # without air its spring opens it (fail open)
+    m.ramp('hp_fwv_pos', 'hp_fwv_t4', 0.05, init=1, unit='pu', kks='10LAB30AA001')
     m.prod('hp_feed', ['hp_fwv_pos', 'fw_cap'], 'kg/s')
     m.diff('hp_mnet', 'hp_feed', 'hp_gen')
     for k, off in zip((1, 2, 3), (0, 2, -2)):
@@ -882,11 +970,12 @@ def hrsg1():
     m.diff('hp_sh_raw', 'gt1_exh_t', 20)
     m.max('hp_sh_t0', ['hp_sh_raw', 'hp_tw'])
     m.lag('hp_casing_seen', 'st_casing_t', 1)
-    m.sum('hp_lim_c', ['hp_casing_seen', 300])
+    m.sum('hp_lim_c', ['hp_casing_seen', 140])
     m.min('hp_sp_lim', [560, 'hp_lim_c'])
     m.min('hp_sh_lim', ['hp_sh_t0', 'hp_sp_lim'])
     m.cmp('hp_spray_auto', 'hp_spray_ctrl_state', '>=', 1)
-    m.sel('hp_sh_t1', 'hp_spray_auto', ['hp_sh_t0', 'hp_sh_lim'])
+    m.AND('hp_spray_on', ['hp_spray_auto', 'ia_ok'])           # without air the spray valve shuts (fail closed)
+    m.sel('hp_sh_t1', 'hp_spray_on', ['hp_sh_t0', 'hp_sh_lim'])
     m.prod('hp_shw_red', ['hp_shw', 250])
     m.diff('hp_sh_t2', 'hp_sh_t1', 'hp_shw_red')
     m.max('hp_sh_t3', ['hp_sh_t2', 'hp_tw'])
@@ -920,6 +1009,13 @@ def hrsg1():
         m.alarm(f'fw_{x}_flow_low', f'10LAC10CF00{n}', f'Feedwater pump {x.upper()} flow below minimum',
                 f'fw_{x}_low', 2, f'10LAC10AP00{n}', 'FAL', delay=10)
     m.alarm('hp_steam_t_high', '10LBA30CT001', 'HP steam temperature high', 'hp_steam_th', 2, isa='TAH')
+    m.alarm('hp_p_high', '10HAD30CP001', 'HP drum pressure high', 'hp_p_h', 2, '10HAD30BB001', 'PAH', 'hp_p_hc')
+    m.alarm('hp_sv_open', '10LBA30AA901', 'HP safety valve open', 'hp_sv_open', 1, isa='ZAH')
+    m.interlock('gt1_runback', 'gt1_rb_c', [{'set': {'gt1_load_sp': 20}}], '10MBA10',
+                'No steam sink (steam turbine off load, bypass not in automatic): GT 1 runs back to minimum load')
+    m.alarm('gt1_runback', '10MBA10', 'GT 1 runback: no steam sink', 'gt1_rb_c', 1)
+    m.b(kks='10LBA30AA901', anim='stem', of='hp_sv_pos')
+    m.b(kks='10LBA30AA901', sound='steam_vent', gain={'of': 'hp_sv_flow', 'table': [[0, 0], [5, 0.6], [70, 1]]})
     # what is seen and heard
     for x, n in (('a', 1), ('b', 2)):
         c = f'10LAC10AP00{n}'
@@ -946,7 +1042,8 @@ def hrsg1():
 
 # ================================================================ st (steam turbine, condenser, condensate)
 
-ST_TRIPS = ['st_trip_lube', 'st_trip_cond_p', 'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t']
+ST_TRIPS = ['st_trip_lube', 'st_trip_cond_p', 'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t',
+            'st_trip_oil_temp']
 VIB_F = [0.8, 0.9, 1.0, 1.1, 0.95, 0.85, 0.7, 0.75]
 
 
@@ -958,6 +1055,8 @@ def st():
     m.drive('st_jack', '30MAV20AP001', fault=False)
     m.state('st_tg_cmd', 0, '30MAK10AE001')
     m.state('st_gland_cmd', 0, '30MAW10AA001')
+    m.state('st_warm_cmd', 0, '30MAA10AA101')
+    m.state('byp_hyd_fault', 0, '30MAN10AA001')
     m.drive('vac_a', '30MAJ10AP001', fault=False)
     m.drive('vac_b', '30MAJ10AP002', fault=False)
     m.drive('cep_a', '30LCB10AP001')
@@ -990,7 +1089,8 @@ def st():
     # lube oil, jacking oil, turning gear, eccentricity, gland steam (FIRST-TRAIN §4 #7, #10)
     m.cmp('st_still', 'st_speed', '<', 0.01)
     m.cmp('st_at_rest', 'st_speed', '<', 0.0005)     # below turning gear speed: the oil may stop
-    m.lube('st', ['30MAV10CP001', '30MAV10CP002', '30MAV10CP003'], '30MAV10AP001', '30MAV10AP002', 'st_at_rest')
+    m.lube('st', ['30MAV10CP001', '30MAV10CP002', '30MAV10CP003'], '30MAV10AP001', '30MAV10AP002', 'st_at_rest',
+           'st_speed', '30MAV10CT001')
     m.NOT('st_lube_trip_clear', 'st_trip_lube_latched')
     m.AND('st_jack_run', ['st_jack_cmd', 'st_lube_ok'])
     m.prod('st_jack_sp', ['st_jack_run', 140])
@@ -1002,10 +1102,18 @@ def st():
     m.NOT('st_tg_nrun', 'st_tg_run')
     m.integ('st_tg_time', 'st_tg_run', 1, 0, 7200, 0, 's')
     m.tab('st_ecc0', 'st_tg_time', [[0, 120], [600, 60], [1200, 32], [1800, 28]], 'µm')
-    m.ramp('st_gland_pos', 'st_gland_cmd', 0.1, unit='pu', kks='30MAW10AA001')
+    m.sel('st_gland_tgt', 'ia_ok', [0, 'st_gland_cmd'])     # without air its spring shuts it (fail closed)
+    m.ramp('st_gland_pos', 'st_gland_tgt', 0.1, unit='pu', kks='30MAW10AA001')
     m.cmp('st_gland_open', 'st_gland_pos', '>=', 0.5)
     m.AND('st_gland_on', ['st_gland_open', 'aux_ok'])
-    m.AND('st_bow_c', ['st_gland_on', 'st_tg_nrun', 'st_still'])
+    # HP casing warm-up (FIRST-TRAIN §4 #18): auxiliary steam through the casing, with the rotor turning, brings
+    # the cold HP casing toward 220 °C so that the first steam can be matched to it
+    m.ramp('st_warm_pos', 'st_warm_cmd', round(1 / 30, 9), unit='pu', kks='30MAA10AA101')
+    m.cmp('st_warm_open', 'st_warm_pos', '>=', 0.5)
+    m.cmp('st_warm_shut', 'st_warm_pos', '<', 0.01)
+    m.AND('st_warm_on', ['st_warm_open', 'aux_ok'])
+    m.OR('st_steam_in', ['st_gland_on', 'st_warm_on'])
+    m.AND('st_bow_c', ['st_steam_in', 'st_tg_nrun', 'st_still'])
     m.integ('st_bow', 'st_bow_c', 0.5, 0, 500, 0, 'µm')
     m.sum('st_ecc', ['st_ecc0', 'st_bow'], 'µm', '30MAA10')
     m.cmp('st_ecc_ok', 'st_ecc', '<=', 40)
@@ -1013,7 +1121,14 @@ def st():
     m.sum('vac_n', ['vac_a_cmd', 'vac_b_cmd'])
     m.tab('vac_floor_g', 'vac_n', [[0, 101.3], [1, 7.5], [2, 7]])
     m.tab('vac_floor_ng', 'vac_n', [[0, 101.3], [1, 45], [2, 30]])
-    m.sel('cond_floor', 'st_gland_on', ['vac_floor_ng', 'vac_floor_g'], 'kPa(a)')
+    m.sel('cond_floor0', 'st_gland_on', ['vac_floor_ng', 'vac_floor_g'], 'kPa(a)')
+    # the vacuum pumps' seal water is cooled by closed cooling water: without it the liquid ring warms and the
+    # pumps hold 12 kPa less vacuum (FIRST-TRAIN §4 #2)
+    m.lag('vac_seal', 'ccw_ok', 120, unit='pu')
+    m.diff('vac_seal_loss', 1, 'vac_seal')
+    m.prod('vac_seal_pen', ['vac_seal_loss', 12], 'kPa')
+    m.sum('cond_floor1', ['cond_floor0', 'vac_seal_pen'])
+    m.min('cond_floor', ['cond_floor1', 101.3], 'kPa(a)')
     m.cmp('vac_none', 'vac_n', '<', 0.5)
     m.AND('cond_off', ['vac_none', 'st_still'])
     m.latch('cond_est', 'cond_p1_hc', 'cond_off')
@@ -1026,13 +1141,15 @@ def st():
     m.cmp('cep_any', 'cep_n', '>=', 0.5)
     m.tab('cep_cap', 'cep_n', [[0, 0], [1, 110], [2, 180]], 'kg/s')
     m.min('cep_hrsg', ['lp_dem_p', 'cep_cap'], 'kg/s')
-    m.ramp('cep_mf_pos', 'cep_mf_cmd', 0.05, unit='pu', kks='30LCA10AA001')
+    m.sel('cep_mf_tgt', 'ia_ok', [1, 'cep_mf_cmd'])          # without air its spring opens it (fail open)
+    m.ramp('cep_mf_pos', 'cep_mf_tgt', 0.05, init=1, unit='pu', kks='30LCA10AA001')
     m.cmp('cep_mf_open', 'cep_mf_pos', '>=', 0.9)
     m.cmp('cep_lowout', 'cep_hrsg', '<', 5)
     for x in ('a', 'b'):
         m.AND(f'cep_{x}_onmin', [f'cep_{x}_run', 'cep_lowout'])
     # steam to the turbine and the bypass
-    m.AND('byp_permit', ['cond_p_ok', 'cw_flow_on', 'cep_any'])
+    m.NOT('byp_hyd_ok', 'byp_hyd_fault')
+    m.AND('byp_permit', ['cond_p_ok', 'cw_flow_on', 'cep_any', 'byp_hyd_ok'])
     m.NOT('byp_block', 'byp_permit')
     m.OR('byp_any_auto', ['hp_byp_hp_auto', 'hp_byp_lp_auto'])
     m.AND('byp_block_c', ['byp_block', 'byp_any_auto'])
@@ -1121,10 +1238,14 @@ def st():
     m.cmp('st_sh_wet', 'st_superheat', '<', 20)
     m.AND('st_wet_c', ['st_adm', 'st_sh_wet'])
     m.diff('st_cas_hot', 'st_inlet_t', 30)
-    m.sel('st_cas_tgt', 'st_adm', ['ambient_t', 'st_cas_hot'])
+    m.sel('st_cas_idle', 'st_warm_on', ['ambient_t', 220])
+    m.sel('st_cas_tgt', 'st_adm', ['st_cas_idle', 'st_cas_hot'])
     m.lag('st_casing_t', 'st_cas_tgt', 900, 7200, 35, '°C', '30MAA10')
     m.diff('st_mismatch', 'st_inlet_t', 'st_casing_t', 'K')
-    m.cmp('st_match', 'st_mismatch', '<=', 320)
+    m.cmp('st_mm_hi', 'st_mismatch', '<=', 150)              # steam at most 150 K hotter than the casing
+    m.cmp('st_mm_lo', 'st_mismatch', '>=', -50)              # and at most 50 K colder
+    m.AND('st_match', ['st_mm_hi', 'st_mm_lo'])
+    m.cmp('st_casing_warm', 'st_casing_t', '>=', 190)
     m.cmp('st_p_ok', 'hp_p', '>=', 40)
     m.cmp('st_run_ge2', 'st_start_state', '>=', 1)
     m.cmp('st_run_le2', 'st_start_state', '<=', 6)
@@ -1168,7 +1289,9 @@ def st():
         ('st_ecc_ok', 'Rotor eccentricity over 40 µm: more time on the turning gear'),
         ('st_vac_ok', 'Condenser pressure over 12 kPa(a)'), ('st_p_ok', 'HP steam pressure below 40 bar'),
         ('st_sh_ok', 'HP steam superheat below 50 K'),
-        ('st_match', 'Steam more than 320 K hotter than the HP casing')], ('screen',), machine='st_start')
+        ('st_match', 'Steam not matched to the HP casing (more than 150 K hotter or 50 K colder)'),
+        ('st_warm_shut', 'HP casing warm-up valve 30MAA10AA101 open: close it before rolling')],
+         ('screen',), machine='st_start')
     for c in ('hold', 'continue', 'stop'):
         m.op('30MAA10', c, None, (), ('screen',), machine='st_start')
     m.start_stop('30MAV20AP001', 'st_jack', [('st_lube_ok', 'Lube oil pressure low: the jacking pump draws on it')],
@@ -1180,6 +1303,10 @@ def st():
          [('st_tg_run', 'Turning gear not running: steam on a stopped rotor bows it'),
           ('aux_ok', 'Auxiliary steam below 10 bar')])
     m.op('30MAW10AA001', 'close', {'st_gland_cmd': 0})
+    m.op('30MAA10AA101', 'open', {'st_warm_cmd': 1},
+         [('st_tg_run', 'Turning gear not running: steam on a stopped rotor bows it'),
+          ('aux_ok', 'Auxiliary steam below 10 bar')])
+    m.op('30MAA10AA101', 'close', {'st_warm_cmd': 0})
     for x, n in (('a', 1), ('b', 2)):
         m.start_stop(f'30MAJ10AP00{n}', f'vac_{x}', [('ccw_ok', 'Closed cooling water not in service: the seal '
                                                                'water cooler needs it')], ok=False)
@@ -1205,6 +1332,8 @@ def st():
            2, 'st')
     m.trip('st_trip_steam_t', '30MAA10CT001', 'HP steam temperature low (wet steam)', 'st_wet_c', to_trip, 'TALL', 5,
            'st')
+    m.trip('st_trip_oil_temp', '30MAV10CT001', 'Steam turbine lube oil temperature high-high', 'st_oil_t_hh', to_trip,
+           'TAHH', 2, 'st')
     m.trip('gen3_trip_prot', '30BAC10', 'Steam turbine generator breaker opened by protection', 'gen3_prot_c',
            [{'set': {'st_brk_cmd': 0}}], None, None, 'st')
     m.trip('cep_trip_hw', '30MAG10CL001', 'Hotwell level low-low: condensate pumps stopped', 'cep_ll_c',
@@ -1219,7 +1348,8 @@ def st():
     m.alarm('hw_high', '30MAG10CL001', 'Hotwell level high', 'hw_h', 2, isa='LAH')
     m.alarm('hw_low', '30MAG10CL001', 'Hotwell level low', 'hw_l', 2, isa='LAL')
     m.alarm('hw_ll', '30MAG10CL001', 'Hotwell level low-low (condensate pumps trip)', 'hw_ll', 1, isa='LALL')
-    m.alarm('st_tg_gland', '30MAK10AE001', 'Steam turbine turning gear stopped with gland steam on', 'st_bow_c', 1)
+    m.alarm('st_tg_gland', '30MAK10AE001', 'Steam turbine turning gear stopped with gland or warm-up steam on',
+            'st_bow_c', 1)
     for k in range(1, 9):
         c = f'30MAD10CY00{k}'
         m.alarm(f'st_vib{k}_h', c, f'Steam turbine bearing vibration high ({k})', f'st_vib{k}_h', 2, isa='VAH')
@@ -1247,6 +1377,9 @@ def st():
     m.b(kks='30BAC10', anim='contacts', of='st_brk_cmd')
     m.b(kks='30BAC10', lamp='closed', of='st_brk_cmd')
     m.b(kks='30MAW10AA001', anim='stem', of='st_gland_pos')
+    m.b(kks='30MAA10AA101', anim='stem', of='st_warm_pos')
+    m.b(kks='30MAA10AA101', sound='valve_motor', gain={'of': 'st_warm_pos', 'table': [[0, 0], [0.01, 0.6],
+                                                                                       [0.99, 0.6], [1, 0]]})
     m.b(kks='30MAN10AA001', anim='stem', of='hp_byp_pos')
     m.b(kks='30MAN20AA001', anim='stem', of='lp_byp_pos')
     m.b(kks='30MAN20AA001', sound='steam_vent', gain={'of': 'byp_flow', 'table': [[0, 0], [70, 1]]})

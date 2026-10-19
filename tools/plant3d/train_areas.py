@@ -154,7 +154,9 @@ def bop():
             eq('00PGC10AP002', 'Closed cooling water pump B', 'pump_horizontal', [116, 5, 0], 0,
                {'flow_m3h': 900, 'head_m': 45, 'motor_kw': 160, 'length': 3}, 'motor_side'),
             eq('00PGB10AC001', 'Closed cooling water cooler', 'plate_hx', [124, -8, 0], 0,
-               {'plates': 300, 'height': 2.5}, 'frame'),
+               {'plates': 300, 'height': 2.5}, 'frame',
+               [child('00PGB10CT001', 'Closed cooling water supply temperature', 'temperature_element',
+                      [0, 1.4, 1.2], {'range': [0, 100]})]),
         ],
         pipes=[
             pipe('00LBG10BR001', 'Auxiliary steam to the gland steam supply', 'steam_aux', 150,
@@ -245,7 +247,10 @@ def cw():
                                         actuator='electric')],
                           parts=[inst(f'30PAC10CP50{n}', 'pressure_gauge', 0.1, 'top',
                                       f'Circulating water pump {letter} discharge pressure', range=[0, 4],
-                                      unit='bar')]))
+                                      unit='bar'),
+                                 inst(f'30PAC10CP00{n}', 'pressure_transmitter', 0.2, 'top',
+                                      f'Circulating water pump {letter} discharge pressure (transmitter)',
+                                      range=[0, 10], unit='bar')]))
     return area('cw', 'Circulating water pump house', [[140, -20], [165, 20]], equipment=equipment, pipes=pipes,
         structures=[
             st('cw_house', 'building', [140, -12, 0], kks='30UQA10', outline=rect(25, 20), height=12,
@@ -269,6 +274,8 @@ def st_area():
                       {'kind': 'proximity', 'range': [-2, 2], 'unit': 'mm'})]
     hp_parts += [child(f'30MAY10CS00{k}', f'Steam turbine speed {k}', 'speed_probe', [-1.5, 4.3, 0.8 + 0.3 * k],
                        {'range': [0, 3600], 'unit': 'rpm'}) for k in (1, 2, 3)]
+    hp_parts += [child('30MAA10AA101', 'HP turbine casing warm-up valve (auxiliary steam)', 'valve_globe',
+                       [-2.3, -2.5, -1.2], {'dn': 80, 'rating': 'pn40', 'actuator': 'electric'})]
     iplp_parts = [vib('30MAD10CY003', [2.2, 8.2, 1.5]), vib('30MAD10CY004', [2.2, -8.2, 1.5])]
     gen_parts = [vib(f'30MAD10CY00{k}', [1.8, 5.2 - 3.4 * (k - 5), 1.5]) for k in (5, 6, 7, 8)]
     cond_parts = [child('30MAG10BB001', 'Hotwell', 'vessel_horizontal', [0, 0, 0.2],
@@ -305,7 +312,9 @@ def st_area():
         eq('30MAV10AP001', 'Steam turbine lube oil pump (AC)', 'pump_horizontal', [60, 20, 0], 0,
            {'flow_m3h': 120, 'head_m': 50, 'motor_kw': 45, 'length': 2.5}, 'motor_side',
            [pg(f'30MAV10CP00{k}', f'Steam turbine lube oil pressure {k}', [0, 6], [1, 0.6 * k, 1.2])
-            for k in (1, 2, 3)]),
+            for k in (1, 2, 3)] +
+           [child('30MAV10CT001', 'Steam turbine lube oil temperature (after the cooler)', 'temperature_element',
+                  [1, -0.6, 1.2], {'range': [0, 120]})]),
         eq('30MAV10AP002', 'Steam turbine emergency lube oil pump (DC)', 'pump_horizontal', [64, 20, 0], 0,
            {'flow_m3h': 80, 'head_m': 40, 'motor_kw': 22, 'length': 2.5}, 'motor_side'),
         eq('30MAV20AP001', 'Steam turbine jacking oil pump', 'pump_horizontal', [68, 20, 0], 0,
@@ -410,7 +419,9 @@ def gt1():
         eq('10MBV10AP001', 'GT 1 lube oil pump (AC)', 'pump_horizontal', [34, 86, 0], 0,
            {'flow_m3h': 150, 'head_m': 45, 'motor_kw': 55, 'length': 2.5}, 'motor_side',
            [pg(f'10MBV10CP00{k}', f'GT 1 lube oil pressure {k}', [0, 6], [1, 0.6 * k, 1.2])
-            for k in (1, 2, 3)]),
+            for k in (1, 2, 3)] +
+           [child('10MBV10CT001', 'GT 1 lube oil temperature (after the cooler)', 'temperature_element',
+                  [1, -0.6, 1.2], {'range': [0, 120]})]),
         eq('10MBV10AP002', 'GT 1 emergency lube oil pump (DC)', 'pump_horizontal', [38, 86, 0], 0,
            {'flow_m3h': 100, 'head_m': 35, 'motor_kw': 30, 'length': 2.5}, 'motor_side'),
     ]
@@ -499,7 +510,9 @@ def hrsg1():
     pipes = [
         pipe('10LBA30BR001', 'HP steam to the steam turbine', 'steam_hp', 300, nz('10HNA10', 'hp_steam'), hp_steam,
              nz('30MAA10', 'hp_inlet'), insulation_mm=250, arrows=15,
-             valves=[valve('30MAA10AA201', 'valve_gate', 0.975, 'HP stop valve', dn=300, rating='pn160',
+             valves=[valve('10LBA30AA901', 'valve_safety', 0.06, 'HP superheater outlet safety valve', dn=100,
+                           rating='pn160', set_bar=135),
+                     valve('30MAA10AA201', 'valve_gate', 0.975, 'HP stop valve', dn=300, rating='pn160',
                            actuator='hydraulic'),
                      valve('30MAA10AA001', 'valve_control', 0.99, 'HP control valve', dn=300, rating='pn160',
                            actuator='hydraulic')],
