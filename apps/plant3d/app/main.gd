@@ -137,9 +137,7 @@ func _unbaked(n: Node) -> void:
 		g.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 
 func _options() -> void:
-	for a in OS.get_cmdline_user_args():
-		var kv := a.trim_prefix("--").split("=", true, 1)
-		opts[kv[0]] = kv[1] if kv.size() > 1 else "1"
+	opts = parse_options(OS.get_cmdline_user_args())
 	if OS.get_name() == "Android":
 		var f := FileAccess.open(ANDROID_FILES + "/walk.txt", FileAccess.READ)
 		if f:
@@ -150,6 +148,18 @@ func _options() -> void:
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 	Lighting.off = String(opts.get("fx_off", "")).split(",", false)
 	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
+
+## The options after `--`. A start for a walkdown-plant:// link takes no options at all: the shell hands the link over
+## as typed, and Windows doesn't escape a quote in it, so a crafted link could otherwise add its own (`--out=…`).
+static func parse_options(args: PackedStringArray) -> Dictionary:
+	var out := {}
+	for a in args:
+		if a.strip_edges().to_lower().contains("walkdown-plant:"):
+			return {}
+	for a in args:
+		var kv := a.trim_prefix("--").split("=", true, 1)
+		out[kv[0]] = kv[1] if kv.size() > 1 else "1"
+	return out
 
 func _environment() -> void:
 	env = Environment.new()

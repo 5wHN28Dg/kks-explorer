@@ -1,7 +1,8 @@
 """tools/release.py signs and publishes only the release commit, as built (the user, 2026-10-15): the checkout it runs
 from is clean and at the commit, which origin holds (and its tag vVERSION, if any, names); the GitHub release is created
 on that commit; the APK and the MSIX packages carry that commit (a build of another commit, or of an unknown one, is
-refused). No real key: signing is replaced by a stub. Android Studio's files are ignored, so a checkout opened in it
+refused); with --publish, CI on the commit must be green and GitHub's latest release a Walkdown one, and the release is
+made latest explicitly. No real key: signing is replaced by a stub. Android Studio's files are ignored, so a checkout opened in it
 still builds as clean.
   .venv/bin/python -m unittest tests.test_release"""
 import io, json, os, shutil, subprocess, sys, tempfile, unittest, zipfile
@@ -144,9 +145,10 @@ class Release(unittest.TestCase):
             f.write(b'not a zip')
         self.assertIn('not readable', release.artifact_problems({'Walkdown.msix': os.path.join(self.tmp, 'bad.msix')}, self.head)[0])
 
-    def run_main(self, files):
+    def run_main(self, files, latest='v1.2.2', ci='success'):
         """release.py VERSION DIR --publish --yes on this repository, signing with a stub (never a real key) and gh
-        replaced: -> (exit message or None, the gh command or None)"""
+        replaced (GitHub's latest release `latest`, every CI run on the commit concluded `ci`): -> (exit message or
+        None, the gh release command or None)"""
         d = os.path.join(self.tmp, 'out')
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)
@@ -156,6 +158,11 @@ class Release(unittest.TestCase):
         real_run = subprocess.run
 
         def run(cmd, *a, **kw):
+            if cmd[0] == 'gh' and cmd[1] == 'api':
+                return subprocess.CompletedProcess(cmd, 0, latest + '\n', '')
+            if cmd[0] == 'gh' and cmd[1:3] == ['run', 'list']:
+                return subprocess.CompletedProcess(cmd, 0, json.dumps([{'workflowName': 'Tests', 'status': 'completed',
+                                                                        'conclusion': ci, 'url': 'u'}]), '')
             if cmd[0] == 'gh':
                 seen.append(cmd)
                 return subprocess.CompletedProcess(cmd, 0)
@@ -183,6 +190,12 @@ class Release(unittest.TestCase):
         self.assertIn('--target', gh)
         self.assertEqual(gh[gh.index('--target') + 1], self.head)
         self.assertEqual(gh[3:4], ['v1.2.3'])
+        self.assertIn('--latest', gh)      # Walkdown's release is made latest explicitly (decision 0054 §8)
+        # CI red on the release commit, or GitHub's latest a Walkdown Plant release: refused before signing
+        err, _ = self.run_main({'walkdown.apk': apk}, ci='failure')
+        self.assertIn('CI Tests on', err)
+        err, _ = self.run_main({'walkdown.apk': apk}, latest='plant-v0.1.0')
+        self.assertIn('not a Walkdown vX.Y.Z', err)
         # a package of another commit
         err, _ = self.run_main({'walkdown.apk': self.package('walkdown.apk', 'classes.dex', 'e' * 40)})
         self.assertIn('was not built from the release commit', err)
