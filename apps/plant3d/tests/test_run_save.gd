@@ -81,6 +81,13 @@ func _round_trip(m, script, p: Array):
 		for f in ["extra_count", "extra_trace", "extra_seen"]:
 			if not f in fields:
 				p.append("%s: state added to the engine (%s) is not saved" % [name, f])
+	# a copy taken for the worker thread stays as it was while the engine goes on (packed arrays are shared)
+	var probe = e.clone()
+	var cap := RunSave.capture(probe, fields)
+	var cap_bytes := var_to_bytes(cap)
+	probe.step(5)
+	if var_to_bytes(cap) != cap_bytes:
+		p.append("%s: a captured state changes as the engine steps on (the worker thread would save a mix)" % name)
 	var path := DIR.path_join("rt.save")
 	var err := RunSave.write(path, RunSave.encode(_payload(e)))
 	if err != OK:
@@ -305,13 +312,15 @@ func _app(tree: SceneTree, p: Array) -> void:
 	# started again: Continue
 	main = App.start(tree)
 	ui = main.ui
-	var cont := App.find_button(ui.root, "Continue")
+	var cont := App.find_button(ui, "Continue")
 	if cont == null:
-		p.append("a saved run was not offered at start: %s" % App.texts(ui.root).left(300))
+		p.append("a saved run was not offered at start: %s" % App.texts(ui).left(300))
 		main.free()
 		return
 	if ui.autosave.armed:
 		p.append("the app saved before the trainee chose (the saved run would be lost)")
+	if not ui.player.scripted or ui.clock.speed != SimClock.Speed.PAUSED:
+		p.append("the plant can be walked or runs behind the offer")
 	if not App.texts(ui.autosave.offer_panel).contains("Cold start"):
 		p.append("the offer does not name the run: %s" % App.texts(ui.autosave.offer_panel))
 	cont.pressed.emit()
@@ -335,34 +344,62 @@ func _app(tree: SceneTree, p: Array) -> void:
 		p.append("the continued run differs from the one that never stopped")
 	if ui.tracker.index != want_tr:
 		p.append("the continued procedure is at step %d, the uninterrupted one at %d" % [ui.tracker.index, want_tr])
-	ui.autosave.save_now()
+	# the periodic save: copied at this step, encoded and written on the worker thread while the plant goes on
+	var at_step: int = ui.clock.engine.step_no
+	var want_state := var_to_bytes(RunSave.capture(ui.clock.engine, RunSave.engine_fields(ui.clock.engine)))
+	ui.autosave._t = Autosave.INTERVAL
+	ui.autosave._process(0.0)
+	if ui.autosave._thread == null:
+		p.append("the periodic save did not start")
+	ui.clock.run_steps(50)
+	for i in 300:
+		if ui.autosave._thread == null:
+			break
+		await tree.process_frame
+	var rp := RunSave.read(path)
+	if not rp["ok"] or rp["payload"]["engine"]["step_no"] != at_step \
+			or var_to_bytes(rp["payload"]["engine"]) != want_state:
+		p.append("the periodic save is not the state of the step it was taken at")
+	# going to the background saves at once
+	ui.clock.run_steps(7)
+	ui.autosave.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	rp = RunSave.read(path)
+	if not rp["ok"] or rp["payload"]["engine"]["step_no"] != ui.clock.engine.step_no:
+		p.append("going to the background did not save the run")
 	main.free()
 	# New run: a fresh plant, and the save replaced
 	main = App.start(tree)
 	ui = main.ui
-	var nb := App.find_button(ui.root, "New run")
+	var nb := App.find_button(ui, "New run")
 	if nb == null:
 		p.append("no New run at start")
 	else:
+		ui.clock.engine.step(3)            # (as if something had run behind the offer: New run starts afresh)
 		nb.pressed.emit()
 		var r := RunSave.read(path)
 		if ui.clock.engine.step_no != 0 or not r["ok"] or r["payload"]["engine"]["step_no"] != 0:
 			p.append("New run did not start afresh and replace the save")
 	# a save of other content, then a damaged one: refused with the reason, a new run starts
 	var pl: Dictionary = ui.autosave.payload()
-	pl["content"] = "0".repeat(64)
-	RunSave.write(path, RunSave.encode(pl))
 	main.free()
-	for c in [["content", "content has changed"], ["damaged", "cut short"]]:
-		if c[0] == "damaged":
+	for c in [["content", "content has changed"], ["app", "another version of the app"], ["damaged", "cut short"]]:
+		if c[0] == "content":
+			var q := pl.duplicate(true)
+			q["content"] = "0".repeat(64)
+			RunSave.write(path, RunSave.encode(q))
+		elif c[0] == "app":
+			var q := pl.duplicate(true)
+			q["app"] = "0.0.1+0123456789abcdef"
+			RunSave.write(path, RunSave.encode(q))
+		else:
 			var b := FileAccess.get_file_as_bytes(path)
 			FileAccess.open(path, FileAccess.WRITE).store_buffer(b.slice(0, b.size() - 3))
 		main = App.start(tree)
 		ui = main.ui
-		var txt := App.texts(ui.root)
-		if App.find_button(ui.root, "Continue") != null or not txt.contains("can't be continued") or not txt.contains(c[1]):
+		var txt := App.texts(ui)
+		if App.find_button(ui, "Continue") != null or not txt.contains("can't be continued") or not txt.contains(c[1]):
 			p.append("a save (%s) was not refused with its reason: %s" % [c[0], txt.left(300)])
-		var nb2 := App.find_button(ui.root, "New run")
+		var nb2 := App.find_button(ui, "New run")
 		if nb2 == null:
 			p.append("a refused save offers no New run")
 		else:

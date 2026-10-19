@@ -141,9 +141,10 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
   change to the save (`tests/test_run_save.gd`).
 - **At start**, a saved run is offered: Continue (the plant, the procedure, the trainee where they were; the run
   then goes on bit for bit as it would have) or New run (a new run in the default scenario, which replaces the save).
-  The plant waits, paused, and nothing is saved until the trainee chooses. A save that can't be continued says why
-  and offers only a new run. Not offered when the command line asks for a start (`scenario`, `procedure`, `speed`);
-  a measurement (`walk`, `shot`) saves to `user://run-walk.save`, never over a trainee's run.
+  The plant waits, paused, behind the offer (nothing can be walked or worked) and nothing is saved until the trainee
+  chooses. A save that can't be continued says why and offers only a new run. A start the command line asks for
+  (`walk`, `shot`, `scenario`, `procedure`, `speed`) offers nothing and saves to `user://run-options.save`, never
+  over a trainee's run.
 
 **The file** (`ui/run_save.gd`), little-endian:
 
@@ -155,7 +156,9 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
 | 32 | SHA-256 of the payload |
 | … | the payload: one Dictionary in Godot's binary Variant encoding (`var_to_bytes`, no objects), so doubles keep every bit |
 
-The payload's parts, each required, no others: `app` (the app's version, `application/config/version`), `content`
+The payload's parts, each required, no others: `app` (the app's version: `application/config/version`, `+`, the first 16 hex digits of `built/code.sha256`,
+which `build.sh` makes from `sim/*.gd`, `ui/run_save.gd`, `ui/autosave.gd` and `ui/procedure_tracker.gd`: an export
+keeps scripts only compiled, so the app can't hash its code itself), `content`
 (SHA-256 over every file of `built/content`, by sorted path, with its length), `scenario`, `saved_unix`, `engine`
 (field → value), `clock` (`speed` 0 paused, 1 1×, 2 fast-forward; `ff_want`; `pause_on_hold`), `procedure` (an id,
 or `""`), `tracker` (field → value, `{}` without a procedure), `ui` (`results`, `pending`), `player` (`pos` a
@@ -170,7 +173,7 @@ then says so and starts a new run.
 **Loaded strictly:** a file over 64 MiB, a wrong magic, a length that is not the file's, a hash that does not match,
 a payload that is not a Dictionary of exactly those parts of those types is refused as damaged; another save format,
 another app version or other content is refused as such; so is engine or tracker state whose fields are not this
-version's, of other types, or (an array the fresh engine holds non-empty, sized by the model) of another length, a
+version's, of other types (where the field is typed: an untyped field takes any value but an object), or (an array the fresh engine holds non-empty, sized by the model) of another length, a
 procedure or scenario the plant doesn't have, a step index outside the procedure, a clock, panel record or place
 that is not of its kind or not finite. Nothing of a refused save is applied.
 

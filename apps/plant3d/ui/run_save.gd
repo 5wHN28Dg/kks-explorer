@@ -25,8 +25,15 @@ const PAYLOAD_KEYS := {"app": TYPE_STRING, "content": TYPE_STRING, "scenario": T
 		"ui": TYPE_DICTIONARY, "player": TYPE_DICTIONARY}
 
 
+## The app's version: its configured version and the hash of the code that makes and reads a run's state, which
+## build.sh writes to built/code.sha256 (sim/*.gd and the save's and the tracker's scripts: an export keeps the
+## scripts only compiled, so the app can't hash them itself). A save of any other build is refused.
+const CODE_HASH := "res://built/code.sha256"
+
+
 static func app_version() -> String:
-	return str(ProjectSettings.get_setting("application/config/version", ""))
+	var code := FileAccess.get_file_as_string(CODE_HASH).strip_edges() if FileAccess.file_exists(CODE_HASH) else ""
+	return "%s+%s" % [str(ProjectSettings.get_setting("application/config/version", "")), code.left(16)]
 
 
 ## SHA-256 (hex) of every file under `dir`, by sorted relative path: the content a run was made with.
@@ -77,13 +84,15 @@ static func tracker_fields(t: Object) -> PackedStringArray:
 	return fields(t, TRACKER_BUILT, false)
 
 
-## A deep copy of the fields' values (safe to encode on another thread while obj goes on).
+## A deep copy of the fields' values (safe to encode on another thread while obj goes on: tests/test_run_save.gd).
 static func capture(obj: Object, names: PackedStringArray) -> Dictionary:
 	var d := {}
 	for nm in names:
 		var v = obj.get(nm)
 		if v is Array or v is Dictionary:
 			v = v.duplicate(true)
+		elif _is_packed(typeof(v)):
+			v = v.duplicate()       # packed arrays are shared by reference: the engine writes `cur` in place
 		d[nm] = v
 	return d
 
@@ -92,16 +101,21 @@ static func _is_packed(t: int) -> bool:
 	return t >= TYPE_PACKED_BYTE_ARRAY and t <= TYPE_PACKED_VECTOR4_ARRAY
 
 
-## Checks data against the fresh object's fields (the same names, the same types; an array or packed array that the
+## Checks data against the fresh object's fields (the same names; the same types where a field is typed; an array or packed array that the
 ## fresh object holds non-empty keeps its size: it is sized by the model); "" when it fits. Applies nothing.
 static func check(fresh: Object, names: PackedStringArray, data: Dictionary) -> String:
 	if data.size() != names.size():
 		return "its fields are not this version's"
+	var declared := {}
+	for prop in fresh.get_property_list():
+		declared[prop["name"]] = prop["type"]
 	for nm in names:
 		if not data.has(nm):
 			return "no field %s" % nm
 		var want = fresh.get(nm)
 		var got = data[nm]
+		if declared.get(nm, TYPE_NIL) == TYPE_NIL and typeof(got) != TYPE_OBJECT:
+			continue            # an untyped field (`var x = 0`) may hold any value, but never an object
 		if typeof(got) != typeof(want):
 			return "field %s is a %s, not a %s" % [nm, type_string(typeof(got)), type_string(typeof(want))]
 		if (want is Array or _is_packed(typeof(want))) and want.size() > 0 and got.size() != want.size():

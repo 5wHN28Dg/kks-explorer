@@ -46,6 +46,8 @@ for d in areas model scenarios procedures; do
   mkdir -p "$HERE/built/content/$d"
   cp "$ROOT/data/plant3d/$d/"*.json "$HERE/built/content/$d/"
 done
+# the code that makes and reads a saved run's state (ui/run_save.gd app_version: a save of another build is refused)
+(cd "$HERE" && cat sim/*.gd ui/run_save.gd ui/autosave.gd ui/procedure_tracker.gd | sha256sum | cut -d' ' -f1) >"$HERE/built/code.sha256"
 # the sounds (tools/plant3d/sounds, decision 0055: NumPy and FFmpeg with libvorbis): a release needs them; otherwise
 # they are made when the tools are there, and the app is silent without them (ui/sound_player.gd)
 PY="${PLANT_PYTHON:-$ROOT/.venv/bin/python}"; [ -x "$PY" ] || PY=python3

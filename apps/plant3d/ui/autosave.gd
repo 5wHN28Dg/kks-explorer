@@ -5,7 +5,8 @@
 ##
 ## Off the frame: a periodic save copies the state on the main thread (about 0.1 ms on a laptop, so about half a
 ## millisecond on the Note 9: tests/bench_save.gd) and encodes and writes it on a worker thread. The save on going to
-## the background is made on the main thread at once (the app may be stopped right after).
+## the background is made on the main thread at once (the app may be stopped right after). While the offer is up,
+## the plant waits paused behind it and nothing can be walked or worked: nothing is saved until the trainee chooses.
 extends Node
 
 const RunSave = preload("res://ui/run_save.gd")
@@ -23,6 +24,7 @@ var path := ""
 var content := ""               # the content's hash (RunSave.content_hash)
 var armed := false              # saving; not before the trainee has chosen Continue or New run
 var offer_panel: PanelContainer
+var _offer_layer: CanvasLayer   # over everything: the plant can't be walked or worked until the trainee chooses
 var last_error := ""            # why the last load was refused ("" when it was not)
 var saves := 0                  # saves written (tests)
 var capture_us := 0             # the main thread's part of the last periodic save
@@ -53,6 +55,10 @@ func begin(offer := true) -> void:
 	else:
 		why = r["text"]
 	_show_offer(r["payload"] if r["ok"] and why == "" else {}, why)
+
+
+func offering() -> bool:
+	return offer_panel != null
 
 
 # ------------------------------------------------------------------ what is saved
@@ -193,7 +199,18 @@ func _show_offer(p: Dictionary, why: String) -> void:
 		row.add_child(nb)
 		if ui.wants_focus():
 			nb.grab_focus.call_deferred()
-	ui.root.add_child(offer_panel)
+	_offer_layer = CanvasLayer.new()
+	_offer_layer.layer = 10
+	add_child(_offer_layer)
+	var block := ColorRect.new()
+	block.color = Color(0, 0, 0, 0.45)
+	block.set_anchors_preset(Control.PRESET_FULL_RECT)
+	block.mouse_filter = Control.MOUSE_FILTER_STOP
+	block.theme = ui.root.theme
+	_offer_layer.add_child(block)
+	block.add_child(offer_panel)
+	ui.player.scripted = true           # no walking or looking, and the app's keys wait (app/main.gd, ui/plant_ui.gd)
+	ui.player.drive = Vector2.ZERO
 	_place_offer()
 	ui.root.get_viewport().size_changed.connect(_place_offer)
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -216,9 +233,12 @@ static func _tz_offset() -> int:
 func _choose(p: Dictionary) -> void:
 	if offer_panel != null:
 		ui.root.get_viewport().size_changed.disconnect(_place_offer)
-		offer_panel.queue_free()
+		_offer_layer.queue_free()
+		_offer_layer = null
 		offer_panel = null
+		ui.player.scripted = false
 	if p.is_empty():
+		ui.restart(ui.clock.scenario, true)     # afresh (the plant waited at step 0: this is the same start)
 		ui.clock.set_speed(SimClock.Speed.NORMAL)
 	else:
 		restore(p)
@@ -234,7 +254,7 @@ func _signature() -> String:
 	var tr = ui.tracker
 	var pl = ui.player
 	var pos: Vector3 = pl.global_position.snapped(Vector3(0.25, 0.25, 0.25))
-	return "%d|%d|%d|%d|%s|%s|%.2f|%.2f|%s" % [e.step_no, e.inputs.size(), ui.clock.speed, int(ui.clock.pause_on_hold),
+	return "%d|%d|%d|%s|%d|%s|%s|%.2f|%.2f|%s" % [e.step_no, e.inputs.size(), ui.clock.speed, str(ui.clock.ff_want), int(ui.clock.pause_on_hold),
 			str([tr.index, tr.did.size(), tr.log.size()]) if tr != null else "-", str(pos), pl.rotation.y,
 			pl.pivot.rotation.x, str(ui.results.size())]
 
@@ -269,6 +289,7 @@ func _finish_thread() -> void:
 	if err == OK:
 		saves += 1
 	else:
+		_sig = ""                       # tried again at the next interval
 		push_warning("autosave: the run was not saved (error %d)" % err)
 
 
@@ -282,6 +303,7 @@ func save_now() -> bool:
 	_t = 0.0
 	var err := RunSave.write(path, RunSave.encode(payload()))
 	if err != OK:
+		_sig = ""
 		push_warning("autosave: the run was not saved (error %d)" % err)
 		return false
 	saves += 1
