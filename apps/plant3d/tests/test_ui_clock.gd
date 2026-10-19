@@ -41,13 +41,13 @@ func run(tree: SceneTree) -> Array:
 	var allowed := 0.0
 	for i in 60:
 		c.step_ms = 0.28
-		allowed += c.ff_rate() * (1.0 / 60.0) / SimClock.STEP
+		allowed += c.rate() * (1.0 / 60.0) / SimClock.STEP
 		c._process(1.0 / 60.0)
 	var spent := (Time.get_ticks_usec() - t0) / 1e6
 	var steps: int = c.engine.step_no - s1
 	if steps <= 60:
 		p.append("fast-forward ran %d steps in a second of frames" % steps)
-	if steps > ceili(allowed) + 1:
+	if steps > ceili(allowed - 1e-6) + 1:
 		p.append("fast-forward ran %d steps, more than its rate (%.1f steps in that second) allows" % [steps, allowed])
 	print("  fast-forward: %d steps for 1 s of frames (%.1f allowed), %.0f ms of model time on this machine" % [steps, allowed, spent * 1000.0])
 	# the budget: with a step said to cost 4 ms, a 60 fps frame (16.7 ms) may run one step (a quarter is 4.2 ms)
@@ -57,6 +57,20 @@ func run(tree: SceneTree) -> Array:
 	c._process(1.0 / 60.0)
 	if c.engine.step_no - s2 > 1:
 		p.append("a frame ran %d steps of 4 ms, over a quarter of its time" % (c.engine.step_no - s2))
+	# when more steps are due than the budget allows, the frame runs the budget and the rest is not owed later: at
+	# 2 ms a step a 60 fps frame may run 2 (12 are due: 1 s owed plus the frame's 12.5× of 1/60 s), and the next frame
+	# runs only its own 2
+	c.step_ms = 2.0
+	c.acc = 1.0
+	var s5: int = c.engine.step_no
+	c._process(1.0 / 60.0)
+	if c.engine.step_no - s5 != 2 or c.acc != 0.0:
+		p.append("12 steps due with a budget of 2 ran %d and left %.2f s owed" % [c.engine.step_no - s5, c.acc])
+	c.step_ms = 2.0
+	s5 = c.engine.step_no
+	c._process(1.0 / 60.0)
+	if c.engine.step_no - s5 != 2:
+		p.append("the frame after a capped one ran %d steps, not its own 2" % (c.engine.step_no - s5))
 	c.step_ms = 0.3
 	# fast-forward stops by itself when an alarm comes up: closed cooling water pump A runs, then its motor fails
 	c.set_speed(SimClock.Speed.PAUSED)
