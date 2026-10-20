@@ -84,7 +84,7 @@ bunched in the first lap.
 
 **The two early frames** (150 and 100 ms within 1.2 s of the first walkable frame, inside the rule's first 5 s), told
 apart on 2026-10-20 with the app's `EARLY` lines (every frame over 40 ms in the first 5 s, with the pipelines compiled
-in it) on four first starts, two with the cache's saves off (`pipeline_save_mb=1024`):
+in it) on four first starts, two with the cache's saves off (`pipeline_save_mb=1024` in `walk.txt`, which `frames.sh` pushes after clearing the app's data; the app now logs the value it took):
 
 - **Not the pipeline cache's saves:** the same frames with them off (166-256 ms and 113-118 ms, against 217-256 and
   115-118 ms with them).

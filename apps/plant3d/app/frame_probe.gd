@@ -70,7 +70,7 @@ func _proc_end() -> void:
 		var drawn := _pre >= _proc1 and _post >= _pre
 		var vp: RID = get_viewport().get_viewport_rid()
 		var steps := 0
-		var c = main.ui.clock if main.ui != null else null
+		var c = main.ui.clock if main != null and main.ui != null else null
 		if c != null:
 			steps = c.engine.step_no if c.engine != null else 0
 		rows.append("%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d" % [

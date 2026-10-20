@@ -21,6 +21,9 @@ static func write(path := PATH) -> Error:
 	return ResourceSaver.save(r, full, ResourceSaver.FLAG_COMPRESS)
 
 func _init() -> void:
+	if FileAccess.file_exists(ProjectSettings.globalize_path(PATH)):
+		quit(0)   # a cache the editor saved (a checkout used before): read, never regenerated, nothing to fear
+		return
 	var err := write()
 	if err != OK:
 		printerr("bake: cannot write the script documentation cache %s (error %d)" % [PATH, err])

@@ -203,6 +203,7 @@ func _options() -> void:
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
+		_say("pipeline cache saved every %.2f MB" % float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb")))
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 	Lighting.off = String(opts.get("fx_off", "")).split(",", false)
 	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
@@ -354,7 +355,7 @@ func _first_frame() -> void:
 	_early_frames()
 
 ## The first 5 s after the first walkable frame (outside the frame rules' measurement, inside the start): each frame
-## over 40 ms, with the pipelines compiled since the frame before (`EARLY` lines; phone/launch.sh and frames.sh keep
+## over 40 ms, with the pipelines compiled since the frame before (`EARLY` lines; phone/frames.sh keeps
 ## the log), and every frame in which pipelines were compiled. The Note 9 showed a 150 ms and a 100 ms frame there.
 func _early_frames() -> void:
 	var t0 := Time.get_ticks_usec()
