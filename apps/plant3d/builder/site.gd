@@ -113,13 +113,14 @@ func _wall(root: Node3D, r: Rect2) -> void:
 			var mid := (p0 + p1) * 0.5
 			var is_gate := mid.distance_to(gate_c) < 4.5
 			if is_gate:
-				b._panel(gate, body, p0, p1, 0.0, WALL_H - 0.4, 0.08)
+				b._wall_panel(gate, body, p0, p1, 0.0, WALL_H - 0.4, 0.08)
 			else:
-				b._panel(st, body, p0, p1, 0.0, WALL_H, 0.2)
+				b._wall_panel(st, body, p0, p1, 0.0, WALL_H, 0.2)
 			var pc := Geom.rect(p0.x - 0.2, p0.y - 0.2, p0.x + 0.2, p0.y + 0.2)
+			st.set_color(b.top_colour(WALL_H + 0.15))   # its own top (it stands higher than the panels: review)
 			Geom.add_prism(st, pc, 0.0, WALL_H + 0.15)
 	b._mesh_node(body, "panels", st, b._mat("wall_concrete"), Lightmap.GROUND_TEXEL)
-	b._mesh_node(body, "gate", gate, b._mat("fence"), Lightmap.GROUND_TEXEL)
+	b._mesh_node(body, "gate", gate, b._mat("fence"), Lightmap.SHEET_TEXEL)   # a thin sheet: a fine texel
 
 ## The country beyond the wall: a grid out to FAR from the centre, its height 0 at the wall, a few metres of
 ## undulation within 250 m and low hills towards the far plane (FastNoiseLite: the same every build). Not walkable

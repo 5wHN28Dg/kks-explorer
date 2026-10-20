@@ -15,7 +15,7 @@ func _enter_tree() -> void:
 		_bake.call_deferred()
 
 func _say(s: String) -> void:
-	print("bake: ", s)
+	printerr("bake: ", s)   # unbuffered: the last step shows when the editor crashes
 
 func _fail(s: String) -> void:
 	printerr("bake: ERROR ", s)
@@ -34,12 +34,6 @@ func _bake() -> void:
 		_fail("no %s: run the content build first" % SCENE)
 		return
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(Lighting.LIGHTMAP.get_base_dir()))
-	# the lightmap's import settings, before the bake writes and imports its image (the bake keeps a mode it finds):
-	# HDR kept uncompressed as RGBE9995, 4 bytes a texel on every GPU. The Note 9's Mali-G72 has no ASTC HDR: Godot
-	# turned the ASTC lightmap into RGBA half floats at load (8 bytes a texel, measured 2026-10-16)
-	var imp := FileAccess.open(ProjectSettings.globalize_path(Lighting.LIGHTMAP.get_basename() + ".exr.import"), FileAccess.WRITE)
-	imp.store_string("[remap]\n\nimporter=\"2d_array_texture\"\ntype=\"CompressedTexture2DArray\"\n\n[params]\n\ncompress/mode=2\ncompress/hdr_compression=0\n")
-	imp.close()
 	var data := LightmapGIData.new()
 	if ResourceSaver.save(data, Lighting.LIGHTMAP) != OK:
 		_fail("cannot write " + Lighting.LIGHTMAP)
@@ -48,6 +42,14 @@ func _bake() -> void:
 	await _frames(5)
 	while fs.is_scanning():
 		await _frames(5)
+	# the lightmap's import settings, before the bake writes and imports its image (the bake keeps a mode it finds),
+	# and after the editor's scan: an .import file without its image crashed the editor's scan (signal 11, every
+	# time, on a fresh checkout, 2026-10-17):
+	# HDR kept uncompressed as RGBE9995, 4 bytes a texel on every GPU. The Note 9's Mali-G72 has no ASTC HDR: Godot
+	# turned the ASTC lightmap into RGBA half floats at load (8 bytes a texel, measured 2026-10-16)
+	var imp := FileAccess.open(ProjectSettings.globalize_path(Lighting.LIGHTMAP.get_basename() + ".exr.import"), FileAccess.WRITE)
+	imp.store_string("[remap]\n\nimporter=\"2d_array_texture\"\ntype=\"CompressedTexture2DArray\"\n\n[params]\n\ncompress/mode=2\ncompress/hdr_compression=0\n")
+	imp.close()
 	EditorInterface.open_scene_from_path(SCENE)
 	await _frames(10)
 	var root := EditorInterface.get_edited_scene_root()

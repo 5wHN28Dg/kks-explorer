@@ -698,7 +698,8 @@ func pipe(parent: Node3D, p: Dictionary) -> void:
 	var m := MB.new()
 	m.seg_scale = seg_scale
 	var origin: Vector3 = route[0]
-	P_PIPE.pipe(m, route, {"od": od, "ins": ins, "band": "medium_" + p.medium, "arrows": float(p.get("arrows", 0)),
+	var group: String = b.plant.media[p.medium].get("group", "")
+	P_PIPE.pipe(m, route, {"od": od, "ins": ins, "band": "medium_" + p.medium, "paint": Mat.pipe_paint(group), "arrows": float(p.get("arrows", 0)),
 		"buried": buried, "gaps": gaps, "flanges": flanges, "supports": sup,
 		"bend": {"3d": 3.0, "5d": 5.0}.get(p.get("bend", ""), 1.5)}, origin)
 	# a pipe runs through many cells: its triangles go to the cell they lie in (0041's grouping, culling and LOD per

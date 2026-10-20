@@ -54,7 +54,7 @@ static func pieces(pts: Array, bend_r: float) -> Dictionary:
 	return {"runs": runs, "bends": bends}
 
 ## A pipe into mesh builder m (plant coordinates relative to `origin`).
-##   p: {od (m), ins (m), band (material name), arrows (m, 0 = none), buried: {seg: true}, gaps: [[s0, s1], …] (bare
+##   p: {od (m), ins (m), band (material name), paint (bare pipe's material name, default paint_pipe), arrows (m, 0 = none), buried: {seg: true}, gaps: [[s0, s1], …] (bare
 ##       stretches along the route: valves and instruments in insulated pipe), flanges: [point, dir] (the route's ends
 ##       on nozzles), supports: [{at, z_to, kind}], bend: factor of OD}
 static func pipe(m, pts: Array, p: Dictionary, origin: Vector3) -> void:
@@ -64,7 +64,7 @@ static func pipe(m, pts: Array, p: Dictionary, origin: Vector3) -> void:
 	var rr := r + ins
 	var buried: Dictionary = p.get("buried", {})
 	var gaps: Array = p.get("gaps", [])
-	var body := "cladding" if ins > 0.0 else "paint_pipe"
+	var body: String = "cladding" if ins > 0.0 else p.get("paint", "paint_pipe")   # bare: painted by what it carries
 	var local: Array = []
 	for q in pts:
 		local.append(q - origin)

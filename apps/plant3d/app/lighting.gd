@@ -1,7 +1,7 @@
 ## The plant's light (R9, R9a): one sun and sky for the bake and for every tier, the baked lightmap (builder/bake/)
 ## attached when the build carries one, and what each tier adds at run time. Measured per tier (decision 0057,
-## "Realism"): the lightmap is a texture read per pixel on every tier; SSAO, SSIL, volumetric fog and glow are the
-## laptops' (Forward+); the phones get the bake, distance haze and nothing else.
+## "Realism"): the lightmap is a texture read per pixel on every tier; both tiers get the bake, distance haze and nothing
+## else (SSAO, SSIL, volumetric fog and glow, Forward+ only, were measured and left out for their cost on the laptop).
 extends RefCounted
 
 ## Where the bake puts its data (builder/bake/bake_plugin.gd): a LightmapGIData whose users are paths from a node
@@ -67,7 +67,7 @@ static func sun() -> DirectionalLight3D:
 
 ## The lightmap node for a plant whose areas stand under `parent`, or null when the build carries no bake.
 static func lightmap_node() -> LightmapGI:
-	if not ResourceLoader.exists(LIGHTMAP):
+	if not ResourceLoader.exists(LIGHTMAP) or "lightmap" in off:   # fx_off=lightmap: without it, to compare
 		return null
 	var data := load(LIGHTMAP) as LightmapGIData
 	if data == null or data.get_user_count() == 0 or data.get_lightmap_textures().is_empty():
@@ -79,14 +79,12 @@ static func lightmap_node() -> LightmapGI:
 
 ## What a tier adds to the environment (measured: decision 0057). Both tiers: AgX tonemapping (a film-like curve that keeps the shade readable and the colours of paint true) with the
 ## same exposure, and a thin haze that grows with distance (aerial perspective: far equipment pales towards the
-## sky's colour, as it does outdoors; Godot's depth fog, a few instructions per pixel). Laptops (Forward+) add
-## SSAO (contact shade under what the lightmap is too coarse for: bolts, valves on pipes, a hand on a rail), SSIL
-## (light bounced between nearby moving parts and their surroundings), volumetric fog (the sun's light in the air:
-## shafts through a hall's doors) and a little glow on lamps. The Mobile renderer has none of SSAO, SSIL and
-## volumetric fog; the phone's shade comes from the bake.
-## Effects switched off for a measurement (main.gd's `fx_off=ssao,ssil,volfog,glow,fog`): which costs what.
+## sky's colour, as it does outdoors; Godot's depth fog, a few instructions per pixel). SSAO, SSIL, volumetric fog,
+## glow and SDFGI are Forward+ effects measured on the laptop and left out for their cost (0057): each can be switched
+## on for a measurement (the Mobile renderer has none of SSAO, SSIL and volumetric fog). The shade comes from the bake.
+## Effects switched off for a measurement (main.gd's `fx_off=fog,tonemap,lightmap`): which costs what.
 static var off: PackedStringArray = []
-## Effects switched on for a measurement only (`fx_on=sdfgi,ssil,volfog,glow`): measured and left out (0057).
+## Effects switched on for a measurement only (`fx_on=ssao,sdfgi,ssil,volfog,glow`): measured and left out (0057).
 static var on: PackedStringArray = []
 
 static func apply(tier: String, env: Environment) -> void:
@@ -102,9 +100,11 @@ static func apply(tier: String, env: Environment) -> void:
 	env.fog_density = 0.0003
 	env.fog_aerial_perspective = 0.0   # the sky below the horizon is the ground: looking down it would wash the view
 	env.fog_sky_affect = 0.0
-	env.ssao_enabled = full
-	# Low quality at half size (0057: Medium cost the frame rule its margin on the Iris Xe), faded out by
-	# 120 m where its contact shade is under a pixel anyway
+	# SSAO only for a measurement (`fx_on=ssao`): low quality at half size it still cost about 6 ms of the Iris Xe's
+	# GPU time at the 95th percentile, and the full tier missed the 60 fps rule with it (second realism pass, 0057).
+	# The lightmap carries the shade under equipment and in corners; what SSAO added was contact shade finer than a
+	# texel (bolts, a valve on its pipe).
+	env.ssao_enabled = "ssao" in on
 	RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_LOW, true, 0.5, 2, 50.0, 120.0)
 	env.ssao_radius = 1.2
 	env.ssao_intensity = 1.6

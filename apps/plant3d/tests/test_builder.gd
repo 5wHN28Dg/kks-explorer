@@ -20,6 +20,8 @@ func run(_tree: SceneTree) -> Array:
 	_refusals()
 	_headroom()
 	_cuts()
+	_hall_floor()
+	_lamp_floor()
 	return problems
 
 func _decompose() -> void:
@@ -53,6 +55,59 @@ func _stairs() -> void:
 			var slope: float = (fl.z1 - fl.z0) / fl.a.distance_to(fl.b)
 			check(slope > 0.3 and slope < 0.9, "a flight is walkable as a slope (%.2f)" % slope)
 	check(Geom.stair_steps(Vector3(0, 0, 0), Vector3(1, 0, 5), "straight", 1.0).is_empty(), "a stair too steep is refused")
+
+## A hall's painted floor leaves a pit inside it open and refuses one across its wall (drawn over it, the floor would
+## cover the opening); a pit inside an L-shaped hall's box but outside the hall is no hole of its (second realism pass).
+func _hall_floor() -> void:
+	var cases := [
+		[Geom.rect(0, 0, 10, 10), Geom.rect(2, 2, 4, 4), 96.0, false, "a pit inside the hall"],
+		[Geom.rect(0, 0, 10, 10), Geom.rect(8, 2, 12, 4), 0.0, true, "a pit across the hall's wall"],
+		[PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 4), Vector2(4, 4), Vector2(4, 10), Vector2(0, 10)]),
+			Geom.rect(6, 6, 8, 8), 64.0, false, "a pit in an L-shaped hall's box, outside the hall"],
+	]
+	for c in cases:
+		var b := Builder.new()
+		b.pits = [{"id": "pit", "outline": c[1]}]
+		var body := Node3D.new()
+		b._hall_floor(body, {"id": "hall", "outline": c[0]})
+		var refused := false
+		for e in b.errors:
+			refused = refused or String(e).begins_with("pit_across_hall")
+		check(refused == c[3], "%s: %s" % [c[4], "refused" if c[3] else "accepted"])
+		if not c[3]:
+			var fl := body.get_node_or_null("floor") as MeshInstance3D
+			var area := 0.0
+			if fl != null:
+				var v: PackedVector3Array = fl.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+				var ix: PackedInt32Array = fl.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX]
+				for t in range(0, ix.size(), 3):
+					var n := (v[ix[t + 1]] - v[ix[t]]).cross(v[ix[t + 2]] - v[ix[t]])
+					if n.normalized().y > 0.99:
+						area += n.length() / 2.0
+			check(absf(area - c[2]) < 0.01, "%s: the floor is %.1f m², not %.1f" % [c[4], area, c[2]])
+		body.free()
+
+## A hall's lamp is set from its height over the floor under it: a deck's where there is one (from the ground, the
+## turbine hall's 12 m deck got 2.6 × the light meant on it: adversarial review, second realism pass).
+func _lamp_floor() -> void:
+	var b := Builder.new()
+	b.surfaces = [{"id": "deck", "z": 12.0, "outline": Geom.rect(0, 0, 10, 10), "holes": [Geom.rect(4, 4, 6, 6)]},
+		{"id": "pit", "z": -4.0, "outline": Geom.rect(20, 0, 30, 10), "holes": []},
+		{"id": "high", "z": 18.0, "outline": Geom.rect(0, 0, 10, 10), "holes": []}]
+	check(is_equal_approx(b.floor_below(Vector2(2, 2), 19.0), 12.0), "a lamp over a deck: the deck's floor (1.0 m above the top deck counts nothing)")
+	check(is_equal_approx(b.floor_below(Vector2(5, 5), 19.0), 0.0), "a lamp over a deck's opening: the ground")
+	check(is_equal_approx(b.floor_below(Vector2(25, 5), 19.0), 0.0), "a lamp over a pit: the ground (the pit has its own lamps)")
+	check(is_equal_approx(b.floor_below(Vector2(2, 2), 25.0), 18.0), "the highest floor under the lamp")
+	# a lamp right over a deck's edge is set for the deck (the edge's point counted as off the deck on one side)
+	check(is_equal_approx(b.lamp_floor(Vector2(10, 2), 15.0), 12.0), "a lamp over a deck's edge: the deck's floor")
+	check(is_equal_approx(b.lamp_floor(Vector2(0, 2), 15.0), 12.0), "a lamp over a deck's other edge: the deck's floor")
+	check(is_equal_approx(b.lamp_floor(Vector2(12, 2), 15.0), 0.0), "a lamp clear of the deck: the ground")
+	# a wall piece's streaks start at the opening above it, else at the wall's top
+	var cuts := [[2.0, 4.0, 1.0, 3.0]]
+	check(is_equal_approx(Builder.piece_top(Rect2(2, 0, 2, 1), cuts, 10.0), 1.0), "a piece under an opening: its bottom")
+	check(is_equal_approx(Builder.piece_top(Rect2(0, 0, 2, 3), cuts, 10.0), 10.0), "a piece beside an opening: the wall's top")
+	check(is_equal_approx(Builder.piece_top(Rect2(0, 3, 10, 7), cuts, 10.0), 10.0), "the piece over the openings: the wall's top")
+	check(is_equal_approx(Builder.piece_top(Rect2(0, 0, 10, 1), cuts, 10.0), 1.0), "a slab under an opening: the opening's bottom")
 
 ## A synthetic plant: one area with a building (door and pipe openings), a door, a pump, a pipe and a stair.
 func _plant(door_open: bool, pipe_open: bool, pipe_over_stair: bool) -> Builder:

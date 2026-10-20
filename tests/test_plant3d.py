@@ -634,5 +634,24 @@ class Forks(unittest.TestCase):
         self.assertEqual({x['id'] for x in m.interlocks} - fired_i, set())
 
 
+class Bake(unittest.TestCase):
+    """The lightmap bake (apps/plant3d/builder/bake/bake_plugin.gd) runs only in the editor on a GPU, so not here; its
+    order is checked from the source. The lightmap's .import file must be written after the editor's scan of the new
+    folder: written before it, it stands without its image while the editor scans, and the scan crashed the editor
+    (signal 11) on every fresh checkout (second realism pass, 2026-10-17)."""
+
+    def test_import_settings_are_written_after_the_editors_scan(self):
+        with open(os.path.join(ROOT, 'apps', 'plant3d', 'builder', 'bake', 'bake_plugin.gd'), encoding='utf-8') as f:
+            src = f.read()
+        body = src[src.index('func _bake()'):]
+        write = body.index('.exr.import"')
+        scan = body.index('fs.scan()')
+        wait = body.index('while fs.is_scanning()', scan)
+        bake = body.index('button.pressed.emit()')
+        self.assertLess(scan, write, 'the .import file is written before the editor scans the lightmap folder')
+        self.assertLess(wait, write, 'the .import file is written while the editor may still be scanning')
+        self.assertLess(write, bake, 'the import settings come before the bake writes its image')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -14,6 +14,10 @@ extends RefCounted
 const TEXEL := 0.33
 ## The ground: one big slab, lit almost evenly except near what stands on it.
 const GROUND_TEXEL := 0.5
+## Thin sheets (the fences, the gate: 5 to 8 cm): at the usual texel a texel spans both faces and the sheet baked as
+## dark and brown blotches; this fine they bake clean (second realism pass). Left out of the bake instead, they cost
+## the phone a pipeline of their own at the first frame (an unbaked static mesh).
+const SHEET_TEXEL := 0.08
 
 ## Arrays (one triangle surface) to a mesh with UV2 for the lightmap, LODs again when `lods` (an `identify` piece
 ## keeps every triangle, PLANT3D.md §10). Null when the unwrapper fails (the caller keeps the mesh without UV2).
