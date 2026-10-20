@@ -33,7 +33,7 @@ case "$MODE" in first|second) ;; *) echo "MODE: first or second" >&2; exit 2 ;; 
 [ -f "$APK" ] || { echo "no $APK: run tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release" >&2; exit 2; }
 mkdir -p "$OUT"
 say "phone $SERIAL: $(sh_ getprop ro.product.model), $MODE start x $RUNS; $APK ($(stat -c %s "$APK") bytes)"
-printf 'run\tmode\tcpu_c\tbatt_c\tmem_avail_mb\tplugged\tproc_start_s\tengine_s\tready_s\tloaded_s\tui_s\tfirst_frame_s\tpipelines\n' > "$OUT/summary.tsv"
+printf 'run\tmode\tcpu_c\tbatt_c\tmem_avail_mb\tplugged\tbig_mhz_median\tproc_start_s\tengine_s\tready_s\tloaded_s\tui_s\tfirst_frame_s\tpipelines\n' > "$OUT/summary.tsv"
 act=""
 for i in $(seq 1 "$RUNS"); do
   sh_ am force-stop "$PKG"
@@ -55,6 +55,10 @@ for i in $(seq 1 "$RUNS"); do
   # what else runs while the app starts: top every second for 30 s
   sh_ top -b -d 1 -n 30 -m 12 > "$OUT/run-$i.top" 2>&1 &
   topp=$!
+  # the big cores' clock every half second (the pipelines compile one after another on one big core: a lower clock
+  # is a slower start)
+  sh_ 'for i in $(seq 1 50); do cat /sys/devices/system/cpu/cpu4/cpufreq/scaling_cur_freq; sleep 0.5; done' > "$OUT/run-$i.freq" 2>&1 &
+  freqp=$!
   sh_ am start -n "$act" >/dev/null
   # until the first frame (or 60 s)
   for _ in $(seq 1 60); do
@@ -63,7 +67,7 @@ for i in $(seq 1 "$RUNS"); do
   done
   sleep 2
   a logcat -d -v epoch -T "$t0.000" > "$OUT/run-$i.logcat" 2>/dev/null || true
-  kill "$topp" 2>/dev/null || true; wait "$topp" 2>/dev/null || true
+  kill "$topp" "$freqp" 2>/dev/null || true; wait "$topp" "$freqp" 2>/dev/null || true
   L="$OUT/run-$i.logcat"
   ts() { grep -m1 -E "$1" "$L" | awk '{print $1}'; }
   start=$(ts "START u0 .*$PKG")
@@ -75,7 +79,10 @@ for i in $(seq 1 "$RUNS"); do
   first=$(ts "plant: first frame")
   pipes=$(grep -m1 "plant: pipelines compiled" "$L" | sed 's/.*compiled: //; s/, /\//g; s/[a-z ]//g')
   d() { [ -n "$start" ] && [ -n "$1" ] && echo "$1 - $start" | bc || echo "-"; }
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$i" "$MODE" "$cpu" "$batt" "$avail" "$plugged" \
+  # the median clock while the app started (the samples up to its first frame)
+  n=$(awk -v s="$start" -v f="$first" 'BEGIN { if (s == "" || f == "") print 0; else print int((f - s) * 2) }')
+  mhz=$(head -n "${n:-0}" "$OUT/run-$i.freq" | grep -E '^[0-9]+$' | sort -n | awk '{ a[NR] = $1 } END { print NR ? int(a[int((NR + 1) / 2)] / 1000) : "-" }')
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$i" "$MODE" "$cpu" "$batt" "$avail" "$plugged" "$mhz" \
     "$(d "$proc")" "$(d "$engine")" "$(d "$ready")" "$(d "$loaded")" "$(d "$ui")" "$(d "$first")" "$pipes" >> "$OUT/summary.tsv"
   tail -1 "$OUT/summary.tsv"
   grep "plant: LAUNCH" "$L" | sed 's/.*plant: //' > "$OUT/run-$i.stages" || true

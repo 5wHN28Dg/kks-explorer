@@ -13,6 +13,7 @@
 ## the state change now (these markers carry the meta `ui` and are not part of the plant's geometry).
 extends Node
 
+const Mat = preload("res://kit/materials.gd")
 const RANGE := 60.0             # metres: farther parts are not updated (nobody sees them move)
 const SHOW_RANGE := 8.0         # local displays are read up close
 const SHAKE_RANGE := 15.0
@@ -100,21 +101,21 @@ func _piece(n: Node3D, channel: String, bx: AABB) -> Node3D:
 	var top := n.to_local(Vector3(bx.get_center().x, bx.end.y, bx.get_center().z))
 	match channel:
 		"shaft", "blades", "handwheel":
-			var m := BoxMesh.new(); m.size = Vector3(0.9, 0.06, 0.12); mk.mesh = m
+			var m := BoxMesh.new(); m.size = Vector3(0.9, 0.06, 0.12); mk.mesh = Mat.plant_mesh(m)
 			mk.position = top + Vector3(0, 0.08, 0)
 		"stem", "contacts":
-			var c := CylinderMesh.new(); c.top_radius = 0.04; c.bottom_radius = 0.04; c.height = 0.4; mk.mesh = c
+			var c := CylinderMesh.new(); c.top_radius = 0.04; c.bottom_radius = 0.04; c.height = 0.4; mk.mesh = Mat.plant_mesh(c)
 			mk.position = top + Vector3(0, 0.2, 0)
 			mk.set_meta("travel", 0.3)
 		"disc":
-			var d := CylinderMesh.new(); d.top_radius = 0.25; d.bottom_radius = 0.25; d.height = 0.03; mk.mesh = d
+			var d := CylinderMesh.new(); d.top_radius = 0.25; d.bottom_radius = 0.25; d.height = 0.03; mk.mesh = Mat.plant_mesh(d)
 			mk.position = top + Vector3(0, 0.3, 0)
 			mk.rotation.x = PI * 0.5
 		"level":
-			var lv := BoxMesh.new(); lv.size = Vector3(0.1, 1.0, 0.1); mk.mesh = lv
+			var lv := BoxMesh.new(); lv.size = Vector3(0.1, 1.0, 0.1); mk.mesh = Mat.plant_mesh(lv)
 			mk.position = top + Vector3(0, 0.5, 0)
 		_:
-			var s := SphereMesh.new(); s.radius = 0.08; s.height = 0.16; mk.mesh = s
+			var s := SphereMesh.new(); s.radius = 0.08; s.height = 0.16; mk.mesh = Mat.plant_mesh(s)
 			mk.position = top + Vector3(0, 0.1, 0)
 	mk.material_override = _mat("marker", true)
 	n.add_child(mk)
@@ -151,7 +152,7 @@ func _lamp(n: Node3D, kind: String, bx: AABB) -> MeshInstance3D:
 	mk.name = "lamp_" + kind
 	mk.set_meta("ui", true)
 	var s := SphereMesh.new(); s.radius = 0.1; s.height = 0.2; s.radial_segments = 8; s.rings = 4
-	mk.mesh = s
+	mk.mesh = Mat.plant_mesh(s)
 	mk.position = n.to_local(Vector3(bx.end.x, bx.end.y + 0.15, bx.get_center().z))
 	n.add_child(mk)
 	return mk
@@ -162,17 +163,14 @@ const LAMP_COLOURS := {"running": Color(0.1, 0.9, 0.2), "stopped": Color(0.9, 0.
 		"marker": Color(0.95, 0.85, 0.2)}
 
 
-func _mat(kind: String, lit: bool) -> StandardMaterial3D:
+## The plant's own shader (kit/materials.gd `plain`), not Godot's standard material: another shader would be pipelines
+## of its own, compiled before a phone's first frame (decision 0060).
+func _mat(kind: String, lit: bool) -> ShaderMaterial:
 	var key := "%s/%s" % [kind, lit]
 	if _mat_cache.has(key):
 		return _mat_cache[key]
 	var c: Color = LAMP_COLOURS.get(kind, Color.WHITE)
-	var m := StandardMaterial3D.new()
-	m.albedo_color = c if lit else c.darkened(0.75)
-	if lit:
-		m.emission_enabled = true
-		m.emission = c
-		m.emission_energy_multiplier = 2.0
+	var m := Mat.plain(c if lit else c.darkened(0.75), lit)
 	_mat_cache[key] = m
 	return m
 

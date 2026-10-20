@@ -1311,7 +1311,7 @@ func _door(parent: Node3D, s: Dictionary) -> void:
 	mi.name = "panel"
 	var bm := BoxMesh.new()
 	bm.size = Vector3(float(pr.width), float(pr.height), 0.08)
-	mi.mesh = bm
+	mi.mesh = Mat.plant_mesh(bm)   # the plant's vertex format: no pipelines of its own (decision 0060)
 	mi.position.y = float(pr.height) * 0.5
 	mi.material_override = _mat("door")
 	Lightmap.mark(mi, false)   # it moves: the sky's light

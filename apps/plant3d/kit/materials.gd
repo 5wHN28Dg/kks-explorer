@@ -228,27 +228,41 @@ static func tex_path(set_name: String, map: String, size: int) -> String:
 	return "%s/%d/%s_%s.jpg" % [TEX, size, set_name, map]
 
 ## Makes a material from its spec with textures of `size` px (when they were fetched; else plain, which the build
-## warns). A material with a texture set is the weathered shader (kit/weathered.gdshaderinc); plain ones (small
-## pieces, lamps) stay Godot's standard material.
+## warns). Every material is the weathered shader (kit/weathered.gdshaderinc): the textured sets, the plain pieces
+## without textures or weathering, and the lamps with their light (`emit`). One shader for every lit surface: each
+## other shader is pipelines of its own, which a phone's first start compiles one after another before its first
+## frame, about 0.9 s each on the Note 9 (decisions 0057, 0060).
 static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> Material:
-	var s: String = spec.get("set", "")
-	if s != "" or not spec.get("emit", false):
-		# the plain ones too, without textures or weathering: one shader for every lit surface, so a phone's first
-		# start compiles its pipelines once, not again for Godot's standard shader (decision 0057)
-		return _make_weathered(name, spec, size)
-	var mat := StandardMaterial3D.new()
-	mat.resource_name = name
-	mat.albedo_color = spec.tint
-	mat.roughness = spec.rough
-	mat.metallic = spec.metal
-	if spec.get("vc", false):
-		mat.vertex_color_use_as_albedo = true
-		mat.vertex_color_is_srgb = true
+	var mat := _make_weathered(name, spec, size)
 	if spec.get("emit", false):
-		mat.emission_enabled = true
-		mat.emission = spec.tint
-		mat.emission_energy_multiplier = 2.0
+		set_emission(mat, spec.tint)
 	return mat
+
+## A weathered material's own light, as Godot's standard material's emission at energy 2 (the lamps).
+static func set_emission(mat: ShaderMaterial, c: Color, energy := 2.0) -> void:
+	mat.set_shader_parameter("emission", c)
+	mat.set_shader_parameter("emission_energy", energy)
+
+## A clean lit material of the weathered shader in one colour (the UI's markers and lamps on the parts), lit with its
+## own colour when `glow`: no texture, no weathering, so it shares the plant's pipelines.
+static func plain(c: Color, glow := false, rough := 1.0) -> ShaderMaterial:
+	var mat := _make_weathered("plain", {"set": "", "tint": c, "rough": rough, "metal": 0.0}, DEFAULT_SIZE)
+	if glow:
+		set_emission(mat, c)
+	return mat
+
+## A primitive mesh as an ArrayMesh with the plant's vertex format: a PrimitiveMesh has no vertex colours, and a
+## vertex format of its own is a pipeline of its own (what a phone's first start waits for, decision 0060). The
+## colour is white: what Godot's shaders read when a mesh has none.
+static func plant_mesh(pm: PrimitiveMesh) -> ArrayMesh:
+	var arrays := pm.get_mesh_arrays()
+	var c := PackedColorArray()
+	c.resize((arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size())
+	c.fill(Color.WHITE)
+	arrays[Mesh.ARRAY_COLOR] = c
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return am
 
 static func _make_weathered(name: String, spec: Dictionary, size: int) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()

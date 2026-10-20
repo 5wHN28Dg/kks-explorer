@@ -71,6 +71,26 @@ func _ready() -> void:
 	OS.delta_smoothing = false
 	_environment()
 	_launch("environment")
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+	# A phone's first start waits for the pipelines Godot compiles, which the Note 9's Mali compiles one after another,
+	# each blocking anything else that needs one (decision 0060). So the start first draws the sky alone (its own
+	# pipelines), then loads the plant hidden and draws the sky again, which sets the plant's pipelines compiling on
+	# the worker threads (Godot compiles every surface's in the scene, drawn or not) without waiting for them; the map,
+	# the HUD and the plant's UI are made meanwhile, and the first walkable frame waits only for what is left. The tier
+	# comes first (the resolution decides which pipelines); a desktop that must still measure its GPU (the probe looks
+	# at the plant) starts as before. Without a display (the tests) nothing is drawn or compiled: the start runs in one
+	# go, unless a test asks for this one (`staged_start`).
+	var early: bool = opts.has("staged_start") if DisplayServer.get_name() == "headless" \
+			else Quality.choose(cf, opts.get("quality", "")).tier != ""
+	var sky_cam: Camera3D = null
+	if early:
+		choose_tier()
+		_launch("tier")
+		sky_cam = Camera3D.new()
+		add_child(sky_cam)
+		sky_cam.make_current()
+		await _drawn()
+		_launch("sky frame")
 	plant = Plant.new()
 	plant.name = "plant"
 	add_child(plant)
@@ -95,6 +115,9 @@ func _ready() -> void:
 		_say("lightmap: none in this build (the sky and the sun only)")
 	for l in get_tree().get_nodes_in_group("baked_lights"):
 		l.queue_free()   # the halls' lamps light through the bake only (forty real-time lights in a hall cost too much)
+	if early:
+		plant.visible = false
+		Quality.apply_ranges(get_viewport())   # the tier's visibility ranges, on the plant's pieces now loaded
 	_launch("lightmap")
 	player = Player.new()
 	player.name = "player"
@@ -102,6 +125,12 @@ func _ready() -> void:
 	var st: Array = plant.start()
 	player.global_position = st[0]
 	player.set_heading(st[1])
+	if early:
+		sky_cam.queue_free()
+		player.camera.make_current()
+		await _drawn()   # draws the sky alone and sets the hidden plant's pipelines compiling
+		plant.visible = true
+		_launch("plant's pipelines queued")
 	map = MapView.new()
 	map.name = "map"
 	add_child(map)
@@ -133,9 +162,9 @@ func _ready() -> void:
 		if own:
 			ui.autosave.path = "user://run-options.save"
 		ui.autosave.begin(not own)
-	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
-	choose_tier()
-	_launch("tier")
+	if not early:
+		choose_tier()
+		_launch("tier")
 	_first_frame()
 	if opts.has("shot"):
 		_shots.call_deferred()
@@ -266,7 +295,7 @@ func area_at(p: Vector3) -> String:
 	return "Between the areas"
 
 func _unhandled_input(e: InputEvent) -> void:
-	if player == null or player.scripted:
+	if player == null or player.scripted or hud == null:   # (hud: made after the start's sky frame)
 		return
 	if e.is_action_pressed("map"):
 		toggle_map()
@@ -293,8 +322,15 @@ func _launch(stage: String) -> void:
 	_say("LAUNCH %s at %d ms (+%d)" % [stage, now, now - _launch_ms])
 	_launch_ms = now
 
+## The next frame drawn (without a display, as in the tests, the next frame: nothing is drawn there).
+func _drawn() -> void:
+	if DisplayServer.get_name() == "headless":
+		await get_tree().process_frame
+	else:
+		await RenderingServer.frame_post_draw
+
 func _first_frame() -> void:
-	await RenderingServer.frame_post_draw
+	await _drawn()
 	first_frame_ms = Time.get_ticks_msec()
 	_say("first frame drawn %d ms after the engine started" % first_frame_ms)
 	# the pipelines compiled for it (what a phone's first start waits for: decision 0057)
