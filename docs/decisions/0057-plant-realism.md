@@ -128,8 +128,34 @@ as well, with main and with 0060's change alike (numbers and method in 0060):
 |---|---|---|
 | Note 9, launch to the first walkable frame, first start (ten runs) | ≤ 15 s | 8.60–9.66 s (none near 20 s in 46 timed first starts) |
 | Note 9, frames shown at ≥ 30 fps / over 100 ms after 5 s / peak PSS | ≥ 95 % / none / ≤ 1.5 GB | 99.64 % / none (worst 70.1 ms) / 658 MB |
-| Laptop, quiet, `full` at 1600×900, 10 minutes: frame p95 / ≤ 17.5 ms | ≤ 16.7 ms / 95 % | 21.8 ms / 85.3 % (GPU p95 7.8 ms); main 21.6 ms in 300 s runs |
+| Laptop, quiet, `full` at 1600×900, 10 minutes: frame p95 / ≤ 17.5 ms | ≤ 16.7 ms / 95 % | 21.8 ms / 85.3 % (GPU p95 7.8 ms); main 21.6 ms in 300 s runs: another app's GPU work (below) |
 | Laptop, first frame on a first start | ≤ 5 s | 3.36 s |
+
+## The laptop's long frames: another app on the GPU (2026-10-20)
+
+[V] measured here; [S] Godot 4.7.2 source.
+
+| | Finding | Source |
+|---|---|---|
+| Where a frame's time went (`probe=1`: `frames.csv`, 600 s, full tier) | the scripts, physics and everything outside the draw: p95 3.6 ms, p99 4.4 ms; the render thread's CPU work p95 2.4 ms; GPU p95 7.6 ms. Frames are two kinds: 7.5 ms (median) and 20.6 ms, about 23 long ones a second, and every long one is long in the draw (18.2 ms against 5.1) | [V] `app/frame_probe.gd` |
+| What the draw waits for | the main thread sits 13-15 ms in `DRM_IOCTL_SYNCOBJ_WAIT` (a GPU fence). Not physics (the share of long frames is the same with 0 or 1 physics steps), not vsync or the display (the same with `--disable-vsync`, at 60, 120 and 240 Hz), not this app: a Godot scene of 200 spheres shows the same, an 18.5 ms frame every ~45 ms | [V] strace; [V] |
+| Whose GPU work | the user's code editor, left open and idle, kept the render engine busy 420-470 ms of every second, in batches of 12-25 ms about 22 times a second (DRM fdinfo); every long draw ended 1.1 ms (median, p90 2.1 ms) after one of its batches ended, the short ones 12 ms | [V] `tools/plant3d/bench/gpu_clients.py`, timestamps |
+| Deeper frame queue | `frame_queue_size` 3: the same p95 (22.0 ms) | [V] |
+
+So the laptop's 60 fps rule was missed for the GPU time another app took, not for this app's work: the app's own CPU
+work per frame is under 6 ms at the 95th percentile (render thread included) and its GPU work 7.6 ms. Main (d61378f)
+and the change that found this (the frame probe, the bake's cache below, the walking directions' warm-up: 0060) back
+to back, release builds, baked, a first start each, 600 s, the editor still open (280 ms of render engine a second
+during both): main p95 21.8 ms, median 8.1 ms, 75.4 % of frames ≤ 17.5 ms, GPU p95 7.7 ms; the change p95 21.6 ms,
+median 8.0 ms, 75.6 %, GPU p95 7.6 ms. The
+rule is still to be measured with nothing else on the GPU (`gpu_clients.py` before and during the run).
+
+**The bake on a fresh checkout** (`build.sh release`/`bake`): the editor crashed (signal 11) on opening the bake scene,
+in 6 of 7 bakes from a fresh checkout's state. Without a script documentation cache (a new `.godot/`) the editor
+regenerates the scripts' documentation on a thread of its own that loads every script of the project
+([S] `editor/doc/editor_help.cpp`, `regenerate_script_doc_cache`), just as the plugin opens the scene; with an empty
+cache it only reads that (3 of 3 bakes). `build.sh` writes one before the bake (`builder/bake/script_doc_cache.gd`);
+three `build.sh release` runs, each in a fresh worktree, then baked and exported.
 
 **When to revisit:** when Godot binds LightmapGI baking to scripts (bake headless, on CI); if a phone in the
 measurement set has ASTC HDR; when the plant outgrows one lightmap texture (4096 px slices); if a trainee needs light
