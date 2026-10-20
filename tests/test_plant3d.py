@@ -73,7 +73,7 @@ class Content(unittest.TestCase):
         self.assertGreaterEqual(c['equipment'], 150)
         self.assertGreaterEqual(c['pipes'], 25)
         self.assertGreaterEqual(c['tours'], 1)
-        self.assertEqual(c['procedures'], 1)
+        self.assertEqual(c['procedures'], 2)          # the cold start and the hot restart
         self.assertLessEqual(c['values'], P.MAX['values'])
 
     def test_screens_show_every_code_of_the_model(self):
@@ -502,9 +502,14 @@ class Vectors(unittest.TestCase):
             self.assertEqual(got[k], {'open': 'start'}, k)
 
     def test_train_replay(self):
-        """The cold start's inputs alone reproduce its events, every snapshot (to 1e-6), and each fork."""
-        t = self.V['train']
+        """The cold start's inputs alone reproduce its events, every snapshot (to 1e-6), and each fork; so do the hot
+        restart's."""
         b = P.check_dir(DATA)
+        for name in ('train', 'hot'):
+            with self.subTest(name):
+                self._replay(b, self.V[name])
+
+    def _replay(self, b, t):
         e = P.Engine(b, t['scenario'])
         bases = {}
         base_steps = sorted({f['base_step'] for f in t['forks']})
@@ -531,6 +536,43 @@ class Vectors(unittest.TestCase):
             self.assertEqual(plain(x.events[n0:]), f['events'], f['id'])
             d = close(plain(x.snapshot(values=False)), f['end'], f['id'])
             self.assertIsNone(d, d)
+
+
+class HotRestart(unittest.TestCase):
+    """FIRST-TRAIN §4 "As built": the hot restart by its procedure reaches base load without an alarm or a trip, and
+    on the way the roll is refused while the steam is more than 50 K colder than the hot casing."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(G.OUT, encoding='utf-8') as f:
+            cls.t = json.load(f)['hot']
+        cls.b = P.check_dir(DATA)
+
+    def test_reaches_base_load_cleanly(self):
+        t = self.t
+        self.assertEqual((t['scenario'], t['procedure']), ('hot_restart', 'hot_restart'))
+        self.assertEqual(t['steps'][-1][0], 'at_load')
+        self.assertEqual({e[1] for e in t['events']}, {'op', 'machine'})
+        end = t['snapshots'][-1]
+        self.assertEqual((end['alarms'], end['tripped']), ({}, []))
+        self.assertEqual(end['machines']['st_start'], 'loaded')
+        self.assertGreaterEqual(end['values']['gt1_mw'], 249)
+
+    def test_the_casing_starts_hot_and_the_steam_cold(self):
+        sc = self.b.scenarios['hot_restart']
+        self.assertGreaterEqual(sc['init']['st_casing_t'], 450)
+        steps = [s['id'] for s in self.b.procedures['hot_restart']['steps']]
+        self.assertNotIn('casing_warm', steps)          # no auxiliary steam warm-up: the casing is hot
+        self.assertLess(steps.index('match'), steps.index('st_roll'))
+        fork = next(f for f in self.t['forks'] if f['id'] == 'hot_roll_steam_too_cold')
+        self.assertLess(fork['seen']['st_mismatch']['end'], -50)    # the bound the refusal is about
+
+    def test_the_hot_casing_cools_slowly(self):
+        """τ 30 h: a casing at 520 °C at a trip is still over 400 °C eight hours later (the usual line for a hot
+        start), so a scenario three hours after a trip finds it near 480 °C."""
+        n = next(v[1] for v in self.b.model.values if v[0] == 'st_casing_t')
+        tau = n['tau_down']
+        self.assertGreater(35 + (520 - 35) * math.exp(-8 * 3600 / tau), 400)
 
 
 class ColdStart(unittest.TestCase):
@@ -593,7 +635,8 @@ class Forks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with open(G.OUT, encoding='utf-8') as f:
-            cls.forks = json.load(f)['train']['forks']
+            V = json.load(f)
+        cls.forks = V['train']['forks'] + V['hot']['forks']
         cls.b = P.check_dir(DATA)
 
     def test_expectations(self):
@@ -602,6 +645,12 @@ class Forks(unittest.TestCase):
             with self.subTest(f['id']):
                 for kks, do, failed in ex.get('refused', []):
                     self.assertIn([kks, do, 'refused', failed], [e[2:6] for e in ev if e[1] == 'op'])
+                for kks, do in ex.get('done', []):
+                    self.assertIn([kks, do, 'done', []], [e[2:6] for e in ev if e[1] == 'op'])
+                for fid in ex.get('repaired', []):
+                    self.assertIn(['repair', fid], [e[1:3] for e in ev if e[1] == 'repair'])
+                if 'faults' in ex:                # every fault applied, in order (a repaired one pressed again)
+                    self.assertEqual(ex['faults'], [e[2] for e in ev if e[1] == 'fault'])
                 for g, t in ex.get('first_out', {}).items():
                     self.assertIn(['trip', t, True], [e[1:4] for e in ev if e[1] == 'trip'])
                     self.assertEqual(end['first_out'].get(g), t)

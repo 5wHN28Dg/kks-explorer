@@ -39,6 +39,8 @@ def apply(e, item):
         e.shelve(item[2], item[3])
     elif kind == 'unshelve':
         e.unshelve(item[2])
+    elif kind == 'repair':
+        e.repair(item[2])
     else:
         e.fault(item[2])
 
@@ -110,13 +112,20 @@ def reference_runs(V, keep=None):
 
     for run, r in steps_runs(V['valid'][0]['files'], V['steps'], keep).items():
         out[run] = r
-    t = V['train']
-    e = P.Engine(P.check_dir(DATA), t['scenario'])
+    b = P.check_dir(DATA)
+    for name in ('train', 'hot'):
+        train_runs(b, name, V[name], out, k)
+    return out
+
+
+def train_runs(b, name, t, out, k):
+    """A start run by its procedure (the vectors' `train` or `hot`) and its forks, into out."""
+    e = P.Engine(b, t['scenario'])
     base_steps = {f['base_step'] for f in t['forks']}
     bases = {}
     inputs = sorted(t['inputs'], key=lambda x: x[0])
     h = Hasher(0)
-    h.add(e, k('train'))
+    h.add(e, k(name))
     j = 0
     while e.step_no < t['until']:
         if e.step_no in base_steps:
@@ -125,12 +134,12 @@ def reference_runs(V, keep=None):
             apply(e, inputs[j])
             j += 1
         e.step()
-        h.add(e, k('train'))
-    assert j == len(inputs), 'train: inputs after the end'
+        h.add(e, k(name))
+    assert j == len(inputs), f'{name}: inputs after the end'
     h.end()
     if t['until'] in base_steps:
         bases[t['until']] = e.clone()
-    out['train'] = (0, h.chunks, e.names, h.vals)
+    out[name] = (0, h.chunks, e.names, h.vals)
     for f in t['forks']:
         x = bases[f['base_step']].clone()
         fin = sorted(f['inputs'], key=lambda y: y[0])
@@ -144,7 +153,6 @@ def reference_runs(V, keep=None):
             h.add(x, k(f['id']))
         h.end()
         out[f['id']] = (f['base_step'] + 1, h.chunks, x.names, h.vals)
-    return out
 
 
 def number_corpus():
@@ -211,7 +219,8 @@ class GdscriptEngine(unittest.TestCase):
         out = self.result.stdout
         self.assertEqual(self.result.returncode, 0, out[-6000:] + self.result.stderr[-3000:])
         self.assertNotIn('FAIL', out)
-        n = 1 + len(self.V['steps']) + len(self.V['links']) + 1 + 1 + len(self.V['train']['forks'])
+        n = 1 + len(self.V['steps']) + len(self.V['links']) + 2 * (1 + 1) + len(self.V['train']['forks']) + \
+            len(self.V['hot']['forks'])
         self.assertIn(f'VECTORS passed={n} failed=0', out)
 
     def test_every_value_bit_for_bit(self):
