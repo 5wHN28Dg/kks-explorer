@@ -261,7 +261,7 @@
   ["st_cas_hot", {"diff": ["st_inlet_t", 30]}],
   ["st_cas_idle", {"select": "st_warm_on", "cases": ["ambient_t", 220]}],
   ["st_cas_tgt", {"select": "st_adm", "cases": ["st_cas_idle", "st_cas_hot"]}],
-  ["st_casing_t", {"lag": "st_cas_tgt", "tau": 900, "tau_down": 7200, "init": 35, "unit": "°C", "kks": "30MAA10"}],
+  ["st_casing_t", {"lag": "st_cas_tgt", "tau": 900, "tau_down": 108000, "init": 35, "unit": "°C", "kks": "30MAA10"}],
   ["st_mismatch", {"diff": ["st_inlet_t", "st_casing_t"], "unit": "K"}],
   ["st_mm_hi", {"cmp": ["st_mismatch", "<=", 150]}],
   ["st_mm_lo", {"cmp": ["st_mismatch", ">=", -50]}],

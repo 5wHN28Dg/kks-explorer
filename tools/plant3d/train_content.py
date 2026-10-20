@@ -186,12 +186,34 @@ FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)
 ]
 
 
-def scenarios():
+def fault(fid, sets, text, state_kks):
+    """A trainer's fault with its repair (PLANT3D §7.8): the repair puts back every state the fault set, except a
+    breaker it opened (the trainee closes it again); it is offered at the equipment of the first state it puts back."""
+    f = {'id': fid, 'set': sets, 'text': text}
+    repair = {k: 0 for k in sets if not k.endswith('_brk_cmd')}
+    if repair:
+        f['kks'] = state_kks[next(iter(repair))]
+        f['repair'] = repair
+    return f
+
+
+COLD_INIT = {'ambient_t': 35, 'ambient_wb': 25, 'grid_frequency': 50, 'hp_mass': -100, 'lp_lvl': -50}
+# The hot restart (FIRST-TRAIN §4 "As built"): the train tripped from load about three hours ago and everything
+# stopped. The HP casing has cooled only to 480 °C (τ 30 h), the boxed-up HP drum to 280 °C (64 bar, 10 K an hour), the
+# steam pipes to 250 °C. The first steam is far colder than the casing: the turbine may roll only once the GT's load
+# has brought the steam within 50 K of it.
+HOT_INIT = {'st_casing_t': 480, 'hp_casing_seen': 480, 'hp_tw': 280, 'hp_tsat_slow': 280, 'st_inlet_t': 250}
+
+
+def scenarios(state_kks):
+    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS]
+    latched = ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p']
     return [{'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'cold_iron',
-             'title': 'Cold start after a long outage',
-             'init': {'ambient_t': 35, 'ambient_wb': 25, 'grid_frequency': 50, 'hp_mass': -100, 'lp_lvl': -50},
-             'latched': ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p'],
-             'faults': [{'id': f, 'set': s, 'text': t} for f, s, t in FAULTS]}]
+             'title': 'Cold start after a long outage', 'init': dict(COLD_INIT), 'latched': latched,
+             'faults': faults},
+            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'hot_restart',
+             'title': 'Hot restart three hours after a trip', 'init': dict(COLD_INIT, **HOT_INIT),
+             'latched': latched, 'faults': faults}]
 
 
 def k(code):
@@ -358,6 +380,40 @@ def cold_start():
             'kind': 'procedure', 'scenario': 'cold_iron',
             'intro': [{'p': ['Bring train 1 from cold iron to base load: auxiliaries, circulating water, oil systems, '
                              'vacuum, the gas turbine, the HRSG warm-up, the steam turbine and loading.']}],
+            'steps': S}
+
+
+def hot_restart():
+    """The hot restart (FIRST-TRAIN §4 "As built"): the cold start's steps without the casing warm-up (the casing is
+    hot already), and before the roll a step that loads the GT until the steam is matched to the hot casing."""
+    cs = cold_start()
+    S = []
+    for st in cs['steps']:
+        if st['id'] in ('casing_warm', 'casing_hot', 'warm_close'):
+            continue
+        if st['id'] == 'hrsg_warm':
+            # the drum is hot and under pressure already: what the hold waits for is the superheaters' water
+            st = step('sh_drain', ['Hold GT 1 at minimum load with the superheater drains open until they run dry (',
+                                   k('10HAN30AA401'), ').'], ['10HAN30AA401', '10HAD30CP001'], (), 'hp_sh_drained',
+                      ['Water left in the superheaters would reach the turbine as a slug, and keeps the steam far '
+                       'colder than the metal.'])
+        S.append(st)
+        if st['id'] == 'drains_close':
+            S.append(step('hp_40', ['Hold GT 1 at minimum load until the HP drum is back at 40 bar (', k('10HAD30CP001'),
+                                    '): the GT\'s purge cooled it.'], ['10HAD30CP001'], (), 'st_p_ok',
+                          ['More load now would warm the drum faster than its thick wall allows.'], 'none'))
+            S.append(step('match', ['Raise GT 1 to 40 MW (', k('10MKA10'), ') and wait until the HP steam is within '
+                                    '50 K of the HP casing (', k('30MAA10'), ').'], ['10MKA10', '30MAA10'],
+                          [op('10MKA10', 'set', 40)], 'st_match',
+                          ['The casing is still at about 470 °C. Steam more than 50 K colder would chill its inner '
+                           'surface while the outside stays hot: the stress cracks it. At minimum load the GT\'s '
+                           'exhaust can\'t make steam that hot; more load can, and the bypass takes the steam.'],
+                          'none'))
+    return {'format': 'walkdown-plant-procedure', 'version': 1, 'id': 'hot_restart', 'title': 'Hot restart of train 1',
+            'kind': 'procedure', 'scenario': 'hot_restart',
+            'intro': [{'p': ['Bring train 1 back to base load three hours after a trip, with the steam turbine\'s HP '
+                             'casing still hot: the auxiliaries, the gas turbine, then steam matched to the hot '
+                             'casing before the turbine rolls.']}],
             'steps': S}
 
 

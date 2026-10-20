@@ -145,6 +145,7 @@
   ["hp_shw_k", {"of": "hp_gen", "table": [[0, 0], [2, 1]]}],
   ["hp_shw_rate", {"product": ["hp_drn_frac", "hp_shw_k", -0.01]}],
   ["hp_shw", {"integrate": "hp_shw_rate", "gain": 1, "min": 0, "max": 1, "init": 1, "unit": "pu"}],
+  ["hp_sh_drained", {"cmp": ["hp_shw", "<", 0.05]}],
   ["hp_drain_loss", {"product": ["hp_drn_frac", 3], "unit": "kg/s"}],
   ["hp_vent_loss", {"product": ["hp_vent_pos", 5], "unit": "kg/s"}],
   ["hp_losses", {"sum": ["hp_drain_loss", "hp_vent_loss"]}],

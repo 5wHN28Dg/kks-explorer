@@ -4,8 +4,9 @@ extends RefCounted
 ## ref/vectors/plant3d-v1.json (apps/plant3d/sim/tests).
 ##
 ## Trainee inputs are queued and take effect in step 1 of the next step, in the order made:
-##   op(kks, do, value, trip), ack(alarm), shelve(alarm, seconds), unshelve(alarm), fault(id)
-## (fault: a scenario fault without `when`, pressed by the trainer; applied in step 3). Every input is also kept in
+##   op(kks, do, value, trip), ack(alarm), shelve(alarm, seconds), unshelve(alarm), fault(id), repair(id)
+## (fault: a scenario fault without `when`, pressed by the trainer; applied in step 3; repair: a fault's repair,
+## applied in step 3 after the faults, §7.8). Every input is also kept in
 ## `inputs` as [the step it takes effect in, kind, …], the vectors' input form.
 ##
 ## Arithmetic notes (what makes it bit-exact, each mirrored from the reference):
@@ -52,7 +53,7 @@ var _tr: Array = []          # [id, when slot, count needed, group, actions, lat
 var _tr_ix := {}
 var _al: Array = []          # [id, when slot, clear slot or -1, suppress slot or -1, count needed, priority]
 var _al_ix := {}
-var _faults: Array = []      # [id, kind 0 name / 1 node / 2 trainer, slot or node, set]
+var _faults: Array = []      # [id, kind 0 name / 1 node / 2 trainer, slot or node, set, repair set or null]
 var _ops := {}               # op key -> compiled op
 
 # the state (copied by clone)
@@ -68,6 +69,7 @@ var acount := PackedInt64Array()
 var shelved := PackedInt64Array()   # per alarm: the step its shelf ends, -1 when not shelved
 var il_prev := PackedByteArray()
 var faults_done := {}
+var faults_fixed := {}       # faults applied and repaired since (§7.8)
 var queue: Array = []
 var events: Array = []
 var inputs: Array = []
@@ -242,15 +244,16 @@ func _compile() -> void:
 				ix[a["suppress"]] if a.has("suppress") else -1, maxi(1, steps(a.get("delay", 0))), a["priority"]])
 	for f in sc.get("faults", []):
 		var fs := _sets(f["set"])
+		var rs = _sets(f["repair"]) if f.has("repair") else null
 		if not f.has("when"):
-			_faults.append([f["id"], 2, -1, fs])
+			_faults.append([f["id"], 2, -1, fs, rs])
 		elif typeof(f["when"]) == TYPE_STRING:
-			_faults.append([f["id"], 0, ix[f["when"]], fs])
+			_faults.append([f["id"], 0, ix[f["when"]], fs, rs])
 		else:
 			var kind := PlantModel.node_kind(f["when"])
 			var fp := _node(-1, f["when"], kind)
 			_fault_nodes.append(fp)
-			_faults.append([f["id"], 1, fp, fs])
+			_faults.append([f["id"], 1, fp, fs, rs])
 	for key in m.op_keys:
 		var o = m.op_keys[key]
 		var needs := PackedInt32Array()
@@ -332,6 +335,10 @@ func fault(fid) -> void:
 	_q(["fault", fid])
 
 
+func repair(fid) -> void:
+	_q(["repair", fid])
+
+
 ## Queues an input in the vectors' form [step, kind, …] (the step is not checked here).
 func apply_input(item: Array) -> void:
 	match item[1]:
@@ -345,6 +352,8 @@ func apply_input(item: Array) -> void:
 			unshelve(item[2])
 		"fault":
 			fault(item[2])
+		"repair":
+			repair(item[2])
 		_:
 			push_error("engine: unknown input " + str(item))
 
@@ -579,6 +588,7 @@ func _step() -> void:
 	prev = cur.duplicate()
 	var moved := {}
 	var pressed := []
+	var asked := []
 	# 1. the trainee's inputs, in the order made
 	var q := queue
 	queue = []
@@ -590,6 +600,8 @@ func _step() -> void:
 		var ai = _al_ix.get(item[1], -1) if typeof(item[1]) == TYPE_STRING else -1
 		if kind == "fault":
 			pressed.append(item[1])
+		elif kind == "repair":
+			asked.append(item[1])
 		elif ai == -1:
 			continue        # an alarm the model doesn't have: nothing happens, no event (§7.10)
 		elif kind == "ack":
@@ -624,7 +636,8 @@ func _step() -> void:
 	# 3. faults
 	for fl in _faults:
 		var fid: String = fl[0]
-		if faults_done.has(fid):
+		# applied once; a repaired trainer's fault can be pressed again (§7.8)
+		if faults_done.has(fid) and not (faults_fixed.has(fid) and fl[1] == 2):
 			continue
 		var hit := false
 		match fl[1]:
@@ -637,8 +650,16 @@ func _step() -> void:
 				hit = pressed.has(fid)
 		if hit:
 			faults_done[fid] = true
+			faults_fixed.erase(fid)
 			_apply_set(fl[3])
 			_ev(["fault", fid])
+	# then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`
+	for fl in _faults:
+		var fid: String = fl[0]
+		if fl[4] != null and asked.has(fid) and faults_done.has(fid) and not faults_fixed.has(fid):
+			faults_fixed[fid] = true
+			_apply_set(fl[4])
+			_ev(["repair", fid])
 	# 4. interlocks on a rising edge
 	for k in _il.size():
 		var x = _il[k]
@@ -828,6 +849,6 @@ func clone():
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
-	for k in ["first_out", "astate", "faults_done", "queue", "events", "inputs"]:
+	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs"]:
 		c.set(k, get(k).duplicate(true))
 	return c

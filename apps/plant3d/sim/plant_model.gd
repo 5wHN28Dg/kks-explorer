@@ -312,6 +312,10 @@ func _check_scenario(s: Dictionary) -> void:
 			_fail("%s: no trip %s" % [w, t])
 	for f in s.get("faults", []):
 		_check_set(f["set"], "%s fault %s" % [w, f["id"]])
+		if f.has("repair"):
+			_check_set(f["repair"], "%s fault %s repair" % [w, f["id"]])
+		if f.has("kks") and not codes.has(f["kks"]):
+			_fail("%s fault %s: no equipment %s in the plant" % [w, f["id"], f["kks"]])
 		if f.has("when"):
 			if typeof(f["when"]) == TYPE_STRING:
 				_need(f["when"], "%s fault %s" % [w, f["id"]])
