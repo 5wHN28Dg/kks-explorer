@@ -3,7 +3,7 @@
 ## node carries its box; the instanced cells' saved transforms fill their MultiMeshes when the plant loads (twelve
 ## floats per instance); `detail` cells carry their size and box for their range, and no detail cell casts a shadow;
 ## tag plates' codes carry their legibility size; the hearing-protection signs are ISO 7010 M003 (the symbol drawn as
-## it should be: sampled from its mesh) above their text, on a board of one draw call (merged into its cell where it can be).
+## it should be: sampled from its mesh) above their text, on a retroreflective board of one draw call.
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -174,10 +174,9 @@ func _safety_signs(tree: SceneTree) -> Array:
 		p.append("M003: %d of %d samples of the disc white (15 to 50 %%), %d not mirrored" % [white, inside, mirror])
 	# in the plant: every loud building's door sign carries the symbol; the text is black without an outline (one
 	# draw call), as wide as the content's estimate allows (tools/plant3d/train_areas.py: 0.55 em a character),
-	# and the board stands behind it in a cell (one surface; merged with its cell's other plain pieces where there are any)
+	# and the board stands behind it in a cell (one surface; merged with its cell's other signs' boards where there are any)
 	var signs := 0
 	var boards := 0
-	var merged := 0
 	for l in tree.root.find_children("*", "Label3D", true, false):
 		if not l.has_meta("symbol"):
 			continue
@@ -212,21 +211,27 @@ func _safety_signs(tree: SceneTree) -> Array:
 					var cols: PackedColorArray = mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
 					if not cols.is_empty() and Array(cols).any(func(k): return _near(k, BLUE)):
 						found = true
-						# at most one draw call: one surface, merged with the cell's other plain pieces where it has
-						# any (more vertices than the board's own); with the text's (its outline, a surface of its
-						# own, is gone) no more than the old outlined label's two
+						# at most one draw call: one surface, merged with the cell's other boards where it has any
+						# (more vertices than the board's own); with the text's (its outline, a surface of its own,
+						# is gone) no more than the old outlined label's two
 						if mesh.get_surface_count() != 1:
 							p.append("%s: the sign's board is %d draw calls" % [lab.get_path(), mesh.get_surface_count()])
 						boards += 1
-						merged += 1 if cols.size() > alone else 0
 						if cols.size() <= alone and c.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 							p.append("%s: a board alone in its cell casts a shadow (a draw call more)" % lab.get_path())
 		if not found:
 			p.append("%s: no board with its blue disc behind the sign's text" % lab.get_path())
 	if boards != signs:
 		p.append("%d boards for %d signs (one each, in one cell)" % [boards, signs])
-	if merged == 0:
-		p.append("no sign's board merged into its cell with other pieces")
+	# the board is retroreflective white with a little light of its own (grey in a wall's shade before: polish pass), so
+	# it merges with the other signs' boards in its cell only
+	for c in tree.get_nodes_in_group("kit_cells") + tree.get_nodes_in_group("kit_static"):
+		var mesh: Mesh = c.multimesh.mesh if c is MultiMeshInstance3D else c.mesh
+		var cols: PackedColorArray = mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+		if not cols.is_empty() and Array(cols).any(func(k): return _near(k, BLUE)):
+			var m := (c as GeometryInstance3D).material_override as ShaderMaterial
+			if m == null or m.resource_path.get_file() != "sign_board.tres" or float(m.get_shader_parameter("emission_energy")) <= 0.0:
+				p.append("%s: a sign's board is drawn with the retroreflective board material" % c.get_path())
 	if signs != 6:
 		p.append("the plant has %d M003 signs (want the loud buildings' six doors)" % signs)
 	return p

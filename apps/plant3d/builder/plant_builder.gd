@@ -1066,6 +1066,7 @@ func _ladder(parent: Node3D, l: Dictionary) -> void:
 func _building(parent: Node3D, b: Dictionary) -> void:
 	var body := _body(parent, b.id)
 	body.set_meta("building", b.id)
+	body.set_meta("cladding", b.cladding)
 	var walls := _st()
 	var liner := _st()
 	var trim := _st()
