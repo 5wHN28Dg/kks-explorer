@@ -26,9 +26,11 @@ proc codeIdOf(src: string): string =
 
 const CodeId* = codeIdOf(staticRead("replay.nim") & "\0" & staticRead("json.nim") & "\0" & staticRead("proto.nim") &
                          "\0" & staticRead("crypto.nim") & "\0" & staticRead("util.nim") & "\0" &
-                         staticRead("binser.nim") & "\0" & staticRead("savedstate.nim"))
-  ## The replay's own code (and this format's): a program whose replay could compute anything else has another id,
-  ## so an update never reads what an older version saved.
+                         staticRead("binser.nim") & "\0" & staticRead("savedstate.nim") & "\0" &
+                         staticRead("node.nim") & "\0" & NimVersion)
+  ## The replay's own code, what feeds it (node.nim's rebuild), this format's, and the compiler (its standard
+  ## library): a program whose replay could compute anything else has another id, so an update never reads what an
+  ## older version saved.
 
 proc inputDigest*(p: Provider, root: string, entryIds, evidenceIds: openArray[string]): string =
   ## SHA-256 (hex) of what the replay reads: the trust anchor, the IDs of every entry held and of the fork evidence

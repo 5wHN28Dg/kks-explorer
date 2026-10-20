@@ -349,6 +349,17 @@ proc openAppInBackground*(dir = dataDir(), kksTables = "{}"): bool =
   createThread(loader, loadWorker, dir)
   true
 
+proc dropBackgroundOpen*() =
+  ## a start that is not the one that runs (it handed its links over): waits for the thread, then lets go of what it
+  ## opened, so the process never ends with the thread inside the store
+  if loaderStarted:
+    joinThread(loader)
+    loaderStarted = false
+    loadFailed = ""
+    if loaded != nil:
+      try: loaded.store.close() except CatchableError: discard
+      loaded = nil
+
 proc openedApp*(dir = dataDir()): App =
   ## The app opened by openAppInBackground (waiting for it), else opened now. Raises OpenError if the background
   ## open failed. Only the main thread calls this, once.
@@ -362,6 +373,11 @@ proc openedApp*(dir = dataDir()): App =
     result.startApp()
   else:
     result = openApp(dir)
+
+proc fileSha*(a: App, path: string): string =
+  ## the blob (SHA-256 hex) of plant file `path` in the version shown now, "" when it has none
+  let (ok, m) = a.n.active
+  if ok and path in m.files: m.files[path][0] else: ""
 
 proc courseFiles*(a: App): (seq[(string, string)], HashSet[string]) =
   ## The course files (docs/COURSES.md) this device shows: the active plant data version's `courses/`, else the

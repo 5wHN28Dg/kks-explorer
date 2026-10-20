@@ -462,7 +462,8 @@ deletes it with the rest; a device writes none while its store has no root (no p
 **Bytes:**
 1. `kks-saved-state-v1\n`;
 2. the **code id**: 32 lowercase hex characters naming the program's replay code (the reference implementation
-   hashes the source of the replay and everything it reads with, `core/src/kks/savedstate.nim` `CodeId`). A program
+   hashes the source of the replay, what feeds it and what it reads with, and the compiler's version,
+   `core/src/kks/savedstate.nim` `CodeId`). A program
    whose replay could compute anything else has another id: an update never uses what an older version saved;
 3. the **input digest**: SHA-256, as 64 lowercase hex characters, of the UTF-8 text `kks-saved-state-input-v1\n` +
    the root key string + `\n` + the number of entries held (decimal) + `\n`, then every held entry's ID (§3) +
@@ -479,7 +480,8 @@ root is the device's root. Otherwise it replays.
 
 **Writing:** after a replay that did not come from the saved state (a start that replayed, an entry taken in or
 written, a root adopted) the state is marked changed; the device writes it when it chooses (the reference apps: at
-start after a replay, every 30 s while it changed, after a sync round, when the app closes or goes to the background).
+start after a replay; GNOME and Windows every 30 s while it changed and when the app closes; Android after each sync
+round and when it goes to the background).
 A write never happens inside a §15 store transaction. A state not written only means the next start replays.
 
 ## 16. Join by invite (QR code)

@@ -38,11 +38,13 @@ proc doShowSheet(w: Win, id: string) =
   w.sheet = id
   adw_window_title_set_title(w.sheetTitle, si.name.cstring)
   let (_, kkp) = w.a.file("sheets/" & id & ".kkp")
-  # the levels are read when the viewer first wants each (at start only the one the fitted sheet needs)
+  # the levels are read when the viewer first wants each (at start only the one the fitted sheet needs), from the
+  # plant data version shown now: a newer one that completes meanwhile has its own sheet (set again on reload)
+  var shas: seq[string]
+  for k in 0 ..< si.levels: shas.add w.a.fileSha("sheets/" & id & ".o" & $k & ".jxl")
   let a = w.a
   w.v.setSheet(si.name, kkp, si.raw, si.levels, proc (k: int): string =
-    let (okL, data) = a.file("sheets/" & id & ".o" & $k & ".jxl")
-    if okL: data else: "")
+    if shas[k].len > 0: a.store.blobGet(shas[k]) else: "")
   w.panelKey = ""       # setSheet took the open panel's valve outline away: the next reload draws the panel again
   w.v.tags = w.tagBoxes(id)
   w.setLinks()
@@ -730,6 +732,7 @@ proc main() =
   # Walkdown already runs (a second start, a link from another app): GApplication hands the links (or "activate") to
   # it, and this start ends without opening the store or the sync port the running one holds
   if g_application_register(app, nil, nil) != 0 and g_application_get_is_remote(app) != 0:
+    dropBackgroundOpen()
     quit int(g_application_run(app, cint(args.len), argv))
   timing("registered")
   let w = Win(a: openedApp())

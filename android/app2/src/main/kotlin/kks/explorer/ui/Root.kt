@@ -45,7 +45,7 @@ fun Root() {
     }
     // the core opens on its own thread while this first frame is made (App.onCreate, decision 0061): the screen is
     // empty until it has, then the main screen or the setup comes. Sync starts after that.
-    var joined by remember { mutableStateOf<Boolean?>(null) }
+    var joined by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Boolean?>(null) }   // (kept across a rotation: no empty frame)
     LaunchedEffect(Unit) {
         joined = withContext(Dispatchers.IO) { Sync.joined() }
         Sync.start(ctx.applicationContext)

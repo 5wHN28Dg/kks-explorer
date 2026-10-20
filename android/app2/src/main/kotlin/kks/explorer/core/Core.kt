@@ -40,12 +40,20 @@ object Core {
         main.post { listeners.forEach { it(w) } }
     }
 
-    private fun <T> onCore(f: () -> T): T = thread.submit(Callable(f)).get()
+    private fun <T> onCore(f: () -> T): T = thread.submit(Callable {
+        openFailed?.let { throw IllegalStateException("the core did not open: ${it.message}", it) }
+        f()
+    }).get()
     private fun b(s: String) = s.toByteArray(Charsets.UTF_8)
 
     /** Opens the core on its thread without waiting (decision 0061): the activity and its first frame are made
      *  meanwhile. Every later call queues behind the open on the same thread, so none sees the core unopened. */
-    fun openInBackground(ctx: Context) { thread.submit { openNow(ctx) } }
+    fun openInBackground(ctx: Context) {
+        thread.submit { try { openNow(ctx) } catch (t: Throwable) { openFailed = t } }
+    }
+    /** why the background open failed: every later call fails with it (as the open in App.onCreate once did),
+     *  never a core that answers as if this phone had joined nothing */
+    @Volatile private var openFailed: Throwable? = null
 
     fun open(ctx: Context) = onCore { openNow(ctx) }
 

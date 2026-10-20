@@ -46,5 +46,7 @@ suite "the settled round's run is the final pass's":
         check full.run != quick.run          # (two runs were made: the comparison means something)
         check fields(quick.run) == fields(full.run)
         check quick.chainIgnored == full.chainIgnored
+        check quick.run.ignored == full.run.ignored
+        check quick.run.private == full.run.private and quick.run.reports == full.run.reports
         inc n
     check n >= 12
