@@ -526,14 +526,16 @@ func _slab(parent: Node, name: String, outline: PackedVector2Array, holes: Array
 	_mesh_node(body, "mesh", st, mat, texel)
 	return pieces.size()
 
-## A thin vertical panel along plan segment a-b from z0 to z1 (rails, walls, fences), drawn into st and solid.
+## A thin vertical panel along plan segment a-b from z0 to z1 (rails, walls, fences), drawn into st and solid in body
+## (either may be null).
 func _panel(st: SurfaceTool, body: Node, a: Vector2, b: Vector2, z0: float, z1: float, t: float) -> void:
 	if a.distance_to(b) < 0.01:
 		return
 	var d := (b - a).normalized()
 	var n := Vector2(-d.y, d.x) * (t * 0.5)
 	var pc := PackedVector2Array([a - n, b - n, b + n, a + n])
-	Geom.add_prism(st, pc, z0, z1)
+	if st != null:
+		Geom.add_prism(st, pc, z0, z1)
 	if body != null:
 		_convex(body, Geom.prism_points(pc, z0, z1))
 
@@ -923,6 +925,8 @@ func _surface(parent: Node3D, sf: Dictionary) -> void:
 	var inside: bool = sf.kind == "floor" or _in_building(sf)
 	var mat := _mat("grating" if sf.deck == "grating" else ("deck_steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else ("hall_floor" if inside else "concrete"))))
 	_slab(parent, sf.id, sf.outline, sf.holes, sf.z, sf.thick, mat)
+	if inside and sf.deck == "concrete" and sf.z >= DECK_SOFFIT_MIN:
+		_soffit(parent, sf)
 	if sf.rails:
 		var st := _st()
 		var body := _body(parent, sf.id + "_rails")
@@ -930,6 +934,41 @@ func _surface(parent: Node3D, sf: Dictionary) -> void:
 			_mesh_node(body, "mesh", st, _mat("rail"))
 		else:
 			body.free()
+
+## A building's upper floor seen from below: the slab cast on profiled steel decking (a light liner, as the roof's) on
+## steel beams every BAY metres across its short side. Its underside was the floor's dark epoxy paint, black over the
+## turbine hall's ground floor (polish pass). Drawn only, baked.
+const DECK_SOFFIT_MIN := 2.5
+const DECK_BEAM_D := 0.5
+const DECK_BEAM_W := 0.25
+func _soffit(parent: Node3D, sf: Dictionary) -> void:
+	var z0: float = sf.z - sf.thick
+	var liner := _st()
+	for pc in Geom.decompose(sf.outline, sf.holes):
+		Geom.add_prism(liner, pc, z0 - LINER_T, z0)
+	var mi := _mesh_node(parent, sf.id + "_soffit", liner, _mat("liner"))
+	mi.set_meta("soffit", true)
+	var r := Geom.bbox(sf.outline)
+	var along_x := r.size.x >= r.size.y
+	var L := r.size.x if along_x else r.size.y
+	var S := r.size.y if along_x else r.size.x
+	var beams := _st()
+	var n := 0
+	var bays := maxi(1, int(round(L / BAY)))
+	for k in range(1, bays):
+		var t := L * k / bays
+		var a := r.position + (Vector2(t, 0.0) if along_x else Vector2(0.0, t))
+		var b := r.position + (Vector2(t, S) if along_x else Vector2(S, t))
+		n += _member(beams, sf.outline, sf.holes, a, b, DECK_BEAM_W, z0 - LINER_T - DECK_BEAM_D, z0 - LINER_T)
+	if n > 0:
+		_mesh_node(parent, sf.id + "_beams", beams, _mat("roof_steel"), STEEL_TEXEL)
+
+## How far a deck's soffit and beams hang below its top (a lamp under it hangs below them).
+func deck_depth(sf: Dictionary) -> float:
+	var inside: bool = sf.kind == "floor" or _in_building(sf)
+	if inside and sf.deck == "concrete" and sf.z >= DECK_SOFFIT_MIN:
+		return float(sf.thick) + LINER_T + DECK_BEAM_D
+	return float(sf.get("thick", 0.2))
 
 ## Whether a surface stands inside a building (its outline's centre in the building's plan, under its roof).
 func _in_building(sf: Dictionary) -> bool:
@@ -1028,8 +1067,16 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	var body := _body(parent, b.id)
 	body.set_meta("building", b.id)
 	var walls := _st()
+	var liner := _st()
+	var trim := _st()
+	var plinth := _st()
+	var louvres := _st()
+	var glass := _st()
+	var glass_in := _st()
+	var fittings := 0   # louvres and windows drawn
 	var pg: PackedVector2Array = b.outline
 	var h: float = b.height
+	var clad: bool = b.cladding == "metal"
 	var roof_holes: Array = []
 	for i in pg.size():
 		var a := pg[i]
@@ -1037,6 +1084,9 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 		var d := c - a
 		var len := d.length()
 		var u := d / len
+		var inward := Vector2(-u.y, u.x)
+		if not Geom.in_poly((a + c) * 0.5 + inward * 0.5, pg):
+			inward = -inward
 		var cuts: Array = []   # [t0, t1, z0, z1]
 		for o in b.openings:
 			var oc := _opening_plan(b, o)
@@ -1051,9 +1101,17 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 				continue
 			var t := (oc - a).dot(u)
 			var oh := float(o.height)
+			var ow := float(o.width)
 			var zb := oz if o.kind == "door" else oz - oh * 0.5   # a door's `at` is its sill; others' their centre
 			if o.kind in ["door", "pipe"]:
-				cuts.append([t - float(o.width) * 0.5, t + float(o.width) * 0.5, zb, zb + oh])
+				cuts.append([t - ow * 0.5, t + ow * 0.5, zb, zb + oh])
+			elif o.kind == "louvre":
+				_louvre(louvres, a + u * (t - ow * 0.5), a + u * (t + ow * 0.5), -inward, zb, zb + oh)
+				fittings += 1
+			elif o.kind == "window":
+				_window(louvres, glass, glass_in, a + u * (t - ow * 0.5), a + u * (t + ow * 0.5), inward, zb, zb + oh,
+					LINER_T if clad else 0.0)
+				fittings += 1
 		# the wall's face (along the edge t, up z) less its openings, in rectangles (openings may overlap)
 		var holes: Array = []
 		for cu in cuts:
@@ -1063,16 +1121,189 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 			for q in pc:
 				r = r.expand(q)
 			if r.size.x > 0.01 and r.size.y > 0.01:
-				_wall_panel(walls, body, a + u * r.position.x, a + u * r.end.x, r.position.y, r.end.y, 0.25,
-					piece_top(r, cuts, h))
+				var p0 := a + u * r.position.x
+				var p1 := a + u * r.end.x
+				_wall_panel(walls, body, p0, p1, r.position.y, r.end.y, 0.25, piece_top(r, cuts, h))
+				if clad:
+					# the inner skin, light: a hall seen from inside (polish pass)
+					var off := inward * (WALL_T * 0.5 + LINER_T * 0.5)
+					_panel(liner, null, p0 + off, p1 + off, r.position.y, minf(r.end.y, h - LINER_T), LINER_T)
+		_wall_trims(trim, plinth, a, c, -inward, cuts, h, clad)
 	_mesh_node(body, "walls", walls, _mat("wall_" + b.cladding))
 	var roof := _st()
 	for pc in Geom.decompose(pg, roof_holes):
 		Geom.add_prism(roof, pc, h, h + 0.3)
 		_convex(body, Geom.prism_points(pc, h, h + 0.3))
+		Geom.add_prism(liner, pc, h - LINER_T, h)
 	_mesh_node(body, "roof", roof, _mat("roof"))
+	# every building's roof from inside: the liner and the steel under it (a dark ceiling with nothing under it read as
+	# a black void in every hall: polish pass)
+	_mesh_node(body, "liner", liner, _mat("liner"))
+	var steel := _st()
+	if _roof_steel(steel, b, roof_holes) > 0:
+		_mesh_node(body, "roof_steel", steel, _mat("roof_steel"), STEEL_TEXEL)
+	if clad:
+		_mesh_node(body, "trims", trim, _mat("trim"), Lightmap.SHEET_TEXEL * 2.0)
+	_mesh_node(body, "plinth", plinth, _mat("concrete"))
+	if fittings > 0:
+		_mesh_node(body, "louvres", louvres, _mat("louvre"), Lightmap.SHEET_TEXEL * 2.0)
+	if b.openings.any(func(o): return o.kind == "window"):
+		_mesh_node(body, "windows", glass, _mat("window"))
+		_mesh_node(body, "windows_in", glass_in, _mat("window_in"))
 	_hall_floor(body, b)
 	_lamps(body, b)
+
+## A building's walls: 0.25 m thick on their outline; a metal-clad hall's light inner skin (its liner) 3 cm thick
+## against their inside and under the roof.
+const WALL_T := 0.25
+const LINER_T := 0.03
+## A building's roof steel (portal frames' rafters across the short span, purlins along it under the liner),
+## baked at a finer texel than walls (members 0.12 to 0.3 m across).
+const STEEL_TEXEL := 0.2
+const PURLIN_D := 0.2
+const PURLIN_W := 0.12
+const PURLIN_GAP := 1.8
+const RAFTER_W := 0.3
+const BAY := 6.0
+
+## The rafters' depth for a span (about a fortieth of it, as a portal frame's: 0.4 to 1.0 m).
+static func rafter_depth(span: float) -> float:
+	return clampf(span / 40.0, 0.4, 1.0)
+
+## How far the roof steel hangs below the roof (a lamp hangs below it).
+func steel_depth(b: Dictionary) -> float:
+	var r := Geom.bbox(b.outline)
+	return LINER_T + PURLIN_D + rafter_depth(minf(r.size.x, r.size.y))
+
+## A building's roof steel under its liner: rafters every BAY metres across the short span (the frames over the
+## gable walls stand in them, not drawn), purlins every PURLIN_GAP along the long one; none across a roof opening.
+## A dark ceiling with nothing under it read as a black void (polish pass). Returns the members drawn.
+func _roof_steel(st: SurfaceTool, b: Dictionary, roof_holes: Array) -> int:
+	var pg: PackedVector2Array = b.outline
+	var h: float = b.height
+	var r := Geom.bbox(pg)
+	var along_x := r.size.x >= r.size.y          # the long axis: purlins run along it, rafters across
+	var L := r.size.x if along_x else r.size.y
+	var S := r.size.y if along_x else r.size.x
+	var rd := rafter_depth(S)
+	var z_p1 := h - LINER_T
+	var z_p0 := z_p1 - PURLIN_D
+	var z_r1 := z_p0
+	var z_r0 := z_r1 - rd
+	var n := 0
+	var at := func(t: float, s: float) -> Vector2:
+		return r.position + (Vector2(t, s) if along_x else Vector2(s, t))
+	var bays := maxi(2, int(round(L / BAY)))
+	for k in range(1, bays):
+		var t := L * k / bays
+		n += _member(st, pg, roof_holes, at.call(t, 0.0), at.call(t, S), RAFTER_W, z_r0, z_r1)
+	var rows := maxi(2, int(round(S / PURLIN_GAP)))
+	for k in range(1, rows):
+		var s2 := S * k / rows
+		n += _member(st, pg, roof_holes, at.call(0.0, s2), at.call(L, s2), PURLIN_W, z_p0, z_p1)
+	return n
+
+## A steel member from a to b (plan), w wide, z0 to z1, kept inside the walls' inner faces and out of roof openings.
+func _member(st: SurfaceTool, pg: PackedVector2Array, roof_holes: Array, a: Vector2, b: Vector2, w: float, z0: float, z1: float) -> int:
+	var n := 0
+	for seg in Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([a, b]), pg):
+		var pieces: Array = [seg]
+		for hole in roof_holes:
+			var next: Array = []
+			for pc in pieces:
+				next.append_array(Geometry2D.clip_polyline_with_polygon(pc, hole))
+			pieces = next
+		for pc in pieces:
+			var p0: Vector2 = pc[0]
+			var p1: Vector2 = pc[pc.size() - 1]
+			var dl := p0.distance_to(p1)
+			if dl < 0.5:
+				continue
+			var dv := (p1 - p0) / dl
+			# kept off the walls: a wall's inner face and its liner are WALL_T / 2 + LINER_T in from its line
+			var trim_end := WALL_T * 0.5 + LINER_T + 0.01
+			p0 += dv * (trim_end if Geom.in_poly(p0 - dv * 0.2, pg) == false else 0.0)
+			p1 -= dv * (trim_end if Geom.in_poly(p1 + dv * 0.2, pg) == false else 0.0)
+			Geom.add_prism(st, Geom._strip(p0, p1, Vector2(-dv.y, dv.x), w), z0, z1)
+			n += 1
+	return n
+
+## The outside of a wall from a to c (`out` its outward normal). Metal cladding: a concrete plinth along its foot,
+## broken at doors and pipe openings that reach it, a flashing over its top edge (the roof's verge) and down both its
+## corners. A concrete wall: a coping along its top.
+## They break the plain box a clad building was (the circulating water pump house read as a dim box: polish pass).
+const PLINTH_H := 0.6
+const TRIM_H := 0.35
+func _wall_trims(trim: SurfaceTool, plinth: SurfaceTool, a: Vector2, c: Vector2, out: Vector2, cuts: Array, h: float, metal: bool) -> void:
+	var len := a.distance_to(c)
+	var u := (c - a) / len
+	var face := out * (WALL_T * 0.5)
+	if not metal:
+		_panel(plinth, null, a + face + out * 0.04 - u * 0.08, c + face + out * 0.04 + u * 0.08, h - 0.25, h + 0.4, 0.08)
+		return
+	# the plinth: 6 cm proud of the cladding, less the openings that come down to it
+	var spans: Array = [[-0.06, len + 0.06]]   # round the corners
+	for cu in cuts:
+		if float(cu[2]) < PLINTH_H:
+			var next: Array = []
+			for sp in spans:
+				if cu[1] <= sp[0] or cu[0] >= sp[1]:
+					next.append(sp)
+					continue
+				if cu[0] > sp[0]:
+					next.append([sp[0], cu[0]])
+				if cu[1] < sp[1]:
+					next.append([cu[1], sp[1]])
+			spans = next
+	for sp in spans:
+		if sp[1] - sp[0] > 0.05:
+			_panel(plinth, null, a + u * sp[0] + face + out * 0.03, a + u * sp[1] + face + out * 0.03, 0.0, PLINTH_H, 0.06)
+	# the verge flashing over the wall's top and the roof's edge, and the corner flashings
+	_panel(trim, null, a + face + out * 0.02 - u * 0.04, c + face + out * 0.02 + u * 0.04, h - TRIM_H, h + 0.38, 0.04)
+	_panel(trim, null, a + face + out * 0.02 - u * 0.04, a + face + out * 0.02 + u * 0.22, PLINTH_H, h - TRIM_H, 0.04)
+	_panel(trim, null, c + face + out * 0.02 - u * 0.22, c + face + out * 0.02 + u * 0.04, PLINTH_H, h - TRIM_H, 0.04)
+
+## A louvre on a wall's outside from a to b (`out` its outward normal), z0 to z1: a frame and blades over a dark
+## recess, proud of the cladding (drawn only; the wall stays whole behind it).
+func _louvre(st: SurfaceTool, a: Vector2, b: Vector2, out: Vector2, z0: float, z1: float) -> void:
+	var face := out * (WALL_T * 0.5)
+	var u := (b - a).normalized()
+	# the recess's back (dark grey galvanised in shade reads as the louvre's depth) and the frame round it
+	_panel(st, null, a + face + out * 0.01, b + face + out * 0.01, z0, z1, 0.02)
+	for side in [[a, a + u * 0.08], [b - u * 0.08, b]]:
+		_panel(st, null, side[0] + face + out * 0.08, side[1] + face + out * 0.08, z0, z1, 0.14)
+	_panel(st, null, a + face + out * 0.08, b + face + out * 0.08, z0, z0 + 0.08, 0.14)
+	_panel(st, null, a + face + out * 0.08, b + face + out * 0.08, z1 - 0.08, z1, 0.14)
+	# blades every 0.1 m, each leaning out and down (a thin sloped plate)
+	var z := z0 + 0.12
+	while z < z1 - 0.1:
+		_slope_blade(st, a + u * 0.08 + face, b - u * 0.08 + face, out, z)
+		z += 0.1
+
+## One louvre blade from a to b at height z: a plate from 0.03 m out at z + 0.06 to 0.13 m out at z, 1 cm thick.
+func _slope_blade(st: SurfaceTool, a: Vector2, b: Vector2, out: Vector2, z: float) -> void:
+	var lo_a := Geom.g([a.x + out.x * 0.13, a.y + out.y * 0.13, z])
+	var lo_b := Geom.g([b.x + out.x * 0.13, b.y + out.y * 0.13, z])
+	var hi_a := Geom.g([a.x + out.x * 0.03, a.y + out.y * 0.03, z + 0.06])
+	var hi_b := Geom.g([b.x + out.x * 0.03, b.y + out.y * 0.03, z + 0.06])
+	var dn := Vector3(0, -0.01, 0)
+	Geom._quad(st, hi_a, hi_b, lo_b, lo_a)
+	Geom._quad(st, lo_a + dn, lo_b + dn, hi_b + dn, hi_a + dn)
+
+## A window in a wall from a to b (`inward` the hall's side), z0 to z1: a frame and glass on both faces (drawn only;
+## the wall stays whole). Outside the glass reflects; inside it is the daylight beyond (`window_in`, a little light of
+## its own that the bake spreads into the hall): dark panes in a lit hall read as holes.
+func _window(frame: SurfaceTool, glass: SurfaceTool, glass_in: SurfaceTool, a: Vector2, b: Vector2, inward: Vector2, z0: float, z1: float, liner_t: float) -> void:
+	var u := (b - a).normalized()
+	for side in [-1.0, 1.0]:
+		var face: Vector2 = inward * (side * (WALL_T * 0.5 + (liner_t if side > 0 else 0.0)))
+		var n: Vector2 = inward * side
+		_panel(glass if side < 0.0 else glass_in, null, a + face + n * 0.01, b + face + n * 0.01, z0, z1, 0.02)
+		for e in [[a, a + u * 0.07], [b - u * 0.07, b]]:
+			_panel(frame, null, e[0] + face + n * 0.03, e[1] + face + n * 0.03, z0, z1, 0.05)
+		_panel(frame, null, a + face + n * 0.03, b + face + n * 0.03, z0, z0 + 0.07, 0.05)
+		_panel(frame, null, a + face + n * 0.03, b + face + n * 0.03, z1 - 0.07, z1, 0.05)
+		_panel(frame, null, (a + b) * 0.5 - u * 0.03 + face + n * 0.03, (a + b) * 0.5 + u * 0.03 + face + n * 0.03, z0, z1, 0.05)
 
 ## Where water running down a wall piece (r: along the edge x, up y) comes from: the bottom of the lowest opening
 ## above it, else the wall's top h. The wall is cut into slabs at every opening's height, so each slab's own top
@@ -1147,14 +1378,19 @@ func _lamps(body: Node, b: Dictionary) -> int:
 	var lens := _st()
 	var n := 0
 	# under the roof, over the whole hall
+	# hung below the roof steel on rods (a metal-clad hall's: steel_depth)
+	var sd := steel_depth(b)
+	var z_lamp := h - maxf(0.6, sd + 0.5)
 	for c in _lamp_grid(pg, [], clampf(h * 0.6, 6.0, 10.0)):
 		if Geom.in_region(c, pg, []):
-			_lamp(body, housing, lens, c, h - 0.6, clampf(h * 0.6, 6.0, 10.0), h, n)
+			_lamp(body, housing, lens, c, z_lamp, clampf(h * 0.6, 6.0, 10.0), h, n)
+			if sd > 0.0:
+				Geom.add_prism(housing, Geom.rect(c.x - 0.015, c.y - 0.015, c.x + 0.015, c.y + 0.015), z_lamp + 0.25, h - LINER_T - PURLIN_D)
 			n += 1
 	# under each deck of the hall (an operating floor, a building's upper floor): the floor below it is out of the
 	# roof lamps' reach, as a real hall's ground floor is lit by lamps under the deck (adversarial review)
 	for sf in surfaces:
-		var z: float = sf.z - float(sf.get("thick", 0.2)) - 0.3
+		var z: float = sf.z - deck_depth(sf) - 0.3
 		if sf.z < 2.5 or sf.z > h - 2.0 or not Geom.in_region(_mean(sf.outline), pg, []):
 			continue
 		var gap := clampf(z * 0.8, 4.0, 10.0)
@@ -1329,17 +1565,62 @@ func _slab_part(parent: Node3D, s: Dictionary) -> void:
 	var pg := Geom.poly(pr.outline, Vector2(at.x, at.y), float(s.get("yaw", 0)))
 	_slab(parent, s.id, pg, [], at.z + float(pr.thickness), float(pr.thickness), _mat("concrete"))
 
+## A fence: steel palisade, as round a transformer yard: posts every 2.75 m, two rails on the inside, and pales with
+## a pointed top a hand's width apart (a solid galvanised sheet read as a blotchy wall, worst on the phone: polish pass).
+## Solid to the walker over its whole height (a panel along the route); baked at a fine texel.
+const PALE_W := 0.065
+const PALE_GAP := 0.14
+const POST_GAP := 2.75
 func _fence(parent: Node3D, s: Dictionary) -> void:
 	var pr := params_of("fence", s.get("params", {}))
 	var at := _v3(s.at)
 	var body := _body(parent, s.id)
 	var st := _st()
 	var pts: Array = pr.route
+	var fh := float(pr.height)
 	for i in range(pts.size() - 1):
 		var a := at + Geom.turn(_v3(pts[i]), float(s.get("yaw", 0)))
 		var b := at + Geom.turn(_v3(pts[i + 1]), float(s.get("yaw", 0)))
-		_wall_panel(st, body, Vector2(a.x, a.y), Vector2(b.x, b.y), a.z, a.z + float(pr.height), 0.05)
-	_mesh_node(body, "mesh", st, _mat("fence"), Lightmap.SHEET_TEXEL)   # a 5 cm sheet: a fine texel
+		var a2 := Vector2(a.x, a.y)
+		var b2 := Vector2(b.x, b.y)
+		var len := a2.distance_to(b2)
+		if len < 0.01:
+			continue
+		var u := (b2 - a2) / len
+		var n := Vector2(-u.y, u.x)
+		_panel(null, body, a2, b2, a.z, a.z + fh, 0.05)   # the walker's: solid
+		# posts (the route's corners have one each)
+		var posts := maxi(1, int(ceil(len / POST_GAP)))
+		for k in posts + 1:
+			var p := a2.lerp(b2, float(k) / posts) + n * 0.06
+			Geom.add_prism(st, Geom.rect(p.x - 0.05, p.y - 0.05, p.x + 0.05, p.y + 0.05), a.z, a.z + fh - 0.1)
+		# rails (an angle's face) on the posts' side, low and high
+		for z in [0.35, fh - 0.45]:
+			_panel(st, null, a2 + n * 0.035, b2 + n * 0.035, a.z + z, a.z + z + 0.06, 0.03)
+		# pales
+		var count := maxi(1, int(floor(len / PALE_GAP)))
+		var t0 := (len - (count - 1) * PALE_GAP) * 0.5
+		for k in count:
+			_pale(st, a2 + u * (t0 + k * PALE_GAP), u, n * -0.01, a.z + 0.05, a.z + fh)
+	_mesh_node(body, "mesh", st, _mat("fence"), Lightmap.SHEET_TEXEL)   # thin pieces: a fine texel
+
+## One pale centred at p (plan), along the fence u, standing off by `off`: PALE_W wide, 3 cm thick, z0 to z1 with a
+## pointed top (its last 8 cm).
+func _pale(st: SurfaceTool, p: Vector2, u: Vector2, off: Vector2, z0: float, z1: float) -> void:
+	var nrm := Vector2(-u.y, u.x)
+	var prof := [[-0.5, z0], [0.5, z0], [0.5, z1 - 0.08], [0.0, z1], [-0.5, z1 - 0.08]]
+	var fr: Array = []
+	var bk: Array = []
+	for q in prof:
+		var c: Vector2 = p + off + u * (float(q[0]) * PALE_W)
+		fr.append(Geom.g([c.x + nrm.x * 0.015, c.y + nrm.y * 0.015, q[1]]))
+		bk.append(Geom.g([c.x - nrm.x * 0.015, c.y - nrm.y * 0.015, q[1]]))
+	for i in range(1, 4):
+		Geom._tri(st, fr[0], fr[i], fr[i + 1])
+		Geom._tri(st, bk[0], bk[i + 1], bk[i])
+	for i in 5:
+		var j := (i + 1) % 5
+		Geom._quad(st, fr[i], bk[i], bk[j], fr[j])
 
 func _rack(parent: Node3D, s: Dictionary) -> void:
 	var pr := params_of("pipe_rack", s.get("params", {}))

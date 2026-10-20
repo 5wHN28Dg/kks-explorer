@@ -52,6 +52,13 @@ static func in_poly(p: Vector2, pg: PackedVector2Array) -> bool:
 		j = i
 	return inside
 
+## A polygon's bounding rectangle.
+static func bbox(pg: PackedVector2Array) -> Rect2:
+	var r := Rect2(pg[0], Vector2.ZERO)
+	for q in pg:
+		r = r.expand(q)
+	return r
+
 ## Inside the outline and outside every hole.
 static func in_region(p: Vector2, outline: PackedVector2Array, holes: Array) -> bool:
 	if not in_poly(p, outline):
