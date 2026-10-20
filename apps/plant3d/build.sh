@@ -108,6 +108,10 @@ fi
 #    sky and the sun alone (CI's check exports).
 if [ "$MODE" = release ] || [ "$MODE" = bake ]; then
   [ -n "${DISPLAY:-}" ] || { echo "build.sh $MODE needs a display: run it under tools/plant3d/bench/offscreen.sh" >&2; exit 2; }
+  # an empty script documentation cache first: without one (a fresh checkout) the editor loads every script on a
+  # thread of its own while the bake opens its scene, and crashed (builder/bake/script_doc_cache.gd)
+  $T "$GODOT" --headless --path "$HERE" --script res://builder/bake/script_doc_cache.gd >>"$HERE/.import.log" 2>&1 ||
+    { tail -5 "$HERE/.import.log"; echo "the script documentation cache for the bake was not written" >&2; exit 1; }
   LANG=C.UTF-8 $T "$GODOT" -e --display-driver x11 --rendering-driver vulkan --path "$HERE" -- --bake-lightmaps \
     >"$HERE/.bake.log" 2>&1 || { grep -E "^bake:|ERROR" "$HERE/.bake.log" | tail -20; echo "the lightmap's bake failed (apps/plant3d/.bake.log)" >&2; exit 1; }
   grep '^bake:' "$HERE/.bake.log"
