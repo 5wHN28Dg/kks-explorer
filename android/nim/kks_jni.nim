@@ -58,7 +58,8 @@ proc kks_open(dir: cstring, key: ptr UncheckedArray[byte], keylen: cint, handle:
     var pubB = newSeq[byte](int(publen))
     if publen > 0: copyMem(addr pubB[0], pub, int(publen))
     let pk = PrivateKey(pub: pubB, handle: $handle)
-    let n = newNode(p, st, pk)
+    # (-d:kksNoSavedState: a measurement build that always replays, docs/m6/MEASUREMENTS.md "Startup")
+    let n = newNode(p, st, pk, keepState = not defined(kksNoSavedState))
     let a = newApi(n, mode = "peer")
     a.deviceLabel = $label
     let inst = Inst(p: p, store: st, n: n, api: a, key: pk, tables: newObj())
