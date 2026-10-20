@@ -397,7 +397,7 @@ proc main() =
   createDir(dataDir())
   errorLog = dataDir() / "crash.log"
   timing("main")
-  # the store opens and the log replays on a thread of its own while the window is made (decision 0059)
+  # the store opens and the log replays on a thread of its own while the window is made (decision 0061)
   discard openAppInBackground(kksTables = BuiltInTables)
   let clsName = newWideCString("KKSMain")   # must outlive RegisterClassExW
   var wc = WNDCLASSEXW(cbSize: UINT(sizeof(WNDCLASSEXW)), lpfnWndProc: mainProc, hInstance: hinst,

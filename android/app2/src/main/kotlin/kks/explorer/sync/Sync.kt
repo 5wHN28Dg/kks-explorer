@@ -228,6 +228,7 @@ object Sync {
             syncing = false
             round.unlock()
             report(ctx)
+            Core.saveState()                    // what the round brought, kept for the next start (§15b)
             if (again) { again = false; pool.schedule({ runCatching { syncAll(ctx) } }, 1, TimeUnit.SECONDS) }
         }
     }

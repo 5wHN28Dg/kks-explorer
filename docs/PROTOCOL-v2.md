@@ -448,6 +448,40 @@ responder answers. `{"t":"error","why":...}` may be sent instead of any message,
 
 Relaying is automatic: a device sends every entry it holds, not only its own.
 
+## 15b. A device's saved replayed state (added 2026-10-21, decision 0061)
+
+Local to one device, never sent: no other implementation reads it, and none needs to write it. A device may keep a
+copy of what its replay (§11–14) computed, so that a start reads the copy instead of replaying the whole log. The log
+stays the only truth: the copy is used only when it is provably the replay of exactly what the device holds now, and
+anything else makes the device replay (and save again), never show the copy.
+
+**Where:** the store's meta row `saved_state`, sealed like every row of the store (decision 0020: AES-256-GCM under
+the device's storage key, the associated data `kks-store-v2\n` + `meta/saved_state`). A wipe (§15, removed device)
+deletes it with the rest; a device writes none while its store has no root (no plant, or wiped under it).
+
+**Bytes:**
+1. `kks-saved-state-v1\n`;
+2. the **code id**: 32 lowercase hex characters naming the program's replay code (the reference implementation
+   hashes the source of the replay and everything it reads with, `core/src/kks/savedstate.nim` `CodeId`). A program
+   whose replay could compute anything else has another id: an update never uses what an older version saved;
+3. the **input digest**: SHA-256, as 64 lowercase hex characters, of the UTF-8 text `kks-saved-state-input-v1\n` +
+   the root key string + `\n` + the number of entries held (decimal) + `\n`, then every held entry's ID (§3) +
+   `\n` in ascending order, then the number of fork-evidence entries held (§15 step 3) + `\n` and their IDs + `\n`
+   in ascending order. An entry's ID is the hash of its content, so the digest names everything the replay reads;
+4. the **payload's SHA-256**, 64 lowercase hex characters;
+5. the **payload**: the replay's result in the implementation's own binary form (the reference implementation's is
+   described in `core/src/kks/binser.nim`: every field of its replay state, then the entries the chain rules ignored).
+
+**Reading at start:** after loading the entries and the fork evidence, a device computes the input digest and uses
+the saved state only if the row opens (its seal), the bytes start with item 1, the code id is its own, the digest
+equals the one it computed, the payload's hash matches, the payload reads to its end without error, and the state's
+root is the device's root. Otherwise it replays.
+
+**Writing:** after a replay that did not come from the saved state (a start that replayed, an entry taken in or
+written, a root adopted) the state is marked changed; the device writes it when it chooses (the reference apps: at
+start after a replay, every 30 s while it changed, after a sync round, when the app closes or goes to the background).
+A write never happens inside a §15 store transaction. A state not written only means the next start replays.
+
 ## 16. Join by invite (QR code)
 
 **Invite:**

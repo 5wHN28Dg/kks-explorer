@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         App.visible = false
         Sync.foreground(applicationContext, false)
+        kks.explorer.core.Core.saveState()      // the replayed state, for the next start
         super.onStop()
     }
 

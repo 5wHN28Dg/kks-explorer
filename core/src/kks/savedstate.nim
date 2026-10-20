@@ -1,4 +1,4 @@
-## The saved replayed state (PROTOCOL-v2 §15b, decision 0059): what the replay of a node's log computed, kept in its
+## The saved replayed state (PROTOCOL-v2 §15b, decision 0061): what the replay of a node's log computed, kept in its
 ## store so that a start reads it back instead of replaying every entry again. It is only ever a copy: the log stays
 ## the truth, and a saved state that does not match the log it is opened with, or that this program did not write,
 ## is ignored and the log replayed.

@@ -106,8 +106,9 @@ type Node* = ref object
   listeners*: seq[proc (why: string)]   ## told after every change: "local", "received", "adopted"
   staging: bool                         ## inside `atomic`: new entries wait in `staged` until the store commits
   staged: seq[StoredEntry]
-  chainIgnored: OrderedTable[string, string]   ## the chain rules' part of `ignored` (kept for the saved state)
-  stateDirty*: bool                     ## the replayed state changed since it was saved (saveState)
+  chainIgnored: OrderedTable[string, string]   ## the chain rules' part of `ignored`
+  keepsState*: bool                     ## saves its replayed state for the next start (§15b; the apps, not the server)
+  unsaved: string                       ## the replayed state's bytes, made right after the replay, not yet written
   stateFromSaved*: bool                 ## this start read the saved state instead of replaying (tests, timing)
 
 const SavedStateKey* = "saved_state"   ## the store's meta key of the saved replayed state (savedstate.nim)
@@ -125,15 +126,20 @@ proc stateDigest(n: Node): string =
   for (id, _) in n.evidence: ev.add id
   inputDigest(n.p, n.root, ids, ev)
 
+proc stateDirty*(n: Node): bool = n.unsaved.len > 0
+  ## the replayed state changed since it was saved
+
 proc saveState*(n: Node) =
-  ## Keeps the replayed state in the store (PROTOCOL-v2 §15b) if it changed since it was last kept, so that the next
-  ## start need not replay. Never raises: a state not kept only means the next start replays.
-  if not n.stateDirty or n.run == nil or n.root.len == 0 or n.staging: return
+  ## Writes the replayed state to the store (PROTOCOL-v2 §15b) if it changed since it was last written, so that the
+  ## next start need not replay. Never raises: a state not written only means the next start replays.
+  if n.unsaved.len == 0 or n.staging: return
   try:
     # a store wiped under this node (a removed device, §15) has no root any more: nothing of the plant is written back
-    if n.store.getMeta("root") != n.root: return
-    n.store.setMeta(SavedStateKey, encodeSaved(n.p, n.stateDigest, n.run, n.chainIgnored))
-    n.stateDirty = false
+    if n.store.getMeta("root") != n.root:
+      n.unsaved = ""
+      return
+    n.store.setMeta(SavedStateKey, n.unsaved)
+    n.unsaved = ""
   except CatchableError: discard
 
 proc rebuild*(n: Node) =
@@ -146,7 +152,12 @@ proc rebuild*(n: Node) =
   for (id, e) in n.evidence: trusted.add((id, e))   # a device that signed two entries for one seq is cut (§4, #35)
   let rr = n.p.replayRun(@[], n.root, trusted, useTrusted = true)
   n.useRun(rr.run, rr.chainIgnored)
-  n.stateDirty = true
+  # the bytes are made now, from the replay's own result: what gets saved later is exactly what this replay computed
+  # (whatever reads the state in between), for exactly the entries it read
+  n.unsaved = ""
+  if n.keepsState:
+    try: n.unsaved = encodeSaved(n.p, n.stateDigest, n.run, n.chainIgnored)
+    except CatchableError: discard
 
 proc changed*(n: Node, why: string) =
   for f in n.listeners: f(why)
@@ -156,8 +167,9 @@ proc addStored(n: Node, id: string, e: JNode) =
   let peer = e["peer"].s
   n.chains.mgetOrPut(peer, @[]).add id
 
-proc newNode*(p: Provider, store: Store, key: PrivateKey): Node =
-  result = Node(p: p, store: store, key: key)
+proc newNode*(p: Provider, store: Store, key: PrivateKey, keepState = true): Node =
+  ## keepState: read the saved replayed state when it matches, and keep saving it (saveState; PROTOCOL-v2 §15b)
+  result = Node(p: p, store: store, key: key, keepsState: keepState)
   result.device = p.peerId(key)
   result.root = store.getMeta("root")
   var all = store.loadEntries()
@@ -169,7 +181,7 @@ proc newNode*(p: Provider, store: Store, key: PrivateKey): Node =
     discard result.clock.recv((e["hlc"][0].i, e["hlc"][1].i), 0)
   result.evidence = store.loadEvidence()
   # the state saved by the last run, if it is the replay of exactly what is held now (§15b); else replay
-  if result.root.len > 0:
+  if result.root.len > 0 and keepState:
     try:
       let saved = store.getMeta(SavedStateKey)
       if saved.len > 0:

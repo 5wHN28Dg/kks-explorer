@@ -118,9 +118,14 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
     cfg["relay_url"] = newStr(if rv != nil and rv.isStr: rv.s else: "")
     let (hasRk, rk) = c.n.memberKey
     cfg["relay_room"] = newStr(if hasRk: relayRoom(c.p, keyString(rk.pub)) else: "")   # rotated: the phone moves (0050)
+    cfg["state_from_saved"] = newBool(c.n.stateFromSaved)   # (the start read the saved state: measurements)
     cfg["admin"] = newBool(ok and me.isAdmin)
     cfg["role"] = newStr(if ok: me.role else: "")
     O(("status", newInt(200)), ("json", cfg))
+  of "/native/save-state":
+    # PROTOCOL-v2 §15b: the replayed state kept for the next start (when it changed)
+    c.n.saveState()
+    return view(O(("ok", newBool(true))))
   of "/native/diag-record":
     # decision 0040: an event for the manager's diagnostics reports (crash, error, sync)
     c.n.record(body["kind"].s, body["text"].s, nowMs())

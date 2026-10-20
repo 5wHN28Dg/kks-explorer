@@ -425,7 +425,7 @@ proc openServer*(cfg: Config, p: Provider, storageKey: seq[byte]): Server =
   let st = openDbStore(p, cfg.storePath, storageKey)
   let key = ensureNodeKey(st, p)
   result = Server(cfg: cfg, p: p, store: st)
-  result.n = newNode(p, st, key)
+  result.n = newNode(p, st, key, keepState = false)   # (no saved replayed state: PROTOCOL-v2 §15b is for the apps' starts)
   result.api = newApi(result.n, mode = "server")
   discard result.api.fileIdsAfter     # where submit-file's old rows end (#151): fixed before anything new is written
   result.api.plantName = cfg.plantName

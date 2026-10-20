@@ -1,4 +1,4 @@
-## The saved replayed state (PROTOCOL-v2 §15b, decision 0059): a node started on a store reads it instead of replaying
+## The saved replayed state (PROTOCOL-v2 §15b, decision 0061): a node started on a store reads it instead of replaying
 ## only when it is exactly the replay of what the store holds now, written by this program; anything else (another
 ## log, another root, fork evidence added, another version's, damaged, cut short, garbage) is ignored and the log
 ## replayed, so what a start shows is always what a replay would show.
@@ -178,9 +178,36 @@ suite "the saved state is read only when it is the replay of what is held":
     discard api.handle(api.owner[1], "POST", "/api/submit", initTable[string, string](), parseStrict(
       """{"kind":"equipment","payload":{"kks":"11LAB70AA598","changes":{"notes":"x"},"base":{}}}"""), now())
     check n.stateDirty
+    n.atomic(proc () = n.saveState())                    # inside a store transaction: not written
+    check s.getMeta(SavedStateKey) == "marker"
+    check n.stateDirty
     n.saveState()
     check not n.stateDirty
     check newNode(P, s, k).stateFromSaved
+
+  test "what is saved is the replay's own result, whatever changed the state in memory since":
+    let (s, k) = plantStore(3)
+    let n = newNode(P, s, k)
+    let api = newApi(n)
+    discard api.handle(api.owner[1], "POST", "/api/submit", initTable[string, string](), parseStrict(
+      """{"kind":"equipment","payload":{"kks":"11LAB70AA596","changes":{"notes":"as written"},"base":{}}}"""), now())
+    n.run.equipment["11LAB70AA596"]["notes"] = newStr("changed in memory")   # (no code does this; if some did)
+    n.saveState()
+    let again = newNode(P, s, k)
+    check again.stateFromSaved
+    check again.run.equipment["11LAB70AA596"]["notes"].s == "as written"
+
+  test "a node that keeps no state (the server) neither reads nor writes one":
+    let (s, k) = plantStore(3)
+    let saved = s.getMeta(SavedStateKey)
+    let n = newNode(P, s, k, keepState = false)
+    check not n.stateFromSaved
+    let api = newApi(n)
+    discard api.handle(api.owner[1], "POST", "/api/submit", initTable[string, string](), parseStrict(
+      """{"kind":"equipment","payload":{"kks":"11LAB70AA595","changes":{"notes":"x"},"base":{}}}"""), now())
+    check not n.stateDirty
+    n.saveState()
+    check s.getMeta(SavedStateKey) == saved
 
   test "a store whose root is gone (wiped) gets nothing written back":
     let (s, k) = plantStore(3)

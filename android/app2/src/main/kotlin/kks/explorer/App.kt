@@ -12,7 +12,7 @@ import java.io.File
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
-        Core.open(this)
+        Core.openInBackground(this)     // (while the activity is made; the first call to the core waits for it)
         kks.explorer.sync.Diagnostics.install(this)
         Core.listeners.add { why -> if (why.startsWith("wiped:")) removed(this, why.removePrefix("wiped:")) }
         kks.explorer.sync.SyncWorker.schedule(this)

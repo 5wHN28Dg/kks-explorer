@@ -340,9 +340,9 @@ proc loadWorker(dir: string) {.thread.} =
 
 proc openAppInBackground*(dir = dataDir(), kksTables = "{}"): bool =
   ## Starts opening the store, replaying the log and building the plant model (`takeModel`, with `kksTables`) on a
-  ## thread of its own while the window is made (decision 0059): `openedApp` then waits for it. Only for a folder that already has a store (a first start makes the storage key,
-  ## which two starts at once must not both do: it goes the plain way, after the app knows it is the one that runs).
-  ## -> whether it started.
+  ## thread of its own while the window is made (decision 0061): `openedApp` then waits for it. Only for a folder that
+  ## already has a store (a first start makes the storage key, which two starts at once must not both do: it goes the
+  ## plain way, after the app knows it is the one that runs). -> whether it started.
   if loaderStarted or not fileExists(dir / "kks.db"): return false
   loaderStarted = true
   loadTables = kksTables
@@ -355,7 +355,9 @@ proc openedApp*(dir = dataDir()): App =
   if loaderStarted:
     joinThread(loader)
     loaderStarted = false
-    if loadFailed.len > 0: raise newException(OpenError, loadFailed)
+    if loadFailed.len > 0:
+      let why = move loadFailed
+      raise newException(OpenError, why)
     result = move loaded
     result.startApp()
   else:

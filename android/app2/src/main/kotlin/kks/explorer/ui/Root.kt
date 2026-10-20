@@ -41,15 +41,26 @@ fun Root() {
     DisposableEffect(Unit) {
         val l: (String) -> Unit = { Changes.rev++ }
         Core.listeners.add(l)
-        Sync.start(ctx.applicationContext)
         onDispose { Core.listeners.remove(l) }
+    }
+    // the core opens on its own thread while this first frame is made (App.onCreate, decision 0061): the screen is
+    // empty until it has, then the main screen or the setup comes. Sync starts after that.
+    var joined by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) {
+        joined = withContext(Dispatchers.IO) { Sync.joined() }
+        Sync.start(ctx.applicationContext)
     }
     MaterialTheme(colorScheme = scheme) {
         Surface(Modifier.fillMaxSize()) {
-            var joined by remember { mutableStateOf(Sync.joined()) }
-            // a link that came before the phone joined a plant opens nothing, now or later (decision 0058)
-            if (!joined) LaunchedEffect(AppLinks.pending) { AppLinks.pending = null }
-            if (joined) MainScreen() else SetupScreen { joined = true }
+            when (joined) {
+                null -> {}
+                true -> MainScreen()
+                false -> {
+                    // a link that came before the phone joined a plant opens nothing, now or later (decision 0058)
+                    LaunchedEffect(AppLinks.pending) { AppLinks.pending = null }
+                    SetupScreen { joined = true }
+                }
+            }
         }
     }
 }

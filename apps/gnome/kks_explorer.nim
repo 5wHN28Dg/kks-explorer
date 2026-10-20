@@ -678,12 +678,32 @@ proc onUsr1(sig: cint) {.noconv.} = shotRequested = true
 var figRequested {.volatile.} = false
 proc onUsr2(sig: cint) {.noconv.} = figRequested = true
 
+proc g_bus_get_sync(busType: cint, cancellable: pointer, error: pointer): pointer {.importc, header: "<gio/gio.h>".}
+proc g_dbus_connection_call_sync(conn: pointer, name, path, iface, meth: cstring, params, replyType: pointer,
+                                 flags, timeoutMs: cint, cancellable, error: pointer): pointer {.importc, header: "<gio/gio.h>".}
+proc g_variant_new_name_owner(fmt: cstring, s: cstring): pointer {.importc: "g_variant_new", header: "<glib.h>".}
+proc g_variant_get_bool(v: pointer, fmt: cstring, b: ptr cint) {.importc: "g_variant_get", header: "<glib.h>".}
+proc g_variant_unref(v: pointer) {.importc, header: "<glib.h>".}
+proc g_object_unref_p(p: pointer) {.importc: "g_object_unref", header: "<glib-object.h>".}
+
+proc runningElsewhere(id: string): bool =
+  ## Walkdown already runs for this user (its application ID is owned on the session bus): a start that will hand its
+  ## links over to it (decision 0058) and must not open the store. False when there is no session bus to ask (then
+  ## GApplication can't find another instance either).
+  let bus = g_bus_get_sync(2, nil, nil)                 # G_BUS_TYPE_SESSION
+  if bus == nil: return false
+  let r = g_dbus_connection_call_sync(bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                                      "NameHasOwner", g_variant_new_name_owner("(s)", id.cstring), nil, 0, 1000, nil, nil)
+  if r != nil:
+    var b: cint
+    g_variant_get_bool(r, "(b)", addr b)
+    g_variant_unref(r)
+    result = b != 0
+  g_object_unref_p(bus)
+
 proc main() =
   if getEnv("KKS_TIMING").len > 0: viewer.startedAt = epochTime()
   timing("main")
-  # the store opens and the log replays on a thread of its own while GTK starts (decision 0059); a start that hands
-  # its links to the running instance below only quits, its store left unused
-  discard openAppInBackground()
   # one instance per user; a separate data folder (tests, a second profile) is its own application, with its own ID
   # (two processes sharing an ID confuse the accessibility registry)
   let custom = getEnv("KKS_DATA_DIR")
@@ -695,6 +715,11 @@ proc main() =
   # 4 = G_APPLICATION_HANDLES_OPEN: walkdown:// links (decision 0058) come to "open", in the running instance
   # (KKS_TEST_UNIQUE: a test's app on its own data folder stays unique, so that a second start hands its links over)
   let nonUnique = custom.len > 0 and getEnv("KKS_TEST_UNIQUE").len == 0
+  # The store opens and the log replays on a thread of its own while GTK starts (decision 0061), unless Walkdown runs
+  # already: this start then hands its links over below and ends without touching the store (decision 0058). (Two
+  # starts in the same moment can both begin; the one that turns out second only reads the store, or saves the state
+  # it replayed, which is a correct one, and quits.)
+  if nonUnique or not runningElsewhere(id): discard openAppInBackground()
   let app = adw_application_new(id.cstring, cint(4 or (if nonUnique: 32 else: 0)))   # 32 = G_APPLICATION_NON_UNIQUE
   # GApplication sees only the program and the links: any other argument stays unread (it would take an unknown
   # option for an error, and a file for something to open)
