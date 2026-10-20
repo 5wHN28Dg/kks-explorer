@@ -119,6 +119,18 @@ What each part of the sun's shadow and SSAO cost (150 s walks, loaded, GPU p95, 
 16.6 ms; SSAO off 10.7; shadow off 11.5; two cascades 14.7; shadow to 40 m 16.6. SSAO was the lever; the shadow stays
 as it was.
 
+## Measured again, after 0060 (2026-10-20)
+
+The two rules this record left open are now met, on the merged realism with 0060's launch change on top (numbers and
+method in 0060):
+
+| | Rule | Now |
+|---|---|---|
+| Note 9, launch to the first walkable frame, first start (ten runs) | ≤ 15 s | 8.97–9.50 s (no start near 20 s in 26 timed first starts) |
+| Note 9, frames shown at ≥ 30 fps / over 100 ms after 5 s / peak PSS | ≥ 95 % / none / ≤ 1.5 GB | 99.62 % / none (worst 59.2 ms) / 916 MB |
+| Laptop, quiet, `full` at 1600×900, 10 minutes: frame p95 / ≤ 17.5 ms | ≤ 16.7 ms / 95 % | 15.6 ms / 95.4 % (GPU p95 8.1 ms) |
+| Laptop, first frame on a first start | ≤ 5 s | 3.68 s |
+
 **When to revisit:** when Godot binds LightmapGI baking to scripts (bake headless, on CI); if a phone in the
 measurement set has ASTC HDR; when the plant outgrows one lightmap texture (4096 px slices); if a trainee needs light
 inside a dark corner the bake misses.
