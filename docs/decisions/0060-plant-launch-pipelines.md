@@ -80,9 +80,28 @@ HUD and the UI 5.88 s; the first walkable frame 8.78 s: 2.9 s for what is left o
 
 No hitch where areas first come into view: Godot queued every surface's pipelines before the first frame (hidden ones
 too), and the walk's 50 ms frames (3 refreshes; 0.36 %) are spread over the ten minutes, 0 to 8 in every 30 s, not
-bunched in the first lap. Open: the 150 and 100 ms frames within 1.2 s of the first walkable frame (inside the rule's
-first 5 s) may be the pipeline cache's more frequent saves (each serialises the whole cache under the rendering
-device's lock, [S] `rendering_device.cpp`) or the specialization pipelines arriving; not yet told apart.
+bunched in the first lap.
+
+**The two early frames** (150 and 100 ms within 1.2 s of the first walkable frame, inside the rule's first 5 s), told
+apart on 2026-10-20 with the app's `EARLY` lines (every frame over 40 ms in the first 5 s, with the pipelines compiled
+in it) on four first starts, two with the cache's saves off (`pipeline_save_mb=1024` in `walk.txt`, which `frames.sh` pushes after clearing the app's data; the app now logs the value it took):
+
+- **Not the pipeline cache's saves:** the same frames with them off (166-256 ms and 113-118 ms, against 217-256 and
+  115-118 ms with them).
+- **The first frame after the first walkable one** (166-256 ms, the one SurfaceFlinger counts with the start's last
+  hold): no pipeline compiled in it, the scripts no slower than on the laptop; the display's composer logged the
+  frame before as not retired for 200 ms (`waitPreviousFrameDone`): GPU work, the first frame drawing the whole
+  plant. Left as it is: within the start's 5 s, and no cheap lever found.
+- **The 100 ms frame 1.3-1.5 s after it** (113-121 ms in the app): the walking directions' warm-up (`app/walk_route.gd`)
+  drew one chevron with alpha 0 to compile its pipeline, and a drawn surface waits for its pipeline. It now queues
+  the pipeline with a hidden chevron, which Godot compiles on its worker threads: that frame is 16-17 ms (three
+  first starts), the pipeline still compiled before the directions are first shown.
+
+After this change (release build, plugged in, data cleared before each first start): first walkable frame 8.67, 8.72,
+8.73 s with the big cores at their usual 1,794 MHz median and 10.30, 10.37 s in two starts at 1,469 MHz (the
+governor's slower clock, as above); the 10-minute walk 99.65 % of frames at ≥ 30 fps, nothing over 100 ms after the
+first 5 s (worst 57.8 ms in the app; SurfaceFlinger: after the start's holds no frame held 4 refreshes or more, where
+the build before had the warm-up's 100 ms at +1.3 s), peak PSS 651 MB, first walkable frame 8.59 s.
 
 Look: the full tier from the laptop (lightmap off on both: main's could not be baked here), six views from the control
 room to outdoors, main against the final branch: identical but for the HUD clock's seconds.

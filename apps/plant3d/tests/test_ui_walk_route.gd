@@ -23,6 +23,18 @@ func run(tree: SceneTree) -> Array:
 		main.free()
 		return ["the interaction layer or its walking directions did not start"]
 	var r = ui.route
+	# 0. the chevrons' pipeline queued early by a hidden chevron, never drawn: drawn (alpha 0, the first way) it held a
+	# frame for its pipeline (113-121 ms on the Note 9, 1.3-1.5 s after the first walkable frame)
+	var shown_early := false
+	for i in int((r.WARM_UP_S + 1.0) * 60):
+		if r.warmed:
+			break
+		shown_early = shown_early or r._mi.visible
+		await tree.physics_frame
+	if not r.warmed or r._mesh.get_surface_count() == 0:
+		p.append("the chevrons' pipeline is queued by a hidden chevron after the start")
+	if shown_early or r._mi.visible or r.shown():
+		p.append("the chevron that queues the pipeline is never drawn")
 	for i in 300:
 		if r.ready_to_find():
 			break

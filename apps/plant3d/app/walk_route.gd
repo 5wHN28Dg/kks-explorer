@@ -12,7 +12,6 @@ extends Node3D
 
 const NAV := "res://built/nav.res"
 const WARM_UP_S := 1.5
-const ALPHA := 0.85
 const SHADER := preload("res://app/walk_route.gdshader")   # a file, so that the export's shader baker has it
 const CHECK_S := 0.25           # how often the trainee's place on the route is checked
 const REFIND_S := 1.0           # at most one search a second
@@ -38,6 +37,8 @@ var target := Vector3.INF       # the equipment's walkable point the route leads
 var route := {}                 # find()'s result for the current target
 var left := 0.0                 # metres still to walk along it, from the last check
 var chevrons := 0               # how many are drawn
+const ALPHA := 0.85              # the chevrons' (walk_route.gdshader's default)
+var warmed := false             # the chevrons' pipeline queued (_warm_up)
 var stats := {"setup_us": 0, "moves": 0, "points": 0, "point_us_max": 0, "finds": 0, "find_us_max": 0, "find_us_sum": 0, "draws": 0, "draw_us_max": 0, "draw_us_sum": 0}
 
 var _mesh: ArrayMesh
@@ -94,29 +95,41 @@ func setup(_plant = null) -> String:
 	return ""
 
 
-## The chevrons' pipeline compiled once, early: their first showing at a walking step otherwise held a frame for
-## 0.1–0.35 s on the laptop with an empty shader cache. One chevron, invisible (alpha 0), in front of the camera for a
-## few frames, WARM_UP_S after the start (not in the first frame, whose time the phone's start limit counts).
+## The chevrons' pipeline compiled once, early, in the background: their first showing at a walking step otherwise
+## held a frame for 0.1–0.35 s on the laptop with an empty shader cache. One chevron, hidden: Godot queues the
+## pipelines of every surface in the scene, drawn or not, and compiles them on its worker threads without the frame
+## waiting for them (decision 0060), so the first showing finds it compiled. Shown with alpha 0 instead (the first way)
+## it was drawn, and a drawn surface waits for its pipeline: a 113-121 ms frame on the Note 9, 1.3-1.5 s after the
+## first walkable frame (2026-10-20). WARM_UP_S after the start: not before the first walkable frame, whose wait for the
+## plant's pipelines a phone's serial compiler would lengthen. The Compatibility renderer (OpenGL) compiles a shader only
+## when it first draws it: there the chevron is drawn, with alpha 0, for a few frames, in front of the camera.
 func _warm_up() -> void:
 	await get_tree().create_timer(WARM_UP_S).timeout
-	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
-	if cam == null or active() or _mesh == null:
+	if not is_inside_tree() or active() or _mesh == null or _mesh.get_surface_count() > 0:
 		return
-	var p := cam.global_position - cam.global_transform.basis.z * 2.0
+	var p := Vector3(0, -1000, 0)
 	var v := PackedVector3Array([p, p + Vector3(0.3, 0, 0), p + Vector3(0, 0.3, 0)])
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = v
 	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([Vector2(1, 0), Vector2(1, 0), Vector2(1, 0)])
 	_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	_mat.set_shader_parameter("alpha", 0.0)
-	_mi.visible = true
-	for i in 3:
-		await RenderingServer.frame_post_draw
-	_mat.set_shader_parameter("alpha", ALPHA)
-	if not active():
-		_mi.visible = false
-		_mesh.clear_surfaces()
+	_mi.visible = false   # (hidden: queued, never drawn)
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		var cam := get_viewport().get_camera_3d()
+		if cam != null:
+			_mesh.clear_surfaces()
+			var q := cam.global_position - cam.global_transform.basis.z * 2.0
+			arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([q, q + Vector3(0.3, 0, 0), q + Vector3(0, 0.3, 0)])
+			_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			_mat.set_shader_parameter("alpha", 0.0)
+			_mi.visible = true
+			for i in 3:
+				await RenderingServer.frame_post_draw
+			_mat.set_shader_parameter("alpha", ALPHA)
+			if not active():
+				_mi.visible = false
+	warmed = true
 
 
 func _link(kind: String, id: String, path: Array, cost: float) -> void:

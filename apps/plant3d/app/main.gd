@@ -16,6 +16,8 @@
 ##   procedure=ID            follow that procedure or tour from the start
 ##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
+##   probe=1                 (walk) frames.csv beside result.txt: where each frame's time goes (app/frame_probe.gd)
+##   pipeline_save_mb=N      save the pipeline cache every N MB of new pipelines instead of the project's 0.25
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
 ##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow those on (measuring what each costs:
 ##                           app/lighting.gd); fx_off=shadow,cascades2,shadow40,shadowhard the sun's shadow's parts
@@ -197,8 +199,11 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed"]:   # nothing else from a shared folder
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb"]:   # nothing else from a shared folder
 					opts[kv[0]] = kv[1]
+	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
+		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
+		_say("pipeline cache saved every %.2f MB" % float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb")))
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 	Lighting.off = String(opts.get("fx_off", "")).split(",", false)
 	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
@@ -347,9 +352,38 @@ func _first_frame() -> void:
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_DRAW),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)])
+	_early_frames()
+
+## The first 5 s after the first walkable frame (outside the frame rules' measurement, inside the start): each frame
+## over 40 ms, with the pipelines compiled since the frame before (`EARLY` lines; phone/frames.sh keeps
+## the log), and every frame in which pipelines were compiled. The Note 9 showed a 150 ms and a 100 ms frame there.
+func _early_frames() -> void:
+	var t0 := Time.get_ticks_usec()
+	var last := t0
+	var c0 := _compiles()
+	while Time.get_ticks_usec() - t0 < 5000000:
+		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		var c := _compiles()
+		var ms := (now - last) / 1000.0
+		if ms > 40.0 or c != c0:
+			_say("EARLY frame %.1f ms at +%d ms; pipelines compiled since the frame before: surface %d, specialization %d" % [
+				ms, (now - t0) / 1000, c.x - c0.x, c.y - c0.y])
+		c0 = c
+		last = now
+
+func _compiles() -> Vector2i:
+	return Vector2i(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION))
+
+var frame_probe: Node   # probe=1: frames.csv, where each frame's time goes (app/frame_probe.gd)
 
 func _start_walk() -> void:
 	walk_seconds = float(opts.get("seconds", "600"))
+	if opts.get("probe", "0") not in ["0", "false", ""]:
+		frame_probe = preload("res://app/frame_probe.gd").new()
+		frame_probe.main = self
+		add_child(frame_probe)
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
@@ -440,6 +474,8 @@ func _finish() -> void:
 			rs.finds, rs.find_us_sum / 1000.0 / rs.finds, rs.find_us_max / 1000.0, rs.draws,
 			rs.draw_us_sum / 1000.0 / maxi(rs.draws, 1), rs.draw_us_max / 1000.0, rs.moves, rs.points, rs.point_us_max / 1000.0])
 	_write_out()
+	if frame_probe != null:
+		frame_probe.write(out_dir)
 	get_tree().quit()
 
 func _write_out() -> void:
