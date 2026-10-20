@@ -4,7 +4,7 @@
 ## state bytes.
 
 import std/[algorithm, sets, strutils, tables, unicode]
-import json, crypto, util, proto
+import json, crypto, util, proto, binser
 
 const
   StmtDomain* = "kks-root-v2\n"
@@ -775,7 +775,8 @@ proc sameCuts(a, b: Table[string, int64]): bool =
   true
 
 proc computeCuts(c: Ctx, ordered: seq[(string, JNode)], root: string, forks: Table[string, int64]):
-    (Table[string, int64], HashSet[string]) =
+    (Table[string, int64], HashSet[string], Run) =
+  ## -> the cuts, the accepted revokes, and the last round's run when the rounds settled (nil when they did not)
   var cuts = forks
   var accepted: HashSet[string]
   for _ in 0 ..< MaxRounds:
@@ -788,10 +789,12 @@ proc computeCuts(c: Ctx, ordered: seq[(string, JNode)], root: string, forks: Tab
       if rv.seq > nw.getOrDefault(rv.peer, MaxInt53): continue
       nw[rv.device] = min(rv.last, nw.getOrDefault(rv.device, rv.last))
       acc.incl rv.eid
-    if sameCuts(nw, cuts) and acc == accepted: break
+    if sameCuts(nw, cuts) and acc == accepted: return (cuts, accepted, r)
     cuts = nw
     accepted = acc
-  (cuts, accepted)
+  (cuts, accepted, nil)
+
+var forceFinalPass* = false   ## tests: always run the final pass (to compare the settled round's run with it)
 
 type Replayed* = object
   run*: Run
@@ -804,12 +807,25 @@ proc replayRun*(p: Provider, entries: seq[JNode], root: string, trusted: seq[(st
   var ordered = ch.usable
   ordered.sort(proc (a, b: (string, JNode)): int = orderCmp(a[1], b[1]))
   let c = Ctx(p: p)
-  let (cuts, accepted) = c.computeCuts(ordered, root, ch.forks)
+  let (cuts, accepted, settled) = c.computeCuts(ordered, root, ch.forks)
+  result.chainIgnored = ch.ignored
+  # The final pass differs from the settled round's only where a revoke the round recorded is not accepted (it is
+  # then ignored as "overridden", addRevoke): the round ran on the same cuts, so when it recorded none such, the final
+  # pass would repeat it step for step, and its run is the result (one pass instead of two: most logs have no
+  # overridden revoke). Checked against the full final pass in core/tests/test_replay_settled.nim.
+  if settled != nil and not forceFinalPass:
+    var same = true
+    for rv in settled.revokes:
+      if rv.eid notin accepted: same = false
+    if same:
+      settled.accepted = accepted
+      settled.hasAccepted = true
+      result.run = settled
+      return
   var r = newRun(root, cuts, initTable[pointer, string]())
   r.accepted = accepted
   r.hasAccepted = true
   result.run = c.run(r, ordered)
-  result.chainIgnored = ch.ignored
 
 proc orNull(s: string): JNode = (if s.len == 0: newNull() else: newStr(s))
 
@@ -910,3 +926,17 @@ proc stateInto(res: var string, n: JNode) =
 proc stateBytes*(state: JNode): string =
   ## §14: §1 rules, except object keys may be any printable ASCII (1–64 characters).
   result.stateInto(state)
+
+# ---------------------------------------------------------------- the saved state's payload (savedstate.nim)
+
+proc putRun*(w: var Writer, r: Run) =
+  ## every field of the run, in declaration order (a field added later is written too: fieldPairs). `ids` is only a
+  ## parameter of the pass (always empty afterwards) and is left out.
+  if r.ids.len > 0: raise newException(ValueError, "saved state: a run still holding entry pointers")
+  for name, v in fieldPairs(r[]):
+    when name != "ids": w.put(v)
+
+proc getRun*(rd: var Reader): Run =
+  result = Run()
+  for name, v in fieldPairs(result[]):
+    when name != "ids": rd.get(v)

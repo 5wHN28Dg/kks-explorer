@@ -161,18 +161,10 @@ proc liveDataKey(w: Win): string =
   for (k, ask) in w.a.api.invites.pending(nowMs() div 1000): result.add "|" & k & ":" & ask.device
 
 proc loadModel*(w: Win) =
-  let m = Model()
-  m.sheets = parseSheets(parseStrict(w.fileOr("sheets.json", "[]"), 4096))
-  m.baseTags = parseTags(parseStrict(w.fileOr("tags.json", "[]"), 4096))
-  m.procs = parseStrict(w.fileOr("procedures.json", "[]"), 4096)
-  m.locations = buildLocations(parseStrict(w.fileOr("locations.json", "{}"), 4096))
-  m.descriptions = loadDescriptions(w.fileOr("descriptions.json", ""), proc (msg: string) = stderr.writeLine msg)
-  m.kksTables = parseStrict(w.fileOr("kks.json", "{}"), 4096)
-  try: m.state = w.a.call("GET", "/api/state")
-  except ApiError: m.state = newObj()
-  m.merge()
+  let m = w.a.takeModel("{}")
   w.m = m
   w.modelKey = w.liveDataKey
+  timing("model loaded")
 
 proc isAdmin*(w: Win): bool =
   let (ok, me) = w.a.me

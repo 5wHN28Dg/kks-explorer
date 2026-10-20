@@ -25,6 +25,8 @@ var
   needsRestart = false
   t0 = epochTime()
   firstSheetShown = false
+  syncStarted = false
+  refreshTicks = 0
 
 proc showMain()
 
@@ -251,6 +253,13 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     if dispatchCommand(wp, lp): return 0
   of WM_TIMER:
     if wp == TimerPump:
+      if not syncStarted and w != nil:
+        # the listener, the relay and discovery once the window is up (WM_TIMER comes after WM_PAINT)
+        syncStarted = true
+        guard:
+          let port = try: parseInt(getEnv("KKS_SYNC_PORT", $SyncPortDefault)) except ValueError: SyncPortDefault
+          w.a.startSync(port, discovery = getEnv("KKS_NO_MDNS").len == 0)
+          timing("sync started")
       guard:
         if hasPendingOperations(): poll(0)
       guard:
@@ -262,6 +271,9 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
           f.writeLine("first sheet " & $int((epochTime() - t0) * 1000) & " ms after start")
           f.close()
     elif wp == TimerRefresh:
+      inc refreshTicks
+      if refreshTicks mod 30 == 0 and w != nil and not needsRestart:
+        guard: w.a.saveState()   # the replayed state, for the next start (when it changed; PROTOCOL-v2 §15b)
       if needsRestart:
         # start over as a fresh process (new device key, the setup screen with the note). Close the store first and
         # leave at once, so the new process never opens a file this one is still closing.
@@ -384,15 +396,9 @@ proc main() =
   makeFonts(96)
   createDir(dataDir())
   errorLog = dataDir() / "crash.log"
-  let a = openApp()
-  errorHook = proc (text: string) = a.diag("error", text)
-  let port = try: parseInt(getEnv("KKS_SYNC_PORT", $SyncPortDefault)) except ValueError: SyncPortDefault
-  a.startSync(port, discovery = getEnv("KKS_NO_MDNS").len == 0)
-  a.onChange.add proc (why: string) =
-    if why == "wiped":
-      photosWiped(a.store)      # the wipe deleted the queued photos: nothing more is written or sent
-      needsRestart = true
-    elif why != "relay": changed = true   # presence only: the status line catches up on its timer
+  timing("main")
+  # the store opens and the log replays on a thread of its own while the window is made (decision 0059)
+  discard openAppInBackground(kksTables = BuiltInTables)
   let clsName = newWideCString("KKSMain")   # must outlive RegisterClassExW
   var wc = WNDCLASSEXW(cbSize: UINT(sizeof(WNDCLASSEXW)), lpfnWndProc: mainProc, hInstance: hinst,
                        hCursor: LoadCursorW(nil, IDC_ARROW), hbrBackground: GetSysColorBrush(COLOR_WINDOW),
@@ -406,6 +412,15 @@ proc main() =
   if sysMenu != nil:
     AppendMenuW(sysMenu, 0x0800, 0, nil)      # MF_SEPARATOR
     AppendMenuW(sysMenu, 0, uint(IdmAbout), newWideCString("About Walkdown…"))
+  timing("window made")
+  let a = openedApp()
+  timing("app open")
+  errorHook = proc (text: string) = a.diag("error", text)
+  a.onChange.add proc (why: string) =
+    if why == "wiped":
+      photosWiped(a.store)      # the wipe deleted the queued photos: nothing more is written or sent
+      needsRestart = true
+    elif why != "relay": changed = true   # presence only: the status line catches up on its timer
   w = Win(a: a, hwnd: hw, tab: "drawings")
   w.status = control(hw, "STATIC", "", SS_LEFT or SS_NOPREFIX)[0]
   onError = proc (msg: string) = w.toast("Something went wrong: " & msg)
@@ -445,7 +460,8 @@ proc main() =
   layoutMain()
   ShowWindow(hw, SW_SHOW)
   UpdateWindow(hw)
-  SetTimer(hw, TimerPump, 30, nil)
+  timing("window shown")
+  SetTimer(hw, TimerPump, 30, nil)        # (its first tick starts the sync service: after the first paint)
   SetTimer(hw, TimerRefresh, 1000, nil)
   var msg: MSG
   var lastFocus: HWND
@@ -468,5 +484,6 @@ proc main() =
     if f != lastFocus:
       lastFocus = f
       showFocused()
+  if not needsRestart: w.a.saveState()
 
 main()

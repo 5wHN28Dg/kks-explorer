@@ -3,7 +3,7 @@
 ## in as arguments. The same rules as v1's server/engine.py node methods.
 
 import std/[algorithm, sets, tables]
-import json, crypto, util, proto, replay
+import json, crypto, util, proto, replay, savedstate, binser
 
 type
   Store* = ref object of RootObj
@@ -106,6 +106,35 @@ type Node* = ref object
   listeners*: seq[proc (why: string)]   ## told after every change: "local", "received", "adopted"
   staging: bool                         ## inside `atomic`: new entries wait in `staged` until the store commits
   staged: seq[StoredEntry]
+  chainIgnored: OrderedTable[string, string]   ## the chain rules' part of `ignored` (kept for the saved state)
+  stateDirty*: bool                     ## the replayed state changed since it was saved (saveState)
+  stateFromSaved*: bool                 ## this start read the saved state instead of replaying (tests, timing)
+
+const SavedStateKey* = "saved_state"   ## the store's meta key of the saved replayed state (savedstate.nim)
+
+proc useRun(n: Node, run: Run, chainIgnored: OrderedTable[string, string]) =
+  n.run = run
+  n.chainIgnored = chainIgnored
+  n.ignored = chainIgnored
+  for k, v in run.ignored: n.ignored[k] = v
+
+proc stateDigest(n: Node): string =
+  ## what the replay read: the root, every entry held, the fork evidence (savedstate.inputDigest)
+  var ids, ev: seq[string]
+  for id, _ in n.entries: ids.add id
+  for (id, _) in n.evidence: ev.add id
+  inputDigest(n.p, n.root, ids, ev)
+
+proc saveState*(n: Node) =
+  ## Keeps the replayed state in the store (PROTOCOL-v2 §15b) if it changed since it was last kept, so that the next
+  ## start need not replay. Never raises: a state not kept only means the next start replays.
+  if not n.stateDirty or n.run == nil or n.root.len == 0 or n.staging: return
+  try:
+    # a store wiped under this node (a removed device, §15) has no root any more: nothing of the plant is written back
+    if n.store.getMeta("root") != n.root: return
+    n.store.setMeta(SavedStateKey, encodeSaved(n.p, n.stateDigest, n.run, n.chainIgnored))
+    n.stateDirty = false
+  except CatchableError: discard
 
 proc rebuild*(n: Node) =
   ## Replay everything held, as trusted (each entry was verified when it arrived).
@@ -116,9 +145,8 @@ proc rebuild*(n: Node) =
   for id, e in n.entries: trusted.add((id, e))
   for (id, e) in n.evidence: trusted.add((id, e))   # a device that signed two entries for one seq is cut (§4, #35)
   let rr = n.p.replayRun(@[], n.root, trusted, useTrusted = true)
-  n.run = rr.run
-  n.ignored = rr.chainIgnored
-  for k, v in rr.run.ignored: n.ignored[k] = v
+  n.useRun(rr.run, rr.chainIgnored)
+  n.stateDirty = true
 
 proc changed*(n: Node, why: string) =
   for f in n.listeners: f(why)
@@ -140,7 +168,19 @@ proc newNode*(p: Provider, store: Store, key: PrivateKey): Node =
     result.addStored(id, e)
     discard result.clock.recv((e["hlc"][0].i, e["hlc"][1].i), 0)
   result.evidence = store.loadEvidence()
-  result.rebuild()
+  # the state saved by the last run, if it is the replay of exactly what is held now (§15b); else replay
+  if result.root.len > 0:
+    try:
+      let saved = store.getMeta(SavedStateKey)
+      if saved.len > 0:
+        let (run, chainIgnored) = decodeSaved(p, saved, result.stateDigest)
+        if run.root != result.root: raise newException(SavedStateError, "saved state: another root")
+        result.useRun(run, chainIgnored)
+        result.stateFromSaved = true
+    except CatchableError: discard     # another version's, another log's, damaged, or a seal that does not open
+  if not result.stateFromSaved:
+    result.rebuild()
+    result.saveState()
 
 proc adopt*(n: Node, root: string) =
   if n.root.len > 0: raise newException(ValueError, "this node already belongs to a plant")

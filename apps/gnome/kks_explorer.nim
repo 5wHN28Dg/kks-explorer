@@ -38,11 +38,11 @@ proc doShowSheet(w: Win, id: string) =
   w.sheet = id
   adw_window_title_set_title(w.sheetTitle, si.name.cstring)
   let (_, kkp) = w.a.file("sheets/" & id & ".kkp")
-  var levels: seq[string]
-  for k in 0 ..< si.levels:
-    let (okL, data) = w.a.file("sheets/" & id & ".o" & $k & ".jxl")
-    if okL: levels.add data
-  w.v.setSheet(si.name, kkp, si.raw, levels)
+  # the levels are read when the viewer first wants each (at start only the one the fitted sheet needs)
+  let a = w.a
+  w.v.setSheet(si.name, kkp, si.raw, si.levels, proc (k: int): string =
+    let (okL, data) = a.file("sheets/" & id & ".o" & $k & ".jxl")
+    if okL: data else: "")
   w.panelKey = ""       # setSheet took the open panel's valve outline away: the next reload draws the panel again
   w.v.tags = w.tagBoxes(id)
   w.setLinks()
@@ -489,8 +489,14 @@ proc activate(w: Win, app: W) =
   gtk_widget_add_controller(w.window, keys)
   w.toasts = adw_toast_overlay_new()
   adw_application_window_set_content(w.window, w.toasts)
+  timing("window made")
   if w.a.joined: w.showMain()
   else: adw_toast_overlay_set_child(w.toasts, w.setupScreen())
+  timing("main screen built")
+  # the listener, the relay and discovery once the window is up (its first frame comes before an idle callback)
+  idle(proc () =
+    w.a.startSync(port = parseInt(getEnv("KKS_SYNC_PORT", "8421")), discovery = getEnv("KKS_NO_MDNS").len == 0)
+    timing("sync started"))
   # Once the window is destroyed (closed: the app quits a moment later, later still on a slow machine) nothing may
   # reach it or its widgets (`gone`): the reload after a change, the photo queue's timer and the timers below stop,
   # toasts are dropped, and the status line is let go
@@ -657,6 +663,7 @@ proc activate(w: Win, app: W) =
       confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard))
   timeout(30_000, proc (): bool =
     if w.status != nil: adw_window_title_set_subtitle(w.status, w.statusText().cstring)
+    w.a.saveState()        # the replayed state, for the next start (when it changed; PROTOCOL-v2 §15b)
     true)
   let shot = getEnv("KKS_SHOT")             # tests: KKS_SHOT=file.png[,seconds[,quit]]
   if shot.len > 0:
@@ -673,6 +680,10 @@ proc onUsr2(sig: cint) {.noconv.} = figRequested = true
 
 proc main() =
   if getEnv("KKS_TIMING").len > 0: viewer.startedAt = epochTime()
+  timing("main")
+  # the store opens and the log replays on a thread of its own while GTK starts (decision 0059); a start that hands
+  # its links to the running instance below only quits, its store left unused
+  discard openAppInBackground()
   # one instance per user; a separate data folder (tests, a second profile) is its own application, with its own ID
   # (two processes sharing an ID confuse the accessibility registry)
   let custom = getEnv("KKS_DATA_DIR")
@@ -695,9 +706,10 @@ proc main() =
   # it, and this start ends without opening the store or the sync port the running one holds
   if g_application_register(app, nil, nil) != 0 and g_application_get_is_remote(app) != 0:
     quit int(g_application_run(app, cint(args.len), argv))
-  let w = Win(a: openApp())
+  timing("registered")
+  let w = Win(a: openedApp())
+  timing("app open")
   errorHook = proc (text: string) = w.a.diag("error", text)
-  w.a.startSync(port = parseInt(getEnv("KKS_SYNC_PORT", "8421")), discovery = getEnv("KKS_NO_MDNS").len == 0)
   # asyncdispatch inside GLib: its epoll fd wakes us, a timer covers its timers
   discard watchFd(asyncFd(), proc (): bool =
     pumpAsync()
@@ -734,6 +746,7 @@ proc main() =
           stderr.writeLine "screenshot " & pth & ": " & (if saveScreenshot(cwin, pth): "saved" else: "FAILED")
       true)
   let code = g_application_run(app, cint(args.len), argv)
+  w.a.saveState()
   quit int(code)
 
 main()
