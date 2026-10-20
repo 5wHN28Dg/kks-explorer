@@ -40,6 +40,7 @@ class GpuClients(unittest.TestCase):
     def test_parse(self):
         self.assertEqual(G.parse_fdinfo(I915 % 4192177456636), ('72', 4192177456636))
         self.assertIsNone(G.parse_fdinfo('pos:\t0\nflags:\t02\n'))
+        self.assertEqual(G.parse_fdinfo('drm-driver:\tamdgpu\ndrm-client-id:\t9\ndrm-engine-gfx:\t1500 ns\n'), ('9', 1500))
 
     def test_busy(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:

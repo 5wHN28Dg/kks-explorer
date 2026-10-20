@@ -2,6 +2,8 @@
 ## beside result.txt, one line per frame: the physics steps and their time, the scripts' _process, the time up to the
 ## draw, the draw itself (RenderingServer's frame_pre_draw to frame_post_draw: the render thread's CPU work and any wait
 ## for the GPU or the swap chain), the rest (the OS's events, the wait for the next frame), and what the systems did.
+## cpu_ms and gpu_ms are the engine's last measured render times (they lag a frame or two); sim_steps are the model's
+## steps run between this line's frame and the next.
 extends Node
 
 var main: Node

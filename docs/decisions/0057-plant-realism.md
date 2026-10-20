@@ -128,7 +128,7 @@ as well, with main and with 0060's change alike (numbers and method in 0060):
 |---|---|---|
 | Note 9, launch to the first walkable frame, first start (ten runs) | ≤ 15 s | 8.60–9.66 s (none near 20 s in 46 timed first starts) |
 | Note 9, frames shown at ≥ 30 fps / over 100 ms after 5 s / peak PSS | ≥ 95 % / none / ≤ 1.5 GB | 99.64 % / none (worst 70.1 ms) / 658 MB |
-| Laptop, quiet, `full` at 1600×900, 10 minutes: frame p95 / ≤ 17.5 ms | ≤ 16.7 ms / 95 % | 21.8 ms / 85.3 % (GPU p95 7.8 ms); main 21.6 ms in 300 s runs: another app's GPU work (below) |
+| Laptop, `full` at 1600×900, 10 minutes (thought quiet; an editor was using the GPU, below): frame p95 / ≤ 17.5 ms | ≤ 16.7 ms / 95 % | 21.8 ms / 85.3 % (GPU p95 7.8 ms); main 21.6 ms in 300 s runs: another app's GPU work (below) |
 | Laptop, first frame on a first start | ≤ 5 s | 3.36 s |
 
 ## The laptop's long frames: another app on the GPU (2026-10-20)
@@ -143,12 +143,13 @@ as well, with main and with 0060's change alike (numbers and method in 0060):
 | Deeper frame queue | `frame_queue_size` 3: the same p95 (22.0 ms) | [V] |
 
 So the laptop's 60 fps rule was missed for the GPU time another app took, not for this app's work: the app's own CPU
-work per frame is under 6 ms at the 95th percentile (render thread included) and its GPU work 7.6 ms. Main (d61378f)
+work per frame (everything but the wait in the draw, the render thread included) is 5.4 ms at the 95th percentile and its GPU work 7.6 ms. Main (d61378f)
 and the change that found this (the frame probe, the bake's cache below, the walking directions' warm-up: 0060) back
 to back, release builds, baked, a first start each, 600 s, the editor still open (280 ms of render engine a second
 during both): main p95 21.8 ms, median 8.1 ms, 75.4 % of frames ≤ 17.5 ms, GPU p95 7.7 ms; the change p95 21.6 ms,
 median 8.0 ms, 75.6 %, GPU p95 7.6 ms. The
-rule is still to be measured with nothing else on the GPU (`gpu_clients.py` before and during the run).
+cause is inferred from these measurements, not yet shown by its absence: the rule is still to be measured with the
+editor closed and nothing else on the GPU (`gpu_clients.py` before and during the run); until then it is not met.
 
 **The bake on a fresh checkout** (`build.sh release`/`bake`): the editor crashed (signal 11) on opening the bake scene,
 in 6 of 7 bakes from a fresh checkout's state. Without a script documentation cache (a new `.godot/`) the editor

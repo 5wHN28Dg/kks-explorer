@@ -379,7 +379,7 @@ var frame_probe: Node   # probe=1: frames.csv, where each frame's time goes (app
 
 func _start_walk() -> void:
 	walk_seconds = float(opts.get("seconds", "600"))
-	if opts.has("probe"):
+	if opts.get("probe", "0") not in ["0", "false", ""]:
 		frame_probe = preload("res://app/frame_probe.gd").new()
 		frame_probe.main = self
 		add_child(frame_probe)

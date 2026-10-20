@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """What else uses the GPU while the laptop's frames are measured (decisions 0057 and 0060): every process's render
 engine time per second over SECONDS, from the DRM fdinfo files Linux keeps per GPU client (/proc/PID/fdinfo,
-`drm-engine-render`; i915, xe and amdgpu write it). Only this user's processes are readable, which is where the
-desktop's apps run.
+`drm-engine-render`, i915's, and `drm-engine-gfx`, amdgpu's, both in ns). The xe driver counts cycles instead
+(`drm-cycles-rcs`): not read, and the tool says so when it finds no counter it reads. Only this user's processes are
+readable, which is where the desktop's apps run.
 
 On 2026-10-20 the laptop's full tier missed its 60 fps rule (frame p95 21.6 ms, GPU p95 7.6 ms) on a machine that
 looked quiet: an editor left open kept the Iris Xe's render engine busy 420-470 ms of every second, in batches of
@@ -12,7 +13,7 @@ showed the same long frames). Measure with nothing else on the GPU: this prints 
 """
 import os, re, sys, time
 
-RENDER = re.compile(r'^drm-engine-render:\s*(\d+)\s*ns', re.M)
+RENDER = re.compile(r'^drm-engine-(?:render|gfx):\s*(\d+)\s*ns', re.M)
 CLIENT = re.compile(r'^drm-client-id:\s*(\d+)', re.M)
 
 
@@ -72,6 +73,9 @@ def main(argv):
     shown = [r for r in rows if r[0] >= 1.0]
     for ms, name, pid in shown:
         print(f'{name:24s} pid {pid:>8s}  render engine {ms:7.1f} ms/s')
+    if not rows:
+        print('no GPU client with a render engine time in ns found (another driver? xe counts cycles): not measured')
+        return 1
     if not shown:
         print('no GPU client over 1 ms/s')
     return 0

@@ -12,7 +12,6 @@ extends Node3D
 
 const NAV := "res://built/nav.res"
 const WARM_UP_S := 1.5
-const ALPHA := 0.85
 const SHADER := preload("res://app/walk_route.gdshader")   # a file, so that the export's shader baker has it
 const CHECK_S := 0.25           # how often the trainee's place on the route is checked
 const REFIND_S := 1.0           # at most one search a second
@@ -99,8 +98,8 @@ func setup(_plant = null) -> String:
 ## held a frame for 0.1–0.35 s on the laptop with an empty shader cache. One chevron, hidden: Godot queues the
 ## pipelines of every surface in the scene, drawn or not, and compiles them on its worker threads without the frame
 ## waiting for them (decision 0060), so the first showing finds it compiled. Shown with alpha 0 instead (the first way)
-## it was drawn, and a drawn surface waits for its pipeline: a 115 ms frame on the Note 9, 1.5 s after the first
-## walkable frame (2026-10-20). WARM_UP_S after the start: not before the first walkable frame, whose wait for the
+## it was drawn, and a drawn surface waits for its pipeline: a 113-121 ms frame on the Note 9, 1.3-1.5 s after the
+## first walkable frame (2026-10-20). WARM_UP_S after the start: not before the first walkable frame, whose wait for the
 ## plant's pipelines a phone's serial compiler would lengthen.
 func _warm_up() -> void:
 	await get_tree().create_timer(WARM_UP_S).timeout

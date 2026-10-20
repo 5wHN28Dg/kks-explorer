@@ -18,7 +18,7 @@ func run(_tree: SceneTree) -> Array:
 			p.append("the cache is a resource with an empty `classes` array, as EditorHelp reads it")
 		DirAccess.remove_absolute(path)
 		DirAccess.remove_absolute(path.get_base_dir())
-	if DocCache.PATH != "res://.godot/editor/editor_script_doc_cache.res" or Engine.get_version_info().minor != 7:
+	if Engine.get_version_info().major != 4 or Engine.get_version_info().minor != 7:
 		p.append("the cache's path is Godot 4.7's (check EditorHelp::get_script_doc_cache_full_path on a new Godot)")
 	var sh := FileAccess.get_file_as_string("res://build.sh")
 	var at := sh.find("--script res://builder/bake/script_doc_cache.gd")

@@ -4,7 +4,9 @@
 ## regenerate_script_doc_cache), and it does so just when the bake plugin opens the bake scene on the main thread:
 ## the editor crashed (signal 11, on that thread) in 6 of 7 bakes from a fresh checkout's state, and in none of 3 with
 ## this cache there (2026-10-20). With a cache the editor only reads it (no script is loaded). The bake needs no
-## script documentation; the editor saves a full cache again on its next clean exit.
+## script documentation. The cost: the editor's help for this project's own scripts stays incomplete in a checkout that
+## was baked (the editor reads the cache instead of regenerating it, and saves only the docs it holds); delete
+## .godot/editor/editor_script_doc_cache.res to have it regenerated.
 ##   godot --headless --path apps/plant3d --script res://builder/bake/script_doc_cache.gd
 extends SceneTree
 
