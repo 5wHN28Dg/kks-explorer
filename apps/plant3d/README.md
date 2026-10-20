@@ -34,7 +34,9 @@ apps/plant3d/msix/make-msix.sh VM_IP CERT.pfx OUT.msix   # the MSIX from the rel
 ```
 
 `release` and `bake` need a rendering device; `release` bakes the lightmap before it exports. The shader baker and the export run under a private display
-(`offscreen.sh`), never with `--headless` (decision 0041). It makes:
+(`offscreen.sh`), never with `--headless` (decision 0041). Before the bake it gives the editor an empty script
+documentation cache (`builder/bake/script_doc_cache.gd`): on a fresh checkout the editor otherwise loads every script
+on a thread of its own while the bake opens its scene, and crashed (6 of 7 bakes, 2026-10-20). It makes:
 
 - `export/walkdown-plant.apk`: arm64-v8a, signed with the plant's own key;
 - `export/walkdown-plant-debug.apk`;
@@ -78,6 +80,8 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--speed=fast` | starts the plant in fast-forward |
 | `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line; a start with a link takes none of the options above (a crafted link could add its own) |
 | `--fx_off=fog,lightmap,shadow`, `--fx_on=ssao,sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
+| `--probe=1` | (with a walk) `frames.csv` beside `result.txt`: per frame the physics steps, the scripts, the draw (the render thread and any wait for the GPU) and the GPU time (`app/frame_probe.gd`) |
+| `--pipeline_save_mb=N` | saves the pipeline cache every N MB of new pipelines (the project: 0.25) |
 
 Controls (R7):
 
@@ -304,6 +308,7 @@ banner and the flow lines are drawn besides, so the frame times above are the me
 - `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).
 - `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
   site, each tier's effects.
+- `test_bake_prep`: what `build.sh` does before the bake (CI cannot bake): the editor's script documentation cache.
 
 Physics runs with the headless renderer.
 
