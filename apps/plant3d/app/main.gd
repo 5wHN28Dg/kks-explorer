@@ -65,10 +65,12 @@ var _screen_t := 0.0
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
 
 func _ready() -> void:
+	_launch("ready")
 	_options()
 	cf = Quality.settings()
 	OS.delta_smoothing = false
 	_environment()
+	_launch("environment")
 	plant = Plant.new()
 	plant.name = "plant"
 	add_child(plant)
@@ -80,6 +82,9 @@ func _ready() -> void:
 		add_child(l)
 		return
 	_say("loaded the plant in %d ms (%d areas)" % [plant.load_ms, plant.manifest.areas.size()])
+	for st in plant.stages:
+		_say("LAUNCH  %s" % st)
+	_launch("plant")
 	var lm := Lighting.lightmap_node()
 	if lm != null:
 		plant.add_child(lm)   # beside the areas: its users' paths are "../area_…" (app/lighting.gd)
@@ -90,6 +95,7 @@ func _ready() -> void:
 		_say("lightmap: none in this build (the sky and the sun only)")
 	for l in get_tree().get_nodes_in_group("baked_lights"):
 		l.queue_free()   # the halls' lamps light through the bake only (forty real-time lights in a hall cost too much)
+	_launch("lightmap")
 	player = Player.new()
 	player.name = "player"
 	add_child(player)
@@ -105,11 +111,13 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(self)
 	player.mode_changed.connect(func(_m): hud.refresh())
+	_launch("player, map, hud")
 	ui = PlantUi.new()
 	ui.name = "ui"
 	add_child(ui)
 	ui.setup(self, opts.get("scenario", "cold_iron"))
 	ui.add_settings(hud.extra)
+	_launch("ui")
 	if opts.has("procedure") and ui.clock != null and ui.model.procedures.has(opts.procedure):
 		ui.start_procedure(opts.procedure, null, false)
 	for p in String(opts.get("panels", "")).split(",", false):
@@ -127,6 +135,7 @@ func _ready() -> void:
 		ui.autosave.begin(not own)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	choose_tier()
+	_launch("tier")
 	_first_frame()
 	if opts.has("shot"):
 		_shots.call_deferred()
@@ -275,6 +284,14 @@ func _unhandled_input(e: InputEvent) -> void:
 func _say(s: String) -> void:
 	print("plant: ", s)
 	lines.append(s)
+
+## Where a start's time goes (phone/launch.sh reads these from logcat): ms since the engine started, and since the
+## stage before.
+var _launch_ms := 0
+func _launch(stage: String) -> void:
+	var now := Time.get_ticks_msec()
+	_say("LAUNCH %s at %d ms (+%d)" % [stage, now, now - _launch_ms])
+	_launch_ms = now
 
 func _first_frame() -> void:
 	await RenderingServer.frame_post_draw
