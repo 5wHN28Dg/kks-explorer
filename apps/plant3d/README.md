@@ -309,6 +309,7 @@ banner and the flow lines are drawn besides, so the frame times above are the me
 - `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
   site, each tier's effects.
 - `test_bake_prep`: what `build.sh` does before the bake (CI cannot bake): the editor's script documentation cache.
+- `test_frame_probe`: `probe=1`'s frames.csv and `pipeline_save_mb`.
 
 Physics runs with the headless renderer.
 
