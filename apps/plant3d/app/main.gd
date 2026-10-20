@@ -54,6 +54,9 @@ var last_us := 0
 var t_walk := 0.0
 var walk_seconds := 600.0
 var first_frame_ms := -1
+## The first walkable frame was drawn: the plant, the player, the map, the HUD and the UI are all there (a script that
+## drives the app waits for it: with a display the start is spread over several frames).
+signal started
 var lines := PackedStringArray()
 var stuck_count := 0
 var sim_max_ms := 0.0      # the model's busiest second during a walk (ms of model time per s: 250 = a quarter core)
@@ -118,6 +121,9 @@ func _ready() -> void:
 	if early:
 		plant.visible = false
 		Quality.apply_ranges(get_viewport())   # the tier's visibility ranges, on the plant's pieces now loaded
+		# and its materials (detail, texture size): the tier was applied before the plant held them, to materials
+		# that were then freed and are now loaded afresh from their files
+		Quality.Mat.apply_tier(tier)
 	_launch("lightmap")
 	player = Player.new()
 	player.name = "player"
@@ -333,6 +339,7 @@ func _first_frame() -> void:
 	await _drawn()
 	first_frame_ms = Time.get_ticks_msec()
 	_say("first frame drawn %d ms after the engine started" % first_frame_ms)
+	started.emit()
 	# the pipelines compiled for it (what a phone's first start waits for: decision 0057)
 	_say("pipelines compiled: mesh %d, surface %d, draw %d, specialization %d" % [
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_MESH),

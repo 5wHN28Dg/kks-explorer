@@ -47,8 +47,13 @@ func run(tree: SceneTree) -> Array:
 	plant.free()
 	# the app: its start, and the UI's markers and lamps
 	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
-	main.opts = {"staged_start": "1"}   # the start a display gets (without one, the tests start in one go)
-	var seen := {"hidden_frames": 0, "frames": 0}
+	# the start a display gets (without one, the tests start in one go), with the phone's tier: its settings must
+	# reach the materials the plant holds, though the tier is chosen before the plant is loaded
+	main.opts = {"staged_start": "1", "quality": "lean+vis"}
+	var seen := {"hidden_frames": 0, "frames": 0, "started": 0, "ui_at_start": false}
+	main.started.connect(func():
+		seen.started += 1
+		seen.ui_at_start = main.ui != null and main.hud != null and main.plant.visible)
 	var watch := func():
 		if main.plant != null and main.first_frame_ms < 0:
 			seen.frames += 1
@@ -80,6 +85,9 @@ func run(tree: SceneTree) -> Array:
 		p.append("a frame is drawn with the plant loaded and hidden before the first walkable one (%d frames)" % seen.frames)
 	if not main.plant.visible or main.hud == null or main.ui == null:
 		p.append("the first frame has the plant, the HUD and the UI")
+	if seen.started != 1 or not seen.ui_at_start:
+		p.append("`started` is sent once, with the plant shown, the HUD and the UI made (%d times)" % seen.started)
+	p += tier_materials(main.plant, "lean+vis")
 	var b = main.ui.bindings
 	if b != null:
 		var lit: ShaderMaterial = b._mat("running", true)
@@ -108,6 +116,56 @@ func run(tree: SceneTree) -> Array:
 	else:
 		p.append("the UI has its bindings")
 	main.free()
+	# the scripts that drive the app on a display wait for its start before they use its UI
+	for f in ["res://tests/ui_shots.gd", "res://tests/mimic_shots.gd"]:
+		var src := FileAccess.get_file_as_string(f)
+		var i := src.find("await main.started")
+		var j := src.find("ui = main.ui")
+		if i < 0 or j < 0 or i > j:
+			p.append("%s waits for `main.started` before it takes `main.ui`" % f)
+	return p
+
+## Problems with the tier's settings on the materials `root` holds (kit/materials.gd `apply_tier`): the wear's detail
+## on only in the full tier, the textures at the tier's size.
+static func tier_materials(root: Node, tier: String) -> Array:
+	const Mat = preload("res://kit/materials.gd")
+	var p: Array = []
+	var want_detail := 1.0 if tier == "full" else 0.0
+	var want_size := Mat.size_for(tier)
+	var seen := {}
+	var others: Array = []
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		var mesh: Mesh = null
+		if n is MeshInstance3D:
+			mesh = n.mesh
+		elif n is MultiMeshInstance3D and n.multimesh != null:
+			mesh = n.multimesh.mesh
+		if mesh == null:
+			continue
+		var gi := n as GeometryInstance3D
+		for s in mesh.get_surface_count():
+			var mat: Material = gi.material_override
+			if mat == null and n is MeshInstance3D:
+				mat = n.get_surface_override_material(s)
+			if mat == null:
+				mat = mesh.surface_get_material(s)
+			var m := mat as ShaderMaterial
+			if m != null and others.size() < 3 and not m.resource_path.begins_with("res://built/materials/"):
+				others.append(m.resource_path)   # (for the message below)
+			if m == null or not m.resource_path.begins_with("res://built/materials/") or seen.has(m.resource_path):
+				continue
+			seen[m.resource_path] = true
+			var d = m.get_shader_parameter("detail")
+			if d == null or not is_equal_approx(float(d), want_detail):
+				p.append("%s: detail %s in the %s tier, not %s" % [m.resource_path, d, tier, want_detail])
+			var t := Mat.texture_of(m, "Color")
+			if t != null and Mat.missing_textures().is_empty() and t.get_width() != want_size:
+				p.append("%s: textures %d px in the %s tier, not %d" % [m.resource_path, t.get_width(), tier, want_size])
+	if seen.size() < 3:
+		p.append("the plant's built materials were checked (%d; others: %s)" % [seen.size(), others])
 	return p
 
 ## A shader parameter as a number (one never set reads as null: the shader's default, 0 here).

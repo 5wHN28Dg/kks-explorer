@@ -56,6 +56,8 @@ func _run() -> void:
 	main = (load("res://app/main.tscn") as PackedScene).instantiate()
 	main.opts["quality"] = "full"
 	root.add_child(main)
+	if main.first_frame_ms < 0:
+		await main.started   # with a display the start draws the sky first: the UI comes after (decision 0060)
 	ui = main.ui
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	await process_frame
