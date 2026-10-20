@@ -119,10 +119,23 @@ func run(tree: SceneTree) -> Array:
 	# the scripts that drive the app on a display wait for its start before they use its UI
 	for f in ["res://tests/ui_shots.gd", "res://tests/mimic_shots.gd"]:
 		var src := FileAccess.get_file_as_string(f)
-		var i := src.find("await main.started")
+		var i := src.find("main.first_frame_ms < 0 and main.start_error")
 		var j := src.find("ui = main.ui")
 		if i < 0 or j < 0 or i > j:
-			p.append("%s waits for `main.started` before it takes `main.ui`" % f)
+			p.append("%s waits for the app's first walkable frame (or its failure) before it takes `main.ui`" % f)
+	# the full tier's staged start (a desktop with its tier known): the full tier's textures and wear
+	var full: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
+	full.opts = {"staged_start": "1", "quality": "full"}
+	tree.root.add_child(full)
+	for i in 30:
+		await tree.process_frame
+		if full.first_frame_ms >= 0:
+			break
+	if full.first_frame_ms < 0:
+		p.append("the full tier's staged start drew its first frame")
+	else:
+		p += tier_materials(full.plant, "full")
+	full.free()
 	return p
 
 ## Problems with the tier's settings on the materials `root` holds (kit/materials.gd `apply_tier`): the wear's detail

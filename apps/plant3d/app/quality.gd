@@ -67,8 +67,10 @@ static func record_probe(cf: ConfigFile, gpu_ms: float) -> String:
 	cf.set_value("probe", "tier", tier)
 	return tier
 
-## Applies a tier to the viewport, the sun and the environment.
-static func apply(tier: String, vp: Viewport, sun: DirectionalLight3D, env: Environment) -> void:
+## Applies a tier to the viewport, the sun and the environment, and (`to_plant`) to the plant's pieces and materials:
+## the app's early start (decision 0060) chooses the tier before the plant is loaded and applies those after it (its
+## materials, loaded and freed again before anything held them, would only cost the phone's start time).
+static func apply(tier: String, vp: Viewport, sun: DirectionalLight3D, env: Environment, to_plant := true) -> void:
 	var p: Dictionary = PRESETS[tier]
 	if p.fsr:
 		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
@@ -81,10 +83,12 @@ static func apply(tier: String, vp: Viewport, sun: DirectionalLight3D, env: Envi
 	Lighting.apply(tier, env)
 	_measure_overrides(sun)
 	vp.set_meta("detail_min_px", p.detail_min_px)
-	apply_ranges(vp)
+	if to_plant:
+		apply_ranges(vp)
 	if not vp.size_changed.is_connected(_on_resize.bind(vp)):
 		vp.size_changed.connect(_on_resize.bind(vp))   # §10: the ranges again when the resolution changes
-	Mat.apply_tier(tier)   # the tier's texture size (kit/materials.gd): one material set, three sizes
+	if to_plant:
+		Mat.apply_tier(tier)   # the tier's texture size (kit/materials.gd): one material set, three sizes
 
 ## Measuring what the sun's shadow costs (main.gd's `fx_off=`): `shadow` no real-time shadow, `cascades2` two
 ## cascades instead of four, `shadow40` shadows to 40 m, `shadowhard` no soft filtering.

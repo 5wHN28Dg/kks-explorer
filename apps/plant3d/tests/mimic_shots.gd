@@ -71,8 +71,14 @@ func _run() -> void:
 	if phone:
 		main.opts["ui_scale"] = "1.35"
 	root.add_child(main)
-	if main.first_frame_ms < 0:
-		await main.started   # with a display the start draws the sky first: the UI comes after (decision 0060)
+	# with a display the start draws the sky first and makes the UI after it (decision 0060): wait for its first
+	# walkable frame, or for its failure
+	while main.first_frame_ms < 0 and main.start_error == "":
+		await process_frame
+	if main.start_error != "":
+		printerr("the app did not start: " + main.start_error)
+		quit(1)
+		return
 	ui = main.ui
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	await process_frame

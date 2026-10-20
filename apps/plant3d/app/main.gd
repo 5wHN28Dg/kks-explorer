@@ -57,6 +57,7 @@ var first_frame_ms := -1
 ## The first walkable frame was drawn: the plant, the player, the map, the HUD and the UI are all there (a script that
 ## drives the app waits for it: with a display the start is spread over several frames).
 signal started
+var start_error := ""   # why the start failed (the plant did not load)
 var lines := PackedStringArray()
 var stuck_count := 0
 var sim_max_ms := 0.0      # the model's busiest second during a walk (ms of model time per s: 250 = a quarter core)
@@ -87,7 +88,7 @@ func _ready() -> void:
 			else Quality.choose(cf, opts.get("quality", "")).tier != ""
 	var sky_cam: Camera3D = null
 	if early:
-		choose_tier()
+		choose_tier(false)   # the plant's pieces and materials get the tier once they are loaded (below)
 		_launch("tier")
 		sky_cam = Camera3D.new()
 		add_child(sky_cam)
@@ -100,6 +101,7 @@ func _ready() -> void:
 	var err: String = plant.load_plant()
 	if err != "":
 		_say("ERROR " + err)
+		start_error = err   # (`started` never comes: a script driving the app stops on this)
 		var l := Label.new()
 		l.text = err
 		add_child(l)
@@ -121,9 +123,7 @@ func _ready() -> void:
 	if early:
 		plant.visible = false
 		Quality.apply_ranges(get_viewport())   # the tier's visibility ranges, on the plant's pieces now loaded
-		# and its materials (detail, texture size): the tier was applied before the plant held them, to materials
-		# that were then freed and are now loaded afresh from their files
-		Quality.Mat.apply_tier(tier)
+		Quality.Mat.apply_tier(tier)   # and its materials (detail, texture size), now that the plant holds them
 	_launch("lightmap")
 	player = Player.new()
 	player.name = "player"
@@ -227,7 +227,8 @@ func _environment() -> void:
 	add_child(sun)
 
 ## Picks the tier (app/quality.gd) and applies it; a desktop without a measurement of its GPU measures it first.
-func choose_tier() -> void:
+## `to_plant` false: the plant is not loaded yet; its pieces and materials get the tier later (the early start).
+func choose_tier(to_plant := true) -> void:
 	if probing:
 		return   # the probe ends by choosing (the settings' choice, saved, is read then)
 	var c := Quality.choose(cf, opts.get("quality", ""))
@@ -239,7 +240,7 @@ func choose_tier() -> void:
 			return
 	tier = c.tier
 	tier_why = c.why
-	Quality.apply(tier, get_viewport(), sun, env)
+	Quality.apply(tier, get_viewport(), sun, env, to_plant)
 	if hud:
 		hud.refresh()
 	_say("tier %s (%s), renderer %s, %s" % [tier, tier_why, Quality.renderer(), RenderingServer.get_video_adapter_name()])
