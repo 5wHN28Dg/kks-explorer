@@ -1,0 +1,69 @@
+# 0060 Walkdown Plant: a first start the phone's pipeline compiler can keep up with
+
+Date 2026-10-20 · Scope: `apps/plant3d` (app/main.gd, kit/materials.gd, kit/weathered.gdshaderinc, ui/bindings.gd,
+builder/plant_builder.gd, project.godot, phone/launch.sh) · Status: **decided** under the task's go-ahead (the
+Note 9's load-time rule, wiki 3D-plant "Metrics and rules": start to the first walkable frame ≤ 15 s) · Extends 0054,
+0057; no new dependency
+
+**Question:** the Note 9's first start after an install measured 14.8–15.8 s, with starts near 20 s now and then
+(0057). Where do the 15 s go, what makes the 20 s ones, and how does the start get under 15 s with a margin (every run
+≤ 13.5 s) without changing the rule, the look or the frame, spike and memory rules?
+
+## Findings
+
+[V] measured here (2026-10-20) on the Note 9 (release build, `lean+vis`, plugged in, data cleared before each first
+start), with `phone/launch.sh` (logcat's clock, the app's `LAUNCH` lines), a per-thread sampler of
+`/proc/PID/task/*/stat` every 0.2 s, and a staged start that drew a frame after each step; [S] Godot 4.7.2 source.
+
+| | Finding | Source |
+|---|---|---|
+| Where the 15 s went | process and engine 0.45 s; the rendering server's start 1.6 s (0.5 s on a second start: Godot's own shader cache); the main scene's scripts 1.1 s; loading the plant 1.0 s; the map, the HUD and the UI 0.9 s; then **9.6 s waiting for the first frame**, the same on a second start | [V] |
+| What the first frame waits for | pipeline compilation: Godot queues every surface's pipelines on its worker threads (drawn or not) and the first draw waits for its ubershaders. The Mali driver compiles them **one at a time**: for 10 s one worker thread at 100 % on one big core, the others idle. A lit surface's ubershader took 0.6–0.9 s at 1.8–2.3 GHz; unshaded and depth ones a fraction of that | [V] sampler; [S] `pipeline_hash_map_rd.h`, `render_forward_mobile.cpp` |
+| The ~20 s starts | the same serial compiles with the big cores at 1.47 GHz instead of 1.8–2.7 (the start before took 20.8 s, every compile ~1.6× longer). Not the temperature (29–35 °C, thermal status 0), not the I/O (iowait 0) nor memory (3 GB available); the clock is the phone's governor's | [V] sampler, `scaling_cur_freq` |
+| What compiled | besides the weathered shader (one lit ubershader per pass and vertex format): Godot's standard material for the lamps (the halls' lamp lenses and the kit's lamps, lightmapped and not), primitive meshes for the doors (no vertex colours: a vertex format of its own) and the UI's markers and lamps on the parts (a standard material lit and unlit, primitive meshes). The UI's two cost 2.4 s, the lightmap's variants 2.3 s, the canvas (HUD) about 0.8 s | [V] staged start: 30 surface + 10 specialization pipelines |
+| The material's own code | a weathered shader cut down to its colour compiles the start 0.6 s faster: Godot's lighting code is most of each ubershader | [V] |
+| The order | the compiles start only when a frame is drawn, and the HUD's canvas pipelines are compiled in the draw itself, behind the queue. A frame drawn with the plant hidden queues the plant's pipelines without waiting for them (hidden surfaces are compiled too) | [V], [S] `_update_dirty_geometry_pipelines` |
+| A second start | Godot saves the pipeline cache when 3 MB of new pipelines have built up, or on a clean exit; a start makes less, and Android ends the app without one: the second start compiled everything again (12.7–13.1 s before, 7.0 s after the changes below) | [V], [S] `RenderingDevice::update_pipeline_cache` |
+| What does not apply | a loading screen as the first frame (the rule is the first *walkable* frame); turning ubershaders off (no setting; a driver workaround for one Adreno only); a pipeline cache shipped in the APK (driver- and device-bound, read before any script runs) | [S] `rendering_device_driver_vulkan.cpp` |
+
+## Choice
+
+- **One lit shader, one vertex format.** The lamps are the weathered shader with its new `emission` (their light as
+  the standard material's emission at energy 2, also in the bake); the UI's markers and lamps on the parts are a clean
+  weathered material (`Materials.plain`), lit or not; doors and markers are ArrayMeshes with white vertex colours
+  (`Materials.plant_mesh`). Every lit surface now shares the plant's pipelines (`tests/test_launch.gd` checks the built
+  plant and the UI's markers).
+- **A sky frame first.** With a tier already known (phones always; a desktop after its probe) the start draws the sky
+  alone, loads the plant hidden, draws again (the plant's pipelines start compiling), makes the map, the HUD and the UI
+  meanwhile, and only then shows the plant. The trainee sees the sky for a few seconds instead of a black screen; the
+  log's "first frame" is still the first walkable one. Without a display (the tests) the start runs in one go.
+- **The pipeline cache saved every 0.25 MB** of new pipelines (`rendering/rendering_device/pipeline_cache/save_chunk_size_mb`),
+  so a second start finds it.
+- **Before adding a shader or a vertex format**, count it: `pipelines compiled` in the app's log, and
+  `phone/launch.sh` on the Note 9 (each lit one is most of a second there, one after another).
+
+## Measured (2026-10-20)
+
+Note 9, release builds signed as published, first start after `install -r` and the data cleared, plugged in, 30 s
+between runs, the phone at 27–33 °C; start = Android's `START`, end = the first walkable frame.
+
+| | Rule | Main (bf979ee) | After |
+|---|---|---|---|
+| First start, each run | ≤ 15 s | 14.86, 15.06, 14.72, 15.50, 15.46, 15.93 s | 9.15, 8.78, 9.06, 8.98, 8.76, 9.40, 9.09, 9.18, 9.35, 9.42 s |
+| Second start (data kept) | | 12.70, 13.11 s | 3.60, 3.75 s (7.30 s when the start before was ended within 2 s of its first frame, before its cache was saved) |
+| Pipelines for the first frame (surface + specialization) | | 30 + 10 | 13 + 7 |
+| Frames shown at ≥ 30 fps, 10-minute walk (SurfaceFlinger) | ≥ 95 % | 99.08–99.65 % (0057) | 99.69 % |
+| Frames over 100 ms after the first 5 s | none | none | none (worst 59.1 ms) |
+| Peak PSS | ≤ 1.5 GB | 1,011–1,052 MB | 918 MB |
+| GPU time median / p95 | | 18.8 / 25.3 ms | 18.8 / 25.3 ms |
+
+Where the start goes now (median of the ten): the engine and the main scene 3.1 s, the tier and the sky frame 0.9 s,
+the plant 0.6 s, the hidden frame 0.8 s, the map, the HUD and the UI 0.7 s (the plant's pipelines compiling
+meanwhile), then 2.9 s for what is left of them. The laptop's full-tier captures with and without the change differ by
+at most 16 of 255 in any channel (lamps, halls, doors).
+
+LAPTOP_PLACEHOLDER
+
+**When to revisit:** when Godot can turn ubershaders off per project, or ships pipeline caches; if a phone in the
+measurement set compiles in parallel (the sky frame then matters less); before adding a shader, a material kind or a
+vertex format (count its pipelines on the Note 9).
