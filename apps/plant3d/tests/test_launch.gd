@@ -4,6 +4,7 @@
 ##   the shader's emission), in the plant's vertex format (positions, normals, tangents, colours, UV, and UV2 for what
 ##   is baked): no Godot standard material and no primitive mesh, each of which is pipelines of its own;
 ## - the UI's markers and lamps on the parts (ui/bindings.gd) are the same shader and format;
+## - the pipeline cache is saved after a start's pipelines (not every 3 MB, Godot's default);
 ## - the app's start draws the sky alone, then the plant loaded but hidden (its pipelines start compiling), makes the
 ##   map, the HUD and the UI meanwhile, and only then draws the plant: its first walkable frame.
 extends RefCounted
@@ -15,6 +16,11 @@ const ATTRS := FORMAT | Mesh.ARRAY_FORMAT_TEX_UV2 | Mesh.ARRAY_FORMAT_BONES | Me
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
+	# the pipeline cache is saved soon after a start compiles (Godot's default waits for 3 MB of new pipelines, more
+	# than a start makes: the next start compiled everything again, 7 s on the Note 9 instead of 3.5 s)
+	var chunk := float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", 3.0))
+	if chunk > 0.5:
+		p.append("the pipeline cache is saved every %.2f MB, at most 0.5" % chunk)
 	# the built materials: all the weathered shader, the lamps lit
 	var lamps := 0
 	for f in DirAccess.get_files_at("res://built/materials"):
