@@ -17,6 +17,7 @@ var _where: Label
 var _values := {}               # value name -> Label
 var _alarms: Label
 var _ops: Array = []            # [op, button, permissives label, feedback label, entry or null, note label]
+var _repairs: Array = []        # [fault, box, button, note label]: the scenario's faults repaired at this equipment
 var _t := 0.0
 
 
@@ -41,6 +42,7 @@ func open(c: String, note := "") -> void:
 	W.clear(body)
 	_values.clear()
 	_ops.clear()
+	_repairs.clear()
 	var nm: String = info.name_of(c)
 	title.text = c + ("\n" + nm if nm != "" else "")
 	if note != "":
@@ -100,6 +102,18 @@ func open(c: String, note := "") -> void:
 		if entry != null:
 			entry.text_submitted.connect(func(_t): _press(o, entry))
 		_ops.append([o, b, perm, fb, entry, note_l])
+	# a fault repaired here (PLANT3D §7.8): shown while it is applied and not repaired, worked within reach
+	for f in ui.clock.engine.sc.get("faults", []):
+		if f.get("kks", "") == c and f.has("repair"):
+			var box := VBoxContainer.new()
+			body.add_child(box)
+			var rb := W.button("Repair: " + String(f.get("text", f["id"])), func(): ui.repair(String(f["id"])), 140)
+			rb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(rb)
+			var rn := W.label("", 16, W.DIM)
+			box.add_child(rn)
+			box.visible = false
+			_repairs.append([f, box, rb, rn])
 	visible = true
 	refresh()
 	if ui.wants_focus():
@@ -211,6 +225,12 @@ func refresh() -> void:
 			var a: Dictionary = info.m.alarms[k]
 			al.append("%s %s: %s" % [a.get("isa", ""), a["text"], s.replace("_", " ")])
 	_alarms.text = "\n".join(al)
+	for rp in _repairs:
+		var fid: String = rp[0]["id"]
+		var asked: bool = e.queue.any(func(q): return q[0] == "repair" and q[1] == fid)
+		(rp[1] as Control).visible = e.faults_done.has(fid) and not e.faults_fixed.has(fid)
+		(rp[2] as Button).disabled = not near or asked
+		(rp[3] as Label).text = "Repaired: it acts in the next step" if asked else ("" if near else "At the equipment only: walk up to it")
 	for row in _ops:
 		var o: Dictionary = row[0]
 		var ok: bool = info.offered(o, near, ctl)

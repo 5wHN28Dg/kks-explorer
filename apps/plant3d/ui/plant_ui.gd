@@ -389,6 +389,12 @@ func fault(fid: String) -> void:
 	toast("Fault pressed: it acts in the next step.")
 
 
+## A fault's repair (PLANT3D §7.8): from the instructor's panel, or by the trainee at its equipment (the card).
+func repair(fid: String) -> void:
+	clock.engine.repair(fid)
+	toast("Repaired: it acts in the next step.")
+
+
 func fast_forward() -> void:
 	var b: String = clock.ff_blocked()
 	if b != "":

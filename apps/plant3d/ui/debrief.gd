@@ -1,9 +1,9 @@
 ## The debrief (docs/PLANT3D.md §7.6 and §8): what happened in a run, read from the engine's event list. Every
 ## operation (done, refused, or not one of the plant's), alarm change (raised, acknowledged, cleared, shelved and
-## back), trip (with its group's first out), trainer's fault, interlock and sequence step, in order with its model
-## time; with a procedure, the steps as they ended, and each operation made outside its step marked as a deviation
-## with the step it was made in and the one it belongs to. The run is the procedure's (from when it began) or, with
-## none, the plant's since it (re)started. Pure data: ui/debrief_panel.gd shows it.
+## back), trip (with its group's first out), trainer's fault and its repair, interlock and sequence step, in order
+## with its model time; with a procedure, the steps as they ended, and each operation made outside its step marked
+## as a deviation with the step it was made in and the one it belongs to. The run is the procedure's (from when it
+## began) or, with none, the plant's since it (re)started. Pure data: ui/debrief_panel.gd shows it.
 extends RefCounted
 
 const W = preload("res://ui/widgets.gd")
@@ -16,8 +16,8 @@ const ALARM_WORDS := {
 
 
 ## {entries: [{step, kind, text, code, dev, prio}], summary: {…}, title}. `kind`: op, alarm, shelve, unshelve, trip,
-## fault, interlock, machine, step (a procedure step that ended), start (the procedure began). `dev` is "" or the
-## deviation in words; `prio` an alarm's or trip's priority (0 otherwise).
+## fault, repair, interlock, machine, step (a procedure step that ended), start (the procedure began). `dev` is ""
+## or the deviation in words; `prio` an alarm's or trip's priority (0 otherwise).
 static func collect(engine, info, tracker) -> Dictionary:
 	var m = info.m
 	var proc: Dictionary = tracker.proc if tracker != null else {}
@@ -38,7 +38,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 			if d.size() > 4 and int(d[2]) >= 0:
 				devs[int(d[2])] = d
 	var sm := {"ops": 0, "refused": 0, "deviations": 0, "raised": 0, "prio": {1: 0, 2: 0, 3: 0}, "acked": 0,
-			"shelved": 0, "trips": 0, "first_out": PackedStringArray(), "faults": 0}
+			"shelved": 0, "trips": 0, "first_out": PackedStringArray(), "faults": 0, "repairs": 0}
 	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
 	var inputs: Array = engine.inputs
 	var in_i := 0
@@ -114,6 +114,10 @@ static func collect(engine, info, tracker) -> Dictionary:
 			"fault":
 				e.text = "Fault: %s" % fault_text(m, str(ev[2]))
 				sm.faults += 1
+			"repair":
+				e.text = "Repaired: %s" % fault_text(m, str(ev[2]))
+				e.code = fault_kks(m, str(ev[2]))
+				sm.repairs += 1
 			"interlock":
 				var il := {}
 				for x in m.interlocks:
@@ -189,6 +193,15 @@ static func refusal(info, o, failed: String, engine) -> String:
 	return info.failed_text(o, failed, engine)
 
 
+## The equipment a fault is repaired at ("" when the content names none).
+static func fault_kks(m, fid: String) -> String:
+	for sc in m.scenarios.values():
+		for f in sc.get("faults", []):
+			if f.get("id", "") == fid:
+				return String(f.get("kks", ""))
+	return ""
+
+
 static func fault_text(m, fid: String) -> String:
 	for sc in m.scenarios.values():
 		for f in sc.get("faults", []):
@@ -260,4 +273,6 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 		out.append("Trips: %d%s" % [sm.trips, (" (first out: %s)" % ", ".join(sm.first_out)) if not sm.first_out.is_empty() else ""])
 	if sm.faults > 0:
 		out.append("Trainer's faults: %d" % sm.faults)
+	if sm.repairs > 0:
+		out.append("Repairs: %d" % sm.repairs)
 	return out
