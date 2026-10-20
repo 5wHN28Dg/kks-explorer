@@ -45,6 +45,8 @@ func _ready() -> void:
 	add_child(_proc_last)
 	RenderingServer.frame_pre_draw.connect(func(): _pre = Time.get_ticks_usec())
 	RenderingServer.frame_post_draw.connect(func(): _post = Time.get_ticks_usec())
+	var c = main.ui.clock if main != null and main.ui != null else null
+	_steps0 = c.engine.step_no if c != null and c.engine != null else 0
 	rows.append("t_ms,frame_ms,phys_n,phys_ms,proc_ms,to_draw_ms,draw_ms,after_ms,cpu_ms,gpu_ms,draws,objects,sim_steps")
 
 
@@ -61,8 +63,9 @@ func _proc_begin() -> void:
 func _proc_end() -> void:
 	var now := Time.get_ticks_usec()
 	var start := _first_phys if _phys_n > 0 else _proc0
-	# the previous frame, now that its draw has happened
-	if _frame0 > 0 and _post > 0:
+	# the previous frame, now that its draw has happened (without a display, as in the tests, nothing is drawn)
+	if _frame0 > 0:
+		var drawn := _pre >= _proc1 and _post >= _pre
 		var vp: RID = get_viewport().get_viewport_rid()
 		var steps := 0
 		var c = main.ui.clock if main.ui != null else null
@@ -70,7 +73,8 @@ func _proc_end() -> void:
 			steps = c.engine.step_no if c.engine != null else 0
 		rows.append("%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d" % [
 			_frame0 / 1000, (start - _frame0) / 1000.0, _prev_phys_n, _prev_phys_ms, (_proc1 - _prev_proc0) / 1000.0,
-			(_pre - _proc1) / 1000.0, (_post - _pre) / 1000.0, (start - _post) / 1000.0,
+			(_pre - _proc1) / 1000.0 if drawn else 0.0, (_post - _pre) / 1000.0 if drawn else 0.0,
+			(start - (_post if drawn else _proc1)) / 1000.0,
 			RenderingServer.viewport_get_measured_render_time_cpu(vp),
 			RenderingServer.viewport_get_measured_render_time_gpu(vp),
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
