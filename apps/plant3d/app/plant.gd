@@ -6,6 +6,7 @@ const BUILT := "res://built/plant.json"
 
 var manifest: Dictionary = {}
 var load_ms := 0
+var stages := PackedStringArray()   # each scene's load and instancing, in ms (main.gd's LAUNCH lines)
 
 ## Loads everything; returns "" or what went wrong.
 func load_plant() -> String:
@@ -21,12 +22,17 @@ func load_plant() -> String:
 	for a in m.areas:
 		scenes.append(a.scene)
 	for path in scenes:
+		var t := Time.get_ticks_usec()
 		var ps := load(path) as PackedScene
 		if ps == null:
 			return "cannot load " + path
+		var t1 := Time.get_ticks_usec()
 		var area := ps.instantiate()
+		var t2 := Time.get_ticks_usec()
 		add_child(area)
 		fill_cells(area)
+		stages.append("%s: load %d ms, instance %d ms, add %d ms" % [path.get_file().get_basename(), (t1 - t) / 1000,
+			(t2 - t1) / 1000, (Time.get_ticks_usec() - t2) / 1000])
 	load_ms = Time.get_ticks_msec() - t0
 	return ""
 

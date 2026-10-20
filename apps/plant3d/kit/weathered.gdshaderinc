@@ -42,6 +42,8 @@ uniform float wear = 0.0;
 uniform vec4 wet_zone = vec4(0.0);    // a box round water: centre x, z (Godot's axes), half sizes along x and z
 uniform float wet = 0.0;              // how wet at the box's edge and inside (0: no zone)
 const float WET_FALLOFF = 9.0;        // metres beyond the box over which the ground dries
+uniform vec4 emission : source_color = vec4(0.0, 0.0, 0.0, 1.0);   // lamps' light (as Godot's standard material's)
+uniform float emission_energy = 0.0;
 uniform float detail = 1.0;   // the tier: 1 every sample, 0 the phone's
 uniform float grating = 0.0;          // 1: an open bar grating (drawn)
 uniform float joint_spacing = 0.0;    // concrete yards: joints this many metres apart (0: none)
@@ -259,5 +261,6 @@ void fragment() {
 	ALBEDO = base;
 	ROUGHNESS = clamp(rough, 0.04, 1.0);
 	METALLIC = metal;
+	EMISSION = emission.rgb * emission_energy;
 	if (use_normal) NORMAL_MAP = texture(normal_tex, uv).rgb;
 }
