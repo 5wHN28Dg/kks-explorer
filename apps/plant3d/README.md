@@ -312,6 +312,11 @@ banner and the flow lines are drawn besides, so the frame times above are the me
 
 Physics runs with the headless renderer.
 
+Frame times on the laptop: `tools/plant3d/bench/offscreen.sh export/linux/walkdown-plant.x86_64 --resolution
+1600x900 -- --quality=full --walk=frames --seconds=600 --out=DIR` (add `--probe=1` for where the time goes), with
+nothing else on the GPU: `python3 tools/plant3d/bench/gpu_clients.py 10` before and during the run lists what else
+uses it (an idle editor's GPU work cost the full tier its 60 fps, decision 0057).
+
 Frame times on the Note 9: `flock ~/kks-work/build/vm.lock sh -c 'apps/plant3d/phone/frames.sh 285d2a7c153f7ece 600;
 adb kill-server'`. Only `io.github.walkdown.plant` is ever installed. The script refuses a locked phone.
 
