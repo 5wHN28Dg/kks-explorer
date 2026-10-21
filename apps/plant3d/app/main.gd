@@ -22,7 +22,8 @@
 ##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow those on (measuring what each costs:
 ##                           app/lighting.gd); fx_off=shadow,cascades2,shadow40,shadowhard the sun's shadow's parts
 ##                           (app/quality.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
-##                           light through the bake only)
+##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden
+##   On a phone walk.txt takes probe and fx_off too (phone/frames.sh's WALK_EXTRA)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -120,6 +121,9 @@ func _ready() -> void:
 		_say("lightmap: %d meshes baked" % lm.light_data.get_user_count())
 	else:
 		_say("lightmap: none in this build (the sky and the sun only)")
+	if "stencils" in Lighting.off:   # fx_off=stencils: the pipes' stencilled names hidden, to measure what they cost
+		for l in plant.find_children("stencil*", "Label3D", true, false):
+			l.visible = false
 	for l in get_tree().get_nodes_in_group("baked_lights"):
 		l.queue_free()   # the halls' lamps light through the bake only (forty real-time lights in a hall cost too much)
 	if early:
@@ -199,7 +203,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb"]:   # nothing else from a shared folder
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off"]:   # nothing else from a shared folder (probe and fx_off: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
