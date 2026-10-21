@@ -327,7 +327,9 @@ is faster still ("Time" below).
   cools it with τ 15 min; left alone a hot casing cools slowly, τ 30 h (still over 400 °C eight hours after a trip from
   load, the usual line for a hot start).
 - **Hot restart (2026-10-21):** the scenario `hot_restart` is the train three hours after a trip from load, everything
-  stopped: the HP casing at 480 °C, the boxed-up HP drum at 280 °C (64 bar), the steam pipes at 250 °C. Its procedure
+  stopped: the HP casing at 480 °C, the boxed-up HP drum at 280 °C (64 bar), the steam in the superheater outlet at
+  270 °C. The casing warm-up of the cold start is refused on a casing over 200 °C (the auxiliary steam, about 250 °C,
+  would chill it: `hot_warmup_refused`). Its procedure
   (`hot_restart`) is the cold start's without the casing warm-up, the HRSG kept boxed up until the GT burns: then the
   drains and the start-up vent open at minimum load until the superheaters run dry, and the steam is still about 150 K
   colder than the casing: the roll is refused on the match (`hot_roll_steam_too_cold`) until GT 1 at 40 MW has
@@ -340,7 +342,9 @@ is faster still ("Time" below).
 - **Repairs (2026-10-21):** every trainer fault can be repaired (PLANT3D.md §7.8): from the instructor's panel, or by
   the trainee at the equipment of the state it put wrong (the pump's motor, the valve's actuator, the lube oil pump),
   within reach; a fault of an outside supply or of several pieces at once (the pump house's valve supply, the fuel
-  gas supply, both CCW or both air compressors, the leak with the makeup) from the panel only. A repair puts back every
+  gas supply, both CCW or both air compressors, the leak with the makeup) and damage inside a machine (bearings,
+  blades, the thrust collar, the stator, the burner, surge) from the panel only: an overhaul, not a repair made at a
+  running machine. A repair puts back every
   state the fault set, except a generator breaker it opened; a trip the fault caused stays latched until it is reset,
   so a repaired pump is reset and started again as after any trip. A repaired fault can be applied again. Faults that
   set the same states (both pumps' trip and one pump's) are repaired by either: the other then still shows as applied,

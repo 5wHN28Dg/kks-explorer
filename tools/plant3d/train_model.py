@@ -1378,9 +1378,12 @@ def st():
          [('st_tg_run', 'Turning gear not running: steam on a stopped rotor bows it'),
           ('aux_ok', 'Auxiliary steam below 10 bar')])
     m.op('30MAW10AA001', 'close', {'st_gland_cmd': 0})
+    # the auxiliary steam (about 250 °C) would chill a hot casing, not warm it (the hot restart's likeliest slip)
+    m.cmp('st_cas_coolish', 'st_casing_t', '<', 200)
     m.op('30MAA10AA101', 'open', {'st_warm_cmd': 1},
          [('st_tg_run', 'Turning gear not running: steam on a stopped rotor bows it'),
-          ('aux_ok', 'Auxiliary steam below 10 bar')])
+          ('aux_ok', 'Auxiliary steam below 10 bar'),
+          ('st_cas_coolish', 'The HP casing is hotter than the auxiliary steam: it would chill it, not warm it')])
     m.op('30MAA10AA101', 'close', {'st_warm_cmd': 0})
     for x, n in (('a', 1), ('b', 2)):
         m.start_stop(f'30MAJ10AP00{n}', f'vac_{x}', [('ccw_ok', 'Closed cooling water not in service: the seal '

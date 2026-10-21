@@ -55,7 +55,11 @@ func run(tree: SceneTree) -> Array:
 		if _button(row).text != "Apply again" or _button(row).disabled:
 			p.append("a repaired fault can't be applied again: %s" % _button(row).text)
 	ui.toggle_trainer()
-	# 2. at the equipment: CW pump A's motor fails; its card offers the repair within reach only
+	# 2. at the equipment: CW pump A's motor fails; its card offers the repair within reach only (and none before)
+	ui.go_control_room()
+	ui.open_card("30PAC10AP001")
+	if ui.card._repairs.is_empty() or (ui.card._repairs[0][1] as Control).visible:
+		p.append("the pump's card offers a repair while nothing is wrong with it")
 	ui.fault("cw_a_motor")
 	ui.clock.run_steps(1)
 	ui.go_control_room()
@@ -70,6 +74,8 @@ func run(tree: SceneTree) -> Array:
 		if not ui.near("30PAC10AP001") or (rp[2] as Button).disabled:
 			p.append("beside the pump (%.1f m) its repair is not offered" % ui.distance_to("30PAC10AP001"))
 		(rp[2] as Button).pressed.emit()
+		if not (rp[2] as Button).disabled:
+			p.append("the card's Repair can be pressed again before the step takes it (a second input)")
 		# a run saved with the repair waiting is accepted (a queued repair is an input of the run)
 		var why: String = ui.autosave.check(ui.autosave.payload())
 		if why != "":

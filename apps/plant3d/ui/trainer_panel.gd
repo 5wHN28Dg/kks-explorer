@@ -96,11 +96,15 @@ func refresh() -> void:
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(l)
 		if active and f.has("repair"):
-			var r := W.button("Repairing" if fixing.has(fid) else "Repair", func(): ui.repair(fid))
+			var r := W.button("Repairing" if fixing.has(fid) else "Repair", func():
+				ui.repair(fid)
+				refresh())
 			r.disabled = fixing.has(fid)
 			row.add_child(r)
 			continue
 		var b := W.button("Applied" if active else ("Pressed" if pending.has(fid) else ("Apply again" if fixed else "Apply")),
-				func(): ui.fault(fid))
+				func():
+					ui.fault(fid)
+					refresh())
 		b.disabled = active or pending.has(fid)
 		row.add_child(b)

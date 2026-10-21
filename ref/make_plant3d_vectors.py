@@ -767,6 +767,8 @@ HOT_FORKS = [
     ('hot_roll_steam_too_cold', 'drains_close', [('until', 'st_sh_ok', 600), ('op', '30MAA10', 'roll', None, None),
                                                  ('run', 1)],
      {'refused': [['30MAA10', 'roll', ['st_match']]], 'end': {'st_mismatch': [-250, -50.001], 'st_casing_t': [450, 480]}}),
+    ('hot_warmup_refused', 'gland', [('op', '30MAA10AA101', 'open', None, None), ('run', 60)],
+     {'refused': [['30MAA10AA101', 'open', ['st_cas_coolish']]], 'end': {'st_casing_t': [460, 480]}}),
     ('hot_roll_matched', 'match', [('op', '30MAA10', 'roll', None, None), ('run', 60)],
      {'done': [['30MAA10', 'roll']], 'machines': {'st_start': 'roll'}, 'end': {'st_mismatch': [-50, 150]}}),
 ]

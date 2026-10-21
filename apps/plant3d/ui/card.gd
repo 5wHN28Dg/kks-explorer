@@ -75,7 +75,7 @@ func open(c: String, note := "") -> void:
 	var repairable: bool = ui.clock.engine.sc.get("faults", []).any(func(f): return f.get("kks", "") == c and f.has("repair"))
 	if ops.is_empty() and not repairable:
 		body.add_child(W.label("Nothing to operate here: it is watched, not worked.", 17, W.DIM))
-	else:
+	elif not ops.is_empty():
 		body.add_child(W.label("Operations", 22))
 	for o in ops:
 		var box := VBoxContainer.new()

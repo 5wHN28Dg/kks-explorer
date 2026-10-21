@@ -189,9 +189,13 @@ FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)
 # Where a fault is repaired when that isn't the equipment of the first state it puts back: the GT for its combustion
 # and fuel control faults; nowhere in the field (the instructor's panel only) for a fault of a supply from outside
 # the plant or of several pieces of equipment at once
-REPAIR_AT = {'gt1_flameout': '10MBA10', 'gt1_fuel_ctrl': '10MBA10', 'gt1_tc7': '10MBA10', 'gt1_load_rej': '10MBA10',
+REPAIR_AT = {'gt1_flameout': '10MBA10', 'gt1_fuel_ctrl': '10MBA10', 'gt1_load_rej': '10MBA10',
              'gt1_gas_low': None, 'cw_valve_power': None, 'st_trip_no_bypass': None, 'cw_ab_fail': None,
-             'ccw_both': None, 'ia_lost': None, 'hw_leak': None}
+             'ccw_both': None, 'ia_lost': None, 'hw_leak': None,
+             # damage inside a machine (a bearing, blades, a thrust collar, a stator): an overhaul, not a repair a
+             # trainee makes at a running machine; the instructor's panel only
+             'gt1_vib': None, 'gt1_surge': None, 'gt1_stator': None, 'gt1_tc7': None, 'st_thrust': None, 'st_vib': None,
+             **{f'ct_fan{i}_vib': None for i in range(1, 11)}}
 
 
 def fault(fid, sets, text, state_kks):
@@ -211,9 +215,10 @@ def fault(fid, sets, text, state_kks):
 COLD_INIT = {'ambient_t': 35, 'ambient_wb': 25, 'grid_frequency': 50, 'hp_mass': -100, 'lp_lvl': -50}
 # The hot restart (FIRST-TRAIN §4 "As built"): the train tripped from load about three hours ago and everything
 # stopped. The HP casing has cooled only to 480 °C (τ 30 h), the boxed-up HP drum to 280 °C (64 bar, 10 K an hour), the
-# steam pipes to 250 °C. The first steam is far colder than the casing: the turbine may roll only once the GT's load
+# steam at the superheater outlet to 270 °C. The first steam is far colder than the casing: the turbine may roll only once the GT's load
 # has brought the steam within 50 K of it.
-HOT_INIT = {'st_casing_t': 480, 'hp_casing_seen': 480, 'hp_tw': 280, 'hp_tsat_slow': 280, 'st_inlet_t': 250}
+HOT_INIT = {'st_casing_t': 480, 'hp_casing_seen': 480, 'hp_tw': 280, 'hp_tsat_slow': 280, 'hp_steam_t': 270,
+            'st_inlet_t': 250}
 
 
 def scenarios(state_kks):
