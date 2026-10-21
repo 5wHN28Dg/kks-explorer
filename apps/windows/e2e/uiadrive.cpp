@@ -240,6 +240,28 @@ static IUIAutomationElement *wait_for(DWORD &pid, const std::string &spec, int m
     return nullptr;
 }
 
+// where the keyboard focus is instead (its name, type, process and window) and the window in front: what a failed
+// focus check saw, so that a window of another program in front tells itself apart from the app moving the focus
+static void say_focus() {
+    IUIAutomationElement *fe = nullptr;
+    std::string what = "nothing";
+    if (SUCCEEDED(ua->GetFocusedElement(&fe)) && fe) {
+        BSTR name = nullptr; fe->get_CurrentName(&name);
+        CONTROLTYPEID t = 0; fe->get_CurrentControlType(&t);
+        int pid = 0; fe->get_CurrentProcessId(&pid);
+        UIA_HWND hw = 0; fe->get_CurrentNativeWindowHandle(&hw);
+        wchar_t cls[128] = L""; if (hw) GetClassNameW((HWND)hw, cls, 128);
+        what = "'" + utf8(name) + "' type " + std::to_string(t) + " pid " + std::to_string(pid) + " class " + utf8(cls);
+        if (name) SysFreeString(name);
+        fe->Release();
+    }
+    HWND fg = GetForegroundWindow();
+    wchar_t title[256] = L"", cls[128] = L"";
+    DWORD fpid = 0;
+    if (fg) { GetWindowTextW(fg, title, 256); GetClassNameW(fg, cls, 128); GetWindowThreadProcessId(fg, &fpid); }
+    say("  (the focus is on " + what + "; in front: '" + utf8(title) + "' class " + utf8(cls) + " pid " + std::to_string(fpid) + ")");
+}
+
 // The keyboard focus to e (select: also select it, as a click would), and look that it is there before going on, as
 // a user does: a list or tree the app rebuilt after e was found (new data from a sync) holds a new item, found again
 // by its spec. false (and the reason logged) if it never got there.
@@ -264,7 +286,7 @@ static bool focus_on(DWORD &pid, IUIAutomationElement *&e, const std::string &sp
         if (!e) { say("ERROR: gone: " + spec); find(pid, "", true); return false; }
         Sleep(300);
     }
-    say("ERROR: can't focus " + spec); find(pid, "", true);
+    say("ERROR: can't focus " + spec); say_focus(); find(pid, "", true);
     return false;
 }
 
@@ -600,7 +622,7 @@ int wmain(int argc, wchar_t **argv) {
             IUIAutomationElement *fe = nullptr;
             BOOL same = FALSE;
             if (SUCCEEDED(ua->GetFocusedElement(&fe)) && fe) { ua->CompareElements(fe, e, &same); fe->Release(); }
-            if (!same) { say("ERROR: not focused: " + arg); find(pid, "", true); e->Release(); return 1; }
+            if (!same) { say("ERROR: not focused: " + arg); say_focus(); find(pid, "", true); e->Release(); return 1; }
         } else if (cmd == "focus") {
             // the keyboard focus to this element (what Tab or a screen reader's navigation does); a list or tree item
             // is looked at afterwards (focus_on: the app may have rebuilt its list since it was found)

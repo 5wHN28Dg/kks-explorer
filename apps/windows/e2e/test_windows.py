@@ -19,10 +19,10 @@ del sys.argv[1:]
 SSH = ['-i', KEY, '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'BatchMode=yes']
 
 
-def vm(cmd, check=False):
+def vm(cmd, check=False, stderr=False):
     r = subprocess.run(['ssh'] + SSH + ['kks@' + VM, cmd], capture_output=True, text=True, timeout=120, errors='replace')
     if check and r.returncode != 0: raise AssertionError(r.stdout + r.stderr)
-    return r.stdout
+    return r.stdout + r.stderr if stderr else r.stdout
 
 
 def put(*files):
@@ -72,6 +72,53 @@ def msix(args):
         out = vm('Get-Content C:\\kks\\msix.log -ErrorAction SilentlyContinue').strip()
         if out: return out
     return 'no answer from msix.ps1'
+
+
+# Notifications ("toasts") off for the desktop user while the tests run, and the user's own setting back afterwards.
+# A notification that stays until it is answered (OneDrive's "Turn On Windows Backup" with "Remind me again", any
+# reminder) takes the foreground, and the keyboard focus with it, when the window in front closes (each script's
+# console does): the app was no longer in front, its focus steps failed and a sync rebuilt what the keyboard had left
+# (2026-10-21: test_flow, test_stale_click, test_systems_follows_sync and test_typed_text_kept on both VMs; uiadrive
+# then logged the focus on "New notification from OneDrive"). The setting is read only by a new notification service
+# (an administrator's restart; the VMs' user is one); ShellExperienceHost, which Windows starts again, takes the one
+# already on screen with it.
+TOAST_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications'
+# the user's own value, kept on the machine until it is back (a run that never got to put it back leaves it there, and
+# the next run keeps that one instead of its own 0); 'unset' when the user never set it
+TOAST_BEFORE = 'C:\\kks\\toasts-before.txt'
+TOAST_RESTART = ("$s = @(Get-Service WpnUserService_*); if ($s.Count -eq 0) { throw 'no notification service' }; "
+                 '$s | Restart-Service -Force; '
+                 'Get-Process ShellExperienceHost -ErrorAction SilentlyContinue | Stop-Process -Force')
+
+
+def toasts_off():
+    """-> True when notifications are off now (toasts_back puts them back); False on an account that is not an
+    administrator (a borrowed laptop's, e2e/host): nothing is changed there, and a notification may take the focus"""
+    out = vm("$ErrorActionPreference = 'Stop'; "
+             "$id = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent(); "
+             "if (-not $id.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { 'not an administrator' } else { "
+             "if (-not (Test-Path '%(m)s')) { $v = (Get-ItemProperty '%(k)s').ToastEnabled; "
+             "if ($null -eq $v) { Set-Content '%(m)s' 'unset' } else { Set-Content '%(m)s' ([string]$v) } }; "
+             "Set-ItemProperty '%(k)s' ToastEnabled 0 -Type DWord; %(r)s; 'toasts off' }"
+             % {'m': TOAST_BEFORE, 'k': TOAST_KEY, 'r': TOAST_RESTART}, stderr=True)
+    if 'not an administrator' in out:
+        print('\nnot an administrator on the test machine: notifications stay on, and one left on screen can take the '
+              'keyboard focus from the app (see apps/windows/README.md)', file=sys.stderr)
+        return False
+    if 'toasts off' not in out:
+        try: toasts_back()
+        finally: raise AssertionError('notifications could not be turned off for the tests: ' + out)
+    return True
+
+
+def toasts_back():
+    """the user's own notification setting back (kept in TOAST_BEFORE); an AssertionError when it could not be"""
+    out = vm("$ErrorActionPreference = 'Stop'; "
+             "if (-not (Test-Path '%(m)s')) { 'nothing to put back' } else { $v = [string](Get-Content '%(m)s' | Select-Object -First 1); "
+             "if ($v.Trim() -notmatch '^[0-9]+$') { Remove-ItemProperty '%(k)s' ToastEnabled -ErrorAction SilentlyContinue } "
+             "else { Set-ItemProperty '%(k)s' ToastEnabled ([int]$v.Trim()) -Type DWord }; %(r)s; Remove-Item '%(m)s'; 'toasts back' }"
+             % {'m': TOAST_BEFORE, 'k': TOAST_KEY, 'r': TOAST_RESTART}, stderr=True)
+    assert 'toasts back' in out or 'nothing to put back' in out, "the user's notification setting was not put back: " + out
 
 
 sys.path.append(os.path.join(REPO, 'tests'))
@@ -128,6 +175,8 @@ class Windows(unittest.TestCase):
                % os.path.basename(MSIX_CER))
             out = msix('-Add C:\\kks\\' + os.path.basename(MSIX))
             assert out.startswith('ok Walkdown_'), 'the MSIX did not install: ' + out
+        # no notifications on screen while the tests run; put back after tearDownClass, or when a later step here fails
+        if toasts_off(): cls.addClassCleanup(toasts_back)
 
     @classmethod
     def tearDownClass(cls):
