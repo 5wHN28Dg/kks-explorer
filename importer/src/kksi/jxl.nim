@@ -37,6 +37,7 @@ proc encodeLossy*(pixels: openArray[byte], w, h, n: int, distance = 1.9, effort 
   free(p)
 
 proc decodeRgba*(data: string): (int, int, bool, seq[byte]) =
+  if data.len == 0: raise newException(JxlError, "JPEG XL decoding failed: no data")
   var w, h, a: cint
   let p = kks_jxl_decode(unsafeAddr data[0], csize_t(data.len), addr w, addr h, addr a)
   if p == nil: raise newException(JxlError, "JPEG XL decoding failed")

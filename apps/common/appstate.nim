@@ -4,7 +4,7 @@
 ## parts: crypto provider, TLS, mDNS, the storage key's home, where the device key lives, local addresses.
 
 import std/[asyncdispatch, httpclient, os, strutils, tables, times, uri, sets, sequtils, nativesockets, selectors]
-import kks/[json, util, crypto, proto, node, api, plant, sync, extras, bundle, plantdata, invites, diagnostics]
+import kks/[json, util, crypto, proto, node, api, plant, sync, extras, bundle, plantdata, invites, diagnostics, model]
 import kksl/[dbstore, net, internet]
 when defined(windows):
   import kks/provider_cng
@@ -44,6 +44,8 @@ type
     syncing*: bool
     nextRound: int64
     onChange*: seq[proc (why: string)]    ## the UI refreshes on these
+    firstModel*: Model                    ## the model built while the window was made (takeModel), nil once taken
+    firstModelOf: (int, int64)            ## (entries, API revision) it was built from
     announced: string
 
 proc nowMs*(): int64 = int64(epochTime() * 1000)
@@ -153,7 +155,25 @@ proc writeCrash(msg: string) {.nimcall, gcsafe, raises: [], tags: [WriteIOEffect
         f.close()
     except CatchableError: discard
 
-proc openApp*(dir = dataDir()): App =
+let launchedAt* = epochTime()   ## (this module's start: the program's first instructions, before its window)
+
+proc timing*(what: string) =
+  ## KKS_TIMING (docs/m6/MEASUREMENTS.md): how long after launch a step of the start ended, as one line "timing:
+  ## <step> <ms> ms after launch" on stderr (GNOME) or in <data dir>/timing.log (Windows: no console)
+  if getEnv("KKS_TIMING").len == 0: return
+  let line = "timing: " & what & " " & $int((epochTime() - launchedAt) * 1000) & " ms after launch"
+  when defined(windows):
+    try:
+      let f = open(dataDir() / "timing.log", fmAppend)
+      f.writeLine(line)
+      f.close()
+    except IOError: discard
+  else:
+    stderr.writeLine line
+
+proc loadApp(dir: string): App =
+  ## The store, the device key, the replayed log and the local API: no change anyone else sees (a first start writes
+  ## the device key and the store's probe row). May run on a thread of its own (openAppInBackground).
   createDir(dir)
   crashFile = dir / "crash.txt"
   errorMessageWriter = writeCrash
@@ -172,6 +192,7 @@ proc openApp*(dir = dataDir()): App =
     except CatchableError:
       if attempt == 10: raise
       sleep(300)
+  timing("store opened")
   var k: PrivateKey
   when defined(windows):
     # the device key stays in the CNG key store (non-exportable, decisions 0020, 0033); a wiped store makes a new one
@@ -183,25 +204,44 @@ proc openApp*(dir = dataDir()): App =
     let j = st.getRow("keys", "node")
     if j != nil: k = keyOf(j)
     else:
-      k = p.p256Generate()
-      st.putRow("keys", "node", keyJson(k))
+      # (in one transaction: two starts at once on a new folder keep the same key, the one the store holds)
+      st.transaction(proc () =
+        let again = st.getRow("keys", "node")
+        if again != nil: k = keyOf(again)
+        else:
+          k = p.p256Generate()
+          st.putRow("keys", "node", keyJson(k)))
   result = App(dir: dir, p: p, store: st, key: k)
+  timing("device key")
   result.n = newNode(p, st, k)
+  timing("log ready (" & $result.n.entries.len & " entries, " &
+         (if result.n.stateFromSaved: "saved state read" else: "replayed") & ")")
   result.api = newApi(result.n, mode = "peer")
   result.api.deviceLabel = label()
   result.id = newIdentity(k)
+
+proc startApp(a: App) =
+  ## what only the instance that runs does, once its store is open: the last run's crash reported, changes followed
   if fileExists(crashFile):            # the last run crashed: report it (§13a), once
     try:
       let t = readFile(crashFile)
       removeFile(crashFile)
-      result.diag("crash", t[max(0, t.len - 6000) .. ^1])
+      a.diag("crash", t[max(0, t.len - 6000) .. ^1])
     except CatchableError: discard
-  let app = result
-  result.n.listeners.add proc (why: string) =
-    app.nextRound = nowMs() + AfterChange
-    app.changed(why)
+  a.n.listeners.add proc (why: string) =
+    a.nextRound = nowMs() + AfterChange
+    a.changed(why)
+
+proc openApp*(dir = dataDir()): App =
+  result = loadApp(dir)
+  result.startApp()
+
 
 proc me*(a: App): (bool, Actor) = a.api.owner
+
+proc saveState*(a: App) =
+  ## the replayed state kept for the next start, when it changed (PROTOCOL-v2 §15b); never raises
+  a.n.saveState()
 
 proc removedNote*(a: App): string = a.store.getMeta("removed")
   ## set when an admin removed this device and it wiped its plant data (§15); the setup screen says so
@@ -244,6 +284,100 @@ proc file*(a: App, path: string): (bool, string) =
   if not result[0]:
     for base in programDataDirs():      # next to the program, installed, or the repo (apps/common → ../../data)
       if fileExists(base / path): return (true, readFile(base / path))
+
+proc buildModel*(a: App, kksTables: string): Model =
+  ## The plant model the screens show (the plant data files of the active version, merged with the replayed state).
+  ## `kksTables`: the program's own KKS tables, used when the plant data has none.
+  proc fileOr(path, dflt: string): string =
+    let (ok, data) = a.file(path)
+    if ok: data else: dflt
+  result = Model()
+  result.sheets = parseSheets(parseStrict(fileOr("sheets.json", "[]"), 4096))
+  result.baseTags = parseTags(parseStrict(fileOr("tags.json", "[]"), 4096))
+  result.procs = parseStrict(fileOr("procedures.json", "[]"), 4096)
+  result.locations = buildLocations(parseStrict(fileOr("locations.json", "{}"), 4096))
+  result.descriptions = loadDescriptions(fileOr("descriptions.json", ""), proc (msg: string) = stderr.writeLine msg)
+  result.kksTables = parseStrict(fileOr("kks.json", kksTables), 4096)
+  try: result.state = a.call("GET", "/api/state")
+  except ApiError: result.state = newObj()
+  result.merge()
+
+proc takeModel*(a: App, kksTables: string): Model =
+  ## the model built while the window was made, the first time (nothing has changed since: sync starts after the
+  ## window); built now after that
+  let first = move a.firstModel
+  if first != nil and a.firstModelOf == (a.n.entries.len, a.api.rev): return first
+  a.buildModel(kksTables)
+
+# ---------------------------------------------------------------- opening while the window is made
+
+type OpenError* = object of CatchableError   ## the background open failed (its message and stack trace)
+
+var
+  loader: Thread[string]
+  loaderStarted = false
+  loaded: App              ## the loader's result, read by the main thread only after joining it
+  loadFailed: string
+
+var loadTables: string     ## the KKS tables for the model the loader builds (openAppInBackground)
+
+proc loadWorker(dir: string) {.thread.} =
+  {.cast(gcsafe).}:
+    try:
+      loaded = loadApp(dir)
+      if loaded.api.owner[0]:            # (joined)
+        try:
+          loaded.firstModelOf = (loaded.n.entries.len, loaded.api.rev)
+          loaded.firstModel = loaded.buildModel(loadTables)
+        except CatchableError: discard          # (built again on the main thread, which then says what is wrong)
+        timing("model built")
+    except CatchableError as e:
+      loadFailed = $e.name & ": " & e.msg & "\n" & e.getStackTrace()
+    # The App is handed to the main thread whole: this thread must leave no reference to it behind. ORC keeps
+    # possible cycle roots per thread, and one left in this thread's list would be unlinked later from the main
+    # thread's list (a wrong index there): collecting here empties the list (what is reachable from `loaded` stays).
+    GC_runOrc()
+
+proc openAppInBackground*(dir = dataDir(), kksTables = "{}"): bool =
+  ## Starts opening the store, replaying the log and building the plant model (`takeModel`, with `kksTables`) on a
+  ## thread of its own while the window is made (decision 0061): `openedApp` then waits for it. Only for a folder that
+  ## already has a store (a first start makes the storage key, which two starts at once must not both do: it goes the
+  ## plain way, after the app knows it is the one that runs). -> whether it started.
+  if loaderStarted or not fileExists(dir / "kks.db"): return false
+  loaderStarted = true
+  loadTables = kksTables
+  createThread(loader, loadWorker, dir)
+  true
+
+proc dropBackgroundOpen*() =
+  ## a start that is not the one that runs (it handed its links over): waits for the thread, then lets go of what it
+  ## opened, so the process never ends with the thread inside the store
+  if loaderStarted:
+    joinThread(loader)
+    loaderStarted = false
+    loadFailed = ""
+    if loaded != nil:
+      try: loaded.store.close() except CatchableError: discard
+      loaded = nil
+
+proc openedApp*(dir = dataDir()): App =
+  ## The app opened by openAppInBackground (waiting for it), else opened now. Raises OpenError if the background
+  ## open failed. Only the main thread calls this, once.
+  if loaderStarted:
+    joinThread(loader)
+    loaderStarted = false
+    if loadFailed.len > 0:
+      let why = move loadFailed
+      raise newException(OpenError, why)
+    result = move loaded
+    result.startApp()
+  else:
+    result = openApp(dir)
+
+proc fileSha*(a: App, path: string): string =
+  ## the blob (SHA-256 hex) of plant file `path` in the version shown now, "" when it has none
+  let (ok, m) = a.n.active
+  if ok and path in m.files: m.files[path][0] else: ""
 
 proc courseFiles*(a: App): (seq[(string, string)], HashSet[string]) =
   ## The course files (docs/COURSES.md) this device shows: the active plant data version's `courses/`, else the
