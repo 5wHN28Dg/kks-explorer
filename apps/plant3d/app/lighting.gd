@@ -128,11 +128,6 @@ static func apply(tier: String, env: Environment) -> void:
 	env.volumetric_fog_enabled = env.volumetric_fog_enabled or "volfog" in on
 	env.glow_enabled = env.glow_enabled or "glow" in on
 	env.sdfgi_enabled = "sdfgi" in on
-	env.ssr_enabled = "ssr" in on
-	env.ssr_max_steps = 48
-	env.ssr_fade_in = 0.15
-	env.ssr_fade_out = 2.0
-	env.ssr_depth_tolerance = 0.2
 	env.ssao_enabled = env.ssao_enabled and not "ssao" in off
 	env.ssil_enabled = env.ssil_enabled and not "ssil" in off
 	env.volumetric_fog_enabled = env.volumetric_fog_enabled and not "volfog" in off

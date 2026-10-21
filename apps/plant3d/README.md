@@ -317,8 +317,8 @@ banner and the flow lines are drawn besides, so the frame times above are the me
   and beams under decks, clear of machines through them), plinths and flashings, louvres and windows, the palisade
   seen through and its streaks' top, the shader's streaks and its ruts on every tier, the retroreflective sign board.
 - `test_photo`: the photo pass (0057): floors by finish (tiles, bare concrete, gratings over the gas turbine's
-  trenches), roof trusses, the halls' frame and overhead cranes clear of the trusses, the tiled halls' reflection
-  probes on the full tier only, the transformers' firewalls, gravelled yards, striped kerbs, the pipes' stencilled
+  trenches), the tiles' sheen, roof trusses, the halls' frame and overhead cranes clear of the trusses, the
+  transformers' firewalls, gravelled yards, striped kerbs, the pipes' stencilled
   names drawn as a sign's text, black valves and grey actuators.
 - `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
   site, each tier's effects.

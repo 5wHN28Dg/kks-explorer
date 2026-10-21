@@ -45,6 +45,7 @@ uniform float wear = 0.0;
 uniform vec4 wet_zone = vec4(0.0);    // a box round water: centre x, z (Godot's axes), half sizes along x and z
 uniform float wet = 0.0;              // how wet at the box's edge and inside (0: no zone)
 const float WET_FALLOFF = 9.0;        // metres beyond the box over which the ground dries
+const float TILE_SHEEN = 0.45;        // a tiled floor's sheen at a grazing view, as a share of its colour
 uniform vec4 emission : source_color = vec4(0.0, 0.0, 0.0, 1.0);   // lamps' light (as Godot's standard material's)
 uniform float emission_energy = 0.0;
 uniform float detail = 1.0;   // the tier: 1 every sample, 0 the phone's
@@ -261,6 +262,7 @@ void fragment() {
 	vec2 tw = fwidth(tq);
 	float cv = n_lo.b * 0.7 + n_hi.r * 0.3;
 	float cw = fwidth(cv);
+	float sheen = 0.0;
 	if (tile_size > 0.0 && up > 0.7) {
 		vec2 tf = abs(fract(tq) - 0.5);
 		float gw = 0.004 / tile_size;
@@ -270,6 +272,7 @@ void fragment() {
 		base *= 0.96 + 0.06 * th;
 		rough = mix(rough * (0.8 + 0.5 * th), 0.8, grout);
 		base = mix(base, base * 0.72, grout);
+		sheen = (1.0 - grout) * (0.8 + 0.4 * th);
 	}
 	// a bare concrete floor: hairline cracks (the noise's contours, broken), dark scuffs and tyre marks
 	if (cracks > 0.0 && up > 0.7) {
@@ -317,5 +320,8 @@ void fragment() {
 	METALLIC = metal;
 	// a material with its colours in the vertices glows in them (a sign's white board and its blue symbol)
 	EMISSION = emission.rgb * emission_energy * (use_vertex_colour ? srgb_to_linear(COLOR.rgb) : vec3(1.0));
+	// glazed tiles mirror the lit hall the flatter one looks along them: a sheen of the floor's own colour (a
+	// reflection probe per hall cost the laptop 19 ms of GPU time and half a gigabyte of video memory: photo pass)
+	EMISSION += base * sheen * TILE_SHEEN * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	if (use_normal) NORMAL_MAP = texture(normal_tex, uv).rgb;
 }

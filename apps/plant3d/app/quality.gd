@@ -89,15 +89,6 @@ static func apply(tier: String, vp: Viewport, sun: DirectionalLight3D, env: Envi
 		vp.size_changed.connect(_on_resize.bind(vp))   # §10: the ranges again when the resolution changes
 	if to_plant:
 		Mat.apply_tier(tier)   # the tier's texture size (kit/materials.gd): one material set, three sizes
-		apply_probes(tier, vp.get_tree())
-
-## The tiled halls' reflection probes (builder: _floor_probe) on the full tier only: each is the hall drawn six times
-## more when captured, which a phone's start cannot spare.
-static func apply_probes(tier: String, tree: SceneTree) -> void:
-	if tree == null:
-		return
-	for pr in tree.get_nodes_in_group("probes_full"):
-		(pr as Node3D).visible = tier == "full"
 
 ## Measuring what the sun's shadow costs (main.gd's `fx_off=`): `shadow` no real-time shadow, `cascades2` two
 ## cascades instead of four, `shadow40` shadows to 40 m, `shadowhard` no soft filtering.

@@ -2,7 +2,8 @@
 ## - floors by finish: the gas turbine hall and the steam turbine's operating floor glazed tiles, the ground floor
 ##   under the deck bare concrete (cracks, dust), bar gratings over the trenches beside the gas turbine;
 ## - wide halls' roofs carried by trusses, the frame inside (columns, girts), an overhead crane on its runway clear of
-##   the trusses, a reflection probe over each tiled floor (the full tier's only);
+##   the trusses; the tiles' sheen at a grazing view in the shader (no reflection probe: half a gigabyte of video
+##   memory and 19 ms of the laptop's GPU time);
 ## - the transformers' firewalls (solid), open yards gravelled, the road's kerbs striped black and yellow;
 ## - the media's names stencilled on the pipes, drawn as a safety sign's text is (no pipeline of their own);
 ## - valves' bodies black, electric actuators grey, bolts rusty.
@@ -10,7 +11,6 @@ extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
 const Mat = preload("res://kit/materials.gd")
-const Quality = preload("res://app/quality.gd")
 const Builder = preload("res://builder/plant_builder.gd")
 
 func run(tree: SceneTree) -> Array:
@@ -45,6 +45,10 @@ func run(tree: SceneTree) -> Array:
 	var tile := mats.floor_tile as ShaderMaterial
 	if float(tile.get_shader_parameter("tile_size")) <= 0.0 or float(tile.get_shader_parameter("roughness_scale")) > 0.2:
 		p.append("tiles: drawn joints and glazed (glossy)")
+	if not FileAccess.get_file_as_string("res://kit/weathered.gdshaderinc").contains("EMISSION += base * sheen * TILE_SHEEN"):
+		p.append("tiles: their sheen at a grazing view")
+	if not plant.find_children("*", "ReflectionProbe", true, false).is_empty():
+		p.append("no reflection probe (its cost: photo pass)")
 	if float((mats.floor_concrete as ShaderMaterial).get_shader_parameter("cracks")) <= 0.0:
 		p.append("bare concrete floors have their cracks")
 	for id in ["gt1_trench_n_cover", "gt1_trench_s_cover"]:
@@ -85,19 +89,6 @@ func run(tree: SceneTree) -> Array:
 				p.append("%s: the crane clears the roof's trusses (crane to %.2f, steel from %.2f)" % [id, cb.end.y, sb.position.y])
 			if cb.size.x < 15.0 and cb.size.z < 15.0:
 				p.append("%s: the crane spans the hall" % id)
-		var probe := body.get_node_or_null("floor_probe") as ReflectionProbe
-		if (probe != null) != has_crane:   # the tiled halls are the turbine halls
-			p.append("%s: a reflection probe over a tiled floor only" % id)
-		elif probe != null and (probe.update_mode != ReflectionProbe.UPDATE_ONCE or not probe.is_in_group("probes_full")):
-			p.append("%s: its probe is captured once, on the full tier only" % id)
-	Quality.apply_probes("lean+vis", tree)
-	for pr in tree.get_nodes_in_group("probes_full"):
-		if (pr as Node3D).visible:
-			p.append("a phone's tier draws no reflection probe")
-	Quality.apply_probes("full", tree)
-	for pr in tree.get_nodes_in_group("probes_full"):
-		if not (pr as Node3D).visible:
-			p.append("the full tier draws its reflection probes")
 	# the transformers' firewalls: solid and as high as given
 	for id in ["trafo_firewall_1", "trafo_firewall_2"]:
 		var w := plant.find_child(id, true, false) as StaticBody3D
