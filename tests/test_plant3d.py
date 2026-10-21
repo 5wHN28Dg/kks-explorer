@@ -274,6 +274,53 @@ class Validator(unittest.TestCase):
                 self.assertEqual(cm.exception.code, 'bad_value')
                 self.assertIn('W012', str(cm.exception))
 
+    def test_the_photo_passs_content_is_checked(self):
+        """A medium's stencilled `name` (1 to 40 characters, no other new key), a `wall` (its height and thickness in
+        range) and a building's `floor` finish and `crane` rail height (docs/PLANT3D.md §2, §5)."""
+        files = {k: t.encode() for k, t in self.V['valid'][0]['files'].items()}
+        # the vectors' kit is frozen: these parts as the kit has them now
+        with open(os.path.join(ROOT, 'data', 'plant3d', 'kit.json'), encoding='utf-8') as f:
+            now = json.load(f)['parts']
+        kit = json.loads(files['kit.json'])
+        for part in ('wall', 'building', 'floor', 'platform'):
+            kit['parts'][part] = now[part]
+        files['kit.json'] = json.dumps(kit).encode()
+        area = next(k for k in sorted(files) if k.startswith('areas/'))
+
+        def plant_with(**media_extra):
+            pl = json.loads(files['plant.json'])
+            m = next(iter(pl['media']))
+            pl['media'][m].update(media_extra)
+            return dict(files, **{'plant.json': json.dumps(pl).encode()})
+
+        def area_with(*structures):
+            a = json.loads(files[area])
+            a['structures'] = a.get('structures', []) + list(structures)
+            return dict(files, **{area: json.dumps(a).encode()})
+
+        wall = {'id': 'fw', 'part': 'wall', 'at': [0, 0, 0], 'params': {'route': [[0, 0, 0], [5, 0, 0]], 'height': 8}}
+        hall = {'id': 'h', 'part': 'building', 'at': [0, 0, 0], 'params': {'outline': [[0, 0], [10, 0], [10, 10], [0, 10]],
+                                                                        'height': 12, 'floor': 'tile', 'crane': 8, 'openings': [{'kind': 'door', 'at': [5, 0, 0], 'width': 1, 'height': 2.1}]}}
+        P.check_files(plant_with(name='Feedwater'))
+        P.check_files(area_with(wall))
+        P.check_files(area_with(hall))
+        P.check_files(area_with(dict(hall, params=dict(hall['params'], outline=[[0, 0], [36, 0], [36, 19], [0, 19]],
+                                                         height=20, crane=14.5))))
+        for bad in (plant_with(name='x' * 41), plant_with(name=''), plant_with(label='Feedwater'),
+                    area_with(dict(wall, params=dict(wall['params'], height=25))),
+                    area_with(dict(hall, params=dict(hall['params'], floor='marble'))),
+                    area_with(dict(hall, params=dict(hall['params'], crane=90))),
+                    area_with(dict(hall, params=dict(hall['params'], crane=4))),
+                    area_with(dict(hall, params=dict(hall['params'], crane=10))),
+                    area_with(dict(hall, params=dict(hall['params'], cladding='concrete'))),
+                    # the build's own refusals mirrored: a rail too high for the trusses of a 30 m span (test_builder's
+                    # crane_clash case), and a rectangular hall turned off the plant's axes
+                    area_with(dict(hall, params=dict(hall['params'], outline=[[0, 0], [36, 0], [36, 19], [0, 19]],
+                                                     height=20, crane=16))),
+                    area_with(dict(hall, yaw=30))):
+            with self.assertRaises(P.FormatError):
+                P.check_files(bad)
+
     def test_error_messages_name_the_file_and_item(self):
         r = next(x for x in self.V['reject'] if x['why'] == 'a bend that does not fit')
         files = {k: t.encode() for k, t in self.V['valid'][0]['files'].items()}

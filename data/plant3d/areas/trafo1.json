@@ -15,7 +15,9 @@
  ],
  "pipes": [],
  "structures": [
-  {"id": "trafo_fence", "part": "fence", "at": [-30, 40, 0], "params": {"route": [[0.5, 0.5, 0], [29.5, 0.5, 0], [29.5, 19.5, 0], [0.5, 19.5, 0]], "height": 2.4}}
+  {"id": "trafo_fence", "part": "fence", "at": [-30, 40, 0], "params": {"route": [[0.5, 0.5, 0], [29.5, 0.5, 0], [29.5, 19.5, 0], [0.5, 19.5, 0]], "height": 2.4}},
+  {"id": "trafo_firewall_1", "part": "wall", "at": [-30, 40, 0], "params": {"route": [[1.5, 10.5, 0], [13.5, 10.5, 0]], "height": 8, "thickness": 0.4}},
+  {"id": "trafo_firewall_2", "part": "wall", "at": [-30, 40, 0], "params": {"route": [[16.5, 4, 0], [16.5, 16, 0]], "height": 8, "thickness": 0.4}}
  ],
  "signs": [
   {"text": "Transformer yard: danger, high voltage", "at": [-15, 40.4, 2], "yaw": 180, "size": 0.4}

@@ -703,6 +703,7 @@ func pipe(parent: Node3D, p: Dictionary) -> void:
 	P_PIPE.pipe(m, route, {"od": od, "ins": ins, "band": "medium_" + p.medium, "paint": Mat.pipe_paint(group), "arrows": float(p.get("arrows", 0)),
 		"buried": buried, "gaps": gaps, "flanges": flanges, "supports": sup,
 		"bend": {"3d": 3.0, "5d": 5.0}.get(p.get("bend", ""), 1.5)}, origin)
+	_stencils(parent, p, route, od, ins, buried, gaps)
 	# a pipe runs through many cells: its triangles go to the cell they lie in (0041's grouping, culling and LOD per
 	# cell, a detail range measured from its own cell)
 	var o := Geom.g([origin.x, origin.y, origin.z])
@@ -712,6 +713,122 @@ func pipe(parent: Node3D, p: Dictionary) -> void:
 		for k in layers:
 			_cell(layers[k], k, xf)
 			tris_total += layers[k].tris[0]
+
+## The straight pieces of a pipe that carry colour bands, as kit/parts_pipes.gd pipe() makes them (the runs between
+## the bends' tangents, split at the bare stretches round valves and instruments when insulated): {a, d, len, k, bands
+## (centres along the piece), bw, arrow}. The stencilled names are placed from these (between bands, clear of arrows).
+static func band_pieces(route: Array, od: float, ins: float, p: Dictionary, buried: Dictionary, gaps: Array) -> Array:
+	var out: Array = []
+	var pc: Dictionary = P_PIPE.pieces(route, od * float({"3d": 3.0, "5d": 5.0}.get(p.get("bend", ""), 1.5)))
+	var every: float = float(p.get("arrows", 0))
+	var band_every := every if every > 0.0 else 12.0
+	var bw := clampf(od * 0.6, 0.12, 0.5)
+	var arrow := clampf(od * 1.4, 0.3, 1.2) + 0.05 if every > 0.0 else 0.0
+	for run in pc.runs:
+		if buried.has(run.seg):
+			continue
+		var a: Vector3 = run.a
+		var len: float = a.distance_to(run.b)
+		if len < 1e-3:
+			continue
+		var d: Vector3 = (run.b - a) / len
+		var cuts: Array = [[0.0, len]]
+		if ins > 0.0:
+			cuts = []
+			var t := 0.0
+			var gs: Array = []
+			for g in gaps:
+				var g0: float = clampf(float(g[0]) - run.s0, 0.0, len)
+				var g1: float = clampf(float(g[1]) - run.s0, 0.0, len)
+				if g1 > g0 + 1e-3:
+					gs.append([g0, g1])
+			gs.sort_custom(func(x, y): return x[0] < y[0])
+			for g in gs:
+				if g[0] > t:
+					cuts.append([t, g[0]])
+				t = maxf(t, g[1])
+			if t < len:
+				cuts.append([t, len])
+		for c in cuts:
+			var l2: float = c[1] - c[0]
+			if l2 < bw * 4.0:
+				continue
+			var k := maxi(1, int(round(l2 / band_every)))
+			var bands: Array = []
+			for i in k:
+				bands.append(l2 * (i + 0.5) / k)
+			out.append({"a": a + d * c[0], "d": d, "len": l2, "k": k, "bands": bands, "bw": bw, "arrow": arrow,
+				"s0": float(run.s0) + float(c[0])})
+	return out
+
+## The service name stencilled in black on a pipe's sides (plant.json's medium `name`), as plants label their lines
+## beside the flow arrows: on each straight horizontal run long enough to carry it, between the colour bands, clear
+## of the bends and of the valves and instruments (`gaps`), on both sides at the pipe's middle. The same label as a
+## safety sign's text (no outline, black, one-sided: no pipeline of its own), drawn within STENCIL_RANGE.
+const STENCIL_RANGE := 30.0
+const STENCIL_MIN_R := 0.1
+## Where a pipe's name goes: [point (plant coordinates, on the axis), direction] for each place on a level piece of
+## the pipe between its colour bands (or a quarter of the way along a piece with one band), its `w` metres clear of
+## the bands, their arrows, the piece's ends (the bends) and the valves and instruments (`gaps`).
+static func stencil_places(route: Array, od: float, ins: float, p: Dictionary, buried: Dictionary, gaps: Array, w: float) -> Array:
+	var out: Array = []
+	for pc in band_pieces(route, od, ins, p, buried, gaps):
+		var d: Vector3 = pc.d
+		var L: float = pc.len
+		if absf(d.z) > 0.02:
+			continue                       # level pieces only (a label stands level)
+		var places: Array = []
+		for j in range(1, pc.k):
+			places.append(L * j / pc.k)
+		if pc.k == 1:
+			places = [L * 0.25]
+		for t in places:
+			if t - w * 0.5 < 0.3 or t + w * 0.5 > L - 0.3:
+				continue
+			var hits_band := false
+			for cb in pc.bands:
+				if t + w * 0.5 + 0.15 > cb - pc.bw * 0.5 and t - w * 0.5 - 0.15 < cb + pc.bw * 0.5 + 0.05 + pc.arrow:
+					hits_band = true
+			if hits_band:
+				continue
+			var sm: float = pc.s0 + t      # clear of the valves and instruments on a bare pipe too
+			if gaps.any(func(gp): return gp[0] < sm + w * 0.5 + 0.2 and gp[1] > sm - w * 0.5 - 0.2):
+				continue
+			out.append([pc.a + d * t, d])
+	return out
+
+func _stencils(parent: Node3D, p: Dictionary, route: Array, od: float, ins: float, buried: Dictionary, gaps: Array) -> int:
+	var text := String(b.plant.media[p.medium].get("name", ""))
+	var rr := od * 0.5 + ins
+	if text == "" or rr < STENCIL_MIN_R:
+		return 0
+	var size := clampf(rr * 0.55, 0.08, 0.3)
+	var w := ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 64).x * size / 64.0
+	var n := 0
+	for pl in stencil_places(route, od, ins, p, buried, gaps, w):
+		var mid: Vector3 = pl[0]
+		var d: Vector3 = pl[1]
+		var side := Vector3(-d.y, d.x, 0.0)
+		for sgn in [1.0, -1.0]:
+			var nrm: Vector3 = side * sgn
+			var l := Label3D.new()
+			l.name = "stencil"
+			l.text = text
+			l.font_size = 64
+			l.pixel_size = size / 64.0
+			l.double_sided = false
+			l.outline_size = 0
+			l.modulate = Color(0.02, 0.02, 0.02)
+			l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			l.visibility_range_end = STENCIL_RANGE
+			var z_ax := Geom.g([nrm.x, nrm.y, nrm.z]) - Geom.g([0, 0, 0])
+			var y_ax := Vector3.UP
+			var x_ax := y_ax.cross(z_ax).normalized()
+			l.transform = Transform3D(Basis(x_ax, y_ax, z_ax), Geom.g([mid.x + nrm.x * (rr + 0.012), mid.y + nrm.y * (rr + 0.012), mid.z]))
+			l.set_meta("stencil", p.medium)
+			parent.add_child(l, true)   # readable names (stencil, stencil2, …)
+			n += 1
+	return n
 
 ## Mesh arrays turned by a basis (positions, normals, tangents).
 static func _turned(arr: Array, bs: Basis) -> Array:

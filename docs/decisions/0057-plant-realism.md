@@ -207,3 +207,72 @@ The laptop's runs had the user's code editor on the GPU (400–470 ms of render 
 its frame p95 says nothing about the 60 fps rule; the app's own GPU time is unchanged. The peak PSS grew by about a
 quarter of a gigabyte, within the rule but not yet explained (the lightmap grew by 8 MB): to break down before the next
 change adds memory.
+
+## Photo pass (2026-10-21)
+
+The user photographed halls and yards of a combined-cycle plant in service (private reference, not in the
+repository). The user's choice (2026-10-21): the details such plants share, in neutral colours, not that plant's own
+colour scheme. What the comparison showed and what changed, with the same one shader and vertex format (0060):
+
+- **Floors by finish** (content: a building's `floor`, a deck's `finish`): the gas turbine hall and the steam
+  turbine's operating floor glazed light tiles (0.8 m, the grout and each tile's tone drawn by the shader, a sheen of
+  the floor's own colour at a grazing view, lit as the floor is), the ground floor under the deck and the pump houses bare concrete with
+  hairline cracks, scuffs and tyre marks; dark bar gratings over trenches beside the gas turbine.
+- **Halls:** wide spans (18 m and more) carried by trusses (chords, posts, diagonals) instead of solid rafters, in the
+  frame's dark steel; columns at every bay (beside an opening, not in it) and girts in bands up the walls, broken at openings; round high-bay lamps;
+  more high windows; an overhead travelling crane in safety yellow on its runway in both turbine halls (content
+  `crane`: the rail height; only in a rectangular metal-clad hall, the build refusing one whose trolley would reach
+  into the roof steel).
+- **Outside:** the transformers' concrete firewalls (a new structure, `wall`); open yards (no building) gravelled;
+  the ring road concrete in 5 m bays; its kerbs painted in black and yellow stripes; the cladding a light silver grey.
+- **Pipes and valves:** the medium's name stencilled in black on both sides of each level run, between the colour bands (plant.json
+  `media.name`; the safety signs' label settings, so no pipeline of its own; drawn within 30 m); jacketing brighter;
+  valve bodies, bonnets and yokes black, electric actuators silver grey, bolts rusty.
+- **The electrical room** over the control room: two rows of switchgear facing each other across an aisle.
+
+Tried and left out: **a reflection probe** over each tiled floor (box-projected, captured once, the full tier only):
+the floor mirrored the hall well, but the laptop's GPU p95 went from 10.0 to 23.7 ms in the release build's 600 s
+walk (9.8 to 28.6 ms in a 120 s walk of the project with and without them), its video memory from 384 to
+948 MB (its reflection atlas, by the size; not broken down), and the first capture held one frame for 2.96 s. **SSR** on the full tier showed nothing
+on these floors.
+
+Measured (release builds, baked; "main" = 75fd006 before the polish pass, "before" = the polish and behaviour passes
+together (#226 and #227), "after" = this change on the merged main; Note 9 `lean+vis`, first start, plugged in,
+10-minute walk; laptop `full` 1600×900, 600 s, with the user's code editor on the GPU, 300–530 ms of render engine a
+second, `gpu_clients.py`):
+
+| | Rule | Main | Before | After |
+|---|---|---|---|---|
+| Note 9, frames shown at ≥ 30 fps (SurfaceFlinger) | ≥ 95 % | 99.73 % | 97.72 % | 99.63 % (99.56 % before the review's last fixes) |
+| Note 9, frames over 100 ms after 5 s | none | none (worst 57.2 ms) | none (worst 66.2 ms) | none (worst 67.7 ms; 87.4 ms before the review's last fixes); 1 (104 ms) in a cooled run of an earlier build of this change, below |
+| Note 9, GPU time median / p95 | | 18.8 / 25.1 ms | 24.0 / 33.4 ms | 21.0 / 25.5 ms |
+| Note 9, peak PSS (sampled) / of it the driver's GPU memory (GL mtrack) / Godot's video memory | ≤ 1.5 GB | 649 / 297 / 220 MB | 945 / 558 / 230 MB | 938 / 560 / 243 MB |
+| Note 9, launch to the first walkable frame, three first starts (big cores' median clock) | ≤ 15 s | 9.80, 10.31, 10.34 s (1,586 / 1,469 / 1,469 MHz) | 9.13, 9.05, 10.78 s (1,794 / 1,794 / 1,469) | 9.09, 8.99, 9.36 s (1,794 / 1,794 / 1,794) |
+| Note 9, pipelines for the first frame | | 0/13/0/7 | 0/13/0/7 | 0/13/0/7 |
+| Laptop, frame p95 / GPU p95 / video memory | ≤ 16.7 ms (GPU free) | | 28.0 / 10.0 ms / 384 MB | 27.4 / 10.8 ms / 386 MB (the build before the review's last fixes) |
+| Laptop, first frame / pipelines (surface + specialization) | ≤ 5 s | | 2.04 s / 15 + 9 | not measured on a quiet machine (4.83 s in a busy one: below) / 15 + 9 |
+| Lightmap texels / APK | ≤ 150 MB | 6.3 M / 115 MB | 8.4 M / 118 MB | 10.5 M / 124 MB (the frame, trusses and crane: 2 M texels, about 8 MB on the phone) |
+
+The phone's runs are first starts after the phone cooled (battery under 31 °C; main's run began at 29.7 °C, the
+"before" run at 33.8 °C right after another). Warm, the same builds showed frames over 100 ms: this change's build
+measured 94.90 % at 30 fps and 62 frames over 100 ms in one run begun at 32.6 °C, then, cooled, 99.01 % with one
+frame of 104 ms, and two more cooled runs (the pipes' names hidden by `fx_off=stencils` and shown) 99.44 % and
+99.66 %, worst 75.0 and 57.8 ms: the names cost nothing measurable, the warm runs were the phone's clock. On the final build the Note 9's rules hold
+(cooled); an earlier build of this change, the same drawing but for the review's fixes, had one cooled run with a
+104 ms frame, and the warm runs break the rule for every build measured warm here: the margin is narrower than before
+the polish pass (main's 99.73 %), so measure it cool and more than once.
+
+The laptop's numbers are from a busy machine (the user's editor on the GPU throughout, and late on a virtual machine
+of another task, load average 5.6): its first frame, 3.94 s in an earlier run of this change and 4.83 s in the last,
+was 6.3 to 12.3 s for the build before and 6.6 to 8.6 s for this one with an empty Godot data folder each, alternated:
+no difference between them, and the 5 s rule to be measured again on a quiet machine.
+
+**The polish pass's quarter gigabyte, broken down** (`frames.sh` now keeps the peak's `dumpsys meminfo`): it is the
+GPU driver's own memory (GL mtrack, 297 → 558 MB), not what Godot allocates (its video memory 220 → 230 MB: textures,
+meshes, the lightmap); the native heap grew 42 MB (242 → 284 MB). This change adds 2 MB of driver memory (558 → 560 MB). What the driver holds the more for is
+not yet found: pipelines are the same 20, the textures and meshes Godot counts barely grew. The next lever is a
+build with the polish pass's pieces taken out one at a time (louvres, liners, roof steel, palisade) on the Note 9.
+
+The laptop's 60 fps rule could not be measured with the GPU free (the user's editor drew on it through every run);
+the app's own GPU time is about the same (10.8 ms in the final build's run, 9.6 ms in an earlier build's,
+against 10.0 ms before, at the 95th percentile).

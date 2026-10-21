@@ -6,6 +6,7 @@ UNITS = {'0': 'Common to the whole plant', '1': 'Gas turbine train 1 (GT 1, gene
          '3': 'Steam turbine unit (turbine, generator, condenser, cooling water)'}
 SYSTEMS = {
     'BAC': 'Generator circuit breaker', 'BAT': 'Generator step-up transformer', 'BBT': 'Unit auxiliary transformer',
+    'BBA': 'Medium-voltage distribution', 'BFA': 'Low-voltage main distribution',
     'GHC': 'Demineralised water storage', 'HAC': 'Economiser', 'HAD': 'Evaporator and drum', 'HAH': 'Superheater',
     'HAJ': 'Reheater', 'HAN': 'Boiler drains and vents', 'HNA': 'Flue gas ducts (HRSG inlet and casing)',
     'HNE': 'Stack', 'LAB': 'Feedwater piping', 'LAC': 'Feedwater pumps', 'LAE': 'Superheater spray water',
@@ -31,10 +32,13 @@ EQUIPMENT = {'AA': 'Valve or damper with its actuator', 'AC': 'Heat exchanger or
 MEASUREMENTS = {'CB': 'Radiation (flame)', 'CF': 'Flow', 'CG': 'Position or displacement', 'CL': 'Level',
                 'CP': 'Pressure', 'CS': 'Speed', 'CT': 'Temperature', 'CY': 'Vibration'}
 
-MEDIA = {'cooling_water': ('water', '#2e7d32'), 'raw_water': ('water', '#558b2f'), 'feedwater': ('water', '#1b5e20'),
-         'condensate': ('water', '#43a047'), 'boiler_water': ('water', '#00695c'), 'steam_hp': ('steam', '#c62828'),
-         'steam_rh': ('steam', '#ad1457'), 'steam_crh': ('steam', '#e57373'), 'steam_lp': ('steam', '#ef6c00'),
-         'steam_aux': ('steam', '#d84315'), 'air': ('air', '#78909c'), 'fuel_gas': ('gas', '#f9a825')}
+# each medium: its colour group, its band's colour, and the service name stencilled on its pipes
+MEDIA = {'cooling_water': ('water', '#2e7d32', 'Cooling water'), 'raw_water': ('water', '#558b2f', 'Raw water'),
+         'feedwater': ('water', '#1b5e20', 'Feedwater'), 'condensate': ('water', '#43a047', 'Condensate'),
+         'boiler_water': ('water', '#00695c', 'Boiler water'), 'steam_hp': ('steam', '#c62828', 'HP steam'),
+         'steam_rh': ('steam', '#ad1457', 'Hot reheat steam'), 'steam_crh': ('steam', '#e57373', 'Cold reheat steam'),
+         'steam_lp': ('steam', '#ef6c00', 'LP steam'), 'steam_aux': ('steam', '#d84315', 'Auxiliary steam'),
+         'air': ('air', '#78909c', 'Air'), 'fuel_gas': ('gas', '#f9a825', 'Fuel gas')}
 
 
 def plant(codes):
@@ -53,7 +57,7 @@ def plant(codes):
                      'this plant uses, with meanings in our own words.')
     return {'format': 'walkdown-plant', 'version': 1, 'id': 'ccpp', 'title': 'Generic 2-2-1 combined-cycle plant',
             'frequency_hz': 50, 'kks': kks,
-            'media': {k: {'group': g, 'band': b} for k, (g, b) in MEDIA.items()},
+            'media': {k: {'group': g, 'band': b, 'name': n} for k, (g, b, n) in MEDIA.items()},
             'areas': ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack'],
             'ext': ['ambient_t', 'ambient_wb', 'grid_frequency'],
             'start': {'at': [-20, 0, 0], 'yaw': 90}}

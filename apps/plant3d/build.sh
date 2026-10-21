@@ -112,7 +112,9 @@ if [ "$MODE" = release ] || [ "$MODE" = bake ]; then
   # thread of its own while the bake opens its scene, and crashed (builder/bake/script_doc_cache.gd)
   $T "$GODOT" --headless --path "$HERE" --script res://builder/bake/script_doc_cache.gd >>"$HERE/.import.log" 2>&1 ||
     { tail -5 "$HERE/.import.log"; echo "the script documentation cache for the bake was not written" >&2; exit 1; }
-  LANG=C.UTF-8 $T "$GODOT" -e --display-driver x11 --rendering-driver vulkan --path "$HERE" -- --bake-lightmaps \
+  # the bake has its own limit: 3 to 10 minutes on the Iris Xe, more while another app shares the GPU (it ran past
+  # the 600 s the other steps get while an editor drew on the GPU: photo pass)
+  LANG=C.UTF-8 timeout "${BAKE_TIMEOUT:-1800}" "$GODOT" -e --display-driver x11 --rendering-driver vulkan --path "$HERE" -- --bake-lightmaps \
     >"$HERE/.bake.log" 2>&1 || { grep -E "^bake:|ERROR" "$HERE/.bake.log" | tail -20; echo "the lightmap's bake failed (apps/plant3d/.bake.log)" >&2; exit 1; }
   grep '^bake:' "$HERE/.bake.log"
   $T "$GODOT" --headless --path "$HERE" --import >>"$HERE/.import.log" 2>&1

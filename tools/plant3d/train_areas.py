@@ -165,21 +165,27 @@ def control():
     # the operator desks behind the trainee's start (plant.json `start`, facing the door), their screens facing east:
     # the control room's overview screens (PLANT3D.md §7.11) are worked from them
     desks = [eq('00CWA10', 'Main control desk A', 'operator_desk', [-25, -2.2, 0], 90, {'width': 3.2, 'screens': 4}),
-             eq('00CWB10', 'Main control desk B', 'operator_desk', [-25, 2.2, 0], 90, {'width': 3.2, 'screens': 4})]
+             eq('00CWB10', 'Main control desk B', 'operator_desk', [-25, 2.2, 0], 90, {'width': 3.2, 'screens': 4}),
+             # the electrical room over the control room: two rows of switchgear facing each other across an aisle
+             eq('00BBA10', 'Medium-voltage switchgear A', 'switchgear_row', [-30, 1, 6], 90,
+                {'panels': 14, 'depth': 1.5}, 'front'),
+             eq('00BFA10', 'Low-voltage switchboard A', 'switchgear_row', [-22, 1, 6], 270,
+                {'panels': 14, 'depth': 1.0}, 'front')]
     return area('control', 'Control building', [[-40, -15], [-10, 15]], equipment=desks, structures=[
         st('ctl_building', 'building', [-40, -15, 0], kks='00UCA10', outline=rect(30, 30), height=12,
            cladding='concrete', openings=[{'kind': 'door', 'at': [30, 15, 0], 'width': 1.8, 'height': 2.4}]),
         st('ctl_door', 'door', [-10, 0, 0], 90, kind='double', width=1.8),
         st('ctl_floor_6', 'floor', [-40, -15, 6], outline=rect(30, 30), openings=[box(1, 1, 8.5, 5)]),
         stair_tower('ctl_stair', [-39, -14, 0], [-31.4, -10, 6]),
-    ], signs=[sign('Control room', [-11, 2, 2.6], 90), sign('Control building 00UCA10', [-10.1, -4, 3], 90)])
+    ], signs=[sign('Control room', [-11, 2, 2.6], 90), sign('Control building 00UCA10', [-10.1, -4, 3], 90),
+              sign('Electrical room', [-26, -14.9, 8.6], 0)])
 
 
 # ---------------------------------------------------------------- common auxiliaries (bop)
 
 def bop():
     structures = [
-        st('bop_boiler_house', 'building', [88, -8, 0], outline=rect(16, 16), height=10, cladding='metal',
+        st('bop_boiler_house', 'building', [88, -8, 0], outline=rect(16, 16), height=10, cladding='metal', floor='concrete',
            openings=[{'kind': 'door', 'at': [16, 4, 0], 'width': 3, 'height': 3.5},
                      {'kind': 'pipe', 'at': [0, 8, 9], 'width': 0.5, 'height': 0.5},
                      louvre(0, 4, 7.5, 2.5, 1.2), louvre(0, 12, 7.5, 2.5, 1.2), louvre(8, 0, 7.5, 2.5, 1.2),
@@ -299,7 +305,7 @@ def cw():
                                       f'Circulating water pump {letter} discharge pressure (transmitter)',
                                       range=[0, 10], unit='bar')]))
     structures = [
-        st('cw_house', 'building', [140, -12, 0], kks='30UQA10', outline=rect(25, 20), height=12,
+        st('cw_house', 'building', [140, -12, 0], kks='30UQA10', outline=rect(25, 20), height=12, floor='concrete',
            openings=[{'kind': 'door', 'at': [12, 20, 0], 'width': 4, 'height': 4},
                      {'kind': 'pipe', 'at': [10, 0, 1.5], 'width': 14, 'height': 1.6},
                      # the motors' air out high on every wall, windows at the pump floor's eye level
@@ -411,13 +417,18 @@ def st_area():
              nz('30MAG10AC001', 'cw_outlet_b'), [], jn('30PAB20BR010', [47, 18, -4.5])),
     ]
     structures = [
+        # the ground floor under the operating deck bare concrete, the deck tiled; the crane's rail above the high
+        # windows on both long walls
         st('st_hall', 'building', [0, -25, 0], kks='30UMA10', outline=rect(80, 50), height=32, cladding='metal',
+           floor='concrete', crane=26,
            openings=[{'kind': 'door', 'at': [80, 30, 0], 'width': 6, 'height': 6},
                      {'kind': 'door', 'at': [0, 45, 0], 'width': 1.2, 'height': 2.4},
                      {'kind': 'pipe', 'at': [80, 27, 9], 'width': 14, 'height': 4}] +
-                    [window(10 + 12 * i, 50, 24, 4, 2) for i in range(6)] + [louvre(80, 10, 24, 4, 2),
-                                                                             louvre(80, 40, 24, 4, 2)]),
-        st('st_floor_12', 'platform', [10, -20, 12], outline=rect(70, 40), deck='concrete', edge='handrail'),
+                    [window(10 + 12 * i, 50, 24, 4, 2) for i in range(6)] +
+                    [window(10 + 12 * i, 0, 24, 4, 2) for i in range(6)] + [louvre(80, 10, 24, 4, 2),
+                                                                            louvre(80, 40, 24, 4, 2)]),
+        st('st_floor_12', 'platform', [10, -20, 12], outline=rect(70, 40), deck='concrete', edge='handrail',
+           finish='tile'),
         st('st_floor_6', 'floor', [0, -25, 6], outline=rect(10, 50)),
         stair_tower('st_stair_w', [3, 12, 0], [10, 16, 12]),
         st('st_pit', 'pit', [30, -14, 0], outline=rect(28, 26), depth=6),
@@ -490,14 +501,21 @@ def gt1():
              parts=[inst('10MBP10CP001', 'pressure_transmitter', 0.3, 'top', 'Fuel gas pressure', range=[0, 50])]),
     ]
     structures = [
+        # tiled walkways, bar gratings over the trenches along the gas turbine, the crane's rail over the windows
         st('gt1_hall', 'building', [0, 50, 0], kks='10UMB10', outline=rect(80, 30), height=20, cladding='metal',
+           floor='tile', crane=14.5,
            openings=[{'kind': 'door', 'at': [40, 0, 0], 'width': 6, 'height': 6},
                      {'kind': 'louvre', 'at': [40, 15, 20], 'width': 14, 'height': 16},
                      {'kind': 'pipe', 'at': [80, 15, 5], 'width': 9, 'height': 10},
                      {'kind': 'door', 'at': [30, 30, 0], 'width': 1.0, 'height': 2.1},
                      {'kind': 'pipe', 'at': [40, 30, 1], 'width': 0.6, 'height': 0.6},
-                     louvre(10, 0, 14, 4, 2), louvre(70, 0, 14, 4, 2), window(20, 30, 10, 4, 1.5),
-                     window(50, 30, 10, 4, 1.5), window(65, 30, 10, 4, 1.5)]),
+                     louvre(10, 0, 10.5, 4, 2), louvre(70, 0, 10.5, 4, 2), window(20, 30, 10, 4, 1.5),
+                     window(50, 30, 10, 4, 1.5), window(65, 30, 10, 4, 1.5), window(25, 0, 11, 4, 1.5),
+                     window(55, 0, 11, 4, 1.5)]),
+        st('gt1_trench_n', 'pit', [24, 68.5, 0], outline=rect(34, 2.5), depth=1.2),
+        st('gt1_trench_n_cover', 'grating', [24, 68.5, 0], outline=rect(34, 2.5)),
+        st('gt1_trench_s', 'pit', [24, 59, 0], outline=rect(34, 2.5), depth=1.2),
+        st('gt1_trench_s_cover', 'grating', [24, 59, 0], outline=rect(34, 2.5)),
         st('gt1_door_s', 'door', [40, 50, 0], 180, kind='roller', width=6, height=6),
         st('gt1_door_n', 'door', [30, 80, 0], 0, kind='personnel'),
         st('gt1_skid_slab', 'slab', [8, 82, 0], outline=rect(36, 8), thickness=0.3),
@@ -520,6 +538,9 @@ def trafo1():
     ], structures=[
         st('trafo_fence', 'fence', [-30, 40, 0], route=[[0.5, 0.5, 0], [29.5, 0.5, 0], [29.5, 19.5, 0], [0.5, 19.5, 0]],
            height=2.4),
+        # concrete firewalls between the transformers (a fire in one oil-filled tank must not reach the next)
+        st('trafo_firewall_1', 'wall', [-30, 40, 0], route=[[1.5, 10.5, 0], [13.5, 10.5, 0]], height=8, thickness=0.4),
+        st('trafo_firewall_2', 'wall', [-30, 40, 0], route=[[16.5, 4, 0], [16.5, 16, 0]], height=8, thickness=0.4),
     ], signs=[sign('Transformer yard: danger, high voltage', [-15, 40.4, 2], 180)])
 
 

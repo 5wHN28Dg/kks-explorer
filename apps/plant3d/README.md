@@ -316,6 +316,10 @@ banner and the flow lines are drawn besides, so the frame times above are the me
 - `test_look`: the polish pass (0057): ceilings (liner, roof steel, lamps hung from purlins between rafters, decking
   and beams under decks, clear of machines through them), plinths and flashings, louvres and windows, the palisade
   seen through and its streaks' top, the shader's streaks and its ruts on every tier, the retroreflective sign board.
+- `test_photo`: the photo pass (0057): floors by finish (tiles, bare concrete, gratings over the gas turbine's
+  trenches), the tiles' sheen, roof trusses, the halls' frame and overhead cranes clear of the trusses, the
+  transformers' firewalls, gravelled yards, striped kerbs, the pipes' stencilled
+  names drawn as a sign's text, black valves and grey actuators.
 - `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
   site, each tier's effects.
 - `test_bake_prep`: what `build.sh` does before the bake (CI cannot bake): the editor's script documentation cache.

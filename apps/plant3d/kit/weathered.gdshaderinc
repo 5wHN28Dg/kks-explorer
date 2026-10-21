@@ -19,6 +19,8 @@
 // Pipe cladding (`lap_length`): aluminium sheets lapped every lap_length along the pipe (UV1.y) with the seam along it.
 // The ground (`macro`): large patches of darker and paler ground, compacted bands with tyre ruts beside the road
 // (`line_box`) and along a track (`track`).
+// Floors: glazed tiles (`tile_size`) with grout, and bare concrete's cracks, scuffs and tyre marks (`cracks`), no
+// texture read of their own.
 // Gratings (`grating`): an open bar grating drawn from UV1 (30 mm bars, 100 mm cross rods), its gaps dark, and its
 // mean colour where the bars get smaller than a pixel (no shimmer at a distance).
 
@@ -43,6 +45,7 @@ uniform float wear = 0.0;
 uniform vec4 wet_zone = vec4(0.0);    // a box round water: centre x, z (Godot's axes), half sizes along x and z
 uniform float wet = 0.0;              // how wet at the box's edge and inside (0: no zone)
 const float WET_FALLOFF = 9.0;        // metres beyond the box over which the ground dries
+const float TILE_SHEEN = 0.7;         // a tiled floor's sheen at a grazing view, as a share of its colour
 uniform vec4 emission : source_color = vec4(0.0, 0.0, 0.0, 1.0);   // lamps' light (as Godot's standard material's)
 uniform float emission_energy = 0.0;
 uniform float detail = 1.0;   // the tier: 1 every sample, 0 the phone's
@@ -55,6 +58,8 @@ uniform float sheet_width = 0.0;      // corrugated sheets this wide (m) along U
 uniform float lap_length = 0.0;       // cladding sheets this long (m) along UV1.y (0: none)
 uniform float macro = 0.0;            // the ground's large-scale variation and ruts (0: none)
 uniform vec4 track = vec4(0.0);       // a track's axis: a point (x, z) and a unit direction (x, z); zero: none
+uniform float tile_size = 0.0;        // a tiled floor: square tiles this wide (m) in world x, z, grout between (0: none)
+uniform float cracks = 0.0;           // a bare concrete floor's cracks, scuffs and tyre marks (0: none)
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -250,6 +255,37 @@ void fragment() {
 		rough = mix(rough, 0.7, l);
 	}
 
+	// a tiled floor (a turbine hall's operating floor, a walkway): glazed tiles, each a little different in tone and
+	// gloss, the grout between them darker and matt (faded out where the tiles get under a few pixels)
+	// (derivatives outside the branches: uniform control flow)
+	vec2 tq = wpos.xz / max(tile_size, 0.01);
+	vec2 tw = fwidth(tq);
+	float cv = n_lo.b * 0.7 + n_hi.r * 0.3;
+	float cw = fwidth(cv);
+	float sheen = 0.0;
+	if (tile_size > 0.0 && up > 0.7) {
+		vec2 tf = abs(fract(tq) - 0.5);
+		float gw = 0.004 / tile_size;
+		float grout = 1.0 - smoothstep(gw, gw + max(tw.x, tw.y) * 1.2, 0.5 - max(tf.x, tf.y));
+		grout *= 1.0 - smoothstep(0.08, 0.3, max(tw.x, tw.y));
+		float th = hash1(dot(mod(floor(tq), 64.0), vec2(1.0, 57.0)) + 3.0);   // small arguments: sin keeps its precision on a phone
+		base *= 0.96 + 0.06 * th;
+		rough = mix(rough * (0.8 + 0.5 * th), 0.8, grout);
+		base = mix(base, base * 0.72, grout);
+		sheen = (1.0 - grout) * (0.8 + 0.4 * th);
+	}
+	// a bare concrete floor: hairline cracks (the noise's contours, broken), dark scuffs and tyre marks
+	if (cracks > 0.0 && up > 0.7) {
+		float line_ = 1.0 - smoothstep(0.004, 0.004 + cw * 1.5, abs(cv - 0.5));
+		line_ *= smoothstep(0.45, 0.6, n_lo.a) * (1.0 - smoothstep(0.02, 0.06, cw));
+		float scuff = smoothstep(0.55, 0.85, n_lo.g) * (0.5 + 0.5 * n_hi.b);
+		float lane = vnoise(wpos.x * 0.35 + wpos.z * 0.05) * vnoise(wpos.z * 0.6 + 2.0);
+		base = mix(base, base * 0.78, cracks * scuff * 0.6);
+		base = mix(base, base * 0.82, cracks * smoothstep(0.35, 0.6, lane) * 0.35);
+		base = mix(base, base * 0.45, cracks * line_);
+		rough = mix(rough, rough * 0.85, cracks * scuff);
+	}
+
 	// dust on what faces up (flat tops: a pipe's crown only, not its upper half)
 	float d = dust * smoothstep(0.80, 0.98, up) * (0.45 + 0.55 * n_hi.b);
 	base = mix(base, vec3(0.56, 0.54, 0.50), d);
@@ -279,10 +315,14 @@ void fragment() {
 		rough = mix(rough, 1.0, open_);
 	}
 
-	ALBEDO = base;
+	// glazed tiles mirror the lit hall the flatter one looks along them: a sheen of the floor's own colour, lit as the
+	// floor is (in shade under a machine, none; as light, it would glow there and in the bake: review). A reflection
+	// probe per hall cost the laptop 14 to 19 ms of GPU time and half a gigabyte of video memory (photo pass)
+	ALBEDO = min(base * (1.0 + sheen * TILE_SHEEN * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0)), vec3(1.0));
 	ROUGHNESS = clamp(rough, 0.04, 1.0);
 	METALLIC = metal;
 	// a material with its colours in the vertices glows in them (a sign's white board and its blue symbol)
 	EMISSION = emission.rgb * emission_energy * (use_vertex_colour ? srgb_to_linear(COLOR.rgb) : vec3(1.0));
+
 	if (use_normal) NORMAL_MAP = texture(normal_tex, uv).rgb;
 }

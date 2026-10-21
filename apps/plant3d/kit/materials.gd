@@ -49,6 +49,9 @@ const PAINT := {
 	"paint_beige": Color(0.78, 0.72, 0.58),      # GT and generator enclosures, filter house
 	"paint_ct": Color(0.66, 0.70, 0.72),         # the cooling tower's FRP casing
 	"paint_pipe": Color(0.50, 0.52, 0.53),       # bare pipe (its medium shows in its bands)
+	"paint_valve": Color(0.07, 0.07, 0.075),     # cast valve bodies, bonnets and yokes (black, as they come from the foundry)
+	"paint_actuator": Color(0.56, 0.58, 0.60),   # electric actuators (a light silver grey, as most makers deliver them)
+	"paint_frame": Color(0.20, 0.22, 0.25),      # a hall's steel frame: columns, girts, roof trusses, purlins (dark)
 }
 
 ## ISO 3864-4 safety blue (a mandatory sign's disc).
@@ -84,8 +87,10 @@ const WEATHER := {
 	"concrete": {"grime": 0.45, "streaks": 0.55, "dust": 0.25, "rust": 0.0, "wear": 0.0},
 	"ground": {"grime": 0.50, "streaks": 0.0, "dust": 0.15, "rust": 0.0, "wear": 0.0},
 	"deck": {"grime": 0.45, "streaks": 0.20, "dust": 0.30, "rust": 0.15, "wear": 0.5},
-	# a hall's painted floor: kept fairly clean
+	# a hall's painted or tiled floor: kept fairly clean
 	"floor": {"grime": 0.20, "streaks": 0.0, "dust": 0.06, "rust": 0.0, "wear": 0.0},
+	# a hall's bare concrete ground floor or basement: dusty, scuffed, its cracks (the material's `cracks`)
+	"floor_bare": {"grime": 0.35, "streaks": 0.0, "dust": 0.30, "rust": 0.0, "wear": 0.0},
 	# a hall's inside: the liner sheets of its walls and roof, kept fairly clean (no rain runs down them)
 	"liner": {"grime": 0.12, "streaks": 0.0, "dust": 0.05, "rust": 0.0, "wear": 0.0},
 	# small plain pieces (dials, tag plates, glass, the media's bands): kept clean, a trainee reads them
@@ -99,7 +104,7 @@ const WEATHER_OF := {"PaintedMetal004": "paint", "Metal032": "metal", "Metal009"
 ## handrails, ladders and guards in yellow and handwheels in red most; a machine's casing hardly.
 ## Capped where a colour identifies (a red handwheel, a yellow guard: R9a): worn spots, never a bare part.
 const EXPOSURE := {"paint_yellow": 0.6, "paint_red": 0.35, "paint_orange": 0.25, "paint_darkgrey": 0.3,
-	"paint_green": 0.25}
+	"paint_green": 0.25, "paint_valve": 0.3, "paint_actuator": 0.2}
 const EXPOSURE_DEFAULT := 0.12
 const SHADER := "res://kit/weathered.gdshader"
 ## The weathering's noise (builder/weather.gd makes it at build time: our own, no licence).
@@ -113,11 +118,15 @@ static func specs() -> Dictionary:
 		m[k] = {"set": "PaintedMetal004", "tint": PAINT[k], "rough": 1.0, "metal": 0.15, "tile": 1.5}
 	m["steel"] = {"set": "Metal032", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.85, "tile": 1.0}
 	m["steel_dark"] = {"set": "Metal032", "tint": Color(0.45, 0.45, 0.47), "rough": 1.0, "metal": 0.7, "tile": 1.0}
+	# bolts and nuts: black steel gone to rust where water stands on them (the photographs' flanges and bonnets)
+	m["steel_bolt"] = {"set": "Metal032", "tint": Color(0.40, 0.29, 0.21), "rough": 1.0, "metal": 0.5, "tile": 1.0}
 	m["galvanised"] = {"set": "Metal032", "tint": Color(0.85, 0.87, 0.88), "rough": 1.0, "metal": 0.75, "tile": 2.0}
 	# insulation cladding: aluminium sheets lapped every metre along the pipe
-	m["cladding"] = {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "rough": 1.0, "metal": 0.8, "tile": 1.0, "lap": 1.0}
+	# (bright even in shade: the jacketing's crinkles scatter the light, so less of a mirror than the bare metal)
+	m["cladding"] = {"set": "Metal009", "tint": Color(0.97, 0.97, 0.98), "rough": 1.0, "metal": 0.3, "tile": 1.0, "lap": 1.0}
 	# wall cladding: painted (polyester-coated) steel sheets 1 m wide, the ribs from the set's normal map
-	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(0.58, 0.62, 0.66), "rough": 0.6, "metal": 0.1, "tile": 2.0, "sheet": 1.0}
+	# (a light silver grey: the neutral colour most halls are clad in)
+	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(0.70, 0.72, 0.73), "rough": 0.6, "metal": 0.1, "tile": 2.0, "sheet": 1.0}
 	m["corrugated_casing"] = {"set": "CorrugatedSteel005", "tint": Color(0.52, 0.54, 0.55), "rough": 0.6, "metal": 0.1, "tile": 3.0, "sheet": 1.0}
 	# a hall's inside skin (the liner of its wall and roof panels): light grey profiled sheet, as the inner face of
 	# composite cladding is; the dark outer sheet seen from inside made every hall's ceiling black (polish pass)
@@ -125,9 +134,18 @@ static func specs() -> Dictionary:
 	m["concrete"] = {"set": "Concrete034", "tint": Color(0.72, 0.71, 0.69), "rough": 1.0, "metal": 0.0, "tile": 3.0}
 	# a hall's floor: grey-green epoxy paint on concrete, the concrete's relief under it, satin
 	m["hall_floor"] = {"set": "Concrete034", "maps": ["NormalGL"], "tint": Color(0.42, 0.47, 0.44), "rough": 0.4, "metal": 0.0, "tile": 3.0, "weather": "floor"}
+	# a turbine hall's operating floor and walkways: glazed light ceramic tiles 0.8 m square, glossy (the shader's
+	# `tile_size` draws the grout and each tile's tone; no texture of its own)
+	m["floor_tile"] = {"set": "", "tint": Color(0.86, 0.86, 0.84), "rough": 0.08, "metal": 0.0, "tile_size": 0.8, "weather": "floor"}
+	# a ground floor or basement under a deck: bare power-floated concrete with its cracks, dust and tyre marks
+	m["floor_concrete"] = {"set": "Concrete034", "tint": Color(0.80, 0.79, 0.76), "rough": 0.85, "metal": 0.0, "tile": 3.0, "weather": "floor_bare", "cracks": 1.0}
 	m["grating"] = {"set": "MetalWalkway010", "tint": Color(0.75, 0.75, 0.72), "rough": 1.0, "metal": 0.6, "tile": 1.0}
 	m["chequer"] = {"set": "DiamondPlate008C", "tint": Color(1, 1, 1), "rough": 1.0, "metal": 0.7, "tile": 1.0}
 	m["gravel"] = {"set": "Gravel023", "tint": Color(0.62, 0.60, 0.56), "rough": 1.0, "metal": 0.0, "tile": 3.0, "macro": 0.6}
+	# an open yard's gravel (round an HRSG, in a transformer yard): finer and paler than the ground between the areas
+	m["gravel_yard"] = {"set": "Gravel023", "tint": Color(0.74, 0.72, 0.67), "rough": 1.0, "metal": 0.0, "tile": 2.0, "macro": 0.3}
+	# a concrete road: slabs cast in 5 m bays (the road's joints), its centre line
+	m["road_concrete"] = {"set": "Concrete034", "tint": Color(0.70, 0.69, 0.66), "rough": 1.0, "metal": 0.0, "tile": 3.0}
 	m["asphalt"] = {"set": "Asphalt031", "tint": Color(0.6, 0.6, 0.6), "rough": 1.0, "metal": 0.0, "tile": 4.0}
 	# the country beyond the wall: the gravel's set, sandier and larger (seen from tens to hundreds of metres)
 	m["terrain"] = {"set": "Gravel023", "tint": Color(0.78, 0.70, 0.56), "rough": 1.0, "metal": 0.0, "tile": 9.0, "macro": 1.0}
@@ -207,8 +225,9 @@ const STRUCTURE_MATS := {
 	"wall_metal": ["corrugated", true], "wall_concrete": ["concrete", true], "wall_brick": ["concrete", true],
 	"roof": ["corrugated_casing", true], "door": ["paint_motor", false], "fence": ["galvanised", true],
 	"pit": ["concrete", false], "ladder": ["paint_yellow", false], "rack": ["galvanised", false],
-	"yard": ["concrete", false], "road": ["asphalt", false], "drain": ["dark", false], "terrain": ["terrain", false],
-	"hall_floor": ["hall_floor", false], "liner": ["liner", false], "roof_steel": ["paint_grey", false],
+	"yard": ["concrete", false], "road": ["road_concrete", false], "yard_gravel": ["gravel_yard", false], "drain": ["dark", false], "terrain": ["terrain", false],
+	"hall_floor": ["hall_floor", false], "liner": ["liner", false], "roof_steel": ["paint_frame", false],
+	"floor_tile": ["floor_tile", false], "floor_concrete": ["floor_concrete", false], "firewall": ["concrete", true],
 	"louvre": ["galvanised", false], "window": ["window_glass", false], "window_in": ["window_day", false],
 	"trim": ["paint_grey", false],
 }
@@ -223,7 +242,9 @@ static func structure_spec(name: String) -> Dictionary:
 		spec["grating"] = true
 	if name == "yard":
 		spec["joints"] = 6.0   # cast in 6 m bays
-	if name in ["wall_metal", "wall_concrete", "wall_brick", "fence"]:
+	if name == "road":
+		spec["joints"] = 5.0
+	if name in ["wall_metal", "wall_concrete", "wall_brick", "fence", "firewall"]:
 		spec["top_edge"] = true   # streaks hang from each panel's top (its top in the vertex colour: the builder's _panel)
 	return spec
 
@@ -302,6 +323,8 @@ static func _make_weathered(name: String, spec: Dictionary, size: int) -> Shader
 	mat.set_shader_parameter("lap_length", float(spec.get("lap", 0.0)))
 	mat.set_shader_parameter("macro", float(spec.get("macro", 0.0)))
 	mat.set_shader_parameter("top_edge", 1.0 if spec.get("top_edge", false) else 0.0)
+	mat.set_shader_parameter("tile_size", float(spec.get("tile_size", 0.0)))
+	mat.set_shader_parameter("cracks", float(spec.get("cracks", 0.0)))
 	if ResourceLoader.exists(NOISE):
 		mat.set_shader_parameter("noise_tex", load(NOISE))
 	if spec.set != "":

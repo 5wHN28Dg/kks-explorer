@@ -24,7 +24,7 @@ static func flange(m, c: Vector3, d: Vector3, od: float, mat: String, rating := 
 
 ## A ring of n studs with nuts (detail: §10's example of what makes a thing look real but tells nothing).
 static func bolt_ring(m, c: Vector3, d: Vector3, R: float, n: int, r: float, len: float) -> void:
-	m.use("steel_dark", "detail", r * 3.4)
+	m.use("steel_bolt", "detail", r * 3.4)
 	var ax: Array = m.across(d)
 	for i in n:
 		var a := TAU * (i + 0.5) / n
