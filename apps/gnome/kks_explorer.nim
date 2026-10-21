@@ -44,7 +44,10 @@ proc doShowSheet(w: Win, id: string) =
   for k in 0 ..< si.levels: shas.add w.a.fileSha("sheets/" & id & ".o" & $k & ".jxl")
   let a = w.a
   w.v.setSheet(si.name, kkp, si.raw, si.levels, proc (k: int): string =
-    if shas[k].len > 0: a.store.blobGet(shas[k]) else: "")
+    if shas[k].len > 0: a.store.blobGet(shas[k])
+    else:                    # (not in the plant data: the program's own data folder, as the sheet's other files)
+      let (okL, data) = a.file("sheets/" & id & ".o" & $k & ".jxl")
+      if okL: data else: "")
   w.panelKey = ""       # setSheet took the open panel's valve outline away: the next reload draws the panel again
   w.v.tags = w.tagBoxes(id)
   w.setLinks()
@@ -492,13 +495,16 @@ proc activate(w: Win, app: W) =
   w.toasts = adw_toast_overlay_new()
   adw_application_window_set_content(w.window, w.toasts)
   timing("window made")
+  # the listener, the relay and discovery once the window is up (its first frame comes before an idle callback); on
+  # the setup screen at once: it lists the admins' devices discovery finds, and there is no drawing to wait for
+  proc startSync() =
+    w.a.startSync(port = parseInt(getEnv("KKS_SYNC_PORT", "8421")), discovery = getEnv("KKS_NO_MDNS").len == 0)
+    timing("sync started")
+  if w.a.joined: idle(startSync)
+  else: startSync()
   if w.a.joined: w.showMain()
   else: adw_toast_overlay_set_child(w.toasts, w.setupScreen())
   timing("main screen built")
-  # the listener, the relay and discovery once the window is up (its first frame comes before an idle callback)
-  idle(proc () =
-    w.a.startSync(port = parseInt(getEnv("KKS_SYNC_PORT", "8421")), discovery = getEnv("KKS_NO_MDNS").len == 0)
-    timing("sync started"))
   # Once the window is destroyed (closed: the app quits a moment later, later still on a slow machine) nothing may
   # reach it or its widgets (`gone`): the reload after a change, the photo queue's timer and the timers below stop,
   # toasts are dropped, and the status line is let go

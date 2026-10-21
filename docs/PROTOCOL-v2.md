@@ -463,7 +463,8 @@ deletes it with the rest; a device writes none while its store has no root (no p
 1. `kks-saved-state-v1\n`;
 2. the **code id**: 32 lowercase hex characters naming the program's replay code (the reference implementation
    hashes the source of the replay, what feeds it and what it reads with, and the compiler's version,
-   `core/src/kks/savedstate.nim` `CodeId`). A program
+   `core/src/kks/savedstate.nim` `CodeId`; the platform's crypto library is assumed to check signatures alike from
+   one version to the next). A program
    whose replay could compute anything else has another id: an update never uses what an older version saved;
 3. the **input digest**: SHA-256, as 64 lowercase hex characters, of the UTF-8 text `kks-saved-state-input-v1\n` +
    the root key string + `\n` + the number of entries held (decimal) + `\n`, then every held entry's ID (§3) +

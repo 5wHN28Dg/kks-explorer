@@ -43,7 +43,7 @@ suite "the settled round's run is the final pass's":
         let full = P.replayRun(s["entries"].elems, s["root"].s)
         forceFinalPass = false
         let quick = P.replayRun(s["entries"].elems, s["root"].s)
-        check full.run != quick.run          # (two runs were made: the comparison means something)
+        check full.run != quick.run          # (two run objects: not the same one compared with itself)
         check fields(quick.run) == fields(full.run)
         check quick.chainIgnored == full.chainIgnored
         check quick.run.ignored == full.run.ignored
