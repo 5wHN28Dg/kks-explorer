@@ -83,21 +83,41 @@ def msix(args):
 # (an administrator's restart; the VMs' user is one); ShellExperienceHost, which Windows starts again, takes the one
 # already on screen with it.
 TOAST_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications'
-TOAST_RESTART = ('Get-Service WpnUserService_* | Restart-Service -Force -ErrorAction Stop; '
+# the user's own value, kept on the machine until it is back (a run that never got to put it back leaves it there, and
+# the next run keeps that one instead of its own 0); 'unset' when the user never set it
+TOAST_BEFORE = 'C:\\kks\\toasts-before.txt'
+TOAST_RESTART = ('Get-Service WpnUserService_* | Restart-Service -Force; '
                  'Get-Process ShellExperienceHost -ErrorAction SilentlyContinue | Stop-Process -Force')
 
 
 def toasts_off():
-    """-> the user's ToastEnabled value before ('' when it was never set)"""
-    was = vm("$v = (Get-ItemProperty '%s' -ErrorAction SilentlyContinue).ToastEnabled; if ($null -ne $v) { $v }" % TOAST_KEY).strip()
-    out = vm("Set-ItemProperty '%s' ToastEnabled 0 -Type DWord; %s; 'toasts off'" % (TOAST_KEY, TOAST_RESTART))
-    assert 'toasts off' in out, 'notifications could not be turned off for the tests (an administrator account?): ' + out
-    return was
+    """-> True when notifications are off now (toasts_back puts them back); False on an account that is not an
+    administrator (a borrowed laptop's, e2e/host): nothing is changed there, and a notification may take the focus"""
+    out = vm("$ErrorActionPreference = 'Stop'; "
+             "$id = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent(); "
+             "if (-not $id.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { 'not an administrator' } else { "
+             "if (-not (Test-Path '%(m)s')) { $v = (Get-ItemProperty '%(k)s').ToastEnabled; "
+             "if ($null -eq $v) { Set-Content '%(m)s' 'unset' } else { Set-Content '%(m)s' ([string]$v) } }; "
+             "Set-ItemProperty '%(k)s' ToastEnabled 0 -Type DWord; %(r)s; 'toasts off' }"
+             % {'m': TOAST_BEFORE, 'k': TOAST_KEY, 'r': TOAST_RESTART})
+    if 'not an administrator' in out:
+        print('\nnot an administrator on the test machine: notifications stay on, and one left on screen can take the '
+              'keyboard focus from the app (see apps/windows/README.md)', file=sys.stderr)
+        return False
+    if 'toasts off' not in out:
+        toasts_back()
+        raise AssertionError('notifications could not be turned off for the tests: ' + out)
+    return True
 
 
-def toasts_back(was):
-    if was: vm("Set-ItemProperty '%s' ToastEnabled %s -Type DWord; %s" % (TOAST_KEY, was, TOAST_RESTART))
-    else: vm("Remove-ItemProperty '%s' ToastEnabled -ErrorAction SilentlyContinue; %s" % (TOAST_KEY, TOAST_RESTART))
+def toasts_back():
+    """the user's own notification setting back (kept in TOAST_BEFORE); an AssertionError when it could not be"""
+    out = vm("$ErrorActionPreference = 'Stop'; "
+             "if (-not (Test-Path '%(m)s')) { 'nothing to put back' } else { $v = (Get-Content '%(m)s' | Select-Object -First 1).Trim(); "
+             "if ($v -eq 'unset') { Remove-ItemProperty '%(k)s' ToastEnabled -ErrorAction SilentlyContinue } "
+             "else { Set-ItemProperty '%(k)s' ToastEnabled ([int]$v) -Type DWord }; %(r)s; Remove-Item '%(m)s'; 'toasts back' }"
+             % {'m': TOAST_BEFORE, 'k': TOAST_KEY, 'r': TOAST_RESTART})
+    assert 'toasts back' in out or 'nothing to put back' in out, "the user's notification setting was not put back: " + out
 
 
 sys.path.append(os.path.join(REPO, 'tests'))
@@ -158,15 +178,17 @@ class Windows(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        vm('Get-Process Walkdown,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
-        toasts_back(cls.toasts)
-        if MSIX:      # leave the VM as it was: no package, no trusted test certificate
-            msix('-Remove')
-            vm('$t = (New-Object Security.Cryptography.X509Certificates.X509Certificate2 C:\\kks\\%s).Thumbprint; '
-               'Remove-Item Cert:\\LocalMachine\\TrustedPeople\\$t' % os.path.basename(MSIX_CER))
-        cls.server.terminate()
-        cls.server.wait(5)
-        shutil.rmtree(cls.dir, ignore_errors=True)
+        try:
+            vm('Get-Process Walkdown,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
+            if MSIX:      # leave the VM as it was: no package, no trusted test certificate
+                msix('-Remove')
+                vm('$t = (New-Object Security.Cryptography.X509Certificates.X509Certificate2 C:\\kks\\%s).Thumbprint; '
+                   'Remove-Item Cert:\\LocalMachine\\TrustedPeople\\$t' % os.path.basename(MSIX_CER))
+            cls.server.terminate()
+            cls.server.wait(5)
+            shutil.rmtree(cls.dir, ignore_errors=True)
+        finally:
+            if cls.toasts: toasts_back()      # the user's notifications back, whatever failed before
 
     def wait_server(self, cond, what, tries=40):
         for _ in range(tries):
