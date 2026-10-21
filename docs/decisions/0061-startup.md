@@ -25,6 +25,10 @@ kept from one start to the next without ever showing something the log doesn't s
 - **A saved copy of the replay** [V]: the replay's whole result in a compact binary form is 1.6 MB for that log; reading
   it back (decrypt, check, decode) takes ~10 ms instead of the 25 ms replay, and with the store's own row seal and a
   digest of exactly what was replayed it can't be another log's or another version's (PROTOCOL-v2 §15b).
+- **What it gave, measured after** [V, MEASUREMENTS.md "Startup, 2026-10-21"]: GNOME 369 → 215 ms to the first sheet;
+  Windows 11 VM 297 → 245 ms; the Android emulator's first frame 1,193 → 478 ms and first sheet 1,282 → 1,152 ms. The
+  saved state's own part is largest on GNOME (the loading thread's log ready ~55 ms sooner) and small on the emulator
+  (core open 475 → 450 ms), where the work after the open (Compose, the native views) dominates the first sheet.
 - **Threads in Nim 2 (ORC)** [S: lib/system/orc.nim, alloc.nim, threadimpl.nim]: memory a thread allocated stays valid
   after it ends (its region goes back to a pool; frees from other threads are queued to it), so a whole object graph
   can be handed over. ORC keeps possible cycle roots per thread; a root left in the ending thread's list would later be
@@ -53,8 +57,10 @@ kept from one start to the next without ever showing something the log doesn't s
 - **The replay's last pass** is the settled round's run when the round recorded no revoke it did not accept.
 - **Only what the first frame needs, first:** the overview levels are read from the store when the viewer first wants
   each (GNOME; Windows and Android already did), the sync listener, the relay and discovery start after the window is
-  up (GNOME: an idle callback after the window; Windows: the first timer tick, after the first paint; Android: after
-  the core answered), and a decoded level reaches the GNOME viewer at once instead of at the next 50 ms poll.
+  up on GNOME (an idle callback after the window; at once on the setup screen, which lists what discovery finds) and
+  on Android (after the core answered). Windows starts them as before, right after the app is open: started at the
+  first timer tick after the first paint, its e2e's Coverage and About steps failed in the VM in 2 runs of 2 (and
+  passed with this order), for a reason not found, and a decoded level reaches the GNOME viewer at once instead of at the next 50 ms poll.
 - Not done: decoding the first overview level on the loading thread (GNOME's first frame, ~55 ms, then dominates and
   would carry it; ~25 ms more), and loading the entries themselves lazily (the sync, the API and the photos all read
   them; a saved copy of the entries would need the same proofs as §15b for the log itself).

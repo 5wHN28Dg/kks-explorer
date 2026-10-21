@@ -25,7 +25,6 @@ var
   needsRestart = false
   t0 = epochTime()
   firstSheetShown = false
-  syncStarted = false
   refreshTicks = 0
 
 proc showMain()
@@ -253,13 +252,6 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     if dispatchCommand(wp, lp): return 0
   of WM_TIMER:
     if wp == TimerPump:
-      if not syncStarted and w != nil:
-        # the listener, the relay and discovery once the window is up (WM_TIMER comes after WM_PAINT)
-        syncStarted = true
-        guard:
-          let port = try: parseInt(getEnv("KKS_SYNC_PORT", $SyncPortDefault)) except ValueError: SyncPortDefault
-          w.a.startSync(port, discovery = getEnv("KKS_NO_MDNS").len == 0)
-          timing("sync started")
       guard:
         if hasPendingOperations(): poll(0)
       guard:
@@ -415,6 +407,12 @@ proc main() =
   timing("window made")
   let a = openedApp()
   timing("app open")
+  # The sync service starts here, before the main screen, as before decision 0061: started at the first timer tick
+  # after the first paint instead, the Windows e2e's Coverage and About steps failed in the VM (2 runs of 2; this
+  # order passed them), for a reason not found. It costs a few ms here.
+  let port = try: parseInt(getEnv("KKS_SYNC_PORT", $SyncPortDefault)) except ValueError: SyncPortDefault
+  a.startSync(port, discovery = getEnv("KKS_NO_MDNS").len == 0)
+  timing("sync started")
   errorHook = proc (text: string) = a.diag("error", text)
   a.onChange.add proc (why: string) =
     if why == "wiped":
@@ -461,7 +459,7 @@ proc main() =
   ShowWindow(hw, SW_SHOW)
   UpdateWindow(hw)
   timing("window shown")
-  SetTimer(hw, TimerPump, 30, nil)        # (its first tick starts the sync service: after the first paint)
+  SetTimer(hw, TimerPump, 30, nil)
   SetTimer(hw, TimerRefresh, 1000, nil)
   var msg: MSG
   var lastFocus: HWND

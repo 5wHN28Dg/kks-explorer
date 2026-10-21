@@ -156,8 +156,8 @@ setup screen.
 | GNOME, laptop otherwise quiet: first sheet drawn after launch | 369 ms (351–376) | 215 ms (211–219) |
 | GNOME, the same run with other agents' jobs running: first sheet | 430 ms (422–467) | 261 ms (240–283) |
 | Windows 11 VM: first overview drawn after start | 297 ms (268–429) | 245 ms (223–338) |
-| Android emulator: first frame (`am start -W` TotalTime) | 1,464 ms (1,329–1,890) | 525 ms (509–561) |
-| Android emulator: first sheet drawn after process start | 1,533 ms (1,398–1,945) | 1,247 ms (1,218–1,395) |
+| Android emulator: first frame (`am start -W` TotalTime) | 1,193 ms (1,187–1,272) | 478 ms (469–488) |
+| Android emulator: first sheet drawn after process start | 1,282 ms (1,276–1,352) | 1,152 ms (1,136–1,154) |
 
 **Where the time goes after the change** (medians):
 - **GNOME** (quiet run):
@@ -175,10 +175,17 @@ setup screen.
     before);
   - the main screen is shown at 207 ms;
   - the first overview is drawn at 245 ms.
-- **Android:**
+- **Android** (one emulator session, the three APKs in turn, 5 cold starts each; a second turn was cut short when the
+  emulator reached its 8 GiB cap after 9 installs):
   - the first frame no longer waits for the core;
-  - the core's open (saved state read) ends 630 ms after process start;
-  - the core open takes 514 ms on its thread, against 404 ms before. It now runs while the main thread starts
-    Compose, and the emulator's CPUs are shared between the two.
+  - the core's open ends ~560 ms after process start. It takes 450 ms on its thread with the saved state, against
+    475 ms with a build that always replays (`-d:kksNoSavedState`: first frame 486 ms, first sheet 1,198 ms) and
+    318 ms before. It now runs while the main thread starts Compose, and the emulator's CPUs are shared between the
+    two;
+  - most of the first sheet's time on the emulator is after the open: the main screen's composition, the native
+    views and the overview (~600 ms), which this change does not touch.
+  - Sessions differ: an earlier one gave 1,464 → 525 ms (first frame) and 1,533 → 1,247 ms (first sheet); another,
+    with other jobs on the laptop, 1,429 ms before and 618 / ~720 ms first frame for the replaying / saved-state
+    builds. Only APKs measured in turn in the same session are compared above.
 
 **Not measured:** the real phones (Note 9, Honor 600) and the Windows 10 VM.
