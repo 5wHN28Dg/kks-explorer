@@ -243,13 +243,13 @@ second, `gpu_clients.py`):
 
 | | Rule | Main | Before | After |
 |---|---|---|---|---|
-| Note 9, frames shown at ≥ 30 fps (SurfaceFlinger) | ≥ 95 % | 99.73 % | 97.72 % | 99.56 % |
-| Note 9, frames over 100 ms after 5 s | none | none (worst 57.2 ms) | none (worst 66.2 ms) | none (worst 87.4 ms) in the final build's run; 1 (104 ms) in a cooled run of an earlier build of this change, below |
-| Note 9, GPU time median / p95 | | 18.8 / 25.1 ms | 24.0 / 33.4 ms | 21.4 / 25.7 ms |
-| Note 9, peak PSS (sampled) / of it the driver's GPU memory (GL mtrack) / Godot's video memory | ≤ 1.5 GB | 649 / 297 / 220 MB | 945 / 558 / 230 MB | 940 / 560 / 243 MB |
-| Note 9, launch to the first walkable frame, three first starts (big cores' median clock) | ≤ 15 s | 9.80, 10.31, 10.34 s (1,586 / 1,469 / 1,469 MHz) | 9.13, 9.05, 10.78 s (1,794 / 1,794 / 1,469) | 9.21, 9.17, 9.48 s (1,794 / 1,794 / 1,794) |
+| Note 9, frames shown at ≥ 30 fps (SurfaceFlinger) | ≥ 95 % | 99.73 % | 97.72 % | 99.63 % (99.56 % before the review's last fixes) |
+| Note 9, frames over 100 ms after 5 s | none | none (worst 57.2 ms) | none (worst 66.2 ms) | none (worst 67.7 ms; 87.4 ms before the review's last fixes); 1 (104 ms) in a cooled run of an earlier build of this change, below |
+| Note 9, GPU time median / p95 | | 18.8 / 25.1 ms | 24.0 / 33.4 ms | 21.0 / 25.5 ms |
+| Note 9, peak PSS (sampled) / of it the driver's GPU memory (GL mtrack) / Godot's video memory | ≤ 1.5 GB | 649 / 297 / 220 MB | 945 / 558 / 230 MB | 938 / 560 / 243 MB |
+| Note 9, launch to the first walkable frame, three first starts (big cores' median clock) | ≤ 15 s | 9.80, 10.31, 10.34 s (1,586 / 1,469 / 1,469 MHz) | 9.13, 9.05, 10.78 s (1,794 / 1,794 / 1,469) | 9.09, 8.99, 9.36 s (1,794 / 1,794 / 1,794) |
 | Note 9, pipelines for the first frame | | 0/13/0/7 | 0/13/0/7 | 0/13/0/7 |
-| Laptop, frame p95 / GPU p95 / video memory | ≤ 16.7 ms (GPU free) | | 28.0 / 10.0 ms / 384 MB | 27.4 / 10.8 ms / 386 MB |
+| Laptop, frame p95 / GPU p95 / video memory | ≤ 16.7 ms (GPU free) | | 28.0 / 10.0 ms / 384 MB | 27.4 / 10.8 ms / 386 MB (the build before the review's last fixes) |
 | Laptop, first frame / pipelines (surface + specialization) | ≤ 5 s | | 2.04 s / 15 + 9 | not measured on a quiet machine (4.83 s in a busy one: below) / 15 + 9 |
 | Lightmap texels / APK | ≤ 150 MB | 6.3 M / 115 MB | 8.4 M / 118 MB | 10.5 M / 124 MB (the frame, trusses and crane: 2 M texels, about 8 MB on the phone) |
 
