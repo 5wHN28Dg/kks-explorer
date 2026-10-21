@@ -178,7 +178,7 @@ def control():
         st('ctl_floor_6', 'floor', [-40, -15, 6], outline=rect(30, 30), openings=[box(1, 1, 8.5, 5)]),
         stair_tower('ctl_stair', [-39, -14, 0], [-31.4, -10, 6]),
     ], signs=[sign('Control room', [-11, 2, 2.6], 90), sign('Control building 00UCA10', [-10.1, -4, 3], 90),
-              sign('Electrical room', [-26, -9, 8.6], 0)])
+              sign('Electrical room', [-26, -14.9, 8.6], 0)])
 
 
 # ---------------------------------------------------------------- common auxiliaries (bop)
@@ -509,7 +509,7 @@ def gt1():
                      {'kind': 'pipe', 'at': [80, 15, 5], 'width': 9, 'height': 10},
                      {'kind': 'door', 'at': [30, 30, 0], 'width': 1.0, 'height': 2.1},
                      {'kind': 'pipe', 'at': [40, 30, 1], 'width': 0.6, 'height': 0.6},
-                     louvre(10, 0, 14, 4, 2), louvre(70, 0, 14, 4, 2), window(20, 30, 10, 4, 1.5),
+                     louvre(10, 0, 10.5, 4, 2), louvre(70, 0, 10.5, 4, 2), window(20, 30, 10, 4, 1.5),
                      window(50, 30, 10, 4, 1.5), window(65, 30, 10, 4, 1.5), window(25, 0, 11, 4, 1.5),
                      window(55, 0, 11, 4, 1.5)]),
         st('gt1_trench_n', 'pit', [24, 68.5, 0], outline=rect(34, 2.5), depth=1.2),

@@ -304,13 +304,20 @@ class Validator(unittest.TestCase):
         P.check_files(plant_with(name='Feedwater'))
         P.check_files(area_with(wall))
         P.check_files(area_with(hall))
+        P.check_files(area_with(dict(hall, params=dict(hall['params'], outline=[[0, 0], [36, 0], [36, 19], [0, 19]],
+                                                         height=20, crane=14.5))))
         for bad in (plant_with(name='x' * 41), plant_with(name=''), plant_with(label='Feedwater'),
                     area_with(dict(wall, params=dict(wall['params'], height=25))),
                     area_with(dict(hall, params=dict(hall['params'], floor='marble'))),
                     area_with(dict(hall, params=dict(hall['params'], crane=90))),
                     area_with(dict(hall, params=dict(hall['params'], crane=4))),
                     area_with(dict(hall, params=dict(hall['params'], crane=10))),
-                    area_with(dict(hall, params=dict(hall['params'], cladding='concrete')))):
+                    area_with(dict(hall, params=dict(hall['params'], cladding='concrete'))),
+                    # the build's own refusals mirrored: a rail too high for the trusses of a 30 m span (test_builder's
+                    # crane_clash case), and a rectangular hall turned off the plant's axes
+                    area_with(dict(hall, params=dict(hall['params'], outline=[[0, 0], [36, 0], [36, 19], [0, 19]],
+                                                     height=20, crane=16))),
+                    area_with(dict(hall, yaw=30))):
             with self.assertRaises(P.FormatError):
                 P.check_files(bad)
 

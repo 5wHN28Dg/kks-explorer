@@ -705,12 +705,19 @@ class Plant:
                 need(in_rect(q, bounds), 'outside_area', f'{w}: {[round(c, 2) for c in q[:2]]} is outside the area '
                                                          f'{bounds}')
         if part == 'building' and params.get('crane', 0):
-            # an overhead crane (§5) runs in a rectangular metal-clad hall, its rail 6 m up or more, its trolley
-            # (2.65 m over the rail) under the roof (the build checks the roof steel's clearance itself)
-            o = params['outline']
-            rect = len(o) == 4 and all(o[i][0] == o[(i + 1) % 4][0] or o[i][1] == o[(i + 1) % 4][1] for i in range(4))
-            need(params['cladding'] == 'metal' and rect and 6 <= params['crane'] <= params['height'] - 3,
-                 'bad_value', f'{w}.params.crane: a rectangular metal-clad hall, the rail from 6 m to 3 m under the roof')
+            # an overhead crane (§5) runs in a rectangular metal-clad hall (its sides along the plant's axes once
+            # turned), its rail 6 m up or more, the trolley's top (2.65 m over the rail) 5 cm under the roof steel: the
+            # trusses' bottom (spans of 18 m and more, a sixteenth of the span, 1.2 to 3 m) or the rafters' (a fortieth,
+            # 0.4 to 1 m), under the liner (3 cm) and the purlins (0.2 m), as apps/plant3d/builder/plant_builder.gd
+            o = [rot([q[0], q[1], 0], s.get('yaw', 0))[:2] for q in params['outline']]
+            rect = len(o) == 4 and all(abs(o[i][0] - o[(i + 1) % 4][0]) < 1e-6 or abs(o[i][1] - o[(i + 1) % 4][1]) < 1e-6
+                                       for i in range(4))
+            span = min(max(q[0] for q in o) - min(q[0] for q in o), max(q[1] for q in o) - min(q[1] for q in o))
+            steel = min(max(span / 16, 1.2), 3.0) if span >= 18 else min(max(span / 40, 0.4), 1.0)
+            need(params['cladding'] == 'metal' and rect and params['crane'] >= 6 and
+                 params['crane'] + 0.15 + 1.6 + 0.9 <= params['height'] - 0.03 - 0.2 - steel - 0.05,
+                 'bad_value', f'{w}.params.crane: a rectangular metal-clad hall, the rail 6 m up or more, the trolley '
+                              f'clear of the roof steel')
         self.b.structures[s['id']] = {'id': s['id'], 'part': part, 'params': params, 'area': aid}
 
     def walkable(self, p):

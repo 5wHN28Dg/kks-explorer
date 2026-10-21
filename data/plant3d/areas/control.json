@@ -24,6 +24,6 @@
  "signs": [
   {"text": "Control room", "at": [-11, 2, 2.6], "yaw": 90, "size": 0.4},
   {"text": "Control building 00UCA10", "at": [-10.1, -4, 3], "yaw": 90, "size": 0.4},
-  {"text": "Electrical room", "at": [-26, -9, 8.6], "yaw": 0, "size": 0.4}
+  {"text": "Electrical room", "at": [-26, -14.9, 8.6], "yaw": 0, "size": 0.4}
  ]
 }

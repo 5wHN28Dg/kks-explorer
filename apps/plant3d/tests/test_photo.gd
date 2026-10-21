@@ -3,7 +3,7 @@
 ##   under the deck bare concrete (cracks, dust), bar gratings over the trenches beside the gas turbine;
 ## - wide halls' roofs carried by trusses, the frame inside (columns, girts), an overhead crane on its runway clear of
 ##   the trusses; the tiles' sheen at a grazing view in the shader (no reflection probe: half a gigabyte of video
-##   memory and 19 ms of the laptop's GPU time);
+##   memory and 14 to 19 ms of the laptop's GPU time at the 95th percentile);
 ## - the transformers' firewalls (solid), open yards gravelled, the road's kerbs striped black and yellow;
 ## - the media's names stencilled on the pipes, drawn as a safety sign's text is (no pipeline of their own);
 ## - valves' bodies black, electric actuators grey, bolts rusty.
@@ -12,6 +12,9 @@ extends RefCounted
 const Plant = preload("res://app/plant.gd")
 const Mat = preload("res://kit/materials.gd")
 const Builder = preload("res://builder/plant_builder.gd")
+const KitPlace = preload("res://builder/kit_place.gd")
+const PPipe = preload("res://kit/parts_pipes.gd")
+const MB = preload("res://kit/mesh.gd")
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
@@ -151,6 +154,7 @@ func run(tree: SceneTree) -> Array:
 			break
 	if sign_label == null:
 		p.append("a safety sign's text is found (the stencils' model)")
+	p.append_array(_names_clear_of_bands())
 	# valves and actuators
 	if Mat.PAINT.paint_valve.get_luminance() > 0.15 or absf(Mat.PAINT.paint_actuator.s) > 0.15:
 		p.append("valve bodies black, actuators a neutral grey")
@@ -175,3 +179,47 @@ static func _hits_down(mi: MeshInstance3D, p: Vector3) -> Array:
 		if hit != null:
 			out.append((xf * (hit as Vector3)).y)
 	return out
+
+
+## The names' places (kit_place.gd stencil_places) against the bands and arrows the pipe kit really draws: a pipe made
+## by parts_pipes.gd, its band layer's vertices projected on each level run; no name may cover one (they were spaced
+## on the whole segment while the bands are spaced on the run between the bends and the bare stretches: review).
+func _names_clear_of_bands() -> Array:
+	var p: Array = []
+	var cases := [
+		# [route, od, ins, arrows, gaps, a name's width]: an insulated run of 23 m with arrows every 15 m (two bands
+		# assumed on the segment, one drawn), a bare 42 m run without arrows with a valve on it, a 3d bend
+		[[Vector3(0, 0, 3), Vector3(23, 0, 3), Vector3(23, 10, 3)], 0.406, 0.15, 15.0, [], 1.8, ""],
+		[[Vector3(0, 0, 3), Vector3(42, 0, 3), Vector3(42, 0, 0.6)], 0.324, 0.0, 0.0, [[17.0, 18.2]], 1.0, ""],
+		[[Vector3(0, 0, 3), Vector3(30, 0, 3), Vector3(30, 20, 3)], 1.6, 0.0, 10.0, [], 2.0, "3d"],
+	]
+	for c in cases:
+		var pr := {"od": c[1], "ins": c[2], "band": "test_band", "arrows": c[3], "gaps": c[4], "bend": {"3d": 3.0}.get(c[6], 1.5)}
+		var m = MB.new()
+		var origin: Vector3 = c[0][0]
+		PPipe.pipe(m, c[0], pr, origin)
+		var marks: Array = []   # along the first run: the band and arrow vertices' distances
+		for k in m.layers:
+			if not String(k).begins_with("plain|id"):
+				continue
+			for v in m.layers[k].v:
+				var q := Vector3(v.x, -v.z, v.y) + origin     # Godot's axes back to the plant's
+				if absf(q.y) < 1.5 and absf(q.z - 3.0) < 1.5 and q.x < c[0][1].x - 0.01:
+					marks.append(q.x)
+		if marks.is_empty():
+			p.append("the test pipe %s has bands" % str(c[0]))
+			continue
+		var places := KitPlace.stencil_places(c[0], c[1], c[2], {"arrows": c[3], "bend": c[6]}, {}, c[4], c[5])
+		var on_run := places.filter(func(pl): return absf(pl[0].y) < 0.01)
+		if on_run.is_empty():
+			p.append("a name on the test pipe's first run (%s)" % str(c[0]))
+		for pl in on_run:
+			var t: float = pl[0].x
+			for x in marks:
+				if x > t - c[5] * 0.5 and x < t + c[5] * 0.5:
+					p.append("a name at %.2f m covers a band or arrow at %.2f m (%s)" % [t, x, str(c[0])])
+					break
+			for g in c[4]:
+				if g[0] < t + c[5] * 0.5 and g[1] > t - c[5] * 0.5:
+					p.append("a name at %.2f m covers the valve at %s" % [t, str(g)])
+	return p

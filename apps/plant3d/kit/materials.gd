@@ -123,7 +123,7 @@ static func specs() -> Dictionary:
 	m["galvanised"] = {"set": "Metal032", "tint": Color(0.85, 0.87, 0.88), "rough": 1.0, "metal": 0.75, "tile": 2.0}
 	# insulation cladding: aluminium sheets lapped every metre along the pipe
 	# (bright even in shade: the jacketing's crinkles scatter the light, so less of a mirror than the bare metal)
-	m["cladding"] = {"set": "Metal009", "tint": Color(0.97, 0.97, 0.98), "rough": 1.0, "metal": 0.45, "tile": 1.0, "lap": 1.0}
+	m["cladding"] = {"set": "Metal009", "tint": Color(0.97, 0.97, 0.98), "rough": 1.0, "metal": 0.3, "tile": 1.0, "lap": 1.0}
 	# wall cladding: painted (polyester-coated) steel sheets 1 m wide, the ribs from the set's normal map
 	# (a light silver grey: the neutral colour most halls are clad in)
 	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(0.70, 0.72, 0.73), "rough": 0.6, "metal": 0.1, "tile": 2.0, "sheet": 1.0}

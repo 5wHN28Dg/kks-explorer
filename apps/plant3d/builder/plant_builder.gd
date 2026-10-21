@@ -1253,7 +1253,7 @@ func _member(st: SurfaceTool, pg: PackedVector2Array, roof_holes: Array, a: Vect
 	return n
 
 ## A wide hall's roof is carried by trusses, not solid rafters (the exposed dark trusses every turbine hall shows):
-## from this span up, a rafter line is a truss TRUSS_DEPTH deep: top and bottom chords, posts and diagonals.
+## from this span up, a rafter line is a truss truss_depth() deep: top and bottom chords, posts and diagonals.
 const TRUSS_MIN := 18.0
 const CHORD := 0.25
 
@@ -1286,7 +1286,7 @@ func _truss(st: SurfaceTool, pg: PackedVector2Array, roof_holes: Array, a: Vecto
 			var q1 := p + dv * (0.06 if k < panels else 0.0)
 			Geom.add_prism(st, Geom._strip(q0, q1, across, CHORD * 0.6), zb + CHORD * 0.8, z_top - CHORD)
 			if k < panels:
-				# the diagonals fall towards the middle from either end
+				# the diagonals rise towards the middle from either end (a Howe web)
 				var down := (k < panels / 2.0)
 				var q := p0 + dv * (pl * (k + 1))
 				var za := zb + CHORD * 0.8 if down else z_top - CHORD - 0.15

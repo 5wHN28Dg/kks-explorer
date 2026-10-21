@@ -231,7 +231,8 @@ colour scheme. What the comparison showed and what changed, with the same one sh
 - **The electrical room** over the control room: two rows of switchgear facing each other across an aisle.
 
 Tried and left out: **a reflection probe** over each tiled floor (box-projected, captured once, the full tier only):
-the floor mirrored the hall well, but the laptop's GPU p95 went from 10.0 to 23.7 ms, its video memory from 384 to
+the floor mirrored the hall well, but the laptop's GPU p95 went from 10.0 to 23.7 ms in the release build's 600 s
+walk (9.8 to 28.6 ms in a 120 s walk of the project with and without them), its video memory from 384 to
 948 MB (its reflection atlas, by the size; not broken down), and the first capture held one frame for 2.96 s. **SSR** on the full tier showed nothing
 on these floors.
 
@@ -243,21 +244,23 @@ second, `gpu_clients.py`):
 | | Rule | Main | Before | After |
 |---|---|---|---|---|
 | Note 9, frames shown at ≥ 30 fps (SurfaceFlinger) | ≥ 95 % | 99.73 % | 97.72 % | 99.56 % |
-| Note 9, frames over 100 ms after 5 s | none | none (worst 57.2 ms) | none (worst 66.2 ms) | none (worst 87.4 ms) |
+| Note 9, frames over 100 ms after 5 s | none | none (worst 57.2 ms) | none (worst 66.2 ms) | none (worst 87.4 ms) in the final build's run; 1 (104 ms) in a cooled run of an earlier build of this change, below |
 | Note 9, GPU time median / p95 | | 18.8 / 25.1 ms | 24.0 / 33.4 ms | 21.4 / 25.7 ms |
 | Note 9, peak PSS (sampled) / of it the driver's GPU memory (GL mtrack) / Godot's video memory | ≤ 1.5 GB | 649 / 297 / 220 MB | 945 / 558 / 230 MB | 940 / 560 / 243 MB |
 | Note 9, launch to the first walkable frame, three first starts (big cores' median clock) | ≤ 15 s | 9.80, 10.31, 10.34 s (1,586 / 1,469 / 1,469 MHz) | 9.13, 9.05, 10.78 s (1,794 / 1,794 / 1,469) | 9.21, 9.17, 9.48 s (1,794 / 1,794 / 1,794) |
 | Note 9, pipelines for the first frame | | 0/13/0/7 | 0/13/0/7 | 0/13/0/7 |
 | Laptop, frame p95 / GPU p95 / video memory | ≤ 16.7 ms (GPU free) | | 28.0 / 10.0 ms / 384 MB | 27.4 / 10.8 ms / 386 MB |
-| Laptop, first frame / pipelines (surface + specialization) | ≤ 5 s | | 2.04 s / 15 + 9 | 4.83 s / 15 + 9 (below) |
-| Lightmap texels / APK | ≤ 150 MB | 6.3 M / 115 MB | 8.4 M / 118 MB | 10.5 M / 124 MB |
+| Laptop, first frame / pipelines (surface + specialization) | ≤ 5 s | | 2.04 s / 15 + 9 | not measured on a quiet machine (4.83 s in a busy one: below) / 15 + 9 |
+| Lightmap texels / APK | ≤ 150 MB | 6.3 M / 115 MB | 8.4 M / 118 MB | 10.5 M / 124 MB (the frame, trusses and crane: 2 M texels, about 8 MB on the phone) |
 
 The phone's runs are first starts after the phone cooled (battery under 31 °C; main's run began at 29.7 °C, the
 "before" run at 33.8 °C right after another). Warm, the same builds showed frames over 100 ms: this change's build
 measured 94.90 % at 30 fps and 62 frames over 100 ms in one run begun at 32.6 °C, then, cooled, 99.01 % with one
 frame of 104 ms, and two more cooled runs (the pipes' names hidden by `fx_off=stencils` and shown) 99.44 % and
-99.66 %, worst 75.0 and 57.8 ms: the names cost nothing measurable, the warm runs were the phone's clock. The Note 9's
-rules hold with the margin narrower than before the polish pass (main's 99.73 %): measure it cool.
+99.66 %, worst 75.0 and 57.8 ms: the names cost nothing measurable, the warm runs were the phone's clock. On the final build the Note 9's rules hold
+(cooled); an earlier build of this change, the same drawing but for the review's fixes, had one cooled run with a
+104 ms frame, and the warm runs break the rule for every build measured warm here: the margin is narrower than before
+the polish pass (main's 99.73 %), so measure it cool and more than once.
 
 The laptop's numbers are from a busy machine (the user's editor on the GPU throughout, and late on a virtual machine
 of another task, load average 5.6): its first frame, 3.94 s in an earlier run of this change and 4.83 s in the last,
@@ -271,4 +274,5 @@ not yet found: pipelines are the same 20, the textures and meshes Godot counts b
 build with the polish pass's pieces taken out one at a time (louvres, liners, roof steel, palisade) on the Note 9.
 
 The laptop's 60 fps rule could not be measured with the GPU free (the user's editor drew on it through every run);
-the app's own GPU time is unchanged (9.6 ms against 10.0 at the 95th percentile).
+the app's own GPU time is about the same (10.8 ms in the final build's run, 9.6 ms in an earlier build's,
+against 10.0 ms before, at the 95th percentile).
