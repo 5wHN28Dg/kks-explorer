@@ -3,11 +3,11 @@ data of ours, holding a log about the size of a real plant's.
 
   python3 tools/m6/startup_data.py SERVER IMPORTER FOLDER [SHEETS [TAGS [EDITS]]]
 
-- SHEETS copies of importer/tests/vectors/kkp-sample.pdf (17, like a real plant's P&ID set);
-- TAGS tags marked on them by the manager (2,600: a real plant's 2,673 drawing tags, here as log entries);
+- SHEETS copies of importer/tests/vectors/kkp-sample.pdf (17 by default);
+- TAGS tags marked on them by the manager (2,600, here as log entries);
 - EDITS approved equipment edits (1,500).
-The server keeps running on FOLDER (its config.json) until this script is stopped; it prints the sync address, the
-manager's username and password, and "ready" once everything is in. Apps then join with that account
+The server keeps running on FOLDER (its config.json) until this script is stopped; it prints the sync address and the
+manager's username (the password is PASSWORD below), and "ready" once everything is in. Apps then join with that account
 (apps/gnome/e2e/startup_join.nim, or by hand)."""
 import json, os, sys, time, urllib.request, http.cookiejar
 
@@ -73,7 +73,7 @@ def main():
             assert r.get('status') == 'approved', r
             live[kks] = changes
         print(f'log written in {time.time() - t0:.0f} s', flush=True)
-        print(f'sync 127.0.0.1:{cfg["sync_port"]} user boss password {PASSWORD!r}', flush=True)
+        print(f'sync 127.0.0.1:{cfg["sync_port"]} user boss (password: PASSWORD in this file)', flush=True)
         print('ready', flush=True)
         while proc.poll() is None:
             time.sleep(1)
