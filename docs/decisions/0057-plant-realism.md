@@ -172,8 +172,10 @@ What a trainee noticed in the first train, fixed in the same approaches (no new 
 
 - **Hall ceilings** were black: the inside of the dark outer sheet, lit by nothing but what a dark floor bounced. Every
   building now has a light liner under its roof (the inner skin of composite cladding) and a metal-clad hall's walls
-  are lined inside too; the roof steel (rafters every 6 m, purlins every 1.8 m) hangs under it, the lamps below the
-  steel on rods. A hall's upper floor seen from below is profiled decking on beams (it was the floor's dark epoxy).
+  are lined inside too; the roof steel (rafters every 6 m, purlins every 1.8 m) hangs under it. The lamps hang as high
+  as before, evenly spaced, each on a short rod from a purlin midway between two rafters (hung below the rafters, one
+  sat in the boiler house's steam pipe: review). A hall's upper floor seen from below is profiled decking on beams (it
+  was the floor's dark epoxy), the beams and the lamps under it clear of the turbine's exhaust trunk.
 - **The CW pump house** read as a dim box: buildings draw the louvres and windows their openings name (the content
   format had them, the build ignored them), metal cladding has a concrete plinth and flashings, a concrete wall a
   coping; the cladding is a lighter grey. Windows seen from inside are the daylight beyond (a little light of their
@@ -196,6 +198,10 @@ Measured (release builds, baked; before = main 75fd006, after = this change):
 | Note 9, pipelines for the first frame (mesh/surface/draw/specialization) | | 0/13/0/7 | 0/13/0/7 |
 | Laptop `full` 1600×900, 600 s: frame p95 / GPU p95 | ≤ 16.7 ms (GPU free) | 24.9 / 9.7 ms | 24.8 / 9.6 ms |
 | Lightmap texels / APK | ≤ 150 MB | 6.3 M / 115 MB | 8.4 M / 118 MB |
+
+The phone and laptop numbers were measured before the review fixes, which moved the baked lamps (place and spacing),
+gave the fence's streaks their top and cut beams at the turbine: nothing drawn at run time changed (the lamps are
+dropped once baked; the same meshes, materials and lightmap size).
 
 The laptop's runs had the user's code editor on the GPU (400–470 ms of render engine a second, `gpu_clients.py`), so
 its frame p95 says nothing about the 60 fps rule; the app's own GPU time is unchanged. The peak PSS grew by about a

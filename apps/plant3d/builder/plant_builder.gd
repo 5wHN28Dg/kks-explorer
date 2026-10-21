@@ -972,6 +972,9 @@ func through_deck(sf: Dictionary) -> Array:
 		var e: Dictionary = equipment[k]
 		if e.part != "steam_turbine" or String(e.params.get("exhaust", "")) != "down" or absf(e.pos.z - sf.z) > 0.5:
 			continue
+		# an LP casing exhausts downward (an HP casing's exhaust goes on to the reheater: no trunk)
+		if not Array(e.params.get("casings", [])).any(func(c): return String(c.get("kind", "")) in ["lp", "ip_lp"]):
+			continue
 		var sh := shape_of(e.part, e.params)
 		var hw: float = sh.size.x * 0.75 + 0.3      # the exhaust hood is wider than the casing
 		var hl: float = sh.size.y * 0.5 + 0.3
@@ -1406,8 +1409,9 @@ func _lamps(body: Node, b: Dictionary) -> int:
 	var n := 0
 	# under the roof, over the whole hall: each hung on a short rod from a purlin, midway between two rafters, as high
 	# as it hung before the steel (whatever runs under the roof keeps its clearance), none under a roof opening
-	for c in roof_lamp_places(b):
-		_lamp(body, housing, lens, c, h - LAMP_DROP, clampf(h * 0.6, 6.0, 10.0), h, n)
+	var places: Array = roof_lamp_places(b)
+	for c in places[0]:
+		_lamp(body, housing, lens, c, h - LAMP_DROP, places[1], h, n)
 		Geom.add_prism(housing, Geom.rect(c.x - 0.015, c.y - 0.015, c.x + 0.015, c.y + 0.015), h - LAMP_DROP + 0.25,
 			h - LINER_T - PURLIN_D)
 		n += 1
@@ -1421,8 +1425,9 @@ func _lamps(body: Node, b: Dictionary) -> int:
 		var cs := _lamp_grid(sf.outline, sf.holes, gap)
 		if cs.size() < 2:
 			continue           # a small platform: the roof's lamps reach round it
+		var machines := through_deck(sf)   # none inside a machine that passes down through the deck (review)
 		for c in cs:
-			if Geom.in_region(c, sf.outline, sf.holes) and Geom.in_region(c, pg, []):
+			if Geom.in_region(c, sf.outline, sf.holes + machines) and Geom.in_region(c, pg, []):
 				_lamp(body, housing, lens, c, z, gap, h, n)
 				n += 1
 	if n > 0:
@@ -1430,29 +1435,36 @@ func _lamps(body: Node, b: Dictionary) -> int:
 		_mesh_node(body, "lamp_lenses", lens, _mat("lamp_white"))
 	return n
 
-## A roof lamp's housing hangs this far below the roof (its top 0.3 m under the purlins it hangs from).
-const LAMP_DROP := LINER_T + PURLIN_D + 0.55
+## A roof lamp's housing hangs this far below the roof, as before the steel (0.6 m: whatever runs under the roof keeps
+## its clearance), its top 0.12 m under the purlin it hangs from.
+const LAMP_DROP := 0.6
 
-## Where a building's roof lamps hang (plan): about 0.6 × the height apart (6 to 10 m), along the long axis in the
-## middle of a bay between two rafters, across it under the nearest purlin; none under a roof opening.
+## Where a building's roof lamps hang (plan): evenly, about 0.6 × the height apart (6 to 10 m): along the long axis
+## in the middle of every k-th bay between two rafters, across it under every k-th purlin, each set centred in the
+## hall; none under a roof opening. [places, spacing].
 func roof_lamp_places(b: Dictionary) -> Array:
 	var pg: PackedVector2Array = b.outline
 	var g := steel_grid(b)
 	var gap := clampf(float(b.height) * 0.6, 6.0, 10.0)
 	var out: Array = []
-	var nl := maxi(1, int(round(g.L / gap)))
-	var ns := maxi(1, int(round(g.S / gap)))
+	var bay: float = g.L / g.bays
+	var kb := maxi(1, int(round(gap / bay)))
+	var nb := maxi(1, int(floor(float(g.bays - 1) / kb)) + 1)
+	var b0 := int(floor((g.bays - 1 - (nb - 1) * kb) * 0.5))
+	var row: float = g.S / g.rows
+	var kr := maxi(1, int(round(gap / row)))
+	var lines: int = g.rows - 1                     # purlin lines 1 … rows − 1
+	var nr := maxi(1, int(floor(float(lines - 1) / kr)) + 1)
+	var r0 := 1 + int(floor((lines - 1 - (nr - 1) * kr) * 0.5))
 	var holes := roof_holes_of(b)
-	for i in nl:
-		var bay := mini(int(floor((i + 0.5) * g.bays / nl)), g.bays - 1)
-		var t: float = (bay + 0.5) * g.L / g.bays
-		for j in ns:
-			var k := clampi(int(round((j + 0.5) * g.rows / ns)), 1, g.rows - 1)
-			var s: float = g.S * k / g.rows
+	for i in nb:
+		var t: float = (b0 + i * kb + 0.5) * bay
+		for j in nr:
+			var s: float = (r0 + j * kr) * row
 			var c: Vector2 = g.r.position + (Vector2(t, s) if g.along_x else Vector2(s, t))
 			if Geom.in_region(c, pg, holes):
 				out.append(c)
-	return out
+	return [out, maxf(kb * bay, kr * row)]
 
 ## A building's roof openings (an intake on the roof): their plan rectangles.
 func roof_holes_of(b: Dictionary) -> Array:

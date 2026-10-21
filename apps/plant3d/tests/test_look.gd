@@ -58,13 +58,26 @@ func run(tree: SceneTree) -> Array:
 			if not (l is SpotLight3D and String(l.name).begins_with("lamp_") and l.global_position.y > h - 3.0):
 				continue
 			var lp: Vector3 = l.global_position
-			if lp.y < h - 1.0:
-				p.append("%s: a roof lamp hangs %.2f m below the roof (more than its old 1 m)" % [l.get_path(), h - lp.y])
+			if absf(h - 0.8 - lp.y) > 0.01:     # the light 0.2 m under the housing's top 0.6 m down, as before the steel
+				p.append("%s: a roof lamp's light hangs %.2f m below the roof, not 0.8 m as before the steel" % [l.get_path(), h - lp.y])
 			var above: Array = _hits(steel_mesh, steel.global_transform, lp)
 			if above.is_empty() or above.max() < h - 0.25:
 				p.append("%s: its rod meets no purlin above it" % l.get_path())
 			if _near_rafter(steel_mesh, steel.global_transform, lp, h):
 				p.append("%s: hangs within a metre of a rafter" % l.get_path())
+		# evenly spaced both ways (lamps snapped to bays and purlins one by one came 6 and 12 m apart: review)
+		var xs := {}
+		var zs := {}
+		for l in body.get_children():
+			if l is SpotLight3D and String(l.name).begins_with("lamp_") and l.global_position.y > h - 3.0:
+				xs[snappedf(l.global_position.x, 0.01)] = true
+				zs[snappedf(l.global_position.z, 0.01)] = true
+		for axis in [xs.keys(), zs.keys()]:
+			axis.sort()
+			for i in range(2, axis.size()):
+				if absf((axis[i] - axis[i - 1]) - (axis[1] - axis[0])) > 0.02:
+					p.append("%s: its roof lamps are not evenly spaced (%s)" % [body.name, str(axis)])
+					break
 		if String(body.get_meta("building")) == "bop_boiler_house":
 			for l in body.get_children():
 				if l is SpotLight3D and String(l.name).begins_with("lamp_") and absf(l.global_position.z) < 0.5 \
@@ -95,14 +108,20 @@ func run(tree: SceneTree) -> Array:
 			if String(l.name).begins_with("lamp_") and String(l.get_parent().name) == "st_hall" and l.global_position.y < 12.0 \
 					and l.global_position.y > under - 0.25:
 				p.append("%s: a lamp under the operating floor hangs below its beams (%.2f, beams from %.2f)" % [l.get_path(), l.global_position.y, under])
-	# the operating floor's beams stop at the IP/LP turbine's exhaust trunk (plant x 36 to 52, y ±3.3)
+	# the operating floor's beams stop at the IP/LP turbine's exhaust trunk (plant x 37 to 45, y ±2.5: a beam's
+	# vertices are only at its ends, so look straight down across the trunk), and no lamp hangs in it (review)
 	if beams != null:
-		var bv: PackedVector3Array = beams.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-		for v in bv:
-			var g := beams.global_transform * v
-			if g.x > 36.2 and g.x < 51.8 and absf(g.z) < 3.3:
-				p.append("a beam under the operating floor runs through the turbine's exhaust trunk at %s" % str(g))
-				break
+		var crossed := false
+		for xi in 17:
+			for zi in 11:
+				var q := Vector3(37.0 + xi * 0.5, 0.0, -2.5 + zi * 0.5)
+				if not crossed and not _hits(beams.mesh, beams.global_transform, q).is_empty():
+					p.append("a beam under the operating floor runs through the turbine's exhaust trunk at %s" % str(q))
+					crossed = true
+		for l in tree.get_nodes_in_group("baked_lights"):
+			var lp: Vector3 = l.global_position
+			if lp.x > 36.0 and lp.x < 46.0 and absf(lp.z) < 3.2 and lp.y > 9.0 and lp.y < 12.0:
+				p.append("%s: a lamp hangs inside the turbine's exhaust trunk" % l.get_path())
 	# the circulating water pump house: louvres, windows lit from inside
 	var cw := plant.find_child("cw_house", true, false)
 	if cw == null or cw.get_node_or_null("louvres") == null or cw.get_node_or_null("windows") == null or cw.get_node_or_null("windows_in") == null:
