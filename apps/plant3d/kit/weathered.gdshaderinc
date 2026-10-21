@@ -11,8 +11,9 @@
 //            handrails, ladders, handwheels; 0 for a part that is never touched)
 //   wet      darker and glossier ground and walls near water (the cooling tower's basin): the box `wet_zone`
 // All from one tileable noise texture made by the build (builder/weather.gd), sampled in world space on the face's
-// main plane (one sample per scale): the same asset set serves every tier, the phone reads two noise samples fewer
-// (`detail` = 0 drops the wear's own sample and the ground's ruts' two: unbroken, the track straight).
+// main plane (one sample per scale): the same asset set serves every tier, the phone reads one noise sample fewer
+// (`detail` = 0 drops the wear's own sample). The ground's ruts break and its track wanders by arithmetic noise (no
+// sample), the same on every tier: the phone's were unbroken and straight while they took two samples (polish pass).
 // Corrugated sheet (`sheet_width`): the set's normal map gives the ribs; the sheets are drawn from UV1, each a little
 // different in tone and gloss, with the lap between them, faded out where a sheet is under a few pixels.
 // Pipe cladding (`lap_length`): aluminium sheets lapped every lap_length along the pipe (UV1.y) with the seam along it.
@@ -79,6 +80,13 @@ float hash1(float n) {
 	return fract(sin(n * 12.9898) * 43758.5453);
 }
 
+// smooth 1D value noise in [0, 1] (no texture read: the same on every tier)
+float vnoise(float x) {
+	float i = floor(x);
+	float f = fract(x);
+	return mix(hash1(i), hash1(i + 1.0), f * f * (3.0 - 2.0 * f));
+}
+
 // ruts: two wheel tracks either side of an axis at distance d across it (metres), broken where the noise says
 float ruts(float d, float along, float fw) {
 	float r = 0.0;
@@ -132,31 +140,42 @@ void fragment() {
 	float g = grime * clamp(smoothstep(0.45, 0.9, n_lo.r) * 0.2 + splash * (0.45 + 0.55 * n_hi.g) * (0.7 + 0.6 * n_lo.g) + max(-up, 0.0) * 0.5, 0.0, 1.0);
 	base = mix(base, base * vec3(0.60, 0.57, 0.53), g);
 
-	// streaks: run-off down vertical faces, in columns 0.18 m wide picked by a hash of the column (not a tiled noise:
-	// its 1.1 m period read as boarding, adversarial review), gathered where the few-metre noise says. No texture
-	// read of their own, so the phone draws them too; derivatives outside the branches.
+	// streaks: run-off down vertical faces, in columns picked by a hash of the column (not a tiled noise: its 1.1 m
+	// period read as boarding, adversarial review), gathered where the few-metre noise says: fine ones 0.18 m wide
+	// and broad, fainter ones 0.75 m wide that still read from across a yard and on a phone's small screen (the fine
+	// ones alone were hard to see there: polish pass). No texture read of their own, so the phone draws them too;
+	// derivatives outside the branches.
 	float h = (abs(wnrm.x) > abs(wnrm.z)) ? wpos.z : wpos.x;
 	float hc = h / 0.18;
 	float fwc = fwidth(hc);
 	float k = floor(hc);
+	float hb = h / 0.75 + 0.31;
+	float fwb = fwidth(hb);
+	float kb = floor(hb);
 	float s = 0.0;
 	if (vert > 0.5) {
 		float colw = smoothstep(0.50, 0.80, hash1(k * 1.37 + 11.0) * (0.55 + 0.9 * n_lo.g));
 		float shape = 1.0 - smoothstep(0.35, 1.0, abs(fract(hc) - 0.5) * 2.0);
 		float col = mix(colw * shape, colw * 0.65, smoothstep(0.25, 0.8, fwc));   // under a pixel: their mean
+		float bw = smoothstep(0.35, 0.75, hash1(kb * 3.17 + 2.0) * (0.6 + 0.8 * n_lo.g));
+		float bshape = 1.0 - smoothstep(0.2, 1.0, abs(fract(hb) - 0.5) * 2.0);
+		float broad = mix(bw * bshape, bw * 0.55, smoothstep(0.25, 0.8, fwb));
 		if (top_edge > 0.5) {
 			// hanging from the face's top edge, each column its own length
 			float top = (round(COLOR.r * 255.0) + COLOR.g) * 0.25;
 			float below = max(top - wpos.y, 0.0);
-			float len = 0.5 + 4.0 * hash1(k * 2.11 + 5.0);
+			// longer on a taller face (a 20 m hall's run down most of it, a fence's a hand or two)
+			float len = (0.5 + 4.0 * hash1(k * 2.11 + 5.0)) * (1.0 + top * 0.12);
 			float hang = 1.0 - smoothstep(0.0, len, below);
-			s = streaks * (col * hang + (1.0 - smoothstep(0.0, 0.25, below)) * 0.35);
+			float blen = (2.0 + 7.0 * hash1(kb * 1.93 + 8.0)) * (1.0 + top * 0.08);
+			float bhang = 1.0 - smoothstep(0.0, blen, below);
+			s = streaks * max(col * hang, broad * bhang * 0.75) + streaks * (1.0 - smoothstep(0.0, 0.3, below)) * 0.45;
 		} else {
-			s = streaks * col * (0.4 + 0.6 * n_hi.g);
+			s = streaks * max(col, broad * 0.6) * (0.4 + 0.6 * n_hi.g);
 		}
-		s *= vert;
-		vec3 run = mix(vec3(0.45, 0.42, 0.38), vec3(0.45, 0.26, 0.14), clamp(rust * 2.0, 0.0, 1.0));
-		base = mix(base, base * run * 1.5, s);
+		s = clamp(s * vert, 0.0, 1.0);
+		vec3 run = mix(vec3(0.42, 0.40, 0.37), vec3(0.45, 0.26, 0.14), clamp(rust * 2.0, 0.0, 1.0));
+		base = mix(base, base * run * 1.25, s);
 	}
 
 	// rust: small spots, more where water runs, gathered in patches of a few metres (the spots' own noise repeats
@@ -193,7 +212,8 @@ void fragment() {
 			// the verge beside the road's edges: vehicles pull over there
 			float off = dist - 5.6;
 			compact = max(compact, 1.0 - smoothstep(1.2, 2.6, abs(off)));
-			float br = detail > 0.5 ? smoothstep(0.25, 0.42, texture(noise_tex, vec2(along * 0.013, 0.57)).r) : 1.0;
+			// broken: pulled over here and there, gaps of a few metres
+			float br = smoothstep(0.35, 0.5, 0.65 * vnoise(along * 0.09) + 0.35 * vnoise(along * 0.37 + 3.7));
 			rut = max(rut, ruts(off, along, fwp) * br);
 		}
 		if (dot(track.zw, track.zw) > 0.5) {
@@ -201,7 +221,8 @@ void fragment() {
 			float along = dot(o, track.zw);
 			float across = dot(o, vec2(-track.w, track.z));
 			if (along > 0.0) {
-				float wob = detail > 0.5 ? (texture(noise_tex, vec2(along * 0.004, 0.13)).g - 0.5) * 12.0 * smoothstep(20.0, 120.0, along) : 0.0;
+				// it wanders a few metres either way once clear of the gate
+				float wob = (0.7 * vnoise(along * 0.017 + 1.3) + 0.3 * vnoise(along * 0.061 + 7.1) - 0.5) * 14.0 * smoothstep(15.0, 90.0, along);
 				compact = max(compact, 1.0 - smoothstep(2.0, 3.5, abs(across - wob)));
 				rut = max(rut, ruts(across - wob, along, fwp));
 			}
@@ -261,6 +282,7 @@ void fragment() {
 	ALBEDO = base;
 	ROUGHNESS = clamp(rough, 0.04, 1.0);
 	METALLIC = metal;
-	EMISSION = emission.rgb * emission_energy;
+	// a material with its colours in the vertices glows in them (a sign's white board and its blue symbol)
+	EMISSION = emission.rgb * emission_energy * (use_vertex_colour ? srgb_to_linear(COLOR.rgb) : vec3(1.0));
 	if (use_normal) NORMAL_MAP = texture(normal_tex, uv).rgb;
 }

@@ -75,6 +75,16 @@ def box(x0, y0, x1, y1):
     return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
 
 
+def louvre(x, y, z, w=3, h=1.5):
+    """A louvre on a building's wall (its centre at x, y, z in the building's frame): the look's polish pass draws
+    them, so a plain box reads as a building."""
+    return {'kind': 'louvre', 'at': [x, y, z], 'width': w, 'height': h}
+
+
+def window(x, y, z, w=2.4, h=1.2):
+    return {'kind': 'window', 'at': [x, y, z], 'width': w, 'height': h}
+
+
 def st(sid, part, at=None, yaw=0, kks=None, params=None, **kw):
     params = params or kw
     s = {'id': sid, 'part': part}
@@ -171,7 +181,9 @@ def bop():
     structures = [
         st('bop_boiler_house', 'building', [88, -8, 0], outline=rect(16, 16), height=10, cladding='metal',
            openings=[{'kind': 'door', 'at': [16, 4, 0], 'width': 3, 'height': 3.5},
-                     {'kind': 'pipe', 'at': [0, 8, 9], 'width': 0.5, 'height': 0.5}]),
+                     {'kind': 'pipe', 'at': [0, 8, 9], 'width': 0.5, 'height': 0.5},
+                     louvre(0, 4, 7.5, 2.5, 1.2), louvre(0, 12, 7.5, 2.5, 1.2), louvre(8, 0, 7.5, 2.5, 1.2),
+                     louvre(8, 16, 7.5, 2.5, 1.2)]),
         st('bop_boiler_door', 'door', [104, -4, 0], 90, kind='roller', width=3, height=3.5),
     ]
     return area('bop', 'Auxiliary boiler, demineralised water, instrument air, closed cooling water',
@@ -289,7 +301,11 @@ def cw():
     structures = [
         st('cw_house', 'building', [140, -12, 0], kks='30UQA10', outline=rect(25, 20), height=12,
            openings=[{'kind': 'door', 'at': [12, 20, 0], 'width': 4, 'height': 4},
-                     {'kind': 'pipe', 'at': [10, 0, 1.5], 'width': 14, 'height': 1.6}]),
+                     {'kind': 'pipe', 'at': [10, 0, 1.5], 'width': 14, 'height': 1.6},
+                     # the motors' air out high on every wall, windows at the pump floor's eye level
+                     louvre(25, 6, 9.5), louvre(25, 14, 9.5), louvre(0, 6, 9.5), louvre(0, 14, 9.5),
+                     louvre(5, 20, 9.5), louvre(19, 20, 9.5),
+                     window(5, 20, 5.5), window(19, 20, 5.5), window(25, 10, 5.5), window(0, 10, 5.5)]),
         st('cw_pit', 'pit', [142, -8, 0], outline=rect(16, 5), depth=9),
         st('cw_pit_cover', 'grating', [142, -8, 0], outline=rect(16, 5)),
         st('cw_door', 'door', [152, 8, 0], 0, kind='roller', width=4, height=4),
@@ -398,7 +414,9 @@ def st_area():
         st('st_hall', 'building', [0, -25, 0], kks='30UMA10', outline=rect(80, 50), height=32, cladding='metal',
            openings=[{'kind': 'door', 'at': [80, 30, 0], 'width': 6, 'height': 6},
                      {'kind': 'door', 'at': [0, 45, 0], 'width': 1.2, 'height': 2.4},
-                     {'kind': 'pipe', 'at': [80, 27, 9], 'width': 14, 'height': 4}]),
+                     {'kind': 'pipe', 'at': [80, 27, 9], 'width': 14, 'height': 4}] +
+                    [window(10 + 12 * i, 50, 24, 4, 2) for i in range(6)] + [louvre(80, 10, 24, 4, 2),
+                                                                             louvre(80, 40, 24, 4, 2)]),
         st('st_floor_12', 'platform', [10, -20, 12], outline=rect(70, 40), deck='concrete', edge='handrail'),
         st('st_floor_6', 'floor', [0, -25, 6], outline=rect(10, 50)),
         stair_tower('st_stair_w', [3, 12, 0], [10, 16, 12]),
@@ -477,7 +495,9 @@ def gt1():
                      {'kind': 'louvre', 'at': [40, 15, 20], 'width': 14, 'height': 16},
                      {'kind': 'pipe', 'at': [80, 15, 5], 'width': 9, 'height': 10},
                      {'kind': 'door', 'at': [30, 30, 0], 'width': 1.0, 'height': 2.1},
-                     {'kind': 'pipe', 'at': [40, 30, 1], 'width': 0.6, 'height': 0.6}]),
+                     {'kind': 'pipe', 'at': [40, 30, 1], 'width': 0.6, 'height': 0.6},
+                     louvre(10, 0, 14, 4, 2), louvre(70, 0, 14, 4, 2), window(20, 30, 10, 4, 1.5),
+                     window(50, 30, 10, 4, 1.5), window(65, 30, 10, 4, 1.5)]),
         st('gt1_door_s', 'door', [40, 50, 0], 180, kind='roller', width=6, height=6),
         st('gt1_door_n', 'door', [30, 80, 0], 0, kind='personnel'),
         st('gt1_skid_slab', 'slab', [8, 82, 0], outline=rect(36, 8), thickness=0.3),

@@ -51,6 +51,9 @@ const PAINT := {
 	"paint_pipe": Color(0.50, 0.52, 0.53),       # bare pipe (its medium shows in its bands)
 }
 
+## ISO 3864-4 safety blue (a mandatory sign's disc).
+const PAINT_SIGN_BLUE := Color(0.08, 0.28, 0.54)
+
 ## Bare pipe painted by the colour group of what it carries (plant.json `media`: `group`), after DIN 2403's idea of
 ## a colour per group, in muted shades: the medium's own band and arrow (saturated, PLANT3D.md §2) must still stand out
 ## on the pipe, in lightness too, for a trainee who tells colours apart badly (tests/test_realism.gd checks both for
@@ -77,12 +80,14 @@ const WEATHER := {
 	"metal": {"grime": 0.40, "streaks": 0.30, "dust": 0.20, "rust": 0.30, "wear": 0.0},
 	"galvanised": {"grime": 0.30, "streaks": 0.30, "dust": 0.20, "rust": 0.04, "wear": 0.0},
 	"cladding": {"grime": 0.25, "streaks": 0.30, "dust": 0.12, "rust": 0.0, "wear": 0.0},
-	"sheeting": {"grime": 0.20, "streaks": 0.50, "dust": 0.15, "rust": 0.04, "wear": 0.0},
+	"sheeting": {"grime": 0.20, "streaks": 0.65, "dust": 0.15, "rust": 0.04, "wear": 0.0},
 	"concrete": {"grime": 0.45, "streaks": 0.55, "dust": 0.25, "rust": 0.0, "wear": 0.0},
 	"ground": {"grime": 0.50, "streaks": 0.0, "dust": 0.15, "rust": 0.0, "wear": 0.0},
 	"deck": {"grime": 0.45, "streaks": 0.20, "dust": 0.30, "rust": 0.15, "wear": 0.5},
 	# a hall's painted floor: kept fairly clean
 	"floor": {"grime": 0.20, "streaks": 0.0, "dust": 0.06, "rust": 0.0, "wear": 0.0},
+	# a hall's inside: the liner sheets of its walls and roof, kept fairly clean (no rain runs down them)
+	"liner": {"grime": 0.12, "streaks": 0.0, "dust": 0.05, "rust": 0.0, "wear": 0.0},
 	# small plain pieces (dials, tag plates, glass, the media's bands): kept clean, a trainee reads them
 	"none": {"grime": 0.0, "streaks": 0.0, "dust": 0.0, "rust": 0.0, "wear": 0.0},
 }
@@ -112,8 +117,11 @@ static func specs() -> Dictionary:
 	# insulation cladding: aluminium sheets lapped every metre along the pipe
 	m["cladding"] = {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "rough": 1.0, "metal": 0.8, "tile": 1.0, "lap": 1.0}
 	# wall cladding: painted (polyester-coated) steel sheets 1 m wide, the ribs from the set's normal map
-	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(0.50, 0.54, 0.58), "rough": 0.6, "metal": 0.1, "tile": 2.0, "sheet": 1.0}
+	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(0.58, 0.62, 0.66), "rough": 0.6, "metal": 0.1, "tile": 2.0, "sheet": 1.0}
 	m["corrugated_casing"] = {"set": "CorrugatedSteel005", "tint": Color(0.52, 0.54, 0.55), "rough": 0.6, "metal": 0.1, "tile": 3.0, "sheet": 1.0}
+	# a hall's inside skin (the liner of its wall and roof panels): light grey profiled sheet, as the inner face of
+	# composite cladding is; the dark outer sheet seen from inside made every hall's ceiling black (polish pass)
+	m["liner"] = {"set": "CorrugatedSteel005", "tint": Color(0.84, 0.85, 0.84), "rough": 0.55, "metal": 0.05, "tile": 1.0, "sheet": 1.0, "weather": "liner"}
 	m["concrete"] = {"set": "Concrete034", "tint": Color(0.72, 0.71, 0.69), "rough": 1.0, "metal": 0.0, "tile": 3.0}
 	# a hall's floor: grey-green epoxy paint on concrete, the concrete's relief under it, satin
 	m["hall_floor"] = {"set": "Concrete034", "maps": ["NormalGL"], "tint": Color(0.42, 0.47, 0.44), "rough": 0.4, "metal": 0.0, "tile": 3.0, "weather": "floor"}
@@ -125,6 +133,10 @@ static func specs() -> Dictionary:
 	m["terrain"] = {"set": "Gravel023", "tint": Color(0.78, 0.70, 0.56), "rough": 1.0, "metal": 0.0, "tile": 9.0, "macro": 1.0}
 	# plain (no textures): small pieces, faces of dials, glass, rubber, porcelain, lamps
 	m["plate"] = {"set": "", "tint": Color(0.93, 0.93, 0.90), "rough": 0.4, "metal": 0.0}         # tag plates (white)
+	# a safety sign's white board: retroreflective sheeting, as signs are made, so it stays white in a wall's shade
+	# and under a hall's lamps (lit by the sky alone it read light grey: polish pass); a little light of its own
+	# (its colours in the vertices: the white, and the symbol's blue, which glows blue)
+	m["sign_board"] = {"set": "", "tint": Color(0.95, 0.95, 0.93), "rough": 0.35, "metal": 0.0, "emit": true, "emit_energy": 0.75, "vc": true}
 	m["plate_border"] = {"set": "", "tint": Color(0.05, 0.05, 0.05), "rough": 0.6, "metal": 0.0}
 	m["dial"] = {"set": "", "tint": Color(0.97, 0.97, 0.95), "rough": 0.4, "metal": 0.0}
 	m["needle"] = {"set": "", "tint": Color(0.05, 0.05, 0.05), "rough": 0.5, "metal": 0.0}
@@ -133,6 +145,9 @@ static func specs() -> Dictionary:
 	m["rubber"] = {"set": "", "tint": Color(0.05, 0.05, 0.05), "rough": 0.9, "metal": 0.0}
 	m["porcelain"] = {"set": "", "tint": Color(0.36, 0.20, 0.12), "rough": 0.25, "metal": 0.0}     # bushings
 	m["glass"] = {"set": "", "tint": Color(0.35, 0.45, 0.50), "rough": 0.05, "metal": 0.2}
+	# windows: the glass seen from outside (the sky's reflection in it), and from inside (the daylight beyond)
+	m["window_glass"] = {"set": "", "tint": Color(0.52, 0.60, 0.65), "rough": 0.08, "metal": 0.3}
+	m["window_day"] = {"set": "", "tint": Color(0.80, 0.85, 0.88), "rough": 0.4, "metal": 0.0, "emit": true, "emit_energy": 0.7}
 	m["water"] = {"set": "", "tint": Color(0.18, 0.30, 0.32), "rough": 0.08, "metal": 0.1}
 	m["fill"] = {"set": "", "tint": Color(0.16, 0.17, 0.18), "rough": 0.8, "metal": 0.0}            # CT fill, louvres' depth
 	m["dark"] = {"set": "", "tint": Color(0.03, 0.03, 0.03), "rough": 1.0, "metal": 0.0}            # openings, shadows inside
@@ -143,7 +158,7 @@ static func specs() -> Dictionary:
 	m["lamp_blue"] = {"set": "", "tint": Color(0.1, 0.3, 1.0), "rough": 0.3, "metal": 0.0, "emit": true}
 	m["lamp_white"] = {"set": "", "tint": Color(1.0, 0.97, 0.9), "rough": 0.3, "metal": 0.0, "emit": true}
 	m["sign_green"] = {"set": "", "tint": Color(0.0, 0.45, 0.25), "rough": 0.5, "metal": 0.0}
-	m["sign_blue"] = {"set": "", "tint": Color(0.08, 0.28, 0.54), "rough": 0.5, "metal": 0.0}       # ISO 3864-4 safety blue
+	m["sign_blue"] = {"set": "", "tint": PAINT_SIGN_BLUE, "rough": 0.5, "metal": 0.0}       # ISO 3864-4 safety blue
 	m["sign_yellow"] = {"set": "", "tint": Color(0.98, 0.80, 0.05), "rough": 0.5, "metal": 0.0}
 	# the materials the kit's meshes are drawn with: one per texture set and finish, the colour in the vertices
 	# (`resolve`), so a cell's pieces of every paint colour are one draw call, not one per colour (decision 0041:
@@ -193,7 +208,9 @@ const STRUCTURE_MATS := {
 	"roof": ["corrugated_casing", true], "door": ["paint_motor", false], "fence": ["galvanised", true],
 	"pit": ["concrete", false], "ladder": ["paint_yellow", false], "rack": ["galvanised", false],
 	"yard": ["concrete", false], "road": ["asphalt", false], "drain": ["dark", false], "terrain": ["terrain", false],
-	"hall_floor": ["hall_floor", false],
+	"hall_floor": ["hall_floor", false], "liner": ["liner", false], "roof_steel": ["paint_grey", false],
+	"louvre": ["galvanised", false], "window": ["window_glass", false], "window_in": ["window_day", false],
+	"trim": ["paint_grey", false],
 }
 
 static func structure_spec(name: String) -> Dictionary:
@@ -235,7 +252,7 @@ static func tex_path(set_name: String, map: String, size: int) -> String:
 static func make(name: String, spec: Dictionary, size := DEFAULT_SIZE) -> Material:
 	var mat := _make_weathered(name, spec, size)
 	if spec.get("emit", false):
-		set_emission(mat, spec.tint)
+		set_emission(mat, spec.tint, float(spec.get("emit_energy", 2.0)))
 	return mat
 
 ## A weathered material's own light, as Godot's standard material's emission at energy 2 (the lamps).
@@ -301,7 +318,7 @@ static func set_wet_zone(mats: Dictionary, zone: Vector4, strength: float) -> vo
 			m.set_shader_parameter("wet_zone", zone)
 			m.set_shader_parameter("wet", strength)
 
-## The tier's share of the weathering's samples (the shader's `detail`: 0 drops the streaks and the paint wear).
+## The tier's share of the weathering's samples (the shader's `detail`: 0 drops the paint wear's sample).
 static func set_detail(mat: Material, on: bool) -> void:
 	if mat is ShaderMaterial:
 		mat.set_shader_parameter("detail", 1.0 if on else 0.0)

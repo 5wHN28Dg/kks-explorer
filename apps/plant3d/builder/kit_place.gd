@@ -430,9 +430,8 @@ static func sign_layout(text_w: float, size: float) -> Dictionary:
 
 ## The sign's board with its symbol, in its own frame (x across, y up, z out of the wall, metres from the point on
 ## the wall's line), drawn by us (no artwork: CC0 by construction). Built in part axes (x, y = -z, z = y), one mesh:
-## its colours all resolve to `plain`, so in its cell it merges with the other plain pieces where there are any;
-## alone it is one draw call, the one the sign's text gave up with its outline (a Label3D's outline is a surface of
-## its own).
+## all of it is `sign_board` (retroreflective sheeting, its colours in the vertices: kit/materials.gd), so in its cell
+## it is one draw call, merged with the other signs' boards there.
 ## M003 ("wear ear protection", ISO 7010): a blue disc, and on it in white a head with ear defenders: the head and
 ## its neck, the shoulders, two ear cups clear of the head and the headband over it, clear of the head's top.
 static func sign_mesh(symbol: String, text_w: float, size: float) -> MB:
@@ -440,7 +439,7 @@ static func sign_mesh(symbol: String, text_w: float, size: float) -> MB:
 	var L := sign_layout(text_w, size)
 	var m := MB.new()
 	var f: float = L.face
-	m.use("plate", "identify")
+	m.use("sign_board", "identify")
 	m.box(Vector3(0, -(SIGN_BACK + SIGN_THICK * 0.5), -L.lo + L.h * 0.5), Vector3(L.w, SIGN_THICK, L.h))
 	var out := Vector3(0, -1, 0)
 	var R: float = L.r
@@ -453,9 +452,10 @@ static func sign_mesh(symbol: String, text_w: float, size: float) -> MB:
 			var t := TAU * i / 32.0
 			pts.append(at.call(cx + rx * cos(t), cy2 + ry * sin(t), d))
 		return pts
-	m.use("sign_blue", "identify")
+	m.use("sign_board", "identify")
+	m.colour = Mat.PAINT_SIGN_BLUE   # the board's material, the blue in the vertices: one layer, one draw call
 	m.disk(at.call(0, 0, 0.005), out, R, 48)
-	m.use("plate", "identify")
+	m.use("sign_board", "identify")
 	var d := 0.01
 	# the shoulders: inside the disc's 0.86 below a gentle rise to the neck (convex: one fan)
 	var sh := []
@@ -485,10 +485,11 @@ var _signs := {}
 func sign_board(xf: Transform3D, symbol: String, text_w: float, size: float) -> void:
 	var key := "sign|%s|%.3f|%.3f" % [symbol, text_w, size]
 	if not _signs.has(key):
-		_signs[key] = Kit._meshes(sign_mesh(symbol, text_w, size).finish(), Vector3.ZERO).values()[0]
-	# merged with its cell's plain layer; a group of signs' boards alone casts no shadow (flat on its wall: the shadow
-	# pass would draw it for nothing)
-	cells[_cell(_signs[key], _signs[key].mesh.resource_name, xf)]["sign"] = true
+		_signs[key] = Kit._meshes(sign_mesh(symbol, text_w, size).finish(), Vector3.ZERO).values()
+	# each material's layer (the white and the symbol's colour) merged with its cell's layer of that material; a group
+	# of signs' boards alone casts no shadow (flat on its wall: the shadow pass would draw it for nothing)
+	for L in _signs[key]:
+		cells[_cell(L, L.mesh.resource_name, xf)]["sign"] = true
 
 # ------------------------------------------------------------------ the cells
 

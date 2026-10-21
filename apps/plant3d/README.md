@@ -306,6 +306,9 @@ banner and the flow lines are drawn besides, so the frame times above are the me
 - `test_about`: About from the settings (gamepad A), what it shows (version, commit, the assets with their licence,
   Godot's notices), scrolling by D-pad, stick, Page Down and Home, and back by Esc, B and Back.
 - `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).
+- `test_look`: the polish pass (0057): ceilings (liner, roof steel, lamps hung from purlins between rafters, decking
+  and beams under decks, clear of machines through them), plinths and flashings, louvres and windows, the palisade
+  seen through and its streaks' top, the shader's streaks and its ruts on every tier, the retroreflective sign board.
 - `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
   site, each tier's effects.
 - `test_bake_prep`: what `build.sh` does before the bake (CI cannot bake): the editor's script documentation cache.

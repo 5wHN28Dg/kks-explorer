@@ -40,7 +40,8 @@ memory, load and size rules (wiki: 3D-plant, measurement rules), and with nothin
 - **Materials:** one weathered shader for every lit surface: the CC0 sets plus grime, run-off streaks, dust on top
   faces, rust, paint wear where hands go (vertex alpha by colour), wet ground round the cooling tower, jointed yards,
   the road's centre line, drawn bar gratings; the plain pieces (plates, dials, bands) the same shader kept clean. The
-  phone skips the wear's sample and the ruts' two (its ground has the patches but no broken ruts or wandering track);
+  phone skips the wear's sample and the ruts' two (its ground has the patches but no broken ruts or wandering track;
+  since the polish pass, below, the ruts and the track take no samples and are the same on every tier);
   it draws the streaks, which read no texture of their own. A second, smaller program for the phone (compiled with
   the wear and the ruts left out, swapped onto the materials at start) made its first start slower, not faster (16.6
   and 16.8 s against 14.9 and 15.0 s), and was taken out.
@@ -164,3 +165,45 @@ three `build.sh release` runs, each in a fresh worktree, then baked and exported
 **When to revisit:** when Godot binds LightmapGI baking to scripts (bake headless, on CI); if a phone in the
 measurement set has ASTC HDR; when the plant outgrows one lightmap texture (4096 px slices); if a trainee needs light
 inside a dark corner the bake misses.
+
+## Polish pass toward plant-v0.2.0 (2026-10-21)
+
+What a trainee noticed in the first train, fixed in the same approaches (no new shader, vertex format or pipeline):
+
+- **Hall ceilings** were black: the inside of the dark outer sheet, lit by nothing but what a dark floor bounced. Every
+  building now has a light liner under its roof (the inner skin of composite cladding) and a metal-clad hall's walls
+  are lined inside too; the roof steel (rafters every 6 m, purlins every 1.8 m) hangs under it. The lamps hang as high
+  as before, evenly spaced, each on a short rod from a purlin midway between two rafters (hung below the rafters, one
+  sat in the boiler house's steam pipe: review). A hall's upper floor seen from below is profiled decking on beams (it
+  was the floor's dark epoxy), the beams and the lamps under it clear of the turbine's exhaust trunk.
+- **The CW pump house** read as a dim box: buildings draw the louvres and windows their openings name (the content
+  format had them, the build ignored them), metal cladding has a concrete plinth and flashings, a concrete wall a
+  coping; the cladding is a lighter grey. Windows seen from inside are the daylight beyond (a little light of their
+  own, which the bake spreads into the hall).
+- **The transformer yard's fence** is a steel palisade (posts, rails, pointed pales a hand apart) one sees through; the
+  galvanised sheet read as a blotchy wall on the phone. It still shimmers a little 40 m and more away.
+- **Streaks** have broad 0.75 m columns besides the fine ones, longer on taller faces; cladding's are stronger. **The
+  ruts** break and **the track** wanders by arithmetic noise, the same on every tier (the phone's took two texture
+  samples it skipped). **A safety sign's board** is retroreflective white with a little light of its own (it read light
+  grey in a wall's shade: 118 of 255 on screen there, now 192; 186 → 212 in the sun).
+
+Measured (release builds, baked; before = main 75fd006, after = this change):
+
+| | Rule | Before | After |
+|---|---|---|---|
+| Note 9, frames shown at ≥ 30 fps (SurfaceFlinger), 10 minutes, first start | ≥ 95 % | 99.24 % | 99.55 % |
+| Note 9, frames over 100 ms after 5 s | none | none (worst 72.7 ms) | none (worst 55.2 ms) |
+| Note 9, peak PSS (sampled) | ≤ 1.5 GB | 669 MB | 920 MB |
+| Note 9, launch to the first walkable frame, three first starts | ≤ 15 s | 8.52, 8.74, 8.47 s | 10.21, 8.89, 8.58 s |
+| Note 9, pipelines for the first frame (mesh/surface/draw/specialization) | | 0/13/0/7 | 0/13/0/7 |
+| Laptop `full` 1600×900, 600 s: frame p95 / GPU p95 | ≤ 16.7 ms (GPU free) | 24.9 / 9.7 ms | 24.8 / 9.6 ms |
+| Lightmap texels / APK | ≤ 150 MB | 6.3 M / 115 MB | 8.4 M / 118 MB |
+
+The phone and laptop numbers were measured before the review fixes, which moved the baked lamps (place and spacing),
+gave the fence's streaks their top and cut beams at the turbine: nothing drawn at run time changed (the lamps are
+dropped once baked; the same meshes, materials and lightmap size).
+
+The laptop's runs had the user's code editor on the GPU (400–470 ms of render engine a second, `gpu_clients.py`), so
+its frame p95 says nothing about the 60 fps rule; the app's own GPU time is unchanged. The peak PSS grew by about a
+quarter of a gigabyte, within the rule but not yet explained (the lightmap grew by 8 MB): to break down before the next
+change adds memory.
