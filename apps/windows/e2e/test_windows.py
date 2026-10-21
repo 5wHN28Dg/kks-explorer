@@ -74,6 +74,32 @@ def msix(args):
     return 'no answer from msix.ps1'
 
 
+# Notifications ("toasts") off for the desktop user while the tests run, and the user's own setting back afterwards.
+# A notification that stays until it is answered (OneDrive's "Turn On Windows Backup" with "Remind me again", any
+# reminder) takes the foreground, and the keyboard focus with it, when the window in front closes (each script's
+# console does): the app was no longer in front, its focus steps failed and a sync rebuilt what the keyboard had left
+# (2026-10-21: test_flow, test_stale_click, test_systems_follows_sync and test_typed_text_kept on both VMs; uiadrive
+# then logged the focus on "New notification from OneDrive"). The setting is read only by a new notification service
+# (an administrator's restart; the VMs' user is one); ShellExperienceHost, which Windows starts again, takes the one
+# already on screen with it.
+TOAST_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications'
+TOAST_RESTART = ('Get-Service WpnUserService_* | Restart-Service -Force -ErrorAction Stop; '
+                 'Get-Process ShellExperienceHost -ErrorAction SilentlyContinue | Stop-Process -Force')
+
+
+def toasts_off():
+    """-> the user's ToastEnabled value before ('' when it was never set)"""
+    was = vm("$v = (Get-ItemProperty '%s' -ErrorAction SilentlyContinue).ToastEnabled; if ($null -ne $v) { $v }" % TOAST_KEY).strip()
+    out = vm("Set-ItemProperty '%s' ToastEnabled 0 -Type DWord; %s; 'toasts off'" % (TOAST_KEY, TOAST_RESTART))
+    assert 'toasts off' in out, 'notifications could not be turned off for the tests (an administrator account?): ' + out
+    return was
+
+
+def toasts_back(was):
+    if was: vm("Set-ItemProperty '%s' ToastEnabled %s -Type DWord; %s" % (TOAST_KEY, was, TOAST_RESTART))
+    else: vm("Remove-ItemProperty '%s' ToastEnabled -ErrorAction SilentlyContinue; %s" % (TOAST_KEY, TOAST_RESTART))
+
+
 sys.path.append(os.path.join(REPO, 'tests'))
 from e2e_server import start_server  # noqa: E402  (the ports and the server start of every e2e suite, #155)
 
@@ -128,10 +154,12 @@ class Windows(unittest.TestCase):
                % os.path.basename(MSIX_CER))
             out = msix('-Add C:\\kks\\' + os.path.basename(MSIX))
             assert out.startswith('ok Walkdown_'), 'the MSIX did not install: ' + out
+        cls.toasts = toasts_off()       # no notifications on screen while the tests run (last: tearDownClass puts them back)
 
     @classmethod
     def tearDownClass(cls):
         vm('Get-Process Walkdown,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
+        toasts_back(cls.toasts)
         if MSIX:      # leave the VM as it was: no package, no trusted test certificate
             msix('-Remove')
             vm('$t = (New-Object Security.Cryptography.X509Certificates.X509Certificate2 C:\\kks\\%s).Thumbprint; '

@@ -90,6 +90,9 @@ The test:
 - copies the app and `uiadrive.exe` (`e2e/uiadrive.cpp`) to the VM;
 - drives the app through the native UI Automation core (what Narrator uses), from a scheduled task in the desktop
   session.
+- turns the desktop user's notifications off while it runs, and back as they were afterwards (needs an administrator
+  account, as the VMs' is): a notification left on screen until answered, such as OneDrive's "Turn On Windows Backup",
+  takes the keyboard focus from the app when a script's console window closes.
 
 It covers:
 - joining (TLS enroll);
