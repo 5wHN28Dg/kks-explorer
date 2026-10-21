@@ -771,7 +771,7 @@ func _stencils(parent: Node3D, p: Dictionary, route: Array, rr: float, buried: D
 				var x_ax := y_ax.cross(z_ax).normalized()
 				l.transform = Transform3D(Basis(x_ax, y_ax, z_ax), Geom.g([mid.x + nrm.x * (rr + 0.012), mid.y + nrm.y * (rr + 0.012), mid.z]))
 				l.set_meta("stencil", p.medium)
-				parent.add_child(l)
+				parent.add_child(l, true)   # readable names (stencil, stencil2, …)
 				n += 1
 	return n
 

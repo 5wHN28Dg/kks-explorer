@@ -503,7 +503,7 @@ def gt1():
     structures = [
         # tiled walkways, bar gratings over the trenches along the gas turbine, the crane's rail over the windows
         st('gt1_hall', 'building', [0, 50, 0], kks='10UMB10', outline=rect(80, 30), height=20, cladding='metal',
-           floor='tile', crane=16,
+           floor='tile', crane=14.5,
            openings=[{'kind': 'door', 'at': [40, 0, 0], 'width': 6, 'height': 6},
                      {'kind': 'louvre', 'at': [40, 15, 20], 'width': 14, 'height': 16},
                      {'kind': 'pipe', 'at': [80, 15, 5], 'width': 9, 'height': 10},

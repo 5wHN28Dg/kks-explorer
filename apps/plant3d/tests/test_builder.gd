@@ -22,7 +22,24 @@ func run(_tree: SceneTree) -> Array:
 	_cuts()
 	_hall_floor()
 	_lamp_floor()
+	_crane()
 	return problems
+
+## An overhead crane whose trolley would reach into the roof's trusses is refused (the gas turbine hall's first rail
+## height put it 0.75 m into them: photo pass); one that clears them is accepted, the hall gets its frame's runway.
+func _crane() -> void:
+	for c in [[32.0, 26.0, false], [20.0, 16.0, true], [20.0, 14.5, false]]:
+		var b := Builder.new()
+		var body := Node3D.new()
+		var frame := SurfaceTool.new()
+		frame.begin(Mesh.PRIMITIVE_TRIANGLES)
+		b._crane(body, frame, {"id": "hall", "outline": Geom.rect(0, 0, 80, 30), "height": c[0], "crane": c[1]})
+		var refused := false
+		for e in b.errors:
+			refused = refused or String(e).begins_with("crane_clash")
+		check(refused == c[2], "a crane on its rail at %.1f m in a hall %.0f m high: %s" % [c[1], c[0], "refused" if c[2] else "accepted"])
+		check(body.get_node_or_null("crane") != null, "the crane is drawn")
+		body.free()
 
 func _decompose() -> void:
 	var sq := Geom.rect(0, 0, 10, 10)

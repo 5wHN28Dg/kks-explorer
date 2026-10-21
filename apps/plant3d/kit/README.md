@@ -136,7 +136,12 @@ carries it; the Android export leaves the 2048 px set out too (and carries only 
 highest deck, rack tier or the ground below (up to 40 m: a tall trestle gets a second leg and bracing), never in
 walking space: over a narrow deck, a landing or a stair a pipe bridge spans it (legs where the walkway ends, within
 8 m either side); on a deck at least 8 m wide both ways (a roof, a floor) posts stand as sleepers do. A pipe with
-nothing to stand on is reported by the build as a warning.
+nothing to stand on is reported by the build as a warning. The medium's `name` (plant.json) is stencilled in black on both
+sides of every horizontal run long enough for it, between the bands and clear of bends, valves and instruments
+(`builder/kit_place.gd _stencils`: the safety signs' label settings, drawn within 30 m).
+
+Valves' bodies, bonnets and yokes are black (`paint_valve`, cast iron and steel as delivered), electric actuators a
+light silver grey (`paint_actuator`), bolts rusty steel (`steel_bolt`), handwheels red.
 
 ## Budgets
 

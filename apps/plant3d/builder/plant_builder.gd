@@ -1872,6 +1872,10 @@ func _crane(body: Node, frame: SurfaceTool, b: Dictionary) -> void:
 	var L: float = g.L
 	var S: float = g.S
 	var zr: float = b.crane
+	# the trolley's top must clear the roof's trusses (or rafters)
+	var steel_lo: float = float(b.height) - LINER_T - PURLIN_D - (truss_depth(S) if S >= TRUSS_MIN else rafter_depth(S))
+	if zr + 0.15 + CRANE_GIRDER_D + 0.9 > steel_lo - 0.05:
+		_err("crane_clash", String(b.id), "the crane on its rail at %.1f m reaches %.2f m, into the roof steel from %.2f m" % [zr, zr + 0.15 + CRANE_GIRDER_D + 0.9, steel_lo])
 	var at := func(t: float, s2: float) -> Vector2:
 		return r.position + (Vector2(t, s2) if along_x else Vector2(s2, t))
 	var inset := WALL_T * 0.5 + LINER_T + CRANE_INSET
