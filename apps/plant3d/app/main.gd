@@ -126,6 +126,7 @@ func _ready() -> void:
 		plant.visible = false
 		Quality.apply_ranges(get_viewport())   # the tier's visibility ranges, on the plant's pieces now loaded
 		Quality.Mat.apply_tier(tier)   # and its materials (detail, texture size), now that the plant holds them
+		Quality.apply_probes(tier, get_tree())
 	_launch("lightmap")
 	player = Player.new()
 	player.name = "player"

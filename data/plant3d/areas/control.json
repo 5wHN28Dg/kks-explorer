@@ -10,7 +10,9 @@
  "pack": "base",
  "equipment": [
   {"kks": "00CWA10", "name": "Main control desk A", "part": "operator_desk", "at": [-25, -2.2, 0], "yaw": 90, "params": {"width": 3.2, "screens": 4}},
-  {"kks": "00CWB10", "name": "Main control desk B", "part": "operator_desk", "at": [-25, 2.2, 0], "yaw": 90, "params": {"width": 3.2, "screens": 4}}
+  {"kks": "00CWB10", "name": "Main control desk B", "part": "operator_desk", "at": [-25, 2.2, 0], "yaw": 90, "params": {"width": 3.2, "screens": 4}},
+  {"kks": "00BBA10", "name": "Medium-voltage switchgear A", "part": "switchgear_row", "at": [-30, 1, 6], "yaw": 90, "params": {"panels": 14, "depth": 1.5}, "plate": "front"},
+  {"kks": "00BFA10", "name": "Low-voltage switchboard A", "part": "switchgear_row", "at": [-22, 1, 6], "yaw": 270, "params": {"panels": 14, "depth": 1.0}, "plate": "front"}
  ],
  "pipes": [],
  "structures": [
@@ -21,6 +23,7 @@
  ],
  "signs": [
   {"text": "Control room", "at": [-11, 2, 2.6], "yaw": 90, "size": 0.4},
-  {"text": "Control building 00UCA10", "at": [-10.1, -4, 3], "yaw": 90, "size": 0.4}
+  {"text": "Control building 00UCA10", "at": [-10.1, -4, 3], "yaw": 90, "size": 0.4},
+  {"text": "Electrical room", "at": [-26, -9, 8.6], "yaw": 0, "size": 0.4}
  ]
 }

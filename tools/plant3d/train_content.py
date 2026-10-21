@@ -6,6 +6,7 @@ UNITS = {'0': 'Common to the whole plant', '1': 'Gas turbine train 1 (GT 1, gene
          '3': 'Steam turbine unit (turbine, generator, condenser, cooling water)'}
 SYSTEMS = {
     'BAC': 'Generator circuit breaker', 'BAT': 'Generator step-up transformer', 'BBT': 'Unit auxiliary transformer',
+    'BBA': 'Medium-voltage distribution', 'BFA': 'Low-voltage main distribution',
     'GHC': 'Demineralised water storage', 'HAC': 'Economiser', 'HAD': 'Evaporator and drum', 'HAH': 'Superheater',
     'HAJ': 'Reheater', 'HAN': 'Boiler drains and vents', 'HNA': 'Flue gas ducts (HRSG inlet and casing)',
     'HNE': 'Stack', 'LAB': 'Feedwater piping', 'LAC': 'Feedwater pumps', 'LAE': 'Superheater spray water',

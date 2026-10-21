@@ -165,14 +165,20 @@ def control():
     # the operator desks behind the trainee's start (plant.json `start`, facing the door), their screens facing east:
     # the control room's overview screens (PLANT3D.md §7.11) are worked from them
     desks = [eq('00CWA10', 'Main control desk A', 'operator_desk', [-25, -2.2, 0], 90, {'width': 3.2, 'screens': 4}),
-             eq('00CWB10', 'Main control desk B', 'operator_desk', [-25, 2.2, 0], 90, {'width': 3.2, 'screens': 4})]
+             eq('00CWB10', 'Main control desk B', 'operator_desk', [-25, 2.2, 0], 90, {'width': 3.2, 'screens': 4}),
+             # the electrical room over the control room: two rows of switchgear facing each other across an aisle
+             eq('00BBA10', 'Medium-voltage switchgear A', 'switchgear_row', [-30, 1, 6], 90,
+                {'panels': 14, 'depth': 1.5}, 'front'),
+             eq('00BFA10', 'Low-voltage switchboard A', 'switchgear_row', [-22, 1, 6], 270,
+                {'panels': 14, 'depth': 1.0}, 'front')]
     return area('control', 'Control building', [[-40, -15], [-10, 15]], equipment=desks, structures=[
         st('ctl_building', 'building', [-40, -15, 0], kks='00UCA10', outline=rect(30, 30), height=12,
            cladding='concrete', openings=[{'kind': 'door', 'at': [30, 15, 0], 'width': 1.8, 'height': 2.4}]),
         st('ctl_door', 'door', [-10, 0, 0], 90, kind='double', width=1.8),
         st('ctl_floor_6', 'floor', [-40, -15, 6], outline=rect(30, 30), openings=[box(1, 1, 8.5, 5)]),
         stair_tower('ctl_stair', [-39, -14, 0], [-31.4, -10, 6]),
-    ], signs=[sign('Control room', [-11, 2, 2.6], 90), sign('Control building 00UCA10', [-10.1, -4, 3], 90)])
+    ], signs=[sign('Control room', [-11, 2, 2.6], 90), sign('Control building 00UCA10', [-10.1, -4, 3], 90),
+              sign('Electrical room', [-26, -9, 8.6], 0)])
 
 
 # ---------------------------------------------------------------- common auxiliaries (bop)

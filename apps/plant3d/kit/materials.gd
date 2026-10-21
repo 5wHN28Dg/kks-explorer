@@ -122,7 +122,8 @@ static func specs() -> Dictionary:
 	m["steel_bolt"] = {"set": "Metal032", "tint": Color(0.40, 0.29, 0.21), "rough": 1.0, "metal": 0.5, "tile": 1.0}
 	m["galvanised"] = {"set": "Metal032", "tint": Color(0.85, 0.87, 0.88), "rough": 1.0, "metal": 0.75, "tile": 2.0}
 	# insulation cladding: aluminium sheets lapped every metre along the pipe
-	m["cladding"] = {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "rough": 1.0, "metal": 0.8, "tile": 1.0, "lap": 1.0}
+	# (bright even in shade: the jacketing's crinkles scatter the light, so less of a mirror than the bare metal)
+	m["cladding"] = {"set": "Metal009", "tint": Color(0.97, 0.97, 0.98), "rough": 1.0, "metal": 0.45, "tile": 1.0, "lap": 1.0}
 	# wall cladding: painted (polyester-coated) steel sheets 1 m wide, the ribs from the set's normal map
 	# (a light silver grey: the neutral colour most halls are clad in)
 	m["corrugated"] = {"set": "CorrugatedSteel005", "tint": Color(0.70, 0.72, 0.73), "rough": 0.6, "metal": 0.1, "tile": 2.0, "sheet": 1.0}
@@ -135,7 +136,7 @@ static func specs() -> Dictionary:
 	m["hall_floor"] = {"set": "Concrete034", "maps": ["NormalGL"], "tint": Color(0.42, 0.47, 0.44), "rough": 0.4, "metal": 0.0, "tile": 3.0, "weather": "floor"}
 	# a turbine hall's operating floor and walkways: glazed light ceramic tiles 0.8 m square, glossy (the shader's
 	# `tile_size` draws the grout and each tile's tone; no texture of its own)
-	m["floor_tile"] = {"set": "", "tint": Color(0.86, 0.86, 0.84), "rough": 0.14, "metal": 0.0, "tile_size": 0.8, "weather": "floor"}
+	m["floor_tile"] = {"set": "", "tint": Color(0.86, 0.86, 0.84), "rough": 0.08, "metal": 0.0, "tile_size": 0.8, "weather": "floor"}
 	# a ground floor or basement under a deck: bare power-floated concrete with its cracks, dust and tyre marks
 	m["floor_concrete"] = {"set": "Concrete034", "tint": Color(0.80, 0.79, 0.76), "rough": 0.85, "metal": 0.0, "tile": 3.0, "weather": "floor_bare", "cracks": 1.0}
 	m["grating"] = {"set": "MetalWalkway010", "tint": Color(0.75, 0.75, 0.72), "rough": 1.0, "metal": 0.6, "tile": 1.0}

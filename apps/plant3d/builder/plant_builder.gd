@@ -1183,6 +1183,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 		_mesh_node(body, "frame", frame, _mat("roof_steel"), STEEL_TEXEL)
 	_hall_floor(body, b)
 	_lamps(body, b)
+	_floor_probe(body, b)
 
 ## A building's walls: 0.25 m thick on their outline; a metal-clad hall's light inner skin (its liner) 3 cm thick
 ## against their inside and under the roof.
@@ -1943,3 +1944,34 @@ func _wall(parent: Node3D, s: Dictionary) -> void:
 		st.set_color(top_colour(a.z + h + 0.1))
 		_panel(st, null, a2 - u * 0.05, e2 + u * 0.05, a.z + h, a.z + h + 0.1, t + 0.1)   # the coping
 	_mesh_node(body, "mesh", st, _mat("firewall"))
+
+## A hall with a glossy tiled floor (its own or a deck's) gets a reflection probe over the floor: the lamps, the
+## windows and the machines mirrored in the tiles, as a turbine hall's floor shows them (the sky's reflection, the
+## only one there was, read as a matt floor). Captured once; the full tier only (app/quality.gd): a phone would draw
+## the hall six times more at its start.
+const PROBE_EYE := 1.7
+func _floor_probe(body: Node, b: Dictionary) -> int:
+	var z := -1.0
+	if b.get("floor", "epoxy") == "tile":
+		z = 0.0
+	for sf in surfaces:
+		if sf.get("finish", "epoxy") == "tile" and sf.deck == "concrete" and Geom.in_region(_mean(sf.outline), b.outline, []):
+			z = maxf(z, float(sf.z))
+	if z < 0.0:
+		return 0
+	var r := Geom.bbox(b.outline)
+	var h: float = b.height
+	var pr := ReflectionProbe.new()
+	pr.name = "floor_probe"
+	pr.update_mode = ReflectionProbe.UPDATE_ONCE
+	pr.box_projection = true
+	pr.interior = true
+	pr.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
+	pr.enable_shadows = false
+	pr.size = Vector3(r.size.x, h, r.size.y)
+	var c := Geom.g([r.get_center().x, r.get_center().y, h * 0.5])
+	pr.position = c
+	pr.origin_offset = Vector3(0, z + PROBE_EYE - h * 0.5, 0)
+	pr.add_to_group("probes_full", true)
+	body.add_child(pr)
+	return 1
