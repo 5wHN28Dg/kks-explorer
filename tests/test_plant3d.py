@@ -568,11 +568,16 @@ class HotRestart(unittest.TestCase):
         self.assertLess(fork['seen']['st_mismatch']['end'], -50)    # the bound the refusal is about
 
     def test_the_hot_casing_cools_slowly(self):
-        """τ 30 h: a casing at 520 °C at a trip is still over 400 °C eight hours later (the usual line for a hot
-        start), so a scenario three hours after a trip finds it near 480 °C."""
-        n = next(v[1] for v in self.b.model.values if v[0] == 'st_casing_t')
-        tau = n['tau_down']
-        self.assertGreater(35 + (520 - 35) * math.exp(-8 * 3600 / tau), 400)
+        """Left alone (no steam on it) the casing cools with τ 30 h: at 520 °C at a trip it is still over 400 °C
+        eight hours later (the usual line for a hot start), near 480 °C three hours after it, as the scenario has it;
+        steam on it heats or cools it with τ 15 min."""
+        k = next(v[1] for v in self.b.model.values if v[0] == 'st_cas_k')['cases']
+        tau_alone, tau_steam = 1 / k[0], 1 / k[1]
+        self.assertAlmostEqual(tau_alone / 3600, 30, delta=0.01)
+        self.assertAlmostEqual(tau_steam / 60, 15, delta=0.01)
+        self.assertGreater(35 + (520 - 35) * math.exp(-8 * 3600 / tau_alone), 400)
+        at3 = 35 + (520 - 35) * math.exp(-3 * 3600 / tau_alone)
+        self.assertAlmostEqual(self.b.scenarios['hot_restart']['init']['st_casing_t'], at3, delta=10)
 
 
 class ColdStart(unittest.TestCase):

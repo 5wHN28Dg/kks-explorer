@@ -112,11 +112,12 @@ static func collect(engine, info, tracker) -> Dictionary:
 				if ev[3]:
 					sm.first_out.append(name)
 			"fault":
-				e.text = "Fault: %s" % fault_text(m, str(ev[2]))
+				e.text = "Fault: %s" % fault_text(m, str(ev[2]), engine.sc)
+				e.code = fault_kks(m, str(ev[2]), engine.sc)
 				sm.faults += 1
 			"repair":
-				e.text = "Repaired: %s" % fault_text(m, str(ev[2]))
-				e.code = fault_kks(m, str(ev[2]))
+				e.text = "Repaired: %s" % fault_text(m, str(ev[2]), engine.sc)
+				e.code = fault_kks(m, str(ev[2]), engine.sc)
 				sm.repairs += 1
 			"interlock":
 				var il := {}
@@ -193,17 +194,17 @@ static func refusal(info, o, failed: String, engine) -> String:
 	return info.failed_text(o, failed, engine)
 
 
-## The equipment a fault is repaired at ("" when the content names none).
-static func fault_kks(m, fid: String) -> String:
-	for sc in m.scenarios.values():
+## The equipment a fault is repaired at ("" when the content names none): the run's scenario's first.
+static func fault_kks(m, fid: String, run_sc := {}) -> String:
+	for sc in [run_sc] + m.scenarios.values():
 		for f in sc.get("faults", []):
 			if f.get("id", "") == fid:
 				return String(f.get("kks", ""))
 	return ""
 
 
-static func fault_text(m, fid: String) -> String:
-	for sc in m.scenarios.values():
+static func fault_text(m, fid: String, run_sc := {}) -> String:
+	for sc in [run_sc] + m.scenarios.values():
 		for f in sc.get("faults", []):
 			if f.get("id", "") == fid:
 				return String(f.get("text", fid))

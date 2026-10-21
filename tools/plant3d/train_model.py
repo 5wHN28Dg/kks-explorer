@@ -219,8 +219,8 @@ class M:
         self.tab(f'{name}_hw_dir', f'{name}_hw_err', [[-w, -1], [w, 1]])
         self.prod(f'{name}_hw_mv', [f'{name}_hw_dir', f'{name}_hw_on', f'{name}_stuck', round(travel / hand, 9)])
         self.sum(f'{name}_mv', [f'{name}_m_mv', f'{name}_hw_mv'])
-        self.cmp(f'{name}_hw_lo', f'{name}_hw_err', '>', -0.01)
-        self.cmp(f'{name}_hw_hi', f'{name}_hw_err', '<', 0.01)
+        self.cmp(f'{name}_hw_lo', f'{name}_hw_err', '>', -0.002)    # at the end of its travel: within 0.2 %
+        self.cmp(f'{name}_hw_hi', f'{name}_hw_err', '<', 0.002)
         self.AND(f'{name}_hw_at', [f'{name}_hw_lo', f'{name}_hw_hi'])
         self.OR(f'{name}_hw_stop', [f'{name}_hw_at', f'{name}_free'])
         return pos
@@ -1308,9 +1308,14 @@ def st():
     m.diff('st_cas_hot', 'st_inlet_t', 30)
     m.sel('st_cas_idle', 'st_warm_on', ['ambient_t', 220])
     m.sel('st_cas_tgt', 'st_adm', ['st_cas_idle', 'st_cas_hot'])
-    # a hot casing cools slowly (τ 30 h: still over 400 °C eight hours after a trip from load, the usual line for a hot
-    # start: FIRST-TRAIN §4 #18)
-    m.lag('st_casing_t', 'st_cas_tgt', 900, ST_CASING_COOL, 35, '°C', '30MAA10')
+    # steam on the metal (admitted, or the warm-up's) heats or cools it with τ 15 min; left alone a hot casing cools
+    # slowly (τ 30 h: still over 400 °C eight hours after a trip from load, the usual line for a hot start: FIRST-TRAIN
+    # §4 #18). An integral of the gap at the τ of the moment (a lag has one τ each way, whatever heats it)
+    m.OR('st_cas_steam', ['st_adm', 'st_warm_on'])
+    m.sel('st_cas_k', 'st_cas_steam', [round(1 / ST_CASING_COOL, 12), round(1 / 900, 12)])
+    m.integ('st_casing_t', 'st_cas_rate', 1, 0, 700, 35, '°C', '30MAA10')
+    m.diff('st_cas_gap', 'st_cas_tgt', 'st_casing_t')
+    m.prod('st_cas_rate', ['st_cas_gap', 'st_cas_k'], 'K/s')
     m.diff('st_mismatch', 'st_inlet_t', 'st_casing_t', 'K')
     m.cmp('st_mm_hi', 'st_mismatch', '<=', 150)              # steam at most 150 K hotter than the casing
     m.cmp('st_mm_lo', 'st_mismatch', '>=', -50)              # and at most 50 K colder

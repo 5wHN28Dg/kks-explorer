@@ -735,7 +735,7 @@ FORKS = [
     ('cw_valve_closed_by_hand_end', 'end', [('fault', 'cw_valve_power'), ('run', 10), ('fault', 'cw_b_motor'),
                                             ('run', 30), ('op', '30PAC10AA102', 'hand_close', None, None),
                                             ('run', 320)],
-     {'machines': {'cw_b_v_hand': 'idle'}, 'end': {'cw_b_v_pos': [0, 0.011], 'cw_b_back': [0, 100]}}),
+     {'machines': {'cw_b_v_hand': 'idle'}, 'end': {'cw_b_v_pos': [0, 0.003], 'cw_b_back': [0, 25]}}),
     ('cw_hand_stopped', 'end', [('fault', 'cw_valve_power'), ('run', 10),
                                 ('op', '30PAC10AA101', 'hand_close', None, None), ('run', 60),
                                 ('op', '30PAC10AA101', 'hand_stop', None, None), ('run', 60)],
@@ -744,7 +744,7 @@ FORKS = [
                                         ('run', 30), ('op', '30PAC10AA102', 'hand_close', None, None), ('run', 60),
                                         ('repair', 'cw_valve_power'), ('run', 90)],
      {'repaired': ['cw_valve_power'], 'machines': {'cw_b_v_hand': 'idle'},
-      'end': {'cw_b_v_pos': [0, 0.011], 'cw_b_v_hw_on': [0, 0], 'cw_a_v_stuck': [0, 0]}}),
+      'end': {'cw_b_v_pos': [0, 0.003], 'cw_b_v_hw_on': [0, 0], 'cw_a_v_stuck': [0, 0]}}),
     ('cw_b_motor_repaired', 'end', [('fault', 'cw_b_motor'), ('run', 120), ('repair', 'cw_b_motor'), ('run', 1),
                                     ('op', '30PAC10AP002', 'reset', None, 'cw_b_trip_ol'), ('run', 1),
                                     ('op', '30PAC10AA102', 'set', 0.15, None), ('until', 'cw_b_vstart', 120),
@@ -761,10 +761,11 @@ FORKS = [
 ]
 
 
-# Forks from the hot restart (FIRST-TRAIN §4 "As built"): the HP casing still at about 470 °C when the HRSG is back
-# at 40 bar with the GT at minimum load; the steam more than 50 K colder than the casing; loaded until it is matched.
+# Forks from the hot restart (FIRST-TRAIN §4 "As built"): the HP casing still at about 470 °C when the superheaters
+# are drained with the GT at minimum load; the steam more than 50 K colder than the casing; loaded until it is matched.
 HOT_FORKS = [
-    ('hot_roll_steam_too_cold', 'hp_40', [('op', '30MAA10', 'roll', None, None), ('run', 1)],
+    ('hot_roll_steam_too_cold', 'drains_close', [('until', 'st_sh_ok', 600), ('op', '30MAA10', 'roll', None, None),
+                                                 ('run', 1)],
      {'refused': [['30MAA10', 'roll', ['st_match']]], 'end': {'st_mismatch': [-250, -50.001], 'st_casing_t': [450, 480]}}),
     ('hot_roll_matched', 'match', [('op', '30MAA10', 'roll', None, None), ('run', 60)],
      {'done': [['30MAA10', 'roll']], 'machines': {'st_start': 'roll'}, 'end': {'st_mismatch': [-50, 150]}}),

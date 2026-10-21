@@ -298,6 +298,9 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
   `tests/bench_save.gd` measures a save's cost.
 - `test_ui_operate`, `test_ui_alarms`, `test_ui_links`, `test_ui_clock`, `test_ui_parts`: operations offered and
   refused, alarms acknowledged and shelved, links, the clock and its cap, moving parts and sounds.
+- `test_ui_repair`: a fault applied and repaired from the instructor's panel and applied again, repaired by the
+  trainee at its equipment (within reach only), a CW valve without its supply opened by its handwheel and stopped,
+  the debrief's repairs, a run saved with a repair waiting.
 
 A test stopped by a script error counts as failed (the runner counts script errors). `tests/ui_shots.gd` saves
 screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script

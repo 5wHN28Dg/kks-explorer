@@ -323,23 +323,28 @@ is faster still ("Time" below).
   valve shut; the HP spray, in automatic, holds the steam at most 140 K above the casing, before the roll and while
   loading, so the steam temperature climbs with the casing (about 520 °C when the train reaches base load, 560 °C
   later). The roll on a cold casing, or with the spray in manual at minimum load (`roll_steam_too_hot`), is refused;
-  so is a roll with steam over 50 K colder than a hot casing, which the hot restart reaches. A hot casing cools
-  slowly, τ 30 h (still over 400 °C eight hours after a trip from load, the usual line for a hot start).
+  so is a roll with steam over 50 K colder than a hot casing, which the hot restart reaches. Steam on the metal heats or
+  cools it with τ 15 min; left alone a hot casing cools slowly, τ 30 h (still over 400 °C eight hours after a trip from
+  load, the usual line for a hot start).
 - **Hot restart (2026-10-21):** the scenario `hot_restart` is the train three hours after a trip from load, everything
   stopped: the HP casing at 480 °C, the boxed-up HP drum at 280 °C (64 bar), the steam pipes at 250 °C. Its procedure
-  (`hot_restart`) is the cold start's without the casing warm-up: the drains stay open at minimum load until the
-  superheaters run dry, the drum comes back to 40 bar, and then the steam is still about 140 K colder than the casing:
-  the roll is refused on the match (`hot_roll_steam_too_cold`) until GT 1 at 40 MW has brought the steam within 50 K
-  (`hot_roll_matched`). By the procedure: 71 minutes of model time to base load, no alarm and no trip.
+  (`hot_restart`) is the cold start's without the casing warm-up, the HRSG kept boxed up until the GT burns: then the
+  drains and the start-up vent open at minimum load until the superheaters run dry, and the steam is still about 150 K
+  colder than the casing: the roll is refused on the match (`hot_roll_steam_too_cold`) until GT 1 at 40 MW has
+  brought the steam within 50 K (`hot_roll_matched`). By the procedure: 69 minutes of model time to base load, no alarm
+  and no trip.
 - **Not built yet:** in the model, nothing the plan above asks for (its gaps of 2026-10-16 were closed on
   2026-10-19). Still
   simplified: the HRSG's IP and LP pressures, the reheater's steam, the LP bypass spray valve and the hydraulic
   supplies have no behaviour of their own; a valve's fail action is immediate once the air is below 4 bar.
 - **Repairs (2026-10-21):** every trainer fault can be repaired (PLANT3D.md §7.8): from the instructor's panel, or by
   the trainee at the equipment of the state it put wrong (the pump's motor, the valve's actuator, the lube oil pump),
-  within reach. A repair puts back every state the fault set, except a generator breaker it opened; a trip the fault
-  caused stays latched until it is reset, so a repaired pump is reset and started again as after any trip. A repaired
-  fault can be applied again. The debrief lists each repair with its model time.
+  within reach; a fault of an outside supply or of several pieces at once (the pump house's valve supply, the fuel
+  gas supply, both CCW or both air compressors, the leak with the makeup) from the panel only. A repair puts back every
+  state the fault set, except a generator breaker it opened; a trip the fault caused stays latched until it is reset,
+  so a repaired pump is reset and started again as after any trip. A repaired fault can be applied again. Faults that
+  set the same states (both pumps' trip and one pump's) are repaired by either: the other then still shows as applied,
+  and repairing it too changes nothing more. The debrief lists each repair with its model time.
 - **Trainer faults** (the scenario's faults without a condition, PLANT3D.md §7.8) make every trip and interlock
   fire, each fan's and each pump's included; the tests run each, most from the end of the cold start (a CW valve
   fault from the point where the procedure is about to start that pump: the fork starts it itself)

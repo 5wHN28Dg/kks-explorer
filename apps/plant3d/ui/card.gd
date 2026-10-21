@@ -72,7 +72,8 @@ func open(c: String, note := "") -> void:
 	_alarms = W.label("", 18, W.BAD_COLOUR)
 	body.add_child(_alarms)
 	var ops: Array = info.ops_of.get(c, [])
-	if ops.is_empty():
+	var repairable: bool = ui.clock.engine.sc.get("faults", []).any(func(f): return f.get("kks", "") == c and f.has("repair"))
+	if ops.is_empty() and not repairable:
 		body.add_child(W.label("Nothing to operate here: it is watched, not worked.", 17, W.DIM))
 	else:
 		body.add_child(W.label("Operations", 22))
@@ -107,7 +108,9 @@ func open(c: String, note := "") -> void:
 		if f.get("kks", "") == c and f.has("repair"):
 			var box := VBoxContainer.new()
 			body.add_child(box)
-			var rb := W.button("Repair: " + String(f.get("text", f["id"])), func(): ui.repair(String(f["id"])), 140)
+			var rb := W.button("Repair: " + String(f.get("text", f["id"])), func():
+				ui.repair(String(f["id"]))
+				refresh(), 140)
 			rb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			box.add_child(rb)
 			var rn := W.label("", 16, W.DIM)

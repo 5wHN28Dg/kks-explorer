@@ -508,14 +508,16 @@ out, and while one of them is latched no other trip of its group is first out; t
 condition, so a trainer can make "the standby pump fails" happen at the moment that teaches most. A fault's `when`
 is a value name or a stateless node over values (`{"cmp": …}` as in the example); a fault **without `when`** is a
 trainer's fault, applied when the trainer presses it (a trainee input, taking effect in step 3 of the next step).
-Each fault is applied once, until it is repaired.
+Each fault is applied once (a repaired trainer's fault can be applied again, below).
 
 **Repairs.** A fault with `repair` (the states it writes, as a `set`) can be repaired once it has been applied: by the
 trainer, or by the trainee at the equipment `kks` names (optional, a code of the plant: where the repair is offered,
 within reach as a `local` op is, §7.2). A repair is a trainee input (`repair`, §7.10) and an event; it writes the
 `repair` states and nothing else (a trip the fault caused stays latched until it is reset, a valve's command stays as
 it was). A repaired trainer's fault can be pressed again, and is then applied again; a repaired fault with `when` is
-not applied again in that run. A repair of a fault that has no `repair`, has not been applied, is already repaired,
+not applied again in that run. A repair asked in the step its fault is pressed comes after it (step 3) and repairs it.
+A repair writes its states whatever else set them: of two applied faults that set the same state, repairing one undoes
+that state for both (the other stays applied, and can still be repaired). A repair of a fault that has no `repair`, has not been applied, is already repaired,
 or isn't one of the scenario's does nothing and makes no event.
 
 ### 7.9 Time

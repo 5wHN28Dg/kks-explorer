@@ -186,13 +186,24 @@ FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)
 ]
 
 
+# Where a fault is repaired when that isn't the equipment of the first state it puts back: the GT for its combustion
+# and fuel control faults; nowhere in the field (the instructor's panel only) for a fault of a supply from outside
+# the plant or of several pieces of equipment at once
+REPAIR_AT = {'gt1_flameout': '10MBA10', 'gt1_fuel_ctrl': '10MBA10', 'gt1_tc7': '10MBA10', 'gt1_load_rej': '10MBA10',
+             'gt1_gas_low': None, 'cw_valve_power': None, 'st_trip_no_bypass': None, 'cw_ab_fail': None,
+             'ccw_both': None, 'ia_lost': None, 'hw_leak': None}
+
+
 def fault(fid, sets, text, state_kks):
     """A trainer's fault with its repair (PLANT3D §7.8): the repair puts back every state the fault set, except a
-    breaker it opened (the trainee closes it again); it is offered at the equipment of the first state it puts back."""
+    breaker it opened (the trainee closes it again); offered at the equipment of the first state it puts back, or as
+    REPAIR_AT says."""
     f = {'id': fid, 'set': sets, 'text': text}
     repair = {k: 0 for k in sets if not k.endswith('_brk_cmd')}
     if repair:
-        f['kks'] = state_kks[next(iter(repair))]
+        at = REPAIR_AT.get(fid, state_kks[next(iter(repair))])
+        if at:
+            f['kks'] = at
         f['repair'] = repair
     return f
 
@@ -387,11 +398,18 @@ def hot_restart():
     """The hot restart (FIRST-TRAIN §4 "As built"): the cold start's steps without the casing warm-up (the casing is
     hot already), and before the roll a step that loads the GT until the steam is matched to the hot casing."""
     cs = cold_start()
+    by_id = {st['id']: st for st in cs['steps']}
     S = []
     for st in cs['steps']:
-        if st['id'] in ('casing_warm', 'casing_hot', 'warm_close'):
-            continue
+        if st['id'] in ('casing_warm', 'casing_hot', 'warm_close', 'drains'):
+            continue          # the drains: opened once the GT burns (open on a boxed-up HRSG they would empty it)
+        if st['id'] == 'aux':
+            st = dict(st, why=[{'p': ['Gland steam comes from here while the HRSG is not yet making any.']}])
         if st['id'] == 'hrsg_warm':
+            drains = dict(by_id['drains'], text=['The GT burns: open the HP superheater drains (', k('10HAN30AA401'),
+                                                 ' to ', k('10HAN30AA404'), ') and the start-up vent (',
+                                                 k('10HAN30AA001'), ').'])
+            S.append(drains)
             # the drum is hot and under pressure already: what the hold waits for is the superheaters' water
             st = step('sh_drain', ['Hold GT 1 at minimum load with the superheater drains open until they run dry (',
                                    k('10HAN30AA401'), ').'], ['10HAN30AA401', '10HAD30CP001'], (), 'hp_sh_drained',
@@ -399,9 +417,6 @@ def hot_restart():
                        'colder than the metal.'])
         S.append(st)
         if st['id'] == 'drains_close':
-            S.append(step('hp_40', ['Hold GT 1 at minimum load until the HP drum is back at 40 bar (', k('10HAD30CP001'),
-                                    '): the GT\'s purge cooled it.'], ['10HAD30CP001'], (), 'st_p_ok',
-                          ['More load now would warm the drum faster than its thick wall allows.'], 'none'))
             S.append(step('match', ['Raise GT 1 to 40 MW (', k('10MKA10'), ') and wait until the HP steam is within '
                                     '50 K of the HP casing (', k('30MAA10'), ').'], ['10MKA10', '30MAA10'],
                           [op('10MKA10', 'set', 40)], 'st_match',
