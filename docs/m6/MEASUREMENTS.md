@@ -155,7 +155,7 @@ setup screen.
 |---|---|---|
 | GNOME, laptop otherwise quiet: first sheet drawn after launch | 369 ms (351–376) | 215 ms (211–219) |
 | GNOME, the same run with other agents' jobs running: first sheet | 430 ms (422–467) | 261 ms (240–283) |
-| Windows 11 VM: first overview drawn after start | 297 ms (268–429) | 245 ms (223–338) |
+| Windows 11 VM: first overview drawn after start | 293 ms (286–320) | 233 ms (213–253) |
 | Android emulator: first frame (`am start -W` TotalTime) | 1,193 ms (1,187–1,272) | 478 ms (469–488) |
 | Android emulator: first sheet drawn after process start | 1,282 ms (1,276–1,352) | 1,152 ms (1,136–1,154) |
 
@@ -170,11 +170,12 @@ setup screen.
   Before the saved state, with the thread already in place, the log was ready at 141–159 ms (`t2` in the run's
   notes). So on this log the saved state cut the thread's work by about 55 ms.
 - **Windows:**
-  - the window is made at 3 ms;
-  - the log is ready at 106 ms and the model at 142 ms (the loading thread is the critical path: Win32 is ready long
+  - the window is made at 4 ms;
+  - the log is ready at 92 ms and the model at 129 ms (the loading thread is the critical path: Win32 is ready long
     before);
-  - the main screen is shown at 207 ms;
-  - the first overview is drawn at 245 ms.
+  - the sync service starts at 135 ms (before the main screen, as before the change);
+  - the main screen is shown at 196 ms;
+  - the first overview is drawn at 233 ms.
 - **Android** (one emulator session, the three APKs in turn, 5 cold starts each; a second turn was cut short when the
   emulator reached its 8 GiB cap after 9 installs):
   - the first frame no longer waits for the core;

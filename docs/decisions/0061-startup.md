@@ -26,7 +26,7 @@ kept from one start to the next without ever showing something the log doesn't s
   it back (decrypt, check, decode) takes ~10 ms instead of the 25 ms replay, and with the store's own row seal and a
   digest of exactly what was replayed it can't be another log's or another version's (PROTOCOL-v2 §15b).
 - **What it gave, measured after** [V, MEASUREMENTS.md "Startup, 2026-10-21"]: GNOME 369 → 215 ms to the first sheet;
-  Windows 11 VM 297 → 245 ms; the Android emulator's first frame 1,193 → 478 ms and first sheet 1,282 → 1,152 ms. The
+  Windows 11 VM 293 → 233 ms; the Android emulator's first frame 1,193 → 478 ms and first sheet 1,282 → 1,152 ms. The
   saved state's own part is largest on GNOME (the loading thread's log ready ~55 ms sooner) and small on the emulator
   (core open 475 → 450 ms), where the work after the open (Compose, the native views) dominates the first sheet.
 - **Threads in Nim 2 (ORC)** [S: lib/system/orc.nim, alloc.nim, threadimpl.nim]: memory a thread allocated stays valid
