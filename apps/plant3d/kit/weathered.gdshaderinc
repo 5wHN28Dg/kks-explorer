@@ -315,13 +315,14 @@ void fragment() {
 		rough = mix(rough, 1.0, open_);
 	}
 
-	ALBEDO = base;
+	// glazed tiles mirror the lit hall the flatter one looks along them: a sheen of the floor's own colour, lit as the
+	// floor is (in shade under a machine, none; as light, it would glow there and in the bake: review). A reflection
+	// probe per hall cost the laptop 19 ms of GPU time and half a gigabyte of video memory (photo pass)
+	ALBEDO = min(base * (1.0 + sheen * TILE_SHEEN * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0)), vec3(1.0));
 	ROUGHNESS = clamp(rough, 0.04, 1.0);
 	METALLIC = metal;
 	// a material with its colours in the vertices glows in them (a sign's white board and its blue symbol)
 	EMISSION = emission.rgb * emission_energy * (use_vertex_colour ? srgb_to_linear(COLOR.rgb) : vec3(1.0));
-	// glazed tiles mirror the lit hall the flatter one looks along them: a sheen of the floor's own colour (a
-	// reflection probe per hall cost the laptop 19 ms of GPU time and half a gigabyte of video memory: photo pass)
-	EMISSION += base * sheen * TILE_SHEEN * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+
 	if (use_normal) NORMAL_MAP = texture(normal_tex, uv).rgb;
 }

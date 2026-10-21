@@ -45,7 +45,7 @@ func run(tree: SceneTree) -> Array:
 	var tile := mats.floor_tile as ShaderMaterial
 	if float(tile.get_shader_parameter("tile_size")) <= 0.0 or float(tile.get_shader_parameter("roughness_scale")) > 0.2:
 		p.append("tiles: drawn joints and glazed (glossy)")
-	if not FileAccess.get_file_as_string("res://kit/weathered.gdshaderinc").contains("EMISSION += base * sheen * TILE_SHEEN"):
+	if not FileAccess.get_file_as_string("res://kit/weathered.gdshaderinc").contains("base * (1.0 + sheen * TILE_SHEEN"):
 		p.append("tiles: their sheen at a grazing view")
 	if not plant.find_children("*", "ReflectionProbe", true, false).is_empty():
 		p.append("no reflection probe (its cost: photo pass)")
@@ -89,6 +89,12 @@ func run(tree: SceneTree) -> Array:
 				p.append("%s: the crane clears the roof's trusses (crane to %.2f, steel from %.2f)" % [id, cb.end.y, sb.position.y])
 			if cb.size.x < 15.0 and cb.size.z < 15.0:
 				p.append("%s: the crane spans the hall" % id)
+	# no column in a pipe's way: the auxiliary steam pipe comes through the turbine hall's east gable at y = 0, z = 9 (a
+	# column stood in it: review)
+	var st_frame := plant.find_child("st_hall", true, false).get_node("frame") as MeshInstance3D
+	for y in [-0.3, 0.0, 0.3]:   # x 79.5: inside a gable column's plan (79.40 to 79.85), clear of the girts
+		if not _hits_down(st_frame, Vector3(79.5, 0.0, -y)).is_empty():
+			p.append("the turbine hall's frame stands in the auxiliary steam pipe's way at y %.1f" % y)
 	# the transformers' firewalls: solid and as high as given
 	for id in ["trafo_firewall_1", "trafo_firewall_2"]:
 		var w := plant.find_child(id, true, false) as StaticBody3D
@@ -155,3 +161,17 @@ func run(tree: SceneTree) -> Array:
 		p.append("bolts are rusty steel")
 	plant.free()
 	return p
+
+## The heights where a vertical line through p (Godot axes) meets a mesh's triangles.
+static func _hits_down(mi: MeshInstance3D, p: Vector3) -> Array:
+	var arr := mi.mesh.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var xf := mi.global_transform
+	var out: Array = []
+	var lo := xf.affine_inverse() * Vector3(p.x, 1000.0, p.z)
+	for i in range(0, idx.size(), 3):
+		var hit = Geometry3D.ray_intersects_triangle(lo, Vector3.DOWN, v[idx[i]], v[idx[i + 1]], v[idx[i + 2]])
+		if hit != null:
+			out.append((xf * (hit as Vector3)).y)
+	return out

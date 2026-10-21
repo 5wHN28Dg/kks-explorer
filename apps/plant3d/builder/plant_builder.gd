@@ -1177,9 +1177,9 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	if windows > 0:
 		_mesh_node(body, "windows", glass, _mat("window"))
 		_mesh_node(body, "windows_in", glass_in, _mat("window_in"))
+	if float(b.get("crane", 0.0)) > 0.0:
+		_crane(body, frame, b)
 	if clad:
-		if float(b.get("crane", 0.0)) > 0.0:
-			_crane(body, frame, b)
 		_mesh_node(body, "frame", frame, _mat("roof_steel"), STEEL_TEXEL)
 	_hall_floor(body, b)
 	_lamps(body, b)
@@ -1222,7 +1222,7 @@ func _roof_steel(st: SurfaceTool, b: Dictionary, roof_holes: Array) -> int:
 		return r.position + (Vector2(t, s) if along_x else Vector2(s, t))
 	for k in range(1, g.bays):
 		var t: float = L * k / g.bays
-		if S >= TRUSS_MIN:
+		if S >= TRUSS_MIN and b.get("cladding", "metal") == "metal":
 			n += _truss(st, pg, roof_holes, at.call(t, 0.0), at.call(t, S), z_r1, truss_depth(S))
 		else:
 			n += _member(st, pg, roof_holes, at.call(t, 0.0), at.call(t, S), RAFTER_W, z_r0, z_r1)
@@ -1262,7 +1262,7 @@ static func truss_depth(span: float) -> float:
 	return clampf(span / 16.0, 1.2, 3.0)
 
 ## A roof truss along a to b (plan), its top at z_top, `depth` deep: chords, a post at every panel point and a
-## diagonal in every panel (a Pratt-like web, the panels about as long as the truss is deep). Returns the trusses.
+## diagonal in every panel (a Howe web: the diagonals rise towards the middle, the panels about as long as the truss is deep). Returns the trusses.
 func _truss(st: SurfaceTool, pg: PackedVector2Array, roof_holes: Array, a: Vector2, b: Vector2, z_top: float, depth: float) -> int:
 	var n := 0
 	for sp in _member_spans(pg, roof_holes, a, b):
@@ -1825,16 +1825,19 @@ func _frame_edge(st: SurfaceTool, body: Node, a: Vector2, c: Vector2, inward: Ve
 	var top := h - LINER_T - PURLIN_D
 	var n := maxi(1, int(round(len / BAY)))
 	var cols: Array = []
+	var cols_at: Array = b.get("_cols", [])
 	for k in n + 1:
-		var t := clampf(len * k / n, COLUMN_W * 0.5, len - COLUMN_W * 0.5)
-		if blocks.any(func(o): return o[0] < t + COLUMN_W * 0.5 + 0.1 and o[1] > t - COLUMN_W * 0.5 - 0.1 and o[2] < 2.5):
-			continue   # a door or a pipe at the floor: no column in it
+		var t := column_place(clampf(len * k / n, COLUMN_W * 0.5, len - COLUMN_W * 0.5), len, blocks)
+		if t < 0.0:
+			continue   # no room beside the opening (a wide door, a pipe's way): no column there
 		cols.append(t)
 		var p := a + u * t + face
+		cols_at.append(p + inward * COLUMN_D * 0.5)
 		var pc := PackedVector2Array([p - u * COLUMN_W * 0.5, p + u * COLUMN_W * 0.5, p + u * COLUMN_W * 0.5 + inward * COLUMN_D,
 			p - u * COLUMN_W * 0.5 + inward * COLUMN_D])
 		Geom.add_prism(st, pc, 0.0, top)
 		_convex(body, Geom.prism_points(pc, 0.0, top))
+	b["_cols"] = cols_at
 	# girts: from 3 m up every GIRT_GAP, along the whole wall, broken at openings
 	var z := 3.0
 	while z < h - 2.0:
@@ -1857,6 +1860,22 @@ func _frame_edge(st: SurfaceTool, body: Node, a: Vector2, c: Vector2, inward: Ve
 					z, z + GIRT_H, GIRT_D)
 		z += GIRT_GAP
 
+## Where a column wanted at t along a wall stands: there, or just beside an opening it would stand in (any opening, at
+## any height: a window, a louvre, a pipe's way, review), whichever side is nearer within 2.5 m; -1 when neither is
+## free (inside the wall's length).
+static func column_place(t: float, len: float, blocks: Array) -> float:
+	var hw := COLUMN_W * 0.5 + 0.1
+	var free := func(x: float) -> bool:
+		return x >= COLUMN_W * 0.5 and x <= len - COLUMN_W * 0.5 and not blocks.any(func(o): return o[0] < x + hw and o[1] > x - hw)
+	if free.call(t):
+		return t
+	var best := -1.0
+	for o in blocks:
+		for x in [float(o[0]) - hw - 0.05, float(o[1]) + hw + 0.05]:
+			if absf(x - t) <= 2.5 and free.call(x) and (best < 0.0 or absf(x - t) < absf(best - t)):
+				best = x
+	return best
+
 ## An overhead travelling crane (content: the building's `crane`, its rail height): the runway girders on corbels
 ## along the long walls, the rails on them, and the crane parked near the hall's west (or south) end: two box girders
 ## spanning the hall on their end carriages, the trolley on them, the hook block hanging on its ropes. Safety yellow
@@ -1864,6 +1883,7 @@ func _frame_edge(st: SurfaceTool, body: Node, a: Vector2, c: Vector2, inward: Ve
 const CRANE_INSET := 0.9      # the rail's centre from the liner's face
 const CRANE_RUNWAY_D := 1.0
 const CRANE_GIRDER_D := 1.6
+const CRANE_MIN := 6.0        # the lowest rail: the hook block hangs 3.3 m below it
 func _crane(body: Node, frame: SurfaceTool, b: Dictionary) -> void:
 	var g := steel_grid(b)
 	var r: Rect2 = g.r
@@ -1871,6 +1891,9 @@ func _crane(body: Node, frame: SurfaceTool, b: Dictionary) -> void:
 	var L: float = g.L
 	var S: float = g.S
 	var zr: float = b.crane
+	if b.get("cladding", "metal") != "metal" or Geom.bbox(b.outline).get_area() > Geom.area([b.outline]) + 0.5 or zr < CRANE_MIN:
+		_err("crane_unsupported", String(b.id), "an overhead crane runs in a rectangular metal-clad hall, its rail at %.0f m or higher" % CRANE_MIN)
+		return
 	# the trolley's top must clear the roof's trusses (or rafters)
 	var steel_lo: float = float(b.height) - LINER_T - PURLIN_D - (truss_depth(S) if S >= TRUSS_MIN else rafter_depth(S))
 	if zr + 0.15 + CRANE_GIRDER_D + 0.9 > steel_lo - 0.05:
@@ -1885,12 +1908,14 @@ func _crane(body: Node, frame: SurfaceTool, b: Dictionary) -> void:
 		var across := Vector2(-dv.y, dv.x)
 		Geom.add_prism(frame, Geom._strip(a, e, across, 0.45), zr - 0.1 - CRANE_RUNWAY_D, zr - 0.1)   # runway girder
 		Geom.add_prism(frame, Geom._strip(a, e, across, 0.08), zr - 0.1, zr)                          # the rail
-		# a corbel at every column, from the wall to under the runway
-		var bays: int = maxi(1, int(round(L / BAY)))
-		for k in bays + 1:
-			var t := clampf(L * k / bays, 0.3, L - 0.3)
-			var wall_s := 0.0 if s2 < S * 0.5 else S
-			var p0: Vector2 = at.call(t, wall_s)
+		# a corbel on every column along this wall, from the column to under the runway (none where no column stands)
+		for cp in b.get("_cols", []):
+			var q: Vector2 = cp - r.position
+			var t: float = q.x if along_x else q.y
+			var sc: float = q.y if along_x else q.x
+			if absf(sc - s2) > CRANE_INSET + 1.0:
+				continue   # a column of the other long wall, or of a gable
+			var p0: Vector2 = cp
 			var p1: Vector2 = at.call(t, s2 + (0.3 if s2 < S * 0.5 else -0.3))
 			Geom.add_prism(frame, Geom._strip(p0, p1, (p1 - p0).normalized().orthogonal(), 0.4), zr - 0.1 - CRANE_RUNWAY_D - 0.7, zr - 0.1 - CRANE_RUNWAY_D)
 	# the crane, parked a sixth of the hall from its end

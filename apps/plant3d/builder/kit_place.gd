@@ -720,6 +720,7 @@ func pipe(parent: Node3D, p: Dictionary) -> void:
 ## safety sign's text (no outline, black, one-sided: no pipeline of its own), drawn within STENCIL_RANGE.
 const STENCIL_RANGE := 30.0
 const STENCIL_MIN_R := 0.1
+const BEND_OF := {"3d": 3.0, "5d": 5.0}   # a bend's radius in ODs (1.5 otherwise), as the pipe is made
 func _stencils(parent: Node3D, p: Dictionary, route: Array, rr: float, buried: Dictionary, gaps: Array) -> int:
 	var text := String(b.plant.media[p.medium].get("name", ""))
 	if text == "" or rr < STENCIL_MIN_R:
@@ -740,19 +741,36 @@ func _stencils(parent: Node3D, p: Dictionary, route: Array, rr: float, buried: D
 		if buried.has(i) or L < 1e-3:
 			continue
 		var d := (c - a) / L
-		if absf(d.z) > 0.2:
-			continue                       # horizontal runs only
-		var clear := rr * 3.0 + 0.3        # clear of the bends at either end
+		if absf(d.z) > 0.02:
+			continue                       # level runs only (a label stands level)
+		var od := rr * 2.0
+		var clear: float = od * 0.5 * BEND_OF.get(p.get("bend", ""), 1.5) + rr + 0.3   # clear of the bends at either end
 		if L - 2.0 * clear < w + 0.4:
 			continue
+		# the bands as kit/parts_pipes.gd spaces them (each in the middle of its share of the run) and the arrow after
+		# each: a name between two bands, or (one band) a quarter of the way, and none that would touch a band or arrow
 		var k := maxi(1, int(round(L / every)))
-		for j in k:
-			var t := L * (j + 0.25) / k
-			t = clampf(t, clear + w * 0.5, L - clear - w * 0.5)
-			var sm := s_here + t
+		var bw := clampf(od * 0.6, 0.12, 0.5)
+		var arrow := clampf(od * 1.4, 0.3, 1.2) if float(p.get("arrows", 0)) > 0.0 else 0.0
+		var places: Array = []
+		for j in range(1, k):
+			places.append(L * j / k)
+		if k == 1:
+			places = [L * 0.25]
+		for t in places:
+			if t - w * 0.5 < clear or t + w * 0.5 > L - clear:
+				continue
+			var hits_band := false
+			for i2 in k:
+				var cb: float = L * (i2 + 0.5) / k
+				if t + w * 0.5 + 0.15 > cb - bw * 0.5 and t - w * 0.5 - 0.15 < cb + bw * 0.5 + 0.05 + arrow:
+					hits_band = true
+			if hits_band:
+				continue
+			var sm: float = s_here + t
 			if gaps.any(func(gp): return gp[0] < sm + w * 0.5 + 0.2 and gp[1] > sm - w * 0.5 - 0.2):
 				continue
-			var mid := a + d * t
+			var mid: Vector3 = a + d * t
 			var side := Vector3(-d.y, d.x, 0.0)
 			for sgn in [1.0, -1.0]:
 				var nrm: Vector3 = side * sgn

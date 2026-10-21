@@ -28,18 +28,30 @@ func run(_tree: SceneTree) -> Array:
 ## An overhead crane whose trolley would reach into the roof's trusses is refused (the gas turbine hall's first rail
 ## height put it 0.75 m into them: photo pass); one that clears them is accepted, the hall gets its frame's runway.
 func _crane() -> void:
-	for c in [[32.0, 26.0, false], [20.0, 16.0, true], [20.0, 14.5, false]]:
+	var ell := PackedVector2Array([Vector2(0, 0), Vector2(80, 0), Vector2(80, 30), Vector2(40, 30), Vector2(40, 50), Vector2(0, 50)])
+	# [hall height, rail, outline, cladding, the error expected ("" none)]
+	for c in [[32.0, 26.0, Geom.rect(0, 0, 80, 50), "metal", ""], [32.0, 26.0, Geom.rect(0, 0, 80, 30), "metal", ""],
+			[20.0, 16.0, Geom.rect(0, 0, 80, 30), "metal", "crane_clash"], [20.0, 14.5, Geom.rect(0, 0, 80, 30), "metal", ""],
+			[20.0, 14.5, Geom.rect(0, 0, 80, 30), "concrete", "crane_unsupported"],
+			[20.0, 4.0, Geom.rect(0, 0, 80, 30), "metal", "crane_unsupported"],
+			[20.0, 14.5, ell, "metal", "crane_unsupported"]]:
 		var b := Builder.new()
 		var body := Node3D.new()
 		var frame := SurfaceTool.new()
 		frame.begin(Mesh.PRIMITIVE_TRIANGLES)
-		b._crane(body, frame, {"id": "hall", "outline": Geom.rect(0, 0, 80, 30), "height": c[0], "crane": c[1]})
-		var refused := false
+		b._crane(body, frame, {"id": "hall", "outline": c[2], "height": c[0], "crane": c[1], "cladding": c[3]})
+		var got := ""
 		for e in b.errors:
-			refused = refused or String(e).begins_with("crane_clash")
-		check(refused == c[2], "a crane on its rail at %.1f m in a hall %.0f m high: %s" % [c[1], c[0], "refused" if c[2] else "accepted"])
-		check(body.get_node_or_null("crane") != null, "the crane is drawn")
+			got = String(e).get_slice(" ", 0)
+		check(got == c[4], "a crane on its rail at %.1f m in a %s hall %.0f m high (%d corners): %s, not %s" % [c[1], c[3], c[0], c[2].size(), c[4] if c[4] != "" else "accepted", got if got != "" else "accepted"])
+		check((body.get_node_or_null("crane") != null) == (c[4] != "crane_unsupported"), "the crane is drawn where it runs")
 		body.free()
+	# columns step aside from openings at any height (a pipe's way 7 to 11 m up, a window), none where there is no room
+	check(is_equal_approx(Builder.column_place(10.0, 50.0, []), 10.0), "a column where it is wanted when nothing is in the way")
+	var t := Builder.column_place(25.0, 50.0, [[18.0, 32.0, 7.0, 11.0]])
+	check(t < 0.0, "no column inside a 14 m pipe opening (got %.2f)" % t)
+	t = Builder.column_place(25.0, 50.0, [[23.0, 27.0, 23.0, 25.0]])
+	check(t > 0.0 and (t < 23.0 - 0.34 or t > 27.0 + 0.34), "a column beside a 4 m window (got %.2f)" % t)
 
 func _decompose() -> void:
 	var sq := Geom.rect(0, 0, 10, 10)

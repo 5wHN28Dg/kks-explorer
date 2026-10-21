@@ -704,6 +704,13 @@ class Plant:
             for q in pts:
                 need(in_rect(q, bounds), 'outside_area', f'{w}: {[round(c, 2) for c in q[:2]]} is outside the area '
                                                          f'{bounds}')
+        if part == 'building' and params.get('crane', 0):
+            # an overhead crane (§5) runs in a rectangular metal-clad hall, its rail 6 m up or more, its trolley
+            # (2.65 m over the rail) under the roof (the build checks the roof steel's clearance itself)
+            o = params['outline']
+            rect = len(o) == 4 and all(o[i][0] == o[(i + 1) % 4][0] or o[i][1] == o[(i + 1) % 4][1] for i in range(4))
+            need(params['cladding'] == 'metal' and rect and 6 <= params['crane'] <= params['height'] - 3,
+                 'bad_value', f'{w}.params.crane: a rectangular metal-clad hall, the rail from 6 m to 3 m under the roof')
         self.b.structures[s['id']] = {'id': s['id'], 'part': part, 'params': params, 'area': aid}
 
     def walkable(self, p):

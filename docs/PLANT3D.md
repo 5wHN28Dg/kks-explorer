@@ -202,7 +202,9 @@ placed by their `foot` and `top` alone.
   `floor` is its ground floor's finish: `epoxy` (painted, the default), `tile` (glazed ceramic tiles, as turbine
   halls' operating floors and walkways are laid) or `concrete` (bare, with its cracks and dust: a ground floor under a
   deck, a pump house). `crane`, when not 0, is the rail height of an overhead travelling crane spanning the hall: its
-  runway on the columns along the long walls, the bridge, trolley and hook (drawn, not operated). A `floor` or a
+  runway on the columns along the long walls, the bridge, trolley and hook (drawn, not operated); only in a
+  rectangular metal-clad hall, the rail 6 m up or more and at least 3 m under the roof (the build also refuses a
+  trolley that would reach into the roof steel). A `floor` or a
   `platform` inside a building takes the same `finish` for a concrete deck.
 - **Walls** (`wall`) stand along a `route`, `height` high and `thickness` thick, in concrete: a transformer yard's
   firewalls, a blast wall. They are solid.
