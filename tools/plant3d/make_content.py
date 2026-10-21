@@ -97,9 +97,10 @@ def build():
     add_air_permissives(areas, models)
     for m in models:
         files[f'model/{m.area}.json'] = m.file()
-    for s in train_content.scenarios():
+    state_kks = {v[0]: v[1]['kks'] for m in models for v in m.values if 'state' in v[1] and 'kks' in v[1]}
+    for s in train_content.scenarios(state_kks):
         files[f'scenarios/{s["id"]}.json'] = s
-    for p in [train_content.cold_start()] + train_content.tours():
+    for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours():
         files[f'procedures/{p["id"]}.json'] = p
     return {k: dump(v) for k, v in sorted(files.items())}
 

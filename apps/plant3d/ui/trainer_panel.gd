@@ -1,6 +1,6 @@
 ## The instructor's panel (docs/PLANT3D.md §7.8): the scenario to run (the plant restarts in it), and the scenario's
-## trainer faults, each pressed once at the moment that teaches most (applied in the next model step). Shown when
-## instructor mode is on in the settings.
+## trainer faults, each pressed at the moment that teaches most (applied in the next model step) and repaired when
+## the lesson is over (a repaired fault can be pressed again). Shown when instructor mode is on in the settings.
 extends PanelContainer
 
 const W = preload("res://ui/widgets.gd")
@@ -61,10 +61,14 @@ func _process(delta: float) -> void:
 func refresh() -> void:
 	var e = ui.clock.engine
 	var pending := {}
+	var fixing := {}
 	for item in e.queue:
 		if item[0] == "fault":
 			pending[item[1]] = true
-	var sig := "%s|%s|%s" % [ui.clock.scenario, str(e.faults_done.keys()), str(pending.keys())]
+		elif item[0] == "repair":
+			fixing[item[1]] = true
+	var sig := "%s|%s|%s|%s|%s" % [ui.clock.scenario, str(e.faults_done.keys()), str(e.faults_fixed.keys()),
+			str(pending.keys()), str(fixing.keys())]
 	if sig == _sig:
 		return
 	_sig = sig
@@ -85,10 +89,22 @@ func refresh() -> void:
 	for f in faults:
 		var row := HBoxContainer.new()
 		body.add_child(row)
-		var applied: bool = e.faults_done.has(f["id"])
-		var l := W.label(f.get("text", f["id"]), 18, W.DIM if applied else Color.WHITE)
+		var fid: String = f["id"]
+		var fixed: bool = e.faults_fixed.has(fid)
+		var active: bool = e.faults_done.has(fid) and not fixed     # applied and not repaired since
+		var l := W.label(f.get("text", fid), 18, W.DIM if active else Color.WHITE)
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(l)
-		var b := W.button("Applied" if applied else ("Pressed" if pending.has(f["id"]) else "Apply"), func(): ui.fault(f["id"]))
-		b.disabled = applied or pending.has(f["id"])
+		if active and f.has("repair"):
+			var r := W.button("Repairing" if fixing.has(fid) else "Repair", func():
+				ui.repair(fid)
+				refresh())
+			r.disabled = fixing.has(fid)
+			row.add_child(r)
+			continue
+		var b := W.button("Applied" if active else ("Pressed" if pending.has(fid) else ("Apply again" if fixed else "Apply")),
+				func():
+					ui.fault(fid)
+					refresh())
+		b.disabled = active or pending.has(fid)
 		row.add_child(b)

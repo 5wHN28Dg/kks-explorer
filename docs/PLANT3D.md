@@ -463,8 +463,8 @@ out, and while one of them is latched no other trip of its group is first out; t
   step n for t seconds ends in step 7 of step n + round(t / 0.1), with an event (shelving a shelved alarm again
   sets a new end).
 - **`where`:** the equipment the alarm leads to (one tap from the alarm list highlights and walks there: R10).
-- **Events:** every operation, interlock, machine step, trip and alarm change goes into an event list with model
-  time; procedures (§8) and the debrief read it.
+- **Events:** every operation, interlock, machine step, trip, fault, repair and alarm change goes into an event list
+  with model time; procedures (§8) and the debrief read it.
 
 ### 7.7 Bindings: what is seen and heard
 
@@ -497,7 +497,8 @@ out, and while one of them is latched no other trip of its group is first out; t
  "init": {"ambient_t": 35, "ambient_wb": 25, "hrsg1_hp_drum_level": -150, …},
  "latched": ["gt1_trip_lube", "st_trip_lube", "st_trip_cond_p"],
  "faults": [{"id": "cw_b_fails", "when": {"cmp": ["cw_b_start_count", ">=", 1]},
-             "set": {"cw_b_motor_fault": 1}, "text": "Pump B trips on overcurrent at its first start"}]}
+             "set": {"cw_b_motor_fault": 1}, "text": "Pump B trips on overcurrent at its first start",
+             "kks": "30PAC10AP002", "repair": {"cw_b_motor_fault": 0}}]}
 ```
 
 `init` overrides the initial value of a `state`, a stateful node other than a `timer` (a timer always starts at 0:
@@ -507,7 +508,17 @@ out, and while one of them is latched no other trip of its group is first out; t
 condition, so a trainer can make "the standby pump fails" happen at the moment that teaches most. A fault's `when`
 is a value name or a stateless node over values (`{"cmp": …}` as in the example); a fault **without `when`** is a
 trainer's fault, applied when the trainer presses it (a trainee input, taking effect in step 3 of the next step).
-Each fault is applied once.
+Each fault is applied once (a repaired trainer's fault can be applied again, below).
+
+**Repairs.** A fault with `repair` (the states it writes, as a `set`) can be repaired once it has been applied: by the
+trainer, or by the trainee at the equipment `kks` names (optional, a code of the plant: where the repair is offered,
+within reach as a `local` op is, §7.2). A repair is a trainee input (`repair`, §7.10) and an event; it writes the
+`repair` states and nothing else (a trip the fault caused stays latched until it is reset, a valve's command stays as
+it was). A repaired trainer's fault can be pressed again, and is then applied again; a repaired fault with `when` is
+not applied again in that run. A repair asked in the step its fault is pressed comes after it (step 3) and repairs it.
+A repair writes its states whatever else set them: of two applied faults that set the same state, repairing one undoes
+that state for both (the other stays applied, and can still be repaired). A repair of a fault that has no `repair`, has not been applied, is already repaired,
+or isn't one of the scenario's does nothing and makes no event.
 
 ### 7.9 Time
 
@@ -522,13 +533,14 @@ the Note 9 is measured (0054) and the top speed is capped by what the phone keep
 Each 0.1 s step, in this order (the reference and the app must agree to the vectors):
 1. The trainee's inputs queued since the last step, in the order made: operations (each refused if a permissive in
    `needs` is false, read as the previous step left it, else applied, §7.2; machine commands likewise),
-   acknowledgements, shelving, and the trainer's faults (noted here, applied in step 3). An acknowledgement or
+   acknowledgements, shelving, the trainer's faults and the repairs (noted here, applied in step 3). An acknowledgement or
    shelving of an alarm the model doesn't have, and a press of a fault the scenario doesn't have, one with a `when`
-   or one already applied, do nothing and make no event (an unknown operation is an `"unknown"` event, §12). Then
+   or one applied and not repaired since, do nothing and make no event (an unknown operation is an `"unknown"` event, §12). Then
    the first-out records of groups with no latched trip are cleared.
 2. `values` are evaluated in order (stateful nodes read the previous step's values where §7.1 allows).
 3. Faults whose condition is true, and the trainer's faults pressed in step 1, are applied (their `set`), once
-   each, in the scenario's list order (not the order they were pressed).
+   each, in the scenario's list order (not the order they were pressed); then the repairs asked in step 1, in the
+   scenario's list order, write their `repair` (§7.8).
 4. Interlocks on a rising edge of `when`, in list order; their `set` is applied.
 5. Machines: each moves at most once, by its first true `next`; the new state's `set` is applied.
 6. Trips: a trip whose `when` has held for its `delay` latches; its `do` is applied; first-out as in §7.5.
@@ -784,7 +796,7 @@ as for the courses):
   `inputs`, and the state
   after every step from step 0. They pin every node kind, the permissive refusals,
   interlock edges, machine moves, trips with first-out and reset (also against a trip the scenario starts latched),
-  alarm states, suppression and shelving, faults, and inputs naming no alarm or fault;
+  alarm states, suppression and shelving, faults and their repairs, and inputs naming no alarm or fault;
 - **`links`:** links (§6) and what each opens in the synthetic plant: `{"open": "kks", "code", "match", "decode"}`
   (`match` one of `exact`, `without_a3`, `same_kind`, `same_equipment`, `decode`; `decode` the asked code's unit,
   system and equipment names, `null` where not in the key), `{"open": "procedure", "id", "step"}` (`step` `null`
@@ -797,10 +809,10 @@ as for the courses):
 **The trace format** (what the app's evaluator reproduces, bit for bit up to the 1e-6 of the numbers):
 - an **input** is `[step, kind, …]` and takes effect in step 1 of that step, in file order:
   `[n, "op", kks, do, value or null, trip or null]`, `[n, "ack", alarm]`, `[n, "shelve", alarm, seconds]`,
-  `[n, "unshelve", alarm]`, `[n, "fault", fault id]`;
+  `[n, "unshelve", alarm]`, `[n, "fault", fault id]`, `[n, "repair", fault id]`;
 - an **event** is `[step, kind, …]`, in the order §7.10 makes them: `[n, "op", kks, do, "done" | "refused" |
   "unknown", [failed values]]`, `[n, "machine", id, from, to, "command" | "next" | "action"]`,
-  `[n, "fault", id]`, `[n, "interlock", id]`, `[n, "trip", id, first out]`, `[n, "alarm", id, new state]`,
+  `[n, "fault", id]`, `[n, "repair", id]`, `[n, "interlock", id]`, `[n, "trip", id, first out]`, `[n, "alarm", id, new state]`,
   `[n, "shelve", alarm, seconds]`, `[n, "unshelve", alarm]`;
 - a **snapshot** is `{"step", "machines": {id: state}, "tripped": [ids, sorted], "first_out": {group: trip},
   "alarms": {id: state} (those not normal), "shelved": [ids, sorted], "fast_forward", "values": {name: number}}`,

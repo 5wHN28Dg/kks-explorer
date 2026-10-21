@@ -169,6 +169,10 @@ func op_label(o: Dictionary) -> String:
 		"close_breaker": return "Close breaker"
 		"open_breaker": return "Open breaker"
 		"stop_travel": return "Stop travel"
+		# a motor valve's handwheel at the valve, while its actuator has no supply (PLANT3D §7.2, FIRST-TRAIN §4)
+		"hand_open": return "Open by handwheel"
+		"hand_close": return "Close by handwheel"
+		"hand_stop": return "Stop turning"
 		"set": return "Set"
 		"reset":
 			var t = m.trip_by_id(o["trip"])

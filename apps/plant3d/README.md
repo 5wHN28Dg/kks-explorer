@@ -130,7 +130,11 @@ from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.
   there. A tour's Next and Back fly to each stop, or the trainee walks with the arrow. A step with `"go": "walk"`
   (every tour stop, most procedure steps) shows the way on foot to what it points at: chevrons on the floors, up and
   down stairs and ladders, from wherever the trainee stands, and the arrow's distance is then the walk's.
-- **Instructor mode** (settings): the scenario to restart in and the scenario's trainer faults.
+- **Instructor mode** (settings): the scenario to restart in (`cold_iron`, `hot_restart`) and the scenario's trainer
+  faults: Apply, then Repair (a repaired fault can be applied again). The trainee repairs a fault at its equipment
+  too: the card there offers it within reach while the fault is applied. The debrief lists every repair.
+- **Handwheels:** a CW pump's discharge valve whose actuator has lost its supply is worked at the valve: Open or Close
+  by handwheel, Stop turning (five minutes over the full travel).
 - **Bindings:** the kit's moving pieces are children of the equipment's node named by their channel (`shaft`,
   `blades`, `handwheel` turn about their own Y axis; `stem`, `contacts` move along it by the `travel` meta; `disc`
   turns by the `angle` meta; `needle` from `angle0` to `angle1` about its own Z; `level` scales Y); lamps are
@@ -294,6 +298,9 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
   `tests/bench_save.gd` measures a save's cost.
 - `test_ui_operate`, `test_ui_alarms`, `test_ui_links`, `test_ui_clock`, `test_ui_parts`: operations offered and
   refused, alarms acknowledged and shelved, links, the clock and its cap, moving parts and sounds.
+- `test_ui_repair`: a fault applied and repaired from the instructor's panel and applied again, repaired by the
+  trainee at its equipment (within reach only), a CW valve without its supply opened by its handwheel and stopped,
+  the debrief's repairs, a run saved with a repair waiting.
 
 A test stopped by a script error counts as failed (the runner counts script errors). `tests/ui_shots.gd` saves
 screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script
