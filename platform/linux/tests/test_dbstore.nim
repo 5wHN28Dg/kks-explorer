@@ -96,6 +96,44 @@ suite "SQLite store, sealed at rest":
     check st.loadEntries().len == 0 and st.getMeta("removed") == "removed by The Manager"
     st.close()
 
+  test "the saved replayed state (PROTOCOL-v2 §15b): sealed, read back, ignored when its row was changed":
+    let path = dir / "saved.db"
+    removeFile(path)
+    var st = openDbStore(P, path, key)
+    var n = newNode(P, st, devKey)
+    discard n.append("genesis", P.genesisBody(rootKey, "Test plant", n.device, P.newPersonId(), "boss", "The Manager"), 1_790_000_000_000)
+    n.adopt(keyString(rootKey.pub))
+    n.saveState()
+    check st.getMeta(SavedStateKey).len > 0
+    check newNode(P, st, devKey).stateFromSaved
+    # one byte of the sealed row changed on disk: its seal doesn't open, so the log is replayed (and saved again)
+    var raw = ""
+    for r in st.db.rows("SELECT v FROM meta WHERE k=?", t(SavedStateKey)): raw = r.colText(0)
+    raw[raw.len div 2] = char(ord(raw[raw.len div 2]) xor 1)
+    st.db.run("UPDATE meta SET v=? WHERE k=?", b(raw), t(SavedStateKey))
+    let m = newNode(P, st, devKey)
+    check not m.stateFromSaved
+    check m.run != nil and m.run.settings["plant"].s == "Test plant"
+    check newNode(P, st, devKey).stateFromSaved
+    # another row's sealed value moved here: it doesn't open under this row's name
+    st.db.exec("UPDATE meta SET v=(SELECT v FROM meta WHERE k='root') WHERE k='saved_state'")
+    check not newNode(P, st, devKey).stateFromSaved
+    st.close()
+
+  test "a store wiped under a running node gets none of the plant's state written back":
+    let path = dir / "wiped.db"
+    removeFile(path)
+    var st = openDbStore(P, path, key)
+    var n = newNode(P, st, devKey)
+    discard n.append("genesis", P.genesisBody(rootKey, "Test plant", n.device, P.newPersonId(), "boss", "The Manager"), 1_790_000_000_000)
+    n.adopt(keyString(rootKey.pub))
+    check n.stateDirty
+    st.wipe("removed by The Manager")
+    n.saveState()
+    check st.getMeta(SavedStateKey) == ""
+    for r in st.db.rows("SELECT count(*) FROM meta WHERE k=?", t(SavedStateKey)): check r.colText(0) == "0"
+    st.close()
+
   test "a process killed between a submission's writes leaves nothing; the resend writes it once":
     let path = dir / "die.db"
     removeFile(path)

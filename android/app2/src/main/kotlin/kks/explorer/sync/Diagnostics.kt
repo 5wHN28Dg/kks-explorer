@@ -22,7 +22,13 @@ object Diagnostics {
             before?.uncaughtException(t, e)
         }
         val f = crashFile(ctx)
-        if (f.exists()) { record("crash", runCatching { f.readText() }.getOrDefault("crash")); f.delete() }
+        // the last crash goes to the core off the main thread (the core opens in the background meanwhile), and the
+        // file only once the core took it: a core that did not open keeps it for a start that works
+        if (f.exists()) Thread {
+            val text = runCatching { f.readText() }.getOrDefault("crash")
+            val took = runCatching { Core.api("POST", "/native/diag-record", JSONObject().put("kind", "crash").put("text", text.take(4000))).status < 400 }.getOrDefault(false)
+            if (took) f.delete()
+        }.start()
     }
 
     fun record(kind: String, text: String) {

@@ -40,17 +40,35 @@ object Core {
         main.post { listeners.forEach { it(w) } }
     }
 
-    private fun <T> onCore(f: () -> T): T = thread.submit(Callable(f)).get()
+    private fun <T> onCore(f: () -> T): T = thread.submit(Callable {
+        openFailed?.let { throw IllegalStateException("the core did not open: ${it.message}", it) }
+        f()
+    }).get()
     private fun b(s: String) = s.toByteArray(Charsets.UTF_8)
 
-    fun open(ctx: Context) = onCore {
+    /** Opens the core on its thread without waiting (decision 0061): the activity and its first frame are made
+     *  meanwhile. Every later call queues behind the open on the same thread, so none sees the core unopened. */
+    fun openInBackground(ctx: Context) {
+        thread.submit { try { openNow(ctx) } catch (t: Throwable) { openFailed = t } }
+    }
+    /** why the background open failed: every later call fails with it (as the open in App.onCreate once did),
+     *  never a core that answers as if this phone had joined nothing */
+    @Volatile private var openFailed: Throwable? = null
+
+    fun open(ctx: Context) = onCore { openNow(ctx) }
+
+    private fun openNow(ctx: Context) {
         nInit()
         if (h == 0L) {
             val dir = ctx.filesDir.resolve("core").absolutePath
             val t0 = android.os.SystemClock.elapsedRealtime()
             h = nOpen(b(dir), Keys.storageKey(ctx), b("ks:" + Keys.DEVICE), Keys.devicePublic(), b(Build.MODEL ?: "phone"))
-            // measurements (docs/m6/MEASUREMENTS.md): the core's open, which replays the whole log
-            android.util.Log.i("KKSTime", "core open + replay ${android.os.SystemClock.elapsedRealtime() - t0} ms")
+            // measurements (docs/m6/MEASUREMENTS.md): the core's open, which reads the saved replayed state or
+            // replays the whole log (PROTOCOL-v2 §15b)
+            val how = if (h != 0L && JSONObject(nApi(h, b("GET"), b("/native/config"), b("{}"), b("")).toString(Charsets.UTF_8))
+                    .optJSONObject("json")?.optBoolean("state_from_saved") == true) "saved state read" else "replayed"
+            android.util.Log.i("KKSTime", "core open + replay ${android.os.SystemClock.elapsedRealtime() - t0} ms ($how), " +
+                "${android.os.SystemClock.uptimeMillis() - android.os.Process.getStartUptimeMillis()} ms after process start")
             // the program's KKS decode tables (data/kks.json, shipped in the app)
             val tables = ctx.assets.open("data/kks.json").readBytes()
             nApi(h, b("POST"), b("/native/tables"), b("{}"), tables)
@@ -63,6 +81,9 @@ object Core {
             nApi(h, b("POST"), b("/native/course-files"), b("{}"), b(body.toString()))
         }
     }
+
+    /** keeps the replayed state for the next start, when it changed (PROTOCOL-v2 §15b); does not wait */
+    fun saveState() { thread.submit { if (h != 0L) runCatching { nApi(h, b("POST"), b("/native/save-state"), b("{}"), b("")) } } }
 
     data class Answer(val status: Int, val json: JSONObject, val bytes: ByteArray? = null)
 

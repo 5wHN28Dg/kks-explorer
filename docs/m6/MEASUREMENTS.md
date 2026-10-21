@@ -130,3 +130,63 @@ no battery figures (docs/decisions/0033). A real Windows laptop is still needed 
 
   Not yet compared: zoomed-in tile caches on a real GPU.
 - **Not measured yet:** a real laptop's GPU, panning frame times, the MSIX package's size.
+
+## Startup, 2026-10-21 (decision 0061)
+
+The rules above stay (GNOME and Windows: worse than 1.5× the baseline or over 2 s / 3 s needs a reason; Android: over
+3 s to the first sheet on the Note 9). This records the start before and after decision 0061, measured the same way
+on both builds, in turns where the tool allows it.
+
+**The plant:** `tools/m6/startup_data.py` (no plant data of ours): 17 copies of the sample sheet, 2,600 marked tags and
+1,500 approved equipment edits, 4,120 log entries in all, about twice the phone baseline's log. Each app is joined
+to it through the server: `apps/gnome/e2e/startup_join.nim`, `apps/windows/e2e/startup_join.nim`, or the Android
+setup screen.
+
+**How:**
+- **GNOME:** `tools/m6/startup_gnome.py` under `apps/gnome/e2e/headless.sh`. The builds take turns, one warm-up start
+  each, then 9 starts; `KKS_TIMING=1` prints every step from launch.
+- **Windows:** `tools/m6/startup_windows.py`, running `apps/windows/e2e/startup.ps1` in the Windows 11 VM. It does
+  one warm-up, then 7 starts in turns; the steps come from `timing.log`.
+- **Android:** `tools/m6/startup_android.py` on the emulator (Pixel 9 Pro XL image, `-gpu guest`): 7 cold starts per
+  APK after a warm-up. It records `am start -W` TotalTime (the first frame) and the app's own `KKSTime` lines. These
+  are the emulator's numbers, not the phones': they compare the builds, not the targets.
+
+| Median (min–max) | Before (main 75fd006) | After |
+|---|---|---|
+| GNOME, laptop otherwise quiet: first sheet drawn after launch | 369 ms (351–376) | 215 ms (211–219) |
+| GNOME, the same run with other agents' jobs running: first sheet | 430 ms (422–467) | 261 ms (240–283) |
+| Windows 11 VM: first overview drawn after start | 293 ms (286–320) | 233 ms (213–253) |
+| Android emulator: first frame (`am start -W` TotalTime) | 1,193 ms (1,187–1,272) | 478 ms (469–488) |
+| Android emulator: first sheet drawn after process start | 1,282 ms (1,276–1,352) | 1,152 ms (1,136–1,154) |
+
+**Where the time goes after the change** (medians):
+- **GNOME** (quiet run):
+  - the loading thread reads the saved state and has the log ready at 83–105 ms;
+  - GTK's own start ends at 100–120 ms;
+  - the main screen is built at 135–169 ms;
+  - GTK's first frame takes ~55 ms;
+  - the overview is drawn in the frame after that.
+
+  Before the saved state, with the thread already in place, the log was ready at 141–159 ms (`t2` in the run's
+  notes). So on this log the saved state cut the thread's work by about 55 ms.
+- **Windows:**
+  - the window is made at 4 ms;
+  - the log is ready at 92 ms and the model at 129 ms (the loading thread is the critical path: Win32 is ready long
+    before);
+  - the sync service starts at 135 ms (before the main screen, as before the change);
+  - the main screen is shown at 196 ms;
+  - the first overview is drawn at 233 ms.
+- **Android** (one emulator session, the three APKs in turn, 5 cold starts each; a second turn was cut short when the
+  emulator reached its 8 GiB cap after 9 installs):
+  - the first frame no longer waits for the core;
+  - the core's open ends ~560 ms after process start. It takes 450 ms on its thread with the saved state, against
+    475 ms with a build that always replays (`-d:kksNoSavedState`: first frame 486 ms, first sheet 1,198 ms) and
+    318 ms before. It now runs while the main thread starts Compose, and the emulator's CPUs are shared between the
+    two;
+  - most of the first sheet's time on the emulator is after the open: the main screen's composition, the native
+    views and the overview (~600 ms), which this change does not touch.
+  - Sessions differ: an earlier one gave 1,464 → 525 ms (first frame) and 1,533 → 1,247 ms (first sheet); another,
+    with other jobs on the laptop, 1,429 ms before and 618 / ~720 ms first frame for the replaying / saved-state
+    builds. Only APKs measured in turn in the same session are compared above.
+
+**Not measured:** the real phones (Note 9, Honor 600) and the Windows 10 VM.

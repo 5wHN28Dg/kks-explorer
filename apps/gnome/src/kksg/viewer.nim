@@ -69,6 +69,7 @@ type
     levels: seq[W]               ## textures, nil until decoded
     stale: seq[W]                ## the levels shown before a dark-drawings switch, until this mode's arrive
     levelData: seq[string]       ## kept: switching dark drawings decodes the levels again (a few MB per sheet)
+    levelLoad: proc (k: int): string   ## reads level k's bytes when it is first wanted ("" = none)
     asked: seq[bool]
     gen: int                     ## bumps when the sheet changes (late decodes are dropped)
     z*, ox*, oy*: float          ## logical px per point; the point at the widget's top-left
@@ -119,6 +120,16 @@ var
   tileThreads: array[TileWorkers, Thread[void]]
   tileStarted = false
 
+proc g_idle_add(fn, data: pointer): cuint {.importc, header: "<glib.h>".}
+var decodedSoon: proc () {.nimcall, gcsafe.}   ## set on the main thread before the worker starts
+proc decodedCb(data: pointer): cint {.cdecl.} =
+  ## on the main loop, as soon as the worker has a level (the 50 ms timer alone added up to 50 ms to the first sheet)
+  {.cast(gcsafe).}:
+    try:
+      if decodedSoon != nil: decodedSoon()
+    except CatchableError as e: stderr.writeLine "decodedCb: " & e.msg
+  0
+
 proc decodeWorker() {.thread.} =
   while true:
     let j = jobs.recv()
@@ -137,6 +148,7 @@ proc decodeWorker() {.thread.} =
         darkenPixels(d.pixels.toOpenArrayByte(0, d.pixels.len - 1), 3)
     except CatchableError: discard
     results.send(d)
+    discard g_idle_add(cast[pointer](decodedCb), nil)   # (GLib's idle sources may be added from any thread)
 
 proc ensureWorker() =
   if not workerStarted:
@@ -254,8 +266,15 @@ proc dropTiles(v: Viewer) =
     g_source_remove(v.settle)
     v.settle = 0
 
-proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[string]) =
-  ## kkp: the path store; info: the sheets.json entry; levels: the pyramid files' bytes, level 0 first
+proc levelBytes(v: Viewer, k: int): string =
+  ## level k's JPEG XL bytes, read once when first wanted (a start reads only the level the fitted sheet needs, not
+  ## the sharper ones: level 0 of a real sheet is several MB, decrypted from the store)
+  if v.levelData[k].len == 0 and v.levelLoad != nil: v.levelData[k] = v.levelLoad(k)
+  v.levelData[k]
+
+proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, nLevels: int, load: proc (k: int): string) =
+  ## kkp: the path store; info: the sheets.json entry; nLevels pyramid levels (level 0 the sharpest), whose bytes
+  ## `load` gives when a level is first wanted
   inc v.gen
   v.dropTiles()
   liveGen.store(v.gen)
@@ -267,9 +286,10 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
   v.sheet = if kkp.len > 0: newSheet(kkp) else: nil
   if v.sheet != nil: v.sheet.setDark(v.dark)
   v.scale0 = if info.get("scale") != nil and info["scale"].isNum: info["scale"].num else: 2.0
-  v.levelData = levels
-  v.levels = newSeq[W](levels.len)
-  v.asked = newSeq[bool](levels.len)
+  v.levelData = newSeq[string](nLevels)
+  v.levelLoad = load
+  v.levels = newSeq[W](nLevels)
+  v.asked = newSeq[bool](nLevels)
   v.selected = ""
   v.symbolBox = @[]
   v.hits.clear()
@@ -277,11 +297,17 @@ proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[st
   v.linkSel = -1
   v.fitted = false
   ensureWorker()
-  if levels.len > 0:                      # the smallest level now, so something shows at once
+  if nLevels > 0:                         # the smallest level now, so something shows at once
     v.asked[^1] = true
-    jobs.send(DecodeJob(gen: v.gen, level: levels.len - 1, dark: v.dark, data: levels[^1]))
+    jobs.send(DecodeJob(gen: v.gen, level: nLevels - 1, dark: v.dark, data: v.levelBytes(nLevels - 1)))
+    if startedAt > 0 and not timingReported: stderr.writeLine "timing: overview asked " & $int((epochTime() - startedAt) * 1000) & " ms after launch"
   setAccessibleLabel(v.widget, "Drawing " & name)
   gtk_widget_queue_draw(v.widget)
+
+proc setSheet*(v: Viewer, name: string, kkp: string, info: JNode, levels: seq[string]) =
+  ## as above, with every level's bytes at hand
+  let held = levels
+  v.setSheet(name, kkp, info, held.len, proc (k: int): string = held[k])
 
 proc dropSharperStale(v: Viewer, want: int, shown: W) =
   ## the other mode's levels sharper than the zoom wants aren't shown again: they go now, not when this mode's level of
@@ -298,6 +324,7 @@ proc pollDecodes*(v: Viewer) =
     if not ok: break
     if d.gen != v.gen or d.w == 0: continue
     if v.levels[d.level] != nil: g_object_unref(v.levels[d.level])
+    if startedAt > 0 and not timingReported: stderr.writeLine "timing: overview decoded " & $int((epochTime() - startedAt) * 1000) & " ms after launch"
     v.levels[d.level] = textureFromRgb(d.pixels.toOpenArrayByte(0, d.pixels.len - 1), d.w, d.h)
     for k in d.level ..< v.stale.len:     # the old mode's levels no sharper than this one go
       if v.stale[k] != nil:
@@ -325,7 +352,7 @@ proc setDark*(v: Viewer, on: bool) =
   if v.levels.len > 0:
     ensureWorker()
     v.asked[^1] = true
-    jobs.send(DecodeJob(gen: v.gen, level: v.levels.len - 1, dark: on, data: v.levelData[^1]))
+    jobs.send(DecodeJob(gen: v.gen, level: v.levels.len - 1, dark: on, data: v.levelBytes(v.levels.len - 1)))
   gtk_widget_queue_draw(v.widget)
 
 proc levelScale(v: Viewer, k: int): float = v.scale0 / float(1 shl k)
@@ -592,7 +619,7 @@ proc snapshot(v: Viewer, s: W, w, h: int) =
         break
     if v.levels.len > 0 and not v.asked[want]:
       v.asked[want] = true
-      jobs.send(DecodeJob(gen: v.gen, level: want, dark: v.dark, data: v.levelData[want]))
+      jobs.send(DecodeJob(gen: v.gen, level: want, dark: v.dark, data: v.levelBytes(want)))
     var tex: W = nil
     if v.levels.len > 0 and v.levels[want] != nil: tex = v.levels[want]
     elif want < v.stale.len and v.stale[want] != nil: tex = v.stale[want]   # shown before a dark switch: not blurrier
@@ -826,9 +853,17 @@ proc keyPress*(v: Viewer, keyval: cuint): bool =
   if v.onView != nil: v.onView()
   true
 
+var allViewers: seq[Viewer]       ## (each is kept for good: GC_ref below)
+
+proc pollAll() {.nimcall, gcsafe.} =
+  {.cast(gcsafe).}:
+    for v in allViewers: v.pollDecodes()
+
 proc newViewer*(): Viewer =
   let v = Viewer(z: 1, linkSel: -1)
   GC_ref(v)
+  allViewers.add v
+  decodedSoon = pollAll
   v.widget = kks_view_new(cast[pointer](snapCb), cast[pointer](v))
   gtk_widget_set_cursor_from_name(v.widget, "grab")
   # pan
