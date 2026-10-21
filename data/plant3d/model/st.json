@@ -261,7 +261,11 @@
   ["st_cas_hot", {"diff": ["st_inlet_t", 30]}],
   ["st_cas_idle", {"select": "st_warm_on", "cases": ["ambient_t", 220]}],
   ["st_cas_tgt", {"select": "st_adm", "cases": ["st_cas_idle", "st_cas_hot"]}],
-  ["st_casing_t", {"lag": "st_cas_tgt", "tau": 900, "tau_down": 7200, "init": 35, "unit": "°C", "kks": "30MAA10"}],
+  ["st_cas_steam", {"or": ["st_adm", "st_warm_on"]}],
+  ["st_cas_k", {"select": "st_cas_steam", "cases": [9.259259e-06, 0.001111111111]}],
+  ["st_casing_t", {"integrate": "st_cas_rate", "gain": 1, "min": 0, "max": 700, "init": 35, "unit": "°C", "kks": "30MAA10"}],
+  ["st_cas_gap", {"diff": ["st_cas_tgt", "st_casing_t"]}],
+  ["st_cas_rate", {"product": ["st_cas_gap", "st_cas_k"], "unit": "K/s"}],
   ["st_mismatch", {"diff": ["st_inlet_t", "st_casing_t"], "unit": "K"}],
   ["st_mm_hi", {"cmp": ["st_mismatch", "<=", 150]}],
   ["st_mm_lo", {"cmp": ["st_mismatch", ">=", -50]}],
@@ -296,7 +300,8 @@
   ["st_mw", {"ramp": "st_mw_t", "rate": 2, "rate_down": 10, "init": 0, "unit": "MW", "kks": "30MKA10"}],
   ["gen3_prot_c", {"and": ["st_any_trip", "st_brk_cmd"]}],
   ["st_mw_120", {"cmp": ["st_mw", ">=", 120]}],
-  ["plant_at_load", {"and": ["st_mw_120", "hp_byp_shut", "gt1_at_base"]}]
+  ["plant_at_load", {"and": ["st_mw_120", "hp_byp_shut", "gt1_at_base"]}],
+  ["st_cas_coolish", {"cmp": ["st_casing_t", "<", 200]}]
  ],
  "ops": [
   {"kks": "30MAV10AP001", "do": "start", "set": {"st_lac_cmd": 1}, "needs": [["st_lac_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
@@ -318,7 +323,7 @@
   {"kks": "30MAK10AE001", "do": "stop", "set": {"st_tg_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "30MAW10AA001", "do": "open", "set": {"st_gland_cmd": 1}, "needs": [["st_tg_run", "Turning gear not running: steam on a stopped rotor bows it"], ["aux_ok", "Auxiliary steam below 10 bar"], ["ia_ok", "Instrument air below 4 bar: an air-operated valve can't move"]], "where": ["local", "screen"]},
   {"kks": "30MAW10AA001", "do": "close", "set": {"st_gland_cmd": 0}, "where": ["local", "screen"]},
-  {"kks": "30MAA10AA101", "do": "open", "set": {"st_warm_cmd": 1}, "needs": [["st_tg_run", "Turning gear not running: steam on a stopped rotor bows it"], ["aux_ok", "Auxiliary steam below 10 bar"]], "where": ["local", "screen"]},
+  {"kks": "30MAA10AA101", "do": "open", "set": {"st_warm_cmd": 1}, "needs": [["st_tg_run", "Turning gear not running: steam on a stopped rotor bows it"], ["aux_ok", "Auxiliary steam below 10 bar"], ["st_cas_coolish", "The HP casing is hotter than the auxiliary steam: it would chill it, not warm it"]], "where": ["local", "screen"]},
   {"kks": "30MAA10AA101", "do": "close", "set": {"st_warm_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "30MAJ10AP001", "do": "start", "set": {"vac_a_cmd": 1}, "needs": [["ccw_ok", "Closed cooling water not in service: the seal water cooler needs it"]], "where": ["local", "screen"]},
   {"kks": "30MAJ10AP001", "do": "stop", "set": {"vac_a_cmd": 0}, "where": ["local", "screen"]},

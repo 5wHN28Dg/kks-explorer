@@ -198,15 +198,16 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 		for x in d["shelved"]:
 			if x < -1:
 				return "a shelf that ends before it began"
-	for k in ["first_out", "faults_done"]:
+	for k in ["first_out", "faults_done", "faults_fixed"]:
 		if d.has(k):
 			for key in d[k]:
 				if typeof(key) != TYPE_STRING or (k == "first_out" and typeof(d[k][key]) != TYPE_STRING):
 					return "a damaged %s" % k
 	if d.has("queue"):
 		for q in d["queue"]:
-			if typeof(q) != TYPE_ARRAY or q.is_empty() or not q[0] in ["op", "ack", "shelve", "unshelve", "fault"] \
-					or q.size() != {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2}[q[0]]:
+			if typeof(q) != TYPE_ARRAY or q.is_empty() or not q[0] in ["op", "ack", "shelve", "unshelve", "fault", "repair"] \
+					or q.size() != {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2, "repair": 2}[q[0]] \
+					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING):
 				return "a damaged input"
 	for k in ["inputs", "events"]:
 		if d.has(k):

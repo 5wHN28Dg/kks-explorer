@@ -7,8 +7,9 @@ extends SceneTree
 ##   --data=PATH       the first train's content (default data/plant3d)
 ##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps
 ##                     (tests/test_plant3d_sim.py compares them with the reference's: bit for bit)
-##   --dump=RUN:FROM:TO   print every value's bits at steps FROM–TO of one run (steps/N, train or a fork's id)
-##   --only=PARTS      some of: valid,steps,links,procedure,train (default all)
+##   --dump=RUN:FROM:TO   print every value's bits at steps FROM–TO of one run (steps/N, train, hot or a fork's id)
+##   --only=PARTS      some of: valid,steps,links,procedure,train (default all; procedure and train run both the
+##                     cold start, `train`, and the hot restart, `hot`)
 ##
 ## What is compared with the file: every event exactly (kinds, names, numbers and their int/float type, booleans);
 ## every snapshot's machines, trips, first-out records, alarms (in the model's order), shelved alarms and fast-forward
@@ -56,9 +57,12 @@ func _init() -> void:
 	var V: Dictionary = r.value
 	var parts: PackedStringArray = opts.get("only", "valid,steps,links,procedure,train").split(",")
 	var valid_files: Dictionary = V["valid"][0]["files"]
+	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
+	var starts := ["train", "hot"].filter(func(k): return V.has(k))
 	for part in parts:
-		expected += {"valid": 1, "steps": V["steps"].size(), "links": V["links"].size(), "procedure": 1,
-				"train": 1 + V["train"]["forks"].size()}.get(part, 0)
+		for st in starts:
+			expected += {"procedure": 1, "train": 1 + V[st]["forks"].size()}.get(part, 0)
+		expected += {"valid": 1, "steps": V["steps"].size(), "links": V["links"].size()}.get(part, 0)
 	if parts.has("valid"):
 		_valid(V["valid"][0])
 	if parts.has("steps"):
@@ -73,10 +77,11 @@ func _init() -> void:
 			_result("train model", train_model.error)
 			_finish(t0)
 			return
-	if parts.has("procedure"):
-		_procedure(V["train"], train_model)
-	if parts.has("train"):
-		_train(V["train"], train_model)
+	for st in starts:
+		if parts.has("procedure"):
+			_procedure(V[st], train_model)
+		if parts.has("train"):
+			_train(V[st], train_model, st)
 	if opts.has("digests"):
 		var f := FileAccess.open(opts["digests"], FileAccess.WRITE)
 		f.store_string(JSON.stringify(digests, " ", false))
@@ -291,7 +296,7 @@ func _procedure(t: Dictionary, m) -> void:
 	_result("procedure %s run as a trainee: its inputs, steps and events" % t["procedure"], d)
 
 
-func _train(t: Dictionary, m) -> void:
+func _train(t: Dictionary, m, run: String) -> void:
 	var e = PlantEngine.new(m, t["scenario"])
 	var forks: Array = t["forks"]
 	var bases := {}
@@ -304,7 +309,7 @@ func _train(t: Dictionary, m) -> void:
 	var d := ""
 	var until: int = t["until"]
 	var every: int = t["snapshot_every"]
-	_hash_begin("train", 0)
+	_hash_begin(run, 0)
 	_hash(e)
 	while e.step_no < until:
 		if bases.has(e.step_no):
@@ -327,7 +332,7 @@ func _train(t: Dictionary, m) -> void:
 		d = "%d snapshots, the reference %d" % [si, snaps.size()]
 	if d == "":
 		d = diff(e.events, t["events"], "events")
-	_result("train: the cold start replayed from its inputs (%d steps, %d snapshots)" % [until, snaps.size()], d)
+	_result("%s: %s replayed from its inputs (%d steps, %d snapshots)" % [run, t["procedure"], until, snaps.size()], d)
 	for f in forks:
 		var x = bases[int(f["base_step"])].clone()
 		var n0: int = x.events.size()

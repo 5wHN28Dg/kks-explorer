@@ -7,6 +7,7 @@
   train          the first train (data/plant3d): the cold start run by its procedure (the inputs at the steps they
                  take effect, every event, a full snapshot every 10 min of model time) and forks from it that make
                  each trip and interlock fire and each wrong operator action be refused or alarmed
+  hot            the same for the hot restart (its scenario and procedure) and its forks
 
 FROZEN once the app's evaluator uses it (PLANT3D §12): a change of format or model makes a new file.
   python3 ref/make_plant3d_vectors.py [--write]"""
@@ -112,7 +113,8 @@ def mini():
                       {'kks': '10LAB10CP501', 'show': 'p'},
                       {'kks': '10LAC10AP001', 'sound': 'hum', 'gain': {'of': 'flow', 'table': [[0, 0], [1, 1]]}}]}
     scen = {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 's1', 'title': 'Start', 'init': {'ambient_t': 30},
-            'faults': [{'id': 'f1', 'set': {'pump_cmd': 0}, 'text': 'Pump trips'}]}
+            'faults': [{'id': 'f1', 'set': {'pump_cmd': 0}, 'text': 'Pump trips', 'kks': '10LAC10AP001',
+                        'repair': {'valve_cmd': 0}}]}
     proc = {'format': 'walkdown-plant-procedure', 'version': 1, 'id': 'p1', 'title': 'Start the pump',
             'kind': 'procedure', 'scenario': 's1',
             'steps': [{'id': 'open', 'text': ['Open ', {'link': ['the valve'], 'to': {'kks': '10LAB10AA001'}}, '.'],
@@ -299,6 +301,11 @@ REJECTS = [
     ('a scenario setting a stateless value', 'bad_ref', _set(['scenarios/s1.json', 'init', 'p'], 3)),
     ('a scenario without an ext value', 'missing_key', _set(['scenarios/s1.json', 'init'], {})),
     ('a scenario latching a trip that does not exist', 'bad_ref', _set(['scenarios/s1.json', 'latched'], ['t2'])),
+    ('a fault\'s repair writing a value that is not a state', 'bad_ref',
+     _set(['scenarios/s1.json', 'faults', 0, 'repair'], {'flow': 0})),
+    ('a fault repaired at equipment that does not exist', 'bad_ref',
+     _set(['scenarios/s1.json', 'faults', 0, 'kks'], '10LAB10AA009')),
+    ('a fault with an unknown key', 'unknown_key', _set(['scenarios/s1.json', 'faults', 0, 'fix'], {'pump_cmd': 0})),
     ('a procedure step at equipment that does not exist', 'bad_ref',
      _set(['procedures/p1.json', 'steps', 0, 'at'], ['10LAB10AA009'])),
     ('a procedure step expecting an op the model lacks', 'bad_ref',
@@ -425,6 +432,10 @@ def unit_models():
                    'first_out': 'g'}],
         'alarms': [{'id': 'al', 'kks': '10LAB10AA001', 'text': 'B high', 'when': 'b_hi', 'priority': 3,
                     'where': '10LAB10AA001'}]}
+    repairs = {
+        'values': [['a', {'state': 0, 'kks': '10LAC10AP001'}], ['b', {'state': 0, 'kks': '10LAC10AP001'}],
+                   ['c', {'state': 0, 'kks': '10LAB10AA001'}], ['a_on', {'cmp': ['a', '>=', 1]}]],
+        'ops': [{'kks': '10LAC10AP001', 'do': 'set', 'input': 'a', 'range': [0, 9], 'where': ['local']}]}
     return [
         ('every node kind', nodes, {'ambient_t': 21}, [], [
             [1, 'op', '10LAC10AP001', 'set', 1, None], [6, 'op', '10LAB10AA001', 'set', 1, None],
@@ -467,6 +478,17 @@ def unit_models():
             [8, 'ack', 'none'], [8, 'shelve', 'none', 5], [8, 'unshelve', 'none'], [8, 'fault', 'none'],
             [8, 'shelve', 'al', 0], [8, 'shelve', 'al', -1], [8, 'shelve', 'al', 1e6], [8, 'shelve', 'al', 0.25],
             [11, 'shelve', 'al', 999999.9]], 12),
+        ('repairs: of a fault not yet applied, applied, repaired, pressed and repaired again; a fault with a when '
+         'repaired is not applied again; repairs naming no fault, a fault without a repair, asked twice in a step',
+         repairs, {'ambient_t': 20},
+         [{'id': 'g', 'set': {'b': 5}, 'text': 'Trainer sets B', 'kks': '10LAC10AP001', 'repair': {'b': 0}},
+          {'id': 'h', 'when': 'a_on', 'set': {'c': 7}, 'text': 'C when A', 'repair': {'c': 1}},
+          {'id': 'k', 'set': {'c': 3}, 'text': 'No repair for this one'}], [
+            [1, 'repair', 'g'], [2, 'fault', 'g'], [2, 'repair', 'g'], [3, 'repair', 'g'], [3, 'repair', 'g'],
+            [4, 'repair', 'g'], [5, 'fault', 'g'], [6, 'fault', 'g'], [7, 'repair', 'g'],
+            [8, 'op', '10LAC10AP001', 'set', 1, None], [10, 'repair', 'h'], [11, 'op', '10LAC10AP001', 'set', 0, None],
+            [12, 'op', '10LAC10AP001', 'set', 2, None], [13, 'repair', 'h'],
+            [14, 'fault', 'k'], [15, 'repair', 'k'], [15, 'repair', 'none'], [15, 'repair', 3]], 16),
     ]
 
 
@@ -498,6 +520,8 @@ def apply(e, item):
         e.unshelve(item[2])
     elif kind == 'fault':
         e.fault(item[2])
+    elif kind == 'repair':
+        e.repair(item[2])
     else:
         raise ValueError(kind)
 
@@ -535,8 +559,8 @@ def build_steps():
 # ================================================================ the first train
 
 # Forks from the cold start: (id, base, actions, expectations). base is a procedure step id (the state just after
-# it ended), 'start' (step 0) or 'end'. Actions: ('op', kks, do, value, trip), ('fault', id), ('run', seconds),
-# ('until', value name, max seconds). Expectations are checked by tests/test_plant3d.py against FIRST-TRAIN.md.
+# it ended), 'start' (step 0) or 'end'. Actions: ('op', kks, do, value, trip), ('fault', id), ('repair', id),
+# ('run', seconds), ('until', value name, max seconds). Expectations are checked by tests/test_plant3d.py against FIRST-TRAIN.md.
 FORKS = [
     # wrong operator actions
     ('cw_start_valve_open', 'start', [('op', '30PAC10AA102', 'open', None, None), ('run', 70),
@@ -700,6 +724,35 @@ FORKS = [
     ('cw_c_start_open_valve', 'end', [('fault', 'cw_c_ls'), ('op', '30PAC10AA103', 'open', None, None),
                                       ('run', 70), ('op', '30PAC10AP003', 'start', None, None), ('run', 20)],
      {'alarms': ['cw_c_surge'], 'max': {'cw_c_pt': [3.5, 6]}}),
+    # behaviour limits closed for plant-v0.2.0: a motor valve without its supply worked by its handwheel, the trainer's
+    # faults repaired (at the equipment or from the trainer's panel)
+    ('cw_hand_needs_power_lost', 'end', [('op', '30PAC10AA102', 'hand_close', None, None), ('run', 1)],
+     {'refused': [['30PAC10AA102', 'hand_close', ['cw_b_v_stuck']]]}),
+    ('cw_valve_closed_by_hand', 'end', [('fault', 'cw_valve_power'), ('run', 10), ('fault', 'cw_b_motor'),
+                                        ('run', 30), ('op', '30PAC10AA102', 'hand_close', None, None), ('run', 30)],
+     {'first_out': {'cw_b': 'cw_b_trip_ol'}, 'done': [['30PAC10AA102', 'hand_close']],
+      'machines': {'cw_b_v_hand': 'closing'}, 'end': {'cw_b_v_pos': [0.85, 0.95]}}),
+    ('cw_valve_closed_by_hand_end', 'end', [('fault', 'cw_valve_power'), ('run', 10), ('fault', 'cw_b_motor'),
+                                            ('run', 30), ('op', '30PAC10AA102', 'hand_close', None, None),
+                                            ('run', 320)],
+     {'machines': {'cw_b_v_hand': 'idle'}, 'end': {'cw_b_v_pos': [0, 0.003], 'cw_b_back': [0, 25]}}),
+    ('cw_hand_stopped', 'end', [('fault', 'cw_valve_power'), ('run', 10),
+                                ('op', '30PAC10AA101', 'hand_close', None, None), ('run', 60),
+                                ('op', '30PAC10AA101', 'hand_stop', None, None), ('run', 60)],
+     {'done': [['30PAC10AA101', 'hand_stop']], 'end': {'cw_a_v_pos': [0.79, 0.81]}}),
+    ('cw_valve_power_repaired', 'end', [('fault', 'cw_valve_power'), ('run', 10), ('fault', 'cw_b_motor'),
+                                        ('run', 30), ('op', '30PAC10AA102', 'hand_close', None, None), ('run', 60),
+                                        ('repair', 'cw_valve_power'), ('run', 90)],
+     {'repaired': ['cw_valve_power'], 'machines': {'cw_b_v_hand': 'idle'},
+      'end': {'cw_b_v_pos': [0, 0.003], 'cw_b_v_hw_on': [0, 0], 'cw_a_v_stuck': [0, 0]}}),
+    ('cw_b_motor_repaired', 'end', [('fault', 'cw_b_motor'), ('run', 120), ('repair', 'cw_b_motor'), ('run', 1),
+                                    ('op', '30PAC10AP002', 'reset', None, 'cw_b_trip_ol'), ('run', 1),
+                                    ('op', '30PAC10AA102', 'set', 0.15, None), ('until', 'cw_b_vstart', 120),
+                                    ('op', '30PAC10AP002', 'start', None, None), ('run', 10)],
+     {'repaired': ['cw_b_motor'], 'done': [['30PAC10AP002', 'start']], 'end': {'cw_b_run': [1, 1]}}),
+    ('cw_b_motor_again', 'end', [('fault', 'cw_b_motor'), ('run', 120), ('repair', 'cw_b_motor'), ('run', 10),
+                                 ('fault', 'cw_b_motor'), ('run', 1)],
+     {'repaired': ['cw_b_motor'], 'faults': ['cw_b_motor', 'cw_b_motor'], 'end': {'cw_b_fault': [1, 1]}}),
 ] + [  # every cooling tower fan (fans 6–10 stand at the end of the cold start: started first)
     (f'ct_fan{i}_vibration', 'end',
      ([] if i <= 5 else [('op', f'30PAD10AN{i:03d}', 'start', None, None), ('run', 60)]) +
@@ -708,19 +761,33 @@ FORKS = [
 ]
 
 
+# Forks from the hot restart (FIRST-TRAIN §4 "As built"): the HP casing still at about 470 °C when the superheaters
+# are drained with the GT at minimum load; the steam more than 50 K colder than the casing; loaded until it is matched.
+HOT_FORKS = [
+    ('hot_roll_steam_too_cold', 'drains_close', [('until', 'st_sh_ok', 600), ('op', '30MAA10', 'roll', None, None),
+                                                 ('run', 1)],
+     {'refused': [['30MAA10', 'roll', ['st_match']]], 'end': {'st_mismatch': [-250, -50.001], 'st_casing_t': [450, 480]}}),
+    ('hot_warmup_refused', 'gland', [('op', '30MAA10AA101', 'open', None, None), ('run', 60)],
+     {'refused': [['30MAA10AA101', 'open', ['st_cas_coolish']]], 'end': {'st_casing_t': [460, 480]}}),
+    ('hot_roll_matched', 'match', [('op', '30MAA10', 'roll', None, None), ('run', 60)],
+     {'done': [['30MAA10', 'roll']], 'machines': {'st_start': 'roll'}, 'end': {'st_mismatch': [-50, 150]}}),
+]
+
+
 def train_bundle():
     return P.check_dir(DATA)
 
 
-def run_cold_start(b):
-    """The cold start by its procedure, keeping the engine as it stood after every step (the forks' bases)."""
+def run_cold_start(b, scenario='cold_iron', procedure='cold_start'):
+    """The cold start (or another start) by its procedure, keeping the engine as it stood after every step (the
+    forks' bases)."""
     bases = {}
-    first = P.Recorder(b, 'cold_iron')
+    first = P.Recorder(b, scenario)
     bases['start'] = first.clone()
 
     def keep(sid, e):
         bases[sid] = e.clone()
-    e, log = P.run_procedure(b, 'cold_start', eng=first, on_step=keep)
+    e, log = P.run_procedure(b, procedure, eng=first, on_step=keep)
     bases['end'] = e.clone()
     return e, log, bases
 
@@ -744,6 +811,8 @@ def run_fork(base, actions, probes=()):
             e.op(*a[1:])
         elif a[0] == 'fault':
             e.fault(a[1])
+        elif a[0] == 'repair':
+            e.repair(a[1])
         elif a[0] == 'run':
             step(round(a[1] * 10))
         elif a[0] == 'until':
@@ -756,10 +825,10 @@ def run_fork(base, actions, probes=()):
     return e, start, e.inputs[n_in:], e.events[n_ev:], seen
 
 
-def build_train(b):
-    e, log, bases = run_cold_start(b)
+def build_train(b, scenario='cold_iron', procedure='cold_start', fork_list=None):
+    e, log, bases = run_cold_start(b, scenario, procedure)
     # the snapshots: replay the inputs on a fresh engine (also proves the inputs alone reproduce the run)
-    r = P.Engine(b, 'cold_iron')
+    r = P.Engine(b, scenario)
     snaps = []
     inputs = e.inputs
     k = 0
@@ -771,7 +840,7 @@ def build_train(b):
         k += 1
     assert r.events == e.events, 'replaying the recorded inputs gives other events'
     forks = []
-    for fid, base, actions, expect in FORKS:
+    for fid, base, actions, expect in (FORKS if fork_list is None else fork_list):
         probes = sorted(set(expect.get('max', {})) | set(expect.get('end', {})))
         f, start, fin, fev, seen = run_fork(bases[base], actions, probes)
         fork = {'id': fid, 'base_step': start, 'inputs': fin, 'until': f.step_no, 'events': fev,
@@ -779,7 +848,7 @@ def build_train(b):
         if probes:
             fork['seen'] = seen
         forks.append(fork)
-    return {'scenario': 'cold_iron', 'procedure': 'cold_start', 'inputs': inputs, 'until': e.step_no,
+    return {'scenario': scenario, 'procedure': procedure, 'inputs': inputs, 'until': e.step_no,
             'steps': [[sid, n] for sid, n in log], 'snapshot_every': SNAP_EVERY, 'snapshots': snaps,
             'events': e.events, 'forks': forks}
 
@@ -811,6 +880,7 @@ LINKS = [  # links read against the synthetic plant (§6)
 
 def build():
     F = mini()
+    tb = train_bundle()
     counts = check(F).counts
     links = [{'link': u, 'expect': P.read_link(u, check(F))} for u in LINKS]
     return {'about': 'Walkdown Plant content format 1 vectors (docs/PLANT3D.md §12), made by '
@@ -820,7 +890,8 @@ def build():
             'reject': build_rejects(),
             'steps': build_steps(),
             'links': links,
-            'train': build_train(train_bundle())}
+            'train': build_train(tb),
+            'hot': build_train(tb, 'hot_restart', 'hot_restart', HOT_FORKS)}
 
 
 def dump(v):

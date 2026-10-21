@@ -200,16 +200,51 @@ class M:
         if setop:
             self.op(kks, 'set', None, needs, where, input=cmd, range=[0, 1])
 
-    def mov(self, name, travel, init=0, unit=None, kks=None):
+    def mov(self, name, travel, init=0, unit=None, kks=None, hand=None):
         """A motor-operated valve that can stick (state {name}_stuck): its position integrates toward the command at
-        1/travel per second, proportionally inside the last few percent so it settles without overshoot."""
+        1/travel per second, proportionally inside the last few percent so it settles without overshoot.
+        hand: the seconds its handwheel takes over the full travel. A valve whose actuator has lost its supply (or
+        failed: stuck) is then worked by hand at the valve: while its handwheel is engaged ({name}_hw_on) the position
+        moves toward {name}_hw_sp at that slower rate (the machine {name}_hand, hand_ops)."""
         w = max(0.02, 0.5 / travel)
         pos = self.integ(f'{name}_pos', f'{name}_mv', 1 / travel, 0, 1, init, unit, kks)
         self.diff(f'{name}_err', f'{name}_cmd', pos)
         self.tab(f'{name}_dir', f'{name}_err', [[-w, -1], [w, 1]])
         self.NOT(f'{name}_free', f'{name}_stuck')
-        self.prod(f'{name}_mv', [f'{name}_dir', f'{name}_free'])
+        if hand is None:
+            self.prod(f'{name}_mv', [f'{name}_dir', f'{name}_free'])
+            return pos
+        self.prod(f'{name}_m_mv', [f'{name}_dir', f'{name}_free'])
+        self.diff(f'{name}_hw_err', f'{name}_hw_sp', pos)
+        self.tab(f'{name}_hw_dir', f'{name}_hw_err', [[-w, -1], [w, 1]])
+        self.prod(f'{name}_hw_mv', [f'{name}_hw_dir', f'{name}_hw_on', f'{name}_stuck', round(travel / hand, 9)])
+        self.sum(f'{name}_mv', [f'{name}_m_mv', f'{name}_hw_mv'])
+        self.cmp(f'{name}_hw_lo', f'{name}_hw_err', '>', -0.002)    # at the end of its travel: within 0.2 %
+        self.cmp(f'{name}_hw_hi', f'{name}_hw_err', '<', 0.002)
+        self.AND(f'{name}_hw_at', [f'{name}_hw_lo', f'{name}_hw_hi'])
+        self.OR(f'{name}_hw_stop', [f'{name}_hw_at', f'{name}_free'])
         return pos
+
+    def hand_ops(self, kks, name, power):
+        """The handwheel of a motor-operated valve `name` (mov(..., hand=...)): turned open or closed at the valve,
+        or stopped where it is; only while the actuator is without supply (`power`: what a refusal says). A machine
+        holds which way it is being turned; it stops at the end of the travel, or when the supply returns (the motor
+        takes over again, toward its last command)."""
+        mid = f'{name}_hand'
+        self.machines.append({'id': mid, 'kks': kks, 'init': 'idle',
+                              'commands': {'hand_open': {'from': ['idle', 'closing'], 'to': 'opening'},
+                                           'hand_close': {'from': ['idle', 'opening'], 'to': 'closing'},
+                                           'hand_stop': {'from': ['opening', 'closing'], 'to': 'idle'}},
+                              'states': [{'id': 'idle', 'set': {f'{name}_hw_on': 0}, 'watch': False},
+                                         {'id': 'opening', 'set': {f'{name}_hw_sp': 1, f'{name}_hw_on': 1},
+                                          'next': [[f'{name}_hw_stop', 'idle']], 'watch': False,
+                                          'say': 'Opening by its handwheel'},
+                                         {'id': 'closing', 'set': {f'{name}_hw_sp': 0, f'{name}_hw_on': 1},
+                                          'next': [[f'{name}_hw_stop', 'idle']], 'watch': False,
+                                          'say': 'Closing by its handwheel'}]})
+        for c in ('hand_open', 'hand_close'):
+            self.op(kks, c, None, [(f'{name}_stuck', power)], ('local',), machine=mid)
+        self.op(kks, 'hand_stop', None, (), ('local',), machine=mid)
 
     def ctrl_machine(self, mid, kks, init='manual', needs=(), say_auto=None):
         self.machines.append({'id': mid, 'kks': kks, 'init': init,
@@ -456,6 +491,14 @@ def ct():
 
 # ================================================================ cw (circulating water pumps)
 
+# The HP casing's natural cooling, τ in seconds (30 h; the casing heats with τ 15 min): FIRST-TRAIN §4 #18
+ST_CASING_COOL = 108000
+
+# The CW discharge valves by hand (FIRST-TRAIN §4 "As built"): a DN 1400 butterfly valve's gearbox takes some hundreds of
+# turns of its handwheel; five minutes over the full travel (the motor: one)
+CW_VALVE_HAND = 300
+
+
 def cw():
     m = M('cw')
     pumps = (('a', 1), ('b', 2), ('c', 3))
@@ -463,6 +506,8 @@ def cw():
         m.drive(f'cw_{x}', f'30PAC10AP00{n}')
         m.state(f'cw_{x}_v_cmd', 0, f'30PAC10AA10{n}')
         m.state(f'cw_{x}_v_stuck', 0, f'30PAC10AA10{n}')
+        m.state(f'cw_{x}_v_hw_sp', 0, f'30PAC10AA10{n}')
+        m.state(f'cw_{x}_v_hw_on', 0, f'30PAC10AA10{n}')
         m.state(f'cw_{x}_ls_fault', 0, f'30PAC10AA10{n}')
     for k in (1, 2, 3, 4):
         m.state(f'cw_vent{k}', 0, f'30PAB10AA40{k}')
@@ -470,7 +515,7 @@ def cw():
         m.drive_values(f'cw_{x}')
         m.lag(f'cw_{x}_spd', f'cw_{x}_run', 3, unit='pu')
         m.timer(f'cw_{x}_rt', f'cw_{x}_run')
-        m.mov(f'cw_{x}_v', 60, kks=f'30PAC10AA10{n}', unit='pu')
+        m.mov(f'cw_{x}_v', 60, kks=f'30PAC10AA10{n}', unit='pu', hand=CW_VALVE_HAND)
         m.cmp(f'cw_{x}_v_ge', f'cw_{x}_v_pos', '>=', 0.10)
         m.cmp(f'cw_{x}_v_le', f'cw_{x}_v_pos', '<=', 0.20)
         m.AND(f'cw_{x}_vwin', [f'cw_{x}_v_ge', f'cw_{x}_v_le'])
@@ -540,6 +585,8 @@ def cw():
                                      (f'cw_{x}_vstart', f'Discharge valve {aa} not at its start position (10–20 %)'),
                                      (f'cw_{x}_trips_clear', 'A pump trip is latched: reset it first')])
         m.valve_ops(aa, f'cw_{x}_v_cmd')
+        m.hand_ops(aa, f'cw_{x}_v', 'The actuator has its supply: the handwheel is for a valve whose motor has lost '
+                   'it (it engages when the supply is lost)')
         m.interlock(f'cw_{x}_v_close', f'cw_{x}_fell', [{'set': {f'cw_{x}_v_cmd': 0}}], aa,
                     f'Pump {L} stopped: its discharge valve closes')
         m.trip(f'cw_{x}_trip_ol', ap, f'CW pump {L} motor overload', f'cw_{x}_ol_c',
@@ -562,7 +609,8 @@ def cw():
         m.b(kks=ap, lamp='running', of=f'cw_{x}_run')
         m.b(kks=ap, show=f'cw_{x}_amps')
         m.b(kks=aa, anim='disc', of=f'cw_{x}_v_pos')
-        m.b(kks=aa, sound='valve_motor', gain={'of': f'cw_{x}_v_mv', 'table': [[-1, 1], [0, 0], [1, 1]]})
+        m.b(kks=aa, sound='valve_motor', gain={'of': f'cw_{x}_v_m_mv', 'table': [[-1, 1], [0, 0], [1, 1]]})
+        m.b(kks=aa, anim='handwheel', of=f'cw_{x}_v_hw_mv', scale=4)
         m.b(kks=f'30PAC10CP50{n}', show=f'cw_{x}_dp')
     for k in (1, 2, 3, 4):
         m.op(f'30PAB10AA40{k}', 'open', {f'cw_vent{k}': 1}, (), ('local',))
@@ -982,6 +1030,7 @@ def hrsg1():
     m.tab('hp_shw_k', 'hp_gen', [[0, 0], [2, 1]])
     m.prod('hp_shw_rate', ['hp_drn_frac', 'hp_shw_k', -0.01])
     m.integ('hp_shw', 'hp_shw_rate', 1, 0, 1, 1, 'pu')
+    m.cmp('hp_sh_drained', 'hp_shw', '<', 0.05)              # the superheaters' water gone (the hot restart waits)
     m.prod('hp_drain_loss', ['hp_drn_frac', 3], 'kg/s')
     m.prod('hp_vent_loss', ['hp_vent_pos', 5], 'kg/s')
     m.sum('hp_losses', ['hp_drain_loss', 'hp_vent_loss'])
@@ -1259,7 +1308,14 @@ def st():
     m.diff('st_cas_hot', 'st_inlet_t', 30)
     m.sel('st_cas_idle', 'st_warm_on', ['ambient_t', 220])
     m.sel('st_cas_tgt', 'st_adm', ['st_cas_idle', 'st_cas_hot'])
-    m.lag('st_casing_t', 'st_cas_tgt', 900, 7200, 35, '°C', '30MAA10')
+    # steam on the metal (admitted, or the warm-up's) heats or cools it with τ 15 min; left alone a hot casing cools
+    # slowly (τ 30 h: still over 400 °C eight hours after a trip from load, the usual line for a hot start: FIRST-TRAIN
+    # §4 #18). An integral of the gap at the τ of the moment (a lag has one τ each way, whatever heats it)
+    m.OR('st_cas_steam', ['st_adm', 'st_warm_on'])
+    m.sel('st_cas_k', 'st_cas_steam', [round(1 / ST_CASING_COOL, 12), round(1 / 900, 12)])
+    m.integ('st_casing_t', 'st_cas_rate', 1, 0, 700, 35, '°C', '30MAA10')
+    m.diff('st_cas_gap', 'st_cas_tgt', 'st_casing_t')
+    m.prod('st_cas_rate', ['st_cas_gap', 'st_cas_k'], 'K/s')
     m.diff('st_mismatch', 'st_inlet_t', 'st_casing_t', 'K')
     m.cmp('st_mm_hi', 'st_mismatch', '<=', 150)              # steam at most 150 K hotter than the casing
     m.cmp('st_mm_lo', 'st_mismatch', '>=', -50)              # and at most 50 K colder
@@ -1322,9 +1378,12 @@ def st():
          [('st_tg_run', 'Turning gear not running: steam on a stopped rotor bows it'),
           ('aux_ok', 'Auxiliary steam below 10 bar')])
     m.op('30MAW10AA001', 'close', {'st_gland_cmd': 0})
+    # the auxiliary steam (about 250 °C) would chill a hot casing, not warm it (the hot restart's likeliest slip)
+    m.cmp('st_cas_coolish', 'st_casing_t', '<', 200)
     m.op('30MAA10AA101', 'open', {'st_warm_cmd': 1},
          [('st_tg_run', 'Turning gear not running: steam on a stopped rotor bows it'),
-          ('aux_ok', 'Auxiliary steam below 10 bar')])
+          ('aux_ok', 'Auxiliary steam below 10 bar'),
+          ('st_cas_coolish', 'The HP casing is hotter than the auxiliary steam: it would chill it, not warm it')])
     m.op('30MAA10AA101', 'close', {'st_warm_cmd': 0})
     for x, n in (('a', 1), ('b', 2)):
         m.start_stop(f'30MAJ10AP00{n}', f'vac_{x}', [('ccw_ok', 'Closed cooling water not in service: the seal '

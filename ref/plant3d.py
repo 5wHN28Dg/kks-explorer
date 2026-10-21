@@ -1283,13 +1283,17 @@ def check_scenario(s, m, rel):
     seen = set()
     for i, f in enumerate(lst(s.get('faults', []), f'{rel}.faults', 0, 256)):
         w = f'{rel}: fault {f.get("id", i) if isinstance(f, dict) else i}'
-        keys(f, ('id', 'set', 'text'), ('when',), w)
+        keys(f, ('id', 'set', 'text'), ('when', 'repair', 'kks'), w)
         ident(f['id'], w)
         need(f['id'] not in seen, 'dup_id', w)
         seen.add(f['id'])
         name_text(f['text'], w, 200)
         m.pending, m.pending_set = [], []
         m.sets(f['set'], f'{w}.set')
+        if 'repair' in f:
+            m.sets(f['repair'], f'{w}.repair')
+        if 'kks' in f:
+            m.kks_ref(f['kks'], f'{w}.kks')
         if 'when' in f:
             if isinstance(f['when'], str):
                 m.cond(f['when'], f'{w}.when')
@@ -1383,8 +1387,10 @@ class Engine:
     """Steps the joined model of a checked bundle exactly as PLANT3D §7.10 says.
 
     Trainee inputs are queued and take effect in step 1 of the next step, in the order made:
-        op(kks, do, value=None, trip=None), ack(alarm), shelve(alarm, seconds), unshelve(alarm), fault(id)
-    (fault: a scenario fault without `when`, pressed by the trainer; applied in step 3).
+        op(kks, do, value=None, trip=None), ack(alarm), shelve(alarm, seconds), unshelve(alarm), fault(id),
+        repair(id)
+    (fault: a scenario fault without `when`, pressed by the trainer; applied in step 3; repair: a fault's repair,
+    applied in step 3 after the faults, §7.8).
     """
 
     def __init__(self, b, scenario):
@@ -1411,6 +1417,7 @@ class Engine:
         self.faults = {f['id']: f for f in sc.get('faults', [])}
         self.fault_cond = {}
         self.faults_done = set()
+        self.faults_fixed = set()       # applied and repaired since (§7.8)
         self.queue = []
         self.events = []
         self.step_no = 0
@@ -1435,6 +1442,7 @@ class Engine:
         for k in ('mstate', 'latched', 'trip_count', 'first_out', 'astate', 'acount', 'shelved', 'il_prev'):
             setattr(c, k, dict(getattr(self, k)))
         c.faults_done = set(self.faults_done)
+        c.faults_fixed = set(self.faults_fixed)
         return c
 
     # --- compile nodes to closures over (cur, prev, mem)
@@ -1621,6 +1629,9 @@ class Engine:
     def fault(self, fid):
         self.queue.append(('fault', fid))
 
+    def repair(self, fid):
+        self.queue.append(('repair', fid))
+
     def v(self, name):
         return self.cur[self.ix[name]]
 
@@ -1663,6 +1674,7 @@ class Engine:
         cur = self.cur
         moved = set()
         pressed = []
+        asked = []
         # 1. the trainee's inputs, in the order made
         q, self.queue = self.queue, []
         for item in q:
@@ -1689,6 +1701,8 @@ class Engine:
                     self.ev('unshelve', item[1])
             elif kind == 'fault':
                 pressed.append(item[1])
+            elif kind == 'repair':
+                asked.append(item[1])
         # first-out records clear when no trip of the group is latched
         for g in list(self.first_out):
             if not any(self.latched[t['id']] for t in self.trips if t.get('first_out') == g):
@@ -1699,7 +1713,8 @@ class Engine:
         vals = list(cur)          # conditions in steps 3–7 read the values as step 2 left them
         # 3. faults
         for fid, f in self.faults.items():
-            if fid in self.faults_done:
+            # applied once; a repaired trainer's fault can be pressed again (§7.8)
+            if fid in self.faults_done and not (fid in self.faults_fixed and 'when' not in f):
                 continue
             if 'when' in f:
                 w = f['when']
@@ -1708,8 +1723,15 @@ class Engine:
                 hit = fid in pressed
             if hit:
                 self.faults_done.add(fid)
+                self.faults_fixed.discard(fid)
                 self._set(f['set'])
                 self.ev('fault', fid)
+        # then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`
+        for fid, f in self.faults.items():
+            if fid in asked and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed:
+                self.faults_fixed.add(fid)
+                self._set(f['repair'])
+                self.ev('repair', fid)
         # 4. interlocks on a rising edge
         for x in m.interlocks:
             now = vals[self.ix[x['when']]] >= 0.5
@@ -1869,6 +1891,9 @@ class Recorder(Engine):
 
     def fault(self, fid):
         self._q(('fault', fid))
+
+    def repair(self, fid):
+        self._q(('repair', fid))
 
     def clone(self):
         c = super().clone()

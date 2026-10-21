@@ -70,6 +70,15 @@ func _round_trip(m, script, p: Array):
 	e.shelve(e._al[0][0], 12.3)
 	e.shelve(e._al[2][0], 600)
 	e.step(5)
+	# a fault repaired and pressed again before the save, another repaired by an input still waiting (§7.8)
+	e.fault("cw_b_motor")
+	e.step(1)
+	e.repair("cw_b_motor")
+	e.step(1)
+	e.fault("cw_b_motor")
+	e.fault("cw_a_motor")
+	e.step(1)
+	e.repair("cw_a_motor")
 	e.op("00QFA10AN001", "start")
 	e.ack(e._al[0][0])
 	var name: String = script.resource_path.get_file()
@@ -77,7 +86,8 @@ func _round_trip(m, script, p: Array):
 	for f in fields:
 		if typeof(e.get(f)) == TYPE_OBJECT:
 			p.append("%s: the engine's state %s holds an object, which a save can't keep (keep its state in values)" % [name, f])
-	for f in ["cur", "prev", "mem", "mstate", "latched", "astate", "shelved", "events", "inputs", "queue", "step_no"]:
+	for f in ["cur", "prev", "mem", "mstate", "latched", "astate", "shelved", "events", "inputs", "queue", "step_no",
+			"faults_done", "faults_fixed"]:
 		if not f in fields:
 			p.append("%s: the save leaves out the engine's %s" % [name, f])
 	if script != PlantEngine:
