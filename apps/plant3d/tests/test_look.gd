@@ -49,11 +49,27 @@ func run(tree: SceneTree) -> Array:
 			p.append("%s: the roof steel hangs under the liner, half a metre and more" % body.name)
 		if steel.gi_mode != GeometryInstance3D.GI_MODE_STATIC:
 			p.append("%s: the roof steel is baked" % body.name)
-		# the roof's lamps hang below the steel (and none of them inside it)
+		# the roof's lamps hang from a purlin midway between two rafters, as high as before the steel (whatever runs
+		# under the roof keeps its clearance: a lamp lowered under the rafters hung in the boiler house's steam pipe,
+		# review), none under a roof opening
+		var h: float = roof_box.position.y
+		var steel_mesh: Mesh = steel.mesh
 		for l in body.get_children():
-			if l is SpotLight3D and String(l.name).begins_with("lamp_") and l.global_position.y > roof_box.position.y - 3.0:
-				if l.global_position.y > steel_box.position.y - 0.1:
-					p.append("%s: hangs below the roof steel (%.2f, steel from %.2f)" % [l.get_path(), l.global_position.y, steel_box.position.y])
+			if not (l is SpotLight3D and String(l.name).begins_with("lamp_") and l.global_position.y > h - 3.0):
+				continue
+			var lp: Vector3 = l.global_position
+			if lp.y < h - 1.0:
+				p.append("%s: a roof lamp hangs %.2f m below the roof (more than its old 1 m)" % [l.get_path(), h - lp.y])
+			var above: Array = _hits(steel_mesh, steel.global_transform, lp)
+			if above.is_empty() or above.max() < h - 0.25:
+				p.append("%s: its rod meets no purlin above it" % l.get_path())
+			if _near_rafter(steel_mesh, steel.global_transform, lp, h):
+				p.append("%s: hangs within a metre of a rafter" % l.get_path())
+		if String(body.get_meta("building")) == "bop_boiler_house":
+			for l in body.get_children():
+				if l is SpotLight3D and String(l.name).begins_with("lamp_") and absf(l.global_position.z) < 0.5 \
+						and l.global_position.y - 0.3 < 9.2:
+					p.append("%s: a boiler house lamp in the auxiliary steam pipe's way (y = 0, z up to 9.16)" % l.get_path())
 		var wall_box := (body.get_node("walls") as MeshInstance3D).mesh.get_aabb()
 		var metal: bool = body.get_meta("cladding", "") == "metal"
 		if metal:
@@ -79,6 +95,14 @@ func run(tree: SceneTree) -> Array:
 			if String(l.name).begins_with("lamp_") and String(l.get_parent().name) == "st_hall" and l.global_position.y < 12.0 \
 					and l.global_position.y > under - 0.25:
 				p.append("%s: a lamp under the operating floor hangs below its beams (%.2f, beams from %.2f)" % [l.get_path(), l.global_position.y, under])
+	# the operating floor's beams stop at the IP/LP turbine's exhaust trunk (plant x 36 to 52, y ±3.3)
+	if beams != null:
+		var bv: PackedVector3Array = beams.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		for v in bv:
+			var g := beams.global_transform * v
+			if g.x > 36.2 and g.x < 51.8 and absf(g.z) < 3.3:
+				p.append("a beam under the operating floor runs through the turbine's exhaust trunk at %s" % str(g))
+				break
 	# the circulating water pump house: louvres, windows lit from inside
 	var cw := plant.find_child("cw_house", true, false)
 	if cw == null or cw.get_node_or_null("louvres") == null or cw.get_node_or_null("windows") == null or cw.get_node_or_null("windows_in") == null:
@@ -96,6 +120,12 @@ func run(tree: SceneTree) -> Array:
 		var open := _see_through(fm, Vector3(-28.0, 1.2, -40.5), Vector3(1, 0, 0), 26.0, Vector3(0, 0, -1))
 		if open < 0.35 or open > 0.75:
 			p.append("the transformer yard's fence is a palisade one sees through (%.0f %% of sight lines through it)" % (open * 100.0))
+		# its streaks hang from its top (the vertex colour carries it: white read as a 64 m top, no streaks, review)
+		var cols: PackedColorArray = fm.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+		for c in cols:
+			if absf((roundf(c.r * 255.0) + c.g) * 0.25 - 2.4) > 0.02:
+				p.append("the fence's vertices carry its top, 2.4 m (one says %.2f)" % ((roundf(c.r * 255.0) + c.g) * 0.25))
+				break
 	# the walls' streaks: broad columns too, longer on a taller face, and stronger on cladding
 	var code := FileAccess.get_file_as_string("res://kit/weathered.gdshaderinc")
 	if not code.contains("h / 0.75") or not code.contains("(1.0 + top * 0.12)"):
@@ -116,6 +146,29 @@ func run(tree: SceneTree) -> Array:
 		p.append("a board's light takes its colours (the blue symbol glows blue, not white)")
 	plant.free()
 	return p
+
+## The heights where a vertical line through p (Godot axes) meets a mesh's triangles.
+static func _hits(mesh: Mesh, xf: Transform3D, p: Vector3) -> Array:
+	var arr := mesh.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var out: Array = []
+	var lo := xf.affine_inverse() * Vector3(p.x, 1000.0, p.z)
+	for i in range(0, idx.size(), 3):
+		var hit = Geometry3D.ray_intersects_triangle(lo, Vector3.DOWN, v[idx[i]], v[idx[i + 1]], v[idx[i + 2]])
+		if hit != null:
+			out.append((xf * (hit as Vector3)).y)
+	return out
+
+## Whether a rafter (steel reaching below the purlins, under h − 0.45) stands within a metre of p in plan.
+static func _near_rafter(mesh: Mesh, xf: Transform3D, p: Vector3, h: float) -> bool:
+	for d in [Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1),
+			Vector3(0.5, 0, 0), Vector3(-0.5, 0, 0), Vector3(0, 0, 0.5), Vector3(0, 0, -0.5)]:
+		for y in _hits(mesh, xf, p + d):
+			if y < h - 0.45:
+				return true
+	return false
+
 
 static func _lum(c: Color) -> float:
 	var l := c.srgb_to_linear()

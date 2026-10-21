@@ -959,9 +959,24 @@ func _soffit(parent: Node3D, sf: Dictionary) -> void:
 		var t := L * k / bays
 		var a := r.position + (Vector2(t, 0.0) if along_x else Vector2(0.0, t))
 		var b := r.position + (Vector2(t, S) if along_x else Vector2(S, t))
-		n += _member(beams, sf.outline, sf.holes, a, b, DECK_BEAM_W, z0 - LINER_T - DECK_BEAM_D, z0 - LINER_T)
+		n += _member(beams, sf.outline, sf.holes + through_deck(sf), a, b, DECK_BEAM_W, z0 - LINER_T - DECK_BEAM_D,
+			z0 - LINER_T)
 	if n > 0:
 		_mesh_node(parent, sf.id + "_beams", beams, _mat("roof_steel"), STEEL_TEXEL)
+
+## The plan footprints of machines that pass down through a deck (a steam turbine's exhaust to the condenser below):
+## its beams stop at them (a beam through the LP exhaust trunk, review).
+func through_deck(sf: Dictionary) -> Array:
+	var out: Array = []
+	for k in equipment:
+		var e: Dictionary = equipment[k]
+		if e.part != "steam_turbine" or String(e.params.get("exhaust", "")) != "down" or absf(e.pos.z - sf.z) > 0.5:
+			continue
+		var sh := shape_of(e.part, e.params)
+		var hw: float = sh.size.x * 0.75 + 0.3      # the exhaust hood is wider than the casing
+		var hl: float = sh.size.y * 0.5 + 0.3
+		out.append(Geom.poly([[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]], Vector2(e.pos.x, e.pos.y), float(e.get("yaw", 0.0))))
+	return out
 
 ## How far a deck's soffit and beams hang below its top (a lamp under it hangs below them).
 func deck_depth(sf: Dictionary) -> float:
@@ -1075,6 +1090,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	var glass := _st()
 	var glass_in := _st()
 	var fittings := 0   # louvres and windows drawn
+	var windows := 0
 	var pg: PackedVector2Array = b.outline
 	var h: float = b.height
 	var clad: bool = b.cladding == "metal"
@@ -1113,6 +1129,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 				_window(louvres, glass, glass_in, a + u * (t - ow * 0.5), a + u * (t + ow * 0.5), inward, zb, zb + oh,
 					LINER_T if clad else 0.0)
 				fittings += 1
+				windows += 1
 		# the wall's face (along the edge t, up z) less its openings, in rectangles (openings may overlap)
 		var holes: Array = []
 		for cu in cuts:
@@ -1148,7 +1165,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	_mesh_node(body, "plinth", plinth, _mat("concrete"))
 	if fittings > 0:
 		_mesh_node(body, "louvres", louvres, _mat("louvre"), Lightmap.SHEET_TEXEL * 2.0)
-	if b.openings.any(func(o): return o.kind == "window"):
+	if windows > 0:
 		_mesh_node(body, "windows", glass, _mat("window"))
 		_mesh_node(body, "windows_in", glass_in, _mat("window_in"))
 	_hall_floor(body, b)
@@ -1171,21 +1188,17 @@ const BAY := 6.0
 static func rafter_depth(span: float) -> float:
 	return clampf(span / 40.0, 0.4, 1.0)
 
-## How far the roof steel hangs below the roof (a lamp hangs below it).
-func steel_depth(b: Dictionary) -> float:
-	var r := Geom.bbox(b.outline)
-	return LINER_T + PURLIN_D + rafter_depth(minf(r.size.x, r.size.y))
-
 ## A building's roof steel under its liner: rafters every BAY metres across the short span (the frames over the
 ## gable walls stand in them, not drawn), purlins every PURLIN_GAP along the long one; none across a roof opening.
 ## A dark ceiling with nothing under it read as a black void (polish pass). Returns the members drawn.
 func _roof_steel(st: SurfaceTool, b: Dictionary, roof_holes: Array) -> int:
 	var pg: PackedVector2Array = b.outline
 	var h: float = b.height
-	var r := Geom.bbox(pg)
-	var along_x := r.size.x >= r.size.y          # the long axis: purlins run along it, rafters across
-	var L := r.size.x if along_x else r.size.y
-	var S := r.size.y if along_x else r.size.x
+	var g := steel_grid(b)
+	var r: Rect2 = g.r
+	var along_x: bool = g.along_x
+	var L: float = g.L
+	var S: float = g.S
 	var rd := rafter_depth(S)
 	var z_p1 := h - LINER_T
 	var z_p0 := z_p1 - PURLIN_D
@@ -1194,15 +1207,23 @@ func _roof_steel(st: SurfaceTool, b: Dictionary, roof_holes: Array) -> int:
 	var n := 0
 	var at := func(t: float, s: float) -> Vector2:
 		return r.position + (Vector2(t, s) if along_x else Vector2(s, t))
-	var bays := maxi(2, int(round(L / BAY)))
-	for k in range(1, bays):
-		var t := L * k / bays
+	for k in range(1, g.bays):
+		var t: float = L * k / g.bays
 		n += _member(st, pg, roof_holes, at.call(t, 0.0), at.call(t, S), RAFTER_W, z_r0, z_r1)
-	var rows := maxi(2, int(round(S / PURLIN_GAP)))
-	for k in range(1, rows):
-		var s2 := S * k / rows
+	for k in range(1, g.rows):
+		var s2: float = S * k / g.rows
 		n += _member(st, pg, roof_holes, at.call(0.0, s2), at.call(L, s2), PURLIN_W, z_p0, z_p1)
 	return n
+
+## The roof steel's layout: {r (the outline's box), along_x (the long axis is x), L, S (long and short sides), bays
+## (rafters at L·k/bays, k = 1 … bays − 1), rows (purlins at S·k/rows)}.
+func steel_grid(b: Dictionary) -> Dictionary:
+	var r := Geom.bbox(b.outline)
+	var along_x := r.size.x >= r.size.y          # the long axis: purlins run along it, rafters across
+	var L := r.size.x if along_x else r.size.y
+	var S := r.size.y if along_x else r.size.x
+	return {"r": r, "along_x": along_x, "L": L, "S": S, "bays": maxi(2, int(round(L / BAY))),
+		"rows": maxi(2, int(round(S / PURLIN_GAP)))}
 
 ## A steel member from a to b (plan), w wide, z0 to z1, kept inside the walls' inner faces and out of roof openings.
 func _member(st: SurfaceTool, pg: PackedVector2Array, roof_holes: Array, a: Vector2, b: Vector2, w: float, z0: float, z1: float) -> int:
@@ -1288,8 +1309,13 @@ func _slope_blade(st: SurfaceTool, a: Vector2, b: Vector2, out: Vector2, z: floa
 	var hi_a := Geom.g([a.x + out.x * 0.03, a.y + out.y * 0.03, z + 0.06])
 	var hi_b := Geom.g([b.x + out.x * 0.03, b.y + out.y * 0.03, z + 0.06])
 	var dn := Vector3(0, -0.01, 0)
-	Geom._quad(st, hi_a, hi_b, lo_b, lo_a)
-	Geom._quad(st, lo_a + dn, lo_b + dn, hi_b + dn, hi_a + dn)
+	# the top face must face up and out whichever way the outline runs (_tri: clockwise is the front)
+	if (hi_b - hi_a).cross(lo_a - hi_a).y < 0.0:
+		Geom._quad(st, hi_a, hi_b, lo_b, lo_a)
+		Geom._quad(st, lo_a + dn, lo_b + dn, hi_b + dn, hi_a + dn)
+	else:
+		Geom._quad(st, hi_b, hi_a, lo_a, lo_b)
+		Geom._quad(st, lo_b + dn, lo_a + dn, hi_a + dn, hi_b + dn)
 
 ## A window in a wall from a to b (`inward` the hall's side), z0 to z1: a frame and glass on both faces (drawn only;
 ## the wall stays whole). Outside the glass reflects; inside it is the daylight beyond (`window_in`, a little light of
@@ -1378,16 +1404,13 @@ func _lamps(body: Node, b: Dictionary) -> int:
 	var housing := _st()
 	var lens := _st()
 	var n := 0
-	# under the roof, over the whole hall
-	# hung below the roof steel on rods (a metal-clad hall's: steel_depth)
-	var sd := steel_depth(b)
-	var z_lamp := h - maxf(0.6, sd + 0.5)
-	for c in _lamp_grid(pg, [], clampf(h * 0.6, 6.0, 10.0)):
-		if Geom.in_region(c, pg, []):
-			_lamp(body, housing, lens, c, z_lamp, clampf(h * 0.6, 6.0, 10.0), h, n)
-			if sd > 0.0:
-				Geom.add_prism(housing, Geom.rect(c.x - 0.015, c.y - 0.015, c.x + 0.015, c.y + 0.015), z_lamp + 0.25, h - LINER_T - PURLIN_D)
-			n += 1
+	# under the roof, over the whole hall: each hung on a short rod from a purlin, midway between two rafters, as high
+	# as it hung before the steel (whatever runs under the roof keeps its clearance), none under a roof opening
+	for c in roof_lamp_places(b):
+		_lamp(body, housing, lens, c, h - LAMP_DROP, clampf(h * 0.6, 6.0, 10.0), h, n)
+		Geom.add_prism(housing, Geom.rect(c.x - 0.015, c.y - 0.015, c.x + 0.015, c.y + 0.015), h - LAMP_DROP + 0.25,
+			h - LINER_T - PURLIN_D)
+		n += 1
 	# under each deck of the hall (an operating floor, a building's upper floor): the floor below it is out of the
 	# roof lamps' reach, as a real hall's ground floor is lit by lamps under the deck (adversarial review)
 	for sf in surfaces:
@@ -1406,6 +1429,41 @@ func _lamps(body: Node, b: Dictionary) -> int:
 		_mesh_node(body, "lamp_housings", housing, _mat("steel_dark"))
 		_mesh_node(body, "lamp_lenses", lens, _mat("lamp_white"))
 	return n
+
+## A roof lamp's housing hangs this far below the roof (its top 0.3 m under the purlins it hangs from).
+const LAMP_DROP := LINER_T + PURLIN_D + 0.55
+
+## Where a building's roof lamps hang (plan): about 0.6 × the height apart (6 to 10 m), along the long axis in the
+## middle of a bay between two rafters, across it under the nearest purlin; none under a roof opening.
+func roof_lamp_places(b: Dictionary) -> Array:
+	var pg: PackedVector2Array = b.outline
+	var g := steel_grid(b)
+	var gap := clampf(float(b.height) * 0.6, 6.0, 10.0)
+	var out: Array = []
+	var nl := maxi(1, int(round(g.L / gap)))
+	var ns := maxi(1, int(round(g.S / gap)))
+	var holes := roof_holes_of(b)
+	for i in nl:
+		var bay := mini(int(floor((i + 0.5) * g.bays / nl)), g.bays - 1)
+		var t: float = (bay + 0.5) * g.L / g.bays
+		for j in ns:
+			var k := clampi(int(round((j + 0.5) * g.rows / ns)), 1, g.rows - 1)
+			var s: float = g.S * k / g.rows
+			var c: Vector2 = g.r.position + (Vector2(t, s) if g.along_x else Vector2(s, t))
+			if Geom.in_region(c, pg, holes):
+				out.append(c)
+	return out
+
+## A building's roof openings (an intake on the roof): their plan rectangles.
+func roof_holes_of(b: Dictionary) -> Array:
+	var out: Array = []
+	for o in b.openings:
+		if float(o.at[2]) >= float(b.height) - 0.5:
+			var oc := _opening_plan(b, o)
+			var w2 := float(o.width) * 0.5
+			var h2 := float(o.height) * 0.5
+			out.append(Geom.rect(oc.x - w2, oc.y - h2, oc.x + w2, oc.y + h2))
+	return out
 
 static func _mean(pg: PackedVector2Array) -> Vector2:
 	var m := Vector2.ZERO
@@ -1590,6 +1648,7 @@ func _fence(parent: Node3D, s: Dictionary) -> void:
 		var u := (b2 - a2) / len
 		var n := Vector2(-u.y, u.x)
 		_panel(null, body, a2, b2, a.z, a.z + fh, 0.05)   # the walker's: solid
+		st.set_color(top_colour(a.z + fh))                  # the streaks hang from the fence's top (top_edge)
 		# posts (the route's corners have one each)
 		var posts := maxi(1, int(ceil(len / POST_GAP)))
 		for k in posts + 1:

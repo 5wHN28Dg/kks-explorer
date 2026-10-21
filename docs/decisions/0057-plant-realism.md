@@ -40,7 +40,8 @@ memory, load and size rules (wiki: 3D-plant, measurement rules), and with nothin
 - **Materials:** one weathered shader for every lit surface: the CC0 sets plus grime, run-off streaks, dust on top
   faces, rust, paint wear where hands go (vertex alpha by colour), wet ground round the cooling tower, jointed yards,
   the road's centre line, drawn bar gratings; the plain pieces (plates, dials, bands) the same shader kept clean. The
-  phone skips the wear's sample and the ruts' two (its ground has the patches but no broken ruts or wandering track);
+  phone skips the wear's sample and the ruts' two (its ground has the patches but no broken ruts or wandering track;
+  since the polish pass, below, the ruts and the track take no samples and are the same on every tier);
   it draws the streaks, which read no texture of their own. A second, smaller program for the phone (compiled with
   the wear and the ruts left out, swapped onto the materials at start) made its first start slower, not faster (16.6
   and 16.8 s against 14.9 and 15.0 s), and was taken out.

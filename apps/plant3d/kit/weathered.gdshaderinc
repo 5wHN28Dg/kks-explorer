@@ -11,7 +11,7 @@
 //            handrails, ladders, handwheels; 0 for a part that is never touched)
 //   wet      darker and glossier ground and walls near water (the cooling tower's basin): the box `wet_zone`
 // All from one tileable noise texture made by the build (builder/weather.gd), sampled in world space on the face's
-// main plane (one sample per scale): the same asset set serves every tier, the phone reads two noise samples fewer
+// main plane (one sample per scale): the same asset set serves every tier, the phone reads one noise sample fewer
 // (`detail` = 0 drops the wear's own sample). The ground's ruts break and its track wanders by arithmetic noise (no
 // sample), the same on every tier: the phone's were unbroken and straight while they took two samples (polish pass).
 // Corrugated sheet (`sheet_width`): the set's normal map gives the ribs; the sheets are drawn from UV1, each a little
