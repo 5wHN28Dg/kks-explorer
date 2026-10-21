@@ -28,6 +28,9 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.10.5" date="2026-10-21">
+      <description><p>walkdown:// links: another app, such as Walkdown Plant, can open Walkdown at a piece of equipment or at a course page.</p></description>
+    </release>
     <release version="0.10.4" date="2026-10-15">
       <description><p>About Walkdown, in the header bar's menu: the version and the exact commit it was built from, with a link to that source; the licence; links to the project, to report a problem and to help; every third-party part the app ships with its licence; and the course photo credits. Its Troubleshooting page has the version and system details to copy for support.</p></description>
     </release>
