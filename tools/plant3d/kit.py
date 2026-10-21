@@ -235,14 +235,18 @@ PARTS = {
     # structures (§5): placed by `at` (outline relative to it), or by foot and top
     'building': part('structures', {'outline': T('polygon'), 'height': N(2, 80), 'roof': E(['flat', 'pitched'], 'flat'),
                                     'cladding': E(['metal', 'concrete', 'brick'], 'metal'),
+                                    # the ground floor's finish, and an overhead travelling crane's rail height (0: none)
+                                    'floor': E(['epoxy', 'tile', 'concrete'], 'epoxy'), 'crane': N(0, 78, 0),
                                     'openings': {'type': 'records', 'max': 64, 'fields': {
                                         'kind': E(['door', 'louvre', 'pipe', 'window']), 'at': T('xyz'),
                                         'width': N(0.2, 30), 'height': N(0.2, 30)}}}),
     'floor': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []},
-                                 'deck': E(['concrete', 'grating', 'steel'], 'concrete')}, walkable=True),
+                                 'deck': E(['concrete', 'grating', 'steel'], 'concrete'),
+                                 'finish': E(['epoxy', 'tile', 'concrete'], 'epoxy')}, walkable=True),
     'platform': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []},
                                     'deck': E(['grating', 'concrete', 'steel'], 'grating'),
-                                    'edge': E(['handrail', 'kickplate', 'none'], 'handrail')}, walkable=True),
+                                    'edge': E(['handrail', 'kickplate', 'none'], 'handrail'),
+                                    'finish': E(['epoxy', 'tile', 'concrete'], 'epoxy')}, walkable=True),
     'grating': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []}},
                     walkable=True),
     'road': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []},
@@ -257,6 +261,7 @@ PARTS = {
     'beam': part('structures', {'route': T('path'), 'size': N(0.1, 2, 0.4)}),
     'trench': part('structures', {'outline': T('polygon'), 'depth': N(0.2, 5, 1)}),
     'fence': part('structures', {'route': T('path'), 'height': N(0.5, 5, 2.4)}),
+    'wall': part('structures', {'route': T('path'), 'height': N(0.5, 20, 3), 'thickness': N(0.1, 1.5, 0.3)}),
     'slab': part('structures', {'outline': T('polygon'), 'thickness': N(0.1, 3, 0.5)}),
     'pit': part('structures', {'outline': T('polygon'), 'depth': N(0.5, 30, 6)}),
     'pipe_rack': part('structures', {'length': N(2, 500, 50), 'width': N(1, 20, 6), 'height': N(2, 30, 8),

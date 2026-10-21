@@ -19,6 +19,8 @@
 // Pipe cladding (`lap_length`): aluminium sheets lapped every lap_length along the pipe (UV1.y) with the seam along it.
 // The ground (`macro`): large patches of darker and paler ground, compacted bands with tyre ruts beside the road
 // (`line_box`) and along a track (`track`).
+// Floors: glazed tiles (`tile_size`) with grout, and bare concrete's cracks, scuffs and tyre marks (`cracks`), no
+// texture read of their own.
 // Gratings (`grating`): an open bar grating drawn from UV1 (30 mm bars, 100 mm cross rods), its gaps dark, and its
 // mean colour where the bars get smaller than a pixel (no shimmer at a distance).
 
@@ -55,6 +57,8 @@ uniform float sheet_width = 0.0;      // corrugated sheets this wide (m) along U
 uniform float lap_length = 0.0;       // cladding sheets this long (m) along UV1.y (0: none)
 uniform float macro = 0.0;            // the ground's large-scale variation and ruts (0: none)
 uniform vec4 track = vec4(0.0);       // a track's axis: a point (x, z) and a unit direction (x, z); zero: none
+uniform float tile_size = 0.0;        // a tiled floor: square tiles this wide (m) in world x, z, grout between (0: none)
+uniform float cracks = 0.0;           // a bare concrete floor's cracks, scuffs and tyre marks (0: none)
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -248,6 +252,35 @@ void fragment() {
 		float l = (1.0 - smoothstep(lw, lw * 1.5, abs(dist))) * step(0.5, fract(along / 6.0));
 		base = mix(base, vec3(0.80, 0.78, 0.70), l * 0.85);
 		rough = mix(rough, 0.7, l);
+	}
+
+	// a tiled floor (a turbine hall's operating floor, a walkway): glazed tiles, each a little different in tone and
+	// gloss, the grout between them darker and matt (faded out where the tiles get under a few pixels)
+	// (derivatives outside the branches: uniform control flow)
+	vec2 tq = wpos.xz / max(tile_size, 0.01);
+	vec2 tw = fwidth(tq);
+	float cv = n_lo.b * 0.7 + n_hi.r * 0.3;
+	float cw = fwidth(cv);
+	if (tile_size > 0.0 && up > 0.7) {
+		vec2 tf = abs(fract(tq) - 0.5);
+		float gw = 0.004 / tile_size;
+		float grout = 1.0 - smoothstep(gw, gw + max(tw.x, tw.y) * 1.2, 0.5 - max(tf.x, tf.y));
+		grout *= 1.0 - smoothstep(0.08, 0.3, max(tw.x, tw.y));
+		float th = hash1(dot(floor(tq), vec2(1.0, 57.0)) + 3.0);
+		base *= 0.96 + 0.06 * th;
+		rough = mix(rough * (0.8 + 0.5 * th), 0.8, grout);
+		base = mix(base, base * 0.72, grout);
+	}
+	// a bare concrete floor: hairline cracks (the noise's contours, broken), dark scuffs and tyre marks
+	if (cracks > 0.0 && up > 0.7) {
+		float line_ = 1.0 - smoothstep(0.004, 0.004 + cw * 1.5, abs(cv - 0.5));
+		line_ *= smoothstep(0.45, 0.6, n_lo.a) * (1.0 - smoothstep(0.02, 0.06, cw));
+		float scuff = smoothstep(0.55, 0.85, n_lo.g) * (0.5 + 0.5 * n_hi.b);
+		float lane = vnoise(wpos.x * 0.35 + wpos.z * 0.05) * vnoise(wpos.z * 0.6 + 2.0);
+		base = mix(base, base * 0.78, cracks * scuff * 0.6);
+		base = mix(base, base * 0.82, cracks * smoothstep(0.35, 0.6, lane) * 0.35);
+		base = mix(base, base * 0.45, cracks * line_);
+		rough = mix(rough, rough * 0.85, cracks * scuff);
 	}
 
 	// dust on what faces up (flat tops: a pipe's crown only, not its upper half)

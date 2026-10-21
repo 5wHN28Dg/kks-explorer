@@ -703,6 +703,7 @@ func pipe(parent: Node3D, p: Dictionary) -> void:
 	P_PIPE.pipe(m, route, {"od": od, "ins": ins, "band": "medium_" + p.medium, "paint": Mat.pipe_paint(group), "arrows": float(p.get("arrows", 0)),
 		"buried": buried, "gaps": gaps, "flanges": flanges, "supports": sup,
 		"bend": {"3d": 3.0, "5d": 5.0}.get(p.get("bend", ""), 1.5)}, origin)
+	_stencils(parent, p, route, od * 0.5 + ins, buried, gaps)
 	# a pipe runs through many cells: its triangles go to the cell they lie in (0041's grouping, culling and LOD per
 	# cell, a detail range measured from its own cell)
 	var o := Geom.g([origin.x, origin.y, origin.z])
@@ -712,6 +713,67 @@ func pipe(parent: Node3D, p: Dictionary) -> void:
 		for k in layers:
 			_cell(layers[k], k, xf)
 			tris_total += layers[k].tris[0]
+
+## The service name stencilled in black on a pipe's sides (plant.json's medium `name`), as plants label their lines
+## beside the flow arrows: on each straight horizontal run long enough to carry it, between the colour bands, clear
+## of the bends and of the valves and instruments (`gaps`), on both sides at the pipe's middle. The same label as a
+## safety sign's text (no outline, black, one-sided: no pipeline of its own), drawn within STENCIL_RANGE.
+const STENCIL_RANGE := 30.0
+const STENCIL_MIN_R := 0.1
+func _stencils(parent: Node3D, p: Dictionary, route: Array, rr: float, buried: Dictionary, gaps: Array) -> int:
+	var text := String(b.plant.media[p.medium].get("name", ""))
+	if text == "" or rr < STENCIL_MIN_R:
+		return 0
+	var size := clampf(rr * 0.55, 0.08, 0.3)
+	var w := ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 64).x * size / 64.0
+	var every: float = float(p.get("arrows", 0))
+	if every <= 0.0:
+		every = 12.0
+	var n := 0
+	var s0 := 0.0
+	for i in range(route.size() - 1):
+		var a: Vector3 = route[i]
+		var c: Vector3 = route[i + 1]
+		var L := a.distance_to(c)
+		var s_here := s0
+		s0 += L
+		if buried.has(i) or L < 1e-3:
+			continue
+		var d := (c - a) / L
+		if absf(d.z) > 0.2:
+			continue                       # horizontal runs only
+		var clear := rr * 3.0 + 0.3        # clear of the bends at either end
+		if L - 2.0 * clear < w + 0.4:
+			continue
+		var k := maxi(1, int(round(L / every)))
+		for j in k:
+			var t := L * (j + 0.25) / k
+			t = clampf(t, clear + w * 0.5, L - clear - w * 0.5)
+			var sm := s_here + t
+			if gaps.any(func(gp): return gp[0] < sm + w * 0.5 + 0.2 and gp[1] > sm - w * 0.5 - 0.2):
+				continue
+			var mid := a + d * t
+			var side := Vector3(-d.y, d.x, 0.0)
+			for sgn in [1.0, -1.0]:
+				var nrm: Vector3 = side * sgn
+				var l := Label3D.new()
+				l.name = "stencil"
+				l.text = text
+				l.font_size = 64
+				l.pixel_size = size / 64.0
+				l.double_sided = false
+				l.outline_size = 0
+				l.modulate = Color(0.02, 0.02, 0.02)
+				l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				l.visibility_range_end = STENCIL_RANGE
+				var z_ax := Geom.g([nrm.x, nrm.y, nrm.z]) - Geom.g([0, 0, 0])
+				var y_ax := Vector3.UP
+				var x_ax := y_ax.cross(z_ax).normalized()
+				l.transform = Transform3D(Basis(x_ax, y_ax, z_ax), Geom.g([mid.x + nrm.x * (rr + 0.012), mid.y + nrm.y * (rr + 0.012), mid.z]))
+				l.set_meta("stencil", p.medium)
+				parent.add_child(l)
+				n += 1
+	return n
 
 ## Mesh arrays turned by a basis (positions, normals, tangents).
 static func _turned(arr: Array, bs: Basis) -> Array:

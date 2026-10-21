@@ -46,9 +46,11 @@ func make(root: Node3D, holes: Array) -> void:
 	var road_out := road_in.grow(ROAD_W)
 	var wall := wall_rect()
 	var pads: Array = []
+	var paved: Array = []   # an area with a building is paved in concrete, an open one (an HRSG, a transformer yard) gravelled
 	for a in b.areas:
 		var bd: Array = a.data.bounds
 		pads.append(Rect2(Vector2(bd[0][0], bd[0][1]), Vector2(bd[1][0] - bd[0][0], bd[1][1] - bd[0][1])))
+		paved.append(Array(a.data.get("structures", [])).any(func(s): return s.get("part", "") == "building"))
 	# gravel between the yards, inside the ring road and its drain
 	var drain_in := road_in.grow(-0.4)
 	var gh: Array = holes.duplicate()
@@ -62,7 +64,7 @@ func make(root: Node3D, holes: Array) -> void:
 		for h in holes:
 			if p.grow(0.01).encloses(_bbox(h)):
 				ph.append(h)
-		b._slab(root, "yard_%d" % i, poly_of(p), ph, 0.0, 0.5, b._mat("yard"), Lightmap.GROUND_TEXEL)
+		b._slab(root, "yard_%d" % i, poly_of(p), ph, 0.0, 0.5, b._mat("yard" if paved[i] else "yard_gravel"), Lightmap.GROUND_TEXEL)
 		i += 1
 	# the ring road, and gravel from it to the wall
 	b._slab(root, "road", poly_of(road_out), [poly_of(road_in)], 0.0, 0.5, b._mat("road"), Lightmap.GROUND_TEXEL)
@@ -83,13 +85,31 @@ func _kerbs_and_drain(root: Node3D, road_in: Rect2, road_out: Rect2, drain_in: R
 	var kerb: SurfaceTool = b._st()
 	for ring in [[road_in.grow(0.15), road_in], [road_out, road_out.grow(-0.15)]]:
 		for pc in Geom.decompose(poly_of(ring[0]), [poly_of(ring[1])]):
-			Geom.add_prism(kerb, pc, 0.0, KERB_H)
-	b._mesh_node(root, "kerbs", kerb, b._mat("concrete"), Lightmap.GROUND_TEXEL)
+			_striped(kerb, pc)
+	b._mesh_node(root, "kerbs", kerb, b._mat("paint"), Lightmap.GROUND_TEXEL)
 	var dark: SurfaceTool = b._st()
 	for pc in Geom.decompose(poly_of(road_in), [poly_of(drain_in)]):
 		Geom.add_prism(dark, pc, -0.25, -0.2, false)
 	b._mesh_node(root, "drain", dark, b._mat("drain"))
 	b._slab(root, "drain_cover", poly_of(road_in), [poly_of(drain_in)], 0.0, 0.03, b._mat("grating"), Lightmap.TEXEL)
+
+## The kerbs are painted in alternate black and yellow stripes KERB_STRIPE long (the paint's colours in the
+## vertices: one draw call): a kerb piece (a rectangle) cut along its length.
+const KERB_STRIPE := 1.0
+const KERB_YELLOW := Color(0.92, 0.70, 0.08, 0.3)
+const KERB_BLACK := Color(0.07, 0.07, 0.07, 0.3)
+func _striped(st: SurfaceTool, pc: PackedVector2Array) -> void:
+	var r := _bbox(pc)
+	var along_x := r.size.x >= r.size.y
+	var L := r.size.x if along_x else r.size.y
+	var n := maxi(1, int(round(L / KERB_STRIPE)))
+	for k in n:
+		var t0 := L * k / n
+		var t1 := L * (k + 1) / n
+		var q := Rect2(r.position + (Vector2(t0, 0) if along_x else Vector2(0, t0)),
+			Vector2(t1 - t0, r.size.y) if along_x else Vector2(r.size.x, t1 - t0))
+		st.set_color(KERB_YELLOW if k % 2 == 0 else KERB_BLACK)
+		Geom.add_prism(st, poly_of(q), 0.0, KERB_H)
 
 static func _ccw(a: Vector2, c: Vector2, d: Vector2) -> bool:
 	return (c - a).cross(d - a) > 0.0

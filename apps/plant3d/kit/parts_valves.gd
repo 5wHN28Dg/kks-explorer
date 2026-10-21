@@ -50,15 +50,15 @@ static func _body(g, part: String, od: float, F: float, bulge: float) -> void:
 	var m = g.m
 	var r := od * 0.5
 	var rating: String = g.p.get("rating", "pn16")
-	m.use("paint_darkgrey", "identify")
+	m.use("paint_valve", "identify")
 	var prof := [[r * 1.02, -F * 0.5], [r * 1.05, -F * 0.38], [r * bulge, -F * 0.18], [r * bulge, F * 0.18],
 		[r * 1.05, F * 0.38], [r * 1.02, F * 0.5]]
 	var pr: Array = []
 	for q in prof:
 		pr.append(q)
 	m.lathe(Vector3.ZERO, Vector3(0, 1, 0), pr, 0, false)
-	C.flange(m, Vector3(0, -F * 0.5, 0), Vector3(0, -1, 0), od, "paint_darkgrey", rating)
-	C.flange(m, Vector3(0, F * 0.5, 0), Vector3(0, 1, 0), od, "paint_darkgrey", rating)
+	C.flange(m, Vector3(0, -F * 0.5, 0), Vector3(0, -1, 0), od, "paint_valve", rating)
+	C.flange(m, Vector3(0, F * 0.5, 0), Vector3(0, 1, 0), od, "paint_valve", rating)
 	g.plate("body", Vector3(r * bulge + 0.01, 0, 0), Vector3(1, 0, 0), "small")
 	g.solid_box(Vector3(-r * bulge, -F * 0.5, -r * bulge), Vector3(r * bulge, F * 0.5, r * bulge))
 
@@ -73,7 +73,7 @@ static func _rising(g, part: String) -> void:
 	var bulge := 1.25 if part == "valve_gate" else 1.55
 	_body(g, part, od, F, bulge)
 	# the neck and bonnet flange
-	m.use("paint_darkgrey", "identify")
+	m.use("paint_valve", "identify")
 	var zb := r * (1.15 if part == "valve_gate" else 1.35)
 	m.cyl(Vector3(0, 0, r * 0.4), Vector3(0, 0, zb), r * 0.62 if part == "valve_gate" else r * 0.7, -1.0)
 	var bf := od * 0.42 + 0.02
@@ -83,7 +83,7 @@ static func _rising(g, part: String) -> void:
 	var s := stroke(part, od)
 	# bonnet: a gate valve's is tall (it houses the wedge's travel)
 	var hb := (s + od * 0.25 + 0.05) if part == "valve_gate" else (od * 0.35 + 0.06)
-	m.use("paint_darkgrey", "identify")
+	m.use("paint_valve", "identify")
 	m.cyl(Vector3(0, 0, zt), Vector3(0, 0, zt + hb), r * 0.36 + 0.015, r * 0.28 + 0.012)
 	var zg := zt + hb   # the gland: the stem comes out here
 	m.use("brass", "form")
@@ -92,7 +92,7 @@ static func _rising(g, part: String) -> void:
 	var yh := s + 0.08 + od * 0.15
 	var zy := zg + yh
 	var yw := r * 0.45 + 0.03
-	m.use("paint_darkgrey", "identify")
+	m.use("paint_valve", "identify")
 	for k: float in [-1.0, 1.0]:
 		m.box_lh(Vector3(yw * k - 0.012 - od * 0.015, -0.012 - od * 0.04, zg), Vector3(yw * k + 0.012 + od * 0.015, 0.012 + od * 0.04, zy))
 	m.box_lh(Vector3(-yw - 0.02, -0.025 - od * 0.05, zy), Vector3(yw + 0.02, 0.025 + od * 0.05, zy + 0.03 + od * 0.04))
@@ -150,7 +150,7 @@ static func _wheel(g, c: Vector3, side: String, R: float) -> void:
 static func _gearbox(g, z: float, od: float, side: String, wr: float) -> void:
 	var m = g.m
 	var s := 0.12 + od * 0.35
-	m.use("paint_darkgrey", "identify")
+	m.use("paint_valve", "identify")
 	m.box(Vector3(0, 0, z + s * 0.5), Vector3(s, s * 0.8, s))
 	var sx := -1.0 if side == "left" else 1.0
 	m.cyl(Vector3(s * 0.5 * sx, 0, z + s * 0.5), Vector3((s * 0.5 + 0.12) * sx, 0, z + s * 0.5), 0.02 + od * 0.02, -1.0, 10)
@@ -160,7 +160,7 @@ static func _gearbox(g, z: float, od: float, side: String, wr: float) -> void:
 static func _motor_actuator(g, z: float, od: float, side: String) -> void:
 	var m = g.m
 	var s := clampf(0.22 + od * 0.35, 0.22, 0.6)
-	m.use("paint_motor", "identify")
+	m.use("paint_actuator", "identify")
 	m.box(Vector3(0, 0, z + s * 0.45), Vector3(s, s * 0.9, s * 0.9))                       # gearbox
 	m.cyl(Vector3(-s * 0.5, -s * 0.05, z + s * 0.55), Vector3(-s * 1.25, -s * 0.05, z + s * 0.55), s * 0.3)   # motor
 	m.cyl(Vector3(0, s * 0.45, z + s * 0.6), Vector3(0, s * 0.62, z + s * 0.6), s * 0.28)   # the local controls' cover
@@ -183,7 +183,7 @@ static func _cylinder_actuator(g, z: float, od: float, hydraulic: bool) -> void:
 	var h := rr * 3.0 + od * 0.5
 	m.use("paint_machine" if not hydraulic else "paint_yellow", "identify")
 	m.cyl(Vector3(0, 0, z + 0.03), Vector3(0, 0, z + h), rr)
-	m.use("paint_darkgrey", "identify")
+	m.use("paint_valve", "identify")
 	m.box(Vector3(0, 0, z + 0.03), Vector3(rr * 2.3, rr * 2.3, 0.05))
 	m.box(Vector3(0, 0, z + h), Vector3(rr * 2.3, rr * 2.3, 0.05))
 	m.use("steel", "detail", 0.02)
@@ -205,7 +205,7 @@ static func _diaphragm(g, z: float, od: float, side: String) -> void:
 	m.use("paint_machine", "identify")
 	m.cyl(Vector3(0, 0, z), Vector3(0, 0, z + 0.06), R * 0.25, -1.0)
 	m.lathe(Vector3(0, 0, zc), Vector3(0, 0, 1), [[R * 0.3, -R * 0.35], [R * 0.9, -R * 0.12], [R, 0.0], [R * 0.9, R * 0.15], [R * 0.3, R * 0.42], [0.0, R * 0.45]], 0, true)
-	m.use("paint_darkgrey", "form")
+	m.use("paint_valve", "form")
 	m.cyl(Vector3(0, 0, zc - 0.01), Vector3(0, 0, zc + 0.01), R * 1.04, -1.0)   # the casing's bolted rim
 	C.bolt_ring(m, Vector3(0, 0, zc), Vector3(0, 0, 1), R * 0.98, 16, 0.006, 0.04)
 	# positioner on the yoke's side, with its gauges and the air tubing
@@ -238,14 +238,14 @@ static func _quarter(g, part: String) -> void:
 		_body(g, part, od, F, 1.45)
 	else:
 		var rating: String = g.p.get("rating", "pn16")
-		m.use("paint_darkgrey", "identify")
+		m.use("paint_valve", "identify")
 		var f := C.flange_dims(od, rating)
 		m.cyl(Vector3(0, -F * 0.5, 0), Vector3(0, F * 0.5, 0), f.df * 0.5 * 0.96, -1.0, 0, true)
 		C.bolt_ring(m, Vector3(0, 0, 0), Vector3(0, 1, 0), f.pcd, f.n, f.bolt_r, F + 0.06)
 		g.plate("body", Vector3(f.df * 0.5, 0, 0), Vector3(1, 0, 0), "small")
 		g.solid_box(Vector3(-f.df * 0.5, -F * 0.5, -f.df * 0.5), Vector3(f.df * 0.5, F * 0.5, f.df * 0.5))
 	var top: float = r * 1.3 + 0.06 if part == "valve_ball" else C.flange_dims(od).df * 0.5 + 0.02
-	m.use("paint_darkgrey", "identify")
+	m.use("paint_valve", "identify")
 	m.cyl(Vector3(0, 0, r * 0.6), Vector3(0, 0, top), clampf(od * 0.12, 0.025, 0.2), -1.0, 12)   # the stem housing
 	m.cyl(Vector3(0, 0, top), Vector3(0, 0, top + 0.02), clampf(od * 0.2, 0.04, 0.3), -1.0, 16)
 	var disc = g.move("disc", Vector3(0, 0, 0), Vector3(0, 0, 1), "rotate", PI * 0.5)
@@ -264,14 +264,14 @@ static func _quarter(g, part: String) -> void:
 		return
 	var s := clampf(0.14 + od * 0.25, 0.14, 0.6)
 	if act == "manual" or act == "gear":
-		m.use("paint_darkgrey", "identify")
+		m.use("paint_valve", "identify")
 		m.box(Vector3(0, 0, zt + s * 0.4), Vector3(s, s * 0.9, s * 0.8))
 		var sx := -1.0 if side == "left" else 1.0
 		m.cyl(Vector3(s * 0.5 * sx, 0, zt + s * 0.4), Vector3((s * 0.5 + 0.1) * sx, 0, zt + s * 0.4), 0.025, -1.0, 10)
 		_wheel(g, Vector3((s * 0.5 + 0.1) * sx, 0, zt + s * 0.4), "left" if sx < 0 else "right", clampf(wheel_r(od) * 0.7, 0.1, 0.35))
 		zt += s * 0.8
 	elif act == "electric":
-		m.use("paint_motor", "identify")
+		m.use("paint_actuator", "identify")
 		m.box(Vector3(0, 0, zt + s * 0.45), Vector3(s, s, s * 0.9))
 		m.cyl(Vector3(-s * 0.5, 0, zt + s * 0.5), Vector3(-s * 1.15, 0, zt + s * 0.5), s * 0.28)
 		var sx := -1.0 if side == "left" else 1.0
@@ -300,7 +300,7 @@ static func valve_check(part: String, g) -> void:
 	var r := od * 0.5
 	var F := ftf(part, od)
 	_body(g, part, od, F, 1.4)
-	m.use("paint_darkgrey", "identify")
+	m.use("paint_valve", "identify")
 	var cz := r * 1.25
 	m.cyl(Vector3(0, -F * 0.12, r * 0.3), Vector3(0, -F * 0.05, cz), r * 0.75, r * 0.6)
 	m.cyl(Vector3(0, -F * 0.06, cz), Vector3(0, -F * 0.04, cz + 0.02 + od * 0.05), r * 0.7, -1.0)
@@ -319,7 +319,7 @@ static func valve_check(part: String, g) -> void:
 	disc.use("paint_red", "identify")
 	var L := clampf(0.12 + od * 0.9, 0.12, 0.8)
 	disc.box(Vector3(sx + 0.04, hinge.y + L * 0.5, hinge.z), Vector3(0.02, L, 0.03 + od * 0.03))
-	disc.use("paint_darkgrey", "identify")
+	disc.use("paint_valve", "identify")
 	disc.box(Vector3(sx + 0.04, hinge.y + L, hinge.z), Vector3(0.05 + od * 0.1, 0.06 + od * 0.12, 0.06 + od * 0.12))
 	disc.use("steel", "form")
 	disc.cyl(Vector3(0, hinge.y + 0.01, hinge.z - r * 0.75), Vector3(0, hinge.y + 0.03 + od * 0.03, hinge.z - r * 0.75), r * 0.92, -1.0)
@@ -377,7 +377,7 @@ static func damper(_part: String, g) -> void:
 	var n := int(g.num("blades", 6))
 	var D := 0.35 + minf(W, H) * 0.02
 	var t := clampf(minf(W, H) * 0.03, 0.08, 0.25)
-	m.use("paint_darkgrey", "form")
+	m.use("paint_valve", "form")
 	m.box(Vector3(0, 0, H * 0.5 + t * 0.5), Vector3(W + 2 * t, D, t))
 	m.box(Vector3(0, 0, -H * 0.5 - t * 0.5), Vector3(W + 2 * t, D, t))
 	m.box(Vector3(W * 0.5 + t * 0.5, 0, 0), Vector3(t, D, H))
@@ -402,11 +402,11 @@ static func damper(_part: String, g) -> void:
 	var ac := Vector3(W * 0.5 + t + 0.35, 0, -H * 0.25)
 	match act:
 		"manual", "gear":
-			m.use("paint_darkgrey", "identify")
+			m.use("paint_valve", "identify")
 			m.box(ac, Vector3(0.25, 0.25, 0.25))
 			_wheel(g, ac + Vector3(0.2, 0, 0), "right", 0.25)
 		"electric":
-			m.use("paint_motor", "identify")
+			m.use("paint_actuator", "identify")
 			m.box(ac, Vector3(0.35, 0.35, 0.45))
 		_:
 			m.use("paint_machine" if act == "pneumatic" else "paint_yellow", "identify")

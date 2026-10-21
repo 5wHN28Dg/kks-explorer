@@ -409,7 +409,9 @@ class Plant:
         need(isinstance(p['media'], dict) and p['media'], 'bad_type', f'{w}.media')
         for mid, m in p['media'].items():
             ident(mid, f'{w}.media')
-            keys(m, ('group', 'band'), (), f'{w}.media.{mid}')
+            keys(m, ('group', 'band'), ('name',), f'{w}.media.{mid}')
+            if 'name' in m:
+                name_text(m['name'], f'{w}.media.{mid}.name', 40)
             need(m['group'] in GROUPS, 'bad_value', f'{w}.media.{mid}.group: one of {GROUPS}')
             need(isinstance(m['band'], str) and HEX.fullmatch(m['band']), 'bad_value', f'{w}.media.{mid}.band: #rrggbb')
         seen = set()

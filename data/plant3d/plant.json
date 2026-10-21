@@ -12,18 +12,18 @@
   "source": "Codes follow the public KKS key (sources: docs/plant3d/FIRST-TRAIN.md §1); only the letters this plant uses, with meanings in our own words."
  },
  "media": {
-  "cooling_water": {"group": "water", "band": "#2e7d32"},
-  "raw_water": {"group": "water", "band": "#558b2f"},
-  "feedwater": {"group": "water", "band": "#1b5e20"},
-  "condensate": {"group": "water", "band": "#43a047"},
-  "boiler_water": {"group": "water", "band": "#00695c"},
-  "steam_hp": {"group": "steam", "band": "#c62828"},
-  "steam_rh": {"group": "steam", "band": "#ad1457"},
-  "steam_crh": {"group": "steam", "band": "#e57373"},
-  "steam_lp": {"group": "steam", "band": "#ef6c00"},
-  "steam_aux": {"group": "steam", "band": "#d84315"},
-  "air": {"group": "air", "band": "#78909c"},
-  "fuel_gas": {"group": "gas", "band": "#f9a825"}
+  "cooling_water": {"group": "water", "band": "#2e7d32", "name": "Cooling water"},
+  "raw_water": {"group": "water", "band": "#558b2f", "name": "Raw water"},
+  "feedwater": {"group": "water", "band": "#1b5e20", "name": "Feedwater"},
+  "condensate": {"group": "water", "band": "#43a047", "name": "Condensate"},
+  "boiler_water": {"group": "water", "band": "#00695c", "name": "Boiler water"},
+  "steam_hp": {"group": "steam", "band": "#c62828", "name": "HP steam"},
+  "steam_rh": {"group": "steam", "band": "#ad1457", "name": "Hot reheat steam"},
+  "steam_crh": {"group": "steam", "band": "#e57373", "name": "Cold reheat steam"},
+  "steam_lp": {"group": "steam", "band": "#ef6c00", "name": "LP steam"},
+  "steam_aux": {"group": "steam", "band": "#d84315", "name": "Auxiliary steam"},
+  "air": {"group": "air", "band": "#78909c", "name": "Air"},
+  "fuel_gas": {"group": "gas", "band": "#f9a825", "name": "Fuel gas"}
  },
  "areas": [
   "control",

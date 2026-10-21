@@ -73,7 +73,8 @@ As COURSES.md §1, with these differences:
   chemicals, flue gas); `band` the colour of the identification band and flow arrow painted on the pipe. The groups
   follow the idea of DIN 2403 (identification of pipelines by the medium carried: water green, steam red, air grey,
   flammable gas yellow); the colours are ours, picked to stay distinguishable in daylight and dark scenes and to
-  colour-blind eyes, and checked on every tier (the "look" rule).
+  colour-blind eyes, and checked on every tier (the "look" rule). `name` (optional, up to 40 characters) is the service name
+  stencilled in black on its pipes beside the flow arrows, as plants label their lines.
 - **`areas`:** in this order the area files are read and their models joined (§7.1).
 - **`ext`:** the values the plant's surroundings set (ambient temperature, the grid), given by the scenario (§7.8).
 - **`start`:** where a trainee stands when the app opens (the control room).
@@ -198,6 +199,13 @@ placed by their `foot` and `top` alone.
 - **Doors** open when the trainee walks into them or presses them; `kind` is `personnel`, `double` or `roller`.
 - **Buildings** (`building`) are a shell: outline, height, roof, wall cladding, and openings for doors, louvres and
   pipes. Inside a building the walls are drawn from inside too.
+  `floor` is its ground floor's finish: `epoxy` (painted, the default), `tile` (glazed ceramic tiles, as turbine
+  halls' operating floors and walkways are laid) or `concrete` (bare, with its cracks and dust: a ground floor under a
+  deck, a pump house). `crane`, when not 0, is the rail height of an overhead travelling crane spanning the hall: its
+  runway on the columns along the long walls, the bridge, trolley and hook (drawn, not operated). A `floor` or a
+  `platform` inside a building takes the same `finish` for a concrete deck.
+- **Walls** (`wall`) stand along a `route`, `height` high and `thickness` thick, in concrete: a transformer yard's
+  firewalls, a blast wall. They are solid.
 
 **Signs** are labels in the world: `{"text": "CW pump house", "at": [152, -16, 4], "yaw": 180, "size": 0.3}`.
 Area and system signs help a trainee find the way (R9a): they are drawn on every tier. A safety sign adds its
@@ -698,7 +706,7 @@ refuses a part declared there that the kit lacks.
 | Instruments | `pressure_gauge` (range, unit, dial_d), `pressure_transmitter`, `temperature_element`, `temperature_gauge`, `level_glass` (range), `level_transmitter`, `flow_element` (kind: orifice/venturi/magnetic), `position_switch`, `vibration_probe` (kind: velocity/proximity), `speed_probe`, `flame_detector`, `local_panel` (cabinet with displays), `push_button_station` (buttons: start/stop/emergency) |
 | Electrical | `transformer` (mva, kind: gsu/aux, radiators, bushings), `breaker` (kind: gcb/mv, length), `switchgear_row` (panels, depth), `cabinet`, `junction_box`, `cable_tray` (route, width), `motor` (kw, frame; when a driver isn't part of its machine) |
 | Pipes | `pipe` (§4), made of `elbow`, `tee`, `reducer`, `flange` pieces; `pipe_support` (kind: shoe/guide/anchor/hanger, from the span table); `pipe_rack` (bays, span, tiers, width) |
-| Structures | `building`, `floor`, `platform`, `stair`, `ladder`, `handrail`, `door`, `column`, `beam`, `grating`, `road`, `trench`, `fence`, `slab`, `pit` |
+| Structures | `building`, `floor`, `platform`, `stair`, `ladder`, `handrail`, `door`, `column`, `beam`, `grating`, `road`, `trench`, `fence`, `wall`, `slab`, `pit` |
 | People cues | `tag_plate` (KKS code text, size by plate kind), `sign`, `lamp`, `beacon`, `horn`, `emergency_stop`, `safety_shower` |
 
 Parameters are physical quantities a data sheet gives (flow, head, power, diameter), and the part derives the rest
