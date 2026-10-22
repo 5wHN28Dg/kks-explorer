@@ -1,8 +1,10 @@
 ## The interiors (docs/PLANT3D.md §18.5, decision 0066): a camp block's rooms, the mess hall and its kitchen, the
 ## prayer room, the gym, the laundry, the recreation room, the offices. Each is a scene of its own (the build's
 ## manifest `interiors`), loaded on a worker thread when the trainee comes within NEAR metres of one of its building's
-## doors, shown once loaded, and freed beyond FAR. Its pieces are the plant's materials and vertex format, unbaked
-## (builder/kit_place.gd `unbaked`), so showing one compiles no pipeline. Checked 4 times a second.
+## doors, made (instantiated) on a worker thread too, then put into the plant a few of its pieces a frame (BATCH), and
+## taken out the same way beyond FAR: the Note 9 held a frame 104-127 ms each time an interior went in whole
+## (2026-10-22). Its pieces are the plant's materials and vertex format, unbaked (builder/kit_place.gd `unbaked`), so
+## showing one compiles no pipeline. Distances checked 4 times a second.
 extends Node
 
 const Plant = preload("res://app/plant.gd")
@@ -11,6 +13,7 @@ const Quality = preload("res://app/quality.gd")
 const NEAR := 15.0
 const FAR := 30.0
 const CHECK := 0.25
+const BATCH := 12              # pieces (nodes with what they hold) put in or taken out per frame
 
 signal shown(id: String)
 signal freed(id: String)
@@ -27,7 +30,8 @@ func setup(p: Node3D, walker: Node3D) -> void:
 		var b: Array = a.bounds
 		items[a.id] = {"scene": a.scene, "doors": a.get("doors", []).map(func(d): return Plant.v3(d)),
 			"rect": Rect2(Vector2(b[0][0], b[0][1]), Vector2(b[1][0] - b[0][0], b[1][1] - b[0][1])),
-			"node": null, "loading": false, "title": a.get("title", a.id)}
+			"node": null, "loading": false, "title": a.get("title", a.id), "task": -1, "made": null,
+			"pending": [], "shown": false}
 
 ## Metres from a point (Godot's axes) to an interior: its nearest door, or its plan rectangle when nearer.
 func distance(id: String, at: Vector3) -> float:
@@ -47,15 +51,69 @@ func title_at(at: Vector3) -> String:
 			return items[id].title
 	return ""
 
+## Whether an interior is shown whole.
 func loaded(id: String) -> bool:
-	return items.has(id) and items[id].node != null
+	return items.has(id) and items[id].shown
+
+var _dying: Array = []   # interiors being taken out: [root, its pieces still in]
 
 func _process(delta: float) -> void:
+	_step()
 	_t += delta
 	if _t < CHECK or who == null:
 		return
 	_t = 0.0
 	update(who.global_position)
+
+## The per-frame work: interiors made on a worker thread go in, BATCH pieces a frame; freed ones go out the same way.
+func _step() -> void:
+	var budget := BATCH
+	for id in items:
+		var it: Dictionary = items[id]
+		if it.task >= 0 and WorkerThreadPool.is_task_completed(it.task):
+			WorkerThreadPool.wait_for_task_completion(it.task)
+			it.task = -1
+			var n: Node = it.made.node
+			it.made = null
+			it.pending = n.get_meta("pieces", [])
+			n.remove_meta("pieces")
+			plant.add_child(n)
+			it.node = n
+			if it.pending.is_empty():
+				it.shown = true
+				shown.emit(id)
+		while budget > 0 and it.node != null and not it.pending.is_empty():
+			var pair: Array = it.pending.pop_front()   # [its container (already in), the piece]
+			var piece: Node = pair[1]
+			(pair[0] as Node).add_child(piece)
+			budget -= 1
+			var mmi := piece as MultiMeshInstance3D
+			if mmi != null and mmi.has_meta("xforms") and mmi.multimesh != null:   # as app/plant.gd fill_cells
+				mmi.multimesh.instance_count = int(mmi.get_meta("count"))
+				mmi.multimesh.buffer = mmi.get_meta("xforms")
+			if is_inside_tree():
+				Quality.apply_ranges(get_viewport(), piece)   # the tier's visibility ranges on its pieces
+			if it.pending.is_empty():
+				it.shown = true
+				shown.emit(id)
+	while budget > 0 and not _dying.is_empty():
+		var root: Node = _dying[0][0]
+		var c := _last_piece(root)
+		if c == null:
+			root.queue_free()
+			_dying.pop_front()
+			continue
+		c.get_parent().remove_child(c)
+		c.queue_free()
+		budget -= 1
+
+## A piece of an interior to take out: the last child of its last container that still holds one, or null.
+static func _last_piece(root: Node) -> Node:
+	for i in range(root.get_child_count() - 1, -1, -1):
+		var c := root.get_child(i)
+		if c.get_child_count() > 0:
+			return c.get_child(c.get_child_count() - 1)
+	return null
 
 ## One check: requests, shows and frees by the distance from `at`.
 func update(at: Vector3) -> void:
@@ -68,18 +126,40 @@ func update(at: Vector3) -> void:
 				it.loading = false
 				var ps := ResourceLoader.load_threaded_get(it.scene) as PackedScene
 				if ps != null and d < FAR:
-					_show(id, ps)
+					_make(id, ps)
 			elif st != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 				it.loading = false   # failed: tried again next time the trainee comes near
 				push_warning("interior %s: could not load %s" % [id, it.scene])
-		elif it.node == null and d < NEAR:
+		elif it.node == null and it.task < 0 and d < NEAR:
 			if ResourceLoader.load_threaded_request(it.scene, "PackedScene", true) == OK:
 				it.loading = true
 		elif it.node != null and d > FAR:
-			it.node.queue_free()
+			# out a few pieces a frame (_step), what was not yet put in at once (it holds no tree)
+			for p in it.pending:
+				(p[1] as Node).free()
+			it.pending = []
+			_dying.append([it.node])
 			it.node = null
+			it.shown = false
 			freed.emit(id)
 
+## Instantiates on a worker thread (nodes outside the tree), its pieces taken off its root to go in by batches.
+func _make(id: String, ps: PackedScene) -> void:
+	var holder := {"node": null}
+	items[id].made = holder
+	items[id].task = WorkerThreadPool.add_task(func():
+		# the area's containers (structures, signs, kit…) stay; what they hold goes in by batches
+		var n := ps.instantiate()
+		var pieces: Array = []
+		for c in n.get_children():
+			for p in c.get_children():
+				pieces.append([c, p])
+		for pair in pieces:
+			(pair[0] as Node).remove_child(pair[1])
+		n.set_meta("pieces", pieces)
+		holder.node = n)
+
+## Shows one at once, on this thread (load_all).
 func _show(id: String, ps: PackedScene) -> void:
 	var n := ps.instantiate()
 	plant.add_child(n)
@@ -87,6 +167,7 @@ func _show(id: String, ps: PackedScene) -> void:
 	if is_inside_tree():
 		Quality.apply_ranges(get_viewport(), n)   # the tier's visibility ranges on its pieces
 	items[id].node = n
+	items[id].shown = true
 	shown.emit(id)
 
 ## Loads every interior at once, on this thread (the tests and the navigation mesh's bake walk into all of them).

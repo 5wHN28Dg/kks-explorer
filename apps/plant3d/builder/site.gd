@@ -91,6 +91,7 @@ func make(root: Node3D, holes: Array) -> void:
 	var wall := wall_rect()
 	var pads: Array = []
 	var paved: Array = []   # an area with a building is paved in concrete, an open one (an HRSG, a transformer yard) gravelled
+	var site_yard: Array = []   # the site's and the camp's (a coarser lightmap texel: builder texel_scale)
 	for a in b.areas:
 		if interior(a):
 			continue
@@ -99,6 +100,7 @@ func make(root: Node3D, holes: Array) -> void:
 		var sts: Array = a.data.get("structures", [])
 		# the site's and the camp's areas lay their own roads and walkways: compacted gravel between them
 		paved.append(sts.any(func(s): return s.get("part", "") == "building") and not a.data.get("pack", "") in [SITE_PACK, CAMP_PACK])
+		site_yard.append(a.data.get("pack", "") in [SITE_PACK, CAMP_PACK])
 	holes = holes.duplicate()
 	for sf in roads():
 		holes.append(sf.outline)
@@ -119,7 +121,9 @@ func make(root: Node3D, holes: Array) -> void:
 		for h in holes:
 			if p.grow(0.01).encloses(_bbox(h)):
 				ph.append(h)
+		b.texel_scale = b.SITE_TEXEL_SCALE if site_yard[i] else 1.0
 		b._slab(root, "yard_%d" % i, poly_of(p), ph, 0.0, 0.5, b._mat("yard" if paved[i] else "yard_gravel"), Lightmap.GROUND_TEXEL)
+		b.texel_scale = 1.0
 		i += 1
 	# the ring road, and gravel from it to the wall (less the yards of the site's areas there)
 	b._slab(root, "road", poly_of(road_out), [poly_of(road_in)], 0.0, 0.5, b._mat("road"), Lightmap.GROUND_TEXEL)
@@ -263,6 +267,10 @@ func _windbreak(root: Node3D, wall: Rect2, road_out: Rect2) -> int:
 		k += 1
 		b.kp.structure(root, s)
 	b.kp.flush(root)
+	# its far view (builder hlod): a few draw calls along the wall from afar, not one per cell and shape
+	var kit: Node = root.get_node("kit")   # (app/plant.gd fills the cells of a node named so)
+	var items := {"buildings": [], "sheets": [], "plants": places.map(func(p): return ["tamarisk", p, 6.0])}
+	b.hlod(root, "windbreak", items, kit)
 	print("build: windbreak: %d tamarisks along the wall's north and west sides" % places.size())
 	return places.size()
 

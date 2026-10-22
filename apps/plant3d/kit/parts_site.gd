@@ -126,18 +126,19 @@ static func _palm(m, g, h: float) -> void:
 	# the old leaf bases ("boots") standing out of the trunk in staggered rings, as a date palm's trunk shows them
 	# (detail: up close, on the walkways they shade)
 	col(m, "foliage", BARK_PALM.lightened(0.08), "detail", 0.12)
-	var rings := int((top_z - 0.5) / 0.32)
+	var rings := int((top_z - 0.5) / 0.4)
 	for i in rings:
-		var z := 0.4 + i * 0.32
+		var z := 0.45 + i * 0.4
 		var r := lerpf(0.27, 0.22, z / top_z) + 0.03
 		var c := axis * (z / maxf(axis.z, 0.5))
-		for k in 7:
-			var a := TAU * (k + 0.5 * (i % 2)) / 7.0 + i * 0.13
+		for k in 6:
+			var a := TAU * (k + 0.5 * (i % 2)) / 6.0 + i * 0.13
 			var rad := Vector3(cos(a), sin(a), 0)
 			var side := Vector3(-sin(a), cos(a), 0)
 			var p0 := c + rad * r
-			_two_sided(m, p0 - side * 0.08, p0 + side * 0.08, p0 + side * 0.05 + rad * 0.1 + Vector3(0, 0, 0.17),
-				p0 - side * 0.05 + rad * 0.1 + Vector3(0, 0, 0.17))
+			# one face, out from the trunk (its back is against the trunk)
+			_one_sided(m, p0 - side * 0.09, p0 + side * 0.09, p0 + side * 0.06 + rad * 0.11 + Vector3(0, 0, 0.2),
+				p0 - side * 0.06 + rad * 0.11 + Vector3(0, 0, 0.2), rad)
 	# the crown: 14 fronds by the golden angle, upper ones steep, lower ones drooping past horizontal
 	var L := clampf(h * 0.42, 2.0, 3.8)
 	var base := top + axis * 0.35
@@ -176,6 +177,19 @@ static func _frond(m, b: Vector3, az: float, elev: float, droop: float, L: float
 			var b0: Vector3 = rows[i + 1][s]
 			var b1: Vector3 = rows[i + 1][s + 1]
 			_two_sided(m, a0, a1, b1, b0)
+
+## A quad a-b-c-d drawn from one side only: the side facing `out` (its back is against something).
+static func _one_sided(m, a: Vector3, b: Vector3, c: Vector3, d: Vector3, out: Vector3) -> void:
+	var nrm := (b - a).cross(d - a).normalized()
+	var f0: int = m.cur.v.size()
+	if nrm.dot(out) < 0.0:   # facing the other way: turned round
+		nrm = -nrm
+		for q in [a, d, c, b]:
+			m._vert(q, nrm, Vector2(q.x + q.z, q.y))
+	else:
+		for q in [a, b, c, d]:
+			m._vert(q, nrm, Vector2(q.x + q.z, q.y))
+	m._quad(f0, f0 + 1, f0 + 2, f0 + 3)
 
 ## A quad a-b-c-d drawn from both sides (counter-clockwise from the first face's side).
 static func _two_sided(m, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
@@ -522,13 +536,13 @@ static func _chain_fence(m, g, a: Vector2, b: Vector2, fh: float, gap: Array) ->
 			m.cyl(Vector3(p.x, p.y, 0), Vector3(p.x, p.y, fh), 0.03, -1.0, 6, false)
 		for z: float in [0.08, fh * 0.5, fh]:
 			m.cyl(Vector3(p0.x, p0.y, z), Vector3(p1.x, p1.y, z), 0.022, -1.0, 6, false)
-		# the mesh: a grid of wires 0.3 m apart (detail: from afar the posts and rails remain)
+		# the mesh: a grid of wires 0.5 m apart (detail: from afar the posts and rails remain)
 		col(m, "galvanised", Color(0.80, 0.82, 0.83), "detail", 0.25)
-		var nv := int((t1 - t0) / 0.3)
+		var nv := int((t1 - t0) / 0.5)
 		for k in nv:
 			var p := p0.lerp(p1, (k + 0.5) / nv)
 			m.box(Vector3(p.x, p.y, fh * 0.5), Vector3(0.012, 0.012, fh - 0.1))
-		var nh := int(fh / 0.3)
+		var nh := int(fh / 0.5)
 		var bs := Basis(Vector3(d.y, -d.x, 0), Vector3(d.x, d.y, 0), Vector3(0, 0, 1))
 		for k in nh:
 			var c := (p0 + p1) * 0.5

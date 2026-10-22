@@ -381,6 +381,8 @@ func structure(parent: Node3D, s: Dictionary) -> Node3D:
 				var layers := Kit._meshes(mb.finish(), Vector3.ZERO)
 				for k in layers:
 					_cell(layers[k], k, Transform3D(Basis(), Geom.g([p0.x, p0.y, p0.z])))
+	elif s.part == "kerb":
+		places = kerb_places(s, pr)
 	else:
 		places.append([at, yaw, pr])
 	for pl in places:
@@ -392,6 +394,36 @@ func structure(parent: Node3D, s: Dictionary) -> Node3D:
 		instances += 1
 		add_solids(body, res.solids, Transform3D(xf.basis, xf.origin))
 	return body
+
+## How many shapes a species has (a plant's `variant`): enough that a row is not one plant copied, few enough that the
+## scenes hold each once (a variant is a mesh of its own).
+const VARIANTS := 4
+
+## A kerb along its route as KERB_UNIT pieces (one stripe of each colour), the remainder of each straight piece its own:
+## the same few meshes instanced along every road, not one mesh per kerb.
+const KERB_UNIT := 2.0
+func kerb_places(s: Dictionary, pr: Dictionary) -> Array:
+	var at: Vector3 = b._v3(s.get("at", [0, 0, 0]))
+	var yaw := float(s.get("yaw", 0))
+	var out: Array = []
+	var route: Array = pr.route
+	for i in range(route.size() - 1):
+		var a := at + Geom.turn(b._v3(route[i]), yaw)
+		var c := at + Geom.turn(b._v3(route[i + 1]), yaw)
+		var L := a.distance_to(c)
+		if L < 0.05:
+			continue
+		var d := (c - a) / L
+		var heading := rad_to_deg(atan2(d.x, d.y))
+		var n := int(floor(L / KERB_UNIT + 1e-6))
+		for k in n + 1:
+			var len := minf(KERB_UNIT, L - k * KERB_UNIT)
+			if len < 0.05:
+				break
+			var p := pr.duplicate()
+			p["route"] = [[0, 0, 0], [0, snappedf(len, 0.01), 0]]
+			out.append([a + d * (k * KERB_UNIT), heading, p])
+	return out
 
 ## Where a row's plants stand: along the route (relative to the structure's `at`, turned by its `yaw`) from its first
 ## point, one every spacing metres, the last one at most half a spacing from its end; [position, yaw, params].
@@ -419,7 +451,7 @@ func planting_places(s: Dictionary, pr: Dictionary) -> Array:
 			var p := pr.duplicate()
 			p.erase("route")
 			p.erase("spacing")
-			p["variant"] = (seed + k) % 7
+			p["variant"] = (seed + k) % VARIANTS
 			out.append([a.lerp(c, t / maxf(L, 1e-6)), float((seed / 7 + k * 137) % 360), p])
 			k += 1
 			t += sp
@@ -605,7 +637,9 @@ func flush(root: Node3D) -> int:
 	var merge := {}   # "layer|cell" -> [entries]
 	for k in cells:
 		var c: Dictionary = cells[k]
-		if c.xf.size() == 1:
+		# planting is instanced, never merged: a row's plants share a few meshes (their variants), which the scene then
+		# holds once, not once per cell (merged, the site's palms and tamarisks were most of its scenes' bytes)
+		if c.xf.size() == 1 and not c.mat in UNBAKED:
 			var parts: PackedStringArray = k.split("|")
 			var mk := "|".join(parts.slice(1))
 			if not merge.has(mk):
@@ -639,7 +673,7 @@ func flush(root: Node3D) -> int:
 			# a static mesh standing once in its cell: the bake lights it (builder/lightmap.gd). Identify pieces
 			# (tag plates, bands, arrows) are not: a texel of a third of a metre would grey a white plate behind
 			# its code; they take the sky's light like the instanced pieces
-			var lit := Lightmap.unwrap(arr, Lightmap.TEXEL, cls != "identify")
+			var lit := Lightmap.unwrap(arr, Lightmap.TEXEL * b.texel_scale, cls != "identify")
 			if lit != null:
 				_emit_static(kit, lit, group[0].mat, cls, o, n)
 				n += 1
