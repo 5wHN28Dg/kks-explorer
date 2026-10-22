@@ -22,6 +22,7 @@ class M:
         self.area = area
         self.values, self.ops, self.interlocks, self.machines = [], [], [], []
         self.alarms, self.trips, self.bind = [], [], []
+        self.isolations, self.works = [], []      # format 2 (PLANT3D §15)
 
     def v(self, name, node, unit=None, kks=None):
         node = dict(node)
@@ -163,9 +164,32 @@ class M:
     def b(self, **kw):
         self.bind.append(kw)
 
+    def hold(self, name, ref, when, unit=None, kks=None):
+        """Format 2's hold (PLANT3D §15.4): the input while `when` is false, else its last value."""
+        return self.v(name, {'hold': ref, 'when': when}, unit, kks)
+
+    def isolation(self, iid, text, points):
+        """PLANT3D §15.1: points (kks, kind, safe value or None, how)."""
+        pts = []
+        for kks, kind, safe, how in points:
+            pt = {'kks': kks, 'kind': kind, 'how': how}
+            if safe:
+                pt['safe'] = safe
+            pts.append(pt)
+        self.isolations.append({'id': iid, 'text': text, 'points': pts})
+
+    def work(self, wid, kks, title, discipline, permit, isolation=None, repairs=None):
+        w = {'id': wid, 'kks': kks, 'title': title, 'discipline': discipline, 'permit': permit}
+        if isolation:
+            w['isolation'] = isolation
+        if repairs:
+            w['repairs'] = repairs
+        self.works.append(w)
+
     def file(self):
-        d = {'format': 'walkdown-plant-model', 'version': 1, 'area': self.area}
-        for k in ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind'):
+        v2 = bool(self.isolations or self.works or any('hold' in n for _, n in self.values))
+        d = {'format': 'walkdown-plant-model', 'version': 2 if v2 else 1, 'area': self.area}
+        for k in ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind', 'isolations', 'works'):
             if getattr(self, k):
                 d[k] = getattr(self, k)
         return d
@@ -404,6 +428,14 @@ def bop():
         m.interlock(f'ccw_{other}_auto', f'ccw_{x}_trip_latched', [{'set': {f'ccw_{other}_cmd': 1}}],
                     f'00PGC10AP00{"12"[x == "a"]}', f'Pump {x.upper()} tripped: the standby pump starts')
         m.alarm(f'ccw_{x}_tripped', code, f'Closed cooling water pump {x.upper()} tripped', f'ccw_{x}_trip_latched', 2)
+    # permits to work (PLANT3D §15): each CCW pump's motor, locked out at its breaker
+    for x, n in (('a', 1), ('b', 2)):
+        code = f'00PGC10AP00{n}'
+        m.NOT(f'ccw_{x}_safe', f'ccw_{x}_cmd')
+        m.isolation(f'iso_ccw_{x}', f'Closed cooling water pump {x.upper()}: motor supply',
+                    [(code, 'electrical', f'ccw_{x}_safe', 'Pump stopped; its breaker racked out, locked and tagged')])
+        m.work(f'wo_ccw_{x}_motor', code, f'Closed cooling water pump {x.upper()} motor: winding and terminal check',
+               'elec', 'electrical', f'iso_ccw_{x}', f'ccw_{x}_motor')
     m.alarm('ia_p_low', '00QFB10CP001', 'Instrument air header pressure low', 'ia_low', 1, isa='PAL',
             suppress='ia_sup')
     for x, code in (('a', '00QFA10AN001'), ('b', '00QFA10AN002')):
@@ -481,6 +513,14 @@ def ct():
             pitch={'of': f'ct_fan{i}_spd', 'table': [[0, 0.5], [1, 1]]})
         m.b(kks=code, shake=f'ct_fan{i}_vib', scale=0.05)
         m.b(kks=f'30PAD10CY{i:03d}', show=f'ct_fan{i}_vib')
+    # a permit to work on a fan (PLANT3D §15): fan 3's bearings and gearbox, the fan locked out at its breaker
+    m.NOT('ct_fan3_nocmd', 'ct_fan3_cmd')
+    m.cmp('ct_fan3_still', 'ct_fan3_spd', '<', 0.01)
+    m.AND('ct_fan3_safe', ['ct_fan3_nocmd', 'ct_fan3_still'])
+    m.isolation('iso_ct_fan3', 'Cooling tower fan 3: motor supply',
+                [('30PAD10AN003', 'electrical', 'ct_fan3_safe', 'Fan stopped; its breaker racked out, locked and tagged')])
+    m.work('wo_ct_fan3', '30PAD10AN003', 'Cooling tower fan 3: bearings and gearbox service', 'mech', 'general',
+           'iso_ct_fan3', 'ct_fan3_vib')
     m.alarm('ct_basin_low', '30PAD10CL001', 'Cooling tower basin level low', 'ct_l', 2, isa='LAL')
     m.alarm('ct_basin_ll', '30PAD10CL001', 'Cooling tower basin level low-low', 'ct_ll', 1, isa='LALL')
     m.b(kks='30PAD10CL001', show='ct_basin_level')
@@ -616,6 +656,23 @@ def cw():
         m.op(f'30PAB10AA40{k}', 'open', {f'cw_vent{k}': 1}, (), ('local',))
         m.op(f'30PAB10AA40{k}', 'close', {f'cw_vent{k}': 0}, (), ('local',))
         m.b(kks=f'30PAB10AA40{k}', anim='disc', of=f'cw_vent{k}')
+    # permits to work (PLANT3D §15): each pump's motor and discharge valve; `safe` reads the commands as well as what
+    # follows them (a pump commanded to run is not safe before it turns)
+    for x, n in pumps:
+        L = x.upper()
+        ap, aa = f'30PAC10AP00{n}', f'30PAC10AA10{n}'
+        m.NOT(f'cw_{x}_nocmd', f'cw_{x}_cmd')
+        m.cmp(f'cw_{x}_still', f'cw_{x}_spd', '<', 0.01)
+        m.AND(f'cw_{x}_safe', [f'cw_{x}_nocmd', f'cw_{x}_still'])
+        m.cmp(f'cw_{x}_v_nocmd', f'cw_{x}_v_cmd', '<=', 0)
+        m.cmp(f'cw_{x}_v_shut', f'cw_{x}_v_pos', '<=', 0.005)
+        m.AND(f'cw_{x}_v_safe', [f'cw_{x}_v_nocmd', f'cw_{x}_v_shut'])
+        m.isolation(f'iso_cw_{x}', f'CW pump {L}: motor supply and discharge valve',
+                    [(ap, 'electrical', f'cw_{x}_safe', 'Pump stopped; its breaker racked out, locked and tagged'),
+                     (aa, 'mechanical', f'cw_{x}_v_safe', 'Discharge valve closed; handwheel chained, locked and '
+                                                          'tagged')])
+        m.work(f'wo_cw_{x}_motor', ap, f'CW pump {L} motor: bearing replacement', 'mech', 'general', f'iso_cw_{x}',
+               f'cw_{x}_motor')
     m.alarm('cw_flow_low', '30PAB10CF001', 'CW flow low', 'cw_flow_low', 1, isa='FAL')
     m.b(kks='30PAB10CF001', show='cw_flow')
     return m
@@ -1142,13 +1199,24 @@ def st():
     m.integ('st_speed', 'st_acc', 1, 0, 1.3, 0, 'pu', '30MAA10')
     # condenser pressure first: it is a lag of a target computed further down (stateful nodes read the previous step)
     m.lag('cond_p', 'cond_p_tgt', 30, 150, 101.3, 'kPa(a)', '30MAG10AC001')
+    # the three transmitters (2 out of 3 for the trip). Transmitters 2 and 3 can be isolated for work (PLANT3D §15):
+    # an isolated one shows its last reading (the hold) and votes tripped, so the trip runs 1 out of 2 on the other two
+    # (§15.4); its alarms, which follow the process here, are suppressed by the lock. Transmitter 1 carries the trip's
+    # reset (its kks), which a lock would refuse: it is not isolated for work here
     for k, off in zip((1, 2, 3), (0, 0.1, -0.1)):
-        m.sum(f'cond_p{k}', ['cond_p', off], 'kPa(a)', f'30MAG10CP00{k}')
-        m.cmp(f'cond_p{k}_h', f'cond_p{k}', '>', 15)
-        m.cmp(f'cond_p{k}_hc', f'cond_p{k}', '<', 13)
-        m.cmp(f'cond_p{k}_hh', f'cond_p{k}', '>', 25)
-        m.cmp(f'cond_p{k}_hhc', f'cond_p{k}', '<', 23)
-    m.sum('cond_hh_v', [f'cond_p{k}_hh' for k in (1, 2, 3)])
+        tx = f'cond_p{k}'
+        if k == 1:
+            m.sum(tx, ['cond_p', off], 'kPa(a)', f'30MAG10CP00{k}')
+        else:
+            tx = m.sum(f'cond_p{k}_tx', ['cond_p', off], 'kPa(a)')
+            m.hold(f'cond_p{k}', tx, f'iso_cond_p{k}_complete', 'kPa(a)', f'30MAG10CP00{k}')
+        m.cmp(f'cond_p{k}_h', tx, '>', 15)
+        m.cmp(f'cond_p{k}_hc', tx, '<', 13)
+        m.cmp(f'cond_p{k}_hh', tx, '>', 25)
+        m.cmp(f'cond_p{k}_hhc', tx, '<', 23)
+        if k != 1:
+            m.OR(f'cond_p{k}_vote', [f'cond_p{k}_hh', f'iso_cond_p{k}_complete'])
+    m.sum('cond_hh_v', ['cond_p1_hh', 'cond_p2_vote', 'cond_p3_vote'])
     m.cmp('cond_hh', 'cond_hh_v', '>=', 2)
     m.NOT('cond_p_ok', 'cond_hh')
     m.cmp('st_vac_ok', 'cond_p', '<', 12)
@@ -1403,6 +1471,11 @@ def st():
     m.trip('st_trip_lube', '30MAV10CP001', 'Steam turbine lube oil pressure low-low', 'st_lp_ll', to_trip, 'PALL', 1,
            'st')
     m.trip('st_trip_cond_p', '30MAG10CP001', 'Condenser pressure high-high', 'cond_hh', to_trip, 'PAHH', 1, 'st')
+    for k in (2, 3):
+        m.isolation(f'iso_cond_p{k}', f'Condenser pressure transmitter {k}',
+                    [(f'30MAG10CP00{k}', 'instrument', None, 'Root valve shut and tagged; the transmitter vented')])
+        m.work(f'wo_cond_p{k}_cal', f'30MAG10CP00{k}', f'Condenser pressure transmitter {k}: calibration check',
+               'inst', 'general', f'iso_cond_p{k}')
     m.trip('st_trip_os', '30MAY10CS001', 'Steam turbine overspeed', 'st_os', to_trip, 'SAHH', None, 'st')
     m.trip('st_trip_axial', '30MAD10CG001', 'Steam turbine axial displacement high-high', 'st_axial_hh', to_trip,
            'ZAHH', 0.5, 'st')

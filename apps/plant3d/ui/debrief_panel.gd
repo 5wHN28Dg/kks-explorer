@@ -1,5 +1,6 @@
 ## The debrief panel (ui/debrief.gd): the run's summary (time, steps, operations, deviations, alarms, trips) over
-## its events in order with their model time; Deviations and Alarms-and-trips narrow the list. Opened at the end of a
+## its events in order with their model time; Deviations, Alarms-and-trips and Permits (permits to work and their
+## locks, PLANT3D §15) narrow the list. Opened at the end of a
 ## procedure and from the alarm list (its Events button) during a run. Every row is a button, so keyboard and gamepad
 ## move through the list (the list scrolls to follow); a row naming equipment opens its card. While open it follows
 ## the run, adding new rows as events come (never rebuilding the list for them).
@@ -12,7 +13,7 @@ const DEV_COLOUR := Color(1.0, 0.8, 0.4)
 var ui
 var body: VBoxContainer
 var title: Label
-var tab := "all"                # all, deviations, alarms
+var tab := "all"                # all, deviations, alarms, permits
 var data := {}                  # the last Debrief.collect
 var _summary: Label
 var _list: VBoxContainer
@@ -37,7 +38,8 @@ func setup(u) -> void:
 	var bar := HFlowContainer.new()
 	v.add_child(bar)
 	v.move_child(bar, 1)
-	for t in [["all", "Everything"], ["deviations", "Deviations"], ["alarms", "Alarms and trips"]]:
+	for t in [["all", "Everything"], ["deviations", "Deviations"], ["alarms", "Alarms and trips"],
+			["permits", "Permits"]]:
 		var b := W.button(t[1], _tab.bind(t[0]))
 		b.toggle_mode = true
 		bar.add_child(b)
@@ -68,6 +70,7 @@ static func in_tab(e: Dictionary, t: String) -> bool:
 	match t:
 		"deviations": return e.dev != ""
 		"alarms": return e.kind in ["alarm", "shelve", "unshelve", "trip"]
+		"permits": return e.kind in ["permit", "lock", "unlock"]
 	return true
 
 
@@ -132,7 +135,7 @@ func _focused_row() -> int:
 func _add_rows(list: Array) -> void:
 	if list.is_empty() and _list.get_child_count() == 0:
 		var none: String = {"all": "Nothing has happened yet.", "deviations": "No operation outside its step.",
-				"alarms": "No alarm or trip."}[tab]
+				"alarms": "No alarm or trip.", "permits": "No permit to work yet."}[tab]
 		_list.add_child(_row({"step": -1, "kind": "", "text": none, "code": "", "dev": "", "prio": 0}))
 		return
 	if not list.is_empty() and _shown == 0 and _list.get_child_count() > 0:
@@ -170,6 +173,8 @@ func _row(e: Dictionary) -> Button:
 		c = W.OK_COLOUR
 	elif e.kind == "machine" or e.kind == "interlock":
 		c = W.DIM
+	elif e.kind in ["permit", "lock", "unlock"]:
+		c = W.BAD_COLOUR if e.text.contains("refused") else Color(0.6, 0.8, 1.0)
 	for k in ["font_color", "font_focus_color", "font_hover_color", "font_pressed_color"]:
 		b.add_theme_color_override(k, c)
 	b.set_meta("entry", e)

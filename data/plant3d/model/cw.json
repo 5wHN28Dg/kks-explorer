@@ -1,6 +1,6 @@
 {
  "format": "walkdown-plant-model",
- "version": 1,
+ "version": 2,
  "area": "cw",
  "values": [
   ["cw_a_cmd", {"state": 0, "kks": "30PAC10AP001"}],
@@ -197,7 +197,25 @@
   ["st_run_le", {"cmp": ["st_start_state", "<=", 6]}],
   ["st_running", {"and": ["st_run_ge", "st_run_le"]}],
   ["cw_flow_lo", {"cmp": ["cw_flow", "<", 10000]}],
-  ["cw_flow_low", {"and": ["cw_flow_lo", "st_running"]}]
+  ["cw_flow_low", {"and": ["cw_flow_lo", "st_running"]}],
+  ["cw_a_nocmd", {"not": "cw_a_cmd"}],
+  ["cw_a_still", {"cmp": ["cw_a_spd", "<", 0.01]}],
+  ["cw_a_safe", {"and": ["cw_a_nocmd", "cw_a_still"]}],
+  ["cw_a_v_nocmd", {"cmp": ["cw_a_v_cmd", "<=", 0]}],
+  ["cw_a_v_shut", {"cmp": ["cw_a_v_pos", "<=", 0.005]}],
+  ["cw_a_v_safe", {"and": ["cw_a_v_nocmd", "cw_a_v_shut"]}],
+  ["cw_b_nocmd", {"not": "cw_b_cmd"}],
+  ["cw_b_still", {"cmp": ["cw_b_spd", "<", 0.01]}],
+  ["cw_b_safe", {"and": ["cw_b_nocmd", "cw_b_still"]}],
+  ["cw_b_v_nocmd", {"cmp": ["cw_b_v_cmd", "<=", 0]}],
+  ["cw_b_v_shut", {"cmp": ["cw_b_v_pos", "<=", 0.005]}],
+  ["cw_b_v_safe", {"and": ["cw_b_v_nocmd", "cw_b_v_shut"]}],
+  ["cw_c_nocmd", {"not": "cw_c_cmd"}],
+  ["cw_c_still", {"cmp": ["cw_c_spd", "<", 0.01]}],
+  ["cw_c_safe", {"and": ["cw_c_nocmd", "cw_c_still"]}],
+  ["cw_c_v_nocmd", {"cmp": ["cw_c_v_cmd", "<=", 0]}],
+  ["cw_c_v_shut", {"cmp": ["cw_c_v_pos", "<=", 0.005]}],
+  ["cw_c_v_safe", {"and": ["cw_c_v_nocmd", "cw_c_v_shut"]}]
  ],
  "ops": [
   {"kks": "30PAC10AP001", "do": "start", "set": {"cw_a_cmd": 1}, "needs": [["cw_basin_ok", "Cooling tower basin level low-low"], ["cw_a_vstart", "Discharge valve 30PAC10AA101 not at its start position (10–20 %)"], ["cw_a_trips_clear", "A pump trip is latched: reset it first"], ["cw_a_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
@@ -314,5 +332,15 @@
   {"kks": "30PAB10AA403", "anim": "disc", "of": "cw_vent3"},
   {"kks": "30PAB10AA404", "anim": "disc", "of": "cw_vent4"},
   {"kks": "30PAB10CF001", "show": "cw_flow"}
+ ],
+ "isolations": [
+  {"id": "iso_cw_a", "text": "CW pump A: motor supply and discharge valve", "points": [{"kks": "30PAC10AP001", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "cw_a_safe"}, {"kks": "30PAC10AA101", "kind": "mechanical", "how": "Discharge valve closed; handwheel chained, locked and tagged", "safe": "cw_a_v_safe"}]},
+  {"id": "iso_cw_b", "text": "CW pump B: motor supply and discharge valve", "points": [{"kks": "30PAC10AP002", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "cw_b_safe"}, {"kks": "30PAC10AA102", "kind": "mechanical", "how": "Discharge valve closed; handwheel chained, locked and tagged", "safe": "cw_b_v_safe"}]},
+  {"id": "iso_cw_c", "text": "CW pump C: motor supply and discharge valve", "points": [{"kks": "30PAC10AP003", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "cw_c_safe"}, {"kks": "30PAC10AA103", "kind": "mechanical", "how": "Discharge valve closed; handwheel chained, locked and tagged", "safe": "cw_c_v_safe"}]}
+ ],
+ "works": [
+  {"id": "wo_cw_a_motor", "kks": "30PAC10AP001", "title": "CW pump A motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_a", "repairs": "cw_a_motor"},
+  {"id": "wo_cw_b_motor", "kks": "30PAC10AP002", "title": "CW pump B motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_b", "repairs": "cw_b_motor"},
+  {"id": "wo_cw_c_motor", "kks": "30PAC10AP003", "title": "CW pump C motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_c", "repairs": "cw_c_motor"}
  ]
 }
