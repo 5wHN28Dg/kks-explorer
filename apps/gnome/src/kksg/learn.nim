@@ -797,6 +797,47 @@ proc openCourse*(w: Win, id: string, page = "") =
   cw.show(if page.len > 0 and c.page(page) != nil: page else: c.startPage()["id"].s)
   gtk_window_present(cw.window)
 
+proc pairingSection(w: Win): W =
+  ## "Your devices": pairing by code (PROTOCOL-v2 §17, decision 0062), so that progress follows the person
+  let outer = vbox(8)
+  outer.add label("Your devices", "heading")
+  let body = vbox(8)
+  outer.add body
+  var fill: proc ()
+  fill = proc () =
+    body.clear()
+    let (ready, rows) = pairing(w.a)
+    if not ready:
+      body.add label(NotReadyNote, "dim-label")
+    elif rows.len == 0:
+      body.add label("No other device of yours can pair yet. Open the Learning page on it once it has synced.",
+                     "dim-label")
+    else:
+      body.add label(PairHelp, "dim-label")
+      let lst = gtk_list_box_new()
+      gtk_widget_add_css_class(lst, "boxed-list")
+      gtk_list_box_set_selection_mode(lst, GTK_SELECTION_NONE)
+      for ri in 0 ..< rows.len:
+        closureScope:
+          let r = rows[ri]
+          let dev = r.device
+          let rw = row(rowTitle(r), rowStatus(r))
+          proc act(text: string, fn: proc (): string) =
+            let b = button(text, "suggested-action", proc () =
+              let why = fn()
+              if why.len > 0: w.toast(why)
+              fill(), once = true)
+            gtk_widget_set_valign(b, GTK_ALIGN_CENTER)
+            adw_action_row_add_suffix(rw, b)
+          if r.state == "compare": act("Codes match", proc (): string = pairConfirm(w.a, r))
+          if r.state != "paired":
+            act(if r.state in ["compare", "waiting"]: "Start again" else: "Pair", proc (): string = pairStart(w.a, dev))
+          lst.gtk_list_box_append(rw)
+      body.add lst
+    body.add button("Check again", "flat", proc () = fill())
+  fill()
+  outer
+
 proc learningPage*(w: Win): W =
   ## the sidebar's Learning page: the courses with their progress
   let box = vbox(12)
@@ -824,5 +865,6 @@ proc learningPage*(w: Win): W =
       list.gtk_list_box_append(navRow(cr.title, cr.short & " · " & $n & " of " & $cr.questions.len & " solved",
                                       "Open " & cr.title, proc () = w.openCourse(id)))
   box.add list
-  box.add label("Your progress is private: only your own devices can read it.", "dim-label caption")
+  box.add label(PrivacyNote, "dim-label caption")
+  box.add w.pairingSection()
   scrolled(box)

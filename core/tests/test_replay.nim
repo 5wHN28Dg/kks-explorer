@@ -61,3 +61,7 @@ suite "diagnostics reports (v2-reports.json, §13a)":
     let v = loadVectors("v2-reports.json")["report_key_private"]
     let got = P.privateOpen(unhex(v["secret_hex"].s), v["body"])
     check canonical(got) == canonical(v["plaintext"])
+
+suite "box keys and secret shares (v2-pairing.json, §17)":
+  test "scenario":
+    checkScenarios("v2-pairing.json")

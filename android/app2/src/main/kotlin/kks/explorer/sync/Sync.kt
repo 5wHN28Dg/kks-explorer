@@ -223,6 +223,9 @@ object Sync {
             if (targets.isNotEmpty() && lastOk > 0 && lastRound - lastOk > 24 * 3600 * 1000L) Diagnostics.record("sync", "no successful sync for more than 24 hours")
             backgroundLimit(ctx)?.let { Diagnostics.record("sync", "background sync limited: $it (${Build.MANUFACTURER} ${Build.MODEL})") }
             Diagnostics.report(ctx)
+            // course progress between this person's paired devices (PROTOCOL-v2 §17, decision 0062)
+            runCatching { Core.api("POST", "/native/progress-tick", JSONObject()) }
+                .onFailure { Diagnostics.record("error", "course progress pairing: ${it.javaClass.simpleName}: ${it.message}") }
             return n
         } finally {
             syncing = false

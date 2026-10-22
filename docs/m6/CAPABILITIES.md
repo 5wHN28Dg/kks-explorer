@@ -57,6 +57,7 @@ missing.
 | ChaCha20-Poly1305 / AES-GCM | ✅ both in CNG (ChaCha from Windows 10) [D] | ✅ Nettle/GnuTLS [V installed] | ✅ ChaCha API 28+, AES-GCM [D] | 🟡 AES-GCM only; no ChaCha in WebCrypto [D] |
 | Password hashing (scrypt/Argon2) | ❌ (PBKDF2 only in CNG) [K] | 🟡 Nettle: PBKDF2; scrypt via OpenSSL 3.5 [V installed] | 🟡 PBKDF2 [K] | 🟡 PBKDF2 [K] |
 | Secure key storage | ✅ DPAPI (per user) [D]; CNG key storage with TPM [K] | ✅ Secret Service: libsecret + GNOME Keyring [V]; Secret portal = a per-app secret for sandboxed apps [D] | ✅ Android Keystore, per app, hardware-backed where available [K] | 🟡 non-extractable WebCrypto keys in IndexedDB [K] |
+| ECDH with a key the platform key store holds (a device receiving its person's course-progress secret, decision 0062) | ✅ CNG `NCryptSecretAgreement` [K] | ✅ (our keys are sealed by the storage key, not held by libsecret) [K] | 🟡 Keystore `PURPOSE_AGREE_KEY` from API 31; missing on 29–30, so a separate box key in the sealed store [K] | 🟡 WebCrypto ECDH, but the server sends the page's code, so a browser can't keep a key from the server [K] |
 | Disk encryption guaranteed | ❌ BitLocker device encryption only on qualifying hardware [D] | ❌ LUKS optional at install [K] | ✅ file-based encryption required on devices launching with Android 10+ [D] | ✅ iOS data protection [K] |
 
 ## 5. Network and sync (R15–R20)
@@ -167,6 +168,10 @@ These become decision records (docs/decisions/0014 and on):
    only.
 9. **Windows distribution:** a trusted signing certificate is needed for a smooth per-user install and update.
 10. **Password hashing** stronger than PBKDF2 is platform-provided only through OpenSSL on Linux.
+
+11. **A secret only the person can read, in a browser** (R8, decision 0062): nowhere. The server serves the web
+    app's code, so any key a page holds is reachable by a server that misbehaves. Browser progress stays in that
+    browser; the native apps share it between the person's paired devices.
 
 ## Measurements needed before deciding
 

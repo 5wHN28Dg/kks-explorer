@@ -84,8 +84,12 @@ proc markSolved*(c: Course, qid: string) =
   c.save("solved", setObj(c.solved))
 
 proc setSkip*(c: Course, mods: HashSet[string]) =
+  ## a module no longer skipped is written as false: the merge is a union (§17), so leaving it out would not take it back
+  var o = setObj(mods)
+  for m in c.skip:
+    if m notin mods: o[m] = newBool(false)
   c.skip = mods
-  c.save("skip", setObj(mods))
+  c.save("skip", o)
 
 proc setLast*(c: Course, pageId: string) =
   if c.last == pageId: return
@@ -98,6 +102,50 @@ proc recordScore*(c: Course, score: int) =
   if score > c.finalBest:
     c.finalBest = score
     c.save("finalBest", newInt(score))
+
+# ---------------------------------------------------------------- pairing (PROTOCOL-v2 §17, decision 0062)
+
+const
+  PrivacyNote* = "Your progress is private: only you can read it, on your own devices that you paired. " &
+                 "Not the manager, not the server."
+  NotReadyNote* = "To share your progress with your other devices, pair them here. This device is not ready to " &
+                  "pair yet: it needs to sync first."
+  PairHelp* = "Press Pair here and on the other device. After both have synced, each shows a code: confirm only " &
+              "when both show the same code. Don't confirm if the other device shows no code or a different one, or if you " &
+              "don't recognise it: the server names devices, so a name alone proves nothing."
+
+type PairRow* = object
+  device*, label*, state*, code*: string    ## state: none, asked, waiting, compare, paired (PROTOCOL-v2 §17)
+
+proc pairing*(a: App): (bool, seq[PairRow]) =
+  ## (ready, the person's other devices that can pair)
+  try:
+    let j = a.call("GET", "/api/pairing")
+    result[0] = j["ready"].b
+    for d in j["devices"].elems:
+      result[1].add PairRow(device: d["device"].s, label: d["label"].s, state: d["state"].s, code: d["code"].s)
+  except ApiError, KeyError: discard
+
+proc pairAct(a: App, action, device, code: string): string =
+  try:
+    discard a.call("POST", "/api/pairing", newObj(@[("action", newStr(action)), ("device", newStr(device)),
+                                                    ("code", newStr(code))]))
+    ""
+  except ApiError as e: e.msg
+
+proc pairStart*(a: App, device: string): string = a.pairAct("start", device, "")
+  ## "" when started, else why not
+proc pairConfirm*(a: App, r: PairRow): string = a.pairAct("confirm", r.device, r.code)
+
+proc rowTitle*(r: PairRow): string = (if r.label.len > 0: r.label else: "A device")
+
+proc rowStatus*(r: PairRow): string =
+  case r.state
+  of "paired": "Paired"
+  of "compare": "Code " & r.code & ": confirm only if the other device shows the same code"
+  of "waiting": "Waiting for the other device: press Pair there too, and let both sync"
+  of "asked": "That device asked to pair: press Pair here to compare codes"
+  else: "Not paired"
 
 # ---------------------------------------------------------------- opening a course
 

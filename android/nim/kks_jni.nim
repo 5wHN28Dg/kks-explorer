@@ -3,7 +3,8 @@
 
 import std/[tables, os, strutils, base64, times]
 import std/sets
-import kks/[json, crypto, proto, node, api, sync, bundle, extras, util, invites, plantdata, model, views, pathstore, courses, diagnostics, rudp, relaykey, applink]
+import kks/[json, crypto, proto, node, api, sync, bundle, extras, util, invites, plantdata, model, views, pathstore, courses, diagnostics, rudp, relaykey, applink,
+            progress]
 import kksl/dbstore
 import kksa/[provider_jni, figops]
 
@@ -131,6 +132,9 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
     # decision 0040: an event for the manager's diagnostics reports (crash, error, sync)
     c.n.record(body["kind"].s, body["text"].s, nowMs())
     return view(O(("ok", newBool(true))))
+  of "/native/progress-tick":
+    # PROTOCOL-v2 §17 (decision 0062), after each sync round: the box key, shares from paired devices, and to them
+    return view(O(("wrote", newInt(c.n.progressTick(nowMs())))))
   of "/native/diag-report":
     let wrote = c.n.maybeReport("android", body["version"].s, body["platform"].s, body["model"].s, nowMs(),
                                 body.get("force") != nil and body["force"].kind == jBool and body["force"].b)

@@ -294,6 +294,11 @@ proc revocationOf*(n: Node, device: string): JNode =
        e["body"]["device"].kind == jStr and e["body"]["device"].s == device:
       if result == nil or (e["hlc"][0].i, e["hlc"][1].i) > (result["hlc"][0].i, result["hlc"][1].i): result = e
 
+proc chainKey*(n: Node, device: string): string =
+  ## the key of `device`'s seq-1 entry ("" when this node holds none): what its entries are verified against
+  let c = n.chains.getOrDefault(device)
+  if c.len > 0 and n.entries[c[0]].has("key"): n.entries[c[0]]["key"].s else: ""
+
 proc acceptRevocation*(n: Node, e: JNode): bool =
   ## Another device says this one was removed and shows the revoke entry. True if it checks out against our own log;
   ## the platform then wipes the plant data (§15).

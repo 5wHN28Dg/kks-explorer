@@ -326,6 +326,11 @@ jobs:
       - name: The GNOME app
         working-directory: apps/gnome
         run: nim c -d:release -o:/tmp/kksgnome/kks_explorer kks_explorer.nim
+      - name: Course progress between two paired devices of one person, over the real sync (decision 0062)
+        run: |
+          (cd apps/gnome && nim c -d:release -o:/tmp/kksgnome/progress_peer e2e/progress_peer.nim)
+          KKS_SERVER=/tmp/kkslinux/kks_server KKS_PEER=/tmp/kksgnome/progress_peer timeout 300 \
+            .venv/bin/python platform/linux/e2e/test_progress_pairing.py
       - name: The GNOME app's unit tests (the dark-drawings colours and marker contrast)
         working-directory: apps/gnome
         run: nim test
