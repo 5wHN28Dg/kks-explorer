@@ -118,6 +118,8 @@ func run(tree: SceneTree) -> Array:
 	# each hall has its floor in its finish (painted, tiled or bare concrete: photo pass)
 	var finishes := ["hall_floor", "floor_tile", "floor_concrete", "floor_vinyl"].map(func(n): return load("res://built/materials/%s.tres" % n))
 	for roof in plant.find_children("roof", "MeshInstance3D", true, false):
+		if roof.get_parent().get_meta("shell", false):
+			continue   # a shell nobody goes into (its doors locked: the camp's other blocks) has nothing drawn inside
 		halls += 1
 		var fl := roof.get_parent().get_node_or_null("floor") as MeshInstance3D
 		if fl == null or not fl.material_override in finishes:

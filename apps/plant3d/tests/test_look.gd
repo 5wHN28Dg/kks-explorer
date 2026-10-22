@@ -32,6 +32,11 @@ func run(tree: SceneTree) -> Array:
 		if not body.has_meta("building"):
 			continue
 		buildings += 1
+		if body.get_meta("shell", false):
+			# a shell nobody goes into (its doors locked): its roof only, nothing drawn inside it
+			if body.get_node_or_null("roof") == null or body.get_node_or_null("liner") != null or body.get_node_or_null("floor") != null:
+				p.append("%s: a shell has its roof and nothing inside" % body.name)
+			continue
 		var roof := body.get_node_or_null("roof") as MeshInstance3D
 		var liner := body.get_node_or_null("liner") as MeshInstance3D
 		var steel := body.get_node_or_null("roof_steel") as MeshInstance3D

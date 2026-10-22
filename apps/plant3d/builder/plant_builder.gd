@@ -1142,6 +1142,11 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	var h: float = b.height
 	var clad: bool = b.cladding == "metal"
 	var roof_holes: Array = []
+	# a shell nobody goes into (no door opening: its doors are `locked`, PLANT3D.md §18.6; the camp's other blocks,
+	# the store): its outside only, no liner, roof steel, floor or lamps inside (they cost the bake and the package and
+	# are never seen)
+	var shell: bool = not b.openings.any(func(o): return o.kind == "door")
+	body.set_meta("shell", shell)
 	for i in pg.size():
 		var a := pg[i]
 		var c := pg[(i + 1) % pg.size()]
@@ -1191,26 +1196,28 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 				var p0 := a + u * r.position.x
 				var p1 := a + u * r.end.x
 				_wall_panel(walls, body, p0, p1, r.position.y, r.end.y, 0.25, piece_top(r, cuts, h))
-				if clad:
+				if clad and not shell:
 					# the inner skin, light: a hall seen from inside (polish pass)
 					var off := inward * (WALL_T * 0.5 + LINER_T * 0.5)
 					_panel(liner, null, p0 + off, p1 + off, r.position.y, minf(r.end.y, h - LINER_T), LINER_T)
 		_wall_trims(trim, plinth, a, c, -inward, cuts, h, clad)
-		if clad:
+		if clad and not shell:
 			_frame_edge(frame, body, a, c, inward, blocks, b)
 	_mesh_node(body, "walls", walls, _mat("wall_" + b.cladding))
 	var roof := _st()
 	for pc in Geom.decompose(pg, roof_holes):
 		Geom.add_prism(roof, pc, h, h + 0.3)
 		_convex(body, Geom.prism_points(pc, h, h + 0.3))
-		Geom.add_prism(liner, pc, h - LINER_T, h)
+		if not shell:
+			Geom.add_prism(liner, pc, h - LINER_T, h)
 	_mesh_node(body, "roof", roof, _mat("roof"))
 	# every building's roof from inside: the liner and the steel under it (a dark ceiling with nothing under it read as
 	# a black void in every hall: polish pass)
-	_mesh_node(body, "liner", liner, _mat("liner"))
-	var steel := _st()
-	if _roof_steel(steel, b, roof_holes) > 0:
-		_mesh_node(body, "roof_steel", steel, _mat("roof_steel"), STEEL_TEXEL)
+	if not shell:
+		_mesh_node(body, "liner", liner, _mat("liner"))
+		var steel := _st()
+		if _roof_steel(steel, b, roof_holes) > 0:
+			_mesh_node(body, "roof_steel", steel, _mat("roof_steel"), STEEL_TEXEL)
 	if clad:
 		_mesh_node(body, "trims", trim, _mat("trim"), Lightmap.SHEET_TEXEL * 2.0)
 	_mesh_node(body, "plinth", plinth, _mat("concrete"))
@@ -1218,13 +1225,32 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 		_mesh_node(body, "louvres", louvres, _mat("louvre"), Lightmap.SHEET_TEXEL * 2.0)
 	if windows > 0:
 		_mesh_node(body, "windows", glass, _mat("window"))
-		_mesh_node(body, "windows_in", glass_in, _mat("window_in"))
+		if not shell:
+			_mesh_node(body, "windows_in", glass_in, _mat("window_in"))
 	if float(b.get("crane", 0.0)) > 0.0:
 		_crane(body, frame, b)
-	if clad:
+	if clad and not shell:
 		_mesh_node(body, "frame", frame, _mat("roof_steel"), STEEL_TEXEL)
-	_hall_floor(body, b)
-	_lamps(body, b)
+	if not shell:
+		_hall_floor(body, b)
+		_lamps(body, b)
+	# the site's and the camp's buildings (low, closed): what is seen only inside or through a door is drawn within
+	# INSIDE_RANGE of the building (its box's centre, as Godot measures a range) (SITE.md §5: the far view's budget)
+	if _area_pack(b.area) in ["site", "camp"]:
+		var r := INSIDE_RANGE + Site._bbox(pg).size.length() * 0.5
+		for n in ["liner", "roof_steel", "frame", "windows_in", "floor", "lamp_housings", "lamp_lenses"]:
+			var mi := body.get_node_or_null(n) as GeometryInstance3D
+			if mi != null:
+				mi.visibility_range_end = r
+				mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+
+const INSIDE_RANGE := 30.0
+
+func _area_pack(id: String) -> String:
+	for a in areas:
+		if a.id == id:
+			return a.data.get("pack", "")
+	return ""
 
 ## A building's walls: 0.25 m thick on their outline; a metal-clad hall's light inner skin (its liner) 3 cm thick
 ## against their inside and under the roof.

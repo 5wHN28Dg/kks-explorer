@@ -221,7 +221,7 @@ class Site(unittest.TestCase):
         fences = []
         for a in self.b.areas:
             for s in a['structures']:
-                if s['part'] == 'fence':
+                if s['part'] in ('fence', 'wall'):
                     pts = [(s['at'][0] + q[0], s['at'][1] + q[1]) for q in s['params']['route']]
                     fences += list(zip(pts, pts[1:]))
         posts = []   # porches' and canopies' post lines
@@ -297,19 +297,19 @@ class Site(unittest.TestCase):
         parking = rect_of(next(s for s in self.areas['admin']['structures'] if s['id'] == 'admin_parking'))
         self.assertGreaterEqual(sum(1 for p in self.plants if p[1] == 'date_palm' and dist_rect((p[2], p[3]), parking) < 8), 4)
 
-    def test_the_camp_and_its_road_are_fenced(self):
-        """The country beyond the wall has no ground to walk on: the camp's fence goes all round it, open only where
-        the road comes in between the road's own fences, which run to the boundary wall."""
+    def test_the_camp_and_its_road_are_walled(self):
+        """The country beyond the wall has no ground to walk on: the camp's wall goes all round it, open only where
+        the road comes in between the road's own walls, which run to the boundary wall."""
         def fence_pts(a, sid):
             s = next(x for x in self.areas[a]['structures'] if x['id'] == sid)
             return [(s['at'][0] + q[0], s['at'][1] + q[1]) for q in s['params']['route']]
-        camp = fence_pts('camp', 'camp_fence_s')
+        camp = fence_pts('camp', 'camp_wall')
         (x0, y0), (x1, y1) = self.areas['camp']['bounds']
         self.assertEqual(camp[0], (x1, 10.5))
         self.assertEqual(camp[-1], (x1, 29.5))
         for a, b in zip(camp, camp[1:]):
             self.assertTrue(abs(a[0] - b[0]) < 1e-9 or abs(a[1] - b[1]) < 1e-9)
-        for sid, y in (('rw_fence_s', 10.5), ('rw_fence_n', 29.5)):
+        for sid, y in (('rw_wall_s', 10.5), ('rw_wall_n', 29.5)):
             pts = fence_pts('road_west', sid)
             self.assertEqual({p[1] for p in pts}, {y})
             self.assertEqual(sorted(p[0] for p in pts), [x1, site_areas.WALL_X])

@@ -9,7 +9,7 @@ Planting follows SITE.md §4: every plant has a purpose. Date palms shade the wa
 the south, of an east-west walkway), the mess hall's court and the admin entrance and parking; oleander hedges keep the
 dust of the roads off the walkways and screen the parking from the blocks, never by the mess hall or where food is
 (oleander is poisonous); bougainvillea shades the blocks' porches and the covered walkway's posts; saltbush and caper
-hold the bare ground by doors; tamarisk rows are the windbreak along the camp's west and north fence (the boundary
+hold the bare ground by doors; tamarisk rows are the windbreak along the camp's west and north wall (the boundary
 wall's windbreak is the builder's, apps/plant3d/builder/site.gd). Gravel and compacted soil between, no lawn.
 Everything is invented (R1) and generic: prefabricated single-storey blocks in light sand tones, neutral colours."""
 import math
@@ -67,9 +67,12 @@ def plant1(sid, species, at, height=0):
     return st(sid, 'planting', [at[0], at[1], 0], params=p)
 
 
-def fence(sid, pts, height=2.4):
+def wall(sid, pts, height=2.4):
+    """A precast concrete wall along plan points (the camp's perimeter, the road corridor's sides): solid, a coping on
+    top; a fence's palisade, a pale every 0.2 m, was 165,000 vertices round the camp."""
     x0, y0 = pts[0]
-    return st(sid, 'fence', [x0, y0, 0], params={'route': [[r3(x - x0), r3(y - y0), 0] for x, y in pts], 'height': height})
+    return st(sid, 'wall', [x0, y0, 0], params={'route': [[r3(x - x0), r3(y - y0), 0] for x, y in pts], 'height': height,
+                                                 'thickness': 0.2})
 
 
 def kerb(sid, a, b, painted=True):
@@ -335,9 +338,10 @@ def road_west():
     s = [box_road('rw_road', x0, ROAD_Y[0], x1, ROAD_Y[1], kks='00UZA30'),
          box_road('rw_walk', x0, WALK_Y[0], x1, WALK_Y[1], 'concrete'),
          kerb('rw_kerb_s', [x0, ROAD_Y[0]], [x1, ROAD_Y[0]]), kerb('rw_kerb_n', [x0, ROAD_Y[1]], [x1, ROAD_Y[1]]),
-         # the corridor between the camp and the plant is fenced on both sides (the country is not walkable)
-         fence('rw_fence_s', [(x0, 10.5), (x1, 10.5)]), fence('rw_fence_n', [(x0, 29.5), (x1, 29.5)]),
-         # an oleander hedge between the walkway and the north fence: the dust off the road and the country
+         # the corridor between the camp and the plant is walled on both sides, low enough to see over (the country
+         # is not walkable)
+         wall('rw_wall_s', [(x0, 10.5), (x1, 10.5)], 1.2), wall('rw_wall_n', [(x0, 29.5), (x1, 29.5)], 1.2),
+         # an oleander hedge between the walkway and the north wall: the dust off the road and the country
          row('rw_oleander', 'oleander', (x0 + 2, 26.0), (x1 - 2, 26.0))]
     s += palms_along('rw_palm', x0 + 4, x1 - 4, (VERGE_Y[0] + VERGE_Y[1]) / 2, 8)
     s += lamps('rw_lamp', x0 + 6, x1 - 6, 24, y=11.2)
@@ -380,14 +384,14 @@ def camp():
          box_road('camp_walk', spine_w, WALK_Y[0], x1, WALK_Y[1], 'concrete'),
          kerb('camp_kerb_s1', [spine_w, ROAD_Y[0]], [-272, ROAD_Y[0]]), kerb('camp_kerb_s2', [-266, ROAD_Y[0]], [x1, ROAD_Y[0]]),
          kerb('camp_kerb_n', [spine_w, ROAD_Y[1]], [x1, ROAD_Y[1]]),
-         # the camp's fence (the gate at its east side, where the road comes in) and the gate itself
-         fence('camp_fence_s', [(x1, 10.5), (x1 - 0.5, 10.5), (x1 - 0.5, y0 + 0.5), (x0 + 0.5, y0 + 0.5),
-                                (x0 + 0.5, y1 - 0.5), (x1 - 0.5, y1 - 0.5), (x1 - 0.5, 29.5), (x1, 29.5)]),
+         # the camp's perimeter wall (the gate at its east side, where the road comes in) and the gate itself
+         wall('camp_wall', [(x1, 10.5), (x1 - 0.5, 10.5), (x1 - 0.5, y0 + 0.5), (x0 + 0.5, y0 + 0.5),
+                            (x0 + 0.5, y1 - 0.5), (x1 - 0.5, y1 - 0.5), (x1 - 0.5, 29.5), (x1, 29.5)]),
          st('camp_gate_booth', 'guard_booth', [-265.5, 26.5, 0]),
          st('camp_gate_barrier', 'barrier', [-266, 11.4, 0], 270, params={'width': 7.4}),
          st('camp_crossing', 'crossing', [-340, 15.5, 0], 90, params={'width': 7, 'length': 2.5}),
          ]
-    # the windbreak: two staggered rows of tamarisk inside the west and north fence (the shamal blows from the
+    # the windbreak: two staggered rows of tamarisk inside the west and north walls (the shamal blows from the
     # north-west, with its dust)
     for k, off in enumerate((3.0, 5.5)):
         sh = 1.25 * k
