@@ -8,6 +8,7 @@ from ref import crypto2 as C
 SHARE_PURPOSE = 'kks-person-secret'
 MAX_SECRETS = 32
 MAX_LISTED = 64
+MAX_PROOFS = 16
 
 
 def pair_commit(dev, to, box, nonce):
@@ -31,14 +32,15 @@ def write_secret(secrets, retired=()):
 
 
 def share_plain(person, sender, to, secrets, holders=(), removed=(), retired=()):
-    """secrets = [(k, made)] in write order, at most 32; holders, removed: device IDs; retired: SHA-256 hex; at most
-    64 each."""
+    """secrets = [(k, made)] in write order, at most 32; holders: device IDs, at most 64; removed: the revoke entries of
+    removed holders, the latest 16; retired: the
+    sender's retired SHA-256 hex, of which the share lists those among the secrets it sends."""
     ordered = sorted(secrets, key=lambda s: (hashlib.sha256(s[0]).hexdigest() in retired, -s[1],
                                              hashlib.sha256(s[0]).hexdigest()))[:MAX_SECRETS]
     return {'person': person, 'from': sender, 'to': to,
             'secrets': [{'k': P.b64u(k), 'made': made} for k, made in ordered],
-            'holders': list(holders)[:MAX_LISTED], 'removed': list(removed)[:MAX_LISTED],
-            'retired': list(retired)[-MAX_LISTED:]}
+            'holders': list(holders)[:MAX_LISTED], 'removed': list(removed)[-MAX_PROOFS:],
+            'retired': [h for h in (hashlib.sha256(k).hexdigest() for k, _ in ordered) if h in retired]}
 
 
 def share_seal(box_key_str, plain, eph=None, nonce=None):
@@ -74,12 +76,13 @@ def share_take(box_private, sealed, author, me, person):
         if len(k) != 32:
             return None
         got.append((k, made))
-    lists = []
-    for field in ('holders', 'removed'):
-        ids = o[field][:MAX_LISTED]
-        if not all(isinstance(x, str) and P.PEER_RE.fullmatch(x) for x in ids):
-            return None
-        lists.append(ids)
+    holders = o['holders'][:MAX_LISTED]
+    if not all(isinstance(x, str) and P.PEER_RE.fullmatch(x) for x in holders):
+        return None
+    removed = o['removed'][:MAX_PROOFS]          # revoke entries; the receiver checks each against its own log
+    if not all(isinstance(x, dict) for x in removed):
+        return None
+    lists = [holders, removed]
     retired = o['retired'][:MAX_LISTED]
     if not all(isinstance(x, str) and P.HEX64_RE.fullmatch(x) for x in retired):
         return None

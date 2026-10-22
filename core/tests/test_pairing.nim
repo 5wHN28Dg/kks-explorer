@@ -25,7 +25,7 @@ suite "pairing vectors (v2-pairing.json)":
                           var r: seq[SecretRec]
                           for x in s["plaintext"]["secrets"].elems: r.add (unb64u(x["k"].s), x["made"].i)
                           r,
-                        @[s["plaintext"]["holders"][0].s], @[s["plaintext"]["removed"][0].s],
+                        @[s["plaintext"]["holders"][0].s], @[s["plaintext"]["removed"][0]],
                         @[s["plaintext"]["retired"][0].s])
     check hex(canonical(pt).toBytes) == s["plaintext_bytes_hex"].s
     let eph2 = PrivateKey(scalar: unhex(s["eph_private_scalar_hex"].s), pub: P.publicKey(s["sealed"]["epk"].s))
@@ -33,7 +33,7 @@ suite "pairing vectors (v2-pairing.json)":
     let (ok, got) = P.takeShare(box, s["sealed"], s["plaintext"]["from"].s, s["plaintext"]["to"].s,
                                 s["plaintext"]["person"].s)
     check ok and got.secrets.len == 2 and got.secrets[0].made == 7000
-    check got.holders == @[s["plaintext"]["holders"][0].s] and got.removed == @[s["plaintext"]["removed"][0].s]
+    check got.holders == @[s["plaintext"]["holders"][0].s] and got.removedProofs == @[s["plaintext"]["removed"][0]]
 
   test "taking shares in: only a well-formed share for this person and device gives anything":
     let box = privateKeyFromHex(V["share"]["box_private_scalar_hex"].s, V["share"]["box_key"].s)
@@ -46,7 +46,7 @@ suite "pairing vectors (v2-pairing.json)":
         check ok and got.secrets.len == t["secrets"].len
         for i, x in t["secrets"].elems:
           check hex(got.secrets[i].k) == x["k_hex"].s and got.secrets[i].made == x["made"].i
-        check got.holders.len == t["holders"].len and got.removed.len == t["removed"].len and
+        check got.holders.len == t["holders"].len and got.removedProofs.len == t["removed"].len and
               got.retired.len == t["retired"].len
 
   test "pairing codes and commitments":
@@ -363,22 +363,56 @@ suite "removals the server would hide, and a secret from the far future":
     check not sharedToV
     check evil notin @[x.secretsOf(bob)[0], y.secretsOf(bob)[0], z.secretsOf(bob)[0]]
 
-  test "a device a share wrongly named removed is shared to again once the person pairs it again":
-    # y (still trusted) tells z that x was removed although x is live; z stops sharing to x until they pair again
+  test "a share naming a removal without a revoke entry that checks out changes nothing":
+    # y (still trusted) tells z that x was removed, with a forged revoke (x is live): z ignores it
     devs = @[x, y, z]
     round()
     pairBoth(x, z)
+    var forged = copy(y.revocationOf(v.device))
+    forged["body"]["device"] = newStr(x.device)        # the signature no longer matches
     let sealed = P.eciesSeal(y.run.boxKeys[z.device], SharePurpose, canonical(sharePlain(bob, y.device, z.device,
-                             y.secretRecs(bob), @[], @[x.device])).toBytes)
+                             y.secretRecs(bob), @[], @[forged, newObj(@[("type", newStr("revoke"))])])).toBytes)
     discard y.append("secret_share", newObj(@[("to", newStr(z.device)), ("sealed", sealed)]), tick())
     round()
-    check x.device notin z.pairedSet
-    proc toX(): int =
-      for e in z.entries.values:
-        if e["peer"].s == z.device and e["type"].s == "secret_share" and e["body"]["to"].s == x.device: inc result
-    let before = toX()
-    pairBoth(x, z)
-    check x.device in z.pairedSet
-    discard z.addSecrets(bob, @[(P.randomBytes(32), tick())])     # something new to share
+    check x.device in z.pairedSet and x.device notin z.listMeta("removed_holders")
+
+  test "a removed device's secret carried in late by a device that had not heard of the removal never writes":
+    let w = newNode(P, newMemStore(), P.p256Generate())
+    discard hub.append("device_cert", deviceCertBody(w.device, bob, "w"), tick())
+    w.adopt(hub.root)
+    devs = @[w, x, y, z]
     round()
-    check toX() > before                      # z shares to x again
+    pairBoth(w, x)
+    round()
+    # w (to be stolen) shares a far-future secret to x alone, then y removes w
+    let late = P.randomBytes(32)
+    let sealed = P.eciesSeal(w.run.boxKeys[x.device], SharePurpose, canonical(sharePlain(bob, w.device, x.device,
+                             @[(late, MaxInt53)] & w.secretRecs(bob), @[], @[x.revocationOf(v.device)])).toBytes)   # (it knew of v)
+    discard w.append("secret_share", newObj(@[("to", newStr(x.device)), ("sealed", sealed)]), tick())
+    share(w, hub)
+    discard y.ingest(hub.entriesFor(y.vv), tick())
+    discard y.append("revoke", newObj(@[("device", newStr(w.device)), ("last_seq", newInt(w.vv[w.device][0].i))]), tick())
+    discard y.progressTick(tick())
+    share(y, z)
+    discard z.progressTick(tick())
+    let now = z.secretsOf(bob)[0]
+    check now == y.secretsOf(bob)[0] and now notin x.secretsOf(bob)      # y moved to a new secret
+    # x had not heard: it takes w's secret, writes with it, and shares it to z
+    share(w, x)
+    discard x.progressTick(tick())
+    check x.secretsOf(bob)[0] == late
+    share(x, z)
+    discard z.progressTick(tick())
+    check late in z.secretsOf(bob)                 # held, readable
+    check z.secretsOf(bob)[0] == now               # but never written with
+
+  test "a new holder reaches the other paired devices even when no secret is new":
+    let q = newNode(P, newMemStore(), P.p256Generate())
+    discard hub.append("device_cert", deviceCertBody(q.device, bob, "q"), tick())
+    q.adopt(hub.root)
+    devs = @[q, x, y, z]
+    round()
+    check q.secretsOf(bob).len == 0                 # it has saved nothing: it brings no secret
+    pairBoth(q, x)
+    round()
+    check q.device in y.listMeta("holders") and q.device in z.listMeta("holders")

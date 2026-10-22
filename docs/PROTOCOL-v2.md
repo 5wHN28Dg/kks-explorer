@@ -233,7 +233,7 @@ replay only accepts or ignores.
   `kks-report`, `epk` a key string, `nonce` 16 base64url characters, `ct` 22–65 536 base64url characters.
 - **`box_key`:** `key` a key string (§2). **`secret_share`:** `to` a known device (`[A-Za-z0-9_-]{32}`, certified
   earlier), not the author; `sealed` a §20 object with exactly `{v, purpose, epk, nonce, ct}`: `v` 2, `purpose`
-  `kks-person-secret`, `epk` a key string, `nonce` 16 base64url characters, `ct` 22–4 096 base64url characters.
+  `kks-person-secret`, `epk` a key string, `nonce` 16 base64url characters, `ct` 22–65 536 base64url characters.
 - **`pair_commit`, `pair_reveal`:** `to` as for `secret_share`; `commit` 64 lowercase hex; `nonce` 22 base64url
   characters.
 - **`root` and genesis key fields:** `root` in genesis is a key string (§2). `rotate.root` and `backup_key.key` are key
@@ -605,24 +605,33 @@ device is cut, or when its box key changes (pairing again is needed).
 **Sharing:** a device writes a `secret_share` to each device in its paired set:
 - `to` = the paired device, `sealed` = ECIES (§20) to the box key the person confirmed for it, purpose `kks-person-secret`, plaintext
   the canonical JSON of `{"person": P, "from": <the writer's device ID>, "to": <to>, "secrets": [{"k": <32 bytes,
-  base64url>, "made": <int 0 … 2^53 − 1>}, …], "holders": [device IDs], "removed": [device IDs], "retired": [SHA-256
-  hex]}`: the secrets it holds for P in its write order, at most 32; its holders that are not removed; the holders it
-  knows were removed (cut in its replay, or named so by a share it took); its retired secrets, the latest 64; at most
-  64 each.
+  base64url>, "made": <int 0 … 2^53 − 1>}, …], "holders": [device IDs], "removed": [revoke entries], "retired": [SHA-256
+  hex]}`: the secrets it holds for P in its write order, at most 32; its holders that are not removed, at most 64;
+  for each holder it knows was removed (cut in its replay, or proved so by a share it took), the revoke entry that
+  cut it (§3, as stored), the latest 16; which of the secrets sent are retired.
 - Never to a device it knows was removed.
-- When: right after the person confirms a pairing; when it learns or makes a secret, or learns of a removal, the other
-  has not been sent (so secrets spread along pairings: a device paired with A gets, through A, what A got from B).
+- When: right after the person confirms a pairing; when it learns or makes a secret, or learns of a holder or a
+  removal, the other has not been sent (so secrets spread along pairings: a device paired with A gets, through A, what A got from B).
 - A share is only ever written to a device of the writer's own person (authority, §10 table).
 
 **Taking a share in:** a device opens each `secret_share` naming it (§14 `shares`) with its box key, and takes the
 secrets only if all of these hold, otherwise it keeps nothing (and may look again after a later pairing):
 - the entry is valid in replay and its author is in its paired set;
 - the plaintext's `person` is its own person, `from` is the entry's author and `to` is itself;
-- each secret has exactly `k` (32 bytes) and `made` (an integer 0 … 2^53 − 1); `holders` and `removed` hold device
-  IDs, `retired` SHA-256 hex. At most 32 secrets and 64 of each list are read.
+- each secret has exactly `k` (32 bytes) and `made` (an integer 0 … 2^53 − 1); `holders` holds device IDs,
+  `removed` objects, `retired` SHA-256 hex. At most 32 secrets, 64 holders and 16 removed entries are read.
 
-It then adds the secrets, the author and the share's holders and removed devices to its holders, the removed ones
-to the devices it knows were removed (it drops them from its paired set), and the retired ones to its retired set.
+A removed entry counts only if it checks out against this device's own log: it verifies against its author's chain
+key, is of type `revoke`, names a device of this person other than this one, and its author is certified here, not
+cut, and may revoke that device under §10 (the manager, a device of the same person, an admin for a user's device). A
+forged removal therefore changes nothing; one signed by an own device is a real revocation, which that device could
+write to the log anyway.
+
+It then adds the secrets, the author and the share's holders and proved removals to its holders, the proved removals
+to the devices it knows were removed (it drops them from its paired set and takes nothing more from them), and the
+retired ones to its retired set. A share that does not prove every removal this device already knows of may carry a
+removed device's secret it took before it heard: the secrets it brings that are new here come in retired (readable,
+never written with).
 
 A device paired with nobody, such as one the server certified on its own, receives nothing; the secrets it shares are
 ignored, so it cannot make anyone write with a key it knows.

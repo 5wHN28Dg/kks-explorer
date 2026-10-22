@@ -17,7 +17,9 @@ const
   HoldersMeta = "holders"           ## the devices known to hold this person's secrets (paired, or named by a paired
                                     ## device's share): [device ID, …]
   RetiredMeta = "retired_secrets"   ## SHA-256 hex of secrets a rotation retired from writing (still read): [hex, …]
-  RemovedMeta = "removed_holders"   ## holders a paired device's share said were removed: [device ID, …]
+  RemovedMeta = "removed_holders"   ## holders a paired device's share proved removed: [device ID, …]
+  ProofsMeta = "removed_proofs"     ## the revoke entries that prove them: {device: entry}
+  MaxProofs* = 16                   ## revoke entries a share carries
   MaxListed* = 64                   ## device IDs in a share's holders and removed
   SentMeta = "shares_sent"          ## {device: {"box": key string, "sent": [secret SHA-256 hex, …]}}
   TakenMeta = "shares_taken"        ## secret_share entry IDs already taken in: [entry ID, …]
@@ -164,7 +166,7 @@ proc stepIds(n: Node, d, typ: string): seq[(string, JNode)] =
 proc stepsFrom(n: Node, d, typ: string): seq[JNode] =
   for (_, b) in n.stepIds(d, typ): result.add b
 
-proc listMeta(n: Node, key: string): seq[string] =
+proc listMeta*(n: Node, key: string): seq[string] =
   for x in n.metaJson(key, newArr()).elems:
     if x.isStr: result.add x.s
 
@@ -188,7 +190,9 @@ proc attempts(n: Node): JNode =
 
 type Share* = object
   secrets*: seq[SecretRec]
-  holders*, removed*: seq[string]    ## devices the sender knows hold the secrets, and holders it knows were removed
+  holders*: seq[string]              ## devices the sender knows hold the secrets
+  removedProofs*: seq[JNode]         ## the revoke entries of holders it knows were removed (checked by the receiver)
+  removed*: seq[string]              ## the devices those proofs proved removed (filled in by the receiver)
   retired*: seq[string]              ## SHA-256 hex of the secrets a rotation retired from writing
 
 proc takeShare*(p: Provider, box: PrivateKey, sealed: JNode, author, me, person: string): (bool, Share) =
@@ -212,11 +216,14 @@ proc takeShare*(p: Provider, box: PrivateKey, sealed: JNode, author, me, person:
       let k = unb64u(s["k"].s)
       if k.len != 32: return
       got.secrets.add (k, s["made"].i)
-    for (field, dest) in [("holders", addr got.holders), ("removed", addr got.removed)]:
-      for i, x in o[field].elems:
-        if i >= MaxListed: break
-        if not isPeer(if x.isStr: x.s else: ""): return
-        dest[].add x.s
+    for i, x in o["holders"].elems:
+      if i >= MaxListed: break
+      if not isPeer(if x.isStr: x.s else: ""): return
+      got.holders.add x.s
+    for i, x in o["removed"].elems:
+      if i >= MaxProofs: break
+      if x.kind != jObj: return
+      got.removedProofs.add x
     for i, x in o["retired"].elems:
       if i >= MaxListed: break
       if not (x.isStr and isHex64(x.s)): return
@@ -225,7 +232,7 @@ proc takeShare*(p: Provider, box: PrivateKey, sealed: JNode, author, me, person:
   except CatchableError:
     (false, Share())
 
-proc sharePlain*(person, sender, to: string, secrets: seq[SecretRec], holders, removed: seq[string],
+proc sharePlain*(person, sender, to: string, secrets: seq[SecretRec], holders: seq[string], removed: seq[JNode],
                  retired: seq[string] = @[]): JNode =
   ## the share's plaintext: the secrets in write order (newest first), at most 32; the devices the sender knows hold
   ## them and those it knows were removed, at most 64 each
@@ -239,10 +246,31 @@ proc sharePlain*(person, sender, to: string, secrets: seq[SecretRec], holders, r
     let start = if newest: max(0, v.len - MaxListed) else: 0
     for i in start ..< min(v.len, start + MaxListed): result.elems.add newStr(v[i])
   newObj(@[("person", newStr(person)), ("from", newStr(sender)), ("to", newStr(to)), ("secrets", a),
-           ("holders", ids(holders)), ("removed", ids(removed)), ("retired", ids(retired, newest = true))])
+           ("holders", ids(holders)), ("removed", newArr(removed[0 ..< min(removed.len, MaxProofs)])),
+           ("retired", ids(retired, newest = true))])
 
 proc saveProgress*(n: Node, course: string, data: OrderedTable[string, string], wall: int64): JNode
 proc loadProgress*(n: Node, person: string): OrderedTable[string, OrderedTable[string, string]]
+
+proc provesRemoval*(n: Node, e: JNode, me: string): (bool, string) =
+  ## A share's revoke entry: does it, checked against this device's own log, cut a device of this person? Signed in
+  ## its author's chain, of type revoke, by an author that is certified here, not cut, and may revoke that device
+  ## (the rule replay applies: the manager, a device of the same person, or an admin for a user's device).
+  if n.run == nil or e == nil or e.kind != jObj: return
+  try:
+    let peer = if e.get("peer") != nil and e["peer"].kind == jStr: e["peer"].s else: ""
+    let key = n.chainKey(peer)
+    if key.len == 0: return
+    n.p.verifyEntry(e, key)
+    if e["type"].s != "revoke" or e["body"].kind != jObj or e["body"].get("device") == nil or
+       e["body"]["device"].kind != jStr: return
+    let target = e["body"]["device"].s
+    if target notin n.run.devices or n.run.devices[target]["person"].s != me or target == n.device: return
+    if peer notin n.run.devices or peer in n.run.cuts: return
+    let person = n.run.devices[peer]["person"].s
+    let role = n.run.role(person)
+    if role == "manager" or person == me or (role == "admin" and n.run.role(me) == "user"): return (true, target)
+  except CatchableError: discard
 
 proc pairSteps(n: Node, wall: int64): int =
   ## §17 pairing, the steps that need no person: reveal this device's nonce once the other device's fresh commitment
@@ -315,8 +343,16 @@ proc progressTick*(n: Node, wall: int64): int =
       paired.del e["peer"].s
       n.setPaired(paired)
       continue
-    let (ok, got) = n.p.takeShare(box, e["body"]["sealed"], e["peer"].s, n.device, me)
+    var (ok, got) = n.p.takeShare(box, e["body"]["sealed"], e["peer"].s, n.device, me)
     if ok:
+      var proofs = n.metaJson(ProofsMeta, newObj())
+      if proofs.kind != jObj: proofs = newObj()
+      for pe in got.removedProofs:
+        let (proven, d) = n.provesRemoval(pe, me)
+        if proven and d notin got.removed:
+          got.removed.add d
+          if proofs.get(d) == nil: proofs[d] = pe
+      if got.removed.len > 0: n.store.setMeta(ProofsMeta, toText(proofs))
       # a removal this device has not acted on: everything it holds is retired but what the share brings unretired
       # (a secret a removed device shared to this device alone must not keep writing)
       let rotatedNow = n.listMeta(RotatedMeta)
@@ -337,6 +373,22 @@ proc progressTick*(n: Node, wall: int64): int =
         n.setList(RotatedMeta, rotatedNow & news)
         for d in news: paired.del d
         n.setPaired(paired)
+      # a share that does not know every removal this device knows of may carry a removed device's secret (one it
+      # took before it heard): what it brings that is new here comes in retired, readable but never written with
+      var known = n.listMeta(RotatedMeta)
+      for d in n.listMeta(RemovedMeta):
+        if d notin known: known.add d
+      var behind = false
+      for d in known:
+        if d notin got.removed: behind = true
+      if behind:
+        var held: seq[string]
+        for r in n.secretRecs(me): held.add hex(n.p.sha256(r.k))
+        var late: seq[string]
+        for r in got.secrets:
+          let h = hex(n.p.sha256(r.k))
+          if h notin held: late.add h
+        n.addListed(RetiredMeta, late)
       discard n.addSecrets(me, got.secrets)
       n.addListed(HoldersMeta, @[e["peer"].s] & got.holders & got.removed)
       n.addListed(RemovedMeta, got.removed)
@@ -384,6 +436,16 @@ proc progressTick*(n: Node, wall: int64): int =
   var sent = n.metaJson(SentMeta, newObj())
   if sent.kind != jObj: sent = newObj()
   let removedAll = n.listMeta(RotatedMeta) & n.listMeta(RemovedMeta)
+  var proofList: seq[JNode]             # the revoke entries behind them, newest removals last (at most 16 sent)
+  let stored = n.metaJson(ProofsMeta, newObj())
+  for x in removedAll:
+    let pe = if stored.kind == jObj and stored.get(x) != nil: stored[x] else: n.revocationOf(x)
+    if pe != nil: proofList.add pe
+  if proofList.len > MaxProofs: proofList = proofList[^MaxProofs .. ^1]
+  var sentRetired: seq[string]          # the retired ones among the secrets sent (at most 32: none left out)
+  let retiredHere = n.listMeta(RetiredMeta)
+  for i, r in recs:
+    if i < MaxSecrets and hex(n.p.sha256(r.k)) in retiredHere: sentRetired.add hex(n.p.sha256(r.k))
   var holders: seq[string]
   for d in n.listMeta(HoldersMeta):
     if d notin removedAll: holders.add d
@@ -405,16 +467,24 @@ proc progressTick*(n: Node, wall: int64): int =
           if x.isStr: told.add x.s
       for x in removedAll:
         if x notin told: need = true      # a removal it has not been told about
+      var toldHolders: seq[string]
+      if prev.get("holders") != nil and prev["holders"].kind == jArr:
+        for x in prev["holders"].elems:
+          if x.isStr: toldHolders.add x.s
+      for x in holders:
+        if x notin toldHolders: need = true      # a holder it has not been told about (it must rotate for it too)
     if not need: continue
     let sealed = n.p.eciesSeal(theirBox, SharePurpose,
-                               canonical(sharePlain(me, n.device, d, recs, holders, removedAll,
-                                                    n.listMeta(RetiredMeta))).toBytes)
+                               canonical(sharePlain(me, n.device, d, recs, holders, proofList,
+                                                    sentRetired)).toBytes)
     discard n.append("secret_share", newObj(@[("to", newStr(d)), ("sealed", sealed)]), wall)
     var a = newArr()
     for s in shas: a.elems.add newStr(s)
     var rm = newArr()
     for x in removedAll: rm.elems.add newStr(x)
-    sent[d] = newObj(@[("box", newStr(theirBox)), ("sent", a), ("removed", rm)])
+    var hs = newArr()
+    for x in holders: hs.elems.add newStr(x)
+    sent[d] = newObj(@[("box", newStr(theirBox)), ("sent", a), ("removed", rm), ("holders", hs)])
     n.store.setMeta(SentMeta, toText(sent))
     inc result
 

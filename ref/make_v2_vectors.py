@@ -605,8 +605,9 @@ def pairing_file():
     ks = P.key_string
     s1, s2 = bytes(range(32)), bytes(range(100, 132))
     plain = G2.share_plain(B, W.peer('bob-phone'), W.peer('bob-tablet'), [(s1, 5000), (s2, 7000)],
-                           holders=[W.peer('bob-laptop')], removed=[W.peer('bob-old')],
-                           retired=[hashlib.sha256(bytes(range(200, 232))).hexdigest()])
+                           holders=[W.peer('bob-laptop')],
+                           removed=[{'note': 'a revoke entry (§3); the receiver checks it against its own log'}],
+                           retired=[hashlib.sha256(s1).hexdigest()])
     sealed = G2.share_seal(ks(box_tablet2), plain, eph=W.key('share-eph'), nonce=bytes(range(12)))
     W.genesis('mgr-laptop', 1000, M, 'hashim', 'Hashim M')
     W.w('mgr-laptop', 1100, 'person', person(A, 'ali', 'Ali Admin', 'admin'))
@@ -626,7 +627,7 @@ def pairing_file():
     W.w('bob-phone', 1420, 'secret_share', {'to': W.peer('bob-phone'), 'sealed': sealed})
     W.w('bob-phone', 1430, 'secret_share', {'to': W.peer('nobody'), 'sealed': sealed})
     W.w('bob-phone', 1440, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'purpose': 'kks-report'}})
-    W.w('bob-phone', 1450, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'ct': 'A' * 4097}})
+    W.w('bob-phone', 1450, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'ct': 'A' * 65_537}})
     W.w('bob-phone', 1460, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'v': True}})
     W.w('bob-phone', 1470, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'extra': 1}})
     W.w('bob-phone', 1480, 'secret_share', {'to': W.peer('bob-tablet')})
@@ -649,7 +650,7 @@ def pairing_file():
         'box_keys: bob-phone, bob-tablet its second key (the latest counts), ali-phone (anyone certified, about itself)',
         'shares: bob-tablet gets bob-phone\'s valid share at 1400 only',
         'bad_body: a key that is no point, an extra body key, a share to another person (not_allowed), to itself, to an '
-        'unknown device, purpose not kks-person-secret, ct over 4 096, v not the integer 2, an extra sealed key, a '
+        'unknown device, purpose not kks-person-secret, ct over 65 536, v not the integer 2, an extra sealed key, a '
         'missing sealed',
         'not_allowed: bob-phone to ali-phone, the manager to bob-tablet (another person, even for the manager), '
         'bob-tablet\'s pair_commit to ali-phone',
@@ -688,6 +689,7 @@ def pairing_file():
         take('made 2^53 - 1: the largest allowed', {**plain, 'secrets': [sec(s1, 2 ** 53 - 1)]}, n=16),
         take('a holder that is no device ID', {**plain, 'holders': ['x']}, n=17),
         take('removed not a list', {**plain, 'removed': 'x'}, n=18),
+        take('a removed proof that is not an object', {**plain, 'removed': ['x']}, n=22),
         take('no holders field', {k: v for k, v in plain.items() if k != 'holders'}, n=19),
         take('a retired entry that is no SHA-256 hex', {**plain, 'retired': ['ABC']}, n=21),
         take('70 holders: only the first 64 are read', {**plain, 'holders': [W.peer('h%d' % i) for i in range(70)]}, n=20),

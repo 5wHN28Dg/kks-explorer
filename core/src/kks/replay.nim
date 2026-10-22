@@ -713,7 +713,7 @@ proc tSecretShare(r: Run, e: JNode, eid, author: string) =
   need(s["v"].kind == jInt and s["v"].i == 2 and s["purpose"].isStr and s["purpose"].s == "kks-person-secret")
   need(isB64u(s["epk"]) and s["epk"].s.len == 87)
   need(isB64u(s["nonce"]) and s["nonce"].s.len == 16)
-  need(isB64u(s["ct"]) and s["ct"].s.len in 22..4096)
+  need(isB64u(s["ct"]) and s["ct"].s.len in 22..65_536)
   need(r.devices[b["to"].s]["person"].s == author, "not_allowed")
   r.shares.mgetOrPut(b["to"].s, @[]).add eid
 

@@ -399,7 +399,7 @@ class _Run:
         _need(s['v'] == 2 and type(s['v']) is int and s['purpose'] == 'kks-person-secret')
         _need(_match(P.KEYSTR_RE, s['epk']))
         _need(_match(B64U_RE, s['nonce']) and len(s['nonce']) == 16)
-        _need(_match(B64U_RE, s['ct']) and 22 <= len(s['ct']) <= 4096)
+        _need(_match(B64U_RE, s['ct']) and 22 <= len(s['ct']) <= 65_536)
         _need(self.devices[b['to']]['person'] == author, 'not_allowed')
         self.shares.setdefault(b['to'], []).append(eid)
 
