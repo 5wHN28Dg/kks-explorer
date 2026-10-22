@@ -3,13 +3,31 @@
 ## input actions (app/controls.gd) or, for scripted walks and tests, by `drive` and `aim` (app/autopilot.gd).
 extends CharacterBody3D
 
+const Controls = preload("res://app/controls.gd")
+
 enum Mode { WALK, FLY, CLIMB }
+const MOVE_ACTIONS := ["move_forward", "move_back", "move_left", "move_right"]
 
 const RADIUS := 0.3
 const HEIGHT := 1.8
 const EYE := 1.65
-const WALK_SPEED := 1.6        # m/s (a brisk walk on a plant)
-const RUN_SPEED := 4.0
+## Gait (the user, 2026-10-22: "walk or run, like real life"). A stick or a touch stick is analogue: pushed a little
+## it steps slowly, at WALK_PUSH it walks at the pace, all the way it jogs; the run modifier (Shift, the left stick's
+## click) runs. Keys are not analogue: they walk at the pace, and run with the modifier.
+const SLOW_SPEED := 0.5        # m/s: a stick pushed just past its dead zone, a careful step
+const WALK_SPEED := 1.4        # m/s: a normal walk (the default pace)
+const JOG_SPEED := 3.0         # m/s: a stick pushed all the way
+const RUN_SPEED := 4.0         # m/s: running (the run modifier)
+const WALK_PUSH := 0.75        # the stick's push that walks at the pace; beyond it the walk becomes a jog
+const PACES := {"slow": 1.1, "normal": WALK_SPEED, "brisk": 1.7}   # the settings' pace (app/hud.gd)
+const STAIR_WALK := 0.8        # m/s in plan at most on a stair, walking, and running
+const STAIR_RUN := 1.4
+const STAIR_NORMAL_Y := 0.97   # a floor steeper than about 14 degrees is a stair (stairs are slopes of about 33)
+const ACCEL := 4.0             # m/s2 speeding up on a floor (0 to a walk in a third of a second, to a run in one)
+const DECEL := 10.0            # m/s2 slowing down or turning (a run stops within a metre)
+const AIR_ACCEL := 2.0         # m/s2 off the floor
+const BOB_Y := 0.012           # m: the eye's dip at each step at a walk (twice that at most), and its sway
+const BOB_X := 0.008
 const FLY_SPEED := 8.0
 const FLY_FAST := 30.0
 const CLIMB_SPEED := 0.8       # m/s on a ladder
@@ -28,6 +46,22 @@ var scripted := false
 var drive := Vector2.ZERO
 var aim := NAN
 var run := false
+## Scripted: the most the walker may go now (the autopilot slows before a corner and at the route's end)
+var speed_cap := INF
+## The settings (app/hud.gd): the pace keys walk at and a stick walks at WALK_PUSH; the run modifier toggles (an
+## accessibility setting: no key to hold) rather than acting while held
+var pace := WALK_SPEED
+var run_toggle := false
+## Head bob while walking: off with reduced motion (ui/plant_ui.gd)
+var bob := true
+var on_stair := false            # the floor underfoot in the last move is a stair
+var _run_latched := false        # run_toggle: the modifier pressed once (until pressed again or the walker stops)
+var _latched_moved := false
+var _bob_phase := 0.0
+## The walk's own speed in plan (what the legs do), smoothed by ACCEL and DECEL. `velocity` is what move_and_slide left
+## of it: kept apart, a walker pushing along a wall or a handrail slides on at the slide's share of its speed instead
+## of starting again from what the wall left
+var _move := Vector2.ZERO
 ## The lowest the feet have been (tests: nobody falls through)
 var lowest_y := INF
 ## Off while the map or the settings have the controls (they read the same actions)
@@ -57,6 +91,9 @@ func _ready() -> void:
 	floor_snap_length = 0.45
 	floor_constant_speed = true
 	floor_block_on_wall = true
+	# a walker pushing into a wall or a handrail at a slant slides along it at the slant's share of its speed, however
+	# small the slant (Godot's default stops it below 15 degrees; the walk's own speed, _move, keeps pushing)
+	wall_min_slide_angle = 0.0
 	max_slides = 6
 
 func set_heading(yaw: float, pitch := 0.0) -> void:
@@ -74,8 +111,13 @@ func set_mode(m: Mode) -> void:
 		return   # nothing to land on below: keep flying
 	mode = m
 	ladder = null if m != Mode.CLIMB else ladder
-	velocity = Vector3.ZERO
+	halt()
 	mode_changed.emit(mode)
+
+## Stands still at once (a jump, a landing, a run put back).
+func halt() -> void:
+	velocity = Vector3.ZERO
+	_move = Vector2.ZERO
 
 func toggle_fly() -> void:
 	set_mode(Mode.WALK if mode == Mode.FLY else Mode.FLY)
@@ -104,6 +146,39 @@ func _wish() -> Vector2:
 		return Vector2.ZERO
 	return Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 
+## The speed wanted (m/s in plan) for a push (0..1) of the moving controls: analogue (a stick) or not (keys, the
+## autopilot), with or without the run modifier, at a pace.
+static func speed_for(push: float, fast: bool, analogue: bool, at_pace := WALK_SPEED) -> float:
+	if push <= 0.0:
+		return 0.0
+	if not analogue:
+		return RUN_SPEED if fast else at_pace
+	push = minf(push, 1.0)
+	var v := lerpf(SLOW_SPEED, at_pace, push / WALK_PUSH) if push <= WALK_PUSH \
+		else lerpf(at_pace, JOG_SPEED, (push - WALK_PUSH) / (1.0 - WALK_PUSH))
+	return maxf(v, RUN_SPEED * push) if fast else v
+
+## Metres from one footstep to the next at a speed: longer steps the faster (about 2 a second at a walk, 3 running).
+## The footsteps (ui/sound_player.gd) and the head bob follow it.
+static func stride_for(v: float) -> float:
+	return clampf(0.35 + 0.25 * v, 0.45, 1.3)
+
+## Whether a move key is held (keys walk at the pace; a stick's push is analogue). Asked only while moving.
+static func _keys_moving() -> bool:
+	for a in MOVE_ACTIONS:
+		for k in Controls.KEYS[a]:
+			if Input.is_physical_key_pressed(k):
+				return true
+	return false
+
+## Running now: the scripted run, or the modifier held (or toggled on).
+func running() -> bool:
+	if scripted:
+		return run
+	if not input_enabled:
+		return false
+	return _run_latched if run_toggle else Input.is_action_pressed("run")
+
 func _physics_process(delta: float) -> void:
 	if scripted:
 		if not is_nan(aim):
@@ -113,11 +188,16 @@ func _physics_process(delta: float) -> void:
 		if lv.length() > 0.0:
 			look(lv.x * LOOK_RATE * delta, lv.y * LOOK_RATE * delta)
 	var wish := _wish()
-	var fast := run or (not scripted and Input.is_action_pressed("run"))
+	if _run_latched:                  # a toggled run ends when the walker has come to a stop after it
+		if not run_toggle or (wish == Vector2.ZERO and _latched_moved and _move.length() < 0.1):
+			_run_latched = false
+		_latched_moved = _latched_moved or wish != Vector2.ZERO
+	var fast := running()
 	match mode:
 		Mode.FLY: _fly(wish, fast, delta)
 		Mode.CLIMB: _climb(wish, delta)
 		_: _walk(wish, fast, delta)
+	_head_bob(delta)
 	lowest_y = minf(lowest_y, global_position.y)
 
 func _walk(wish: Vector2, fast: bool, delta: float) -> void:
@@ -125,16 +205,44 @@ func _walk(wish: Vector2, fast: bool, delta: float) -> void:
 	var dir := basis_h * Vector3(wish.x, 0, -wish.y)
 	if _take_ladder(dir):
 		return
-	var speed := RUN_SPEED if fast else WALK_SPEED
-	var target := dir * speed
-	var acc := 12.0 if is_on_floor() else 2.0
-	velocity.x = move_toward(velocity.x, target.x, acc * speed * delta)
-	velocity.z = move_toward(velocity.z, target.z, acc * speed * delta)
-	if is_on_floor():
+	var push := minf(wish.length(), 1.0)
+	var target := Vector3.ZERO
+	var floor_now := is_on_floor()
+	on_stair = floor_now and get_floor_normal().y < STAIR_NORMAL_Y
+	if push > 0.0:
+		var speed := speed_for(push, fast, not scripted and not _keys_moving(), pace)
+		if on_stair:
+			speed = minf(speed, STAIR_RUN if fast else STAIR_WALK)
+		if scripted:
+			speed = minf(speed, speed_cap)
+		target = dir.normalized() * speed
+	var to := Vector2(target.x, target.z)
+	var rate := AIR_ACCEL
+	if floor_now:
+		rate = ACCEL if to.length_squared() > _move.length_squared() else DECEL
+	_move = _move.move_toward(to, rate * delta)
+	velocity.x = _move.x
+	velocity.z = _move.y
+	if floor_now:
 		velocity.y = 0.0
 	else:
 		velocity.y -= GRAVITY * delta
 	move_and_slide()
+
+## The eye dips at each step and sways from foot to foot, at the footsteps' rate (stride_for); back to rest
+## when standing, climbing or flying, or with reduced motion.
+func _head_bob(delta: float) -> void:
+	var rest := Vector3(0, EYE, 0)
+	var want := rest
+	var v := Vector2(velocity.x, velocity.z).length()
+	if bob and mode == Mode.WALK and v > 0.2 and is_on_floor():
+		_bob_phase = fmod(_bob_phase + PI * v / stride_for(v) * delta, TAU)
+		var k := minf(v / WALK_SPEED, 2.0)
+		want = Vector3(BOB_X * k * sin(_bob_phase), EYE - BOB_Y * k * absf(sin(_bob_phase)), 0)
+	if pivot.position != want:
+		pivot.position = pivot.position.lerp(want, minf(1.0, 15.0 * delta))
+		if pivot.position.distance_squared_to(want) < 1e-8:
+			pivot.position = want
 
 func _fly(wish: Vector2, fast: bool, delta: float) -> void:
 	var up := 0.0
@@ -172,7 +280,7 @@ func _start_climb(l: Node3D, y: float) -> void:
 	global_position = Vector3(foot.x, y, foot.z)
 	var f: Vector3 = l.get_meta("facing")
 	rotation.y = atan2(-f.x, -f.z)
-	velocity = Vector3.ZERO
+	halt()
 	mode = Mode.CLIMB
 	mode_changed.emit(mode)
 
@@ -200,6 +308,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		look(event.relative.x * mouse_sensitivity, event.relative.y * mouse_sensitivity)
+	elif event.is_action_pressed("run") and run_toggle:
+		_run_latched = not _run_latched
+		_latched_moved = false
 	elif event.is_action_pressed("fly"):
 		toggle_fly()
 	elif event.is_action_pressed("use"):

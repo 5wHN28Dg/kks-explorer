@@ -300,7 +300,7 @@ func toggle_map() -> void:
 func _on_jump(to: Vector3) -> void:
 	player.global_position = to + Vector3.UP * 0.05
 	player.set_mode(Player.Mode.WALK)   # lands on the floor just found
-	player.velocity = Vector3.ZERO
+	player.halt()
 	toggle_map()
 
 func area_at(p: Vector3) -> String:
@@ -384,6 +384,7 @@ var frame_probe: Node   # probe=1: frames.csv, where each frame's time goes (app
 
 func _start_walk() -> void:
 	walk_seconds = float(opts.get("seconds", "600"))
+	player.pace = Player.WALK_SPEED     # a measured walk goes at the same speed on every device, whatever its settings
 	if opts.get("probe", "0") not in ["0", "false", ""]:
 		frame_probe = preload("res://app/frame_probe.gd").new()
 		frame_probe.main = self

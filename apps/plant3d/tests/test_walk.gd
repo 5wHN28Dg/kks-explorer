@@ -3,8 +3,8 @@
 ## on, or doesn't end where the route ends. Physics runs with the headless (dummy) renderer.
 ##   climb, pit      the scripted routes of app/routes.gd: HRSG 1's nine-flight stair tower, its roof and the stack's
 ##                   ladder to +40 and back; the turbine hall's condenser pit stair and back
-##   every stair     up its own path from its foot to its top, and down again
-##   every ladder    up from its foot and down from its top
+##   every stair     up its own path from its foot to its top, and down again, walking, running and at the slow pace
+##   every ladder    up from its foot and down from its top, the same three ways
 ##   every route     the walking directions (app/walk_route.gd, PLANT3D.md §8): from the control room, the path finder
 ##                   reaches every stop of every tour and the equipment of every procedure step with "go": "walk", and
 ##                   the walker follows its routes in the order a trainee meets them, stop after stop, and the
@@ -131,26 +131,35 @@ func stairs_and_ladders(tree: SceneTree) -> Array:
 	var t0 := Time.get_ticks_msec()
 	if plant.manifest.stairs.size() < 7 or plant.manifest.ladders.is_empty():
 		problems.append("the first train has %d stairs and %d ladders, not 7 and 1" % [plant.manifest.stairs.size(), plant.manifest.ladders.size()])
-	for s in plant.manifest.stairs:
-		var up: Array = plant.stair_path(s.id).map(func(p): return {"to": p, "floor": p.y})
-		var down := up.duplicate()
-		down.reverse()
-		await _place(tree, player, up[0].to)
-		# the walker stops within reach of a point in plan: at a flight's end that is on its slope, which starts a going
-		# before the first riser (builder/plant_builder.gd), up to half a metre from the point's height
-		problems.append_array(await _follow(tree, world, player, up, "stair %s up" % s.id, 0.2, 0.5))
-		problems.append_array(await _follow(tree, world, player, down, "stair %s down" % s.id, 0.2, 0.5))
-	for l in plant.manifest.ladders:
-		var foot: Vector3 = plant.v3(l.foot)
-		var ex: Vector3 = plant.v3(l.exit)
-		await _place(tree, player, foot)
-		problems.append_array(await _follow(tree, world, player, [{"ladder": l.id, "dir": "up"}], "ladder %s up" % l.id))
-		if absf(player.global_position.y - ex.y) > 0.2:
-			problems.append("ladder %s up: ended at height %.2f, not at its top %.2f" % [l.id, player.global_position.y, ex.y])
-		problems.append_array(await _follow(tree, world, player, [{"ladder": l.id, "dir": "down"}], "ladder %s down" % l.id))
-		if absf(player.global_position.y - foot.y) > 0.2:
-			problems.append("ladder %s down: ended at height %.2f, not at its foot %.2f" % [l.id, player.global_position.y, foot.y])
-	print("  %d stairs and %d ladders walked both ways in %d ms" % [plant.manifest.stairs.size(), plant.manifest.ladders.size(), Time.get_ticks_msec() - t0])
+	# at a walk, running, and at the slow pace (a scripted walker walks at its pace: app/player.gd speed_for; the
+	# slowest step, a stick just pushed, climbs a flight in tests/test_gait.gd: from a stair's foot, as the route
+	# here comes round a corner past the stair's side, where a walker that slow doesn't drift wide of it)
+	for g in [{"what": "walking", "run": false, "pace": Player.WALK_SPEED}, {"what": "running", "run": true, "pace": Player.WALK_SPEED},
+			{"what": "at the slow pace", "run": false, "pace": Player.PACES.slow}]:
+		player.run = g.run
+		player.pace = g.pace
+		for s in plant.manifest.stairs:
+			var up: Array = plant.stair_path(s.id).map(func(p): return {"to": p, "floor": p.y})
+			var down := up.duplicate()
+			down.reverse()
+			await _place(tree, player, up[0].to)
+			# the walker stops within reach of a point in plan: at a flight's end that is on its slope, which starts a going
+			# before the first riser (builder/plant_builder.gd), up to half a metre from the point's height
+			problems.append_array(await _follow(tree, world, player, up, "stair %s up %s" % [s.id, g.what], 0.2, 0.5))
+			problems.append_array(await _follow(tree, world, player, down, "stair %s down %s" % [s.id, g.what], 0.2, 0.5))
+		for l in plant.manifest.ladders:
+			var foot: Vector3 = plant.v3(l.foot)
+			var ex: Vector3 = plant.v3(l.exit)
+			await _place(tree, player, foot)
+			problems.append_array(await _follow(tree, world, player, [{"ladder": l.id, "dir": "up"}], "ladder %s up %s" % [l.id, g.what]))
+			if absf(player.global_position.y - ex.y) > 0.2:
+				problems.append("ladder %s up %s: ended at height %.2f, not at its top %.2f" % [l.id, g.what, player.global_position.y, ex.y])
+			problems.append_array(await _follow(tree, world, player, [{"ladder": l.id, "dir": "down"}], "ladder %s down %s" % [l.id, g.what]))
+			if absf(player.global_position.y - foot.y) > 0.2:
+				problems.append("ladder %s down %s: ended at height %.2f, not at its foot %.2f" % [l.id, g.what, player.global_position.y, foot.y])
+	player.run = false
+	player.pace = Player.WALK_SPEED
+	print("  %d stairs and %d ladders walked both ways at three gaits in %d ms" % [plant.manifest.stairs.size(), plant.manifest.ladders.size(), Time.get_ticks_msec() - t0])
 	world.free()
 	return problems
 

@@ -1,7 +1,7 @@
 ## What lies over the view: the touch controls (two sticks: move on the left, look on the right, Godot's own
 ## VirtualJoystick driving the same actions as a gamepad's sticks), the buttons (walk/fly, map, use, up and down in
 ## flight, settings), a line saying where the trainee is and how, and the settings panel (the quality tier, with
-## "Automatic" saying what it chose and why, and About: app/about.gd).
+## "Automatic" saying what it chose and why, the walking pace and whether the run key toggles, and About: app/about.gd).
 extends CanvasLayer
 
 const Quality = preload("res://app/quality.gd")
@@ -17,6 +17,8 @@ var updown: Array = []
 var panel: PanelContainer
 var tier_opt: OptionButton
 var touch_opt: OptionButton
+var pace_opt: OptionButton
+var run_toggle_cb: CheckBox
 var tier_note: Label
 var extra: VBoxContainer       # rows the interaction layer adds (ui/plant_ui.gd: instructor mode, motion, sound)
 var settings_box: VBoxContainer
@@ -76,6 +78,7 @@ func setup(m) -> void:
 		ud.add_child(b)
 		updown.append(b)
 	_settings(root)
+	apply_gait()
 	refresh()
 
 func _button(parent: Control, text: String, f: Callable) -> Button:
@@ -126,10 +129,23 @@ func _settings(root: Control) -> void:
 		touch_opt.add_item(s)
 	touch_opt.item_selected.connect(_on_touch)
 	row2.add_child(touch_opt)
+	var row_g := HBoxContainer.new()
+	v.add_child(row_g)
+	var lg := Label.new(); lg.text = "Walking pace  "; row_g.add_child(lg)
+	pace_opt = OptionButton.new()
+	for s in ["Slow", "Normal", "Brisk"]:
+		pace_opt.add_item(s)
+	pace_opt.item_selected.connect(_on_pace)
+	row_g.add_child(pace_opt)
+	run_toggle_cb = CheckBox.new()
+	run_toggle_cb.text = "Run key toggles (no need to hold it)"
+	run_toggle_cb.focus_mode = Control.FOCUS_ALL
+	run_toggle_cb.toggled.connect(_on_run_toggle)
+	row_g.add_child(run_toggle_cb)
 	extra = VBoxContainer.new()
 	v.add_child(extra)
 	var help := Label.new()
-	help.text = "Keyboard: W A S D to walk, Shift to run, mouse to look (click the view), F to fly (Space and C up and down), M for the map, E to open a door or the card of the part in the middle of the view (or click or tap a part), L alarms, P procedures and tours, K pause and run, the full stop to fast-forward, H to the control room and its screens (there: the arrows move between items, Enter opens one, Page Up and Down change screen, + and − zoom), Esc for this panel or to close the top one. Gamepad: sticks, Y fly, Back map, A use, Start settings, D-pad up alarms, left procedures, down pause, right fast-forward, X the control room's screens (D-pad between items, A opens one, LB and RB change screen), B closes a panel."
+	help.text = "Keyboard: W A S D to walk, Shift to run (held, or pressed once with \"Run key toggles\"), mouse to look (click the view), F to fly (Space and C up and down), M for the map, E to open a door or the card of the part in the middle of the view (or click or tap a part), L alarms, P procedures and tours, K pause and run, the full stop to fast-forward, H to the control room and its screens (there: the arrows move between items, Enter opens one, Page Up and Down change screen, + and − zoom), Esc for this panel or to close the top one. Gamepad: the left stick walks (push it a little to step slowly, further to walk, all the way to jog; click it to run), the right one looks, Y fly, Back map, A use, Start settings, D-pad up alarms, left procedures, down pause, right fast-forward, X the control room's screens (D-pad between items, A opens one, LB and RB change screen), B closes a panel."
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size = Vector2(620, 0)
 	v.add_child(help)
@@ -192,6 +208,9 @@ func show_settings(on: bool) -> void:
 		var mode: String = main.cf.get_value("quality", "mode", "auto")
 		tier_opt.selected = ["auto", "full", "lean+vis"].find(mode)
 		touch_opt.selected = ["auto", "on", "off"].find(main.cf.get_value("controls", "touch", "auto"))
+		var pi: int = Player.PACES.keys().find(main.cf.get_value("controls", "pace", "normal"))
+		pace_opt.selected = pi if pi >= 0 else Player.PACES.keys().find("normal")     # as apply_gait: unknown is normal
+		run_toggle_cb.set_pressed_no_signal(main.cf.get_value("controls", "run_toggle", false))
 		tier_note.text = "Now: %s (%s), %s renderer." % [main.tier, main.tier_why, Quality.renderer()]
 
 func _on_tier(i: int) -> void:
@@ -204,6 +223,21 @@ func _on_touch(i: int) -> void:
 	main.cf.set_value("controls", "touch", ["auto", "on", "off"][i])
 	Quality.save(main.cf)
 	refresh()
+
+func _on_pace(i: int) -> void:
+	main.cf.set_value("controls", "pace", Player.PACES.keys()[i])
+	Quality.save(main.cf)
+	apply_gait()
+
+func _on_run_toggle(on: bool) -> void:
+	main.cf.set_value("controls", "run_toggle", on)
+	Quality.save(main.cf)
+	apply_gait()
+
+## The walker's pace and run key from the settings file.
+func apply_gait() -> void:
+	main.player.pace = Player.PACES.get(main.cf.get_value("controls", "pace", "normal"), Player.WALK_SPEED)
+	main.player.run_toggle = main.cf.get_value("controls", "run_toggle", false) == true
 
 func touch_on() -> bool:
 	var t: String = main.cf.get_value("controls", "touch", "auto")
@@ -225,4 +259,6 @@ func refresh() -> void:
 func _process(_d: float) -> void:
 	var p: Vector3 = main.player.global_position
 	var mode: String = ["walking", "flying", "on a ladder"][main.player.mode]
+	if main.player.mode == Player.Mode.WALK and Vector2(main.player.velocity.x, main.player.velocity.z).length() > Player.JOG_SPEED + 0.2:
+		mode = "running"
 	status.text = "%s · %s · x %.0f  y %.0f  +%.1f m · %s" % [main.area_at(p), mode, p.x, -p.z, p.y, main.tier]

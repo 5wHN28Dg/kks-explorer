@@ -1,9 +1,10 @@
 ## The input actions (R7): keyboard and mouse, gamepads (SDL3), and the touch sticks, which drive the same actions as
 ## a gamepad's sticks. Made here rather than in project.godot so that the bindings read as a table.
 ##
-##   move      W A S D / arrows, left stick, the left touch stick
+##   move      W A S D / arrows, left stick, the left touch stick (the sticks are analogue: a slow step to a jog;
+##             keys walk at the settings' pace: app/player.gd speed_for)
 ##   look      mouse (captured: click the view), right stick, the right touch stick
-##   run       Shift, left stick press
+##   run       Shift, left stick press (held; or pressed once each way with the settings' "Run key toggles")
 ##   fly       F, gamepad Y: free flight on and off
 ##   up, down  Space and C, gamepad RB and LB: in flight
 ##   map       M, Tab, gamepad Back: the overview map
