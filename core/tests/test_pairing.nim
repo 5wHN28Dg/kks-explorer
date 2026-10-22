@@ -1,7 +1,7 @@
 ## Course progress between a person's own devices (PROTOCOL-v2 §17, decision 0062): the vectors (pairing code, the
 ## sealed share, which secret writes, hostile shares, the merge), then whole devices: pairing by code, a device the
 ## server certified on its own, offline progress on two devices, a removed device, and what a hub can see.
-import std/[unittest, tables, strutils]
+import std/[unittest, tables, strutils, sequtils]
 import kks/[json, util, crypto, proto, replay, node, plant, progress, extras]
 import testprovider
 import vectors
@@ -416,3 +416,33 @@ suite "removals the server would hide, and a secret from the far future":
     pairBoth(q, x)
     round()
     check q.device in y.listMeta("holders") and q.device in z.listMeta("holders")
+
+  test "more removals than a share can prove: the devices still agree on a fresh secret nobody removed holds":
+    var gone: seq[Node]
+    for i in 0 ..< 20:
+      let g = newNode(P, newMemStore(), P.p256Generate())
+      discard hub.append("device_cert", deviceCertBody(g.device, bob, "old " & $i), tick())
+      gone.add g
+    devs = @[x, y, z]
+    round()
+    var ids: seq[string]
+    for g in gone: ids.add g.device
+    for n in [x, y, z]:            # as if they had all held the secrets once
+      var hs = n.listMeta("holders")
+      for d in ids: hs.add d
+      n.store.setMeta("holders", toText(newArr(hs.mapIt(newStr(it)))))
+    let old = x.secretsOf(bob)
+    for i, g in gone:
+      discard x.append("revoke", newObj(@[("device", newStr(g.device)), ("last_seq", newInt(0))]), tick())
+      if i mod 5 == 4: round()
+    round()
+    let w = x.secretsOf(bob)[0]
+    check w notin old and y.secretsOf(bob)[0] == w and z.secretsOf(bob)[0] == w
+    for n in [x, y, z]:
+      check hex(P.sha256(n.secretsOf(bob)[0])) notin n.listMeta("retired_secrets")
+
+  test "a device whose every secret is retired writes with a fresh one, never an old one":
+    let held = z.secretsOf(bob)
+    z.store.setMeta("retired_secrets", toText(newArr(held.mapIt(newStr(hex(P.sha256(it)))))))
+    discard z.progressTick(tick())
+    check z.secretsOf(bob)[0] notin held

@@ -608,7 +608,8 @@ device is cut, or when its box key changes (pairing again is needed).
   base64url>, "made": <int 0 … 2^53 − 1>}, …], "holders": [device IDs], "removed": [revoke entries], "retired": [SHA-256
   hex]}`: the secrets it holds for P in its write order, at most 32; its holders that are not removed, at most 64;
   for each holder it knows was removed (cut in its replay, or proved so by a share it took), the revoke entry that
-  cut it (§3, as stored), the latest 16; which of the secrets sent are retired.
+  cut it (§3, as stored), each removal once, the 16 with the newest revoke (by `hlc`); which of the secrets sent are
+  retired.
 - Never to a device it knows was removed.
 - When: right after the person confirms a pairing; when it learns or makes a secret, or learns of a holder or a
   removal, the other has not been sent (so secrets spread along pairings: a device paired with A gets, through A, what A got from B).
@@ -631,7 +632,8 @@ It then adds the secrets, the author and the share's holders and proved removals
 to the devices it knows were removed (it drops them from its paired set and takes nothing more from them), and the
 retired ones to its retired set. A share that does not prove every removal this device already knows of may carry a
 removed device's secret it took before it heard: the secrets it brings that are new here come in retired (readable,
-never written with).
+never written with). A share with 16 removed entries is judged only on the known removals whose revoke is no older
+than its oldest entry (it can carry no more). A device whose every secret is retired makes a fresh one.
 
 A device paired with nobody, such as one the server certified on its own, receives nothing; the secrets it shares are
 ignored, so it cannot make anyone write with a key it knows.

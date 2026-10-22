@@ -252,6 +252,23 @@ proc sharePlain*(person, sender, to: string, secrets: seq[SecretRec], holders: s
 proc saveProgress*(n: Node, course: string, data: OrderedTable[string, string], wall: int64): JNode
 proc loadProgress*(n: Node, person: string): OrderedTable[string, OrderedTable[string, string]]
 
+proc hlcOf(e: JNode): (int64, int64) =
+  if e != nil and e.kind == jObj and e.get("hlc") != nil and e["hlc"].kind == jArr and e["hlc"].len == 2:
+    (e["hlc"][0].i, e["hlc"][1].i)
+  else: (0'i64, 0'i64)
+
+proc knownRemovals(n: Node): seq[(string, JNode)] =
+  ## the removals this device knows of (seen cut, or proved by a share), each once, with the revoke entry behind it,
+  ## oldest revoke first
+  let stored = n.metaJson(ProofsMeta, newObj())
+  var seen: seq[string]
+  for d in n.listMeta(RotatedMeta) & n.listMeta(RemovedMeta):
+    if d in seen: continue
+    seen.add d
+    let pe = if stored.kind == jObj and stored.get(d) != nil: stored[d] else: n.revocationOf(d)
+    result.add (d, pe)
+  result.sort(proc (a, b: (string, JNode)): int = cmp(hlcOf(a[1]), hlcOf(b[1])))
+
 proc provesRemoval*(n: Node, e: JNode, me: string): (bool, string) =
   ## A share's revoke entry: does it, checked against this device's own log, cut a device of this person? Signed in
   ## its author's chain, of type revoke, by an author that is certified here, not cut, and may revoke that device
@@ -375,12 +392,14 @@ proc progressTick*(n: Node, wall: int64): int =
         n.setPaired(paired)
       # a share that does not know every removal this device knows of may carry a removed device's secret (one it
       # took before it heard): what it brings that is new here comes in retired, readable but never written with
-      var known = n.listMeta(RotatedMeta)
-      for d in n.listMeta(RemovedMeta):
-        if d notin known: known.add d
+      # (a full share carries only the newest 16 proofs: it is judged on the removals within its window)
+      var since = (low(int64), low(int64))
+      if got.removedProofs.len >= MaxProofs:
+        since = (high(int64), high(int64))
+        for pe in got.removedProofs: since = min(since, hlcOf(pe))
       var behind = false
-      for d in known:
-        if d notin got.removed: behind = true
+      for (d, pe) in n.knownRemovals:
+        if d notin got.removed and (pe == nil or hlcOf(pe) >= since): behind = true
       if behind:
         var held: seq[string]
         for r in n.secretRecs(me): held.add hex(n.p.sha256(r.k))
@@ -427,6 +446,11 @@ proc progressTick*(n: Node, wall: int64): int =
     for d in gone:
       if d in paired: paired.del d
     n.setPaired(paired)
+  # every secret held is retired (shares that were behind on removals): write with a fresh one, never an old one a
+  # removed device may hold
+  block:
+    let held = n.secretRecs(me)
+    if held.len > 0 and hex(n.p.sha256(held[0].k)) in n.listMeta(RetiredMeta): discard n.newSecret(me, wall)
   # share to each paired device what it has not been sent, sealed to the box key the person confirmed
   let recs = n.secretRecs(me)
   if recs.len == 0: return
@@ -435,11 +459,11 @@ proc progressTick*(n: Node, wall: int64): int =
     if i < MaxSecrets: shas.add hex(n.p.sha256(r.k))
   var sent = n.metaJson(SentMeta, newObj())
   if sent.kind != jObj: sent = newObj()
-  let removedAll = n.listMeta(RotatedMeta) & n.listMeta(RemovedMeta)
-  var proofList: seq[JNode]             # the revoke entries behind them, newest removals last (at most 16 sent)
-  let stored = n.metaJson(ProofsMeta, newObj())
-  for x in removedAll:
-    let pe = if stored.kind == jObj and stored.get(x) != nil: stored[x] else: n.revocationOf(x)
+  let known = n.knownRemovals
+  var removedAll: seq[string]
+  for (d, _) in known: removedAll.add d
+  var proofList: seq[JNode]             # the revoke entries behind them, the newest 16 (by revoke time)
+  for (_, pe) in known:
     if pe != nil: proofList.add pe
   if proofList.len > MaxProofs: proofList = proofList[^MaxProofs .. ^1]
   var sentRetired: seq[string]          # the retired ones among the secrets sent (at most 32: none left out)
@@ -553,6 +577,12 @@ proc confirmPairing*(n: Node, device, code: string, wall: int64) =
   if device in rm or device in ro:
     n.setList(RemovedMeta, rm.filterIt(it != device))
     n.setList(RotatedMeta, ro.filterIt(it != device))
+    var pr = n.metaJson(ProofsMeta, newObj())
+    if pr.kind == jObj and pr.get(device) != nil:
+      var left = newObj()
+      for (k, v) in pr.fields:
+        if k != device: left[k] = v
+      n.store.setMeta(ProofsMeta, toText(left))
   var left = newObj()
   for (k, v) in at.fields:
     if k != device: left[k] = v
