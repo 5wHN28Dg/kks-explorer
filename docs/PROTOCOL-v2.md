@@ -193,8 +193,8 @@ Box coordinates are integers, in tenths of a sheet-image pixel. A body must have
 | `comment` | `{entry, text}`: a note on an entry; changes no state, replay lists it as side output `comments` | anyone certified |
 | `private` | `{person, nonce, ct}` (§13) | a device of that person |
 | `report` | `{sealed}` (§13a) | any certified device |
-| `box_key` | `{key}` (§17, proposed, decision 0062) | any certified device, about itself |
-| `secret_share` | `{to, sealed}` (§17, proposed, decision 0062) | a device of the same person as `to` |
+| `box_key` | `{key}` (§17, decision 0062) | any certified device, about itself |
+| `secret_share` | `{to, sealed}` (§17, decision 0062) | a device of the same person as `to` |
 
 ### 9a. Body rules
 
@@ -541,7 +541,7 @@ A write never happens inside a §15 store transaction. A state not written only 
 - Username and admin rules as in v1: an existing username needs the admin's explicit OK, and only the manager adds
   devices for admins.
 
-## 17. Person secrets between a person's own devices (rewritten 2026-10-22, decision 0062; proposed)
+## 17. Person secrets between a person's own devices (rewritten 2026-10-22, decision 0062)
 
 Goal: a person's own devices share their person secrets (§13); nobody else can read them, **including a server**. The
 server can certify devices for a person (custodial keys, §16 enroll), so "certified for the same person" is not
@@ -588,6 +588,10 @@ secrets only if all of these hold, otherwise it keeps nothing (and may look agai
 
 A device paired with nobody, such as one the server certified on its own, receives nothing; the secrets it shares are
 ignored, so it cannot make anyone write with a key it knows.
+
+**What this does not cover** (the user's choices, 2026-10-22): a browser using the web app is not a device and holds
+no secret; its progress stays in that browser. A person who loses every device loses the secrets, and with them the
+progress: nothing is kept anywhere to recover it.
 
 **A server** is nobody's own device. It writes no `box_key` and no `secret_share`, holds no person secret, and stores
 and relays these entries like any other. The old swap message `{"t":"secrets", …}` (2026-10-03 to 2026-10-22) is

@@ -1,7 +1,8 @@
 # 0062 Course progress follows a person's own devices, sealed so only they can read it
 
 Date 2026-10-22 · Scope: PROTOCOL-v2 §13, §17; the Nim core (progress, replay), the server, every client · Status:
-**proposed: two choices wait for the user** (see "For the user") · Requirement: REQUIREMENTS R8, the user's decision
+**decided by the user, 2026-10-22** (W1, R1, and the
+pairing step with a 6-digit code) · Requirement: REQUIREMENTS R8, the user's decision
 of 2026-10-22: "course progress syncs between a user's own devices, and only that user can read it, not the manager
 and not the server".
 
@@ -67,20 +68,24 @@ Spec: PROTOCOL-v2 §17 (rewritten). In short:
 The cost: every new device needs one pairing with a device the person already has. Until then it keeps its own
 progress, which merges in once the pairing is done.
 
-## For the user (not settled by the docs)
+## The user's choices (2026-10-22)
 
 1. **A person who uses only the web app** (or a browser next to their devices):
-   - **W1 (recommended):** the browser keeps progress in that browser only, as now. Not synced, but the guarantee
+   - **W1 (chosen):** the browser keeps progress in that browser only, as now. Not synced, but the guarantee
      holds.
    - **W2:** the browser pairs like a device: a box key and the secrets in IndexedDB, its shares written through the
      server. Synced, but the guarantee then holds only against stored data and an honest server: a compromised
      server could serve a page that reads the secret. Web-only people would lose that protection, and so would people
      who pair a browser with their phone.
 2. **All of a person's devices are lost** (or wiped):
-   - **R1 (recommended):** the progress is gone. The courses can be done again. Nothing extra to keep.
+   - **R1 (chosen):** the progress is gone. The courses can be done again. Nothing extra to keep.
    - **R2:** a recovery code (26 characters, 128 bits) shown once when the person first saves progress; the secrets,
      sealed under a key derived from it, go in the log. Entering it on a new device restores the progress. The
      server can't guess 128 bits, but whoever finds the written-down code can read the progress.
+3. **The pairing step** with a 6-digit code on both screens: accepted.
+
+So the web app keeps progress in the browser and says so, and nothing is kept anywhere to recover a lost person
+secret.
 
 ## When to revisit
 
