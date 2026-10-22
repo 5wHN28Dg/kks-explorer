@@ -87,15 +87,24 @@ Controls (R7):
 
 - **Keyboard and mouse:** W A S D to walk, Shift to run. Click the view to capture the mouse, then the mouse looks
   around. F flies (Space and C for up and down), M opens the map, E opens a door, Esc shows the settings.
-- **Gamepad:** the sticks walk and look. Y flies, Back opens the map, A opens a door, Start shows the settings, X goes
+- **Gamepad:** the sticks walk and look. The left stick is analogue: pushed a little it steps slowly, about three
+  quarters of the way it walks, all the way it jogs; clicking it runs. Y flies, Back opens the map, A opens a door, Start shows the settings, X goes
   back to the control room.
 - **Touch:** two sticks, Godot's own `VirtualJoystick`, driving the same actions as a gamepad's sticks: move on the
-  left, look on the right. There are buttons for Fly, Map, Use, Settings, and Up and Down while flying.
+  left (analogue, as the gamepad's), look on the right. There are buttons for Fly, Map, Use, Settings, and Up and Down while flying.
 - **The plant (ui/):** E (gamepad A) or a click or tap on a part opens its card; L (D-pad up) the alarms, P (D-pad
   left) procedures and tours, K (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H (X) to the
   control room and its screens, Esc (B) closes the top panel. The bar under the buttons does the same by touch.
 - **The control room screens:** the arrows (D-pad) move between items, Enter (A) opens one, Page Up and Down (LB
   and RB) change screen, + and − zoom; by touch, drag to pan, pinch to zoom, tap to open.
+- **Walking and running** (`app/player.gd`): a slow step 0.5 m/s, a walk 1.4 m/s (the settings' "Walking pace":
+  slow 1.1, normal 1.4, brisk 1.7), a jog 3 m/s (a stick all the way), a run 4 m/s (Shift or the stick's click). Keys
+  walk at the pace. "Run key toggles" in the settings makes Shift and the stick's click switch running on and off
+  (for players who can't hold a key); a toggled run ends when the walker stops. The walker speeds up at 4 m/s² and
+  slows down or turns at 10 m/s². On a stair it goes at most 0.8 m/s in plan walking and 1.4 running; a ladder is
+  climbed at 0.8 m/s whatever the gait. Footsteps follow the speed: longer strides the faster (about 2 a second at a
+  walk, 3 running), softer slow steps and louder running ones. The eye dips and sways in step while walking, unless
+  "Reduced motion" is on. There is no crouching.
 - **Ladders:** walk into a ladder facing it to climb it. To go down, step backwards over the edge at its top.
 - **Map:** drag to pan, use the wheel or pinch to zoom, and right-drag or turn two fingers to rotate. Tap a floor to
   go there.
@@ -274,8 +283,12 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
   ground; the condenser pit's stair; every stair and ladder both ways; and the walking directions: from the control
   room the path finder reaches every tour stop and the equipment of every procedure step with `"go": "walk"`, and the
   walker follows those routes, procedure by procedure, stop after stop, and the path finder's ways up and down every
-  stair and ladder (about 6.7 km, run; 1.5 minutes). It fails if the walker is stuck for 5 s, falls below the floor
+  stair and ladder (about 6.7 km, run; 2.5 minutes). It fails if the walker is stuck for 5 s, falls below the floor
   it walks on, or ends out of reach of the equipment.
+- `test_gait`: walking and running: a stick's push to a speed, keys at the pace, Shift and the stick's click (held and
+  toggled), a touch stick, gradual speeding up and slowing down, the settings' pace, a stair's and a ladder's limits
+  running and walking, the footsteps' stride and level, the head bob and reduced motion. `test_walk` walks every
+  stair and ladder walking, running and at the slow pace.
 - `test_ui_walk_route`: the walking directions in the app (shown, redrawn, found again off the way, hidden in flight
   and by other steps) and the gamepad's X for the control room.
 - `test_frames_route`: the phone's walk, once.

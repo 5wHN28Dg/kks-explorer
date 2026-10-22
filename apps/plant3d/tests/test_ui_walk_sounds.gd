@@ -11,6 +11,7 @@ const Autopilot = preload("res://app/autopilot.gd")
 const Routes = preload("res://app/routes.gd")
 const Plant = preload("res://app/plant.gd")
 const Parts = preload("res://tests/test_ui_parts.gd")
+const Player = preload("res://app/player.gd")
 
 
 static func walk(tree: SceneTree, ui, route: Array, frames := 1800) -> String:
@@ -80,8 +81,21 @@ func run(tree: SceneTree) -> Array:
 	var r: String = await walk(tree, ui, [{"to": Plant.g(86, 34.5, 0), "floor": 0.0}, {"to": Plant.g(93.5, 44.5, 0), "floor": 0.0}])
 	var metres := Vector2(93.5 - 86, 44.5 - 34.5).length()
 	var c: int = s.played.get("step_concrete", 0)
-	if r != "" or c < int(metres / SoundPlayer.STRIDE) - 2 or c > int(metres / SoundPlayer.STRIDE) + 2 or s.played.size() != 1:
+	var stride: float = Player.stride_for(Player.WALK_SPEED)
+	if r != "" or c < int(metres / stride) - 2 or c > int(metres / stride) + 2 or s.played.size() != 1:
 		p.append("walking %.1f m on the ground: %s %s" % [metres, str(s.played), r])
+	# and back, running: longer strides, so fewer steps, and louder ones
+	s.played.clear()
+	ui.player.run = true
+	var loudest := {"db": -INF}
+	var watch := func(): loudest.db = maxf(loudest.db, s.last_step_db)
+	tree.physics_frame.connect(watch)
+	r = await walk(tree, ui, [{"to": Plant.g(86, 34.5, 0), "floor": 0.0}])
+	tree.physics_frame.disconnect(watch)
+	ui.player.run = false
+	var cr: int = s.played.get("step_concrete", 0)
+	if r != "" or cr >= c - 3 or cr < int(metres / Player.stride_for(Player.RUN_SPEED)) - 3 or loudest.db < 3.0:
+		p.append("running %.1f m back: %d steps (walking: %d), the loudest at %+.1f dB %s" % [metres, cr, c, loudest.db, r])
 	if s.outdoors < 0.99 or s._ambience.get("wind", []).is_empty():
 		p.append("outdoors the wind does not blow (outdoors %.2f)" % s.outdoors)
 	# up the first flights of HRSG 1's stair tower: steel stair steps
@@ -98,6 +112,24 @@ func run(tree: SceneTree) -> Array:
 	r = await walk(tree, ui, [{"to": Plant.g(110, 56, 30), "floor": 30.0}, {"to": Plant.g(122, 56, 30), "floor": 30.0}])
 	if r != "" or s.played.get("step_grating", 0) < 12 or s.played.has("step_concrete"):
 		p.append("walking the grating roof: %s %s" % [str(s.played), r])
+	# the settings' walking pace and run key: the walker's, kept in the settings file
+	main.hud._on_pace(2)
+	main.hud._on_run_toggle(true)
+	var set_ok: bool = ui.player.pace == Player.PACES.brisk and ui.player.run_toggle \
+		and main.cf.get_value("controls", "pace", "") == "brisk"
+	main.hud.show_settings(true)
+	set_ok = set_ok and main.hud.pace_opt.selected == 2 and main.hud.run_toggle_cb.button_pressed
+	main.hud.show_settings(false)
+	main.hud._on_pace(1)
+	main.hud._on_run_toggle(false)
+	if not set_ok or ui.player.pace != Player.WALK_SPEED or ui.player.run_toggle:
+		p.append("the settings' walking pace and run key do not reach the walker")
+	# reduced motion (the settings' row): no head bob; off again, the bob is back
+	ui._setting("reduced_motion", true)
+	var no_bob: bool = not ui.player.bob
+	ui._setting("reduced_motion", false)
+	if not no_bob or not ui.player.bob:
+		p.append("reduced motion does not turn the head bob off and on")
 	# flying: no steps
 	s.played.clear()
 	ui.player.set_mode(ui.player.Mode.FLY)

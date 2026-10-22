@@ -300,7 +300,7 @@ func toggle_map() -> void:
 func _on_jump(to: Vector3) -> void:
 	player.global_position = to + Vector3.UP * 0.05
 	player.set_mode(Player.Mode.WALK)   # lands on the floor just found
-	player.velocity = Vector3.ZERO
+	player.halt()
 	toggle_map()
 
 func area_at(p: Vector3) -> String:

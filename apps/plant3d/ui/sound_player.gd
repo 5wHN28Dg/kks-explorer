@@ -7,7 +7,8 @@
 ## surge's thud when a shake binding's value jumps (a CW pump started against an open valve), an acknowledge.
 ## Without built/sounds (the sounds not made) everything here is silent; the hooks are called all the same.
 ##
-## The people cues and the ambience (FIRST-TRAIN §6): a footstep once a stride while the trainee walks, by the floor
+## The people cues and the ambience (FIRST-TRAIN §6): a footstep once a stride while the trainee walks (the stride and
+## the step's level follow the speed: app/player.gd stride_for, step_gain_db; a run's steps are longer and louder), by the floor
 ## underfoot (the content build marks each walkable slab with its deck, a stair's body as a stair: concrete, steel
 ## grating, a steel stair tread or chequer plate; a rung at every 0.3 m on a ladder); the doors as they run (a roller
 ## door's motor and slats while it moves, a sliding door once); outdoors, the wind and the rest of the plant heard
@@ -22,8 +23,6 @@ const DIR := "res://built/sounds"
 const EARSHOT := 50.0           # metres: farther loops are stopped (nothing decodes for nobody)
 const UPDATE := 0.1             # seconds between gain and pitch updates
 const OUTPUT_CAP_DB := -6.0     # the master bus's ceiling: the app never plays louder than this (dBFS, peak)
-const STRIDE := 0.75            # metres between footsteps walking (a step of a 1.6 m/s walk: about 2 a second)
-const RUN_STRIDE := 1.1         # and running
 const RUNG := 0.3               # metres between a ladder's rungs (builder/plant_builder.gd _ladder)
 const FADE := 1.0               # seconds the ambience takes to follow the trainee in or out of a building
 const THUD := 0.05              # a shake binding's value × scale jumping by this from its lowest is a slam: `surge_thud`
@@ -47,6 +46,7 @@ var listener_at := Vector3.ZERO
 var dir := DIR
 var walker: CharacterBody3D = null      # the trainee (app/player.gd): footsteps and whether they are outdoors
 var played := {}                # sound id -> how many times it was asked for (the tests read it)
+var last_step_db := 0.0         # the last footstep's level against a walk's (the tests read it)
 var outdoors := 1.0             # 0 inside a building … 1 outdoors, faded over FADE
 var running := 0.0              # how much of the plant runs: the bound loops' mean gain (0–1)
 var _walked := 0.0              # metres since the last footstep (or rung)
@@ -392,16 +392,23 @@ func _physics_process(_delta: float) -> void:
 	if not walker.is_on_floor():
 		return
 	_walked += Vector2(d.x, d.z).length()
-	if _walked >= (RUN_STRIDE if Vector2(walker.velocity.x, walker.velocity.z).length() > 2.5 else STRIDE):
+	var v := Vector2(walker.velocity.x, walker.velocity.z).length()
+	if _walked >= PlayerScript.stride_for(v):
 		_walked = 0.0
-		footstep(surface_under(walker))
+		footstep(surface_under(walker), step_gain_db(v))
+
+
+## A footstep's level at a speed against a walk's, in dB: a slow step is softer, a run's steps land harder.
+static func step_gain_db(v: float) -> float:
+	return clampf((v - PlayerScript.WALK_SPEED) * 2.5, -4.0, 6.0)
 
 
 ## One footstep on a surface (concrete, grating, stair), a little different each time (pitch and level), as no two
 ## steps are alike. Three voices per surface, so a step never cuts the ones before it short.
-func footstep(surface: String) -> void:
+func footstep(surface: String, gain_db := 0.0) -> void:
 	var id: String = STEP_SOUNDS.get(surface, "step_concrete")
 	played[id] = played.get(id, 0) + 1
+	last_step_db = gain_db
 	if index.is_empty() or muted or not index.has(id):
 		return
 	var pl: AudioStreamPlayer = _steps.get(id)
@@ -418,7 +425,7 @@ func footstep(surface: String) -> void:
 		add_child(pl)
 		_steps[id] = pl
 	pl.pitch_scale = _rng.randf_range(0.92, 1.08)
-	pl.volume_db = _rng.randf_range(-1.5, 1.5)
+	pl.volume_db = gain_db + _rng.randf_range(-1.5, 1.5)
 	pl.play()
 
 

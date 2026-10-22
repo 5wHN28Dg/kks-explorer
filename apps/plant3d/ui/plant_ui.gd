@@ -286,7 +286,7 @@ func add_settings(box: VBoxContainer) -> void:
 		return
 	var cf: ConfigFile = main.cf
 	for row in [["instructor", "Instructor mode: scenarios and trainer faults", false],
-			["reduced_motion", "Reduced motion: no camera shake near machines", false],
+			["reduced_motion", "Reduced motion: no camera shake near machines, no head bob", false],
 			["mute", "Mute the plant's sounds", false]]:
 		var cb := CheckBox.new()
 		cb.text = row[1]
@@ -304,7 +304,9 @@ func add_settings(box: VBoxContainer) -> void:
 func _setting(key: String, on: bool) -> void:
 	match key:
 		"instructor": set_instructor(on)
-		"reduced_motion": bindings.reduced_motion = on
+		"reduced_motion":
+			bindings.reduced_motion = on
+			player.bob = not on
 		"mute":
 			sounds.muted = on
 			horn_changed.emit(0)

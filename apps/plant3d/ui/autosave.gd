@@ -292,7 +292,7 @@ func restore(p: Dictionary) -> void:
 	pl.scripted = false
 	pl.set_mode(pl.Mode.FLY)
 	pl.global_position = pd["pos"]
-	pl.velocity = Vector3.ZERO
+	pl.halt()
 	pl.set_heading(pd["yaw"], pd["pitch"])
 	if not pd["fly"]:
 		pl.set_mode(pl.Mode.WALK)
